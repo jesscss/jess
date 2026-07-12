@@ -15,15 +15,15 @@ describe('guard', () => {
     expect(errors.length).toBe(0);
     expect(serializeTypes(tree, { showOptions: true })).toContainString(`
       (Condition
-        left: 
+        [
           (Paren
             (Condition
-              left: 
+              [
                 (Reference
                     type: 'variable'
                   key: 'a'
                 )
-              right: 
+                (undefined)
                 (Color
       `);
   });
@@ -77,7 +77,14 @@ describe('guardDefault', () => {
     expect(serializeTypes(tree, { showOptions: true })).toContainString(`
       guard: 
         (Paren
-          (DefaultGuard 'default()')
+          (Call
+              silentFail: true
+            name: 
+              (Reference
+                  type: 'function'
+                  fallbackValue: true
+                key: 'default'
+              )
         )
       `);
   });
@@ -90,11 +97,17 @@ describe('guardDefault', () => {
       guard: 
         (Condition
             negate: true
-          left: 
+          [
             (Paren
-              (DefaultGuard 'default()')
+              (Call
+                  silentFail: true
+                name: 
+                  (Reference
+                      type: 'function'
+                      fallbackValue: true
+                    key: 'default'
+                  )
             )
-          negate: true
         )
       `);
   });

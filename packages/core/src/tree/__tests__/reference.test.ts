@@ -1,9 +1,7 @@
-import { ref, rules, decl, vardecl, spaced, any, quoted, expr, ruleset, mixin, call, compound, el, attr, keyword } from '../index.js';
+import { ref, rules, decl, vardecl, spaced, any, quoted, expr, ruleset, mixin, call, compound, el, list, atrule, sel, co, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER, Rules as RulesClass } from '../index.js';
 import { Context } from '../../context.js';
 import * as Registries from '../util/registry-utils.js';
 import { isNode } from '../util/is-node.js';
-import { getSourceParent, setField, setParent } from '../util/field-helpers.js';
-
 let context: Context;
 
 describe('reference', () => {
@@ -11,14 +9,14 @@ describe('reference', () => {
     context = new Context();
   });
   describe('serialization', () => {
+    it('renders a variable reference through toTrimmedString()', () => {
+      let node = ref({ key: 'foo' }, { type: 'variable' });
+      expect(node.toTrimmedString()).toBe('$foo');
+    });
+
     it('should serialize a variable reference', () => {
       let node = ref({ key: 'foo' }, { type: 'variable' });
       expect(`${node}`).toBe('$foo');
-    });
-
-    it('should serialize a property reference', () => {
-      let node = ref({ key: 'foo' }, { type: 'property' });
-      expect(`${node}`).toBe('$[\'foo\']');
     });
 
     it('should serialize a declaration reference', () => {
@@ -33,17 +31,12 @@ describe('reference', () => {
 
     it('should serialize a mixin reference', () => {
       let node = ref({ key: 'foo' }, { type: 'mixin' });
-      expect(`${node}`).toBe('|foo');
-    });
-
-    it('should serialize a ruleset reference', () => {
-      let node = ref({ key: 'foo' }, { type: 'ruleset' });
-      expect(`${node}`).toBe('*(foo)');
+      expect(`${node}`).toBe('$ > foo');
     });
 
     it('should serialize a mixin-ruleset reference', () => {
       let node = ref({ key: 'foo' }, { type: 'mixin-ruleset' });
-      expect(`${node}`).toBe('*foo');
+      expect(`${node}`).toBe('$ > *foo');
     });
 
     it('should serialize a number index', () => {
@@ -51,23 +44,70 @@ describe('reference', () => {
       expect(`${node}`).toBe('$[0]');
     });
 
-    it('should serialize a string index', () => {
+    it('should serialize a string (variable) index', () => {
       let node = ref({ key: 'foo' }, { type: 'index' });
       expect(`${node}`).toBe('$[foo]');
     });
 
-    it('should serialize a quoted index', () => {
-      let node = ref({ key: 'foo' }, { type: 'index' });
-      expect(`${node}`).toBe('$[foo]');
-    });
-
-    it('should serialize a selector index', () => {
+    it('should serialize a quoted (property) index', () => {
       let node = ref({ key: quoted('foo') }, { type: 'index' });
       expect(`${node}`).toBe('$["foo"]');
     });
   });
 
   describe('get from scope', () => {
+    it('renders a resolved variable value through render(context)', async () => {
+      const node = rules([
+        vardecl({
+          name: any('foo'),
+          value: any('red')
+        })
+      ]);
+      const evald = await node.eval(context);
+      context.root = evald as RulesClass;
+      context.rulesContext = evald as RulesClass;
+
+      const rendered = ref({ key: 'foo' }, { type: 'variable' }).render(context);
+
+      expect(rendered).toBe('red');
+    });
+
+    it('resolves a variable value without touching render state', async () => {
+      const node = rules([
+        vardecl({
+          name: any('foo'),
+          value: any('red')
+        })
+      ]);
+      const evald = await node.eval(context);
+      context.root = evald as RulesClass;
+      context.rulesContext = evald as RulesClass;
+
+      const resolved = await ref({ key: 'foo' }, { type: 'variable' }).resolve(context);
+
+      expect(`${resolved}`).toBe('red');
+      expect(context.printState.writer).toBeUndefined();
+    });
+
+    it('preserves direct mixin-ruleset hits instead of returning the live canonical mixin', async () => {
+      const mixinDef = mixin({
+        name: any('.fast-mixin'),
+        rules: rules([decl({ name: 'color', value: any('green') })])
+      });
+      const root = rules([mixinDef]);
+      const evald = await root.eval(context);
+      context.root = evald as RulesClass;
+      context.rulesContext = evald as RulesClass;
+
+      const resolved = await ref({ key: '.fast-mixin' }, { type: 'mixin-ruleset' }).resolve(context);
+
+      expect(resolved.type).toBe('MixinCollection');
+      expect(resolved.value).toHaveLength(1);
+      expect(resolved.value[0]).not.toBe(mixinDef);
+      expect(resolved.value[0]!.type).toBe('Mixin');
+      expect(resolved.value[0]!.sourceNode).toBe(mixinDef);
+    });
+
     it('should get a variable from scope', async () => {
       let node = rules([
         vardecl({
@@ -81,12 +121,12 @@ describe('reference', () => {
       ]);
       let evald = await node.eval(context);
       /** The var declaration will be removed when going to CSS */
-      expect(evald.render(context)).toBeString(`
+      expect(`${evald}`).toBeString(`
         bar: red;
       `);
     });
 
-    it('should get a property from scope', async () => {
+    it('should get a property from scope via quoted index', async () => {
       let node = rules([
         decl({
           name: any('foo'),
@@ -94,11 +134,11 @@ describe('reference', () => {
         }),
         decl({
           name: any('bar'),
-          value: ref({ key: 'foo' }, { type: 'property' })
+          value: ref({ key: quoted('foo') }, { type: 'index' })
         })
       ]);
       let evald = await node.eval(context);
-      expect(evald.render(context)).toBeString(`
+      expect(`${evald}`).toBeString(`
         foo: red;
         bar: red;
       `);
@@ -117,16 +157,16 @@ describe('reference', () => {
       ]);
       let evald = await node.eval(context);
       /** The var declaration will be removed when going to CSS */
-      expect(evald.render(context)).toBeString(`
+      expect(`${evald}`).toBeString(`
         bar: red;
       `);
     });
 
-    it('should get a prop from scope below reference', async () => {
+    it('should get a prop from scope below reference via quoted index', async () => {
       let node = rules([
         decl({
           name: any('bar'),
-          value: ref({ key: 'foo' }, { type: 'property' })
+          value: ref({ key: quoted('foo') }, { type: 'index' })
         }),
         decl({
           name: any('foo'),
@@ -134,9 +174,141 @@ describe('reference', () => {
         })
       ]);
       let evald = await node.eval(context);
-      expect(evald.render(context)).toBeString(`
+      expect(`${evald}`).toBeString(`
         bar: red;
         foo: red;
+      `);
+    });
+
+    it('should resolve merged property lookups via quoted index inside a nested child scope', async () => {
+      let node = rules([
+        decl({
+          name: any('background-color'),
+          value: any('red')
+        }, { assign: '+:' }),
+        decl({
+          name: any('background-color'),
+          value: any('foo')
+        }, { assign: '+:' }),
+        rules([
+          decl({
+            name: any('background'),
+            value: ref({ key: quoted('background-color') }, { type: 'index' })
+          })
+        ])
+      ]);
+      const child = node.value[2]!;
+      child.parent = node;
+      let evald = await node.eval(context);
+      expect(`${evald}`).toBeString(`
+        background-color: red, foo;
+        background: red, foo;
+      `);
+    });
+
+    it('should treat keyword index as variable lookup', async () => {
+      let node = rules([
+        vardecl({
+          name: any('foo'),
+          value: any('red')
+        }),
+        decl({
+          name: any('bar'),
+          value: ref({ key: 'foo' }, { type: 'index' })
+        })
+      ]);
+      let evald = await node.eval(context);
+      /** The var declaration will be removed when going to CSS */
+      expect(`${evald}`).toBeString(`
+        bar: red;
+      `);
+    });
+
+    it('should find a VarDeclaration via declaration type when both types exist', async () => {
+      let node = rules([
+        vardecl({
+          name: any('foo'),
+          value: any('red')
+        }),
+        decl({
+          name: any('foo'),
+          value: any('blue')
+        }),
+        decl({
+          name: any('bar'),
+          value: ref({ key: 'foo' }, { type: 'declaration' })
+        })
+      ]);
+      let evald = await node.eval(context);
+      expect(`${evald}`).toBeString(`
+        foo: blue;
+        bar: blue;
+      `);
+    });
+
+    it('should find a Declaration via declaration type when both types exist', async () => {
+      let node = rules([
+        decl({
+          name: any('foo'),
+          value: any('blue')
+        }),
+        vardecl({
+          name: any('foo'),
+          value: any('red')
+        }),
+        decl({
+          name: any('bar'),
+          value: ref({ key: 'foo' }, { type: 'declaration' })
+        })
+      ]);
+      let evald = await node.eval(context);
+      expect(`${evald}`).toBeString(`
+        foo: blue;
+        bar: red;
+      `);
+    });
+
+    it('should find a variable via keyword index (not a property)', async () => {
+      let node = rules([
+        vardecl({
+          name: any('foo'),
+          value: any('red')
+        }),
+        decl({
+          name: any('foo'),
+          value: any('blue')
+        }),
+        decl({
+          name: any('bar'),
+          value: ref({ key: 'foo' }, { type: 'index' })
+        })
+      ]);
+      let evald = await node.eval(context);
+      expect(`${evald}`).toBeString(`
+        foo: blue;
+        bar: red;
+      `);
+    });
+
+    it('should find a property via quoted index (not a variable)', async () => {
+      let node = rules([
+        vardecl({
+          name: any('foo'),
+          value: any('red')
+        }),
+        decl({
+          name: any('foo'),
+          value: any('blue')
+        }),
+        decl({
+          name: any('bar'),
+          value: ref({ key: quoted('foo') }, { type: 'index' })
+        })
+      ]);
+      let evald = await node.eval(context);
+      expect(`${evald}`).toBeString(`
+        foo: blue;
+        bar: blue;
       `);
     });
 
@@ -161,182 +333,9 @@ describe('reference', () => {
         })
       ]);
       let evald = await node.eval(context);
-      expect(evald.render(context)).toBeString(`
+      expect(`${evald}`).toBeString(`
         bar: red red;
       `);
-    });
-
-    it('evaluates with a state-patched variable key', async () => {
-      const lookup = ref({ key: 'foo' }, { type: 'variable' });
-      const scope = rules([
-        vardecl({
-          name: any('foo'),
-          value: any('red')
-        }),
-        vardecl({
-          name: any('bar'),
-          value: any('blue')
-        }),
-        decl({
-          name: any('color'),
-          value: lookup
-        })
-      ]);
-
-      setField(lookup, 'key', 'bar', context);
-      const preEvald = await scope.preEval(context);
-      context.root = preEvald;
-      context.rulesContext = preEvald;
-
-      const evald = await lookup.eval(context);
-      expect(evald.render(context)).toBe('blue');
-      expect(lookup.get('key')).toBe('foo');
-    });
-
-    it('evaluates with a state-patched target reference', async () => {
-      const target = ref({ key: '.theme-a' }, { type: 'mixin-ruleset' });
-      const lookup = ref({ target, key: 'primary' }, { type: 'property' });
-      const scope = rules([
-        ruleset({
-          selector: el('.theme-a'),
-          rules: rules([
-            decl({ name: any('primary'), value: any('red') })
-          ])
-        }),
-        ruleset({
-          selector: el('.theme-b'),
-          rules: rules([
-            decl({ name: any('primary'), value: any('blue') })
-          ])
-        }),
-        decl({
-          name: any('color'),
-          value: lookup
-        })
-      ]);
-
-      setField(
-        lookup,
-        'target',
-        ref({ key: '.theme-b' }, { type: 'mixin-ruleset' }),
-        context
-      );
-      const preEvald = await scope.preEval(context);
-      context.root = preEvald;
-      context.rulesContext = preEvald;
-
-      const evald = await lookup.eval(context);
-      expect(evald.render(context)).toBe('blue');
-      expect(lookup.get('target')).toBe(target);
-    });
-
-    it('should resolve a variable reference with a keyword key inside an attribute selector', async () => {
-      let node = rules([
-        vardecl({
-          name: any('attr-data'),
-          value: quoted('test3')
-        }),
-        ruleset({
-          selector: attr({ name: 'data', op: '=', value: ref({ key: keyword('attr-data') }, { type: 'index' }) }),
-          rules: rules([
-            decl({ name: 'color', value: any('red') })
-          ])
-        })
-      ]);
-      let evald = await node.eval(context);
-      expect(evald.render(context)).toBeString(`
-        [data="test3"] {
-          color: red;
-        }
-      `);
-    });
-
-    it('uses the state parent chain to anchor linear variable resolution', async () => {
-      const scope = rules([
-        vardecl({
-          name: any('foo'),
-          value: any('red')
-        }),
-        decl({
-          name: any('mid'),
-          value: any('keep')
-        }),
-        decl({
-          name: any('host'),
-          value: any('placeholder')
-        }),
-        vardecl({
-          name: any('foo'),
-          value: any('blue')
-        })
-      ]);
-
-      scope.value.forEach((child, index) => {
-        child.index = index;
-      });
-      context.root = scope;
-      context.rulesContext = scope;
-
-      const hostDecl = scope.at(2, context);
-      if (!hostDecl || !isNode(hostDecl)) {
-        throw new Error('Expected host declaration at index 2');
-      }
-
-      const lookup = ref({ key: 'foo' }, { type: 'variable', resolution: 'linear' });
-      setParent(lookup, hostDecl, context);
-
-      const evald = await lookup.eval(context);
-
-      expect(evald.render(context)).toBe('red');
-    });
-
-    it('uses the state parent chain to anchor default variable resolution without rulesContext', async () => {
-      const scope = rules([
-        vardecl({
-          name: any('foo'),
-          value: any('red')
-        }),
-        decl({
-          name: any('host'),
-          value: any('placeholder')
-        })
-      ]);
-
-      context.root = scope;
-
-      const hostDecl = scope.at(1, context);
-      if (!hostDecl || !isNode(hostDecl)) {
-        throw new Error('Expected host declaration at index 1');
-      }
-
-      const lookup = ref({ key: 'foo' }, { type: 'variable' });
-      setParent(lookup, hostDecl, context);
-
-      const evald = await lookup.eval(context);
-
-      expect(evald.render(context)).toBe('red');
-    });
-
-    it('uses the state parent chain for mixin lookup without an explicit target', async () => {
-      const outer = rules([
-        mixin({
-          name: any('feature'),
-          rules: rules([
-            decl({ name: any('color'), value: any('red') })
-          ])
-        })
-      ]);
-      const inner = rules([
-        call({ name: ref({ key: 'feature' }, { type: 'mixin' }) })
-      ]);
-
-      context.root = outer;
-      context.rulesContext = inner;
-      setParent(inner, outer, context);
-
-      const evald = await inner.at(0, context)!.eval(context);
-
-      expect(evald.render(context)).toContainString('color: red');
     });
   });
 
@@ -350,36 +349,376 @@ describe('reference', () => {
       ]);
       await expect(async () => await node.eval(context)).rejects.toThrow();
     });
+
+    it('plain lexical misses do not fall back to DeclarationRegistry.find when no child scopes are searchable', async () => {
+      const originalFind = RulesClass.prototype.find;
+      const declarationHits: string[] = [];
+      RulesClass.prototype.find = function(...args: Parameters<typeof originalFind>) {
+        const [type, key, filterType] = args;
+        if (type === 'declaration' && filterType === 'VarDeclaration' && key === 'missing') {
+          declarationHits.push(key);
+        }
+        return originalFind.apply(this, args);
+      };
+
+      try {
+        const node = rules([
+          decl({
+            name: any('bar'),
+            value: ref({ key: 'missing' }, { type: 'variable' })
+          })
+        ]);
+        await expect(async () => await node.eval(context)).rejects.toThrow();
+        expect(declarationHits).toHaveLength(0);
+      } finally {
+        RulesClass.prototype.find = originalFind;
+      }
+    });
+
+    it('plain lexical misses do not fall back when only later child rules could match', async () => {
+      const originalFind = RulesClass.prototype.find;
+      const declarationHits: string[] = [];
+      RulesClass.prototype.find = function(...args: Parameters<typeof originalFind>) {
+        const [type, key, filterType] = args;
+        if (type === 'declaration' && filterType === 'VarDeclaration' && key === 'missing') {
+          declarationHits.push(key);
+        }
+        return originalFind.apply(this, args);
+      };
+
+      try {
+        const node = rules([
+          decl({
+            name: any('bar'),
+            value: ref({ key: 'missing' }, { type: 'variable' })
+          }),
+          rules([
+            vardecl({
+              name: any('missing'),
+              value: any('red')
+            })
+          ], {
+            rulesVisibility: {
+              VarDeclaration: 'public'
+            }
+          })
+        ]);
+        await expect(async () => await node.eval(new Context({ leakyRules: true }))).rejects.toThrow();
+        expect(declarationHits).toHaveLength(0);
+      } finally {
+        RulesClass.prototype.find = originalFind;
+      }
+    });
+
+    it('plain lexical misses ignore unresolved dynamic declaration names without declaration-registry fallback', async () => {
+      const originalFind = RulesClass.prototype.find;
+      const declarationHits: string[] = [];
+      RulesClass.prototype.find = function(...args: Parameters<typeof originalFind>) {
+        const [type, key, filterType] = args;
+        if (type === 'declaration' && filterType === 'VarDeclaration' && key === 'missing') {
+          declarationHits.push(key);
+        }
+        return originalFind.apply(this, args);
+      };
+
+      try {
+        const node = rules([
+          vardecl({
+            name: interpolated({
+              source: '%%',
+              replacements: [ref({ key: 'suffix' }, { type: 'variable' })]
+            }),
+            value: any('red')
+          }),
+          decl({
+            name: any('bar'),
+            value: ref({ key: 'missing' }, { type: 'variable' })
+          })
+        ]);
+        await expect(async () => await node.eval(context)).rejects.toThrow();
+        expect(declarationHits).toHaveLength(0);
+      } finally {
+        RulesClass.prototype.find = originalFind;
+      }
+    });
+
+    it('same-scope unresolved dynamic names before a static winner do not force declaration-registry fallback', async () => {
+      const originalFind = RulesClass.prototype.find;
+      const declarationHits: string[] = [];
+      RulesClass.prototype.find = function(...args: Parameters<typeof originalFind>) {
+        const [type, key, filterType] = args;
+        if (type === 'declaration' && filterType === 'VarDeclaration' && key === 'x') {
+          declarationHits.push(key);
+        }
+        return originalFind.apply(this, args);
+      };
+
+      try {
+        const node = rules([
+          vardecl({
+            name: interpolated({
+              source: '%%',
+              replacements: [ref({ key: 'suffix' }, { type: 'variable' })]
+            }),
+            value: any('red')
+          }),
+          vardecl({
+            name: any('x'),
+            value: any('blue')
+          }),
+          decl({
+            name: any('bar'),
+            value: ref({ key: 'x' }, { type: 'variable' })
+          })
+        ]);
+        const evald = await node.eval(context);
+        expect(`${evald}`).toBeString(`
+          bar: blue;
+        `);
+        expect(declarationHits).toHaveLength(0);
+      } finally {
+        RulesClass.prototype.find = originalFind;
+      }
+    });
+
+    it('same-scope unresolved dynamic names after a static winner do not force declaration-registry fallback', async () => {
+      const originalFind = RulesClass.prototype.find;
+      const declarationHits: string[] = [];
+      RulesClass.prototype.find = function(...args: Parameters<typeof originalFind>) {
+        const [type, key, filterType] = args;
+        if (type === 'declaration' && filterType === 'VarDeclaration' && key === 'x') {
+          declarationHits.push(key);
+        }
+        return originalFind.apply(this, args);
+      };
+
+      try {
+        const node = rules([
+          vardecl({
+            name: any('x'),
+            value: any('blue')
+          }),
+          vardecl({
+            name: interpolated({
+              source: '%%',
+              replacements: [ref({ key: 'suffix' }, { type: 'variable' })]
+            }),
+            value: any('red')
+          }),
+          decl({
+            name: any('bar'),
+            value: ref({ key: 'x' }, { type: 'variable' })
+          })
+        ]);
+        const evald = await node.eval(context);
+        expect(`${evald}`).toBeString(`
+          bar: blue;
+        `);
+        expect(declarationHits).toHaveLength(0);
+      } finally {
+        RulesClass.prototype.find = originalFind;
+      }
+    });
+
+    it('prunes stale pendingDynamicDecls entries when a dynamic name resolves after ScopeFrame creation', async () => {
+      const originalFind = RulesClass.prototype.find;
+      const declarationHits: string[] = [];
+      RulesClass.prototype.find = function(...args: Parameters<typeof originalFind>) {
+        const [type, key, filterType] = args;
+        if (type === 'declaration' && filterType === 'VarDeclaration' && key === 'x') {
+          declarationHits.push(key);
+        }
+        return originalFind.apply(this, args);
+      };
+
+      try {
+        let node = rules([
+          vardecl({
+            name: any('suffix'),
+            value: any('x')
+          }),
+          vardecl({
+            name: interpolated({
+              source: '%%',
+              replacements: [ref({ key: 'suffix' }, { type: 'variable' })]
+            }),
+            value: any('red')
+          }),
+          decl({
+            name: any('bar'),
+            value: ref({ key: 'x' }, { type: 'variable' })
+          })
+        ]);
+
+        // Force a pre-resolution frame snapshot so pendingDynamicDecls is populated first.
+        node.getScopeFrame();
+
+        node = await node.eval(context);
+        expect(`${node}`).toBeString(`
+          bar: red;
+        `);
+        expect(declarationHits).toHaveLength(0);
+      } finally {
+        RulesClass.prototype.find = originalFind;
+      }
+    });
+
+    it('promotes pending dynamic declarations that have already become static before lookup', async () => {
+      const originalFind = RulesClass.prototype.find;
+      const declarationHits: string[] = [];
+      RulesClass.prototype.find = function(...args: Parameters<typeof originalFind>) {
+        const [type, key, filterType] = args;
+        if (type === 'declaration' && filterType === 'VarDeclaration' && key === 'x') {
+          declarationHits.push(key);
+        }
+        return originalFind.apply(this, args);
+      };
+
+      try {
+        const node = rules([
+          vardecl({
+            name: interpolated({
+              source: '%%',
+              replacements: [ref({ key: 'suffix' }, { type: 'variable' })]
+            }),
+            value: any('red')
+          }),
+          decl({
+            name: any('bar'),
+            value: ref({ key: 'x' }, { type: 'variable' })
+          })
+        ]);
+
+        const frame = node.getScopeFrame();
+        const dynamicDecl = node.at(0)!;
+        dynamicDecl.set('name', any('x'));
+
+        const resolved = await node.at(1)!.eval(context);
+        expect(`${resolved}`).toBe('bar: red');
+        expect(declarationHits).toHaveLength(0);
+        expect(frame.pendingDynamicDecls).toHaveLength(0);
+        expect(frame.declarationBucketsByName.get('x')?.at(-1)?.sourceNode).toBe(dynamicDecl);
+      } finally {
+        RulesClass.prototype.find = originalFind;
+      }
+    });
+
+    it('ignores still-dynamic pending names even when they would be synchronously computable', async () => {
+      const originalFind = RulesClass.prototype.find;
+      const declarationHits: string[] = [];
+      RulesClass.prototype.find = function(...args: Parameters<typeof originalFind>) {
+        const [type, key, filterType] = args;
+        if (type === 'declaration' && filterType === 'VarDeclaration' && key === 'x') {
+          declarationHits.push(key);
+        }
+        return originalFind.apply(this, args);
+      };
+
+      try {
+        const node = rules([
+          vardecl({
+            name: any('suffix'),
+            value: any('x')
+          }),
+          vardecl({
+            name: interpolated({
+              source: '%%',
+              replacements: [ref({ key: 'suffix' }, { type: 'variable' })]
+            }),
+            value: any('red')
+          }),
+          decl({
+            name: any('bar'),
+            value: ref({ key: 'x' }, { type: 'variable' })
+          })
+        ]);
+
+        const frame = node.getScopeFrame();
+        context.rulesContext = node;
+        await expect(async () => await node.at(2)!.eval(context)).rejects.toThrow();
+        expect(declarationHits).toHaveLength(0);
+        expect(frame.pendingDynamicDecls).toHaveLength(1);
+      } finally {
+        context.rulesContext = undefined;
+        RulesClass.prototype.find = originalFind;
+      }
+    });
+
+    it('rejects when pending dynamic names are still asynchronously unresolved', async () => {
+      const originalFind = RulesClass.prototype.find;
+      const declarationHits: string[] = [];
+      RulesClass.prototype.find = function(...args: Parameters<typeof originalFind>) {
+        const [type, key, filterType] = args;
+        if (type === 'declaration' && filterType === 'VarDeclaration' && key === 'x') {
+          declarationHits.push(key);
+        }
+        return originalFind.apply(this, args);
+      };
+
+      try {
+        const node = rules([
+          vardecl({
+            name: interpolated({
+              source: '%%',
+              replacements: [call({ name: ref({ key: 'async-name' }, { type: 'function' }) })]
+            }),
+            value: any('red')
+          }),
+          decl({
+            name: any('bar'),
+            value: ref({ key: 'x' }, { type: 'variable' })
+          })
+        ]);
+        node.getRegistry('function').add('async-name', async () => any('x'));
+
+        const frame = node.getScopeFrame();
+        context.rulesContext = node;
+        await expect(async () => await node.at(1)!.eval(context)).rejects.toThrow();
+        expect(declarationHits).toHaveLength(0);
+        expect(frame.pendingDynamicDecls).toHaveLength(1);
+      } finally {
+        context.rulesContext = undefined;
+        RulesClass.prototype.find = originalFind;
+      }
+    });
   });
 
   describe('nested references for mixin-ruleset lookups', () => {
-    it('keeps resolved ruleset sourceParent state-local', async () => {
-      const colors = mixin({
-        name: any('.colors'),
-        rules: rules([
-          decl({ name: 'primary', value: any('cyan') })
-        ])
-      });
-      const theme = ruleset({
-        selector: el('.theme'),
-        rules: rules([colors])
-      });
-      const node = rules([theme]);
-      const themeLookup = ref({ key: '.theme' }, { type: 'mixin-ruleset' });
-      const lookup = ref({
-        target: themeLookup,
-        key: '.colors'
-      }, { type: 'mixin-ruleset' });
-
-      const preEvald = await node.preEval(context);
-      context.root = preEvald;
-      context.rulesContext = preEvald;
-
-      const resolved = await lookup.eval(context);
-
-      expect(resolved.type).toBe('JsFunction');
-      expect(getSourceParent(theme, context)).toBe(themeLookup);
-      expect(theme.sourceParent).toBeUndefined();
+    it('should resolve quoted index property access on mixin-returned rules', async () => {
+      const node = rules([
+        mixin({
+          name: any('.mk-map'),
+          rules: rules([
+            decl({ name: 'text', value: any('white') }),
+            decl({ name: 'background', value: any('black') })
+          ])
+        }),
+        ruleset({
+          selector: el('.output'),
+          rules: rules([
+            vardecl({
+              name: 'p',
+              value: call({
+                name: ref({ key: '.mk-map' }, { type: 'mixin-ruleset' }),
+                args: list([])
+              })
+            }),
+            decl({
+              name: 'color',
+              value: ref({
+                target: ref({ key: 'p' }, { type: 'variable' }),
+                key: quoted('text')
+              }, { type: 'index' })
+            })
+          ])
+        })
+      ]);
+      const evald = await node.eval(context);
+      expect(`${evald}`).toBeString(`
+        .output {
+          color: white;
+        }
+      `);
     });
 
     it('should register and resolve escaped class selector via string key', async () => {
@@ -400,7 +739,7 @@ describe('reference', () => {
         })
       ]);
       const evald = await node.eval(context);
-      expect(evald.render(context)).toBeString(`
+      expect(`${evald}`).toBeString(`
         .\\123 {
           a: ok;
         }
@@ -428,7 +767,7 @@ describe('reference', () => {
         })
       ]);
       const evald = await node.eval(context);
-      expect(evald.render(context)).toBeString(`
+      expect(`${evald}`).toBeString(`
         #\\31a {
           a: ok;
         }
@@ -458,7 +797,7 @@ describe('reference', () => {
         })
       ]);
       const evald = await node.eval(context);
-      expect(evald.render(context)).toBeString(`
+      expect(`${evald}`).toBeString(`
         .a.\\32b {
           a: ok;
         }
@@ -527,13 +866,13 @@ describe('reference', () => {
               value: ref({
                 target: ref({ key: 'colors' }, { type: 'variable' }),
                 key: 'primary'
-              }, { type: 'property' })
+              }, { type: 'declaration' })
             })
           ])
         })
       ]);
       const evald = await node.eval(context);
-      expect(evald.render(context)).toBeString(`
+      expect(`${evald}`).toBeString(`
         .output {
           background: red;
         }
@@ -578,13 +917,13 @@ describe('reference', () => {
               value: ref({
                 target: ref({ key: 'colors' }, { type: 'variable' }),
                 key: 'primary'
-              }, { type: 'property' })
+              }, { type: 'declaration' })
             })
           ])
         })
       ]);
       const evald = await node.eval(context);
-      expect(evald.render(context)).toBeString(`
+      expect(`${evald}`).toBeString(`
         .output {
           background: red;
         }
@@ -629,20 +968,377 @@ describe('reference', () => {
               value: ref({
                 target: ref({ key: 'colors' }, { type: 'variable' }),
                 key: 'primary'
-              }, { type: 'property' })
+              }, { type: 'declaration' })
             })
           ])
         })
       ]);
       const evald = await node.eval(context);
-      expect(evald.render(context)).toBeString(`
+      expect(`${evald}`).toBeString(`
         .output {
           background: red;
         }
       `);
     });
 
-    it('should prefer compound ruleset over nested mixin lookup', async () => {
+    it('should prefer a compound-prefix ruleset when a longer string array can continue inside it', async () => {
+      const node = rules([
+        mixin({
+          name: any('#theme'),
+          rules: rules([
+            mixin({
+              name: any('.dark'),
+              rules: rules([
+                mixin({
+                  name: any('.navbar'),
+                  rules: rules([
+                    mixin({
+                      name: any('.colors'),
+                      rules: rules([
+                        decl({ name: 'primary', value: any('cyan') })
+                      ])
+                    })
+                  ])
+                })
+              ])
+            })
+          ])
+        }),
+        ruleset({
+          selector: compound([el('#theme'), el('.dark'), el('.navbar')]),
+          rules: rules([
+            mixin({
+              name: any('.colors'),
+              rules: rules([
+                decl({ name: 'primary', value: any('red') })
+              ])
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('.output'),
+          rules: rules([
+            vardecl({
+              name: 'colors',
+              value: call({
+                name: ref({
+                  key: ['#theme', '.dark', '.navbar', '.colors']
+                }, { type: 'mixin-ruleset' })
+              })
+            }),
+            decl({
+              name: 'background',
+              value: ref({
+                target: ref({ key: 'colors' }, { type: 'variable' }),
+                key: 'primary'
+              }, { type: 'declaration' })
+            })
+          ])
+        })
+      ]);
+
+      const evald = await node.eval(context);
+      expect(`${evald}`).toBeString(`
+        .output {
+          background: red;
+        }
+      `);
+    });
+
+    it('fast-paths compound-prefix callable ruleset precedence without MixinRegistry.find', async () => {
+      const originalFind = Registries.MixinRegistry.prototype.find;
+      const mixinRegistryHits: string[] = [];
+      Registries.MixinRegistry.prototype.find = function(...args: Parameters<typeof originalFind>) {
+        const [key] = args;
+        if (Array.isArray(key) && key[0] === '#theme') {
+          mixinRegistryHits.push(key.join(' '));
+        }
+        return originalFind.apply(this, args);
+      };
+
+      try {
+        const node = rules([
+          mixin({
+            name: any('#theme'),
+            rules: rules([
+              mixin({
+                name: any('.dark'),
+                rules: rules([
+                  mixin({
+                    name: any('.navbar'),
+                    rules: rules([
+                      mixin({
+                        name: any('.colors'),
+                        rules: rules([
+                          decl({ name: 'primary', value: any('cyan') })
+                        ])
+                      })
+                    ])
+                  })
+                ])
+              })
+            ])
+          }),
+          ruleset({
+            selector: compound([el('#theme'), el('.dark'), el('.navbar')]),
+            rules: rules([
+              mixin({
+                name: any('.colors'),
+                rules: rules([
+                  decl({ name: 'primary', value: any('red') })
+                ])
+              })
+            ])
+          }),
+          ruleset({
+            selector: el('.output'),
+            rules: rules([
+              vardecl({
+                name: 'colors',
+                value: call({
+                  name: ref({
+                    key: ['#theme', '.dark', '.navbar', '.colors']
+                  }, { type: 'mixin-ruleset' })
+                })
+              }),
+              decl({
+                name: 'background',
+                value: ref({
+                  target: ref({ key: 'colors' }, { type: 'variable' }),
+                  key: 'primary'
+                }, { type: 'declaration' })
+              })
+            ])
+          })
+        ]);
+
+        const evald = await node.eval(context);
+        expect(`${evald}`).toBeString(`
+          .output {
+            background: red;
+          }
+        `);
+        expect(mixinRegistryHits).toHaveLength(0);
+      } finally {
+        Registries.MixinRegistry.prototype.find = originalFind;
+      }
+    });
+
+    it('should resolve a mixin-ruleset call keyed by BasicSelector', async () => {
+      const node = rules([
+        mixin({
+          name: any('.mixin-with-directives'),
+          params: list([any('keyframeName', { role: 'property' })]),
+          rules: rules([
+            atrule({
+              name: any('@keyframes'),
+              prelude: ref({ key: 'keyframeName' }, { type: 'variable' }),
+              rules: rules([
+                decl({ name: 'property', value: any('value') })
+              ])
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('.out'),
+          rules: rules([
+            call({
+              name: ref({ key: el('.mixin-with-directives') }, { type: 'mixin-ruleset' }),
+              args: list([any('some-name')])
+            })
+          ])
+        })
+      ]);
+
+      const evald = await node.eval(context);
+      expect(`${evald}`).toContain('@keyframes some-name');
+    });
+
+    it('should resolve a mixin-ruleset call keyed by a compound selector path array', async () => {
+      const node = rules([
+        ruleset({
+          selector: compound([
+            el('.b'),
+            el('.bb'),
+            el('.foo-xxx'),
+            el('.yyy-foo'),
+            el('#foo'),
+            el('.foo'),
+            el('.bbb')
+          ]),
+          rules: rules([
+            decl({ name: 'b', value: any('1') })
+          ])
+        }),
+        ruleset({
+          selector: el('.out'),
+          rules: rules([
+            call({
+              name: ref({
+                key: ['.b', '.bb', '.foo-xxx', '.yyy-foo', '#foo', '.foo', '.bbb']
+              }, { type: 'mixin-ruleset' })
+            })
+          ])
+        })
+      ]);
+
+      const evald = await node.eval(context);
+      expect(`${evald}`).toBeString(`
+        .b.bb.foo-xxx.yyy-foo#foo.foo.bbb {
+          b: 1;
+        }
+        .out {
+          b: 1;
+        }
+      `);
+    });
+
+    it('fast-paths exact callable ruleset array paths without MixinRegistry.find when no namespace start exists', async () => {
+      const originalFind = Registries.MixinRegistry.prototype.find;
+      const mixinRegistryHits: string[] = [];
+      Registries.MixinRegistry.prototype.find = function(...args: Parameters<typeof originalFind>) {
+        const [key] = args;
+        if (Array.isArray(key) && key[0] === '.b') {
+          mixinRegistryHits.push(key.join(' '));
+        }
+        return originalFind.apply(this, args);
+      };
+
+      try {
+        const node = rules([
+          ruleset({
+            selector: compound([
+              el('.b'),
+              el('.bb'),
+              el('.foo-xxx'),
+              el('.yyy-foo'),
+              el('#foo'),
+              el('.foo'),
+              el('.bbb')
+            ]),
+            rules: rules([
+              decl({ name: 'b', value: any('1') })
+            ])
+          }),
+          ruleset({
+            selector: el('.out'),
+            rules: rules([
+              call({
+                name: ref({
+                  key: ['.b', '.bb', '.foo-xxx', '.yyy-foo', '#foo', '.foo', '.bbb']
+                }, { type: 'mixin-ruleset' })
+              })
+            ])
+          })
+        ]);
+
+        const evald = await node.eval(context);
+        expect(`${evald}`).toBeString(`
+          .b.bb.foo-xxx.yyy-foo#foo.foo.bbb {
+            b: 1;
+          }
+          .out {
+            b: 1;
+          }
+        `);
+        expect(mixinRegistryHits).toHaveLength(0);
+      } finally {
+        Registries.MixinRegistry.prototype.find = originalFind;
+      }
+    });
+
+    it('should resolve a mixin-ruleset call keyed by a complex selector while ignoring namespace separators', async () => {
+      const node = rules([
+        ruleset({
+          selector: sel([el('#foo-foo')]),
+          rules: rules([
+            ruleset({
+              selector: sel([co('>'), compound([el('.bar'), el('.baz')])]),
+              rules: rules([
+                decl({ name: 'c', value: any('c') })
+              ])
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('.out'),
+          rules: rules([
+            call({
+              name: ref({
+                key: sel([el('#foo-foo'), co('>'), compound([el('.bar'), el('.baz')])])
+              }, { type: 'mixin-ruleset' })
+            })
+          ])
+        })
+      ]);
+
+      const evald = await node.eval(context);
+      expect(`${evald}`).toBeString(`
+        #foo-foo {
+          > .bar.baz {
+            c: c;
+          }
+        }
+        .out {
+          c: c;
+        }
+      `);
+    });
+
+    it('fast-paths complex selector callable ruleset paths without MixinRegistry.find under a ruleset namespace prefix', async () => {
+      const originalFind = Registries.MixinRegistry.prototype.find;
+      const mixinRegistryHits: string[] = [];
+      Registries.MixinRegistry.prototype.find = function(...args: Parameters<typeof originalFind>) {
+        const [key] = args;
+        if (Array.isArray(key) && key[0] === '#foo-foo') {
+          mixinRegistryHits.push(key.join(' '));
+        }
+        return originalFind.apply(this, args);
+      };
+
+      try {
+        const node = rules([
+          ruleset({
+            selector: sel([el('#foo-foo')]),
+            rules: rules([
+              ruleset({
+                selector: sel([co('>'), compound([el('.bar'), el('.baz')])]),
+                rules: rules([
+                  decl({ name: 'c', value: any('c') })
+                ])
+              })
+            ])
+          }),
+          ruleset({
+            selector: el('.out'),
+            rules: rules([
+              call({
+                name: ref({
+                  key: sel([el('#foo-foo'), co('>'), compound([el('.bar'), el('.baz')])])
+                }, { type: 'mixin-ruleset' })
+              })
+            ])
+          })
+        ]);
+
+        const evald = await node.eval(context);
+        expect(`${evald}`).toBeString(`
+          #foo-foo {
+            > .bar.baz {
+              c: c;
+            }
+          }
+          .out {
+            c: c;
+          }
+        `);
+        expect(mixinRegistryHits).toHaveLength(0);
+      } finally {
+        Registries.MixinRegistry.prototype.find = originalFind;
+      }
+    });
+
+    it('should resolve nested mixin-ruleset reference chains through nested mixins', async () => {
       // #theme {
       //   .dark {
       //     .navbar() {
@@ -661,7 +1357,8 @@ describe('reference', () => {
       //   @colors: #theme.dark.navbar.colors();
       //   background: @colors[primary];
       // }
-      // Should use the compound ruleset (#theme.dark.navbar) which has .colors() with primary: red
+      // Because this is a nested reference chain, it should keep traversing the
+      // nested mixin namespace and resolve primary: cyan.
       const node = rules([
         mixin({
           name: any('#theme'),
@@ -718,17 +1415,413 @@ describe('reference', () => {
               value: ref({
                 target: ref({ key: 'colors' }, { type: 'variable' }),
                 key: 'primary'
-              }, { type: 'property' })
+              }, { type: 'declaration' })
             })
           ])
         })
       ]);
       const evald = await node.eval(context);
-      expect(evald.render(context)).toBeString(`
+      expect(`${evald}`).toBeString(`
         .output {
           background: cyan;
         }
       `);
+    });
+
+    it('fast-paths pure nested no-arg mixin namespace array paths without MixinRegistry.find', async () => {
+      const originalFind = Registries.MixinRegistry.prototype.find;
+      const mixinRegistryHits: string[] = [];
+      Registries.MixinRegistry.prototype.find = function(...args: Parameters<typeof originalFind>) {
+        const [key] = args;
+        if (Array.isArray(key) && key[0] === '#theme') {
+          mixinRegistryHits.push(key.join(' '));
+        }
+        return originalFind.apply(this, args);
+      };
+
+      try {
+        const node = rules([
+          mixin({
+            name: any('#theme'),
+            rules: rules([
+              mixin({
+                name: any('.dark'),
+                rules: rules([
+                  mixin({
+                    name: any('.navbar'),
+                    rules: rules([
+                      mixin({
+                        name: any('.colors'),
+                        rules: rules([
+                          decl({ name: 'primary', value: any('cyan') })
+                        ])
+                      })
+                    ])
+                  })
+                ])
+              })
+            ])
+          }),
+          ruleset({
+            selector: el('.output'),
+            rules: rules([
+              vardecl({
+                name: 'colors',
+                value: call({
+                  name: ref({
+                    key: ['#theme', '.dark', '.navbar', '.colors']
+                  }, { type: 'mixin-ruleset' })
+                })
+              }),
+              decl({
+                name: 'background',
+                value: ref({
+                  target: ref({ key: 'colors' }, { type: 'variable' }),
+                  key: 'primary'
+                }, { type: 'declaration' })
+              })
+            ])
+          })
+        ]);
+
+        const evald = await node.eval(context);
+        expect(`${evald}`).toBeString(`
+          .output {
+            background: cyan;
+          }
+        `);
+        expect(mixinRegistryHits).toHaveLength(0);
+      } finally {
+        Registries.MixinRegistry.prototype.find = originalFind;
+      }
+    });
+
+    it('does not fall back for unrelated rulesets that only share the first namespace segment', async () => {
+      const originalFind = Registries.MixinRegistry.prototype.find;
+      const mixinRegistryHits: string[] = [];
+      Registries.MixinRegistry.prototype.find = function(...args: Parameters<typeof originalFind>) {
+        const [key] = args;
+        if (Array.isArray(key) && key[0] === '#theme') {
+          mixinRegistryHits.push(key.join(' '));
+        }
+        return originalFind.apply(this, args);
+      };
+
+      try {
+        const node = rules([
+          mixin({
+            name: any('#theme'),
+            rules: rules([
+              mixin({
+                name: any('.dark'),
+                rules: rules([
+                  mixin({
+                    name: any('.navbar'),
+                    rules: rules([
+                      mixin({
+                        name: any('.colors'),
+                        rules: rules([
+                          decl({ name: 'primary', value: any('cyan') })
+                        ])
+                      })
+                    ])
+                  })
+                ])
+              })
+            ])
+          }),
+          ruleset({
+            selector: compound([el('#theme'), el('.warning')]),
+            rules: rules([
+              mixin({
+                name: any('.palette'),
+                rules: rules([
+                  decl({ name: 'primary', value: any('orange') })
+                ])
+              })
+            ])
+          }),
+          ruleset({
+            selector: el('.output'),
+            rules: rules([
+              vardecl({
+                name: 'colors',
+                value: call({
+                  name: ref({
+                    key: ['#theme', '.dark', '.navbar', '.colors']
+                  }, { type: 'mixin-ruleset' })
+                })
+              }),
+              decl({
+                name: 'background',
+                value: ref({
+                  target: ref({ key: 'colors' }, { type: 'variable' }),
+                  key: 'primary'
+                }, { type: 'declaration' })
+              })
+            ])
+          })
+        ]);
+
+        const evald = await node.eval(context);
+        expect(`${evald}`).toBeString(`
+          .output {
+            background: cyan;
+          }
+        `);
+        expect(mixinRegistryHits).toHaveLength(0);
+      } finally {
+        Registries.MixinRegistry.prototype.find = originalFind;
+      }
+    });
+
+    it('fast-paths terminal rulesets under pure nested no-arg mixin namespaces without MixinRegistry.find', async () => {
+      const originalFind = Registries.MixinRegistry.prototype.find;
+      const mixinRegistryHits: string[] = [];
+      Registries.MixinRegistry.prototype.find = function(...args: Parameters<typeof originalFind>) {
+        const [key] = args;
+        if (Array.isArray(key) && key[0] === '#theme') {
+          mixinRegistryHits.push(key.join(' '));
+        }
+        return originalFind.apply(this, args);
+      };
+
+      try {
+        const node = rules([
+          mixin({
+            name: any('#theme'),
+            rules: rules([
+              mixin({
+                name: any('.dark'),
+                rules: rules([
+                  mixin({
+                    name: any('.navbar'),
+                    rules: rules([
+                      ruleset({
+                        selector: el('.colors'),
+                        rules: rules([
+                          decl({ name: 'primary', value: any('cyan') })
+                        ])
+                      })
+                    ])
+                  })
+                ])
+              })
+            ])
+          }),
+          ruleset({
+            selector: el('.output'),
+            rules: rules([
+              vardecl({
+                name: 'colors',
+                value: call({
+                  name: ref({
+                    key: ['#theme', '.dark', '.navbar', '.colors']
+                  }, { type: 'mixin-ruleset' })
+                })
+              }),
+              decl({
+                name: 'background',
+                value: ref({
+                  target: ref({ key: 'colors' }, { type: 'variable' }),
+                  key: 'primary'
+                }, { type: 'declaration' })
+              })
+            ])
+          })
+        ]);
+
+        const evald = await node.eval(context);
+        expect(`${evald}`).toBeString(`
+          .output {
+            background: cyan;
+          }
+        `);
+        expect(mixinRegistryHits).toHaveLength(0);
+      } finally {
+        Registries.MixinRegistry.prototype.find = originalFind;
+      }
+    });
+
+    it('fast-paths compound-prefix precedence even when a competing namespace hop requires args', async () => {
+      const originalFind = Registries.MixinRegistry.prototype.find;
+      const mixinRegistryHits: string[] = [];
+      Registries.MixinRegistry.prototype.find = function(...args: Parameters<typeof originalFind>) {
+        const [key] = args;
+        if (Array.isArray(key) && key[0] === '#theme') {
+          mixinRegistryHits.push(key.join(' '));
+        }
+        return originalFind.apply(this, args);
+      };
+
+      try {
+        const node = rules([
+          mixin({
+            name: any('#theme'),
+            rules: rules([
+              mixin({
+                name: any('.dark'),
+                params: list([any('mode', { role: 'property' })]),
+                rules: rules([
+                  mixin({
+                    name: any('.navbar'),
+                    rules: rules([
+                      mixin({
+                        name: any('.colors'),
+                        rules: rules([
+                          decl({ name: 'primary', value: any('cyan') })
+                        ])
+                      })
+                    ])
+                  })
+                ])
+              })
+            ])
+          }),
+          ruleset({
+            selector: compound([el('#theme'), el('.dark'), el('.navbar')]),
+            rules: rules([
+              mixin({
+                name: any('.colors'),
+                rules: rules([
+                  decl({ name: 'primary', value: any('red') })
+                ])
+              })
+            ])
+          }),
+          ruleset({
+            selector: el('.output'),
+            rules: rules([
+              vardecl({
+                name: 'colors',
+                value: call({
+                  name: ref({
+                    key: ['#theme', '.dark', '.navbar', '.colors']
+                  }, { type: 'mixin-ruleset' })
+                })
+              }),
+              decl({
+                name: 'background',
+                value: ref({
+                  target: ref({ key: 'colors' }, { type: 'variable' }),
+                  key: 'primary'
+                }, { type: 'declaration' })
+              })
+            ])
+          })
+        ]);
+
+        const evald = await node.eval(context);
+        expect(`${evald}`).toBeString(`
+          .output {
+            background: red;
+          }
+        `);
+        expect(mixinRegistryHits).toHaveLength(0);
+      } finally {
+        Registries.MixinRegistry.prototype.find = originalFind;
+      }
+    });
+
+    it('treats required-arg intermediate namespace hops as definite misses when no compound-prefix ruleset is involved', () => {
+      const originalFind = Registries.MixinRegistry.prototype.find;
+      const mixinRegistryHits: string[] = [];
+      Registries.MixinRegistry.prototype.find = function(...args: Parameters<typeof originalFind>) {
+        const [key] = args;
+        if (Array.isArray(key) && key[0] === '#theme') {
+          mixinRegistryHits.push(key.join(' '));
+        }
+        return originalFind.apply(this, args);
+      };
+
+      try {
+        const node = rules([
+          mixin({
+            name: any('#theme'),
+            rules: rules([
+              mixin({
+                name: any('.dark'),
+                params: list([any('mode', { role: 'property' })]),
+                rules: rules([
+                  mixin({
+                    name: any('.navbar'),
+                    rules: rules([
+                      mixin({
+                        name: any('.colors'),
+                        rules: rules([
+                          decl({ name: 'primary', value: any('cyan') })
+                        ])
+                      })
+                    ])
+                  })
+                ])
+              })
+            ])
+          })
+        ]);
+
+        context.root = node;
+        context.rulesContext = node;
+
+        const result = node.find('mixin', ['#theme', '.dark', '.navbar', '.colors'], undefined, {
+          context
+        });
+
+        expect(result).toBeUndefined();
+        expect(mixinRegistryHits).toHaveLength(0);
+      } finally {
+        Registries.MixinRegistry.prototype.find = originalFind;
+      }
+    });
+
+    it('fast-paths definite namespace array-path misses without MixinRegistry.find', () => {
+      const originalFind = Registries.MixinRegistry.prototype.find;
+      const mixinRegistryHits: string[] = [];
+      Registries.MixinRegistry.prototype.find = function(...args: Parameters<typeof originalFind>) {
+        const [key] = args;
+        if (Array.isArray(key) && key[0] === '#theme') {
+          mixinRegistryHits.push(key.join(' '));
+        }
+        return originalFind.apply(this, args);
+      };
+
+      try {
+        const node = rules([
+          mixin({
+            name: any('#theme'),
+            rules: rules([
+              mixin({
+                name: any('.dark'),
+                rules: rules([
+                  mixin({
+                    name: any('.navbar'),
+                    rules: rules([
+                      mixin({
+                        name: any('.colors'),
+                        rules: rules([
+                          decl({ name: 'primary', value: any('cyan') })
+                        ])
+                      })
+                    ])
+                  })
+                ])
+              })
+            ])
+          })
+        ]);
+
+        context.root = node;
+        context.rulesContext = node;
+
+        const result = node.find('mixin', ['#theme', '.dark', '.missing', '.colors'], undefined, {
+          context
+        });
+
+        expect(result).toBeUndefined();
+        expect(mixinRegistryHits).toHaveLength(0);
+      } finally {
+        Registries.MixinRegistry.prototype.find = originalFind;
+      }
     });
   });
 });

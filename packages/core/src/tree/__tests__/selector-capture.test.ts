@@ -1,82 +1,48 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { Context } from '../../context.js';
-import { Selector } from '../selector.js';
-import { el, selcap, sellist } from '../index.js';
-import { setField } from '../util/field-helpers.js';
-
-class PreEvalReplacingSelector extends Selector<string> {
-  static override childKeys = [] as const;
-
-  value!: string;
-
-  constructor(value: string) {
-    super(value as any);
-    this.value = value;
-  }
-
-  override valueOf(): string {
-    return this.value;
-  }
-
-  override toTrimmedString(): string {
-    return this.value;
-  }
-
-  override toString(options?: { writer?: { add: (value: string) => void } }): string {
-    options?.writer?.add(this.value);
-    return this.value;
-  }
-
-  override preEval(): this {
-    if (this.value === 'orig') {
-      return new PreEvalReplacingSelector('next').inherit(this) as this;
-    }
-    return this;
-  }
-}
+import { any, el, ref, rules, selcap, vardecl, type Rules as RulesClass } from '../index.js';
 
 describe('SelectorCapture', () => {
-  it('renders state-patched selector values without mutating the canonical node', () => {
-    const context = new Context();
-    const node = selcap(el('.a'));
+  let context: Context;
 
-    setField(node, 'value', sellist([el('.x'), el('.y')]), context);
-
-    expect(node.toTrimmedString({ context })).toBe('*[.x,\n.y]');
-    expect(node.toTrimmedString()).toBe('*[.a]');
+  beforeEach(() => {
+    context = new Context();
   });
 
-  it('keeps valueOf canonical while render reads a state-patched selector value', () => {
-    const context = new Context();
-    const node = selcap(el('.a'));
-
-    setField(node, 'value', sellist([el('.x'), el('.y')]), context);
-
-    expect(node.valueOf()).toBe('.a');
-    expect(node.toTrimmedString({ context })).toBe('*[.x,\n.y]');
-    expect(node.toTrimmedString()).toBe('*[.a]');
+  it('renders selector capture syntax through toTrimmedString()', () => {
+    expect(selcap(el('.foo')).toTrimmedString()).toBe('*[.foo]');
   });
 
-  it('evals the state-patched selector value', async () => {
-    const context = new Context();
-    const node = selcap(el('.a'));
+  it('renders resolved selector values through render(context)', async () => {
+    const node = rules([
+      vardecl({
+        name: any('capture-selector'),
+        value: el('.foo')
+      })
+    ]);
+    const evald = await node.eval(context);
+    context.root = evald as RulesClass;
+    context.rulesContext = evald as RulesClass;
 
-    setField(node, 'value', sellist([el('.x'), el('.y')]), context);
+    const rendered = selcap(ref({ key: 'capture-selector' }, { type: 'variable' })).render(context);
 
-    const result = await node.eval(context);
-    expect(result.toTrimmedString({ context })).toBe('.x,\n.y');
-    expect(node.toTrimmedString()).toBe('*[.a]');
+    expect(rendered).toBe('.foo');
   });
 
-  it('preEvals without overwriting the canonical selector', async () => {
-    const context = new Context();
-    const node = selcap(new PreEvalReplacingSelector('orig'));
+  it('resolves selector capture values without touching render state', async () => {
+    const node = rules([
+      vardecl({
+        name: any('capture-selector'),
+        value: el('.foo')
+      })
+    ]);
+    const evald = await node.eval(context);
+    context.root = evald as RulesClass;
+    context.rulesContext = evald as RulesClass;
 
-    const result = await node.preEval(context);
+    const resolved = await selcap(ref({ key: 'capture-selector' }, { type: 'variable' })).resolve(context);
 
-    expect(result).toBe(node);
-    expect(node.toTrimmedString({ context })).toBe('*[next]');
-    expect(node.toTrimmedString()).toBe('*[orig]');
-    expect(node.get('value').toTrimmedString()).toBe('orig');
+    expect(`${resolved}`).toBe('.foo');
+    expect(context.printState.writer).toBeUndefined();
   });
 });

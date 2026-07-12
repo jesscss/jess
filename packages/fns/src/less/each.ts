@@ -30,16 +30,13 @@ import {
  */
 const each = defineFunction(
   'each',
-  async function(this: FunctionThis, list: Node, mixin: Mixin | Rules) {
-    const rawMixinRules = mixin instanceof Rules ? mixin : mixin.get('rules');
-    // Preserve callback lexical scope for variable lookups used in each bodies.
-    let mixinRules = rawMixinRules.copy(true).inherit(rawMixinRules);
-    mixinRules.sourceParent = mixin.sourceParent ?? mixin.parent ?? mixinRules.sourceParent;
-    let keys = ['value', 'key', 'index'];
+  async function(_this: FunctionThis, list: Node, mixin: Mixin | Rules) {
+    const mixinRules = mixin instanceof Rules ? mixin : mixin.value.rules;
+    let keys: [string, string, string] = ['value', 'key', 'index'];
     if (mixin instanceof Mixin) {
-      let params = mixin.get('params');
+      const { params } = mixin.value;
       if (params) {
-        let paramList = params.get('value');
+        let paramList = params.value;
         let key0 = paramList[0]?.toTrimmedString();
         let key1 = paramList[1]?.toTrimmedString();
         let key2 = paramList[2]?.toTrimmedString();
@@ -51,13 +48,23 @@ const each = defineFunction(
         }
       }
     }
-    const vars = keys.map(name => new VarDeclaration({
-      name: new Any(name, { role: 'property' }),
-      value: new Nil()
-    }, { paramVar: true }));
+    const vars: [VarDeclaration, VarDeclaration, VarDeclaration] = [
+      new VarDeclaration({
+        name: new Any(keys[0], { role: 'property' }),
+        value: new Nil()
+      }, { paramVar: true }),
+      new VarDeclaration({
+        name: new Any(keys[1], { role: 'property' }),
+        value: new Nil()
+      }, { paramVar: true }),
+      new VarDeclaration({
+        name: new Any(keys[2], { role: 'property' }),
+        value: new Nil()
+      }, { paramVar: true })
+    ];
     return new For({
-      vars,
-      iterable: list,
+      pattern: { kind: 'tuple', values: vars },
+      iterable: { kind: 'node', value: list },
       rules: mixinRules
     });
   },

@@ -1,12 +1,78 @@
-import { any, expr, sel, compound, el, co, pseudo, sellist, amp, rules, ruleset } from '../index.js';
+import { any, attr, co, compound, el, pseudo, ref, rules, sel, sellist, type Rules as RulesClass, vardecl } from '../index.js';
 import { Context } from '../../context.js';
-import { getField, setField } from '../util/field-helpers.js';
 
 let context: Context;
 
 describe('Complex selector', () => {
   beforeEach(() => {
     context = new Context();
+  });
+
+  describe('render', () => {
+    test('renders complex selector syntax through toTrimmedString()', () => {
+      const node = sel([
+        el('a'),
+        co('>'),
+        el('.foo')
+      ]);
+
+      expect(node.toTrimmedString()).toBe('a > .foo');
+    });
+
+    test('renders resolved complex selector values through render(context)', async () => {
+      const node = rules([
+        vardecl({
+          name: any('attr-name'),
+          value: any('foo')
+        })
+      ]);
+      const evald = await node.eval(context);
+      context.root = evald as RulesClass;
+      context.rulesContext = evald as RulesClass;
+
+      const rendered = sel([
+        compound([
+          el('a'),
+          attr({
+            name: 'data',
+            op: '=',
+            value: ref({ key: 'attr-name' }, { type: 'variable' })
+          })
+        ]),
+        co('>'),
+        el('.foo')
+      ]).render(context);
+
+      expect(rendered).toBe('a[data=foo] > .foo');
+    });
+
+    test('resolves complex selector values without touching render state', async () => {
+      const node = rules([
+        vardecl({
+          name: any('attr-name'),
+          value: any('foo')
+        })
+      ]);
+      const evald = await node.eval(context);
+      context.root = evald as RulesClass;
+      context.rulesContext = evald as RulesClass;
+
+      const resolved = await sel([
+        compound([
+          el('a'),
+          attr({
+            name: 'data',
+            op: '=',
+            value: ref({ key: 'attr-name' }, { type: 'variable' })
+          })
+        ]),
+        co('>'),
+        el('.foo')
+      ]).resolve(context);
+
+      expect(`${resolved}`).toBe('a[data=foo] > .foo');
+      expect(context.printState.writer).toBeUndefined();
+    });
   });
 
   describe('keys', () => {
@@ -21,26 +87,28 @@ describe('Complex selector', () => {
       ]);
       await sel1.eval(context);
       expect(sel1.keySet.equals(context.selectorBits.getBitset(['.one', '.two', '>', '.three']))).toBe(true);
-      expect(sel1.visibleKeySet.equals(context.selectorBits.getBitset(['.one', '.two', '>', '.three']))).toBe(true);
+      // visibleKeySet excludes combinators
+      expect(sel1.visibleKeySet.equals(context.selectorBits.getBitset(['.one', '.two', '.three']))).toBe(true);
     });
     test('nested complex (w/ relative :is)', async () => {
       let sel2 = sel([
         compound([
           pseudo({ name: ':is', arg: el('a') }),
           el('#id'),
-          pseudo({ name: ':is', arg: sel([co('>'), compound([el('.two'), el('.one')])]) as any }) as any
+          pseudo({ name: ':is', arg: sel([co('>'), compound([el('.two'), el('.one')])]) })
         ])
       ]);
       await sel2.eval(context);
       expect(sel2.keySet.equals(context.selectorBits.getBitset(['a', '#id', '>', '.two', '.one']))).toBe(true);
-      expect(sel2.visibleKeySet.equals(context.selectorBits.getBitset(['a', '#id', '>', '.two', '.one']))).toBe(true);
+      // visibleKeySet excludes combinators (even those inside :is() complex args)
+      expect(sel2.visibleKeySet.equals(context.selectorBits.getBitset(['a', '#id', '.two', '.one']))).toBe(true);
     });
     test('nested complex (w/o relative :is)', async () => {
       let sel2 = sel([
         compound([
           pseudo({ name: ':is', arg: el('a') }),
           el('#id'),
-          pseudo({ name: ':is', arg: sel([compound([el('.two'), el('.one')])]) as any }) as any
+          pseudo({ name: ':is', arg: sel([compound([el('.two'), el('.one')])]) })
         ])
       ]);
       await sel2.eval(context);
@@ -52,7 +120,7 @@ describe('Complex selector', () => {
         compound([
           pseudo({ name: ':is', arg: sellist([el('a'), el('b')]) }),
           el('#id'),
-          pseudo({ name: ':is', arg: sel([compound([el('.two'), el('.one')])]) as any }) as any
+          pseudo({ name: ':is', arg: sel([compound([el('.two'), el('.one')])]) })
         ])
       ]);
       await sel2.eval(context);
@@ -71,110 +139,13 @@ describe('Complex selector', () => {
             ])
           }),
           el('#id'),
-          pseudo({ name: ':is', arg: sel([compound([el('.two'), el('.one')])]) as any }) as any
+          pseudo({ name: ':is', arg: sel([compound([el('.two'), el('.one')])]) })
         ])
       ]);
       await sel2.eval(context);
       expect(sel2.keySet.equals(context.selectorBits.getBitset(['a', 'b', 'c', 'd', '#id', '>', '.two', '.one']))).toBe(true);
-      expect(sel2.visibleKeySet.equals(context.selectorBits.getBitset(['a', 'b', 'c', 'd', '#id', '>', '.two', '.one']))).toBe(true);
-    });
-  });
-
-  describe('evaluation', () => {
-    it('preserves complex selector serialization while evaluating nested selector children', async () => {
-      const node = sel([
-        pseudo({
-          name: ':not',
-          arg: expr(any('blue'))
-        }),
-        co('>'),
-        el('.target')
-      ]);
-
-      const evald = await node.eval(context);
-
-      expect(evald.toTrimmedString({ context })).toBe(':not(blue) > .target');
-    });
-
-    it('propagates a state-only hoist flag when a complex selector collapses to one child', async () => {
-      const child = el('.target');
-      const node = sel([child]);
-
-      setField(node, 'hoistToRoot', true, context);
-
-      const evald = await node.eval(context);
-
-      expect(getField(evald, 'hoistToRoot', context)).toBe(true);
-      expect(evald.hoistToRoot).toBeUndefined();
-      expect(node.hoistToRoot).toBeUndefined();
-    });
-
-    it('does not re-parent the canonical child when a complex selector collapses to one child with patching', async () => {
-      const child = el('.target');
-      const node = sel([child]);
-
-      expect(child.parent).toBe(node);
-
-      const evald = await node.eval(context);
-
-      expect(evald).not.toBe(child);
-      expect(evald.toTrimmedString({ context })).toBe('.target');
-      expect(child.parent).toBe(node);
-    });
-
-    it('keeps valueOf canonical while render reads a state-patched value array', () => {
-      const node = sel([
-        el('.one'),
-        co('>'),
-        el('.two')
-      ]);
-      const canonicalValue = node.valueOf();
-
-      setField(node, 'value', [
-        el('.patched'),
-        co('>'),
-        el('.live')
-      ] as any, context);
-
-      expect(node.toTrimmedString({ context })).toBe('.patched > .live');
-      expect(node.valueOf()).toBe(canonicalValue);
-      expect(node.get('value').map(component => component.valueOf())).toEqual(['.one', '>', '.two']);
-    });
-
-    it('does not materialize a non-array value back onto the node when valueOf is called', () => {
-      const node = sel([el('.one')]) as any;
-      node.value = el('.solo');
-
-      expect(node.valueOf()).toBe('.solo');
-      expect(Array.isArray(node.value)).toBe(false);
-      expect(node.value.valueOf()).toBe('.solo');
-    });
-
-    it('derives a state-specific complex keySet through an ampersand child', () => {
-      const parent = ruleset({
-        selector: el('.alpha'),
-        rules: rules([])
-      });
-      parent.get('selector').keySetLibrary = context.selectorBits;
-
-      const node = sel([
-        amp({ selectorContainer: parent as any }),
-        co('>'),
-        el('.tail')
-      ]);
-      node.keySetLibrary = context.selectorBits;
-      for (const child of node.get('value') as any[]) {
-        if ('keySetLibrary' in child) {
-          child.keySetLibrary = context.selectorBits;
-        }
-      }
-
-      const patched = el('.beta');
-      patched.keySetLibrary = context.selectorBits;
-      setField(parent, 'selector', patched, context);
-
-      expect(node.keySet.equals(context.selectorBits.getBitset(['.alpha', '>', '.tail']))).toBe(true);
-      expect(node.getKeySet(context).equals(context.selectorBits.getBitset(['.beta', '>', '.tail']))).toBe(true);
+      // visibleKeySet excludes combinators (including those inside :is() complex args)
+      expect(sel2.visibleKeySet.equals(context.selectorBits.getBitset(['a', 'b', 'c', 'd', '#id', '.two', '.one']))).toBe(true);
     });
   });
 });

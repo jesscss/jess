@@ -1,33 +1,33 @@
 import { type Context } from '../context.js';
-import { Node, defineType, type OptionalLocation, type NodeOptions, type TreeContext } from './node.js';
+import { Node, defineType } from './node.js';
 import { Selector } from './selector.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
-import { setField } from './util/field-helpers.js';
 
-export type SelectorCaptureChildData = { value: Selector };
-
-export interface SelectorCapture extends Node<Selector, NodeOptions, SelectorCaptureChildData> {
-  type: 'SelectorCapture';
-  shortType: 'selcap';
+export interface SelectorCapture extends Node<Selector> {
   eval(context: Context): MaybePromise<Selector>;
 }
 
+const isSelectorNode = (value: unknown): value is Selector => (
+  value !== null
+  && typeof value === 'object'
+  && 'isSelector' in value
+  && value.isSelector === true
+);
+
 /**
  * Explicit selector-capture wrapper used by parsers for selector-valued payloads
- * (e.g. Less `*[ ... ]`, Sass `selector.parse("...")`).
+ * (e.g. Less `*[ ... ]`, Sass `selector.parse(\"...\")`).
  */
-export class SelectorCapture extends Node<Selector, NodeOptions, SelectorCaptureChildData> {
-  static override childKeys = ['value'] as const;
-
-  /** @internal */ value!: Selector;
-
-  constructor(value: Selector, options?: NodeOptions, location?: OptionalLocation, treeContext?: TreeContext) {
-    super(value, options, location, treeContext);
-    this.value = value;
-    if (this.value instanceof Node) {
-      this.adopt(this.value);
-    }
+export class SelectorCapture extends Node<Selector> {
+  private renderCaptureSyntax(options?: PrintOptions): string {
+    options = getPrintOptions(options);
+    const w = options.writer!;
+    const mark = w.mark();
+    w.add('*[', this);
+    this.value.toString(options);
+    w.add(']', this);
+    return w.getSince(mark);
   }
 
   override valueOf(): string {
@@ -35,44 +35,22 @@ export class SelectorCapture extends Node<Selector, NodeOptions, SelectorCapture
   }
 
   override toTrimmedString(options?: PrintOptions): string {
-    options = getPrintOptions(options);
-    const w = options.writer!;
-    const mark = w.mark();
-    const value = this.get('value', options.context);
-    w.add('*[', this);
-    value.toString(options);
-    w.add(']', this);
-    return w.getSince(mark);
-  }
-
-  override preEval(context: Context): MaybePromise<this> {
-    if (this._isPreEvaluated(context)) {
-      return this;
-    }
-    const node = this.maybeClone(context) as this;
-    node._setPreEvaluated(true, context);
-    const value = this.get('value', context);
-    const applyValue = (preEvald: Selector): this => {
-      if (node.get('value', context) !== preEvald) {
-        setField(node, 'value', preEvald, context);
-      }
-      return node;
-    };
-    const out = value.preEval(context);
-    if (isThenable(out)) {
-      return (out as Promise<Selector>).then(applyValue);
-    }
-    return applyValue(out as Selector);
+    return this.renderCaptureSyntax(options);
   }
 
   override evalNode(context: Context): MaybePromise<Selector> {
-    const out = this.get('value', context).eval(context);
+    const requireSelector = (value: unknown): Selector => {
+      if (isSelectorNode(value)) {
+        return value;
+      }
+      throw new Error('SelectorCapture requires a selector-valued payload');
+    };
+
+    const out = this.value.eval(context);
     if (isThenable(out)) {
-      return (out as Promise<Selector>).then((selector) => {
-        return selector;
-      });
+      return out.then(requireSelector);
     }
-    return out as Selector;
+    return requireSelector(out);
   }
 }
 

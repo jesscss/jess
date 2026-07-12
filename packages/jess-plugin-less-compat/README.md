@@ -19,7 +19,7 @@ If you need Less.js plugin compatibility, consider:
 ## Features
 
 - 🔄 **Bidirectional Transformation**: Convert between Jess and Less AST nodes
-- 🎯 **Lazy Conversion**: Proxy-based lazy conversion for optimal performance
+- 🎯 **Lazy Conversion**: Typed adapter instances with lazy field conversion
 - 🔌 **Plugin Compatibility**: Use existing Less.js plugins with Jess
 - 🧩 **Visitor Support**: Run Less.js visitors on Jess AST trees
 - 📦 **Type Safe**: Full TypeScript support

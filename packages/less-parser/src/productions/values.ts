@@ -2,15 +2,14 @@
 // Converted from Chevrotain-based productions.ts (lines 2060-3015)
 import type { RuleContext, TokenMap } from '../lessRecursiveParser.js';
 import type { IToken } from 'chevrotain';
-import { tokenMatcher } from 'chevrotain';
 import { productions as cssProductions } from '@jesscss/css-parser';
 import {
-  type TreeContext,
   type LocationInfo,
   type Operator,
   Node,
   Any,
   Block,
+  For,
   List,
   Sequence,
   Call,
@@ -19,16 +18,18 @@ import {
   Quoted,
   Interpolated,
   Reference,
+  Url,
   Dimension,
   Num,
   Negative,
   Rest,
+  VarDeclaration,
   Expression,
   INTERPOLATION_PLACEHOLDER,
   isNode,
   N
 } from '@jesscss/core';
-import { getInterpolatedOrString } from '../utils.js';
+import { createInterpolatedReference, getInterpolatedOrString } from '../utils.js';
 
 /** Use `any` for `this` to avoid structural incompatibility between LessRecursiveParser and CssRecursiveParser */
 type P = any;
@@ -49,6 +50,69 @@ function getParenFrames(ctx: RuleContext | undefined): boolean[] {
 function withCalcFrame(ctx: RuleContext | undefined, delta: number): RuleContext {
   const calcFrames = ((ctx?.calcFrames as number | undefined) ?? 0) + delta;
   return { ...(ctx ?? {}), calcFrames };
+}
+
+function slashDivisionEnabled($: P, ctx: RuleContext | undefined): boolean {
+  const inParens = getParenFrames(ctx).at(-1) ?? false;
+  const mathMode = $.mathMode ?? 'parens-division';
+  return mathMode === 'always' || inParens;
+}
+
+function isDivisionLikeNode(node: Node | undefined): boolean {
+  if (!node) {
+    return false;
+  }
+  if (
+    isNode(node, N.Color)
+    || isNode(node, N.Dimension)
+    || isNode(node, N.Num)
+    || isNode(node, N.Reference)
+    || isNode(node, N.Call)
+    || isNode(node, N.Operation)
+    || isNode(node, N.Negative)
+    || isNode(node, N.Expression)
+  ) {
+    return true;
+  }
+  if (isNode(node, N.Paren) || isNode(node, N.Expression)) {
+    return isDivisionLikeNode(node.value as Node | undefined);
+  }
+  return false;
+}
+
+function isSlashListContinuationToken($: P, T: TokenMap): boolean {
+  const next = $.LA(1);
+  return !(
+    next.tokenType?.name === 'EOF'
+    || $.matchToken(next, T.Comma)
+    || $.matchToken(next, T.Semi)
+    || $.matchToken(next, T.RCurly)
+    || $.matchToken(next, T.RParen)
+    || $.matchToken(next, T.RSquare)
+    || $.matchToken(next, T.Important)
+    || $.matchToken(next, T.Plus)
+    || $.matchToken(next, T.Minus)
+    || $.matchToken(next, T.Star)
+    || $.matchToken(next, T.Slash)
+    || $.matchToken(next, T.Percent)
+  );
+}
+
+function shouldParseSlashDivision($: P, T: TokenMap, ctx: RuleContext | undefined, left: Node, right: Node): boolean {
+  const enabled = slashDivisionEnabled($, ctx);
+  const leftLike = isDivisionLikeNode(left);
+  const rightLike = isDivisionLikeNode(right);
+  const continuation = isSlashListContinuationToken($, T);
+  if (!enabled) {
+    return false;
+  }
+  if (!leftLike || !rightLike) {
+    return false;
+  }
+  if (continuation) {
+    return false;
+  }
+  return true;
 }
 
 function startsCustomValueToken($: P, T: TokenMap): boolean {
@@ -74,23 +138,65 @@ function startsCustomValueToken($: P, T: TokenMap): boolean {
     || $.isType(T.Unknown);
 }
 
-const createInterpolatedReference = (
-  prefix: string,
-  value: string,
+function createEachPattern(
+  mixin: Node,
   location: LocationInfo,
-  context: TreeContext
-): Reference => {
-  const isProperty = prefix === '$';
-  const key = isProperty
-    ? new Quoted(value, { quote: '\'' }, location, context)
-    : value;
-  return new Reference(
-    { key },
-    { type: isProperty ? 'property' : 'variable', role: 'ident' },
-    location,
-    context
-  );
-};
+  context: any
+): {
+  kind: 'single';
+  value: VarDeclaration;
+} | {
+  kind: 'tuple';
+  values: [VarDeclaration, ...VarDeclaration[]];
+} {
+  const defaultVars = ['value', 'key', 'index'].map((name) => {
+    return new VarDeclaration({
+      name: new Any(name, { role: 'property' }),
+      value: new Any('', { role: 'any' })
+    }, { paramVar: true }, location, context);
+  });
+
+  if (!isNode(mixin, N.Mixin) || !mixin.value.params) {
+    return {
+      kind: 'tuple',
+      values: defaultVars as [VarDeclaration, ...VarDeclaration[]]
+    };
+  }
+
+  const params = mixin.value.params.value
+    .map((param: Node) => {
+      if (isNode(param, N.VarDeclaration)) {
+        return param;
+      }
+      if (isNode(param, N.Any) && param.options.role === 'property') {
+        return new VarDeclaration({
+          name: param as Any<'property'>,
+          value: new Any('', { role: 'any' })
+        }, { paramVar: true }, param.location, context);
+      }
+      return undefined;
+    })
+    .filter((param): param is VarDeclaration => Boolean(param));
+
+  if (params.length === 0) {
+    return {
+      kind: 'tuple',
+      values: defaultVars as [VarDeclaration, ...VarDeclaration[]]
+    };
+  }
+
+  if (params.length === 1) {
+    return {
+      kind: 'single',
+      value: params[0]!
+    };
+  }
+
+  return {
+    kind: 'tuple',
+    values: params as [VarDeclaration, ...VarDeclaration[]]
+  };
+}
 
 // ── Production rules ──────────────────────────────────────────────────
 
@@ -113,7 +219,7 @@ export function expressionSum(this: P, T: TokenMap) {
         const opToken = $.CONSUME(T.Minus);
         op = opToken.image;
         right = $.SUBRULE4($.expressionProduct, { ARGS: [ctx] });
-      } else if ($.noSep() && tokenMatcher($.LA(1), T.Signed)) {
+      } else if ($.noSep() && $.matchToken($.LA(1), T.Signed)) {
         const tok = $.CONSUME(T.Signed);
         let startValue: Node | undefined;
         const str = tok.image;
@@ -135,7 +241,7 @@ export function expressionSum(this: P, T: TokenMap) {
       }
 
       const operation = new Operation(
-        [$.wrap(left, true), op as Operator, $.wrap(right!)],
+        [left, op as Operator, right!],
         undefined,
         $.getLocationFromNodes([left, right!]),
         $.context
@@ -177,11 +283,21 @@ export function expressionProduct(this: P, T: TokenMap) {
         );
       }
       let right: Node = $.SUBRULE2($.expressionValue, { ARGS: [ctx] });
+      const location = $.getLocationFromNodes([left, right]);
+
+      if (op.image === '/' && !shouldParseSlashDivision($, T, ctx, left, right)) {
+        if (isNode(left, N.List) && left.options?.sep === '/') {
+          left = new List([...left.value, right], { sep: '/' }, location, $.context);
+        } else {
+          left = new List([left, right], { sep: '/' }, location, $.context);
+        }
+        continue;
+      }
 
       const operation = new Operation(
-        [$.wrap(left, true), op!.image as Operator, $.wrap(right)],
+        [left, op!.image as Operator, right],
         undefined,
-        $.getLocationFromNodes([left, right]),
+        location,
         $.context
       );
       left = operation;
@@ -197,8 +313,17 @@ export function customValue(this: P, T: TokenMap) {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     if (
-      $.isType(T.LParen)
+      $.isType(T.UrlStart)
+      || $.isType(T.Var)
+      || $.isType(T.Calc)
+      || $.isType(T.IfFunction)
+      || $.isType(T.BooleanFunction)
       || $.isType(T.FunctionStart)
+    ) {
+      return $.SUBRULE($.functionCall, { ARGS: [ctx] });
+    }
+    if (
+      $.isType(T.LParen)
       || $.isType(T.FunctionalPseudoClass)
       || $.isType(T.LSquare)
       || $.isType(T.LCurly)
@@ -239,7 +364,7 @@ export function customValue(this: P, T: TokenMap) {
     }
 
     if (!$.RECORDING_PHASE) {
-      return $.wrap($.processValueToken(token, ctx), undefined, ctx);
+      return $.processValueToken(token, ctx);
     }
   };
 }
@@ -252,7 +377,7 @@ export function innerCustomValue(this: P, T: TokenMap) {
       if ($.RECORDING_PHASE) {
         return;
       }
-      return $.wrap(new Any(semi.image, { role: 'semi' }, $.getLocationInfo(semi), $.context));
+      return new Any(semi.image, { role: 'semi' }, $.getLocationInfo(semi), $.context);
     }
     return $.SUBRULE($.customValue, { ARGS: [ctx] });
   };
@@ -327,10 +452,10 @@ export function customBlock(this: P, T: TokenMap) {
     if (type) {
       const seqLoc = nodes!.length ? $.getLocationFromNodes(nodes!) : undefined;
       const seq = new Sequence(nodes!, undefined, seqLoc, $.context);
-      return $.wrap(new Block($.wrap(seq, true, ctx), { type }, location, $.context), undefined, ctx);
+      return new Block(seq, { type }, location, $.context);
     }
-    const startNode = $.wrap(new Any(start!.image, { role: 'any' }, $.getLocationInfo(start!), $.context), undefined, ctx);
-    const endNode = $.wrap(new Any(end!.image, { role: 'any' }, $.getLocationInfo(end!), $.context), undefined, ctx);
+    const startNode = new Any(start!.image, { role: 'any' }, $.getLocationInfo(start!), $.context);
+    const endNode = new Any(end!.image, { role: 'any' }, $.getLocationInfo(end!), $.context);
     return new Sequence([startNode, ...nodes!, endNode], undefined, location, $.context);
   };
 }
@@ -367,15 +492,15 @@ export function expressionValue(this: P, T: TokenMap) {
             $.OPTION3(() => {
               $.CONSUME(T.Semi);
               isSemiList = true;
-              semiNodes.push($.wrap(node, true));
+              semiNodes.push(node);
               node = $.SUBRULE2($.valueList, { ARGS: [innerCtx] });
-              semiNodes.push($.wrap(node, true));
+              semiNodes.push(node);
               $.MANY({
                 GATE: () => $.isType(T.Semi),
                 DEF: () => {
                   $.CONSUME2(T.Semi);
                   node = $.SUBRULE3($.valueList, { ARGS: [innerCtx] });
-                  semiNodes.push($.wrap(node, true));
+                  semiNodes.push(node);
                 }
               });
             });
@@ -387,7 +512,7 @@ export function expressionValue(this: P, T: TokenMap) {
           $.CONSUME(T.RParen);
 
           let location = $.endRule();
-          node = $.wrap(node, 'both');
+          node = node;
           return new Paren(node, { escaped: !!escape }, location, $.context);
         }
       },
@@ -459,6 +584,47 @@ export function knownFunctions(this: P, T: TokenMap) {
   };
 }
 
+export function urlFunction(this: P, T: TokenMap) {
+  const $ = this;
+  return (ctx: RuleContext = {}) => {
+    $.startRule();
+
+    $.CONSUME(T.UrlStart);
+    let node: Any | IToken | Node = $.OR([
+      { ALT: () => $.SUBRULE($.string, { ARGS: [ctx] }) },
+      { ALT: () => $.SUBRULE($.varReference, { ARGS: [ctx] }) },
+      { ALT: () => $.CONSUME(T.NonQuotedUrl) }
+    ]);
+    $.CONSUME(T.UrlEnd);
+
+    if ($.RECORDING_PHASE) {
+      return;
+    }
+
+    const location = $.endRule();
+    if (!(node instanceof Node)) {
+      const rawValue = node.image;
+      const tokenLocation = $.getLocationInfo(node);
+      if (rawValue.startsWith('@') || rawValue.startsWith('$')) {
+        const resolved = getInterpolatedOrString(rawValue, tokenLocation, $.context);
+        if (resolved instanceof Interpolated) {
+          node = resolved;
+        } else {
+          node = new Reference(
+            resolved,
+            { type: rawValue.startsWith('$') ? 'property' : 'variable' },
+            tokenLocation,
+            $.context
+          );
+        }
+      } else {
+        node = new Any(rawValue, { role: 'urlvalue' }, tokenLocation, $.context);
+      }
+    }
+    return new Url(node, undefined, location, $.context);
+  };
+}
+
 /**
  * Override CSS calc() parsing so we can maintain parse-time `calcFrames`.
  * This is the parse-time analogue of `Call.evalNode`'s calcFrames++/--.
@@ -495,9 +661,9 @@ export function ifFunction(this: P, T: TokenMap) {
       isCssBranch = true;
       const branches: Node[] = [];
       const pushBranch = (condition: Node, value: Node) => {
-        const sep = $.wrap(new Any(':', { role: 'operator' }, undefined, $.context), true);
+        const sep = new Any(':', { role: 'operator' }, undefined, $.context);
         const loc = $.getLocationFromNodes([condition, value]);
-        branches.push(new Sequence([$.wrap(condition, true), sep, $.wrap(value, true)], undefined, loc, $.context));
+        branches.push(new Sequence([condition, sep, value], undefined, loc, $.context));
       };
 
       $.CONSUME(T.Assign);
@@ -524,7 +690,7 @@ export function ifFunction(this: P, T: TokenMap) {
     } else {
       isCssBranch = false;
       let node: Node = firstNode;
-      const parenValue = node instanceof Paren ? node.get('value') : undefined;
+      const parenValue = node instanceof Paren ? node.value : undefined;
       const condNode = parenValue instanceof Node ? parenValue : node;
       args = new List([condNode]);
 
@@ -576,7 +742,7 @@ export function booleanFunction(this: P, T: TokenMap) {
     $.CONSUME(T.RParen);
 
     let location = $.endRule();
-    const argValue = arg instanceof Paren ? arg.get('value') : undefined;
+    const argValue = arg instanceof Paren ? arg.value : undefined;
     const conditionNode = argValue instanceof Node ? argValue : arg;
     const exprNode = new Expression(conditionNode, { parens: true }, location, $.context);
     return exprNode;
@@ -603,13 +769,18 @@ export function varReference(this: P, T: TokenMap) {
               'property-in-unknown-value'
             );
             return new Reference(
-              { key: token.image.slice(1) },
-              { type: 'property', role: 'ident' },
+              { key: new Quoted(token.image.slice(1), { quote: '\'' }, $.getLocationInfo(token), $.context) },
+              { type: 'index', role: 'ident' },
               $.getLocationInfo(token),
               $.context
             );
           }
-          return new Reference(token.image.slice(1), { type: 'property' }, $.getLocationInfo(token), $.context);
+          return new Reference(
+            { key: new Quoted(token.image.slice(1), { quote: '\'' }, $.getLocationInfo(token), $.context) },
+            { type: 'index' },
+            $.getLocationInfo(token),
+            $.context
+          );
         }
       },
       {
@@ -619,8 +790,14 @@ export function varReference(this: P, T: TokenMap) {
             return;
           }
           const raw = token.image;
-          const type: 'variable' | 'property' = raw.startsWith('@') ? 'variable' : 'property';
-          const key = getInterpolatedOrString(raw);
+          const isPropertyLookup = raw.startsWith('$');
+          const type: 'variable' | 'index' = raw.startsWith('@') ? 'variable' : 'index';
+          const rawKey = getInterpolatedOrString(raw);
+          const key = isPropertyLookup
+            ? (typeof rawKey === 'string'
+                ? new Quoted(rawKey, { quote: '\'' }, $.getLocationInfo(token), $.context)
+                : new Quoted(rawKey, { quote: '\'' }, $.getLocationInfo(token), $.context))
+            : rawKey;
           if (ctx.inCustomPropertyValue && typeof key === 'string') {
             return new Reference({ key }, { type: 'variable', role: 'ident' }, $.getLocationInfo(token), $.context);
           }
@@ -648,6 +825,27 @@ export function varReference(this: P, T: TokenMap) {
             return new Reference(
               { key: token.image.slice(1) },
               { type: 'variable', role: 'ident' },
+              $.getLocationInfo(token),
+              $.context
+            );
+          }
+          if (ctx.atRulePreludeBareVariableAs === 'index') {
+            const nextToken = $.LA(1).tokenType;
+            const hasExplicitAccessorOrCall = $.noSep()
+              && (nextToken === T.LSquare || nextToken === T.LParen);
+            if (hasExplicitAccessorOrCall) {
+              return new Reference(token.image.slice(1), { type: 'variable' }, $.getLocationInfo(token), $.context);
+            }
+            const atName = token.image;
+            const ident = token.image.slice(1);
+            $.warnDeprecation(
+              `"${atName}" in at-rule preludes is deprecated. Use "@{${ident}}" in Less; outside declaration values this is normalized to indexed lookup syntax.`,
+              token,
+              'at-rule-prelude-variable'
+            );
+            return new Reference(
+              { key: ident },
+              { type: 'index', role: 'ident' },
               $.getLocationInfo(token),
               $.context
             );
@@ -706,7 +904,7 @@ export function varReference(this: P, T: TokenMap) {
       { ALT: () => undefined }
     ]);
 
-    return $.wrap(node!);
+    return node!;
   };
 }
 
@@ -770,11 +968,30 @@ export function functionCall(this: P, T: TokenMap) {
           if (nameValue === 'unit' && args?.value[1] instanceof Any) {
             const unitArg = args.value[1];
             const quotedUnit = new Quoted(unitArg.valueOf(), { quote: '"' }, undefined, $.context);
-            quotedUnit.pre = unitArg.pre;
-            quotedUnit.post = unitArg.post;
             const newArgsData = [...args.value];
             newArgsData[1] = quotedUnit;
             args = new List(newArgsData, args.options, $.getLocationFromNodes(newArgsData), $.context);
+          }
+          if (ctx.detachedRulesetUsage === 'default-param' && nameValue === 'default') {
+            return new Call(
+              { name: 'default', args },
+              undefined,
+              location,
+              $.context
+            );
+          }
+          if (
+            nameValue === 'each'
+            && args?.value.length === 2
+            && isNode(args.value[1], N.Mixin)
+          ) {
+            const iterable = args.value[0]!;
+            const callback = args.value[1]!;
+            return new For({
+              pattern: createEachPattern(callback, location, $.context),
+              iterable: { kind: 'node', value: iterable },
+              rules: callback.value.rules
+            }, undefined, location, $.context);
           }
           const nameNode = new Reference(nameValue, { type: 'function', fallbackValue: true }, $.getLocationInfo(fnStart), $.context);
           /** Less / Sass functions we try to call that throw just get turned into calls. */
@@ -815,7 +1032,7 @@ export function functionCallArgs(this: P, T: TokenMap) {
     try {
       let node = $.SUBRULE($.callArgument, { ARGS: [argCtx] });
 
-      commaNodes = [$.wrap(node, true)];
+      commaNodes = [node];
 
       // First, consume any comma-separated arguments
       $.MANY({
@@ -823,7 +1040,7 @@ export function functionCallArgs(this: P, T: TokenMap) {
         DEF: () => {
           $.CONSUME(T.Comma);
           node = $.SUBRULE2($.callArgument, { ARGS: [argCtx] });
-          commaNodes!.push($.wrap(node, true));
+          commaNodes!.push(node);
         }
       });
 
@@ -840,14 +1057,14 @@ export function functionCallArgs(this: P, T: TokenMap) {
         }
 
         node = $.SUBRULE3($.callArgument, { ARGS: [{ ...argCtx, allowComma: true }] });
-        semiNodes.push($.wrap(node, true));
+        semiNodes.push(node);
 
         $.MANY2({
           GATE: () => $.isType(T.Semi),
           DEF: () => {
             $.CONSUME2(T.Semi);
             node = $.SUBRULE4($.callArgument, { ARGS: [{ ...argCtx, allowComma: true }] });
-            semiNodes.push($.wrap(node, true));
+            semiNodes.push(node);
           }
         });
       });
@@ -962,7 +1179,7 @@ export function value(this: P, T: TokenMap) {
       if (!(node instanceof Node)) {
         node = $.processValueToken(node);
       }
-      return $.wrap(node);
+      return node;
     }
   };
 }

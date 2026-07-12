@@ -1,5 +1,5 @@
 import { Parser } from '../src/index.js';
-import { Ampersand, Nil, serializeTypes, TreeContext } from '@jesscss/core';
+import { Ampersand, serializeTypes, TreeContext } from '@jesscss/core';
 
 const parser = new Parser();
 
@@ -159,12 +159,16 @@ describe('Selector Productions', () => {
       expect(serializeTypes(tree)).toContainString('(Ampersand');
       const amp = [...tree.nodes(true)].find(node => node instanceof Ampersand) as Ampersand | undefined;
       expect(amp).toBeDefined();
-      expect(amp?.template).toBeInstanceOf(Nil);
+      expect(amp?.value.appendValue).toBe('');
     });
 
-    it('should not recognize &(nil) as Less ampersand syntax', () => {
-      const { lexerResult } = parser.parse('.parent { &(nil).utility { color: red; } }');
-      expect(lexerResult.errors.length).toBeGreaterThan(0);
+    it('should parse &(nil) as an explicit nil parent template', () => {
+      const { errors, tree } = parser.parse('.parent { &(nil).utility { color: red; } }');
+      expect(errors.length).toBe(0);
+      expect(serializeTypes(tree)).toContainString('(Ampersand');
+      const amp = [...tree.nodes(true)].find(node => node instanceof Ampersand) as Ampersand | undefined;
+      expect(amp).toBeDefined();
+      expect(amp?.value.appendValue).toBe('');
     });
 
     it('should parse pseudo selector', () => {
@@ -219,6 +223,19 @@ describe('Selector Productions', () => {
         .amp-test-b {
           .amp-test-c &.amp-test-d&.amp-test-e {
             .amp-test-f&+&.amp-test-g:extend(.amp-test-h) {}
+          }
+        }
+      `);
+      expect(errors.length).toBe(0);
+      expect(serializeTypes(tree)).toContainString('(Extend');
+    });
+
+    it('should parse compound selectors that glue a class onto an ampersand before :extend()', () => {
+      const { errors, tree } = parser.parse(`
+        .first-level {
+          .second-level {
+            .active&:extend(.extend-this) { }
+            &.active2:extend(.extend-this) { }
           }
         }
       `);

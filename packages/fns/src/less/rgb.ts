@@ -8,37 +8,18 @@ import {
 } from '@jesscss/core';
 import { percentOf, toNumber, splitSequence } from '@jesscss/core';
 import { parseRelativeColorSyntax, evaluateOriginColor, evaluateRGBChannelReference } from '../util/relative-color.js';
+import { collectRawDimensions } from '../util/raw-color-args.js';
 
 function alphaChannelFromNode(node: unknown, alphaValue: number): number | [number, string] {
   if (!(node instanceof Dimension)) {
     return alphaValue;
   }
-  const unit = node.unit ?? '';
+  const { number, unit } = node.value;
   if (unit === '%') {
-    const percentValue = Math.max(0, Math.min(100, node.number));
+    const percentValue = Math.max(0, Math.min(100, number));
     return [percentValue, '%'];
   }
   return alphaValue;
-}
-
-function collectDimensions(node: unknown, out: Dimension[]): void {
-  if (!node) {
-    return;
-  }
-  if (node instanceof Dimension) {
-    out.push(node);
-    return;
-  }
-  if (Array.isArray(node)) {
-    node.forEach(child => collectDimensions(child, out));
-    return;
-  }
-  if (typeof node === 'object' && node !== null && 'value' in node) {
-    const value = (node as { value?: unknown }).value;
-    if (Array.isArray(value)) {
-      value.forEach(child => collectDimensions(child, out));
-    }
-  }
 }
 
 function getRawAlphaChannel(rawArgs: any, alphaValue: number, hasExplicitAlpha: boolean): number | [number, string] {
@@ -46,7 +27,7 @@ function getRawAlphaChannel(rawArgs: any, alphaValue: number, hasExplicitAlpha: 
     return alphaValue;
   }
   const dimensions: Dimension[] = [];
-  collectDimensions(rawArgs.value, dimensions);
+  collectRawDimensions(rawArgs.value, dimensions);
   const lastDimension = dimensions.at(-1);
   if (lastDimension) {
     return alphaChannelFromNode(lastDimension, alphaValue);
@@ -58,9 +39,9 @@ function rgbChannelFromNode(node: unknown, channelValue: number): number | [numb
   if (!(node instanceof Dimension)) {
     return channelValue;
   }
-  const unit = node.unit ?? '';
+  const { number, unit } = node.value;
   if (unit === '%') {
-    return [node.number, '%'];
+    return [number, '%'];
   }
   return channelValue;
 }
@@ -75,7 +56,7 @@ function getRawRgbChannels(
     return [r, g, b];
   }
   const dimensions: Dimension[] = [];
-  collectDimensions(rawArgs.value, dimensions);
+  collectRawDimensions(rawArgs.value, dimensions);
   const [rDim, gDim, bDim] = dimensions;
   return [
     rgbChannelFromNode(rDim, r),
@@ -132,8 +113,7 @@ const rgb = defineFunction(
           // Try to evaluate as a Dimension (for explicit alpha values like 0.5 or 50%)
           const evaluated = await relativeData.alpha.eval(this.context);
           if (evaluated instanceof Dimension) {
-            const alphaNumber = evaluated.number;
-            const alphaUnit = evaluated.unit;
+            const { number: alphaNumber, unit: alphaUnit } = evaluated.value;
             if (alphaUnit === '%') {
               alpha = alphaNumber / 100;
             } else if (alphaUnit === '' || alphaUnit === undefined) {
@@ -159,8 +139,7 @@ const rgb = defineFunction(
             // Try to evaluate as a Dimension (for explicit alpha values like 0.5 or 50%)
             const evaluated = await alphaChannel.eval(this.context);
             if (evaluated instanceof Dimension) {
-              const alphaNumber = evaluated.number;
-              const alphaUnit = evaluated.unit;
+              const { number: alphaNumber, unit: alphaUnit } = evaluated.value;
               if (alphaUnit === '%') {
                 alpha = alphaNumber / 100;
               } else if (alphaUnit === '' || alphaUnit === undefined) {
@@ -222,7 +201,7 @@ const rgb = defineFunction(
       const cloned = inputColor.clone();
       cloned.options.format = ColorFormat.RGB;
       cloned.options.modernSyntax = modernSyntax;
-      cloned.setData('node', undefined);
+      cloned.value.node = undefined;
       return cloned;
     } else if (args.length >= 1 && args.length <= 2 && args[0] instanceof Color) {
       // [Color, Dimension?] - clone color, set format to RGB, and optionally set alpha
@@ -230,13 +209,13 @@ const rgb = defineFunction(
       const cloned = inputColor.clone();
       cloned.options.format = ColorFormat.RGB;
       cloned.options.modernSyntax = modernSyntax;
-      cloned.setData('node', undefined);
+      cloned.value.node = undefined;
 
       if (args[1] !== undefined) {
         // args[1] is already converted by percentOf(1), toNumber() conversion plugins
         const alpha = args[1] as number;
         const normalizedAlpha = Math.max(0, Math.min(1, alpha));
-        cloned.setData('alpha', getRawAlphaChannel(this?.rawArgs, normalizedAlpha, args[1] !== undefined));
+        cloned.value.alpha = getRawAlphaChannel(this?.rawArgs, normalizedAlpha, args[1] !== undefined);
       }
 
       return cloned;

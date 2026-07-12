@@ -124,4 +124,31 @@ describe('Deprecation warnings', () => {
       expect(warnings.some(w => w.deprecation === 'property-in-unknown-value')).toBe(true);
     });
   });
+
+  describe('at-rule-prelude-variable', () => {
+    it('should warn for bare @ident in at-rule preludes', () => {
+      const { warnings } = parser.parse('@media @mode { .foo { color: red; } }');
+      const warning = warnings.find(w => w.deprecation === 'at-rule-prelude-variable');
+
+      expect(warning).toBeDefined();
+      expect(warning?.message).toContain('"@mode" in at-rule preludes is deprecated');
+      expect(warning?.message).toContain('@{mode}');
+    });
+
+    it('should warn for bare @ident inside media feature values', () => {
+      const { warnings } = parser.parse('@media (min-width: @size) { .foo { color: red; } }');
+      const warning = warnings.find(w => w.deprecation === 'at-rule-prelude-variable');
+
+      expect(warning).toBeDefined();
+      expect(warning?.message).toContain('"@size" in at-rule preludes is deprecated');
+      expect(warning?.message).toContain('@{size}');
+    });
+
+    it('should not warn for interpolated @{ident} in at-rule preludes', () => {
+      const { warnings } = parser.parse('@media @{mode} { .foo { color: red; } }');
+      const warning = warnings.find(w => w.deprecation === 'at-rule-prelude-variable');
+
+      expect(warning).toBeUndefined();
+    });
+  });
 });

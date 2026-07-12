@@ -1,44 +1,49 @@
 import { type Interpolated } from './interpolated.js';
 import { Any } from './any.js';
-import { Node, F_STATIC, F_NON_STATIC, defineType, type OptionalLocation, type TreeContext } from './node.js';
+import { Node, F_STATIC, F_NON_STATIC, defineType } from './node.js';
 import type { Context } from '../context.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
-import { setField } from './util/field-helpers.js';
 
 export type QuotedOptions = {
   quote?: '"' | '\'';
   escaped?: boolean;
 };
 
-export type QuotedChildData = { value: string | Any | Interpolated };
-
-export interface Quoted extends Node<string | Any | Interpolated, QuotedOptions, QuotedChildData> {
-  type: 'Quoted';
-  shortType: 'quoted';
-  eval(context: Context): MaybePromise<Quoted | Any | Interpolated>;
+export interface Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
+  eval(context: Context): Promise<Quoted | Any | Interpolated>;
 }
 
 /**
  * A quoted string value. Called a `String` in CSS, but calling it Quoted
  * to avoid conflict with the built-in `String` class.
  */
-export class Quoted extends Node<string | Any | Interpolated, QuotedOptions, QuotedChildData> {
-  static override childKeys = ['value'] as const;
+export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
+  private withValue(value: string | Any | Interpolated): this {
+    const node = this.clone(false) as this;
+    node.value = value;
+    return node;
+  }
 
-  /** @internal */ value!: string | Any | Interpolated;
-  readonly quote: '"' | '\'' | undefined;
-  readonly escaped: boolean;
-
-  constructor(value: string | Any | Interpolated, options?: QuotedOptions, location?: OptionalLocation, treeContext?: TreeContext) {
-    super(value, options, location, treeContext);
-    this.value = value;
-    this.quote = options?.quote;
-    this.escaped = !!options?.escaped;
-    if (value instanceof Node) {
-      this.adopt(value);
+  private renderQuotedSyntax(options?: PrintOptions): string {
+    options = getPrintOptions(options);
+    const w = options.writer!;
+    const mark = w.mark();
+    const quote = this._options?.quote ?? '"';
+    const escaped = this._options?.escaped;
+    let escapeChar = escaped ? '~' : '';
+    if (escapeChar) {
+      w.add(escapeChar, this);
     }
-    if (typeof value === 'string' && !this.escaped) {
+    w.add(quote);
+    super.toTrimmedString(options);
+    w.add(quote);
+    return w.getSince(mark);
+  }
+
+  constructor(value: string | Any | Interpolated, options?: QuotedOptions, location?: any, treeContext?: any) {
+    super(value, options, location, treeContext);
+    if (typeof value === 'string' && !options?.escaped) {
       this.addFlag(F_STATIC);
     } else {
       this.addFlag(F_NON_STATIC);
@@ -46,41 +51,16 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions, Quo
   }
 
   override toTrimmedString(options?: PrintOptions) {
-    options = getPrintOptions(options);
-    const w = options.writer!;
-    const mark = w.mark();
-    const value = this.get('value', options.context);
-    let { quote = '"', escaped } = this;
-    let escapeChar = escaped ? '~' : '';
-    if (escapeChar) {
-      w.add(escapeChar, this);
-    }
-    w.add(quote);
-    if (value instanceof Node) {
-      value.toString(options);
-    } else if (value !== undefined && value !== '') {
-      w.add(String(value), this);
-    }
-    w.add(quote);
-    return w.getSince(mark);
+    return this.renderQuotedSyntax(options);
   }
 
   override valueOf(): string {
-    // NOTE: `valueOf()` intentionally remains canonical for now.
-    // It has no Context parameter, so making it state-aware here would make
-    // a single Quoted instance report different observer values across
-    // concurrent sessions with different patched `value`s.
-    const value = this.value;
-    return value instanceof Node ? value.valueOf() : value as string;
+    const { value } = this;
+    return value instanceof Node ? value.valueOf() : value;
   }
 
   override compare(other: Node): 0 | 1 | -1 | undefined {
-    // NOTE: `compare()` intentionally remains canonical for now.
-    // It has no Context parameter, so a state-aware comparison here would
-    // require hidden ambient session state or a broader API change. Keep it
-    // anchored to the canonical node values until compare gains an explicit
-    // context-aware surface.
-    if (other.type === 'Quoted' && !this.escaped && !(other as Quoted).escaped) {
+    if (other instanceof Quoted && !this._options?.escaped && !other._options?.escaped) {
       const left = String(this.valueOf());
       const right = String(other.valueOf?.() ?? '');
       if (left === right) {
@@ -92,19 +72,19 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions, Quo
   }
 
   override evalNode(context: Context): MaybePromise<Quoted | Any | Interpolated> {
-    let value: string | Any | Interpolated | Node = this.get('value', context);
-    const cont = (v: string | Any | Interpolated | Node): Quoted | Any | Interpolated => {
-      value = v;
-      if (this.escaped) {
+    const cont = (value: string | Any | Interpolated | Node): Quoted | Any | Interpolated => {
+      if (this._options?.escaped) {
         if (value instanceof Node) {
-          return value as Node as Quoted | Any | Interpolated;
+          return value;
         }
-        return new Any(value as string);
+        return new Any(value);
       }
-      let quoted = this.maybeClone(context);
-      setField(quoted, 'value', value as string | Any | Interpolated, context);
-      return quoted;
+      if (value === this.value) {
+        return this;
+      }
+      return this.withValue(value);
     };
+    const { value } = this;
     if (value instanceof Node) {
       const out = value.eval(context);
       if (isThenable(out)) {
@@ -112,8 +92,7 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions, Quo
       }
       return cont(out as Node | Any | Interpolated);
     }
-    return cont(value as string | Any | Interpolated);
+    return cont(value);
   }
 }
-
 export const quoted = defineType(Quoted, 'Quoted');

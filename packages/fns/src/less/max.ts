@@ -21,8 +21,8 @@ const unitGroups: UnitGroup[] = [{
 }];
 
 function toCanonical(node: Dimension, forcedUnit?: string) {
-  const number = node.number;
-  const unit = node.unit || forcedUnit || '';
+  const { number, unit: nodeUnit } = node.value;
+  const unit = nodeUnit || forcedUnit || '';
   if (!unit) {
     return { number, unit: '' };
   }
@@ -56,13 +56,13 @@ export default defineFunction(
         throw new TypeError('incompatible types');
       }
 
-      const currentUnified = toCanonical(current, current.unit ? undefined : unitClone);
+      const currentUnified = toCanonical(current, current.value.unit ? undefined : unitClone);
       const unit = currentUnified.unit === '' && unitStatic !== undefined ? unitStatic : currentUnified.unit;
       if (unit !== '' && (unitStatic === undefined || toCanonical(order[0]!, unitClone).unit === '')) {
         unitStatic = unit;
       }
       if (unit !== '' && unitClone === undefined) {
-        unitClone = current.unit || unit;
+        unitClone = current.value.unit || unit;
       }
       const j = values[''] !== undefined && unit !== '' && unit === unitStatic ? values[''] : values[unit];
       if (j === undefined) {
@@ -73,7 +73,7 @@ export default defineFunction(
         order.push(current);
         continue;
       }
-      const referenceUnified = toCanonical(order[j]!, order[j]!.unit ? undefined : unitClone);
+      const referenceUnified = toCanonical(order[j]!, order[j]!.value.unit ? undefined : unitClone);
       if (currentUnified.number > referenceUnified.number) {
         order[j] = current;
       }

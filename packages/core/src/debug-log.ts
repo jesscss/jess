@@ -13,9 +13,7 @@ function findMonorepoRoot(start: string): string {
 }
 
 function getSyncLogPath(): string {
-  if (process.env.DEBUG_LOG_PATH) {
-    return process.env.DEBUG_LOG_PATH;
-  }
+  if (process.env.DEBUG_LOG_PATH) return process.env.DEBUG_LOG_PATH;
   const root = findMonorepoRoot(process.cwd());
   return join(root, '.cursor', 'debug.log');
 }

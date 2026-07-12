@@ -1,9 +1,20 @@
 {
   "name": "rollup-plugin-jess",
+  "type": "module",
   "version": "2.0.0-alpha.5",
   "description": "Rollup plugin for Jess",
-  "main": "lib/index",
-  "types": "lib/index",
+  "main": "lib/index.cjs",
+  "module": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/index.d.ts",
+      "source": "./src/index.ts",
+      "import": "./lib/index.js",
+      "require": "./lib/index.cjs"
+    },
+    "./package.json": "./package.json"
+  },
   "files": [
     "lib"
   ],
@@ -12,7 +23,7 @@
     "prepublishOnly": "npm run build",
     "build": "pnpm clean && pnpm compile",
     "clean": "shx rm -rf ./lib tsconfig.tsbuildinfo",
-    "compile": "tsc -p tsconfig.build.json",
+    "compile": "tsdown --tsconfig tsconfig.build.json",
     "test": "vitest --run --passWithNoTests",
     "lint:fix": "eslint --fix '**/*.{js,ts}'",
     "lint": "eslint '**/*.{js,ts}'"
@@ -24,6 +35,7 @@
     "rollup": "^2.0.0"
   },
   "devDependencies": {
+    "tsdown": "~0.21.7",
     "rollup": "^3.20.7"
   },
   "author": "Matthew Dean",

@@ -42,19 +42,26 @@ export class JessParser {
     if (options?.context) {
       parser.context = options.context;
     }
+    parser.context.opts.trivia = undefined;
     parser.input = lexerResult.tokens;
     const ruleMethod = parser[rule as keyof JessRecursiveParser];
     if (typeof ruleMethod !== 'function') {
       throw new Error(`Unknown rule: ${rule}`);
     }
-    const tree = (ruleMethod as (() => Node)).call(parser);
+    const tree = (ruleMethod as (() => Node | undefined)).call(parser);
+    const trivia = (parser as JessRecursiveParser & { trivia: IParseResult['trivia'] }).trivia;
+    parser.context.opts.trivia = trivia;
+    if (tree) {
+      tree.treeContext.opts.trivia = trivia;
+    }
 
     const warnings = [...parser.warnings];
 
     return {
-      tree,
+      tree: tree as Node,
       lexerResult,
       errors: parser.errors as IRecognitionException[],
+      trivia,
       warnings
     };
   }

@@ -6,30 +6,27 @@
   },
   "version": "2.0.0-alpha.5",
   "description": "Jess CSS base parser",
-  "main": "lib/index.js",
+  "main": "lib/index.cjs",
   "types": "lib/index.d.ts",
   "exports": {
     ".": {
-      "import": "./lib/index.js",
       "types": "./lib/index.d.ts",
-      "source": "./src/index.ts"
-    },
-    "./*": {
-      "types": "./lib/*.d.ts",
-      "import": "./lib/*.js",
-      "source": "./src/*.ts"
+      "source": "./src/index.ts",
+      "import": "./lib/index.js",
+      "require": "./lib/index.cjs"
     },
     "./package.json": "./package.json"
   },
   "files": [
-    "lib"
+    "lib",
+    "src"
   ],
   "scripts": {
     "ci": "pnpm build && pnpm test",
     "prepublishOnly": "pnpm build",
     "build": "pnpm compile",
-    "compile": "tsc -p tsconfig.build.json",
-    "dev": "tsc -p tsconfig.build.json -w",
+    "compile": "tsdown --tsconfig tsconfig.build.json",
+    "dev": "tsdown --tsconfig tsconfig.build.json --no-dts --watch",
     "bench": "tsx test/bench.ts",
     "bench:save": "tsx test/bench.ts --save",
     "test": "cross-env TEST=true vitest --watch=false",
@@ -39,6 +36,7 @@
   },
   "dependencies": {
     "@jesscss/core": "workspace:*",
+    "chevrotain": "^12.0.0",
     "color-name": "~2.0.0",
     "lodash-es": "~4.17.21",
     "xregexp": "^5.1.1"
@@ -48,7 +46,6 @@
     "@types/color-name": "^1.1.1",
     "@types/lodash-es": "~4.17.8",
     "@types/xregexp": "^4.4.0",
-    "chevrotain": "^12.0.0",
     "tsx": "~4.21.0"
   },
   "author": "Matthew Dean <matthew-dean@users.noreply.github.com>",
@@ -56,5 +53,6 @@
   "bugs": {
     "url": "https://github.com/jesscss/jess/issues"
   },
-  "homepage": "https://github.com/jesscss/jess#readme"
+  "homepage": "https://github.com/jesscss/jess#readme",
+  "module": "lib/index.js"
 }

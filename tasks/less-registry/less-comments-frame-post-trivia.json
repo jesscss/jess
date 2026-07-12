@@ -1,0 +1,29 @@
+{
+  "id": "less-comments-frame-post-trivia",
+  "title": "Preserve trailing and container comment trivia in comments.less output frames",
+  "track": "less-registry-redesign",
+  "bucket": "less-fixture",
+  "priority": "p1",
+  "status": "open",
+  "source_refs": [
+    "tests-unit/comments/comments.less",
+    "state/codex-auto/results/all-less.latest.log",
+    "state/codex-auto/runs/less-comments-selector-comment-trivia-20260422-141731/summary.json",
+    "packages/core/src/tree/util/serialize-helper.ts:511"
+  ],
+  "goal_refs": [
+    "less parity recovery",
+    "preserve trailing and container-frame comments without duplicating other comment seams"
+  ],
+  "depends_on": [],
+  "blocked_by": [],
+  "definition_of_done": "A focused frame/post-trivia proof and the targeted comments.less outer proof both pass for trailing/container comment emission, with accepted evidence linked.",
+  "proof_expectations": [
+    "focused serializer or frame-emission proof for trailing/container comments",
+    "targeted less fixture proof for tests-unit/comments/comments.less",
+    "promotion verification"
+  ],
+  "accepted_commit": null,
+  "accepted_run_id": null,
+  "last_transition_event_id": "operator:add:less-comments-frame-post-trivia:1776894178219"
+}

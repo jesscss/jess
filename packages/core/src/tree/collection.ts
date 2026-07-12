@@ -1,7 +1,7 @@
-import type { MaybePromise } from 'awaitable-pipe/lib/utils';
-import { defineType, type Node } from './node.js';
+import type { MaybePromise } from '@jesscss/awaitable-pipe';
+import { defineType } from './node.js';
 import { Rules } from './rules.js';
-import { getPrintOptions, type PrintOptions } from './util/print.js';
+import type { PrintOptions } from './util/print.js';
 import type { Context } from '../context.js';
 
 /**
@@ -15,11 +15,6 @@ import type { Context } from '../context.js';
  * Can be used like Sass property nesting.
  * @see https://sass-lang.com/documentation/style-rules/declarations/#nesting
  */
-export interface Collection {
-  type: 'Collection';
-  shortType: 'coll';
-}
-
 export class Collection extends Rules {
   override toTrimmedString(options?: PrintOptions) {
     return this.toBraced(options);
@@ -29,17 +24,16 @@ export class Collection extends Rules {
    * Collection rules aren't evaluated by default. They're evaluated
    * at access time OR if assigned to a property.
    */
-  override evalNode(context: Context): MaybePromise<this> {
+  override evalNode(_context: Context): MaybePromise<this> {
     return this;
   }
 
-  override preEval(context: Context): this | Promise<this> {
-    if (this._isPreEvaluated(context)) {
+  override preEval(_context: Context): this | Promise<this> {
+    if (this.preEvaluated) {
       return this;
     }
-    const node = this.maybeClone(context) as this;
-    node._setPreEvaluated(true, context);
-    return node;
+    this.preEvaluated = true;
+    return this;
   }
 }
 

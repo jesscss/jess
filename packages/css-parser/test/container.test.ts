@@ -4,6 +4,14 @@ import { serializeTypes } from '@jesscss/core';
 
 const cssParser = new CssParser();
 
+function getPreludeQueryNode(atRule: any) {
+  const prelude = atRule.value.prelude;
+  if (prelude?.type === 'Sequence') {
+    return prelude.value[0];
+  }
+  return Array.isArray(prelude?.value) ? prelude.value[0] : prelude;
+}
+
 describe('@container at-rule parsing and serialization', () => {
   test('basic container query with width condition', () => {
     const { tree, errors } = cssParser.parse('@container (width > 400px) { .card { font-size: 1.5rem; } }');
@@ -68,8 +76,7 @@ describe('@container at-rule parsing and serialization', () => {
     const { tree, errors } = cssParser.parse('@container not (width < 400px) { .card { font-size: 1.2rem; } }');
     expect(errors.length).toBe(0);
     const atRule = tree.value[0] as any;
-    const prelude = atRule.prelude;
-    const queryNode = Array.isArray(prelude?.value) ? prelude.value[0] : prelude;
+    const queryNode = getPreludeQueryNode(atRule);
     expect(queryNode.type).toBe('QueryCondition');
     expect(queryNode.value.length).toBe(2);
     expect(queryNode.value[0].value).toBe('not');
@@ -168,8 +175,7 @@ describe('@container at-rule parsing and serialization', () => {
     const { tree, errors } = cssParser.parse('@container (width > 400px) { .card {} }');
     expect(errors.length).toBe(0);
     const atRule = tree.value[0] as any;
-    const prelude = atRule.prelude;
-    const queryNode = Array.isArray(prelude?.value) ? prelude.value[0] : prelude;
+    const queryNode = getPreludeQueryNode(atRule);
     const out = serializeTypes(tree);
     expect(queryNode.type).toBe('Paren');
     expect(queryNode.value.type).toBe('QueryCondition');
@@ -184,8 +190,7 @@ describe('@media at-rule - QueryCondition parsing', () => {
     const { tree, errors } = cssParser.parse('@media (width > 400px) { .card {} }');
     expect(errors.length).toBe(0);
     const atRule = tree.value[0] as any;
-    const prelude = atRule.prelude;
-    const queryNode = Array.isArray(prelude?.value) ? prelude.value[0] : prelude;
+    const queryNode = getPreludeQueryNode(atRule);
     const out = serializeTypes(tree);
     if (queryNode) {
       expect(queryNode.type).toBe('Paren');
@@ -252,12 +257,11 @@ describe('@container - container query type functions', () => {
 
     // Verify structure: Call -> List -> QueryCondition -> [Paren(Declaration), Any('and'), Paren(Declaration)]
     const atRule = tree.value[0] as any;
-    const prelude = atRule.prelude;
-    const queryNode = Array.isArray(prelude?.value) ? prelude.value[0] : prelude;
+    const queryNode = getPreludeQueryNode(atRule);
     expect(queryNode.type).toBe('QueryCondition');
     expect(queryNode.value[0].type).toBe('Call');
-    expect(queryNode.value[0].name).toBe('scroll-state');
-    const argList = queryNode.value[0].args;
+    expect(queryNode.value[0].value.name).toBe('scroll-state');
+    const argList = queryNode.value[0].value.args;
     expect(argList.type).toBe('List');
     expect(argList.value.length).toBe(1);
     const firstArg = argList.value[0];
@@ -293,15 +297,14 @@ describe('@container - container query type functions', () => {
 
     // Verify structure: QueryCondition -> [Any('not'), QueryCondition -> [Call]]
     const atRule = tree.value[0] as any;
-    const prelude = atRule.prelude;
-    const queryNode = Array.isArray(prelude?.value) ? prelude.value[0] : prelude;
+    const queryNode = getPreludeQueryNode(atRule);
     expect(queryNode.type).toBe('QueryCondition');
     expect(queryNode.value.length).toBe(2);
     expect(queryNode.value[0].type).toBe('Keyword');
     expect(queryNode.value[0].value).toBe('not');
     expect(queryNode.value[1].type).toBe('QueryCondition');
     expect(queryNode.value[1].value[0].type).toBe('Call');
-    expect(queryNode.value[1].value[0].name).toBe('scroll-state');
+    expect(queryNode.value[1].value[0].value.name).toBe('scroll-state');
     expect(out).toContainString(`
       (QueryCondition
         [
@@ -331,8 +334,7 @@ describe('@container - container query type functions', () => {
 
     // Verify structure: List of queries, each can be QueryCondition
     const atRule = tree.value[0] as any;
-    const prelude = atRule.prelude;
-    const queryNode = Array.isArray(prelude?.value) ? prelude.value[0] : prelude;
+    const queryNode = getPreludeQueryNode(atRule);
     expect(queryNode.type).toBe('List');
     expect(queryNode.value.length).toBe(4); // 4 comma-separated queries
   });

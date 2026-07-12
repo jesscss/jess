@@ -1,7 +1,9 @@
 import type { Context } from '../../context.js';
+import type { IToken } from 'chevrotain';
+import type { TriviaMap } from '../../types/index.js';
 import type { AtRule } from '../at-rule.js';
 import type { Ruleset } from '../ruleset.js';
-import type { Node } from '../node.js';
+import type { Selector } from '../selector.js';
 
 export type PrintOptions = {
   /** The actual tree frames we started from */
@@ -24,8 +26,14 @@ export type PrintOptions = {
   referenceRenderEnabled?: boolean;
   /** Enable SelectorList-level filtering of extend target members during reference rendering. */
   referenceFilterTargets?: boolean;
-  /** Skip Comment nodes during rendering (replaces copy(true) for comment suppression). */
-  suppressComments?: boolean;
+  /** Stack of composed selectors for collapseNesting on-demand composition and & resolution. */
+  composedSelectorStack?: Selector[];
+  /** Session-local composed selector cache keyed by rendered ruleset. */
+  composedSelectorCache?: WeakMap<Ruleset, Selector>;
+  /** Whether the current ampersand is at the start of its containing selector. */
+  ampersandFirst?: boolean;
+  trivia?: TriviaMap;
+  emittedTrivia?: Set<IToken[]>;
 };
 
 export type FinalPrintOptions = PrintOptions & {
@@ -37,8 +45,38 @@ export type FinalPrintOptions = PrintOptions & {
   lastRenderedFrames: (Ruleset | AtRule)[];
 };
 
+type RestorablePrintStateKey =
+  | 'ampersandFirst'
+  | 'collapseNesting'
+  | 'context'
+  | 'composedSelectorStack'
+  | 'depth'
+  | 'inCustom'
+  | 'inFrames'
+  | 'referenceFilterTargets'
+  | 'referenceMode'
+  | 'referenceRenderEnabled'
+  | 'writer';
+
+type RestorablePrintState = Pick<FinalPrintOptions, RestorablePrintStateKey>;
+
+function ensureFinalPrintOptions(options: PrintOptions): asserts options is FinalPrintOptions {
+  options.depth ??= 0;
+  options.writer ??= new OutputWriter();
+  options.inFrames ??= [];
+  options.frameHeaders ??= [];
+  options.treeFrames ??= [];
+  options.lastRenderedFrames ??= [];
+  options.referenceMode ??= false;
+  options.referenceRenderEnabled ??= true;
+  options.referenceFilterTargets ??= false;
+  options.composedSelectorCache ??= new WeakMap();
+  options.emittedTrivia ??= new Set();
+}
+
 export interface OutputWriter {
   add(text: string, origin?: unknown): void;
+  addSpacer(text: string): void;
   mark(): number;
   getSince(mark: number): string;
   captureWithMeta(fn: () => void): CapturedOutput;
@@ -49,6 +87,11 @@ export interface OutputWriter {
 }
 
 export type BoundaryIntent = 'implicit' | 'explicit_none' | 'explicit_space';
+
+export type BoundaryIntentOptions = {
+  preIntent?: BoundaryIntent;
+  postIntent?: BoundaryIntent;
+};
 
 export type CapturedOutput = {
   text: string;
@@ -64,23 +107,137 @@ export type SourceSegment = {
   origColumn: number;  // 0-based
 };
 
+type SourceMapOrigin = {
+  location?: unknown;
+  treeContext?: {
+    file?: {
+      fullPath?: string;
+      path?: string;
+      name?: string;
+    };
+  };
+};
+
+const isSourceMapOrigin = (value: unknown): value is SourceMapOrigin => {
+  return typeof value === 'object' && value !== null;
+};
+
 export function getPrintOptions(options?: PrintOptions): FinalPrintOptions {
-  options = options ?? {};
-  options.depth ??= 0;
-  options.writer ??= new OutputWriter();
+  if (options?.context) {
+    if (options !== options.context.printState) {
+      const hasExplicitPrintState = (
+        options.inFrames !== undefined
+        || options.treeFrames !== undefined
+        || options.lastRenderedFrames !== undefined
+        || options.frameHeaders !== undefined
+      );
+      if (hasExplicitPrintState) {
+        const detached = options;
+        if (detached.collapseNesting === undefined && detached.context?.opts?.collapseNesting !== undefined) {
+          detached.collapseNesting = Boolean(detached.context.opts.collapseNesting);
+        }
+        ensureFinalPrintOptions(detached);
+        return detached;
+      }
+      return prepareContextPrintState(options.context, options);
+    }
+    const resolved = options.context.printState;
+    if (resolved.collapseNesting === undefined && resolved.context?.opts?.collapseNesting !== undefined) {
+      resolved.collapseNesting = Boolean(resolved.context.opts.collapseNesting);
+    }
+    ensureFinalPrintOptions(resolved);
+    return resolved;
+  }
+  const resolved = options ?? {};
   // Derive collapseNesting from context when missing so nested vs flat is correct for & serialization
-  if (options.collapseNesting === undefined && options.context?.opts?.collapseNesting !== undefined) {
-    options.collapseNesting = Boolean(options.context.opts.collapseNesting);
+  if (resolved.collapseNesting === undefined && resolved.context?.opts?.collapseNesting !== undefined) {
+    resolved.collapseNesting = Boolean(resolved.context.opts.collapseNesting);
   }
   // Always ensure frameState exists - nodes should not need to check for it
-  options.inFrames ??= [];
-  options.frameHeaders ??= [];
-  options.treeFrames ??= [];
-  options.lastRenderedFrames ??= [];
-  options.referenceMode ??= false;
-  options.referenceRenderEnabled ??= true;
-  options.referenceFilterTargets ??= false;
-  return options as FinalPrintOptions;
+  ensureFinalPrintOptions(resolved);
+  return resolved;
+}
+
+export function prepareContextPrintState(context: Context, seed?: PrintOptions): FinalPrintOptions {
+  const state = context.printState;
+
+  state.context = context;
+  state.treeFrames = [];
+  state.inFrames = [];
+  state.lastRenderedFrames = [];
+  state.frameHeaders = [];
+  state.depth = 0;
+  state.writer = seed?.writer ?? new OutputWriter();
+  state.compress = seed?.compress;
+  state.collapseNesting = seed?.collapseNesting;
+  state.inCustom = seed?.inCustom;
+  state.referenceMode = seed?.referenceMode ?? false;
+  state.referenceRenderEnabled = seed?.referenceRenderEnabled ?? true;
+  state.referenceFilterTargets = seed?.referenceFilterTargets ?? false;
+  state.composedSelectorStack = seed?.composedSelectorStack;
+  state.composedSelectorCache = new WeakMap();
+  state.ampersandFirst = seed?.ampersandFirst;
+  state.trivia = seed?.trivia;
+  state.emittedTrivia = new Set();
+
+  if (state.collapseNesting === undefined && context.opts.collapseNesting !== undefined) {
+    state.collapseNesting = Boolean(context.opts.collapseNesting);
+  }
+
+  ensureFinalPrintOptions(state);
+  return state;
+}
+
+export type SavedPrintState = Array<[RestorablePrintStateKey, RestorablePrintState[RestorablePrintStateKey]]>;
+
+export function savePrintState(
+  options: FinalPrintOptions,
+  keys: readonly RestorablePrintStateKey[]
+): SavedPrintState {
+  const saved: SavedPrintState = [];
+  for (const key of keys) {
+    saved.push([key, options[key]]);
+  }
+  return saved;
+}
+
+export function restorePrintState(
+  options: FinalPrintOptions,
+  saved: SavedPrintState
+): void {
+  for (let i = 0; i < saved.length; i++) {
+    const [key, value] = saved[i]!;
+    options[key] = value;
+  }
+}
+
+export function saveArrayState<T>(array: T[] | undefined): T[] | undefined {
+  return array?.slice();
+}
+
+export function restoreArrayState<T>(
+  array: T[] | undefined,
+  saved: readonly T[] | undefined
+): void {
+  if (!array) {
+    return;
+  }
+  array.splice(0, array.length, ...(saved ?? []));
+}
+
+export function getCachedComposedSelector(
+  options: FinalPrintOptions,
+  ruleset: Ruleset
+): Selector | undefined {
+  return options.composedSelectorCache?.get(ruleset);
+}
+
+export function setCachedComposedSelector(
+  options: FinalPrintOptions,
+  ruleset: Ruleset,
+  selector: Selector
+): void {
+  options.composedSelectorCache?.set(ruleset, selector);
 }
 
 export class OutputWriter implements OutputWriter {
@@ -135,11 +292,11 @@ export class OutputWriter implements OutputWriter {
     }
 
     // Record a mapping segment if we have origin location info
-    const origin = originParam as { location?: unknown; treeContext?: { file?: { fullPath?: string; path?: string; name?: string } } } | undefined;
+    const origin = isSourceMapOrigin(originParam) ? originParam : undefined;
     const loc = origin?.location;
     if (loc && Array.isArray(loc) && loc.length === 6) {
-      const startLine = ((loc[1] as number) ?? 1) - 1;     // convert to 0-based
-      const startColumn = ((loc[2] as number) ?? 1) - 1;   // convert to 0-based
+      const startLine = (loc[1] ?? 1) - 1;     // convert to 0-based
+      const startColumn = (loc[2] ?? 1) - 1;   // convert to 0-based
       const file = origin?.treeContext?.file?.fullPath || origin?.treeContext?.file?.path || origin?.treeContext?.file?.name;
       this._segments.push({
         genLine: this._line,
@@ -185,6 +342,15 @@ export class OutputWriter implements OutputWriter {
     if (!originParam) {
       this._capturedSegments = null;
     }
+  }
+
+  addSpacer(text: string): void {
+    if (!text) {
+      return;
+    }
+    const pendingSegments = this._capturedSegments;
+    this.add(text);
+    this._capturedSegments = pendingSegments;
   }
 
   mark(): number {
@@ -287,12 +453,4 @@ export class OutputWriter implements OutputWriter {
   getLastNewlineOrigin(): unknown {
     return this._lastNewlineOrigin;
   }
-}
-
-/**
- * Render a node to a string with optional print options.
- * Use `suppressComments: true` to skip Comment nodes without cloning.
- */
-export function render(node: Node, options?: PrintOptions): string {
-  return node.toString(options);
 }

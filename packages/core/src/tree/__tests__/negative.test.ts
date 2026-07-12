@@ -1,27 +1,58 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { Context } from '../../context.js';
-import { Dimension } from '../dimension.js';
-import { Negative } from '../negative.js';
-import { Operation } from '../operation.js';
-import { Paren } from '../paren.js';
+import {
+  any,
+  negative,
+  num,
+  ref,
+  rules,
+  type Rules as RulesClass,
+  vardecl
+} from '../index.js';
 
 describe('Negative', () => {
-  it('serializes with a leading minus sign', () => {
-    const node = new Negative(new Dimension({ number: 2, unit: 'px' }));
+  let context: Context;
 
-    expect(node.toTrimmedString()).toBe('-2px');
+  beforeEach(() => {
+    context = new Context();
   });
 
-  it('evaluates its child before applying the negative sign', async () => {
-    const ctx = new Context();
-    const node = new Negative(new Paren(new Operation([
-      new Dimension({ number: 1, unit: 'px' }),
-      '+',
-      new Dimension({ number: 2, unit: 'px' })
-    ])));
+  it('renders negative syntax through toTrimmedString()', () => {
+    expect(negative(num(10)).toTrimmedString()).toBe('-10');
+  });
 
-    const evald = await node.eval(ctx);
+  it('renders negative values through render(context)', async () => {
+    const node = rules([
+      vardecl({
+        name: any('rhs'),
+        value: num(20)
+      })
+    ]);
+    const evald = await node.eval(context);
+    context.root = evald as RulesClass;
+    context.rulesContext = evald as RulesClass;
 
-    expect(evald.toTrimmedString()).toBe('-3px');
+    const rendered = negative(ref({ key: 'rhs' }, { type: 'variable' })).render(context);
+
+    expect(rendered).toBe('-20');
+  });
+
+  it('resolves negative values without touching render state', async () => {
+    const node = rules([
+      vardecl({
+        name: any('rhs'),
+        value: num(20)
+      })
+    ]);
+    const evald = await node.eval(context);
+    context.root = evald as RulesClass;
+    context.rulesContext = evald as RulesClass;
+
+    const resolved = await negative(
+      ref({ key: 'rhs' }, { type: 'variable' })
+    ).resolve(context);
+
+    expect(`${resolved}`).toBe('-20');
+    expect(context.printState.writer).toBeUndefined();
   });
 });

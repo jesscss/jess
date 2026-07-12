@@ -1,5 +1,6 @@
 import {
   Color,
+  ColorFormat,
   Dimension,
   defineFunction
 } from '@jesscss/core';
@@ -15,7 +16,7 @@ const mix = defineFunction(
     if (!weight) {
       weight = new Dimension({ number: 50, unit: '%' });
     }
-    const p = weight.number / 100.0;
+    const p = weight.value.number / 100.0;
     const w = p * 2 - 1;
     const a = toHSL(color1).a - toHSL(color2).a;
 
@@ -30,7 +31,7 @@ const mix = defineFunction(
     ];
 
     const out = new Color(rgba);
-    out.options.format = color1.options.format;
+    out.options.format = rgba[3]! < 1 ? ColorFormat.RGB : color1.options.format;
     return out;
   },
   {

@@ -1,14 +1,12 @@
-import type { Class } from 'type-fest';
 import { Node, F_STATIC, defineType } from './node.js';
 import { Nil } from './nil.js';
 import { List } from './list.js';
 import type { Context } from '../context.js';
-import { compare, compareNodeArray } from './util/compare.js';
+import { compareNodeArray } from './util/compare.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
-import { getField, setField, setParent } from './util/field-helpers.js';
 
 export type SequenceOptions = {
   /**
@@ -26,82 +24,22 @@ export type SequenceOptions = {
  * an expression will yield a value, and a CSS value can
  * actually be a sequence of values (like for shorthand)
  */
-export interface Sequence extends Node<Node[], SequenceOptions, SequenceChildData> {
-  type: 'Sequence' | 'QueryCondition';
-  shortType: 'seq' | 'query';
-}
-export type SequenceChildData = { value: Node[] };
-
-export class Sequence extends Node<Node[], SequenceOptions, SequenceChildData> {
-  static override childKeys = ['value'] as const;
-
-  /** @internal */ value!: Node[];
-
-  constructor(value: Node[], options?: SequenceOptions, location?: any, treeContext?: any) {
-    super(value, options, location, treeContext);
-    this.value = value;
-    for (const child of value) {
-      if (child instanceof Node) {
-        this.adopt(child);
-      }
-    }
+export class Sequence extends Node<Node[], SequenceOptions> {
+  private withValue(value: Node[]): this {
+    const node = this.clone(false) as this;
+    node.value = value;
+    return node;
   }
 
-  override clone(deep?: boolean, cloneFn?: (n: Node) => Node, ctx?: Context): this {
-    const value = this.get('value', ctx);
-    const cloneChild = cloneFn ?? ((n: Node) => n.clone(deep, cloneFn, ctx));
-    const clonedValue = deep
-      ? value.map(child => cloneChild(child))
-      : [...value];
-    const options = this._meta?.options;
-    const newNode = new (this.constructor as Class<this>)(
-      [],
-      options ? { ...options } : undefined,
-      this.location,
-      this.treeContext
-    );
-    newNode.value = clonedValue;
-    if (ctx) {
-      for (const child of clonedValue) {
-        setParent(child, newNode, ctx);
-      }
-    } else {
-      for (const child of clonedValue) {
-        newNode.adopt(child);
-      }
-    }
-    newNode.inherit(this);
-    return newNode;
-  }
-
-  get length() {
-    return this.value.length;
-  }
-
-  private _getOptions(context?: Context): SequenceOptions | undefined {
-    return context
-      ? getField<SequenceOptions | undefined>(this, 'options', context)
-      : this.options;
-  }
-
-  // NOTE: `length` intentionally remains canonical for now. A state-aware
-  // getter would need an explicit Context channel; otherwise the same node
-  // instance would have ambiguous answers when different sessions patch
-  // `value` to different lengths at the same time.
-
-  override compare(other: Node, context?: Context) {
+  override compare(other: Node) {
     if (other instanceof Sequence) {
       const equalityMode = this.treeContext?.equalityMode ?? 'coerce';
-      const left = this.get('value', context);
-      const right = other.get('value', context);
-      const result = !context
-        ? compareNodeArray(left, right, equalityMode)
-        : compareSequenceItems(left, right, equalityMode, context);
+      const result = compareNodeArray(this.value, other.value, equalityMode);
       return result;
     }
     if (other.type === 'Any') {
       const normalize = (s: string) => s.replace(/\s+/g, ' ').trim();
-      const left = normalize(this.toTrimmedString(context ? { context } : undefined));
+      const left = normalize(this.toString());
       const right = normalize(other.toString());
       return left === right ? 0 : undefined;
     }
@@ -115,7 +53,7 @@ export class Sequence extends Node<Node[], SequenceOptions, SequenceChildData> {
     }
     const w = options.writer!;
     const mark = w.mark();
-    const value = this.get('value', options.context);
+    const { value } = this;
     const length = value.length;
 
     if (length === 0) {
@@ -129,60 +67,61 @@ export class Sequence extends Node<Node[], SequenceOptions, SequenceChildData> {
 
     // Serialize subsequent nodes with normalized spacing
     for (let i = 1; i < length; i++) {
+      const prevNode = value[i - 1]!;
       const node = value[i]!;
-      // For sequences, normalize spacing based on actual serialized output (including pre/post)
-      // If direct child has explicit pre === 0, respect that (no space)
-      if (node.pre === 0) {
-        // Explicitly no space - respect that, but still use toString() to preserve comments
-        node.toString(options);
-      } else {
-        // Check what's already written (previous node's output) to see if it ends with space
-        const currentMark = w.mark();
-        const writtenSoFar = w.getSince(mark);
-        const prevEndsWithSpace = writtenSoFar.endsWith(' ');
-        w.restore(currentMark);
+      const currentMark = w.mark();
+      const writtenSoFar = w.getSince(mark);
+      const prevEndsWithSpace = writtenSoFar.endsWith(' ');
+      w.restore(currentMark);
 
-        // Capture current node's output to check if it starts with space
-        // This captures the serialized output including pre/post from child nodes
-        const currentCaptured = w.captureWithMeta(() => node.toString(options));
-        const currentNodeOut = currentCaptured.text;
-        const currentStartsWithSpace = currentNodeOut.startsWith(' ');
-        const hasExplicitNoSpaceBoundary = (
-          prevTrailingIntent === 'explicit_none'
-          || currentCaptured.leadingIntent === 'explicit_none'
-        );
+      // This captures the serialized output including trivia and explicit boundary intents.
+      const currentCaptured = w.captureWithMeta(() => node.toString(options));
+      const currentNodeOut = currentCaptured.text;
+      const currentStartsWithSpace = currentNodeOut.startsWith(' ');
+      const trivia = options.trivia ?? this.treeContext?.opts?.trivia;
+      const hasSourceGap = trivia
+        ? (
+            trivia.after.has(prevNode.location[3]!)
+              ? Boolean(trivia.after.get(prevNode.location[3]!))
+              : trivia.before.has(node.location[0]!)
+                  ? Boolean(trivia.before.get(node.location[0]!))
+                  : undefined
+          )
+        : undefined;
+      const hasExplicitNoSpaceBoundary = (
+        prevTrailingIntent === 'explicit_none'
+        || currentCaptured.leadingIntent === 'explicit_none'
+        || hasSourceGap === false
+      );
 
-        if (!prevEndsWithSpace && !currentStartsWithSpace && !hasExplicitNoSpaceBoundary) {
-          // No space present - add single space before node
-          w.add(' ');
-        }
-        // Write the captured output (node was already serialized in capture())
-        w.add(currentNodeOut);
-        prevTrailingIntent = currentCaptured.trailingIntent;
+      if (!prevEndsWithSpace && !currentStartsWithSpace && !hasExplicitNoSpaceBoundary) {
+        w.add(' ');
       }
+      w.add(currentNodeOut);
+      prevTrailingIntent = currentCaptured.trailingIntent;
     }
 
     return w.getSince(mark);
   }
 
-  override operate(b: Node, op: string, context: Context): Sequence | List {
+  override operate(b: Node, op: string, _context: Context): Sequence | List {
     if (op !== '+') {
       throw new Error(`Sequence operation "${op}" not supported`);
     }
-    let newSequence = this.maybeClone(context);
+    const newSequence = this.clone();
     if (b instanceof List) {
-      return new List([newSequence, ...b.get('value')]).inherit(this);
+      return new List([newSequence, ...b.value]).inherit(this);
     } else if (isNode(b, N.Sequence)) {
       /** Inference not working in this class? */
-      const values = b.get('value', context).map(v => v.maybeClone(context));
+      const values = b.value.map(v => v.clone(true));
       if (values.length) {
-        values[0]!.pre = 1;
+        values[0]!.options.preIntent = 'explicit_space';
       }
-      setField(newSequence, 'value', [...newSequence.get('value', context), ...values], context);
+      newSequence.value.push(...values);
     } else {
-      b = b.maybeClone(context);
-      b.pre = 1;
-      setField(newSequence, 'value', [...newSequence.get('value', context), b], context);
+      b = b.clone(true);
+      b.options.preIntent = 'explicit_space';
+      newSequence.value.push(b);
     }
     return newSequence;
   }
@@ -206,44 +145,31 @@ export class Sequence extends Node<Node[], SequenceOptions, SequenceChildData> {
     }
     return pipe(
       () => {
-        const node = this;
-        const nextValue = [...node.get('value', context)];
-        let changed = false;
-        const maybe = serialForEach(nextValue.map((n, i) => [n, i] as const), ([n, i]) => {
+        const values = new Array<Node>(this.value.length);
+        const maybe = serialForEach(this.value.map((n, i) => [n, i] as const), ([n, i]) => {
           const out = n.eval(context);
           if (isThenable(out)) {
             return (out as Promise<Node>).then((res) => {
-              if (res !== n) {
-                nextValue[i] = res;
-                changed = true;
-              }
+              values[i] = res;
             });
           }
-          if ((out as Node) !== n) {
-            nextValue[i] = out as Node;
-            changed = true;
-          }
+          values[i] = out as Node;
         });
         if (isThenable(maybe)) {
-          return (maybe as Promise<void>).then(() => {
-            if (changed) {
-              setField(node, 'value', nextValue, context);
-            }
-            return node;
-          });
+          return (maybe as Promise<void>).then(() => values);
         }
-        if (changed) {
-          setField(node, 'value', nextValue, context);
-        }
-        return node;
+        return values;
       },
-      (node) => {
-        const value = node.get('value', context).filter(n => n && !(n instanceof Nil));
-        setField(node, 'value', value, context);
-        if (value.length === 1 && !node._getOptions(context)?.preserveWhitespace) {
-          return value[0]!;
+      (values) => {
+        const filtered = values.filter(n => n && !(n instanceof Nil));
+        if (filtered.length === 1 && !this._options?.preserveWhitespace) {
+          return filtered[0]!;
         }
-        return node;
+        const unchanged = (
+          filtered.length === this.value.length
+          && filtered.every((node, index) => node === this.value[index])
+        );
+        return unchanged ? this : this.withValue(filtered);
       }
     );
   }
@@ -278,37 +204,7 @@ export const spaced = (
   options?: SequenceOptions
 ) => {
   for (let i = 1; i < value.length; i++) {
-    value[i]!.pre = 1;
+    value[i]!.options.preIntent = 'explicit_space';
   }
   return new Sequence(value, options);
 };
-
-function compareSequenceItems(
-  left: Node[],
-  right: Node[],
-  equalityMode: 'coerce' | 'strict',
-  context: Context
-): 0 | 1 | -1 | undefined {
-  let output: 0 | 1 | -1 | undefined;
-
-  if (left.length !== right.length) {
-    return undefined;
-  }
-
-  for (let i = 0; i < left.length; i++) {
-    const a = left[i]!;
-    const b = right[i]!;
-    const result = a instanceof Node && b instanceof Node
-      ? a.compare(b, context)
-      : compare(a, b, equalityMode);
-    if (result === undefined) {
-      return undefined;
-    }
-    if (output === undefined) {
-      output = result;
-    } else if (result !== output) {
-      return undefined;
-    }
-  }
-  return output;
-}

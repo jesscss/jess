@@ -1,4 +1,4 @@
-import { attr, any, expr, interpolated, quoted } from '../index.js';
+import { attr, any, quoted, mixin, rules, ruleset, decl, call, ref, list, el, vardecl } from '../index.js';
 import { Context } from '../../context.js';
 
 let context: Context;
@@ -9,6 +9,16 @@ describe('Attribute Selector', () => {
   });
 
   describe('normalization', () => {
+    test('renders attribute selector syntax through toTrimmedString()', () => {
+      const rule = attr({
+        name: 'data',
+        op: '=',
+        value: quoted('bar')
+      });
+
+      expect(rule.toTrimmedString()).toBe('[data="bar"]');
+    });
+
     test('with or without quotes', () => {
       let rule1 = attr({
         name: 'foo',
@@ -31,20 +41,101 @@ describe('Attribute Selector', () => {
     });
   });
 
-  describe('evaluation', () => {
-    test('evaluates node-backed name and value before serialization', async () => {
-      const rule = attr({
-        name: interpolated({
-          source: 'data-%%',
-          replacements: [any('theme')]
-        }),
-        op: '=',
-        value: expr(any('dark'))
-      });
+  test('renders resolved attribute selector values through render(context)', async () => {
+    const node = rules([
+      vardecl({
+        name: 'attr-data',
+        value: any('foo')
+      })
+    ]);
+    const evald = await node.eval(context);
+    context.root = evald;
+    context.rulesContext = evald;
 
-      const evald = await rule.eval(context);
+    const rendered = attr({
+      name: 'data',
+      op: '=',
+      value: ref({ key: 'attr-data' }, { type: 'variable' })
+    }).render(context);
 
-      expect(evald.toTrimmedString({ context })).toBe('[data-theme=dark]');
+    expect(rendered).toBe('[data=foo]');
+  });
+
+  test('resolves attribute selector values without touching render state', async () => {
+    const node = rules([
+      vardecl({
+        name: 'attr-data',
+        value: any('foo')
+      })
+    ]);
+    const evald = await node.eval(context);
+    context.root = evald;
+    context.rulesContext = evald;
+
+    const resolved = await attr({
+      name: 'data',
+      op: '=',
+      value: ref({ key: 'attr-data' }, { type: 'variable' })
+    }).resolve(context);
+
+    expect(`${resolved}`).toBe('[data=foo]');
+    expect(context.printState.writer).toBeUndefined();
+  });
+
+  test('keeps interpolated attribute selector values isolated across repeated mixin calls', async () => {
+    context = new Context({
+      collapseNesting: true,
+      leakyRules: true
     });
+
+    const node = rules([
+      mixin({
+        name: any('.emit'),
+        params: list([any('name', { role: 'property' })]),
+        rules: rules([
+          vardecl({
+            name: 'attr-data',
+            value: ref({ key: 'name' }, { type: 'variable' })
+          }),
+          ruleset({
+            selector: attr({
+              name: 'data',
+              op: '=',
+              value: any('@{attr-data}')
+            }),
+            rules: rules([
+              decl({ name: 'color', value: any('red') })
+            ])
+          })
+        ])
+      }),
+      ruleset({
+        selector: el('.one'),
+        rules: rules([
+          call({
+            name: ref({ key: '.emit' }, { type: 'mixin' }),
+            args: list([any('foo')])
+          })
+        ])
+      }),
+      ruleset({
+        selector: el('.two'),
+        rules: rules([
+          call({
+            name: ref({ key: '.emit' }, { type: 'mixin' }),
+            args: list([any('bar')])
+          })
+        ])
+      })
+    ]);
+    context.root = node;
+
+    const evald = await node.eval(context);
+    const css = evald.toString({ collapseNesting: true });
+
+    expect(css).toContain('.one [data="foo"]');
+    expect(css).toContain('.two [data="bar"]');
+    expect(css).not.toContain('.one [data="bar"]');
+    expect(css).not.toContain('.two [data="foo"]');
   });
 });

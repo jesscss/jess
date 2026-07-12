@@ -5,8 +5,8 @@ import unit from '../unit.js';
 describe('unit()', () => {
   it('removes unit when no second argument is given', () => {
     const result = unit(new Dimension({ number: 42, unit: 'px' }));
-    expect(result.data.number).toBe(42);
-    expect(result.data.unit).toBeUndefined();
+    expect(result.number).toBe(42);
+    expect(result.unit).toBeUndefined();
   });
 
   it('sets unit from Any keyword and Quoted values', () => {
@@ -18,7 +18,9 @@ describe('unit()', () => {
       new Dimension({ number: 7, unit: 'px' }),
       new Quoted('ch')
     );
-    expect(fromAny.data).toEqual({ number: 5, unit: 'em' });
-    expect(fromQuoted.data).toEqual({ number: 7, unit: 'ch' });
+    expect(fromAny.number).toBe(5);
+    expect(fromAny.unit).toBe('em');
+    expect(fromQuoted.number).toBe(7);
+    expect(fromQuoted.unit).toBe('ch');
   });
 });

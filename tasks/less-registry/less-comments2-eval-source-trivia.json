@@ -1,0 +1,32 @@
+{
+  "id": "less-comments2-eval-source-trivia",
+  "title": "Preserve evaluated source trivia in comments2.less without call-scope regressions",
+  "track": "less-registry-redesign",
+  "bucket": "less-fixture",
+  "priority": "p1",
+  "status": "open",
+  "source_refs": [
+    "tests-unit/comments/comments2.less",
+    "state/codex-auto/results/all-less.latest.log",
+    "state/codex-auto/runs/less-comments-comments2-20260422-125639/summary.json",
+    "packages/core/src/tree/node-base.ts",
+    "packages/core/src/tree/call.ts",
+    "packages/core/src/tree/util/serialize-helper.ts"
+  ],
+  "goal_refs": [
+    "less parity recovery",
+    "preserve evaluated-source trivia without detached-ruleset call-scope regressions"
+  ],
+  "depends_on": [],
+  "blocked_by": [],
+  "definition_of_done": "A focused proof for evaluated-source trivia propagation and the targeted comments2.less outer proof both pass without regressing detached-ruleset call-scope behavior, with accepted evidence linked.",
+  "proof_expectations": [
+    "focused core proof for evaluated-source or sourceNode trivia propagation",
+    "guard proof for detached ruleset call-scope behavior",
+    "targeted less fixture proof for tests-unit/comments/comments2.less",
+    "promotion verification"
+  ],
+  "accepted_commit": null,
+  "accepted_run_id": null,
+  "last_transition_event_id": "operator:add:less-comments2-eval-source-trivia:1776890319331"
+}

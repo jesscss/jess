@@ -1,8 +1,11 @@
 // import { Selector } from '../selector-sequence'
 import { sel, el, co, pseudo, attr, any, quoted, sellist, compound } from '../index.js';
+import { Context } from '../../context.js';
 import { isNode } from '../util/is-node.js';
 // import type { Class } from 'type-fest'
 // import type { Node } from '../node.js'
+
+let context: Context;
 
 /** @todo - move to https://github.com/SamVerschueren/tsd */
 // test('Test types', () => {
@@ -10,6 +13,10 @@ import { isNode } from '../util/is-node.js';
 // })
 
 describe('Selector', () => {
+  beforeEach(() => {
+    context = new Context();
+  });
+
   describe('serialization', () => {
     it('should serialize to a selector', () => {
       let rule = sel([
@@ -29,6 +36,29 @@ describe('Selector', () => {
         el('#bar')
       ]);
       expect(`${rule}`).toBe('.foo #bar');
+    });
+
+    it('renders selector sequences through render(context)', () => {
+      const rule = sel([
+        el('.foo'),
+        co('>'),
+        el('#bar')
+      ]);
+
+      expect(rule.render(context)).toBe('.foo > #bar');
+    });
+
+    it('resolves selector sequences without touching render state', async () => {
+      const rule = sel([
+        el('.foo'),
+        co('>'),
+        el('#bar')
+      ]);
+
+      const resolved = await rule.resolve(context);
+
+      expect(resolved.toTrimmedString()).toBe('.foo > #bar');
+      expect(context.printState.writer).toBeUndefined();
     });
   });
 
@@ -71,7 +101,7 @@ describe('Selector', () => {
         co2,
         el('#bar')
       ]);
-      expect(sel1.compare(sel2 as any)).toBe(0);
+      expect(sel1.compare(sel2)).toBe(0);
     });
 
     test('inverted selector sequences are equal', () => {
@@ -83,7 +113,7 @@ describe('Selector', () => {
         el('#bar'),
         el('.foo')
       ]);
-      expect((sel1 as any).compare(sel2)).toBe(0);
+      expect(sel1.compare(sel2)).toBe(0);
     });
 
     test('out of order lists are equal', () => {
@@ -97,7 +127,7 @@ describe('Selector', () => {
         el('.foo')
       ]);
 
-      expect((list1 as any).compare(list2)).toBe(0);
+      expect(list1.compare(list2)).toBe(0);
     });
 
     test(':is() should match w/o :is()', () => {
@@ -137,8 +167,8 @@ describe('Selector', () => {
       // {}
       // :is() {} is reduced to {}
       // matches are exhausted, so the selectors are equal
-      expect((sel1 as any).compare(sel2)).toBe(0);
-      expect((sel1 as any).compare(sel3)).toBe(0);
+      expect(sel1.compare(sel2)).toBe(0);
+      expect(sel1.compare(sel3)).toBe(0);
       expect(sel2.compare(sel3)).toBe(0);
     });
 
@@ -176,7 +206,7 @@ describe('Selector', () => {
        *   4. If all linked lists are exhausted, the selectors are equal.
        */
 
-      expect((sel1 as any).compare(sel2)).toBe(0);
+      expect(sel1.compare(sel2)).toBe(0);
     });
   });
 });

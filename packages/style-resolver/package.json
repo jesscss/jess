@@ -5,13 +5,14 @@
     "access": "public"
   },
   "type": "module",
-  "main": "lib/index.js",
+  "main": "lib/index.cjs",
   "types": "lib/index.d.ts",
   "exports": {
     ".": {
-      "import": "./lib/index.js",
       "types": "./lib/index.d.ts",
-      "source": "./src/index.ts"
+      "source": "./src/index.ts",
+      "import": "./lib/index.js",
+      "require": "./lib/index.cjs"
     }
   },
   "files": [
@@ -19,12 +20,13 @@
   ],
   "scripts": {
     "build": "pnpm compile",
-    "compile": "tsc -p tsconfig.build.json",
+    "compile": "tsdown --tsconfig tsconfig.build.json && tsc -p tsconfig.build.json --emitDeclarationOnly",
     "test": "vitest --watch=false",
     "lint": "eslint '**/*.{js,ts}'"
   },
   "devDependencies": {
     "typescript": "~5.8.2",
     "vitest": "^4.1.0"
-  }
+  },
+  "module": "lib/index.js"
 }

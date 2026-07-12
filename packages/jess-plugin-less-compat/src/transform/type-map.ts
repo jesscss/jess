@@ -105,6 +105,6 @@ export function getLessTypeIndex(_jessType: string): number | undefined {
   // 2. Maintain our own mapping
   // 3. Set typeIndex dynamically when creating proxies
 
-  // For now, return undefined - will be set during proxy creation
+  // For now, return undefined - adapter instances attach this lazily.
   return undefined;
 }

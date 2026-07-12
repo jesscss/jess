@@ -1,4 +1,5 @@
 import type { JessRuleContext as RuleContext, TokenMap } from '../jessRecursiveParser.js';
+import type { IToken } from 'chevrotain';
 import {
   Any,
   Collection,
@@ -6,7 +7,6 @@ import {
   Rules,
   VarDeclaration
 } from '@jesscss/core';
-import type { IToken } from '@jesscss/parser';
 
 /** Use `any` for `this` to avoid structural incompatibility */
 type P = any;
@@ -165,7 +165,7 @@ export function main(this: P, T: TokenMap) {
     });
 
     const withComments = $.getRulesWithComments(rules, $.getLocationInfo($.LA(1)));
-    return $.wrap(withComments, true);
+    return withComments;
   };
 }
 
@@ -245,6 +245,6 @@ export function declarationList(this: P, T: TokenMap) {
     }
 
     const withComments = $.getRulesWithComments(rules, $.getLocationInfo($.LA(1)));
-    return $.wrap(withComments, true);
+    return withComments;
   };
 }

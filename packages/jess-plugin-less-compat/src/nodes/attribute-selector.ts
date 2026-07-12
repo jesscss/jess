@@ -5,12 +5,12 @@ import { toLessNode } from '../transform/to-less.js';
 export const transformAttributeSelectorToLess = createFromAdapter<AttributeSelector>({
   fields: {
     key: (a, cache) => {
-      const name = a.get('name');
+      const name = a.value.name;
       return name instanceof Node ? toLessNode(name, { cache }) : name;
     },
-    op: a => a.get('op') || '',
+    op: a => a.value.op || '',
     value: (a, cache) => {
-      const value = a.get('value');
+      const value = a.value.value;
       return value instanceof Node ? toLessNode(value, { cache }) : value;
     }
   },

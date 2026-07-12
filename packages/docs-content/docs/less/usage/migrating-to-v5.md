@@ -149,6 +149,37 @@ One possible collapsed output shape (`collapseNesting: true`):
 
 Migration tip: keep a focused fixture around `extend` + nested/media selectors and diff CSS output before rollout.
 
+### Variable resolution now follows source-order evaluation
+
+Less 4.x had a few eager-resolution edge cases where a later mixin call could appear to retroactively change an earlier declaration in the same ruleset. Less 5.x does not preserve that behavior.
+
+Declarations now resolve in source order against the scope that exists when the declaration is evaluated. A later mixin call can still leak variables into the current scope where Less semantics require it, but it does not rewrite an earlier declaration that has already been evaluated.
+
+Example:
+
+```less
+@mix: blue;
+
+.mixin() {
+  @mix: #989;
+}
+
+.tiny-scope {
+  color: @mix;
+  .mixin();
+}
+```
+
+Less 5.x compiles this to:
+
+```css
+.tiny-scope {
+  color: blue;
+}
+```
+
+This is a breaking change from older Less behavior, but it matches a more predictable evaluation model: later side effects do not retroactively change earlier sibling declarations.
+
 ### Safer JavaScript execution model
 
 One surprising behavior for some teams is that legacy Less workflows could execute JavaScript (including via `.js` imports). That became a real security concern in setups where front-end input was passed directly into a Less compiler.

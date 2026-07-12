@@ -16,7 +16,7 @@ import {
   decl,
   spaced,
   comment
-} from '../index.js';
+} from '..';
 import { Context } from '../../context.js';
 import { resolve } from 'node:path';
 import { createTestContext } from './import-style-test-helpers.js';
@@ -53,7 +53,7 @@ describe('Extend Roots Registry', () => {
       ]);
 
       const evald = await node.eval(context);
-      const css = evald.render(context);
+      const css = evald.toString();
       expect(css).toBeString(`
         .base,
         .child {
@@ -91,11 +91,7 @@ describe('Extend Roots Registry', () => {
 
       await node.eval(context);
 
-      // With EvalState, the extended selector is stored in eval state.
-      // valueOf(context) reads the state-patched selector.
-      expect(targetRuleset.valueOf(context)).toBe('.base,.ext');
-      // Canonical valueOf() still returns the original selector.
-      expect(targetRuleset.valueOf()).toBe('.base');
+      expect(targetRuleset.valueOf()).toBe('.base,.ext');
     });
   });
 
@@ -133,7 +129,7 @@ describe('Extend Roots Registry', () => {
       ]);
 
       const evald = await node.eval(context);
-      const css = evald.render(context);
+      const css = evald.toString();
       expect(css).toBeString(`
         .base,
         .child {
@@ -177,7 +173,7 @@ describe('Extend Roots Registry', () => {
       ]);
 
       const evald = await node.eval(context);
-      const css = evald.render(context);
+      const css = evald.toString();
       expect(css).toBeString(`
         .base,
         .child {
@@ -239,7 +235,7 @@ describe('Extend Roots Registry', () => {
       ]);
 
       const evald = await node.eval(context);
-      const css = evald.render(context);
+      const css = evald.toString();
       // Sibling compose roots cannot extend each other - .base should NOT be extended
       expect(css).toBeString(`
         .base2 {
@@ -451,7 +447,7 @@ describe('Extend Roots Registry', () => {
       ]);
 
       const evald = await node.eval(context);
-      const css = evald.render(context);
+      const css = evald.toString();
       // Should extend .base from main root and imported1.jess (import type), but NOT imported2.jess (compose type)
       expect(css).toBeString(`
         .base,
@@ -580,7 +576,7 @@ describe('Extend Roots Registry', () => {
       expect(evald).toBeDefined();
 
       // Root .base unchanged (no merge across @media). Extend only alters selectors; .child keeps only its own decls.
-      const css = evald.render(context);
+      const css = evald.toString();
       expect(css).toBeString(`
         .base {
           color: red;
@@ -625,7 +621,7 @@ describe('Extend Roots Registry', () => {
       const evald = await node.eval(context);
       expect(evald).toBeDefined();
 
-      const css = evald.render(context);
+      const css = evald.toString();
       expect(css).toBeString(`
         .base {
           color: red;
@@ -670,7 +666,7 @@ describe('Extend Roots Registry', () => {
       const evald = await node.eval(context);
       expect(evald).toBeDefined();
 
-      const css = evald.render(context);
+      const css = evald.toString();
       expect(css).toBeString(`
         .base {
           color: red;
@@ -712,7 +708,7 @@ describe('Extend Roots Registry', () => {
       ]);
 
       const evald = await node.eval(context);
-      const css = evald.render(context);
+      const css = evald.toString();
       expect(css).toBeString(`
         @media (min-width: 600px) {
           .base,
@@ -764,7 +760,7 @@ describe('Extend Roots Registry', () => {
       ]);
 
       const evald = await node.eval(context);
-      const css = evald.render(context);
+      const css = evald.toString();
       expect(css).toBeString(`
         @media (min-width: 600px) {
           @supports (display: grid) {
@@ -819,7 +815,7 @@ describe('Extend Roots Registry', () => {
       ]);
 
       const evald = await node.eval(context);
-      const css = evald.render(context);
+      const css = evald.toString();
       expect(css).toBeString(`
         @layer one {
           .base,
@@ -927,7 +923,7 @@ describe('Extend Roots Registry', () => {
       ]);
 
       const evald = await node.eval(context);
-      const css = evald.render(context);
+      const css = evald.toString();
       expect(css).toBeString(`
         @layer one {
           @layer two {
@@ -977,7 +973,7 @@ describe('Extend Roots Registry', () => {
       ]);
 
       const evald = await node.eval(context);
-      const css = evald.render(context);
+      const css = evald.toString();
       expect(css).toBeString(`
         .base,
         .child {
@@ -1028,7 +1024,7 @@ describe('Extend Roots Registry', () => {
       ]);
 
       const evald = await node.eval(context);
-      const css = evald.render(context);
+      const css = evald.toString();
       expect(css).toBeString(`
         .base,
         .child {

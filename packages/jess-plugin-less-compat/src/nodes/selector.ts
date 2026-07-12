@@ -8,9 +8,8 @@ import {
   Ampersand,
   Node
 } from '@jesscss/core';
-import { createLessProxy } from '../transform/proxy.js';
+import { createLessAdapter } from '../transform/less-adapter.js';
 import { toLessNode } from '../transform/to-less.js';
-import { createFromAdapter } from '../transform/adapter.js';
 import type { LessNode } from '../types.js';
 
 /**
@@ -21,13 +20,13 @@ import type { LessNode } from '../types.js';
  * the combinator attached to the following selector component.
  */
 function flattenSelectorToElements(
-  selector: Selector,
-  cache?: WeakMap<any, any>
+  selector: Selector | SelectorList,
+  cache?: WeakMap<Node, LessNode>
 ): LessNode[] {
   const elements: LessNode[] = [];
 
   if (selector instanceof SelectorList) {
-    const selectorListValue = selector.get('value');
+    const selectorListValue = selector.value;
     if (selectorListValue.length > 0 && selectorListValue[0]) {
       return flattenSelectorToElements(selectorListValue[0], cache);
     }
@@ -35,7 +34,7 @@ function flattenSelectorToElements(
   }
 
   if (selector instanceof ComplexSelector) {
-    const components = selector.get('value');
+    const components = selector.value;
     let nextCombinatorValue = '';
 
     for (let i = 0; i < components.length; i++) {
@@ -49,37 +48,37 @@ function flattenSelectorToElements(
       }
 
       if (component instanceof CompoundSelector) {
-        const compoundValue = component.get('value');
+        const compoundValue = component.value;
         for (let j = 0; j < compoundValue.length; j++) {
           const simple = compoundValue[j];
           if (!simple) {
             continue;
           }
           const elementCombinator = createLessCombinator(j === 0 ? nextCombinatorValue : '');
-          elements.push(createElementProxy(simple, elementCombinator, cache));
+          elements.push(createElementAdapter(simple, elementCombinator, cache));
         }
       } else if (component instanceof BasicSelector || component instanceof Ampersand) {
         const elementCombinator = createLessCombinator(nextCombinatorValue);
-        elements.push(createElementProxy(component, elementCombinator, cache));
+        elements.push(createElementAdapter(component, elementCombinator, cache));
       } else if (component instanceof Node) {
         const elementCombinator = createLessCombinator(nextCombinatorValue);
-        elements.push(createElementProxy(component, elementCombinator, cache));
+        elements.push(createElementAdapter(component, elementCombinator, cache));
       }
 
       nextCombinatorValue = '';
     }
   } else if (selector instanceof CompoundSelector) {
-    const compoundSelValue = selector.get('value');
+    const compoundSelValue = selector.value;
     for (let i = 0; i < compoundSelValue.length; i++) {
       const basic = compoundSelValue[i];
       if (!basic) {
         continue;
       }
       const combinator = createLessCombinator(i === 0 ? '' : '');
-      elements.push(createElementProxy(basic, combinator, cache));
+      elements.push(createElementAdapter(basic, combinator, cache));
     }
   } else if (selector instanceof BasicSelector || selector instanceof Ampersand) {
-    elements.push(createElementProxy(selector, createLessCombinator(''), cache));
+    elements.push(createElementAdapter(selector, createLessCombinator(''), cache));
   }
 
   return elements;
@@ -87,91 +86,77 @@ function flattenSelectorToElements(
 
 function createLessCombinator(value: string): LessNode {
   const base = new Combinator(' ');
-  return createLessProxy(base, undefined, (prop) => {
-    if (prop === 'type') {
-      return 'Combinator';
+  return createLessAdapter(base, {
+    lessType: 'Combinator',
+    fields: {
+      value: () => value,
+      emptyOrWhitespace: () => value === '' || value === ' '
     }
-    if (prop === 'value') {
-      return value;
-    }
-    if (prop === 'emptyOrWhitespace') {
-      return value === '' || value === ' ';
-    }
-    return undefined;
   });
 }
 
-function createElementProxy(
+function createElementAdapter(
   basic: Node,
   combinator: LessNode,
-  cache?: WeakMap<any, any>
+  cache?: WeakMap<Node, LessNode>
 ): LessNode {
-  // Create without sharing cache (avoids collision with any Selector proxy
-  // already cached for this BasicSelector). Then store the Element proxy in
-  // the shared cache so toLessNode returns it when the Jess walker visits
-  // this BasicSelector — matching the original code's caching behavior.
-  const proxy = createLessProxy(basic, undefined, (prop, target) => {
-    if (prop === 'type') {
-      return 'Element';
-    }
-    if (prop === 'combinator') {
-      return combinator;
-    }
-    if (prop === 'value') {
-      return 'value' in target ? target.value : undefined;
-    }
-    if (prop === 'isVariable') {
-      return false;
-    }
-    if (prop === 'accept') {
-      return function(visitor: { visit?: (n: unknown) => void }) {
-        if (combinator && visitor.visit) {
-          visitor.visit(combinator);
-        }
-        const value = 'value' in target ? target.value : undefined;
-        if (value && typeof value === 'object' && value instanceof Node) {
-          const lessValue = toLessNode(value, { cache });
-          if (lessValue && visitor.visit) {
-            visitor.visit(lessValue);
-          }
-        }
-        return target;
-      };
-    }
-    return undefined;
-  });
-  if (cache) {
-    cache.set(basic, proxy);
-  }
-  return proxy;
-}
-
-export const transformSelectorToLess = createFromAdapter<Selector | SelectorList>({
-  lessType: 'Selector',
-  fields: {
-    elements: (sel, cache) => flattenSelectorToElements(sel as Selector, cache),
-    length: (sel, cache) => flattenSelectorToElements(sel as Selector, cache).length
-  },
-  dynamicField: (prop, sel, cache) => {
-    if (typeof prop === 'string' && /^\d+$/.test(prop)) {
-      return flattenSelectorToElements(sel as Selector, cache)[parseInt(prop, 10)];
-    }
-    return undefined;
-  },
-  accept: (sel, visitor, cache) => {
-    const elements = flattenSelectorToElements(sel as Selector, cache);
-    for (const element of elements) {
-      if (element?.accept) {
-        element.accept(visitor);
-      } else if (element) {
-        const lessElement = toLessNode(element as any, { cache });
-        if (lessElement?.accept) {
-          lessElement.accept(visitor);
-        } else if (lessElement && visitor.visitArray) {
-          visitor.visitArray([lessElement]);
+  const adapter = createLessAdapter(basic, {
+    lessType: 'Element',
+    fields: {
+      combinator: () => combinator,
+      value: target => 'value' in target ? target.value : undefined,
+      isVariable: () => false
+    },
+    accept: (target, visitor: { visit?: (n: unknown) => void }) => {
+      if (combinator && visitor.visit) {
+        visitor.visit(combinator);
+      }
+      const value = 'value' in target ? target.value : undefined;
+      if (value && typeof value === 'object' && value instanceof Node) {
+        const lessValue = toLessNode(value, { cache });
+        if (lessValue && visitor.visit) {
+          visitor.visit(lessValue);
         }
       }
+      return target;
     }
-    return sel;
+  });
+  if (cache) {
+    cache.set(basic, adapter);
   }
-});
+  return adapter;
+}
+
+export function transformSelectorToLess(
+  sel: Selector | SelectorList,
+  cache?: WeakMap<Node, LessNode>
+): LessNode {
+  const elements = flattenSelectorToElements(sel, cache);
+  const adapter = createLessAdapter(sel, {
+    lessType: 'Selector',
+    fields: {
+      elements: () => elements,
+      length: () => elements.length
+    },
+    accept: (node, visitor) => {
+      for (const element of elements) {
+        if (element?.accept) {
+          element.accept(visitor);
+        } else if (element && visitor.visitArray) {
+          visitor.visitArray([element]);
+        }
+      }
+      return node;
+    }
+  }, cache);
+
+  for (let i = 0; i < elements.length; i++) {
+    Object.defineProperty(adapter as object, String(i), {
+      enumerable: true,
+      configurable: true,
+      get: () => elements[i]
+    });
+  }
+
+  return adapter;
+}

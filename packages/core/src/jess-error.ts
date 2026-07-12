@@ -1,9 +1,9 @@
 // errors.ts
 import path from 'node:path';
 import chalk from 'chalk';
-import { type IRecognitionException, type ILexingError, type ILexingResult } from '@chevrotain/types';
+import { type IRecognitionException, type ILexingError, type ILexingResult } from 'chevrotain';
 import type { TreeContext } from './context.js';
-import type { OptionalLocation } from './tree/node.js';
+import type { LocationInfo } from './tree/node.js';
 import type { Deprecation } from './deprecation.js';
 
 type JessFile = TreeContext['file'];
@@ -11,8 +11,8 @@ type JessFile = TreeContext['file'];
 /** Minimal shape for passing context and a node to helpers. */
 export type TreeContextLike = { file: JessFile };
 
-/** Node type carrying a `location` (full span, empty tuple, or unset). */
-export type LocNode = { location?: OptionalLocation };
+/** Node type carrying a `location` tuple. */
+export type LocNode = { location?: LocationInfo };
 
 type Phase = 'parse' | 'resolve' | 'import' | 'eval' | 'extend' | 'plugin';
 type Severity = 'error' | 'warn';
@@ -131,7 +131,6 @@ export type JessErrorInit = {
  */
 type Template = { summary: string; reason: string; fix: string };
 
-/* eslint-disable @typescript-eslint/naming-convention */
 const TEMPLATES = {
   // Parse/Lex
   'parse/unexpected-token': {
@@ -218,11 +217,13 @@ const TEMPLATES = {
     summary: 'Duplicate selector',
     reason: 'Selector "${selector}" is defined multiple times.',
     fix: 'Consolidate rules or remove the duplicate.'
+  },
+  'selector/parentless-ampersand': {
+    summary: 'Parentless ampersand ignored',
+    reason: 'Selector "${selector}" uses "&" without an available parent selector in this context.',
+    fix: 'Move the selector under a real parent selector, or remove the stray "&".'
   }
 } satisfies Record<string, Template>;
-/* eslint-enable @typescript-eslint/naming-convention */
-
-export type JessErrorCode = keyof typeof TEMPLATES;
 
 /**
  * Replaces `${key}` with values from `meta`. Unset keys render as `<key>`.
@@ -440,24 +441,6 @@ export class JessError extends Error {
     this.lexerErrors = init.lexerErrors;
   }
 
-  /** Lightweight JSON for serializers (e.g. Vitest). Strips heavy Chevrotain token trees and full source. */
-  toJSON() {
-    return {
-      severity: this.severity,
-      code: this.code,
-      phase: this.phase,
-      fileObj: this.fileObj
-        ? { name: this.fileObj.name, path: this.fileObj.path, fullPath: this.fileObj.fullPath }
-        : undefined,
-      filePath: this.filePath,
-      reason: this.reason,
-      fix: this.fix,
-      note: this.note,
-      errors: this.errors?.map(e => ({ message: e.message, stack: e.stack })),
-      lexerErrors: this.lexerErrors?.map(e => ({ message: e.message, line: e.line, column: e.column }))
-    };
-  }
-
   /** Pretty, clickable string for terminal/Problems panel. */
   override toString(): string {
     const abs = this.fileObj?.fullPath ?? this.filePath;
@@ -635,6 +618,10 @@ export const WARN = {
     return makeJessError({ severity: 'warn', code: 'selector/duplicate', phase: 'extend', ...args });
   },
 
+  parentlessAmpersand(args: Common & { meta: { selector: string } }) {
+    return makeJessError({ severity: 'warn', code: 'selector/parentless-ampersand', phase: 'eval', ...args });
+  },
+
   extendNotFound(args: Common & { meta: { target: string } }) {
     return makeJessError({ severity: 'warn', code: 'extend/not-found', phase: 'extend', ...args });
   },
@@ -670,26 +657,28 @@ export function getErrorFromParser(
     return new JessError({ code: 'parse/syntax-error', phase: 'parse', filePath, source, ctx });
   }
 
-  const isLex = !('token' in error);
+  const isLex =
+    (error as any).name === 'LexerError'
+    || ('token' in error && (error as any).lexer);
 
   const line =
     'token' in error
-      ? error.token?.startLine
-      : error.line;
+      ? error.token?.startLine ?? (error as any).line
+      : (error as any).line;
 
   const column =
     'token' in error
-      ? error.token?.startColumn
-      : error.column;
+      ? error.token?.startColumn ?? (error as any).column
+      : (error as any).column;
 
-  const message = error.message || '';
+  const message = (error as any).message || '';
 
   let code: keyof typeof TEMPLATES = 'parse/syntax-error';
   let meta: Record<string, unknown> = {};
 
   if (isLex) {
     code = 'parse/unexpected-token';
-    meta = { token: ('char' in error ? String(error.char) : undefined) ?? '/' };
+    meta = { token: (error as any).char ?? '/' };
   } else if (/unterminated|string not closed/i.test(message)) {
     code = 'parse/unterminated-string';
   } else if (/expecting/i.test(message)) {

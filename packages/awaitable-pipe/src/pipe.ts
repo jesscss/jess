@@ -11,16 +11,6 @@ type Apply<In, F> =
       ? Promise<Awaited<RetOf<F>>>
       : RetOf<F>;
 
-type ValidChain<In, Fns extends readonly AnyFn[]> =
-  Fns extends []
-    ? Fns
-    : Fns extends [infer F, ...infer Rest]
-      ? F extends AnyFn
-        ? (any extends ParamOf<F>
-            ? [F, ...ValidChain<Apply<In, F>, Extract<Rest, readonly AnyFn[]>>]
-            : never)
-        : never
-      : never;
 // Note: we intentionally do not hard-enforce chain validity at the type level to avoid
 // over-constraining overload resolution across diverse call-forms. We still propagate
 // types step-to-step via Apply.
@@ -31,7 +21,11 @@ type PipeResult<In, Fns extends any[], Acc = In> =
 
 import { isThenable } from './utils.js';
 
-function runAsync(v: any, fns: AnyFn[], startIndex: number): Promise<any> {
+function isAnyFn(value: unknown): value is AnyFn {
+  return typeof value === 'function';
+}
+
+function runAsync(v: unknown, fns: AnyFn[], startIndex: number): Promise<unknown> {
   let p = Promise.resolve(v);
   for (let i = startIndex; i < fns.length; i++) {
     const fn = fns[i]!;
@@ -112,40 +106,43 @@ export function pipe<A>(
   ...fns: Array<(a: A) => A | Promise<A>>
 ): A | Promise<A>;
 // Note: Intentionally omitting generic varargs overloads to improve contextual typing
-export function pipe(...args: any[]): any {
-  let input: any;
+export function pipe(...args: unknown[]): unknown {
+  let input: unknown;
   let fns: AnyFn[];
   if (args.length === 0) {
-    return undefined as any;
+    return undefined;
   }
 
   const first = args[0];
   const second = args[1];
-  const rest = args.slice(1) as AnyFn[];
-  const stepsOnly = typeof first === 'function' && typeof second === 'function';
+  const rest = args.slice(1);
+  const stepsOnly = isAnyFn(first) && isAnyFn(second);
   if (stepsOnly) {
     input = undefined;
-    fns = (args as unknown[]) as AnyFn[];
+    fns = args.filter(isAnyFn);
   } else if (args.length > 1) {
-    input = typeof first === 'function' ? (first as any)() : first;
-    fns = rest;
+    input = isAnyFn(first) ? first(undefined) : first;
+    fns = rest.filter(isAnyFn);
   } else {
     input = undefined;
-    fns = [first as AnyFn];
+    if (!isAnyFn(first)) {
+      return first;
+    }
+    fns = [first];
   }
 
   if (isThenable(input)) {
-    return runAsync(input, fns, 0) as any;
+    return runAsync(input, fns, 0);
   }
   for (let i = 0; i < fns.length; i++) {
     const fn = fns[i]!;
     const out = fn(input);
     if (isThenable(out)) {
-      return runAsync(out, fns, i + 1) as any;
+      return runAsync(out, fns, i + 1);
     }
     input = out;
   }
-  return input as any;
+  return input;
 }
 
 export type SafePipeOptions<R = unknown> = {
@@ -153,17 +150,17 @@ export type SafePipeOptions<R = unknown> = {
   fallback?: R | (() => R);
 };
 
-type RequireAtLeastOne<T, Keys extends keyof T = keyof T> =
-  Pick<T, Exclude<keyof T, Keys>> & {
-    [K in Keys]-?: Required<Pick<T, K>> & Partial<Pick<T, Exclude<Keys, K>>>
-  }[Keys];
-type NonEmptyOptions<R> = RequireAtLeastOne<SafePipeOptions<R>, 'onError' | 'fallback'>;
-
-function resolveFallback<R>(fb: SafePipeOptions<R>['fallback']): R | undefined {
-  return typeof fb === 'function' ? (fb as () => R)() : fb;
+function isFallbackFactory<R>(
+  fallback: SafePipeOptions<R>['fallback']
+): fallback is () => R {
+  return typeof fallback === 'function';
 }
 
-function runAsyncSafe<R>(v: any, fns: AnyFn[], startIndex: number, opts: SafePipeOptions<R>): Promise<R | undefined> {
+function resolveFallback<R>(fb: SafePipeOptions<R>['fallback']): R | undefined {
+  return isFallbackFactory(fb) ? fb() : fb;
+}
+
+function runAsyncSafe<R>(v: unknown, fns: AnyFn[], startIndex: number, opts: SafePipeOptions<R>): Promise<R | undefined> {
   const { onError, fallback } = opts;
   const callOnError = (e: unknown) => {
     try {
@@ -172,7 +169,7 @@ function runAsyncSafe<R>(v: any, fns: AnyFn[], startIndex: number, opts: SafePip
       // Swallow errors from onError to keep guarantees: never throw
     }
   };
-  let p: Promise<any> = Promise.resolve(v);
+  let p: Promise<unknown> = Promise.resolve(v);
   for (let i = startIndex; i < fns.length; i++) {
     const fn = fns[i]!;
     p = p.then(
@@ -245,26 +242,26 @@ export function safePipe<A, R1, R2, R3, R4, R5>(
   fn5: (d: Unwrap<R3>) => R4,
   fn6: (e: Unwrap<R4>) => R5
 ): PipeResult<undefined, [() => A, (a: A) => R1, (b: Unwrap<R1>) => R2, (c: Unwrap<R2>) => R3, (d: Unwrap<R3>) => R4, (e: Unwrap<R4>) => R5]> extends Promise<any> ? Promise<R5 | undefined> : R5 | undefined;
-export function safePipe(...args: any[]): any {
-  let input: any;
-  let options: SafePipeOptions<any>;
+export function safePipe(...args: unknown[]): unknown {
+  let input: unknown;
+  let options: SafePipeOptions<unknown>;
   let fns: AnyFn[];
 
   if (args.length === 0) {
-    return undefined as any;
+    return undefined;
   }
 
   const first = args[0];
   const second = args[1];
-  const looksLikeOptions = (x: unknown): x is SafePipeOptions<any> => !!x && typeof x === 'object' && !Array.isArray(x);
+  const looksLikeOptions = (x: unknown): x is SafePipeOptions<unknown> => !!x && typeof x === 'object' && !Array.isArray(x);
   if (args.length === 1 && !!first && typeof first === 'object') {
-    return undefined as any;
+    return undefined;
   }
-  const bothFns = typeof first === 'function' && typeof second === 'function';
+  const bothFns = isAnyFn(first) && isAnyFn(second);
   if (looksLikeOptions(first) || bothFns) {
     input = undefined;
-    options = looksLikeOptions(first) ? (first as SafePipeOptions<any>) : {};
-    fns = (looksLikeOptions(first) ? args.slice(1) : args) as AnyFn[];
+    options = looksLikeOptions(first) ? first : {};
+    fns = (looksLikeOptions(first) ? args.slice(1) : args).filter(isAnyFn);
   } else {
     throw new TypeError('safePipe requires steps-only or options-first with steps');
   }
@@ -276,15 +273,15 @@ export function safePipe(...args: any[]): any {
     try {
       const out = fn(input);
       if (isThenable(out)) {
-        return runAsyncSafe(out, fns, i + 1, options) as any;
+        return runAsyncSafe(out, fns, i + 1, options);
       }
       input = out;
     } catch (e) {
       try {
         options?.onError?.(e);
       } catch {}
-      return resolveFallback(options?.fallback) as any;
+      return resolveFallback(options?.fallback);
     }
   }
-  return input as any;
+  return input;
 }

@@ -202,7 +202,7 @@ export function desugarMapLookup(
   parser: ScssRecursiveParser,
   call: Call
 ): Node {
-  const name = call.name;
+  const { name, args: argsList } = call.value;
   if (typeof name !== 'string') {
     return call;
   }
@@ -210,7 +210,6 @@ export function desugarMapLookup(
     return call;
   }
 
-  const argsList = call.args;
   const args = isNode(argsList, N.List) ? (argsList as List).value : [];
   if (args.length < 2) {
     return call;
@@ -270,7 +269,7 @@ export function makeNamespacedReference(
 }
 
 export function desugarNamespacedCall(parser: ScssRecursiveParser, call: Call): Call {
-  const name = call.name;
+  const { name, args } = call.value;
   if (typeof name !== 'string') {
     return call;
   }
@@ -288,7 +287,7 @@ export function desugarNamespacedCall(parser: ScssRecursiveParser, call: Call): 
   const location = Array.isArray(call.location) && call.location.length === 6
     ? call.location
     : undefined;
-  return new Call({ name: ref, args: call.args }, call.options, location, parser.context);
+  return new Call({ name: ref, args }, call.options, location, parser.context);
 }
 
 export function looksLikeMapLiteral(parser: ScssRecursiveParser, T: ScssTokenMap): boolean {

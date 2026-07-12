@@ -1,6 +1,5 @@
-import { any, nil, num, ref, rules, seq, vardecl } from '../index.js';
+import { any, num, ref, rules, seq, type Rules as RulesClass, vardecl } from '../index.js';
 import { Context } from '../../context.js';
-import { setField } from '../util/field-helpers.js';
 
 /**
  * @todo - sequences need to make sure that the result could be re-parsed
@@ -8,6 +7,68 @@ import { setField } from '../util/field-helpers.js';
  *         check that the result is spaced correctly.
  */
 describe('Sequence', () => {
+  let context: Context;
+
+  beforeEach(() => {
+    context = new Context();
+  });
+
+  it('renders sequence syntax through toTrimmedString()', () => {
+    const rule = seq([num(10), num(20), num(30)]);
+
+    expect(rule.toTrimmedString()).toBe('10 20 30');
+  });
+
+  it('does not allocate options when resolving a default single-item sequence', async () => {
+    const rule = seq([num(10)]);
+
+    const resolved = await rule.resolve(context);
+
+    expect(`${resolved}`).toBe('10');
+    expect(Object.getOwnPropertyDescriptor(rule, '_options')?.value).toBeUndefined();
+  });
+
+  it('renders resolved sequence values through render(context)', async () => {
+    const node = rules([
+      vardecl({
+        name: any('mid'),
+        value: num(20)
+      })
+    ]);
+    const evald = await node.eval(context);
+    context.root = evald as RulesClass;
+    context.rulesContext = evald as RulesClass;
+
+    const rendered = seq([
+      num(10),
+      ref({ key: 'mid' }, { type: 'variable' }),
+      num(30)
+    ]).render(context);
+
+    expect(rendered).toBe('10 20 30');
+  });
+
+  it('resolves sequence values without touching render state', async () => {
+    const node = rules([
+      vardecl({
+        name: any('mid'),
+        value: num(20)
+      })
+    ]);
+    const evald = await node.eval(context);
+    context.root = evald as RulesClass;
+    context.rulesContext = evald as RulesClass;
+
+    const resolved = await seq([
+      num(10),
+      ref({ key: 'mid' }, { type: 'variable' }),
+      num(30)
+    ]).resolve(context);
+
+    expect(`${resolved}`).toBe('10 20 30');
+    expect(context.printState.writer).toBeUndefined();
+  });
+
   it('should serialize to a single value', () => {
     let rule = seq([num(10), num(20), num(30)]);
     expect(`${rule}`).toBe('10 20 30');
@@ -19,131 +80,7 @@ describe('Sequence', () => {
     const third = num(30);
     second.pre = 0;
     const rule = seq([first, second, third]);
+    expect(rule.toTrimmedString()).toBe('1020 30');
     expect(`${rule}`).toBe('1020 30');
-  });
-
-  it('renders a state-patched value without mutating the canonical array', () => {
-    const context = new Context();
-    const rule = seq([num(10), num(20)]);
-
-    setField(rule, 'value', [num(30), num(40)], context);
-
-    expect(rule.toTrimmedString({ context })).toBe('30 40');
-    expect(rule.toTrimmedString()).toBe('10 20');
-    expect(rule.get('value').map(node => node.toTrimmedString())).toEqual(['10', '20']);
-  });
-
-  it('preserves a state-patched value across the pre-eval clone boundary', async () => {
-    const context = new Context();
-    const rule = seq([num(10), num(20)]);
-
-    setField(rule, 'value', [num(30), num(40)], context);
-
-    const evald = await rule.eval(context);
-
-    expect(evald.toTrimmedString({ context })).toBe('30 40');
-    expect(rule.toTrimmedString()).toBe('10 20');
-    expect(rule.get('value').map(node => node.toTrimmedString())).toEqual(['10', '20']);
-  });
-
-  it('keeps eval-time value writes state-local in patching', async () => {
-    const context = new Context();
-    const rule = seq([num(10), nil(), num(20)]);
-
-    const evald = await rule.eval(context);
-
-    expect(evald.toTrimmedString({ context })).toBe('10 20');
-    expect(rule.get('value')).toHaveLength(3);
-    expect(rule.get('value')[1]?.type).toBe('Nil');
-    expect(rule.get('value').map(node => node.type)).toEqual(['Num', 'Nil', 'Num']);
-  });
-
-  it('eval respects a state-patched preserveWhitespace option without mutating canonical collapse behavior', async () => {
-    const context = new Context();
-    const node = seq([ref({ key: 'value' }, { type: 'variable' })]);
-    const root = rules([
-      vardecl({ name: 'value', value: any('10') })
-    ]);
-    context.root = root;
-    context.rulesContext = root;
-
-    setField(node, 'options', { preserveWhitespace: true }, context);
-
-    const evald = await node.eval(context);
-
-    expect(evald).toBe(node);
-    expect(evald.toTrimmedString({ context })).toBe('10');
-    expect(node.options?.preserveWhitespace).toBeUndefined();
-    const canonicalContext = new Context();
-    canonicalContext.root = root;
-    canonicalContext.rulesContext = root;
-    const canonicalEvald = await node.eval(canonicalContext);
-    expect(canonicalEvald.type).toBe('Any');
-  });
-
-  it('compares against state-patched values when called with context', () => {
-    const context = new Context();
-    const left = seq([num(10), num(20)]);
-    const right = seq([num(30), num(40)]);
-
-    setField(left, 'value', [num(30), num(40)], context);
-
-    expect(left.compare(right, context)).toBe(0);
-  });
-
-  it('keeps contextless compare canonical when state patches exist', () => {
-    const context = new Context();
-    const left = seq([num(10), num(20)]);
-    const right = seq([num(30), num(40)]);
-
-    setField(left, 'value', [num(30), num(40)], context);
-
-    expect(left.compare(right)).toBe(-1);
-    expect(left.compare(right, context)).toBe(0);
-  });
-
-  it('passes context through nested sequence comparisons', () => {
-    const context = new Context();
-    const innerLeft = seq([num(10), num(20)]);
-    const innerRight = seq([num(30), num(40)]);
-    const left = seq([innerLeft]);
-    const right = seq([innerRight]);
-
-    setField(innerLeft, 'value', [num(30), num(40)], context);
-
-    expect(left.compare(right)).toBe(-1);
-    expect(left.compare(right, context)).toBe(0);
-  });
-
-  it('keeps length canonical when state patches exist', () => {
-    const context = new Context();
-    const node = seq([num(10), num(20)]);
-
-    setField(node, 'value', [num(30)], context);
-
-    expect(node.length).toBe(2);
-    expect(node.toTrimmedString({ context })).toBe('30');
-  });
-
-  it('keeps length canonical across competing eval states on the same node', () => {
-    const node = seq([num(10), num(20)]);
-    const leftContext = new Context();
-    const rightContext = new Context();
-    setField(node, 'value', [num(30)], leftContext);
-    setField(node, 'value', [num(40), num(50), num(60)], rightContext);
-
-    expect(node.length).toBe(2);
-    expect(node.toTrimmedString({ context: leftContext })).toBe('30');
-    expect(node.toTrimmedString({ context: rightContext })).toBe('40 50 60');
-  });
-
-  it('keeps inherited contextless valueOf canonical when state patches exist', () => {
-    const context = new Context();
-    const node = seq([num(10), num(20)]);
-
-    setField(node, 'value', [num(30)], context);
-
-    expect(node.valueOf()).toBe('1020');
-    expect(node.toTrimmedString({ context })).toBe('30');
   });
 });

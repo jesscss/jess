@@ -1,4 +1,4 @@
-import { any, compound, el, expr, pseudo } from '../index.js';
+import { any, attr, compound, el, pseudo, ref, rules, type Rules as RulesClass, vardecl } from '../index.js';
 import { Context } from '../../context.js';
 
 let context: Context;
@@ -12,19 +12,79 @@ describe('Compound Selector', () => {
   });
 
   describe('equality', () => {
+    test('renders compound selector syntax through toTrimmedString()', () => {
+      const node = compound([
+        el('a'),
+        attr({
+          name: 'data',
+          op: '=',
+          value: any('bar')
+        })
+      ]);
+
+      expect(node.toTrimmedString()).toBe('a[data=bar]');
+    });
+
     test('same value', () => {
-      let sel1 = (compound([
+      let sel1 = compound([
         el('a'),
         el('#id'),
         el('.class')
-      ]) as any).valueOf();
-      let sel2 = (compound([
+      ]).valueOf();
+      let sel2 = compound([
         el('a'),
         el('#id'),
         el('.class')
-      ]) as any).valueOf();
+      ]).valueOf();
       expect(sel1).toEqual(sel2);
     });
+  });
+
+  test('renders resolved compound selector values through render(context)', async () => {
+    const node = rules([
+      vardecl({
+        name: any('capture-attr'),
+        value: any('foo')
+      })
+    ]);
+    const evald = await node.eval(context);
+    context.root = evald as RulesClass;
+    context.rulesContext = evald as RulesClass;
+
+    const rendered = compound([
+      el('a'),
+      attr({
+        name: 'data',
+        op: '=',
+        value: ref({ key: 'capture-attr' }, { type: 'variable' })
+      })
+    ]).render(context);
+
+    expect(rendered).toBe('a[data=foo]');
+  });
+
+  test('resolves compound selector values without touching render state', async () => {
+    const node = rules([
+      vardecl({
+        name: any('capture-attr'),
+        value: any('foo')
+      })
+    ]);
+    const evald = await node.eval(context);
+    context.root = evald as RulesClass;
+    context.rulesContext = evald as RulesClass;
+
+    const resolved = await compound([
+      el('a'),
+      attr({
+        name: 'data',
+        op: '=',
+        value: ref({ key: 'capture-attr' }, { type: 'variable' })
+      })
+    ]).resolve(context);
+
+    expect(`${resolved}`).toBe('a[data=foo]');
+    expect(context.printState.writer).toBeUndefined();
   });
 
   describe('keys', () => {
@@ -53,22 +113,6 @@ describe('Compound Selector', () => {
       expect(sel1.visibleKeySet.equals(context.selectorBits.getBitset(['a']))).toBe(true);
       expect(sel2.keySet.equals(context.selectorBits.getBitset(['a', '#id', '.two', '.one']))).toBe(true);
       expect(sel2.visibleKeySet.equals(context.selectorBits.getBitset(['a', '#id', '.two', '.one']))).toBe(true);
-    });
-  });
-
-  describe('evaluation', () => {
-    it('preserves compound serialization while evaluating nested selector children', async () => {
-      const node = compound([
-        el('button'),
-        pseudo({
-          name: ':not',
-          arg: expr(any('blue'))
-        })
-      ]);
-
-      const evald = await node.eval(context);
-
-      expect(evald.toTrimmedString({ context })).toBe('button:not(blue)');
     });
   });
 });

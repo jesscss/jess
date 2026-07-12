@@ -1,4 +1,4 @@
-import { el, compound, sel } from '..';
+import { el, compound, sel } from '../index.js';
 import { Context } from '../../context.js';
 
 let context: Context;
@@ -23,6 +23,23 @@ describe('BasicSelector', () => {
   it('should identify a tag with escapes', () => {
     let rule = el('\\.foo');
     expect(rule.isTag).toBe(true);
+  });
+
+  it('renders selector syntax through toTrimmedString()', () => {
+    expect(el('.foo').toTrimmedString()).toBe('.foo');
+    expect(el('#id').toTrimmedString()).toBe('#id');
+  });
+
+  it('renders selectors through render(context)', () => {
+    expect(el('.foo').render(context)).toBe('.foo');
+    expect(el('#id').render(context)).toBe('#id');
+  });
+
+  it('resolves selectors without touching render state', async () => {
+    const resolved = await el('.foo').resolve(context);
+
+    expect(resolved.toTrimmedString()).toBe('.foo');
+    expect(context.printState.writer).toBeUndefined();
   });
 
   test('keys', () => {

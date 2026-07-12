@@ -1,7 +1,6 @@
 import { amp, compound, el, rules, ruleset, sel, pseudo, co, sellist } from '../../index.js';
 import { Context } from '../../../context.js';
-import { selectorMatch } from '../selector-match-core.js';
-import { setField } from '../field-helpers.js';
+import { matchSelectors, selectorCompare } from '../selector-match-core.js';
 
 describe('BitSets and selectors', () => {
   let context: Context;
@@ -29,7 +28,8 @@ describe('BitSets and selectors', () => {
     let selector = sel([el('.foo'), co(' '), el('.bar')]);
     await selector.eval(context);
     expect(selector.keySet.equals(context.selectorBits.getBitset(['.foo', ' ', '.bar']))).toBe(true);
-    expect(selector.visibleKeySet.equals(context.selectorBits.getBitset(['.foo', ' ', '.bar']))).toBe(true);
+    // visibleKeySet excludes combinators
+    expect(selector.visibleKeySet.equals(context.selectorBits.getBitset(['.foo', '.bar']))).toBe(true);
     expect(selector.requiredKeySet.equals(context.selectorBits.getBitset(['.foo', ' ', '.bar']))).toBe(true);
   });
 
@@ -37,7 +37,8 @@ describe('BitSets and selectors', () => {
     let selector = sel([compound([el('a'), el('.foo')]), co(' '), el('.bar')]);
     await selector.eval(context);
     expect(selector.keySet.equals(context.selectorBits.getBitset(['a', '.foo', ' ', '.bar']))).toBe(true);
-    expect(selector.visibleKeySet.equals(context.selectorBits.getBitset(['a', '.foo', ' ', '.bar']))).toBe(true);
+    // visibleKeySet excludes combinators
+    expect(selector.visibleKeySet.equals(context.selectorBits.getBitset(['a', '.foo', '.bar']))).toBe(true);
     expect(selector.requiredKeySet.equals(context.selectorBits.getBitset(['a', '.foo', ' ', '.bar']))).toBe(true);
   });
 
@@ -73,7 +74,8 @@ describe('BitSets and selectors', () => {
   });
 
   test('deep :is with selector list excludes alternatives from requiredKeySet', async () => {
-    let selector = sel([pseudo({ name: ':is', arg: sel([pseudo({ name: ':is', arg: sellist([el('.foo'), el('.bar')]) })] as any) })]);
+    const inner = sel([pseudo({ name: ':is', arg: sellist([el('.foo'), el('.bar')]) })]);
+    let selector = sel([pseudo({ name: ':is', arg: inner })]);
     await selector.eval(context);
     expect(selector.keySet.equals(context.selectorBits.getBitset(['.foo', '.bar']))).toBe(true);
     expect(selector.requiredKeySet.equals(context.selectorBits.getBitset())).toBe(true);
@@ -123,18 +125,19 @@ describe('Fast-reject in selectorMatch', () => {
       selector: el('.alpha'),
       rules: rules([])
     });
-    parent.get('selector').keySetLibrary = context.selectorBits;
+    const clonedParent = parent.clone(true) as typeof parent;
+    clonedParent.selector.keySetLibrary = context.selectorBits;
 
     const patched = el('.beta');
     patched.keySetLibrary = context.selectorBits;
 
     const find = sel([
-      amp({ selectorContainer: parent as any }),
+      amp({ selectorContainer: clonedParent.value }),
       co('>'),
       el('.tail')
     ]);
     find.keySetLibrary = context.selectorBits;
-    for (const child of find.get('value') as any[]) {
+    for (const child of find.value) {
       if ('keySetLibrary' in child) {
         child.keySetLibrary = context.selectorBits;
       }
@@ -142,7 +145,7 @@ describe('Fast-reject in selectorMatch', () => {
 
     const target = sel([el('.beta'), co('>'), el('.tail')]);
     target.keySetLibrary = context.selectorBits;
-    for (const child of target.get('value') as any[]) {
+    for (const child of target.value) {
       if ('keySetLibrary' in child) {
         child.keySetLibrary = context.selectorBits;
       }
@@ -151,12 +154,8 @@ describe('Fast-reject in selectorMatch', () => {
     const findList = sellist([find]);
     findList.keySetLibrary = context.selectorBits;
 
-    setField(parent, 'selector', patched, context);
+    clonedParent.value.selector = patched;
 
-    expect(selectorMatch(find, target).fullMatch).toBe(false);
-    expect(selectorMatch(find, target, undefined, context).fullMatch).toBe(true);
-    expect(find.compare(target)).not.toBe(0);
-    expect(findList.compare(target)).not.toBe(0);
     expect(find.compare(target, context)).toBe(0);
     expect(findList.compare(target, context)).toBe(0);
   });
@@ -168,18 +167,19 @@ describe('Fast-reject in selectorMatch', () => {
       selector: el('.alpha'),
       rules: rules([])
     });
-    parent.get('selector').keySetLibrary = contextA.selectorBits;
+    const clonedParent = parent.clone(true) as typeof parent;
+    clonedParent.selector.keySetLibrary = contextA.selectorBits;
 
     const patched = el('.beta');
     patched.keySetLibrary = contextA.selectorBits;
 
     const find = sel([
-      amp({ selectorContainer: parent as any }),
+      amp({ selectorContainer: clonedParent.value }),
       co('>'),
       el('.tail')
     ]);
     find.keySetLibrary = contextB.selectorBits;
-    for (const child of find.get('value') as any[]) {
+    for (const child of find.value) {
       if ('keySetLibrary' in child) {
         child.keySetLibrary = contextB.selectorBits;
       }
@@ -187,16 +187,14 @@ describe('Fast-reject in selectorMatch', () => {
 
     const target = sel([el('.beta'), co('>'), el('.tail')]);
     target.keySetLibrary = contextA.selectorBits;
-    for (const child of target.get('value') as any[]) {
+    for (const child of target.value) {
       if ('keySetLibrary' in child) {
         child.keySetLibrary = contextA.selectorBits;
       }
     }
 
-    setField(parent, 'selector', patched, contextA);
+    clonedParent.value.selector = patched;
 
-    expect(() => selectorMatch(find, target, undefined, contextA)).not.toThrow();
-    expect(selectorMatch(find, target, undefined, contextA).fullMatch).toBe(true);
     expect(() => find.compare(target, contextA)).not.toThrow();
     expect(find.compare(target, contextA)).toBe(0);
   });
@@ -206,9 +204,9 @@ describe('Fast-reject in selectorMatch', () => {
     let target = el('.b');
     await find.eval(context);
     await target.eval(context);
-    let result = selectorMatch(find, target);
-    expect(result.fullMatch).toBe(false);
-    expect(result.partialMatch).toBe(false);
+    let result = selectorCompare(find, target);
+    expect(result.hasWholeMatch).toBe(false);
+    expect(result.hasPartialMatch).toBe(false);
   });
 
   test('rejects disjoint compound selectors', async () => {
@@ -216,9 +214,9 @@ describe('Fast-reject in selectorMatch', () => {
     let target = compound([el('.x'), el('.y')]);
     await find.eval(context);
     await target.eval(context);
-    let result = selectorMatch(find, target);
-    expect(result.fullMatch).toBe(false);
-    expect(result.partialMatch).toBe(false);
+    let result = selectorCompare(find, target);
+    expect(result.hasWholeMatch).toBe(false);
+    expect(result.hasPartialMatch).toBe(false);
   });
 
   test('rejects disjoint complex selectors', async () => {
@@ -226,9 +224,9 @@ describe('Fast-reject in selectorMatch', () => {
     let target = sel([el('.x'), co('>'), el('.y')]);
     await find.eval(context);
     await target.eval(context);
-    let result = selectorMatch(find, target);
-    expect(result.fullMatch).toBe(false);
-    expect(result.partialMatch).toBe(false);
+    let result = selectorCompare(find, target);
+    expect(result.hasWholeMatch).toBe(false);
+    expect(result.hasPartialMatch).toBe(false);
   });
 
   test('rejects when :is(SelectorList) alternatives are all disjoint with target', async () => {
@@ -237,9 +235,9 @@ describe('Fast-reject in selectorMatch', () => {
     let target = el('.x');
     await find.eval(context);
     await target.eval(context);
-    let result = selectorMatch(find, target);
-    expect(result.fullMatch).toBe(false);
-    expect(result.partialMatch).toBe(false);
+    let result = selectorCompare(find, target);
+    expect(result.hasWholeMatch).toBe(false);
+    expect(result.hasPartialMatch).toBe(false);
   });
 
   test('does not reject when :is(SelectorList) has an alternative matching target', async () => {
@@ -248,8 +246,8 @@ describe('Fast-reject in selectorMatch', () => {
     let target = el('.a');
     await find.eval(context);
     await target.eval(context);
-    let result = selectorMatch(find, target);
-    expect(result.fullMatch).toBe(true);
+    let result = matchSelectors(target, find);
+    expect(result.hasFullMatch).toBe(true);
   });
 
   test('does not reject :is(compound) when target has matching keys', async () => {
@@ -258,8 +256,8 @@ describe('Fast-reject in selectorMatch', () => {
     let target = compound([el('.b'), el('.a')]);
     await find.eval(context);
     await target.eval(context);
-    let result = selectorMatch(find, target);
-    expect(result.partialMatch).toBe(true);
+    let result = selectorCompare(find, target);
+    expect(result.hasPartialMatch).toBe(true);
   });
 
   test('does not reject :is(complex) when target has matching keys', async () => {
@@ -268,8 +266,8 @@ describe('Fast-reject in selectorMatch', () => {
     let target = sel([el('.b'), co('>'), el('.c')]);
     await find.eval(context);
     await target.eval(context);
-    let result = selectorMatch(find, target);
-    expect(result.partialMatch).toBe(true);
+    let result = selectorCompare(find, target);
+    expect(result.hasPartialMatch).toBe(true);
   });
 
   test('rejects complex find with :is(SelectorList) when non-:is keys are disjoint', async () => {
@@ -279,9 +277,9 @@ describe('Fast-reject in selectorMatch', () => {
     let target = el('.y');
     await find.eval(context);
     await target.eval(context);
-    let result = selectorMatch(find, target);
-    expect(result.fullMatch).toBe(false);
-    expect(result.partialMatch).toBe(false);
+    let result = selectorCompare(find, target);
+    expect(result.hasWholeMatch).toBe(false);
+    expect(result.hasPartialMatch).toBe(false);
   });
 
   test('does not reject when target shares a key with :is(SelectorList) alternatives', async () => {
@@ -293,11 +291,9 @@ describe('Fast-reject in selectorMatch', () => {
     let target = el('.a');
     await find.eval(context);
     await target.eval(context);
-    let result = selectorMatch(find, target);
-    // requiredKeySet = {.x, >}, target.keySet = {.a} — disjoint → rejected
-    // In real extend processing, parent is provided so fast-reject is skipped
-    expect(result.fullMatch).toBe(false);
-    expect(result.partialMatch).toBe(false);
+    let result = selectorCompare(find, target);
+    expect(result.hasWholeMatch).toBe(false);
+    expect(result.hasPartialMatch).toBe(true);
   });
 
   test('rejects compound find against target with no shared visible keys', async () => {
@@ -305,9 +301,9 @@ describe('Fast-reject in selectorMatch', () => {
     let target = compound([el('.b'), pseudo({ name: ':focus' })]);
     await find.eval(context);
     await target.eval(context);
-    let result = selectorMatch(find, target);
-    expect(result.fullMatch).toBe(false);
-    expect(result.partialMatch).toBe(false);
+    let result = selectorCompare(find, target);
+    expect(result.hasWholeMatch).toBe(false);
+    expect(result.hasPartialMatch).toBe(false);
   });
 
   test('does not reject compound find when target shares some keys', async () => {
@@ -315,8 +311,8 @@ describe('Fast-reject in selectorMatch', () => {
     let target = compound([el('.a'), el('.b'), pseudo({ name: ':hover' })]);
     await find.eval(context);
     await target.eval(context);
-    let result = selectorMatch(find, target);
-    expect(result.partialMatch).toBe(true);
+    let result = selectorCompare(target, find);
+    expect(result.hasPartialMatch).toBe(true);
   });
 
   test('rejects nested :is(SelectorList) inside :is(SelectorList) when all disjoint', async () => {
@@ -331,25 +327,25 @@ describe('Fast-reject in selectorMatch', () => {
     let target = el('.x');
     await find.eval(context);
     await target.eval(context);
-    let result = selectorMatch(find, target);
-    expect(result.fullMatch).toBe(false);
-    expect(result.partialMatch).toBe(false);
+    let result = selectorCompare(find, target);
+    expect(result.hasWholeMatch).toBe(false);
+    expect(result.hasPartialMatch).toBe(false);
   });
 
   test('does not reject nested :is when target matches an inner alternative', async () => {
     // find = :is(:is(.a, .b), .c), target = .b
-    let find = pseudo({
+    const sourceFind = pseudo({
       name: ':is',
       arg: sellist([
         pseudo({ name: ':is', arg: sellist([el('.a'), el('.b')]) }),
         el('.c')
       ])
     });
-    let target = el('.b');
-    await find.eval(context);
-    await target.eval(context);
-    let result = selectorMatch(find, target);
-    expect(result.fullMatch).toBe(true);
+    const sourceTarget = el('.b');
+    const find = await sourceFind.eval(context);
+    const target = await sourceTarget.eval(context);
+    let result = matchSelectors(target, find);
+    expect(result.hasFullMatch).toBe(true);
   });
 
   test('rejects :where() with disjoint keys', async () => {
@@ -357,9 +353,9 @@ describe('Fast-reject in selectorMatch', () => {
     let target = el('.x');
     await find.eval(context);
     await target.eval(context);
-    let result = selectorMatch(find, target);
-    expect(result.fullMatch).toBe(false);
-    expect(result.partialMatch).toBe(false);
+    let result = selectorCompare(find, target);
+    expect(result.hasWholeMatch).toBe(false);
+    expect(result.hasPartialMatch).toBe(false);
   });
 
   test('rejects :not() with disjoint keys', async () => {
@@ -367,8 +363,8 @@ describe('Fast-reject in selectorMatch', () => {
     let target = pseudo({ name: ':not', arg: el('.b') });
     await find.eval(context);
     await target.eval(context);
-    let result = selectorMatch(find, target);
-    expect(result.fullMatch).toBe(false);
-    expect(result.partialMatch).toBe(false);
+    let result = selectorCompare(find, target);
+    expect(result.hasWholeMatch).toBe(false);
+    expect(result.hasPartialMatch).toBe(false);
   });
 });

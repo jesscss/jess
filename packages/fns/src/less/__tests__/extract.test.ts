@@ -17,16 +17,16 @@ describe('extract()', () => {
 
   it('normalizes spacing when extracted item is a sequence', () => {
     const seq = new Sequence([new Any('a'), new Any('b')]);
-    seq.data[0]!.pre = 8;
-    seq.data[1]!.pre = 8;
+    seq.value[0]!.pre = 8;
+    seq.value[1]!.pre = 8;
     const list = new List([seq, new Any('c')]);
 
     const result = extract(list, new Dimension({ number: 1, unit: '' }));
 
     expect(result).toBeInstanceOf(Sequence);
     const out = result as Sequence;
-    expect(out.data[0]!.pre).toBe(0);
-    expect(out.data[1]!.pre).toBe(1);
+    expect(out.value[0]!.pre).toBe(0);
+    expect(out.value[1]!.pre).toBe(1);
   });
 
   it('returns the single item for non-finite index when length is one', () => {

@@ -1,0 +1,29 @@
+{
+  "id": "less-registry-expansion",
+  "title": "Expand durable task coverage beyond bootstrap Less lane",
+  "track": "repo-wide-rollout",
+  "bucket": "expansion",
+  "priority": "p2",
+  "status": "open",
+  "source_refs": [
+    "docs/superpowers/specs/2026-04-20-durable-task-memory-design.md",
+    "docs/future/performance/2026-04-13-registry-redesign-handoff.md"
+  ],
+  "goal_refs": [
+    "repo-wide task coverage"
+  ],
+  "depends_on": [
+    "runtime-db-bootstrap"
+  ],
+  "blocked_by": [],
+  "definition_of_done": "At least one non-Less area is migrated into canonical task files, and migration follow-up tasks are recorded.",
+  "proof_expectations": [
+    "canonical task files created",
+    "event history linked",
+    "status command shows area",
+    "handoff retirement follow-up tasks linked"
+  ],
+  "accepted_commit": null,
+  "accepted_run_id": null,
+  "last_transition_event_id": null
+}

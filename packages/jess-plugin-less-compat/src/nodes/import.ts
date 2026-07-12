@@ -5,7 +5,7 @@ import { toLessNode } from '../transform/to-less.js';
 export const transformImportToLess = createFromAdapter<StyleImport>({
   fields: {
     path: (imp, cache) => {
-      const path = imp.get('path');
+      const path = imp.value.path;
       return path instanceof Node ? toLessNode(path, { cache }) : path;
     },
     options: imp => imp.options?.importOptions || {},

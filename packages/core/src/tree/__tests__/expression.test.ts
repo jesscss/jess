@@ -1,11 +1,49 @@
-import { expr, any } from '../index.js';
+import { expr, any, ref, rules, vardecl, type Rules as RulesClass } from '../index.js';
 import { Context } from '../../context.js';
-import { getField, getParent, setField } from '../util/field-helpers.js';
 
 let context: Context;
 describe('Expression', () => {
   beforeEach(() => {
     context = new Context();
+  });
+
+  it('renders expression syntax through toTrimmedString()', () => {
+    const rule = expr(any('foo'));
+
+    expect(rule.toTrimmedString()).toBe('$(foo)');
+  });
+
+  it('renders resolved expression values through render(context)', async () => {
+    const node = rules([
+      vardecl({
+        name: any('value'),
+        value: any('foo')
+      })
+    ]);
+    const evald = await node.eval(context);
+    context.root = evald as RulesClass;
+    context.rulesContext = evald as RulesClass;
+
+    const rendered = expr(ref({ key: 'value' }, { type: 'variable' })).render(context);
+
+    expect(rendered).toBe('foo');
+  });
+
+  it('resolves expression values without touching render state', async () => {
+    const node = rules([
+      vardecl({
+        name: any('value'),
+        value: any('foo')
+      })
+    ]);
+    const evald = await node.eval(context);
+    context.root = evald as RulesClass;
+    context.rulesContext = evald as RulesClass;
+
+    const resolved = await expr(ref({ key: 'value' }, { type: 'variable' })).resolve(context);
+
+    expect(`${resolved}`).toBe('foo');
+    expect(context.printState.writer).toBeUndefined();
   });
 
   it('should serialize an expression', () => {
@@ -16,24 +54,6 @@ describe('Expression', () => {
   it('should serialize an expression consistently', () => {
     let rule = expr(any('foo'));
     expect(`${rule}`).toBe('$(foo)');
-  });
-
-  it('preEval preserves a state-patched value without mutating the canonical child', async () => {
-    const shared = any('bar');
-    const source = expr(shared);
-    const rule = expr(any('foo'));
-    setField(rule, 'value', shared, context);
-    const preEvald = await rule.preEval(context);
-
-    // With EvalState, maybeClone returns this — no clone needed.
-    expect(preEvald).toBe(rule);
-    // State-patched value is visible through getField
-    expect(getField(rule, 'value', context)).toBe(shared);
-    expect(rule.toTrimmedString({ context })).toBe('$(bar)');
-    // Canonical value unchanged
-    expect(rule.get('value')).not.toBe(shared);
-    // Canonical parent unchanged
-    expect(shared.parent).toBe(source);
   });
 
   // it('should serialize to a module', () => {

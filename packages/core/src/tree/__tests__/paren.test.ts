@@ -1,69 +1,65 @@
-import { describe, expect, it } from 'vitest';
-import { any, paren, ref, rules, vardecl } from '../index.js';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { Context } from '../../context.js';
-import { setField } from '../util/field-helpers.js';
+import { any, list, num, paren, ref, rules, type Rules as RulesClass, vardecl } from '../index.js';
 
 describe('Paren', () => {
-  it('serializes wrapped values on the public render path', () => {
-    const node = paren(any('red'));
+  let context: Context;
 
-    expect(node.toTrimmedString()).toBe('(red)');
+  beforeEach(() => {
+    context = new Context();
   });
 
-  it('reads a state-patched value without changing canonical render output', () => {
-    const ctx = new Context();
-    const node = paren(any('red'));
-
-    setField(node, 'value', any('blue'), ctx);
-
-    expect(node.toTrimmedString({ context: ctx })).toBe('(blue)');
-    expect(node.toTrimmedString()).toBe('(red)');
+  it('renders paren syntax through toTrimmedString()', () => {
+    expect(paren(any('foo')).toTrimmedString()).toBe('(foo)');
   });
 
-  it('reads a state-patched escaped option without changing canonical render output', () => {
-    const ctx = new Context();
-    const node = paren(any('red'));
+  it('does not allocate options when rendering paren syntax with defaults', () => {
+    const rule = paren(any('foo'));
 
-    setField(node, 'options', { escaped: true }, ctx);
-
-    expect(node.toTrimmedString({ context: ctx })).toBe('~(red)');
-    expect(node.toTrimmedString()).toBe('(red)');
+    expect(rule.toTrimmedString()).toBe('(foo)');
+    expect(Object.getOwnPropertyDescriptor(rule, '_options')?.value).toBeUndefined();
   });
 
-  it('evals without overwriting the canonical child when the wrapper is preserved', async () => {
-    const ctx = new Context();
-    const original = ref({ key: 'color' }, { type: 'variable' });
-    const root = rules([
-      vardecl({ name: 'color', value: any('red') })
+  it('renders resolved paren values through render(context)', async () => {
+    const node = rules([
+      vardecl({
+        name: any('value'),
+        value: any('foo')
+      })
     ]);
-    const node = paren(original);
-    ctx.root = root;
-    ctx.rulesContext = root;
+    const evald = await node.eval(context);
+    context.root = evald as RulesClass;
+    context.rulesContext = evald as RulesClass;
 
-    const evald = await node.eval(ctx);
+    const rendered = paren(ref({ key: 'value' }, { type: 'variable' })).render(context);
 
-    expect(evald.toTrimmedString({ context: ctx })).toBe('(red)');
-    expect(node.get('value')).toBe(original);
-    expect(node.toTrimmedString()).toBe('($color)');
+    expect(rendered).toBe('(foo)');
   });
 
-  it('eval uses a state-patched escaped option without mutating canonical wrapper behavior', async () => {
-    const ctx = new Context();
-    const original = ref({ key: 'color' }, { type: 'variable' });
-    const root = rules([
-      vardecl({ name: 'color', value: any('red') })
+  it('resolves paren values without touching render state', async () => {
+    const node = rules([
+      vardecl({
+        name: any('value'),
+        value: any('foo')
+      })
     ]);
-    const node = paren(original);
-    ctx.root = root;
-    ctx.rulesContext = root;
+    const evald = await node.eval(context);
+    context.root = evald as RulesClass;
+    context.rulesContext = evald as RulesClass;
 
-    setField(node, 'options', { escaped: true }, ctx);
+    const resolved = await paren(ref({ key: 'value' }, { type: 'variable' })).resolve(context);
 
-    const evald = await node.eval(ctx);
+    expect(`${resolved}`).toBe('(foo)');
+    expect(context.printState.writer).toBeUndefined();
+  });
 
-    expect(evald.toTrimmedString({ context: ctx })).toBe('red');
-    expect(node.get('value')).toBe(original);
-    expect(node.toTrimmedString({ context: ctx })).toBe('~($color)');
-    expect(node.toTrimmedString()).toBe('($color)');
+  it('normalizes escaped semicolon lists to commas on eval', async () => {
+    const resolved = await paren(
+      list([num(7), num(8), num(9)], { sep: ';' }),
+      { escaped: true }
+    ).resolve(context);
+
+    expect(resolved.toTrimmedString()).toBe('7, 8, 9');
+    expect(context.printState.writer).toBeUndefined();
   });
 });

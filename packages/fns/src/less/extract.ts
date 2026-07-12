@@ -18,7 +18,7 @@ const extract = defineFunction(
     const out = items[normalized - 1]!;
     if (out instanceof Sequence) {
       const normalizedOut = out.copy(true) as Sequence;
-      normalizedOut.get('value').forEach((node: Node, index: number) => {
+      normalizedOut.value.forEach((node: Node, index: number) => {
         node.pre = index === 0 ? 0 : 1;
       });
       return normalizedOut;

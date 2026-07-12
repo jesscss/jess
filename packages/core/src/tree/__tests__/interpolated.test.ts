@@ -1,41 +1,77 @@
-import { describe, expect, it } from 'vitest';
-import { any, expr, interpolated } from '../index.js';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { Context } from '../../context.js';
+import {
+  any,
+  interpolated,
+  quoted,
+  ref,
+  rules,
+  type Rules as RulesClass,
+  vardecl
+} from '../index.js';
+import { INTERPOLATION_PLACEHOLDER } from '../interpolated.js';
+
 describe('Interpolated', () => {
-  it('serializes source and replacements on the public render path', () => {
-    const node = interpolated({
-      source: '--%%-%%',
-      replacements: [any('red'), any('blue')]
-    });
+  let context: Context;
 
-    expect(node.toTrimmedString()).toBe('--red-blue');
+  beforeEach(() => {
+    context = new Context();
   });
 
-  it('evaluates to a generic value without overwriting canonical replacements', async () => {
-    const ctx = new Context();
-    const original = expr(any('red'));
+  it('renders interpolated source syntax through toTrimmedString()', () => {
     const node = interpolated({
-      source: '--%%',
-      replacements: [original]
+      source: `hello-${INTERPOLATION_PLACEHOLDER}`,
+      replacements: [ref({ key: 'name' }, { type: 'variable' })]
     });
 
-    const result = await node.eval(ctx);
-
-    expect(result.toTrimmedString()).toBe('--red');
-    expect(node.get('replacements')[0]).toBe(original);
+    expect(node.toTrimmedString()).toBe('hello-$name');
   });
 
-  it('evaluates to a selector without overwriting canonical replacements', async () => {
-    const ctx = new Context();
-    const original = expr(any('button'));
+  it('renders resolved interpolated values through render(context)', async () => {
+    const root = rules([
+      vardecl({
+        name: any('name'),
+        value: any('world')
+      })
+    ]);
+    const evald = await root.eval(context);
+    context.root = evald as RulesClass;
+    context.rulesContext = evald as RulesClass;
+
+    const rendered = interpolated({
+      source: `hello-${INTERPOLATION_PLACEHOLDER}`,
+      replacements: [ref({ key: 'name' }, { type: 'variable' })]
+    }).render(context);
+
+    expect(rendered).toBe('hello-world');
+  });
+
+  it('resolves interpolated values without touching render state', async () => {
+    const root = rules([
+      vardecl({
+        name: any('name'),
+        value: any('world')
+      })
+    ]);
+    const evald = await root.eval(context);
+    context.root = evald as RulesClass;
+    context.rulesContext = evald as RulesClass;
+
+    const resolved = await interpolated({
+      source: `hello-${INTERPOLATION_PLACEHOLDER}`,
+      replacements: [ref({ key: 'name' }, { type: 'variable' })]
+    }).resolve(context);
+
+    expect(resolved.toTrimmedString()).toBe('hello-world');
+    expect(context.printState.writer).toBeUndefined();
+  });
+
+  it('preserves quoted replacement syntax when requested', () => {
     const node = interpolated({
-      source: '.%%',
-      replacements: [original]
-    });
+      source: `progid:test(value=${INTERPOLATION_PLACEHOLDER})`,
+      replacements: [quoted('#000000', { quote: '"' })]
+    }, { preserveQuotedSyntax: true });
 
-    const selector = await node.evalToSelector(ctx);
-
-    expect(selector.toTrimmedString()).toBe('.button');
-    expect(node.get('replacements')[0]).toBe(original);
+    expect(node.toTrimmedString()).toBe('progid:test(value="#000000")');
   });
 });

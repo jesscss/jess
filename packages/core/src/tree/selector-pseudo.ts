@@ -1,18 +1,14 @@
 import {
   defineType,
-  Node,
-  type OptionalLocation,
-  type NodeOptions,
-  type TreeContext
+  type Node
 } from './node.js';
 import { SimpleSelector } from './selector-simple.js';
 import { type Context } from '../context.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
-import { Selector } from './selector.js';
+import { attachSelectorBitLibrary, Selector } from './selector.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, pipe } from '@jesscss/awaitable-pipe';
-import { setField } from './util/field-helpers.js';
 
 export type PseudoSelectorValue = {
   /**
@@ -24,43 +20,53 @@ export type PseudoSelectorValue = {
   arg?: Node;
 };
 
-export type PseudoSelectorChildData = { name: string; arg: Node | undefined };
-
 /**
  * A pseudo selector
  * @see https://developer.mozilla.org/en-US/docs/Learn/CSS/Building_blocks/Selectors/Pseudo-classes_and_pseudo-elements
  *   e.g. :hover, :focus, :active
 */
-export interface PseudoSelector {
-  type: 'PseudoSelector';
-  shortType: 'pseudo';
-}
-export class PseudoSelector extends SimpleSelector<PseudoSelectorValue, NodeOptions, PseudoSelectorChildData> {
-  static override childKeys = ['name', 'arg'] as const;
-
-  /** @internal */ name!: string;
-  /** @internal */ arg: Node | undefined;
-
-  constructor(value: PseudoSelectorValue, options?: NodeOptions, location?: OptionalLocation, treeContext?: TreeContext) {
-    super(value, options, location, treeContext);
-    this.name = value.name;
-    this.arg = value.arg;
-    if (this.arg instanceof Node) {
-      this.adopt(this.arg);
+export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
+  private renderPseudoSyntax(options?: PrintOptions): string {
+    options = getPrintOptions(options);
+    const w = options.writer!;
+    let { name, arg } = this.value;
+    const mark = w.mark();
+    if (this.generated && name === ':is' && arg && isNode(arg, N.SelectorList)) {
+      let out = w.capture(() => arg.toString(options));
+      out = out.replace(/\n\s*/g, ' ').trim();
+      if (!out.includes(',')) {
+        w.add(out, arg);
+        return w.getSince(mark);
+      }
+      w.add(name, this);
+      w.add('(');
+      w.add(out, arg);
+      w.add(')');
+      return w.getSince(mark);
     }
+    w.add(name, this);
+    if (arg) {
+      w.add('(');
+      if (isNode(arg, N.SelectorList)) {
+        let out = w.capture(() => arg.toString(options));
+        out = out.replace(/\n\s*/g, ' ').trim();
+        w.add(out, arg);
+      } else {
+        arg.toString(options);
+      }
+      w.add(')');
+    }
+    return w.getSince(mark);
   }
 
   override computeKeySets(): void {
     if (this._keySet && this._visibleKeySet && this._requiredKeySet) {
       return;
     }
-    let name = this.name;
-    let arg: unknown = this.arg;
-    let library = this.keySetLibrary;
-    if (!library) {
-      throw new Error('Selector keySet library not found');
-    }
+    const { name, arg } = this.value;
+    const library = this._requireKeySetLibrary();
     if (isNode(arg, N.Selector)) {
+      arg.keySetLibrary ??= library;
       if (name === ':is') {
         this._keySet = arg.keySet;
         this._visibleKeySet = arg.visibleKeySet;
@@ -86,57 +92,81 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue, NodeOpti
   }
 
   override toTrimmedString(options?: PrintOptions) {
-    options = getPrintOptions(options);
-    const w = options.writer!;
-    const context = options.context;
-    const name = this.get('name', context);
-    const arg = this.get('arg', context);
-    const mark = w.mark();
-    if (this.generated && name === ':is' && arg && isNode(arg, N.SelectorList)) {
-      let out = w.capture(() => arg.toString(options));
-      out = out.replace(/\n\s*/g, ' ').trimEnd();
-      if (!out.includes(',')) {
-        w.add(out, arg);
-        return w.getSince(mark);
-      }
-      w.add(name, this);
-      w.add('(');
-      w.add(out, arg);
-      w.add(')');
-      return w.getSince(mark);
-    }
-    w.add(name, this);
-    if (arg) {
-      w.add('(');
-      if (isNode(arg, N.SelectorList)) {
-        let out = w.capture(() => arg.toString(options));
-        out = out.replace(/\n\s*/g, ' ').trimEnd();
-        w.add(out, arg);
-      } else {
-        let out = w.capture(() => arg.toString(options));
-        w.add(out.trimEnd(), arg);
-      }
-      w.add(')');
-    }
-    return w.getSince(mark);
+    return this.renderPseudoSyntax(options);
   }
+
+  /**
+   * @todo - This should be vastly simplifiable. For
+   *
+   * Also, :is()
+   */
+  // get keys() {
+  //   let keys = this._keys
+  //   if (!keys) {
+  //     let { arg } = this
+  //     if (arg && (arg instanceof Selector || isNode(arg, N.SelectorList))) {
+  //       if (isNode(arg, N.SelectorList)) {
+  //         /**
+  //          * If an :is starts with an ampersand with no eval'd selector,
+  //          * it's relative, and can't be flattened.
+  //          *
+  //          * @note As far as I can tell, starting with a combinator
+  //          * is allowed / legal for :is() and :where() but won't
+  //          * actually apply to anything.
+  //          */
+  //         /**
+  //          * Push the first selectors of the inner list to an array
+  //          * at the front of the return array.
+  //          */
+  //         const selKeys = arg.value.map(sel => {
+  //           const childKeys = sel.keys
+  //           return isArray(childKeys) ? childKeys.flat(Infinity) : [childKeys]
+  //         }) as string[][]
+  //         const returnKeys: [string[], ...string[]] = [[]]
+  //         selKeys.forEach(keys => {
+  //           const [first, ...rest] = keys
+  //           returnKeys[0].push(first!)
+  //           returnKeys.push(...rest)
+  //         })
+  //         keys = returnKeys
+  //       } else {
+  //         keys = arg.keys
+  //       }
+  //       Object.defineProperty(this, '_keys', { value: keys })
+  //       return keys
+  //     } else {
+  //       keys = this.valueOf()
+  //     }
+  //     Object.defineProperty(this, '_keys', { value: keys })
+  //   }
+  //   return keys
+  // }
 
   override valueOf(): string {
     let valueOf = this._valueOf;
     if (!valueOf) {
-      let name = this.name;
-      let arg = this.arg;
+      let { name, arg } = this.value;
+      // For :is() with SelectorList, use valueOf() to avoid newlines
+
+      /**
+       * Normalizes :nth-child(n + 1) to match :nth-child(n+1)
+       * That is, anything that doesn't hold a selector as a value
+       * is, by definition, not space-sensitive.
+       *
+       * @todo 1n === n, 2n + 0 === 2n
+       */
       valueOf = `${name}${arg ? `(${arg.valueOf()})` : ''}`;
+
       this._valueOf = valueOf;
     }
     return valueOf;
   }
 
   override evalNode(context: Context): MaybePromise<PseudoSelector> {
-    const currentArg = this.get('arg', context);
-    const node = super.evalNode(context) as PseudoSelector;
+    attachSelectorBitLibrary(this, context.selectorBits);
+    const currentArg = this.value.arg;
     if (!currentArg) {
-      return node;
+      return this;
     }
     return pipe(
       () => {
@@ -145,12 +175,45 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue, NodeOpti
       },
       (evaluatedArg) => {
         context.parenFrames.pop();
-        setField(node, 'arg', evaluatedArg, context);
+        if (evaluatedArg === currentArg) {
+          return this;
+        }
+        const node = this.clone();
+        node.value.arg = evaluatedArg;
+        attachSelectorBitLibrary(node, context.selectorBits);
         return node;
       }
     );
   }
 }
+
+// Some experiments with type narrowing
+// type SelectorValue = {
+//   value: ':is' | ':where'
+//   arg: Selector
+// }
+
+// type PseudoFunctionValue = {
+//   value: string
+//   arg: Node
+// }
+
+// type GetType<T extends Array<[string, any]>> = TupleToUnion<{
+//   [K in keyof T]: T[K][0] extends 'arg'
+//     ? T[K][1]
+//     : never
+// }>
+
+// type PseudoFunctionClass<T extends PseudoFunctionValue = PseudoFunctionValue> =
+//   Class<PseudoSelector<T>, ConstructorParameters<typeof PseudoSelector<T>>>
+
+// export const PseudoFunction = PseudoSelector as unknown as (new<const T extends Array<[string, any]>>(value: T, opts?: NodeOptions) => Omit<PseudoFunctionClass, 'arg'> & { arg: GetType<T> }) // Omit<PseudoFunctionClass, 'arg'> & GetType<T>)
+
+// const foo = new PseudoFunction([
+//   ['value', ':is'],
+//   ['arg', new BasicSelector([['value', 'div']])]
+// ])
+// foo.arg
 
 export const pseudo = defineType<PseudoSelectorValue, typeof PseudoSelector>(PseudoSelector, 'PseudoSelector', 'pseudo');
 
@@ -160,7 +223,8 @@ export const pseudo = defineType<PseudoSelectorValue, typeof PseudoSelector>(Pse
  * @returns A PseudoSelector with name ":is" and the provided selector as argument
  */
 export function is(arg: Selector): PseudoSelector {
-  const p = pseudo({ name: ':is', arg });
-  p.generated = true;
-  return p;
+  return pseudo({
+    name: ':is',
+    arg: arg
+  });
 }

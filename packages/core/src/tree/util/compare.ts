@@ -1,6 +1,7 @@
 import { isNode } from './is-node.js';
 import isObject from 'lodash-es/isObject.js';
 import { type Node } from '../node.js';
+import { type Rules } from '../rules.js';
 import type { EqualityMode } from '../../types/modes.js';
 
 export function compare(a: any, b: any, mode: EqualityMode = 'coerce') {
@@ -96,3 +97,5 @@ export function compareNodeArray(a: any[], b: any[], mode: EqualityMode = 'coerc
   }
   return output;
 }
+
+export { selectorCompare } from './selector-compare.js';

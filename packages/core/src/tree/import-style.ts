@@ -1,23 +1,19 @@
-import type { Class } from 'type-fest';
 import { Node, F_MAY_ASYNC, F_NON_STATIC, F_VISIBLE, defineType } from './node.js';
-import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type Reference } from './reference.js';
 import { Rules, type RulesOptions, type RulesVisibility } from './rules.js';
 import { type Quoted } from './quoted.js';
 import { Url } from './url.js';
 import { type Context } from '../context.js';
-import { EvalState } from '../eval-state.js';
-import { JessError } from '../jess-error.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
-import { getField, getParent, getChildren, markChangedVar, setIndex } from './util/field-helpers.js';
 import type { Ruleset } from './ruleset.js';
 import type { Collection } from './collection.js';
 import { AtRule } from './at-rule.js';
 import { Any } from './any.js';
-import type { Sequence } from './sequence.js';
-import type { VarDeclaration } from './declaration-var.js';
+import { Sequence } from './sequence.js';
+import { registerRulesetWithRoot } from './util/extend-roots.js';
+import { buildScopeFrame, type BindingCell } from './scope-frame.js';
 
 /**
  * This class is for Jess / Sass+ / Less-style imports,
@@ -115,29 +111,22 @@ export type StyleImportOptions = {
 export type StyleImportValue = {
   path: Quoted | Url;
 
-  /** The node to inject values from (Reference or Collection). */
-  withNode?: Reference | Collection;
-
-  /**
-   * How the injected values are applied.
-   * 'set' can be used once per module, 'with' can be used multiple.
-   * In Sass, 'set' is called 'with' and 'with' will be parsed as 'set'.
-   *   e.g.
-   *     `@-use 'library' set { $foo: 1 };` -- $foo will be set to 1 every time
-   *     `@-use 'library' with { $foo: 1 };` -- $foo will be set to 1 just for this scope.
-   */
-  withType?: 'with' | 'set';
+  /** Values to inject */
+  with?: {
+    node: Reference | Collection;
+    /**
+     * For use / ref / include statements, will affect how this module is evaluated
+     * every time. 'set' can be used once per module, 'with' can be used multiple.
+     * In Sass, 'set' is called 'with' and 'with' will be parsed as 'set'.
+     *   e.g.
+     *     `@-use 'library' set { $foo: 1 };` -- $foo will be set to 1 every time
+     *     `@-use 'library' with { $foo: 1 };` -- $foo will be set to 1 just for this scope.
+     */
+    type: 'with' | 'set';
+  };
 };
 
-export type StyleImportChildData = {
-  path: Quoted | Url;
-  withNode: Reference | Collection | undefined;
-  withType: 'with' | 'set' | undefined;
-};
-
-export interface StyleImport extends Node<StyleImportValue, StyleImportOptions, StyleImportChildData> {
-  type: 'StyleImport';
-  shortType: 'style';
+export interface StyleImport extends Node<StyleImportValue, StyleImportOptions> {
   eval(context: Context): MaybePromise<Rules>;
 }
 /**
@@ -149,91 +138,288 @@ export interface StyleImport extends Node<StyleImportValue, StyleImportOptions, 
  *
  * @see https://sass-lang.com/documentation/at-rules/import/
  */
-export class StyleImport extends Node<StyleImportValue, StyleImportOptions, StyleImportChildData> {
-  static override childKeys = ['path', 'withNode'] as const;
-
-  /** @internal */ readonly path!: Quoted | Url;
-  /** @internal */ readonly withNode: Reference | Collection | undefined;
-  private withType: 'with' | 'set' | undefined;
-
-  override clone(deep?: boolean): this {
-    const options = this._meta?.options;
-    const newNode = new (this.constructor as Class<this>)(
-      {
-        path: deep ? this.path.clone(deep) : this.path,
-        withNode: deep && this.withNode instanceof Node ? this.withNode.clone(deep) : this.withNode,
-        withType: this.withType
-      },
-      options ? { ...options } : undefined,
-      this.location,
-      this.treeContext
-    );
-    newNode.inherit(this);
-    return newNode;
+export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
+  private getImportAnchorRules(context: Context): Rules {
+    return isNode(context.rulesContext, N.Rules)
+      ? context.rulesContext
+      : isNode(this.parent, N.Rules)
+        ? this.parent
+        : context.root;
   }
 
-  constructor(value: StyleImportValue, options?: StyleImportOptions, location?: any, treeContext?: any) {
-    super(value, options, location, treeContext);
-    this.path = value.path;
-    this.withNode = value.withNode;
-    this.withType = value.withType;
-    if (this.path instanceof Node) {
-      this.adopt(this.path);
+  private deriveClonedRulesSurface(
+    anchorRules: Rules,
+    childNodes?: Node[],
+    options?: {
+      preserveSourceNode?: boolean;
+      resetScopeFrame?: boolean;
     }
-    if (this.withNode instanceof Node) {
-      this.adopt(this.withNode);
+  ): Rules {
+    const wrapped = childNodes !== undefined
+      ? new Rules([], anchorRules.options ? { ...anchorRules.options } : undefined, anchorRules.location, anchorRules.treeContext).inherit(anchorRules)
+      : anchorRules.clone(false) as Rules;
+    if (options?.resetScopeFrame) {
+      wrapped.scopeFrame = undefined;
     }
-    this.addFlags(F_MAY_ASYNC, F_NON_STATIC);
+    if (options?.preserveSourceNode) {
+      wrapped.sourceNode = anchorRules.sourceNode ?? anchorRules;
+    }
+    if (childNodes) {
+      wrapped.value = [];
+      for (const childNode of childNodes) {
+        wrapped.adopt(childNode);
+        wrapped.value.push(childNode);
+      }
+    }
+    return wrapped;
   }
 
-  override toTrimmedString(options?: PrintOptions): string {
-    options = getPrintOptions(options);
-    const w = options.writer!;
-    const mark = w.mark();
-    const path = this.get('path', options.context);
-    const { type, namespace, importOptions } = this.options;
-
-    if (type === 'compose') {
-      const keyword = importOptions?.forward ? '@-export' : '@-compose';
-      w.add(`${keyword} `);
-    } else {
-      w.add('@-import ');
-    }
-    path.toString(options);
-    if (namespace) {
-      w.add(` as ${namespace}`);
-    }
-    w.add(';');
-    return w.getSince(mark);
+  private createImportAnchorSurface(context: Context, childNodes?: Node[]): Rules {
+    return this.deriveClonedRulesSurface(this.getImportAnchorRules(context), childNodes ?? [], { resetScopeFrame: true });
   }
 
-  /** @removal-target — node-copy-reduction: clone(true) on prelude nodes.
-   * Prelude should be read from canonical + position patches. */
-  private materializePostludePrelude(current: Node): {
-    atRuleName: '@media' | '@supports' | '@layer';
-    prelude: Node;
+  private getPostludeNodes(postlude?: Node): Node[] {
+    if (!postlude) {
+      return [];
+    }
+    return isNode(postlude, N.Sequence) || isNode(postlude, N.List) ? postlude.value : [postlude];
+  }
+
+  private wrapRulesInAtRuleSurface(anchorRules: Rules, rules: Rules, name: string, prelude: Node): Rules {
+    const wrappedAtRule = new AtRule({
+      name: new Any(name, { role: 'atkeyword' }),
+      prelude,
+      rules
+    });
+    return this.deriveClonedRulesSurface(anchorRules, [wrappedAtRule], { resetScopeFrame: true });
+  }
+
+  private clearConfiguredImportBoundary(rules: Rules): void {
+    delete rules.options.importBoundary;
+  }
+
+  private throwIfConfiguredReuseIsDisallowed(withValues: StyleImportValue['with'] | undefined, hasCachedEvaluation: boolean): void {
+    if (!withValues || !hasCachedEvaluation) {
+      return;
+    }
+
+    if (withValues.type === 'set' || this.options.type === 'compose') {
+      throw new Error('Cannot configure a stylesheet more than once.');
+    }
+  }
+
+  private async resolveConfiguredRulesInput(context: Context, withNode: Reference | Collection): Promise<Rules> {
+    if (isNode(withNode, N.Reference)) {
+      const evaluated = await withNode.eval(context);
+      if (!isNode(evaluated, N.Collection)) {
+        throw new Error('with/set node must evaluate to a Collection');
+      }
+      return evaluated as Rules;
+    }
+
+    return withNode as Rules;
+  }
+
+  private partitionConfiguredNodes(sourceRules: Rules, withRules: Rules): {
+    newVariables: Node[];
+    replacementsByIndex: Map<number, Node>;
   } {
-    if (isNode(current, N.Call)) {
-      const callName = String(current.get('name')).toLowerCase();
-      if (callName === 'media' || callName === 'supports' || callName === 'layer') {
-        const args = current.get('args')?.get('value') ?? [];
-        const prelude = args.length <= 1 ? args[0] : current.get('args');
-        if (prelude) {
-          return {
-            atRuleName: `@${callName}` as '@media' | '@supports' | '@layer',
-            prelude: prelude.clone(true)
-          };
+    const firstVarIndexByName = new Map<string, number>();
+    for (let index = 0; index < sourceRules.value.length; index++) {
+      const existingNode = sourceRules.value[index]!;
+      if (!isNode(existingNode, N.VarDeclaration)) {
+        continue;
+      }
+      const existingName = existingNode.value.name?.toString();
+      if (existingName && !firstVarIndexByName.has(existingName)) {
+        firstVarIndexByName.set(existingName, index);
+      }
+    }
+
+    const newVariables: Node[] = [];
+    const replacementsByIndex = new Map<number, Node>();
+    for (const injectedNode of withRules.value) {
+      if (isNode(injectedNode, N.VarDeclaration)) {
+        const varName = injectedNode.value.name?.toString();
+        if (varName) {
+          const existingIndex = firstVarIndexByName.get(varName);
+          if (existingIndex !== undefined) {
+            replacementsByIndex.set(existingIndex, injectedNode);
+          } else {
+            newVariables.push(injectedNode);
+          }
+        } else {
+          newVariables.push(injectedNode);
         }
+      } else {
+        newVariables.push(injectedNode);
       }
     }
 
     return {
-      atRuleName: '@media',
-      prelude: current.clone(true)
+      newVariables,
+      replacementsByIndex
     };
   }
 
-  getFinalRules(evaluatedRules: Rules, context: Context) {
+  private createConfiguredImportedSurface(sourceRules: Rules, replacementsByIndex?: Map<number, Node>): Rules {
+    const importedRules = this.deriveClonedRulesSurface(sourceRules, undefined, { preserveSourceNode: true });
+    if (!replacementsByIndex?.size) {
+      return importedRules;
+    }
+
+    importedRules.value = [];
+    for (let index = 0; index < sourceRules.value.length; index++) {
+      const originalNode = sourceRules.value[index]!;
+      const nextNode = replacementsByIndex.get(index) ?? originalNode;
+      importedRules.adopt(nextNode);
+      importedRules.value.push(nextNode);
+    }
+    return importedRules;
+  }
+
+  private createConfiguredResultSurface(
+    sourceRules: Rules,
+    importedRules: Rules,
+    additiveNodes: Node[]
+  ): Rules {
+    const additiveVariableNodes = additiveNodes.filter(node => isNode(node, N.VarDeclaration));
+    const additiveNonVariableNodes = additiveNodes.filter(node => !isNode(node, N.VarDeclaration));
+    this.clearConfiguredImportBoundary(importedRules);
+    if (additiveNonVariableNodes.length === 0) {
+      this.attachConfiguredVarBindings(importedRules, additiveVariableNodes);
+      return importedRules;
+    }
+
+    const finalRules = this.deriveClonedRulesSurface(sourceRules, [], { resetScopeFrame: true });
+    for (const newNode of additiveNonVariableNodes) {
+      finalRules.adopt(newNode);
+      finalRules.value.push(newNode);
+    }
+    this.attachConfiguredVarBindings(finalRules, additiveVariableNodes);
+    finalRules.adopt(importedRules);
+    finalRules.value.push(importedRules);
+    return finalRules;
+  }
+
+  private applyConfiguredValues(sourceRules: Rules, withRules: Rules): Rules {
+    const { newVariables, replacementsByIndex } = this.partitionConfiguredNodes(sourceRules, withRules);
+
+    if (newVariables.length === 0 && replacementsByIndex.size === 0) {
+      return sourceRules;
+    }
+
+    const importedRules = this.createConfiguredImportedSurface(
+      sourceRules,
+      replacementsByIndex.size > 0 ? replacementsByIndex : undefined
+    );
+
+    return this.createConfiguredResultSurface(sourceRules, importedRules, newVariables);
+  }
+
+  private attachConfiguredVarBindings(targetRules: Rules, variableNodes: Node[]): void {
+    const liveSlots = new Map(targetRules.scopeFrame?.liveSlotsByName ?? []);
+    let didAdd = false;
+    for (const node of variableNodes) {
+      if (!isNode(node, N.VarDeclaration)) {
+        continue;
+      }
+      const name = node.value.name?.toString();
+      if (!name) {
+        continue;
+      }
+      liveSlots.set(name, {
+        value: node.value.value,
+        sourceNode: node,
+        readonly: node.options?.readonly
+      } satisfies BindingCell);
+      didAdd = true;
+    }
+    if (!didAdd) {
+      return;
+    }
+    targetRules.scopeFrame = buildScopeFrame(
+      undefined,
+      targetRules,
+      targetRules.scopeFrame?.parent,
+      liveSlots,
+      targetRules.scopeFrame?.pendingDynamicDecls
+    );
+  }
+
+  private toImportPathNode(node: Node): Quoted | Url {
+    if (isNode(node, N.Quoted) || node instanceof Url) {
+      return node;
+    }
+    throw new Error('Import path must evaluate to a quoted string or url() node.');
+  }
+
+  private isPlainCssImport(finalPath: string): boolean {
+    const { importOptions } = this.options;
+    if (
+      importOptions?.inline === true
+      || importOptions?.type === 'less'
+      || importOptions?.reference === true
+      || importOptions?.multiple === true
+      || importOptions?.optional === true
+    ) {
+      return false;
+    }
+    const lower = finalPath.toLowerCase();
+    if (/\.css([?#].*)?$/.test(lower)) {
+      return true;
+    }
+    return lower.startsWith('http://') || lower.startsWith('https://') || lower.startsWith('//');
+  }
+
+  private createCssImportAtRule(pathNode: Quoted | Url): AtRule {
+    const preludeNodes: Node[] = [pathNode];
+    preludeNodes.push(...this.getPostludeNodes(this.options.importOptions?.postlude));
+    const prelude = preludeNodes.length === 1
+      ? preludeNodes[0]
+      : new Sequence(preludeNodes, undefined, undefined, this.treeContext);
+
+    const location = this.location && this.location.length === 6 ? this.location : undefined;
+    return new AtRule({
+      name: new Any('@import', { role: 'atkeyword' }),
+      prelude
+    }, undefined, location, this.treeContext);
+  }
+
+  private queueCssImport(context: Context, importRule: AtRule): void {
+    if (context.inReferenceImportScope) {
+      return;
+    }
+    const topImports = (context.topImports ??= []);
+    const nodeLoc = importRule.location?.join(':') ?? '';
+    const nodeSig = `${importRule.value.name.valueOf?.() ?? importRule.value.name}:${importRule.value.prelude?.valueOf?.() ?? ''}`;
+    const alreadyQueued = topImports.some((queuedNode) => {
+      if (!isNode(queuedNode, N.AtRule)) {
+        return false;
+      }
+      const queued = queuedNode as AtRule;
+      return (
+        queued === importRule
+        || queued.sourceNode === importRule.sourceNode
+        || queued.sourceNode === importRule
+        || (
+          (queued.location?.join(':') ?? '') === nodeLoc
+          && `${queued.value.name.valueOf?.() ?? queued.value.name}:${queued.value.prelude?.valueOf?.() ?? ''}` === nodeSig
+        )
+      );
+    });
+    if (!alreadyQueued) {
+      topImports.push(importRule);
+    }
+  }
+
+  constructor(value: StyleImportValue, options?: StyleImportOptions, location?: any, treeContext?: any) {
+    super(value, options, location, treeContext);
+    // Style imports are always non-static and may be async
+    this.addFlags(F_MAY_ASYNC, F_NON_STATIC);
+  }
+
+  getFinalRules(evaluatedRules: Rules) {
     let { importOptions, type } = this.options;
     const reference = importOptions!.reference;
     const isForward = importOptions!.forward === true;
@@ -276,54 +462,40 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions, Styl
       (type === 'import' && (importOptions?._dedupe === true || reference))
       || (type === 'compose' && reference)
     );
-    const shouldCloneImportWrapper = type === 'import' && importOptions!._dedupe === true;
-    // `@import` always evaluates through a fresh shallow root clone already, so
-    // finalization can mutate that per-import Rules in place. Plain `@-compose`
-    // reuses cached evaluated Rules across imports, so it still needs a shallow
-    // wrapper for per-import visibility/source metadata. Repeated `_dedupe`
-    // imports also need an isolated shallow wrapper so the cached import root
-    // keeps its canonical child array / registry slot. `_dedupe` still needs
-    // child Ruleset isolation so implicit-reference extends don't contaminate
-    // shared selector state.
-    /** @removal-target — node-copy-reduction: materialize/clone wrappers.
-     * Import/compose results should carry their EvalState. No wrapper
-     * cloning needed — position patches provide isolation per import. */
-    const materializeConfiguredComposeChildren = type === 'compose' && this.get('withNode', context) != null;
-    // Create a lightweight output per import — canonical children, no materialization.
-    // Same pattern as mixin output (finalizeMixinInvocationOutput).
-    let out: Rules;
-    if (type === 'import' && !shouldCloneImportWrapper) {
-      out = evaluatedRules;
-    } else {
-      const children = [...getChildren(evaluatedRules, context)];
-      out = Rules.create(children, { ...evaluatedRules.options });
-      out.inherit(evaluatedRules);
-    }
-    if (materializeConfiguredComposeChildren) {
-      const children = getChildren(out, context);
-      for (let i = 0; i < children.length; i++) {
-        setIndex(children[i]!, i, context);
-      }
-    }
     // Import type: variables are visible and re-exported (not local)
     // Compose type: variables are visible to parent but not transitive by default (`local: true`)
     // Forward: not visible locally but *is* transitive (`local: false`)
     const isLocal = type === 'compose' && !isForward;
-
+    const readonly = importOptions!.readonly ?? (type === 'compose' ? true : false);
+    const canReuseEvaluatedRules = !isProtected && !isReferenceMode && !isLocal && !isForward && !readonly;
+    if (canReuseEvaluatedRules) {
+      this.adopt(evaluatedRules);
+      return evaluatedRules;
+    }
+    // Shallow clone the Rules wrapper. The children are shared with the
+    // canonical tree/session result for this import placement — per-render
+    // options (visibility, reference mode) are set on the wrapper below;
+    // downstream serialization propagates `referenceMode` via PrintOptions,
+    // so we don't need to mutate every child's `options.referenceMode`.
+    let out = evaluatedRules.clone() as Rules;
+    const hasImportBoundary = (
+      evaluatedRules.options.importBoundary === true
+      || (isNode(evaluatedRules.sourceNode, N.Rules) && evaluatedRules.sourceNode.options.importBoundary === true)
+    );
     out.options = {
       rulesVisibility: { Ruleset, Declaration, Mixin, VarDeclaration },
       local: isLocal,
       forward: isForward,
+      importBoundary: hasImportBoundary,
       referenceMode: isReferenceMode,
-      readonly: importOptions!.readonly ?? (type === 'compose' ? true : false)
+      readonly
     };
+    out._hasReferenceImports = isReferenceMode || evaluatedRules._hasReferenceImports;
     // Forwarded modules should never render output at this scope.
     if (isForward) {
       out.removeFlag(F_VISIBLE);
     }
-    // Set sourceNode so variable lookups know they can cross import boundaries
-    out.sourceNode = this;
-    this.adopt(out, context);
+    this.adopt(out);
     return out;
   }
 
@@ -346,20 +518,18 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions, Styl
    */
   override evalNode(context: Context): MaybePromise<Rules> {
     let node = this;
-    const path = node.get('path', context);
-    const withNode = node.get('withNode', context);
-    const withType = node.get('withType', context);
-    const withValues = withNode != null ? { node: withNode, type: withType! } : undefined;
+    const { path, with: withValues } = node.value;
     const { options } = node;
     options.importOptions ??= {};
     const { type, importOptions } = options;
     let maybePath;
     try {
       maybePath = path.eval(context);
-    } catch (e: unknown) {
-      if (e instanceof Error) {
-        Object.assign(e, { _isPathResolutionError: true });
-      }
+    } catch (e: any) {
+      // Tag path-resolution errors so the eval-queue retry policy can
+      // distinguish "path interpolation not ready" (cheap, worth retrying)
+      // from "content evaluation failed" (expensive clone, not worth retrying).
+      e._isPathResolutionError = true;
       throw e;
     }
     let originalDepth = context.depth;
@@ -376,12 +546,8 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions, Styl
      * work.
      */
 
-    const finalize = async (finalPath: string) => {
+    const finalize = async (finalPath: string, evaluatedPathNode: Quoted | Url) => {
       const previousTreeContext = context.treeContext;
-      let configuredWithCanonicalParents: Map<Node, Node | undefined> | undefined;
-      let dedupedCanonicalParents: Map<Node, Node | undefined> | undefined;
-      let dedupedCanonicalChildren: Node[] | undefined;
-      let dedupedCachedRules: Rules | undefined;
       // Inherit "reference branch" semantics lexically for nested imports unless
       // `multiple` explicitly opts into fresh output.
       const inheritedReferenceMode = context.inReferenceImportScope;
@@ -390,7 +556,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions, Styl
       if (inheritedReferenceMode && !importOptions!.multiple) {
         importOptions!.reference = true;
       }
-      if (node.treeContext?.file) {
+      if (node.treeContext) {
         context.treeContext = node.treeContext;
       }
       if (importOptions!.multiple || importOptions!.reference) {
@@ -403,6 +569,11 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions, Styl
         pushedImportScope = true;
       }
       try {
+        if (this.isPlainCssImport(finalPath)) {
+          const importRule = this.createCssImportAtRule(evaluatedPathNode);
+          this.queueCssImport(context, importRule);
+          return this.createImportAnchorSurface(context);
+        }
         const isInlineImport = importOptions!.inline === true;
         let rules: Rules;
         let resolvedPath: string;
@@ -415,26 +586,32 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions, Styl
           }
           const source = await sourceGetter.getSource!(resolvedPath);
           const sourceNode = new Any(source, { role: 'any' });
-          rules = this.wrapInlineSourceWithPostlude(sourceNode, importOptions!.postlude);
+          const sourceRules = this.createImportAnchorSurface(context, [sourceNode]);
+          rules = this.wrapRulesWithPostlude(sourceRules, importOptions!.postlude);
         } else {
           try {
             ({ node: rules, resolvedPath } = await context.getTree(finalPath, importOptions));
-          } catch (error: unknown) {
+          } catch (error: any) {
             if (importOptions!.optional) {
-              return Rules.create([]);
+              return this.createImportAnchorSurface(context);
             }
-            if (importOptions!.reference && error instanceof JessError
-              && (error.phase === 'parse' || String(error.code ?? '').startsWith('parse/'))) {
-              return Rules.create([]);
+            if (importOptions!.reference && (error?.phase === 'parse' || String(error?.code ?? '').startsWith('parse/'))) {
+              return this.createImportAnchorSurface(context);
             }
             throw error;
           }
         }
-        // Set sourceNode immediately after getting the Rules, before any evaluation
-        // This ensures that when preEval clones the Rules, the cloned Rules will have sourceNode set
-        // and registerNode can detect this is an imported Rules
-        rules.sourceNode = node;
+        // Mark import-boundary semantics on the Rules surface directly instead
+        // of depending on source-node provenance walks.
+        rules.options.importBoundary ??= this.options.type !== 'import';
         let evaldRules = context.evaldTrees.get(resolvedPath);
+        if (type === 'import' && !evaldRules && !withValues) {
+          // Plain imports still need an import-site-local Rules surface during
+          // preEval/eval. Reusing the canonical source tree here lets the first
+          // import site become the parent of later `multiple` / `reference`
+          // imports, which leaks the wrong selector/context into repeated uses.
+          rules = rules.clone(true) as Rules;
+        }
 
         // Compose caching semantics:
         // - The first time a module is composed, we evaluate and cache the evaluated Rules.
@@ -442,11 +619,9 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions, Styl
         // - Subsequent compose imports default to "reference" mode unless `multiple: true` is set,
         //   so rulesets / at-rules are not output again.
         if (type === 'compose' && evaldRules) {
-          if (withValues) {
           // Sass-style: once configured, cannot be configured again.
           // (We keep parsing show/hide/prefix metadata elsewhere; this is for with/set configs.)
-            throw new Error('Cannot configure a stylesheet more than once.');
-          }
+          this.throwIfConfiguredReuseIsDisallowed(withValues, true);
           // Reuse cached evaluated rules tree.
           rules = evaldRules;
           // Default: de-dupe output for compose re-imports unless explicitly multiple.
@@ -458,98 +633,12 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions, Styl
         if (type === 'import' && importOptions!.once !== false && !importOptions!.multiple && !inMultipleImportBranch && evaldRules) {
           rules = evaldRules;
           importOptions!._dedupe = true;
-          dedupedCachedRules = rules;
-          dedupedCanonicalChildren = [...rules.value];
-          dedupedCanonicalParents = new Map(
-            rules.value.map(child => [child, child.parent] as const)
-          );
         }
 
-        // Track whether we pushed an isolated EvalState so the finally block can pop it.
-        let pushedIsolatedState = false;
         if (withValues) {
-          // Once configured, cannot be configured again (handled above for compose+cache).
-          if (withValues.type === 'set' && evaldRules) {
-            throw new Error('Cannot configure a stylesheet more than once.');
-          }
-          // Evaluate withValues.node if it's a Reference to get the actual Rules
-          let withRulesNode = withValues.node;
-          if (isNode(withRulesNode, N.Reference)) {
-            const evaluated = await withRulesNode.eval(context);
-            if (!isNode(evaluated, N.Collection)) {
-              throw new Error('with/set node must evaluate to a Collection');
-            }
-            withRulesNode = evaluated;
-          }
-          const withRules = withRulesNode as Rules;
-          if (withValues.type === 'with') {
-            configuredWithCanonicalParents = new Map(
-              rules.value.map(child => [child, child.parent] as const)
-            );
-          }
-
-          // Build a name→index map over canonical top-level VarDeclarations for O(1) lookup.
-          // This replaces the previous rules.clone(true) + registry approach — we no longer
-          // deep-clone the entire imported tree just to find which declarations to override.
-          // A session created in the evaluation block below ensures that evaluated/preEvaluated
-          // tracking does not permanently mark canonical nodes as evaluated.
-          const topLevelVarIndex = new Map<string, number>();
-          for (let i = 0; i < rules.value.length; i++) {
-            const n = rules.value[i]!;
-            if (isNode(n, N.VarDeclaration)) {
-              const varName = String((n as VarDeclaration).get('name')?.valueOf() ?? '');
-              if (varName && !topLevelVarIndex.has(varName)) {
-                topLevelVarIndex.set(varName, i);
-              }
-            }
-          }
-
-          // Separate injected variables into replacements (matched in canonical) and new variables.
-          const replacementAt = new Map<number, Node>();
-          const newVariables: Node[] = [];
-
-          for (const injectedNode of withRules.value) {
-            if (isNode(injectedNode, N.VarDeclaration)) {
-              const varName = String((injectedNode as VarDeclaration).get('name')?.valueOf() ?? '');
-              if (varName) {
-                const existingIdx = topLevelVarIndex.get(varName);
-                if (existingIdx !== undefined) {
-                  replacementAt.set(existingIdx, injectedNode);
-                } else {
-                  newVariables.push(injectedNode);
-                }
-              } else {
-                newVariables.push(injectedNode);
-              }
-            } else {
-              newVariables.push(injectedNode);
-            }
-          }
-
-          // Push an isolated EvalState so that adopt() calls inside Rules.push()
-          // route parent writes into the overlay instead of permanently mutating
-          // canonical library nodes.
-          context.pushState(new EvalState());
-          pushedIsolatedState = true;
-          for (const index of replacementAt.keys()) {
-            const candidate = rules.value[index];
-            if (isNode(candidate, N.VarDeclaration)) {
-              markChangedVar(context, candidate as VarDeclaration);
-            }
-          }
-
-          // Build finalRules like mixin params: injected variables are pushed
-          // canonically (they're new nodes), library children keep their canonical
-          // parents untouched. We directly set the value array to avoid adopt()
-          // mutating canonical library node parents.
-          const finalChildren: Node[] = [];
-          for (const newNode of newVariables) {
-            finalChildren.push(newNode);
-          }
-          for (let i = 0; i < rules.value.length; i++) {
-            finalChildren.push(replacementAt.get(i) ?? rules.value[i]!);
-          }
-          rules = Rules.create(finalChildren);
+          this.throwIfConfiguredReuseIsDisallowed(withValues, Boolean(evaldRules));
+          const withRules = await this.resolveConfiguredRulesInput(context, withValues.node);
+          rules = this.applyConfiguredValues(rules, withRules);
         }
         // For compose type, register and push extend root BEFORE evaluation
         // so extends inside the import use the correct root
@@ -574,15 +663,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions, Styl
        * - the rules have not been evaluated yet
        * - the import type is `import`
       */
-        const activeParent = getParent(this, context);
-        const shouldIsolateSelectorFrames = !isNode(activeParent ? getParent(activeParent, context) : undefined, N.Ruleset | N.AtRule);
-        const prevRulesetFrames = shouldIsolateSelectorFrames ? context.rulesetFrames : undefined;
-        const prevFrames = shouldIsolateSelectorFrames ? context.frames : undefined;
         if (withValues || !evaldRules || type === 'import') {
-          if (!withValues && type !== 'import') {
-            context.pushState(new EvalState());
-            pushedIsolatedState = true;
-          }
           let pushedImplicitReferenceEvalScope = false;
           const isImplicitReferenceModeForEval = (
             type === 'import'
@@ -613,10 +694,6 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions, Styl
           }
 
           try {
-            if (shouldIsolateSelectorFrames) {
-              context.rulesetFrames = [];
-              context.frames = [];
-            }
             // Call preEval first to get the cloned Rules (if cloning occurs)
             // sourceNode is already set above, so the cloned Rules will have it
             rules = await rules.preEval(context);
@@ -626,24 +703,11 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions, Styl
             }
             rules = await rules.eval(context);
           } finally {
-            if (pushedIsolatedState) {
-              const poppedState = context.popState();
-              // Carry the eval state on the output so serialization can push it
-              if (poppedState && poppedState.size > 0) {
-                rules._carriedState = poppedState;
-                context.subtreeMap.set(rules, poppedState);
-              }
-              pushedIsolatedState = false;
-            }
             if (pushedImplicitReferenceEvalScope) {
               context.popImportScope();
             }
             if (shouldUseLocalExtendRoot) {
               context.extendRoots.popExtendRoot();
-            }
-            if (shouldIsolateSelectorFrames) {
-              context.rulesetFrames = prevRulesetFrames!;
-              context.frames = prevFrames!;
             }
           }
 
@@ -656,30 +720,12 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions, Styl
             context.evaldTrees.set(resolvedPath, rules);
           }
         } else {
-        // Shallow-clone the cached rules BEFORE evaluation so registries are populated
-        // on the clone, not on the cached evaldRules. EvalState isolation ensures canonical
-        // children's parent pointers are protected; preEval creates fresh clones via maybeClone.
-          context.pushState(new EvalState());
-          rules = rules.cloneLookupSafeShallowWrapper(context) as Rules;
-          // Note: For compose type, we don't set rules.parent = node
-          // (only import type needs this for older import behavior)
-          try {
-            if (shouldIsolateSelectorFrames) {
-              context.rulesetFrames = [];
-              context.frames = [];
-            }
-            rules = await rules.eval(context);
-          } finally {
-            const poppedState = context.popState();
-            if (poppedState && poppedState.size > 0) {
-              rules._carriedState = poppedState;
-              context.subtreeMap.set(rules, poppedState);
-            }
-            if (shouldIsolateSelectorFrames) {
-              context.rulesetFrames = prevRulesetFrames!;
-              context.frames = prevFrames!;
-            }
-          }
+          // Compose cache hit: `rules` is already the cached canonical/session
+          // result from `context.evaldTrees` (assigned at line 353). No clone
+          // and no re-eval is needed — shape differences per compose scope are
+          // handled by the shallow wrapper built in `getFinalRules` below,
+          // which applies per-scope visibility/reference options without
+          // mutating the shared cached tree.
         }
 
         // Pop extend root if we pushed one
@@ -687,12 +733,17 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions, Styl
           context.extendRoots.popExtendRoot();
         }
 
-        let finalRules = node.getFinalRules(rules, context);
+        // NB: previously this block cleared `referenceMode` on both `rules`
+        // and the finalRules wrapper when `evaluatedInImplicitReferenceMode`
+        // was true. That was a workaround for the old `markReferenceMode`
+        // eval-time walk, which tagged every descendant node individually.
+        // With the walk gone, the wrapper's `options.referenceMode` is the
+        // only reference-mode signal downstream renders will see, so
+        // clearing it here defeats dedupe suppression entirely.
+        let finalRules = node.getFinalRules(rules);
         if (importOptions!.postlude && !isInlineImport) {
-          finalRules = this.wrapEvaluatedRulesWithPostlude(finalRules, importOptions!.postlude);
+          finalRules = this.wrapRulesWithPostlude(finalRules, importOptions!.postlude);
         }
-        // configuredWithCanonicalParents restore removed — adopt() routes through
-        // EvalState, canonical parents are not mutated.
 
         // For import type, register the final Rules as a child root of the parent
         // so extends from the parent can find rulesets in the imported Rules
@@ -713,14 +764,12 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions, Styl
           });
 
           // For imports that evaluated under a local extend root (protected import or implicit _dedupe
-          // reference traversal), rulesets were registered in the pre-finalized Rules root. Since
-          // getFinalRules can clone, re-register all descendant rulesets under finalRules.
-          // during preEval (when we pushed rules to the stack). Since getFinalRules clones,
-          // we need to re-register rulesets in finalRules' registry.
+          // reference traversal), rulesets were registered against the pre-finalized Rules root. Since
+          // getFinalRules can clone, re-register all descendant rulesets under finalRules' extend root set.
           if (shouldReRegisterLocalRootRulesets) {
             for (const maybeRuleset of finalRules.nodes()) {
               if (isNode(maybeRuleset, N.Ruleset)) {
-                finalRules.register('ruleset', maybeRuleset as Ruleset);
+                registerRulesetWithRoot(finalRules, maybeRuleset as Ruleset);
               }
             }
           }
@@ -730,8 +779,6 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions, Styl
 
         return finalRules;
       } finally {
-        // dedupedCachedRules/dedupedCanonicalParents restore removed —
-        // eval writes go through EvalState, canonical tree is not mutated.
         context.treeContext = previousTreeContext;
         if (pushedImportScope) {
           context.popImportScope();
@@ -739,74 +786,40 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions, Styl
         importOptions!.reference = previousExplicitReference;
       }
     };
-    const getFinalPath = (resolvedPath: Quoted | Url): string => {
-      if (resolvedPath instanceof Url) {
-        return resolvedPath.pathValue(context);
-      }
-      const quotedValue = resolvedPath.get('value', context) as string | Node;
-      if (isNode(quotedValue)) {
-        return String((quotedValue as Node).valueOf());
-      }
-      return quotedValue as string;
-    };
-
     if (isThenable(maybePath)) {
-      return (maybePath as Promise<Quoted | Url>).then(async (p) => {
-        const finalPath = getFinalPath(p);
+      return maybePath.then(async (p) => {
+        const finalPath = String(p.valueOf());
         context.depth = originalDepth;
-        return finalize(finalPath);
+        return finalize(finalPath, this.toImportPathNode(p));
       });
     }
-    const finalPath = getFinalPath(maybePath as Quoted | Url);
+    const finalPath = String(maybePath.valueOf());
     context.depth = originalDepth;
-    return finalize(finalPath as string);
+    return finalize(finalPath, this.toImportPathNode(maybePath));
   }
 
-  /**
-   * Applies CSS import postlude wrappers around inline source content.
-   * Falls back to `@media <postlude>` for plain query nodes.
-   */
-  private wrapInlineSourceWithPostlude(sourceNode: Node, postlude?: Node): Rules {
-    if (!postlude) {
-      return Rules.create([sourceNode]);
-    }
-
-    let wrapped: Node = sourceNode;
-    const postludeNodes: Node[] = isNode(postlude, N.Sequence | N.List) ? [...(postlude as Sequence).get('value')] : [postlude];
-
-    for (let i = postludeNodes.length - 1; i >= 0; i--) {
-      const current = postludeNodes[i]!;
-      const body = Rules.create([wrapped]);
-      const { atRuleName, prelude } = this.materializePostludePrelude(current);
-      wrapped = new AtRule({
-        name: new Any(atRuleName, { role: 'atkeyword' }),
-        prelude,
-        rules: body
-      });
-    }
-
-    return Rules.create([wrapped]);
-  }
-
-  /**
-   * Applies CSS import postlude wrappers around evaluated stylesheet rules.
-   * Used for Less-style imports with media/layer/supports postludes.
-   */
-  private wrapEvaluatedRulesWithPostlude(rules: Rules, postlude?: Node): Rules {
+  private wrapRulesWithPostlude(rules: Rules, postlude?: Node): Rules {
     if (!postlude) {
       return rules;
     }
-    const postludeNodes: Node[] = isNode(postlude, N.Sequence | N.List) ? [...(postlude as Sequence).get('value')] : [postlude];
+    const postludeNodes = this.getPostludeNodes(postlude);
+    const anchorRules = rules;
     let wrappedRules: Rules = rules;
     for (let i = postludeNodes.length - 1; i >= 0; i--) {
       const current = postludeNodes[i]!;
-      const { atRuleName, prelude } = this.materializePostludePrelude(current);
-      const wrappedAtRule = new AtRule({
-        name: new Any(atRuleName, { role: 'atkeyword' }),
-        prelude,
-        rules: wrappedRules
-      });
-      wrappedRules = Rules.create([wrappedAtRule]);
+      if (isNode(current, N.Call)) {
+        const callName = String(current.value.name).toLowerCase();
+        if (callName === 'media' || callName === 'supports' || callName === 'layer') {
+          const args = current.value.args?.value ?? [];
+          const prelude = args.length <= 1 ? args[0] : current.value.args;
+          if (prelude) {
+            wrappedRules = this.wrapRulesInAtRuleSurface(anchorRules, wrappedRules, `@${callName}`, prelude);
+            continue;
+          }
+        }
+      }
+
+      wrappedRules = this.wrapRulesInAtRuleSurface(anchorRules, wrappedRules, '@media', current);
     }
 
     return wrappedRules;

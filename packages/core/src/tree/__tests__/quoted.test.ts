@@ -1,70 +1,64 @@
-import { describe, expect, it } from 'vitest';
-import { any, expr, interpolated, quoted } from '../index.js';
+import { describe, it, expect, beforeEach } from 'vitest';
+import { quoted, ref, rules, vardecl, any, Rules as RulesClass } from '../index.js';
 import { Context } from '../../context.js';
-import { setField } from '../util/field-helpers.js';
 
-describe('Quoted', () => {
-  it('serializes a quoted string', () => {
-    const node = quoted('red');
+describe('quoted', () => {
+  let context: Context;
 
-    expect(node.toTrimmedString()).toBe('"red"');
+  beforeEach(() => {
+    context = new Context();
   });
 
-  it('evaluates to a materialized quoted node without mutating the canonical node', async () => {
-    const context = new Context();
-    const node = quoted(interpolated({
-      source: '%%',
-      replacements: [expr(any('blue'))]
-    }));
-
-    const evald = await node.eval(context);
-
-    expect(evald.toTrimmedString({ context })).toBe('"blue"');
-    expect(node.toTrimmedString()).toBe('"$(blue)"');
-    expect(node.get('value')).toBeTypeOf('object');
-    expect(node.get('value')).not.toBe('blue');
+  it('renders quoted syntax through toTrimmedString()', () => {
+    expect(quoted('hello').toTrimmedString()).toBe('"hello"');
   });
 
-  it('evaluates through a eval state without overwriting the canonical value', async () => {
-    const context = new Context();
-    const node = quoted(interpolated({
-      source: '%%',
-      replacements: [expr(any('blue'))]
-    }));
+  it('does not allocate options when rendering quoted syntax with defaults', () => {
+    const rule = quoted('hello');
 
-    const evald = await node.eval(context);
-
-    expect(evald).toBe(node);
-    expect(node.toTrimmedString({ context })).toBe('"blue"');
-    expect(node.toTrimmedString()).toBe('"$(blue)"');
-    expect(node.get('value')).toBeTypeOf('object');
-    expect(node.get('value')).not.toBe('blue');
+    expect(rule.toTrimmedString()).toBe('"hello"');
+    expect(Object.getOwnPropertyDescriptor(rule, '_options')?.value).toBeUndefined();
   });
 
-  it('keeps valueOf() canonical across different eval states', () => {
-    const node = quoted('red');
-    const ctx1 = new Context();
-    const ctx2 = new Context();
+  it('does not allocate options when comparing default quoted values', () => {
+    const left = quoted('hello');
+    const right = quoted('hello');
 
-    setField(node, 'value', 'cyan', ctx1);
-    setField(node, 'value', 'magenta', ctx2);
-
-    expect(node.toTrimmedString({ context: ctx1 })).toBe('"cyan"');
-    expect(node.toTrimmedString({ context: ctx2 })).toBe('"magenta"');
-    expect(node.valueOf()).toBe('red');
-  });
-
-  it('keeps compare() canonical across different eval states', () => {
-    const left = quoted('red');
-    const right = quoted('red');
-    const ctx1 = new Context();
-    const ctx2 = new Context();
-
-    setField(left, 'value', 'cyan', ctx1);
-    setField(left, 'value', 'magenta', ctx2);
-
-    expect(left.toTrimmedString({ context: ctx1 })).toBe('"cyan"');
-    expect(left.toTrimmedString({ context: ctx2 })).toBe('"magenta"');
     expect(left.compare(right)).toBe(0);
+    expect(Object.getOwnPropertyDescriptor(left, '_options')?.value).toBeUndefined();
+    expect(Object.getOwnPropertyDescriptor(right, '_options')?.value).toBeUndefined();
+  });
+
+  it('renders a resolved quoted value through render(context)', async () => {
+    const node = rules([
+      vardecl({
+        name: any('message'),
+        value: any('hello')
+      })
+    ]);
+    const evald = await node.eval(context);
+    context.root = evald as RulesClass;
+    context.rulesContext = evald as RulesClass;
+
+    const rendered = quoted(ref({ key: 'message' }, { type: 'variable' })).render(context);
+
+    expect(rendered).toBe('"hello"');
+  });
+
+  it('resolves quoted values without touching render state', async () => {
+    const node = rules([
+      vardecl({
+        name: any('message'),
+        value: any('hello')
+      })
+    ]);
+    const evald = await node.eval(context);
+    context.root = evald as RulesClass;
+    context.rulesContext = evald as RulesClass;
+
+    const resolved = await quoted(ref({ key: 'message' }, { type: 'variable' })).resolve(context);
+
+    expect(`${resolved}`).toBe('"hello"');
+    expect(context.printState.writer).toBeUndefined();
   });
 });

@@ -4,14 +4,14 @@
  * Extends Chevrotain's EmbeddedActionsParser with Jess-specific infrastructure:
  * - Filtered input (skipped tokens removed) with pre/post trivia maps
  * - AST building helpers (getLocationInfo, wrap, getPrePost, startRule, endRule)
- * - Token categories via Chevrotain bitsets (tokenMatcher for gate predicates)
+ * - Token category matching via categoryMatchesMap for gate predicates
  */
 import { EmbeddedActionsParser, EOF, tokenMatcher } from 'chevrotain';
-import type { IToken, TokenType, ParserMethod } from '@chevrotain/types';
+import type { TokenType, ParserMethod } from '@chevrotain/types';
 
 export type Rule<F extends (...args: any[]) => void = (ctx?: RuleContext) => void> = ParserMethod<Parameters<F>, any>;
 
-import type { LocationInfo, OptionalLocation } from '@jesscss/core';
+import type { IParseResult, LocationInfo, OptionalLocation } from '@jesscss/core';
 
 import {
   TreeContext,
@@ -29,28 +29,11 @@ import {
 
 import colors from 'color-name';
 
-type ColorName = keyof typeof colors;
-function isColorName(key: string): key is ColorName {
-  return key in colors;
-}
-
 import { type CssTokenType, SKIPPED_LABEL } from './cssTokens.js';
 
 export { tokenMatcher };
 
 export type TokenMap = Record<CssTokenType, TokenType>;
-
-type RuntimeLookaheadCacheState = {
-  _orFastMaps: Record<number, Record<number, number>>;
-  _orFastMapAltsRef: Record<number, unknown>;
-  _orGatedPrefixAlts: Record<number, number[]>;
-  _orCounterDeltas: Record<number, number>;
-  _orAltCounterStarts: Record<number, number[]>;
-  _orCommittable: Record<number, Record<number, boolean>>;
-  _orLookahead: Record<number, unknown>;
-  _orLookaheadLL1: Array<unknown>;
-  _prodLookahead: Record<number, () => boolean>;
-};
 
 // ── Import production rule implementations ──────────────────────────
 import * as productions from './productions/index.js';
@@ -231,6 +214,13 @@ export class CssRecursiveParser extends EmbeddedActionsParser {
     return this.tokVector;
   }
 
+  get trivia(): IParseResult['trivia'] {
+    return {
+      before: this.preSkippedTokenMap,
+      after: this.postSkippedTokenMap
+    };
+  }
+
   protected addUsedSkippedTokens(tokens: IToken[] | undefined): void {
     if (!tokens) {
       return;
@@ -244,10 +234,26 @@ export class CssRecursiveParser extends EmbeddedActionsParser {
 
   // ── Domain helpers ─────────────────────────────────────────────────
 
-  /** Fast exact check, then category bitset fallback */
+  /**
+   * Check if a token matches an expected type (including category parents).
+   * Uses categoryMatchesMap directly to avoid dual-package tokenMatcher issues
+   * where ESM/CJS boundary causes two module instances of chevrotain.
+   */
+  matchToken(tok: IToken, expected: TokenType): boolean {
+    return tok.tokenType === expected
+      || (expected.isParent === true && expected.categoryMatchesMap?.[tok.tokenTypeIdx] === true);
+  }
+
+  /**
+   * Check if next token matches expected type (including category parents).
+   */
   isType(expected: TokenType): boolean {
     const la1 = this.LA(1);
-    return la1.tokenType === expected || tokenMatcher(la1, expected);
+    if (la1.tokenType === expected) {
+      return true;
+    }
+    return expected.isParent === true
+      && expected.categoryMatchesMap?.[la1.tokenTypeIdx] === true;
   }
 
   /** Exact token type check only (no category traversal) */
@@ -267,7 +273,11 @@ export class CssRecursiveParser extends EmbeddedActionsParser {
     if (!tok) {
       return expected.name === 'EOF';
     }
-    return tokenMatcher(tok, expected);
+    if (tok.tokenType === expected) {
+      return true;
+    }
+    return expected.isParent === true
+      && expected.categoryMatchesMap?.[tok.tokenTypeIdx] === true;
   }
 
   /**
@@ -307,37 +317,19 @@ export class CssRecursiveParser extends EmbeddedActionsParser {
    * 1. Non-Ident start => selector-like, allow immediately.
    * 2. Ident + no Colon => selector-like, allow immediately.
    * 3. Ident + Colon + whitespace after colon => declaration, reject.
-   * 4. Otherwise (ident:no-space) => use the next one or two tokens to detect
-   *    selector intent without scanning to the terminating delimiter.
+   * 4. Ident + Colon + no-space + selector-like token => only allow the nested
+   *    qualified-rule path when a `{` appears before `;`/`}`.
+   * 5. Ident + Colon + no-space + Ident => same `{` lookahead before `;`/`}`.
    */
   shouldTryQualifiedRuleInDeclarationList(): boolean {
     const {
       Ident,
       Assign,
       Colon,
-      LCurly,
-      Comma,
-      Gt,
-      Plus,
-      Tilde,
-      Column,
-      Pipe,
-      LSquare,
       NthPseudoClass,
-      SelectorPseudoClass
+      SelectorPseudoClass,
+      FunctionStart
     } = this.T;
-    const isSelectorLikeContinuation = (offset: number): boolean => {
-      const tok = this.LA(offset);
-      return (
-        tokenMatcher(tok, LCurly)
-        || tokenMatcher(tok, Comma)
-        || tokenMatcher(tok, this.T.Combinator)
-        || tokenMatcher(tok, LSquare)
-        || tokenMatcher(tok, Colon)
-        || tokenMatcher(tok, NthPseudoClass)
-        || tokenMatcher(tok, SelectorPseudoClass)
-      );
-    };
     if (!this.isTypeAt(1, Ident)) {
       return true;
     }
@@ -352,13 +344,14 @@ export class CssRecursiveParser extends EmbeddedActionsParser {
       tt3 === Colon
       || tt3 === NthPseudoClass
       || tt3 === SelectorPseudoClass
+      || this.matchToken(this.LA(3), FunctionStart)
     ) {
-      return true;
+      return this.hasLCurlyAhead();
     }
-    if (!tokenMatcher(this.LA(3), Ident)) {
+    if (!this.matchToken(this.LA(3), Ident)) {
       return false;
     }
-    return isSelectorLikeContinuation(4);
+    return this.hasLCurlyAhead();
   }
 
   /**
@@ -428,8 +421,8 @@ export class CssRecursiveParser extends EmbeddedActionsParser {
           endColumn = t.endColumn!;
         }
         found = true;
-      } else if (item.location && item.location.length === 6) {
-        const loc: LocationInfo = item.location;
+      } else if (item.location && (item.location as LocationInfo).length === 6) {
+        const loc = item.location as LocationInfo;
         if (loc[0] < startOffset) {
           startOffset = loc[0];
           startLine = loc[1];
@@ -453,20 +446,6 @@ export class CssRecursiveParser extends EmbeddedActionsParser {
       : [NaN, NaN, NaN, NaN, NaN, NaN];
     this.locationStack.push(location);
     return location;
-  }
-
-  /**
-   * Extend Chevrotain's CST watermark save to also snapshot locationStack.length.
-   * Called at every speculative rollback point (OPTION, MANY, OR alternatives).
-   * Restoring via restoreCheckpoint() undoes any startRule() pushes from a failed alt.
-   */
-  protected override saveCheckpoint(): any {
-    return { cst: super.saveCheckpoint(), locationStack: this.locationStack.length };
-  }
-
-  protected override restoreCheckpoint(save: ReturnType<typeof this.saveCheckpoint>): void {
-    super.restoreCheckpoint(save.cst);
-    this.locationStack.length = save.locationStack;
   }
 
   endRule(): LocationInfo {
@@ -523,74 +502,15 @@ export class CssRecursiveParser extends EmbeddedActionsParser {
     if (!nextTokenLocation) {
       nextTokenLocation = this.getLocationInfo(this.LA(1));
     }
-    const rules: Node[] = [];
-
-    const processPrePost = (prePost: Node['pre']): Node['pre'] => {
-      if (isArray(prePost)) {
-        const remainder: Array<string | Node> = [];
-        for (let i = 0; i < prePost.length; i++) {
-          const item = prePost[i]!;
-          if (item instanceof Node) {
-            const prev = remainder.length > 0 ? remainder[remainder.length - 1] : undefined;
-            if (typeof prev === 'string') {
-              item.pre = [prev];
-              remainder.pop();
-            }
-            const next = prePost[i + 1];
-            if (typeof next === 'string') {
-              (item as Node & { post?: unknown }).post = [next];
-              i++;
-            }
-            rules.push(item);
-          } else {
-            remainder.push(item);
-          }
-        }
-        return remainder.length === 0 ? 0 : remainder;
-      }
-      return prePost;
-    };
-
-    for (const rule of existingRules) {
-      if (rule.pre === undefined) {
-        const pre = this.getPrePost(rule.location[0]!);
-        rule.pre = processPrePost(pre);
-      }
-      rules.push(rule);
-    }
-    const tail = this.getPrePost(nextTokenLocation[0]!);
-    const remainder = processPrePost(tail);
-    const returnRules = new Rules(
-      rules,
+    return new Rules(
+      existingRules,
       undefined,
-      rules.length ? this.getLocationFromNodes(rules) : undefined,
+      existingRules.length ? this.getLocationFromNodes(existingRules) : nextTokenLocation,
       this.context
     );
-    returnRules.post = remainder;
-    return returnRules;
   }
 
   protected wrap<T extends Node = Node>(node: T, post?: boolean | 'both', ctx?: RuleContext): T {
-    if (!(node instanceof Node)) {
-      return node;
-    }
-    if (post) {
-      if (node.post === undefined) {
-        const offset = node.location[3];
-        if (offset !== undefined) {
-          node.post = this.getPrePost(offset, true, ctx);
-        }
-      }
-      if (post !== 'both') {
-        return node;
-      }
-    }
-    if (!post || post === 'both') {
-      const offset = node.location[0];
-      if (offset !== undefined && node.pre === undefined) {
-        node.pre = this.getPrePost(offset, false, ctx) as Node['pre'];
-      }
-    }
     return node;
   }
 
@@ -604,7 +524,7 @@ export class CssRecursiveParser extends EmbeddedActionsParser {
       new Dimension(v, undefined, this.getLocationInfo(token), this.context);
     const getNumber = (v: number) => new Num(v, undefined, this.getLocationInfo(token), this.context);
 
-    if (tokenMatcher(token, T.Ident)) {
+    if (this.matchToken(token, T.Ident) || this.matchToken(token, T.PlainIdent)) {
       const colorKey = tokValue.toLowerCase();
       if (colorKey === 'transparent') {
         return new Color(
@@ -614,8 +534,8 @@ export class CssRecursiveParser extends EmbeddedActionsParser {
           this.context
         );
       }
-      if (isColorName(colorKey)) {
-        const cv = colors[colorKey];
+      if (colors[colorKey as keyof typeof colors]) {
+        const cv = colors[colorKey as keyof typeof colors];
         return new Color(
           { node: tokValue, rgb: cv, alpha: 1 },
           { format: ColorFormat.HEX },
@@ -625,35 +545,25 @@ export class CssRecursiveParser extends EmbeddedActionsParser {
       }
       return new Any(tokValue, { role: 'ident' }, this.getLocationInfo(token), this.context);
     }
-    if (tokenMatcher(token, T.Dimension)) {
-      const pl = token.payload as unknown as [string, string] | undefined;
+    if (this.matchToken(token, T.Dimension)) {
+      const pl = token.payload as [string, string] | undefined;
       dimValue = { number: parseFloat(pl?.[0] ?? '0'), unit: pl?.[1] ?? '' };
       return getDimension(dimValue);
     }
     if (tokName === 'MathConstant') {
       switch (tokValue.toLowerCase()) {
-        case 'pi':
-          numValue = Math.PI;
-          break;
-        case 'infinity':
-          numValue = Infinity;
-          break;
-        case '-infinity':
-          numValue = -Infinity;
-          break;
-        case 'e':
-          numValue = Math.E;
-          break;
-        case 'nan':
-          numValue = NaN;
-          break;
+        case 'pi': numValue = Math.PI; break;
+        case 'infinity': numValue = Infinity; break;
+        case '-infinity': numValue = -Infinity; break;
+        case 'e': numValue = Math.E; break;
+        case 'nan': numValue = NaN; break;
       }
       return getNumber(numValue!);
     }
-    if (tokenMatcher(token, T.Number)) {
+    if (this.matchToken(token, T.Number)) {
       return getNumber(parseFloat(tokValue));
     }
-    if (tokenMatcher(token, T.Color)) {
+    if (this.matchToken(token, T.Color)) {
       return new Color(tokValue, undefined, this.getLocationInfo(token), this.context);
     }
     return new Any(tokValue, { type: tokName }, this.getLocationInfo(token), this.context);

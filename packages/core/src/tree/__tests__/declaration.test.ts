@@ -1,7 +1,6 @@
-import { coll, decl, rules, ruleset, el, color, any } from '../index.js';
+import { decl, spaced, color, rules, any, ref, atrule, ruleset, el, forNode, List, VarDeclaration, op, num, dimension, AssignmentType, vardecl, interpolated, call, JsFunction } from '../index.js';
 import { Context } from '../../context.js';
-import { AssignmentType } from '../declaration.js';
-import { setField } from '../util/field-helpers.js';
+import { INTERPOLATION_PLACEHOLDER } from '../interpolated.js';
 
 let context: Context;
 describe('Declaration', () => {
@@ -13,152 +12,399 @@ describe('Declaration', () => {
     expect(`${rule}`).toBe('color: #eee');
   });
 
-  it('preEval normalizes assignment options without overwriting canonical options', async () => {
-    const rule = decl(
-      { name: 'color', value: any('red') },
-      { assign: AssignmentType.Add }
-    );
-    const preEvald = await rule.preEval(context);
+  it('does not allocate options when serializing a default declaration', () => {
+    const rule = decl({ name: 'color', value: color('#eee') });
 
-    expect(preEvald.toTrimmedString({ context })).toContain('color:');
-    expect(preEvald.toTrimmedString({ context })).not.toContain('+:');
-    expect(rule.toTrimmedString()).toContain('+:');
-    expect(rule.options?.assign).toBe(AssignmentType.Add);
-    expect(rule.options?.normalizedFromAssign).toBeUndefined();
+    expect(rule.toTrimmedString()).toBe('color: #eee');
+    expect(Object.getOwnPropertyDescriptor(rule, '_options')?.value).toBeUndefined();
   });
 
-  it('omits the trailing semicolon when the canonical value is a collection', () => {
-    const rule = decl({
-      name: 'color',
-      value: coll([
-        decl({ name: 'nested', value: any('red') })
-      ])
-    });
-
-    expect(rule.requiredSemi).toBe(false);
-    expect(rules([rule]).toString()).not.toContain('};');
-  });
-
-  it('root rules serialization omits the trailing semicolon when eval state patches the value to a collection', () => {
-    const rule = decl({ name: 'color', value: any('red') });
-    const patchedValue = coll([
-      decl({ name: 'nested', value: any('blue') })
+  it('renders resolved declarations through render(context)', async () => {
+    const root = rules([
+      vardecl({ name: any('tone'), value: any('red') })
     ]);
+    const evald = await root.eval(context);
+    context.root = evald;
+    context.rulesContext = evald;
 
-    setField(rule, 'value', patchedValue, context);
+    const rendered = decl({
+      name: any('color'),
+      value: ref({ key: 'tone' }, { type: 'variable' })
+    }).render(context);
 
-    expect(rule.toTrimmedString({ context })).toContain('{');
-    expect(rule.requiredSemi).toBe(true);
-    expect(rules([rule]).toString({ context })).not.toContain('};');
+    expect(rendered).toBe('color: red');
   });
 
-  it('root rules serialization adds the trailing semicolon when eval state patches a collection value back to a scalar', () => {
-    const rule = decl({
-      name: 'color',
-      value: coll([
-        decl({ name: 'nested', value: any('red') })
-      ])
-    });
+  it('resolves declarations without touching render state', async () => {
+    const root = rules([
+      vardecl({ name: any('tone'), value: any('red') })
+    ]);
+    const evald = await root.eval(context);
+    context.root = evald;
+    context.rulesContext = evald;
 
-    setField(rule, 'value', any('blue'), context);
+    const resolved = await decl({
+      name: any('color'),
+      value: ref({ key: 'tone' }, { type: 'variable' })
+    }).resolve(context);
 
-    expect(rule.toTrimmedString({ context })).toBe('color: blue');
-    expect(rule.requiredSemi).toBe(false);
-    expect(rules([rule]).toString({ context })).toContain('blue;');
+    expect(resolved.toTrimmedString()).toBe('color: red');
+    expect(context.printState.writer).toBeUndefined();
   });
 
-  it('serialize-helper omits the trailing semicolon for a state-patched collection value inside a ruleset', () => {
-    const rule = decl({ name: 'color', value: any('red') });
-    const node = rules([
-      ruleset({
-        selector: el('.x'),
-        rules: rules([rule])
+  it('renders indexed references inside custom property values through render(context)', async () => {
+    const root = rules([
+      vardecl({
+        name: any('tone'),
+        value: any('red')
       })
     ]);
-    const patchedValue = coll([
-      decl({ name: 'nested', value: any('blue') })
+    const evald = await root.eval(context);
+    context.root = evald;
+    context.rulesContext = evald;
+
+    const node = decl({
+      name: any('--custom'),
+      value: ref({ key: 'tone' }, { type: 'index' })
+    });
+
+    expect(node.toTrimmedString()).toBe('--custom:$[tone]');
+    expect(node.render(context)).toBe('--custom:red');
+  });
+
+  it('renders interpolated custom property values through render(context)', async () => {
+    const root = rules([
+      vardecl({
+        name: any('tone'),
+        value: any('red')
+      })
+    ]);
+    const evald = await root.eval(context);
+    context.root = evald;
+    context.rulesContext = evald;
+
+    const node = decl({
+      name: any('--custom'),
+      value: interpolated({
+        source: `prefix-${INTERPOLATION_PLACEHOLDER}`,
+        replacements: [ref({ key: 'tone' }, { type: 'variable' })]
+      })
+    });
+
+    expect(node.toTrimmedString()).toBe('--custom:prefix-$tone');
+    expect(node.render(context)).toBe('--custom:prefix-red');
+  });
+
+  it('keeps a single space before block-comment custom property values after evaluation', async () => {
+    const root = rules([
+      vardecl({
+        name: any('commentText'),
+        value: any('/* // Not commented out // */')
+      }),
+      decl({
+        name: any('--comment'),
+        value: ref({ key: 'commentText' }, { type: 'variable' })
+      })
     ]);
 
-    setField(rule, 'value', patchedValue, context);
-
-    expect(node.toString({ context })).toBeString(`
-      .x {
-        color: {
-            nested: blue;
-          }
-      }
+    const evald = await root.eval(context);
+    expect(`${evald}`).toBeString(`
+      --comment: /* // Not commented out // */;
     `);
   });
 
-  it('serialize-helper adds the trailing semicolon for a state-patched scalar value inside a ruleset', () => {
-    const rule = decl({
-      name: 'color',
-      value: coll([
-        decl({ name: 'nested', value: any('red') })
-      ])
+  it('preserves generic calls in custom property values during render(context)', () => {
+    const node = decl({
+      name: any('--custom'),
+      value: call({
+        name: 'if',
+        args: new List([
+          call({ name: 'not', args: new List([any('true')]) }),
+          any('5')
+        ])
+      })
     });
-    const node = rules([
-      ruleset({
-        selector: el('.x'),
-        rules: rules([rule])
-      })
-    ]);
 
-    setField(rule, 'value', any('blue'), context);
-
-    expect(node.toString({ context })).toBeString(`
-      .x {
-        color: blue;
-      }
-    `);
+    expect(node.toTrimmedString()).toBe('--custom:if(not(true), 5)');
+    expect(node.render(context)).toBe('--custom:if(not(true), 5)');
   });
 
-  it('serialize-helper de-dupes declarations by a state-patched property name', () => {
-    const first = decl({ name: 'color', value: any('red') });
-    const second = decl({ name: 'background', value: any('red') });
-    const node = rules([
-      ruleset({
-        selector: el('.x'),
-        rules: rules([first, second])
-      })
-    ]);
+  it('preserves Less-style function calls in custom property values during render(context)', () => {
+    const root = rules([]);
+    root.register('function', new JsFunction({
+      name: 'rgba',
+      fn: () => any('rgb(0, 30, 0)')
+    }));
+    context.root = root;
+    context.rulesContext = root;
 
-    setField(first, 'name', any('background', { role: 'property' }), context);
+    const node = decl({
+      name: any('--custom'),
+      value: call({
+        name: ref('rgba', { type: 'function', fallbackValue: true }),
+        args: new List([num(0), num(30), num(0), num(238)])
+      }, { silentFail: true })
+    });
 
-    expect(node.toString({ context })).toBeString(`
-      .x {
-        background: red;
-      }
-    `);
+    expect(node.render(context)).toBe(node.toTrimmedString());
   });
 
-  it('rules coalescing uses a state-patched property name for merged declarations', async () => {
-    const base = decl({ name: 'color', value: any('red') });
-    const merged = decl(
-      { name: 'background', value: any('blue') },
-      { assign: AssignmentType.Add }
-    );
+  it('serializes important declarations with one space before !important', async () => {
     const node = rules([
-      ruleset({
-        selector: el('.x'),
-        rules: rules([base, merged])
+      decl({
+        name: any('color'),
+        value: any('red'),
+        important: any('!important', { role: 'flag' })
       })
     ]);
-
-    setField(merged, 'name', any('color', { role: 'property' }), context);
 
     const evald = await node.eval(context);
-    const css = evald.render(context);
+    expect(`${evald}`).toBeString(`
+      color: red !important;
+    `);
+  });
 
-    // With EvalState, the +: Reference looks up the canonical property name
-    // in the registry. Since the merged decl's canonical name is 'background'
-    // (patched to 'color' only in state), the linear reference can't find a
-    // prior 'color' property to merge with. The leading Nil placeholder is
-    // stripped, leaving just 'blue'. Both declarations render under the
-    // state-patched name 'color'.
-    expect(css).toContain('color: red;');
-    expect(css).toContain('color: blue;');
-    expect(css).not.toContain('background:');
+  it('does not keep an empty leading item when += normalization has no prior declaration', async () => {
+    const node = rules([
+      decl({
+        name: any('background-color'),
+        value: any('red')
+      }, { assign: '+:' }),
+      decl({
+        name: any('background-color'),
+        value: any('foo')
+      }, { assign: '+:' })
+    ]);
+
+    const evald = await node.eval(context);
+    expect(`${evald}`).toBeString(`
+      background-color: red, foo;
+    `);
+  });
+
+  it('resolves merged declaration lookups without duplicating or keeping empty placeholders', async () => {
+    const node = rules([
+      decl({
+        name: any('background-color'),
+        value: any('red')
+      }, { assign: '+:' }),
+      decl({
+        name: any('background-color'),
+        value: any('foo')
+      }, { assign: '+:' }),
+      decl({
+        name: any('background'),
+        value: ref({ key: 'background-color' }, { type: 'declaration' })
+      })
+    ]);
+
+    const evald = await node.eval(context);
+    expect(`${evald}`).toBeString(`
+      background-color: red, foo;
+      background: red, foo;
+    `);
+  });
+
+  it('resolves merged declaration lookups from a nested child ruleset in source order', async () => {
+    const node = rules([
+      rules([
+        decl({
+          name: any('background-color'),
+          value: any('red')
+        }, { assign: '+:' }),
+        decl({
+          name: any('background-color'),
+          value: any('foo')
+        }, { assign: '+:' }),
+        rules([
+          decl({
+            name: any('background'),
+            value: ref({ key: 'background-color' }, { type: 'declaration' })
+          })
+        ])
+      ])
+    ]);
+
+    const parent = node.value[0]!;
+    const child = parent.value[2]!;
+    child.parent = parent;
+
+    const evald = await node.eval(context);
+    expect(`${evald}`).toBeString(`
+      background-color: red, foo;
+      background: red, foo;
+    `);
+  });
+
+  it('does not pull a prior plain declaration into Less-style property merge chains', async () => {
+    const node = rules([
+      decl({
+        name: any('src'),
+        value: any('base')
+      }),
+      decl({
+        name: any('src'),
+        value: any('one')
+      }, { assign: AssignmentType.MergeList }),
+      decl({
+        name: any('src'),
+        value: any('two')
+      }, { assign: AssignmentType.MergeSequence }),
+      decl({
+        name: any('src'),
+        value: any('three')
+      }, { assign: AssignmentType.MergeList })
+    ]);
+
+    const evald = await node.eval(context);
+    expect(`${evald}`).toBeString(`
+      src: base;
+      src: one two, three;
+    `);
+  });
+
+  it('preserves multiline declaration values while enforcing a minimum continuation indent', async () => {
+    const node = rules([
+      decl({ name: any('background'), value: any('the,\n              great,\n              wall') }),
+      decl({ name: any('color'), value: any('\nwhite') }),
+      decl({ name: any('background-position'), value: any('45\n-23') })
+    ]);
+
+    const evald = await node.eval(context);
+    expect(evald.toString()).toBeString(`
+      background: the,
+                    great,
+                    wall;
+      color:
+        white;
+      background-position: 45
+        -23;
+    `);
+  });
+
+  it('does not re-merge sequence assignments during post-eval coalescing in nested at-rules', async () => {
+    context = new Context({ collapseNesting: true, leakyRules: true });
+    const node = rules([
+      ruleset({
+        selector: el('nav'),
+        rules: rules([
+          atrule({
+            name: any('@starting-style', { role: 'atkeyword' }),
+            rules: rules([
+              decl({ name: any('padding'), value: any('10px') }, { assign: AssignmentType.MergeSequence }),
+              decl({ name: any('padding'), value: any('8px') }, { assign: AssignmentType.MergeSequence }),
+              decl({ name: any('padding'), value: any('6px') }, { assign: AssignmentType.MergeSequence }),
+              decl({ name: any('padding'), value: any('4px') }, { assign: AssignmentType.MergeSequence })
+            ])
+          })
+        ])
+      })
+    ]);
+
+    const evald = await node.eval(context);
+    expect(`${evald}`).toBeString(`
+      nav {
+        @starting-style {
+          padding: 10px 8px 6px 4px;
+        }
+      }
+    `);
+  });
+
+  it('coalesces sequence assignments emitted through nested $for output rules', async () => {
+    context = new Context({ collapseNesting: true, leakyRules: true });
+    const node = rules([
+      ruleset({
+        selector: el('aside'),
+        rules: rules([
+          atrule({
+            name: any('@starting-style', { role: 'atkeyword' }),
+            rules: rules([
+              forNode({
+                pattern: {
+                  kind: 'single',
+                  value: new VarDeclaration({
+                    name: any('value', { role: 'property' }),
+                    value: any('_')
+                  })
+                },
+                iterable: {
+                  kind: 'node',
+                  value: new List([
+                    any('10px'),
+                    any('20px'),
+                    any('30px'),
+                    any('40px')
+                  ])
+                },
+                rules: rules([
+                  decl({ name: any('padding'), value: ref('value', { type: 'variable' }) }, { assign: AssignmentType.MergeSequence })
+                ])
+              })
+            ])
+          })
+        ])
+      })
+    ]);
+
+    const evald = await node.eval(context);
+    expect(`${evald}`).toBeString(`
+      aside {
+        @starting-style {
+          padding: 10px 20px 30px 40px;
+        }
+      }
+    `);
+  });
+
+  it('coalesces sequence assignments emitted through tuple-pattern each()-style loops', async () => {
+    context = new Context({ collapseNesting: true, leakyRules: true });
+    const node = rules([
+      ruleset({
+        selector: el('aside'),
+        rules: rules([
+          atrule({
+            name: any('@starting-style', { role: 'atkeyword' }),
+            rules: rules([
+              forNode({
+                pattern: {
+                  kind: 'tuple',
+                  values: [
+                    new VarDeclaration({ name: any('value', { role: 'property' }), value: any('_') }),
+                    new VarDeclaration({ name: any('key', { role: 'property' }), value: any('_') }),
+                    new VarDeclaration({ name: any('index', { role: 'property' }), value: any('_') })
+                  ]
+                },
+                iterable: {
+                  kind: 'node',
+                  value: new List([
+                    num(1),
+                    num(2),
+                    num(3),
+                    num(4)
+                  ])
+                },
+                rules: rules([
+                  decl({
+                    name: any('padding'),
+                    value: op([ref('value', { type: 'variable' }), '*', dimension([10, 'px'])])
+                  }, { assign: AssignmentType.MergeSequence })
+                ])
+              })
+            ])
+          })
+        ])
+      })
+    ]);
+
+    const evald = await node.eval(context);
+    expect(`${evald}`).toBeString(`
+      aside {
+        @starting-style {
+          padding: 10px 20px 30px 40px;
+        }
+      }
+    `);
   });
   // it('should serialize to a module', () => {
   //   let rule = decl({ name: expr([any('color')]), value: spaced([any('#eee')]) })

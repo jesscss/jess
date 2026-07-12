@@ -12,6 +12,7 @@ import rgb from '../src/less/rgb.js';
 import rgba from '../src/less/rgba.js';
 import hsl from '../src/less/hsl.js';
 import hsla from '../src/less/hsla.js';
+import argb from '../src/less/argb.js';
 
 describe('Color Functions', () => {
   describe('RGB Function', () => {
@@ -143,6 +144,13 @@ describe('Color Functions', () => {
       const result = await rgba(r, g, b, a);
       expect(result._rgb).toEqual([127.5, 255, 0]);
       expect(result._alpha).toBe(0.8);
+    });
+
+    it('should force functional rgba output when passed a hex color', async () => {
+      const context = new Context();
+      const result = await callWithContext(context, rgba, new Color('#55FF5599'));
+
+      expect(result.toTrimmedString()).toBe('rgba(85, 255, 85, 0.6)');
     });
   });
 
@@ -339,6 +347,25 @@ describe('Color Functions', () => {
       const result2 = hsla(h, s, l, a2);
       expect(result1.alpha).toBe(1);
       expect(result2.alpha).toBe(0);
+    });
+  });
+
+  describe('ARGB Function', () => {
+    it('should serialize argb output as an ARGB hex string', async () => {
+      const context = new Context();
+      const result = await callWithContext(context, argb, new Color({
+        rgb: [255, 238, 170],
+        alpha: 0.1
+      }, { format: ColorFormat.RGB }));
+
+      expect(result.toTrimmedString()).toBe('#1affeeaa');
+    });
+
+    it('should force functional hsla output when passed a hex color', async () => {
+      const context = new Context();
+      const result = await callWithContext(context, hsla, new Color('#5F59'));
+
+      expect(result.toTrimmedString()).toBe('hsla(120, 100%, 66.66666667%, 0.6)');
     });
   });
 

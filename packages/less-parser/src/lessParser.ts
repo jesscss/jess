@@ -85,19 +85,26 @@ export class LessParser {
     if (options?.context) {
       parser.context = options.context;
     }
+    parser.context.opts.trivia = undefined;
     parser.input = lexerResult.tokens;
     const ruleMethod = parser[rule as keyof typeof parser] as (() => Node) | undefined;
     if (typeof ruleMethod !== 'function') {
       throw new Error(`Unknown parser rule: ${rule}`);
     }
-    const tree: Node = ruleMethod.call(parser);
+    const tree = ruleMethod.call(parser) as Node | undefined;
+    const trivia = (parser as LessRecursiveParser & { trivia: IParseResult['trivia'] }).trivia;
+    parser.context.opts.trivia = trivia;
+    if (tree) {
+      tree.treeContext.opts.trivia = trivia;
+    }
 
     const warnings = [...parser.warnings];
 
     return {
-      tree,
+      tree: tree as Node,
       lexerResult,
       errors: parser.errors,
+      trivia,
       warnings
     };
   }

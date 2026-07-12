@@ -1,10 +1,9 @@
 import type { RuleContext } from '../lessRecursiveParser.js';
 import type { TokenMap } from '../lessRecursiveParser.js';
 import type { IToken } from 'chevrotain';
-import { tokenMatcher, NoViableAltException } from 'chevrotain';
+import { NoViableAltException } from 'chevrotain';
 import { productions as cssProductions } from '@jesscss/css-parser';
 import {
-  type TreeContext,
   type LocationInfo,
   Node,
   Any,
@@ -19,14 +18,14 @@ import {
   Interpolated,
   Quoted,
   Rest,
+  Nil,
   VarDeclaration,
   StyleImport,
   type Url,
   isNode,
-  N,
-  INTERPOLATION_PLACEHOLDER
+  N
 } from '@jesscss/core';
-import { getInterpolatedOrString } from '../utils.js';
+import { createInterpolatedReference, getInterpolatedNode, getInterpolatedOrString } from '../utils.js';
 
 /** Use `any` for `this` to avoid structural incompatibility between LessRecursiveParser and CssRecursiveParser */
 type P = any;
@@ -34,40 +33,6 @@ type P = any;
 function getParenFrames(ctx: RuleContext | undefined): boolean[] {
   return (ctx?.parenFrames as boolean[] | undefined) ?? [];
 }
-
-const interpolatedRegex = /([$@])\{([^}]+)\}/g;
-
-const createInterpolatedReference = (
-  prefix: string,
-  value: string,
-  location: LocationInfo,
-  context: TreeContext
-): Reference => {
-  const isProperty = prefix === '$';
-  const key = isProperty
-    ? new Quoted(value, { quote: '\'' }, location, context)
-    : value;
-  return new Reference(
-    { key },
-    { type: isProperty ? 'property' : 'variable', role: 'ident' },
-    location,
-    context
-  );
-};
-
-const getInterpolated = (name: string, location: LocationInfo, context: TreeContext): Interpolated => {
-  const replacements: Node[] = [];
-  let result: RegExpExecArray | null;
-  let source = name;
-  interpolatedRegex.lastIndex = 0;
-  while (result = interpolatedRegex.exec(name)) {
-    const [match, propOrVar, value] = result;
-    source = source.replace(match, INTERPOLATION_PLACEHOLDER);
-    const reference = createInterpolatedReference(propOrVar!, value!, location, context);
-    replacements.push(reference);
-  }
-  return new Interpolated({ source, replacements }, { role: 'ident' }, location, context);
-};
 
 function isDefaultGuardCall(node: Node | undefined): node is Call {
   if (!node || !isNode(node, N.Call)) {
@@ -83,7 +48,7 @@ function isDefaultGuardCall(node: Node | undefined): node is Call {
     return true;
   }
   if (callName instanceof Reference) {
-    const key = callName.key;
+    const key = callName.value.key;
     const keyStr = String(
       (typeof key === 'object' && key !== null && 'valueOf' in key)
         ? key.valueOf()
@@ -164,7 +129,7 @@ export function guardOr(this: P, T: TokenMap) {
         let location = $.endRule();
         $.startRule();
         left = new Condition(
-          [$.wrap(left, true), 'or', $.wrap(right!)],
+          [left, 'or', right!],
           undefined,
           location,
           $.context
@@ -232,9 +197,9 @@ export function guardAnd(this: P, T: TokenMap) {
               if (!$.RECORDING_PHASE) {
                 right = new Condition(
                   [
-                    $.wrap(right, true),
+                    right,
                     normalizeComparisonOperator(op.image),
-                    $.wrap(compareRight)
+                    compareRight
                   ],
                   undefined,
                   $.getLocationFromNodes([right, compareRight]),
@@ -258,7 +223,7 @@ export function guardAnd(this: P, T: TokenMap) {
             let [,,, endOffset, endLine, endColumn] = right.location!;
             let [startOffset, startLine, startColumn] = $.getLocationInfo(not);
             right = new Condition(
-              [$.wrap(right, true)],
+              [right],
               { negate: true },
               [startOffset!, startLine!, startColumn!, endOffset!, endLine!, endColumn!],
               $.context
@@ -269,7 +234,7 @@ export function guardAnd(this: P, T: TokenMap) {
             return;
           }
           left = new Condition(
-            [$.wrap(left, true), 'and', $.wrap(right)],
+            [left, 'and', right],
             undefined,
             $.getLocationFromNodes([left, right]),
             $.context
@@ -304,7 +269,7 @@ export function guardInParens(this: P, T: TokenMap) {
         : undefined;
       node = new DefaultGuard('default()', undefined, location, $.context);
     }
-    node = $.wrap(node, 'both');
+    node = node;
     return new Paren(node, undefined, $.endRule(), $.context);
   };
 }
@@ -365,7 +330,7 @@ export function comparison(this: P, T: TokenMap) {
       right = new DefaultGuard('default()', undefined, location, $.context);
     }
     left = new Condition(
-      [$.wrap(left, true), normalizeComparisonOperator(op.image), $.wrap(right)],
+      [left, normalizeComparisonOperator(op.image), right],
       undefined,
       $.getLocationFromNodes([left, right]),
       $.context
@@ -406,6 +371,7 @@ export function innerAtRule(this: P, _T: TokenMap) {
 export function layerName(this: P, T: TokenMap) {
   const $ = this;
   return (ctx: RuleContext = {}) => {
+    const preludeCtx: RuleContext = { ...ctx, atRulePreludeBareVariableAs: 'index' };
     $.startRule();
     let RECORDING_PHASE = $.RECORDING_PHASE;
     let nodes: Node[];
@@ -415,7 +381,7 @@ export function layerName(this: P, T: TokenMap) {
 
     // First segment: variable reference or plain ident
     const first = $.OR([
-      { ALT: () => $.SUBRULE($.valueReference, { ARGS: [ctx] }) },
+      { ALT: () => $.SUBRULE($.valueReference, { ARGS: [preludeCtx] }) },
       {
         GATE: () => $.isType(T.Ident),
         ALT: () => $.CONSUME(T.Ident)
@@ -424,9 +390,9 @@ export function layerName(this: P, T: TokenMap) {
 
     if (!RECORDING_PHASE) {
       if (first instanceof Node) {
-        nodes!.push($.wrap(first));
+        nodes!.push(first);
       } else {
-        nodes!.push($.wrap($.processValueToken(first)));
+        nodes!.push($.processValueToken(first));
       }
     }
 
@@ -436,7 +402,7 @@ export function layerName(this: P, T: TokenMap) {
       DEF: () => {
         const seg = $.CONSUME(T.DotName);
         if (!RECORDING_PHASE) {
-          nodes!.push($.wrap($.processValueToken(seg)));
+          nodes!.push($.processValueToken(seg));
         }
       }
     });
@@ -457,14 +423,15 @@ export function layerName(this: P, T: TokenMap) {
 export function keyframesName(this: P, T: TokenMap) {
   const $ = this;
   return (ctx: RuleContext = {}) => {
+    const preludeCtx: RuleContext = { ...ctx, atRulePreludeBareVariableAs: 'index' };
     let node: Node | undefined;
     $.OR([
-      { ALT: () => node = $.SUBRULE($.valueReference, { ARGS: [ctx] }) },
+      { ALT: () => node = $.SUBRULE($.valueReference, { ARGS: [preludeCtx] }) },
       {
         GATE: () => $.isType(T.Ident) && !$.isType(T.InterpolatedIdent),
         ALT: () => {
           const tok = $.CONSUME(T.Ident);
-          node = $.wrap($.processValueToken(tok));
+          node = $.processValueToken(tok);
         } },
       { ALT: () => node = $.SUBRULE($.string, { ARGS: [] }) }
     ]);
@@ -495,7 +462,7 @@ export function mixinName(this: P, T: TokenMap) {
     let nameValue = name.image;
     let location = $.getLocationInfo(name);
     if (nameValue.includes('@') || nameValue.includes('$')) {
-      const interpolated = getInterpolated(nameValue, location, $.context);
+      const interpolated = getInterpolatedNode(nameValue, location, $.context);
       nameNode = interpolated;
       if (asReference) {
         if (isNode(ctx.node, N.Reference) && ctx.node.options.type === 'mixin-ruleset') {
@@ -509,7 +476,8 @@ export function mixinName(this: P, T: TokenMap) {
       if (asReference) {
         // If target is a Reference with matching type, merge keys instead of nesting
         if (isNode(ctx.node, N.Reference) && ctx.node.options.type === 'mixin-ruleset') {
-          const existingKey = ctx.node.key;
+          const existingKey = ctx.node.value.key;
+          const existingRawKey = ctx.node.value.rawKey;
           let mergedKeys: string[];
           if (Array.isArray(existingKey)) {
             mergedKeys = [...existingKey];
@@ -517,8 +485,18 @@ export function mixinName(this: P, T: TokenMap) {
             mergedKeys = [String(existingKey)];
           }
           mergedKeys.push(nameValue);
+          const rawPrefix = Array.isArray(existingRawKey)
+            ? existingRawKey.join(' > ')
+            : typeof existingRawKey === 'string'
+              ? existingRawKey
+              : Array.isArray(existingKey)
+                ? existingKey.join(' > ')
+                : String(existingKey);
           nameNode = new Reference(
-            { key: mergedKeys.length === 1 ? mergedKeys[0]! : mergedKeys },
+            {
+              key: mergedKeys.length === 1 ? mergedKeys[0]! : mergedKeys,
+              rawKey: `${rawPrefix} > ${nameValue}`
+            },
             { type: 'mixin-ruleset', role: 'name' },
             location,
             $.context
@@ -528,7 +506,7 @@ export function mixinName(this: P, T: TokenMap) {
           nameNode = new Reference({ target: target instanceof Call ? target : target instanceof Reference ? target : undefined, key: nameValue }, { type: 'mixin-ruleset', role: 'name' }, location, $.context);
         }
       } else {
-        nameNode = $.wrap(new Any(nameValue, { role: 'name' }, $.getLocationInfo(name), $.context), true);
+        nameNode = new Any(nameValue, { role: 'name' }, $.getLocationInfo(name), $.context);
       }
     }
     return nameNode;
@@ -593,9 +571,9 @@ export function mixinArgs(this: P, T: TokenMap) {
       parenFrames: [...getParenFrames(ctx), false],
       detachedRulesetUsage: ctx.isDefinition ? 'default-param' : 'mixin-arg'
     };
-    $.OPTION(() => {
+    if (!$.isType(T.RParen)) {
       args = $.SUBRULE($.mixinArgList, { ARGS: [argCtx] });
-    });
+    }
     $.CONSUME(T.RParen);
 
     // Check for whitespace warning AFTER consuming closing paren
@@ -649,19 +627,24 @@ export function lookupOrCall(this: P, T: TokenMap) {
           const target = targetNode instanceof Call ? targetNode : targetNode instanceof Reference ? targetNode : undefined;
           if (keyToken) {
             let tokenStr = keyToken.image;
-            let type: 'variable' | 'property' = tokenStr.startsWith('@') ? 'variable' : 'property';
+            let type: 'variable' | 'index' = tokenStr.startsWith('@') ? 'variable' : 'index';
             if (keyToken.tokenType === T.NestedReference) {
-              let tokenStr = keyToken.image;
+              tokenStr = keyToken.image;
               if (!tokenStr.startsWith('$') && !tokenStr.startsWith('@')) {
                 tokenStr = '$' + tokenStr;
               }
             }
             let result = getInterpolatedOrString(tokenStr, $.getLocationInfo(keyToken), $.context);
+            if (type === 'index') {
+              result = typeof result === 'string'
+                ? new Quoted(result, { quote: '\'' }, $.getLocationInfo(keyToken), $.context)
+                : new Quoted(result, { quote: '\'' }, $.getLocationInfo(keyToken), $.context);
+            }
 
             const targetType = isNode(target, N.Reference) ? target.options.type : undefined;
             const shouldMergeKeys = targetType === 'mixin' || targetType === 'mixin-ruleset' || targetType === 'ruleset';
             if (isNode(target, N.Reference) && target.options.type === type && typeof result === 'string' && shouldMergeKeys) {
-              const existingKey = target.key;
+              const existingKey = target.value.key;
               let mergedKeys: string[];
               if (Array.isArray(existingKey)) {
                 mergedKeys = [...existingKey];
@@ -716,7 +699,7 @@ export function mixinArgList(this: P, T: TokenMap) {
     $.startRule();
     const first = $.SUBRULE($.mixinArg, { ARGS: [ctx] });
 
-    let commaNodes: Node[] | undefined = [$.wrap(first, true)];
+    let commaNodes: Node[] | undefined = [first];
     const semiNodes: Node[] = [];
     let isSemiList = false;
 
@@ -730,7 +713,7 @@ export function mixinArgList(this: P, T: TokenMap) {
         if (head instanceof VarDeclaration) {
           const nodes = [head.value, ...rest];
           hasDeclarations = rest.some(n => n instanceof VarDeclaration);
-          head.setData('value', new List(nodes, undefined, $.getLocationFromNodes(nodes), $.context));
+          head.set('value', new List(nodes, undefined, $.getLocationFromNodes(nodes), $.context));
           semiNodes.push(head);
         } else {
           hasDeclarations = commaNodes.some(n => n instanceof VarDeclaration);
@@ -758,7 +741,7 @@ export function mixinArgList(this: P, T: TokenMap) {
         const comma = $.CONSUME(T.Comma);
         const node = $.SUBRULE2($.mixinArg, { ARGS: [ctx] });
         if (commaNodes) {
-          commaNodes.push($.wrap(node, true));
+          commaNodes.push(node);
         } else {
           $.SAVE_ERROR(
             new NoViableAltException(
@@ -767,7 +750,7 @@ export function mixinArgList(this: P, T: TokenMap) {
               $.LA(0)
             )
           );
-          semiNodes.push($.wrap(node, true));
+          semiNodes.push(node);
         }
         continue;
       }
@@ -784,13 +767,13 @@ export function mixinArgList(this: P, T: TokenMap) {
       ctx.allowComma = true;
       const node = $.SUBRULE3($.mixinArg, { ARGS: [ctx] });
       ctx.allowComma = prevAllow;
-      semiNodes.push($.wrap(node, true));
+      semiNodes.push(node);
     }
 
     let location = $.endRule();
     let nodes = isSemiList ? semiNodes : commaNodes!;
     let sep: ';' | ',' = isSemiList ? ';' : ',';
-    const result: List = $.wrap(new List(nodes, { sep }, location, $.context), 'both');
+    const result: List = new List(nodes, { sep }, location, $.context);
     return result;
   };
 }
@@ -816,7 +799,7 @@ export function mixinArg(this: P, T: TokenMap) {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     const firstToken = $.LA(1);
-    const atStart = tokenMatcher(firstToken, T.AtName);
+    const atStart = $.matchToken(firstToken, T.AtName);
     const tt2 = $.LA(2).tokenType;
     const tt3 = $.LA(3).tokenType;
     const hasWsAfterName = tt2 === T.WS;
@@ -860,7 +843,14 @@ export function mixinArg(this: P, T: TokenMap) {
       if ($.RECORDING_PHASE) {
         return;
       }
-      return new Any(name.image.slice(1), { role: 'name' }, $.endRule(), $.context);
+      const location = $.endRule();
+      if (ctx.isDefinition) {
+        return new VarDeclaration({
+          name: new Any(name.image.slice(1), { role: 'property' }, $.getLocationInfo(name), $.context),
+          value: new Nil(undefined, undefined, location, $.context)
+        }, { paramVar: true }, location, $.context);
+      }
+      return new Any(name.image.slice(1), { role: 'name' }, location, $.context);
     }
 
     if ($.isType(T.Ellipsis)) {

@@ -2,8 +2,8 @@
  * Import from node-base to avoid circular dependency.
  * The patching happens in node.ts
  */
-import { Node, defineType, type OptionalLocation, type NodeOptions, type TreeContext, F_STATIC } from './node-base.js';
-import type { Context } from '../context.js';
+import { Node, defineType, type LocationInfo, type NodeOptions, F_STATIC } from './node-base.js';
+import type { Context, TreeContext } from '../context.js';
 import { type MaybePromise } from '@jesscss/awaitable-pipe';
 import { Nil } from './nil.js';
 
@@ -29,8 +29,6 @@ export type AnyOptions<T extends string> = NodeOptions & {
 export interface Any<
   Role extends AnyRole = AnyRole
 > extends Node<string, AnyOptions<Role>> {
-  type: 'Any' | 'Keyword';
-  shortType: 'any' | 'keyword';
   eval(context: Context): Any<Role>;
   valueOf(): string;
 }
@@ -47,27 +45,15 @@ export interface Any<
 export class Any<
   Role extends AnyRole = AnyRole
 > extends Node<string, AnyOptions<Role>> {
-  static override childKeys = null as null;
-
-  /** @internal */ readonly value!: string;
-  readonly role: Role | undefined;
-
-  constructor(
-    value: string,
-    options?: AnyOptions<Role>,
-    location?: OptionalLocation,
-    treeContext?: TreeContext
-  ) {
-    super(value, options, location, treeContext);
-    this.value = value;
-    this.role = options?.role as Role | undefined;
+  constructor(...args: ConstructorParameters<typeof Node<string, AnyOptions<Role>>>) {
+    super(...args);
     this.addFlag(F_STATIC);
   }
 
   override preEval(context: Context): this | Nil {
-    this._setPreEvaluated(true, context);
+    this.preEvaluated = true;
     // Index should already be assigned by parent Rules
-    if (this.role === 'charset') {
+    if (this._options?.role === 'charset') {
       if (!context.currentCharset) {
         /** @todo - Throw error in the future? */
         context.currentCharset = this;
@@ -95,17 +81,20 @@ export class Any<
       if (!/^[-+]?(?:\d+\.?\d*|\.\d+)$/.test(text)) {
         return undefined;
       }
-      if (!('number' in other) || typeof other.number !== 'number') {
+      const otherValue = (other as any).value;
+      const otherNumber = otherValue?.number;
+      const otherUnit = otherValue?.unit;
+      if (typeof otherNumber !== 'number') {
         return undefined;
       }
-      if (other.type === 'Dimension' && 'unit' in other && other.unit) {
+      if (other.type === 'Dimension' && otherUnit) {
         return undefined;
       }
-      return Number(text) === other.number ? 0 : undefined;
+      return Number(text) === otherNumber ? 0 : undefined;
     }
-    if (typeof other.toString === 'function') {
+    if ((other as any).toString) {
       const normalize = (s: string) => s.replace(/;\s*/g, ', ').replace(/\s+/g, ' ').trim();
-      return normalize(this.toString()) === normalize(other.toString()) ? 0 : undefined;
+      return normalize(this.toString()) === normalize((other as any).toString()) ? 0 : undefined;
     }
     return undefined;
   }
@@ -136,16 +125,11 @@ defineType(Anonymous, 'Anonymous');
  * Note: In Jess, boolean values ('true', 'false') are represented as Bool nodes,
  * not Keyword nodes, unlike Less.js where they are Keyword instances.
  */
-export interface Keyword {
-  type: 'Keyword';
-  shortType: 'keyword';
-}
-
 export class Keyword extends Any<'keyword'> {
   constructor(
     value: string,
     options?: Omit<NodeOptions, 'role'>,
-    location?: OptionalLocation,
+    location?: LocationInfo,
     context?: TreeContext
   ) {
     // Force role to 'keyword'
@@ -160,7 +144,7 @@ defineType(Keyword, 'Keyword');
 export function keyword(
   value: string,
   options?: Omit<NodeOptions, 'role'>,
-  location?: OptionalLocation,
+  location?: LocationInfo,
   context?: TreeContext
 ): Keyword {
   return new Keyword(value, options, location, context);

@@ -8,7 +8,7 @@
  * is-bracketed(1, 2, 3) // false
  */
 import { defineFunction, Node, Bool } from '@jesscss/core';
-import { isBracketedList } from '@jesscss/core/tree/util/list-like';
+import { isBracketedList } from '@jesscss/core';
 
 const isBracketed = defineFunction(
   'is-bracketed',

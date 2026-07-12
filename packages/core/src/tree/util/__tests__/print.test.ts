@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { OutputWriter, getPrintOptions } from '../print.js';
-import { any } from '../../../index.js';
+import { any, comment } from '../../../index.js';
 
 describe('processPrePost with capture', () => {
   let w: OutputWriter;
@@ -163,7 +163,7 @@ describe('processPrePost with capture', () => {
 
   it('processPrePost with string value returns that string', () => {
     const node = any('test');
-    node.pre = ['  '];
+    node.pre = '  ';
 
     const result = node.processPrePost('pre', '', options);
     expect(result).toBe('  ');
@@ -171,7 +171,7 @@ describe('processPrePost with capture', () => {
 
   it('capture properly captures output from processPrePost with string value', () => {
     const node = any('test');
-    node.pre = ['  '];
+    node.pre = '  ';
 
     const captured = w.capture(() => {
       node.processPrePost('pre', '', options);
@@ -179,5 +179,17 @@ describe('processPrePost with capture', () => {
 
     expect(captured).toBe('  ');
     expect(w.toString()).toBe('');
+  });
+
+  it('copy strips comments from the copy without mutating source pre/post arrays', () => {
+    const node = any('test');
+    node.post = [' ', comment('/* keep me */')];
+
+    const copied = node.copy(true);
+
+    expect(String(node)).toBe('test /* keep me */');
+    expect(String(copied)).toBe('test ');
+    expect(node.post?.[1]?.type).toBe('Comment');
+    expect(copied.post?.[1]?.type).toBe('Nil');
   });
 });

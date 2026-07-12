@@ -10,6 +10,6 @@ describe('argb()', () => {
     });
     const result = argb(color);
     expect(result).toBeInstanceOf(Color);
-    expect(result.data.node).toBe('#80ff0000');
+    expect(result.node).toBe('#80ff0000');
   });
 });

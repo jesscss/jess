@@ -182,8 +182,8 @@ describe('Sass map functions', () => {
       const result = values.call(context, map);
       expect(result).toBeInstanceOf(List);
       expect(result.length).toBe(2);
-      expect((result.data[0] as Num).data.number).toBe(1);
-      expect((result.data[1] as Num).data.number).toBe(2);
+      expect((result.value[0] as Num).number).toBe(1);
+      expect((result.value[1] as Num).number).toBe(2);
     });
 
     it('returns empty list for empty map', () => {

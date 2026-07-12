@@ -5,6 +5,10 @@ import { assertValidTree } from './assert-valid-tree.js';
 
 const parser = new Parser();
 
+function firstRuleDeclValue(tree: any) {
+  return tree?.value?.[0]?.value?.rules?.value?.[0]?.value?.value;
+}
+
 describe('scss-parser (ast serialize)', () => {
   it('serializes a basic ruleset + declaration', () => {
     const { tree, errors, lexerResult } = parser.parse('.a { color: red; }');
@@ -69,7 +73,7 @@ describe('scss-parser (ast serialize)', () => {
       (Expression
         (Operation
     `);
-    expect(serializeTypes(tree)).toContainString(`operator: '+'`);
+    expect(firstRuleDeclValue(tree)?.value?.value?.[1]).toBe('+');
   });
 
   it('serializes isolated parenthesized slash division as Expression(Operation)', () => {
@@ -81,7 +85,7 @@ describe('scss-parser (ast serialize)', () => {
       (Expression
         (Operation
     `);
-    expect(serializeTypes(tree)).toContainString(`operator: '/'`);
+    expect(firstRuleDeclValue(tree)?.value?.value?.[1]).toBe('/');
   });
 
   it('keeps paren list slash forms as grouped values, not arithmetic expressions', () => {
@@ -530,7 +534,7 @@ describe('scss-parser (ast serialize)', () => {
       `);
   });
 
-  it('serializes @each destructuring as For with vars array', () => {
+  it('serializes @each destructuring as For with tuple pattern', () => {
     const { tree, errors, lexerResult } = parser.parse(`
       @each $a, $b in $list {
         .x { y: $a; z: $b; }
@@ -541,22 +545,16 @@ describe('scss-parser (ast serialize)', () => {
     assertValidTree(tree);
     expect(serializeTypes(tree)).toContainString(`
       (For
-        vars:
-          [
-            (VarDeclaration
-              name:
-                (Any [role=property] 'a')
-              value:
-                (Nil)
-            )
-            (VarDeclaration
-              name:
-                (Any [role=property] 'b')
-              value:
-                (Nil)
-            )
-          ]
+        pattern: {
+          kind: 'tuple'
       `);
+    expect(serializeTypes(tree)).toContainString(`(Any [role=property] 'a')`);
+    expect(serializeTypes(tree)).toContainString(`(Any [role=property] 'b')`);
+    expect(serializeTypes(tree)).toContainString(`
+        iterable: {
+          kind: 'node'
+      `);
+    expect(serializeTypes(tree)).toContainString(`key: 'list'`);
   });
 
   it('serializes @debug, @warn, @error as Log nodes with correct level', () => {

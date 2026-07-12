@@ -8,6 +8,16 @@ export type StepErrorOptions<TIn, R> = {
   rethrow?: boolean;
 };
 
+function resolveStepFallback<TIn, R>(
+  fallback: StepErrorOptions<TIn, R>['fallback'],
+  error: unknown,
+  input: TIn
+): R | undefined {
+  return typeof fallback === 'function'
+    ? fallback(error, input)
+    : fallback;
+}
+
 // Type guard to help TypeScript narrow no-arg functions
 function isNoArgFunction<TIn, R>(
   fn: ((input: TIn) => MaybePromise<R>) | (() => MaybePromise<R>)
@@ -53,29 +63,26 @@ export function tryStep<TIn, R>(
           return out.catch((e: unknown) => {
             try {
               options.onError?.(e, input);
-            } catch (onErrorThrown) {
+            } catch (_onErrorThrown) {
               // Swallow onError errors and continue to fallback
             }
             if (options.rethrow === true) {
               return Promise.reject(e);
             }
-            const fb = options.fallback;
-
-            return typeof fb === 'function' ? (fb as (e: unknown, i: TIn | undefined) => R)(e, input) : fb;
+            return resolveStepFallback(options.fallback, e, input);
           });
         }
         return out;
       } catch (e) {
         try {
           options.onError?.(e, input);
-        } catch (onErrorThrown) {
+        } catch (_onErrorThrown) {
           // Swallow onError errors and continue to fallback
         }
         if (options.rethrow === true) {
           throw e;
         }
-        const fb = options.fallback;
-        return typeof fb === 'function' ? (fb as (e: unknown, i: TIn | undefined) => R)(e, input) : fb;
+        return resolveStepFallback(options.fallback, e, input);
       }
     };
     return resultFn as (input: TIn) => MaybePromise<R | undefined>;
@@ -88,35 +95,33 @@ export function tryStep<TIn, R>(
         return out.catch((e: unknown) => {
           try {
             options.onError?.(e, input);
-          } catch (onErrorThrown) {
+          } catch (_onErrorThrown) {
             // Swallow onError errors and continue to fallback
           }
           if (options.rethrow === true) {
             return Promise.reject(e);
           }
-          const fb = options.fallback;
-          return typeof fb === 'function' ? (fb as (e: unknown, i: TIn | undefined) => R)(e, input) : fb;
+          return resolveStepFallback(options.fallback, e, input);
         });
       }
       return out;
     } catch (e) {
       try {
         options.onError?.(e, input);
-      } catch (onErrorThrown) {
+      } catch (_onErrorThrown) {
         // Swallow onError errors and continue to fallback
       }
       if (options.rethrow === true) {
         throw e;
       }
-      const fb = options.fallback;
-      return typeof fb === 'function' ? (fb as (e: unknown, i: TIn | undefined) => R)(e, input) : fb;
+      return resolveStepFallback(options.fallback, e, input);
     }
   };
 }
 
 export function guard<T>(
   predicate: (value: T) => MaybePromise<boolean>,
-  errorFactory: (value: T) => unknown = v => new Error('ensure failed')
+  errorFactory: (value: T) => unknown = _v => new Error('ensure failed')
 ): (value: T) => MaybePromise<T> {
   return (value: T) => {
     const ok = predicate(value);

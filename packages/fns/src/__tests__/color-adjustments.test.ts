@@ -2,10 +2,11 @@ import {
   darken,
   lighten,
   saturate,
-  desaturate
+  desaturate,
+  mix
 } from '../less/index.js';
 
-import { Color, Context, Dimension, Quoted } from '@jesscss/core';
+import { Color, ColorFormat, Context, Dimension, Quoted } from '@jesscss/core';
 import { beforeAll, describe, it, expect } from 'vitest';
 
 let context: Context;
@@ -168,6 +169,22 @@ describe('color adjustments', () => {
     it('rejects missing amount argument', () => {
       // @ts-expect-error - missing argument
       expect(() => desaturate({ color: testColor })).toThrow('Required argument \'amount\' is missing');
+    });
+  });
+
+  describe('mix', () => {
+    it('serializes semi-transparent results as rgba()', () => {
+      const transparent = new Color({
+        format: ColorFormat.HEX,
+        node: 'transparent',
+        rgb: [0, 0, 0],
+        alpha: 0
+      });
+
+      const result = mix(new Color('#ff0000'), transparent);
+
+      expect(result).toBeInstanceOf(Color);
+      expect(String(result)).toBe('rgba(255, 0, 0, 0.5)');
     });
   });
 });

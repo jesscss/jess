@@ -16,11 +16,11 @@ describe('luma/luminance/hsv channels', () => {
     const lumaResult = luma(color);
     const luminanceResult = luminance(color);
 
-    expect(lumaResult.data.unit).toBe('%');
-    expect(luminanceResult.data.unit).toBe('%');
-    expect(lumaResult.data.number).toBeGreaterThan(0);
-    expect(luminanceResult.data.number).toBeGreaterThan(0);
-    expect(lumaResult.data.number).toBeCloseTo(luminanceResult.data.number, 10);
+    expect(lumaResult.unit).toBe('%');
+    expect(luminanceResult.unit).toBe('%');
+    expect(lumaResult.number).toBeGreaterThan(0);
+    expect(luminanceResult.number).toBeGreaterThan(0);
+    expect(lumaResult.number).toBeCloseTo(luminanceResult.number, 10);
   });
 
   it('extracts hsv hue/saturation/value channels', () => {
@@ -33,8 +33,10 @@ describe('luma/luminance/hsv channels', () => {
     const saturation = hsvsaturation(color);
     const value = hsvvalue(color);
 
-    expect(hue.data.number).toBe(120);
-    expect(saturation.data).toEqual({ number: 100, unit: '%' });
-    expect(value.data).toEqual({ number: 100, unit: '%' });
+    expect(hue.number).toBe(120);
+    expect(saturation.number).toBe(100);
+    expect(saturation.unit).toBe('%');
+    expect(value.number).toBe(100);
+    expect(value.unit).toBe('%');
   });
 });

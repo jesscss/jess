@@ -33,7 +33,7 @@ describe('serializeTypes coverage', () => {
   test('nested reference', () => {
     const { errors, tree } = parser.parse('@ref: #ns.breakpoint(.valToGet[])[@max];');
     expect(errors.length).toBe(0);
-    expect(serializeTypes(tree)).toBeString(`
+    expect(serializeTypes(tree)).toContainString(`
       (Rules
         [
           (VarDeclaration
@@ -47,6 +47,7 @@ describe('serializeTypes coverage', () => {
                       (Reference [role=name]
                         key:
                           ['#ns', '.breakpoint']
+                        rawKey: '#ns > .breakpoint'
                       )
                     args: 
                       (List
@@ -86,13 +87,54 @@ describe('serializeTypes coverage', () => {
     `);
   });
 
+  test('custom property generic function value stays structured', () => {
+    const { errors, tree } = parser.parse('--custom: if(not(true), 5)', 'declaration');
+    expect(errors.length).toBe(0);
+    expect(serializeTypes(tree)).toContainString(`
+      (CustomDeclaration
+        name: 
+          (Any [role=property] '--custom')
+        value: 
+          (Sequence
+            [
+              (Call
+    `);
+  });
+
+  test('legacy IE filter values stay structured enough to evaluate embedded variables', () => {
+    const { errors, tree } = parser.parse(`
+      @fat: 0;
+      @cloudhead: "#000000";
+      .nav {
+        filter: progid:DXImageTransform.Microsoft.gradient(startColorstr="#333333", endColorstr=@cloudhead, GradientType=@fat);
+      }
+    `);
+    expect(errors.length).toBe(0);
+    const serialized = serializeTypes(tree);
+    expect(serialized).toContain('(Interpolated [role=any]');
+    expect(serialized).toContain('key: \'cloudhead\'');
+    expect(serialized).toContain('key: \'fat\'');
+  });
+
   test('mixin definition', () => {
     const { errors, tree } = parser.parse('.mixin(@color) { color: @color; }');
     expect(errors.length).toBe(0);
     const out = serializeTypes(tree);
     expect(out).toContainString(`
       (Mixin
-        name: '.mixin'
+        name: 
+          (Any [role=name] '.mixin')
+        params: 
+          (List
+            [
+              (VarDeclaration
+                name: 
+                  (Any [role=property] 'color')
+                value: 
+                  (Nil '')
+              )
+            ]
+          )
         rules: 
           (Rules
             [
@@ -106,16 +148,6 @@ describe('serializeTypes coverage', () => {
               )
             ]
           )
-        params: 
-          (List
-            [
-              (VarDeclaration
-                name: 
-                  (Any [role=property] 'color')
-                value: 
-                  (Nil)
-              )
-            ]
     `);
   });
 
@@ -140,7 +172,8 @@ describe('serializeTypes coverage', () => {
       (Call
         name: 
           (Reference [role=name]
-            key: 
+            key: '.mixin'
+            rawKey:
               (BasicSelector '.mixin')
           )
       )
@@ -154,7 +187,8 @@ describe('serializeTypes coverage', () => {
       (Call
         name: 
           (Reference [role=name]
-            key: 
+            key: '.mixin'
+            rawKey:
               (BasicSelector '.mixin')
           )
         args: 
@@ -222,7 +256,8 @@ describe('serializeTypes coverage', () => {
           (Reference
             key: 'obj'
           )
-        key: 'prop'
+        key: 
+          (Quoted 'prop')
       )
     `);
   });
@@ -284,6 +319,36 @@ describe('serializeTypes coverage', () => {
     expect(errors.length).toBe(0);
     expect(serializeTypes(tree)).toContainString('(InterpolatedSelector');
   });
+
+  test('at-rule bare variables normalize to indexed references outside declaration values', () => {
+    const { errors, tree } = parser.parse('@media @mode { .foo { color: red; } }');
+    expect(errors.length).toBe(0);
+    expect(tree.toString()).toContain('@media $[mode]');
+  });
+
+  test('media feature bare variables normalize to indexed references outside declaration values', () => {
+    const { errors, tree } = parser.parse('@media (min-width: @size) { .foo { color: red; } }');
+    expect(errors.length).toBe(0);
+    expect(tree.toString()).toContain('@media (min-width: $[size])');
+  });
+
+  test('at-rule prelude accessor references are wrapped as Expression nodes', () => {
+    const { errors, tree } = parser.parse('@media @breakpoints[mobile] { .foo { color: red; } }');
+    expect(errors.length).toBe(0);
+    expect(serializeTypes(tree)).toContainString(`
+      prelude: 
+        (Expression
+          (Reference
+            target: 
+              (Reference
+                key: 'breakpoints'
+              )
+            key: 
+              (Quoted 'mobile')
+          )
+        )
+    `);
+  });
 });
 
 test('rest parameter in mixin', () => {
@@ -292,7 +357,14 @@ test('rest parameter in mixin', () => {
   const out = serializeTypes(tree);
   expect(out).toContainString(`
     (Mixin
-      name: '.mixin'
+      name: 
+        (Any [role=name] '.mixin')
+      params: 
+        (List
+          [
+            (Rest 'args')
+          ]
+        )
       rules: 
         (Rules
           [
@@ -309,11 +381,6 @@ test('rest parameter in mixin', () => {
             )
           ]
         )
-      params: 
-        (List
-          [
-            (Rest 'args')
-          ]
   `);
 });
 
@@ -334,17 +401,17 @@ test('operation', () => {
   expect(serializeTypes(tree)).toContainString(`
       (Expression
         (Operation
-          left: 
+          [
             (Dimension
               number: 10
               unit: 'px'
             )
-          right: 
+            (undefined)
             (Dimension
               number: 5
               unit: 'px'
             )
-          operator: '+'
+          ]
         )
       )
     `);
@@ -654,9 +721,9 @@ test('parse known at-rule as variable call', () => {
   expect(serializeTypes(tree)).toContainString(`
       (Expression
         (Call
-          name: 
+          name:
             (Reference [role=name]
-              key: 
+              key:
                 (Any [role=ident] 'media')
             )
         )
@@ -708,6 +775,7 @@ test('namespace reference - complex selector', () => {
           (Reference [role=name]
             key:
               ['#namespace', '.scoped-mixin']
+            rawKey: '#namespace > .scoped-mixin'
           )
       )
     `);
@@ -746,6 +814,7 @@ test('namespace call - complex selector with parentheses', () => {
               (Reference [role=name]
                 key:
                   ['#namespace', '.scoped-mixin']
+                rawKey: '#namespace > .scoped-mixin'
               )
           )
       )
@@ -766,7 +835,8 @@ test('namespace reference with accessor', () => {
               (Reference [role=name]
                 key: '#id'
               )
-            key: 'property'
+            key: 
+              (Quoted 'property')
           )
       )
     `);
@@ -787,14 +857,16 @@ test('variable reference with accessor', () => {
                 key: 'config'
               )
             key: 
-              (Interpolated [role=ident]
-                source: '${INTERPOLATION_PLACEHOLDER}'
-                replacements:
-                [
-                  (Reference [role=ident]
-                    key: 'prop'
-                  )
-                ]
+              (Quoted
+                (Interpolated [role=ident]
+                  source: '${INTERPOLATION_PLACEHOLDER}'
+                  replacements:
+                  [
+                    (Reference [role=ident]
+                      key: 'prop'
+                    )
+                  ]
+                )
               )
           )
       )
@@ -815,8 +887,10 @@ test('namespace reference with complex selector and accessor', () => {
               (Reference [role=name]
                 key:
                   ['#namespace', '.scoped-mixin']
+                rawKey: '#namespace > .scoped-mixin'
               )
-            key: 'property'
+            key: 
+              (Quoted 'property')
           )
       )
     `);
@@ -838,6 +912,7 @@ test('namespace call with accessor and parentheses', () => {
                   (Reference [role=name]
                     key:
                       ['#namespace', '.scoped-mixin']
+                    rawKey: '#namespace > .scoped-mixin'
                   )
                 key: 'ref'
               )

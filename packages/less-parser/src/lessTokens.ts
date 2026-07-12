@@ -10,7 +10,8 @@ import {
   type CssTokenType,
   SKIPPED_LABEL
 } from '@jesscss/css-parser';
-import { AMPERSAND_TEMPLATE_CONTENTS_REGEX } from '@jesscss/core';
+
+const AMPERSAND_TEMPLATE_CONTENTS_REGEX = /(?:[.#-]|\d)(?:[.#\w\u0080-\uffff-]|&)*|(?:[.#\w\u0080-\uffff-]|&)*&(?:[.#\w\u0080-\uffff-]|&)*/;
 
 type IMerges = Partial<Record<CssTokenType, RawTokenConfig>>;
 
@@ -30,7 +31,6 @@ export type LessExtraTokenType =
   | 'GtEqAlias'
   | 'LtEqAlias'
   | 'Extend'
-  | 'AmpersandExtend'
   | 'AmpersandLParen'
   | 'AmpersandTemplateContents'
   | 'AmpersandTemplateEnd'
@@ -156,11 +156,6 @@ function $preBuildTokens() {
       }
     ],
     Ampersand: [
-      {
-        name: 'AmpersandExtend',
-        pattern: /&:extend\(/,
-        categories: ['BlockMarker']
-      },
       {
         name: 'AmpersandLParen',
         pattern: /&\(/,

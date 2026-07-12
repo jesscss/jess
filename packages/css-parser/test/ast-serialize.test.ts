@@ -57,11 +57,11 @@ describe('serializeTypes coverage', () => {
       selector: 
         (AttributeSelector
           name: 'foo'
-          value:
+          op: '='
+          value: 
             (Quoted
               (Any [role=any] 'bar')
             )
-          op: '='
           mod: 'i'
         )
     `);
@@ -119,6 +119,21 @@ describe('serializeTypes coverage', () => {
           (Any [role=property] 'z')
         value:
           (Num 2)
+    `);
+  });
+
+  test('plain identifier color function args normalize to Color nodes', () => {
+    const { tree } = cssParser.parse('a { color: color(plum); }');
+    const out = serializeTypes(tree);
+
+    expect(out).toContainString(`
+      (Call
+        name: 'color'
+        args:
+          (List
+            [
+              (Color
+                node: 'plum'
     `);
   });
 

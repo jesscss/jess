@@ -108,7 +108,7 @@ export const invalidLess: string[] = [
   'tests-unit/parser-slashed-combinator/parser-slashed-combinator.less',
 
   /** Obsolete Less parent selectors `^` / `^^` were removed in Less v5 */
-  'tests-config/compression/legacy/compression.less',
+  'tests-config/compression/compression.less',
 
   /** Inline JavaScript using backticks is intentionally unsupported */
   'tests-unit/javascript/javascript.less',

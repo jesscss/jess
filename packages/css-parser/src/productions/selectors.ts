@@ -1,6 +1,5 @@
 // Methods to be mixed into CssRecursiveParser
 import type { CssRecursiveParser, RuleContext, TokenMap } from '../cssRecursiveParser.js';
-import { tokenMatcher } from '../cssRecursiveParser.js';
 import type { IToken, IOrAlt } from '@chevrotain/types';
 import {
   Node, Any, BasicSelector, Ampersand, CompoundSelector, ComplexSelector,
@@ -14,8 +13,10 @@ type C = CssRecursiveParser;
 
 export type Alt = Array<IOrAlt<any>>;
 type AltContext = (ctx?: RuleContext) => Alt;
+type SelectorRule = (ctx?: RuleContext) => Node | undefined;
+type StylesheetRule = (options?: Record<string, any>) => Node | undefined;
 
-export function stylesheet(this: C, T: TokenMap) {
+export function stylesheet(this: C, T: TokenMap): StylesheetRule {
   const $ = this;
 
   return (options: Record<string, any> = {}) => {
@@ -39,7 +40,7 @@ export function stylesheet(this: C, T: TokenMap) {
         let loc = $.getLocationInfo(charset);
         let rootLoc = root.location;
         let rules = root.value;
-        root.setData([new Any(charset.image, { role: 'charset' }, loc, context!), ...rules]);
+        root.set(null, [new Any(charset.image, { role: 'charset' }, loc, context!), ...rules]);
         rootLoc[0] = loc[0];
         rootLoc[1] = loc[1];
         rootLoc[2] = loc[2];
@@ -102,7 +103,7 @@ export function main(this: C, T: TokenMap, alt?: AltContext | Alt) {
 
     if (!RECORDING_PHASE) {
       let returnNode = $.getRulesWithComments(rules!, $.getLocationInfo($.LA(1)));
-      const wrapped = $.wrap(returnNode!, true);
+      const wrapped = returnNode!;
 
       return wrapped;
     }
@@ -166,7 +167,7 @@ export function qualifiedRule(this: C, T: TokenMap, selectorAlt?: AltContext) {
 //   | pseudoSelector
 //   | attributeSelector
 //   ;
-export function simpleSelector(this: C, T: TokenMap, selectorAlt?: AltContext) {
+export function simpleSelector(this: C, T: TokenMap, selectorAlt?: AltContext): SelectorRule {
   const $ = this;
 
   selectorAlt ??= (ctx: RuleContext = {}) => [
@@ -396,7 +397,7 @@ export function nthValue(this: C, T: TokenMap, valueAlt?: AltContext) {
           break;
         }
       }
-      return $.wrap(new Any(tokenValues, { role: 'any' }, location, this.context), 'both');
+      return new Any(tokenValues, { role: 'any' }, location, this.context);
     }
   };
 }
@@ -502,8 +503,6 @@ export function compoundSelector(this: C, T: TokenMap) {
       DEF: () => {
         sel = $.SUBRULE2($.simpleSelector, { ARGS: [ctx] });
         if (!RECORDING_PHASE) {
-          /** Make sure we don't add implicit whitespace */
-          sel.pre = 0;
           selectors.push(sel);
         }
       }
@@ -553,7 +552,7 @@ export function complexSelector(this: C, T: TokenMap, manyGate?: (ctx: RuleConte
         });
         if (!RECORDING_PHASE) {
           if (co) {
-            combinator = $.wrap(new Combinator(co.image as Combinators, undefined, $.getLocationInfo(co), this.context), 'both');
+            combinator = new Combinator(co.image as Combinators, undefined, $.getLocationInfo(co), this.context);
           } else {
             /** Whitespace combinators are special */
             let startOffset = this.LA(1).startOffset;
@@ -617,7 +616,7 @@ export function relativeSelector(this: C, T: TokenMap) {
           if (!$.RECORDING_PHASE) {
             let combinator = new Combinator(co.image as Combinators, undefined, $.getLocationInfo(co), this.context);
             if (complex instanceof ComplexSelector) {
-              complex.setData([combinator, ...complex.value]);
+              complex.set(null, [combinator, ...complex.value]);
               let location = complex.location;
               location[0] = co.startOffset;
               location[1] = co.startLine;
@@ -671,9 +670,9 @@ export function forgivingSelectorList(this: C, T: TokenMap) {
           i++;
           if (i === 1 && ctx.qualifiedRule) {
             // Only attach post; leave pre for the parent Rules to lift comments
-            sequences.push($.wrap(selector, true));
+            sequences.push(selector);
           } else {
-            sequences.push($.wrap(selector, i === 1 ? true : 'both'));
+            sequences.push(selector);
           }
         }
       }
@@ -715,9 +714,9 @@ export function selectorList(this: C, T: TokenMap) {
           // so that pre-rule comments remain available to be lifted to Rules.
           if (i === 1 && ctx.qualifiedRule) {
             // Only attach post; leave pre for the parent Rules to lift comments
-            sequences.push($.wrap(sel, true));
+            sequences.push(sel);
           } else {
-            sequences.push($.wrap(sel, i === 1 ? true : 'both'));
+            sequences.push(sel);
           }
         }
       }
@@ -736,44 +735,7 @@ export function selectorList(this: C, T: TokenMap) {
 
 export function declarationList(this: C, T: TokenMap, alt?: AltContext) {
   const $ = this;
-  const shouldTryQualifiedRule = () => {
-    const isSelectorLikeContinuation = (offset: number) => {
-      const tok = $.LA(offset);
-      return (
-        tokenMatcher(tok, T.LCurly)
-        || tokenMatcher(tok, T.Comma)
-        || tokenMatcher(tok, T.Combinator)
-        || tokenMatcher(tok, T.LSquare)
-        || tokenMatcher(tok, T.Colon)
-        || tokenMatcher(tok, T.NthPseudoClass)
-        || tokenMatcher(tok, T.SelectorPseudoClass)
-      );
-    };
-    if (typeof $.shouldTryQualifiedRuleInDeclarationList === 'function') {
-      return $.shouldTryQualifiedRuleInDeclarationList();
-    }
-    if (!$.isTypeAt(1, T.Ident)) {
-      return true;
-    }
-    if (!$.isTypeAt(2, T.Assign)) {
-      return true;
-    }
-    if ($.hasWS(2)) {
-      return false;
-    }
-    const tt3 = $.LA(3).tokenType;
-    if (
-      tt3 === T.Colon
-      || tt3 === T.NthPseudoClass
-      || tt3 === T.SelectorPseudoClass
-    ) {
-      return true;
-    }
-    if (!tokenMatcher($.LA(3), T.Ident)) {
-      return false;
-    }
-    return isSelectorLikeContinuation(4);
-  };
+  const shouldTryQualifiedRule = () => $.shouldTryQualifiedRuleInDeclarationList();
   /** * Declarations ***/
   // https://www.w3.org/TR/css-syntax-3/#declaration-list-diagram
   // declarationList

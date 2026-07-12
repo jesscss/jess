@@ -1,7 +1,7 @@
 import {
   rules, sel, el, spaced, any, sellist, ruleset, decl, atrule,
   vardecl, ref, mixin, call, list, op,
-  num, dimension, amp, expr,
+  num, dimension, amp,
   paren, seq, comment, nil, quoted, color, co, interpolated
 } from '../index.js';
 import { Context } from '../../context.js';
@@ -19,12 +19,114 @@ describe('AtRule', () => {
     context = new Context();
   });
 
+  it('keeps static leaf at-rules canonical in preEval', async () => {
+    const node = atrule({
+      name: any('@namespace', { role: 'atkeyword' }),
+      prelude: seq([any('svg')])
+    });
+
+    const preEvald = await node.preEval(context);
+
+    expect(preEvald).toBe(node);
+  });
+
+  it('keeps static at-rules canonical in preEval when child rules are already preEvaluated', async () => {
+    const body = rules([
+      decl({ name: 'color', value: any('red') })
+    ]);
+    body.preEvaluated = true;
+    const node = atrule({
+      name: any('@media', { role: 'atkeyword' }),
+      prelude: seq([any('screen', { role: 'keyword' })]),
+      rules: body
+    });
+
+    const preEvald = await node.preEval(context);
+
+    expect(preEvald).toBe(node);
+  });
+
+  it('keeps interpolated at-rule preEval wrappers self-owned instead of back-pointing to the canonical at-rule', async () => {
+    const node = atrule({
+      name: interpolated({
+        source: '@media',
+        replacements: []
+      }),
+      prelude: seq([any('screen', { role: 'keyword' })])
+    });
+
+    const preEvald = await node.preEval(context);
+
+    expect(preEvald).not.toBe(node);
+    expect(preEvald).toBeInstanceOf(AtRule);
+    expect(preEvald.sourceNode).toBe(preEvald);
+    if (!(preEvald instanceof AtRule)) {
+      throw new Error('Expected AtRule result');
+    }
+    expect(preEvald.value.name.valueOf()).toBe('@media');
+  });
+
+  it('renders resolved at-rules through render(context)', async () => {
+    const root = rules([
+      vardecl({
+        name: 'mode',
+        value: any('print')
+      })
+    ]);
+    const evaldRoot = await root.eval(context);
+    context.root = evaldRoot;
+    context.rulesContext = evaldRoot;
+
+    const node = atrule({
+      name: any('@media', { role: 'atkeyword' }),
+      prelude: seq([ref({ key: 'mode' }, { type: 'variable' })]),
+      rules: rules([
+        decl({ name: 'color', value: any('red') })
+      ])
+    });
+
+    expect(node.render(context)).toBeString(`
+      @media print {
+        color: red;
+      }
+    `);
+  });
+
+  it('resolves at-rules without touching render state', async () => {
+    const root = rules([
+      vardecl({
+        name: 'mode',
+        value: any('print')
+      })
+    ]);
+    const evaldRoot = await root.eval(context);
+    context.root = evaldRoot;
+    context.rulesContext = evaldRoot;
+
+    const node = atrule({
+      name: any('@media', { role: 'atkeyword' }),
+      prelude: seq([ref({ key: 'mode' }, { type: 'variable' })]),
+      rules: rules([
+        decl({ name: 'color', value: any('red') })
+      ])
+    });
+
+    const resolved = await node.resolve(context);
+
+    expect(resolved.toTrimmedString()).toBeString(`
+      @media print {
+        color: red;
+      }
+    `);
+    expect(context.printState.writer).toBeUndefined();
+  });
+
   describe('nested @media rules', () => {
     it('should handle nested @media rules inside rulesets', async () => {
       // Represents: .body { @media print { padding: 20px; } }
       const node = rules([
         ruleset({
-          selector: sel([el('.body')]) as any,
+          selector: sel([el('.body')]),
           rules: rules([
             atrule({
               name: any('@media', { role: 'atkeyword' }),
@@ -38,7 +140,7 @@ describe('AtRule', () => {
       ]);
 
       const evald = await node.eval(context);
-      const css = evald.render(context);
+      const css = evald.toString();
 
       expect(css).toBeString(`
         .body {
@@ -65,7 +167,7 @@ describe('AtRule', () => {
       // }
       const node = rules([
         ruleset({
-          selector: sel([el('.body')]) as any,
+          selector: sel([el('.body')]),
           rules: rules([
             atrule({
               name: any('@media', { role: 'atkeyword' }),
@@ -73,7 +175,7 @@ describe('AtRule', () => {
               rules: rules([
                 decl({ name: 'padding', value: dimension([20, 'px']) }),
                 ruleset({
-                  selector: sel([amp('-1')]) as any,
+                  selector: sel([amp('-1')]),
                   rules: rules([
                     decl({ name: 'color', value: any('black') })
                   ])
@@ -85,7 +187,8 @@ describe('AtRule', () => {
       ]);
 
       const evald = await node.eval(context);
-      const css = evald.render(context);
+      const css = evald.toString();
+
       expect(css).toBeString(`
         .body {
           @media print {
@@ -116,7 +219,7 @@ describe('AtRule', () => {
       // }
       const node = rules([
         ruleset({
-          selector: sel([el('.body')]) as any,
+          selector: sel([el('.body')]),
           rules: rules([
             atrule({
               name: any('@media', { role: 'atkeyword' }),
@@ -124,20 +227,20 @@ describe('AtRule', () => {
               rules: rules([
                 decl({ name: 'padding', value: dimension([20, 'px']) }),
                 ruleset({
-                  selector: sel([amp('-1')]) as any,
+                  selector: sel([amp('-1')]),
                   rules: rules([
                     decl({ name: 'color', value: any('black') })
                   ])
                 }),
                 decl({ name: 'background-color', value: any('white') }),
                 ruleset({
-                  selector: sel([amp('-2')]) as any,
+                  selector: sel([amp('-2')]),
                   rules: rules([
                     decl({ name: 'color', value: any('blue') })
                   ])
                 }),
                 ruleset({
-                  selector: sel([amp('-3')]) as any,
+                  selector: sel([amp('-3')]),
                   rules: rules([
                     decl({ name: 'color', value: any('red') })
                   ])
@@ -150,7 +253,7 @@ describe('AtRule', () => {
       ]);
 
       const evald = await node.eval(context);
-      const css = evald.render(context);
+      const css = evald.toString();
 
       expect(css).toBeString(`
         .body {
@@ -186,7 +289,7 @@ describe('AtRule', () => {
       // Represents: .body { @media print { header { background-color: red; @media (orientation:landscape) { margin-left: 20px; } } } }
       const node = rules([
         ruleset({
-          selector: sel([el('.body')]) as any,
+          selector: sel([el('.body')]),
           rules: rules([
             atrule({
               name: any('@media', { role: 'atkeyword' }),
@@ -194,7 +297,7 @@ describe('AtRule', () => {
               rules: rules([
                 decl({ name: 'padding', value: dimension([20, 'px']) }),
                 ruleset({
-                  selector: sel([el('header')]) as any,
+                  selector: sel([el('header')]),
                   rules: rules([
                     decl({ name: 'background-color', value: color({ node: 'red', format: 0, rgb: [255, 0, 0], alpha: 1 }) }),
                     atrule({
@@ -216,7 +319,7 @@ describe('AtRule', () => {
       ]);
 
       const evald = await node.eval(context);
-      const css = evald.render(context);
+      const css = evald.toString();
 
       expect(css).toBeString(`
         .body {
@@ -234,58 +337,309 @@ describe('AtRule', () => {
     });
   });
 
-  describe('root-only at-rules', () => {
-    it('hoists nested @property rules to the stylesheet root', async () => {
-      context = new Context({ bubbleRootAtRules: true });
-
+  describe('collapse nesting at-rule categories', () => {
+    it('keeps nested @starting-style in place when collapseNesting is true', async () => {
+      context.opts.collapseNesting = true;
       const node = rules([
         ruleset({
-          selector: sel([el('.card')]) as any,
+          selector: sel([el('[popover]:popover-open')]),
           rules: rules([
+            decl({ name: 'opacity', value: num(1) }),
             atrule({
-              name: any('@property', { role: 'atkeyword' }),
-              prelude: any('--accent', { role: 'ident' }),
+              name: any('@starting-style', { role: 'atkeyword' }),
               rules: rules([
-                decl({
-                  name: 'syntax',
-                  value: quoted(any('<color>', { role: 'any' }))
-                }),
-                decl({
-                  name: 'inherits',
-                  value: any('false', { role: 'keyword' })
-                }),
-                decl({
-                  name: 'initial-value',
-                  value: any('rebeccapurple', { role: 'keyword' })
-                })
+                decl({ name: 'opacity', value: num(0) })
               ])
-            }),
-            decl({
-              name: 'color',
-              value: any('var(--accent)', { role: 'any' })
             })
           ])
         })
       ]);
 
       const evald = await node.eval(context);
-      const css = evald.render(context);
+      const css = evald.toString({ context });
 
       expect(css).toBeString(`
-        @property --accent {
-          syntax: "<color>";
-          inherits: false;
-          initial-value: rebeccapurple;
+        [popover]:popover-open {
+          opacity: 1;
+          @starting-style {
+            opacity: 0;
+          }
         }
-        .card {
-          color: var(--accent);
+      `);
+    });
+
+    it('keeps leaf custom at-rules inside the current ruleset', async () => {
+      context.opts.collapseNesting = true;
+      const node = rules([
+        ruleset({
+          selector: sel([el('.box')]),
+          rules: rules([
+            atrule({
+              name: any('@apply', { role: 'atkeyword' }),
+              prelude: any('h-64 w-64')
+            })
+          ])
+        })
+      ]);
+
+      const evald = await node.eval(context);
+      const css = evald.toString({ context });
+
+      expect(css).toBeString(`
+        .box {
+          @apply h-64 w-64;
+        }
+      `);
+    });
+
+    it('does not compose root-only @keyframes children with parent selector context', async () => {
+      context = new Context({ collapseNesting: true, bubbleRootAtRules: true });
+      const node = rules([
+        ruleset({
+          selector: sel([el('.onTop')]),
+          rules: rules([
+            atrule({
+              name: any('@keyframes', { role: 'atkeyword' }),
+              prelude: quoted(any('textscale')),
+              rules: rules([
+                ruleset({
+                  selector: sel([el('0%')]),
+                  rules: rules([
+                    decl({ name: 'font-size', value: dimension([1, 'em']) })
+                  ])
+                }),
+                ruleset({
+                  selector: sel([el('100%')]),
+                  rules: rules([
+                    decl({ name: 'font-size', value: dimension([2, 'em']) })
+                  ])
+                })
+              ])
+            }),
+            decl({ name: 'animation', value: quoted(any('textscale')) })
+          ])
+        })
+      ]);
+
+      const evald = await node.eval(context);
+      const css = evald.toString({ context });
+
+      expect(css).toBeString(`
+        @keyframes "textscale" {
+          0% {
+            font-size: 1em;
+          }
+          100% {
+            font-size: 2em;
+          }
+        }
+        .onTop {
+          animation: "textscale";
+        }
+      `);
+    });
+
+    it('treats generated hoisted ampersand wrappers as transparent inside nested wrapper at-rules', async () => {
+      context.opts.collapseNesting = true;
+      const node = rules([
+        atrule({
+          name: any('@supports', { role: 'atkeyword' }),
+          prelude: paren(decl({ name: 'property', value: any('value') })),
+          rules: rules([
+            ruleset({
+              selector: sel([el('.outOfMedia'), co(' '), amp()]),
+              rules: rules([
+                atrule({
+                  name: any('@media', { role: 'atkeyword' }),
+                  prelude: paren(decl({ name: 'max-size', value: dimension([2, 'px']) })),
+                  rules: rules([
+                    atrule({
+                      name: any('@supports', { role: 'atkeyword' }),
+                      prelude: paren(decl({ name: 'whatever', value: any('something') })),
+                      rules: rules([
+                        decl({ name: 'property', value: any('value') })
+                      ])
+                    })
+                  ])
+                })
+              ])
+            })
+          ])
+        })
+      ]);
+
+      const evald = await node.eval(context);
+      const css = evald.toString({ context });
+
+      expect(css).toBeString(`
+        @supports (property: value) {
+          @media (max-size: 2px) {
+            @supports (whatever: something) {
+              .outOfMedia {
+                property: value;
+              }
+            }
+          }
+        }
+      `);
+    });
+
+    it('does not merge adjacent root-only at-rules with identical headers', async () => {
+      const node = rules([
+        atrule({
+          name: any('@font-face', { role: 'atkeyword' }),
+          rules: rules([
+            decl({ name: 'font-family', value: quoted('One') })
+          ])
+        }),
+        atrule({
+          name: any('@font-face', { role: 'atkeyword' }),
+          rules: rules([
+            decl({ name: 'font-family', value: quoted('Two') })
+          ])
+        })
+      ]);
+
+      const evald = await node.eval(context);
+      const css = evald.toString({ context });
+
+      expect(css).toBeString(`
+        @font-face {
+          font-family: "One";
+        }
+        @font-face {
+          font-family: "Two";
+        }
+      `);
+    });
+
+    it('does not merge adjacent wrapper at-rules from distinct sibling branches', async () => {
+      context.opts.collapseNesting = true;
+      const node = rules([
+        ruleset({
+          selector: sel([el('.one')]),
+          rules: rules([
+            atrule({
+              name: any('@media', { role: 'atkeyword' }),
+              prelude: seq([any('screen', { role: 'keyword' })]),
+              rules: rules([
+                decl({ name: 'color', value: any('red') })
+              ])
+            })
+          ])
+        }),
+        ruleset({
+          selector: sel([el('.two')]),
+          rules: rules([
+            atrule({
+              name: any('@media', { role: 'atkeyword' }),
+              prelude: seq([any('screen', { role: 'keyword' })]),
+              rules: rules([
+                decl({ name: 'color', value: any('blue') })
+              ])
+            })
+          ])
+        })
+      ]);
+
+      const evald = await node.eval(context);
+      const css = evald.toString({ context });
+
+      expect(css).toBeString(`
+        @media screen {
+          .one {
+            color: red;
+          }
+        }
+        @media screen {
+          .two {
+            color: blue;
+          }
+        }
+      `);
+    });
+
+    it('does not merge identical wrapper stacks across at-rule and hoisted-ruleset sibling branches', async () => {
+      context.opts.collapseNesting = true;
+      const node = rules([
+        atrule({
+          name: any('@supports', { role: 'atkeyword' }),
+          prelude: paren(decl({ name: 'property', value: any('value') })),
+          rules: rules([
+            ruleset({
+              selector: sel([el('.outOfMedia'), co(' '), amp()]),
+              rules: rules([
+                atrule({
+                  name: any('@media', { role: 'atkeyword' }),
+                  prelude: paren(decl({ name: 'max-size', value: dimension([2, 'px']) })),
+                  rules: rules([
+                    atrule({
+                      name: any('@supports', { role: 'atkeyword' }),
+                      prelude: paren(decl({ name: 'whatever', value: any('something') })),
+                      rules: rules([
+                        decl({ name: 'property', value: any('value') })
+                      ])
+                    })
+                  ])
+                })
+              ])
+            })
+          ])
+        }),
+        ruleset({
+          selector: sel([el('.onTop'), co(' '), amp()]),
+          rules: rules([
+            atrule({
+              name: any('@supports', { role: 'atkeyword' }),
+              prelude: paren(decl({ name: 'property', value: any('value') })),
+              rules: rules([
+                atrule({
+                  name: any('@media', { role: 'atkeyword' }),
+                  prelude: paren(decl({ name: 'max-size', value: dimension([2, 'px']) })),
+                  rules: rules([
+                    atrule({
+                      name: any('@supports', { role: 'atkeyword' }),
+                      prelude: paren(decl({ name: 'whatever', value: any('something') })),
+                      rules: rules([
+                        decl({ name: 'property', value: any('value') })
+                      ])
+                    })
+                  ])
+                })
+              ])
+            })
+          ])
+        })
+      ]);
+
+      const evald = await node.eval(context);
+      const css = evald.toString({ context });
+
+      expect(css).toBeString(`
+        @supports (property: value) {
+          @media (max-size: 2px) {
+            @supports (whatever: something) {
+              .outOfMedia {
+                property: value;
+              }
+            }
+          }
+        }
+        @supports (property: value) {
+          @media (max-size: 2px) {
+            @supports (whatever: something) {
+              .onTop {
+                property: value;
+              }
+            }
+          }
         }
       `);
     });
   });
 
   describe('@media with mixins and parameters', () => {
-    it.only('should handle mixin with nested @media using parameter', async () => {
+    it('should handle mixin with nested @media using parameter', async () => {
       // Represents:
       // .mediaMixin(@fallback: 200px) {
       //   background: black;
@@ -327,7 +681,7 @@ describe('AtRule', () => {
       });
 
       const callSite = ruleset({
-        selector: sel([el('.a')]) as any,
+        selector: sel([el('.a')]),
         rules: rules([
           call({
             name: ref({ key: '.mediaMixin' }, { type: 'mixin-ruleset' }),
@@ -339,7 +693,7 @@ describe('AtRule', () => {
       const rootRules = rules([mixinDef, callSite]);
       context.root = rootRules;
       const evald = await rootRules.eval(context);
-      const css = evald.render(context);
+      const css = evald.toString();
 
       expect(css).toBeString(`
         .a {
@@ -347,6 +701,91 @@ describe('AtRule', () => {
           @media handheld {
             background: white;
             @media (max-width: 100px) {
+              background: red;
+            }
+          }
+        }
+      `);
+    });
+
+    it('should handle mixin with nested @media using indexed parameter references', async () => {
+      const createMixinRoot = (args: Node[] = []) => {
+        const mixinDef = mixin({
+          name: any('.mediaMixin'),
+          params: list([
+            vardecl({ name: 'fallback', value: dimension([200, 'px']) }, { paramVar: true })
+          ]),
+          rules: rules([
+            decl({
+              name: 'background',
+              value: color({ node: 'black', format: 0, rgb: [0, 0, 0], alpha: 1 })
+            }),
+            atrule({
+              name: any('@media', { role: 'atkeyword' }),
+              prelude: seq([any('handheld', { role: 'keyword' })]),
+              rules: rules([
+                decl({
+                  name: 'background',
+                  value: color({ node: 'white', format: 0, rgb: [255, 255, 255], alpha: 1 })
+                }),
+                atrule({
+                  name: any('@media', { role: 'atkeyword' }),
+                  prelude: paren(decl({
+                    name: 'max-width',
+                    value: ref({ key: 'fallback' }, { type: 'index' })
+                  })),
+                  rules: rules([
+                    decl({
+                      name: 'background',
+                      value: color({ node: 'red', format: 0, rgb: [255, 0, 0], alpha: 1 })
+                    })
+                  ])
+                })
+              ])
+            })
+          ])
+        });
+
+        const callSite = ruleset({
+          selector: sel([el('.a')]),
+          rules: rules([
+            call({
+              name: ref({ key: '.mediaMixin' }, { type: 'mixin-ruleset' }),
+              args: list(args)
+            })
+          ])
+        });
+
+        return rules([mixinDef, callSite]);
+      };
+
+      const explicitRoot = createMixinRoot([dimension([100, 'px'])]);
+      context.root = explicitRoot;
+      const explicitEvald = await explicitRoot.eval(context);
+
+      expect(explicitEvald.toString()).toBeString(`
+        .a {
+          background: black;
+          @media handheld {
+            background: white;
+            @media (max-width: 100px) {
+              background: red;
+            }
+          }
+        }
+      `);
+
+      const defaultContext = new Context();
+      const defaultRoot = createMixinRoot();
+      defaultContext.root = defaultRoot;
+      const defaultEvald = await defaultRoot.eval(defaultContext);
+
+      expect(defaultEvald.toString()).toBeString(`
+        .a {
+          background: black;
+          @media handheld {
+            background: white;
+            @media (max-width: 200px) {
               background: red;
             }
           }
@@ -364,7 +803,7 @@ describe('AtRule', () => {
           prelude: seq([any('print', { role: 'keyword' })]),
           rules: rules([
             ruleset({
-              selector: sel([el('.class')]) as any,
+              selector: sel([el('.class')]),
               rules: rules([
                 decl({ name: 'color', value: color({ node: 'blue', format: 0, rgb: [0, 0, 255], alpha: 1 }) })
               ])
@@ -377,7 +816,7 @@ describe('AtRule', () => {
           rules: rules([
             vardecl({ name: any('base', { role: 'ident' }), value: num(8) }),
             ruleset({
-              selector: sel([el('.body')]) as any,
+              selector: sel([el('.body')]),
               rules: rules([
                 decl({ name: 'max-width', value: op([ref('base', { type: 'variable' }), '*', num(60)]) })
               ])
@@ -388,7 +827,7 @@ describe('AtRule', () => {
 
       context.root = node;
       const evald = await node.eval(context);
-      const css = evald.render(context);
+      const css = evald.toString();
 
       expect(css).toBeString(`
         @media print {
@@ -416,7 +855,7 @@ describe('AtRule', () => {
           prelude: seq([ref('all', { type: 'variable' }), any('and', { role: 'keyword' }), ref('tv', { type: 'variable' })]),
           rules: rules([
             ruleset({
-              selector: sel([el('.all-and-tv-variables')]) as any,
+              selector: sel([el('.all-and-tv-variables')]),
               rules: rules([
                 decl({ name: 'var', value: spaced([any('all-and-tv')]) })
               ])
@@ -426,7 +865,7 @@ describe('AtRule', () => {
       ]);
 
       const evald = await node.eval(context);
-      const css = evald.render(context);
+      const css = evald.toString();
 
       expect(css).toBeString(`
         @media all and (tv) {
@@ -455,7 +894,7 @@ describe('AtRule', () => {
           ]),
           rules: rules([
             ruleset({
-              selector: sel([el('.selector')]) as any,
+              selector: sel([el('.selector')]),
               rules: rules([
                 decl({ name: 'foo', value: spaced([any('bar')]) })
               ])
@@ -465,7 +904,7 @@ describe('AtRule', () => {
       ]);
 
       const evald = await node.eval(context);
-      const css = evald.render(context);
+      const css = evald.toString();
 
       expect(css).toBeString(`
         @media screen and (min-width: 61px) {
@@ -497,7 +936,7 @@ describe('AtRule', () => {
           ]),
           rules: rules([
             ruleset({
-              selector: sel([el('.selector')]) as any,
+              selector: sel([el('.selector')]),
               rules: rules([
                 decl({ name: 'color', value: color({ node: '#eee', format: 0 }) })
               ])
@@ -507,7 +946,7 @@ describe('AtRule', () => {
       ]);
 
       const evald = await node.eval(context);
-      const css = evald.render(context);
+      const css = evald.toString();
 
       expect(css).toBeString(`
         @media screen and (color), projection and (color) {
@@ -545,7 +984,7 @@ describe('AtRule', () => {
             }))]),
             rules: rules([
               ruleset({
-                selector: sel([el('> li')]) as any,
+                selector: sel([el('> li')]),
                 rules: rules([
                   decl({ name: 'display', value: spaced([any('table-cell')]) })
                 ])
@@ -556,7 +995,7 @@ describe('AtRule', () => {
       });
 
       const callSite = ruleset({
-        selector: sel([el('.menu')]) as any,
+        selector: sel([el('.menu')]),
         rules: rules([
           atrule({
             name: any('@media', { role: 'atkeyword' }),
@@ -576,7 +1015,7 @@ describe('AtRule', () => {
       const rootRules = rules([navJustifiedMixin, callSite]);
       context.root = rootRules;
       const evald = await rootRules.eval(context);
-      const css = evald.render(context);
+      const css = evald.toString();
 
       expect(css).toBeString(`
         .menu {
@@ -1371,7 +1810,7 @@ describe('AtRule', () => {
                         el('.nav-justified'),
                         co('>'),
                         el('li')
-                      ]) as any,
+                      ]),
                       rules: rules([
                         decl({
                           name: 'display',
@@ -1417,7 +1856,7 @@ describe('AtRule', () => {
                                 el('.menu'),
                                 co('>'),
                                 el('li')
-                              ]) as any,
+                              ]),
                               rules: rules([
                                 decl({
                                   name: 'display',
@@ -1676,7 +2115,7 @@ describe('AtRule', () => {
                         el('.selector'),
                         co(' '),
                         el('.test-range-syntax')
-                      ]) as any,
+                      ]),
                       rules: rules([
                         decl({
                           name: 'padding',
@@ -1717,7 +2156,7 @@ describe('AtRule', () => {
 
       /** This represents already eval'd nodes */
       const evald = await node.eval(context);
-      const serialized = evald.render(context);
+      const serialized = evald.toString({ context });
 
       // The serialized output should match the structure
       expect(serialized).toBeString(`
@@ -2000,25 +2439,6 @@ describe('AtRule', () => {
           }
         }
       `);
-    });
-  });
-
-  describe('evaluation', () => {
-    it('evaluates interpolated names and preludes before serialization', async () => {
-      const node = atrule({
-        name: interpolated({
-          source: '@%%',
-          replacements: [expr(any('media'))]
-        }, { role: 'atkeyword' }),
-        prelude: seq([expr(any('screen'))]),
-        rules: rules([
-          decl({ name: 'color', value: expr(any('blue')) })
-        ])
-      });
-
-      const evald = await node.eval(context);
-
-      expect(evald.render(context)).toBe('@media screen {\n  color: blue;\n}\n');
     });
   });
 });

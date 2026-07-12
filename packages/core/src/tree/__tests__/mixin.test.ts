@@ -1,7 +1,7 @@
-import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, Node, Rules, call, ruleset, Ruleset, rest, sel, co, compound, atrule, interpolated, nil, num, seq, amp, sellist } from '../index.js';
-import { Context } from '../../context.js';
-import { getFunctionFromMixins } from '../rules.js';
-import { getField, getParent, getSourceParent, setField, setParent, setSourceParent } from '../util/field-helpers.js';
+import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, Node, call, ruleset, rest, sel, co, compound, sellist, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER, amp, pseudo, paren, dimension, op, quoted, seq, atrule, defaultguard, Rules as RulesClass } from '../index.js';
+import { Context, TreeContext } from '../../context.js';
+import { resolveFrameCell } from '../scope-frame.js';
+import { MixinRegistry } from '../util/registry-utils.js';
 
 let context: Context;
 
@@ -97,7 +97,7 @@ describe('Mixin', () => {
       context.root = root;
 
       const evald = await root.eval(context);
-      const css = evald.render(context);
+      const css = evald.toString();
 
       expect(css).toBeString(`
         .test {
@@ -128,7 +128,7 @@ describe('Mixin', () => {
       context.root = root;
 
       const evald = await root.eval(context);
-      const css = evald.render(context);
+      const css = evald.toString();
 
       expect(css).toBeString(`
         .my-mixin {
@@ -168,18 +168,14 @@ describe('Mixin', () => {
       context.root = root;
 
       const evald = await root.eval(context);
-      const css = evald.render(context);
+      const css = evald.toString();
 
       expect(css).toBeString(`
         .test {
-          $color: blue;
           color: blue;
         }
       `);
     });
-
-    // Removed: interpolated mixin names are resolved during eval before registration.
-    // A mixin with an unresolved interpolated name would never be in the registry.
 
     it('should call a mixin with default parameter values', async () => {
       // Create a mixin with a default parameter: .my-mixin(@color: red) { color: @color; }
@@ -216,19 +212,540 @@ describe('Mixin', () => {
       context.root = root;
 
       const evald = await root.eval(context);
-      // Position-backed trees require context for serialization
-      const css = evald.render(context);
+      const css = evald.toString();
 
       expect(css).toBeString(`
         .test1 {
-          $color: red;
           color: red;
         }
         .test2 {
-          $color: blue;
           color: blue;
         }
       `);
+    });
+
+    it('resolves local mixin body variable inside a detached ruleset passed to another mixin (closure)', async () => {
+      // Reproduces: Bootstrap's #table-row-variant / #hover pattern
+      //   #hover(@content) { &:hover { @content(); } }
+      //   #table-row-variant(@background) {
+      //     @hover-background: darken(@background, 5%);  <-- local var
+      //     #hover({ background-color: @hover-background; });  <-- closure!
+      //   }
+      //
+      // @hover-background is a body-level VarDeclaration in the mixin scope.
+      // When the detached ruleset { background-color: @hover-background; } is evaluated
+      // inside #hover (as @content()), it must still find @hover-background.
+
+      // Build #hover(@content) { &:hover { @content(); } }
+      const hoverMixin = mixin({
+        name: any('.hover'),
+        params: list([any('content', { role: 'property' })]),
+        rules: rules([
+          ruleset({
+            selector: compound([amp(), el(':hover')]),
+            rules: rules([
+              call({ name: ref({ key: 'content' }, { type: 'variable' }) })
+            ])
+          })
+        ])
+      });
+
+      // Build #table-row-variant(@background) {
+      //   @hover-background: darken(@background, 5%);
+      //   .hover({ background-color: @hover-background; });
+      // }
+      // Simplified: use a literal value for @hover-background default
+      const tableRowVariantMixin = mixin({
+        name: any('.table-row-variant'),
+        params: list([any('background', { role: 'property' })]),
+        rules: rules([
+          // @hover-background: @background (local body var, not a param)
+          vardecl({ name: 'hover-background', value: ref({ key: 'background' }, { type: 'variable' }) }),
+          // .hover({ background-color: @hover-background; })
+          call({
+            name: ref({ key: '.hover' }, { type: 'mixin' }),
+            args: list([
+              // detached ruleset that references the local var
+              rules([
+                decl({ name: 'background-color', value: ref({ key: 'hover-background' }, { type: 'variable' }) })
+              ])
+            ])
+          })
+        ])
+      });
+
+      const component = ruleset({
+        selector: el('.table-primary'),
+        rules: rules([
+          call({
+            name: ref({ key: '.table-row-variant' }, { type: 'mixin' }),
+            args: list([any('blue')])
+          })
+        ])
+      });
+
+      const root = rules([hoverMixin, tableRowVariantMixin, component]);
+      context.root = root;
+
+      const evald = await root.eval(context);
+      const css = evald.toString();
+
+      // @hover-background = @background = blue
+      // Jess preserves CSS nesting: &:hover stays nested, not compiled to .table-primary:hover
+      expect(css).toContain('.table-primary');
+      expect(css).toContain('&:hover');
+      expect(css).toContain('background-color: blue');
+    });
+
+    it('resolves local mixin body variable inside a detached ruleset when call is nested in a child ruleset', async () => {
+      // Reproduces the jess test structure where #hover() is called INSIDE a nested ruleset,
+      // not at the top level of the mixin body. @hover-background is declared at the OUTER
+      // mixin body level, but the call is inside .table-hover { #hover({...}); }.
+
+      const hoverMixin = mixin({
+        name: any('.hover'),
+        params: list([any('content', { role: 'property' })]),
+        rules: rules([
+          ruleset({
+            selector: compound([amp(), el(':hover')]),
+            rules: rules([
+              call({ name: ref({ key: 'content' }, { type: 'variable' }) })
+            ])
+          })
+        ])
+      });
+
+      const tableRowVariantMixin = mixin({
+        name: any('.table-row-variant'),
+        params: list([any('background', { role: 'property' })]),
+        rules: rules([
+          // @hover-background: @background (local body var, at outer mixin level)
+          vardecl({ name: 'hover-background', value: ref({ key: 'background' }, { type: 'variable' }) }),
+          // .table-hover { .hover({ background-color: @hover-background; }); }
+          ruleset({
+            selector: el('.table-hover'),
+            rules: rules([
+              call({
+                name: ref({ key: '.hover' }, { type: 'mixin' }),
+                args: list([
+                  rules([
+                    decl({ name: 'background-color', value: ref({ key: 'hover-background' }, { type: 'variable' }) })
+                  ])
+                ])
+              })
+            ])
+          })
+        ])
+      });
+
+      const component = ruleset({
+        selector: el('.table-primary'),
+        rules: rules([
+          call({
+            name: ref({ key: '.table-row-variant' }, { type: 'mixin' }),
+            args: list([any('blue')])
+          })
+        ])
+      });
+
+      const root = rules([hoverMixin, tableRowVariantMixin, component]);
+      context.root = root;
+
+      const evald = await root.eval(context);
+      const css = evald.toString();
+
+      expect(css).toContain('.table-hover');
+      expect(css).toContain('&:hover');
+      expect(css).toContain('background-color: blue');
+    });
+
+    it('resolves local mixin body vars when a detached ruleset is stored in a variable and called directly', async () => {
+      const tableRowVariantMixin = mixin({
+        name: any('.table-row-variant'),
+        params: list([any('background', { role: 'property' })]),
+        rules: rules([
+          vardecl({ name: 'hover-background', value: ref({ key: 'background' }, { type: 'variable' }) }),
+          vardecl({
+            name: 'hover-content',
+            value: rules([
+              decl({ name: 'background-color', value: ref({ key: 'hover-background' }, { type: 'variable' }) })
+            ])
+          }),
+          call({ name: ref({ key: 'hover-content' }, { type: 'variable' }) })
+        ])
+      });
+
+      const component = ruleset({
+        selector: el('.table-primary'),
+        rules: rules([
+          call({
+            name: ref({ key: '.table-row-variant' }, { type: 'mixin' }),
+            args: list([any('blue')])
+          })
+        ])
+      });
+
+      const root = rules([tableRowVariantMixin, component]);
+      context.root = root;
+
+      const evald = await root.eval(context);
+      const css = evald.toString();
+
+      expect(css).toContain('.table-primary');
+      expect(css).toContain('background-color: blue');
+    });
+
+    it('resolves local mixin body vars when a detached ruleset variable is called inside a child ruleset', async () => {
+      const tableRowVariantMixin = mixin({
+        name: any('.table-row-variant'),
+        params: list([any('background', { role: 'property' })]),
+        rules: rules([
+          vardecl({ name: 'hover-background', value: ref({ key: 'background' }, { type: 'variable' }) }),
+          vardecl({
+            name: 'hover-content',
+            value: rules([
+              decl({ name: 'background-color', value: ref({ key: 'hover-background' }, { type: 'variable' }) })
+            ])
+          }),
+          ruleset({
+            selector: el('.table-hover'),
+            rules: rules([
+              call({ name: ref({ key: 'hover-content' }, { type: 'variable' }) })
+            ])
+          })
+        ])
+      });
+
+      const component = ruleset({
+        selector: el('.table-primary'),
+        rules: rules([
+          call({
+            name: ref({ key: '.table-row-variant' }, { type: 'mixin' }),
+            args: list([any('blue')])
+          })
+        ])
+      });
+
+      const root = rules([tableRowVariantMixin, component]);
+      context.root = root;
+
+      const evald = await root.eval(context);
+      const css = evald.toString();
+
+      expect(css).toContain('.table-primary');
+      expect(css).toContain('.table-hover');
+      expect(css).toContain('background-color: blue');
+    });
+
+    it('prefers local mixin body vars over same-named globals when detached ruleset vars are called directly', async () => {
+      const tableRowVariantMixin = mixin({
+        name: any('.table-row-variant'),
+        params: list([any('background', { role: 'property' })]),
+        rules: rules([
+          vardecl({ name: 'hover-background', value: ref({ key: 'background' }, { type: 'variable' }) }),
+          vardecl({
+            name: 'hover-content',
+            value: rules([
+              decl({ name: 'background-color', value: ref({ key: 'hover-background' }, { type: 'variable' }) })
+            ])
+          }),
+          call({ name: ref({ key: 'hover-content' }, { type: 'variable' }) })
+        ])
+      });
+
+      const component = ruleset({
+        selector: el('.table-primary'),
+        rules: rules([
+          call({
+            name: ref({ key: '.table-row-variant' }, { type: 'mixin' }),
+            args: list([any('blue')])
+          })
+        ])
+      });
+
+      const root = rules([
+        vardecl({ name: 'hover-background', value: any('red') }),
+        tableRowVariantMixin,
+        component
+      ]);
+      context.root = root;
+
+      const evald = await root.eval(context);
+      const css = evald.toString();
+
+      expect(css).toContain('.table-primary');
+      expect(css).toContain('background-color: blue');
+      expect(css).not.toContain('background-color: red');
+    });
+
+    it('resolves default params when mixin body lives in a separate (imported) rules context', async () => {
+      // Simulates: @import "mixins.less" where mixins.less defines:
+      //   .responsive-mixin(@size: 14px, @weight: normal) { font-size: @size; font-weight: @weight; }
+      // and the main file calls: .component { .responsive-mixin(); }
+      //
+      // The mixin body's parent chain points into the "imported" tree, not the main tree.
+      // outerRules.scopeFrame must still carry the default bindings.
+
+      const mixinBody = rules([
+        decl({ name: 'font-size', value: ref({ key: 'size' }, { type: 'variable' }) }),
+        decl({ name: 'font-weight', value: ref({ key: 'weight' }, { type: 'variable' }) })
+      ]);
+
+      // Build an "imported" root — mixin lives here
+      const importedMixinDef = mixin({
+        name: any('.responsive-mixin'),
+        params: list([
+          vardecl({ name: 'size', value: any('14px') }, { paramVar: true }),
+          vardecl({ name: 'weight', value: any('normal') }, { paramVar: true })
+        ]),
+        rules: mixinBody
+      });
+      const importedRoot = rules([importedMixinDef]);
+
+      // The main file calls the mixin inside a ruleset
+      const component = ruleset({
+        selector: el('.component'),
+        rules: rules([
+          call({ name: ref({ key: '.responsive-mixin' }, { type: 'mixin' }) })
+        ])
+      });
+
+      // Wire the imported root into the main root via push so the registry can find the mixin
+      const mainRoot = rules([importedRoot, component]);
+      context.root = mainRoot;
+
+      const evald = await mainRoot.eval(context);
+      const css = evald.toString();
+
+      expect(css).toBeString(`
+        .component {
+          font-size: 14px;
+          font-weight: normal;
+        }
+      `);
+    });
+
+    it('resolves default params when mixin is nested inside a namespace (Less import pattern)', async () => {
+      // Simulates a multi-default-param mixin nested inside a namespace ruleset
+      // equivalent to Bootstrap's .button-variant(@background, @border, @hover-background)
+      // where the mixin params should remain accessible throughout the body
+
+      const mixinDef = mixin({
+        name: any('.button-variant'),
+        params: list([
+          any('background', { role: 'property' }),
+          any('border', { role: 'property' }),
+          vardecl({ name: 'hover-background', value: any('darken') }, { paramVar: true })
+        ]),
+        rules: rules([
+          decl({ name: 'background-color', value: ref({ key: 'background' }, { type: 'variable' }) }),
+          decl({ name: 'border-color', value: ref({ key: 'border' }, { type: 'variable' }) }),
+          decl({ name: 'background-hover', value: ref({ key: 'hover-background' }, { type: 'variable' }) })
+        ])
+      });
+
+      const component = ruleset({
+        selector: el('.btn-primary'),
+        rules: rules([
+          call({
+            name: ref({ key: '.button-variant' }, { type: 'mixin' }),
+            args: list([any('blue'), any('darkblue')])
+          })
+        ])
+      });
+
+      const root = rules([mixinDef, component]);
+      context.root = root;
+
+      const evald = await root.eval(context);
+      const css = evald.toString();
+
+      expect(css).toBeString(`
+        .btn-primary {
+          background-color: blue;
+          border-color: darkblue;
+          background-hover: darken;
+        }
+      `);
+    });
+
+    it('leaks non-param vars from mixin output in leaky Less mode', async () => {
+      const setHeight = mixin({
+        name: any('.setHeight'),
+        params: list([
+          any('h', { role: 'property' })
+        ]),
+        rules: rules([
+          vardecl({ name: 'height', value: any('1024px') })
+        ])
+      });
+
+      const useHeight = mixin({
+        name: any('.useHeightInMixinCall'),
+        params: list([
+          any('h', { role: 'property' })
+        ]),
+        rules: rules([
+          ruleset({
+            selector: el('.useHeightInMixinCall'),
+            rules: rules([
+              decl({ name: 'mixin-height', value: ref({ key: 'h' }, { type: 'variable' }) })
+            ])
+          })
+        ])
+      });
+
+      const root = rules([
+        setHeight,
+        useHeight,
+        vardecl({ name: 'mainHeight', value: any('50%') }),
+        call({
+          name: ref({ key: '.setHeight' }, { type: 'mixin' }),
+          args: list([ref({ key: 'mainHeight' }, { type: 'variable' })])
+        }),
+        ruleset({
+          selector: el('.heightIsSet'),
+          rules: rules([
+            decl({ name: 'height', value: ref({ key: 'height' }, { type: 'variable' }) })
+          ])
+        }),
+        call({
+          name: ref({ key: '.useHeightInMixinCall' }, { type: 'mixin' }),
+          args: list([ref({ key: 'height' }, { type: 'variable' })])
+        })
+      ]);
+      context.root = root;
+
+      const evald = await root.eval(context);
+      const css = evald.toString();
+
+      expect(css).toContain('.heightIsSet');
+      expect(css).toContain('height: 1024px;');
+      expect(css).toContain('.useHeightInMixinCall');
+      expect(css).toContain('mixin-height: 1024px;');
+    });
+
+    it('does not let earlier sibling declarations see later mixin output in leaky Less mode', async () => {
+      const setMix = mixin({
+        name: any('.mixin'),
+        rules: rules([
+          vardecl({ name: 'mix', value: any('#989') })
+        ])
+      });
+
+      const root = rules([
+        setMix,
+        vardecl({ name: 'mix', value: any('blue') }),
+        ruleset({
+          selector: el('.tiny-scope'),
+          rules: rules([
+            decl({ name: 'color', value: ref({ key: 'mix' }, { type: 'variable' }) }),
+            call({ name: ref({ key: '.mixin' }, { type: 'mixin' }) })
+          ])
+        })
+      ]);
+      context.root = root;
+
+      const evald = await root.eval(context);
+      const css = evald.toString();
+
+      expect(css).toContain('.tiny-scope');
+      expect(css).toContain('color: blue;');
+      expect(css).not.toContain('color: #989;');
+    });
+
+    it('falls back to caller scope for unresolved body vars while keeping default param scope lexical', async () => {
+      const mixinNoParam = mixin({
+        name: any('.mixinNoParam'),
+        params: list([
+          vardecl({ name: 'parameter', value: ref({ key: 'parameterDefault' }, { type: 'variable' }) }, { paramVar: true })
+        ]),
+        guard: condition([
+          ref({ key: 'parameter' }, { type: 'variable' }),
+          '=',
+          any('top level')
+        ]),
+        rules: rules([
+          decl({ name: 'default', value: ref({ key: 'parameter' }, { type: 'variable' }) }),
+          decl({ name: 'scope', value: ref({ key: 'anotherVariable' }, { type: 'variable' }) }),
+          decl({ name: 'sub-scope-only', value: ref({ key: 'subScopeOnly' }, { type: 'variable' }) })
+        ])
+      });
+
+      const root = rules([
+        vardecl({ name: 'parameterDefault', value: any('top level') }),
+        vardecl({ name: 'anotherVariable', value: any('top level') }),
+        mixinNoParam,
+        ruleset({
+          selector: el('#allAreUsedHere'),
+          rules: rules([
+            vardecl({ name: 'parameterDefault', value: any('inside') }),
+            vardecl({ name: 'anotherVariable', value: any('inside') }),
+            vardecl({ name: 'subScopeOnly', value: any('inside') }),
+            call({ name: ref({ key: '.mixinNoParam' }, { type: 'mixin' }) })
+          ])
+        })
+      ]);
+      context.root = root;
+
+      const evald = await root.eval(context);
+      const css = evald.toString();
+
+      expect(css).toContain('default: top level;');
+      expect(css).toContain('scope: top level;');
+      expect(css).toContain('sub-scope-only: inside;');
+    });
+
+    it('does not stamp call-site back-pointers on ordinary mixin body output while preserving caller fallback', async () => {
+      const mixinNoParam = mixin({
+        name: any('.mixinNoParam'),
+        params: list([
+          vardecl({ name: 'parameter', value: ref({ key: 'parameterDefault' }, { type: 'variable' }) }, { paramVar: true })
+        ]),
+        guard: condition([
+          ref({ key: 'parameter' }, { type: 'variable' }),
+          '=',
+          any('top level')
+        ]),
+        rules: rules([
+          decl({ name: 'default', value: ref({ key: 'parameter' }, { type: 'variable' }) }),
+          decl({ name: 'scope', value: ref({ key: 'anotherVariable' }, { type: 'variable' }) }),
+          decl({ name: 'sub-scope-only', value: ref({ key: 'subScopeOnly' }, { type: 'variable' }) })
+        ])
+      });
+
+      const callerRules = rules([
+        vardecl({ name: 'parameterDefault', value: any('inside') }),
+        vardecl({ name: 'anotherVariable', value: any('inside') }),
+        vardecl({ name: 'subScopeOnly', value: any('inside') })
+      ]);
+
+      const root = rules([
+        vardecl({ name: 'parameterDefault', value: any('top level') }),
+        vardecl({ name: 'anotherVariable', value: any('top level') }),
+        mixinNoParam,
+        ruleset({
+          selector: el('#allAreUsedHere'),
+          rules: callerRules
+        })
+      ]);
+      context.root = root;
+      context.rulesContext = callerRules;
+
+      const mixinCall = call({ name: ref({ key: '.mixinNoParam' }, { type: 'mixin' }) });
+      callerRules.adopt(mixinCall);
+
+      const result = await mixinCall.eval(context);
+
+      expect(result).toBeInstanceOf(RulesClass);
+      if (!(result instanceof RulesClass)) {
+        throw new Error('Expected Rules result');
+      }
+      expect(Reflect.has(result, 'sourceParent')).toBe(false);
+      const css = result.toString();
+      expect(css).toContain('default: top level;');
+      expect(css).toContain('scope: top level;');
+      expect(css).toContain('sub-scope-only: inside;');
     });
 
     it('should call a mixin with multiple parameters', async () => {
@@ -260,12 +777,10 @@ describe('Mixin', () => {
       context.root = root;
 
       const evald = await root.eval(context);
-      const css = evald.render(context);
+      const css = evald.toString();
 
       expect(css).toBeString(`
         .test {
-          $color: blue;
-          $size: 16px;
           color: blue;
           font-size: 16px;
         }
@@ -302,62 +817,833 @@ describe('Mixin', () => {
       await expectRejects(root.eval(context), ReferenceError, /'arguments' is not defined/);
     });
 
-    it('preEval sets private rulesVisibility on mixin body', async () => {
-      const localContext = new Context({ leakyRules: false });
-      localContext.depth = 2;
+    it('resolves param/default/rest/@arguments bindings without declaration lookup', async () => {
+      context.treeContext = new TreeContext({
+        file: {
+          name: 'test.less',
+          path: '/virtual',
+          fullPath: '/virtual/test.less'
+        }
+      });
+      const originalFind = RulesClass.prototype.find;
+      const declarationHits: string[] = [];
+      RulesClass.prototype.find = function(...args: Parameters<typeof originalFind>) {
+        const [type, key] = args;
+        if (type === 'declaration' && typeof key === 'string' && ['color', 'size', 'rest', 'arguments'].includes(key)) {
+          declarationHits.push(key);
+        }
+        return originalFind.apply(this, args);
+      };
 
+      try {
+        const mixinDef = mixin({
+          name: any('.my-mixin'),
+          params: list([
+            any('color', { role: 'property' }),
+            vardecl({ name: 'size', value: any('16px') }, { paramVar: true }),
+            rest('rest')
+          ]),
+          rules: rules([
+            decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) }),
+            decl({ name: 'font-size', value: ref({ key: 'size' }, { type: 'variable' }) }),
+            decl({ name: 'padding', value: ref({ key: 'rest' }, { type: 'variable' }) }),
+            decl({ name: 'margin', value: ref({ key: 'arguments' }, { type: 'variable' }) })
+          ])
+        });
+
+        const testRuleset = ruleset({
+          selector: el('.test'),
+          rules: rules([
+            call({
+              name: ref({ key: '.my-mixin' }, { type: 'mixin' }),
+              args: list([any('blue'), any('1px'), any('2px'), any('3px')])
+            })
+          ])
+        });
+
+        const root = rules([mixinDef, testRuleset]);
+        context.root = root;
+
+        const evald = await root.eval(context);
+        const css = evald.toString();
+
+        expect(css).toBeString(`
+          .test {
+            color: blue;
+            font-size: 1px;
+            padding: 2px 3px;
+            margin: blue 1px 2px 3px;
+          }
+        `);
+        expect(declarationHits).toEqual([]);
+      } finally {
+        RulesClass.prototype.find = originalFind;
+      }
+    });
+
+    it('resolves lexical variable bindings without declaration-registry lookup', async () => {
+      context.treeContext = new TreeContext({
+        file: {
+          name: 'test.less',
+          path: '/virtual',
+          fullPath: '/virtual/test.less'
+        }
+      });
+      const originalFind = RulesClass.prototype.find;
+      const declarationHits: string[] = [];
+      RulesClass.prototype.find = function(...args: Parameters<typeof originalFind>) {
+        const [type, key] = args;
+        if (type === 'declaration' && typeof key === 'string' && key === 'base-color') {
+          declarationHits.push(key);
+        }
+        return originalFind.apply(this, args);
+      };
+
+      try {
+        // Lexical global: @base-color defined once at root, referenced inside mixin body
+        const mixinDef = mixin({
+          name: any('.my-mixin'),
+          rules: rules([
+            decl({ name: 'color', value: ref({ key: 'base-color' }, { type: 'variable' }) }),
+            decl({ name: 'border-color', value: ref({ key: 'base-color' }, { type: 'variable' }) }),
+            decl({ name: 'outline-color', value: ref({ key: 'base-color' }, { type: 'variable' }) })
+          ])
+        });
+
+        const root = rules([
+          vardecl({ name: 'base-color', value: any('steelblue') }),
+          mixinDef,
+          ruleset({
+            selector: el('.test'),
+            rules: rules([
+              call({ name: ref({ key: '.my-mixin' }, { type: 'mixin' }) })
+            ])
+          })
+        ]);
+        context.root = root;
+
+        const evald = await root.eval(context);
+        const css = evald.toString();
+
+        expect(css).toBeString(`
+          .test {
+            color: steelblue;
+            border-color: steelblue;
+            outline-color: steelblue;
+          }
+        `);
+        // Lexical contextual lookups should now resolve from ScopeFrame buckets
+        // without touching DeclarationRegistry.find at all.
+        expect(declarationHits).toHaveLength(0);
+      } finally {
+        RulesClass.prototype.find = originalFind;
+      }
+    });
+
+    it('ScopeFrame (slice 6): declarationBucketsByName matches registry state after eval', async () => {
+      context.treeContext = new TreeContext({
+        file: { name: 'test.less', path: '/virtual', fullPath: '/virtual/test.less' }
+      });
+
+      const root = rules([
+        vardecl({ name: 'brand', value: any('blue') }),
+        vardecl({ name: 'size', value: any('16px') }),
+        vardecl({ name: 'brand', value: any('navy') })  // shadows first — last wins
+      ]);
+      context.root = root;
+
+      await root.eval(context);
+
+      // varsByName is populated after eval (via _indexRules during registry access)
+      const frame = root.getScopeFrame();
+
+      // Frame should have both declared names
+      expect(frame.declarationBucketsByName.has('brand')).toBe(true);
+      expect(frame.declarationBucketsByName.has('size')).toBe(true);
+
+      // Last-definition-wins: 'brand' bucket has two entries; last wins
+      const brandBucket = frame.declarationBucketsByName.get('brand')!;
+      expect(brandBucket).toHaveLength(2);
+      expect(brandBucket[brandBucket.length - 1]!.cell.value.valueOf()).toBe('navy');
+
+      // resolveFrameCell should return the same winner as the registry
+      const frameResult = resolveFrameCell('brand', frame);
+      expect(frameResult).toBeDefined();
+      expect(frameResult!.cell.value.valueOf()).toBe('navy');
+
+      const sizeResult = resolveFrameCell('size', frame);
+      expect(sizeResult).toBeDefined();
+      expect(sizeResult!.cell.value.valueOf()).toBe('16px');
+
+      // A name not in the scope resolves to undefined
+      expect(resolveFrameCell('unknown', frame)).toBeUndefined();
+    });
+
+    it('mixinsByName fast path (slice 7): type=mixin static-name lookup skips MixinRegistry.find', async () => {
+      context.treeContext = new TreeContext({
+        file: { name: 'test.less', path: '/virtual', fullPath: '/virtual/test.less' }
+      });
+
+      const originalFind = MixinRegistry.prototype.find;
+      const mixinRegistryHits: string[] = [];
+      MixinRegistry.prototype.find = function(...args: Parameters<typeof originalFind>) {
+        const [key] = args;
+        if (typeof key === 'string' && key === '.fast-mixin') {
+          mixinRegistryHits.push(key);
+        }
+        return originalFind.apply(this, args);
+      };
+
+      try {
+        const mixinDef = mixin({
+          name: any('.fast-mixin'),
+          rules: rules([decl({ name: 'color', value: any('purple') })])
+        });
+
+        const root = rules([
+          mixinDef,
+          ruleset({
+            selector: el('.a'),
+            rules: rules([call({ name: ref({ key: '.fast-mixin' }, { type: 'mixin' }) })])
+          }),
+          ruleset({
+            selector: el('.b'),
+            rules: rules([call({ name: ref({ key: '.fast-mixin' }, { type: 'mixin' }) })])
+          }),
+          ruleset({
+            selector: el('.c'),
+            rules: rules([call({ name: ref({ key: '.fast-mixin' }, { type: 'mixin' }) })])
+          })
+        ]);
+        context.root = root;
+
+        const evald = await root.eval(context);
+        expect(evald.toString()).toBeString(`
+          .a {
+            color: purple;
+          }
+          .b {
+            color: purple;
+          }
+          .c {
+            color: purple;
+          }
+        `);
+        expect(mixinRegistryHits.length).toBe(0);
+      } finally {
+        MixinRegistry.prototype.find = originalFind;
+      }
+    });
+
+    it('mixinsByName fast path: type=mixin-ruleset static Mixin hit skips MixinRegistry.find', async () => {
+      context.treeContext = new TreeContext({
+        file: { name: 'test.less', path: '/virtual', fullPath: '/virtual/test.less' }
+      });
+
+      const originalFind = MixinRegistry.prototype.find;
+      const mixinRegistryHits: string[] = [];
+      MixinRegistry.prototype.find = function(...args: Parameters<typeof originalFind>) {
+        const [key] = args;
+        if (typeof key === 'string' && key === '.fast-mixin') {
+          mixinRegistryHits.push(key);
+        }
+        return originalFind.apply(this, args);
+      };
+
+      try {
+        const mixinDef = mixin({
+          name: any('.fast-mixin'),
+          rules: rules([decl({ name: 'color', value: any('green') })])
+        });
+
+        const root = rules([
+          mixinDef,
+          ruleset({
+            selector: el('.a'),
+            rules: rules([call({ name: ref({ key: '.fast-mixin' }, { type: 'mixin-ruleset' }) })])
+          }),
+          ruleset({
+            selector: el('.b'),
+            rules: rules([call({ name: ref({ key: '.fast-mixin' }, { type: 'mixin-ruleset' }) })])
+          }),
+          ruleset({
+            selector: el('.c'),
+            rules: rules([call({ name: ref({ key: '.fast-mixin' }, { type: 'mixin-ruleset' }) })])
+          })
+        ]);
+        context.root = root;
+
+        const evald = await root.eval(context);
+        expect(evald.toString()).toBeString(`
+          .a {
+            color: green;
+          }
+          .b {
+            color: green;
+          }
+          .c {
+            color: green;
+          }
+        `);
+
+        expect(mixinRegistryHits.length).toBe(0);
+      } finally {
+        MixinRegistry.prototype.find = originalFind;
+      }
+    });
+
+    it('mixinsByName fast path: type=mixin-ruleset simple Ruleset hit skips MixinRegistry.find', async () => {
+      context.treeContext = new TreeContext({
+        file: { name: 'test.less', path: '/virtual', fullPath: '/virtual/test.less' }
+      });
+
+      const originalFind = MixinRegistry.prototype.find;
+      const mixinRegistryHits: string[] = [];
+      MixinRegistry.prototype.find = function(...args: Parameters<typeof originalFind>) {
+        const [key] = args;
+        if (typeof key === 'string' && key === '.fast-ruleset') {
+          mixinRegistryHits.push(key);
+        }
+        return originalFind.apply(this, args);
+      };
+
+      try {
+        const root = rules([
+          ruleset({
+            selector: el('.fast-ruleset'),
+            rules: rules([decl({ name: 'color', value: any('green') })])
+          }),
+          ruleset({
+            selector: el('.a'),
+            rules: rules([call({ name: ref({ key: '.fast-ruleset' }, { type: 'mixin-ruleset' }) })])
+          }),
+          ruleset({
+            selector: el('.b'),
+            rules: rules([call({ name: ref({ key: '.fast-ruleset' }, { type: 'mixin-ruleset' }) })])
+          })
+        ]);
+        context.root = root;
+
+        const evald = await root.eval(context);
+        expect(evald.toString()).toBeString(`
+          .fast-ruleset {
+            color: green;
+          }
+          .a {
+            color: green;
+          }
+          .b {
+            color: green;
+          }
+        `);
+
+        expect(mixinRegistryHits.length).toBe(0);
+      } finally {
+        MixinRegistry.prototype.find = originalFind;
+      }
+    });
+
+    it('mixinsByName fast path: type=mixin resolved interpolated name skips MixinRegistry.find', async () => {
+      context.treeContext = new TreeContext({
+        file: { name: 'test.less', path: '/virtual', fullPath: '/virtual/test.less' }
+      });
+
+      const originalFind = MixinRegistry.prototype.find;
+      const mixinRegistryHits: string[] = [];
+      MixinRegistry.prototype.find = function(...args: Parameters<typeof originalFind>) {
+        const [key] = args;
+        if (typeof key === 'string' && key === '.fast-mixin') {
+          mixinRegistryHits.push(key);
+        }
+        return originalFind.apply(this, args);
+      };
+
+      try {
+        const mixinDef = mixin({
+          name: interpolated({
+            source: '.' + INTERPOLATION_PLACEHOLDER,
+            replacements: [any('fast-mixin')]
+          }, { role: 'name' }),
+          rules: rules([decl({ name: 'color', value: any('orange') })])
+        });
+
+        const root = rules([
+          mixinDef,
+          ruleset({
+            selector: el('.a'),
+            rules: rules([call({ name: ref({ key: '.fast-mixin' }, { type: 'mixin' }) })])
+          })
+        ]);
+        context.root = root;
+
+        const evald = await root.eval(context);
+        expect(evald.toString()).toBeString(`
+          .a {
+            color: orange;
+          }
+        `);
+        expect(mixinRegistryHits.length).toBe(0);
+      } finally {
+        MixinRegistry.prototype.find = originalFind;
+      }
+    });
+
+    it('mixinsByName fast path: type=mixin-ruleset resolved interpolated simple name skips MixinRegistry.find', async () => {
+      context.treeContext = new TreeContext({
+        file: { name: 'test.less', path: '/virtual', fullPath: '/virtual/test.less' }
+      });
+
+      const originalFind = MixinRegistry.prototype.find;
+      const mixinRegistryHits: string[] = [];
+      MixinRegistry.prototype.find = function(...args: Parameters<typeof originalFind>) {
+        const [key] = args;
+        if (typeof key === 'string' && key === '.foo') {
+          mixinRegistryHits.push(key);
+        }
+        return originalFind.apply(this, args);
+      };
+
+      try {
+        const dynamicClass = interpolated({
+          source: '.' + INTERPOLATION_PLACEHOLDER,
+          replacements: [any('foo')]
+        }, { role: 'ident' });
+        const root = rules([
+          ruleset({
+            selector: interpolatedSelector(dynamicClass),
+            rules: rules([
+              decl({ name: 'color', value: any('red') })
+            ])
+          }),
+          ruleset({
+            selector: el('.out'),
+            rules: rules([
+              call({
+                name: ref({ key: '.foo' }, { type: 'mixin-ruleset' })
+              })
+            ])
+          })
+        ]);
+        context.root = root;
+
+        const evald = await root.eval(context);
+        expect(evald.toString()).toBeString(`
+          .foo {
+            color: red;
+          }
+          .out {
+            color: red;
+          }
+        `);
+        expect(mixinRegistryHits.length).toBe(0);
+      } finally {
+        MixinRegistry.prototype.find = originalFind;
+      }
+    });
+
+    it('mixinsByName fast path (slice 15): type=mixin static-name miss skips MixinRegistry.find once scopes are indexed', async () => {
+      context.treeContext = new TreeContext({
+        file: { name: 'test.less', path: '/virtual', fullPath: '/virtual/test.less' }
+      });
+
+      const originalFind = MixinRegistry.prototype.find;
+      const mixinRegistryHits: string[] = [];
+      MixinRegistry.prototype.find = function(...args: Parameters<typeof originalFind>) {
+        const [key] = args;
+        if (typeof key === 'string' && key === '.missing-mixin') {
+          mixinRegistryHits.push(key);
+        }
+        return originalFind.apply(this, args);
+      };
+
+      try {
+        const root = rules([
+          mixin({
+            name: any('.other-mixin'),
+            rules: rules([decl({ name: 'color', value: any('green') })])
+          }),
+          ruleset({
+            selector: el('.a'),
+            rules: rules([
+              decl({
+                name: 'content',
+                value: ref({ key: '.missing-mixin' }, { type: 'mixin', fallbackValue: true })
+              })
+            ])
+          })
+        ]);
+        context.root = root;
+
+        const evald = await root.eval(context);
+        expect(evald.toString()).toBeString(`
+          .a {
+            content: .missing-mixin;
+          }
+        `);
+        expect(mixinRegistryHits).toHaveLength(0);
+      } finally {
+        MixinRegistry.prototype.find = originalFind;
+      }
+    });
+
+    it('mixinsByName fast path: type=mixin-ruleset simple-name miss skips MixinRegistry.find once scopes are indexed', async () => {
+      context.treeContext = new TreeContext({
+        file: { name: 'test.less', path: '/virtual', fullPath: '/virtual/test.less' }
+      });
+
+      const originalFind = MixinRegistry.prototype.find;
+      const mixinRegistryHits: string[] = [];
+      MixinRegistry.prototype.find = function(...args: Parameters<typeof originalFind>) {
+        const [key] = args;
+        if (typeof key === 'string' && key === '.missing-ruleset-mixin') {
+          mixinRegistryHits.push(key);
+        }
+        return originalFind.apply(this, args);
+      };
+
+      try {
+        const root = rules([
+          mixin({
+            name: any('.other-mixin'),
+            rules: rules([decl({ name: 'color', value: any('green') })])
+          }),
+          ruleset({
+            selector: el('.a'),
+            rules: rules([
+              decl({
+                name: 'content',
+                value: ref({ key: '.missing-ruleset-mixin' }, { type: 'mixin-ruleset', fallbackValue: true })
+              })
+            ])
+          })
+        ]);
+        context.root = root;
+
+        const evald = await root.eval(context);
+        expect(evald.toString()).toBeString(`
+          .a {
+            content: .missing-ruleset-mixin;
+          }
+        `);
+        expect(mixinRegistryHits).toHaveLength(0);
+      } finally {
+        MixinRegistry.prototype.find = originalFind;
+      }
+    });
+
+    it('mixinsByName fast path: unresolved dynamic simple-name candidates do not trigger MixinRegistry.find', () => {
+      const originalFind = MixinRegistry.prototype.find;
+      const mixinRegistryHits: string[] = [];
+      MixinRegistry.prototype.find = function(...args: Parameters<typeof originalFind>) {
+        const [key] = args;
+        if (typeof key === 'string' && key === '.missing-mixin') {
+          mixinRegistryHits.push(key);
+        }
+        return originalFind.apply(this, args);
+      };
+
+      try {
+        const root = rules([
+          mixin({
+            name: interpolated({
+              source: '.' + INTERPOLATION_PLACEHOLDER,
+              replacements: [ref({ key: 'suffix' }, { type: 'variable' })]
+            }, { role: 'name' }),
+            rules: rules([decl({ name: 'color', value: any('orange') })])
+          })
+        ]);
+
+        const found = root.find('mixin', '.missing-mixin');
+        expect(found).toBeUndefined();
+        expect(mixinRegistryHits).toHaveLength(0);
+      } finally {
+        MixinRegistry.prototype.find = originalFind;
+      }
+    });
+
+    it('namespace fast path: unresolved dynamic namespace segments do not trigger MixinRegistry.find', () => {
+      const originalFind = MixinRegistry.prototype.find;
+      const mixinRegistryHits: string[] = [];
+      MixinRegistry.prototype.find = function(...args: Parameters<typeof originalFind>) {
+        const [key] = args;
+        if (Array.isArray(key) && key[0] === '#theme') {
+          mixinRegistryHits.push(key.join(' '));
+        }
+        return originalFind.apply(this, args);
+      };
+
+      try {
+        const root = rules([
+          mixin({
+            name: any('#theme'),
+            rules: rules([
+              mixin({
+                name: interpolated({
+                  source: INTERPOLATION_PLACEHOLDER,
+                  replacements: [ref({ key: 'segment' }, { type: 'variable' })]
+                }, { role: 'name' }),
+                rules: rules([
+                  mixin({
+                    name: any('.navbar'),
+                    rules: rules([
+                      mixin({
+                        name: any('.colors'),
+                        rules: rules([
+                          decl({ name: 'primary', value: any('cyan') })
+                        ])
+                      })
+                    ])
+                  })
+                ])
+              })
+            ])
+          })
+        ]);
+
+        const found = root.find('mixin', ['#theme', '.dark', '.navbar', '.colors'], undefined, {
+          context
+        });
+        expect(found).toBeUndefined();
+        expect(mixinRegistryHits).toHaveLength(0);
+      } finally {
+        MixinRegistry.prototype.find = originalFind;
+      }
+    });
+
+    it('namespace fast path: type=mixin ignores compound-prefix ruleset ambiguity', () => {
+      const originalFind = MixinRegistry.prototype.find;
+      const mixinRegistryHits: string[] = [];
+      MixinRegistry.prototype.find = function(...args: Parameters<typeof originalFind>) {
+        const [key] = args;
+        if (Array.isArray(key) && key[0] === '#theme') {
+          mixinRegistryHits.push(key.join(' '));
+        }
+        return originalFind.apply(this, args);
+      };
+
+      try {
+        const root = rules([
+          mixin({
+            name: any('#theme'),
+            rules: rules([
+              mixin({
+                name: any('.dark'),
+                rules: rules([
+                  mixin({
+                    name: any('.navbar'),
+                    rules: rules([
+                      mixin({
+                        name: any('.colors'),
+                        rules: rules([
+                          decl({ name: 'primary', value: any('cyan') })
+                        ])
+                      })
+                    ])
+                  })
+                ])
+              })
+            ])
+          }),
+          ruleset({
+            selector: compound([el('#theme'), el('.dark'), el('.navbar')]),
+            rules: rules([
+              mixin({
+                name: any('.colors'),
+                rules: rules([
+                  decl({ name: 'primary', value: any('red') })
+                ])
+              })
+            ])
+          })
+        ]);
+        const found = root.find('mixin', ['#theme', '.dark', '.navbar', '.colors'], 'Mixin', {
+          context
+        });
+        expect(found).toHaveLength(1);
+        expect(found?.[0]?.type).toBe('Mixin');
+        const mixinHit = found?.[0];
+        expect(mixinHit?.type === 'Mixin' ? mixinHit.value.name?.valueOf() : undefined).toBe('.colors');
+        expect(mixinRegistryHits).toHaveLength(0);
+      } finally {
+        MixinRegistry.prototype.find = originalFind;
+      }
+    });
+
+    it('namespace fast path: type=mixin misses ignore callable ruleset starts', () => {
+      const originalFind = MixinRegistry.prototype.find;
+      const mixinRegistryHits: string[] = [];
+      MixinRegistry.prototype.find = function(...args: Parameters<typeof originalFind>) {
+        const [key] = args;
+        if (Array.isArray(key) && key[0] === '#theme') {
+          mixinRegistryHits.push(key.join(' '));
+        }
+        return originalFind.apply(this, args);
+      };
+
+      try {
+        const root = rules([
+          ruleset({
+            selector: el('#theme'),
+            rules: rules([
+              ruleset({
+                selector: el('.dark'),
+                rules: rules([
+                  ruleset({
+                    selector: el('.navbar'),
+                    rules: rules([
+                      mixin({
+                        name: any('.colors'),
+                        rules: rules([
+                          decl({ name: 'primary', value: any('red') })
+                        ])
+                      })
+                    ])
+                  })
+                ])
+              })
+            ])
+          })
+        ]);
+
+        const found = root.find('mixin', ['#theme', '.dark', '.navbar', '.colors'], 'Mixin', {
+          context
+        });
+        expect(found).toBeUndefined();
+        expect(mixinRegistryHits).toHaveLength(0);
+      } finally {
+        MixinRegistry.prototype.find = originalFind;
+      }
+    });
+
+    it('namespace fast path: mixin-ruleset path unions plain namespace rulesets with callable namespace mixins', async () => {
+      const { Parser } = await import('../../../../less-parser/src/index.ts');
+      const parser = new Parser();
+      const tree = parser.parse(`
+        @namespaceGuard: 1;
+
+        #guarded when (@namespaceGuard > 0) {
+          #deeper {
+            .mixin() {
+              guarded: namespace;
+            }
+          }
+        }
+
+        #guarded() when (@namespaceGuard > 0) {
+          #deeper {
+            .mixin() {
+              silent: namespace;
+            }
+          }
+        }
+
+        #guarded(@variable: default) when (@namespaceGuard > 0) {
+          #deeper {
+            .mixin() {
+              guarded: with default;
+            }
+          }
+        }
+
+        #guarded-caller {
+          #guarded > #deeper > .mixin();
+        }
+      `).tree;
+
+      context.root = tree;
+
+      const found = tree.find('mixin', ['#guarded', '#deeper', '.mixin'], undefined, {
+        context
+      });
+
+      expect(found).toHaveLength(3);
+
+      const evald = await tree.eval(context);
+      const css = evald.toString({ context });
+
+      expect(css).toContain('#guarded-caller {');
+      expect(css).toContain('guarded: namespace;');
+      expect(css).toContain('silent: namespace;');
+      expect(css).toContain('guarded: with default;');
+    });
+
+    it('ScopeFrame live slots (slice 8/10): param and @arguments resolve via frame chain', async () => {
+      context.treeContext = new TreeContext({
+        file: { name: 'test.less', path: '/virtual', fullPath: '/virtual/test.less' }
+      });
+
+      // Prove params and @arguments are in liveSlotsByName by testing their output.
+      // If either were missing from the frame, the reference lookup would fail or
+      // fall through to a stale registry path that no longer exists.
       const mixinDef = mixin({
-        name: any('.my-mixin'),
+        name: any('.parameterized'),
+        params: list([any('color', { role: 'property' })]),
         rules: rules([
-          decl({ name: 'color', value: any('red') })
+          decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) }),
+          // @arguments is automatically bound in liveSlotsByName (slice 10)
+          decl({ name: 'args', value: ref({ key: 'arguments' }, { type: 'variable' }) })
         ])
       });
 
-      const preEvald = await mixinDef.preEval(localContext);
+      const root = rules([
+        mixinDef,
+        ruleset({
+          selector: el('.a'),
+          rules: rules([call({
+            name: ref({ key: '.parameterized' }, { type: 'mixin-ruleset' }),
+            args: list([any('red')])
+          })])
+        })
+      ]);
+      context.root = root;
+      const evald = await root.eval(context);
 
-      // After preEval with leakyRules=false, mixin body rules have private visibility
-      const preEvaldRules = getField<Rules>(preEvald, 'rules', localContext);
-      expect(preEvaldRules.options.rulesVisibility.Mixin).toBe('private');
-      expect(preEvaldRules.options.rulesVisibility.VarDeclaration).toBe('private');
+      expect(evald.toString()).toBeString(`
+        .a {
+          color: red;
+          args: red;
+        }
+      `);
+
+      // runtimeVarBindings infrastructure is fully retired.
+      expect('runtimeVarBindings' in RulesClass.prototype).toBe(false);
+      expect('findRuntimeVarBinding' in RulesClass.prototype).toBe(false);
+      expect('setRuntimeVarBinding' in RulesClass.prototype).toBe(false);
     });
 
-    it('preEval reads position-patched mixin fields without mutating canonical children', async () => {
-      const localContext = new Context({ leakyRules: false });
-      localContext.depth = 2;
-
-      const canonicalRules = rules([
-        decl({ name: 'color', value: any('red') })
-      ]);
-      const patchedRules = rules([
-        decl({ name: 'color', value: any('blue') })
-      ]);
-      const canonicalParams = list([any('a', { role: 'property' })]);
-      const patchedParams = list([any('b', { role: 'property' })]);
-      const canonicalGuard = condition([any('true')]);
-      const patchedGuard = condition([any('false')]);
-      const mixinDef = mixin({
-        name: any('.my-mixin'),
-        params: canonicalParams,
-        guard: canonicalGuard,
-        rules: canonicalRules
+    it('frame live slots (slice 9/10): mixin param lookup goes via frame chain; runtimeVarBindings removed', async () => {
+      context.treeContext = new TreeContext({
+        file: { name: 'test.less', path: '/virtual', fullPath: '/virtual/test.less' }
       });
 
-      setField(mixinDef, 'name', any('.patched-mixin'), localContext);
-      setField(mixinDef, 'params', patchedParams, localContext);
-      setField(mixinDef, 'guard', patchedGuard, localContext);
-      setField(mixinDef, 'rules', patchedRules, localContext);
+      const mixinDef = mixin({
+        name: any('.colored'),
+        params: list([any('color', { role: 'property' })]),
+        rules: rules([
+          decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) }),
+          decl({ name: 'border-color', value: ref({ key: 'color' }, { type: 'variable' }) })
+        ])
+      });
 
-      const preEvald = await mixinDef.preEval(localContext);
+      const root = rules([
+        mixinDef,
+        ruleset({
+          selector: el('.a'),
+          rules: rules([call({
+            name: ref({ key: '.colored' }, { type: 'mixin-ruleset' }),
+            args: list([any('red')])
+          })])
+        })
+      ]);
+      context.root = root;
+      const evald = await root.eval(context);
 
-      // Position model: preEvald IS the same node (no clone).
-      // Patched fields are visible through position, canonical untouched.
-      expect(preEvald).toBe(mixinDef);
-      expect(preEvald.get('name')?.valueOf()).toBe('.my-mixin');
-      expect(mixinDef.get('name')?.valueOf()).toBe('.my-mixin');
-      expect(mixinDef.get('params')).toBe(canonicalParams);
-      expect(mixinDef.get('guard')).toBe(canonicalGuard);
-      expect(mixinDef.get('rules')).toBe(canonicalRules);
-      expect(canonicalRules.parent).toBe(mixinDef);
+      expect(evald.toString()).toBeString(`
+        .a {
+          color: red;
+          border-color: red;
+        }
+      `);
     });
 
     it('should call a mixin with a guard condition', async () => {
@@ -403,293 +1689,385 @@ describe('Mixin', () => {
       context.root = root;
 
       const evald = await root.eval(context);
-      const css = evald.render(context);
+      const css = evald.toString();
 
       expect(css).toBeString(`
         .test1 {
-          $color: red;
           color: red;
         }
       `);
     });
 
-    it('guard params resolve and output renders correctly with position isolation', async () => {
+    it('evaluates dynamic mixin guards against caller scope while params still resolve from live slots', async () => {
+      context = new Context({ leakyRules: false });
       const mixinDef = mixin({
-        name: any('.my-mixin'),
+        name: any('.theme-mixin'),
         params: list([
           any('color', { role: 'property' })
         ]),
         guard: condition([
-          expr(ref({ key: 'color' }, { type: 'variable' })),
-          '=',
-          any('red')
+          condition([
+            expr(ref({ key: 'mode' }, { type: 'variable' })),
+            '=',
+            any('dark')
+          ]),
+          'and',
+          condition([
+            expr(ref({ key: 'color' }, { type: 'variable' })),
+            '=',
+            any('red')
+          ])
         ]),
         rules: rules([
           decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) })
         ])
       });
-      const testRuleset = ruleset({
-        selector: el('.test'),
-        rules: rules([
-          call({
-            name: ref({ key: '.my-mixin' }, { type: 'mixin' }),
-            args: list([any('red')])
-          })
-        ])
-      });
-      const root = rules([mixinDef, testRuleset]);
-      context.root = root;
 
-      const evald = await root.eval(context);
-      const css = evald.render(context);
-
-      expect(css).toBeString(`
-        .test {
-          $color: red;
-          color: red;
-        }
-      `);
-    });
-
-    it('blocks a mixin candidate when its failed guard ancestor exists only in the state parent chain', async () => {
-      const mixinDef = mixin({
-        name: any('.my-mixin'),
-        rules: rules([
-          decl({ name: 'color', value: any('red') })
-        ])
-      });
-      const failedAncestor = ruleset({
-        selector: el('.blocked'),
-        guard: nil(),
-        rules: rules([])
-      });
-      setParent(mixinDef, failedAncestor, context);
-
-      const fn = getFunctionFromMixins(mixinDef);
-
-      await expectRejects(fn.call(context), ReferenceError, /No matching mixins found/);
-    });
-
-    it('evaluates mixin args against a caller source scope that exists only in the state chain', async () => {
-      const mixinDef = mixin({
-        name: any('.my-mixin'),
-        params: list([
-          any('color', { role: 'property' })
-        ]),
-        rules: rules([
-          decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) })
-        ])
-      });
-      const mixinRoot = rules([mixinDef]);
-      context.root = mixinRoot;
-
-      const sourceAnchor = decl({ name: 'background', value: any('white') });
-      const sourceRules = rules([
-        vardecl({ name: 'theme', value: any('blue') }),
-        sourceAnchor
+      const root = rules([
+        mixinDef,
+        ruleset({
+          selector: el('.dark'),
+          rules: rules([
+            vardecl({ name: 'mode', value: any('dark') }),
+            call({
+              name: ref({ key: '.theme-mixin' }, { type: 'mixin' }),
+              args: list([any('red')])
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('.light'),
+          rules: rules([
+            vardecl({ name: 'mode', value: any('light') }),
+            call({
+              name: ref({ key: '.theme-mixin' }, { type: 'mixin' }),
+              args: list([any('red')])
+            })
+          ])
+        })
       ]);
-      const caller = call({
-        name: ref({ key: '.my-mixin' }, { type: 'mixin' }),
-        args: list([ref({ key: 'theme' }, { type: 'variable' })])
-      });
+      context.root = root;
 
-      setSourceParent((caller as any).name, sourceAnchor, context);
-      context.caller = caller;
+      const evald = await root.eval(context);
+      const css = evald.toString();
 
-      const fn = getFunctionFromMixins(mixinDef);
-      const result = await fn.call(context, ref({ key: 'theme' }, { type: 'variable' }));
-
-      expect(result.render(context)).toBeString(`
-        color: blue;
-      `);
+      expect(css).toContain('.dark {');
+      expect(css).toContain('color: red;');
+      expect(css).not.toContain('.light {\n  color: red;');
     });
 
-    it('mixin with parameters renders correctly via eval', async () => {
+    it('evaluates no-param mixin guards against caller scope', async () => {
+      context = new Context({ leakyRules: false });
       const mixinDef = mixin({
-        name: any('.my-mixin'),
+        name: any('.scope-guarded'),
+        guard: condition([
+          expr(ref({ key: 'mode' }, { type: 'variable' })),
+          '=',
+          any('dark')
+        ]),
+        rules: rules([
+          decl({ name: 'color', value: any('black') })
+        ])
+      });
+
+      const root = rules([
+        mixinDef,
+        ruleset({
+          selector: el('.dark'),
+          rules: rules([
+            vardecl({ name: 'mode', value: any('dark') }),
+            call({ name: ref({ key: '.scope-guarded' }, { type: 'mixin' }) })
+          ])
+        }),
+        ruleset({
+          selector: el('.light'),
+          rules: rules([
+            vardecl({ name: 'mode', value: any('light') }),
+            call({ name: ref({ key: '.scope-guarded' }, { type: 'mixin' }) })
+          ])
+        })
+      ]);
+      context.root = root;
+
+      const evald = await root.eval(context);
+      const css = evald.toString();
+
+      expect(css).toContain('.dark {');
+      expect(css).toContain('color: black;');
+      expect(css).not.toContain('.light {\n  color: black;');
+    });
+
+    it('does not let non-leaky no-param mixin bodies read caller scope after guard selection', async () => {
+      context = new Context({ leakyRules: false });
+      const mixinDef = mixin({
+        name: any('.scope-guarded-body'),
+        guard: condition([
+          expr(ref({ key: 'mode' }, { type: 'variable' })),
+          '=',
+          any('dark')
+        ]),
+        rules: rules([
+          decl({ name: 'color', value: ref({ key: 'mode' }, { type: 'variable' }) })
+        ])
+      });
+
+      const root = rules([
+        mixinDef,
+        ruleset({
+          selector: el('.dark'),
+          rules: rules([
+            vardecl({ name: 'mode', value: any('dark') }),
+            call({ name: ref({ key: '.scope-guarded-body' }, { type: 'mixin' }) })
+          ])
+        })
+      ]);
+      context.root = root;
+
+      await expectRejects(
+        root.eval(context),
+        ReferenceError,
+        /mode/
+      );
+    });
+
+    it('keeps no-param guard lookup isolated from mixin body vars with the same name', async () => {
+      context = new Context({ leakyRules: false });
+      const mixinDef = mixin({
+        name: any('.scope-guarded-body-shadow'),
+        guard: condition([
+          expr(ref({ key: 'mode' }, { type: 'variable' })),
+          '=',
+          any('dark')
+        ]),
+        rules: rules([
+          vardecl({ name: 'mode', value: any('light') }),
+          decl({ name: 'color', value: any('black') })
+        ])
+      });
+
+      const root = rules([
+        mixinDef,
+        ruleset({
+          selector: el('.dark'),
+          rules: rules([
+            vardecl({ name: 'mode', value: any('dark') }),
+            call({ name: ref({ key: '.scope-guarded-body-shadow' }, { type: 'mixin' }) })
+          ])
+        }),
+        ruleset({
+          selector: el('.light'),
+          rules: rules([
+            vardecl({ name: 'mode', value: any('light') }),
+            call({ name: ref({ key: '.scope-guarded-body-shadow' }, { type: 'mixin' }) })
+          ])
+        })
+      ]);
+      context.root = root;
+
+      const evald = await root.eval(context);
+      const css = evald.toString();
+
+      expect(css).toContain('.dark {');
+      expect(css).toContain('color: black;');
+      expect(css).not.toContain('.light {\n  color: black;');
+    });
+
+    it('evaluates default guards against caller scope without leaking param bindings into sibling output', async () => {
+      context = new Context({ leakyRules: false });
+      const darkDefault = mixin({
+        name: any('.guarded-default'),
         params: list([
           any('color', { role: 'property' })
+        ]),
+        guard: condition([
+          condition([
+            expr(ref({ key: 'mode' }, { type: 'variable' })),
+            '=',
+            any('dark')
+          ]),
+          'and',
+          defaultguard()
         ]),
         rules: rules([
           decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) })
         ])
       });
-      const testRuleset = ruleset({
-        selector: el('.test'),
-        rules: rules([
-          call({
-            name: ref({ key: '.my-mixin' }, { type: 'mixin' }),
-            args: list([any('blue')])
-          })
-        ])
-      });
-      const root = rules([mixinDef, testRuleset]);
-      context.root = root;
 
-      const evald = await root.eval(context);
-      const css = evald.render(context);
-
-      expect(css).toBeString(`
-        .test {
-          $color: blue;
-          color: blue;
-        }
-      `);
-    });
-
-    it('mixin with bound parameters renders values from call site', async () => {
-      const mixinDef = mixin({
-        name: any('.my-mixin'),
+      const lightDefault = mixin({
+        name: any('.guarded-default'),
         params: list([
           any('color', { role: 'property' })
         ]),
-        rules: rules([
-          decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) })
-        ])
-      });
-      const testRuleset = ruleset({
-        selector: el('.test'),
-        rules: rules([
-          call({
-            name: ref({ key: '.my-mixin' }, { type: 'mixin' }),
-            args: list([any('blue')])
-          })
-        ])
-      });
-      const root = rules([mixinDef, testRuleset]);
-      context.root = root;
-
-      const evald = await root.eval(context);
-      const css = evald.render(context);
-
-      expect(css).toBeString(`
-        .test {
-          $color: blue;
-          color: blue;
-        }
-      `);
-    });
-
-    it('mixin with nested ruleset renders with position-resolved values', async () => {
-      const mixinDef = mixin({
-        name: any('.my-mixin'),
-        params: list([
-          any('color', { role: 'property' })
+        guard: condition([
+          condition([
+            expr(ref({ key: 'mode' }, { type: 'variable' })),
+            '=',
+            any('light')
+          ]),
+          'and',
+          defaultguard()
         ]),
         rules: rules([
-          ruleset({
-            selector: el('.inner'),
-            rules: rules([
-              decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) })
-            ])
-          })
+          decl({ name: 'background', value: ref({ key: 'color' }, { type: 'variable' }) })
         ])
       });
-      const testRuleset = ruleset({
-        selector: el('.test'),
-        rules: rules([
-          call({
-            name: ref({ key: '.my-mixin' }, { type: 'mixin' }),
-            args: list([any('blue')])
-          })
-        ])
-      });
-      const root = rules([mixinDef, testRuleset]);
+
+      const root = rules([
+        darkDefault,
+        lightDefault,
+        ruleset({
+          selector: el('.dark'),
+          rules: rules([
+            vardecl({ name: 'mode', value: any('dark') }),
+            vardecl({ name: 'color', value: any('outer-dark') }),
+            call({
+              name: ref({ key: '.guarded-default' }, { type: 'mixin' }),
+              args: list([any('red')])
+            }),
+            decl({ name: 'value', value: ref({ key: 'color' }, { type: 'variable' }) })
+          ])
+        }),
+        ruleset({
+          selector: el('.light'),
+          rules: rules([
+            vardecl({ name: 'mode', value: any('light') }),
+            vardecl({ name: 'color', value: any('outer-light') }),
+            call({
+              name: ref({ key: '.guarded-default' }, { type: 'mixin' }),
+              args: list([any('blue')])
+            }),
+            decl({ name: 'value', value: ref({ key: 'color' }, { type: 'variable' }) })
+          ])
+        })
+      ]);
       context.root = root;
 
       const evald = await root.eval(context);
-      const css = evald.render(context);
+      const css = evald.toString();
 
-      expect(css).toBeString(`
-        .test {
-          $color: blue;
-          .inner {
-            color: blue;
-          }
-        }
-      `);
+      expect(css).toContain('.dark {');
+      expect(css).toContain('color: red;');
+      expect(css).toContain('value: outer-dark;');
+      expect(css).toContain('.light {');
+      expect(css).toContain('background: blue;');
+      expect(css).toContain('value: outer-light;');
+      expect(css).not.toContain('value: red;');
+      expect(css).not.toContain('value: blue;');
     });
 
-    it('mixin with declarations and nested rulesets resolves params through position', async () => {
-      const mixinDef = mixin({
-        name: any('.my-mixin'),
-        params: list([
-          any('color', { role: 'property' })
+    it('evaluates no-param default guards against caller scope', async () => {
+      context = new Context({ leakyRules: false });
+      const darkDefault = mixin({
+        name: any('.scope-default'),
+        guard: condition([
+          condition([
+            expr(ref({ key: 'mode' }, { type: 'variable' })),
+            '=',
+            any('dark')
+          ]),
+          'and',
+          defaultguard()
         ]),
         rules: rules([
-          decl({ name: 'background', value: ref({ key: 'color' }, { type: 'variable' }) }),
-          ruleset({
-            selector: el('.inner'),
-            rules: rules([
-              decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) })
-            ])
-          })
+          decl({ name: 'color', value: any('black') })
         ])
       });
-      const testRuleset = ruleset({
-        selector: el('.test'),
+
+      const lightDefault = mixin({
+        name: any('.scope-default'),
+        guard: condition([
+          condition([
+            expr(ref({ key: 'mode' }, { type: 'variable' })),
+            '=',
+            any('light')
+          ]),
+          'and',
+          defaultguard()
+        ]),
         rules: rules([
-          call({
-            name: ref({ key: '.my-mixin' }, { type: 'mixin' }),
-            args: list([any('blue')])
-          })
+          decl({ name: 'background', value: any('white') })
         ])
       });
-      const root = rules([mixinDef, testRuleset]);
+
+      const root = rules([
+        darkDefault,
+        lightDefault,
+        ruleset({
+          selector: el('.dark'),
+          rules: rules([
+            vardecl({ name: 'mode', value: any('dark') }),
+            call({ name: ref({ key: '.scope-default' }, { type: 'mixin' }) }),
+            decl({ name: 'value', value: ref({ key: 'mode' }, { type: 'variable' }) })
+          ])
+        }),
+        ruleset({
+          selector: el('.light'),
+          rules: rules([
+            vardecl({ name: 'mode', value: any('light') }),
+            call({ name: ref({ key: '.scope-default' }, { type: 'mixin' }) }),
+            decl({ name: 'value', value: ref({ key: 'mode' }, { type: 'variable' }) })
+          ])
+        })
+      ]);
       context.root = root;
 
       const evald = await root.eval(context);
-      const css = evald.render(context);
+      const css = evald.toString();
 
-      expect(css).toBeString(`
-        .test {
-          $color: blue;
-          background: blue;
-          .inner {
-            color: blue;
-          }
-        }
-      `);
+      expect(css).toContain('.dark {');
+      expect(css).toContain('color: black;');
+      expect(css).toContain('value: dark;');
+      expect(css).toContain('.light {');
+      expect(css).toContain('background: white;');
+      expect(css).toContain('value: light;');
     });
 
-    it('multi-candidate mixin renders output from all matching candidates', async () => {
-      const mixinA = mixin({
-        name: any('.my-mixin'),
+    it('evaluates rest-parameter guard checks against live slot bindings', async () => {
+      const mixinDef = mixin({
+        name: any('.rest-guard'),
+        params: list([
+          any('first', { role: 'property' }),
+          rest('rest')
+        ]),
+        guard: condition([
+          expr(ref({ key: 'rest' }, { type: 'variable' })),
+          '=',
+          seq([any('2px'), any('3px')])
+        ]),
         rules: rules([
-          decl({ name: 'color', value: any('red') })
+          decl({ name: 'margin', value: ref({ key: 'rest' }, { type: 'variable' }) })
         ])
       });
-      const mixinB = mixin({
-        name: any('.my-mixin'),
-        rules: rules([
-          ruleset({
-            selector: el('.inner'),
-            rules: rules([
-              decl({ name: 'background', value: any('blue') })
-            ])
-          })
-        ])
-      });
-      const testRuleset = ruleset({
-        selector: el('.test'),
-        rules: rules([
-          call({
-            name: ref({ key: '.my-mixin' }, { type: 'mixin' })
-          })
-        ])
-      });
-      const root = rules([mixinA, mixinB, testRuleset]);
+
+      const root = rules([
+        mixinDef,
+        ruleset({
+          selector: el('.match'),
+          rules: rules([
+            call({
+              name: ref({ key: '.rest-guard' }, { type: 'mixin' }),
+              args: list([any('1px'), any('2px'), any('3px')])
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('.miss'),
+          rules: rules([
+            call({
+              name: ref({ key: '.rest-guard' }, { type: 'mixin' }),
+              args: list([any('1px'), any('4px'), any('5px')])
+            })
+          ])
+        })
+      ]);
       context.root = root;
 
       const evald = await root.eval(context);
-      const css = evald.render(context);
+      const css = evald.toString();
 
       expect(css).toBeString(`
-        .test {
-          color: red;
-          .inner {
-            background: blue;
-          }
+        .match {
+          margin: 2px 3px;
         }
       `);
     });
@@ -735,61 +2113,10 @@ describe('Mixin', () => {
       context.root = root;
 
       const evald = await root.eval(context);
-      const css = evald.render(context);
+      const css = evald.toString();
 
       expect(css).toBeString(`
         .test {
-          $color: blue;
-          $color: blue;
-          color: blue;
-        }
-      `);
-    });
-
-    it('nested mixin calls render correctly through position pipeline', async () => {
-      const baseMixin = mixin({
-        name: any('.base-mixin'),
-        params: list([
-          any('color', { role: 'property' })
-        ]),
-        rules: rules([
-          decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) })
-        ])
-      });
-
-      const wrapperMixin = mixin({
-        name: any('.wrapper-mixin'),
-        params: list([
-          any('color', { role: 'property' })
-        ]),
-        rules: rules([
-          call({
-            name: ref({ key: '.base-mixin' }, { type: 'mixin' }),
-            args: list([ref({ key: 'color' }, { type: 'variable' })])
-          })
-        ])
-      });
-
-      const testRuleset = ruleset({
-        selector: el('.test'),
-        rules: rules([
-          call({
-            name: ref({ key: '.wrapper-mixin' }, { type: 'mixin' }),
-            args: list([any('blue')])
-          })
-        ])
-      });
-
-      const root = rules([baseMixin, wrapperMixin, testRuleset]);
-      context.root = root;
-
-      const evald = await root.eval(context);
-      const css = evald.render(context);
-
-      expect(css).toBeString(`
-        .test {
-          $color: blue;
-          $color: blue;
           color: blue;
         }
       `);
@@ -842,7 +2169,7 @@ describe('Mixin', () => {
       context.root = root;
 
       const evald = await root.eval(context);
-      const css = evald.render(context);
+      const css = evald.toString();
 
       expect(css).toBeString(`
         .test1 {
@@ -852,130 +2179,6 @@ describe('Mixin', () => {
           color: blue;
         }
       `);
-    });
-
-    it('matches a sequence pattern parameter against a state-patched argument value', async () => {
-      const buildRoot = () => {
-        const mixinDef = mixin({
-          name: any('.mixin'),
-          params: list([
-            seq([num(10), num(20)])
-          ]),
-          rules: rules([
-            decl({ name: 'color', value: any('red') })
-          ])
-        });
-
-        const arg = seq([num(10), num(30)]);
-        const testRuleset = ruleset({
-          selector: el('.test'),
-          rules: rules([
-            call({
-              name: ref({ key: '.mixin' }, { type: 'mixin' }),
-              args: list([arg])
-            })
-          ])
-        });
-
-        return {
-          root: rules([mixinDef, testRuleset]),
-          arg
-        };
-      };
-
-      const baseline = buildRoot();
-      await expectRejects(baseline.root.eval(new Context({ leakyRules: true })), ReferenceError, /No matching mixins/);
-
-      const { root, arg } = buildRoot();
-      context.root = root;
-
-      setField(arg, 'value', [num(10), num(20)], context);
-
-      const evald = await root.eval(context);
-      const css = evald.render(context);
-
-      expect(css).toBeString(`
-        .test {
-          color: red;
-        }
-      `);
-      expect(arg.toTrimmedString()).toBe('10 30');
-    });
-
-    it('matches selector pattern params after preparing the selector operand before compare(context)', async () => {
-      const buildRoot = (ctx: Context) => {
-        const parent = ruleset({
-          selector: el('.alpha'),
-          rules: rules([])
-        });
-        parent.get('selector').keySetLibrary = ctx.selectorBits;
-
-        const patched = el('.beta');
-        patched.keySetLibrary = ctx.selectorBits;
-
-        const find = sel([
-          amp({ selectorContainer: parent as any }),
-          co('>'),
-          el('.tail')
-        ]);
-        find.keySetLibrary = ctx.selectorBits;
-        for (const child of find.get('value') as any[]) {
-          if ('keySetLibrary' in child) {
-            child.keySetLibrary = ctx.selectorBits;
-          }
-        }
-        const patternArg = sellist([find]);
-        patternArg.keySetLibrary = ctx.selectorBits;
-
-        const target = sel([el('.beta'), co('>'), el('.tail')]);
-        const otherBits = new Context().selectorBits;
-        target.keySetLibrary = otherBits;
-        for (const child of target.get('value') as any[]) {
-          if ('keySetLibrary' in child) {
-            child.keySetLibrary = otherBits;
-          }
-        }
-
-        const mixinDef = mixin({
-          name: any('.mixin'),
-          params: list([patternArg]),
-          rules: rules([
-            decl({ name: 'color', value: any('red') })
-          ])
-        });
-
-        const testRuleset = ruleset({
-          selector: el('.test'),
-          rules: rules([
-            call({
-              name: ref({ key: '.mixin' }, { type: 'mixin' }),
-              args: list([target])
-            })
-          ])
-        });
-
-        return {
-          root: rules([mixinDef, testRuleset]),
-          parent,
-          patched,
-          patternArg,
-          target
-        };
-      };
-
-      const live = buildRoot(context);
-      context.root = live.root;
-      setField(live.parent, 'selector', live.patched, context);
-
-      const evald = await live.root.eval(context);
-      const css = evald.render(context);
-
-      expect(css).toBeString(`
-        .test {
-          color: red;
-        }
-      `);
-      expect((live.parent as Ruleset).get('selector').valueOf()).toBe('.alpha');
     });
 
     it('should call a mixin with rest parameters', async () => {
@@ -1006,12 +2209,10 @@ describe('Mixin', () => {
       context.root = root;
 
       const evald = await root.eval(context);
-      const css = evald.render(context);
+      const css = evald.toString();
 
       expect(css).toBeString(`
         .test {
-          $a: 10px;
-          $rest: 20px 30px;
           margin: 20px 30px;
         }
       `);
@@ -1061,13 +2262,13 @@ describe('Mixin', () => {
       // }
       const node = rules([
         ruleset({
-          selector: sel([el('.do'), co(' '), el('.re'), co(' '), el('.mi'), co(' '), el('.fa')]) as any,
+          selector: sel([el('.do'), co(' '), el('.re'), co(' '), el('.mi'), co(' '), el('.fa')]),
           rules: rules([
             ruleset({
-              selector: sel([el('.sol'), co(' '), el('.la')]) as any,
+              selector: sel([el('.sol'), co(' '), el('.la')]),
               rules: rules([
                 ruleset({
-                  selector: sel([el('.si')]) as any,
+                  selector: sel([el('.si')]),
                   rules: rules([
                     decl({ name: 'color', value: any('cyan') })
                   ])
@@ -1085,7 +2286,7 @@ describe('Mixin', () => {
       ]);
       context.opts.collapseNesting = true;
       let evald = await node.eval(context);
-      const css = evald.render(context);
+      const css = evald.toString({ context });
       expect(css).toBeString(`
         .do .re .mi .fa .sol .la .si {
           color: cyan;
@@ -1144,7 +2345,7 @@ describe('Mixin', () => {
         })
       ]);
       let evald = await node.eval(context);
-      const css = evald.render(context);
+      const css = evald.toString();
       expect(css).toBeString(`
         .rule {
           background-color: cyan;
@@ -1152,78 +2353,1008 @@ describe('Mixin', () => {
       `);
     });
 
-    it('should call a namespace mixin using ComplexSelector key (parser pattern)', async () => {
-      // Mirrors the Less parser's AST for:
-      // #theme {
-      //   > .mixin {
-      //     background-color: grey;
-      //   }
-      // }
-      // #container {
-      //   #theme > .mixin();
-      // }
+    it('should resolve mixin-ruleset lookups against interpolated selector names', async () => {
+      const dynamicClass = interpolated({
+        source: '.' + INTERPOLATION_PLACEHOLDER,
+        replacements: [any('foo')]
+      }, { role: 'ident' });
       const node = rules([
         ruleset({
-          selector: el('#theme'),
+          selector: interpolatedSelector(dynamicClass),
           rules: rules([
-            ruleset({
-              selector: sel([co('>'), el('.mixin')]),
-              rules: rules([
-                decl({ name: 'background-color', value: any('grey') })
-              ])
-            })
+            decl({ name: 'color', value: any('red') })
           ])
         }),
         ruleset({
-          selector: el('#container'),
+          selector: el('.out'),
           rules: rules([
             call({
-              name: ref(
-                { key: sel([el('#theme'), co('>'), el('.mixin')]) },
-                { type: 'mixin-ruleset' }
-              )
+              name: ref({ key: '.foo' }, { type: 'mixin-ruleset' })
             })
           ])
         })
       ]);
-      let evald = await node.eval(context);
-      const css = evald.render(context);
-      expect(css).toContain('background-color: grey');
+      context.root = node;
+
+      const evald = await node.eval(context);
+      const css = evald.toString();
+
+      expect(css).toBeString(`
+        .foo {
+          color: red;
+        }
+        .out {
+          color: red;
+        }
+      `);
     });
 
-    it('should call a namespace mixin using ComplexSelector key with collapseNesting', async () => {
-      // Same as above but with collapseNesting: true (matching Less compiler behavior)
-      const collapseContext = new Context({
-        leakyRules: true,
-        collapseNesting: true
+    it('keeps pseudo selector args isolated across repeated mixin calls', async () => {
+      context = new Context({
+        collapseNesting: true,
+        leakyRules: true
       });
+
+      const dynamicPseudoArg = interpolated({
+        source: '.' + INTERPOLATION_PLACEHOLDER,
+        replacements: [ref({ key: 'name' }, { type: 'variable' })]
+      }, { role: 'ident' });
+
       const node = rules([
-        ruleset({
-          selector: el('#theme'),
+        mixin({
+          name: any('.emit'),
+          params: list([any('name', { role: 'property' })]),
           rules: rules([
             ruleset({
-              selector: sel([co('>'), el('.mixin')]),
+              selector: compound([
+                pseudo({
+                  name: ':is',
+                  arg: interpolatedSelector(dynamicPseudoArg)
+                })
+              ]),
               rules: rules([
-                decl({ name: 'background-color', value: any('grey') })
+                decl({ name: 'color', value: any('red') })
               ])
             })
           ])
         }),
         ruleset({
-          selector: el('#container'),
+          selector: el('.one'),
           rules: rules([
             call({
-              name: ref(
-                { key: sel([el('#theme'), co('>'), el('.mixin')]) },
-                { type: 'mixin-ruleset' }
-              )
+              name: ref({ key: '.emit' }, { type: 'mixin' }),
+              args: list([any('foo')])
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('.two'),
+          rules: rules([
+            call({
+              name: ref({ key: '.emit' }, { type: 'mixin' }),
+              args: list([any('bar')])
             })
           ])
         })
       ]);
-      let evald = await node.eval(collapseContext);
-      const css = evald.render(context);
-      expect(css).toContain('background-color: grey');
+      context.root = node;
+
+      const evald = await node.eval(context);
+      const css = evald.toString({ collapseNesting: true });
+
+      expect(css).toContain('.one :is(.foo)');
+      expect(css).toContain('.two :is(.bar)');
+      expect(css).not.toContain('.two :is(.foo)');
+      expect(css).not.toContain('.one :is(.bar)');
+    });
+
+    it('keeps calc-wrapped operation operands isolated across repeated mixin calls', async () => {
+      context = new Context({
+        leakyRules: true,
+        unitMode: 'preserve'
+      });
+
+      const node = rules([
+        mixin({
+          name: any('.emit-op'),
+          params: list([any('scale', { role: 'property' })]),
+          rules: rules([
+            decl({
+              name: 'width',
+              value: op([
+                dimension([10, 'px']),
+                '*',
+                ref({ key: 'scale' }, { type: 'variable' })
+              ])
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('.one'),
+          rules: rules([
+            call({
+              name: ref({ key: '.emit-op' }, { type: 'mixin' }),
+              args: list([dimension([2, 'em'])])
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('.two'),
+          rules: rules([
+            call({
+              name: ref({ key: '.emit-op' }, { type: 'mixin' }),
+              args: list([dimension([3, 'em'])])
+            })
+          ])
+        })
+      ]);
+      context.root = node;
+
+      const evald = await node.eval(context);
+      const css = evald.toString();
+
+      expect(css).toContain('.one {\n  width: calc(20 * 1px * 1em);');
+      expect(css).toContain('.two {\n  width: calc(30 * 1px * 1em);');
+      expect(css).not.toContain('.two {\n  width: calc(20 * 1px * 1em);');
+      expect(css).not.toContain('.one {\n  width: calc(30 * 1px * 1em);');
+    });
+
+    it('keeps interpolated selector replacements isolated across repeated mixin calls', async () => {
+      context = new Context({
+        collapseNesting: true,
+        leakyRules: true
+      });
+
+      const dynamicClass = interpolated({
+        source: '.' + INTERPOLATION_PLACEHOLDER,
+        replacements: [ref({ key: 'name' }, { type: 'variable' })]
+      }, { role: 'ident' });
+
+      const node = rules([
+        mixin({
+          name: any('.emit-interpolated'),
+          params: list([any('name', { role: 'property' })]),
+          rules: rules([
+            ruleset({
+              selector: interpolatedSelector(dynamicClass),
+              rules: rules([
+                decl({ name: 'color', value: any('red') })
+              ])
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('.one'),
+          rules: rules([
+            call({
+              name: ref({ key: '.emit-interpolated' }, { type: 'mixin' }),
+              args: list([any('foo')])
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('.two'),
+          rules: rules([
+            call({
+              name: ref({ key: '.emit-interpolated' }, { type: 'mixin' }),
+              args: list([any('bar')])
+            })
+          ])
+        })
+      ]);
+      context.root = node;
+
+      const evald = await node.eval(context);
+      const css = evald.toString({ collapseNesting: true });
+
+      expect(css).toContain('.one .foo');
+      expect(css).toContain('.two .bar');
+      expect(css).not.toContain('.one .bar');
+      expect(css).not.toContain('.two .foo');
+    });
+
+    it('keeps compound selector components isolated across repeated mixin calls', async () => {
+      context = new Context({
+        collapseNesting: true,
+        leakyRules: true
+      });
+
+      const dynamicClass = interpolated({
+        source: '.' + INTERPOLATION_PLACEHOLDER,
+        replacements: [ref({ key: 'name' }, { type: 'variable' })]
+      }, { role: 'ident' });
+
+      const node = rules([
+        mixin({
+          name: any('.emit-compound'),
+          params: list([any('name', { role: 'property' })]),
+          rules: rules([
+            ruleset({
+              selector: compound([
+                el('.base'),
+                interpolatedSelector(dynamicClass)
+              ]),
+              rules: rules([
+                decl({ name: 'color', value: any('red') })
+              ])
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('.one'),
+          rules: rules([
+            call({
+              name: ref({ key: '.emit-compound' }, { type: 'mixin' }),
+              args: list([any('foo')])
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('.two'),
+          rules: rules([
+            call({
+              name: ref({ key: '.emit-compound' }, { type: 'mixin' }),
+              args: list([any('bar')])
+            })
+          ])
+        })
+      ]);
+      context.root = node;
+
+      const evald = await node.eval(context);
+      const css = evald.toString({ collapseNesting: true });
+
+      expect(css).toContain('.one .base.foo');
+      expect(css).toContain('.two .base.bar');
+      expect(css).not.toContain('.one .base.bar');
+      expect(css).not.toContain('.two .base.foo');
+    });
+
+    it('keeps complex selector components isolated across repeated mixin calls', async () => {
+      context = new Context({
+        collapseNesting: true,
+        leakyRules: true
+      });
+
+      const dynamicClass = interpolated({
+        source: '.' + INTERPOLATION_PLACEHOLDER,
+        replacements: [ref({ key: 'name' }, { type: 'variable' })]
+      }, { role: 'ident' });
+
+      const node = rules([
+        mixin({
+          name: any('.emit-complex'),
+          params: list([any('name', { role: 'property' })]),
+          rules: rules([
+            ruleset({
+              selector: sel([
+                el('.base'),
+                co(' '),
+                interpolatedSelector(dynamicClass)
+              ]),
+              rules: rules([
+                decl({ name: 'color', value: any('red') })
+              ])
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('.one'),
+          rules: rules([
+            call({
+              name: ref({ key: '.emit-complex' }, { type: 'mixin' }),
+              args: list([any('foo')])
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('.two'),
+          rules: rules([
+            call({
+              name: ref({ key: '.emit-complex' }, { type: 'mixin' }),
+              args: list([any('bar')])
+            })
+          ])
+        })
+      ]);
+      context.root = node;
+
+      const evald = await node.eval(context);
+      const css = evald.toString({ collapseNesting: true });
+
+      expect(css).toContain('.one .base .foo');
+      expect(css).toContain('.two .base .bar');
+      expect(css).not.toContain('.one .base .bar');
+      expect(css).not.toContain('.two .base .foo');
+    });
+
+    it('keeps selector-list items isolated across repeated mixin calls', async () => {
+      context = new Context({
+        collapseNesting: true,
+        leakyRules: true
+      });
+
+      const dynamicClass = interpolated({
+        source: '.' + INTERPOLATION_PLACEHOLDER,
+        replacements: [ref({ key: 'name' }, { type: 'variable' })]
+      }, { role: 'ident' });
+
+      const node = rules([
+        mixin({
+          name: any('.emit-list'),
+          params: list([any('name', { role: 'property' })]),
+          rules: rules([
+            ruleset({
+              selector: sellist([
+                pseudo({
+                  name: ':is',
+                  arg: sellist([
+                    interpolatedSelector(dynamicClass),
+                    el('.static')
+                  ])
+                })
+              ]),
+              rules: rules([
+                decl({ name: 'color', value: any('red') })
+              ])
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('.one'),
+          rules: rules([
+            call({
+              name: ref({ key: '.emit-list' }, { type: 'mixin' }),
+              args: list([any('foo')])
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('.two'),
+          rules: rules([
+            call({
+              name: ref({ key: '.emit-list' }, { type: 'mixin' }),
+              args: list([any('bar')])
+            })
+          ])
+        })
+      ]);
+      context.root = node;
+
+      const evald = await node.eval(context);
+      const css = evald.toString({ collapseNesting: true });
+
+      expect(css).toContain('.one .foo');
+      expect(css).toContain('.two .bar');
+      expect(css).toContain('.one .static');
+      expect(css).toContain('.two .static');
+      expect(css).not.toContain('.one .bar');
+      expect(css).not.toContain('.two .foo');
+    });
+
+    it('keeps paren values isolated across repeated mixin calls', async () => {
+      context = new Context({
+        collapseNesting: true,
+        leakyRules: true
+      });
+
+      const dynamicValue = interpolated({
+        source: INTERPOLATION_PLACEHOLDER,
+        replacements: [ref({ key: 'name' }, { type: 'variable' })]
+      });
+
+      const node = rules([
+        mixin({
+          name: any('.emit-paren'),
+          params: list([any('name', { role: 'property' })]),
+          rules: rules([
+            decl({
+              name: 'value',
+              value: paren(dynamicValue)
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('.one'),
+          rules: rules([
+            call({
+              name: ref({ key: '.emit-paren' }, { type: 'mixin' }),
+              args: list([any('foo')])
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('.two'),
+          rules: rules([
+            call({
+              name: ref({ key: '.emit-paren' }, { type: 'mixin' }),
+              args: list([any('bar')])
+            })
+          ])
+        })
+      ]);
+      context.root = node;
+
+      const evald = await node.eval(context);
+      const css = evald.toString({ collapseNesting: true });
+
+      expect(css).toContain('.one {\n  value: (foo);');
+      expect(css).toContain('.two {\n  value: (bar);');
+      expect(css).not.toContain('.one {\n  value: (bar);');
+      expect(css).not.toContain('.two {\n  value: (foo);');
+    });
+
+    it('keeps quoted values isolated across repeated mixin calls', async () => {
+      context = new Context({
+        collapseNesting: true,
+        leakyRules: true
+      });
+
+      const node = rules([
+        mixin({
+          name: any('.emit-quoted'),
+          params: list([any('name', { role: 'property' })]),
+          rules: rules([
+            decl({
+              name: 'value',
+              value: quoted(ref({ key: 'name' }, { type: 'variable' }))
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('.one'),
+          rules: rules([
+            call({
+              name: ref({ key: '.emit-quoted' }, { type: 'mixin' }),
+              args: list([any('foo')])
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('.two'),
+          rules: rules([
+            call({
+              name: ref({ key: '.emit-quoted' }, { type: 'mixin' }),
+              args: list([any('bar')])
+            })
+          ])
+        })
+      ]);
+      context.root = node;
+
+      const evald = await node.eval(context);
+      const css = evald.toString({ collapseNesting: true });
+
+      expect(css).toContain('.one {\n  value: "foo";');
+      expect(css).toContain('.two {\n  value: "bar";');
+      expect(css).not.toContain('.one {\n  value: "bar";');
+      expect(css).not.toContain('.two {\n  value: "foo";');
+    });
+
+    it('keeps sequence values isolated across repeated mixin calls', async () => {
+      context = new Context({
+        collapseNesting: true,
+        leakyRules: true
+      });
+
+      const node = rules([
+        mixin({
+          name: any('.emit-sequence'),
+          params: list([any('name', { role: 'property' })]),
+          rules: rules([
+            decl({
+              name: 'value',
+              value: seq([ref({ key: 'name' }, { type: 'variable' }), any('tail')])
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('.one'),
+          rules: rules([
+            call({
+              name: ref({ key: '.emit-sequence' }, { type: 'mixin' }),
+              args: list([any('foo')])
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('.two'),
+          rules: rules([
+            call({
+              name: ref({ key: '.emit-sequence' }, { type: 'mixin' }),
+              args: list([any('bar')])
+            })
+          ])
+        })
+      ]);
+      context.root = node;
+
+      const evald = await node.eval(context);
+      const css = evald.toString({ collapseNesting: true });
+
+      expect(css).toContain('.one {\n  value: foo tail;');
+      expect(css).toContain('.two {\n  value: bar tail;');
+      expect(css).not.toContain('.one {\n  value: bar tail;');
+      expect(css).not.toContain('.two {\n  value: foo tail;');
+    });
+
+    it('keeps declaration values isolated across repeated mixin calls', async () => {
+      context = new Context({
+        collapseNesting: true,
+        leakyRules: true
+      });
+
+      const node = rules([
+        mixin({
+          name: any('.emit-decl-value'),
+          params: list([any('name', { role: 'property' })]),
+          rules: rules([
+            decl({
+              name: any('value'),
+              value: ref({ key: 'name' }, { type: 'variable' })
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('.one'),
+          rules: rules([
+            call({
+              name: ref({ key: '.emit-decl-value' }, { type: 'mixin' }),
+              args: list([any('foo')])
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('.two'),
+          rules: rules([
+            call({
+              name: ref({ key: '.emit-decl-value' }, { type: 'mixin' }),
+              args: list([any('bar')])
+            })
+          ])
+        })
+      ]);
+      context.root = node;
+
+      const evald = await node.eval(context);
+      const css = evald.toString({ collapseNesting: true });
+
+      expect(css).toContain('.one {\n  value: foo;');
+      expect(css).toContain('.two {\n  value: bar;');
+      expect(css).not.toContain('.one {\n  value: bar;');
+      expect(css).not.toContain('.two {\n  value: foo;');
+    });
+
+    it('keeps interpolated declaration names isolated across repeated mixin calls', async () => {
+      context = new Context({
+        collapseNesting: true,
+        leakyRules: true
+      });
+
+      const dynamicName = interpolated({
+        source: 'prop-' + INTERPOLATION_PLACEHOLDER,
+        replacements: [ref({ key: 'name' }, { type: 'variable' })]
+      });
+
+      const node = rules([
+        mixin({
+          name: any('.emit-decl-name'),
+          params: list([any('name', { role: 'property' })]),
+          rules: rules([
+            decl({
+              name: dynamicName,
+              value: any('ok')
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('.one'),
+          rules: rules([
+            call({
+              name: ref({ key: '.emit-decl-name' }, { type: 'mixin' }),
+              args: list([any('foo')])
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('.two'),
+          rules: rules([
+            call({
+              name: ref({ key: '.emit-decl-name' }, { type: 'mixin' }),
+              args: list([any('bar')])
+            })
+          ])
+        })
+      ]);
+      context.root = node;
+
+      const evald = await node.eval(context);
+      const css = evald.toString({ collapseNesting: true });
+
+      expect(css).toContain('.one {\n  prop-foo: ok;');
+      expect(css).toContain('.two {\n  prop-bar: ok;');
+      expect(css).not.toContain('.one {\n  prop-bar: ok;');
+      expect(css).not.toContain('.two {\n  prop-foo: ok;');
+    });
+
+    it('keeps interpolated mixin preEval wrappers self-owned instead of back-pointing to the canonical mixin', async () => {
+      const dynamicMixinName = interpolated({
+        source: '.inner-' + INTERPOLATION_PLACEHOLDER,
+        replacements: [any('foo')]
+      });
+      const node = mixin({
+        name: dynamicMixinName,
+        rules: rules([
+          decl({ name: any('value'), value: any('ok') })
+        ])
+      });
+
+      const preEvald = await node.preEval(context);
+
+      expect(preEvald).not.toBe(node);
+      expect(preEvald.sourceNode).toBe(preEvald);
+      expect(preEvald.value.name.valueOf()).toBe('.inner-foo');
+    });
+
+    it('keeps nested interpolated mixin names isolated across repeated mixin calls', async () => {
+      context = new Context({
+        collapseNesting: true,
+        leakyRules: true
+      });
+
+      const dynamicMixinName = interpolated({
+        source: '.inner-' + INTERPOLATION_PLACEHOLDER,
+        replacements: [ref({ key: 'name' }, { type: 'variable' })]
+      });
+
+      const node = rules([
+        mixin({
+          name: any('.emit-nested-mixin'),
+          params: list([any('name', { role: 'property' })]),
+          rules: rules([
+            mixin({
+              name: dynamicMixinName,
+              rules: rules([
+                decl({
+                  name: any('value'),
+                  value: ref({ key: 'name' }, { type: 'variable' })
+                })
+              ])
+            }),
+            call({
+              name: ref({ key: dynamicMixinName }, { type: 'mixin' })
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('.one'),
+          rules: rules([
+            call({
+              name: ref({ key: '.emit-nested-mixin' }, { type: 'mixin' }),
+              args: list([any('foo')])
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('.two'),
+          rules: rules([
+            call({
+              name: ref({ key: '.emit-nested-mixin' }, { type: 'mixin' }),
+              args: list([any('bar')])
+            })
+          ])
+        })
+      ]);
+      context.root = node;
+
+      const evald = await node.eval(context);
+      const css = evald.toString({ collapseNesting: true });
+      expect(css).toContain('.one {\n  value: foo;\n}');
+      expect(css).toContain('.two {\n  value: bar;\n}');
+      expect(css).not.toContain('.inner-foo()');
+      expect(css).not.toContain('.inner-bar()');
+    });
+
+    it('keeps ampersand append selectors isolated across repeated mixin calls', async () => {
+      context = new Context({
+        collapseNesting: true,
+        leakyRules: true
+      });
+
+      const node = rules([
+        mixin({
+          name: any('.emit-amp-append'),
+          rules: rules([
+            ruleset({
+              selector: sel([amp('-suffix')]),
+              rules: rules([
+                decl({ name: 'color', value: any('red') })
+              ])
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('.one'),
+          rules: rules([
+            call({
+              name: ref({ key: '.emit-amp-append' }, { type: 'mixin' })
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('.two'),
+          rules: rules([
+            call({
+              name: ref({ key: '.emit-amp-append' }, { type: 'mixin' })
+            })
+          ])
+        })
+      ]);
+      context.root = node;
+
+      const evald = await node.eval(context);
+      const css = evald.toString({ collapseNesting: true });
+
+      expect(css).toContain('.one-suffix');
+      expect(css).toContain('.two-suffix');
+      expect(css).not.toContain('.one.one-suffix');
+      expect(css).not.toContain('.two.two-suffix');
+    });
+
+    it('keeps bare ampersand selectors isolated across repeated mixin calls', async () => {
+      context = new Context({
+        collapseNesting: true,
+        leakyRules: true
+      });
+
+      const node = rules([
+        mixin({
+          name: any('.emit-amp-self'),
+          rules: rules([
+            ruleset({
+              selector: sel([amp()]),
+              rules: rules([
+                decl({ name: 'color', value: any('red') })
+              ])
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('.one'),
+          rules: rules([
+            call({
+              name: ref({ key: '.emit-amp-self' }, { type: 'mixin' })
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('.two'),
+          rules: rules([
+            call({
+              name: ref({ key: '.emit-amp-self' }, { type: 'mixin' })
+            })
+          ])
+        })
+      ]);
+      context.root = node;
+
+      const evald = await node.eval(context);
+      const css = evald.toString({ collapseNesting: true });
+
+      expect(css).toContain('.one {\n  color: red;\n}');
+      expect(css).toContain('.two {\n  color: red;\n}');
+      expect(css.match(/\.one \{\n  color: red;\n\}/g)).toHaveLength(1);
+      expect(css.match(/\.two \{\n  color: red;\n\}/g)).toHaveLength(1);
+    });
+
+    it('keeps at-rule preludes isolated across repeated mixin calls', async () => {
+      context = new Context({
+        collapseNesting: false,
+        leakyRules: true
+      });
+
+      const node = rules([
+        mixin({
+          name: any('.emit-media'),
+          params: list([any('mode', { role: 'property' })]),
+          rules: rules([
+            atrule({
+              name: any('@media', { role: 'atkeyword' }),
+              prelude: ref({ key: 'mode' }, { type: 'variable' }),
+              rules: rules([
+                decl({
+                  name: 'value',
+                  value: ref({ key: 'mode' }, { type: 'variable' })
+                })
+              ])
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('.one'),
+          rules: rules([
+            call({
+              name: ref({ key: '.emit-media' }, { type: 'mixin' }),
+              args: list([any('screen')])
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('.two'),
+          rules: rules([
+            call({
+              name: ref({ key: '.emit-media' }, { type: 'mixin' }),
+              args: list([any('print')])
+            })
+          ])
+        })
+      ]);
+      context.root = node;
+
+      const evald = await node.eval(context);
+      const css = evald.toString({ collapseNesting: false });
+
+      expect(css).toContain('.one {\n  @media screen {\n    value: screen;');
+      expect(css).toContain('.two {\n  @media print {\n    value: print;');
+      expect(css).not.toContain('.one {\n  @media print');
+      expect(css).not.toContain('.two {\n  @media screen');
+    });
+
+    it('should resolve nested mixin-ruleset lookups for local ampersand descendant keys', async () => {
+      const root = rules([
+        ruleset({
+          selector: sel([el('.b'), co(' '), el('.bb')]),
+          rules: rules([
+            ruleset({
+              selector: sel([
+                compound([amp(), el('.foo-xxx')]),
+                co(' '),
+                compound([el('.yyy-foo'), el('#foo')])
+              ]),
+              rules: rules([
+                ruleset({
+                  selector: sel([amp(), co(' '), compound([el('.foo'), el('.bbb')])]),
+                  rules: rules([
+                    decl({ name: 'b', value: any('1') })
+                  ])
+                })
+              ])
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('mi-test-b'),
+          rules: rules([
+            call({
+              name: ref({
+                key: ['.b', '.bb', '.foo-xxx', '.yyy-foo', '#foo', '.foo', '.bbb']
+              }, { type: 'mixin-ruleset' })
+            })
+          ])
+        })
+      ]);
+      context.root = root;
+
+      const evald = await root.eval(context);
+      const css = evald.toString();
+
+      expect(css).toBeString(`
+        .b .bb {
+          &.foo-xxx .yyy-foo#foo {
+            & .foo.bbb {
+              b: 1;
+            }
+          }
+        }
+        mi-test-b {
+          b: 1;
+        }
+      `);
+    });
+
+    it('preserves collapse output for complex parent ampersands and nested array-path ruleset mixin calls', async () => {
+      const root = rules([
+        ruleset({
+          selector: sel([el('.b'), co(' '), el('.bb')]),
+          rules: rules([
+            ruleset({
+              selector: sel([
+                compound([amp(), el('.foo-xxx')]),
+                co(' '),
+                compound([el('.yyy-foo'), el('#foo')])
+              ]),
+              rules: rules([
+                ruleset({
+                  selector: sel([amp(), co(' '), compound([el('.foo'), el('.bbb')])]),
+                  rules: rules([
+                    decl({ name: 'b', value: any('1') })
+                  ])
+                })
+              ])
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('#foo-foo'),
+          rules: rules([
+            ruleset({
+              selector: sel([co('>'), el('.bar')]),
+              rules: rules([
+                ruleset({
+                  selector: sel([el('.baz')]),
+                  rules: rules([
+                    decl({ name: 'c', value: any('c') })
+                  ])
+                })
+              ])
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('mi-test-b'),
+          rules: rules([
+            call({
+              name: ref({
+                key: ['.b', '.bb', '.foo-xxx', '.yyy-foo', '#foo', '.foo', '.bbb']
+              }, { type: 'mixin-ruleset' })
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('mi-test-c'),
+          rules: rules([
+            ruleset({
+              selector: sel([amp('-1')]),
+              rules: rules([
+                call({
+                  name: ref({ key: '#foo-foo' }, { type: 'mixin-ruleset' })
+                })
+              ])
+            }),
+            ruleset({
+              selector: sel([amp('-2')]),
+              rules: rules([
+                call({
+                  name: ref({ key: ['#foo-foo', '.bar'] }, { type: 'mixin-ruleset' })
+                })
+              ])
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('mi-test-c-3'),
+          rules: rules([
+            call({
+              name: ref({ key: ['#foo-foo', '.bar', '.baz'] }, { type: 'mixin-ruleset' })
+            })
+          ])
+        })
+      ]);
+      context.root = root;
+
+      const evald = await root.eval(context);
+      const css = evald.toString({ collapseNesting: true });
+
+      expect(css).toBeString(`
+        .b .bb.foo-xxx .yyy-foo#foo .foo.bbb {
+          b: 1;
+        }
+        #foo-foo > .bar .baz {
+          c: c;
+        }
+        mi-test-b {
+          b: 1;
+        }
+        mi-test-c-1 > .bar .baz {
+          c: c;
+        }
+        mi-test-c-2 .baz {
+          c: c;
+        }
+        mi-test-c-3 {
+          c: c;
+        }
+      `);
     });
   });
 
@@ -1256,12 +3387,10 @@ describe('Mixin', () => {
       context.root = root;
 
       const evald = await root.eval(context);
-      const css = evald.render(context);
+      const css = evald.toString();
 
       expect(css).toBeString(`
         .test {
-          $a: 10px;
-          $rest: rest;
           padding: rest;
         }
       `);
@@ -1295,12 +3424,10 @@ describe('Mixin', () => {
       context.root = root;
 
       const evald = await root.eval(context);
-      const css = evald.render(context);
+      const css = evald.toString();
 
       expect(css).toBeString(`
         .test {
-          $a: 10px;
-          $rest: 20px;
           margin: 20px;
         }
       `);
@@ -1334,12 +3461,10 @@ describe('Mixin', () => {
       context.root = root;
 
       const evald = await root.eval(context);
-      const css = evald.render(context);
+      const css = evald.toString();
 
       expect(css).toBeString(`
         .test {
-          $a: 10px;
-          $rest: 20px 30px 40px;
           padding: 20px 30px 40px;
         }
       `);
@@ -1374,13 +3499,10 @@ describe('Mixin', () => {
       context.root = root;
 
       const evald = await root.eval(context);
-      const css = evald.render(context);
+      const css = evald.toString();
 
       expect(css).toBeString(`
         .test {
-          $a: 10px;
-          $b: 20px;
-          $rest: 30px 40px;
           margin: 30px 40px;
         }
       `);
@@ -1415,12 +3537,10 @@ describe('Mixin', () => {
       context.root = root;
 
       const evald = await root.eval(context);
-      const css = evald.render(context);
+      const css = evald.toString();
 
       expect(css).toBeString(`
         .test {
-          $a: 10px;
-          $rest: 20px 30px;
           margin: 20px 30px;
           padding: 20px 30px;
         }
@@ -1478,20 +3598,14 @@ describe('Mixin', () => {
       context.root = root;
 
       const evald = await root.eval(context);
-      const css = evald.render(context);
+      const css = evald.toString();
 
       expect(css).toBeString(`
         .test1 {
-          $a: 10px;
-          $b: 20px;
           color: red;
-          $a: 10px;
-          $rest: 20px;
           color: blue;
         }
         .test2 {
-          $a: 10px;
-          $rest: 20px 30px;
           color: blue;
         }
       `);
@@ -1628,10 +3742,206 @@ describe('Mixin', () => {
       context.root = root;
 
       const evald = await root.eval(context);
-      const css = evald.render(context);
+      const css = evald.toString();
 
       expect(css).toContain('gender: "Male";');
       expect(css).not.toContain('gender: "Outer";');
+      expect(css).not.toContain('.person {\n}');
+    });
+
+    it('does not emit an empty interpolated selector frame when a nested mixin consumes its scope', async () => {
+      const root = rules([
+        vardecl({ name: 'gender_', value: any('"Outer"') }),
+        mixin({
+          name: any('.Person'),
+          params: list([
+            any('name', { role: 'property' }),
+            any('gender_', { role: 'property' })
+          ]),
+          rules: rules([
+            ruleset({
+              selector: interpolatedSelector(interpolated({
+                source: '.' + INTERPOLATION_PLACEHOLDER,
+                replacements: [ref({ key: 'name' }, { type: 'variable' })]
+              })),
+              rules: rules([
+                vardecl({
+                  name: 'gender',
+                  value: ref({ key: 'gender_' }, { type: 'variable' })
+                }),
+                mixin({
+                  name: any('.sayGender'),
+                  rules: rules([
+                    decl({
+                      name: 'gender',
+                      value: ref({ key: 'gender' }, { type: 'variable' })
+                    })
+                  ])
+                })
+              ])
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('.test'),
+          rules: rules([
+            call({
+              name: ref({ key: '.Person' }, { type: 'mixin' }),
+              args: list([any('person'), any('"Male"')])
+            }),
+            call({
+              name: ref({ key: ['.person', '.sayGender'] }, { type: 'mixin-ruleset' })
+            })
+          ])
+        })
+      ]);
+      context.root = root;
+
+      const evald = await root.eval(context);
+      const css = evald.toString({ collapseNesting: true });
+
+      expect(css).toContain('gender: "Male";');
+      expect(css).not.toContain('.person {\n}');
+      expect(css).not.toContain('.test .person {\n}');
+    });
+
+    it('does not emit an empty interpolated selector frame on context-bound serialization', async () => {
+      const root = rules([
+        vardecl({ name: 'gender_', value: any('"Outer"') }),
+        mixin({
+          name: any('.Person'),
+          params: list([
+            any('name', { role: 'property' }),
+            any('gender_', { role: 'property' })
+          ]),
+          rules: rules([
+            ruleset({
+              selector: interpolatedSelector(interpolated({
+                source: '.' + INTERPOLATION_PLACEHOLDER,
+                replacements: [ref({ key: 'name' }, { type: 'variable' })]
+              })),
+              rules: rules([
+                vardecl({
+                  name: 'gender',
+                  value: ref({ key: 'gender_' }, { type: 'variable' })
+                }),
+                mixin({
+                  name: any('.sayGender'),
+                  rules: rules([
+                    decl({
+                      name: 'gender',
+                      value: ref({ key: 'gender' }, { type: 'variable' })
+                    })
+                  ])
+                })
+              ])
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('mi-test-d'),
+          rules: rules([
+            call({
+              name: ref({ key: '.Person' }, { type: 'mixin' }),
+              args: list([any('person'), any('"Male"')])
+            }),
+            call({
+              name: ref({ key: ['.person', '.sayGender'] }, { type: 'mixin-ruleset' })
+            })
+          ])
+        })
+      ]);
+      context.root = root;
+      context.opts.collapseNesting = true;
+
+      const evald = await root.eval(context);
+      const css = evald.toString({ context });
+
+      expect(css).toContain('mi-test-d {\n  gender: "Male";\n}');
+      expect(css).not.toContain('mi-test-d .person {\n}');
+    });
+
+    it('keeps sibling collapsed rulesets closed before a later interpolated mixin-ruleset call', async () => {
+      const { Parser } = await import('../../../../less-parser/src/index.ts');
+      const parser = new Parser();
+      const tree = parser.parse(`
+        @a1: foo;
+        @a2: ~".foo";
+        @a4: ~"#foo";
+
+        .b .bb {
+          &.@{a1}-xxx .yyy-@{a1}@{a4} {
+            & @{a2}.bbb {
+              b: 1;
+            }
+          }
+        }
+
+        mi-test-b {
+          .b.bb.foo-xxx.yyy-foo#foo.foo.bbb();
+        }
+
+        @c1: @a1;
+        @c2: bar;
+        @c3: baz;
+
+        #@{c1}-foo {
+          > .@{c2} {
+            .@{c3} {
+              c: c;
+            }
+          }
+        }
+
+        mi-test-c {
+          &-1 {#foo-foo();}
+          &-2 {#foo-foo > .bar();}
+          &-3 {#foo-foo > .bar.baz();}
+        }
+
+        .Person(@name, @gender_) {
+          .@{name} {
+            @gender: @gender_;
+            .sayGender() {
+              gender: @gender;
+            }
+          }
+        }
+
+        mi-test-d {
+          .Person(person, "Male");
+          .person.sayGender();
+        }
+      `).tree;
+      context.root = tree;
+      context.opts.collapseNesting = true;
+
+      const evald = await tree.eval(context);
+      const css = evald.toString({ context });
+
+      expect(css).toBeString(`
+        .b .bb.foo-xxx .yyy-foo#foo .foo.bbb {
+          b: 1;
+        }
+        mi-test-b {
+          b: 1;
+        }
+        #foo-foo > .bar .baz {
+          c: c;
+        }
+        mi-test-c-1 > .bar .baz {
+          c: c;
+        }
+        mi-test-c-2 .baz {
+          c: c;
+        }
+        mi-test-c-3 {
+          c: c;
+        }
+        mi-test-d {
+          gender: "Male";
+        }
+      `);
     });
   });
 
@@ -1691,71 +4001,6 @@ describe('Mixin', () => {
           background-color: white;
         }
       `);
-    });
-  });
-
-  describe('parent selector composition in mixin calls', () => {
-    it('should resolve > li to caller context, not mixin ancestor chain, inside @media', async () => {
-      /**
-       * Less input:
-       *   .nav-justified {
-       *     @media (min-width: 480px) {
-       *       > li { display: table-cell; }
-       *     }
-       *   }
-       *   .menu {
-       *     @media (min-width: 768px) {
-       *       .nav-justified();
-       *     }
-       *   }
-       *
-       * Expected CSS (collapsed):
-       *   @media (min-width: 480px) { .nav-justified > li { ... } }
-       *   @media (min-width: 768px) { @media (min-width: 480px) { .menu > li { ... } } }
-       *
-       * Bug: produces `.menu .nav-justified > li` — the mixin body's
-       * `> li` ruleset still walks up the parent chain to `.nav-justified`
-       * instead of using the caller's captured frames.
-       */
-      const navJustified = ruleset({
-        selector: el('.nav-justified'),
-        rules: rules([
-          atrule({
-            name: any('@media'),
-            prelude: any('(min-width: 480px)'),
-            rules: rules([
-              ruleset({
-                selector: sel([co('>'), el('li')]),
-                rules: rules([
-                  decl({ name: 'display', value: any('table-cell') })
-                ])
-              })
-            ])
-          })
-        ])
-      });
-
-      const menu = ruleset({
-        selector: el('.menu'),
-        rules: rules([
-          atrule({
-            name: any('@media'),
-            prelude: any('(min-width: 768px)'),
-            rules: rules([
-              call({ name: ref({ key: '.nav-justified' }, { type: 'mixin-ruleset' }) })
-            ])
-          })
-        ])
-      });
-
-      const root = rules([navJustified, menu]);
-      context.root = root;
-
-      const evald = await root.eval(context);
-      const css = evald.toString({ collapseNesting: true });
-
-      expect(css).toContain('.menu > li');
-      expect(css).not.toContain('.menu .nav-justified');
     });
   });
 

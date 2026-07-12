@@ -16,6 +16,7 @@ import {
   Reference,
   DefaultGuard,
   Interpolated,
+  INTERPOLATION_PLACEHOLDER,
   Any,
   Bool,
   type MathMode,
@@ -24,7 +25,7 @@ import {
   type ComplexSelector,
   type Selector
 } from '@jesscss/core';
-import { getInterpolatedOrString } from './utils.js';
+import { createInterpolatedReference, getInterpolatedOrString } from './utils.js';
 
 import { type LessExtraTokenType } from './lessTokens.js';
 
@@ -105,6 +106,7 @@ export type RuleContext = CssRuleContext & {
   inFunctionArgs?: boolean;
   allowMixinCallWithoutAccessor?: boolean;
   startValue?: Node;
+  atRulePreludeBareVariableAs?: 'index';
 };
 
 export class LessRecursiveParser extends CssRecursiveParser {
@@ -118,6 +120,40 @@ export class LessRecursiveParser extends CssRecursiveParser {
   mathMode: MathMode;
   /** See `LessParserConfig.wrapOuterExpressions` */
   wrapOuterExpressions: boolean;
+
+  private processLegacyMSFilterToken(token: IToken): Node {
+    const location = this.getLocationInfo(token);
+    const source = token.image.replace(/\s*=\s*/g, '=');
+    const matches = [...source.matchAll(/@([_a-zA-Z\xA0-\uFFFF][-_a-zA-Z0-9\xA0-\uFFFF]*)/g)];
+
+    if (matches.length === 0) {
+      return new Any(source, { type: token.tokenType?.name }, location, this.context);
+    }
+
+    const templatedSource = source.replace(
+      /@([_a-zA-Z\xA0-\uFFFF][-_a-zA-Z0-9\xA0-\uFFFF]*)/g,
+      (_full, _name, offset: number, fullSource: string) => {
+        const prefix = fullSource.slice(0, offset);
+        const key = prefix.match(/([A-Za-z]+)=$/)?.[1];
+        if (key && /colorstr$/i.test(key)) {
+          return `"${INTERPOLATION_PLACEHOLDER}"`;
+        }
+        return INTERPOLATION_PLACEHOLDER;
+      }
+    );
+
+    return new Interpolated(
+      {
+        source: templatedSource,
+        replacements: matches.map(match =>
+          createInterpolatedReference('@', match[1]!, location, this.context)
+        )
+      },
+      { role: 'any' },
+      location,
+      this.context
+    );
+  }
 
   constructor(
     T: TokenMap,
@@ -173,6 +209,27 @@ export class LessRecursiveParser extends CssRecursiveParser {
         );
         return new Any(token.image, { role: 'any' }, this.getLocationInfo(token), this.context);
       }
+      if (ctx?.atRulePreludeBareVariableAs === 'index') {
+        const nextToken = this.LA(1).tokenType;
+        const hasExplicitAccessorOrCall = this.noSep()
+          && (nextToken === T.LSquare || nextToken === T.LParen);
+        if (hasExplicitAccessorOrCall) {
+          return new Reference(token.image.slice(1), { type: 'variable' }, this.getLocationInfo(token), this.context);
+        }
+        const atName = token.image;
+        const ident = token.image.slice(1);
+        this.warnDeprecation(
+          `"${atName}" in at-rule preludes is deprecated. Use "@{${ident}}" in Less; outside declaration values this is normalized to indexed lookup syntax.`,
+          token,
+          'at-rule-prelude-variable'
+        );
+        return new Reference(
+          { key: ident },
+          { type: 'index', role: 'ident' },
+          this.getLocationInfo(token),
+          this.context
+        );
+      }
       return new Reference(token.image.slice(1), { type: 'variable' }, this.getLocationInfo(token), this.context);
     } else if (tokenType.name === 'PropertyReference') {
       if (ctx?.inCustomPropertyValue) {
@@ -202,6 +259,8 @@ export class LessRecursiveParser extends CssRecursiveParser {
       } else {
         return new Any(result, { role: 'ident' }, this.getLocationInfo(token), this.context);
       }
+    } else if (tokenType === T['LegacyMSFilter']) {
+      return this.processLegacyMSFilterToken(token);
     } else if (tokenType === T['PlainIdent']) {
       const image = token.image;
       if (image === 'true' || image === 'false') {
@@ -209,57 +268,6 @@ export class LessRecursiveParser extends CssRecursiveParser {
       }
     }
     return super.processValueToken(token, ctx);
-  }
-
-  override shouldTryQualifiedRuleInDeclarationList(): boolean {
-    const {
-      Ident,
-      Assign,
-      Colon,
-      LCurly,
-      Comma,
-      LSquare,
-      NthPseudoClass,
-      SelectorPseudoClass,
-      FunctionStart
-    } = this.T;
-
-    const isSelectorLikeContinuation = (offset: number): boolean => {
-      const tok = this.LA(offset);
-      return (
-        tokenMatcher(tok, LCurly)
-        || tokenMatcher(tok, Comma)
-        || tokenMatcher(tok, this.T.Combinator)
-        || tokenMatcher(tok, LSquare)
-        || tokenMatcher(tok, Colon)
-        || tokenMatcher(tok, NthPseudoClass)
-        || tokenMatcher(tok, SelectorPseudoClass)
-      );
-    };
-
-    if (!this.isTypeAt(1, Ident)) {
-      return true;
-    }
-    if (!this.isTypeAt(2, Assign)) {
-      return true;
-    }
-    if (this.hasWS(2)) {
-      return false;
-    }
-
-    const tt3 = this.LA(3).tokenType;
-    if (
-      tt3 === Colon
-      || tt3 === NthPseudoClass
-      || tt3 === SelectorPseudoClass
-      || tokenMatcher(this.LA(3), FunctionStart)
-    ) {
-      return true;
-    }
-    if (!tokenMatcher(this.LA(3), Ident)) {
-      return false;
-    }
-    return isSelectorLikeContinuation(4);
   }
 
   warnDeprecation(message: string, token?: IToken, deprecationId?: string): void {

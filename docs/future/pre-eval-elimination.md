@@ -11,6 +11,22 @@ The desired future shape is not "do the same work inside `evalNode()`". It is:
 - let `Rules.evalNode()` drive registration and evaluation together
 - reduce retries to the smallest set of nodes that are actually blocked
 
+One important guardrail for the later buffered-render model:
+
+- do **not** replace eval with direct string emission that bypasses the
+  evaluated-node boundary entirely
+- do **not** build and retain a whole evaluated tree before serialization
+
+The intended shape is local and streaming:
+
+1. evaluate one node in context
+2. produce the immediate evaluated/derived node for that step
+3. allow a visitor/rewrite hook to replace it
+4. serialize it immediately
+
+So "single pass" means "no retained eval tree", not "no intermediate evaluated
+node exists at all".
+
 This note is exploratory. It is not an implementation plan.
 
 ## Why `Rules` Is The Choke Point
@@ -524,6 +540,64 @@ Likely candidates:
 - top-level `@import` output ordering
 
 The more of that moves to serialization, the less work eval has to front-load.
+
+## Open Question: Priority Queue vs Linear Render With Deferred Misses
+
+Status: exploratory. Decide empirically before Track 5 (buffered render)
+hardens a direction.
+
+The discussion above assumes the existing priority queue is the right shape and
+the work is to lean into it harder. That assumption is worth testing. There is a
+competing shape that may be cheaper in practice.
+
+### Shape A — Prioritized queue (current direction)
+
+Classify each child into a bucket (imports, calls, declarations, mixins,
+rulesets, extends, at-rules), evaluate in bucket order, requeue blocked nodes
+when a dependency resolves.
+
+- Pro: semantic staging is explicit; forward references resolve in a "good"
+  order; blocked retries are narrow.
+- Con: per-node classification cost; queue bookkeeping on every child; priority
+  ordering is a second source of truth for evaluation order separate from source
+  order.
+
+### Shape B — Linear render with deferred misses
+
+Walk `Rules.value` in source order, streaming into the segmented render buffer.
+When a reference cannot resolve, push a *pending-ref* placeholder segment (same
+mechanism as `RulesetBlock` / `HoistBlock` / `MergeSlot` in the
+registry-redesign proposal) and record the miss against the current scope. At
+the end of the `Rules` walk, drain the miss list; anything still unresolved
+after a fixed-point pass is a real error.
+
+- Pro: one traversal order — source order — matches "render IS evaluation"; the
+  placeholder mechanism is already required for extends/`@media`/reference
+  imports, so pending refs are a new segment type, not new machinery; static
+  bucket pre-population from `_indexRules` means forward refs usually resolve
+  on first touch, so the miss list is small or empty in the common case.
+- Con: needs a well-defined placeholder segment and a drain step; cascades
+  (a miss resolved only after a later miss resolves) need a fixed-point loop;
+  diagnostic quality for unresolved names has to be preserved explicitly.
+
+### The hybrid worth considering
+
+Default to Shape B. Fall back to Shape A only where Shape B provably costs more
+— e.g. constructs with known resolution hazards. Most stylesheets are nearly
+source-order resolvable once static buckets are pre-populated; paying queue
+overhead for every node to handle rare cases is likely the wrong default.
+
+### What to measure before committing
+
+- Per-file histogram of how many references actually need deferral vs resolve
+  on first touch, across the Less benchmark and the jess test corpus.
+- Cost of classification + queue ops per child vs cost of one extra segment
+  allocation per pending ref.
+- Worst-case cascade depth for fixed-point drain (expected: 1–2 in realistic
+  code; pathological cases can be capped with an explicit iteration limit).
+
+Until those numbers exist, treat the priority queue's current dominance as
+inherited, not proven.
 
 ## A Conservative Migration Path
 

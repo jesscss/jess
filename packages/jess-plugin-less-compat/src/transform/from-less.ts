@@ -1,5 +1,5 @@
 import { Any, Collection, Declaration, Dimension, Node, Quoted, Rules } from '@jesscss/core';
-import { getJessNodeFromProxy, isLessProxy } from './proxy.js';
+import { LessAdapterBase } from './less-adapter.js';
 
 // Less.js types
 export type LessNode = any;
@@ -36,17 +36,14 @@ export function fromLessNode(
     }
   }
 
-  // If it's already a Jess node wrapped in a proxy, extract it
-  if (isLessProxy(lessNode)) {
-    const jessNode = getJessNodeFromProxy(lessNode);
-    if (jessNode) {
-      cache.set(lessNode, jessNode);
-      return jessNode;
-    }
+  // If it's already a Jess node wrapped in an adapter, extract it
+  if (lessNode instanceof LessAdapterBase) {
+    cache.set(lessNode, lessNode.jessNode);
+    return lessNode.jessNode;
   }
 
   // If it's a Less node that was created by a visitor, we need to reconstruct
-  // For now, if we can't convert it back, return the original proxy target
+  // For now, if we can't convert it back, return the original adapter target
   // TODO: Implement full reverse conversion for all node types
 
   // Check if it has a __jessNode property (we might store this during conversion)
@@ -179,7 +176,7 @@ export function fromLessPluginReturnValue(
   if (value instanceof Node) {
     return value;
   }
-  return value as Node;
+  return new Any(String(value));
 }
 
 /**
@@ -195,12 +192,9 @@ export function fromLessTree(
 ): Rules {
   // TODO: Implement tree conversion
   // This will recursively convert all nodes back to Jess format
-  // For now, if it's a proxy, extract the original
-  if (isLessProxy(lessTree)) {
-    const jessNode = getJessNodeFromProxy(lessTree);
-    if (jessNode instanceof Rules) {
-      return jessNode;
-    }
+  // For now, if it's an adapter, extract the original
+  if (lessTree instanceof LessAdapterBase && lessTree.jessNode instanceof Rules) {
+    return lessTree.jessNode;
   }
 
   throw new Error('Cannot convert Less tree back to Jess Rules');

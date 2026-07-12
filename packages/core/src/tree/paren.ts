@@ -2,84 +2,76 @@ import { type Context } from '../context.js';
 import { Bool } from './bool.js';
 import { Expression } from './expression.js';
 import { Operation } from './operation.js';
-import { Node, defineType, F_NON_STATIC, type OptionalLocation, type TreeContext } from './node.js';
+import { Node, defineType, F_NON_STATIC } from './node.js';
 import { Dimension } from './dimension.js';
+import { List } from './list.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
-import { getField, setField, setParent } from './util/field-helpers.js';
+// import type { Context } from '../context.js'
+// import type { OutputCollector } from '../output'
 
 export type ParenOptions = {
-  escaped?: boolean;
-  delimiter?: 'paren' | 'square';
+  escaped: boolean;
 };
-
-export type ParenChildData = { value: Node | undefined };
 
 const isOpOrExpression = (node: Node): node is Operation | Expression => {
   return node instanceof Operation || node instanceof Expression;
 };
 
+const getDefaultGuardBool = (node: Node | undefined, context: Context): Bool | undefined => {
+  if (!node) {
+    return;
+  }
+  if (node.type === 'DefaultGuard') {
+    return new Bool(Boolean(context.isDefault));
+  }
+  if (node instanceof Paren) {
+    return getDefaultGuardBool(node.value, context);
+  }
+  if (node.type !== 'Call') {
+    return;
+  }
+  const rawValue = node.value;
+  if (!rawValue || typeof rawValue !== 'object' || !('name' in rawValue)) {
+    return;
+  }
+  const rawName = rawValue.name;
+  const callName = String(rawName?.valueOf?.() ?? rawName ?? '');
+  const refKey = rawName?.type === 'Reference'
+    ? String(rawName?.value?.key?.valueOf?.() ?? rawName?.value?.key ?? '')
+    : '';
+  if (callName === 'default' || callName === '??' || refKey === 'default' || refKey === '??') {
+    return new Bool(Boolean(context.isDefault));
+  }
+};
+
 /**
  * An expression in parenthesis
  */
-export interface Paren {
-  type: 'Paren';
-  shortType: 'paren';
-  eval(context: Context): MaybePromise<Node>;
-}
+export class Paren extends Node<Node | undefined, ParenOptions> {
+  private withValue(value: Node | undefined): this {
+    const node = this.clone();
+    node.set(null, value);
+    return node;
+  }
 
-export class Paren extends Node<Node | undefined, ParenOptions, ParenChildData> {
-  static override childKeys = ['value'] as const;
-
-  /** @internal */ value: Node | undefined;
-
-  constructor(value?: Node, options?: ParenOptions, location?: OptionalLocation, treeContext?: TreeContext) {
+  constructor(value?: Node, options?: ParenOptions, location?: any, treeContext?: any) {
     super(value, options, location, treeContext);
-    this.value = value;
-    if (value instanceof Node) {
-      this.adopt(value);
-    }
     if (options?.escaped) {
       this.addFlag(F_NON_STATIC);
     }
-  }
-
-  private _getOptions(context?: Context): ParenOptions | undefined {
-    return context
-      ? getField<ParenOptions | undefined>(this, 'options', context)
-      : this.options;
-  }
-
-  private _isEscaped(context?: Context): boolean {
-    return Boolean(this._getOptions(context)?.escaped);
-  }
-
-  private _unwrapValue(value: Node, context?: Context): Node {
-    let current = value;
-    while (current instanceof Paren) {
-      const next = current.get('value', context);
-      if (!next) {
-        break;
-      }
-      current = next;
-    }
-    return current;
   }
 
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    const parenOptions = this._getOptions(options.context);
-    const escapeChar = parenOptions?.escaped ? '~' : '';
-    const delimiter = parenOptions?.delimiter ?? 'paren';
-    const open = delimiter === 'square' ? '[' : '(';
-    const close = delimiter === 'square' ? ']' : ')';
+    const escapeChar = this._options?.escaped ? '~' : '';
     if (escapeChar) {
       w.add(escapeChar, this);
     }
-    w.add(open);
-    let value = this.get('value', options.context);
+    w.add('(');
+    let value = this.value;
     if (value) {
       if (value instanceof Node) {
         let out = w.capture(() => value.toString(options));
@@ -88,48 +80,57 @@ export class Paren extends Node<Node | undefined, ParenOptions, ParenChildData> 
         w.add(String(value), this);
       }
     }
-    w.add(close);
+    w.add(')');
     return w.getSince(mark);
   }
 
   override evalNode(context: Context): MaybePromise<Node> {
-    let value = this.get('value', context);
-    if (value) {
-      let isOp = isOpOrExpression(value);
+    const currentValue = this.value;
+    if (currentValue) {
+      const guardBool = getDefaultGuardBool(currentValue, context);
+      if (guardBool) {
+        return guardBool;
+      }
+      const isOp = isOpOrExpression(currentValue);
       if (isOp) {
         context.parenFrames.push(true);
       }
-      const maybeEvald = value.eval(context);
+      const maybeEvald = currentValue.eval(context);
       const after = (v: Node): Node => {
-        value = v;
+        let value = v;
         if (isOp) {
           context.parenFrames.pop();
         }
-        if (this._isEscaped(context) && value instanceof Node) {
+        const evaluatedGuardBool = getDefaultGuardBool(value, context);
+        if (evaluatedGuardBool) {
+          return evaluatedGuardBool;
+        }
+        if (this._options?.escaped && value instanceof Node) {
+          if (value instanceof List && value.options?.sep === ';') {
+            return new List([...value.value], { ...value.options, sep: ',' }).inherit(value);
+          }
           return value;
         }
-        const delimiter = this._getOptions(context)?.delimiter ?? 'paren';
-        if (delimiter === 'paren') {
-          value = this._unwrapValue(value, context);
-          if (value instanceof Bool || value instanceof Dimension) {
-            return value;
-          }
-          if (isOp && !isOpOrExpression(value)) {
-            return value;
-          }
+        /**
+         * Removing nested parens or parens around a single
+         * dimension is a bit presumptuous, but I think Less's
+         * argument is that it's unnecessary at runtime,
+         * so it's really just a DX tool that can be ignored
+         * on output.
+         */
+        while (value instanceof Paren && value.value) {
+          value = value.value;
         }
-        let node = this.maybeClone(context);
-        if (node === this) {
-          const prevValue = this.get('value', context);
-          setField(node, 'value', value, context);
-          if (prevValue instanceof Node && prevValue !== value) {
-            setParent(prevValue, undefined, context);
-          }
-          setParent(value, node, context);
-        } else {
-          node.setData('value', value);
+        if (value instanceof Bool || value instanceof Dimension) {
+          return value;
         }
-        return node;
+        if (isOp && !isOpOrExpression(value)) {
+          return value;
+        }
+        if (value === currentValue) {
+          return this;
+        }
+        return this.withValue(value);
       };
       if (isThenable(maybeEvald)) {
         return (maybeEvald as Promise<Node>).then(after);
@@ -138,6 +139,19 @@ export class Paren extends Node<Node | undefined, ParenOptions, ParenChildData> 
     }
     return this;
   }
+
+  // toCSS(context: Context, out: OutputCollector) {
+  //   out.add('(')
+  //   this.value.toCSS(context, out)
+  //   out.add(')')
+  // }
+
+  // toModule(context: Context, out: OutputCollector) {
+  //   const loc = this.location
+  //   out.add('$J.paren(', loc)
+  //   this.value.toModule(context, out)
+  //   out.add(')')
+  // }
 }
 
 export const paren = defineType(Paren, 'Paren');

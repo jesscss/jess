@@ -6,7 +6,7 @@ const hsv = defineFunction(
   'hsv',
   function(this: any, h: ColorValue, s: ColorValue, v: ColorValue) {
     const out = hsva.call(this, h, s, v, new Dimension({ number: 1 }));
-    out.options.format = ColorFormat.HSL;
+    out.options.format = ColorFormat.HEX;
     return out;
   },
   {

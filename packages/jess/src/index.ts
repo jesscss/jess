@@ -610,6 +610,19 @@ export class Compiler {
           pluginMap.set(plugin, this.createConfiguredPluginProxy(plugin));
           continue;
         }
+        const pluginInstance = plugin as Record<string, any>;
+        if (
+          pluginInstance?.name === 'less-compat'
+          && typeof pluginInstance?.constructor === 'function'
+        ) {
+          try {
+            const freshPlugin = new pluginInstance.constructor(pluginInstance.opts);
+            pluginMap.set(freshPlugin.name, freshPlugin as PluginInterface);
+            continue;
+          } catch {
+            // Fall through to using the provided plugin instance directly.
+          }
+        }
         pluginMap.set(plugin.name, plugin as unknown as PluginInterface);
       }
     }

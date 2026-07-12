@@ -6,23 +6,14 @@ import { fromLessNode } from '../transform/from-less.js';
 export const transformSequenceToLess = createFromAdapter<Sequence>({
   fields: {
     value: (seq, cache) =>
-      (seq.get('value') ?? [])
+      (seq.value ?? [])
         .map((item: any) => item instanceof Node ? toLessNode(item, { cache }) : item)
         .filter((item: any) => item != null),
     length: seq =>
-      (seq.get('value') ?? []).filter((v: any) => v != null).length
-  },
-  dynamicField: (prop, seq, cache) => {
-    if (typeof prop === 'string' && /^\d+$/.test(prop)) {
-      const idx = Number(prop);
-      const arr = (seq.get('value') ?? []).filter((v: any) => v != null);
-      const item = arr[idx];
-      return item instanceof Node ? toLessNode(item, { cache }) : item;
-    }
-    return undefined;
+      (seq.value ?? []).filter((v: any) => v != null).length
   },
   accept: (seq, visitor, cache) => {
-    const raw = seq.get('value') ?? [];
+    const raw = seq.value ?? [];
     if (!Array.isArray(raw) || raw.length === 0) {
       return seq;
     }
@@ -46,9 +37,9 @@ export const transformSequenceToLess = createFromAdapter<Sequence>({
             jessReplacement.post = item.post;
           }
           seq.adopt(jessReplacement);
-          const seqArr = seq.get('value') as Node[];
+          const seqArr = seq.value as Node[];
           seqArr[i] = jessReplacement;
-          seq.setData('value', seqArr);
+          seq.set(null, seqArr);
         } catch {
           // If we can't convert it back, ignore
         }

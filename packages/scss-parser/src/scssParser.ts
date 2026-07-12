@@ -49,15 +49,22 @@ export class ScssParser {
     if (options?.context) {
       parser.context = options.context;
     }
+    parser.context.opts.trivia = undefined;
     parser.input = lexerResult.tokens as IToken[];
-    const tree = (parser as any)[rule]() as Node;
+    const tree = (parser as any)[rule]() as Node | undefined;
+    const trivia = (parser as ScssRecursiveParser & { trivia: IParseResult['trivia'] }).trivia;
+    parser.context.opts.trivia = trivia;
+    if (tree) {
+      tree.treeContext.opts.trivia = trivia;
+    }
 
     const warnings = [...parser.warnings];
 
     return {
-      tree,
+      tree: tree as Node,
       lexerResult,
       errors: parser.errors as any,
+      trivia,
       warnings
     };
   }

@@ -4,7 +4,6 @@
 import type { RuleContext, ExtendTarget, TokenMap } from '../lessRecursiveParser.js';
 import type { IToken, IOrAlt } from 'chevrotain';
 import {
-  type TreeContext,
   Node,
   Ampersand,
   Block,
@@ -20,6 +19,7 @@ import {
   AtRule,
   Interpolated,
   InterpolatedSelector,
+  AttributeSelector,
   Reference,
   Extend,
   Mixin,
@@ -36,14 +36,13 @@ import {
   type ComplexSelectorValue,
   type ComplexSelectorComponent,
   type Selector,
-  INTERPOLATION_PLACEHOLDER,
   type SimpleSelector,
   isNode,
   N,
   StyleImport
 } from '@jesscss/core';
 
-import { getInterpolatedOrString } from '../utils.js';
+import { createInterpolatedReference, getInterpolatedNode, getInterpolatedOrString } from '../utils.js';
 import { all } from 'known-css-properties';
 
 /** Use `any` for `this` to avoid structural incompatibility between LessRecursiveParser and CssRecursiveParser */
@@ -51,40 +50,75 @@ type P = any;
 type Alt = IOrAlt<any>[];
 type AltContext = (ctx?: RuleContext) => Alt;
 
-// ── Helper: interpolation regex and getInterpolated ──────────────────
+export function attributeSelector(this: P, T: TokenMap, valueAlt?: AltContext) {
+  const $ = this;
 
-let interpolatedRegex = /([$@]){([^}]+)}/g;
+  valueAlt ??= () => [
+    {
+      GATE: () => !$.isType(T.InterpolatedIdent),
+      ALT: () => {
+        const token = $.CONSUME5(T.Ident);
+        if ($.RECORDING_PHASE) {
+          return;
+        }
+        return new Any(token.image, { role: 'ident' }, $.getLocationInfo(token), $.context);
+      }
+    },
+    {
+      GATE: () => $.isType(T.InterpolatedIdent),
+      ALT: () => {
+        const token = $.CONSUME(T.InterpolatedIdent);
+        if ($.RECORDING_PHASE) {
+          return;
+        }
+        const match = /([$@])\{([^}]+)\}/.exec(token.image);
+        if (match && match[0] === token.image) {
+          return createInterpolatedReference(
+            match[1]!,
+            match[2]!,
+            $.getLocationInfo(token),
+            $.context
+          );
+        }
+        const result = getInterpolatedOrString(token.image, $.getLocationInfo(token), $.context);
+        return typeof result === 'string'
+          ? new Any(result, { role: 'ident' }, $.getLocationInfo(token), $.context)
+          : result;
+      }
+    },
+    { ALT: () => $.SUBRULE($.string) }
+  ];
 
-const createInterpolatedReference = (
-  prefix: string,
-  value: string,
-  location: LocationInfo,
-  context: TreeContext
-): Reference => {
-  const isProperty = prefix === '$';
-  const key = isProperty
-    ? new Quoted(value, { quote: '\'' }, location, context)
-    : value;
-  return new Reference(
-    { key },
-    { type: isProperty ? 'property' : 'variable', role: 'ident' },
-    location,
-    context
-  );
-};
+  return (ctx: RuleContext = {}) => {
+    const RECORDING_PHASE = $.RECORDING_PHASE;
+    $.startRule();
 
-const getInterpolated = (name: string, location: LocationInfo, context: TreeContext): Interpolated => {
-  const replacements: Node[] = [];
-  let result: RegExpExecArray | null;
-  let source = name;
-  while (result = interpolatedRegex.exec(name)) {
-    const [match, propOrVar, value] = result;
-    source = source.replace(match, INTERPOLATION_PLACEHOLDER);
-    const reference = createInterpolatedReference(propOrVar!, value!, location, context);
-    replacements.push(reference);
-  }
-  return new Interpolated({ source, replacements }, { role: 'ident' }, location, context);
-};
+    $.CONSUME2(T.LSquare);
+    const key: Any = $.SUBRULE2($.attributeName);
+    let op: IToken | undefined;
+    let value: Node | undefined;
+    let mod: IToken | undefined;
+    $.OPTION(() => {
+      op = $.OR([
+        { ALT: () => $.CONSUME4(T.Eq) },
+        { ALT: () => $.CONSUME6(T.AttrMatch) }
+      ]);
+      value = $.OR2(valueAlt!(ctx));
+    });
+    $.OPTION2(() => mod = $.CONSUME7(T.AttrFlag));
+    $.CONSUME8(T.RSquare);
+
+    if (!RECORDING_PHASE) {
+      const location = $.endRule();
+      return new AttributeSelector({
+        name: key.valueOf(),
+        op: op?.image,
+        value,
+        mod: mod?.image
+      }, undefined, location, $.context);
+    }
+  };
+}
 
 // ── Helper: getAmpersandTemplateValue ────────────────────────────────
 
@@ -182,8 +216,7 @@ function groupExtendsByTargetAndFlag(
   const groups = new Map<string, Extend | Extend[]>();
 
   for (const ext of extendNodes) {
-    let target = ext.target;
-    let flag = ext.get('flag') ?? 1; // ExtendFlag.Exact = 1
+    const { target, flag = 1 } = ext.value; // ExtendFlag.Exact = 1
     // Create a key from target valueOf() and flag
     const key = `${target.valueOf()}|${flag}`;
 
@@ -225,11 +258,11 @@ function mergeExtends(
      * selector lists with different flags are not merged.
      */
     if (thisFlag === currentFlag) {
-      let target = currentNode.target;
+      const { target } = currentNode.value;
       if (!(target instanceof SelectorList)) {
-        currentNode.setData('target', new SelectorList([target, ext.target], undefined, location, context));
+        currentNode.set('target', new SelectorList([target, ext.target], undefined, location, context));
       } else {
-        target.setData([...target.value, ext.target]);
+        target.set(null, [...target.value, ext.target]);
       }
     } else {
       if (!extendNodes || !extendNodes.includes(currentNode)) {
@@ -304,16 +337,16 @@ export function relativeSelector(this: P, T: TokenMap) {
           let combinator = new Combinator(coImage, undefined, $.getLocationInfo(co), $.context);
           let targetNode =
             node instanceof Extend
-              ? node.selector
+              ? node.value.selector
               : node;
           if (targetNode instanceof ComplexSelector) {
-            targetNode.setData([combinator, ...targetNode.value]);
+            targetNode.set(null, [combinator, ...targetNode.value]);
             targetNode._location = $.getLocationFromNodes(targetNode.value);
           } else {
             let nodes = [combinator, targetNode as ComplexSelectorComponent];
             let complex = new ComplexSelector(nodes, undefined, $.getLocationFromNodes(nodes), $.context);
             if (node instanceof Extend) {
-              node.setData('selector', complex);
+              node.set('selector', complex);
               let location = node.location;
               location[0] = co.startOffset;
               location[1] = co.startLine;
@@ -352,9 +385,9 @@ export function forgivingSelectorList(this: P, T: TokenMap) {
         if (!RECORDING_PHASE) {
           i++;
           if (i === 1 && ctx.qualifiedRule) {
-            sequences!.push($.wrap(selector, true));
+            sequences!.push(selector);
           } else {
-            sequences!.push($.wrap(selector, i === 1 ? true : 'both'));
+            sequences!.push(selector);
           }
         }
       }
@@ -391,9 +424,9 @@ export function selectorList(this: P, T: TokenMap) {
         if (!RECORDING_PHASE) {
           i++;
           if (i === 1 && ctx.qualifiedRule) {
-            sequences!.push($.wrap(selector, true));
+            sequences!.push(selector);
           } else {
-            sequences!.push($.wrap(selector, i === 1 ? true : 'both'));
+            sequences!.push(selector);
           }
         }
       }
@@ -436,8 +469,6 @@ export function compoundSelector(this: P, T: TokenMap) {
       DEF: () => {
         let sel: SimpleSelector = $.SUBRULE2($.simpleSelector, { ARGS: [ctx] });
         if (!RECORDING_PHASE) {
-          /** Make sure we don't add implicit whitespace */
-          sel.pre = 0;
           selectors!.push(sel);
         }
       }
@@ -487,10 +518,7 @@ export function complexSelector(this: P, T: TokenMap) {
         if (!RECORDING_PHASE) {
           if (co) {
             const coImg = co.image as Combinators;
-            combinator = $.wrap(
-              new Combinator(coImg, undefined, $.getLocationInfo(co), $.context),
-              'both'
-            );
+            combinator = new Combinator(coImg, undefined, $.getLocationInfo(co), $.context);
           } else {
             const startOffset = $.LA(1).startOffset;
             combinator = new Combinator(' ', undefined, undefined, $.context);
@@ -569,7 +597,8 @@ export function ampersandExtend(this: P, T: TokenMap) {
   return (ctx: RuleContext = {}) => {
     $.startRule();
 
-    $.CONSUME(T.AmpersandExtend);
+    $.CONSUME(T.Ampersand);
+    $.CONSUME(T.Extend);
     ctx.inExtend = true;
     $.SUBRULE($.selectorList, { ARGS: [ctx] });
     ctx.inExtend = false;
@@ -672,7 +701,7 @@ export function simpleSelector(this: P, T: TokenMap) {
         ALT: () => {
           let amp = $.CONSUME(T.Ampersand);
           const value = getAmpersandTemplateValue(amp.image);
-          return new Ampersand({ template: value }, undefined, $.getLocationInfo(amp), $.context);
+          return new Ampersand({ appendValue: value }, undefined, $.getLocationInfo(amp), $.context);
         }
       },
       {
@@ -707,10 +736,12 @@ export function simpleSelector(this: P, T: TokenMap) {
           $.CONSUME(T.AmpersandTemplateEnd);
           const location = $.endRule();
           const value = parts.join('');
-          const template: string | Nil = sawQuoted && value === ''
-            ? new Nil()
-            : value;
-          return new Ampersand({ template }, undefined, location, $.context);
+          const appendValue = sawQuoted && value === ''
+            ? ''
+            : value === 'nil'
+              ? ''
+              : value;
+          return new Ampersand({ appendValue }, undefined, location, $.context);
         }
       },
       { ALT: () => $.CONSUME(T.InterpolatedIdent) },
@@ -747,7 +778,7 @@ export function simpleSelector(this: P, T: TokenMap) {
               $.context
             );
           }
-          return getInterpolated(image, location, $.context);
+          return getInterpolatedNode(image, location, $.context);
         }
       },
       */
@@ -762,7 +793,7 @@ export function simpleSelector(this: P, T: TokenMap) {
     if ($.isToken(selector)) {
       if (selector.tokenType.name === 'Ampersand') {
         const value = getAmpersandTemplateValue(selector.image);
-        return new Ampersand({ template: value }, undefined, $.getLocationInfo(selector), $.context);
+        return new Ampersand({ appendValue: value }, undefined, $.getLocationInfo(selector), $.context);
       }
       if (
         selector.tokenType.name === 'InterpolatedSelector'
@@ -770,7 +801,7 @@ export function simpleSelector(this: P, T: TokenMap) {
       ) {
         // Create an InterpolatedSelector wrapper for interpolated selectors
         let nameValue = selector.image;
-        let interpolatedNode = getInterpolated(nameValue, $.getLocationInfo(selector), $.context);
+        let interpolatedNode = getInterpolatedNode(nameValue, $.getLocationInfo(selector), $.context);
 
         return new InterpolatedSelector(interpolatedNode, undefined, $.getLocationInfo(selector), $.context);
       }
@@ -838,8 +869,11 @@ export function anonymousMixinDefinition(this: P, T: TokenMap) {
         }
 
         const validPropertyCount = properties.filter((decl) => {
-          const name = decl.name;
-          const propName = typeof name === 'string' ? name : name.valueOf();
+          const { name } = decl.value;
+          const propName = typeof name === 'string' ? name : name?.valueOf();
+          if (!propName) {
+            return false;
+          }
           // Skip custom properties (--*)
           if (propName.startsWith('--')) {
             return true; // Custom properties are always valid
@@ -939,7 +973,7 @@ export function importAtRule(this: P, T: TokenMap) {
       let url = urlNode.valueOf();
       isAtRule = isCssUrl(url, options);
 
-      let preludeNodes: Node[] = [$.wrap(urlNode)];
+      let preludeNodes: Node[] = [urlNode];
 
       if (extraNodes && extraNodes.length) {
         if (isAtRule) {
@@ -957,7 +991,7 @@ export function importAtRule(this: P, T: TokenMap) {
       if (isAtRule) {
         const prelude = new Sequence(preludeNodes, undefined, $.getLocationFromNodes(preludeNodes), $.context);
         const atRule = new AtRule({
-          name: $.wrap(new Any(name.image, { role: 'atkeyword' }, $.getLocationInfo(name), $.context), true),
+          name: new Any(name.image, { role: 'atkeyword' }, $.getLocationInfo(name), $.context),
           prelude: prelude
         }, undefined, location, $.context);
         return atRule;
@@ -1093,9 +1127,9 @@ export function varDeclarationOrCall(this: P, T: TokenMap) {
     }
 
     return new VarDeclaration({
-      name: $.wrap(nameNode, true) as any,
-      value: $.wrap(value, true),
-      important: important ? $.wrap(new Any(important.image, { role: 'flag' }, $.getLocationInfo(important), $.context), true) : undefined
+      name: nameNode as any,
+      value: value,
+      important: important ? new Any(important.image, { role: 'flag' }, $.getLocationInfo(important), $.context) : undefined
     }, undefined, location, $.context);
   };
 }
@@ -1123,7 +1157,7 @@ export function selectorCapture(this: P, T: TokenMap) {
       return;
     }
     return new SelectorCapture(
-      $.wrap(selector, true),
+      selector,
       undefined,
       location,
       $.context
@@ -1192,7 +1226,7 @@ export function squareValue(this: P, T: TokenMap) {
           let nodes: Node[] = [];
           $.MANY(() => {
             let node = $.SUBRULE($.anyInnerValue, { ARGS: [ctx] });
-            const wrapped = $.wrap(node);
+            const wrapped = node;
             nodes.push(wrapped);
           });
           const seq = new Sequence(nodes, undefined, $.getLocationFromNodes(nodes), $.context);

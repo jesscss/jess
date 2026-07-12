@@ -16,13 +16,13 @@ const unit = defineFunction(
     if (newUnit) {
       const unitValue = typeof newUnit.value === 'string' ? newUnit.value : newUnit.valueOf();
       return new Dimension({
-        number: number.number,
+        number: number.value.number,
         unit: unitValue
       });
     }
 
     // Otherwise, return the unit as a quoted string
-    const unitStr = number.unit || '';
+    const unitStr = number.value.unit || '';
     return new Quoted(unitStr, { quote: '"' });
   },
   {

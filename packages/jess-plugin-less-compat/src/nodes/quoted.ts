@@ -4,7 +4,7 @@ import { createFromAdapter, selfVisitAccept } from '../transform/adapter.js';
 export const transformQuotedToLess = createFromAdapter<Quoted>({
   fields: {
     value: (q) => {
-      const value = q.get('value');
+      const value = q.value;
       if (typeof value === 'string') {
         return value;
       }
@@ -12,7 +12,7 @@ export const transformQuotedToLess = createFromAdapter<Quoted>({
         return value.value;
       }
       if (value instanceof Interpolated) {
-        return String(value.get('source'));
+        return String(value.value.source);
       }
       return String(value);
     },

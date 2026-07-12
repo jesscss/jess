@@ -1,5 +1,6 @@
-import { vardecl, coll, decl, any, rules, Node } from '..';
+import { vardecl, coll, decl, any, rules, Node } from '../index.js';
 import { Context } from '../../context.js';
+import { nil } from '../index.js';
 
 let context: Context;
 
@@ -51,6 +52,42 @@ describe('Let', () => {
       );
     // rule.toModule(context, out)
     // expect(out.toString()).toBe('let brandColor = $J.expr([$J.any("#eee")])')
+    });
+
+    it('serializes parameter vars without nil defaults as bare bindings', () => {
+      const rule = vardecl({
+        name: 'tone',
+        value: nil()
+      }, {
+        paramVar: true
+      });
+
+      expect(rule.toTrimmedString()).toBe('$tone');
+    });
+
+    it('renders visible parameter vars through render(context)', () => {
+      const rule = vardecl({
+        name: 'tone',
+        value: nil()
+      }, {
+        paramVar: true
+      });
+
+      expect(rule.render(context)).toBe('$tone');
+    });
+
+    it('resolves visible parameter vars without touching render state', async () => {
+      const rule = vardecl({
+        name: 'tone',
+        value: nil()
+      }, {
+        paramVar: true
+      });
+
+      const resolved = await rule.resolve(context);
+
+      expect(resolved.toTrimmedString()).toBe('$tone');
+      expect(context.printState.writer).toBeUndefined();
     });
   });
 

@@ -4,74 +4,52 @@ import {
   F_EXTEND_TARGET
 } from './node.js';
 import { type Context } from '../context.js';
-import { Selector } from './selector.js';
+import { attachSelectorBitLibrary, Selector } from './selector.js';
+
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
-import { selectorMatch } from './util/selector-match-core.js';
-import { setField } from './util/field-helpers.js';
-
-export type SelectorListChildData = { value: Selector[] };
-
-export interface SelectorList {
-  type: 'SelectorList';
-  shortType: 'sellist';
-}
+import { selectorCompare } from './util/compare.js';
 
 /** Constructs */
-export class SelectorList extends Selector<Selector[], any, SelectorListChildData> {
-  static override childKeys = ['value'] as const;
-
-  /** @internal */ value!: Selector[];
-
-  constructor(value: Selector[], options?: any, location?: any, treeContext?: any) {
-    super(value, options, location, treeContext);
-    this.value = value;
-    for (const child of value) {
-      if (child instanceof Selector) {
-        this.adopt(child);
-      }
-    }
+export class SelectorList extends Selector<Selector[]> {
+  private withSelectors(value: Selector[]): this {
+    const node = this.clone();
+    node.set(null, value);
+    return node;
   }
 
-  get length() {
-    return this.value.length;
-  }
-
-  /** Normalize selectors on separate lines with indentation */
-  override toTrimmedString(options?: PrintOptions) {
+  private renderSelectorListSyntax(options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;
     let depth = options.depth!;
     let space = ''.padStart(depth * 2);
-    // Flatten generated top-level `:is(...)` items into the selector list.
-    const sourceValue = this.get('value', options.context);
     const value: Selector[] = [];
-    for (const item of sourceValue) {
-      if (isNode(item, N.PseudoSelector) && item.get('name') === ':is') {
-        const arg = item.get('arg');
+    for (const item of this.value) {
+      if (isNode(item, N.PseudoSelector) && item.value.name === ':is') {
+        const arg = item.value.arg;
         if (arg && isNode(arg, N.SelectorList)) {
-          value.push(...arg.get('value'));
+          value.push(...arg.value);
           continue;
         }
       }
-      if (isNode(item, N.CompoundSelector) && item.get('value').length === 1) {
-        const only = item.get('value')[0]!;
-        if (isNode(only, N.PseudoSelector) && only.get('name') === ':is') {
-          const arg = only.get('arg');
+      if (isNode(item, N.CompoundSelector) && item.value.length === 1) {
+        const only = item.value[0]!;
+        if (isNode(only, N.PseudoSelector) && only.value.name === ':is') {
+          const arg = only.value.arg;
           if (arg && isNode(arg, N.SelectorList)) {
-            value.push(...arg.get('value'));
+            value.push(...arg.value);
             continue;
           }
         }
       }
-      if (isNode(item, N.ComplexSelector) && item.get('value').length === 1) {
-        const only = item.get('value')[0]!;
-        if (isNode(only, N.PseudoSelector) && only.get('name') === ':is') {
-          const arg = only.get('arg');
+      if (isNode(item, N.ComplexSelector) && item.value.length === 1) {
+        const only = item.value[0]!;
+        if (isNode(only, N.PseudoSelector) && only.value.name === ':is') {
+          const arg = only.value.arg;
           if (arg && isNode(arg, N.SelectorList)) {
-            value.push(...arg.get('value'));
+            value.push(...arg.value);
             continue;
           }
         }
@@ -109,98 +87,119 @@ export class SelectorList extends Selector<Selector[], any, SelectorListChildDat
     return w.getSince(mark);
   }
 
+  protected override computeKeySets(): void {
+    if (this._keySet && this._visibleKeySet && this._requiredKeySet) {
+      return;
+    }
+    const library = this._requireKeySetLibrary();
+    const { value } = this;
+    let keySet = library.getBitset();
+    let visibleKeySet = library.getBitset();
+    for (const selector of value) {
+      selector.keySetLibrary ??= library;
+      keySet = keySet.or(selector.keySet);
+      visibleKeySet = visibleKeySet.or(selector.visibleKeySet);
+    }
+    this._keySet = keySet;
+    this._visibleKeySet = visibleKeySet;
+    // SelectorLists represent alternatives - requiredKeySet is empty
+    // (any branch could match, so no single key is "required")
+    this._requiredKeySet = library.getBitset();
+  }
+
+  /** Normalize selectors on separate lines with indentation */
+  override toTrimmedString(options?: PrintOptions) {
+    return this.renderSelectorListSyntax(options);
+  }
+
   override valueOf() {
     const itemValues = this.value.map(item => item.valueOf());
     return itemValues.join(',');
   }
 
-  override compare(b: Selector, context?: Context): 0 | 1 | -1 | undefined {
+  override compare(b: Selector): 0 | 1 | -1 | undefined {
     if (!isNode(b, N.Selector)) {
-      return super.compare(b as unknown as Selector, context);
+      return super.compare(b);
     }
-    const semantic = selectorMatch(this, b, undefined, context);
-    if (semantic.fullMatch) {
+    const semantic = selectorCompare(this, b);
+    if (semantic.isEquivalent) {
       return 0;
     }
-    return super.compare(b, context);
+    return super.compare(b);
   }
 
   override evalNode(context: Context): MaybePromise<SelectorList | Selector> {
+    attachSelectorBitLibrary(this, context.selectorBits);
     return pipe(
       () => {
-        const list = super.evalNode(context) as SelectorList;
-        const value = [...list.get('value', context)];
-        let changed = false;
-        const maybe = serialForEach(value.map((_, i) => i), (i) => {
-          const out = value[i]!.eval(context);
+        const list = this;
+        const currentValue = list.value;
+        const evaluatedValue = [...currentValue];
+        const maybe = serialForEach(evaluatedValue, (item, i) => {
+          const out = item.eval(context);
           if (isThenable(out)) {
-            return (out as Promise<Selector>).then((res) => {
-              if (res !== value[i]) {
-                value[i] = res as Selector;
-                changed = true;
+            return Promise.resolve(out).then((res) => {
+              if (isNode(res, N.Selector)) {
+                evaluatedValue[i] = res;
               }
               return undefined;
             });
           }
-          if ((out as Selector) !== value[i]) {
-            value[i] = out as Selector;
-            changed = true;
+          if (isNode(out, N.Selector)) {
+            evaluatedValue[i] = out;
           }
           return undefined;
         });
         if (isThenable(maybe)) {
-          return (maybe as Promise<void>).then(() => {
-            if (changed) {
-              setField(list, 'value', value, context);
-            }
-            return list;
-          });
+          return (maybe as Promise<void>).then(() => [list, currentValue, evaluatedValue] as const);
         }
-        if (changed) {
-          setField(list, 'value', value, context);
-        }
-        return list;
+        return [list, currentValue, evaluatedValue] as const;
       },
-      (list) => {
-        const value = list.get('value', context);
+      ([list, currentValue, evaluatedValue]) => {
+        // Flatten top-level `:is(a, b)` items into the selector list.
+        // This is safe in SelectorList context (it is equivalent to `a, b`).
         const flattened: Selector[] = [];
-        for (const item of value) {
-          if (isNode(item, N.PseudoSelector) && item.get('name') === ':is') {
-            const arg = item.get('arg');
+        for (const item of evaluatedValue) {
+          if (isNode(item, N.PseudoSelector) && item.value.name === ':is') {
+            const arg = item.value.arg;
             if (arg && isNode(arg, N.SelectorList)) {
-              flattened.push(...arg.get('value'));
+              flattened.push(...arg.value);
               continue;
             }
           }
-          if (isNode(item, N.CompoundSelector) && item.get('value').length === 1) {
-            const only = item.get('value')[0]!;
-            if (isNode(only, N.PseudoSelector) && only.get('name') === ':is') {
-              const arg = only.get('arg');
+          if (isNode(item, N.CompoundSelector) && item.value.length === 1) {
+            const only = item.value[0]!;
+            if (isNode(only, N.PseudoSelector) && only.value.name === ':is') {
+              const arg = only.value.arg;
               if (arg && isNode(arg, N.SelectorList)) {
-                flattened.push(...arg.get('value'));
+                flattened.push(...arg.value);
                 continue;
               }
             }
           }
-          if (isNode(item, N.ComplexSelector) && item.get('value').length === 1) {
-            const only = item.get('value')[0]!;
-            if (isNode(only, N.PseudoSelector) && only.get('name') === ':is') {
-              const arg = only.get('arg');
+          if (isNode(item, N.ComplexSelector) && item.value.length === 1) {
+            const only = item.value[0]!;
+            if (isNode(only, N.PseudoSelector) && only.value.name === ':is') {
+              const arg = only.value.arg;
               if (arg && isNode(arg, N.SelectorList)) {
-                flattened.push(...arg.get('value'));
+                flattened.push(...arg.value);
                 continue;
               }
             }
           }
           flattened.push(item);
         }
-        if (flattened.length !== value.length) {
-          setField(list, 'value', flattened, context);
-        }
         if (flattened.length === 1) {
           return flattened[0]!;
         }
-        return list;
+        const changed = (
+          flattened.length !== currentValue.length
+          || flattened.some((item, idx) => item !== currentValue[idx])
+        );
+        if (!changed) {
+          return list;
+        }
+        return list.withSelectors(flattened);
       }
     );
   }

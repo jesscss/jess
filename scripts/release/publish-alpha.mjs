@@ -87,6 +87,36 @@ function packageVersionExists(pkgName, version) {
   }
 }
 
+function getTaggedVersion(pkgName, tag) {
+  const result = spawnSync('npm', ['view', `${pkgName}@${tag}`, 'version', '--json'], {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+    shell: process.platform === 'win32'
+  });
+
+  if (result.status !== 0) {
+    return null;
+  }
+
+  const output = (result.stdout ?? '').trim();
+  if (!output) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(output);
+    if (typeof parsed === 'string') {
+      return parsed;
+    }
+    if (Array.isArray(parsed)) {
+      return parsed.at(-1) ?? null;
+    }
+    return null;
+  } catch {
+    return output;
+  }
+}
+
 function assertNpmAuth() {
   const result = spawnSync('npm', ['whoami'], {
     encoding: 'utf8',
@@ -178,8 +208,23 @@ for (const pkgName of plan.publishOrder) {
     publishArgs.push('--dry-run');
   }
 
-  if (!options.dryRun && packageVersionExists(pkgName, version)) {
-    console.log(`\nSkipping ${pkgName}@${version}: already exists on npm.`);
+  const taggedVersion = getTaggedVersion(pkgName, options.tag);
+  const versionExists = packageVersionExists(pkgName, version);
+
+  if (versionExists) {
+    if (taggedVersion === version) {
+      console.log(`\nSkipping ${pkgName}@${version}: ${options.tag} already points to that version.`);
+      continue;
+    }
+
+    console.log(
+      `\n${options.dryRun ? 'Dry-run note' : 'Retagging'} ${pkgName}@${version}: `
+      + `${options.tag} currently points to ${taggedVersion ?? '(not found)'}`
+    );
+
+    if (!options.dryRun) {
+      run('npm', ['dist-tag', 'add', `${pkgName}@${version}`, options.tag], rootDir);
+    }
     continue;
   }
 

@@ -1,37 +1,11 @@
 import type { Context } from '../context.js';
-import { defineType, Node, type OptionalLocation, type NodeOptions, type TreeContext } from './node.js';
+import { defineType } from './node.js';
 import { SimpleSelector } from './selector-simple.js';
-import { Selector } from './selector.js';
-import type { BitSetLibrary } from './util/bitset.js';
+import { attachSelectorBitLibrary, Selector } from './selector.js';
 import { Interpolated } from './interpolated.js';
-import { getPrintOptions, type PrintOptions } from './util/print.js';
-import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
+import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 
-const { isArray } = Array;
-
-function propagateKeySetLibrary(sel: Selector, library: BitSetLibrary<string>) {
-  sel.keySetLibrary = library;
-  const childKeys = (sel.constructor as typeof Node).childKeys;
-  if (!childKeys) {
-    return;
-  }
-  for (const key of childKeys) {
-    const field = (sel as unknown as Record<string, unknown>)[key];
-    if (isArray(field)) {
-      for (const child of field as Selector[]) {
-        if (child && !child.keySetLibrary) {
-          propagateKeySetLibrary(child, library);
-        }
-      }
-    }
-  }
-}
-
-export type InterpolatedSelectorChildData = { value: Interpolated };
-
-export interface InterpolatedSelector extends SimpleSelector<Interpolated, NodeOptions, InterpolatedSelectorChildData> {
-  type: 'InterpolatedSelector';
-  shortType: 'interpolated-selector';
+export interface InterpolatedSelector extends SimpleSelector<Interpolated> {
   eval(context: Context): MaybePromise<Selector>;
 }
 
@@ -39,19 +13,7 @@ export interface InterpolatedSelector extends SimpleSelector<Interpolated, NodeO
  * A selector that wraps an interpolated value
  * This allows interpolation to be used in selector contexts
  */
-export class InterpolatedSelector extends SimpleSelector<Interpolated, NodeOptions, InterpolatedSelectorChildData> {
-  static override childKeys = ['value'] as const;
-
-  /** @internal */ value!: Interpolated;
-
-  constructor(value: Interpolated, options?: NodeOptions, location?: OptionalLocation, treeContext?: TreeContext) {
-    super(value, options, location, treeContext);
-    this.value = value;
-    if (this.value instanceof Node) {
-      this.adopt(this.value);
-    }
-  }
-
+export class InterpolatedSelector extends SimpleSelector<Interpolated> {
   get isClass() {
     return /^\./.test(this.valueOf());
   }
@@ -65,24 +27,13 @@ export class InterpolatedSelector extends SimpleSelector<Interpolated, NodeOptio
   }
 
   override evalNode(context: Context): MaybePromise<Selector> {
-    const result = this.get('value', context).evalToSelector(context);
-    const library = context.selectorBits;
-    if (isThenable(result)) {
-      return (result as Promise<Selector>).then((sel) => {
-        propagateKeySetLibrary(sel, library);
-        return sel;
-      });
+    const { selectorBits } = context;
+    this.keySetLibrary ??= selectorBits;
+    const out = this.value.evalToSelector(context);
+    if (isThenable(out)) {
+      return (out as Promise<Selector>).then((selector) => attachSelectorBitLibrary(selector, selectorBits));
     }
-    propagateKeySetLibrary(result as Selector, library);
-    return result;
-  }
-
-  override toTrimmedString(options?: PrintOptions): string {
-    options = getPrintOptions(options);
-    const w = options.writer!;
-    const mark = w.mark();
-    this.get('value', options.context).toString(options);
-    return w.getSince(mark);
+    return attachSelectorBitLibrary(out as Selector, selectorBits);
   }
 
   override valueOf(): string {

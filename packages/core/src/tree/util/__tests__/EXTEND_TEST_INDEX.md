@@ -2,9 +2,7 @@
 
 This doc exists to make **extend-related tests** easy to find (especially for LLM-assisted debugging).
 
-**Before changing extend logic:** See `../EXTEND_RULES.md` for the single set of rules and the header comments in `../extend.ts` for implementation context. Keep operational “what to run / where to look” guidance in Cursor-native files (e.g. `.cursor/rules/subtrees/core__extend.mdc`).
-
-Historical deep-dive audits and refactoring notes were archived/removed from this directory to reduce noise; use git history if you need them.
+**Before changing extend logic:** See `../EXTEND_RULES.md` for the single set of rules and the header comments in `../extend.ts` for implementation context. Keep operational “what to run / where to look” guidance in Cursor-native files (e.g. `.cursor/rules/subtrees/core__extend.mdc`).\n+\n+Historical deep-dive audits and refactoring notes were archived/removed from this directory to reduce noise; use git history if you need them.
 
 ## “Where are the extend tests?”
 
@@ -18,25 +16,42 @@ There are two main clusters:
 ### 2) Extend **utility / algorithm** tests
 Located in `src/tree/util/__tests__/`:
 
-- `extend-core-unit.test.ts`
-  - Main focused unit suite for the rebuilt `tryExtendSelector()` path in `extend-core.ts`.
-  - This is the current source of truth for exact vs partial rewriting, ampersand crossing/hoisting, and seam-aware rewrite behavior.
+- `extend-selector-algorithm.test.ts`
+  - Core selector matching / replacement algorithm expectations.
+  - **Partial match wrap rule (EXTEND_RULES.md §3a):** "Partial match wrap rule" describe block — within-one-compound (wrap only matched part) vs spans-combinator (wrap full segment). Expectations document intended behavior.
 
-- `selector-match-unit.test.ts`
-  - Main focused unit suite for `selectorMatch()` in `selector-match-core.ts`.
-  - This is the current source of truth for selector comparison/matching semantics, alternates, pseudo boundaries, and ampersand crossing detection.
+- `find-extendable-locations.test.ts`
+  - Direct unit coverage for `findExtendableLocations()` (the core matching/search API).
 
-- `extend-comment-handling.test.ts`
-  - Legacy-but-still-distinct coverage for comment preservation/duplication behavior.
+- `extend-ampersand.test.ts`
+  - Ampersand-related extend behavior (non-boundary and basic cases).
 
 - `extend-ampersand-boundary.test.ts`
-  - Legacy boundary-oriented tests that still exercise nested/ruleset-level ampersand behavior.
+  - Ampersand boundary-crossing scenarios (nested selector vs parent prefix).
+
+- **Invisible (implicit) ampersand extend coverage** (in `extend-selector-algorithm.test.ts`, describe “Invisible ampersand extend coverage (partial, full, just outside)”):
+  - **Partial:** Target has invisible &; find matches only the “own” part → extend without flattening & (within boundary).
+  - **Full:** Target is SelectorList with invisible & on each item; find fully matches one item’s own part → intended: append extendWith with same & (three items).
+  - **Just outside:** Find matches only own part (within boundary, & not flattened) vs find matches resolved form (boundary crossing).
+  - **partial: false:** Invisible-ampersand target with find matching only own part → no extend (exact match required).
+
+- `extend-combinator-handling.test.ts`
+  - Matching + extension behavior with combinators (` `, `>`, `+`, `~`, etc.).
+
+- `extend-duplicate-validation.test.ts`
+  - Ensures we don’t produce duplicate selector-list entries / validates dedupe rules.
+
+- `extend-comment-handling.test.ts`
+  - Ensures comments don’t break extension or comparison logic.
+
+- `extend-simplified-cases.test.ts`
+  - “Small, focused” cases to debug regressions quickly.
+
+- `extend-where-selector.test.ts`
+  - Specific matching/extension cases tied to “where selector” behavior.
 
 - `process-extends.test.ts`
   - Tests orchestration / application ordering for registered extends.
-
-- `extend-pipeline-bench.test.ts`
-  - Bench coverage, not a primary behavior suite.
 
 ## Extend evaluation / ruleset plumbing (non-util tests)
 
@@ -54,6 +69,6 @@ Located in `src/tree/util/__tests__/`:
 If you are fixing a fixture like `tests-unit/extend-exact/extend-exact.less`, the most “direct” core place to add a reproduction is:
 
 - `src/tree/__tests__/extend-eval-integration.test.ts` (if it’s an eval/print behavior)
-- `src/tree/util/__tests__/selector-match-unit.test.ts` (if it’s primarily a matcher problem)
-- `src/tree/util/__tests__/extend-core-unit.test.ts` (if it’s primarily a rewrite problem)
+- `src/tree/util/__tests__/find-extendable-locations.test.ts` (if it’s primarily a matcher problem)
 - `src/tree/util/__tests__/extend-ampersand-boundary.test.ts` (if it’s specifically about implicit `&` / parent prefix crossings)
+

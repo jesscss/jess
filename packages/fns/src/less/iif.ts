@@ -5,7 +5,7 @@ import { defineFunction, Node, Bool, Anonymous, type Lazy } from '@jesscss/core'
  */
 const iif = defineFunction(
   'if',
-  async function(condition: Bool | boolean, thenValue: Lazy<Node>, elseValue?: Lazy<Node>) {
+  async function(condition: Bool | boolean, thenValue: Lazy<Node>, elseValue?: Lazy<Node>): Promise<Node> {
     let bool = typeof condition === 'boolean' ? condition : condition.value;
     if (bool) {
       return await thenValue();

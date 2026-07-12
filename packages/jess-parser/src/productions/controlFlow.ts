@@ -1,5 +1,5 @@
 import type { JessRuleContext as RuleContext, TokenMap } from '../jessRecursiveParser.js';
-import type { IToken } from '@jesscss/parser';
+import type { IToken } from 'chevrotain';
 import {
   Any,
   Condition,
@@ -58,7 +58,7 @@ export function jessComparison(this: P, T: TokenMap) {
     }
     const negate = opTok.tokenType.name === 'NotEq';
     const op = (opTok.image === '==' || opTok.image === '!=') ? '=' : opTok.image;
-    return new Condition([$.wrap(left, true), op as '=' | '>' | '<' | '>=' | '<=', $.wrap(right)], negate ? { negate: true } : undefined, loc, $.context);
+    return new Condition([left, op as '=' | '>' | '<' | '>=' | '<=', right], negate ? { negate: true } : undefined, loc, $.context);
   };
 }
 
@@ -106,7 +106,7 @@ export function jessConditionInParens(this: P, T: TokenMap) {
         $.endRule();
         return;
       }
-      condNode = new Condition([$.wrap(expr, true)], undefined, $.getLocationFromNodes([expr])!, $.context);
+      condNode = new Condition([expr], undefined, $.getLocationFromNodes([expr])!, $.context);
     }
 
     $.CONSUME($.T.RParen);
@@ -161,7 +161,12 @@ export function jessIfStatement(this: P, T: TokenMap) {
     if ($.RECORDING_PHASE) {
       return;
     }
-    return new If({ conditions, bodies, elseBranch }, undefined, loc, $.context);
+    return new If({
+      branches: [
+        ...conditions.map((condition, index) => ({ condition, rules: bodies[index]! })),
+        ...(elseBranch ? [{ rules: elseBranch }] : [])
+      ]
+    }, undefined, loc, $.context);
   };
 }
 

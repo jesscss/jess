@@ -30,6 +30,19 @@ describe('nested pseudo-selector parsing', () => {
     expect(errors.length).toBe(0);
   });
 
+  test('nested selector with pseudo followed by descendant should parse', () => {
+    const { errors } = parser.parse(`
+      .parent {
+        table {
+          tr:last-child td {
+            padding-bottom: 0;
+          }
+        }
+      }
+    `);
+    expect(errors.length).toBe(0);
+  });
+
   test('pseudo-selector should not be confused with property declaration', () => {
     const { errors } = parser.parse('.parent { a:hover { color: red; } color: blue; }');
     expect(errors.length).toBe(0);

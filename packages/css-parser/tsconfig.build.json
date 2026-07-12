@@ -3,6 +3,8 @@
   "compilerOptions": {
     "outDir": "./lib",
     "rootDir": "./src",
+    "allowJs": false,
+    "types": ["node"],
     "noEmit": false
   },
   "include": ["src/**/*.ts"],

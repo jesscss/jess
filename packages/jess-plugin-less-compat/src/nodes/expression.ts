@@ -5,7 +5,7 @@ import { toLessNode } from '../transform/to-less.js';
 export const transformExpressionToLess = createFromAdapter<Expression>({
   fields: {
     value: (e, cache) => {
-      const value = e.get('value');
+      const value = e.value;
       if (value instanceof Node) {
         return [toLessNode(value, { cache })];
       }

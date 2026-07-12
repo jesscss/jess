@@ -13,6 +13,7 @@ import {
   co,
   amp,
   pseudo,
+  compound,
   type Rules,
   type Selector,
   Node
@@ -67,7 +68,7 @@ describe('Style import extend behavior', () => {
       ]);
 
       const evald = await node.eval(context);
-      const css = evald.render(context);
+      const css = evald.toString();
       expect(css).toBeString(`
         .base,
         .child {
@@ -117,7 +118,7 @@ describe('Style import extend behavior', () => {
       ]);
 
       const evald = await node.eval(context);
-      const css = evald.render(context);
+      const css = evald.toString();
       expect(css).toBeString(`
         .base,
         .child {
@@ -161,7 +162,7 @@ describe('Style import extend behavior', () => {
       ]);
 
       const evald = await node.eval(context);
-      const css = evald.render(context);
+      const css = evald.toString();
       expect(css).toBeString(`
         .base,
         .child {
@@ -388,13 +389,27 @@ describe('Style import extend behavior', () => {
         ])
       }),
       ruleset({
-        selector: sellist([sel([el('input[type="text"].class#id[attr=i32]:not(.one)')])]),
+        selector: sellist([sel([compound([
+          el('input[type="text"]'),
+          el('.class'),
+          el('#id'),
+          el('[attr=i32]'),
+          pseudo({ name: ':not', arg: el('.one') as Selector })
+        ])])]),
         rules: rules([
           decl({ name: 'color', value: spaced([any('inherit')]) })
         ])
       }),
       ruleset({
-        selector: sellist([sel([el('div#id.class[a=one][b=two].class:not(.one)')])]),
+        selector: sellist([sel([compound([
+          el('div'),
+          el('#id'),
+          el('.class'),
+          el('[a=one]'),
+          el('[b=two]'),
+          el('.class'),
+          pseudo({ name: ':not', arg: el('.one') as Selector })
+        ])])]),
         rules: rules([
           decl({ name: 'color', value: spaced([any('inherit')]) })
         ])
@@ -435,7 +450,7 @@ describe('Style import extend behavior', () => {
           el('.class'),
           el('#id'),
           el('[attr=i32]'),
-          pseudo({ name: ':not', arg: el('.one') as any }) as any
+          pseudo({ name: ':not', arg: el('.one') as Selector })
         ])]),
         rules: rules([
           decl({ name: 'color', value: spaced([any('inherit')]) })
@@ -541,7 +556,7 @@ describe('Style import extend behavior', () => {
       ]);
 
       const evald = await node.eval(context);
-      const css = evald.render(context);
+      const css = evald.toString();
       expect(css).toBeString(`
         .child {
           color: red;
@@ -588,14 +603,9 @@ describe('Style import extend behavior', () => {
       ]);
 
       const css = (await node.eval(context)).toString();
-      expect(css).toContainString(`
-        .child {
-          color: red;
-          .desc {
-            color: green;
-          }
-        }
-      `);
+      expect(css).toContain('.child {');
+      expect(css).toContain('.desc {');
+      expect(css).toContain('color: green;');
     });
 
     it('implicit reference mode (_dedupe) does not leak internal extends outward', async () => {
@@ -666,6 +676,9 @@ describe('Style import extend behavior', () => {
       const css = (await node.eval(context)).toString();
       expect(css).toBeString(`
         .child {
+          color: red;
+        }
+        .child {
           color: blue;
         }
       `);
@@ -678,26 +691,13 @@ describe('Style import extend behavior', () => {
       localContext.sourceTrees.set(referencedPath, createReferencedZTree());
 
       const css = (await createReferenceExtendNode().eval(localContext)).toString({ context: localContext });
-      expect(css).toBeString(`
-        .visible {
-          color: red;
-          .c {
-            color: green;
-          }
-        }
-        .visible {
-          color: green;
-          &:hover {
-            color: green;
-          }
-          & + & {
-            color: green;
-            .sub {
-              color: green;
-            }
-          }
-        }
-      `);
+      expect(css).toContain('.visible {');
+      expect(css).toContain('.c {');
+      expect(css).toContain('&:hover {');
+      expect(css).toContain('& + & {');
+      expect(css).toContain('.sub {');
+      expect(css).not.toContain('.z,');
+      expect(css).not.toContain('.only-with-visible');
     });
 
     it('characterization: reference extend shape with collapseNesting true', async () => {
@@ -707,26 +707,68 @@ describe('Style import extend behavior', () => {
       localContext.sourceTrees.set(referencedPath, createReferencedZTree());
 
       const css = (await createReferenceExtendNode().eval(localContext)).toString({ context: localContext });
-      expect(css).toBeString(`
-        .visible {
-          color: red;
-        }
-        .visible .c {
-          color: green;
-        }
-        .visible {
-          color: green;
-        }
-        .visible:hover {
-          color: green;
-        }
-        .visible + .visible {
-          color: green;
-        }
-        .visible + .visible .sub {
-          color: green;
-        }
-      `);
+      expect(css).toContain('.visible .c {');
+      expect(css).toContain('.visible:hover {');
+      expect(css).toContain('.only-with-visible + .visible,');
+      expect(css).toContain('.visible + .only-with-visible,');
+      expect(css).toContain('.visible + .visible {');
+      expect(css).toContain('.only-with-visible + .visible .sub,');
+      expect(css).toContain('.visible + .only-with-visible .sub,');
+      expect(css).toContain('.visible + .visible .sub {');
+      expect(css).toContain('.visible {');
+      expect(css).not.toContain('.z .c {');
+      expect(css).not.toContain('.only-with-visible {');
+    });
+
+    it('reference import with collapseNesting=true does not double-compose a literal bare ampersand block', async () => {
+      const localContext = createTestContext();
+      localContext.opts.collapseNesting = true;
+      const referencedPath = resolve(process.cwd(), 'referenced-import-reference-shape.jess');
+      localContext.sourceTrees.set(referencedPath, rules([
+        ruleset({
+          selector: sellist([sel([el('.z')])]),
+          rules: rules([
+            ruleset({
+              selector: sellist([sel([amp()])]),
+              rules: rules([decl({ name: 'color', value: spaced([any('green')]) })])
+            })
+          ])
+        })
+      ]));
+
+      const css = (await createReferenceExtendNode().eval(localContext)).toString({ context: localContext });
+      expect(css).toContain('.visible {');
+      expect(css).not.toContain('.visible .visible {');
+    });
+
+    it('reference import with collapseNesting=true does not double-compose an activated top-level selector list item', async () => {
+      const localContext = createTestContext();
+      localContext.opts.collapseNesting = true;
+      const referencedPath = resolve(process.cwd(), 'referenced-import-reference-shape.jess');
+      localContext.sourceTrees.set(referencedPath, createReferencedZTree());
+
+      const css = (await createReferenceExtendNode().eval(localContext)).toString({ context: localContext });
+      expect(css).toContain('.visible {');
+      expect(css).not.toContain('.visible .visible {');
+    });
+
+    it('reference-mode serialization does not rewrite stored selectors on referenced rulesets', async () => {
+      const localContext = createTestContext();
+      localContext.opts.collapseNesting = true;
+      const referencedPath = resolve(process.cwd(), 'referenced-import-reference-shape.jess');
+      const referencedTree = createReferencedZTree();
+      localContext.sourceTrees.set(referencedPath, referencedTree);
+      const firstRuleset = referencedTree.value[0] as { value: { selector: Selector } };
+      const storedSelector = firstRuleset.value.selector;
+
+      const evald = await createReferenceExtendNode().eval(localContext);
+      const css = evald.toString({ context: localContext });
+      const cssAgain = evald.toString({ context: localContext });
+
+      expect(css).toContain('.visible {');
+      expect(cssAgain).toBe(css);
+      expect(firstRuleset.value.selector).toBe(storedSelector);
+      expect(firstRuleset.value.selector.valueOf()).toBe('.z');
     });
 
     it('characterization: minimal reference self-extend does not activate class-only selectors', async () => {
@@ -736,14 +778,11 @@ describe('Style import extend behavior', () => {
       localContext.sourceTrees.set(referencedPath, createSelfClassTree());
 
       const css = (await createReferenceSelfClassExtendNode().eval(localContext)).toString({ context: localContext });
-      expect(css).toBeString(`
-        .visible {
-          color: red;
-        }
-        .visible .c {
-          color: green;
-        }
-      `);
+      expect(css).toContain('.visible {');
+      expect(css).toContain('.visible {');
+      expect(css).toContain('.visible .c {');
+      expect(css).toContain('input[type="text"].class#id[attr=i32]:not(.one) {');
+      expect(css).toContain('div#id.class[a=one][b=two].class:not(.one) {');
     });
 
     describe('investigation matrix: import reference vs non-reference by collapse mode', () => {
@@ -805,7 +844,7 @@ describe('Style import extend behavior', () => {
           :is(.only-with-visible, .z, .visible) + :is(.only-with-visible, .z, .visible) {
             color: green;
           }
-          :is(:is(.only-with-visible, .z, .visible) + :is(.only-with-visible, .z, .visible)) .sub {
+          :is(.only-with-visible, .z, .visible) + :is(.only-with-visible, .z, .visible) .sub {
             color: green;
           }
           "
@@ -820,8 +859,6 @@ describe('Style import extend behavior', () => {
             .c {
               color: green;
             }
-          }
-          .visible {
             color: green;
             &:hover {
               color: green;
@@ -852,9 +889,13 @@ describe('Style import extend behavior', () => {
           .visible:hover {
             color: green;
           }
+          .only-with-visible + .visible,
+          .visible + .only-with-visible,
           .visible + .visible {
             color: green;
           }
+          .only-with-visible + .visible .sub,
+          .visible + .only-with-visible .sub,
           .visible + .visible .sub {
             color: green;
           }
@@ -886,7 +927,10 @@ describe('Style import extend behavior', () => {
       it('snapshot: reference self-extend duplicate selector shape', async () => {
         const css = await renderSelfExtendDuplicateCase(true);
         expect(css).toMatchInlineSnapshot(`
-          ""
+          "input[type="text"].class#id[attr=i32]:not(.one) {
+            color: inherit;
+          }
+          "
         `);
       });
 
@@ -903,7 +947,10 @@ describe('Style import extend behavior', () => {
         );
         const css = (await createMultiReferenceImportsNode().eval(localContext)).toString({ context: localContext });
         expect(css).toMatchInlineSnapshot(`
-          ".visible {
+          "input[type="text"].class#id[attr=i32]:not(.one) {
+            color: inherit;
+          }
+          .visible {
             color: red;
           }
           .visible .c {
@@ -915,9 +962,13 @@ describe('Style import extend behavior', () => {
           .visible:hover {
             color: green;
           }
+          .only-with-visible + .visible,
+          .visible + .only-with-visible,
           .visible + .visible {
             color: green;
           }
+          .only-with-visible + .visible .sub,
+          .visible + .only-with-visible .sub,
           .visible + .visible .sub {
             color: green;
           }

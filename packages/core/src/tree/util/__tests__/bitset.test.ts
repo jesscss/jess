@@ -92,21 +92,24 @@ describe('BitSets and selectors', () => {
     let selector = sel([el('.foo'), co(' '), el('.bar')]);
     await selector.eval(context);
     expect(selector.keySet.equals(context.selectorBits.getBitset(['.foo', ' ', '.bar']))).toBe(true);
-    expect(selector.visibleKeySet.equals(context.selectorBits.getBitset(['.foo', ' ', '.bar']))).toBe(true);
+    // visibleKeySet excludes combinators
+    expect(selector.visibleKeySet.equals(context.selectorBits.getBitset(['.foo', '.bar']))).toBe(true);
   });
 
   it('bubbles selectors into complex keysets #2', async () => {
     let selector = sel([compound([el('a'), el('.foo')]), co(' '), el('.bar')]);
     await selector.eval(context);
     expect(selector.keySet.equals(context.selectorBits.getBitset(['a', '.foo', ' ', '.bar']))).toBe(true);
-    expect(selector.visibleKeySet.equals(context.selectorBits.getBitset(['a', '.foo', ' ', '.bar']))).toBe(true);
+    // visibleKeySet excludes combinators
+    expect(selector.visibleKeySet.equals(context.selectorBits.getBitset(['a', '.foo', '.bar']))).toBe(true);
   });
 
   it('bubbles selectors into complex keysets #3', async () => {
     let selector = sel([compound([el('a'), el('.foo')]), co('>'), el('.bar'), co('+'), el('.baz')]);
     await selector.eval(context);
     expect(selector.keySet.equals(context.selectorBits.getBitset(['a', '.foo', '>', '.bar', '+', '.baz']))).toBe(true);
-    expect(selector.visibleKeySet.equals(context.selectorBits.getBitset(['a', '.foo', '>', '.bar', '+', '.baz']))).toBe(true);
+    // visibleKeySet excludes combinators
+    expect(selector.visibleKeySet.equals(context.selectorBits.getBitset(['a', '.foo', '.bar', '.baz']))).toBe(true);
   });
 
   it('calculates subset keysets of complex selectors', async () => {

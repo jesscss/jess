@@ -1,94 +1,68 @@
 # Pre-push Check TODOs
 
-Generated: 2026-03-18T00:01:57.109Z
+Generated: 2026-04-17T13:44:36.159Z
 
 These checks failed during `--mode=upstream` and were treated as non-blocking.
 
 ## TODO Items
-1. [ ] `packages/jess-plugin-js` - `pnpm -w exec tsc -p packages/jess-plugin-js/tsconfig.build.json --noEmit` (exit 2)
-2. [ ] `packages/jess-plugin-js` - `pnpm --filter ./packages/jess-plugin-js build` (exit 1)
+1. [ ] `packages/fns` - `pnpm -w exec tsc -p packages/fns/tsconfig.build.json --noEmit` (exit 2)
+2. [ ] `packages/fns` - `pnpm --filter ./packages/fns build` (exit 1)
 
 ## Failure Details
-### 1) packages/jess-plugin-js
+### 1) packages/fns
 
-- Command: `pnpm -w exec tsc -p packages/jess-plugin-js/tsconfig.build.json --noEmit`
+- Command: `pnpm -w exec tsc -p packages/fns/tsconfig.build.json --noEmit`
 - Exit: `2`
 
 ```
-packages/jess-plugin-js/src/index.ts(5,21): error TS2307: Cannot find module 'node:fs' or its corresponding type declarations.
-packages/jess-plugin-js/src/index.ts(6,22): error TS2307: Cannot find module 'node:net' or its corresponding type declarations.
-packages/jess-plugin-js/src/index.ts(7,23): error TS2307: Cannot find module 'node:path' or its corresponding type declarations.
-packages/jess-plugin-js/src/index.ts(8,46): error TS2307: Cannot find module 'node:url' or its corresponding type declarations.
-packages/jess-plugin-js/src/index.ts(9,71): error TS2307: Cannot find module 'node:child_process' or its corresponding type declarations.
-packages/jess-plugin-js/src/index.ts(134,14): error TS2503: Cannot find namespace 'NodeJS'.
-packages/jess-plugin-js/src/index.ts(137,22): error TS2503: Cannot find namespace 'NodeJS'.
-packages/jess-plugin-js/src/index.ts(163,5): error TS2591: Cannot find name 'process'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
-packages/jess-plugin-js/src/index.ts(164,5): error TS2591: Cannot find name 'process'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
-packages/jess-plugin-js/src/index.ts(169,7): error TS2304: Cannot find name 'clearTimeout'.
-packages/jess-plugin-js/src/index.ts(179,22): error TS2304: Cannot find name 'setTimeout'.
-packages/jess-plugin-js/src/index.ts(222,9): error TS2591: Cannot find name 'process'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
-packages/jess-plugin-js/src/index.ts(223,23): error TS2591: Cannot find name 'process'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
-packages/jess-plugin-js/src/index.ts(228,23): error TS2591: Cannot find name 'process'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
-packages/jess-plugin-js/src/index.ts(287,9): error TS2591: Cannot find name 'process'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
-packages/jess-plugin-js/src/index.ts(290,38): error TS7006: Parameter 'socket' implicitly has an 'any' type.
-packages/jess-plugin-js/src/index.ts(293,26): error TS7006: Parameter 'chunk' implicitly has an 'any' type.
-packages/jess-plugin-js/src/index.ts(330,62): error TS2339: Property 'url' does not exist on type 'ImportMeta'.
-packages/jess-plugin-js/src/index.ts(342,14): error TS2591: Cannot find name 'process'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
-packages/jess-plugin-js/src/index.ts(350,29): error TS7006: Parameter 'chunk' implicitly has an 'any' type.
-packages/jess-plugin-js/src/index.ts(359,21): error TS2304: Cannot find name 'setTimeout'.
-packages/jess-plugin-js/src/index.ts(375,15): error TS2304: Cannot find name 'clearTimeout'.
-packages/jess-plugin-js/src/index.ts(386,28): error TS7006: Parameter 'err' implicitly has an 'any' type.
-packages/jess-plugin-js/src/index.ts(387,9): error TS2304: Cannot find name 'clearTimeout'.
-packages/jess-plugin-js/src/index.ts(429,7): error TS2304: Cannot find name 'clearTimeout'.
-packages/jess-plugin-js/src/index.ts(439,7): error TS2304: Cannot find name 'clearTimeout'.
-packages/jess-plugin-js/src/index.ts(458,23): error TS2304: Cannot find name 'setTimeout'.
-packages/jess-plugin-js/src/index.ts(477,34): error TS2591: Cannot find name 'process'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+packages/fns/src/less/each.ts(34,69): error TS2339: Property 'rules' does not exist on type 'Node<unknown, NodeOptions>[] | MixinValue<"name">'.
+  Property 'rules' does not exist on type 'Node<unknown, NodeOptions>[]'.
+packages/fns/src/less/each.ts(37,15): error TS2339: Property 'params' does not exist on type 'Node<unknown, NodeOptions>[] | MixinValue<"name">'.
+packages/fns/src/less/each.ts(53,23): error TS2345: Argument of type 'string | undefined' is not assignable to parameter of type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+packages/fns/src/less/each.ts(57,23): error TS2345: Argument of type 'string | undefined' is not assignable to parameter of type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+packages/fns/src/less/each.ts(61,23): error TS2345: Argument of type 'string | undefined' is not assignable to parameter of type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
 ```
 
-### 2) packages/jess-plugin-js
+### 2) packages/fns
 
-- Command: `pnpm --filter ./packages/jess-plugin-js build`
+- Command: `pnpm --filter ./packages/fns build`
 - Exit: `1`
 
 ```
-> @jesscss/plugin-js@2.0.0-alpha.5 build /Users/matthew/git/oss/jess/packages/jess-plugin-js
+> @jesscss/fns@2.0.0-alpha.5 build /Users/matthew/git/oss/jess/packages/fns
 > pnpm compile
 
 
-> @jesscss/plugin-js@2.0.0-alpha.5 compile /Users/matthew/git/oss/jess/packages/jess-plugin-js
-> tsc -b tsconfig.build.json
+> @jesscss/fns@2.0.0-alpha.5 compile /Users/matthew/git/oss/jess/packages/fns
+> tsdown --tsconfig tsconfig.build.json --no-dts && tsc -p tsconfig.build.json --emitDeclarationOnly
 
-src/index.ts(5,21): error TS2307: Cannot find module 'node:fs' or its corresponding type declarations.
-src/index.ts(6,22): error TS2307: Cannot find module 'node:net' or its corresponding type declarations.
-src/index.ts(7,23): error TS2307: Cannot find module 'node:path' or its corresponding type declarations.
-src/index.ts(8,46): error TS2307: Cannot find module 'node:url' or its corresponding type declarations.
-src/index.ts(9,71): error TS2307: Cannot find module 'node:child_process' or its corresponding type declarations.
-src/index.ts(134,14): error TS2503: Cannot find namespace 'NodeJS'.
-src/index.ts(137,22): error TS2503: Cannot find namespace 'NodeJS'.
-src/index.ts(163,5): error TS2591: Cannot find name 'process'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
-src/index.ts(164,5): error TS2591: Cannot find name 'process'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
-src/index.ts(169,7): error TS2304: Cannot find name 'clearTimeout'.
-src/index.ts(179,22): error TS2304: Cannot find name 'setTimeout'.
-src/index.ts(222,9): error TS2591: Cannot find name 'process'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
-src/index.ts(223,23): error TS2591: Cannot find name 'process'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
-src/index.ts(228,23): error TS2591: Cannot find name 'process'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
-src/index.ts(287,9): error TS2591: Cannot find name 'process'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
-src/index.ts(290,38): error TS7006: Parameter 'socket' implicitly has an 'any' type.
-src/index.ts(293,26): error TS7006: Parameter 'chunk' implicitly has an 'any' type.
-src/index.ts(330,62): error TS2339: Property 'url' does not exist on type 'ImportMeta'.
-src/index.ts(342,14): error TS2591: Cannot find name 'process'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
-src/index.ts(350,29): error TS7006: Parameter 'chunk' implicitly has an 'any' type.
-src/index.ts(359,21): error TS2304: Cannot find name 'setTimeout'.
-src/index.ts(375,15): error TS2304: Cannot find name 'clearTimeout'.
-src/index.ts(386,28): error TS7006: Parameter 'err' implicitly has an 'any' type.
-src/index.ts(387,9): error TS2304: Cannot find name 'clearTimeout'.
-src/index.ts(429,7): error TS2304: Cannot find name 'clearTimeout'.
-src/index.ts(439,7): error TS2304: Cannot find name 'clearTimeout'.
-src/index.ts(458,23): error TS2304: Cannot find name 'setTimeout'.
-src/index.ts(477,34): error TS2591: Cannot find name 'process'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
- ELIFECYCLE  Command failed with exit code 1.
-/Users/matthew/git/oss/jess/packages/jess-plugin-js:
- ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  @jesscss/plugin-js@2.0.0-alpha.5 build: `pnpm compile`
+ℹ tsdown v0.21.7 powered by rolldown v1.0.0-rc.12
+ℹ config file: /Users/matthew/git/oss/jess/packages/fns/tsdown.config.ts 
+ℹ entry: ./src/index.ts
+ℹ tsconfig: tsconfig.build.json
+ℹ Build start
+ℹ Cleaning 171 files
+ℹ [CJS] lib/index.cjs  82.91 kB │ gzip: 15.33 kB
+ℹ [CJS] 1 files, total: 82.91 kB
+ℹ [ESM] lib/index.js  73.47 kB │ gzip: 14.63 kB
+ℹ [ESM] 1 files, total: 73.47 kB
+✔ Build complete in 222ms
+✔ Build complete in 222ms
+src/less/each.ts(34,69): error TS2339: Property 'rules' does not exist on type 'Node<unknown, NodeOptions>[] | MixinValue<"name">'.
+  Property 'rules' does not exist on type 'Node<unknown, NodeOptions>[]'.
+src/less/each.ts(37,15): error TS2339: Property 'params' does not exist on type 'Node<unknown, NodeOptions>[] | MixinValue<"name">'.
+src/less/each.ts(53,23): error TS2345: Argument of type 'string | undefined' is not assignable to parameter of type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+src/less/each.ts(57,23): error TS2345: Argument of type 'string | undefined' is not assignable to parameter of type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+src/less/each.ts(61,23): error TS2345: Argument of type 'string | undefined' is not assignable to parameter of type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+ ELIFECYCLE  Command failed with exit code 2.
+/Users/matthew/git/oss/jess/packages/fns:
+ ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  @jesscss/fns@2.0.0-alpha.5 build: `pnpm compile`
 Exit status 1
 ```
 

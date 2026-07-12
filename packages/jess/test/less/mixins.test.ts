@@ -621,4 +621,24 @@ describe('Mixins', () => {
       }
     `);
   });
+  it('does not emit an empty interpolated selector frame after a nested mixin lookup', async () => {
+    const css = await compiler.renderString(`
+      .Person(@name, @gender_) {
+        .@{name} {
+          @gender: @gender_;
+          .sayGender() {
+            gender: @gender;
+          }
+        }
+      }
+
+      mi-test-d {
+        .Person(person, "Male");
+        .person.sayGender();
+      }
+    `, { language: 'less' });
+
+    expect(css).toContain('mi-test-d {\n  gender: "Male";\n}');
+    expect(css).not.toContain('mi-test-d .person {\n}');
+  });
 });

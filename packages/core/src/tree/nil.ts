@@ -7,14 +7,12 @@ import {
   F_VISIBLE,
   F_STATIC,
   defineType,
-  type OptionalLocation,
+  type LocationInfo,
   type NodeOptions
 } from './node-base.js';
 import type { Context, TreeContext } from '../context.js';
 
 export interface Nil extends Node<''> {
-  type: 'Nil';
-  shortType: 'nil';
   valueOf(): '';
   eval(context: Context): Nil;
 }
@@ -29,21 +27,21 @@ export interface Nil extends Node<''> {
  * `$var:;`
  */
 export class Nil extends Node<''> {
-  static override childKeys = null as null;
-
+  override allowRoot = true;
+  override allowRuleRoot = true;
   constructor(
     value?: any,
     options?: NodeOptions,
-    location?: OptionalLocation,
+    location?: LocationInfo,
     treeContext?: TreeContext) {
     super('', options, location, treeContext);
-    this.allowRoot = true;
-    this.allowRuleRoot = true;
     this.addFlag(F_STATIC);
     this.removeFlag(F_VISIBLE);
     // Nil nodes should never render, even if fullRender is set on prototype (e.g., in tests)
     this.fullRender = false;
   }
+
+  foo() {}
 
   override toTrimmedString() {
     return '';

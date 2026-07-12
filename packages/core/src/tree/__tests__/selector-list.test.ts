@@ -1,13 +1,26 @@
-import { sel, sellist, el, co, pseudo } from '../index.js';
+import { any, attr, co, compound, el, ref, rules, sel, sellist, type Rules as RulesClass, vardecl } from '../index.js';
 import { Context } from '../../context.js';
 
 /**
  * @todo - add tests for list bubbling
  */
 describe('Selector list', () => {
-  const context = new Context();
+  let context: Context;
+
+  beforeEach(() => {
+    context = new Context();
+  });
 
   describe('equality', () => {
+    test('renders selector-list syntax through toTrimmedString()', () => {
+      const node = sellist([
+        el('.foo'),
+        el('.bar')
+      ]);
+
+      expect(node.toTrimmedString()).toBe('.foo,\n.bar');
+    });
+
     /** @todo - add test for non-equality */
     test('basic list equality', () => {
       /** a b, a c */
@@ -37,23 +50,61 @@ describe('Selector list', () => {
         ])
       ]);
 
-      expect((sel1 as any).compare(sel2)).toBe(0);
-      expect((sel2 as any).compare(sel1)).toBe(0);
+      expect(sel1.compare(sel2)).toBe(0);
+      expect(sel2.compare(sel1)).toBe(0);
     });
   });
 
-  describe('evaluation', () => {
-    test('flattens top-level :is() items during eval', async () => {
-      const node = sellist([
-        pseudo({
-          name: ':is',
-          arg: sellist([el('.a'), el('.b')])
+  test('renders resolved selector-list values through render(context)', async () => {
+    const node = rules([
+      vardecl({
+        name: any('attr-name'),
+        value: any('foo')
+      })
+    ]);
+    const evald = await node.eval(context);
+    context.root = evald as RulesClass;
+    context.rulesContext = evald as RulesClass;
+
+    const rendered = sellist([
+      compound([
+        el('a'),
+        attr({
+          name: 'data',
+          op: '=',
+          value: ref({ key: 'attr-name' }, { type: 'variable' })
         })
-      ]);
+      ]),
+      el('.bar')
+    ]).render(context);
 
-      const evald = await node.eval(context);
+    expect(rendered).toBe('a[data=foo],\n.bar');
+  });
 
-      expect(evald.toTrimmedString()).toBe('.a,\n.b');
-    });
+  test('resolves selector-list values without touching render state', async () => {
+    const node = rules([
+      vardecl({
+        name: any('attr-name'),
+        value: any('foo')
+      })
+    ]);
+    const evald = await node.eval(context);
+    context.root = evald as RulesClass;
+    context.rulesContext = evald as RulesClass;
+
+    const resolved = await sellist([
+      compound([
+        el('a'),
+        attr({
+          name: 'data',
+          op: '=',
+          value: ref({ key: 'attr-name' }, { type: 'variable' })
+        })
+      ]),
+      el('.bar')
+    ]).resolve(context);
+
+    expect(`${resolved}`).toBe('a[data=foo],\n.bar');
+    expect(context.printState.writer).toBeUndefined();
   });
 });
