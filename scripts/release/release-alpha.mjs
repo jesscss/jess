@@ -14,6 +14,7 @@ function parseArgs(argv) {
     noPush: false,
     skipVersion: false,
     skipPublish: false,
+    skipCheck: false,
     bump: false
   };
   for (let i = 2; i < argv.length; i += 1) {
@@ -22,6 +23,9 @@ function parseArgs(argv) {
     if (arg === '--no-push') options.noPush = true;
     if (arg === '--skip-version') options.skipVersion = true;
     if (arg === '--skip-publish') options.skipPublish = true;
+    // Skip the heavy step-2 preflight (release:alpha:check) when the current
+    // tree was already verified — for a fast republish. Default stays full-check.
+    if (arg === '--skip-check') options.skipCheck = true;
     // On an already-published manifest version: default is to error; --bump
     // opts into auto-incrementing to the next unused -alpha.N instead.
     if (arg === '--bump') options.bump = true;
@@ -222,7 +226,11 @@ if (!options.dryRun) {
   assertReadyWorkingTree(rootDir);
 }
 
-run('pnpm', ['run', 'release:alpha:check'], rootDir);
+if (options.skipCheck) {
+  console.log('\nSkipping preflight suite (--skip-check); assuming the current tree is already verified.');
+} else {
+  run('pnpm', ['run', 'release:alpha:check'], rootDir);
+}
 
 let resolution = null;
 if (!options.skipVersion) {

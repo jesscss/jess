@@ -182,6 +182,15 @@ Useful orchestrator flags:
 - `--no-push` (keep commit/tag local for inspection)
 - `--skip-version` (skip changeset version step if already versioned)
 - `--skip-publish` (prepare commit/tag/push without npm publish)
+- `--skip-check` (skip the heavy step-2 preflight `release:alpha:check` — use only for a republish when the current tree was already verified; the default remains full-check)
+
+`--skip-check` is the canonical way to skip the preflight while still running the
+normal, script-driven publish (version resolution, changeset commit, tagged
+publish via `prepublishOnly`). The separate `release:alpha:ship-no-checks`
+(`scripts/release/ship-alpha-no-checks.mjs`) is a standalone fast path that also
+skips preflight but additionally publishes with `--ignore-scripts` and uses its
+own bump logic; prefer `release:alpha --skip-check` unless you specifically need
+that no-lifecycle-scripts behavior.
 
 ## Promoting blocked packages into alpha
 

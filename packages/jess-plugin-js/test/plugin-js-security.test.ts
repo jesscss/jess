@@ -4,7 +4,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Any, Color, Dimension, List, Quoted, Sequence } from '@jesscss/core';
-import jsPlugin, { JsPlugin } from '../src/index.js';
+import jsPlugin, { JsPlugin, sanitizeSpawnEnv } from '../src/index.js';
 
 const makeTmpDir = (prefix: string) => fs.mkdtempSync(path.join(os.tmpdir(), prefix));
 
@@ -441,6 +441,58 @@ describe('@jesscss/plugin-js security', () => {
     plugins.push(plugin);
     const mod = await plugin.import(modulePath);
     await expect(mod.readEtcHosts()).resolves.toBe('DENIED');
+  });
+
+  it('sanitizeSpawnEnv strips node debugger/inspector-attach variables', () => {
+    const poisoned: NodeJS.ProcessEnv = {
+      PATH: '/usr/bin',
+      HOME: '/home/user',
+      NODE_OPTIONS: '--require /path/to/ms-vscode.js-debug/bootloader.js',
+      NODE_INSPECT_RESUME_ON_START: '1',
+      VSCODE_INSPECTOR_OPTIONS: ':::{"inspectorIpc":"/tmp/x"}',
+      SOME_TOOL_PATH: '/opt/js-debug/loader'
+    };
+    const cleaned = sanitizeSpawnEnv(poisoned);
+    expect(cleaned.PATH).toBe('/usr/bin');
+    expect(cleaned.HOME).toBe('/home/user');
+    expect(cleaned.NODE_OPTIONS).toBeUndefined();
+    expect(cleaned.NODE_INSPECT_RESUME_ON_START).toBeUndefined();
+    expect(cleaned.VSCODE_INSPECTOR_OPTIONS).toBeUndefined();
+    // Stripped because its value references js-debug even though the key is benign.
+    expect(cleaned.SOME_TOOL_PATH).toBeUndefined();
+    // The original env object is not mutated.
+    expect(poisoned.NODE_OPTIONS).toBe('--require /path/to/ms-vscode.js-debug/bootloader.js');
+  });
+
+  it('starts the Deno worker even when the parent env carries an inspector bootloader', async () => {
+    const root = makeTmpDir('jess-js-root-');
+    const modulePath = path.join(root, 'poisoned-env.ts');
+    fs.writeFileSync(modulePath, 'export const value = 123;', 'utf8');
+
+    const savedNodeOptions = process.env.NODE_OPTIONS;
+    const savedInspectorOptions = process.env.VSCODE_INSPECTOR_OPTIONS;
+    // Simulate VS Code / Cursor "Auto Attach" poisoning the parent environment.
+    process.env.NODE_OPTIONS =
+      '--require /nonexistent/ms-vscode.js-debug/bootloader.js';
+    process.env.VSCODE_INSPECTOR_OPTIONS =
+      ':::{"inspectorIpc":"/nonexistent/inspector.sock"}';
+    try {
+      const plugin = jsPlugin({ jsReadRoot: root }) as JsPlugin;
+      plugins.push(plugin);
+      const mod = await plugin.import(modulePath);
+      expect(mod.value).toBe(123);
+    } finally {
+      if (savedNodeOptions === undefined) {
+        delete process.env.NODE_OPTIONS;
+      } else {
+        process.env.NODE_OPTIONS = savedNodeOptions;
+      }
+      if (savedInspectorOptions === undefined) {
+        delete process.env.VSCODE_INSPECTOR_OPTIONS;
+      } else {
+        process.env.VSCODE_INSPECTOR_OPTIONS = savedInspectorOptions;
+      }
+    }
   });
 
   it('denies access to process (Node global) from Deno context', async () => {
