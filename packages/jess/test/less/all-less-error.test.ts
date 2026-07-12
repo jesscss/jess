@@ -44,6 +44,12 @@ const acceptedDivergences = new Map<string, string>([
   // (interpolated.ts). `.foo-&` itself is a plain compound; the old merge-template throw
   // (assertNotCommaMergeTemplate) was removed with the merge surface.
   ['tests-error/eval/mixin-not-visible-in-scope-1.less', 'GAP: mixin not visible across sibling & scopes should error'],
+  // With the optional @jesscss/plugin-js now auto-wiring, these @plugin scripts
+  // load and run instead of hitting the "Install plugin-js" gate; a throw inside
+  // the plugin's Less-lifecycle hook (use()/eval()) is not yet propagated as a
+  // compile error, so Jess accepts where Less rejects.
+  ['tests-error/eval/plugin-2.less', 'GAP: a throw in a @plugin use() lifecycle hook should surface as a compile error'],
+  ['tests-error/eval/plugin-3.less', 'GAP: a throw in a @plugin eval() lifecycle hook should surface as a compile error'],
   // invalid-color-with-comment GRADUATED — colorHex now only matches 3/4/6/8-digit hex.
   ['tests-error/parse/mixins-guards-cond-expected.less', 'GAP: guard without a parenthesized condition should be a parse error']
 ]);

@@ -50,7 +50,8 @@ import {
   withSpineMergePlan,
   resolveSpineLeafText,
   resolveSpineStatementCallNode,
-  serializeSpineStatementCallNode
+  serializeSpineStatementCallNode,
+  evalIsolatingSpinePrintState
 } from './util/serialize-helper.js';
 import type { AtRule } from './at-rule.js';
 import type { AtRuleStatement } from './at-rule-statement.js';
@@ -995,6 +996,13 @@ class RulesLookupState {
   varsByName: Map<string, BindingEntry[]> | undefined = undefined;
   functionsByName: Map<string, JsFunction | Func> | undefined = undefined;
   callableLookupCache: Map<string, CallableLookupEntry[] | null> | undefined = undefined;
+  /**
+   * Full callable index for this scope: every callable key -> its ordered entries,
+   * built in ONE pass over `rules` and memoized. `getCallableEntriesForKey` reads a
+   * key out of this instead of re-scanning every rule per distinct key. Invalidated
+   * alongside `callableLookupCache` when the scope's callable set changes.
+   */
+  callableFullIndex: Map<string, CallableLookupEntry[]> | undefined = undefined;
   directChildRuleEntries: Array<RulesEntryLike> | null | undefined = undefined;
   directDeclarationChildEntries: Array<RulesEntryLike> | null | undefined = undefined;
   directDeclarationsByName: Map<string, Declaration[] | null> | undefined = undefined;
@@ -2023,23 +2031,25 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
   }
 
   private addCallableEntry(
-    lookupKey: string,
     key: string | undefined,
     value: MixinEntry,
     match: string[],
-    bucket: CallableLookupEntry[]
+    index: Map<string, CallableLookupEntry[]>
   ): void {
-    if (!key || key !== lookupKey || key.startsWith(':')) {
+    if (!key || key.startsWith(':')) {
       return;
+    }
+    let bucket = index.get(key);
+    if (bucket === undefined) {
+      index.set(key, bucket = []);
     }
     bucket.push({ value, match });
   }
 
   private addCallableSelectors(
-    lookupKey: string,
     ruleset: Ruleset,
     keys: string[],
-    bucket: CallableLookupEntry[],
+    index: Map<string, CallableLookupEntry[]>,
     startAt = 0
   ): void {
     let key: string | undefined;
@@ -2060,13 +2070,12 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     if (key === undefined) {
       return;
     }
-    this.addCallableEntry(lookupKey, key, ruleset, match ?? [], bucket);
+    this.addCallableEntry(key, ruleset, match ?? [], index);
   }
 
   private collectCallablesFor(
     rules: Rules,
-    lookupKey: string,
-    bucket: CallableLookupEntry[]
+    index: Map<string, CallableLookupEntry[]>
   ): void {
     const value = rules.rules;
     for (let i = 0; i < value.length; i++) {
@@ -2074,7 +2083,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       if (isNode(node, N.Mixin)) {
         const name = node.name;
         if (typeof name === 'string') {
-          this.addCallableEntry(lookupKey, name, node, [], bucket);
+          this.addCallableEntry(name, node, [], index);
         }
         continue;
       }
@@ -2086,7 +2095,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         // Parsed simple selectors (`#theme`, `.button`) are stored as plain
         // strings, not Selector nodes, but they are valid callable namespaces —
         // register them under their split ordered keys just like node selectors.
-        this.addCallableSelectors(lookupKey, node, splitSelectorStringKeys(selector), bucket);
+        this.addCallableSelectors(node, splitSelectorStringKeys(selector), index);
         continue;
       }
       if (!selector || isNode(selector, N.Nil)) {
@@ -2114,10 +2123,9 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         for (const item of selector.value) {
           if (typeof item !== 'string') {
             this.addCallableSelectors(
-              lookupKey,
               node,
               getOrderedSelectorKeys(item),
-              bucket
+              index
             );
           }
         }
@@ -2135,12 +2143,29 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
           && keys.length > parentKeys.length
           && keysStartWith(keys, parentKeys)
         ) {
-          this.addCallableSelectors(lookupKey, node, keys, bucket, parentKeys.length);
+          this.addCallableSelectors(node, keys, index, parentKeys.length);
           continue;
         }
       }
-      this.addCallableSelectors(lookupKey, node, keys, bucket);
+      this.addCallableSelectors(node, keys, index);
     }
+  }
+
+  /**
+   * Build (once) and memoize the full callable index for THIS scope: a single pass
+   * over `rules` that buckets every callable by its own key. Reused across all
+   * distinct-key lookups against this scope instead of re-scanning per key.
+   * Invalidated with `callableLookupCache` when the scope's callable set changes.
+   */
+  private ensureCallableIndex(): Map<string, CallableLookupEntry[]> {
+    let index = this._lookup?.callableFullIndex;
+    if (index !== undefined) {
+      return index;
+    }
+    index = new Map();
+    this.collectCallablesFor(this, index);
+    this.ensureLookup().callableFullIndex = index;
+    return index;
   }
 
   private getCallableEntriesForKey(
@@ -2152,15 +2177,16 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       return entries.get(lookupKey) ?? [];
     }
 
-    const bucket: CallableLookupEntry[] = [];
-    this.collectCallablesFor(this, lookupKey, bucket);
-    const sourceRules = sourceRulesOf(this);
-    if (bucket.length === 0 && sourceRules !== this) {
-      this.collectCallablesFor(sourceRules, lookupKey, bucket);
+    let bucket = this.ensureCallableIndex().get(lookupKey);
+    if (bucket === undefined) {
+      const sourceRules = sourceRulesOf(this);
+      if (sourceRules !== this) {
+        bucket = sourceRules.ensureCallableIndex().get(lookupKey);
+      }
     }
     (this.callableLookupCache ??= new Map()).set(
       lookupKey,
-      bucket.length === 0 ? null : bucket
+      bucket === undefined || bucket.length === 0 ? null : bucket
     );
     if (this._scopeFrame) {
       this._scopeFrame.callableBucketsByName = this.callableLookupCache;
@@ -2172,7 +2198,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         this._scopeFrame.mixinCallableMissCoverageKnown = true;
       }
     }
-    return bucket;
+    return bucket ?? [];
   }
 
   private prepareCallableLookupFrame(frame: ScopeFrame, key: string, includeRulesets: boolean): void {
@@ -4555,6 +4581,30 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     emitNode: (n: Node) => MaybePromise<void>
   ): MaybePromise<void> {
     const w = options.writer!;
+    // ISOLATE per-import context, mirroring `wireSpineImportsInBody`'s discipline:
+    // emitting an import (fold descent OR the `evalFallback` → `evalNode`/`finalize`
+    // path) transiently switches `context.treeContext`/`depth` while descending a
+    // nested imported file (e.g. `_mixins` importing `vendor/_rfs`). Without a
+    // snapshot+restore around EACH import emit, a deeply-nested import leaves its
+    // file's `treeContext` in place, so the NEXT sibling import at this level
+    // resolves its RELATIVE path against the wrong directory (bootstrap's
+    // `@import "_reboot"` after `_mixins` pulled in `vendor/_rfs` → resolved from
+    // `less/vendor` → File not found). Restore on every exit path (sync + async).
+    const savedTreeContext = context.treeContext;
+    const savedDepth = context.depth;
+    const restoreImportContext = <T>(value: T): T => {
+      context.treeContext = savedTreeContext;
+      context.depth = savedDepth;
+      return value;
+    };
+    const restoreThenRethrow = (error: unknown): never => {
+      restoreImportContext(undefined);
+      throw error;
+    };
+    const withRestore = (step: MaybePromise<void>): MaybePromise<void> =>
+      isThenable(step)
+        ? step.then(restoreImportContext, restoreThenRethrow)
+        : restoreImportContext(step);
     const foldBody = (body: Rules, multiple: boolean, reference: boolean): MaybePromise<void> => {
       assignSpineChildIndices(body);
       const savedRulesContext = context.rulesContext;
@@ -4597,8 +4647,17 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     const evalFallback = (): MaybePromise<void> => {
       // Byte-identical eval terminal for a non-simple imported body: render the
       // import node the eval way and splice its output text at this position.
+      // ISOLATE its print-state: `importNode.render` → `evalForRender` →
+      // `prepareRenderPrintState` RESETS `context.printState` IN PLACE (fresh writer +
+      // frame arrays); in the single-pass spine render that IS the live emit state, so
+      // an un-isolated fallback swaps the live writer/frames and every LATER sibling
+      // writes into the discarded writer and is LOST (bootstrap: an imported body with
+      // a DETACHED-RULESET-arg mixin call — `a { #hover({…}) }` in `_reboot` — is not
+      // spine-foldable and lands here; its render silently dropped the entire following
+      // `_grid` import). The render returns its own string (spliced into `w` below), so
+      // isolate exactly as the value-leaf / guard resolves do.
       const position = w.position();
-      const rendered = importNode.render(context, getPrintOptions(options));
+      const rendered = evalIsolatingSpinePrintState(context, () => importNode.render(context, getPrintOptions(options)));
       const finishRendered = (text: string): void => {
         if (w.position() === position && text) {
           w.add(text, importNode);
@@ -4622,7 +4681,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       if (cached.dedupe) {
         return undefined;
       }
-      return isSpineFoldableImportBody(cached.body, options.spineExtendHeaders !== undefined) ? foldBody(cached.body, cached.multiple, cached.reference) : evalFallback();
+      return withRestore(isSpineFoldableImportBody(cached.body, options.spineExtendHeaders !== undefined) ? foldBody(cached.body, cached.multiple, cached.reference) : evalFallback());
     }
     const applyFresh = (resolved: SpineImportResolution): MaybePromise<void> => {
       if (resolved.kind === 'css') {
@@ -4637,7 +4696,78 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       return isSpineFoldableImportBody(resolved.body, options.spineExtendHeaders !== undefined) ? foldBody(resolved.body, resolved.multiple, resolved.reference) : evalFallback();
     };
     const resolution = importNode.resolveForSpine(context);
-    return isThenable(resolution) ? resolution.then(applyFresh) : applyFresh(resolution);
+    return withRestore(isThenable(resolution) ? resolution.then(applyFresh) : applyFresh(resolution));
+  }
+
+  /**
+   * Fold a `$for`/`each` (`For`) loop reached by the ROOT / import-splice emitter
+   * (`emitNode`) into per-iteration bound-body surfaces — the emitter-side analogue
+   * of the CONTAINER descent's `runSpineForExpansion` (`serialize-helper`). Drive
+   * `For.spineIterationSurfaces` (one surface per iteration, each holding COPIES of
+   * the loop body under a fresh scope frame carrying the iteration's
+   * `@value`/`@key`/counter bindings), then re-`emitNode` each surface's children
+   * with `context.rulesContext` PINNED to that surface's frame so a body reference
+   * OR a nested ruleset's interpolated selector (`.alert-@{color}`) resolves the loop
+   * variable against the live iteration frame — across the async settle of the
+   * surface build (`spineIterationSurfaces` evals the iterable). Pin is re-asserted
+   * synchronously immediately before each child's `emitNode` (which enters the child
+   * container serializer and captures `context.rulesContext` before any await), and
+   * restored on every exit edge (sync + async). The surface build is wrapped in
+   * `evalIsolatingSpinePrintState` so its value evals leave the live emit print-state
+   * byte-identical (mirrors the container fold).
+   */
+  private _emitSpineForFold(
+    forNode: Node,
+    context: Context,
+    emitNode: (n: Node) => MaybePromise<void>
+  ): MaybePromise<void> {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- type-string narrows to For; only For exposes spineIterationSurfaces.
+    const iterable = forNode as unknown as { spineIterationSurfaces(ctx: Context): Promise<Rules[]> };
+    const surfacesResult = evalIsolatingSpinePrintState(context, () => iterable.spineIterationSurfaces(context));
+    const applySurfaces = (surfaces: Rules[]): MaybePromise<void> => {
+      const emitSurface = (s: number): MaybePromise<void> => {
+        for (let si = s; si < surfaces.length; si++) {
+          const surface = surfaces[si]!;
+          const children = surface.rules;
+          const emitChild = (c: number): MaybePromise<void> => {
+            for (let ci = c; ci < children.length; ci++) {
+              const savedRulesContext = context.rulesContext;
+              context.rulesContext = surface;
+              let step: MaybePromise<void>;
+              try {
+                step = emitNode(children[ci]!);
+              } catch (error) {
+                context.rulesContext = savedRulesContext;
+                throw error;
+              }
+              if (isThenable(step)) {
+                const nextIndex = ci + 1;
+                return step.then(
+                  () => {
+                    context.rulesContext = savedRulesContext;
+                    return emitChild(nextIndex);
+                  },
+                  (error: unknown) => {
+                    context.rulesContext = savedRulesContext;
+                    throw error;
+                  }
+                );
+              }
+              context.rulesContext = savedRulesContext;
+            }
+            return undefined;
+          };
+          const surfaceStep = emitChild(0);
+          if (isThenable(surfaceStep)) {
+            const nextSurface = si + 1;
+            return surfaceStep.then(() => emitSurface(nextSurface));
+          }
+        }
+        return undefined;
+      };
+      return emitSurface(0);
+    };
+    return isThenable(surfacesResult) ? surfacesResult.then(applySurfaces) : applySurfaces(surfacesResult);
   }
 
   private _emitRulesBody(options: FinalPrintOptions, mode: 'source', exclude?: Set<Node>): void;
@@ -4783,6 +4913,31 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         queueTopImport(context, n as unknown as AtRuleStatement);
         return;
       }
+      // A root `@charset "utf-8";` (role-'charset' `Any`) HOISTS to document top on
+      // the spine, mirroring eval (`prepareRegistration` sets `currentCharset` + the
+      // depth-0 `_toDocumentString` emits it first). Register the FIRST as
+      // `currentCharset` and drop it here — `renderRootViaSpine` prepends the charset
+      // prelude ahead of imports. A later duplicate charset registers nothing and
+      // emits nothing (byte-identical to eval's single hoisted charset).
+      if (mode === 'render' && context && options.spineMode && isNode(n, N.Any) && n.role === 'charset') {
+        context.currentCharset ??= n;
+        return;
+      }
+      // LOOP fold at the ROOT / IMPORT-SPLICE emitter (cutover LOOP increment 1,
+      // ROOT parity). A `$for`/`each` (`For`) node reaching THIS emitter — a root-
+      // direct loop, or a loop inside an imported body spliced here via
+      // `_emitSpineImportFold` — must expand into its per-iteration bound surfaces
+      // exactly as the CONTAINER descent does (`serializeRulesContainerInternal` →
+      // `runSpineForExpansion`). Without this it falls to the `isChildRules` branch
+      // below, which emits the loop body ONCE, UNBOUND — a nested ruleset's
+      // interpolated selector (`.alert-@{color}`) then resolves the loop variable
+      // against a frame that never bound it (`'color' is not defined`). Route it
+      // through the shared iteration-surface fold: each surface's children re-enter
+      // `emitNode` with `context.rulesContext` pinned to that surface's live frame,
+      // so a body reference / interpolated selector resolves the iteration binding.
+      if (mode === 'render' && context && options.spineMode && n.type === 'For') {
+        return this._emitSpineForFold(n, context, emitNode);
+      }
       const isContainer = n.type === 'Ruleset' || n.type === 'AtRule' || n.type === 'Rules';
       if (isContainer && n.type === 'Rules') {
         emitLeadingBlockCommentForNode(n);
@@ -4854,8 +5009,22 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         options.depth = depth;
         options.referenceMode = referenceMode;
         options.referenceRenderEnabled = referenceRenderEnabled;
+        // A container child that routes to EVAL render (`n.render` → `evalForRender`
+        // → `prepareRenderPrintState`) RESETS `context.printState` IN PLACE (fresh
+        // writer + frame arrays). In the single-pass spine render `context.printState`
+        // IS the live emit state, so an un-isolated eval render swaps the live
+        // writer/frame-arrays and every LATER sibling then writes into the discarded
+        // writer and is LOST (bootstrap: `a { #hover({…}) }` — a mixin call with a
+        // DETACHED-RULESET arg is deferred to eval; its render dropped the entire
+        // following `_grid` block). `n.render` returns its OWN rendered string
+        // (spliced into `w` below), so isolate its print-state side effect exactly as
+        // the value-leaf / guard resolves do (`evalIsolatingSpinePrintState`), leaving
+        // the live writer/frames byte-identical for the next sibling. The
+        // `serializeRulesContainerInline` (spine) branch never resets print-state.
         const rule = mode === 'render' && context
-          ? n.render(context, getPrintOptions(options))
+          ? (options.spineMode
+              ? evalIsolatingSpinePrintState(context, () => n.render(context, getPrintOptions(options)))
+              : n.render(context, getPrintOptions(options)))
           : serializeRulesContainerInline(n, getPrintOptions(options));
         const finishRule = (resolvedRule: string): void => {
           if (w.position() === position && resolvedRule) {
@@ -5371,6 +5540,9 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     if (affectsCallableLookup) {
       this.callableLookupVersion++;
       this.callableLookupCache = undefined;
+      if (this._lookup) {
+        this._lookup.callableFullIndex = undefined;
+      }
       if (this._scopeFrame) {
         this._scopeFrame.callableBucketsByName = undefined;
         this._scopeFrame.callablesCovered = false;

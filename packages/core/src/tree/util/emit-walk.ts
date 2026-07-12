@@ -42,7 +42,7 @@ import type { AtRuleStatement } from '../at-rule-statement.js';
 import type { VarDeclaration } from '../declaration-var.js';
 import { buildScopeFrame, linkImportFallbackFrame, type BindingCell, type ScopeFrame } from '../scope-frame.js';
 import { getPrintOptions, OutputWriter, type FinalPrintOptions, type PrintOptions } from './print.js';
-import { engageExtendLayer, isSpineExtendTopology, wireSpineExtends, flatLocalSelector } from '../extend/spine-extend.js';
+import { engageExtendLayer, isSpineExtendTopology, wireSpineExtends, flatLocalSelector, treeHasExtendTargetableAppend, treeHasExtend } from '../extend/spine-extend.js';
 import type { StyleImport, SpineImportResolution } from '../import-style.js';
 
 /**
@@ -497,8 +497,9 @@ export function isSpineFoldableStatementCall(node: Node): boolean {
  * so a param-dependent at-rule body/prelude re-resolves per call (no cross-call leak).
  * DEFERRED (fall back, byte-identical): a nested container that is not spine-eligible
  * (guarded / extend-bearing / append sub-shape), parametric/guarded defs (gated
- * earlier). A nested Mixin DEFINITION and recursion stay gated at the tree level
- * (`treeHasUnfoldableContainerBodyMixin` / `treeHasRecursiveMixinCall`).
+ * earlier). A nested Mixin DEFINITION stays gated at the tree level
+ * (`treeHasUnfoldableContainerBodyMixin`); recursion — including the STRIPE
+ * nested-container cycle — folds (distinct-per-level surfaces, `distinctFoldChild`).
  */
 function isSpineSimpleMixinSurface(surface: Rules): boolean {
   const children = surface.rules;
@@ -707,30 +708,6 @@ function selectorHasAmpersandAppend(selector: unknown): boolean {
     }
   }
   return false;
-}
-
-/**
- * True if ANY ruleset ANYWHERE in `root` carries an ampersand-APPEND selector
- * (`&-modifier`). Used to defer the append × extend interaction (see
- * `isSpineEligibleRoot`): an append-generated selector may be an extend target the
- * static gather cannot see. A single recursive scan over ruleset/at-rule bodies.
- */
-function treeHasAmpersandAppend(root: Rules): boolean {
-  const scan = (children: readonly Node[]): boolean => {
-    for (let i = 0; i < children.length; i++) {
-      const child = children[i]!;
-      if (isNode(child, N.Ruleset) && selectorHasAmpersandAppend(child.selector)) {
-        return true;
-      }
-      if ((isNode(child, N.Ruleset) || isNode(child, N.AtRule)) && isNode(child, N.Rules)) {
-        if (scan(child.rules)) {
-          return true;
-        }
-      }
-    }
-    return false;
-  };
-  return scan(root.rules);
 }
 
 /**
@@ -1128,15 +1105,16 @@ function atRuleBodyHasAmpersandRuleset(children: readonly Node[]): boolean {
  * key isn't statically known, so the position gate can't be pre-seeded).
  */
 function isSpineEligibleBody(children: readonly Node[], allowExtend = false, allowImport = false): boolean {
-  // INCREMENT 1 cross-check: a mixin call is folded by splicing its emitted decls
-  // into the body's statement loop AFTER `planBodyMerges` has run — so a spliced
-  // decl cannot participate in a `+:`/`+_:` merge chain in the SAME body. If the
-  // body has BOTH a mixin call and a merge decl, keep the whole body on the eval
-  // path (the merge would otherwise leak `prop+:`). DEFERRED: merge-across-mixin-
-  // output (needs the merge plan to see the expansion).
-  if (bodyHasMixinCall(children) && bodyHasDirectMergeDecl(children)) {
-    return false;
-  }
+  // MERGE-ALONGSIDE-MIXIN-CALL (FOLDED). A body with BOTH a mixin call and a DIRECT
+  // `+:`/`+_:` merge decl (`.r { .shadow-base(); box-shadow+: … }`) now folds on the
+  // spine: the post-expansion replan (`replanMergesIfExpanded`) combines the direct
+  // decl's value off the accumulated prior (Add-pull-prior, correct across owners —
+  // see `planEntrySequenceMerges`), and the ruleset-as-mixin surface is now adopted
+  // before the sink is consulted (`callable-special-case.ts`) so its contribution is
+  // counted exactly once. RESIDUAL (fast-follow, still eval): a merge CHAIN where a
+  // member carries `!important` — the spine plan combines VALUES only and drops the
+  // flag propagation (`merge.less` test-rule4/5/7). Benchmark's merge-alongside-mixin
+  // rulesets carry no `!important`, so they fold byte-identically.
   for (let i = 0; i < children.length; i++) {
     const child = children[i]!;
     if (isSimpleSpineLeaf(child, allowExtend, allowImport)) {
@@ -1197,7 +1175,7 @@ function isSpineEligibleBody(children: readonly Node[], allowExtend = false, all
     // iteration (`For.spineIterationSurfaces`) and splices their children in order —
     // the loop-variable-bound analogue of a mixin-surface splice. A body shape the
     // spine cannot cover keeps the loop (and its enclosing body) on eval.
-    if (isSpineEligibleFor(child)) {
+    if (isSpineEligibleFor(child, allowExtend, allowImport)) {
       continue;
     }
     if (!isSpineEligibleContainer(child, allowExtend, allowImport)) {
@@ -1259,13 +1237,20 @@ function isSpineEligibleMixinDefinition(node: Node): boolean {
  * not gated here. A non-eligible body keeps the loop (and its enclosing body) on the
  * eval path, byte-identical. Zero-cost when no loop: the cheap `type` check bails.
  */
-function isSpineEligibleFor(node: Node): boolean {
+function isSpineEligibleFor(node: Node, allowExtend = false, allowImport = false): boolean {
   if (node.type !== 'For') {
     return false;
   }
   // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- type-string narrows to the For subtype; its body is the shared `rules` Node[].
   const forNode = node as unknown as { rules: readonly Node[] };
-  return isSpineEligibleBody(forNode.rules);
+  // Thread `allowExtend`/`allowImport`: when the extend layer is engaged, a loop body
+  // that generates extenders (`.x-@{k} { &:extend(.target all) }`) is admissible — its
+  // per-iteration interpolated extenders are gathered by `wireSpineExtends`
+  // (`gatherForExtends`) and the target's header override surfaces at emit. Without
+  // threading, a loop body carrying an `:extend` was rejected, forcing the enclosing
+  // (imported) body onto the eval fallback — which ignores `spineExtendHeaders`, so a
+  // loop-generated extend (bootstrap grid `.container-@{bp}`) silently dropped.
+  return isSpineEligibleBody(forNode.rules, allowExtend, allowImport);
 }
 
 /**
@@ -1301,6 +1286,15 @@ function isSimpleSpineLeaf(node: Node, allowExtend = false, allowImport = false)
   // inline at its source position — no scope, no eval, no import machinery, so it
   // is admitted independent of `allowImport`.
   if (isSpineFoldableStatementAtRule(node)) {
+    return true;
+  }
+  // A root `@charset "utf-8";` (a role-'charset' `Any`) HOISTS to document top on
+  // the spine, exactly as eval does (`@charset` must be first). It emits NOTHING at
+  // its authored position: the emit path registers the FIRST as `currentCharset` and
+  // skips it (root emitter `Rules._emitRulesBody` + container `processNodeInner`),
+  // and `renderRootViaSpine` prepends the charset prelude ahead of imports + body.
+  // Admitted here so a mid-body charset no longer forces the whole root to eval.
+  if (isNode(node, N.Any) && node.role === 'charset') {
     return true;
   }
   // Extend / ExtendList are invisible effect nodes (they emit nothing; their gather
@@ -1394,6 +1388,16 @@ function bodyHasPriorSameNameDecl(children: readonly Node[], index: number, decl
   return false;
 }
 
+/** True if any DIRECT child of `body` is a merge-flagged declaration. */
+function bodyHasDirectMergeDecl(children: readonly Node[]): boolean {
+  for (let i = 0; i < children.length; i++) {
+    if (isMergeDecl(children[i]!)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /** True if any DIRECT child of `body` is a spine-eligible mixin call. */
 function bodyHasMixinCall(children: readonly Node[]): boolean {
   for (let i = 0; i < children.length; i++) {
@@ -1404,14 +1408,49 @@ function bodyHasMixinCall(children: readonly Node[]): boolean {
   return false;
 }
 
-/** True if any DIRECT child of `body` is a merge-flagged declaration. */
-function bodyHasDirectMergeDecl(children: readonly Node[]): boolean {
-  for (let i = 0; i < children.length; i++) {
-    if (isMergeDecl(children[i]!)) {
-      return true;
+/** True for a merge-flagged declaration carrying `!important`. */
+function isImportantMergeDecl(node: Node): boolean {
+  return isMergeDecl(node) && isNode(node, N.Declaration) && Boolean(node.important);
+}
+
+/**
+ * Whole-tree scan for the `!important` merge-alongside-mixin DEFER (byte-identical).
+ * A body with BOTH a mixin call and a direct merge decl folds on the spine — its
+ * post-expansion replan (`replanMergesIfExpanded`) combines the chain (Add-pull-prior,
+ * correct across owners). But the spine merge plan combines VALUES only; it does NOT
+ * propagate `!important` across a mixin-SPANNING merge chain (Less semantics: ANY
+ * member `!important` → the whole combined value is `!important` — the flag can live
+ * on a mixin-injected member the last-occurrence anchor drops). So when the tree has
+ * BOTH a merge-alongside-mixin body AND an `!important` merge decl anywhere, keep the
+ * whole root on eval (byte-identical). A tree with no `!important` merge decl — the
+ * common case, and `benchmark.less` — folds. SPEC (fast-follow): lift once
+ * `planEntrySequenceMerges` carries the chain `!important` flag through to the anchor
+ * emit (the middle-member `!important`-drop bug), then this whole scan is deleted.
+ */
+function treeHasImportantMergeAlongsideMixin(root: Rules): boolean {
+  let mergeAlongsideMixin = false;
+  let importantMerge = false;
+  const visit = (children: readonly Node[]): void => {
+    if (!mergeAlongsideMixin && bodyHasMixinCall(children) && bodyHasDirectMergeDecl(children)) {
+      mergeAlongsideMixin = true;
     }
-  }
-  return false;
+    for (let i = 0; i < children.length; i++) {
+      const child = children[i]!;
+      if (!importantMerge && isImportantMergeDecl(child)) {
+        importantMerge = true;
+      }
+      if (mergeAlongsideMixin && importantMerge) {
+        return;
+      }
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const sub = (child as { rules?: readonly Node[] }).rules;
+      if (Array.isArray(sub)) {
+        visit(sub);
+      }
+    }
+  };
+  visit(root.rules);
+  return mergeAlongsideMixin && importantMerge;
 }
 
 /**
@@ -1568,6 +1607,17 @@ export function isSpineEligibleRoot(root: Rules, context: Context, collapseNesti
   if (bodyHasDirectMergeDecl(root.rules)) {
     return false;
   }
+  // MERGE-ALONGSIDE-MIXIN × `!important` (DEFER, byte-identical). The per-body
+  // `bodyHasMixinCall && bodyHasDirectMergeDecl` reject was LIFTED so the common
+  // no-`!important` merge-alongside-mixin body folds; the ONE residual the spine
+  // merge plan cannot yet reproduce is `!important` propagation across a
+  // mixin-spanning merge chain. Keep the whole root on eval only when it carries BOTH
+  // shapes (see `treeHasImportantMergeAlongsideMixin`). Zero-cost when the tree has no
+  // merge decl (the scan bails on the first pass). `benchmark.less` has no
+  // `!important` merge, so it folds.
+  if (treeHasImportantMergeAlongsideMixin(root)) {
+    return false;
+  }
   // LOOP fold (cutover LOOP increment 1) — CONTAINER-nested only. A `$for`/`each`
   // loop folds when nested inside a ruleset/at-rule (its body flows through
   // `serializeRulesContainerInternal` → `runSpineForExpansion`). A ROOT-DIRECT loop
@@ -1650,24 +1700,26 @@ export function isSpineEligibleRoot(root: Rules, context: Context, collapseNesti
   // spliced body decls' dedup-key + emit resolution (`computeDeclKey` / `processNode`
   // push the entry's `spineFrame`), so `@n - 1` resolves against level N's `@n`
   // producing level N-1's surface, byte-identical to eval / less@4. `callMap` bounds it.
-  // RESIDUAL (kept on eval, byte-identical, ratchet-locked — a separate P4 item): a
-  // recursive cycle whose body has a NESTED CONTAINER shared across levels (STRIPE:
-  // `.stripe(@n){ a{…} .stripe(@n-1) }`). The re-entrant splice re-uses the SAME
-  // canonical container child per level, collapsing two levels' blocks into one instead
-  // of eval's two distinct blocks. `treeHasRecursiveMixinCall` now NARROWLY detects only
-  // that container-in-cycle shape; FLAT recursion (the common loop idiom) folds.
-  if (treeHasMixinCall(root) && treeHasRecursiveMixinCall(root)) {
-    return false;
-  }
+  // STRIPE (a recursive cycle whose body has a NESTED CONTAINER shared across levels,
+  // `.stripe(@n){ a{…} .stripe(@n-1) }`) now FOLDS too: the re-entrant splice used to
+  // re-use the SAME canonical container child per level, collapsing two levels' blocks
+  // into one (the header-merge is keyed on node identity). `runSpineMixinExpansion`'s
+  // `distinctFoldChild` now splices a DISTINCT per-level copy (reusing scalar leaves)
+  // on a container child's 2nd+ occurrence — mirroring the loop fold's per-iteration
+  // `copyWithReusableLeaves` — so each level emits its own `.wrap a{…}` block,
+  // byte-identical to eval / less@4. The recursion gate is therefore lifted entirely;
+  // an unfoldable recursive sub-shape (a non-spine-simple body) still falls back to the
+  // eval terminal per-call (`isSpineSimpleMixinSurface` → `anyRejected` → kind:'eval').
   // MERGE-ACROSS-MIXIN (FOLDED — P4 item landed). A property-MERGE (`transform+:` /
   // `+_:`) whose contributions arrive via MIXIN EXPANSION — `.r { .a(); .b(); }` where
   // `.a()`/`.b()` each carry a `transform+:` decl (the `merge.less` corpus shape) —
   // now coalesces on the spine: the container descent RE-PLANS the merge coalesce
   // over the POST-EXPANSION `rulesToRender` sequence (`replanMergesIfExpanded` in
-  // `serialize-helper.ts`), so a spliced merge decl participates in the chain, carrying
-  // each entry's mixin-output OWNER to reproduce eval's cross-scope boundary (same
-  // mixin body coalesces; distinct mixin bodies are last-wins). Byte-identical to eval
-  // by construction (values resolved via the same `decl.eval`).
+  // `serialize-helper.ts`), so a spliced merge decl participates in the chain. ALL
+  // same-property merge decls combine in source order (Add-pull-prior) — mixin-injected
+  // AND caller-body alike, matching the Less oracle (distinct mixin bodies COMBINE, per
+  // `merge.less` `.test-rule1`; NOT last-wins). Byte-identical to eval by construction
+  // (values resolved via the same `decl.eval`).
   //
   // ASYNC-valued merge-across-mixin now FOLDS too (`transform+: rotate(90deg)` —
   // a merge value containing a `Call`/`Operation`/`Reference`). It resolves via the
@@ -1682,8 +1734,10 @@ export function isSpineEligibleRoot(root: Rules, context: Context, collapseNesti
   // RESIDUAL (still kept on eval, byte-identical):
   //  - A merge decl authored DIRECTLY in the caller body ALONGSIDE a mixin call
   //    (`.r { .a(); transform+: s; }`) — caught by `bodyHasMixinCall &&
-  //    bodyHasDirectMergeDecl`: eval composes the direct decl's `+:` via a positional
-  //    prior-value Reference read the static plan does not model.
+  //    bodyHasDirectMergeDecl`. The post-expansion replan now combines across owners
+  //    (Add-pull-prior), but two coalescing gaps keep this on eval: `!important`
+  //    inheritance across the chain, and a large-context double-count of a
+  //    ruleset-as-mixin's contribution (see `isSpineEligibleBody`). IOU (P4).
   // LEAKY-MODE MIXIN-BODY VAR LEAK (FOLDED). In leaky Less mode a mixin body's plain
   // `@x: …` VarDeclaration LEAKS into the CALLER scope, so a consumer in the same
   // scope (`.a { .m(); width: @x }`, an EARLIER `width: @x` sibling — Less resolves a
@@ -1739,16 +1793,20 @@ export function isSpineEligibleRoot(root: Rules, context: Context, collapseNesti
   // rejects), so a divergent collapse value here would admit-then-fail-loud in `renderRootViaSpine`.
   const collapse = collapseNesting
     ?? (context.opts?.output?.collapseNesting ?? context.output?.collapseNesting) === true;
-  // APPEND × EXTEND (a precise deferral, REQUIRED P4 item). An `:extend` TARGET may be
-  // an append-GENERATED selector (`.button { &-primary {…} }` extended by
-  // `:extend(.button-primary)`). The spine's extend layer gathers subjects/targets from
-  // the STATIC source tree, where the append target (`.button-primary`) exists only
-  // after resolution — so the static gather misses it and the extend contribution is
-  // dropped. Keep an extend-bearing tree that also carries an append selector on the
-  // eval path (byte-identical), where the append materializes before extend runs.
+  // APPEND × EXTEND (a PRECISE deferral). An `:extend` TARGET may be an append-GENERATED
+  // selector (`.component { &-inner {…} }` extended by `:extend(.component-inner)`). The
+  // spine's extend layer gathers subjects/targets from the STATIC source tree, where the
+  // append target (`.component-inner`) exists only after resolution — so the static gather
+  // misses it and the extend contribution is dropped. `treeHasExtendTargetableAppend` returns
+  // true ONLY for that genuine collision (an extend target atom that could equal an
+  // append-generated atom `parent + suffix`), NOT the former whole-tree "any append + any
+  // extend → eval" over-rejection — which needlessly pinned every stylesheet that merely
+  // appends AND extends unrelated selectors (`benchmark.less`, whose `.component-*` appends are
+  // never extend targets). Reject ⇒ eval, byte-identical; the residual is strictly narrower.
   // SPEC (fold plan follow-up): resolve append selectors into the extend target index
-  // before SOLVE (mirrors OQ-A interpolated-target resolution at capture).
-  if (engageExtendLayer(root) && treeHasAmpersandAppend(root)) {
+  // before SOLVE (mirrors OQ-A interpolated-target resolution at capture) so even a genuine
+  // append-target extend folds.
+  if (engageExtendLayer(root) && treeHasExtendTargetableAppend(root)) {
     return false;
   }
   // SPECULATIVE-ADMIT (import-spec routing). When imports are present, run the extend-topology check in
@@ -1847,7 +1905,8 @@ export function withSpineMultipleScope<T>(
  * at-rule-&-through-hoist fold — `getHoistedParent` recovers the call-site ruleset from
  * `context.rulesetFrames`), so it is NO LONGER flagged here.
  * A tree whose container-body mixins are ALL spine-eligible returns false → folds.
- * Recursion is gated separately (`treeHasRecursiveMixinCall`).
+ * Recursion (incl. the STRIPE nested-container cycle) folds via the re-entrant splice
+ * + `distinctFoldChild` per-level surfaces; it is no longer gated here.
  */
 function treeHasUnfoldableContainerBodyMixin(root: Node): boolean {
   for (const node of root.walk(true)) {
@@ -2026,126 +2085,6 @@ function rulesetHasInterpolatedSelector(node: Node): boolean {
     return true; // no flat static selector → treat as dynamic
   }
   return String(local.valueOf()).includes('@{') || String(local.valueOf()).includes('${');
-}
-
-/**
- * True if the tree has a RECURSIVE mixin call whose recursion-cycle body contains a
- * NESTED CONTAINER (the STRIPE shape: `.stripe(@n) when (@n>0) { a { … } .stripe(@n-1) }`).
- *
- * FOLD C (`P4-TERMINAL-SINK-DESIGN.md` §7) now folds recursion whose body is FLAT
- * (only declarations + the recursive self/mutual call, e.g. `.mixin-recursive(@n) {
- * level: @n; .mixin-recursive(@n - 1) }`): the re-entrant splice threads each level's
- * freshly-bound param frame through BOTH the nested call's arg-binding eval AND the
- * spliced body decls' dedup-key + emit resolution (`computeDeclKey`/`processNode` push
- * the entry's `spineFrame`), so `@n - 1` resolves against level N's `@n` producing
- * level N-1's surface, byte-identical to eval / less@4.
- *
- * The ONE residual that stays on eval (byte-identical, ratchet-locked): a recursive
- * cycle whose body contains a nested CONTAINER shared across levels. The re-entrant
- * splice re-uses the SAME canonical container child per level, so two levels' blocks
- * COLLAPSE into one (`.wrap a { border-width: 2; border-width: 1 }`) instead of the
- * eval path's two distinct `.wrap a { … }` blocks — the shared-child identity is
- * merged/deduped. A distinct-per-level container surface is a separate P4 item; until
- * then the STRIPE shape defers to eval. FLAT recursion (the common Less loop idiom)
- * folds.
- *
- * Conservative static over-approximation: build the mixin-name → called-mixin-names
- * graph AND note which mixin names have a body-nested container, then report a cycle
- * ONLY when a cycle-participating mixin has a container. Document-level pre-scan, paid
- * once (like the other `treeHas*` gates); a non-recursive tree returns immediately.
- */
-function treeHasRecursiveMixinCall(root: Node): boolean {
-  // name → set of mixin names its bodies call (string keys only)
-  const callGraph = new Map<string, Set<string>>();
-  // Mixin names whose body contains a nested CONTAINER (Ruleset / non-leaf AtRule).
-  // Only such a cycle collapses on the re-entrant splice (STRIPE); a FLAT recursive
-  // body (declarations only) folds byte-identical.
-  const namesWithNestedContainer = new Set<string>();
-  for (const node of root.walk(true)) {
-    if (!isNode(node, N.Mixin) || typeof node.name !== 'string') {
-      continue;
-    }
-    const from = node.name;
-    let calls = callGraph.get(from);
-    if (!calls) {
-      calls = new Set<string>();
-      callGraph.set(from, calls);
-    }
-    for (let i = 0; i < node.rules.length; i++) {
-      const child = node.rules[i]!;
-      if (isNode(child, N.Ruleset) || (isNode(child, N.AtRule) && child.rules.length > 0)) {
-        namesWithNestedContainer.add(from);
-        break;
-      }
-    }
-    for (const inner of node.walk(true)) {
-      if (
-        isNode(inner, N.Call)
-        && isNode(inner.name, N.Reference)
-        && typeof inner.name.key === 'string'
-      ) {
-        calls.add(inner.name.key);
-      }
-    }
-  }
-  if (callGraph.size === 0) {
-    return false;
-  }
-  // Cycle detection (DFS with a recursion stack) over the mixin-name call graph.
-  // Only a cycle in which SOME participating mixin has a nested container defers.
-  const VISITING = 1;
-  const DONE = 2;
-  const state = new Map<string, number>();
-  const stack: string[] = [];
-  const cycleHasContainer = (from: string, to: string): boolean => {
-    // The cycle is the current recursion stack from `to` .. top, plus `from`.
-    if (namesWithNestedContainer.has(from) || namesWithNestedContainer.has(to)) {
-      return true;
-    }
-    for (let i = stack.length - 1; i >= 0; i--) {
-      const name = stack[i]!;
-      if (namesWithNestedContainer.has(name)) {
-        return true;
-      }
-      if (name === to) {
-        break;
-      }
-    }
-    return false;
-  };
-  const hasStripeCycleFrom = (name: string): boolean => {
-    state.set(name, VISITING);
-    stack.push(name);
-    const calls = callGraph.get(name);
-    if (calls) {
-      for (const next of calls) {
-        if (!callGraph.has(next)) {
-          continue;
-        }
-        const s = state.get(next);
-        if (s === VISITING) {
-          if (cycleHasContainer(name, next)) {
-            stack.pop();
-            return true;
-          }
-          continue;
-        }
-        if (s === undefined && hasStripeCycleFrom(next)) {
-          stack.pop();
-          return true;
-        }
-      }
-    }
-    stack.pop();
-    state.set(name, DONE);
-    return false;
-  };
-  for (const name of callGraph.keys()) {
-    if (state.get(name) === undefined && hasStripeCycleFrom(name)) {
-      return true;
-    }
-  }
-  return false;
 }
 
 /**
@@ -2375,6 +2314,47 @@ function renderQueuedTopImports(context: Context, options: FinalPrintOptions): s
 }
 
 /**
+ * Render the hoisted `@charset` prelude (@charset must be document-first). A root
+ * `@charset "utf-8";` folded during the descent registered itself as
+ * `context.currentCharset` (the emit path skips it inline); prepend it here ahead
+ * of any `@import`, mirroring `_toDocumentString`'s depth-0 charset-first emit.
+ * Returns '' when no charset was seen.
+ */
+function renderQueuedCharset(context: Context, options: FinalPrintOptions): string {
+  const charset = context.currentCharset;
+  if (!charset) {
+    return '';
+  }
+  const writer = new OutputWriter();
+  charset.writeSyntax(getPrintOptions({ ...options, writer, depth: 0 }));
+  return `${writer.toString()}\n`;
+}
+
+/**
+ * Register the root's OWN first `@charset` at root-enter, BEFORE imports are wired.
+ * Eval scans the root's direct children (source order) during registration and takes
+ * the first charset — which precedes any charset an `@import` later brings in. The
+ * spine must match that ORDER: `wireSpineImports` preps imported bodies (whose own
+ * `@charset` would set `currentCharset`) before the descent reaches the root's own
+ * charset child, so without this the imported charset would wrongly win (the root's
+ * `@charset "UTF-8"` losing to an imported `@charset "ISO-8859-1"`). Registering the
+ * root's own charset here pins it; the `??=` in the emit skips (rules.ts /
+ * `processNodeInner`) then keep the imported one only when the root has NONE of its own.
+ */
+function wireSpineCharset(root: Rules, context: Context): void {
+  if (context.currentCharset) {
+    return;
+  }
+  for (let i = 0; i < root.rules.length; i++) {
+    const child = root.rules[i]!;
+    if (isNode(child, N.Any) && child.role === 'charset') {
+      context.currentCharset = child;
+      return;
+    }
+  }
+}
+
+/**
  * Sentinel returned by `renderRootViaSpine` when the post-wire RE-GATE (import-spec routing) determines
  * the speculatively-admitted tree is not foldable — the caller (`Rules.render`) re-renders via the eval
  * path. Distinct object identity so it is never confused with rendered text.
@@ -2449,6 +2429,11 @@ export function renderRootViaSpine(
   const savedTreeRoot = context.treeRoot;
   const savedTreeContext = context.treeContext;
   const savedSpineOwnsRoot = context.spineOwnsRoot;
+  const savedCurrentCharset = context.currentCharset;
+  // Pin the root's OWN first `@charset` before imports are wired (so it wins over an
+  // imported charset — see `wireSpineCharset`). `finish` prepends it as the document
+  // prelude; abort/fail restore the pre-render value so an eval re-render re-scans.
+  wireSpineCharset(root, context);
   context.root ??= root;
   // The spine now owns `context.root` — a detached-ruleset/mixin body evaluated
   // inside the fold must NOT reclaim outermost-root status and clobber it (which
@@ -2488,14 +2473,16 @@ export function renderRootViaSpine(
     context.spineOwnsRoot = savedSpineOwnsRoot;
     const trimmed = body.trimEnd();
     const bodyText = trimmed ? `${trimmed}\n` : '';
-    // Top-of-doc `@import` lane (IMPORTS increment 1): CSS-passthrough imports
-    // folded during the descent were queued to `context.topImports` (the KEPT
-    // emitter). The spine's body carries none of them inline, so PREPEND them here
-    // — the same document framing `_toDocumentString` applies at depth 0 (`@import`
-    // after `@charset`, before other rules). Charset is already gated OUT of the
-    // spine (`isSpineEligibleRoot`), so only imports need prepending.
+    // Top-of-doc document framing (IMPORTS increment 1 + charset fold): the spine's
+    // body carries neither the hoisted `@charset` nor CSS-passthrough `@import`s
+    // inline. Prepend them in the same order `_toDocumentString` applies at depth 0:
+    // `@charset` FIRST, then `@import`s, then the body. A mid-body root `@charset`
+    // folded during the descent registered `context.currentCharset` (emit skipped it);
+    // CSS-passthrough imports queued to `context.topImports`.
+    const charsetPrelude = renderQueuedCharset(context, options);
     const importPrelude = renderQueuedTopImports(context, options);
-    return importPrelude ? `${importPrelude}${bodyText}` : bodyText;
+    const prelude = `${charsetPrelude}${importPrelude}`;
+    return prelude ? `${prelude}${bodyText}` : bodyText;
   };
   const fail = (error: unknown): never => {
     context.rulesContext = savedRulesContext;
@@ -2503,6 +2490,7 @@ export function renderRootViaSpine(
     context.treeRoot = savedTreeRoot;
     context.treeContext = savedTreeContext;
     context.spineOwnsRoot = savedSpineOwnsRoot;
+    context.currentCharset = savedCurrentCharset;
     throw error;
   };
   // Descend the SOURCE root's body ONCE in render mode: the statement-framing
@@ -2547,6 +2535,20 @@ export function renderRootViaSpine(
     context.root = savedRoot;
     context.treeRoot = savedTreeRoot;
     context.treeContext = savedTreeContext;
+    // Charset restore on abort is REGISTRATION-STATE-DEPENDENT:
+    //  - If the root was NOT yet registration-prepared (charset children still live),
+    //    roll back the spine's early pin so the eval re-render RE-SCANS the charset
+    //    during its own registration — otherwise the still-set `currentCharset` would
+    //    short-circuit `evalForRender` to the passthrough state (rules.ts:5324) with a
+    //    half-set charset.
+    //  - If the root WAS registration-prepared during wiring (`wireSpineImports` ran
+    //    `prepareRegistration`, which REPLACED each root `@charset` child with a `Nil`
+    //    placeholder and set `currentCharset`), the eval re-render takes the
+    //    `registrationPrepared` branch (rules.ts:5317) and does NOT re-scan — so
+    //    rolling back the pin would DROP the charset entirely (the `Nil` placeholders
+    //    carry no charset). KEEP the pin so the depth-0 `_toDocumentString` emits it,
+    //    byte-identical to a pure eval render.
+    context.currentCharset = root.registrationPrepared ? context.currentCharset : savedCurrentCharset;
     return SPINE_ABORT_TO_EVAL;
   };
   // EXTEND (P3, document-wide gather). Gather every `:extend` instruction with its extender
@@ -2561,11 +2563,29 @@ export function renderRootViaSpine(
   // topology over the union of local + imported subjects; a failure aborts to eval. Then gather over
   // BOTH the root body and the resolved imported bodies so an imported subject receives its header.
   const wireExtends = (): MaybePromise<string | typeof SPINE_ABORT_TO_EVAL> => {
-    if (extendEngaged) {
-      let importedBodies: Rules[] | undefined;
-      let referenceBodies: Set<Rules> | undefined;
-      if (importLayer) {
-        const collected = collectImportedRootSubjects(options);
+    let importedBodies: Rules[] | undefined;
+    let referenceBodies: Set<Rules> | undefined;
+    let engaged = extendEngaged;
+    // IMPORTED-ONLY EXTENDS. `engageExtendLayer(root)` scans only the PARSED entry root,
+    // which for an import-only document (`bootstrap.less` = a list of `@import`s, no
+    // direct `:extend`) has NONE — so `extendEngaged` is false and the whole extend
+    // gather was skipped, silently DROPPING every `:extend` that lives inside an imported
+    // body (bootstrap's grid `.container-@{bp} { &:extend(.container-fluid all) }` →
+    // `.container-lg`/`.container-sm`/… never merged into the `.container, .container-fluid`
+    // group). Imports are resolved by `wireSpineImports` BEFORE this runs, so the resolved
+    // imported bodies are now inspectable: engage the layer when ANY imported body carries
+    // an extend. Zero-cost when the tree has no import (the common case skips this entirely)
+    // and byte-identical when no imported body extends (the collected bodies scan is the
+    // same one `collectImportedRootSubjects` already walks).
+    let collected: ReturnType<typeof collectImportedRootSubjects> | undefined;
+    if (importLayer) {
+      collected = collectImportedRootSubjects(options);
+      if (!engaged) {
+        engaged = collected.bodies.some(body => treeHasExtend(body));
+      }
+    }
+    if (engaged) {
+      if (importLayer && collected) {
         if (!isSpineExtendTopology(root, options.collapseNesting === true, { importedRootSubjects: collected.subjects })) {
           return abortToEval();
         }
@@ -2583,15 +2603,22 @@ export function renderRootViaSpine(
         importedBodies = collected.bodies;
         referenceBodies = collected.referenceBodies;
       }
+      let wired: MaybePromise<{ headers: Map<Ruleset, Selector>; hoisted: Set<Ruleset> }>;
       try {
-        const { headers, hoisted } = wireSpineExtends(root, context, options.collapseNesting === true, importedBodies, referenceBodies);
-        options.spineExtendHeaders = headers;
-        // §4.3 hoist: subjects whose override is a full root-composed projection (`&`-crossing) —
-        // their header emits VERBATIM (skip parent compose). Strictly the crossing subset.
-        options.spineExtendHoisted = hoisted;
+        wired = wireSpineExtends(root, context, options.collapseNesting === true, importedBodies, referenceBodies);
       } catch (error) {
         return fail(error);
       }
+      const applyWired = (result: { headers: Map<Ruleset, Selector>; hoisted: Set<Ruleset> }): MaybePromise<string | typeof SPINE_ABORT_TO_EVAL> => {
+        options.spineExtendHeaders = result.headers;
+        // §4.3 hoist: subjects whose override is a full root-composed projection (`&`-crossing) —
+        // their header emits VERBATIM (skip parent compose). Strictly the crossing subset.
+        options.spineExtendHoisted = result.hoisted;
+        return descend();
+      };
+      // The gather is async only when it expands a `$for`/`each` loop's extenders (loop-generated
+      // interpolated extends); the common case resolves synchronously with zero promise overhead.
+      return isThenable(wired) ? wired.then(applyWired, error => fail(error)) : applyWired(wired);
     }
     return descend();
   };

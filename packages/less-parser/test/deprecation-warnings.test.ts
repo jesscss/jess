@@ -140,28 +140,61 @@ describe('Deprecation warnings', () => {
     });
   });
 
-  describe('at-rule-prelude-variable', () => {
+  // Synced from Less 4.x PR #4462: a bare `@var` in a *structural* at-rule
+  // prelude position still resolves but is deprecated in favour of `@{var}`
+  // interpolation; a `@var` inside `(...)` is a declaration/feature value and
+  // stays valid (not deprecated).
+  describe('variable-in-at-rule-prelude', () => {
     it('should warn for bare @ident in at-rule preludes', () => {
       const { warnings } = parser.parse('@media @mode { .foo { color: red; } }');
-      const warning = warnings.find(w => w.deprecation === 'at-rule-prelude-variable');
+      const warning = warnings.find(w => w.deprecation === 'variable-in-at-rule-prelude');
 
       expect(warning).toBeDefined();
-      expect(warning?.message).toContain('"@mode" in at-rule preludes is deprecated');
+      expect(warning?.message).toContain('A bare "@mode" in an at-rule prelude is deprecated');
       expect(warning?.message).toContain('@{mode}');
     });
 
-    it('should warn for bare @ident inside media feature values', () => {
-      const { warnings } = parser.parse('@media (min-width: @size) { .foo { color: red; } }');
-      const warning = warnings.find(w => w.deprecation === 'at-rule-prelude-variable');
+    it('should warn for a bare @ident in an unknown at-rule prelude', () => {
+      const { warnings } = parser.parse('@supports @supported { .flex { display: flex; } }');
+      const warning = warnings.find(w => w.deprecation === 'variable-in-at-rule-prelude');
 
       expect(warning).toBeDefined();
-      expect(warning?.message).toContain('"@size" in at-rule preludes is deprecated');
-      expect(warning?.message).toContain('@{size}');
+      expect(warning?.message).toContain('A bare "@supported" in an at-rule prelude is deprecated');
+    });
+
+    it('should warn on the first structural bare @ident in a multi-term prelude', () => {
+      const { warnings } = parser.parse('@media @all and @tv { .x { var: yes; } }');
+      const warning = warnings.find(w => w.deprecation === 'variable-in-at-rule-prelude');
+
+      expect(warning).toBeDefined();
+      expect(warning?.message).toContain('A bare "@all" in an at-rule prelude is deprecated');
+    });
+
+    it('should warn for the structural bare @ident but not the parenthesised value', () => {
+      const { warnings } = parser.parse('@container @varfoo (min-width: @threshold) { .c { font-size: 75%; } }');
+      const preludeWarnings = warnings.filter(w => w.deprecation === 'variable-in-at-rule-prelude');
+
+      expect(preludeWarnings).toHaveLength(1);
+      expect(preludeWarnings[0]?.message).toContain('A bare "@varfoo" in an at-rule prelude is deprecated');
+    });
+
+    it('should NOT warn for a bare @ident inside media feature values (declaration value)', () => {
+      const { warnings } = parser.parse('@media (min-width: @size) { .foo { color: red; } }');
+      const warning = warnings.find(w => w.deprecation === 'variable-in-at-rule-prelude');
+
+      expect(warning).toBeUndefined();
+    });
+
+    it('should NOT warn for a bare @ident inside @supports feature values', () => {
+      const { warnings } = parser.parse('@supports (display: @disp) and (gap: 1rem) { .g { display: grid; } }');
+      const warning = warnings.find(w => w.deprecation === 'variable-in-at-rule-prelude');
+
+      expect(warning).toBeUndefined();
     });
 
     it('should not warn for interpolated @{ident} in at-rule preludes', () => {
       const { warnings } = parser.parse('@media @{mode} { .foo { color: red; } }');
-      const warning = warnings.find(w => w.deprecation === 'at-rule-prelude-variable');
+      const warning = warnings.find(w => w.deprecation === 'variable-in-at-rule-prelude');
 
       expect(warning).toBeUndefined();
     });

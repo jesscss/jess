@@ -89,9 +89,6 @@ export const invalidLess: string[] = [
   'tests-unit/functions/legacy/functions.less',
   'tests-unit/operations/operations.less',
 
-  /** @container with variable interpolation: @container @varfoo (...) */
-  'tests-unit/container/container.less',
-
   /** Has an unsupported token - `5_large` numeric separator */
   'tests-unit/variables/variables.less',
 

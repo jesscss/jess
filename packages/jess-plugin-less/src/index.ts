@@ -22,6 +22,22 @@ import { expandLessImportCandidates } from '@jesscss/style-resolver';
 
 export type LessPluginOptions = LessOptions;
 
+/**
+ * The Less plugin's default option values — the single source of truth for the
+ * v5 defaults. The `LessPlugin` constructor fills any unset option from here,
+ * and the `lessc` CLI imports the same object so its defaults can never drift
+ * from the engine's. Note `collapseNesting: false` — v5 preserves nesting by
+ * default (Less 4.x flattened; that is now an explicit opt-in).
+ */
+export const lessPluginDefaults = {
+  mathMode: 'parens-division' as MathMode,
+  unitMode: 'preserve' as UnitMode,
+  equalityMode: 'less' as EqualityMode,
+  leakyScope: true,
+  bubbleRootAtRules: true,
+  collapseNesting: false
+} as const;
+
 export class LessPlugin extends AbstractPlugin {
   name = 'less';
   supportedExtensions = ['.less'];
@@ -53,7 +69,7 @@ export class LessPlugin extends AbstractPlugin {
         mathMode = 'parens';
       }
     } else {
-      mathMode = 'parens-division';
+      mathMode = lessPluginDefaults.mathMode;
     }
     this.mathMode = mathMode;
 
@@ -64,13 +80,13 @@ export class LessPlugin extends AbstractPlugin {
     } else if (opts.strictUnits === true) {
       unitMode = 'strict';
     } else {
-      unitMode = 'preserve';
+      unitMode = lessPluginDefaults.unitMode;
     }
     this.unitMode = unitMode;
-    this.equalityMode = opts.equalityMode ?? 'less';
-    this.leakyScope = opts.leakyScope ?? true;
-    this.bubbleRootAtRules = opts.bubbleRootAtRules ?? true;
-    this.collapseNesting = opts.collapseNesting ?? false;
+    this.equalityMode = opts.equalityMode ?? lessPluginDefaults.equalityMode;
+    this.leakyScope = opts.leakyScope ?? lessPluginDefaults.leakyScope;
+    this.bubbleRootAtRules = opts.bubbleRootAtRules ?? lessPluginDefaults.bubbleRootAtRules;
+    this.collapseNesting = opts.collapseNesting ?? lessPluginDefaults.collapseNesting;
 
     // mathMode (and every other option) reaches the parser via the per-file
     // TreeContext threaded into parse() — no constructor config needed.

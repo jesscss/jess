@@ -1229,12 +1229,13 @@ describe('emit-walk MIXIN-FOLD ratchet (cutover increment 1)', () => {
     expect(css).not.toContain('s: big');
   });
 
-  it('FOLDS merge-across-mixin: STATIC merge decls arriving through CALLS coalesce on the spine (distinct mixins are last-wins; one mixin body coalesces)', async () => {
+  it('FOLDS merge-across-mixin: STATIC merge decls arriving through CALLS coalesce on the spine (distinct mixins COMBINE; one mixin body coalesces)', async () => {
     // `.r { .a(); .b(); }` where each mixin body carries a STATIC `transform+:` merge
     // decl. The container descent RE-PLANS the coalesce over the POST-EXPANSION
-    // `rulesToRender` sequence (`replanMergesIfExpanded`), tagging each spliced decl
-    // with its per-call owner. TWO SEPARATE mixin bodies are LAST-WINS (a mixin-body
-    // `+:` only sees its own body's prior), matching eval.
+    // `rulesToRender` sequence (`replanMergesIfExpanded`). TWO SEPARATE mixin bodies
+    // COMBINE (Add-pull-prior — Less merges every same-property merge decl in the
+    // output ruleset regardless of which mixin injected it), matching eval + the
+    // upstream `merge.less` `.test-rule1` oracle (`rotate, skew, scale`). NOT last-wins.
     const twoMixins = '.a(){transform+: r;}\n.b(){transform+: s;}\n.r{ .a(); .b(); }';
     const context = new Context({ output: { collapseNesting: false }, leakyScope: true });
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
@@ -1246,7 +1247,7 @@ describe('emit-walk MIXIN-FOLD ratchet (cutover increment 1)', () => {
       root as unknown as RenderBufferNode, context, { context, collapseNesting: false }
     )).trim();
     expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // ran the spine
-    expect(css).toBe('.r {\n  transform: s;\n}'); // last-wins across distinct mixins
+    expect(css).toBe('.r {\n  transform: r, s;\n}'); // distinct mixins COMBINE (oracle)
     expect(css.startsWith('.r {')).toBe(true);
     expect(css).not.toContain('.a(');
 
@@ -1272,8 +1273,8 @@ describe('emit-walk MIXIN-FOLD ratchet (cutover increment 1)', () => {
     // RESET the shared `context.printState` in place — swapping the live spine writer
     // mid-render and dropping the enclosing `.r { … }` header. Now every spine value
     // eval is wrapped in `evalIsolatingSpinePrintState`, so the scratch serialization
-    // leaves the print state byte-identical and the merge folds (last-wins across the
-    // two distinct mixin bodies, matching eval).
+    // leaves the print state byte-identical and the merge folds (distinct mixin bodies
+    // COMBINE via Add-pull-prior, matching eval).
     const source = '.a(){transform+: rotate(90deg);}\n.b(){transform+: scale(2);}\n.r{ .a(); .b(); }';
     const context = new Context({ output: { collapseNesting: false }, leakyScope: true });
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
@@ -1285,25 +1286,32 @@ describe('emit-walk MIXIN-FOLD ratchet (cutover increment 1)', () => {
       root as unknown as RenderBufferNode, context, { context, collapseNesting: false }
     )).trim();
     expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // ran the spine
-    expect(css).toBe('.r {\n  transform: scale(2);\n}'); // last-wins across distinct mixins
+    expect(css).toBe('.r {\n  transform: rotate(90deg), scale(2);\n}'); // distinct mixins COMBINE (oracle)
   });
 
-  it('RESIDUAL merge-across-mixin: a DIRECT caller-body merge decl alongside a mixin call stays on eval', () => {
+  it('FOLDS merge-alongside-mixin: a DIRECT caller-body merge decl alongside a mixin call folds byte-identically', async () => {
     // `.a { .m(); box-shadow+: b; }` — a merge decl authored DIRECTLY in the caller
-    // body next to a mixin call. Eval composes the direct `+:` via a positional
-    // prior-value Reference read the static plan does not model, so this shape stays
-    // on the eval path (`bodyHasMixinCall && bodyHasDirectMergeDecl`).
-    const root = rules([
-      mixin({ name: '.m', rules: [decl({ name: 'box-shadow', value: spaced([el('a')]) })] }),
-      ruleset({
-        selector: sel([el('.a')]),
-        rules: [
-          call({ name: ref({ key: '.m' }, { type: 'mixin' }) }),
-          decl({ name: 'box-shadow', value: spaced([el('b')]) }, { assign: '+:' })
-        ]
-      })
-    ]);
-    expect(isSpineEligibleRoot(root, context)).toBe(false);
+    // body next to a mixin call. The former `bodyHasMixinCall && bodyHasDirectMergeDecl`
+    // reject is LIFTED: the post-expansion replan (`replanMergesIfExpanded`) combines
+    // the direct decl's value off the accumulated prior (Add-pull-prior) across owners,
+    // and the ruleset-as-mixin surface is now adopted before the sink is consulted
+    // (`callable-special-case.ts`), so its contribution is counted exactly once. Here
+    // the mixin injects a PLAIN `box-shadow: a` and the caller's `box-shadow+: b` follows;
+    // Less emits both decls (the `+:` does not coalesce onto a plain prior) — verified
+    // byte-identical to the eval path. RESIDUAL (fast-follow, still eval): a chain where a
+    // member carries `!important` (the flag-propagation gap).
+    const source = '.m(){box-shadow: a;}\n.a{ .m(); box-shadow+: b; }';
+    const ctx = new Context({ output: { collapseNesting: false }, leakyScope: true });
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const root = new Parser().parse(source).tree as unknown as Rules;
+    expect(isSpineEligibleRoot(root, ctx)).toBe(true);
+    const before = spineRenderCounter.rootRenders;
+    const css = (await renderNodeToString(
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      root as unknown as RenderBufferNode, ctx, { context: ctx, collapseNesting: false }
+    )).trim();
+    expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // ran the spine
+    expect(css).toBe('.a {\n  box-shadow: a;\n  box-shadow: b;\n}'); // byte-identical to eval
   });
 
   it('a merge-contributing mixin DEFINED but never CALLED still folds', () => {

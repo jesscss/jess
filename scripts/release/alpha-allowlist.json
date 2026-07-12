@@ -3,13 +3,17 @@
   "@jesscss/core",
   "@jesscss/css-parser",
   "@jesscss/less-parser",
+  "@jesscss/scss-parser",
   "@jesscss/fns",
   "styles-config",
   "@jesscss/style-resolver",
   "@jesscss/plugin-less",
+  "@jesscss/plugin-scss",
   "@jesscss/plugin-node-modules",
   "@jesscss/plugin-js",
   "@jesscss/plugin-less-compat",
   "@jesscss/patch-css",
+  "@jesscss/scss-parser",
+  "@jesscss/plugin-scss",
   "jess"
 ]

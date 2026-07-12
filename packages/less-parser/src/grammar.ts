@@ -635,7 +635,7 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   // Parsing the paren body as a full `CondArgOr` restores the guard-grammar behaviour
   // (`not(2 > 1)`, `(@a > 0)`, `(true)`), built into a `Paren` wrapping the condition.
   const CondArgParen = node('GuardInParens',
-    sequence(literal('('), g.CondArgOr, expect(literal(')'))));
+    sequence(literal('('), g.CondArgOr, literal(')')));
   // A single-operand core: a parenthesized sub-condition OR a bounded value, with an
   // optional trailing `<op> right` comparison.
   const condCore = sequence(
@@ -782,10 +782,42 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   // screen`) fail the prelude BEFORE the commit point, so the sequence backtracks
   // cleanly and the generic AtRuleBlock (→ `_buildAtRulePrelude`) handles them.
   // @see https://www.w3.org/TR/mediaqueries-5/#mq-syntax
-  // The condition sub-grammar (QueryFeature / QueryInParens / QueryCondition /
-  // queryPrelude) comes from the shared `queryRules` fragment (spread below) — it is
-  // identical to CSS. Only this block wrapper differs (Less commits its opening
-  // brace via `expect`), so it stays here and reads `g.queryPrelude` from the fragment.
+  // The condition sub-grammar (QueryFeature / QueryInParens / QueryCondition) is
+  // inherited from CSS verbatim. `queryPrelude` is overridden locally (below) so a
+  // comma-separated list may carry bare <media-type> items alongside conditions.
+  // Only this block wrapper differs (Less commits its opening brace via `expect`),
+  // so it stays here and reads `g.queryPrelude`.
+  //
+  // ── Media-query list (CSS Media Queries L4 <media-query-list>) ────────────────
+  // The inherited CSS `queryPrelude` models a @supports/@container-flavoured list
+  // whose every comma item is a parenthesised / `not`-led <media-condition>. It
+  // rejects a bare <media-type> (`all`, `print`, `screen`) as a list item, so a
+  // prelude whose FIRST item parses structurally but whose tail is a bare type —
+  // `@media ((color) and (hover)), all`, `@media (min-width: 100px), print` —
+  // hard-errors at the committed `{`: the first item is consumed, the `, all` tail
+  // is not, and the structured rule has already passed the point where it could
+  // backtrack to the (bracket-swallowing) generic AtRuleBlock. Per the L4 grammar a
+  // <media-query> list item is EITHER a <media-condition> OR
+  //   [ not | only ]? <media-type> [ and <media-condition-without-or> ]?
+  // so each comma-list position also admits the media-type form. The emitted AST is
+  // unaffected: the Less QueryAtRuleBlock builder reconstructs the prelude from
+  // SOURCE TEXT (identical to the generic AtRuleBlock path — both converge on
+  // `_buildAtRulePrelude`), so the grammar only has to CONSUME a well-formed prelude
+  // and reach the commit point; no stray/unbalanced bracket is ever swallowed (the
+  // media-type form's `and` sub-conditions are balanced `QueryInParens`).
+  // @see https://www.w3.org/TR/mediaqueries-5/#media-query-list
+  // A <media-type> is an <ident> other than the query keywords (`not only and or`,
+  // plus `layer` — reserved). Mirrors the CSS `containerName` exclusion set.
+  const mediaType = regex(/(?!(?:not|only|and|or|layer)(?![-\w]))-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*/i);
+  const containerName = mediaType;
+  // `[ not | only ]? <media-type> [ and <media-in-parens> ]*`.
+  const mediaTypeQuery = sequence(
+    optional(regex(/(?:not|only)(?![-\w])/i)),
+    mediaType,
+    many(sequence(regex(/and(?![-\w])/i), g.QueryInParens)));
+  const mediaQueryItem = choice(g.QueryCondition, mediaTypeQuery);
+  const queryPrelude = sequence(
+    optional(containerName), g.QueryCondition, many(sequence(literal(','), mediaQueryItem)));
   const queryAtKeyword = regex(/@(?:media|container|supports)(?![-\w])/i);
   const QueryAtRuleBlock = node(
     sequence(queryAtKeyword, g.queryPrelude, expect(literal('{'), '{'), g.atRuleBody, expect(literal('}'), '}')));
@@ -831,7 +863,7 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
     Ruleset, declarationList, Declaration, customValue, customCurlyBlock, cpInner, cpParen, cpSquare, cpCurly, cpValue, CustomDeclaration, declaration,
     valueList, valueSequence, value, UnicodeRange, Negative, mathProduct, mathSum, topProduct, topSum, parenExprList, InterpValue, NsAccessor, EscapedValue, NamedColor, Dimension, Url,
     parenBody, permissiveParenBody, Paren, GluedParen, DetachedRuleset, functionCallArgs, squareParenBody, calcBody, Call, FormatCall, SquareParen, anyValue, EachFor,
-    QueryAtRuleBlock, ImportAtRuleStatement,
+    queryPrelude, QueryAtRuleBlock, ImportAtRuleStatement,
     AtRuleBlock, AtRuleStatement, atRuleBody
   };
 })]);

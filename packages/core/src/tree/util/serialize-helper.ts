@@ -18,6 +18,7 @@ import {
 import { isNode } from './is-node.js';
 import { N } from '../node-type.js';
 import { Nil } from '../nil.js';
+import { copyWithReusableLeaves } from './cloning.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import { Selector, type SelectorLike } from '../selector.js';
 import { consumeTriviaText, printableTriviaText, triviaHasBlockComment } from './trivia.js';
@@ -152,7 +153,7 @@ function applySpineVisitorsEnter(
  * an `Object.assign` restore after (sync AND async) puts the original writer + frame
  * refs back — containing any nested scratch serialization.
  */
-function evalIsolatingSpinePrintState<T>(
+export function evalIsolatingSpinePrintState<T>(
   context: NonNullable<FinalPrintOptions['context']>,
   run: () => MaybePromise<T>
 ): MaybePromise<T> {
@@ -1061,6 +1062,35 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       if (!spineContext) {
         return undefined;
       }
+      // DISTINCT-PER-LEVEL container surface (STRIPE recursion / repeated-call fold).
+      // A fold splices a bound surface's children; a nested CONTAINER child (Ruleset /
+      // non-leaf AtRule) is the SAME canonical node across every re-entrant recursion
+      // level AND across repeated calls to the same mixin, because the surface reuses
+      // the definition body's children. Two entries pointing at the SAME container node
+      // COLLAPSE into one printed block (the header-merge is keyed on node identity), so
+      // `.stripe(3)` → one `.wrap a{…}` instead of three. Mirror the loop fold's
+      // per-iteration `copyWithReusableLeaves`: on a container child's SECOND+ occurrence
+      // within this expansion pass, splice a distinct COPY (reusing scalar leaves) under
+      // the same `spineFrame` — a projection giving each level its own surface identity,
+      // NOT a merge/mutation. The FIRST occurrence stays SHARED (zero cost for the common
+      // single-call container mixin); a leaf decl is never copied (it resolves per-entry
+      // via `spineFrame`). The copy resolves its values against the same surface frame,
+      // so it is byte-identical to the shared node — only its printed-block identity differs.
+      const seenFoldContainers = new WeakSet<Node>();
+      const distinctFoldChild = (child: Node): Node => {
+        const isContainer = isNode(child, N.Ruleset)
+          || (isNode(child, N.AtRule) && child.rules.length > 0);
+        if (!isContainer) {
+          return child;
+        }
+        if (!seenFoldContainers.has(child)) {
+          seenFoldContainers.add(child);
+          return child;
+        }
+        const copy = copyWithReusableLeaves(child);
+        copy.index = child.index;
+        return copy;
+      };
       const expandFrom = (start: number): MaybePromise<void> => {
         for (let i = start; i < rulesToRender.length; i++) {
           const entry = rulesToRender[i]!;
@@ -1128,7 +1158,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
             }
             const childEntries: RenderRuleEntry[] = resolved.kind === 'fold'
               ? resolved.surfaces.flatMap(surface =>
-                  surface.rules.map(child => ({ node: child, spineFrame: surface, mergeOwner: surface })))
+                  surface.rules.map(child => ({ node: distinctFoldChild(child), spineFrame: surface, mergeOwner: surface })))
               : isNode(resolved.output, N.Rules)
                 // EVAL-fallback: tag every flattened child with the per-CALL output
                 // Rules as its merge owner, so a `+:` from THIS call does not
@@ -1480,6 +1510,17 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
         // anchor — skip it entirely (like a hidden decl), unless it carries
         // printable trivia to preserve.
         if (options.spineMergePlan?.get(n)?.kind === 'suppress' && !hasPrintableTrivia(n, options)) {
+          return;
+        }
+        // A `@charset "utf-8";` (role-'charset' `Any`) HOISTS to document top — it
+        // never emits inline. Register the first as `currentCharset` (prepended by
+        // `renderRootViaSpine`) and skip it, mirroring eval's charset→Nil hoist. In
+        // practice a charset is a root child; handled here too so a nested body that
+        // somehow carries one does not emit it mid-block.
+        if (isNode(n, N.Any) && n.role === 'charset') {
+          if (options.context && !options.context.currentCharset) {
+            options.context.currentCharset = n;
+          }
           return;
         }
         if (isNode(n, N.Comment) && originatesFromReferenceImport(n) && !originatesFromCall(n)) {
@@ -2029,10 +2070,40 @@ function serializeSpineFrameContainer(
   // it. Zero-cost when `node.guard` is unset (the common case). `isSpineEligibleContainer`
   // has already excluded a not-yet-materialized STRING guard.
   const guard = node.guard;
-  if (guard instanceof Node && !(guard instanceof Nil)) {
-    const guardResult = guard instanceof Condition
-      ? guard.evaluateBoolean(context)
-      : guard.eval(context);
+  // A `Nil` guard means the guard was already evaluated on the EVAL path and FAILED
+  // (`Ruleset.evalNode` memoizes a failed `when` guard by mutating `this.guard` to a
+  // `Nil` — see its guard block). The eval and spine paths share the same canonical
+  // node (object-reduction / node-reuse), so when a mixin body was routed through eval
+  // FIRST (e.g. bootstrap's `#rfs`, whose `@rfs-fluid = null` fluid guard fails), the
+  // spine later renders the SAME node. A failed guard must emit NOTHING — WITHOUT this
+  // branch a `Nil` guard fell through to the UNGUARDED descent below and the failed
+  // block was rendered unconditionally (bootstrap ran the fluid block's `#mq-value` in
+  // a broken scope). Mirrors `Ruleset.evalNode`'s `guard instanceof Nil` early return.
+  if (guard instanceof Nil) {
+    return '';
+  }
+  if (guard instanceof Node) {
+    // ISOLATE the guard eval's print-state. A `when` guard whose operands render
+    // nested values — a function/plugin call (`isnumber(@fs)`), or a local var read
+    // whose binding is itself a call (`@fs-unit: get-unit(@fs)`) — drives those
+    // renders through `prepareRenderPrintState`, which RESETS `context.printState`
+    // IN PLACE (fresh writer + frame arrays). In the single-pass spine render
+    // `context.printState` IS the live emit state, so the reset swaps the live
+    // writer/frames MID-DESCENT: the guard still computes the right verdict, but the
+    // subsequent PASSING body descent writes leaf text into the swapped (discarded)
+    // writer and its output is LOST — a silently DROPPED block (bootstrap RFS
+    // `#font-size`: the compound `not(isnumber(@fs)) or (not(@fs-unit = px) and
+    // not(@fs-unit = rem))` guard passed yet dropped the whole `font-size` block,
+    // cascading into dropped later siblings). Both the `Condition` fold
+    // (`evaluateBoolean`, which evals each operand) and a non-`Condition` guard's
+    // full `Node.eval` (a parenthesized compound parses as a `Paren`) hit this, so
+    // isolate BOTH — exactly as the value-leaf resolves do
+    // (`evalIsolatingSpinePrintState`), leaving the live writer/frames byte-identical
+    // for the body descent. A simple guard with no rendering operand pays only a
+    // shallow snapshot.
+    const guardResult = evalIsolatingSpinePrintState(context, () =>
+      guard instanceof Condition ? guard.evaluateBoolean(context) : guard.eval(context)
+    );
     const decideGuard = (result: boolean | Node): MaybePromise<string> => {
       if (!Condition.resultPasses(result)) {
         return '';

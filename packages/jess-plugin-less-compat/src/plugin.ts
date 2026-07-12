@@ -9,8 +9,20 @@ import { filterPlugins } from './plugin-utils.js';
 import { LessVisitor as LessVisitorClass, LessPluginManager, LessTreeConstructors, createLessMock } from './less-compat-structures.js';
 import { NodeModulesPlugin } from '@jesscss/plugin-node-modules';
 
-const isThenable = (v: any): v is PromiseLike<any> =>
-  !!v && (typeof v === 'object' || typeof v === 'function') && typeof (v as any).then === 'function';
+const isThenable = (v: unknown): v is PromiseLike<unknown> =>
+  !!v && (typeof v === 'object' || typeof v === 'function') && typeof (v as { then?: unknown }).then === 'function';
+
+/**
+ * Structural guard for Less/Jess nodes that expose an `eval(context)` method.
+ * Used by the @plugin function wrappers to evaluate node arguments before
+ * handing them to legacy Less plugin functions.
+ */
+const hasEvalMethod = (x: unknown): x is { eval: (c: unknown) => unknown; evaluated?: boolean } =>
+  !!x && (typeof x === 'object' || typeof x === 'function') && typeof (x as { eval?: unknown }).eval === 'function';
+
+/** Structural guard for nodes that expose a `removeFlag` mutator. */
+const hasRemoveFlag = (x: unknown): x is { removeFlag: (flag: number) => void } =>
+  !!x && typeof (x as { removeFlag?: unknown }).removeFlag === 'function';
 
 const LESS_PLUGIN_JS_RUNTIME_MESSAGE = 'Feature not supported. Install @jesscss/plugin-js to enable Less @plugin script execution.';
 const SCRIPT_MODULES_DISABLED_MESSAGE = 'Less @plugin is disabled by disableScriptModules.';
@@ -34,9 +46,9 @@ function addToJessRegistry(jessRegistry: any, name: string, func: any): void {
         if (arg instanceof Any || arg instanceof Declaration || arg instanceof Dimension) {
           // Fast path for common nodes that are safe to eval normally via .eval
         }
-        if (arg instanceof Object && arg && typeof (arg as any).eval === 'function' && (arg as any).evaluated !== true) {
+        if (hasEvalMethod(arg) && arg.evaluated !== true) {
           try {
-            return (arg as any).eval(this);
+            return arg.eval(this);
           } catch {
             return arg;
           }
@@ -80,9 +92,9 @@ function addRootFunctionToJessRegistry(jessRegistry: any, name: string, func: an
   name = name.toLowerCase();
   const wrapped = function(this: any, ...args: any[]) {
     const evaldArgs = args.map((arg) => {
-      if (arg instanceof Object && arg && typeof (arg as any).eval === 'function' && (arg as any).evaluated !== true) {
+      if (hasEvalMethod(arg) && arg.evaluated !== true) {
         try {
-          return (arg as any).eval(this);
+          return arg.eval(this);
         } catch {
           return arg;
         }
@@ -263,8 +275,50 @@ export class LessCompatPlugin extends AbstractPlugin {
   }
 
   private sourceMayContainPluginDirective(tree?: Rules): boolean {
-    const source = tree?._treeContext?.file?.source;
-    return typeof source === 'string' && source.includes('@plugin');
+    if (!tree) {
+      return false;
+    }
+    const source = tree._treeContext?.file?.source;
+    if (typeof source === 'string' && source.includes('@plugin')) {
+      return true;
+    }
+    // The parser no longer always threads the caller's TreeContext onto the root
+    // tree's `_treeContext`, so the raw source string may be unavailable. Detect
+    // `@plugin` directly from the parsed tree, where it appears as an
+    // AtRule/AtRuleStatement named `@plugin` (or `plugin`).
+    return this.treeContainsPluginDirective(tree);
+  }
+
+  private treeContainsPluginDirective(node: unknown, depth = 0): boolean {
+    if (!node || typeof node !== 'object' || depth > 32) {
+      return false;
+    }
+    const candidate: { type?: unknown; name?: unknown; rules?: unknown } = node;
+    const type = candidate.type;
+    if (type === 'AtRule' || type === 'AtRuleStatement' || type === 'Directive') {
+      const name = candidate.name;
+      let nameValue: string | undefined;
+      if (typeof name === 'string') {
+        nameValue = name;
+      } else if (name && typeof name === 'object') {
+        const inner: unknown = (name as { value?: unknown }).value;
+        if (typeof inner === 'string') {
+          nameValue = inner;
+        }
+      }
+      if (nameValue === '@plugin' || nameValue === 'plugin') {
+        return true;
+      }
+    }
+    const rules = candidate.rules;
+    if (Array.isArray(rules)) {
+      for (const child of rules) {
+        if (this.treeContainsPluginDirective(child, depth + 1)) {
+          return true;
+        }
+      }
+    }
+    return false;
   }
 
   private warnForPluginDirective(node: any): void {
@@ -287,8 +341,8 @@ export class LessCompatPlugin extends AbstractPlugin {
 
   private markPluginDirectiveInvisible(node: any): void {
     const jessNode = node instanceof LessAdapterBase ? node.jessNode : node;
-    if (jessNode && typeof (jessNode as any).removeFlag === 'function') {
-      (jessNode as any).removeFlag(F_VISIBLE);
+    if (hasRemoveFlag(jessNode)) {
+      jessNode.removeFlag(F_VISIBLE);
     }
   }
 
@@ -304,8 +358,8 @@ export class LessCompatPlugin extends AbstractPlugin {
       jessRegistry.add(name.toLowerCase(), async function(this: any, ...args: unknown[]) {
         const context = this;
         const evaluated = await Promise.all(args.map(async (arg) => {
-          if (arg instanceof Object && typeof (arg as any).eval === 'function' && (arg as any).evaluated !== true) {
-            const out = (arg as any).eval(context);
+          if (hasEvalMethod(arg) && arg.evaluated !== true) {
+            const out = arg.eval(context);
             return isThenable(out) ? await out : out;
           }
           return arg;
@@ -1170,7 +1224,7 @@ export class LessCompatPlugin extends AbstractPlugin {
                     // Less.js pattern: if plugin is a constructor function, instantiate it with `new` (no args)
                     if (typeof pluginInstance === 'function') {
                       try {
-                        pluginInstance = new (pluginInstance as any)();
+                        pluginInstance = new pluginInstance();
                       } catch {
                         // ignore, fall back to using the function itself
                       }

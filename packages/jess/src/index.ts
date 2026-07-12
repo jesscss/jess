@@ -465,8 +465,12 @@ const resolvePackageImportEntry = (specifier: string, fromDir?: string): string 
 
 const resolveJsReadRoot = (
   filePath: string | undefined,
-  configFilePath: string | undefined
+  configFilePath: string | undefined,
+  explicitReadRoot: string | undefined
 ): string => {
+  if (explicitReadRoot) {
+    return path.resolve(explicitReadRoot);
+  }
   const entryRoot = filePath ? path.resolve(path.dirname(filePath)) : undefined;
   const configRoot = configFilePath ? path.resolve(path.dirname(configFilePath)) : undefined;
   if (entryRoot && configRoot) {
@@ -542,7 +546,7 @@ export class Compiler {
       effectiveConfig.compile = applyStrictPreset(effectiveConfig.compile);
     }
     const jsPluginConfig: JsPluginConfig = {
-      jsReadRoot: resolveJsReadRoot(filePath, configFilePath)
+      jsReadRoot: resolveJsReadRoot(filePath, configFilePath, effectiveConfig.compile?.jsReadRoot)
     };
     let resolvedOutputFilePath: string | undefined = renderOptions?.outputFile;
     if (!resolvedOutputFilePath) {
@@ -915,6 +919,39 @@ export class Compiler {
       ...resolved.activeOptions,
       ...(searchPaths ? { searchPaths } : {})
     };
+    // Auto-wire @jesscss/plugin-js when it is resolvable: Less `@plugin` and
+    // script-module imports lazily request an importer for the JS/TS extension
+    // via `loadPluginForExtension`. When plugin-js is absent, the proxy factory
+    // returns undefined and core emits the "Install @jesscss/plugin-js" gate.
+    // A user-configured `loadPluginForExtension` (if any) still wins.
+    const userLoadPluginForExtension = contextOptions.loadPluginForExtension;
+    const resolutionBaseDir = getConsumerResolutionBaseDir(resolved.filePath, resolved.configFilePath);
+    const autoWireJsPlugin = (extension: string): PluginInterface | undefined => {
+      const jsPlugin = this.createJsPluginProxy(resolved.jsPluginConfig, resolutionBaseDir);
+      if (jsPlugin?.supportedExtensions?.includes(extension)) {
+        return jsPlugin;
+      }
+      return undefined;
+    };
+    contextOptions.loadPluginForExtension = (extension: string) => {
+      if (!userLoadPluginForExtension) {
+        return autoWireJsPlugin(extension);
+      }
+      const fromUser = userLoadPluginForExtension(extension);
+      if (fromUser && typeof (fromUser as Promise<unknown>).then === 'function') {
+        return Promise.resolve(fromUser).then(resolvedPlugin => resolvedPlugin ?? autoWireJsPlugin(extension));
+      }
+      return (fromUser as PluginInterface | undefined) ?? autoWireJsPlugin(extension);
+    };
+
+    // `breakOnError` is a top-level render option (consumed by outputDiagnostics for
+    // display), but eval-time collection-vs-throw also reads it off `context.opts`
+    // (Context.getTree / the spine import fold). Thread it through so a render called
+    // with `breakOnError: false` actually COLLECTS parse/resolution failures instead
+    // of hard-throwing out of the whole render.
+    if (resolved.effectiveConfig.breakOnError !== undefined) {
+      contextOptions.breakOnError = resolved.effectiveConfig.breakOnError;
+    }
     const usesDeprecatedDisablePluginRule = Boolean(contextOptions.disablePluginRule);
     contextOptions.disableScriptModules = Boolean(
       contextOptions.disableScriptModules

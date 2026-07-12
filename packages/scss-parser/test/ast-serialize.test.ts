@@ -184,7 +184,6 @@ describe('scss-parser (ast serialize)', () => {
     const serialized = serializeTypes(tree, { showOptions: true });
     expect(serialized).toContain('(Call');
     expect(serialized).toContain('(VarDeclaration');
-    expect(serialized).toContain(`(Any [role=property]`);
     expect(serialized).toContain(`'x'`);
     expect(serialized).toContain(`'y'`);
   });

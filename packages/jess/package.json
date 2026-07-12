@@ -13,7 +13,10 @@
     },
     "./package.json": "./package.json"
   },
-  "bin": "./bin/cli.mjs",
+  "bin": {
+    "jess": "./bin/cli.mjs",
+    "lessc": "./bin/lessc.mjs"
+  },
   "files": [
     "lib",
     "bin"
@@ -31,13 +34,8 @@
     "lodash-es": "^4.17.21",
     "styles-config": "workspace:*"
   },
-  "peerDependencies": {
+  "optionalDependencies": {
     "@jesscss/plugin-js": "workspace:*"
-  },
-  "peerDependenciesMeta": {
-    "@jesscss/plugin-js": {
-      "optional": true
-    }
   },
   "scripts": {
     "ci": "pnpm build && pnpm test",

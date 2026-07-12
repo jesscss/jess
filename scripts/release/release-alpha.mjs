@@ -1,14 +1,15 @@
 #!/usr/bin/env node
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
-import { getAlphaReleasePlan, incrementAlphaVersions } from './release-utils.mjs';
+import { getAlphaPublishStatus, getAlphaReleasePlan, incrementAlphaVersions } from './release-utils.mjs';
 
 function parseArgs(argv) {
   const options = {
     dryRun: false,
     noPush: false,
     skipVersion: false,
-    skipPublish: false
+    skipPublish: false,
+    bump: false
   };
   for (let i = 2; i < argv.length; i += 1) {
     const arg = argv[i];
@@ -16,6 +17,9 @@ function parseArgs(argv) {
     if (arg === '--no-push') options.noPush = true;
     if (arg === '--skip-version') options.skipVersion = true;
     if (arg === '--skip-publish') options.skipPublish = true;
+    // On an already-published manifest version: default is to error; --bump
+    // opts into auto-incrementing to the next unused -alpha.N instead.
+    if (arg === '--bump') options.bump = true;
   }
   return options;
 }
@@ -110,21 +114,6 @@ function smokeCheck(plan, expectedVersion) {
   console.log(`\nExpected published version: ${expectedVersion}`);
 }
 
-function getNpmAlphaVersion(pkgName) {
-  const result = spawnSync('npm', ['view', `${pkgName}@alpha`, 'version', '--json'], {
-    encoding: 'utf8',
-    stdio: ['ignore', 'pipe', 'pipe'],
-    shell: process.platform === 'win32'
-  });
-  if (result.status !== 0) return null;
-  const raw = (result.stdout ?? '').trim();
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return raw || null;
-  }
-}
-
 const rootDir = process.cwd();
 const options = parseArgs(process.argv);
 
@@ -162,17 +151,36 @@ if (!options.dryRun) {
 run('pnpm', ['run', 'release:alpha:check'], rootDir);
 
 if (!options.skipVersion) {
-  // Guard against double-increment: if a previous run already bumped the version
-  // but failed before publishing, don't bump again.
-  const { version: localVersion } = getReleaseState(rootDir);
-  const npmVersion = getNpmAlphaVersion(getAlphaReleasePlan({ rootDir }).allowlist[0]);
-  if (npmVersion && localVersion !== npmVersion) {
-    console.log(`\nVersion already incremented (local: ${localVersion}, npm: ${npmVersion}). Skipping increment.`);
+  // Respect the version already written in the manifests: publish it as-is when
+  // npm does not already have it. Only bump/error when the manifest version is
+  // already fully published. The per-version existence check also subsumes the
+  // old double-increment guard: a manifest that was bumped but not yet published
+  // reads back as state 'none' and is republished as-is (no second bump).
+  const { plan: versionPlan, version: localVersion } = getReleaseState(rootDir);
+  console.log(`\nChecking npm for manifest version ${localVersion} across ${versionPlan.allowlist.length} allowlisted package(s)...`);
+  const status = getAlphaPublishStatus({ plan: versionPlan, version: localVersion });
+
+  if (status.state === 'none') {
+    console.log(`Version ${localVersion} is not yet published. Publishing manifest version as-is (no auto-increment).`);
+  } else if (status.state === 'partial') {
+    console.log(
+      `Version ${localVersion} is partially published (${status.published.length}/${status.total} packages).`
+      + ` Resuming: publishing manifest version as-is; already-published packages are skipped by publish-alpha.`
+    );
+    console.log(`  Already published: ${status.published.join(', ')}`);
   } else {
-    console.log('\nAuto-incrementing alpha version...');
-    const { previousVersion, nextVersion } = incrementAlphaVersions({ rootDir });
-    console.log(`  ${previousVersion} -> ${nextVersion}`);
-    run('pnpm', ['install', '--lockfile-only'], rootDir);
+    // state === 'all' — the manifest version is already fully published.
+    if (options.bump) {
+      console.log(`Version ${localVersion} is already published. Auto-incrementing (--bump)...`);
+      const { previousVersion, nextVersion } = incrementAlphaVersions({ rootDir });
+      console.log(`  ${previousVersion} -> ${nextVersion}`);
+      run('pnpm', ['install', '--lockfile-only'], rootDir);
+    } else {
+      throw new Error(
+        `Manifest version ${localVersion} is already published to npm for all allowlisted packages.\n`
+        + `Set a new '-alpha.N' version in the allowlisted manifests, or re-run with --bump to auto-increment to the next unused version.`
+      );
+    }
   }
 }
 

@@ -402,10 +402,11 @@ importers:
       styles-config:
         specifier: workspace:*
         version: link:../config
-    devDependencies:
+    optionalDependencies:
       '@jesscss/plugin-js':
         specifier: workspace:*
         version: link:../jess-plugin-js
+    devDependencies:
       '@jesscss/plugin-less-compat':
         specifier: workspace:*
         version: link:../jess-plugin-less-compat

@@ -1240,6 +1240,39 @@ export class LessGrammar extends CssParser {
    * INTERPOLATION_PLACEHOLDER, `@var`/`$prop` references in `replacements`); otherwise
    * fall through to the plain CSS builder (bare-string value).
    */
+  /**
+   * The Less `Url` grammar tokenizes the inner string as bare leaves (no child
+   * node), so the css base builder wraps a quoted url body in a raw-string
+   * `Quoted` — which never interpolates `@{var}`/`${prop}`. Less 4.x DOES resolve
+   * interpolation inside a QUOTED url body (`url("@{base}/@{i}.svg")`), the same as
+   * any other quoted string, so route the quoted inner through the same
+   * interpolation-aware construction `_buildQuoted` uses. Unquoted url bodies stay
+   * verbatim (Less 4.x leaves `url(@{x})` literal), as does a quoted body with no
+   * interpolation.
+   */
+  protected override _buildUrl(children: ReadonlyArray<Child>, loc: LocationInfo) {
+    const innerNode = nodeChildren(children)[0];
+    if (innerNode) {
+      return super._buildUrl(children, loc);
+    }
+    const inner = children
+      .filter((c): c is CSTLeaf => c._tag === 'leaf')
+      .filter(l => !/^url\($/i.test(l.value) && l.value !== ')')
+      .map(l => l.value).join('').trim();
+    const quote = inner[0];
+    if ((quote === '"' || quote === '\'') && inner.at(-1) === quote) {
+      const body = inner.slice(1, -1);
+      if (body.includes('@{') || body.includes('${')) {
+        const value = this._buildStringInterpolation(body, loc);
+        return new Url(
+          new Quoted(value as any, { quote }, loc) as any,
+          undefined, loc
+        ) as unknown as JessNode;
+      }
+    }
+    return super._buildUrl(children, loc);
+  }
+
   protected override _buildQuoted(children: ReadonlyArray<Child>, loc: LocationInfo) {
     const text = children
       .filter((c): c is CSTLeaf => c._tag === 'leaf')
@@ -1406,15 +1439,70 @@ export class LessGrammar extends CssParser {
 
   private _warnAtRulePreludeVars(span: Span) {
     const text = this._source.slice(span.start, span.end);
-    const brace = text.indexOf('{');
-    const prelude = (brace >= 0 ? text.slice(0, brace) : text).replace(/^\s*@-?[\w-]+/, '');
-    const at = prelude.match(/@[a-zA-Z][\w-]*/);
-    if (at && !prelude.includes('@{')) {
+    const varName = this._firstTopLevelBareAtVar(text);
+    if (varName !== null) {
       this._warn(
-        `"${at[0]}" in at-rule preludes is deprecated. Use @{${at[0].slice(1)}} for interpolation.`,
-        'at-rule-prelude-variable'
+        `A bare "@${varName}" in an at-rule prelude is deprecated. Use @{${varName}} interpolation instead.`,
+        'variable-in-at-rule-prelude'
       );
     }
+  }
+
+  /**
+   * The first bare `@ident` reference in an at-rule prelude that is deprecated
+   * under Less 4.x PR #4462 (`variable-in-at-rule-prelude`), or null when there
+   * is none. A bare `@var` in a *structural* (top-level) prelude position still
+   * resolves but is deprecated in favour of `@{var}` interpolation; the scan
+   * therefore ignores, mirroring `hasTopLevelBareVariable` / `warnBareAtRuleVariable`:
+   *   - the leading at-rule name itself (`@media`, `@-moz-document`, …);
+   *   - `@{ident}` interpolation — the supported migration target;
+   *   - a `@var` inside `(...)` — a declaration/feature value (e.g. the `@size`
+   *     in `@media (min-width: @size)`), which stays valid;
+   *   - `@`/`(` characters inside string literals, which are not structural.
+   */
+  private _firstTopLevelBareAtVar(text: string): string | null {
+    let depth = 0;
+    // Skip the leading at-rule name (`@media`, `@-moz-document`, …).
+    let i = /^\s*@-?[\w-]+/.exec(text)?.[0].length ?? 0;
+    for (; i < text.length; i++) {
+      const c = text[i]!;
+      if (c === '"' || c === '\'') {
+        // A string literal: skip its contents so inner `(`/`@` are not counted.
+        i++;
+        while (i < text.length && text[i] !== c) {
+          i++;
+        }
+        continue;
+      }
+      if (c === '@') {
+        if (text[i + 1] === '{') {
+          // `@{ident}` interpolation — skip the whole group (its `}` is not the
+          // block opener, and a later bare `@var` must still be reported).
+          i += 2;
+          while (i < text.length && text[i] !== '}') {
+            i++;
+          }
+          continue;
+        }
+        if (depth === 0) {
+          const m = /^@(-?[a-zA-Z\x80-￿][\w-]*)/.exec(text.slice(i));
+          if (m) {
+            return m[1]!;
+          }
+        }
+        continue;
+      }
+      if (c === '{') {
+        // The block's opening brace ends the prelude.
+        break;
+      }
+      if (c === '(') {
+        depth++;
+      } else if (c === ')' && depth > 0) {
+        depth--;
+      }
+    }
+    return null;
   }
 
   private _buildMixinCall(
@@ -2439,6 +2527,13 @@ export class LessGrammar extends CssParser {
           return new Expression(op as unknown as Node, { parens: true } as any, loc) as unknown as JessNode;
         }
       }
+      // A `<ratio>` feature value (`aspect-ratio: 3/2`) serializes with spaces
+      // around the slash (`3 / 2`) — the slash is a ratio separator, not a
+      // division to evaluate. @see https://drafts.csswg.org/css-values-4/#ratios
+      const ratio = /^(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)$/.exec(propVal);
+      if (ratio) {
+        return this._lessKeyword(`${ratio[1]} / ${ratio[2]}`, loc) as unknown as JessNode;
+      }
       return this._lessKeyword(propVal, loc) as unknown as JessNode;
     };
 
@@ -2502,16 +2597,35 @@ export class LessGrammar extends CssParser {
       if (colonIdx > 0 && !/[><=!]/.test(trimmed.slice(0, colonIdx))) {
         const propName = trimmed.slice(0, colonIdx).trim();
         const propVal = trimmed.slice(colonIdx + 1).trim();
-        const nameNode = propName;
         // The value may be a bare `@var` (→ indexed Reference, matching
         // atRulePreludeBareVariableAs:'index'), a `@var[key]` accessor, a `~"…"`
         // escaped string, or a parenthesized math expression — all evaluated so
         // the prelude renders computed values (Less 4.x parity).
         const valueNode = buildFeatureValue(propVal);
-        const decl = new Declaration({ name: nameNode as any, value: valueNode as any }, undefined, loc);
+        // A custom-property style query — `@container style(--responsive: true)`.
+        // Less normalizes the feature to `name: value` (single space after the
+        // colon), NOT the verbatim custom-property spacing a `Declaration` would
+        // preserve, so model it as a query condition (`--name:` keyword + value).
+        // @see https://drafts.csswg.org/css-conditional-5/#style-container
+        if (propName.startsWith('--')) {
+          const qc = new QueryCondition(
+            [this._lessKeyword(`${propName}:`, loc), valueNode] as any, undefined, loc);
+          return new Paren(qc as any, undefined, loc) as unknown as JessNode;
+        }
+        const decl = new Declaration({ name: propName as any, value: valueNode as any }, undefined, loc);
         return new Paren(decl as any, undefined, loc) as unknown as JessNode;
       }
-      const words = trimmed.split(/\s+/).filter(Boolean).map(w => buildWord(w));
+      // Normalize interior whitespace of a range/comparison query so it renders
+      // canonically regardless of author spacing: no space after `(` or before
+      // `)`, and a single space around a comparison operator even when it is
+      // glued to an operand (`( width< 500px)` → `(width < 500px)`).
+      // @see https://drafts.csswg.org/mediaqueries-5/#mq-range-context
+      const normalized = trimmed
+        .replace(/\(\s+/g, '(')
+        .replace(/\s+\)/g, ')')
+        .replace(/\s*(<=|>=|!=|[<>=])\s*/g, ' $1 ')
+        .trim();
+      const words = normalized.split(/\s+/).filter(Boolean).map(w => buildWord(w));
       const qc = new QueryCondition(words as any, undefined, loc);
       return new Paren(qc as any, undefined, loc) as unknown as JessNode;
     };
@@ -2668,7 +2782,20 @@ export class LessGrammar extends CssParser {
         return new Expression(base as unknown as Node, undefined, loc) as unknown as JessNode;
       }
       const tokens = tokenize(t);
-      return new QueryCondition(tokens as any, undefined, loc) as unknown as JessNode;
+      // A leading `<container-name>` — an identifier (or `@var`) separated from
+      // the following `<container-query>` by whitespace (`@container sidebar
+      // (min-width: 700px)`) — is NOT a query function token (`size(…)`), so the
+      // serializer keeps a space before the query group instead of gluing it.
+      // @see https://drafts.csswg.org/css-conditional-5/#container-condition
+      const nameMatch = /^(@?-?[_a-zA-Z\x80-\uffff][-_a-zA-Z0-9\x80-\uffff]*)\s+(?:\(|not(?![-\w]))/i.exec(trimmed);
+      const leadingContainerName = !!nameMatch
+        && tokens.length > 1
+        && !['not', 'and', 'or', 'only'].includes(nameMatch[1]!.replace(/^@/, '').toLowerCase());
+      return new QueryCondition(
+        tokens as any,
+        leadingContainerName ? { leadingContainerName: true } : undefined,
+        loc
+      ) as unknown as JessNode;
     };
 
     const commaItems = splitCommas(text);

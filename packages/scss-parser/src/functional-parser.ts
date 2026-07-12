@@ -11,8 +11,21 @@ import { runFunctionalParse, type FunctionalParseHost } from '@jesscss/css-parse
 import { scssGrammar } from './grammar.js';
 import { ScssGrammar } from './builders.js';
 import { setParseScssFnForInterp } from './interp.js';
-import type { ScssParserConfig, ScssRules } from './scssRecursiveParser.js';
-import type { SyntacticContentAssistSuggestion } from './scssParser.js';
+
+/** Config accepted for API compatibility; the functional driver ignores it. */
+export type ScssParserConfig = {
+  recoveryEnabled?: boolean;
+  [k: string]: unknown;
+};
+
+/** Grammar rule name (root `Stylesheet` by default). */
+export type ScssRules = string;
+
+export type SyntacticContentAssistSuggestion = {
+  nextTokenType: string;
+  nextTokenLabel?: string;
+  ruleStack: string[];
+};
 
 // ---------------------------------------------------------------------------
 // Builder host — reuse ScssGrammar's builders (SCSS + inherited Less/CSS).
@@ -104,8 +117,8 @@ function toParseResult(result: ScssFnParseResult): IParseResult<Rules> {
  */
 export class ScssParser {
   constructor(_config: ScssParserConfig = {}) {
-    // Config accepted for API compatibility with ScssParserChevrotain; not yet
-    // wired through the functional driver.
+    // Config accepted for API compatibility; not yet wired through the
+    // functional driver.
   }
 
   parse(text: string): IParseResult<Rules>;

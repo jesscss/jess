@@ -34,6 +34,7 @@ export default {
         'features/mixins',
         'features/nested',
         'features/parent-selectors',
+        'features/selector-capture',
         'features/imports',
         'features/modules-and-imports',
         'features/extend',

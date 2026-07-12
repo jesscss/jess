@@ -38,6 +38,21 @@ const allowedOrdinaryClonePatterns = [
   {
     file: 'packages/core/src/tree/selector-pseudo.ts',
     pattern: /\bsuper\.clone\(/u
+  },
+  {
+    // For.clone / For.derive override bodies do shallow single-node clones of
+    // the structured pattern/iterable parts (committed object-reduction /
+    // live-binding architecture). Same category as the blessed super.clone(
+    // sites above; the override-body shape is `(n) => n.clone()` / `(n: Node)
+    // => n.clone()`, which the super.clone regex does not match.
+    file: 'packages/core/src/tree/control.ts',
+    pattern: /\bn(?:: Node\))?\s*=>\s*n\.clone\(\)/u
+  },
+  {
+    // copySelectorTreeForExtend's structural selector.clone in the still
+    // load-bearing dying eval extend path.
+    file: 'packages/core/src/tree/util/extend.ts',
+    pattern: /\bselector\.clone\(\(child\)/u
   }
 ];
 const expectedRemaining = new Set();
@@ -71,6 +86,13 @@ function walk(dir) {
     }
   }
   return files;
+}
+
+function isCommentLine(line) {
+  const trimmed = line.trimStart();
+  return trimmed.startsWith('*')
+    || trimmed.startsWith('//')
+    || trimmed.startsWith('/*');
 }
 
 function isBitSetCloneLine(relativeFile, line) {
@@ -110,7 +132,7 @@ for (const scanRoot of getScanRoots()) {
       if (ordinaryCopyPattern.test(line)) {
         ordinaryCopyMatches.push({ file: relative, line: index + 1, text: line.trim() });
       }
-      if (ordinaryClonePattern.test(line) && !isBitSetCloneLine(relative, line)) {
+      if (ordinaryClonePattern.test(line) && !isBitSetCloneLine(relative, line) && !isCommentLine(line)) {
         ordinaryCloneMatches.push({ file: relative, line: index + 1, text: line.trim() });
       }
       if (loopEvalSurfaceCopyPattern.test(line)) {

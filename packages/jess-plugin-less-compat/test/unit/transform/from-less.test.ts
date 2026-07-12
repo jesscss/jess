@@ -28,7 +28,9 @@ describe('fromLessNode', () => {
     });
 
     expect(node).toBeInstanceOf(Collection);
-    const [declaration] = node.value;
+    // Collection now exposes its child declarations via `.rules` (it extends
+    // core's Rules); the old `.value` array accessor was removed.
+    const [declaration] = node.rules;
     expect(declaration).toBeInstanceOf(Declaration);
     expect(declaration?.options).not.toHaveProperty('preIntent');
     expect(declaration?.options).not.toHaveProperty('postIntent');
