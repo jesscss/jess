@@ -1,5 +1,5 @@
 import { bool, condition, dimension, num } from '..';
-import { Context } from '../../context';
+import { Context } from '../../context.js';
 
 let context: Context;
 

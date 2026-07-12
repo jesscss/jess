@@ -1,26 +1,16 @@
-import { defineType } from './node';
-import { Selector } from './selector';
+import type { Context } from '../context.js';
+import { defineType } from './node.js';
+import { Selector } from './selector.js';
 
-export class Combinator extends Selector<string> {
+export type Combinators = ' ' | '>' | '+' | '~' | '|' | '||';
+
+export interface Combinator extends Selector<Combinators> {
+  eval(context: Context): Combinator;
+}
+
+export class Combinator extends Selector<Combinators> {
   type = 'Combinator' as const;
   shortType = 'co' as const;
-
-  /** To make forming Sets easier */
-  override valueOf() {
-    return this.value;
-  }
-
-  get keySet() {
-    return new Set([this.value]);
-  }
-
-  normalize() {
-    return this;
-  }
-  // toTrimmedString() {
-  //   let { value } = this
-  //   return value === ' ' ? value : ` ${value} `
-  // }
 
   /** @todo move to visitor */
   // toCSS(context: Context, out: OutputCollector) {

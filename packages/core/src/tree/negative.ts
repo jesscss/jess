@@ -1,21 +1,35 @@
-import { Node, defineType } from './node';
-import type { Context } from '../context';
-import { Dimension } from './dimension';
+import { Node, defineType, F_VISIBLE, F_NON_STATIC } from './node.js';
+import type { Context } from '../context.js';
+import { Dimension } from './dimension.js';
+import { type MaybePromise, pipe, tryStep } from '@jesscss/awaitable-pipe';
 
 /**
  * The negative sign before a node
  */
+export interface Negative extends Node<Node> {
+  eval(context: Context): MaybePromise<Node>;
+}
+
 export class Negative extends Node<Node> {
-  declare value: Node;
   type = 'Negative' as const;
   shortType = 'negative' as const;
 
-  override async evalNode(context: Context): Promise<Node> {
-    let value = await this.value.eval(context);
-    if (!value.operate) {
-      throw new TypeError(`Cannot operate on ${value.type}`);
-    }
-    return value.operate(new Dimension({ number: -1 }), '*', context);
+  constructor(value: Node, options?: any, location?: any, treeContext?: any) {
+    super(value, options, location, treeContext);
+    // Negative operations are always non-static, but can inherit may_async from children
+    this.addFlags(F_VISIBLE, F_NON_STATIC);
+  }
+
+  override evalNode(context: Context): MaybePromise<Node> {
+    return pipe(
+      () => this.value.eval(context),
+      tryStep((value: Node) => {
+        if (!value.operate) {
+          throw new TypeError(`Cannot operate on ${value.type}`);
+        }
+        return value.operate(new Dimension({ number: -1 }), '*', context);
+      }, { rethrow: true })
+    );
   }
 }
 

@@ -1,5 +1,5 @@
 import { EMPTY_ALT } from 'chevrotain';
-import type { JessParser } from '../jessParser';
+import type { JessParser } from '../jessParser.js';
 
 export default function(this: JessParser, $: JessParser) {
   $.testQualifiedRule = $.OVERRIDE_RULE('testQualifiedRule', () => {

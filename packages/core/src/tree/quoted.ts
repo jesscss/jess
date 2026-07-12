@@ -1,29 +1,40 @@
-import { type Interpolated } from './interpolated';
-import { General } from './general';
-import { Node, defineType } from './node';
-import type { Context } from '../context';
+import { type Interpolated } from './interpolated.js';
+import { Any } from './any.js';
+import { Node, defineType } from './node.js';
+import type { Context } from '../context.js';
+import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 
 export type QuotedOptions = {
   quote?: '"' | '\'';
   escaped?: boolean;
 };
 
-export interface Quoted extends Node<string | General | Interpolated, QuotedOptions> {
-  eval(context: Context): Promise<Quoted | General | Interpolated>;
+export interface Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
+  eval(context: Context): Promise<Quoted | Any | Interpolated>;
 }
 
 /**
- * An quoted value
+ * A quoted string value. Called a `String` in CSS, but calling it Quoted
+ * to avoid conflict with the built-in `String` class.
  */
-export class Quoted extends Node<string | General | Interpolated, QuotedOptions> {
+export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
   type = 'Quoted' as const;
   shortType = 'quoted' as const;
 
-  override toTrimmedString() {
+  override toTrimmedString(options?: PrintOptions) {
+    options = getPrintOptions(options);
+    const w = options.writer!;
+    const mark = w.mark();
     let { quote = '"', escaped } = this.options ?? {};
-    let output = super.toTrimmedString();
     let escapeChar = escaped ? '~' : '';
-    return `${escapeChar}${quote}${output}${quote}`;
+    if (escapeChar) {
+      w.add(escapeChar, this);
+    }
+    w.add(quote);
+    super.toTrimmedString(options);
+    w.add(quote);
+    return w.getSince(mark);
   }
 
   override valueOf(): string {
@@ -31,20 +42,28 @@ export class Quoted extends Node<string | General | Interpolated, QuotedOptions>
     return value instanceof Node ? value.valueOf() : value;
   }
 
-  override async evalNode(context: Context): Promise<Quoted | General | Interpolated> {
+  override evalNode(context: Context): MaybePromise<Quoted | Any | Interpolated> {
     let { value } = this;
-    if (value instanceof Node) {
-      value = (await value.eval(context));
-    }
-    if (this.options.escaped) {
-      if (value instanceof Node) {
-        return value;
+    const cont = (v: string | Any | Interpolated | Node): Quoted | Any | Interpolated => {
+      value = v as any;
+      if (this.options.escaped) {
+        if (value instanceof Node) {
+          return value as Node as Quoted | Any | Interpolated;
+        }
+        return new Any(value as string);
       }
-      return new General<'Anonymous'>(value);
+      let quoted = this.maybeClone(context);
+      quoted.value = value as any;
+      return quoted;
+    };
+    if (value instanceof Node) {
+      const out = value.eval(context);
+      if (isThenable(out)) {
+        return (out as Promise<Node | Any | Interpolated>).then(cont);
+      }
+      return cont(out as Node | Any | Interpolated);
     }
-    let quoted = this.maybeClone(context);
-    quoted.value = value;
-    return quoted;
+    return cont(value);
   }
 }
 export const quoted = defineType(Quoted, 'Quoted');

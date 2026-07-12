@@ -1,5 +1,8 @@
-import { Node, type NodeOptions, type NodeValue, defineType } from './node';
+import type { MaybePromise } from 'awaitable-pipe';
+import { F_VISIBLE, Node, type NodeOptions, type NodeValue, defineType } from './node.js';
 import type { IfAny } from 'type-fest';
+import type { Context } from '../context.js';
+import type { Nil } from './nil.js';
 
 /**
  * This represents anything that is valid in a selector
@@ -11,6 +14,7 @@ import type { IfAny } from 'type-fest';
 
 export interface Selector<T = any, O extends NodeOptions = NodeOptions> extends Node<IfAny<T, NodeValue, T>, O> {
   valueOf(): string;
+  eval(context: Context): MaybePromise<Selector<T>> | MaybePromise<Nil>;
 }
 
 export abstract class Selector<T = any, O extends NodeOptions = NodeOptions> extends Node<IfAny<T, NodeValue, T>, O> {
@@ -24,7 +28,21 @@ export abstract class Selector<T = any, O extends NodeOptions = NodeOptions> ext
    * by the key sets in the extend scope.
    */
   protected _keySet: Set<string> | undefined;
-  abstract keySet: Set<string>;
+  /** Used for mixin registry indexing - only includes visible selectors */
+  protected _visibleKeySet: Set<string> | undefined;
+  get keySet(): Set<string> {
+    if (!this._keySet) {
+      this._computeKeySetAndFastReject();
+    }
+    return this._keySet!;
+  }
+
+  get visibleKeySet(): Set<string> {
+    if (!this._visibleKeySet) {
+      this._computeKeySetAndFastReject();
+    }
+    return this._visibleKeySet!;
+  }
 
   /**
    * Cached computation: can this selector's keySet be trusted for disjoint rejection?
@@ -47,7 +65,13 @@ export abstract class Selector<T = any, O extends NodeOptions = NodeOptions> ext
    */
   protected _computeKeySetAndFastReject(): void {
     // Default implementation - subclasses override
-    this._keySet = new Set([String(this.valueOf())]);
+    let value = String(this.valueOf());
+    this._keySet = new Set([value]);
+    if (this.hasFlag(F_VISIBLE)) {
+      this._visibleKeySet = this._keySet;
+    } else {
+      this._visibleKeySet = new Set();
+    }
     this._canFastReject = true;
   }
 }

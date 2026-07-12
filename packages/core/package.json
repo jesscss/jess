@@ -1,12 +1,26 @@
 {
   "name": "@jesscss/core",
+  "type": "module",
   "publishConfig": {
     "access": "public"
   },
   "version": "2.0.0-alpha.1",
   "description": "The Jess Core Library",
-  "main": "lib/index",
-  "types": "lib/index",
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./lib/index.js",
+      "types": "./lib/index.d.ts",
+      "source": "./src/index.ts"
+    },
+    "./*": {
+      "types": "./lib/*.d.ts",
+      "import": "./lib/*.js",
+      "source": "./src/*.ts"
+    },
+    "./package.json": "./package.json"
+  },
   "files": [
     "lib"
   ],
@@ -14,21 +28,22 @@
     "node": ">=16"
   },
   "dependencies": {
+    "@jesscss/awaitable-pipe": "workspace:*",
+    "@jridgewell/gen-mapping": "~0.3.12",
     "@ungap/set-methods": "~0.1.1",
     "chalk": "^5.2.0",
     "combinate": "^1.1.11",
     "data-structure-typed": "~2.0.0",
-    "lodash-es": "^4.17.21",
-    "set.prototype.intersection": "~1.1.5",
-    "set.prototype.issupersetof": "~1.1.2"
+    "enhanced-resolve": "~5.18.3",
+    "lodash-es": "^4.17.21"
   },
   "scripts": {
     "ci": "pnpm build && pnpm test:all",
     "prepublishOnly": "pnpm build && pnpm test:all",
     "build": "pnpm compile",
     "visualize": "vite build",
-    "compile": "tsc -b tsconfig.build.json",
-    "dev": "tsc -b tsconfig.build.json -w",
+    "compile": "tsc -p tsconfig.build.json",
+    "dev": "tsc -p tsconfig.build.json -w",
     "test": "cross-env TEST=true vitest",
     "test:coverage": "cross-env TEST=true vitest --coverage",
     "lint:fix": "eslint --fix '**/*.{js,ts}'",

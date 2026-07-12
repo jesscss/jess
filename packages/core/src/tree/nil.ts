@@ -1,13 +1,19 @@
+/**
+ * Import from node-base to avoid circular dependency.
+ * The patching of Node.prototype.nil happens in node.ts
+ */
 import {
   Node,
+  F_VISIBLE,
   defineType,
   type LocationInfo,
   type NodeOptions
-} from './node';
-import type { TreeContext } from '../context';
+} from './node-base.js';
+import type { Context, TreeContext } from '../context.js';
 
 export interface Nil extends Node<''> {
   valueOf(): '';
+  eval(context: Context): Nil;
 }
 
 /**
@@ -24,7 +30,7 @@ export class Nil extends Node<''> {
   shortType = 'nil';
   override allowRoot = true;
   override allowRuleRoot = true;
-  override visible = false;
+  override state = 0b0000; // 0b0000 means no flags are set
 
   constructor(
     value?: any,
@@ -32,10 +38,19 @@ export class Nil extends Node<''> {
     location?: LocationInfo,
     treeContext?: TreeContext) {
     super('', options, location, treeContext);
+    // Nil nodes should not be visible (they serialize to empty strings)
+    this.removeFlag(F_VISIBLE);
+    // Nil nodes should never render, even if fullRender is set on prototype (e.g., in tests)
+    this.fullRender = false;
   }
 
-  override toTrimmedString() { return ''; }
-  override toString() { return ''; }
+  override toTrimmedString() {
+    return '';
+  }
+
+  override toString() {
+    return '';
+  }
 }
 
 export const nil = defineType(Nil, 'Nil');

@@ -1,5 +1,5 @@
-import { el, sel, sellist, compound, is, co, pseudo, attr, quoted } from '../../..';
-import { extendSelector, tryExtendSelector, ExtendErrorType } from '../extend';
+import { el, sel, sellist, compound, is, co, pseudo, attr, quoted } from '../../../index.js';
+import { extendSelector, tryExtendSelector, ExtendErrorType } from '../extend.js';
 
 describe('Simplified Extend Test Cases', () => {
   describe('Basic full-match extensions', () => {
@@ -67,18 +67,22 @@ describe('Simplified Extend Test Cases', () => {
       expect(result.valueOf()).toBe(':is(.a,.b,.c)');
     });
 
+    /** @unverified - LLM-generated, needs review */
     it('should extend simple pseudo-class', () => {
       // .btn:hover -> .btn extend with .primary -> :is(.btn,.primary):hover
+      // Use partial: true because .btn is only part of the compound selector
       const selector = compound([el('.btn'), pseudo({ name: ':hover' })]);
       const target = el('.btn');
       const extendWith = el('.primary');
 
-      const result = extendSelector(selector, target, extendWith, false);
+      const result = extendSelector(selector, target, extendWith, true);
       expect(result.valueOf()).toBe(':is(.btn,.primary):hover');
     });
 
+    /** @unverified - LLM-generated, needs review */
     it('should extend with multiple pseudo-classes', () => {
       // .btn:hover:focus -> .btn extend with .primary -> :is(.btn,.primary):hover:focus
+      // Use partial: true because .btn is only part of the compound selector
       const selector = compound([
         el('.btn'),
         pseudo({ name: ':hover' }),
@@ -87,13 +91,15 @@ describe('Simplified Extend Test Cases', () => {
       const target = el('.btn');
       const extendWith = el('.primary');
 
-      const result = extendSelector(selector, target, extendWith, false);
+      const result = extendSelector(selector, target, extendWith, true);
       expect(result.valueOf()).toBe(':is(.btn,.primary):hover:focus');
     });
 
+    /** @unverified - LLM-generated, needs review */
     it('should extend compound selector with attributes', () => {
       // input[type="text"].required -> input extend with .text-field
       // This should succeed: input and .text-field are not conflicting
+      // Use partial: true because input is only part of the compound selector
       const selector = compound([
         el('input'),
         attr({ name: 'type', op: '=', value: quoted('text') }),
@@ -102,7 +108,7 @@ describe('Simplified Extend Test Cases', () => {
       const target = el('input');
       const extendWith = el('.text-field');
 
-      const result = extendSelector(selector, target, extendWith, false);
+      const result = extendSelector(selector, target, extendWith, true);
       // Should create :is(input,.text-field)[type="text"].required
       expect(result.valueOf()).toBe(':is(input,.text-field)[type="text"].required');
     });
@@ -115,6 +121,26 @@ describe('Simplified Extend Test Cases', () => {
 
       const result = extendSelector(selector, target, extendWith, true);
       expect(result.valueOf()).toBe(':is(.parent,.container)>.child');
+    });
+
+    it('should extend with :is() selector - extract selectors from :is()', () => {
+      // .foo -> .foo, extend with :is(.ext3, .ext4) -> .foo, .ext3, .ext4
+      const selector = el('.foo');
+      const target = el('.foo');
+      const extendWith = is(sellist([el('.ext3'), el('.ext4')]));
+
+      const result = extendSelector(selector, target, extendWith, false);
+      expect(result.valueOf()).toBe('.foo,.ext3,.ext4');
+    });
+
+    it('should extend with :is() selector in partial mode', () => {
+      // .foo .bar -> .bar, extend with :is(.ext3, .ext4) -> .foo :is(.bar, .ext3, .ext4)
+      const selector = sel([el('.foo'), co(' '), el('.bar')]);
+      const target = el('.bar');
+      const extendWith = is(sellist([el('.ext3'), el('.ext4')]));
+
+      const result = extendSelector(selector, target, extendWith, true);
+      expect(result.valueOf()).toBe('.foo :is(.bar,.ext3,.ext4)');
     });
   });
 

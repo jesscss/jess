@@ -1,5 +1,6 @@
 import {
   type IParserErrorMessageProvider,
+  type IRecognitionException,
   defaultParserErrorProvider
 } from 'chevrotain';
 
@@ -39,7 +40,6 @@ export class CssErrorMessageProvider implements IParserErrorMessageProvider {
     });
     const firstOfTokens = initialTokens.slice(0, 4);
     const rest = initialTokens.slice(5);
-    // eslint-disable-next-line @typescript-eslint/quotes
     let err = `Error in ${camelToSpaces(options.ruleName)}: Expected '${firstOfTokens.join(`', '`)}' `;
     if (rest.length > 0) {
       err += `(and ${rest.length} more) `;

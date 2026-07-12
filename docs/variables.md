@@ -192,7 +192,7 @@ $foo: blarg; // log warning
 // accepts one of these values
 @-type Size: 1rem | 1.2rem | 1.4rem;
 
-set-size(<Size> $size) {
+set-size(<Size> size) {
   font-size: $size;
 }
 
@@ -220,5 +220,9 @@ my-component(<Size> $size; <color> $color) {
 
 // Note: vars default to assigned value, so for an `any` type, it must be preceded
 // by a *
-<*> $color: #FFF; 
+~color: #FFF; // soft inference
+~color: foo; // triggers WARNING
+
+<color> color: #FFF;
+~color: foo; // triggers ERROR
 ```

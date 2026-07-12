@@ -1,37 +1,61 @@
-import { Node } from '../node';
-import { Nil } from '../nil';
-import { List } from '../list';
-import { Dimension } from '../dimension';
-import { Anonymous } from '../general';
-import { Color } from '../color';
-import { FunctionValue } from '../function-value';
-import isPlainObject from 'lodash-es/isPlainObject';
+import type { Node } from '../node.js';
+import { Nil } from '../nil.js';
+import { List } from '../list.js';
+// Dimension and Num are NOT imported here to break circular dependency:
+// dimension.ts → color.ts → call.ts → cast.ts → dimension.ts
+// Instead, we use createRequire to access them synchronously at runtime
+import { Any } from '../any.js';
+import { Color } from '../color.js';
+import { JsFunction } from '../js-function.js';
+import { JsObject } from '../js-object.js';
+import { Bool } from '../bool.js';
+import { isNode } from './is-node.js';
+import isPlainObject from 'lodash-es/isPlainObject.js';
+import { createRequire } from 'node:module';
+
+const { isArray } = Array;
+
+// Create a synchronous require function for ES modules
+const require = createRequire(import.meta.url);
+
+// Lazy getters for Dimension and Num to break circular dependency
+// These use require() to access modules at runtime, not at module load time
+// By the time cast() is called, dimension.ts and number.ts will be fully loaded
+function getDimension() {
+  // Use require() to access module at runtime - breaks circular dependency at module load time
+  return require('../dimension.js').Dimension;
+}
+
+function getNum() {
+  // Use require() to access module at runtime - breaks circular dependency at module load time
+  return require('../number.js').Num;
+}
 
 function getNodeType(value: any): Node {
-  if (value instanceof Node) {
+  if (isNode(value)) {
     return value;
   }
   if (value === undefined || value === null) {
     return new Nil();
   }
+  if (typeof value === 'boolean') {
+    return new Bool(value);
+  }
   if (typeof value === 'function') {
-    return new FunctionValue(value);
+    // Hmm, the LLM added this, is it needed?
+    // Preserve function options (e.g., params metadata from getFunctionFromMixins)
+    const options = (value as any)?.options;
+    return new JsFunction(value, options);
   }
-  /**
-   * @todo - need to remove the $root part
-   * as we're not compiling to a module anymore
-   */
   if (isPlainObject(value)) {
-    if (Object.prototype.hasOwnProperty.call(value, '$root')) {
-      return value.$root;
-    }
-    return new Anonymous('[object]');
+    return new JsObject(value);
   }
-  if (Array.isArray(value)) {
+  if (isArray(value)) {
     return new List(value.map(val => cast(val)));
   }
   if (value.constructor === Number) {
-    return new Dimension({ number: value as number });
+    const Num = getNum();
+    return new Num(value as unknown as number);
   }
   if (typeof value === 'string') {
     if (value.startsWith('#')) {
@@ -39,12 +63,14 @@ function getNodeType(value: any): Node {
     } else {
       let result = value.match(/^(\d*(?:\.\d+))([a-z]*)$/i);
       if (result) {
+        const Dimension = getDimension();
         return new Dimension({ number: parseFloat(result[1]!), unit: result[2] });
       }
     }
   }
-  return new Anonymous(value.toString());
+  return new Any(value.toString());
 }
+
 /**
  * Casts a primitive JavaScript value to a Jess node
  * (if not already).
@@ -58,8 +84,9 @@ export function cast(value: any): Node {
    * If converting from a primitive, then
    * the value should be considered evaluated.
    */
-  if (!(value instanceof Node)) {
+  if (!isNode(value)) {
     node.evaluated = true;
+    node.preEvaluated = true;
   }
   return node;
 }

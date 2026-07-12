@@ -1,30 +1,29 @@
-import { Node, defineType } from './node';
-import type { Condition } from './condition';
-import { type List } from './list';
-import type { Rest } from './rest';
-import type { Name } from './general';
-import { type VarDeclaration } from './var-declaration';
-import type { Rules } from './rules';
-import { Interpolated } from './interpolated';
-import type { Context } from '../context';
-import type { Selector } from './selector';
-import type { Declaration } from './declaration';
+import { F_VISIBLE, Node, defineType, type LocationInfo } from './node.js';
+import type { Condition } from './condition.js';
+import { type List } from './list.js';
+import type { Any, AnyRole } from './any.js';
+import type { Rules } from './rules.js';
+import { Interpolated } from './interpolated.js';
+import type { Context, TreeContext } from '../context.js';
+import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 
-export interface MixinValue {
+export interface MixinValue<Name extends AnyRole = 'name'> {
   /**
-   * A mixin name can be compound, like `type.foo#id` because
-   * of interpolation. It will actually be re-parsed as a Sequence
-   * Node in those cases, in order to register it along-side
-   * "namespaced" mixins.
+   * Mixin names can include . or # - in Sass they have to be escaped.
    *
-   * @note - For Sass, a mixin name is always a single identifier,
-   * but Less uses mixins / rulesets interchangeably, so we use
-   * `selector` as a property and `Selector` as the type to allow
-   * more flexibility.
+   * Valid mixin names:
+   *   foo
+   *   foo.bar
+   *   foo#bar
+   *   foo.bar#baz
+   *   foo#bar.baz
+   *   -foo
+   *   _foo (private, from Sass both -foo and _foo are parsed as _foo)
    *
    * @todo - Should anonymous mixins have a different class type?
    */
-  selector?: Selector;
+  name?: Any<Name> | Interpolated<Name>;
   /**
    * Functions can be assigned an expression when parsing,
    * but it will be evaluated as a set of Rules with a scope
@@ -37,16 +36,13 @@ export interface MixinValue {
    * - A var declaration is a named variable with a default value.
    * - A rest is a rest parameter.
    */
-  params?: List<Node | Name | VarDeclaration | Rest>;
+  params?: List<Node>;
   guard?: Condition;
 }
 
 export type MixinOptions = {
   /** This is a flag that will set during parsing */
   hasDefault?: boolean;
-
-  /** If this is a function, specify what is returned  */
-  isFunctionWith?: 'rules' | 'expression';
 
   /**
    * Cannot be overloaded. Written as !my-mixin() in Jess.
@@ -56,6 +52,7 @@ export type MixinOptions = {
   unique?: boolean;
 };
 
+// const COMPOUND_REGEX = /[#.]?[-_a-zA-Z\xA0-\uFFFF][-_a-zA-Z0-9\xA0-\uFFFF]*/ug;
 /**
  * someMixin (arg1; arg2: 10px) {
  *   color: black;
@@ -74,56 +71,96 @@ export type MixinOptions = {
  *     foo(1, 2) or
  *     foo({ a: 1, b: 2 }) or
  *     foo({ b: 2 }, 1)
+ *
+ * @todo - Even though we allow a selector as a name.
  */
-
 export class Mixin extends Node<MixinValue, MixinOptions> {
   type = 'Mixin';
   shortType = 'mixin';
 
-  override toTrimmedString(depth: number = 0): string {
-    let { selector, rules, params, guard } = this.value;
-    let { isFunctionWith } = this.options;
-    let space = ''.padStart(depth * 2);
-    let output = `${selector}`;
-    if (params) {
-      output += '(';
-      output += params.toString(depth);
-      output += ')';
+  constructor(value: MixinValue, options?: MixinOptions, location?: LocationInfo, context?: TreeContext) {
+    super(value, options, location, context);
+    this.removeFlag(F_VISIBLE);
+  }
+
+  // Mixin has preEval method but doesn't need to set flags - preEvaluated is tracked as boolean
+
+  /** Return a selector-like keySet */
+  private _keySet: Set<string> | undefined;
+  get keySet() {
+    let keySet = this._keySet;
+    if (!keySet) {
+      let { name } = this.value;
+      if (!name) {
+        return (this._keySet = new Set());
+      }
+      keySet = this._keySet = new Set([name.valueOf()]);
+    }
+    return keySet;
+  }
+
+  override toTrimmedString(options?: PrintOptions): string {
+    options = getPrintOptions(options);
+    const w = options.writer!;
+    let { name, rules, params, guard } = this.value;
+    const mark = w.mark();
+    w.add(name ? `${name}` : '@');
+    if (name || params || guard) {
+      w.add('(');
+      if (params) {
+        params.toString(options);
+      }
+      w.add(')');
     }
     if (guard) {
-      output += ` when ${guard}`;
+      w.add(' when ');
+      w.add(`${guard}`);
     }
-    if (isFunctionWith) {
-      output += ' >';
+    if (name || params || guard) {
+      w.add(' ');
     }
-    if (isFunctionWith === 'expression') {
-      output += ` ${(rules.at(0) as Declaration).value.value.toString(depth)}`;
+    // Emit rules directly into shared writer; do not re-add return value
+    rules.toBraced(options);
+    return w.getSince(mark);
+  }
+
+  override preEval(context: Context): MaybePromise<this> {
+    if (this.preEvaluated) {
+      return this;
+    }
+    // Mixins should NOT pre-evaluate their rules during initial registration.
+    // Rules inside mixins should only be pre-evaluated when the mixin is called.
+    // So we only handle the name (if interpolated) and mark as preEvaluated,
+    // but do NOT call super.preEval() which would pre-evaluate children.
+    let node = this.maybeClone(context);
+    node.preEvaluated = true;
+    node.sourceNode ??= this;
+
+    let { name, rules } = node.value;
+    if (context.leakyRules) {
+      rules.options.rulesVisibility.Mixin = 'public';
+      rules.options.rulesVisibility.VarDeclaration = 'optional';
     } else {
-      output += ' {\n';
-      output += rules.toString(depth + 1);
-      output += `${space}}`;
+      rules.options.rulesVisibility.Mixin = 'private';
+      rules.options.rulesVisibility.VarDeclaration = 'private';
     }
-    return output;
-  }
-
-  getImplicitSelector(): Selector | undefined {
-    return this.value.selector;
-  }
-
-  override async preEval(context: Context): Promise<this> {
-    if (!this.preEvaluated) {
-      let node = this.maybeClone(context);
-      node.preEvaluated = true;
-      let { selector } = node.value;
-      if (selector && selector instanceof Interpolated) {
-        node.value.selector = (await selector.eval(context)).createSelector();
+    if (name && name instanceof Interpolated) {
+      const maybeKey = name.eval(context);
+      if (isThenable(maybeKey)) {
+        return (maybeKey as Promise<Any<'name'>>).then((key) => {
+          node.value.name = key;
+          return node;
+        });
       }
-      return node;
+      node.value.name = maybeKey as Any<'name'>;
     }
-    return this;
+    return node;
   }
 
   /** Since this is a mixin definition, it's not evaluated until it's called. */
+  override evalNode() {
+    return this;
+  }
 
   // override async evalNode(context: Context): Promise<Rules | Expression> {
   //   let { name, body, params, guard } = this.value
@@ -174,7 +211,7 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
 type MixinConstructorParams = ConstructorParameters<typeof Mixin>;
 
 export const mixin = defineType(Mixin, 'Mixin') as (
-  value: MixinValue | MixinConstructorParams[0],
+  value: MixinValue<AnyRole> | MixinConstructorParams[0],
   options?: MixinConstructorParams[1],
   location?: MixinConstructorParams[2],
   treeContext?: MixinConstructorParams[3]

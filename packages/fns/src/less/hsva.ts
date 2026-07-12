@@ -1,49 +1,61 @@
-import { getNumber, type ColorValue } from '../util/number';
-import { type, assert, number } from 'superstruct';
-import rgba from './rgba';
-import { type ExtendedFn } from '../util';
+import { defineFunction, Dimension, Color, ColorFormat } from '@jesscss/core';
+import { normalizeHue, percentOf, alphaToNumber, toNumber, splitSequence } from '@jesscss/core';
 
-const Struct = type({
-  h: number(),
-  s: number(),
-  v: number(),
-  a: number()
-});
+const hsva = defineFunction(
+  'hsva',
+  function(this: any, h: number, s: number, v: number, a: number) {
+    // Values are already converted to numbers by the conversion plugins
+    h = ((h % 360) / 360) * 360;
 
-const hsva: ExtendedFn = function hsva(h: ColorValue, s: ColorValue, v: ColorValue, a: ColorValue) {
-  h = ((getNumber(h) % 360) / 360) * 360;
-  s = getNumber(s);
-  v = getNumber(v);
-  a = getNumber(a);
+    const i = Math.floor((h / 60) % 6);
+    const f = (h / 60) - i;
 
-  assert({ h, s, v, a }, Struct);
+    const vs = [
+      v,
+      v * (1 - s),
+      v * (1 - f * s),
+      v * (1 - (1 - f) * s)
+    ];
 
-  const i = Math.floor((h / 60) % 6);
-  const f = (h / 60) - i;
+    const perm = [
+      [0, 3, 1],
+      [2, 0, 1],
+      [1, 0, 3],
+      [1, 2, 0],
+      [3, 1, 0],
+      [0, 1, 2]
+    ];
 
-  const vs = [
-    v,
-    v * (1 - s),
-    v * (1 - f * s),
-    v * (1 - (1 - f) * s)
-  ];
-
-  const perm = [
-    [0, 3, 1],
-    [2, 0, 1],
-    [1, 0, 3],
-    [1, 2, 0],
-    [3, 1, 0],
-    [0, 1, 2]
-  ];
-
-  return rgba.call(
-    this,
-    vs[perm[i]![0]!]! * 255,
-    vs[perm[i]![1]!]! * 255,
-    vs[perm[i]![2]!]! * 255,
-    a
-  );
-};
+    return new Color({
+      format: ColorFormat.RGB,
+      rgb: [
+        vs[perm[i]![0]!]! * 255,
+        vs[perm[i]![1]!]! * 255,
+        vs[perm[i]![2]!]! * 255
+      ],
+      alpha: a
+    });
+  },
+  {
+    params: [{
+      name: 'h',
+      type: Dimension,
+      convert: [normalizeHue(), toNumber()]
+    }, {
+      name: 's',
+      type: Dimension,
+      convert: [percentOf(1), toNumber()]
+    }, {
+      name: 'v',
+      type: Dimension,
+      convert: [percentOf(1), toNumber()]
+    }, {
+      name: 'a',
+      type: Dimension,
+      convert: [alphaToNumber(), toNumber()]
+    }],
+    preprocessParams: [splitSequence()]
+  }
+);
 
 export default hsva;

@@ -1,5 +1,5 @@
 import { expr, any } from '..';
-import { Context } from '../../context';
+import { Context } from '../../context.js';
 
 let context: Context;
 describe('Expression', () => {
@@ -9,7 +9,12 @@ describe('Expression', () => {
 
   it('should serialize an expression', () => {
     let rule = expr(any('foo'));
-    expect(`${rule}`).toBe('#(foo)');
+    expect(`${rule}`).toBe('$foo');
+  });
+
+  it('should serialize an expression with parens', () => {
+    let rule = expr(any('foo'), { parens: true });
+    expect(`${rule}`).toBe('$(foo)');
   });
 
   // it('should serialize to a module', () => {

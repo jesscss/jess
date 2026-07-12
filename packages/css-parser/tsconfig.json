@@ -1,9 +1,7 @@
 {
   "extends": "../../tsconfig.json",
-  "references": [
-    { "path": "../core"}
-  ],
   "compilerOptions": {
+    "noEmit": true,
     "composite": true,
     "outDir": "./lib",
     "rootDir": ".",

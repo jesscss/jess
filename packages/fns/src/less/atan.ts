@@ -1,3 +1,15 @@
-import { mathHelper } from '../util/mathHelper';
+import { Dimension, defineFunction } from '@jesscss/core';
+import { mathHelper } from '../util/mathHelper.js';
 
-export default mathHelper.bind(null, Math.atan, ['value'], 'rad');
+export default defineFunction(
+  'atan',
+  function(value: Dimension | number) {
+    return mathHelper(Math.atan, ['value'], 'rad', value);
+  },
+  {
+    params: [{
+      name: 'value',
+      type: [Dimension, 'number']
+    }]
+  }
+);

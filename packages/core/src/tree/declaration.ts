@@ -2,16 +2,18 @@ import {
   Node,
   defineType,
   type LocationInfo
-} from './node';
-import { isNode } from './util/is-node';
-import { Nil } from './nil';
-import type { Context, TreeContext } from '../context';
-import { Interpolated } from './interpolated';
-import type { General, Name } from './general';
-import { Reference } from './reference';
-import { List } from './list';
-import { spaced } from './sequence';
-import { Operation } from './operation';
+} from './node.js';
+import { isNode } from './util/is-node.js';
+import { Nil } from './nil.js';
+import type { Context, TreeContext } from '../context.js';
+import { Interpolated } from './interpolated.js';
+import { Any, type AnyRole } from './any.js';
+import { Reference } from './reference.js';
+import { List } from './list.js';
+import { spaced } from './sequence.js';
+import { Operation } from './operation.js';
+import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { type MaybePromise, pipe, isThenable } from '@jesscss/awaitable-pipe';
 
 export const enum AssignmentType {
   Default = ':',
@@ -49,12 +51,6 @@ export type DeclarationOptions = {
    */
   setDefined?: boolean;
 
-  /**
-   * Used for mixin / function parameters (and args). It's not the
-   * same kind of variable declaration.
-   */
-  paramVar?: boolean;
-
   /** Used by SCSS (!default) and Jess (?:) */
   // setIfUndefined?: boolean
   /**
@@ -65,14 +61,14 @@ export type DeclarationOptions = {
    */
   throwIfDefined?: boolean;
 };
+/** Should be Any<'property'> | Interpolated<'property'> */
+type NameValue<T extends AnyRole = 'property'> = Any<T> | Interpolated<T>;
 
-type NameValue = string | Name | Interpolated<'Name'>;
-
-export type DeclarationValue = {
-  name: NameValue;
+export type DeclarationValue<T extends AnyRole = 'property'> = {
+  name: NameValue<T>;
   value: Node;
   /** The actual string representation of important, if it exists */
-  important?: General<'Flag'>;
+  important?: Any<'flag'>;
 };
 
 /**
@@ -81,62 +77,71 @@ export type DeclarationValue = {
  * Initially, the name can be a Node or string.
  * Once evaluated, name must be a string
  */
-export class Declaration extends Node<DeclarationValue, DeclarationOptions> {
-  type = 'Declaration';
-  shortType = 'decl';
+export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> extends Node<DeclarationValue, Opts> {
+  override type = 'Declaration';
+  override shortType = 'decl';
   override allowRuleRoot = true;
-
-  constructor(
-    value: DeclarationValue,
-    options?: DeclarationOptions,
-    location?: LocationInfo,
-    treeContext?: TreeContext
-  ) {
-    super(value, options, location, treeContext);
-  }
 
   /** If the value has curly braces, a semi-colon is not required */
   override get requiredSemi() {
     return !isNode(this.value.value, 'Collection') && !isNode(this.value.value, 'Mixin');
   }
 
-  protected declTrimmedString(depth?: number) {
+  protected declTrimmedString(options?: PrintOptions) {
+    options = getPrintOptions(options);
+    const w = options.writer!;
     const { name, value, important } = this.value;
-    const { assign = ':' } = this.options;
-    let a = assign === ':' ? ':' : ` ${assign}`;
-    let returnVal = `${name}${a}${
-      value.processPrePost('pre', ' ')
-    }${
-      value.toTrimmedString(depth)
-    }${
-      value.processPrePost('post')
-    }`;
-    if (!isNode(value, 'Collection')) {
-      returnVal += important ? `${important}` : '';
-      /**
-       * @note Semi-colon output is handled by the Rules node
-       */
-    }
-    return returnVal;
-  }
+    const { assign = ':', setDefined } = this.options;
+    const mark = w.mark();
+    // setDefined uses `:=` (with default spacing rules) instead of the historical `$^` prefix.
+    const effAssign = (setDefined && assign === ':') ? ':=' : assign;
+    let a = effAssign === ':' ? ':' : ` ${effAssign}`;
+    // Normalize property name by trimming trailing whitespace
+    const normalizedName = String(name).replace(/\s+$/, '');
+    w.add(`${normalizedName}${a}`, name);
+    // Custom properties must preserve value text exactly as provided.
+    const isCustomProperty = name.valueOf().startsWith('--');
+    if (isCustomProperty) {
+      options.inCustom = true;
+      // Emit value exactly as captured (no trimming, no added spaces)
+      value.toString(options);
+      options.inCustom = false;
+    } else {
+      // Capture value output to normalize spacing after ':'
+      const valOut = w.capture(() => value.toString(options));
+      // Remove leading / trailing whitespace
+      const normalizedValue = valOut.replace(/^[ \t]+|\s+$/g, '');
+      // Ensure exactly one space after ':' by adding one space
+      w.add(' ');
+      w.add(normalizedValue, value);
+      if (!isNode(value, 'Collection')) {
+        if (important) {
+          let imp = w.capture(() => important.toString(options));
+          imp = imp.replace(/^\s+|\s+$/g, '');
 
-  override toTrimmedString(depth?: number) {
-    return this.declTrimmedString(depth);
-  }
-
-  override async preEval(context: Context): Promise<this> {
-    if (!this.preEvaluated) {
-      /** We need to clone declarations, because we alter their options */
-      let node = this.clone();
-      node.preEvaluated = true;
-      let { name, value } = node.value;
-      let key: string | Name;
-      if (name instanceof Interpolated) {
-        key = (await name.eval(context)).createGeneric() as Name;
-        node.value.name = key;
-      } else {
-        key = name;
+          w.add(` ${imp}`, important);
+        }
       }
+    }
+    return w.getSince(mark);
+  }
+
+  override toTrimmedString(options?: PrintOptions) {
+    return this.declTrimmedString(options);
+  }
+
+  override preEval(context: Context): MaybePromise<this> {
+    /** We need to clone declarations, because we alter their options */
+    let node = this.maybeClone(context);
+    node.preEvaluated = true;
+    // Index should already be assigned by parent Rules
+    return this._applyAssignmentNormalization(node, context);
+  }
+
+  private _applyAssignmentNormalization(node: this, context: Context): MaybePromise<this> {
+    let { name, value } = node.value;
+
+    const applyAssignmentNormalization = (key: Any<'property'>) => {
       /** Normalize assignment types */
       let assign = node.options?.assign;
       if (assign) {
@@ -147,7 +152,7 @@ export class Declaration extends Node<DeclarationValue, DeclarationOptions> {
         switch (assign) {
           case AssignmentType.MergeList:
           case AssignmentType.MergeSequence: {
-            const ref = new Reference(key.toString(), {
+            const ref = new Reference({ key }, {
               type,
               fallbackValue: new Nil(),
               filter: (n) => {
@@ -164,14 +169,13 @@ export class Declaration extends Node<DeclarationValue, DeclarationOptions> {
             value = assign === AssignmentType.MergeList
               ? new List([ref, value])
               : spaced([ref, value]);
-
             node.value.value = value;
             break;
           }
           case AssignmentType.Add: {
             node.value.value =
               new Operation([
-                new Reference(key.toString(), { type }),
+                new Reference({ key }, { type }),
                 '+',
                 value
               ]);
@@ -179,7 +183,7 @@ export class Declaration extends Node<DeclarationValue, DeclarationOptions> {
           }
           case AssignmentType.CondAssign: {
             node.value.value =
-              new Reference(key.toString(), {
+              new Reference({ key }, {
                 type,
                 fallbackValue: value
               });
@@ -188,32 +192,88 @@ export class Declaration extends Node<DeclarationValue, DeclarationOptions> {
         }
         node.options.assign = AssignmentType.Default;
       }
+      const out = node.value.value.preEval(context);
+      if (isThenable(out)) {
+        return out.then((value) => {
+          node.value.value = value;
+          return node;
+        });
+      }
+      node.value.value = out;
       return node;
+    };
+
+    if (name instanceof Interpolated) {
+      const maybeKey = name.eval(context);
+      if (isThenable(maybeKey)) {
+        return maybeKey.then((key) => {
+          node.value.name = key;
+          return applyAssignmentNormalization(key);
+        });
+      }
+      const key = maybeKey as Any<'property'>;
+      node.value.name = key;
+      return applyAssignmentNormalization(key);
     }
-    return this;
+    return applyAssignmentNormalization(name);
   }
 
-  override async evalNode(context: Context) {
-    let node = await this.preEval(context);
-    let { name, value } = node.value;
+  override evalNode(context: Context): MaybePromise<this | Nil> {
     /**
-     * Name may be a variable or a sequence containing a variable
-     *
-     * @todo - is this valid if rulesets pre-emptively evaluate names?
+     * @todo - Re-instate when bubbling of flags is reliable.
      */
-    if (name instanceof Interpolated) {
-      node.value.name = (await name.eval(context)).createGeneric() as Name;
-    }
-    /** Evaluate the value */
-    if (value instanceof Node) {
-      let newValue = await value.eval(context);
-      if (newValue instanceof Nil) {
-        return newValue.inherit(node);
-      } else {
-        node.value.value = newValue;
+    // if (this.preEvaluated && this.value.value.hasFlag(F_STATIC)) {
+    //   this.evaluated = true;
+    //   return this;
+    // }
+    return pipe(
+      () => {
+        let node = this;
+        /** Pre-eval already evaluated the name, just need to do value (if not a var declaration) */
+        if (node.type === 'VarDeclaration') {
+          return node;
+        }
+        const { name, value } = node.value;
+        if (value instanceof Node) {
+          if (name.valueOf().startsWith('--')) {
+            context.inCustom = true;
+          }
+          const maybeNewValue = value.eval(context);
+          if (isThenable(maybeNewValue)) {
+            return (maybeNewValue as Promise<Node>).then((newValue) => {
+              context.inCustom = false;
+              if (newValue instanceof Nil) {
+                return newValue.inherit(node);
+              }
+              node.value.value = newValue;
+              // Merge !important from referenced declarations
+              if (context.hasImportantSource && !node.value.important) {
+                node.value.important = Any.create('!important', { role: 'flag' }) as Any<'flag'>;
+              }
+              // Pop important source after merging (if it was set)
+              if (context.hasImportantSource) {
+                context.popImportantSource();
+              }
+              return node;
+            });
+          }
+          context.inCustom = false;
+          if (maybeNewValue instanceof Nil) {
+            return (value as Nil).inherit(node);
+          }
+          node.value.value = maybeNewValue as Node;
+          // Merge !important from referenced declarations
+          if (context.hasImportantSource && !node.value.important) {
+            node.value.important = Any.create('!important', { role: 'flag' }) as Any<'flag'>;
+          }
+          // Pop important source after merging (if it was set)
+          if (context.hasImportantSource) {
+            context.popImportantSource();
+          }
+        }
+        return node;
       }
-    }
-    return node;
+    ) as MaybePromise<this | Nil>;
   }
 
   /** @todo - move to visitors */
@@ -246,11 +306,17 @@ export class Declaration extends Node<DeclarationValue, DeclarationOptions> {
   // }
 }
 
-type DeclarationParams = ConstructorParameters<typeof Declaration>;
+export type DeclarationParams = ConstructorParameters<typeof Declaration>;
 
-export const decl = defineType<DeclarationValue>(Declaration, 'Declaration', 'decl') as (
-  value: DeclarationValue | DeclarationParams[0],
-  options?: DeclarationParams[1],
-  location?: DeclarationParams[2],
-  treeContext?: DeclarationParams[3]
-) => Declaration;
+defineType<DeclarationValue>(Declaration, 'Declaration', 'decl');
+
+export const decl = (
+  value: DeclarationValue<AnyRole> | { name: string; value: Node; important?: Any<'flag'> },
+  options?: DeclarationOptions,
+  location?: LocationInfo,
+  treeContext?: TreeContext
+) => {
+  let { name } = value;
+  value.name = typeof name === 'string' ? new Any(name, { role: 'property' }) : name;
+  return new Declaration(value as DeclarationValue, options, location, treeContext);
+};

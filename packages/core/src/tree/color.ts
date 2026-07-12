@@ -1,12 +1,13 @@
-import { Node, defineType } from './node';
-import { calculate, type Operator } from './util/calculate';
-import { type Context } from '../context';
-import { isNode } from './util/is-node';
-import round from 'lodash-es/round';
+import { Node, defineType } from './node.js';
+import { calculate, type Operator } from './util/calculate.js';
+import { type Context } from '../context.js';
+import { isNode } from './util/is-node.js';
+import round from 'lodash-es/round.js';
+import { type PrintOptions, getPrintOptions } from './util/print.js';
 
 type ColorValues = [number, number, number, number] | number[];
 
-export const enum ColorFormat {
+export enum ColorFormat {
   HEX,
   RGB,
   HSL
@@ -16,274 +17,408 @@ function clamp(v: number, max: number) {
   return Math.min(Math.max(v, 0), max);
 }
 
+function parseHexString(hex: string): { rgb: [number, number, number]; alpha: number } {
+  let rgba: number[] = [];
+  let hexValue = hex.slice(1);
+
+  if (hexValue.length >= 6) {
+    (hexValue.match(/.{2}/g) as RegExpMatchArray).forEach((c, i) => {
+      if (i < 3) {
+        rgba.push(parseInt(c, 16));
+      } else {
+        rgba.push(parseInt(c, 16) / 255);
+      }
+    });
+  } else {
+    hexValue.split('').forEach((c, i) => {
+      if (i < 3) {
+        rgba.push(parseInt(c + c, 16));
+      } else {
+        rgba.push(parseInt(c + c, 16) / 255);
+      }
+    });
+  }
+
+  return {
+    rgb: [rgba[0]!, rgba[1]!, rgba[2]!] as [number, number, number],
+    alpha: rgba.length === 3 ? 1 : rgba[3]!
+  };
+}
+
 const { isArray } = Array;
 
-type ColorParameters = ConstructorParameters<typeof Node<string | ColorFormat>>;
+export interface ColorData {
+  node?: string | Node;
+  format?: ColorFormat;
+  rgb?: [number, number, number];
+  hsl?: [number, number, number];
+  alpha?: number;
+}
+
+export interface Color extends Node<ColorData> {
+  eval(context: Context): Color;
+}
+
 /**
- * Color's `value` will either be the parsed value,
- * or, when constructed with a function, the preferred
- * output type.
- *
- * @todo - Maybe the value should be more organized,
- * with both the parsed node and its numerical value
- * representation? The "its either a value or an enum"
- * seems kinda weird.
+ * Color's `value` will store RGB, HSL, and alpha separately to avoid unnecessary conversions.
+ * Conversion only happens when modifying colors or when explicitly requested.
  */
-export class Color extends Node<string | ColorFormat> {
+export class Color extends Node<ColorData> {
   type = 'Color' as const;
   shortType = 'color' as const;
-
-  private _rgb: [number, number, number] | undefined;
-  private _hsl: [number, number, number] | undefined;
-  private _alpha: number = 1;
+  // Color values are static and don't need evaluation
 
   constructor(
-    value: ColorParameters[0] | ColorValues,
-    options?: ColorParameters[1],
-    location?: ColorParameters[2],
-    context?: ColorParameters[3]
+    value: ColorData | string | ColorValues,
+    options?: ConstructorParameters<typeof Node<ColorData>>[1],
+    location?: ConstructorParameters<typeof Node<ColorData>>[2],
+    context?: ConstructorParameters<typeof Node<ColorData>>[3]
   ) {
-    let r: number;
-    let g: number;
-    let b: number;
-    let a: number;
+    let colorData: ColorData;
+
     if (isArray(value)) {
-      [r, g, b, a] = value as [number, number, number, number];
-      value = ColorFormat.RGB;
-    }
-    super(value, options, location, context);
-    if (r! !== undefined) {
-      this._rgb = [r, g!, b!];
-      this._alpha = a! ?? 1;
-    }
-  }
+      // Handle color array [r, g, b, a]
+      const [r, g, b, a] = value as [number, number, number, number];
+      colorData = {
+        rgb: [r, g, b],
+        alpha: a,
+        format: ColorFormat.RGB
+      };
+    } else if (typeof value === 'object' && value !== null && !isNode(value)) {
+      // Handle ColorData object
+      colorData = value as ColorData;
 
-  /** Create an rgba map only if we need it */
-  get rgba(): ColorValues {
-    if (this._rgb) {
-      return [...this._rgb, this._alpha];
-    }
-
-    let value = this.value;
-    let rgba: number[] = [];
-
-    if (typeof value !== 'string' || value[0] !== '#') {
-      throw new TypeError('Only hex string values can be converted to colors.');
-    }
-    let hex = value.slice(1);
-
-    if (hex.length >= 6) {
-      (hex.match(/.{2}/g) as RegExpMatchArray).forEach((c, i) => {
-        if (i < 3) {
-          rgba.push(parseInt(c, 16));
-        } else {
-          rgba.push(parseInt(c, 16) / 255);
-        }
-      });
+      // Validate that we have either rgb, hsl, or a node to parse
+      if (!colorData.rgb && !colorData.hsl && !colorData.node) {
+        throw new TypeError('Color constructor requires rgb, hsl, or node property');
+      }
+    } else if (typeof value === 'string') {
+      // Handle hex string - parse it immediately to set RGB values
+      const { rgb, alpha } = parseHexString(value);
+      colorData = {
+        node: value,
+        format: ColorFormat.HEX,
+        rgb,
+        alpha
+      };
     } else {
-      hex.split('').forEach((c, i) => {
-        if (i < 3) {
-          rgba.push(parseInt(c + c, 16));
-        } else {
-          rgba.push(parseInt(c + c, 16) / 255);
-        }
-      });
+      throw new TypeError('Color constructor requires ColorData object, hex string, or color array');
     }
-    /** Make sure an alpha value is present */
-    if (rgba.length === 3) {
-      this._rgb = rgba as [number, number, number];
-      this._hsl = undefined;
-      this._alpha = 1;
-      rgba.push(1);
-    } else {
-      let [r, g, b, a] = rgba;
-      this._rgb = [r!, g!, b!];
-      this._hsl = undefined;
-      this._alpha = a!;
-    }
-    return rgba as ColorValues;
+
+    super(colorData, options, location, context);
   }
 
-  set rgba(rgba: ColorValues) {
-    let [r, g, b, a] = rgba;
-    this._rgb = [r, g, b];
-    this._alpha = a;
-    this._hsl = undefined;
-  }
-
-  get hsla(): ColorValues {
-    const a = this._alpha;
-    if (this._hsl) {
-      return [...this._hsl, a];
-    }
-    let hsl = this.toHSL();
-    this._hsl = hsl;
-    return [...hsl, a];
-  }
-
-  set hsla(hsla: ColorValues) {
-    let [h, s, l, a] = hsla;
-    this._hsl = [h, s, l];
-    this._alpha = a;
-    this._rgb = undefined;
-  }
-
+  /**
+   * Get RGB values, converting from HSL if needed.
+   * Returns clamped values (0-255) for better developer experience.
+   * For internal calculations, use _rgb instead.
+   */
   get rgb(): [number, number, number] {
-    let [r, g, b] = this.rgba;
-    return [r, g, b];
+    const [r, g, b] = this._rgb;
+    return [
+      Math.max(0, Math.min(255, round(r))),
+      Math.max(0, Math.min(255, round(g))),
+      Math.max(0, Math.min(255, round(b)))
+    ];
+  }
+
+  /**
+   * Internal getter for unclamped RGB values.
+   * Use this for calculations and conversions.
+   */
+  get _rgb(): [number, number, number] {
+    if (this.value.rgb) {
+      return this.value.rgb;
+    }
+
+    if (this.value.hsl) {
+      // Convert HSL to RGB
+      const [h, s, l] = this.value.hsl;
+      const hue = h / 360;
+      const sat = s;
+      const light = l;
+
+      let r, g, b;
+
+      if (sat === 0) {
+        r = g = b = light;
+      } else {
+        const hue2rgb = (p: number, q: number, t: number) => {
+          if (t < 0) {
+            t += 1;
+          }
+          if (t > 1) {
+            t -= 1;
+          }
+          if (t < 1 / 6) {
+            return p + (q - p) * 6 * t;
+          }
+          if (t < 1 / 2) {
+            return q;
+          }
+          if (t < 2 / 3) {
+            return p + (q - p) * (2 / 3 - t) * 6;
+          }
+          return p;
+        };
+
+        const q = light < 0.5 ? light * (1 + sat) : light + sat - light * sat;
+        const p = 2 * light - q;
+
+        r = hue2rgb(p, q, hue + 1 / 3);
+        g = hue2rgb(p, q, hue);
+        b = hue2rgb(p, q, hue - 1 / 3);
+      }
+
+      // Convert from 0-1 to 0-255 range
+      const rgb = [r * 255, g * 255, b * 255] as [number, number, number];
+      this.value.rgb = rgb;
+      // Clear HSL - computed RGB might not match existing HSL
+      this.value.hsl = undefined;
+      return rgb;
+    }
+
+    // If value has a node that's a string, parse it as hex
+    if (this.value.node && typeof this.value.node === 'string') {
+      const { rgb, alpha } = parseHexString(this.value.node);
+      this.value.rgb = rgb;
+      this.value.alpha = alpha;
+      // Clear HSL - parsed RGB might not match existing HSL
+      this.value.hsl = undefined;
+      return rgb;
+    }
+
+    throw new TypeError('Cannot convert color value to rgb');
   }
 
   set rgb(rgb: [number, number, number]) {
-    this._rgb = rgb;
-    this._hsl = undefined;
-  }
-
-  get alpha(): number {
-    return this.rgba[3];
+    this.value.rgb = rgb;
+    // Clear HSL since new RGB might not match the old HSL
+    this.value.hsl = undefined;
   }
 
   /**
-   * @todo - shorten hex values that can be shortened
+   * Get HSL values, converting from RGB if needed.
+   * Returns clamped values (hue: 0-360, saturation/lightness: 0-1) for better developer experience.
+   * For internal calculations, use _hsl instead.
    */
-  toHex() {
-    let [r, g, b, a] = this.rgba;
-    if (a < 1) {
-      a = Math.round(a * 255);
-      return `#${[r, g, b, a].map((c) => {
-        c = clamp(Math.round(c), 255);
-        return (c < 16 ? '0' : '') + c.toString(16);
-      }).join('')}`;
+  get hsl(): [number, number, number] {
+    const [h, s, l] = this._hsl;
+    return [
+      ((h % 360) + 360) % 360, // Wrap hue to 0-360
+      Math.max(0, Math.min(1, s)), // Clamp saturation to 0-1
+      Math.max(0, Math.min(1, l))  // Clamp lightness to 0-1
+    ];
+  }
+
+  /**
+   * Internal getter for unclamped HSL values.
+   * Use this for calculations and conversions.
+   */
+  get _hsl(): [number, number, number] {
+    if (this.value.hsl) {
+      return this.value.hsl;
     }
-    return `#${[r, g, b].map((c) => {
-      c = clamp(Math.round(c), 255);
-      return (c < 16 ? '0' : '') + c.toString(16);
-    }).join('')}`;
-  }
 
-  /**
-   * @todo add toRBB() function from hsl() function
-   */
-
-  toHSL(): [number, number, number] {
-    let [r, g, b] = this.rgb;
-    r /= 255;
-    g /= 255;
-    b /= 255;
+    // Convert RGB to HSL
+    let [r, g, b] = this._rgb;
+    // Convert RGB from 0-255 range to 0-1 range for HSL calculation
+    r = r / 255;
+    g = g / 255;
+    b = b / 255;
 
     let max = Math.max(r, g, b);
     let min = Math.min(r, g, b);
     let h: number;
     let s: number;
     let l = (max + min) / 2;
-    let d = max - min;
 
     if (max === min) {
       h = s = 0;
     } else {
+      let d = max - min;
       s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
-
       switch (max) {
-        case r: h = (g - b) / d + (g < b ? 6 : 0);
+        case r: {
+          h = (g - b) / d + (g < b ? 6 : 0);
           break;
-        case g: h = (b - r) / d + 2;
+        }
+        case g: {
+          h = (b - r) / d + 2;
           break;
-        case b: h = (r - g) / d + 4;
+        }
+        case b: {
+          h = (r - g) / d + 4;
           break;
+        }
       }
       h! /= 6;
     }
-    return [h! * 360, s, l];
+
+    const hsl = [h! * 360, s, l] as [number, number, number];
+    this.value.hsl = hsl;
+    // Clear RGB - computed HSL might not match existing RGB
+    this.value.rgb = undefined;
+    return hsl;
   }
 
-  override toTrimmedString() {
-    let { value } = this;
-    /** This is a hex value or keyword, output as-is */
-    if (typeof value === 'string') {
-      return value;
-    }
-    let colorFunction: string | undefined;
+  set hsl(hsl: [number, number, number]) {
+    this.value.hsl = hsl;
+    // Clear RGB since new HSL might not match the old RGB
+    this.value.rgb = undefined;
+  }
 
-    if (value === ColorFormat.RGB) {
-      if (this.alpha < 1) {
-        colorFunction = 'rgba';
-      } else {
-        colorFunction = 'rgb';
-      }
-    } else if (value === ColorFormat.HSL) {
-      if (this.alpha < 1) {
-        colorFunction = 'hsla';
-      } else {
-        colorFunction = 'hsl';
-      }
-    } else {
-      return this.toHex();
-    }
+  /**
+   * Get alpha value.
+   * Returns clamped value (0-1) for better developer experience.
+   * For internal calculations, use _alpha instead.
+   */
+  get alpha(): number {
+    return Math.max(0, Math.min(1, this._alpha));
+  }
 
+  /**
+   * Internal getter for unclamped alpha value.
+   * Use this for calculations and conversions.
+   */
+  get _alpha(): number {
+    return this.value.alpha ?? 1;
+  }
+
+  set alpha(alpha: number) {
+    this.value.alpha = alpha;
+  }
+
+  /**
+   * Get RGBA values for backward compatibility.
+   * Returns clamped values for better developer experience.
+   */
+  get rgba(): ColorValues {
+    return [...this.rgb, this.alpha];
+  }
+
+  set rgba(rgba: ColorValues) {
+    const [r, g, b, a] = rgba as [number, number, number, number];
+    this.value.rgb = [r, g, b];
+    this.value.alpha = a;
+    // Clear HSL since new RGB might not match the old HSL
+    this.value.hsl = undefined;
+  }
+
+  /**
+   * Get HSLA values for backward compatibility.
+   * Returns clamped values for better developer experience.
+   */
+  get hsla(): [number, number, number, number] {
+    return [...this.hsl, this.alpha];
+  }
+
+  set hsla(hsla: [number, number, number, number]) {
+    const [h, s, l, a] = hsla;
+    this.value.hsl = [h, s, l];
+    this.value.alpha = a;
+    // Clear RGB since new HSL might not match the old RGB
+    this.value.rgb = undefined;
+  }
+
+  toHSL(): [number, number, number] {
+    return this.hsl;
+  }
+
+  toHex(): string {
+    const values = this.rgb;
     let alpha = this.alpha;
-    let args: any[] = [];
+    if (alpha < 1) {
+      values.push(round(alpha * 255));
+    }
+    let hex = '#' + values.map(function(c) {
+      let hex = c.toString(16);
+      return hex.length === 1 ? '0' + hex : hex;
+    }).join('');
+    return hex;
+  }
 
-    switch (colorFunction) {
-      case 'rgba':
-        args.push(clamp(alpha, 1));
-      case 'rgb':
-        args = this.rgb.map(function(c) {
-          return clamp(Math.round(c), 255);
-        }).concat(args);
-        break;
-      case 'hsla':
-        args.push(clamp(alpha, 1));
-      case 'hsl': {
-        let [h, s, l] = this.hsla;
-        args = [
-          round(h, 8),
-          `${round(s * 100, 8)}%`,
-          `${round(l * 100, 8)}%`
-        ].concat(args);
-      }
+  override toTrimmedString(options?: PrintOptions) {
+    options = getPrintOptions(options);
+    const w = options.writer!;
+    const mark = w.mark();
+
+    // If value has a node that's a Node, serialize it directly
+    if (this.value.node && isNode(this.value.node)) {
+      return this.value.node.toTrimmedString(options);
     }
 
-    /** @todo - represent with slash syntax? */
-    return `${colorFunction}(${args.join(', ')})`;
+    // If value has a node that's a string, output it as-is
+    if (this.value.node && typeof this.value.node === 'string') {
+      w.add(this.value.node, this);
+      return w.getSince(mark);
+    }
+
+    // Handle format-based serialization
+    const format = this.value.format;
+    if (format === ColorFormat.RGB) {
+      if (this.alpha < 1) {
+        w.add('rgba(', this);
+        w.add(this.rgb.join(', ') + ', ' + this.alpha);
+        w.add(')');
+      } else {
+        w.add('rgb(', this);
+        w.add(this.rgb.join(', '));
+        w.add(')');
+      }
+      return w.getSince(mark);
+    } else if (format === ColorFormat.HSL) {
+      if (this.alpha < 1) {
+        w.add('hsla(', this);
+        const [h, s, l] = this.hsl;
+        w.add(`${round(h, 8)}, ${round(s * 100, 8)}%, ${round(l * 100, 8)}%, ${this.alpha}`);
+        w.add(')');
+      } else {
+        w.add('hsl(', this);
+        const [h, s, l] = this.hsl;
+        w.add(`${round(h, 8)}, ${round(s * 100, 8)}%, ${round(l * 100, 8)}%`);
+        w.add(')');
+      }
+      return w.getSince(mark);
+    }
+
+    // Default to hex
+    w.add(this.toHex(), this);
+    return w.getSince(mark);
   }
 
   override operate(b: Node, op: Operator, context?: Context | undefined): Color {
-    let bNode = b;
+    let aRGB = this._rgb;
+    let newColorValues: [number, number, number];
+    let newAlpha = this._alpha;
+
     if (isNode(b, 'Dimension')) {
       const { number: bVal, unit: bUnit } = b.value;
       if (bUnit) {
         throw new TypeError(`Cannot convert "${b}" to a color`);
       }
-      bNode = new Color(ColorFormat.RGB).inherit(b)
-      ;(bNode as Color).rgb = [bVal, bVal, bVal];
+      // Apply operation to each RGB component with the number
+      newColorValues = aRGB.map(a => calculate(a, op, bVal)) as [number, number, number];
+    } else if (b instanceof Color) {
+      // Color-to-color operation
+      let bRGB = b._rgb;
+      newColorValues = aRGB.map((a, i) => calculate(a, op, bRGB[i]!)) as [number, number, number];
+      newAlpha = this._alpha * (1 - b._alpha) + b._alpha;
+    } else {
+      throw new TypeError(`Cannot operate on ${b.type}`);
     }
-    if (!(bNode instanceof Color)) {
-      throw new TypeError(`Cannot operate on ${bNode.type}`);
-    }
-    let aRGB = this.rgb;
-    let bRGB = bNode.rgb;
-    let newColorValues = aRGB.map((a, i) => calculate(a, op, bRGB[i]!));
-    let { value } = this;
-    if (typeof value === 'string') {
-      value = ColorFormat.HEX;
-    }
-    let newColor = new Color(value).inherit(this);
-    newColor.rgb = newColorValues as [number, number, number];
-    /**
-     * There's no intuitive way to blend alpha values with operations,
-     * but this is how Less does it.
-     */
-    newColor._alpha = this.alpha * (1 - bNode.alpha) + bNode.alpha;
+
+    // Create new color with preserved data
+    let { format } = this.value;
+    let newColor = new Color({
+      rgb: newColorValues,
+      alpha: newAlpha,
+      format: format
+      // Don't preserve HSL - new RGB values represent a new color
+    }).inherit(this);
+
     return newColor;
   }
-
-  /** @todo move to visitors */
-  // toCSS(context: Context, out: OutputCollector) {
-  //   out.add(this.toString(), this.location)
-  // }
-
-  // toModule(context: Context, out: OutputCollector) {
-  //   out.add(`$J.color("${this.value}")`)
-  // }
 }
 
 export const color = defineType(Color, 'Color');

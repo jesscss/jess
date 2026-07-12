@@ -1,64 +1,498 @@
-import { Node, defineType } from './node';
-import { ComplexSelector } from './selector-complex';
-import { Ampersand } from './ampersand';
-import { Ruleset } from './ruleset';
-import type { General } from './general';
-import { Rules } from './rules';
-import type { Context } from '../context';
+import { Node, defineType, F_STATIC, F_VISIBLE, type NodeOptions } from './node.js';
+import { Ruleset } from './ruleset.js';
+import { Any } from './any.js';
+import { Rules } from './rules.js';
+import type { Context } from '../context.js';
+import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
+import { isThenable, type MaybePromise, pipe } from '@jesscss/awaitable-pipe';
+import { Ampersand } from './ampersand.js';
+import { isNode } from './util/is-node.js';
+import { indent, normalizeIndent, serializeRulesContainer } from './util/serialize-helper.js';
+import { Interpolated } from './interpolated.js';
+import { Nil } from './nil.js';
+import { syncLog } from './util/__tests__/debug-log.js';
 
 export type AtRuleValue = {
-  name: General<'Name'>;
+  name: Any<'atkeyword'>;
   /** The prelude */
   prelude?: Node;
   rules?: Rules;
 };
 
+export const NESTABLE_AT_RULES = ['@media', '@supports', '@layer', '@container', '@scope'] as const;
+export const ROOT_ONLY_AT_RULES = [
+  '@charset',
+  '@import',
+  '@namespace',
+  '@font-face',
+  '@keyframes',
+  '@page',
+  '@property',
+  '@counter-style',
+  '@viewport'
+] as const;
+
+export type AtRuleOptions = NodeOptions;
+
 /**
  * A rule like @charset or @media
  */
-export class AtRule extends Node<AtRuleValue> {
+export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
   type = 'AtRule' as const;
   shortType = 'atrule' as const;
   override allowRoot = true;
 
-  override toTrimmedString(depth: number = 0): string {
-    let { name, prelude, rules } = this.value;
-    /** The ruleset will have already indented the first line */
-    let output = `${name}`;
-    if (prelude) {
-      output += prelude.toString();
-    }
-    if (rules) {
-      output += `{${rules.toString(depth + 1)}}`;
-    } else {
-      output += ';';
-    }
-    return output;
+  frames: (Ruleset | AtRule)[] | undefined;
+
+  protected _valueOf: string | undefined;
+
+  /** Used for equality comparison with other at-rules */
+  override valueOf() {
+    return (this._valueOf ??= (this.value.name.toString() + (this.value.prelude ? ' ' + this.value.prelude.valueOf() : '')));
   }
 
-  override async evalNode(context: Context) {
-    let node = await super.evalNode(context) as AtRule;
-    let rules = node.value.rules;
-    /** Don't let rooted rules bubble past an at-rule */
-    if (rules) {
-      /**
-       * Wrap sub-rules of a media query like Less
-       *
-       * @todo - Make sure this works with and without collapsing
-       */
-      if (context.opts.collapseNesting && context.rulesetFrames.length) {
-        let rule = await new Ruleset({
-          selector: new ComplexSelector([new Ampersand()]),
-          rules
-        })
-          .inherit(this)
-          .eval(context);
-        node.value.rules = new Rules([rule]);
+  /**
+   * Means: can bubble ruleset parents to children.
+   */
+  isNestable() {
+    return NESTABLE_AT_RULES.includes(this.value.name.valueOf() as (typeof NESTABLE_AT_RULES)[number]);
+  }
+
+  /**
+   * For legacy collapseNesting, will push ruleset to root silently.
+   */
+  isRootOnly() {
+    return ROOT_ONLY_AT_RULES.includes(this.value.name.valueOf() as (typeof ROOT_ONLY_AT_RULES)[number]);
+  }
+
+  isHoisted(opts: { collapseNesting?: boolean }) {
+    return this.hoistToRoot ?? opts.collapseNesting ?? false;
+  }
+
+  override toTrimmedString(options?: PrintOptions): string {
+    options = getPrintOptions(options);
+    return serializeRulesContainer(this, options as FinalPrintOptions);
+  }
+
+  /**
+   * Pre-evaluate name and prelude (similar to Ruleset.preEval)
+   * This allows us to extract layer names before rules are evaluated
+   */
+  override preEval(context: Context): MaybePromise<AtRule | Nil> {
+    if (!this.preEvaluated) {
+      const node = this.maybeClone(context);
+      node.preEvaluated = true;
+      // Index should already be assigned by parent Rules
+      node.sourceNode ??= this;
+
+      // Evaluate name if needed (for interpolated names)
+      let { name } = node.value;
+      if (name && name instanceof Interpolated) {
+        const maybeKey = name.eval(context);
+        if (isThenable(maybeKey)) {
+          return (maybeKey as Promise<Any<'atkeyword'>>).then((key) => {
+            node.value.name = key;
+            return this._preEvalPrelude(node, context);
+          });
+        }
+        node.value.name = maybeKey as Any<'atkeyword'>;
       }
-      let rootRules = this.collectRoots();
-      rootRules.forEach(rule => rules.value.push(rule));
+
+      return this._preEvalPrelude(node, context);
+    }
+    return this;
+  }
+
+  private _preEvalPrelude(node: AtRule, context: Context): MaybePromise<AtRule | Nil> {
+    const { prelude, rules } = node.value;
+    // Preserve @import prelude as-authored (including comments). Evaluation here can
+    // normalize/strip comment tokens inside the prelude, but less.js expects them preserved.
+    if (node.value.name.value === '@import') {
+      if (prelude) {
+        node.value.prelude = prelude;
+      }
+      (context.topImports ??= []).push(node);
+      return new Nil();
+    }
+    // Defer prelude evaluation to evalNode so variable lookups happen in the correct
+    // call-time scope (e.g. mixin parameters referenced from nested @media preludes).
+    if (prelude) {
+      node.value.prelude = prelude;
+    }
+    // Depth-first: preEval child rules immediately so all nested rulesets/extends
+    // are registered in source order before we process extends.
+    if (rules && !rules.preEvaluated) {
+      // For nestable at-rules (like @media), push extend root during preEval
+      // so extends registered inside have the correct extend root
+      let pushedExtendRootForPreEval = false;
+      if (node.isNestable()) {
+        context.extendRoots.pushExtendRoot(rules);
+        pushedExtendRootForPreEval = true;
+      }
+      // #region agent log
+      const filePath = context.treeContext?.file?.fullPath ?? '';
+      if (typeof filePath === 'string' && filePath.includes('extend-media')) {
+        const nameV = node.value.name?.value ?? '';
+        syncLog({
+          sessionId: 'debug-session',
+          runId: process.env.DEBUG_RUN_ID || 'run',
+          hypothesisId: 'H44',
+          location: 'at-rule.ts:_preEvalPrelude',
+          message: 'atrule-preEval-calling-childRules-preEval',
+          data: {
+            name: nameV,
+            extendsCountBefore: context.extends.length,
+            pushedExtendRoot: pushedExtendRootForPreEval
+          },
+          timestamp: Date.now()
+        });
+      }
+      // #endregion
+      const preEvaldRules = rules.preEval(context);
+      if (isThenable(preEvaldRules)) {
+        return (preEvaldRules as Promise<Rules>).then((evaldRules) => {
+          // Pop extend root after preEval completes
+          if (pushedExtendRootForPreEval) {
+            context.extendRoots.popExtendRoot();
+          }
+          // #region agent log
+          if (typeof filePath === 'string' && filePath.includes('extend-media')) {
+            const nameV = node.value.name?.value ?? '';
+            syncLog({
+              sessionId: 'debug-session',
+              runId: process.env.DEBUG_RUN_ID || 'run',
+              hypothesisId: 'H44',
+              location: 'at-rule.ts:_preEvalPrelude',
+              message: 'atrule-preEval-childRules-preEval-complete-async',
+              data: {
+                name: nameV,
+                extendsCountAfter: context.extends.length
+              },
+              timestamp: Date.now()
+            });
+          }
+          // #endregion
+          node.value.rules = evaldRules;
+          return node;
+        });
+      }
+      // Pop extend root after preEval completes
+      if (pushedExtendRootForPreEval) {
+        context.extendRoots.popExtendRoot();
+      }
+      // #region agent log
+      if (typeof filePath === 'string' && filePath.includes('extend-media')) {
+        const nameV = node.value.name?.value ?? '';
+        syncLog({
+          sessionId: 'debug-session',
+          runId: process.env.DEBUG_RUN_ID || 'run',
+          hypothesisId: 'H44',
+          location: 'at-rule.ts:_preEvalPrelude',
+          message: 'atrule-preEval-childRules-preEval-complete-sync',
+          data: {
+            name: nameV,
+            extendsCountAfter: context.extends.length
+          },
+          timestamp: Date.now()
+        });
+      }
+      // #endregion
+      node.value.rules = preEvaldRules as Rules;
     }
     return node;
+  }
+
+  private _extractAndStoreLayerName(node: AtRule, context: Context): void {
+    const atRuleName = node.value.name?.toTrimmedString?.() ?? node.value.name?.toString?.() ?? '';
+    if (atRuleName === '@layer' && node.value.prelude) {
+      const preludeStr = String(node.value.prelude.valueOf?.() ?? node.value.prelude.toTrimmedString?.() ?? node.value.prelude.toString?.() ?? '');
+      if (preludeStr) {
+        let parentLayerName: string | undefined;
+        for (let i = context.frames.length - 2; i >= 0; i--) {
+          const frame = context.frames[i]!;
+          if (isNode(frame, 'AtRule') && frame.value.name?.toTrimmedString?.() === '@layer' && frame.value.rules?.value?.includes(node)) {
+            parentLayerName = context.extendRoots.getLayerName(frame);
+            if (parentLayerName) {
+              break;
+            }
+          }
+        }
+        const layerName = parentLayerName ? `${parentLayerName}.${preludeStr}` : preludeStr;
+        context.extendRoots.setLayerName(node, layerName);
+      }
+    }
+  }
+
+  /** Render the opening of this at-rule (name and prelude) */
+  getHeaderString(options: FinalPrintOptions, withoutComments?: boolean): string {
+    const w = options.writer;
+    let { name, prelude, rules } = this.value;
+
+    let idt = indent(options.depth);
+    let out = idt;
+
+    if (withoutComments) {
+      name = name.copy(true) as Any<'atkeyword'>;
+      if (prelude) {
+        prelude = prelude.copy(true) as Node;
+      }
+    }
+
+    const nameOut = w.capture(() => name.toString(options));
+    const nameEndsWithSpace = /\s$/.test(nameOut);
+    if (prelude) {
+      const preludeOut = w.capture(() => prelude.toString(options));
+      const preludeStartsWithSpace = /^\s/.test(preludeOut);
+
+      out += nameOut;
+      // If name ends with space AND prelude starts with space, trim the prelude's leading space
+      // Otherwise, add a space only if neither has spacing
+      let finalPreludeOut = preludeOut;
+      if (nameEndsWithSpace && preludeStartsWithSpace) {
+        finalPreludeOut = preludeOut.replace(/^\s+/, '');
+      } else if (!nameEndsWithSpace && !preludeStartsWithSpace) {
+        out += ' ';
+      }
+      out += finalPreludeOut;
+      if (rules) {
+        const preludeEndsWithSpace = /\s$/.test(preludeOut);
+        if (!preludeEndsWithSpace) {
+          out += ' ';
+        }
+        out = normalizeIndent(out + '{', idt) + '\n';
+      } else {
+        out = normalizeIndent(out + ';', idt);
+      }
+    } else {
+      out += nameOut;
+      if (rules) {
+        if (!nameEndsWithSpace) {
+          out += ' ';
+        }
+        out = normalizeIndent(out + '{', idt) + '\n';
+      } else {
+        out = normalizeIndent(out + ';', idt);
+      }
+    }
+    return out;
+  }
+
+  override evalNode(context: Context): MaybePromise<AtRule | Nil> {
+    let node = this as AtRule;
+
+    // Check if this is a root-only at-rule that should bubble to root
+    // when nested inside a Ruleset. Use hoistToRoot for in-place rendering.
+    let shouldClearRulesetFrames = false;
+    if (context.bubbleRootAtRules && node.isRootOnly()) {
+      const hasRulesetParent = context.frames.some(f => isNode(f, 'Ruleset'));
+      if (hasRulesetParent) {
+        // Mark for hoisting - this will render at root level but in-place
+        node.hoistToRoot = true;
+        // We'll clear rulesetFrames when evaluating internal rules
+        // to prevent selector inheritance from piercing through
+        shouldClearRulesetFrames = true;
+      }
+    }
+
+    // Store frames snapshot for hoisting serialization
+    if (context.opts.collapseNesting || node.hoistToRoot) {
+      node.frames = [...context.frames];
+    }
+
+    const tryMergeNestedMedia = () => {
+      // Nested @media merge is currently disabled to match less.js fixture expectations.
+      // (Some fixtures expect nested @media blocks to remain nested rather than being
+      // rewritten as `@media a and b`.)
+      if (process.env.ENABLE_NESTED_MEDIA_MERGE !== 'true') {
+        return;
+      }
+      if (node.value.name?.valueOf?.() !== '@media') {
+        return;
+      }
+      const outerRules = node.value.rules;
+      if (!outerRules) {
+        return;
+      }
+      const visible = outerRules.value.filter(n => n.visible);
+      if (visible.length !== 1) {
+        return;
+      }
+      const only = visible[0]!;
+      if (!isNode(only, 'AtRule') || (only as AtRule).value.name?.valueOf?.() !== '@media') {
+        return;
+      }
+      const inner = only as AtRule;
+      const innerRules = inner.value.rules;
+      if (!innerRules) {
+        return;
+      }
+
+      // Combine media queries using "and" like Less does.
+      const outerPrelude = node.value.prelude;
+      const innerPrelude = inner.value.prelude;
+      if (outerPrelude && innerPrelude) {
+        // Build a normalized text prelude to avoid double-spacing from nested sequences.
+        const outerText = outerPrelude.toTrimmedString().trim();
+        const innerText = innerPrelude.toTrimmedString().trim();
+        const combined = `${outerText} and ${innerText}`.replace(/[ \t]+/g, ' ').trim();
+        node.value.prelude = new Any(combined);
+      } else {
+        node.value.prelude = outerPrelude ?? innerPrelude;
+      }
+
+      // Replace outer rules with the inner rules (flatten nested media).
+      node.value.rules = innerRules;
+      node.adopt(innerRules);
+    };
+
+    return pipe(
+      () => {
+        // Evaluate prelude in the correct scope (mixin params, vars, etc.).
+        let { prelude } = node.value;
+        if (prelude) {
+          // Evaluate the prelude in the outer (enclosing) Rules scope, not the nested @media Rules scope.
+          // This matches Less behavior for mixin parameters referenced from nested @media preludes.
+          const savedRulesContext = context.rulesContext;
+          let liftedRulesContext = savedRulesContext;
+          // If our current rulesContext is a Rules whose parent is an AtRule, lift to the enclosing Rules.
+          if (liftedRulesContext && isNode(liftedRulesContext, 'Rules')) {
+            let cursor: any = liftedRulesContext;
+            let depth = 0;
+            while (cursor?.parent && depth++ < 10) {
+              if (isNode(cursor.parent, 'AtRule') && isNode(cursor.parent.parent, 'Rules')) {
+                cursor = cursor.parent.parent;
+                continue;
+              }
+              break;
+            }
+            liftedRulesContext = cursor;
+          }
+          context.rulesContext = liftedRulesContext;
+          const out = prelude.eval(context);
+          context.rulesContext = savedRulesContext;
+          if (isThenable(out)) {
+            return (out as Promise<Node>).then((n) => {
+              node.value.prelude = n;
+              return undefined;
+            });
+          }
+          node.value.prelude = out as Node;
+        }
+      },
+      () => {
+        let { rules } = node.value;
+        if (rules) {
+          if (context.opts.collapseNesting) {
+            node.hoistToRoot = true;
+          }
+          // Push to frames before evaluating rules so we can use context.frames to find parent layers
+          // This allows nested layers to find their parent layer names
+          // NOTE: We do NOT pop here - the frame must remain accessible during rules evaluation
+          // The frame will be popped at the end of evalNode
+          context.frames.push(node);
+
+          // Extract and store layer name AFTER pushing to frames but BEFORE evaluating rules
+          // This ensures parent layers are already on the stack when we look for them
+          this._extractAndStoreLayerName(node, context);
+
+          if (node.isNestable() && node.isHoisted(context.opts)) {
+            let existingRules = rules;
+            rules = Rules.create([
+              Ruleset.create({
+                selector: Ampersand.create(undefined),
+                rules: existingRules
+              }, { generated: true })
+            ]).inherit(existingRules);
+            node.adopt(rules);
+          }
+
+          // Register extend root for nestable at-rules (including @layer)
+          // We need to register AFTER evaluation because the Rules instance may be replaced
+          // Layer name was already extracted in preEval and stored in extend roots registry
+          let pushedExtendRoot = false;
+          let parentExtendRoot: Rules | undefined;
+          if (node.isNestable()) {
+            parentExtendRoot = context.extendRoots.getCurrentExtendRoot();
+            // Push a placeholder to maintain stack depth - we'll register the actual Rules after evaluation
+            context.extendRoots.pushExtendRoot(rules);
+            pushedExtendRoot = true;
+          }
+
+          let onlyRuleSetChild = isNode(rules.value[0], 'Ruleset');
+
+          // For root-only at-rules that are hoisted, clear rulesetFrames
+          // so internal rulesets don't inherit parent selectors
+          const savedRulesetFrames = shouldClearRulesetFrames ? context.rulesetFrames : undefined;
+          if (shouldClearRulesetFrames) {
+            context.rulesetFrames = [];
+          }
+
+          let out = rules.eval(context);
+          if (isThenable(out)) {
+            return (out as Promise<Rules>).then((r) => {
+              // Restore rulesetFrames
+              if (savedRulesetFrames !== undefined) {
+                context.rulesetFrames = savedRulesetFrames;
+              }
+              // If the only rule was a ruleset, and it evaluated to Rules,
+              // discard the extra rules wrapper
+              const finalRules = onlyRuleSetChild && isNode(r.value[0], 'Rules') ? r.value[0] : r;
+              node.value.rules = finalRules;
+              tryMergeNestedMedia();
+
+              // Register extend root AFTER evaluation using the final Rules instance
+              // Rulesets registered to 'rules' (the placeholder) during evaluation, so use that as the extend root
+              if (pushedExtendRoot && node.isNestable()) {
+                context.extendRoots.popExtendRoot(); // Pop the placeholder
+                // Retrieve layer name that was stored in evalNode (and delete it)
+                const layerName = context.extendRoots.takeLayerName(node);
+                // Use 'rules' as the extend root since that's where rulesets registered during evaluation
+                // 'finalRules' is stored in node.value.rules for the actual Rules node, but extend root uses 'rules'
+                if (rules) {
+                  context.extendRoots.registerRoot(rules, parentExtendRoot, { layerName });
+                  context.extendRoots.pushExtendRoot(rules);
+                }
+              }
+
+              return node;
+            });
+          }
+          // Restore rulesetFrames (sync path)
+          if (savedRulesetFrames !== undefined) {
+            context.rulesetFrames = savedRulesetFrames;
+          }
+
+          const finalRules = onlyRuleSetChild && isNode(out.value[0], 'Rules') ? out.value[0] : out;
+          node.value.rules = finalRules;
+          tryMergeNestedMedia();
+
+          // Register extend root AFTER evaluation using the final Rules instance
+          // Rulesets registered to 'rules' (the placeholder) during evaluation, so use that as the extend root
+          if (pushedExtendRoot && node.isNestable()) {
+            context.extendRoots.popExtendRoot(); // Pop the placeholder
+            // Retrieve layer name that was stored in evalNode (and delete it)
+            const layerName = context.extendRoots.takeLayerName(node);
+            // Use 'rules' as the extend root since that's where rulesets registered during evaluation
+            // 'finalRules' is stored in node.value.rules for the actual Rules node, but extend root uses 'rules'
+            if (rules) {
+              context.extendRoots.registerRoot(rules, parentExtendRoot, { layerName });
+              context.extendRoots.pushExtendRoot(rules);
+            }
+          }
+        }
+        return node;
+      },
+      () => {
+        // Pop the frame that was pushed in preEval
+        // This frame was kept on the stack during rules evaluation so children could access it
+        context.frames.pop();
+        let rules = node.value.rules;
+        if (rules && rules.visibleRules().length === 0) {
+          this.removeFlag(F_VISIBLE);
+        }
+        return node;
+      }
+    ) as MaybePromise<AtRule>;
   }
 
   /** @todo - move to visitors */

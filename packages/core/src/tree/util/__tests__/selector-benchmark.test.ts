@@ -1,7 +1,7 @@
-import { el, sel, sellist, compound, is, co, pseudo, type Selector } from '../../..';
-import { matchSelectors, MatchResult, findExtendableLocations, ExtendSearchResult } from '../find-extendable-locations';
-import { extendSelector } from '../extend';
-import { isNode } from '../is-node';
+import { el, sel, sellist, compound, is, co, pseudo, type Selector } from '../../../index.js';
+import { matchSelectors, MatchResult, findExtendableLocations, ExtendSearchResult } from '../find-extendable-locations.js';
+import { extendSelector } from '../extend.js';
+import { isNode } from '../is-node.js';
 
 /**
  * Version that bypasses OPTIMIZATION 1: Exact match cache
@@ -128,7 +128,8 @@ function matchSelectorsNoOptimizations(target: Selector, find: Selector, partial
   };
 }
 
-describe('Selector Performance Benchmarks', () => {
+/** Was used to test fast-path optimizations */
+describe.skip('Selector Performance Benchmarks', () => {
   const runBenchmark = (name: string, fn: () => void, iterations = 10000) => {
     const start = performance.now();
     for (let i = 0; i < iterations; i++) {

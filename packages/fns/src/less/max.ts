@@ -1,22 +1,7 @@
-import { type ExtendedFn } from '../util';
-import { Node } from '@jesscss/core';
-import { array, instance, assert } from 'superstruct';
-
-const Struct = array(instance(Node));
-
 /**
- * Return the maximum value
+ * Less max() function
+ * 
+ * Re-exports the shared max function.
+ * The actual implementation is in shared/math/max.ts
  */
-const max: ExtendedFn = function max(...values: Node[]) {
-  assert(values, Struct);
-  values = values.sort((a, b) => {
-    let compare = b.compare(a);
-    if (compare === undefined) {
-      throw new TypeError(`Cannot compare ${a.type} and ${b.type}`);
-    }
-    return compare;
-  });
-  return values[0];
-};
-
-export default max;
+export { max as default } from '../shared/index.js';

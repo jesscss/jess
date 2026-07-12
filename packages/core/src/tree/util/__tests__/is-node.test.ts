@@ -1,5 +1,5 @@
-import { isNode } from '../is-node';
-import { el } from '../../.';
+import { isNode } from '../is-node.js';
+import { el } from '../../index.js';
 
 describe('is-node', () => {
   test('is a basic selector', () => {

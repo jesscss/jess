@@ -13,7 +13,7 @@
     "prepublishOnly": "npm run build",
     "build": "pnpm compile",
     "compile": "tsc -b tsconfig.build.json",
-    "test": "cross-env TEST=true vitest",
+    "test": "vitest --run --passWithNoTests",
     "lint:fix": "eslint --fix '**/*.{js,ts}'",
     "lint": "eslint '**/*.{js,ts}'"
   },

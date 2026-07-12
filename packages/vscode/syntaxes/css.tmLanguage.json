@@ -1,0 +1,114 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Jess CSS (fallback)",
+  "scopeName": "source.css",
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#strings" },
+    { "include": "#atRules" },
+    { "include": "#selectors" },
+    { "include": "#variables" },
+    { "include": "#properties" },
+    { "include": "#numbers" },
+    { "include": "#functions" }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        { "name": "comment.block.css", "begin": "/\\*", "end": "\\*/" }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        { "name": "string.quoted.double.css", "begin": "\"", "end": "\"", "patterns": [{ "match": "\\\\.", "name": "constant.character.escape.css" }] },
+        { "name": "string.quoted.single.css", "begin": "'", "end": "'", "patterns": [{ "match": "\\\\.", "name": "constant.character.escape.css" }] }
+      ]
+    }
+    ,
+    "atRules": {
+      "patterns": [
+        { "name": "keyword.control.at-rule.css", "match": "(?m)^[ \\t]*@(?:[\\w-]+)" }
+      ]
+    },
+    "selectors": {
+      "patterns": [
+        {
+          "name": "meta.attribute-selector.css",
+          "begin": "\\[",
+          "end": "\\]",
+          "patterns": [
+            { "include": "#strings" },
+            { "name": "keyword.operator.css", "match": "[~|^$*]?=" },
+            { "name": "constant.numeric.css", "match": "[+-]?(?:\\d*\\.\\d+|\\d+)" },
+            { "name": "support.function.css", "match": "\\b[_a-zA-Z][\\w-]*(?=\\()" },
+            { "name": "variable.other.css", "match": "--[\\w-]+" },
+            { "name": "entity.name.tag.css", "match": "[_a-zA-Z][\\w-]*" }
+          ]
+        },
+        {
+          "name": "meta.selector.css",
+          "match": "(?m)(^|[\\s{;,(]|\\.|#|&|\\]|\\))(\\&+)",
+          "captures": { "2": { "name": "entity.name.tag.css" } }
+        },
+        {
+          "name": "meta.selector.css",
+          "match": "(?m)(^|[\\s{;,(]|\\.|#|&|\\]|\\))(\\.[_a-zA-Z][\\w-]*)",
+          "captures": { "2": { "name": "entity.name.tag.css" } }
+        },
+        {
+          "name": "meta.selector.css",
+          "match": "(?m)(^|[\\s{;,(]|\\.|#|&|\\]|\\))(#[_a-zA-Z][\\w-]*)",
+          "captures": { "2": { "name": "entity.name.tag.css" } }
+        },
+        {
+          "name": "meta.selector.css",
+          "match": "(?m)^[ \\t]*([_a-zA-Z][\\w-]*)(?=\\s*[,{])",
+          "captures": { "1": { "name": "entity.name.tag.css" } }
+        },
+        { "name": "entity.name.tag.css", "match": ":[_a-zA-Z-][\\w-]*" }
+      ]
+    },
+    "variables": {
+      "patterns": [
+        {
+          "name": "variable.other.constant.css",
+          "match": "(?<=\\{|;|\\r?\\n)\\s*(--[\\w-]+)\\s*(?=:)",
+          "captures": { "1": { "name": "variable.other.constant.css" } }
+        },
+        { "name": "variable.other.css", "match": "--[\\w-]+" }
+      ]
+    },
+    "properties": {
+      "patterns": [
+        {
+          "name": "meta.property-name.css",
+          "match": "(?m)(^|[\\s{;])([_a-zA-Z][\\w-]*)\\s*:",
+          "captures": { "2": { "name": "support.type.property-name.css" } }
+        },
+        {
+          "name": "support.type.property-name.css",
+          "match": "\\b[_a-zA-Z][\\w-]*\\s*(?=:)"
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "meta.dimension.css",
+          "match": "(?<![\\w-])([+-]?(?:\\d*\\.\\d+|\\d+))(?:([a-zA-Z]+|%))",
+          "captures": {
+            "1": { "name": "constant.numeric.css" },
+            "2": { "name": "constant.other.unit.css" }
+          }
+        },
+        { "name": "constant.numeric.css", "match": "(?<![\\w-])[+-]?(?:\\d*\\.\\d+|\\d+)" }
+      ]
+    },
+    "functions": {
+      "patterns": [
+        { "name": "support.function.css", "match": "\\b[_a-zA-Z][\\w-]*(?=\\()" }
+      ]
+    }
+  }
+}
+

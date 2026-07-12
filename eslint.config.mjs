@@ -5,6 +5,7 @@ import globals from 'globals';
 import stylistic from '@stylistic/eslint-plugin';
 import tseslint from 'typescript-eslint';
 import js from '@eslint/js';
+import importPlugin from 'eslint-plugin-import';
 import {
   FlatCompat
 } from '@eslint/eslintrc';
@@ -31,6 +32,10 @@ const customized = stylistic.configs.customize({
 const jsRules = {
   semi: 0,
   ...customized.rules,
+
+  // Disallow single-line blocks like: `if (x) { y(); }`
+  // so ESLint can auto-fix to a multiline block.
+  '@stylistic/brace-style': ['error', '1tbs', { allowSingleLine: false }],
 
   '@stylistic/space-before-function-paren': ['error', {
     anonymous: 'never',
@@ -70,13 +75,15 @@ export default tseslint.config([
     },
     plugins: {
       '@stylistic': stylistic,
-      '@typescript-eslint': tseslint.plugin
+      '@typescript-eslint': tseslint.plugin,
+      import: importPlugin
     }
   }, {
     files: ['**/*.js', '**/*.mjs'],
 
     rules: {
       ...jsRules,
+      curly: ['error', 'all'],
       'prefer-const': 0
     }
   }, {
@@ -101,12 +108,27 @@ export default tseslint.config([
       ...jsRules,
       'eol-last': 0,
       'prefer-const': 0,
+      curly: ['error', 'all'],
       '@typescript-eslint/no-confusing-void-expression': 'off',
       'no-void': 0,
       '@typescript-eslint/consistent-type-assertions': 0,
+      // Enforce runtime-correct ESM specifiers in TS source:
+      // - relative imports must include `.js`
+      // - directory imports like `./foo` are banned; use `./foo/index.js`
+      'import/extensions': ['error', 'ignorePackages', {
+        js: 'always',
+        mjs: 'always',
+        cjs: 'always'
+      }],
 
       '@typescript-eslint/no-floating-promises': ['warn', {
         ignoreVoid: true
+      }],
+
+      '@typescript-eslint/no-unused-vars': ['warn', {
+        argsIgnorePattern: '^_',
+        varsIgnorePattern: '^_',
+        caughtErrorsIgnorePattern: '^_'
       }],
 
       '@typescript-eslint/strict-boolean-expressions': 0,
@@ -141,16 +163,19 @@ export default tseslint.config([
       }, {
         selector: 'typeLike',
         format: ['PascalCase', 'UPPER_CASE', 'snake_case']
-      }, {
-        selector: 'property',
-        format: ['camelCase', 'PascalCase', 'snake_case'],
-        leadingUnderscore: 'allow'
       },
       {
         selector: 'parameter',
         modifiers: ['unused'],
         format: ['camelCase', 'PascalCase', 'UPPER_CASE', 'snake_case'],
         leadingUnderscore: 'allow'
+      }, {
+        selector: 'objectLiteralProperty',
+        filter: {
+          regex: '^\\d+$',
+          match: true
+        },
+        format: [] // Allow numeric property names
       }]
     }
   }, {
@@ -168,7 +193,8 @@ export default tseslint.config([
     },
 
     rules: {
-      '@typescript-eslint/no-unused-vars': 0
+      '@typescript-eslint/no-unused-vars': 0,
+      curly: ['error', 'all']
     }
-  }, globalIgnores(['**/node_modules', '**/lib', '**/dist', 'packages/**'])
+  }, globalIgnores(['**/node_modules', '**/lib', '**/dist', 'packages/**/lib', 'packages/**/dist'])
 ]);

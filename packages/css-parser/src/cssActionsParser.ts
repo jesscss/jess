@@ -4,27 +4,31 @@ import {
   type IParserConfig,
   type ParserMethod,
   type IToken,
-  tokenMatcher
+  tokenMatcher,
+  type IRecognitionException
 } from 'chevrotain';
 
 // import { AdvancedCstParser } from './advancedCstParser'
 import { LLStarLookaheadStrategy } from 'chevrotain-allstar';
 
-import { AdvancedActionsParser } from './advancedActionsParser';
+import { AdvancedActionsParser } from './advancedActionsParser.js';
 
-import { type CssTokenType } from './cssTokens';
-import * as productions from './productions';
+import { type CssTokenType } from './cssTokens.js';
+import * as productions from './productions.js';
 import {
   type LocationInfo,
   Node,
   Comment,
   Color,
+  ColorFormat,
   Dimension,
-  Token,
+  Num,
   Rules,
-  Root,
-  General
+  Any,
+  type Nil
 } from '@jesscss/core';
+import type { CssErrorMessageProvider } from './cssErrorMessageProvider.js';
+import colors from 'color-name';
 
 const { isArray } = Array;
 
@@ -35,7 +39,7 @@ const { isArray } = Array;
 
 export type TokenMap = Record<CssTokenType, TokenType>;
 
-export type Rule<F extends () => void = () => void> = ParserMethod<Parameters<F>, any>;
+export type Rule<F extends (...args: any[]) => void = (ctx?: RuleContext) => void> = ParserMethod<Parameters<F>, any>;
 
 export interface CssParserConfig extends IParserConfig {
   /** Things like star property hacks and IE filters */
@@ -50,7 +54,7 @@ export type RuleContext = {
   /** If downstream selector rules are part of a qualified rule */
   qualifiedRule?: boolean;
 
-  [k: string]: object | boolean | string | object[] | undefined;
+  [k: string]: object | boolean | string | object[] | number | undefined;
 };
 
 /**
@@ -69,96 +73,118 @@ export type RuleContext = {
 export class CssActionsParser extends AdvancedActionsParser {
   T: TokenMap;
   legacyMode: boolean;
+  ruleIndex = 0;
 
+  declare _errors: Array<IRecognitionException>;
   /** Expose Chevrotain's flag */
-  skipValidations: boolean;
+  declare skipValidations: boolean;
 
   /** Rewire, declaring class fields in constructor with `public` */
-  stylesheet: Rule<(options?: Record<string, any>) => void>;
-  main: Rule<(ctx?: RuleContext) => void>;
-  qualifiedRule: Rule<(ctx?: RuleContext) => void>;
-  atRule: Rule;
-  selectorList: Rule<(ctx?: RuleContext) => void>;
-  declarationList: Rule;
-  forgivingSelectorList: Rule<(ctx?: RuleContext) => void>;
-  classSelector: Rule;
-  idSelector: Rule;
-  pseudoSelector: Rule<(ctx?: RuleContext) => void>;
-  attributeSelector: Rule;
-  nthValue: Rule;
-  complexSelector: Rule<(ctx?: RuleContext) => void>;
-  simpleSelector: Rule<(ctx?: RuleContext) => void>;
-  compoundSelector: Rule<(ctx?: RuleContext) => void>;
-  relativeSelector: Rule<(ctx?: RuleContext) => void>;
+  stylesheet!: Rule<(options?: Record<string, any>) => void>;
+  main!: Rule;
+  qualifiedRule!: Rule;
+  atRule!: Rule;
+  selectorList!: Rule;
+  declarationList!: Rule;
+  forgivingSelectorList!: Rule;
+  classSelector!: Rule;
+  idSelector!: Rule;
+  pseudoSelector!: Rule;
+  attributeSelector!: Rule;
+  nthValue!: Rule;
+  complexSelector!: Rule;
+  simpleSelector!: Rule;
+  compoundSelector!: Rule;
+  relativeSelector!: Rule;
 
-  declaration: Rule;
-  valueList: Rule<(ctx?: RuleContext) => void>;
+  declaration!: Rule;
+  valueList!: Rule;
   /** Often a space-separated sequence */
-  valueSequence: Rule<(ctx?: RuleContext) => void>;
-  value: Rule<(ctx?: RuleContext) => void>;
-  squareValue: Rule<(ctx?: RuleContext) => void>;
-  customValue: Rule;
-  innerCustomValue: Rule;
+  valueSequence!: Rule;
+  value!: Rule;
+  squareValue!: Rule;
+  customValue!: Rule;
+  innerCustomValue!: Rule;
 
-  functionCall: Rule;
-  functionCallArgs: Rule<(ctx?: RuleContext) => void>;
-  knownFunctions: Rule;
-  varFunction: Rule;
-  calcFunction: Rule;
-  urlFunction: Rule;
-  unknownValue: Rule;
-  string: Rule;
+  functionCall!: Rule;
+  functionCallLike!: Rule;
+  functionCallArgs!: Rule;
+  knownFunctions!: Rule;
+  varFunction!: Rule;
+  calcFunction!: Rule;
+  urlFunction!: Rule;
+  unknownValue!: Rule;
+  string!: Rule;
 
   // expression: Rule
   // calc()
-  mathSum: Rule;
-  mathProduct: Rule;
-  mathValue: Rule;
-  mathParen: Rule;
+  mathSum!: Rule;
+  mathProduct!: Rule;
+  mathValue!: Rule;
+  mathParen!: Rule;
 
   /** At Rules */
-  innerAtRule: Rule;
-  importAtRule: Rule;
-  mediaAtRule: Rule<(inner?: boolean) => void>;
-  supportsAtRule: Rule<(inner?: boolean) => void>;
-  containerAtRule: Rule<(inner?: boolean) => void>;
-  atRuleBody: Rule<(inner?: boolean) => void>;
-  pageAtRule: Rule;
-  pageSelector: Rule;
-  fontFaceAtRule: Rule;
-  nestedAtRule: Rule;
-  nonNestedAtRule: Rule;
-  unknownAtRule: Rule;
+  innerAtRule!: Rule;
+  importAtRule!: Rule;
+  importPrelude!: Rule;
+  importPostlude!: Rule;
+  mediaAtRule!: Rule;
+  supportsAtRule!: Rule;
+  containerAtRule!: Rule;
+  containerName!: Rule;
+  containerQueryList!: Rule;
+  containerQuery!: Rule;
+  containerCondition!: Rule;
+  containerInParens!: Rule;
+  containerFeature!: Rule;
+  containerAnd!: Rule;
+  containerOr!: Rule;
+  atRuleBody!: Rule;
+  pageAtRule!: Rule;
+  keyframesAtRule!: Rule;
+  keyframesName!: Rule;
+  layerAtRule!: Rule;
+  layerName!: Rule;
+  scopeAtRule!: Rule;
+  documentAtRule!: Rule;
+  pageSelector!: Rule;
+  fontFaceAtRule!: Rule;
+  nestedAtRule!: Rule;
+  nonNestedAtRule!: Rule;
+  unknownAtRule!: Rule;
 
   /** `@media` syntax */
-  mediaQuery: Rule;
-  mediaCondition: Rule;
-  mediaType: Rule;
-  mediaConditionWithoutOr: Rule;
-  mediaNot: Rule;
-  mediaInParens: Rule;
-  mediaAnd: Rule;
-  mediaOr: Rule;
-  mediaFeature: Rule;
+  mediaQueryList!: Rule;
+  mediaQuery!: Rule;
+  mediaCondition!: Rule;
+  mediaType!: Rule;
+  mediaConditionWithoutOr!: Rule;
+  mediaNot!: Rule;
+  mediaInParens!: Rule;
+  mediaAnd!: Rule;
+  mediaOr!: Rule;
+  mediaFeature!: Rule;
 
-  mfValue: Rule;
-  mediaRange: Rule;
-  mfComparison: Rule;
-  mfNonIdentifierValue: Rule;
+  mfValue!: Rule;
+  mediaRange!: Rule;
+  mfComparison!: Rule;
+  mfNonIdentifierValue!: Rule;
+
+  /** `@container` syntax - declarations are above */
 
   /**
    * `@supports` syntax - the parsing is defined differently
    * from `@media`, which is fortunate, because it's much
    * simpler.
   */
-  supportsCondition: Rule;
-  supportsInParens: Rule;
+  supportsCondition!: Rule;
+  supportsInParens!: Rule;
 
   /** General purpose subrules */
-  anyOuterValue: Rule<(ctx?: RuleContext) => void>;
-  anyInnerValue: Rule<(ctx?: RuleContext) => void>;
-  extraTokens: Rule;
-  customBlock: Rule;
+  anyOuterValue!: Rule;
+  anyInnerValue!: Rule;
+  extraTokens!: Rule;
+  customBlock!: Rule;
 
   constructor(
     tokenVocabulary: TokenVocabulary,
@@ -166,6 +192,7 @@ export class CssActionsParser extends AdvancedActionsParser {
     config: CssParserConfig = {}
   ) {
     const defaultConfig: CssParserConfig = {
+      maxLookahead: 1,
       lookaheadStrategy: new LLStarLookaheadStrategy({
         // suppress ambiguity logging
         // logging() {}
@@ -189,7 +216,12 @@ export class CssActionsParser extends AdvancedActionsParser {
     }
   }
 
-  protected getLocationFromNodes(nodes: Array<IToken | Node>) {
+  set input(value: IToken[]) {
+    this.ruleIndex = 0;
+    super.input = value;
+  }
+
+  protected getLocationFromNodes(nodes: Array<IToken | Node>): LocationInfo | undefined {
     let startNode = nodes[0]!;
     let lastNode = nodes[nodes.length - 1]!;
     let startOffset: number;
@@ -199,6 +231,10 @@ export class CssActionsParser extends AdvancedActionsParser {
     let endLine: number;
     let endColumn: number;
 
+    if (startNode === undefined) {
+      return undefined;
+    }
+
     if (startNode instanceof Node) {
       ([startOffset, startLine, startColumn] = startNode.location as LocationInfo);
     } else {
@@ -206,7 +242,7 @@ export class CssActionsParser extends AdvancedActionsParser {
     }
 
     if (lastNode instanceof Node) {
-      ([endOffset, endLine, endColumn] = lastNode.location as LocationInfo);
+      ([,,,endOffset, endLine, endColumn] = lastNode.location as LocationInfo);
     } else {
       ({ endOffset, endLine, endColumn } = lastNode as Required<IToken>);
     }
@@ -221,15 +257,11 @@ export class CssActionsParser extends AdvancedActionsParser {
   }
 
   protected getRulesWithComments(
-    existingRules: Node[] | undefined,
-    nextTokenLocation?: LocationInfo,
-    isRoot?: boolean
+    existingRules: Node[] = [],
+    nextTokenLocation?: LocationInfo
   ) {
     if (!nextTokenLocation) {
       nextTokenLocation = this.getLocationInfo(this.LA(1));
-    }
-    if (!existingRules) {
-      return undefined;
     }
     let rules = [];
     /**
@@ -242,46 +274,46 @@ export class CssActionsParser extends AdvancedActionsParser {
 
     const processPrePost = (prePost: Node['pre']) => {
       if (isArray(prePost)) {
-        let i = 0;
-        let item = prePost[i];
-        while (item) {
+        // Build a new remainder array while moving comment nodes to top-level rules
+        const remainder: Array<string | Node> = [];
+        for (let i = 0; i < prePost.length; i++) {
+          const item = prePost[i]!;
           if (item instanceof Node) {
-            let prev = prePost[i - 1];
-            /** Attach whitespace before comment to comment */
-            if (prev) {
+            // Attach immediately preceding whitespace (if any) to the comment
+            const prev = remainder.length > 0 ? remainder[remainder.length - 1] : undefined;
+            if (typeof prev === 'string') {
               item.pre = [prev];
-              prePost.shift();
-              i--;
+              remainder.pop();
+            }
+            // Attach immediately following whitespace (if any) to comment.post
+            const next = prePost[i + 1];
+            if (typeof next === 'string') {
+              (item as any).post = [next];
+              i++; // consume the following whitespace
             }
             rules.push(item);
-            prePost.shift();
-            i--;
+          } else {
+            remainder.push(item);
           }
-          item = prePost[++i];
         }
+        return remainder.length === 0 ? 0 : remainder;
       }
       return prePost;
     };
 
     for (let rule of existingRules) {
-      if (rule.pre === 0) {
+      if (rule.pre === undefined) {
         let pre = this.getPrePost(rule.location[0]!);
-        rule.pre = processPrePost(pre);
+        const processed = processPrePost(pre) as 0 | 1 | Array<string | Comment | Nil> | undefined;
+        rule.pre = processed;
       }
       rules.push(rule);
     }
-    let post = this.getPrePost(nextTokenLocation[0]!);
-    let remainder = processPrePost(post);
-    let returnRules: Rules;
-    if (isRoot) {
-      returnRules = new Root([], undefined, rules.length ? this.getLocationFromNodes(rules) : undefined, this.context);
-      returnRules.treeRoot = returnRules;
-      returnRules.value = rules;
-    } else {
-      returnRules = new Rules(rules, undefined, rules.length ? this.getLocationFromNodes(rules) : undefined, this.context);
-    }
-
-    // returnRules.scope = this.context.scope;
+    // Do not mutate lastRule.post here; lift only at tail capture time to avoid duplication/newlines.
+    // Then capture any remaining EOF tail via preSkipped at LA(1).startOffset.
+    const tail = this.getPrePost(nextTokenLocation[0]!);
+    const remainder = processPrePost(tail) as 0 | 1 | Array<string | Comment | Nil> | undefined;
+    let returnRules: Rules = new Rules(rules, undefined, rules.length ? this.getLocationFromNodes(rules) : undefined, this.context);
     returnRules.post = remainder;
     return returnRules;
   }
@@ -326,7 +358,7 @@ export class CssActionsParser extends AdvancedActionsParser {
     }
     // let skipValidations = this.skipValidations
     if (post) {
-      if (node.post === 0) {
+      if (node.post === undefined) {
         let offset = node.location[3];
         if (offset !== undefined) {
           node.post = this.getPrePost(offset, true);
@@ -337,58 +369,115 @@ export class CssActionsParser extends AdvancedActionsParser {
         return node;
       }
     }
-    if ((!post || post === 'both') && node.pre === 0) {
+    if ((!post || post === 'both')) {
+      // Always record pre for a node, but if it is the leading child
+      // of a parent that will itself own pre (e.g., first selector in a qualified rule),
+      // allow callers to reassign this pre to the parent Rules/Ruleset.
       let offset = node.location[0];
-      if (offset !== undefined) {
-        node.pre = this.getPrePost(offset);
-        // throw new Error(`Node "${node.type}" can't be wrapped`)
+      if (offset !== undefined && node.pre === undefined) {
+        const pre = this.getPrePost(offset);
+        // Narrow to allowed type: Array<Comment | Nil | string> | 1 | 0 | undefined
+        node.pre = pre as any;
       }
     }
     return node;
   }
 
   protected processValueToken(
-    token: IToken
+    token: IToken,
+    ctx?: RuleContext
   ): Node {
     let tokValue = token.image;
     let tokType = token.tokenType;
     let tokName = tokType.name;
     let T = this.T;
-    let dimValue: [number: number, unit?: string] | undefined;
+    let dimValue: { number: number; unit?: string } | undefined;
+    let numValue: number | undefined;
     const getDimension = (finalValue: Exclude<typeof dimValue, undefined>) =>
       new Dimension(finalValue, undefined, this.getLocationInfo(token), this.context);
+    const getNumber = (finalValue: number) =>
+      new Num(finalValue, undefined, this.getLocationInfo(token), this.context);
 
+    let result: Node;
     if (tokenMatcher(token, T.Ident)) {
-      /** @todo - check to see if it's a color */
-      return new General(tokValue, { type: 'Keyword' }, this.getLocationInfo(token), this.context);
+      // Check if it's a color keyword
+      const colorKey = tokValue.toLowerCase();
+      if (colors[colorKey as keyof typeof colors]) {
+        // Create a Color node with the keyword data
+        const colorValue = colors[colorKey as keyof typeof colors];
+        const colorNode = new Color(
+          {
+            node: tokValue, // Store the original keyword string
+            format: ColorFormat.HEX,
+            rgb: colorValue,
+            alpha: 1
+          },
+          undefined,
+          this.getLocationInfo(token),
+          this.context
+        );
+        result = colorNode;
+      } else {
+        // In value position, treat as a generic identifier
+        result = new Any(tokValue, undefined, this.getLocationInfo(token), this.context);
+      }
     } else if (tokenMatcher(token, T.Dimension)) {
-      dimValue = [parseFloat(token.payload[0]), token.payload[1]];
-      return getDimension(dimValue);
+      dimValue = { number: parseFloat(token.payload[0]), unit: token.payload[1] };
+      result = getDimension(dimValue);
     } else if (tokName === 'MathConstant') {
       switch (tokValue.toLowerCase()) {
         case 'pi':
-          dimValue = [Math.PI];
+          numValue = Math.PI;
           break;
         case 'infinity':
-          dimValue = [Infinity];
+          numValue = Infinity;
           break;
         case '-infinity':
-          dimValue = [-Infinity];
+          numValue = -Infinity;
           break;
         case 'e':
-          dimValue = [Math.E];
+          numValue = Math.E;
           break;
         case 'nan':
-          dimValue = [NaN];
+          numValue = NaN;
       }
-      return getDimension(dimValue!);
+      result = getNumber(numValue!);
     } else if (tokenMatcher(token, T.Number)) {
-      dimValue = [parseFloat(tokValue)];
-      return getDimension(dimValue);
+      numValue = parseFloat(tokValue);
+      result = getNumber(numValue);
     } else if (tokenMatcher(token, T.Color)) {
-      return new Color(tokValue, undefined, this.getLocationInfo(token), this.context);
+      result = new Color(tokValue, undefined, this.getLocationInfo(token), this.context);
     } else {
-      return new Token(tokValue, { type: token.tokenType.name }, this.getLocationInfo(token), this.context);
+      result = new Any(tokValue, { type: token.tokenType.name }, this.getLocationInfo(token), this.context);
+    }
+    return result;
+  }
+
+  /**
+   * Convenience helper to temporarily set context flags while invoking a subrule.
+   * - Saves current values for provided keys
+   * - Applies overrides via Object.assign
+   * - Invokes callback with the same ctx object
+   * - Restores only the provided keys to their previous values
+   */
+  public callSubRuleWith<T>(
+    ctx: RuleContext,
+    overrides: Partial<RuleContext>,
+    callback: (ctx: RuleContext) => T
+  ): T {
+    const keys = Object.keys(overrides) as Array<keyof RuleContext>;
+    const prev: Partial<RuleContext> = {};
+    for (const key of keys) {
+      prev[key] = ctx[key];
+    }
+    Object.assign(ctx, overrides);
+    try {
+      return callback(ctx);
+    } finally {
+      for (const key of keys) {
+        const oldVal = prev[key];
+        ctx[key] = oldVal;
+      }
     }
   }
 }

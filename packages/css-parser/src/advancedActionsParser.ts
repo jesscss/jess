@@ -9,7 +9,10 @@ import {
   // type OrMethodOpts
 } from 'chevrotain';
 
-import type { ParserMethodInternal } from 'chevrotain/src/parse/parser/types';
+// Chevrotain does not export this type publicly, and TS "bundler" resolution
+// disallows deep imports into package internals. This is the minimal shape we need.
+type ParserMethodInternal<ARGS extends any[] = any[], R = any> =
+  ((...args: ARGS) => R) & { ruleName: string };
 
 import {
   TreeContext,
@@ -38,15 +41,15 @@ export const OPTION_IDX = 2 << BITS_FOR_OCCURRENCE_IDX;
  */
 export class AdvancedActionsParser extends EmbeddedActionsParser {
   /** Indexed by the startOffset of the next token it precedes */
-  preSkippedTokenMap: Map<number, IToken[]>;
-  postSkippedTokenMap: Map<number, IToken[]>;
+  preSkippedTokenMap!: Map<number, IToken[]>;
+  postSkippedTokenMap!: Map<number, IToken[]>;
   /** Boolean flag for used in post node */
-  usedSkippedTokens: Set<IToken[]>;
+  usedSkippedTokens!: Set<IToken[]>;
 
-  _context: TreeContext;
+  _context: TreeContext | undefined;
   locationStack: LocationInfo[] = [];
   // captureStack: number[]
-  originalInput: IToken[];
+  originalInput!: IToken[];
 
   /** Exposed from Chevrotain */
   declare currIdx: number;
@@ -85,25 +88,35 @@ export class AdvancedActionsParser extends EmbeddedActionsParser {
   }
 
   /** Separate skipped tokens into a new map */
-  // @ts-expect-error - It's defined in Chevrotain as a data property
   set input(value: IToken[]) {
     const preSkippedTokenMap = this.preSkippedTokenMap = new Map<number, IToken[]>();
     const postSkippedTokenMap = this.postSkippedTokenMap = new Map<number, IToken[]>();
     const inputTokens: IToken[] = [];
     let valueLength = value.length;
     let prevToken: IToken | undefined;
+    const isSkippedToken = (t?: IToken) => {
+      if (!t) {
+        return false;
+      }
+      const name = t.tokenType.name;
+      return t.tokenType.LABEL === SKIPPED_LABEL || name === WS_NAME || /Comment/i.test(name);
+    };
     for (let i = 0; i < valueLength; i++) {
       const token = value[i]!;
-      let nextToken: IToken | undefined;
-      /** Find the next non-skipped token */
+      let nextToken: IToken | undefined = undefined;
+      /** Find the next non-skipped token; if none found, leave as undefined */
       for (let j = i + 1; j < valueLength; j++) {
-        nextToken = value[j]!;
-        if (nextToken.tokenType.LABEL !== SKIPPED_LABEL) {
+        const candidate = value[j]!;
+        if (!isSkippedToken(candidate)) {
+          nextToken = candidate;
           break;
         }
       }
       const beforeIndex = nextToken?.startOffset ?? Infinity;
-      if (token.tokenType.LABEL === SKIPPED_LABEL) {
+      const tokName = token.tokenType.name;
+      const currIsSkipped = isSkippedToken(token);
+      // removed diagnostics
+      if (currIsSkipped) {
         let tokens = preSkippedTokenMap.get(beforeIndex);
         if (tokens) {
           tokens.push(token);
@@ -120,6 +133,7 @@ export class AdvancedActionsParser extends EmbeddedActionsParser {
       }
     }
     this.usedSkippedTokens = new Set();
+    // removed diagnostics
     this.originalInput = value;
     super.input = inputTokens;
   }
@@ -135,7 +149,21 @@ export class AdvancedActionsParser extends EmbeddedActionsParser {
     let result = super.subruleInternal(ruleToCall, idx, options);
     let postLength = this.locationStack.length;
     if (postLength !== preLength) {
-      throw new Error(`Rule ${name} did not call endRule()`);
+      /**
+       * In recovery-enabled parses (linting / language services), a rule may
+       * throw before reaching its explicit `endRule()` call. That should be a
+       * parse error, not a fatal runtime error.
+       *
+       * Keep the invariant check in non-recovery mode (to catch authoring bugs),
+       * but unwind the stack in recovery mode so parsing can continue.
+       */
+      if ((this as any).recoveryEnabled) {
+        while (this.locationStack.length > preLength) {
+          this.locationStack.pop();
+        }
+      } else {
+        throw new Error(`Rule ${name} did not call endRule()`);
+      }
     }
     return result;
   }

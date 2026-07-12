@@ -1,5 +1,5 @@
 import { list, spaced, num, any } from '..';
-import { Context } from '../../context';
+import { Context } from '../../context.js';
 
 let context: Context;
 

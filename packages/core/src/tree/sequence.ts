@@ -1,11 +1,11 @@
-import { Node, defineType } from './node';
-import { Nil } from './nil';
-import { List } from './list';
-import type { Context } from '../context';
-import combinate from 'combinate';
-import { cast } from './util/cast';
-import { compareNodeArray } from './util/compare';
-import { isNode } from '..';
+import { Node, defineType } from './node.js';
+import { Nil } from './nil.js';
+import { List } from './list.js';
+import type { Context } from '../context.js';
+import { compareNodeArray } from './util/compare.js';
+import { isNode } from './util/is-node.js';
+import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
+import { type PrintOptions, getPrintOptions } from './util/print.js';
 
 export type SequenceOptions = {
   /**
@@ -13,6 +13,8 @@ export type SequenceOptions = {
    * because of how they're parsed.
    */
   // spaced: boolean
+  /** Used with custom properties */
+  preserveWhitespace?: boolean;
 };
 
 /**
@@ -30,6 +32,55 @@ export class Sequence extends Node<Node[], SequenceOptions> {
       return compareNodeArray(this.value, other.value);
     }
     return super.compare(other);
+  }
+
+  override toTrimmedString(options?: PrintOptions): string {
+    options = getPrintOptions(options);
+    if (options?.inCustom) {
+      return super.toTrimmedString(options);
+    }
+    const w = options.writer!;
+    const mark = w.mark();
+    const { value } = this;
+    const length = value.length;
+
+    if (length === 0) {
+      return '';
+    }
+
+    // Serialize first node with toString() to preserve comments
+    value[0]!.toString(options);
+
+    // Serialize subsequent nodes with normalized spacing
+    for (let i = 1; i < length; i++) {
+      const node = value[i]!;
+      // For sequences, normalize spacing based on actual serialized output (including pre/post)
+      // If direct child has explicit pre === 0, respect that (no space)
+      if (node.pre === 0) {
+        // Explicitly no space - respect that, but still use toString() to preserve comments
+        node.toString(options);
+      } else {
+        // Check what's already written (previous node's output) to see if it ends with space
+        const currentMark = w.mark();
+        const writtenSoFar = w.getSince(mark);
+        const prevEndsWithSpace = writtenSoFar.endsWith(' ');
+        w.restore(currentMark);
+
+        // Capture current node's output to check if it starts with space
+        // This captures the serialized output including pre/post from child nodes
+        const currentNodeOut = w.capture(() => node.toString(options));
+        const currentStartsWithSpace = currentNodeOut.startsWith(' ');
+
+        if (!prevEndsWithSpace && !currentStartsWithSpace) {
+          // No space present - add single space before node
+          w.add(' ');
+        }
+        // Write the captured output (node was already serialized in capture())
+        w.add(currentNodeOut);
+      }
+    }
+
+    return w.getSince(mark);
   }
 
   override operate(b: Node, op: string, context: Context): Sequence | List {
@@ -67,65 +118,32 @@ export class Sequence extends Node<Node[], SequenceOptions> {
    *
    * @todo - REWRITE
    */
-  override async evalNode(context: Context) {
-    let node = this.maybeClone(context);
-    /** Convert all values to Nodes */
-    let valuePromises = node.value
-      .map(async n => await cast(n).eval(context));
-
-    node.value = (await Promise.all(valuePromises))
-      .filter(n => n && !(n instanceof Nil));
-
-    let lists: Record<number, Node[]> | undefined;
-
-    node.value.forEach((n, i) => {
-      if (n instanceof List) {
-        if (!lists) {
-          lists = {
-            [i]: n.value
-          };
-        } else {
-          lists[i] = n.value;
-        }
-      }
-    });
-
-    if (lists) {
-      /**
-       * Create new sequences of the inherited type
-       * @todo - Rewrite -- Object.getPrototypeOf(this).constructor I think is wrong and maybe
-       * should be this.constructor.
-       */
-      let Class = Object.getPrototypeOf(this).constructor;
-      let combinations = combinate(lists);
-      let returnList = new List([] as Node[]).inherit(this);
-
-      /** @todo - create :is() in selector */
-      combinations.forEach((combo) => {
-        let expr = [...node.value];
-        for (let pos in combo) {
-          if (Object.prototype.hasOwnProperty.call(combo, pos)) {
-            expr[pos] = combo[pos] as Node;
+  override evalNode(context: Context): MaybePromise<Node> {
+    return pipe(
+      () => {
+        const node = this;
+        const maybe = serialForEach(node.value.map((n, i) => [n, i] as const), ([n, i]) => {
+          const out = n.eval(context);
+          if (isThenable(out)) {
+            return (out as Promise<Node>).then((res) => {
+              node.value[i] = res;
+            });
           }
+          node.value[i] = out as Node;
+        });
+        if (isThenable(maybe)) {
+          return (maybe as Promise<void>).then(() => node);
         }
-        returnList.value.push(new Class(expr));
-      });
-      /**
-       * If the created list has a length of 1,
-       * then it's still a sequence, in which
-       * case we can return the first value
-       */
-      if (returnList.value.length === 1) {
-        return returnList.value[0] as typeof Class;
+        return node;
+      },
+      (node) => {
+        node.value = node.value.filter(n => n && !(n instanceof Nil));
+        if (node.value.length === 1 && !node.options.preserveWhitespace) {
+          return node.value[0]!;
+        }
+        return node;
       }
-      return returnList;
-    }
-
-    /** Selectors maintain wrappers around elements */
-    if (node.type !== 'Selector' && node.value.length === 1) {
-      return node.value[0];
-    }
-    return node;
+    );
   }
 
   /** @todo move to visitors */

@@ -1,5 +1,6 @@
-import { defineType, Node } from './node';
-import { isNode } from './util/is-node';
+import { defineType, Node } from './node.js';
+import { isNode } from './util/is-node.js';
+import { type PrintOptions, getPrintOptions } from './util/print.js';
 
 /**
  * A rest expression (e.g. ...$var). By itself it doesn't do much.
@@ -21,9 +22,13 @@ export class Rest extends Node<Node | string | undefined> {
     return '';
   }
 
-  override toTrimmedString(): string {
-    let { name } = this;
-    return `...$${name}`;
+  override toTrimmedString(options?: PrintOptions): string {
+    options = getPrintOptions(options);
+    const w = options.writer!;
+    const mark = w.mark();
+    w.add('...$');
+    w.add(this.name);
+    return w.getSince(mark);
   }
 }
 

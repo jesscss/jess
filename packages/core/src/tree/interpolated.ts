@@ -1,24 +1,38 @@
-import { type Node, defineType } from './node';
-import { General, type GeneralNodeType, type GeneralOptions } from './general';
-import type { Context } from '../context';
-import { isNode } from './util/is-node';
-import { BasicSelector } from './selector-basic';
-import { SelectorList } from './selector-list';
-import { SimpleSelector } from './selector-simple';
+import { Node, F_MAY_ASYNC, F_VISIBLE, F_NON_STATIC, defineType } from './node.js';
+import { Any, type AnyRole, type AnyOptions } from './any.js';
+import type { Context } from '../context.js';
+import { isNode } from './util/is-node.js';
+import { BasicSelector } from './selector-basic.js';
+import { SelectorList } from './selector-list.js';
+import type { Selector } from './selector.js';
+import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { type MaybePromise, serialForEach, isThenable } from '@jesscss/awaitable-pipe';
+
+// Placeholder that's very unlikely to appear in user strings
+// but is also easily typeable for tests
+export const INTERPOLATION_PLACEHOLDER = '%%';
+const INTERPOLATION_PLACEHOLDER_REGEXP = /%%/g;
 
 export type InterpolatedValue = {
-  /** String with {} placeholders */
+  /** String with INTERPOLATION_PLACEHOLDER placeholders */
   source: string;
   replacements: Node[];
 };
 
 /**
  * Merge an interface to declare the specific types
+ *
+ * @todo - Instead of extending simple selector, create a selector "wrapper"
+ * that goes around expressions and interpolated values, so that it
+ * casts as a selector after evaluation.
+ *
+ * This would eliminate the need for the `evalToSelector` and `evalToGeneric`
+ * methods, because the wrapper would handle the returned node type.
  */
 export interface Interpolated<
-  T extends string = GeneralNodeType
-> extends SimpleSelector<InterpolatedValue, GeneralOptions<T>> {
-  eval(context: Context): Promise<Interpolated<T>>;
+  Role extends AnyRole = AnyRole
+> extends Node<InterpolatedValue, AnyOptions<Role>> {
+  eval(context: Context): MaybePromise<Any<Role>>;
 }
 /**
  * An interpolated value is one that contains
@@ -32,10 +46,16 @@ export interface Interpolated<
  *     - `--prop-@{foo}` is an interpolated property
  */
 export class Interpolated<
-  T extends string = GeneralNodeType
-> extends SimpleSelector<InterpolatedValue, GeneralOptions<T>> {
+  Role extends AnyRole = AnyRole
+> extends Node<InterpolatedValue, AnyOptions<Role>> {
   type = 'Interpolated' as const;
   shortType = 'interpolated' as const;
+
+  constructor(value: InterpolatedValue, options?: AnyOptions<Role>, location?: any, treeContext?: any) {
+    super(value, options, location, treeContext);
+    // Interpolated nodes are always non-static and may be async
+    this.addFlags(F_VISIBLE, F_MAY_ASYNC, F_NON_STATIC);
+  }
 
   override valueOf(): string {
     return this.value.source;
@@ -45,14 +65,23 @@ export class Interpolated<
     let { source } = this.value;
     let output = source;
     let i = 0;
-    output = output.replace(/{}/g, (_) => {
-      return replacements[i++]?.toTrimmedString() ?? '';
+    output = output.replace(INTERPOLATION_PLACEHOLDER_REGEXP, () => {
+      const replacement = replacements[i++];
+      const result = replacement ? String(replacement.valueOf()) : '';
+      // Trim whitespace to avoid issues with Sequence nodes that have pre/post spacing
+      return result.trim();
     });
+
     return output;
   }
 
-  override toTrimmedString(): string {
-    return this.replace(this.value.replacements);
+  override toTrimmedString(options?: PrintOptions): string {
+    options = getPrintOptions(options);
+    const w = options.writer!;
+    const mark = w.mark();
+    const result = this.replace(this.value.replacements);
+    w.add(result, this);
+    return w.getSince(mark);
   }
 
   /**
@@ -60,7 +89,7 @@ export class Interpolated<
    */
   createSelector() {
     let { source, replacements } = this.value;
-    let segments = source.split('{}');
+    let segments = source.split(INTERPOLATION_PLACEHOLDER);
     let output = '';
     let list: string[] = [];
     for (let [i, replacement] of replacements.entries()) {
@@ -85,7 +114,30 @@ export class Interpolated<
   }
 
   createGeneric() {
-    return new General<T>(this.toTrimmedString()).inherit(this);
+    const trimmedString = this.toTrimmedString();
+    let any = new Any<Role>(trimmedString).inherit(this);
+    any.options.role = this.options.role;
+    return any;
+  }
+
+  /** Convenience: evaluate replacements then convert to Selector (BasicSelector or SelectorList) */
+  evalToSelector(context: Context): MaybePromise<Selector> {
+    const out = this._evalToInterpolated(context);
+    if (isThenable(out)) {
+      return (out as Promise<Interpolated<Role>>).then(node => node.createSelector());
+    }
+    return (out as Interpolated<Role>).createSelector();
+  }
+
+  override evalNode(context: Context): MaybePromise<Any> {
+    const out = this._evalToInterpolated(context);
+    if (isThenable(out)) {
+      return (out as Promise<Interpolated<Role>>).then((node) => {
+        return node.createGeneric();
+      });
+    }
+    const result = (out as Interpolated<Role>).createGeneric();
+    return result;
   }
 
   /**
@@ -93,10 +145,23 @@ export class Interpolated<
    * because depending on the context, it will turn into different
    * node types.
    */
-  override async evalNode(context: Context) {
-    let node = this.maybeClone(context);
+  _evalToInterpolated(context: Context): MaybePromise<this> {
+    let node = this;
     let { replacements } = node.value;
-    node.value.replacements = await Promise.all(replacements.map(async (n: Node) => await n.eval(context)));
+
+    let maybe = serialForEach(replacements, (n, idx) => {
+      const out = n.eval(context);
+      if (isThenable(out)) {
+        return (out as Promise<Node>).then((result) => {
+          replacements[idx] = result;
+        });
+      }
+      replacements[idx] = out as Node;
+      return undefined;
+    });
+    if (isThenable(maybe)) {
+      return maybe.then(() => node);
+    }
     return node;
   }
 }

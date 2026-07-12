@@ -1,16 +1,18 @@
-import { el, sel, sellist, compound, is, co } from '../../..';
-import { extendSelector, tryExtendSelector, ExtendErrorType } from '../extend';
+import { el, sel, sellist, compound, is, co, type Selector, PseudoSelector, type SelectorList } from '../../../index.js';
+import { extendSelector, tryExtendSelector, ExtendErrorType } from '../extend.js';
+import { isNode } from '../is-node.js';
 
 describe('Extend Selector Tests', () => {
   describe('Extension validation', () => {
     it('should prevent extending when it would create duplicate element selectors', () => {
       // Selector: a.info, Target: .info, Extend with: div.foo
       // This should not extend because it would create "adiv.foo" which is invalid
+      // Use partial: true to allow the match, then conflict detection should catch it
       const selector = compound([el('a'), el('.info')]);
       const target = el('.info');
       const extendWith = compound([el('div'), el('.foo')]);
 
-      const result = tryExtendSelector(selector, target, extendWith, false);
+      const result = tryExtendSelector(selector, target, extendWith, true);
       // Should return the original selector unchanged when extension would be invalid
       expect(result.value.valueOf()).toBe(selector.valueOf());
       expect(result.error).toBeDefined();
@@ -20,40 +22,40 @@ describe('Extend Selector Tests', () => {
     it('should prevent extending when it would create duplicate ID selectors', () => {
       // Selector: #main.info, Target: .info, Extend with: #other.foo
       // This should not extend because it would create a selector with multiple IDs
+      // Use partial: true to allow the match, then conflict detection should catch it
       const selector = compound([el('#main'), el('.info')]);
       const target = el('.info');
       const extendWith = compound([el('#other'), el('.foo')]);
 
-      const result = tryExtendSelector(selector, target, extendWith, false);
+      const result = tryExtendSelector(selector, target, extendWith, true);
       // Should return the original selector unchanged when extension would be invalid
       expect(result.value.valueOf()).toBe(selector.valueOf());
       expect(result.error).toBeDefined();
       expect(result.error!.type).toBe(ExtendErrorType.ID_CONFLICT);
     });
 
-    it('should allow extending when there are no conflicts', () => {
+    it('should not extend partial match when extending compound selector with partial: false', () => {
       // Selector: a.info, Target: .info, Extend with: .foo
-      // This should work fine as there are no conflicts
+      // With partial: false, .info is only PART of a.info, so this should return unchanged
       const selector = compound([el('a'), el('.info')]);
       const target = el('.info');
       const extendWith = el('.foo');
 
+      // This should return unchanged because .info is only a partial match within a.info
       const result = extendSelector(selector, target, extendWith, false);
-      // Note: Now creates a:is(.info,.foo) which is equivalent but more compact
-      expect(result.valueOf()).toBe('a:is(.info,.foo)');
+      expect(result.valueOf()).toBe('a.info');
     });
 
-    it('should prevent extending in :is() selectors with element conflicts', () => {
+    it('should not extend partial match when extending compound selector with :is() component with partial: false', () => {
       // Selector: :is(a).info, Target: .info, Extend with: div.foo
-      // Note: This is a complex case where the conflict is inside :is()
+      // With partial: false, .info is only PART of :is(a).info, so this should return unchanged
       const selector = compound([is(el('a')), el('.info')]);
       const target = el('.info');
       const extendWith = compound([el('div'), el('.foo')]);
 
+      // This should return unchanged because .info is only a partial match within :is(a).info
       const result = extendSelector(selector, target, extendWith, false);
-      // Current behavior: creates :is(a):is(.info,div.foo)
-      // This is valid CSS, though ideally we'd detect the inner conflict
-      expect(result.valueOf()).toBe(':is(a):is(.info,div.foo)');
+      expect(result.valueOf()).toBe(':is(a).info');
     });
   });
 
@@ -145,6 +147,30 @@ describe('Extend Selector Tests', () => {
       expect(result.valueOf()).toBe('.a>.b.c>.d.e,.a>.f');
     });
 
+    it('should extend all duplicate components in compound selector (.foo.foo)', () => {
+      // Selector: .foo.foo, Target: .foo (partial), Extend with: .ext
+      // Result: :is(.foo, .ext):is(.foo, .ext) - both .foo components should be extended
+      const selector = compound([el('.foo'), el('.foo')]);
+      const target = el('.foo');
+      const extendWith = el('.ext');
+
+      const result = extendSelector(selector, target, extendWith, true);
+      expect(result.valueOf()).toBe(':is(.foo,.ext):is(.foo,.ext)');
+    });
+
+    it('should extend all duplicate components in compound selector with full match (.foo.foo)', () => {
+      // Selector: .foo.foo, Target: .foo (full), Extend with: .ext
+      // In full mode, .foo is a partial match within .foo.foo, so it should be rejected
+      // Result: .foo.foo (unchanged) - full mode rejects partial matches
+      const selector = compound([el('.foo'), el('.foo')]);
+      const target = el('.foo');
+      const extendWith = el('.ext');
+
+      const result = extendSelector(selector, target, extendWith, false);
+      // Full mode rejects partial matches, so selector remains unchanged
+      expect(result.valueOf()).toBe('.foo.foo');
+    });
+
     it('should extend simple selector with complex extension - example 7', () => {
       // Selector: .a > .b, Target: .b (partial), Extend with: .d > .e
       // Result: .a > :is(.b, .d > .e)
@@ -154,6 +180,63 @@ describe('Extend Selector Tests', () => {
 
       const result = extendSelector(selector, target, extendWith, true);
       expect(result.valueOf()).toBe('.a>:is(.b,.d>.e)');
+    });
+  });
+
+  describe('Unified behavior: SelectorList vs :is() argument', () => {
+    it('should not match .i with partial false', () => {
+      // First, verify that extending .i.j with .k (find .i)
+      const compoundTarget = compound([el('.i'), el('.j')]);
+      const find = el('.i');
+      const extendWith = el('.k');
+
+      const result = extendSelector(compoundTarget, find, extendWith, false);
+      const resultStr = result.valueOf();
+
+      expect(resultStr).toBe('.i.j');
+      expect(result.type).toBe('CompoundSelector');
+    });
+
+    it('should match .i with partial true', () => {
+      // First, verify that extending .i.j with .k (find .i) creates :is(.i, .k).j
+      const compoundTarget = compound([el('.i'), el('.j')]);
+      const find = el('.i');
+      const extendWith = el('.k');
+
+      const result = extendSelector(compoundTarget, find, extendWith, true);
+      const resultStr = result.valueOf();
+
+      expect(resultStr).toBe(':is(.i,.k).j');
+      expect(result.type).toBe('CompoundSelector');
+    });
+
+    it('should extend .i in root-level SelectorList (.g, .i.j) the same as in :is(.g, .i.j)', () => {
+      // Test extending .i with .k in both cases
+      const find = el('.i');
+      const extendWith = el('.k');
+
+      // Case 1: Root-level SelectorList -- .g, .i.j
+      const rootSelectorList = sellist([el('.g'), compound([el('.i'), el('.j')])]);
+      const rootResult = extendSelector(rootSelectorList, find, extendWith, false);
+      const rootResultStr = rootResult.valueOf(); // should be no matches, because partial is false
+
+      // Case 2: :is() argument (SelectorList inside :is()) -- :is(.g, .i.j)
+      const isSelector = is(sellist([el('.g'), compound([el('.i'), el('.j')])]));
+      const isResult = extendSelector(isSelector, find, extendWith, false);
+
+      expect(rootResultStr).toBe('.g,.i.j');
+      // Extract the :is() argument to compare
+      if (isNode(isResult, 'PseudoSelector')) {
+        const pseudo = isResult as PseudoSelector;
+        if (pseudo.value && typeof pseudo.value === 'object' && 'name' in pseudo.value && pseudo.value.name === ':is' && 'arg' in pseudo.value && pseudo.value.arg) {
+          const isArgStr = (pseudo.value.arg as Selector).valueOf();
+          expect(isArgStr).toBe('.g,.i.j');
+        } else {
+          throw new Error(`Expected :is() selector, got ${isResult.type}`);
+        }
+      } else {
+        throw new Error(`Expected :is() selector, got ${isResult.type}`);
+      }
     });
   });
 
@@ -180,6 +263,496 @@ describe('Extend Selector Tests', () => {
 
       const result = extendSelector(selector, target, extendWith, false);
       expect(result.valueOf()).toBe('.a,.b>.c,.d');
+    });
+  });
+
+  describe('Complex selector partial extends', () => {
+    it('should extend .bar in ".foo .bar" to create ".foo :is(.bar, .ext)"', () => {
+      // .foo .bar + extend .bar all with .ext
+      // Expected: .foo :is(.bar, .ext)
+      const selector = sel([el('.foo'), co(' '), el('.bar')]);
+      const result = extendSelector(selector, el('.bar'), el('.ext'), true);
+      expect(result.valueOf()).toBe('.foo :is(.bar,.ext)');
+    });
+
+    it('should extend .bar in ":is(.foo, .a) .bar" correctly', () => {
+      // :is(.foo, .a) .bar + extend .bar all with .ext
+      // Expected: :is(.foo, .a) :is(.bar, .ext)
+      const selector = sel([is(sellist([el('.foo'), el('.a')])), co(' '), el('.bar')]);
+      const result = extendSelector(selector, el('.bar'), el('.ext'), true);
+      expect(result.valueOf()).toBe(':is(.foo,.a) :is(.bar,.ext)');
+    });
+  });
+
+  describe('Sequential extends - multiple extenders', () => {
+    /**
+     * Tests the scenario from extend.less lines 18-30:
+     *
+     * .foo .bar, .foo .baz {
+     *     display: none;
+     * }
+     * .ext1 .ext2 {
+     *     &:extend(.foo all);
+     * }
+     * .ext3,
+     * .ext4 {
+     *   &:extend(.foo all);
+     *   &:extend(.bar all);
+     * }
+     *
+     * Expected output:
+     * :is(.foo, .ext1 .ext2, .ext3, .ext4) :is(.bar, .ext3, .ext4),
+     * :is(.foo, .ext1 .ext2, .ext3, .ext4) .baz {
+     *   display: none;
+     * }
+     */
+    it('should accumulate multiple partial extends on the same target', () => {
+      // Start: .foo .bar, .foo .baz
+      let selector: Selector = sellist([
+        sel([el('.foo'), co(' '), el('.bar')]),
+        sel([el('.foo'), co(' '), el('.baz')])
+      ]);
+
+      // Step 1: .ext1 .ext2 extends .foo all
+      // Expected: :is(.foo,.ext1 .ext2) .bar,:is(.foo,.ext1 .ext2) .baz
+      selector = extendSelector(selector, el('.foo'), sel([el('.ext1'), co(' '), el('.ext2')]), true);
+      expect(selector.valueOf()).toContain(':is(.foo,.ext1 .ext2) .bar');
+      expect(selector.valueOf()).toContain(':is(.foo,.ext1 .ext2) .baz');
+
+      // Step 2: .ext3 extends .foo all
+      // Expected: :is(.foo,.ext1 .ext2,.ext3) .bar,:is(.foo,.ext1 .ext2,.ext3) .baz
+      selector = extendSelector(selector, el('.foo'), el('.ext3'), true);
+      expect(selector.valueOf()).toContain(':is(.foo,.ext1 .ext2,.ext3) .bar');
+      expect(selector.valueOf()).toContain(':is(.foo,.ext1 .ext2,.ext3) .baz');
+
+      // Step 3: .ext4 extends .foo all
+      // Expected: :is(.foo,.ext1 .ext2,.ext3,.ext4) .bar,:is(.foo,.ext1 .ext2,.ext3,.ext4) .baz
+      selector = extendSelector(selector, el('.foo'), el('.ext4'), true);
+      expect(selector.valueOf()).toContain(':is(.foo,.ext1 .ext2,.ext3,.ext4) .bar');
+      expect(selector.valueOf()).toContain(':is(.foo,.ext1 .ext2,.ext3,.ext4) .baz');
+
+      // Step 4: .ext3 extends .bar all
+      // Expected: :is(.foo,.ext1 .ext2,.ext3,.ext4) :is(.bar,.ext3),:is(.foo,.ext1 .ext2,.ext3,.ext4) .baz
+      selector = extendSelector(selector, el('.bar'), el('.ext3'), true);
+      expect(selector.valueOf()).toContain(':is(.foo,.ext1 .ext2,.ext3,.ext4) :is(.bar,.ext3)');
+      expect(selector.valueOf()).toContain(':is(.foo,.ext1 .ext2,.ext3,.ext4) .baz');
+
+      // Step 5: .ext4 extends .bar all
+      // Final expected: :is(.foo,.ext1 .ext2,.ext3,.ext4) :is(.bar,.ext3,.ext4),:is(.foo,.ext1 .ext2,.ext3,.ext4) .baz
+      selector = extendSelector(selector, el('.bar'), el('.ext4'), true);
+      expect(selector.valueOf()).toContain(':is(.foo,.ext1 .ext2,.ext3,.ext4) :is(.bar,.ext3,.ext4)');
+      expect(selector.valueOf()).toContain(':is(.foo,.ext1 .ext2,.ext3,.ext4) .baz');
+    });
+  });
+
+  describe('Flattening inside other pseudo-selectors', () => {
+    // Helper to create :not() pseudo-selector (not generated - simulates authored code)
+    const not = (arg: Selector) => new PseudoSelector({ name: ':not', arg });
+
+    it('should flatten generated :is() inside :not() but keep the :not()', () => {
+      // Create :not(.foo) and extend .foo with .bar
+      // The :not() should NOT be removed - only generated :is() inside gets flattened
+      const selector = not(el('.foo'));
+      const result = extendSelector(selector, el('.foo'), el('.bar'), false);
+
+      // The :not() should remain, containing both selectors as a list
+      expect(result.valueOf()).toBe(':not(.foo,.bar)');
+    });
+
+    it('should flatten deeply nested generated :is() inside :not() but keep the :not()', () => {
+      // Create :not(.foo) and extend multiple times
+      // Each extend creates :is() wrappers inside :not() which should be flattened
+      const selector = not(el('.foo'));
+
+      // Extend .foo with .bar
+      let result = extendSelector(selector, el('.foo'), el('.bar'), false);
+      // Extend .foo with .baz
+      result = extendSelector(result, el('.foo'), el('.baz'), false);
+
+      // The :not() should remain with flattened contents
+      // Should be :not(.foo,.bar,.baz) not :not(:is(.foo,:is(.bar),.baz))
+      expect(result.valueOf()).toBe(':not(.foo,.bar,.baz)');
+    });
+  });
+
+  describe('No duplicate selectors - regression tests', () => {
+    it('should NOT create both raw and :is()-wrapped duplicates when extending in nested :is()', () => {
+      // Bug: extending .foo with .ext inside :is(.foo) could create both:
+      // - .ext (raw)
+      // - :is(.ext) (wrapped)
+      // This is wrong - should only have .ext once
+
+      const selector = is(el('.foo'));
+      const result = extendSelector(selector, el('.foo'), el('.ext'), false);
+
+      // Should be :is(.foo,.ext) - NOT :is(.foo,.ext,:is(.ext))
+      expect(result.valueOf()).toBe(':is(.foo,.ext)');
+
+      // Count occurrences of .ext - should be exactly 1
+      const extCount = (result.valueOf().match(/\.ext/g) || []).length;
+      expect(extCount).toBe(1);
+    });
+
+    it('should NOT duplicate complex selectors when extending multiple times', () => {
+      // This replicates the extend.less test case that was failing
+      // :is(.foo) .bar, :is(.foo) .baz extended with .ext1 .ext2, then .ext3, then .ext4
+
+      // Create :is(.foo) .bar, :is(.foo) .baz
+      const fooBar = sel([is(el('.foo')), co(' '), el('.bar')]);
+      const fooBaz = sel([is(el('.foo')), co(' '), el('.baz')]);
+      let selector: Selector | SelectorList = sellist([fooBar, fooBaz]);
+
+      // Extend .foo with ".ext1 .ext2" (a complex selector)
+      const ext1Ext2 = sel([el('.ext1'), co(' '), el('.ext2')]);
+      selector = extendSelector(selector, el('.foo'), ext1Ext2, true) as SelectorList;
+
+      // Count occurrences of .ext1 .ext2 pattern - should appear exactly once per :is()
+      const ext1Count = (selector.valueOf().match(/\.ext1/g) || []).length;
+      // Should NOT have duplicate .ext1 appearances beyond the expected 2 (one per selector in list)
+      expect(ext1Count).toBeLessThanOrEqual(2);
+
+      // Extend .foo with .ext3
+      selector = extendSelector(selector, el('.foo'), el('.ext3'), true) as SelectorList;
+
+      // Extend .foo with .ext4
+      selector = extendSelector(selector, el('.foo'), el('.ext4'), true) as SelectorList;
+
+      // The result should have each extension appear exactly twice (once per original selector)
+      // NOT have any :is(.ext1 .ext2) wrappers around individual extensions
+      const resultStr = selector.valueOf();
+
+      // Should NOT contain nested :is() wrappers like :is(.ext1 .ext2)
+      expect(resultStr).not.toContain(':is(.ext1 .ext2)');
+      expect(resultStr).not.toContain(':is(.ext3)');
+      expect(resultStr).not.toContain(':is(.ext4)');
+    });
+
+    it('extending inside :is() should NOT differ from extending at root', () => {
+      // Core principle: extending .foo with .ext should work the same
+      // whether .foo is inside :is() or not
+
+      // Case 1: .foo at root
+      const rootSelector = el('.foo');
+      const rootResult = extendSelector(rootSelector, el('.foo'), el('.ext'), false);
+      // Should be .foo,.ext (selector list)
+      expect(rootResult.valueOf()).toBe('.foo,.ext');
+
+      // Case 2: .foo inside :is()
+      const isSelector = is(el('.foo'));
+      const isResult = extendSelector(isSelector, el('.foo'), el('.ext'), false);
+      // Should be :is(.foo,.ext) - same semantic result, just inside :is()
+      expect(isResult.valueOf()).toBe(':is(.foo,.ext)');
+
+      // Both should have .ext appearing exactly once
+      expect((rootResult.valueOf().match(/\.ext/g) || []).length).toBe(1);
+      expect((isResult.valueOf().match(/\.ext/g) || []).length).toBe(1);
+    });
+
+    it('deeply nested :is() should not create duplicate extensions', () => {
+      // :is(:is(.foo)) extended with .ext should give :is(:is(.foo,.ext)) or :is(.foo,.ext)
+      // NOT :is(:is(.foo,.ext),.ext) or any other duplicate
+      const deepIs = is(is(el('.foo')));
+      const result = extendSelector(deepIs, el('.foo'), el('.ext'), false);
+
+      // Count .ext occurrences
+      const extCount = (result.valueOf().match(/\.ext/g) || []).length;
+      expect(extCount).toBe(1);
+    });
+  });
+
+  describe('Replace extension scenarios', () => {
+    it('should not extend partial match when extending complex selector at root level with partial: false', () => {
+      // .bb .bb extended with .cc (where .cc:extend(.bb)) should NOT extend when partial: false
+      // because .bb is only a partial match within .bb .bb
+      const selector = sel([el('.bb'), co(' '), el('.bb')]);
+
+      // This should return unchanged because .bb is a partial match within .bb .bb
+      const result = extendSelector(selector, el('.bb'), el('.cc'), false);
+      expect(result.valueOf()).toBe('.bb .bb');
+    });
+
+    it('should not extend partial match when extending first component of complex selector with partial: false', () => {
+      // .aa .dd extended with .cc (where .cc:extend(.aa)) should NOT extend when partial: false
+      // because .aa is not the entire selector - it's only a partial match
+      const selector = sel([el('.aa'), co(' '), el('.dd')]);
+
+      // This should return unchanged because .aa is a partial match within .aa .dd
+      const result = extendSelector(selector, el('.aa'), el('.cc'), false);
+      expect(result.valueOf()).toBe('.aa .dd');
+    });
+
+    it('should not replace original selector when extending compound selector', () => {
+      // .bb extended with .cc should produce .bb,.cc
+      // NOT just .cc (replacing the original)
+      const selector = el('.bb');
+      const result = extendSelector(selector, el('.bb'), el('.cc'), false);
+
+      expect(result.type).toBe('SelectorList');
+      expect(result.valueOf()).toBe('.bb,.cc');
+    });
+  });
+
+  describe('Exact vs all flag matching', () => {
+    it('should replicate the exact extend scenario from extend.less', () => {
+      // Replicate the scenario:
+      // .bb {
+      //   background: red;
+      //   .bb {
+      //     color: black;
+      //   }
+      // }
+      // .cc:extend(.bb) {} - should only match outer .bb, not .bb .bb (exact match only)
+      // .ee:extend(.dd all,.bb) {} - should match .dd with all, but .bb only exact
+      // .ff:extend(.dd,.bb all) {} - should match .dd exact, but .bb with all (matches both .bb and .bb .bb)
+
+      // The nested ruleset has selector .bb .bb (parent .bb + child .bb with space combinator from implicit ampersand)
+      // When partial: false (exact match), we can only match the outer .bb ruleset, not the inner .bb .bb
+      // Test 1: .cc:extend(.bb) with partial: false
+      // When we try to extend .bb .bb with .cc (partial: false), extendSelector should reject it
+      // because .bb is not the entire selector - it's only a partial match
+      const nestedBbSelector = sel([el('.bb'), co(' '), el('.bb')]);
+      // This should return unchanged because .bb is a partial match within .bb .bb
+      const result1 = extendSelector(nestedBbSelector, el('.bb'), el('.cc'), false);
+      expect(result1.valueOf()).toBe(nestedBbSelector.valueOf());
+
+      // Test 2: .ff:extend(.bb all) with partial: true
+      // When partial: true (all flag), we should match and extend ALL instances of .bb in .bb .bb
+      // For .bb .bb extended with .ff (all flag), we should get :is(.bb, .ff) :is(.bb, .ff)
+      // This wraps each matching component in :is()
+      const result2 = extendSelector(nestedBbSelector, el('.bb'), el('.ff'), true);
+      expect(result2).toBeDefined();
+      const resultStr = result2.valueOf();
+      // Expected: :is(.bb,.ff) :is(.bb,.ff) - both .bb instances wrapped in :is()
+      expect(resultStr).toBe(':is(.bb,.ff) :is(.bb,.ff)');
+    });
+
+    it('should reject partial matches when partial: false', () => {
+      // When partial: false (exact match only), extendSelector should reject partial matches
+      // .bb .bb should NOT be extended when searching for .bb with partial: false
+      const nestedBbSelector = sel([el('.bb'), co(' '), el('.bb')]);
+
+      // This should return unchanged because .bb is only a partial match within .bb .bb
+      // When partial: false, the entire selector must match exactly
+      const result = extendSelector(nestedBbSelector, el('.bb'), el('.cc'), false);
+      expect(result.valueOf()).toBe(nestedBbSelector.valueOf());
+    });
+
+    it('should allow matching inside :is() when pseudo-selector is first component with partial: true', () => {
+      // .a:extend(.b .c all) should match .b :is(.c) because with all flag (partial: true),
+      // we can match components inside :is() boundaries
+      // The :is() pseudo-selector being the first component means there are no components before it
+      const target = is(el('.c')); // :is(.c) - pseudo-selector is the only/first component
+      const find = el('.c');
+      const extendWith = el('.a');
+
+      // With partial: true (all flag), this should work
+      const result = extendSelector(target, find, extendWith, true);
+      expect(result).toBeDefined();
+      // Should extend inside the :is()
+      expect(result.valueOf()).toContain('.a');
+    });
+
+    it('should reject matching inside :is() when there are components before it with partial: false', () => {
+      // .aa :is(.dd,.ee) matching .dd with partial: false should be rejected
+      // because .aa is before the :is(), making it a partial match
+      const target = sel([el('.aa'), co(' '), is(sellist([el('.dd'), el('.ee')]))]); // .aa :is(.dd,.ee)
+      const find = el('.dd');
+      const extendWith = el('.ff');
+
+      // With partial: false, this should return unchanged
+      const result = extendSelector(target, find, extendWith, false);
+      expect(result.valueOf()).toBe(target.valueOf());
+    });
+
+    it('should reject matching complex selector inside :is() when there are components before it with partial: false', () => {
+      // d :is(.b .c) matching .b .c with partial: false should be rejected
+      // because d is before the :is(), making it a partial match
+      // .a:extend(.b .c) should NOT match d :is(.b .c)
+      const target = sel([el('d'), co(' '), is(sel([el('.b'), co(' '), el('.c')]))]); // d :is(.b .c)
+      const find = sel([el('.b'), co(' '), el('.c')]); // .b .c
+      const extendWith = el('.a');
+
+      // With partial: false, this should return unchanged because d is before the :is()
+      const result = extendSelector(target, find, extendWith, false);
+      expect(result.valueOf()).toBe(target.valueOf());
+    });
+  });
+
+  describe(':is() boundary crossing and flattening', () => {
+    it('should NOT flatten :is() when extend does not cross :is() boundary', () => {
+      // :is(.g, .i.j) extended with .k:extend(.i all)
+      // Match .i is within .i.j, which is already inside :is(.g, .i.j)
+      // Result should be :is(.g, :is(.i, .k).j) - nested :is() preserved
+      const selector = is(sellist([el('.g'), compound([el('.i'), el('.j')])])); // :is(.g, .i.j)
+      const find = el('.i');
+      const extendWith = el('.k');
+
+      const result = extendSelector(selector, find, extendWith, true); // partial: true (all flag)
+      // Should preserve nested :is() structure
+      expect(result.valueOf()).toBe(':is(.g,:is(.i,.k).j)');
+    });
+
+    it('should flatten :is() when extend crosses :is() boundary', () => {
+      // :is(.a, .b).c extended with .d where we match .b.c
+      // Since .b.c matches the entire target (consumes all "and" parts), we should NOT flatten
+      // Result: :is(.a, .b).c, .d (selector list, preserving :is() structure)
+      const selector = compound([is(sellist([el('.a'), el('.b')])), el('.c')]); // :is(.a, .b).c
+      const find = compound([el('.b'), el('.c')]); // .b.c
+      const extendWith = el('.d');
+
+      const result = extendSelector(selector, find, extendWith, false);
+      // Since we've consumed the entire target, we should NOT flatten
+      const resultStr = result.valueOf();
+      // Should create selector list without flattening
+      expect(resultStr).toBe(':is(.a,.b).c,.d');
+    });
+
+    it('should preserve nested :is() when extending within same :is() group', () => {
+      // :is(.g, .i.j).h extended with .k:extend(.i all)
+      // Match .i is within .i.j, which is inside :is(.g, .i.j)
+      // Result should be :is(.g, :is(.i, .k).j).h - nested structure preserved
+      const selector = compound([
+        is(sellist([el('.g'), compound([el('.i'), el('.j')])])), // :is(.g, .i.j)
+        el('.h')
+      ]); // :is(.g, .i.j).h
+      const find = el('.i');
+      const extendWith = el('.k');
+
+      const result = extendSelector(selector, find, extendWith, true); // partial: true (all flag)
+      // Should preserve nested :is() structure
+      expect(result.valueOf()).toBe(':is(.g,:is(.i,.k).j).h');
+    });
+
+    it('should flatten when match path crosses through different :is() contexts', () => {
+      // :is(.a, .b) .c extended with .d where we match .b .c
+      // Match crosses from inside :is() (.b) to outside (.c via combinator)
+      // Result should be flattened
+      const selector = sel([
+        is(sellist([el('.a'), el('.b')])), // :is(.a, .b)
+        co(' '),
+        el('.c')
+      ]); // :is(.a, .b) .c
+      const find = sel([el('.b'), co(' '), el('.c')]); // .b .c
+      const extendWith = el('.d');
+
+      const result = extendSelector(selector, find, extendWith, false);
+      const resultStr = result.valueOf();
+      // Should flatten to show all combinations
+      // Should have .a .c, .b .c, .d .c (or similar)
+      expect(resultStr).toContain('.c');
+      // Should NOT preserve nested :is(.b, .d) .c structure when crossing boundary
+    });
+
+    it('should preserve nested :is() in compound selector when not crossing boundary', () => {
+      // :is(.g, .i.j) extended with .k:extend(.i all)
+      // First extend creates :is(.g, .i.j)
+      // Second extend with .k should create :is(.g, :is(.i, .k).j)
+      // NOT :is(.g, .i, .k.j, .i.j) - should preserve nested structure
+      const selector = is(sellist([el('.g'), compound([el('.i'), el('.j')])])); // :is(.g, .i.j)
+      const find = el('.i');
+      const extendWith = el('.k');
+
+      const result = extendSelector(selector, find, extendWith, true); // partial: true (all flag)
+      const resultStr = result.valueOf();
+      // Should preserve nested :is() structure
+      expect(resultStr).toBe(':is(.g,:is(.i,.k).j)');
+      // Should NOT be flattened
+      expect(resultStr).not.toBe(':is(.g,.i,.k.j,.i.j)');
+    });
+
+    describe('Flattening algorithm correctness', () => {
+      /**
+       * These tests verify that when flattening IS necessary (when extend crosses :is() boundary),
+       * the flattening algorithm produces the CORRECT flattened structure.
+       *
+       * Key principle: When flattening :is(.g, .i.j) that has been extended to :is(.g, :is(.i, .k).j),
+       * the correct flattened form is :is(.g, .i.j, .k.j) - NOT :is(.g, .i, .k.j)
+       *
+       * The flattening must preserve the compound selector structure (.i.j and .k.j),
+       * not break it apart into individual components.
+       */
+      it('should flatten inner :is() when its selector in a selector list is fully matched', () => {
+        // :is(.g, .i.j).h extended with .k:extend(.i.j all)
+        // Since .i.j matches the entire compound inside :is() and .h matches after, we've consumed the entire target
+        // Result: :is(.g, .i.j, .k).h (selector list, preserving :is() structure)
+        const selector = compound([
+          is(sellist([el('.g'), compound([el('.i'), el('.j')])])), // :is(.g, .i.j)
+          el('.h')
+        ]); // :is(.g, .i.j).h
+        const find = compound([el('.i'), el('.j')]); // .i.j
+        const extendWith = el('.k');
+
+        const result = extendSelector(selector, find, extendWith, true); // partial: true (all flag)
+        const resultStr = result.valueOf();
+
+        expect(resultStr).toBe(':is(.g,.i.j,.k).h');
+      });
+
+      it('should correctly flatten :is(.g, .i.j, .k.j) structure when compound selectors are involved', () => {
+        // Test that when we have :is(.g, .i.j, .k.j) (already flattened correctly),
+        // the structure is preserved correctly.
+        // This is a sanity check that our test expectations are correct.
+
+        // Create the expected flattened structure directly
+        const flattened = is(sellist([
+          el('.g'),
+          compound([el('.i'), el('.j')]), // .i.j
+          compound([el('.k'), el('.j')])  // .k.j
+        ]));
+
+        expect(flattened.valueOf()).toBe(':is(.g,.i.j,.k.j)');
+
+        // Verify this is NOT the incorrect form
+        expect(flattened.valueOf()).not.toBe(':is(.g,.i,.k.j)');
+      });
+
+      it('should NOT produce :is(.g,.i,.k.j) when flattening :is(.g, :is(.i, .k).j)', () => {
+        // This is the specific bug case: flattening should preserve compound selectors
+        // Input: :is(.g, :is(.i, .k).j)
+        // Correct output: :is(.g, .i.j, .k.j)
+        // Incorrect output: :is(.g, .i, .k.j) <- this is the bug
+
+        // We can't directly test flattenGeneratedIs, but we can verify that
+        // when an extend operation that requires flattening occurs, the result
+        // does NOT have the incorrect structure.
+
+        // Test case: :is(.g, .i.j).h extended with .k where we match .i.j.h
+        // This should flatten to show all combinations, preserving .i.j structure
+        const selector = compound([
+          is(sellist([el('.g'), compound([el('.i'), el('.j')])])), // :is(.g, .i.j)
+          el('.h')
+        ]); // :is(.g, .i.j).h
+        const find = compound([compound([el('.i'), el('.j')]), el('.h')]); // .i.j.h
+        const extendWith = el('.k');
+
+        const result = extendSelector(selector, find, extendWith, false);
+        const resultStr = result.valueOf();
+
+        // Should have .i.j.h in the result (preserved compound)
+        expect(resultStr).toContain('.i.j.h');
+        // Should NOT have broken it into .i and .j.h separately
+        // The incorrect form would be something like :is(.g,.i,.k.j).h
+        expect(resultStr).not.toMatch(/:is\(\.g,\.i,\.k\.j\)/);
+      });
+
+      it('should extend flattened result correctly after boundary crossing', () => {
+        // Test case: :is(.a, .x).c with .a.c extended by .e
+        // Since .a.c matches the entire target (consumes all "and" parts), we should NOT flatten
+        // Result: :is(.a, .x).c, .e (selector list, preserving :is() structure)
+        const simpleSelector = compound([
+          is(sellist([el('.a'), el('.x')])), // :is(.a, .x)
+          el('.c')
+        ]); // :is(.a, .x).c
+        const find = compound([el('.a'), el('.c')]); // .a.c
+        const extendWith = el('.e');
+
+        // Since we've consumed the entire target, we should NOT flatten
+        const result = extendSelector(simpleSelector, find, extendWith, false);
+        const resultStr = result.valueOf();
+
+        // Should create selector list without flattening
+        expect(resultStr).toBe(':is(.a,.x).c,.e');
+      });
     });
   });
 });

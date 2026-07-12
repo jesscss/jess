@@ -61,3 +61,6 @@ lib
 dist/
 *.tsbuildinfo
 .rollup.cache
+
+# sass-spec materialized cache (generated)
+packages/scss-parser/.cache/

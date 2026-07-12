@@ -1,5 +1,5 @@
-import { Node, defineType } from './node';
-import { type Quoted } from './quoted';
+import { F_MAY_ASYNC, F_NON_STATIC, Node, defineType } from './node.js';
+import { type Quoted } from './quoted.js';
 
 /**
  * Imports of TS/JS ESM modules.
@@ -25,6 +25,12 @@ export type JsImportValue = {
 export class JsImport extends Node<JsImportValue, JsImportOptions> {
   type = 'JsImport' as const;
   shortType = 'js' as const;
+
+  constructor(value: JsImportValue, options?: JsImportOptions, location?: any, treeContext?: any) {
+    super(value, options, location, treeContext);
+    // JS imports are always non-static and may be async
+    this.addFlags(F_MAY_ASYNC, F_NON_STATIC);
+  }
 }
 
 export const js = defineType<JsImportValue>(JsImport, 'JsImport', 'js');

@@ -1,3 +1,7 @@
-import { mathHelper } from '../util/mathHelper';
-
-export default mathHelper.bind(null, Math.floor, ['value'], undefined);
+/**
+ * Less floor() function
+ * 
+ * Re-exports the shared floor function.
+ * The actual implementation is in shared/math/floor.ts
+ */
+export { floor as default } from '../shared/index.js';

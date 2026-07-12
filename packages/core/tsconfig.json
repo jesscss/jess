@@ -1,10 +1,8 @@
 {
   "extends": "../../tsconfig.json",
   "compilerOptions": {
-    "composite": true,
-    "noImplicitOverride": true,
-    "outDir": "./lib",
-    "rootDir": "."
+    "noEmit": true,
+    "noImplicitOverride": true
   },
   "include": [
     "src/**/*",
@@ -13,5 +11,5 @@
     "vite.config.ts",
     "../../vitest.d.ts"
   ],
-  "exclude": ["node_modules", "lib"]
+  "exclude": ["node_modules", "lib", "**/*.js"]
 }

@@ -1,0 +1,37 @@
+{
+  "name": "@jesscss/plugin-node-modules",
+  "version": "0.1.0-alpha.1",
+  "description": "Jess plugin for resolving and loading npm packages from node_modules",
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./lib/index.js",
+      "types": "./lib/index.d.ts",
+      "source": "./src/index.ts"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib"
+  ],
+  "scripts": {
+    "build": "pnpm compile",
+    "compile": "tsc -b tsconfig.build.json",
+    "dev": "tsc -b tsconfig.json -w",
+    "lint:fix": "eslint --fix '**/*.{js,ts}'",
+    "lint": "eslint '**/*.{js,ts}'"
+  },
+  "dependencies": {
+    "@jesscss/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  },
+  "author": "Matthew Dean <matthew-dean@users.noreply.github.com>",
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  }
+}

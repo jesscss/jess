@@ -1,15 +1,15 @@
 import type { TokenType, IParserConfig } from 'chevrotain';
 import type { TokenMap, Rule } from '@jesscss/css-parser';
 import { CssParser } from '@jesscss/css-parser';
-import root from './productions/root';
-import atRules from './productions/atRules';
-import blocks from './productions/blocks';
-import declarations from './productions/declarations';
-import mixin from './productions/mixin';
-import selectors from './productions/selectors';
-import interpolation from './productions/interpolation';
-import values from './productions/values';
-import variables from './productions/variables';
+import root from './productions/root.js';
+import atRules from './productions/atRules.js';
+import blocks from './productions/blocks.js';
+import declarations from './productions/declarations.js';
+import mixin from './productions/mixin.js';
+import selectors from './productions/selectors.js';
+import interpolation from './productions/interpolation.js';
+import values from './productions/values.js';
+import variables from './productions/variables.js';
 
 export class JessParser extends CssParser {
   T: TokenMap;

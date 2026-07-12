@@ -1,11 +1,42 @@
 import {
+  defineFunction,
   type Context,
-  type Color,
-  type Dimension,
-  type Node
+  Color,
+  Dimension,
+  Node,
+  ColorFormat
 } from '@jesscss/core';
-import { adjustHSL } from '../util/get-hsla';
 
-export default function saturate(this: Context, color: Color, amount: Dimension, method?: Node) {
-  return adjustHSL.call(this, 's', '+', color, amount, method);
-}
+export default defineFunction(
+  'saturate',
+  function(this: Context, color: Color, amount: Dimension, method?: Node) {
+    const [h, s, l] = color._hsl;
+    let adjustAmount = amount.value.number / 100;
+
+    if (method && method.value === 'relative') {
+      adjustAmount = s * adjustAmount;
+    }
+
+    const newSaturation = s + adjustAmount;
+
+    // Create new color with adjusted saturation, preserving original format
+    return new Color({
+      format: color.value.format,
+      hsl: [h, newSaturation, l],
+      alpha: color._alpha
+    }).inherit(color);
+  },
+  {
+    params: [{
+      name: 'color',
+      type: Color
+    }, {
+      name: 'amount',
+      type: Dimension
+    }, {
+      name: 'method',
+      type: Node,
+      optional: true
+    }]
+  }
+);

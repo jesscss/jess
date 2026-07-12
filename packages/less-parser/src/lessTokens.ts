@@ -1,6 +1,6 @@
 import {
-  cssFragments,
-  cssTokens,
+  rawCssFragments,
+  rawCssTokens,
   LexerType,
   groupCapture,
   type RawModeConfig,
@@ -10,40 +10,69 @@ import {
   type CssTokenType,
   SKIPPED_LABEL
 } from '@jesscss/css-parser';
-import type { WritableDeep } from 'type-fest';
 
 type IMerges = Partial<Record<CssTokenType, RawTokenConfig>>;
 
+/**
+ * Less-specific token names introduced by merges below
+ *
+ * @todo - Can't we infer this from the tokens?
+ */
+export type LessExtraTokenType =
+  | 'Ellipsis'
+  | 'AtKeywordLessExtension'
+  | 'Interpolated'
+  | 'LineComment'
+  | 'PlusAssign'
+  | 'UnderscoreAssign'
+  | 'AnonMixinStart'
+  | 'GtEqAlias'
+  | 'LtEqAlias'
+  | 'Extend'
+  | 'AmpersandExtend'
+  | 'AllFlag'
+  | 'When'
+  | 'WhenFunctionStart'
+  | 'VarOrProp'
+  | 'NestedReference'
+  | 'PropertyReference'
+  | 'Percent'
+  | 'FormatFunction'
+  | 'IfFunction'
+  | 'BooleanFunction'
+  | 'DefaultGuardIdent'
+  | 'DefaultGuardFunc'
+  | 'JavaScript'
+  | 'InterpolatedIdent'
+  | 'InterpolatedCustomProperty'
+  | 'InterpolatedSelector';
+
 function $preBuildFragments() {
-  const fragments = cssFragments();
+  const fragments = rawCssFragments() as unknown as string[][];
   fragments.unshift(['lineComment', '\\/\\/[^\\n\\r]*']);
   fragments.push(['interpolated', '[@$]\\{(?:{{nmchar}}*)\\}']);
 
   return fragments;
 }
 
-type CssTokenModes = ReturnType<typeof cssTokens>['modes'];
-
 function $preBuildTokens() {
   /**
    * Creates a type from the CSS mode and adds Less tokens
    */
-  type Modes<
-    T extends CssTokenModes = CssTokenModes,
-    U extends typeof merges = typeof merges,
-    J extends keyof U = keyof U
-  > = {
-    [K in keyof T]: K extends 'Default' ? T[K] | U[J] : T[K]
-  };
+  type Modes<T> = any;
 
   type InferMergeTypes = {
-    modes: Modes;
+    modes: any;
     defaultMode: 'Default';
   };
 
-  const tokens = cssTokens() as InferMergeTypes;
+  const tokens = rawCssTokens() as unknown as InferMergeTypes;
 
-  /** Keyed by what to insert after */
+  /**
+   * Keyed by what to insert after
+   *
+   * @todo - Move merge utility to css-parser
+  */
   const merges = {
     Assign: [
       {
@@ -90,16 +119,6 @@ function $preBuildTokens() {
         pattern: /:extend\(/,
         categories: ['BlockMarker']
       },
-      /**
-       * Keywords that we don't identify as idents
-       * should be manually added to other places where an ident is valid.
-       */
-      {
-        name: 'When',
-        pattern: /when/i,
-        longer_alt: 'PlainIdent',
-        categories: ['BlockMarker']
-      },
       {
         name: 'VarOrProp',
         pattern: LexerType.NA
@@ -123,21 +142,6 @@ function $preBuildTokens() {
         pattern: /%/
       },
       {
-        name: 'FormatFunction',
-        pattern: /%\(/,
-        categories: ['BlockMarker', 'Function']
-      },
-      {
-        name: 'IfFunction',
-        pattern: /if\(/,
-        categories: ['BlockMarker', 'Function']
-      },
-      {
-        name: 'BooleanFunction',
-        pattern: /boolean\(/,
-        categories: ['BlockMarker', 'Function']
-      },
-      {
         name: 'DefaultGuardIdent',
         pattern: /default/,
         longer_alt: 'PlainIdent',
@@ -148,7 +152,44 @@ function $preBuildTokens() {
         pattern: /default(?:\(\))/
       }
     ],
+    Ampersand: [
+      {
+        name: 'AmpersandExtend',
+        pattern: /&:extend\(/,
+        categories: ['BlockMarker']
+      },
+      {
+        name: 'AllFlag',
+        pattern: /!all/,
+        categories: ['BlockMarker']
+      }
+    ],
     UrlStart: [
+      /**
+       * Keywords that we don't identify as idents
+       * should be manually added to other places where an ident is valid.
+       */
+      {
+        name: 'When',
+        pattern: /when/i,
+        longer_alt: 'PlainIdent',
+        categories: ['BlockMarker']
+      },
+      {
+        name: 'FormatFunction',
+        pattern: /%\(/,
+        categories: ['BlockMarker', 'FunctionStart']
+      },
+      {
+        name: 'IfFunction',
+        pattern: /if\(/,
+        categories: ['BlockMarker', 'FunctionStart']
+      },
+      {
+        name: 'BooleanFunction',
+        pattern: /boolean\(/,
+        categories: ['BlockMarker', 'FunctionStart']
+      },
       {
         name: 'JavaScript',
         pattern: /~?`[^`]*`/,
@@ -188,7 +229,7 @@ function $preBuildTokens() {
      */
       {
         name: 'InterpolatedSelector',
-        pattern: ['[.#]{{interpolated}}', groupCapture],
+        pattern: ['[.#]{{ident}}?{{interpolated}}(?:{{interpolated}}|{{nmchar}})*', groupCapture],
         categories: ['Interpolated', 'Selector'],
         start_chars_hint: ['.', '#'],
         line_breaks: true
@@ -196,15 +237,15 @@ function $preBuildTokens() {
     ]
   } as const satisfies IMerges;
 
-  let defaultTokens = tokens.modes.Default as WritableDeep<RawToken[]>;
+  let defaultTokens = (tokens.modes.Default as unknown as Readonly<RawToken[]>).slice() as RawToken[];
 
   let tokenLength = defaultTokens.length;
   for (let i = 0; i < tokenLength; i++) {
-    let token: WritableDeep<RawToken> = defaultTokens[i]!;
+    let token: RawToken = defaultTokens[i]!;
 
     const { name } = token;
     const copyToken = () => {
-      token = structuredClone(token);
+      token = structuredClone(token) as RawToken;
     };
 
     let alterations = true;
@@ -247,8 +288,8 @@ function $preBuildTokens() {
     const merge = merges[name];
     if (merge) {
       /** Insert after current token */
-      defaultTokens = defaultTokens.slice(0, i + 1).concat(merge, defaultTokens.slice(i + 1))
-      ;(tokens.modes.Default as WritableDeep<RawToken[]>) = defaultTokens;
+      defaultTokens = defaultTokens.slice(0, i + 1).concat(merge, defaultTokens.slice(i + 1));
+      (tokens.modes.Default as unknown as RawToken[]) = defaultTokens;
       const mergeLength = merge.length;
       tokenLength += mergeLength;
       i += mergeLength;
@@ -265,5 +306,5 @@ type TokenModes = ReturnTokens['modes'];
 
 export type LessTokenType = TokenNames<TokenModes[keyof TokenModes]>;
 
-export const lessFragments = () => Fragments;
-export const lessTokens = () => Tokens as WritableDeep<RawModeConfig>;
+export const lessFragments = () => Fragments as unknown as ReadonlyArray<Readonly<[string, string]>>;
+export const lessTokens = () => Tokens as unknown as RawModeConfig;

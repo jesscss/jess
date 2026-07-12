@@ -9,17 +9,31 @@ import TabItem from '@theme/TabItem';
 
 Both Sass and Less have mixins, and Jess supports the full features of both. But let's start with the basics, if mixins are new to you. Think of mixins as a reusable block of styles that you can drop anywhere.
 
-In Jess, like Less, mixins can look like a simple selector, followed by parentheses.
+Jess supports Less-style mixin names (`.mixin` or `#mixin`) and Sass-style mixin names (`mixin`). Mixins are followed by parentheses.
 
 ```less
-my-mixin() {
+mixin-1() {
+  color: red;
+}
+```
+
+Mixins are included ("mixed in") to other rules using the `>` operator.
+
+TODO: we were using the [CSS namespace separator](https://developer.mozilla.org/en-US/docs/Web/CSS/Namespace_separator), `|`.
+
+For example, if we have the following mixin:
+
+```less
+// mixin.jess
+mixin-1() {
   color: red;
 }
 .box {
-  $ > my-mixin();
+  $ > mixin-1();
 }
 ```
-Note that mixins are "called" with `$ >`. This would output:
+...the CSS output will be:
+
 ```css
 .box {
   color: red;
@@ -28,22 +42,31 @@ Note that mixins are "called" with `$ >`. This would output:
 
 ## Selectors in Mixins
 
-Mixins can contain more than just properties, they can contain selectors too.
+Mixins can contain more than just properties; they can contain other rulesets too.
 
 For example:
 
 ```less
 // main.jess
-my-hover-mixin() {
+.my-hover-mixin() {
   &:hover {
     border: 1px solid red;
   }
 }
 button {
-  $ > my-hover-mixin();
+  $ > .my-hover-mixin();
 }
 ```
 →
+```css
+// main.css
+button {
+  &:hover {
+    border: 1px solid red;
+  }
+}
+```
+...or when collapsing is set to `true`
 ```css
 // main.css
 button:hover {
@@ -51,19 +74,55 @@ button:hover {
 }
 ```
 
-:::info[Mixin names]
+## Chaining mixin calls
 
-Like Less, mixin names can be sequences of (`.class`) or id (`#id`) selectors. This is done to support seamless, automated migration from Less to Jess. Meaning these are all valid mixin names:
+You can chain mixin calls together. If the mixin within the chain doesn't require any arguments, you can omit the parentheses. (Parentheses are still required at the end of the chain to output the final value.)
 
 ```less
-.mixin-1() {}
-#mixin-2() {}
-#ns.mixin() {}
+#ns() {
+  .mixin() {
+    .inner-mixin() {
+      color: red;
+    }
+  }
+}
 .box {
-  $ > #ns.mixin();
+  $ > #ns > .mixin > .inner-mixin();
 }
 ```
-However, Jess recommends using plain identifiers for easy interopability with Sass+ and other plugins.
+
+## Multiple matching mixins
+
+Note that in Jess, like Less, because we declare selectors and mixins in similar ways, we also can have multiple matches for mixins.
+
+Meaning, just like CSS selectors, we can include multiple mixins with the same name in the same ruleset.
+
+```less
+.my-mixin() {
+  color: red;
+}
+.my-mixin() {
+  color: blue;
+}
+.my-mixin() {
+  color: green;
+}
+.box {
+  $ > .my-mixin();
+}
+```
+→
+```css
+.box {
+  color: red;
+  color: blue;
+  color: green;
+}
+```
+
+:::info[How Jess & Less overload mixins]
+
+Mixins do not need to be defined within the same scope, nor do mixin overloads need to be sequential rules. When a mixin is called, Jess looks up the scope tree by name to find potential matches. When it does, it evaluates arity (a match in the number of arguments) and any guards to see if one or more of the mixins is callable.
 
 :::
 
@@ -72,7 +131,7 @@ However, Jess recommends using plain identifiers for easy interopability with Sa
 Mixins can make repeated rules and configurability trivial, especially when you begin using parameters.
 
 ```less
-button-base($bg: #1a73e8; $color: #fff; $pad: 0.5em 1.25em) {
+button-base($bg: #1a73e8, $color: #fff, $pad: 0.5em 1.25em) {
   display: inline-block;
   background: $bg;
   color: $color;
@@ -82,8 +141,8 @@ button-base($bg: #1a73e8; $color: #fff; $pad: 0.5em 1.25em) {
   font-size: 1rem;
   cursor: pointer;
   transition: background 0.15s;
-  &:hover { background: color.darken($bg, 7%); }
-  &:active { background: color.darken($bg, 14%); }
+  &:hover { background: $less.color.darken($bg, 7%); }
+  &:active { background: $less.color.darken($bg, 14%); }
 }
 
 .button-primary   { $ > button-base(); }
@@ -96,21 +155,30 @@ Let's break this down.
 ### The mixin definition
 
 ```less
-button-base($bg: #1a73e8; $color: #fff; $pad: 0.5em 1.25em) {
+button-base($bg: #1a73e8, $color: #fff, $pad: 0.5em 1.25em) {
   ...
 }
 ```
 
 - **Parameters:**  
-  - `$bg`: background color (default: `#1a73e8`)
-  - `$color`: text color (default: `#fff`)
-  - `$pad`: padding (default: `0.5em 1.25em`)
+  - `bg`: background color (default: `#1a73e8`)
+  - `color`: text color (default: `#fff`)
+  - `pad`: padding (default: `0.5em 1.25em`)
 - **Default values:**  
   If you don’t pass a value for a parameter, Jess uses the default you set in the definition.
-- **Semicolon separators:**  
-  Jess uses **semicolons** (`;`) between parameters in both the definition and calls. This reduces confusion with CSS value lists.
 
----
+:::info[Comma separators]
+Like CSS, Jess uses **commas** (`,`) between mixin and function arguments (and parameters).
+If you need to use a CSS value list that has a comma, you can assign it to a variable to pass it in, or
+you can wrap it in escaped parentheses like Less does e.g. `~(one, two, three)`
+
+```less
+$values: one, two, three;
+$ > button-base($values);
+
+// or
+$ > button-base(~(one, two, three));
+```
 
 ### Using the mixin
 
@@ -127,7 +195,7 @@ button-base($bg: #1a73e8; $color: #fff; $pad: 0.5em 1.25em) {
 - **Overriding values:**  
   Pass any or all values, in order, separated by semicolons, to override the defaults.
   - For example:  
-    `$ > button-base(#fff; #1a73e8; 0.5em 1.25em);`  
+    `$ > button-base(#fff, #1a73e8, 0.5em 1.25em);`  
     sets a white background, blue text, and custom padding for `.button-secondary`.
 - **Named arguments:**  
   You can specify which parameter you’re overriding by name, and skip the rest:
@@ -143,15 +211,15 @@ You don’t have to give parameters default values. If you leave them out, Jess 
 #### Example
 
 ```less
-highlight($bg; $color) {
+highlight($bg, $color) {
   background: $bg;
   color: $color;
 }
 ```
 
 ```less
-.alert-success { $ > highlight(#e5fbee; #26734d); }
-.alert-error   { $ > highlight(#ffeaea; #b71c1c); }
+.alert-success { $ > highlight( #e5fbee, #26734d ); }
+.alert-error   { $ > highlight( #ffeaea, #b71c1c); }
 ```
 
 ## Mixin guards
@@ -163,22 +231,22 @@ Guards are designed to be similar to CSS Media Query syntax.
 Let's start with an example:
 
 ```less
-mixin(@a) when (color.lightness(@a) >= 50%) {
+mixin($a) when ($color.lightness(a) >= 50%) {
   background-color: black;
 }
-mixin(@a) when (color.lightness(@a) < 50%) {
+mixin($a) when ($color.lightness(a) < 50%) {
   background-color: white;
 }
-mixin(@a) {
-  color: @a;
+mixin($a) {
+  color: $a;
 }
 ```
 
 The key is the `when` keyword, which introduces a guard sequence (here with only one guard). Now if we run the following code:
 
 ```less
-.class1 { $ > mixin(#ddd) }
-.class2 { $ > mixin(#555) }
+.class1 { $ > mixin(#ddd); }
+.class2 { $ > mixin(#555); }
 ```
 
 Here's what we'll get:
@@ -199,11 +267,11 @@ Here's what we'll get:
 The full list of comparison operators usable in guards are: `>`, `>=`, `=`, `=<`, `<`. Additionally, the keyword `true` is the only truthy value, making these two mixins equivalent:
 
 ```less
-truth(@a) when (@a) { ... }
-truth(@a) when (@a = true) { ... }
+truth($a) when ($a) { ... }
+truth($a) when ($a = true) { ... }
 ```
 
-Any value other than the keyword `true` is falsy:
+Unlike JavaScript, any value other than an expression that evaluates to `true` or the keyword `true` is considered false:
 
 ```less
 .class {
@@ -224,9 +292,27 @@ button-theme($bg; $color) when ($theme = "minimal") {
   // ...
 }
 
-max(@a; @b) when (@a > @b) { width: @a }
-max(@a; @b) when (@a < @b) { width: @b }
+max($a; $b) when ($a > $b) { width: $a }
+max($a; $b) when ($a < $b) { width: $b }
 ```
+
+:::info
+
+Note that in Jess, any new "parentheses context" exits "expression mode". So parentheses in guards (like `when`) and control flow (like `if`) require `$` to start a new expression.
+
+These are equivalent:
+
+```less
+max($a, $b) when ($a > $b) { width: $a }
+max($a, $b) when $(a > b) { width: $a }
+
+// and 
+truth($a) when ($a = true)  { ... }
+truth($a) when $(a = ~true) { ... } // ~ for keyword literal inside an expression
+```
+
+:::
+
 
 ### Guard logical operators
 
@@ -235,7 +321,7 @@ You can use logical operators with guards. The syntax is based on CSS media quer
 Use the `and` keyword to combine guards:
 
 ```less
-mixin($a) when (type.is(number, $a)) and ($a > 0) { ... }
+mixin($a) when ($type.isnumber($a)) and ($a > 0) { ... }
 ```
 
 Use the word `or` for alternate conditions. If any of the guards evaluate to true, it's considered a match:
@@ -247,12 +333,8 @@ mixin($a) when ($a > 10) or ($a < -10) { ... }
 Use the `not` keyword to negate conditions:
 
 ```less
-mixin(@b) when not ($a > 0) { ... }
+mixin($b) when not ($b > 0) { ... }
 ```
-
-### How Jess & Less overload mixins
-
-Mixins do not need to be defined within the same scope, nor do mixin overloads need to be sequential rules. When a mixin is called, Jess looks up the scope tree by name to find potential matches. When it does, it evaluates arity (a match in the number of arguments) and any guards to see if one or more of the mixins is callable.
 
 ### Default mixins
 
@@ -282,11 +364,11 @@ div.special {
 }
 ```
 
-It is possible to use the value returned by `default` with guard operators. For example `mixin() when not default {}` will match only if there's at least one more mixin definition that matches`mixin()` call:
+It is possible to use the value returned by `default` with guard operators. For example `mixin() when not default {}` will match only if there's at least one more mixin definition that matches the `mixin()` call:
 
 ```less
-mixin($value) when (type.is($value)) { width: $value }
-mixin($value) when not default       { padding: #($value / 5) }
+mixin($value) when ($type.ispixel($value))  { width: $value }
+mixin($value) when not default              { padding: $(value / 5) }
 
 div-1 {
   $ > mixin(100px);
@@ -310,7 +392,7 @@ div-2 {
 
 ## Selectors as Mixins
 
-Jess lets you reuse any selector as a mixin—just include it with `$ > .some-class;` (without parentheses).
+Jess lets you "apply" or call rulesets as mixins using a namespace separator.
 
 This is great when you want to define a class you can use on its own, but also “pull in” those same styles somewhere else.
 
@@ -326,15 +408,28 @@ This is great when you want to define a class you can use on its own, but also �
   box-shadow: 0 2px 8px #0002;
   padding: 1.5em;
   background: #fff;
-  $ > .rounded;
+  $|.rounded; // or $|.rounded();
 }
 ```
 
-### Calling a mixin and a selector together
+:::info[Applying multiple selectors]
 
-Jess supports mixing in both a selector AND a mixin when both have the same name. (This is Less's default behavior, but optional in Jess syntax.)
+For convenience, Jess allows you to apply multiple selectors at once by separating them with a comma and using the `apply` keyword.
 
-To do so, you can put a slash between the selector and the calling parentheses to indicate "either / or" e.g. `.my-selector/();`
+```less
+.card {
+  padding: 1.5em;
+  background: #fff;
+  $apply .rounded, .shadow;
+}
+```
+:::
+
+### Applying a mixin and a selector together
+
+Jess supports mixing in both a selector AND a mixin when both have the same name and consist of simple selectors. (This is Less's default behavior, but optional in Jess syntax.)
+
+To do so, use `*` before the mixin / selector name.
 
 ```less
 // Define a selector
@@ -348,9 +443,9 @@ To do so, you can put a slash between the selector and the calling parentheses t
   outline: 1px solid $color;
 }
 
-// Call both together:
+// Apply/call both together:
 .panel {
-  $ > .shadow/();
+  $ > *.shadow();
 }
 ```
 The CSS output is:
@@ -373,7 +468,7 @@ $my-mixin: @() {
   color: red;
 }
 .box {
-  $ > $my-mixin();
+  $my-mixin();
 }
 ```
 
@@ -384,17 +479,17 @@ $my-mixin: @{
   color: red;
 }
 .box {
-  $ > $my-mixin();
+  $my-mixin();
 }
 ```
 
 ## Passing sets of rules to mixins
 
-Jess supports passing sets of rules to mixins by "assigning" an anonymous mixin callback to the mixin call. The mixin can then render rules using the built-in `content` mixin.
+Like Sass, Jess supports passing sets of rules to mixins by "assigning" an anonymous mixin callback to the mixin call. The mixin can then render rules using the built-in `$content()` mixin.
 
 ```less
 my-mixin() {
-  $ > content();
+  $content();
 }
 .box {
   $ > my-mixin(): @{
@@ -410,8 +505,8 @@ You can also assign mixin callbacks to the mixin call.
 ```less
 media(...$types) {
   $for ($type of $types) {
-    @media #($type) {
-      $ > content($type);
+    @media $(type) {
+      $content($type);
     }
   }
 }
@@ -429,22 +524,18 @@ $ > media(screen, print): @($type) {
 
 ## Calling mixins from other languages
 
-If you have the Jess, Less, and Sass+ language plugins installed, you can use your language of choice, and import and call mixins from other languages.
+If you have the Less, and Sass+ language plugins installed (which are installed by default), you can call mixins and import variables from those languages into your Jess stylesheet.
 
-Let's say we had these set of files:
+Let's say we had these two files:
 
-```less
-// mixins.jess
-jess-mixin() {
-  color: red;
-}
-```
+### Less
 ```less
 // mixins.less
 .less-mixin() {
   color: blue;
 }
 ```
+### Sass+
 ```scss
 // mixins.scss
 @mixin sass-mixin() {
@@ -452,41 +543,24 @@ jess-mixin() {
 }
 ```
 
-You could call them from each other like this:
+You could call them from your Jess stylesheet like this:
 
-<Tabs>
-  <TabItem value="Jess">
-  ```less
-  @-compose './mixins.scss' as *;
-  @-compose './mixins.less' as *;
 
-  .box {
-    $ > sass-mixin();
-    $ > .less-mixin();
-  }
-  ```
-  </TabItem>
-  <TabItem value="Less 5+">
-  ```less
-  @compose './mixins.scss' as *;
-  @compose './mixins.jess' as *;
+```less
+@-compose './mixins.scss' as *;
+@-compose './mixins.less' as *;
 
-  .box {
-    sass-mixin();
-    jess-mixin();
-  }
-  ```
-  </TabItem>
-  <TabItem value="Sass+">
-  ```less
-  @use './mixins.jess' as *;
-  @use './mixins.less' as *;
+.box {
+  $ > sass-mixin();
+  $ > .less-mixin();
+}
+```
 
-  .box {
-    @include jess-mixin();
-    // Backslashes are required to call a mixin with a selector name
-    @include \.less-mixin();
-  }
-  ```
-  </TabItem>
-</Tabs>
+This would output:
+
+```scss
+.box {
+  color: green;
+  color: blue;
+}
+```

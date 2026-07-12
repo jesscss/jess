@@ -1,5 +1,7 @@
-import { type Color, Dimension } from '@jesscss/core';
-
-export default function red(color: Color) {
-  return new Dimension([color.rgb[0]]);
-}
+/**
+ * Less red() function
+ * 
+ * Re-exports the shared red function.
+ * The actual implementation is in shared/color/red.ts
+ */
+export { red as default } from '../shared/index.js';

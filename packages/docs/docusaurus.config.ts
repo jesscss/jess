@@ -14,14 +14,7 @@ export default {
   favicon: 'img/favicon.ico',
   organizationName: 'jesscss', // Usually your GitHub org/user name.
   projectName: 'jesscss.github.io', // Usually your repo name.
-  // plugins: [
-  //   [
-  //     '@docusaurus/plugin-content-docs',
-  //     {
-        
-  //     }
-  //   ]
-  // ],
+  plugins: [],
   themeConfig: {
     colorMode: {
       disableSwitch: false,
@@ -45,12 +38,16 @@ export default {
           label: 'Docs',
           position: 'left'
         },
+        {
+          type: 'custom-audience-toggle',
+          position: 'right'
+        },
         // {to: 'blog', label: 'Blog', position: 'left'},
         {
           href: 'https://github.com/jesscss/jess',
           label: 'GitHub',
           position: 'right'
-        }
+        },
       ]
     },
     footer: {

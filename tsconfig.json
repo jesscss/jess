@@ -1,13 +1,10 @@
 {
   "compilerOptions": {
-    "composite": true,
     "allowJs": true,
-    "outDir": "./lib",
-    "rootDir": ".",
     "declaration": true,
     "esModuleInterop": true,
     "module": "ES2020",
-    "moduleResolution": "node",
+    "moduleResolution": "bundler",
     "target": "ES2022",
     "lib": ["es6"],
     "baseUrl": "./packages",
@@ -15,17 +12,19 @@
     "useDefineForClassFields": true,
     "noUncheckedIndexedAccess": true,
     "skipLibCheck": true,
+    "sourceMap": true,
+    "noEmit": true,
     "paths": {
       "jess": ["jess/lib"],
       "@jess/*": ["*/src"]
     },
     "plugins": [
-      { "transform": "ts-macros" }
+  
     ],
     "types": [
       "vitest/globals"
     ]
   },
   "include": ["**/*.ts"],
-  "exclude": ["node_modules", "lib"]
+  "exclude": ["node_modules", "lib", "**/*.js"]
 }

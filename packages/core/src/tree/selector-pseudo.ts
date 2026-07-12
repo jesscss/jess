@@ -1,11 +1,17 @@
 import {
   defineType,
   type Node
-} from './node';
-import { SimpleSelector } from './selector-simple';
-import { type Context } from '../context';
-import { isNode } from './util/is-node';
-import { Selector } from './selector';
+} from './node.js';
+import { SimpleSelector } from './selector-simple.js';
+import { type Context } from '../context.js';
+import { isNode } from './util/is-node.js';
+import { Selector } from './selector.js';
+import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { type MaybePromise, pipe } from '@jesscss/awaitable-pipe';
+
+function isSelectorNode(value: Node | undefined): value is Selector {
+  return !!value && typeof value === 'object' && (value as any).isSelector === true;
+}
 
 export type PseudoSelectorValue = {
   /**
@@ -37,46 +43,56 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
     const { name, arg } = this.value;
 
     // Check if this is a pseudo-selector that contains selectors
-    const hasSelectorArg = arg instanceof Selector;
     const hasSelectorListArg = isNode(arg, 'SelectorList');
+    const hasSelectorArg = isSelectorNode(arg);
 
     if (hasSelectorArg || hasSelectorListArg) {
-      const combinedKeySet = new Set<string>();
-
       if (hasSelectorListArg) {
         // SelectorList argument - union all selector keySets
         let combinedKeySet = new Set<string>();
+        let combinedVisibleKeySet = new Set<string>();
         for (const selector of arg.value) {
           combinedKeySet = combinedKeySet.union(selector.keySet);
+          combinedVisibleKeySet = combinedVisibleKeySet.union(selector.visibleKeySet);
         }
         // Trust the SelectorList's canFastReject (should be false for alternatives)
         this._keySet = combinedKeySet;
+        this._visibleKeySet = combinedVisibleKeySet;
         this._canFastReject = arg.canFastReject;
       } else if (hasSelectorArg) {
         // Single Selector argument - use its keySet
         this._keySet = arg.keySet;
+        this._visibleKeySet = arg.visibleKeySet;
         // Trust the selector's canFastReject
         this._canFastReject = arg.canFastReject;
       }
     } else {
       // For other pseudo-selectors (like :hover, :focus), use valueOf
       this._keySet = new Set([this.valueOf()]);
+      this._visibleKeySet = this._keySet;
       // Other pseudo-selectors are safe for fast rejection
       this._canFastReject = true;
     }
   }
 
-  override toTrimmedString() {
+  override toTrimmedString(options?: PrintOptions) {
+    options = getPrintOptions(options);
+    const w = options.writer!;
     let { name, arg } = this.value;
-    let argString = '';
+    const mark = w.mark();
+    w.add(name, this);
     if (arg) {
+      w.add('(');
       if (isNode(arg, 'SelectorList')) {
-        argString = `(${arg.value.map(v => v.toString()).join(', ')})`;
+        let out = w.capture(() => arg.toString(options));
+        out = out.replace(/\n\s*/g, ' ');
+        w.add(out, arg);
       } else {
-        argString = `(${arg.toString()})`;
+        arg.toString(options);
       }
+      w.add(')');
     }
-    return `${name}${argString}`;
+    return w.getSince(mark);
   }
 
   /**
@@ -146,19 +162,23 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
     return valueOf;
   }
 
-  override async evalNode(context: Context) {
-    let arg = this.value.arg;
-    let node = this.maybeClone(context);
-    if (!arg) {
+  override evalNode(context: Context): MaybePromise<PseudoSelector> {
+    const currentArg = this.value.arg;
+    const node = this;
+    if (!currentArg) {
       return node;
     }
-    let canOperate = context.canOperate;
-    /** Reset parentheses "state" */
-    context.canOperate = false;
-    arg = await arg.eval(context);
-    context.canOperate = canOperate;
-    node.value.arg = arg;
-    return node;
+    return pipe(
+      () => {
+        context.parenFrames.push(false);
+        return currentArg.eval(context);
+      },
+      (evaluatedArg) => {
+        context.parenFrames.pop();
+        node.value.arg = evaluatedArg;
+        return node;
+      }
+    );
   }
 }
 

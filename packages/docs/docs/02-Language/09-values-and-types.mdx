@@ -1,0 +1,123 @@
+---
+title: Values and types
+---
+
+Jess uses types as defined by CSS, with a few modifications and additions.
+
+### References
+
+- [@property syntax](https://developer.mozilla.org/en-US/docs/Web/CSS/@property/syntax)
+- [CSS Types](https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_Types)
+- [CSS Values and Units](https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_Values_and_Units/CSS_data_types)
+
+## CSS value types
+
+### Keyword
+
+- Type: `<keyword>`
+- Example: `small`, `medium`, `large`
+
+### String
+
+This is called `Quoted` as a Jess node to disambiguate from the JavaScript `String` constructor.
+
+- Type: `<string>`
+- Example: `"A string"`
+
+### Number
+
+- Type: `<number>`
+- Examples: `1`, `1.1`, `.1`
+
+### Dimension
+
+- Type: `<dimension>`
+- Examples: `2px`, `100ms`, `10%`
+
+### Color 
+
+- Type: `<color>`
+- Example: `#FFF`, `red`, `rgb(100, 100, 100)`
+
+### Url
+
+A URL is a unique value that's different from a CSS function because it has special parsing rules. In addition, in Jess, URLs can be re-written to a different value based on compiler settings.
+
+- Type: `<url>`
+- Example: `url(./image.png)`
+
+### List (space-separated)
+
+- Type: `<number>+`
+- Example: `1 2 3`
+
+### List (comma-separated)
+
+- Type: `<number>#`
+- Example: `1, 2, 3`
+
+## Jess value types
+
+### Bool
+
+- Type: `<boolean>`
+- Example: `true`, `false`
+
+### Nil
+
+The value `nil` is conceptually similar to `null` in JavaScript. It's a value that represents the absence of a value, or sometimes returned by functions as a lack of a result. The reason it is distinct from `null` is because it can still have other Jess node properties and doesn't have a literal value of `null` when accessed by JavaScript.
+
+- Type: `<nil>`
+- Example: `nil`
+
+### Collection
+
+By design, a collection sits in a perfect syntax space between a JS object and a set of CSS rules. This is explained in the [Namespaces, collections, and maps](/docs/language/namespaces-and-maps) section.
+
+- Type: `<collection>`
+- Example:
+```
+{
+  a: 1;
+  b: 2;
+  c: {
+    d: 3;
+    e: 4;
+    f: 5;
+  }
+}
+```
+
+### General
+
+In Jess, this is a catch-all type for any value that just has a string representation. It's used for values that don't have a specific type, or for values that are not yet supported by the compiler.
+
+- Type: `<general>`
+
+
+## Additional types (Experimental)
+
+### Exact number of items in a list 
+
+A space-separated list of exactly 2 types.
+- Type: `<number>+{2}`
+- Example: `1 2`
+
+A comma-separated list of exactly 2 types.
+- Type: `<number>#{2}`
+- Example: `1, 2`
+
+### Range of items in a list 
+
+A space-separated list of 2 to 4 types.
+- Type: `<number>+{2..4}`
+- Example: `1 2 3`
+
+A comma-separated list of 2 to 4 types.
+- Type: `<number>#{2..4}`
+- Example: `1, 2, 3`
+
+### A value within a range of values
+
+- Type: `10px..20px`
+- Example: `15px`

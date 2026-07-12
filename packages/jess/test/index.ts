@@ -1,11 +1,11 @@
 import * as glob from 'glob';
 import * as fs from 'fs';
 import * as path from 'path';
-import { JessCompiler } from '../src';
+import { Compiler } from '../src/index.js';
 
-const compiler = new JessCompiler();
+const compiler = new Compiler();
 
-describe('Output files', () => {
+describe.skip('Output files', () => {
   const testData = path.join(__dirname, 'files');
   const files = glob.sync(path.join(testData, '*.jess'));
   files

@@ -1,8 +1,14 @@
-import { Node, defineType } from './node';
+import type { Context } from '../context.js';
+import { Node, defineType } from './node.js';
+import { type PrintOptions, getPrintOptions } from './util/print.js';
 
 export type BlockOptions = {
   type: 'curly' | 'square';
 };
+
+export interface Block extends Node<Node, BlockOptions> {
+  eval(context: Context): Block;
+}
 
 /**
  * A block like `{ ... }` or `[ ... ]`. This is used
@@ -12,12 +18,17 @@ export class Block extends Node<Node, BlockOptions> {
   type = 'Block' as const;
   shortType = 'block' as const;
 
-  override toTrimmedString() {
+  override toTrimmedString(options?: PrintOptions) {
+    options = getPrintOptions(options);
+    const w = options.writer!;
+    const mark = w.mark();
     let { type } = this.options ?? {};
-    let output = super.toTrimmedString();
     let start = type === 'square' ? '[' : '{';
     let end = type === 'square' ? ']' : '}';
-    return `${start}${output}${end}`;
+    w.add(start);
+    super.toTrimmedString(options);
+    w.add(end);
+    return w.getSince(mark);
   }
 }
 

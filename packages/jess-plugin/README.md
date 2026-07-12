@@ -2,6 +2,14 @@
 
 Provides the Jess parser and evaluator
 
+## Status
+
+This package reflects a **legacy plugin architecture** (pre-`jess` `Compiler` pipeline).
+It is currently kept mainly for historical/experimental packages in this repo.
+
+For modern usage, prefer using the `jess` package directly (see `Compiler`) and the maintained
+language plugins (e.g. `@jesscss/plugin-less` + `@jesscss/plugin-less-compat`).
+
 Plugins set how we:
 
 1. Parse a stylesheet.

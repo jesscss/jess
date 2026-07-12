@@ -1,5 +1,9 @@
 import type { IToken } from 'chevrotain';
-import type { AdvancedCstNode } from '../advancedCstParser';
+// AdvancedCstParser is unused; keep type local here to avoid dependency
+type AdvancedCstNode = {
+  name: string;
+  childrenStream: Array<AdvancedCstNode | IToken>;
+};
 
 export const stringify = (cst: AdvancedCstNode): string => {
   let output = '';
@@ -9,7 +13,9 @@ export const stringify = (cst: AdvancedCstNode): string => {
       return;
     }
     if ('name' in node) {
-      node.childrenStream.forEach((child) => { recurseCst(child); });
+      node.childrenStream.forEach((child) => {
+        recurseCst(child);
+      });
       return;
     }
     output += node.image;

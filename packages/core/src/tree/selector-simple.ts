@@ -1,24 +1,9 @@
-import { type NodeOptions, type NodeValueObject, defineType } from './node';
-import { Selector } from './selector';
-
-type SimpleSelectorValue = string | NodeValueObject;
+import { type NodeOptions, defineType } from './node.js';
+import { Selector } from './selector.js';
 
 export abstract class SimpleSelector<
-  T extends SimpleSelectorValue = SimpleSelectorValue,
+  T = any,
   O extends NodeOptions = NodeOptions
-> extends Selector<T, O> {
-  get keySet(): Set<string> {
-    if (this._keySet === undefined) {
-      this._computeKeySetAndFastReject();
-    }
-    return this._keySet!;
-  }
-
-  protected override _computeKeySetAndFastReject(): void {
-    // Simple selectors are always safe for fast rejection
-    this._keySet = new Set([this.valueOf()]);
-    this._canFastReject = true;
-  }
-}
+> extends Selector<T, O> {}
 
 defineType(SimpleSelector, 'SimpleSelector');

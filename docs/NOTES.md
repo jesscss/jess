@@ -1,3 +1,197 @@
+# Jan 5, 2026
+
+Add a `frozen` prop to nodes that prevents re-parenting, so that source lookup chains are maintained.
+
+# Jan 4, 2026
+- Think about going back to `@-from` instead of `@-use` so we can define tree-shaken imports?
+
+# Aug 28, 2025
+
+## What We Accomplished Today
+- **Fixed critical variable lookup bug**: Resolved key mismatch in `DeclarationRegistry` where `VarDeclaration` nodes were stored with `@` prefix but looked up without it
+- **Fixed property accessor evaluation**: Updated `accessors` function to correctly evaluate variable keys in property accessors like `@config[@key]`
+- **Improved test coverage**: 107/114 tests now passing (up from widespread failures)
+- **Cleaned up debugging code**: Removed all console.log statements from core files
+
+## What's Next
+- **Nested ruleset property accessors**: `@config[@colors][primary]` syntax not working - need to implement nested ruleset parsing and property access
+- **Namespace lookups**: `#namespace > .scoped-mixin()` not resolving correctly - need namespace resolution system
+- **Static name resolution**: Some mixin and ruleset lookups failing (e.g., `.ruleset`, `.scoped-mixin`)
+- **Grammar ambiguity warnings**: Several parser warnings about ambiguous alternatives in value rules
+
+---
+
+# Aug 21, 2025
+
+- Made the awaitable-pipe package to normalize sync / async handling
+- Did a lot of reworking of parsing to tag nodes as maybe async or not
+
+# Aug 19, 2025
+
+- The LLM informed me that async eval everywhere has a cost (microtasks), so the whole API will be updated to have nodes "opt-in" to async only when needed
+- The LLM had an idea to pass in "lazy" "thunks" when needed, so they would be async functions that could be awaited
+
+# Aug 18, 2025
+
+- Made a new plugin signature with ChatGPT help
+- Made a Webpack resolver wrapper
+- Resolving imports!
+
+# Aug 16, 2025
+
+- CSS and Less parsing working!
+
+
+# Aug 8, 2025
+
+- styles.config.ts
+
+This will be the config file for both less / jess
+
+```ts
+// styles.config.ts
+
+export default {
+  // Jess / Less compile settings
+  compile: {
+    plugins: []
+  },
+  output: {
+    minify: false
+  },
+  language: {
+    less: {
+      /** Like math settings */
+    }
+  }
+}
+
+```
+
+# Aug 6, 2025
+
+- Added a defineFunction that makes Sass-like function calls possible. This will do compile-time type-checking
+
+### TODO
+- Allow "eval on access" pattern to eliminate the `evalArgs` necessity. That is, instead of passing in evaluated args or non-evaluated, pass in generated functions like: `() => node.eval(context)`. Each param, then, will evaluate on a getter from the object proxy. In order to do this... does the called function need to always receive a plain object? Instead of it receiving positional args? I think so...
+- Type the returned function with `(this: Context...)`
+- Make some sort of proxy-wrapper thing that passes in context in order to create a proxy object for the function
+- Re-work Less functions to use this defineFunction signature
+
+### FUTURE WORK
+- Re-work Less / Sass functions to, if possible, generate equivalent CSS functions / calcs that represent the color translation / list access... right now it may be too complex.
+
+# Aug 5, 2025
+
+Extend Scopes
+
+- Create a map of scope (strings) to a set of what scopes are visible to that scope
+- When registering rulesets that are extendable, and extends themselves, register them with their current extend scope
+
+- At-rules and files create extend scopes
+- When we encounter an at-rule with rules:
+  - create a unique extend scope, except in some cases
+- When we encounter a new style import:
+  - create a new (unique) scope
+  - if it's not protected, add it to the current file's accessible scopes
+  - if it is protected, do not update either file's accessible scopes
+  - if it is an `@-import`, then update both files' scopes
+
+# Aug 3, 2025
+
+- Include mixin by namespace, different reference syntax
+
+```scss
+value: $foo; // or $.$foo - variable ref
+value: $.foo; // prop ref
+value: $^foo; // upward var foo lookup
+value: $[0]; // offset of 0 in current rules
+value: $[-1]; // offset of -1 in current rules
+value: $ns.$foo; // var 'foo' in ns
+value: $ns.foo; // prop 'foo' in ns
+value: $ns[0]; // should throw an error for multiple returned rules
+
+$|mixin(); // mixin include
+$*(.rule)(); // selector include
+$*.mixin(); // mixin or selector include 
+$ns|.mixin(); // mixin in ns
+$ns*.rule(); // mixin or selector in ns
+$ns*(.rule)(); // 
+```
+
+# Aug 2, 2025
+
+After working through more scenarios, I think both access and assignment of vars needs to be `$name`, because it's too confusing for patterns like `$foo +: 1;` whether it should start with `$` or `~`
+
+This also resolves this:
+
+```scss
+/** Declaring mixins
+  Pattern matching mixins (not often-used in Less) like this
+*/
+.mixin(red; @width: 20px; @height: 10px) {
+  padding: $width $height;
+}
+.mixin(blue; @width: 10px; @height: 5px) {
+  padding: $width $height;
+}
+/** Get translated into this in Jess */
+.mixin(red; $width: 20px; $height: 10px) {
+  padding: $width $height;
+}
+.mixin(blue; $width: 10px; $height: 5px) {
+  padding: $width $height;
+}
+```
+
+# Aug 1, 2025
+
+- Syntax ideas
+
+```scss
+~color: red; // scope var 
+^color: red; // set var
+!color: red; // readonly var
+~_color: red; // private var named _color
+
+.box {
+  value: $color; // reference (var or prop)
+  $ > .mixin(); // call mixin named fn
+  value: $fn(); // function named `fn`
+}
+
+~brand-color: orange;
+
+mixin() {
+  $color: red;
+  color: $brand-color;
+  border-color: $color; // variable named 'color'
+  border-color: $.color; // variable or property named 'color'
+  border-color: $['color']; // property named 'color'
+  ns: $ns.$color; // variable named 'color' in $ns
+  ns: $ns.color; // variable or property named 'color' in $ns
+  ns: $ns['color'] // property named 'color' in $ns
+
+}
+
+mixin-2() {
+  background-color: $brand-color;
+}
+
+~double: @(~size) > $(size * 2);
+
+:is(.container, .blah).foo {
+  $ > .mixin();
+  width: $double(10px);
+}
+
+.box {
+  @extend .container;
+  :extend(.container.foo);
+}
+```
+
+
 # Jul 31, 2025
 
 - Destructuring ideas:
@@ -7,7 +201,7 @@
 $[$one, $two]: $list; // less ambiguous but a lot of `$`
 ($one, $two): $list; // maybe more CSS-like?
 
-$for (($one, $two) of $items) {}
+$for ([$one, $two] of $items) {}
 ```
 
 # Jul 27, 2025

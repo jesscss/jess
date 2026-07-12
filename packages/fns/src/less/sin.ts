@@ -1,3 +1,15 @@
-import { mathHelper } from '../util/mathHelper';
+import { Dimension, defineFunction } from '@jesscss/core';
+import { mathHelper } from '../util/mathHelper.js';
 
-export default mathHelper.bind(null, Math.sin, ['value'], '');
+export default defineFunction(
+  'sin',
+  function(value: Dimension | number) {
+    return mathHelper(Math.sin, ['value'], '', value);
+  },
+  {
+    params: [{
+      name: 'value',
+      type: [Dimension, 'number']
+    }]
+  }
+);

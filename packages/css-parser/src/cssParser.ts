@@ -1,20 +1,21 @@
-import { type ILexingResult, Lexer, type IRecognitionException } from 'chevrotain';
-import { cssTokens, cssFragments } from './cssTokens';
-import { type TokenMap, type CssParserConfig, CssActionsParser } from './cssActionsParser';
-import { createLexerDefinition } from './util';
-import { CssErrorMessageProvider } from './cssErrorMessageProvider';
+import { Lexer } from 'chevrotain';
+import { cssLexer } from './cssTokens.js';
+import { type TokenMap, type CssParserConfig, CssActionsParser } from './cssActionsParser.js';
+import { CssErrorMessageProvider } from './cssErrorMessageProvider.js';
 import type { ConditionalPick } from 'type-fest';
-import { type Node, type Root } from '@jesscss/core';
-
-export interface IParseResult<T extends Node = Node> {
-  lexerResult: ILexingResult;
-  errors: IRecognitionException[];
-  tree: T;
-}
+import { type Node, type Rules, type IParseResult } from '@jesscss/core';
+import type { ISyntacticContentAssistPath } from 'chevrotain';
 
 const errorMessageProvider = new CssErrorMessageProvider();
 
 export type CssRules = keyof ConditionalPick<CssActionsParser, () => Node>;
+
+export type SyntacticContentAssistSuggestion = {
+  nextTokenType: string;
+  nextTokenLabel?: string;
+  ruleStack: string[];
+  occurrenceStack: number[];
+};
 
 /**
  * If we're not extending the CSS parser,
@@ -43,7 +44,7 @@ export class CssParser {
       skipValidations: process.env.TEST !== 'true',
       ...config
     };
-    const { lexer, T } = createLexerDefinition(cssFragments(), cssTokens());
+    const { lexer, T } = cssLexer;
     this.lexer = new Lexer(lexer, {
       ensureOptimizations: true,
       // Always run the validations during testing (dev flows).
@@ -53,20 +54,47 @@ export class CssParser {
     this.parser = new CssActionsParser(lexer, T as TokenMap, config);
   }
 
-  parse(text: string): IParseResult<Root>;
-  parse(text: string, rule: 'stylesheet'): IParseResult<Root>;
+  parse(text: string): IParseResult<Rules>;
+  parse(text: string, rule: 'stylesheet'): IParseResult<Rules>;
   parse(text: string, rule?: CssRules): IParseResult;
   parse(text: string, rule: CssRules = 'stylesheet'): IParseResult {
     const parser = this.parser;
     const lexerResult = this.lexer.tokenize(text);
     const lexedTokens = lexerResult.tokens;
+    // removed diagnostics
     parser.input = lexedTokens;
     const tree = parser[rule]() as Node;
 
     return {
       tree,
       lexerResult,
-      errors: parser.errors
+      errors: parser.errors,
+      warnings: [] // CSS parser doesn't produce deprecation warnings
     };
+  }
+
+  /**
+   * IDE helper: suggest next possible token types at `offset` using Chevrotain's
+   * syntactic content assist. This is syntactic-only (not semantic completion).
+   *
+   * Note: content assist is significantly slower than normal parsing, so it
+   * should be called on-demand (e.g. near the cursor).
+   */
+  suggest(text: string, init: { offset: number; rule?: CssRules }): SyntacticContentAssistSuggestion[] {
+    const { offset, rule = 'stylesheet' } = init;
+    const prefix = text.slice(0, Math.max(0, offset));
+    const lexerResult = this.lexer.tokenize(prefix);
+    const tokens = lexerResult.tokens;
+    try {
+      const paths = (this.parser as any).computeContentAssist(rule, tokens) as ISyntacticContentAssistPath[];
+      return paths.map(p => ({
+        nextTokenType: p.nextTokenType.name,
+        nextTokenLabel: (p.nextTokenType as any).LABEL,
+        ruleStack: p.ruleStack,
+        occurrenceStack: p.occurrenceStack
+      }));
+    } catch {
+      return [];
+    }
   }
 }

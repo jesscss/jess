@@ -1,9 +1,15 @@
-import { vardecl, coll, decl, any, rules } from '..';
-import { Context } from '../../context';
+import { vardecl, coll, decl, any, rules, Node } from '..';
+import { Context } from '../../context.js';
 
 let context: Context;
 
 describe('Let', () => {
+  beforeAll(() => {
+    Node.prototype.fullRender = true;
+  });
+  afterAll(() => {
+    Node.prototype.fullRender = false;
+  });
   beforeEach(() => {
     context = new Context();
     context.depth = 1;
@@ -16,22 +22,22 @@ describe('Let', () => {
         name: 'brandColor',
         value: any('#eee')
       });
-      expect(`${rule}`).toBe('$brandColor: #eee;');
+      expect(`${rule}`).toBe('$brandColor: #eee');
     // rule.toModule(context, out)
     // expect(out.toString()).toBe('let brandColor = $J.expr([$J.any("#eee")])')
     });
 
-    it.only('should serialize a collection', () => {
+    it('should serialize a collection', () => {
       context.depth = 2;
       let rule = vardecl({
         name: 'brandColor',
-        value: coll(rules([
-          decl({ name: 'global', value: coll(rules([
+        value: coll([
+          decl({ name: 'global', value: coll([
             decl({ name: 'dark', value: any('#000') })
-          ])) }),
+          ]) }),
           decl({ name: 'dark', value: any('#222') }),
           decl({ name: 'light', value: any('#eee') })
-        ]))
+        ])
       });
       expect(`${rule}`).toBeString(`
       $brandColor: {

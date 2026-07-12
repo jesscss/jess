@@ -1,81 +1,212 @@
 import {
   type Plugin,
-  type PluginObject,
-  FileManager,
-  type FileManagerOptions,
+  type PluginInterface,
+  AbstractPlugin,
   TreeContext,
-  MathMode,
-  UnitMode,
-  Scope,
   JessError,
   logger,
-  getErrorFromParser
+  JsFunction,
+  Rules,
+  getErrorFromParser,
+  toDiagnostic,
+  extractRelevantLines,
+  type ISafeParseResult,
+  type ErrorDiagnostic,
+  type WarningDiagnostic
 } from '@jesscss/core';
-import * as lessFunctions from '@jesscss/fns/lib/less';
+import type { MathMode, UnitMode, LessOptions } from 'styles-config';
+import * as lessFunctions from '@jesscss/fns';
 import { Parser } from '@jesscss/less-parser';
+import path from 'node:path';
+import { expandLessImportCandidates } from '@jesscss/style-resolver';
 
-export interface LessFileManagerOptions extends FileManagerOptions {
-  plugin: PluginObject;
-  mathMode?: TreeContext['mathMode'];
-  unitMode?: TreeContext['unitMode'];
-}
-
-export class LessFileManager extends FileManager<LessFileManagerOptions> {
+export class LessPlugin extends AbstractPlugin {
+  name = 'less';
   supportedExtensions = ['.less'];
-  parser = new Parser();
+  parser: Parser;
+  mathMode: MathMode;
+  unitMode: UnitMode;
+  leakyRules: boolean;
+  bubbleRootAtRules: boolean;
+  collapseNesting: boolean;
 
-  private _functionScope: Scope | undefined;
+  constructor(public opts: LessOptions = {}) {
+    super();
 
-  get functionScope() {
-    let functionScope = this._functionScope;
-    if (!functionScope) {
-      functionScope = this._functionScope = new Scope();
-      for (const [key, value] of Object.entries(lessFunctions)) {
-        functionScope.setVar(key, value);
+    // Handle deprecated math option -> mathMode conversion
+    let mathMode: MathMode;
+    if (opts.mathMode !== undefined) {
+      mathMode = opts.mathMode;
+    } else if (opts.math !== undefined) {
+      // Convert deprecated math option to mathMode
+      if (opts.math === 0 || opts.math === 'always') {
+        mathMode = 'always';
+      } else if (opts.math === 1 || opts.math === 'parens-division') {
+        mathMode = 'parens-division';
+      } else if (opts.math === 2 || opts.math === 'parens' || opts.math === 'strict') {
+        mathMode = 'parens';
+      } else {
+        // 3 or 'strict-legacy' -> 'parens' (deprecated, use 'strict' instead)
+        mathMode = 'parens';
       }
+    } else {
+      mathMode = 'parens-division';
     }
-    return functionScope;
+    this.mathMode = mathMode;
+
+    // Handle deprecated strictUnits option -> unitMode conversion
+    let unitMode: UnitMode;
+    if (opts.unitMode !== undefined) {
+      unitMode = opts.unitMode;
+    } else if (opts.strictUnits === true) {
+      unitMode = 'strict';
+    } else {
+      unitMode = 'preserve';
+    }
+    this.unitMode = unitMode;
+    this.leakyRules = opts.leakyRules ?? true;
+    this.bubbleRootAtRules = opts.bubbleRootAtRules ?? true;
+    this.collapseNesting = opts.collapseNesting ?? false;
+
+    // Pass options to parser (including leakyRules, defaulting to true)
+    this.parser = new Parser();
   }
 
-  async _getTree(fullPath: string, options: Record<string, any>) {
-    const source = await this.loadFile(fullPath);
-
-    const scope = new Scope(options.parentScope);
-    /**
-     * @todo - handle / pretty print errors
-     * @todo - add contents to Jess error handler
-     */
-    const context = new TreeContext({
-      scope,
-      hoistDeclarations: true,
-      /** @todo - write a test to make sure `@use` doesn't leak */
-      leakVariablesIntoScope: true,
-      mathMode: this.opts.mathMode ?? MathMode.PARENS_DIVISION,
-      unitMode: this.opts.unitMode ?? UnitMode.LOOSE
-    });
-    const { tree, errors, lexerResult } = this.parser.parse(source, 'stylesheet', { context });
-    if (errors.length || lexerResult.errors.length) {
-      const error = (lexerResult.errors[0] ?? errors[0])!;
-      throw getErrorFromParser(error, fullPath, source);
-    } else {
-      if (!tree.treeContext.isModule) {
-        tree.treeContext.scope.merge(this.functionScope, true);
-      }
-      tree.treeContext.plugin = this.opts.plugin;
-      return tree;
+  private _registerFunctions(tree: Rules) {
+    for (const [key, value] of Object.entries(lessFunctions)) {
+      tree.register('function', new JsFunction({ name: key, fn: value }));
     }
+  }
+
+  expandImport(importPath: string, currentDir: string) {
+    void currentDir;
+    // Keep import expansion in sync with the language service.
+    return expandLessImportCandidates(importPath);
+  }
+
+  safeParse(filePath: string, source: string): ISafeParseResult {
+    const context = new TreeContext({
+      file: {
+        name: path.basename(filePath),
+        path: path.dirname(filePath),
+        fullPath: filePath,
+        source: source
+      },
+      mathMode: this.mathMode,
+      unitMode: this.unitMode,
+      plugin: this,
+      collapseNesting: this.collapseNesting,
+      leakyRules: this.leakyRules,
+      bubbleRootAtRules: this.bubbleRootAtRules
+    });
+
+    const errors: ErrorDiagnostic[] = [];
+    const warnings: WarningDiagnostic[] = [];
+    let tree: Rules | undefined;
+
+    try {
+      const parseResult = this.parser.parse(source, 'stylesheet', { context });
+      tree = parseResult.tree;
+
+      // Convert parser deprecation warnings to diagnostics
+      if ('warnings' in parseResult && parseResult.warnings) {
+        for (const warning of parseResult.warnings) {
+          const line = warning.token?.startLine ?? 1;
+          const column = warning.token?.startColumn ?? 1;
+          warnings.push({
+            code: 'parse/deprecated',
+            phase: 'parse',
+            message: warning.message,
+            reason: warning.message,
+            fix: 'Update your code to use the recommended syntax.',
+            file: context.file,
+            filePath: filePath,
+            line,
+            column,
+            lines: extractRelevantLines(source, line)
+          });
+        }
+      }
+
+      // Convert all parser/lexer errors to normalized diagnostics
+      if (parseResult.errors.length || parseResult.lexerResult?.errors?.length) {
+        // Convert each parser error to a diagnostic
+        for (const error of parseResult.errors) {
+          const line = error.token?.startLine ?? (error as any).line ?? 1;
+          const jessError = getErrorFromParser([error], undefined, filePath, source, { file: context.file });
+          const diagnostic = toDiagnostic(jessError);
+          // Ensure lines are extracted
+          if (!diagnostic.lines) {
+            diagnostic.lines = extractRelevantLines(source, line);
+          }
+          if ('errors' in diagnostic) {
+            errors.push(diagnostic);
+          } else {
+            warnings.push(diagnostic);
+          }
+        }
+        // Convert lexer errors
+        if (parseResult.lexerResult?.errors) {
+          for (const lexError of parseResult.lexerResult.errors) {
+            const line = (lexError as any).line ?? 1;
+            const jessError = getErrorFromParser([], [lexError], filePath, source, { file: context.file });
+            const diagnostic = toDiagnostic(jessError);
+            // Ensure lines are extracted
+            if (!diagnostic.lines) {
+              diagnostic.lines = extractRelevantLines(source, line);
+            }
+            if ('errors' in diagnostic) {
+              errors.push(diagnostic);
+            } else {
+              warnings.push(diagnostic);
+            }
+          }
+        }
+      }
+    } catch (error: any) {
+      // Convert caught error to diagnostic
+      if (error && typeof error === 'object' && 'severity' in error) {
+        const diagnostic = toDiagnostic(error as JessError);
+        if ('errors' in diagnostic) {
+          errors.push(diagnostic);
+        } else {
+          warnings.push(diagnostic);
+        }
+      } else {
+        errors.push({
+          code: 'internal/unknown',
+          phase: 'parse',
+          message: error?.message || 'Unknown parsing error',
+          reason: error?.message || 'An unexpected error occurred during parsing.',
+          fix: 'Check the file syntax and ensure it is valid.',
+          file: context.file,
+          filePath: filePath,
+          line: 1,
+          column: 1,
+          lines: extractRelevantLines(source, 1)
+        });
+      }
+      // Return with errors/warnings only (no tree)
+      return { errors, warnings };
+    }
+
+    // Only register functions if parsing succeeded without errors
+    if (tree && errors.length === 0) {
+      this._registerFunctions(tree);
+    }
+
+    return {
+      tree,
+      errors,
+      warnings
+    };
   }
 }
 
-type LessOptions = Record<string, any>;
+export type { LessOptions } from 'styles-config';
 
-/** @todo - do something with less options */
-const lessPlugin: Plugin = (opts?: LessOptions) => {
-  const plugin: PluginObject = {
-    name: 'less'
-  };
-  plugin.fileManager = new LessFileManager({ ...opts, plugin });
-  return plugin;
-};
+const lessPlugin = ((opts?: LessOptions) => {
+  return new LessPlugin(opts);
+}) satisfies Plugin;
 
 export default lessPlugin;

@@ -1,12 +1,26 @@
 {
   "name": "@jesscss/fns",
+  "type": "module",
   "publishConfig": {
     "access": "public"
   },
   "version": "2.0.0-alpha.1",
   "description": "Jess functions module",
-  "main": "lib/index",
-  "types": "lib/index",
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./lib/index.js",
+      "types": "./lib/index.d.ts",
+      "source": "./src/index.ts"
+    },
+    "./*": {
+      "types": "./lib/*.d.ts",
+      "import": "./lib/*.js",
+      "source": "./src/*.ts"
+    },
+    "./package.json": "./package.json"
+  },
   "files": [
     "lib"
   ],
@@ -21,6 +35,7 @@
   },
   "dependencies": {
     "@jesscss/core": "workspace:*",
+    "@jesscss/awaitable-pipe": "workspace:*",
     "color-name": "~2.0.0",
     "lodash-es": "^4.17.21",
     "superstruct": "1.0.3"

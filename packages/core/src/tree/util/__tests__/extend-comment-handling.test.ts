@@ -1,5 +1,5 @@
-import { el, sel, sellist, compound, is, co, comment } from '../../index';
-import { extendSelector } from '../extend';
+import { el, sel, sellist, compound, is, co, comment } from '../../index.js';
+import { extendSelector } from '../extend.js';
 
 describe('Extend Comment and Whitespace Handling Tests', () => {
   describe('Comment duplication prevention', () => {

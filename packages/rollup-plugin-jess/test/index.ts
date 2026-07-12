@@ -1,7 +1,7 @@
 import * as rollup from 'rollup'
 import * as path from 'path'
 import * as fs from 'fs'
-import jess from '../src/index'
+import jess from '../src/index.js'
 import commonJs from '@rollup/plugin-commonjs'
 import nodeResolve from '@rollup/plugin-node-resolve'
 

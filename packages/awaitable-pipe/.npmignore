@@ -1,0 +1,8 @@
+src
+tsconfig*.json
+*.tsbuildinfo
+node_modules
+pnpm-lock.yaml
+**/*.spec.*
+**/*.test.*
+

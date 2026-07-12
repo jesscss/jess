@@ -12,7 +12,7 @@ import {
 import { type WritableDeep } from 'type-fest';
 
 // TODO: get rid of xRegExp dep
-import * as XRegExp from 'xregexp';
+import XRegExp from 'xregexp';
 
 export enum LexerType {
   NA,
@@ -36,16 +36,16 @@ export type RawModeConfig = Readonly<{
   defaultMode: 'Default';
 }>;
 
-interface ILexer {
+export interface ILexer {
   T: Record<string, TokenType>;
   lexer: IMultiModeLexerDefinition;
 }
 
-const $buildFragments = (rawFragments: string[][]) => {
+export function buildFragments(rawFragments: ReadonlyArray<Readonly<[string, string]>>) {
   const fragments: Record<string, RegExp> = {};
-  rawFragments.forEach((fragment) => {
+  for (const fragment of rawFragments) {
     fragments[fragment[0]!] = XRegExp.build(fragment[1]!, fragments);
-  });
+  };
   return fragments;
 };
 
@@ -53,13 +53,17 @@ const $buildFragments = (rawFragments: string[][]) => {
  * Builds proper tokens from a raw token definition.
  * This allows us to extend / modify tokens before creating them
  */
-export const createLexerDefinition = (rawFragments: string[][], rawTokens: WritableDeep<RawModeConfig>): ILexer => {
+export function createLexerDefinition(
+  rawFragments: ReadonlyArray<Readonly<[string, string]>>,
+  // eslint-disable-next-line @typescript-eslint/naming-convention
+  _rawTokens: RawModeConfig
+): ILexer {
+  const rawTokens = _rawTokens as WritableDeep<RawModeConfig>;
   /**
-   * @todo - get ts-macros working to eliminate XRegExp dependency
-   * @see https://github.com/GoogleFeud/ts-macros/issues/66
+    * @todo - consider alternative approaches to eliminate XRegExp dependency
    */
 
-  const fragments: Record<string, RegExp> = $buildFragments(rawFragments);
+  const fragments: Record<string, RegExp> = buildFragments(rawFragments);
   const T: Record<string, TokenType> = {};
   const lexer: IMultiModeLexerDefinition = {
     modes: {
@@ -88,7 +92,8 @@ export const createLexerDefinition = (rawFragments: string[][], rawTokens: Writa
       let { name, pattern, longer_alt, categories, group, ...rest } = rawToken;
       let regExpPattern: RegExp | CustomPatternMatcherFunc;
       if (pattern !== LexerType.NA) {
-        if (!categories || (group !== LexerType.SKIPPED && !categories.includes('BlockMarker'))) {
+        const isUnknownToken = name === 'Unknown';
+        if (!isUnknownToken && (!categories || (group !== LexerType.SKIPPED && !categories.includes('BlockMarker')))) {
           if (!categories) {
             categories = [];
           } else {

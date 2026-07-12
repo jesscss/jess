@@ -1,8 +1,17 @@
 /* eslint no-control-regex: "off" */
 import { type WritableDeep } from 'type-fest';
-import type { RawModeConfig } from './util';
-import { LexerType } from './util';
-import { SKIPPED_LABEL } from './advancedCstParser';
+import type { RawModeConfig } from './util/index.js';
+import { LexerType } from './util/index.js';
+import { SKIPPED_LABEL } from './advancedActionsParser.js';
+import {
+  Lexer,
+  createToken,
+  type ITokenConfig,
+  type TokenType,
+  type IMultiModeLexerDefinition,
+  type CustomPatternMatcherFunc
+} from 'chevrotain';
+import { buildFragments, createLexerDefinition } from './util/index.js';
 
 /**
  * references:
@@ -14,7 +23,7 @@ import { SKIPPED_LABEL } from './advancedCstParser';
  * XRegExp should accept an object rather than an array of arrays,
  * which would make extending easier.
  */
-const fragments = () => [
+export const rawCssFragments = () => [
   ['newline', '\\n|\\r\\n?|\\f'],
   ['whitespace', '[ ]|\\t|{{newline}}'],
   /** @todo - use in order to attach newlines to node ends? */
@@ -43,7 +52,7 @@ const fragments = () => [
   */
   ['number', '(?:\\d*\\.\\d+(?:[eE][+-]\\d+)?|\\d+(?:[eE][+-]\\d+))'],
   ['wsorcomment', '({{ws}})|({{comment}})']
-];
+] as const;
 
 // interface Match { value: string, index: number }
 
@@ -85,7 +94,7 @@ export function groupCapture(this: RegExp, text: string, startOffset: number) {
  * @todo Change to Map implementation? May allow easier replacement of
  * tokens, in extended parsers, as well as easier TokenMap.
  */
-const tokens = () => ({
+export const rawCssTokens = () => ({
   modes: {
     Default: [
       { name: 'Value', pattern: LexerType.NA },
@@ -102,7 +111,7 @@ const tokens = () => ({
       { name: 'Selector', pattern: LexerType.NA },
       { name: 'Combinator', pattern: LexerType.NA },
       { name: 'Color', pattern: LexerType.NA },
-      { name: 'Function', pattern: LexerType.NA },
+      { name: 'FunctionStart', pattern: LexerType.NA },
       { name: 'FunctionalPseudoClass', pattern: LexerType.NA },
       { name: 'Assign', pattern: LexerType.NA },
       { name: 'QuoteStart', pattern: LexerType.NA },
@@ -141,12 +150,6 @@ const tokens = () => ({
         categories: ['Ident']
       },
       { name: 'LegacyPropIdent', pattern: '(?:\\*|_){{ident}}' },
-      /** Supports the very old alpha(opacity=[number]) */
-      {
-        name: 'LegacyMSFilter',
-        pattern: /alpha\(opacity=\d{1,3}\)|progid:(?:[\w]+\.)*\w+(?:\([^)]*\))?/,
-        categories: ['BlockMarker']
-      },
       {
         name: 'CustomProperty',
         pattern: '--{{ident}}',
@@ -156,11 +159,6 @@ const tokens = () => ({
       { name: 'CDCToken', pattern: /-->/, group: LexerType.SKIPPED },
       /** Ignore BOM */
       { name: 'UnicodeBOM', pattern: /\uFFFE/, group: LexerType.SKIPPED },
-      /**
-       * Normally this is a CSS token, but it makes downstream parsers much trickier.
-       * Instead, we leave parens and idents as separate tokens.
-       */
-      // { name: 'PlainFunction', pattern: '{{ident}}\\(', categories: ['BlockMarker', 'Function'] },
       { name: 'AttrFlag', pattern: /[is]/i, longer_alt: 'PlainIdent', categories: ['Ident'] },
 
       /**
@@ -175,15 +173,34 @@ const tokens = () => ({
       },
 
       /** Logical Keywords */
-      { name: 'And', pattern: /and/, longer_alt: 'PlainIdent', categories: ['Ident'] },
-      { name: 'Or', pattern: /or/, longer_alt: 'PlainIdent', categories: ['Ident'] },
-      { name: 'Not', pattern: /not/, longer_alt: 'PlainIdent', categories: ['Ident'] },
       { name: 'Only', pattern: /only/, longer_alt: 'PlainIdent', categories: ['Ident'] },
 
       /** Query words */
       { name: 'Screen', pattern: /screen/, longer_alt: 'PlainIdent', categories: ['Ident'] },
       { name: 'Print', pattern: /print/, longer_alt: 'PlainIdent', categories: ['Ident'] },
       { name: 'All', pattern: /all/, longer_alt: 'PlainIdent', categories: ['Ident'] },
+
+      // Match a generic function start: identifier followed immediately by '('
+      {
+        name: 'GenericFunctionStart',
+        pattern: '{{ident}}\\(',
+        categories: ['BlockMarker', 'FunctionStart']
+      },
+
+      /**
+       * Move these under GenericFunctionStart so that they are not parsed as `and(`
+       * in Less / Jess.
+       */
+      { name: 'And', pattern: /and/, longer_alt: 'PlainIdent', categories: ['Ident'] },
+      { name: 'Or', pattern: /or/, longer_alt: 'PlainIdent', categories: ['Ident'] },
+
+      /**
+       * Special function names in CSS
+       */
+      { name: 'Layer', pattern: /layer\(/i, categories: ['BlockMarker', 'FunctionStart'] },
+      { name: 'Supports', pattern: /supports\(/i, categories: ['BlockMarker', 'FunctionStart'] },
+      { name: 'Var', pattern: /var\(/i, categories: ['BlockMarker', 'FunctionStart'] },
+      { name: 'Calc', pattern: /calc\(/i, categories: ['BlockMarker', 'FunctionStart'] },
 
       /** Keyframe keywords */
       { name: 'From', pattern: /from/, longer_alt: 'PlainIdent', categories: ['Ident'] },
@@ -193,7 +210,14 @@ const tokens = () => ({
       {
         name: 'UrlStart',
         pattern: /url\(/i,
-        push_mode: 'Url'
+        push_mode: 'Url',
+        categories: ['BlockMarker', 'FunctionStart']
+      },
+      /** Supports the very old alpha(opacity=[number]) */
+      {
+        name: 'LegacyMSFilter',
+        pattern: /alpha\(opacity=\d{1,3}\)|progid:(?:[\w]+\.)*\w+(?:\([^)]*\))?/,
+        categories: ['BlockMarker']
       },
       /**
        * Rather than consume the whole string, we push
@@ -236,6 +260,30 @@ const tokens = () => ({
         categories: ['BlockMarker', 'AtName']
       },
       {
+        name: 'AtLayer',
+        pattern: /@layer/i,
+        longer_alt: 'AtKeyword',
+        categories: ['BlockMarker', 'AtName']
+      },
+      {
+        name: 'AtContainer',
+        pattern: /@container/i,
+        longer_alt: 'AtKeyword',
+        categories: ['BlockMarker', 'AtName']
+      },
+      {
+        name: 'AtScope',
+        pattern: /@scope/i,
+        longer_alt: 'AtKeyword',
+        categories: ['BlockMarker', 'AtName']
+      },
+      {
+        name: 'AtDocument',
+        pattern: /@(?:-moz-)?document/i,
+        longer_alt: 'AtKeyword',
+        categories: ['BlockMarker', 'AtName']
+      },
+      {
         name: 'AtPage',
         pattern: /@page/i,
         longer_alt: 'AtKeyword',
@@ -246,9 +294,11 @@ const tokens = () => ({
         pattern: /@font-face/i,
         categories: ['BlockMarker', 'AtName']
       },
+      // Keyframes (standard and vendor-prefixed)
+      { name: 'AtKeyframes', pattern: /@(?:-[a-z]+-)?keyframes/i, longer_alt: 'AtKeyword', categories: ['BlockMarker', 'AtName'] },
       {
         name: 'AtNested',
-        pattern: /@keyframes|@viewport|@document/i,
+        pattern: /@starting-style|@property|@counter-style|@viewport|@-ms-viewport|@color-profile|@font-palette-values/i,
         longer_alt: 'AtKeyword',
         categories: ['BlockMarker', 'AtName']
       },
@@ -278,6 +328,12 @@ const tokens = () => ({
         pattern: '\\.{{ident}}',
         categories: ['Selector']
       },
+      /** There are some cases where we might need this tokenized separately?  */
+      // {
+      //   name: 'Dot',
+      //   pattern: /\./,
+      //   categories: ['BlockMarker']
+      // },
       {
         name: 'HashName',
         pattern: '#{{ident}}',
@@ -332,10 +388,10 @@ const tokens = () => ({
         name: 'DimensionNum',
         pattern: ['({{number}})({{unit}}|%)', groupCapture],
         start_chars_hint: [
-          '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'
+          '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '.'
         ],
         line_breaks: false,
-        categories: ['Dimension']
+        categories: ['Dimension', 'Selector']
       },
       {
         name: 'DimensionInt',
@@ -344,7 +400,7 @@ const tokens = () => ({
           '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'
         ],
         line_breaks: false,
-        categories: ['Dimension', 'Integer']
+        categories: ['Dimension', 'Integer', 'Selector']
       },
       {
         name: 'SignedDimensionNum',
@@ -384,30 +440,40 @@ const tokens = () => ({
         longer_alt: 'DimensionNum',
         categories: ['Number']
       },
+      /**
+       * This has to be parsed carefully because the plus / minus can
+       * continue into different token types.
+       */
       {
-        name: 'NthDimensionSigned',
-        pattern: /[+-]\d+n/
+        name: 'NthSignedDimension',
+        pattern: /[+-]\dn/,
+        longer_alt: 'SignedDimensionInt',
+        line_breaks: false,
+        categories: ['Dimension', 'Signed']
       },
       {
-        name: 'NthDimension',
-        pattern: /\d+n/
-      },
-      /** Special functions */
-      {
-        name: 'Calc',
-        pattern: /calc\(/i,
-        categories: ['BlockMarker', 'Function']
+        name: 'NthUnsignedDimension',
+        pattern: /\dn/,
+        longer_alt: 'DimensionNum',
+        line_breaks: false,
+        categories: ['Dimension']
       },
       {
-        name: 'Var',
-        pattern: /var\(/i,
-        categories: ['BlockMarker', 'Function']
+        name: 'NthSignedPlus',
+        pattern: /[+]n/,
+        line_breaks: false
       },
       {
-        name: 'Supports',
-        pattern: /supports\(/i,
-        categories: ['BlockMarker', 'Function']
+        name: 'NthIdent',
+        pattern: /-?n/,
+        longer_alt: 'PlainIdent',
+        line_breaks: false,
+        categories: ['Ident']
       },
+
+      /** Moved under 'n' parsing */
+      { name: 'Not', pattern: /not/, longer_alt: 'PlainIdent', categories: ['Ident'] },
+
       {
         name: 'WS',
         pattern: '{{ws}}',
@@ -466,6 +532,10 @@ const tokens = () => ({
          */
         pattern: '(?:[\\u0000-\\u0021\\u0023-\\u0026\\u002A-\\u005B\\u005D-\\uFFFF]|{{escape}})+'
       },
+      /**
+       * We need to be careful to think about this token from the URL mode
+       * when we're gating the RParen token for any reason. This is a separate token.
+       */
       {
         name: 'UrlEnd',
         pattern: /\)/,
@@ -479,7 +549,7 @@ const tokens = () => ({
   defaultMode: 'Default'
 }) as const satisfies RawModeConfig;
 
-type TokenModes = ReturnType<typeof tokens>['modes'];
+type TokenModes = ReturnType<typeof rawCssTokens>['modes'];
 
 export type TokenNameMap<T extends readonly any[]> = {
   [P in keyof T]: T[P] extends { name: string }
@@ -491,5 +561,7 @@ export type TokenNames<T extends readonly any[]> = TokenNameMap<T>[number];
 /** Join all modes to get strong indexing */
 export type CssTokenType = TokenNames<TokenModes[keyof TokenModes]>;
 
-export const cssTokens = () => tokens() as WritableDeep<ReturnType<typeof tokens>>;
-export const cssFragments = () => fragments();
+let fragments = rawCssFragments();
+let tokens = rawCssTokens();
+export const cssFragments = buildFragments(fragments);
+export const cssLexer = createLexerDefinition(fragments, tokens);

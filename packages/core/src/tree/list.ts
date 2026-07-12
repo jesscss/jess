@@ -1,7 +1,9 @@
-import { type Context } from '../context';
-import { defineType, Node } from './node';
-import { compareNodeArray } from './util/compare';
-import { type Operator } from './util/calculate';
+import { type Context } from '../context.js';
+import { defineType, Node } from './node.js';
+import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { compareNodeArray } from './util/compare.js';
+import { type Operator } from './util/calculate.js';
+import { LIST_ITEM_TRIM } from './util/regex.js';
 
 export type ListOptions = {
   /**
@@ -14,7 +16,7 @@ export type ListOptions = {
 };
 
 export interface List<T extends Node = Node> extends Node<T[], ListOptions> {
-  eval(context: Context): Promise<List<T>>;
+  eval(context: Context): Promise<this>;
 }
 
 /**
@@ -36,11 +38,38 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
     yield* this.value.entries();
   }
 
-  override toTrimmedString() {
+  private _valueOf: string | undefined;
+
+  override valueOf() {
+    return (this._valueOf ??= this.value.map(v => v.valueOf()).join(';'));
+  }
+
+  override toTrimmedString(options?: PrintOptions) {
+    options = getPrintOptions(options);
+    const w = options.writer!;
     let { sep = ',' } = this.options ?? {};
-    return this.value.map(
-      (v, i) => v.toString(0, i === 0 ? '' : ' ')).join(`${sep}`
-    );
+    let { value } = this;
+    let length = value.length;
+    const mark = w.mark();
+    if (value.length === 0) {
+      return '';
+    }
+    // Print first item as-is
+    let item = value[0]!;
+    let out = w.capture(() => item.toString(options));
+    w.add(out.replace(LIST_ITEM_TRIM, ''), item);
+    // Subsequent items: emit sep; capture next item to decide spacing precisely
+    for (let i = 1; i < length; i++) {
+      item = value[i]!;
+      if (sep === '/') {
+        w.add(' / ');
+      } else {
+        w.add(`${sep} `);
+      }
+      out = (w.capture(() => item.toString(options))).replace(LIST_ITEM_TRIM, '');
+      w.add(out);
+    }
+    return w.getSince(mark);
   }
 
   override compare(other: Node) {

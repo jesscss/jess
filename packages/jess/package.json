@@ -1,9 +1,23 @@
 {
   "name": "jess",
-  "version": "2.0.0-alpha.1",
+  "type": "module",
+  "version": "0.2.5",
   "description": "JavaScript Enhanced Style Sheets",
-  "main": "lib/index",
-  "types": "lib/index",
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./lib/index.js",
+      "types": "./lib/index.d.ts",
+      "source": "./src/index.ts"
+    },
+    "./*": {
+      "types": "./lib/*.d.ts",
+      "import": "./lib/*.js",
+      "source": "./src/*.ts"
+    },
+    "./package.json": "./package.json"
+  },
   "bin": "./bin/cli.js",
   "files": [
     "lib"
@@ -12,12 +26,14 @@
     "node": ">=16"
   },
   "dependencies": {
-    "@jesscss/core": "workspace:2.0.0-alpha.1",
-    "jess-plugin-less": "workspace:2.0.0-alpha.1",
-    "@jesscss/patch-css": "workspace:2.0.0-alpha.1",
+    "@jesscss/core": "workspace:*",
+    "@jesscss/patch-css": "workspace:*",
+    "@jesscss/plugin-less": "workspace:*",
+    "@jesscss/plugin-node-modules": "workspace:*",
     "chalk": "^5.2.0",
-    "cosmiconfig": "^8.3.6",
+    "linecraft": "0.2.5",
     "lodash-es": "^4.17.21",
+    "styles-config": "workspace:*",
     "yargs": "^17.7.1"
   },
   "scripts": {
@@ -39,9 +55,10 @@
   },
   "homepage": "https://github.com/jesscss/jess#readme",
   "devDependencies": {
+    "@jesscss/plugin-less-compat": "workspace:*",
     "@jesscss/shared": "workspace:*",
-    "@types/cosmiconfig": "^6.0.0",
-    "@types/lodash-es": "^4.17.8"
+    "@types/lodash-es": "^4.17.8",
+    "less": "^4.0.0"
   },
   "keywords": [
     "css",
