@@ -98,6 +98,21 @@ use Jess — but it's why the engine is being rebuilt rather than patched.
 Speed is a core design goal. In the alpha it's still being earned — the
 architecture is built for it, the optimization work is ongoing.
 
+### Built on Parséman
+
+The parse stage runs on **Parséman — the fastest general-purpose JavaScript
+parser** in [its published benchmarks](https://matthew-dean.github.io/parseman/guide/benchmarks),
+beating Peggy, Chevrotain, Nearley, Parsimmon, and Jison at every grammar and
+size measured (e.g. CSV 14.8 kB in **74 µs** vs Chevrotain's 1,045 µs). "General-purpose"
+is the honest claim — native `JSON.parse` is faster on JSON, but it's a
+specialized native built-in, not a general parser. This coexists with the
+alpha's honest speed story above: parsing is only ~17% of a Jess compile, so a
+fast parser under the hood is true *and* the whole compiler is still being
+optimized. What Jess builds on: composable functional combinators that compile
+to optimized parsers, in-repo spec-aligned grammars (CSS rules cite CSS Syntax
+Level 3 anchors), dual-use grammars that run strict (compiler) or
+error-recovering (tooling), and incremental `.edit()` reparse.
+
 ### Package layout
 
 Jess is a pnpm monorepo. The publishable packages:

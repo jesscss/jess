@@ -180,3 +180,50 @@ these as the opening line of each package README so the fan-out stays consistent
 - Every package README should carry the same alpha banner and link to the root
   README + issues, so a reader landing on npm gets the honest status regardless of
   which package they found.
+
+---
+
+## 4. The Parséman story (benchmark-backed)
+
+Jess is built on **Parséman**, and this is one place where hard numbers are
+**allowed and encouraged** — because the claim is about the *parser vs other
+parsers*, not the compiler's speed vs Less 4.x. It does **not** contradict the
+"no numbers on the front README, never claim a win over 4.x" rule in §1: those
+two claims are about different things and both must hold. `packages/css-parser/README.md`
+is the **single source of truth** for this wording and these figures — stay
+consistent with it.
+
+**Headline (with citation).** Jess is built on **Parséman — the fastest
+general-purpose JavaScript parser** in
+[its published benchmarks](https://matthew-dean.github.io/parseman/guide/benchmarks),
+beating Peggy, Chevrotain, Nearley, Parsimmon, and Jison at every grammar and
+size measured:
+
+| Grammar (input) | Parséman | Chevrotain | Peggy |
+| --- | --- | --- | --- |
+| CSV (14.8 kB) | **74 µs** | 1,045 µs | 430 µs |
+| JSON (12 kB) | **125 µs** | 312 µs | 472 µs |
+| GraphQL (7.8 kB) | **131 µs** | 342 µs | 373 µs |
+
+**Guardrail 1 — say "general-purpose."** The precise, defensible claim is
+"fastest *general-purpose* JS parser." Native `JSON.parse` (≈44 µs) beats it on
+JSON, but that's a specialized native built-in, not a general parser. Never
+shorten this to "fastest parser" / "fastest anything."
+
+**Guardrail 2 — it does not contradict the honest engine-perf line.** Parsing is
+only ~17% of the total cost of a Jess compile, so "fastest parser under the
+hood" is true *and* the whole compiler's speed is still being earned in alpha
+(§1's approved perf line). Make that coexistence explicit wherever the Parséman
+claim appears — a fast parser is not a claim that Jess out-compiles Less 4.x.
+
+**Engineering differentiators (all true, no benchmark needed).** These can be
+stated anywhere without citing numbers:
+
+- **Composable functional combinators** that compile to optimized parsers —
+  grammars are written as combinators, not hand-rolled state machines.
+- **In-repo, spec-aligned grammars.** The CSS grammar's rules cite
+  [CSS Syntax Level 3](https://www.w3.org/TR/css-syntax-3/) anchors; the spec
+  algorithms are the oracle.
+- **Dual-use grammars.** The *same* grammar runs strict (single-error, for the
+  compiler) or tolerant with error recovery (for tooling/editors).
+- **Incremental reparse.** `.edit()` re-parses only the region that changed.
