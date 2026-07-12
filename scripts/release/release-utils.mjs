@@ -159,10 +159,31 @@ export function getAlphaReleasePlan({
     packages.push(info);
   }
 
-  const versions = new Set(packages.map(pkg => pkg.manifest.version).filter(Boolean));
-  if (versions.size > 1) {
+  // Lockstep spans every publishable (non-private) workspace package, not just the
+  // allowlist: incrementAlphaVersions and the changesets `fixed: [["*"]]` group both
+  // bump all non-private packages together, so drift in a not-yet-allowlisted package
+  // (e.g. one about to be added to the set) must fail the publish before it lands.
+  const versionsByValue = new Map();
+  for (const [name, info] of byName) {
+    if (info.manifest.private === true) {
+      continue;
+    }
+    const version = info.manifest.version;
+    if (!version) {
+      continue;
+    }
+    if (!versionsByValue.has(version)) {
+      versionsByValue.set(version, []);
+    }
+    versionsByValue.get(version).push(name);
+  }
+  if (versionsByValue.size > 1) {
+    const detail = [...versionsByValue.entries()]
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+      .map(([version, names]) => `${version} (${names.sort().join(', ')})`)
+      .join('; ');
     errors.push(
-      `Lockstep version invariant failed in allowlist. Found versions: ${[...versions].sort().join(', ')}`
+      `Lockstep version invariant failed: all non-private workspace packages must share one version. Found: ${detail}`
     );
   }
 

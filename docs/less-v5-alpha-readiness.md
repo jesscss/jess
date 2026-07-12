@@ -3,7 +3,9 @@
 This is the living readiness tracker for the first Jess alpha focused on Less
 v5 compatibility. The publish mechanics live in
 [`releasing-alpha.md`](./releasing-alpha.md); this file tracks what must be true
-before that runbook should be used.
+before that runbook should be used. Features **deliberately deferred past this
+alpha** (config-lane URL/import handling, source maps, …) are sequenced in
+[`less-v5-release-plan.md`](./less-v5-release-plan.md).
 
 Performance baseline (measured 2026-07-11 under the controlled protocol — same
 worktree, rebuild-per-commit, warmup + N-median, correctness-verified output): on
