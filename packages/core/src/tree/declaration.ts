@@ -891,14 +891,17 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   }
 
   /**
-   * True when the authored value began on the line after `:` (its leading trivia
-   * run carries a newline). less.js preserves that break — e.g. a multi-line
-   * `grid-template-areas` keeps its first string on its own line.
+   * The authored indentation (leading-whitespace column) of the value's first
+   * token when that value began on the line after `:` — i.e. its leading trivia
+   * run carries a newline. less.js preserves that break AND its authored indent —
+   * e.g. a multi-line `grid-template-areas` keeps its first string on its own
+   * line at the same column as its continuation lines. Returns `undefined` when
+   * the value does not lead with a newline (so it stays inline after `:`).
    */
-  private valueLeadsWithNewline(value: DeclarationValue['value'], options: PrintOptions): boolean {
+  private valueLeadingNewlineIndent(value: DeclarationValue['value'], options: PrintOptions): number | undefined {
     const trivia = options.trivia ?? undefined;
     if (!trivia) {
-      return false;
+      return undefined;
     }
     // Descend to the value's first authored token: a List/Sequence carries the
     // whole declaration-value span, so its own span start would pick up the
@@ -920,13 +923,25 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       || start < declStart
       || start > declEnd
     ) {
-      return false;
+      return undefined;
     }
     const run = trivia.lookup(start, 'before');
-    return run !== undefined && /[\r\n]/.test(run.src.slice(run.start, run.end));
+    if (run === undefined) {
+      return undefined;
+    }
+    const runText = run.src.slice(run.start, run.end);
+    const lastBreak = Math.max(runText.lastIndexOf('\n'), runText.lastIndexOf('\r'));
+    if (lastBreak === -1) {
+      return undefined;
+    }
+    let indent = 0;
+    for (let i = lastBreak + 1; i < runText.length && isHorizontalWhitespace(runText.charCodeAt(i)); i++) {
+      indent++;
+    }
+    return indent;
   }
 
-  private formatNonCustomValue(valOut: string, _options: PrintOptions, leadNewline = false) {
+  private formatNonCustomValue(valOut: string, _options: PrintOptions, leadIndent?: number) {
     const trimmedEnd = valOut.replace(/\s+$/g, '');
     if (!trimmedEnd.includes('\n')) {
       return ` ${trimmedEnd.replace(/^[ \t]+/g, '')}`;
@@ -943,9 +958,19 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     const firstContent = firstLine.replace(/^[ \t]+/g, '').trimEnd();
 
     if (firstContent) {
-      // A value authored on the line after `:` keeps that break; its first token
-      // sits at the continuation indent (the leaf adds the property indent back).
-      out = leadNewline ? `\n${continuationIndent}${firstContent}` : ` ${firstContent}`;
+      if (leadIndent !== undefined) {
+        // A value authored on the line after `:` keeps that break AND its first
+        // token's authored indent, re-based relative to the property line and
+        // floored at the minimum continuation indent — the same treatment the
+        // subsequent continuation lines get (the leaf adds the property indent
+        // back). A fixed continuation indent here under-indented the first line
+        // whenever the authored continuation delta exceeded two spaces.
+        const relativeIndent = Math.max(0, leadIndent - propertyIndent);
+        const normalizedIndent = ' '.repeat(Math.max(continuationIndent.length, relativeIndent));
+        out = `\n${normalizedIndent}${firstContent}`;
+      } else {
+        out = ` ${firstContent}`;
+      }
     }
 
     for (const line of restLines) {
@@ -1214,12 +1239,12 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
         // `formatNonCustomValue`. Suppress the value node's boundary `before`
         // trivia so a relocated value (e.g. a variable lookup) cannot bleed its
         // definition-site leading newline into this declaration.
-        const leadNewline = this.valueLeadsWithNewline(value, options);
+        const leadIndent = this.valueLeadingNewlineIndent(value, options);
         const savedBoundary = savePrintState(options, ['suppressBoundaryTrivia']);
         options.suppressBoundaryTrivia = 'pre';
         this.writeDeclarationFieldValueSyntax(value, options);
         restorePrintState(options, savedBoundary);
-        w.replaceSince(valueMark, valOut => this.formatNonCustomValue(valOut, options, leadNewline), value);
+        w.replaceSince(valueMark, valOut => this.formatNonCustomValue(valOut, options, leadIndent), value);
       }
       if (important || importantText) {
         w.add(' ');
