@@ -1,6 +1,23 @@
 # @jesscss/css-parser
 
-A CSS parser built on [parseman](https://www.npmjs.com/package/parseman). It is the base grammar of the Jess compiler and the foundation the Less, SCSS, and Jess parsers extend (`compose([cssGrammar, …])`).
+A spec-aligned CSS parser, built on [parseman](https://www.npmjs.com/package/parseman) — the shared base grammar that the Less and SCSS grammars extend, and the real-AST foundation behind Jess's PostCSS-*like* transform-layer vision.
+
+> **Status: alpha.** Part of [Jess](https://github.com/jesscss/jess), which *is* Less.js v5. Rendering `.less` is the one surface shipping today; everything else is roadmap. Expect gaps and [report bugs](https://github.com/jesscss/jess/issues). Docs live at [jesscss.github.io](https://jesscss.github.io/).
+
+## What it is
+
+`cssGrammar` is a functional grammar over the CSS syntax spec: capitalized rules
+map to CSS productions (stylesheets, qualified rules, at-rules, selectors,
+declarations, values), and whitespace/comments are handled as trivia rather than
+tree nodes. Every other Jess grammar is *this* grammar plus a delta —
+`compose([cssGrammar, …])` — so the Less and SCSS parsers stay in lockstep with
+the CSS base instead of re-implementing it.
+
+Because the grammar builds a real, span-annotated tree and is decoupled from the
+tree it builds (see [Extending](#extending-with-your-own-builders)), it is also
+the intended seed for a future PostCSS-*like* layer of open, AST-level
+transforms. That layer isn't designed yet — treat it as direction, not a shipped
+plugin API.
 
 Two ways to use it:
 
@@ -126,4 +143,4 @@ result.value   // the root node your host returned
 
 ## Part of Jess
 
-This package is developed as part of [Jess](https://github.com/jesscss/jess). The core-coupled `.` entry integrates with `@jesscss/core`; the `./cst` and `./grammar` entries are usable on their own.
+This package is developed as part of [Jess](https://github.com/jesscss/jess), the Less.js v5 rewrite. The core-coupled `.` entry integrates with `@jesscss/core`; the `./cst` and `./grammar` entries are usable on their own. Licensed MIT.
