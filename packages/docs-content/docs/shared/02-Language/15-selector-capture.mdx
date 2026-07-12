@@ -53,35 +53,6 @@ $both: selector.parse('.card, .panel');
 
 </AudienceGate>
 
-## It's a value, not a target
-
-Capture is **value-position only**. It's what you assign, pass, or return — not what
-you extend. An extend target still takes a selector directly:
-
-<AudienceGate include={['less']}>
-
-```less
-.button:extend(.card) {}   // extend takes the selector directly, NOT *[.card]
-```
-
-</AudienceGate>
-
-<AudienceGate include={['jess']}>
-
-```less
-$extend .card;             // extend takes the selector directly, NOT *[.card]
-```
-
-</AudienceGate>
-
-<AudienceGate include={['sass']}>
-
-```scss
-@extend .card;             // extend takes the selector directly, not selector.parse('.card')
-```
-
-</AudienceGate>
-
 ## What it's for
 
 Once a selector is a value you can:
