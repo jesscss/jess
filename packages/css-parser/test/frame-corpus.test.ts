@@ -3,9 +3,11 @@
  *
  * The grammar models the two CSS "starting frames" structurally:
  *   • Frame 1 (stylesheet body) — qualified rules + at-rules, NO bare
- *     declarations, selectors carry NO `&`.
+ *     declarations.
  *   • Frame 2 (declaration list) — declarations interleaved with nested rules /
- *     at-rules, selectors DO include `&`.
+ *     at-rules.
+ * The frames differ ONLY in their body content model. The selector grammar is
+ * shared: `&` is valid in both frames (a top-level `&` is valid CSS = `:scope`).
  *
  * These tests pin the STRUCTURAL boundaries the frames enforce. Per the guiding
  * principle (parser structures + recovers; the language service judges severity),
@@ -21,9 +23,11 @@ function errs(src: string): number {
   return parseCssFn(src).errors.length;
 }
 
-describe('css frame corpus — structural & split', () => {
-  test('top-level `&` is REJECTED (frame 1 has no parent reference)', () => {
-    expect(errs('& { color: red }')).toBeGreaterThanOrEqual(1);
+describe('css frame corpus — the shared `&` selector', () => {
+  test('top-level `&` is VALID CSS (`:scope`) — parses clean', () => {
+    expect(errs('& { color: red }')).toBe(0);
+    expect(errs('& > .a {}')).toBe(0);
+    expect(errs('.a, & {}')).toBe(0);
   });
 
   test('nested `&` is ACCEPTED at any depth (frame 2)', () => {

@@ -68,15 +68,15 @@ export const cssGrammar = rules({ trivia: rw }, (g: any) => {
   // ── Root ──────────────────────────────────────────────────────────────────
   // Two structural FRAMES model the CSS "two starting points" (CSS Syntax):
   //   • Frame 1 — `stylesheetBody`: a run of qualified rules + at-rules, NO bare
-  //     declarations, and its selectors carry NO `&` (a top-level `&` has no
-  //     parent to reference). Used by the root Stylesheet, `@layer`, and the
+  //     declarations. Used by the root Stylesheet, `@layer`, and the
   //     conditional-group at-rules when NOT nested.
   //   • Frame 2 — `declarationList`: declarations INTERLEAVED with nested rules
-  //     and at-rules (CSS Nesting); its selectors DO include `&`. Used by every
-  //     style rule's `{ }` and by conditional-group at-rules when nested.
-  // The `&` split is purely STRUCTURAL (a duplicated selector chain), never a
-  // context gate — top-level `&` is rejected and nested `&` accepted with O(1)
-  // dispatch and no `withCtx`, which keeps the grammar compose-safe.
+  //     and at-rules (CSS Nesting). Used by every style rule's `{ }` and by
+  //     conditional-group at-rules when nested.
+  // The frames differ ONLY in their BODY content model (bare declarations). The
+  // selector grammar is SHARED: `&` is valid in both frames, because a top-level
+  // `&` is valid CSS — it resolves to `:scope` (CSS Nesting / MDN). SCSS/Jess
+  // override the selector/body rules to keep rejecting a top-level `&`.
   // No catch-all arm: input that matches no rule simply stops `many`, leaving
   // unconsumed input the driver reports as one syntax error; required closers are
   // wrapped in expect() so a missing one is reported (and recovered) by parseman.
@@ -98,22 +98,16 @@ export const cssGrammar = rules({ trivia: rw }, (g: any) => {
 
   // ── Rulesets ───────────────────────────────────────────────────────────────
   /**
-   * A frame-1 qualified rule: a selector list (NO `&`) + a frame-2 body. A
-   * top-level rule's `{ }` is a nested context, so its body is `declarationList`.
+   * A qualified rule: a selector list + a frame-2 body. Used both at the top
+   * level and nested — a top-level `&` is valid CSS (`:scope`), so the selector
+   * grammar is shared and no separate nested variant is needed. A rule's `{ }` is
+   * a nesting context, so its body is `declarationList`.
    * @see https://www.w3.org/TR/css-syntax-3/#qualified-rule
    */
   const Ruleset = node(
     sequence(g.SelectorList, literal('{'), g.declarationList, expect(literal('}'), '}')));
-  /**
-   * A frame-2 (nested) qualified rule: a `-Nested` selector list (WITH `&`) + a
-   * frame-2 body. Built as `Ruleset` so the AST/CST is identical to a top-level
-   * rule — only the selector chain differs.
-   * @see https://www.w3.org/TR/css-nesting-1/#syntax
-   */
-  const NestedRuleset = node('Ruleset',
-    sequence(g.SelectorListNested, literal('{'), g.declarationList, expect(literal('}'), '}')));
 
-  // ── Selectors (frame 1 — no `&`) ─────────────────────────────────────────────
+  // ── Selectors ────────────────────────────────────────────────────────────────
   /**
    * A comma-separated list of complex selectors.
    * @see https://www.w3.org/TR/selectors-4/#selector-list
@@ -139,42 +133,14 @@ export const cssGrammar = rules({ trivia: rw }, (g: any) => {
    */
   const BasicSelector = node(basicSel);
   /**
-   * Frame-1 simple selector — attribute / pseudo / basic. NO `&`: the nesting
-   * selector is only meaningful inside a rule (frame 2).
+   * A simple selector — attribute / pseudo / `&` / basic. `&` is the CSS nesting
+   * selector (the parent reference); at the top level it resolves to `:scope`, so
+   * it is valid in every frame.
    * @see https://www.w3.org/TR/selectors-4/#simple
-   */
-  const simpleSelector = choice(g.AttributeSelector, g.PseudoSelector, g.BasicSelector);
-
-  // ── Selectors (frame 2 — the `-Nested` chain, WITH `&`) ──────────────────────
-  // Structural duplicate of the frame-1 chain whose only difference is the extra
-  // `&` arm in `simpleSelectorNested`. Each level is built under the SAME node
-  // type as its frame-1 twin, so a nested rule's CST is indistinguishable from a
-  // top-level one. This is what makes `&` acceptance depth-based (structural)
-  // instead of gated.
-  /**
-   * Frame-2 simple selector — attribute / pseudo / `&` / basic. `&` is the CSS
-   * nesting selector (the parent reference), valid only inside a rule body.
    * @see https://www.w3.org/TR/css-nesting-1/#nest-selector
+   * @see https://developer.mozilla.org/en-US/docs/Web/CSS/Nesting_selector
    */
-  const simpleSelectorNested = choice(g.AttributeSelector, g.PseudoSelector, literal('&'), g.BasicSelector);
-  /**
-   * Frame-2 compound selector (built as `CompoundSelector`).
-   * @see https://www.w3.org/TR/selectors-4/#compound
-   */
-  const CompoundSelectorNested = node('CompoundSelector',
-    oneOrMore(g.simpleSelectorNested));
-  /**
-   * Frame-2 complex selector (built as `ComplexSelector`).
-   * @see https://www.w3.org/TR/selectors-4/#complex
-   */
-  const ComplexSelectorNested = node('ComplexSelector',
-    sequence(g.CompoundSelectorNested, many(sequence(optional(combinator), g.CompoundSelectorNested))));
-  /**
-   * Frame-2 selector list (built as `SelectorList`).
-   * @see https://www.w3.org/TR/selectors-4/#selector-list
-   */
-  const SelectorListNested = node('SelectorList',
-    sequence(g.ComplexSelectorNested, many(sequence(literal(','), g.ComplexSelectorNested))));
+  const simpleSelector = choice(g.AttributeSelector, g.PseudoSelector, literal('&'), g.BasicSelector);
 
   /**
    * An attribute selector `[name]` / `[name op value mod]`.
@@ -195,29 +161,30 @@ export const cssGrammar = rules({ trivia: rw }, (g: any) => {
   /**
    * Pseudo argument. `:nth-child(An+B of S)` — the `of <selector-list>` form:
    * without consuming the `of S`, `nth` would match just `An+B` and the choice
-   * would commit, leaving the outer `)` to fail. Selector arguments use the
-   * frame-2 (`-Nested`) list so `&` is accepted inside `:is(&)` / `:not(&)`
-   * (functional pseudos are nesting contexts). The last arm scans to `)` for
-   * arbitrary args, skipping balanced ()/[], strings, and comments so an inner
-   * `)` doesn't close it early.
+   * would commit, leaving the outer `)` to fail. Selector arguments use the same
+   * `SelectorList`, which accepts `&` inside `:is(&)` / `:not(&)`. The last arm
+   * scans to `)` for arbitrary args, skipping balanced ()/[], strings, and
+   * comments so an inner `)` doesn't close it early.
    * @see https://www.w3.org/TR/selectors-4/#the-nth-child-pseudo
    */
   const pseudoArg = choice(
-    sequence(nth, optional(sequence(regex(/of(?![-\w])/i), g.SelectorListNested))),
-    g.SelectorListNested,
+    sequence(nth, optional(sequence(regex(/of(?![-\w])/i), g.SelectorList))),
+    g.SelectorList,
     scanTo(literal(')'), { skip: [balanced('(', ')'), balanced('[', ']'), singleStr, doubleStr, comment] })
   );
 
   // ── Declarations ─────────────────────────────────────────────────────────
   /**
    * Frame 2 — a rule body. With CSS Nesting it interleaves declarations with
-   * nested rulesets (`NestedRuleset`, `&`-aware) and nested at-rules, plus empty
-   * `;` statements. The `&`-aware `NestedRuleset` is what distinguishes this from
-   * frame 1. Less/Scss/Jess override this rule wholesale with their own body.
+   * nested rulesets (`Ruleset`) and nested at-rules, plus empty `;` statements.
+   * What distinguishes this from frame 1 is that it admits BARE declarations; the
+   * selector grammar (including `&`) is now shared, so the `&`-aware distinction
+   * is gone — frames differ only in body content. Less/Scss/Jess override this
+   * rule wholesale with their own body.
    * @see https://www.w3.org/TR/css-nesting-1/#syntax
    */
   const declarationList = many(choice(
-    g.QueryAtRuleBlock, g.AtRuleBlock, g.AtRuleStatement, g.UnknownAtRuleBlock, g.Declaration, g.CustomDeclaration, g.NestedRuleset, literal(';')
+    g.QueryAtRuleBlock, g.AtRuleBlock, g.AtRuleStatement, g.UnknownAtRuleBlock, g.Declaration, g.CustomDeclaration, g.Ruleset, literal(';')
   ));
 
   /**
@@ -656,9 +623,8 @@ export const cssGrammar = rules({ trivia: rw }, (g: any) => {
     rw,
     Quoted, Num, Color, Paren, CalcCall,
     QueryFeature, QueryFunction, QueryInParens, QueryCondition, queryPrelude,
-    Stylesheet, stylesheetBody, Ruleset, NestedRuleset,
+    Stylesheet, stylesheetBody, Ruleset,
     SelectorList, ComplexSelector, CompoundSelector, BasicSelector, simpleSelector,
-    SelectorListNested, ComplexSelectorNested, CompoundSelectorNested, simpleSelectorNested,
     AttributeSelector, PseudoSelector, pseudoArg,
     Declaration, CustomDeclaration, declarationList, descriptorBody,
     keyframeSelector, KeyframeSelectorList, KeyframeBlock, keyframesBody,
