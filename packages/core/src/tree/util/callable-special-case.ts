@@ -63,16 +63,26 @@ export async function evaluateCallableSpecialCaseCandidate({
     // arm). `false` (non-simple body) falls through to the eval-materialize below
     // (byte-identical; the eval arm dies in P4). Off the spine (`sink === undefined`)
     // this is skipped — the eval arm is unchanged.
-    const surfaceSink = context.spineMixinSurfaceSink;
-    if (surfaceSink && rulesetGuard === undefined && surfaceSink(rules, sourceRules, false)) {
-      return { handled: true };
-    }
     // A detached ruleset called from a variable has no tree parent (neither the
     // caller nor the candidate is parented); the call-site Rules is its natural
     // placement parent — same fallback the non-Ruleset branch below uses.
     const callParent = (caller?.parent as Node | undefined) ?? candidate.parent ?? callSiteRules;
     if (!callParent) {
       throw new TypeError('Callable special-case setup requires a caller, candidate, or call-site parent');
+    }
+    const surfaceSink = context.spineMixinSurfaceSink;
+    if (surfaceSink && rulesetGuard === undefined) {
+      // Parent the bound surface BEFORE consulting the sink — the Mixin-def arm
+      // (`callable-candidate-output.ts:80`) adopts unconditionally and this
+      // ruleset-as-mixin arm must match: the fold's decl resolution walks the
+      // surface's `.parent` chain for free-var/closure lookup, so an unparented
+      // surface would resolve against the wrong (or no) enclosing scope. `adopt`
+      // only re-points the parent pointer (idempotent), so the eval fall-through
+      // below re-adopting is harmless.
+      callParent.adopt(rules);
+      if (surfaceSink(rules, sourceRules, false)) {
+        return { handled: true };
+      }
     }
     let needsCallerPlacementDuringEval = false;
     for (let i = 0; i < sourceRules.rules.length; i++) {

@@ -4913,6 +4913,16 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         queueTopImport(context, n as unknown as AtRuleStatement);
         return;
       }
+      // A root `@charset "utf-8";` (role-'charset' `Any`) HOISTS to document top on
+      // the spine, mirroring eval (`prepareRegistration` sets `currentCharset` + the
+      // depth-0 `_toDocumentString` emits it first). Register the FIRST as
+      // `currentCharset` and drop it here — `renderRootViaSpine` prepends the charset
+      // prelude ahead of imports. A later duplicate charset registers nothing and
+      // emits nothing (byte-identical to eval's single hoisted charset).
+      if (mode === 'render' && context && options.spineMode && isNode(n, N.Any) && n.role === 'charset') {
+        context.currentCharset ??= n;
+        return;
+      }
       // LOOP fold at the ROOT / IMPORT-SPLICE emitter (cutover LOOP increment 1,
       // ROOT parity). A `$for`/`each` (`For`) node reaching THIS emitter — a root-
       // direct loop, or a loop inside an imported body spliced here via

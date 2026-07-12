@@ -308,6 +308,36 @@ describe('spine PRODUCTION-path ratchet (P2 wire-in)', () => {
     }
   });
 
+  it('CHARSET: the FULL `charsets` fixture FOLDS through the spine, hoisting the root `@charset` to document top (mid-body + import-imported charset)', async () => {
+    // `charsets.less` = `@charset "UTF-8"; @import "import/import-charset-test";` where the
+    // imported file carries `@charset "ISO-8859-1"`. A root `@charset` (role-'charset' Any)
+    // used to make the whole root INELIGIBLE (`isSimpleSpineLeaf` rejected it). It now folds:
+    // `wireSpineCharset` pins the root's OWN first charset (source order — UTF-8) BEFORE
+    // imports are wired, the emit skips it inline (`Rules._emitRulesBody` /
+    // `processNodeInner`), and `renderRootViaSpine` prepends it as the document prelude
+    // (`@charset` FIRST). The imported ISO charset does NOT win (the `??=` keeps the root's).
+    // Byte-identical to the expected `charsets.css` (`@charset "UTF-8";`), `Rules.derive`
+    // UNCALLED. A regression that drops the charset, emits it mid-body, or lets the imported
+    // charset win trips this.
+    const src = path.join(testDataRoot, 'tests-unit/charsets/charsets.less');
+    const expected = readFileSync(path.join(testDataRoot, 'tests-unit/charsets/charsets.css'), 'utf8');
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const css = (await makeCompiler().renderToResult(src)).css;
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+      expect(deriveCalls).toBe(0); // no eval two-walk
+      expect(css.trim()).toBe(expected.trim()); // byte-identical: @charset "UTF-8"; hoisted first
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
+  });
+
   it('P4 #4a: the FULL `extend-selector` fixture FOLDS via the spine (expanded-mode `&`-crossing hoist landed)', async () => {
     // #4a LANDED: the last extend-selector shape — the EXPANDED-MODE `&`-crossing hoist
     // (`.header .header-nav` gains `.footer .footer-nav`, `.issue-2586-somepage .content` gains its
@@ -3031,5 +3061,64 @@ describe('spine PRODUCTION-path ratchet (P2 wire-in)', () => {
       Rules.prototype.derive = originalDerive;
       fs.rmSync(dir, { recursive: true, force: true });
     }
+  });
+
+  it('BENCHMARK: `benchmark.less` is spine-ENGAGED and byte-identical to the eval baseline (merge-alongside-mixin gate lifted + charset-on-abort fixed)', async () => {
+    // The merge-alongside-mixin cutover lock. `benchmark.less` was kept OFF the spine by
+    // the `bodyHasMixinCall && bodyHasDirectMergeDecl` reject on its 3 merge-alongside-mixin
+    // rulesets (`.shadow-elevated`/`.shadow-floating`/`.transform-combo`). That reject is
+    // LIFTED (the common no-`!important` shape folds; the `!important` sub-case defers via
+    // `treeHasImportantMergeAlongsideMixin`), so the root is now SPINE-ELIGIBLE and the render
+    // ENGAGES the spine (`spineRenderCounter` moves).
+    //
+    // benchmark's extend topology over its `@import (reference)` bodies is NOT yet
+    // spine-foldable, so the pass ABORTS to eval at the post-import topology re-gate
+    // (`isSpineExtendTopology`) — a CLEAN pre-first-byte fallback. This test therefore locks
+    // BYTE-IDENTITY of that spine-attempt-then-abort path (NOT a full fold): in particular the
+    // charset-on-abort fix — benchmark's 3 mid-body root `@charset "utf-8";` HOIST to a single
+    // document-top `@charset`, which the abort path formerly DROPPED (the eval re-render sees the
+    // registration-prepared `Nil` charset placeholders and `currentCharset` had been rolled back).
+    // A regression that re-drops the charset, or diverges the abort output from eval, trips this.
+    // (A future extend-over-reference-import fold would flip this from abort to a true fold; the
+    // byte-identity assertion still holds.)
+    const benchFile = path.resolve(path.dirname(new URL(import.meta.url).pathname), '../benchmark/benchmark.less');
+    const source = readFileSync(benchFile, 'utf8');
+    // The forced-eval baseline registers a NO-OP pre-render visitor plugin: the Compiler sets
+    // `preSerializeRoot` only when a visitor exists, and the spine gate requires `!preSerializeRoot`
+    // — so this render never engages the spine, yielding the pure eval output for the byte compare.
+    const makeConfig = (forceEval: boolean) => ({
+      compile: {
+        mathMode: 'always',
+        searchPaths: [path.dirname(benchFile)],
+        plugins: forceEval
+          ? [lessPlugin(), lessCompatPlugin({}), { name: 'force-eval-visitor', preRenderVisitor: {} }]
+          : [lessPlugin(), lessCompatPlugin({})]
+      },
+      output: {},
+      language: {}
+    });
+    const render = async (forceEval: boolean): Promise<string> => {
+      const config = makeConfig(forceEval);
+      return (await new Compiler(config).renderToResult(
+        { source, filePath: benchFile, language: 'less', extension: '.less' },
+        config
+      )).css;
+    };
+
+    // 1) Production render — the spine ENGAGES (eligible root reaches `renderRootViaSpine`).
+    const before = spineRenderCounter.rootRenders;
+    const spineCss = await render(false);
+    expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine engaged
+
+    // 2) Pure eval baseline (spine gate disabled by the no-op visitor).
+    const beforeEval = spineRenderCounter.rootRenders;
+    const evalCss = await render(true);
+    expect(spineRenderCounter.rootRenders).toBe(beforeEval); // spine did NOT engage → true eval
+
+    // 3) Byte-identity: the spine-attempt output equals the pure eval output exactly.
+    expect(spineCss).toBe(evalCss);
+    // 4) The hoisted charset survived (the charset-on-abort regression guard).
+    expect(spineCss.startsWith('@charset "utf-8";\n')).toBe(true);
+    expect(spineCss.indexOf('@charset')).toBe(spineCss.lastIndexOf('@charset')); // exactly one, hoisted
   });
 });

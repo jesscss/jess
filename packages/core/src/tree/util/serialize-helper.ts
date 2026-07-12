@@ -1512,6 +1512,17 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
         if (options.spineMergePlan?.get(n)?.kind === 'suppress' && !hasPrintableTrivia(n, options)) {
           return;
         }
+        // A `@charset "utf-8";` (role-'charset' `Any`) HOISTS to document top — it
+        // never emits inline. Register the first as `currentCharset` (prepended by
+        // `renderRootViaSpine`) and skip it, mirroring eval's charset→Nil hoist. In
+        // practice a charset is a root child; handled here too so a nested body that
+        // somehow carries one does not emit it mid-block.
+        if (isNode(n, N.Any) && n.role === 'charset') {
+          if (options.context && !options.context.currentCharset) {
+            options.context.currentCharset = n;
+          }
+          return;
+        }
         if (isNode(n, N.Comment) && originatesFromReferenceImport(n) && !originatesFromCall(n)) {
           return;
         }

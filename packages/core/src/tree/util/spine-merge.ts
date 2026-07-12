@@ -120,13 +120,15 @@ export function planBodyMerges(
 export type SpineMergeEntry = {
   node: Node;
   /**
-   * The merge decl's OWNER scope — the spliced mixin surface it came from, or
-   * `undefined` for a decl authored directly in the caller body. Two merge decls
-   * COMPOSE (comma/space combine) only when they share the same owner; a decl from
-   * a DIFFERENT owner (a distinct mixin body, or a mixin body vs the caller) does
-   * not accumulate across the boundary — the later one SUPERSEDES.
+   * VESTIGIAL (retained for caller-population compatibility; no longer read).
+   * Formerly the merge decl's owner scope, used to gate cross-owner accumulation.
+   * That gate was WRONG per the oracle (see `planEntrySequenceMerges`): Less
+   * property-merge combines EVERY same-property merge-flagged decl in a ruleset's
+   * output regardless of which mixin body injected it, so there is no owner
+   * boundary. IOU: drop this field and the `mergeOwner` plumbing in
+   * `serialize-helper.ts` that populates it.
    */
-  ownerKey: object | undefined;
+  ownerKey?: object | undefined;
 };
 
 /**
@@ -135,15 +137,16 @@ export type SpineMergeEntry = {
  * expansion-contributed merge decl participates in the coalesce (it never entered
  * the pre-expansion `planBodyMerges` over `node.rules`).
  *
- * Reproduces eval's cross-scope merge boundary. A `+:`/`+_:` chain accumulates
- * (comma/space combine) only among decls of the SAME OWNER (same spliced mixin
- * surface, or all authored in the caller body). When the next same-property merge
- * decl comes from a DIFFERENT owner, it does NOT combine with the accumulated
- * value — it SUPERSEDES (the prior anchor is suppressed, its value dropped) and
- * starts a fresh chain. This matches eval: two merges inside one mixin body
- * coalesce (`transform: r, s`), but two SEPARATE mixin bodies each contributing a
- * `transform+:` are last-wins (`transform: s`), because a mixin-body `+:` only sees
- * prior contributions within its own body.
+ * Add-pull-prior semantics (the Less oracle). A `+:`/`+_:` merge decl combines with
+ * EVERY prior same-property merge decl in source order — the mixin-injected decls
+ * AND the caller-body decls alike — because Less resolves property-merge at the
+ * OUTPUT ruleset level: all same-property merge-flagged declarations of a ruleset
+ * combine, independent of which mixin body contributed them. A plain `:` decl of the
+ * property RESETS the run (it breaks the merge chain). Verified against the upstream
+ * `tests-unit/merge/merge.less` oracle: `.test-rule1 { .first-transform();
+ * .second-transform(); }` → `transform: rotate(90deg), skew(30deg), scale(2, 4)` —
+ * two DISTINCT mixin bodies combine, they are NOT last-wins. The former per-owner
+ * boundary (distinct mixins supersede) diverged from this oracle and is removed.
  *
  * Empty plan (returns `undefined`) when the sequence has no merge decl — the
  * common case allocates nothing.
@@ -166,12 +169,11 @@ export function planEntrySequenceMerges(
   }
 
   const plan: SpineMergePlan = new WeakMap();
-  // Per property name: the anchor decl so far, its accumulated combined value, and
-  // the OWNER the accumulated chain belongs to (a chain only accumulates within one
-  // owner; a different owner supersedes — see the doc comment).
+  // Per property name: the anchor decl so far and its accumulated combined value.
+  // A merge run accumulates across ALL contributors (mixin-injected + caller-body);
+  // a plain `:` decl of the property resets it.
   const anchorByName = new Map<string, Node>();
   const accumulatedByName = new Map<string, Node>();
-  const ownerByName = new Map<string, object | undefined>();
 
   const step = (index: number): MaybePromise<SpineMergePlan> => {
     for (let i = index; i < children.length; i++) {
@@ -186,17 +188,16 @@ export function planEntrySequenceMerges(
         // A plain `:` (or other) declaration of this property ends any merge run.
         anchorByName.delete(name);
         accumulatedByName.delete(name);
-        ownerByName.delete(name);
         continue;
       }
       const resolved = resolveValue(child);
       if (isThenable(resolved)) {
         return resolved.then((value: Node | undefined) => {
-          applyMerge(child, name, assign, entry.ownerKey, value, plan, anchorByName, accumulatedByName, ownerByName);
+          applyMerge(child, name, assign, value, plan, anchorByName, accumulatedByName);
           return step(i + 1);
         });
       }
-      applyMerge(child, name, assign, entry.ownerKey, resolved, plan, anchorByName, accumulatedByName, ownerByName);
+      applyMerge(child, name, assign, resolved, plan, anchorByName, accumulatedByName);
     }
     return plan;
   };
@@ -207,29 +208,23 @@ function applyMerge(
   decl: Node,
   name: string,
   assign: string,
-  ownerKey: object | undefined,
   value: Node | undefined,
   plan: SpineMergePlan,
   anchorByName: Map<string, Node>,
-  accumulatedByName: Map<string, Node>,
-  ownerByName: Map<string, object | undefined>
+  accumulatedByName: Map<string, Node>
 ): void {
   const resolvedValue = value ?? new Nil();
   const priorAnchor = anchorByName.get(name);
-  // A merge chain accumulates only within ONE owner. When this occurrence belongs
-  // to a DIFFERENT owner than the accumulated chain (a distinct mixin surface, or
-  // mixin↔caller), it does NOT combine across the boundary — it supersedes the
-  // prior anchor (value dropped) and starts a fresh chain. Same owner combines.
-  const sameOwner = priorAnchor !== undefined && ownerByName.get(name) === ownerKey;
-  const combined = sameOwner
-    ? combineMergeValue(accumulatedByName.get(name), resolvedValue, assign)
-    : resolvedValue;
+  // Add-pull-prior: this occurrence combines with the accumulated same-property
+  // merge value (whatever prior merge decls — mixin-injected or caller-body —
+  // contributed), matching the Less oracle. No owner boundary.
+  const combined = combineMergeValue(accumulatedByName.get(name), resolvedValue, assign);
   if (priorAnchor) {
-    // The prior anchor is superseded by this later occurrence — suppress it.
+    // The prior anchor is superseded as the emit position by this later occurrence
+    // (jess anchors the combined value at the LAST occurrence) — suppress it.
     plan.set(priorAnchor, { kind: 'suppress' });
   }
   plan.set(decl, { kind: 'anchor', value: combined });
   anchorByName.set(name, decl);
   accumulatedByName.set(name, combined);
-  ownerByName.set(name, ownerKey);
 }
