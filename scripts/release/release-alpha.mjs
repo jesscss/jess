@@ -25,6 +25,9 @@ function parseArgs(argv) {
     // On an already-published manifest version: default is to error; --bump
     // opts into auto-incrementing to the next unused -alpha.N instead.
     if (arg === '--bump') options.bump = true;
+    // GATED: also move the npm `latest` dist-tag to the published version
+    // (forwarded to publish-alpha via ALPHA_SET_LATEST). OFF by default.
+    if (arg === '--set-latest') options.setLatest = true;
   }
   return options;
 }
@@ -105,19 +108,84 @@ function tagExists(rootDir, tag) {
   return result.status === 0;
 }
 
-function smokeCheck(plan, expectedVersion) {
-  console.log('\nNPM alpha tag smoke check:');
+/** Synchronous sleep (no extra deps) for the smoke-check propagation backoff. */
+function sleepSync(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+/** Read the version npm currently resolves for `pkgName@tag`, or null. */
+function viewTagVersion(pkgName, tag) {
+  const result = spawnSync('npm', ['view', `${pkgName}@${tag}`, 'version', '--json'], {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+    shell: process.platform === 'win32'
+  });
+  if (result.status !== 0) {
+    return null;
+  }
+  const raw = (result.stdout ?? '').trim();
+  if (!raw) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(raw);
+    if (typeof parsed === 'string') return parsed;
+    if (Array.isArray(parsed)) return parsed.at(-1) ?? null;
+    return null;
+  } catch {
+    return raw;
+  }
+}
+
+/**
+ * Smoke check that TOLERATES registry propagation lag. Newly-created scoped
+ * packages (and fresh versions) can take tens of seconds to become queryable by
+ * `npm view`, so a single immediate query false-reports a successful publish as
+ * a missing/E404 package. This polls each not-yet-visible package with backoff
+ * before deciding, and only warns about packages still not showing the expected
+ * version after the full window.
+ */
+function smokeCheck(plan, expectedVersion, { attempts = 6, delayMs = 10000 } = {}) {
+  console.log('\nNPM alpha tag smoke check (tolerating registry propagation lag)...');
+  const lastSeen = new Map(plan.allowlist.map(name => [name, '(not found)']));
+  const confirmed = new Set();
+
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    for (const pkgName of plan.allowlist) {
+      if (confirmed.has(pkgName)) continue;
+      const seen = viewTagVersion(pkgName, 'alpha');
+      lastSeen.set(pkgName, seen ?? '(not found)');
+      if (seen === expectedVersion) confirmed.add(pkgName);
+    }
+    const remaining = plan.allowlist.filter(name => !confirmed.has(name));
+    if (remaining.length === 0) break;
+    if (attempt < attempts) {
+      console.log(
+        `  attempt ${attempt}/${attempts}: ${remaining.length} package(s) not yet showing `
+        + `${expectedVersion}; waiting ${delayMs / 1000}s for propagation...`
+      );
+      sleepSync(delayMs);
+    }
+  }
+
   for (const pkgName of plan.allowlist) {
-    const result = spawnSync('npm', ['view', `${pkgName}@alpha`, 'version', '--json'], {
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'pipe'],
-      shell: process.platform === 'win32'
-    });
-    const raw = (result.stdout ?? '').trim();
-    const displayed = raw || '(not found)';
-    console.log(`- ${pkgName}@alpha => ${displayed}`);
+    const seen = lastSeen.get(pkgName);
+    const good = confirmed.has(pkgName);
+    console.log(`- ${pkgName}@alpha => ${seen}${good ? '' : `  (expected ${expectedVersion})`}`);
   }
   console.log(`\nExpected published version: ${expectedVersion}`);
+
+  const stillMissing = plan.allowlist.filter(name => !confirmed.has(name));
+  if (stillMissing.length > 0) {
+    console.warn(
+      `\nWarning: ${stillMissing.length} package(s) did not show ${expectedVersion} on the 'alpha' `
+      + `tag within ${(attempts * delayMs) / 1000}s: ${stillMissing.join(', ')}.\n`
+      + `Newly-created packages can lag on first publish. This is NOT proof of a failed publish; `
+      + `re-check with 'npm view <pkg>@alpha version', or re-run 'pnpm run release:alpha:publish' `
+      + `(already-published versions are skipped).`
+    );
+  }
+  return stillMissing.length === 0;
 }
 
 const rootDir = process.cwd();
@@ -192,7 +260,9 @@ if (options.dryRun) {
   console.log(`\nDry-run summary:`);
   console.log(`- Resolved alpha version: ${version}`);
   console.log(`- Planned tag: ${tag}`);
-  run('node', [path.join(rootDir, 'scripts/release/publish-alpha.mjs'), '--dry-run', '--tag', 'alpha'], rootDir);
+  const dryPublishArgs = [path.join(rootDir, 'scripts/release/publish-alpha.mjs'), '--dry-run', '--tag', 'alpha'];
+  if (options.setLatest) dryPublishArgs.push('--set-latest');
+  run('node', dryPublishArgs, rootDir);
   process.exit(0);
 }
 
@@ -221,6 +291,15 @@ if (!options.noPush) {
 }
 
 if (!options.skipPublish) {
+  // Forward the gated latest-tag opt-in across the `pnpm run` boundary via env
+  // (inherited by the child publish-alpha process).
+  if (options.setLatest) {
+    process.env.ALPHA_SET_LATEST = '1';
+    console.log(
+      `\nNote: --set-latest is ON; the npm 'latest' dist-tag will be moved to ${version} `
+      + `for every allowlisted package (relaxes the "non-alpha tags only from main" policy).`
+    );
+  }
   run('pnpm', ['run', 'release:alpha:publish'], rootDir);
   smokeCheck(plan, version);
 } else {

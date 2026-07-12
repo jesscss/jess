@@ -15,20 +15,32 @@ The alpha stream publishes only allowlisted packages in `scripts/release/alpha-a
 - `@jesscss/core`
 - `@jesscss/css-parser`
 - `@jesscss/less-parser`
+- `@jesscss/scss-parser`
 - `@jesscss/fns`
 - `styles-config`
 - `@jesscss/style-resolver`
 - `@jesscss/plugin-less`
+- `@jesscss/plugin-scss`
 - `@jesscss/plugin-node-modules`
 - `@jesscss/plugin-js`
 - `@jesscss/plugin-less-compat`
 - `@jesscss/patch-css`
 - `jess`
 
+> **`@jesscss/scss-parser` + `@jesscss/plugin-scss` were promoted into the alpha
+> set** (owner decision, commit `d939fb3`): `jess` statically imports
+> `plugin-scss` and registers it on every render, and `plugin-scss` depends on
+> `scss-parser`, so both must publish for `jess` to resolve. They are live on npm
+> at the current alpha. SCSS remains a non-goal for the alpha's *feature* scope —
+> these are shipped only to satisfy `jess`'s dependency graph. If the owner
+> prefers to keep SCSS entirely out of the published set, the alternative is to
+> make `jess`'s `plugin-scss` dependency non-blocking (optional/peer, or a
+> lazy/guarded registration) and drop both from the allowlist; that is a separate
+> product decision and is NOT assumed here.
+
 Blocked (do not publish in alpha yet):
 
-- `@jesscss/plugin-scss` (runtime dependencies on `@jesscss/style-resolver` and `@jesscss/scss-parser`)
-- `@jesscss/parser` (runtime dependency on `@jesscss/scss-parser`)
+- `@jesscss/parser` (runtime dependency on `@jesscss/scss-parser`; not needed by the alpha `jess`)
 - `rollup-plugin-jess` (depends on `jess`)
 
 ## Branch and version policy
@@ -40,6 +52,39 @@ Blocked (do not publish in alpha yet):
 - Hard guardrails:
   - `--tag alpha` publishes are allowed only from `alpha`.
   - non-alpha tags (future stable releases) are allowed only from `main`.
+
+### Moving the `latest` dist-tag during the alpha phase (gated, off by default)
+
+By default the alpha flow only touches the `alpha` dist-tag, so a package's
+`latest` tag can drift far behind (e.g. `jess@latest` stuck on an old `1.0.8`
+build while `jess@alpha` is `2.0.0-alpha.N`). During this pre-stable phase that
+means `npm install jess` pulls an ancient build, and newly-created packages —
+which npm auto-tags `latest` on first publish — end up inconsistent with the
+rest of the set.
+
+To also move `latest` to the just-published alpha version, opt in explicitly:
+
+```bash
+pnpm run release:alpha -- --set-latest
+# or, publish step only:
+node scripts/release/publish-alpha.mjs --tag alpha --set-latest
+# or via env (CI): ALPHA_SET_LATEST=1
+```
+
+This is **off by default and gated behind the flag on purpose**: it deliberately
+relaxes the "non-alpha tags only from `main`" guardrail for the pre-stable phase.
+Enable it only when you intend `latest` to track the current alpha. Once stable
+releases begin from `main`, stop using `--set-latest` so `latest` follows stable.
+
+### Smoke check tolerates registry propagation lag
+
+After publishing, the orchestrator smoke-checks each package's `alpha` tag on
+npm. Newly-created scoped packages (and fresh versions) can take tens of seconds
+to become queryable via `npm view`, so the check **polls with backoff** before
+reporting anything missing. A package that has not appeared yet is reported as a
+propagation warning — not a failed publish. Do not treat a transient smoke-check
+miss as an E404/publish failure; re-check with `npm view <pkg>@alpha version` or
+re-run `pnpm run release:alpha:publish` (already-published versions are skipped).
 
 ## One-command release
 

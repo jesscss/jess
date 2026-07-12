@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 // The release tooling is plain ESM (.mjs); import it directly.
 import {
   compareSemver,
+  findAllowlistDuplicates,
   isReleaseArtifactPath,
   nextAlphaAfter,
   resolveAlphaPublishVersion
@@ -61,6 +62,25 @@ describe('isReleaseArtifactPath (clean-tree gate ignores build output)', () => {
     expect(isReleaseArtifactPath('packages/core/src/tree/index.ts')).toBe(false);
     expect(isReleaseArtifactPath('scripts/release/release-utils.mjs')).toBe(false);
     expect(isReleaseArtifactPath('package.json')).toBe(false);
+  });
+});
+
+describe('findAllowlistDuplicates (publish-set dup guard)', () => {
+  it('returns [] for a unique allowlist', () => {
+    expect(findAllowlistDuplicates(['@scope/a', '@scope/b', 'jess'])).toEqual([]);
+  });
+  it('reports each duplicated name exactly once, in first-seen order', () => {
+    expect(
+      findAllowlistDuplicates([
+        '@jesscss/scss-parser',
+        '@jesscss/plugin-scss',
+        '@jesscss/scss-parser',
+        '@jesscss/plugin-scss'
+      ])
+    ).toEqual(['@jesscss/scss-parser', '@jesscss/plugin-scss']);
+  });
+  it('reports a name once even when it appears three times', () => {
+    expect(findAllowlistDuplicates(['x', 'x', 'x'])).toEqual(['x']);
   });
 });
 

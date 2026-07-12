@@ -38,6 +38,29 @@ export function listWorkspacePackages(rootDir) {
   return byName;
 }
 
+/**
+ * Return the list of values that appear more than once in `list`, each reported
+ * exactly once and in first-seen order. Used to fail the alpha publish-set on a
+ * malformed allowlist (duplicate package names) BEFORE the silent de-dup hides
+ * it — a duplicate is always an editing mistake and must surface loudly.
+ */
+export function findAllowlistDuplicates(list) {
+  const seen = new Set();
+  const duplicates = [];
+  const reported = new Set();
+  for (const name of list) {
+    if (seen.has(name)) {
+      if (!reported.has(name)) {
+        duplicates.push(name);
+        reported.add(name);
+      }
+    } else {
+      seen.add(name);
+    }
+  }
+  return duplicates;
+}
+
 export function getRuntimeWorkspaceDeps(manifest) {
   const deps = new Set();
   for (const field of RUNTIME_DEP_FIELDS) {
@@ -426,6 +449,13 @@ export function getAlphaReleasePlan({
 
   if (!Array.isArray(allowlist) || allowlist.some(name => typeof name !== 'string' || name.length === 0)) {
     throw new Error(`Allowlist must be a JSON string array: ${allowlistPath}`);
+  }
+
+  const duplicates = findAllowlistDuplicates(allowlist);
+  if (duplicates.length > 0) {
+    errors.push(
+      `Duplicate allowlist entries (each package must appear once): ${duplicates.join(', ')}`
+    );
   }
 
   const dedupedAllowlist = [...new Set(allowlist)];

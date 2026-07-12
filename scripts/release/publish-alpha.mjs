@@ -11,12 +11,22 @@ import {
 function parseArgs(argv) {
   const parsed = {
     dryRun: false,
-    tag: 'alpha'
+    tag: 'alpha',
+    // GATED: also move the npm `latest` dist-tag to the just-published version.
+    // OFF by default; opt in with `--set-latest` or `ALPHA_SET_LATEST=1`. This
+    // deliberately relaxes the "non-alpha tags only from `main`" guardrail for
+    // the pre-stable alpha phase, so `npm install <pkg>` resolves to the current
+    // alpha instead of an ancient `latest`. Owner policy call — keep it explicit.
+    setLatest: process.env.ALPHA_SET_LATEST === '1'
   };
   for (let i = 2; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === '--dry-run') {
       parsed.dryRun = true;
+      continue;
+    }
+    if (arg === '--set-latest') {
+      parsed.setLatest = true;
       continue;
     }
     if (arg === '--tag' && argv[i + 1]) {
@@ -122,6 +132,22 @@ function getTaggedVersion(pkgName, tag) {
   }
 }
 
+/**
+ * GATED: move the npm `latest` dist-tag to `pkgName@version`. Only invoked when
+ * `--set-latest` / `ALPHA_SET_LATEST=1` is set. During the pre-stable phase this
+ * keeps `latest` consistent with the published alpha across the whole set (some
+ * pre-existing packages otherwise keep a stale `latest`, so `npm install <pkg>`
+ * pulls an ancient build). No-op logging for dry-run.
+ */
+function setLatestTag(pkgName, version, dryRun) {
+  if (dryRun) {
+    console.log(`  Dry-run note: would set 'latest' dist-tag -> ${pkgName}@${version}.`);
+    return;
+  }
+  console.log(`  Setting 'latest' dist-tag -> ${pkgName}@${version}.`);
+  run('npm', ['dist-tag', 'add', `${pkgName}@${version}`, 'latest'], rootDir);
+}
+
 function assertNpmAuth() {
   const result = spawnSync('npm', ['whoami'], {
     encoding: 'utf8',
@@ -225,6 +251,14 @@ console.log(
   + `at ${publishVersion} with npm tag '${options.tag}'.`
 );
 
+if (options.setLatest) {
+  console.log(
+    `\nNote: --set-latest is ON. After publishing, the npm 'latest' dist-tag will be moved to `
+    + `${publishVersion} for every allowlisted package. This deliberately relaxes the `
+    + `"non-alpha tags only from main" policy for the pre-stable alpha phase.`
+  );
+}
+
 try {
   if (!options.dryRun) {
     for (const pkgName of plan.publishOrder) {
@@ -254,6 +288,11 @@ try {
     if (versionExists) {
       if (taggedVersion === version) {
         console.log(`\nSkipping ${pkgName}@${version}: ${options.tag} already points to that version.`);
+        // Still reconcile `latest` when requested: the alpha tag may already be
+        // correct while `latest` lags on this pre-existing package.
+        if (options.setLatest) {
+          setLatestTag(pkgName, version, options.dryRun);
+        }
         continue;
       }
 
@@ -277,11 +316,17 @@ try {
       if (!options.dryRun) {
         run('npm', ['dist-tag', 'add', `${pkgName}@${version}`, options.tag], rootDir);
       }
+      if (options.setLatest) {
+        setLatestTag(pkgName, version, options.dryRun);
+      }
       continue;
     }
 
     console.log(`\n${options.dryRun ? 'Dry-run pack/publish check' : 'Publishing'} ${pkgName}@${version}`);
     run('pnpm', publishArgs, pkg.dir);
+    if (options.setLatest) {
+      setLatestTag(pkgName, version, options.dryRun);
+    }
   }
 
   console.log(`\n${options.dryRun ? 'Dry-run checks finished.' : 'Alpha publish finished.'}`);
