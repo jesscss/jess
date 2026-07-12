@@ -19,12 +19,15 @@ import type { Rules } from '../rules.js';
  * is threaded through the recursive call's arg-binding eval AND the spliced body decls'
  * dedup-key + emit resolution. `callMap` bounds the recursion.
  *
- * The ONE residual STAYS on eval (byte-identical, gate-locked here): a recursive cycle
- * whose body has a NESTED CONTAINER shared across levels (STRIPE) — the re-entrant
- * splice re-uses the same canonical container child per level, collapsing two levels'
- * blocks. `treeHasRecursiveMixinCall` narrowly detects only that shape. A change that
- * folds STRIPE (before distinct-per-level container surfaces exist) trips RED; a change
- * that RE-DEFERS FLAT recursion or the wrapper to eval also trips RED.
+ * STRIPE now FOLDS too (distinct-per-level container surfaces): a recursive cycle whose
+ * body has a NESTED CONTAINER shared across levels (`.stripe(@n){ a{…} .stripe(@n-1) }`)
+ * used to re-use the same canonical container child per level, collapsing two levels'
+ * blocks into one (the header-merge keys on node identity). `distinctFoldChild`
+ * (`serialize-helper.ts`) now splices a distinct per-level copy on the container's 2nd+
+ * occurrence — mirroring the loop fold's per-iteration `copyWithReusableLeaves` — so each
+ * level emits its own block, byte-identical to eval / less@4. A change that RE-DEFERS
+ * STRIPE, FLAT recursion, or the wrapper to eval — or that RE-COLLAPSES the STRIPE blocks
+ * — trips RED.
  */
 async function render(source: string): Promise<{ css: string; eligible: boolean; spineRan: boolean }> {
   const context = new Context({ output: { collapseNesting: false }, leakyScope: true });
@@ -38,7 +41,7 @@ async function render(source: string): Promise<{ css: string; eligible: boolean;
   return { css, eligible, spineRan: spineRenderCounter.rootRenders > before };
 }
 
-describe('mixin SEQUENCE gate — nested-call-in-body FOLDS (FOLD C); recursion stays on eval', () => {
+describe('mixin SEQUENCE gate — nested-call-in-body FOLDS (FOLD C); recursion (incl. STRIPE nested-container) folds', () => {
   it('FOLD C: a wrapper mixin calling another mixin (frame-dependent arg) FOLDS through the spine', async () => {
     const r = await render(`.base(@c) { color: @c; }\n.wrapper(@c) { .base(@c); }\n.test { .wrapper(blue); }`);
     expect(r.eligible).toBe(true);
@@ -53,13 +56,16 @@ describe('mixin SEQUENCE gate — nested-call-in-body FOLDS (FOLD C); recursion 
     expect(r.css).toBe(`.k {\n  z: 3;\n  y: 2;\n  x: 1;\n}`);
   });
 
-  it('DEFERRED: a self-recursive guarded loop (recursion + nested container) stays on eval', async () => {
+  it('FOLD (STRIPE): a self-recursive guarded loop with a NESTED CONTAINER folds via distinct-per-level surfaces', async () => {
+    // The re-entrant splice used to re-use the SAME canonical `a { … }` child per level,
+    // collapsing both levels' blocks into one. `distinctFoldChild` now splices a distinct
+    // per-level copy on the container's 2nd+ occurrence, so each level emits its own
+    // `.wrap a { … }` block — byte-identical to eval / less@4 (two distinct blocks).
     const r = await render(`.stripe(@n) when (@n > 0) {\n  a { border-width: @n; }\n  .stripe(@n - 1);\n}\n.wrap { .stripe(2); }`);
-    expect(r.eligible).toBe(false);
-    expect(r.spineRan).toBe(false);
-    // eval renders the recursion correctly (byte-identical)
-    expect(r.css).toContain('border-width: 2');
-    expect(r.css).toContain('border-width: 1');
+    expect(r.eligible).toBe(true);
+    expect(r.spineRan).toBe(true);
+    // collapseNesting:false → the expanded nested form, two DISTINCT `a` blocks
+    expect(r.css).toBe(`.wrap {\n  a {\n    border-width: 2;\n  }\n  a {\n    border-width: 1;\n  }\n}`);
   });
 
   it('FOLD (§7 frame-threaded arg rung): a FLAT self-recursive loop (frame-dependent arg) FOLDS through the spine, byte-identical', async () => {

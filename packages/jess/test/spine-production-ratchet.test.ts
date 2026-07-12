@@ -1031,20 +1031,66 @@ describe('spine PRODUCTION-path ratchet (P2 wire-in)', () => {
     }
   });
 
-  it('DEFERRED (residual/IOU): a recursive mixin with a NESTED CONTAINER (STRIPE) stays on eval (byte-identical)', async () => {
+  it('FOLD (STRIPE): a recursive mixin with a NESTED CONTAINER folds via distinct-per-level surfaces (no derive)', async () => {
     // `.stripe(@n) when (@n>0) { a { … } .stripe(@n-1) }` — recursion via a name-cycle
-    // AND a nested container SHARED across levels. The re-entrant splice re-uses the
-    // same canonical `a { … }` child per level, collapsing two levels' blocks into one
-    // instead of eval's two distinct `.wrap a { … }` blocks. `treeHasRecursiveMixinCall`
-    // narrowly defers ONLY this container-in-cycle shape; FLAT recursion folds (above).
-    // Distinct-per-level container surfaces are a separate P4 item.
+    // AND a nested container SHARED across levels. The re-entrant splice used to re-use
+    // the same canonical `a { … }` child per level, collapsing two levels' blocks into
+    // one. `distinctFoldChild` (`serialize-helper.ts`) now splices a distinct per-level
+    // copy (reusing scalar leaves) on the container's 2nd+ occurrence within one
+    // expansion pass — mirroring the loop fold's per-iteration `copyWithReusableLeaves` —
+    // so each level emits its own `.wrap a { … }` block, byte-identical to eval / less@4
+    // AND folds through the spine (no eval two-walk → `Rules.derive` = 0).
     const compiler = makeCompiler();
-    const src = `.stripe(@n) when (@n > 0) {\n  a { border-width: @n; }\n  .stripe(@n - 1);\n}\n.wrap { .stripe(2); }`;
-    const before = spineRenderCounter.rootRenders;
-    const css = await compiler.renderString(src, { language: 'less' });
-    expect(spineRenderCounter.rootRenders).toBe(before); // eval path
-    // eval renders both levels as DISTINCT blocks (byte-identical to less@4)
-    expect(css).toBe('.wrap a {\n  border-width: 2;\n}\n.wrap a {\n  border-width: 1;\n}\n');
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const src = `.stripe(@n) when (@n > 0) {\n  a { border-width: @n; }\n  .stripe(@n - 1);\n}\n.wrap { .stripe(2); }`;
+      const before = spineRenderCounter.rootRenders;
+      const css = await compiler.renderString(src, { language: 'less' });
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+      expect(deriveCalls).toBe(0); // no eval two-walk → the distinct-per-level fold, not a fallback
+      // two distinct blocks (byte-identical to eval / less@4)
+      expect(css).toBe('.wrap a {\n  border-width: 2;\n}\n.wrap a {\n  border-width: 1;\n}\n');
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
+  });
+
+  it('FOLD (STRIPE ≥3 levels + mutual cycle): distinct-per-level container blocks (no derive)', async () => {
+    // Coverage: ≥3 self-recursion levels (three distinct `.wrap a{…}` blocks with
+    // color 3/2/1) and a MUTUAL cycle (`.ping`↔`.pong`, each with its own container).
+    const cases: Array<{ src: string; expected: string }> = [
+      {
+        src: `.stripe(@n) when (@n > 0) {\n  a { color: @n; }\n  .stripe(@n - 1);\n}\n.wrap { .stripe(3); }`,
+        expected: '.wrap a {\n  color: 3;\n}\n.wrap a {\n  color: 2;\n}\n.wrap a {\n  color: 1;\n}\n'
+      },
+      {
+        src: `.ping(@n) when (@n > 0) { a { color: @n; } .pong(@n - 1); }\n.pong(@n) when (@n > 0) { b { color: @n; } .ping(@n - 1); }\n.wrap { .ping(3); }`,
+        expected: '.wrap a {\n  color: 3;\n}\n.wrap b {\n  color: 2;\n}\n.wrap a {\n  color: 1;\n}\n'
+      }
+    ];
+    for (const c of cases) {
+      const compiler = makeCompiler();
+      const originalDerive = Rules.prototype.derive;
+      let deriveCalls = 0;
+      Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+        deriveCalls++;
+        return originalDerive.apply(this, args);
+      } as Rules['derive'];
+      try {
+        const before = spineRenderCounter.rootRenders;
+        const css = await compiler.renderString(c.src, { language: 'less' });
+        expect(spineRenderCounter.rootRenders, `routed: ${c.src}`).toBeGreaterThan(before);
+        expect(deriveCalls, `no derive: ${c.src}`).toBe(0);
+        expect(css, `output: ${c.src}`).toBe(c.expected);
+      } finally {
+        Rules.prototype.derive = originalDerive;
+      }
+    }
   });
 
   it('INCREMENT 7: folds GUARDED (`when`) mixin calls through the spine on the COMPILER path (no derive)', async () => {
