@@ -27,6 +27,7 @@ import {
   sourceSpanOf,
   spanStartOf,
   isSourceFree,
+  stampEvalErrorLocation,
   valueSpansOf,
   setValueSpans,
   fieldSpansOf,
@@ -1469,7 +1470,16 @@ export abstract class Node<
     // §2.7: a node is a reusable template that re-evaluates per placement — no
     // retained `evaluated` result on the canonical node. This removes the
     // `evaluated` re-eval/cache reads from the hot path. See LIVE_BINDING §2.7.
-    const evaluated = node.evalNode(context);
+    let evaluated: MaybePromise<Node>;
+    try {
+      evaluated = node.evalNode(context);
+    } catch (err) {
+      // Cold error path only: stamp the offending node's source span so the
+      // top-level catch can frame the real location instead of falling back to
+      // `1:1`. The innermost source-bearing node wins (see stampEvalErrorLocation).
+      stampEvalErrorLocation(err, node, Node.evalErrorSourceFor(node, context));
+      throw err;
+    }
     if (isThenable(evaluated)) {
       return (evaluated as Promise<Node>).then((resolved) => {
         const evald = mustBeNode(resolved);
@@ -1477,6 +1487,9 @@ export abstract class Node<
           evald.inherit(node);
         }
         return evald;
+      }, (err: unknown) => {
+        stampEvalErrorLocation(err, node, Node.evalErrorSourceFor(node, context));
+        throw err;
       });
     }
     const evald = mustBeNode(evaluated);
@@ -1484,6 +1497,17 @@ export abstract class Node<
       evald.inherit(node);
     }
     return evald;
+  }
+
+  /**
+   * The source text to pair with a stamped eval-error span. Prefers the node's
+   * own source-root file (correct across imports); falls back to the root tree's
+   * file, then the current tree context's file. Cold error path only.
+   */
+  private static evalErrorSourceFor(node: Node, context: Context): string | undefined {
+    return node.sourceRoot?._treeContext?.file?.source
+      ?? context.root?._treeContext?.file?.source
+      ?? context.treeContext?.file?.source;
   }
 
   /**
