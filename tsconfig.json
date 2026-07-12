@@ -6,14 +6,25 @@
     "rootDir": ".",
     "declaration": true,
     "esModuleInterop": true,
-    "module": "commonjs",
+    "module": "ES2020",
+    "moduleResolution": "node",
     "target": "es6",
     "lib": ["es6"],
     "baseUrl": "./packages",
+    "strict": true,
+    "strictPropertyInitialization": false,
+    "noUncheckedIndexedAccess": true,
+    "skipLibCheck": true,
     "paths": {
       "jess": ["jess/lib"],
       "@jess/*": ["*/src"]
-    }
+    },
+    "plugins": [
+      { "transform": "ts-macros" }
+    ],
+    "types": [
+      "vitest/globals"
+    ]
   },
   "exclude": ["node_modules", "lib"]
 }

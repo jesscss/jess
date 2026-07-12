@@ -1,0 +1,111 @@
+import { defineType } from './node'
+import { Rules } from './rules'
+import type { Context } from '../context'
+
+/**
+ * The root node. Contains a collection of nodes
+ */
+export class Root extends Rules {
+  async eval(context: Context) {
+    context.opts.mathMode = this.treeContext.mathMode
+    context.opts.unitMode = this.treeContext.unitMode
+    /**
+     * We're evaluating asynchronously,
+     * so we need to evaluate rules out of order,
+     * then sort them into the correct order
+     */
+    context.depth++
+    let node = await super.eval(context)
+    let rules = node.value
+    node.rootRules?.forEach(rule => rules.push(rule))
+    context.depth--
+    node.value = rules
+    return node
+  }
+
+  /** @todo - move to visitors */
+  // toCSS(context: Context, out: OutputCollector) {
+  //   this.value.forEach(v => {
+  //     v.toCSS(context, out)
+  //     /** Another root will add its own line breaks */
+  //     if (!(v instanceof Root)) {
+  //       out.add('\n')
+  //     }
+  //   })
+  // }
+
+  // toModule(context: Context, out: OutputCollector) {
+  //   out.add(
+  //     'import * as $J from \'jess\'\n' +
+  //     `const $CONTEXT = new $J.Context(${JSON.stringify(context.originalOpts)})\n` +
+  //     `$CONTEXT.id = '${context.id}'\n`,
+  //     this.location
+  //   )
+  //   const jsNodes = this.value.filter(n => n instanceof JsNode)
+  //   jsNodes.forEach(node => {
+  //     node.toModule(context, out)
+  //     out.add('\n')
+  //   })
+
+  //   out.add(
+  //     'function $DEFAULT ($VARS = {}, $RETURN_NODE) {\n'
+  //   )
+  //   context.indent++
+  //   context.depth++
+
+  //   let pre = context.pre
+  //   jsNodes.forEach(node => {
+  //     out.add(pre)
+  //     node.toModule(context, out)
+  //     out.add('\n')
+  //   })
+
+  //   if (!context.opts.dynamic && context.isRuntime) {
+  //     out.add(`${pre}return {\n`)
+  //     let i = 0
+  //     context.exports.forEach(key => {
+  //       if (i !== 0) {
+  //         out.add(',\n')
+  //       }
+  //       i++
+  //       out.add(`${pre}  ${key}`)
+  //     })
+  //     out.add(`\n${pre}}\n`)
+  //   } else {
+  //     out.add(`${pre}const $TREE = $J.root((() => {\n`)
+  //     out.add(`  ${pre}const $OUT = []\n`)
+  //     context.indent++
+  //     pre = context.pre
+
+  //     this.value.forEach(node => {
+  //       if (!(node instanceof JsNode)) {
+  //         out.add(pre)
+  //         out.add('$OUT.push(')
+  //         node.toModule(context, out)
+  //         out.add(')\n')
+  //       }
+  //     })
+  //     context.indent--
+  //     pre = context.pre
+  //     out.add(`  ${pre}return $OUT\n${pre}})(),${JSON.stringify(this.location)})\n`)
+  //     out.add(`${pre}if ($RETURN_NODE) {\n`)
+  //     out.add(`${pre}  return $TREE\n`)
+  //     out.add(`${pre}}\n`)
+  //     out.add(`${pre}return {\n`)
+  //     out.add(`${pre}  ...$J.renderCss($TREE, $CONTEXT)`)
+  //     context.exports.forEach(key => {
+  //       out.add(`,\n${pre}  ${key}`)
+  //     })
+  //     out.add(`\n${pre}}\n`)
+  //   }
+  //   out.add('}\n')
+  //   // out.add(`$DEFAULT.$IS_NODE = true\n`)
+  //   out.add('const $DEFAULT_PROXY = $J.proxy($DEFAULT, $CONTEXT)\n')
+  //   out.add('$DEFAULT_PROXY(undefined, true)\n')
+  //   out.add('export default $DEFAULT_PROXY')
+  //   context.indent = 0
+  //   context.depth = 0
+  // }
+}
+
+export const root = defineType(Root, 'Root')

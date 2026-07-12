@@ -1,6 +1,10 @@
 import type { Node } from './tree'
-import { Context } from './context'
+import type { Context } from './context'
 import { OutputCollector } from './output'
+/**
+ * @todo use vssom
+ * @see https://github.com/streamich/nano-css/blob/master/docs/vcssom.md
+ */
 import { updateSheet } from '@jesscss/patch-css'
 
 /**
@@ -13,7 +17,7 @@ export const renderCss = (root: Node, context: Context) => {
      * @todo - patch document in browser
      */
     $toCSS: () => {
-      const out = new OutputCollector
+      const out = new OutputCollector()
       evaldRoot.toCSS(context, out)
       const css = out.toString()
       updateSheet(css, context.id)

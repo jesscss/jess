@@ -13,22 +13,22 @@ module.exports = {
       title: 'Jess',
       logo: {
         alt: 'My Site Logo',
-        src: 'img/logo.svg',
+        src: 'img/logo.svg'
       },
       items: [
         {
           to: 'docs/',
           activeBasePath: 'docs',
           label: 'Docs',
-          position: 'left',
+          position: 'left'
         },
         // {to: 'blog', label: 'Blog', position: 'left'},
         {
           href: 'https://github.com/jesscss/jess',
           label: 'GitHub',
-          position: 'right',
-        },
-      ],
+          position: 'right'
+        }
+      ]
     },
     footer: {
       style: 'dark',
@@ -38,26 +38,26 @@ module.exports = {
           items: [
             {
               label: 'About Jess',
-              to: 'docs/',
+              to: 'docs/'
             }
-          ],
+          ]
         },
         {
           title: 'Community',
           items: [
             {
               label: 'Gitter',
-              href: 'https://gitter.im/jesscss/community',
+              href: 'https://gitter.im/jesscss/community'
             },
             {
               label: 'Twitter',
-              href: 'https://twitter.com/cssjess',
+              href: 'https://twitter.com/cssjess'
             },
             {
               label: 'Stack Overflow',
-              href: 'https://stackoverflow.com/questions/tagged/jesscss',
+              href: 'https://stackoverflow.com/questions/tagged/jesscss'
             }
-          ],
+          ]
         },
         {
           title: 'More',
@@ -68,13 +68,13 @@ module.exports = {
             // },
             {
               label: 'GitHub',
-              href: 'https://github.com/jesscss/jess',
-            },
-          ],
-        },
+              href: 'https://github.com/jesscss/jess'
+            }
+          ]
+        }
       ],
-      copyright: `Copyright © ${new Date().getFullYear()} Jess. Built with Docusaurus.`,
-    },
+      copyright: `Copyright © ${new Date().getFullYear()} Jess. Built with Docusaurus.`
+    }
   },
   presets: [
     [
@@ -84,18 +84,18 @@ module.exports = {
           sidebarPath: require.resolve('./sidebars.js'),
           // Please change this to your repo.
           editUrl:
-            'https://github.com/jesscss/jess/tree/master/packages/docs/',
+            'https://github.com/jesscss/jess/tree/master/packages/docs/'
         },
         blog: {
           showReadingTime: true,
           // Please change this to your repo.
           editUrl:
-            'https://github.com/jesscss/jess/tree/master/packages/docs/',
+            'https://github.com/jesscss/jess/tree/master/packages/docs/'
         },
         theme: {
-          customCss: require.resolve('./src/css/custom.css'),
-        },
-      },
-    ],
-  ],
-};
+          customCss: require.resolve('./src/css/custom.css')
+        }
+      }
+    ]
+  ]
+}

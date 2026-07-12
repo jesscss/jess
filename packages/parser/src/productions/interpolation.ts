@@ -1,4 +1,4 @@
-import { CstChild } from '@jesscss/css-parser'
+import type { CstChild } from '@jesscss/css-parser'
 import type { JessParser } from '../jessParser'
 
 export default function(this: JessParser, $: JessParser) {
@@ -18,7 +18,7 @@ export default function(this: JessParser, $: JessParser) {
             const blockChildren: CstChild[] = []
             const start = $.CONSUME($.T.LParen)
             $.MANY(() => blockChildren.push($.SUBRULE2($.jsTokens)))
-            
+
             children.push({
               name: 'jsBlock',
               children: [
@@ -46,7 +46,7 @@ export default function(this: JessParser, $: JessParser) {
         }
       ]
     })
-    
+
     return {
       name: 'jsExpression',
       children
@@ -57,15 +57,17 @@ export default function(this: JessParser, $: JessParser) {
     () => ({
       name: 'jsValue',
       children: $.OR([
-        { ALT: () => [
-          /** 
-             * JS ident 
+        {
+          ALT: () => [
+          /**
+             * JS ident
              */
-          $.CONSUME($.T.PlainIdent)
-        ]},
-        { ALT: () => [$.CONSUME($.T.StringLiteral)]},
+            $.CONSUME($.T.PlainIdent)
+          ]
+        },
+        { ALT: () => [$.CONSUME($.T.StringLiteral)] },
         /** I guess this can happen? */
-        { ALT: () => [$.CONSUME($.T.UriString)]},
+        { ALT: () => [$.CONSUME($.T.UriString)] },
         // Look for matching blocks
         {
           ALT: () => {
@@ -94,7 +96,7 @@ export default function(this: JessParser, $: JessParser) {
             const children: CstChild[] = []
             const start = $.CONSUME($.T.LSquare)
             $.MANY2(() => children.push($.SUBRULE2($.jsTokens)))
-            
+
             return [{
               name: 'jsBlock',
               children: [

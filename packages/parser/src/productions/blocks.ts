@@ -28,19 +28,23 @@ export default function(this: JessParser, $: JessParser) {
         { ALT: () => $.CONSUME($.T.Comma) },
         { ALT: () => $.CONSUME($.T.Colon) },
         { ALT: () => $.CONSUME($.T.WS) },
-        { ALT: () => {
-          $.OR2([
-            { ALT: () => $.CONSUME($.T.Function) },
-            { ALT: () => $.CONSUME($.T.LParen) }
-          ])
-          $.SUBRULE($.testQualifiedRuleExpression)
-          $.CONSUME($.T.RParen)
-        }},
-        { ALT: () => {
-          $.CONSUME($.T.LSquare)
-          $.SUBRULE2($.testQualifiedRuleExpression)
-          $.CONSUME($.T.RSquare)
-        }}
+        {
+          ALT: () => {
+            $.OR2([
+              { ALT: () => $.CONSUME($.T.Function) },
+              { ALT: () => $.CONSUME($.T.LParen) }
+            ])
+            $.SUBRULE($.testQualifiedRuleExpression)
+            $.CONSUME($.T.RParen)
+          }
+        },
+        {
+          ALT: () => {
+            $.CONSUME($.T.LSquare)
+            $.SUBRULE2($.testQualifiedRuleExpression)
+            $.CONSUME($.T.RSquare)
+          }
+        }
       ])
     })
   })

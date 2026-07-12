@@ -9,24 +9,29 @@
   sibling: declaration;
 }
 
-$value.class {}
-.class$something {}
+~($value.class) {}
+.class~($something) {}
 
-@let foo: $(value.foo && value.bar);
-@let bar: $(value.foo || value.bar);
-@let compare: $(foo > bar);
+@let foo: ~($value.foo and $value.bar);
+@let bar: ~($value.foo or $value.bar);
+@let compare: ~($foo > $bar);
 
 .box {
   one: $collection.foo.bar.deeper;
-  two: $some(call, with, args).foo[ ident ].stuff;
-  three: $(
+  two: ~(some(call, with, args).foo[ ident ].stuff);
+  three: ~(
     var // )
   ) four;
-  four: $url("???");
-  width: $(20)px;
-  width: $(1 + 1)px;
+  four: ~url("???");
+  width: ~(20)px; // width: var(--i_box_width_0, 20px);
+  width: ~(1 + 1)px;
+
+  @let values: 1px 2px 3px;
+  @let value1: $values[0]; // 1px
+  @let doublelist: 1px 2px, 3px 4px;
+  @let item: $doublelist[0][0];
 }
 
 .box {
-  area: $area(5);
+  area: ~area(5);
 }

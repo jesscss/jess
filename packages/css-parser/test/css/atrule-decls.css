@@ -3,11 +3,15 @@
 }
 
 @media(min-width: 0) {
-    background: white
+    .a {
+        background: white
+    }
 }
 
 @media (width > 0) {
-    background: black;
+    .a {
+        background: black;
+    }
 }
 
 @font-face {

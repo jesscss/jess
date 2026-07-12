@@ -1,31 +1,61 @@
-import { IToken, Lexer } from 'chevrotain'
-import { Tokens, Fragments } from './lessTokens'
-import { createTokens, IParseResult } from '@jesscss/css-parser'
-import { LessParser } from './lessParser'
+import { type IToken, type CstNode, Lexer } from 'chevrotain'
+import { lessTokens, lessFragments } from './lessTokens'
+import type { IParseResult } from '@jesscss/css-parser'
+import { createLexerDefinition } from '@jesscss/css-parser'
+import { LessActionsParser, type LessParserConfig, type TokenMap } from './lessActionsParser'
+import { LessErrorMessageProvider } from './lessErrorMessageProvider'
+import type { ConditionalPick } from 'type-fest'
 
-export * from './lessParser'
+export * from './lessActionsParser'
 export * from './lessTokens'
+
+const errorMessageProvider = new LessErrorMessageProvider()
+
+type LessRules = keyof ConditionalPick<LessActionsParser, () => CstNode>
 
 export class Parser {
   lexer: Lexer
-  parser: LessParser
+  /** @todo - return Jess AST as parser */
+  parser: LessActionsParser
 
-  constructor() {
-    const { tokens, T } = createTokens(Fragments, Tokens)
-    this.lexer = new Lexer(tokens, {
+  constructor(
+    config: LessParserConfig = {}
+  ) {
+    config = {
+      errorMessageProvider,
+      /**
+       * Override this if you want a stricter Less/CSS parser.
+       * @todo - Allow overriding when parsing a single rule.
+       */
+      looseMode: true,
+      skipValidations: process.env.TEST !== 'true',
+      ...config
+    }
+    const { lexer, T } = createLexerDefinition(lessFragments(), lessTokens())
+
+    this.lexer = new Lexer(lexer, {
       ensureOptimizations: true,
-      skipValidations: process.env['JESS_TESTING_MODE'] !== 'true'
+      skipValidations: process.env.TEST !== 'true'
     })
-    this.parser = new LessParser(tokens, T)
+    this.parser = new LessActionsParser(lexer, T as TokenMap, config)
+    /** Not sure why this is necessary, but Less tests were a problem */
+    this.parse = this.parse.bind(this)
   }
 
-  parse(text: string): IParseResult<LessParser> {
+  parse<T extends LessRules = LessRules>(text: string, rule: T = 'stylesheet' as T, ...args: Parameters<LessActionsParser[T]>): IParseResult<LessActionsParser> {
     const parser = this.parser
     const lexerResult = this.lexer.tokenize(text)
     const lexedTokens: IToken[] = lexerResult.tokens
     parser.input = lexedTokens
-    const cst = parser.root()
+    // @ts-expect-error - This is fine
+    const tree = parser[rule](args)
 
-    return { cst, lexerResult, parser }
+    let contents: string[] | undefined
+
+    if (!lexerResult.errors.length && !parser.errors.length) {
+      contents = text.split('\n')
+    }
+
+    return { tree, contents, lexerResult, errors: parser.errors }
   }
 }

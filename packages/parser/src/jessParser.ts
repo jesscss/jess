@@ -1,5 +1,6 @@
-import { TokenType, IParserConfig } from 'chevrotain'
-import { TokenMap, CssParser, Rule } from '@jesscss/css-parser'
+import type { TokenType, IParserConfig } from 'chevrotain'
+import type { TokenMap, Rule } from '@jesscss/css-parser'
+import { CssParser } from '@jesscss/css-parser'
 import root from './productions/root'
 import atRules from './productions/atRules'
 import blocks from './productions/blocks'

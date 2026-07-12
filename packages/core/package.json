@@ -1,0 +1,42 @@
+{
+  "name": "@jesscss/core",
+  "publishConfig": {
+    "access": "public"
+  },
+  "version": "2.0.0-alpha.1",
+  "description": "The Jess Core Library",
+  "main": "lib/index",
+  "types": "lib/index",
+  "files": [
+    "lib"
+  ],
+  "engines": {
+    "node": ">=16"
+  },
+  "dependencies": {
+    "chalk": "^5.2.0",
+    "combinate": "^1.1.11",
+    "lodash-es": "^4.17.21"
+  },
+  "scripts": {
+    "ci": "pnpm build && pnpm test:all",
+    "prepublishOnly": "pnpm build && pnpm test:all",
+    "build": "pnpm compile",
+    "compile": "tsc -b tsconfig.build.json",
+    "dev": "tsc -b tsconfig.build.json -w",
+    "test": "cross-env TEST=true vitest",
+    "test:coverage": "cross-env TEST=true vitest --coverage",
+    "lint:fix": "eslint --fix '**/*.{js,ts}'",
+    "lint": "eslint '**/*.{js,ts}'"
+  },
+  "author": "Matthew Dean <matthew-dean@users.noreply.github.com>",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/jesscss/jess/issues"
+  },
+  "homepage": "https://github.com/jesscss/jess#readme",
+  "devDependencies": {
+    "@types/lodash-es": "^4.17.8",
+    "chevrotain": "^11.0.3"
+  }
+}

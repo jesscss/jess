@@ -3,7 +3,7 @@
   "publishConfig": {
     "access": "public"
   },
-  "version": "1.0.8-alpha.8",
+  "version": "2.0.0-alpha.1",
   "description": "Jess functions module",
   "main": "lib/index",
   "types": "lib/index",
@@ -11,17 +11,23 @@
     "lib"
   ],
   "scripts": {
-    "ci": "yarn build && yarn test",
+    "ci": "pnpm build && pnpm test",
     "prepublishOnly": "npm run build",
-    "build": "yarn clean && yarn compile",
+    "build": "pnpm clean && pnpm compile",
     "clean": "shx rm -rf ./lib tsconfig.tsbuildinfo",
     "compile": "tsc -b tsconfig.json",
-    "test": "ts-mocha test/**/*.ts"
+    "test": "jest",
+    "lint:fix": "eslint --fix '**/*.{js,ts}'",
+    "lint": "eslint '**/*.{js,ts}'"
   },
-  "author": "Matthew Dean",
-  "license": "MIT",
   "dependencies": {
-    "jess": "^1.0.8-alpha.8",
-    "lodash": "^4.17.20"
-  }
+    "jess": "workspace:^2.0.0-alpha.1",
+    "lodash": "^4.17.21"
+  },
+  "author": "Matthew Dean <matthew-dean@users.noreply.github.com>",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/jesscss/jess/issues"
+  },
+  "homepage": "https://github.com/jesscss/jess#readme"
 }

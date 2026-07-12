@@ -1,8 +1,6 @@
 import * as glob from 'glob'
 import * as fs from 'fs'
 import * as path from 'path'
-import { expect } from 'chai'
-import 'mocha'
 import { render } from '../src/render'
 
 describe('Output files', () => {
@@ -17,8 +15,8 @@ describe('Output files', () => {
         const cssFile = jessFile.replace(/\.jess$/, '.css')
 
         const output = await render(jessFile)
-        let referenceCss = (await fs.promises.readFile(cssFile)).toString()
-        expect(output.$toCSS()).to.equal(referenceCss.toString())
+        const referenceCss = (await fs.promises.readFile(cssFile)).toString()
+        expect(output.$toCSS()).toBe(referenceCss.toString())
       })
     })
 })

@@ -1,5 +1,4 @@
 
-
 /**
  * if condition, return ifValue, else return elseValue
  */

@@ -16,7 +16,7 @@ import forEach from 'lodash/forEach'
 
 export function each(list: List | Expression | unknown, mixin: Function) {
   let collection: any
-  let rules = new Ruleset([])
+  const rules = new Ruleset([])
   if (list instanceof List || list instanceof Expression) {
     collection = list.toArray()
   } else {

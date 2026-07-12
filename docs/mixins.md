@@ -1,6 +1,6 @@
 ```less
-@mixin someMixin {
-  width: 30px;
-  height: 40px;
+@mixin some-mixin($width, $height) {
+  width: $width;
+  height: $height;
 }
 ```

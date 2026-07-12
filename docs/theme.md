@@ -1,8 +1,7 @@
 ```less
-@import styles from 'library/variables.jess';
-@import { config } from './my-vars.jess';
+@use './my-vars.jess' (config);
+@use 'library/variables.jess' theme with config;
 
-@let theme: styles(config);
 
 .box {
   color: $theme.colors.primary;

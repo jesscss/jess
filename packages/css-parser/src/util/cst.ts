@@ -1,17 +1,15 @@
-import type { CstChild, CstNode } from '../cssParser'
+import type { IToken } from 'chevrotain'
+import type { AdvancedCstNode } from '../advancedCstParser'
 
-export const stringify = (cst: CstNode): string => {
+export const stringify = (cst: AdvancedCstNode): string => {
   let output = ''
 
-  const recurseCst = (node: CstChild): void => {
+  const recurseCst = (node: AdvancedCstNode | IToken): void => {
     if (!node) {
       return
     }
     if ('name' in node) {
-      if (!node.children) {
-        console.log(node)
-      }
-      node.children.forEach(child => recurseCst(child))
+      node.childrenStream.forEach(child => { recurseCst(child) })
       return
     }
     output += node.image

@@ -1,4 +1,4 @@
-import { CstChild } from '@jesscss/css-parser'
+import type { CstChild } from '@jesscss/css-parser'
 import type { JessParser } from '../jessParser'
 
 export default function(this: JessParser, $: JessParser) {
@@ -21,7 +21,7 @@ export default function(this: JessParser, $: JessParser) {
       children
     }
   })
-  
+
   $.customProperty = $.OVERRIDE_RULE('customProperty', () => {
     const children: CstChild[] = [
       $.CONSUME($.T.CustomProperty)
@@ -39,5 +39,4 @@ export default function(this: JessParser, $: JessParser) {
       children
     }
   })
-
 }

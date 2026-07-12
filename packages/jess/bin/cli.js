@@ -11,7 +11,6 @@ const nodeResolve = require('@rollup/plugin-node-resolve').default
 const jess = require('../lib/plugin/runtime').default
 const terser = require('rollup-plugin-terser').terser
 
-
 const { hideBin } = require('yargs/helpers')
 const args =
   yargs(hideBin(process.argv))
@@ -58,7 +57,7 @@ const start = async () => {
   } catch (e) {
     throw new Error(`Could not read "${inFile}"`)
   }
-  
+
   let css
 
   if (argv.b) {
