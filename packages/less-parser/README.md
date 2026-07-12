@@ -10,7 +10,10 @@ The Less grammar is the shared CSS grammar plus a Less delta:
 `lessGrammar = compose([cssGrammar, <Less delta>])`. It adds `@variable` /
 `@{interpolation}`, mixins, and the rest of Less on top of the spec-aligned CSS
 base in [`@jesscss/css-parser`](https://www.npmjs.com/package/@jesscss/css-parser),
-built on [parseman](https://www.npmjs.com/package/parseman). It is the parser
+built on [parseman](https://www.npmjs.com/package/parseman) — **the fastest
+general-purpose JavaScript parser** in its
+[published benchmarks](https://matthew-dean.github.io/parseman/guide/benchmarks)
+(see `@jesscss/css-parser` for figures and engineering details). It is the parser
 Jess uses when it compiles `.less` — the "Now" tier of the language roadmap, and
 the one dialect shipping in the alpha.
 

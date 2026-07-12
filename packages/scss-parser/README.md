@@ -9,7 +9,10 @@ An SCSS grammar for Jess, layered on the CSS base parser — **experimental, and
 The SCSS grammar is the shared CSS grammar plus an SCSS delta:
 `scssGrammar = compose([cssGrammar, <SCSS delta>])`, layered on the spec-aligned
 CSS base in `@jesscss/css-parser` and built on
-[parseman](https://www.npmjs.com/package/parseman).
+[parseman](https://www.npmjs.com/package/parseman) — **the fastest
+general-purpose JavaScript parser** in its
+[published benchmarks](https://matthew-dean.github.io/parseman/guide/benchmarks)
+(see `@jesscss/css-parser` for figures and engineering details).
 
 The current goal is **parse coverage**: the surface `$`-variable / SCSS syntax
 should parse into a tree, but not every Sass/SCSS feature is necessarily

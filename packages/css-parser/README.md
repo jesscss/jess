@@ -19,6 +19,39 @@ the intended seed for a future PostCSS-*like* layer of open, AST-level
 transforms. That layer isn't designed yet — treat it as direction, not a shipped
 plugin API.
 
+## Built on Parséman — the fastest general-purpose JS parser
+
+Parséman is **the fastest general-purpose JavaScript parser** in
+[its published benchmarks](https://matthew-dean.github.io/parseman/guide/benchmarks),
+beating Peggy, Chevrotain, Nearley, Parsimmon, and Jison at every grammar and
+size measured:
+
+| Grammar (input) | Parséman | Chevrotain | Peggy |
+| --- | --- | --- | --- |
+| CSV (14.8 kB) | **74 µs** | 1,045 µs | 430 µs |
+| JSON (12 kB) | **125 µs** | 312 µs | 472 µs |
+| GraphQL (7.8 kB) | **131 µs** | 342 µs | 373 µs |
+
+"General-purpose" is the honest, defensible claim: native `JSON.parse` still
+beats it on JSON (≈44 µs vs 125 µs), but that's a specialized native built-in,
+not a general parser. Among general-purpose JS parsers, Parséman is fastest.
+
+Note the scope: parsing is only ~17% of the total cost of a Jess compile, so a
+fast parser under the hood is true *and* the whole compiler's speed is still
+being earned (see the [root README](https://github.com/jesscss/jess)) — both
+hold at once.
+
+What makes it fast, and what Jess builds on:
+
+- **Composable functional combinators** that compile to optimized parsers —
+  grammars are written as combinators, not hand-rolled state machines.
+- **In-repo, spec-aligned grammars.** The CSS grammar's rules cite
+  [CSS Syntax Level 3](https://www.w3.org/TR/css-syntax-3/) anchors; the spec
+  algorithms are the oracle.
+- **Dual-use grammars.** The *same* grammar runs strict (single-error, for the
+  compiler) or tolerant with error recovery (for tooling/editors).
+- **Incremental reparse.** `.edit()` re-parses only the region that changed.
+
 Two ways to use it:
 
 - **As part of Jess** — the default `.` entry is wired into `@jesscss/core` and produces the core AST the Jess compiler evaluates. This is the internal, core-coupled path.
