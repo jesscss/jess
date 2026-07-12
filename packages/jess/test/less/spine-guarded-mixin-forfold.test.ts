@@ -83,6 +83,42 @@ describe('spine loop-fold via import splice', () => {
   });
 });
 
+describe('spine import eval-fallback print-state isolation', () => {
+  it('does not drop a later import when an earlier import evals a detached-ruleset-arg mixin', async () => {
+    // A mixin call with a DETACHED-RULESET arg (`#hover({…})`) is deferred to eval;
+    // when its enclosing imported body is not spine-foldable it renders via the
+    // import eval-fallback, which used to reset context.printState in place and drop
+    // every LATER sibling/import (bootstrap: `_reboot`'s `a { #hover({…}) }` dropped
+    // the entire following `_grid`). The eval-fallback is now print-state-isolated.
+    fs.writeFileSync(
+      path.join(tmpDir, 'ef-hover-lib.less'),
+      '#hover(@content) { &:hover { @content(); } }'
+    );
+    fs.writeFileSync(
+      path.join(tmpDir, 'ef-hover-use.less'),
+      ['a {', '  color: blue;', '  #hover({ color: red; });', '}'].join('\n')
+    );
+    fs.writeFileSync(
+      path.join(tmpDir, 'ef-later.less'),
+      ['.later-block {', '  display: flex;', '}'].join('\n')
+    );
+    const entry = path.join(tmpDir, 'ef-entry.less');
+    fs.writeFileSync(
+      entry,
+      ['@import "ef-hover-lib";', '@import "ef-hover-use";', '@import "ef-later";'].join('\n')
+    );
+
+    const css = await makeCompiler(tmpDir).render(entry, {
+      suppressWarnings: true,
+      breakOnError: false
+    });
+    // The hover block AND the following import must both survive.
+    expect(css).toContain('&:hover');
+    expect(css).toContain('.later-block');
+    expect(css).toContain('display: flex');
+  });
+});
+
 describe('spine guarded-mixin print-state isolation', () => {
   it('emits a passing compound-guard block from a nested folded mixin body', async () => {
     fs.writeFileSync(

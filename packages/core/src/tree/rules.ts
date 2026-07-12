@@ -4622,8 +4622,17 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     const evalFallback = (): MaybePromise<void> => {
       // Byte-identical eval terminal for a non-simple imported body: render the
       // import node the eval way and splice its output text at this position.
+      // ISOLATE its print-state: `importNode.render` → `evalForRender` →
+      // `prepareRenderPrintState` RESETS `context.printState` IN PLACE (fresh writer +
+      // frame arrays); in the single-pass spine render that IS the live emit state, so
+      // an un-isolated fallback swaps the live writer/frames and every LATER sibling
+      // writes into the discarded writer and is LOST (bootstrap: an imported body with
+      // a DETACHED-RULESET-arg mixin call — `a { #hover({…}) }` in `_reboot` — is not
+      // spine-foldable and lands here; its render silently dropped the entire following
+      // `_grid` import). The render returns its own string (spliced into `w` below), so
+      // isolate exactly as the value-leaf / guard resolves do.
       const position = w.position();
-      const rendered = importNode.render(context, getPrintOptions(options));
+      const rendered = evalIsolatingSpinePrintState(context, () => importNode.render(context, getPrintOptions(options)));
       const finishRendered = (text: string): void => {
         if (w.position() === position && text) {
           w.add(text, importNode);
@@ -4965,8 +4974,22 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         options.depth = depth;
         options.referenceMode = referenceMode;
         options.referenceRenderEnabled = referenceRenderEnabled;
+        // A container child that routes to EVAL render (`n.render` → `evalForRender`
+        // → `prepareRenderPrintState`) RESETS `context.printState` IN PLACE (fresh
+        // writer + frame arrays). In the single-pass spine render `context.printState`
+        // IS the live emit state, so an un-isolated eval render swaps the live
+        // writer/frame-arrays and every LATER sibling then writes into the discarded
+        // writer and is LOST (bootstrap: `a { #hover({…}) }` — a mixin call with a
+        // DETACHED-RULESET arg is deferred to eval; its render dropped the entire
+        // following `_grid` block). `n.render` returns its OWN rendered string
+        // (spliced into `w` below), so isolate its print-state side effect exactly as
+        // the value-leaf / guard resolves do (`evalIsolatingSpinePrintState`), leaving
+        // the live writer/frames byte-identical for the next sibling. The
+        // `serializeRulesContainerInline` (spine) branch never resets print-state.
         const rule = mode === 'render' && context
-          ? n.render(context, getPrintOptions(options))
+          ? (options.spineMode
+              ? evalIsolatingSpinePrintState(context, () => n.render(context, getPrintOptions(options)))
+              : n.render(context, getPrintOptions(options)))
           : serializeRulesContainerInline(n, getPrintOptions(options));
         const finishRule = (resolvedRule: string): void => {
           if (w.position() === position && resolvedRule) {
