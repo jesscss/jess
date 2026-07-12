@@ -2029,7 +2029,19 @@ function serializeSpineFrameContainer(
   // it. Zero-cost when `node.guard` is unset (the common case). `isSpineEligibleContainer`
   // has already excluded a not-yet-materialized STRING guard.
   const guard = node.guard;
-  if (guard instanceof Node && !(guard instanceof Nil)) {
+  // A `Nil` guard means the guard was already evaluated on the EVAL path and FAILED
+  // (`Ruleset.evalNode` memoizes a failed `when` guard by mutating `this.guard` to a
+  // `Nil` — see its guard block). The eval and spine paths share the same canonical
+  // node (object-reduction / node-reuse), so when a mixin body was routed through eval
+  // FIRST (e.g. bootstrap's `#rfs`, whose `@rfs-fluid = null` fluid guard fails), the
+  // spine later renders the SAME node. A failed guard must emit NOTHING — WITHOUT this
+  // branch a `Nil` guard fell through to the UNGUARDED descent below and the failed
+  // block was rendered unconditionally (bootstrap ran the fluid block's `#mq-value` in
+  // a broken scope). Mirrors `Ruleset.evalNode`'s `guard instanceof Nil` early return.
+  if (guard instanceof Nil) {
+    return '';
+  }
+  if (guard instanceof Node) {
     const guardResult = guard instanceof Condition
       ? guard.evaluateBoolean(context)
       : guard.eval(context);
