@@ -42,7 +42,7 @@ import type { AtRuleStatement } from '../at-rule-statement.js';
 import type { VarDeclaration } from '../declaration-var.js';
 import { buildScopeFrame, linkImportFallbackFrame, type BindingCell, type ScopeFrame } from '../scope-frame.js';
 import { getPrintOptions, OutputWriter, type FinalPrintOptions, type PrintOptions } from './print.js';
-import { engageExtendLayer, isSpineExtendTopology, wireSpineExtends, flatLocalSelector } from '../extend/spine-extend.js';
+import { engageExtendLayer, isSpineExtendTopology, wireSpineExtends, flatLocalSelector, treeHasExtendTargetableAppend } from '../extend/spine-extend.js';
 import type { StyleImport, SpineImportResolution } from '../import-style.js';
 
 /**
@@ -497,8 +497,9 @@ export function isSpineFoldableStatementCall(node: Node): boolean {
  * so a param-dependent at-rule body/prelude re-resolves per call (no cross-call leak).
  * DEFERRED (fall back, byte-identical): a nested container that is not spine-eligible
  * (guarded / extend-bearing / append sub-shape), parametric/guarded defs (gated
- * earlier). A nested Mixin DEFINITION and recursion stay gated at the tree level
- * (`treeHasUnfoldableContainerBodyMixin` / `treeHasRecursiveMixinCall`).
+ * earlier). A nested Mixin DEFINITION stays gated at the tree level
+ * (`treeHasUnfoldableContainerBodyMixin`); recursion — including the STRIPE
+ * nested-container cycle — folds (distinct-per-level surfaces, `distinctFoldChild`).
  */
 function isSpineSimpleMixinSurface(surface: Rules): boolean {
   const children = surface.rules;
@@ -707,30 +708,6 @@ function selectorHasAmpersandAppend(selector: unknown): boolean {
     }
   }
   return false;
-}
-
-/**
- * True if ANY ruleset ANYWHERE in `root` carries an ampersand-APPEND selector
- * (`&-modifier`). Used to defer the append × extend interaction (see
- * `isSpineEligibleRoot`): an append-generated selector may be an extend target the
- * static gather cannot see. A single recursive scan over ruleset/at-rule bodies.
- */
-function treeHasAmpersandAppend(root: Rules): boolean {
-  const scan = (children: readonly Node[]): boolean => {
-    for (let i = 0; i < children.length; i++) {
-      const child = children[i]!;
-      if (isNode(child, N.Ruleset) && selectorHasAmpersandAppend(child.selector)) {
-        return true;
-      }
-      if ((isNode(child, N.Ruleset) || isNode(child, N.AtRule)) && isNode(child, N.Rules)) {
-        if (scan(child.rules)) {
-          return true;
-        }
-      }
-    }
-    return false;
-  };
-  return scan(root.rules);
 }
 
 /**
@@ -1650,15 +1627,16 @@ export function isSpineEligibleRoot(root: Rules, context: Context, collapseNesti
   // spliced body decls' dedup-key + emit resolution (`computeDeclKey` / `processNode`
   // push the entry's `spineFrame`), so `@n - 1` resolves against level N's `@n`
   // producing level N-1's surface, byte-identical to eval / less@4. `callMap` bounds it.
-  // RESIDUAL (kept on eval, byte-identical, ratchet-locked — a separate P4 item): a
-  // recursive cycle whose body has a NESTED CONTAINER shared across levels (STRIPE:
-  // `.stripe(@n){ a{…} .stripe(@n-1) }`). The re-entrant splice re-uses the SAME
-  // canonical container child per level, collapsing two levels' blocks into one instead
-  // of eval's two distinct blocks. `treeHasRecursiveMixinCall` now NARROWLY detects only
-  // that container-in-cycle shape; FLAT recursion (the common loop idiom) folds.
-  if (treeHasMixinCall(root) && treeHasRecursiveMixinCall(root)) {
-    return false;
-  }
+  // STRIPE (a recursive cycle whose body has a NESTED CONTAINER shared across levels,
+  // `.stripe(@n){ a{…} .stripe(@n-1) }`) now FOLDS too: the re-entrant splice used to
+  // re-use the SAME canonical container child per level, collapsing two levels' blocks
+  // into one (the header-merge is keyed on node identity). `runSpineMixinExpansion`'s
+  // `distinctFoldChild` now splices a DISTINCT per-level copy (reusing scalar leaves)
+  // on a container child's 2nd+ occurrence — mirroring the loop fold's per-iteration
+  // `copyWithReusableLeaves` — so each level emits its own `.wrap a{…}` block,
+  // byte-identical to eval / less@4. The recursion gate is therefore lifted entirely;
+  // an unfoldable recursive sub-shape (a non-spine-simple body) still falls back to the
+  // eval terminal per-call (`isSpineSimpleMixinSurface` → `anyRejected` → kind:'eval').
   // MERGE-ACROSS-MIXIN (FOLDED — P4 item landed). A property-MERGE (`transform+:` /
   // `+_:`) whose contributions arrive via MIXIN EXPANSION — `.r { .a(); .b(); }` where
   // `.a()`/`.b()` each carry a `transform+:` decl (the `merge.less` corpus shape) —
@@ -1739,16 +1717,20 @@ export function isSpineEligibleRoot(root: Rules, context: Context, collapseNesti
   // rejects), so a divergent collapse value here would admit-then-fail-loud in `renderRootViaSpine`.
   const collapse = collapseNesting
     ?? (context.opts?.output?.collapseNesting ?? context.output?.collapseNesting) === true;
-  // APPEND × EXTEND (a precise deferral, REQUIRED P4 item). An `:extend` TARGET may be
-  // an append-GENERATED selector (`.button { &-primary {…} }` extended by
-  // `:extend(.button-primary)`). The spine's extend layer gathers subjects/targets from
-  // the STATIC source tree, where the append target (`.button-primary`) exists only
-  // after resolution — so the static gather misses it and the extend contribution is
-  // dropped. Keep an extend-bearing tree that also carries an append selector on the
-  // eval path (byte-identical), where the append materializes before extend runs.
+  // APPEND × EXTEND (a PRECISE deferral). An `:extend` TARGET may be an append-GENERATED
+  // selector (`.component { &-inner {…} }` extended by `:extend(.component-inner)`). The
+  // spine's extend layer gathers subjects/targets from the STATIC source tree, where the
+  // append target (`.component-inner`) exists only after resolution — so the static gather
+  // misses it and the extend contribution is dropped. `treeHasExtendTargetableAppend` returns
+  // true ONLY for that genuine collision (an extend target atom that could equal an
+  // append-generated atom `parent + suffix`), NOT the former whole-tree "any append + any
+  // extend → eval" over-rejection — which needlessly pinned every stylesheet that merely
+  // appends AND extends unrelated selectors (`benchmark.less`, whose `.component-*` appends are
+  // never extend targets). Reject ⇒ eval, byte-identical; the residual is strictly narrower.
   // SPEC (fold plan follow-up): resolve append selectors into the extend target index
-  // before SOLVE (mirrors OQ-A interpolated-target resolution at capture).
-  if (engageExtendLayer(root) && treeHasAmpersandAppend(root)) {
+  // before SOLVE (mirrors OQ-A interpolated-target resolution at capture) so even a genuine
+  // append-target extend folds.
+  if (engageExtendLayer(root) && treeHasExtendTargetableAppend(root)) {
     return false;
   }
   // SPECULATIVE-ADMIT (import-spec routing). When imports are present, run the extend-topology check in
@@ -1847,7 +1829,8 @@ export function withSpineMultipleScope<T>(
  * at-rule-&-through-hoist fold — `getHoistedParent` recovers the call-site ruleset from
  * `context.rulesetFrames`), so it is NO LONGER flagged here.
  * A tree whose container-body mixins are ALL spine-eligible returns false → folds.
- * Recursion is gated separately (`treeHasRecursiveMixinCall`).
+ * Recursion (incl. the STRIPE nested-container cycle) folds via the re-entrant splice
+ * + `distinctFoldChild` per-level surfaces; it is no longer gated here.
  */
 function treeHasUnfoldableContainerBodyMixin(root: Node): boolean {
   for (const node of root.walk(true)) {
@@ -2026,126 +2009,6 @@ function rulesetHasInterpolatedSelector(node: Node): boolean {
     return true; // no flat static selector → treat as dynamic
   }
   return String(local.valueOf()).includes('@{') || String(local.valueOf()).includes('${');
-}
-
-/**
- * True if the tree has a RECURSIVE mixin call whose recursion-cycle body contains a
- * NESTED CONTAINER (the STRIPE shape: `.stripe(@n) when (@n>0) { a { … } .stripe(@n-1) }`).
- *
- * FOLD C (`P4-TERMINAL-SINK-DESIGN.md` §7) now folds recursion whose body is FLAT
- * (only declarations + the recursive self/mutual call, e.g. `.mixin-recursive(@n) {
- * level: @n; .mixin-recursive(@n - 1) }`): the re-entrant splice threads each level's
- * freshly-bound param frame through BOTH the nested call's arg-binding eval AND the
- * spliced body decls' dedup-key + emit resolution (`computeDeclKey`/`processNode` push
- * the entry's `spineFrame`), so `@n - 1` resolves against level N's `@n` producing
- * level N-1's surface, byte-identical to eval / less@4.
- *
- * The ONE residual that stays on eval (byte-identical, ratchet-locked): a recursive
- * cycle whose body contains a nested CONTAINER shared across levels. The re-entrant
- * splice re-uses the SAME canonical container child per level, so two levels' blocks
- * COLLAPSE into one (`.wrap a { border-width: 2; border-width: 1 }`) instead of the
- * eval path's two distinct `.wrap a { … }` blocks — the shared-child identity is
- * merged/deduped. A distinct-per-level container surface is a separate P4 item; until
- * then the STRIPE shape defers to eval. FLAT recursion (the common Less loop idiom)
- * folds.
- *
- * Conservative static over-approximation: build the mixin-name → called-mixin-names
- * graph AND note which mixin names have a body-nested container, then report a cycle
- * ONLY when a cycle-participating mixin has a container. Document-level pre-scan, paid
- * once (like the other `treeHas*` gates); a non-recursive tree returns immediately.
- */
-function treeHasRecursiveMixinCall(root: Node): boolean {
-  // name → set of mixin names its bodies call (string keys only)
-  const callGraph = new Map<string, Set<string>>();
-  // Mixin names whose body contains a nested CONTAINER (Ruleset / non-leaf AtRule).
-  // Only such a cycle collapses on the re-entrant splice (STRIPE); a FLAT recursive
-  // body (declarations only) folds byte-identical.
-  const namesWithNestedContainer = new Set<string>();
-  for (const node of root.walk(true)) {
-    if (!isNode(node, N.Mixin) || typeof node.name !== 'string') {
-      continue;
-    }
-    const from = node.name;
-    let calls = callGraph.get(from);
-    if (!calls) {
-      calls = new Set<string>();
-      callGraph.set(from, calls);
-    }
-    for (let i = 0; i < node.rules.length; i++) {
-      const child = node.rules[i]!;
-      if (isNode(child, N.Ruleset) || (isNode(child, N.AtRule) && child.rules.length > 0)) {
-        namesWithNestedContainer.add(from);
-        break;
-      }
-    }
-    for (const inner of node.walk(true)) {
-      if (
-        isNode(inner, N.Call)
-        && isNode(inner.name, N.Reference)
-        && typeof inner.name.key === 'string'
-      ) {
-        calls.add(inner.name.key);
-      }
-    }
-  }
-  if (callGraph.size === 0) {
-    return false;
-  }
-  // Cycle detection (DFS with a recursion stack) over the mixin-name call graph.
-  // Only a cycle in which SOME participating mixin has a nested container defers.
-  const VISITING = 1;
-  const DONE = 2;
-  const state = new Map<string, number>();
-  const stack: string[] = [];
-  const cycleHasContainer = (from: string, to: string): boolean => {
-    // The cycle is the current recursion stack from `to` .. top, plus `from`.
-    if (namesWithNestedContainer.has(from) || namesWithNestedContainer.has(to)) {
-      return true;
-    }
-    for (let i = stack.length - 1; i >= 0; i--) {
-      const name = stack[i]!;
-      if (namesWithNestedContainer.has(name)) {
-        return true;
-      }
-      if (name === to) {
-        break;
-      }
-    }
-    return false;
-  };
-  const hasStripeCycleFrom = (name: string): boolean => {
-    state.set(name, VISITING);
-    stack.push(name);
-    const calls = callGraph.get(name);
-    if (calls) {
-      for (const next of calls) {
-        if (!callGraph.has(next)) {
-          continue;
-        }
-        const s = state.get(next);
-        if (s === VISITING) {
-          if (cycleHasContainer(name, next)) {
-            stack.pop();
-            return true;
-          }
-          continue;
-        }
-        if (s === undefined && hasStripeCycleFrom(next)) {
-          stack.pop();
-          return true;
-        }
-      }
-    }
-    stack.pop();
-    state.set(name, DONE);
-    return false;
-  };
-  for (const name of callGraph.keys()) {
-    if (state.get(name) === undefined && hasStripeCycleFrom(name)) {
-      return true;
-    }
-  }
-  return false;
 }
 
 /**

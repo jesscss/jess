@@ -18,6 +18,7 @@ import {
 import { isNode } from './is-node.js';
 import { N } from '../node-type.js';
 import { Nil } from '../nil.js';
+import { copyWithReusableLeaves } from './cloning.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import { Selector, type SelectorLike } from '../selector.js';
 import { consumeTriviaText, printableTriviaText, triviaHasBlockComment } from './trivia.js';
@@ -1061,6 +1062,35 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       if (!spineContext) {
         return undefined;
       }
+      // DISTINCT-PER-LEVEL container surface (STRIPE recursion / repeated-call fold).
+      // A fold splices a bound surface's children; a nested CONTAINER child (Ruleset /
+      // non-leaf AtRule) is the SAME canonical node across every re-entrant recursion
+      // level AND across repeated calls to the same mixin, because the surface reuses
+      // the definition body's children. Two entries pointing at the SAME container node
+      // COLLAPSE into one printed block (the header-merge is keyed on node identity), so
+      // `.stripe(3)` → one `.wrap a{…}` instead of three. Mirror the loop fold's
+      // per-iteration `copyWithReusableLeaves`: on a container child's SECOND+ occurrence
+      // within this expansion pass, splice a distinct COPY (reusing scalar leaves) under
+      // the same `spineFrame` — a projection giving each level its own surface identity,
+      // NOT a merge/mutation. The FIRST occurrence stays SHARED (zero cost for the common
+      // single-call container mixin); a leaf decl is never copied (it resolves per-entry
+      // via `spineFrame`). The copy resolves its values against the same surface frame,
+      // so it is byte-identical to the shared node — only its printed-block identity differs.
+      const seenFoldContainers = new WeakSet<Node>();
+      const distinctFoldChild = (child: Node): Node => {
+        const isContainer = isNode(child, N.Ruleset)
+          || (isNode(child, N.AtRule) && child.rules.length > 0);
+        if (!isContainer) {
+          return child;
+        }
+        if (!seenFoldContainers.has(child)) {
+          seenFoldContainers.add(child);
+          return child;
+        }
+        const copy = copyWithReusableLeaves(child);
+        copy.index = child.index;
+        return copy;
+      };
       const expandFrom = (start: number): MaybePromise<void> => {
         for (let i = start; i < rulesToRender.length; i++) {
           const entry = rulesToRender[i]!;
@@ -1128,7 +1158,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
             }
             const childEntries: RenderRuleEntry[] = resolved.kind === 'fold'
               ? resolved.surfaces.flatMap(surface =>
-                  surface.rules.map(child => ({ node: child, spineFrame: surface, mergeOwner: surface })))
+                  surface.rules.map(child => ({ node: distinctFoldChild(child), spineFrame: surface, mergeOwner: surface })))
               : isNode(resolved.output, N.Rules)
                 // EVAL-fallback: tag every flattened child with the per-CALL output
                 // Rules as its merge owner, so a `+:` from THIS call does not
