@@ -1240,6 +1240,39 @@ export class LessGrammar extends CssParser {
    * INTERPOLATION_PLACEHOLDER, `@var`/`$prop` references in `replacements`); otherwise
    * fall through to the plain CSS builder (bare-string value).
    */
+  /**
+   * The Less `Url` grammar tokenizes the inner string as bare leaves (no child
+   * node), so the css base builder wraps a quoted url body in a raw-string
+   * `Quoted` — which never interpolates `@{var}`/`${prop}`. Less 4.x DOES resolve
+   * interpolation inside a QUOTED url body (`url("@{base}/@{i}.svg")`), the same as
+   * any other quoted string, so route the quoted inner through the same
+   * interpolation-aware construction `_buildQuoted` uses. Unquoted url bodies stay
+   * verbatim (Less 4.x leaves `url(@{x})` literal), as does a quoted body with no
+   * interpolation.
+   */
+  protected override _buildUrl(children: ReadonlyArray<Child>, loc: LocationInfo) {
+    const innerNode = nodeChildren(children)[0];
+    if (innerNode) {
+      return super._buildUrl(children, loc);
+    }
+    const inner = children
+      .filter((c): c is CSTLeaf => c._tag === 'leaf')
+      .filter(l => !/^url\($/i.test(l.value) && l.value !== ')')
+      .map(l => l.value).join('').trim();
+    const quote = inner[0];
+    if ((quote === '"' || quote === '\'') && inner.at(-1) === quote) {
+      const body = inner.slice(1, -1);
+      if (body.includes('@{') || body.includes('${')) {
+        const value = this._buildStringInterpolation(body, loc);
+        return new Url(
+          new Quoted(value as any, { quote }, loc) as any,
+          undefined, loc
+        ) as unknown as JessNode;
+      }
+    }
+    return super._buildUrl(children, loc);
+  }
+
   protected override _buildQuoted(children: ReadonlyArray<Child>, loc: LocationInfo) {
     const text = children
       .filter((c): c is CSTLeaf => c._tag === 'leaf')
