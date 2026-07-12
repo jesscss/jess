@@ -1,6 +1,7 @@
 import { List, Node } from '@jesscss/core';
 import { createFromAdapter } from '../transform/adapter.js';
 import { toLessNode } from '../transform/to-less.js';
+import type { LessNode } from '../types.js';
 
 function getFilteredValue(list: List, cache?: WeakMap<any, any>) {
   const data = list.value;
@@ -27,7 +28,10 @@ function getFilteredValue(list: List, cache?: WeakMap<any, any>) {
   return [];
 }
 
-export const transformListToLess = createFromAdapter<List>({
+export const transformListToLess: (
+  jessNode: List,
+  cache?: WeakMap<Node, LessNode>
+) => LessNode = createFromAdapter<List>({
   fields: {
     value: (l, cache) => getFilteredValue(l, cache),
     length: (l, cache) => getFilteredValue(l, cache).length

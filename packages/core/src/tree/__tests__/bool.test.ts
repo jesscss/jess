@@ -29,7 +29,7 @@ describe('Bool', () => {
 
   it('preserves parser tree context on construction', () => {
     const treeContext = new TreeContext();
-    const node = bool(true, undefined, undefined, treeContext);
+    const node = new Bool(true, undefined, undefined, treeContext);
 
     expect(node._treeContext).toBe(treeContext);
   });
@@ -53,9 +53,7 @@ describe('Bool', () => {
 
     expect(truthy.render(context)).toBe('true');
     expect(falsy.render(context)).toBe('false');
-    expect(truthy.evaluated).toBe(false);
     expect(truthy.registrationPrepared).toBe(false);
-    expect(falsy.evaluated).toBe(false);
     expect(falsy.registrationPrepared).toBe(false);
   });
 
@@ -94,7 +92,6 @@ describe('Bool', () => {
 
     expect(resolved).toBeInstanceOf((bool(true)).constructor);
     expect(resolved.value).toBe(true);
-    expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });

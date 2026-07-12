@@ -3,8 +3,9 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { Parser } from '../src/index.js';
 import { invalidLess } from '@jesscss/shared';
+import { resolveLessTestDataRoot } from './test-data.js';
 
-const testData = path.dirname(require.resolve('@less/test-data'));
+const testData = resolveLessTestDataRoot();
 const lessParser = new Parser();
 
 describe('Less full-suite (minus invalid files)', () => {
@@ -21,13 +22,13 @@ describe('Less full-suite (minus invalid files)', () => {
         const { lexerResult, errors } = lessParser.parse(contents);
         if (lexerResult.errors.length || errors.length) {
           if (lexerResult.errors.length) {
-            console.error('lexer errors:', lexerResult.errors.map(e => e.message ?? e));
+            console.error('lexer errors:', lexerResult.errors.map((e: any) => e.message ?? e));
           }
           if (errors.length) {
             // Log details to debug regressions in a Vitest-compatible way
             // Only log for the two files currently regressing to reduce noise
             console.error('Parse errors for', file, errors.map(e => e.message));
-            const err = errors[0] as any;
+            const err: any = errors[0];
             const line = err?.token?.startLine ?? 0;
             if (line) {
               console.error('Near line', line, '... ', contents.split('\n')[line - 1]);

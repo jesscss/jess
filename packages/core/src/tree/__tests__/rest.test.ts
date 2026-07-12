@@ -35,8 +35,8 @@ describe('Rest', () => {
     const value = any('items');
     const node = rest(value);
 
-    expect(node.node).toBe(value);
-    expect(Rest.childKeys).toEqual(['node']);
+    expect(node.value).toBe(value);
+    expect(Rest.childKeys).toEqual(['value']);
   });
 
   it('returns scalar rest syntax without writer readback', () => {
@@ -73,9 +73,7 @@ describe('Rest', () => {
 
     expect(named.render(context)).toBe('...$$items');
     expect(nodeNamed.render(context)).toBe('...$items');
-    expect(named.evaluated).toBe(false);
     expect(named.registrationPrepared).toBe(false);
-    expect(nodeNamed.evaluated).toBe(false);
     expect(nodeNamed.registrationPrepared).toBe(false);
   });
 
@@ -112,7 +110,6 @@ describe('Rest', () => {
     const resolved = await node.resolve(context);
 
     expect(resolved.toTrimmedString()).toBe('...$$items');
-    expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });

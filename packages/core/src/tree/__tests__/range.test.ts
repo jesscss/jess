@@ -112,7 +112,6 @@ describe('Range', () => {
     expect(writer.marks).toBe(0);
     expect(writer.reads).toBe(0);
     expect(resolveCalls).toBe(0);
-    expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
   });
 
@@ -127,7 +126,6 @@ describe('Range', () => {
     const resolved = await node.resolve(context);
 
     expect(resolved.toTrimmedString()).toBe('1 to 3 step 2');
-    expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
@@ -149,7 +147,6 @@ describe('Range', () => {
     expect(await node.render(context, buffer)).toBe('1 to 3 step 2');
     expect(buffer.parts).toEqual(['1 to 3 step 2']);
     expect(resolveCalls).toBe(0);
-    expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
   });
 });

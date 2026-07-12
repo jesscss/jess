@@ -34,4 +34,3 @@ describe('mathValue', () => {
     expect(errors.length).toBe(0);
   });
 });
-

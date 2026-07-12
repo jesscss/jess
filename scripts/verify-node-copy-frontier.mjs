@@ -34,6 +34,10 @@ const allowedOrdinaryClonePatterns = [
   {
     file: 'packages/core/src/tree/selector.ts',
     pattern: /\bsuper\.clone\(/u
+  },
+  {
+    file: 'packages/core/src/tree/selector-pseudo.ts',
+    pattern: /\bsuper\.clone\(/u
   }
 ];
 const expectedRemaining = new Set();

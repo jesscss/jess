@@ -36,8 +36,15 @@ function isRulesetValue(value: unknown): value is Ruleset {
   return isNode(value, N.Ruleset);
 }
 
-function selectorOrUndefined(value: Selector | Nil | undefined): Selector | undefined {
-  return value instanceof Nil ? undefined : value;
+function selectorOrUndefined(value: string | Selector | Nil | undefined): Selector | undefined {
+  if (typeof value === 'string' || value instanceof Nil) {
+    return undefined;
+  }
+  return value;
+}
+
+function selectorListItemForRootExtend(item: SelectorList['value'][number]): Selector {
+  return typeof item === 'string' ? new ComplexSelector([item]) : item;
 }
 
 function getOwnSelectorOption(ruleset: Ruleset): Selector | undefined {
@@ -46,12 +53,11 @@ function getOwnSelectorOption(ruleset: Ruleset): Selector | undefined {
 }
 
 function setOwnSelectorOption(ruleset: Ruleset, selector: Selector): void {
-  ruleset.options ??= {};
   ruleset.options.ownSelector = selector;
 }
 
 function hasExplicitExtendSelector(node: Node | undefined): boolean {
-  const value: unknown = node?.value;
+  const value: unknown = node && 'value' in node ? node.value : undefined;
   return !!value
     && typeof value === 'object'
     && 'selector' in value
@@ -64,6 +70,12 @@ function hasExplicitExtendSelector(node: Node | undefined): boolean {
  */
 function getParentRuleset(ruleset: Ruleset): Ruleset | undefined {
   const parentRules = ruleset.parent;
+  // Copy-on-write eval surfaces link a nested ruleset directly to its parent
+  // Ruleset (the intermediate body-Rules wrapper is not interposed). Canonical
+  // trees go ruleset -> body Rules -> parent Ruleset. Accept both.
+  if (isRulesetValue(parentRules)) {
+    return parentRules;
+  }
   if (!isRulesValue(parentRules)) {
     return undefined;
   }
@@ -100,7 +112,7 @@ function getParentSelector(ruleset: Ruleset): Selector | undefined {
   }
 }
 
-/** Snapshot of eval'd selectors before any extend modifications */
+/** Snapshot of eval'd value before any extend modifications */
 let preExtendSelectors = new WeakMap<Ruleset, Selector>();
 
 function withSelectorBitLibrary<T extends Selector>(selector: T, ...sources: Array<Selector | undefined>): T {
@@ -178,7 +190,7 @@ function composeExtendWithRelativeToTarget(
   if (!extendingLocal) {
     return undefined;
   }
-  // Walk up from extending ruleset, collecting local selectors, until we
+  // Walk up from extending ruleset, collecting local value, until we
   // reach a ruleset that is also an ancestor of the target (or root).
   const targetAncestors = targetRuleset
     ? new Set<Ruleset>([targetRuleset, ...getRulesetAncestors(targetRuleset)])
@@ -281,7 +293,7 @@ function classifyInstructionMatch(
       return false;
     }
   }
-  // Fallback for selectors that do not need parent-context matching.
+  // Fallback for value that do not need parent-context matching.
   const after = applyExtendsToSelector(selector, [instruction]);
   return after.valueOf() !== selector.valueOf() ? 'local' : false;
 }
@@ -536,8 +548,8 @@ function isInstructionVisibleForRoot(
 
 export function processExtends(context: Context): void {
   try {
-    // Snapshot eval'd selectors before any extend modifications.
-    // This ensures getEffectiveSelector composes with original selectors,
+    // Snapshot eval'd value before any extend modifications.
+    // This ensures getEffectiveSelector composes with original value,
     // not ones already modified by earlier extends in this pass.
     preExtendSelectors = new WeakMap<Ruleset, Selector>();
     for (const [, rulesetSet] of rulesetsByRoot) {
@@ -572,13 +584,16 @@ export function processExtends(context: Context): void {
         fromReferenceScope: fromReferenceScope === true
       };
       if (!partial && isNode(target, N.SelectorList)) {
-        return target.selectors.map((item) => {
+        const expanded: RootExtendInstruction[] = [];
+        for (const value of target.value) {
+          const item = selectorListItemForRootExtend(value);
           item.keySetLibrary ??= context.selectorBits;
-          return {
+          expanded.push({
             ...base,
             target: item
-          };
-        });
+          });
+        }
+        return expanded;
       }
       target.keySetLibrary ??= context.selectorBits;
       return [{
@@ -748,8 +763,10 @@ export function processExtends(context: Context): void {
           // concerns separate lets the reference-mode compose filter
           // distinguish "original, untouched" from "added by extend".
           if (selector instanceof SelectorList) {
-            for (const item of selector.selectors) {
-              item.addFlag(F_VISIBLE);
+            for (const item of selector.value) {
+              if (typeof item !== 'string') {
+                item.addFlag(F_VISIBLE);
+              }
             }
           } else {
             selector.addFlag(F_VISIBLE);
@@ -931,14 +948,14 @@ export function processExtends(context: Context): void {
           if (hasOnlyPartialExtends && isNode(newSelector, N.SelectorList)) {
             const previousValues = new Set<string>();
             if (applyInput instanceof SelectorList) {
-              for (const item of applyInput.selectors) {
+              for (const item of applyInput.value) {
                 previousValues.add(item.valueOf());
               }
             } else {
               previousValues.add(applyInput.valueOf());
             }
-            for (const item of newSelector.selectors) {
-              if (!previousValues.has(item.valueOf())) {
+            for (const item of newSelector.value) {
+              if (typeof item !== 'string' && !previousValues.has(item.valueOf())) {
                 item.addFlag(F_EXTENDED);
               }
             }

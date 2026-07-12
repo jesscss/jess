@@ -21,6 +21,13 @@ describe('selectorCompare', () => {
     expect(result.hasPartialMatch).toBe(false);
   });
 
+  it('compares single-item string-backed selector lists without leaking raw strings', () => {
+    const result = selectorCompare(sellist(['.a']), sellist([el('.a')]));
+
+    expect(result.isEquivalent).toBe(true);
+    expect(result.hasWholeMatch).toBe(true);
+  });
+
   it('exposes partial match metadata when selectors differ by a suffix', () => {
     const target = sel([el('.foo'), co('>'), el('.bar')]);
     const shorter = el('.bar');
@@ -56,7 +63,7 @@ describe('selectorCompare', () => {
   it('handles implicit ampersand selectors', () => {
     const parent = el('.parent');
     const nested = sel([parent, co(' '), el('.child')]);
-    const implicitAmp = amp({ selector: parent });
+    const implicitAmp = amp({ selectorContainer: { selector: parent } });
     const implicit = compound([implicitAmp, el('.child')]);
     const result = selectorCompare(nested, implicit);
     expect(Array.isArray(result.locations)).toBe(true);
@@ -113,7 +120,7 @@ describe('selectorCompare parity with matchSelectors', () => {
     },
     {
       desc: 'implicit ampersand expands to parent selector',
-      target: compound([amp({ selector: el('.parent') }), el('.child')]),
+      target: compound([amp({ selectorContainer: { selector: el('.parent') } }), el('.child')]),
       find: sel([el('.parent'), co(' '), el('.child')])
     },
     {

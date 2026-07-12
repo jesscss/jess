@@ -1,7 +1,6 @@
 import { attachSelectorBitLibrary, Selector } from '../selector.js';
 import { Ampersand } from '../ampersand.js';
 import type { AmpersandValue } from '../ampersand.js';
-import type { Ruleset } from '../ruleset.js';
 import { Combinator } from '../combinator.js';
 import { ComplexSelector } from '../selector-complex.js';
 import { SelectorList } from '../selector-list.js';
@@ -10,24 +9,31 @@ import { F_AMPERSAND, F_IMPLICIT_AMPERSAND, F_VISIBLE } from '../node.js';
 import { Nil } from '../nil.js';
 import { isNode } from './is-node.js';
 import { N } from '../node-type.js';
-import { copyOwnedWithReusableLeaves } from './cloning.js';
 import type { BitSetLibrary } from './bitset.js';
 
 /** Container object whose .selector is read by the ampersand (e.g. ruleset value for live connection). */
 export type SelectorContainer = AmpersandValue['selectorContainer'];
 
-/** Parent ruleset (live container) or a snapshot { value: SelectorContainer } when no ruleset is available. */
-export type ParentSource = Ruleset | { value: SelectorContainer };
+/** Parent selector snapshot used by implicit ampersand selectors. */
+export type ParentSource = { value: SelectorContainer };
 
 export function copySelectorForPlacement(
   selector: Selector,
   keySetLibrary?: BitSetLibrary<string>
 ): Selector {
-  const copied = copyOwnedWithReusableLeaves(selector);
+  const copied = selector.cloneForPlacement({ reuseLeaves: false });
   if (!(copied instanceof Selector)) {
     throw new TypeError('Expected selector copy');
   }
   return attachSelectorBitLibrary(copied, keySetLibrary ?? selector.keySetLibrary);
+}
+
+function copySelectorForImplicitAmpersand(selector: Selector): Selector {
+  const copied = selector.cloneForPlacement();
+  if (!(copied instanceof Selector)) {
+    throw new TypeError('Expected selector copy');
+  }
+  return attachSelectorBitLibrary(copied, selector.keySetLibrary);
 }
 
 /**
@@ -64,7 +70,7 @@ export function addImplicitAmpersand(
   }
   if (isNode(selector, N.ComplexSelector)) {
     const complex = selector;
-    const complexCopy = copySelectorForPlacement(complex);
+    const complexCopy = copySelectorForImplicitAmpersand(complex);
     if (!isNode(complexCopy, N.ComplexSelector)) {
       throw new TypeError('Expected complex selector copy');
     }
@@ -73,7 +79,7 @@ export function addImplicitAmpersand(
     }
     return ComplexSelector.create([amp, comb, ...complexCopy.value]).inherit(selector);
   }
-  return ComplexSelector.create([amp, comb, copySelectorForPlacement(selector)]).inherit(selector);
+  return ComplexSelector.create([amp, comb, copySelectorForImplicitAmpersand(selector)]).inherit(selector);
 }
 
 /**
@@ -110,7 +116,8 @@ export function getImplicitSelector(
     return selector;
   }
   const parentSource: ParentSource | undefined = isNode(parent, N.Ruleset)
-    ? parent
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    ? parent as unknown as ParentSource
     : isSnapshotParentSource(parent)
       ? parent
       : snapshotParentSource(parent, collapseNesting);
@@ -120,6 +127,11 @@ export function getImplicitSelector(
     const nextValue: Selector[] = [];
     for (let i = 0; i < value.length; i++) {
       const sel = value[i]!;
+      if (typeof sel === 'string') {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        nextValue.push(sel as unknown as Selector);
+        continue;
+      }
       const result = addImplicitAmpersand(sel, collapseNesting, parentSource);
       nextValue.push(result);
       if (result !== sel) {

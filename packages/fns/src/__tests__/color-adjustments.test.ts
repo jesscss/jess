@@ -38,22 +38,18 @@ describe('color adjustments', () => {
     });
 
     it('rejects wrong color type', () => {
-      // @ts-expect-error - wrong argument type
       expect(() => darken('not a color', amount)).toThrow('Argument \'color\' must be of type \'Color\'');
     });
 
     it('rejects wrong amount type', () => {
-      // @ts-expect-error - wrong argument type
       expect(() => darken(testColor, 'not a dimension')).toThrow('Argument \'amount\' must be of type \'Dimension\'');
     });
 
     it('rejects missing color argument', () => {
-      // @ts-expect-error - missing argument
       expect(() => darken({ amount })).toThrow('Required argument \'color\' is missing');
     });
 
     it('rejects missing amount argument', () => {
-      // @ts-expect-error - missing argument
       expect(() => darken({ color: testColor })).toThrow('Required argument \'amount\' is missing');
     });
   });
@@ -76,22 +72,18 @@ describe('color adjustments', () => {
     });
 
     it('rejects wrong color type', () => {
-      // @ts-expect-error - wrong argument type
       expect(() => lighten(new Dimension({ number: 100, unit: 'px' }), amount)).toThrow('Argument \'color\' must be of type \'Color\'');
     });
 
     it('rejects wrong amount type', () => {
-      // @ts-expect-error - wrong argument type
       expect(() => lighten(testColor, new Quoted('20%'))).toThrow('Argument \'amount\' must be of type \'Dimension\'');
     });
 
     it('rejects missing color argument', () => {
-      // @ts-expect-error - missing argument
       expect(() => lighten({ amount })).toThrow('Required argument \'color\' is missing');
     });
 
     it('rejects missing amount argument', () => {
-      // @ts-expect-error - missing argument
       expect(() => lighten({ color: testColor })).toThrow('Required argument \'amount\' is missing');
     });
   });
@@ -114,22 +106,18 @@ describe('color adjustments', () => {
     });
 
     it('rejects wrong color type', () => {
-      // @ts-expect-error - wrong argument type
       expect(() => saturate('red', amount)).toThrow('Argument \'color\' must be of type \'Color\'');
     });
 
     it('rejects wrong amount type', () => {
-      // @ts-expect-error - wrong argument type
       expect(() => saturate(testColor, 20)).toThrow('Argument \'amount\' must be of type \'Dimension\'');
     });
 
     it('rejects missing color argument', () => {
-      // @ts-expect-error - missing argument
       expect(() => saturate({ amount })).toThrow('Required argument \'color\' is missing');
     });
 
     it('rejects missing amount argument', () => {
-      // @ts-expect-error - missing argument
       expect(() => saturate({ color: testColor })).toThrow('Required argument \'amount\' is missing');
     });
   });
@@ -152,22 +140,18 @@ describe('color adjustments', () => {
     });
 
     it('rejects wrong color type', () => {
-      // @ts-expect-error - wrong argument type
       expect(() => desaturate(new Quoted('#ff0000'), amount)).toThrow('Argument \'color\' must be of type \'Color\'');
     });
 
     it('rejects wrong amount type', () => {
-      // @ts-expect-error - wrong argument type
       expect(() => desaturate(testColor, 'not a dimension')).toThrow('Argument \'amount\' must be of type \'Dimension\'');
     });
 
     it('rejects missing color argument', () => {
-      // @ts-expect-error - missing argument
       expect(() => desaturate({ amount })).toThrow('Required argument \'color\' is missing');
     });
 
     it('rejects missing amount argument', () => {
-      // @ts-expect-error - missing argument
       expect(() => desaturate({ color: testColor })).toThrow('Required argument \'amount\' is missing');
     });
   });

@@ -4,9 +4,9 @@ import type { Any, AnyRole } from './any.js';
 import { Interpolated } from './interpolated.js';
 import { Rules } from './rules.js';
 import { type List, list } from './list.js';
-import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
 import { callableRulesEntry } from './util/callable-entry.js';
-import { MixinCollection } from './util/callable-collection.js';
+import { evaluateCallableCollection } from './util/callable-eval.js';
 import { findPropertyDeclarationOccurrence } from './util/direct-rules-lookup.js';
 
 /**
@@ -63,24 +63,30 @@ export class Func extends Node<FuncValue, FuncOptions> {
     return String(name.valueOf());
   }
 
-  override toTrimmedString(options?: PrintOptions): string {
-    options = getPrintOptions(options);
+  /** @internal */
+  override writeSyntax(options: FinalPrintOptions): void {
     const w = options.writer!;
-    const mark = w.mark();
     const { name, params, body } = this;
 
     w.add('$function', this);
     w.add(' ');
-    w.add(name ? `${name}` : '@', this);
-    w.add('(');
-    if (params) {
-      params.toString(options);
+    if (name) {
+      name.writeSyntax(options);
+    } else {
+      w.add('@', this);
     }
+    w.add('(');
+    params?.writeSyntax(options);
     w.add(') ');
-
     body.writeBraced(options);
+  }
 
-    return w.getSince(mark);
+  override toTrimmedString(rawOptions?: PrintOptions): string {
+    const options = getPrintOptions(rawOptions);
+    const w = options.writer!;
+    const position = w.position();
+    this.writeSyntax(options);
+    return w.getSince(position);
   }
 
   override resolve(_context: Context): this {
@@ -96,16 +102,17 @@ export class Func extends Node<FuncValue, FuncOptions> {
   async evalCall(context: Context, args: List<Node> = list([])): Promise<Node> {
     const returnName = this._options?.returnName ?? 'return';
 
-    const bodyRules = this.body;
-
-    const coll = new MixinCollection([
-      callableRulesEntry(
-        { rules: bodyRules, params: this.params },
-        this.parent,
-        this.index
-      )
-    ]);
-    const evaluated = await coll.evalCall(context, args);
+    const evaluated = await evaluateCallableCollection({
+      context,
+      mixinEntries: [
+        callableRulesEntry(
+          { rules: this.body, params: this.params },
+          this.parent,
+          this.index
+        )
+      ],
+      args: args.value
+    });
 
     if (!(evaluated instanceof Rules)) {
       throw new Error(`Function ${this.nameKey ?? '<anonymous>'} must evaluate to rules`);
@@ -116,7 +123,11 @@ export class Func extends Node<FuncValue, FuncOptions> {
       throw new Error(`Function ${this.nameKey ?? '<anonymous>'} must return a value (missing "${returnName}: ...")`);
     }
     // Return the declaration's value (already in the correct scope).
-    return await decl.valueNode.eval(context);
+    const declVal = decl.value;
+    if (!(declVal instanceof Node)) {
+      throw new Error(`Function ${this.nameKey ?? '<anonymous>'} return value is not a Node`);
+    }
+    return await declVal.eval(context);
   }
 }
 

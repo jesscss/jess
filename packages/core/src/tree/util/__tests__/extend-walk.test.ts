@@ -9,7 +9,12 @@ import {
   el, sel, sellist, compound, is, co
 } from '../../../index.js';
 import type { Selector } from '../../../index.js';
-import { walkAndExtend, canUseWalkAndConsume, wouldExtendChange } from '../extend-walk.js';
+import {
+  walkAndExtend,
+  canUseWalkAndConsume,
+  wouldExtendChange,
+  classifyExtendMatch
+} from '../extend-walk.js';
 import { extendSelector } from '../extend.js';
 
 // ─────────────────────────────────────────────────
@@ -69,7 +74,8 @@ describe('walkAndExtend full mode', () => {
 
     expect(result.valueOf()).toBe('.a,.b,.c');
     expect(target.value[1]).toBe(unchanged);
-    expect(unchanged.parent).toBe(target);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    expect((unchanged as Selector).parent).toBe(target);
   });
 
   it('inside CompoundSelector → does NOT extend (full mode rejects component matches)', () => {
@@ -79,11 +85,26 @@ describe('walkAndExtend full mode', () => {
     expect(result.valueOf()).toBe(target.valueOf());
   });
 
+  it('root string-backed single-component compound matches exact simple target', () => {
+    const result = walkAndExtend(compound(['.a']), el('.a'), el('.c'), false);
+    expect(result.valueOf()).toBe('.a,.c');
+  });
+
   it('inside ComplexSelector → does NOT extend (full mode rejects component matches)', () => {
     const target = sel([el('.a'), co(' '), el('.b')]);
     const result = walkAndExtend(target, el('.a'), el('.c'), false);
     // Full mode: component match inside complex = partial match → rejected
     expect(result.valueOf()).toBe(target.valueOf());
+  });
+
+  it('single-component ComplexSelector matches as a whole selector in full mode', () => {
+    const result = walkAndExtend(sel([el('.a')]), el('.a'), el('.c'), false);
+    expect(result.valueOf()).toBe('.a,.c');
+  });
+
+  it('single-component ComplexSelector inside SelectorList extends as one list item', () => {
+    const result = walkAndExtend(sellist([sel([el('.a')])]), el('.a'), el('.c'), false);
+    expect(result.valueOf()).toBe('.a,.c');
   });
 
   it('inside :is() arg (sole pseudo) → extends', () => {
@@ -119,7 +140,8 @@ describe('walkAndExtend full mode', () => {
 
     expect(result.valueOf()).toBe(':is(.a,.b,.c)');
     expect(arg.value[1]).toBe(unchanged);
-    expect(unchanged.parent).toBe(arg);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    expect((unchanged as Selector).parent).toBe(arg);
   });
 });
 
@@ -141,6 +163,11 @@ describe('walkAndExtend partial mode', () => {
     expect(val).toContain(':is');
     expect(val).toContain('.c');
     expect(val).toContain('.b');
+  });
+
+  it('string-backed compound component wraps in :is() for partial simple target', () => {
+    const result = walkAndExtend(compound(['.a', '.b']), el('.a'), el('.c'), true);
+    expect(result.valueOf()).toBe(':is(.a,.c).b');
   });
 
   it('inside ComplexSelector → wraps in :is()', () => {
@@ -208,6 +235,16 @@ describe('walkAndExtend compound find (Phase 2)', () => {
 
   it('partial: compound subset match → :is(find, extendWith) + remainder', () => {
     const target = compound([el('.a'), el('.b'), el('.c')]);
+    const find = compound([el('.a'), el('.b')]);
+    const result = walkAndExtend(target, find, el('.q'), true);
+    const val = result.valueOf();
+    expect(val).toContain(':is');
+    expect(val).toContain('.q');
+    expect(val).toContain('.c');
+  });
+
+  it('partial: string-backed compound subset behaves like node-backed components', () => {
+    const target = compound(['.a', '.b', '.c']);
     const find = compound([el('.a'), el('.b')]);
     const result = walkAndExtend(target, find, el('.q'), true);
     const val = result.valueOf();
@@ -380,6 +417,10 @@ describe('wouldExtendChange', () => {
     expect(wouldExtendChange(target, el('.a'), el('.c'), false)).toBe(false);
   });
 
+  it('full mode: returns true for single-component ComplexSelector whole-item match', () => {
+    expect(wouldExtendChange(sel([el('.a')]), el('.a'), el('.c'), false)).toBe(true);
+  });
+
   it('partial mode: returns true for component match inside ComplexSelector', () => {
     const target = sel([el('.a'), co(' '), el('.b')]);
     expect(wouldExtendChange(target, el('.b'), el('.c'), true)).toBe(true);
@@ -388,6 +429,21 @@ describe('wouldExtendChange', () => {
   it('full mode: :is() with siblings → false', () => {
     const target = compound([is(el('.a')), el('.x')]);
     expect(wouldExtendChange(target, el('.a'), el('.b'), false)).toBe(false);
+  });
+});
+
+describe('classifyExtendMatch', () => {
+  it('reports self-extend target presence without treating it as an output change', () => {
+    expect(classifyExtendMatch(el('.a'), el('.a'), el('.a'), false)).toBe('local');
+    expect(wouldExtendChange(el('.a'), el('.a'), el('.a'), false)).toBe(false);
+  });
+
+  it('reports selector-list item target presence through the walk path', () => {
+    expect(classifyExtendMatch(sellist([el('.a'), el('.b')]), el('.b'), el('.b'), false)).toBe('local');
+  });
+
+  it('reports single-component complex target presence through the walk path', () => {
+    expect(classifyExtendMatch(sel([el('.a')]), el('.a'), el('.a'), false)).toBe('local');
   });
 });
 

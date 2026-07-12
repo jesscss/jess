@@ -8,6 +8,7 @@ import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { attachSelectorBitLibrary, Selector } from './selector.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { consumeTriviaBetweenOffsets, emitTriviaTokens } from './util/trivia.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 
 function normalizeSelectorArg(text: string): string {
@@ -96,7 +97,7 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
         attachSelectorBitLibrary(selectorArg, this.keySetLibrary);
       }
       const omitGeneratedWrapper = generatedOverride.omitWrapperForSingleSelectorList === true
-        && (!isNode(selectorArg, N.SelectorList) || selectorArg.selectors.length === 1);
+        && (!isNode(selectorArg, N.SelectorList) || selectorArg.value.length === 1);
       if (omitGeneratedWrapper) {
         selectorArg.toString(options);
         return w.getSince(mark);
@@ -115,7 +116,82 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
     w.add(name, this);
     if (arg) {
       w.add('(');
-      if (isNode(arg, N.SelectorList)) {
+      if (Array.isArray(arg)) {
+        // Generic (unknown-pseudo) argument: a raw component array. Emit each
+        // component, recovering trivia between them from this node's valueSpans.
+        // A ' ' descendant combinator carries no own text — its surrounding
+        // trivia (whitespace + comments) spans from the previous part's end to
+        // the next part's start, so recover it across the combinator rather than
+        // emitting a bare space (mirrors ComplexSelector.toString).
+        const spans = this.valueSpans;
+        for (let i = 0; i < arg.length; i++) {
+          const part = arg[i];
+          if (part === ' ') {
+            const run = (options.trivia && spans)
+              ? consumeTriviaBetweenOffsets(options.trivia, spans[(i - 1) * 3 + 1], spans[(i + 1) * 3], options)
+              : undefined;
+            if (run) {
+              emitTriviaTokens(run, options);
+            } else {
+              w.add(' ', this);
+            }
+            continue;
+          }
+          // Recover trivia before this part — unless the previous part was a ' '
+          // combinator, which already consumed the trivia up to this part's start.
+          if (i > 0 && arg[i - 1] !== ' ' && options.trivia && spans) {
+            emitTriviaTokens(
+              consumeTriviaBetweenOffsets(options.trivia, spans[(i - 1) * 3 + 1], spans[i * 3], options),
+              options
+            );
+          }
+          if (typeof part === 'string') {
+            w.add(part, this);
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+          } else if (part && typeof (part as Node).toString === 'function') {
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+            (part as Node).toString(options);
+          }
+        }
+      } else if (isNode(arg, N.Sequence)) {
+        // Unknown-pseudo arg stored as Sequence for AST serialization.
+        // Render each Any item inline (no separators), using valueSpans for trivia.
+        const seqItems = arg.value;
+        const spans = this.valueSpans;
+        let srcIdx = 0;
+        let prevWasSpace = false;
+        for (let i = 0; i < seqItems.length; i++) {
+          const item = seqItems[i]!;
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+          const itemStr = (item as unknown as { value?: unknown }).value;
+          if (itemStr === ' ') {
+            const run = (options.trivia && spans)
+              ? consumeTriviaBetweenOffsets(options.trivia, spans[(srcIdx - 1) * 3 + 1], spans[(srcIdx + 1) * 3], options)
+              : undefined;
+            if (run) {
+              emitTriviaTokens(run, options);
+            } else {
+              w.add(' ', this);
+            }
+            srcIdx++;
+            prevWasSpace = true;
+            continue;
+          }
+          if (srcIdx > 0 && !prevWasSpace && options.trivia && spans) {
+            emitTriviaTokens(
+              consumeTriviaBetweenOffsets(options.trivia, spans[(srcIdx - 1) * 3 + 1], spans[srcIdx * 3], options),
+              options
+            );
+          }
+          if (typeof itemStr === 'string') {
+            w.add(itemStr, this);
+          } else {
+            item.toString(options);
+          }
+          srcIdx++;
+          prevWasSpace = false;
+        }
+      } else if (isNode(arg, N.SelectorList)) {
         const argMark = w.mark();
         arg.toString(options);
         w.replaceSince(argMark, normalizeSelectorArg, arg);
@@ -142,9 +218,10 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
         if (isNode(arg, N.SelectorList)) {
           const omitGeneratedWrapper = this.generated
             && this.generatedPseudoPlacementOverride?.omitWrapperForSingleSelectorList === true
-            && arg.selectors.length === 1;
-          this._requiredKeySet = omitGeneratedWrapper
-            ? arg.selectors[0]!.requiredKeySet
+            && arg.value.length === 1;
+          const firstItem = arg.value[0]!;
+          this._requiredKeySet = omitGeneratedWrapper && typeof firstItem !== 'string'
+            ? firstItem.requiredKeySet
             : library.getBitset();
         } else {
           this._requiredKeySet = arg.requiredKeySet;
@@ -190,25 +267,20 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
     return valueOf;
   }
 
-  override clone(deep?: boolean, cloneFn?: (n: Node) => Node): this {
-    let arg = this.arg;
-    if (deep && arg) {
-      cloneFn ??= n => n.clone(deep);
-      arg = cloneFn(arg);
-    }
+  override clone(cloneFn?: (n: Node) => Node): this {
+    const currentArg = this.arg;
+    const clonedArg = cloneFn && currentArg ? cloneFn(currentArg) : currentArg;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     const cloned = new PseudoSelector(
       {
         name: this.name,
-        ...(arg !== undefined && { arg }),
-        ...(this.generatedPseudoPlacementOverride !== undefined && {
-          generatedPseudoPlacementOverride: this.generatedPseudoPlacementOverride
-        })
+        arg: clonedArg,
+        generatedPseudoPlacementOverride: this.generatedPseudoPlacementOverride
       },
       this._options ? { ...this._options } : undefined,
-      this.location,
-      this.sourceRoot?._treeContext
-    ) as this;
-    cloned.inherit(this);
+      this._location?.length ? this._location : undefined,
+      this._treeContext
+    ).inherit(this) as this;
     cloned.keySetLibrary = this.keySetLibrary;
     return cloned;
   }

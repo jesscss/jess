@@ -10,8 +10,8 @@ import type { Context } from '../context.js';
 import { Interpolated } from './interpolated.js';
 import { Any, any, type AnyRole } from './any.js';
 import { Reference } from './reference.js';
-import { List, renderListValueSyntax } from './list.js';
-import { spaced } from './sequence.js';
+import { List } from './list.js';
+import { Sequence, spaced } from './sequence.js';
 import { Operation } from './operation.js';
 import { N } from './node-type.js';
 import type { Call } from './call.js';
@@ -29,8 +29,7 @@ import {
   type RenderBuffer
 } from './util/render-buffer.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
-import { emitCommentTriviaAfterNode } from './util/trivia.js';
-import { canReuseLeaf, copyWithReusableLeaves, reuseLeaf } from './util/cloning.js';
+import { consumeTrivia, emitCommentTriviaAfterNode, emitTriviaTokens } from './util/trivia.js';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object';
@@ -86,12 +85,13 @@ export type DeclarationOptions = {
 };
 /** Should be Any<'property'> | Interpolated<'property'> */
 type NameValue<T extends AnyRole = 'property'> = Any<T> | Interpolated<T>;
+type DeclarationValueSegment = Node | string;
 
 export type DeclarationValue<T extends AnyRole = 'property'> = {
-  name: NameValue<T>;
-  value: Node;
+  name: NameValue<T> | string;
+  value: Node | string | DeclarationValueSegment[];
   /** The actual string representation of important, if it exists */
-  important?: Any<'flag'>;
+  important?: Any<'flag'> | string | boolean;
 };
 
 type DeclarationEvalState = {
@@ -109,7 +109,7 @@ type CustomInterpolatedRenderValue = {
 
 type DeclarationRenderState = {
   name: DeclarationValue['name'];
-  value: Node;
+  value: DeclarationValue['value'];
   customInterpolatedValue?: CustomInterpolatedRenderValue;
   mergeAdapter?: DeclarationMergeAdapterState;
   important?: Any<'flag'>;
@@ -118,6 +118,18 @@ type DeclarationRenderState = {
   output?: Node;
   nil: boolean;
 };
+
+function sameConcreteLocation(left: readonly unknown[], right: readonly unknown[] | undefined): boolean {
+  if (!right || left.length === 0 || left.length !== right.length) {
+    return false;
+  }
+  for (let i = 0; i < left.length; i++) {
+    if (left[i] !== right[i]) {
+      return false;
+    }
+  }
+  return true;
+}
 
 export function finalizeContextualImportantState(
   context: Context,
@@ -139,8 +151,13 @@ export function finalizeContextualImportantPublicState(
   if (!context.hasImportantSource) {
     return important ? { important } : {};
   }
-  context.popImportantSource();
-  return important ? { important } : { important: any('!important', { role: 'flag' }) };
+  const sourceImportant = context.popImportantSource();
+  if (important) {
+    return { important };
+  }
+  return sourceImportant && sourceImportant !== true
+    ? { important: sourceImportant }
+    : { important: any('!important', { role: 'flag' }) };
 }
 
 export function collectDeclarationMergeAdapterItems(
@@ -149,8 +166,14 @@ export function collectDeclarationMergeAdapterItems(
 ): Node[] {
   const mergedItems: Node[] = [];
   const collect = (child: Node) => {
-    if (isNode(child, N.List) || (options.includeSequences && isNode(child, N.Sequence))) {
-      for (const item of child.items) {
+    if (isNode(child, N.List)) {
+      for (const item of child.value) {
+        collect(item);
+      }
+      return;
+    }
+    if (options.includeSequences && isNode(child, N.Sequence)) {
+      for (const item of child.value) {
         collect(item);
       }
       return;
@@ -167,7 +190,7 @@ export function collectDeclarationMergeAdapterItems(
 
 type DeclarationMergeAdapterItemsState = {
   kind: 'list' | 'space';
-  items: Node[];
+  value: Node[];
 };
 
 export type DeclarationMergeAdapterState = DeclarationMergeAdapterItemsState;
@@ -192,7 +215,7 @@ export function createDeclarationMergeAdapterState(
   if (mergedItems.length === 1) {
     return mergedItems[0]!;
   }
-  return { kind: mode, items: mergedItems };
+  return { kind: mode, value: mergedItems };
 }
 
 type DeclarationValueState<T extends Declaration = Declaration> = {
@@ -204,7 +227,7 @@ type DeclarationValueState<T extends Declaration = Declaration> = {
 
 type DeclarationRegistrationState = {
   name: DeclarationValue['name'];
-  value: Node;
+  value: DeclarationValue['value'];
   important?: Any<'flag'>;
   normalizedFromAssign?: AssignmentType;
   renderOnly?: boolean;
@@ -219,13 +242,67 @@ type DeclarationRegistrationOptions = {
   reuseCanonical?: boolean;
 };
 
-type DeclarationRenderValue = Node | Nil | Node[] | CustomInterpolatedRenderValue;
+type DeclarationRenderValue =
+  | DeclarationValue['value']
+  | Nil
+  | Node[]
+  | CustomInterpolatedRenderValue;
 
 const isCustomInterpolatedRenderValue = (value: DeclarationRenderValue): value is CustomInterpolatedRenderValue => (
   !(value instanceof Node)
   && !Array.isArray(value)
+  && typeof value !== 'string'
   && value.source instanceof Interpolated
 );
+
+const isDeferredDeclarationValue = (value: DeclarationValue['value']): boolean => (
+  typeof value === 'string' || Array.isArray(value)
+);
+
+const getSingleInterpolatedCustomValue = (node: Node): Interpolated | undefined => (
+  node instanceof Interpolated
+    ? node
+    : node instanceof Sequence && node.value.length === 1 && node.value[0] instanceof Interpolated
+      ? node.value[0]
+      : undefined
+);
+
+const getSingleInterpolatedDeclarationValue = (
+  value: DeclarationValue['value']
+): Interpolated | undefined => (
+  value instanceof Node ? getSingleInterpolatedCustomValue(value) : undefined
+);
+
+const emitLeadingTriviaForSingleInterpolatedCustomValue = (
+  value: Node,
+  source: Interpolated,
+  options: ReturnType<typeof getPrintOptions>
+): void => {
+  if (!(value instanceof Sequence) || value.value[0] !== source) {
+    return;
+  }
+  const trivia = options.trivia ?? value.sourceRoot?._treeContext?.opts?.trivia;
+  if (!trivia || trivia === true) {
+    return;
+  }
+  emitTriviaTokens(consumeTrivia(trivia, source.location[0], 'before', options), options);
+};
+
+const inheritCustomInterpolatedValuePlacement = (sourceValue: Node, evaluatedValue: Node): Node => {
+  const source = getSingleInterpolatedCustomValue(sourceValue);
+  return source ? evaluatedValue.inherit(source) : evaluatedValue;
+};
+
+const emitLeadingTriviaForCustomValue = (
+  value: Node,
+  options: ReturnType<typeof getPrintOptions>
+): void => {
+  const trivia = options.trivia ?? value.sourceRoot?._treeContext?.opts?.trivia;
+  if (!trivia || trivia === true) {
+    return;
+  }
+  emitTriviaTokens(consumeTrivia(trivia, value.location[0], 'before', options), options);
+};
 
 const shouldResolveCustomPropertyValue = (node: Node): boolean => {
   if (isNode(node, N.Reference)) {
@@ -234,7 +311,8 @@ const shouldResolveCustomPropertyValue = (node: Node): boolean => {
   if (node.type === 'Interpolated') {
     return true;
   }
-  return valueShouldResolveCustomProperty(node.value);
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+  return valueShouldResolveCustomProperty('value' in node ? (node as unknown as { value: unknown }).value : undefined);
 };
 
 const valueShouldResolveCustomProperty = (value: unknown): boolean => {
@@ -260,11 +338,11 @@ const valueShouldResolveCustomProperty = (value: unknown): boolean => {
 };
 
 const unwrapAtomicCustomValue = (node: Node): Node => {
-  if (isNode(node, N.List) && node.items.length === 1) {
-    return unwrapAtomicCustomValue(node.items[0]!);
+  if (isNode(node, N.List) && node.value.length === 1) {
+    return unwrapAtomicCustomValue(node.value[0]!);
   }
-  if (isNode(node, N.Sequence) && node.items.length === 1) {
-    return unwrapAtomicCustomValue(node.items[0]!);
+  if (isNode(node, N.Sequence) && node.value.length === 1) {
+    return unwrapAtomicCustomValue(node.value[0]!);
   }
   return node;
 };
@@ -276,7 +354,14 @@ const canReuseSourceFreeAssignmentInput = (node: Node): boolean => {
   if (node.location.length !== 0 || !node.hasFlag(F_STATIC)) {
     return false;
   }
-  return node.items.every(child => child instanceof Node && canReuseLeaf(child));
+  const children = node instanceof Sequence ? node.value : node instanceof List ? node.value : [];
+  for (let i = 0; i < children.length; i++) {
+    const child = children[i];
+    if (!(child instanceof Node) || !child.canReuseAsLeaf()) {
+      return false;
+    }
+  }
+  return true;
 };
 
 type LessFunctionFallbackCall = Call & {
@@ -346,14 +431,32 @@ const trimCustomTrailingNewline = (text: string): string => {
   return text.slice(0, index + 1);
 };
 
-const nodeValueText = (node: Node): string | undefined => {
+const nodeValueText = (node: DeclarationValue['value'] | DeclarationValue['name'] | DeclarationValue['important']): string | undefined => {
+  if (typeof node === 'string') {
+    return node;
+  }
+  if (Array.isArray(node)) {
+    let text = '';
+    for (let i = 0; i < node.length; i++) {
+      const part = node[i]!;
+      const partText = nodeValueText(part);
+      if (partText === undefined) {
+        return undefined;
+      }
+      text += partText;
+    }
+    return text;
+  }
+  if (typeof node === 'boolean' || node === undefined) {
+    return undefined;
+  }
   const value = node.valueOf();
   return typeof value === 'string' || typeof value === 'number'
     ? String(value)
     : undefined;
 };
 
-const maybeTrimmedScalarText = (node: Node): string | undefined => {
+const maybeTrimmedScalarText = (node: Node | string): string | undefined => {
   const text = nodeValueText(node);
   if (text === undefined || text.length === 0) {
     return text;
@@ -368,6 +471,29 @@ const maybeTrimmedScalarText = (node: Node): string | undefined => {
     : text;
 };
 
+const maybeDirectSyntheticDeclarationLeafText = (node: DeclarationValue['value'] | DeclarationValue['name'] | DeclarationValue['important']): string | undefined => {
+  if (typeof node === 'string') {
+    return maybeTrimmedScalarText(node);
+  }
+  if (Array.isArray(node)) {
+    return maybeTrimmedScalarText(nodeValueText(node) ?? '');
+  }
+  if (typeof node === 'boolean' || node === undefined) {
+    return undefined;
+  }
+  if (
+    node.type !== 'Any'
+    && node.type !== 'Anonymous'
+    && node.type !== 'Keyword'
+  ) {
+    return undefined;
+  }
+  if (node._location !== undefined) {
+    return undefined;
+  }
+  return maybeTrimmedScalarText(node);
+};
+
 const stringifyCustomFallbackFunctionCall = (node: Node, options: PrintOptions): string | undefined => {
   const atomicValue = unwrapAtomicCustomValue(node);
   if (!isLessFunctionFallbackCall(atomicValue)) {
@@ -375,7 +501,7 @@ const stringifyCustomFallbackFunctionCall = (node: Node, options: PrintOptions):
   }
 
   const { name, args } = atomicValue;
-  const printableKey = name.value.rawKey ?? name.key;
+  const printableKey = name.rawKey ?? name.key;
   let nameText: string;
   if (typeof printableKey === 'string' || typeof printableKey === 'number') {
     nameText = String(printableKey);
@@ -412,12 +538,12 @@ const stringifyCustomFallbackFunctionCall = (node: Node, options: PrintOptions):
  * Initially, the name can be a Node or string.
  * Once evaluated, name must be a string
  */
-export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> extends Node<DeclarationValue, Opts> {
-  static override childKeys = ['name', 'valueNode', 'important'];
+export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> extends Node<DeclarationValue['value'], Opts> {
+  static override childKeys = ['name', 'value', 'important'];
 
-  readonly name: DeclarationValue['name'];
-  readonly valueNode: DeclarationValue['value'];
-  readonly important: DeclarationValue['important'];
+  declare value: DeclarationValue['value'];
+  name: DeclarationValue['name'];
+  important: DeclarationValue['important'];
 
   override allowRuleRoot = true;
 
@@ -427,17 +553,56 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     location?: LocationInfo,
     treeContext?: Context['treeContext']
   ) {
-    super(value, options, location, treeContext);
-    this.name = value.name;
-    this.valueNode = value.value;
-    this.important = value.important;
+    super();
+    this._location = location;
+    this._options = options;
+    this.name = this._processNodes(value.name);
+    this.value = this._processNodes(value.value);
+    this.important = this._processNodes(value.important);
+    this._treeContext = treeContext;
+  }
+
+  override* walk(deep?: boolean, reverse?: boolean): Generator<Node, void, unknown> {
+    const childValues = reverse
+      ? [this.important, this.value, this.name]
+      : [this.name, this.value, this.important];
+    for (let i = 0; i < childValues.length; i++) {
+      const child = childValues[i];
+      if (child instanceof Node) {
+        yield child;
+        if (deep) {
+          yield* child.walk(deep, reverse);
+        }
+      }
+    }
+  }
+
+  override clone(cloneFn?: (n: Node) => Node): this {
+    const cloneNode = <T extends Node>(part: T): T => (
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- cloneFn preserves the concrete node field type supplied by this declaration part.
+      cloneFn ? cloneFn(part) as T : part
+    );
+    const cloneValue = (part: DeclarationValue['value']): DeclarationValue['value'] => (
+      cloneFn && part instanceof Node ? cloneNode(part) : part
+    );
+    const cloneImportant = (part: DeclarationValue['important']): DeclarationValue['important'] => (
+      cloneFn && part instanceof Node ? cloneNode(part) : part
+    );
+    return this.withParts({
+      name: this.name instanceof Node ? cloneNode(this.name) : this.name,
+      value: cloneValue(this.value),
+      important: cloneImportant(this.important)
+    });
   }
 
   private copyNameForDerived(node: DeclarationValue['name']): DeclarationValue['name'] {
-    if (canReuseLeaf(node)) {
-      return reuseLeaf(node);
+    if (typeof node === 'string') {
+      return node;
     }
-    const copy = copyWithReusableLeaves(node);
+    if (node.canReuseAsLeaf()) {
+      return node.reuseAsLeaf();
+    }
+    const copy = node.cloneForPlacement();
     if (!(copy instanceof Any) && !(copy instanceof Interpolated)) {
       throw new TypeError('Copied declaration name must remain a declaration name');
     }
@@ -445,33 +610,67 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     return copy;
   }
 
-  private copyValueForDerived(node: Node): Node {
-    return canReuseLeaf(node) ? reuseLeaf(node) : copyWithReusableLeaves(node);
+  private copyValueForDerived(node: DeclarationValue['value']): DeclarationValue['value'] {
+    if (typeof node === 'string') {
+      return node;
+    }
+    if (Array.isArray(node)) {
+      const copied = new Array<DeclarationValueSegment>(node.length);
+      for (let i = 0; i < node.length; i++) {
+        const item = node[i]!;
+        copied[i] = typeof item === 'string' ? item : this.copyValueNodeForDerived(item);
+      }
+      return copied;
+    }
+    return this.copyValueNodeForDerived(node);
+  }
+
+  private copyValueNodeForDerived(node: Node): Node {
+    return node.canReuseAsLeaf() || canReuseSourceFreeAssignmentInput(node)
+      ? node.reuseAsLeaf()
+      : node.cloneForPlacement();
+  }
+
+  private materializeValueForSemantics(value: DeclarationValue['value']): Node {
+    if (value instanceof Node) {
+      return value;
+    }
+    if (typeof value === 'string') {
+      return any(value);
+    }
+    if (value.length === 1) {
+      const only = value[0]!;
+      return typeof only === 'string' ? any(only) : only;
+    }
+    const nodes = new Array<Node>(value.length);
+    for (let i = 0; i < value.length; i++) {
+      const item = value[i]!;
+      nodes[i] = typeof item === 'string' ? any(item) : item;
+    }
+    return spaced(nodes);
   }
 
   private ownRenderAssignmentInput(node: Node): Node {
-    return canReuseLeaf(node) || canReuseSourceFreeAssignmentInput(node)
-      ? reuseLeaf(node)
-      : this.copyValueForDerived(node);
+    return node.canReuseAsLeaf() || canReuseSourceFreeAssignmentInput(node)
+      ? node.reuseAsLeaf()
+      : this.copyValueNodeForDerived(node);
   }
 
   private ownMergedAssignmentOutputItem(node: Node): Node {
-    return canReuseLeaf(node) ? reuseLeaf(node) : this.copyValueForDerived(node);
+    return node.canReuseAsLeaf() ? node.reuseAsLeaf() : this.copyValueNodeForDerived(node);
   }
 
-  private copyImportantForDerived(node: Any<'flag'> | undefined): Any<'flag'> | undefined {
+  private copyImportantForDerived(node: DeclarationValue['important']): DeclarationValue['important'] {
     if (!node) {
       return undefined;
     }
-    if (canReuseLeaf(node)) {
-      return reuseLeaf(node);
+    if (typeof node === 'string') {
+      return node;
     }
-    const copy = copyWithReusableLeaves(node);
-    if (!(copy instanceof Any)) {
-      throw new TypeError('Copied important flag must remain an Any node');
+    if (typeof node === 'boolean') {
+      return node;
     }
-    copy.frozen = true;
-    return copy;
+    return node.reuseAsLeaf();
   }
 
   private applyDerivedMetadata<T extends this>(node: T): T {
@@ -479,22 +678,29 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   }
 
   private withParts(value: DeclarationValue): this {
-    const node: this = Reflect.construct(
-      this.constructor,
-      [
-        value,
-        this._options ? { ...this._options } : undefined,
-        this.location
-      ]
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- Derived declarations must preserve concrete subclasses such as VarDeclaration and CustomDeclaration.
+    const Ctor = this.constructor as unknown as new (
+      value: DeclarationValue,
+      options?: Opts,
+      location?: LocationInfo,
+      treeContext?: Context['treeContext']
+    ) => this;
+    const node = new Ctor(
+      value,
+      this._options ? { ...this._options } : undefined,
+      this._location?.length ? this._location : undefined,
+      this._treeContext
     );
     return this.applyDerivedMetadata(node);
   }
 
   private derive(): this {
+    // Share the parts (immutable templates); the derived node differs only in
+    // identity/options/metadata, never in its part values.
     return this.withParts({
-      name: this.copyNameForDerived(this.name),
-      value: this.copyValueForDerived(this.valueNode),
-      important: this.copyImportantForDerived(this.important)
+      name: this.name,
+      value: this.value,
+      important: this.important
     });
   }
 
@@ -505,16 +711,12 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   }
 
   deriveWithParts(parts: Partial<DeclarationValue>): this {
+    // Share unchanged parts (immutable templates); only substitute what changed.
+    // No defensive copy of name/value/important the caller didn't touch.
     const node = this.withParts({
-      name: parts.name === undefined
-        ? this.copyNameForDerived(this.name)
-        : parts.name,
-      value: parts.value === undefined
-        ? this.copyValueForDerived(this.valueNode)
-        : parts.value,
-      important: parts.important === undefined
-        ? this.copyImportantForDerived(this.important)
-        : parts.important
+      name: parts.name === undefined ? this.name : parts.name,
+      value: parts.value === undefined ? this.value : parts.value,
+      important: parts.important === undefined ? this.important : parts.important
     });
     node.registrationPrepared = this.registrationPrepared;
     return node;
@@ -559,24 +761,27 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
 
   /** If the value has curly braces, a semi-colon is not required */
   override get requiredSemi() {
-    return this.valueRequiresSemi(this.valueNode);
+    return this.valueRequiresSemi(this.value);
   }
 
-  private valueRequiresSemi(value: Node): boolean {
+  private valueRequiresSemi(value: DeclarationValue['value']): boolean {
+    if (typeof value === 'string') {
+      return true;
+    }
     return !isNode(value, N.Collection) && !isNode(value, N.Mixin);
   }
 
   protected declTrimmedString(options?: PrintOptions) {
     return this.declValueTrimmedString({
       name: this.name,
-      value: this.valueNode,
+      value: this.value,
       important: this.important
     }, options);
   }
 
   private declValueTrimmedString(
     valueParts: DeclarationValue,
-    options?: PrintOptions,
+    rawOptions?: PrintOptions,
     renderState?: {
       customInterpolatedValue?: DeclarationRenderState['customInterpolatedValue'];
       mergeAdapter?: DeclarationMergeAdapterState;
@@ -584,11 +789,34 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       normalizedFromAssign?: AssignmentType;
     }
   ) {
-    options = getPrintOptions(options);
+    const options = getPrintOptions(rawOptions);
     const w = options.writer!;
-    const mark = w.mark();
+    const position = w.position();
     this.writeDeclarationValueSyntax(valueParts, options, renderState);
-    return w.getSince(mark);
+    return w.getSince(position);
+  }
+
+  private writeDeclarationFieldValueSyntax(
+    value: DeclarationValue['value'],
+    options: ReturnType<typeof getPrintOptions>
+  ): void {
+    const w = options.writer!;
+    if (typeof value === 'string') {
+      w.add(value, this);
+      return;
+    }
+    if (Array.isArray(value)) {
+      for (let i = 0; i < value.length; i++) {
+        const item = value[i]!;
+        if (typeof item === 'string') {
+          w.add(item, this);
+        } else {
+          item.writeSyntax(options);
+        }
+      }
+      return;
+    }
+    value.writeSyntax(options);
   }
 
   private writeDeclarationValueSyntax(
@@ -604,6 +832,11 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     const w = options.writer!;
     const { name, value, important } = valueParts;
     const { mergeAdapter, importantText } = renderState ?? {};
+    const customInterpolatedSource = renderState?.customInterpolatedValue?.source;
+    const hasCustomInterpolatedRender = Boolean(
+      customInterpolatedSource
+      && getSingleInterpolatedDeclarationValue(value) === customInterpolatedSource
+    );
     const { assign = ':', normalizedFromAssign, setDefined } = this._options ?? {};
     // setDefined uses `:=` with default spacing rules.
     const printedAssign = (normalizedFromAssign || renderState?.normalizedFromAssign)
@@ -613,17 +846,21 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     let a = effAssign === ':' ? ':' : ` ${effAssign}`;
     // Normalize property name by trimming trailing whitespace
     const nameText = nodeValueText(name);
-    if (nameText !== undefined && !hasTrailingWhitespace(nameText)) {
+    if (typeof name === 'string') {
+      w.add(hasTrailingWhitespace(name) ? name.trimEnd() : name, this);
+    } else if (nameText !== undefined && !hasTrailingWhitespace(nameText)) {
       name.writeSyntax(options);
     } else {
       const nameMark = w.mark();
       name.writeSyntax(options);
       w.trimEndSince(nameMark);
     }
-    emitCommentTriviaAfterNode(name, options);
+    if (name instanceof Node) {
+      emitCommentTriviaAfterNode(name, options);
+    }
     w.add(a);
     // Custom properties must preserve value text exactly as provided.
-    const isCustomProperty = name.valueOf().startsWith('--');
+    const isCustomProperty = nameText?.startsWith('--') === true;
     if (isCustomProperty) {
       const saved = savePrintState(options, ['inCustom']);
       options.inCustom = true;
@@ -631,27 +868,42 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       // - if capture ended with a line break before declaration termination,
       //   drop that trailing line break so semicolon insertion stays inline.
       const customValueText = nodeValueText(value);
-      const fallbackOut = stringifyCustomFallbackFunctionCall(value, options);
+      const fallbackOut = !(value instanceof Node)
+        ? undefined
+        : stringifyCustomFallbackFunctionCall(value, options);
       if (
-        renderState?.customInterpolatedValue?.source !== value
+        !hasCustomInterpolatedRender
         && fallbackOut === undefined
         && customValueText !== undefined
         && !needsCustomTrailingNewlineTrim(customValueText)
       ) {
-        value.writeSyntax(options);
+        if (value instanceof Node) {
+          emitLeadingTriviaForCustomValue(value, options);
+        }
+        this.writeDeclarationFieldValueSyntax(value, options);
       } else if (fallbackOut !== undefined) {
         const leading = customValueText === undefined ? '' : leadingHorizontalWhitespace(customValueText);
         w.add(`${leading}${fallbackOut}`, value);
-      } else if (renderState?.customInterpolatedValue?.source === value) {
+      } else if (hasCustomInterpolatedRender) {
         const valueMark = w.mark();
-        renderState.customInterpolatedValue.source.writeWithReplacements(
-          renderState.customInterpolatedValue.replacements,
+        if (value instanceof Node) {
+          emitLeadingTriviaForSingleInterpolatedCustomValue(
+            value,
+            customInterpolatedSource!,
+            options
+          );
+        }
+        customInterpolatedSource!.writeWithReplacements(
+          renderState!.customInterpolatedValue!.replacements,
           options
         );
         w.replaceSince(valueMark, valueOut => trimCustomTrailingNewline(valueOut), value);
       } else {
         const valueMark = w.mark();
-        value.writeSyntax(options);
+        if (value instanceof Node) {
+          emitLeadingTriviaForCustomValue(value, options);
+        }
+        this.writeDeclarationFieldValueSyntax(value, options);
         w.replaceSince(valueMark, (valueOut) => {
           const customOut = fallbackOut === undefined
             ? valueOut
@@ -661,27 +913,35 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       }
       restorePrintState(options, saved);
     } else {
-      const valueMark = w.mark();
-      if (mergeAdapter?.kind === 'list') {
-        renderListValueSyntax(mergeAdapter.items, options);
-      } else if (mergeAdapter?.kind === 'space') {
-        this.renderSpaceValueSyntax(mergeAdapter.items, options);
+      if (mergeAdapter?.kind === 'space') {
+        this.renderSpaceValueSyntax(mergeAdapter.value, options);
+      } else if (mergeAdapter?.kind === 'list') {
+        this.renderCommaValueSyntax(mergeAdapter.value, options);
       } else {
-        value.writeSyntax(options);
+        const valueMark = w.mark();
+        this.writeDeclarationFieldValueSyntax(value, options);
+        w.replaceSince(valueMark, valOut => this.formatNonCustomValue(valOut, options), value);
       }
-      w.replaceSince(valueMark, valOut => this.formatNonCustomValue(valOut, options), value);
-      if (!isNode(value, N.Collection)) {
+      if (!(value instanceof Node) || !isNode(value, N.Collection)) {
         if (important || importantText) {
           w.add(' ');
           if (important) {
-            const importantText = maybeTrimmedScalarText(important);
-            if (importantText !== undefined) {
-              w.add(importantText, important);
+            if (important === true) {
+              w.add('!important', this);
+            } else if (typeof important === 'string') {
+              w.add(important, this);
+            } else if (typeof important === 'boolean') {
+              // False is accepted as an API convenience for no important flag.
             } else {
-              const importantMark = w.mark();
-              important.writeSyntax(options);
-              w.trimStartSince(importantMark);
-              w.trimEndSince(importantMark);
+              const importantText = maybeTrimmedScalarText(important);
+              if (importantText !== undefined) {
+                w.add(importantText, important);
+              } else {
+                const importantMark = w.mark();
+                important.writeSyntax(options);
+                w.trimStartSince(importantMark);
+                w.trimEndSince(importantMark);
+              }
             }
           } else {
             w.add(importantText!, value);
@@ -690,32 +950,75 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       }
     }
     if (this.valueRequiresSemi(value)) {
-      emitCommentTriviaAfterNode(important ?? value, options);
+      const triviaSource = important ?? value;
+      if (triviaSource instanceof Node) {
+        emitCommentTriviaAfterNode(triviaSource, options);
+      }
     }
   }
 
-  private renderSpaceValueSyntax(value: Node[], options: PrintOptions): string {
+  private renderSpaceValueSyntax(value: Node[], options: PrintOptions): void {
     const printOptions = getPrintOptions(options);
     const w = printOptions.writer!;
-    const mark = w.mark();
     for (let index = 0; index < value.length; index++) {
-      if (index !== 0) {
-        w.queueSpacer(' ');
-      }
       const item = value[index]!;
+      w.queueSpacer(' ');
       item.writeSyntax(printOptions);
     }
-    return w.getSince(mark);
+  }
+
+  private renderCommaValueSyntax(value: Node[], options: PrintOptions): void {
+    const printOptions = getPrintOptions(options);
+    const w = printOptions.writer!;
+    for (let index = 0; index < value.length; index++) {
+      if (index !== 0) {
+        w.add(',');
+      }
+      const item = value[index]!;
+      w.queueSpacer(' ');
+      item.writeSyntax(printOptions);
+    }
   }
 
   override toTrimmedString(options?: PrintOptions) {
     return this.declTrimmedString(options);
   }
 
+  private writeDirectSyntheticScalarSyntax(options: ReturnType<typeof getPrintOptions>): boolean {
+    if (options.context !== undefined) {
+      return false;
+    }
+    const nameText = maybeDirectSyntheticDeclarationLeafText(this.name);
+    const valueText = maybeDirectSyntheticDeclarationLeafText(this.value);
+    if (nameText === undefined || valueText === undefined || nameText.startsWith('--')) {
+      return false;
+    }
+    const importantText = this.important === undefined
+      ? undefined
+      : maybeDirectSyntheticDeclarationLeafText(this.important);
+    if (this.important !== undefined && importantText === undefined) {
+      return false;
+    }
+    const { assign = ':', normalizedFromAssign, setDefined } = this._options ?? {};
+    const printedAssign = normalizedFromAssign ? AssignmentType.Default : assign;
+    const effAssign = (setDefined && printedAssign === ':') ? ':=' : printedAssign;
+    const w = options.writer!;
+    w.add(nameText, this.name instanceof Node ? this.name : this);
+    w.add(effAssign === ':' ? ': ' : ` ${effAssign} `);
+    w.add(valueText, this.value instanceof Node ? this.value : this);
+    if (importantText !== undefined) {
+      w.add(` ${importantText}`, this.important instanceof Node ? this.important : this);
+    }
+    return true;
+  }
+
   override writeSyntax(options: ReturnType<typeof getPrintOptions>): void {
+    if (this.writeDirectSyntheticScalarSyntax(options)) {
+      return;
+    }
     this.writeDeclarationValueSyntax({
       name: this.name,
-      value: this.valueNode,
+      value: this.value,
       important: this.important
     }, options);
   }
@@ -759,8 +1062,8 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     const node = state.output;
     if (isNode(node, N.VarDeclaration)) {
       return isRenderBuffer(bufferOrOptions)
-        ? Node.prototype.render.call(node, context, bufferOrOptions, options)
-        : Node.prototype.render.call(node, context, bufferOrOptions);
+        ? node.render(context, bufferOrOptions, options)
+        : node.render(context, bufferOrOptions);
     }
     if (state.nil || !(node instanceof Declaration)) {
       return isRenderBuffer(bufferOrOptions)
@@ -771,24 +1074,25 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     if (buffer) {
       return state.value
         ? this.renderDeclarationPartsToBuffer(context, buffer, {
-            name: state.name ?? state.output.name,
+            name: state.name ?? node.name,
             value: state.value,
             important: state.important
           }, options)
-        : state.output.renderDeclarationPartsToBuffer(context, buffer, {
-            name: state.output.name,
-            value: state.output.valueNode,
-            important: state.output.important
+        : node.renderDeclarationPartsToBuffer(context, buffer, {
+            name: node.name,
+            value: node.value,
+            important: node.important
           }, options);
     }
-    const prepared = prepareRenderPrintState(context, bufferOrOptions);
+    const printOptions = isRenderBuffer(bufferOrOptions) ? undefined : bufferOrOptions;
+    const prepared = prepareRenderPrintState(context, printOptions);
     const out = state.value
       ? this.declValueTrimmedString({
-          name: state.name ?? state.output.name,
+          name: state.name ?? node.name,
           value: state.value,
           important: state.important
         }, prepared)
-      : state.output.declTrimmedString(prepared);
+      : node.declTrimmedString(prepared);
     return out;
   }
 
@@ -799,7 +1103,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     options?: PrintOptions
   ): string {
     if (state.nil) {
-      const output = state.output ?? state.value;
+      const output = state.output ?? this.materializeValueForSemantics(state.value);
       return isRenderBuffer(bufferOrOptions)
         ? output.render(context, bufferOrOptions, options)
         : output.render(context, bufferOrOptions);
@@ -818,7 +1122,8 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
         important: state.important
       }, options, renderState);
     }
-    const prepared = prepareRenderPrintState(context, bufferOrOptions);
+    const printOptions = isRenderBuffer(bufferOrOptions) ? undefined : bufferOrOptions;
+    const prepared = prepareRenderPrintState(context, printOptions);
     const out = this.declValueTrimmedString({
       name: state.name,
       value: state.value,
@@ -882,21 +1187,35 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       return chain ? chain.then(() => evaluated) : evaluated;
     };
     const evaluate = (): MaybePromise<DeclarationRenderValue> => {
-      const isCustomProperty = state.name.valueOf().startsWith('--');
+      if (
+        !state.renderAssignment
+        && !context.hasImportantSource
+        && (
+          typeof state.value === 'string'
+          || Array.isArray(state.value)
+        )
+      ) {
+        return state.value;
+      }
+      const stateNameText = nodeValueText(state.name);
+      const isCustomProperty = stateNameText?.startsWith('--') === true;
       const previousInCustom = context.inCustom;
       if (isCustomProperty) {
-        if (!shouldResolveCustomPropertyValue(state.value)) {
+        if (!valueShouldResolveCustomProperty(state.value)) {
           return state.value;
         }
         context.inCustom = true;
       }
       let maybeValue: MaybePromise<DeclarationRenderValue>;
       try {
-        maybeValue = isCustomProperty && state.value instanceof Interpolated && !state.renderAssignment
-          ? this.evalCustomInterpolatedRenderValue(context, state.value)
+        const customInterpolatedValue = isCustomProperty && !state.renderAssignment
+          ? getSingleInterpolatedDeclarationValue(state.value)
+          : undefined;
+        maybeValue = customInterpolatedValue
+          ? this.evalCustomInterpolatedRenderValue(context, customInterpolatedValue)
           : state.renderAssignment
             ? evaluateRenderAssignment()
-            : state.value.eval(context);
+            : this.materializeValueForSemantics(state.value).eval(context);
       } finally {
         if (!isThenable(maybeValue!)) {
           context.inCustom = previousInCustom;
@@ -929,8 +1248,10 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           nil: false
         };
       }
-      if (Array.isArray(newValue)) {
-        const value = newValue[0] ?? state.value;
+      if (state.renderAssignment && Array.isArray(newValue)) {
+        const rawItems: (Node | string)[] = newValue;
+        const nodeItems = rawItems.filter((item): item is Node => item instanceof Node);
+        const value = nodeItems[0] ?? state.value;
         const isList = state.renderAssignment?.sep === ',';
         const { importantText } = finalizeContextualImportantState(context, state.important);
         return {
@@ -938,7 +1259,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           value,
           mergeAdapter: {
             kind: isList ? 'list' : 'space',
-            items: newValue
+            value: nodeItems
           },
           important: state.important,
           importantText,
@@ -955,8 +1276,12 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           nil: true
         };
       }
-      let value = newValue instanceof Node ? newValue : state.value;
-      const normalized = this.normalizeMergedLeadingPlaceholderForRender(state, value);
+      let value = newValue instanceof Node || typeof newValue === 'string' || Array.isArray(newValue)
+        ? newValue
+        : state.value;
+      const normalized = value instanceof Node
+        ? this.normalizeMergedLeadingPlaceholderForRender(state, value)
+        : undefined;
       value = normalized instanceof Node ? normalized : normalized?.value ?? value;
       let important = state.important;
       const { importantText } = finalizeContextualImportantState(context, important);
@@ -979,7 +1304,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   private evalCustomInterpolatedRenderValue(
     context: Context,
     node: Interpolated
-  ): MaybePromise<DeclarationRenderState['customInterpolatedValue']> {
+  ): MaybePromise<CustomInterpolatedRenderValue> {
     const replacements = [...node.replacements];
     let chain: Promise<void> | undefined;
     const evaluateReplacement = (replacement: Node, index: number): MaybePromise<void> => {
@@ -1002,7 +1327,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
         chain = out as Promise<void>;
       }
     }
-    const finish = (): DeclarationRenderState['customInterpolatedValue'] => ({
+    const finish = (): CustomInterpolatedRenderValue => ({
       source: node,
       replacements
     });
@@ -1031,7 +1356,8 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
         (isListMergedAssign && isNode(child, N.List))
         || (isSpaceMergedAssign && isNode(child, N.Sequence))
       ) {
-        for (const item of child.items) {
+        const childItems = isNode(child, N.Sequence) ? child.value : child.value;
+        for (const item of childItems) {
           collect(item);
         }
         return;
@@ -1056,11 +1382,12 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       const output = resolved instanceof Nil
         ? resolved
         : this.materializeValueState(resolved);
+      const declOutput = output instanceof Declaration ? output : undefined;
       return {
         output,
-        name: output instanceof Declaration ? output.name : undefined,
-        value: output instanceof Declaration ? output.valueNode : undefined,
-        important: output instanceof Declaration ? output.important : undefined,
+        name: declOutput?.name,
+        value: declOutput?.value instanceof Node ? declOutput.value : undefined,
+        important: declOutput?.important instanceof Any ? declOutput.important : undefined,
         nil: output instanceof Nil
       };
     };
@@ -1090,24 +1417,34 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     options: DeclarationRegistrationOptions = {}
   ): DeclarationRegistrationState {
     if (options.reuseCanonical === true) {
+      const imp = this.important;
       return {
         name: this.name,
-        value: this.valueNode,
-        important: this.important
+        value: this.value,
+        important: imp instanceof Any ? imp : imp === true ? any('!important', { role: 'flag' }) : undefined
       };
     }
+    const importantCopy = this.copyImportantForDerived(this.important);
     return {
       name: this.copyNameForDerived(this.name),
-      value: this.copyValueForDerived(this.valueNode),
-      important: this.copyImportantForDerived(this.important)
+      value: isDeferredDeclarationValue(this.value)
+        ? this.value
+        : this.copyValueForDerived(this.value),
+      important: importantCopy instanceof Any ? importantCopy : undefined
     };
   }
 
   private createRenderRegistrationState(): DeclarationRegistrationState {
+    const imp = this.important;
+    const important = imp instanceof Any
+      ? imp
+      : imp === true
+        ? any('!important', { role: 'flag' })
+        : undefined;
     return {
       name: this.name,
-      value: this.valueNode,
-      important: this.important,
+      value: this.value,
+      important,
       renderOnly: true
     };
   }
@@ -1142,6 +1479,9 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       state.name = maybeKey;
       return maybeKey;
     }
+    if (typeof name === 'string') {
+      return any(name, { role: 'property' });
+    }
     return name;
   }
 
@@ -1149,6 +1489,9 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     state: DeclarationRegistrationState,
     name: Any<'property'>
   ): DeclarationRegistrationState {
+    if (!state.renderOnly) {
+      state.value = this.materializeValueForSemantics(state.value);
+    }
     this._normalizeAssignmentValue(state, name);
     return state;
   }
@@ -1174,7 +1517,9 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     if (assign) {
       const normalizedAssign = assign;
       const referenceKey = state.renderOnly ? this.copyNameForDerived(key) : key;
-      const inputValue = state.renderOnly ? this.ownRenderAssignmentInput(value) : value;
+      const inputValue = state.renderOnly
+        ? this.ownRenderAssignmentInput(this.materializeValueForSemantics(value))
+        : this.materializeValueForSemantics(value);
       /** Reference type */
       let type: 'declaration' | 'variable' =
         this.type === 'VarDeclaration' ? 'variable' : 'declaration';
@@ -1185,18 +1530,21 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       switch (assign) {
         case AssignmentType.MergeList:
         case AssignmentType.MergeSequence: {
-          let boundOutputNode: Declaration | undefined;
+          const excludedDeclarations: Declaration[] = [this];
           const ref = new Reference({ key: referenceKey }, {
             type,
             fallbackValue: new Nil(),
-            excludedNode0: this,
-            get excludedNode1() {
-              return boundOutputNode;
+            excludedDeclarations,
+            filter: (n) => {
+              const source = n.sourceNode ?? n;
+              return n !== outputNode
+                && n !== this
+                && source !== (outputNode?.sourceNode ?? outputNode)
+                && source !== (this.sourceNode ?? this)
+                && !sameConcreteLocation(n.location, outputNode?.location)
+                && !sameConcreteLocation(n.location, this.location);
             },
-            get excludedNodesLength() {
-              return boundOutputNode ? 2 : 1;
-            },
-            requiredNormalizedFromAssign: [
+            requiredDeclarationAssignments: [
               AssignmentType.MergeList,
               AssignmentType.MergeSequence,
               '+,:',
@@ -1205,7 +1553,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           }, undefined, this.sourceRoot?._treeContext);
           state.bindOutput = (node: Declaration) => {
             outputNode = node;
-            boundOutputNode = node;
+            excludedDeclarations[1] = node;
           };
           /**
            * @note - It's up to Sequence and List to handle
@@ -1232,12 +1580,26 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
             // Less property `+:` appends comma-separated items.
             // Use list composition (not generic `Operation +`) so scalar previous values
             // remain distinct list members rather than string-concatenating.
+            const excludedDeclarations: Declaration[] = [this];
             const ref = new Reference({ key: referenceKey }, {
               type,
               fallbackValue: new Nil(),
-              // Prevent self-referential reads while normalizing this node.
-              filter: n => n !== outputNode && n !== this
+              excludedDeclarations,
+              // Prevent self-referential reads while normalizing copied/prepared nodes.
+              filter: (n) => {
+                const source = n.sourceNode ?? n;
+                return n !== outputNode
+                  && n !== this
+                  && source !== (outputNode?.sourceNode ?? outputNode)
+                  && source !== (this.sourceNode ?? this)
+                  && !sameConcreteLocation(n.location, outputNode?.location)
+                  && !sameConcreteLocation(n.location, this.location);
+              }
             }, undefined, this.sourceRoot?._treeContext);
+            state.bindOutput = (node: Declaration) => {
+              outputNode = node;
+              excludedDeclarations[1] = node;
+            };
             if (state.renderOnly) {
               state.renderAssignment = {
                 items: [ref, inputValue],
@@ -1278,7 +1640,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   ): this {
     const changed = (
       state.name !== this.name
-      || state.value !== this.valueNode
+      || state.value !== this.value
       || state.important !== this.important
       || state.normalizedFromAssign !== undefined
       || state.bindOutput !== undefined
@@ -1287,9 +1649,22 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       this.registrationPrepared = true;
       return this;
     }
+    if (
+      state.normalizedFromAssign === undefined
+      && state.bindOutput === undefined
+      && state.name === this.name
+      && state.important === this.important
+      && isDeferredDeclarationValue(this.value)
+      && state.value instanceof Node
+    ) {
+      this.adopt(state.value);
+      this.value = state.value;
+      this.registrationPrepared = true;
+      return this;
+    }
     const node = this.withParts({
       name: state.name === this.name ? this.copyNameForDerived(state.name) : state.name,
-      value: state.value === this.valueNode ? this.copyValueForDerived(state.value) : state.value,
+      value: state.value === this.value ? this.copyValueForDerived(state.value) : state.value,
       important: state.important === this.important
         ? this.copyImportantForDerived(state.important)
         : state.important
@@ -1303,21 +1678,24 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   }
 
   private evalValueState(context: Context): MaybePromise<DeclarationValueState<this> | Nil> {
+    if (typeof this.value === 'string' || Array.isArray(this.value)) {
+      throw new TypeError('String-backed declaration values must be hydrated before evaluation');
+    }
     if (this.hasFlag(F_STATIC)) {
-      this.evaluated = true;
       return {
         source: this,
-        value: this.valueNode,
-        important: this.important,
+        value: this.value instanceof Node ? this.value : this.materializeValueForSemantics(this.value),
+        important: this.important instanceof Any ? this.important : undefined,
         changed: false
       };
     }
     {
       let node = this;
-      const state: DeclarationValueState = {
+      const nodeValue = node.value instanceof Node ? node.value : this.materializeValueForSemantics(node.value);
+      const state: DeclarationValueState<this> = {
         source: node,
-        value: node.valueNode,
-        important: node.important,
+        value: nodeValue,
+        important: node.important instanceof Any ? node.important : undefined,
         changed: false
       };
       const setVal = (newValue: Node) => {
@@ -1360,7 +1738,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       if (node.type === 'VarDeclaration') {
         return state;
       }
-      const { name, valueNode: value } = node;
+      const { name, value: value } = node;
       if (value instanceof Node) {
         const isCustomProperty = name.valueOf().startsWith('--');
         if (isCustomProperty) {
@@ -1376,6 +1754,9 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
             if (newValue instanceof Nil) {
               return newValue.inherit(node);
             }
+            if (isCustomProperty) {
+              newValue = inheritCustomInterpolatedValuePlacement(value, newValue);
+            }
             setVal(newValue);
             normalizeMergedLeadingPlaceholder();
             const importantState = finalizeContextualImportantPublicState(context, state.important);
@@ -1390,9 +1771,9 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           return maybeNewValue.inherit(node);
         }
         if (!(maybeNewValue instanceof Node)) {
-          return node;
+          return state;
         }
-        setVal(maybeNewValue);
+        setVal(isCustomProperty ? inheritCustomInterpolatedValuePlacement(value, maybeNewValue) : maybeNewValue);
         normalizeMergedLeadingPlaceholder();
         const importantState = finalizeContextualImportantPublicState(context, state.important);
         if (importantState.important && importantState.important !== state.important) {
@@ -1410,7 +1791,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     }
     const output = node.withParts({
       name: this.copyNameForDerived(node.name),
-      value: state.value === node.valueNode
+      value: state.value === node.value
         ? this.copyValueForDerived(state.value)
         : state.value,
       important: state.important === node.important
@@ -1461,23 +1842,8 @@ export type DeclarationParams = ConstructorParameters<typeof Declaration>;
 
 defineType<DeclarationValue>(Declaration, 'Declaration', 'decl');
 
-function isDeclarationValue(
-  value: DeclarationValue | { name: string; value: Node; important?: Any<'flag'> }
-): value is DeclarationValue {
-  return typeof value.name !== 'string';
-}
-
 export const decl = (
-  value: DeclarationValue | { name: string; value: Node; important?: Any<'flag'> },
+  value: DeclarationValue,
   options?: DeclarationOptions,
   location?: LocationInfo
-) => {
-  if (!isDeclarationValue(value)) {
-    return new Declaration({
-      name: any(value.name, { role: 'property' }),
-      value: value.value,
-      important: value.important
-    }, options, location);
-  }
-  return new Declaration(value, options, location);
-};
+) => new Declaration(value, options, location);

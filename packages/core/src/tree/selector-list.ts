@@ -20,13 +20,19 @@ import {
   emitCommentTriviaBeforeDelimiter,
   emitTriviaTokens
 } from './util/trivia.js';
-import { canReuseLeaf, copyWithReusableLeaves, ownCollapsedSourceChild, reuseLeaf } from './util/cloning.js';
+import { ownCollapsedSourceChild } from './util/own-collapsed-source-child.js';
+
+export type SelectorListItem = Selector | string;
 
 function emitSelectorListItem(
-  item: Selector,
+  item: SelectorListItem,
   options: FinalPrintOptions,
   suppressPre = false
 ): void {
+  if (typeof item === 'string') {
+    options.writer.add(item);
+    return;
+  }
   const saved = options.suppressBoundaryTrivia;
   options.suppressBoundaryTrivia = suppressPre ? 'both' : 'post';
   try {
@@ -37,45 +43,47 @@ function emitSelectorListItem(
 }
 
 /** Constructs */
-export class SelectorList extends Selector<Selector[]> {
-  static override childKeys = ['selectors'] as const;
+export class SelectorList extends Selector<SelectorListItem[]> {
+  static override childKeys = ['value'] as const;
 
-  readonly selectors: Selector[];
+  override readonly value: SelectorListItem[];
 
   constructor(
-    value: Selector[],
+    value: SelectorListItem[],
     options?: NodeOptions,
     location?: NodeLocation,
     treeContext?: Context['treeContext']
   ) {
     super(value, options, location);
     this._treeContext = treeContext;
-    this.selectors = value;
+    this.value = value;
   }
 
   private ownSelector(item: Selector): Selector {
-    const owned = canReuseLeaf(item) ? reuseLeaf(item) : copyWithReusableLeaves(item);
+    const owned = item.canReuseAsLeaf() ? item.reuseAsLeaf() : item.cloneForPlacement();
     if (!(owned instanceof Selector)) {
       throw new TypeError('Expected selector copy');
     }
     return owned;
   }
 
-  private withSelectors(value: Selector[], sourceValue: readonly Selector[] = this.selectors): this {
-    const ownedValue = new Array<Selector>(value.length);
+  private withSelectors(value: SelectorListItem[], sourceValue: readonly SelectorListItem[] = this.value): SelectorList {
+    const ownedValue = new Array<SelectorListItem>(value.length);
     for (let i = 0; i < value.length; i++) {
       const item = value[i]!;
-      ownedValue[i] = this.isSourceSelector(item, sourceValue) ? this.ownSelector(item) : item;
+      ownedValue[i] = typeof item !== 'string' && this.isSourceSelector(item, sourceValue)
+        ? this.ownSelector(item)
+        : item;
     }
     // Own unchanged source children; evaluated clones may carry runtime state.
     return new SelectorList(
       ownedValue,
       this._options ? { ...this._options } : undefined,
       this.location
-    ).inherit(this) as this;
+    ).inherit(this);
   }
 
-  private isSourceSelector(item: Selector, sourceValue: readonly Selector[]): boolean {
+  private isSourceSelector(item: Selector, sourceValue: readonly SelectorListItem[]): boolean {
     for (let i = 0; i < sourceValue.length; i++) {
       if (sourceValue[i] === item) {
         return true;
@@ -84,11 +92,11 @@ export class SelectorList extends Selector<Selector[]> {
     return false;
   }
 
-  private createEvaluatedSelectorListSurface(value: Selector[], sourceValue: readonly Selector[]): this {
+  private createEvaluatedSelectorListSurface(value: SelectorListItem[], sourceValue: readonly SelectorListItem[]): SelectorList {
     return this.withSelectors(value, sourceValue);
   }
 
-  private collapsedSelector(item: Selector, sourceValue: readonly Selector[]): Selector {
+  private collapsedSelector(item: Selector, sourceValue: readonly SelectorListItem[]): Selector {
     const owned = ownCollapsedSourceChild(item, sourceValue, this);
     if (!(owned instanceof Selector)) {
       throw new TypeError('Expected selector result');
@@ -100,31 +108,31 @@ export class SelectorList extends Selector<Selector[]> {
     const w = printOptions.writer;
     let depth = printOptions.depth;
     let space = ''.padStart(depth * 2);
-    const value: Selector[] = [];
-    for (const item of this.selectors) {
+    const value: SelectorListItem[] = [];
+    for (const item of this.value) {
       if (isNode(item, N.PseudoSelector) && item.name === ':is') {
         const arg = item.arg;
         if (arg && isNode(arg, N.SelectorList)) {
-          value.push(...arg.selectors);
+          value.push(...arg.value);
           continue;
         }
       }
-      if (isNode(item, N.CompoundSelector) && item.components.length === 1) {
-        const only = item.components[0]!;
+      if (isNode(item, N.CompoundSelector) && item.value.length === 1) {
+        const only = item.value[0]!;
         if (isNode(only, N.PseudoSelector) && only.name === ':is') {
           const arg = only.arg;
           if (arg && isNode(arg, N.SelectorList)) {
-            value.push(...arg.selectors);
+            value.push(...arg.value);
             continue;
           }
         }
       }
-      if (isNode(item, N.ComplexSelector) && item.components.length === 1) {
-        const only = item.components[0]!;
+      if (isNode(item, N.ComplexSelector) && item.value.length === 1) {
+        const only = item.value[0]!;
         if (isNode(only, N.PseudoSelector) && only.name === ':is') {
           const arg = only.arg;
           if (arg && isNode(arg, N.SelectorList)) {
-            value.push(...arg.selectors);
+            value.push(...arg.value);
             continue;
           }
         }
@@ -139,7 +147,7 @@ export class SelectorList extends Selector<Selector[]> {
       let extendedCount = 0;
       for (let i = 0; i < value.length; i++) {
         const item = value[i]!;
-        if (item.hasFlag(F_EXTENDED) && !item.hasFlag(F_EXTEND_TARGET)) {
+        if (typeof item !== 'string' && item.hasFlag(F_EXTENDED) && !item.hasFlag(F_EXTEND_TARGET)) {
           value[extendedCount++] = item;
         }
       }
@@ -158,9 +166,11 @@ export class SelectorList extends Selector<Selector[]> {
     for (let i = 1; i < length; i++) {
       const prevItem = item;
       item = value[i]!;
-      emitCommentTriviaBeforeDelimiter(prevItem, item, printOptions);
+      if (typeof prevItem !== 'string' && typeof item !== 'string') {
+        emitCommentTriviaBeforeDelimiter(prevItem, item, printOptions);
+      }
       w.add(`,\n${space}`);
-      if (printOptions.trivia) {
+      if (printOptions.trivia && typeof item !== 'string') {
         emitTriviaTokens(
           consumeTrivia(printOptions.trivia, item.location[0], 'before', printOptions),
           printOptions,
@@ -171,26 +181,21 @@ export class SelectorList extends Selector<Selector[]> {
     }
   }
 
-  private renderSelectorListSyntax(options?: PrintOptions): string {
-    if (this.selectors.length === 0) {
-      return '';
-    }
-    const printOptions = getPrintOptions(options);
-    const w = printOptions.writer;
-    const mark = w.mark();
-    this.writeSyntax(printOptions);
-    return w.getSince(mark);
-  }
-
   protected override computeKeySets(): void {
     if (this._keySet && this._visibleKeySet && this._requiredKeySet) {
       return;
     }
     const library = this._requireKeySetLibrary();
-    const value = this.selectors;
+    const value = this.value;
     let keySet = library.getBitset();
     let visibleKeySet = library.getBitset();
     for (const selector of value) {
+      if (typeof selector === 'string') {
+        const selectorKeySet = library.getBitset([selector]);
+        keySet = keySet.or(selectorKeySet);
+        visibleKeySet = visibleKeySet.or(selectorKeySet);
+        continue;
+      }
       selector.keySetLibrary ??= library;
       keySet = keySet.or(selector.keySet);
       visibleKeySet = visibleKeySet.or(selector.visibleKeySet);
@@ -202,13 +207,20 @@ export class SelectorList extends Selector<Selector[]> {
     this._requiredKeySet = library.getBitset();
   }
 
-  /** Normalize selectors on separate lines with indentation */
+  /** Normalize value on separate lines with indentation */
   override toTrimmedString(options?: PrintOptions) {
-    return this.renderSelectorListSyntax(options);
+    if (this.value.length === 0) {
+      return '';
+    }
+    const printOptions = getPrintOptions(options);
+    const w = printOptions.writer;
+    const mark = w.mark();
+    this.writeSyntax(printOptions);
+    return w.getSince(mark);
   }
 
   override valueOf() {
-    const value = this.selectors;
+    const value = this.value;
     if (value.length === 0) {
       return '';
     }
@@ -230,15 +242,15 @@ export class SelectorList extends Selector<Selector[]> {
     return super.compare(b);
   }
 
-  override evalNode(context: Context): MaybePromise<SelectorList | Selector> {
+  override evalNode(context: Context): MaybePromise<Node> {
     attachSelectorBitLibrary(this, context.selectorBits);
     if (!this.hasFlag(F_MAY_ASYNC)) {
       return this.finalizeEvaluatedSelectors(this.evaluateSelectorsSync(context, false), true);
     }
     const evaluatedValue = this.evaluateSelectors(context, false);
     return isThenable(evaluatedValue)
-      ? (evaluatedValue as Promise<Selector[]>).then(value => this.finalizeEvaluatedSelectors(value, true))
-      : this.finalizeEvaluatedSelectors(evaluatedValue as Selector[], true);
+      ? (evaluatedValue as Promise<SelectorListItem[]>).then(value => this.finalizeEvaluatedSelectors(value, true))
+      : this.finalizeEvaluatedSelectors(evaluatedValue as SelectorListItem[], true);
   }
 
   protected override resolveForRender(context: Context): MaybePromise<Node> {
@@ -248,15 +260,19 @@ export class SelectorList extends Selector<Selector[]> {
     }
     const resolvedValue = this.evaluateSelectors(context, true);
     return isThenable(resolvedValue)
-      ? (resolvedValue as Promise<Selector[]>).then(value => this.finalizeEvaluatedSelectors(value, false))
-      : this.finalizeEvaluatedSelectors(resolvedValue as Selector[], false);
+      ? (resolvedValue as Promise<SelectorListItem[]>).then(value => this.finalizeEvaluatedSelectors(value, false))
+      : this.finalizeEvaluatedSelectors(resolvedValue as SelectorListItem[], false);
   }
 
-  private evaluateSelectorsSync(context: Context, resolve: boolean): Selector[] {
-    const currentValue = this.selectors;
-    const evaluatedValue = new Array<Selector>(currentValue.length);
+  private evaluateSelectorsSync(context: Context, resolve: boolean): SelectorListItem[] {
+    const currentValue = this.value;
+    const evaluatedValue = new Array<SelectorListItem>(currentValue.length);
     for (let i = 0; i < currentValue.length; i++) {
       const item = currentValue[i]!;
+      if (typeof item === 'string') {
+        evaluatedValue[i] = item;
+        continue;
+      }
       const out = resolve ? item.resolve(context) : item.eval(context);
       if (!(out instanceof Node)) {
         if (out !== null && typeof out === 'object') {
@@ -270,11 +286,15 @@ export class SelectorList extends Selector<Selector[]> {
     return evaluatedValue;
   }
 
-  private evaluateSelectors(context: Context, resolve: boolean): MaybePromise<Selector[]> {
-    const currentValue = this.selectors;
-    const evaluatedValue = new Array<Selector>(currentValue.length);
+  private evaluateSelectors(context: Context, resolve: boolean): MaybePromise<SelectorListItem[]> {
+    const currentValue = this.value;
+    const evaluatedValue = new Array<SelectorListItem>(currentValue.length);
     for (let i = 0; i < currentValue.length; i++) {
       const item = currentValue[i]!;
+      if (typeof item === 'string') {
+        evaluatedValue[i] = item;
+        continue;
+      }
       const out = resolve ? item.resolve(context) : item.eval(context);
       if (isThenable(out)) {
         return out.then((res) => {
@@ -290,12 +310,16 @@ export class SelectorList extends Selector<Selector[]> {
   private evaluateSelectorsRest(
     context: Context,
     resolve: boolean,
-    evaluatedValue: Selector[],
+    evaluatedValue: SelectorListItem[],
     start: number
-  ): MaybePromise<Selector[]> {
-    const currentValue = this.selectors;
+  ): MaybePromise<SelectorListItem[]> {
+    const currentValue = this.value;
     for (let i = start; i < currentValue.length; i++) {
       const item = currentValue[i]!;
+      if (typeof item === 'string') {
+        evaluatedValue[i] = item;
+        continue;
+      }
       const out = resolve ? item.resolve(context) : item.eval(context);
       if (isThenable(out)) {
         return out.then((res) => {
@@ -308,13 +332,13 @@ export class SelectorList extends Selector<Selector[]> {
     return evaluatedValue;
   }
 
-  private finalizeEvaluatedSelectors(evaluatedValue: Selector[], evaluated: boolean): Node {
-    const currentValue = this.selectors;
-    const flattened: Selector[] = [];
+  private finalizeEvaluatedSelectors(evaluatedValue: SelectorListItem[], evaluated: boolean): Node {
+    const currentValue = this.value;
+    const flattened: SelectorListItem[] = [];
     for (let i = 0; i < evaluatedValue.length; i++) {
       this.appendFlattenedSelector(evaluatedValue[i]!, flattened);
     }
-    if (flattened.length === 1) {
+    if (flattened.length === 1 && typeof flattened[0] !== 'string') {
       return this.collapsedSelector(flattened[0]!, currentValue);
     }
     let changed = flattened.length !== currentValue.length;
@@ -334,32 +358,36 @@ export class SelectorList extends Selector<Selector[]> {
       : this.withSelectors(flattened, currentValue);
   }
 
-  private appendFlattenedSelector(item: Selector, flattened: Selector[]): void {
+  private appendFlattenedSelector(item: SelectorListItem, flattened: SelectorListItem[]): void {
+    if (typeof item === 'string') {
+      flattened.push(item);
+      return;
+    }
     // Flatten top-level `:is(a, b)` items into the selector list.
     // This is safe in SelectorList context (it is equivalent to `a, b`).
     if (isNode(item, N.PseudoSelector) && item.name === ':is') {
       const arg = item.arg;
       if (arg && isNode(arg, N.SelectorList)) {
-        this.appendSelectorListValue(arg.selectors, flattened);
+        this.appendSelectorListValue(arg.value, flattened);
         return;
       }
     }
-    if (isNode(item, N.CompoundSelector) && item.components.length === 1) {
-      const only = item.components[0]!;
+    if (isNode(item, N.CompoundSelector) && item.value.length === 1) {
+      const only = item.value[0]!;
       if (isNode(only, N.PseudoSelector) && only.name === ':is') {
         const arg = only.arg;
         if (arg && isNode(arg, N.SelectorList)) {
-          this.appendSelectorListValue(arg.selectors, flattened);
+          this.appendSelectorListValue(arg.value, flattened);
           return;
         }
       }
     }
-    if (isNode(item, N.ComplexSelector) && item.components.length === 1) {
-      const only = item.components[0]!;
+    if (isNode(item, N.ComplexSelector) && item.value.length === 1) {
+      const only = item.value[0]!;
       if (isNode(only, N.PseudoSelector) && only.name === ':is') {
         const arg = only.arg;
         if (arg && isNode(arg, N.SelectorList)) {
-          this.appendSelectorListValue(arg.selectors, flattened);
+          this.appendSelectorListValue(arg.value, flattened);
           return;
         }
       }
@@ -367,7 +395,7 @@ export class SelectorList extends Selector<Selector[]> {
     flattened.push(item);
   }
 
-  private appendSelectorListValue(value: Selector[], out: Selector[]): void {
+  private appendSelectorListValue(value: SelectorListItem[], out: SelectorListItem[]): void {
     for (let i = 0; i < value.length; i++) {
       out.push(value[i]!);
     }

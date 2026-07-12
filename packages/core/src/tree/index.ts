@@ -26,6 +26,7 @@ export { N } from './node-type.js';
 import { Selector } from './selector.js';
 
 export * from './at-rule.js';
+export * from './at-rule-statement.js';
 export * from './block.js';
 export * from './bool.js';
 export * from './ampersand.js';
@@ -58,6 +59,7 @@ export * from './quoted.js';
 export * from './range.js';
 export * from './ruleset.js';
 export * from './rules.js';
+export * from './stylesheet.js';
 export * from './rules-raw.js';
 export * from './collection.js';
 export * from './selector.js';

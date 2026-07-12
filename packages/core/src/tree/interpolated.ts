@@ -15,7 +15,6 @@ import {
   writeRenderText,
   type RenderBuffer
 } from './util/render-buffer.js';
-import { copyWithReusableLeaves } from './util/cloning.js';
 
 // Placeholder that's very unlikely to appear in user strings
 // but is also easily typeable for tests
@@ -29,7 +28,8 @@ function shouldWrapSelectorInIs(replacement: Node): boolean {
     return true;
   }
   if (replacement.type === 'SelectorCapture') {
-    const arg = replacement.value;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const arg = (replacement as unknown as { value: unknown }).value;
     return isNode(arg, N.SelectorList) || isNode(arg, N.ComplexSelector);
   }
   const str = String(replacement.valueOf?.() ?? replacement);
@@ -38,7 +38,8 @@ function shouldWrapSelectorInIs(replacement: Node): boolean {
 
 function getIsWrapperArg(replacement: Node): Node {
   if (replacement.type === 'SelectorCapture') {
-    const value = replacement.value;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const value = (replacement as unknown as { value: unknown }).value;
     if (value instanceof Node) {
       return value;
     }
@@ -246,16 +247,16 @@ export class Interpolated<
     w.add(source.slice(sourceOffset), this);
   }
 
-  writeWithReplacements(replacements: Node[], options?: PrintOptions): string {
-    options = getPrintOptions(options);
+  writeWithReplacements(replacements: Node[], rawOptions?: PrintOptions): string {
+    const options = getPrintOptions(rawOptions);
     const w = options.writer!;
     const mark = w.mark();
     this.writeInterpolated(replacements, options);
     return w.getSince(mark);
   }
 
-  override toTrimmedString(options?: PrintOptions): string {
-    options = getPrintOptions(options);
+  override toTrimmedString(rawOptions?: PrintOptions): string {
+    const options = getPrintOptions(rawOptions);
     const w = options.writer!;
     const mark = w.mark();
     this.writeSyntax(options);
@@ -272,7 +273,7 @@ export class Interpolated<
     const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
     const prepared = buffer
       ? prepareBufferPrintState(context, options)
-      : prepareRenderPrintState(context, bufferOrOptions);
+      : prepareRenderPrintState(context, isRenderBuffer(bufferOrOptions) ? undefined : bufferOrOptions);
     const out = this.renderEvaluatedReplacementText(context, prepared);
     const finish = (rendered: string): string => buffer ? writeRenderText(buffer, rendered) : rendered;
     return isThenable(out)
@@ -301,11 +302,8 @@ export class Interpolated<
     // Generated :is wrappers are only needed for embedded interpolation fragments.
     if (isWholeSelectorInterpolation) {
       const replacement = replacements[0]!;
-      if (mode === 'eval' && !replacement.evaluated) {
-        throw new Error('Cannot create selector from un-evaluated interpolated node');
-      }
       if (isNode(replacement, N.Selector)) {
-        const copied = copyWithReusableLeaves(replacement);
+        const copied = replacement.cloneForPlacement();
         if (!isNode(copied, N.Selector)) {
           throw new TypeError('Expected selector copy');
         }
@@ -318,9 +316,6 @@ export class Interpolated<
     for (let i = 0; i < replacements.length; i++) {
       const replacement = replacements[i]!;
       const nextPlaceholder = source.indexOf(INTERPOLATION_PLACEHOLDER, sourceOffset);
-      if (mode === 'eval' && !replacement.evaluated) {
-        throw new Error('Cannot create selector from un-evaluated interpolated node');
-      }
       const part = shouldWrapSelectorInIs(replacement)
         ? serializeGeneratedIsWrapper(replacement)
         : stringifyReplacement(replacement, {}, this.options.preserveQuotedSyntax).trim();

@@ -6,7 +6,8 @@ import { type Operator } from './util/calculate.js';
 import {
   consumeTrivia,
   emitCommentTriviaBetweenNodes,
-  emitTriviaTokens
+  emitTriviaTokens,
+  triviaLeadingWhitespace
 } from './util/trivia.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import {
@@ -15,7 +16,6 @@ import {
   writeRenderText,
   type RenderBuffer
 } from './util/render-buffer.js';
-import { copyWithReusableLeaves } from './util/cloning.js';
 import { evaluateNodeArrayMaybe, evaluateNodeArraySync } from './util/evaluate-node-array.js';
 
 function emitListItem<T extends Node>(
@@ -124,10 +124,7 @@ export function renderListValueSyntax<T extends Node>(
     const leadingTrivia = printOptions.trivia
       ? consumeTrivia(printOptions.trivia, item.location[0], 'before', printOptions)
       : undefined;
-    const leadingWhitespace = leadingTrivia?.[0]?.tokenType.name === 'WS'
-      ? leadingTrivia[0].image
-      : '';
-    const preserveLeadingWhitespace = /[\r\n]/.test(leadingWhitespace);
+    const preserveLeadingWhitespace = /[\r\n]/.test(triviaLeadingWhitespace(leadingTrivia));
     if (sep === '/') {
       w.add(preserveLeadingWhitespace ? ' /' : ' / ');
     } else {
@@ -155,14 +152,12 @@ function emitListSeparator(
   const leadingTrivia = options.trivia
     ? consumeTrivia(options.trivia, item.location[0], 'before', options)
     : undefined;
-  const leadingWhitespace = leadingTrivia?.[0]?.tokenType.name === 'WS'
-    ? leadingTrivia[0].image
-    : '';
-  const preserveLeadingWhitespace = /[\r\n]/.test(leadingWhitespace);
+  const preserveLeadingWhitespace = /[\r\n]/.test(triviaLeadingWhitespace(leadingTrivia));
   if (sep === '/') {
     options.writer.add(preserveLeadingWhitespace ? ' /' : ' / ');
   } else {
-    options.writer.add(preserveLeadingWhitespace ? sep : `${sep} `);
+    const sepStr = sep ?? ',';
+    options.writer.add(preserveLeadingWhitespace ? sepStr : `${sepStr} `);
   }
   if (leadingTrivia) {
     emitTriviaTokens(
@@ -259,14 +254,14 @@ export interface List<T extends Node = Node> extends Node<T[], ListOptions> {
  * or one / two / three
  */
 export class List<T extends Node = Node> extends Node<T[], ListOptions> {
-  static override childKeys = ['items'] as const;
+  static override childKeys = ['value'] as const;
 
-  readonly items: T[];
+  declare readonly value: T[];
   readonly sep: ListOptions['sep'];
 
   constructor(value: T[], options?: ListOptions, location?: NodeLocation, _treeContext?: Context['treeContext']) {
     super(value, options, location);
-    this.items = value;
+    this.value = value;
     this.sep = options?.sep;
   }
 
@@ -278,9 +273,9 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
   }
 
   private deriveAdditionList(): List<Node> {
-    const values = new Array<Node>(this.items.length);
-    for (let i = 0; i < this.items.length; i++) {
-      values[i] = copyWithReusableLeaves(this.items[i]!);
+    const values = new Array<Node>(this.value.length);
+    for (let i = 0; i < this.value.length; i++) {
+      values[i] = this.value[i]!.cloneForPlacement();
     }
     return new List<Node>(
       values,
@@ -290,38 +285,38 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
     ).inherit(this);
   }
 
-  private renderListSyntax(value = this.items, options?: PrintOptions): string {
+  private renderListSyntax(value = this.value, options?: PrintOptions): string {
     return renderListValueSyntax(value, getPrintOptions(options), this.sep ?? ',');
   }
 
   get length() {
-    return this.items.length;
+    return this.value.length;
   }
 
   * [Symbol.iterator]() {
-    yield* this.items.entries();
+    yield* this.value.entries();
   }
 
   private _valueOf: string | undefined;
 
   override valueOf() {
-    return (this._valueOf ??= this.items.map(v => v.valueOf()).join(';'));
+    return (this._valueOf ??= this.value.map(v => v.valueOf()).join(';'));
   }
 
   override toTrimmedString(options?: PrintOptions) {
-    return this.renderListSyntax(this.items, options);
+    return this.renderListSyntax(this.value, options);
   }
 
   /** @internal */
   override writeSyntax(options: FinalPrintOptions): void {
-    if (this.items.length === 0) {
+    if (this.value.length === 0) {
       return;
     }
-    let item = this.items[0]!;
+    let item = this.value[0]!;
     emitListItemSyntax(item, options);
-    for (let i = 1; i < this.items.length; i++) {
+    for (let i = 1; i < this.value.length; i++) {
       const prev = item;
-      item = this.items[i]!;
+      item = this.value[i]!;
       emitListSeparator(prev, item, options, this.sep ?? ',');
       emitListItemSyntax(item, options, true);
     }
@@ -331,7 +326,7 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     if (this.hasFlag(F_STATIC)) {
-      return this.renderResolvedListValue(context, this.items, bufferOrOptions, options);
+      return this.renderResolvedListValue(context, this.value, bufferOrOptions, options);
     }
     if (!this.hasFlag(F_MAY_ASYNC)) {
       return this.renderDirectListValue(context, bufferOrOptions, options);
@@ -342,7 +337,7 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
   override compare(other: Node) {
     if (other instanceof List) {
       const equalityMode = this.sourceRoot?._treeContext?.equalityMode ?? 'coerce';
-      const result = compareNodeArray(this.items, other.items, equalityMode);
+      const result = compareNodeArray(this.value, other.value, equalityMode);
       return result;
     }
     if (other.type === 'Any') {
@@ -360,11 +355,11 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
     }
     const newList = this.deriveAdditionList();
     if (b instanceof List) {
-      for (let i = 0; i < b.items.length; i++) {
-        newList.items.push(copyWithReusableLeaves(b.items[i]!));
+      for (let i = 0; i < b.value.length; i++) {
+        newList.value.push(b.value[i]!.cloneForPlacement());
       }
     } else {
-      newList.items.push(copyWithReusableLeaves(b));
+      newList.value.push(b.cloneForPlacement());
     }
     return newList;
   }
@@ -380,10 +375,13 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
     options?: PrintOptions
   ): string {
     const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
+    // bufferOrOptions is PrintOptions | undefined in the non-buffer branch
     const prepared = buffer
       ? prepareBufferPrintState(context, options)
-      : prepareRenderPrintState(context, bufferOrOptions);
-    const out = this.renderListSyntax(value, prepared);
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      : prepareRenderPrintState(context, bufferOrOptions as PrintOptions | undefined);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const out = this.renderListSyntax(value as T[], prepared);
     return buffer
       ? writeRenderText(buffer, out)
       : out;
@@ -395,10 +393,12 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
     options?: PrintOptions
   ): string {
     const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
+    // bufferOrOptions is PrintOptions | undefined in the non-buffer branch
     const prepared = buffer
       ? prepareBufferPrintState(context, options)
-      : prepareRenderPrintState(context, bufferOrOptions);
-    const out = renderListValueDirect(context, this.items, prepared, this.sep ?? ',');
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      : prepareRenderPrintState(context, bufferOrOptions as PrintOptions | undefined);
+    const out = renderListValueDirect(context, this.value, prepared, this.sep ?? ',');
     return buffer
       ? writeRenderText(buffer, out)
       : out;
@@ -410,10 +410,12 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
     options?: PrintOptions
   ): MaybePromise<string> {
     const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
+    // bufferOrOptions is PrintOptions | undefined in the non-buffer branch
     const prepared = buffer
       ? prepareBufferPrintState(context, options)
-      : prepareRenderPrintState(context, bufferOrOptions);
-    const out = renderListValueDirectMaybe(context, this.items, prepared, this.sep ?? ',');
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      : prepareRenderPrintState(context, bufferOrOptions as PrintOptions | undefined);
+    const out = renderListValueDirectMaybe(context, this.value, prepared, this.sep ?? ',');
     if (isThenable(out)) {
       return (out as Promise<string>).then(rendered => buffer ? writeRenderText(buffer, rendered) : rendered);
     }
@@ -426,7 +428,7 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
     if (this.hasFlag(F_STATIC)) {
       return this;
     }
-    const source = this.items;
+    const source = this.value;
     const values = this.hasFlag(F_MAY_ASYNC)
       ? evaluateNodeArrayMaybe(context, source)
       : evaluateNodeArraySync(context, source);

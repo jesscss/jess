@@ -4,10 +4,10 @@
   "version": "2.0.0-alpha.5",
   "description": "JavaScript Enhanced Style Sheets",
   "main": "lib/index.cjs",
-  "types": "lib/index.d.ts",
+  "types": "lib/index-public.d.ts",
   "exports": {
     ".": {
-      "types": "./lib/index.d.ts",
+      "types": "./lib/index-public.d.ts",
       "source": "./src/index.ts",
       "import": "./lib/index.js",
       "require": "./lib/index.cjs"
@@ -43,8 +43,10 @@
     "ci": "pnpm build && pnpm test",
     "prepublishOnly": "pnpm build && pnpm test",
     "benchmark": "node bin/cli.mjs benchmark/benchmark.jess",
-    "build": "pnpm compile",
+    "build": "pnpm compile && pnpm api-extractor",
     "compile": "tsdown --tsconfig tsconfig.build.json",
+    "api-extractor": "api-extractor run --local --config ./api-extractor.json",
+    "verify:api": "api-extractor run --config ./api-extractor.json",
     "dev": "tsdown --tsconfig tsconfig.build.json --watch",
     "test": "cross-env TEST=true vitest --watch=false",
     "test:all": "pnpm benchmark && pnpm test",

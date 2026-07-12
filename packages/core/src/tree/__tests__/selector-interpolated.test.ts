@@ -41,8 +41,8 @@ describe('InterpolatedSelector', () => {
     });
     const node = interpolatedSelector(value);
 
-    expect(node.node).toBe(value);
-    expect(InterpolatedSelector.childKeys).toEqual(['node']);
+    expect(node.value).toBe(value);
+    expect(InterpolatedSelector.childKeys).toEqual(['value']);
   });
 
   it('renders resolved interpolated selectors through render(context)', async () => {
@@ -63,7 +63,6 @@ describe('InterpolatedSelector', () => {
     const rendered = selectorNode.render(context);
 
     expect(rendered).toBe('.foo');
-    expect(selectorNode.evaluated).toBe(false);
     expect(selectorNode.registrationPrepared).toBe(false);
   });
 
@@ -96,7 +95,6 @@ describe('InterpolatedSelector', () => {
     expect(await selectorNode.render(context, buffer)).toBe('.foo');
     expect(buffer.parts).toEqual(['.foo']);
     expect(resolveCalls).toBe(0);
-    expect(selectorNode.evaluated).toBe(false);
     expect(selectorNode.registrationPrepared).toBe(false);
   });
 
@@ -120,7 +118,6 @@ describe('InterpolatedSelector', () => {
     };
 
     expect(selectorNode.render(context)).toBe('.foo');
-    expect(selectorNode.evaluated).toBe(false);
     expect(selectorNode.registrationPrepared).toBe(false);
   });
 
@@ -142,7 +139,6 @@ describe('InterpolatedSelector', () => {
     const resolved = await selectorNode.resolve(context);
 
     expect(resolved.toTrimmedString()).toBe('.foo');
-    expect(selectorNode.evaluated).toBe(false);
     expect(selectorNode.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
@@ -173,7 +169,7 @@ describe('InterpolatedSelector', () => {
     const resolved = await selectorNode.resolve(context);
 
     expect(resolved.toTrimmedString()).toBe('a[data=foo]');
-    expect(replacement.parent).toBe(selectorNode.node);
+    expect(replacement.parent).toBe(selectorNode.value);
     expect(replacement.toTrimmedString()).toBe('a[data=$capture-attr]');
     expect(selectorNode.toTrimmedString()).toBe('a[data=$capture-attr]');
   });
@@ -237,7 +233,7 @@ describe('InterpolatedSelector', () => {
 
       expect(resolved.toTrimmedString()).toBe('.a.b');
       expect(basicSelectorCloneCalls).toBe(0);
-      expect(replacement.parent).toBe(selectorNode.node);
+      expect(replacement.parent).toBe(selectorNode.value);
       expect(left.parent).toBe(replacement);
       expect(right.parent).toBe(replacement);
     } finally {

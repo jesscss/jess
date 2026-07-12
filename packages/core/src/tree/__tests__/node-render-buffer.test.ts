@@ -2,11 +2,14 @@ import { describe, expect, it } from 'vitest';
 import type { IToken } from 'chevrotain';
 import { Context } from '../../context.js';
 import {
+  type Any,
+  type AnyRole,
   Anonymous,
   Selector,
   amp,
   any,
   atrule,
+  atrulestatement,
   attr,
   bool,
   block,
@@ -86,7 +89,7 @@ const rejectingAdapterNode = {
 };
 
 class SourceOnlyNode extends Node<string> {
-  override resolve() {
+  override resolve(_context: Context): never {
     throw new Error('base render should not resolve source-only nodes');
   }
 
@@ -97,6 +100,7 @@ class SourceOnlyNode extends Node<string> {
 }
 
 class AsyncValueNode extends Node<string> {
+  declare value: string;
   constructor(
     value: string,
     private readonly resolved: Node = any(value)
@@ -105,11 +109,11 @@ class AsyncValueNode extends Node<string> {
     this.addFlags(F_NON_STATIC, F_MAY_ASYNC);
   }
 
-  override eval() {
+  override eval(_context: Context) {
     return Promise.resolve(this.resolved);
   }
 
-  override resolve() {
+  override resolve(_context: Context) {
     return Promise.resolve(this.resolved);
   }
 
@@ -243,7 +247,7 @@ describe('renderNodeToBuffer', () => {
     context.root = root;
     context.currentCharset = any('@charset "utf-8";', { role: 'charset' });
     context.topImports = [
-      atrule({
+      atrulestatement({
         name: any('@import', { role: 'atkeyword' }),
         prelude: quoted(any('theme.css'))
       })
@@ -329,7 +333,7 @@ describe('renderNodeToBuffer', () => {
       { surface: 'Dimension', node: dimension([10, 'px']), expected: '10px' },
       { surface: 'Color', node: color('#ff0000'), expected: '#ff0000' },
       { surface: 'Quoted', node: quoted('theme.css'), expected: '"theme.css"' },
-      { surface: 'Url', node: url(quoted(ref({ key: 'asset' }, { type: 'variable' }))), expected: 'url("image.png")' },
+      { surface: 'Url', node: url(quoted(any('image.png'))), expected: 'url("image.png")' },
       { surface: 'Comment', node: comment('/* note */'), expected: '/* note */' },
       { surface: 'Nil', node: nil(), expected: '', expectedParts: [] },
       { surface: 'Combinator', node: co('>'), expected: '>' },
@@ -347,7 +351,7 @@ describe('renderNodeToBuffer', () => {
       { surface: 'Paren', node: paren(any('screen')), expected: '(screen)' },
       { surface: 'Negative', node: negative(dimension([2, 'px'])), expected: '-2px' },
       { surface: 'Operation', node: op([dimension([10, 'px']), '+', dimension([5, 'px'])]), expected: '15px' },
-      { surface: 'Call', node: call({ name: 'rgb', args: list([dimension([1]), dimension([2]), dimension([3])]) }), expected: 'rgb(1, 2, 3)' },
+      { surface: 'Call', node: call({ name: 'rgb', args: list([dimension(1), dimension(2), dimension(3)]) }), expected: 'rgb(1, 2, 3)' },
       { surface: 'Reference', node: ref({ key: 'brand' }, { type: 'variable' }), expected: 'red' },
       { surface: 'Declaration', node: decl({ name: 'color', value: any('red') }), expected: 'color: red' },
       {
@@ -355,13 +359,13 @@ describe('renderNodeToBuffer', () => {
         node: atrule({
           name: any('@media', { role: 'atkeyword' }),
           prelude: any('screen'),
-          rules: rules([decl({ name: 'color', value: any('red') })])
+          rules: [decl({ name: 'color', value: any('red') })]
         }),
         expected: '@media screen {\n  color: red;\n}\n'
       }
     ];
 
-    expect(cases).toHaveLength(19);
+    expect(cases).toHaveLength(20);
 
     for (const item of cases) {
       item.setup?.(context);
@@ -390,7 +394,7 @@ describe('renderNodeToBuffer', () => {
         surface: 'Ruleset',
         node: ruleset({
           selector: el('.box'),
-          rules: rules([decl({ name: 'color', value: any('red') })])
+          rules: [decl({ name: 'color', value: any('red') })]
         })
       },
       { surface: 'BasicSelector', node: el('.box'), expected: '.box' },
@@ -411,9 +415,9 @@ describe('renderNodeToBuffer', () => {
         ),
         expected: '.active'
       },
-      { surface: 'Expression', node: expr(op([dimension([2]), '+', dimension([3])])), expected: '5' },
-      { surface: 'Range', node: range({ start: dimension([1]), end: dimension([3]), step: dimension([1]) }) },
-      { surface: 'Condition', node: condition([dimension([2]), '>', dimension([1])]), expected: 'true' },
+      { surface: 'Expression', node: expr(op([dimension(2), '+', dimension(3)])), expected: '5' },
+      { surface: 'Range', node: range({ start: dimension(1), end: dimension(3), step: dimension(1) }) },
+      { surface: 'Condition', node: condition([dimension(2), '>', dimension(1)]), expected: 'true' },
       { surface: 'QueryCondition', node: query([any('(min-width:'), dimension([10, 'px']), any(')')]) },
       { surface: 'Block', node: block(seq([any('red'), any('blue')]), { type: 'square' }) },
       { surface: 'Collection', node: coll([decl({ name: 'color', value: any('red') })]) },
@@ -459,7 +463,8 @@ describe('renderNodeToBuffer', () => {
       { surface: 'List', node: list([any('one'), new AsyncValueNode('two')]), expected: 'one, two' },
       { surface: 'Paren', node: paren(new AsyncValueNode('value')), expected: '(value)' },
       { surface: 'Condition', node: condition([new AsyncValueNode('truthy', bool(true))]), expected: 'true' },
-      { surface: 'Quoted', node: quoted(new AsyncValueNode('asset')), expected: '"asset"' },
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      { surface: 'Quoted', node: quoted(new AsyncValueNode('asset') as unknown as Any<AnyRole>), expected: '"asset"' },
       { surface: 'Url', node: url(new AsyncValueNode('asset')), expected: 'url(asset)' }
     ];
 
@@ -485,12 +490,12 @@ describe('renderNodeToBuffer', () => {
       { surface: 'ExtendList', node: extendList([extend({ target: el('.target') })]), expectedParts: [] },
       { surface: 'SelectorCapture', node: selcap(el('.captured')), expected: '.captured' },
       { surface: 'Log', node: log({ level: 'debug', message: any('') }), expected: '', expectedParts: [] },
-      { surface: 'JsArray', node: jsarray([any('one'), any('two')]) },
-      { surface: 'JsObject', node: jsobj({ one: any('one') }) },
-      { surface: 'JsFunction', node: jsfunc({ name: 'make-red', fn: () => 'red' }) },
+      { surface: 'JsArray', node: jsarray([any('one'), any('two')]), expectedParts: [] },
+      { surface: 'JsObject', node: jsobj({ one: any('one') }), expectedParts: [] },
+      { surface: 'JsFunction', node: jsfunc({ name: 'make-red', fn: () => 'red' }), expectedParts: [] },
       {
         surface: 'Mixin',
-        node: mixin({ name: any('.paint'), rules: rules([decl({ name: 'color', value: any('red') })]) }),
+        node: mixin({ name: any('.paint'), rules: [decl({ name: 'color', value: any('red') })] }),
         expectedParts: []
       },
       {
@@ -501,10 +506,9 @@ describe('renderNodeToBuffer', () => {
       {
         surface: 'If',
         node: ifNode({
-          branches: [
-            { condition: bool(true), rules: rules([decl({ name: 'color', value: any('red') })]) },
-            { rules: rules([decl({ name: 'color', value: any('blue') })]) }
-          ]
+          condition: bool(true),
+          rules: [decl({ name: 'color', value: any('red') })],
+          else: rules([decl({ name: 'color', value: any('blue') })])
         })
       },
       {
@@ -513,12 +517,12 @@ describe('renderNodeToBuffer', () => {
           pattern: { kind: 'single', value: vardecl({ name: 'item', value: nil() }, { paramVar: true }) },
           iterable: {
             kind: 'range',
-            start: dimension([1]),
-            end: dimension([1]),
+            start: dimension(1),
+            end: dimension(1),
             includeStart: true,
             includeEnd: true
           },
-          rules: rules([decl({ name: 'width', value: ref({ key: 'item' }, { type: 'variable' }) })])
+          rules: [decl({ name: 'width', value: ref({ key: 'item' }, { type: 'variable' }) })]
         })
       },
       {
@@ -526,7 +530,7 @@ describe('renderNodeToBuffer', () => {
         node: forNode({
           pattern: { kind: 'single', value: vardecl({ name: 'tone', value: nil() }, { paramVar: true }) },
           iterable: { kind: 'node', value: list([any('red'), any('blue')]) },
-          rules: rules([decl({ name: 'color', value: ref({ key: 'tone' }, { type: 'variable' }) })])
+          rules: [decl({ name: 'color', value: ref({ key: 'tone' }, { type: 'variable' }) })]
         }),
         expectedParts: ['color: red;\n', 'color: blue;\n']
       },
@@ -534,7 +538,7 @@ describe('renderNodeToBuffer', () => {
         surface: 'While',
         node: whileNode({
           condition: bool(false),
-          rules: rules([decl({ name: 'color', value: any('red') })])
+          rules: [decl({ name: 'color', value: any('red') })]
         }),
         expectedParts: []
       },
@@ -546,7 +550,8 @@ describe('renderNodeToBuffer', () => {
             undefined,
             0
           )
-        ])
+        ]),
+        expectedParts: []
       },
       { surface: 'SelectorBase', node: new RenderBufferSelector('.base'), expected: '.base' }
     ];
@@ -580,7 +585,6 @@ describe('renderNodeToBuffer', () => {
     };
 
     await expect(Promise.resolve(node.render(context))).resolves.toBe('');
-    expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
   });
 
@@ -594,10 +598,9 @@ describe('renderNodeToBuffer', () => {
       {
         surface: 'If',
         node: ifNode({
-          branches: [
-            { condition: bool(true), rules: rules([decl({ name: 'color', value: any('red') })]) },
-            { rules: rules([decl({ name: 'color', value: any('blue') })]) }
-          ]
+          condition: bool(true),
+          rules: [decl({ name: 'color', value: any('red') })],
+          else: rules([decl({ name: 'color', value: any('blue') })])
         }),
         expected: 'color: red;'
       },
@@ -607,19 +610,19 @@ describe('renderNodeToBuffer', () => {
           pattern: { kind: 'single', value: vardecl({ name: 'item', value: nil() }, { paramVar: true }) },
           iterable: {
             kind: 'range',
-            start: dimension([1]),
-            end: dimension([1]),
+            start: dimension(1),
+            end: dimension(1),
             includeStart: true,
             includeEnd: true
           },
-          rules: rules([decl({ name: 'width', value: ref({ key: 'item' }, { type: 'variable' }) })])
+          rules: [decl({ name: 'width', value: ref({ key: 'item' }, { type: 'variable' }) })]
         })
       },
       {
         surface: 'While',
         node: whileNode({
           condition: bool(false),
-          rules: rules([decl({ name: 'color', value: any('red') })])
+          rules: [decl({ name: 'color', value: any('red') })]
         }),
         expected: ''
       }
@@ -635,7 +638,6 @@ describe('renderNodeToBuffer', () => {
       if ('expected' in item) {
         expect(rendered, item.surface).toBe(item.expected);
       }
-      expect(item.node.evaluated, item.surface).toBe(false);
       expect(item.node.registrationPrepared, item.surface).toBe(false);
     }
   });

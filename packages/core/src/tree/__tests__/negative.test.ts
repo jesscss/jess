@@ -54,7 +54,7 @@ describe('Negative', () => {
 
   it('preserves parser tree context on construction', () => {
     const treeContext = new TreeContext();
-    const node = negative(num(10), undefined, undefined, treeContext);
+    const node = new Negative(num(10), undefined, undefined, treeContext);
 
     expect(node._treeContext).toBe(treeContext);
   });
@@ -63,8 +63,8 @@ describe('Negative', () => {
     const value = num(10);
     const node = negative(value);
 
-    expect(node.node).toBe(value);
-    expect(Negative.childKeys).toEqual(['node']);
+    expect(node.value).toBe(value);
+    expect(Negative.childKeys).toEqual(['value']);
   });
 
   it('returns simple dimension negative syntax without writer readback', () => {
@@ -104,7 +104,6 @@ describe('Negative', () => {
 
     expect(rendered).toBe('-20');
     expect(negativeResolveCalls).toBe(0);
-    expect(negativeNode.evaluated).toBe(false);
     expect(negativeNode.registrationPrepared).toBe(false);
   });
 
@@ -129,7 +128,6 @@ describe('Negative', () => {
     expect(await negativeNode.render(context, buffer)).toBe('-20');
     expect(buffer.parts).toEqual(['-20']);
     expect(negativeResolveCalls).toBe(0);
-    expect(negativeNode.evaluated).toBe(false);
     expect(negativeNode.registrationPrepared).toBe(false);
   });
 
@@ -158,7 +156,6 @@ describe('Negative', () => {
 
       expect(negativeNode.render(context)).toBe('-20');
       expect(operate).not.toHaveBeenCalled();
-      expect(negativeNode.evaluated).toBe(false);
       expect(negativeNode.registrationPrepared).toBe(false);
     } finally {
       operate.mockRestore();
@@ -186,7 +183,6 @@ describe('Negative', () => {
       const negativeNode = negative(ref({ key: 'rhs' }, { type: 'variable' }));
 
       expect(negativeNode.render(context)).toBe('-token');
-      expect(negativeNode.evaluated).toBe(false);
       expect(negativeNode.registrationPrepared).toBe(false);
     } finally {
       Any.prototype.render = originalRender;
@@ -196,9 +192,9 @@ describe('Negative', () => {
 
   it('renders sync negative values without may-async continuation scaffolding', () => {
     const negativeNode = negative(num(20));
-    const originalEval = negativeNode.node.eval;
-    negativeNode.node.eval = function evalSyncOnly(
-      this: typeof negativeNode.node,
+    const originalEval = negativeNode.value.eval;
+    negativeNode.value.eval = function evalSyncOnly(
+      this: typeof negativeNode.value,
       renderContext: Context
     ) {
       const out = originalEval.call(this, renderContext);
@@ -254,7 +250,6 @@ describe('Negative', () => {
     const resolved = await negativeNode.resolve(context);
 
     expect(resolved.toTrimmedString()).toBe('-20');
-    expect(negativeNode.evaluated).toBe(false);
     expect(negativeNode.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
@@ -278,7 +273,6 @@ describe('Negative', () => {
 
       expect(resolved).toBeInstanceOf(Any);
       expect(resolved.toTrimmedString()).toBe('-token');
-      expect(negativeNode.evaluated).toBe(false);
       expect(negativeNode.registrationPrepared).toBe(false);
       expect(context.printState.writer).toBeUndefined();
     } finally {

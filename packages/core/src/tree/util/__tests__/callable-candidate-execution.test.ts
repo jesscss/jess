@@ -1,8 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { Context } from '../../../context.js';
 import { Bool } from '../../bool.js';
+import type { Condition } from '../../condition.js';
 import { any, decl, list, mixin, rules, vardecl } from '../../index.js';
-import { createCallableOuterRules } from '../callable-surface.js';
+import type { Node } from '../../node.js';
+import {
+  createCallableOuterRules,
+  createCallableRulesSurface
+} from '../callable-surface.js';
 import { createCallableDefaultState } from '../callable-default-guard.js';
 import { createCallableLiveSlots } from '../callable-live-slots.js';
 import { matchCallableParams } from '../callable-param-match.js';
@@ -15,9 +20,9 @@ describe('callable candidate execution helper', () => {
     const candidate = mixin({
       name: any('.button'),
       params: list([vardecl({ name: 'tone', value: any('red') })]),
-      rules: rules([
+      rules: [
         decl({ name: 'color', value: any('red') })
-      ])
+      ]
     });
     const definitionParent = rules([candidate]);
     const callSiteRules = rules([]);
@@ -36,8 +41,7 @@ describe('callable candidate execution helper', () => {
       callSiteRules,
       leakyRules: true,
       resolvedBindingInfo: bindingInfo,
-      createOwnedRules: sourceRules => sourceRules.derive(sourceRules.rules.slice()),
-      createUnlockedRules: sourceRules => sourceRules.derive(),
+      createCallableRules: createCallableRulesSurface,
       getRootSourceRules: rulesNode => rulesNode
     });
     const defaultState = createCallableDefaultState();
@@ -64,14 +68,16 @@ describe('callable candidate execution helper', () => {
     const context = new Context({ leakyRules: true });
     const dynamicGuard = new Bool(true);
     dynamicGuard.hasFlag = () => false;
-    dynamicGuard.eval = async evalContext => new Bool(evalContext.isDefault === true);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    dynamicGuard.eval = (async (evalContext: Context) => new Bool(evalContext.isDefault === true)) as unknown as (context: Context) => Bool;
 
     const candidate = mixin({
       name: any('.button'),
-      rules: rules([
+      rules: [
         decl({ name: 'color', value: any('red') })
-      ]),
-      guard: dynamicGuard
+      ],
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      guard: dynamicGuard as unknown as Condition
     });
     const definitionParent = rules([candidate]);
     const callSiteRules = rules([]);
@@ -82,8 +88,7 @@ describe('callable candidate execution helper', () => {
       candidate,
       callSiteRules,
       leakyRules: true,
-      createOwnedRules: sourceRules => sourceRules.derive(sourceRules.rules.slice()),
-      createUnlockedRules: sourceRules => sourceRules.derive(),
+      createCallableRules: createCallableRulesSurface,
       getRootSourceRules: rulesNode => rulesNode
     });
     const defaultState = createCallableDefaultState();
@@ -92,7 +97,8 @@ describe('callable candidate execution helper', () => {
       context,
       hasDefault: true,
       candidate,
-      candidateGuard: candidate.guard,
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      candidateGuard: candidate.guard as Node | undefined,
       candidateParams: candidate.params,
       candidateState,
       nodeArgs: [],

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { findExtendableLocations } from '../find-extendable-locations.js';
 import { applyExtensionAtLocation } from '../extend.js';
-import { el, pseudo, sellist, compound } from '../../../index.js';
+import { el, pseudo, sellist, compound, Node } from '../../../index.js';
 
 describe('ExtendLocation API Tests', () => {
   describe('findExtendableLocations', () => {
@@ -37,6 +37,20 @@ describe('ExtendLocation API Tests', () => {
       expect(result.locations[0]!.path).toEqual(['arg', 0]);
       expect(result.locations[0]!.matchedNode.valueOf()).toBe('.a');
       expect(result.locations[0]!.extensionType).toBe('append');
+    });
+
+    it('materializes string-backed selector list items before returning extend matches', () => {
+      const selector = sellist(['.a', '.b']);
+      const target = el('.a');
+
+      const result = findExtendableLocations(selector, target);
+
+      expect(result.hasMatches).toBe(true);
+      expect(result.locations).toHaveLength(1);
+      expect(result.locations[0]!.path).toEqual([0]);
+      expect(result.locations[0]!.matchedNode).not.toBe('.a');
+      expect(result.locations[0]!.matchedNode.valueOf()).toBe('.a');
+      expect(result.locations[0]!.extensionType).toBe('replace');
     });
 
     it('should find target in compound selector component', () => {
@@ -142,7 +156,8 @@ describe('ExtendLocation API Tests', () => {
       const extendedStr = extended.valueOf().replace(/\s+/g, '');
       expect(extendedStr).toBe(':where(.a,.b,.c)');
       expect(selector.arg).toBe(sourceList);
-      expect(sourceItems.map(item => item.parent)).toEqual(sourceItems.map(() => sourceList));
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      expect(sourceItems.map(item => (item as Node).parent)).toEqual(sourceItems.map(() => sourceList));
       expect(extendWith.parent).toBeUndefined();
     });
 

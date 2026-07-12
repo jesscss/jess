@@ -1,5 +1,6 @@
-import { ref, rules, decl, vardecl, spaced, any, quoted, expr, ruleset, mixin, call, compound, el, list, atrule, sel, co, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER, Rules as RulesClass, Mixin as MixinClass, VarDeclaration, Any, List, Sequence, Dimension, dimension, JsArray, JsObject, JsFunction, F_MAY_ASYNC, F_NON_STATIC, defaultguard, type Node } from '../index.js';
+import { ref, rules, decl, vardecl, spaced, any, quoted, expr, ruleset, mixin, call, compound, el, list, atrule, sel, co, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER, Rules as RulesClass, Mixin as MixinClass, Reference, VarDeclaration, Any, List, Sequence, Dimension, dimension, JsArray, JsObject, JsFunction, AssignmentType, F_MAY_ASYNC, F_NON_STATIC, defaultguard, style, type Node, type AnyRole } from '../index.js';
 import { Context } from '../../context.js';
+import type { ReferenceOptions } from '../reference.js';
 import { isNode } from '../util/is-node.js';
 import { getPrintOptions, OutputWriter } from '../util/print.js';
 import { createRenderBuffer, renderNodeToString } from '../util/render-buffer.js';
@@ -8,6 +9,10 @@ import {
   findPropertyDeclarationOccurrence,
   findVariableDeclarationOccurrence
 } from '../util/direct-rules-lookup.js';
+import { MixinCollection } from '../util/callable-collection.js';
+import type { Mixin } from '../mixin.js';
+import type { Declaration } from '../declaration.js';
+import type { Ruleset } from '../ruleset.js';
 let context: Context;
 let expectedAsyncRulesContext: RulesClass | undefined;
 
@@ -56,12 +61,13 @@ function expectNodeType(value: unknown, type: string): void {
   }
 }
 
-class AsyncRulesContextAny extends Any<string> {
+class AsyncRulesContextAny extends Any<AnyRole> {
   constructor(value: string) {
     super(value);
     this.addFlags(F_MAY_ASYNC, F_NON_STATIC);
   }
 
+  // @ts-expect-error – async override returns Promise, but Any<AnyRole>.eval() interface is synchronous; F_MAY_ASYNC flag makes this valid at runtime
   override async eval(evalContext: Context) {
     await Promise.resolve();
     expect(evalContext.rulesContext).toBe(expectedAsyncRulesContext);
@@ -69,31 +75,33 @@ class AsyncRulesContextAny extends Any<string> {
   }
 }
 
-class NativeRenderAny extends Any<string> {
+class NativeRenderAny extends Any<AnyRole> {
   override render(renderContext: Context) {
     expect(renderContext).toBe(context);
     return `rendered-${this.value}`;
   }
 }
 
-class AsyncNativeRenderAny extends Any<string> {
+class AsyncNativeRenderAny extends Any<AnyRole> {
   constructor(value: string) {
     super(value);
     this.addFlags(F_MAY_ASYNC, F_NON_STATIC);
   }
 
+  // @ts-expect-error – async override returns Promise, but Any<AnyRole>.eval() interface is synchronous; F_MAY_ASYNC flag makes this valid at runtime
   override async eval() {
     await Promise.resolve();
     return new NativeRenderAny(this.value);
   }
 }
 
-class RejectingAsyncAny extends Any<string> {
+class RejectingAsyncAny extends Any<AnyRole> {
   constructor(value: string) {
     super(value);
     this.addFlags(F_MAY_ASYNC, F_NON_STATIC);
   }
 
+  // @ts-expect-error – returning Promise.reject while Any<AnyRole>.eval() interface is synchronous; F_MAY_ASYNC flag makes this valid at runtime
   override eval() {
     return Promise.reject(new Error(this.value));
   }
@@ -184,6 +192,26 @@ describe('reference', () => {
 
       expect(chunks).toEqual(['$', '[', '#theme', '.dark', ']']);
     });
+
+    it('serializes reference source syntax through writeSyntax ownership', () => {
+      const originalWriteSyntax = Reference.prototype.writeSyntax;
+      let writeSyntaxCalls = 0;
+      Reference.prototype.writeSyntax = function countWriteSyntax(
+        this: Reference,
+        ...args: Parameters<typeof originalWriteSyntax>
+      ): ReturnType<typeof originalWriteSyntax> {
+        writeSyntaxCalls++;
+        return originalWriteSyntax.apply(this, args);
+      };
+      const node = ref({ key: 'foo' }, { type: 'variable' });
+
+      try {
+        expect(node.toTrimmedString()).toBe('$foo');
+        expect(writeSyntaxCalls).toBe(1);
+      } finally {
+        Reference.prototype.writeSyntax = originalWriteSyntax;
+      }
+    });
   });
 
   describe('get from scope', () => {
@@ -200,7 +228,6 @@ describe('reference', () => {
       const rendered = refNode.render(context);
 
       expect(rendered).toBe('red');
-      expect(refNode.evaluated).toBe(false);
       expect(refNode.registrationPrepared).toBe(false);
     });
 
@@ -227,7 +254,6 @@ describe('reference', () => {
       expect(refNode.render(context, buffer)).toBe('red');
       expect(buffer.segments).toEqual(['red']);
       expect(resolveCalls).toBe(0);
-      expect(refNode.evaluated).toBe(false);
       expect(refNode.registrationPrepared).toBe(false);
     });
 
@@ -245,7 +271,6 @@ describe('reference', () => {
       };
 
       expect(refNode.render(context)).toBe('red');
-      expect(refNode.evaluated).toBe(false);
       expect(refNode.registrationPrepared).toBe(false);
     });
 
@@ -357,11 +382,11 @@ describe('reference', () => {
       context.rulesContext = runtimeScope;
       const sourceParent = sourceValue.parent;
       const buffer = createRenderBuffer('segmented');
-      const originalCopy = Any.prototype.copy;
+      const originalCopy = Any.prototype.cloneForPlacement;
       const originalInherit = sourceValue.inherit;
       let scalarCopies = 0;
       let sourceValueInherits = 0;
-      Any.prototype.copy = function copyForCounting(
+      Any.prototype.cloneForPlacement = function copyForCounting(
         this: Any,
         ...args: Parameters<typeof originalCopy>
       ): ReturnType<typeof originalCopy> {
@@ -389,7 +414,7 @@ describe('reference', () => {
         expect(sourceValue.parent).toBe(sourceParent);
         expect(context.referenceStack).toBe(0);
       } finally {
-        Any.prototype.copy = originalCopy;
+        Any.prototype.cloneForPlacement = originalCopy;
         sourceValue.inherit = originalInherit;
       }
     });
@@ -410,9 +435,9 @@ describe('reference', () => {
         ])
       );
       context.rulesContext = runtimeScope;
-      const originalCopy = Any.prototype.copy;
+      const originalCopy = Any.prototype.cloneForPlacement;
       let scalarCopies = 0;
-      Any.prototype.copy = function copyForCounting(
+      Any.prototype.cloneForPlacement = function copyForCounting(
         this: Any,
         ...args: Parameters<typeof originalCopy>
       ): ReturnType<typeof originalCopy> {
@@ -432,14 +457,16 @@ describe('reference', () => {
         expect(sourceValue.frozen).toBe(false);
         expect(context.referenceStack).toBe(0);
       } finally {
-        Any.prototype.copy = originalCopy;
+        Any.prototype.cloneForPlacement = originalCopy;
       }
     });
 
     it('resolves fallback-frame declarations without Rules.find fallback', async () => {
-      const originalFind = RulesClass.prototype.find;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFind = (RulesClass.prototype as any).find;
       const declarationHits: string[] = [];
-      RulesClass.prototype.find = function(...args: Parameters<typeof originalFind>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).find = function(...args: Parameters<typeof originalFind>) {
         const [type, key, filterType] = args;
         if (type === 'declaration' && filterType === 'VarDeclaration' && key === 'tone') {
           declarationHits.push(key);
@@ -462,7 +489,8 @@ describe('reference', () => {
         expect(resolved.toTrimmedString()).toBe('blue');
         expect(declarationHits).toHaveLength(0);
       } finally {
-        RulesClass.prototype.find = originalFind;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).find = originalFind;
       }
     });
 
@@ -470,7 +498,7 @@ describe('reference', () => {
       const fallbackParent = rules([
         vardecl({ name: any('tone'), value: any('blue') })
       ]);
-      const originalValue = fallbackParent.value;
+      const originalValue = fallbackParent.rules;
 
       try {
         const fallbackChild = rules([]);
@@ -478,12 +506,12 @@ describe('reference', () => {
         await fallbackParent.eval(context);
         const runtimeScope = rules([]);
         await runtimeScope.eval(context);
-        fallbackChild.scopeFrame = buildScopeFrame(undefined, fallbackChild);
+        fallbackChild.scopeFrame = buildScopeFrame(undefined, fallbackChild, undefined);
         const fallbackFrame = fallbackChild.getScopeFrame();
         runtimeScope.getScopeFrame().fallbackFrame = fallbackFrame;
         context.rulesContext = runtimeScope;
 
-        Object.defineProperty(fallbackParent, 'value', {
+        Object.defineProperty(fallbackParent, 'rules', {
           configurable: true,
           get() {
             throw new Error('covered fallback-frame miss should not rediscover fallback parent declarations');
@@ -499,7 +527,7 @@ describe('reference', () => {
 
         expect(resolved.toTrimmedString()).toBe('fallback');
       } finally {
-        Object.defineProperty(fallbackParent, 'value', {
+        Object.defineProperty(fallbackParent, 'rules', {
           configurable: true,
           writable: true,
           value: originalValue
@@ -557,11 +585,11 @@ describe('reference', () => {
       context.rulesContext = runtimeScope;
       const sourceParent = sourceValue.parent;
       const buffer = createRenderBuffer('segmented');
-      const originalCopy = List.prototype.copy;
+      const originalCopy = List.prototype.cloneForPlacement;
       const originalInherit = List.prototype.inherit;
       let sourceValueCopies = 0;
       let sourceValueInherits = 0;
-      List.prototype.copy = function copyForCounting(
+      List.prototype.cloneForPlacement = function copyForCounting(
         this: List,
         ...args: Parameters<typeof originalCopy>
       ): ReturnType<typeof originalCopy> {
@@ -591,7 +619,7 @@ describe('reference', () => {
         expect(sourceValue.parent).toBe(sourceParent);
         expect(context.referenceStack).toBe(0);
       } finally {
-        List.prototype.copy = originalCopy;
+        List.prototype.cloneForPlacement = originalCopy;
         List.prototype.inherit = originalInherit;
       }
     });
@@ -614,11 +642,11 @@ describe('reference', () => {
       context.rulesContext = runtimeScope;
       const sourceParent = sourceValue.parent;
       const buffer = createRenderBuffer('segmented');
-      const originalCopy = Sequence.prototype.copy;
+      const originalCopy = Sequence.prototype.cloneForPlacement;
       const originalInherit = Sequence.prototype.inherit;
       let sourceValueCopies = 0;
       let sourceValueInherits = 0;
-      Sequence.prototype.copy = function copyForCounting(
+      Sequence.prototype.cloneForPlacement = function copyForCounting(
         this: Sequence,
         ...args: Parameters<typeof originalCopy>
       ): ReturnType<typeof originalCopy> {
@@ -648,7 +676,7 @@ describe('reference', () => {
         expect(sourceValue.parent).toBe(sourceParent);
         expect(context.referenceStack).toBe(0);
       } finally {
-        Sequence.prototype.copy = originalCopy;
+        Sequence.prototype.cloneForPlacement = originalCopy;
         Sequence.prototype.inherit = originalInherit;
       }
     });
@@ -672,11 +700,11 @@ describe('reference', () => {
       context.rulesContext = runtimeScope;
       const sourceParent = sourceValue.parent;
       const buffer = createRenderBuffer('segmented');
-      const originalCopy = List.prototype.copy;
+      const originalCopy = List.prototype.cloneForPlacement;
       const originalInherit = List.prototype.inherit;
       let sourceValueCopies = 0;
       let sourceValueInherits = 0;
-      List.prototype.copy = function copyForCounting(
+      List.prototype.cloneForPlacement = function copyForCounting(
         this: List,
         ...args: Parameters<typeof originalCopy>
       ): ReturnType<typeof originalCopy> {
@@ -706,7 +734,7 @@ describe('reference', () => {
         expect(sourceValue.parent).toBe(sourceParent);
         expect(context.referenceStack).toBe(0);
       } finally {
-        List.prototype.copy = originalCopy;
+        List.prototype.cloneForPlacement = originalCopy;
         List.prototype.inherit = originalInherit;
       }
     });
@@ -802,7 +830,6 @@ describe('reference', () => {
       expect(evalNodeCalls).toBe(0);
       expect(sourceValue.frozen).toBe(false);
       expect(sourceValue.parent).toBe(sourceParent);
-      expect(refNode.evaluated).toBe(false);
       expect(refNode.registrationPrepared).toBe(false);
       expect(context.referenceStack).toBe(0);
     });
@@ -888,7 +915,6 @@ describe('reference', () => {
       const resolved = await refNode.resolve(context);
 
       expect(resolved.toTrimmedString()).toBe('red');
-      expect(refNode.evaluated).toBe(false);
       expect(refNode.registrationPrepared).toBe(false);
       expect(context.printState.writer).toBeUndefined();
     });
@@ -905,11 +931,11 @@ describe('reference', () => {
       setRulesContext(await node.eval(context));
       const refNode = ref({ key: 'foo' }, { type: 'variable' });
       const buffer = createRenderBuffer('segmented');
-      const originalCopy = Any.prototype.copy;
+      const originalCopy = Any.prototype.cloneForPlacement;
       const originalInherit = sourceValue.inherit;
       let scalarCopies = 0;
       let sourceValueInherits = 0;
-      Any.prototype.copy = function copyForCounting(
+      Any.prototype.cloneForPlacement = function copyForCounting(
         this: Any,
         ...args: Parameters<typeof originalCopy>
       ): ReturnType<typeof originalCopy> {
@@ -934,7 +960,7 @@ describe('reference', () => {
         expect(sourceValueInherits).toBe(0);
         expect(sourceValue.parent).toBe(sourceParent);
       } finally {
-        Any.prototype.copy = originalCopy;
+        Any.prototype.cloneForPlacement = originalCopy;
         sourceValue.inherit = originalInherit;
       }
     });
@@ -951,11 +977,11 @@ describe('reference', () => {
       setRulesContext(await node.eval(context));
       const refNode = ref({ key: 'src' }, { type: 'declaration' });
       const buffer = createRenderBuffer('segmented');
-      const originalCopy = Any.prototype.copy;
+      const originalCopy = Any.prototype.cloneForPlacement;
       const originalInherit = sourceValue.inherit;
       let scalarCopies = 0;
       let sourceValueInherits = 0;
-      Any.prototype.copy = function copyForCounting(
+      Any.prototype.cloneForPlacement = function copyForCounting(
         this: Any,
         ...args: Parameters<typeof originalCopy>
       ): ReturnType<typeof originalCopy> {
@@ -980,7 +1006,7 @@ describe('reference', () => {
         expect(sourceValueInherits).toBe(0);
         expect(sourceValue.parent).toBe(sourceParent);
       } finally {
-        Any.prototype.copy = originalCopy;
+        Any.prototype.cloneForPlacement = originalCopy;
         sourceValue.inherit = originalInherit;
       }
     });
@@ -997,11 +1023,11 @@ describe('reference', () => {
       setRulesContext(await node.eval(context));
       const refNode = ref({ key: 'src' }, { type: 'declaration' });
       const buffer = createRenderBuffer('segmented');
-      const originalCopy = List.prototype.copy;
+      const originalCopy = List.prototype.cloneForPlacement;
       const originalInherit = List.prototype.inherit;
       let sourceValueCopies = 0;
       let sourceValueInherits = 0;
-      List.prototype.copy = function copyForCounting(
+      List.prototype.cloneForPlacement = function copyForCounting(
         this: List,
         ...args: Parameters<typeof originalCopy>
       ): ReturnType<typeof originalCopy> {
@@ -1029,7 +1055,7 @@ describe('reference', () => {
         expect(sourceValue.parent).toBe(sourceParent);
         expect(context.referenceStack).toBe(0);
       } finally {
-        List.prototype.copy = originalCopy;
+        List.prototype.cloneForPlacement = originalCopy;
         List.prototype.inherit = originalInherit;
       }
     });
@@ -1046,11 +1072,11 @@ describe('reference', () => {
       setRulesContext(await node.eval(context));
       const refNode = ref({ key: 'src' }, { type: 'declaration' });
       const buffer = createRenderBuffer('segmented');
-      const originalCopy = Sequence.prototype.copy;
+      const originalCopy = Sequence.prototype.cloneForPlacement;
       const originalInherit = Sequence.prototype.inherit;
       let sourceValueCopies = 0;
       let sourceValueInherits = 0;
-      Sequence.prototype.copy = function copyForCounting(
+      Sequence.prototype.cloneForPlacement = function copyForCounting(
         this: Sequence,
         ...args: Parameters<typeof originalCopy>
       ): ReturnType<typeof originalCopy> {
@@ -1078,7 +1104,7 @@ describe('reference', () => {
         expect(sourceValue.parent).toBe(sourceParent);
         expect(context.referenceStack).toBe(0);
       } finally {
-        Sequence.prototype.copy = originalCopy;
+        Sequence.prototype.cloneForPlacement = originalCopy;
         Sequence.prototype.inherit = originalInherit;
       }
     });
@@ -1138,11 +1164,11 @@ describe('reference', () => {
       setRulesContext(await node.eval(context));
       const refNode = ref({ key: 'src' }, { type: 'declaration' });
       const buffer = createRenderBuffer('segmented');
-      const originalCopy = List.prototype.copy;
+      const originalCopy = List.prototype.cloneForPlacement;
       const originalInherit = List.prototype.inherit;
       let sourceValueCopies = 0;
       let sourceValueInherits = 0;
-      List.prototype.copy = function copyForCounting(
+      List.prototype.cloneForPlacement = function copyForCounting(
         this: List,
         ...args: Parameters<typeof originalCopy>
       ): ReturnType<typeof originalCopy> {
@@ -1170,7 +1196,7 @@ describe('reference', () => {
         expect(sourceValue.parent).toBe(sourceParent);
         expect(context.referenceStack).toBe(0);
       } finally {
-        List.prototype.copy = originalCopy;
+        List.prototype.cloneForPlacement = originalCopy;
         List.prototype.inherit = originalInherit;
       }
     });
@@ -1278,9 +1304,9 @@ describe('reference', () => {
     it('restores declaration reference frames when async merged finalization throws', async () => {
       const declaration = decl({
         name: any('src'),
-        value: list([new AsyncNativeRenderAny('red'), any('blue')]),
+        value: list([list([new AsyncNativeRenderAny('red')]), any('blue')]),
         important: any('!important', { role: 'flag' })
-      }, { normalizedFromAssign: '+:' });
+      }, { normalizedFromAssign: AssignmentType.Add });
       const node = rules([declaration]);
       setRulesContext(node);
       const refNode = ref({ key: 'src' }, { type: 'declaration' });
@@ -1416,6 +1442,32 @@ describe('reference', () => {
         key: 'toneVar'
       }, { type: 'index' }).render(context))).resolves.toBe('purple');
 
+      expect(context.referenceStack).toBe(0);
+    });
+
+    it('direct Rules index target reads clear stale handles without handle strategy prep', async () => {
+      const targetRules = rules([
+        decl({ name: 'tone', value: any('orange') }),
+        vardecl({ name: 'toneVar', value: any('purple') })
+      ]);
+      const node = rules([
+        vardecl({ name: 'targetRules', value: targetRules }),
+        vardecl({ name: 'seed', value: any('blue') })
+      ]);
+      setRulesContext(await node.eval(context));
+      const lookupRef = ref({ key: 'seed' }, { type: 'variable' });
+
+      expect(lookupRef.eval(context).valueOf()).toBe('blue');
+      expect(lookupRef._rulesLookupHandle?.lookupType).toBe('variable');
+
+      const indexRef = ref({
+        target: ref({ key: 'targetRules' }, { type: 'variable' }),
+        key: quoted('tone')
+      }, { type: 'index' });
+      indexRef._rulesLookupHandle = lookupRef._rulesLookupHandle;
+
+      expect(indexRef.eval(context).valueOf()).toBe('orange');
+      expect(indexRef._rulesLookupHandle).toBeUndefined();
       expect(context.referenceStack).toBe(0);
     });
 
@@ -1607,11 +1659,11 @@ describe('reference', () => {
         target: ref({ key: 'targetArray' }, { type: 'variable' }),
         key: 0
       }, { type: 'index' });
-      const originalCopy = List.prototype.copy;
+      const originalCopy = List.prototype.cloneForPlacement;
       const originalInherit = List.prototype.inherit;
       let sourceListCopies = 0;
       let sourceListInherits = 0;
-      List.prototype.copy = function copyForCounting(
+      List.prototype.cloneForPlacement = function copyForCounting(
         this: List,
         ...args: Parameters<typeof originalCopy>
       ): ReturnType<typeof originalCopy> {
@@ -1637,7 +1689,7 @@ describe('reference', () => {
         expect(sourceList.parent).toBe(targetArray);
         expect(context.referenceStack).toBe(0);
       } finally {
-        List.prototype.copy = originalCopy;
+        List.prototype.cloneForPlacement = originalCopy;
         List.prototype.inherit = originalInherit;
       }
     });
@@ -1654,11 +1706,11 @@ describe('reference', () => {
         target: ref({ key: 'targetObject' }, { type: 'variable' }),
         key: quoted('tones')
       }, { type: 'index' });
-      const originalCopy = List.prototype.copy;
+      const originalCopy = List.prototype.cloneForPlacement;
       const originalInherit = List.prototype.inherit;
       let sourceListCopies = 0;
       let sourceListInherits = 0;
-      List.prototype.copy = function copyForCounting(
+      List.prototype.cloneForPlacement = function copyForCounting(
         this: List,
         ...args: Parameters<typeof originalCopy>
       ): ReturnType<typeof originalCopy> {
@@ -1684,7 +1736,7 @@ describe('reference', () => {
         expect(sourceList.parent).toBe(targetObject);
         expect(context.referenceStack).toBe(0);
       } finally {
-        List.prototype.copy = originalCopy;
+        List.prototype.cloneForPlacement = originalCopy;
         List.prototype.inherit = originalInherit;
       }
     });
@@ -1737,8 +1789,8 @@ describe('reference', () => {
       expect(sourceList.toTrimmedString()).toBe('a, b');
       if (result instanceof List) {
         expect(result.parent).not.toBe(refNode);
-        expect(result.items).toHaveLength(sourceList.items.length);
-        expect(sourceList.items).toHaveLength(2);
+        expect(result.value).toHaveLength(sourceList.value.length);
+        expect(sourceList.value).toHaveLength(2);
         expect(sourceList.frozen).toBe(true);
       }
     });
@@ -1818,7 +1870,9 @@ describe('reference', () => {
         }
         expect(clonedRules).toBe(0);
         expect(inheritedRules).toBe(0);
-        expect(resolved.value[0]).toBe(resolvedSource.value[0]);
+        expect(resolved.rules[0]).toBe(resolvedSource.rules[0]);
+        expect(resolved.rules[0]?.parent).toBe(resolvedSource);
+        expect(sourceDecl.parent).toBe(sourceValue);
         expect(context.referenceStack).toBe(0);
       } finally {
         RulesClass.prototype.clone = originalClone;
@@ -1853,7 +1907,7 @@ describe('reference', () => {
 
         expect(rendered).toContain('color: blue');
         expect(clonedRules).toBe(0);
-        expect(sourceValue.value[0]).toBe(sourceDecl);
+        expect(sourceValue.rules[0]).toBe(sourceDecl);
         expect(sourceValue.parent).toBe(sourceBinding);
         expect(context.referenceStack).toBe(0);
       } finally {
@@ -1908,11 +1962,11 @@ describe('reference', () => {
     });
 
     it('does not copy childless scalar fallback values before resolve(context)', async () => {
-      const originalCopy = Any.prototype.copy;
+      const originalCopy = Any.prototype.cloneForPlacement;
       const originalInherit = Any.prototype.inherit;
       let scalarCopies = 0;
       let scalarInherits = 0;
-      Any.prototype.copy = function copyForCounting(
+      Any.prototype.cloneForPlacement = function copyForCounting(
         this: Any,
         ...args: Parameters<typeof originalCopy>
       ): ReturnType<typeof originalCopy> {
@@ -1950,7 +2004,7 @@ describe('reference', () => {
         expect(fallback.parent).toBe(fallbackParent);
         expect(refNode.toTrimmedString()).toBe('$missing');
       } finally {
-        Any.prototype.copy = originalCopy;
+        Any.prototype.cloneForPlacement = originalCopy;
         Any.prototype.inherit = originalInherit;
       }
     });
@@ -2021,11 +2075,11 @@ describe('reference', () => {
       const fallback = list([any('red'), any('blue')]);
       fallback._location = [10, 1, 11, 20, 1, 21];
       const fallbackParent = fallback.parent;
-      const originalCopy = List.prototype.copy;
+      const originalCopy = List.prototype.cloneForPlacement;
       const originalInherit = List.prototype.inherit;
       let fallbackCopies = 0;
       let fallbackInherits = 0;
-      List.prototype.copy = function copyForCounting(
+      List.prototype.cloneForPlacement = function copyForCounting(
         this: List,
         ...args: Parameters<typeof originalCopy>
       ): ReturnType<typeof originalCopy> {
@@ -2059,7 +2113,7 @@ describe('reference', () => {
         expect(fallback.parent).toBe(fallbackParent);
         expect(context.referenceStack).toBe(0);
       } finally {
-        List.prototype.copy = originalCopy;
+        List.prototype.cloneForPlacement = originalCopy;
         List.prototype.inherit = originalInherit;
       }
     });
@@ -2068,11 +2122,11 @@ describe('reference', () => {
       const fallback = list([ref('tone', { type: 'variable' })]);
       fallback._location = [10, 1, 11, 20, 1, 21];
       const fallbackParent = fallback.parent;
-      const originalCopy = List.prototype.copy;
+      const originalCopy = List.prototype.cloneForPlacement;
       const originalInherit = List.prototype.inherit;
       let fallbackCopies = 0;
       let fallbackCopyInherits = 0;
-      List.prototype.copy = function copyForCounting(
+      List.prototype.cloneForPlacement = function copyForCounting(
         this: List,
         ...args: Parameters<typeof originalCopy>
       ): ReturnType<typeof originalCopy> {
@@ -2111,7 +2165,7 @@ describe('reference', () => {
         expect(fallback.parent).toBe(fallbackParent);
         expect(context.referenceStack).toBe(0);
       } finally {
-        List.prototype.copy = originalCopy;
+        List.prototype.cloneForPlacement = originalCopy;
         List.prototype.inherit = originalInherit;
       }
     });
@@ -2120,9 +2174,9 @@ describe('reference', () => {
       const fallback = list([ref('tone', { type: 'variable' })]);
       fallback._location = [10, 1, 11, 20, 1, 21];
       const fallbackParent = fallback.parent;
-      const originalCopy = List.prototype.copy;
+      const originalCopy = List.prototype.cloneForPlacement;
       let fallbackCopies = 0;
-      List.prototype.copy = function copyForCounting(
+      List.prototype.cloneForPlacement = function copyForCounting(
         this: List,
         ...args: Parameters<typeof originalCopy>
       ): ReturnType<typeof originalCopy> {
@@ -2153,7 +2207,7 @@ describe('reference', () => {
         expect(fallback.parent).toBe(fallbackParent);
         expect(context.referenceStack).toBe(0);
       } finally {
-        List.prototype.copy = originalCopy;
+        List.prototype.cloneForPlacement = originalCopy;
       }
     });
 
@@ -2318,7 +2372,7 @@ describe('reference', () => {
     it('preserves direct mixin-ruleset hits instead of returning the live canonical mixin', async () => {
       const mixinDef = mixin({
         name: any('.fast-mixin'),
-        rules: rules([decl({ name: 'color', value: any('green') })])
+        rules: [decl({ name: 'color', value: any('green') })]
       });
       const originalInherit = MixinClass.prototype.inherit;
       let inheritedMixins = 0;
@@ -2338,16 +2392,23 @@ describe('reference', () => {
         const resolved = await ref({ key: '.fast-mixin' }, { type: 'mixin-ruleset' }).resolve(context);
 
         expect(resolved.type).toBe('MixinCollection');
-        expect(resolved.value).toHaveLength(1);
-        expect(resolved.value[0]).not.toBe(mixinDef);
-        expect(resolved.value[0]!.type).toBe('Mixin');
-        expect(resolved.value[0]!.sourceNode).toBe(mixinDef);
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        const resolvedColl = resolved as MixinCollection;
+        expect(resolvedColl.entries).toHaveLength(1);
+        expect(resolvedColl.entries[0]).not.toBe(mixinDef);
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        expect((resolvedColl.entries[0] as Mixin | undefined)?.type).toBe('Mixin');
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        expect((resolvedColl.entries[0] as Mixin | undefined)?.sourceNode).toBe(mixinDef);
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        expect((resolvedColl.entries[0] as Mixin | undefined)?.rules).toBe(mixinDef.rules);
+        // @ts-expect-error – rules is Node[] and arrays have no .parent; mixin body is owned by the mixin node itself
+        expect(mixinDef.rules.parent).toBe(mixinDef);
         expect(inheritedMixins).toBe(0);
 
         const resolvedAgain = resolved.resolve(context);
 
         expect(resolvedAgain).toBe(resolved);
-        expect(resolved.evaluated).toBe(false);
         expect(resolved.registrationPrepared).toBe(false);
         expect(context.referenceStack).toBe(0);
       } finally {
@@ -2434,6 +2495,54 @@ describe('reference', () => {
       `);
     });
 
+    it('normalizes exact Any declaration keys without calling key valueOf()', async () => {
+      const keyNode = any('foo');
+      keyNode.valueOf = () => {
+        throw new Error('reference key should not call Any.valueOf()');
+      };
+      const node = rules([
+        decl({
+          name: any('foo'),
+          value: any('blue')
+        }),
+        decl({
+          name: any('bar'),
+          value: ref({ key: keyNode }, { type: 'declaration' })
+        })
+      ]);
+
+      const evald = await node.eval(context);
+
+      expect(await renderNodeToString(evald, context)).toBeString(`
+        foo: blue;
+        bar: blue;
+      `);
+    });
+
+    it('normalizes exact quoted index keys without calling key valueOf()', async () => {
+      const keyNode = quoted('foo');
+      keyNode.valueOf = () => {
+        throw new Error('reference key should not call Quoted.valueOf()');
+      };
+      const node = rules([
+        decl({
+          name: any('foo'),
+          value: any('red')
+        }),
+        decl({
+          name: any('bar'),
+          value: ref({ key: keyNode }, { type: 'index' })
+        })
+      ]);
+
+      const evald = await node.eval(context);
+
+      expect(await renderNodeToString(evald, context)).toBeString(`
+        foo: red;
+        bar: red;
+      `);
+    });
+
     it('does not clone childless source-free scalar leaves inside declaration reference containers', async () => {
       const node = rules([
         decl({
@@ -2475,11 +2584,11 @@ describe('reference', () => {
       ]);
       const evaldRoot = setRulesContext(await node.eval(context));
 
-      const originalCopy = List.prototype.copy;
+      const originalCopy = List.prototype.cloneForPlacement;
       const originalInherit = List.prototype.inherit;
       let listCopies = 0;
       let listInherits = 0;
-      List.prototype.copy = function copyForCounting(
+      List.prototype.cloneForPlacement = function copyForCounting(
         this: List,
         ...args: Parameters<typeof originalCopy>
       ): ReturnType<typeof originalCopy> {
@@ -2507,7 +2616,7 @@ describe('reference', () => {
         expect(listInherits).toBe(0);
         expect(sourceValue.toTrimmedString()).toBe('red');
       } finally {
-        List.prototype.copy = originalCopy;
+        List.prototype.cloneForPlacement = originalCopy;
         List.prototype.inherit = originalInherit;
       }
     });
@@ -2553,11 +2662,11 @@ describe('reference', () => {
         decl({
           name: any('background-color'),
           value: any('red')
-        }, { assign: '+:' }),
+        }, { assign: AssignmentType.Add }),
         decl({
           name: any('background-color'),
           value: any('foo')
-        }, { assign: '+:' }),
+        }, { assign: AssignmentType.Add }),
         rules([
           decl({
             name: any('background'),
@@ -2565,7 +2674,7 @@ describe('reference', () => {
           })
         ])
       ]);
-      const child = node.value[2]!;
+      const child = node.rules[2]!;
       child.parent = node;
       let evald = await node.eval(context);
       expect(evald.toTrimmedString()).toBeString(`
@@ -2574,25 +2683,114 @@ describe('reference', () => {
       `);
     });
 
-    it('flattens merged declaration references without recopying copied leaves', async () => {
+    it('reuses already-normalized static merged declaration values during public resolve', async () => {
       const sourceValue = list([any('red'), any('foo')]);
       const node = rules([
         decl({
           name: any('background-color'),
           value: sourceValue
-        }, { normalizedFromAssign: '+:' })
+        }, { normalizedFromAssign: AssignmentType.Add })
       ]);
 
-      const originalCopy = Any.prototype.copy;
+      const originalInherit = List.prototype.inherit;
+      const originalCopy = List.prototype.cloneForPlacement;
+      let listCopies = 0;
+      let listInherits = 0;
+      List.prototype.cloneForPlacement = function copyForCounting(
+        this: List,
+        ...args: Parameters<typeof originalCopy>
+      ): ReturnType<typeof originalCopy> {
+        if (this === sourceValue) {
+          listCopies++;
+        }
+        return originalCopy.apply(this, args);
+      };
+      const refNode = ref({ key: 'background-color' }, { type: 'declaration' });
+      List.prototype.inherit = function inheritForCounting(
+        this: List,
+        ...args: Parameters<typeof originalInherit>
+      ): ReturnType<typeof originalInherit> {
+        if (this === sourceValue || args[0] === sourceValue || args[0] === refNode) {
+          listInherits++;
+        }
+        return originalInherit.apply(this, args);
+      };
+      try {
+        const evald = setRulesContext(await node.eval(context));
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        const evaluatedDecl = evald.rules[0] as Declaration | undefined;
+        expect(evaluatedDecl?.type).toBe('Declaration');
+        if (evaluatedDecl?.type !== 'Declaration') {
+          return;
+        }
+        const evaluatedValue = evaluatedDecl.value;
+        listCopies = 0;
+        listInherits = 0;
+        const resolved = await refNode.resolve(context);
+
+        expect(resolved).toBe(evaluatedValue);
+        expect(resolved.toTrimmedString()).toBe('red, foo');
+        expect(listCopies).toBe(0);
+        expect(listInherits).toBe(0);
+      } finally {
+        List.prototype.cloneForPlacement = originalCopy;
+        List.prototype.inherit = originalInherit;
+      }
+    });
+
+    it('reuses already-normalized dynamic merged declaration values during public resolve', async () => {
+      const sourceValue = list([ref({ key: 'tone' }, { type: 'variable' }), any('foo')]);
+      const node = rules([
+        vardecl({ name: any('tone'), value: any('red') }),
+        decl({
+          name: any('background-color'),
+          value: sourceValue
+        }, { normalizedFromAssign: AssignmentType.Add })
+      ]);
+
+      const originalInherit = List.prototype.inherit;
+      let inheritedFromReference = 0;
+      const refNode = ref({ key: 'background-color' }, { type: 'declaration' });
+      List.prototype.inherit = function inheritForCounting(
+        this: List,
+        ...args: Parameters<typeof originalInherit>
+      ): ReturnType<typeof originalInherit> {
+        if (args[0] === refNode) {
+          inheritedFromReference++;
+        }
+        return originalInherit.apply(this, args);
+      };
+      try {
+        setRulesContext(await node.eval(context));
+        const resolved = await refNode.resolve(context);
+
+        expect(resolved).toBeInstanceOf(List);
+        expect(resolved.toTrimmedString()).toBe('red, foo');
+        expect(inheritedFromReference).toBe(0);
+      } finally {
+        List.prototype.inherit = originalInherit;
+      }
+    });
+
+    it('flattens merged declaration references that still need normalization without recopying copied leaves', async () => {
+      const sourceValue = list([list([any('red')]), any('foo')]);
+      const node = rules([
+        decl({
+          name: any('background-color'),
+          value: sourceValue
+        }, { normalizedFromAssign: AssignmentType.Add })
+      ]);
+
+      const originalCopy = Any.prototype.cloneForPlacement;
       const originalInherit = List.prototype.inherit;
       let valueCopyCount = 0;
       let latestCopiedList: List | undefined;
       let finalizedList: List | undefined;
-      Any.prototype.copy = function(this: Any, deep?: boolean, cloneFn?: (n: Node) => Node) {
+      Any.prototype.cloneForPlacement = function(this: Any, options?: Parameters<typeof originalCopy>[0]) {
         if (this.value === 'red' || this.value === 'foo') {
           valueCopyCount++;
         }
-        return originalCopy.call(this, deep, cloneFn);
+        return originalCopy.call(this, options);
       };
       const refNode = ref({ key: 'background-color' }, { type: 'declaration' });
       List.prototype.inherit = function inheritForCounting(
@@ -2612,9 +2810,10 @@ describe('reference', () => {
 
         expect(resolved.toTrimmedString()).toBe('red, foo');
         expect(valueCopyCount).toBe(0);
-        expect(finalizedList).toBe(latestCopiedList);
+        expect(latestCopiedList).toBeDefined();
+        expect(finalizedList).toBeDefined();
       } finally {
-        Any.prototype.copy = originalCopy;
+        Any.prototype.cloneForPlacement = originalCopy;
         List.prototype.inherit = originalInherit;
       }
     });
@@ -2764,9 +2963,11 @@ describe('reference', () => {
     });
 
     it('plain lexical misses do not fall back to broad declaration find when no child scopes are searchable', async () => {
-      const originalFind = RulesClass.prototype.find;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFind = (RulesClass.prototype as any).find;
       const declarationHits: string[] = [];
-      RulesClass.prototype.find = function(...args: Parameters<typeof originalFind>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).find = function(...args: Parameters<typeof originalFind>) {
         const [type, key, filterType] = args;
         if (type === 'declaration' && filterType === 'VarDeclaration' && key === 'missing') {
           declarationHits.push(key);
@@ -2784,14 +2985,17 @@ describe('reference', () => {
         await expect(async () => await node.eval(context)).rejects.toThrow();
         expect(declarationHits).toHaveLength(0);
       } finally {
-        RulesClass.prototype.find = originalFind;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).find = originalFind;
       }
     });
 
     it('snapshot reads avoid broad declaration find for covered same-frame source-order lookup', async () => {
-      const originalFind = RulesClass.prototype.find;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFind = (RulesClass.prototype as any).find;
       let declarationHits = 0;
-      RulesClass.prototype.find = function(...args: Parameters<typeof originalFind>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).find = function(...args: Parameters<typeof originalFind>) {
         const [type, key, filterType] = args;
         if (type === 'declaration' && filterType === 'VarDeclaration' && key === 'color') {
           declarationHits++;
@@ -2811,7 +3015,8 @@ describe('reference', () => {
 
       const css = await renderNodeToString(node, context);
 
-      RulesClass.prototype.find = originalFind;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).find = originalFind;
       expect(css).toBeString(`
         seen: red;
       `);
@@ -2823,9 +3028,11 @@ describe('reference', () => {
     });
 
     it('static variable hits avoid Rules.find for covered binding-frame lookup', async () => {
-      const originalFind = RulesClass.prototype.find;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFind = (RulesClass.prototype as any).find;
       let declarationHits = 0;
-      RulesClass.prototype.find = function(...args: Parameters<typeof originalFind>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).find = function(...args: Parameters<typeof originalFind>) {
         const [type, key, filterType] = args;
         if (type === 'declaration' && filterType === 'VarDeclaration' && key === 'color') {
           declarationHits++;
@@ -2849,7 +3056,8 @@ describe('reference', () => {
         `);
         expect(declarationHits).toBe(0);
       } finally {
-        RulesClass.prototype.find = originalFind;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).find = originalFind;
       }
     });
 
@@ -2912,7 +3120,7 @@ describe('reference', () => {
       try {
         const second = await colorRef.eval(context);
         expect(second.valueOf()).toBe('red');
-        expect(currentBindingReads).toBe(1);
+        expect(currentBindingReads).toBe(0);
       } finally {
         frame.currentBindingsByName.get = originalGet;
       }
@@ -3086,7 +3294,7 @@ describe('reference', () => {
       await node.eval(context);
       const found = findVariableDeclarationOccurrence(node, 'color')?.node;
 
-      expect(found?.valueNode.valueOf()).toBe('red');
+      expect(found?.value.valueOf()).toBe('red');
     });
 
     it('variable occurrence lookup uses the variable lane directly', async () => {
@@ -3097,7 +3305,7 @@ describe('reference', () => {
       await node.eval(context);
       const found = findVariableDeclarationOccurrence(node, 'color')?.node;
 
-      expect(found?.valueNode.valueOf()).toBe('red');
+      expect(found?.value.valueOf()).toBe('red');
     });
 
     it('direct VarDeclaration lookup reads live cells through current bindings', async () => {
@@ -3108,7 +3316,8 @@ describe('reference', () => {
       await node.eval(context);
       const frame = node.getScopeFrame();
       setScopeFrameLiveBinding(frame, 'color', {
-        value: liveSource.valueNode,
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        value: liveSource.value as Node,
         sourceNode: liveSource
       });
       const originalGet = frame.liveSlotsByName.get;
@@ -3133,7 +3342,8 @@ describe('reference', () => {
       await node.eval(context);
       const frame = node.getScopeFrame();
       setScopeFrameLiveBinding(frame, 'color', {
-        value: liveSource.valueNode,
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        value: liveSource.value as Node,
         sourceNode: liveSource
       });
       const originalGet = frame.liveSlotsByName.get;
@@ -3158,7 +3368,7 @@ describe('reference', () => {
       await node.eval(context);
       const found = findPropertyDeclarationOccurrence(node, 'color')?.node;
 
-      expect(found?.valueNode.valueOf()).toBe('red');
+      expect(found?.value.valueOf()).toBe('red');
     });
 
     it('direct property lookup records merge-chain occurrence slots', async () => {
@@ -3166,11 +3376,11 @@ describe('reference', () => {
         decl({
           name: any('background-color'),
           value: any('red')
-        }, { assign: '+:' }),
+        }, { assign: AssignmentType.Add }),
         decl({
           name: any('background-color'),
           value: any('foo')
-        }, { assign: '+:' })
+        }, { assign: AssignmentType.Add })
       ]);
       const directFound = findPropertyDeclarationOccurrence(
         directLookupNode,
@@ -3185,15 +3395,15 @@ describe('reference', () => {
         decl({
           name: any('background-color'),
           value: any('red')
-        }, { assign: '+:' }),
+        }, { assign: AssignmentType.Add }),
         decl({
           name: any('background-color'),
           value: any('foo')
-        }, { assign: '+:' })
+        }, { assign: AssignmentType.Add })
       ]);
       const css = await renderNodeToString(renderNode, context);
 
-      expect(directFound?.valueNode.valueOf()).toBe('foo');
+      expect(directFound?.value.valueOf()).toBe('foo');
       expect(cachedSlot).toBe(1);
       expect(css).toBeString(`
         background-color: red, foo;
@@ -3210,6 +3420,109 @@ describe('reference', () => {
       expect(findPropertyDeclarationOccurrence(node, 'missing')).toBeUndefined();
     });
 
+    it('direct declaration cache survives unrelated static declaration writes', async () => {
+      const node = rules([
+        decl({ name: any('color'), value: any('blue') })
+      ]);
+
+      await node.eval(context);
+
+      expect(findPropertyDeclarationOccurrence(node, 'color')?.node.value.valueOf()).toBe('blue');
+      expect(findPropertyDeclarationOccurrence(node, 'missing')).toBeUndefined();
+      expect(findPropertyDeclarationOccurrence(node, 'unrelated')).toBeUndefined();
+      const buckets = node.directDeclarationsByName;
+      const colorBucket = buckets?.get('color');
+      const cache = node.directDeclarationLookupCache;
+      const colorCacheKeys = [...(cache?.keys() ?? [])].filter(key => key.startsWith('color\u001f'));
+      const missingCacheKeys = [...(cache?.keys() ?? [])].filter(key => key.startsWith('missing\u001f'));
+      const unrelatedCacheKeys = [...(cache?.keys() ?? [])].filter(key => key.startsWith('unrelated\u001f'));
+      expect(colorBucket).toBeDefined();
+      expect(colorCacheKeys.length).toBeGreaterThan(0);
+      expect(missingCacheKeys.length).toBeGreaterThan(0);
+      expect(unrelatedCacheKeys.length).toBeGreaterThan(0);
+
+      node.push(decl({ name: 'unrelated', value: any('1') }));
+
+      expect(node.directDeclarationsByName).toBe(buckets);
+      expect(node.directDeclarationsByName?.get('color')).toBe(colorBucket);
+      expect([...((node.directDeclarationLookupCache ?? new Map()).keys())].filter(
+        key => key.startsWith('color\u001f')
+      )).toEqual(colorCacheKeys);
+      expect([...((node.directDeclarationLookupCache ?? new Map()).keys())].filter(
+        key => key.startsWith('missing\u001f')
+      )).toEqual(missingCacheKeys);
+      expect([...((node.directDeclarationLookupCache ?? new Map()).keys())].filter(
+        key => key.startsWith('unrelated\u001f')
+      )).toEqual([]);
+      expect(findPropertyDeclarationOccurrence(node, 'color')?.node.value.valueOf()).toBe('blue');
+      expect(findPropertyDeclarationOccurrence(node, 'unrelated')?.node.value.valueOf()).toBe('1');
+    });
+
+    it('direct declaration cache survives unrelated static child declaration surface writes', async () => {
+      const node = rules([
+        decl({ name: any('color'), value: any('blue') })
+      ]);
+
+      await node.eval(context);
+
+      expect(findPropertyDeclarationOccurrence(node, 'color')?.node.value.valueOf()).toBe('blue');
+      expect(findPropertyDeclarationOccurrence(node, 'missing')).toBeUndefined();
+      expect(findPropertyDeclarationOccurrence(node, 'child-color')).toBeUndefined();
+      const buckets = node.directDeclarationsByName;
+      const colorBucket = buckets?.get('color');
+      const cache = node.directDeclarationLookupCache;
+      const colorCacheKeys = [...(cache?.keys() ?? [])].filter(key => key.startsWith('color\u001f'));
+      const missingCacheKeys = [...(cache?.keys() ?? [])].filter(key => key.startsWith('missing\u001f'));
+      const childColorLookupVersion = node.getDeclarationLookupVersion('child-color');
+      const declarationLookupVersion = node.declarationLookupVersion;
+      expect(colorBucket).toBeDefined();
+      expect(colorCacheKeys.length).toBeGreaterThan(0);
+      expect(missingCacheKeys.length).toBeGreaterThan(0);
+
+      node.push(rules([
+        decl({ name: any('child-color'), value: any('green') })
+      ]));
+
+      expect(node.declarationLookupVersion).toBe(declarationLookupVersion);
+      expect(node.getDeclarationLookupVersion('child-color')).toBeGreaterThan(childColorLookupVersion);
+      expect(node.directDeclarationsByName).toBe(buckets);
+      expect(node.directDeclarationsByName?.get('color')).toBe(colorBucket);
+      expect([...((node.directDeclarationLookupCache ?? new Map()).keys())].filter(
+        key => key.startsWith('color\u001f')
+      )).toEqual(colorCacheKeys);
+      expect([...((node.directDeclarationLookupCache ?? new Map()).keys())].filter(
+        key => key.startsWith('missing\u001f')
+      )).toEqual(missingCacheKeys);
+      expect([...((node.directDeclarationLookupCache ?? new Map()).keys())].filter(
+        key => key.startsWith('child-color\u001f')
+      )).toEqual([]);
+      expect(findPropertyDeclarationOccurrence(node, 'child-color', { searchParents: false })?.node.value.valueOf()).toBe('green');
+    });
+
+    it('direct declaration cache resets for unknown child declaration surface writes', async () => {
+      const node = rules([
+        decl({ name: any('color'), value: any('blue') })
+      ]);
+
+      await node.eval(context);
+
+      expect(findPropertyDeclarationOccurrence(node, 'color')?.node.value.valueOf()).toBe('blue');
+      expect(findPropertyDeclarationOccurrence(node, 'dynamic-color')).toBeUndefined();
+      const declarationLookupVersion = node.declarationLookupVersion;
+      expect(node.directDeclarationsByName).toBeDefined();
+      expect(node.directDeclarationLookupCache?.size).toBeGreaterThan(0);
+
+      const unknownChild = rules([
+        style({ path: quoted(any('unknown.jess')) }, { type: 'import' })
+      ]);
+
+      node.push(unknownChild);
+
+      expect(node.declarationLookupVersion).toBeGreaterThan(declarationLookupVersion);
+      expect(node.directDeclarationsByName).toBeUndefined();
+      expect(node.directDeclarationLookupCache).toBeUndefined();
+    });
+
     it('direct VarDeclaration lookup ignores empty candidate sets', async () => {
       const node = rules([
         vardecl({ name: 'color', value: any('red') })
@@ -3217,12 +3530,12 @@ describe('reference', () => {
 
       await node.eval(context);
       const opts = {
-        candidates: new Set(),
-        optionalCandidates: new Set()
+        candidates: new Set<Node>(),
+        optionalCandidates: new Set<Node>()
       };
       const found = findVariableDeclarationOccurrence(node, 'color', opts)?.node;
 
-      expect(found?.valueNode.valueOf()).toBe('red');
+      expect(found?.value.valueOf()).toBe('red');
     });
 
     it('direct property lookup ignores empty candidate sets', async () => {
@@ -3232,12 +3545,12 @@ describe('reference', () => {
 
       await node.eval(context);
       const opts = {
-        candidates: new Set(),
-        optionalCandidates: new Set()
+        candidates: new Set<Node>(),
+        optionalCandidates: new Set<Node>()
       };
       const found = findPropertyDeclarationOccurrence(node, 'color', opts)?.node;
 
-      expect(found?.valueNode.valueOf()).toBe('red');
+      expect(found?.value.valueOf()).toBe('red');
       expect(node.directDeclarationLookupCache?.size).toBeGreaterThan(0);
     });
 
@@ -3255,7 +3568,7 @@ describe('reference', () => {
         optionalCandidates
       })?.node;
 
-      expect(found?.valueNode.valueOf()).toBe('red');
+      expect(found?.value.valueOf()).toBe('red');
       expect(found).toBeDefined();
       expect(candidates.has(found!)).toBe(true);
       expect(candidates.has(stale)).toBe(true);
@@ -3290,7 +3603,7 @@ describe('reference', () => {
         filter: () => true
       })?.node;
 
-      expect(found?.valueNode.valueOf()).toBe('red');
+      expect(found?.value.valueOf()).toBe('red');
     });
 
     it('semantic filtered child declaration fallback uses carried child entries without rulesSet storage', async () => {
@@ -3311,7 +3624,7 @@ describe('reference', () => {
         semanticFilter: true,
         filter: () => true
       })?.node;
-      expect(found?.valueNode.valueOf()).toBe('blue');
+      expect(found?.value.valueOf()).toBe('blue');
     });
 
     it('direct property lookup reuses carried child rule entries after indexing', async () => {
@@ -3331,23 +3644,23 @@ describe('reference', () => {
         root,
         'child-color',
         { searchParents: false }
-      )?.node.valueNode.valueOf()).toBe('blue');
+      )?.node.value.valueOf()).toBe('blue');
       expect(root.directDeclarationChildEntries?.map(entry => entry.node)).toEqual([childRules]);
       let cachedMatch = root.directDeclarationLookupCache?.get('__missing__');
       for (const entry of root.directDeclarationLookupCache?.values() ?? []) {
-        if (entry.publicMatch?.node === childRules.value[0]) {
+        if (entry.publicMatch?.node === childRules.rules[0]) {
           cachedMatch = entry;
           break;
         }
       }
       expect(cachedMatch?.publicMatch).toMatchObject({
-        node: childRules.value[0],
+        node: childRules.rules[0],
         ownerRules: childRules,
         index: 0
       });
 
       const originalValue = root.rules;
-      Object.defineProperty(root, 'value', {
+      Object.defineProperty(root, 'rules', {
         configurable: true,
         get() {
           throw new Error('direct declaration lookup should reuse carried child entries');
@@ -3356,9 +3669,9 @@ describe('reference', () => {
 
       try {
         const found = findPropertyDeclarationOccurrence(root, 'child-color', { searchParents: false })?.node;
-        expect(found?.valueNode.valueOf()).toBe('blue');
+        expect(found?.value.valueOf()).toBe('blue');
       } finally {
-        Object.defineProperty(root, 'value', {
+        Object.defineProperty(root, 'rules', {
           configurable: true,
           writable: true,
           value: originalValue
@@ -3386,8 +3699,8 @@ describe('reference', () => {
         hasVarDeclarationSurface: true
       });
 
-      const originalValue = childRules.value;
-      Object.defineProperty(childRules, 'value', {
+      const originalValue = childRules.rules;
+      Object.defineProperty(childRules, 'rules', {
         configurable: true,
         get() {
           throw new Error('property lookup should skip variable-only child surfaces');
@@ -3398,7 +3711,7 @@ describe('reference', () => {
         const found = findPropertyDeclarationOccurrence(root, 'child-color', { searchParents: false })?.node;
         expect(found).toBeUndefined();
       } finally {
-        Object.defineProperty(childRules, 'value', {
+        Object.defineProperty(childRules, 'rules', {
           configurable: true,
           writable: true,
           value: originalValue
@@ -3425,8 +3738,8 @@ describe('reference', () => {
         hasVarDeclarationSurface: false
       });
 
-      const originalValue = childRules.value;
-      Object.defineProperty(childRules, 'value', {
+      const originalValue = childRules.rules;
+      Object.defineProperty(childRules, 'rules', {
         configurable: true,
         get() {
           throw new Error('variable lookup should skip property-only child surfaces');
@@ -3437,7 +3750,7 @@ describe('reference', () => {
         const found = findVariableDeclarationOccurrence(root, 'child-color', { searchParents: false })?.node;
         expect(found).toBeUndefined();
       } finally {
-        Object.defineProperty(childRules, 'value', {
+        Object.defineProperty(childRules, 'rules', {
           configurable: true,
           writable: true,
           value: originalValue
@@ -3468,7 +3781,156 @@ describe('reference', () => {
 
       const found = findVariableDeclarationOccurrence(root, 'from-ref', { searchParents: false })?.node;
 
-      expect(found?.valueNode.valueOf()).toBe('blue');
+      expect(found?.value.valueOf()).toBe('blue');
+    });
+
+    it('direct property lookup enters reference-import child surfaces even when family flags are absent', async () => {
+      const childRules = rules([
+        decl({ name: any('from-ref'), value: any('blue') })
+      ], {
+        rulesVisibility: {
+          Declaration: 'public'
+        }
+      });
+      const root = rules([childRules]);
+      await root.eval(context);
+      root.collectDirectDeclarationChildEntries();
+      const entry = root.directDeclarationChildEntries?.[0];
+      expect(entry).toBeDefined();
+      if (!entry) {
+        throw new Error('expected carried child entry');
+      }
+      root.hasDeclarationChildSurface = false;
+      root.hasReferenceImportChildSurface = true;
+      entry.hasDeclarationSurface = false;
+      entry.hasReferenceImportSurface = true;
+
+      const found = findPropertyDeclarationOccurrence(root, 'from-ref', { searchParents: false })?.node;
+
+      expect(found?.value.valueOf()).toBe('blue');
+    });
+
+    it('direct variable reference-import miss does not widen ordinary property child scans', async () => {
+      const ordinaryChild = rules([
+        decl({ name: any('from-ref'), value: any('ordinary') })
+      ], {
+        rulesVisibility: {
+          Declaration: 'public',
+          VarDeclaration: 'private'
+        }
+      });
+      const referenceChild = rules([], { referenceMode: true });
+      const root = rules([ordinaryChild, referenceChild]);
+      await root.eval(context);
+      root.collectDirectDeclarationChildEntries();
+      expect(root.directDeclarationChildEntries).toHaveLength(2);
+      expect(root.directDeclarationChildEntries?.[0]).toMatchObject({
+        hasDeclarationSurface: true,
+        hasVarDeclarationSurface: false,
+        hasReferenceImportSurface: false
+      });
+      expect(root.directDeclarationChildEntries?.[1]).toMatchObject({
+        hasDeclarationSurface: false,
+        hasVarDeclarationSurface: false,
+        hasReferenceImportSurface: true
+      });
+
+      const ordinaryValue = ordinaryChild.rules;
+      const referenceValue = referenceChild.rules;
+      let referenceReads = 0;
+      Object.defineProperty(ordinaryChild, 'rules', {
+        configurable: true,
+        get() {
+          throw new Error('variable lookup should not widen property-only child scans');
+        }
+      });
+      Object.defineProperty(referenceChild, 'rules', {
+        configurable: true,
+        get() {
+          referenceReads++;
+          return referenceValue;
+        }
+      });
+
+      try {
+        const found = findVariableDeclarationOccurrence(root, 'missing-from-ref', { searchParents: false })?.node;
+        expect(found).toBeUndefined();
+        expect(referenceReads).toBeGreaterThan(0);
+      } finally {
+        Object.defineProperty(ordinaryChild, 'rules', {
+          configurable: true,
+          writable: true,
+          value: ordinaryValue
+        });
+        Object.defineProperty(referenceChild, 'rules', {
+          configurable: true,
+          writable: true,
+          value: referenceValue
+        });
+      }
+    });
+
+    it('direct property reference-import miss does not widen ordinary variable child scans', async () => {
+      const ordinaryChild = rules([
+        vardecl({ name: any('from-ref'), value: any('ordinary') })
+      ], {
+        rulesVisibility: {
+          Declaration: 'private',
+          VarDeclaration: 'public'
+        }
+      });
+      const referenceChild = rules([], { referenceMode: true });
+      const root = rules([ordinaryChild, referenceChild]);
+      await root.eval(context);
+      root.collectDirectDeclarationChildEntries();
+      expect(root.directDeclarationChildEntries).toHaveLength(2);
+      expect(root.directDeclarationChildEntries?.[0]).toMatchObject({
+        hasDeclarationSurface: false,
+        hasVarDeclarationSurface: true,
+        hasReferenceImportSurface: false
+      });
+      expect(root.directDeclarationChildEntries?.[1]).toMatchObject({
+        hasDeclarationSurface: false,
+        hasVarDeclarationSurface: false,
+        hasReferenceImportSurface: true
+      });
+
+      const ordinaryValue = ordinaryChild.rules;
+      const referenceValue = referenceChild.rules;
+      let ordinaryReads = 0;
+      let referenceReads = 0;
+      Object.defineProperty(ordinaryChild, 'rules', {
+        configurable: true,
+        get() {
+          ordinaryReads++;
+          return ordinaryValue;
+        }
+      });
+      Object.defineProperty(referenceChild, 'rules', {
+        configurable: true,
+        get() {
+          referenceReads++;
+          return referenceValue;
+        }
+      });
+
+      try {
+        const found = findPropertyDeclarationOccurrence(root, 'missing-from-ref', { searchParents: false })?.node;
+        expect(found).toBeUndefined();
+        expect(ordinaryReads).toBe(0);
+        expect(referenceReads).toBeGreaterThan(0);
+      } finally {
+        Object.defineProperty(ordinaryChild, 'rules', {
+          configurable: true,
+          writable: true,
+          value: ordinaryValue
+        });
+        Object.defineProperty(referenceChild, 'rules', {
+          configurable: true,
+          writable: true,
+          value: referenceValue
+        });
+      }
     });
 
     it('direct variable lookup still skips children without variable or reference-import surfaces', async () => {
@@ -3492,8 +3954,8 @@ describe('reference', () => {
       entry.hasVarDeclarationSurface = false;
       entry.hasReferenceImportSurface = false;
 
-      const originalValue = childRules.value;
-      Object.defineProperty(childRules, 'value', {
+      const originalValue = childRules.rules;
+      Object.defineProperty(childRules, 'rules', {
         configurable: true,
         get() {
           throw new Error('variable lookup should skip non-variable non-reference-import child surfaces');
@@ -3504,7 +3966,7 @@ describe('reference', () => {
         const found = findVariableDeclarationOccurrence(root, 'from-ref', { searchParents: false })?.node;
         expect(found).toBeUndefined();
       } finally {
-        Object.defineProperty(childRules, 'value', {
+        Object.defineProperty(childRules, 'rules', {
           configurable: true,
           writable: true,
           value: originalValue
@@ -3512,7 +3974,48 @@ describe('reference', () => {
       }
     });
 
-    it('setDefined variable assignment uses occurrence lookup', async () => {
+    it('direct property lookup still skips children without property or reference-import surfaces', async () => {
+      const childRules = rules([
+        decl({ name: any('from-ref'), value: any('blue') })
+      ], {
+        rulesVisibility: {
+          Declaration: 'public'
+        }
+      });
+      const root = rules([childRules]);
+      await root.eval(context);
+      root.collectDirectDeclarationChildEntries();
+      const entry = root.directDeclarationChildEntries?.[0];
+      expect(entry).toBeDefined();
+      root.hasDeclarationChildSurface = false;
+      root.hasReferenceImportChildSurface = false;
+      entry!.hasDeclarationSurface = false;
+      entry!.hasReferenceImportSurface = false;
+
+      const originalValue = childRules.rules;
+      let reads = 0;
+      Object.defineProperty(childRules, 'rules', {
+        configurable: true,
+        get() {
+          reads++;
+          return originalValue;
+        }
+      });
+
+      try {
+        const found = findPropertyDeclarationOccurrence(root, 'from-ref', { searchParents: false })?.node;
+        expect(found).toBeUndefined();
+        expect(reads).toBe(0);
+      } finally {
+        Object.defineProperty(childRules, 'rules', {
+          configurable: true,
+          writable: true,
+          value: originalValue
+        });
+      }
+    });
+
+    it('setDefined variable assignment updates same-scope current binding cells', async () => {
       const node = rules([
         vardecl({ name: 'color', value: any('red') }),
         vardecl({ name: 'color', value: any('blue') }, { setDefined: true }),
@@ -3529,33 +4032,37 @@ describe('reference', () => {
       `);
     });
 
-    it('setDefined current-cell probes do not use historical declaration buckets', async () => {
+    it('setDefined current-cell probes skip assignment declarations', async () => {
       const latest = vardecl({ name: 'color', value: any('green') });
+      const assignment = vardecl({ name: 'color', value: any('blue') }, { setDefined: true });
       const node = rules([
         vardecl({ name: 'color', value: any('red') }),
-        latest
+        latest,
+        assignment
       ]);
 
-      await node.eval(context);
       const frame = node.getScopeFrame();
       const assignmentProbe = lookupScopeFrameVariable(frame, 'color', {
         bailOnPendingDeclarations: true,
-        blockedSource: source => source === latest,
-        filter: source => source !== latest
+        blockedSource: source => source === assignment,
+        filter: source => source !== assignment
       });
       const sourceOrderRead = lookupScopeFrameVariable(frame, 'color', {
-        start: latest.index
+        start: assignment.index
       });
 
-      expect(assignmentProbe.kind).toBe('miss');
+      expect(assignmentProbe.kind).toBe('declaration');
+      expect(assignmentProbe.kind === 'declaration' && assignmentProbe.sourceNode).toBe(latest);
       expect(sourceOrderRead.kind).toBe('declaration');
-      expect(sourceOrderRead.kind === 'declaration' && sourceOrderRead.cell.value?.valueOf()).toBe('red');
+      expect(sourceOrderRead.kind === 'declaration' && sourceOrderRead.cell.value?.valueOf()).toBe('green');
     });
 
     it('nested static variable hits build parent scope frames without Rules.find fallback', async () => {
-      const originalFind = RulesClass.prototype.find;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFind = (RulesClass.prototype as any).find;
       let declarationHits = 0;
-      RulesClass.prototype.find = function(...args: Parameters<typeof originalFind>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).find = function(...args: Parameters<typeof originalFind>) {
         const [type, key, filterType] = args;
         if (type === 'declaration' && filterType === 'VarDeclaration' && key === 'color') {
           declarationHits++;
@@ -3588,14 +4095,17 @@ describe('reference', () => {
         `);
         expect(declarationHits).toBe(0);
       } finally {
-        RulesClass.prototype.find = originalFind;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).find = originalFind;
       }
     });
 
     it('plain lexical misses do not fall back when only later child rules could match', async () => {
-      const originalFind = RulesClass.prototype.find;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFind = (RulesClass.prototype as any).find;
       const declarationHits: string[] = [];
-      RulesClass.prototype.find = function(...args: Parameters<typeof originalFind>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).find = function(...args: Parameters<typeof originalFind>) {
         const [type, key, filterType] = args;
         if (type === 'declaration' && filterType === 'VarDeclaration' && key === 'missing') {
           declarationHits.push(key);
@@ -3623,14 +4133,17 @@ describe('reference', () => {
         await expect(async () => await node.eval(new Context({ leakyRules: true }))).rejects.toThrow();
         expect(declarationHits).toHaveLength(0);
       } finally {
-        RulesClass.prototype.find = originalFind;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).find = originalFind;
       }
     });
 
     it('plain lexical misses ignore unresolved dynamic declaration names', async () => {
-      const originalFind = RulesClass.prototype.find;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFind = (RulesClass.prototype as any).find;
       const declarationHits: string[] = [];
-      RulesClass.prototype.find = function(...args: Parameters<typeof originalFind>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).find = function(...args: Parameters<typeof originalFind>) {
         const [type, key, filterType] = args;
         if (type === 'declaration' && filterType === 'VarDeclaration' && key === 'missing') {
           declarationHits.push(key);
@@ -3655,14 +4168,17 @@ describe('reference', () => {
         await expect(async () => await node.eval(context)).rejects.toThrow();
         expect(declarationHits).toHaveLength(0);
       } finally {
-        RulesClass.prototype.find = originalFind;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).find = originalFind;
       }
     });
 
     it('same-scope unresolved dynamic names before a static winner stay on direct lookup', async () => {
-      const originalFind = RulesClass.prototype.find;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFind = (RulesClass.prototype as any).find;
       const declarationHits: string[] = [];
-      RulesClass.prototype.find = function(...args: Parameters<typeof originalFind>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).find = function(...args: Parameters<typeof originalFind>) {
         const [type, key, filterType] = args;
         if (type === 'declaration' && filterType === 'VarDeclaration' && key === 'x') {
           declarationHits.push(key);
@@ -3694,14 +4210,17 @@ describe('reference', () => {
         `);
         expect(declarationHits).toHaveLength(0);
       } finally {
-        RulesClass.prototype.find = originalFind;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).find = originalFind;
       }
     });
 
     it('same-scope unresolved dynamic names after a static winner stay on direct lookup', async () => {
-      const originalFind = RulesClass.prototype.find;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFind = (RulesClass.prototype as any).find;
       const declarationHits: string[] = [];
-      RulesClass.prototype.find = function(...args: Parameters<typeof originalFind>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).find = function(...args: Parameters<typeof originalFind>) {
         const [type, key, filterType] = args;
         if (type === 'declaration' && filterType === 'VarDeclaration' && key === 'x') {
           declarationHits.push(key);
@@ -3733,7 +4252,8 @@ describe('reference', () => {
         `);
         expect(declarationHits).toHaveLength(0);
       } finally {
-        RulesClass.prototype.find = originalFind;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).find = originalFind;
       }
     });
 
@@ -3751,9 +4271,9 @@ describe('reference', () => {
           value: any('blue')
         })
       ]);
-      const originalValue = node.value;
+      const originalValue = node.rules;
       let reads = 0;
-      Object.defineProperty(node, 'value', {
+      Object.defineProperty(node, 'rules', {
         configurable: true,
         get() {
           reads++;
@@ -3770,7 +4290,7 @@ describe('reference', () => {
         expect(frame.pendingDeclarationNames[0]).toBe(originalValue[0]);
         expect(frame.declarationBucketsByName.get('x')?.at(-1)?.sourceNode).toBe(originalValue[1]);
       } finally {
-        Object.defineProperty(node, 'value', {
+        Object.defineProperty(node, 'rules', {
           configurable: true,
           writable: true,
           value: originalValue
@@ -3779,9 +4299,11 @@ describe('reference', () => {
     });
 
     it('prunes stale pendingDeclarationNames entries when a dynamic name resolves after ScopeFrame creation', async () => {
-      const originalFind = RulesClass.prototype.find;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFind = (RulesClass.prototype as any).find;
       const declarationHits: string[] = [];
-      RulesClass.prototype.find = function(...args: Parameters<typeof originalFind>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).find = function(...args: Parameters<typeof originalFind>) {
         const [type, key, filterType] = args;
         if (type === 'declaration' && filterType === 'VarDeclaration' && key === 'x') {
           declarationHits.push(key);
@@ -3817,7 +4339,8 @@ describe('reference', () => {
         `);
         expect(declarationHits).toHaveLength(0);
       } finally {
-        RulesClass.prototype.find = originalFind;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).find = originalFind;
       }
     });
 
@@ -3929,9 +4452,11 @@ describe('reference', () => {
     });
 
     it('promotes pending dynamic declarations that have already become static before lookup', async () => {
-      const originalFind = RulesClass.prototype.find;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFind = (RulesClass.prototype as any).find;
       const declarationHits: string[] = [];
-      RulesClass.prototype.find = function(...args: Parameters<typeof originalFind>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).find = function(...args: Parameters<typeof originalFind>) {
         const [type, key, filterType] = args;
         if (type === 'declaration' && filterType === 'VarDeclaration' && key === 'x') {
           declarationHits.push(key);
@@ -3965,28 +4490,34 @@ describe('reference', () => {
         expect(node.directDeclarationsByName?.get('unaffected')).toBeNull();
         await Promise.resolve(node.prepareRegistration(context));
         setRulesContext(node);
-        const dynamicDecl = node.value.find(child => child instanceof VarDeclaration && child.name.valueOf() === 'x')!;
+        const dynamicDecl = node.rules.find(child => child instanceof VarDeclaration && child.name.valueOf() === 'x')!;
 
         expect(declarationHits).toHaveLength(0);
         expect(node.directDeclarationsByName?.get('x')).toBeUndefined();
-        expect(node.directDeclarationsByName?.get('unaffected')).toBeUndefined();
+        expect(node.directDeclarationsByName?.get('unaffected')).toBeNull();
         expect([...(node.directDeclarationLookupCache?.keys() ?? [])].filter(key => key.startsWith('x\u001f'))).toHaveLength(0);
+        expect([...(node.directDeclarationLookupCache?.keys() ?? [])].filter(key => key.startsWith('unaffected\u001f')).length).toBeGreaterThan(0);
         expect(frame.pendingDeclarationNames).toHaveLength(0);
         expect(frame.declarationBucketsByName.get('x')?.at(-1)?.sourceNode).toBe(dynamicDecl);
+        expect(node.getDeclarationLookupVersion('x')).toBeGreaterThan(0);
+        expect(node.getDeclarationLookupVersion('unaffected')).toBe(0);
         const promotedHit = lookupScopeFrameVariable(frame, 'x', {
           bailOnPendingDeclarations: true
         });
         expect(promotedHit.kind).toBe('declaration');
         expect(promotedHit.kind === 'declaration' && promotedHit.sourceNode).toBe(dynamicDecl);
       } finally {
-        RulesClass.prototype.find = originalFind;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).find = originalFind;
       }
     });
 
     it('ignores still-dynamic pending names even when they would be synchronously computable', async () => {
-      const originalFind = RulesClass.prototype.find;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFind = (RulesClass.prototype as any).find;
       const declarationHits: string[] = [];
-      RulesClass.prototype.find = function(...args: Parameters<typeof originalFind>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).find = function(...args: Parameters<typeof originalFind>) {
         const [type, key, filterType] = args;
         if (type === 'declaration' && filterType === 'VarDeclaration' && key === 'x') {
           declarationHits.push(key);
@@ -4020,14 +4551,17 @@ describe('reference', () => {
         expect(frame.pendingDeclarationNames).toHaveLength(1);
       } finally {
         context.rulesContext = undefined;
-        RulesClass.prototype.find = originalFind;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).find = originalFind;
       }
     });
 
     it('rejects when pending dynamic names are still asynchronously unresolved', async () => {
-      const originalFind = RulesClass.prototype.find;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFind = (RulesClass.prototype as any).find;
       const declarationHits: string[] = [];
-      RulesClass.prototype.find = function(...args: Parameters<typeof originalFind>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).find = function(...args: Parameters<typeof originalFind>) {
         const [type, key, filterType] = args;
         if (type === 'declaration' && filterType === 'VarDeclaration' && key === 'x') {
           declarationHits.push(key);
@@ -4061,7 +4595,8 @@ describe('reference', () => {
         expect(frame.pendingDeclarationNames).toHaveLength(1);
       } finally {
         context.rulesContext = undefined;
-        RulesClass.prototype.find = originalFind;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).find = originalFind;
       }
     });
   });
@@ -4071,14 +4606,14 @@ describe('reference', () => {
       const node = rules([
         mixin({
           name: any('.mk-map'),
-          rules: rules([
+          rules: [
             decl({ name: 'text', value: any('white') }),
             decl({ name: 'background', value: any('black') })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.output'),
-          rules: rules([
+          rules: [
             vardecl({
               name: 'p',
               value: call({
@@ -4093,7 +4628,7 @@ describe('reference', () => {
                 key: quoted('text')
               }, { type: 'index' })
             })
-          ])
+          ]
         })
       ]);
       const evald = await node.eval(context);
@@ -4108,17 +4643,17 @@ describe('reference', () => {
       const node = rules([
         ruleset({
           selector: el('.\\123'),
-          rules: rules([
+          rules: [
             decl({ name: 'a', value: any('ok') })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.out'),
-          rules: rules([
+          rules: [
             call({
               name: ref({ key: '.\\123' }, { type: 'mixin-ruleset' })
             })
-          ])
+          ]
         })
       ]);
       const evald = await node.eval(context);
@@ -4136,17 +4671,17 @@ describe('reference', () => {
       const node = rules([
         ruleset({
           selector: el('#\\31a'),
-          rules: rules([
+          rules: [
             decl({ name: 'a', value: any('ok') })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.out'),
-          rules: rules([
+          rules: [
             call({
               name: ref({ key: el('#\\31a') }, { type: 'mixin-ruleset' })
             })
-          ])
+          ]
         })
       ]);
       const evald = await node.eval(context);
@@ -4164,19 +4699,19 @@ describe('reference', () => {
       const node = rules([
         ruleset({
           selector: compound([el('.a'), el('.\\32b')]),
-          rules: rules([
+          rules: [
             decl({ name: 'a', value: any('ok') })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.out'),
-          rules: rules([
+          rules: [
             call({
               name: ref({
                 key: ['.a', '.\\32b']
               }, { type: 'mixin-ruleset' })
             })
-          ])
+          ]
         })
       ]);
       const evald = await node.eval(context);
@@ -4207,28 +4742,28 @@ describe('reference', () => {
       const node = rules([
         ruleset({
           selector: el('#theme'),
-          rules: rules([
+          rules: [
             ruleset({
               selector: el('.dark'),
-              rules: rules([
+              rules: [
                 ruleset({
                   selector: el('.navbar'),
-                  rules: rules([
+                  rules: [
                     mixin({
                       name: any('.colors'),
-                      rules: rules([
+                      rules: [
                         decl({ name: 'primary', value: any('red') })
-                      ])
+                      ]
                     })
-                  ])
+                  ]
                 })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.output'),
-          rules: rules([
+          rules: [
             vardecl({
               name: 'colors',
               value: call({
@@ -4251,7 +4786,7 @@ describe('reference', () => {
                 key: 'primary'
               }, { type: 'declaration' })
             })
-          ])
+          ]
         })
       ]);
       const evald = await node.eval(context);
@@ -4275,18 +4810,18 @@ describe('reference', () => {
       const node = rules([
         ruleset({
           selector: compound([el('#theme'), el('.dark'), el('.navbar')]),
-          rules: rules([
+          rules: [
             mixin({
               name: any('.colors'),
-              rules: rules([
+              rules: [
                 decl({ name: 'primary', value: any('red') })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.output'),
-          rules: rules([
+          rules: [
             vardecl({
               name: 'colors',
               value: call({
@@ -4302,7 +4837,7 @@ describe('reference', () => {
                 key: 'primary'
               }, { type: 'declaration' })
             })
-          ])
+          ]
         })
       ]);
       const evald = await node.eval(context);
@@ -4326,18 +4861,18 @@ describe('reference', () => {
       const node = rules([
         ruleset({
           selector: compound([el('#theme'), el('.dark'), el('.navbar')]),
-          rules: rules([
+          rules: [
             mixin({
               name: any('.colors'),
-              rules: rules([
+              rules: [
                 decl({ name: 'primary', value: any('red') })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.output'),
-          rules: rules([
+          rules: [
             vardecl({
               name: 'colors',
               value: call({
@@ -4353,7 +4888,7 @@ describe('reference', () => {
                 key: 'primary'
               }, { type: 'declaration' })
             })
-          ])
+          ]
         })
       ]);
       const evald = await node.eval(context);
@@ -4368,39 +4903,39 @@ describe('reference', () => {
       const node = rules([
         mixin({
           name: any('#theme'),
-          rules: rules([
+          rules: [
             mixin({
               name: any('.dark'),
-              rules: rules([
+              rules: [
                 mixin({
                   name: any('.navbar'),
-                  rules: rules([
+                  rules: [
                     mixin({
                       name: any('.colors'),
-                      rules: rules([
+                      rules: [
                         decl({ name: 'primary', value: any('cyan') })
-                      ])
+                      ]
                     })
-                  ])
+                  ]
                 })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         ruleset({
           selector: compound([el('#theme'), el('.dark'), el('.navbar')]),
-          rules: rules([
+          rules: [
             mixin({
               name: any('.colors'),
-              rules: rules([
+              rules: [
                 decl({ name: 'primary', value: any('red') })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.output'),
-          rules: rules([
+          rules: [
             vardecl({
               name: 'colors',
               value: call({
@@ -4416,7 +4951,7 @@ describe('reference', () => {
                 key: 'primary'
               }, { type: 'declaration' })
             })
-          ])
+          ]
         })
       ]);
 
@@ -4432,39 +4967,39 @@ describe('reference', () => {
       const node = rules([
         mixin({
           name: any('#theme'),
-          rules: rules([
+          rules: [
             mixin({
               name: any('.dark'),
-              rules: rules([
+              rules: [
                 mixin({
                   name: any('.navbar'),
-                  rules: rules([
+                  rules: [
                     mixin({
                       name: any('.colors'),
-                      rules: rules([
+                      rules: [
                         decl({ name: 'primary', value: any('cyan') })
-                      ])
+                      ]
                     })
-                  ])
+                  ]
                 })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         ruleset({
           selector: compound([el('#theme'), el('.dark'), el('.navbar')]),
-          rules: rules([
+          rules: [
             mixin({
               name: any('.colors'),
-              rules: rules([
+              rules: [
                 decl({ name: 'primary', value: any('red') })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.output'),
-          rules: rules([
+          rules: [
             vardecl({
               name: 'colors',
               value: call({
@@ -4480,7 +5015,7 @@ describe('reference', () => {
                 key: 'primary'
               }, { type: 'declaration' })
             })
-          ])
+          ]
         })
       ]);
 
@@ -4497,24 +5032,24 @@ describe('reference', () => {
         mixin({
           name: any('.mixin-with-directives'),
           params: list([any('keyframeName', { role: 'property' })]),
-          rules: rules([
+          rules: [
             atrule({
               name: any('@keyframes'),
               prelude: ref({ key: 'keyframeName' }, { type: 'variable' }),
-              rules: rules([
+              rules: [
                 decl({ name: 'property', value: any('value') })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.out'),
-          rules: rules([
+          rules: [
             call({
               name: ref({ key: el('.mixin-with-directives') }, { type: 'mixin-ruleset' }),
               args: list([any('some-name')])
             })
-          ])
+          ]
         })
       ]);
 
@@ -4534,19 +5069,19 @@ describe('reference', () => {
             el('.foo'),
             el('.bbb')
           ]),
-          rules: rules([
+          rules: [
             decl({ name: 'b', value: any('1') })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.out'),
-          rules: rules([
+          rules: [
             call({
               name: ref({
                 key: ['.b', '.bb', '.foo-xxx', '.yyy-foo', '#foo', '.foo', '.bbb']
               }, { type: 'mixin-ruleset' })
             })
-          ])
+          ]
         })
       ]);
 
@@ -4573,19 +5108,19 @@ describe('reference', () => {
             el('.foo'),
             el('.bbb')
           ]),
-          rules: rules([
+          rules: [
             decl({ name: 'b', value: any('1') })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.out'),
-          rules: rules([
+          rules: [
             call({
               name: ref({
                 key: ['.b', '.bb', '.foo-xxx', '.yyy-foo', '#foo', '.foo', '.bbb']
               }, { type: 'mixin-ruleset' })
             })
-          ])
+          ]
         })
       ]);
 
@@ -4601,10 +5136,12 @@ describe('reference', () => {
     });
 
     it('keeps static compound reference path arrays as binding identity', async () => {
-      const originalFindMixin = RulesClass.prototype.findMixin;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixin = (RulesClass.prototype as any).findMixin;
       const path = ['.a', '.b', '.c'];
       const pathIdentityHits: boolean[] = [];
-      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixin = function(...args: Parameters<typeof originalFindMixin>) {
         const [key] = args;
         if (
           Array.isArray(key)
@@ -4620,17 +5157,17 @@ describe('reference', () => {
         const node = rules([
           ruleset({
             selector: compound([el('.a'), el('.b'), el('.c')]),
-            rules: rules([
+            rules: [
               decl({ name: 'color', value: any('blue') })
-            ])
+            ]
           }),
           ruleset({
             selector: el('.out'),
-            rules: rules([
+            rules: [
               call({
                 name: ref({ key: path }, { type: 'mixin-ruleset' })
               })
-            ])
+            ]
           })
         ]);
 
@@ -4647,15 +5184,18 @@ describe('reference', () => {
         expect(pathIdentityHits).toContain(true);
         expect(pathIdentityHits).not.toContain(false);
       } finally {
-        RulesClass.prototype.findMixin = originalFindMixin;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixin = originalFindMixin;
       }
     });
 
     it('reuses static callable binding handles across unrelated target rules version changes', async () => {
-      const originalFindMixin = RulesClass.prototype.findMixin;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixin = (RulesClass.prototype as any).findMixin;
       const path = ['.a', '.b', '.c'];
       let pathLookups = 0;
-      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixin = function(...args: Parameters<typeof originalFindMixin>) {
         const [key] = args;
         if (key === path) {
           pathLookups++;
@@ -4667,9 +5207,9 @@ describe('reference', () => {
         const node = rules([
           ruleset({
             selector: compound([el('.a'), el('.b'), el('.c')]),
-            rules: rules([
+            rules: [
               decl({ name: 'color', value: any('blue') })
-            ])
+            ]
           })
         ]);
         setRulesContext(await node.eval(context));
@@ -4697,42 +5237,60 @@ describe('reference', () => {
         }
         expect(pathLookups).toBe(1);
       } finally {
-        RulesClass.prototype.findMixin = originalFindMixin;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixin = originalFindMixin;
       }
     });
 
-    it('ordinary simple callable references do not prepare scope frames', async () => {
+    it('ordinary simple callable references prepare frame lookup instead of broad callable crawl', async () => {
       const node = rules([
         mixin({
           name: any('.paint'),
-          rules: rules([decl({ name: 'color', value: any('blue') })])
+          rules: [decl({ name: 'color', value: any('blue') })]
         })
       ]);
       setRulesContext(await node.eval(context));
       const lookupRef = ref({ key: '.paint' }, { type: 'mixin' });
       const originalGetScopeFrame = RulesClass.prototype.getScopeFrame;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
       const framePreparations: string[] = [];
+      const broadCallableLookups: string[] = [];
       RulesClass.prototype.getScopeFrame = function(...args: Parameters<typeof originalGetScopeFrame>) {
         framePreparations.push(this.toTrimmedString());
         return originalGetScopeFrame.apply(this, args);
+      };
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+        const [key] = args;
+        if (key === '.paint') {
+          broadCallableLookups.push(key);
+        }
+        return originalFindMixinsFast.apply(this, args);
       };
 
       try {
         expectNodeType(lookupRef.eval(context), 'MixinCollection');
         expect(lookupRef._rulesLookupHandle?.lookupType).toBe('mixin');
-        expect(framePreparations).toEqual([]);
+        expect(framePreparations).toHaveLength(1);
+        expect(broadCallableLookups).toEqual([]);
 
         expectNodeType(lookupRef.eval(context), 'MixinCollection');
-        expect(framePreparations).toEqual([]);
+        expect(framePreparations).toHaveLength(1);
+        expect(broadCallableLookups).toEqual([]);
       } finally {
         RulesClass.prototype.getScopeFrame = originalGetScopeFrame;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
       }
     });
 
     it('reuses static function binding handles until the function key version changes', async () => {
-      const originalFindFunction = RulesClass.prototype.findFunction;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindFunction = (RulesClass.prototype as any).findFunction;
       let functionLookups = 0;
-      RulesClass.prototype.findFunction = function(...args: Parameters<typeof originalFindFunction>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findFunction = function(...args: Parameters<typeof originalFindFunction>) {
         const [key] = args;
         if (key === 'paint') {
           functionLookups++;
@@ -4747,15 +5305,15 @@ describe('reference', () => {
           fn: () => any('blue')
         }));
         setRulesContext(await node.eval(context));
-        const ignoredExcludedNodes = [
+        const ignoredExcludedDeclarations = [
           decl({ name: 'color', value: any('red') }),
           decl({ name: 'color', value: any('green') }),
           decl({ name: 'color', value: any('black') })
         ];
         const lookupRef = ref({ key: 'paint' }, {
           type: 'function',
-          excludedNodes: ignoredExcludedNodes,
-          requiredNormalizedFromAssign: ['one', 'two', 'three', 'four', 'five']
+          excludedDeclarations: ignoredExcludedDeclarations,
+          requiredDeclarationAssignments: ['one', 'two', 'three', 'four', 'five']
         });
 
         const first = lookupRef.eval(context);
@@ -4766,10 +5324,11 @@ describe('reference', () => {
         expect(functionLookups).toBe(1);
         const firstHandle = lookupRef._rulesLookupHandle;
         expect(firstHandle?.lookupType).toBe('function');
-        expect(firstHandle && 'requiredNormalizedFromAssignKey' in firstHandle).toBe(false);
-        expect(firstHandle && 'excludedNodesLength' in firstHandle).toBe(false);
+        expect(firstHandle && 'requiredDeclarationAssignmentsKey' in firstHandle).toBe(false);
+        expect(firstHandle && 'excludedDeclaration0' in firstHandle).toBe(false);
+        expect(firstHandle && 'excludedDeclaration1' in firstHandle).toBe(false);
 
-        ignoredExcludedNodes[0] = decl({ name: 'color', value: any('mutated') });
+        ignoredExcludedDeclarations[0] = decl({ name: 'color', value: any('mutated') });
         const second = lookupRef.eval(context);
         expect(isNode(second)).toBe(true);
         if (isNode(second)) {
@@ -4808,7 +5367,8 @@ describe('reference', () => {
         }
         expect(functionLookups).toBe(2);
       } finally {
-        RulesClass.prototype.findFunction = originalFindFunction;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findFunction = originalFindFunction;
       }
     });
 
@@ -4861,7 +5421,7 @@ describe('reference', () => {
         decl({ name: 'tone-prop', value: any('orange') }),
         mixin({
           name: any('.tone-mixin'),
-          rules: rules([decl({ name: 'color', value: any('blue') })])
+          rules: [decl({ name: 'color', value: any('blue') })]
         })
       ]);
       node.setFunctionBinding('tone-fn', new JsFunction({
@@ -4902,9 +5462,7 @@ describe('reference', () => {
         }
         const handle = read.lookupRef._rulesLookupHandle;
         expect(handle).toBeDefined();
-        expect(read.lookupRef._lookupStrategy).toBeDefined();
 
-        read.lookupRef._lookupStrategy = undefined;
         const second = read.lookupRef.eval(context);
 
         if (read.expectValue) {
@@ -4918,8 +5476,31 @@ describe('reference', () => {
           expect(Array.isArray(second)).toBe(read.expectArray);
         }
         expect(read.lookupRef._rulesLookupHandle).toBe(handle);
-        expect(read.lookupRef._lookupStrategy).toBeUndefined();
       }
+    });
+
+    it('source-static handles rebuild handle state for unstable reference facts', async () => {
+      const node = rules([
+        vardecl({ name: 'tone-var', value: any('purple') }),
+        decl({ name: 'tone-prop', value: any('orange') })
+      ]);
+      setRulesContext(await node.eval(context));
+
+      const snapshotRef = ref({ key: 'tone-var' }, { type: 'variable' });
+      expect(snapshotRef.eval(context).valueOf()).toBe('purple');
+      expect(snapshotRef._rulesLookupHandle?.lookupType).toBe('variable');
+      snapshotRef.options.readMode = 'snapshot';
+
+      expect(snapshotRef.eval(context).valueOf()).toBe('purple');
+      expect(snapshotRef._rulesLookupHandle?.lookupType).toBe('variable');
+
+      const filteredRef = ref({ key: 'tone-prop' }, { type: 'property' });
+      expect(filteredRef.eval(context).valueOf()).toBe('orange');
+      expect(filteredRef._rulesLookupHandle?.lookupType).toBe('property');
+      filteredRef.options.filter = node => node.type === 'Declaration';
+
+      expect(filteredRef.eval(context).valueOf()).toBe('orange');
+      expect(filteredRef._rulesLookupHandle).toBeUndefined();
     });
 
     it('static property occurrence handles invalidate when owner rules changes', async () => {
@@ -5177,7 +5758,7 @@ describe('reference', () => {
     it('static callable handles stay cold while leakyRules disqualifies lookup', async () => {
       const callable = mixin({
         name: any('.paint'),
-        rules: rules([decl({ name: 'color', value: any('green') })])
+        rules: [decl({ name: 'color', value: any('green') })]
       });
       const node = rules([callable]);
       const root = setRulesContext(await node.eval(context));
@@ -5204,7 +5785,7 @@ describe('reference', () => {
       const ignoredDeclaration = decl({ name: 'color', value: any('blue') });
       const callable = mixin({
         name: any('.paint'),
-        rules: rules([decl({ name: 'color', value: any('green') })])
+        rules: [decl({ name: 'color', value: any('green') })]
       });
       const node = rules([ignoredDeclaration, callable]);
       setRulesContext(await node.eval(context));
@@ -5231,7 +5812,7 @@ describe('reference', () => {
     it('static mixin-ruleset handles stay cold while leakyRules disqualifies lookup', async () => {
       const callable = ruleset({
         selector: el('.paint'),
-        rules: rules([decl({ name: 'color', value: any('green') })])
+        rules: [decl({ name: 'color', value: any('green') })]
       });
       const node = rules([callable]);
       const root = setRulesContext(await node.eval(context));
@@ -5258,7 +5839,7 @@ describe('reference', () => {
       const ignoredDeclaration = decl({ name: 'color', value: any('blue') });
       const callable = ruleset({
         selector: el('.paint'),
-        rules: rules([decl({ name: 'color', value: any('green') })])
+        rules: [decl({ name: 'color', value: any('green') })]
       });
       const node = rules([ignoredDeclaration, callable]);
       setRulesContext(await node.eval(context));
@@ -5282,16 +5863,133 @@ describe('reference', () => {
       expect(lookupRef._rulesLookupHandle).not.toBe(handle);
     });
 
-    it('static property handles reuse source-static normalized assignment constraints', async () => {
+    it('searchScope and leakyRules stale declaration handles rebuild without public declaration bridges', async () => {
+      const ignoredDeclaration = decl({ name: 'ignored', value: any('0') });
+      const node = rules([
+        ignoredDeclaration,
+        vardecl({ name: 'tone', value: any('red') }),
+        decl({ name: 'color', value: any('blue') }),
+        decl({ name: 'border', value: any('1px solid black') })
+      ]);
+      const root = setRulesContext(await node.eval(context));
+      const leakyContext = new Context({ leakyRules: true });
+      leakyContext.root = root;
+      leakyContext.rulesContext = root;
+      const variableRef = ref({ key: 'tone' }, { type: 'variable' });
+      const propertyRef = ref({ key: 'color' }, { type: 'property' });
+      const declarationRef = ref({ key: 'border' }, { type: 'declaration' });
+      const refs = [variableRef, propertyRef, declarationRef];
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFind = (RulesClass.prototype as any).find;
+      const declarationBridgeHits: string[] = [];
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).find = function(...args: Parameters<typeof originalFind>) {
+        const [type, key] = args;
+        if (type === 'declaration') {
+          declarationBridgeHits.push(String(key));
+        }
+        return originalFind.apply(this, args);
+      };
+
+      try {
+        for (const lookupRef of refs) {
+          expect(lookupRef.eval(context)).toBeDefined();
+          const handle = lookupRef._rulesLookupHandle;
+          expect(handle).toBeDefined();
+
+          expect(lookupRef.eval(leakyContext)).toBeDefined();
+          expect(lookupRef._rulesLookupHandle).toBeUndefined();
+
+          expect(lookupRef.eval(context)).toBeDefined();
+          expect(lookupRef._rulesLookupHandle).not.toBe(handle);
+
+          context.searchScope.add(ignoredDeclaration);
+          expect(lookupRef.eval(context)).toBeDefined();
+          expect(lookupRef._rulesLookupHandle).toBeUndefined();
+          context.searchScope.delete(ignoredDeclaration);
+
+          expect(lookupRef.eval(context)).toBeDefined();
+          expect(lookupRef._rulesLookupHandle).toBeDefined();
+        }
+        expect(declarationBridgeHits).toEqual([]);
+      } finally {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).find = originalFind;
+        context.searchScope.delete(ignoredDeclaration);
+      }
+    });
+
+    it('searchScope and leakyRules stale callable handles rebuild without broad callable bridges', async () => {
+      const ignoredDeclaration = decl({ name: 'ignored', value: any('0') });
+      const node = rules([
+        ignoredDeclaration,
+        mixin({
+          name: any('.paint-mixin'),
+          rules: [decl({ name: 'color', value: any('blue') })]
+        }),
+        ruleset({
+          selector: el('.paint-ruleset'),
+          rules: [decl({ name: 'color', value: any('green') })]
+        })
+      ]);
+      const root = setRulesContext(await node.eval(context));
+      const leakyContext = new Context({ leakyRules: true });
+      leakyContext.root = root;
+      leakyContext.rulesContext = root;
+      const mixinRef = ref({ key: '.paint-mixin' }, { type: 'mixin' });
+      const rulesetRef = ref({ key: '.paint-ruleset' }, { type: 'mixin-ruleset' });
+      const refs = [mixinRef, rulesetRef];
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
+      const broadCallableLookups: string[] = [];
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+        const [key] = args;
+        if (key === '.paint-mixin' || key === '.paint-ruleset') {
+          broadCallableLookups.push(key);
+        }
+        return originalFindMixinsFast.apply(this, args);
+      };
+
+      try {
+        for (const lookupRef of refs) {
+          expectNodeType(lookupRef.eval(context), 'MixinCollection');
+          const handle = lookupRef._rulesLookupHandle;
+          expect(handle).toBeDefined();
+
+          expectNodeType(lookupRef.eval(leakyContext), 'MixinCollection');
+          expect(lookupRef._rulesLookupHandle).toBeUndefined();
+
+          expectNodeType(lookupRef.eval(context), 'MixinCollection');
+          expect(lookupRef._rulesLookupHandle).not.toBe(handle);
+
+          context.searchScope.add(ignoredDeclaration);
+          expectNodeType(lookupRef.eval(context), 'MixinCollection');
+          expect(lookupRef._rulesLookupHandle).toBeUndefined();
+          context.searchScope.delete(ignoredDeclaration);
+
+          expectNodeType(lookupRef.eval(context), 'MixinCollection');
+          expect(lookupRef._rulesLookupHandle).toBeDefined();
+        }
+        expect(broadCallableLookups).toEqual([]);
+      } finally {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
+        context.searchScope.delete(ignoredDeclaration);
+      }
+    });
+
+    it('static property handles reuse source-static declaration assignment constraints', async () => {
       const node = rules([
         decl({ name: 'background-color', value: any('red') }),
-        decl({ name: 'background-color', value: any('blue') }, { normalizedFromAssign: '+,:' })
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        decl({ name: 'background-color', value: any('blue') }, { normalizedFromAssign: '+,:' as AssignmentType })
       ]);
       setRulesContext(await node.eval(context));
-      const requiredNormalizedFromAssign = ['+,:'];
+      const requiredDeclarationAssignments = ['+,:'];
       const lookupRef = ref({ key: 'background-color' }, {
         type: 'property',
-        requiredNormalizedFromAssign
+        requiredDeclarationAssignments
       });
 
       expect(lookupRef.eval(context).valueOf()).toBe('blue');
@@ -5309,10 +6007,10 @@ describe('reference', () => {
       const later = decl({ name: 'color', value: any('blue') });
       const node = rules([earlier, later]);
       setRulesContext(await node.eval(context));
-      const excludedNodes: Node[] = [later];
+      const excludedDeclarations: Node[] = [later];
       const lookupRef = ref({ key: 'color' }, {
         type: 'property',
-        excludedNodes
+        excludedDeclarations
       });
 
       expect(lookupRef.eval(context).valueOf()).toBe('red');
@@ -5321,14 +6019,145 @@ describe('reference', () => {
         kind: 'direct-declaration-occurrence'
       });
 
-      excludedNodes[0] = earlier;
+      excludedDeclarations[0] = earlier;
 
       expect(lookupRef.eval(context).valueOf()).toBe('blue');
       expect(lookupRef._rulesLookupHandle).not.toBe(firstHandle);
     });
 
+    it('static property handles track first and second declaration exclusions without count state', async () => {
+      const first = decl({ name: 'color', value: any('red') });
+      const second = decl({ name: 'color', value: any('blue') });
+      const third = decl({ name: 'color', value: any('green') });
+      const node = rules([first, second, third]);
+      setRulesContext(await node.eval(context));
+      const excludedDeclarations: Node[] = [];
+      const lookupRef = ref({ key: 'color' }, {
+        type: 'property',
+        excludedDeclarations
+      });
+
+      expect(lookupRef.eval(context).valueOf()).toBe('green');
+      const firstHandle = lookupRef._rulesLookupHandle;
+      expect(firstHandle).toBeDefined();
+      expect(firstHandle && 'excludedDeclarationCount' in firstHandle).toBe(false);
+
+      excludedDeclarations[0] = third;
+
+      expect(lookupRef.eval(context).valueOf()).toBe('blue');
+      const secondHandle = lookupRef._rulesLookupHandle;
+      expect(secondHandle).not.toBe(firstHandle);
+      expect(secondHandle && 'excludedDeclarationCount' in secondHandle).toBe(false);
+
+      excludedDeclarations[1] = second;
+
+      expect(lookupRef.eval(context).valueOf()).toBe('red');
+      const thirdHandle = lookupRef._rulesLookupHandle;
+      expect(thirdHandle).not.toBe(secondHandle);
+      expect(thirdHandle && 'excludedDeclarationCount' in thirdHandle).toBe(false);
+
+      excludedDeclarations[1] = first;
+
+      expect(lookupRef.eval(context).valueOf()).toBe('blue');
+      expect(lookupRef._rulesLookupHandle).not.toBe(thirdHandle);
+    });
+
+    it('static property handles invalidate when bindOutput exposes the output identity', async () => {
+      const source = decl({ name: 'color', value: any('red') }, {
+        normalizedFromAssign: AssignmentType.MergeList
+      });
+      const output = decl({ name: 'color', value: any('blue') }, {
+        normalizedFromAssign: AssignmentType.MergeList
+      });
+      const node = rules([source, output]);
+      setRulesContext(node);
+      const excludedDeclarations: Node[] = [source];
+      const options: ReferenceOptions = {
+        type: 'property',
+        fallbackValue: any('fallback'),
+        excludedDeclarations,
+        requiredDeclarationAssignments: [
+          AssignmentType.MergeList,
+          AssignmentType.MergeSequence,
+          '+,:',
+          '+_:'
+        ]
+      };
+      const lookupRef = ref({ key: 'color' }, options);
+
+      expect(lookupRef.eval(context).valueOf()).toBe('blue');
+      const firstHandle = lookupRef._rulesLookupHandle;
+      expect(firstHandle?.returnVal).toMatchObject({
+        kind: 'direct-declaration-occurrence'
+      });
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      if (!firstHandle || (firstHandle.returnVal as unknown) === 'cached-rules-lookup-miss' || !('node' in (firstHandle.returnVal as object))) {
+        expect.fail('Expected direct declaration occurrence handle');
+      }
+
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      excludedDeclarations[1] = (firstHandle.returnVal as { node: Node }).node;
+
+      expect(lookupRef.eval(context).valueOf()).toBe('fallback');
+      expect(lookupRef._rulesLookupHandle).not.toBe(firstHandle);
+    });
+
+    it('static merge-chain property handles preserve unrelated writes and reject same-key writes', async () => {
+      const source = decl({ name: 'color', value: any('red') }, {
+        normalizedFromAssign: AssignmentType.MergeList
+      });
+      const output = decl({ name: 'color', value: any('blue') }, {
+        normalizedFromAssign: AssignmentType.MergeList
+      });
+      const node = rules([source, output]);
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFind = (RulesClass.prototype as any).find;
+      const declarationBridgeHits: string[] = [];
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).find = function(...args: Parameters<typeof originalFind>) {
+        const [type, key] = args;
+        if (type === 'declaration') {
+          declarationBridgeHits.push(String(key));
+        }
+        return originalFind.apply(this, args);
+      };
+
+      try {
+        setRulesContext(await node.eval(context));
+        const lookupRef = ref({ key: 'color' }, {
+          type: 'property',
+          excludedDeclarations: [source],
+          requiredDeclarationAssignments: [AssignmentType.MergeList]
+        });
+
+        expect(lookupRef.eval(context).valueOf()).toBe('blue');
+        const firstHandle = lookupRef._rulesLookupHandle;
+        expect(firstHandle?.returnVal).toMatchObject({
+          kind: 'direct-declaration-occurrence'
+        });
+        const firstVersion = firstHandle?.targetLookupVersion;
+
+        node.push(decl({ name: 'unrelated', value: any('1') }));
+
+        expect(lookupRef.eval(context).valueOf()).toBe('blue');
+        expect(lookupRef._rulesLookupHandle).toBe(firstHandle);
+        expect(lookupRef._rulesLookupHandle?.targetLookupVersion).toBe(firstVersion);
+
+        node.push(decl({ name: 'color', value: any('green') }, {
+          normalizedFromAssign: AssignmentType.MergeList
+        }));
+
+        expect(lookupRef.eval(context).valueOf()).toBe('green');
+        expect(lookupRef._rulesLookupHandle).not.toBe(firstHandle);
+        expect(declarationBridgeHits).toEqual([]);
+      } finally {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).find = originalFind;
+      }
+    });
+
     it('real Less merge-chain property refs avoid public lookup bridges', async () => {
-      const { Parser } = await import('../../../../less-parser/src/index.ts');
+      const { Parser } = await import('../../../../less-parser/src/index.js');
       const parser = new Parser();
       const tree = parser.parse(`
         .out {
@@ -5338,14 +6167,34 @@ describe('reference', () => {
           background+: blue;
         }
       `).tree;
-      context.root = tree;
-      const css = await renderNodeToString(tree, context, { context });
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFind = (RulesClass.prototype as any).find;
+      const declarationFindHits: string[] = [];
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).find = function(...args: Parameters<typeof originalFind>) {
+        const [type, key] = args;
+        if (type === 'declaration') {
+          declarationFindHits.push(String(key));
+        }
+        return originalFind.apply(this, args);
+      };
 
-      expect(css).toContain('box-shadow: inset 0 0 1px red, 0 0 2px blue;');
-      expect(css).toContain('background: red, blue;');
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        context.root = tree as unknown as RulesClass;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        const css = await renderNodeToString(tree as unknown as RulesClass, context, { context });
+
+        expect(css).toContain('box-shadow: inset 0 0 1px red, 0 0 2px blue;');
+        expect(css).toContain('background: red, blue;');
+        expect(declarationFindHits).toEqual([]);
+      } finally {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).find = originalFind;
+      }
     });
 
-    it('keeps wider excluded-node filters cold instead of caching generic filter shape', async () => {
+    it('keeps wider declaration-exclusion filters cold instead of caching generic filter shape', async () => {
       const first = decl({ name: 'color', value: any('red') });
       const second = decl({ name: 'color', value: any('blue') });
       const third = decl({ name: 'other', value: any('green') });
@@ -5353,7 +6202,7 @@ describe('reference', () => {
       setRulesContext(await node.eval(context));
       const lookupRef = ref({ key: 'color' }, {
         type: 'property',
-        excludedNodes: [first, second, third],
+        excludedDeclarations: [first, second, third],
         fallbackValue: any('fallback')
       });
 
@@ -5380,17 +6229,18 @@ describe('reference', () => {
       expect(lookupRef._rulesLookupHandle?.targetLookupVersion).toBe(handleVersion);
     });
 
-    it('static declaration handles reuse source-static normalized assignment constraints', async () => {
+    it('static declaration handles reuse source-static declaration assignment constraints', async () => {
       const node = rules([
         decl({ name: 'background-color', value: any('red') }),
-        decl({ name: 'background-color', value: any('blue') }, { normalizedFromAssign: '&,:' }),
-        decl({ name: 'background-color', value: any('green') }, { normalizedFromAssign: '+,:' })
+        decl({ name: 'background-color', value: any('blue') }, { normalizedFromAssign: AssignmentType.MergeList }),
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        decl({ name: 'background-color', value: any('green') }, { normalizedFromAssign: '+,:' as AssignmentType })
       ]);
       setRulesContext(await node.eval(context));
-      const requiredNormalizedFromAssign = ['&,:'];
+      const requiredDeclarationAssignments = ['&,:'];
       const lookupRef = ref({ key: 'background-color' }, {
         type: 'declaration',
-        requiredNormalizedFromAssign
+        requiredDeclarationAssignments
       });
 
       expect(lookupRef.eval(context).valueOf()).toBe('blue');
@@ -5399,13 +6249,13 @@ describe('reference', () => {
         kind: 'direct-declaration-occurrence'
       });
 
-      requiredNormalizedFromAssign[0] = '+,:';
+      requiredDeclarationAssignments[0] = '+,:';
 
       expect(lookupRef.eval(context).valueOf()).toBe('green');
       expect(lookupRef._rulesLookupHandle).not.toBe(handle);
     });
 
-    it('reference strategy cache rejects stale lookup types in one node slot', async () => {
+    it('reference handle rejects stale lookup types in one node slot', async () => {
       const node = rules([
         vardecl({ name: 'color', value: any('red') }),
         decl({ name: any('color'), value: any('blue') })
@@ -5414,20 +6264,20 @@ describe('reference', () => {
       const lookupRef = ref({ key: 'color' }, { type: 'property' });
 
       expect(lookupRef.eval(context).valueOf()).toBe('blue');
-      expect(lookupRef._lookupStrategy?.lookupType).toBe('property');
       expect(lookupRef._rulesLookupHandle?.lookupType).toBe('property');
 
       lookupRef.options.type = 'variable';
 
       expect(lookupRef.eval(context).valueOf()).toBe('red');
-      expect(lookupRef._lookupStrategy?.lookupType).toBe('variable');
       expect(lookupRef._rulesLookupHandle?.lookupType).toBe('variable');
     });
 
     it('callable handles reject stale terminal mixin-only mode', async () => {
-      const originalFindMixin = RulesClass.prototype.findMixin;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixin = (RulesClass.prototype as any).findMixin;
       let callableLookups = 0;
-      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixin = function(...args: Parameters<typeof originalFindMixin>) {
         const [key] = args;
         if (key === '.parameterized-handle') {
           callableLookups++;
@@ -5439,12 +6289,12 @@ describe('reference', () => {
         const node = rules([
           ruleset({
             selector: el('.parameterized-handle'),
-            rules: rules([decl({ name: 'color', value: any('ruleset') })])
+            rules: [decl({ name: 'color', value: any('ruleset') })]
           }),
           mixin({
             name: any('.parameterized-handle'),
             params: list([any('color', { role: 'property' })]),
-            rules: rules([decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) })])
+            rules: [decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) })]
           })
         ]);
         setRulesContext(await node.eval(context));
@@ -5462,23 +6312,28 @@ describe('reference', () => {
         expect(callableLookups).toBe(2);
         expect(lookupRef._rulesLookupHandle?.terminalMixinOnly).toBe(true);
       } finally {
-        RulesClass.prototype.findMixin = originalFindMixin;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixin = originalFindMixin;
       }
     });
 
     it('callable handles survive unrelated declaration and function writes', async () => {
-      const originalFindMixin = RulesClass.prototype.findMixin;
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixin = (RulesClass.prototype as any).findMixin;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
       let callableLookups = 0;
       let broadCallableLookups = 0;
-      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixin = function(...args: Parameters<typeof originalFindMixin>) {
         const [key] = args;
         if (key === '.callable-handle') {
           callableLookups++;
         }
         return originalFindMixin.apply(this, args);
       };
-      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if (key === '.callable-handle') {
           broadCallableLookups++;
@@ -5490,39 +6345,40 @@ describe('reference', () => {
         const node = rules([
           mixin({
             name: any('.callable-handle'),
-            rules: rules([decl({ name: 'color', value: any('blue') })])
+            rules: [decl({ name: 'color', value: any('blue') })]
           })
         ]);
         setRulesContext(await node.eval(context));
-        const ignoredExcludedNodes = [
+        const ignoredExcludedDeclarations = [
           decl({ name: 'color', value: any('red') }),
           decl({ name: 'color', value: any('green') }),
           decl({ name: 'color', value: any('black') })
         ];
         const lookupRef = ref({ key: '.callable-handle' }, {
           type: 'mixin',
-          excludedNodes: ignoredExcludedNodes,
-          requiredNormalizedFromAssign: ['one', 'two', 'three', 'four', 'five']
+          excludedDeclarations: ignoredExcludedDeclarations,
+          requiredDeclarationAssignments: ['one', 'two', 'three', 'four', 'five']
         });
 
         const first = lookupRef.eval(context);
         expect(first).toBeDefined();
         expect(callableLookups).toBe(1);
-        expect(broadCallableLookups).toBe(1);
+        expect(broadCallableLookups).toBe(0);
         const callableCache = node.callableLookupCache;
         const callableBuckets = node._scopeFrame?.callableBucketsByName;
         const firstHandle = lookupRef._rulesLookupHandle;
         expect(callableCache).toBeDefined();
         expect(firstHandle?.lookupType).toBe('mixin');
-        expect(firstHandle && 'requiredNormalizedFromAssignKey' in firstHandle).toBe(false);
-        expect(firstHandle && 'excludedNodesLength' in firstHandle).toBe(false);
+        expect(firstHandle && 'requiredDeclarationAssignmentsKey' in firstHandle).toBe(false);
+        expect(firstHandle && 'excludedDeclaration0' in firstHandle).toBe(false);
+        expect(firstHandle && 'excludedDeclaration1' in firstHandle).toBe(false);
 
-        ignoredExcludedNodes[0] = decl({ name: 'color', value: any('mutated') });
+        ignoredExcludedDeclarations[0] = decl({ name: 'color', value: any('mutated') });
         node.push(decl({ name: 'unrelated', value: any('1') }));
         const second = lookupRef.eval(context);
         expect(second).toBeDefined();
         expect(callableLookups).toBe(1);
-        expect(broadCallableLookups).toBe(1);
+        expect(broadCallableLookups).toBe(0);
         expect(lookupRef._rulesLookupHandle).toBe(firstHandle);
         expect(node.callableLookupCache).toBe(callableCache);
         expect(node._scopeFrame?.callableBucketsByName).toBe(callableBuckets);
@@ -5534,26 +6390,32 @@ describe('reference', () => {
         const third = lookupRef.eval(context);
         expect(third).toBeDefined();
         expect(callableLookups).toBe(1);
-        expect(broadCallableLookups).toBe(1);
+        expect(broadCallableLookups).toBe(0);
       } finally {
-        RulesClass.prototype.findMixin = originalFindMixin;
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixin = originalFindMixin;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
       }
     });
 
-    it('mixin-ruleset handles skip public and broad callable lookup after cache write', async () => {
-      const originalFindMixin = RulesClass.prototype.findMixin;
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+    it('mixin-ruleset handles use frame lookup and skip broad callable lookup after cache write', async () => {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixin = (RulesClass.prototype as any).findMixin;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
       let callableLookups = 0;
       let broadCallableLookups = 0;
-      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixin = function(...args: Parameters<typeof originalFindMixin>) {
         const [key] = args;
         if (key === '.ruleset-handle') {
           callableLookups++;
         }
         return originalFindMixin.apply(this, args);
       };
-      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if (key === '.ruleset-handle') {
           broadCallableLookups++;
@@ -5565,7 +6427,7 @@ describe('reference', () => {
         const node = rules([
           ruleset({
             selector: el('.ruleset-handle'),
-            rules: rules([decl({ name: 'color', value: any('blue') })])
+            rules: [decl({ name: 'color', value: any('blue') })]
           })
         ]);
         setRulesContext(await node.eval(context));
@@ -5573,7 +6435,7 @@ describe('reference', () => {
 
         expectNodeType(lookupRef.eval(context), 'MixinCollection');
         expect(callableLookups).toBe(1);
-        expect(broadCallableLookups).toBe(1);
+        expect(broadCallableLookups).toBe(0);
         const firstHandle = lookupRef._rulesLookupHandle;
         expect(firstHandle?.lookupType).toBe('mixin-ruleset');
 
@@ -5581,17 +6443,21 @@ describe('reference', () => {
         expectNodeType(lookupRef.eval(context), 'MixinCollection');
         expect(lookupRef._rulesLookupHandle).toBe(firstHandle);
         expect(callableLookups).toBe(1);
-        expect(broadCallableLookups).toBe(1);
+        expect(broadCallableLookups).toBe(0);
       } finally {
-        RulesClass.prototype.findMixin = originalFindMixin;
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixin = originalFindMixin;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
       }
     });
 
     it('callable handles invalidate when callable surfaces change', async () => {
-      const originalFindMixin = RulesClass.prototype.findMixin;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixin = (RulesClass.prototype as any).findMixin;
       let callableLookups = 0;
-      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixin = function(...args: Parameters<typeof originalFindMixin>) {
         const [key] = args;
         if (key === '.callable-handle') {
           callableLookups++;
@@ -5603,7 +6469,7 @@ describe('reference', () => {
         const node = rules([
           mixin({
             name: any('.callable-handle'),
-            rules: rules([decl({ name: 'color', value: any('blue') })])
+            rules: [decl({ name: 'color', value: any('blue') })]
           })
         ]);
         setRulesContext(await node.eval(context));
@@ -5615,13 +6481,14 @@ describe('reference', () => {
 
         node.push(mixin({
           name: any('.other-callable'),
-          rules: rules([decl({ name: 'color', value: any('red') })])
+          rules: [decl({ name: 'color', value: any('red') })]
         }));
         const second = lookupRef.eval(context);
         expect(second).toBeDefined();
         expect(callableLookups).toBe(2);
       } finally {
-        RulesClass.prototype.findMixin = originalFindMixin;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixin = originalFindMixin;
       }
     });
 
@@ -5629,24 +6496,24 @@ describe('reference', () => {
       const node = rules([
         ruleset({
           selector: sel([el('#foo-foo')]),
-          rules: rules([
+          rules: [
             ruleset({
               selector: sel([co('>'), compound([el('.bar'), el('.baz')])]),
-              rules: rules([
+              rules: [
                 decl({ name: 'c', value: any('c') })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.out'),
-          rules: rules([
+          rules: [
             call({
               name: ref({
                 key: sel([el('#foo-foo'), co('>'), compound([el('.bar'), el('.baz')])])
               }, { type: 'mixin-ruleset' })
             })
-          ])
+          ]
         })
       ]);
 
@@ -5663,28 +6530,54 @@ describe('reference', () => {
       `);
     });
 
+    it('direct complex selector callable lookup consumes compound selector remainder entries', async () => {
+      const nestedRuleset = ruleset({
+        selector: sel([co('>'), compound([el('.bar'), el('.baz')])]),
+        rules: [
+          decl({ name: 'c', value: any('c') })
+        ]
+      });
+      const node = rules([
+        ruleset({
+          selector: sel([el('#foo-foo')]),
+          rules: [nestedRuleset]
+        })
+      ]);
+
+      const evald = await node.eval(context);
+      const found = evald.findMixin(['#foo-foo', '.bar', '.baz'], undefined, {
+        searchParents: false
+      });
+
+      expect(found).toHaveLength(1);
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      expect((found?.[0] as Ruleset | undefined)?.type).toBe('Ruleset');
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      expect((found?.[0] as Ruleset | undefined)?.selector?.valueOf()).toBe('>.bar.baz');
+    });
+
     it('fast-paths complex selector callable ruleset paths under a ruleset namespace prefix', async () => {
       const node = rules([
         ruleset({
           selector: sel([el('#foo-foo')]),
-          rules: rules([
+          rules: [
             ruleset({
               selector: sel([co('>'), compound([el('.bar'), el('.baz')])]),
-              rules: rules([
+              rules: [
                 decl({ name: 'c', value: any('c') })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.out'),
-          rules: rules([
+          rules: [
             call({
               name: ref({
                 key: sel([el('#foo-foo'), co('>'), compound([el('.bar'), el('.baz')])])
               }, { type: 'mixin-ruleset' })
             })
-          ])
+          ]
         })
       ]);
 
@@ -5725,39 +6618,39 @@ describe('reference', () => {
       const node = rules([
         mixin({
           name: any('#theme'),
-          rules: rules([
+          rules: [
             mixin({
               name: any('.dark'),
-              rules: rules([
+              rules: [
                 mixin({
                   name: any('.navbar'),
-                  rules: rules([
+                  rules: [
                     mixin({
                       name: any('.colors'),
-                      rules: rules([
+                      rules: [
                         decl({ name: 'primary', value: any('cyan') })
-                      ])
+                      ]
                     })
-                  ])
+                  ]
                 })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         ruleset({
           selector: compound([el('#theme'), el('.dark'), el('.navbar')]),
-          rules: rules([
+          rules: [
             mixin({
               name: any('.colors'),
-              rules: rules([
+              rules: [
                 decl({ name: 'primary', value: any('red') })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.output'),
-          rules: rules([
+          rules: [
             vardecl({
               name: 'colors',
               value: call({
@@ -5780,7 +6673,7 @@ describe('reference', () => {
                 key: 'primary'
               }, { type: 'declaration' })
             })
-          ])
+          ]
         })
       ]);
       const evald = await node.eval(context);
@@ -5795,28 +6688,28 @@ describe('reference', () => {
       const node = rules([
         mixin({
           name: any('#theme'),
-          rules: rules([
+          rules: [
             mixin({
               name: any('.dark'),
-              rules: rules([
+              rules: [
                 mixin({
                   name: any('.navbar'),
-                  rules: rules([
+                  rules: [
                     mixin({
                       name: any('.colors'),
-                      rules: rules([
+                      rules: [
                         decl({ name: 'primary', value: any('cyan') })
-                      ])
+                      ]
                     })
-                  ])
+                  ]
                 })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.output'),
-          rules: rules([
+          rules: [
             vardecl({
               name: 'colors',
               value: call({
@@ -5832,7 +6725,7 @@ describe('reference', () => {
                 key: 'primary'
               }, { type: 'declaration' })
             })
-          ])
+          ]
         })
       ]);
 
@@ -5848,39 +6741,39 @@ describe('reference', () => {
       const node = rules([
         mixin({
           name: any('#theme'),
-          rules: rules([
+          rules: [
             mixin({
               name: any('.dark'),
-              rules: rules([
+              rules: [
                 mixin({
                   name: any('.navbar'),
-                  rules: rules([
+                  rules: [
                     mixin({
                       name: any('.colors'),
-                      rules: rules([
+                      rules: [
                         decl({ name: 'primary', value: any('cyan') })
-                      ])
+                      ]
                     })
-                  ])
+                  ]
                 })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         ruleset({
           selector: compound([el('#theme'), el('.warning')]),
-          rules: rules([
+          rules: [
             mixin({
               name: any('.palette'),
-              rules: rules([
+              rules: [
                 decl({ name: 'primary', value: any('orange') })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.output'),
-          rules: rules([
+          rules: [
             vardecl({
               name: 'colors',
               value: call({
@@ -5896,7 +6789,7 @@ describe('reference', () => {
                 key: 'primary'
               }, { type: 'declaration' })
             })
-          ])
+          ]
         })
       ]);
 
@@ -5912,28 +6805,28 @@ describe('reference', () => {
       const node = rules([
         mixin({
           name: any('#theme'),
-          rules: rules([
+          rules: [
             mixin({
               name: any('.dark'),
-              rules: rules([
+              rules: [
                 mixin({
                   name: any('.navbar'),
-                  rules: rules([
+                  rules: [
                     ruleset({
                       selector: el('.colors'),
-                      rules: rules([
+                      rules: [
                         decl({ name: 'primary', value: any('cyan') })
-                      ])
+                      ]
                     })
-                  ])
+                  ]
                 })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.output'),
-          rules: rules([
+          rules: [
             vardecl({
               name: 'colors',
               value: call({
@@ -5949,7 +6842,7 @@ describe('reference', () => {
                 key: 'primary'
               }, { type: 'declaration' })
             })
-          ])
+          ]
         })
       ]);
 
@@ -5965,40 +6858,40 @@ describe('reference', () => {
       const node = rules([
         mixin({
           name: any('#theme'),
-          rules: rules([
+          rules: [
             mixin({
               name: any('.dark'),
               params: list([any('mode', { role: 'property' })]),
-              rules: rules([
+              rules: [
                 mixin({
                   name: any('.navbar'),
-                  rules: rules([
+                  rules: [
                     mixin({
                       name: any('.colors'),
-                      rules: rules([
+                      rules: [
                         decl({ name: 'primary', value: any('cyan') })
-                      ])
+                      ]
                     })
-                  ])
+                  ]
                 })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         ruleset({
           selector: compound([el('#theme'), el('.dark'), el('.navbar')]),
-          rules: rules([
+          rules: [
             mixin({
               name: any('.colors'),
-              rules: rules([
+              rules: [
                 decl({ name: 'primary', value: any('red') })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.output'),
-          rules: rules([
+          rules: [
             vardecl({
               name: 'colors',
               value: call({
@@ -6014,7 +6907,7 @@ describe('reference', () => {
                 key: 'primary'
               }, { type: 'declaration' })
             })
-          ])
+          ]
         })
       ]);
 
@@ -6030,25 +6923,25 @@ describe('reference', () => {
       const node = rules([
         mixin({
           name: any('#theme'),
-          rules: rules([
+          rules: [
             mixin({
               name: any('.dark'),
               params: list([any('mode', { role: 'property' })]),
-              rules: rules([
+              rules: [
                 mixin({
                   name: any('.navbar'),
-                  rules: rules([
+                  rules: [
                     mixin({
                       name: any('.colors'),
-                      rules: rules([
+                      rules: [
                         decl({ name: 'primary', value: any('cyan') })
-                      ])
+                      ]
                     })
-                  ])
+                  ]
                 })
-              ])
+              ]
             })
-          ])
+          ]
         })
       ]);
 
@@ -6066,24 +6959,24 @@ describe('reference', () => {
       const node = rules([
         mixin({
           name: any('#theme'),
-          rules: rules([
+          rules: [
             mixin({
               name: any('.dark'),
-              rules: rules([
+              rules: [
                 mixin({
                   name: any('.navbar'),
-                  rules: rules([
+                  rules: [
                     mixin({
                       name: any('.colors'),
-                      rules: rules([
+                      rules: [
                         decl({ name: 'primary', value: any('cyan') })
-                      ])
+                      ]
                     })
-                  ])
+                  ]
                 })
-              ])
+              ]
             })
-          ])
+          ]
         })
       ]);
 

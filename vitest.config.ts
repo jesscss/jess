@@ -1,9 +1,13 @@
 import { defineConfig } from 'vitest/config';
 import { resolve } from 'path';
 import circleDependency from 'vite-plugin-circular-dependency';
+import parseman from 'parseman/plugin';
 
 export default defineConfig({
   plugins: [
+    // Compiles grammars that import parseman `with { type: 'macro' }` at build
+    // time. No-op for files without the macro attribute, so it's safe globally.
+    parseman.vite(),
     circleDependency()
   ],
   resolve: {

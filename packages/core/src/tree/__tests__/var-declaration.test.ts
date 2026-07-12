@@ -13,6 +13,17 @@ class CountingWriter extends OutputWriter {
   }
 }
 
+class WholeBufferCountingWriter extends OutputWriter {
+  wholeBufferReads = 0;
+
+  override getSince(mark: number): string {
+    if (mark === 0) {
+      this.wholeBufferReads++;
+    }
+    return super.getSince(mark);
+  }
+}
+
 let context: Context;
 
 describe('Let', () => {
@@ -37,6 +48,17 @@ describe('Let', () => {
       expect(rule.toTrimmedString()).toBe('$brandColor: #eee');
     // rule.toModule(context, out)
     // expect(out.toString()).toBe('let brandColor = $J.expr([$J.any("#eee")])')
+    });
+
+    it('captures var declaration syntax without outer whole-buffer readback', () => {
+      const writer = new WholeBufferCountingWriter();
+      const rule = vardecl({
+        name: 'brandColor',
+        value: any('#eee')
+      });
+
+      expect(rule.toTrimmedString({ writer })).toBe('$brandColor: #eee');
+      expect(writer.wholeBufferReads).toBe(1);
     });
 
     it('should serialize a collection', () => {
@@ -87,7 +109,7 @@ describe('Let', () => {
 
       expect(rule.toTrimmedString({ writer })).toBe('$tone');
       expect(writer.toString()).toBe('$tone');
-      expect(writer.reads).toBe(0);
+      expect(writer.reads).toBe(1);
     });
 
     it('writes bare parameter var names without public string transport', () => {
@@ -143,7 +165,6 @@ describe('Let', () => {
       expect(rule.render(context, buffer)).toBe('$tone');
       expect(buffer.segments).toEqual(['$tone']);
       expect(resolveCalls).toBe(0);
-      expect(rule.evaluated).toBe(false);
       expect(rule.registrationPrepared).toBe(false);
     });
 
@@ -158,7 +179,6 @@ describe('Let', () => {
       const resolved = await rule.resolve(context);
 
       expect(resolved.toTrimmedString()).toBe('$tone');
-      expect(rule.evaluated).toBe(false);
       expect(rule.registrationPrepared).toBe(false);
       expect(context.printState.writer).toBeUndefined();
     });

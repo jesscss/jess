@@ -11,11 +11,14 @@ export interface Comment extends Node<string, CommentOptions> {
   eval(context: Context): Comment;
 }
 
+// AUDIT: Probably don't need this unless a parent is visited.
 /**
  * A comment node
  */
 export class Comment extends Node<string, CommentOptions> {
   static override childKeys = null;
+
+  declare readonly value: string;
 
   override allowRoot = true;
   override allowRuleRoot = true;

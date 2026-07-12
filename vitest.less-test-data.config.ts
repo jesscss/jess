@@ -7,7 +7,7 @@ const repoRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname));
 const packagesRoot = path.join(repoRoot, 'packages');
 const sharedNodeModules = fs.realpathSync(path.join(repoRoot, 'node_modules'));
 const sharedRepoRoot = path.dirname(sharedNodeModules);
-const builtins = new Set([...builtinModules, ...builtinModules.map((name) => `node:${name}`)]);
+const builtins = new Set([...builtinModules, ...builtinModules.map(name => `node:${name}`)]);
 const excludedExternalAliases = [
   'vitest',
   'vite',
@@ -21,20 +21,21 @@ const excludedExternalAliases = [
 ];
 
 function readJson(filePath: string): Record<string, any> {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
   return JSON.parse(fs.readFileSync(filePath, 'utf8')) as Record<string, any>;
 }
 
 function createWorkspaceSourceAliases() {
   const aliases: Array<{ find: string; replacement: string }> = [];
   const packageDirs = fs.readdirSync(packagesRoot, { withFileTypes: true })
-    .filter((dirent) => dirent.isDirectory())
-    .map((dirent) => ({
+    .filter(dirent => dirent.isDirectory())
+    .map(dirent => ({
       dirName: dirent.name,
       packageDir: path.join(packagesRoot, dirent.name),
       packageJsonPath: path.join(packagesRoot, dirent.name, 'package.json')
     }))
-    .filter((entry) => fs.existsSync(entry.packageJsonPath));
-  const packageMetas = packageDirs.map((entry) => ({
+    .filter(entry => fs.existsSync(entry.packageJsonPath));
+  const packageMetas = packageDirs.map(entry => ({
     ...entry,
     pkg: readJson(entry.packageJsonPath)
   }));
@@ -53,11 +54,13 @@ function createWorkspaceSourceAliases() {
     const exportsField = pkg.exports;
     if (exportsField && typeof exportsField === 'object') {
       for (const [subpath, target] of Object.entries(exportsField)) {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         if (!target || typeof target !== 'object' || typeof (target as Record<string, unknown>).source !== 'string') {
           continue;
         }
 
-        const aliasPath = path.resolve(packageDir, (target as Record<string, string>).source);
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        const aliasPath = path.resolve(packageDir, (target as Record<string, string | undefined>).source!);
         const aliasName = subpath === '.' ? packageName : `${packageName}/${subpath.slice(2)}`;
         aliases.push({
           find: aliasName,
@@ -82,7 +85,7 @@ function createWorkspaceSourceAliases() {
       if (
         workspaceNames.has(dependencyName)
         || builtins.has(dependencyName)
-        || excludedExternalAliases.some((prefix) => dependencyName === prefix || dependencyName.startsWith(prefix))
+        || excludedExternalAliases.some(prefix => dependencyName === prefix || dependencyName.startsWith(prefix))
       ) {
         continue;
       }

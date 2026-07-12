@@ -1,16 +1,15 @@
 import {
   type Plugin,
-  type PluginInterface,
   AbstractPlugin,
   TreeContext,
   JessError,
-  logger,
   JsFunction,
   Rules,
   getErrorFromParser,
   toDiagnostic,
   extractRelevantLines,
   type ISafeParseResult,
+  type SafeParseOptions,
   type ErrorDiagnostic,
   type WarningDiagnostic
 } from '@jesscss/core';
@@ -20,6 +19,8 @@ import { Parser } from '@jesscss/less-parser';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { expandLessImportCandidates } from '@jesscss/style-resolver';
+
+export type LessPluginOptions = LessOptions;
 
 export class LessPlugin extends AbstractPlugin {
   name = 'less';
@@ -32,7 +33,7 @@ export class LessPlugin extends AbstractPlugin {
   bubbleRootAtRules: boolean;
   collapseNesting: boolean;
 
-  constructor(public opts: LessOptions = {}) {
+  constructor(public opts: LessPluginOptions = {}) {
     super();
 
     // Handle deprecated math option -> mathMode conversion
@@ -74,6 +75,25 @@ export class LessPlugin extends AbstractPlugin {
     this.parser = new Parser({
       mathMode: this.mathMode,
       leakyRules: this.leakyRules
+    });
+  }
+
+  private createTreeContext(filePath: string, source: string): TreeContext {
+    return new TreeContext({
+      file: {
+        name: path.basename(filePath),
+        path: path.dirname(filePath),
+        fullPath: filePath,
+        source: source
+      },
+      mathMode: this.mathMode,
+      unitMode: this.unitMode,
+      equalityMode: this.equalityMode,
+      plugin: this,
+      allowExtendSelectors: (this.opts as LessOptions & { allowExtendSelectors?: string[] }).allowExtendSelectors,
+      collapseNesting: this.collapseNesting,
+      leakyRules: this.leakyRules,
+      bubbleRootAtRules: this.bubbleRootAtRules
     });
   }
 
@@ -158,24 +178,8 @@ export class LessPlugin extends AbstractPlugin {
     return out;
   }
 
-  safeParse(filePath: string, source: string, parseOptions?: { compilerOptions?: Record<string, any> }): ISafeParseResult {
-    void parseOptions;
-    const context = new TreeContext({
-      file: {
-        name: path.basename(filePath),
-        path: path.dirname(filePath),
-        fullPath: filePath,
-        source: source
-      },
-      mathMode: this.mathMode,
-      unitMode: this.unitMode,
-      equalityMode: this.equalityMode,
-      plugin: this,
-      allowExtendSelectors: (this.opts as LessOptions & { allowExtendSelectors?: string[] }).allowExtendSelectors,
-      collapseNesting: this.collapseNesting,
-      leakyRules: this.leakyRules,
-      bubbleRootAtRules: this.bubbleRootAtRules
-    });
+  safeParse(filePath: string, source: string, _parseOptions?: SafeParseOptions): ISafeParseResult {
+    const context = this.createTreeContext(filePath, source);
 
     const errors: ErrorDiagnostic[] = [];
     const warnings: WarningDiagnostic[] = [];
@@ -283,7 +287,7 @@ export class LessPlugin extends AbstractPlugin {
 
 export type { LessOptions } from 'styles-config';
 
-const lessPlugin = ((opts?: LessOptions) => {
+const lessPlugin = ((opts?: LessPluginOptions) => {
   return new LessPlugin(opts);
 }) satisfies Plugin;
 

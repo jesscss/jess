@@ -11,8 +11,11 @@ export interface Combinator extends Selector<Combinators> {
   eval(context: Context): Combinator;
 }
 
+// AUDIT: Do we still need this at all?
 export class Combinator extends Selector<Combinators> {
   static override childKeys = null;
+
+  declare readonly value: Combinators;
 
   constructor(
     value: Combinators,

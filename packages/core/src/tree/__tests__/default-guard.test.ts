@@ -20,12 +20,10 @@ describe('DefaultGuard', () => {
 
     context.isDefault = true;
     expect(truthy.render(context)).toBe('true');
-    expect(truthy.evaluated).toBe(false);
     expect(truthy.registrationPrepared).toBe(false);
 
     context.isDefault = false;
     expect(falsy.render(context)).toBe('false');
-    expect(falsy.evaluated).toBe(false);
     expect(falsy.registrationPrepared).toBe(false);
   });
 
@@ -72,7 +70,6 @@ describe('DefaultGuard', () => {
     const resolved = await node.resolve(context);
 
     expect(resolved.toTrimmedString()).toBe('true');
-    expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
@@ -87,7 +84,6 @@ describe('DefaultGuard', () => {
     expect(first).toBeInstanceOf(Bool);
     expect(first.value).toBe(true);
     expect(second.value).toBe(true);
-    expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
   });
 

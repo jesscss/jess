@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-type-assertion */
 import { describe, it, expect } from 'vitest';
 import { defineFunction, Color, ColorFormat, Dimension, Context, callWithContext, Sequence, List, Any, Call, Operation } from '@jesscss/core';
 import {
@@ -339,7 +340,7 @@ describe('Color Functions', () => {
           { name: 'l', type: Dimension, convert: [percentOf(100), toNumber()] },
           { name: 'a', type: Dimension, convert: [alphaToNumber(), toNumber()] }
         ],
-        preprocessParams: splitSequence()
+        preprocessParams: [splitSequence()]
       }
     );
 
@@ -448,7 +449,7 @@ describe('Color Functions', () => {
           { name: 'g', type: Dimension, convert: [percentOf(255), toNumber()] },
           { name: 'b', type: Dimension, convert: [percentOf(255), toNumber()] }
         ],
-        preprocessParams: splitSequence()
+        preprocessParams: [splitSequence()]
       }
     );
 
@@ -596,25 +597,25 @@ describe('Color Functions', () => {
           this: Call,
           ...args: Parameters<typeof originalCallClone>
         ): ReturnType<typeof originalCallClone> {
-          return countClone(this, originalCallClone, ...args);
+          return (countClone as any).call(this, originalCallClone, ...args);
         };
         Operation.prototype.clone = function cloneOperationForCounting(
           this: Operation,
           ...args: Parameters<typeof originalOperationClone>
         ): ReturnType<typeof originalOperationClone> {
-          return countClone(this, originalOperationClone, ...args);
+          return (countClone as any).call(this, originalOperationClone, ...args);
         };
         List.prototype.clone = function cloneListForCounting(
           this: List,
           ...args: Parameters<typeof originalListClone>
         ): ReturnType<typeof originalListClone> {
-          return countClone(this, originalListClone, ...args);
+          return (countClone as any).call(this, originalListClone, ...args);
         };
         Sequence.prototype.clone = function cloneSequenceForCounting(
           this: Sequence,
           ...args: Parameters<typeof originalSequenceClone>
         ): ReturnType<typeof originalSequenceClone> {
-          return countClone(this, originalSequenceClone, ...args);
+          return (countClone as any).call(this, originalSequenceClone, ...args);
         };
 
         const context = new Context();

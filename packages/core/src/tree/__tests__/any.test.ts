@@ -1,7 +1,7 @@
 import { any, keyword, seq } from '../index.js';
 import { Context, TreeContext } from '../../context.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
-import { OutputWriter } from '../util/print.js';
+import { OutputWriter, getPrintOptions } from '../util/print.js';
 
 class CountingWriter extends OutputWriter {
   marks = 0;
@@ -41,7 +41,7 @@ describe('Any and Keyword', () => {
       return 'not-foo';
     };
 
-    node.writeSyntax({ writer });
+    node.writeSyntax(getPrintOptions({ writer }));
 
     expect(writer.toString()).toBe('foo');
     expect(writer.marks).toBe(0);
@@ -55,12 +55,10 @@ describe('Any and Keyword', () => {
     const node = any('foo');
 
     expect(node.render(renderContext)).toBe('foo');
-    expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
 
     const resolved = await node.resolve(resolveContext);
     expect(resolved.toTrimmedString()).toBe('foo');
-    expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
     expect(resolveContext.printState.writer).toBeUndefined();
   });
@@ -119,12 +117,10 @@ describe('Any and Keyword', () => {
     const node = keyword('inherit');
 
     expect(node.render(renderContext)).toBe('inherit');
-    expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
 
     const resolved = await node.resolve(resolveContext);
     expect(resolved.toTrimmedString()).toBe('inherit');
-    expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
     expect(resolveContext.printState.writer).toBeUndefined();
   });

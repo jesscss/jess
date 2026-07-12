@@ -50,12 +50,12 @@ export type ExtendValue = {
   flag?: ExtendFlag;
 };
 /**
- * Extends selectors - parsed by Less as an independent statement
+ * Extends value - parsed by Less as an independent statement
  * at the beginning of rules.
  *
  * @todo - figure out eval -- use Rules lookups
  * @note - there is some pseudo-code somewhere that smartly
- * registers selectors by a string code.
+ * registers value by a string code.
  */
 export interface Extend extends Node<ExtendValue> {
   eval(context: Context): MaybePromise<Selector>;
@@ -116,8 +116,8 @@ export class Extend extends Node<ExtendValue> {
     w.add(';');
   }
 
-  override toTrimmedString(options?: PrintOptions): string {
-    options = getPrintOptions(options);
+  override toTrimmedString(rawOptions?: PrintOptions): string {
+    const options = getPrintOptions(rawOptions);
     const mark = options.writer.mark();
     this.writeSyntax(options);
     const w = options.writer;
@@ -148,7 +148,7 @@ export class Extend extends Node<ExtendValue> {
       selector.addFlag(F_VISIBLE);
     }
     // If selector is already set (e.g., .ext7 from a bubbled extend), use it directly
-    // Don't convert non-ampersand selectors to ampersand - they should be used as-is
+    // Don't convert non-ampersand value to ampersand - they should be used as-is
     // Get current extend root from registry stack
     const extendRoot = context.extendRoots.getCurrentExtendRoot();
     if (!extendRoot) {
@@ -229,14 +229,14 @@ function registerExtendRecord(args: RegisterExtendRecordArgs): void {
   // selector (e.g. .issue-2586-somepage .content not just .content).
   if (currentFrame) {
     const rs = currentFrame;
-    const fullSel = rs.value?.selector;
+    const fullSel = rs.selector;
     let usedParentListComposition = false;
     if (!authoredSelector) {
       const ownSel = getRulesetOwnSelector(rs);
       const parentFrame = context.rulesetFrames.at(-2);
       const parentSel = (
         parentFrame && isNode(parentFrame, N.Ruleset)
-          ? parentFrame.value?.selector
+          ? parentFrame.selector
           : undefined
       );
       if (
@@ -258,13 +258,13 @@ function registerExtendRecord(args: RegisterExtendRecordArgs): void {
       }
     }
     if (!authoredSelector && !usedParentListComposition) {
-      if (fullSel && !(fullSel instanceof Nil)) {
+      if (fullSel && !(fullSel instanceof Nil) && typeof fullSel !== 'string') {
         resolvedSel = fullSel;
       } else {
         // Extend ran during selector eval (e.g. .content:extend(...)); current frame is the parent.
         // Build full selector as parent + ' ' + resolvedSel (e.g. .issue-2586-somepage .content).
-        const parentSel = currentFrame.value?.selector;
-        if (parentSel && !(parentSel instanceof Nil) && resolvedSel.valueOf() !== parentSel.valueOf()) {
+        const parentSel = currentFrame.selector;
+        if (parentSel && !(parentSel instanceof Nil) && typeof parentSel !== 'string' && resolvedSel.valueOf() !== parentSel.valueOf()) {
           resolvedSel = attachSelectorBitLibrary(ComplexSelector.create([
             copySelectorForExtendRecord(parentSel, selectorBits),
             Combinator.create(' '),
@@ -299,6 +299,10 @@ function copySelectorForExtendRecord(
   return copySelectorForPlacement(selector, library ?? selector.keySetLibrary);
 }
 
+function selectorListItemForExtendRecord(item: SelectorList['value'][number]): Selector {
+  return typeof item === 'string' ? new ComplexSelector([item]) : item;
+}
+
 function materializeImplicitAmpersands(
   selector: Selector,
   includeNonListImplicit: boolean
@@ -327,7 +331,7 @@ function materializeImplicitAmpersands(
     if (isNode(node, N.ComplexSelector)) {
       const complex = node;
       const parts: ComplexSelectorComponent[] = [];
-      for (const part of complex.components) {
+      for (const part of complex.value) {
         if (isNode(part, N.Ampersand)) {
           const amp = part;
           if (amp.hasFlag(F_IMPLICIT_AMPERSAND)) {
@@ -339,13 +343,17 @@ function materializeImplicitAmpersands(
             ) {
               const repl = materialize(copySelector(resolved));
               if (isNode(repl, N.ComplexSelector)) {
-                parts.push(...repl.selectors.map(item => copySelector(item) as ComplexSelectorComponent));
+                parts.push(...repl.value.map(item => (typeof item === 'string' ? item : copySelector(item)) as ComplexSelectorComponent));
               } else {
                 parts.push(copySelector(repl) as ComplexSelectorComponent);
               }
               continue;
             }
           }
+        }
+        if (typeof part === 'string') {
+          parts.push(part);
+          continue;
         }
         const repl = materialize(part);
         parts.push(copySelector(repl) as ComplexSelectorComponent);
@@ -354,8 +362,12 @@ function materializeImplicitAmpersands(
     }
 
     if (isNode(node, N.SelectorList)) {
+      const materializedItems = new Array<Selector>(node.value.length);
+      for (let i = 0; i < node.value.length; i++) {
+        materializedItems[i] = materialize(selectorListItemForExtendRecord(node.value[i]!));
+      }
       return attachSelectorBitLibrary(
-        SelectorList.create(node.selectors.map(item => materialize(item as Selector))).inherit(node),
+        SelectorList.create(materializedItems).inherit(node),
         library
       );
     }
@@ -383,14 +395,15 @@ function hasMaterializableImplicitAmpersand(
     }
 
     if (isNode(node, N.ComplexSelector)) {
-      return node.components.some(part => (
-        !isNode(part, N.Combinator)
+      return node.value.some(part => (
+        typeof part !== 'string'
+        && !isNode(part, N.Combinator)
         && visit(part)
       ));
     }
 
     if (isNode(node, N.SelectorList)) {
-      return node.selectors.some(item => visit(item as Selector));
+      return node.value.some(item => visit(selectorListItemForExtendRecord(item)));
     }
 
     return false;

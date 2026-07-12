@@ -1,6 +1,6 @@
 import { basename, dirname, extname, join, relative } from 'node:path';
 import { TreeContext, type Context } from '../context.js';
-import { Node, F_MAY_ASYNC, F_NON_STATIC, F_VISIBLE, defineType, type NodeLocation } from './node.js';
+import { Node, F_MAY_ASYNC, F_NON_STATIC, F_VISIBLE, defineType, type NodeLocation, type LocationInfo } from './node.js';
 import { type Reference } from './reference.js';
 import { Rules, type RulesOptions, type RulesVisibility } from './rules.js';
 import { type Quoted } from './quoted.js';
@@ -11,11 +11,11 @@ import { N } from './node-type.js';
 import type { Ruleset } from './ruleset.js';
 import type { Collection } from './collection.js';
 import { AtRule } from './at-rule.js';
+import { AtRuleStatement } from './at-rule-statement.js';
 import { Any } from './any.js';
 import { Sequence } from './sequence.js';
 import { registerRulesetWithRoot } from './util/extend-roots.js';
 import { buildScopeFrame, copyScopeFrameLiveBindingSlots, type BindingCell } from './scope-frame.js';
-import { canReuseLeaf, reuseLeaf } from './util/cloning.js';
 import { Comment } from './comment.js';
 import {
   isRenderBuffer,
@@ -103,8 +103,20 @@ function visitDescendantRulesets(value: unknown, cb: (ruleset: Ruleset) => void)
   if (isNode(value, N.Ruleset)) {
     cb(value as Ruleset);
   }
+  if (isNode(value, N.Rules)) {
+    visitDescendantRulesets((value as Rules).rules, cb);
+    return;
+  }
   if (value instanceof Node) {
-    visitDescendantRulesets(value.value, cb);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const childKeys = (value.constructor as typeof Node).childKeys;
+    if (childKeys) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const fields = value as unknown as Record<string, unknown>;
+      for (let i = 0; i < childKeys.length; i++) {
+        visitDescendantRulesets(fields[childKeys[i]!], cb);
+      }
+    }
     return;
   }
   if (Array.isArray(value)) {
@@ -118,69 +130,6 @@ function visitDescendantRulesets(value: unknown, cb: (ruleset: Ruleset) => void)
       visitDescendantRulesets(value[key], cb);
     }
   }
-}
-
-function copyImportPlacementValue(value: unknown): unknown {
-  if (value instanceof Node) {
-    return copyImportPlacementNode(value);
-  }
-  if (Array.isArray(value)) {
-    const out = new Array<unknown>(value.length);
-    for (let i = 0; i < value.length; i++) {
-      out[i] = copyImportPlacementValue(value[i]);
-    }
-    return out;
-  }
-  if (isObject(value)) {
-    const out: Record<string, unknown> = {};
-    for (const key in value) {
-      out[key] = copyImportPlacementValue(value[key]);
-    }
-    return out;
-  }
-  return value;
-}
-
-function constructImportPlacementNode(node: Node, value: unknown): Node {
-  const copy = Reflect.construct(
-    node.constructor,
-    [
-      value,
-      node.options ? { ...node.options } : undefined,
-      node.location.length === 0 ? undefined : node.location
-    ]
-  );
-  if (!(copy instanceof Node)) {
-    throw new TypeError('Expected import placement copy to remain a node');
-  }
-  return copy.inherit(node);
-}
-
-function copyImportPlacementAmpersand(node: Node): Node | undefined {
-  if (!isNode(node, N.Ampersand)) {
-    return undefined;
-  }
-  const derived = node.derive();
-  return derived instanceof Node ? derived : undefined;
-}
-
-function copyImportPlacementNode(node: Node): Node {
-  if (isNode(node, N.Comment)) {
-    return new Comment(
-      node.value,
-      node.options ? { ...node.options } : undefined,
-      node.location.length === 0 ? undefined : node.location,
-      node.sourceRoot?._treeContext
-    ).inherit(node);
-  }
-  const derivedAmpersand = copyImportPlacementAmpersand(node);
-  if (derivedAmpersand) {
-    return derivedAmpersand;
-  }
-  if (canReuseLeaf(node)) {
-    return reuseLeaf(node);
-  }
-  return constructImportPlacementNode(node, copyImportPlacementValue(node.value));
 }
 
 function getInlineSourceLocation(source: string): NodeLocation {
@@ -377,6 +326,12 @@ function findImportPlacementState(placementRules: Rules): ImportPlacementState |
 
 type ImportPlacementValuePath = readonly (string | number)[];
 
+function nodeChildKeys(node: Node): readonly string[] | undefined {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+  const childKeys = (node.constructor as typeof Node).childKeys;
+  return childKeys === null ? undefined : childKeys;
+}
+
 function findImportPlacementValuePath(
   value: unknown,
   target: Node,
@@ -390,7 +345,21 @@ function findImportPlacementValuePath(
     return out;
   }
   if (value instanceof Node) {
-    return findImportPlacementValuePath(value.value, target, path);
+    const childKeys = nodeChildKeys(value);
+    if (childKeys) {
+      for (const key of childKeys) {
+        path.push(key);
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        const found = findImportPlacementValuePath((value as unknown as Record<string, unknown>)[key], target, path);
+        path.pop();
+        if (found) {
+          return found;
+        }
+      }
+      return undefined;
+    }
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- Node subclasses use legacy .value when childKeys is undefined
+    return findImportPlacementValuePath((value as unknown as { value: unknown }).value, target, path);
   }
   if (Array.isArray(value)) {
     for (let index = 0; index < value.length; index++) {
@@ -420,7 +389,13 @@ function readImportPlacementValuePath(value: unknown, path: ImportPlacementValue
   let cursor = value;
   for (const segment of path) {
     if (cursor instanceof Node) {
-      cursor = cursor.value;
+      if (typeof segment === 'string') {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        cursor = (cursor as unknown as Record<string, unknown>)[segment];
+        continue;
+      }
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- Node subclasses use legacy .value when childKeys is undefined
+      cursor = (cursor as unknown as { value: unknown }).value;
     }
     if (Array.isArray(cursor)) {
       if (typeof segment !== 'number') {
@@ -462,16 +437,19 @@ export function getImportPlacementSegmentSourceChild(
   if (!state) {
     return undefined;
   }
+  if (placementChild.canReuseAsLeaf()) {
+    return placementChild;
+  }
   for (const segment of state.childSegments) {
     const placementSegment = placementRules.rules[segment.index];
     if (placementSegment === placementChild) {
       return segment.source;
     }
-    const path = findImportPlacementValuePath(placementSegment.value, placementChild);
+    const path = findImportPlacementValuePath(placementSegment, placementChild);
     if (!path) {
       continue;
     }
-    const sourceDescendant = readImportPlacementValuePath(segment.source.value, path);
+    const sourceDescendant = readImportPlacementValuePath(segment.source, path);
     return sourceDescendant instanceof Node ? sourceDescendant : undefined;
   }
   return undefined;
@@ -545,7 +523,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
 
   readonly path: StyleImportValue['path'];
   readonly with: StyleImportValue['with'] | undefined;
-  readonly withNode: StyleImportValue['with']['node'] | undefined;
+  readonly withNode: NonNullable<StyleImportValue['with']>['node'] | undefined;
 
   private getImportAnchorRules(context: Context): Rules {
     return isNode(context.rulesContext, N.Rules)
@@ -568,6 +546,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     options?: {
       preserveSourceNode?: boolean;
       resetScopeFrame?: boolean;
+      shareChildren?: boolean;
     }
   ): Rules {
     const sourceLocation = anchorRules.location.length === 6 ? anchorRules.location : undefined;
@@ -586,7 +565,11 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     }
     if (childNodes) {
       for (const childNode of childNodes) {
-        wrapped.adopt(childNode);
+        // Thin placement shares the canonical children (push without adopting,
+        // so the source tree is never re-parented); other callers own them.
+        if (!options?.shareChildren) {
+          wrapped.adopt(childNode);
+        }
         wrapped.rules.push(childNode);
       }
     }
@@ -602,19 +585,22 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
         source
       }
     });
-    const node = new Any(source, { role: 'any' }, getInlineSourceLocation(source));
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- getInlineSourceLocation always returns a full 6-element tuple, never []
+    const node = new Any(source, { role: 'any' }, getInlineSourceLocation(source) as LocationInfo);
     new Rules([node], undefined, undefined, treeContext);
     return node;
   }
 
   private createFirstUseImportPlacementState(sourceRules: Rules): ImportPlacementState {
+    // Thin placement: SHARE the imported source children directly (the
+    // canonical tree is never copied). Per-placement state lives in the
+    // placement state record / scope frame, not in copied nodes.
     const children = new Array<Node>(sourceRules.rules.length);
     const childSegments = new Array<PlacementChildSegment>(sourceRules.rules.length);
     for (let index = 0; index < sourceRules.rules.length; index++) {
       const source = sourceRules.rules[index]!;
-      const child = copyImportPlacementNode(source);
-      children[index] = child;
-      childSegments[index] = createPlacementChildSegment(source, child, index);
+      children[index] = source;
+      childSegments[index] = createPlacementChildSegment(source, source, index);
     }
     return {
       source: sourceRules,
@@ -623,8 +609,26 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     };
   }
 
-  private materializeImportPlacementState(state: ImportPlacementState): Rules {
-    const placement = this.deriveRulesSurface(state.source, state.children);
+  private materializeImportPlacementState(
+    state: ImportPlacementState,
+    importSite: Rules
+  ): Rules {
+    const placement = this.deriveRulesSurface(state.source, state.children, {
+      shareChildren: true,
+      preserveSourceNode: true
+    });
+    // `import` inlines into the importing scope. Because the placement SHARES
+    // the canonical imported children (they keep their imported-tree parent),
+    // the only way those children resolve free vars (e.g. a parent-scope
+    // variable) is through this surface's scope frame. So the surface's lexical
+    // parent is the IMPORT SITE — its frame chain reaches the importing scope —
+    // while `sourceNode` still points at the canonical imported tree for the
+    // surface's own declarations. See LIVE_BINDING_ARCHITECTURE.md §4.
+    placement.parent = importSite;
+    // Thin surface identity is intrinsic: `placement.sourceNode` already points
+    // at the canonical imported tree (preserveSourceNode above), so the
+    // scope-frame parent-walk re-points the shared children up the import-site
+    // chain with no marker. See LIVE_BINDING_ARCHITECTURE.md §4 / §6.2.
     importPlacementStates.set(placement, state);
     return placement;
   }
@@ -634,16 +638,16 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
       return [];
     }
     if (isNode(postlude, N.List)) {
-      return postlude.items;
+      return postlude.value;
     }
-    return isNode(postlude, N.Sequence) ? postlude.items : [postlude];
+    return isNode(postlude, N.Sequence) ? postlude.value : [postlude];
   }
 
   private wrapRulesInAtRuleSurface(anchorRules: Rules, rules: Rules, name: string, prelude: Node): Rules {
     const wrappedAtRule = new AtRule({
       name: new Any(name, { role: 'atkeyword' }),
       prelude,
-      rules
+      rules: rules.rules
     });
     return this.deriveRulesSurface(anchorRules, [wrappedAtRule], { resetScopeFrame: true });
   }
@@ -657,7 +661,10 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
       return;
     }
 
-    if (withValues.type === 'set' || this.options.type === 'compose') {
+    // Only a `set` (replacement) config may not be applied more than once.
+    // `with` is additive and re-applying it (e.g. a re-eval of the same import)
+    // is allowed.
+    if (withValues.type === 'set') {
       throw new Error('Cannot configure a stylesheet more than once.');
     }
   }
@@ -791,7 +798,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
         continue;
       }
       liveSlots.set(name, {
-        value: node.valueNode,
+        value: node.value instanceof Node ? node.value : undefined,
         sourceNode: node,
         readonly: node.options?.readonly
       } satisfies BindingCell);
@@ -844,7 +851,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     return lower.startsWith('http://') || lower.startsWith('https://') || lower.startsWith('//');
   }
 
-  private createCssImportAtRule(pathNode: Quoted | Url): AtRule {
+  private createCssImportAtRule(pathNode: Quoted | Url): AtRuleStatement {
     const preludeNodes: Node[] = [pathNode];
     const postludeNodes = this.getPostludeNodes(this.options.importOptions?.postlude);
     for (let i = 0; i < postludeNodes.length; i++) {
@@ -855,7 +862,8 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
       : new Sequence(preludeNodes);
 
     const location = this.location && this.location.length === 6 ? this.location : undefined;
-    return new AtRule({
+    // @import has no block body — it is a semicolon at-rule statement.
+    return new AtRuleStatement({
       name: new Any('@import', { role: 'atkeyword' }),
       prelude
     }, undefined, location);
@@ -916,8 +924,8 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     w.add(';');
   }
 
-  override toTrimmedString(options?: PrintOptions): string {
-    options = getPrintOptions(options);
+  override toTrimmedString(rawOptions?: PrintOptions): string {
+    const options = getPrintOptions(rawOptions);
     const mark = options.writer.mark();
     this.writeSyntax(options);
     return options.writer.getSince(mark);
@@ -1130,7 +1138,8 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
           // import site become the parent of later `multiple` / `reference`
           // imports, which leaks the wrong selector/context into repeated uses.
           rules = this.materializeImportPlacementState(
-            this.createFirstUseImportPlacementState(rules)
+            this.createFirstUseImportPlacementState(rules),
+            this.getImportAnchorRules(context)
           );
         }
 
@@ -1351,7 +1360,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
       if (isNode(current, N.Call)) {
         const callName = String(current.name).toLowerCase();
         if (callName === 'media' || callName === 'supports' || callName === 'layer') {
-          const args = current.args?.items ?? [];
+          const args = current.args?.value ?? [];
           const prelude = args.length <= 1 ? args[0] : current.args;
           if (prelude) {
             wrappedRules = this.wrapRulesInAtRuleSurface(anchorRules, wrappedRules, `@${callName}`, prelude);

@@ -1,4 +1,4 @@
-import { defineType, type LocationInfo, type Node } from './node.js';
+import { defineType, Node, type LocationInfo } from './node.js';
 import { SimpleSelector } from './selector-simple.js';
 import { type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
 import type { Context } from '../context.js';
@@ -7,7 +7,6 @@ import { quoted } from './quoted.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
-import { canReuseLeaf, copyWithReusableLeaves, reuseLeaf } from './util/cloning.js';
 import {
   isRenderBuffer,
   prepareBufferPrintState,
@@ -58,7 +57,11 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
         if (rules) {
           const decl = findAttributeVarDeclaration(rules, key);
           if (decl) {
-            const out = decl.valueNode.resolve(context);
+            const declValue = decl.value;
+            if (!(declValue instanceof Node)) {
+              return undefined;
+            }
+            const out = declValue.resolve(context);
             if (isThenable(out)) {
               return (out as Promise<Node>).then(evaluated => quoted(String(evaluated.valueOf())));
             }
@@ -142,7 +145,11 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
         if (rules) {
           const decl = findAttributeVarDeclaration(rules, key);
           if (decl) {
-            const out = decl.valueNode.eval(context);
+            const declValue = decl.value;
+            if (!(declValue instanceof Node)) {
+              return undefined;
+            }
+            const out = declValue.eval(context);
             if (isThenable(out)) {
               return (out as Promise<Node>).then(evaluated => quoted(String(evaluated.valueOf())));
             }
@@ -163,12 +170,12 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
     const ownedName = typeof resolvedName === 'string'
       ? resolvedName
       : resolvedName === currentName
-        ? canReuseLeaf(resolvedName) ? reuseLeaf(resolvedName) : copyWithReusableLeaves(resolvedName)
-        : canReuseLeaf(resolvedName) ? reuseLeaf(resolvedName) : copyWithReusableLeaves(resolvedName);
+        ? resolvedName.canReuseAsLeaf() ? resolvedName.reuseAsLeaf() : resolvedName.cloneForPlacement()
+        : resolvedName.canReuseAsLeaf() ? resolvedName.reuseAsLeaf() : resolvedName.cloneForPlacement();
     const ownedValue = resolvedValue
       ? resolvedValue === currentValue
-        ? canReuseLeaf(resolvedValue) ? reuseLeaf(resolvedValue) : copyWithReusableLeaves(resolvedValue)
-        : canReuseLeaf(resolvedValue) ? reuseLeaf(resolvedValue) : copyWithReusableLeaves(resolvedValue)
+        ? resolvedValue.canReuseAsLeaf() ? resolvedValue.reuseAsLeaf() : resolvedValue.cloneForPlacement()
+        : resolvedValue.canReuseAsLeaf() ? resolvedValue.reuseAsLeaf() : resolvedValue.cloneForPlacement()
       : undefined;
     const node = new AttributeSelector(
       {
@@ -177,8 +184,11 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
         value: ownedValue,
         mod: this.mod
       },
-      this._options,
-      this.location
+      // AttributeSelector constructor has options?: undefined
+      undefined,
+      // NodeLocation (LocationInfo | []) is compatible with LocationInfo; [] case won't match LocationInfo | 0
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      this.location as LocationInfo | 0
     );
     node.inherit(this);
     return node;
@@ -214,7 +224,8 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
   }
 
   override resolve(context: Context): MaybePromise<this> {
-    return this.resolveForRender(context);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    return this.resolveForRender(context) as MaybePromise<this>;
   }
 
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
@@ -271,7 +282,8 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
     location?: LocationInfo | 0,
     treeContext?: Context['treeContext']
   ) {
-    super(value, options, location);
+    // `0` is a legacy no-op location sentinel; convert to undefined for base class
+    super(value, options, location === 0 ? undefined : location);
     this.name = value.name;
     this.op = value.op;
     this.attributeValue = value.value;
@@ -281,6 +293,7 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
 }
 
 /** Not sure why types couldn't be properly inferred */
+// eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
 export const attr = defineType<AttributeSelectorValue>(AttributeSelector, 'AttributeSelector', 'attr') as (
   value: AttributeSelectorValue,
   options?: undefined,

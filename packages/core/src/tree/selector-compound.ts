@@ -12,7 +12,7 @@ import type { SimpleSelector } from './selector-simple.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { type FinalPrintOptions, type PrintOptions, getPrintOptions, savePrintState, restorePrintState } from './util/print.js';
 import { consumeTrivia, emitTriviaTokens } from './util/trivia.js';
-import { canReuseLeaf, copyWithReusableLeaves, ownCollapsedSourceChild, reuseLeaf } from './util/cloning.js';
+import { ownCollapsedSourceChild } from './util/own-collapsed-source-child.js';
 
 /**
  * @example
@@ -24,10 +24,25 @@ import { canReuseLeaf, copyWithReusableLeaves, ownCollapsedSourceChild, reuseLea
 const nonElementRegex = /^[.#:[]/;
 
 function emitCompoundPart(
-  part: SimpleSelector,
+  part: CompoundSelectorComponent,
   options: ReturnType<typeof getPrintOptions>,
-  emitLeadingTrivia: boolean
+  emitLeadingTrivia: boolean,
+  stringPartStart?: number
 ): void {
+  if (typeof part === 'string') {
+    // String parts carry no own location; their source offset (for trivia
+    // lookup between adjacent simple selectors, e.g. comments) comes from the
+    // owning CompoundSelector's valueSpans, passed in as stringPartStart.
+    if (emitLeadingTrivia && options.trivia && typeof stringPartStart === 'number' && stringPartStart >= 0) {
+      emitTriviaTokens(
+        consumeTrivia(options.trivia, stringPartStart, 'before', options),
+        options,
+        { skipLeadingWhitespace: true }
+      );
+    }
+    options.writer.add(part);
+    return;
+  }
   if (emitLeadingTrivia && options.trivia) {
     emitTriviaTokens(
       consumeTrivia(options.trivia, part.location[0], 'before', options),
@@ -44,41 +59,54 @@ function emitCompoundPart(
   }
 }
 
-export class CompoundSelector extends Selector<SimpleSelector[]> {
-  static override childKeys = ['components'] as const;
+export type CompoundSelectorComponent = SimpleSelector | string;
 
-  readonly components: SimpleSelector[];
+export function isStringCompoundSelectorComponent(value: unknown): value is string {
+  return typeof value === 'string';
+}
+
+export class CompoundSelector extends Selector<CompoundSelectorComponent[]> {
+  static override childKeys = ['value'] as const;
+
+  override readonly value: CompoundSelectorComponent[];
 
   constructor(
-    value: SimpleSelector[],
+    value: CompoundSelectorComponent[],
     options?: NodeOptions,
     location?: NodeLocation,
     treeContext?: Context['treeContext']
   ) {
     super(value, options, location);
     this._treeContext = treeContext;
-    this.components = value;
+    this.value = value;
   }
 
-  private ownSelector(item: Selector): Selector {
-    const owned = canReuseLeaf(item) ? reuseLeaf(item) : copyWithReusableLeaves(item);
+  private ownSelector(item: CompoundSelectorComponent): CompoundSelectorComponent {
+    if (typeof item === 'string') {
+      return item;
+    }
+    const owned = item.canReuseAsLeaf() ? item.reuseAsLeaf() : item.cloneForPlacement();
     if (!(owned instanceof Selector)) {
       throw new TypeError('Expected selector copy');
     }
     return owned;
   }
 
-  private withComponents(value: SimpleSelector[], sourceValue: readonly SimpleSelector[] = this.components): this {
-    const ownedValue = new Array<SimpleSelector>(value.length);
+  private withComponents(
+    value: CompoundSelectorComponent[],
+    sourceValue: readonly CompoundSelectorComponent[] = this.value
+  ): this {
+    const ownedValue = new Array<CompoundSelectorComponent>(value.length);
     let hoistToRoot = false;
     for (let i = 0; i < value.length; i++) {
       const item = value[i]!;
       ownedValue[i] = this.isSourceSelector(item, sourceValue) ? this.ownSelector(item) : item;
-      if (item.hoistToRoot) {
+      if (typeof item !== 'string' && item.hoistToRoot) {
         hoistToRoot = true;
       }
     }
     // Own unchanged source children; evaluated clones may carry runtime state.
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     const node = new CompoundSelector(
       ownedValue,
       this._options ? { ...this._options } : undefined,
@@ -90,7 +118,10 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
     return node.inherit(this);
   }
 
-  private isSourceSelector(item: SimpleSelector, sourceValue: readonly SimpleSelector[]): boolean {
+  private isSourceSelector(
+    item: CompoundSelectorComponent,
+    sourceValue: readonly CompoundSelectorComponent[]
+  ): boolean {
     for (let i = 0; i < sourceValue.length; i++) {
       if (sourceValue[i] === item) {
         return true;
@@ -99,11 +130,14 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
     return false;
   }
 
-  private createEvaluatedComponentSurface(value: SimpleSelector[], sourceValue: readonly SimpleSelector[]): this {
+  private createEvaluatedComponentSurface(
+    value: CompoundSelectorComponent[],
+    sourceValue: readonly CompoundSelectorComponent[]
+  ): this {
     return this.withComponents(value, sourceValue);
   }
 
-  private collapsedSelector(item: SimpleSelector, sourceValue: readonly SimpleSelector[]): Selector {
+  private collapsedSelector(item: SimpleSelector, sourceValue: readonly CompoundSelectorComponent[]): Selector {
     const owned = ownCollapsedSourceChild(item, sourceValue, this);
     if (!(owned instanceof Selector)) {
       throw new TypeError('Expected selector copy');
@@ -112,17 +146,19 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
   }
 
   override writeSyntax(printOptions: FinalPrintOptions): void {
-    const value = this.components;
+    const value = this.value;
+    const spans = this.valueSpans;  // packed [start,end,flags] per component
     const saved = savePrintState(printOptions, ['ampersandFirst']);
     for (let i = 0; i < value.length; i++) {
       printOptions.ampersandFirst = (i === 0);
-      emitCompoundPart(value[i]!, printOptions, i > 0);
+      const stringPartStart = spans ? spans[i * 3] : undefined;
+      emitCompoundPart(value[i]!, printOptions, i > 0, stringPartStart);
     }
     restorePrintState(printOptions, saved);
   }
 
   private renderCompoundSyntax(options?: PrintOptions): string {
-    if (this.components.length === 0) {
+    if (this.value.length === 0) {
       return '';
     }
     const printOptions = getPrintOptions(options);
@@ -137,11 +173,18 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
       return;
     }
     const library = this._requireKeySetLibrary();
-    const value = this.components;
+    const value = this.value;
     let keySet = library.getBitset();
     let visibleKeySet = library.getBitset();
     let requiredKeySet = library.getBitset();
     for (const selector of value) {
+      if (typeof selector === 'string') {
+        const selectorKeySet = library.getBitset([selector]);
+        keySet = keySet.or(selectorKeySet);
+        visibleKeySet = visibleKeySet.or(selectorKeySet);
+        requiredKeySet = requiredKeySet.or(selectorKeySet);
+        continue;
+      }
       selector.keySetLibrary ??= library;
       keySet = keySet.or(selector.keySet);
       visibleKeySet = visibleKeySet.or(selector.visibleKeySet);
@@ -158,8 +201,9 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
       // Find element selectors (those that don't start with .#:[)
       const elementSelectors: string[] = [];
       const nonElementSelectors: string[] = [];
-      for (let i = 0; i < this.components.length; i++) {
-        const component = String(this.components[i]!.valueOf());
+      for (let i = 0; i < this.value.length; i++) {
+        const item = this.value[i]!;
+        const component = String(typeof item === 'string' ? item : item.valueOf());
         if (!nonElementRegex.test(component)) {
           elementSelectors.push(component);
         } else {
@@ -185,15 +229,15 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
     return this.renderCompoundSyntax(options);
   }
 
-  override evalNode(context: Context): MaybePromise<CompoundSelector | Selector | Nil> {
+  override evalNode(context: Context): MaybePromise<Node> {
     attachSelectorBitLibrary(this, context.selectorBits);
     if (!this.hasFlag(F_MAY_ASYNC)) {
       return this.finalizeComponents(this.evaluateComponentsSync(context, false), true);
     }
     const evaluatedValue = this.evaluateComponents(context, false);
     return isThenable(evaluatedValue)
-      ? (evaluatedValue as Promise<Array<Selector | Nil>>).then(value => this.finalizeComponents(value, true))
-      : this.finalizeComponents(evaluatedValue as Array<Selector | Nil>, true);
+      ? (evaluatedValue as Promise<Array<Selector | Nil | string>>).then(value => this.finalizeComponents(value, true))
+      : this.finalizeComponents(evaluatedValue as Array<Selector | Nil | string>, true);
   }
 
   protected override resolveForRender(context: Context): MaybePromise<Node> {
@@ -203,15 +247,19 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
     }
     const resolvedValue = this.evaluateComponents(context, true);
     return isThenable(resolvedValue)
-      ? (resolvedValue as Promise<Array<Selector | Nil>>).then(value => this.finalizeComponents(value, false))
-      : this.finalizeComponents(resolvedValue as Array<Selector | Nil>, false);
+      ? (resolvedValue as Promise<Array<Selector | Nil | string>>).then(value => this.finalizeComponents(value, false))
+      : this.finalizeComponents(resolvedValue as Array<Selector | Nil | string>, false);
   }
 
-  private evaluateComponentsSync(context: Context, resolve: boolean): Array<Selector | Nil> {
-    const currentValue = this.components;
-    const evaluatedValue = new Array<Selector | Nil>(currentValue.length);
+  private evaluateComponentsSync(context: Context, resolve: boolean): Array<Selector | Nil | string> {
+    const currentValue = this.value;
+    const evaluatedValue = new Array<Selector | Nil | string>(currentValue.length);
     for (let i = 0; i < currentValue.length; i++) {
       const item = currentValue[i]!;
+      if (typeof item === 'string') {
+        evaluatedValue[i] = item;
+        continue;
+      }
       const out = resolve ? item.resolve(context) : item.eval(context);
       if (!(out instanceof Node)) {
         if (out !== null && typeof out === 'object') {
@@ -225,11 +273,15 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
     return evaluatedValue;
   }
 
-  private evaluateComponents(context: Context, resolve: boolean): MaybePromise<Array<Selector | Nil>> {
-    const currentValue = this.components;
-    const evaluatedValue = new Array<Selector | Nil>(currentValue.length);
+  private evaluateComponents(context: Context, resolve: boolean): MaybePromise<Array<Selector | Nil | string>> {
+    const currentValue = this.value;
+    const evaluatedValue = new Array<Selector | Nil | string>(currentValue.length);
     for (let i = 0; i < currentValue.length; i++) {
       const item = currentValue[i]!;
+      if (typeof item === 'string') {
+        evaluatedValue[i] = item;
+        continue;
+      }
       const out = resolve ? item.resolve(context) : item.eval(context);
       if (isThenable(out)) {
         return out.then((res) => {
@@ -245,12 +297,16 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
   private evaluateComponentsRest(
     context: Context,
     resolve: boolean,
-    evaluatedValue: Array<Selector | Nil>,
+    evaluatedValue: Array<Selector | Nil | string>,
     start: number
-  ): MaybePromise<Array<Selector | Nil>> {
-    const currentValue = this.components;
+  ): MaybePromise<Array<Selector | Nil | string>> {
+    const currentValue = this.value;
     for (let i = start; i < currentValue.length; i++) {
       const item = currentValue[i]!;
+      if (typeof item === 'string') {
+        evaluatedValue[i] = item;
+        continue;
+      }
       const out = resolve ? item.resolve(context) : item.eval(context);
       if (isThenable(out)) {
         return out.then((res) => {
@@ -263,15 +319,15 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
     return evaluatedValue;
   }
 
-  private finalizeComponents(evaluatedValue: Array<Selector | Nil>, evaluated: boolean): Node {
-    const currentValue = this.components;
-    const value: SimpleSelector[] = [];
+  private finalizeComponents(evaluatedValue: Array<Selector | Nil | string>, evaluated: boolean): Node {
+    const currentValue = this.value;
+    const value: CompoundSelectorComponent[] = [];
     for (let i = 0; i < evaluatedValue.length; i++) {
       const item = evaluatedValue[i]!;
-      if (!(item instanceof Nil)) {
-      if (item instanceof Selector) {
+      if (typeof item === 'string') {
+        value.push(item);
+      } else if (item instanceof Selector) {
         value.push(item as SimpleSelector);
-      }
       }
     }
     this.sortComponents(value);
@@ -279,7 +335,8 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
       return createPublicNil().inherit(this);
     }
     if (value.length === 1) {
-      return this.collapsedSelector(value[0]!, currentValue);
+      const only = value[0]!;
+      return typeof only === 'string' ? this.withComponents(value, currentValue) : this.collapsedSelector(only, currentValue);
     }
     let changed = value.length !== currentValue.length;
     if (!changed) {
@@ -298,10 +355,10 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
       : this.withComponents(value, currentValue);
   }
 
-  private sortComponents(value: Selector[]): void {
+  private sortComponents(value: CompoundSelectorComponent[]): void {
     value.sort((a, b) => {
-      const aValue = String(a.valueOf());
-      const bValue = String(b.valueOf());
+      const aValue = String(typeof a === 'string' ? a : a.valueOf());
+      const bValue = String(typeof b === 'string' ? b : b.valueOf());
       const aIsElement = !nonElementRegex.test(aValue);
       const bIsElement = !nonElementRegex.test(bValue);
       if (aIsElement && bIsElement) {

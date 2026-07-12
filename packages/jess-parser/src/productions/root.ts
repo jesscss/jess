@@ -12,6 +12,7 @@ import {
 
 /** Use `any` for `this` to avoid structural incompatibility */
 type P = any;
+type Production<T = unknown> = (ctx?: RuleContext) => T | undefined;
 
 type AltContext = (ctx?: RuleContext) => Array<{ ALT: () => any; GATE?: () => boolean }>;
 
@@ -94,11 +95,11 @@ export function varDeclaration(this: P, _T: TokenMap) {
 
     $.CONSUME($.T.Assign); // ':'
 
-    let valueNodeValue: unknown;
+    let valueResult: unknown;
     if ($.LA(1).tokenType === $.T.LCurly) {
-      valueNodeValue = $.SUBRULE($.jessCollection, { ARGS: [ctx] });
+      valueResult = $.SUBRULE($.jessCollection, { ARGS: [ctx] });
     } else {
-      valueNodeValue = $.SUBRULE($.valueList, { ARGS: [ctx] });
+      valueResult = $.SUBRULE($.valueList, { ARGS: [ctx] });
       $.CONSUME($.T.Semi);
     }
 
@@ -109,16 +110,16 @@ export function varDeclaration(this: P, _T: TokenMap) {
     const dvTok = expectToken(dvTokenValue);
     const dvLoc = $.getLocationInfo(dvTok);
     const varName = dvTok.image.slice(1);
-    const valueNode = expectNode(valueNodeValue);
+    const value = expectNode(valueResult);
     const nameNode = new Any(varName, { role: 'property' }, dvLoc, $.context);
-    return new VarDeclaration({ name: nameNode, value: valueNode }, undefined, loc, $.context);
+    return new VarDeclaration({ name: nameNode, value: value }, undefined, loc, $.context);
   };
 }
 
 /**
  * Bare `$foo[.bar][…];` at statement level — expression statement.
  */
-export function jessExprStatement(this: P, _T: TokenMap) {
+export function jessExprStatement(this: P, _T: TokenMap): Production<NodeType> {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     // jessVarWithAccessors handles $var, $var.prop, $var[idx], etc.

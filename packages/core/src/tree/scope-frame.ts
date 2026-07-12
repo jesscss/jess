@@ -6,7 +6,7 @@
  * declaration names without cloning node trees or rewriting parent pointers.
  *
  * Relationship to existing infrastructure:
- *   - declarationBucketsByName is built from Rules.varsByName.
+ *   - declarationBucketsByName is built from Rules.varsByName entries.
  *     Only static-key VarDeclarations are stored here; dynamic keys
  *     (Interpolated name nodes) go into pendingDeclarationNames.
  *   - currentBindingsByName holds the current read path for both live slots
@@ -20,6 +20,8 @@
 import { F_STATIC, Node } from './node.js';
 import type { VarDeclaration } from './declaration-var.js';
 import type { CallableLookupEntry } from './util/callable-entry.js';
+
+// AUDIT: if this does NOT inherit from Node it does not belong in the tree folder. It is a utility, so should be in a util sub-folder
 
 /**
  * One live binding slot.  Value is updated in place for loop counters and
@@ -61,18 +63,32 @@ export interface BindingEntry {
   sourceNode: Node;
 }
 
+export function createVarDeclarationBindingEntry(decl: VarDeclaration): BindingEntry {
+  const declValue = decl.value;
+  return {
+    cell: {
+      value: declValue instanceof Node ? declValue : undefined,
+      sourceNode: decl,
+      readonly: decl.options?.readonly
+    },
+    sourceNode: decl
+  };
+}
+
 export type ScopeFrameVariableLookupResult =
   | {
     kind: 'live';
     cell: BindingCell;
     sourceNode?: Node;
     frame: ScopeFrame;
+    readonly?: boolean;
   }
   | {
     kind: 'declaration';
     cell: BindingCell;
     sourceNode: Node;
     frame: ScopeFrame;
+    readonly?: boolean;
   }
   | {
     kind: 'miss';
@@ -130,6 +146,28 @@ export interface ScopeFrame {
    * this map is the direct path for "what is the current value of this name?"
    */
   currentBindingsByName: Map<string, BindingCell>;
+
+  /**
+   * Assignment-only binding cells contributed by public child/import surfaces.
+   * Ordinary reads do not consult this map; it exists so `setDefined` can
+   * update or reject imported/current assignment targets without reopening the
+   * recursive child declaration crawl.
+   */
+  assignmentBindingsByName?: Map<string, BindingCell>;
+
+  /**
+   * Per-name readonly overlay for assignment target cells. The cell remains the
+   * canonical declaration binding; this set carries readonly facts introduced
+   * by an import/child edge without cloning the cell.
+   */
+  assignmentReadonlyByName?: Set<string>;
+
+  /**
+   * True when a child/import variable assignment surface exists but is not
+   * modeled in assignmentBindingsByName. This keeps `setDefined` from treating
+   * optional-only or dynamic targets as covered misses.
+   */
+  hasUncoveredAssignmentTargetSurface: boolean;
 
   /**
    * Bumped when a current binding pointer changes. In-place cell value writes
@@ -250,13 +288,13 @@ function setCurrentBindingCell(
  * node parent chain to find the nearest ancestor frame when no explicit parent
  * is supplied.
  *
- * @param varsByName  Rules.varsByName — the per-scope static VarDecl index
+ * @param varsByName  Rules.varsByName — the per-scope static VarDecl binding index
  * @param rulesNode   Back-pointer for debugging
  * @param parent      Enclosing scope's frame (undefined = auto-wire via node chain)
  * @param liveSlots   Pre-built live binding map (params, @arguments)
  */
 export function buildScopeFrame(
-  varsByName: Map<string, VarDeclaration[]> | undefined,
+  varsByName: Map<string, BindingEntry[]> | undefined,
   rulesNode: object,
   parent: ScopeFrame | undefined,
   liveSlots?: Map<string, BindingCell>,
@@ -274,19 +312,9 @@ export function buildScopeFrame(
   const currentBindingsByName = new Map<string, BindingCell>();
 
   if (varsByName) {
-    for (const [name, decls] of varsByName) {
-      const entries: BindingEntry[] = [];
-      for (let i = 0; i < decls.length; i++) {
-        const decl = decls[i]!;
-        entries[i] = {
-          cell: {
-            value: decl.valueNode,
-            lookupIdentity: nextBindingCellLookupIdentity++,
-            sourceNode: decl,
-            readonly: decl.options?.readonly
-          },
-          sourceNode: decl
-        };
+    for (const [name, entries] of varsByName) {
+      for (let i = 0; i < entries.length; i++) {
+        ensureBindingCellLookupIdentity(entries[i]!.cell);
       }
       declarationBucketsByName.set(name, entries);
       const currentEntry = entries[entries.length - 1];
@@ -310,6 +338,7 @@ export function buildScopeFrame(
     fallbackFrame: undefined,
     liveSlotsByName,
     currentBindingsByName,
+    hasUncoveredAssignmentTargetSurface: false,
     currentBindingsVersion: 0,
     hasLiveBindings,
     declarationBucketsByName,
@@ -401,34 +430,42 @@ export function lookupScopeFrameVariable(
     blockedSource?: (node: Node) => boolean;
     includeLive?: boolean;
     includeDeclarations?: boolean;
+    includeAssignmentTargets?: boolean;
     bailOnPendingDeclarations?: boolean;
+    searchParents?: boolean;
+    includeFallbackFrames?: boolean;
   }
 ): ScopeFrameVariableLookupResult {
   let f = frame;
   let start = options?.start;
-  let fallbackFrame = frame?.fallbackFrame;
+  const searchParents = options?.searchParents !== false;
+  const includeFallbackFrames = options?.includeFallbackFrames !== false;
+  let fallbackFrame = includeFallbackFrames ? frame?.fallbackFrame : undefined;
+  let visitedFallbackFrames: Set<ScopeFrame> | undefined;
   while (true) {
     while (f) {
-      let currentCellRejectedByGuard = false;
-      if (start === undefined) {
-        const currentCell = f.currentBindingsByName.get(name);
+      if (visitedFallbackFrames?.has(f)) {
+        return { kind: 'miss' };
+      }
+      visitedFallbackFrames?.add(f);
+      const currentCell = f.currentBindingsByName.get(name);
+      if (
+        currentCell
+        && currentCell.live === true
+        && options?.includeLive !== false
+      ) {
+        const sourceNode = currentCell.sourceNode;
+        if (!sourceNode || !options?.blockedSource?.(sourceNode)) {
+          return {
+            kind: 'live',
+            cell: currentCell,
+            sourceNode,
+            frame: f,
+            readonly: currentCell.readonly
+          };
+        }
+      } else if (start === undefined) {
         if (
-          currentCell
-          && currentCell.live === true
-          && options?.includeLive !== false
-        ) {
-          const sourceNode = currentCell.sourceNode;
-          if (!sourceNode || !options?.blockedSource?.(sourceNode)) {
-            return {
-              kind: 'live',
-              cell: currentCell,
-              sourceNode,
-              frame: f
-            };
-          }
-          currentCellRejectedByGuard = sourceNode !== undefined
-            && options?.blockedSource?.(sourceNode) === true;
-        } else if (
           currentCell
           && options?.includeDeclarations !== false
           && f.declarationsCovered
@@ -442,11 +479,42 @@ export function lookupScopeFrameVariable(
               kind: 'declaration',
               cell: currentCell,
               sourceNode: currentCell.sourceNode,
-              frame: f
+              frame: f,
+              readonly: currentCell.readonly
             };
           }
-          currentCellRejectedByGuard = true;
         }
+      }
+
+      if (
+        start === undefined
+        && options?.includeAssignmentTargets === true
+        && options?.includeDeclarations !== false
+      ) {
+        const assignmentCell = f.assignmentBindingsByName?.get(name);
+        const sourceNode = assignmentCell?.sourceNode;
+        if (
+          assignmentCell
+          && sourceNode
+          && !options?.blockedSource?.(sourceNode)
+          && (!options?.filter || options.filter(sourceNode))
+        ) {
+          return {
+            kind: 'declaration',
+            cell: assignmentCell,
+            sourceNode,
+            frame: f,
+            readonly: assignmentCell.readonly || f.assignmentReadonlyByName?.has(name)
+          };
+        }
+      }
+
+      if (
+        start === undefined
+        && options?.includeAssignmentTargets === true
+        && f.hasUncoveredAssignmentTargetSurface
+      ) {
+        return { kind: 'uncovered' };
       }
 
       if (options?.includeDeclarations !== false && !f.declarationsCovered) {
@@ -462,7 +530,6 @@ export function lookupScopeFrameVariable(
       }
 
       const bucket = options?.includeDeclarations === false
-        || currentCellRejectedByGuard
         ? undefined
         : f.declarationBucketsByName.get(name);
       if (bucket?.length) {
@@ -479,12 +546,19 @@ export function lookupScopeFrameVariable(
               kind: 'declaration',
               cell: entry.cell,
               sourceNode: entry.sourceNode,
-              frame: f
+              frame: f,
+              readonly: entry.cell.readonly
             };
           }
         }
       }
 
+      if (!searchParents) {
+        return { kind: 'miss' };
+      }
+      if (includeFallbackFrames) {
+        fallbackFrame ??= f.fallbackFrame;
+      }
       start = undefined;
       f = f.parent;
     }
@@ -494,6 +568,7 @@ export function lookupScopeFrameVariable(
     }
 
     f = fallbackFrame;
+    visitedFallbackFrames ??= new Set();
     fallbackFrame = fallbackFrame.fallbackFrame;
     start = undefined;
   }
@@ -523,7 +598,7 @@ export function lookupScopeFrameCallable(
     if (bucket?.length) {
       for (let i = bucket.length - 1; i >= 0; i--) {
         const entry = bucket[i]!;
-        if (options?.includeRulesets === false && entry.value.type === 'Ruleset') {
+        if (options?.includeRulesets === false && entry.value instanceof Node && entry.value.type === 'Ruleset') {
           continue;
         }
         if (
@@ -565,10 +640,6 @@ export function assignScopeFrameVariable(
   if (hit.kind === 'miss' || hit.kind === 'uncovered') {
     return undefined;
   }
-  if (hit.kind === 'live') {
-    hit.cell.value = value;
-  } else {
-    hit.cell.value = value;
-  }
+  hit.cell.value = value;
   return hit;
 }

@@ -1,5 +1,6 @@
 import { extendSelector, tryExtendSelector } from '../extend.js';
 import { el, sel, compound, co, sellist, rules, ruleset, extend, ExtendFlag } from '../../../index.js';
+import type { Ruleset } from '../../../index.js';
 import { isNode } from '../is-node.js';
 import { N } from '../../node-type.js';
 import { type Combinator, type Combinators } from '../../combinator.js';
@@ -29,8 +30,8 @@ describe('Combinator Preservation in Extensions', () => {
       // Verify the result contains the original combinator
       expect(isNode(result, N.ComplexSelector)).toBe(true);
       if (isNode(result, N.ComplexSelector)) {
-        const components = result.value;
-        const foundCombinator = components.find(c => isNode(c, N.Combinator));
+        const value = result.value;
+        const foundCombinator = value.find(c => isNode(c, N.Combinator));
         expect(foundCombinator).toBeDefined();
         expect(foundCombinator?.value).toBe(combinator);
       }
@@ -73,8 +74,8 @@ describe('Combinator Preservation in Extensions', () => {
       // Verify both combinators are preserved
       expect(isNode(result, N.ComplexSelector)).toBe(true);
       if (isNode(result, N.ComplexSelector)) {
-        const components = result.value;
-        const combinators = components.filter(c => isNode(c, N.Combinator)) as Combinator[];
+        const value = result.value;
+        const combinators = value.filter(c => isNode(c, N.Combinator)) as Combinator[];
         expect(combinators).toHaveLength(2);
         expect(combinators[0]?.value).toBe('>');
         expect(combinators[1]?.value).toBe('+');
@@ -83,7 +84,7 @@ describe('Combinator Preservation in Extensions', () => {
   });
 
   describe('Selector Matching with Different Combinators', () => {
-    it('should match identical complex selectors with > combinator', () => {
+    it('should match identical complex value with > combinator', () => {
       // .parent > .child should match .parent > .child exactly
       const selector1 = sel([el('.parent'), co('>'), el('.child')]);
       const selector2 = sel([el('.parent'), co('>'), el('.child')]);
@@ -94,7 +95,7 @@ describe('Combinator Preservation in Extensions', () => {
       expect(isNode(result, N.SelectorList)).toBe(true);
     });
 
-    it('should NOT match complex selectors with different combinators', () => {
+    it('should NOT match complex value with different combinators', () => {
       // .parent > .child should NOT match .parent + .child
       const selector1 = sel([el('.parent'), co('>'), el('.child')]);
       const selector2 = sel([el('.parent'), co('+'), el('.child')]);
@@ -203,28 +204,30 @@ describe('Combinator Preservation in Extensions', () => {
       // Nested has selector .ext8 .ext9 (descendant). .zap extends .ext8 + .ext9 (adjacent) should NOT match nested.
       const nestedExt9 = ruleset({
         selector: sel([el('.ext8'), co(' '), el('.ext9')]),
-        rules: rules([])
+        rules: []
       });
       const root = rules([
         ruleset({
           selector: el('.ext8'),
-          rules: rules([nestedExt9])
+          rules: [nestedExt9]
         }),
         ruleset({
           selector: el('.zap'),
-          rules: rules([
+          rules: [
             extend({
               target: sel([el('.ext8'), co('+'), el('.ext9')]),
               flag: ExtendFlag.All
             })
-          ])
+          ]
         })
       ]);
       const context = new Context();
       const evald = await root.eval(context);
-      const ext8Ruleset = evald.value[0];
-      const nestedRuleset = ext8Ruleset?.value?.rules?.value?.[0];
-      const nestedSel = nestedRuleset?.value?.selector?.valueOf() ?? '';
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const ext8Ruleset = evald.rules[0] as unknown as Ruleset;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const nestedRuleset = (ext8Ruleset?.rules as unknown as { rules?: Ruleset[] })?.rules?.[0];
+      const nestedSel = nestedRuleset?.selector?.valueOf() ?? '';
       // Nested has descendant .ext8 .ext9 only; must NOT get .zap (which extends .ext8 + .ext9)
       expect(nestedSel).not.toContain('.zap');
       expect(nestedSel).toContain('.ext9');
@@ -235,22 +238,23 @@ describe('Combinator Preservation in Extensions', () => {
       const root = rules([
         ruleset({
           selector: sel([el('.ext8'), co(' '), el('.ext9')]),
-          rules: rules([])
+          rules: []
         }),
         ruleset({
           selector: el('.zoo'),
-          rules: rules([
+          rules: [
             extend({
               target: sel([el('.ext8'), co('>'), el('.ext9')]),
               flag: ExtendFlag.All
             })
-          ])
+          ]
         })
       ]);
       const context = new Context();
       const evald = await root.eval(context);
-      const ext8Ext9Ruleset = evald.value[0];
-      const selectorStr = ext8Ext9Ruleset?.value?.selector?.valueOf() ?? '';
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const ext8Ext9Ruleset = evald.rules[0] as unknown as Ruleset;
+      const selectorStr = ext8Ext9Ruleset?.selector?.valueOf() ?? '';
       expect(selectorStr).toBe('.ext8 .ext9');
       expect(selectorStr).not.toContain('.zoo');
     });
@@ -268,7 +272,7 @@ describe('Combinator Preservation in Extensions', () => {
       });
       const nestedRuleset = ruleset({
         selector: sel([el('.ext8'), co(' '), el('.ext9')]),
-        rules: rules([])
+        rules: []
       });
       const ext8Body = rules([nestedRuleset]);
       const ext8Ruleset = ruleset({ selector: el('.ext8'), rules: ext8Body });
@@ -277,29 +281,31 @@ describe('Combinator Preservation in Extensions', () => {
         ext8Ruleset,
         ruleset({
           selector: el('.buu'),
-          rules: rules([
+          rules: [
             extend({
               target: sel([el('.ext8'), co(' '), el('.ext9')]),
               flag: ExtendFlag.All
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.zap'),
-          rules: rules([
+          rules: [
             extend({
               target: sel([el('.ext8'), co('+'), el('.ext9')]),
               flag: ExtendFlag.All
             })
-          ])
+          ]
         })
       ]);
       const context = new Context();
       const evald = await root.eval(context);
-      const firstRuleset = evald.value[0];
-      const nested = evald.value[1]?.value?.rules?.value?.[0];
-      expect(firstRuleset?.value?.selector?.valueOf()).toContain('.zap');
-      const nestedSel = nested?.value?.selector?.valueOf() ?? '';
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const firstRuleset = evald.rules[0] as unknown as Ruleset;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const nested = ((evald.rules[1] as unknown as Ruleset)?.rules as unknown as { rules?: Ruleset[] })?.rules?.[0];
+      expect(firstRuleset?.selector?.valueOf()).toContain('.zap');
+      const nestedSel = nested?.selector?.valueOf() ?? '';
       expect(nestedSel).not.toContain('.zap');
       expect(nestedSel).toContain('.buu');
     });

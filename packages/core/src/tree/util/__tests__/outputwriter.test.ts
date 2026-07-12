@@ -20,6 +20,7 @@ function isNumberArray(value: unknown): value is number[] {
 }
 
 function writerField(writer: OutputWriter, key: string): unknown {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
   return (writer as unknown as Record<string, unknown>)[key];
 }
 
@@ -508,7 +509,7 @@ describe('OutputWriter', () => {
 
       w.add('content', mockOrigin);
       const positions = positionsFor(w);
-      expect(positions[0].segments).toBe(1);
+      expect(positions[0]!.segments).toBe(1);
     });
   });
 

@@ -2,6 +2,11 @@
 
 This runbook defines the alpha release process for the Less v5 support track.
 
+Before using the publish commands, check
+[`less-v5-alpha-readiness.md`](./less-v5-alpha-readiness.md). That tracker owns
+the current readiness gates for API stability, expanded Less API coverage, and
+CI guard work.
+
 ## Initial publish scope
 
 The alpha stream publishes only allowlisted packages in `scripts/release/alpha-allowlist.json`:
@@ -99,6 +104,21 @@ pnpm run release:alpha:publish
   - `release:alpha:publish`
 - Purpose: manual backup path when you want GitHub Actions to perform publish, not the default daily flow.
 - The workflow itself also enforces branch `alpha` before publish.
+
+## CI readiness
+
+- Workflow: `.github/workflows/less-alpha-readiness.yml`
+- Triggers: pull requests, pushes to `main` and `alpha`, and manual `workflow_dispatch`
+- CI runs `pnpm run verify:less-alpha`, which covers:
+  - publishable `jess` build
+  - package export validation
+  - API Extractor public declaration/API report validation
+  - public `jess` API contract tests
+  - Node path-resolution tests
+  - expanded Less unit and config fixture readiness lanes
+
+This workflow does not publish. It is the normal guard that should fail before
+the manual publish path is attempted.
 
 The publish script is idempotent for existing versions: if `<pkg>@<version>` already exists on npm, it is skipped.
 

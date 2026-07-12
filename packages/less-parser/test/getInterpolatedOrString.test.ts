@@ -25,8 +25,11 @@ describe('getInterpolatedOrString', () => {
         expect(result.replacements.length).toBe(1);
         const replacement = result.replacements[0];
         if (replacement instanceof Reference) {
-          expect(replacement.key).toBeInstanceOf(Quoted);
-          expect((replacement.key as Quoted).value).toBe('key');
+          const keyNode = replacement.key;
+          expect(keyNode).toBeInstanceOf(Quoted);
+          if (keyNode instanceof Quoted) {
+            expect(keyNode.value).toBe('key');
+          }
           expect(replacement.options.type).toBe('index');
         }
       }
@@ -40,8 +43,11 @@ describe('getInterpolatedOrString', () => {
         expect(result.replacements.length).toBe(1);
         const replacement = result.replacements[0];
         if (replacement instanceof Reference) {
-          expect(replacement.key).toBeInstanceOf(Quoted);
-          expect((replacement.key as Quoted).value).toBe('key');
+          const keyNode = replacement.key;
+          expect(keyNode).toBeInstanceOf(Quoted);
+          if (keyNode instanceof Quoted) {
+            expect(keyNode.value).toBe('key');
+          }
           expect(replacement.options.type).toBe('index');
         }
       }
@@ -71,8 +77,11 @@ describe('getInterpolatedOrString', () => {
         expect(result.replacements.length).toBe(1);
         const replacement = result.replacements[0];
         if (replacement instanceof Reference) {
-          expect(replacement.key).toBeInstanceOf(Quoted);
-          expect((replacement.key as Quoted).value).toBe('property');
+          const keyNode = replacement.key;
+          expect(keyNode).toBeInstanceOf(Quoted);
+          if (keyNode instanceof Quoted) {
+            expect(keyNode.value).toBe('property');
+          }
           expect(replacement.options.type).toBe('index');
         }
       }
@@ -95,13 +104,19 @@ describe('getInterpolatedOrString', () => {
     it('should create Interpolated for @{variable}', () => {
       const result = getInterpolatedOrString('@{variable}');
       expect(typeof result).not.toBe('string');
-      expect((result as Interpolated).type).toBe('Interpolated');
+      expect(result).toBeInstanceOf(Interpolated);
+      if (result instanceof Interpolated) {
+        expect(result.type).toBe('Interpolated');
+      }
     });
 
     it('should create Interpolated for ${property}', () => {
       const result = getInterpolatedOrString('${property}');
       expect(typeof result).not.toBe('string');
-      expect((result as Interpolated).type).toBe('Interpolated');
+      expect(result).toBeInstanceOf(Interpolated);
+      if (result instanceof Interpolated) {
+        expect(result.type).toBe('Interpolated');
+      }
     });
   });
 });

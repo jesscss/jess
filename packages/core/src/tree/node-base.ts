@@ -5,7 +5,7 @@ import {
 import type { TriviaMap } from '../types/index.js';
 import { type Visitor } from '../visitor/index.js';
 import { type Operator } from './util/calculate.js';
-import type { Class, AbstractClass, Tagged } from 'type-fest';
+import type { AbstractClass, Tagged } from 'type-fest';
 import {
   type PrintOptions,
   getPrintOptions,
@@ -59,6 +59,17 @@ export type NodeOptions = Record<string, any> & AllNodeOptions;
 export type RegistrationOptions = {
   reuseCanonical?: boolean;
 };
+export type PlacementCloneOptions = {
+  /**
+   * Omit comments by cloning them as Nil nodes for variable/reference-style
+   * placement copies.
+   */
+  stripComments?: boolean;
+  /**
+   * Reuse source-free scalar leaves instead of allocating identical copies.
+   */
+  reuseLeaves?: boolean;
+};
 export const DEFAULT_DATA = 'value';
 
 type BasicNodeTypes = PrimitiveOrFunc | Node;
@@ -105,7 +116,12 @@ function setParent(node: Node, parent: Node | undefined): void {
 }
 
 function isRulesNode(node: Node | { type?: string } | undefined): node is Rules {
-  return node?.type === 'Rules';
+  // nodeTypeBits.Rules is always defined; `!` non-null assert: it's set in the table
+  return node instanceof Node && (node.nodeType & nodeTypeBits.Rules!) !== 0;
+}
+
+function hasFrameMetadata(node: Node): node is FrameMetadataNode {
+  return 'frames' in node;
 }
 
 function sourceRootOf(node: Node): Rules | undefined {
@@ -133,13 +149,17 @@ function sourceRootOf(node: Node): Rules | undefined {
 type TreeVisitMethod = (node: Node, ctx?: unknown) => NodeVisitReturn;
 type VisitMethod = (node: Node) => Node;
 type TypeVisitMethod = (node: Node) => NodeVisitReturn;
+type FrameMetadataNode = Node & {
+  frames?: unknown;
+};
 
 function getTreeVisitMethod(visitor: unknown): TreeVisitMethod | undefined {
   if (typeof visitor !== 'object' || visitor === null) {
     return undefined;
   }
   const method = (visitor as { _visit?: unknown })._visit;
-  return typeof method === 'function' ? method : undefined;
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+  return typeof method === 'function' ? method as TreeVisitMethod : undefined;
 }
 
 function hasVisitedNodeSet(visitor: unknown): boolean {
@@ -153,7 +173,8 @@ function getVisitMethod(visitor: unknown): VisitMethod | undefined {
     return undefined;
   }
   const method = (visitor as { visit?: unknown }).visit;
-  return typeof method === 'function' ? method : undefined;
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+  return typeof method === 'function' ? method as VisitMethod : undefined;
 }
 
 function isStringKeyRecord(value: unknown): value is Record<string, unknown> {
@@ -165,7 +186,8 @@ function getTypeVisitMethod(visitor: unknown, methodName: string): TypeVisitMeth
     return undefined;
   }
   const method = visitor[methodName];
-  return typeof method === 'function' ? method : undefined;
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+  return typeof method === 'function' ? method as TypeVisitMethod : undefined;
 }
 
 /**
@@ -207,9 +229,9 @@ export const defineType = <
   Clazz.prototype.nodeType = nodeType;
 
   type Args = [value?: P[0] | V, options?: P[1], location?: P[2]];
-  return (...args: Args) => {
-    const node: T extends Class<infer C> ? InstanceType<Class<C, Args>> : never = Reflect.construct(Clazz, args);
-    return node;
+  return (...args: Args): InstanceType<T> => {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    return Reflect.construct(Clazz, args) as InstanceType<T>;
   };
 };
 
@@ -252,12 +274,111 @@ export const F_DEFAULT = F_VISIBLE;
 export type Mutable<T extends { value: unknown }> =
   Omit<T, 'value'> & { -readonly [P in 'value']: T[P] };
 
+type ValueBearingNode = Node & {
+  value: unknown;
+};
+
+function hasNodeValue(node: Node): node is ValueBearingNode {
+  return 'value' in node;
+}
+
+function childKeysOf(node: Node): readonly string[] | undefined {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+  const childKeys = (node.constructor as typeof Node).childKeys;
+  if (childKeys === null) {
+    return undefined;
+  }
+  return childKeys;
+}
+
+function readNodeField(node: Node, key: string): unknown {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+  return (node as unknown as Record<string, unknown>)[key];
+}
+
+function visitValueEntries(
+  value: unknown,
+  cb: (node: Node, key: string | number, collection: any, idx: number) => void,
+  idx: number,
+  key: string | number,
+  collection: any
+): number {
+  if (isArray(value)) {
+    for (let i = 0; i < value.length; i++) {
+      const item = value[i];
+      if (item instanceof Node) {
+        cb(item, i, value, idx++);
+      }
+    }
+    return idx;
+  }
+  if (isPlainObject(value)) {
+    for (const k in value) {
+      const item = value[k];
+      if (isArray(item)) {
+        for (let i = 0; i < item.length; i++) {
+          const child = item[i];
+          if (child instanceof Node) {
+            cb(child, i, item, idx++);
+          }
+        }
+      } else if (item instanceof Node) {
+        cb(item, k, value, idx++);
+      }
+    }
+    return idx;
+  }
+  if (value instanceof Node) {
+    cb(value, key, collection, idx++);
+  }
+  return idx;
+}
+
+function visitLeafValues(
+  value: unknown,
+  cb: (value: unknown) => void,
+  reverse?: boolean
+): void {
+  if (isArray(value)) {
+    if (reverse) {
+      for (let i = value.length - 1; i >= 0; i--) {
+        cb(value[i]);
+      }
+    } else {
+      for (let i = 0; i < value.length; i++) {
+        cb(value[i]);
+      }
+    }
+    return;
+  }
+  if (isPlainObject(value)) {
+    for (const k in value) {
+      const item = value[k];
+      if (isArray(item)) {
+        if (reverse) {
+          for (let i = item.length - 1; i >= 0; i--) {
+            cb(item[i]);
+          }
+        } else {
+          for (let i = 0; i < item.length; i++) {
+            cb(item[i]);
+          }
+        }
+      } else {
+        cb(item);
+      }
+    }
+    return;
+  }
+  cb(value);
+}
+
 /**
  * The underlying type for all Jess nodes
  */
 export abstract class Node<
-  Data = unknown,
-  O extends NodeOptions = NodeOptions
+  out Data = unknown,
+  out O extends NodeOptions = NodeOptions
 > {
   /**
    * Keys of direct instance fields that hold child nodes.
@@ -302,14 +423,56 @@ export abstract class Node<
    */
   declare nodeType: number;
 
-  /** Will be copied during inherit */
-  state = F_DEFAULT;
+  /** Bitmask of runtime flags (F_VISIBLE, F_STATIC, etc.). Renamed from `state` to free that name for Parséman. */
+  flags = F_DEFAULT;
+
+  /** Parséman parse-context snapshot stored per node for incremental re-parsing. */
+  state: unknown = undefined;
+
+  /** Discriminant required by Parséman's NodeLike interface. */
+  readonly _tag = 'node' as const;
+
+  /**
+   * Parséman structural children (Node | CSTLeaf | CSTError items in parse order).
+   * Set by buildNode during grammar-driven construction; empty for directly constructed nodes.
+   */
+  private _cstChildren: ReadonlyArray<{ _tag: string }> = [];
+  get children(): ReadonlyArray<{ _tag: string }> {
+    return this._cstChildren;
+  }
+
+  /** @internal — called by JessParser.buildNode only */
+  _setCstChildren(children: ReadonlyArray<{ _tag: string }>) {
+    this._cstChildren = children;
+  }
+
+  /** Source byte-offset span for Parséman's NodeLike interface. */
+  get span(): { start: number; end: number } {
+    return {
+      start: this._location?.[0] ?? 0,
+      end: this._location?.[3] ?? 0
+    };
+  }
 
   /** Runtime tracking: has this node completed registration identity prep? */
   registrationPrepared = false;
 
   /** Runtime tracking: has eval been run on this node? */
-  evaluated = false;
+
+  /**
+   * Optional scanner-first direct-field spans, packed by this node's static
+   * `childKeys` order as `[start, end, flags]` triples. This is offset-only
+   * source provenance, not legacy `LocationInfo`.
+   */
+  declare fieldSpans: number[] | undefined;
+
+  /**
+   * Optional scanner-first spans for array-backed `value` entries, also packed
+   * as `[start, end, flags]` triples. Keep this separate from `fieldSpans` so
+   * a direct `value` field range is not confused with individual value
+   * segments.
+   */
+  declare valueSpans: number[] | undefined;
 
   get visible() {
     return this.hasFlag(F_VISIBLE);
@@ -389,16 +552,6 @@ export abstract class Node<
   /** Patched at runtime in node.ts to return Nil instance */
   declare nil: () => Nil;
 
-  /**
-   * The node's data.
-   *
-   * This is `readonly` to prevent accidental unforked mutation.
-   *
-   * Mutation should happen through constructor-owned direct fields or
-   * replacement-node construction. Do not add generic mutation helpers here.
-   */
-  readonly value: Data;
-
   // /**
   //  * This is the internal `data` of the node.
   //  */
@@ -423,25 +576,25 @@ export abstract class Node<
     if (flag === F_STATIC && this.hasFlag(F_NON_STATIC)) {
       return;
     }
-    this.state |= flag;
+    this.flags |= flag;
     // Handle STATIC/NON_STATIC exclusivity
     if (flag === F_NON_STATIC) {
-      this.state &= ~F_STATIC;
+      this.flags &= ~F_STATIC;
     }
   }
 
   /**
-   * Remove a flag from the node's state
+   * Remove a flag from the node's flags
    */
   removeFlag(flag: number) {
-    this.state &= ~flag;
+    this.flags &= ~flag;
   }
 
   /**
    * Check if the node has a specific flag
    */
   hasFlag(flag: number): boolean {
-    return (this.state & flag) !== 0;
+    return (this.flags & flag) !== 0;
   }
 
   /**
@@ -481,7 +634,7 @@ export abstract class Node<
    * Assign parent to sub-nodes
    * @note - This will not process the children nodes of children nodes.
    */
-  private _processNodes<T>(value: T): T {
+  protected _processNodes<T>(value: T): T {
     if (isArray(value)) {
       for (let val of value) {
         if (val instanceof Node) {
@@ -502,7 +655,7 @@ export abstract class Node<
   }
 
   constructor(
-    value: Data,
+    value?: Data,
     options?: O,
     location?: NodeLocation
   ) {
@@ -521,7 +674,10 @@ export abstract class Node<
         configurable: false
       }
     });
-    this.value = this._processNodes(value);
+    if (arguments.length > 0) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (this as unknown as { value: unknown }).value = this._processNodes(value);
+    }
     this._location = location;
     this._options = options;
   }
@@ -555,6 +711,9 @@ export abstract class Node<
   get rulesParent(): Rules | undefined {
     let possibleRules: Node | undefined = this.parent;
     while (possibleRules && possibleRules.type !== 'Rules') {
+      if (isRulesNode(possibleRules)) {
+        break;
+      }
       possibleRules = possibleRules.parent;
     }
     return isRulesNode(possibleRules) ? possibleRules : undefined;
@@ -628,97 +787,48 @@ export abstract class Node<
     });
   }
 
-  /**
-   * Iterate leaf values of this.value, calling `cb` for each.
-   * Arrays → iterate elements; plain objects → iterate property values
-   * (recursing into array property values); otherwise → the value itself.
-   */
+  /** Iterate leaf values from fields declared by childKeys. */
   private _visitValues(
     cb: (value: unknown) => void,
     reverse?: boolean
   ) {
-    const data = this.value;
-    if (isArray(data)) {
-      if (reverse) {
-        for (let i = data.length - 1; i >= 0; i--) {
-          cb(data[i]);
-        }
-      } else {
-        for (let i = 0; i < data.length; i++) {
-          cb(data[i]);
-        }
+    const childKeys = childKeysOf(this);
+    if (!childKeys) {
+      return;
+    }
+    if (reverse) {
+      for (let i = childKeys.length - 1; i >= 0; i--) {
+        visitLeafValues(readNodeField(this, childKeys[i]!), cb, reverse);
       }
-    } else if (isPlainObject(data)) {
-      for (const k in data) {
-        const v = data[k];
-        if (isArray(v)) {
-          if (reverse) {
-            for (let j = v.length - 1; j >= 0; j--) {
-              cb(v[j]);
-            }
-          } else {
-            for (let j = 0; j < v.length; j++) {
-              cb(v[j]);
-            }
-          }
-        } else {
-          cb(v);
-        }
-      }
-    } else {
-      cb(data);
+      return;
+    }
+    for (let i = 0; i < childKeys.length; i++) {
+      visitLeafValues(readNodeField(this, childKeys[i]!), cb);
     }
   }
 
   /**
-   * Visit each Node entry in this.value, calling `cb` for each.
-   * Matches the iteration pattern of the old getEntriesFromNode:
-   * arrays → iterate elements; plain objects → iterate properties
-   * (recursing into array property values); otherwise → the value itself.
+   * Visit each child Node entry described by childKeys, calling `cb` for each.
    */
   private _visitEntries(
     cb: (node: Node, key: string | number, collection: any, idx: number) => void
   ) {
+    const childKeys = childKeysOf(this);
+    if (!childKeys) {
+      return;
+    }
     let idx = 0;
-    const value = this.value;
-    if (isArray(value)) {
-      for (let i = 0; i < value.length; i++) {
-        if (value[i] instanceof Node) {
-          cb(value[i], i, value, idx++);
-        }
-      }
-    } else if (isPlainObject(value)) {
-      for (const k in value) {
-        const v = value[k];
-        if (isArray(v)) {
-          for (let i = 0; i < v.length; i++) {
-            if (v[i] instanceof Node) {
-              cb(v[i], i, v, idx++);
-            }
-          }
-        } else if (v instanceof Node) {
-          cb(v, k, value, idx++);
-        }
-      }
-    } else if (value instanceof Node) {
-      cb(value, 'value', this, idx);
+    for (let i = 0; i < childKeys.length; i++) {
+      const key = childKeys[i]!;
+      idx = visitValueEntries(readNodeField(this, key), cb, idx, key, this);
     }
   }
 
-  /**
-   * Return an iterator for all nodes / children nodes, including this one
-   */
-  * nodes(reverse?: boolean): Generator<Node, void, unknown> {
-    yield this;
-    yield* this.children(true, reverse);
-  }
-
-  /**
-  * An iterator for all node children
-  * @todo - Replace `walkNodes` with this?
-  */
-  * children(deep?: boolean, reverse?: boolean): Generator<Node, void, unknown> {
-    const value = this.value;
+  private* _walkFromValue(
+    value: unknown,
+    deep?: boolean,
+    reverse?: boolean
+  ): Generator<Node, void, unknown> {
     if (isArray(value)) {
       if (reverse) {
         for (let i = value.length - 1; i >= 0; i--) {
@@ -726,7 +836,7 @@ export abstract class Node<
           if (nodeVal instanceof Node) {
             yield nodeVal;
             if (deep) {
-              yield* nodeVal.children(deep, reverse);
+              yield* nodeVal.walk(deep, reverse);
             }
           }
         }
@@ -736,7 +846,7 @@ export abstract class Node<
           if (nodeVal instanceof Node) {
             yield nodeVal;
             if (deep) {
-              yield* nodeVal.children(deep, reverse);
+              yield* nodeVal.walk(deep, reverse);
             }
           }
         }
@@ -753,7 +863,7 @@ export abstract class Node<
               if (nodeVal instanceof Node) {
                 yield nodeVal;
                 if (deep) {
-                  yield* nodeVal.children(deep, reverse);
+                  yield* nodeVal.walk(deep, reverse);
                 }
               }
             }
@@ -763,7 +873,7 @@ export abstract class Node<
               if (nodeVal instanceof Node) {
                 yield nodeVal;
                 if (deep) {
-                  yield* nodeVal.children(deep, reverse);
+                  yield* nodeVal.walk(deep, reverse);
                 }
               }
             }
@@ -771,7 +881,7 @@ export abstract class Node<
         } else if (childValue instanceof Node) {
           yield childValue;
           if (deep) {
-            yield* childValue.children(deep, reverse);
+            yield* childValue.walk(deep, reverse);
           }
         }
       }
@@ -780,8 +890,36 @@ export abstract class Node<
     if (value instanceof Node) {
       yield value;
       if (deep) {
-        yield* value.children(deep, reverse);
+        yield* value.walk(deep, reverse);
       }
+    }
+  }
+
+  /**
+   * Return an iterator for all nodes / children nodes, including this one
+   */
+  * nodes(reverse?: boolean): Generator<Node, void, unknown> {
+    yield this;
+    yield* this.walk(true, reverse);
+  }
+
+  /**
+   * An iterator over semantic child nodes (via childKeys), optionally deep.
+   * Renamed from `children()` — use `.children` (property) for the Parséman structural child array.
+   */
+  * walk(deep?: boolean, reverse?: boolean): Generator<Node, void, unknown> {
+    const childKeys = childKeysOf(this);
+    if (!childKeys) {
+      return;
+    }
+    if (reverse) {
+      for (let i = childKeys.length - 1; i >= 0; i--) {
+        yield* this._walkFromValue(readNodeField(this, childKeys[i]!), deep, reverse);
+      }
+      return;
+    }
+    for (let i = 0; i < childKeys.length; i++) {
+      yield* this._walkFromValue(readNodeField(this, childKeys[i]!), deep, reverse);
     }
   }
 
@@ -843,7 +981,7 @@ export abstract class Node<
     // Visit children recursively (Less.js pattern)
     // Note: If TreeVisitor is using accept(), it will skip auto-visiting children
     // to avoid double-visiting. See TreeVisitor._visit() implementation.
-    for (const child of this.children()) {
+    for (const child of this.walk()) {
       if (child.accept) {
         child.accept(visitor);
       } else {
@@ -881,35 +1019,120 @@ export abstract class Node<
    * object creation, and the low utility of preserving the original
    * node, I think we should just only clone when we need to.
    */
-  clone(deep?: boolean, cloneFn?: (n: Node) => Node): this {
+  /**
+   * Shallow clone: a new node with this node's shape, SHARING its child nodes.
+   * There is NO deep-clone option — the live-binding/placement layer is thin
+   * replacement over a shared canonical source tree, never a sub-tree copy. A
+   * caller may pass `cloneFn` to map its DIRECT child nodes (e.g. share a leaf,
+   * substitute a single node); `cloneFn` must not recurse into a deep copy.
+   */
+  clone(cloneFn?: (n: Node) => Node): this {
+    if (!hasNodeValue(this)) {
+      throw new TypeError(`${this.type} must implement clone() for direct fields`);
+    }
     let cloned = this.cloneValue(this.value);
 
-    if (deep) {
-      cloneFn ??= n => n.clone(deep);
+    if (cloneFn) {
       if (cloned instanceof Node) {
         cloned = cloneFn(cloned);
       } else {
-        this._deepCloneChildren(cloned, cloneFn);
+        this._mapChildNodes(cloned, cloneFn);
       }
     }
 
-    const newNode: this = Reflect.construct(
-      this.constructor,
-      [cloned, this._options ? { ...this._options } : undefined, this.location]
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const Ctor = this.constructor as new (
+      value: unknown,
+      options?: O,
+      location?: NodeLocation
+    ) => this;
+    const newNode = new Ctor(
+      cloned,
+      this._options ? { ...this._options } : undefined,
+      this._location
     );
     newNode.inherit(this);
 
     return newNode;
   }
 
-  private _deepCloneChildren(value: unknown, cloneFn: (n: Node) => Node) {
+  /**
+   * True when this node can be shared as an inert placement leaf.
+   *
+   * Containers still need an owned clone surface because eval may re-parent or
+   * replace their children for a specific placement.
+   */
+  canReuseAsLeaf(): boolean {
+    return (this._location?.length ?? 0) === 0
+      && !this.hasFlag(F_NON_STATIC)
+      && !this.hasFlag(F_HAS_NODE_CHILD);
+  }
+
+  reuseAsLeaf(): this {
+    this.frozen = true;
+    return this;
+  }
+
+  private _copyPlacementMetadataTo(target: Node): void {
+    target.hoistToRoot = this.hoistToRoot;
+    if (!hasFrameMetadata(this)) {
+      return;
+    }
+    const self = this as FrameMetadataNode;
+    const frames = self.frames;
+    if (Array.isArray(frames)) {
+      const frameCopy = new Array<unknown>(frames.length);
+      for (let i = 0; i < frames.length; i++) {
+        frameCopy[i] = frames[i];
+      }
+      (target as FrameMetadataNode).frames = frameCopy;
+      return;
+    }
+    (target as FrameMetadataNode).frames = undefined;
+  }
+
+  /**
+   * Clone this node for a new output/eval placement.
+   *
+   * Node shape belongs to `clone()` overrides. This method only applies
+   * cross-cutting placement policy: comment stripping, reusable leaf sharing,
+   * render metadata transfer, and freezing of copied surfaces.
+   */
+  cloneForPlacement(options?: PlacementCloneOptions): Node {
+    const stripComments = options?.stripComments !== false;
+    const reuseLeaves = options?.reuseLeaves !== false;
+    if (stripComments && this.type === 'Comment') {
+      const nilNode = this.nil?.() || this._createMinimalNil();
+      return nilNode.inherit(this);
+    }
+    if (reuseLeaves && this.canReuseAsLeaf()) {
+      return this.reuseAsLeaf();
+    }
+    // Thin placement: a new surface node that SHARES this node's child nodes.
+    // Per-placement runtime state lives in side maps / the binding layer, never
+    // in a deep-cloned sub-tree. We only map direct child nodes to apply
+    // placement policy at this level (strip comments, reuse inert leaves); we do
+    // NOT recurse into a deep copy.
+    const clone = this.clone((n) => {
+      if (stripComments && n.type === 'Comment') {
+        const nilNode = n.nil?.() || n._createMinimalNil();
+        return nilNode.inherit(n);
+      }
+      return reuseLeaves && n.canReuseAsLeaf() ? n.reuseAsLeaf() : n;
+    });
+    this._copyPlacementMetadataTo(clone);
+    clone.frozen = true;
+    return clone;
+  }
+
+  private _mapChildNodes(value: unknown, cloneFn: (n: Node) => Node) {
     if (isArray(value)) {
       for (let i = 0; i < value.length; i++) {
         const item = value[i];
         if (item instanceof Node) {
           value[i] = cloneFn(item);
         } else if (isArray(item)) {
-          this._deepCloneChildren(item, cloneFn);
+          this._mapChildNodes(item, cloneFn);
         }
       }
     } else if (isPlainObject(value)) {
@@ -918,9 +1141,9 @@ export abstract class Node<
         if (v instanceof Node) {
           value[k] = cloneFn(v);
         } else if (isArray(v)) {
-          this._deepCloneChildren(v, cloneFn);
+          this._mapChildNodes(v, cloneFn);
         } else if (isPlainObject(v)) {
-          this._deepCloneChildren(v, cloneFn);
+          this._mapChildNodes(v, cloneFn);
         }
       }
     }
@@ -939,32 +1162,6 @@ export abstract class Node<
   }
 
   /**
-   * Same as clone except comments are stripped.
-   * This is used for variable referencing and
-   * selector extending.
-   */
-  copy(deep?: boolean, cloneFn?: (n: Node) => Node): this {
-    const newNode = this.clone(
-      deep,
-      (n) => {
-        if (n.type !== 'Comment') {
-          const copy = n.copy(deep, cloneFn);
-          return copy;
-        }
-        const nilNode = this.nil?.() || this._createMinimalNil();
-        return nilNode.inherit(n);
-      }
-    );
-    if (this.hasFlag(F_AMPERSAND)) {
-      newNode.addFlag(F_AMPERSAND);
-    }
-    if (this.hasFlag(F_IMPLICIT_AMPERSAND)) {
-      newNode.addFlag(F_IMPLICIT_AMPERSAND);
-    }
-    return newNode;
-  }
-
-  /**
    * Stop this node from reading file-owned trivia during serialization.
    *
    * Use this for copied values that are rendered in a new evaluated placement,
@@ -980,7 +1177,12 @@ export abstract class Node<
     }
     this._location = undefined;
     if (deep) {
-      this._detachChildTrivia(this.value);
+      const childKeys = childKeysOf(this);
+      if (childKeys) {
+        for (let i = 0; i < childKeys.length; i++) {
+          this._detachChildTrivia(readNodeField(this, childKeys[i]!));
+        }
+      }
     }
     return this;
   }
@@ -1047,50 +1249,40 @@ export abstract class Node<
   }
 
   static evalStatic(node: Node, context: Context): MaybePromise<Node> {
-    if (node.hasFlag(F_STATIC) && node.evaluated) {
-      return node;
-    }
-
-    /**
-     * Canonical nodes are always eligible for re-evaluation — they're the
-     * template, not a retained result. The remaining fork storage no longer
-     * tracks an "active render key" on the node itself.
-     */
-    // Frozen non-static nodes are reusable placement templates; their eval
-    // result is context-dependent and must not be retained across placements.
-    const needsReeval = node.frozen && !node.hasFlag(F_STATIC);
-
+    // §2.7: a node is a reusable template that re-evaluates per placement — no
+    // retained `evaluated` result on the canonical node. This removes the
+    // `evaluated` re-eval/cache reads from the hot path. See LIVE_BINDING §2.7.
     if (!node.hasFlag(F_MAY_ASYNC)) {
-      return Node._evalStaticSync(node, context, needsReeval);
+      return Node._evalStaticSync(node, context);
     }
 
-    const evaluated = node.evaluated && !needsReeval
-      ? node
-      : node.evalNode(context);
+    const evaluated = node.evalNode(context);
     if (isThenable(evaluated)) {
       return (evaluated as Promise<Node>).then((evald) => {
-        evald.evaluated = true;
         if (node !== evald) {
           evald.inherit(node);
         }
         return evald;
       });
     }
-    evaluated.evaluated = true;
     if (node !== evaluated) {
       evaluated.inherit(node);
     }
     return evaluated;
   }
 
-  private static _evalStaticSync(node: Node, context: Context, needsReeval = false): Node {
-    let evald: Node;
-    if (!node.evaluated || needsReeval) {
-      evald = mustBeNode(node.evalNode(context));
-    } else {
-      evald = node;
+  private static _evalStaticSync(node: Node, context: Context): MaybePromise<Node> {
+    const evaluated = node.evalNode(context);
+    if (isThenable(evaluated)) {
+      return (evaluated as Promise<Node>).then((resolved) => {
+        const evald = mustBeNode(resolved);
+        if (node !== evald) {
+          evald.inherit(node);
+        }
+        return evald;
+      });
     }
-    evald.evaluated = true;
+    const evald = mustBeNode(evaluated);
     if (node !== evald) {
       evald.inherit(node);
     }
@@ -1170,9 +1362,11 @@ export abstract class Node<
    * normalization algorithms.
    */
   valueOf(): Primitive {
-    let value = this.value;
-    if (isPrimitiveValue(value)) {
-      return value;
+    if (hasNodeValue(this)) {
+      const value = this.value;
+      if (isPrimitiveValue(value)) {
+        return value;
+      }
     }
     let result = '';
     let count = 0;

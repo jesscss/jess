@@ -4,13 +4,20 @@ import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { cast } from './util/cast.js';
 import { callWithContext, getRawArgsPlacement, setRawArgsPlacement } from '../define-function.js';
-import { type FinalPrintOptions, type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
+import { OutputWriter, type FinalPrintOptions, type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
 import { Paren } from './paren.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import { Rules } from './rules.js';
-import { callableRulesEntry } from './util/callable-entry.js';
+import { callableRulesEntry, type MixinEntry } from './util/callable-entry.js';
 import { MixinCollection } from './util/callable-collection.js';
+import { evaluateCallableCollection } from './util/callable-eval.js';
 import { Any } from './any.js';
+import { Bool } from './bool.js';
+import { Dimension } from './dimension.js';
+import { Num } from './number.js';
+import { Color } from './color.js';
+import { Sequence } from './sequence.js';
+import { Quoted } from './quoted.js';
 import { List, list } from './list.js';
 import { Reference } from './reference.js';
 import {
@@ -19,8 +26,17 @@ import {
   type RenderBuffer,
   writeRenderTextResult
 } from './util/render-buffer.js';
-import { emitCommentTriviaBetweenNodes } from './util/trivia.js';
-import { copyWithReusableLeaves } from './util/cloning.js';
+import {
+  consumeTrivia,
+  emitCommentTriviaBetweenNodes,
+  emitTriviaTokens,
+  printableTriviaText,
+  triviaLeadingWhitespace
+} from './util/trivia.js';
+import { Condition } from './condition.js';
+import { Operation } from './operation.js';
+import { QueryCondition } from './query-condition.js';
+import { Negative } from './negative.js';
 
 function stringifyValueOf(value: unknown): string {
   if (value && typeof value === 'object' && 'valueOf' in value) {
@@ -33,21 +49,103 @@ function isExtendedFn(value: unknown): value is ExtendedFn {
   return typeof value === 'function';
 }
 
+function isTriviaMap(value: unknown): value is NonNullable<PrintOptions['trivia']> {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+  return (
+    'lookup' in value
+    && typeof value.lookup === 'function'
+    && 'entries' in value
+    && typeof value.entries === 'function'
+    && 'has' in value
+    && typeof value.has === 'function'
+  );
+}
+
+function sourceTriviaForNode(node: Node): PrintOptions['trivia'] | undefined {
+  const trivia = node.sourceRoot?._treeContext?.opts?.trivia;
+  return isTriviaMap(trivia) ? trivia : undefined;
+}
+
 function createImportantFlag(): Any<'flag'> {
   return new Any<'flag'>('!important', { role: 'flag' });
+}
+
+function emitCallArgSyntax(
+  arg: Node,
+  options: FinalPrintOptions,
+  suppressPre = false
+): void {
+  const saved = options.suppressBoundaryTrivia;
+  options.suppressBoundaryTrivia = suppressPre ? 'both' : 'post';
+  try {
+    arg.writeSyntax(options);
+  } finally {
+    options.suppressBoundaryTrivia = saved;
+  }
+}
+
+function emitCallArgSeparator(
+  prev: Node,
+  arg: Node,
+  options: FinalPrintOptions,
+  sep: List<Node>['options']['sep']
+): void {
+  emitCommentTriviaBetweenNodes(prev, arg, options);
+  const leadingTrivia = options.trivia
+    ? consumeTrivia(options.trivia, arg.location[0], 'before', options)
+    : undefined;
+  const preserveLeadingWhitespace = /[\r\n]/.test(triviaLeadingWhitespace(leadingTrivia));
+  if (sep === '/') {
+    options.writer.add(preserveLeadingWhitespace ? ' /' : ' / ');
+  } else {
+    const sepStr = sep ?? ',';
+    options.writer.add(preserveLeadingWhitespace ? sepStr : `${sepStr} `);
+  }
+  if (leadingTrivia) {
+    emitTriviaTokens(
+      leadingTrivia,
+      options,
+      { skipLeadingWhitespace: !preserveLeadingWhitespace }
+    );
+  }
+}
+
+function emitCommentTriviaBetweenCallArgs(
+  prev: Node,
+  next: Node,
+  options: FinalPrintOptions
+): string {
+  const trivia = options.trivia ?? sourceTriviaForNode(prev) ?? sourceTriviaForNode(next);
+  const prevEnd = prev.location[3];
+  if (!trivia || prevEnd === undefined || next.location[0] === undefined) {
+    return '';
+  }
+  const run = trivia.lookup(prevEnd, 'after');
+  if (!run?.hasComment) {
+    return '';
+  }
+  const consumed = consumeTrivia(trivia, prevEnd, 'after', options);
+  emitTriviaTokens(consumed, options);
+  return printableTriviaText(consumed, options.context);
 }
 
 function withMixinRulesetCallArgsHint(name: string | Node, args?: List<Node>): string | Node;
 function withMixinRulesetCallArgsHint<T extends unknown>(name: T, args?: List<Node>): T | Reference;
 function withMixinRulesetCallArgsHint<T extends unknown>(name: T, args?: List<Node>): T | Reference {
   if (
-    args?.items.length
+    args?.value.length
     && isNode(name, N.Reference)
     && name.options?.type === 'mixin-ruleset'
     && name.options.mixinRulesetCallHasArgs !== true
   ) {
     return new Reference(
-      name.value,
+      {
+        target: name.target,
+        key: name.key,
+        rawKey: name.rawKey
+      },
       {
         ...name.options,
         mixinRulesetCallHasArgs: true
@@ -107,6 +205,285 @@ export type CallRawArgDiagnosticSource = {
 };
 
 type OptionalFallbackRenderOutput = Node | string;
+type CallRenderTextState = { text: string | undefined };
+type CallRenderArgOptions = { evaluateCalcArgs: boolean };
+
+function writeCallNodeTextToActiveWriter(
+  node: Node,
+  printOptions: FinalPrintOptions,
+  trimHorizontal = false
+): string {
+  const writer = printOptions.writer;
+  const position = writer.position();
+  node.writeSyntax(printOptions);
+  if (trimHorizontal) {
+    writer.trimHorizontalStartSince(position);
+    writer.trimHorizontalEndSince(position);
+  }
+  return writer.getSince(position);
+}
+
+function getRenderedCallNameText(name: string | Node | unknown): string | undefined {
+  if (typeof name === 'string') {
+    return name;
+  }
+  if (name instanceof Node) {
+    return getKnownRenderedCallText(name);
+  }
+  return undefined;
+}
+
+function getKnownRenderedCallText(node: Node): string | undefined {
+  if (node instanceof Any) {
+    return typeof node.value === 'string' ? node.value : undefined;
+  }
+  if (node instanceof Bool) {
+    return node.value ? 'true' : 'false';
+  }
+  if (node instanceof Num) {
+    return typeof node.number === 'number' ? `${node.number}` : undefined;
+  }
+  if (node instanceof Dimension) {
+    return typeof node.number === 'number' ? node.toTrimmedString() : undefined;
+  }
+  if (node instanceof Color) {
+    return typeof node.node === 'string' ? node.node : undefined;
+  }
+  if (node instanceof List) {
+    const sep = node.options?.sep ?? ',';
+    const joiner = sep === '/' ? ' / ' : `${sep} `;
+    let out = '';
+    for (let i = 0; i < node.value.length; i++) {
+      const text = getKnownRenderedCallText(node.value[i]!);
+      if (text === undefined) {
+        return undefined;
+      }
+      if (i > 0) {
+        out += joiner;
+      }
+      out += text;
+    }
+    return out;
+  }
+  if (node instanceof Sequence) {
+    if (node.preserveWhitespace) {
+      return undefined;
+    }
+    let out = '';
+    for (let i = 0; i < node.value.length; i++) {
+      const text = getKnownRenderedCallText(node.value[i]!);
+      if (text === undefined) {
+        return undefined;
+      }
+      if (i > 0) {
+        out += ' ';
+      }
+      out += text;
+    }
+    return out;
+  }
+  if (node instanceof Paren) {
+    const open = node.options?.delimiter === 'square' ? '[' : '(';
+    const close = node.options?.delimiter === 'square' ? ']' : ')';
+    if (!node.value) {
+      return `${open}${close}`;
+    }
+    const value = getKnownRenderedCallText(node.value);
+    if (value === undefined) {
+      return undefined;
+    }
+    return `${open}${value}${close}`;
+  }
+  if (node instanceof Quoted) {
+    const quote = node.quote ?? '"';
+    if (typeof node.value === 'string') {
+      return node.escaped ? node.value : `${quote}${node.value}${quote}`;
+    }
+    const value = getKnownRenderedCallText(node.value);
+    if (value === undefined) {
+      return undefined;
+    }
+    return node.escaped ? value : `${quote}${value}${quote}`;
+  }
+  if (node instanceof QueryCondition) {
+    let out = '';
+    for (let i = 0; i < node.value.length; i++) {
+      const text = getKnownRenderedCallText(node.value[i]!);
+      if (text === undefined) {
+        return undefined;
+      }
+      if (i > 0) {
+        out += ' ';
+      }
+      out += text;
+    }
+    return out;
+  }
+  if (node instanceof Condition) {
+    const left = getKnownRenderedCallText(node.left);
+    if (left === undefined) {
+      return undefined;
+    }
+    const needsParens = Boolean(node.right || node.negate);
+    let out = node.negate ? 'not ' : '';
+    if (needsParens) {
+      out += '(';
+    }
+    out += left;
+    if (node.operator && node.right) {
+      const right = getKnownRenderedCallText(node.right);
+      if (right === undefined) {
+        return undefined;
+      }
+      out += ` ${node.operator} ${right}`;
+    }
+    if (needsParens) {
+      out += ')';
+    }
+    return out;
+  }
+  if (node instanceof Operation) {
+    const left = getKnownRenderedCallText(node.left);
+    const right = getKnownRenderedCallText(node.right);
+    if (left === undefined || right === undefined) {
+      return undefined;
+    }
+    return `${left} ${node.operator} ${right}`;
+  }
+  if (node instanceof Negative) {
+    const value = getKnownRenderedCallText(node.value);
+    return value === undefined ? undefined : `-${value}`;
+  }
+  return undefined;
+}
+
+function getKnownSourceCallText(node: Node): string | undefined {
+  if (node instanceof Any) {
+    return typeof node.value === 'string' ? node.value : undefined;
+  }
+  if (node instanceof Bool) {
+    return node.value ? 'true' : 'false';
+  }
+  if (node instanceof Num) {
+    return typeof node.number === 'number' ? `${node.number}` : undefined;
+  }
+  if (node instanceof Dimension) {
+    return typeof node.number === 'number' ? node.toTrimmedString() : undefined;
+  }
+  if (node instanceof Color) {
+    return typeof node.node === 'string' ? node.node : undefined;
+  }
+  if (node instanceof List) {
+    const sep = node.options?.sep ?? ',';
+    const joiner = sep === '/' ? ' / ' : `${sep} `;
+    let out = '';
+    for (let i = 0; i < node.value.length; i++) {
+      const text = getKnownSourceCallText(node.value[i]!);
+      if (text === undefined) {
+        return undefined;
+      }
+      if (i > 0) {
+        out += joiner;
+      }
+      out += text;
+    }
+    return out;
+  }
+  if (node instanceof Sequence) {
+    if (node.preserveWhitespace) {
+      return undefined;
+    }
+    let out = '';
+    for (let i = 0; i < node.value.length; i++) {
+      const text = getKnownSourceCallText(node.value[i]!);
+      if (text === undefined) {
+        return undefined;
+      }
+      if (i > 0) {
+        out += ' ';
+      }
+      out += text;
+    }
+    return out;
+  }
+  if (node instanceof Paren) {
+    const open = node.options?.delimiter === 'square' ? '[' : '(';
+    const close = node.options?.delimiter === 'square' ? ']' : ')';
+    if (!node.value) {
+      return `${node.options?.escaped ? '~' : ''}${open}${close}`;
+    }
+    const value = getKnownSourceCallText(node.value);
+    if (value === undefined) {
+      return undefined;
+    }
+    return `${node.options?.escaped ? '~' : ''}${open}${value}${close}`;
+  }
+  if (node instanceof Quoted) {
+    const quote = node.quote ?? '"';
+    if (typeof node.value === 'string') {
+      return node.escaped ? `~${quote}${node.value}${quote}` : `${quote}${node.value}${quote}`;
+    }
+    const value = getKnownSourceCallText(node.value);
+    if (value === undefined) {
+      return undefined;
+    }
+    return node.escaped ? `~${quote}${value}${quote}` : `${quote}${value}${quote}`;
+  }
+  if (node instanceof QueryCondition) {
+    let out = '';
+    for (let i = 0; i < node.value.length; i++) {
+      const text = getKnownSourceCallText(node.value[i]!);
+      if (text === undefined) {
+        return undefined;
+      }
+      if (i > 0) {
+        out += ' ';
+      }
+      out += text;
+    }
+    return out;
+  }
+  if (node instanceof Condition) {
+    const left = getKnownSourceCallText(node.left);
+    if (left === undefined) {
+      return undefined;
+    }
+    const needsParens = Boolean(node.right || node.negate);
+    let out = node.negate ? 'not ' : '';
+    if (needsParens) {
+      out += '(';
+    }
+    out += left;
+    if (node.operator && node.right) {
+      const right = getKnownSourceCallText(node.right);
+      if (right === undefined) {
+        return undefined;
+      }
+      out += ` ${node.operator} ${right}`;
+    }
+    if (needsParens) {
+      out += ')';
+    }
+    return out;
+  }
+  if (node instanceof Operation) {
+    const left = getKnownSourceCallText(node.left);
+    const right = getKnownSourceCallText(node.right);
+    if (left === undefined || right === undefined) {
+      return undefined;
+    }
+    return `${left} ${node.operator} ${right}`;
+  }
+  if (node instanceof Negative) {
+    const value = getKnownSourceCallText(node.value);
+    return value === undefined ? undefined : `-${value}`;
+  }
+  return undefined;
+}
+
+function callRenderSharesWriter(bufferOrOptions?: RenderBuffer | PrintOptions): bufferOrOptions is RenderBuffer & { shareWriter: true } {
+  return Boolean(isRenderBuffer(bufferOrOptions) && 'shareWriter' in bufferOrOptions && bufferOrOptions.shareWriter);
+}
 
 export function getCallRawArgsPlacement(rawArgs: List<Node>): CallRawArgsPlacementState | undefined {
   const placement = getRawArgsPlacement(rawArgs);
@@ -121,12 +498,12 @@ export function getCallRawArgsPlacement(rawArgs: List<Node>): CallRawArgsPlaceme
 
 export function getCallRawArgSourceNode(rawArgs: List<Node>, index: number): Node | undefined {
   const placement = getCallRawArgsPlacement(rawArgs);
-  return placement?.sourceArgs.items[index];
+  return placement?.sourceArgs.value[index];
 }
 
 export function getCallRawArgDiagnosticSource(rawArgs: List<Node>, index: number): CallRawArgDiagnosticSource | undefined {
   const placement = getCallRawArgsPlacement(rawArgs);
-  const sourceArg = placement?.sourceArgs.items[index];
+  const sourceArg = placement?.sourceArgs.value[index];
   if (!placement || !sourceArg) {
     return undefined;
   }
@@ -142,7 +519,9 @@ export function getCallRawArgDiagnosticMessageSource(rawArgs: List<Node>, index:
   if (!diagnosticSource) {
     return undefined;
   }
-  return `argument ${diagnosticSource.index + 1} from ${diagnosticSource.source.valueOf()}`;
+  const sourceText = getKnownSourceCallText(diagnosticSource.sourceArg) ?? diagnosticSource.sourceArg.toTrimmedString();
+  const sourceArgText = sourceText.startsWith('$') ? sourceText : `$${sourceText}`;
+  return `argument ${diagnosticSource.index + 1} from ${sourceArgText}`;
 }
 
 /**
@@ -177,6 +556,14 @@ export class Call extends Node<CallValue, CallOptions> {
   readonly args: CallValue['args'];
   readonly contentNode: CallValue['contentNode'];
 
+  /**
+   * Set on a Call that is the RESULT of eval (resolved output), so render emits
+   * it as a plain CSS call instead of re-entering dynamic name resolution. This
+   * is the narrow §2.7 replacement for the deleted general `evaluated` flag — it
+   * is purely a call-render concern, not a re-eval gate.
+   */
+  _evaluatedCallOutput = false;
+
   override _requiredSemi = true;
 
   private createEvalState(): CallEvalState {
@@ -188,7 +575,11 @@ export class Call extends Node<CallValue, CallOptions> {
       && name.options?.preserveRulesLike !== true
     ) {
       name = new Reference(
-        name.value,
+        {
+          target: name.target,
+          key: name.key,
+          rawKey: name.rawKey
+        },
         {
           ...name.options,
           preserveRulesLike: true
@@ -210,7 +601,6 @@ export class Call extends Node<CallValue, CallOptions> {
   private evalState(context: Context): Promise<Node> {
     const state = this.createEvalState();
     return this.evalFromState(context, state).then((node) => {
-      node.evaluated = true;
       if (node !== this) {
         node.inherit(this);
       }
@@ -227,28 +617,91 @@ export class Call extends Node<CallValue, CallOptions> {
     const fallbackName = isNode(name, N.Reference) && name.options.fallbackValue === true
       ? String(name.key)
       : stringifyValueOf(fallbackValue);
-    const rendered = await state.source.renderFinalizedCallSyntax(fallbackName, state, context, prepareRenderPrintState(context), {
-      args: state.args,
-      ...(state.contentNode && { contentNode: state.contentNode })
-    });
+    const rendered = await state.source.renderFinalizedCallSyntax(
+      fallbackName,
+      state,
+      context,
+      prepareRenderPrintState(context, {
+        trivia: sourceTriviaForNode(state.source)
+      }),
+      {
+        args: state.args,
+        ...(state.contentNode && { contentNode: state.contentNode })
+      }
+    );
     return state.source.markCallOutput(new Any(rendered, { role: 'any' }));
   }
 
   private async evalArgNodes(
     context: Context,
-    nodes?: List<Node>
+    nodes?: List<Node>,
+    options?: { ownResults?: boolean }
   ): Promise<List<Node> | undefined> {
     if (!nodes) {
       return undefined;
     }
-    const source = nodes.items;
+    const ownResults = options?.ownResults ?? true;
+    const source = nodes.value;
     const out = new Array<Node>(source.length);
+    let changed = false;
+    const evalImmediate = (node: Node): Node => {
+      const evald = Node.evalStatic(node, context);
+      if (!(evald instanceof Node)) {
+        throw new TypeError('Expected sync node result.');
+      }
+      if (node !== evald) {
+        evald.inherit(node);
+      }
+      return evald;
+    };
+    const continueAsync = async (startIndex: number, first: Promise<Node>): Promise<List<Node>> => {
+      let evald = await first;
+      out[startIndex] = evald === source[startIndex]!
+        ? ownResults ? evald.cloneForPlacement() : evald
+        : evald;
+      changed ||= evald !== source[startIndex]!;
+      for (let i = startIndex + 1; i < source.length; i++) {
+        const next = source[i]!;
+        let nextEvald: Node;
+        if (
+          !next.hasFlag(F_MAY_ASYNC)
+          && next.eval === Node.prototype.eval
+        ) {
+          nextEvald = evalImmediate(next);
+        } else {
+          nextEvald = await next.eval(context) as Node;
+        }
+        out[i] = nextEvald === next
+          ? ownResults ? nextEvald.cloneForPlacement() : nextEvald
+          : nextEvald;
+        changed ||= nextEvald !== next;
+      }
+      return !ownResults && !changed ? nodes : list(out, nodes.options);
+    };
     for (let i = 0; i < source.length; i++) {
       const node = source[i]!;
-      const evald = await node.eval(context) as Node;
-      out[i] = evald === node ? copyWithReusableLeaves(evald) : evald;
+      if (
+        !node.hasFlag(F_MAY_ASYNC)
+        && node.eval === Node.prototype.eval
+      ) {
+        const evald = evalImmediate(node);
+        out[i] = evald === node
+          ? ownResults ? evald.cloneForPlacement() : evald
+          : evald;
+        changed ||= evald !== node;
+        continue;
+      }
+      const evald = node.eval(context);
+      if (isThenable(evald)) {
+        return continueAsync(i, evald as Promise<Node>);
+      }
+      const resolved = evald as Node;
+      out[i] = resolved === node
+        ? ownResults ? resolved.cloneForPlacement() : resolved
+        : resolved;
+      changed ||= resolved !== node;
     }
-    return list(out, nodes.options);
+    return !ownResults && !changed ? nodes : list(out, nodes.options);
   }
 
   private markCallOutput<T extends Node>(node: T, ownOutput = true): T {
@@ -276,6 +729,65 @@ export class Call extends Node<CallValue, CallOptions> {
       node.options.callDeclarationOutput = true;
     }
     return node;
+  }
+
+  private async finalizeCallResult(
+    context: Context,
+    result: unknown,
+    options?: {
+      ownOutput?: boolean;
+      markImportant?: boolean;
+    }
+  ): Promise<Node> {
+    const ownOutput = options?.ownOutput ?? true;
+    if (isNode(result)) {
+      let evald = result.eval(context);
+      if (isThenable(evald)) {
+        evald = await evald;
+      }
+      if (options?.markImportant && isNode(evald, N.Rules)) {
+        this.makeImportant(evald);
+      }
+      return this.markCallOutput(evald, ownOutput);
+    }
+    const castResult = cast(result);
+    if (isNode(castResult, N.Rules) && castResult.rules.length === 1) {
+      return this.markCallOutput(castResult.rules[0]!, ownOutput);
+    }
+    return this.markCallOutput(castResult, ownOutput);
+  }
+
+  private async resolveDynamicCallTarget(
+    context: Context,
+    state: CallEvalState
+  ): Promise<unknown> {
+    const { name } = state;
+    if (typeof name === 'string') {
+      return name;
+    }
+    let evaluatedName: unknown = await name.eval(context);
+    evaluatedName = withMixinRulesetCallArgsHint(evaluatedName, state.args);
+    if (isNode(evaluatedName, N.Reference) && evaluatedName.options?.type === 'mixin-ruleset') {
+      evaluatedName = await evaluatedName.eval(context);
+    }
+    return evaluatedName;
+  }
+
+  private renderDynamicOutputResult(
+    context: Context,
+    output: Node | string,
+    bufferOrOptions?: RenderBuffer | PrintOptions,
+    options?: PrintOptions
+  ): string | Promise<string> {
+    if (typeof output === 'string') {
+      if (!isRenderBuffer(bufferOrOptions)) {
+        return output;
+      }
+      return callRenderSharesWriter(bufferOrOptions)
+        ? output
+        : writeRenderTextResult(bufferOrOptions, output);
+    }
+    return this.renderOutput(context, output, bufferOrOptions, options);
   }
 
   private async runInCallFrame<T>(
@@ -338,26 +850,15 @@ export class Call extends Node<CallValue, CallOptions> {
     }
     const ownOutput = !renderFailureWith;
     return this.runInCallFrame(context, {}, async () => {
-      let evaluatedName: unknown = await name.eval(context);
-      evaluatedName = withMixinRulesetCallArgsHint(evaluatedName, state.args);
-      if (isNode(evaluatedName, N.Reference) && evaluatedName.options?.type === 'mixin-ruleset') {
-        evaluatedName = await evaluatedName.eval(context);
-      }
+      const evaluatedName = await this.resolveDynamicCallTarget(context, state);
       const fn = isNode(evaluatedName, N.JsFunction) ? evaluatedName.fn : evaluatedName;
       if (isExtendedFn(fn) && !fn._internal && !fn.options?.params) {
         return this.runAsCaller(context, async () => {
           try {
             const result = state.args
-              ? await callWithContext(context, fn, ...state.args.items)
+              ? await callWithContext(context, fn, ...state.args.value)
               : await callWithContext(context, fn);
-            if (isNode(result)) {
-              return this.markCallOutput(await result.eval(context), ownOutput);
-            }
-            const castResult = cast(result);
-            if (isNode(castResult, N.Rules) && castResult.rules.length === 1) {
-              return this.markCallOutput(castResult.rules[0]!, ownOutput);
-            }
-            return this.markCallOutput(castResult, ownOutput);
+            return this.finalizeCallResult(context, result, { ownOutput });
           } catch (error) {
             const unitMode = context?.opts?.unitMode ?? 'loose';
             if (unitMode === 'strict') {
@@ -376,20 +877,24 @@ export class Call extends Node<CallValue, CallOptions> {
       if (isExtendedFn(fn)) {
         return undefined;
       }
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const evaluatedNameObj = typeof evaluatedName === 'object' ? evaluatedName as object : null;
       if (
         isNode(evaluatedName, N.Call | N.Mixin | N.Ruleset | N.Rules | N.Collection | N.Func)
-        || evaluatedName instanceof MixinCollection
+        || (evaluatedNameObj instanceof MixinCollection)
         || Array.isArray(evaluatedName)
       ) {
         return undefined;
       }
       const rendered = await state.source.renderFinalizedCallSyntax(
-        typeof evaluatedName === 'string' || evaluatedName instanceof Node
+        typeof evaluatedName === 'string' || (evaluatedNameObj instanceof Node)
           ? evaluatedName
           : stringifyValueOf(evaluatedName),
         state,
         context,
-        prepareRenderPrintState(context)
+        prepareRenderPrintState(context, {
+          trivia: sourceTriviaForNode(state.source)
+        })
       );
       return this.markCallOutput(new Any(rendered, { role: 'any' }), ownOutput);
     });
@@ -424,16 +929,9 @@ export class Call extends Node<CallValue, CallOptions> {
 
     return this.runInCallFrame(context, { caller: true }, async () => {
       const result = state.args
-        ? await callWithContext(context, fn, ...state.args.items)
+        ? await callWithContext(context, fn, ...state.args.value)
         : await callWithContext(context, fn);
-      if (isNode(result)) {
-        return this.markCallOutput(await result.eval(context), ownOutput);
-      }
-      const castResult = cast(result);
-      if (isNode(castResult, N.Rules) && castResult.rules.length === 1) {
-        return this.markCallOutput(castResult.rules[0]!, ownOutput);
-      }
-      return this.markCallOutput(castResult, ownOutput);
+      return this.finalizeCallResult(context, result, { ownOutput });
     });
   }
 
@@ -465,123 +963,206 @@ export class Call extends Node<CallValue, CallOptions> {
       const result = state.args
         ? await callWithContext(context, fn, state.args)
         : await callWithContext(context, fn);
-      if (isNode(result)) {
-        let evald = result.eval(context);
-        if (isThenable(evald)) {
-          evald = await evald;
-        }
-        if (this._options?.markImportant && isNode(evald, N.Rules)) {
-          this.makeImportant(evald);
-        }
-        return this.markCallOutput(evald, ownOutput);
-      }
-      const castResult = cast(result);
-      if (isNode(castResult, N.Rules) && castResult.rules.length === 1) {
-        return this.markCallOutput(castResult.rules[0]!, ownOutput);
-      }
-      return this.markCallOutput(castResult, ownOutput);
+      return this.finalizeCallResult(context, result, {
+        ownOutput,
+        markImportant: this._options?.markImportant
+      });
     });
   }
 
-  private serializeRenderedArgs(
+  private writeRenderedArgs(
     args: List<Node> | undefined,
     context: Context,
-    options: PrintOptions
-  ): MaybePromise<string> {
+    options: PrintOptions,
+    textState?: CallRenderTextState,
+    renderOptions: CallRenderArgOptions = { evaluateCalcArgs: true }
+  ): MaybePromise<void> {
+    if (!args || args.value.length === 0) {
+      return;
+    }
     const printOptions = getPrintOptions(options);
     const w = printOptions.writer!;
-    const mark = w.mark();
-    if (!args) {
-      return '';
-    }
-    const rawArgs = args.items;
+    const rawArgs = args.value;
     const last = rawArgs.length - 1;
-    const serializeArgAt = (start: number): MaybePromise<string> => {
+    const findNextArgIndex = (start: number): number => {
       let i = start;
       while (i <= last && !rawArgs[i]) {
         i++;
       }
-      if (i > last) {
-        return w.getSince(mark);
+      return i;
+    };
+    const writeArgSeparator = (arg: Node, next: number): void => {
+      if (next > last) {
+        return;
       }
-      const arg = rawArgs[i]!;
-      let next = i + 1;
-      while (next <= last && !rawArgs[next]) {
-        next++;
-      }
-      const hasNext = next <= last;
-      const writeArgSeparator = (): void => {
-        if (!hasNext) {
-          return;
-        }
-        emitCommentTriviaBetweenNodes(arg, rawArgs[next]!, printOptions);
-        w.add(', ');
-      };
-      const finishArg = (argMark: number): MaybePromise<string> => {
-        w.trimHorizontalStartSince(argMark);
-        w.trimHorizontalEndSince(argMark);
-        writeArgSeparator();
-        return serializeArgAt(next);
-      };
-      if (arg instanceof Paren && arg.options?.escaped) {
-        w.add('(', arg);
-        if (arg.value) {
-          const innerMark = w.mark();
-          const rendered = arg.value.eval(context);
-          const finishParen = (): MaybePromise<string> => {
-            w.trimHorizontalStartSince(innerMark);
-            w.trimHorizontalEndSince(innerMark);
-            w.add(')', arg);
-            writeArgSeparator();
-            return serializeArgAt(next);
-          };
-          if (isThenable(rendered)) {
-            return rendered.then((value) => {
-              value.writeSyntax(printOptions);
-              return finishParen();
-            });
-          }
-          (rendered as Node).writeSyntax(printOptions);
-          return finishParen();
-        }
-        w.add(')', arg);
-        writeArgSeparator();
-        return serializeArgAt(next);
-      } else {
-        const argMark = w.mark();
-        const rendered = arg.eval(context);
-        if (isThenable(rendered)) {
-          return rendered.then((value) => {
-            value.writeSyntax(printOptions);
-            return finishArg(argMark);
-          });
-        }
-        (rendered as Node).writeSyntax(printOptions);
-        return finishArg(argMark);
+      const commentTriviaText = emitCommentTriviaBetweenCallArgs(arg, rawArgs[next]!, printOptions);
+      w.add(', ');
+      if (textState?.text !== undefined) {
+        textState.text += `${commentTriviaText}, `;
       }
     };
-    return serializeArgAt(0);
+    const finishArg = (arg: Node, argText: string, next: number): void => {
+      if (textState?.text !== undefined) {
+        textState.text += argText;
+      }
+      writeArgSeparator(arg, next);
+    };
+    const finishEscapedParenArg = (arg: Paren, innerText: string, next: number): void => {
+      w.add(')', arg);
+      if (textState?.text !== undefined) {
+        textState.text += `${innerText})`;
+      }
+      writeArgSeparator(arg, next);
+    };
+    const finishDirectEscapedParenArg = (arg: Paren, next: number): void => {
+      w.add(')', arg);
+      if (textState?.text !== undefined) {
+        textState.text += ')';
+      }
+      writeArgSeparator(arg, next);
+    };
+    const appendKnownRenderedText = (node: Node): boolean => {
+      const text = getKnownRenderedCallText(node);
+      if (text === undefined) {
+        return false;
+      }
+      w.add(text, node);
+      if (textState?.text !== undefined) {
+        textState.text += text;
+      }
+      return true;
+    };
+    const writeArgAt = (i: number): MaybePromise<void> => {
+      const arg = rawArgs[i]!;
+      const next = findNextArgIndex(i + 1);
+      if (arg instanceof Paren && arg.options?.escaped) {
+        w.add('(', arg);
+        if (textState?.text !== undefined) {
+          textState.text += '(';
+        }
+        if (!arg.value) {
+          w.add(')', arg);
+          if (textState?.text !== undefined) {
+            textState.text += ')';
+          }
+          writeArgSeparator(arg, next);
+          return;
+        }
+        const rendered = arg.value.eval(context);
+        if (isThenable(rendered)) {
+          return rendered.then((value) => {
+            if (appendKnownRenderedText(value)) {
+              finishDirectEscapedParenArg(arg, next);
+              return;
+            }
+            finishEscapedParenArg(arg, writeCallNodeTextToActiveWriter(value, printOptions, true), next);
+          });
+        }
+        if (appendKnownRenderedText(rendered as Node)) {
+          finishDirectEscapedParenArg(arg, next);
+          return;
+        }
+        finishEscapedParenArg(arg, writeCallNodeTextToActiveWriter(rendered as Node, printOptions, true), next);
+        return;
+      }
+      if (context.calcFrames !== 0 && arg.constructor === Operation) {
+        if (!renderOptions.evaluateCalcArgs) {
+          const argText = getKnownRenderedCallText(arg);
+          if (argText !== undefined) {
+            w.add(argText, arg);
+            if (textState?.text !== undefined) {
+              textState.text += argText;
+            }
+            writeArgSeparator(arg, next);
+            return;
+          }
+        }
+      } else if (
+        arg.eval === Node.prototype.eval
+        && appendKnownRenderedText(arg)
+      ) {
+        writeArgSeparator(arg, next);
+        return;
+      }
+      const rendered = arg.eval(context);
+      if (isThenable(rendered)) {
+        return rendered.then((value) => {
+          if (!appendKnownRenderedText(value)) {
+            finishArg(arg, writeCallNodeTextToActiveWriter(value, printOptions, true), next);
+            return;
+          }
+          writeArgSeparator(arg, next);
+        });
+      }
+      if (!appendKnownRenderedText(rendered as Node)) {
+        finishArg(arg, writeCallNodeTextToActiveWriter(rendered as Node, printOptions, true), next);
+        return;
+      }
+      writeArgSeparator(arg, next);
+      return;
+    };
+    const writeArgsAsync = async (start: number): Promise<void> => {
+      for (let i = start; i <= last;) {
+        const nextIndex = findNextArgIndex(i);
+        if (nextIndex > last) {
+          return;
+        }
+        await writeArgAt(nextIndex);
+        i = nextIndex + 1;
+      }
+    };
+
+    for (let i = 0; i <= last;) {
+      const nextIndex = findNextArgIndex(i);
+      if (nextIndex > last) {
+        return;
+      }
+      const rendered = writeArgAt(nextIndex);
+      if (isThenable(rendered)) {
+        return rendered.then(() => writeArgsAsync(nextIndex + 1));
+      }
+      i = nextIndex + 1;
+    }
   }
 
   private renderPlainFunctionCall(
     callNode: Call,
     context: Context,
-    prepared: PrintOptions
+    prepared: PrintOptions,
+    renderOptions: CallRenderArgOptions = { evaluateCalcArgs: true }
   ): MaybePromise<string> {
     const printOptions = getPrintOptions(prepared);
     const w = printOptions.writer!;
-    const mark = w.mark();
-    const { name, contentNode } = callNode.value;
+    const { name, contentNode } = callNode;
+    if (!callNode.args && !contentNode && typeof name === 'string') {
+      const out = `${name}${callNode.options?.silentFail ? '?' : ''}()${callNode.options?.markImportant ? ' !important' : ''}`;
+      w.add(out, callNode);
+      return out;
+    }
+    const textState: CallRenderTextState = {
+      text: typeof name === 'string'
+        ? name
+        : getKnownRenderedCallText(name)
+    };
     if (typeof name === 'string') {
       w.add(name, callNode);
+    } else if (textState.text !== undefined) {
+      w.add(textState.text, name);
     } else {
-      name.writeSyntax(printOptions);
+      const nameText = writeCallNodeTextToActiveWriter(name, printOptions);
+      textState.text = nameText;
     }
     if (callNode.options?.silentFail) {
       w.add('?');
+      if (textState.text !== undefined) {
+        textState.text += '?';
+      }
     }
     w.add('(');
-    const isCalc = name === 'calc';
+    if (textState.text !== undefined) {
+      textState.text += '(';
+    }
+    const isCalc = getRenderedCallNameText(name) === 'calc';
     if (isCalc) {
       context.calcFrames++;
     }
@@ -590,26 +1171,59 @@ export class Call extends Node<CallValue, CallOptions> {
         context.calcFrames--;
       }
       w.add(')');
+      if (textState.text !== undefined) {
+        textState.text += ')';
+      }
       if (callNode.options?.markImportant) {
         w.add(' !important');
+        if (textState.text !== undefined) {
+          textState.text += ' !important';
+        }
       }
       if (contentNode) {
         w.add(': ');
+        if (textState.text !== undefined) {
+          textState.text += ': ';
+        }
         const renderedContent = contentNode.eval(context);
         if (isThenable(renderedContent)) {
           return renderedContent.then((value) => {
-            value.writeSyntax(printOptions);
-            return w.getSince(mark);
+            const contentText = getKnownRenderedCallText(value);
+            if (contentText !== undefined) {
+              w.add(contentText, value);
+              if (textState.text !== undefined) {
+                textState.text += contentText;
+                return textState.text;
+              }
+            } else {
+              const contentText = writeCallNodeTextToActiveWriter(value, printOptions);
+              if (textState.text !== undefined) {
+                textState.text += contentText;
+              }
+            }
+            return textState.text ?? '';
           });
         }
-        (renderedContent as Node).writeSyntax(printOptions);
-        return w.getSince(mark);
+        const contentText = getKnownRenderedCallText(renderedContent as Node);
+        if (contentText !== undefined) {
+          w.add(contentText, renderedContent as Node);
+          if (textState.text !== undefined) {
+            textState.text += contentText;
+            return textState.text;
+          }
+        } else {
+          const contentText = writeCallNodeTextToActiveWriter(renderedContent as Node, printOptions);
+          if (textState.text !== undefined) {
+            textState.text += contentText;
+          }
+        }
+        return textState.text ?? '';
       }
-      return w.getSince(mark);
+      return textState.text ?? '';
     };
-    let renderedArgs: MaybePromise<string>;
+    let renderedArgs: MaybePromise<void>;
     try {
-      renderedArgs = this.serializeRenderedArgs(callNode.args, context, prepared);
+      renderedArgs = this.writeRenderedArgs(callNode.args, context, prepared, textState, renderOptions);
     } catch (error) {
       if (isCalc) {
         context.calcFrames--;
@@ -632,43 +1246,122 @@ export class Call extends Node<CallValue, CallOptions> {
     state: CallEvalState,
     context: Context,
     prepared: PrintOptions,
-    syntax?: { args?: List<Node>; contentNode?: Node }
+    syntax?: { args?: List<Node>; contentNode?: Node },
+    renderOptions: CallRenderArgOptions = { evaluateCalcArgs: true }
   ): MaybePromise<string> {
     const printOptions = getPrintOptions(prepared);
     const w = printOptions.writer!;
-    const mark = w.mark();
     const args = syntax && 'args' in syntax ? syntax.args : state.args;
     const contentNode = syntax && 'contentNode' in syntax ? syntax.contentNode : state.contentNode;
+    if (
+      typeof name === 'string'
+      && (!args || args.value.length === 0)
+      && !contentNode
+    ) {
+      const out = `${name}()${this._options?.markImportant ? ' !important' : ''}`;
+      w.add(out, state.source);
+      return out;
+    }
+    const textState: CallRenderTextState = {
+      text: typeof name === 'string'
+        ? name
+        : name instanceof Node
+          ? getKnownRenderedCallText(name)
+          : undefined
+    };
     if (typeof name === 'string') {
       w.add(name, state.source);
     } else if (name instanceof Node) {
-      name.writeSyntax(printOptions);
+      if (textState.text !== undefined) {
+        w.add(textState.text, name);
+      } else {
+        const nameText = writeCallNodeTextToActiveWriter(name, printOptions);
+        textState.text = nameText;
+      }
     } else {
-      w.add(stringifyValueOf(name), state.source);
+      const text = stringifyValueOf(name);
+      textState.text = text;
+      w.add(text, state.source);
     }
     w.add('(');
+    if (textState.text !== undefined) {
+      textState.text += '(';
+    }
+    const isCalc = getRenderedCallNameText(name) === 'calc';
+    if (isCalc) {
+      context.calcFrames++;
+    }
     const finishCall = (): MaybePromise<string> => {
+      if (isCalc) {
+        context.calcFrames--;
+      }
       w.add(')');
+      if (textState.text !== undefined) {
+        textState.text += ')';
+      }
       if (this._options?.markImportant) {
         w.add(' !important');
+        if (textState.text !== undefined) {
+          textState.text += ' !important';
+        }
       }
       if (contentNode) {
         w.add(': ');
+        if (textState.text !== undefined) {
+          textState.text += ': ';
+        }
         const renderedContent = contentNode.eval(context);
         if (isThenable(renderedContent)) {
           return renderedContent.then((value) => {
-            value.writeSyntax(printOptions);
-            return w.getSince(mark);
+            const contentText = getKnownRenderedCallText(value);
+            if (contentText !== undefined) {
+              w.add(contentText, value);
+              if (textState.text !== undefined) {
+                textState.text += contentText;
+                return textState.text;
+              }
+            } else {
+              const contentText = writeCallNodeTextToActiveWriter(value, printOptions);
+              if (textState.text !== undefined) {
+                textState.text += contentText;
+              }
+            }
+            return textState.text ?? '';
           });
         }
-        (renderedContent as Node).writeSyntax(printOptions);
-        return w.getSince(mark);
+        const contentText = getKnownRenderedCallText(renderedContent as Node);
+        if (contentText !== undefined) {
+          w.add(contentText, renderedContent as Node);
+          if (textState.text !== undefined) {
+            textState.text += contentText;
+            return textState.text;
+          }
+        } else {
+          const contentText = writeCallNodeTextToActiveWriter(renderedContent as Node, printOptions);
+          if (textState.text !== undefined) {
+            textState.text += contentText;
+          }
+        }
+        return textState.text ?? '';
       }
-      return w.getSince(mark);
+      return textState.text ?? '';
     };
-    const renderedArgs = this.serializeRenderedArgs(args, context, prepared);
+    let renderedArgs: MaybePromise<void>;
+    try {
+      renderedArgs = this.writeRenderedArgs(args, context, prepared, textState, renderOptions);
+    } catch (error) {
+      if (isCalc) {
+        context.calcFrames--;
+      }
+      throw error;
+    }
     return isThenable(renderedArgs)
-      ? renderedArgs.then(finishCall)
+      ? renderedArgs.then(finishCall, (error: unknown) => {
+          if (isCalc) {
+            context.calcFrames--;
+          }
+          throw error;
+        })
       : finishCall();
   }
 
@@ -689,18 +1382,16 @@ export class Call extends Node<CallValue, CallOptions> {
       return undefined;
     }
     return this.runInCallFrame(context, {}, async () => {
-      let evaluatedName: unknown = await name.eval(context);
-      evaluatedName = withMixinRulesetCallArgsHint(evaluatedName, state.args);
-      if (isNode(evaluatedName, N.Reference) && evaluatedName.options?.type === 'mixin-ruleset') {
-        evaluatedName = await evaluatedName.eval(context);
-      }
+      const evaluatedName = await this.resolveDynamicCallTarget(context, state);
       const fn = isNode(evaluatedName, N.JsFunction) ? evaluatedName.fn : evaluatedName;
       if (isExtendedFn(fn)) {
         return undefined;
       }
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const evaluatedNameObj2 = typeof evaluatedName === 'object' ? evaluatedName as object : null;
       if (
         isNode(evaluatedName, N.Call | N.Mixin | N.Ruleset | N.Rules | N.Collection | N.Func)
-        || evaluatedName instanceof MixinCollection
+        || (evaluatedNameObj2 instanceof MixinCollection)
         || Array.isArray(evaluatedName)
       ) {
         return undefined;
@@ -719,11 +1410,7 @@ export class Call extends Node<CallValue, CallOptions> {
       const state = this.createEvalState();
       const { name } = state;
       if (typeof name !== 'string') {
-        let evaluatedName: unknown = await name.eval(context);
-        evaluatedName = withMixinRulesetCallArgsHint(evaluatedName, state.args);
-        if (isNode(evaluatedName, N.Reference) && evaluatedName.options?.type === 'mixin-ruleset') {
-          evaluatedName = await evaluatedName.eval(context);
-        }
+        const evaluatedName = await this.resolveDynamicCallTarget(context, state);
         const fn = isNode(evaluatedName, N.JsFunction) ? evaluatedName.fn : evaluatedName;
         if (isExtendedFn(fn)) {
           const isMetadataFunction = Boolean(fn._internal || fn.options?.params);
@@ -735,7 +1422,7 @@ export class Call extends Node<CallValue, CallOptions> {
                   ? (
                       isMetadataFunction
                         ? await callWithContext(context, fn, state.args)
-                        : await callWithContext(context, fn, ...state.args.items)
+                        : await callWithContext(context, fn, ...state.args.value)
                     )
                   : await callWithContext(context, fn);
               } catch (error) {
@@ -751,28 +1438,12 @@ export class Call extends Node<CallValue, CallOptions> {
                   : stringifyValueOf(fn);
                 return this.renderFinalizedCallSyntax(fallbackName, state, context, prepared);
               }
-              if (isNode(result)) {
-                let evald = result.eval(context);
-                if (isThenable(evald)) {
-                  evald = await evald;
-                }
-                if (isMetadataFunction && this._options?.markImportant && isNode(evald, N.Rules)) {
-                  this.makeImportant(evald);
-                }
-                return this.markCallOutput(evald, false);
-              }
-              const castResult = cast(result);
-              if (isNode(castResult, N.Rules) && castResult.rules.length === 1) {
-                return this.markCallOutput(castResult.rules[0]!, false);
-              }
-              return this.markCallOutput(castResult, false);
+              return this.finalizeCallResult(context, result, {
+                ownOutput: false,
+                markImportant: isMetadataFunction && this._options?.markImportant
+              });
             });
-            if (typeof output === 'string') {
-              return isRenderBuffer(bufferOrOptions)
-                ? writeRenderTextResult(bufferOrOptions, output)
-                : output;
-            }
-            return this.renderOutput(context, output, bufferOrOptions, options);
+            return this.renderDynamicOutputResult(context, output, bufferOrOptions, options);
           }
         } else if (isNode(evaluatedName, N.Call)) {
           const output = await evaluatedName.eval(context);
@@ -784,7 +1455,7 @@ export class Call extends Node<CallValue, CallOptions> {
           const argNodes = await this.evalArgNodes(context, state.args) ?? list([]);
           const output = await evaluatedName.evalCall(context, argNodes);
           return this.renderOutput(context, output, bufferOrOptions, options);
-        } else if (isNode(evaluatedName, N.Rules | N.Collection)) {
+        } else if (isNode(evaluatedName, N.Rules | N.Collection) && evaluatedName instanceof Rules) {
           if (state.preservesRulesLikeVariableTarget) {
             const sourceParent = 'sourceNode' in evaluatedName && isNode(evaluatedName.sourceNode)
               ? evaluatedName.sourceNode.parent
@@ -793,53 +1464,45 @@ export class Call extends Node<CallValue, CallOptions> {
               evaluatedName.parent = sourceParent;
             }
           }
-          if (state.args && state.args.items.length > 0) {
+          if (state.args && state.args.value.length > 0) {
             throw new ReferenceError(`Cannot call ${evaluatedName.type} with arguments`);
           }
-          const collection = new MixinCollection([
-            callableRulesEntry(
-              { rules: evaluatedName },
-              evaluatedName.parent,
-              evaluatedName.index
-            )
-          ]);
           const output = await this.runInCallFrame(context, { caller: true }, async () => {
-            const result = await collection.evalCall(context, state.args);
-            if (isNode(result)) {
-              let evald = result.eval(context);
-              if (isThenable(evald)) {
-                evald = await evald;
-              }
-              if (this._options?.markImportant && isNode(evald, N.Rules)) {
-                this.makeImportant(evald);
-              }
-              return this.markCallOutput(evald, false);
-            }
-            return this.markCallOutput(cast(result), false);
+            const result = await evaluateCallableCollection({
+              context,
+              mixinEntries: [
+                callableRulesEntry(
+                  { rules: evaluatedName },
+                  evaluatedName.parent,
+                  evaluatedName.index
+                )
+              ],
+              args: state.args?.value ?? []
+            });
+            return this.finalizeCallResult(context, result, {
+              ownOutput: false,
+              markImportant: this._options?.markImportant
+            });
           });
           return this.renderOutput(context, output, bufferOrOptions, options);
         } else if (
           isNode(evaluatedName, N.Mixin | N.Ruleset)
-          || evaluatedName instanceof MixinCollection
+          || ((evaluatedName as object) instanceof MixinCollection)
           || Array.isArray(evaluatedName)
         ) {
-          const collection = evaluatedName instanceof MixinCollection
-            ? evaluatedName
-            : new MixinCollection(Array.isArray(evaluatedName) ? evaluatedName : [evaluatedName]);
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+          const collection = ((evaluatedName as object) instanceof MixinCollection)
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+            ? evaluatedName as MixinCollection
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+            : new MixinCollection(Array.isArray(evaluatedName) ? evaluatedName as MixinEntry[] : [evaluatedName as MixinEntry]);
           const output = await this.runInCallFrame(context, { caller: true }, async () => {
             try {
               const result = await collection.evalCall(context, state.args);
-              if (isNode(result)) {
-                let evald = result.eval(context);
-                if (isThenable(evald)) {
-                  evald = await evald;
-                }
-                if (this._options?.markImportant && isNode(evald, N.Rules)) {
-                  this.makeImportant(evald);
-                }
-                return this.markCallOutput(evald, false);
-              }
-              return this.markCallOutput(cast(result), false);
+              return this.finalizeCallResult(context, result, {
+                ownOutput: false,
+                markImportant: this._options?.markImportant
+              });
             } catch (error) {
               if (error instanceof ReferenceError && error.message.includes('No matching mixins')) {
                 if (this.parent?.type === 'SelectorCapture') {
@@ -856,24 +1519,21 @@ export class Call extends Node<CallValue, CallOptions> {
               return this.renderFinalizedCallSyntax(name, state, context, prepared);
             }
           });
-          if (typeof output === 'string') {
-            return isRenderBuffer(bufferOrOptions)
-              ? writeRenderTextResult(bufferOrOptions, output)
-              : output;
-          }
-          return this.renderOutput(context, output, bufferOrOptions, options);
+          return this.renderDynamicOutputResult(context, output, bufferOrOptions, options);
         } else if (
           !(
             isNode(evaluatedName, N.Call | N.Mixin | N.Ruleset | N.Rules | N.Collection | N.Func)
-            || evaluatedName instanceof MixinCollection
+            || ((evaluatedName as object) instanceof MixinCollection)
             || Array.isArray(evaluatedName)
           )
           && (this.options?.silentFail || evaluatedName !== 'calc')
         ) {
-          const fallbackText = await this.renderFinalizedCallSyntax(evaluatedName, state, context, prepared);
-          return isRenderBuffer(bufferOrOptions)
-            ? writeRenderTextResult(bufferOrOptions, fallbackText)
-            : fallbackText;
+          return this.renderDynamicOutputResult(
+            context,
+            await this.renderFinalizedCallSyntax(evaluatedName, state, context, prepared),
+            bufferOrOptions,
+            options
+          );
         }
       }
     }
@@ -883,18 +1543,11 @@ export class Call extends Node<CallValue, CallOptions> {
     }
     const fallbackText = await this.renderOptionalFallbackCallSyntax(context, prepared);
     if (fallbackText) {
-      return isRenderBuffer(bufferOrOptions)
-        ? writeRenderTextResult(bufferOrOptions, fallbackText)
-        : fallbackText;
+      return this.renderDynamicOutputResult(context, fallbackText, bufferOrOptions, options);
     }
     const fallback = await this.evalOptionalFallbackOutput(context, prepared);
     if (fallback) {
-      if (typeof fallback === 'string') {
-        return isRenderBuffer(bufferOrOptions)
-          ? writeRenderTextResult(bufferOrOptions, fallback)
-          : fallback;
-      }
-      return this.renderOutput(context, fallback, bufferOrOptions, options);
+      return this.renderDynamicOutputResult(context, fallback, bufferOrOptions, options);
     }
     const metadataOutput = await this.evalMetadataDynamicFunction(context, false);
     if (metadataOutput) {
@@ -919,37 +1572,58 @@ export class Call extends Node<CallValue, CallOptions> {
     this.addFlags(F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC);
   }
 
-  override toTrimmedString(options?: PrintOptions) {
-    options = getPrintOptions(options);
+  override toTrimmedString(rawOptions?: PrintOptions) {
+    const options = getPrintOptions(rawOptions);
     const w = options.writer!;
-    if (!this.args && !this.contentNode && typeof this.name === 'string') {
+    if ((!this.args || this.args.value.length === 0) && !this.contentNode && typeof this.name === 'string') {
       const out = `${this.name}${this._options?.silentFail ? '?' : ''}()${this._options?.markImportant ? ' !important' : ''}`;
       w.add(out, this);
       return out;
     }
-    const mark = w.mark();
-    const { name, contentNode, args } = this;
-    if (typeof name === 'string') {
-      w.add(name, this);
-    } else {
-      name.writeSyntax(options);
+    if (!options.trivia) {
+      const nameText = typeof this.name === 'string'
+        ? this.name
+        : getKnownSourceCallText(this.name);
+      if (nameText !== undefined) {
+        let out = `${nameText}${this._options?.silentFail ? '?' : ''}(`;
+        if (this.args?.value.length) {
+          const sep = this.args.options?.sep ?? ',';
+          const joiner = sep === '/' ? ' / ' : `${sep} `;
+          for (let i = 0; i < this.args.value.length; i++) {
+            const text = getKnownSourceCallText(this.args.value[i]!);
+            if (text === undefined) {
+              out = '';
+              break;
+            }
+            if (i > 0) {
+              out += joiner;
+            }
+            out += text;
+          }
+        }
+        if (out) {
+          out += ')';
+          if (this._options?.markImportant) {
+            out += ' !important';
+          }
+          if (this.contentNode) {
+            const contentText = getKnownSourceCallText(this.contentNode);
+            if (contentText === undefined) {
+              out = '';
+            } else {
+              out += `: ${contentText}`;
+            }
+          }
+          if (out) {
+            w.add(out, this);
+            return out;
+          }
+        }
+      }
     }
-    if (this._options?.silentFail) {
-      w.add('?');
-    }
-    w.add('(');
-    if (args) {
-      args.writeSyntax(options);
-    }
-    w.add(')');
-    if (this._options?.markImportant) {
-      w.add(' !important');
-    }
-    if (contentNode) {
-      w.add(': ');
-      contentNode.writeSyntax(options);
-    }
-    return w.getSince(mark);
+    const position = w.position();
+    this.writeSyntax(options);
+    return w.getSince(position);
   }
 
   /** @internal */
@@ -957,20 +1631,45 @@ export class Call extends Node<CallValue, CallOptions> {
     const silentFail = this._options?.silentFail;
     const w = options.writer;
     const { name, contentNode, args } = this;
-    if (typeof name === 'string') {
-      w.add(name, this);
-    } else {
+    const directSource = !options.trivia;
+    const nameText = typeof name === 'string'
+      ? name
+      : directSource ? getKnownSourceCallText(name) : undefined;
+    if (nameText !== undefined) {
+      w.add(nameText, typeof name === 'string' ? this : name);
+    } else if (typeof name !== 'string') {
       name.writeSyntax(options);
     }
     if (silentFail) {
       w.add('?');
     }
     w.add('(');
-    if (args) {
-      const argsMark = w.mark();
-      args.writeSyntax(options);
-      w.trimHorizontalStartSince(argsMark);
-      w.trimHorizontalEndSince(argsMark);
+    if (args && args.value.length > 0) {
+      if (directSource) {
+        const sep = args.options?.sep ?? ',';
+        const joiner = sep === '/' ? ' / ' : `${sep} `;
+        for (let i = 0; i < args.value.length; i++) {
+          const arg = args.value[i]!;
+          if (i > 0) {
+            w.add(joiner);
+          }
+          const argText = getKnownSourceCallText(arg);
+          if (argText !== undefined) {
+            w.add(argText, arg);
+            continue;
+          }
+          arg.writeSyntax(options);
+        }
+      } else {
+        let arg = args.value[0]!;
+        emitCallArgSyntax(arg, options);
+        for (let i = 1; i < args.value.length; i++) {
+          const prev = arg;
+          arg = args.value[i]!;
+          emitCallArgSeparator(prev, arg, options, args.options?.sep ?? ',');
+          emitCallArgSyntax(arg, options, true);
+        }
+      }
     }
     w.add(')');
     if (this._options?.markImportant) {
@@ -978,47 +1677,56 @@ export class Call extends Node<CallValue, CallOptions> {
     }
     if (contentNode) {
       w.add(': ');
-      contentNode.writeSyntax(options);
+      const contentText = directSource ? getKnownSourceCallText(contentNode) : undefined;
+      if (contentText !== undefined) {
+        w.add(contentText, contentNode);
+      } else {
+        contentNode.writeSyntax(options);
+      }
     }
   }
 
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
+    const evaluateCalcArgs = isRenderBuffer(bufferOrOptions) || !bufferOrOptions?.writer;
     if (isRenderBuffer(bufferOrOptions)) {
-      if (this.evaluated) {
-        const prepared = prepareBufferPrintState(context, options);
-        return writeRenderTextResult(
-          bufferOrOptions,
-          this.renderPlainFunctionCall(this, context, prepared)
-        );
+      const sharesWriter = callRenderSharesWriter(bufferOrOptions);
+      const prepared = sharesWriter
+        ? prepareRenderPrintState(context, {
+            ...options,
+            writer: bufferOrOptions.kind === 'flat' && context.printState.writer?.writesTo(bufferOrOptions.parts)
+              ? context.printState.writer
+              : new OutputWriter(false, bufferOrOptions.kind === 'flat' ? bufferOrOptions.parts : undefined)
+          })
+        : prepareBufferPrintState(context, options);
+      if (this._evaluatedCallOutput) {
+        const rendered = this.renderPlainFunctionCall(this, context, prepared, { evaluateCalcArgs });
+        return sharesWriter
+          ? rendered
+          : writeRenderTextResult(bufferOrOptions, rendered);
       }
       if (typeof this.name !== 'string') {
-        const prepared = prepareBufferPrintState(context, options);
         return this.renderDynamicFunctionOutput(context, prepared, bufferOrOptions, options);
       }
       // Plain CSS calls render args/content explicitly so async child failures
       // keep calc-frame cleanup instead of falling back to source text.
-      const prepared = prepareBufferPrintState(context, options);
-      return writeRenderTextResult(
-        bufferOrOptions,
-        this.renderPlainFunctionCall(this, context, prepared)
-      );
+      const rendered = this.renderPlainFunctionCall(this, context, prepared, { evaluateCalcArgs });
+      return sharesWriter
+        ? rendered
+        : writeRenderTextResult(bufferOrOptions, rendered);
     }
     const prepared = prepareRenderPrintState(context, bufferOrOptions);
-    if (this.evaluated) {
-      return this.renderPlainFunctionCall(this, context, prepared);
+    if (this._evaluatedCallOutput) {
+      return this.renderPlainFunctionCall(this, context, prepared, { evaluateCalcArgs });
     }
     if (typeof this.name === 'string') {
-      return this.renderPlainFunctionCall(this, context, prepared);
+      return this.renderPlainFunctionCall(this, context, prepared, { evaluateCalcArgs });
     }
     return this.renderDynamicFunctionOutput(context, prepared, bufferOrOptions, options);
   }
 
   override resolve(context: Context): MaybePromise<Node> {
-    if (this.evaluated) {
-      return this;
-    }
     if (
       typeof this.name === 'string'
       && !this.contentNode
@@ -1051,13 +1759,13 @@ export class Call extends Node<CallValue, CallOptions> {
         rules.rules[index] = replacement;
       } else if (isNode(rule, N.Rules)) {
         this.makeImportant(rule);
-      } else if (isNode(rule, N.AtRule)) {
-        if (rule.rules) {
-          this.makeImportant(rule.rules);
+      } else if (isNode(rule, N.AtRule) && rule instanceof Rules) {
+        if (rule.rules.length) {
+          this.makeImportant(rule);
         }
       } else if (isNode(rule, N.Ruleset)) {
-        if (rule.rules) {
-          this.makeImportant(rule.rules);
+        if (rule.rules.length) {
+          this.makeImportant(rule);
         }
       }
     }
@@ -1067,7 +1775,13 @@ export class Call extends Node<CallValue, CallOptions> {
   /** Come back and redo -- too hard to reason about as a MaybePromise */
   override async evalNode(context: Context): Promise<Node> {
     const state = this.createEvalState();
-    return this.evalFromState(context, state);
+    const result = await this.evalFromState(context, state);
+    // Mark a Call result as resolved output (render emits it as a plain CSS
+    // call). Replaces the general `evaluated` flag for the call-render path.
+    if (isNode(result, N.Call)) {
+      result._evaluatedCallOutput = true;
+    }
+    return result;
   }
 
   private async evalFromState(context: Context, state: CallEvalState): Promise<Node> {
@@ -1111,48 +1825,50 @@ export class Call extends Node<CallValue, CallOptions> {
       const argNodes = await this.evalArgNodes(context, args) ?? list([]);
       const result = await n.evalCall(context, argNodes);
       return result;
-    } else if (isNode(n, N.Rules) || isNode(n, N.Collection)) {
+    } else if ((isNode(n, N.Rules) || isNode(n, N.Collection)) && n instanceof Rules) {
+      const rulesNode = n;
       // PreserveRulesLike variable calls intentionally evaluate from the
       // detached ruleset's lexical parent. Removing this lets non-leaky calls
       // see caller variables; see call.test.ts "does not let detached ruleset
       // calls read caller scope in non-leaky mode".
       if (state.preservesRulesLikeVariableTarget) {
-        const sourceParent = 'sourceNode' in n && isNode(n.sourceNode)
-          ? n.sourceNode.parent
+        const sourceParent = 'sourceNode' in rulesNode && isNode(rulesNode.sourceNode)
+          ? rulesNode.sourceNode.parent
           : undefined;
         if (sourceParent) {
-          n.parent = sourceParent;
+          rulesNode.parent = sourceParent;
         }
       }
       // Detached rulesets/collections share the same callable-body path as
       // anonymous mixin bodies. They still reject explicit arguments.
-      if (args && args.items.length > 0) {
-        throw new ReferenceError(`Cannot call ${n.type} with arguments`);
+      if (args && args.value.length > 0) {
+        throw new ReferenceError(`Cannot call ${rulesNode.type} with arguments`);
       }
-      n = new MixinCollection([
-        callableRulesEntry(
-          { rules: n },
-          n.parent,
-          n.index
-        )
-      ]);
+      return this.runAsCaller(context, async () => {
+        const result = await evaluateCallableCollection({
+          context,
+          mixinEntries: [
+            callableRulesEntry(
+              { rules: rulesNode },
+              rulesNode.parent,
+              rulesNode.index
+            )
+          ],
+          args: args?.value ?? []
+        });
+        return this.finalizeCallResult(context, result, {
+          markImportant
+        });
+      });
     }
 
     if (n instanceof MixinCollection) {
       return this.runAsCaller(context, async () => {
         try {
           const result = await n.evalCall(context, args);
-          if (isNode(result)) {
-            let evald = result.eval(context);
-            if (isThenable(evald)) {
-              evald = await evald;
-            }
-            if (markImportant && isNode(evald, N.Rules)) {
-              this.makeImportant(evald);
-            }
-            return this.markCallOutput(evald);
-          }
-          return this.markCallOutput(cast(result));
+          return this.finalizeCallResult(context, result, {
+            markImportant
+          });
         } catch (e) {
           if (e instanceof ReferenceError && e.message.includes('No matching mixins')) {
             if (this.parent?.type === 'SelectorCapture') {
@@ -1189,29 +1905,13 @@ export class Call extends Node<CallValue, CallOptions> {
               ? (
                   shouldPassListArgs
                     ? callWithContext(context, callable, callArgs)
-                    : callWithContext(context, callable, ...callArgs.items)
+                    : callWithContext(context, callable, ...callArgs.value)
                 )
               : callWithContext(context, callable)
           );
-          if (isNode(result)) {
-            let evald = result.eval(context);
-            if (isThenable(evald)) {
-              evald = await evald;
-              if (markImportant && isNode(evald, N.Rules)) {
-                this.makeImportant(evald);
-              }
-              return this.markCallOutput(evald);
-            }
-            if (markImportant && isNode(evald, N.Rules)) {
-              this.makeImportant(evald);
-            }
-            return this.markCallOutput(evald);
-          }
-          let castResult = cast(result);
-          if (isNode(castResult, N.Rules) && castResult.rules.length === 1) {
-            return this.markCallOutput(castResult.rules[0]!);
-          }
-          return this.markCallOutput(castResult);
+          return this.finalizeCallResult(context, result, {
+            markImportant
+          });
         } catch (e) {
           const unitMode = context?.opts?.unitMode ?? 'loose';
           const shouldRethrowForMode = unitMode === 'strict';
@@ -1234,7 +1934,9 @@ export class Call extends Node<CallValue, CallOptions> {
       if (n === 'calc') {
         context.calcFrames++;
       }
-      const evaluatedArgs = await this.evalArgNodes(context, args)
+      const evaluatedArgs = await this.evalArgNodes(context, args, {
+        ownResults: !(this._options?.silentFail && typeof this.name !== 'string')
+      })
         .finally(() => {
           if (n === 'calc') {
             context.calcFrames--;
@@ -1243,10 +1945,10 @@ export class Call extends Node<CallValue, CallOptions> {
       if (
         n === 'calc' && evaluatedArgs
       ) {
-        if (isNode(evaluatedArgs.items[0], N.Dimension)) {
-          return evaluatedArgs.items[0]!;
+        if (isNode(evaluatedArgs.value[0], N.Dimension)) {
+          return evaluatedArgs.value[0]!;
         } else if (context.calcFrames !== 0) {
-          return new Paren(evaluatedArgs.items[0]!);
+          return new Paren(evaluatedArgs.value[0]!);
         }
       }
       const finalizedName = typeof n === 'string' || n instanceof Node ? n : stringifyValueOf(n);

@@ -1,4 +1,4 @@
-import { any, attr, co, compound, el, pseudo, ref, rules, Rules as RulesClass, sel, sellist, SelectorList, vardecl } from '../index.js';
+import { any, attr, co, compound, el, Node, pseudo, ref, rules, Rules as RulesClass, sel, sellist, SelectorList, vardecl } from '../index.js';
 import { Context } from '../../context.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
 import { OutputWriter } from '../util/print.js';
@@ -32,14 +32,14 @@ describe('Selector list', () => {
   };
 
   describe('equality', () => {
-    test('exposes selectors as the direct child field', () => {
+    test('exposes value as the direct child field', () => {
       const first = el('.foo');
       const second = el('.bar');
       const node = sellist([first, second]);
 
-      expect(node.selectors).toEqual([first, second]);
       expect(node.value).toEqual([first, second]);
-      expect(SelectorList.childKeys).toEqual(['selectors']);
+      expect(node.value).toEqual([first, second]);
+      expect(SelectorList.childKeys).toEqual(['value']);
     });
 
     test('renders selector-list syntax through toTrimmedString()', () => {
@@ -90,6 +90,29 @@ describe('Selector list', () => {
         referenceRenderEnabled: true,
         referenceFilterTargets: true
       })).toBe('.added');
+    });
+
+    test('serializes selector-list source syntax through writeSyntax ownership', () => {
+      const originalWriteSyntax = SelectorList.prototype.writeSyntax;
+      let writeSyntaxCalls = 0;
+      SelectorList.prototype.writeSyntax = function countWriteSyntax(
+        this: SelectorList,
+        ...args: Parameters<typeof originalWriteSyntax>
+      ): ReturnType<typeof originalWriteSyntax> {
+        writeSyntaxCalls++;
+        return originalWriteSyntax.apply(this, args);
+      };
+      const node = sellist([
+        el('.foo'),
+        el('.bar')
+      ]);
+
+      try {
+        expect(node.toTrimmedString()).toBe('.foo,\n.bar');
+        expect(writeSyntaxCalls).toBe(1);
+      } finally {
+        SelectorList.prototype.writeSyntax = originalWriteSyntax;
+      }
     });
 
     /** @todo - add test for non-equality */
@@ -215,7 +238,6 @@ describe('Selector list', () => {
     const resolved = await selector.resolve(context);
 
     expect(resolved.toTrimmedString()).toBe('a[data=foo],\n.bar');
-    expect(selector.evaluated).toBe(false);
     expect(selector.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
@@ -299,8 +321,10 @@ describe('Selector list', () => {
       ]),
       el('.bar')
     ]);
-    const sourceFirst = selector.value[0]!;
-    const sourceSecond = selector.value[1]!;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const sourceFirst = selector.value[0]! as Node;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const sourceSecond = selector.value[1]! as Node;
     const resolved = await selector.resolve(context);
 
     expect(resolved.render(context)).toBe('a[data=foo],\n.bar');
@@ -311,7 +335,8 @@ describe('Selector list', () => {
 
   test('owns single resolved selector-list output without reparenting the source child', async () => {
     const inner = sellist([sel([el('.source'), co(' '), el('.child')])]);
-    const sourceChild = inner.value[0]!;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const sourceChild = inner.value[0]! as Node;
     const selector = pseudo({ name: ':is', arg: inner });
 
     const resolved = await selector.resolve(context);

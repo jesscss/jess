@@ -6,7 +6,6 @@ import type { Context } from './context.js';
 import { isThenable } from '@jesscss/awaitable-pipe';
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
 import { List, Dimension } from './tree/index.js';
-import { copyWithReusableLeaves } from './tree/util/cloning.js';
 import type { ConversionPlugin, PreprocessParams } from './conversions.js';
 export type PrimitiveType = 'string' | 'number' | 'boolean' | 'null' | 'undefined';
 export type ArgType = PrimitiveType | Class<any> | AbstractClass<any>;
@@ -181,9 +180,104 @@ type GetPositionalTypes<
  */
 type ValidateFunctionSignature<F extends (...args: any[]) => any> = F;
 
-type RuntimeFunction = ((...args: any[]) => any) & {
+export type RuntimeFunction = ((...args: any[]) => any) & {
   options?: DefineFunctionOptions;
   _internal?: (...args: any[]) => any;
+  call(thisArg: any, ...args: any[]): any;
+  apply(thisArg: any, args: any[]): any;
+};
+
+type DefineFunctionCallable<
+  T extends DefineFunctionOptions,
+  F extends (...args: any[]) => any
+> = {
+  (...args: GetPositionalTypes<T['params']>): ReturnType<F>;
+  (record: GetRecordType<T['params']>): ReturnType<F>;
+  name: string;
+  params: T['params'];
+  call(thisArg: any, ...args: any[]): ReturnType<F>;
+  apply(thisArg: any, args: any[]): ReturnType<F>;
+} & (
+  // Overloads for 1 parameter
+  T['params'] extends readonly [{ name: string; type: ArgType | readonly ArgType[]; optional: true }]
+    ? {
+        (): ReturnType<F>;
+        (arg1: GetPositionalTypes<T['params']>[0]): ReturnType<F>;
+      }
+    : T['params'] extends readonly [{ name: string; type: ArgType | readonly ArgType[]; optional?: boolean }]
+      ? {
+          (arg1: GetPositionalTypes<T['params']>[0]): ReturnType<F>;
+        }
+      // Overloads for 2 parameters
+      : T['params'] extends readonly [{ name: string; type: ArgType | readonly ArgType[]; optional: true }, { name: string; type: ArgType | readonly ArgType[]; optional: true }]
+        ? {
+            (): ReturnType<F>;
+            (arg1: GetPositionalTypes<T['params']>[0]): ReturnType<F>;
+            (arg1: GetPositionalTypes<T['params']>[0], arg2: GetPositionalTypes<T['params']>[1]): ReturnType<F>;
+          }
+        : T['params'] extends readonly [{ name: string; type: ArgType | readonly ArgType[]; optional?: boolean }, { name: string; type: ArgType | readonly ArgType[]; optional: true }]
+          ? {
+              (arg1: GetPositionalTypes<T['params']>[0]): ReturnType<F>;
+              (arg1: GetPositionalTypes<T['params']>[0], arg2: GetPositionalTypes<T['params']>[1]): ReturnType<F>;
+            }
+          : T['params'] extends readonly [{ name: string; type: ArgType | readonly ArgType[]; optional?: boolean }, { name: string; type: ArgType | readonly ArgType[]; optional?: boolean }]
+            ? {
+                (arg1: GetPositionalTypes<T['params']>[0]): ReturnType<F>;
+                (arg1: GetPositionalTypes<T['params']>[0], arg2: GetPositionalTypes<T['params']>[1]): ReturnType<F>;
+              }
+            // Overloads for 3 parameters
+            : T['params'] extends readonly [{ name: string; type: ArgType | readonly ArgType[]; optional?: boolean }, { name: string; type: ArgType | readonly ArgType[]; optional?: boolean }, { name: string; type: ArgType | readonly ArgType[]; optional: true }]
+              ? {
+                  (arg1: GetPositionalTypes<T['params']>[0], arg2: GetPositionalTypes<T['params']>[1]): ReturnType<F>;
+                  (arg1: GetPositionalTypes<T['params']>[0], arg2: GetPositionalTypes<T['params']>[1], arg3: GetPositionalTypes<T['params']>[2]): ReturnType<F>;
+                }
+              : T['params'] extends readonly [{ name: string; type: ArgType | readonly ArgType[]; optional?: boolean }, { name: string; type: ArgType | readonly ArgType[]; optional?: boolean }, { name: string; type: ArgType | readonly ArgType[]; optional?: boolean }]
+                ? {
+                    (arg1: GetPositionalTypes<T['params']>[0], arg2: GetPositionalTypes<T['params']>[1], arg3: GetPositionalTypes<T['params']>[2]): ReturnType<F>;
+                  }
+                // Overloads for 4 parameters
+                : T['params'] extends readonly [{ name: string; type: ArgType | readonly ArgType[]; optional?: boolean }, { name: string; type: ArgType | readonly ArgType[]; optional?: boolean }, { name: string; type: ArgType | readonly ArgType[]; optional?: boolean }, { name: string; type: ArgType | readonly ArgType[]; optional: true }]
+                  ? {
+                      (arg1: GetPositionalTypes<T['params']>[0], arg2: GetPositionalTypes<T['params']>[1], arg3: GetPositionalTypes<T['params']>[2]): ReturnType<F>;
+                      (arg1: GetPositionalTypes<T['params']>[0], arg2: GetPositionalTypes<T['params']>[1], arg3: GetPositionalTypes<T['params']>[2], arg4: GetPositionalTypes<T['params']>[3]): ReturnType<F>;
+                    }
+                  : T['params'] extends readonly [{ name: string; type: ArgType | readonly ArgType[]; optional?: boolean }, { name: string; type: ArgType | readonly ArgType[]; optional?: boolean }, { name: string; type: ArgType | readonly ArgType[]; optional?: boolean }, { name: string; type: ArgType | readonly ArgType[]; optional?: boolean }]
+                    ? {
+                        (arg1: GetPositionalTypes<T['params']>[0], arg2: GetPositionalTypes<T['params']>[1], arg3: GetPositionalTypes<T['params']>[2], arg4: GetPositionalTypes<T['params']>[3]): ReturnType<F>;
+                      }
+                    // Overloads for 5 parameters
+                    : T['params'] extends readonly [{ name: string; type: ArgType | readonly ArgType[]; optional?: boolean }, { name: string; type: ArgType | readonly ArgType[]; optional?: boolean }, { name: string; type: ArgType | readonly ArgType[]; optional?: boolean }, { name: string; type: ArgType | readonly ArgType[]; optional?: boolean }, { name: string; type: ArgType | readonly ArgType[]; optional: true }]
+                      ? {
+                          (arg1: GetPositionalTypes<T['params']>[0], arg2: GetPositionalTypes<T['params']>[1], arg3: GetPositionalTypes<T['params']>[2], arg4: GetPositionalTypes<T['params']>[3]): ReturnType<F>;
+                          (arg1: GetPositionalTypes<T['params']>[0], arg2: GetPositionalTypes<T['params']>[1], arg3: GetPositionalTypes<T['params']>[2], arg4: GetPositionalTypes<T['params']>[3], arg5: GetPositionalTypes<T['params']>[4]): ReturnType<F>;
+                        }
+                      : T['params'] extends readonly [{ name: string; type: ArgType | readonly ArgType[]; optional?: boolean }, { name: string; type: ArgType | readonly ArgType[]; optional?: boolean }, { name: string; type: ArgType | readonly ArgType[]; optional?: boolean }, { name: string; type: ArgType | readonly ArgType[]; optional?: boolean }, { name: string; type: ArgType | readonly ArgType[]; optional?: boolean }]
+                        ? {
+                            (arg1: GetPositionalTypes<T['params']>[0], arg2: GetPositionalTypes<T['params']>[1], arg3: GetPositionalTypes<T['params']>[2], arg4: GetPositionalTypes<T['params']>[3], arg5: GetPositionalTypes<T['params']>[4]): ReturnType<F>;
+                          }
+                        // Fallback for 6+ parameters - no strong typing for positions 6+
+                        : T['params']['length'] extends number
+                          ? T['params']['length'] extends 0 | 1 | 2 | 3 | 4 | 5
+                            ? {}
+                            : {
+                                (...args: any[]): ReturnType<F>;
+                              }
+                          : {}
+);
+
+/**
+ * Public callable returned by `defineFunction`.
+ *
+ * This named export keeps TypeScript declaration emit from inventing fragile
+ * inferred private return types while preserving the rich positional/record
+ * overloads used by function authors.
+ */
+export type DefinedFunction<
+  T extends DefineFunctionOptions,
+  F extends (...args: any[]) => any
+> = DefineFunctionCallable<T, F> & RuntimeFunction & {
+  call(thisArg: any, ...args: any[]): ReturnType<F>;
+  apply(thisArg: any, args: any[]): ReturnType<F>;
 };
 
 function isOverloadedParams(params: DefineFunctionOptions['params']): params is readonly ParamDefinition[][] {
@@ -220,92 +314,16 @@ export function defineFunction<
   name: string,
   fn: ValidateFunctionSignature<F>,
   options?: T
-) {
+): DefinedFunction<T, F> {
   // The external API types remain exactly the same, but internal function accepts positional parameters only
-
-  type NamedFunction = {
-    (...args: GetPositionalTypes<T['params']>): ReturnType<F>;
-    (record: GetRecordType<T['params']>): ReturnType<F>;
-    name: string;
-    params: T['params'];
-  } & (
-    // Overloads for 1 parameter
-    T['params'] extends readonly [{ name: string; type: ArgType | readonly ArgType[]; optional: true }]
-      ? {
-          (): ReturnType<F>;
-          (arg1: GetPositionalTypes<T['params']>[0]): ReturnType<F>;
-        }
-      : T['params'] extends readonly [{ name: string; type: ArgType | readonly ArgType[]; optional?: boolean }]
-        ? {
-            (arg1: GetPositionalTypes<T['params']>[0]): ReturnType<F>;
-          }
-        // Overloads for 2 parameters
-        : T['params'] extends readonly [{ name: string; type: ArgType | readonly ArgType[]; optional: true }, { name: string; type: ArgType | readonly ArgType[]; optional: true }]
-          ? {
-              (): ReturnType<F>;
-              (arg1: GetPositionalTypes<T['params']>[0]): ReturnType<F>;
-              (arg1: GetPositionalTypes<T['params']>[0], arg2: GetPositionalTypes<T['params']>[1]): ReturnType<F>;
-            }
-          : T['params'] extends readonly [{ name: string; type: ArgType | readonly ArgType[]; optional?: boolean }, { name: string; type: ArgType | readonly ArgType[]; optional: true }]
-            ? {
-                (arg1: GetPositionalTypes<T['params']>[0]): ReturnType<F>;
-                (arg1: GetPositionalTypes<T['params']>[0], arg2: GetPositionalTypes<T['params']>[1]): ReturnType<F>;
-              }
-            : T['params'] extends readonly [{ name: string; type: ArgType | readonly ArgType[]; optional?: boolean }, { name: string; type: ArgType | readonly ArgType[]; optional?: boolean }]
-              ? {
-                  (arg1: GetPositionalTypes<T['params']>[0]): ReturnType<F>;
-                  (arg1: GetPositionalTypes<T['params']>[0], arg2: GetPositionalTypes<T['params']>[1]): ReturnType<F>;
-                }
-              // Overloads for 3 parameters
-              : T['params'] extends readonly [{ name: string; type: ArgType | readonly ArgType[]; optional?: boolean }, { name: string; type: ArgType | readonly ArgType[]; optional?: boolean }, { name: string; type: ArgType | readonly ArgType[]; optional: true }]
-                ? {
-                    (arg1: GetPositionalTypes<T['params']>[0], arg2: GetPositionalTypes<T['params']>[1]): ReturnType<F>;
-                    (arg1: GetPositionalTypes<T['params']>[0], arg2: GetPositionalTypes<T['params']>[1], arg3: GetPositionalTypes<T['params']>[2]): ReturnType<F>;
-                  }
-                : T['params'] extends readonly [{ name: string; type: ArgType | readonly ArgType[]; optional?: boolean }, { name: string; type: ArgType | readonly ArgType[]; optional?: boolean }, { name: string; type: ArgType | readonly ArgType[]; optional?: boolean }]
-                  ? {
-                      (arg1: GetPositionalTypes<T['params']>[0], arg2: GetPositionalTypes<T['params']>[1], arg3: GetPositionalTypes<T['params']>[2]): ReturnType<F>;
-                    }
-                  // Overloads for 4 parameters
-                  : T['params'] extends readonly [{ name: string; type: ArgType | readonly ArgType[]; optional?: boolean }, { name: string; type: ArgType | readonly ArgType[]; optional?: boolean }, { name: string; type: ArgType | readonly ArgType[]; optional?: boolean }, { name: string; type: ArgType | readonly ArgType[]; optional: true }]
-                    ? {
-                        (arg1: GetPositionalTypes<T['params']>[0], arg2: GetPositionalTypes<T['params']>[1], arg3: GetPositionalTypes<T['params']>[2]): ReturnType<F>;
-                        (arg1: GetPositionalTypes<T['params']>[0], arg2: GetPositionalTypes<T['params']>[1], arg3: GetPositionalTypes<T['params']>[2], arg4: GetPositionalTypes<T['params']>[3]): ReturnType<F>;
-                      }
-                    : T['params'] extends readonly [{ name: string; type: ArgType | readonly ArgType[]; optional?: boolean }, { name: string; type: ArgType | readonly ArgType[]; optional?: boolean }, { name: string; type: ArgType | readonly ArgType[]; optional?: boolean }, { name: string; type: ArgType | readonly ArgType[]; optional?: boolean }]
-                      ? {
-                          (arg1: GetPositionalTypes<T['params']>[0], arg2: GetPositionalTypes<T['params']>[1], arg3: GetPositionalTypes<T['params']>[2], arg4: GetPositionalTypes<T['params']>[3]): ReturnType<F>;
-                        }
-                      // Overloads for 5 parameters
-                      : T['params'] extends readonly [{ name: string; type: ArgType | readonly ArgType[]; optional?: boolean }, { name: string; type: ArgType | readonly ArgType[]; optional?: boolean }, { name: string; type: ArgType | readonly ArgType[]; optional?: boolean }, { name: string; type: ArgType | readonly ArgType[]; optional?: boolean }, { name: string; type: ArgType | readonly ArgType[]; optional: true }]
-                        ? {
-                            (arg1: GetPositionalTypes<T['params']>[0], arg2: GetPositionalTypes<T['params']>[1], arg3: GetPositionalTypes<T['params']>[2], arg4: GetPositionalTypes<T['params']>[3]): ReturnType<F>;
-                            (arg1: GetPositionalTypes<T['params']>[0], arg2: GetPositionalTypes<T['params']>[1], arg3: GetPositionalTypes<T['params']>[2], arg4: GetPositionalTypes<T['params']>[3], arg5: GetPositionalTypes<T['params']>[4]): ReturnType<F>;
-                          }
-                        : T['params'] extends readonly [{ name: string; type: ArgType | readonly ArgType[]; optional?: boolean }, { name: string; type: ArgType | readonly ArgType[]; optional?: boolean }, { name: string; type: ArgType | readonly ArgType[]; optional?: boolean }, { name: string; type: ArgType | readonly ArgType[]; optional?: boolean }, { name: string; type: ArgType | readonly ArgType[]; optional?: boolean }]
-                          ? {
-                              (arg1: GetPositionalTypes<T['params']>[0], arg2: GetPositionalTypes<T['params']>[1], arg3: GetPositionalTypes<T['params']>[2], arg4: GetPositionalTypes<T['params']>[3], arg5: GetPositionalTypes<T['params']>[4]): ReturnType<F>;
-                            }
-                          // Fallback for 6+ parameters - no strong typing for positions 6+
-                          : T['params']['length'] extends number
-                            ? T['params']['length'] extends 0 | 1 | 2 | 3 | 4 | 5
-                              ? {}
-                              : {
-                                  (...args: any[]): ReturnType<F>;
-                                }
-                            : {}
-  ) & {
-    /** @todo - This inference is not working correctly - fix later */
-    call(thisArg: any, ...args: Parameters<NamedFunction>): ReturnType<F>;
-    apply(thisArg: any, args: Parameters<NamedFunction>): ReturnType<F>;
-  };
 
   /**
    * Function that accepts either positional arguments or a record object.
    * Parameter names are inferred from the params array: name, value, etc.
    * All calls are converted to positional format before calling the internal function.
    */
-  const result: NamedFunction = function(...args: any[]): ReturnType<F> {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+  const result: DefinedFunction<T, F> = function(...args: any[]): ReturnType<F> {
     const rawParams = options?.params;
     if (!rawParams) {
       return fn(...args);
@@ -329,7 +347,7 @@ export function defineFunction<
     // Convert to positional arguments and call internal function
     const positionalArgs = buildPositionalArgs(record, params);
     return fn(...positionalArgs);
-  };
+  } as DefinedFunction<T, F>;
 
   /** Attach runtime metadata directly; keep the callable as a real function. */
   Object.defineProperties(result, {
@@ -385,7 +403,7 @@ export async function callWithContext(context: Context, fn: (...args: any[]) => 
   /** Normalize positional args into a List node for tracking original arguments */
   let originalArgsList: List;
   if (listArg) {
-    const copiedListArg = copyWithReusableLeaves(listArg);
+    const copiedListArg = listArg.cloneForPlacement();
     if (!isNode(copiedListArg, N.List)) {
       throw new TypeError('Copied function arguments must remain a List');
     }
@@ -398,11 +416,11 @@ export async function callWithContext(context: Context, fn: (...args: any[]) => 
     const copiedArgs = new Array(args.length);
     for (let i = 0; i < args.length; i++) {
       const arg = args[i];
-      copiedArgs[i] = isNode(arg) ? copyWithReusableLeaves(arg) : arg;
+      copiedArgs[i] = isNode(arg) ? arg.cloneForPlacement() : arg;
     }
     originalArgsList = new List(copiedArgs);
   }
-  const originalValues = originalArgsList.items;
+  const originalValues = originalArgsList.value;
   args = new Array(originalValues.length);
   for (let i = 0; i < originalValues.length; i++) {
     args[i] = originalValues[i];
@@ -815,7 +833,7 @@ async function buildCallWithContextPositionalArgs(
         }
       } else {
         for (const item of arr) {
-          let processedItem: any = (isNode(item) && !item.evaluated) ? item.eval(context) : item;
+          let processedItem: any = isNode(item) ? item.eval(context) : item;
           if (isThenable(processedItem)) {
             processedItem = await processedItem;
           }
@@ -841,7 +859,7 @@ async function buildCallWithContextPositionalArgs(
           positionalArgs.push(createThunk(v, def, context));
         }
       } else {
-        let processedValue: any = (isNode(v) && !v.evaluated) ? v.eval(context) : v;
+        let processedValue: any = isNode(v) ? v.eval(context) : v;
 
         // Handle async evaluation without truncating remaining parameters.
         if (isThenable(processedValue)) {
@@ -901,7 +919,7 @@ function createThunk(val: any, paramDef: ParamDefinition, context?: Context): ()
   }
   return async (): Promise<any> => {
     let result;
-    if (context && isNode(val) && !val.evaluated) {
+    if (context && isNode(val)) {
       result = await val.eval(context);
     } else if (typeof val === 'function') {
       // If val is a function (lazy parameter), call it
@@ -1050,7 +1068,8 @@ function validateValue(value: any, expectedType: ArgType | readonly ArgType[], p
   }
 
   // Handle single type
-  if (!isValidType(value, expectedType)) {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+  if (!isValidType(value, expectedType as ArgType)) {
     const typeName = typeof expectedType === 'function' ? expectedType.name : expectedType;
     const actualType = typeof value === 'object' && value !== null ? value.constructor?.name || typeof value : typeof value;
     return {

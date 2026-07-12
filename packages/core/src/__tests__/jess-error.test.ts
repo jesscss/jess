@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { makeJessErrorFromDiagnostic, type ErrorDiagnostic } from '../jess-error.js';
+import type { IRecognitionException } from 'chevrotain';
+import {
+  getErrorFromParser,
+  makeJessErrorFromDiagnostic,
+  toDiagnostic,
+  type ErrorDiagnostic
+} from '../jess-error.js';
 
 describe('JessError diagnostics', () => {
   it('falls back to parse/syntax-error for unknown diagnostic codes', () => {
@@ -63,5 +69,42 @@ describe('JessError diagnostics', () => {
     expect(error.column).toBe(10);
     expect(error.errors).toBe(diagnostic.errors);
     expect(error.lexerErrors).toBe(diagnostic.lexerErrors);
+  });
+
+  it('normalizes non-finite Chevrotain parse positions before diagnostics', () => {
+    const parseError = {
+      name: 'NoViableAltException',
+      message: 'Expecting token but found EOF',
+      token: {
+        image: '',
+        startOffset: Number.NaN,
+        endOffset: Number.NaN,
+        startLine: Number.NaN,
+        startColumn: Number.NaN,
+        endLine: Number.NaN,
+        endColumn: Number.NaN
+      },
+      context: {
+        ruleStack: [],
+        ruleOccurrenceStack: []
+      }
+    } as unknown as IRecognitionException;
+
+    const diagnostic = toDiagnostic(getErrorFromParser(
+      [parseError],
+      undefined,
+      'virtual.jess',
+      '.a {\n  color: blue;\n'
+    ));
+
+    expect(diagnostic).toMatchObject({
+      code: 'parse/unexpected-syntax',
+      phase: 'parse',
+      filePath: 'virtual.jess',
+      line: 1,
+      column: 1
+    });
+    expect(Number.isFinite(diagnostic.line)).toBe(true);
+    expect(Number.isFinite(diagnostic.column)).toBe(true);
   });
 });

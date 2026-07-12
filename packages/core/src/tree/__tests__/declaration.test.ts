@@ -1,9 +1,8 @@
-import type { IToken } from 'chevrotain';
 import { decl, spaced, color, rules, any, ref, atrule, ruleset, el, forNode, list, List, Sequence, VarDeclaration, Ruleset, Declaration, op, num, dimension, AssignmentType, vardecl, interpolated, call, JsFunction, customdecl, Node, Any, mixin } from '../index.js';
 import { Context } from '../../context.js';
 import { INTERPOLATION_PLACEHOLDER } from '../interpolated.js';
 import type { TriviaMap } from '../../types/index.js';
-import { createTriviaMap } from '../util/trivia.js';
+import { createTriviaMap, makeTrivia } from '../util/trivia.js';
 import { getPrintOptions, OutputWriter } from '../util/print.js';
 import { createRenderBuffer, renderNodeToString } from '../util/render-buffer.js';
 import { Nil } from '../nil.js';
@@ -32,16 +31,8 @@ class CountingWriter extends OutputWriter {
 
 let context: Context;
 
-const token = (image: string, tokenTypeName = 'WS', startOffset = 0): IToken => ({
-  image,
-  tokenType: { name: tokenTypeName } as IToken['tokenType'],
-  startOffset,
-  endOffset: startOffset + image.length - 1,
-  startLine: 1,
-  endLine: 1,
-  startColumn: 1,
-  endColumn: image.length
-});
+// A trivia run is now a source range; build one whose text is exactly `text`.
+const run = (text: string) => makeTrivia(text, 0, text.length);
 
 describe('Declaration', () => {
   beforeEach(() => {
@@ -70,6 +61,19 @@ describe('Declaration', () => {
   it('should serialize to CSS', () => {
     let rule = decl({ name: 'color', value: color('#eee') });
     expect(rule.toTrimmedString()).toBe('color: #eee');
+  });
+
+  it('uses direct fields as the declaration source of truth', () => {
+    const name = any('color');
+    const value = any('red');
+    const important = any('!important', { role: 'flag' });
+    const node = decl({ name, value, important });
+
+    expect(node.name).toBe(name);
+    expect(node.value).toBe(value);
+    expect(node.important).toBe(important);
+    expect(node.value).not.toHaveProperty('name');
+    expect([...node.walk()]).toEqual([name, value, important]);
   });
 
   it('does not allocate options when serializing a default declaration', () => {
@@ -127,8 +131,22 @@ describe('Declaration', () => {
 
     expect(writer.toString()).toBe('color: red !important');
     expect(writer.captures).toBe(0);
-    expect(writer.marks).toBe(1);
-    expect(writer.readbacks).toBe(1);
+    expect(writer.marks).toBe(0);
+    expect(writer.readbacks).toBe(0);
+  });
+
+  it('captures declaration source syntax without the outer declaration readback', () => {
+    const writer = new CountingWriter();
+    const rule = decl({
+      name: any('color'),
+      value: any('red'),
+      important: any('!important', { role: 'flag' })
+    });
+
+    expect(rule.toTrimmedString({ writer })).toBe('color: red !important');
+    expect(writer.toString()).toBe('color: red !important');
+    expect(writer.captures).toBe(0);
+    expect(writer.readbacks).toBe(2);
   });
 
   it('renders resolved declarations through render(context)', async () => {
@@ -142,6 +160,23 @@ describe('Declaration', () => {
     const rendered = decl({
       name: any('color'),
       value: ref({ key: 'tone' }, { type: 'variable' })
+    }).render(context);
+
+    expect(rendered).toBe('color: red');
+  });
+
+  it('does not let boolean important skip semantic value evaluation', async () => {
+    const root = rules([
+      vardecl({ name: any('tone'), value: any('red') })
+    ]);
+    const evald = await root.eval(context);
+    context.root = evald;
+    context.rulesContext = evald;
+
+    const rendered = decl({
+      name: any('color'),
+      value: ref({ key: 'tone' }, { type: 'variable' }),
+      important: false
     }).render(context);
 
     expect(rendered).toBe('color: red');
@@ -214,7 +249,6 @@ describe('Declaration', () => {
     };
 
     expect(node.render(context)).toBe('color: red');
-    expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
   });
 
@@ -229,7 +263,7 @@ describe('Declaration', () => {
       name: any('color'),
       value: ref({ key: 'brand' }, { type: 'variable' })
     });
-    const originalWithParts = (node as unknown as { withParts?: unknown }).withParts;
+    const originalWithParts = Reflect.get(node, 'withParts');
     if (typeof originalWithParts !== 'function') {
       throw new TypeError('Expected declaration withParts method');
     }
@@ -257,17 +291,17 @@ describe('Declaration', () => {
       name: sourceName,
       value: sourceValue
     });
-    const originalNameCopy = sourceName.copy;
-    const originalValueCopy = sourceValue.copy;
+    const originalNameCopy = sourceName.cloneForPlacement;
+    const originalValueCopy = sourceValue.cloneForPlacement;
     let sourcePartCopies = 0;
-    sourceName.copy = function copyNameForCounting(
+    sourceName.cloneForPlacement = function copyNameForCounting(
       this: typeof sourceName,
       ...args: Parameters<typeof originalNameCopy>
     ): ReturnType<typeof originalNameCopy> {
       sourcePartCopies++;
       return originalNameCopy.apply(this, args);
     };
-    sourceValue.copy = function copyValueForCounting(
+    sourceValue.cloneForPlacement = function copyValueForCounting(
       this: typeof sourceValue,
       ...args: Parameters<typeof originalValueCopy>
     ): ReturnType<typeof originalValueCopy> {
@@ -282,8 +316,8 @@ describe('Declaration', () => {
       expect(sourceValue.parent).toBe(node);
       expect(node.registrationPrepared).toBe(false);
     } finally {
-      sourceName.copy = originalNameCopy;
-      sourceValue.copy = originalValueCopy;
+      sourceName.cloneForPlacement = originalNameCopy;
+      sourceValue.cloneForPlacement = originalValueCopy;
     }
   });
 
@@ -302,7 +336,7 @@ describe('Declaration', () => {
     ];
 
     for (const [assign, expected] of cases) {
-      const originalCopy = Any.prototype.copy;
+      const originalCopy = Any.prototype.cloneForPlacement;
       let scalarCopies = 0;
       const prior = makePrior(assign);
       const root = rules([prior]);
@@ -315,7 +349,7 @@ describe('Declaration', () => {
         name: any('background-color'),
         value
       }, { assign });
-      Any.prototype.copy = function copyForCounting(
+      Any.prototype.cloneForPlacement = function copyForCounting(
         this: Any,
         ...args: Parameters<typeof originalCopy>
       ): ReturnType<typeof originalCopy> {
@@ -331,7 +365,7 @@ describe('Declaration', () => {
         expect(value.parent).toBe(sourceDeclaration);
         expect(sourceDeclaration.registrationPrepared).toBe(false);
       } finally {
-        Any.prototype.copy = originalCopy;
+        Any.prototype.cloneForPlacement = originalCopy;
       }
     }
   });
@@ -390,13 +424,12 @@ describe('Declaration', () => {
       name: any('color'),
       value: ref({ key: 'tone' }, { type: 'variable' })
     });
-    const sourceValue = node.valueNode;
+    const sourceValue = node.value;
 
     const resolved = await node.resolve(context);
 
     expect(resolved.toTrimmedString()).toBe('color: red');
     expect(sourceValue.parent).toBe(node);
-    expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
@@ -415,7 +448,7 @@ describe('Declaration', () => {
       name: sourceName,
       value: sourceValue
     });
-    const originalDerive = (node as unknown as { derive?: unknown }).derive;
+    const originalDerive = Reflect.get(node, 'derive');
     if (typeof originalDerive !== 'function') {
       throw new TypeError('Expected declaration derive method');
     }
@@ -449,8 +482,8 @@ describe('Declaration', () => {
 
     const prepared = await Promise.resolve(node.prepareRegistration(context));
 
-    expect(prepared.valueNode.type).toBe('Sequence');
-    expect(prepared.valueNode.toTrimmedString()).toBe('$.src one');
+    expect(prepared.value.type).toBe('Sequence');
+    expect(prepared.value.toTrimmedString()).toBe('$.src one');
     expect(valuePrepCalls).toBe(0);
     expect(value.registrationPrepared).toBe(false);
   });
@@ -460,7 +493,7 @@ describe('Declaration', () => {
       name: any('src'),
       value: any('one')
     }, { assign: AssignmentType.MergeSequence });
-    const originalDerive = (node as unknown as { derive?: unknown }).derive;
+    const originalDerive = Reflect.get(node, 'derive');
     if (typeof originalDerive !== 'function') {
       throw new TypeError('Expected declaration derive method');
     }
@@ -472,7 +505,7 @@ describe('Declaration', () => {
 
     const prepared = await Promise.resolve(node.prepareRegistration(context));
 
-    expect(prepared.valueNode.toTrimmedString()).toBe('$.src one');
+    expect(prepared.value.toTrimmedString()).toBe('$.src one');
     expect(deriveCalls).toBe(0);
     expect(node.registrationPrepared).toBe(false);
   });
@@ -534,7 +567,6 @@ describe('Declaration', () => {
     const resolved = await node.resolve(context);
 
     expect(resolved.toTrimmedString()).toBe('--color:red');
-    expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
     expect(context.inCustom).toBe(false);
     expect(context.printState.writer).toBeUndefined();
@@ -671,6 +703,34 @@ describe('Declaration', () => {
     expect(node.render(context)).toBe('--custom: red');
   });
 
+  it('preserves leading trivia for interpolated custom property values', async () => {
+    const interpolatedValue = interpolated({
+      source: INTERPOLATION_PLACEHOLDER,
+      replacements: [ref({ key: 'string_w_comment' }, { type: 'variable' })]
+    });
+    interpolatedValue._location = [50, 1, 51, 72, 1, 73];
+    const value = new Sequence([interpolatedValue]);
+    value._location = interpolatedValue.location;
+    const trivia = createTriviaMap({
+      before: new Map([[interpolatedValue.location[0], run(' ')]])
+    }) satisfies TriviaMap;
+    context = new Context({ trivia });
+    const node = rules([
+      vardecl({
+        name: any('string_w_comment'),
+        value: any('/* // Not commented out // */')
+      }),
+      customdecl({
+        name: any('--comment'),
+        value
+      })
+    ]);
+
+    expect(await renderNodeToString(node, context, { trivia })).toBeString(`
+      --comment: /* // Not commented out // */;
+    `);
+  });
+
   it('preserves generic calls in custom property values during render(context)', () => {
     const node = decl({
       name: any('--custom'),
@@ -775,7 +835,7 @@ describe('Declaration', () => {
     expect(node.toTrimmedString({ writer })).toBe('--custom: red /* kept raw */');
     expect(writer.toString()).toBe('--custom: red /* kept raw */');
     expect(writer.captures).toBe(0);
-    expect(writer.marks).toBe(1);
+    expect(writer.marks).toBe(0);
     expect(writer.readbacks).toBe(1);
   });
 
@@ -788,8 +848,8 @@ describe('Declaration', () => {
 
     expect(node.toTrimmedString({ writer })).toBe('--custom:red');
     expect(writer.toString()).toBe('--custom:red');
-    expect(writer.marks).toBeGreaterThan(1);
-    expect(writer.readbacks).toBeGreaterThan(1);
+    expect(writer.marks).toBeGreaterThan(0);
+    expect(writer.readbacks).toBeGreaterThan(0);
   });
 
   it('normalizes custom property trailing declaration newlines with horizontal whitespace by scan', () => {
@@ -801,8 +861,8 @@ describe('Declaration', () => {
 
     expect(node.toTrimmedString({ writer })).toBe('--custom:red');
     expect(writer.toString()).toBe('--custom:red');
-    expect(writer.marks).toBeGreaterThan(1);
-    expect(writer.readbacks).toBeGreaterThan(1);
+    expect(writer.marks).toBeGreaterThan(0);
+    expect(writer.readbacks).toBeGreaterThan(0);
   });
 
   it('serializes important declarations with one space before !important', async () => {
@@ -856,10 +916,10 @@ describe('Declaration', () => {
     value._location = [7, 1, 8, 9, 1, 10];
     const node = decl({ name: any('b'), value });
     node._location = [4, 1, 5, 25, 1, 26];
-    const tokens = [token(' '), token('/* comment */', 'BlockComment')];
+    const shared = run(' /* comment */');
     const trivia = createTriviaMap({
-      before: new Map([[23, tokens]]),
-      after: new Map([[value.location[3], tokens]])
+      before: new Map([[23, shared]]),
+      after: new Map([[value.location[3], shared]])
     }) satisfies TriviaMap;
 
     expect(rules([node]).toString({ trivia })).toBeString(`
@@ -871,10 +931,10 @@ describe('Declaration', () => {
     const name = any('color', { role: 'property' });
     name._location = [4, 1, 5, 8, 1, 9];
     const node = decl({ name, value: any('grey') });
-    const tokens = [token('/* survive */', 'BlockComment'), token(' '), token('/* me too */', 'BlockComment')];
+    const shared = run('/* survive */ /* me too */');
     const trivia = createTriviaMap({
-      before: new Map([[35, tokens]]),
-      after: new Map([[name.location[3], tokens]])
+      before: new Map([[35, shared]]),
+      after: new Map([[name.location[3], shared]])
     }) satisfies TriviaMap;
 
     expect(node.toString({ trivia })).toBe('color/* survive */ /* me too */: grey');
@@ -908,9 +968,9 @@ describe('Declaration', () => {
         value: any('foo')
       }, { assign: '+:' })
     ]);
-    const originalCopy = Node.prototype.copy;
+    const originalCopy = Node.prototype.cloneForPlacement;
     let scalarCopies = 0;
-    Node.prototype.copy = function copyForCounting(this: Node, ...args: Parameters<typeof originalCopy>): ReturnType<typeof originalCopy> {
+    Node.prototype.cloneForPlacement = function copyForCounting(this: Node, ...args: Parameters<typeof originalCopy>): ReturnType<typeof originalCopy> {
       if (this.type === 'Any' && /^(red|foo)$/u.test(String(this.valueOf()))) {
         scalarCopies++;
       }
@@ -925,7 +985,7 @@ describe('Declaration', () => {
       `);
       expect(scalarCopies).toBe(0);
     } finally {
-      Node.prototype.copy = originalCopy;
+      Node.prototype.cloneForPlacement = originalCopy;
     }
   });
 
@@ -983,6 +1043,40 @@ describe('Declaration', () => {
     }
   });
 
+  it('renders merged declaration lists without an extra list-value readback window', () => {
+    const writer = new CountingWriter();
+    const node = decl({
+      name: any('background-color'),
+      value: new List([
+        new Nil(),
+        any('red'),
+        any('foo')
+      ])
+    }, { normalizedFromAssign: AssignmentType.Add });
+
+    expect(node.render(context, { writer })).toBe('background-color: red, foo');
+    expect(writer.toString()).toBe('background-color: red, foo');
+    expect(writer.marks).toBe(0);
+    expect(writer.readbacks).toBe(1);
+  });
+
+  it('renders merged declaration sequences without an extra space-value readback window', () => {
+    const writer = new CountingWriter();
+    const node = decl({
+      name: any('background-color'),
+      value: spaced([
+        new Nil(),
+        any('red'),
+        any('foo')
+      ])
+    }, { normalizedFromAssign: AssignmentType.MergeSequence });
+
+    expect(node.render(context, { writer })).toBe('background-color: red foo');
+    expect(writer.toString()).toBe('background-color: red foo');
+    expect(writer.marks).toBe(0);
+    expect(writer.readbacks).toBe(1);
+  });
+
   it('renders assignment merges without evaluating temporary sequence containers', async () => {
     const root = rules([
       decl({
@@ -1038,7 +1132,7 @@ describe('Declaration', () => {
     await expect(Promise.resolve(node.render(context, buffer))).resolves.toBe('background-color: red, blue !important');
     expect(buffer.segments).toEqual(['background-color: red, blue !important']);
     expect(context.hasImportantSource).toBe(false);
-    expect(node.valueNode.parent).toBe(node);
+    expect(node.value.parent).toBe(node);
   });
 
   it('renders assignment merge adapter state without stale value transport', async () => {
@@ -1060,9 +1154,7 @@ describe('Declaration', () => {
       options: unknown,
       renderState?: { mergeAdapter?: Record<string, unknown> }
     ) => unknown;
-    const originalWriteDeclarationValueSyntax: unknown = (
-      node as unknown as { writeDeclarationValueSyntax?: unknown }
-    ).writeDeclarationValueSyntax;
+    const originalWriteDeclarationValueSyntax = Reflect.get(node, 'writeDeclarationValueSyntax');
     const isWriteDeclarationValueSyntax = (value: unknown): value is WriteDeclarationValueSyntax => (
       typeof value === 'function'
     );
@@ -1079,7 +1171,7 @@ describe('Declaration', () => {
     ) {
       if (renderState?.mergeAdapter) {
         sawMergeAdapter = true;
-        expect(renderState.mergeAdapter).not.toHaveProperty('value');
+        expect(renderState.mergeAdapter).not.toHaveProperty('items');
       }
       return originalWriteDeclarationValueSyntax.call(this, valueParts, options, renderState);
     });
@@ -1106,7 +1198,7 @@ describe('Declaration', () => {
 
     await expect(Promise.resolve(node.render(context, buffer))).resolves.toBe('--tokens:blue');
     expect(buffer.segments).toEqual(['--tokens:blue']);
-    expect(node.valueNode.parent).toBe(node);
+    expect(node.value.parent).toBe(node);
   });
 
   it('renders contextual important flags without materializing a flag node', () => {
@@ -1140,6 +1232,17 @@ describe('Declaration', () => {
     expect(context.hasImportantSource).toBe(false);
   });
 
+  it('finalizes public contextual important state with the exact source flag when available', () => {
+    const important = any('!important', { role: 'flag' });
+    context.pushImportantSource(important);
+
+    const state = finalizeContextualImportantPublicState(context, undefined);
+
+    expect(state.important).toBe(important);
+    expect(state.importantText).toBeUndefined();
+    expect(context.hasImportantSource).toBe(false);
+  });
+
   it('collects declaration merge adapter items without empty placeholders', () => {
     expect(collectDeclarationMergeAdapterItems(list([new Nil(), any(''), any('1px')])).map(item => item.valueOf())).toEqual(['1px']);
   });
@@ -1149,7 +1252,7 @@ describe('Declaration', () => {
 
     expect(createDeclarationMergeAdapterState(value, 'list')).toEqual({
       kind: 'list',
-      items: [value.value[1], value.value[2].value[0]]
+      value: [value.value[1], value.value[2].value[0]]
     });
   });
 
@@ -1158,7 +1261,7 @@ describe('Declaration', () => {
 
     expect(createDeclarationMergeAdapterState(value, 'space')).toEqual({
       kind: 'space',
-      items: [value.value[1], value.value[2].value[0]]
+      value: [value.value[1], value.value[2].value[0]]
     });
   });
 
@@ -1235,8 +1338,8 @@ describe('Declaration', () => {
       ])
     ]);
 
-    const parent = node.value[0]!;
-    const child = parent.value[2]!;
+    const parent = node.rules[0]!;
+    const child = parent.rules[2]!;
     child.parent = parent;
 
     expect(await renderNodeToString(node, context)).toBeString(`
@@ -1292,9 +1395,9 @@ describe('Declaration', () => {
         }, { assign: AssignmentType.MergeList })
       ])
     ]);
-    const originalCopy = Node.prototype.copy;
+    const originalCopy = Node.prototype.cloneForPlacement;
     let srcValueCopies = 0;
-    Node.prototype.copy = function copyForCounting(this: Node, ...args: Parameters<typeof originalCopy>): ReturnType<typeof originalCopy> {
+    Node.prototype.cloneForPlacement = function copyForCounting(this: Node, ...args: Parameters<typeof originalCopy>): ReturnType<typeof originalCopy> {
       if (this.type === 'Any' && /^(one|two|three)$/u.test(String(this.valueOf()))) {
         srcValueCopies++;
       }
@@ -1309,7 +1412,7 @@ describe('Declaration', () => {
       `);
       expect(srcValueCopies).toBe(0);
     } finally {
-      Node.prototype.copy = originalCopy;
+      Node.prototype.cloneForPlacement = originalCopy;
     }
   });
 
@@ -1317,16 +1420,16 @@ describe('Declaration', () => {
     const node = rules([
       mixin({
         name: any('.shadow-base'),
-        rules: rules([
+        rules: [
           decl({
             name: any('box-shadow'),
             value: any('0 1px 3px rgba(0, 0, 0, 0.12)')
           }, { assign: AssignmentType.Add })
-        ])
+        ]
       }),
       ruleset({
         selector: el('.shadow-elevated'),
-        rules: rules([
+        rules: [
           call({
             name: ref({ key: '.shadow-base' }, { type: 'mixin' })
           }),
@@ -1334,7 +1437,7 @@ describe('Declaration', () => {
             name: any('box-shadow'),
             value: any('0 4px 6px rgba(0, 0, 0, 0.1)')
           }, { assign: AssignmentType.Add })
-        ])
+        ]
       })
     ]);
 
@@ -1350,17 +1453,17 @@ describe('Declaration', () => {
     const node = rules([
       mixin({
         name: any('.shadow-base'),
-        rules: rules([
+        rules: [
           decl({
             name: any('box-shadow'),
             value: any('0 1px 3px rgba(0, 0, 0, 0.12)'),
             important
           }, { assign: AssignmentType.Add })
-        ])
+        ]
       }),
       ruleset({
         selector: el('.shadow-elevated'),
-        rules: rules([
+        rules: [
           call({
             name: ref({ key: '.shadow-base' }, { type: 'mixin' })
           }),
@@ -1368,7 +1471,7 @@ describe('Declaration', () => {
             name: any('box-shadow'),
             value: any('0 4px 6px rgba(0, 0, 0, 0.1)')
           }, { assign: AssignmentType.Add })
-        ])
+        ]
       })
     ]);
 
@@ -1377,12 +1480,12 @@ describe('Declaration', () => {
         box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), 0 4px 6px rgba(0, 0, 0, 0.1) !important;
       }
     `);
-    const elevated = node.value[1];
+    const elevated = node.rules[1];
     expect(elevated).toBeInstanceOf(Ruleset);
     if (!(elevated instanceof Ruleset)) {
       throw new TypeError('Expected ruleset output');
     }
-    const emitted = elevated.rules.flatRules(true).find(rule => rule instanceof Declaration);
+    const emitted = elevated.flatRules(true).find(rule => rule instanceof Declaration);
     expect(emitted).toBeInstanceOf(Declaration);
     if (!(emitted instanceof Declaration)) {
       throw new TypeError('Expected declaration output');
@@ -1394,16 +1497,16 @@ describe('Declaration', () => {
     const node = rules([
       ruleset({
         selector: el('.shadow-base'),
-        rules: rules([
+        rules: [
           decl({
             name: any('box-shadow'),
             value: any('0 1px 3px rgba(0, 0, 0, 0.12)')
           }, { assign: AssignmentType.Add })
-        ])
+        ]
       }),
       ruleset({
         selector: el('.shadow-elevated'),
-        rules: rules([
+        rules: [
           call({
             name: ref({ key: '.shadow-base' }, { type: 'mixin-ruleset' })
           }),
@@ -1411,11 +1514,11 @@ describe('Declaration', () => {
             name: any('box-shadow'),
             value: any('0 4px 6px rgba(0, 0, 0, 0.1)')
           }, { assign: AssignmentType.Add })
-        ])
+        ]
       }),
       ruleset({
         selector: el('.shadow-floating'),
-        rules: rules([
+        rules: [
           call({
             name: ref({ key: '.shadow-elevated' }, { type: 'mixin-ruleset' })
           }),
@@ -1423,7 +1526,7 @@ describe('Declaration', () => {
             name: any('box-shadow'),
             value: any('0 10px 20px rgba(0, 0, 0, 0.15)')
           }, { assign: AssignmentType.Add })
-        ])
+        ]
       })
     ]);
 
@@ -1453,9 +1556,9 @@ describe('Declaration', () => {
       }, { assign: AssignmentType.Add })
     ]);
     const sourceParent = sourceValue.parent;
-    const originalCopy = List.prototype.copy;
+    const originalCopy = List.prototype.cloneForPlacement;
     let sourceListCopies = 0;
-    List.prototype.copy = function copyForCounting(
+    List.prototype.cloneForPlacement = function copyForCounting(
       this: List,
       ...args: Parameters<typeof originalCopy>
     ): ReturnType<typeof originalCopy> {
@@ -1473,7 +1576,7 @@ describe('Declaration', () => {
       expect(sourceListCopies).toBe(0);
       expect(sourceValue.parent).toBe(sourceParent);
     } finally {
-      List.prototype.copy = originalCopy;
+      List.prototype.cloneForPlacement = originalCopy;
     }
   });
 
@@ -1490,9 +1593,9 @@ describe('Declaration', () => {
       }, { assign: AssignmentType.MergeSequence })
     ]);
     const sourceParent = sourceValue.parent;
-    const originalCopy = Sequence.prototype.copy;
+    const originalCopy = Sequence.prototype.cloneForPlacement;
     let sourceSequenceCopies = 0;
-    Sequence.prototype.copy = function copyForCounting(
+    Sequence.prototype.cloneForPlacement = function copyForCounting(
       this: Sequence,
       ...args: Parameters<typeof originalCopy>
     ): ReturnType<typeof originalCopy> {
@@ -1509,7 +1612,7 @@ describe('Declaration', () => {
       expect(sourceSequenceCopies).toBe(0);
       expect(sourceValue.parent).toBe(sourceParent);
     } finally {
-      Sequence.prototype.copy = originalCopy;
+      Sequence.prototype.cloneForPlacement = originalCopy;
     }
   });
 
@@ -1539,7 +1642,7 @@ describe('Declaration', () => {
     const node = decl({ name, value });
     node._location = [0, 1, 1, 12, 2, 6];
     const trivia = createTriviaMap({
-      before: new Map([[value.location[0], [token('\n', 'WS', 6)]]])
+      before: new Map([[value.location[0], run('\n')]])
     }) satisfies TriviaMap;
 
     expect(node.toTrimmedString({ trivia })).toBe('color: white');
@@ -1550,17 +1653,17 @@ describe('Declaration', () => {
     const node = rules([
       ruleset({
         selector: el('nav'),
-        rules: rules([
+        rules: [
           atrule({
             name: any('@starting-style', { role: 'atkeyword' }),
-            rules: rules([
+            rules: [
               decl({ name: any('padding'), value: any('10px') }, { assign: AssignmentType.MergeSequence }),
               decl({ name: any('padding'), value: any('8px') }, { assign: AssignmentType.MergeSequence }),
               decl({ name: any('padding'), value: any('6px') }, { assign: AssignmentType.MergeSequence }),
               decl({ name: any('padding'), value: any('4px') }, { assign: AssignmentType.MergeSequence })
-            ])
+            ]
           })
-        ])
+        ]
       })
     ]);
 
@@ -1578,10 +1681,10 @@ describe('Declaration', () => {
     const node = rules([
       ruleset({
         selector: el('aside'),
-        rules: rules([
+        rules: [
           atrule({
             name: any('@starting-style', { role: 'atkeyword' }),
-            rules: rules([
+            rules: [
               forNode({
                 pattern: {
                   kind: 'single',
@@ -1599,13 +1702,13 @@ describe('Declaration', () => {
                     any('40px')
                   ])
                 },
-                rules: rules([
+                rules: [
                   decl({ name: any('padding'), value: ref('value', { type: 'variable' }) }, { assign: AssignmentType.MergeSequence })
-                ])
+                ]
               })
-            ])
+            ]
           })
-        ])
+        ]
       })
     ]);
 
@@ -1623,10 +1726,10 @@ describe('Declaration', () => {
     const node = rules([
       ruleset({
         selector: el('aside'),
-        rules: rules([
+        rules: [
           atrule({
             name: any('@starting-style', { role: 'atkeyword' }),
-            rules: rules([
+            rules: [
               forNode({
                 pattern: {
                   kind: 'tuple',
@@ -1645,16 +1748,16 @@ describe('Declaration', () => {
                     num(4)
                   ])
                 },
-                rules: rules([
+                rules: [
                   decl({
                     name: any('padding'),
                     value: op([ref('value', { type: 'variable' }), '*', dimension([10, 'px'])])
                   }, { assign: AssignmentType.MergeSequence })
-                ])
+                ]
               })
-            ])
+            ]
           })
-        ])
+        ]
       })
     ]);
 

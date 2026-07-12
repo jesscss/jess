@@ -5,7 +5,7 @@ import { isrulesetImplementation } from '../isruleset.js';
 describe('isruleset()', () => {
   it('returns false for lazy ReferenceError and rethrows non-reference errors', async () => {
     const rulesResult = await isrulesetImplementation(() => new Rules([]));
-    const mixinResult = await isrulesetImplementation(() => new Mixin({ rules: new Rules([]) }));
+    const mixinResult = await isrulesetImplementation(() => new Mixin({ rules: [] }));
     const noRulesResult = await isrulesetImplementation(() => new Any('nope'));
     const missingRulesResult = await isrulesetImplementation(() => {
       throw new ReferenceError('missing');

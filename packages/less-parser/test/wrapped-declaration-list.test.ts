@@ -14,4 +14,3 @@ describe('wrappedDeclarationList', () => {
     expect(errors.length).toBe(0);
   });
 });
-

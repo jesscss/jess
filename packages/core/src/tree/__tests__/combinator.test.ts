@@ -45,9 +45,7 @@ describe('Combinator', () => {
 
     expect(child.render(context)).toBe('>');
     expect(adjacent.render(context)).toBe('+');
-    expect(child.evaluated).toBe(false);
     expect(child.registrationPrepared).toBe(false);
-    expect(adjacent.evaluated).toBe(false);
     expect(adjacent.registrationPrepared).toBe(false);
   });
 
@@ -85,7 +83,6 @@ describe('Combinator', () => {
     const resolved = await node.resolve(context);
 
     expect(resolved.toTrimmedString()).toBe('>');
-    expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });

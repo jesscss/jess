@@ -1,8 +1,6 @@
 import type { Context } from '../../context.js';
-import type { IToken } from 'chevrotain';
-import type { TriviaMap } from '../../types/index.js';
-import type { AtRule } from '../at-rule.js';
-import type { Node } from '../node.js';
+import type { TriviaMap, Trivia } from '../../types/index.js';
+import type { AtRule, AtRulePrelude } from '../at-rule.js';
 import type { Ruleset } from '../ruleset.js';
 import type { Selector } from '../selector.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
@@ -34,7 +32,7 @@ export type PrintOptions = {
   composedSelectorCache?: WeakMap<Ruleset, Selector>;
   /** Render-local override for one at-rule header prelude during direct render. */
   atRuleHeaderNode?: AtRule;
-  atRuleHeaderPrelude?: Node;
+  atRuleHeaderPrelude?: AtRulePrelude;
   /** Render-local override for one at-rule body during direct render. */
   atRuleBodyNode?: AtRule;
   atRuleBodyOverride?: import('../rules.js').Rules;
@@ -47,9 +45,18 @@ export type PrintOptions = {
   /** Whether the current ampersand is at the start of its containing selector. */
   ampersandFirst?: boolean;
   trivia?: TriviaMap;
-  emittedTrivia?: Set<IToken[]>;
+  emittedTrivia?: Set<Trivia>;
   suppressBoundaryTrivia?: 'pre' | 'post' | 'both';
   sourceMap?: boolean;
+  /** Output syntax target, e.g. 'jess' for Jess canonical output. */
+  syntax?: string;
+  /** Jess conversion options for rewriting import paths during serialization. */
+  conversion?: {
+    mapPath?: (sourcePath: string) => string;
+    outputDir?: string;
+    sourceRoot?: string;
+    fromFilePath?: string;
+  };
 };
 
 export type FinalPrintOptions = PrintOptions & {
@@ -83,23 +90,21 @@ function isTriviaMap(value: unknown): value is TriviaMap {
     return false;
   }
   if (
-    !('runs' in value)
-    || !('lookup' in value)
+    !('lookup' in value)
     || !('entries' in value)
     || !('has' in value)
   ) {
     return false;
   }
-  return value.runs instanceof Set
-    && typeof value.lookup === 'function'
+  return typeof value.lookup === 'function'
     && typeof value.entries === 'function'
     && typeof value.has === 'function';
 }
 
 function ensureFinalPrintOptions(options: PrintOptions): asserts options is FinalPrintOptions {
   options.depth ??= 0;
-  if (options.sourceMap === undefined && options.context?.opts?.sourceMap !== undefined) {
-    options.sourceMap = Boolean(options.context.opts.sourceMap);
+  if (options.sourceMap === undefined && options.context?.opts?.output?.sourceMap !== undefined) {
+    options.sourceMap = Boolean(options.context.opts.output.sourceMap);
   }
   options.writer ??= new OutputWriter(options.sourceMap === true);
   options.inFrames ??= [];
@@ -197,8 +202,8 @@ export function getPrintOptions(options?: PrintOptions): FinalPrintOptions {
       );
       if (hasExplicitPrintState) {
         const detached = options;
-        if (detached.collapseNesting === undefined && detached.context?.opts?.collapseNesting !== undefined) {
-          detached.collapseNesting = Boolean(detached.context.opts.collapseNesting);
+        if (detached.collapseNesting === undefined && detached.context?.opts?.output?.collapseNesting !== undefined) {
+          detached.collapseNesting = Boolean(detached.context.opts.output.collapseNesting);
         }
         ensureFinalPrintOptions(detached);
         return detached;
@@ -206,16 +211,16 @@ export function getPrintOptions(options?: PrintOptions): FinalPrintOptions {
       return prepareContextPrintState(options.context, options);
     }
     const resolved = options.context.printState;
-    if (resolved.collapseNesting === undefined && resolved.context?.opts?.collapseNesting !== undefined) {
-      resolved.collapseNesting = Boolean(resolved.context.opts.collapseNesting);
+    if (resolved.collapseNesting === undefined && resolved.context?.opts?.output?.collapseNesting !== undefined) {
+      resolved.collapseNesting = Boolean(resolved.context.opts.output.collapseNesting);
     }
     ensureFinalPrintOptions(resolved);
     return resolved;
   }
   const resolved = options ?? {};
   // Derive collapseNesting from context when missing so nested vs flat is correct for & serialization
-  if (resolved.collapseNesting === undefined && resolved.context?.opts?.collapseNesting !== undefined) {
-    resolved.collapseNesting = Boolean(resolved.context.opts.collapseNesting);
+  if (resolved.collapseNesting === undefined && resolved.context?.opts?.output?.collapseNesting !== undefined) {
+    resolved.collapseNesting = Boolean(resolved.context.opts.output.collapseNesting);
   }
   // Always ensure frameState exists - nodes should not need to check for it
   ensureFinalPrintOptions(resolved);
@@ -247,7 +252,7 @@ export function prepareContextPrintState(context: Context, seed?: PrintOptions):
   state.lastRenderedFrames = [];
   state.frameHeaders = [];
   state.depth = 0;
-  state.sourceMap = seed?.sourceMap ?? Boolean(context.opts.sourceMap);
+  state.sourceMap = seed?.sourceMap ?? Boolean(context.opts.output?.sourceMap);
   state.writer = seed?.writer ?? new OutputWriter(state.sourceMap === true);
   state.compress = seed?.compress;
   state.collapseNesting = seed?.collapseNesting;
@@ -262,8 +267,8 @@ export function prepareContextPrintState(context: Context, seed?: PrintOptions):
   state.trivia = seed?.trivia ?? (isTriviaMap(contextTrivia) ? contextTrivia : undefined);
   state.emittedTrivia = new Set();
 
-  if (state.collapseNesting === undefined && context.opts.collapseNesting !== undefined) {
-    state.collapseNesting = Boolean(context.opts.collapseNesting);
+  if (state.collapseNesting === undefined && context.opts.output?.collapseNesting !== undefined) {
+    state.collapseNesting = Boolean(context.opts.output.collapseNesting);
   }
 
   ensureFinalPrintOptions(state);

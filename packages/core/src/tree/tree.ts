@@ -1,6 +1,7 @@
 import type { Ampersand } from './ampersand.js';
 import type { Any, Anonymous, Keyword } from './any.js';
 import type { AtRule } from './at-rule.js';
+import type { AtRuleStatement } from './at-rule-statement.js';
 import type { Call } from './call.js';
 import type { Declaration } from './declaration.js';
 import type { Dimension } from './dimension.js';
@@ -13,6 +14,7 @@ import type { Func } from './function.js';
 import type { JsFunction } from './js-function.js';
 import type { Ruleset } from './ruleset.js';
 import type { Rules } from './rules.js';
+import type { Stylesheet } from './stylesheet.js';
 import type { ComplexSelector } from './selector-complex.js';
 import type { CompoundSelector } from './selector-compound.js';
 import type { StyleImport } from './import-style.js';
@@ -75,7 +77,7 @@ export interface NToNode {
   [N.Rules]: Rules;
   [N.Collection]: Collection;
   [N.Ruleset]: Ruleset;
-  [N.AtRule]: AtRule;
+  [N.AtRule]: AtRule | AtRuleStatement;
   [N.Reference]: Reference;
   [N.Comment]: Comment;
   [N.JsFunction]: JsFunction;
@@ -89,6 +91,7 @@ export type Nodes = {
   Anonymous: typeof Anonymous;
   Keyword: typeof Keyword;
   AtRule: typeof AtRule;
+  AtRuleStatement: typeof AtRuleStatement;
   Call: typeof Call;
   Comment: typeof Comment;
   Declaration: typeof Declaration;
@@ -113,6 +116,7 @@ export type Nodes = {
   JsArray: typeof JsArray;
   Ruleset: typeof Ruleset;
   Rules: typeof Rules;
+  Stylesheet: typeof Stylesheet;
   StyleImport: typeof StyleImport;
   JsImport: typeof JsImport;
   Nil: typeof Nil;

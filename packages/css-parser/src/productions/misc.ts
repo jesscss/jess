@@ -5,7 +5,7 @@ import type { CssRecursiveParser, RuleContext, TokenMap, Rule } from '../cssRecu
 import { EMPTY_ALT } from 'chevrotain';
 import {
   type LocationInfo,
-  Node, Any, AtRule, Rules, Sequence, List,
+  Node, Any, AtRule, AtRuleStatement, Rules, Sequence, List,
   QueryCondition, Keyword, Paren, Call, Block, RawRules,
   Url
 } from '@jesscss/core';
@@ -58,7 +58,7 @@ export function layerAtRule(this: C, T: TokenMap) {
             return new AtRule({
               name: new Any(atTok.image, { role: 'atkeyword' }, $.getLocationInfo(atTok), this.context),
               prelude: preludeNodes.length ? new Sequence(preludeNodes, undefined, $.getLocationFromNodes(preludeNodes), this.context) : undefined,
-              rules
+              rules: rules.rules
             }, { nestable: true }, $.endRule(), this.context);
           }
         }
@@ -75,7 +75,7 @@ export function layerAtRule(this: C, T: TokenMap) {
           });
           $.CONSUME(T.Semi);
           if (!RECORDING_PHASE) {
-            return new AtRule({
+            return new AtRuleStatement({
               name: new Any(atTok.image, { role: 'atkeyword' }, $.getLocationInfo(atTok), this.context),
               prelude: preludeNodes.length ? new List(preludeNodes, undefined, $.getLocationFromNodes(preludeNodes), this.context) : undefined
             }, undefined, $.endRule(), this.context);
@@ -149,7 +149,7 @@ export function supportsAtRule(this: C, T: TokenMap, preludeRule?: Rule | string
       return new AtRule({
         name: new Any(name.image, { role: 'atkeyword' }, $.getLocationInfo(name), this.context),
         prelude: prelude,
-        rules
+        rules: rules.rules
       }, { nestable: true }, location, this.context);
     }
   };
@@ -336,11 +336,11 @@ export function functionCall(this: C, T: TokenMap, alt?: AltContext) {
     if (!modernColorFunctions.has(name.toLowerCase())) {
       return false;
     }
-    if (!args || args.items.length !== 1) {
+    if (!args || args.value.length !== 1) {
       return false;
     }
-    const firstArg = args.items[0];
-    return Boolean(firstArg instanceof Sequence && firstArg.items.length >= 2);
+    const firstArg = args.value[0];
+    return Boolean(firstArg instanceof Sequence && firstArg.value.length >= 2);
   };
 
   alt ??= (ctx: RuleContext = {}) => [
@@ -495,7 +495,7 @@ export function importAtRule(this: C, T: TokenMap) {
 
     if (!RECORDING_PHASE) {
       let location = $.endRule();
-      return new AtRule({
+      return new AtRuleStatement({
         name: new Any(name.image, { role: 'atkeyword' }, $.getLocationInfo(name), this.context),
         prelude: new Sequence(preludeNodes!, undefined, $.getLocationFromNodes(preludeNodes!), this.context)
       }, undefined, location, this.context);
@@ -617,11 +617,13 @@ export function nestedAtRule(this: C, T: TokenMap) {
     $.CONSUME(T.RCurly);
 
     if (!$.RECORDING_PHASE) {
-      return new AtRule({
+      const atRuleValue = {
         name: new Any(name.image, { role: 'atkeyword' }, $.getLocationInfo(name), this.context),
-        prelude: preludeNodes!.length ? new Sequence(preludeNodes!, undefined, $.getLocationFromNodes(preludeNodes!), this.context) : undefined,
-        rules
-      }, undefined, $.endRule(), this.context);
+        prelude: preludeNodes!.length ? new Sequence(preludeNodes!, undefined, $.getLocationFromNodes(preludeNodes!), this.context) : undefined
+      };
+      return rules
+        ? new AtRule({ ...atRuleValue, rules: rules.rules }, undefined, $.endRule(), this.context)
+        : new AtRuleStatement(atRuleValue, undefined, $.endRule(), this.context);
     }
   };
 }
@@ -638,7 +640,7 @@ export function nonNestedAtRule(this: C, T: TokenMap) {
     $.CONSUME(T.Semi);
 
     if (!$.RECORDING_PHASE) {
-      return new AtRule({
+      return new AtRuleStatement({
         name: new Any(name.image, { role: 'atkeyword' }, $.getLocationInfo(name), this.context),
         prelude: new Sequence(preludeNodes, undefined, $.getLocationFromNodes(preludeNodes), this.context)
       }, undefined, $.endRule(), this.context);
@@ -676,7 +678,7 @@ export function unknownAtRule(this: C, T: TokenMap) {
     $.startRule();
 
     let preludeNodes: Node[];
-    let valueNodes!: Node[];
+    let values!: Node[];
     let declRules: Rules | undefined;
     let endToken: IToken | undefined;
     let innerBlockLocation: LocationInfo | undefined;
@@ -697,7 +699,7 @@ export function unknownAtRule(this: C, T: TokenMap) {
       {
         ALT: () => {
           if (!RECORDING_PHASE) {
-            valueNodes = [];
+            values = [];
           }
           $.CONSUME(LCurly);
           $.startRule();
@@ -743,7 +745,7 @@ export function unknownAtRule(this: C, T: TokenMap) {
                 $.MANY9(() => {
                   const value = $.SUBRULE($.anyInnerValue, { ARGS: [ctx] });
                   if (!RECORDING_PHASE) {
-                    valueNodes.push(value);
+                    values.push(value);
                   }
                 });
               }
@@ -763,10 +765,10 @@ export function unknownAtRule(this: C, T: TokenMap) {
       if (declRules) {
         rules = declRules;
       } else {
-        if (valueNodes?.length) {
+        if (values?.length) {
           // Create a single Sequence from all inner nodes, so serialization treats it as one unit
-          const seqLoc = $.getLocationFromNodes(valueNodes!);
-          const seq = new Sequence(valueNodes!, undefined, seqLoc, this.context);
+          const seqLoc = $.getLocationFromNodes(values!);
+          const seq = new Sequence(values!, undefined, seqLoc, this.context);
           // Use RawRules to avoid inserting newlines/indentation during serialization
           rules = new RawRules([seq], undefined, seqLoc, this.context);
         }
@@ -774,7 +776,7 @@ export function unknownAtRule(this: C, T: TokenMap) {
       return new AtRule({
         name: new Any(name.image, { role: 'atkeyword' }, $.getLocationInfo(name), this.context),
         prelude: preludeNodes!.length ? new Sequence(preludeNodes!, undefined, $.getLocationFromNodes(preludeNodes!), this.context) : undefined,
-        rules
+        rules: rules?.rules ?? []
       }, undefined, $.endRule(), this.context);
     }
   };

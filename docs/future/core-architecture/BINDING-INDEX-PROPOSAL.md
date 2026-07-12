@@ -39,6 +39,18 @@ Every bridge to the old lookup shape must have:
 - focused tests proving the covered simple path no longer enters the bridge;
 - a benchmark/profile note when the bridge is still on a measured hot path.
 
+Every lookup should adhere to one simple model:
+
+```txt
+current frame -> live binding -> canonical source
+```
+
+That is the architecture, not a best-effort optimization. A lookup first asks
+the current frame for the relevant binding. If the binding is live, it follows
+the live cell/slot. The binding resolves to canonical source state. If a case
+cannot be represented in that model yet, that case is unfinished; it must not be
+hidden behind a sibling/source-surface crawl or a generic fallback ladder.
+
 By the end of this binding-index lane, ordinary static-key reads and writes
 must not execute fallback ladders. The desired hot path is:
 
@@ -58,9 +70,9 @@ lookup frame
   ?? materialize source declaration
 ```
 
-Fallback is acceptable only for cases the binding frame has not modeled yet.
-Once a case is modeled, the fallback branch for that case is deleted, not left
-as a "safe" second chance.
+Unmodeled cases should be tracked as remaining work with a precise missing
+frame/live/canonical fact. Once a case is modeled, any old branch for the same
+case is deleted, not retained as a "safe" second chance.
 
 ## Goals
 

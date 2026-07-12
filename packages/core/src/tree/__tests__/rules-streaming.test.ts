@@ -1,11 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { Node, any, decl, rules } from '../index.js';
+import { Node, any, decl, el, rules, ruleset, sel, sellist } from '../index.js';
 import { Context } from '../../context.js';
 import { getPrintOptions, OutputWriter, type PrintOptions } from '../util/print.js';
 
 class CountingWriter extends OutputWriter {
   captures = 0;
+  marks = 0;
   wholeBufferReads = 0;
+
+  override mark(): number {
+    this.marks++;
+    return super.mark();
+  }
 
   override getSince(mark: number): string {
     if (mark === 0) {
@@ -21,14 +27,16 @@ class CountingWriter extends OutputWriter {
 }
 
 class DirectRule extends Node<string> {
+  declare value: string;
   override toString(options?: PrintOptions): string {
     return this.toTrimmedString(options);
   }
 
   override toTrimmedString(options?: PrintOptions): string {
     const w = getPrintOptions(options).writer!;
-    w.add(this.value);
-    return this.value;
+    const v = this.value;
+    w.add(v);
+    return v;
   }
 }
 
@@ -57,6 +65,37 @@ describe('Rules streaming', () => {
 
     expect(node.toString({ context, writer })).toBe('color: red;\nbackground: blue;\n');
     expect(writer.captures).toBe(0);
+  });
+
+  it('does not spend an extra wrapper mark to detect child Rules source emission', () => {
+    const context = new Context();
+    const writer = new CountingWriter();
+    const node = rules([
+      rules([
+        decl({ name: 'color', value: any('red') })
+      ]),
+      decl({ name: 'background', value: any('blue') })
+    ]);
+
+    expect(node.toString({ context, writer })).toBe('color: red;\nbackground: blue;\n');
+    expect(writer.marks).toBe(5);
+  });
+
+  it('does not spend an extra container mark to detect child Ruleset source emission', () => {
+    const context = new Context();
+    const writer = new CountingWriter();
+    const node = rules([
+      ruleset({
+        selector: sellist([sel([el('.a')])]),
+        rules: [
+          decl({ name: 'color', value: any('red') })
+        ]
+      }),
+      decl({ name: 'background', value: any('blue') })
+    ]);
+
+    expect(node.toString({ context, writer })).toBe('.a {\n  color: red;\n}\nbackground: blue;\n');
+    expect(writer.marks).toBe(4);
   });
 
   it('does not inspect root output for each emitted child boundary', () => {

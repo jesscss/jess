@@ -1,4 +1,4 @@
-import { Node, defineType, F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC, type NodeLocation, type NodeOptions } from './node.js';
+import { Node, defineType, F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC, type NodeLocation, type LocationInfo, type NodeOptions } from './node.js';
 import type { Context } from '../context.js';
 import { Rules } from './rules.js';
 import { Any } from './any.js';
@@ -9,7 +9,7 @@ import { Condition } from './condition.js';
 import { VarDeclaration } from './declaration-var.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
-import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
 import { Range } from './range.js';
 import {
@@ -42,7 +42,30 @@ function throwInvalidWhileIterationRegistrationPrep(): never {
   throw new TypeError('Expected $while iteration registration prep to return Rules');
 }
 
-function makeDirectiveRulesPublic(rules: Rules) {
+// Accept either a bare Node array or a Rules container node (unwrapped to its
+// child array). Factories pass a Rules node; the parser passes the array.
+function normalizeRulesBody(owner: string, rules: unknown): Node[] {
+  const arr = rules instanceof Rules ? rules.rules : rules;
+  if (!Array.isArray(arr)) {
+    throw new TypeError(`${owner} requires rules to be a Node array.`);
+  }
+  return arr;
+}
+
+// When a Rules wrapper was passed, adopt it so wrapper.parent === owner and
+// restore children's parent to the wrapper (super() set them to owner).
+function adoptRulesWrapper(owner: Rules, wrapper: Rules): void {
+  owner.adopt(wrapper);
+  const wrapperRules = wrapper.rules;
+  for (let i = 0; i < wrapperRules.length; i++) {
+    const child = wrapperRules[i]!;
+    if (child instanceof Node) {
+      child.parent = wrapper;
+    }
+  }
+}
+
+function makeDirectiveRulesPublic(rules: Rules<any>) {
   rules.options.rulesVisibility = {
     ...rules.options.rulesVisibility,
     ...PUBLIC_RULE_VISIBILITY
@@ -51,6 +74,16 @@ function makeDirectiveRulesPublic(rules: Rules) {
 
 function renderControlToString(render: (buffer: RenderBuffer) => MaybePromise<string>): MaybePromise<string> {
   return render(createRenderBuffer('flat'));
+}
+
+function writeControlChildSyntax(node: Node, options: FinalPrintOptions): void {
+  const saved = options.suppressBoundaryTrivia;
+  options.suppressBoundaryTrivia = 'pre';
+  try {
+    node.writeSyntax(options);
+  } finally {
+    options.suppressBoundaryTrivia = saved;
+  }
 }
 
 function trimControlTrailingNewline(buffer: RenderBuffer, out: string): string {
@@ -74,7 +107,7 @@ function trimControlTrailingNewline(buffer: RenderBuffer, out: string): string {
 }
 
 async function renderControlRules(
-  rules: Rules,
+  rules: Rules<any>,
   context: Context,
   buffer: RenderBuffer,
   options?: PrintOptions
@@ -84,7 +117,7 @@ async function renderControlRules(
 }
 
 function createDerivedIterationRulesSurface(
-  sourceRules: Rules,
+  sourceRules: Rules<any>,
   childNodes?: Node[]
 ): Rules {
   const sourceOptions = sourceRules.options;
@@ -124,7 +157,7 @@ function createGeneratedOutputRulesSurface(childNodes?: Node[]): Rules {
 
 async function runWithRulesContext<T>(
   context: Context,
-  rulesContext: Rules,
+  rulesContext: Rules<any>,
   run: () => Promise<T>
 ): Promise<T> {
   const savedRulesContext = context.rulesContext;
@@ -140,7 +173,49 @@ function deriveIterationChild(node: Node): Node {
   return copyWithReusableLeaves(node);
 }
 
-function createIterationEvalSurface(sourceRules: Rules): Rules {
+// eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- cloneFn preserves the VarDeclaration field type of each binding decl.
+function cloneForPattern(pattern: ForPattern, cloneFn: (n: Node) => Node): ForPattern {
+  if (pattern.kind === 'single') {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    return { kind: 'single', value: cloneFn(pattern.value) as VarDeclaration };
+  }
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+  const values = pattern.values.map(v => cloneFn(v) as VarDeclaration) as [VarDeclaration, ...VarDeclaration[]];
+  return { kind: 'tuple', values };
+}
+
+function cloneForIterable(iterable: ForIterable, cloneFn: (n: Node) => Node): ForIterable {
+  if (iterable.kind === 'node') {
+    return { kind: 'node', value: cloneFn(iterable.value) };
+  }
+  return {
+    kind: 'range',
+    start: cloneFn(iterable.start),
+    end: cloneFn(iterable.end),
+    ...(iterable.step !== undefined && { step: cloneFn(iterable.step) }),
+    includeStart: iterable.includeStart,
+    includeEnd: iterable.includeEnd
+  };
+}
+
+function createIterationEvalSurface(sourceRules: Rules<any>): Rules {
+  // TODO(§4/§6.2): make this a true thin surface like mixin/import — SHARE the
+  // canonical body children (so the surface's `sourceNode` link drives the
+  // scope-frame parent-walk), with the loop counter/value/key as the only
+  // per-iteration live slots. Two real blockers (verified 2026-06):
+  //  1) The loop renders via a SEPARATE path that does not route body children
+  //     through the normal Rules eval (`_evalPreparedRules`), so the unified
+  //     `sourceNode` walk-re-point never fires for them. Loops instead rely on
+  //     the bespoke `attachIterationFallbackFrame` below, which stamps a
+  //     per-iteration fallback on each child's frame — and on a SHARED child it
+  //     goes stale (the first iteration's frame sticks). Route loop-body eval
+  //     through the normal eval path so the walk applies, then delete the
+  //     bespoke fallback.
+  //  2) Shared (non-copied) body children retain their first eval result. The
+  //     fix is to stop pinning template output on the node (`evaluated`/`frozen`
+  //     are clone-era relics): a probe of `needsReeval = !F_STATIC` (always
+  //     re-eval non-static) cost only +1 on the suite, so always-re-eval is the
+  //     sound replacement. See LIVE_BINDING_ARCHITECTURE.md §2.7.
   const iterationRules = createDerivedIterationRulesSurface(
     sourceRules,
     sourceRules.rules.map(deriveIterationChild)
@@ -166,12 +241,12 @@ function attachIterationFallbackFrame(
     const scopeFrame = node.getScopeFrame();
     scopeFrame.fallbackFrame ??= frame;
   }
-  for (const child of node.children()) {
+  for (const child of node.walk()) {
     attachIterationFallbackFrame(child, frame, seen, true);
   }
 }
 
-function createWhileStateSurface(sourceRules: Rules, context: Context): Rules {
+function createWhileStateSurface(sourceRules: Rules<any>, context: Context): Rules {
   const stateRules = createDerivedIterationRulesSurface(
     sourceRules
   );
@@ -182,37 +257,19 @@ function createWhileStateSurface(sourceRules: Rules, context: Context): Rules {
   return stateRules;
 }
 
-function createWhileIterationSurface(sourceRules: Rules, stateRules: Rules): Rules {
+function createWhileIterationSurface(sourceRules: Rules<any>, stateRules: Rules): Rules {
   const iterationRules = createIterationEvalSurface(sourceRules);
   iterationRules.scopeFrame = buildScopeFrame(undefined, iterationRules, stateRules.getScopeFrame());
   return iterationRules;
 }
 
-function hasIterationStateMutation(rules: Rules): boolean {
+function hasIterationStateMutation(rules: Rules<any>): boolean {
   return rules.rules.some(node => isNode(node, N.VarDeclaration));
 }
 
-function getDirectIterationStateMutations(rules: Rules): VarDeclaration[] | undefined {
-  const mutations: VarDeclaration[] = [];
-  for (const node of rules.rules) {
-    if (!isNode(node, N.VarDeclaration)) {
-      continue;
-    }
-    if (
-      node.options?.assign
-      || node.options?.setDefined
-      || node.options?.throwIfDefined
-    ) {
-      return undefined;
-    }
-    mutations.push(node);
-  }
-  return mutations.length > 0 ? mutations : undefined;
-}
-
 async function syncWhileState(
-  stateRules: Rules,
-  iterationRules: Rules,
+  stateRules: Rules<any>,
+  iterationRules: Rules<any>,
   context: Context
 ): Promise<void> {
   const stateFrame = stateRules.getScopeFrame();
@@ -227,27 +284,6 @@ async function syncWhileState(
       value,
       sourceNode: last.sourceNode,
       readonly: last.cell.readonly
-    });
-  }
-}
-
-async function syncDirectWhileStateMutations(
-  stateRules: Rules,
-  mutations: VarDeclaration[],
-  context: Context
-): Promise<void> {
-  const stateFrame = stateRules.getScopeFrame();
-  for (const mutation of mutations) {
-    const name = mutation.name instanceof Any
-      ? mutation.name
-      : await mutation.name.eval(context);
-    if (!(name instanceof Any)) {
-      throw new TypeError('Expected $while mutation name to resolve to Any');
-    }
-    setScopeFrameLiveBinding(stateFrame, name.valueOf(), {
-      value: await mutation.valueNode.eval(context),
-      sourceNode: mutation,
-      readonly: mutation.options?.readonly
     });
   }
 }
@@ -288,7 +324,7 @@ function getBindingDeclarations(pattern: ForPattern): VarDeclaration[] {
 
 async function* resolveEntries(input: Node, context: Context): AsyncGenerator<[Node, number | string | Node]> {
   if (isNode(input, N.Expression)) {
-    yield* resolveEntries(await input.node.eval(context), context);
+    yield* resolveEntries(await input.value.eval(context), context);
     return;
   }
   if (isNode(input, N.Call)) {
@@ -301,21 +337,21 @@ async function* resolveEntries(input: Node, context: Context): AsyncGenerator<[N
     return;
   }
   if (isNode(input, N.List)) {
-    for (let key = 0; key < input.items.length; key++) {
-      const value = input.items[key]!;
+    for (let key = 0; key < input.value.length; key++) {
+      const value = input.value[key]!;
       yield [value, key];
     }
     return;
   }
   if (isNode(input, N.Sequence)) {
-    for (let key = 0; key < input.items.length; key++) {
-      const value = input.items[key]!;
+    for (let key = 0; key < input.value.length; key++) {
+      const value = input.value[key]!;
       yield [value, key];
     }
     return;
   }
   if (isNode(input, N.Rules)) {
-    const rules = input.value;
+    const rules = input.rules;
     for (const rule of rules) {
       if (!rule || isNode(rule, N.Comment)) {
         continue;
@@ -323,12 +359,14 @@ async function* resolveEntries(input: Node, context: Context): AsyncGenerator<[N
       if (!isNode(rule, N.Declaration)) {
         continue;
       }
-      yield [rule.valueNode, rule.name];
+      if (rule.value instanceof Node) {
+        yield [rule.value, rule.name];
+      }
     }
     return;
   }
   if (isNode(input, N.Ruleset) || isNode(input, N.Mixin)) {
-    const rules = input.rules.rules;
+    const rules = input.rules;
     for (const rule of rules) {
       if (!rule || isNode(rule, N.Comment)) {
         continue;
@@ -336,7 +374,9 @@ async function* resolveEntries(input: Node, context: Context): AsyncGenerator<[N
       if (!isNode(rule, N.Declaration)) {
         continue;
       }
-      yield [rule.valueNode, rule.name];
+      if (rule.value instanceof Node) {
+        yield [rule.value, rule.name];
+      }
     }
     return;
   }
@@ -375,7 +415,7 @@ function getForBindingInfo(pattern: ForPattern): {
 }
 
 async function createForIterationSurface(
-  originalRules: Rules,
+  originalRules: Rules<any>,
   context: Context,
   bindingDecls: VarDeclaration[],
   bindingNames: string[],
@@ -410,19 +450,22 @@ async function createForIterationSurface(
   const parentFrame: ScopeFrame | undefined = isNode(context.rulesContext, N.Rules)
     ? context.rulesContext.getScopeFrame()
     : undefined;
-  iterationRules.scopeFrame = buildScopeFrame(undefined, iterationRules, parentFrame, liveSlots);
+  iterationRules.scopeFrame = buildScopeFrame(
+    undefined,
+    iterationRules,
+    parentFrame,
+    liveSlots,
+    undefined,
+    true
+  );
   attachIterationFallbackFrame(iterationRules, iterationRules.scopeFrame);
   return iterationRules.prepareRegistration(context);
 }
 
-export type IfBranch = {
-  /** Undefined means "else" branch */
-  condition?: Node;
-  rules: Rules;
-};
-
 export type IfValue = {
-  branches: IfBranch[];
+  condition: Node;
+  rules: Node[];
+  else?: If | Rules;
 };
 
 /**
@@ -433,70 +476,87 @@ export type IfValue = {
  *
  * This is language-agnostic: it’s the canonical Jess control node.
  */
-export class If extends Node<IfValue> {
-  static override childKeys = ['branches'] as const;
+export class If extends Rules<IfValue> {
+  static override childKeys = ['condition', 'rules', 'else'] as const;
 
-  readonly branches: IfBranch[];
+  readonly condition: Node;
+  readonly else: IfValue['else'];
+  declare readonly rules: Node[];
+  _passedRulesWrapper: Rules | undefined;
 
   override allowRoot = true;
   override allowRuleRoot = true;
 
   constructor(value: IfValue, options?: NodeOptions, location?: NodeLocation, treeContext?: Context['treeContext']) {
-    super(value, options, location);
-    this._treeContext = treeContext;
-    this.branches = value.branches;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- NodeLocation is LocationInfo | []; parsers always pass a full 6-element tuple or undefined.
+    super(normalizeRulesBody('If', value.rules), options, location as LocationInfo | undefined, treeContext);
+    this.condition = value.condition;
+    this.else = value.else;
     this.addFlags(F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC);
-    for (const branch of this.branches) {
-      if (branch.condition) {
-        this.adopt(branch.condition);
-      }
-      this.adopt(branch.rules);
-      makeDirectiveRulesPublic(branch.rules);
+    this.adopt(this.condition);
+    if (this.else) {
+      this.adopt(this.else);
+      makeDirectiveRulesPublic(this.else);
+    }
+    makeDirectiveRulesPublic(this);
+    if (value.rules instanceof Rules) {
+      this._passedRulesWrapper = value.rules;
+      adoptRulesWrapper(this, value.rules);
     }
   }
 
-  override toTrimmedString(options?: PrintOptions): string {
-    options = getPrintOptions(options);
+  override toTrimmedString(rawOptions?: PrintOptions): string {
+    const options = getPrintOptions(rawOptions);
     const w = options.writer!;
-    const mark = w.mark();
+    const position = w.position();
+    this.writeSyntax(options);
+    return w.getSince(position);
+  }
 
-    const [first, ...rest] = this.branches;
+  /** @internal */
+  override writeSyntax(options: FinalPrintOptions): void {
+    const w = options.writer;
     w.add('$if', this);
     w.add(' (');
-    first?.condition?.toString(options);
+    this.condition.writeSyntax(options);
     w.add(') ');
-    first?.rules.writeBraced(options);
-
-    for (const br of rest) {
-      if (br.condition) {
-        w.add(' $else if (');
-        br.condition.toString(options);
-        w.add(') ');
-      } else {
-        w.add(' $else ');
-      }
-      br.rules.writeBraced(options);
-    }
-
-    return w.getSince(mark);
+    this.writeBraced(options);
+    this.writeElseSyntax(options);
   }
 
-  override evalNode(context: Context): MaybePromise<Node> {
-    const run = async (): Promise<Node> => {
-      for (const branch of this.branches) {
-        if (!branch.condition) {
-          return branch.rules.eval(context);
-        }
-        let conditionPasses: boolean;
-        if (branch.condition instanceof Condition) {
-          conditionPasses = await branch.condition.evaluateBoolean(context);
-        } else {
-          const condition = await branch.condition.eval(context);
-          conditionPasses = condition instanceof Bool && condition.value === true;
-        }
-        if (conditionPasses) {
-          return branch.rules.eval(context);
-        }
+  private writeElseSyntax(options: FinalPrintOptions): void {
+    if (!this.else) {
+      return;
+    }
+    const w = options.writer;
+    if (this.else instanceof If) {
+      w.add(' $else if (');
+      this.else.condition.writeSyntax(options);
+      w.add(') ');
+      this.else.writeBraced(options);
+      this.else.writeElseSyntax(options);
+      return;
+    }
+    w.add(' $else ');
+    this.else.writeBraced(options);
+  }
+
+  override evalNode(context: Context): MaybePromise<Rules> {
+    const run = async (): Promise<Rules> => {
+      let conditionPasses: boolean;
+      if (this.condition instanceof Condition) {
+        conditionPasses = await this.condition.evaluateBoolean(context);
+      } else {
+        const condition = await this.condition.eval(context);
+        conditionPasses = condition instanceof Bool && condition.value === true;
+      }
+      if (conditionPasses) {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- eval() returns MaybePromise<Node>; the result is a Rules surface created by createIterationEvalSurface.
+        return createIterationEvalSurface(this).eval(context) as Promise<Rules>;
+      }
+      if (this.else) {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- eval() returns MaybePromise<Node>; the else branch evaluates to a Rules node.
+        return this.else.eval(context) as Promise<Rules>;
       }
       return createGeneratedOutputRulesSurface();
     };
@@ -508,22 +568,19 @@ export class If extends Node<IfValue> {
     buffer: RenderBuffer,
     options?: PrintOptions
   ): Promise<string> {
-    for (const branch of this.branches) {
-      if (!branch.condition) {
-        return renderControlRules(branch.rules, context, buffer, options);
-      }
-      let conditionPasses: boolean;
-      if (branch.condition instanceof Condition) {
-        conditionPasses = await branch.condition.evaluateBoolean(context);
-      } else {
-        const condition = await branch.condition.eval(context);
-        conditionPasses = condition instanceof Bool && condition.value === true;
-      }
-      if (conditionPasses) {
-        return renderControlRules(branch.rules, context, buffer, options);
-      }
+    let conditionPasses: boolean;
+    if (this.condition instanceof Condition) {
+      conditionPasses = await this.condition.evaluateBoolean(context);
+    } else {
+      const condition = await this.condition.eval(context);
+      conditionPasses = condition instanceof Bool && condition.value === true;
     }
-    return '';
+    if (conditionPasses) {
+      return renderControlRules(this._passedRulesWrapper ?? createIterationEvalSurface(this), context, buffer, options);
+    }
+    return this.else
+      ? renderControlRules(this.else, context, buffer, options)
+      : '';
   }
 
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
@@ -543,28 +600,28 @@ export class If extends Node<IfValue> {
 export type StructuredLoopValue = {
   pattern: ForPattern;
   iterable: ForIterable;
-  rules: Rules;
+  rules: Node[];
 };
 
 /**
  * `$for <header> { ... }`
  */
-export class For extends Node<StructuredLoopValue> {
+export class For extends Rules<StructuredLoopValue> {
   static override childKeys = ['pattern', 'iterable', 'rules'] as const;
 
   readonly pattern: ForPattern;
   readonly iterable: ForIterable;
-  readonly rules: Rules;
+  declare readonly rules: Node[];
+  _passedRulesWrapper: Rules | undefined;
 
   override allowRoot = true;
   override allowRuleRoot = true;
 
   constructor(value: StructuredLoopValue, options?: NodeOptions, location?: NodeLocation, treeContext?: Context['treeContext']) {
-    super(value, options, location);
-    this._treeContext = treeContext;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- NodeLocation is LocationInfo | []; parsers always pass a full 6-element tuple or undefined.
+    super(normalizeRulesBody('For', value.rules), options, location as LocationInfo | undefined, treeContext);
     this.pattern = value.pattern;
     this.iterable = value.iterable;
-    this.rules = value.rules;
     this.addFlags(F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC);
     for (const decl of getBindingDeclarations(this.pattern)) {
       this.adopt(decl);
@@ -578,17 +635,63 @@ export class For extends Node<StructuredLoopValue> {
         this.adopt(this.iterable.step);
       }
     }
-    this.adopt(this.rules);
-    makeDirectiveRulesPublic(this.rules);
+    makeDirectiveRulesPublic(this);
+    if (value.rules instanceof Rules) {
+      this._passedRulesWrapper = value.rules;
+      adoptRulesWrapper(this, value.rules);
+      // Carry function bindings from the source wrapper so iteration surfaces
+      // can look them up during eval (createIterationEvalSurface reads this.functionsByName).
+      if (value.rules.functionsByName) {
+        for (const [name, fn] of value.rules.functionsByName) {
+          this.setFunctionBinding(name, fn);
+        }
+      }
+    }
   }
 
-  override evalNode(context: Context): MaybePromise<Node> {
+  // For carries a structured value (pattern + iterable + body), so the base
+  // Rules.clone — which reconstructs from a bare Node[] — cannot rebuild it.
+  // Clone the structured parts too so the source loop template is not mutated
+  // when a placement clone re-adopts shared binding/iterable nodes.
+  override clone(cloneFn?: (n: Node) => Node): this {
+    // Shallow: share the body children; the pattern's binding decls and the
+    // iterable are shallow-cloned (one node each, shared value) because the For
+    // constructor adopts them and must not reparent the source template's nodes.
+    const mapPart = cloneFn ?? ((n: Node) => n.clone());
+    const rules = cloneFn ? this.rules.map(cloneFn) : [...this.rules];
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    return new For(
+      {
+        pattern: cloneForPattern(this.pattern, mapPart),
+        iterable: cloneForIterable(this.iterable, mapPart),
+        rules
+      },
+      this._options ? { ...this._options } : undefined,
+      this.location.length ? this.location : undefined,
+      this.sourceRoot?._treeContext
+    ).inherit(this) as this;
+  }
+
+  override derive(value: Node[] = [...this.rules]): For {
+    return new For(
+      {
+        pattern: cloneForPattern(this.pattern, n => n.clone()),
+        iterable: cloneForIterable(this.iterable, n => n.clone()),
+        rules: value
+      },
+      this._options ? { ...this._options } : undefined,
+      this.location.length ? this.location : undefined,
+      this.sourceRoot?._treeContext
+    ).inherit(this);
+  }
+
+  override evalNode(context: Context): MaybePromise<Rules> {
     const { pattern, iterable } = this;
     const { bindingDecls, bindingNames } = getForBindingInfo(pattern);
-    const run = async (): Promise<Node> => {
+    const run = async (): Promise<Rules> => {
       const outputRules: Node[] = [];
       let counter = 1;
-      const originalRules = this.rules;
+      const originalRules = this;
       const evaluatedIterable = await iterableToNode(iterable).eval(context);
       for await (const [value, key] of resolveEntries(evaluatedIterable, context)) {
         const iterationRules = await createForIterationSurface(
@@ -616,7 +719,8 @@ export class For extends Node<StructuredLoopValue> {
         return createGeneratedOutputRulesSurface();
       }
       if (outputRules.length === 1) {
-        return outputRules[0]!;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- single iteration result; control-flow confirms it was pushed as a Rules or Node that behaves as Rules.
+        return outputRules[0]! as Rules;
       }
       return createGeneratedOutputRulesSurface(outputRules);
     };
@@ -627,29 +731,26 @@ export class For extends Node<StructuredLoopValue> {
     return this.evalNode(context);
   }
 
-  override toTrimmedString(options?: PrintOptions): string {
-    options = getPrintOptions(options);
+  override toTrimmedString(rawOptions?: PrintOptions): string {
+    const options = getPrintOptions(rawOptions);
     const w = options.writer!;
-    const mark = w.mark();
-    const emitTrimmed = (node: Node) => {
-      const saved = options.suppressBoundaryTrivia;
-      options.suppressBoundaryTrivia = 'pre';
-      try {
-        node.toString(options);
-      } finally {
-        options.suppressBoundaryTrivia = saved;
-      }
-    };
+    const position = w.position();
+    this.writeSyntax(options);
+    return w.getSince(position);
+  }
 
+  /** @internal */
+  override writeSyntax(options: FinalPrintOptions): void {
+    const w = options.writer;
     w.add('$for ', this);
     w.add('(');
     if (this.pattern.kind === 'single') {
-      this.pattern.value.toString(options);
+      this.pattern.value.writeSyntax(options);
     } else {
       w.add('[');
       const values = this.pattern.values;
       for (let i = 0; i < values.length; i++) {
-        values[i]!.toString(options);
+        values[i]!.writeSyntax(options);
         if (i < values.length - 1) {
           w.add(', ');
         }
@@ -658,9 +759,9 @@ export class For extends Node<StructuredLoopValue> {
     }
     w.add(' of ');
     if (this.iterable.kind === 'node') {
-      this.iterable.value.toString(options);
+      this.iterable.value.writeSyntax(options);
     } else {
-      emitTrimmed(this.iterable.start);
+      writeControlChildSyntax(this.iterable.start, options);
       if (!this.iterable.includeStart) {
         w.add('>');
       }
@@ -668,16 +769,15 @@ export class For extends Node<StructuredLoopValue> {
       if (!this.iterable.includeEnd) {
         w.add('<');
       }
-      emitTrimmed(this.iterable.end);
+      writeControlChildSyntax(this.iterable.end, options);
       if (this.iterable.step) {
         w.add(' step ');
-        emitTrimmed(this.iterable.step);
+        writeControlChildSyntax(this.iterable.step, options);
       }
     }
     w.add(')');
     w.add(' ');
-    this.rules.writeBraced(options);
-    return w.getSince(mark);
+    this.writeBraced(options);
   }
 
   private async renderIterations(
@@ -685,7 +785,8 @@ export class For extends Node<StructuredLoopValue> {
     buffer: RenderBuffer,
     options?: PrintOptions
   ): Promise<string> {
-    const { pattern, iterable, rules: originalRules } = this;
+    const { pattern, iterable } = this;
+    const originalRules = this;
     const { bindingDecls, bindingNames } = getForBindingInfo(pattern);
     const evaluatedIterable = await iterableToNode(iterable).eval(context);
     let counter = 1;
@@ -718,47 +819,56 @@ export class For extends Node<StructuredLoopValue> {
 
 export type WhileValue = {
   condition: Node;
-  rules: Rules;
+  rules: Node[];
 };
 
 /**
  * `$while (<condition>) { ... }`
  */
-export class While extends Node<WhileValue> {
+export class While extends Rules<WhileValue> {
   static override childKeys = ['condition', 'rules'] as const;
 
   readonly condition: Node;
-  readonly rules: Rules;
+  declare readonly rules: Node[];
+  _passedRulesWrapper: Rules | undefined;
 
   override allowRoot = true;
   override allowRuleRoot = true;
 
   constructor(value: WhileValue, options?: NodeOptions, location?: NodeLocation, treeContext?: Context['treeContext']) {
-    super(value, options, location);
-    this._treeContext = treeContext;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- NodeLocation is LocationInfo | []; parsers always pass a full 6-element tuple or undefined.
+    super(normalizeRulesBody('While', value.rules), options, location as LocationInfo | undefined, treeContext);
     this.condition = value.condition;
-    this.rules = value.rules;
     this.addFlags(F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC);
     this.adopt(this.condition);
-    this.adopt(this.rules);
-    makeDirectiveRulesPublic(this.rules);
+    makeDirectiveRulesPublic(this);
+    if (value.rules instanceof Rules) {
+      this._passedRulesWrapper = value.rules;
+      adoptRulesWrapper(this, value.rules);
+    }
   }
 
-  override toTrimmedString(options?: PrintOptions): string {
-    options = getPrintOptions(options);
+  override toTrimmedString(rawOptions?: PrintOptions): string {
+    const options = getPrintOptions(rawOptions);
     const w = options.writer!;
-    const mark = w.mark();
-    w.add('$while (', this);
-    this.condition.toString(options);
-    w.add(') ');
-    this.rules.writeBraced(options);
-    return w.getSince(mark);
+    const position = w.position();
+    this.writeSyntax(options);
+    return w.getSince(position);
   }
 
-  override evalNode(context: Context): MaybePromise<Node> {
-    const run = async (): Promise<Node> => {
+  /** @internal */
+  override writeSyntax(options: FinalPrintOptions): void {
+    const w = options.writer;
+    w.add('$while (', this);
+    this.condition.writeSyntax(options);
+    w.add(') ');
+    this.writeBraced(options);
+  }
+
+  override evalNode(context: Context): MaybePromise<Rules> {
+    const run = async (): Promise<Rules> => {
       const outputRules: Node[] = [];
-      const originalRules = this.rules;
+      const originalRules = this;
       const stateRules = createWhileStateSurface(originalRules, context);
       let iterations = 0;
       await runWithRulesContext(context, stateRules, async () => {
@@ -793,7 +903,8 @@ export class While extends Node<WhileValue> {
         return createGeneratedOutputRulesSurface();
       }
       if (outputRules.length === 1) {
-        return outputRules[0]!;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- single iteration result; control-flow confirms it was pushed as a Rules or Node that behaves as Rules.
+        return outputRules[0]! as Rules;
       }
       return createGeneratedOutputRulesSurface(outputRules);
     };
@@ -805,9 +916,8 @@ export class While extends Node<WhileValue> {
     buffer: RenderBuffer,
     options?: PrintOptions
   ): Promise<string> {
-    const originalRules = this.rules;
+    const originalRules = this;
     const stateRules = createWhileStateSurface(originalRules, context);
-    const directMutations = getDirectIterationStateMutations(originalRules);
     let iterations = 0;
     let output = '';
     await runWithRulesContext(context, stateRules, async () => {
@@ -827,9 +937,7 @@ export class While extends Node<WhileValue> {
           throwWhileIterationLimitExceeded();
         }
         let iterationRules = createWhileIterationSurface(originalRules, stateRules);
-        if (directMutations) {
-          await syncDirectWhileStateMutations(stateRules, directMutations, context);
-        } else if (hasIterationStateMutation(originalRules)) {
+        if (hasIterationStateMutation(originalRules)) {
           const preparedIterationRules = await iterationRules.prepareRegistration(context);
           if (!(preparedIterationRules instanceof Rules)) {
             throwInvalidWhileIterationRegistrationPrep();
@@ -838,7 +946,6 @@ export class While extends Node<WhileValue> {
           iterationRules = preparedIterationRules;
         }
         output += await iterationRules.render(context, buffer, options);
-        await syncWhileState(stateRules, iterationRules, context);
       }
     });
     return output;

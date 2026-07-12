@@ -26,7 +26,6 @@ export {
   type FlatRenderBuffer,
   type RenderBuffer
 } from './tree/util/render-buffer.js';
-export { copyWithReusableLeaves } from './tree/util/cloning.js';
 export * from './conversions.js';
 export * from './types/index.js';
 export * from './visitor/index.js';

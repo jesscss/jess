@@ -42,8 +42,8 @@ export function matchCallableParams({
   const bindingRecordsByIndex = new Array<CallableParamBindingRecord | undefined>(params.length);
   const signatureParts: Array<string | undefined> = new Array(params.length);
   let hasRestParam = false;
-  for (let i = 0; i < params.items.length; i++) {
-    if (params.items[i]!.type === 'Rest') {
+  for (let i = 0; i < params.value.length; i++) {
+    if (params.value[i]!.type === 'Rest') {
       hasRestParam = true;
       break;
     }
@@ -52,10 +52,10 @@ export function matchCallableParams({
   const positions = params.length;
   let requiredPositions = 0;
 
-  for (let i = 0; i < params.items.length; i++) {
-    const param = params.items[i]!;
+  for (let i = 0; i < params.value.length; i++) {
+    const param = params.value[i]!;
     if (isNode(param, N.VarDeclaration)) {
-      if (param.valueNode instanceof Nil) {
+      if (param.value instanceof Nil) {
         requiredPositions++;
       }
     } else if (isNode(param, N.Any) && param.role === 'property') {
@@ -78,8 +78,8 @@ export function matchCallableParams({
     let argValue: Node;
 
     if (isNode(arg, N.VarDeclaration)) {
-      for (let j = 0; j < params.items.length; j++) {
-        const candidate = params.items[j]!;
+      for (let j = 0; j < params.value.length; j++) {
+        const candidate = params.value[j]!;
         if (isNode(candidate, N.VarDeclaration)) {
           if (candidate.name.valueOf() === arg.name.valueOf()) {
             paramIndex = j;
@@ -95,15 +95,17 @@ export function matchCallableParams({
         }
       }
       if (paramIndex >= 0) {
-        param = params.items[paramIndex];
-        argValue = arg.valueNode;
+        param = params.value[paramIndex];
+        // VarDeclaration.value in callable context is always a Node
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        argValue = arg.value as Node;
       } else {
         match = false;
         break;
       }
     } else {
       paramIndex = i;
-      param = params.items[paramIndex];
+      param = params.value[paramIndex];
       if (!param) {
         match = false;
         break;
@@ -138,7 +140,9 @@ export function matchCallableParams({
       for (let j = argPos; j < args.length; j++) {
         rest[j - argPos] = args[j]!;
       }
-      const restName = param.value ? `${param.value}` : `rest${i}`;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const restValue = (param as unknown as { value: unknown }).value;
+      const restName = restValue ? `${restValue}` : `rest${i}`;
       bindingRecordsByIndex[paramIndex] = {
         name: restName,
         prepareValue: () => createRestBindingValue(rest)
@@ -167,7 +171,7 @@ export function matchCallableParams({
   if (argPos < requiredPositions) {
     return undefined;
   }
-  if (args.length > 1 && params.items.length === 1 && requiredPositions === 1) {
+  if (args.length > 1 && params.value.length === 1 && requiredPositions === 1) {
     return undefined;
   }
   if (!match) {
@@ -175,21 +179,26 @@ export function matchCallableParams({
   }
 
   for (let i = 0; i < positions; i++) {
-    const param = params.items[i]!;
+    const param = params.value[i]!;
     if (signatureParts[i] !== undefined) {
       continue;
     }
     if (isNode(param, N.VarDeclaration)) {
+      // VarDeclaration.value in callable context is always a Node
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const paramNodeValue = param.value as Node;
       bindingRecordsByIndex[i] = {
         name: param.name.valueOf(),
-        value: param.valueNode,
+        value: paramNodeValue,
         prepareValue: cloneDefinedBoundValue,
         readonly: param.options.readonly,
         sourceNode: param
       };
-      signatureParts[i] = getCallableNodeSignature(param.valueNode);
+      signatureParts[i] = getCallableNodeSignature(paramNodeValue);
     } else if (param.type === 'Rest') {
-      const restName = param.value ? `${param.value}` : `rest${i}`;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const restValue = (param as unknown as { value: unknown }).value;
+      const restName = restValue ? `${restValue}` : `rest${i}`;
       bindingRecordsByIndex[i] = {
         name: restName,
         prepareValue: hasFileContext

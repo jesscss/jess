@@ -1,7 +1,32 @@
-import { CssParser } from '../src/index.js';
-import { N, isNode, serializeTypes } from '@jesscss/core';
+import { parseCssFn } from '../src/grammar.js';
+import { N, isNode, serializeTypes, type Trivia } from '@jesscss/core';
+import { packedSpanStart, packedSpanEnd } from '@jesscss/parser';
 
-const cssParser = new CssParser();
+const cssParser = { parse: (input: string) => parseCssFn(input) };
+
+// Trivia is now a single source-range run; its text is the source slice.
+const triviaText = (t: Trivia | undefined): string | undefined =>
+  t ? t.src.slice(t.start, t.end) : undefined;
+
+// Simple selectors, combinators, names, and plain values are plain strings (not
+// nodes), so source provenance lives in the parent node's packed fieldSpans
+// (by childKeys index) and valueSpans (by array-segment index).
+function childIndex(node: any, key: string): number {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+  return ((node.constructor.childKeys ?? []) as readonly string[]).indexOf(key);
+}
+function fieldStart(node: any, key: string): number {
+  return packedSpanStart(node.fieldSpans, childIndex(node, key));
+}
+function fieldEnd(node: any, key: string): number {
+  return packedSpanEnd(node.fieldSpans, childIndex(node, key));
+}
+function valueStart(node: any, index: number): number {
+  return packedSpanStart(node.valueSpans, index);
+}
+function valueEnd(node: any, index: number): number {
+  return packedSpanEnd(node.valueSpans, index);
+}
 
 describe('serializeTypes coverage', () => {
   test('charset', () => {
@@ -14,23 +39,19 @@ describe('serializeTypes coverage', () => {
     const { tree } = cssParser.parse('a { b: c; }');
     expect(serializeTypes(tree)).toBeString(`
       (Rules
-        [
-          (Ruleset
-            selector: 
-              (BasicSelector 'a')
-            rules: 
-              (Rules
+        rules:
+          [
+            (Ruleset
+              selector: 'a'
+              rules:
                 [
                   (Declaration
-                    name: 
-                      (Any [role=property] 'b')
-                    value: 
-                      (Any [role=ident] 'c')
+                    name: 'b'
+                    value: 'c'
                   )
                 ]
-              )
-          )
-        ]
+            )
+          ]
       )
     `);
   });
@@ -41,33 +62,31 @@ describe('serializeTypes coverage', () => {
     expect(out).toContainString(`
       selector:
         (ComplexSelector
-          [
-            (BasicSelector 'a')
-            (Combinator '+')
-            (BasicSelector 'b')
-          ]
+          value:
+            [
+              'a'
+              '+'
+              'b'
+            ]
         )
     `);
   });
 
   test('descendant combinator pops one whitespace character from trivia map', () => {
     const { tree, trivia } = cssParser.parse('a /* gap */ b { c: d; }');
-    const ruleset = tree.value[0];
+    const ruleset = tree.rules[0];
     if (!isNode(ruleset, N.Ruleset)) {
       throw new Error('Expected first parsed rule to be a ruleset');
     }
-    const selector = ruleset.selector;
+    const selector = ruleset.selector!;
     if (!isNode(selector, N.ComplexSelector)) {
       throw new Error('Expected parsed selector to be complex');
     }
+    // The descendant combinator is a plain ' ' string between the two compounds.
     const combinator = selector.value[1];
-
-    expect(isNode(combinator, N.Combinator)).toBe(true);
-    expect('pre' in combinator).toBe(false);
-    expect(trivia.lookup(selector.value[2].location[0], 'before')?.map(token => token.image)).toEqual([
-      ' ',
-      '/* gap */'
-    ]);
+    expect(combinator).toBe(' ');
+    // The trivia preceding the second compound is recovered via valueSpans.
+    expect(triviaText(trivia.lookup(valueStart(selector, 2), 'before'))).toBe(' /* gap */ ');
   });
 
   test('attribute selector with modifier flag', () => {
@@ -77,13 +96,31 @@ describe('serializeTypes coverage', () => {
       selector: 
         (AttributeSelector
           name: 'foo'
-          op: '='
-          value: 
+          attributeValue:
             (Quoted
-              (Any [role=any] 'bar')
+              value:
+                'bar'
             )
-          mod: 'i'
         )
+    `);
+  });
+
+  test('page selector names preserve authored casing', () => {
+    const { errors, tree } = cssParser.parse('@page Test:first { margin: 1cm; }');
+    expect(errors.length).toBe(0);
+
+    const out = serializeTypes(tree);
+    expect(out).toContainString(`
+      (AtRule
+        name:
+          '@page'
+        prelude:
+          (List
+            value:
+              [
+                (Any [role=ident] 'Test:first')
+              ]
+          )
     `);
   });
 
@@ -95,15 +132,15 @@ describe('serializeTypes coverage', () => {
         (CompoundSelector
           value:
             [
-              (BasicSelector 'a')
+              'a'
               (PseudoSelector
                 name: ':is'
                 arg:
                   (SelectorList
                     value:
                       [
-                        (BasicSelector 'b')
-                        (BasicSelector 'c')
+                        'b'
+                        'c'
                       ]
                   )
               )
@@ -124,8 +161,8 @@ describe('serializeTypes coverage', () => {
           (CompoundSelector
             value:
               [
-                (BasicSelector '.sel')
-                (BasicSelector '.a')
+                '.sel'
+                '.a'
               ]
           )
       )
@@ -137,8 +174,8 @@ describe('serializeTypes coverage', () => {
           (CompoundSelector
             value:
               [
-                (BasicSelector '.sel')
-                (BasicSelector '.b')
+                '.sel'
+                '.b'
               ]
           )
       )
@@ -149,24 +186,21 @@ describe('serializeTypes coverage', () => {
     const { errors, tree, trivia } = cssParser.parse(':unknown(.sel.a) { color: red; }');
     expect(errors.length).toBe(0);
 
-    const ruleset = tree.value[0];
+    const ruleset = tree.rules[0];
     if (!isNode(ruleset, N.Ruleset)) {
       throw new Error('Expected first parsed rule to be a ruleset');
     }
-    const selector = ruleset.selector;
+    const selector = ruleset.selector!;
 
     expect(selector.toString({ trivia })).toBe(':unknown(.sel.a)');
     expect(serializeTypes(selector)).toContainString(`
       (PseudoSelector
         name: ':unknown'
         arg:
-          (Sequence
-            value:
-              [
-                (Any '.sel')
-                (Any '.a')
-              ]
-          )
+          [
+            '.sel'
+            '.a'
+          ]
       )
     `);
   });
@@ -184,11 +218,11 @@ describe('serializeTypes coverage', () => {
     for (const [source, expected] of cases) {
       const { errors, tree, trivia } = cssParser.parse(source);
       expect(errors.length).toBe(0);
-      const ruleset = tree.value[0];
+      const ruleset = tree.rules[0];
       if (!isNode(ruleset, N.Ruleset)) {
         throw new Error('Expected first parsed rule to be a ruleset');
       }
-      expect(ruleset.selector.toString({ trivia })).toBe(expected);
+      expect(ruleset.selector!.toString({ trivia })).toBe(expected);
     }
   });
 
@@ -205,11 +239,11 @@ describe('serializeTypes coverage', () => {
     for (const [source, expected, shape] of cases) {
       const { errors, tree, trivia } = cssParser.parse(source);
       expect(errors.length).toBe(0);
-      const ruleset = tree.value[0];
+      const ruleset = tree.rules[0];
       if (!isNode(ruleset, N.Ruleset)) {
         throw new Error('Expected first parsed rule to be a ruleset');
       }
-      const selector = ruleset.selector;
+      const selector = ruleset.selector!;
       expect(selector.toString({ trivia })).toBe(expected);
       expect(serializeTypes(selector)).toContainString(shape);
     }
@@ -220,8 +254,7 @@ describe('serializeTypes coverage', () => {
     const out = serializeTypes(tree);
     expect(out).toContainString(`
       (Url
-        node:
-          (Any [role=urlvalue] 'foo')
+        value: 'foo'
       )
     `);
   });
@@ -232,8 +265,8 @@ describe('serializeTypes coverage', () => {
     expect(out).toContainString(`
       (Declaration
         name:
-          (Any [role=property] 'w')
-        valueNode:
+          'w'
+        value:
           (Dimension
             number: 10
             unit: 'px'
@@ -242,8 +275,8 @@ describe('serializeTypes coverage', () => {
     expect(out).toContainString(`
       (Declaration
         name:
-          (Any [role=property] 'z')
-        valueNode:
+          'z'
+        value:
           (Num 2)
     `);
   });
@@ -266,15 +299,15 @@ describe('serializeTypes coverage', () => {
 
   test('function argument comments stay in trivia between list members and separator', () => {
     const { tree, trivia } = cssParser.parse('a { b: linear-gradient(#333 /*{comment}*/, #111); }');
-    const ruleset = tree.value[0];
+    const ruleset = tree.rules[0];
     if (!isNode(ruleset, N.Ruleset)) {
       throw new Error('Expected first parsed rule to be a ruleset');
     }
-    const declaration = ruleset.rules?.value[0];
+    const declaration = ruleset.rules?.[0];
     if (!isNode(declaration, N.Declaration)) {
       throw new Error('Expected first rule to be a declaration');
     }
-    const value = declaration.value.value;
+    const value = declaration.value;
     if (!isNode(value, N.Call) || !isNode(value.args, N.List)) {
       throw new Error('Expected declaration value to be a function call with list args');
     }
@@ -282,23 +315,17 @@ describe('serializeTypes coverage', () => {
 
     expect(isNode(firstArg, N.Color)).toBe(true);
     expect(isNode(secondArg, N.Color)).toBe(true);
-    expect(trivia.lookup(firstArg!.location[3], 'after')?.map(token => token.image)).toEqual([
-      ' ',
-      '/*{comment}*/'
-    ]);
+    expect(triviaText(trivia.lookup(firstArg!.location[3], 'after'))).toBe(' /*{comment}*/');
     expect(
       [...trivia.entries('before')]
-        .filter(([offset]) => offset > firstArg!.location[3] && offset < secondArg!.location[0])
-        .map(([, tokens]) => tokens.map(token => token.image))
-    ).toEqual([[
-      ' ',
-      '/*{comment}*/'
-    ]]);
+        .filter(([offset]) => offset > firstArg!.location[3]! && offset < secondArg!.location[0]!)
+        .map(([, t]) => triviaText(t))
+    ).toEqual([' /*{comment}*/']);
   });
 
   test('selector list comments stay in trivia between selector members', () => {
     const { tree, trivia } = cssParser.parse('#a,\n/*x*//*y*/\n.b,/*z*/.c { d: e; }');
-    const ruleset = tree.value[0];
+    const ruleset = tree.rules[0];
     if (!isNode(ruleset, N.Ruleset) || !isNode(ruleset.selector, N.SelectorList)) {
       throw new Error('Expected first parsed rule to have a selector list');
     }
@@ -307,20 +334,13 @@ describe('serializeTypes coverage', () => {
     expect(first?.valueOf()).toBe('#a');
     expect(second?.valueOf()).toBe('.b');
     expect(third?.valueOf()).toBe('.c');
-    expect(trivia.lookup(second!.location[0], 'before')?.map(token => token.image)).toEqual([
-      '\n',
-      '/*x*/',
-      '/*y*/',
-      '\n'
-    ]);
-    expect(trivia.lookup(third!.location[0], 'before')?.map(token => token.image)).toEqual([
-      '/*z*/'
-    ]);
+    expect(triviaText(trivia.lookup(valueStart(ruleset.selector, 1), 'before'))).toBe('\n/*x*//*y*/\n');
+    expect(triviaText(trivia.lookup(valueStart(ruleset.selector, 2), 'before'))).toBe('/*z*/');
   });
 
   test('selector list comments before separators stay in trivia after selector members', () => {
     const { tree, trivia } = cssParser.parse('#comments /* boo *//* boo again*/, .comments { color: red; }');
-    const ruleset = tree.value[0];
+    const ruleset = tree.rules[0];
     if (!isNode(ruleset, N.Ruleset) || !isNode(ruleset.selector, N.SelectorList)) {
       throw new Error('Expected first parsed rule to have a selector list');
     }
@@ -328,39 +348,32 @@ describe('serializeTypes coverage', () => {
 
     expect(first?.valueOf()).toBe('#comments');
     expect(second?.valueOf()).toBe('.comments');
-    expect(trivia.lookup(first!.location[3], 'after')?.map(token => token.image)).toEqual([
-      ' ',
-      '/* boo */',
-      '/* boo again*/'
-    ]);
+    const firstEnd = valueEnd(ruleset.selector, 0);
+    const secondStart = valueStart(ruleset.selector, 1);
+    expect(triviaText(trivia.lookup(firstEnd, 'after'))).toBe(' /* boo *//* boo again*/');
     expect(
       [...trivia.entries('before')]
-        .filter(([offset]) => offset > first!.location[3] && offset < second!.location[0])
-        .map(([, tokens]) => tokens.map(token => token.image))
-    ).toEqual([[
-      ' ',
-      '/* boo */',
-      '/* boo again*/'
-    ]]);
+        .filter(([offset]) => offset > firstEnd && offset < secondStart)
+        .map(([, t]) => triviaText(t))
+    ).toEqual([' /* boo *//* boo again*/']);
   });
 
   test('same-line comments before nested selectors stay in selector trivia', () => {
     const { tree, trivia } = cssParser.parse('a { /*x*/ b { c: d; } }');
-    const ruleset = tree.value[0];
+    const ruleset = tree.rules[0];
     if (!isNode(ruleset, N.Ruleset) || !ruleset.rules) {
       throw new Error('Expected first parsed rule to have nested rules');
     }
-    const [nested] = ruleset.rules.value;
+    const [nested] = ruleset.rules;
     if (!isNode(nested, N.Ruleset)) {
       throw new Error('Expected nested rule to be a ruleset');
     }
 
-    expect(nested.selector.toString({ trivia })).toBe(' /*x*/ b');
-    expect(trivia.lookup(nested.selector.location[0], 'before')?.map(token => token.image)).toEqual([
-      ' ',
-      '/*x*/',
-      ' '
-    ]);
+    // The nested selector is a bare string; its source offset comes from the
+    // ruleset's packed selector fieldSpan. The leading trivia (' /*x*/ ') is
+    // preserved in the trivia map before that offset.
+    const selStart = fieldStart(nested, 'selector');
+    expect(triviaText(trivia.lookup(selStart, 'before'))).toBe(' /*x*/ ');
   });
 
   test('collapse nesting emits nested selector comments from trivia', () => {
@@ -386,83 +399,63 @@ describe('serializeTypes coverage', () => {
 
   test('declaration value comments stay in trivia before declaration terminators', () => {
     const { tree, trivia } = cssParser.parse('a { b: yes /* comment */; }');
-    const ruleset = tree.value[0];
+    const ruleset = tree.rules[0];
     if (!isNode(ruleset, N.Ruleset)) {
       throw new Error('Expected first parsed rule to be a ruleset');
     }
-    const declaration = ruleset.rules?.value[0];
+    const declaration = ruleset.rules?.[0];
     if (!isNode(declaration, N.Declaration)) {
       throw new Error('Expected first rule to be a declaration');
     }
-    const value = declaration.value.value;
+    const value = declaration.value;
 
     expect(value.valueOf()).toBe('yes');
-    expect(trivia.lookup(value.location[3], 'after')?.map(token => token.image)).toEqual([
-      ' ',
-      '/* comment */'
-    ]);
+    const valueEndOff = fieldEnd(declaration, 'value');
+    expect(triviaText(trivia.lookup(valueEndOff, 'after'))).toBe(' /* comment */');
     expect(
       [...trivia.entries('before')]
-        .filter(([offset]) => offset > value.location[3])
-        .map(([, tokens]) => tokens.map(token => token.image))[0]
-    ).toEqual([
-      ' ',
-      '/* comment */'
-    ]);
+        .filter(([offset]) => offset > valueEndOff)
+        .map(([, t]) => triviaText(t))[0]
+    ).toBe(' /* comment */');
   });
 
   test('declaration name comments stay in trivia before declaration separators', () => {
     const { tree, trivia } = cssParser.parse('a { color/* survive */ /* me too */: grey; }');
-    const ruleset = tree.value[0];
+    const ruleset = tree.rules[0];
     if (!isNode(ruleset, N.Ruleset)) {
       throw new Error('Expected first parsed rule to be a ruleset');
     }
-    const declaration = ruleset.rules?.value[0];
+    const declaration = ruleset.rules?.[0];
     if (!isNode(declaration, N.Declaration)) {
       throw new Error('Expected first rule to be a declaration');
     }
-    const { name } = declaration.value;
+    const { name } = declaration;
 
     expect(name.valueOf()).toBe('color');
-    expect(trivia.lookup(name.location[3], 'after')?.map(token => token.image)).toEqual([
-      '/* survive */',
-      ' ',
-      '/* me too */'
-    ]);
+    const nameEndOff = fieldEnd(declaration, 'name');
+    expect(triviaText(trivia.lookup(nameEndOff, 'after'))).toBe('/* survive */ /* me too */');
     expect(
       [...trivia.entries('before')]
-        .filter(([offset]) => offset > name.location[3])
-        .map(([, tokens]) => tokens.map(token => token.image))[0]
-    ).toEqual([
-      '/* survive */',
-      ' ',
-      '/* me too */'
-    ]);
+        .filter(([offset]) => offset > nameEndOff)
+        .map(([, t]) => triviaText(t))[0]
+    ).toBe('/* survive */ /* me too */');
   });
 
   test('at-rule prelude comments stay in trivia before rule blocks', () => {
     const { tree, trivia } = cssParser.parse('@-webkit-keyframes /* Safari */ hover /* and Chrome */ { 0% { color: red; } }');
-    const atRule = tree.value[0];
+    const atRule = tree.rules[0];
     if (!isNode(atRule, N.AtRule)) {
       throw new Error('Expected first parsed rule to be an at-rule');
     }
-    const { name, prelude } = atRule.value;
-    if (!prelude) {
-      throw new Error('Expected at-rule prelude');
+    const { name, prelude } = atRule;
+    if (!prelude || typeof prelude === 'string') {
+      throw new Error('Expected at-rule prelude node');
     }
 
     expect(name.valueOf()).toBe('@-webkit-keyframes');
     expect(prelude.valueOf()).toBe('hover');
-    expect(trivia.lookup(prelude.location[0], 'before')?.map(token => token.image)).toEqual([
-      ' ',
-      '/* Safari */',
-      ' '
-    ]);
-    expect(trivia.lookup(prelude.location[3], 'after')?.map(token => token.image)).toEqual([
-      ' ',
-      '/* and Chrome */',
-      ' '
-    ]);
+    expect(triviaText(trivia.lookup(prelude.location[0], 'before'))).toBe(' /* Safari */ ');
+    expect(triviaText(trivia.lookup(prelude.location[3], 'after'))).toBe(' /* and Chrome */ ');
   });
 
   test('lists and sequences in values', () => {
@@ -471,8 +464,8 @@ describe('serializeTypes coverage', () => {
     expect(out).toContainString(`
       (Declaration
         name:
-          (Any [role=property] 'm')
-        valueNode:
+          'm'
+        value:
           (List
             value:
               [
@@ -482,19 +475,17 @@ describe('serializeTypes coverage', () => {
               ]
           )
     `);
+    // A space-separated sequence is a plain array (no operator semantics).
     expect(out).toContainString(`
       (Declaration
         name:
-          (Any [role=property] 'n')
-        valueNode:
-          (Sequence
-            value:
-              [
-                (Num 1)
-                (Num 2)
-                (Num 3)
-              ]
-          )
+          'n'
+        value:
+          [
+            (Num 1)
+            (Num 2)
+            (Num 3)
+          ]
     `);
   });
 
@@ -504,7 +495,7 @@ describe('serializeTypes coverage', () => {
     expect(out).toContainString(`
       (AtRule
         name:
-          (Any [role=atkeyword] '@media')
+          '@media'
     `);
   });
 });

@@ -13,21 +13,21 @@ describe('Basic At-Rule Serialization', () => {
     const tree = rules([
       ruleset({
         selector: sel([el('.parent')]),
-        rules: rules([
+        rules: [
           decl({ name: 'color', value: any('red') }),
           atrule({
-            name: any('@media'),
-            prelude: any('(max-width: 768px)'),
-            rules: rules([
+            name: '@media',
+            prelude: '(max-width: 768px)',
+            rules: [
               ruleset({
                 selector: sel([el('.child')]),
-                rules: rules([
+                rules: [
                   decl({ name: 'background', value: any('blue') })
-                ])
+                ]
               })
-            ])
+            ]
           })
-        ])
+        ]
       })
     ]);
 
@@ -49,21 +49,21 @@ describe('Basic At-Rule Serialization', () => {
     const tree = rules([
       ruleset({
         selector: sel([el('.parent')]),
-        rules: rules([
+        rules: [
           decl({ name: 'color', value: any('red') }),
           atrule({
             name: any('@supports'),
             prelude: any('(display: grid)'),
-            rules: rules([
+            rules: [
               ruleset({
                 selector: sel([el('.child')]),
-                rules: rules([
+                rules: [
                   decl({ name: 'display', value: any('grid') })
-                ])
+                ]
               })
-            ])
+            ]
           })
-        ])
+        ]
       })
     ]);
 
@@ -86,14 +86,14 @@ describe('Basic At-Rule Serialization', () => {
     const atRule = atrule({
       name: any('@media'),
       prelude: any('(max-width: 768px)'),
-      rules: rules([
+      rules: [
         ruleset({
           selector: sel([el('.child')]),
-          rules: rules([
+          rules: [
             decl({ name: 'background', value: any('blue') })
-          ])
+          ]
         })
-      ])
+      ]
     });
 
     const css = atRule.toTrimmedString();

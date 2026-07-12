@@ -5,7 +5,7 @@ import {
   alpha
 } from '../less/index.js';
 
-import { Color, Context, Dimension, Num } from '@jesscss/core';
+import { Color, Context, Dimension, Num, type RuntimeFunction } from '@jesscss/core';
 import { beforeAll, describe, it, expect } from 'vitest';
 
 let context: Context;
@@ -31,12 +31,10 @@ describe('color components', () => {
     });
 
     it('rejects wrong argument type', () => {
-      // @ts-expect-error - wrong argument type
       expect(() => red(new Dimension({ number: 100, unit: 'px' }))).toThrow('Argument \'color\' must be of type \'Color\'');
     });
 
     it('rejects missing argument', () => {
-      // @ts-expect-error - missing argument
       expect(() => red()).toThrow('Required argument \'color\' is missing');
     });
   });
@@ -55,12 +53,11 @@ describe('color components', () => {
     });
 
     it('rejects wrong argument type', () => {
-      // @ts-expect-error - wrong argument type
       expect(() => blue(new Num(100))).toThrow('Argument \'color\' must be of type \'Color\'');
     });
 
     it('rejects missing argument', () => {
-      expect(() => blue.call(context)).toThrow('Required argument \'color\' is missing');
+      expect(() => (blue as RuntimeFunction).call(context)).toThrow('Required argument \'color\' is missing');
     });
   });
 
@@ -78,12 +75,11 @@ describe('color components', () => {
     });
 
     it('rejects wrong argument type', () => {
-      // @ts-expect-error - wrong argument type
       expect(() => green('not a color')).toThrow('Argument \'color\' must be of type \'Color\'');
     });
 
     it('rejects missing argument', () => {
-      expect(() => green.call(context)).toThrow('Required argument \'color\' is missing');
+      expect(() => (green as RuntimeFunction).call(context)).toThrow('Required argument \'color\' is missing');
     });
   });
 
@@ -101,12 +97,11 @@ describe('color components', () => {
     });
 
     it('rejects wrong argument type', () => {
-      // @ts-expect-error - wrong argument type
       expect(() => alpha(new Dimension({ number: 100, unit: '%' }))).toThrow('Argument \'color\' must be of type \'Color\'');
     });
 
     it('rejects missing argument', () => {
-      expect(() => alpha.call(context)).toThrow('Required argument \'color\' is missing');
+      expect(() => (alpha as RuntimeFunction).call(context)).toThrow('Required argument \'color\' is missing');
     });
   });
 });

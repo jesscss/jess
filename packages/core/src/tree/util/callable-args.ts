@@ -29,16 +29,17 @@ export async function evaluateCallableArgs({
         }
         const evald = await arg.eval(context);
         if (evald.type === 'Rest') {
-          const restValue = evald.value;
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+          const restValue = (evald as unknown as { value: Node | undefined }).value;
           if (isNode(restValue, N.List)) {
-            for (let j = 0; j < restValue.items.length; j++) {
-              evaluatedArgs.push(restValue.items[j]!);
+            for (let j = 0; j < restValue.value.length; j++) {
+              evaluatedArgs.push(restValue.value[j]!);
             }
             continue;
           }
           if (isNode(restValue, N.Sequence)) {
-            for (let j = 0; j < restValue.items.length; j++) {
-              evaluatedArgs.push(restValue.items[j]!);
+            for (let j = 0; j < restValue.value.length; j++) {
+              evaluatedArgs.push(restValue.value[j]!);
             }
             continue;
           }

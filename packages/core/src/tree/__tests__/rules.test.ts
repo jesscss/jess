@@ -19,6 +19,7 @@ import {
   VarDeclaration,
   style,
   quoted,
+  interpolated,
   type Declaration,
   type Selector,
   atrule
@@ -29,7 +30,7 @@ import { isNode } from '../util/is-node.js';
 import { N } from '../node-type.js';
 import { getPrintOptions, OutputWriter } from '../util/print.js';
 import { createRenderBuffer, renderNodeToString } from '../util/render-buffer.js';
-import { setScopeFrameLiveBinding } from '../scope-frame.js';
+import { lookupScopeFrameVariable, setScopeFrameLiveBinding } from '../scope-frame.js';
 import {
   findAnyDeclarationOccurrence,
   findPropertyDeclarationOccurrence,
@@ -113,9 +114,10 @@ describe('Rules', () => {
     const child = decl({ name: 'color', value: any('red') });
     const node = rules([child]);
 
-    expect(node.rules).toBe(node.value);
+    expect(Object.prototype.hasOwnProperty.call(node, 'value')).toBe(false);
     expect(node.rules[0]).toBe(child);
-    expect(node.constructor.childKeys).toEqual(['rules']);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    expect((node.constructor as typeof Node).childKeys).toEqual(['rules']);
   });
 
   it.skip('assigns position linearly for nested rules', async () => {
@@ -133,15 +135,15 @@ describe('Rules', () => {
     node = await node.eval(context);
     let index = node.index;
     expect(index).toBe(0);
-    expect(node.at(1)?.index).toBeGreaterThan(index);
-    index = node.at(1)?.index ?? index;
-    expect(node.at(2)?.index).toBeGreaterThan(index);
-    index = node.at(2)?.index ?? index;
+    expect(node.at(1)!.index!).toBeGreaterThan(index!);
+    index = node.at(1)!.index;
+    expect(node.at(2)!.index!).toBeGreaterThan(index!);
+    index = node.at(2)!.index;
     const childRules = expectRulesNode(node.at(2));
-    expect(childRules.at(0)?.index).toBeGreaterThan(index);
-    index = childRules.at(1)?.index ?? index;
-    expect(childRules.at(2)?.index).toBeGreaterThan(index);
-    expect(expectRulesNode(childRules.at(2)).at(0)?.index).toBeGreaterThan(index);
+    expect(childRules.at(0)!.index!).toBeGreaterThan(index!);
+    index = childRules.at(1)!.index;
+    expect(childRules.at(2)!.index!).toBeGreaterThan(index!);
+    expect(expectRulesNode(childRules.at(2)).at(0)!.index!).toBeGreaterThan(index!);
   });
 
   it('keeps Rules render flags render-local', () => {
@@ -184,7 +186,6 @@ describe('Rules', () => {
 
     expect(evaluated.toTrimmedString()).toBe('color: red;');
     expect(node.registrationPrepared).toBe(true);
-    expect(node.evaluated).toBe(true);
   });
 
   it('renders already evaluated rules without deriving another root surface', async () => {
@@ -210,7 +211,7 @@ describe('Rules', () => {
     expect(deriveCalls).toBe(0);
   });
 
-  it('renders registration-prepared rules without deriving another root surface', async () => {
+  it('renders registration-prepared rules without mutating the canonical body', async () => {
     const source = rules([
       vardecl({ name: 'brand', value: any('red') }),
       decl({ name: 'color', value: ref({ key: 'brand' }, { type: 'variable' }) })
@@ -218,19 +219,12 @@ describe('Rules', () => {
     const prepared = await source.prepareRegistration(context);
     context.root = prepared;
     context.rulesContext = prepared;
-
-    const originalDerive = prepared.derive;
-    let deriveCalls = 0;
-    prepared.derive = function countDeriveCalls(
-      this: typeof prepared,
-      ...args: Parameters<typeof originalDerive>
-    ): ReturnType<typeof originalDerive> {
-      deriveCalls++;
-      return originalDerive.apply(this, args);
-    };
+    // §2.7: eval/render derives distinct output for the changed decl; the
+    // canonical body slot must be left untouched (never mutated in place).
+    const canonicalDecl = prepared.rules[1];
 
     expect(await Promise.resolve(prepared.render(context))).toBe('color: red;\n');
-    expect(deriveCalls).toBe(0);
+    expect(prepared.rules[1]).toBe(canonicalDecl);
   });
 
   it('resolves static rules without deriving another root surface', () => {
@@ -249,29 +243,21 @@ describe('Rules', () => {
 
     expect(node.resolve(context)).toBe(node);
     expect(deriveCalls).toBe(0);
-    expect(node.evaluated).toBe(false);
   });
 
-  it('resolves registration-prepared rules without deriving another root surface', async () => {
+  it('resolves registration-prepared rules without mutating the canonical body', async () => {
     const source = rules([
       vardecl({ name: 'brand', value: any('red') }),
       decl({ name: 'color', value: ref({ key: 'brand' }, { type: 'variable' }) })
     ]);
     const prepared = await source.prepareRegistration(context);
-    const originalDerive = prepared.derive;
-    let deriveCalls = 0;
-    prepared.derive = function countDeriveCalls(
-      this: typeof prepared,
-      ...args: Parameters<typeof originalDerive>
-    ): ReturnType<typeof originalDerive> {
-      deriveCalls++;
-      return originalDerive.apply(this, args);
-    };
+    const canonicalDecl = prepared.rules[1];
 
     const resolved = await prepared.resolve(context);
 
     expect(resolved.toTrimmedString()).toBe('color: red;');
-    expect(deriveCalls).toBe(0);
+    // §2.7: distinct output; canonical body slot untouched.
+    expect(prepared.rules[1]).toBe(canonicalDecl);
   });
 
   it('drops empty derived scope frames while preserving fallback frames', () => {
@@ -305,7 +291,7 @@ describe('Rules', () => {
     await node.eval(context);
 
     expect(context.currentCharset).toBe(charset);
-    expect(node.value[0]?.type).toBe('Nil');
+    expect(node.rules[0]?.type).toBe('Nil');
     expect(node.render(context)).toBe('@charset "utf-8";\ncolor: red;\n');
   });
 
@@ -343,7 +329,6 @@ describe('Rules', () => {
     expect(rendered).toBe('color: red;\n');
     expect(buffer.parts).toEqual(['color: red;\n']);
     expect(resolveCalls).toBe(0);
-    expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
   });
 
@@ -369,7 +354,6 @@ describe('Rules', () => {
     };
 
     await expect(Promise.resolve(node.render(context))).resolves.toBe('color: red;');
-    expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
   });
 
@@ -391,7 +375,6 @@ describe('Rules', () => {
 
     await expect(Promise.resolve(node.render(context))).resolves.toBe('color: red;');
     expect(deriveCalls).toBe(0);
-    expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
     expect(sourceVar.parent).toBe(node);
     expect(sourceDecl.parent).toBe(node);
@@ -415,19 +398,21 @@ describe('Rules', () => {
     const node = rules([child]);
     context.root = rules([]);
     const originalRender = child.render;
-    child.render = function countAsyncChildRender(
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    child.render = (function countAsyncChildRender(
       this: typeof child,
       childContext: Context,
-      bufferOrOptions?: Parameters<typeof originalRender>[1],
-      options?: Parameters<typeof originalRender>[2]
-    ): ReturnType<typeof originalRender> {
-      return Promise.resolve().then(() => originalRender.call(this, childContext, bufferOrOptions, options));
-    };
+      bufferOrOptions?: unknown,
+      options?: unknown
+    ) {
+      return Promise.resolve().then(() =>
+
+        (originalRender as Function).call(this, childContext, bufferOrOptions, options)
+      );
+    } as unknown) as typeof originalRender;
 
     await expect(Promise.resolve(node.render(context))).resolves.toBe('color: red;');
-    expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
-    expect(child.evaluated).toBe(false);
   });
 
   it('writes root-owned charset and imports into render buffers', async () => {
@@ -438,7 +423,8 @@ describe('Rules', () => {
     context.topImports = [
       atrule({
         name: any('@import', { role: 'atkeyword' }),
-        prelude: quoted(any('theme.css'))
+        prelude: quoted(any('theme.css')),
+        rules: []
       })
     ];
     const originalResolve = root.resolve;
@@ -456,8 +442,29 @@ describe('Rules', () => {
     expect(rendered).toBe('@charset "utf-8";\n@import "theme.css";\n');
     expect(buffer.segments).toEqual([rendered]);
     expect(resolveCalls).toBe(0);
-    expect(root.evaluated).toBe(false);
     expect(root.registrationPrepared).toBe(false);
+  });
+
+  it('writes root-owned charset and imports into render buffers without public rules document transport', async () => {
+    const root = rules([]);
+    const buffer = createRenderBuffer('segmented');
+    context.root = root;
+    context.currentCharset = any('@charset "utf-8";', { role: 'charset' });
+    context.topImports = [
+      atrule({
+        name: any('@import', { role: 'atkeyword' }),
+        prelude: quoted(any('theme.css')),
+        rules: []
+      })
+    ];
+    root.toString = () => {
+      throw new Error('Root Rules buffer render should not route through public toString transport');
+    };
+
+    const rendered = await root.render(context, buffer);
+
+    expect(rendered).toBe('@charset "utf-8";\n@import "theme.css";\n');
+    expect(buffer.segments).toEqual([rendered]);
   });
 
   it('renders root-owned charset and imports directly without public resolve', async () => {
@@ -467,7 +474,8 @@ describe('Rules', () => {
     context.topImports = [
       atrule({
         name: any('@import', { role: 'atkeyword' }),
-        prelude: quoted(any('theme.css'))
+        prelude: quoted(any('theme.css')),
+        rules: []
       })
     ];
     root.resolve = () => {
@@ -475,11 +483,28 @@ describe('Rules', () => {
     };
 
     await expect(Promise.resolve(root.render(context))).resolves.toBe('@charset "utf-8";\n@import "theme.css";\n');
-    expect(root.evaluated).toBe(false);
     expect(root.registrationPrepared).toBe(false);
   });
 
-  it('resolves unprepared rules without deriving a wrapper tree', async () => {
+  it('renders root-owned charset and imports without public rules document transport', async () => {
+    const root = rules([]);
+    context.root = root;
+    context.currentCharset = any('@charset "utf-8";', { role: 'charset' });
+    context.topImports = [
+      atrule({
+        name: any('@import', { role: 'atkeyword' }),
+        prelude: quoted(any('theme.css')),
+        rules: []
+      })
+    ];
+    root.toString = () => {
+      throw new Error('Root Rules render should not route through public toString transport');
+    };
+
+    await expect(Promise.resolve(root.render(context))).resolves.toBe('@charset "utf-8";\n@import "theme.css";\n');
+  });
+
+  it('resolves unprepared rules without cloning a wrapper tree', async () => {
     const originalClone = Node.prototype.clone;
     let clonedRules = 0;
     Node.prototype.clone = function cloneForCounting(
@@ -497,22 +522,15 @@ describe('Rules', () => {
         vardecl({ name: any('tone'), value: any('red') }),
         decl({ name: any('color'), value: ref({ key: 'tone' }, { type: 'variable' }) })
       ]);
-      const originalDerive = root.derive;
-      let deriveCalls = 0;
-      root.derive = function countDeriveCalls(
-        this: typeof root,
-        ...args: Parameters<typeof originalDerive>
-      ): ReturnType<typeof originalDerive> {
-        deriveCalls++;
-        return originalDerive.apply(this, args);
-      };
+      const canonicalDecl = root.rules[1];
 
       const resolved = await root.resolve(context);
 
       expect(resolved.toTrimmedString()).toContain('color: red;');
-      expect(deriveCalls).toBe(0);
+      // §2.7: distinct output comes from a shared-child derive, NOT a deep clone,
+      // and the canonical body slot is left untouched.
+      expect(root.rules[1]).toBe(canonicalDecl);
       expect(clonedRules).toBe(0);
-      expect(root.evaluated).toBe(true);
     } finally {
       Node.prototype.clone = originalClone;
     }
@@ -581,7 +599,8 @@ describe('Rules', () => {
     let charsetSawActiveWriter = false;
     const importRule = atrule({
       name: any('@import', { role: 'atkeyword' }),
-      prelude: quoted(any('theme.css'))
+      prelude: quoted(any('theme.css')),
+      rules: []
     });
     charset.toTrimmedString = () => {
       throw new Error('Rules root serializer should write charset syntax directly');
@@ -605,25 +624,100 @@ describe('Rules', () => {
     expect(charsetSawActiveWriter).toBe(true);
   });
 
+  it('streams source leaf rules without public string transport', () => {
+    const writer = new WholeBufferCountingWriter();
+    const declaration = decl({ name: 'color', value: any('red') });
+    declaration.toTrimmedString = () => {
+      throw new Error('Rules source leaf serializer should write declaration syntax directly');
+    };
+    const node = rules([
+      declaration
+    ]);
+
+    expect(node.toString({ writer })).toBe('color: red;\n');
+  });
+
+  it('streams child Rules wrappers without previewing public source strings', () => {
+    const writer = new WholeBufferCountingWriter();
+    const childRules = rules([
+      decl({ name: 'color', value: any('red') })
+    ]);
+    childRules.toTrimmedString = () => {
+      throw new Error('Child Rules source serializer should emit its body directly');
+    };
+    const node = rules([
+      childRules
+    ]);
+
+    expect(node.toString({ writer })).toBe('color: red;\n');
+  });
+
+  it('streams child Rules wrappers without previewing public render output', async () => {
+    const writer = new WholeBufferCountingWriter();
+    const childRules = rules([
+      decl({ name: 'color', value: any('red') })
+    ]);
+    childRules.render = () => {
+      throw new Error('Child Rules render serializer should emit its body directly');
+    };
+    const node = rules([
+      childRules
+    ]);
+
+    await expect(Promise.resolve(node.render(context, { writer }))).resolves.toBe('color: red;\n');
+    expect(writer.toString()).toBe('color: red;');
+  });
+
+  it('serializes Rules source syntax through writeSyntax ownership', () => {
+    const node = rules([
+      decl({ name: 'color', value: any('red') })
+    ]);
+    const originalWriteSyntax = node.writeSyntax;
+    let writeSyntaxCalls = 0;
+    node.writeSyntax = function countWriteSyntax(
+      ...args: Parameters<typeof originalWriteSyntax>
+    ): ReturnType<typeof originalWriteSyntax> {
+      writeSyntaxCalls++;
+      return originalWriteSyntax.apply(this, args);
+    };
+
+    try {
+      expect(node.toTrimmedString()).toBe('color: red;');
+      expect(writeSyntaxCalls).toBe(1);
+    } finally {
+      node.writeSyntax = originalWriteSyntax;
+    }
+  });
+
+  it('captures Rules source syntax without outer readback', () => {
+    const writer = new WholeBufferCountingWriter();
+    const node = rules([
+      decl({ name: 'color', value: any('red') })
+    ]);
+
+    expect(node.toTrimmedString({ writer })).toBe('color: red;');
+    expect(writer.wholeBufferReads).toBe(1);
+  });
+
   it('keeps sibling ruleset braces intact when declarations render values through active context output', async () => {
     const root = rules([
       ruleset({
-        selector: any('.a'),
-        rules: rules([
+        selector: '.a',
+        rules: [
           decl({ name: 'width', value: dimension([10, 'px']) })
-        ])
+        ]
       }),
       ruleset({
-        selector: any('.b'),
-        rules: rules([
+        selector: '.b',
+        rules: [
           decl({ name: 'width', value: dimension([20, 'px']) })
-        ])
+        ]
       }),
       ruleset({
-        selector: any('.c'),
-        rules: rules([
+        selector: '.c',
+        rules: [
           decl({ name: 'width', value: dimension([30, 'px']) })
-        ])
+        ]
       })
     ]);
 
@@ -645,16 +739,16 @@ describe('Rules', () => {
   it('keeps separate sibling rulesets with the same selector in separate blocks', async () => {
     const root = rules([
       ruleset({
-        selector: any('.same'),
-        rules: rules([
+        selector: '.same',
+        rules: [
           decl({ name: 'color', value: any('red') })
-        ])
+        ]
       }),
       ruleset({
-        selector: any('.same'),
-        rules: rules([
+        selector: '.same',
+        rules: [
           decl({ name: 'background', value: any('blue') })
-        ])
+        ]
       })
     ]);
 
@@ -904,7 +998,7 @@ describe('Rules', () => {
         expect(getVar(node, 'var')?.toTrimmedString()).toBe('$var: third');
 
         // Test with start parameter - should find value before start position
-        const thirdVar = node.value.find(n => isNode(n, N.VarDeclaration) && n.name.valueOf() === 'var' && n.valueNode.valueOf() === 'third');
+        const thirdVar = node.rules.find(n => isNode(n, N.VarDeclaration) && n.name.valueOf() === 'var' && n.value.valueOf() === 'third');
         if (thirdVar && 'index' in thirdVar) {
           const result = getVar(node, 'var', { start: thirdVar.index });
           expect(result).toBeDefined();
@@ -988,7 +1082,7 @@ describe('Rules', () => {
         expect(getVar(node, 'var')?.toTrimmedString()).toBe('$var: root-third');
 
         // Test with start parameter pointing to root-third
-        const thirdVar = node.value.find(n => isNode(n, N.VarDeclaration) && n.name.valueOf() === 'var' && n.valueNode.valueOf() === 'root-third');
+        const thirdVar = node.rules.find(n => isNode(n, N.VarDeclaration) && n.name.valueOf() === 'var' && n.value.valueOf() === 'root-third');
         if (thirdVar && 'index' in thirdVar) {
           const result = getVar(node, 'var', { start: thirdVar.index });
           expect(result).toBeDefined();
@@ -1085,20 +1179,20 @@ describe('Rules', () => {
           vardecl({ name: 'z', value: any('transparent') }),
           ruleset({
             selector: el('.scope1'),
-            rules: rules([
+            rules: [
               vardecl({ name: 'z', value: any('black') }),
               ruleset({
                 selector: el('.scope2'),
-                rules: rules([
+                rules: [
                   ruleset({
                     selector: el('.scope3'),
-                    rules: rules([
+                    rules: [
                       decl({ name: 'border-color', value: ref('z', { type: 'variable' }) })
-                    ])
+                    ]
                   })
-                ])
+                ]
               })
-            ])
+            ]
           })
         ]);
 
@@ -1116,7 +1210,7 @@ describe('Rules', () => {
         if (!isNode(scope3, N.Ruleset)) {
           throw new Error(`Expected Ruleset at nested index 0, got ${scope3?.type ?? 'undefined'}`);
         }
-        const scope3Rules = scope3.rules;
+        const scope3Rules = scope3;
         expect(getVar(scope3Rules, 'z', { start: 0 })?.toTrimmedString()).toBe('$z: black');
         const scope3Found = findVariableDeclarationOccurrence(scope3Rules, 'z', {
           filter: () => true,
@@ -1187,9 +1281,9 @@ describe('Rules', () => {
         let root = rules([
           ruleset({
             selector: el('.grid'),
-            rules: rules([
+            rules: [
               decl({ name: 'total-width', value: ref('total-width', { type: 'variable' }) })
-            ])
+            ]
           }),
           vardecl({ name: 'base', value: any('1') }),
           vardecl({ name: 'column-width', value: any('6em') }),
@@ -1205,7 +1299,8 @@ describe('Rules', () => {
           throw new Error(`Expected Ruleset at index 0, got ${grid?.type ?? 'undefined'}`);
         }
         const width = expectDeclarationNode(grid.rules.at(0));
-        context.rulesContext = grid.rules;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        context.rulesContext = grid.rules as unknown as Rules;
         const evald = await width.eval(context);
         expect(evald.toTrimmedString()).toBe('total-width: 96em');
       });
@@ -1332,27 +1427,27 @@ describe('Rules', () => {
           // .box uses the variable directly and includes the mixin (both should be red)
           ruleset({
             selector: sellist([sel([el('.box')])]),
-            rules: rules([
+            rules: [
               decl({ name: 'color', value: ref('color', { type: 'variable' }) }),
               call({ name: ref('my-mixin', { type: 'mixin' }) })
-            ])
+            ]
           }),
 
           // .box2 sets the variable with !global (setDefined)
           ruleset({
             selector: sellist([sel([el('.box2')])]),
-            rules: rules([
+            rules: [
               vardecl({ name: 'color', value: any('blue') }, { setDefined: true })
-            ])
+            ]
           }),
 
           // .box3 uses the variable directly and includes the mixin (both should be blue)
           ruleset({
             selector: sellist([sel([el('.box3')])]),
-            rules: rules([
+            rules: [
               decl({ name: 'color', value: ref('color', { type: 'variable' }) }),
               call({ name: ref('my-mixin', { type: 'mixin' }) })
-            ])
+            ]
           })
         ]);
 
@@ -1365,13 +1460,14 @@ describe('Rules', () => {
           throw new Error(`Expected Ruleset at index 2, got ${boxRuleset?.type || 'undefined'}`);
         }
         // After evaluation, rulesets are still Rulesets, access via direct rules.
-        let boxRules = boxRuleset.rules;
+
+        let boxRules: Rules | Node[] = boxRuleset.rules as Rules | Node[];
         if (!boxRules) {
           throw new Error('Expected .box ruleset to have rules');
         }
-        // Rules is a Node with a value array, so use .value.length or check if it's a Rules node
+        // Rules owns a rules array, so use .rules.length or check if it's a Rules node
         if (!isNode(boxRules, N.Rules)) {
-          throw new Error(`Expected Rules, got ${boxRules?.type ?? 'undefined'}`);
+          throw new Error('Expected Rules node');
         }
         expect(boxRules.rules.length).toBe(2);
 
@@ -1390,7 +1486,7 @@ describe('Rules', () => {
           throw new Error('Expected mixin call to return Rules');
         }
         let boxMixinRules = boxMixinResult;
-        expect(boxMixinRules.value.length).toBeGreaterThan(0);
+        expect(boxMixinRules.rules.length).toBeGreaterThan(0);
         let boxMixinDecl = await boxMixinRules.at(0)!.eval(context);
         expect(boxMixinDecl.toTrimmedString()).toBe('color: red');
 
@@ -1399,12 +1495,13 @@ describe('Rules', () => {
         if (!box3Ruleset || !isNode(box3Ruleset, N.Ruleset)) {
           throw new Error(`Expected Ruleset at index 4, got ${box3Ruleset?.type || 'undefined'}`);
         }
-        let box3Rules = box3Ruleset.rules;
+
+        let box3Rules: Rules | Node[] = box3Ruleset.rules as Rules | Node[];
         if (!box3Rules) {
           throw new Error('Expected .box3 ruleset to have rules');
         }
         if (!isNode(box3Rules, N.Rules)) {
-          throw new Error(`Expected Rules, got ${box3Rules?.type ?? 'undefined'}`);
+          throw new Error('Expected Rules node');
         }
         expect(box3Rules.rules.length).toBe(2);
 
@@ -1422,7 +1519,7 @@ describe('Rules', () => {
           throw new Error('Expected mixin call to return Rules');
         }
         let box3MixinRules = box3MixinResult;
-        expect(box3MixinRules.value.length).toBeGreaterThan(0);
+        expect(box3MixinRules.rules.length).toBeGreaterThan(0);
         let box3MixinDecl = await box3MixinRules.at(0)!.eval(context);
         // With explicit live-binding syntax, the mixin should resolve the variable
         // at the call site, so it should be 'blue' (the value after !global assignment)
@@ -1449,10 +1546,10 @@ describe('Rules', () => {
         }).rejects.toThrowError('"one" is readonly');
       });
 
-      it('derives setDefined declarations without calling VarDeclaration.copy()', async () => {
-        const originalCopy = VarDeclaration.prototype.copy;
+      it('derives setDefined declarations without calling VarDeclaration.cloneForPlacement()', async () => {
+        const originalCopy = VarDeclaration.prototype.cloneForPlacement;
         let copyCalls = 0;
-        VarDeclaration.prototype.copy = function copyForCounting(
+        VarDeclaration.prototype.cloneForPlacement = function copyForCounting(
           ...args: Parameters<typeof originalCopy>
         ): ReturnType<typeof originalCopy> {
           copyCalls++;
@@ -1472,7 +1569,7 @@ describe('Rules', () => {
 
           expect(copyCalls).toBe(0);
         } finally {
-          VarDeclaration.prototype.copy = originalCopy;
+          VarDeclaration.prototype.cloneForPlacement = originalCopy;
         }
       });
 
@@ -1515,19 +1612,19 @@ describe('Rules', () => {
         setScopeFrameLiveBinding(frame, 'one', {
           value: any('one')
         });
-        const originalValue = node.value;
+        const originalValue = node.rules;
 
-        Object.defineProperty(node, 'value', {
+        Object.defineProperty(node, 'rules', {
           configurable: true,
           get() {
-            throw new Error('setDefined current-cell path should not crawl Rules.value');
+            throw new Error('setDefined current-cell path should not crawl Rules.rules');
           }
         });
 
         try {
           node.registerNode(assignment, undefined, context);
         } finally {
-          Object.defineProperty(node, 'value', {
+          Object.defineProperty(node, 'rules', {
             configurable: true,
             writable: true,
             value: originalValue
@@ -1535,6 +1632,710 @@ describe('Rules', () => {
         }
 
         expect(frame.currentBindingsByName.get('one')?.value?.toString()).toBe('three');
+      });
+
+      it('updates same-scope modeled setDefined declaration cells without direct occurrence crawl', () => {
+        const original = vardecl({ name: 'one', value: any('one') });
+        const assignment = vardecl(
+          { name: 'one', value: any('three') },
+          { setDefined: true }
+        );
+        const node = rules([
+          original,
+          assignment
+        ]);
+        const frame = node.getScopeFrame(undefined, false);
+        const originalValue = node.rules;
+
+        Object.defineProperty(node, 'rules', {
+          configurable: true,
+          get() {
+            throw new Error('same-scope setDefined declaration-cell path should not crawl Rules.rules');
+          }
+        });
+
+        try {
+          node.registerNode(assignment, undefined, context);
+        } finally {
+          Object.defineProperty(node, 'rules', {
+            configurable: true,
+            writable: true,
+            value: originalValue
+          });
+        }
+
+        // setDefined writes the runtime cell, not the shared AST node.
+        expect(frame.currentBindingsByName.get('one')?.value?.toString()).toBe('three');
+        expect(original.value.toString()).toBe('one');
+      });
+
+      it('updates parent-frame modeled setDefined declaration cells without direct occurrence crawl', () => {
+        const original = vardecl({ name: 'one', value: any('one') });
+        const assignment = vardecl(
+          { name: 'one', value: any('three') },
+          { setDefined: true }
+        );
+        const child = rules([assignment]);
+        const node = rules([
+          original,
+          child
+        ]);
+        const parentFrame = node.getScopeFrame(undefined, false);
+        const childFrame = child.getScopeFrame(parentFrame, false);
+        child.scopeFrame = childFrame;
+        const originalParentValue = node.rules;
+        const originalChildValue = child.rules;
+
+        Object.defineProperties(node, {
+          rules: {
+            configurable: true,
+            get() {
+              throw new Error('parent-frame setDefined declaration-cell path should not crawl parent Rules.rules');
+            }
+          }
+        });
+        Object.defineProperties(child, {
+          rules: {
+            configurable: true,
+            get() {
+              throw new Error('parent-frame setDefined declaration-cell path should not crawl child Rules.rules');
+            }
+          }
+        });
+
+        try {
+          child.registerNode(assignment, undefined, context);
+        } finally {
+          Object.defineProperty(child, 'rules', {
+            configurable: true,
+            writable: true,
+            value: originalChildValue
+          });
+          Object.defineProperty(node, 'rules', {
+            configurable: true,
+            writable: true,
+            value: originalParentValue
+          });
+        }
+
+        expect(parentFrame.currentBindingsByName.get('one')?.value?.toString()).toBe('three');
+        // The shared AST node is untouched; only the runtime cell changes.
+        expect(original.value.toString()).toBe('one');
+      });
+
+      it('treats covered setDefined variable misses as authoritative without direct occurrence crawl', () => {
+        const assignment = vardecl(
+          { name: 'missing', value: any('three') },
+          { setDefined: true }
+        );
+        const node = rules([assignment]);
+        node.getScopeFrame(undefined, false);
+        const originalValue = node.rules;
+
+        Object.defineProperty(node, 'rules', {
+          configurable: true,
+          get() {
+            throw new Error('covered setDefined variable miss should not crawl Rules.rules');
+          }
+        });
+
+        try {
+          expect(() => node.registerNode(assignment, undefined, context)).toThrowError('"missing" is not defined');
+        } finally {
+          Object.defineProperty(node, 'rules', {
+            configurable: true,
+            writable: true,
+            value: originalValue
+          });
+        }
+      });
+
+      it('keeps imported setDefined assignment targets out of ordinary current variable reads', () => {
+        const imported = rules([
+          vardecl({ name: 'one', value: any('one') })
+        ], {
+          rulesVisibility: { VarDeclaration: 'public' }
+        });
+        const node = rules([imported]);
+        const frame = node.getScopeFrame(undefined, false);
+
+        expect(lookupScopeFrameVariable(frame, 'one').kind).toBe('miss');
+        expect(lookupScopeFrameVariable(frame, 'one', { includeAssignmentTargets: true }).kind).toBe('declaration');
+      });
+
+      it('rejects readonly imported setDefined assignment cells without direct occurrence crawl', () => {
+        const importedDecl = vardecl({ name: 'one', value: any('one') });
+        const imported = rules([importedDecl], {
+          readonly: true,
+          rulesVisibility: { VarDeclaration: 'public' }
+        });
+        const assignedValue = any('three');
+        assignedValue.eval = () => {
+          throw new Error('readonly imported setDefined path should not evaluate assignment value');
+        };
+        const assignment = vardecl(
+          { name: 'one', value: assignedValue },
+          { setDefined: true }
+        );
+        const child = rules([assignment]);
+        const node = rules([
+          imported,
+          child
+        ]);
+        const parentFrame = node.getScopeFrame(undefined, false);
+        child.scopeFrame = child.getScopeFrame(parentFrame, false);
+        const originalParentValue = node.rules;
+        const originalImportedValue = imported.rules;
+        const originalChildValue = child.rules;
+
+        Object.defineProperties(node, {
+          rules: {
+            configurable: true,
+            get() {
+              throw new Error('readonly imported setDefined path should not crawl parent Rules.rules');
+            }
+          }
+        });
+        Object.defineProperties(imported, {
+          rules: {
+            configurable: true,
+            get() {
+              throw new Error('readonly imported setDefined path should not crawl imported Rules.rules');
+            }
+          }
+        });
+        Object.defineProperties(child, {
+          rules: {
+            configurable: true,
+            get() {
+              throw new Error('readonly imported setDefined path should not crawl child Rules.rules');
+            }
+          }
+        });
+
+        try {
+          expect(() => child.registerNode(assignment, undefined, context)).toThrowError('"one" is readonly');
+        } finally {
+          Object.defineProperty(child, 'rules', {
+            configurable: true,
+            writable: true,
+            value: originalChildValue
+          });
+          Object.defineProperty(imported, 'rules', {
+            configurable: true,
+            writable: true,
+            value: originalImportedValue
+          });
+          Object.defineProperty(node, 'rules', {
+            configurable: true,
+            writable: true,
+            value: originalParentValue
+          });
+        }
+
+        expect(importedDecl.value.toString()).toBe('one');
+      });
+
+      it('updates writable imported setDefined assignment cells without direct occurrence crawl', () => {
+        const importedDecl = vardecl({ name: 'one', value: any('one') });
+        const imported = rules([importedDecl], {
+          rulesVisibility: { VarDeclaration: 'public' }
+        });
+        const assignment = vardecl(
+          { name: 'one', value: any('three') },
+          { setDefined: true }
+        );
+        const child = rules([assignment]);
+        const node = rules([
+          imported,
+          child
+        ]);
+        const parentFrame = node.getScopeFrame(undefined, false);
+        child.scopeFrame = child.getScopeFrame(parentFrame, false);
+        const originalParentValue = node.rules;
+        const originalImportedValue = imported.rules;
+        const originalChildValue = child.rules;
+
+        Object.defineProperties(node, {
+          rules: {
+            configurable: true,
+            get() {
+              throw new Error('writable imported setDefined path should not crawl parent Rules.rules');
+            }
+          }
+        });
+        Object.defineProperties(imported, {
+          rules: {
+            configurable: true,
+            get() {
+              throw new Error('writable imported setDefined path should not crawl imported Rules.rules');
+            }
+          }
+        });
+        Object.defineProperties(child, {
+          rules: {
+            configurable: true,
+            get() {
+              throw new Error('writable imported setDefined path should not crawl child Rules.rules');
+            }
+          }
+        });
+
+        try {
+          child.registerNode(assignment, undefined, context);
+        } finally {
+          Object.defineProperty(child, 'rules', {
+            configurable: true,
+            writable: true,
+            value: originalChildValue
+          });
+          Object.defineProperty(imported, 'rules', {
+            configurable: true,
+            writable: true,
+            value: originalImportedValue
+          });
+          Object.defineProperty(node, 'rules', {
+            configurable: true,
+            writable: true,
+            value: originalParentValue
+          });
+        }
+
+        expect(parentFrame.assignmentBindingsByName?.get('one')?.value?.toString()).toBe('three');
+        // Assignment writes the imported binding cell, never the AST node.
+        expect(importedDecl.value.toString()).toBe('one');
+      });
+
+      it('leaves unmodeled imported setDefined assignment targets uncovered for direct fallback', () => {
+        const optionalDecl = vardecl({ name: 'one', value: any('one') });
+        const optional = rules([optionalDecl], {
+          rulesVisibility: { VarDeclaration: 'optional' }
+        });
+        const assignment = vardecl(
+          { name: 'one', value: any('three') },
+          { setDefined: true }
+        );
+        const child = rules([assignment]);
+        const node = rules([
+          optional,
+          child
+        ]);
+        const parentFrame = node.getScopeFrame(undefined, false);
+        child.scopeFrame = child.getScopeFrame(parentFrame, false);
+
+        expect(lookupScopeFrameVariable(parentFrame, 'one', { includeAssignmentTargets: true }).kind).toBe('uncovered');
+
+        child.registerNode(assignment, undefined, context);
+
+        // Uncovered target falls to the occurrence crawl, which writes the
+        // owner's declaration cell — the AST node stays as authored.
+        expect(optional.varsByName?.get('one')?.at(-1)?.cell.value?.toString()).toBe('three');
+        expect(optionalDecl.value.toString()).toBe('one');
+      });
+
+      it('leaves dynamic public imported setDefined assignment targets uncovered', () => {
+        const imported = rules([
+          vardecl({
+            name: interpolated({
+              source: '$@{suffix}',
+              replacements: [ref({ key: 'suffix' }, { type: 'variable' })]
+            }),
+            value: any('one')
+          })
+        ], {
+          rulesVisibility: { VarDeclaration: 'public' }
+        });
+        const node = rules([imported]);
+        const frame = node.getScopeFrame(undefined, false);
+
+        expect(lookupScopeFrameVariable(frame, 'one', { includeAssignmentTargets: true }).kind).toBe('uncovered');
+      });
+
+      it('keeps public imported setDefined assignment targets modeled when optional targets also exist', () => {
+        const optionalDecl = vardecl({ name: 'one', value: any('one') });
+        const optional = rules([optionalDecl], {
+          rulesVisibility: { VarDeclaration: 'optional' }
+        });
+        const publicDecl = vardecl({ name: 'one', value: any('two') });
+        const publicRules = rules([publicDecl], {
+          rulesVisibility: { VarDeclaration: 'public' }
+        });
+        const assignment = vardecl(
+          { name: 'one', value: any('three') },
+          { setDefined: true }
+        );
+        const child = rules([assignment]);
+        const node = rules([
+          optional,
+          publicRules,
+          child
+        ]);
+        const parentFrame = node.getScopeFrame(undefined, false);
+        const publicFrame = publicRules.getScopeFrame(parentFrame, false);
+        child.scopeFrame = child.getScopeFrame(parentFrame, false);
+        const originalParentValue = node.rules;
+        const originalOptionalValue = optional.rules;
+        const originalPublicValue = publicRules.rules;
+        const originalChildValue = child.rules;
+
+        Object.defineProperties(node, {
+          rules: {
+            configurable: true,
+            get() {
+              throw new Error('public imported setDefined path should not crawl parent Rules.rules');
+            }
+          }
+        });
+        Object.defineProperties(optional, {
+          rules: {
+            configurable: true,
+            get() {
+              throw new Error('public imported setDefined path should not crawl optional Rules.rules');
+            }
+          }
+        });
+        Object.defineProperties(publicRules, {
+          rules: {
+            configurable: true,
+            get() {
+              throw new Error('public imported setDefined path should not crawl public Rules.rules');
+            }
+          }
+        });
+        Object.defineProperties(child, {
+          rules: {
+            configurable: true,
+            get() {
+              throw new Error('public imported setDefined path should not crawl child Rules.rules');
+            }
+          }
+        });
+
+        try {
+          child.registerNode(assignment, undefined, context);
+        } finally {
+          Object.defineProperty(child, 'rules', {
+            configurable: true,
+            writable: true,
+            value: originalChildValue
+          });
+          Object.defineProperty(publicRules, 'rules', {
+            configurable: true,
+            writable: true,
+            value: originalPublicValue
+          });
+          Object.defineProperty(optional, 'rules', {
+            configurable: true,
+            writable: true,
+            value: originalOptionalValue
+          });
+          Object.defineProperty(node, 'rules', {
+            configurable: true,
+            writable: true,
+            value: originalParentValue
+          });
+        }
+
+        expect(parentFrame.assignmentBindingsByName?.get('one')?.value?.toString()).toBe('three');
+        expect(parentFrame.assignmentBindingsByName?.get('one')).toBe(publicFrame.currentBindingsByName.get('one'));
+        // The shared public/optional AST nodes are never mutated by the write.
+        expect(publicDecl.value.toString()).toBe('two');
+        expect(optionalDecl.value.toString()).toBe('one');
+      });
+
+      it('uses the later public imported setDefined assignment target without direct crawl', () => {
+        const earlierDecl = vardecl({ name: 'one', value: any('one') });
+        const laterDecl = vardecl({ name: 'one', value: any('two') });
+        const publicRules = rules([
+          earlierDecl,
+          laterDecl
+        ], {
+          rulesVisibility: { VarDeclaration: 'public' }
+        });
+        const assignment = vardecl(
+          { name: 'one', value: any('three') },
+          { setDefined: true }
+        );
+        const child = rules([assignment]);
+        const node = rules([
+          publicRules,
+          child
+        ]);
+        const parentFrame = node.getScopeFrame(undefined, false);
+        const publicFrame = publicRules.getScopeFrame(parentFrame, false);
+        child.scopeFrame = child.getScopeFrame(parentFrame, false);
+        const originalParentValue = node.rules;
+        const originalPublicValue = publicRules.rules;
+        const originalChildValue = child.rules;
+
+        Object.defineProperties(node, {
+          rules: {
+            configurable: true,
+            get() {
+              throw new Error('duplicate public setDefined path should not crawl parent Rules.rules');
+            }
+          }
+        });
+        Object.defineProperties(publicRules, {
+          rules: {
+            configurable: true,
+            get() {
+              throw new Error('duplicate public setDefined path should not crawl public Rules.rules');
+            }
+          }
+        });
+        Object.defineProperties(child, {
+          rules: {
+            configurable: true,
+            get() {
+              throw new Error('duplicate public setDefined path should not crawl child Rules.rules');
+            }
+          }
+        });
+
+        try {
+          child.registerNode(assignment, undefined, context);
+        } finally {
+          Object.defineProperty(child, 'rules', {
+            configurable: true,
+            writable: true,
+            value: originalChildValue
+          });
+          Object.defineProperty(publicRules, 'rules', {
+            configurable: true,
+            writable: true,
+            value: originalPublicValue
+          });
+          Object.defineProperty(node, 'rules', {
+            configurable: true,
+            writable: true,
+            value: originalParentValue
+          });
+        }
+
+        expect(parentFrame.assignmentBindingsByName?.get('one')?.value?.toString()).toBe('three');
+        expect(parentFrame.assignmentBindingsByName?.get('one')).toBe(publicFrame.currentBindingsByName.get('one'));
+        // Neither shared AST node is mutated — only the resolved cell changes.
+        expect(earlierDecl.value.toString()).toBe('one');
+        expect(laterDecl.value.toString()).toBe('two');
+      });
+
+      it('refreshes carried imported setDefined assignment summaries after late child registration', () => {
+        const publicRules = rules([], {
+          rulesVisibility: { VarDeclaration: 'public' }
+        });
+        const assignment = vardecl(
+          { name: 'one', value: any('three') },
+          { setDefined: true }
+        );
+        const child = rules([assignment]);
+        const node = rules([
+          publicRules,
+          child
+        ]);
+        const parentFrame = node.getScopeFrame(undefined, false);
+        const publicDecl = vardecl({ name: 'one', value: any('one') });
+        const originalPublicRegistrationValue = publicRules.rules;
+        publicRules.adopt(publicDecl);
+        publicRules.rules.push(publicDecl);
+        Object.defineProperties(publicRules, {
+          rules: {
+            configurable: true,
+            get() {
+              throw new Error('late child registration should not rebuild public Rules.rules');
+            }
+          }
+        });
+        try {
+          publicRules.registerNode(publicDecl);
+        } finally {
+          Object.defineProperty(publicRules, 'rules', {
+            configurable: true,
+            writable: true,
+            value: originalPublicRegistrationValue
+          });
+        }
+        const publicFrame = publicRules.getScopeFrame(parentFrame, false);
+        child.scopeFrame = child.getScopeFrame(parentFrame, false);
+        const originalParentValue = node.rules;
+        const originalPublicValue = publicRules.rules;
+        const originalChildValue = child.rules;
+
+        Object.defineProperties(node, {
+          rules: {
+            configurable: true,
+            get() {
+              throw new Error('late carried setDefined path should not crawl parent Rules.rules');
+            }
+          }
+        });
+        Object.defineProperties(publicRules, {
+          rules: {
+            configurable: true,
+            get() {
+              throw new Error('late carried setDefined path should not crawl public Rules.rules');
+            }
+          }
+        });
+        Object.defineProperties(child, {
+          rules: {
+            configurable: true,
+            get() {
+              throw new Error('late carried setDefined path should not crawl child Rules.rules');
+            }
+          }
+        });
+
+        try {
+          child.registerNode(assignment, undefined, context);
+        } finally {
+          Object.defineProperty(child, 'rules', {
+            configurable: true,
+            writable: true,
+            value: originalChildValue
+          });
+          Object.defineProperty(publicRules, 'rules', {
+            configurable: true,
+            writable: true,
+            value: originalPublicValue
+          });
+          Object.defineProperty(node, 'rules', {
+            configurable: true,
+            writable: true,
+            value: originalParentValue
+          });
+        }
+
+        expect(parentFrame.assignmentBindingsByName?.get('one')?.value?.toString()).toBe('three');
+        expect(parentFrame.assignmentBindingsByName?.get('one')).toBe(publicFrame.currentBindingsByName.get('one'));
+        // The carried public AST node is untouched; the write lands on the cell.
+        expect(publicDecl.value.toString()).toBe('one');
+      });
+
+      it('does not allocate late setDefined assignment frame cells shadowed by current bindings', () => {
+        const parentDecl = vardecl({ name: 'one', value: any('root') });
+        const publicRules = rules([], {
+          rulesVisibility: { VarDeclaration: 'public' }
+        });
+        const assignment = vardecl(
+          { name: 'one', value: any('three') },
+          { setDefined: true }
+        );
+        const child = rules([assignment]);
+        const node = rules([
+          parentDecl,
+          publicRules,
+          child
+        ]);
+        const parentFrame = node.getScopeFrame(undefined, false);
+        const publicDecl = vardecl({ name: 'one', value: any('public') });
+        publicRules.adopt(publicDecl);
+        publicRules.rules.push(publicDecl);
+        publicRules.registerNode(publicDecl);
+        child.scopeFrame = child.getScopeFrame(parentFrame, false);
+
+        expect(parentFrame.assignmentBindingsByName?.has('one')).not.toBe(true);
+
+        child.registerNode(assignment, undefined, context);
+
+        // The current (shadowing) binding cell receives the write; nodes stay put.
+        expect(parentFrame.currentBindingsByName.get('one')?.value?.toString()).toBe('three');
+        expect(parentDecl.value.toString()).toBe('root');
+        expect(publicDecl.value.toString()).toBe('public');
+      });
+
+      it('keeps later child setDefined assignment frame cells when earlier children register late', () => {
+        const earlierRules = rules([], {
+          rulesVisibility: { VarDeclaration: 'public' }
+        });
+        const laterDecl = vardecl({ name: 'one', value: any('later') });
+        const laterRules = rules([laterDecl], {
+          rulesVisibility: { VarDeclaration: 'public' }
+        });
+        const assignment = vardecl(
+          { name: 'one', value: any('three') },
+          { setDefined: true }
+        );
+        const child = rules([assignment]);
+        const node = rules([
+          earlierRules,
+          laterRules,
+          child
+        ]);
+        const parentFrame = node.getScopeFrame(undefined, false);
+        const earlierDecl = vardecl({ name: 'one', value: any('earlier') });
+        earlierRules.adopt(earlierDecl);
+        earlierRules.rules.push(earlierDecl);
+        earlierRules.registerNode(earlierDecl);
+        child.scopeFrame = child.getScopeFrame(parentFrame, false);
+
+        expect(parentFrame.assignmentBindingsByName?.get('one')?.sourceNode).toBe(laterDecl);
+
+        child.registerNode(assignment, undefined, context);
+
+        // The later public target's cell receives the write; AST nodes stay put.
+        expect(parentFrame.assignmentBindingsByName?.get('one')?.value?.toString()).toBe('three');
+        expect(earlierDecl.value.toString()).toBe('earlier');
+        expect(laterDecl.value.toString()).toBe('later');
+      });
+
+      it('keeps property setDefined on declaration occurrence insertion fallback', () => {
+        const assignment = decl(
+          { name: any('color'), value: any('blue') },
+          { setDefined: true }
+        );
+        const node = rules([
+          decl({ name: any('color'), value: any('red') }),
+          assignment
+        ]);
+
+        node.getScopeFrame(undefined, false);
+        node.registerNode(assignment, undefined, context);
+
+        expect(node.rules.map(child => child.toTrimmedString())).toEqual([
+          'color: red',
+          'color: blue',
+          'color := blue'
+        ]);
+        expect(findPropertyDeclarationOccurrence(node, 'color')?.node.value.valueOf()).toBe('blue');
+      });
+
+      it('rejects readonly modeled setDefined live cells before evaluating assignment values', () => {
+        const assignedValue = any('three');
+        assignedValue.eval = () => {
+          throw new Error('readonly setDefined current-cell path should not evaluate assignment value');
+        };
+        const assignment = vardecl(
+          { name: 'one', value: assignedValue },
+          { setDefined: true }
+        );
+        const node = rules([
+          vardecl({ name: 'one', value: any('one') }),
+          assignment
+        ]);
+        const frame = node.getScopeFrame(undefined, false);
+        setScopeFrameLiveBinding(frame, 'one', {
+          value: any('one'),
+          readonly: true
+        });
+        const originalValue = node.rules;
+
+        Object.defineProperty(node, 'rules', {
+          configurable: true,
+          get() {
+            throw new Error('readonly setDefined live-cell path should not crawl Rules.rules');
+          }
+        });
+
+        try {
+          expect(() => node.registerNode(assignment, undefined, context)).toThrowError('"one" is readonly');
+        } finally {
+          Object.defineProperty(node, 'rules', {
+            configurable: true,
+            writable: true,
+            value: originalValue
+          });
+        }
       });
 
       it('does not build a scope frame just to try setDefined live binding writes', () => {
@@ -1549,12 +2350,13 @@ describe('Rules', () => {
 
         node.registerNode(assignment, undefined, context);
 
+        // The write updates the declaration-index cell directly — no scope
+        // frame is allocated just to perform a setDefined assignment.
         expect(node._scopeFrame).toBeUndefined();
-        expect(getVarWithContext(context, node, 'one')?.toTrimmedString()).toBe('$one: three');
+        expect(node.varsByName?.get('one')?.at(-1)?.cell.value?.toString()).toBe('three');
       });
 
-      // @todo: Fix nested readonly rules inheritance - variables in nested readonly Rules aren't being found
-      it.skip('fails to set if existing variable is in readonly rules', async () => {
+      it('fails to set if existing variable is in readonly rules', async () => {
         let node = rules([
           rules([
             vardecl({ name: 'one', value: any('one') })
@@ -1572,8 +2374,7 @@ describe('Rules', () => {
         }).rejects.toThrowError('"one" is readonly');
       });
 
-      // @todo: Fix nested readonly rules inheritance - variables in nested readonly Rules aren't being found
-      it.skip('fails to set if existing variable is in nested readonly rules #1', async () => {
+      it('fails to set if existing variable is in nested readonly rules #1', async () => {
         let node = rules([
           rules([
             rules([
@@ -1595,8 +2396,7 @@ describe('Rules', () => {
         }).rejects.toThrowError('"one" is readonly');
       });
 
-      // @todo: Fix nested readonly rules inheritance - variables in nested readonly Rules aren't being found
-      it.skip('fails to set if existing variable is in nested readonly rules #2', async () => {
+      it('fails to set if existing variable is in nested readonly rules #2', async () => {
         let node = rules([
           rules([
             rules([
@@ -1709,12 +2509,12 @@ describe('Rules', () => {
     let node = rules([
       ruleset({
         selector: sellist([sel([el('.collapse')])]),
-        rules: rules([
+        rules: [
           decl({ name: 'chungus', value: spaced([any('foo'), any('bar')]) }),
           rules([
             decl({ name: 'bird', value: spaced([any('in'), any('hand')]) })
           ])
-        ])
+        ]
       })
     ]);
     let evald = await node.eval(context);

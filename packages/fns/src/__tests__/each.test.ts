@@ -1,29 +1,31 @@
+/* eslint-disable @typescript-eslint/no-unsafe-type-assertion */
 import { describe, it, expect } from 'vitest';
-import { Any, List, Mixin, Nil, Rules, VarDeclaration, For, Paren, Context, type FunctionThis } from '@jesscss/core';
+import { Any, List, Mixin, Nil, Rules, VarDeclaration, For, Paren, Context, type FunctionThis, type ForPattern, type ForIterable } from '@jesscss/core';
 import { eachImplementation } from '../less/each.js';
 
 function makeMixin(paramNames?: string[]) {
   const mixinRules = new Rules([]);
   if (!paramNames) {
-    return new Mixin({ rules: mixinRules });
+    return new Mixin({ rules: mixinRules.rules });
   }
   const params = new List(
     paramNames.map(name => new Any(name, { role: 'property' }))
   );
-  return new Mixin({ params, rules: mixinRules });
+  return new Mixin({ params, rules: mixinRules.rules });
 }
 
 function assertTupleBindings(loop: For, expectedNames: string[]) {
   const { pattern } = loop;
   expect(pattern.kind).toBe('tuple');
-  const vars = pattern.values;
+  const tuplePattern = pattern as Extract<ForPattern, { kind: 'tuple' }>;
+  const vars = tuplePattern.values;
   expect(Array.isArray(vars)).toBe(true);
   expect(vars).toHaveLength(3);
-  const names = vars.map(variable => variable.name.valueOf());
+  const names = vars.map((variable: VarDeclaration) => variable.name.valueOf());
   expect(names).toEqual(expectedNames);
   for (const variable of vars) {
     expect(variable).toBeInstanceOf(VarDeclaration);
-    expect(variable.valueNode).toBeInstanceOf(Nil);
+    expect(variable.value).toBeInstanceOf(Nil);
     expect(variable.options.paramVar).toBe(true);
   }
 }
@@ -46,9 +48,8 @@ describe('each', () => {
 
     expect(result).toBeInstanceOf(For);
     assertTupleBindings(result, ['value', 'key', 'index']);
-    expect(result.iterable.value).toBe(list);
-    expect(result.rules).toBeInstanceOf(Rules);
-    expect(result.rules).toBe(mixinRules);
+    expect((result.iterable as Extract<ForIterable, { kind: 'node' }>).value).toBe(list);
+    expect(result.rules).toBe(mixinRules.rules);
     expect(Reflect.has(result.rules, 'sourceParent')).toBe(false);
   });
 
@@ -59,7 +60,6 @@ describe('each', () => {
     const result = await callEach(list, mixin);
 
     assertTupleBindings(result, ['value', 'key', 'index']);
-    expect(result.rules).toBeInstanceOf(Rules);
     expect(result.rules).toBe(mixin.rules);
     expect(Reflect.has(result.rules, 'sourceParent')).toBe(false);
   });
@@ -98,6 +98,6 @@ describe('each', () => {
     const result = await callEach(list, mixin);
 
     expect(result).toBeInstanceOf(For);
-    expect(result.iterable.value).toBe(list);
+    expect((result.iterable as Extract<ForIterable, { kind: 'node' }>).value).toBe(list);
   });
 });

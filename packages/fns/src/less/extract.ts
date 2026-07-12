@@ -1,4 +1,4 @@
-import { defineFunction, Node, List, Dimension, toNumber, coerceListItems, copyWithReusableLeaves } from '@jesscss/core';
+import { defineFunction, Node, List, Dimension, toNumber, coerceListItems } from '@jesscss/core';
 
 const extract = defineFunction(
   'extract',
@@ -16,7 +16,7 @@ const extract = defineFunction(
       throw new RangeError(`extract() index ${raw} out of range for length ${items.length}`);
     }
     const out = items[normalized - 1]!;
-    return copyWithReusableLeaves(out).detachTrivia(true);
+    return out.cloneForPlacement().detachTrivia(true);
   },
   {
     params: [{

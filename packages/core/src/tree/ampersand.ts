@@ -1,4 +1,4 @@
-import { defineType, type NodeOptions, type LocationInfo, F_AMPERSAND, F_IMPLICIT_AMPERSAND, type Node } from './node.js';
+import { defineType, type NodeOptions, type LocationInfo, F_AMPERSAND, F_IMPLICIT_AMPERSAND, type Node, type PlacementCloneOptions } from './node.js';
 import { createPublicNil, Nil } from './nil.js';
 import type { Context } from '../context.js';
 import { SimpleSelector } from './selector-simple.js';
@@ -11,9 +11,9 @@ import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { Selector } from './selector.js';
 import { atIndex } from './util/collections.js';
-import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
-import { copyOwnedWithReusableLeaves } from './util/cloning.js';
+import { OutputWriter, type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
 import { WARN, toDiagnostic } from '../jess-error.js';
+
 export type AmpersandValue = {
   /**
    * The only value that may exist is an anonymous value
@@ -72,7 +72,7 @@ export type AmpersandValue = {
    * When set (e.g. by ruleset prep), returns the current parent ruleset's selector ("pointer").
    * Prefer this over value.selector so extend sees the parent after it has been mutated (e.g. by extend).
    */
-  selectorContainer?: { selector?: Selector | Nil | undefined };
+  selectorContainer?: { selector?: Selector | Nil | string | undefined };
 };
 
 const isSingleAmpersandWrapper = (node: Node | undefined): boolean => {
@@ -80,7 +80,7 @@ const isSingleAmpersandWrapper = (node: Node | undefined): boolean => {
     return true;
   }
   if (isNode(node, N.ComplexSelector) || isNode(node, N.CompoundSelector)) {
-    return node.components.length === 1 && isNode(node.components[0], N.Ampersand);
+    return node.value.length === 1 && isNode(node.value[0], N.Ampersand);
   }
   return false;
 };
@@ -188,6 +188,28 @@ function getExactBasicSelectorText(selector: Selector): string | undefined {
     : undefined;
 }
 
+function getSelectorSyntaxText(selector: Selector): string {
+  const exactBasicText = getExactBasicSelectorText(selector);
+  if (exactBasicText !== undefined) {
+    return exactBasicText;
+  }
+  const writer = new OutputWriter(false);
+  selector.writeSyntax(getPrintOptions({ writer }));
+  return writer.toString();
+}
+
+function selectorListItemForAmpersand(item: SelectorList['value'][number]): Selector {
+  return typeof item === 'string' ? new BasicSelector(item) : item;
+}
+
+function selectorListValueForAmpersand(value: SelectorList['value']): Selector[] {
+  const selectors = new Array<Selector>(value.length);
+  for (let i = 0; i < value.length; i++) {
+    selectors[i] = selectorListItemForAmpersand(value[i]!);
+  }
+  return selectors;
+}
+
 function getAmpersandTemplateReplacements(baseSelector: Selector): Selector[] {
   if (
     isNode(baseSelector, N.PseudoSelector)
@@ -195,10 +217,10 @@ function getAmpersandTemplateReplacements(baseSelector: Selector): Selector[] {
     && baseSelector.arg
     && isNode(baseSelector.arg, N.SelectorList)
   ) {
-    return baseSelector.arg.selectors;
+    return selectorListValueForAmpersand(baseSelector.arg.value);
   }
   if (isNode(baseSelector, N.SelectorList)) {
-    return baseSelector.selectors;
+    return selectorListValueForAmpersand(baseSelector.value);
   }
   const exactBasicText = getExactBasicSelectorText(baseSelector);
   if (exactBasicText !== undefined) {
@@ -206,11 +228,11 @@ function getAmpersandTemplateReplacements(baseSelector: Selector): Selector[] {
       return [baseSelector];
     }
     const parts = splitTopLevelCommas(exactBasicText);
-    const selectors = new Array<Selector>(parts.length);
+    const value = new Array<Selector>(parts.length);
     for (let i = 0; i < parts.length; i++) {
-      selectors[i] = new BasicSelector(parts[i]!).inherit(baseSelector);
+      value[i] = new BasicSelector(parts[i]!).inherit(baseSelector);
     }
-    return selectors;
+    return value;
   }
   if (isNode(baseSelector, N.SimpleSelector)) {
     const selectorText = baseSelector.toTrimmedString();
@@ -218,11 +240,11 @@ function getAmpersandTemplateReplacements(baseSelector: Selector): Selector[] {
       return [baseSelector];
     }
     const parts = splitTopLevelCommas(selectorText);
-    const selectors = new Array<Selector>(parts.length);
+    const value = new Array<Selector>(parts.length);
     for (let i = 0; i < parts.length; i++) {
-      selectors[i] = new BasicSelector(parts[i]!).inherit(baseSelector);
+      value[i] = new BasicSelector(parts[i]!).inherit(baseSelector);
     }
-    return selectors;
+    return value;
   }
   return [baseSelector];
 }
@@ -239,7 +261,7 @@ function mergeAmpersandTemplateSelector(
   const merged = new Array<Selector>(replacements.length);
   for (let i = 0; i < replacements.length; i++) {
     const item = replacements[i]!;
-    const value = getExactBasicSelectorText(item) ?? item.toTrimmedString();
+    const value = getSelectorSyntaxText(item);
     assertValidAmpersandTemplateJoin(appendValue, value);
     if (templateParts?.length === 2 && templateParts[0] === '' && templateParts[1]) {
       const result = appendSelector(item, templateParts[1]);
@@ -262,9 +284,11 @@ function mergeAmpersandTemplateSelectorList(
 ): SelectorList {
   const mergedItems: Selector[] = [];
   for (const item of selector.value) {
-    const merged = mergeAmpersandTemplateSelector(item as Selector, placement);
+    const merged = mergeAmpersandTemplateSelector(selectorListItemForAmpersand(item), placement);
     if (isNode(merged, N.SelectorList)) {
-      mergedItems.push(...merged.value);
+      for (let i = 0; i < merged.value.length; i++) {
+        mergedItems.push(selectorListItemForAmpersand(merged.value[i]!));
+      }
     } else {
       mergedItems.push(merged);
     }
@@ -274,7 +298,7 @@ function mergeAmpersandTemplateSelectorList(
 
 function createAmpersandWithSelectorContainer(
   source: Ampersand,
-  selectorContainer: { selector?: Selector | Nil | undefined }
+  selectorContainer: { selector?: Selector | Nil | string | undefined }
 ): Ampersand {
   return new Ampersand(
     {
@@ -287,7 +311,7 @@ function createAmpersandWithSelectorContainer(
 }
 
 function ownSelectorForAppend(selector: Selector): Selector {
-  const owned = copyOwnedWithReusableLeaves(selector);
+  const owned = selector.cloneForPlacement({ reuseLeaves: false });
   if (!(owned instanceof Selector)) {
     throw new TypeError('Expected selector copy');
   }
@@ -318,21 +342,18 @@ function expectComplexAppendComponent(node: Node): ComplexSelectorComponent {
 }
 
 function ownComplexComponentForAppend(component: ComplexSelectorComponent): ComplexSelectorComponent {
-  return expectComplexAppendComponent(copyOwnedWithReusableLeaves(component));
+  if (typeof component === 'string') {
+    return component;
+  }
+  return expectComplexAppendComponent(component.cloneForPlacement({ reuseLeaves: false }));
 }
 
-function createSimpleSelectorLike(selector: SimpleSelector, value: unknown): SimpleSelector {
-  const node = Reflect.construct(
-    selector.constructor,
-    [
-      value,
-      { ...selector.options },
-      selector.location.length === 0 ? undefined : selector.location
-    ]
+function createBasicSelectorLike(selector: SimpleSelector, value: string): BasicSelector {
+  const node = new BasicSelector(
+    value,
+    { ...selector.options },
+    selector.location.length === 0 ? undefined : selector.location
   );
-  if (!(node instanceof SimpleSelector)) {
-    throw new TypeError('Expected simple selector copy');
-  }
   return node.inherit(selector);
 }
 
@@ -341,18 +362,18 @@ function appendSimpleSelector(selector: SimpleSelector, appendValue: string): Ap
     throw new SyntaxError(`Cannot append "${appendValue}" to this type of selector`);
   }
   return {
-    selector: createSimpleSelectorLike(selector, selector.value + appendValue),
+    selector: createBasicSelectorLike(selector, selector.value + appendValue),
     appended: true
   };
 }
 
 function appendSelector(selector: Selector, appendValue: string): AppendSelectorResult {
   if (isNode(selector, N.SelectorList)) {
-    const sourceItems = selector.selectors;
+    const sourceItems = selector.value;
     const items = new Array<Selector>(sourceItems.length);
     for (let i = 0; i < sourceItems.length; i++) {
       const item = sourceItems[i]!;
-      const result = appendSelector(item as Selector, appendValue);
+      const result = appendSelector(selectorListItemForAmpersand(item), appendValue);
       if (!result.appended) {
         throw new SyntaxError(`Cannot append "${appendValue}" to this type of selector`);
       }
@@ -365,24 +386,27 @@ function appendSelector(selector: Selector, appendValue: string): AppendSelector
   }
 
   if (isNode(selector, N.ComplexSelector)) {
-    for (let i = selector.components.length - 1; i >= 0; i--) {
-      const component = selector.components[i]!;
+    for (let i = selector.value.length - 1; i >= 0; i--) {
+      const component = selector.value[i]!;
       if (isNode(component, N.Combinator)) {
+        continue;
+      }
+      if (typeof component === 'string') {
         continue;
       }
       const result = appendSelector(component, appendValue);
       if (!result.appended) {
         continue;
       }
-      const sourceComponents = selector.components;
-      const components = new Array<ComplexSelectorComponent>(sourceComponents.length);
+      const sourceComponents = selector.value;
+      const value = new Array<ComplexSelectorComponent>(sourceComponents.length);
       for (let j = 0; j < sourceComponents.length; j++) {
-        components[j] = j === i
+        value[j] = j === i
           ? expectComplexAppendResult(result.selector)
           : ownComplexComponentForAppend(sourceComponents[j]!);
       }
       return {
-        selector: ComplexSelector.create(components).inherit(selector),
+        selector: ComplexSelector.create(value).inherit(selector),
         appended: true
       };
     }
@@ -390,13 +414,17 @@ function appendSelector(selector: Selector, appendValue: string): AppendSelector
   }
 
   if (isNode(selector, N.CompoundSelector)) {
-    for (let i = selector.components.length - 1; i >= 0; i--) {
-      const part = selector.components[i]!;
+    for (let i = selector.value.length - 1; i >= 0; i--) {
+      const part = selector.value[i]!;
+      if (typeof part === 'string') {
+        continue;
+      }
       const result = appendSimpleSelector(part, appendValue);
-      const sourceParts = selector.components;
+      const sourceParts = selector.value;
       const parts = new Array<SimpleSelector>(sourceParts.length);
       for (let j = 0; j < sourceParts.length; j++) {
-        parts[j] = j === i ? result.selector : ownSelectorForAppend(sourceParts[j]!);
+        const sp = sourceParts[j]!;
+        parts[j] = j === i ? result.selector : (typeof sp !== 'string' ? ownSelectorForAppend(sp) : new BasicSelector(sp));
       }
       return {
         selector: CompoundSelector.create(parts).inherit(selector),
@@ -429,12 +457,12 @@ function finishAmpersandAppendPlacement(
  * The '&' selector element
  */
 export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
-  static override childKeys = null;
+  static override childKeys: readonly string[] | null = null;
 
   readonly appendValue: string | undefined;
 
   private _storedSelector: Selector | Nil | undefined;
-  private _selectorContainer: { selector?: Selector | Nil | undefined } | undefined;
+  private _selectorContainer: { selector?: Selector | Nil | string | undefined } | undefined;
 
   constructor(
     value?: AmpersandValue | string,
@@ -452,13 +480,14 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
       const selectorContainer = value?.selectorContainer;
       if (selectorContainer) {
         this._selectorContainer = selectorContainer;
-        this._storedSelector = selectorContainer?.selector;
+        const initSelector = selectorContainer?.selector;
+        this._storedSelector = typeof initSelector === 'string' ? new BasicSelector(initSelector) : initSelector;
       }
     }
     this.appendValue = finalValue.appendValue;
     this._treeContext = treeContext;
 
-    // Set the F_AMPERSAND flag so it bubbles up to parent selectors
+    // Set the F_AMPERSAND flag so it bubbles up to parent value
     this.addFlag(F_AMPERSAND);
   }
 
@@ -476,7 +505,7 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
     if (!this._requiredKeySet) {
       this._requiredKeySet = library.getBitset();
     }
-    if (!current || isNode(current, N.Nil)) {
+    if (!current || typeof current === 'string' || isNode(current, N.Nil)) {
       if (!this._keySet) {
         this._keySet = library.getBitset();
       }
@@ -496,7 +525,7 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
     }
 
     const current = this._selectorContainer?.selector;
-    if (!current || isNode(current, N.Nil)) {
+    if (!current || typeof current === 'string' || isNode(current, N.Nil)) {
       const library = this.keySetLibrary;
       if (!library) {
         return this._requireKeySetLibrary().getBitset();
@@ -514,7 +543,9 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
    * view (SelectorList gets wrapped for implicit-& use).
    */
   getStoredSelector(): Selector | Nil | undefined {
-    return this._storedSelector ?? this._selectorContainer?.selector;
+    const containerSelector = this._selectorContainer?.selector;
+    const resolved = typeof containerSelector === 'string' ? new BasicSelector(containerSelector) : containerSelector;
+    return this._storedSelector ?? resolved;
   }
 
   /**
@@ -522,9 +553,12 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
    * Used by extend, serialization, and matching so nested rules see the parent after extend.
    */
   getResolvedSelector(): Selector | Nil | undefined {
-    const selector = this._selectorContainer?.selector;
+    const rawSelector = this._selectorContainer?.selector;
+    const selector: Selector | Nil | undefined = typeof rawSelector === 'string'
+      ? new BasicSelector(rawSelector)
+      : rawSelector;
     if (selector && isNode(selector, N.SelectorList) && this.hasFlag(F_IMPLICIT_AMPERSAND)) {
-      const arg = copyOwnedWithReusableLeaves(selector);
+      const arg = selector.cloneForPlacement();
       if (!(arg instanceof Selector)) {
         throw new TypeError('Expected selector copy');
       }
@@ -541,12 +575,12 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
     return '&';
   }
 
-  override toTrimmedString(options?: PrintOptions): string {
-    options = getPrintOptions(options);
+  override toTrimmedString(rawOptions?: PrintOptions): string {
+    const options = getPrintOptions(rawOptions);
     const w = options.writer!;
-    const mark = w.mark();
+    const position = w.position();
     this.writeSyntax(options);
-    return w.getSince(mark);
+    return w.getSince(position);
   }
 
   override writeSyntax(options: FinalPrintOptions): void {
@@ -582,10 +616,11 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
     if (appendValue !== undefined || this.hoistToRoot) {
       // Use the stored selector if available, otherwise fall back to frame selector
       let frame = atIndex(context.rulesetFrames, -1);
-      let selector = storedSelector ?? frame?.selector;
-      if (!selector) {
+      let selectorRaw = storedSelector ?? frame?.selector;
+      if (!selectorRaw) {
         return createPublicNil();
       }
+      let selector: Selector | Nil = typeof selectorRaw === 'string' ? new BasicSelector(selectorRaw) : selectorRaw;
       const placement = createAmpersandAppendPlacementState(this, selector, context, appendValue);
       if (appendValue && !isNode(selector, N.Nil)) {
         if (placement.templateMerge) {
@@ -619,7 +654,11 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
      * preserve it instead of overwriting with the frame selector.
      */
     if (!amp._selectorContainer && frame && frame.selector) {
-      amp = createAmpersandWithSelectorContainer(this, frame);
+      const frameSelector = frame.selector;
+      const container: { selector?: Selector | Nil | string | undefined } = typeof frameSelector === 'string'
+        ? { selector: frameSelector }
+        : frame;
+      amp = createAmpersandWithSelectorContainer(this, container);
     } else if (!amp._selectorContainer) {
       const parentSelector = amp.parent;
       const isBareWrapperAmp = isSingleAmpersandWrapper(parentSelector);
@@ -639,8 +678,8 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
     return amp;
   }
 
-  override clone(deep?: boolean, cloneFn?: (n: Node) => Node): this {
-    const newNode = super.clone(deep, cloneFn) as this;
+  override clone(cloneFn?: (n: Node) => Node): this {
+    const newNode = super.clone(cloneFn) as this;
     if (this._selectorContainer) {
       newNode._selectorContainer = this._selectorContainer;
     }
@@ -663,6 +702,12 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
       node._storedSelector = this._storedSelector;
     }
     return node;
+  }
+
+  override cloneForPlacement(_options?: PlacementCloneOptions): Node {
+    const derived = this.derive();
+    derived.frozen = true;
+    return derived;
   }
 
   /** @todo - move to ToModuleVisitor */

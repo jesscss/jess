@@ -51,7 +51,7 @@ export default defineFunction(
       let current = args[i] as unknown;
       if (!(current instanceof Dimension)) {
         if (current instanceof List) {
-          args.push(...current.items);
+          args.push(...current.value);
           continue;
         }
         throw new TypeError('incompatible types');

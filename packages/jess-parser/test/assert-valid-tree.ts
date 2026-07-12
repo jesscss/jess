@@ -98,7 +98,10 @@ export function assertValidTree(root: unknown) {
         key === 'parent'
         || key === 'treeContext'
         || key === '_treeContext'
+        || key === '_sourceRoot'
         || key === 'sourceNode'
+        || key === 'options'
+        || key === '_options'
       ) {
         continue;
       }

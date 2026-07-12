@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { defineFunction, callWithContext } from '../define-function.js';
 import { Context } from '../context.js';
 import { expectTypeOf } from 'vitest';
-import { Any, Color, Dimension, F_MAY_ASYNC } from '../tree/index.js';
+import { Any, Color, Dimension, F_MAY_ASYNC, type AnyRole } from '../tree/index.js';
 
 describe('defineFunction', () => {
   const args = [
@@ -284,7 +284,8 @@ describe('defineFunction', () => {
 
       // Test that parameter names are preserved in the type
       expectTypeOf(func).toBeFunction();
-      expectTypeOf(func).returns.toBeString();
+
+      expectTypeOf(func as (...args: any[]) => string).returns.toBeString();
     });
 
     it('should validate that args match function signature', () => {
@@ -304,7 +305,8 @@ describe('defineFunction', () => {
 
       // Test that the function signature matches the original
       expectTypeOf(validFunc).toBeFunction();
-      expectTypeOf(validFunc).returns.toBeString();
+
+      expectTypeOf(validFunc as (...args: any[]) => string).returns.toBeString();
 
       // This should cause a type error at compile time if uncommented:
       // const invalidArgs = [
@@ -507,14 +509,14 @@ describe('defineFunction', () => {
     });
 
     it('does not copy raw args for functions without params metadata', async () => {
-      class CopyBomb extends Any<string> {
+      class CopyBomb extends Any<AnyRole> {
         static copyShouldThrow = false;
 
         constructor(
           value: string,
-          options?: ConstructorParameters<typeof Any<string>>[1],
-          location?: ConstructorParameters<typeof Any<string>>[2],
-          treeContext?: ConstructorParameters<typeof Any<string>>[3]
+          options?: ConstructorParameters<typeof Any<AnyRole>>[1],
+          location?: ConstructorParameters<typeof Any<AnyRole>>[2],
+          treeContext?: ConstructorParameters<typeof Any<AnyRole>>[3]
         ) {
           if (CopyBomb.copyShouldThrow) {
             throw new Error('unexpected raw arg copy');
@@ -605,7 +607,8 @@ describe('defineFunction', () => {
 
       // These should have strong typing
       expectTypeOf(singleParamFunc).toBeFunction();
-      expectTypeOf(singleParamFunc).returns.toBeString();
+
+      expectTypeOf(singleParamFunc as (...args: any[]) => string).returns.toBeString();
 
       // Test that it works
       expect(singleParamFunc('World')).toBe('Hello World');
@@ -623,7 +626,8 @@ describe('defineFunction', () => {
 
       // These should have strong typing
       expectTypeOf(twoParamFunc).toBeFunction();
-      expectTypeOf(twoParamFunc).returns.toBeString();
+
+      expectTypeOf(twoParamFunc as (...args: any[]) => string).returns.toBeString();
 
       // Test that it works
       expect(twoParamFunc('Alice', 25)).toBe('Alice is 25 years old');
@@ -642,7 +646,8 @@ describe('defineFunction', () => {
 
       // These should have strong typing
       expectTypeOf(threeParamFunc).toBeFunction();
-      expectTypeOf(threeParamFunc).returns.toBeString();
+
+      expectTypeOf(threeParamFunc as (...args: any[]) => string).returns.toBeString();
 
       // Test that it works
       expect(threeParamFunc('Bob', 30, 'New York')).toBe('Bob is 30 from New York');
@@ -663,7 +668,8 @@ describe('defineFunction', () => {
 
       // These should have strong typing
       expectTypeOf(fourParamFunc).toBeFunction();
-      expectTypeOf(fourParamFunc).returns.toBeString();
+
+      expectTypeOf(fourParamFunc as (...args: any[]) => string).returns.toBeString();
 
       // Test that it works
       expect(fourParamFunc('Charlie', 35, 'London', true)).toBe('Charlie is 35 from London, active');
@@ -685,7 +691,8 @@ describe('defineFunction', () => {
 
       // These should have strong typing
       expectTypeOf(fiveParamFunc).toBeFunction();
-      expectTypeOf(fiveParamFunc).returns.toBeString();
+
+      expectTypeOf(fiveParamFunc as (...args: any[]) => string).returns.toBeString();
 
       // Test that it works
       expect(fiveParamFunc('David', 40, 'Paris', false, 85)).toBe('David is 40 from Paris, inactive, score: 85');
@@ -708,7 +715,8 @@ describe('defineFunction', () => {
 
       // Should still be a function, but without specific overloads
       expectTypeOf(sixParamFunc).toBeFunction();
-      expectTypeOf(sixParamFunc).returns.toBeString();
+
+      expectTypeOf(sixParamFunc as (...args: any[]) => string).returns.toBeString();
 
       // Test that it works
       expect(sixParamFunc('Eve', 45, 'Tokyo', true, 92, 'expert')).toBe('Eve is 45 from Tokyo, active, score: 92, level: expert');
@@ -732,7 +740,8 @@ describe('defineFunction', () => {
 
       // Should still be a function, but without specific overloads
       expectTypeOf(sevenParamFunc).toBeFunction();
-      expectTypeOf(sevenParamFunc).returns.toBeString();
+
+      expectTypeOf(sevenParamFunc as (...args: any[]) => string).returns.toBeString();
 
       // Test that it works
       expect(sevenParamFunc('Frank', 50, 'Berlin', false, 78, 'intermediate', 3)).toBe('Frank is 50 from Berlin, inactive, score: 78, level: intermediate, rank: 3');
@@ -751,7 +760,8 @@ describe('defineFunction', () => {
 
       // The function should preserve parameter names in the type signature
       expectTypeOf(preservedFunc).toBeFunction();
-      expectTypeOf(preservedFunc).returns.toBeString();
+
+      expectTypeOf(preservedFunc as (...args: any[]) => string).returns.toBeString();
 
       // Test that it works
       expect(preservedFunc('John', 'Doe', 30)).toBe('John Doe is 30');
@@ -770,7 +780,8 @@ describe('defineFunction', () => {
 
       // Should have strong typing for optional parameters
       expectTypeOf(optionalFunc).toBeFunction();
-      expectTypeOf(optionalFunc).returns.toBeString();
+
+      expectTypeOf(optionalFunc as (...args: any[]) => string).returns.toBeString();
 
       // Test various combinations
       expect(optionalFunc('Alice')).toBe('Alice');
@@ -791,7 +802,8 @@ describe('defineFunction', () => {
 
       // Should have strong typing with defaults
       expectTypeOf(defaultFunc).toBeFunction();
-      expectTypeOf(defaultFunc).returns.toBeString();
+
+      expectTypeOf(defaultFunc as (...args: any[]) => string).returns.toBeString();
 
       // Test that defaults work
       expect(defaultFunc('David')).toBe('David is 25 from Unknown');

@@ -3,6 +3,7 @@ import {
   AbstractPlugin,
   TreeContext,
   type ISafeParseResult,
+  type SafeParseOptions,
   type ErrorDiagnostic,
   type WarningDiagnostic,
   JessError,
@@ -39,7 +40,6 @@ export type ScssPluginOptions = {
 };
 
 type ExtendSelectorKind = 'simple' | 'basic' | 'pseudo' | 'complex' | 'compound';
-type PluginParseOptions = { compilerOptions?: Record<string, any> };
 
 export class ScssPlugin extends AbstractPlugin {
   name = 'scss';
@@ -60,7 +60,7 @@ export class ScssPlugin extends AbstractPlugin {
     return expandScssImportCandidates(importPath);
   }
 
-  safeParse(filePath: string, source: string, parseOptions?: PluginParseOptions): ISafeParseResult {
+  safeParse(filePath: string, source: string, parseOptions?: SafeParseOptions): ISafeParseResult {
     const allowExtendSelectors = this.opts.allowExtendSelectors
       ?? parseOptions?.compilerOptions?.allowExtendSelectors
       ?? ['simple'];

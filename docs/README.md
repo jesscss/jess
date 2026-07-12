@@ -10,6 +10,11 @@ Forward-looking refactor and design work lives under:
 
 - `docs/future/`
 
+Current release-readiness notes:
+
+- [Less v5 alpha readiness](./less-v5-alpha-readiness.md)
+- [Less v5 browser build spec](./less-v5-browser-build-spec.md)
+
 If you’re looking for current docs:
 - `packages/docs/docs/` (features, syntax, functions)
 - package `README.md` files under `packages/*/`

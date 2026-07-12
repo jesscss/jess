@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { nil } from '../index.js';
+import { nil, Nil } from '../index.js';
 import { Context, TreeContext } from '../../context.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
 
@@ -12,7 +12,7 @@ describe('Nil', () => {
 
   it('preserves parser tree context on construction', () => {
     const treeContext = new TreeContext();
-    const node = nil(undefined, undefined, undefined, treeContext);
+    const node = new Nil(undefined, undefined, undefined, treeContext);
 
     expect(node._treeContext).toBe(treeContext);
   });
@@ -28,7 +28,6 @@ describe('Nil', () => {
     const node = nil();
 
     expect(node.render(context)).toBe('');
-    expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
   });
 
@@ -46,8 +45,7 @@ describe('Nil', () => {
     const resolved = await node.resolve(context);
 
     expect(resolved).toBeInstanceOf((nil()).constructor);
-    expect(resolved.value).toBe('');
-    expect(node.evaluated).toBe(false);
+    expect(Reflect.get(resolved, 'value')).toBe('');
     expect(node.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });

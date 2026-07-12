@@ -39,7 +39,7 @@ describe('callable candidate output helper', () => {
     const sourceRules = rules([decl({ name: 'color', value: any('red') })]);
     const candidate = mixin({
       name: any('.demo'),
-      rules: sourceRules
+      rules: sourceRules.rules
     });
     const candidateParent = rules([candidate]);
     const candidateRules = rules([decl({ name: 'color', value: any('red') })]);

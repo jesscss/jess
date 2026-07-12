@@ -1,8 +1,20 @@
-import { serializeTypes } from '@jesscss/core';
+import { serializeTypes, N, isNode, type Node } from '@jesscss/core';
 import { Parser } from '../src/index.js';
 
 const parser = new Parser();
 const parse = parser.parse;
+
+function asRuleset(n: Node | string | undefined): { rules: Node[] } {
+  if (!isNode(n, N.Ruleset)) {
+    throw new Error('Expected a ruleset');
+  }
+  return n;
+}
+function asFor(n: Node | string | undefined): { type: string; rules: Node[]; pattern: { kind: string; values: Node[] } } {
+  // The For control node has no N enum bit; access its shape via a loose cast.
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+  return n as unknown as { type: string; rules: Node[]; pattern: { kind: string; values: Node[] } };
+}
 
 describe('value', () => {
   it('should parse color value', () => {
@@ -46,12 +58,12 @@ describe('value', () => {
     `, 'stylesheet');
 
     expect(errors.length).toBe(0);
-    const ruleset = tree.value[0]!;
-    const eachNode = ruleset.rules.value[0]!;
+    const ruleset = asRuleset(tree.rules[0]);
+    const eachNode = asFor(ruleset.rules[0]);
     expect(eachNode.type).toBe('For');
     expect(eachNode.pattern.kind).toBe('tuple');
     expect(eachNode.pattern.values.map((entry: any) => entry.name.valueOf())).toEqual(['value', 'key', 'index']);
-    expect(eachNode.rules.value).toHaveLength(1);
+    expect(eachNode.rules).toHaveLength(1);
   });
 
   it('preserves explicit each() callback params in the For pattern', () => {
@@ -62,7 +74,7 @@ describe('value', () => {
     `, 'declarationList');
 
     expect(errors.length).toBe(0);
-    const eachNode = tree.value[0]!;
+    const eachNode = asFor(tree.rules[0]);
     expect(eachNode.type).toBe('For');
     expect(eachNode.pattern.kind).toBe('tuple');
     expect(eachNode.pattern.values.map((entry: any) => entry.name.valueOf())).toEqual(['v', 'i']);

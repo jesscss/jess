@@ -1,23 +1,16 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import type { IToken } from 'chevrotain';
 import { Context } from '../../context.js';
 import { any, block, Block, ref, rules, type Rules as RulesClass, vardecl } from '../index.js';
 import type { TriviaMap } from '../../types/index.js';
-import { createTriviaMap } from '../util/trivia.js';
+import { createTriviaMap, makeTrivia } from '../util/trivia.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
 import { isNode } from '../util/is-node.js';
 import { N } from '../node-type.js';
+import { OutputWriter } from '../util/print.js';
+import { Node } from '../node.js';
 
-const token = (image: string, tokenTypeName = 'WS'): IToken => ({
-  image,
-  tokenType: { name: tokenTypeName } as IToken['tokenType'],
-  startOffset: 0,
-  endOffset: image.length - 1,
-  startLine: 1,
-  endLine: 1,
-  startColumn: 1,
-  endColumn: image.length
-});
+// A trivia run is now a source range; build one whose text is exactly `text`.
+const run = (text: string) => makeTrivia(text, 0, text.length);
 
 async function setEvaluatedRoot(context: Context, node: RulesClass): Promise<void> {
   const evald = await node.eval(context);
@@ -26,6 +19,25 @@ async function setEvaluatedRoot(context: Context, node: RulesClass): Promise<voi
   }
   context.root = evald;
   context.rulesContext = evald;
+}
+
+class CountingWriter extends OutputWriter {
+  reads = 0;
+
+  override getSince(mark: number): string {
+    this.reads++;
+    return super.getSince(mark);
+  }
+}
+
+class WriteOnlyNode extends Node<string> {
+  override writeSyntax(options: Parameters<Node['writeSyntax']>[0]): void {
+    options.writer.add(this.value);
+  }
+
+  override toString(): string {
+    throw new Error('Block.toTrimmedString should not use child public string transport');
+  }
 }
 
 describe('Block', () => {
@@ -39,12 +51,21 @@ describe('Block', () => {
     expect(block(any('foo')).toTrimmedString()).toBe('{foo}');
   });
 
+  it('writes block syntax without child public string transport', () => {
+    const writer = new CountingWriter();
+    const node = block(new WriteOnlyNode('foo'));
+
+    expect(node.toTrimmedString({ writer })).toBe('{foo}');
+    expect(writer.toString()).toBe('{foo}');
+    expect(writer.reads).toBe(1);
+  });
+
   it('stores the block child on a constructor-owned direct field', () => {
     const value = any('foo');
     const node = block(value);
 
-    expect(node.node).toBe(value);
-    expect(Block.childKeys).toEqual(['node']);
+    expect(node.value).toBe(value);
+    expect(Block.childKeys).toEqual(['value']);
   });
 
   it('does not allocate options when rendering block syntax with defaults', () => {
@@ -58,8 +79,8 @@ describe('Block', () => {
     const value = any('foo', undefined, [1, 1, 2, 3, 1, 4]);
     const node = block(value, undefined, [0, 1, 1, 7, 2, 3]);
     const trivia = createTriviaMap({
-      before: new Map([[node.location[3], [token('\n  ')]]]),
-      after: new Map<number, IToken[]>()
+      before: new Map([[node.location[3], run('\n  ')]]),
+      after: new Map()
     }) satisfies TriviaMap;
 
     expect(node.toTrimmedString({ trivia })).toBe('{foo\n  }');
@@ -88,7 +109,6 @@ describe('Block', () => {
 
     expect(rendered).toBe('{foo}');
     expect(resolveCalls).toBe(0);
-    expect(blockNode.evaluated).toBe(false);
     expect(blockNode.registrationPrepared).toBe(false);
   });
 
@@ -116,7 +136,6 @@ describe('Block', () => {
     expect(await blockNode.render(context, buffer)).toBe('{foo}');
     expect(buffer.parts).toEqual(['{foo}']);
     expect(resolveCalls).toBe(0);
-    expect(blockNode.evaluated).toBe(false);
     expect(blockNode.registrationPrepared).toBe(false);
   });
 
@@ -161,7 +180,6 @@ describe('Block', () => {
     const resolved = await blockNode.resolve(context);
 
     expect(resolved.toTrimmedString()).toBe('{foo}');
-    expect(blockNode.evaluated).toBe(false);
     expect(blockNode.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
@@ -189,7 +207,7 @@ describe('Block', () => {
     await setEvaluatedRoot(context, node);
 
     const blockNode = block(ref({ key: 'value' }, { type: 'variable' }));
-    const sourceValue = blockNode.node;
+    const sourceValue = blockNode.value;
     const resolved = await blockNode.resolve(context);
 
     expect(resolved.render(context)).toBe('{foo}');

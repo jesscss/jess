@@ -24,12 +24,13 @@ const checks = [
     ]
   },
   {
-    label: 'setDefined assignment lookup stays on setDefined-only apply helper',
+    label: 'setDefined assignment lookup stays on setDefined-only writable occurrence helper',
     file: 'packages/core/src/tree/rules.ts',
     required: [
-      'applySetDefinedDeclarationReadonlyOccurrence('
+      'findWritableSetDefinedDeclarationOccurrence('
     ],
     forbidden: [
+      'applySetDefinedDeclarationReadonlyOccurrence(',
       'findSetDefinedDeclarationReadonlyOccurrence(',
       'findVariableDeclarationReadonlyOccurrence',
       'findPropertyDeclarationReadonlyOccurrence',
@@ -103,7 +104,7 @@ const expectedDirectLookupExports = [
   'findVariableDeclarationOccurrence',
   'findPropertyDeclarationOccurrence',
   'findPropertyDeclarationOccurrence',
-  'applySetDefinedDeclarationReadonlyOccurrence',
+  'findWritableSetDefinedDeclarationOccurrence',
   'findAnyDeclarationOccurrence'
 ];
 if (directLookupExports.join('\n') !== expectedDirectLookupExports.join('\n')) {
@@ -130,10 +131,14 @@ if (directLookup.includes('includeReadonly')) {
   failed = true;
 }
 for (const token of [
+  'SetDefinedDeclarationMatchHandler',
+  'onSetDefinedMatch',
+  'applySetDefinedDeclarationReadonlyOccurrence',
   'findVariableDeclarationReadonlyOccurrence',
   'findPropertyDeclarationReadonlyOccurrence',
   'findSetDefinedDeclarationReadonlyOccurrence',
-  'DirectDeclarationLookupResult'
+  'DirectDeclarationLookupResult',
+  '{ ...options, includeLiveBindings: false }'
 ]) {
   if (directLookup.includes(token)) {
     console.error(`direct lookup should expose one setDefined readonly helper, found stale ${token}`);
@@ -142,16 +147,238 @@ for (const token of [
 }
 
 const referenceSource = readFileSync(resolve(root, 'packages/core/src/tree/reference.ts'), 'utf8');
+function getFunctionSource(source, name) {
+  const start = source.indexOf(`function ${name}(`);
+  const nextFunction = start === -1 ? -1 : source.indexOf('\nfunction ', start + 1);
+  return start === -1
+    ? undefined
+    : source.slice(start, nextFunction === -1 ? undefined : nextFunction);
+}
+function getConstObjectSource(source, name) {
+  const start = source.indexOf(`const ${name}:`);
+  const end = start === -1 ? -1 : source.indexOf('\n};', start);
+  return start === -1
+    ? undefined
+    : source.slice(start, end === -1 ? undefined : end);
+}
+
+if (referenceSource.includes('getRulesLookupHandleDeclarationConstraintShape')) {
+  console.error('declaration constraints should not be modeled as generic RulesLookupHandleShape fields');
+  failed = true;
+}
+if (referenceSource.includes('function isRulesLookupHandleEligible(')) {
+  console.error('rules lookup handle eligibility should live on lookup strategies, not a generic type ladder');
+  failed = true;
+}
+if (referenceSource.includes('function tryReadSourceStaticRulesLookupHandle(')) {
+  console.error('source-static rules lookup handle reads should be split by lookup strategy');
+  failed = true;
+}
+if (referenceSource.includes('function lookupTypeUsesDeclarationConstraints(')) {
+  console.error('declaration-constraint handle policy should be on declaration helpers, not a generic lookup-type predicate');
+  failed = true;
+}
+if (referenceSource.includes('requiresHandleDeclarationConstraints')) {
+  console.error('declaration-constraint handle policy should be a strategy type shape, not a boolean strategy flag');
+  failed = true;
+}
+for (const token of [
+  'const readArgs =',
+  '...readArgs',
+  '...baseArgs',
+  'tryReadSourceStaticHandle({',
+  'strategy.readHandle({',
+  'strategy.writeHandle({',
+  'writeStrategyRulesLookupHandle({',
+  'ReadRulesLookupHandleArgs',
+  'WriteRulesLookupHandleArgs',
+  'SourceStaticRulesLookupHandleArgs'
+]) {
+  if (referenceSource.includes(token)) {
+    console.error(`handle read/write dispatch should not use stale temp/spread object shape ${token}`);
+    failed = true;
+  }
+}
+if (referenceSource.includes('function readRulesLookupHandle(')) {
+  console.error('rules lookup handle reads should be split by lookup strategy, not a generic reader with declaration constraints');
+  failed = true;
+}
+const rulesReferenceLookupContextMatch = referenceSource.match(/type RulesReferenceLookupContext = \{[\s\S]*?\n\};/);
+if (!rulesReferenceLookupContextMatch) {
+  console.error('could not find RulesReferenceLookupContext block');
+  failed = true;
+} else if (rulesReferenceLookupContextMatch[0].includes('DeclarationConstraints')) {
+  console.error('generic RulesReferenceLookupContext should not carry declaration handle constraints');
+  failed = true;
+}
+if (!referenceSource.includes('function writeStrategyRulesLookupHandle(')) {
+  console.error('rules lookup handle writes should route through the strategy writer dispatcher');
+  failed = true;
+}
+for (const token of [
+  'type ReferenceDeclarationLookupStrategy',
+  'type ReferencePlainHandleLookupStrategy',
+  'type ReferenceNoHandleLookupStrategy',
+  'type ReferenceHandleLookupStrategy',
+  'function isReferenceHandleLookupStrategy(',
+  'function isReferenceDeclarationLookupStrategy(',
+  'readHandle',
+  'function readDeclarationRulesLookupHandle(',
+  'function readVariableRulesLookupHandle(',
+  'function readFunctionRulesLookupHandle(',
+  'function readCallableRulesLookupHandle(',
+  'function writeVariableRulesLookupHandle(',
+  'function writeDeclarationRulesLookupHandle('
+]) {
+  if (!referenceSource.includes(token)) {
+    console.error(`declaration handle writer is missing declaration-only args: ${token}`);
+    failed = true;
+  }
+}
+for (const token of [
+  'readNoRulesLookupHandle',
+  'tryReadNoSourceStaticRulesLookupHandle',
+  'getNoRulesLookupHandleValueKey',
+  'clearRulesLookupHandle'
+]) {
+  if (referenceSource.includes(token)) {
+    console.error(`index/no-handle lookup should not keep no-op handle plumbing: ${token}`);
+    failed = true;
+  }
+}
+for (const name of [
+  'INDEX_REFERENCE_LOOKUP_STRATEGY',
+  'FUNCTION_REFERENCE_LOOKUP_STRATEGY',
+  'MIXIN_REFERENCE_LOOKUP_STRATEGY',
+  'MIXIN_RULESET_REFERENCE_LOOKUP_STRATEGY'
+]) {
+  const body = getConstObjectSource(referenceSource, name);
+  if (body === undefined) {
+    console.error(`could not find ${name}`);
+    failed = true;
+  } else if (body.includes('getHandleDeclarationConstraints')) {
+    console.error(`${name} should not expose declaration constraint hooks`);
+    failed = true;
+  }
+}
+{
+  const body = getConstObjectSource(referenceSource, 'INDEX_REFERENCE_LOOKUP_STRATEGY');
+  if (body !== undefined) {
+    for (const token of ['readHandle', 'writeHandle', 'getHandleValueKey', 'tryReadSourceStaticHandle', 'handleLookupType']) {
+      if (body.includes(token)) {
+        console.error(`index lookup strategy should not expose handle plumbing: ${token}`);
+        failed = true;
+      }
+    }
+  }
+}
+for (const name of [
+  'readFunctionRulesLookupHandle',
+  'readCallableRulesLookupHandle',
+  'writeFunctionRulesLookupHandle',
+  'writeCallableRulesLookupHandle'
+]) {
+  const body = getFunctionSource(referenceSource, name);
+  if (body === undefined) {
+    console.error(`could not find ${name}`);
+    failed = true;
+  } else if (body.includes('declarationConstraints')) {
+    console.error(`${name} should not receive or read declaration constraint plumbing`);
+    failed = true;
+  }
+}
+for (const [name, token] of [
+  ['readFunctionRulesLookupHandle', "handle.lookupType !== 'function'"],
+  ['readCallableRulesLookupHandle', "handle.lookupType !== 'mixin'"],
+  ['tryReadSourceStaticFunctionRulesLookupHandle', "handle.lookupType !== 'function'"],
+  ['tryReadSourceStaticMixinRulesLookupHandle', "handle.lookupType !== 'mixin'"],
+  ['tryReadSourceStaticMixinRulesetRulesLookupHandle', "handle.lookupType !== 'mixin-ruleset'"]
+]) {
+  const body = getFunctionSource(referenceSource, name);
+  if (body === undefined) {
+    console.error(`could not find ${name}`);
+    failed = true;
+  } else if (body.includes(token)) {
+    console.error(`${name} should rely on common exact lookup-type freshness instead of duplicate checks`);
+    failed = true;
+  }
+}
+for (const token of [
+  'tryReadSourceStaticPropertyRulesLookupHandle',
+  'tryReadSourceStaticVariableRulesLookupHandle',
+  'tryReadSourceStaticFunctionRulesLookupHandle',
+  'tryReadSourceStaticMixinRulesLookupHandle',
+  'tryReadSourceStaticMixinRulesetRulesLookupHandle',
+  'getHandleValueKey',
+  'handleLookupType'
+]) {
+  if (!referenceSource.includes(token)) {
+    console.error(`reference lookup strategy handle policy is missing ${token}`);
+    failed = true;
+  }
+}
 const referenceOptionsMatch = referenceSource.match(/export type ReferenceOptions = \{[\s\S]*?\n\};/);
 if (!referenceOptionsMatch) {
   console.error('could not find exported ReferenceOptions block');
   failed = true;
 } else {
-  for (const token of ['excludedNode0', 'excludedNode1', 'excludedNodesLength']) {
+  for (const token of ['excludedDeclaration0', 'excludedDeclaration1', 'excludedDeclarationCount']) {
     if (referenceOptionsMatch[0].includes(token)) {
       console.error(`exported ReferenceOptions still exposes internal scalar exclusion field ${token}`);
       failed = true;
     }
+  }
+  for (const token of ['excludedNodes', 'requiredNormalizedFromAssign']) {
+    if (referenceOptionsMatch[0].includes(token)) {
+      console.error(`exported ReferenceOptions still exposes old declaration-constraint option ${token}`);
+      failed = true;
+    }
+  }
+}
+
+const rulesLookupHandleShapeMatch = referenceSource.match(/type RulesLookupHandleShape = \{[\s\S]*?\n\};/);
+if (!rulesLookupHandleShapeMatch) {
+  console.error('could not find private RulesLookupHandleShape block');
+  failed = true;
+} else {
+  for (const token of [
+    'requiredDeclarationAssignmentsKey',
+    'excludedDeclaration0',
+    'excludedDeclaration1',
+    'excludedDeclarationCount'
+  ]) {
+    if (rulesLookupHandleShapeMatch[0].includes(token)) {
+      console.error(`RulesLookupHandleShape still carries declaration constraint field ${token}`);
+      failed = true;
+    }
+  }
+}
+
+const lookupUtilsSource = readFileSync(resolve(root, 'packages/core/src/tree/util/lookup-utils.ts'), 'utf8');
+const declarationFindOptionsMatch = lookupUtilsSource.match(/export type DeclarationFindOptions = \{[\s\S]*?\n\};/);
+if (!declarationFindOptionsMatch) {
+  console.error('could not find exported DeclarationFindOptions block');
+  failed = true;
+} else {
+  for (const token of [
+    'excludedNode0',
+    'excludedNode1',
+    'excludedNodes',
+    'excludedNodesLength',
+    'requiredNormalizedFromAssign'
+  ]) {
+    if (declarationFindOptionsMatch[0].includes(token)) {
+      console.error(`DeclarationFindOptions still exposes stale declaration constraint option ${token}`);
+      failed = true;
+    }
+  }
+}
+
+const declarationSource = readFileSync(resolve(root, 'packages/core/src/tree/declaration.ts'), 'utf8');
+for (const token of ['excludedNode0', 'excludedNode1', 'excludedNodesLength', 'requiredNormalizedFromAssign']) {
+  if (declarationSource.includes(token)) {
+    console.error(`Declaration assignment merge path still constructs stale declaration constraint ${token}`);
+    failed = true;
   }
 }
 

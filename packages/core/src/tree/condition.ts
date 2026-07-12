@@ -27,10 +27,6 @@ export type ConditionOptions = {
 
 type ConditionResultValue = Node | boolean;
 
-function conditionOperandSyntax(node: Node): string {
-  return node.toTrimmedString();
-}
-
 export interface Condition extends Node<ConditionValue, ConditionOptions> {
   eval(context: Context): MaybePromise<Bool>;
 }
@@ -82,26 +78,11 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
     }
   }
 
-  override toTrimmedString(options?: PrintOptions) {
-    options = getPrintOptions(options);
+  override toTrimmedString(rawOptions?: PrintOptions) {
+    const options = getPrintOptions(rawOptions);
+    const position = options.writer.position();
     this.writeSyntax(options);
-    const { left, operator: op, right, negate } = this;
-    const needsParens = Boolean(right || negate);
-    let out = '';
-    if (negate) {
-      out += 'not ';
-    }
-    if (needsParens) {
-      out += '(';
-    }
-    out += conditionOperandSyntax(left);
-    if (op && right) {
-      out += ` ${op} ${conditionOperandSyntax(right)}`;
-    }
-    if (needsParens) {
-      out += ')';
-    }
-    return out;
+    return options.writer.getSince(position);
   }
 
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;

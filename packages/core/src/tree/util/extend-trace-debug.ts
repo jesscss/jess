@@ -34,7 +34,7 @@ export function getExtendTraceRunId(ctx: Context | undefined): string {
   if (!ctx) {
     return 'unknown';
   }
-  const file = ctx.sourceRoot?._treeContext?.file;
+  const file = ctx.treeContext?.file;
   const pathStr = file?.fullPath || file?.path || '';
   return pathStr || 'constructed';
 }

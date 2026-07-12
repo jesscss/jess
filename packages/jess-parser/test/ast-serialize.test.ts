@@ -179,7 +179,7 @@ describe('jess-parser (ast serialize)', () => {
       return;
     }
 
-    const childTypes = ruleset.rules.value.map(n => n.type);
+    const childTypes = ruleset.rules.map(n => n.type);
     expect(childTypes).toEqual(['If', 'For', 'While']);
     const serialized = serializeTypes(ruleset);
     expect(serialized).toContainString('(Ruleset');
@@ -198,7 +198,8 @@ describe('jess-parser (ast serialize)', () => {
       (StyleImport
         path:
           (Quoted
-            (Any [role=any] './theme.jess')
+            value:
+              (Any [role=any] './theme.jess')
           )
       `);
     const rules = isNode(tree, N.Rules) ? tree : null;

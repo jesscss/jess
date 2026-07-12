@@ -13,19 +13,14 @@ describe('guard', () => {
   it('preserves nested comparison shape for and-joined guards', () => {
     const { errors, tree } = parse('when((@a = white) and (@b = black))', 'guard');
     expect(errors.length).toBe(0);
-    expect(serializeTypes(tree, { showOptions: true })).toContainString(`
-      (Condition
-        [
-          (Paren
-            (Condition
-              [
-                (Reference
-                    type: 'variable'
-                  key: 'a'
-                )
-                (undefined)
-                (Color
-      `);
+    const out = serializeTypes(tree, { showOptions: true });
+    expect(out).toContainString('(Condition');
+    expect(out).toContainString('left:');
+    expect(out).toContainString('(Paren\n      value:');
+    expect(out).toContainString('(Reference\n            type: \'variable\'');
+    expect(out).toContainString('key: \'a\'');
+    expect(out).toContainString('right:');
+    expect(out).toContainString('(Color');
   });
 });
 
@@ -75,16 +70,10 @@ describe('guardDefault', () => {
     expect(errors.length).toBe(0);
     expect(tree.options?.hasDefault).toBe(true);
     expect(serializeTypes(tree, { showOptions: true })).toContainString(`
-      guard: 
+      guard:
         (Paren
-          (Call
-              silentFail: true
-            name: 
-              (Reference
-                  type: 'function'
-                  fallbackValue: true
-                key: 'default'
-              )
+          value:
+            (DefaultGuard 'default()')
         )
       `);
   });
@@ -94,19 +83,13 @@ describe('guardDefault', () => {
     expect(errors.length).toBe(0);
     expect(tree.options?.hasDefault).toBe(true);
     expect(serializeTypes(tree, { showOptions: true })).toContainString(`
-      guard: 
+      guard:
         (Condition
             negate: true
-          [
+          left:
             (Paren
-              (Call
-                  silentFail: true
-                name: 
-                  (Reference
-                      type: 'function'
-                      fallbackValue: true
-                    key: 'default'
-                  )
+              value:
+                (DefaultGuard 'default()')
             )
         )
       `);

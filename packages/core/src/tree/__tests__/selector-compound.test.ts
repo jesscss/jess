@@ -1,21 +1,11 @@
-import type { IToken } from 'chevrotain';
 import { amp, any, attr, compound, CompoundSelector, el, pseudo, ref, rules, Rules, vardecl } from '../index.js';
 import { Context } from '../../context.js';
-import type { TriviaMap } from '../../types/index.js';
-import { createTriviaMap } from '../util/trivia.js';
+import type { Trivia, TriviaMap } from '../../types/index.js';
+import { createTriviaMap, makeTrivia } from '../util/trivia.js';
 import { OutputWriter } from '../util/print.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
 
-const token = (image: string, tokenTypeName = 'WS'): IToken => ({
-  image,
-  tokenType: { name: tokenTypeName } as IToken['tokenType'],
-  startOffset: 0,
-  endOffset: image.length - 1,
-  startLine: 1,
-  endLine: 1,
-  startColumn: 1,
-  endColumn: image.length
-});
+const run = (text: string): Trivia => makeTrivia(text, 0, text.length);
 
 class CountingWriter extends OutputWriter {
   captures = 0;
@@ -52,14 +42,14 @@ describe('Compound Selector', () => {
   });
 
   describe('equality', () => {
-    test('exposes components as the direct child field', () => {
+    test('exposes value as the direct child field', () => {
       const first = el('.foo');
       const second = el('.bar');
       const node = compound([first, second]);
 
-      expect(node.components).toEqual([first, second]);
       expect(node.value).toEqual([first, second]);
-      expect(CompoundSelector.childKeys).toEqual(['components']);
+      expect(node.value).toEqual([first, second]);
+      expect(CompoundSelector.childKeys).toEqual(['value']);
     });
 
     test('renders compound selector syntax through toTrimmedString()', () => {
@@ -105,8 +95,8 @@ describe('Compound Selector', () => {
       const second = el('.a');
       second._location = [16, 1, 17, 17, 1, 18];
       const trivia = createTriviaMap({
-        before: new Map([[second.location[0], [token('/*comment*/', 'BlockComment')]]]),
-        after: new Map<number, IToken[]>()
+        before: new Map([[second.location[0], run('/*comment*/')]]),
+        after: new Map<number, Trivia>()
       }) satisfies TriviaMap;
 
       expect(compound([first, second]).toString({ trivia, writer })).toBe('.sel/*comment*/.a');
@@ -191,7 +181,6 @@ describe('Compound Selector', () => {
     const resolved = await selector.resolve(context);
 
     expect(resolved.toTrimmedString()).toBe('a[data=foo]');
-    expect(selector.evaluated).toBe(false);
     expect(selector.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
@@ -236,8 +225,8 @@ describe('Compound Selector', () => {
         value: ref({ key: 'capture-attr' }, { type: 'variable' })
       })
     ]);
-    const sourceElement = selector.components[0]!;
-    const sourceAttr = selector.components[1]!;
+    const sourceElement = selector.value[0]!;
+    const sourceAttr = selector.value[1]!;
     const resolved = await selector.resolve(context);
 
     expect(resolved.render(context)).toBe('a[data=foo]');
@@ -251,7 +240,7 @@ describe('Compound Selector', () => {
       amp(),
       el('.keep')
     ]);
-    const sourceChild = selector.components[1]!;
+    const sourceChild = selector.value[1]!;
     const sourceParent = sourceChild.parent;
     const sourceLocation = sourceChild.location;
     const resolved = await selector.eval(context);
@@ -273,6 +262,15 @@ describe('Compound Selector', () => {
       await sel1.eval(context);
       expect(sel1.keySet.equals(context.selectorBits.getBitset(['a', '#id', '.class']))).toBe(true);
       expect(sel1.visibleKeySet.equals(context.selectorBits.getBitset(['a', '#id', '.class']))).toBe(true);
+    });
+
+    test('string-backed compound', async () => {
+      const sel1 = compound(['a', '#id', '.class']);
+      await sel1.eval(context);
+      expect(sel1.toTrimmedString()).toBe('a#id.class');
+      expect(sel1.keySet.equals(context.selectorBits.getBitset(['a', '#id', '.class']))).toBe(true);
+      expect(sel1.visibleKeySet.equals(context.selectorBits.getBitset(['a', '#id', '.class']))).toBe(true);
+      expect(sel1.requiredKeySet.equals(context.selectorBits.getBitset(['a', '#id', '.class']))).toBe(true);
     });
 
     test('nested compound', async () => {

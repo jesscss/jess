@@ -22,7 +22,9 @@ const LOG_DIR = join(ROOT, '.cursor');
 const LOG_PATH = process.env.DEBUG_LOG_PATH || join(LOG_DIR, 'debug.log');
 
 // Ensure directory exists
-try { mkdirSync(LOG_DIR, { recursive: true }); } catch {}
+try {
+  mkdirSync(LOG_DIR, { recursive: true });
+} catch {}
 
 export const syncLog = (data: object) => {
   try {

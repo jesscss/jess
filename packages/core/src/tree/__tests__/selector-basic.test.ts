@@ -31,6 +31,11 @@ describe('BasicSelector', () => {
     expect(el('#id').toTrimmedString()).toBe('#id');
   });
 
+  it('preserves authored escape casing in tag selector syntax', () => {
+    expect(el('\\62\\6c\\6f \\63 \\6B \\0071 \\000075o\\74 e').toTrimmedString())
+      .toBe('\\62\\6c\\6f \\63 \\6B \\0071 \\000075o\\74 e');
+  });
+
   it('renders selectors through render(context)', () => {
     expect(el('.foo').render(context)).toBe('.foo');
     expect(el('#id').render(context)).toBe('#id');
@@ -57,7 +62,6 @@ describe('BasicSelector', () => {
     const resolved = await node.resolve(context);
 
     expect(resolved.toTrimmedString()).toBe('.foo');
-    expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });

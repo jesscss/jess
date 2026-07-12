@@ -73,11 +73,11 @@ accept(visitor: Visitor) {
   visitor.visit(this);
   
   // Then visit children in custom way
-  if (this.value.selector) {
-    visitor.visit(this.value.selector);
+  if (this.selector) {
+    visitor.visit(this.selector);
   }
   // Skip certain children based on state
-  for (const rule of this.value.rules.value) {
+  for (const rule of this.rules) {
     if (!rule.shouldSkip) {
       visitor.visit(rule);
     }
@@ -120,7 +120,7 @@ ruleset(node, ctx) {
 // Ruleset can control:
 accept(visitor) {
   visitor.visit(this);
-  for (const rule of this.value.rules.value) {
+  for (const rule of this.rules) {
     if (this.shouldVisitRule(rule)) {
       visitor.visit(rule);
     }

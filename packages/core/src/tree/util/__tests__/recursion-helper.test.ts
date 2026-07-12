@@ -41,7 +41,7 @@ describe('CallMap', () => {
       const list1 = list([num(1), num(2)]);
       const call1 = call({
         name: ref('mixin'),
-        args: list1.value
+        args: list1
       });
 
       // First call with list1
@@ -57,7 +57,7 @@ describe('CallMap', () => {
       const list2 = list([num(1), num(2)]); // Same content, different instance
       const call1 = call({
         name: ref('mixin'),
-        args: list1.value
+        args: list1
       });
 
       // First call with list1
@@ -73,7 +73,7 @@ describe('CallMap', () => {
       const list2 = list([num(3), num(4)]); // Different content
       const call1 = call({
         name: ref('mixin'),
-        args: list1.value
+        args: list1
       });
 
       // First call with list1
@@ -88,7 +88,7 @@ describe('CallMap', () => {
       const list1 = list([num(1), num(2)]);
       const call1 = call({
         name: ref('mixin'),
-        args: list1.value
+        args: list1
       });
 
       // First call - should return false
@@ -125,7 +125,7 @@ describe('CallMap', () => {
       const list1 = list([num(1), num(2)]);
       const call1 = call({
         name: ref('mixin'),
-        args: list1.value
+        args: list1
       });
 
       expect(callMap.add(call1, list1)).toBe(false);
@@ -149,11 +149,11 @@ describe('CallMap', () => {
       const list1 = list([num(1), num(2)]);
       const call1 = call({
         name: ref('mixin1'),
-        args: list1.value
+        args: list1
       });
       const call2 = call({
         name: ref('mixin2'),
-        args: list1.value
+        args: list1
       });
 
       // First call with list1
@@ -174,7 +174,7 @@ describe('CallMap', () => {
       const list1 = list([num(1), num(2)]);
       const call1 = call({
         name: ref('mixin'),
-        args: list1.value
+        args: list1
       });
 
       // Add once - this adds the entry to the set
@@ -195,7 +195,7 @@ describe('CallMap', () => {
       const list1 = list([num(1), num(2)]);
       const call1 = call({
         name: ref('mixin'),
-        args: list1.value
+        args: list1
       });
 
       // Add first list

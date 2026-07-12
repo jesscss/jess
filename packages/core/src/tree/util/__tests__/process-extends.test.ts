@@ -10,7 +10,8 @@ import {
   sel,
   co,
   pseudo,
-  ExtendFlag
+  ExtendFlag,
+  type Ruleset
 } from '../../index.js';
 
 /**
@@ -22,67 +23,71 @@ describe('processExtends function (eval flow)', () => {
   describe('Basic extend processing', () => {
     it('should extend a simple ruleset', async () => {
       const root = rules([
-        ruleset({ selector: el('.foo'), rules: rules([]) }),
+        ruleset({ selector: el('.foo'), rules: [] }),
         ruleset({
           selector: el('.bar'),
-          rules: rules([extend({ target: el('.foo') })])
+          rules: [extend({ target: el('.foo') })]
         })
       ]);
       const context = new Context();
       const evald = await root.eval(context);
-      const firstRuleset = evald.value[0];
-      expect(firstRuleset?.value?.selector?.valueOf()).toBe('.foo,.bar');
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const firstRuleset = evald.rules[0] as Ruleset | undefined;
+      expect(firstRuleset?.selector?.valueOf()).toBe('.foo,.bar');
     });
 
     it('should handle multiple extends on same target', async () => {
       const root = rules([
-        ruleset({ selector: el('.foo'), rules: rules([]) }),
+        ruleset({ selector: el('.foo'), rules: [] }),
         ruleset({
           selector: el('.bar'),
-          rules: rules([extend({ target: el('.foo') })])
+          rules: [extend({ target: el('.foo') })]
         }),
         ruleset({
           selector: el('.baz'),
-          rules: rules([extend({ target: el('.foo') })])
+          rules: [extend({ target: el('.foo') })]
         })
       ]);
       const context = new Context();
       const evald = await root.eval(context);
-      const firstRuleset = evald.value[0];
-      expect(firstRuleset?.value?.selector?.valueOf()).toBe('.foo,.bar,.baz');
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const firstRuleset = evald.rules[0] as Ruleset | undefined;
+      expect(firstRuleset?.selector?.valueOf()).toBe('.foo,.bar,.baz');
     });
 
     it('should skip self-referencing extends', async () => {
       const root = rules([
         ruleset({
           selector: el('.foo'),
-          rules: rules([extend({ target: el('.foo') })])
+          rules: [extend({ target: el('.foo') })]
         })
       ]);
       const context = new Context();
       const evald = await root.eval(context);
-      const firstRuleset = evald.value[0];
-      expect(firstRuleset?.value?.selector?.valueOf()).toBe('.foo');
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const firstRuleset = evald.rules[0] as Ruleset | undefined;
+      expect(firstRuleset?.selector?.valueOf()).toBe('.foo');
     });
   });
 
   describe('Extend chaining', () => {
     it('should chain extends when extended selector matches another target', async () => {
       const root = rules([
-        ruleset({ selector: el('.foo'), rules: rules([]) }),
+        ruleset({ selector: el('.foo'), rules: [] }),
         ruleset({
           selector: el('.bar'),
-          rules: rules([extend({ target: el('.foo') })])
+          rules: [extend({ target: el('.foo') })]
         }),
         ruleset({
           selector: el('.baz'),
-          rules: rules([extend({ target: el('.bar') })])
+          rules: [extend({ target: el('.bar') })]
         })
       ]);
       const context = new Context();
       const evald = await root.eval(context);
-      const firstRuleset = evald.value[0];
-      expect(firstRuleset?.value?.selector?.valueOf()).toBe('.foo,.bar,.baz');
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const firstRuleset = evald.rules[0] as Ruleset | undefined;
+      expect(firstRuleset?.selector?.valueOf()).toBe('.foo,.bar,.baz');
     });
   });
 
@@ -91,24 +96,25 @@ describe('processExtends function (eval flow)', () => {
       const root = rules([
         ruleset({
           selector: compound([el('.a'), el('.b')]),
-          rules: rules([])
+          rules: []
         }),
         ruleset({
           selector: el('.c'),
-          rules: rules([extend({ target: el('.b'), flag: ExtendFlag.All })])
+          rules: [extend({ target: el('.b'), flag: ExtendFlag.All })]
         })
       ]);
       const context = new Context();
       const evald = await root.eval(context);
-      const firstRuleset = evald.value[0];
-      expect(firstRuleset?.value?.selector?.valueOf()).toBe('.a:is(.b,.c)');
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const firstRuleset = evald.rules[0] as Ruleset | undefined;
+      expect(firstRuleset?.selector?.valueOf()).toBe('.a:is(.b,.c)');
     });
 
     it('should extend every instance of a class when partial is true (Less `all`)', async () => {
       const outerRules = rules([
         ruleset({
           selector: sellist([el('.replace'), el('.c')]),
-          rules: rules([])
+          rules: []
         })
       ]);
       const root = rules([
@@ -121,18 +127,20 @@ describe('processExtends function (eval flow)', () => {
         }),
         ruleset({
           selector: el('.rep_ace'),
-          rules: rules([extend({ target: el('.replace'), flag: ExtendFlag.All })])
+          rules: [extend({ target: el('.replace'), flag: ExtendFlag.All })]
         })
       ]);
       const context = new Context();
       const evald = await root.eval(context);
-      const outerRuleset = evald.value[0];
-      const nestedRuleset = outerRuleset?.value?.rules?.value?.[0];
-      expect(outerRuleset?.value?.selector?.valueOf()).toBe(
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const outerRuleset = evald.rules[0] as Ruleset | undefined;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const nestedRuleset = outerRuleset?.rules?.[0] as Ruleset | undefined;
+      expect(outerRuleset?.selector?.valueOf()).toBe(
         ':is(.replace,.rep_ace):is(.replace,.rep_ace),.c:is(.replace,.rep_ace)+:is(.replace,.rep_ace)'
       );
       // Selector list order may vary; all three must be present
-      const nestedSel = nestedRuleset?.value?.selector?.valueOf() ?? '';
+      const nestedSel = nestedRuleset?.selector?.valueOf() ?? '';
       expect(nestedSel).toContain('.replace');
       expect(nestedSel).toContain('.c');
       expect(nestedSel).toContain('.rep_ace');
@@ -145,21 +153,22 @@ describe('processExtends function (eval flow)', () => {
             sel([el('.foo'), co(' '), el('.bar')]),
             sel([el('.foo'), co(' '), el('.baz')])
           ]),
-          rules: rules([])
+          rules: []
         }),
         ruleset({
           selector: sel([el('.ext1'), co(' '), el('.ext2')]),
-          rules: rules([extend({ target: el('.foo'), flag: ExtendFlag.All })])
+          rules: [extend({ target: el('.foo'), flag: ExtendFlag.All })]
         }),
         ruleset({
           selector: pseudo({ name: ':is', arg: sellist([el('.ext3'), el('.ext4')]) }),
-          rules: rules([extend({ target: el('.foo'), flag: ExtendFlag.All })])
+          rules: [extend({ target: el('.foo'), flag: ExtendFlag.All })]
         })
       ]);
       const context = new Context();
       const evald = await root.eval(context);
-      const firstRuleset = evald.value[0];
-      expect(firstRuleset?.value?.selector?.valueOf()).toBe(
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const firstRuleset = evald.rules[0] as Ruleset | undefined;
+      expect(firstRuleset?.selector?.valueOf()).toBe(
         ':is(.foo,.ext1 .ext2,.ext3,.ext4) .bar,:is(.foo,.ext1 .ext2,.ext3,.ext4) .baz'
       );
     });
@@ -171,35 +180,38 @@ describe('processExtends function (eval flow)', () => {
       const root = rules([
         ruleset({
           selector: el('.foo'),
-          rules: rules([extend({ target: el('.foo') })])
+          rules: [extend({ target: el('.foo') })]
         })
       ]);
       const context = new Context();
       const evald = await root.eval(context);
-      const firstRuleset = evald.value[0];
-      expect(firstRuleset?.value?.selector?.valueOf()).toBe('.foo');
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const firstRuleset = evald.rules[0] as Ruleset | undefined;
+      expect(firstRuleset?.selector?.valueOf()).toBe('.foo');
     });
   });
 
   describe('Phase 2 iterative processing', () => {
     it('should process extended rulesets in Phase 2', async () => {
       const root = rules([
-        ruleset({ selector: el('.foo'), rules: rules([]) }),
+        ruleset({ selector: el('.foo'), rules: [] }),
         ruleset({
           selector: el('.bar'),
-          rules: rules([extend({ target: el('.foo') })])
+          rules: [extend({ target: el('.foo') })]
         }),
         ruleset({
           selector: el('.baz'),
-          rules: rules([extend({ target: el('.bar') })])
+          rules: [extend({ target: el('.bar') })]
         })
       ]);
       const context = new Context();
       const evald = await root.eval(context);
-      const fooRuleset = evald.value[0];
-      const barRuleset = evald.value[1];
-      expect(fooRuleset?.value?.selector?.valueOf()).toContain('.bar');
-      expect(barRuleset?.value?.selector?.valueOf()).toContain('.baz');
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const fooRuleset = evald.rules[0] as Ruleset | undefined;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const barRuleset = evald.rules[1] as Ruleset | undefined;
+      expect(fooRuleset?.selector?.valueOf()).toContain('.bar');
+      expect(barRuleset?.selector?.valueOf()).toContain('.baz');
     });
   });
 });

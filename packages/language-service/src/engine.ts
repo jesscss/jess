@@ -1,4 +1,4 @@
-import { CssParser } from '@jesscss/css-parser';
+import { CssParserChevrotain as CssParser } from '@jesscss/css-parser';
 import { Parser as LessParser } from '@jesscss/less-parser';
 import { Parser as ScssParser } from '@jesscss/scss-parser';
 import type { IParseResult, Rules, Node } from '@jesscss/core';

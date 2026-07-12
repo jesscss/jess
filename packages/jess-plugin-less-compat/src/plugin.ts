@@ -275,7 +275,7 @@ export class LessCompatPlugin extends AbstractPlugin {
       return false;
     }
     const load = loader(ext);
-    return isThenable(load) ? load.then(finish) : finish(load);
+    return isThenable(load) ? Promise.resolve(load).then(finish) : finish(load);
   }
 
   beforeEvalVisitorForTree(tree: Rules): PluginInterface['beforeEvalVisitor'] {
@@ -303,7 +303,7 @@ export class LessCompatPlugin extends AbstractPlugin {
    */
   get visitor(): PluginVisitor | PluginVisitor[] | undefined {
     const cache = this.opts.cache !== false;
-    const cacheMap = cache ? new WeakMap() : undefined;
+    const cacheMap: WeakMap<any, any> | undefined = cache ? new WeakMap() : undefined;
 
     // Use our own Less.js-compatible structures (no dependency on actual Less.js library)
     const LessVisitor = LessVisitorClass;
@@ -1141,6 +1141,9 @@ export class LessCompatPlugin extends AbstractPlugin {
         // Get underlying Jess node if this is a Less adapter
         // This allows us to check the processing WeakSet correctly
         const jessNode = node instanceof LessAdapterBase ? node.jessNode : node;
+        if (typeof jessNode !== 'object' || jessNode === null) {
+          return node;
+        }
 
         // CRITICAL: For AtRule nodes, we need to call atRule() FIRST to process @plugin directives
         // before running Less visitors. Since our visitor is a plain object (not a class extending Visitor),

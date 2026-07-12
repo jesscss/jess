@@ -1,26 +1,17 @@
 // import { Selector } from '../selector-sequence'
-import type { IToken } from 'chevrotain';
 import { sel, el, co, pseudo, attr, any, quoted, sellist, compound } from '../index.js';
 import { Context } from '../../context.js';
 import { isNode } from '../util/is-node.js';
 import type { TriviaMap } from '../../types/index.js';
-import { createTriviaMap } from '../util/trivia.js';
+import { createTriviaMap, makeTrivia } from '../util/trivia.js';
 import { OutputWriter } from '../util/print.js';
 // import type { Class } from 'type-fest'
 // import type { Node } from '../node.js'
 
 let context: Context;
 
-const token = (image: string, tokenTypeName = 'WS'): IToken => ({
-  image,
-  tokenType: { name: tokenTypeName } as IToken['tokenType'],
-  startOffset: 0,
-  endOffset: image.length - 1,
-  startLine: 1,
-  endLine: 1,
-  startColumn: 1,
-  endColumn: image.length
-});
+// A trivia run is now a source range; build one whose text is exactly `text`.
+const run = (text: string) => makeTrivia(text, 0, text.length);
 
 class CountingWriter extends OutputWriter {
   captures = 0;
@@ -79,14 +70,14 @@ describe('Selector', () => {
       second._location = [17, 3, 1, 18, 3, 2];
       const third = el('.c');
       third._location = [25, 3, 9, 26, 3, 10];
-      const firstRun = [token('\n'), token('/*x*/', 'BlockComment'), token('/*y*/', 'BlockComment'), token('\n')];
-      const secondRun = [token('/*z*/', 'BlockComment')];
+      const firstRun = run('\n/*x*//*y*/\n');
+      const secondRun = run('/*z*/');
       const trivia = createTriviaMap({
         before: new Map([
           [second.location[0], firstRun],
           [third.location[0], secondRun]
         ]),
-        after: new Map<number, IToken[]>()
+        after: new Map()
       }) satisfies TriviaMap;
 
       expect(sellist([first, second, third]).toString({ trivia })).toBe('#a,\n/*x*//*y*/\n.b,\n/*z*/.c');
@@ -99,12 +90,33 @@ describe('Selector', () => {
       const second = el('.b');
       second._location = [17, 3, 1, 18, 3, 2];
       const trivia = createTriviaMap({
-        before: new Map([[second.location[0], [token('\n'), token('/*x*/', 'BlockComment'), token('\n')]]]),
-        after: new Map<number, IToken[]>()
+        before: new Map([[second.location[0], run('\n/*x*/\n')]]),
+        after: new Map()
       }) satisfies TriviaMap;
 
       expect(sellist([first, second]).toString({ trivia, writer })).toBe('#a,\n/*x*/\n.b');
       expect(writer.captures).toBe(0);
+    });
+
+    it('serializes string-backed selector list members without selector leaves', async () => {
+      const selector = sellist(['h1', sel(['h2', '>', 'a', '>', 'p']), 'h3']);
+      selector.keySetLibrary = context.selectorBits;
+
+      expect(selector.toTrimmedString()).toBe('h1,\nh2 > a > p,\nh3');
+      expect(selector.valueOf()).toBe('h1,h2>a>p,h3');
+      expect(selector.visibleKeySet.equals(context.selectorBits.getBitset(['h1', 'h2', 'a', 'p', 'h3']))).toBe(true);
+      expect(selector.requiredKeySet.equals(context.selectorBits.getBitset())).toBe(true);
+      expect(await selector.resolve(context)).toBe(selector);
+    });
+
+    it('filters reference targets without treating string selector list members as nodes', () => {
+      const selector = sellist(['h1']);
+
+      expect(selector.toTrimmedString({
+        referenceMode: true,
+        referenceRenderEnabled: true,
+        referenceFilterTargets: true
+      })).toBe('h1');
     });
 
     it('serializes comment trivia between selector list members before separators', () => {
@@ -112,10 +124,11 @@ describe('Selector', () => {
       first._location = [0, 1, 1, 8, 1, 9];
       const second = el('.comments');
       second._location = [35, 1, 36, 43, 1, 44];
-      const tokens = [token(' '), token('/* boo */', 'BlockComment'), token('/* boo again*/', 'BlockComment')];
+      // The SAME run object indexed from both sides — emitted once by identity.
+      const shared = run(' /* boo *//* boo again*/');
       const trivia = createTriviaMap({
-        before: new Map([[33, tokens]]),
-        after: new Map([[first.location[3], tokens]])
+        before: new Map([[33, shared]]),
+        after: new Map([[first.location[3], shared]])
       }) satisfies TriviaMap;
 
       expect(sellist([first, second]).toString({ trivia })).toBe('#comments /* boo *//* boo again*/,\n.comments');
@@ -131,7 +144,6 @@ describe('Selector', () => {
       const resolved = await rule.resolve(context);
 
       expect(resolved.toTrimmedString()).toBe('.foo > #bar');
-      expect(rule.evaluated).toBe(false);
       expect(rule.registrationPrepared).toBe(false);
       expect(context.printState.writer).toBeUndefined();
     });

@@ -102,7 +102,7 @@ describe('createLessAdapter', () => {
     const nextValue = new Any('blue');
     adapter.value = nextValue;
 
-    expect(declaration.valueNode).toBe(nextValue);
+    expect(declaration.value).toBe(nextValue);
     expect(declaration.value.value).not.toBe(nextValue);
     expect(declaration.toTrimmedString()).toBe('color: blue');
   });
@@ -112,7 +112,7 @@ describe('toLessNode', () => {
   it('converts a simple ruleset into a typed adapter', () => {
     const ruleset = new Ruleset({
       selector: new BasicSelector('.demo'),
-      rules: new Rules([])
+      rules: []
     });
 
     const lessRuleset = toLessNode(ruleset);
@@ -130,7 +130,7 @@ describe('toLessNode', () => {
   it('converts selector lists into selector arrays', () => {
     const ruleset = new Ruleset({
       selector: new SelectorList([new BasicSelector('.a'), new BasicSelector('.b')]),
-      rules: new Rules([])
+      rules: []
     });
 
     const lessRuleset = toLessNode(ruleset);
@@ -169,10 +169,9 @@ describe('toLessTree', () => {
       name: new Any('color', { role: 'property' }),
       value: new Any('red')
     });
-    const rules = new Rules([decl]);
     const ruleset = new Ruleset({
       selector: new BasicSelector('.demo'),
-      rules
+      rules: [decl]
     });
 
     const lessTree = toLessTree(ruleset);

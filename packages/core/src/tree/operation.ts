@@ -2,7 +2,7 @@ import { Node, defineType, F_VISIBLE, F_NON_STATIC, type NodeLocation, type Node
 import type { Context } from '../context.js';
 import type { Operator } from './util/calculate.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
-import { getPrintOptions, type PrintOptions } from './util/print.js';
+import { getPrintOptions, type FinalPrintOptions, type PrintOptions } from './util/print.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { Call } from './call.js';
@@ -14,7 +14,6 @@ import {
   writeRenderText,
   type RenderBuffer
 } from './util/render-buffer.js';
-import { copyOwnedWithReusableLeaves } from './util/cloning.js';
 
 export type { Operator };
 /** Operation is always a tuple */
@@ -48,8 +47,8 @@ export class Operation extends Node<OperationValue> {
   }
 
   private withOperands(left: Node, right: Node): Operation {
-    const finalLeft = left === this.left ? copyOwnedWithReusableLeaves(left) : left;
-    const finalRight = right === this.right ? copyOwnedWithReusableLeaves(right) : right;
+    const finalLeft = left === this.left ? left.cloneForPlacement({ reuseLeaves: false }) : left;
+    const finalRight = right === this.right ? right.cloneForPlacement({ reuseLeaves: false }) : right;
     const node = new Operation(
       [finalLeft, this.operator, finalRight],
       this._options ? { ...this._options } : undefined,
@@ -59,9 +58,8 @@ export class Operation extends Node<OperationValue> {
     return node.inherit(this);
   }
 
-  private createCalcFallback(left: Node, right: Node, baseLeft: Node, baseRight: Node): Call {
+  private createCalcFallback(left: Node, right: Node): Call {
     const operationNode = this.withOperands(left, right);
-    operationNode.evaluated = true;
     return (new Call(
       { name: 'calc', args: list([operationNode]) },
       undefined,
@@ -85,10 +83,9 @@ export class Operation extends Node<OperationValue> {
     this.addFlags(F_VISIBLE, F_NON_STATIC);
   }
 
-  override toTrimmedString(options?: PrintOptions): string {
-    options = getPrintOptions(options);
+  /** @internal */
+  override writeSyntax(options: FinalPrintOptions): void {
     const w = options.writer!;
-    const mark = w.mark();
     const { left, operator: op, right } = this;
     const leftMark = w.mark();
     left.writeSyntax(options);
@@ -108,7 +105,14 @@ export class Operation extends Node<OperationValue> {
     } finally {
       options.suppressBoundaryTrivia = saved;
     }
-    return w.getSince(mark);
+  }
+
+  override toTrimmedString(rawOptions?: PrintOptions): string {
+    const options = getPrintOptions(rawOptions);
+    const w = options.writer!;
+    const position = w.position();
+    this.writeSyntax(options);
+    return w.getSince(position);
   }
 
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
@@ -145,7 +149,7 @@ export class Operation extends Node<OperationValue> {
             return out;
           } catch (error) {
             if (error instanceof TypeError) {
-              return this.createCalcFallback(l, r, left, right);
+              return this.createCalcFallback(l, r);
             }
             throw error;
           }
@@ -185,9 +189,16 @@ export class Operation extends Node<OperationValue> {
     if (output instanceof Node) {
       return this.renderOutput(context, output, bufferOrOptions, options);
     }
-    const printOptions = isRenderBuffer(bufferOrOptions)
+    const renderBuffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
+    // bufferOrOptions is PrintOptions | undefined when not a RenderBuffer
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const printOptionsArg = bufferOrOptions as PrintOptions | undefined;
+    const explicitWriter = renderBuffer ? undefined : printOptionsArg?.writer;
+    const printOptions: PrintOptions | undefined = renderBuffer
       ? prepareBufferPrintState(context, options)
-      : bufferOrOptions;
+      : explicitWriter
+        ? prepareBufferPrintState(context, printOptionsArg)
+        : printOptionsArg;
     const finish = (leftOut: string): MaybePromise<string> => {
       const right = output.right.render(context, printOptions);
       const combine = (rightOut: string): string => `${leftOut} ${this.operator} ${rightOut}`;
@@ -199,12 +210,23 @@ export class Operation extends Node<OperationValue> {
     const rendered = isThenable(left)
       ? left.then(finish)
       : finish(left);
-    if (!isRenderBuffer(bufferOrOptions)) {
+    if (!renderBuffer && !explicitWriter) {
       return rendered;
     }
     return isThenable(rendered)
-      ? (rendered as Promise<string>).then(out => writeRenderText(bufferOrOptions, out))
-      : writeRenderText(bufferOrOptions, rendered as string);
+      ? (rendered as Promise<string>).then((out) => {
+          if (renderBuffer) {
+            return writeRenderText(renderBuffer, out);
+          }
+          explicitWriter!.add(out, this);
+          return out;
+        })
+      : renderBuffer
+        ? writeRenderText(renderBuffer, rendered as string)
+        : (() => {
+            explicitWriter!.add(rendered as string, this);
+            return rendered as string;
+          })();
   }
 
   private evaluateOperands(context: Context): MaybePromise<Node> {
@@ -239,7 +261,7 @@ export class Operation extends Node<OperationValue> {
           } catch (error) {
             // If it's a unit error (TypeError), return calc(operation)
             if (error instanceof TypeError) {
-              return n.createCalcFallback(l, r, left, right);
+              return n.createCalcFallback(l, r);
             }
             // Re-throw non-unit errors
             throw error;

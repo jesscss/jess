@@ -1,6 +1,7 @@
 import {
   el, extend, ruleset, rules,
-  type Ruleset
+  type Ruleset,
+  type Selector
 } from '../index.js';
 import { Context } from '../../context.js';
 
@@ -14,18 +15,20 @@ describe.skip('Extend', () => {
     let rule = rules([
       ruleset({
         selector: el('.a'),
-        rules: rules([])
+        rules: []
       }),
       ruleset({
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         selector: extend({
           selector: el('.b'),
           target: el('.a')
-        }),
-        rules: rules([])
+        }) as unknown as Selector,
+        rules: []
       })
     ]);
     let evald = await rule.eval(context);
-    let firstRuleset = evald.value[0]! as Ruleset;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    let firstRuleset = evald.rules[0]! as Ruleset;
     expect(`${firstRuleset.selector}`).toBe('.a,\n.b');
   });
 });

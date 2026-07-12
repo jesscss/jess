@@ -5,11 +5,13 @@ import type {
   ImportOptions,
   Node,
   Any,
+  AtRuleStatement,
   Selector
 } from './tree/index.js';
 import { ExtendRootRegistry } from './tree/util/extend-roots.js';
 import { type Operator } from './tree/util/calculate.js';
 import type { PluginInterface } from './plugin.js';
+import type { StylesConfig } from './types.js';
 import { EqualityMode, MathMode, UnitMode } from './types/modes.js';
 import * as path from 'node:path';
 import { readFile } from 'node:fs/promises';
@@ -52,7 +54,6 @@ export interface ContextOptions {
    * generate a separate module for calculated CSS variables.
    */
   dynamic?: boolean;
-  collapseNesting?: boolean;
 
   mathMode?: MathMode;
   unitMode?: UnitMode;
@@ -93,6 +94,9 @@ export interface ContextOptions {
    * When false, errors are collected and processing continues.
    */
   breakOnError?: boolean;
+
+  /** Output options — mirrors StylesConfig['output']; overrides any config-file setting. */
+  output?: StylesConfig['output'];
 
   /**
    * Lazily supplies an importer plugin after path resolution proves a module
@@ -253,7 +257,7 @@ export class Context {
    * A feature ported from Less - we suppress any `@charset`
    * after the first one.
    */
-  currentCharset?: Any;
+  currentCharset?: Any | AtRuleStatement;
   /** Track whether charset has been emitted during toString to avoid duplicates */
   charsetEmitted?: boolean;
 
@@ -403,22 +407,21 @@ export class Context {
   }
 
   /**
-   * Stack to track when a value comes from an important declaration
-   * Used to propagate !important flag to containing declarations
+   * Stack to track when a value comes from an important declaration.
+   * The exact source leaf is carried when available so downstream render/public
+   * surfaces can preserve it instead of synthesizing a replacement flag node.
    */
-  private _importantSourceStack: number = 0;
+  private _importantSourceStack: (Any<'flag'> | true)[] = [];
   get hasImportantSource() {
-    return this._importantSourceStack > 0;
+    return this._importantSourceStack.length > 0;
   }
 
-  pushImportantSource() {
-    this._importantSourceStack++;
+  pushImportantSource(source?: Any<'flag'>) {
+    this._importantSourceStack.push(source ?? true);
   }
 
   popImportantSource() {
-    if (this._importantSourceStack > 0) {
-      this._importantSourceStack--;
-    }
+    return this._importantSourceStack.pop();
   }
 
   popReference() {
@@ -484,6 +487,9 @@ export class Context {
     }
     if (opts.bubbleRootAtRules !== undefined) {
       this._bubbleRootAtRules = opts.bubbleRootAtRules;
+    }
+    if (opts.output?.compress !== undefined) {
+      this.printState.compress = opts.output.compress;
     }
   }
 
@@ -651,7 +657,7 @@ export class Context {
     const ext = path.extname(resolvedPath);
     const plugin = this.findParserPlugin(type, ext);
     const source = await sourceGetter.getSource!(resolvedPath);
-    const parseResult = plugin.safeParse!(resolvedPath, source);
+    const parseResult = plugin.safeParse!(resolvedPath, source, { importOptions });
 
     // Collect normalized errors and warnings from plugin
     this.errors.push(...parseResult.errors);

@@ -1,22 +1,13 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import type { IToken } from 'chevrotain';
 import { Context } from '../../context.js';
 import { any, Any, Bool, call, list, nil, Node, num, Paren, paren, ref, rules, Rules, vardecl } from '../index.js';
 import type { TriviaMap } from '../../types/index.js';
-import { createTriviaMap } from '../util/trivia.js';
+import { createTriviaMap, makeTrivia } from '../util/trivia.js';
 import { OutputWriter } from '../util/print.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
 
-const token = (image: string, tokenTypeName = 'WS'): IToken => ({
-  image,
-  tokenType: { name: tokenTypeName } as IToken['tokenType'],
-  startOffset: 0,
-  endOffset: image.length - 1,
-  startLine: 1,
-  endLine: 1,
-  startColumn: 1,
-  endColumn: image.length
-});
+// A trivia run is now a source range; build one whose text is exactly `text`.
+const run = (text: string) => makeTrivia(text, 0, text.length);
 
 class CountingWriter extends OutputWriter {
   captures = 0;
@@ -65,8 +56,8 @@ describe('Paren', () => {
     const child = any('foo');
     const node = paren(child);
 
-    expect(node.node).toBe(child);
-    expect(Paren.childKeys).toEqual(['node']);
+    expect(node.value).toBe(child);
+    expect(Paren.childKeys).toEqual(['value']);
   });
 
   it('writes empty paren syntax without writer readback', () => {
@@ -142,7 +133,6 @@ describe('Paren', () => {
 
     expect(rendered).toBe('(foo)');
     expect(parenResolveCalls).toBe(0);
-    expect(parenNode.evaluated).toBe(false);
     expect(parenNode.registrationPrepared).toBe(false);
   });
 
@@ -166,7 +156,6 @@ describe('Paren', () => {
     expect(await parenNode.render(context, buffer)).toBe('(foo)');
     expect(buffer.parts).toEqual(['(foo)']);
     expect(parenResolveCalls).toBe(0);
-    expect(parenNode.evaluated).toBe(false);
     expect(parenNode.registrationPrepared).toBe(false);
   });
 
@@ -344,7 +333,6 @@ describe('Paren', () => {
 
       expect(await Promise.resolve(parenNode.render(context))).toBe('true');
       expect(boolStringCalls).toBe(0);
-      expect(parenNode.evaluated).toBe(false);
     } finally {
       Bool.prototype.toTrimmedString = originalToTrimmedString;
     }
@@ -368,7 +356,6 @@ describe('Paren', () => {
       expect(await parenNode.render(context, buffer)).toBe('false');
       expect(buffer.parts).toEqual(['false']);
       expect(boolStringCalls).toBe(0);
-      expect(parenNode.evaluated).toBe(false);
     } finally {
       Bool.prototype.toTrimmedString = originalToTrimmedString;
     }
@@ -379,8 +366,7 @@ describe('Paren', () => {
     const value = any('foo');
     value._location = [4, 1, 5, 6, 1, 7];
     const trivia = createTriviaMap({
-      before: new Map([[value.location[0], [token(' '), token('/*x*/', 'BlockComment')]]]),
-      after: new Map<number, IToken[]>()
+      before: new Map([[value.location[0], run(' /*x*/')]])
     }) satisfies TriviaMap;
 
     expect(paren(value).toTrimmedString({ trivia, writer })).toBe('(/*x*/foo)');
@@ -412,7 +398,6 @@ describe('Paren', () => {
     const resolved = await parenNode.resolve(context);
 
     expect(resolved.toTrimmedString()).toBe('(foo)');
-    expect(parenNode.evaluated).toBe(false);
     expect(parenNode.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
@@ -431,7 +416,6 @@ describe('Paren', () => {
 
     expect(first.value).toBe(true);
     expect(second.value).toBe(true);
-    expect(parenNode.evaluated).toBe(false);
     expect(parenNode.registrationPrepared).toBe(false);
   });
 
@@ -462,8 +446,33 @@ describe('Paren', () => {
       { escaped: true }
     ).resolve(context);
 
+    expect(resolved).toBeInstanceOf(Any);
     expect(resolved.toTrimmedString()).toBe('7, 8, 9');
     expect(context.printState.writer).toBeUndefined();
+  });
+
+  it('normalizes escaped semicolon lists without replacement list inheritance on resolve', async () => {
+    const descriptor = Object.getOwnPropertyDescriptor(Node.prototype, 'inherit');
+    if (!descriptor) {
+      throw new Error('Expected Node.inherit for resolve materialization proof');
+    }
+    Object.defineProperty(Node.prototype, 'inherit', {
+      ...descriptor,
+      value: () => {
+        throw new Error('escaped list resolve should not materialize a replacement List');
+      }
+    });
+    try {
+      const resolved = await paren(
+        list([num(7), num(8), num(9)], { sep: ';' }),
+        { escaped: true }
+      ).resolve(context);
+
+      expect(resolved).toBeInstanceOf(Any);
+      expect(resolved.toTrimmedString()).toBe('7, 8, 9');
+    } finally {
+      Object.defineProperty(Node.prototype, 'inherit', descriptor);
+    }
   });
 
   it('renders escaped semicolon lists as commas without replacement list inheritance', () => {

@@ -15,13 +15,14 @@ import {
 
 /** Use `any` for `this` to avoid structural incompatibility */
 type P = any;
+type Production<T = unknown> = (ctx?: RuleContext) => T | undefined;
 
 /**
  * Parse mixin parameter list: `($var[: default], ...)` or empty.
  * Returns an array of VarDeclaration nodes.
  * @param skipLParen - When true, the leading `(` was already consumed (e.g. as part of a Function token).
  */
-export function jessMixinParams(this: P, T: TokenMap) {
+export function jessMixinParams(this: P, T: TokenMap): Production<Node[]> {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     const params: Node[] = [];
@@ -125,7 +126,7 @@ export function jessMixinDefinition(this: P, T: TokenMap) {
     const nameImage = isFunctionToken ? nameTok.image.slice(0, -1) : nameTok.image;
     const nameNode = new Any(nameImage, { role: 'name' }, nameLoc, $.context);
     return new Mixin(
-      { name: nameNode, params: new List(params), rules, guard },
+      { name: nameNode, params: new List(params), rules: rules.rules, guard },
       undefined,
       loc,
       $.context
@@ -141,7 +142,7 @@ export function jessMixinDefinition(this: P, T: TokenMap) {
  * `Reference(".mixin", { type: 'mixin', target: Reference("#ns", { ..., target: Any('$') }) })`
  * serializes as `$ > #ns > .mixin` via Reference.toTrimmedString.
  */
-export function jessMixinCall(this: P, T: TokenMap) {
+export function jessMixinCall(this: P, T: TokenMap): Production<Node> {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     $.startRule();

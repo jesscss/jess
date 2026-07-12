@@ -7,9 +7,19 @@
  * map.get((a: 1, b: 2), a) // 1
  * map.get((a: (b: 2)), a, b) // 2
  */
-import { defineFunction, Collection, Node, Nil, Declaration, type Context } from '@jesscss/core';
+import { defineFunction, Collection, Node, Nil, Declaration, Any, type Context } from '@jesscss/core';
 import type { FunctionThis } from '@jesscss/core';
 import { isNode, N } from '@jesscss/core';
+
+function declarationValueNode(value: Declaration['value']): Node {
+  if (typeof value === 'string') {
+    return new Any(value);
+  }
+  if (value instanceof Node) {
+    return value;
+  }
+  return new Any(value.map(seg => typeof seg === 'string' ? seg : String(seg.valueOf())).join(''));
+}
 
 const get = defineFunction(
   'get',
@@ -29,7 +39,7 @@ const get = defineFunction(
 
     // Helper to find declaration by key string in a collection
     const findDeclaration = (map: Collection, keyStr: string): Declaration | null => {
-      for (const node of map.value) {
+      for (const node of map.rules) {
         if (isNode(node, N.Declaration)) {
           const nodeKey = String(node.name.valueOf());
           if (nodeKey === keyStr) {
@@ -52,7 +62,7 @@ const get = defineFunction(
       }
 
       // Get the value and check if it's a Collection (nested map)
-      const value = decl.valueNode;
+      const value = decl.value;
       if (!isNode(value, N.Collection)) {
         return new Nil();
       }
@@ -69,7 +79,7 @@ const get = defineFunction(
       return new Nil();
     }
 
-    return decl.valueNode;
+    return declarationValueNode(decl.value);
   },
   {
     params: [

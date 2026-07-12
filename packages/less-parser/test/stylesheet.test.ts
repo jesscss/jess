@@ -31,4 +31,3 @@ describe('main', () => {
     expect(errors.length).toBe(0);
   });
 });
-

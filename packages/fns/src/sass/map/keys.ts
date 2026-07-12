@@ -15,12 +15,13 @@ const keys = defineFunction(
   function(this: FunctionThis | Context | undefined, map: Collection): List {
     // Get all declarations from the collection
     const keyNodes: any[] = [];
-    for (const node of map.value) {
+    for (const node of map.rules) {
       if (isNode(node, N.Declaration)) {
         // The key is the declaration's name - convert to a Node
         const name = node.name;
         // If it's already a Node (Any or Interpolated), use it directly
         // Otherwise wrap it in a Quoted node
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         if (name instanceof Any || (name as any).type) {
           keyNodes.push(name);
         } else {

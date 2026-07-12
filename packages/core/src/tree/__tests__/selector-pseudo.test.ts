@@ -1,9 +1,8 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { Context, TreeContext } from '../../context.js';
 import type { TriviaMap } from '../../types/index.js';
-import type { IToken } from 'chevrotain';
 import { any, co, compound, el, pseudo, ref, rules, sel, sellist, type Rules as RulesClass, vardecl } from '../index.js';
-import { createTriviaMap } from '../util/trivia.js';
+import { createTriviaMap, makeTrivia } from '../util/trivia.js';
 import { OutputWriter } from '../util/print.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
 import { isNode } from '../util/is-node.js';
@@ -54,12 +53,8 @@ describe('PseudoSelector', () => {
   });
 
   it('does not emit source trivia inside generated selector arguments', () => {
-    const newline: IToken[] = [{
-      image: '\n  ',
-      tokenType: { name: 'WS' } as IToken['tokenType']
-    }];
     const trivia = createTriviaMap({
-      before: new Map([[10, newline]]),
+      before: new Map([[10, makeTrivia('\n  ', 0, 3)]]),
       after: new Map()
     }) satisfies TriviaMap;
     const treeContext = new TreeContext({ trivia });
@@ -150,7 +145,6 @@ describe('PseudoSelector', () => {
     const rendered = pseudoNode.render(context);
 
     expect(rendered).toBe(':is(.foo, .bar)');
-    expect(pseudoNode.evaluated).toBe(false);
     expect(pseudoNode.registrationPrepared).toBe(false);
   });
 
@@ -182,7 +176,6 @@ describe('PseudoSelector', () => {
     expect(rendered).toBe(':is(.foo, .bar)');
     expect(buffer.segments).toEqual([':is(.foo, .bar)']);
     expect(resolveCalls).toBe(0);
-    expect(pseudoNode.evaluated).toBe(false);
     expect(pseudoNode.registrationPrepared).toBe(false);
   });
 
@@ -202,7 +195,6 @@ describe('PseudoSelector', () => {
     const resolved = await pseudoNode.resolve(context);
 
     expect(resolved.toTrimmedString()).toBe(':is(.foo, .bar)');
-    expect(pseudoNode.evaluated).toBe(false);
     expect(pseudoNode.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });

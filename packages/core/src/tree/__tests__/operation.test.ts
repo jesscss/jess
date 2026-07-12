@@ -1,12 +1,13 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { Context } from '../../context.js';
-import { any, call, Call, decl, dimension, List, list, num, op, Operation, paren, ref, rules, Rules, ruleset, vardecl } from '../index.js';
-import { OutputWriter } from '../util/print.js';
+import { any, call, Call, decl, dimension, List, list, num, op, Operation, type OperationValue, paren, ref, rules, Rules, ruleset, vardecl } from '../index.js';
+import { OutputWriter, getPrintOptions } from '../util/print.js';
 import { createRenderBuffer, renderNodeToString } from '../util/render-buffer.js';
 
 class CountingWriter extends OutputWriter {
   captures = 0;
   marks = 0;
+  reads = 0;
 
   override capture(fn: () => void): string {
     this.captures++;
@@ -16,6 +17,24 @@ class CountingWriter extends OutputWriter {
   override mark(): number {
     this.marks++;
     return super.mark();
+  }
+
+  override getSince(mark: number): string {
+    this.reads++;
+    return super.getSince(mark);
+  }
+}
+
+class WholeBufferCountingWriter extends OutputWriter {
+  wholeBufferReads = 0;
+  readbacks = 0;
+
+  override getSince(mark: number): string {
+    this.readbacks++;
+    if (mark === 0) {
+      this.wholeBufferReads++;
+    }
+    return super.getSince(mark);
   }
 }
 
@@ -64,6 +83,26 @@ describe('Operation', () => {
     expect(stringCalls).toBe(0);
   });
 
+  it('captures operation source syntax without outer whole-buffer readback', () => {
+    const writer = new WholeBufferCountingWriter();
+    const rule = op([num(10), '+', ref({ key: 'rhs' }, { type: 'variable' })]);
+
+    expect(rule.toTrimmedString({ writer })).toBe('10 + $rhs');
+    expect(writer.wholeBufferReads).toBe(1);
+  });
+
+  it('writes operation syntax without public string readback', () => {
+    const writer = new CountingWriter();
+    const rule = op([num(10), '+', num(20)]);
+
+    rule.writeSyntax(getPrintOptions({ writer }));
+
+    expect(writer.toString()).toBe('10 + 20');
+    expect(writer.marks).toBe(1);
+    expect(writer.reads).toBe(0);
+    expect(writer.captures).toBe(0);
+  });
+
   it('renders resolved operation values through render(context)', async () => {
     const node = rules([
       vardecl({
@@ -81,7 +120,6 @@ describe('Operation', () => {
     const rendered = operationNode.render(context);
 
     expect(rendered).toBe('30');
-    expect(operationNode.evaluated).toBe(false);
     expect(operationNode.registrationPrepared).toBe(false);
   });
 
@@ -109,7 +147,6 @@ describe('Operation', () => {
     expect(await operationNode.render(context, buffer)).toBe('30');
     expect(buffer.parts).toEqual(['30']);
     expect(operationResolveCalls).toBe(0);
-    expect(operationNode.evaluated).toBe(false);
     expect(operationNode.registrationPrepared).toBe(false);
   });
 
@@ -132,7 +169,6 @@ describe('Operation', () => {
     };
 
     expect(operationNode.render(context)).toBe('30');
-    expect(operationNode.evaluated).toBe(false);
     expect(operationNode.registrationPrepared).toBe(false);
   });
 
@@ -189,6 +225,27 @@ describe('Operation', () => {
     expect(writer.marks).toBe(0);
   });
 
+  it('writes preserved operation render output to explicit writers once', async () => {
+    const node = rules([
+      vardecl({
+        name: any('div-op'),
+        value: list([dimension([10, 'px']), num(2)], { sep: '/' })
+      })
+    ]);
+    await setEvaluatedRoot(context, node);
+    const writer = new CountingWriter();
+    const operationNode = op([
+      ref({ key: 'div-op' }, { type: 'variable' }),
+      '*',
+      num(2)
+    ]);
+
+    expect(await Promise.resolve(operationNode.render(context, { writer }))).toBe('10px / 2 * 2');
+    expect(writer.toString()).toBe('10px / 2 * 2');
+    expect(writer.marks).toBe(0);
+    expect(writer.reads).toBe(0);
+  });
+
   it('resolves operation values without touching render state', async () => {
     const node = rules([
       vardecl({
@@ -206,7 +263,6 @@ describe('Operation', () => {
     const resolved = await operationNode.resolve(context);
 
     expect(resolved.toTrimmedString()).toBe('30');
-    expect(operationNode.evaluated).toBe(false);
     expect(operationNode.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
@@ -228,7 +284,8 @@ describe('Operation', () => {
       '+',
       any('two')
     ]);
-    const [leftOperand, , rightOperand] = operationNode.value;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const [leftOperand, , rightOperand] = Reflect.get(operationNode, 'value') as OperationValue;
     const resolved = await operationNode.resolve(context);
 
     expect(resolved.render(context)).toBe('one, foo, two');
@@ -244,9 +301,7 @@ describe('Operation', () => {
         value: list([dimension([10, 'px']), num(2)], { sep: '/' })
       })
     ]);
-    const evald = await node.eval(context);
-    context.root = evald as RulesClass;
-    context.rulesContext = evald as RulesClass;
+    const evald = await setEvaluatedRoot(context, node);
 
     const renderedOperation = op([
       ref({ key: 'div-op' }, { type: 'variable' }),
@@ -264,7 +319,8 @@ describe('Operation', () => {
       '*',
       num(2)
     ]);
-    const [leftOperand, , rightOperand] = resolvedOperation.value;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const [leftOperand, , rightOperand] = Reflect.get(resolvedOperation, 'value') as OperationValue;
 
     const resolved = await resolvedOperation.resolve(resolveContext);
     expect(resolveContext.printState.writer).toBeUndefined();
@@ -296,8 +352,10 @@ describe('Operation', () => {
       throw new Error('Expected Operation result');
     }
     expect(resolved.toTrimmedString()).toBe('2em * 10px / 2');
-    expect(resolved.value[0]).not.toBe(leftOperand);
-    expect(resolved.value[0]?.toTrimmedString()).toBe('2em');
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const resolvedValue = Reflect.get(resolved, 'value') as OperationValue;
+    expect(resolvedValue[0]).not.toBe(leftOperand);
+    expect(resolvedValue[0]?.toTrimmedString()).toBe('2em');
     expect(leftOperand.parent).toBe(operationNode);
     expect(operationNode.parent).toBeUndefined();
     expect(evald.parent).toBeUndefined();
@@ -331,20 +389,21 @@ describe('Operation', () => {
       throw new Error('Expected calc fallback Call result');
     }
     expect(resolved.args).toBeInstanceOf(List);
-    const calcArg = resolved.args.items[0];
+    const calcArg = resolved.args!.value[0];
     expect(calcArg).toBeInstanceOf(Operation);
     if (!(calcArg instanceof Operation)) {
       throw new Error('Expected calc fallback Operation argument');
     }
     expect(calcArg).not.toBe(operationNode);
-    expect(calcArg.value[0]).not.toBe(leftOperand);
-    expect(calcArg.value[2]).not.toBe(rightOperand);
-    expect(calcArg.evaluated).toBe(true);
-    expect(calcArg.value[0].evaluated).toBe(false);
-    expect(calcArg.value[2].evaluated).toBe(false);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const calcArgValue = Reflect.get(calcArg, 'value') as OperationValue;
+    expect(calcArgValue[0]).not.toBe(leftOperand);
+    expect(calcArgValue[2]).not.toBe(rightOperand);
+    // Source operands stay owned by the canonical operation, unchanged — the
+    // calc fallback materializes copies. (`evaluated` flag assertions removed:
+    // it is being deleted as a clone-era relic; see LIVE_BINDING §2.7.)
     expect(leftOperand.parent).toBe(operationNode);
     expect(rightOperand.parent).toBe(operationNode);
-    expect(operationNode.evaluated).toBe(false);
   });
 
   it('normalizes slash-list variable refs inside calc while preserving direct calc arithmetic', async () => {
@@ -427,8 +486,8 @@ describe('Operation', () => {
         value: list([dimension([50, 'vh']), num(2)], { sep: '/' })
       }),
       ruleset({
-        selector: any('.probe'),
-        rules: rules([
+        selector: '.probe',
+        rules: [
           decl({
             name: 'margin',
             value: call({
@@ -482,7 +541,7 @@ describe('Operation', () => {
               ])
             })
           })
-        ])
+        ]
       })
     ]);
 

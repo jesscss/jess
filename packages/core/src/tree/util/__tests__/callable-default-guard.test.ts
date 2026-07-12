@@ -74,10 +74,11 @@ describe('callable default guard helpers', () => {
     const seenDefaults: boolean[] = [];
     const dynamicGuard = new Bool(false);
     dynamicGuard.hasFlag = () => false;
-    dynamicGuard.eval = async (evalContext: Context) => {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    dynamicGuard.eval = (async (evalContext: Context) => {
       seenDefaults.push(Boolean(evalContext.isDefault));
       return new Bool(evalContext.isDefault === true);
-    };
+    }) as unknown as (context: Context) => Bool;
 
     const result = await probeCallableDefaultGuard({
       context,
@@ -208,7 +209,6 @@ describe('callable default guard helpers', () => {
     const state = createCallableDefaultState();
     const calls: string[] = [];
     state.pendingCandidates.push({
-      label: 'true',
       group: CALLABLE_DEFAULT_TRUE,
       rules: rules([]),
       sourceRules: rules([])
@@ -218,13 +218,13 @@ describe('callable default guard helpers', () => {
       context,
       state,
       restrictMixinOutputLookup: true,
-      runCandidate: async (candidate) => {
-        calls.push(candidate.label);
+      runCandidate: async (_candidate) => {
+        calls.push('ran');
       }
     });
 
     expect(execution?.resolution.defaultResult).toBe(CALLABLE_DEFAULT_TRUE);
     expect(state.hasDefNoneCandidate).toBe(false);
-    expect(calls).toEqual(['true']);
+    expect(calls).toEqual(['ran']);
   });
 });

@@ -29,7 +29,8 @@ function getSharedLexerAndParser(config: LessParserConfig): { lexer: Lexer; pars
       lessFragments(),
       lessTokens()
     );
-    cachedTokenMap = T;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    cachedTokenMap = T as TokenMap;
     cachedLexer = new Lexer(lexer, {
       ensureOptimizations: true,
       skipValidations: process.env.TEST !== 'true'

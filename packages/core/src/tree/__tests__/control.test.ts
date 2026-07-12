@@ -9,6 +9,7 @@ import {
   JsFunction,
   List,
   Nil,
+  Node,
   Rules,
   Sequence,
   VarDeclaration,
@@ -46,6 +47,17 @@ class CountingWriter extends OutputWriter {
   }
 }
 
+class WholeBufferCountingWriter extends OutputWriter {
+  wholeBufferReads = 0;
+
+  override getSince(mark: number): string {
+    if (mark === 0) {
+      this.wholeBufferReads++;
+    }
+    return super.getSince(mark);
+  }
+}
+
 function makePattern(bindingNames: string[], kind: 'block' | 'list' | 'sequence' | 'single' = 'block') {
   const vars = bindingNames.map(name => new VarDeclaration({
     name: new Any(name, { role: 'property' }),
@@ -79,7 +91,8 @@ function makeLoop(
   return new For({
     pattern: normalizedPattern,
     iterable: { kind: 'node', value: iterable },
-    rules: loopRules
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    rules: loopRules as unknown as Node[]
   });
 }
 
@@ -91,13 +104,13 @@ function normalizePattern(pattern: any) {
   if (pattern instanceof VarDeclaration) {
     return { kind: 'single' as const, value: pattern };
   }
-  if (pattern instanceof Block && pattern.node instanceof List) {
-    const values = pattern.node.value.filter((entry): entry is VarDeclaration => entry instanceof VarDeclaration);
+  if (pattern instanceof Block && pattern.value instanceof List) {
+    const values = pattern.value.value.filter((entry): entry is VarDeclaration => entry instanceof VarDeclaration);
     const [first, ...rest] = values;
     if (!first) {
       throw new Error('Expected at least one binding in block pattern');
     }
-    return { kind: 'tuple' as const, values: [first, ...rest] };
+    return { kind: 'tuple' as const, values: [first, ...rest] as [VarDeclaration, ...VarDeclaration[]] };
   }
   if (isPatternNodeTuple(pattern)) {
     const values = pattern.value.filter((entry): entry is VarDeclaration => entry instanceof VarDeclaration);
@@ -107,7 +120,7 @@ function normalizePattern(pattern: any) {
     }
     return values.length === 1
       ? { kind: 'single' as const, value: first }
-      : { kind: 'tuple' as const, values: [first, ...rest] };
+      : { kind: 'tuple' as const, values: [first, ...rest] as [VarDeclaration, ...VarDeclaration[]] };
   }
   throw new Error('Unexpected test pattern shape');
 }
@@ -117,16 +130,17 @@ describe('Control Nodes', () => {
     const treeContext = new TreeContext();
     const branchRules = rules([]);
     const ifRule = new If({
-      branches: [{ condition: bool(true), rules: branchRules }]
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      condition: bool(true), rules: branchRules as unknown as Node[]
     }, undefined, undefined, treeContext);
     const forRule = new For({
       pattern: { kind: 'single', value: vardecl({ name: any('item'), value: any('') }, { paramVar: true }) },
       iterable: { kind: 'node', value: list([any('a')]) },
-      rules: rules([])
+      rules: []
     }, undefined, undefined, treeContext);
     const whileRule = new While({
       condition: bool(false),
-      rules: rules([])
+      rules: []
     }, undefined, undefined, treeContext);
 
     expect(ifRule._treeContext).toBe(treeContext);
@@ -136,15 +150,10 @@ describe('Control Nodes', () => {
 
   it('serializes $if source syntax through toTrimmedString()', () => {
     const node = new If({
-      branches: [
-        {
-          condition: bool(true),
-          rules: rules([decl({ name: 'color', value: any('red') })])
-        },
-        {
-          rules: rules([decl({ name: 'color', value: any('blue') })])
-        }
-      ]
+      condition: bool(true),
+      rules: [decl({ name: 'color', value: any('red') })],
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      else: rules([decl({ name: 'color', value: any('blue') })]) as unknown as Rules
     });
 
     expect(node.toTrimmedString()).toBeString(`
@@ -156,18 +165,53 @@ describe('Control Nodes', () => {
     `);
   });
 
+  it('captures $if source syntax without outer whole-buffer readback', () => {
+    const writer = new WholeBufferCountingWriter();
+    const node = new If({
+      condition: bool(true),
+      rules: [decl({ name: 'color', value: any('red') })]
+    });
+
+    expect(node.toTrimmedString({ writer })).toBeString(`
+      $if (true) {
+        color: red;
+      }
+    `);
+    expect(writer.wholeBufferReads).toBe(1);
+  });
+
+  it('writes $if branch conditions without public toString transport', () => {
+    const conditionNode = bool(true);
+    const elseIfCondition = bool(false);
+    let conditionStringCalls = 0;
+    conditionNode.toString = () => {
+      conditionStringCalls++;
+      return '';
+    };
+    elseIfCondition.toString = () => {
+      conditionStringCalls++;
+      return '';
+    };
+    const node = new If({
+      condition: conditionNode,
+      rules: [decl({ name: 'color', value: any('red') })],
+      else: new If({
+        condition: elseIfCondition,
+        rules: [decl({ name: 'color', value: any('blue') })]
+      })
+    });
+
+    expect(node.toTrimmedString()).toContain('$else if (false)');
+    expect(conditionStringCalls).toBe(0);
+  });
+
   it('renders selected $if branch through direct render(context)', async () => {
     const context = new Context();
     const node = new If({
-      branches: [
-        {
-          condition: bool(true),
-          rules: rules([decl({ name: 'color', value: any('red') })])
-        },
-        {
-          rules: rules([decl({ name: 'color', value: any('blue') })])
-        }
-      ]
+      condition: bool(true),
+      rules: [decl({ name: 'color', value: any('red') })],
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      else: rules([decl({ name: 'color', value: any('blue') })]) as unknown as Rules
     });
 
     await expect(Promise.resolve(node.render(context))).resolves.toBe('color: red;');
@@ -181,15 +225,10 @@ describe('Control Nodes', () => {
       throw new Error('$if should evaluate condition booleans directly');
     };
     const node = new If({
-      branches: [
-        {
-          condition: condition([bool(true)]),
-          rules: rules([decl({ name: 'color', value: any('red') })])
-        },
-        {
-          rules: rules([decl({ name: 'color', value: any('blue') })])
-        }
-      ]
+      condition: condition([bool(true)]),
+      rules: [decl({ name: 'color', value: any('red') })],
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      else: rules([decl({ name: 'color', value: any('blue') })]) as unknown as Rules
     });
 
     try {
@@ -202,21 +241,15 @@ describe('Control Nodes', () => {
   it('keeps direct $if resolve(context) on source syntax without eval stamping', () => {
     const context = new Context();
     const node = new If({
-      branches: [
-        {
-          condition: bool(true),
-          rules: rules([decl({ name: 'color', value: any('red') })])
-        },
-        {
-          rules: rules([decl({ name: 'color', value: any('blue') })])
-        }
-      ]
+      condition: bool(true),
+      rules: [decl({ name: 'color', value: any('red') })],
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      else: rules([decl({ name: 'color', value: any('blue') })]) as unknown as Rules
     });
 
     const resolved = node.resolve(context);
 
     expect(resolved).toBe(node);
-    expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
@@ -228,6 +261,7 @@ describe('Control Nodes', () => {
     const originalSelectedRender = selectedRules.render;
     let selectedRulesRenderCalls = 0;
     let selectedRulesRenderBuffer: unknown;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     selectedRules.render = function countSelectedRulesRender(
       this: typeof selectedRules,
       ...args: Parameters<typeof originalSelectedRender>
@@ -235,21 +269,17 @@ describe('Control Nodes', () => {
       selectedRulesRenderCalls++;
       selectedRulesRenderBuffer = args[1];
       return originalSelectedRender.apply(this, args);
-    };
+    } as typeof selectedRules.render;
     const node = new If({
-      branches: [
-        {
-          condition: bool(false),
-          rules: rules([decl({ name: 'color', value: any('red') })])
-        },
-        {
-          condition: bool(true),
-          rules: selectedRules
-        },
-        {
-          rules: rules([decl({ name: 'color', value: any('green') })])
-        }
-      ]
+      condition: bool(false),
+      rules: [decl({ name: 'color', value: any('red') })],
+      else: new If({
+        condition: bool(true),
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        rules: selectedRules as unknown as Node[],
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        else: rules([decl({ name: 'color', value: any('green') })]) as unknown as Rules
+      })
     });
     node.resolve = () => {
       throw new Error('$if buffer render should use evalNode');
@@ -268,15 +298,10 @@ describe('Control Nodes', () => {
     const context = new Context();
     const root = rules([
       new If({
-        branches: [
-          {
-            condition: bool(false),
-            rules: rules([decl({ name: 'color', value: any('red') })])
-          },
-          {
-            rules: rules([decl({ name: 'color', value: any('green') })])
-          }
-        ]
+        condition: bool(false),
+        rules: [decl({ name: 'color', value: any('red') })],
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        else: rules([decl({ name: 'color', value: any('green') })]) as unknown as Rules
       })
     ]);
 
@@ -286,12 +311,8 @@ describe('Control Nodes', () => {
   it('resolves unmatched $if output as a generated empty rules surface', async () => {
     const context = new Context();
     const node = new If({
-      branches: [
-        {
-          condition: bool(false),
-          rules: rules([decl({ name: 'color', value: any('red') })])
-        }
-      ]
+      condition: bool(false),
+      rules: [decl({ name: 'color', value: any('red') })]
     });
 
     const resolved = await node.evalNode(context);
@@ -305,7 +326,6 @@ describe('Control Nodes', () => {
     expect(resolved._scopeFrame).toBeUndefined();
     expect(resolved.parent).toBeUndefined();
     expect(resolved.toTrimmedString()).toBe('');
-    expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
@@ -316,14 +336,10 @@ describe('Control Nodes', () => {
     const root = rules([
       ruleset({
         selector: sel([el('.a')]),
-        rules: rules([
+        rules: [
           new If({
-            branches: [
-              {
-                condition: bool(true),
-                rules: rules([decl({ name: 'color', value: any('red') })])
-              }
-            ]
+            condition: bool(true),
+            rules: [decl({ name: 'color', value: any('red') })]
           }),
           makeLoop(
             makePattern(['value'], 'single'),
@@ -338,9 +354,9 @@ describe('Control Nodes', () => {
               }),
               args: list([])
             }),
-            rules: rules([decl({ name: 'height', value: any('1px') })])
+            rules: [decl({ name: 'height', value: any('1px') })]
           })
-        ])
+        ]
       })
     ]);
 
@@ -370,6 +386,52 @@ describe('Control Nodes', () => {
     `);
   });
 
+  it('captures $for source syntax without outer whole-buffer readback', () => {
+    const writer = new WholeBufferCountingWriter();
+    const node = makeLoop(
+      makePattern(['value'], 'single'),
+      list([any('a'), any('b')]),
+      rules([decl({ name: 'item', value: ref({ key: 'value' }, { type: 'variable' }) })])
+    );
+
+    expect(node.toTrimmedString({ writer })).toBeString(`
+      $for ($value of a, b) {
+        item: $value;
+      }
+    `);
+    expect(writer.wholeBufferReads).toBe(1);
+  });
+
+  it('writes $for source header children without public toString transport', () => {
+    const firstPattern = vardecl({ name: any('first'), value: new Nil() }, { paramVar: true });
+    const secondPattern = vardecl({ name: any('second'), value: new Nil() }, { paramVar: true });
+    const start = any('1');
+    const end = any('5');
+    const step = any('2');
+    let stringCalls = 0;
+    for (const child of [firstPattern, secondPattern, start, end, step]) {
+      child.toString = () => {
+        stringCalls++;
+        return '';
+      };
+    }
+    const node = new For({
+      pattern: { kind: 'tuple', values: [firstPattern, secondPattern] },
+      iterable: {
+        kind: 'range',
+        start,
+        end,
+        step,
+        includeStart: true,
+        includeEnd: false
+      },
+      rules: []
+    });
+
+    expect(node.toTrimmedString()).toContain('$for ([$first, $second] of 1 to <5 step 2)');
+    expect(stringCalls).toBe(0);
+  });
+
   it('streams $for range bounds without capture scaffolding', () => {
     const singlePattern = makePattern(['value'], 'single');
     if (!(singlePattern instanceof VarDeclaration)) {
@@ -386,7 +448,7 @@ describe('Control Nodes', () => {
         includeStart: true,
         includeEnd: false
       },
-      rules: rules([])
+      rules: []
     });
 
     expect(node.toTrimmedString({ writer })).toContain('$for ($value of 1 to <5 step 2)');
@@ -419,7 +481,6 @@ describe('Control Nodes', () => {
 
     expect(resolved.toTrimmedString()).toContain('item: a');
     expect(resolved.toTrimmedString()).toContain('item: b');
-    expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
@@ -451,14 +512,13 @@ describe('Control Nodes', () => {
     expect(rendered).toContain('item: b');
     expect(buffer.segments.join('')).toBe(rendered);
     expect(resolveCalls).toBe(0);
-    expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
   });
 
   it('serializes $while source syntax through toTrimmedString()', () => {
     const node = new While({
       condition: bool(true),
-      rules: rules([decl({ name: 'color', value: any('red') })])
+      rules: [decl({ name: 'color', value: any('red') })]
     });
 
     expect(node.toTrimmedString()).toBeString(`
@@ -468,11 +528,42 @@ describe('Control Nodes', () => {
     `);
   });
 
+  it('captures $while source syntax without outer whole-buffer readback', () => {
+    const writer = new WholeBufferCountingWriter();
+    const node = new While({
+      condition: bool(true),
+      rules: [decl({ name: 'color', value: any('red') })]
+    });
+
+    expect(node.toTrimmedString({ writer })).toBeString(`
+      $while (true) {
+        color: red;
+      }
+    `);
+    expect(writer.wholeBufferReads).toBe(1);
+  });
+
+  it('writes $while condition syntax without public toString transport', () => {
+    const conditionNode = bool(true);
+    let conditionStringCalls = 0;
+    conditionNode.toString = () => {
+      conditionStringCalls++;
+      return '';
+    };
+    const node = new While({
+      condition: conditionNode,
+      rules: [decl({ name: 'color', value: any('red') })]
+    });
+
+    expect(node.toTrimmedString()).toContain('$while (true)');
+    expect(conditionStringCalls).toBe(0);
+  });
+
   it('renders false $while output through direct render(context)', async () => {
     const context = new Context();
     const node = new While({
       condition: bool(false),
-      rules: rules([decl({ name: 'color', value: any('red') })])
+      rules: [decl({ name: 'color', value: any('red') })]
     });
 
     await expect(Promise.resolve(node.render(context))).resolves.toBe('');
@@ -482,7 +573,7 @@ describe('Control Nodes', () => {
     const context = new Context();
     const node = new While({
       condition: bool(false),
-      rules: rules([decl({ name: 'color', value: any('red') })])
+      rules: [decl({ name: 'color', value: any('red') })]
     });
 
     const resolved = await node.resolve(context);
@@ -495,7 +586,6 @@ describe('Control Nodes', () => {
     expect(resolved._treeContext).toBeUndefined();
     expect(resolved._scopeFrame).toBeUndefined();
     expect(resolved.toTrimmedString()).toBe('');
-    expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
@@ -511,7 +601,7 @@ describe('Control Nodes', () => {
     };
     const node = new While({
       condition: bool(false),
-      rules: rules([colorDecl])
+      rules: [colorDecl]
     });
 
     await expect(Promise.resolve(node.render(context))).resolves.toBe('');
@@ -531,7 +621,7 @@ describe('Control Nodes', () => {
           }),
           args: list([])
         }),
-        rules: rules([decl({ name: 'color', value: any('red') })])
+        rules: [decl({ name: 'color', value: any('red') })]
       })
     ]);
 
@@ -552,7 +642,7 @@ describe('Control Nodes', () => {
           '<',
           num(3)
         ]),
-        rules: rules([
+        rules: [
           vardecl({
             name: 'i',
             value: op([
@@ -562,7 +652,7 @@ describe('Control Nodes', () => {
             ])
           }),
           decl({ name: 'tick', value: any('yes') })
-        ])
+        ]
       })
     ]);
 
@@ -582,7 +672,7 @@ describe('Control Nodes', () => {
           '<',
           num(3)
         ]),
-        rules: rules([
+        rules: [
           vardecl({
             name: 'i',
             value: op([
@@ -592,7 +682,7 @@ describe('Control Nodes', () => {
             ])
           }),
           decl({ name: 'tick', value: ref({ key: 'i' }, { type: 'variable' }) })
-        ])
+        ]
       }),
       makeLoop(
         makePattern(['value'], 'single'),
@@ -607,7 +697,7 @@ describe('Control Nodes', () => {
     expect(renderCss.trim()).toBe(evald.toTrimmedString().trim());
     expect(renderCss).toBeString(`
       tick: 1;
-      tick: 1;
+      tick: 2;
       tick: 2;
       item: a;
       item: b;
@@ -620,7 +710,7 @@ describe('Control Nodes', () => {
     const buffer = createRenderBuffer('flat');
     const node = new While({
       condition: bool(true),
-      rules: rules([
+      rules: [
         decl({
           name: 'color',
           value: call({
@@ -633,7 +723,7 @@ describe('Control Nodes', () => {
             args: list([])
           })
         })
-      ])
+      ]
     });
     context.rulesContext = scope;
 
@@ -653,7 +743,7 @@ describe('Control Nodes', () => {
         }),
         args: list([])
       }),
-      rules: rules([decl({ name: 'color', value: any('red') })])
+      rules: [decl({ name: 'color', value: any('red') })]
     });
     node.resolve = () => {
       throw new Error('$while buffer render should use evalNode');
@@ -682,9 +772,10 @@ describe('Control Nodes', () => {
       this: Rules,
       ...args: Parameters<typeof originalClone>
     ): ReturnType<typeof originalClone> {
-      if (this.value.some(node => (
+      if (this.rules.some(node => (
         node.type === 'Declaration'
-        && node.value?.name?.valueOf?.() === 'tick'
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        && (node as any).name?.valueOf?.() === 'tick'
       ))) {
         clonedLoopRules++;
       }
@@ -704,7 +795,8 @@ describe('Control Nodes', () => {
           }),
           args: list([])
         }),
-        rules: loopRules
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        rules: loopRules as unknown as Node[]
       });
 
       const css = await Promise.resolve(node.render(context, buffer));
@@ -720,11 +812,11 @@ describe('Control Nodes', () => {
 
   it('reuses childless source-free scalar leaves in $while per-iteration body copies', async () => {
     const context = new Context();
-    const originalCopy = Any.prototype.copy;
+    const originalCopy = Any.prototype.cloneForPlacement;
     const originalClone = Any.prototype.clone;
     let scalarCopies = 0;
     let scalarClones = 0;
-    Any.prototype.copy = function copyForCounting(
+    Any.prototype.cloneForPlacement = function copyForCounting(
       this: Any,
       ...args: Parameters<typeof originalCopy>
     ): ReturnType<typeof originalCopy> {
@@ -753,9 +845,9 @@ describe('Control Nodes', () => {
           }),
           args: list([])
         }),
-        rules: rules([
+        rules: [
           decl({ name: 'color', value: any('red') })
-        ])
+        ]
       });
 
       const css = await Promise.resolve(node.render(context, createRenderBuffer('flat')));
@@ -768,7 +860,7 @@ describe('Control Nodes', () => {
       expect(scalarCopies).toBe(0);
       expect(scalarClones).toBe(0);
     } finally {
-      Any.prototype.copy = originalCopy;
+      Any.prototype.cloneForPlacement = originalCopy;
       Any.prototype.clone = originalClone;
     }
   });
@@ -792,7 +884,8 @@ describe('Control Nodes', () => {
         }),
         args: list([])
       }),
-      rules: loopRules
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      rules: loopRules as unknown as Node[]
     });
 
     const css = await Promise.resolve(node.render(context, createRenderBuffer('flat')));
@@ -833,7 +926,8 @@ describe('Control Nodes', () => {
         }),
         args: list([])
       }),
-      rules: loopRules
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      rules: loopRules as unknown as Node[]
     });
 
     const css = await Promise.resolve(node.render(context, createRenderBuffer('flat')));
@@ -878,7 +972,8 @@ describe('Control Nodes', () => {
         }),
         args: list([])
       }),
-      rules: loopRules
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      rules: loopRules as unknown as Node[]
     });
 
     const css = await Promise.resolve(node.render(context, createRenderBuffer('flat')));
@@ -905,7 +1000,8 @@ describe('Control Nodes', () => {
         }),
         args: list([])
       }),
-      rules: renderRules
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      rules: renderRules as unknown as Node[]
     });
 
     const rendered = await Promise.resolve(renderNode.render(renderContext, renderBuffer));
@@ -930,7 +1026,8 @@ describe('Control Nodes', () => {
           }),
           args: list([])
         }),
-        rules: evalRules
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        rules: evalRules as unknown as Node[]
       })
     ]);
 
@@ -949,7 +1046,7 @@ describe('Control Nodes', () => {
     const root = rules([
       new While({
         condition: bool(true),
-        rules: rules([decl({ name: 'color', value: any('red') })])
+        rules: [decl({ name: 'color', value: any('red') })]
       })
     ]);
 
@@ -958,14 +1055,14 @@ describe('Control Nodes', () => {
 
   it('adopts $while condition and rules as children', () => {
     const condition = bool(true);
-    const body = rules([decl({ name: 'color', value: any('red') })]);
+    const decl1 = decl({ name: 'color', value: any('red') });
     const node = new While({
       condition,
-      rules: body
+      rules: [decl1]
     });
 
     expect(condition.parent).toBe(node);
-    expect(body.parent).toBe(node);
+    expect(decl1.parent).toBe(node);
   });
 
   it('evaluates $for with block pattern + expression iterable', async () => {
@@ -1015,9 +1112,9 @@ describe('Control Nodes', () => {
     const loopRules = rules([
       ruleset({
         selector: el('.col'),
-        rules: rules([
+        rules: [
           decl({ name: 'width', value: ref({ key: 'value' }, { type: 'variable' }) })
-        ])
+        ]
       })
     ]);
     root.push(makeLoop(makePattern(['value', 'key', 'index']), iterableCall, loopRules));
@@ -1034,7 +1131,7 @@ describe('Control Nodes', () => {
       decl({ name: 'one', value: new Any('red') }),
       ruleset({
         selector: sel([el('.skip')]),
-        rules: rules([decl({ name: 'x', value: new Any('nope') })])
+        rules: [decl({ name: 'x', value: new Any('nope') })]
       }),
       decl({ name: 'two', value: new Any('blue') })
     ]);
@@ -1109,7 +1206,7 @@ describe('Control Nodes', () => {
       throw new Error('Expected loop output to be Rules');
     }
     expect(loopOutput).not.toBe(loopRules);
-    expect(loopOutput.value).toEqual([]);
+    expect(loopOutput.rules).toEqual([]);
     expect(loopOutput.location).toHaveLength(0);
     expect(loopOutput.options.local).toBeUndefined();
     expect(loopOutput._scopeFrame).toBeUndefined();
@@ -1167,9 +1264,10 @@ describe('Control Nodes', () => {
       const [deep] = args;
       if (
         deep === false
-        && this.value.some(node => (
+        && this.rules.some(node => (
           node.type === 'Declaration'
-          && node.value?.name?.valueOf?.() === 'marker'
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+          && (node as any).name?.valueOf?.() === 'marker'
         ))
       ) {
         shallowMarkerBodyClones++;
@@ -1201,7 +1299,7 @@ describe('Control Nodes', () => {
 
     const evald = await root.eval(context);
     const loopOutput = evald.at(0);
-    const firstChild = loopOutput instanceof Rules ? loopOutput.value[0] : undefined;
+    const firstChild = loopOutput instanceof Rules ? loopOutput.rules[0] : undefined;
 
     expect(loopOutput).toBeInstanceOf(Rules);
     if (!(loopOutput instanceof Rules)) {
@@ -1220,9 +1318,10 @@ describe('Control Nodes', () => {
       this: Rules,
       ...args: Parameters<typeof originalClone>
     ): ReturnType<typeof originalClone> {
-      if (this.value.some(node => (
+      if (this.rules.some(node => (
         node.type === 'Declaration'
-        && node.value?.name?.valueOf?.() === 'item'
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        && (node as any).name?.valueOf?.() === 'item'
       ))) {
         clonedLoopRules++;
       }
@@ -1261,7 +1360,7 @@ describe('Control Nodes', () => {
       throw new Error('Expected loop output to be Rules');
     }
     expect(loopOutput).not.toBe(loopRules);
-    expect(loopOutput.value).toHaveLength(2);
+    expect(loopOutput.rules).toHaveLength(2);
     expect(loopOutput.location).toHaveLength(0);
     expect(loopOutput.options.local).toBeUndefined();
     expect(loopOutput._scopeFrame).toBeUndefined();
@@ -1289,7 +1388,7 @@ describe('Control Nodes', () => {
     if (!(loopOutput instanceof Rules)) {
       throw new Error('Expected loop output to be Rules');
     }
-    expect(loopOutput.value).toHaveLength(2);
+    expect(loopOutput.rules).toHaveLength(2);
     expect(loopOutput.functionsByName).toBeUndefined();
   });
 
@@ -1316,8 +1415,10 @@ describe('Control Nodes', () => {
   it('resolves $for iteration vars via ScopeFrame live slots without declaration lookup', async () => {
     const context = new Context();
     const declarationLookupHits: string[] = [];
-    const originalFind = Rules.prototype.find;
-    Rules.prototype.find = function(...args: Parameters<typeof originalFind>) {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const originalFind = (Rules.prototype as any).find;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    (Rules.prototype as any).find = function(...args: unknown[]) {
       const [type, key] = args;
       if (
         type === 'declaration'
@@ -1326,7 +1427,7 @@ describe('Control Nodes', () => {
       ) {
         declarationLookupHits.push(key);
       }
-      return originalFind.apply(this, args);
+      return typeof originalFind === 'function' ? originalFind.apply(this, args) : undefined;
     };
 
     try {
@@ -1336,7 +1437,8 @@ describe('Control Nodes', () => {
       expect(css).toContain('item: b');
       expect(declarationLookupHits).toEqual([]);
     } finally {
-      Rules.prototype.find = originalFind;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (Rules.prototype as any).find = originalFind;
     }
   });
 
@@ -1505,9 +1607,9 @@ describe('Control Nodes', () => {
           source: `.col-${INTERPOLATION_PLACEHOLDER}`,
           replacements: [ref({ key: 'value' }, { type: 'variable' })]
         })),
-        rules: rules([
+        rules: [
           decl({ name: 'width', value: ref({ key: 'value' }, { type: 'variable' }) })
-        ])
+        ]
       }),
       ruleset({
         selector: sel([
@@ -1520,9 +1622,9 @@ describe('Control Nodes', () => {
           co('+'),
           el('*')
         ]),
-        rules: rules([
+        rules: [
           decl({ name: 'gap', value: ref({ key: 'value' }, { type: 'variable' }) })
-        ])
+        ]
       })
     ]);
     const root = rules([makeLoop(makePattern(['value'], 'single'), list([new Any('a'), new Any('b')]), loopRules)]);
@@ -1541,11 +1643,11 @@ describe('Control Nodes', () => {
 
   it('binds source-free scalar $for values without copying or cloning them first', async () => {
     const context = new Context();
-    const originalCopy = Any.prototype.copy;
+    const originalCopy = Any.prototype.cloneForPlacement;
     const originalClone = Any.prototype.clone;
     let scalarCopies = 0;
     let scalarClones = 0;
-    Any.prototype.copy = function copyForCounting(
+    Any.prototype.cloneForPlacement = function copyForCounting(
       this: Any,
       ...args: Parameters<typeof originalCopy>
     ): ReturnType<typeof originalCopy> {
@@ -1576,7 +1678,7 @@ describe('Control Nodes', () => {
       expect(scalarCopies).toBe(0);
       expect(scalarClones).toBe(0);
     } finally {
-      Any.prototype.copy = originalCopy;
+      Any.prototype.cloneForPlacement = originalCopy;
       Any.prototype.clone = originalClone;
     }
   });
@@ -1591,7 +1693,9 @@ describe('Control Nodes', () => {
       }
     });
     const ifNode = new If({
-      branches: [{ condition: new Any('true', { role: 'any' }), rules: privateRules }]
+      condition: new Any('true', { role: 'any' }),
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      rules: privateRules as unknown as Node[]
     });
     const singlePattern = makePattern(['value'], 'single');
     if (!(singlePattern instanceof VarDeclaration)) {
@@ -1600,6 +1704,7 @@ describe('Control Nodes', () => {
     const forNode = new For({
       pattern: { kind: 'single', value: singlePattern },
       iterable: { kind: 'node', value: list([new Any('a')]) },
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       rules: rules([], {
         rulesVisibility: {
           Declaration: 'private',
@@ -1607,10 +1712,11 @@ describe('Control Nodes', () => {
           VarDeclaration: 'private',
           Mixin: 'private'
         }
-      })
+      }) as unknown as Node[]
     });
     const whileNode = new While({
       condition: new Any('true', { role: 'any' }),
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       rules: rules([], {
         rulesVisibility: {
           Declaration: 'private',
@@ -1618,20 +1724,20 @@ describe('Control Nodes', () => {
           VarDeclaration: 'private',
           Mixin: 'private'
         }
-      })
+      }) as unknown as Node[]
     });
-    expect(ifNode.branches[0]!.rules.options.rulesVisibility.Declaration).toBe('public');
-    expect(ifNode.branches[0]!.rules.options.rulesVisibility.Ruleset).toBe('public');
-    expect(ifNode.branches[0]!.rules.options.rulesVisibility.VarDeclaration).toBe('public');
-    expect(ifNode.branches[0]!.rules.options.rulesVisibility.Mixin).toBe('public');
-    expect(forNode.rules.options.rulesVisibility.Declaration).toBe('public');
-    expect(forNode.rules.options.rulesVisibility.Ruleset).toBe('public');
-    expect(forNode.rules.options.rulesVisibility.VarDeclaration).toBe('public');
-    expect(forNode.rules.options.rulesVisibility.Mixin).toBe('public');
-    expect(whileNode.rules.options.rulesVisibility.Declaration).toBe('public');
-    expect(whileNode.rules.options.rulesVisibility.Ruleset).toBe('public');
-    expect(whileNode.rules.options.rulesVisibility.VarDeclaration).toBe('public');
-    expect(whileNode.rules.options.rulesVisibility.Mixin).toBe('public');
+    expect(ifNode.options.rulesVisibility.Declaration).toBe('public');
+    expect(ifNode.options.rulesVisibility.Ruleset).toBe('public');
+    expect(ifNode.options.rulesVisibility.VarDeclaration).toBe('public');
+    expect(ifNode.options.rulesVisibility.Mixin).toBe('public');
+    expect(forNode.options.rulesVisibility.Declaration).toBe('public');
+    expect(forNode.options.rulesVisibility.Ruleset).toBe('public');
+    expect(forNode.options.rulesVisibility.VarDeclaration).toBe('public');
+    expect(forNode.options.rulesVisibility.Mixin).toBe('public');
+    expect(whileNode.options.rulesVisibility.Declaration).toBe('public');
+    expect(whileNode.options.rulesVisibility.Ruleset).toBe('public');
+    expect(whileNode.options.rulesVisibility.VarDeclaration).toBe('public');
+    expect(whileNode.options.rulesVisibility.Mixin).toBe('public');
   });
 
   it('keeps nested eval state isolated across mixin calls and $for iterations', async () => {
@@ -1641,13 +1747,14 @@ describe('Control Nodes', () => {
 
     const loopRules = rules([
       decl({
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         name: interpolated({
           source: `${INTERPOLATION_PLACEHOLDER}-${INTERPOLATION_PLACEHOLDER}`,
           replacements: [
             ref({ key: 'prefix' }, { type: 'variable' }),
             ref({ key: 'index' }, { type: 'variable' })
           ]
-        }, { role: 'property' }),
+        }, { role: 'property' as const }) as unknown as Any<'property'>,
         value: ref({ key: 'value' }, { type: 'variable' })
       })
     ]);
@@ -1657,7 +1764,7 @@ describe('Control Nodes', () => {
       params: list([
         any('prefix', { role: 'property' })
       ]),
-      rules: rules([
+      rules: [
         new For({
           pattern: {
             kind: 'tuple',
@@ -1680,30 +1787,31 @@ describe('Control Nodes', () => {
             kind: 'node',
             value: list([new Any('one'), new Any('two')])
           },
-          rules: loopRules
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+          rules: loopRules as unknown as Node[]
         })
-      ])
+      ]
     });
 
     const root = rules([
       loopMixin,
       ruleset({
         selector: sel([el('.a')]),
-        rules: rules([
+        rules: [
           call({
             name: ref({ key: '.loop' }, { type: 'mixin' }),
             args: list([new Any('a')])
           })
-        ])
+        ]
       }),
       ruleset({
         selector: sel([el('.b')]),
-        rules: rules([
+        rules: [
           call({
             name: ref({ key: '.loop' }, { type: 'mixin' }),
             args: list([new Any('b')])
           })
-        ])
+        ]
       })
     ]);
     context.root = root;

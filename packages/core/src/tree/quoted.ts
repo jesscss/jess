@@ -27,6 +27,8 @@ export interface Quoted extends Node<string | Any | Interpolated, QuotedOptions>
 export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
   static override childKeys = ['value'] as const;
 
+  declare readonly value: string | Any | Interpolated;
+
   readonly quote: '"' | '\'' | undefined;
   readonly escaped: boolean;
 
@@ -114,7 +116,7 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
     const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
     const prepared = buffer
       ? prepareBufferPrintState(context, options)
-      : prepareRenderPrintState(context, bufferOrOptions);
+      : prepareRenderPrintState(context, isRenderBuffer(bufferOrOptions) ? undefined : bufferOrOptions);
     const out = this.renderQuotedSyntax(value, prepared);
     return buffer
       ? writeRenderText(buffer, out)

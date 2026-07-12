@@ -6,6 +6,7 @@ import { Node, defineType, type LocationInfo, type NodeOptions, F_STATIC } from 
 import type { Context } from '../context.js';
 import { type MaybePromise } from '@jesscss/awaitable-pipe';
 import type { FinalPrintOptions, PrintOptions } from './util/print.js';
+import { normalizeComparableText } from './util/compare.js';
 
 export type AnyRole =
   'ident'
@@ -26,6 +27,7 @@ export type AnyOptions<T extends string> = NodeOptions & {
   role?: T;
 };
 
+// AUDIT: Do we still need this? Now that we're storing strings?
 export interface Any<
   Role extends AnyRole = AnyRole
 > extends Node<string, AnyOptions<Role>> {
@@ -46,6 +48,8 @@ export class Any<
   Role extends AnyRole = AnyRole
 > extends Node<string, AnyOptions<Role>> {
   static override childKeys = null;
+
+  declare readonly value: string;
 
   readonly role: Role | undefined;
 
@@ -108,8 +112,7 @@ export class Any<
       }
       return Number(text) === otherNumber ? 0 : undefined;
     }
-    const normalize = (s: string) => s.replace(/;\s*/g, ', ').replace(/\s+/g, ' ').trim();
-    return normalize(this.toString()) === normalize(other.toString()) ? 0 : undefined;
+    return normalizeComparableText(this.value) === normalizeComparableText(other.toString()) ? 0 : undefined;
   }
 }
 

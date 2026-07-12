@@ -14,10 +14,10 @@ const merge = defineFunction(
   'merge',
   function(this: FunctionThis, map1: Collection, map2: Collection): Collection {
     // Start with all declarations from map1
-    const newRules = [...map1.value];
+    const newRules = [...map1.rules];
 
     // Add declarations from map2, overwriting any with the same key
-    for (const node of map2.value) {
+    for (const node of map2.rules) {
       if (isNode(node, N.Declaration)) {
         const keyStr = String(node.name.valueOf());
 

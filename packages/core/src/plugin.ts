@@ -1,4 +1,5 @@
 import type { Rules } from './tree/rules.js';
+import type { ImportOptions } from './tree/import-style.js';
 import type { Context } from './context.js';
 import { join, isAbsolute, resolve } from 'node:path';
 import { existsSync } from 'node:fs';
@@ -30,6 +31,11 @@ export type ISafeParseResult = {
    * Always an array (empty if no warnings).
    */
   warnings: WarningDiagnostic[];
+};
+
+export type SafeParseOptions = {
+  compilerOptions?: Record<string, unknown>;
+  importOptions?: ImportOptions;
 };
 
 export interface PluginInterface {
@@ -86,7 +92,7 @@ export interface PluginInterface {
   parse?(filePath: string, source: string): Rules;
 
   /** No errors thrown; instead will return errors in the result */
-  safeParse?(filePath: string, source: string): ISafeParseResult;
+  safeParse?(filePath: string, source: string, options?: SafeParseOptions): ISafeParseResult;
 
   /** If this method exists, then the plugin can return a JS module / object */
   import?(absoluteFilePath: string): Promise<Record<string, any>>;

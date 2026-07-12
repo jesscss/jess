@@ -4,6 +4,12 @@ import { defineType, F_STATIC, type Node } from './node.js';
 import { Sequence } from './sequence.js';
 import { Paren } from './paren.js';
 import { Condition } from './condition.js';
+import { Operation } from './operation.js';
+import { Any, Anonymous, Keyword } from './any.js';
+import { Bool } from './bool.js';
+import { Color } from './color.js';
+import { Dimension } from './dimension.js';
+import { Num } from './number.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import {
   isRenderBuffer,
@@ -11,6 +17,86 @@ import {
   type RenderBuffer,
   writeRenderText
 } from './util/render-buffer.js';
+
+function getKnownQueryConditionSourceText(node: Node | string): string | undefined {
+  if (typeof node === 'string') {
+    return node;
+  }
+  if (node instanceof Any) {
+    return node.value;
+  }
+  if (node instanceof Dimension) {
+    return `${node.number}${node.unit ?? ''}`;
+  }
+  if (node instanceof Num) {
+    return `${node.number}`;
+  }
+  if (node instanceof Bool) {
+    return node.value ? 'true' : 'false';
+  }
+  if (node instanceof Color) {
+    return typeof node.node === 'string' ? node.node : undefined;
+  }
+  if (node.constructor === QueryCondition) {
+    const qc = node as QueryCondition;
+    const parts = new Array(qc.value.length);
+    for (let i = 0; i < qc.value.length; i++) {
+      const text = getKnownQueryConditionSourceText(qc.value[i]!);
+      if (text === undefined) {
+        return undefined;
+      }
+      parts[i] = text;
+    }
+    return parts.join(' ');
+  }
+  if (node.constructor === Paren) {
+    const paren = node as Paren;
+    const open = paren.options?.delimiter === 'square' ? '[' : '(';
+    const close = paren.options?.delimiter === 'square' ? ']' : ')';
+    if (!paren.value) {
+      return `${paren.options?.escaped ? '~' : ''}${open}${close}`;
+    }
+    const value = getKnownQueryConditionSourceText(paren.value);
+    if (value === undefined) {
+      return undefined;
+    }
+    return `${paren.options?.escaped ? '~' : ''}${open}${value}${close}`;
+  }
+  if (node.constructor === Condition) {
+    const cond = node as Condition;
+    const left = getKnownQueryConditionSourceText(cond.left);
+    if (left === undefined) {
+      return undefined;
+    }
+    const needsParens = Boolean(cond.right || cond.negate);
+    let out = cond.negate ? 'not ' : '';
+    if (needsParens) {
+      out += '(';
+    }
+    out += left;
+    if (cond.operator && cond.right) {
+      const right = getKnownQueryConditionSourceText(cond.right);
+      if (right === undefined) {
+        return undefined;
+      }
+      out += ` ${cond.operator} ${right}`;
+    }
+    if (needsParens) {
+      out += ')';
+    }
+    return out;
+  }
+  if (node.constructor === Operation) {
+    const op = node as Operation;
+    const left = getKnownQueryConditionSourceText(op.left);
+    const right = getKnownQueryConditionSourceText(op.right);
+    if (left === undefined || right === undefined) {
+      return undefined;
+    }
+    return `${left} ${op.operator} ${right}`;
+  }
+  return undefined;
+}
 
 /**
  * Used by `@media`, `@supports`, and `@container`
@@ -21,7 +107,7 @@ import {
  * @todo - add more structure?
  */
 export class QueryCondition extends Sequence {
-  static override childKeys = ['items'] as const;
+  static override childKeys = ['value'] as const;
 
   /**
    * Fast-path only node classes whose source syntax writer is known to be
@@ -37,8 +123,8 @@ export class QueryCondition extends Sequence {
    * Remove this whitelist when every node type that can appear in parser-owned
    * query conditions has a direct `writeSyntax` contract. At that point
    * `writeStaticChild` can call `node.writeSyntax(options)` unconditionally and
-   * the fallback tests below should be deleted or moved to a cold extension
-   * compatibility path.
+   * the compatibility-lane tests below should be deleted or moved to a cold
+   * extension compatibility path.
    */
   private canWriteStaticChildDirect(node: Node): boolean {
     return (
@@ -52,35 +138,66 @@ export class QueryCondition extends Sequence {
       || node.constructor === QueryCondition
       || node.constructor === Paren
       || node.constructor === Condition
+      || node.constructor === Operation
     );
   }
 
   /**
-   * Static query syntax writer with a temporary fallback for custom/subclassed
-   * nodes that may not yet participate in the direct writer contract.
+   * Static query syntax writer with a temporary compatibility lane for
+   * custom/subclassed nodes that may not yet participate in the direct writer
+   * contract.
    *
-   * The fallback exists only to keep custom overrides, such as a subclassed
-   * `Paren.writeSyntax`, correct while the node family migration is incomplete.
-   * It intentionally performs a small writer readback for unknown static
-   * children, so those children must not be normalized into the fast path until
-   * their concrete class owns direct syntax output.
+   * This compatibility lane exists only to keep custom overrides, such as a
+   * subclassed `Paren.writeSyntax`, correct while the node family migration is
+   * incomplete. It intentionally keeps a localized ownership check for unknown
+   * static children, so those children must not be normalized into the fast
+   * path until their concrete class owns direct syntax output.
    *
    * Expected deletion condition: once query-condition child types no longer use
    * inherited/default `Node.writeSyntax` for real source syntax, delete
-   * `canWriteStaticChildDirect`, delete this fallback branch, and make this
-   * method a straight `node.writeSyntax(options)` call.
+   * `canWriteStaticChildDirect`, delete this compatibility branch, and make
+   * this method a straight `node.writeSyntax(options)` call.
    */
-  private writeStaticChild(node: Node, options: FinalPrintOptions): void {
+  private writeStaticChild(node: Node | string, options: FinalPrintOptions): void {
+    // A query condition's value may hold plain strings for the feature name and
+    // comparison operator (e.g. ['width', '>', <Dimension>]) — write them verbatim.
+    if (typeof node === 'string') {
+      options.writer.add(node);
+      return;
+    }
     if (this.canWriteStaticChildDirect(node)) {
       node.writeSyntax(options);
       return;
     }
-    const mark = options.writer.mark();
+    const before = options.writer.position();
     node.writeSyntax(options);
-    const text = options.writer.getSince(mark);
-    if (text === '') {
+    if (options.writer.position() === before) {
       node.toTrimmedString(options);
     }
+  }
+
+  /**
+   * Dynamic query children can only skip the localized writer readback when
+   * their concrete render contract is known to return the same text they emit.
+   *
+   * Keep this exact-constructor whitelist narrow so custom subclasses and
+   * instance-owned render overrides continue to use localized active-writer
+   * recovery when they write different text than they return.
+   */
+  private canTrustDynamicChildRenderText(node: Node): boolean {
+    return (
+      node.constructor === Any
+      || node.constructor === Anonymous
+      || node.constructor === Keyword
+      || node.constructor === Dimension
+      || node.constructor === Num
+      || node.constructor === Bool
+      || node.constructor === Color
+      || node.constructor === QueryCondition
+      || node.constructor === Paren
+      || node.constructor === Condition
+      || node.constructor === Operation
+    );
   }
 
   private writeQueryConditionSyntax(value: Node[], options: FinalPrintOptions): void {
@@ -105,8 +222,8 @@ export class QueryCondition extends Sequence {
     }
   }
 
-  private renderQueryConditionSyntax(value: Node[], options?: PrintOptions, context?: Context): string | MaybePromise<string> {
-    options = getPrintOptions(options);
+  private renderQueryConditionSyntax(value: Node[], rawOptions?: PrintOptions, context?: Context): string | MaybePromise<string> {
+    const options = getPrintOptions(rawOptions);
     const w = options.writer;
     const length = value.length;
 
@@ -120,18 +237,21 @@ export class QueryCondition extends Sequence {
       return w.getSince(mark);
     }
 
+    let out = '';
     for (let i = 0; i < length; i++) {
       if (i > 0) {
         w.add(' ');
+        out += ' ';
       }
       const rendered = this.renderQueryConditionChild(value[i]!, options, context);
       if (isThenable(rendered)) {
         return (rendered as Promise<string | void>)
-          .then(() => this.renderQueryConditionRest(value, options, context, i + 1));
+          .then(text => this.renderQueryConditionRest(value, options, context, i + 1, out + (text ?? '')));
       }
+      out += rendered ?? '';
     }
 
-    return w.toString();
+    return out;
   }
 
   private renderQueryConditionChild(
@@ -146,10 +266,10 @@ export class QueryCondition extends Sequence {
       try {
         const rendered = node.render(context, options);
         if (isThenable(rendered)) {
-          const before = w.mark();
+          const before = w.position();
           return rendered.then(
             (out) => {
-              if (!w.hasContentSince(before)) {
+              if (w.position() === before) {
                 w.add(out);
               } else {
                 return w.getSince(before);
@@ -169,8 +289,9 @@ export class QueryCondition extends Sequence {
       }
     }
 
-    const before = w.mark();
+    const before = w.position();
     let asyncOut = false;
+    const canTrustText = this.canTrustDynamicChildRenderText(node);
     try {
       const out = node.render(context, options);
       if (isThenable(out)) {
@@ -179,6 +300,8 @@ export class QueryCondition extends Sequence {
           (rendered) => {
             if (w.position() === before) {
               w.add(rendered);
+            } else if (!canTrustText) {
+              return w.getSince(before);
             }
             options.suppressBoundaryTrivia = saved;
             return rendered;
@@ -190,9 +313,9 @@ export class QueryCondition extends Sequence {
         );
       }
       if (typeof out === 'string') {
-        if (!w.hasContentSince(before)) {
+        if (w.position() === before) {
           w.add(out);
-        } else {
+        } else if (!canTrustText) {
           return w.getSince(before);
         }
       }
@@ -209,39 +332,47 @@ export class QueryCondition extends Sequence {
     value: Node[],
     options: FinalPrintOptions,
     context: Context,
-    start: number
+    start: number,
+    out: string
   ): Promise<string> {
     const w = options.writer;
     const length = value.length;
     for (let i = start; i < length; i++) {
       if (i > 0) {
         w.add(' ');
+        out += ' ';
       }
-      await this.renderQueryConditionChild(value[i]!, options, context);
+      out += (await this.renderQueryConditionChild(value[i]!, options, context)) ?? '';
     }
-    return w.toString();
+    return out;
   }
 
   /** @internal */
   override writeSyntax(options: FinalPrintOptions): void {
-    this.writeQueryConditionSyntax(this.items, options);
+    this.writeQueryConditionSyntax(this.value, options);
   }
 
   override toTrimmedString(options?: PrintOptions): string {
-    if (this.items.length === 0) {
+    if (this.value.length === 0) {
       return '';
     }
     const printOptions = getPrintOptions(options);
-    const mark = printOptions.writer.mark();
+    if (!printOptions.trivia) {
+      const out = getKnownQueryConditionSourceText(this);
+      if (out !== undefined) {
+        printOptions.writer.add(out, this);
+        return out;
+      }
+    }
+    const position = printOptions.writer.position();
     this.writeSyntax(printOptions);
-    return printOptions.writer.getSince(mark);
+    return printOptions.writer.getSince(position);
   }
 
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
-    const printOptions = buffer ? options : bufferOrOptions;
     const sharesWriter = Boolean(buffer && 'shareWriter' in buffer && buffer.shareWriter);
     const prepared = buffer
       ? sharesWriter
@@ -252,19 +383,29 @@ export class QueryCondition extends Sequence {
               : new OutputWriter(false, buffer.kind === 'flat' ? buffer.parts : undefined)
           })
         : prepareBufferPrintState(context, options)
-      : prepareRenderPrintState(context, printOptions);
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      : prepareRenderPrintState(context, buffer ? undefined : bufferOrOptions as PrintOptions | undefined);
     if (this.hasFlag(F_STATIC)) {
-      this.writeQueryConditionSyntax(this.items, prepared);
-      const rendered = sharesWriter
-        ? buffer!.kind === 'flat'
-          ? buffer!.parts.join('')
-          : prepared.writer.toString()
-        : prepared.writer.toString();
+      const directText = !prepared.trivia ? getKnownQueryConditionSourceText(this) : undefined;
+      if (directText !== undefined) {
+        if (buffer) {
+          if (sharesWriter) {
+            this.writeQueryConditionSyntax(this.value, prepared);
+            return directText;
+          }
+          return writeRenderText(buffer, directText);
+        }
+        prepared.writer.add(directText, this);
+        return directText;
+      }
+      const position = prepared.writer.position();
+      this.writeQueryConditionSyntax(this.value, prepared);
+      const rendered = prepared.writer.getSince(position);
       return buffer
         ? sharesWriter ? rendered : writeRenderText(buffer, rendered)
         : rendered;
     }
-    const rendered = this.renderQueryConditionSyntax(this.items, prepared, context);
+    const rendered = this.renderQueryConditionSyntax(this.value, prepared, context);
     if (isThenable(rendered)) {
       return buffer
         ? (rendered as Promise<string>).then(out => writeRenderText(buffer, out))

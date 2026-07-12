@@ -31,4 +31,3 @@ describe('qualifiedRuleBody', () => {
     expect(errors.length).toBe(0);
   });
 });
-

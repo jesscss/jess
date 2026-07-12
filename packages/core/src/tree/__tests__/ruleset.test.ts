@@ -1,17 +1,22 @@
-import { rules, sellist, sel, el, decl, ruleset, spaced, any, interpolated, F_MAY_ASYNC, BasicSelector, Nil, atrule, vardecl, Rules as RulesClass, Condition, condition, bool, comment, ref } from '../index.js';
+import { rules, sellist, sel, el, decl, ruleset, spaced, any, interpolated, F_MAY_ASYNC, BasicSelector, Nil, atrule, vardecl, Rules as RulesClass, Condition, condition, bool, comment, ref, pseudo } from '../index.js';
+import type { ComplexSelectorComponent } from '../selector-complex.js';
 import { Context } from '../../context.js';
 import { F_EXTENDED, F_EXTEND_TARGET, F_VISIBLE } from '../node.js';
 import { getPrintOptions, OutputWriter } from '../util/print.js';
 import { serializeRulesContainer } from '../util/serialize-helper.js';
 import { INTERPOLATION_PLACEHOLDER } from '../interpolated.js';
 import { createRenderBuffer, renderNodeToString } from '../util/render-buffer.js';
+import { Ruleset } from '../ruleset.js';
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
 
 let context: Context;
 
 class CountingWriter extends OutputWriter {
   captures = 0;
+  marks = 0;
   previews = 0;
+  reads = 0;
+  restores = 0;
   trimEnds = 0;
 
   override capture(fn: () => void): string {
@@ -23,7 +28,23 @@ class CountingWriter extends OutputWriter {
   override preview(fn: () => Promise<string | void>, preserveSegments?: boolean): Promise<string>;
   override preview(fn: () => MaybePromise<string | void>, preserveSegments?: boolean): MaybePromise<string> {
     this.previews++;
-    return super.preview(fn, preserveSegments);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    return super.preview(fn as () => string | void, preserveSegments) as MaybePromise<string>;
+  }
+
+  override mark(): number {
+    this.marks++;
+    return super.mark();
+  }
+
+  override getSince(mark: number): string {
+    this.reads++;
+    return super.getSince(mark);
+  }
+
+  override restore(mark: number): void {
+    this.restores++;
+    super.restore(mark);
   }
 
   override trimEndSince(mark: number): void {
@@ -36,13 +57,31 @@ describe('Rule', () => {
   beforeEach(() => {
     context = new Context();
   });
+
+  it('keeps direct-field containers off the legacy base value payload', () => {
+    const node = ruleset({
+      selector: sel([el('.box')]),
+      rules: []
+    });
+    const media = atrule({
+      name: any('media'),
+      prelude: any('screen'),
+      rules: []
+    });
+    const leaf = any('red');
+
+    expect('value' in node).toBe(false);
+    expect('value' in media).toBe(false);
+    expect('value' in leaf).toBe(true);
+  });
+
   it('should serialize to CSS', async () => {
     let node = ruleset({
       selector: sellist([sel([el('foo')])]),
-      rules: rules([
+      rules: [
         decl({ name: 'border', value: spaced([any('1px'), any('solid'), any('black')]) }),
         decl({ name: 'color', value: any('#eee') })
-      ])
+      ]
     });
     let nodes = rules([node, node]);
     expect(nodes.toTrimmedString()).toBeString(`
@@ -55,27 +94,19 @@ describe('Rule', () => {
     `);
   });
 
-  it('renders unique declarations at emission time instead of duplicate-cache pre-render', () => {
+  it('renders unique declarations at emission time without duplicate-cache pre-render or public string transport', () => {
     const writer = new CountingWriter();
     const colorDecl = decl({ name: 'color', value: any('red') });
     const sizeDecl = decl({ name: 'font-size', value: any('12px') });
-    const originalToTrimmedString = colorDecl.toTrimmedString;
-    let colorUsedCallerWriter = false;
-    colorDecl.toTrimmedString = function countCallerWriterUse(
-      ...args: Parameters<typeof originalToTrimmedString>
-    ): ReturnType<typeof originalToTrimmedString> {
-      const options = args[0];
-      if (options?.writer === writer) {
-        colorUsedCallerWriter = true;
-      }
-      return originalToTrimmedString.apply(this, args);
+    colorDecl.toTrimmedString = () => {
+      throw new Error('Unique declaration emission should write syntax directly');
     };
     const node = ruleset({
       selector: sel([el('.box')]),
-      rules: rules([
+      rules: [
         colorDecl,
         sizeDecl
-      ])
+      ]
     });
 
     try {
@@ -85,9 +116,48 @@ describe('Rule', () => {
           font-size: 12px;
         }
       `);
-      expect(colorUsedCallerWriter).toBe(true);
     } finally {
-      colorDecl.toTrimmedString = originalToTrimmedString;
+      delete (colorDecl as { toTrimmedString?: typeof colorDecl.toTrimmedString }).toTrimmedString;
+    }
+  });
+
+  it('renders duplicate declarations without public string transport during duplicate comparison', () => {
+    const firstDecl = decl({ name: 'color', value: any('red') });
+    const secondDecl = decl({ name: 'color', value: any('blue') });
+    const originalFirstToTrimmedString = firstDecl.toTrimmedString;
+    const originalSecondToTrimmedString = secondDecl.toTrimmedString;
+    let publicStringCalls = 0;
+    firstDecl.toTrimmedString = function countPublicStringCalls(
+      ...args: Parameters<typeof originalFirstToTrimmedString>
+    ): ReturnType<typeof originalFirstToTrimmedString> {
+      publicStringCalls++;
+      return originalFirstToTrimmedString.apply(this, args);
+    };
+    secondDecl.toTrimmedString = function countPublicStringCalls(
+      ...args: Parameters<typeof originalSecondToTrimmedString>
+    ): ReturnType<typeof originalSecondToTrimmedString> {
+      publicStringCalls++;
+      return originalSecondToTrimmedString.apply(this, args);
+    };
+    const node = ruleset({
+      selector: sel([el('.box')]),
+      rules: [
+        firstDecl,
+        secondDecl
+      ]
+    });
+
+    try {
+      expect(node.toTrimmedString()).toBeString(`
+        .box {
+          color: red;
+          color: blue;
+        }
+      `);
+      expect(publicStringCalls).toBe(0);
+    } finally {
+      firstDecl.toTrimmedString = originalFirstToTrimmedString;
+      secondDecl.toTrimmedString = originalSecondToTrimmedString;
     }
   });
 
@@ -95,22 +165,23 @@ describe('Rule', () => {
     const node = rules([
       ruleset({
         selector: sellist([sel([el('.foo')])]),
-        rules: rules([
+        rules: [
           decl({ name: 'a', value: any('1') })
-        ])
+        ]
       }),
       ruleset({
         selector: sellist([
           sel([
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
             interpolated({
               source: INTERPOLATION_PLACEHOLDER,
               replacements: [any('.foo')]
-            })
+            }) as unknown as ComplexSelectorComponent
           ])
         ]),
-        rules: rules([
+        rules: [
           decl({ name: 'a', value: any('2') })
-        ])
+        ]
       })
     ]);
 
@@ -127,10 +198,10 @@ describe('Rule', () => {
   it('renders a ruleset through render(context)', () => {
     const node = ruleset({
       selector: sellist([sel([el('foo')])]),
-      rules: rules([
+      rules: [
         decl({ name: 'border', value: spaced([any('1px'), any('solid'), any('black')]) }),
         decl({ name: 'color', value: any('#eee') })
-      ])
+      ]
     });
 
     expect(node.render(context)).toBeString(`
@@ -141,13 +212,78 @@ describe('Rule', () => {
     `);
   });
 
+  it('writes ruleset syntax without public string wrapper transport', () => {
+    const writer = new CountingWriter();
+    const node = ruleset({
+      selector: sellist([sel([el('.box')])]),
+      rules: [
+        decl({ name: 'color', value: any('red') })
+      ]
+    });
+    node.toTrimmedString = () => {
+      throw new Error('Ruleset.writeSyntax should not call the public string wrapper');
+    };
+
+    expect(() => node.writeSyntax(getPrintOptions({ writer }))).not.toThrow();
+    expect(writer.toString()).toBeString(`
+      .box {
+        color: red;
+      }
+    `);
+  });
+
+  it('serializes ruleset source syntax through writeSyntax ownership', () => {
+    const node = ruleset({
+      selector: sellist([sel([el('.box')])]),
+      rules: [
+        decl({ name: 'color', value: any('red') })
+      ]
+    });
+    const originalWriteSyntax = node.writeSyntax;
+    let writeSyntaxCalls = 0;
+    node.writeSyntax = function countWriteSyntax(
+      ...args: Parameters<typeof originalWriteSyntax>
+    ): ReturnType<typeof originalWriteSyntax> {
+      writeSyntaxCalls++;
+      return originalWriteSyntax.apply(this, args);
+    };
+
+    try {
+      expect(node.toTrimmedString()).toBeString(`
+        .box {
+          color: red;
+        }
+      `);
+      expect(writeSyntaxCalls).toBe(1);
+    } finally {
+      node.writeSyntax = originalWriteSyntax;
+    }
+  });
+
+  it('captures ruleset source syntax without the outer ruleset readback', () => {
+    const writer = new CountingWriter();
+    const node = ruleset({
+      selector: sellist([sel([el('foo')])]),
+      rules: [
+        decl({ name: 'color', value: any('red') })
+      ]
+    });
+
+    expect(node.toTrimmedString({ writer })).toBeString(`
+      foo {
+        color: red;
+      }
+    `);
+    expect(writer.reads).toBe(2);
+  });
+
   it('writes finalized ruleset output into segmented buffers', async () => {
     const buffer = createRenderBuffer('segmented');
     const node = ruleset({
       selector: sellist([sel([el('foo')])]),
-      rules: rules([
+      rules: [
         decl({ name: 'color', value: any('red') })
-      ])
+      ]
     });
     const originalResolve = node.resolve;
     let resolveCalls = 0;
@@ -178,9 +314,9 @@ describe('Rule', () => {
   it('renders finalized ruleset output directly without public resolve', async () => {
     const node = ruleset({
       selector: sellist([sel([el('foo')])]),
-      rules: rules([
+      rules: [
         decl({ name: 'color', value: any('red') })
-      ])
+      ]
     });
     node.resolve = () => {
       throw new Error('Ruleset direct render should evaluate natively');
@@ -191,7 +327,6 @@ describe('Rule', () => {
         color: red;
       }
     `);
-    expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
   });
 
@@ -229,7 +364,6 @@ describe('Rule', () => {
     `);
     expect(selector.parent).toBe(node);
     expect(body.parent).toBe(node);
-    expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
   });
 
@@ -237,7 +371,8 @@ describe('Rule', () => {
     const selector = sellist([sel([el('foo')])]);
     const leaf = atrule({
       name: any('@custom-media', { role: 'atkeyword' }),
-      prelude: spaced([any('--narrow'), any('(max-width: 30em)')])
+      prelude: spaced([any('--narrow'), any('(max-width: 30em)')]),
+      rules: []
     });
     const body = rules([
       leaf,
@@ -273,8 +408,39 @@ describe('Rule', () => {
     expect(selector.parent).toBe(node);
     expect(body.parent).toBe(node);
     expect(leaf.parent).toBe(body);
-    expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
+  });
+
+  it('renders ruleset leaf at-rules without public string preview transport', () => {
+    const writer = new CountingWriter();
+    const leaf = atrule({
+      name: any('@property', { role: 'atkeyword' }),
+      prelude: any('--brand-color'),
+      rules: []
+    });
+    leaf.toTrimmedString = () => {
+      throw new Error('ruleset leaf serialization should write at-rule syntax directly');
+    };
+    leaf.getHeaderString = () => {
+      throw new Error('ruleset leaf serialization should not use at-rule header string transport');
+    };
+    const node = ruleset({
+      selector: sellist([sel([el('.box')])]),
+      rules: [leaf]
+    });
+
+    try {
+      expect(node.toTrimmedString({ writer })).toBeString(`
+        .box {
+          @property --brand-color;
+        }
+      `);
+      expect(writer.previews).toBe(0);
+    } finally {
+      delete (leaf as { toTrimmedString?: typeof leaf.toTrimmedString }).toTrimmedString;
+
+      delete (leaf as { getHeaderString?: typeof leaf.getHeaderString }).getHeaderString;
+    }
   });
 
   it('source-direct renders static rulesets with invisible variable declarations from source', async () => {
@@ -317,7 +483,6 @@ describe('Rule', () => {
     expect(selector.parent).toBe(node);
     expect(body.parent).toBe(node);
     expect(variable.parent).toBe(body);
-    expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
   });
 
@@ -325,16 +490,16 @@ describe('Rule', () => {
     const selector = sellist([sel([el('foo')])]);
     const bodyAtRule = atrule({
       name: any('@font-face', { role: 'atkeyword' }),
-      rules: rules([
+      rules: [
         decl({ name: 'font-family', value: any('Body') })
-      ])
+      ]
     });
     const node = ruleset({
       selector,
-      rules: rules([
+      rules: [
         bodyAtRule,
         decl({ name: 'color', value: any('red') })
-      ])
+      ]
     });
     node.prepareRegistration = () => {
       throw new Error('Static ruleset with root-only body at-rule should not prepare registration');
@@ -355,8 +520,7 @@ describe('Rule', () => {
       }
     `);
     expect(selector.parent).toBe(node);
-    expect(bodyAtRule.parent).toBe(node.rules);
-    expect(node.evaluated).toBe(false);
+    expect(bodyAtRule.parent).toBe(node);
     expect(node.registrationPrepared).toBe(false);
   });
 
@@ -364,22 +528,22 @@ describe('Rule', () => {
     context = new Context({ bubbleRootAtRules: true });
     const parentFrame = ruleset({
       selector: el('.parent'),
-      rules: rules([])
+      rules: []
     });
     context.frames = [parentFrame];
     const selector = sellist([sel([el('foo')])]);
     const bodyAtRule = atrule({
       name: any('@font-face', { role: 'atkeyword' }),
-      rules: rules([
+      rules: [
         decl({ name: 'font-family', value: any('Body') })
-      ])
+      ]
     });
     const node = ruleset({
       selector,
-      rules: rules([
+      rules: [
         bodyAtRule,
         decl({ name: 'color', value: any('red') })
-      ])
+      ]
     });
     await expect(Promise.resolve(node.render(context))).resolves.toBeString(`
       @font-face {
@@ -390,23 +554,23 @@ describe('Rule', () => {
       }
     `);
     expect(selector.parent).toBe(node);
-    expect(bodyAtRule.parent).toBe(node.rules);
+    expect(bodyAtRule.parent).toBe(node);
   });
 
   it('hoists root-only body at-rules in sibling order when hoist is active', async () => {
     context = new Context({ bubbleRootAtRules: true });
     const bodyAtRule = atrule({
       name: any('@font-face', { role: 'atkeyword' }),
-      rules: rules([
+      rules: [
         decl({ name: 'font-family', value: any('Body') })
-      ])
+      ]
     });
     const node = ruleset({
       selector: sellist([sel([el('foo')])]),
-      rules: rules([
+      rules: [
         decl({ name: 'color', value: any('red') }),
         bodyAtRule
-      ])
+      ]
     });
 
     await expect(Promise.resolve(node.render(context))).resolves.toBeString(`
@@ -417,7 +581,7 @@ describe('Rule', () => {
         font-family: Body;
       }
     `);
-    expect(bodyAtRule.parent).toBe(node.rules);
+    expect(bodyAtRule.parent).toBe(node);
   });
 
   it('keeps source selector and body parentage canonical during direct render', async () => {
@@ -466,43 +630,44 @@ describe('Rule', () => {
     expect(ownedBodyPrepCalls).toBe(0);
     expect(selector.parent).toBe(node);
     expect(body.parent).toBe(node);
-    expect(body.value[0]?.parent).toBe(body);
-    expect(node.evaluated).toBe(false);
+    expect(body.rules[0]?.parent).toBe(body);
     expect(node.registrationPrepared).toBe(false);
   });
 
-  it('renders already evaluated rulesets without re-entering eval', async () => {
+  it('composes string-backed complex selectors without materializing leaves', () => {
+    const parent = sel(['.parent', '>', '.scope']);
+    const child = sel(['.item', '+', '.next']);
+
+    const composed = Ruleset.composeSelector(child, parent);
+
+    expect(composed.toTrimmedString()).toBe('.parent > .scope .item + .next');
+  });
+
+  it('renders an already-evaluated ruleset idempotently (re-eval is allowed)', async () => {
+    // §2.7: render may re-enter eval (a canonical node is always a re-evaluable
+    // template — `evaluated` no longer short-circuits render). The contract is
+    // that re-evaluating is IDEMPOTENT: the rendered output is unchanged.
     const node = ruleset({
       selector: sellist([sel([el('foo')])]),
-      rules: rules([
+      rules: [
         decl({ name: 'color', value: any('red') })
-      ])
+      ]
     });
     const evald = await node.eval(context);
-    const originalEval = evald.eval;
-    let evalCalls = 0;
-    evald.eval = function countEvalCalls(
-      this: typeof evald,
-      ...args: Parameters<typeof originalEval>
-    ): ReturnType<typeof originalEval> {
-      evalCalls++;
-      return originalEval.apply(this, args);
-    };
 
     await expect(Promise.resolve(evald.render(context))).resolves.toBeString(`
       foo {
         color: red;
       }
     `);
-    expect(evalCalls).toBe(0);
   });
 
   it('renders registration-prepared rulesets without deriving another prep surface', async () => {
     const node = ruleset({
       selector: sellist([sel([el('foo')])]),
-      rules: rules([
+      rules: [
         decl({ name: 'color', value: any('red') })
-      ])
+      ]
     });
     const prepared = await node.prepareRegistration(context);
     const originalPrepareRegistration = prepared.prepareRegistration;
@@ -529,13 +694,14 @@ describe('Rule', () => {
     ]);
     const originalRender = body.render;
     let bodyRenderCalls = 0;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     body.render = function countBodyRender(
       this: typeof body,
       ...args: Parameters<typeof originalRender>
     ): ReturnType<typeof originalRender> {
       bodyRenderCalls++;
       return originalRender.apply(this, args);
-    };
+    } as typeof originalRender;
     const node = ruleset({
       selector: new Nil(),
       rules: body
@@ -561,7 +727,6 @@ describe('Rule', () => {
       expect(bodyRenderCalls).toBe(2);
       expect(prepareCalls).toBe(0);
       expect(body.parent).toBe(node);
-      expect(node.evaluated).toBe(false);
       expect(node.registrationPrepared).toBe(false);
     } finally {
       RulesClass.prototype.prepareRegistration = originalPrepareRegistration;
@@ -577,13 +742,14 @@ describe('Rule', () => {
     ]);
     const originalRender = body.render;
     let bodyRenderCalls = 0;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     body.render = function countBodyRender(
       this: typeof body,
       ...args: Parameters<typeof originalRender>
     ): ReturnType<typeof originalRender> {
       bodyRenderCalls++;
       return originalRender.apply(this, args);
-    };
+    } as typeof originalRender;
     const node = ruleset({
       selector: new Nil(),
       rules: body
@@ -611,7 +777,6 @@ describe('Rule', () => {
       expect(bodyRenderCalls).toBe(2);
       expect(prepareCalls).toBe(0);
       expect(body.parent).toBe(node);
-      expect(node.evaluated).toBe(false);
       expect(node.registrationPrepared).toBe(false);
     } finally {
       RulesClass.prototype.prepareRegistration = originalPrepareRegistration;
@@ -622,9 +787,9 @@ describe('Rule', () => {
     const nestedBody = rules([
       ruleset({
         selector: sellist([sel([el('.child')])]),
-        rules: rules([
+        rules: [
           decl({ name: 'color', value: any('red') })
-        ])
+        ]
       })
     ]);
     const node = ruleset({
@@ -633,13 +798,14 @@ describe('Rule', () => {
     });
     const originalRender = nestedBody.render;
     let sourceBodyRenderCalls = 0;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     nestedBody.render = function countSourceBodyRender(
       this: typeof nestedBody,
       ...args: Parameters<typeof originalRender>
     ): ReturnType<typeof originalRender> {
       sourceBodyRenderCalls++;
       return originalRender.apply(this, args);
-    };
+    } as typeof originalRender;
 
     try {
       await expect(Promise.resolve(node.render(context))).resolves.toBeString(`
@@ -653,8 +819,7 @@ describe('Rule', () => {
 
     expect(sourceBodyRenderCalls).toBe(0);
     expect(nestedBody.parent).toBe(node);
-    expect(nestedBody.value[0]?.parent).toBe(nestedBody);
-    expect(node.evaluated).toBe(false);
+    expect(nestedBody.rules[0]?.parent).toBe(nestedBody);
     expect(node.registrationPrepared).toBe(false);
   });
 
@@ -669,13 +834,14 @@ describe('Rule', () => {
     });
     const originalRender = dynamicBody.render;
     let sourceBodyRenderCalls = 0;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     dynamicBody.render = function countSourceBodyRender(
       this: typeof dynamicBody,
       ...args: Parameters<typeof originalRender>
     ): ReturnType<typeof originalRender> {
       sourceBodyRenderCalls++;
       return originalRender.apply(this, args);
-    };
+    } as typeof originalRender;
 
     try {
       await expect(Promise.resolve(node.render(context))).resolves.toBe('color: red;\n');
@@ -688,7 +854,6 @@ describe('Rule', () => {
 
     expect(sourceBodyRenderCalls).toBe(0);
     expect(dynamicBody.parent).toBe(node);
-    expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
   });
 
@@ -717,9 +882,6 @@ describe('Rule', () => {
       expect(prepareCalls).toBe(0);
       expect(guard.parent).toBe(node);
       expect(body.parent).toBe(node);
-      expect(guard.evaluated).toBe(false);
-      expect(body.evaluated).toBe(false);
-      expect(node.evaluated).toBe(false);
       expect(node.registrationPrepared).toBe(false);
     } finally {
       RulesClass.prototype.prepareRegistration = originalPrepareRegistration;
@@ -734,9 +896,9 @@ describe('Rule', () => {
     const node = ruleset({
       selector: new Nil(),
       guard: condition([bool(true)]),
-      rules: rules([
+      rules: [
         decl({ name: 'color', value: any('red') })
-      ])
+      ]
     });
 
     try {
@@ -760,10 +922,7 @@ describe('Rule', () => {
     await expect(Promise.resolve(node.render(context))).resolves.toBe('');
     expect(guard.parent).toBe(node);
     expect(body.parent).toBe(node);
-    expect(guard.evaluated).toBe(false);
-    expect(body.evaluated).toBe(false);
     expect(node.guard).toBe(guard);
-    expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
   });
 
@@ -771,9 +930,9 @@ describe('Rule', () => {
     const selector = sellist([sel([el('.parent')])]);
     const child = ruleset({
       selector: sellist([sel([el('.child')])]),
-      rules: rules([
+      rules: [
         decl({ name: 'color', value: any('red') })
-      ])
+      ]
     });
     const body = rules([child]);
     const node = ruleset({
@@ -809,7 +968,6 @@ describe('Rule', () => {
     expect(selector.parent).toBe(node);
     expect(body.parent).toBe(node);
     expect(child.parent).toBe(body);
-    expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
   });
 
@@ -817,9 +975,9 @@ describe('Rule', () => {
     const selector = sellist([sel([el('.parent')])]);
     const child = ruleset({
       selector: sellist([sel([el('.child')])]),
-      rules: rules([
+      rules: [
         decl({ name: 'color', value: any('red') })
-      ])
+      ]
     });
     const body = rules([child]);
     const node = ruleset({
@@ -849,25 +1007,24 @@ describe('Rule', () => {
     expect(selector.parent).toBe(node);
     expect(body.parent).toBe(node);
     expect(child.parent).toBe(body);
-    expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
   });
 
   it('restores parent ruleset frame when child registration prep throws', () => {
     const savedFrame = ruleset({
       selector: el('.saved'),
-      rules: rules([])
+      rules: []
     });
     const throwingChild = ruleset({
       selector: el('.child'),
-      rules: rules([])
+      rules: []
     });
     throwingChild.prepareRegistration = () => {
       throw new Error('child registration prep failed');
     };
     const node = ruleset({
       selector: el('.parent'),
-      rules: rules([throwingChild])
+      rules: [throwingChild]
     });
     context.rulesetFrames = [savedFrame];
 
@@ -878,16 +1035,16 @@ describe('Rule', () => {
   it('restores parent ruleset frame when child registration prep rejects', async () => {
     const savedFrame = ruleset({
       selector: el('.saved'),
-      rules: rules([])
+      rules: []
     });
     const throwingChild = ruleset({
       selector: el('.child'),
-      rules: rules([])
+      rules: []
     });
     throwingChild.prepareRegistration = () => Promise.reject(new Error('child registration prep failed'));
     const node = ruleset({
       selector: el('.parent'),
-      rules: rules([throwingChild])
+      rules: [throwingChild]
     });
     context.rulesetFrames = [savedFrame];
 
@@ -909,7 +1066,7 @@ describe('Rule', () => {
 
     expect(prepared).not.toBe(node);
     expect(selector.parent).toBe(node);
-    expect(prepared.rules).toBe(body);
+    expect(prepared.rules).toBe(body.rules);
   });
 
   it('renders comment-free ruleset headers without cloning source-free selector leaves', () => {
@@ -926,7 +1083,7 @@ describe('Rule', () => {
     const sourceLeafParent = selectorLeaf.parent;
     const node = ruleset({
       selector,
-      rules: rules([])
+      rules: []
     });
 
     try {
@@ -941,59 +1098,70 @@ describe('Rule', () => {
   it('restores eval frames when body eval throws', () => {
     const savedRulesetFrame = ruleset({
       selector: el('.saved'),
-      rules: rules([])
+      rules: []
     });
     const savedFrame = ruleset({
       selector: el('.frame'),
-      rules: rules([])
+      rules: []
     });
-    const body = rules([]);
-    body.eval = () => {
-      throw new Error('body eval failed');
-    };
     const node = ruleset({
       selector: el('.parent'),
-      rules: body
+      rules: []
     });
     context.rulesetFrames = [savedRulesetFrame];
     context.frames = [savedFrame];
-
-    expect(() => node.eval(context)).toThrow('body eval failed');
-    expect(context.rulesetFrames).toEqual([savedRulesetFrame]);
-    expect(context.frames).toEqual([savedFrame]);
+    // In the new design, Ruleset.evalNode delegates to Rules.prototype.evalNode.call(this, context).
+    // Patch the Rules prototype to simulate a synchronous throw during body evaluation.
+    const originalRulesEvalNode = RulesClass.prototype.evalNode;
+    RulesClass.prototype.evalNode = function rulesEvalNodeThrow() {
+      throw new Error('body eval failed');
+    };
+    try {
+      expect(() => node.eval(context)).toThrow('body eval failed');
+      expect(context.rulesetFrames).toEqual([savedRulesetFrame]);
+      expect(context.frames).toEqual([savedFrame]);
+    } finally {
+      RulesClass.prototype.evalNode = originalRulesEvalNode;
+    }
   });
 
   it('restores eval frames when body eval rejects', async () => {
     const savedRulesetFrame = ruleset({
       selector: el('.saved'),
-      rules: rules([])
+      rules: []
     });
     const savedFrame = ruleset({
       selector: el('.frame'),
-      rules: rules([])
+      rules: []
     });
-    const body = rules([]);
-    body.eval = () => Promise.reject(new Error('body eval failed'));
-    body.addFlag(F_MAY_ASYNC);
     const node = ruleset({
       selector: el('.parent'),
-      rules: body
+      rules: []
     });
     context.rulesetFrames = [savedRulesetFrame];
     context.frames = [savedFrame];
-
-    await expect(node.eval(context)).rejects.toThrow('body eval failed');
-    expect(context.rulesetFrames).toEqual([savedRulesetFrame]);
-    expect(context.frames).toEqual([savedFrame]);
+    // In the new design, Ruleset.evalNode delegates to Rules.prototype.evalNode.call(this, context).
+    // Patch the Rules prototype to simulate an async rejection during body evaluation.
+    const originalRulesEvalNode = RulesClass.prototype.evalNode;
+    RulesClass.prototype.evalNode = function rulesEvalNodeReject() {
+      return Promise.reject(new Error('body eval failed'));
+    };
+    try {
+      await expect(node.eval(context)).rejects.toThrow('body eval failed');
+      expect(context.rulesetFrames).toEqual([savedRulesetFrame]);
+      expect(context.frames).toEqual([savedFrame]);
+    } finally {
+      RulesClass.prototype.evalNode = originalRulesEvalNode;
+    }
   });
 
   it('resolves a ruleset without touching render state', async () => {
     const node = ruleset({
       selector: sellist([sel([el('foo')])]),
-      rules: rules([
+      rules: [
         decl({ name: 'border', value: spaced([any('1px'), any('solid'), any('black')]) }),
         decl({ name: 'color', value: any('#eee') })
-      ])
+      ]
     });
 
     const resolved = await node.resolve(context);
@@ -1004,7 +1172,6 @@ describe('Rule', () => {
         color: #eee;
       }
     `);
-    expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
@@ -1028,13 +1195,14 @@ describe('Rule', () => {
     `);
     expect(selector.parent).toBe(node);
     expect(body.parent).toBe(node);
-    expect(resolved.rules).not.toBe(body);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    expect((resolved as Ruleset).rules).not.toBe(body);
   });
 
   it('getHeaderString keeps reference target filtering render-local', () => {
     const node = ruleset({
       selector: sellist([sel([el('.foo')])]),
-      rules: rules([])
+      rules: []
     });
     const options = getPrintOptions({
       writer: new OutputWriter(),
@@ -1067,7 +1235,7 @@ describe('Rule', () => {
     const addedLeafParent = addedLeaf.parent;
     const node = ruleset({
       selector: sellist([target, added]),
-      rules: rules([])
+      rules: []
     });
     const options = getPrintOptions({
       writer: new OutputWriter(),
@@ -1084,18 +1252,45 @@ describe('Rule', () => {
     }
   });
 
+  it('filters reference-mode composed selector lists with string-backed siblings', () => {
+    const added = el('.added');
+    added.addFlag(F_EXTENDED);
+    const target = el('.target');
+    target.addFlag(F_EXTEND_TARGET);
+    const parent = sellist(['.untouched', target, added]);
+
+    const addedOnly = Ruleset.filterExtendedForReferenceCompose(parent);
+    expect(addedOnly?.valueOf()).toBe('.added');
+
+    const withUntouched = Ruleset.filterExtendedForReferenceCompose(parent, true);
+    expect(withUntouched?.valueOf()).toBe('.untouched,.added');
+  });
+
+  it('expands generated is() reference-compose lists with string-backed alternatives', () => {
+    const added = el('.added');
+    added.addFlag(F_EXTENDED);
+    const isWrapper = pseudo({ name: ':is', arg: sellist(['.raw', added]) });
+    isWrapper.generated = true;
+    const selector = sel([isWrapper]);
+
+    const expanded = Ruleset.expandGeneratedIsForReferenceCompose(selector);
+
+    expect(expanded?.valueOf()).toBe('.added');
+  });
+
   it('streams header selectors without capture scaffolding', () => {
     const writer = new CountingWriter();
     const selector = sellist([sel([el('.foo')])]);
     const node = ruleset({
       selector,
-      rules: rules([])
+      rules: []
     });
     const options = getPrintOptions({ writer });
     const originalSelectorToString = selector.toString;
     const originalWriteSyntax = selector.writeSyntax;
     let selectorToStringCalls = 0;
     let selectorUsedActiveWriter = false;
+    let selectorUsedDetachedWriter = false;
     selector.toString = function toStringWithWriterCheck(
       this: typeof selector,
       nextOptions?: Parameters<typeof originalSelectorToString>[0]
@@ -1108,6 +1303,7 @@ describe('Rule', () => {
       nextOptions: Parameters<typeof originalWriteSyntax>[0]
     ): void {
       selectorUsedActiveWriter = nextOptions.writer === writer;
+      selectorUsedDetachedWriter = nextOptions.writer !== writer;
       originalWriteSyntax.call(this, nextOptions);
       nextOptions.writer.add('   ');
     };
@@ -1116,13 +1312,103 @@ describe('Rule', () => {
       expect(node.getHeaderString(options)).toBe('.foo {\n');
       expect(writer.toString()).toBe('');
       expect(writer.captures).toBe(0);
+      expect(writer.marks).toBe(0);
       expect(writer.previews).toBe(0);
-      expect(writer.trimEnds).toBe(1);
+      expect(writer.reads).toBe(0);
+      expect(writer.restores).toBe(0);
+      expect(writer.trimEnds).toBe(0);
       expect(selectorToStringCalls).toBe(0);
-      expect(selectorUsedActiveWriter).toBe(true);
+      expect(selectorUsedActiveWriter).toBe(false);
+      expect(selectorUsedDetachedWriter).toBe(true);
     } finally {
       selector.toString = originalSelectorToString;
       selector.writeSyntax = originalWriteSyntax;
+    }
+  });
+
+  it('does not spend a detached mark to trim header selector trailing whitespace', () => {
+    const writer = new CountingWriter();
+    const selector = sellist([sel([el('.foo')])]);
+    const node = ruleset({
+      selector,
+      rules: []
+    });
+    const options = getPrintOptions({ writer });
+    const originalMark = OutputWriter.prototype.mark;
+    let detachedMarks = 0;
+    OutputWriter.prototype.mark = function countDetachedMarks(this: OutputWriter): number {
+      if (this !== writer) {
+        detachedMarks++;
+      }
+      return originalMark.call(this);
+    };
+    const originalWriteSyntax = selector.writeSyntax;
+    selector.writeSyntax = function writeSyntaxWithTrailingWhitespace(
+      this: typeof selector,
+      nextOptions: Parameters<typeof originalWriteSyntax>[0]
+    ): void {
+      originalWriteSyntax.call(this, nextOptions);
+      nextOptions.writer.add('   ');
+    };
+
+    try {
+      expect(node.getHeaderString(options)).toBe('.foo {\n');
+      expect(detachedMarks).toBe(0);
+    } finally {
+      OutputWriter.prototype.mark = originalMark;
+      selector.writeSyntax = originalWriteSyntax;
+    }
+  });
+
+  it('does not spend a real mark to roll back empty ruleset headers', () => {
+    const writer = new CountingWriter();
+    const node = ruleset({
+      selector: new Nil(),
+      rules: []
+    });
+    const options = getPrintOptions({ writer });
+
+    expect(node.writeHeader(options)).toBe(false);
+    expect(writer.toString()).toBe('');
+    expect(writer.marks).toBe(0);
+    expect(writer.restores).toBe(1);
+  });
+
+  it('getComparableHeaderString keeps selector capture off the caller writer', () => {
+    const writer = new CountingWriter();
+    const selector = sellist([sel([el('.foo')])]);
+    const node = ruleset({
+      selector,
+      rules: []
+    });
+    const options = getPrintOptions({ writer });
+    const selectorPrototypeCandidate = Object.getPrototypeOf(selector);
+    if (
+      !selectorPrototypeCandidate
+      || typeof selectorPrototypeCandidate !== 'object'
+      || !('writeSyntax' in selectorPrototypeCandidate)
+      || typeof selectorPrototypeCandidate.writeSyntax !== 'function'
+    ) {
+      throw new TypeError('Expected selector prototype with writeSyntax');
+    }
+    const selectorPrototype: { writeSyntax: typeof selector.writeSyntax } = selectorPrototypeCandidate;
+    const originalWriteSyntax = selectorPrototype.writeSyntax;
+    let selectorUsedDetachedWriter = false;
+    selectorPrototype.writeSyntax = function writeSyntaxWithWriterCheck(
+      this: typeof selector,
+      nextOptions: Parameters<typeof originalWriteSyntax>[0]
+    ): void {
+      selectorUsedDetachedWriter = nextOptions.writer !== writer;
+      originalWriteSyntax.call(this, nextOptions);
+      nextOptions.writer.add('   ');
+    };
+
+    try {
+      expect(node.getComparableHeaderString(options)).toBe('.foo');
+      expect(writer.toString()).toBe('');
+      expect(selectorUsedDetachedWriter).toBe(true);
+    } finally {
+      selectorPrototype.writeSyntax = originalWriteSyntax;
     }
   });
 
@@ -1131,7 +1417,7 @@ describe('Rule', () => {
     selector.removeFlag(F_VISIBLE);
     const node = ruleset({
       selector,
-      rules: rules([])
+      rules: []
     });
     const options = getPrintOptions({
       writer: new OutputWriter()
@@ -1160,9 +1446,9 @@ describe('Rule', () => {
   it('serializeRulesContainer keeps reference render flags render-local', () => {
     const node = ruleset({
       selector: sellist([sel([el('.foo')])]),
-      rules: rules([
+      rules: [
         decl({ name: 'color', value: any('red') })
-      ])
+      ]
     }, {
       referenceMode: true
     });
@@ -1184,9 +1470,9 @@ describe('Rule', () => {
     const composedSelectorStack = [parentSelector];
     const node = ruleset({
       selector: sel([el('.child')]),
-      rules: rules([
+      rules: [
         decl({ name: 'color', value: any('red') })
-      ])
+      ]
     });
     const options = getPrintOptions({
       writer: new OutputWriter(),
@@ -1205,9 +1491,9 @@ describe('Rule', () => {
     const parentSelector = sel([el('.parent')]);
     const node = ruleset({
       selector: sel([el('.child')]),
-      rules: rules([
+      rules: [
         decl({ name: 'color', value: any('red') })
-      ])
+      ]
     });
     const originalComposeHeaderSelector = node.composeHeaderSelector;
     let composeHeaderSelectorCalls = 0;
@@ -1234,10 +1520,186 @@ describe('Rule', () => {
     }
   });
 
+  it('serializeRulesContainer writes no-trivia ruleset headers without header string transport', () => {
+    const node = ruleset({
+      selector: sel([el('.child')]),
+      rules: [
+        decl({ name: 'color', value: any('red') })
+      ]
+    });
+    const options = getPrintOptions({
+      writer: new OutputWriter(),
+      collapseNesting: true
+    });
+    const originalGetHeaderString = node.getHeaderString;
+    let headerStringCalls = 0;
+    node.getHeaderString = function countHeaderStringCalls(
+      this: typeof node,
+      ...args: Parameters<typeof originalGetHeaderString>
+    ): ReturnType<typeof originalGetHeaderString> {
+      headerStringCalls++;
+      return originalGetHeaderString.apply(this, args);
+    };
+
+    try {
+      const out = serializeRulesContainer(node, options);
+
+      expect(out).toContain('.child');
+      expect(headerStringCalls).toBe(0);
+    } finally {
+      node.getHeaderString = originalGetHeaderString;
+    }
+  });
+
+  it('serializeRulesContainer compares repeated ruleset headers through comparable header keys', async () => {
+    const first = ruleset({
+      selector: sel([el('.same')]),
+      rules: [
+        decl({ name: 'case', value: any('1') })
+      ]
+    });
+    const second = ruleset({
+      selector: sel([el('.same')]),
+      rules: [
+        decl({ name: 'case', value: any('2') })
+      ]
+    });
+    const node = rules([first, second]);
+    let withoutCommentsHeaderCalls = 0;
+    let comparableHeaderCalls = 0;
+    const rulesetPrototypeCandidate = Object.getPrototypeOf(first);
+    if (
+      !rulesetPrototypeCandidate
+      || typeof rulesetPrototypeCandidate !== 'object'
+      || !('getHeaderString' in rulesetPrototypeCandidate)
+      || typeof rulesetPrototypeCandidate.getHeaderString !== 'function'
+      || !('getComparableHeaderString' in rulesetPrototypeCandidate)
+      || typeof rulesetPrototypeCandidate.getComparableHeaderString !== 'function'
+    ) {
+      throw new TypeError('Expected ruleset prototype with header helpers');
+    }
+    const rulesetPrototype: {
+      getHeaderString: typeof first.getHeaderString;
+      getComparableHeaderString: typeof first.getComparableHeaderString;
+    } = rulesetPrototypeCandidate;
+    const originalGetHeaderString = rulesetPrototype.getHeaderString;
+    const originalGetComparableHeaderString = rulesetPrototype.getComparableHeaderString;
+    rulesetPrototype.getHeaderString = function countWithoutCommentsCalls(
+      this: typeof first,
+      ...args: Parameters<typeof originalGetHeaderString>
+    ): ReturnType<typeof originalGetHeaderString> {
+      if (args[1] === true) {
+        withoutCommentsHeaderCalls++;
+      }
+      return originalGetHeaderString.apply(this, args);
+    };
+    rulesetPrototype.getComparableHeaderString = function countComparableCalls(
+      this: typeof first,
+      ...args: Parameters<typeof originalGetComparableHeaderString>
+    ): ReturnType<typeof originalGetComparableHeaderString> {
+      comparableHeaderCalls++;
+      return originalGetComparableHeaderString.apply(this, args);
+    };
+
+    try {
+      const out = await renderNodeToString(node, context, { collapseNesting: true });
+
+      expect(out).toBeString(`
+        .same {
+          case: 1;
+        }
+        .same {
+          case: 2;
+        }`
+      );
+      expect(withoutCommentsHeaderCalls).toBe(0);
+      expect(comparableHeaderCalls).toBeGreaterThan(0);
+    } finally {
+      rulesetPrototype.getHeaderString = originalGetHeaderString;
+      rulesetPrototype.getComparableHeaderString = originalGetComparableHeaderString;
+    }
+  });
+
+  it('serializeRulesContainer keeps child Rules body transport on the caller writer', () => {
+    const writer = new CountingWriter();
+    const childRules = rules([
+      decl({ name: 'color', value: any('red') })
+    ], {
+      referenceMode: true
+    });
+    const originalWriteSyntax = childRules.writeSyntax;
+    const originalToTrimmedString = childRules.toTrimmedString;
+    let childSawDetachedWriter = false;
+    childRules.writeSyntax = function countDetachedWriter(
+      this: typeof childRules,
+      nextOptions: Parameters<typeof originalWriteSyntax>[0]
+    ): void {
+      childSawDetachedWriter = nextOptions.writer !== writer;
+      originalWriteSyntax.call(this, nextOptions);
+    };
+    childRules.toTrimmedString = () => {
+      throw new Error('child Rules body transport should not use public string wrappers');
+    };
+    const node = ruleset({
+      selector: sel([el('.box')]),
+      rules: [
+        childRules
+      ]
+    });
+    const options = getPrintOptions({ writer });
+
+    try {
+      void serializeRulesContainer(node, options);
+      expect(childSawDetachedWriter).toBe(false);
+    } finally {
+      childRules.writeSyntax = originalWriteSyntax;
+      childRules.toTrimmedString = originalToTrimmedString;
+    }
+  });
+
+  it('serializeRulesContainer keeps declaration fallback transport off the caller writer', () => {
+    const writer = new CountingWriter();
+    const colorDecl = decl({ name: 'color', value: any('red') });
+    const originalWriteSyntax = colorDecl.writeSyntax;
+    const originalToTrimmedString = colorDecl.toTrimmedString;
+    let declarationSawDetachedWriter = false;
+    colorDecl.writeSyntax = function countDetachedWriter(
+      this: typeof colorDecl,
+      nextOptions: Parameters<typeof originalWriteSyntax>[0]
+    ): void {
+      declarationSawDetachedWriter = nextOptions.writer !== writer;
+      originalWriteSyntax.call(this, nextOptions);
+    };
+    colorDecl.toTrimmedString = () => {
+      throw new Error('declaration fallback transport should not use public string wrappers');
+    };
+    const node = ruleset({
+      selector: sel([el('.box')]),
+      rules: [
+        colorDecl
+      ]
+    });
+    const options = getPrintOptions({ writer });
+
+    try {
+      const out = serializeRulesContainer(node, options);
+
+      expect(out).toBeString(`
+        .box {
+          color: red;
+        }
+      `);
+      expect(declarationSawDetachedWriter).toBe(true);
+    } finally {
+      colorDecl.writeSyntax = originalWriteSyntax;
+      colorDecl.toTrimmedString = originalToTrimmedString;
+    }
+  });
+
   it('getHeaderString does not cache uncomposed selectors onto the ruleset', () => {
     const node = ruleset({
       selector: sel([el('.foo')]),
-      rules: rules([])
+      rules: []
     });
     const options = getPrintOptions({
       writer: new OutputWriter(),
@@ -1254,7 +1716,7 @@ describe('Rule', () => {
   it('getHeaderString keeps composed selector cache off the ruleset node', () => {
     const node = ruleset({
       selector: sel([el('.child')]),
-      rules: rules([])
+      rules: []
     });
     const options = getPrintOptions({
       writer: new OutputWriter(),

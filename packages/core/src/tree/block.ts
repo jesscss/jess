@@ -23,9 +23,9 @@ export interface Block extends Node<Node, BlockOptions> {
  * for things like custom properties and unknown at-rules.
  */
 export class Block extends Node<Node, BlockOptions> {
-  static override childKeys = ['node'] as const;
+  static override childKeys = ['value'] as const;
 
-  readonly node: Node;
+  declare readonly value: Node;
 
   private withValue(value: Node): Block {
     const location = this._location && this._location.length === 6
@@ -47,28 +47,30 @@ export class Block extends Node<Node, BlockOptions> {
   ) {
     super(value, options, location);
     this._treeContext = treeContext;
-    this.node = value;
   }
 
-  private renderBlockSyntax(value = this.node, options?: PrintOptions): string {
-    options = getPrintOptions(options);
+  private renderBlockSyntax(value = this.value, rawOptions?: PrintOptions): string {
+    const options = getPrintOptions(rawOptions);
     const w = options.writer!;
-    const mark = w.mark();
+    const position = w.position();
     const type = this._options?.type;
     let start = type === 'square' ? '[' : '{';
     let end = type === 'square' ? ']' : '}';
     w.add(start);
-    value.toString(options);
     const trivia = options.trivia ?? this.sourceRoot?._treeContext?.opts?.trivia;
+    if (trivia) {
+      w.add(consumeTriviaText(trivia, value.location[0], 'before', options));
+    }
+    value.writeSyntax(options);
     if (trivia) {
       w.add(consumeTriviaText(trivia, this.location[3], 'before', options));
     }
     w.add(end);
-    return w.getSince(mark);
+    return w.getSince(position);
   }
 
   override toTrimmedString(options?: PrintOptions) {
-    return this.renderBlockSyntax(this.node, options);
+    return this.renderBlockSyntax(this.value, options);
   }
 
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
@@ -77,8 +79,8 @@ export class Block extends Node<Node, BlockOptions> {
     const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
     const prepared = buffer
       ? prepareBufferPrintState(context, options)
-      : prepareRenderPrintState(context, bufferOrOptions);
-    const value = this.hasFlag(F_STATIC) ? this.node : this.node.eval(context);
+      : prepareRenderPrintState(context, isRenderBuffer(bufferOrOptions) ? undefined : bufferOrOptions);
+    const value = this.hasFlag(F_STATIC) ? this.value : this.value.eval(context);
     if (isThenable(value)) {
       return (value as Promise<Node>).then((resolved) => {
         const out = this.renderBlockSyntax(resolved, prepared);
@@ -105,9 +107,9 @@ export class Block extends Node<Node, BlockOptions> {
     if (this.hasFlag(F_STATIC)) {
       return this;
     }
-    const value = this.node.eval(context);
+    const value = this.value.eval(context);
     const finalize = (resolvedValue: Node): Block => {
-      if (resolvedValue === this.node) {
+      if (resolvedValue === this.value) {
         return this;
       }
       return this.withValue(resolvedValue);

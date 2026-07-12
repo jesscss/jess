@@ -11,9 +11,9 @@ import { prepareRenderPrintState } from './util/print.js';
  * e.g. url('foo.png')
  */
 export class Url extends Node<Node> {
-  static override childKeys = ['node'] as const;
+  static override childKeys = ['value'] as const;
 
-  readonly node: Node;
+  declare readonly value: Node;
 
   constructor(
     value: Node,
@@ -23,7 +23,6 @@ export class Url extends Node<Node> {
   ) {
     super(value, options, location);
     this._treeContext = treeContext;
-    this.node = value;
   }
 
   private withValue(value: Node): Url {
@@ -35,7 +34,7 @@ export class Url extends Node<Node> {
     ).inherit(this);
   }
 
-  private renderUrlSyntax(value = this.node, options?: PrintOptions): string {
+  private renderUrlSyntax(value = this.value, options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
@@ -43,6 +42,7 @@ export class Url extends Node<Node> {
     if (options.context) {
       const valueMark = w.mark();
       value.toString(options);
+      // AUDIT: seems smelly. Why do we need to replace something in the URL?
       w.replaceSince(
         valueMark,
         value => value
@@ -61,19 +61,20 @@ export class Url extends Node<Node> {
    * @todo - enable URL rewriting
    */
   override valueOf(): string {
-    const value = this.node;
+    const value = this.value;
     if (isNode(value, N.Quoted)) {
       const quotedValue = value.value;
       if (isNode(quotedValue)) {
-        return String(quotedValue.value);
+        return String(quotedValue.valueOf());
       }
       return quotedValue;
     }
     return String(value.valueOf());
   }
 
+  // AUDIT: toTrimmedString is not supposed to use print buffers and is only supposed to straight serialize. Still todo in the serialization cleanup?
   override toTrimmedString(options?: PrintOptions) {
-    return this.renderUrlSyntax(this.node, options);
+    return this.renderUrlSyntax(this.value, options);
   }
 
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
@@ -82,8 +83,9 @@ export class Url extends Node<Node> {
     const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
     const prepared = buffer
       ? prepareBufferPrintState(context, options)
-      : prepareRenderPrintState(context, bufferOrOptions);
-    const value = this.hasFlag(F_STATIC) ? this.node : this.node.eval(context);
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      : prepareRenderPrintState(context, bufferOrOptions as import('./util/print.js').PrintOptions | undefined);
+    const value = this.hasFlag(F_STATIC) ? this.value : this.value.eval(context);
     if (isThenable(value)) {
       return (value as Promise<Node>).then((resolved) => {
         const out = this.renderUrlSyntax(resolved, prepared);
@@ -106,9 +108,9 @@ export class Url extends Node<Node> {
     if (this.hasFlag(F_STATIC)) {
       return this;
     }
-    const value = this.node.eval(context);
+    const value = this.value.eval(context);
     const finalize = (resolvedValue: Node): Node => {
-      if (resolvedValue === this.node) {
+      if (resolvedValue === this.value) {
         return this;
       }
       return this.withValue(resolvedValue);

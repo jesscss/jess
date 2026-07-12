@@ -9,12 +9,12 @@ import { N } from './node-type.js';
 import type { Call } from './call.js';
 import type { Quoted } from './quoted.js';
 import { atIndex } from './util/collections.js';
-import type { Num } from './number.js';
+import { Num } from './number.js';
+import { Dimension } from './dimension.js';
 import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import type { Rules } from './rules.js';
 import type { Interpolated } from './interpolated.js';
-import { copyWithReusableLeaves } from './util/cloning.js';
 import type { Declaration } from './declaration.js';
 import type { Color } from './color.js';
 import { JsArray } from './js-array.js';
@@ -23,11 +23,11 @@ import { List } from './list.js';
 import { Nil } from './nil.js';
 import {
   getBindingCellValue,
+  createVarDeclarationBindingEntry,
   ensureBindingCellLookupIdentity,
   lookupScopeFrameVariable,
   setScopeFrameDeclarationBinding,
   type BindingCell,
-  type BindingEntry,
   type ScopeFrame
 } from './scope-frame.js';
 import type { VarDeclaration } from './declaration-var.js';
@@ -39,7 +39,12 @@ import {
 } from './util/render-buffer.js';
 import { blocksAmbientMixinOutputLookup } from './util/mixin-output-slot.js';
 import { MixinCollection } from './util/callable-collection.js';
-import type { MixinEntry } from './util/callable-entry.js';
+import {
+  getCallableEntryGuard,
+  getCallableEntryParams,
+  isCallableEntry,
+  type MixinEntry
+} from './util/callable-entry.js';
 import type { JsFunction } from './js-function.js';
 import type { Func } from './function.js';
 import {
@@ -113,43 +118,25 @@ export type ReferenceOptions = {
    */
   fallbackValue?: Node | true;
   filter?: (node: Node) => boolean;
-  excludedNodes?: readonly Node[];
-  requiredNormalizedFromAssign?: string | readonly string[];
+  excludedDeclarations?: readonly Node[];
+  requiredDeclarationAssignments?: string | readonly string[];
   role?: AnyRole;
   preserveRulesLike?: boolean;
   /** Internal call-site hint: terminal mixin-ruleset lookup cannot use rulesets when args are present. */
   mixinRulesetCallHasArgs?: boolean;
 };
 
-type ReferenceDeclarationConstraintOptions = Pick<
-  DeclarationFindOptions,
-  'excludedNode0' | 'excludedNode1' | 'excludedNodesLength'
->;
-
-function getReferenceDeclarationConstraintOptions(
-  referenceNode: Reference
-): ReferenceDeclarationConstraintOptions {
-  return referenceNode.options as ReferenceOptions & ReferenceDeclarationConstraintOptions;
-}
-
 // `sourceNode` stays on the public shallow-owned surface for compatibility and
 // now carries the canonical source directly.
 type PreservedRulesLikeValue = Node & { sourceNode?: Node };
-type NodeValueConstructor = new (
-  value: unknown,
-  options?: unknown,
-  location?: LocationInfo
-) => Node;
-
-function isNodeValueConstructor(value: unknown): value is NodeValueConstructor {
-  return typeof value === 'function';
-}
 
 const REF_EVAL_PRESERVE_RULES_LIKE = 1;
 const REF_EVAL_REUSE_SOURCE_FREE = 1 << 1;
 const DIRECT_DECLARATION_LOOKUP_CACHE_KEY_SEPARATOR = '\u001f';
 
 function invalidateDirectDeclarationLookupKey(scope: Rules, key: string): void {
+  const versions = scope.declarationLookupVersionsByName ??= new Map<string, number>();
+  versions.set(key, scope.getDeclarationLookupVersion(key) + 1);
   scope.directDeclarationsByName?.delete(key);
   const cache = scope.directDeclarationLookupCache;
   if (!cache?.size) {
@@ -211,14 +198,7 @@ function promoteResolvedPendingVarDecls(
       }
     }
     if (!hasEntry) {
-      const entry: BindingEntry = {
-        cell: {
-          value: decl.valueNode,
-          sourceNode: decl,
-          readonly: decl.options?.readonly
-        },
-        sourceNode: decl
-      };
+      const entry = createVarDeclarationBindingEntry(decl);
       bucket.push(entry);
       setScopeFrameDeclarationBinding(frame, resolvedName, entry);
     } else {
@@ -241,6 +221,21 @@ function promoteResolvedPendingVarDecls(
     }
     scope.lookupVersion++;
   }
+}
+
+function promoteResolvedPendingVarDeclsInFrameChain(frame: ScopeFrame): void {
+  const seen = new Set<ScopeFrame>();
+  const visit = (cursor: ScopeFrame | undefined): void => {
+    while (cursor && !seen.has(cursor)) {
+      seen.add(cursor);
+      if (isNode(cursor.rulesNode, N.Rules)) {
+        promoteResolvedPendingVarDecls(cursor.rulesNode, cursor);
+      }
+      visit(cursor.fallbackFrame);
+      cursor = cursor.parent;
+    }
+  };
+  visit(frame);
 }
 
 const { isArray } = Array;
@@ -266,11 +261,11 @@ function normalizeSelectorReferenceKey(selector: Selector): string | string[] {
   }
 
   if (isNode(selector, N.ComplexSelector)) {
-    for (const node of selector.components) {
+    for (const node of selector.value) {
       if (
         isNode(node, N.BasicSelector)
         || isNode(node, N.CompoundSelector)
-        || node.type === 'InterpolatedSelector'
+        || (typeof node !== 'string' && node.type === 'InterpolatedSelector')
       ) {
         continue;
       }
@@ -377,10 +372,9 @@ type ReferenceRulesLookupHandleBase = {
 };
 
 type ReferenceRulesLookupDeclarationConstraints = {
-  requiredNormalizedFromAssignKey: string | undefined;
-  excludedNode0: Node | undefined;
-  excludedNode1: Node | undefined;
-  excludedNodesLength: number;
+  requiredDeclarationAssignmentsKey: string | undefined;
+  excludedDeclaration0: Node | undefined;
+  excludedDeclaration1: Node | undefined;
 };
 
 type ReferenceRulesLookupHandle =
@@ -400,6 +394,10 @@ type ReferenceRulesLookupHandle =
     lookupType: 'variable';
     returnVal: VariableRulesLookupHandleValue;
   });
+type ReferenceRulesLookupDeclarationHandle = Extract<
+  ReferenceRulesLookupHandle,
+  { lookupType: 'declaration' | 'property' | 'variable' }
+>;
 
 function getRulesLookupHandleVersion(
   targetRules: Rules,
@@ -488,7 +486,13 @@ function getBindingHandleValue(handle: ScopeFrameVariableBindingHandle): Node {
 }
 
 function getBindingHandleRulesContext(handle: ScopeFrameVariableBindingHandle): Rules | undefined {
-  return isNode(handle.cell.rulesContext, N.Rules) ? handle.cell.rulesContext : handle.rulesContext;
+  if (isNode(handle.cell.rulesContext, N.Rules)) {
+    return handle.cell.rulesContext;
+  }
+  if (handle.rulesContext) {
+    return handle.rulesContext;
+  }
+  return handle.sourceNode?.sourceRoot ?? handle.sourceNode?.rulesParent;
 }
 
 type RulesLookupAdapterEnv = {
@@ -525,15 +529,83 @@ type PreparedReferenceLookup = {
 
 type ReferenceDeclarationFindOptions = DeclarationFindOptions & { context: Context };
 type ScopeFrameVariableBindingMode = 'full' | 'live-current';
-type ReferenceLookupStrategy = {
+type ReferenceLookupStrategyBase = {
   readonly lookupType: LookupType;
   readonly performRulesLookup: (
     scope: Rules,
     lookupContext: RulesReferenceLookupContext,
     shape: RulesLookupHandleShape
   ) => ReferenceLookupReturnValue;
-  readonly writeHandle: (args: WriteRulesLookupHandleArgs) => void;
 };
+type ReferenceHandleLookupStrategyBase = ReferenceLookupStrategyBase & {
+  readonly handleLookupType: RulesLookupHandleLookupType;
+  readonly getHandleValueKey: (valueKey: NormalizedLookupKey) => string | string[] | undefined;
+  readonly tryReadSourceStaticHandle: (
+    referenceNode: Reference,
+    targetRules: Rules | undefined,
+    valueKey: NormalizedLookupKey,
+    env: RulesLookupAdapterEnv
+  ) => RulesLookupHandleReadResult;
+};
+type ReferenceDeclarationLookupStrategy = ReferenceHandleLookupStrategyBase & {
+  readonly lookupType: 'declaration' | 'property' | 'variable';
+  readonly handleLookupType: 'declaration' | 'property' | 'variable';
+  readonly readHandle: (
+    referenceNode: Reference,
+    targetRules: Rules | undefined,
+    lookupType: RulesLookupHandleLookupType | undefined,
+    valueKey: string | string[] | undefined,
+    inCall: boolean,
+    shape: RulesLookupHandleShape | undefined,
+    declarationConstraints: ReferenceRulesLookupDeclarationConstraints | undefined
+  ) => RulesLookupHandleReadResult;
+  readonly writeHandle: (
+    referenceNode: Reference,
+    targetRules: Rules | undefined,
+    lookupType: RulesLookupHandleLookupType | undefined,
+    valueKey: string | string[] | undefined,
+    inCall: boolean,
+    shape: RulesLookupHandleShape | undefined,
+    returnVal: ReferenceLookupReturnValue,
+    declarationConstraints: ReferenceRulesLookupDeclarationConstraints | undefined
+  ) => void;
+  readonly getHandleDeclarationConstraints: (
+    referenceNode: Reference
+  ) => ReferenceRulesLookupDeclarationConstraints | undefined;
+};
+type ReferencePlainHandleLookupStrategy = ReferenceHandleLookupStrategyBase & {
+  readonly lookupType: 'function' | 'mixin' | 'mixin-ruleset';
+  readonly handleLookupType: 'function' | 'mixin' | 'mixin-ruleset';
+  readonly readHandle: (
+    referenceNode: Reference,
+    targetRules: Rules | undefined,
+    lookupType: RulesLookupHandleLookupType | undefined,
+    valueKey: string | string[] | undefined,
+    inCall: boolean,
+    shape: RulesLookupHandleShape | undefined
+  ) => RulesLookupHandleReadResult;
+  readonly writeHandle: (
+    referenceNode: Reference,
+    targetRules: Rules | undefined,
+    lookupType: RulesLookupHandleLookupType | undefined,
+    valueKey: string | string[] | undefined,
+    inCall: boolean,
+    shape: RulesLookupHandleShape | undefined,
+    returnVal: ReferenceLookupReturnValue
+  ) => void;
+  readonly getHandleDeclarationConstraints?: never;
+};
+type ReferenceNoHandleLookupStrategy = ReferenceLookupStrategyBase & {
+  readonly lookupType: 'index';
+  readonly handleLookupType?: never;
+  readonly readHandle?: never;
+  readonly writeHandle?: never;
+  readonly getHandleValueKey?: never;
+  readonly tryReadSourceStaticHandle?: never;
+  readonly getHandleDeclarationConstraints?: never;
+};
+type ReferenceHandleLookupStrategy = ReferenceDeclarationLookupStrategy | ReferencePlainHandleLookupStrategy;
+type ReferenceLookupStrategy = ReferenceHandleLookupStrategy | ReferenceNoHandleLookupStrategy;
 
 const RAW_REFERENCE_TARGET_NOT_FOUND = Symbol('RAW_REFERENCE_TARGET_NOT_FOUND');
 
@@ -685,13 +757,6 @@ function prepareRulesLookupShape(
     isInterpolatedVariable: lookupContext.isInterpolatedVariable,
     context: lookupContext.context
   });
-  if (lookupTypeUsesDeclarationConstraints(lookupContext.lookupType)) {
-    const declarationConstraints = getRulesLookupHandleDeclarationConstraintShape(lookupContext.referenceNode);
-    shape.requiredNormalizedFromAssignKey = declarationConstraints.requiredNormalizedFromAssignKey;
-    shape.excludedNode0 = declarationConstraints.excludedNode0;
-    shape.excludedNode1 = declarationConstraints.excludedNode1;
-    shape.excludedNodesLength = declarationConstraints.excludedNodesLength;
-  }
   lookupContext.preparedRules = targetRules;
   lookupContext.preparedShape = shape;
   return shape;
@@ -752,13 +817,12 @@ function lookupScopeFrameVariableBinding(
   if (mode === 'full' && (
     env.hasTarget
     || env.isInterpolatedVariable
-    || (opts.start !== undefined && env.readMode !== 'snapshot')
   )) {
     return undefined;
   }
   const frame = targetRules.getScopeFrame(undefined, false);
   if (mode === 'full') {
-    promoteResolvedPendingVarDecls(targetRules, frame);
+    promoteResolvedPendingVarDeclsInFrameChain(frame);
   }
   const hit = lookupScopeFrameVariable(frame, key, {
     start: mode === 'full' ? opts.start : undefined,
@@ -824,14 +888,10 @@ function buildReferenceDeclarationFindOptions(
   lookupContext: RulesReferenceLookupContext,
   shape: RulesLookupHandleShape
 ): ReferenceDeclarationFindOptions {
-  const declarationConstraints = getReferenceDeclarationConstraintOptions(lookupContext.referenceNode);
   return {
     filter: lookupContext.filter,
-    excludedNodes: lookupContext.referenceNode.options.excludedNodes,
-    excludedNode0: declarationConstraints.excludedNode0,
-    excludedNode1: declarationConstraints.excludedNode1,
-    excludedNodesLength: declarationConstraints.excludedNodesLength,
-    requiredNormalizedFromAssign: lookupContext.referenceNode.options.requiredNormalizedFromAssign,
+    excludedDeclarations: lookupContext.referenceNode.options.excludedDeclarations,
+    requiredDeclarationAssignments: lookupContext.referenceNode.options.requiredDeclarationAssignments,
     semanticFilter: lookupContext.semanticFilter,
     context: lookupContext.context,
     hasTarget: lookupContext.hasTarget,
@@ -874,17 +934,19 @@ function performVariableRulesLookup(
 ): VariableReferenceLookupReturnValue {
   const { env, valueKey } = lookupContext;
   const keyStr = getLookupKeyString(valueKey);
+  const occurrenceStart = env.readMode === 'snapshot'
+    ? shape.start
+    : undefined;
   const frameMode: ScopeFrameVariableBindingMode | undefined = typeof valueKey === 'string'
     && !env.hasTarget
     && !env.isInterpolatedVariable
-    && !(shape.start !== undefined && env.readMode !== 'snapshot')
     ? 'full'
     : env.readMode !== 'snapshot'
       ? 'live-current'
       : undefined;
   if (frameMode) {
     const frameHit = lookupScopeFrameVariableBinding(scope, keyStr, {
-      start: shape.start,
+      start: occurrenceStart,
       filter: env.filter
     }, env, frameMode);
     if (frameHit) {
@@ -892,13 +954,13 @@ function performVariableRulesLookup(
     }
   }
   return findVariableDeclarationOccurrence(scope, keyStr, {
-    start: shape.start,
+    start: occurrenceStart,
     context: env.context,
     hasTarget: env.hasTarget,
     local: shape.local || undefined,
     filter: env.filter,
     includeLiveBindings: env.readMode !== 'snapshot',
-    ignoreCurrentScopeStart: true,
+    ignoreCurrentScopeStart: env.readMode !== 'snapshot',
     ignoreParentScopeStart: shape.ignoreParentScopeStart || undefined
   });
 }
@@ -937,6 +999,9 @@ function shouldPrepareCallableReferenceFrame(
 ): key is string {
   if (typeof key !== 'string' || lookupContext.hasTarget || shape.local) {
     return false;
+  }
+  if (!lookupContext.env.isInterpolatedVariable) {
+    return true;
   }
   const root = lookupContext.context.root;
   const contextRules = lookupContext.context.rulesContext;
@@ -1106,20 +1171,10 @@ function performRulesReferenceLookup(
   return lookupContext.strategy.performRulesLookup(scope, lookupContext, shape);
 }
 
-function isHandleableLookupKey(valueKey: NormalizedLookupKey): valueKey is string | string[] {
-  return typeof valueKey === 'string' || Array.isArray(valueKey);
-}
-
 type RulesLookupHandleLookupType = 'declaration' | 'function' | 'mixin' | 'mixin-ruleset' | 'property' | 'variable';
 
-function lookupTypeUsesDeclarationConstraints(
-  lookupType: LookupType | RulesLookupHandleLookupType | undefined
-): lookupType is 'declaration' | 'property' | 'variable' {
-  return lookupType === 'declaration' || lookupType === 'property' || lookupType === 'variable';
-}
-
-function getRequiredNormalizedFromAssignHandleKey(
-  required: ReferenceOptions['requiredNormalizedFromAssign']
+function getRequiredDeclarationAssignmentsHandleKey(
+  required: ReferenceOptions['requiredDeclarationAssignments']
 ): string | undefined {
   if (required === undefined) {
     return undefined;
@@ -1143,71 +1198,68 @@ function getRequiredNormalizedFromAssignHandleKey(
   return `1:${required}`;
 }
 
-function getRulesLookupHandleDeclarationConstraintShape(referenceNode: Reference): Pick<
-  RulesLookupHandleShape,
-  'requiredNormalizedFromAssignKey' | 'excludedNode0' | 'excludedNode1' | 'excludedNodesLength'
-> {
-  const excludedNodes = referenceNode.options.excludedNodes;
-  const declarationConstraints = getReferenceDeclarationConstraintOptions(referenceNode);
-  const excludedNodesLength = declarationConstraints.excludedNodesLength ?? excludedNodes?.length ?? 0;
+function getRulesLookupHandleDeclarationConstraints(
+  referenceNode: Reference
+): ReferenceRulesLookupDeclarationConstraints {
+  const excludedDeclarations = referenceNode.options.excludedDeclarations;
   return {
-    requiredNormalizedFromAssignKey: getRequiredNormalizedFromAssignHandleKey(
-      referenceNode.options.requiredNormalizedFromAssign
+    requiredDeclarationAssignmentsKey: getRequiredDeclarationAssignmentsHandleKey(
+      referenceNode.options.requiredDeclarationAssignments
     ),
-    excludedNode0: declarationConstraints.excludedNode0 ?? excludedNodes?.[0],
-    excludedNode1: declarationConstraints.excludedNode1 ?? excludedNodes?.[1],
-    excludedNodesLength
+    excludedDeclaration0: excludedDeclarations?.[0],
+    excludedDeclaration1: excludedDeclarations?.[1]
   };
 }
 
 function hasHandleableDeclarationConstraints(referenceNode: Reference): boolean {
-  const excludedNodes = referenceNode.options.excludedNodes;
-  const declarationConstraints = getReferenceDeclarationConstraintOptions(referenceNode);
-  const excludedNodesLength = declarationConstraints.excludedNodesLength ?? excludedNodes?.length ?? 0;
-  const requiredNormalizedFromAssign = referenceNode.options.requiredNormalizedFromAssign;
+  const excludedDeclarations = referenceNode.options.excludedDeclarations;
+  const excludedDeclarationCount = excludedDeclarations?.length ?? 0;
+  const requiredDeclarationAssignments = referenceNode.options.requiredDeclarationAssignments;
   return (
-    excludedNodesLength <= 2
+    excludedDeclarationCount <= 2
     && (
-      !Array.isArray(requiredNormalizedFromAssign)
-      || requiredNormalizedFromAssign.length <= 4
+      !Array.isArray(requiredDeclarationAssignments)
+      || requiredDeclarationAssignments.length <= 4
     )
   );
 }
 
-function isRulesLookupHandleEligible(
-  referenceNode: Reference,
-  lookupType: LookupType,
-  valueKey: NormalizedLookupKey,
+function getStringRulesLookupHandleValueKey(valueKey: NormalizedLookupKey): string | undefined {
+  return typeof valueKey === 'string' ? valueKey : undefined;
+}
+
+function getCallableRulesLookupHandleValueKey(valueKey: NormalizedLookupKey): string | string[] | undefined {
+  return typeof valueKey === 'string' || Array.isArray(valueKey) ? valueKey : undefined;
+}
+
+function getStaticReferenceValueKey(valueKey: ReferenceValue['key']): NormalizedLookupKey | undefined {
+  if (typeof valueKey === 'string' || typeof valueKey === 'number') {
+    return valueKey;
+  }
+  if (Array.isArray(valueKey) && isStringArray(valueKey)) {
+    return valueKey;
+  }
+  return undefined;
+}
+
+function getHandleableDeclarationConstraints(
+  referenceNode: Reference
+): ReferenceRulesLookupDeclarationConstraints | undefined {
+  return hasHandleableDeclarationConstraints(referenceNode)
+    ? getRulesLookupHandleDeclarationConstraints(referenceNode)
+    : undefined;
+}
+
+function rulesLookupHandleCommonEligible(
   target: ReferenceValue['target'],
   originalFilter: ReferenceOptions['filter'] | undefined,
   env: RulesLookupAdapterEnv,
   context: Context
-): valueKey is string | string[] {
-  const handleableKey = (
-    lookupType === 'declaration'
-    || lookupType === 'function'
-    || lookupType === 'property'
-    || lookupType === 'variable'
-  )
-    ? typeof valueKey === 'string'
-    : isHandleableLookupKey(valueKey);
+): boolean {
   return (
-    (
-      lookupType === 'declaration'
-      || lookupType === 'function'
-      || lookupType === 'mixin'
-      || lookupType === 'mixin-ruleset'
-      || lookupType === 'property'
-      || lookupType === 'variable'
-    )
-    && handleableKey
-    && target === undefined
+    target === undefined
     && originalFilter === undefined
     && !env.semanticFilter
-    && (
-      !lookupTypeUsesDeclarationConstraints(lookupType)
-      || hasHandleableDeclarationConstraints(referenceNode)
-    )
     && !env.hasTarget
     && !env.isInterpolatedVariable
     && context.leakyRules !== true
@@ -1215,25 +1267,25 @@ function isRulesLookupHandleEligible(
   );
 }
 
+function getStrategyRulesLookupHandleValueKey(args: {
+  strategy: ReferenceHandleLookupStrategy;
+  valueKey: NormalizedLookupKey;
+  target: ReferenceValue['target'];
+  originalFilter: ReferenceOptions['filter'] | undefined;
+  env: RulesLookupAdapterEnv;
+  context: Context;
+}): string | string[] | undefined {
+  if (!rulesLookupHandleCommonEligible(args.target, args.originalFilter, args.env, args.context)) {
+    return undefined;
+  }
+  return args.strategy.getHandleValueKey(args.valueKey);
+}
+
 type RulesLookupHandleShape = {
   start: number | undefined;
   local: boolean;
   ignoreParentScopeStart: boolean;
   terminalMixinOnly: boolean;
-  requiredNormalizedFromAssignKey?: string;
-  excludedNode0?: Node;
-  excludedNode1?: Node;
-  excludedNodesLength?: number;
-};
-
-type WriteRulesLookupHandleArgs = {
-  referenceNode: Reference;
-  targetRules: Rules | undefined;
-  lookupType: RulesLookupHandleLookupType | undefined;
-  valueKey: string | string[] | undefined;
-  inCall: boolean;
-  shape: RulesLookupHandleShape | undefined;
-  returnVal: ReferenceLookupReturnValue;
 };
 
 function getAncestorFrameCurrentBindingFacts(
@@ -1311,11 +1363,11 @@ function getAncestorVariableCurrentBindingFacts(
 }
 
 function areCurrentBindingFactsCurrent(args: {
-  currentBindingKey: string | undefined;
-  currentBindingFrame: ScopeFrame | undefined;
-  currentBindingVersion: number | undefined;
-  currentBindingRestFrames: ScopeFrame[] | undefined;
-  currentBindingRestVersions: number[] | undefined;
+  currentBindingKey?: string;
+  currentBindingFrame?: ScopeFrame;
+  currentBindingVersion?: number;
+  currentBindingRestFrames?: ScopeFrame[];
+  currentBindingRestVersions?: number[];
 }): boolean {
   const {
     currentBindingKey,
@@ -1386,14 +1438,14 @@ function readCurrentRulesLookupHandleValue(
   return handle.returnVal;
 }
 
-function readRulesLookupHandle(
+function readRulesLookupHandleBase(
   referenceNode: Reference,
   targetRules: Rules | undefined,
   lookupType: RulesLookupHandleLookupType | undefined,
   valueKey: string | string[] | undefined,
   inCall: boolean,
   shape: RulesLookupHandleShape | undefined
-): RulesLookupHandleReadResult {
+): ReferenceRulesLookupHandle | undefined {
   if (!targetRules || !lookupType || !valueKey || !shape) {
     return undefined;
   }
@@ -1409,39 +1461,117 @@ function readRulesLookupHandle(
     || handle.ignoreParentScopeStart !== shape.ignoreParentScopeStart
     || handle.terminalMixinOnly !== shape.terminalMixinOnly
     || handle.valueKey !== valueKey
-    || (
-      lookupTypeUsesDeclarationConstraints(handle.lookupType)
-      && (
-        handle.requiredNormalizedFromAssignKey !== shape.requiredNormalizedFromAssignKey
-        || handle.excludedNodesLength !== (shape.excludedNodesLength ?? 0)
-        || handle.excludedNode0 !== shape.excludedNode0
-        || handle.excludedNode1 !== shape.excludedNode1
-      )
-    )
   ) {
     return undefined;
   }
-  return readCurrentRulesLookupHandleValue(handle);
+  return handle;
 }
 
-function tryReadSourceStaticRulesLookupHandle(args: {
-  referenceNode: Reference;
-  targetRules: Rules | undefined;
-  lookupType: LookupType;
-  valueKey: NormalizedLookupKey;
-  env: RulesLookupAdapterEnv;
-}): RulesLookupHandleReadResult {
-  const {
+function isDeclarationRulesLookupHandle(
+  handle: ReferenceRulesLookupHandle
+): handle is ReferenceRulesLookupDeclarationHandle {
+  switch (handle.lookupType) {
+    case 'declaration':
+    case 'property':
+    case 'variable':
+      return true;
+    case 'function':
+    case 'mixin':
+    case 'mixin-ruleset':
+      return false;
+  }
+}
+
+function readDeclarationRulesLookupHandleConstraints(
+  handle: ReferenceRulesLookupHandle,
+  declarationConstraints: ReferenceRulesLookupDeclarationConstraints
+): ReferenceRulesLookupDeclarationHandle | undefined {
+  if (
+    !isDeclarationRulesLookupHandle(handle)
+    || handle.requiredDeclarationAssignmentsKey !== declarationConstraints.requiredDeclarationAssignmentsKey
+    || handle.excludedDeclaration0 !== declarationConstraints.excludedDeclaration0
+    || handle.excludedDeclaration1 !== declarationConstraints.excludedDeclaration1
+  ) {
+    return undefined;
+  }
+  return handle;
+}
+
+function readDeclarationRulesLookupHandle(
+  referenceNode: Reference,
+  targetRules: Rules | undefined,
+  lookupType: RulesLookupHandleLookupType | undefined,
+  valueKey: string | string[] | undefined,
+  inCall: boolean,
+  shape: RulesLookupHandleShape | undefined,
+  declarationConstraints: ReferenceRulesLookupDeclarationConstraints | undefined
+): RulesLookupHandleReadResult {
+  const handle = readRulesLookupHandleBase(referenceNode, targetRules, lookupType, valueKey, inCall, shape);
+  const declarationHandle = handle && declarationConstraints
+    ? readDeclarationRulesLookupHandleConstraints(handle, declarationConstraints)
+    : undefined;
+  if (!declarationHandle) {
+    return undefined;
+  }
+  return readCurrentRulesLookupHandleValue(declarationHandle);
+}
+
+function readVariableRulesLookupHandle(
+  referenceNode: Reference,
+  targetRules: Rules | undefined,
+  lookupType: RulesLookupHandleLookupType | undefined,
+  valueKey: string | string[] | undefined,
+  inCall: boolean,
+  shape: RulesLookupHandleShape | undefined,
+  declarationConstraints: ReferenceRulesLookupDeclarationConstraints | undefined
+): RulesLookupHandleReadResult {
+  return readDeclarationRulesLookupHandle(
     referenceNode,
     targetRules,
     lookupType,
     valueKey,
-    env
-  } = args;
+    inCall,
+    shape,
+    declarationConstraints
+  );
+}
+
+function readFunctionRulesLookupHandle(
+  referenceNode: Reference,
+  targetRules: Rules | undefined,
+  lookupType: RulesLookupHandleLookupType | undefined,
+  valueKey: string | string[] | undefined,
+  inCall: boolean,
+  shape: RulesLookupHandleShape | undefined
+): RulesLookupHandleReadResult {
+  const handle = readRulesLookupHandleBase(referenceNode, targetRules, lookupType, valueKey, inCall, shape);
+  return handle ? readCurrentRulesLookupHandleValue(handle) : undefined;
+}
+
+function readCallableRulesLookupHandle(
+  referenceNode: Reference,
+  targetRules: Rules | undefined,
+  lookupType: RulesLookupHandleLookupType | undefined,
+  valueKey: string | string[] | undefined,
+  inCall: boolean,
+  shape: RulesLookupHandleShape | undefined
+): RulesLookupHandleReadResult {
+  const handle = readRulesLookupHandleBase(referenceNode, targetRules, lookupType, valueKey, inCall, shape);
+  return handle ? readCurrentRulesLookupHandleValue(handle) : undefined;
+}
+
+function readSourceStaticRulesLookupHandleBase(
+  referenceNode: Reference,
+  targetRules: Rules | undefined,
+  env: RulesLookupAdapterEnv,
+  lookupType: RulesLookupHandleLookupType,
+  valueKey: string | string[] | undefined
+): ReferenceRulesLookupHandle | undefined {
   const handle = referenceNode._rulesLookupHandle;
   if (
     !handle
     || !targetRules
+    || !valueKey
     || handle.start !== undefined
     || handle.local !== false
     || handle.ignoreParentScopeStart !== false
@@ -1454,91 +1584,149 @@ function tryReadSourceStaticRulesLookupHandle(args: {
     || env.isInterpolatedVariable
     || referenceNode.options.readMode !== undefined
     || referenceNode.options.resolution !== undefined
-    || typeof referenceNode.key !== 'string'
     || valueKey !== referenceNode.key
-  ) {
-    return undefined;
-  }
-  const handleableLookupType: RulesLookupHandleLookupType | undefined = (
-    lookupType === 'declaration'
-    || lookupType === 'function'
-    || lookupType === 'mixin'
-    || lookupType === 'mixin-ruleset'
-    || lookupType === 'property'
-    || lookupType === 'variable'
-  )
-    ? lookupType
-    : undefined;
-  if (
-    !handleableLookupType
-    || (
-      lookupTypeUsesDeclarationConstraints(handleableLookupType)
-      && !hasHandleableDeclarationConstraints(referenceNode)
-    )
   ) {
     return undefined;
   }
   if (
     handle.targetRules !== targetRules
-    || !isRulesLookupHandleVersionCurrent(handle, targetRules, handleableLookupType, valueKey)
-    || handle.lookupType !== handleableLookupType
+    || !isRulesLookupHandleVersionCurrent(handle, targetRules, lookupType, valueKey)
+    || handle.lookupType !== lookupType
     || handle.inCall !== env.inCall
     || handle.valueKey !== valueKey
   ) {
     return undefined;
   }
-  if (lookupTypeUsesDeclarationConstraints(handleableLookupType)) {
-    const declarationConstraints = getRulesLookupHandleDeclarationConstraintShape(referenceNode);
-    if (
-      handle.requiredNormalizedFromAssignKey !== declarationConstraints.requiredNormalizedFromAssignKey
-      || handle.excludedNodesLength !== (declarationConstraints.excludedNodesLength ?? 0)
-      || handle.excludedNode0 !== declarationConstraints.excludedNode0
-      || handle.excludedNode1 !== declarationConstraints.excludedNode1
-    ) {
-      return undefined;
-    }
-  }
-  return readCurrentRulesLookupHandleValue(handle);
+  return handle;
 }
 
-function writeVariableRulesLookupHandle(args: WriteRulesLookupHandleArgs): void {
-  const { targetRules, lookupType, valueKey, inCall, shape } = args;
-  if (!targetRules || !lookupType || !valueKey || !shape) {
-    args.referenceNode._rulesLookupHandle = undefined;
+function tryReadSourceStaticDeclarationRulesLookupHandle(
+  referenceNode: Reference,
+  targetRules: Rules | undefined,
+  valueKey: NormalizedLookupKey,
+  env: RulesLookupAdapterEnv,
+  lookupType: 'declaration' | 'property' | 'variable'
+): RulesLookupHandleReadResult {
+  const handleValueKey = getStringRulesLookupHandleValueKey(valueKey);
+  const handle = readSourceStaticRulesLookupHandleBase(referenceNode, targetRules, env, lookupType, handleValueKey);
+  if (!handle || !hasHandleableDeclarationConstraints(referenceNode)) {
+    return undefined;
+  }
+  const declarationConstraints = getRulesLookupHandleDeclarationConstraints(referenceNode);
+  const declarationHandle = handle
+    ? readDeclarationRulesLookupHandleConstraints(handle, declarationConstraints)
+    : undefined;
+  if (!declarationHandle) {
+    return undefined;
+  }
+  return readCurrentRulesLookupHandleValue(declarationHandle);
+}
+
+function tryReadSourceStaticFunctionRulesLookupHandle(
+  referenceNode: Reference,
+  targetRules: Rules | undefined,
+  valueKey: NormalizedLookupKey,
+  env: RulesLookupAdapterEnv
+): RulesLookupHandleReadResult {
+  const handleValueKey = getStringRulesLookupHandleValueKey(valueKey);
+  const handle = readSourceStaticRulesLookupHandleBase(referenceNode, targetRules, env, 'function', handleValueKey);
+  return handle ? readCurrentRulesLookupHandleValue(handle) : undefined;
+}
+
+function tryReadSourceStaticMixinRulesLookupHandle(
+  referenceNode: Reference,
+  targetRules: Rules | undefined,
+  valueKey: NormalizedLookupKey,
+  env: RulesLookupAdapterEnv
+): RulesLookupHandleReadResult {
+  const handleValueKey = getCallableRulesLookupHandleValueKey(valueKey);
+  const handle = readSourceStaticRulesLookupHandleBase(referenceNode, targetRules, env, 'mixin', handleValueKey);
+  return handle ? readCurrentRulesLookupHandleValue(handle) : undefined;
+}
+
+function tryReadSourceStaticMixinRulesetRulesLookupHandle(
+  referenceNode: Reference,
+  targetRules: Rules | undefined,
+  valueKey: NormalizedLookupKey,
+  env: RulesLookupAdapterEnv
+): RulesLookupHandleReadResult {
+  const handleValueKey = getCallableRulesLookupHandleValueKey(valueKey);
+  const handle = readSourceStaticRulesLookupHandleBase(referenceNode, targetRules, env, 'mixin-ruleset', handleValueKey);
+  return handle ? readCurrentRulesLookupHandleValue(handle) : undefined;
+}
+
+function tryReadSourceStaticPropertyRulesLookupHandle(
+  referenceNode: Reference,
+  targetRules: Rules | undefined,
+  valueKey: NormalizedLookupKey,
+  env: RulesLookupAdapterEnv
+): RulesLookupHandleReadResult {
+  return tryReadSourceStaticDeclarationRulesLookupHandle(referenceNode, targetRules, valueKey, env, 'property');
+}
+
+function tryReadSourceStaticVariableRulesLookupHandle(
+  referenceNode: Reference,
+  targetRules: Rules | undefined,
+  valueKey: NormalizedLookupKey,
+  env: RulesLookupAdapterEnv
+): RulesLookupHandleReadResult {
+  return tryReadSourceStaticDeclarationRulesLookupHandle(referenceNode, targetRules, valueKey, env, 'variable');
+}
+
+function tryReadSourceStaticAnyDeclarationRulesLookupHandle(
+  referenceNode: Reference,
+  targetRules: Rules | undefined,
+  valueKey: NormalizedLookupKey,
+  env: RulesLookupAdapterEnv
+): RulesLookupHandleReadResult {
+  return tryReadSourceStaticDeclarationRulesLookupHandle(referenceNode, targetRules, valueKey, env, 'declaration');
+}
+
+function writeVariableRulesLookupHandle(
+  referenceNode: Reference,
+  targetRules: Rules | undefined,
+  lookupType: RulesLookupHandleLookupType | undefined,
+  valueKey: string | string[] | undefined,
+  inCall: boolean,
+  shape: RulesLookupHandleShape | undefined,
+  returnVal: ReferenceLookupReturnValue,
+  declarationConstraints: ReferenceRulesLookupDeclarationConstraints | undefined
+): void {
+  if (!targetRules || !lookupType || !valueKey || !shape || !declarationConstraints) {
+    referenceNode._rulesLookupHandle = undefined;
     return;
   }
   const { start, local, ignoreParentScopeStart, terminalMixinOnly } = shape;
   if (
     lookupType !== 'variable'
     || (
-      args.returnVal !== undefined
-      && !isScopeFrameVariableBindingHandle(args.returnVal)
-      && !isDirectDeclarationOccurrence(args.returnVal)
+      returnVal !== undefined
+      && !isScopeFrameVariableBindingHandle(returnVal)
+      && !isDirectDeclarationOccurrence(returnVal)
     )
     || (
-      isDirectDeclarationOccurrence(args.returnVal)
-      && args.returnVal.ownerRules !== targetRules
+      isDirectDeclarationOccurrence(returnVal)
+      && returnVal.ownerRules !== targetRules
     )
   ) {
-    args.referenceNode._rulesLookupHandle = undefined;
+    referenceNode._rulesLookupHandle = undefined;
     return;
   }
-  const currentBindingFact = isDirectDeclarationOccurrence(args.returnVal)
-    ? getAncestorVariableCurrentBindingFacts(targetRules, getLookupKeyString(valueKey), args.returnVal)
+  const currentBindingFact = isDirectDeclarationOccurrence(returnVal)
+    ? getAncestorVariableCurrentBindingFacts(targetRules, getLookupKeyString(valueKey), returnVal)
     : undefined;
-  if (isDirectDeclarationOccurrence(args.returnVal) && !currentBindingFact) {
-    args.referenceNode._rulesLookupHandle = undefined;
+  if (isDirectDeclarationOccurrence(returnVal) && !currentBindingFact) {
+    referenceNode._rulesLookupHandle = undefined;
     return;
   }
   const targetLookupVersion = getRulesLookupHandleVersion(targetRules, lookupType, valueKey);
-  args.referenceNode._rulesLookupHandle = {
+  referenceNode._rulesLookupHandle = {
     targetRules,
     targetLookupVersion,
     valueKey,
-    requiredNormalizedFromAssignKey: shape.requiredNormalizedFromAssignKey,
-    excludedNode0: shape.excludedNode0,
-    excludedNode1: shape.excludedNode1,
-    excludedNodesLength: shape.excludedNodesLength ?? 0,
+    requiredDeclarationAssignmentsKey: declarationConstraints.requiredDeclarationAssignmentsKey,
+    excludedDeclaration0: declarationConstraints.excludedDeclaration0,
+    excludedDeclaration1: declarationConstraints.excludedDeclaration1,
     currentBindingKey: currentBindingFact?.currentBindingKey,
     currentBindingFrame: currentBindingFact?.currentBindingFrame,
     currentBindingVersion: currentBindingFact?.currentBindingVersion,
@@ -1550,58 +1738,76 @@ function writeVariableRulesLookupHandle(args: WriteRulesLookupHandleArgs): void 
     local,
     ignoreParentScopeStart,
     terminalMixinOnly,
-    returnVal: args.returnVal ?? CACHED_RULES_LOOKUP_MISS
+    returnVal: returnVal ?? CACHED_RULES_LOOKUP_MISS
   };
 }
 
-function writeDeclarationRulesLookupHandle(args: WriteRulesLookupHandleArgs): void {
-  const { targetRules, lookupType, valueKey, inCall, shape } = args;
+function writeDeclarationRulesLookupHandle(
+  referenceNode: Reference,
+  targetRules: Rules | undefined,
+  lookupType: RulesLookupHandleLookupType | undefined,
+  valueKey: string | string[] | undefined,
+  inCall: boolean,
+  shape: RulesLookupHandleShape | undefined,
+  returnVal: ReferenceLookupReturnValue,
+  declarationConstraints: ReferenceRulesLookupDeclarationConstraints | undefined
+): void {
   if (
     !targetRules
     || !lookupType
     || !valueKey
     || !shape
+    || !declarationConstraints
     || (lookupType !== 'property' && lookupType !== 'declaration')
-    || (args.returnVal !== undefined && !isDirectDeclarationOccurrence(args.returnVal))
+    || (returnVal !== undefined && !isDirectDeclarationOccurrence(returnVal))
   ) {
-    args.referenceNode._rulesLookupHandle = undefined;
+    referenceNode._rulesLookupHandle = undefined;
     return;
   }
   const targetLookupVersion = getRulesLookupHandleVersion(targetRules, lookupType, valueKey);
   const { start, local, ignoreParentScopeStart, terminalMixinOnly } = shape;
-  args.referenceNode._rulesLookupHandle = {
+  referenceNode._rulesLookupHandle = {
     targetRules,
     targetLookupVersion,
     valueKey,
-    requiredNormalizedFromAssignKey: shape.requiredNormalizedFromAssignKey,
-    excludedNode0: shape.excludedNode0,
-    excludedNode1: shape.excludedNode1,
-    excludedNodesLength: shape.excludedNodesLength ?? 0,
+    requiredDeclarationAssignmentsKey: declarationConstraints.requiredDeclarationAssignmentsKey,
+    excludedDeclaration0: declarationConstraints.excludedDeclaration0,
+    excludedDeclaration1: declarationConstraints.excludedDeclaration1,
     lookupType,
     inCall,
     start,
     local,
     ignoreParentScopeStart,
     terminalMixinOnly,
-    returnVal: args.returnVal ?? CACHED_RULES_LOOKUP_MISS
+    returnVal: returnVal ?? CACHED_RULES_LOOKUP_MISS
   };
 }
 
-function writeFunctionRulesLookupHandle(args: WriteRulesLookupHandleArgs): void {
-  const { targetRules, lookupType, valueKey, inCall, shape } = args;
+function writeFunctionRulesLookupHandle(
+  referenceNode: Reference,
+  targetRules: Rules | undefined,
+  lookupType: RulesLookupHandleLookupType | undefined,
+  valueKey: string | string[] | undefined,
+  inCall: boolean,
+  shape: RulesLookupHandleShape | undefined,
+  returnVal: ReferenceLookupReturnValue
+): void {
   if (
     !targetRules
     || lookupType !== 'function'
     || !valueKey
     || !shape
-    || (args.returnVal !== undefined && !isNode(args.returnVal, N.Func | N.JsFunction))
+    || (returnVal !== undefined && !isNode(returnVal, N.Func | N.JsFunction))
   ) {
-    args.referenceNode._rulesLookupHandle = undefined;
+    referenceNode._rulesLookupHandle = undefined;
     return;
   }
+  const functionReturnVal: FunctionReferenceLookupReturnValue = (isNode(returnVal, N.Func) || isNode(returnVal, N.JsFunction))
+    ? returnVal
+    : undefined;
   const targetLookupVersion = getRulesLookupHandleVersion(targetRules, lookupType, valueKey);
   const { start, local, ignoreParentScopeStart, terminalMixinOnly } = shape;
-  args.referenceNode._rulesLookupHandle = {
+  referenceNode._rulesLookupHandle = {
     targetRules,
     targetLookupVersion,
     valueKey,
@@ -1611,25 +1817,32 @@ function writeFunctionRulesLookupHandle(args: WriteRulesLookupHandleArgs): void 
     local,
     ignoreParentScopeStart,
     terminalMixinOnly,
-    returnVal: args.returnVal ?? CACHED_RULES_LOOKUP_MISS
+    returnVal: functionReturnVal ?? CACHED_RULES_LOOKUP_MISS
   };
 }
 
-function writeCallableRulesLookupHandle(args: WriteRulesLookupHandleArgs): void {
-  const { targetRules, lookupType, valueKey, inCall, shape } = args;
+function writeCallableRulesLookupHandle(
+  referenceNode: Reference,
+  targetRules: Rules | undefined,
+  lookupType: RulesLookupHandleLookupType | undefined,
+  valueKey: string | string[] | undefined,
+  inCall: boolean,
+  shape: RulesLookupHandleShape | undefined,
+  returnVal: ReferenceLookupReturnValue
+): void {
   if (
     !targetRules
     || !valueKey
     || !shape
     || (lookupType !== 'mixin' && lookupType !== 'mixin-ruleset')
-    || (!Array.isArray(args.returnVal) && args.returnVal !== undefined)
+    || (!Array.isArray(returnVal) && returnVal !== undefined)
   ) {
-    args.referenceNode._rulesLookupHandle = undefined;
+    referenceNode._rulesLookupHandle = undefined;
     return;
   }
   const targetLookupVersion = getRulesLookupHandleVersion(targetRules, lookupType, valueKey);
   const { start, local, ignoreParentScopeStart, terminalMixinOnly } = shape;
-  args.referenceNode._rulesLookupHandle = {
+  referenceNode._rulesLookupHandle = {
     targetRules,
     targetLookupVersion,
     valueKey,
@@ -1639,48 +1852,105 @@ function writeCallableRulesLookupHandle(args: WriteRulesLookupHandleArgs): void 
     local,
     ignoreParentScopeStart,
     terminalMixinOnly,
-    returnVal: args.returnVal ?? CACHED_RULES_LOOKUP_MISS
+    returnVal: returnVal ?? CACHED_RULES_LOOKUP_MISS
   };
 }
 
-function clearRulesLookupHandle(args: WriteRulesLookupHandleArgs): void {
-  args.referenceNode._rulesLookupHandle = undefined;
+function writeStrategyRulesLookupHandle(
+  strategy: ReferenceHandleLookupStrategy,
+  referenceNode: Reference,
+  targetRules: Rules,
+  lookupType: RulesLookupHandleLookupType | undefined,
+  valueKey: string | string[] | undefined,
+  inCall: boolean,
+  shape: RulesLookupHandleShape | undefined,
+  declarationConstraints: ReferenceRulesLookupDeclarationConstraints | undefined,
+  returnVal: ReferenceLookupReturnValue
+): void {
+  if (isReferenceDeclarationLookupStrategy(strategy)) {
+    strategy.writeHandle(
+      referenceNode,
+      targetRules,
+      lookupType,
+      valueKey,
+      inCall,
+      shape,
+      returnVal,
+      declarationConstraints
+    );
+    return;
+  }
+  strategy.writeHandle(
+    referenceNode,
+    targetRules,
+    lookupType,
+    valueKey,
+    inCall,
+    shape,
+    returnVal
+  );
 }
 
 const INDEX_REFERENCE_LOOKUP_STRATEGY: ReferenceLookupStrategy = {
   lookupType: 'index',
-  performRulesLookup: performIndexRulesLookup,
-  writeHandle: clearRulesLookupHandle
+  performRulesLookup: performIndexRulesLookup
 };
 const PROPERTY_REFERENCE_LOOKUP_STRATEGY: ReferenceLookupStrategy = {
   lookupType: 'property',
+  handleLookupType: 'property',
   performRulesLookup: performPropertyRulesLookup,
-  writeHandle: writeDeclarationRulesLookupHandle
+  readHandle: readDeclarationRulesLookupHandle,
+  writeHandle: writeDeclarationRulesLookupHandle,
+  getHandleValueKey: getStringRulesLookupHandleValueKey,
+  getHandleDeclarationConstraints: getHandleableDeclarationConstraints,
+  tryReadSourceStaticHandle: tryReadSourceStaticPropertyRulesLookupHandle
 };
 const VARIABLE_REFERENCE_LOOKUP_STRATEGY: ReferenceLookupStrategy = {
   lookupType: 'variable',
+  handleLookupType: 'variable',
   performRulesLookup: performVariableRulesLookup,
-  writeHandle: writeVariableRulesLookupHandle
+  readHandle: readVariableRulesLookupHandle,
+  writeHandle: writeVariableRulesLookupHandle,
+  getHandleValueKey: getStringRulesLookupHandleValueKey,
+  getHandleDeclarationConstraints: getHandleableDeclarationConstraints,
+  tryReadSourceStaticHandle: tryReadSourceStaticVariableRulesLookupHandle
 };
 const DECLARATION_REFERENCE_LOOKUP_STRATEGY: ReferenceLookupStrategy = {
   lookupType: 'declaration',
+  handleLookupType: 'declaration',
   performRulesLookup: performDeclarationRulesLookup,
-  writeHandle: writeDeclarationRulesLookupHandle
+  readHandle: readDeclarationRulesLookupHandle,
+  writeHandle: writeDeclarationRulesLookupHandle,
+  getHandleValueKey: getStringRulesLookupHandleValueKey,
+  getHandleDeclarationConstraints: getHandleableDeclarationConstraints,
+  tryReadSourceStaticHandle: tryReadSourceStaticAnyDeclarationRulesLookupHandle
 };
 const FUNCTION_REFERENCE_LOOKUP_STRATEGY: ReferenceLookupStrategy = {
   lookupType: 'function',
+  handleLookupType: 'function',
   performRulesLookup: performFunctionRulesLookup,
-  writeHandle: writeFunctionRulesLookupHandle
+  readHandle: readFunctionRulesLookupHandle,
+  writeHandle: writeFunctionRulesLookupHandle,
+  getHandleValueKey: getStringRulesLookupHandleValueKey,
+  tryReadSourceStaticHandle: tryReadSourceStaticFunctionRulesLookupHandle
 };
 const MIXIN_REFERENCE_LOOKUP_STRATEGY: ReferenceLookupStrategy = {
   lookupType: 'mixin',
+  handleLookupType: 'mixin',
   performRulesLookup: performMixinRulesLookup,
-  writeHandle: writeCallableRulesLookupHandle
+  readHandle: readCallableRulesLookupHandle,
+  writeHandle: writeCallableRulesLookupHandle,
+  getHandleValueKey: getCallableRulesLookupHandleValueKey,
+  tryReadSourceStaticHandle: tryReadSourceStaticMixinRulesLookupHandle
 };
 const MIXIN_RULESET_REFERENCE_LOOKUP_STRATEGY: ReferenceLookupStrategy = {
   lookupType: 'mixin-ruleset',
+  handleLookupType: 'mixin-ruleset',
   performRulesLookup: performMixinRulesetRulesLookup,
-  writeHandle: writeCallableRulesLookupHandle
+  readHandle: readCallableRulesLookupHandle,
+  writeHandle: writeCallableRulesLookupHandle,
+  getHandleValueKey: getCallableRulesLookupHandleValueKey,
+  tryReadSourceStaticHandle: tryReadSourceStaticMixinRulesetRulesLookupHandle
 };
 
 function getReferenceLookupStrategy(lookupType: LookupType): ReferenceLookupStrategy {
@@ -1702,17 +1972,35 @@ function getReferenceLookupStrategy(lookupType: LookupType): ReferenceLookupStra
   }
 }
 
-function getCachedReferenceLookupStrategy(
-  referenceNode: Reference,
-  lookupType: LookupType
-): ReferenceLookupStrategy {
-  const cached = referenceNode._lookupStrategy;
-  if (cached?.lookupType === lookupType) {
-    return cached;
+function isReferenceDeclarationLookupStrategy(
+  strategy: ReferenceHandleLookupStrategy
+): strategy is ReferenceDeclarationLookupStrategy {
+  switch (strategy.lookupType) {
+    case 'declaration':
+    case 'property':
+    case 'variable':
+      return true;
+    case 'function':
+    case 'mixin':
+    case 'mixin-ruleset':
+      return false;
   }
-  const strategy = getReferenceLookupStrategy(lookupType);
-  referenceNode._lookupStrategy = strategy;
-  return strategy;
+}
+
+function isReferenceHandleLookupStrategy(
+  strategy: ReferenceLookupStrategy
+): strategy is ReferenceHandleLookupStrategy {
+  switch (strategy.lookupType) {
+    case 'declaration':
+    case 'property':
+    case 'variable':
+    case 'function':
+    case 'mixin':
+    case 'mixin-ruleset':
+      return true;
+    case 'index':
+      return false;
+  }
 }
 
 function lookupResolvedReference(args: {
@@ -1737,6 +2025,10 @@ function lookupResolvedReference(args: {
     context
   } = args;
   const targetRules = isNode(resolvedTarget, N.Rules) ? resolvedTarget : undefined;
+  const uncachedStrategy = getReferenceLookupStrategy(lookupType);
+  const uncachedHandleStrategy = isReferenceHandleLookupStrategy(uncachedStrategy)
+    ? uncachedStrategy
+    : undefined;
   const { env } = prepareReferenceLookup({
     referenceNode,
     lookupType,
@@ -1745,20 +2037,22 @@ function lookupResolvedReference(args: {
     originalFilter,
     context
   });
-  const sourceStaticHandleResult = tryReadSourceStaticRulesLookupHandle({
-    referenceNode,
-    targetRules,
-    lookupType,
-    valueKey,
-    env
-  });
-  if (sourceStaticHandleResult !== undefined) {
-    return {
-      returnVal: sourceStaticHandleResult === CACHED_RULES_LOOKUP_MISS ? undefined : sourceStaticHandleResult,
-      valueKey
-    };
+  if (uncachedHandleStrategy) {
+    const sourceStaticHandleResult = uncachedHandleStrategy.tryReadSourceStaticHandle(
+      referenceNode,
+      targetRules,
+      valueKey,
+      env
+    );
+    if (sourceStaticHandleResult !== undefined) {
+      return {
+        returnVal: sourceStaticHandleResult === CACHED_RULES_LOOKUP_MISS ? undefined : sourceStaticHandleResult,
+        valueKey
+      };
+    }
   }
-  const strategy = getCachedReferenceLookupStrategy(referenceNode, lookupType);
+  const strategy = uncachedStrategy;
+  const handleStrategy = uncachedHandleStrategy;
 
   const lookupContext: RulesReferenceLookupContext = {
     referenceNode,
@@ -1776,36 +2070,57 @@ function lookupResolvedReference(args: {
   };
 
   let handleShape: RulesLookupHandleShape | undefined;
+  let handleDeclarationConstraints: ReferenceRulesLookupDeclarationConstraints | undefined;
   let handleLookupType: RulesLookupHandleLookupType | undefined;
   let handleValueKey: string | string[] | undefined;
-  if (targetRules) {
+  if (targetRules && handleStrategy) {
     handleShape = prepareRulesLookupShape(lookupContext, targetRules);
-    if (isRulesLookupHandleEligible(
-      referenceNode,
-      lookupType,
+    handleValueKey = getStrategyRulesLookupHandleValueKey({
+      strategy: handleStrategy,
       valueKey,
       target,
       originalFilter,
       env,
       context
-    )) {
-      handleLookupType = lookupType;
-      handleValueKey = valueKey;
+    });
+    if (handleValueKey !== undefined) {
+      if (isReferenceDeclarationLookupStrategy(handleStrategy)) {
+        handleDeclarationConstraints = handleStrategy.getHandleDeclarationConstraints(referenceNode);
+        if (handleDeclarationConstraints !== undefined) {
+          handleLookupType = handleStrategy.handleLookupType;
+        } else {
+          handleValueKey = undefined;
+        }
+      } else {
+        handleLookupType = handleStrategy.handleLookupType;
+      }
     }
-    const handleResult = readRulesLookupHandle(
-      referenceNode,
-      targetRules,
-      handleLookupType,
-      handleValueKey,
-      env.inCall,
-      handleShape
-    );
+    const handleResult = isReferenceDeclarationLookupStrategy(handleStrategy)
+      ? handleStrategy.readHandle(
+          referenceNode,
+          targetRules,
+          handleLookupType,
+          handleValueKey,
+          env.inCall,
+          handleShape,
+          handleDeclarationConstraints
+        )
+      : handleStrategy.readHandle(
+          referenceNode,
+          targetRules,
+          handleLookupType,
+          handleValueKey,
+          env.inCall,
+          handleShape
+        );
     if (handleResult !== undefined) {
       return {
         returnVal: handleResult === CACHED_RULES_LOOKUP_MISS ? undefined : handleResult,
         valueKey
       };
     }
+  } else if (targetRules) {
+    referenceNode._rulesLookupHandle = undefined;
   }
 
   const returnVal = lookupReferenceTarget({
@@ -1820,16 +2135,18 @@ function lookupResolvedReference(args: {
 
   if (isThenable(returnVal)) {
     return Promise.resolve(returnVal).then((resolved) => {
-      if (targetRules) {
-        strategy.writeHandle({
+      if (targetRules && handleStrategy) {
+        writeStrategyRulesLookupHandle(
+          handleStrategy,
           referenceNode,
           targetRules,
-          lookupType: handleLookupType,
-          valueKey: handleValueKey,
-          inCall: env.inCall,
-          shape: handleShape,
-          returnVal: resolved
-        });
+          handleLookupType,
+          handleValueKey,
+          env.inCall,
+          handleShape,
+          handleDeclarationConstraints,
+          resolved
+        );
       }
       return {
         returnVal: resolved,
@@ -1837,18 +2154,80 @@ function lookupResolvedReference(args: {
       };
     });
   }
-  if (targetRules) {
-    strategy.writeHandle({
+  if (targetRules && handleStrategy) {
+    writeStrategyRulesLookupHandle(
+      handleStrategy,
       referenceNode,
       targetRules,
-      lookupType: handleLookupType,
-      valueKey: handleValueKey,
-      inCall: env.inCall,
-      shape: handleShape,
+      handleLookupType,
+      handleValueKey,
+      env.inCall,
+      handleShape,
+      handleDeclarationConstraints,
       returnVal
-    });
+    );
   }
   return { returnVal, valueKey };
+}
+
+function tryReadInitialSourceStaticRulesLookupHandle(args: {
+  referenceNode: Reference;
+  lookupType: LookupType;
+  key: ReferenceValue['key'];
+  target: ReferenceValue['target'];
+  originalFilter: ReferenceOptions['filter'] | undefined;
+  context: Context;
+}): {
+  returnVal: ReferenceLookupReturnValue;
+  valueKey: NormalizedLookupKey;
+} | undefined {
+  const {
+    referenceNode,
+    lookupType,
+    key,
+    target,
+    originalFilter,
+    context
+  } = args;
+  if (target !== undefined || referenceNode._rulesLookupHandle === undefined) {
+    return undefined;
+  }
+  const valueKey = getStaticReferenceValueKey(key);
+  if (valueKey === undefined) {
+    return undefined;
+  }
+  const targetRules = context.rulesContext ?? referenceNode.rulesParent;
+  if (!isNode(targetRules, N.Rules)) {
+    return undefined;
+  }
+  const strategy = getReferenceLookupStrategy(lookupType);
+  const handleStrategy = isReferenceHandleLookupStrategy(strategy)
+    ? strategy
+    : undefined;
+  if (!handleStrategy) {
+    return undefined;
+  }
+  const { env } = prepareReferenceLookup({
+    referenceNode,
+    lookupType,
+    keyNode: referenceNode.key,
+    target,
+    originalFilter,
+    context
+  });
+  const handleResult = handleStrategy.tryReadSourceStaticHandle(
+    referenceNode,
+    targetRules,
+    valueKey,
+    env
+  );
+  if (handleResult === undefined) {
+    return undefined;
+  }
+  return {
+    returnVal: handleResult === CACHED_RULES_LOOKUP_MISS ? undefined : handleResult,
+    valueKey
+  };
 }
 
 function lookupDirectTarget(
@@ -1892,6 +2271,31 @@ function getReferenceNotFoundError(type: LookupType, keyDisplay: string): Refere
   return new ReferenceError(`'${keyDisplay}' is not defined`);
 }
 
+function normalizeReferenceKeyValue(value: unknown): NormalizedLookupKey {
+  if (typeof value === 'string' || typeof value === 'number') {
+    return value;
+  }
+  if (value instanceof Any) {
+    return value.value;
+  }
+  if (isNode(value, N.Quoted) && typeof value.value === 'string') {
+    return value.value;
+  }
+  if (value instanceof Dimension) {
+    return value.unit ? `${value.number}${value.unit}` : value.number;
+  }
+  if (isNode(value, N.Color) && typeof value.node === 'string') {
+    return value.node;
+  }
+  if (isNode(value)) {
+    const normalizedKey = value.valueOf();
+    return typeof normalizedKey === 'string' || typeof normalizedKey === 'number'
+      ? normalizedKey
+      : String(normalizedKey);
+  }
+  return String(value);
+}
+
 function evaluateReferenceKey(
   key: ReferenceValue['key'],
   resolvedTarget: unknown,
@@ -1909,15 +2313,16 @@ function evaluateReferenceKey(
       }
       const normalized = new Array<string>(resolvedKey.length);
       for (let i = 0; i < resolvedKey.length; i++) {
-        normalized[i] = String(resolvedKey[i]);
+        const normalizedPart = normalizeReferenceKeyValue(resolvedKey[i]);
+        normalized[i] = typeof normalizedPart === 'number'
+          ? `${normalizedPart}`
+          : Array.isArray(normalizedPart)
+            ? normalizedPart.join(' ')
+            : normalizedPart;
       }
       return [resolvedTarget, normalized];
     }
-    const normalizedKey = isNode(resolvedKey) ? resolvedKey.valueOf() : resolvedKey;
-    if (typeof normalizedKey === 'string' || typeof normalizedKey === 'number') {
-      return [resolvedTarget, normalizedKey];
-    }
-    return [resolvedTarget, String(normalizedKey)];
+    return [resolvedTarget, normalizeReferenceKeyValue(resolvedKey)];
   };
 
   if (isThenable(out)) {
@@ -1982,8 +2387,8 @@ function isDirectIndexContainerTarget(
     && referenceNode.target !== undefined
     && (
       isNode(resolvedTarget, N.List | N.Sequence | N.Rules)
-      || resolvedTarget instanceof JsArray
-      || resolvedTarget instanceof JsObject
+      || ((resolvedTarget as object) instanceof JsArray)
+      || ((resolvedTarget as object) instanceof JsObject)
     );
 }
 
@@ -1991,6 +2396,9 @@ function getRedirectReferenceTargetKey(
   referenceNode: Reference,
   resolvedTarget: unknown
 ): string | undefined {
+  if (!referenceNode.target) {
+    return undefined;
+  }
   if (!(resolvedTarget instanceof Node)) {
     return undefined;
   }
@@ -2050,16 +2458,14 @@ function materializeReferenceTarget(args: {
     return [jsResult, valueKey];
   }
   if (isNode(resolvedTarget, N.Mixin)) {
-    const sourceRules = resolvedTarget.rules;
-    const mixinResult = sourceRules.eval(context);
+    const mixinResult = resolvedTarget.eval(context);
     if (isThenable(mixinResult)) {
       return Promise.resolve(mixinResult).then(rules => [rules, valueKey]);
     }
     return [mixinResult, valueKey];
   }
   if (isNode(resolvedTarget, N.Ruleset)) {
-    const sourceRules = resolvedTarget.rules;
-    const mixinResult = sourceRules.eval(context);
+    const mixinResult = resolvedTarget.eval(context);
     if (isThenable(mixinResult)) {
       return Promise.resolve(mixinResult).then(rules => [rules, valueKey]);
     }
@@ -2077,6 +2483,12 @@ function resolveReferenceTargetValue(args: {
 }): MaybePromise<[unknown, NormalizedLookupKey]> {
   const { valueKey } = args;
   const resolvedTarget = resolveAmbiguousReferenceTarget(args);
+  if (!args.referenceNode.target) {
+    if (isThenable(resolvedTarget)) {
+      return Promise.resolve(resolvedTarget).then(target => [target, valueKey]);
+    }
+    return [resolvedTarget, valueKey];
+  }
   if (isThenable(resolvedTarget)) {
     return Promise.resolve(resolvedTarget).then(target => materializeReferenceTarget({
       resolvedTarget: target,
@@ -2095,6 +2507,35 @@ function canReturnReferenceValue(node: Node): boolean {
   return node.hasFlag(F_STATIC) && !isRulesLikeReferenceValue(node);
 }
 
+function isEmptyMergedAssignPlaceholder(node: Node): boolean {
+  if (node instanceof Nil) {
+    return true;
+  }
+  if (node instanceof Any) {
+    return node.value === '';
+  }
+  if (isNode(node, N.Quoted) && typeof node.value === 'string') {
+    return node.value === '';
+  }
+  return String(node.valueOf?.() ?? '') === '';
+}
+
+function canReturnMergedAssignReferenceValue(node: Node): boolean {
+  if (!canReturnReferenceValue(node)) {
+    return false;
+  }
+  if (!(node instanceof List)) {
+    return true;
+  }
+  for (let i = 0; i < node.value.length; i++) {
+    const child = node.value[i]!;
+    if (child instanceof List || isEmptyMergedAssignPlaceholder(child)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 function isRulesLikeReferenceValue(node: Node): boolean {
   return isNode(node, N.Rules | N.Collection | N.Mixin | N.Ruleset);
 }
@@ -2107,25 +2548,49 @@ function isRulesLikeReferenceValue(node: Node): boolean {
  */
 function createRulesLikeReferenceSurface(directValue: MixinEntry): MixinEntry;
 function createRulesLikeReferenceSurface(directValue: Node): PreservedRulesLikeValue;
-function createRulesLikeReferenceSurface(directValue: Node): PreservedRulesLikeValue {
-  const options = directValue.options;
-  const nodeConstructor = directValue.constructor;
-  if (!isNodeValueConstructor(nodeConstructor)) {
-    throw new TypeError('Preserved rules-like value must have a constructable node type');
+function createRulesLikeReferenceSurface(directValue: MixinEntry | Node): MixinEntry | PreservedRulesLikeValue {
+  const descriptors = Object.getOwnPropertyDescriptors(directValue);
+  const optionsDescriptor = descriptors._options;
+  if (
+    optionsDescriptor
+    && 'value' in optionsDescriptor
+    && optionsDescriptor.value
+    && typeof optionsDescriptor.value === 'object'
+  ) {
+    optionsDescriptor.value = { ...optionsDescriptor.value };
   }
-  const constructed = new nodeConstructor(
-    directValue.value,
-    options && typeof options === 'object' ? { ...options } : undefined,
-    directValue.location.length === 0 ? undefined : directValue.location
+  Reflect.deleteProperty(descriptors, 'sourceNode');
+  Reflect.deleteProperty(descriptors, 'parent');
+  Reflect.deleteProperty(descriptors, 'index');
+  const preservedValue = Object.create(
+    Object.getPrototypeOf(directValue)
   );
-  if (!(constructed instanceof Node)) {
+  if (!(preservedValue instanceof Node)) {
     throw new TypeError('Preserved rules-like value must remain a Node');
   }
-  const preservedValue: PreservedRulesLikeValue = constructed;
-  const sourceNode = directValue.sourceNode instanceof Node ? directValue.sourceNode : directValue;
-  preservedValue.parent = directValue.parent ?? sourceNode.parent;
-  preservedValue.index = directValue.index ?? sourceNode.index;
-  preservedValue.sourceNode = directValue;
+  Object.defineProperties(preservedValue, descriptors);
+  const directNode = isNode(directValue) ? directValue : undefined;
+  const sourceNode = directNode?.sourceNode instanceof Node ? directNode.sourceNode : directNode;
+  Object.defineProperties(preservedValue, {
+    sourceNode: {
+      value: directValue,
+      writable: true,
+      enumerable: false,
+      configurable: false
+    },
+    parent: {
+      value: (directNode?.parent) ?? sourceNode?.parent,
+      writable: true,
+      enumerable: false,
+      configurable: true
+    },
+    index: {
+      value: directValue.index ?? sourceNode?.index,
+      writable: true,
+      enumerable: true,
+      configurable: true
+    }
+  });
   return preservedValue;
 }
 
@@ -2177,6 +2642,32 @@ function finalizeFallbackReferenceResult(
   return evaluateFallbackValue(fallbackValue, context, textOnly);
 }
 
+function finalizeCallableFallbackReferenceResult(
+  referenceNode: Reference,
+  returnVal: ReferenceLookupReturnValue | unknown,
+  valueKey: NormalizedLookupKey,
+  lookupType: LookupType,
+  fallbackValue: ReferenceOptions['fallbackValue'],
+  context: Context
+): Node | undefined {
+  if (
+    fallbackValue !== true
+    || (lookupType !== 'mixin' && lookupType !== 'mixin-ruleset')
+    || !isArray(returnVal)
+  ) {
+    return undefined;
+  }
+  const candidate = returnVal[0];
+  if (!isNode(candidate, N.Mixin) && !isNode(candidate, N.Ruleset)) {
+    return undefined;
+  }
+  const params = isNode(candidate, N.Mixin) && candidate.params
+    ? candidate.params.toTrimmedString()
+    : '';
+  context.popReference();
+  return new Any(`${getLookupKeyDisplay(valueKey)}(${params})`, { role: referenceNode.role });
+}
+
 function finalizeDirectReferenceResult(
   referenceNode: Reference,
   returnVal: unknown,
@@ -2187,6 +2678,62 @@ function finalizeDirectReferenceResult(
     return createDirectCallableReferenceResult(referenceNode, returnVal);
   }
   return finalizeDirectNodeReferenceResult(referenceNode, cast(returnVal), context);
+}
+
+function getMixinReferenceCandidateGuard(candidate: MixinEntry): Node | undefined {
+  if (isNode(candidate, N.Ruleset)) {
+    const guard = candidate.guard;
+    return isNode(guard) ? guard : undefined;
+  }
+  return getCallableEntryGuard(candidate);
+}
+
+function isMixinEntryArray(value: unknown): value is MixinEntry[] {
+  return Array.isArray(value)
+    && value.every(item => isNode(item, N.Ruleset) || isCallableEntry(item));
+}
+
+function getOptionalMixinFallbackCandidateText(
+  candidate: MixinEntry,
+  valueKey: NormalizedLookupKey
+): string | undefined {
+  if (isNode(candidate, N.Ruleset)) {
+    return undefined;
+  }
+  const params = getCallableEntryParams(candidate);
+  if (!params || params.value.length === 0) {
+    return undefined;
+  }
+  const renderedParams = new Array<string>(params.value.length);
+  for (let i = 0; i < params.value.length; i++) {
+    renderedParams[i] = String(params.value[i]!.valueOf());
+  }
+  return `${getLookupKeyDisplay(valueKey)}(${renderedParams.join(', ')})`;
+}
+
+function filterOptionalMixinFallbackCandidates(
+  candidates: MixinEntry[],
+  valueKey: NormalizedLookupKey
+): { candidates: MixinEntry[] | undefined; fallbackText?: string } {
+  let out: MixinEntry[] | undefined;
+  let changed = false;
+  let fallbackText: string | undefined;
+  for (let i = 0; i < candidates.length; i++) {
+    const candidate = candidates[i]!;
+    if (getMixinReferenceCandidateGuard(candidate)) {
+      fallbackText ??= getOptionalMixinFallbackCandidateText(candidate, valueKey);
+      changed = true;
+      if (out === undefined) {
+        out = i > 0 ? candidates.slice(0, i) : [];
+      }
+      continue;
+    }
+    out?.push(candidate);
+  }
+  return {
+    candidates: changed ? out : candidates,
+    fallbackText
+  };
 }
 
 function createDirectCallableReferenceResult(
@@ -2341,7 +2888,7 @@ function finalizeDeclarationReferenceResult(
   declaration: Declaration | VarDeclaration,
   context: Context
 ): MaybePromise<Node> {
-  const declarationValue = declaration.valueNode;
+  const declarationValue = declaration.value;
   let isMergedAssign = false;
   let hasImportant = false;
   if (isNode(declaration, N.Declaration)) {
@@ -2352,8 +2899,11 @@ function finalizeDeclarationReferenceResult(
   if (
     context.calcFrames === 0
     && !hasImportant
-    && !isMergedAssign
-    && canReturnReferenceValue(declarationValue)
+    && isNode(declarationValue)
+    && (
+      (!isMergedAssign && canReturnReferenceValue(declarationValue))
+      || (isMergedAssign && canReturnMergedAssignReferenceValue(declarationValue))
+    )
   ) {
     context.popReference();
     return declarationValue;
@@ -2362,7 +2912,8 @@ function finalizeDeclarationReferenceResult(
     referenceNode.options?.preserveRulesLike === true
     && isNode(declarationValue, N.Rules | N.Collection)
   ) {
-    const preservedValue = createRulesLikeReferenceSurface(declarationValue);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const preservedValue = createRulesLikeReferenceSurface(declarationValue as Node);
     context.popReference();
     return preservedValue;
   }
@@ -2377,12 +2928,21 @@ function finalizeDeclarationReferenceResult(
   };
   try {
     if (hasImportant) {
-      context.pushImportantSource();
+      const importantNode = declaration.important instanceof Any ? declaration.important : undefined;
+      context.pushImportantSource(importantNode);
       importantPushed = true;
+    }
+    if (!isNode(declarationValue)) {
+      context.popReference();
+      return new Any(String(declarationValue), { role: referenceNode.role });
     }
     const evaluated = evaluateReferenceValueNode(declarationValue, context);
     const finalize = (evaluatedNode: Node): Node => {
       if (!isMergedAssign) {
+        popReference();
+        return evaluatedNode;
+      }
+      if (canReturnMergedAssignReferenceValue(evaluatedNode)) {
         popReference();
         return evaluatedNode;
       }
@@ -2503,7 +3063,7 @@ function evaluateReferenceValueNode(
     ) {
       return declValue;
     }
-    return copyWithReusableLeaves(declValue).eval(context);
+    return declValue.cloneForPlacement().eval(context);
   } finally {
     context.calcFrames = savedCalcFrames;
   }
@@ -2516,7 +3076,7 @@ function normalizeMergedAssignReferenceResult(node: Node): Node {
   let mergedItems: Node[] | undefined;
   const collect = (child: Node): void => {
     if (child instanceof List) {
-      for (const item of child.items) {
+      for (const item of child.value) {
         collect(item);
       }
       return;
@@ -2530,8 +3090,8 @@ function normalizeMergedAssignReferenceResult(node: Node): Node {
     }
   };
 
-  for (let i = 0; i < node.items.length; i++) {
-    const child = node.items[i]!;
+  for (let i = 0; i < node.value.length; i++) {
+    const child = node.value[i]!;
     const needsNormalization = (
       child instanceof List
       || child instanceof Nil
@@ -2546,7 +3106,7 @@ function normalizeMergedAssignReferenceResult(node: Node): Node {
     if (!mergedItems) {
       mergedItems = [];
       for (let j = 0; j < i; j++) {
-        mergedItems.push(node.items[j]!);
+        mergedItems.push(node.value[j]!);
       }
     }
     collect(child);
@@ -2554,6 +3114,7 @@ function normalizeMergedAssignReferenceResult(node: Node): Node {
   if (!mergedItems) {
     return node;
   }
+  mergedItems = collapseRepeatedMergedPrefix(mergedItems);
   if (mergedItems.length === 0) {
     return new Nil();
   }
@@ -2561,6 +3122,30 @@ function normalizeMergedAssignReferenceResult(node: Node): Node {
     return mergedItems[0]!;
   }
   return new List(mergedItems);
+}
+
+function sameMergedReferenceItem(left: Node, right: Node): boolean {
+  return left.compare(right) === 0 || String(left.valueOf()) === String(right.valueOf());
+}
+
+function collapseRepeatedMergedPrefix(items: Node[]): Node[] {
+  for (let start = items.length - 1; start > 0; start--) {
+    if (!sameMergedReferenceItem(items[0]!, items[start]!)) {
+      continue;
+    }
+    let matches = true;
+    const comparable = Math.min(start, items.length - start);
+    for (let i = 1; i < comparable; i++) {
+      if (!sameMergedReferenceItem(items[i]!, items[start + i]!)) {
+        matches = false;
+        break;
+      }
+    }
+    if (matches) {
+      return items.slice(start);
+    }
+  }
+  return items;
 }
 
 function finalizeReferenceLookupResult(
@@ -2582,6 +3167,17 @@ function finalizeReferenceLookupResult(
       textOnly
     );
   }
+  const callableFallback = finalizeCallableFallbackReferenceResult(
+    referenceNode,
+    returnVal,
+    valueKey,
+    lookupType,
+    fallbackValue,
+    context
+  );
+  if (callableFallback) {
+    return callableFallback;
+  }
   if (isScopeFrameVariableBindingHandle(returnVal)) {
     return finalizeScopeFrameVariableBindingResult(referenceNode, returnVal, context);
   }
@@ -2590,6 +3186,32 @@ function finalizeReferenceLookupResult(
   }
   if (isNode(returnVal, N.Declaration) || isNode(returnVal, N.VarDeclaration)) {
     return finalizeDeclarationReferenceResult(referenceNode, returnVal, context);
+  }
+  if (
+    lookupType === 'mixin'
+    && fallbackValue === true
+    && isMixinEntryArray(returnVal)
+  ) {
+    const {
+      candidates: filtered,
+      fallbackText
+    } = filterOptionalMixinFallbackCandidates(returnVal, valueKey);
+    if (filtered === undefined || filtered.length === 0) {
+      if (fallbackText) {
+        context.popReference();
+        referenceNode._rulesLookupHandle = undefined;
+        return new Any(fallbackText, { role: referenceNode.role });
+      }
+      return finalizeFallbackReferenceResult(
+        referenceNode,
+        valueKey,
+        lookupType,
+        fallbackValue,
+        context,
+        textOnly
+      );
+    }
+    return finalizeDirectReferenceResult(referenceNode, filtered, context);
   }
   return finalizeDirectReferenceResult(referenceNode, returnVal, context);
 }
@@ -2604,10 +3226,10 @@ function finalizeRawReferenceLookupTarget(
     return getBindingHandleValue(returnVal);
   }
   if (isDirectDeclarationOccurrence(returnVal)) {
-    return returnVal.node.valueNode;
+    return returnVal.node.value;
   }
   if (isNode(returnVal, N.Declaration) || isNode(returnVal, N.VarDeclaration)) {
-    return returnVal.valueNode;
+    return returnVal.value;
   }
   return returnVal;
 }
@@ -2617,7 +3239,7 @@ function resolveRawReferenceLookupTarget(
   context: Context
 ): MaybePromise<unknown> {
   const { target, key } = referenceNode;
-  const lookupType = referenceNode.options.type;
+  const lookupType: LookupType = referenceNode.options.type ?? 'variable';
   context.pushReference();
   const initialTarget = resolveInitialReferenceTarget(referenceNode, context);
 
@@ -2722,7 +3344,7 @@ function canRenderRawVariableReferenceDirectly(referenceNode: Reference): boolea
 
 function finalizeDirectRawRenderValue(
   referenceNode: Reference,
-  returnVal: RulesLookupResult | unknown,
+  returnVal: unknown,
   context: Context
 ): Node | undefined {
   if (!canRenderRawVariableReferenceDirectly(referenceNode)) {
@@ -2787,6 +3409,32 @@ function evaluateReferenceNode(args: {
   } = args;
   const renderTextOnly = textOnly === true;
   context.pushReference();
+  const initialHandleLookup = tryReadInitialSourceStaticRulesLookupHandle({
+    referenceNode,
+    lookupType,
+    key,
+    target,
+    originalFilter,
+    context
+  });
+  if (initialHandleLookup !== undefined) {
+    const { returnVal, valueKey } = initialHandleLookup;
+    const directRenderValue = directStaticRender === true
+      ? finalizeDirectRawRenderValue(referenceNode, returnVal, context)
+      : undefined;
+    if (directRenderValue) {
+      return directRenderValue;
+    }
+    return finalizeReferenceLookupResult(
+      referenceNode,
+      returnVal,
+      valueKey,
+      lookupType,
+      fallbackValue,
+      context,
+      renderTextOnly
+    );
+  }
   const initialTarget = resolveInitialReferenceTarget(referenceNode, context);
   if (isThenable(initialTarget)) {
     return Promise.resolve(initialTarget)
@@ -2942,6 +3590,7 @@ function evaluateReferenceNode(args: {
   );
 }
 
+// AUDIT: We have got to drastically trim this file.
 /**
  * This is a variable or property reference,
  * which can itself contain a reference (a variable variable).
@@ -2950,7 +3599,6 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
   static override childKeys = ['target', 'key'] as const;
 
   _rulesLookupHandle: ReferenceRulesLookupHandle | undefined;
-  _lookupStrategy: ReferenceLookupStrategy | undefined;
   readonly target: ReferenceValue['target'];
   readonly key: ReferenceValue['key'];
   readonly rawKey: ReferenceValue['rawKey'];
@@ -3036,14 +3684,6 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
     }
   }
 
-  private renderReferenceSyntax(options?: PrintOptions): string {
-    options = getPrintOptions(options);
-    const w = options.writer!;
-    const mark = w.mark();
-    this.writeReferenceSyntax(options);
-    return w.getSince(mark);
-  }
-
   override writeSyntax(options: FinalPrintOptions): void {
     this.writeReferenceSyntax(options);
   }
@@ -3051,15 +3691,19 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
   /**
    * @note - A reference renders a $ only if it has no target.
    */
-  override toTrimmedString(options?: PrintOptions): string {
-    return this.renderReferenceSyntax(options);
+  override toTrimmedString(rawOptions?: PrintOptions): string {
+    const options = getPrintOptions(rawOptions);
+    const w = options.writer!;
+    const mark = w.mark();
+    this.writeSyntax(options);
+    return w.getSince(mark);
   }
 
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     const renderBuffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
-    const renderOptions = renderBuffer ? options : bufferOrOptions;
+    const renderOptions: PrintOptions | undefined = isRenderBuffer(bufferOrOptions) ? options : bufferOrOptions;
     if (canRenderRawVariableReferenceDirectly(this) && this.options.fallbackValue === undefined) {
       const rawValue = resolveRawReferenceLookupTarget(this, context);
       if (isThenable(rawValue)) {

@@ -1,7 +1,6 @@
-import type { IToken } from 'chevrotain';
 import { amp, any, attr, co, compound, ComplexSelector, el, pseudo, ref, rules, Rules, sel, sellist, vardecl } from '../index.js';
 import { Context, TreeContext } from '../../context.js';
-import { createTriviaMap } from '../util/trivia.js';
+import { createTriviaMap, makeTrivia } from '../util/trivia.js';
 import { OutputWriter } from '../util/print.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
 
@@ -20,16 +19,7 @@ class CountingWriter extends OutputWriter {
   }
 }
 
-const token = (image: string): IToken => ({
-  image,
-  tokenType: { name: 'WS' } as IToken['tokenType'],
-  startOffset: 0,
-  endOffset: image.length - 1,
-  startLine: 1,
-  endLine: 1,
-  startColumn: 1,
-  endColumn: image.length
-});
+const run = (text: string) => makeTrivia(text, 0, text.length);
 
 let context: Context;
 
@@ -58,15 +48,15 @@ describe('Complex selector', () => {
       expect(node.toTrimmedString()).toBe('a > .foo');
     });
 
-    test('exposes components as direct child field', () => {
+    test('exposes value as direct child field', () => {
       const first = el('a');
       const combinator = co('>');
       const second = el('.foo');
       const node = sel([first, combinator, second]);
 
-      expect(node.components).toEqual([first, combinator, second]);
       expect(node.value).toEqual([first, combinator, second]);
-      expect(ComplexSelector.childKeys).toEqual(['components']);
+      expect(node.value).toEqual([first, combinator, second]);
+      expect(ComplexSelector.childKeys).toEqual(['value']);
     });
 
     test('writes empty complex selector syntax without writer readback', () => {
@@ -78,7 +68,7 @@ describe('Complex selector', () => {
       expect(writer.captures).toBe(0);
     });
 
-    test('streams selector components without capture scaffolding', () => {
+    test('streams selector value without capture scaffolding', () => {
       const writer = new CountingWriter();
       const node = sel([
         el('a'),
@@ -88,6 +78,15 @@ describe('Complex selector', () => {
 
       expect(node.toTrimmedString({ writer })).toBe('a > .foo');
       expect(writer.captures).toBe(0);
+    });
+
+    test('does not prepend indent-breaking space before a leading combinator', () => {
+      const node = sel([
+        co('>'),
+        el('.foo')
+      ]);
+
+      expect(node.toTrimmedString()).toBe('> .foo');
     });
 
     test('renders resolved complex selector values through render(context)', async () => {
@@ -156,8 +155,8 @@ describe('Complex selector', () => {
 
     test('does not consume reordered source trivia between generated selector parts', () => {
       const trivia = createTriviaMap({
-        before: new Map([[0, [token('\n')]]]),
-        after: new Map([[26, [token('\n')]]])
+        before: new Map([[0, run('\n')]]),
+        after: new Map([[26, run('\n')]])
       });
       const treeContext = new TreeContext({ trivia });
       const parent = el('.top', undefined, [0, 1, 1, 3, 1, 4], treeContext);
@@ -197,7 +196,6 @@ describe('Complex selector', () => {
       const resolved = await selector.resolve(context);
 
       expect(resolved.toTrimmedString()).toBe('a[data=foo] > .foo');
-      expect(selector.evaluated).toBe(false);
       expect(selector.registrationPrepared).toBe(false);
       expect(context.printState.writer).toBeUndefined();
     });
@@ -247,9 +245,9 @@ describe('Complex selector', () => {
         co('>'),
         el('.foo')
       ]);
-      const sourceCompound = selector.components[0]!;
-      const sourceCombinator = selector.components[1]!;
-      const sourceChild = selector.components[2]!;
+      const sourceCompound = selector.value[0]!;
+      const sourceCombinator = selector.value[1]!;
+      const sourceChild = selector.value[2]!;
       const resolved = await selector.resolve(context);
 
       expect(resolved.render(context)).toBe('a[data=foo] > .foo');
@@ -264,7 +262,7 @@ describe('Complex selector', () => {
         amp(),
         el('.keep')
       ]);
-      const sourceChild = selector.components[1]!;
+      const sourceChild = selector.value[1]!;
       const sourceParent = sourceChild.parent;
       const sourceLocation = sourceChild.location;
       const resolved = await selector.eval(context);
@@ -292,6 +290,16 @@ describe('Complex selector', () => {
       // visibleKeySet excludes combinators
       expect(sel1.visibleKeySet.equals(context.selectorBits.getBitset(['.one', '.two', '.three']))).toBe(true);
     });
+
+    test('string-backed complex', async () => {
+      const sel1 = sel(['.one', '>', '.two', '+', 'div']);
+      await sel1.eval(context);
+      expect(sel1.toTrimmedString()).toBe('.one > .two + div');
+      expect(sel1.keySet.equals(context.selectorBits.getBitset(['.one', '>', '.two', '+', 'div']))).toBe(true);
+      expect(sel1.visibleKeySet.equals(context.selectorBits.getBitset(['.one', '.two', 'div']))).toBe(true);
+      expect(sel1.requiredKeySet.equals(context.selectorBits.getBitset(['.one', '>', '.two', '+', 'div']))).toBe(true);
+    });
+
     test('nested complex (w/ relative :is)', async () => {
       let sel2 = sel([
         compound([

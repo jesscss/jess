@@ -1,8 +1,13 @@
-import { serializeTypes } from '@jesscss/core';
+import { serializeTypes, type Node } from '@jesscss/core';
 import { Parser } from '../src/index.js';
 
 const parser = new Parser();
 const parse = parser.parse;
+
+function namedNode(n: Node | string | undefined): { name: { rawKey?: { type: string; toString(): string } } } {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+  return n as unknown as { name: { rawKey?: { type: string; toString(): string } } };
+}
 
 describe('anonymousMixinDefinition', () => {
   it('should parse anonymous mixin', () => {
@@ -18,7 +23,8 @@ describe('anonymousMixinDefinition', () => {
 
 describe('mixinArgs', () => {
   it('should parse mixin args', () => {
-    const { errors } = parse('(@v)', 'mixinArgs', { isDefinition: true });
+    // @ts-expect-error -- the bound parse() collapses its overloads, hiding the optional third (rule-options) argument this start rule accepts at runtime.
+    const { errors } = parser.parse('(@v)', 'mixinArgs', { isDefinition: true });
     expect(errors.length).toBe(0);
   });
 
@@ -46,8 +52,8 @@ describe('mixinArgList', () => {
     expect(out).toContainString('(Reference [role=name]');
     expect(out).toContainString('type: \'mixin-ruleset\'');
     expect(out).toContainString('key: \'.mixin\'');
-    expect(out).toContainString('(BasicSelector \'.mixin\')');
     expect(out).toContainString('(List\n          sep: \',\'');
+    expect(out).toContainString('value:');
     expect(out).toContainString('(Any [role=ident]');
     expect(out).toContainString('\'a\'');
     expect(out).toContainString('\'b\'');
@@ -61,8 +67,8 @@ describe('mixinArgList', () => {
     expect(out).toContainString('(Reference [role=name]');
     expect(out).toContainString('type: \'mixin-ruleset\'');
     expect(out).toContainString('key: \'.mixin\'');
-    expect(out).toContainString('(BasicSelector \'.mixin\')');
     expect(out).toContainString('(List\n          sep: \';\'');
+    expect(out).toContainString('value:');
     expect(out).toContainString('(Any [role=ident]');
     expect(out).toContainString('\'a\'');
     expect(out).toContainString('\'b\'');
@@ -91,7 +97,8 @@ describe('mixinArg', () => {
   });
 
   it('should parse rest parameter', () => {
-    const { errors } = parse('(@rest...)', 'mixinArgs', { isDefinition: true });
+    // @ts-expect-error -- the bound parse() collapses its overloads, hiding the optional third (rule-options) argument this start rule accepts at runtime.
+    const { errors } = parser.parse('(@rest...)', 'mixinArgs', { isDefinition: true });
     expect(errors.length).toBe(0);
   });
 });
@@ -159,7 +166,7 @@ describe('lookupOrCall', () => {
               role: 'property'
             'color'
           )
-        value: 
+        value:
           (Reference
               type: 'index'
             target: 
@@ -170,7 +177,7 @@ describe('lookupOrCall', () => {
             key: 
               (Quoted
                   quote: '\\''
-                'key'
+           value: 'key'
               )
           )
       `);
@@ -187,7 +194,7 @@ describe('lookupOrCall', () => {
               role: 'property'
             'color'
           )
-        value: 
+        value:
           (Reference
               type: 'variable'
             target: 
@@ -212,7 +219,7 @@ describe('lookupOrCall', () => {
               role: 'property'
             'color'
           )
-        value: 
+        value:
           (Call
             name: 
               (Reference [role=name]
@@ -227,17 +234,13 @@ describe('lookupOrCall', () => {
   it('should flatten compound segments in complex mixin reference paths', () => {
     const { errors, tree } = parse('#foo-foo > .bar.baz()', 'mixinOrQualifiedRule');
     expect(errors.length).toBe(0);
-    expect(serializeTypes(tree, { showOptions: true })).toContainString(`
-      (Call
-          markImportant: false
-        name: 
-          (Reference [role=name]
-              type: 'mixin-ruleset'
-              role: 'name'
-            key:
-              ['#foo-foo', '.bar', '.baz']
-            rawKey: 
-              (ComplexSelector
-      `);
+    const out = serializeTypes(tree, { showOptions: true });
+    expect(out).toContainString('markImportant: false');
+    expect(out).toContainString('(Reference [role=name]');
+    expect(out).toContainString('type: \'mixin-ruleset\'');
+    expect(out).toContainString('role: \'name\'');
+    expect(out).toContainString('key:\n        [\'#foo-foo\', \'.bar\', \'.baz\']');
+    expect(namedNode(tree).name.rawKey?.type).toBe('ComplexSelector');
+    expect(namedNode(tree).name.rawKey?.toString()).toBe('#foo-foo > .bar.baz');
   });
 });

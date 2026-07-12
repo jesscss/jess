@@ -9,6 +9,31 @@ globs:
 
 # Parsers
 
+## ⛔ SOURCE OF TRUTH FOR NODE SHAPES — READ THIS BEFORE TOUCHING A BUILDER
+
+The functional parseman parser (`src/grammar.ts` + `src/builders.ts`) is a **1:1 port** of
+the legacy Chevrotain recursive-descent parser. The Chevrotain **productions** are the
+authoritative specification for the exact AST node shape every construct produces:
+
+- `packages/less-parser/src/productions/*.ts` — `root.ts`, `values.ts`, `selectors.ts`, `guards.ts`
+- `packages/css-parser/src/productions/**`
+
+These productions contain the real node-construction logic. Examples:
+- `lookupOrCall` (`less-parser/src/productions/guards.ts`) defines `[accessor]` / index-lookup /
+  call shapes: empty `[]` → `Reference({ target, key: -1 }, { type: 'index' })`; `[@x]` → `type:'variable'`;
+  `[ident]` / `$@x` → `key` wrapped in `Quoted` with `type:'index'`; mixin/ruleset targets merge keys into an array.
+- `root.ts` defines mixin-call / declaration / at-rule shapes; `selectors.ts` defines selector shapes.
+
+**When you need to know what shape a Less/CSS construct produces:**
+1. Find and READ the matching Chevrotain production and its build logic. That is the spec.
+2. Make `builders.ts` reproduce that shape exactly.
+
+**Do NOT:**
+- Guess the shape from grammar text, from the parseman CST, or from observed output.
+- Invent "grammar bug" / "partial accessor" / "leaked CST" rationalizations to explain a mismatch —
+  if your output disagrees with the production, your builder is wrong, not the grammar.
+- Reverse-engineer a shape by trial-and-error against test expectations.
+
 ## Packages
 
 - `packages/css-parser`: base CSS parsing
@@ -18,7 +43,8 @@ globs:
 
 ## Typical hotspots
 
-- `src/*Tokens*`, `src/*Parser*`, `src/productions.ts`
+- `src/*Tokens*`, `src/*Parser*`, `src/productions/*.ts` (Chevrotain productions — the node-shape spec),
+  `src/grammar.ts` + `src/builders.ts` (functional parseman port)
 - Tests under `test/**/*.test.ts` (package-dependent)
 
 ## Debugging guardrails

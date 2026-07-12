@@ -1,12 +1,4 @@
 export {
-  RecursiveDescentParser,
-  SKIPPED_LABEL,
-  WS_NAME,
-  type ParserTriviaMap,
-  type TriviaLookup
-} from './parser.js';
-
-export {
   buildTokenMatchBitsets,
   buildTokenTypeSet,
   tokenMatches,
@@ -30,3 +22,27 @@ export {
   type LocationInfoOrEmpty,
   type OptionalLocation
 } from './types.js';
+
+export {
+  LineMap,
+  SourceText,
+  createPackedFieldSpans,
+  createPackedSegmentSpans,
+  delimitedSpan,
+  packedSpanStart,
+  packedSpanEnd,
+  packedSpanFlags,
+  setPackedFieldSpan,
+  setPackedSegmentSpan,
+  sourceSpan,
+  type DelimitedSpan,
+  type PackedFieldSpans,
+  type PackedSegmentSpans,
+  type SourceSpan,
+  type SourcePosition,
+  type SourceTextStats,
+  type SourceTextVersion,
+  type TriviaKind,
+  type TriviaRun
+} from './source/index.js';
+

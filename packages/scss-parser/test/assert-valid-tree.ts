@@ -98,7 +98,11 @@ export function assertValidTree(root: unknown) {
       if (
         key === 'parent'
         || key === 'treeContext'
+        || key === '_treeContext'
+        || key === '_sourceRoot'
         || key === 'sourceNode'
+        || key === 'options'
+        || key === '_options'
         || key === 'pre'
         || key === 'post'
       ) {

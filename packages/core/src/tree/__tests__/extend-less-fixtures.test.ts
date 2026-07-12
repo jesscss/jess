@@ -19,7 +19,7 @@ import { describe, it, expect } from 'vitest';
 import * as path from 'path';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { Parser } from '../../../../less-parser/lib/index.js';
+import { Parser } from '../../../../less-parser/src/index.js';
 import { Context } from '../../context.js';
 import {
   any,
@@ -39,7 +39,7 @@ import {
   sellist,
   pseudo
 } from '../index.js';
-import { renderNodeToString } from '../util/render-buffer.js';
+import { renderNodeToString, type RenderBufferNode } from '../util/render-buffer.js';
 
 // false so we expect nested output where source .less is nested (Less test-data style)
 const collapseNesting = false;
@@ -57,38 +57,38 @@ describe('Jess all-less fixture replications (extend-less-fixtures)', () => {
     return rules([
       ruleset({
         selector: el('.clearfix'),
-        rules: rules([
+        rules: [
           decl({ name: '*zoom', value: any('1') }),
           ruleset({
             selector: compound([amp(), pseudo({ name: ':after' })]),
-            rules: rules([
+            rules: [
               decl({ name: 'content', value: quoted('') }),
               decl({ name: 'display', value: any('block') }),
               decl({ name: 'clear', value: any('both') }),
               decl({ name: 'height', value: any('0') })
-            ])
+            ]
           })
-        ])
+        ]
       }),
       ruleset({
         selector: el('.foo'),
-        rules: rules([
+        rules: [
           extend({ target: el('.clearfix'), flag: ExtendFlag.All }),
           decl({ name: 'color', value: any('red') })
-        ])
+        ]
       }),
       ruleset({
         selector: el('.bar'),
-        rules: rules([
+        rules: [
           extend({ target: el('.clearfix'), flag: ExtendFlag.All }),
           decl({ name: 'color', value: any('blue') })
-        ])
+        ]
       })
     ]);
   }
 
   it('1a. extend-clearfix with nesting – nested &:after inside block', async () => {
-    const context = new Context({ collapseNesting: false });
+    const context = new Context({ output: { collapseNesting: false } });
     const css = await renderNodeToString(createExtendClearfixAst(), context, { context });
     expect(css.trim()).toBeString(
       `.clearfix,
@@ -112,7 +112,7 @@ describe('Jess all-less fixture replications (extend-less-fixtures)', () => {
   });
 
   it('1b. extend-clearfix without nesting – flat :is(...):after (Less-style)', async () => {
-    const context = new Context({ collapseNesting: true });
+    const context = new Context({ output: { collapseNesting: true } });
     const css = await renderNodeToString(createExtendClearfixAst(), context, { context });
     expect(css.trim()).toBeString(
       `.clearfix,
@@ -148,28 +148,28 @@ describe('Jess all-less fixture replications (extend-less-fixtures)', () => {
           compound([el('.replace'), el('.replace')]),
           sel([compound([el('.c'), el('.replace')]), co('+'), el('.replace')])
         ]),
-        rules: rules([
+        rules: [
           ruleset({
             selector: sellist([el('.replace'), el('.c')]),
-            rules: rules([decl({ name: 'prop', value: any('copy-paste-replace') })])
+            rules: [decl({ name: 'prop', value: any('copy-paste-replace') })]
           })
-        ])
+        ]
       }),
       ruleset({
         selector: el('.rep_ace'),
-        rules: rules([
+        rules: [
           extend({
             target: sel([compound([el('.replace'), el('.replace')]), co(' '), el('.replace')]),
             flag: ExtendFlag.Exact
           })
-        ])
+        ]
       }),
       ruleset({
         selector: el('.effected'),
-        rules: rules([extend({ target: el('.c') })])
+        rules: [extend({ target: el('.c') })]
       })
     ]);
-    const context = new Context({ collapseNesting });
+    const context = new Context({ output: { collapseNesting } });
     const css = await renderNodeToString(root, context, { context });
     const expected = `:is(.replace.replace, .c.replace + .replace) :is(.replace, .c),
 .rep_ace {
@@ -193,85 +193,85 @@ describe('Jess all-less fixture replications (extend-less-fixtures)', () => {
           compound([el('.replace'), el('.replace')]),
           sel([compound([el('.c'), el('.replace')]), co('+'), el('.replace')])
         ]),
-        rules: rules([
+        rules: [
           ruleset({
             selector: sellist([el('.replace'), el('.c')]),
-            rules: rules([decl({ name: 'prop', value: any('copy-paste-replace') })])
+            rules: [decl({ name: 'prop', value: any('copy-paste-replace') })]
           })
-        ])
+        ]
       }),
       ruleset({
         selector: el('.rep_ace'),
-        rules: rules([
+        rules: [
           extend({
             target: el('.replace'),
             flag: ExtendFlag.All
           })
-        ])
+        ]
       }),
       ruleset({
         selector: sel([el('.a'), co(' '), el('.b'), co(' '), el('.c')]),
-        rules: rules([decl({ name: 'prop', value: any('not_effected') })])
+        rules: [decl({ name: 'prop', value: any('not_effected') })]
       }),
       ruleset({
         selector: el('.a'),
-        rules: rules([
+        rules: [
           decl({ name: 'prop', value: any('is_effected') }),
           ruleset({
             selector: el('.b'),
-            rules: rules([decl({ name: 'prop', value: any('not_effected') })])
+            rules: [decl({ name: 'prop', value: any('not_effected') })]
           }),
           ruleset({
             selector: compound([el('.b'), el('.c')]),
-            rules: rules([decl({ name: 'prop', value: any('not_effected') })])
+            rules: [decl({ name: 'prop', value: any('not_effected') })]
           })
-        ])
+        ]
       }),
       ruleset({
         selector: sellist([el('.c'), el('.a')]),
-        rules: rules([
+        rules: [
           ruleset({
             selector: sellist([el('.b'), el('.a')]),
-            rules: rules([
+            rules: [
               ruleset({
                 selector: sellist([el('.a'), el('.c')]),
-                rules: rules([decl({ name: 'prop', value: any('not_effected') })])
+                rules: [decl({ name: 'prop', value: any('not_effected') })]
               })
-            ])
+            ]
           })
-        ])
+        ]
       }),
       ruleset({
         selector: el('.effected'),
-        rules: rules([
+        rules: [
           extend({ target: el('.a') }),
           extend({ target: el('.b') }),
           extend({ target: el('.c') })
-        ])
+        ]
       }),
       ruleset({
         selector: el('.e'),
-        rules: rules([
+        rules: [
           ruleset({
             selector: compound([amp(), amp()]),
-            rules: rules([
+            rules: [
               decl({ name: 'prop', value: any('extend-double') }),
               ruleset({
                 selector: compound([amp(), pseudo({ name: ':hover' })]),
-                rules: rules([decl({ name: 'hover', value: any('not-extended') })])
+                rules: [decl({ name: 'hover', value: any('not-extended') })]
               })
-            ])
+            ]
           })
-        ])
+        ]
       }),
       ruleset({
         selector: el('.dbl'),
-        rules: rules([
+        rules: [
           extend({ target: compound([el('.e'), el('.e')]) })
-        ])
+        ]
       })
     ]);
-    const context = new Context({ collapseNesting });
+    const context = new Context({ output: { collapseNesting } });
     const css = await renderNodeToString(root, context, { context });
     expect(css.trim()).toBeString(`
 :is(.replace, .rep_ace):is(.replace, .rep_ace),
@@ -323,120 +323,120 @@ describe('Jess all-less fixture replications (extend-less-fixtures)', () => {
    */
   it('3. extend-nest.less – :is(...) .box and .submit:hover merged', async () => {
     // collapseNesting: true so output matches Less (flat :is() rules)
-    const context = new Context({ collapseNesting: true });
+    const context = new Context({ output: { collapseNesting: true } });
     const root = rules([
       ruleset({
         selector: el('.sidebar'),
-        rules: rules([
+        rules: [
           decl({ name: 'width', value: any('300px') }),
           decl({ name: 'background', value: any('red') }),
           ruleset({
             selector: el('.box'),
-            rules: rules([
+            rules: [
               decl({ name: 'background', value: any('#FFF') }),
               decl({ name: 'border', value: any('1px solid #000') }),
               decl({ name: 'margin', value: any('10px 0') })
-            ])
+            ]
           })
-        ])
+        ]
       }),
       ruleset({
         selector: el('.sidebar2'),
-        rules: rules([
+        rules: [
           extend({ target: el('.sidebar'), flag: ExtendFlag.All }),
           decl({ name: 'background', value: any('blue') })
-        ])
+        ]
       }),
       ruleset({
         selector: el('.type1'),
-        rules: rules([
+        rules: [
           ruleset({
             selector: el('.sidebar3'),
-            rules: rules([
+            rules: [
               extend({ target: el('.sidebar'), flag: ExtendFlag.All }),
               decl({ name: 'background', value: any('green') })
-            ])
+            ]
           })
-        ])
+        ]
       }),
       ruleset({
         selector: compound([el('.type2'), el('.sidebar4')]),
-        rules: rules([
+        rules: [
           extend({ target: el('.sidebar'), flag: ExtendFlag.All }),
           decl({ name: 'background', value: any('red') })
-        ])
+        ]
       }),
       ruleset({
         selector: el('.button'),
-        rules: rules([decl({ name: 'color', value: any('black') })])
+        rules: [decl({ name: 'color', value: any('black') })]
       }),
       ruleset({
         selector: compound([el('.button'), pseudo({ name: ':hover' })]),
-        rules: rules([decl({ name: 'color', value: any('inherit') })])
+        rules: [decl({ name: 'color', value: any('inherit') })]
       }),
       ruleset({
         selector: el('.submit'),
-        rules: rules([extend({ target: el('.button') })])
+        rules: [extend({ target: el('.button') })]
       }),
       ruleset({
         selector: compound([el('.submit'), pseudo({ name: ':hover' })]),
-        rules: rules([extend({ target: compound([el('.button'), pseudo({ name: ':hover' })]) })])
+        rules: [extend({ target: compound([el('.button'), pseudo({ name: ':hover' })]) })]
       }),
       ruleset({
         selector: el('.nomatch'),
-        rules: rules([
+        rules: [
           ruleset({
             selector: el(':hover'),
-            rules: rules([
+            rules: [
               extend({ target: sel([el('.button'), co(' '), el(':hover')]) })
-            ])
+            ]
           })
-        ])
+        ]
       }),
       ruleset({
         selector: el('.button2'),
-        rules: rules([
+        rules: [
           ruleset({
             selector: el(':hover'),
-            rules: rules([decl({ name: 'nested', value: any('white') })])
+            rules: [decl({ name: 'nested', value: any('white') })]
           })
-        ])
+        ]
       }),
       ruleset({
         selector: sel([el('.button2'), co(' '), el(':hover')]),
-        rules: rules([decl({ name: 'notnested', value: any('black') })])
+        rules: [decl({ name: 'notnested', value: any('black') })]
       }),
       ruleset({
         selector: el('.nomatch'),
-        rules: rules([
+        rules: [
           extend({ target: compound([el('.button2'), pseudo({ name: ':hover' })]) })
-        ])
+        ]
       }),
       ruleset({
         selector: sellist([el('.amp-test-a'), el('.amp-test-b')]),
-        rules: rules([
+        rules: [
           ruleset({
             selector: sel([
               el('.amp-test-c'),
               co(' '),
               compound([amp(), el('.amp-test-d'), amp(), el('.amp-test-e')])
             ]),
-            rules: rules([
+            rules: [
               ruleset({
                 selector: sel([
                   compound([el('.amp-test-f'), amp()]),
                   co('+'),
                   compound([amp(), el('.amp-test-g')])
                 ]),
-                rules: rules([extend({ target: el('.amp-test-h') })])
+                rules: [extend({ target: el('.amp-test-h') })]
               })
-            ])
+            ]
           })
-        ])
+        ]
       }),
       ruleset({
         selector: el('.amp-test-h'),
-        rules: rules([decl({ name: 'test', value: any('extended by masses of selectors') })])
+        rules: [decl({ name: 'test', value: any('extended by masses of selectors') })]
       })
     ]);
     const css = await renderNodeToString(root, context, { context });
@@ -495,10 +495,11 @@ describe('Jess all-less fixture replications (extend-less-fixtures)', () => {
   &:hover:extend(.button:hover) {}
 }
 `;
-    const context = new Context({ collapseNesting: true, leakyRules: true });
+    const context = new Context({ output: { collapseNesting: true }, leakyRules: true });
     const parser = new Parser();
     const { tree } = parser.parse(source, 'stylesheet', { context });
-    const css = await renderNodeToString(tree, context, { context });
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const css = await renderNodeToString(tree as unknown as RenderBufferNode, context, { context });
     expect(css.trim()).toBeString(`
 .button,
 .submit {
@@ -523,137 +524,137 @@ describe('Jess all-less fixture replications (extend-less-fixtures)', () => {
           sel([el('.foo'), co(' '), el('.bar')]),
           sel([el('.foo'), co(' '), el('.baz')])
         ]),
-        rules: rules([decl({ name: 'display', value: any('none') })])
+        rules: [decl({ name: 'display', value: any('none') })]
       }),
       ruleset({
         selector: sel([el('.ext1'), co(' '), el('.ext2')]),
-        rules: rules([extend({ target: el('.foo'), flag: ExtendFlag.All })])
+        rules: [extend({ target: el('.foo'), flag: ExtendFlag.All })]
       }),
       ruleset({
         selector: sellist([el('.ext3'), el('.ext4')]),
-        rules: rules([extend({ target: el('.foo'), flag: ExtendFlag.All })])
+        rules: [extend({ target: el('.foo'), flag: ExtendFlag.All })]
       }),
       ruleset({
         selector: sellist([compound([el('div'), el('.ext5')]), sel([el('.ext6'), co('>'), el('.ext5')])]),
-        rules: rules([decl({ name: 'width', value: any('100px') })])
+        rules: [decl({ name: 'width', value: any('100px') })]
       }),
       ruleset({
         selector: sellist([el('.should-not-exist-in-output'), el('.ext7')]),
-        rules: rules([extend({ selector: el('.ext7'), target: el('.ext5'), flag: ExtendFlag.All })])
+        rules: [extend({ selector: el('.ext7'), target: el('.ext5'), flag: ExtendFlag.All })]
       }),
       ruleset({
         selector: el('.ext'),
-        rules: rules([decl({ name: 'test', value: any('1') })])
+        rules: [decl({ name: 'test', value: any('1') })]
       }),
       ruleset({
         selector: sellist([el('.a'), el('.b')]),
-        rules: rules([
+        rules: [
           decl({ name: 'test', value: any('2') }),
           ruleset({
             selector: el('.c'),
-            rules: rules([
+            rules: [
               extend({ target: el('.ext'), flag: ExtendFlag.All }),
               decl({ name: 'test', value: any('3') }),
               ruleset({
                 selector: el('.d'),
-                rules: rules([decl({ name: 'test', value: any('4') })])
+                rules: [decl({ name: 'test', value: any('4') })]
               })
-            ])
+            ]
           })
-        ])
+        ]
       }),
       ruleset({
         selector: sellist([
           compound([el('.replace'), el('.replace')]),
           sel([compound([el('.c'), el('.replace')]), co('+'), el('.replace')])
         ]),
-        rules: rules([
+        rules: [
           ruleset({
             selector: sellist([el('.replace'), el('.c')]),
-            rules: rules([decl({ name: 'prop', value: any('copy-paste-replace') })])
+            rules: [decl({ name: 'prop', value: any('copy-paste-replace') })]
           })
-        ])
+        ]
       }),
       ruleset({
         selector: el('.rep_ace'),
-        rules: rules([extend({ target: el('.replace'), flag: ExtendFlag.All })])
+        rules: [extend({ target: el('.replace'), flag: ExtendFlag.All })]
       }),
       ruleset({
         selector: el('.attributes'),
-        rules: rules([
+        rules: [
           ruleset({
             selector: dataTest,
-            rules: rules([decl({ name: 'extend', value: any('attributes') })])
+            rules: [decl({ name: 'extend', value: any('attributes') })]
           }),
           ruleset({
             selector: el('.attribute-test'),
-            rules: rules([extend({ target: dataTest, flag: ExtendFlag.All })])
+            rules: [extend({ target: dataTest, flag: ExtendFlag.All })]
           }),
           ruleset({
             selector: dataAny,
-            rules: rules([decl({ name: 'extend', value: any('attributes2') })])
+            rules: [decl({ name: 'extend', value: any('attributes2') })]
           }),
           ruleset({
             selector: el('.attribute-test2'),
-            rules: rules([extend({ target: dataAny, flag: ExtendFlag.All })])
+            rules: [extend({ target: dataAny, flag: ExtendFlag.All })]
           }),
           ruleset({
             selector: dataTest3,
-            rules: rules([decl({ name: 'extend', value: any('attributes2') })])
+            rules: [decl({ name: 'extend', value: any('attributes2') })]
           }),
           ruleset({
             selector: el('.attribute-test'),
-            rules: rules([extend({ target: dataTest3, flag: ExtendFlag.All })])
+            rules: [extend({ target: dataTest3, flag: ExtendFlag.All })]
           })
-        ])
+        ]
       }),
       ruleset({
         selector: el('.header'),
-        rules: rules([
+        rules: [
           ruleset({
             selector: el('.header-nav'),
-            rules: rules([
+            rules: [
               decl({ name: 'background', value: any('red') }),
               ruleset({
                 selector: compound([amp(), pseudo({ name: ':before' })]),
-                rules: rules([decl({ name: 'background', value: any('blue') })])
+                rules: [decl({ name: 'background', value: any('blue') })]
               })
-            ])
+            ]
           })
-        ])
+        ]
       }),
       ruleset({
         selector: el('.footer'),
-        rules: rules([
+        rules: [
           ruleset({
             selector: el('.footer-nav'),
-            rules: rules([
+            rules: [
               extend({ target: sel([el('.header'), co(' '), el('.header-nav')]), flag: ExtendFlag.All })
-            ])
+            ]
           })
-        ])
+        ]
       }),
       ruleset({
         selector: el('.issue-2586-bordered'),
-        rules: rules([decl({ name: 'border', value: any('solid 1px black') })])
+        rules: [decl({ name: 'border', value: any('solid 1px black') })]
       }),
       ruleset({
         selector: el('.issue-2586-somepage'),
-        rules: rules([
+        rules: [
           ruleset({
             selector: el('.content'),
-            rules: rules([
+            rules: [
               extend({ target: el('.issue-2586-bordered') }),
               ruleset({
                 selector: sel([amp(), co('>'), el('span')]),
-                rules: rules([decl({ name: 'margin-bottom', value: any('10px') })])
+                rules: [decl({ name: 'margin-bottom', value: any('10px') })]
               })
-            ])
+            ]
           })
-        ])
+        ]
       })
     ]);
-    const context = new Context({ collapseNesting: false });
+    const context = new Context({ output: { collapseNesting: false } });
     const css = await renderNodeToString(root, context, { context });
     expect(css.trim()).toBeString(`
 :is(.foo, .ext1 .ext2, .ext3, .ext4) .bar,
@@ -730,47 +731,47 @@ div:is(.ext5, .ext7),
     const root = rules([
       ruleset({
         selector: el('.aa'),
-        rules: rules([
+        rules: [
           decl({ name: 'color', value: any('black') }),
           ruleset({
             selector: el('.dd'),
-            rules: rules([decl({ name: 'background', value: any('red') })])
+            rules: [decl({ name: 'background', value: any('red') })]
           })
-        ])
+        ]
       }),
       ruleset({
         selector: el('.bb'),
-        rules: rules([
+        rules: [
           decl({ name: 'background', value: any('red') }),
           ruleset({
             selector: el('.bb'),
-            rules: rules([decl({ name: 'color', value: any('black') })])
+            rules: [decl({ name: 'color', value: any('black') })]
           })
-        ])
+        ]
       }),
       ruleset({
         selector: el('.cc'),
-        rules: rules([
+        rules: [
           extend({ target: el('.aa') }),
           extend({ target: el('.bb') })
-        ])
+        ]
       }),
       ruleset({
         selector: el('.ee'),
-        rules: rules([
+        rules: [
           extend({ target: el('.dd'), flag: ExtendFlag.All }),
           extend({ target: el('.bb') })
-        ])
+        ]
       }),
       ruleset({
         selector: el('.ff'),
-        rules: rules([
+        rules: [
           extend({ target: el('.dd') }),
           extend({ target: el('.bb'), flag: ExtendFlag.All })
-        ])
+        ]
       })
     ]);
-    const context = new Context({ collapseNesting });
+    const context = new Context({ output: { collapseNesting } });
     const css = await renderNodeToString(root, context, { context });
     expect(css.trim()).toBeString(`
 .aa,
@@ -798,46 +799,46 @@ div:is(.ext5, .ext7),
     const root = rules([
       ruleset({
         selector: el('.aa'),
-        rules: rules([
+        rules: [
           decl({ name: 'color', value: any('black') }),
           ruleset({
             selector: el('.dd'),
-            rules: rules([decl({ name: 'background', value: any('red') })])
+            rules: [decl({ name: 'background', value: any('red') })]
           })
-        ])
+        ]
       }),
       ruleset({
         selector: el('.bb'),
-        rules: rules([
+        rules: [
           decl({ name: 'background', value: any('red') }),
           ruleset({
             selector: el('.bb'),
-            rules: rules([decl({ name: 'color', value: any('black') })])
+            rules: [decl({ name: 'color', value: any('black') })]
           })
-        ])
+        ]
       }),
       ruleset({
         selector: el('.cc'),
-        rules: rules([
+        rules: [
           extend({ target: sellist([el('.aa'), el('.bb')]), flag: ExtendFlag.Exact })
-        ])
+        ]
       }),
       ruleset({
         selector: el('.ee'),
-        rules: rules([
+        rules: [
           extend({ target: el('.dd'), flag: ExtendFlag.All }),
           extend({ target: el('.bb'), flag: ExtendFlag.Exact })
-        ])
+        ]
       }),
       ruleset({
         selector: el('.ff'),
-        rules: rules([
+        rules: [
           extend({ target: el('.dd'), flag: ExtendFlag.Exact }),
           extend({ target: el('.bb'), flag: ExtendFlag.All })
-        ])
+        ]
       })
     ]);
-    const context = new Context({ collapseNesting });
+    const context = new Context({ output: { collapseNesting } });
     const css = await renderNodeToString(root, context, { context });
     expect(css.trim()).toBeString(`
 .aa,
@@ -879,10 +880,11 @@ div:is(.ext5, .ext7),
 .ee:extend(.dd all,.bb) {}
 .ff:extend(.dd,.bb all) {}
 `;
-    const context = new Context({ collapseNesting: false, leakyRules: true });
+    const context = new Context({ output: { collapseNesting: false }, leakyRules: true });
     const parser = new Parser();
     const { tree } = parser.parse(source, 'stylesheet', { context });
-    const css = await renderNodeToString(tree, context, { context });
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const css = await renderNodeToString(tree as unknown as RenderBufferNode, context, { context });
     expect(css.trim()).toBeString(`
 .aa,
 .cc {
@@ -907,10 +909,11 @@ div:is(.ext5, .ext7),
 
   it('5d. parsed full extend.less keeps exact nested matches out of the .aa .dd branch', async () => {
     const source = readFileSync(path.join(testData, 'tests-unit/extend/extend.less'), 'utf8');
-    const context = new Context({ collapseNesting: false, leakyRules: true });
+    const context = new Context({ output: { collapseNesting: false }, leakyRules: true });
     const parser = new Parser();
     const { tree } = parser.parse(source, 'stylesheet', { context });
-    const css = await renderNodeToString(tree, context, { context });
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const css = await renderNodeToString(tree as unknown as RenderBufferNode, context, { context });
     expect(css).toContain(`
 .aa,
 .cc {
@@ -934,10 +937,11 @@ div:is(.ext5, .ext7),
 }
 .dbl:extend(.e.e) {}
 `;
-    const context = new Context({ collapseNesting: false, leakyRules: true });
+    const context = new Context({ output: { collapseNesting: false }, leakyRules: true });
     const parser = new Parser();
     const { tree } = parser.parse(source, 'stylesheet', { context });
-    const css = await renderNodeToString(tree, context, { context });
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const css = await renderNodeToString(tree as unknown as RenderBufferNode, context, { context });
     expect(css.trim()).toBeString(`
 .e.e,
 .dbl {

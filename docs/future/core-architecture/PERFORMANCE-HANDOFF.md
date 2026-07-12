@@ -46,6 +46,11 @@ Representative one-render instrumentation for broad `benchmark.less` showed:
 - `Node.clone`: `92,683` calls;
 - `Node.copy`: `73,607` calls.
 
+Current status: `Node.copy()` and the broad reusable-leaf copy helper module
+have since been cut. Keep the counts above as historical evidence for why
+routine copied eval/render surfaces are suspect, not as names to preserve or
+rebuild.
+
 The registry audit also found extremely hot declaration keys, especially
 lexical globals and recursive mixin/loop variables:
 
@@ -642,10 +647,12 @@ Evidence:
 
 Keep these targets visible when performance rounds reactivate:
 
-- Copy recursion: `copyChild`, `constructCopy`, `copyWithReusableLeaves`,
-  `copyCallableRulesValue`, callable output/body placement.
-- Node construction and copied ownership: `Node` construction, `.clone()`,
-  `.copy()`, `.inherit()`, `frozen`.
+- Clone/placement recursion: node-owned `clone()`, `cloneForPlacement(...)`,
+  callable/import output-body placement, and any remaining external
+  reconstruction helper that tries to rebuild nodes from constructor payloads.
+- Node construction and copied ownership: `Node` construction, `.inherit()`,
+  `frozen`, parent/source metadata mutation, and any new routine eval/render
+  placement surface.
 - Variable/reference lookup: `findVarWithinScopeSurface`,
   `findWithinScopeSurface`, `Reference.render`, `Reference.evalNode`,
   `finalizeReferenceLookupResult`.

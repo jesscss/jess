@@ -2,7 +2,9 @@ import type { Context } from '../../context.js';
 import type { Declaration } from '../declaration.js';
 import { Node } from '../node.js';
 import { N } from '../node-type.js';
-import type { Rules, RulesOptions } from '../rules.js';
+import { Rules } from '../rules.js';
+import type { RulesVisibility } from '../rules.js';
+import { lookupScopeFrameVariable } from '../scope-frame.js';
 import { isNode } from './is-node.js';
 import {
   canEnterMixinOutputForLookup,
@@ -64,6 +66,21 @@ const VARIABLE_LOOKUP: DeclarationLookupStrategy = {
   skipVarsAfterBindingHit: true
 };
 
+const VARIABLE_OCCURRENCE_LOOKUP: DeclarationLookupStrategy = {
+  cacheTag: 'v',
+  lookupVisibility: 'VarDeclaration',
+  visibilityKey: 'VarDeclaration',
+  includeLiveBindings: false,
+  includeFallbackFrames: true,
+  prepareScopeFrame: false,
+  acceptsNode: (node): node is Declaration => isNode(node, N.VarDeclaration),
+  scopeMayContainFamily: scope => scope.hasVarDeclarationChildSurface || scope.hasReferenceImportChildSurface,
+  childEntryMayContainFamily: entry => (
+    entry.hasVarDeclarationSurface !== false || entry.hasReferenceImportSurface === true
+  ),
+  skipVarsAfterBindingHit: false
+};
+
 const PROPERTY_LOOKUP: DeclarationLookupStrategy = {
   cacheTag: 'p',
   lookupVisibility: 'Declaration',
@@ -114,7 +131,6 @@ type DeclarationMatchState = {
 };
 
 type CachedDeclarationMatchState = Readonly<DeclarationMatchState>;
-type SetDefinedDeclarationMatchHandler = (occurrence: DirectDeclarationOccurrence, readonly: boolean) => void;
 const EMPTY_DECLARATION_MISS_STATE: DeclarationMatchState = {
   optionalMatch: undefined,
   publicMatch: undefined,
@@ -137,7 +153,7 @@ function isRulesetBodyScope(rules: Rules): boolean {
 function getDeclarationVisibility(
   rules: Rules,
   strategy: DeclarationLookupStrategy
-): RulesOptions['rulesVisibility'][string] | undefined {
+): RulesVisibility | undefined {
   return strategy.visibilityKey === undefined
     ? undefined
     : rules.options.rulesVisibility?.[strategy.visibilityKey];
@@ -149,30 +165,27 @@ function passesDeclarationFilter(
   strategy: DeclarationLookupStrategy,
   options: Pick<
     DeclarationFindOptions,
-    'excludedNode0' | 'excludedNode1' | 'excludedNodes' | 'excludedNodesLength' | 'filter' | 'requiredNormalizedFromAssign'
+    'excludedDeclarations' | 'filter' | 'requiredDeclarationAssignments'
   >,
   start: number | undefined
 ): node is Declaration {
   if (!strategy.acceptsNode(node)) {
     return false;
   }
-  if (options.excludedNode0 === node || options.excludedNode1 === node) {
-    return false;
-  }
-  if (options.excludedNodes?.includes(node)) {
+  if (options.excludedDeclarations?.includes(node)) {
     return false;
   }
   if (node.options?.setDefined) {
     return false;
   }
-  const requiredNormalizedFromAssign = options.requiredNormalizedFromAssign;
-  if (requiredNormalizedFromAssign !== undefined) {
+  const requiredDeclarationAssignments = options.requiredDeclarationAssignments;
+  if (requiredDeclarationAssignments !== undefined) {
     const normalizedFromAssign = String(node.options?.normalizedFromAssign ?? '');
-    if (Array.isArray(requiredNormalizedFromAssign)) {
-      if (!requiredNormalizedFromAssign.includes(normalizedFromAssign)) {
+    if (Array.isArray(requiredDeclarationAssignments)) {
+      if (!requiredDeclarationAssignments.includes(normalizedFromAssign)) {
         return false;
       }
-    } else if (normalizedFromAssign !== requiredNormalizedFromAssign) {
+    } else if (normalizedFromAssign !== requiredDeclarationAssignments) {
       return false;
     }
   }
@@ -199,10 +212,10 @@ function getDirectDeclarationBucket(
   }
 
   let bucket: Declaration[] | undefined;
-  const value = scope.value;
+  const value = scope.rules;
   for (let i = 0; i < value.length; i++) {
     const node = value[i]!;
-    if (!isNode(node, N.Declaration | N.VarDeclaration)) {
+    if (!isNode(node, N.Declaration) && !isNode(node, N.VarDeclaration)) {
       continue;
     }
     if (node.options?.setDefined) {
@@ -210,7 +223,7 @@ function getDirectDeclarationBucket(
     }
     if (String(node.name.valueOf()) === key) {
       bucket ??= [];
-      bucket.push(node);
+      bucket.push(node as Declaration);
     }
   }
   if (!bucket) {
@@ -279,7 +292,10 @@ function chooseCandidateMatch(
   candidates: Set<Node> | undefined,
   key: string,
   strategy: DeclarationLookupStrategy,
-  options: Pick<DeclarationFindOptions, 'excludedNodes' | 'filter' | 'requiredNormalizedFromAssign'>
+  options: Pick<
+    DeclarationFindOptions,
+    'excludedDeclarations' | 'filter' | 'requiredDeclarationAssignments'
+  >
 ): DirectDeclarationOccurrence | undefined {
   if (!candidates?.size) {
     return current;
@@ -333,11 +349,27 @@ function getDeclarationParentSearchStep(
     if (cursor && ignoreParentScopeStart) {
       start = undefined;
     } else if (cursor && preserveLinearStart) {
-      start = containingNode?.index ?? start;
+      start = getContainingNodeStart(containingNode) ?? start;
     }
   } while (cursor && !isNode(cursor, N.Rules));
 
   return { rules: isNode(cursor, N.Rules) ? cursor : undefined, start };
+}
+
+function getContainingNodeStart(node: Node | undefined): number | undefined {
+  let cursor = node;
+  while (cursor) {
+    if (cursor.index !== undefined) {
+      return cursor.index;
+    }
+    const parent = cursor.parent;
+    if (isNode(parent, N.Rules)) {
+      const index = parent.rules.indexOf(cursor);
+      return index === -1 ? undefined : index;
+    }
+    cursor = parent;
+  }
+  return undefined;
 }
 
 function mergeMatch(
@@ -368,6 +400,8 @@ function getRecursiveLookupCacheKey(
     || start !== undefined
     || readonly
     || options.filter
+    || options.excludedDeclarations
+    || options.requiredDeclarationAssignments !== undefined
     || Boolean(options.candidates?.size)
     || Boolean(options.optionalCandidates?.size)
   ) {
@@ -414,7 +448,10 @@ function findLocalDeclaration(
   scope: Rules,
   key: string,
   strategy: DeclarationLookupStrategy,
-  options: Pick<DeclarationFindOptions, 'excludedNodes' | 'filter' | 'requiredNormalizedFromAssign'>,
+  options: Pick<
+    DeclarationFindOptions,
+    'excludedDeclarations' | 'filter' | 'requiredDeclarationAssignments'
+  >,
   start: number | undefined,
   skipVarDeclarations = false
 ): DirectDeclarationOccurrence | undefined {
@@ -429,38 +466,6 @@ function findLocalDeclaration(
     }
     if (passesDeclarationFilter(node, key, strategy, options, start)) {
       return createDeclarationOccurrence(node, i);
-    }
-  }
-  return undefined;
-}
-
-function findScopeBindingDeclaration(
-  scope: Rules,
-  key: string,
-  filter: DeclarationFindOptions['filter'] | undefined,
-  start: number | undefined
-): DirectDeclarationOccurrence | undefined {
-  const frame = scope._scopeFrame;
-  if (!frame?.declarationsCovered) {
-    return undefined;
-  }
-  const bucket = frame.declarationBucketsByName.get(key);
-  if (!bucket?.length) {
-    return undefined;
-  }
-  for (let i = bucket.length - 1; i >= 0; i--) {
-    const sourceNode = bucket[i]!.sourceNode;
-    if (!isNode(sourceNode, N.VarDeclaration)) {
-      continue;
-    }
-    if (sourceNode.options?.setDefined) {
-      continue;
-    }
-    if (start !== undefined && !(sourceNode.index !== undefined && sourceNode.index < start)) {
-      continue;
-    }
-    if (!filter || filter(sourceNode)) {
-      return createDeclarationOccurrence(sourceNode);
     }
   }
   return undefined;
@@ -508,19 +513,26 @@ function findWithinScopeSurface(
   }
 
   const state = createTraversalMatchState(readonly || Boolean(scope.options.readonly));
+  let localMatch: DirectDeclarationOccurrence | undefined;
+  let skipVarDeclarations = false;
   if (includeLiveBindings) {
-    const live = scope._scopeFrame?.currentBindingsByName.get(key);
-    const liveSource = live?.live === true
-      ? live.sourceNode
-      : undefined;
+    const frameHit = lookupScopeFrameVariable(scope._scopeFrame, key, {
+      start,
+      filter: options.filter,
+      includeFallbackFrames: false,
+      searchParents: false
+    });
+    const liveHit = frameHit.kind === 'live' ? frameHit : undefined;
+    const liveSource = liveHit?.sourceNode;
     if (
-      liveSource
+      liveHit
+      && liveSource
       && isNode(liveSource, N.VarDeclaration)
       && (!options.filter || options.filter(liveSource))
     ) {
       const liveOccurrence = createDeclarationOccurrence(liveSource);
       countDirectLookup?.('declaration.liveBindingHit');
-      state.readonly ||= Boolean(live.readonly || liveSource.options?.readonly);
+      state.readonly ||= Boolean(liveHit.readonly || liveHit.cell.readonly || liveSource.options?.readonly);
       const visibility = scope.options.rulesVisibility?.VarDeclaration ?? '';
       if (visibility === 'optional' && !isRulesetBodyScope(scope)) {
         state.optionalMatch = liveOccurrence;
@@ -529,19 +541,18 @@ function findWithinScopeSurface(
         return state;
       }
     }
-  }
-
-  let localMatch: DirectDeclarationOccurrence | undefined;
-  if (includeLiveBindings) {
-    const bindingMatch = findScopeBindingDeclaration(scope, key, options.filter, start);
-    if (bindingMatch) {
+    if (
+      frameHit.kind === 'declaration'
+      && isNode(frameHit.sourceNode, N.VarDeclaration)
+      && !frameHit.sourceNode.options?.setDefined
+    ) {
       countDirectLookup?.('declaration.scopeBindingHit');
-      state.readonly ||= Boolean(bindingMatch.node.options.readonly);
-      localMatch = bindingMatch;
+      state.readonly ||= Boolean(frameHit.readonly || frameHit.cell.readonly || frameHit.sourceNode.options.readonly);
+      localMatch = createDeclarationOccurrence(frameHit.sourceNode);
+      skipVarDeclarations = strategy.skipVarsAfterBindingHit;
     }
   }
 
-  const skipVarDeclarations = Boolean(localMatch && strategy.skipVarsAfterBindingHit);
   if (!skipVarDeclarations) {
     const treeMatch = findLocalDeclaration(
       scope,
@@ -636,7 +647,7 @@ function findWithinScopeSurface(
       countDirectLookup?.('declaration.childEntryLocalSkip');
       continue;
     }
-    if (childStart !== undefined && !(entry.node.index !== undefined && entry.node.index < childStart)) {
+    if (childStart !== undefined && !((getContainingNodeStart(entry.node) ?? Infinity) < childStart)) {
       countDirectLookup?.('declaration.childEntryStartSkip');
       continue;
     }
@@ -647,8 +658,8 @@ function findWithinScopeSurface(
       key,
       strategy,
       options,
-      start,
-      childStart,
+      undefined,
+      undefined,
       local || Boolean(entry.node.options.local),
       state.readonly || Boolean(entry.readonly),
       firstVisitedRules,
@@ -671,7 +682,7 @@ function findDeclarationLookupWithStrategy(
   key: string,
   strategy: DeclarationLookupStrategy,
   options?: DirectDeclarationFindOptions,
-  onSetDefinedMatch?: SetDefinedDeclarationMatchHandler
+  requireWritableSetDefined?: boolean
 ): DirectDeclarationOccurrence | undefined {
   const lookupOptions = options ?? EMPTY_DIRECT_DECLARATION_FIND_OPTIONS;
   const searchParents = lookupOptions.searchParents ?? true;
@@ -689,6 +700,9 @@ function findDeclarationLookupWithStrategy(
 
   while (rules) {
     if (firstVisitedRules === rules || secondVisitedRules === rules || visitedParents?.has(rules)) {
+      if (searchingFallback) {
+        break;
+      }
       throw new Error(searchingFallback
         ? 'Circular fallback frame chain detected in direct declaration lookup'
         : 'Circular parent chain detected in direct declaration lookup');
@@ -718,12 +732,14 @@ function findDeclarationLookupWithStrategy(
     readonly ||= state.readonly;
     publicMatch = chooseTraversalMatch(publicMatch, state.publicMatch);
     if (publicMatch) {
-      onSetDefinedMatch?.(publicMatch, readonly);
-      return publicMatch;
+      return requireWritableSetDefined
+        ? assertWritableSetDefinedOccurrence(publicMatch, readonly, key)
+        : publicMatch;
     }
     optionalMatch = chooseTraversalMatch(optionalMatch, state.optionalMatch);
     if (searchingFallback) {
-      rules = rules._scopeFrame?.fallbackFrame?.rulesNode;
+      const nextRulesNode: object | undefined = rules._scopeFrame?.fallbackFrame?.rulesNode;
+      rules = nextRulesNode instanceof Rules ? nextRulesNode : undefined;
       continue;
     }
     if (!searchParents) {
@@ -739,15 +755,26 @@ function findDeclarationLookupWithStrategy(
     rules = parentStep.rules;
     start = parentStep.start;
     if (!rules && strategy.includeFallbackFrames && optionalMatch === undefined) {
-      rules = startRules._scopeFrame?.fallbackFrame?.rulesNode;
+      const fallbackRulesNode = startRules._scopeFrame?.fallbackFrame?.rulesNode;
+      rules = fallbackRulesNode instanceof Rules ? fallbackRulesNode : undefined;
       searchingFallback = true;
     }
   }
 
-  if (optionalMatch) {
-    onSetDefinedMatch?.(optionalMatch, readonly);
+  return optionalMatch && requireWritableSetDefined
+    ? assertWritableSetDefinedOccurrence(optionalMatch, readonly, key)
+    : optionalMatch;
+}
+
+function assertWritableSetDefinedOccurrence(
+  occurrence: DirectDeclarationOccurrence,
+  inheritedReadonly: boolean,
+  key: string
+): DirectDeclarationOccurrence {
+  if (occurrence.node.options?.readonly || inheritedReadonly) {
+    throw new ReferenceError(`"${key}" is readonly`);
   }
-  return optionalMatch;
+  return occurrence;
 }
 
 export function findVariableDeclarationOccurrence(
@@ -776,18 +803,14 @@ export function findPropertyDeclarationOccurrence(
   return findDeclarationLookupWithStrategy(startRules, key, PROPERTY_LOOKUP, options);
 }
 
-export function applySetDefinedDeclarationReadonlyOccurrence(
+export function findWritableSetDefinedDeclarationOccurrence(
   startRules: Rules,
   key: string,
   isVariable: boolean,
-  options: DirectDeclarationFindOptions | undefined,
-  onMatch: SetDefinedDeclarationMatchHandler
-): boolean {
-  const strategy = isVariable ? VARIABLE_LOOKUP : PROPERTY_LOOKUP;
-  const lookupOptions = isVariable && options?.includeLiveBindings !== false
-    ? { ...options, includeLiveBindings: false }
-    : options;
-  return findDeclarationLookupWithStrategy(startRules, key, strategy, lookupOptions, onMatch) !== undefined;
+  options?: DirectDeclarationFindOptions
+): DirectDeclarationOccurrence | undefined {
+  const strategy = isVariable ? VARIABLE_OCCURRENCE_LOOKUP : PROPERTY_LOOKUP;
+  return findDeclarationLookupWithStrategy(startRules, key, strategy, options, true);
 }
 
 export function findAnyDeclarationOccurrence(
