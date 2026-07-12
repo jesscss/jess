@@ -1,7 +1,12 @@
 #!/usr/bin/env node
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
-import { getAlphaPublishStatus, getAlphaReleasePlan, incrementAlphaVersions } from './release-utils.mjs';
+import {
+  applyLockstepVersion,
+  getAlphaReleasePlan,
+  isReleaseArtifactPath,
+  resolveAlphaPublishVersion
+} from './release-utils.mjs';
 
 function parseArgs(argv) {
   const options = {
@@ -69,10 +74,11 @@ function getDirtyFiles(rootDir) {
 }
 
 function assertReadyWorkingTree(rootDir) {
-  const dirty = getDirtyFiles(rootDir).filter(file => !file.startsWith('.cursor/'));
+  const dirty = getDirtyFiles(rootDir).filter(file => !isReleaseArtifactPath(file));
   if (dirty.length > 0) {
     throw new Error(
-      `Working tree is not clean. Commit or stash non-.cursor changes first:\n- ${dirty.join('\n- ')}`
+      `Working tree is not clean. Commit or stash source changes first `
+      + `(build artifacts like lib/ and etc/*.api.md are ignored):\n- ${dirty.join('\n- ')}`
     );
   }
 }
@@ -150,46 +156,41 @@ if (!options.dryRun) {
 
 run('pnpm', ['run', 'release:alpha:check'], rootDir);
 
+let resolution = null;
 if (!options.skipVersion) {
-  // Respect the version already written in the manifests: publish it as-is when
-  // npm does not already have it. Only bump/error when the manifest version is
-  // already fully published. The per-version existence check also subsumes the
-  // old double-increment guard: a manifest that was bumped but not yet published
-  // reads back as state 'none' and is republished as-is (no second bump).
-  const { plan: versionPlan, version: localVersion } = getReleaseState(rootDir);
-  console.log(`\nChecking npm for manifest version ${localVersion} across ${versionPlan.allowlist.length} allowlisted package(s)...`);
-  const status = getAlphaPublishStatus({ plan: versionPlan, version: localVersion });
-
-  if (status.state === 'none') {
-    console.log(`Version ${localVersion} is not yet published. Publishing manifest version as-is (no auto-increment).`);
-  } else if (status.state === 'partial') {
-    console.log(
-      `Version ${localVersion} is partially published (${status.published.length}/${status.total} packages).`
-      + ` Resuming: publishing manifest version as-is; already-published packages are skipped by publish-alpha.`
-    );
-    console.log(`  Already published: ${status.published.join(', ')}`);
-  } else {
-    // state === 'all' — the manifest version is already fully published.
-    if (options.bump) {
-      console.log(`Version ${localVersion} is already published. Auto-incrementing (--bump)...`);
-      const { previousVersion, nextVersion } = incrementAlphaVersions({ rootDir });
-      console.log(`  ${previousVersion} -> ${nextVersion}`);
+  // Intent-first, registry-guarded version resolution replaces manual bumping:
+  // resolve ONE lockstep version for the whole allowlist that is guaranteed
+  // fresh (unpublished) for every package, then apply it lockstep. No
+  // --skip-version / manual manifest edit is required for a normal release.
+  const { plan: versionPlan } = getReleaseState(rootDir);
+  resolution = resolveAlphaPublishVersion({ rootDir, plan: versionPlan });
+  console.log(`\nResolved lockstep alpha version: ${resolution.resolved}`);
+  console.log(
+    `  intended=${resolution.intended}, `
+    + `publishedMax=${resolution.publishedMax ?? '(none)'}, reason=${resolution.reason}`
+  );
+  if (!options.dryRun) {
+    const applied = applyLockstepVersion(rootDir, resolution.resolved);
+    if (applied.changed.length > 0) {
+      console.log(`  Applied ${resolution.resolved} to ${applied.changed.length} workspace manifest(s).`);
       run('pnpm', ['install', '--lockfile-only'], rootDir);
     } else {
-      throw new Error(
-        `Manifest version ${localVersion} is already published to npm for all allowlisted packages.\n`
-        + `Set a new '-alpha.N' version in the allowlisted manifests, or re-run with --bump to auto-increment to the next unused version.`
-      );
+      console.log(`  Manifests already at ${resolution.resolved}.`);
     }
   }
+} else {
+  console.log('\nSkipping version resolution (--skip-version); using manifest versions as-is.');
 }
 
-const { plan, version } = getReleaseState(rootDir);
+const { plan, version: manifestVersion } = getReleaseState(rootDir);
+// In dry-run we do not mutate manifests, so surface the RESOLVED version rather
+// than the raw (possibly stale) manifest version.
+const version = resolution?.resolved ?? manifestVersion;
 const tag = `v${version}`;
 
 if (options.dryRun) {
   console.log(`\nDry-run summary:`);
-  console.log(`- Next alpha version: ${version}`);
+  console.log(`- Resolved alpha version: ${version}`);
   console.log(`- Planned tag: ${tag}`);
   run('node', [path.join(rootDir, 'scripts/release/publish-alpha.mjs'), '--dry-run', '--tag', 'alpha'], rootDir);
   process.exit(0);

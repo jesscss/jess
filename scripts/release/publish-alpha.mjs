@@ -1,7 +1,12 @@
 #!/usr/bin/env node
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
-import { getAlphaReleasePlan } from './release-utils.mjs';
+import {
+  applyLockstepVersion,
+  compareSemver,
+  getAlphaReleasePlan,
+  resolveAlphaPublishVersion
+} from './release-utils.mjs';
 
 function parseArgs(argv) {
   const parsed = {
@@ -167,69 +172,122 @@ if (plan.errors.length > 0) {
   process.exit(1);
 }
 
-const lockstepVersion = plan.packages[0]?.manifest.version ?? '';
-if (options.tag === 'alpha' && lockstepVersion && !lockstepVersion.includes('-alpha.')) {
+// Resolve the ONE lockstep version to publish. For the alpha tag this is
+// intent-first + registry-guarded (never the raw, possibly-stale manifest
+// version), guaranteeing a fresh version for every allowlisted package. For a
+// non-alpha tag we publish the manifest version as-is (stable releases from
+// `main`), keeping the existing behavior.
+let publishVersion;
+let restoreVersions = null;
+if (options.tag === 'alpha') {
+  const resolution = resolveAlphaPublishVersion({ rootDir, allowlistPath, plan });
+  publishVersion = resolution.resolved;
+  console.log(
+    `Resolved lockstep alpha version: ${publishVersion} `
+    + `(intended ${resolution.intended}, publishedMax ${resolution.publishedMax ?? '(none)'}, ${resolution.reason}).`
+  );
+  const applied = applyLockstepVersion(rootDir, publishVersion);
+  if (applied.changed.length > 0) {
+    console.log(`Applied version ${publishVersion} to ${applied.changed.length} workspace manifest(s).`);
+  }
+  // A dry-run must never leave the working tree mutated.
+  if (options.dryRun) {
+    restoreVersions = applied.restore;
+  }
+} else {
+  publishVersion = plan.packages[0]?.manifest.version ?? '';
+}
+
+if (options.tag === 'alpha' && publishVersion && !publishVersion.includes('-alpha.')) {
   console.error(
-    `Refusing publish: allowlisted package version '${lockstepVersion}' does not include '-alpha.' while publishing with --tag alpha.`
+    `Refusing publish: resolved version '${publishVersion}' does not include '-alpha.' while publishing with --tag alpha.`
   );
   process.exit(1);
 }
 
-if (options.tag !== 'alpha' && lockstepVersion.includes('-alpha.')) {
+if (options.tag !== 'alpha' && publishVersion.includes('-alpha.')) {
   console.error(
-    `Refusing publish: version '${lockstepVersion}' includes '-alpha.' and cannot be published with non-alpha tag '${options.tag}'.`
+    `Refusing publish: version '${publishVersion}' includes '-alpha.' and cannot be published with non-alpha tag '${options.tag}'.`
   );
   process.exit(1);
+}
+
+function finish(code) {
+  if (restoreVersions) {
+    restoreVersions();
+    restoreVersions = null;
+  }
+  process.exit(code);
 }
 
 console.log(
-  `${options.dryRun ? 'Dry-run' : 'Publishing'} ${plan.publishOrder.length} allowlisted package(s) with npm tag '${options.tag}'.`
+  `${options.dryRun ? 'Dry-run' : 'Publishing'} ${plan.publishOrder.length} allowlisted package(s) `
+  + `at ${publishVersion} with npm tag '${options.tag}'.`
 );
 
-if (!options.dryRun) {
-  for (const pkgName of plan.publishOrder) {
-    const pkg = plan.packagesByName.get(pkgName);
-    if (pkg.manifest.scripts?.build) {
-      console.log(`\nBuilding ${pkgName}...`);
-      run('pnpm', ['--filter', pkgName, 'run', 'build'], rootDir);
+try {
+  if (!options.dryRun) {
+    for (const pkgName of plan.publishOrder) {
+      const pkg = plan.packagesByName.get(pkgName);
+      if (pkg.manifest.scripts?.build) {
+        console.log(`\nBuilding ${pkgName}...`);
+        run('pnpm', ['--filter', pkgName, 'run', 'build'], rootDir);
+      }
     }
   }
-}
 
-for (const pkgName of plan.publishOrder) {
-  const pkg = plan.packagesByName.get(pkgName);
-  const version = pkg.manifest.version;
-  const publishArgs = ['publish', '--tag', options.tag, '--no-git-checks', '--ignore-scripts'];
-  const access = pkg.manifest.publishConfig?.access;
-  if (access) {
-    publishArgs.push('--access', access);
-  }
-  if (options.dryRun) {
-    publishArgs.push('--dry-run');
-  }
+  for (const pkgName of plan.publishOrder) {
+    const pkg = plan.packagesByName.get(pkgName);
+    const version = publishVersion;
+    const publishArgs = ['publish', '--tag', options.tag, '--no-git-checks', '--ignore-scripts'];
+    const access = pkg.manifest.publishConfig?.access;
+    if (access) {
+      publishArgs.push('--access', access);
+    }
+    if (options.dryRun) {
+      publishArgs.push('--dry-run');
+    }
 
-  const taggedVersion = getTaggedVersion(pkgName, options.tag);
-  const versionExists = packageVersionExists(pkgName, version);
+    const taggedVersion = getTaggedVersion(pkgName, options.tag);
+    const versionExists = packageVersionExists(pkgName, version);
 
-  if (versionExists) {
-    if (taggedVersion === version) {
-      console.log(`\nSkipping ${pkgName}@${version}: ${options.tag} already points to that version.`);
+    if (versionExists) {
+      if (taggedVersion === version) {
+        console.log(`\nSkipping ${pkgName}@${version}: ${options.tag} already points to that version.`);
+        continue;
+      }
+
+      // Never move the dist-tag BACKWARD (to a lower semver than where it
+      // currently points). With the resolver this branch should not trigger for
+      // alpha (resolved is always fresh), but the guard protects any path that
+      // would otherwise silently regress the tag.
+      if (taggedVersion && compareSemver(version, taggedVersion) < 0) {
+        console.error(
+          `\nRefusing to move npm '${options.tag}' tag BACKWARD for ${pkgName}: `
+          + `currently points to ${taggedVersion}, refusing to retag to lower version ${version}.`
+        );
+        finish(1);
+      }
+
+      console.log(
+        `\n${options.dryRun ? 'Dry-run note' : 'Retagging'} ${pkgName}@${version}: `
+        + `${options.tag} currently points to ${taggedVersion ?? '(not found)'}`
+      );
+
+      if (!options.dryRun) {
+        run('npm', ['dist-tag', 'add', `${pkgName}@${version}`, options.tag], rootDir);
+      }
       continue;
     }
 
-    console.log(
-      `\n${options.dryRun ? 'Dry-run note' : 'Retagging'} ${pkgName}@${version}: `
-      + `${options.tag} currently points to ${taggedVersion ?? '(not found)'}`
-    );
-
-    if (!options.dryRun) {
-      run('npm', ['dist-tag', 'add', `${pkgName}@${version}`, options.tag], rootDir);
-    }
-    continue;
+    console.log(`\n${options.dryRun ? 'Dry-run pack/publish check' : 'Publishing'} ${pkgName}@${version}`);
+    run('pnpm', publishArgs, pkg.dir);
   }
 
-  console.log(`\n${options.dryRun ? 'Dry-run pack/publish check' : 'Publishing'} ${pkgName}@${version}`);
-  run('pnpm', publishArgs, pkg.dir);
+  console.log(`\n${options.dryRun ? 'Dry-run checks finished.' : 'Alpha publish finished.'}`);
+} finally {
+  if (restoreVersions) {
+    restoreVersions();
+    restoreVersions = null;
+  }
 }
-
-console.log(`\n${options.dryRun ? 'Dry-run checks finished.' : 'Alpha publish finished.'}`);

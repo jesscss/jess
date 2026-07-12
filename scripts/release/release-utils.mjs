@@ -103,6 +103,229 @@ export function parseAlphaVersion(version) {
   return { base: match[1], num: parseInt(match[2], 10) };
 }
 
+/**
+ * True for repo-relative paths that the release BUILD regenerates and that must
+ * never block the clean-tree gate:
+ *   - `.cursor/**`             : transient debugging state
+ *   - `**​/lib/**`              : compiled output (gitignored, but be explicit)
+ *   - `**​/etc/*.api.md`        : API-Extractor reports, rewritten by the build
+ * The gate checks SOURCE cleanliness, not build artifacts.
+ */
+export function isReleaseArtifactPath(file) {
+  if (file.startsWith('.cursor/')) return true;
+  if (file === 'lib' || file.startsWith('lib/') || file.includes('/lib/')) return true;
+  if (/(^|\/)etc\/[^/]+\.api\.md$/.test(file)) return true;
+  return false;
+}
+
+/**
+ * Parse a semver string into comparable parts. Returns null if it is not a
+ * recognizable `X.Y.Z[-prerelease][+build]`.
+ */
+function parseSemver(version) {
+  const match = String(version)
+    .trim()
+    .match(/^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$/);
+  if (!match) return null;
+  return {
+    major: parseInt(match[1], 10),
+    minor: parseInt(match[2], 10),
+    patch: parseInt(match[3], 10),
+    pre: match[4] ? match[4].split('.') : []
+  };
+}
+
+/**
+ * Compare two semver strings by precedence (SemVer §11). Returns -1, 0, or 1.
+ * Falls back to a stable string comparison if either side is not valid semver,
+ * so callers never crash on registry data they did not expect.
+ */
+export function compareSemver(a, b) {
+  const pa = parseSemver(a);
+  const pb = parseSemver(b);
+  if (!pa || !pb) {
+    if (a === b) return 0;
+    return a < b ? -1 : 1;
+  }
+  for (const key of ['major', 'minor', 'patch']) {
+    if (pa[key] !== pb[key]) return pa[key] < pb[key] ? -1 : 1;
+  }
+  // A version with a prerelease has LOWER precedence than one without.
+  if (pa.pre.length === 0 && pb.pre.length === 0) return 0;
+  if (pa.pre.length === 0) return 1;
+  if (pb.pre.length === 0) return -1;
+  const len = Math.max(pa.pre.length, pb.pre.length);
+  for (let i = 0; i < len; i += 1) {
+    const x = pa.pre[i];
+    const y = pb.pre[i];
+    if (x === undefined) return -1;
+    if (y === undefined) return 1;
+    const xNum = /^\d+$/.test(x);
+    const yNum = /^\d+$/.test(y);
+    if (xNum && yNum) {
+      const nx = parseInt(x, 10);
+      const ny = parseInt(y, 10);
+      if (nx !== ny) return nx < ny ? -1 : 1;
+    } else if (xNum && !yNum) {
+      return -1; // numeric identifiers have lower precedence than alphanumeric
+    } else if (!xNum && yNum) {
+      return 1;
+    } else if (x !== y) {
+      return x < y ? -1 : 1;
+    }
+  }
+  return 0;
+}
+
+/**
+ * Given `X.Y.Z-alpha.N`, return `X.Y.Z-alpha.(N+1)`. Throws on a non-alpha input
+ * so a bad publishedMax can never silently produce a garbage version.
+ */
+export function nextAlphaAfter(version) {
+  const parsed = parseAlphaVersion(version);
+  if (!parsed) {
+    throw new Error(
+      `Cannot compute the next alpha after non-alpha version '${version}' (expected X.Y.Z-alpha.N).`
+    );
+  }
+  return `${parsed.base}-alpha.${parsed.num + 1}`;
+}
+
+/**
+ * Query npm for every published version of a package. Returns a string array
+ * (possibly empty). Any npm error / empty / unpublished package → `[]`, so the
+ * resolver treats "nothing published" and "npm unreachable for this name" alike.
+ */
+export function npmViewVersions(pkgName) {
+  const result = spawnSync('npm', ['view', pkgName, 'versions', '--json'], {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+    shell: process.platform === 'win32'
+  });
+  if (result.status !== 0) {
+    return [];
+  }
+  const output = (result.stdout ?? '').trim();
+  if (!output) {
+    return [];
+  }
+  try {
+    const parsed = JSON.parse(output);
+    if (typeof parsed === 'string') {
+      return [parsed];
+    }
+    if (Array.isArray(parsed)) {
+      return parsed.filter(v => typeof v === 'string');
+    }
+    return [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Resolve the single lockstep alpha version to publish for the whole allowlist,
+ * intent-first and registry-guarded. Rule (owner-agreed):
+ *
+ *   1. intended      = max-by-semver of allowlisted manifest versions (the
+ *                      lockstep intent already written in the repo).
+ *   2. publishedMax  = max-by-semver over the allowlist of each package's
+ *                      highest PUBLISHED version on npm (null if nothing is
+ *                      published anywhere in the set).
+ *   3. Intent-first  : publishedMax === null OR intended > publishedMax
+ *                      → use intended as-is (honors a deliberate forward jump,
+ *                      e.g. a new minor even if its alpha-number is lower).
+ *   4. Registry-guard: otherwise (intended <= publishedMax) →
+ *                      resolved = nextAlphaAfter(publishedMax), then keep
+ *                      incrementing while resolved is already published for ANY
+ *                      allowlisted package (guarantees a clean fresh publish).
+ *
+ * The resolved version is ALWAYS fresh (unpublished) for every allowlisted
+ * package, so publish-alpha never has to skip or backward-retag.
+ *
+ * `viewVersions` is injectable for testing; defaults to a real npm query.
+ */
+export function resolveAlphaPublishVersion({
+  rootDir = process.cwd(),
+  allowlistPath,
+  plan,
+  viewVersions = npmViewVersions
+} = {}) {
+  allowlistPath ??= path.join(rootDir, 'scripts', 'release', 'alpha-allowlist.json');
+  plan ??= getAlphaReleasePlan({ rootDir, allowlistPath });
+  if (plan.errors.length > 0) {
+    throw new Error(`Cannot resolve alpha version: validation failed:\n- ${plan.errors.join('\n- ')}`);
+  }
+
+  const manifestVersions = plan.packages.map(pkg => pkg.manifest.version).filter(Boolean);
+  if (manifestVersions.length === 0) {
+    throw new Error('No allowlisted packages with a version to resolve from.');
+  }
+  const intended = manifestVersions.reduce((max, v) => (compareSemver(v, max) > 0 ? v : max));
+  if (!parseAlphaVersion(intended)) {
+    throw new Error(
+      `Intended lockstep version '${intended}' is not an alpha version (expected X.Y.Z-alpha.N).`
+    );
+  }
+
+  const publishedByPackage = new Map();
+  const publishedAll = new Set();
+  let publishedMax = null;
+  for (const name of plan.allowlist) {
+    const versions = viewVersions(name) ?? [];
+    publishedByPackage.set(name, versions);
+    for (const v of versions) {
+      publishedAll.add(v);
+      if (publishedMax === null || compareSemver(v, publishedMax) > 0) {
+        publishedMax = v;
+      }
+    }
+  }
+
+  let resolved;
+  let reason;
+  if (publishedMax === null || compareSemver(intended, publishedMax) > 0) {
+    resolved = intended;
+    reason = publishedMax === null ? 'nothing-published' : 'intended-ahead';
+  } else {
+    resolved = nextAlphaAfter(publishedMax);
+    while (publishedAll.has(resolved)) {
+      resolved = nextAlphaAfter(resolved);
+    }
+    reason = 'registry-guarded-increment';
+  }
+
+  return { intended, publishedMax, resolved, reason, plan, publishedByPackage };
+}
+
+/**
+ * Write `version` into every publishable (non-private) workspace package so the
+ * lockstep invariant holds. Returns `{ changed, restore }`: `changed` is the
+ * list of manifest paths actually rewritten, and `restore()` puts their exact
+ * prior bytes back (used by dry-runs so the tree is never left mutated).
+ */
+export function applyLockstepVersion(rootDir, version) {
+  const allPackages = listWorkspacePackages(rootDir);
+  const originals = [];
+  for (const [, pkg] of allPackages) {
+    if (pkg.manifest.private) continue;
+    const raw = readFileSync(pkg.packageJsonPath, 'utf8');
+    const pkgJson = JSON.parse(raw);
+    if (pkgJson.version === version) continue;
+    originals.push({ path: pkg.packageJsonPath, raw });
+    pkgJson.version = version;
+    writeFileSync(pkg.packageJsonPath, JSON.stringify(pkgJson, null, 2) + '\n');
+  }
+  return {
+    changed: originals.map(entry => entry.path),
+    restore() {
+      for (const entry of originals) {
+        writeFileSync(entry.path, entry.raw);
+      }
+    }
+  };
+}
+
 export function incrementAlphaVersions({ rootDir = process.cwd(), allowlistPath } = {}) {
   allowlistPath ??= path.join(rootDir, 'scripts', 'release', 'alpha-allowlist.json');
   const plan = getAlphaReleasePlan({ rootDir, allowlistPath });
