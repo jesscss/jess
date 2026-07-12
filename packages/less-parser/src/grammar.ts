@@ -635,7 +635,7 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   // Parsing the paren body as a full `CondArgOr` restores the guard-grammar behaviour
   // (`not(2 > 1)`, `(@a > 0)`, `(true)`), built into a `Paren` wrapping the condition.
   const CondArgParen = node('GuardInParens',
-    sequence(literal('('), g.CondArgOr, expect(literal(')'))));
+    sequence(literal('('), g.CondArgOr, literal(')')));
   // A single-operand core: a parenthesized sub-condition OR a bounded value, with an
   // optional trailing `<op> right` comparison.
   const condCore = sequence(

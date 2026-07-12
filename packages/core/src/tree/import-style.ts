@@ -23,6 +23,7 @@ import {
   isRenderBuffer,
   type RenderBuffer
 } from './util/render-buffer.js';
+import { JessError, toDiagnostic, type ErrorDiagnostic } from '../jess-error.js';
 import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
 import { createPlacementChildSegment, type PlacementChildSegment } from './util/placement-state.js';
 import { queueTopImport } from './util/import-queue.js';
@@ -43,6 +44,29 @@ function isParseError(error: unknown): boolean {
   }
   return error.phase === 'parse'
     || (typeof error.code === 'string' && error.code.startsWith('parse/'));
+}
+
+/**
+ * Normalize an import resolution/parse failure into an `ErrorDiagnostic`. Used on
+ * the `breakOnError: false` path so a failed import is COLLECTED on
+ * `context.errors` and folded to empty, mirroring `Context.getTree`'s own
+ * breakOnError handling for parse errors — instead of hard-throwing out of render.
+ */
+function importFailureToDiagnostic(error: unknown, finalPath: string): ErrorDiagnostic {
+  if (error instanceof JessError) {
+    return toDiagnostic(error) as ErrorDiagnostic;
+  }
+  const message = error instanceof Error ? error.message : String(error);
+  return {
+    code: 'import/resolution-error',
+    phase: 'parse',
+    message,
+    reason: message,
+    fix: 'Check the import path and that the file exists / parses.',
+    filePath: finalPath,
+    line: 1,
+    column: 1
+  };
 }
 
 function escapeQuotedImportPath(value: string, quote: '"' | '\''): string {
@@ -1063,9 +1087,17 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
         loaded = await context.getTree(finalPath, io);
       } catch (error) {
         // `(optional)` swallows a resolution/parse failure and folds to empty
-        // (increment 6, mirrors `evalNode`'s optional catch). A non-optional failure
-        // propagates unchanged.
+        // (increment 6, mirrors `evalNode`'s optional catch).
         if (io.optional === true) {
+          return emptyFold(undefined);
+        }
+        // `breakOnError: false` — mirror `Context.getTree`'s parse-error handling:
+        // COLLECT the failure on `context.errors` and fold to empty, rather than
+        // hard-throwing out of the whole render. `_getPath` throws unconditionally
+        // on an unresolvable path (before `getTree`'s own breakOnError guard runs),
+        // so a resolution failure would otherwise escape even under breakOnError:false.
+        if (context.opts.breakOnError === false) {
+          context.errors.push(importFailureToDiagnostic(error, finalPath));
           return emptyFold(undefined);
         }
         throw error;
