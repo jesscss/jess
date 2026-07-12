@@ -63,7 +63,10 @@ function copyForPlacement(
       ...(options.preserveComments ? { stripComments: false } : {})
     });
   }
-  return node.cloneForPlacement(options.preserveComments ? { stripComments: false } : undefined);
+  return node.cloneForPlacement({
+    ...(options.owned ? { owned: true } : undefined),
+    ...(options.preserveComments ? { stripComments: false } : undefined)
+  });
 }
 
 export function copyWithReusableLeaves(node: Node): Node {
