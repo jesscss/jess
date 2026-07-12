@@ -34,13 +34,8 @@
     "lodash-es": "^4.17.21",
     "styles-config": "workspace:*"
   },
-  "peerDependencies": {
+  "optionalDependencies": {
     "@jesscss/plugin-js": "workspace:*"
-  },
-  "peerDependenciesMeta": {
-    "@jesscss/plugin-js": {
-      "optional": true
-    }
   },
   "scripts": {
     "ci": "pnpm build && pnpm test",
