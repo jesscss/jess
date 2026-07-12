@@ -11,9 +11,12 @@
  */
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
-import { getAlphaReleasePlan, incrementAlphaVersions } from './release-utils.mjs';
+import { getAlphaPublishStatus, getAlphaReleasePlan, incrementAlphaVersions } from './release-utils.mjs';
 
 const DRY_RUN = process.argv.includes('--dry-run');
+// On an already-published manifest version: default is to error; --bump opts
+// into auto-incrementing to the next unused -alpha.N instead.
+const BUMP = process.argv.includes('--bump');
 
 function run(command, args, cwd = process.cwd()) {
   const rendered = [command, ...args].join(' ');
@@ -120,16 +123,46 @@ if (!DRY_RUN) {
   }
 }
 
-// 1. Auto-increment alpha version
-console.log('\nAuto-incrementing alpha version...');
-if (DRY_RUN) {
-  const currentVersion = plan.packages[0]?.manifest.version ?? 'unknown';
-  console.log(`  Current: ${currentVersion} (dry-run: would increment)`);
-  console.log('\nDry-run: would bump versions, then pnpm install, commit, push, publish, tag.');
-  process.exit(0);
+// 1. Resolve the alpha version: respect the manifest version when it is not yet
+// published; only bump/error when it is already fully published. (No heavy
+// checks — this stays the no-checks fast path.)
+const manifestVersion = plan.packages[0]?.manifest.version ?? '';
+if (!manifestVersion.includes('-alpha.')) {
+  console.error(`Alpha release requires '-alpha.' version suffix. Current allowlist version: ${manifestVersion}`);
+  process.exit(1);
 }
-const { previousVersion, nextVersion: TARGET_VERSION } = incrementAlphaVersions({ rootDir });
-console.log(`  ${previousVersion} -> ${TARGET_VERSION}`);
+console.log(`\nChecking npm for manifest version ${manifestVersion} across ${plan.allowlist.length} allowlisted package(s)...`);
+const status = getAlphaPublishStatus({ plan, version: manifestVersion });
+console.log(`  npm status: state=${status.state} (published ${status.published.length}/${status.total})`);
+
+let TARGET_VERSION;
+if (status.state === 'all') {
+  if (!BUMP) {
+    console.error(
+      `\nManifest version ${manifestVersion} is already published to npm for all allowlisted packages.\n`
+      + `Set a new '-alpha.N' version in the allowlisted manifests, or re-run with --bump to auto-increment.`
+    );
+    process.exit(1);
+  }
+  if (DRY_RUN) {
+    console.log(`\nDry-run: version ${manifestVersion} already published; --bump would auto-increment, then pnpm install, commit, push, publish, tag.`);
+    process.exit(0);
+  }
+  console.log('\nVersion already published. Auto-incrementing (--bump)...');
+  const { previousVersion, nextVersion } = incrementAlphaVersions({ rootDir });
+  console.log(`  ${previousVersion} -> ${nextVersion}`);
+  TARGET_VERSION = nextVersion;
+} else {
+  if (status.state === 'partial') {
+    console.log(`  Partially published; resuming as-is (already published: ${status.published.join(', ')}).`);
+  }
+  TARGET_VERSION = manifestVersion;
+  if (DRY_RUN) {
+    console.log(`\nDry-run: would publish manifest version ${TARGET_VERSION} as-is (no bump), then pnpm install, commit, push, publish, tag.`);
+    process.exit(0);
+  }
+  console.log(`\nPublishing manifest version ${TARGET_VERSION} as-is (no auto-increment).`);
+}
 
 // 2. pnpm install
 run('pnpm', ['install'], rootDir);

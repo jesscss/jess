@@ -401,6 +401,12 @@ export interface StylesConfig {
      * @deprecated Use `disableScriptModules` instead.
      */
     disablePluginRule?: boolean;
+    /**
+     * Filesystem root that Less `@plugin` / script-module scripts are allowed to
+     * be read from. When set, it overrides the default (the entry file's
+     * directory). Paths outside this root are rejected by @jesscss/plugin-js.
+     */
+    jsReadRoot?: string;
   };
   /**
    * Input file options. Can be a single object for defaults, or an array

@@ -52,6 +52,19 @@ export function checkValidNodes(
       checkValidNodes((node as { rules?: readonly Node[] }).rules, context, true, fromCallOutput || slot);
       continue;
     }
+    // A mixin / detached-ruleset CALL (and a Mixin DEFINITION) is a statement
+    // pending EXPANSION, not a value dropped at the root — it is statement-legal and
+    // carries no `F_ALLOW_ROOT` only because the EVAL path expands it before this check
+    // ever runs (so eval never reaches here with a Call/Mixin — this skip is a no-op on
+    // that path). The SPINE root-fold, by contrast, checks a mixin surface's RAW body
+    // (`rules.ts` `applyResolution`), which for a recursive body still holds the
+    // unexpanded recursive `Call` (`.stripe(@n-1)`); that call is expanded + re-checked
+    // when the fold re-enters (its own surfaces run through `checkValidNodes`). A real
+    // value-drop is an `Any`/`Color`/etc. (F_ALLOW_ROOT cleared at eval, `any.ts`), still
+    // flagged below. So skip Call/Mixin: they are never the value-drop this guards against.
+    if (node.type === 'Call' || node.type === 'Mixin') {
+      continue;
+    }
     if (node.type && !node.hasFlag(F_ALLOW_ROOT)) {
       throw makeJessError({
         code: 'eval/invalid-statement',

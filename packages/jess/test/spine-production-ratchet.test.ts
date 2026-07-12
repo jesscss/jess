@@ -1031,20 +1031,66 @@ describe('spine PRODUCTION-path ratchet (P2 wire-in)', () => {
     }
   });
 
-  it('DEFERRED (residual/IOU): a recursive mixin with a NESTED CONTAINER (STRIPE) stays on eval (byte-identical)', async () => {
+  it('FOLD (STRIPE): a recursive mixin with a NESTED CONTAINER folds via distinct-per-level surfaces (no derive)', async () => {
     // `.stripe(@n) when (@n>0) { a { … } .stripe(@n-1) }` — recursion via a name-cycle
-    // AND a nested container SHARED across levels. The re-entrant splice re-uses the
-    // same canonical `a { … }` child per level, collapsing two levels' blocks into one
-    // instead of eval's two distinct `.wrap a { … }` blocks. `treeHasRecursiveMixinCall`
-    // narrowly defers ONLY this container-in-cycle shape; FLAT recursion folds (above).
-    // Distinct-per-level container surfaces are a separate P4 item.
+    // AND a nested container SHARED across levels. The re-entrant splice used to re-use
+    // the same canonical `a { … }` child per level, collapsing two levels' blocks into
+    // one. `distinctFoldChild` (`serialize-helper.ts`) now splices a distinct per-level
+    // copy (reusing scalar leaves) on the container's 2nd+ occurrence within one
+    // expansion pass — mirroring the loop fold's per-iteration `copyWithReusableLeaves` —
+    // so each level emits its own `.wrap a { … }` block, byte-identical to eval / less@4
+    // AND folds through the spine (no eval two-walk → `Rules.derive` = 0).
     const compiler = makeCompiler();
-    const src = `.stripe(@n) when (@n > 0) {\n  a { border-width: @n; }\n  .stripe(@n - 1);\n}\n.wrap { .stripe(2); }`;
-    const before = spineRenderCounter.rootRenders;
-    const css = await compiler.renderString(src, { language: 'less' });
-    expect(spineRenderCounter.rootRenders).toBe(before); // eval path
-    // eval renders both levels as DISTINCT blocks (byte-identical to less@4)
-    expect(css).toBe('.wrap a {\n  border-width: 2;\n}\n.wrap a {\n  border-width: 1;\n}\n');
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const src = `.stripe(@n) when (@n > 0) {\n  a { border-width: @n; }\n  .stripe(@n - 1);\n}\n.wrap { .stripe(2); }`;
+      const before = spineRenderCounter.rootRenders;
+      const css = await compiler.renderString(src, { language: 'less' });
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+      expect(deriveCalls).toBe(0); // no eval two-walk → the distinct-per-level fold, not a fallback
+      // two distinct blocks (byte-identical to eval / less@4)
+      expect(css).toBe('.wrap a {\n  border-width: 2;\n}\n.wrap a {\n  border-width: 1;\n}\n');
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
+  });
+
+  it('FOLD (STRIPE ≥3 levels + mutual cycle): distinct-per-level container blocks (no derive)', async () => {
+    // Coverage: ≥3 self-recursion levels (three distinct `.wrap a{…}` blocks with
+    // color 3/2/1) and a MUTUAL cycle (`.ping`↔`.pong`, each with its own container).
+    const cases: Array<{ src: string; expected: string }> = [
+      {
+        src: `.stripe(@n) when (@n > 0) {\n  a { color: @n; }\n  .stripe(@n - 1);\n}\n.wrap { .stripe(3); }`,
+        expected: '.wrap a {\n  color: 3;\n}\n.wrap a {\n  color: 2;\n}\n.wrap a {\n  color: 1;\n}\n'
+      },
+      {
+        src: `.ping(@n) when (@n > 0) { a { color: @n; } .pong(@n - 1); }\n.pong(@n) when (@n > 0) { b { color: @n; } .ping(@n - 1); }\n.wrap { .ping(3); }`,
+        expected: '.wrap a {\n  color: 3;\n}\n.wrap b {\n  color: 2;\n}\n.wrap a {\n  color: 1;\n}\n'
+      }
+    ];
+    for (const c of cases) {
+      const compiler = makeCompiler();
+      const originalDerive = Rules.prototype.derive;
+      let deriveCalls = 0;
+      Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+        deriveCalls++;
+        return originalDerive.apply(this, args);
+      } as Rules['derive'];
+      try {
+        const before = spineRenderCounter.rootRenders;
+        const css = await compiler.renderString(c.src, { language: 'less' });
+        expect(spineRenderCounter.rootRenders, `routed: ${c.src}`).toBeGreaterThan(before);
+        expect(deriveCalls, `no derive: ${c.src}`).toBe(0);
+        expect(css, `output: ${c.src}`).toBe(c.expected);
+      } finally {
+        Rules.prototype.derive = originalDerive;
+      }
+    }
   });
 
   it('INCREMENT 7: folds GUARDED (`when`) mixin calls through the spine on the COMPILER path (no derive)', async () => {
@@ -2856,6 +2902,134 @@ describe('spine PRODUCTION-path ratchet (P2 wire-in)', () => {
       expect(result.css).toBe(expected);
     } finally {
       Rules.prototype.derive = originalDerive;
+    }
+  });
+
+  it('APPEND×EXTEND (precise gate): appends + UNRELATED extends FOLD (derive=0), gate no longer over-rejects', async () => {
+    // Regression lock for the append+extend gate refinement. The former gate rejected ANY tree
+    // that BOTH appended (`&-modifier`) AND `:extend`ed — even when no extend targets an
+    // append-generated selector — which pinned `benchmark.less` (whose `.component-*` appends are
+    // never extend targets). `treeHasExtendTargetableAppend` now rejects ONLY the genuine
+    // collision, so this shape folds. A regression restoring the whole-tree reject trips this RED.
+    const compiler = makeCompiler();
+    const src = [
+      '.base { color: red; }',
+      '.ext:extend(.base) { margin: 1px; }',
+      '.component {',
+      '  display: block;',
+      '  &-inner { padding: 8px; }',
+      '  &-body { margin: 4px; &--large { padding: 24px; } }',
+      '}'
+    ].join('\n');
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const css = await compiler.renderString(src, { language: 'less' });
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+      expect(deriveCalls).toBe(0); // folds — gate admits (no collision)
+      expect(css).toBe(
+        '.base,\n.ext {\n  color: red;\n}\n.ext {\n  margin: 1px;\n}\n'
+        + '.component {\n  display: block;\n}\n.component-inner {\n  padding: 8px;\n}\n'
+        + '.component-body {\n  margin: 4px;\n}\n.component-body--large {\n  padding: 24px;\n}\n'
+      );
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
+  });
+
+  it('APPEND×EXTEND (precise gate): an extend of an APPEND-GENERATED selector STAYS on eval (byte-identical)', async () => {
+    // The genuine hazard the gate must still catch: `:extend(.component-inner)` targets a selector
+    // that exists only AFTER `&-inner` resolves, which the static gather misses. This shape MUST
+    // remain eval-owned (byte-identical). `treeHasExtendTargetableAppend` detects the collision
+    // (`.component` + `-inner` = `.component-inner` = the target atom) → eval. A regression that
+    // folds it (silently dropping the extend contribution) trips this RED.
+    const compiler = makeCompiler();
+    const src = [
+      '.component { display: block; &-inner { padding: 8px; } }',
+      '.thing:extend(.component-inner) { color: blue; }'
+    ].join('\n');
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const css = await compiler.renderString(src, { language: 'less' });
+      expect(deriveCalls).toBeGreaterThan(0); // stays on eval (collision hazard)
+      // Eval oracle: the append-generated `.component-inner` gains the `.component .thing` branch.
+      expect(css).toBe(
+        '.component {\n  display: block;\n}\n.component-inner,\n.component .thing {\n  padding: 8px;\n}\n'
+        + '.thing {\n  color: blue;\n}\n'
+      );
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
+  });
+
+  it('REFERENCE-EXTEND (unmapped target): `:extend` of an absent reference-import selector FOLDS as a no-op (derive=0)', async () => {
+    // Regression lock for the reference-extend unmapped-target fold. `@import (reference) "…"` whose
+    // body does NOT define the extend target (`.ref-button`) formerly ABORTED the spine to eval
+    // (the strict topology re-gate rejected the unmapped target). In the re-gate the imported
+    // subjects are RESOLVED, so an unmapped simple target is provably INERT (a no-op extend, the
+    // extender renders alone) — byte-identical to eval / less@4. It now folds without abort. A
+    // regression re-arming the abort trips this RED.
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-ref-extend-unmapped-'));
+    fs.writeFileSync(path.join(dir, 'empty.less'), '');
+    fs.writeFileSync(
+      path.join(dir, 'main.less'),
+      '@import (reference) "empty.less";\n.my-button:extend(.ref-button) {}\n.my-alert:extend(.ref-alert all) {}\n'
+    );
+    const compiler = makeCompiler();
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const result = await compiler.renderToResult(path.join(dir, 'main.less'), {});
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+      expect(deriveCalls).toBe(0); // folds — no abort to eval
+      expect(result.css).toBe(''); // empty-body extenders of an absent target emit nothing
+    } finally {
+      Rules.prototype.derive = originalDerive;
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('REFERENCE-EXTEND (present target): `:extend` of a PRESENT reference selector still folds (derive=0)', async () => {
+    // Companion to the unmapped case: when the reference body DOES define the target, the fold must
+    // still work (the re-gate relaxation must not disturb the mapped path). `.ref-button` is pulled
+    // in reference-mode (own form dropped) and the extender inherits it — byte-identical to eval.
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-ref-extend-present-'));
+    fs.writeFileSync(path.join(dir, 'ref.less'), '.ref-button { color: green; }\n');
+    fs.writeFileSync(
+      path.join(dir, 'main.less'),
+      '@import (reference) "ref.less";\n.my-button:extend(.ref-button) { font-weight: bold; }\n'
+    );
+    const compiler = makeCompiler();
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const result = await compiler.renderToResult(path.join(dir, 'main.less'), {});
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+      expect(deriveCalls).toBe(0); // folds
+      expect(result.css).toBe('.my-button {\n  color: green;\n}\n.my-button {\n  font-weight: bold;\n}\n');
+    } finally {
+      Rules.prototype.derive = originalDerive;
+      fs.rmSync(dir, { recursive: true, force: true });
     }
   });
 });

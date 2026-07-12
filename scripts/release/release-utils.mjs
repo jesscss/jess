@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process';
 import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
@@ -127,6 +128,69 @@ export function incrementAlphaVersions({ rootDir = process.cwd(), allowlistPath 
   }
 
   return { previousVersion: currentVersion, nextVersion, plan };
+}
+
+/**
+ * Query npm for whether a specific version of a package is already published.
+ * Returns true only when npm reports that exact version. Any npm error / empty
+ * response (e.g. package or version not found) is treated as "not published".
+ */
+export function npmVersionPublished(pkgName, version) {
+  const result = spawnSync('npm', ['view', `${pkgName}@${version}`, 'version', '--json'], {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+    shell: process.platform === 'win32'
+  });
+  if (result.status !== 0) {
+    return false;
+  }
+  const output = (result.stdout ?? '').trim();
+  if (!output) {
+    return false;
+  }
+  try {
+    const parsed = JSON.parse(output);
+    if (typeof parsed === 'string') {
+      return parsed === version;
+    }
+    if (Array.isArray(parsed)) {
+      return parsed.includes(version);
+    }
+    return false;
+  } catch {
+    return output.includes(version);
+  }
+}
+
+/**
+ * Determine whether the lockstep alpha `version` is already published across the
+ * allowlisted packages. Classifies into:
+ *   - 'none'    : no allowlisted package has this version → publish V as-is
+ *   - 'partial' : some do, some don't → a prior partial publish; resume as-is
+ *                 (per-package skip in publish-alpha handles the already-done ones)
+ *   - 'all'     : every allowlisted package already has this version published
+ *
+ * `viewVersion` is injectable for testing; defaults to a real npm query.
+ */
+export function getAlphaPublishStatus({ plan, version, viewVersion = npmVersionPublished }) {
+  const published = [];
+  const missing = [];
+  for (const pkgName of plan.allowlist) {
+    if (viewVersion(pkgName, version)) {
+      published.push(pkgName);
+    } else {
+      missing.push(pkgName);
+    }
+  }
+  let state;
+  if (published.length === 0) {
+    state = 'none';
+  } else if (missing.length === 0) {
+    state = 'all';
+  } else {
+    state = 'partial';
+  }
+  return { state, version, published, missing, total: plan.allowlist.length };
 }
 
 export function getAlphaReleasePlan({
