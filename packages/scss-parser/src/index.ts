@@ -1,10 +1,5 @@
-export * from './scssTokens.js';
-export { value as scssValueProduction } from './productions/values.js';
-
-// The legacy Chevrotain parser (scssRecursiveParser / scssParser /
-// ScssParserChevrotain) is no longer exported — the functional macro parser
-// (ScssParser / scssGrammar) IS the parser now. Dropping the re-exports lets the
-// bundler tree-shake the old parser out. (Source can be deleted as a follow-up.)
+// The legacy Chevrotain parser has been removed — the functional macro parser
+// (ScssParser / scssGrammar) IS the parser now.
 
 export { ScssGrammar } from './builders.js';
 export { scssGrammar } from './grammar.js';

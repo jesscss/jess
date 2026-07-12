@@ -528,7 +528,7 @@ export class ScssGrammar extends LessGrammar {
     const hasColon = ls.some(l => l.value === ':');
     const hasSpread = ls.some(l => l.value === '...');
     if (varLeaf && hasColon) {
-      const name = new Any(varLeaf.value.slice(1), { role: 'property' }, loc);
+      const name = varLeaf.value.slice(1);
       const value = nodes.find(n => n !== undefined && !ls.includes(n as any)) ?? nodes[0] ?? new Nil();
       return new VarDeclaration(
         { name, value: value as Node },

@@ -1,5 +1,5 @@
 import { expect, it as vitestIt } from 'vitest';
-import { Parser, type ScssParserChevrotain } from '../src/jess.js';
+import { Parser } from '../src/jess.js';
 import type { IParseResult, Rules, TreeContext } from '@jesscss/core';
 
 export const parser = new Parser();
@@ -59,5 +59,3 @@ export const PENDING_FUNCTIONAL = new Set<string>([
 export function functionalIt(name: string, fn: () => void) {
   (PENDING_FUNCTIONAL.has(name) ? vitestIt.skip : vitestIt)(name, fn);
 }
-
-export type ChevrotainParser = InstanceType<typeof ScssParserChevrotain>;

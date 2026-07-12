@@ -1228,3 +1228,19 @@ above: `SINGLE_FRAME_PLAN.md`, `NODE-REWRITE-TRACKER.md`,
 `pre-eval-elimination.md`, `static-eval-optimizations.md`,
 `whitespace-token-proposal.md`, the scanner-first parser investigations, and
 the abandoned `tree/README.md` 2.0 fragment.
+
+## Value-less mixin params → `VarDeclaration(Nil)`, not `Any` (parser + eval — PARKED to avoid core-lane conflict)
+
+Owner-approved shape change, deferred so it doesn't collide with the active core/perf
+work. Today `scss-parser` `builders.ts::_buildScssMixinParam` builds params
+**inconsistently**: `$a: 1` (with default) → `VarDeclaration { name:'a', value, paramVar:true }`,
+but a value-less `$a` → `new Any('a', { role:'property' })`. They should be uniform: a
+value-less param should be `VarDeclaration { name:'a', value: Nil, paramVar:true }`.
+
+- Parser side: change `_buildScssMixinParam`'s bare-param branch (the `return new Any(...)`
+  fallback) to emit the `VarDeclaration(Nil)`.
+- **Eval side (the reason it's parked):** eval's mixin-param handling currently receives an
+  `Any` for value-less params — it must accept a `VarDeclaration` whose value is `Nil`. This
+  ripples into core, so do it *with* the eval change, on the trunk/less side, not perf/walk.
+- Related and already done on the trunk side (commit `c12ec46ab`): declaration/arg **names are
+  plain strings** (`string | Interpolated` per core), never `Any` — apply the same when this lands.
