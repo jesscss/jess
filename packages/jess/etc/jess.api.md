@@ -7,10 +7,12 @@
 import { Context } from '@jesscss/core';
 import { Deprecation } from '@jesscss/core';
 import { ErrorDiagnostic } from '@jesscss/core';
+import { ErrorsConfigInput } from '@jesscss/core';
 import { Rules } from '@jesscss/core';
 import { RulesOptions } from '@jesscss/core';
 import { StylesConfig } from 'styles-config';
 import { WarningDiagnostic } from '@jesscss/core';
+import { WarningsConfigInput } from '@jesscss/core';
 
 // @public (undocumented)
 export class Compiler {
@@ -76,6 +78,8 @@ export type ConfigOptions = StylesConfig & {
     verbose?: boolean;
     fatalDeprecations?: Iterable<Deprecation>;
     limitDeprecationRepetition?: boolean;
+    warnings?: WarningsConfigInput;
+    errors?: ErrorsConfigInput;
 };
 
 // (No @packageDocumentation comment for this package)

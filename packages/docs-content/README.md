@@ -12,8 +12,6 @@
 
 ## Scripts
 
-- `pnpm --filter @jesscss/docs-content run migrate:jess`
-  - Copies `packages/docs/docs/**` into `packages/docs-content/docs/jess/**`
 - `pnpm --filter @jesscss/docs-content run import:less -- --source /path/to/less-docs`
   - Imports markdown from `less-docs/content/**` into `packages/docs-content/docs/less/**`
 - `pnpm --filter @jesscss/docs-content run normalize`

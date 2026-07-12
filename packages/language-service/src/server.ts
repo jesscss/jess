@@ -19,7 +19,9 @@ import {
   type DocumentSymbolParams,
   type SemanticTokensParams,
   type DocumentColorParams,
-  type ColorPresentationParams
+  type ColorPresentationParams,
+  type RenameParams,
+  type PrepareRenameParams
 } from 'vscode-languageserver/node.js';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { createEngine } from './engine.js';
@@ -62,6 +64,11 @@ connection.onInitialize((_params: InitializeParams): InitializeResult => {
       foldingRangeProvider: true,
       selectionRangeProvider: true,
       codeActionProvider: true,
+      renameProvider: {
+        // Advertise prepare support so the client asks the server for the exact
+        // rename range/placeholder before showing the rename box.
+        prepareProvider: true
+      },
       documentFormattingProvider: true,
       documentLinkProvider: {
         resolveProvider: false
@@ -94,6 +101,10 @@ documents.onDidOpen((e: TextDocumentChangeEvent<TextDocument>) => {
 });
 
 documents.onDidChangeContent((e: TextDocumentChangeEvent<TextDocument>) => {
+  // The `TextDocuments` manager delivers already-merged full text (not the raw
+  // LSP change ranges), so `engine.change` recovers the minimal contiguous edit
+  // and drives Parseman `ParseDoc.edit()` under the hood — incremental sync of
+  // the CST, with the Jess analysis re-derived lazily on the next query.
   engine.change(e.document.uri, e.document.version, e.document.getText());
   connection.sendDiagnostics({ uri: e.document.uri, diagnostics: engine.getDiagnostics(e.document.uri) });
 });
@@ -135,6 +146,14 @@ connection.onCodeAction((params: CodeActionParams) => {
   return engine.getCodeActions(params.textDocument.uri, params.range, params.context);
 });
 
+connection.onPrepareRename((params: PrepareRenameParams) => {
+  return engine.prepareRename(params.textDocument.uri, params.position);
+});
+
+connection.onRenameRequest((params: RenameParams) => {
+  return engine.rename(params.textDocument.uri, params.position, params.newName);
+});
+
 connection.onDocumentFormatting((params: DocumentFormattingParams) => {
   return engine.formatDocument(params.textDocument.uri);
 });
@@ -157,4 +176,3 @@ connection.onColorPresentation((params: ColorPresentationParams) => {
 
 documents.listen(connection);
 connection.listen();
-

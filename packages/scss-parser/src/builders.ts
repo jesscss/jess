@@ -76,11 +76,13 @@ import {
 } from '@jesscss/core';
 import {
   buildScssInterpolatedFromString,
+  isValidScssSelectorList,
   toInterpReplacement
 } from './interp.js';
 import {
   quotedLike,
   isPlainCssImportPrelude,
+  checkImportPreludeOrder,
   validateExtendTarget,
   checkForwardPreludeErrors,
   isPlaceholderExtendTarget,
@@ -91,7 +93,6 @@ import {
   lowerPlainAtRootRules,
   prefixAtRootSelector
 } from './scss-atroot-helpers.js';
-import { parseSelectorListExpression } from './productions/helpers.js';
 import {
   desugarMapLookup,
   desugarNamespacedCall,
@@ -165,6 +166,7 @@ export class ScssGrammar extends LessGrammar {
     const loc = spanToLocation(span);
     switch (type) {
       case 'VarDeclaration':    return this._buildScssVarDeclaration(_rawChildren, loc);
+      case 'NsVarDeclaration':  return this._buildScssNsVarDeclaration(_rawChildren, loc);
       case 'Reference':         return this._buildScssReference(children, loc);
       case 'ScssComparison':    return this._buildScssComparison(children, loc);
       case 'ScssCondInParens':  return this._buildScssCondInParens(children, loc);
@@ -252,6 +254,41 @@ export class ScssGrammar extends LessGrammar {
       {} as VarDeclarationOptions,
       loc
     );
+  }
+
+  /**
+   * `ns.$member: value [!default|!global];` — a namespaced variable ASSIGNMENT.
+   * Built as a `VarDeclaration` whose name carries the namespace (`ns.member`);
+   * `!default` → conditional-assign, `!global` → `setDefined`. Mirrors the
+   * member-read shape (`Reference{ target, key }`) on the write side while
+   * staying within the `string | Interpolated` declaration-name contract.
+   */
+  private _buildScssNsVarDeclaration(rawChildren: ReadonlyArray<{ _tag: string }>, loc: LocationInfo) {
+    const items = spannedComponents(rawChildren);
+    const ns = typeof items[0]?.comp === 'string' ? items[0]!.comp : '';
+    const memberItem = items.find(i => typeof i.comp === 'string' && i.comp.startsWith('$'));
+    const memberRaw = typeof memberItem?.comp === 'string' ? memberItem.comp : '';
+    const member = memberRaw.startsWith('$') ? memberRaw.slice(1) : memberRaw;
+    const colonIdx = items.findIndex(i => i.comp === ':');
+    let end = items.length;
+    for (let i = colonIdx + 1; i < items.length; i++) {
+      const c = items[i]!.comp;
+      if (c === '!' || c === '!default' || c === '!global' || c === ';') {
+        end = i;
+        break;
+      }
+    }
+    const { value } = this._assembleValue(items.slice(colonIdx + 1, end), loc);
+    const sawDefault = items.slice(end).some(i => i.comp === '!default');
+    const sawGlobal = items.slice(end).some(i => i.comp === '!global');
+    return new VarDeclaration(
+      { name: `${ns}.${member}`, value: value as Node },
+      {
+        assign: (sawDefault ? '?:' : ':') as AssignmentType,
+        setDefined: sawGlobal
+      },
+      loc
+    ) as unknown as JessNode;
   }
 
   private _buildScssReference(children: ReadonlyArray<Child>, loc: LocationInfo) {
@@ -491,7 +528,7 @@ export class ScssGrammar extends LessGrammar {
     const hasColon = ls.some(l => l.value === ':');
     const hasSpread = ls.some(l => l.value === '...');
     if (varLeaf && hasColon) {
-      const name = varLeaf.value.slice(1);
+      const name = new Any(varLeaf.value.slice(1), { role: 'property' }, loc);
       const value = nodes.find(n => n !== undefined && !ls.includes(n as any)) ?? nodes[0] ?? new Nil();
       return new VarDeclaration(
         { name, value: value as Node },
@@ -836,13 +873,10 @@ export class ScssGrammar extends LessGrammar {
               ? String((firstArg as Quoted).value.valueOf())
               : undefined
           : undefined;
-        if (selectorText !== undefined) {
-          try {
-            const selector = parseSelectorListExpression(selectorText);
-            return new SelectorCapture(selector, undefined, loc) as unknown as JessNode;
-          } catch {
-            // fall through to default call desugaring
-          }
+        if (selectorText !== undefined && isValidScssSelectorList(selectorText)) {
+          // SelectorCapture keeps the lean bare-string payload; validation above
+          // rejects malformed input and falls through to default call desugaring.
+          return new SelectorCapture(selectorText, undefined, loc) as unknown as JessNode;
         }
       }
       const items = spannedComponents(raw);
@@ -900,8 +934,14 @@ export class ScssGrammar extends LessGrammar {
   }
 
   private _buildScssNestedProps(children: ReadonlyArray<Child>, loc: LocationInfo) {
-    const decls = nodeChildren(children).filter(n => isNode(n, N.Declaration)) as Declaration[];
-    return new Collection(decls as any, undefined, loc) as unknown as JessNode;
+    // Keep sub-declarations plus any control flow / namespaced-assignment nodes
+    // Sass permits inside a nested-properties block (dropping them would silently
+    // lose statements).
+    const kept: Node[] = nodeChildren(children).filter(n =>
+      isNode(n, N.Declaration) || isNode(n, N.VarDeclaration)
+      || n instanceof If || n instanceof For || n instanceof While
+    );
+    return new Collection(kept, undefined, loc) as unknown as JessNode;
   }
 
   private _buildScssDiagnostic(children: ReadonlyArray<Child>, loc: LocationInfo) {
@@ -921,7 +961,8 @@ export class ScssGrammar extends LessGrammar {
     const name = new Any('@at-root', { role: 'atkeyword' }, loc);
     this._error(
       '@at-root prelude/filter forms are not yet supported in Jess. Write the hoisted rules directly instead.',
-      loc.start
+      loc.start,
+      loc.end
     );
     return new AtRule(
       { name, prelude: prelude as Node, rules: body.rules },
@@ -1049,7 +1090,7 @@ export class ScssGrammar extends LessGrammar {
       ? preludeText.slice(preludeText.indexOf(pathMatch[0]) + pathMatch[0].length)
       : '';
     const preludeExtra = afterPath.replace(/\bwith\s*\([^)]*\)\s*;?\s*$/, '').replace(/;\s*$/, '').trim();
-    checkForwardPreludeErrors(preludeExtra, msg => this._error(msg, loc.start));
+    checkForwardPreludeErrors(preludeExtra, msg => this._error(msg, loc.start, loc.end));
 
     return new StyleImport(
       {
@@ -1200,7 +1241,7 @@ export class ScssGrammar extends LessGrammar {
     validateExtendTarget(
       target as Node,
       this._parseContext?.opts?.allowExtendSelectors,
-      msg => this._error(msg, loc.start)
+      msg => this._error(msg, loc.start, loc.end)
     );
     const prelude = this._source.slice(loc.start, loc.end);
     const namespace = /@extend\s+%/.test(prelude) || isPlaceholderExtendTarget(target)
@@ -1244,6 +1285,12 @@ export class ScssGrammar extends LessGrammar {
   }
 
   private _buildScssImportAtRule(children: ReadonlyArray<Child>, loc: LocationInfo) {
+    // Reject the CSS `@import` ordering violations Sass parse-rejects. Run on the
+    // raw prelude (everything after `@import`, without the trailing `;`).
+    const preludeText = this._source.slice(loc.start, loc.end)
+      .replace(/^@import\b/i, '')
+      .replace(/;\s*$/, '');
+    checkImportPreludeOrder(preludeText, msg => this._error(msg, loc.start, loc.end));
     const items = nodeChildren(children).filter(n => isNode(n, N.Sequence));
     const importName = new Any('@import', { role: 'atkeyword' }, loc) as unknown as Node;
     const built: JessNode[] = [];
@@ -1316,13 +1363,10 @@ export class ScssGrammar extends LessGrammar {
             ? String(firstArg.value.valueOf())
             : undefined
         : undefined;
-      if (selectorText !== undefined) {
-        try {
-          const selector = parseSelectorListExpression(selectorText);
-          return new SelectorCapture(selector, undefined, loc) as unknown as JessNode;
-        } catch {
-          return desugared as unknown as JessNode;
-        }
+      if (selectorText !== undefined && isValidScssSelectorList(selectorText)) {
+        // SelectorCapture keeps the lean bare-string payload; malformed input
+        // falls through to the desugared namespaced call below.
+        return new SelectorCapture(selectorText, undefined, loc) as unknown as JessNode;
       }
       return desugared as unknown as JessNode;
     }

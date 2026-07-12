@@ -6,7 +6,7 @@ import { coerceNodeArray } from './util/evaluate-node-array.js';
 import { N } from './node-type.js';
 import { cast } from './util/cast.js';
 import { callWithContext } from '../define-function.js';
-import { WARN, toDiagnostic } from '../jess-error.js';
+import { WARN } from '../jess-error.js';
 import { OutputWriter, type FinalPrintOptions, type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
 import { Paren } from './paren.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
@@ -628,11 +628,11 @@ export class Call extends Node<CallValue, CallOptions> {
   private warnUnresolvedFunction(context: Context, name: Node | string | unknown, error: unknown): void {
     const fnName = isNode(name, N.Reference) ? String(name.key.valueOf()) : String(name);
     const file = this.sourceRoot?._treeContext?.file;
-    context.warnings.push(toDiagnostic(WARN.unresolvedFunction({
+    context.warn(WARN.unresolvedFunction({
       ctx: file ? { file } : undefined,
       filePath: file?.fullPath,
-      meta: { name: fnName, reason: String((error as { message?: unknown })?.message ?? error).split('\n')[0] }
-    })));
+      meta: { name: fnName, reason: (error instanceof Error ? error.message : String(error)).split('\n')[0] }
+    }));
   }
 
   private async evalArgNodes(
@@ -648,7 +648,8 @@ export class Call extends Node<CallValue, CallOptions> {
     const out = new Array<Node>(source.length);
     // Coercing raw parser segments to nodes is itself a change — the returned
     // list must be rebuilt from `out`, not the original raw-valued `nodes`.
-    let changed = source !== (nodes.value as unknown as Node[]);
+    const rawValue: unknown = nodes.value;
+    let changed = source !== rawValue;
     const continueAsync = async (startIndex: number, first: Promise<Node>): Promise<List<Node>> => {
       let evald = await first;
       out[startIndex] = evald === source[startIndex]!

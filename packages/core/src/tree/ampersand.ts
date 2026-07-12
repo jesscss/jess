@@ -14,7 +14,7 @@ import { N } from './node-type.js';
 import { Selector } from './selector.js';
 import { atIndex } from './util/collections.js';
 import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
-import { WARN, toDiagnostic } from '../jess-error.js';
+import { WARN } from '../jess-error.js';
 
 export type AmpersandValue = {
   /**
@@ -470,12 +470,12 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
       if (!isBareWrapperAmp) {
         const file = amp.sourceRoot?._treeContext?.file;
         const selectorText = String(amp.parent?.valueOf?.() ?? '&');
-        context.warnings.push(toDiagnostic(WARN.parentlessAmpersand({
+        context.warn(WARN.parentlessAmpersand({
           ctx: file ? { file } : undefined,
           filePath: file?.fullPath,
 
           meta: { selector: selectorText }
-        })));
+        }));
       }
       return createPublicNil();
     }

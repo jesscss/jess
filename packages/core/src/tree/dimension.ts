@@ -11,6 +11,7 @@ import {
 } from './node.js';
 import { type Operator, calculate } from './util/calculate.js';
 import { logger } from '../logger.js';
+import { WARN } from '../jess-error.js';
 import round from 'lodash-es/round.js';
 import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
 import { finalizeOperationMetadataResult, finalizePublicOperationResult } from './util/operation-result.js';
@@ -230,6 +231,8 @@ export class Dimension extends Node<DimensionValue> {
         let msg = `Cannot convert "${this}" to a color`;
         if (isStrictMode) {
           throw new TypeError(msg);
+        } else if (context) {
+          context.warn(WARN.unitConversion({ meta: { value: String(this) } }));
         } else {
           logger.warn(msg);
         }

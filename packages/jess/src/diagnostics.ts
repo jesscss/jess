@@ -1,10 +1,39 @@
-import type { ErrorDiagnostic, WarningDiagnostic } from '@jesscss/core';
+import type {
+  DiagnosticDisplay,
+  ErrorDiagnostic,
+  ErrorsConfigInput,
+  WarningDiagnostic,
+  WarningsConfigInput
+} from '@jesscss/core';
+import { displayOverrideFor, oscLink, resolveErrorsConfig, resolveWarningsConfig } from '@jesscss/core';
 import { relative, resolve } from 'node:path';
 import { CodeDebug, Region } from 'linecraft';
 
+type AnyDiagnostic = ErrorDiagnostic | WarningDiagnostic;
+
+/**
+ * A diagnostic with no usable location falls out of the display ladder and is
+ * rendered as a bare message one-liner (`block`), regardless of the configured
+ * tier.
+ */
+type RenderTier = DiagnosticDisplay | 'block';
+
+const WARN_ICON = 'warning';
+const ERROR_ICON = 'error';
+
 /**
  * Formats and outputs diagnostics (errors and warnings) to the console.
- * Uses linecraft's CodeDebug component for formatted code frames.
+ *
+ * Each diagnostic is rendered at a display tier drawn from the ladder
+ * `summary → line → frame`:
+ * - `summary` one line per code (count + files) — the most compact view;
+ * - `line`    one line per site with an OSC-8 clickable `file:line:col` link;
+ * - `frame`   a full linecraft code frame (plus any include/call stack the
+ *             diagnostic already carries via `note`).
+ *
+ * Tiers resolve per diagnostic in this precedence: category override → severity
+ * default → dedup first-vs-repeat (a repeated frame-tier code drops to `line`)
+ * → verbose promotion → no-location fallback (a bare one-liner).
  *
  * @param errors - Array of error diagnostics
  * @param warnings - Array of warning diagnostics
@@ -17,105 +46,182 @@ export function outputDiagnostics(
     suppressWarnings?: boolean;
     breakOnError?: boolean;
     verbose?: boolean;
+    /** Display config for warnings (scalar tier or object). Default tier `line`. */
+    warnings?: WarningsConfigInput;
+    /** Display config for errors (scalar tier or object). Default tier `frame`. */
+    errors?: ErrorsConfigInput;
   } = {}
 ): void {
   const { suppressWarnings = false, breakOnError = true, verbose = false } = options;
 
-  // Merge warnings intelligently:
-  // 1. Group by code + filePath + line (for similar warnings like extend targets)
-  // 2. For warnings with parameterized messages (like "Extend target X"), merge them
-  const warningGroups = new Map<string, { warnings: WarningDiagnostic[]; representative: WarningDiagnostic }>();
+  const warnCfg = resolveWarningsConfig({ warnings: options.warnings, verbose });
+  const errCfg = resolveErrorsConfig(options.errors);
 
-  for (const warning of warnings) {
-    // For extend warnings and similar parameterized messages, group by code + filePath + line
-    // This merges "Extend target .a not accessible" and "Extend target .b not accessible" into one group
-    const isParameterized = warning.code === 'extend/not-found' || warning.code === 'extend/not-accessible';
-    const groupKey = isParameterized
-      ? `${warning.code}:${warning.filePath ?? ''}:${warning.line}`
-      : `${warning.code}:${warning.message}:${warning.filePath ?? ''}:${warning.line}`;
-
-    const existing = warningGroups.get(groupKey);
-    if (existing) {
-      existing.warnings.push(warning);
-    } else {
-      warningGroups.set(groupKey, { warnings: [warning], representative: warning });
-    }
+  // Warnings -> stdout (unless suppressed)
+  if (!suppressWarnings && warnings.length > 0) {
+    renderTiered(warnings, {
+      severityDefault: warnCfg.display,
+      icon: WARN_ICON,
+      type: 'warning',
+      stream: process.stdout,
+      verbose
+    });
   }
 
-  // Output warnings to stdout (unless suppressed)
-  if (!suppressWarnings && warningGroups.size > 0) {
-    for (const { warnings: groupWarnings, representative } of warningGroups.values()) {
-      if (groupWarnings.length === 1) {
-        // Single warning - output as-is
-        outputDiagnostic(representative, 'warning', process.stdout, verbose, 1);
-      } else {
-        // Multiple similar warnings - merge them
-        // Don't show repeat count since we're already summarizing multiple different warnings
-        const merged = mergeSimilarWarnings(groupWarnings, representative);
-        outputDiagnostic(merged, 'warning', process.stdout, verbose, 1);
-      }
-    }
-  }
-
-  // Output errors to stderr
-  // By default, only output the first error (unless breakOnError is false)
+  // Errors -> stderr. By default only the first error surfaces.
   const errorsToOutput = breakOnError ? errors.slice(0, 1) : errors;
-  for (const error of errorsToOutput) {
-    outputDiagnostic(error, 'error', process.stderr, verbose);
+  if (errorsToOutput.length > 0) {
+    renderTiered(errorsToOutput, {
+      severityDefault: errCfg.display,
+      icon: ERROR_ICON,
+      type: 'error',
+      stream: process.stderr,
+      verbose
+    });
   }
 }
 
+interface TierContext {
+  severityDefault: DiagnosticDisplay;
+  icon: string;
+  type: 'error' | 'warning';
+  stream: NodeJS.WriteStream;
+  verbose: boolean;
+}
+
+function renderTiered(diagnostics: AnyDiagnostic[], ctx: TierContext): void {
+  // A `summary`-tier request collapses the whole batch: one line per code.
+  if (ctx.severityDefault === 'summary') {
+    renderSummary(diagnostics, ctx.icon, ctx.stream);
+    return;
+  }
+
+  const framedCodes = new Set<string>();
+  for (const diagnostic of diagnostics) {
+    const tier = resolveTier(diagnostic, ctx.severityDefault, ctx.verbose, framedCodes);
+    switch (tier) {
+      case 'summary':
+        // A per-diagnostic `summary` collapses to the same shape as a group of
+        // one; render it as a bare one-liner.
+        renderBlock(diagnostic, ctx.icon, ctx.stream);
+        break;
+      case 'block':
+        renderBlock(diagnostic, ctx.icon, ctx.stream);
+        break;
+      case 'line':
+        renderLine(diagnostic, ctx.icon, ctx.stream);
+        break;
+      case 'frame':
+        outputDiagnostic(diagnostic, ctx.type, ctx.stream, ctx.verbose);
+        break;
+    }
+  }
+}
+
+function hasLocation(diagnostic: AnyDiagnostic): boolean {
+  return Boolean(diagnostic.filePath) && diagnostic.line > 0;
+}
+
+/** Promote a tier one notch toward `frame`. */
+function promote(tier: DiagnosticDisplay): DiagnosticDisplay {
+  return tier === 'summary' ? 'line' : 'frame';
+}
+
 /**
- * Merges multiple similar warnings into a single diagnostic with a combined message.
- * For parameterized warnings like "Extend target X not accessible", combines all targets.
+ * Resolve the display tier for a single diagnostic. `framedCodes` tracks codes
+ * already shown at `frame` so later distinct sites drop to `line`.
  */
-function mergeSimilarWarnings(
-  warnings: WarningDiagnostic[],
-  representative: WarningDiagnostic
-): WarningDiagnostic {
-  // Extract parameterized values from messages (e.g., ".a", ".b" from "Extend target .a not accessible")
-  const targets: string[] = [];
-  for (const warning of warnings) {
-    // Extract the target from messages like "Extend target ".a" not accessible"
-    const match = warning.message.match(/Extend target "([^"]+)" (not found|not accessible)/);
-    if (match) {
-      targets.push(match[1]!);
-    }
+function resolveTier(
+  diagnostic: AnyDiagnostic,
+  severityDefault: DiagnosticDisplay,
+  verbose: boolean,
+  framedCodes: Set<string>
+): RenderTier {
+  // No usable location -> bare one-liner, whatever the configured tier.
+  if (!hasLocation(diagnostic)) {
+    return 'block';
   }
 
-  // Create merged message
-  let mergedMessage: string;
-  if (targets.length > 0) {
-    if (targets.length <= 5) {
-      // Show all targets if 5 or fewer
-      mergedMessage = `Extend target${targets.length > 1 ? 's' : ''} ${targets.map(t => `"${t}"`).join(', ')} ${representative.message.includes('not accessible') ? 'not accessible' : 'not found'}`;
+  // Category override wins over the severity default.
+  let tier: DiagnosticDisplay = displayOverrideFor(diagnostic.code) ?? severityDefault;
+
+  if (verbose) {
+    // Verbose promotes everything one notch and renders all sites (no
+    // first-vs-repeat demotion).
+    return promote(tier);
+  }
+
+  if (tier === 'frame') {
+    // First site of a frame-tier code frames; later distinct sites drop to line.
+    if (framedCodes.has(diagnostic.code)) {
+      tier = 'line';
     } else {
-      // Show first 3 and count if more
-      const shown = targets.slice(0, 3).map(t => `"${t}"`).join(', ');
-      const remaining = targets.length - 3;
-      mergedMessage = `Extend targets ${shown} and ${remaining} more ${representative.message.includes('not accessible') ? 'not accessible' : 'not found'}`;
+      framedCodes.add(diagnostic.code);
     }
-  } else {
-    // Fallback: use representative message with count
-    mergedMessage = representative.message;
   }
 
-  return {
-    ...representative,
-    message: mergedMessage
-  };
+  return tier;
+}
+
+/** `summary` tier: one line per code with occurrence count + distinct files. */
+function renderSummary(
+  diagnostics: AnyDiagnostic[],
+  icon: string,
+  stream: NodeJS.WriteStream
+): void {
+  const groups = new Map<string, { message: string; count: number; files: Set<string> }>();
+  for (const diagnostic of diagnostics) {
+    let group = groups.get(diagnostic.code);
+    if (!group) {
+      group = { message: diagnostic.message, count: 0, files: new Set<string>() };
+      groups.set(diagnostic.code, group);
+    }
+    group.count++;
+    if (diagnostic.filePath) {
+      group.files.add(relative(process.cwd(), diagnostic.filePath));
+    }
+  }
+
+  for (const [code, group] of groups) {
+    const files = [...group.files];
+    const fileList = files.length > 0 ? `  (${files.join(', ')})` : '';
+    stream.write(`${icon} ${code}  ${group.message}  ${group.count}×${fileList}\n`);
+  }
+}
+
+/** `line` tier: icon + code + message + OSC-8 link to `file:line:col`. */
+function renderLine(
+  diagnostic: AnyDiagnostic,
+  icon: string,
+  stream: NodeJS.WriteStream
+): void {
+  const { code, message, filePath, line, column } = diagnostic;
+  const abs = filePath ? resolve(filePath) : '';
+  const shortPath = filePath ? relative(process.cwd(), filePath) : '(unknown)';
+  const label = `${shortPath}:${line}:${column}`;
+  const link = abs ? oscLink(`vscode://file/${abs}:${line}:${column}`, label) : label;
+  stream.write(`${icon} ${code}  ${message}  ·  ${link}\n`);
+}
+
+/** `block` fallback: a bare message one-liner with no link and no frame. */
+function renderBlock(
+  diagnostic: AnyDiagnostic,
+  icon: string,
+  stream: NodeJS.WriteStream
+): void {
+  stream.write(`${icon} ${diagnostic.code}  ${diagnostic.message}\n`);
 }
 
 /**
- * Outputs a single diagnostic using linecraft's CodeDebug component.
- * The output will persist in the terminal after the region is destroyed.
+ * `frame` tier: a full linecraft code frame. Any include/call stack the
+ * diagnostic already carries (via `note`) is appended; no stack is synthesized.
+ * The output persists in the terminal after the region is destroyed.
  */
 function outputDiagnostic(
-  diagnostic: ErrorDiagnostic | WarningDiagnostic,
+  diagnostic: AnyDiagnostic,
   type: 'error' | 'warning',
   stream: NodeJS.WriteStream = process.stdout,
-  verbose = false,
-  repeatCount = 1
+  verbose = false
 ): void {
   const { code, phase, message, reason, fix, filePath, line, column, lines, note } = diagnostic;
   const endLine = 'endLine' in diagnostic ? diagnostic.endLine : undefined;
@@ -142,12 +248,6 @@ function outputDiagnostic(
     message
   ];
 
-  // Add repeat count if > 1 (only for exact duplicates, not merged similar warnings)
-  // The repeatCount is only meaningful when it represents the same exact warning repeated
-  if (repeatCount > 1 && !message.includes(' and ') && !message.includes('more')) {
-    messageLines.push(`(repeated ${repeatCount} time${repeatCount > 1 ? 's' : ''})`);
-  }
-
   // Only include reason and fix if verbose mode is enabled
   if (verbose) {
     messageLines.push('');
@@ -155,13 +255,13 @@ function outputDiagnostic(
     messageLines.push(`Fix: ${fix}`);
   }
 
+  // Append the include/call stack the diagnostic already carries, if any.
   if (note) {
     messageLines.push(note.startsWith('Note:') ? note : `Note: ${note}`);
   }
   const fullMessage = messageLines.join('\n');
 
   // Create CodeDebug component and output it to the specified stream
-  // Region will use getTerminalWidth() which should handle redirected streams
   const region = Region({ stdout: stream });
   region.set(CodeDebug({
     startLine: errorLineNum,
@@ -177,8 +277,7 @@ function outputDiagnostic(
     type: type
   }));
 
-  // Flush to ensure rendering, then destroy without clearing to persist output
-  // This will write the content to the terminal permanently
+  // Flush to ensure rendering, then destroy without clearing to persist output.
   void region.flush();
   void region.destroy(false); // false = don't clear, persist the output
 }

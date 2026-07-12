@@ -20,7 +20,7 @@ import type { CompoundSelector } from './selector-compound.js';
 import { type FinalPrintOptions, type PrintOptions, getPrintOptions, savePrintState, restorePrintState } from './util/print.js';
 import { consumeTriviaBetween, emitTriviaTokens, commentRunsWithinSpan, emitNextSpanComment } from './util/trivia.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
-import { WARN, toDiagnostic } from '../jess-error.js';
+import { WARN } from '../jess-error.js';
 import { ownCollapsedSourceChild } from './util/own-collapsed-source-child.js';
 
 /** Components that may appear in a complex or relative selector. */
@@ -412,12 +412,12 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
       }
       const file = amp.sourceRoot?._treeContext?.file;
       const selectorText = String(this.valueOf?.() ?? '&');
-      context.warnings.push(toDiagnostic(WARN.parentlessAmpersand({
+      context.warn(WARN.parentlessAmpersand({
         ctx: file ? { file } : undefined,
         filePath: file?.fullPath,
 
         meta: { selector: selectorText }
-      })));
+      }));
     }
   }
 

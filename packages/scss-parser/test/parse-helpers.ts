@@ -48,14 +48,12 @@ export function trimmedStylesheet(tree: Rules): string {
 }
 
 /**
- * Remaining functional-parser gaps, skipped pending the tracked migration tasks:
- *  - @extend compound-target rejection wording + @include kwarg / SelectorCapture
- *    serialization are functional at-rule/value modeling gaps (tasks #9/#10/#17).
+ * Remaining functional-parser gap, skipped pending the tracked migration task:
+ *  - @extend compound-target rejection wording is a functional at-rule modeling
+ *    gap (task #9).
  */
 export const PENDING_FUNCTIONAL = new Set<string>([
-  'rejects compound @extend targets when only simple selectors are allowed',
-  'serializes @include keyword args',
-  'serializes selector.parse("...") as SelectorCapture'
+  'rejects compound @extend targets when only simple selectors are allowed'
 ]);
 
 export function functionalIt(name: string, fn: () => void) {

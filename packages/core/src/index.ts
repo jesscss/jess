@@ -19,7 +19,19 @@ export {
   type SpineVisitorExit
 } from './context.js';
 export { logger, type Logger } from './logger.js';
-export * from './logger/deprecation-processing.js';
+export {
+  type DiagnosticDisplay,
+  type WarningsConfig,
+  type WarningsConfigInput,
+  type ErrorsConfig,
+  type ErrorsConfigInput,
+  type ResolvedWarningsConfig,
+  type ResolvedErrorsConfig,
+  warnCodeMatches,
+  warnCodeMatchesAny,
+  resolveWarningsConfig,
+  resolveErrorsConfig
+} from './warnings.js';
 export * from './plugin.js';
 export * from './jess-error.js';
 export * from './deprecation.js';

@@ -1,8 +1,6 @@
-import type { Color as LSPColor, ColorInformation, ColorPresentation } from 'vscode-languageserver-types';
-import type { Node, Color, Call, Any, Context, Rules } from '@jesscss/core';
-import { isNode, N, Context as ContextClass, Rules as RulesClass, JsFunction, TreeContext } from '@jesscss/core';
-import { Color as ColorClass } from '@jesscss/core';
-import type * as LessFunctions from '@jesscss/fns';
+import type { Color as LSPColor, ColorPresentation } from 'vscode-languageserver-types';
+import type { Node, Color, Call, Any } from '@jesscss/core';
+import { isNode, N, sourceSpanOf, Color as ColorClass } from '@jesscss/core';
 
 // CSS color keywords map (from CSS Color Module Level 4)
 export const colorKeywords: { [name: string]: string } = {
@@ -173,10 +171,12 @@ export function colorToLSP(color: Color): LSPColor {
  * Get the text span of a node for creating a Range
  */
 export function getNodeSpan(node: Node): { start: number; end: number } | null {
-  const loc: unknown = node.location;
-  if (Array.isArray(loc) && loc.length === 6) {
-    const start = Number(loc[0]);
-    const end = Number(loc[3]);
+  // Functional parsers keep spans in the provenance side-table (`sourceSpanOf`),
+  // not on a `.location` 6-tuple.
+  const span = sourceSpanOf(node);
+  if (span) {
+    const start = Number(span.start);
+    const end = Number(span.end);
     if (Number.isFinite(start) && Number.isFinite(end) && end >= start) {
       return { start, end };
     }
@@ -201,113 +201,133 @@ function isColorKeyword(node: Node): node is Any {
 }
 
 /**
+ * Extract a Call's function name as a lowercased string. The functional Call
+ * node exposes its name as a plain `.name` field: a string for CSS-style calls
+ * (`rgb(...)`), or a `Reference(type='function')` node carrying `.key` for
+ * Less/SCSS calls. The legacy `.get('name')` accessor no longer exists.
+ */
+function callFunctionName(call: Call): string | null {
+  const callName = (call as { name?: unknown }).name;
+  if (typeof callName === 'string') {
+    return callName.toLowerCase();
+  }
+  if (callName && typeof callName === 'object') {
+    // A Reference/Any name node: prefer its `.key`, then `valueOf()`.
+    const key = (callName as { key?: unknown }).key;
+    if (typeof key === 'string' && key) {
+      return key.toLowerCase();
+    }
+    const node = callName as { valueOf?: () => unknown };
+    if (typeof node.valueOf === 'function') {
+      try {
+        const str = String(node.valueOf() ?? '');
+        if (str) {
+          return str.toLowerCase();
+        }
+      } catch {
+        // fall through
+      }
+    }
+  }
+  return null;
+}
+
+const COLOR_FUNCTIONS = ['rgb', 'rgba', 'hsl', 'hsla', 'hwb', 'lab', 'lch', 'oklab', 'oklch'];
+
+/**
  * Check if a Call node is a color function
  */
 function isColorFunction(call: Call): boolean {
-  let name: string | null = null;
+  const name = callFunctionName(call);
+  return name !== null && COLOR_FUNCTIONS.includes(name);
+}
 
-  const callName = call.get('name');
-  if (typeof callName === 'string') {
-    name = callName.toLowerCase();
-  } else if (callName) {
-    // Name is a Node - try multiple ways to extract the string value
-    const nameNode = callName;
+/** A numeric color-function argument: its magnitude and any unit (e.g. `%`). */
+type NumericArg = { value: number; unit: string };
 
-    // Try valueOf first (works for most Node types)
-    if (typeof nameNode.valueOf === 'function') {
-      try {
-        name = String(nameNode.valueOf()).toLowerCase();
-      } catch {
-        // valueOf failed, try other methods
-      }
-    }
+/** Read a Num/Dimension leaf as a number+unit, or null for anything else. */
+function numericArg(node: unknown): NumericArg | null {
+  if (!node || typeof node !== 'object') {
+    return null;
+  }
+  const num = (node as { number?: unknown }).number;
+  if (typeof num !== 'number' || !Number.isFinite(num)) {
+    return null;
+  }
+  const unit = (node as { unit?: unknown }).unit;
+  return { value: num, unit: typeof unit === 'string' ? unit : '' };
+}
 
-    // If valueOf didn't work, try type-specific extraction
-    if (!name) {
-      if (nameNode.type === 'Any' || nameNode.type === 'Reference') {
-        // Try valueOf for any node type
-        const str = String(nameNode.valueOf() ?? '');
-        if (str) {
-          name = str.toLowerCase();
-        }
-      }
+/** Flatten a Call's argument list into its positional member nodes. */
+function callArgNodes(call: Call): unknown[] {
+  const args = (call as { args?: unknown }).args;
+  if (args && typeof args === 'object') {
+    const value = (args as { value?: unknown }).value;
+    if (Array.isArray(value)) {
+      return value;
     }
   }
-
-  if (!name) {
-    return false;
-  }
-
-  const colorFunctions = ['rgb', 'rgba', 'hsl', 'hsla', 'hwb', 'lab', 'lch', 'oklab', 'oklch'];
-  return colorFunctions.includes(name);
+  return Array.isArray(args) ? args : [];
 }
 
 /**
- * Create a minimal context with global functions registered for evaluation
- * Uses dynamic import to avoid build-time dependency issues
+ * Statically evaluate a color function call to a Color, without the AST eval
+ * pipeline. The functional parsers emit `rgb(...)`/`hsl(...)` as string-named
+ * `Call` nodes, which eval deliberately does not resolve to functions (only
+ * `Reference(type='function')` names evaluate). For color detection we only
+ * need the channel values, so read the numeric arguments directly. Any
+ * non-numeric argument (e.g. a variable reference) yields null — the call is
+ * not statically a color.
  */
-async function createEvaluationContext(): Promise<Context> {
-  const context = new ContextClass();
-  const tree: Rules = new RulesClass([]);
+function tryEvaluateColorCall(call: Call): Color | null {
+  const name = callFunctionName(call);
+  if (!name || !COLOR_FUNCTIONS.includes(name)) {
+    return null;
+  }
+
+  const nums: NumericArg[] = [];
+  for (const argNode of callArgNodes(call)) {
+    const parsed = numericArg(argNode);
+    if (parsed === null) {
+      return null;
+    }
+    nums.push(parsed);
+  }
+  if (nums.length === 0) {
+    return null;
+  }
+  const alphaAt = (i: number): number => {
+    if (i >= nums.length) {
+      return 1;
+    }
+    const a = nums[i]!;
+    return a.unit === '%' ? a.value / 100 : a.value;
+  };
 
   try {
-    // Dynamically import functions
-    const lessFunctions = await import('@jesscss/fns');
-
-    // Register all Less functions (including color functions like rgb, hsl, etc.)
-    for (const [key, value] of Object.entries(lessFunctions)) {
-      if (typeof value === 'function') {
-        tree.setFunctionBinding(key, new JsFunction({ name: key, fn: value }));
-      } else if (value && typeof value === 'object' && 'default' in value && typeof value.default === 'function') {
-        const defaultFn = value.default;
-        const fn = (...args: unknown[]) => defaultFn(...args);
-        tree.setFunctionBinding(key, new JsFunction({ name: key, fn }));
+    if (name === 'rgb' || name === 'rgba') {
+      if (nums.length < 3) {
+        return null;
       }
+      const channel = (c: NumericArg) => c.unit === '%' ? Math.round((c.value / 100) * 255) : c.value;
+      const rgb: [number, number, number] = [channel(nums[0]!), channel(nums[1]!), channel(nums[2]!)];
+      return new ColorClass({ rgb, alpha: alphaAt(3) });
+    }
+    if (name === 'hsl' || name === 'hsla') {
+      if (nums.length < 3) {
+        return null;
+      }
+      // The Color HSL channels are fractional (0-1) for saturation/lightness.
+      const fraction = (c: NumericArg) => c.unit === '%' ? c.value / 100 : c.value;
+      const hsl: [number, number, number] = [nums[0]!.value, fraction(nums[1]!), fraction(nums[2]!)];
+      return new ColorClass({ hsl, alpha: alphaAt(3) });
     }
   } catch {
-    // If import fails, we'll just skip function evaluation
-    // This is okay - we'll still detect Color nodes and keywords
-  }
-
-  // Set up context properties needed for evaluation
-  context.treeContext = new TreeContext();
-  context.rulesContext = tree;
-  context.root = tree;
-  context.treeRoot = tree;
-  context.allRoots = [tree];
-
-  // Note: extendRoots is initialized in Context constructor
-  // callStack and parenFrames are getters that return arrays
-  // They will be initialized automatically when accessed
-
-  return context;
-}
-
-/**
- * Try to evaluate a Call node to see if it produces a Color
- * Returns the Color node if successful, null otherwise
- */
-async function tryEvaluateColorCall(call: Call, context?: Context): Promise<Color | null> {
-  if (!isColorFunction(call)) {
     return null;
   }
-
-  try {
-    // Use provided context or create a minimal one
-    const evalContext = context || await createEvaluationContext();
-    const result = await call.eval(evalContext);
-
-    // Check if the result is a Color node
-    if (isNode(result, N.Color)) {
-      return result;
-    }
-
-    return null;
-  } catch (e) {
-    // Evaluation failed - this might be due to missing variables, invalid args, etc.
-    // Silently return null - we don't want to show errors for color detection
-    return null;
-  }
+  // hwb/lab/lch/oklab/oklch are recognized as color functions but not yet
+  // statically evaluated here.
+  return null;
 }
 
 /**

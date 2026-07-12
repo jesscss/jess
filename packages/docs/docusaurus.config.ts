@@ -6,6 +6,9 @@ export default {
     v4: true
   },
   title: 'Jess',
+  customFields: {
+    siteAudience: 'jess'
+  },
   tagline: 'Jess is in alpha and currently seeking testers / collaborators!',
   url: 'https://jesscss.github.io',
   baseUrl: '/',
@@ -37,10 +40,6 @@ export default {
           activeBasePath: 'docs',
           label: 'Docs',
           position: 'left'
-        },
-        {
-          type: 'custom-audience-toggle',
-          position: 'right'
         },
         // {to: 'blog', label: 'Blog', position: 'left'},
         {
@@ -101,7 +100,7 @@ export default {
       'classic',
       {
         docs: {
-          path: '../docs-content/docs/jess',
+          path: '../docs-content/.site/jess',
           /** @todo - figure out path lowercasing later */
           // async sidebarItemsGenerator({defaultSidebarItemsGenerator, ...args}: any) {
           //   const sidebarItems = await defaultSidebarItemsGenerator(args);

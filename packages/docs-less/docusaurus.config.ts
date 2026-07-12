@@ -8,7 +8,7 @@ const resolveLocalLessVersion = (): string => {
   const lessPackageJson = path.resolve(__dirname, '../../../less.js/packages/less/package.json');
   try {
     const raw = fs.readFileSync(lessPackageJson, 'utf8');
-    const parsed = JSON.parse(raw) as { version?: string };
+    const parsed: { version?: string } = JSON.parse(raw);
     const version = parsed.version ?? '';
     if (version) {
       return version;
@@ -105,7 +105,7 @@ const resolveNpmLessVersions = (): { latest4x: string; latest5x: string } => {
       stdio: ['ignore', 'pipe', 'ignore'],
       timeout: 4000
     }).toString('utf8');
-    const versions = JSON.parse(raw) as string[];
+    const versions: string[] = JSON.parse(raw);
     const parsed = versions.filter(v => parseVersion(v) !== null);
     const v4 = parsed.filter(v => v.startsWith('4.')).sort(compareVersions).at(-1);
     const v5 = parsed.filter(v => v.startsWith('5.')).sort(compareVersions).at(-1);
@@ -130,13 +130,19 @@ export default {
   },
   title: 'Less',
   tagline: 'It\'s CSS, with just a little more.',
+  customFields: {
+    siteAudience: 'less'
+  },
   url: 'https://lesscss.org',
   baseUrl: '/',
   onBrokenLinks: 'warn',
   onBrokenMarkdownLinks: 'warn',
   onBrokenAnchors: 'warn',
   markdown: {
-    format: 'md'
+    // Existing Less docs are CommonMark (.md); the shared audience-gated page is
+    // .mdx and needs real MDX so JSX props like `include={['less']}` evaluate.
+    // 'detect' picks the format per file extension.
+    format: 'detect'
   },
   organizationName: 'less',
   projectName: 'lesscss.org',
@@ -210,7 +216,7 @@ export default {
       'classic',
       {
         docs: {
-          path: '../docs-content/docs/less',
+          path: '../docs-content/.site/less',
           sidebarPath: './sidebars.js',
           routeBasePath: 'docs',
           includeCurrentVersion: true,

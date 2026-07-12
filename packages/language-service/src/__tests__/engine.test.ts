@@ -302,37 +302,56 @@ describe('JessLanguageServiceEngine', () => {
       expect((diag?.range.end.character ?? -1)).toBeGreaterThanOrEqual(lastChar.character);
     });
 
-    it('reports multiple parser errors (css/less/scss)', () => {
-      // Force multiple *parser* errors by inserting tokens that are structurally invalid as values.
-      const inputByLang: Record<'css' | 'less' | 'scss', string> = {
-        // CSS: this parser reports multiple errors for an unterminated comment.
-        css: 'a { /*',
-        // Less/SCSS: this reliably produces multiple recovery errors.
-        less: 'a { color: ) ; background: ) ; }',
-        scss: 'a { color: ) ; background: ) ; }'
-      };
-      for (const languageId of ['css', 'less', 'scss'] as const) {
+    it('reports the single earliest parser error (1-error-stop contract)', () => {
+      // The functional parsers implement a deliberate "one error and stop" contract:
+      // every diagnostic source is collected, then collapsed to the EARLIEST by
+      // position. So even input with several structurally-invalid spots yields
+      // exactly one parser diagnostic, anchored at the first failure — not a
+      // recovery cascade. These inputs each have two bad `)` value tokens; only the
+      // first failure is reported (the CSS grammar rejects the whole declaration a
+      // little earlier than the Less/SCSS value grammars, hence a distinct anchor).
+      const cases: Array<{ languageId: 'css' | 'less' | 'scss'; input: string; start: { line: number; character: number } }> = [
+        { languageId: 'css', input: 'a { color: ) ; background: ) ; }', start: { line: 0, character: 4 } },
+        { languageId: 'less', input: 'a { color: ) ; background: ) ; }', start: { line: 0, character: 11 } },
+        { languageId: 'scss', input: 'a { color: ) ; background: ) ; }', start: { line: 0, character: 11 } }
+      ];
+      for (const { languageId, input, start } of cases) {
         const engine = createEngine();
-        const doc = createDocument(languageId, inputByLang[languageId]);
+        const doc = createDocument(languageId, input);
         engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
         const diagnostics = engine.getDiagnostics(doc.uri);
-        const parserCount = diagnostics.filter(d => d.code === 'parse/parser').length;
-        expect(parserCount).toBeGreaterThan(1);
+        const parserDiags = diagnostics.filter(d => d.code === 'parse/parser');
+        // Exactly one parser error (1-error-stop), no recovery cascade.
+        expect(parserDiags).toHaveLength(1);
+        expect(diagnostics).toHaveLength(1);
+        const diag = parserDiags[0]!;
+        expect(diag.source).toBe('jess');
+        // Anchored at the earliest failure position (the first bad `)`).
+        expect(diag.range.start).toEqual(start);
+        // Well-formed, non-degenerate range.
+        expect(diag.range.end.line).toBeGreaterThanOrEqual(diag.range.start.line);
+        const doc2 = createDocument(languageId, input);
+        expect(doc2.offsetAt(diag.range.end)).toBeGreaterThanOrEqual(doc2.offsetAt(diag.range.start));
       }
     });
 
-    it('reports multiple diagnostics (recovery-friendly) on very broken input (css/less/scss)', () => {
-      // Some grammars may surface these as parser errors rather than lexer errors.
+    it('reports one earliest diagnostic on very broken input (1-error-stop, css/less/scss)', () => {
+      // An unterminated block/comment: the parser stops at the first failure
+      // (the point it needed a closing `}`) rather than emitting a cascade. This
+      // asserts the single-error contract precisely, including the anchor position.
       const input = 'a { /*';
       for (const languageId of ['css', 'less', 'scss'] as const) {
         const engine = createEngine();
         const doc = createDocument(languageId, input);
         engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
         const diagnostics = engine.getDiagnostics(doc.uri);
-        expect(diagnostics.length).toBeGreaterThan(1);
-        // Ensure ranges are not all identical (basic sanity).
-        const keys = new Set(diagnostics.map(d => `${d.range.start.line}:${d.range.start.character}:${d.range.end.line}:${d.range.end.character}`));
-        expect(keys.size).toBeGreaterThan(1);
+        // Exactly one diagnostic — the earliest error, not a recovery cascade.
+        expect(diagnostics).toHaveLength(1);
+        const diag = diagnostics[0]!;
+        expect(diag.code).toBe('parse/parser');
+        expect(diag.source).toBe('jess');
+        // Anchored just after the opening `a { ` where the closer was expected.
+        expect(diag.range.start).toEqual({ line: 0, character: 4 });
       }
     });
 
@@ -675,6 +694,177 @@ describe('JessLanguageServiceEngine', () => {
       const actions = engine.getCodeActions(doc.uri, target!.range, { diagnostics: [target!] });
       expect(actions.some(a => a.kind === CodeActionKind.QuickFix)).toBe(true);
       expect(actions.some(a => a.title.includes('Create mixin'))).toBe(true);
+    });
+
+    it('offers a "did you mean" fix for a mistyped Less variable', () => {
+      const engine = createEngine();
+      const doc = createDocument('less', '@primary: red;\na { color: @primay; }');
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+      const diags = engine.getDiagnostics(doc.uri);
+      const target = diags.find(d => d.code === 'var/undefined');
+      expect(target).toBeDefined();
+
+      const actions = engine.getCodeActions(doc.uri, target!.range, { diagnostics: [target!] });
+      const didYouMean = actions.find(a => a.title === 'Change to @primary');
+      expect(didYouMean).toBeDefined();
+      // The fix rewrites only the identifier, keeping the `@` sigil.
+      const textEdits = didYouMean?.edit?.changes?.[doc.uri] ?? [];
+      expect(textEdits.length).toBe(1);
+      expect(textEdits[0]!.newText).toBe('@primary');
+    });
+
+    it('offers a "did you mean" fix for a mistyped Less mixin', () => {
+      const engine = createEngine();
+      const doc = createDocument('less', '.button() { color: red; }\n.a { .buton(); }');
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+      const diags = engine.getDiagnostics(doc.uri);
+      const target = diags.find(d => d.code === 'mixin/undefined');
+      expect(target).toBeDefined();
+
+      const actions = engine.getCodeActions(doc.uri, target!.range, { diagnostics: [target!] });
+      const didYouMean = actions.find(a => a.title.startsWith('Change to .button'));
+      expect(didYouMean).toBeDefined();
+      // The fix keeps the `.` combinator and only swaps the identifier.
+      const textEdits = didYouMean?.edit?.changes?.[doc.uri] ?? [];
+      expect(textEdits.length).toBe(1);
+      expect(textEdits[0]!.newText.startsWith('.button')).toBe(true);
+    });
+
+    it('does not offer a "did you mean" fix when nothing is close', () => {
+      const engine = createEngine();
+      const doc = createDocument('less', '@primary: red;\na { color: @zzzzzz; }');
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+      const diags = engine.getDiagnostics(doc.uri);
+      const target = diags.find(d => d.code === 'var/undefined');
+      const actions = engine.getCodeActions(doc.uri, target!.range, { diagnostics: [target!] });
+      expect(actions.some(a => a.title.startsWith('Change to'))).toBe(false);
+      // The create-variable fix is still offered.
+      expect(actions.some(a => a.title.includes('Create variable'))).toBe(true);
+    });
+  });
+
+  describe('rename', () => {
+    let tempDir = '';
+    afterEach(() => {
+      if (tempDir && fs.existsSync(tempDir)) {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+      tempDir = '';
+    });
+
+    // Apply a WorkspaceEdit's edits for one uri to `text` (offsets computed
+    // against `text`; edits are applied right-to-left so earlier ones stay valid).
+    function applyEdits(text: string, uri: string, edit: { changes?: Record<string, Array<{ range: { start: Position; end: Position }; newText: string }>> } | null): string {
+      const doc = TextDocument.create(uri, 'less', 1, text);
+      const edits = edit?.changes?.[uri] ?? [];
+      const sorted = [...edits].sort((a, b) => doc.offsetAt(b.range.start) - doc.offsetAt(a.range.start));
+      let out = text;
+      for (const e of sorted) {
+        const from = doc.offsetAt(e.range.start);
+        const to = doc.offsetAt(e.range.end);
+        out = out.slice(0, from) + e.newText + out.slice(to);
+      }
+      return out;
+    }
+
+    it('prepareRename yields the bare identifier of a Less variable', () => {
+      const engine = createEngine();
+      const doc = createDocument('less', '@primary: red;\na { color: @primary; }');
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+
+      const prep = engine.prepareRename(doc.uri, Position.create(1, 14));
+      expect(prep).not.toBeNull();
+      expect(prep?.placeholder).toBe('primary');
+    });
+
+    it('prepareRename returns null when the cursor is not on a symbol', () => {
+      const engine = createEngine();
+      const doc = createDocument('less', '@primary: red;\na { color: @primary; }');
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+
+      // Cursor on the `red` value of the declaration — not a renameable symbol.
+      const prep = engine.prepareRename(doc.uri, Position.create(0, 11));
+      expect(prep).toBeNull();
+    });
+
+    it('renames every occurrence of a Less variable (declaration + references)', () => {
+      const engine = createEngine();
+      const src = '@primary: red;\na { color: @primary; }\nb { background: @primary; }';
+      const doc = createDocument('less', src);
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+
+      const edit = engine.rename(doc.uri, Position.create(1, 14), 'secondary');
+      expect(edit).not.toBeNull();
+      const edits = edit?.changes?.[doc.uri] ?? [];
+      expect(edits.length).toBe(3);
+      // Every edit rewrites only the bare identifier.
+      expect(edits.every(e => e.newText === 'secondary')).toBe(true);
+
+      const result = applyEdits(src, doc.uri, edit);
+      expect(result).toBe('@secondary: red;\na { color: @secondary; }\nb { background: @secondary; }');
+      expect(result).not.toContain('@primary');
+    });
+
+    it('tolerates a sigil in the requested new name', () => {
+      const engine = createEngine();
+      const src = '@primary: red;\na { color: @primary; }';
+      const doc = createDocument('less', src);
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+
+      const edit = engine.rename(doc.uri, Position.create(1, 14), '@brand');
+      const result = applyEdits(src, doc.uri, edit);
+      expect(result).toBe('@brand: red;\na { color: @brand; }');
+    });
+
+    it('renames an SCSS variable', () => {
+      const engine = createEngine();
+      const src = '$primary: red;\na { color: $primary; }';
+      const doc = createDocument('scss', src);
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+
+      const edit = engine.rename(doc.uri, Position.create(1, 14), 'accent');
+      const edits = edit?.changes?.[doc.uri] ?? [];
+      expect(edits.length).toBe(2);
+      const doc2 = TextDocument.create(doc.uri, 'scss', 1, src);
+      const sorted = [...edits].sort((a, b) => doc2.offsetAt(b.range.start) - doc2.offsetAt(a.range.start));
+      let result = src;
+      for (const e of sorted) {
+        result = result.slice(0, doc2.offsetAt(e.range.start)) + e.newText + result.slice(doc2.offsetAt(e.range.end));
+      }
+      expect(result).toBe('$accent: red;\na { color: $accent; }');
+    });
+
+    it('renames a Less mixin, preserving the leading combinator', () => {
+      const engine = createEngine();
+      const src = '.button() { color: red; }\n.a { .button(); }';
+      const doc = createDocument('less', src);
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+
+      const edit = engine.rename(doc.uri, Position.create(1, 7), 'btn');
+      expect(edit).not.toBeNull();
+      const result = applyEdits(src, doc.uri, edit);
+      expect(result).toContain('.btn()');
+      expect(result).not.toContain('.button');
+    });
+
+    it('renames a Less variable across files', () => {
+      tempDir = fs.mkdtempSync(path.join(process.cwd(), 'rename-'));
+      const varsFile = path.join(tempDir, 'vars.less');
+      const mainFile = path.join(tempDir, 'main.less');
+      fs.writeFileSync(varsFile, '@primary: red;');
+      fs.writeFileSync(mainFile, '@import "vars";\n.a { color: @primary; }\n.b { background: @primary; }');
+
+      const engine = createEngine();
+      const varsUri = String(pathToFileURL(varsFile));
+      const mainUri = String(pathToFileURL(mainFile));
+      engine.open(varsUri, 'less', 1, fs.readFileSync(varsFile, 'utf-8'));
+      engine.open(mainUri, 'less', 1, fs.readFileSync(mainFile, 'utf-8'));
+
+      // Rename from the declaration in vars.less.
+      const edit = engine.rename(varsUri, Position.create(0, 2), 'brand');
+      expect(edit).not.toBeNull();
+      expect((edit?.changes?.[varsUri] ?? []).length).toBe(1);
+      expect((edit?.changes?.[mainUri] ?? []).length).toBe(2);
     });
   });
 

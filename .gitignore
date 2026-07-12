@@ -105,3 +105,9 @@ state/task-runtime/
 .guildhall/dev-tools/
 .guildhall/.session-epoch
 # END Guildhall managed
+
+# Generated per-audience docs facings (materialized from docs-content/docs/**)
+packages/docs-content/.site/
+# VS Code extension E2E harness (downloaded VS Code build + compiled tests)
+.vscode-test/
+packages/vscode/out/

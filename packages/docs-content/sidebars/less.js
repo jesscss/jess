@@ -2,7 +2,7 @@ export default {
   docs: [
     {
       type: 'doc',
-      id: 'Home',
+      id: 'overview',
       label: 'Overview'
     },
     {
@@ -21,6 +21,11 @@ export default {
       label: 'Migrating to v5'
     },
     {
+      type: 'doc',
+      id: 'usage/less-v5-breaking-changes',
+      label: 'Migrating Less 4.x → 5.x'
+    },
+    {
       type: 'category',
       label: 'Language and Features',
       items: [
@@ -30,6 +35,7 @@ export default {
         'features/nested',
         'features/parent-selectors',
         'features/imports',
+        'features/modules-and-imports',
         'features/extend',
         'features/maps',
         'features/merge',

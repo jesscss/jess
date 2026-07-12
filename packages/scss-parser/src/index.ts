@@ -13,7 +13,7 @@ import { ScssParser } from './functional-parser.js';
 export { ScssParser, parseScssFn, type ScssFnParseResult, type ScssFnParseOptions } from './functional-parser.js';
 
 export const Parser = ScssParser;
-export { parseScssCst } from './cst.js';
+export { parseScssCst, parseScssDoc } from './cst.js';
 export type {
   ScssCstChild, ScssCstError, ScssCstLeaf, ScssCstNode, ScssCstParseResult, ScssCstType
 } from './cst.js';

@@ -12,7 +12,7 @@ import { LessParser } from './functional-parser.js';
 export { LessParser };
 export { lessGrammar } from './grammar.js';
 export { parseLessFn, type LessFnParseResult } from './functional-parser.js';
-export { parseLessCst } from './cst.js';
+export { parseLessCst, parseLessDoc } from './cst.js';
 export type {
   LessCstChild, LessCstError, LessCstLeaf, LessCstNode, LessCstParseResult, LessCstType
 } from './cst.js';

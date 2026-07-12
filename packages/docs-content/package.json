@@ -4,9 +4,9 @@
   "private": true,
   "description": "Canonical docs content source for Jess and Less sites",
   "scripts": {
-    "migrate:jess": "node ./scripts/migrate-jess-docs.mjs",
     "import:less": "node ./scripts/import-less-docs.mjs",
     "normalize": "node ./scripts/normalize-frontmatter.mjs",
-    "validate": "node ./scripts/validate-docs.mjs"
+    "validate": "node ./scripts/validate-docs.mjs",
+    "build:facings": "node ./scripts/build-facings.mjs"
   }
 }

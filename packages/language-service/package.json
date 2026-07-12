@@ -45,7 +45,8 @@
     "build": "pnpm compile",
     "compile": "tsdown --tsconfig tsconfig.build.json --no-dts && tsc -p tsconfig.build.json --emitDeclarationOnly --noCheck",
     "dev": "tsdown --tsconfig tsconfig.build.json --watch",
-    "test": "vitest --watch=false"
+    "test": "vitest --watch=false",
+    "test:unit": "vitest --watch=false"
   },
   "module": "lib/index.js"
 }

@@ -1,0 +1,126 @@
+---
+title: Overview
+sidebar_label: Overview
+description: A stylesheet language and compiler with modern CSS ergonomics and compile-time power — the home of Less, Sass migration, and the Jess language.
+audiences:
+  - jess
+  - less
+  - sass
+origin: shared
+slug: /
+facing_paths:
+  less: overview
+---
+import AudienceGate from '@theme/AudienceGate';
+
+<AudienceGate include={['less']}>
+
+# Less
+
+**Less** means **L**eaner **S**tyle **S**heets. It is CSS with superpowers:
+familiar syntax, better reuse, and smarter organization for real-world
+codebases. You keep writing styles the way you already do — plus variables,
+mixins, nesting, functions, and tooling that scale.
+
+:::info Why teams still pick Less
+- **Incremental adoption** — start with plain CSS and add features where they help.
+- **Backwards-compatible output** — predictable CSS for production pipelines.
+- **Built for large stylesheets** — structure design tokens, utilities, and
+  components without fighting your tooling.
+- **A clear upgrade runway** — Less 5.x runs on the Jess engine, so teams can
+  migrate toward the Jess language over time without a rewrite.
+:::
+
+</AudienceGate>
+
+<AudienceGate include={['sass']}>
+
+# Sass, fixed
+
+If you write **Sass/SCSS**, Jess will feel immediately familiar — `$variables`,
+nesting, mixins, maps, `@extend`. Jess parses SCSS today and compiles it, while
+quietly fixing the parts of Sass that painted themselves into a corner: no
+`@at-root` teleporting, a real module system instead of global `@import`, and a
+strict line at *valid CSS* rather than bug-for-bug tolerance.
+
+We call the supported subset **Sass+** — Sass without the bad parts. Everything
+you rely on maps over; the differences are principled, not gaps.
+
+</AudienceGate>
+
+<AudienceGate include={['jess']}>
+
+# Jess
+
+**Jess** is a stylesheet language *and* a compiler, designed for teams that want
+modern CSS ergonomics without giving up compile-time power. It started as a
+ground-up rewrite of Less (and now powers Less 5+), then grew into its own
+language model — so you can migrate `.scss` and `.less` incrementally to `.jess`
+and compose across all three when you need to.
+
+```scss
+// I am a Jess file
+@-use '#less';              // Use built-in modules!
+@-use './sizes.ts';         // Use a custom module!
+@-compose './theme.less';   // Compose a theme!
+@-compose './mixins.scss';  // Import mixins from Less and Sass!
+
+.container {
+  width: $less.unit($sizes.width);
+  color: $theme.primary-color;
+  display: flex;
+  $ > mixins.box();
+}
+```
+
+</AudienceGate>
+
+## Why a preprocessor at all?
+
+CSS keeps gaining power — custom properties, nesting, `color-mix()`, container
+queries — but a build-time layer still earns its keep:
+
+- **Reuse without runtime cost.** Variables, mixins, and functions resolve at
+  compile time and ship as plain, static CSS.
+- **Organization that scales.** Split styles across files and compose them back
+  together with real module boundaries.
+- **One source of truth for tokens.** Define colors, spacing, and typography
+  once and derive the rest.
+
+<AudienceGate include={['jess']}>
+
+Jess adds first-class expressions (`$(…)`), live bindings, collections, and a
+JS/TS/JSON module system — while producing static CSS by default (and
+patch-friendly output when you need dynamic behavior).
+
+</AudienceGate>
+
+## Where to next
+
+<AudienceGate include={['jess']}>
+
+- Set up: [Installation](/docs/getting-started/install) and
+  [Configuration](/docs/getting-started/config).
+- Learn the module system: [Modules & imports](/docs/language/modules-and-imports).
+- Migrating an existing codebase: [Migrating to Jess](/docs/guides/migrating-to-jess),
+  or [Coming from Sass](/docs/guides/coming-from-sass).
+- Editor experience: [VSCode & Cursor support](/docs/getting-started/vscode).
+
+</AudienceGate>
+
+<AudienceGate include={['less']}>
+
+- Get going: [Getting Started](/docs/next/home/getting-started) and
+  [Installing & Forking](/docs/next/home/download-options).
+- Learn the language: [Modules & imports](/docs/next/language/modules-and-imports)
+  and the [Features overview](/docs/next/features-overview).
+- Upgrading: [Migrating Less 4.x → 5.x](/docs/next/guides/migrating-less-4-to-5).
+
+</AudienceGate>
+
+<AudienceGate include={['sass']}>
+
+- Start with the [Coming from Sass](/docs/guides/coming-from-sass) hub.
+- When you're ready to convert, see [Migrating to Jess](/docs/guides/migrating-to-jess).
+
+</AudienceGate>

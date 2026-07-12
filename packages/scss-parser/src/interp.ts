@@ -104,6 +104,24 @@ export function parseScssInterpExpr(expr: string, loc: LocationInfo): Node {
   return tree;
 }
 
+/**
+ * Validate a `selector.parse("…")` argument through the functional selector
+ * grammar. Returns `true` when the text is a well-formed selector list. Used to
+ * gate lifting a `selector.*` call into a `SelectorCapture`; the capture keeps the
+ * lean string payload (`SelectorCapture` supports a bare-string `SelectorLike`).
+ */
+export function isValidScssSelectorList(selectorText: string): boolean {
+  const trimmed = selectorText.trim();
+  if (!trimmed) {
+    return false;
+  }
+  if (!parseScssFnLazy) {
+    throw new Error('parseScssFn not wired for interpolation (setParseScssFnForInterp)');
+  }
+  const r = parseScssFnLazy(trimmed, 'SelectorList');
+  return r.errors.length === 0;
+}
+
 /** Turn a parsed expression into an interpolation replacement (name/ident slots). */
 export function toInterpReplacement(expr: Node, loc: LocationInfo): Node {
   const ref = unwrapSingleReference(expr);
