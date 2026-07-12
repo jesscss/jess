@@ -55,6 +55,8 @@ import { spanStartOf } from '../util/provenance.js';
 import { asExtendSelectorNode } from '../util/extend-roots.js';
 import { Extend, ExtendFlag } from '../extend.js';
 import { ExtendList } from '../extend-list.js';
+import { Interpolated } from '../interpolated.js';
+import type { VarDeclaration } from '../declaration-var.js';
 import { runSubjectProjection, solveSubjectBranches, type PipelineInstruction, type PipelineSubject } from './pipeline.js';
 
 /**
@@ -749,6 +751,281 @@ function compoundSubset(a: string[], b: string[]): boolean {
 }
 
 /**
+ * The plain LITERAL string value of a root-level `@var` declaration, usable as a selector-name
+ * fragment for interpolation-prefix resolution (`@icon-prefix: "icon"` → `icon`). Returns undefined
+ * when the value is not a single quote/keyword literal (interpolation-bearing, whitespaced, empty, or a
+ * computed expression) — those are left UNRESOLVED (the interpolation stays unbounded, conservative).
+ */
+function rootVarLiteralValue(node: VarDeclaration): string | undefined {
+  const value: unknown = node.value;
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  let text: string;
+  try {
+    text = value instanceof Node ? String(value.valueOf()) : String(value);
+  } catch {
+    return undefined;
+  }
+  const quoted = text.length >= 2
+    && (text[0] === '"' || text[0] === '\'')
+    && text[text.length - 1] === text[0];
+  const inner = quoted ? text.slice(1, -1) : text;
+  if (inner.length === 0 || /[@$]\{|%%|\s/.test(inner)) {
+    return undefined;
+  }
+  return inner;
+}
+
+/**
+ * A subject level's text with each `%%` interpolation placeholder RESOLVED to its root-var literal
+ * where known (`.%%-%%` with `@icon-prefix:"icon"` + loop `@i` → `.icon-%%`). The level node is an
+ * `InterpolatedSelector` wrapping an `Interpolated` whose `source` (== the level's `valueOf`) carries
+ * the `%%`s and whose ordered `replacements` are the `@{…}` variable `Reference`s. Each `%%` maps to
+ * the next replacement; a `Reference` whose `key` has a known root literal is substituted, else the
+ * `%%` is kept (unresolvable ⇒ unbounded ⇒ conservative). Non-interpolated levels return their text.
+ */
+function resolvedLevelText(sel: Selector, rootVarLiterals: ReadonlyMap<string, string>): string {
+  const raw = String(sel.valueOf());
+  if (!raw.includes('%%')) {
+    return raw;
+  }
+  // The replacements of the Interpolated node whose source IS this whole level (aligns `%%` order).
+  let reps: readonly Node[] | undefined;
+  for (const d of sel.walk(true)) {
+    if (d instanceof Interpolated && d.source === raw && Array.isArray(d.replacements)) {
+      reps = d.replacements;
+      break;
+    }
+  }
+  if (reps === undefined) {
+    return raw; // could not align replacements — leave unresolved (conservative)
+  }
+  let out = '';
+  let i = 0;
+  let ri = 0;
+  while (i < raw.length) {
+    const idx = raw.indexOf('%%', i);
+    if (idx < 0) {
+      out += raw.slice(i);
+      break;
+    }
+    out += raw.slice(i, idx);
+    const rep = reps[ri++];
+    const key = rep !== undefined && isNode(rep, N.Reference) ? rep.key : undefined;
+    const lit = typeof key === 'string' ? rootVarLiterals.get(key) : undefined;
+    out += lit !== undefined ? lit : '%%';
+    i = idx + 2;
+  }
+  return out;
+}
+
+/** A simple selector token classified for the inert-nomatch occurrence scan. */
+type SimpleToken =
+  | { kind: 'literal'; text: string }
+  // An interpolation-bearing simple (`.grid-@{i}`, `.m-%%`, `.@{name}`). `sigil` is `.`/`#`/`` (element).
+  // `prefix` is the LITERAL text after the sigil up to the first interpolation marker (empty ⇒ the whole
+  // name is interpolated ⇒ could expand to ANY name). `whole` is prefix-empty shorthand.
+  | { kind: 'interp'; sigil: string; prefix: string; whole: boolean };
+
+/**
+ * STRUCTURAL no-match for a SINGLE-COMPOUND target: could the plain compound `targetSimples`
+ * (`.ref-button` → `['.ref-button']`) match ANY subject compound reachable from `paths`?
+ *
+ * SOUNDNESS. `&`-composition and combinators (descendant/`>`/`+`/`~`) only REARRANGE existing literal
+ * simples — they never invent a NEW class/id/element NAME token. INTERPOLATION (`@{…}`/`${…}`/`%%`) is
+ * the sole source of a new token. So a single-compound target can match SOMETHING iff EVERY one of its
+ * simples can OCCUR somewhere — either written literally as a subject simple, or produced by an
+ * interpolation template whose literal prefix the target simple begins with (a pure/whole interpolation
+ * could expand to anything ⇒ always possible). This is OVER-approximate (co-occurrence in the SAME
+ * compound is not required — the SAFE direction: more "could match" ⇒ fewer inert admissions), and it
+ * reduces to FALSE (⇒ inert) exactly when some target simple can NEVER appear (e.g. an extender of an
+ * ABSENT `@import (reference)` selector like `.ref-button`), even in a document full of combinator/`&`/
+ * interpolation subjects. Any un-tokenizable path returns TRUE (conservative possible-match).
+ */
+function singleCompoundCouldMatchAnyLevel(
+  targetSimples: string[],
+  paths: Iterable<string>
+): boolean {
+  const literals = new Set<string>();
+  const interps: Array<{ sigil: string; prefix: string; whole: boolean }> = [];
+  for (const path of paths) {
+    const tokens = looseSimpleTokens(path);
+    if (tokens === undefined) {
+      return true; // un-tokenizable subject path → conservative possible-match
+    }
+    for (const tok of tokens) {
+      if (tok.kind === 'literal') {
+        literals.add(tok.text);
+      } else {
+        interps.push({ sigil: tok.sigil, prefix: tok.prefix, whole: tok.whole });
+      }
+    }
+  }
+  return targetSimples.every(ts => simpleCanOccur(ts, literals, interps));
+}
+
+/** Whether target simple `ts` can occur as (or inside an expansion of) some collected subject simple. */
+function simpleCanOccur(
+  ts: string,
+  literals: Set<string>,
+  interps: ReadonlyArray<{ sigil: string; prefix: string; whole: boolean }>
+): boolean {
+  if (literals.has(ts)) {
+    return true;
+  }
+  // A pseudo/attribute/interpolated TARGET simple is a richer shape than this occurrence scan reasons
+  // about — treat it as a possible match (conservative; the reference-import case is plain class/id).
+  const sigil = ts[0] === '.' || ts[0] === '#' ? ts[0] : '';
+  if (ts.startsWith(':') || ts.startsWith('[') || /[@$%{}]/.test(ts)) {
+    return true;
+  }
+  const body = ts.slice(sigil.length);
+  for (const t of interps) {
+    if (t.sigil !== sigil) {
+      continue;
+    }
+    if (t.whole || body.startsWith(t.prefix)) {
+      return true; // the interpolation could expand to `ts`
+    }
+  }
+  return false;
+}
+
+/**
+ * Tokenize a composed selector PATH into its classified simple tokens (across all levels/branches),
+ * DROPPING combinators (space/`>`/`+`/`~`/`,`) and bare `&` connectors, keeping `:pseudo(...)` and
+ * `[...]` OPAQUE, and recognizing interpolation (`@{…}`/`${…}`/`%%`). Returns undefined on an
+ * un-tokenizable shape (unbalanced brackets / unexpected char) so the caller stays conservative.
+ */
+function looseSimpleTokens(path: string): SimpleToken[] | undefined {
+  const out: SimpleToken[] = [];
+  let i = 0;
+  const n = path.length;
+  const classify = (raw: string, sigil: string): SimpleToken => {
+    // The literal PREFIX is the text after the sigil up to the first interpolation marker
+    // (`@{…}`/`${…}`/`%%`). Leading root-var interpolations are already resolved upstream
+    // (`resolvedLevelText`), so a remaining marker is genuinely unbounded ⇒ the interpolation could
+    // expand to any name with that prefix (empty prefix ⇒ any name at all).
+    const interpIdx = ((): number => {
+      const a = raw.indexOf('@{');
+      const b = raw.indexOf('${');
+      const c = raw.indexOf('%%');
+      const idxs = [a, b, c].filter(x => x >= 0);
+      return idxs.length > 0 ? Math.min(...idxs) : -1;
+    })();
+    if (interpIdx < 0) {
+      return { kind: 'literal', text: raw };
+    }
+    const prefix = raw.slice(sigil.length, interpIdx);
+    return { kind: 'interp', sigil, prefix, whole: prefix.length === 0 };
+  };
+  // Consume the run of name characters (incl. inline `@{…}`/`${…}` balanced braces + `%%`) from `i`.
+  const consumeName = (): string => {
+    const start = i;
+    while (i < n) {
+      const ch = path[i]!;
+      if (ch === '@' || ch === '$') {
+        if (path[i + 1] === '{') {
+          let depth = 0;
+          i++; // at '{'
+          do {
+            if (path[i] === '{') {
+              depth++;
+            } else if (path[i] === '}') {
+              depth--;
+            }
+            i++;
+          } while (i < n && depth > 0);
+          continue;
+        }
+        break;
+      }
+      if (ch === '%') {
+        i++;
+        continue;
+      }
+      if (/[A-Za-z0-9_*|-]/.test(ch)) {
+        i++;
+        continue;
+      }
+      break;
+    }
+    return path.slice(start, i);
+  };
+  while (i < n) {
+    const ch = path[i]!;
+    if (/\s/.test(ch) || ch === '>' || ch === '+' || ch === '~' || ch === ',' || ch === '&') {
+      i++;
+      continue;
+    }
+    if (ch === '[') {
+      const start = i;
+      let depth = 0;
+      do {
+        if (path[i] === '[') {
+          depth++;
+        } else if (path[i] === ']') {
+          depth--;
+        }
+        i++;
+      } while (i < n && depth > 0);
+      if (depth !== 0) {
+        return undefined;
+      }
+      out.push({ kind: 'literal', text: path.slice(start, i) });
+      continue;
+    }
+    if (ch === ':') {
+      const start = i;
+      i++;
+      if (i < n && path[i] === ':') {
+        i++;
+      }
+      while (i < n && /[A-Za-z0-9_-]/.test(path[i]!)) {
+        i++;
+      }
+      if (i < n && path[i] === '(') {
+        let depth = 0;
+        do {
+          if (path[i] === '(') {
+            depth++;
+          } else if (path[i] === ')') {
+            depth--;
+          }
+          i++;
+        } while (i < n && depth > 0);
+        if (depth !== 0) {
+          return undefined;
+        }
+      }
+      out.push({ kind: 'literal', text: path.slice(start, i) });
+      continue;
+    }
+    if (ch === '.' || ch === '#') {
+      const sigil = ch;
+      i++;
+      const rest = consumeName();
+      if (rest.length === 0) {
+        return undefined;
+      }
+      out.push(classify(sigil + rest, sigil));
+      continue;
+    }
+    if (/[A-Za-z*|@$%]/.test(ch)) {
+      const raw = consumeName();
+      if (raw.length === 0) {
+        return undefined;
+      }
+      out.push(classify(raw, ''));
+      continue;
+    }
+    return undefined; // unexpected char → un-tokenizable
+  }
+  return out;
+}
+
+/**
  * STRUCTURAL no-match: could the descendant target `target` match subject composed path `subjectPath`
  * (both plain descendant-of-compounds)? A match requires the target's compound tokens to appear as an
  * ORDERED (not necessarily contiguous — descendant is transitive) subsequence of the subject's tokens,
@@ -1186,9 +1463,35 @@ export function isSpineExtendTopology(
   // target (`.header .header-nav`) resolves to a NESTED subject's composed path — admitted so the
   // hoist path (`collapseNesting:true`, verbatim override) can rewrite it (increment 3).
   const subjectComposedPaths = new Set<string>();
+  // Same paths with each level's leading interpolation resolved (see the populate site) — the
+  // single-compound inert scan uses THIS so a fixed-prefix interpolated subject (`.icon-@{i}`) does
+  // not force a plain unmatched target to be treated as a possible match.
+  const subjectComposedPathsResolved = new Set<string>();
   // Subset of `subjectComposedPaths` with NO `&` level — the paths the structural inert scan can
   // trust (a `&` level is a compound-merge the naive space-join mis-approximates; see below).
   const cleanSubjectPaths = new Set<string>();
+  // ROOT-LEVEL variable → literal string map, for PARTIALLY resolving a leading interpolation in an
+  // interpolated SUBJECT (`.@{icon-prefix}-@{i}` with root `@icon-prefix: "icon"` → prefix `icon-`).
+  // Without this the leading `@{var}` reads as a WHOLE (unbounded) interpolation, so a genuinely-inert
+  // plain target (`.ref-button`) is spuriously treated as a possible match. Only SIMPLE single-literal
+  // root vars are mapped (interpolation-bearing / multi-part values are skipped — left unbounded).
+  const rootVarLiterals = new Map<string, string>();
+  for (const child of root.rules) {
+    if (isNode(child, N.VarDeclaration)) {
+      const nm: unknown = child.name;
+      const name = typeof nm === 'string' ? nm : nm instanceof Node ? String(nm.valueOf()) : undefined;
+      if (name === undefined || name.length === 0) {
+        continue;
+      }
+      const lit = rootVarLiteralValue(child);
+      // Last writer wins (mirrors eval's re-assignment at root scope). Skip when unresolvable.
+      if (lit !== undefined) {
+        rootVarLiterals.set(name, lit);
+      } else {
+        rootVarLiterals.delete(name);
+      }
+    }
+  }
   let ok = true;
 
   // The SHARED LEADING COMPOUND of every branch of a root-level subject (SHAPE 4). When a
@@ -1265,6 +1568,11 @@ export function isSpineExtendTopology(
       // descendant crossing target (`.header .header-nav`); a level with `&`/combinators would not
       // string-match, which is fine — those shapes are excluded upstream anyway.
       subjectComposedPaths.add(path.map(s => String(s.valueOf())).join(' '));
+      // Parallel path with each level's leading interpolation RESOLVED against known root-var literals
+      // (`.@{icon-prefix}-@{i}` → `.icon-%%`), for the single-compound inert scan — so a plain target
+      // (`.ref-button`) is not spuriously admitted-as-possible by an interpolated subject whose real
+      // prefix rules it out. Unresolvable slots stay `%%` (unbounded, conservative).
+      subjectComposedPathsResolved.add(path.map(s => resolvedLevelText(s, rootVarLiterals)).join(' '));
       // CLEAN descendant path (no `&` level) for the structural inert scan. A `&`-bearing level
       // composes into a COMPOUND MERGE, not a descendant step, so the naive space-join
       // (`.button &:hover`) mis-approximates it as a descendant — a plain descendant target
@@ -1518,12 +1826,22 @@ export function isSpineExtendTopology(
     // (`targetCouldMatchPath`). Inert iff the target could match NONE. The tokenizer is conservative —
     // any shape it cannot decompose (child/sibling combinator, graft paren) returns "could match" →
     // NOT inert — so it never admits a target it cannot fully reason about.
+    // A SINGLE-COMPOUND target's matchability is combinator-independent: it can match ONLY by being a
+    // sub-compound of some level of some subject selector. Scan EVERY subject path (combinator-aware)
+    // so a genuinely-unmatched target is proven inert even when the document has combinator subjects
+    // (`div.browse > ul`) — which the descendant-only `targetCouldMatchPath` would blanket-admit as a
+    // possible match, spuriously forcing the whole root to eval. A MULTI-compound descendant target
+    // keeps the descendant-subsequence scan (its combinator semantics are load-bearing).
+    const inertDct = descendantCompoundTokens(target);
+    const inertLocalScan = inertDct !== undefined
+      && (inertDct.length === 1
+        ? !singleCompoundCouldMatchAnyLevel(inertDct[0]!, subjectComposedPathsResolved)
+        : ![...cleanSubjectPaths].some(p => targetCouldMatchPath(target, p)));
     const isInertNomatch = (!treeHasImport || reGateResolved)
       && !isRootTarget && !isNestedComposedTarget && !isLeadingCompoundTarget
       && !isPseudoCompoundOfRootSubject && !isMatchableCompoundTarget && !isCombinatorSubjectTarget
       && !isPartialWrapOfDescendantLevel && !isExactRootBranchTarget && !isPartialWrapOfNestedLevel
-      && descendantCompoundTokens(target) !== undefined
-      && ![...cleanSubjectPaths].some(p => targetCouldMatchPath(target, p))
+      && inertLocalScan
       && !rootLevelSelectors.has(target)
       // In re-gate mode, the target must also be inert against the RESOLVED imported subjects — it is
       // neither an imported root subject nor a compound-subset of one (a plain reference-body selector

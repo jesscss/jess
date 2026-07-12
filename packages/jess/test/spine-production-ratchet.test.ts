@@ -3034,6 +3034,46 @@ describe('spine PRODUCTION-path ratchet (P2 wire-in)', () => {
     }
   });
 
+  it('REFERENCE-EXTEND (unmapped target, COMPLEX doc): inert fold survives combinator + interpolation subjects (derive=0)', async () => {
+    // Robust-inertness lock. An unmapped reference-import target (`.ref-missing`) is proven INERT by a
+    // structural occurrence scan over the document's subjects. That scan formerly BAILED conservatively
+    // (→ "possible match" → abort to eval) whenever ANY subject bore a child/sibling combinator
+    // (`div.foo > ul`) or a whole/leading interpolation (`.@{p}-1`) — which is precisely the benchmark
+    // shape (its `div.browse > ul` combinator + `.@{icon-prefix}-@{i}` icon selector defeated the proof).
+    // The scan now (a) reasons per-compound-level across every combinator, (b) keeps `:pseudo(...)`/`[…]`
+    // opaque, and (c) resolves a leading interpolation against root-var literals (`@p: "icon"` →
+    // `.icon-1`, fixed prefix). So a genuinely-unmatched plain target is inert even here: the whole root
+    // FOLDS spine-only (derive=0), the empty extender emits nothing, byte-identical to eval.
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-ref-extend-complex-'));
+    fs.writeFileSync(path.join(dir, 'empty.less'), '');
+    fs.writeFileSync(
+      path.join(dir, 'main.less'),
+      '@import (reference) "empty.less";\n@p: "icon";\n.@{p}-1 { color: red; }\ndiv.foo > ul { color: blue; }\n.x:extend(.ref-missing) {}\n'
+    );
+    const compiler = new Compiler({
+      output: { collapseNesting: true },
+      compile: { plugins: [lessPlugin(), lessCompatPlugin({})] }
+    });
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const result = await compiler.renderToResult(path.join(dir, 'main.less'), {});
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path (no abort)
+      expect(deriveCalls).toBe(0); // folds — the inert proof held despite combinator/interp subjects
+      // `.@{p}-1` resolved to `.icon-1`; the combinator subject is unchanged; the `.x` extender of the
+      // absent `.ref-missing` emits nothing.
+      expect(result.css).toBe('.icon-1 {\n  color: red;\n}\ndiv.foo > ul {\n  color: blue;\n}\n');
+    } finally {
+      Rules.prototype.derive = originalDerive;
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it('REFERENCE-EXTEND (present target): `:extend` of a PRESENT reference selector still folds (derive=0)', async () => {
     // Companion to the unmapped case: when the reference body DOES define the target, the fold must
     // still work (the re-gate relaxation must not disturb the mapped path). `.ref-button` is pulled
