@@ -148,6 +148,23 @@ function ownComposed(path: BucketPath): Selector {
   return composeTargetOwn(path);
 }
 
+/**
+ * A NESTED self-extend contribution: an extend whose bare `extendWith` textually EQUALS its
+ * `target` (a self-extend, `el:extend(el)`), but whose extender is authored inside an enclosing
+ * block so its COMPOSED form (`ownComposed(path)`, e.g. `.prose h1`) differs from the bare
+ * `target`. At the raw local-apply layer such an extend is inert (bare `h1` added to `h1`
+ * dedupes to nothing), so SOLVE's change-detection never fires it — but Less 4.x DOES add the
+ * composed `.prose h1` everywhere the target appears. This predicate lets SOLVE fire it as an
+ * EMIT-only contribution. A ROOT-level self-extend (composed form == bare `target`) returns
+ * false and stays a genuine no-op.
+ */
+function isNestedSelfExtendContribution(inst: PipelineInstruction): boolean {
+  if (String(inst.target.valueOf()) !== String(inst.extendWith.valueOf())) {
+    return false;
+  }
+  return String(ownComposed(inst.path).valueOf()) !== String(inst.extendWith.valueOf());
+}
+
 function asSelector(result: Selector | Selector[]): Selector {
   return Array.isArray(result) ? new SelectorList(result as SelectorList['value']) : result;
 }
@@ -240,6 +257,19 @@ function solveContributions(
         firedInstructions.add(inst);
         changed = true;
         break;
+      }
+      // MATCHED, but the RAW local-apply produced NO net change. For most instructions
+      // this is a true no-op (self-extend / value-dedupe). The ONE exception is a NESTED
+      // self-extend (`h1:extend(h1) {}` inside `.prose`): its bare `extendWith` equals its
+      // `target`, so the local-apply layer is inert — yet its COMPOSED extender (`.prose h1`)
+      // is a DISTINCT selector Less 4.x adds everywhere the target appears. SOLVE never
+      // composes (that is EMIT's job), so it cannot see the difference in the raw string;
+      // fire it here as an EMIT-ONLY contribution (no branch-value change, so no re-sweep)
+      // and let `projectSubject` compose the `.prose`-prefixed form from `inst.path`. A ROOT
+      // self-extend (`.foo:extend(.foo)`, composed form == bare form) stays genuinely inert.
+      if (isNestedSelfExtendContribution(inst)) {
+        fired.push(inst);
+        firedInstructions.add(inst);
       }
     }
   }

@@ -262,11 +262,24 @@ export function composeSpineSubjectHeaders(
         { id: `p${i}`, path: parentPath, order: subject.order, scope: subject.scope },
         instructions
       );
+      // The parent GAINED an extend contribution when its projection differs from its authored own
+      // form. Usually that means MULTIPLE branches (`.panel, .card, .widget`), but a PARTIAL extend of
+      // a COMPOUND parent (`div.panel` + `.card:extend(.panel all)`) compacts the gain into a SINGLE
+      // `:is()`-grouped branch (`div:is(.panel, .card, .widget)`) — still a gain the child must fold
+      // against. Gating on `branches.length > 1` alone silently dropped the compacted-single case and
+      // fell through to the generic hoist, which composed the child against the BARE `div.panel` own
+      // form and appended the parent's `.card`/`.widget` contributions RAW (`div.panel > div.header,
+      // .card, .widget`). Key the graft on the parent actually differing from its authored own form.
+      const authoredParentOwnKey = parentProjection.projection
+        ? String(composeTargetOwn(parentPath).valueOf())
+        : undefined;
+      const parentGained = parentProjection.projection !== undefined
+        && parentProjection.projection.branches.map(b => String(b.valueOf())).join(',') !== authoredParentOwnKey;
       if (
         parentProjection.ownBuilt
         && parentProjection.projection
         && !parentProjection.projection.hoistToRoot
-        && parentProjection.projection.branches.length > 1
+        && parentGained
       ) {
         // NESTED-CHILD GRAFT. An extender targeting the nested child ITSELF (`.ee:extend(.dd all)`
         // where `.dd` is nested under `.aa`) must add a SIBLING child branch under the SAME

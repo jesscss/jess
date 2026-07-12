@@ -3156,9 +3156,122 @@ describe('spine PRODUCTION-path ratchet (P2 wire-in)', () => {
     expect(spineRenderCounter.rootRenders).toBe(beforeEval); // spine did NOT engage → true eval
 
     // 3) Byte-identity: the spine-attempt output equals the pure eval output exactly.
+    // NOTE (re-anchor): this locks the ABORT PATH's byte-identity, NOT a Less-4.x-correct golden.
+    // The full benchmark still ABORTS to eval at the post-import `isSpineExtendTopology` re-gate
+    // because of the `@import (reference)` `all`-extend topology over EMPTY reference bodies
+    // (`.my-primary-button:extend(.ref-button all)` etc., benchmark.less ~4039-4042) — a shape
+    // beyond the two extend bugs fixed here (cases 3 & 5). So its rendered output is the eval
+    // output, which still carries the eval path's documented nested-extender bare-fragment limit
+    // (`.prose p` bare `p`, case 1; the `.prose h1`/`.prose h2` self-extend drop, case 3). The
+    // Less-4.x-CORRECT golden for benchmark's extend shapes — which the spine now produces once it
+    // FOLDS — is asserted spine-only in the `BENCHMARK EXTEND GOLDEN` block below. See
+    // docs/future/core-architecture/BENCHMARK-EXTEND-GOLDEN-EVIDENCE.md.
     expect(spineCss).toBe(evalCss);
     // 4) The hoisted charset survived (the charset-on-abort regression guard).
     expect(spineCss.startsWith('@charset "utf-8";\n')).toBe(true);
     expect(spineCss.indexOf('@charset')).toBe(spineCss.lastIndexOf('@charset')); // exactly one, hoisted
+  });
+});
+
+/**
+ * BENCHMARK EXTEND GOLDEN (Less-4.x-grounded) — the re-anchored gate.
+ *
+ * `packages/jess/benchmark/benchmark.css` is a 2-line stub and both `@import` targets are EMPTY
+ * files, so there is no committed golden to defend, and the full benchmark aborts to eval (see the
+ * abort-lock test above). These tests re-anchor the benchmark's extend contract to the CORRECT
+ * output derived from real Less 4.6.7 (adjudicated in
+ * docs/future/core-architecture/BENCHMARK-EXTEND-GOLDEN-EVIDENCE.md), rendered SPINE-ONLY
+ * (production path, no eval two-walk — `Rules.derive` UNCALLED). The inputs are the report's
+ * faithful reductions of benchmark.less's extend sections (~4045-4069, ~4369-4388): they FOLD on
+ * the spine and the spine now produces the Less-4.x-correct result. This replaces defending the
+ * buggy eval output with defending the Less-4.x-grounded golden.
+ *
+ * Case 1 (nested extender) and case 5 (`.panel all`-extend across scattered `div.panel…`) carry the
+ * report's corrected golden verbatim; case 3 (nested element/class self-extend `h1:extend(h1)`) has
+ * no report golden (Less 4.x sided with NEITHER jess path — a pure code fix), so its golden here is
+ * the Less-4.x-correct output shown in the report's case-3 table. `:is()` compaction is the
+ * evidence-validated ship form (semantically identical to Less 4.x's expansion for same-specificity
+ * class args; eval-flat + nested-spine already emit it).
+ */
+describe('BENCHMARK EXTEND GOLDEN (Less-4.x-grounded, spine-only)', () => {
+  const makeCompiler = () =>
+    new Compiler({
+      output: { collapseNesting: true },
+      compile: { plugins: [lessPlugin(), lessCompatPlugin({})] }
+    });
+
+  const renderSpineOnly = async (src: string): Promise<{ css: string; derive: number; engaged: boolean }> => {
+    const compiler = makeCompiler();
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const css = await compiler.renderString(src, { language: 'less' });
+      return { css, derive: deriveCalls, engaged: spineRenderCounter.rootRenders > before };
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
+  };
+
+  it('CASE 1 (nested extender) folds spine-only, byte-identical to the Less-4.x golden', async () => {
+    const src = `.typography-base {\n  font-family: sans-serif;\n  line-height: 1.6;\n}\n.prose {\n  p:extend(.typography-base) {\n    margin-bottom: 1em;\n  }\n}`;
+    const { css, derive, engaged } = await renderSpineOnly(src);
+    expect(engaged).toBe(true); // spine folded (no abort)
+    expect(derive).toBe(0); // no eval two-walk
+    // Less 4.6.7: the nested extender composes to `.prose p` (NOT the eval-path bare `p`).
+    expect(css).toBe(
+      '.typography-base,\n.prose p {\n  font-family: sans-serif;\n  line-height: 1.6;\n}\n.prose p {\n  margin-bottom: 1em;\n}\n'
+    );
+  });
+
+  it('CASE 3 (nested element/class self-extend) folds spine-only, adding `.prose h1`/`.prose h2` per Less 4.x', async () => {
+    const src = `.typography-base { font-family: sans-serif; line-height: 1.6; }\n.heading-base:extend(.typography-base) { font-weight: bold; margin-bottom: 0.5em; }\nh1:extend(.heading-base) { font-size: 2.5em; }\nh2:extend(.heading-base) { font-size: 2em; }\n.prose {\n  h1:extend(h1) {}\n  h2:extend(h2) {}\n}`;
+    const { css, derive, engaged } = await renderSpineOnly(src);
+    expect(engaged).toBe(true);
+    expect(derive).toBe(0);
+    // Less 4.6.7: `.prose h1`/`.prose h2` are added to every group matching `h1`/`h2`
+    // (the nested self-extend). Both jess paths formerly DROPPED this; the spine now applies it.
+    expect(css).toBe(
+      '.typography-base,\n.heading-base,\nh1,\nh2,\n.prose h1,\n.prose h2 {\n  font-family: sans-serif;\n  line-height: 1.6;\n}\n'
+      + '.heading-base,\nh1,\nh2,\n.prose h1,\n.prose h2 {\n  font-weight: bold;\n  margin-bottom: 0.5em;\n}\n'
+      + 'h1,\n.prose h1 {\n  font-size: 2.5em;\n}\n'
+      + 'h2,\n.prose h2 {\n  font-size: 2em;\n}\n'
+    );
+  });
+
+  it('CASE 5 (`.panel all`-extend across scattered `div.panel…`) folds spine-only in FLAT mode, byte-identical to the Less-4.x golden', async () => {
+    const src = `.panel {\n  border: 1px solid #ddd;\n  border-radius: 4px;\n  .panel-heading { padding: 10px 15px; background: #f5f5f5; border-bottom: 1px solid #ddd; }\n  .panel-body { padding: 15px; }\n  .panel-footer { padding: 10px 15px; background: #f5f5f5; border-top: 1px solid #ddd; }\n}\n`
+      + `div.panel {\n  margin: 0 0 20px;\n  > div.header  { padding: 5px; }\n  > div.content { padding: 10px; }\n  > div.footer  { padding: 4px; }\n}\n`
+      + `div.panel.no_footer div.content { border-bottom-left-radius: 3px; }\n`
+      + `div.panel.no_header div.content { border-top-left-radius: 3px; }\n`
+      + `div.panel.collapsable { div.header { cursor: pointer; } }\n`
+      + `div.panel.collapsed  { div.content, div.footer { display: none; } }\n`
+      + `.card   { &:extend(.panel all); box-shadow: 0 2px 4px rgba(0,0,0,0.1); }\n`
+      + `.widget { &:extend(.panel all); margin-bottom: 20px; }`;
+    const { css, derive, engaged } = await renderSpineOnly(src);
+    expect(engaged).toBe(true);
+    expect(derive).toBe(0);
+    // Less 4.6.7 (via the evidence-validated `:is()` compaction): every extended nested child
+    // keeps its `div` prefix + combinator context — NOT the former bare `.card`/`.widget` fragments.
+    expect(css).toBe(
+      '.panel,\n.card,\n.widget {\n  border: 1px solid #ddd;\n  border-radius: 4px;\n}\n'
+      + ':is(.panel, .card, .widget) .panel-heading {\n  padding: 10px 15px;\n  background: #f5f5f5;\n  border-bottom: 1px solid #ddd;\n}\n'
+      + ':is(.panel, .card, .widget) .panel-body {\n  padding: 15px;\n}\n'
+      + ':is(.panel, .card, .widget) .panel-footer {\n  padding: 10px 15px;\n  background: #f5f5f5;\n  border-top: 1px solid #ddd;\n}\n'
+      + 'div:is(.panel, .card, .widget) {\n  margin: 0 0 20px;\n}\n'
+      + 'div:is(.panel, .card, .widget) > div.header {\n  padding: 5px;\n}\n'
+      + 'div:is(.panel, .card, .widget) > div.content {\n  padding: 10px;\n}\n'
+      + 'div:is(.panel, .card, .widget) > div.footer {\n  padding: 4px;\n}\n'
+      + 'div:is(.panel, .card, .widget).no_footer div.content {\n  border-bottom-left-radius: 3px;\n}\n'
+      + 'div:is(.panel, .card, .widget).no_header div.content {\n  border-top-left-radius: 3px;\n}\n'
+      + 'div:is(.panel, .card, .widget).collapsable div.header {\n  cursor: pointer;\n}\n'
+      + 'div:is(.panel, .card, .widget).collapsed div.content,\ndiv:is(.panel, .card, .widget).collapsed div.footer {\n  display: none;\n}\n'
+      + '.card {\n  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);\n}\n'
+      + '.widget {\n  margin-bottom: 20px;\n}\n'
+    );
   });
 });
