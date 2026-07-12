@@ -36,3 +36,15 @@ export function expectRoundTrip(src: string, fragment: string): void {
   const { tree } = parse(src);
   expect(String(tree)).toContain(fragment);
 }
+
+/**
+ * Assert a snippet does NOT fully parse — either it reports a syntax error, or it
+ * leaves input unconsumed (a partial match that never reached end-of-input). Used
+ * for negative grammar cases (e.g. a bare `and`/`or` condition join, which Jess
+ * rejects — parenthesised operands are required).
+ */
+export function expectParseRejected(src: string, rule = 'Stylesheet'): void {
+  const result = parseJessFn(src, rule);
+  const rejected = result.errors.length > 0 || result.unconsumedFrom != null;
+  expect(rejected, `expected a parse rejection for ${JSON.stringify(src)}, but it parsed cleanly`).toBe(true);
+}

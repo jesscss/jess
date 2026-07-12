@@ -398,6 +398,44 @@ export class Context {
    */
   spineMixinSurfaceSink?: (boundSurface: Rules, sourceRules: Rules, candidateIsMixin: boolean) => boolean;
 
+  /**
+   * Set by the spine root descent (`_emitRulesBody`) around the render of a
+   * document-ROOT-level mixin CALL. When the callable terminal builds that call's
+   * output tree it consults this flag: an output that drops a bare property
+   * `Declaration` at the document root is invalid ("Properties must be inside
+   * selector blocks") — the same rejection the eval path's `checkValidNodes`
+   * (`isRoot && fromCallOutput`) makes. The spine emits call output as text inline
+   * (no post-eval output tree to walk), so the check moves to the single fold/eval
+   * drive. Scoped save/restore around the root call render; unset for a call nested
+   * inside a selector container (where a folded property is legal).
+   */
+  spineRootCallEmit?: boolean;
+
+  /**
+   * LEAKY forward-propagation (spine): the SOURCE root Rules whose body is
+   * currently emitting a root-level mixin call. Its scope frame is the caller
+   * frame a leaked `@x: …` mixin-body var must inject into so a later root sibling
+   * ruleset resolves it. Captured at the root emit site (where `this === root`)
+   * because `context.root` is reassigned during the call's nested eval. Set only
+   * alongside {@link spineRootCallEmit}; undefined for a nested call.
+   */
+  spineRootCallEmitFrame?: Rules;
+
+  /**
+   * The spine descent (`renderRootViaSpine`) has already established the document
+   * root on `context.root` — no `Rules.eval` frame for the real root sits on
+   * `rulesEvalStack`. A DETACHED-RULESET body (or mixin surface) evaluated INSIDE
+   * the fold reaches `_evalPreparedRules` as the FIRST `Rules.evalNode`, so its
+   * `rulesEvalStack.length === 1` "am I the outermost root?" heuristic fires and
+   * would REASSIGN `context.root` to that nested body — clobbering the real root's
+   * built-in function registry (`findFunction`'s dead-end fallback then misses, so
+   * `length(@list)` emits raw). The eval path never trips this: it pushes the real
+   * root first, so a nested body sees stack length ≥2. This flag lets the nested
+   * eval skip the reassignment when the spine owns the root. Undefined on the eval
+   * path (zero-cost, unchanged there). Scoped save/restore around the spine descent.
+   */
+  spineOwnsRoot?: boolean;
+
   /** Extend roots registry for managing extend scoping */
   extendRoots!: ExtendRootRegistry;
 
@@ -415,6 +453,20 @@ export class Context {
    * @see docs/future/core-architecture/UNIFIED-EVAL-EMIT-DESIGN.md §6.
    */
   spineVisitors?: SpineVisitor[];
+
+  /**
+   * The active single-pass spine `+:`/`+_:` merge plan for the body currently
+   * being emitted (design §merge). Keyed by source declaration node → its
+   * coalesced-value anchor / suppress verdict. Installed by `withSpineMergePlan`
+   * for the duration of a body descent and restored on exit, so a `$prop`
+   * Reference resolved MID-emit reads the coalesced merge value (the anchor's
+   * combined value) rather than the last merge sibling's own truncated value.
+   *
+   * Undefined (the common case) on any body with no merge-flagged declaration —
+   * the reference read fast-bails on the undefined check before touching it, so
+   * the non-merge path pays nothing.
+   */
+  spineMergePlan?: import('./tree/util/spine-merge.js').SpineMergePlan;
 
   /**
    * Append a generic EMIT visitor (design §6.5). Deterministic registration

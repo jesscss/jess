@@ -137,6 +137,9 @@ export class LessGrammar extends CssParser {
       case 'GuardAnd':            return this._buildGuardJoin(children, loc, 'and');
       case 'GuardOr':             return this._buildGuardJoin(children, loc, 'or');
       case 'Guard':               return this._buildGuard(children, loc);
+      case 'CondArgTerm':         return this._buildCondArgTerm(raw, loc);
+      case 'CondArgAnd':          return this._buildCondArgJoin(children, loc, 'and');
+      case 'CondArgOr':           return this._buildCondArgJoin(children, loc, 'or');
       case 'UnicodeRange':        return this._lessKeyword(this._source.slice(span.start, span.end), loc) as unknown as JessNode;
       case 'PseudoSelector':      return this._buildLessPseudo(type, span, children, _state, raw, fields, triviaLog, loc);
       case 'InterpolatedSelector': return this._buildInterpolatedSelector(children, loc);
@@ -148,8 +151,6 @@ export class LessGrammar extends CssParser {
       case 'AnonymousMixinDefinition': return this._buildAnonMixin(children, loc) as unknown as JessNode;
       case 'DetachedRuleset':     return this._buildDetachedRuleset(children, loc) as unknown as JessNode;
       case 'For':                 return this._buildEachFor(children, loc) as unknown as JessNode;
-      case 'BooleanCall':         return this._buildBooleanCall(children, loc);
-      case 'IfCall':              return this._buildIfCall(children, loc);
       case 'FormatCall':          return this._buildFormatCall(raw, loc);
       case 'MixinOrQualifiedRule': return this._buildMixinOrQualified(children, loc);
       case 'Negative':            return new Negative(this._negativeOperand(children), undefined, loc) as unknown as JessNode;
@@ -537,6 +538,85 @@ export class LessGrammar extends CssParser {
     return new Condition([left], {}, loc) as unknown as JessNode;
   }
 
+  /**
+   * Coerce a `_assembleValue` result — a single Component or a raw space-group
+   * array — into ONE Node, so it can be a Condition operand. A single string
+   * becomes a keyword; a space-group array becomes a `Sequence` (the same coercion
+   * the List serializer applies to a raw group).
+   */
+  private _condOperandNode(comps: Spanned[], loc: LocationInfo): Node {
+    const { value } = this._assembleValue(comps, loc);
+    if (Array.isArray(value)) {
+      const nodes = (value as Component[]).map(c =>
+        typeof c === 'string' ? this._lessKeyword(c, loc) as unknown as Node : c as unknown as Node);
+      return new Sequence(nodes as any, undefined, loc) as unknown as Node;
+    }
+    if (typeof value === 'string') {
+      return this._lessKeyword(value, loc) as unknown as Node;
+    }
+    return value as unknown as Node;
+  }
+
+  /**
+   * `CondArgTerm` — a name-independent condition-argument term: optional leading
+   * `not`, a bounded value operand, and an optional `<op> right` comparison. Builds
+   * a `Condition` (comparison → `[left, op, right]`; bare `not` → `{negate:true}`)
+   * or, when neither a `not` nor a `compareOp` is present, the plain operand value
+   * (byte-identical to an ordinary value arg). Multi-token operands (`1px solid`)
+   * survive as a `Sequence`, unlike the single-operand guard path.
+   */
+  private _buildCondArgTerm(raw: ReadonlyArray<{ _tag: string }>, loc: LocationInfo): JessNode {
+    const items = spannedComponents(raw);
+    const hasNot = items.length > 0 && items[0]!.comp === 'not';
+    const rest = hasNot ? items.slice(1) : items;
+    const opIdx = rest.findIndex(it => typeof it.comp === 'string' && this._isCompareOpLeaf(it.comp));
+    let term: Node;
+    if (opIdx >= 0) {
+      const left = this._condOperandNode(rest.slice(0, opIdx), loc);
+      const op = this._normalizeCompareOp(rest[opIdx]!.comp as string);
+      const right = this._condOperandNode(rest.slice(opIdx + 1), loc);
+      term = new Condition([left, op, right], {}, loc) as unknown as Node;
+    } else {
+      term = this._condOperandNode(rest, loc);
+    }
+    if (hasNot) {
+      return new Condition([term as any], { negate: true }, loc) as unknown as JessNode;
+    }
+    return term as unknown as JessNode;
+  }
+
+  /**
+   * Fold a left-associative `and`/`or` chain of condition-arg terms into Conditions.
+   *
+   * Less accepts a bare `and`/`or` join in value-position condition args (`if(@a > 5
+   * and @b < 2, …)`) — verified against less@4.6.7 (`if`/`boolean` route their arg
+   * through `condition()` with no `needsParens`, so bare comparisons split on `and`/
+   * `or`). We keep accepting the bare form for Less parity, but NORMALIZE the AST so
+   * each join operand is `Paren`-wrapped: `@a > 5 and @b < 2` builds the SAME tree as
+   * the explicitly-parenthesised `(@a > 5) and (@b < 2)`. This is a structural
+   * normalisation only — `Paren(Condition)` evaluates to the same boolean as the bare
+   * `Condition`, so rendered CSS is byte-identical. A single unjoined operand (one
+   * node) is untouched (no synthetic Paren).
+   */
+  private _buildCondArgJoin(children: ReadonlyArray<Child>, loc: LocationInfo, op: ConditionOperator): JessNode {
+    const nodes = nodeChildren(children);
+    if (nodes.length === 0) {
+      return this._lessKeyword('', loc) as unknown as JessNode;
+    }
+    if (nodes.length === 1) {
+      return nodes[0]! as unknown as JessNode;
+    }
+    const wrap = (n: Node): Node =>
+      (n as { type?: string }).type === 'Paren'
+        ? n
+        : (new Paren(n as any, {}, loc) as unknown as Node);
+    let left = wrap(nodes[0]!);
+    for (let i = 1; i < nodes.length; i++) {
+      left = new Condition([left, op, wrap(nodes[i]!)], {}, loc) as unknown as Node;
+    }
+    return left as unknown as JessNode;
+  }
+
   /** Coerce a default() call/reference into a DefaultGuard, mirroring isDefaultGuardCall. */
   private _maybeDefaultGuard(node: Node, loc: LocationInfo): Node {
     const n = node as any;
@@ -604,31 +684,6 @@ export class LessGrammar extends CssParser {
   /** guard: `when` guardOr — returns the single guardOr child. */
   private _buildGuard(children: ReadonlyArray<Child>, loc: LocationInfo) {
     return (nodeChildren(children)[0] ?? this._lessKeyword('', loc)) as unknown as JessNode;
-  }
-
-  /**
-   * `boolean(cond)` — the condition is a guard expression (GuardOr → Condition /
-   * Paren / keyword). Returns it directly: a Condition evaluates to a Bool, and a
-   * bare keyword `true`/`false` is honoured by `Condition.getBoolValue` at the
-   * consuming site. Wrapped in a Paren so the value renders as the evaluated bool
-   * (matching Less's `boolean()` returning a Keyword true/false).
-   */
-  private _buildBooleanCall(children: ReadonlyArray<Child>, loc: LocationInfo): JessNode {
-    const cond = nodeChildren(children)[0] ?? this._lessKeyword('', loc);
-    return new Paren(cond as any, {}, loc) as unknown as JessNode;
-  }
-
-  /**
-   * `if(cond, then[, else])` — the condition is a guard expression; the branches
-   * are ordinary values or detached rulesets. Build a `Call` to the registered
-   * `if` fn with `[cond, then?, else?]`, so the fn evaluates the condition (a
-   * Condition/Bool/keyword) and picks a branch.
-   */
-  private _buildIfCall(children: ReadonlyArray<Child>, loc: LocationInfo): JessNode {
-    const args = nodeChildren(children);
-    const nameRef = new Reference('if', { type: 'function', fallbackValue: true } as any, loc);
-    const argList = new List(args as any, {}, loc);
-    return new Call({ name: nameRef as any, args: argList as any }, { silentFail: true } as any, loc) as unknown as JessNode;
   }
 
   /**
@@ -889,11 +944,9 @@ export class LessGrammar extends CssParser {
     const ls = children.filter((c): c is CSTLeaf => c._tag === 'leaf');
     const hasParen = ls.some(l => l.value === '(');
     if (!hasParen) {
-      // Glued-suffix (`&-bar`, `&1`) or prefix (`.foo-&`) template: the first leaf
-      // is the whole ampersand-token image. Mirror the reference's
-      // getAmpersandTemplateValue (selectors.ts): bare `&` → undefined; a `&`-led
-      // image keeps everything after the `&` (`&-bar` → '-bar'); a non-`&`-led image
-      // that still contains `&` keeps the full image (`.foo-&` → '.foo-&').
+      // The ampersand token is always `&`-led (`&`, `&-bar`, `&1`) — a `.`/`#` prefix
+      // like `.foo-&` parses as a separate BasicSelector + a bare `&`, not one token.
+      // The suffix after `&` is the append value; a bare `&` has none.
       const image = ls[0]?.value ?? '&';
       const appendValue = this._ampersandTemplateValue(image);
       return new Ampersand(appendValue, {}, loc) as unknown as JessNode;
@@ -906,18 +959,10 @@ export class LessGrammar extends CssParser {
     return new Ampersand(appendValue, {}, loc) as unknown as JessNode;
   }
 
-  /** Port of selectors.ts getAmpersandTemplateValue (reference parser). */
+  /** The append value of a `&`-led ampersand token: the suffix after `&` (`&-bar` →
+   * `-bar`, `&1` → `1`), or undefined for a bare `&`. */
   private _ampersandTemplateValue(image: string): string | undefined {
-    if (image === '&') {
-      return undefined;
-    }
-    if (image.startsWith('&')) {
-      return image.slice(1) || undefined;
-    }
-    if (image.includes('&')) {
-      return image;
-    }
-    return undefined;
+    return image === '&' ? undefined : image.slice(1) || undefined;
   }
 
   /**
@@ -2175,9 +2220,21 @@ export class LessGrammar extends CssParser {
       if (mediaNode) {
         preludeItems.push(mediaNode as unknown as JessNode);
       }
-      const prelude: JessNode | string = preludeItems.length === 1
-        ? preludeItems[0]!
-        : preludeItems.map(item => item.toTrimmedString()).join(' ');
+      let prelude: JessNode | string;
+      if (preludeItems.length === 1) {
+        prelude = preludeItems[0]!;
+      } else {
+        const joined = preludeItems.map(item => item.toTrimmedString()).join(' ');
+        // A multi-item prelude (path + trailing media/supports/layer tail) whose
+        // parts are ALL static (no `@{…}`/`$…` interpolation) is itself a static
+        // token: wrap it in an `Any` so it carries `F_STATIC` and the spine can
+        // fold the bodyless CSS `@import` statement inline (byte-identical — `Any`
+        // re-serializes its value, its `evalNode` is a no-op). A non-static part
+        // (interpolated path/media) keeps the raw string, deferring to eval where
+        // the interpolation resolves.
+        const allStatic = preludeItems.every(item => item.structuralStaticFlag());
+        prelude = allStatic ? (new Any(joined, undefined, loc) as unknown as JessNode) : joined;
+      }
       return new AtRuleStatement({ name, prelude }, undefined, loc) as unknown as JessNode;
     }
     const isForward = name === '@-export';

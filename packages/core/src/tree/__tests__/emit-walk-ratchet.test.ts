@@ -556,22 +556,88 @@ describe('emit-walk wire-in ratchet (P1)', () => {
     }
   });
 
-  it('still EXCLUDES ROOT-LEVEL `+:` merge + conditional/`setDefined` (scoped frontier)', () => {
-    // Root-level property-merge is applied on the CONTAINER descent path only, so
-    // a `+:` DIRECTLY in the root body routes to the eval path (unusual shape).
-    const rootMerge = rules([
-      decl({ name: 'background', value: any('red') }, { assign: '+:' }),
-      decl({ name: 'background', value: any('blue') }, { assign: '+:' })
-    ]);
-    expect(isSpineEligibleRoot(rootMerge, context)).toBe(false);
+  it('FOLDS ROOT-LEVEL `?:` + same-scope `setDefined` through the spine, byte-identical to eval (cutover root-fold, gates 4/5); KEEPS root `+:`/`+_:` merge on eval (gate 3 residual)', () => {
+    // The root body is just another entry sequence: an `@x ?: v` conditional-assign
+    // or a same-scope `!global` `setDefined` DIRECTLY in the root body folds via the
+    // SAME `withSpineMergePlan` machinery the container descent uses (installed at the
+    // root spine descent in `Rules._emitRulesBody`), byte-identical to eval. A
+    // root-direct property-MERGE stays on eval (gate 3 residual — `planBodyMerges`
+    // edge-shape gaps; see `isSpineEligibleRoot`).
+    const evalOracle = (build: () => Rules): string =>
+      String(build().render(new Context(), { preSerializeRoot: (r: Rules): Rules => r })).trim();
+    const foldsByteIdentical = (build: () => Rules): void => {
+      expect(isSpineEligibleRoot(build(), context)).toBe(true);
+      const original = Rules.prototype.derive;
+      let deriveCalls = 0;
+      Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+        deriveCalls++;
+        return original.apply(this, args);
+      } as Rules['derive'];
+      const before = spineRenderCounter.rootRenders;
+      try {
+        const css = String(build().render(new Context())).trim();
+        expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine ran
+        expect(deriveCalls).toBe(0); // no output tree
+        expect(css).toBe(evalOracle(build)); // byte-identical to eval
+      } finally {
+        Rules.prototype.derive = original;
+      }
+    };
 
-    // Conditional `?:` stays on the eval path.
-    const condRoot = rules([
-      ruleset({ selector: sel([el('.a')]), rules: [
-        decl({ name: 'color', value: any('red') }, { assign: '?:' })
-      ] })
+    // GATE 3 residual — a root-direct `+:` / `+_:` merge STAYS on eval (byte-identical).
+    const rootMergeAdd = rules([
+      decl({ name: 'background', value: any('red') }, { assign: '+:' }),
+      decl({ name: 'background', value: any('blue') }, { assign: '+:' }),
+      ruleset({ selector: sel([el('.a')]), rules: [decl({ name: 'color', value: any('green') })] })
     ]);
-    expect(isSpineEligibleRoot(condRoot, context)).toBe(false);
+    expect(isSpineEligibleRoot(rootMergeAdd, context)).toBe(false);
+    const rootMergeSeq = rules([
+      decl({ name: 'transform', value: any('scale(1)') }, { assign: '+_:' }),
+      decl({ name: 'transform', value: any('rotate(5deg)') }, { assign: '+_:' }),
+      ruleset({ selector: sel([el('.a')]), rules: [decl({ name: 'color', value: any('green') })] })
+    ]);
+    expect(isSpineEligibleRoot(rootMergeSeq, context)).toBe(false);
+
+    // GATE 4 — root-direct `@x ?: v` on a VARIABLE (prior wins; else fallback), read
+    // by a following ruleset.
+    foldsByteIdentical(() => rules([
+      vardecl({ name: 'x', value: any('red') }),
+      vardecl({ name: 'x', value: any('blue') }, { assign: '?:' }),
+      ruleset({ selector: sel([el('.a')]), rules: [decl({ name: 'color', value: ref({ key: 'x' }, { type: 'variable' }) })] })
+    ]));
+    foldsByteIdentical(() => rules([
+      vardecl({ name: 'x', value: any('blue') }, { assign: '?:' }),
+      ruleset({ selector: sel([el('.a')]), rules: [decl({ name: 'color', value: ref({ key: 'x' }, { type: 'variable' }) })] })
+    ]));
+
+    // GATE 5 — root-direct same-scope `!global` `setDefined` (prior same-body binding),
+    // read by a following ruleset.
+    foldsByteIdentical(() => rules([
+      vardecl({ name: 'color', value: any('red') }),
+      vardecl({ name: 'color', value: any('blue') }, { setDefined: true }),
+      ruleset({ selector: sel([el('.a')]), rules: [decl({ name: 'seen', value: ref({ key: 'color' }, { type: 'variable' }) })] })
+    ]));
+
+    // A `?:` on a plain PROPERTY at root is NOT a binding rewrite — stays on eval.
+    const propCondRoot = rules([
+      decl({ name: 'color', value: any('green') }),
+      decl({ name: 'color', value: any('red') }, { assign: '?:' })
+    ]);
+    expect(isSpineEligibleRoot(propCondRoot, context)).toBe(false);
+
+    // A CROSS-SCOPE root `setDefined` (no same-body prior) stays on eval.
+    const crossScopeRoot = rules([
+      vardecl({ name: 'y', value: any('blue') }, { setDefined: true }),
+      ruleset({ selector: sel([el('.a')]), rules: [decl({ name: 'seen', value: ref({ key: 'y' }, { type: 'variable' }) })] })
+    ]);
+    expect(isSpineEligibleRoot(crossScopeRoot, context)).toBe(false);
+
+    // `nearestOuter` (Jess `:=`) has no eval oracle — the deferred mechanism-B is NOT
+    // pulled forward; a root-direct `:=` stays EXCLUDED.
+    const nearestOuterRoot = rules([
+      vardecl({ name: 'x', value: any('red') }, { nearestOuter: true })
+    ]);
+    expect(isSpineEligibleRoot(nearestOuterRoot, context)).toBe(false);
   });
 
   it('FOLDS conditional `@x ?: v` (variable, assign-if-undefined) through the spine, byte-identical to eval', () => {
@@ -1093,10 +1159,11 @@ describe('emit-walk MIXIN-FOLD ratchet (cutover increment 1)', () => {
     expect(css).toContain('color: red');
   });
 
-  it('EXCLUDES a mixin definition with a NESTED-CONTAINER body (deferred — eval-fallback can\'t re-descend)', () => {
-    // `.m() { .inner { … } }` — a non-leaf body eval-falls-back, but the fallback's
-    // resolved tree can't be re-spine-descended without losing the surface frame
-    // for deeply-nested calls. Kept on the eval path.
+  it('FOLDS a mixin definition with a spine-eligible NESTED-CONTAINER body (surface descends the container carrying the frame)', async () => {
+    // `.m() { .inner { … } }` — a non-leaf body now FOLDS: the captured surface's
+    // container child descends via `serializeSpineFrameContainer` carrying the surface
+    // frame. Only UNFOLDABLE container-body sub-shapes (at-rule ancestor-rewrap, nested
+    // Mixin def, non-eligible container) still force eval.
     const root = rules([
       mixin({
         name: '.m',
@@ -1104,7 +1171,15 @@ describe('emit-walk MIXIN-FOLD ratchet (cutover increment 1)', () => {
       }),
       ruleset({ selector: sel([el('.a')]), rules: [call({ name: ref({ key: '.m' }, { type: 'mixin' }) })] })
     ]);
-    expect(isSpineEligibleRoot(root, context)).toBe(false);
+    context.root = root;
+    expect(isSpineEligibleRoot(root, context)).toBe(true);
+    const before = spineRenderCounter.rootRenders;
+    const css = await root.render(context);
+    expect(spineRenderCounter.rootRenders).toBe(before + 1); // spine path
+    // Expanded mode (this harness's default): the nested container emits nested.
+    expect(css).toContain('.a');
+    expect(css).toContain('.inner');
+    expect(css).toContain('color: red');
   });
 
   it('INCREMENT 7: folds GUARDED mixin overloads — the passing guard SELECTS, the failing one emits nothing', async () => {
@@ -1154,7 +1229,70 @@ describe('emit-walk MIXIN-FOLD ratchet (cutover increment 1)', () => {
     expect(css).not.toContain('s: big');
   });
 
-  it('EXCLUDES a body with BOTH a mixin call and a `+:` merge decl (merge-across-mixin deferred)', () => {
+  it('FOLDS merge-across-mixin: STATIC merge decls arriving through CALLS coalesce on the spine (distinct mixins are last-wins; one mixin body coalesces)', async () => {
+    // `.r { .a(); .b(); }` where each mixin body carries a STATIC `transform+:` merge
+    // decl. The container descent RE-PLANS the coalesce over the POST-EXPANSION
+    // `rulesToRender` sequence (`replanMergesIfExpanded`), tagging each spliced decl
+    // with its per-call owner. TWO SEPARATE mixin bodies are LAST-WINS (a mixin-body
+    // `+:` only sees its own body's prior), matching eval.
+    const twoMixins = '.a(){transform+: r;}\n.b(){transform+: s;}\n.r{ .a(); .b(); }';
+    const context = new Context({ output: { collapseNesting: false }, leakyScope: true });
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const root = new Parser().parse(twoMixins).tree as unknown as Rules;
+    expect(isSpineEligibleRoot(root, context)).toBe(true);
+    const before = spineRenderCounter.rootRenders;
+    const css = (await renderNodeToString(
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      root as unknown as RenderBufferNode, context, { context, collapseNesting: false }
+    )).trim();
+    expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // ran the spine
+    expect(css).toBe('.r {\n  transform: s;\n}'); // last-wins across distinct mixins
+    expect(css.startsWith('.r {')).toBe(true);
+    expect(css).not.toContain('.a(');
+
+    // TWO merges INSIDE ONE mixin body DO coalesce (same owner) — comma list.
+    const oneMixin = '.a(){transform+: r; transform+: s;}\n.r{ .a(); }';
+    const ctx2 = new Context({ output: { collapseNesting: false }, leakyScope: true });
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const root2 = new Parser().parse(oneMixin).tree as unknown as Rules;
+    expect(isSpineEligibleRoot(root2, ctx2)).toBe(true);
+    const before2 = spineRenderCounter.rootRenders;
+    const css2 = (await renderNodeToString(
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      root2 as unknown as RenderBufferNode, ctx2, { context: ctx2, collapseNesting: false }
+    )).trim();
+    expect(spineRenderCounter.rootRenders).toBeGreaterThan(before2);
+    expect(css2).toBe('.r {\n  transform: r, s;\n}'); // same-body coalesce
+  });
+
+  it('FOLDS merge-across-mixin: an ASYNC-valued mixin merge folds through the spine, byte-identical to eval', async () => {
+    // `transform+: rotate(90deg)` — a merge value containing a `Call` resolves async,
+    // so the call takes the EVAL-FALLBACK expansion. That expansion (and the dedup
+    // key resolution) evaluates the unknown `Call`, whose call-syntax render used to
+    // RESET the shared `context.printState` in place — swapping the live spine writer
+    // mid-render and dropping the enclosing `.r { … }` header. Now every spine value
+    // eval is wrapped in `evalIsolatingSpinePrintState`, so the scratch serialization
+    // leaves the print state byte-identical and the merge folds (last-wins across the
+    // two distinct mixin bodies, matching eval).
+    const source = '.a(){transform+: rotate(90deg);}\n.b(){transform+: scale(2);}\n.r{ .a(); .b(); }';
+    const context = new Context({ output: { collapseNesting: false }, leakyScope: true });
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const root = new Parser().parse(source).tree as unknown as Rules;
+    expect(isSpineEligibleRoot(root, context)).toBe(true);
+    const before = spineRenderCounter.rootRenders;
+    const css = (await renderNodeToString(
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      root as unknown as RenderBufferNode, context, { context, collapseNesting: false }
+    )).trim();
+    expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // ran the spine
+    expect(css).toBe('.r {\n  transform: scale(2);\n}'); // last-wins across distinct mixins
+  });
+
+  it('RESIDUAL merge-across-mixin: a DIRECT caller-body merge decl alongside a mixin call stays on eval', () => {
+    // `.a { .m(); box-shadow+: b; }` — a merge decl authored DIRECTLY in the caller
+    // body next to a mixin call. Eval composes the direct `+:` via a positional
+    // prior-value Reference read the static plan does not model, so this shape stays
+    // on the eval path (`bodyHasMixinCall && bodyHasDirectMergeDecl`).
     const root = rules([
       mixin({ name: '.m', rules: [decl({ name: 'box-shadow', value: spaced([el('a')]) })] }),
       ruleset({
@@ -1168,7 +1306,20 @@ describe('emit-walk MIXIN-FOLD ratchet (cutover increment 1)', () => {
     expect(isSpineEligibleRoot(root, context)).toBe(false);
   });
 
-  it('EXCLUDES a body using a mixin as a variable value / map (`@p: .m()` — mixin-as-value deferred)', () => {
+  it('a merge-contributing mixin DEFINED but never CALLED still folds', () => {
+    const source = '.a(){transform+: t1;}\n.r{ color: red; }';
+    const context = new Context({ output: { collapseNesting: false }, leakyScope: true });
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const root = new Parser().parse(source).tree as unknown as Rules;
+    // A merge-free caller body folds regardless of a defined-but-uncalled merge mixin.
+    expect(isSpineEligibleRoot(root, context)).toBe(true);
+  });
+
+  it('FOLDS a body using a mixin as a variable value / map (`@p: .m()` — mixin-as-value)', () => {
+    // A mixin DEFINITION bound to a variable then map-subscripted (`@p[key]`) folds on
+    // the spine: the var cell binds at scope-enter and the lookup resolves via the KEPT
+    // `Reference.eval` against the live value-frame, byte-identical to eval + less@4. The
+    // old conservative `bodyHasMixinDefinition && bodyHasCallInVarValue` reject is removed.
     const root = rules([
       ruleset({
         selector: sel([el('.a')]),
@@ -1178,7 +1329,7 @@ describe('emit-walk MIXIN-FOLD ratchet (cutover increment 1)', () => {
         ]
       })
     ]);
-    expect(isSpineEligibleRoot(root, context)).toBe(false);
+    expect(isSpineEligibleRoot(root, context)).toBe(true);
   });
 });
 

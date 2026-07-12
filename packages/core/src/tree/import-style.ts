@@ -5,6 +5,7 @@ import { Node, F_NON_STATIC, F_VISIBLE, defineType, type NodeLocation, type Loca
 import { type Reference } from './reference.js';
 import { Rules, type RulesOptions, type RulesVisibility } from './rules.js';
 import { type Quoted } from './quoted.js';
+import { Interpolated } from './interpolated.js';
 import { Url } from './url.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { isNode } from './util/is-node.js';
@@ -935,27 +936,39 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
         return false;
       }
     }
-    // A static Quoted specifier is the only foldable Less path shape. An INTERPOLATED
-    // path (`@import "theme-@{t}.less"`, a `Quoted` whose value is an Interpolated
-    // node) is DEFERRED — a REQUIRED P4 item. Investigation (increment 6): interpolated
-    // paths split into (A) the interpolation var bound EARLIER in document order
-    // (downward-resolvable in principle) and (B) a FORWARD dependency — the var bound
-    // by a LATER sibling/import (`import-interpolation.less`: `@import "…-@{in}…"` where
-    // `@in` is defined in a later-imported file). Case (B) is resolved ONLY by the
-    // eval-loop's `_isPathResolutionError` RETRY lane (defer the failing import, retry
-    // after later siblings bind the var) — an eval-loop REORDERING with no clean
-    // strictly-downward spine analogue. A/B are not reliably separable statically, and
-    // a case-(B) failure surfaces mid-wire where the spine is already committed (no
-    // clean abort). So the WHOLE interpolated-path mode stays on the eval path
-    // (byte-identical; eval owns the retry). DEFERRED: a spine retry/defer-and-resume
-    // mechanism for forward-dependent interpolated imports.
+    // A static Quoted specifier is the plain foldable Less path shape. An INTERPOLATED
+    // path (`@import "theme-@{t}.less"`, a `Quoted` whose value is an Interpolated node)
+    // is now SPECULATIVELY foldable (import-spec routing): the two sub-cases are not
+    // separable statically, so the STATIC gate admits both and the pre-emit wire pass
+    // decides by ATTEMPTING resolution against the live frame —
+    //   (A) DOWNWARD-RESOLVABLE — the interpolation var is bound EARLIER in document
+    //       order (`@t: dark; @import "theme-@{t}.less"`). `resolveForSpine`'s path eval
+    //       resolves it against the root frame (populated at wire time), so it FOLDS.
+    //   (B) FORWARD-DEPENDENT — the var is bound by a LATER sibling/import
+    //       (`import-interpolation.less`). Path eval throws `_isPathResolutionError`;
+    //       the wire pass catches it and ABORTS to eval, where the `_isPathResolutionError`
+    //       RETRY lane reorders + resolves it. Byte-identical (eval owns the retry).
+    // The abort is CLEAN because the wire pass runs BEFORE the first byte (the Tier-A
+    // pre-emit boundary) — the old "surfaces mid-wire where the spine is committed"
+    // constraint no longer holds. Tier-B (a strictly-downward spine retry) stays
+    // DEFERRED: case B is sequenced to eval, not folded.
     if (this.path instanceof Url) {
       return true;
     }
     if (!isNode(this.path, N.Quoted)) {
       return false;
     }
-    return typeof (this.path as Quoted).value === 'string' && !(this.path as Quoted).options?.escaped;
+    const quoted = this.path as Quoted;
+    if (quoted.options?.escaped) {
+      return false;
+    }
+    // A plain STRING value is the original foldable static path shape. A genuinely INTERPOLATED value
+    // (an `Interpolated` node, `theme-@{t}.less`) is admitted SPECULATIVELY — the wire pass resolves it
+    // against the live frame (case A folds; case B throws `_isPathResolutionError` → abort). Any OTHER
+    // non-string value (e.g. a Quoted wrapping a bare `Any`) is NOT an interpolation and stays UNFOLDABLE,
+    // exactly as before (the old `typeof value === 'string'` discriminator) — so no static-path shape's
+    // routing changes.
+    return typeof quoted.value === 'string' || quoted.value instanceof Interpolated;
   }
 
   /**

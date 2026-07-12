@@ -14,7 +14,7 @@
  * and logical `and`/`or`/`not (…)` join operands.
  */
 import { describe, it } from 'vitest';
-import { expectAstContains } from './_util.js';
+import { expectAstContains, expectParseRejected } from './_util.js';
 
 describe('corpus/control-flow', () => {
   it('$if with comparison → If + Condition', () => {
@@ -92,6 +92,56 @@ describe('corpus/control-flow', () => {
             key: 'b'
           )
       )`);
+  });
+
+  // Jess is STRICT on condition JOINS: unlike Less (which accepts a bare `$a > 5 and
+  // $b < 2` in value position and normalises it), Jess requires each `and`/`or`
+  // operand to be a parenthesised sub-condition — `($a > 5) and ($b < 2)` — closer to
+  // CSS media/container-query syntax. A single unjoined bare comparison stays valid.
+  it('$if REJECTS a bare `and`-joined comparison (parens required around operands)', () => {
+    expectParseRejected('$if ($a > 5 and $b < 2) { color: red; }');
+  });
+
+  it('$if REJECTS a bare `or`-joined comparison', () => {
+    expectParseRejected('$if ($a > 5 or $b < 2) { color: red; }');
+  });
+
+  it('$if ACCEPTS the parenthesised join `($a > 5) and ($b < 2)`', () => {
+    expectAstContains('$if (($a > 5) and ($b < 2)) { color: red; }', '(Condition');
+  });
+
+  it('$if ACCEPTS a single unjoined bare comparison `$a > 5`', () => {
+    expectAstContains('$if ($a > 5) { color: red; }', `
+      (Condition
+        left:
+          (Reference
+            key: 'a'
+          )
+        right:
+          (Num 5)
+      )`);
+  });
+
+  it('$if ACCEPTS a bare NON-comparison atom operand in a join', () => {
+    expectAstContains('$if (($a > 5) and true) { color: red; }', '(Condition');
+    expectAstContains('$if (($a > 5) and $c) { color: red; }', '(Condition');
+  });
+
+  it('$if ACCEPTS a same-operator chain `(A) and (B) and (C)` / `or`-chain', () => {
+    expectAstContains('$if (($a > 1) and ($b > 1) and ($c > 1)) { color: red; }', '(Condition');
+    expectAstContains('$if (($a > 1) or ($b > 1) or ($c > 1)) { color: red; }', '(Condition');
+  });
+
+  // No implicit precedence in Jess (MQ4 rule): mixing `and` and `or` at one level is a
+  // parse error — the author must group with parens.
+  it('$if REJECTS mixing `and` and `or` at one level (must group)', () => {
+    expectParseRejected('$if (($a > 1) and ($b > 1) or ($c > 1)) { color: red; }');
+    expectParseRejected('$if (($a > 1) or ($b > 1) and ($c > 1)) { color: red; }');
+  });
+
+  it('$if ACCEPTS an explicitly grouped mixed condition', () => {
+    expectAstContains('$if ((($a > 1) and ($b > 1)) or ($c > 1)) { color: red; }', '(Condition');
+    expectAstContains('$if (($a > 1) and (($b > 1) or ($c > 1))) { color: red; }', '(Condition');
   });
 
   it('$while → While + Condition', () => {

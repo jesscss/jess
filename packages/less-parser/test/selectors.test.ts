@@ -267,41 +267,46 @@ describe('Selector Productions', () => {
       expect(serializeTypes(tree)).toContainString('(Ampersand');
     });
 
-    it('should parse ampersand merge template from class suffix form', () => {
+    it('parses `.foo-&` as a compound (`.foo-` + `&`), not a merge template', () => {
       const { errors, tree } = parser.parse('.parent { .foo-& { color: red; } }');
       expect(errors.length).toBe(0);
-      expect(serializeTypes(tree)).toContainString('(Ampersand');
+      const s = serializeTypes(tree);
+      // Two independent simple selectors: the BasicSelector `.foo-` and a plain `&`.
+      expect(s).toContainString('.foo-');
+      expect(s).toContainString('(Ampersand');
     });
 
-    it('should parse ampersand merge template with explicit insertion point', () => {
-      const { errors, tree } = parser.parse('.parent { &(.foo-&) { color: red; } }');
-      expect(errors.length).toBe(0);
-      expect(serializeTypes(tree)).toContainString('(Ampersand');
-    });
-
-    it('keeps parsed ampersand prefix templates on the current parser-to-core semantics', async () => {
-      const { errors, tree } = parser.parse('.parent { .foo-& { color: red; } }');
+    // `&(…)` is a suffix-append only (`&(-foo)`, `&(1)`, `&(-1)`) — it appends the
+    // parenthesized suffix to the parent. It is NOT an "insertion point" that splices the
+    // parent inside the parens; that merge-template behavior was removed. An embedded `&`
+    // inside `&(…)` is not a supported form.
+    it('parses and renders `&(-foo)` as a suffix-append onto the parent', async () => {
+      const { errors, tree } = parser.parse('.parent { &(-foo) { color: red; } }');
       const context = new Context(contextOptions({ collapseNesting: true }));
 
       expect(errors.length).toBe(0);
+      expect(serializeTypes(tree)).toContainString('(Ampersand');
       const css = await tree.render(context, { context, collapseNesting: true });
 
       expect(css).toBeString(`
-        .parent {
+        .parent-foo {
           color: red;
         }
       `);
     });
 
-    it('keeps parsed ampersand mid-template forms on the current parser-to-core semantics', async () => {
-      const { errors, tree } = parser.parse('.parent { &(.foo-&-bar) { color: red; } }');
+    // `.foo-` is a valid dash-ending identifier, so `.foo-&` is a compound of `.foo-` and
+    // the parent reference `&` — with `&` = `.parent` it renders `.foo-.parent`. (It is
+    // NOT a merge template that should be rejected; core must not throw here.)
+    it('renders `.foo-&` as the `.foo-.parent` compound', async () => {
+      const { errors, tree } = parser.parse('.parent { .foo-& { color: red; } }');
       const context = new Context(contextOptions({ collapseNesting: true }));
 
       expect(errors.length).toBe(0);
       const css = await tree.render(context, { context, collapseNesting: true });
 
       expect(css).toBeString(`
-        .parent {
+        .foo-.parent {
           color: red;
         }
       `);

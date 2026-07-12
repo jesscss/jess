@@ -2040,10 +2040,22 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
         const isListMergedAssign =
             normalizedAssign === AssignmentType.Add
             || normalizedAssign === AssignmentType.MergeList;
-        if (!isListMergedAssign || !isNode(state.value, N.List)) {
+        const isSpaceMergedAssign = normalizedAssign === AssignmentType.MergeSequence;
+        // Space merge (`+_:` / `&_:`) needs the same leading-placeholder normalize as
+        // the comma path: keep the merge value in its own container (a `Sequence`) so
+        // the declaration stays merge-identified for lookup. Without this a `$prop`
+        // read of a space-merged property collapses to the last sibling's own value
+        // (dropping the accumulated chain), where the comma path would normalize the
+        // full merged value against its siblings.
+        if (
+          !(isListMergedAssign || isSpaceMergedAssign)
+          || !isNode(state.value, isSpaceMergedAssign ? N.Sequence : N.List)
+        ) {
           return;
         }
-        const mergedItems = collectDeclarationMergeAdapterItems(state.value, { includeSequences: false });
+        const mergedItems = collectDeclarationMergeAdapterItems(state.value, {
+          includeSequences: isSpaceMergedAssign
+        });
         if (mergedItems.length === 0) {
           setVal(new Nil());
           return;
@@ -2059,8 +2071,8 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
         }
         // Eval-time derived container: SHARE the items (no reparent), but crawl
         // them to bubble child flags (F_STATIC/F_NON_STATIC/…) so the merged value
-        // is classified correctly — a raw `new List` derives none on its own.
-        const merged = new List(outputItems);
+        // is classified correctly — a raw container derives none on its own.
+        const merged = isSpaceMergedAssign ? spaced(outputItems) : new List(outputItems);
         for (let i = 0; i < outputItems.length; i++) {
           merged.propagateFlagsFrom(outputItems[i]!);
         }

@@ -6143,7 +6143,10 @@ describe('reference', () => {
           requiredDeclarationAssignments: [AssignmentType.MergeList]
         });
 
-        expect(lookupRef.eval(context).valueOf()).toBe('blue');
+        // The merge-chain anchor holds the COALESCED value (`red, blue`), not the
+        // last member's own value — a `+:` read sees the full combined chain. (The
+        // internal `List` valueOf joins with `;`.)
+        expect(lookupRef.eval(context).valueOf()).toBe('red;blue');
         const firstHandle = lookupRef._rulesLookupHandle;
         expect(firstHandle?.returnVal).toMatchObject({
           kind: 'direct-declaration-occurrence'
@@ -6152,7 +6155,7 @@ describe('reference', () => {
 
         node.push(decl({ name: 'unrelated', value: any('1') }));
 
-        expect(lookupRef.eval(context).valueOf()).toBe('blue');
+        expect(lookupRef.eval(context).valueOf()).toBe('red;blue');
         expect(lookupRef._rulesLookupHandle).toBe(firstHandle);
         expect(lookupRef._rulesLookupHandle?.targetLookupVersion).toBe(firstVersion);
 
@@ -6160,6 +6163,8 @@ describe('reference', () => {
           normalizedFromAssign: AssignmentType.MergeList
         }));
 
+        // A freshly PUSHED merge decl (post-coalesce, no leading ref, no re-coalesce)
+        // holds only its own value; the invalidated handle now resolves to it.
         expect(lookupRef.eval(context).valueOf()).toBe('green');
         expect(lookupRef._rulesLookupHandle).not.toBe(firstHandle);
         expect(declarationBridgeHits).toEqual([]);

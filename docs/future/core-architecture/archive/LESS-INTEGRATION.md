@@ -2,7 +2,7 @@
 
 **Goal:** get the Jess `.less` suite (esp. `all-less` — the less.js spec corpus) to green
 so the Less v5-alpha integration branch can compile `bootstrap.less` → `.css` and be
-benchmarked. Sibling tracker to [CORE-CLEANUP.md](./CORE-CLEANUP.md) (which drove core's own
+benchmarked. Sibling tracker to [CORE-CLEANUP.md](../CORE-CLEANUP.md) (which drove core's own
 unit suite 85→0). Branch: `feature/parseman`.
 
 ## Method — reproduce-in-core-FIRST (non-negotiable)

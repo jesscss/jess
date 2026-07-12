@@ -34,6 +34,13 @@ When information is volatile, point to the canonical source instead of restating
 - Prefer small, verifiable changes over broad speculative rewrites.
 - If a fix depends on undocumented behavior, stop and ask instead of inventing semantics.
 
+## Branch And Sync Model
+
+- `dev` is the single leading branch. It carries the current consolidated work (alpha readiness + the single-eval-emit cutover).
+- Agents branch their worktrees from `origin/dev`, not from feature/backup branches.
+- Sync work back to `dev` only when it is stable and tested. The sync gate is: core tests green, jess `spine-production-ratchet` green, and jess `all-less` byte-identical (render corpus fully green).
+- Agents do not push `dev` directly. The orchestrator (or a designated integration agent) performs the merge + push after the gate is confirmed green — never push red.
+
 ## AST And Runtime Safety
 
 - Maintain valid parent/child relationships at all times.

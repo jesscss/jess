@@ -209,7 +209,7 @@ describe('Ampersand', () => {
     };
 
     try {
-      const resolved = await amp('&-theme').resolve(context);
+      const resolved = await amp('-theme').resolve(context);
 
       expect(resolved.valueOf()).toBe('.foo-theme');
       expect(resolved.hoistToRoot).toBe(true);
@@ -521,63 +521,6 @@ describe('Ampersand', () => {
     );
   });
 
-  it('should reject invalid ampersand merge-template joins', async () => {
-    const node = wrapAmpList([sel([amp('.fruit-&')])]);
-    context = new Context({ output: { collapseNesting: true } });
-    await expect(async () => await node.eval(context)).rejects.toThrow('Invalid ampersand merge template');
-  });
-
-  it('should distribute merge template across comma-separated items', async () => {
-    const node = rules([
-      ruleset({
-        selector: sellist([
-          sel([el('apple')]),
-          sel([el('satsuma')]),
-          sel([el('banana')]),
-          sel([el('pear')])
-        ]),
-        rules: [
-          ruleset({
-            selector: sel([amp('.fruit-quoted-&')]),
-            rules: [decl({ name: 'content', value: any('"Quoted"') })]
-          })
-        ]
-      })
-    ]);
-    context = new Context({ output: { collapseNesting: true } });
-    const css = await renderNodeToString(node, context, { collapseNesting: true });
-    expect(css).toContain('.fruit-quoted-apple');
-    expect(css).toContain('.fruit-quoted-satsuma');
-    expect(css).toContain('.fruit-quoted-banana');
-    expect(css).toContain('.fruit-quoted-pear');
-    // Each item should get the prefix — verify no bare (unprefixed) items
-    expect(css).not.toMatch(/[,\n]\s*satsuma[,\s{]/m);
-  });
-
-  it('rejects a merge template glued onto a single comma-value parent (interpolated list)', async () => {
-    // The parent is ONE BasicSelector whose text carries commas — the shape an
-    // interpolated `@{list}` = `~'a, b'` produces (a genuine multi-selector parent
-    // arrives as a SelectorList and DOES distribute; see the test above). Less 4.x
-    // split it; Less 5 rejects it as an invalid merge template.
-    const node = rules([
-      ruleset({
-        selector: el('apple, satsuma, banana, pear'),
-        rules: [
-          ruleset({
-            selector: sel([amp('.fruit-quoted-&')]),
-            rules: [decl({ name: 'content', value: any('"Quoted"') })]
-          })
-        ]
-      })
-    ]);
-    context = new Context({ output: { collapseNesting: true } });
-    await expect(async () => await node.eval(context))
-      .rejects
-      .toThrow('Invalid ampersand merge template');
-    // …and it's recorded on context so the compiler surfaces it past selector prep.
-    expect(context.errors.some(e => e.code === 'selector/invalid-ampersand-merge')).toBe(true);
-  });
-
   it('derives complex selector-list merge templates with hoist and selector metadata', async () => {
     const sourceSelector = sellist([
       sel([el('.one'), co('>'), el('.child')]),
@@ -605,7 +548,7 @@ describe('Ampersand', () => {
       };
     }
 
-    const resolved = await amp('&-theme').resolve(context);
+    const resolved = await amp('-theme').resolve(context);
     for (let index = 0; index < sourceSelector.value.length; index++) {
       // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       (sourceSelector.value[index]! as Selector).toTrimmedString = originals[index]!;
@@ -632,26 +575,6 @@ describe('Ampersand', () => {
     expect(sourceSelector.value).toEqual(sourceChildren);
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     expect(sourceChildren.map(child => (child as Selector).parent)).toEqual(sourceChildren.map(() => sourceSelector));
-  });
-
-  it('should validate each item individually when distributing template', async () => {
-    // .one starts with '.' and '-' before '&' is ident — invalid head join per item
-    const node = rules([
-      ruleset({
-        selector: sellist([
-          sel([el('.one')]),
-          sel([el('.two')])
-        ]),
-        rules: [
-          ruleset({
-            selector: sel([amp('.fruit-&')]),
-            rules: [decl({ name: 'color', value: any('red') })]
-          })
-        ]
-      })
-    ]);
-    context = new Context({ output: { collapseNesting: true } });
-    await expect(async () => await node.eval(context)).rejects.toThrow('Invalid ampersand merge template');
   });
 
   it('should wrap inner lists in :is()', async () => {

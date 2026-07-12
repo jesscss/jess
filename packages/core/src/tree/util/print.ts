@@ -59,6 +59,19 @@ export type PrintOptions = {
   /** Render-local override for one at-rule header prelude during direct render. */
   atRuleHeaderNode?: AtRule;
   atRuleHeaderPrelude?: AtRulePrelude;
+  /**
+   * Spine-mode resolved-prelude registry for at-rules CURRENTLY on the descent
+   * stack (keyed by node identity). `serializeSpineFrameAtRule` sets the entry at
+   * descent-enter and restores the prior value on exit — so when a nested at-rule
+   * HOISTS to root, the frame-diff loop re-materializing an ANCESTOR at-rule's
+   * header (via `writeHeader`/`getHeaderString`/`getComparableHeaderString`, where
+   * the single `atRuleHeaderNode` override no longer targets that ancestor) can
+   * recover the ancestor's resolved prelude and emit `@media (max-width: 1000px)`
+   * instead of the raw `$[bpMedium]`. Render-local (NOT stored on the shared
+   * canonical node) so a body shared across mixin call sites resolves each call's
+   * arg independently — the invariant the `spineSelector` override also observes.
+   */
+  spineResolvedPreludes?: Map<AtRule, AtRulePrelude>;
   /** Render-local override for one at-rule body during direct render. */
   atRuleBodyNode?: AtRule;
   atRuleBodyOverride?: import('../rules.js').Rules;

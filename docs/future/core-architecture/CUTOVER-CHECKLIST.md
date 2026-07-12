@@ -1,7 +1,7 @@
 # Single-eval-emit CUTOVER — tracked checklist
 
 **This is the executable plan for the OQ-C coordinated cutover** to the architecture in
-`UNIFIED-EVAL-EMIT-DESIGN.md` (+ `EXTEND-GLOBAL-FLOW-DESIGN.md`, `EXTEND-INDEX-DESIGN.md`). Not
+`UNIFIED-EVAL-EMIT-DESIGN.md` (+ `archive/EXTEND-GLOBAL-FLOW-DESIGN.md`, `archive/EXTEND-INDEX-DESIGN.md`). Not
 incremental. Agents work THIS checklist toward the target and update it often.
 
 ## ⛔ HARD RULE — drive to the target, do NOT match the existing structure
@@ -242,7 +242,7 @@ old structure instead of building the target*. Guardrails, binding on every cuto
       (`Ruleset.isHoisted` returns true for the strict `spineExtendHoisted` crossing subset; the
       collapse-only verbatim-emit guards relaxed to that subset). Ratchets flipped: `extend-selector`
       + `&`-crossing-under-expanded now assert folding. Perf-neutral (extend-free `benchmark.less`
-      bypasses the layer). Spec/impl: `EXTEND-4A-DESIGN.md`. Superseded framing below:
+      bypasses the layer). Spec/impl: `archive/EXTEND-4A-DESIGN.md`. Superseded framing below:
       **EXTEND #4a — expanded-mode crossing/hoist block-relocation (SEQUENCED-OUT of the P4 terminal/sink
       rework; separate extend-EMIT batch).** Under `collapseNesting:false`, a crossing/hoist target
       (`.header .header-nav`, a nested subject's composed path) is gated to eval (`spine-extend.ts:750-751`):
@@ -250,7 +250,7 @@ old structure instead of building the target*. Guardrails, binding on every cuto
       under collapse. Expanded mode keeps the block nested → hoist needs BLOCK RELOCATION (deferred). This is
       the extend EMIT pipeline (`tree/extend/`, `print.ts:97`, `ruleset.ts:1480/1700`), NOT the callable
       terminal/sink — shares no data structure with `spineMixinSurfaceSink`; assessed separable in
-      `P4-TERMINAL-SINK-DESIGN.md` §4. SPEC: when SOLVE rewrites a nested subject whose target is a
+      `archive/P4-TERMINAL-SINK-DESIGN.md` §4. SPEC: when SOLVE rewrites a nested subject whose target is a
       crossing/composed path under expanded mode, emit the nested subject's block BOTH in place (its own
       nested header) AND hoisted-at-root under the extender's composed header — the expanded-mode analogue of
       the collapse-mode verbatim override; coupling is EMIT-ordering only (hoist after the nested header
@@ -264,7 +264,7 @@ old structure instead of building the target*. Guardrails, binding on every cuto
       recursive re-drive loses the per-level param frame for arg binding (`'n' is not defined`). GATE:
       `treeHasRecursiveMixinCall` (`emit-walk.ts`, a name-cycle DFS over mixin defs) keeps a recursive tree on
       eval, byte-identical. Ratchet: `mixin-fold-sequence-gate.test.ts` (flat + mutual + recursion-with-
-      nested-container). SPEC (`P4-TERMINAL-SINK-DESIGN.md` §7): thread each level's freshly-bound surface
+      nested-container). SPEC (`archive/P4-TERMINAL-SINK-DESIGN.md` §7): thread each level's freshly-bound surface
       param frame through the recursive call's arg-binding eval (push the surface `getScopeFrame()` as the
       caller/param frame, or bind args at splice time against `entryFrame`) — SHARED hot call/arg-binding eval,
       measure A/B first. REQUIRED P4 item (no permanent fallback); low-frequency Less loop idiom.
@@ -862,7 +862,7 @@ target hit (size↓, complexity↓, perf↑) · every ratchet test green (all ga
   REQUIRED P4 items): (1) append with a nested NON-APPEND container child (expanded-mode frame split); (2)
   append under a selector-LIST parent (eval renders it unusually — under-specified upstream); (3) append ×
   extend (append-generated target invisible to the static gather). SPECs for all three in
-  `APPEND-LAYER-SCOPE-FOLD-DESIGN.md`. VERIFIED: 12 shapes × 2 collapse modes byte-identical to eval; core
+  `archive/APPEND-LAYER-SCOPE-FOLD-DESIGN.md`. VERIFIED: 12 shapes × 2 collapse modes byte-identical to eval; core
   3255/0 (+2 ratchet tests: fold + deferrals); all-less 91/93 (unchanged, zero new byte-diffs); tsc 374
   both (0 new); PERF A/B neutral (synthetic heavy-nesting+append+`@media`: base ~44.2ms vs folded ~44.5ms,
   identical output). The 2 jess `spine-production-ratchet` failures (`@property`, nested-scope-mixin

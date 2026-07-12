@@ -7,18 +7,11 @@
  * rule OVERRIDE it by name; every cross-reference is by `g.RuleName`, so the
  * overrides take effect everywhere in the composed grammar.
  *
- * Trivia note: a rule's `parser({ trivia }, …)` bakes its trivia parser inline at
- * compile time, so it cannot be an external by-name ref. To get `//` line comments
- * inside a context we must re-declare that context's rule here with Jess `rw`.
- *
- * That re-declaration is only needed at the ENTRY into a Jess-`rw` region:
- * `Stylesheet` installs Jess `rw` once, and every Jess rule reached from it
- * inherits that ambient (sequence/repeat read `ctx.trivia` dynamically; refs pass
- * ctx through). A Jess-rule→Jess-rule `parser({ trivia: rw }, …)` re-establishing
- * the SAME Jess `rw` is a no-op and was dropped from most rules. Only three keep it:
- * `Stylesheet` (the establisher) plus `VarDeclaration` and `AnonMixin`, where
- * parseman's deferred-trivia-commit boundaries interact across nested grammar
- * scopes so dropping the wrapper changed what parsed (measured, not reasoned).
+ * Trivia note: Jess `rw` (CSS whitespace + block comments + `//` line comments) is
+ * declared ONCE on the grammar via `rules({ trivia: rw }, …)`, making it ambient in
+ * every Jess rule — no per-rule `parser({ trivia: rw }, …)` establishers are needed.
+ * `rw` is hoisted to module scope (mirroring css-parser) so the options-first
+ * `rules({ trivia: rw }, …)` call can reference it.
  * (Composed CSS rules keep their own baked CSS `rw`, so a `//` inside a construct
  * that stays entirely in a CSS rule is still not skipped — unchanged by this.)
  *
@@ -27,18 +20,25 @@
  */
 import {
   rules, compose,
-  node, regex, literal, sequence, choice, optional, parser, noTrivia, trivia,
-  many, oneOrMore, expect
+  node, regex, literal, sequence, choice, optional, noTrivia, trivia,
+  many, oneOrMore, expect, label, not
 } from 'parseman' with { type: 'macro' };
 import { cssGrammar } from '@jesscss/css-parser/grammar';
 
-export const jessGrammar = compose([cssGrammar, rules((g: any) => {
-  // ── Trivia: CSS whitespace + block comments + `//` line comments ────────────
-  const ws = regex(/[ \t\n\r\f]+/);
-  const comment = regex(/\/\*(?:[^*]|\*(?!\/))*\*\//);
-  const lineComment = regex(/\/\/[^\n\r]*/);
-  const rw = trivia(oneOrMore(choice(ws, comment, lineComment)));
+// ── Trivia: CSS whitespace + block comments + `//` line comments ────────────
+// Hoisted to module scope so the options-first `rules({ trivia: rw }, …)` below
+// can reference it.
+const ws = regex(/[ \t\n\r\f]+/);
+const comment = regex(/\/\*(?:[^*]|\*(?!\/))*\*\//);
+const lineComment = regex(/\/\/[^\n\r]*/);
+// Label the trivia kinds (matching css/less/scss): the whitespace label carries
+// the `whitespace` trivia-kind that the selector builder reads to infer descendant
+// combinators (`.foo .bar`). Under `compose()` composing-wins, this `rw` governs
+// the inherited css CompoundSelector too, so it MUST tag whitespace or the
+// builder's kind-driven descendant split can't fire.
+const rw = trivia(oneOrMore(choice(label('whitespace', ws), label('blockComment', comment), label('lineComment', lineComment))));
 
+export const jessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) => {
   // CSS identifier (same shape as the css-parser base terminal).
   const ident = regex(/-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n]))*/);
   const important = sequence(literal('!'), regex(/important/i));
@@ -97,9 +97,9 @@ export const jessGrammar = compose([cssGrammar, rules((g: any) => {
   const dollarDeclName = regex(/\$!?-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
   const assignOp = regex(/\?:|:=|:/);
   const VarDeclaration = node(
-    parser({ trivia: rw }, sequence(
+    sequence(
       dollarDeclName, assignOp, choice(g.JessCollection, g.valueList), optional(important), optional(literal(';'))
-    )));
+    ));
 
   // ── Expressions: `$( … )` ────────────────────────────────────────────────────
   // A single Expression node wrapping an arithmetic / comparison tree. Inside
@@ -209,19 +209,62 @@ export const jessGrammar = compose([cssGrammar, rules((g: any) => {
   const condAtom = choice(g.Reference, g.Dimension, g.Num, g.Color, g.Quoted, condKeyword);
   const condNot = node('Condition',
     sequence(regex(/not(?![-\w])/), literal('('), g.condOr, expect(literal(')'))));
+  // A join OPERAND: a `not(…)`, a parenthesised sub-condition, or a bare atom — but
+  // NOT a bare comparison. `condPrimary`'s comparison route is the `( condOr )` alt.
   const condPrimary = choice(
     g.condNot,
     sequence(literal('('), g.condOr, literal(')')),
     condAtom
   );
+  // ── Jess condition grammar (LOCKED — owner-final spec) ───────────────────────
+  // Jess conditions are STRICT (media-query MQ4 style), NOT Less-permissive:
+  //
+  //   ATOM (no wrapping needed):
+  //     • a single comparison            `$a > 5`
+  //     • a bare value/keyword/variable  `true`, `$c`
+  //     • `not(<condition>)`             `not($a)`
+  //     • a parenthesised `(<condition>)`
+  //
+  //   JOIN (operands combined by `and` OR by `or` — one operator kind per level):
+  //     • a COMPARISON operand MUST be parenthesised — `($a>5) and ($b>2)`. A bare
+  //       comparison join `$a>5 and $b>2` is a PARSE ERROR (operator-boundary
+  //       ambiguity; only comparisons carry it).
+  //     • a bare NON-comparison atom operand is allowed — `($a>5) and true`,
+  //       `($a>5) and $c` (no ambiguity).
+  //     • same-operator chains are fine — `(A) and (B) and (C)`, `(A) or (B) or (C)`.
+  //     • MIXING `and` and `or` at one level is a PARSE ERROR — must group:
+  //       `((A) and (B)) or (C)` or `(A) and ((B) or (C))`. No implicit precedence
+  //       in Jess (unlike Less, where `and` binds tighter and the parser normalises).
+  //
+  // Mechanism: a pure `and`-chain / pure `or`-chain each consume ONLY their own
+  // operator via `many`. A mixed `(A) and (B) or (C)` parses `(A) and (B)` then
+  // leaves ` or (C)` unconsumed — the enclosing header's `)`/body never matches, so
+  // the whole construct fails to parse (a rejection). The `.less` side deliberately
+  // DIVERGES: it accepts these permissive forms and inserts implicit `Paren` nodes to
+  // reach this same grouped AST shape (see less-parser `_buildCondArgJoin`).
   const condCompare = node('Condition',
     sequence(g.condPrimary, optional(sequence(condCmpOp, g.condPrimary))),
     undefined, { collapse: true });
-  const condAnd = node('Condition',
-    sequence(g.condCompare, many(sequence(regex(/and(?![-\w])/), g.condCompare))),
+  // Pure `and`-chain: ≥2 operands joined ONLY by `and`. A trailing `or` is NOT
+  // consumed here, so a mixed chain surfaces as unconsumed input (a parse error).
+  const condPureAnd = node('Condition',
+    sequence(g.condPrimary, oneOrMore(sequence(regex(/and(?![-\w])/), g.condPrimary))),
     undefined, { collapse: true });
+  // Pure `or`-chain: ≥2 operands joined ONLY by `or`. A trailing `and` is likewise
+  // left unconsumed (a parse error), enforcing the no-mixing rule.
+  const condPureOr = node('Condition',
+    sequence(g.condPrimary, oneOrMore(sequence(regex(/or(?![-\w])/), g.condPrimary))),
+    undefined, { collapse: true });
+  // A whole condition: a pure `and`-chain, a pure `or`-chain, or a lone `condCompare`
+  // (single comparison or bare atom). The bare-`condCompare` alternative is guarded by
+  // a negative lookahead so it can't win when an `and`/`or` follows — forcing the
+  // strict chain alternatives (which reject bare-comparison operands and mixing).
   const condOr = node('Condition',
-    sequence(g.condAnd, many(sequence(regex(/or(?![-\w])/), g.condAnd))),
+    choice(
+      g.condPureAnd,
+      g.condPureOr,
+      sequence(g.condCompare, not(regex(/\s*(?:and|or)(?![-\w])/)))
+    ),
     undefined, { collapse: true });
   const controlBody = sequence(literal('{'), g.declarationList, expect(literal('}')));
 
@@ -331,11 +374,10 @@ export const jessGrammar = compose([cssGrammar, rules((g: any) => {
   // The inner is a selector list; the builder coerces the (possibly string) inner
   // selector to a proper Selector node so writeSyntax/eval have a real node.
   const SelectorCapture = node(
-    parser({ trivia: rw },
-      sequence(
-        literal('*['),
-        g.SelectorList, expect(literal(']'), ']')
-      )));
+    sequence(
+      literal('*['),
+      g.SelectorList, expect(literal(']'), ']')
+    ));
 
   // ── `$apply` — selectors as mixins ───────────────────────────────────────────
   // `$apply .rounded, .shadow;` — applies (calls) rulesets as mixins. Surface is
@@ -406,7 +448,7 @@ export const jessGrammar = compose([cssGrammar, rules((g: any) => {
   // is uniformly "a Mixin whose body assigns `result`" (per the docs; aligns with
   // the CSS `@function` `result:` return descriptor).
   const AnonMixin = node(
-    parser({ trivia: rw }, sequence(
+    sequence(
       literal('@'),
       choice(
         // `@(params) [>] { body }` | `@(params) > <expr>`
@@ -421,7 +463,7 @@ export const jessGrammar = compose([cssGrammar, rules((g: any) => {
         // `@{ body }` — no params
         sequence(literal('{'), g.declarationList, expect(literal('}')))
       )
-    )));
+    ));
 
   // ── Values: prepend Jess `$` forms before the CSS value set ─────────────────
   const value = choice(
@@ -431,11 +473,11 @@ export const jessGrammar = compose([cssGrammar, rules((g: any) => {
 
   // ── Root + rule bodies (re-declared so Jess `rw`/`//` + `$` items apply) ─────
   const Stylesheet = node(
-    parser({ trivia: rw }, many(choice(
+    many(choice(
       g.ComposeAtRule, g.ExportAtRule, g.ImportAtRule, g.UseAtRule, g.FromAtRule,
       g.Extend, g.Apply, g.VarDeclaration, g.If, g.For, g.While, g.MixinCall, g.Mixin,
       g.QueryAtRuleBlock, g.AtRuleBlock, g.AtRuleStatement, g.UnknownAtRuleBlock, g.Ruleset
-    ))));
+    )));
 
   const Ruleset = node(
     sequence(g.SelectorList, literal('{'), g.declarationList, expect(literal('}'), '}')));
@@ -454,7 +496,7 @@ export const jessGrammar = compose([cssGrammar, rules((g: any) => {
     Expression, exprProduct, exprSum, exprCompare, JessKeyword,
     unwrapProductLead, unwrapProductRest, UnwrapArith,
     CollectionEntry, JessCollection,
-    condNot, condPrimary, condCompare, condAnd, condOr,
+    condNot, condPrimary, condCompare, condPureAnd, condPureOr, condOr,
     elseClause, forRange,
     If, For, While,
     MixinParam, mixinParams, mixinGuard, Mixin, callArgs, MixinCall,

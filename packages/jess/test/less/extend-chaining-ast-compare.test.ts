@@ -46,6 +46,13 @@ const extendChainingLess = path.join(testData, 'tests-unit/extend-chaining/exten
 
 const serializeOpts = { showValues: true, maxStringLength: 120 };
 
+// TRIAGE (extend-coverage pass): kept `.todo` — genuinely deferred/diagnostic, not resurrectable
+// as-is. Of the 8 blocks, 3 pass (the two @media-extend-root assertions + the DEBUG-log smoke test)
+// but 5 fail on superseded internals: three call the removed `Rules#find('ruleset', keySet)` probe
+// API, and two snapshot a `serializeTypes` format that has since drifted (stale `.snap`). This suite
+// probes eval-path registration machinery (accessible-roots, processExtends lookup) that the
+// extend/ PLAN→SOLVE→EMIT differential tests now cover at the contract level; the rendered-CSS
+// oracle for the chaining closure lives in extend-media-scope / cross-import coverage. Left off.
 describe.todo('extend-chaining AST: parsed vs constructed (serializeTypes comparison)', () => {
   it('serializes AST from Jess parsing extend-chaining.less before output eval', async () => {
     const compiler = new Compiler({

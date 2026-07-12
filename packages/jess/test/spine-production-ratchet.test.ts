@@ -152,16 +152,68 @@ describe('spine PRODUCTION-path ratchet (P2 wire-in)', () => {
     expect(css).toContain(':is(.clearfix, .foo):after');
   });
 
-  it('P3 increment 1: a NESTED-scope `:extend` does NOT route through the spine (deferral territory → eval path)', async () => {
-    // An extend nested inside a ruleset (not a root-direct child) is NOT the flat topology
-    // increment 1 handles — it stays on the eval path (byte-identical), reclaimed by a later
-    // increment (nested-subject interception / deferral).
+  it('EXTEND HARD-TAIL: a NESTED-scope `:extend` (exact, no match) FOLDS through the spine byte-identically', async () => {
+    // RECLAIMED (extend hard-tail fold). An extend nested inside a ruleset (not a root-direct child)
+    // now routes through the spine: the collapse-mode gate admits a nested-subject target
+    // (`isPartialWrapOfNestedLevel`) and `composeSpineSubjectHeaders` builds the nested-child fold +
+    // graft. Here `.derived:extend(.base)` is EXACT and the nested `.wrap .base` is NOT exactly `.base`,
+    // so the extend fires nothing — byte-identical to less@4 (which warns `extend '.base' has no
+    // matches` and emits `.wrap .base` + `.wrap .derived` as separate blocks). No eval two-walk.
     const compiler = makeCompiler();
     const src = `.wrap {\n  .base {\n    color: red;\n  }\n  .derived:extend(.base) {\n    font-weight: bold;\n  }\n}`;
-    const before = spineRenderCounter.rootRenders;
-    const css = await compiler.renderString(src, { language: 'less' });
-    expect(spineRenderCounter.rootRenders).toBe(before); // eval path (nested extend deferred)
-    expect(css).toContain('font-weight: bold');
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const css = await compiler.renderString(src, { language: 'less' });
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path (nested extend folded)
+      expect(deriveCalls).toBe(0); // no eval two-walk
+      // Exact `.base` matches nothing (nested `.wrap .base` ≠ `.base`) — both blocks stay separate.
+      expect(css).toMatch(/\.wrap \.base \{\n\s*color: red;\n\s*\}/);
+      expect(css).toMatch(/\.wrap \.derived \{\n\s*font-weight: bold;\n\s*\}/);
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
+  });
+
+  it('EXTEND HARD-TAIL: `extend.less` full multi-branch/nested/append-list cluster FOLDS byte-identically (collapse mode)', async () => {
+    // The full extend.less hard-tail cluster (multi-branch selector-LIST subjects `.foo .bar, .foo
+    // .baz`; nested-ruleset-subject targets `.dd`/`.ee`/`.ff`; `&`-composed subject `.ext8.ext9` as an
+    // extend target; combinator list branches `.ext8 + .ext9`) folds on the spine, byte-identical to
+    // the eval oracle (all-less 105/0 owner-maintained expectation) with NO eval two-walk.
+    const compiler = makeCompiler();
+    const src = [
+      '.foo .bar, .foo .baz { display: none; }',
+      '.ext3, .ext4 { &:extend(.foo all); &:extend(.bar all); }',
+      '.aa { color: black; .dd { background: red; } }',
+      '.bb { background: red; }',
+      '.ee:extend(.dd all, .bb) {}',
+      '.ff:extend(.dd, .bb all) {}'
+    ].join('\n');
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const css = await compiler.renderString(src, { language: 'less' });
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before);
+      expect(deriveCalls).toBe(0);
+      // Multi-branch descendant-list subject gains the `.ext3`/`.ext4` grafts in each position.
+      expect(css).toContain(':is(.foo, .ext3, .ext4) :is(.bar, .ext3, .ext4)');
+      // Nested `.dd` (`all`-extended by `.ee`) gains the `.ee` sibling child branch.
+      expect(css).toMatch(/\.aa \.dd,\n\.ee \{/);
+      // `.bb all` grafts `.ff` (and `.ee`'s exact `.bb` also joins the `.bb` block).
+      expect(css).toMatch(/\.bb,\n\.ee,\n\.ff \{/);
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
   });
 
   it('P3 increment 2: a NESTED EXTENDER composes as its BUCKET PATH through the spine (`.type1 .sidebar3`)', async () => {
@@ -285,6 +337,72 @@ describe('spine PRODUCTION-path ratchet (P2 wire-in)', () => {
       // The crossing hoist relocates the nested block to root with the composed 2-branch header.
       expect(css).toContain('.header .header-nav,\n.footer .footer-nav');
       expect(css).toContain('.issue-2586-bordered,\n.issue-2586-somepage .content');
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
+  });
+
+  it('EXTEND HARD-TAIL (EXPANDED MODE): `extend.less` folds byte-identically via the spine (`collapseNesting:false`, no eval two-walk)', async () => {
+    // The `5c6875538` fold landed the expanded-mode nested-target collapse-relocation
+    // (`composeSpineSubjectHeaders`'s `isNested && !collapseNesting` full-composed-path + `ampComposed`
+    // relocations) so the WHOLE `extend.less` cluster folds under `collapseNesting:false` too — NOT just
+    // the collapse-mode lock above. It landed WITHOUT a `deriveCalls===0` ratchet, so a silent
+    // regression-to-eval (all-less checks BYTES, not fold-status) would go uncaught. This locks it: the
+    // full fixture folds via the spine, byte-identical to the ratified expanded-mode `.css`, with the
+    // eval two-walk (`Rules.derive` / `processExtends`) UNCALLED.
+    const compiler = new Compiler({
+      output: { collapseNesting: false },
+      compile: { plugins: [lessPlugin(), lessCompatPlugin({})] }
+    });
+    const src = readFileSync(path.join(testDataRoot, 'tests-unit/extend/extend.less'), 'utf8');
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const css = await compiler.renderString(src, { language: 'less' });
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+      expect(deriveCalls).toBe(0); // no eval two-walk → the expanded-mode fold, not a silent eval fallback
+      // Expanded-mode nested-target relocation: `.ext8 { .ext9 {…} }` extended → `.ext8 .ext9, .buu` at root.
+      expect(css).toContain('.buu');
+      expect(css).toContain('.fuu');
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
+  });
+
+  it('EXTEND @MEDIA-SCOPE: `extend-media.less` folds byte-identically via the spine (scoped gather + cross-media `all`-propagation, no eval two-walk)', async () => {
+    // @MEDIA-GATHER FOLD (this increment). An `:extend(.ext1 all)` declared inside `@media (tv)`
+    // (`.tv-lowres`) / a nested `@media (hires)` (`.tv-hires`) / at root (`.all`) is scoped by the
+    // wire gather's per-conditional-at-rule scope chain + the pipeline's `scopeReaches` prefix filter
+    // (eval oracle §A5/A2): a media-scoped extend reaches subjects in the same or a NESTED conditional
+    // body, never outside; a root extend reaches all. Byte-identical to the ratified expanded-mode
+    // `extend-media.css`, folded via the spine with the eval two-walk UNCALLED. Locks the fold so a
+    // regression-to-eval (all-less checks bytes, not routing) is caught.
+    const compiler = new Compiler({
+      output: { collapseNesting: false },
+      compile: { plugins: [lessPlugin(), lessCompatPlugin({})] }
+    });
+    const src = readFileSync(path.join(testDataRoot, 'tests-unit/extend-media/extend-media.less'), 'utf8');
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const css = await compiler.renderString(src, { language: 'less' });
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+      expect(deriveCalls).toBe(0); // no eval two-walk → the @media-scope fold, not a silent eval fallback
+      // Root-scope `.all` reaches every `.ext1`; media-scope `.tv-lowres`/`.tv-hires` reach only their
+      // own + nested media bodies (NOT the root `.ext2`).
+      expect(css).toContain(':is(.ext1, .all) .ext2');
+      expect(css).toContain(':is(.ext1, .tv-lowres, .all) .ext3');
+      expect(css).toContain(':is(.ext1, .tv-lowres, .tv-hires, .all) .ext4');
     } finally {
       Rules.prototype.derive = originalDerive;
     }
@@ -466,6 +584,49 @@ describe('spine PRODUCTION-path ratchet (P2 wire-in)', () => {
     }
   });
 
+  it('folds `@page` MARGIN-BOX at-rules through the spine (in-place wrap+emit child of `@page`, no derive)', async () => {
+    // PAGE MARGIN-BOX FOLD. A margin-box at-rule (`@top-left`/`@top-center`/… — the 16
+    // CSS Paged-Media §5 boxes) is a declaration-bodied, non-hoisting child of `@page`;
+    // it emits IN PLACE inside the `@page` block. Before this fold the margin-box NAME
+    // was rejected by `isSpineEligibleAtRule` (not in any eligible set) — the whole
+    // `@page` root dropped to the eval two-walk. Now the shape folds byte-identical to
+    // the eval oracle. Covers: flat `@page` + one box; `@page :first` (prelude) + box;
+    // media-nested `@page` + several boxes (the media.less shape). A regression trips
+    // the counter (no move) or `Rules.derive` (fires) RED.
+    const cases: Array<{ src: string; out: string }> = [
+      {
+        src: '@page { margin: 2cm; @top-left { content: "Page " counter(page); } }',
+        out: '@page {\n  margin: 2cm;\n  @top-left {\n    content: "Page " counter(page);\n  }\n}\n'
+      },
+      {
+        src: '@page :first { margin: 3cm; @top-center { content: "First Page"; } }',
+        out: '@page :first {\n  margin: 3cm;\n  @top-center {\n    content: "First Page";\n  }\n}\n'
+      },
+      {
+        src: '@media print {\n  @page :first {\n    size: 8.5in 11in;\n    @top-left { margin: 1cm; }\n    @bottom-right-corner { margin: 1cm; }\n    @left-middle { margin: 1cm; }\n  }\n}',
+        out: '@media print {\n  @page :first {\n    size: 8.5in 11in;\n    @top-left {\n      margin: 1cm;\n    }\n    @bottom-right-corner {\n      margin: 1cm;\n    }\n    @left-middle {\n      margin: 1cm;\n    }\n  }\n}\n'
+      }
+    ];
+    for (const c of cases) {
+      const compiler = makeCompiler();
+      const originalDerive = Rules.prototype.derive;
+      let deriveCalls = 0;
+      Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+        deriveCalls++;
+        return originalDerive.apply(this, args);
+      } as Rules['derive'];
+      try {
+        const before = spineRenderCounter.rootRenders;
+        const css = await compiler.renderString(c.src, { language: 'less' });
+        expect(spineRenderCounter.rootRenders, `routed: ${c.src}`).toBeGreaterThan(before); // spine path
+        expect(deriveCalls, `no derive: ${c.src}`).toBe(0); // no eval two-walk
+        expect(css, `output: ${c.src}`).toBe(c.out); // byte-identical to the eval oracle
+      } finally {
+        Rules.prototype.derive = originalDerive;
+      }
+    }
+  });
+
   it('folds `@property` through the spine (root-only wrap+emit, no registration side-effect, no derive)', async () => {
     // `@property` is a plain DECLARATION-bodied root-only at-rule, structurally identical
     // to `@font-face`. Its eval pass registers NOTHING into any scope or the extend-roots
@@ -622,16 +783,268 @@ describe('spine PRODUCTION-path ratchet (P2 wire-in)', () => {
     }
   });
 
-  it('does NOT route a NESTED-CONTAINER-body mixin through the spine (eval-fallback re-descent gap → eval path)', async () => {
-    // `.mix() { .inner { … } }` — a non-leaf body; the eval-fallback's resolved tree
-    // can't be re-spine-descended without losing the surface frame for deeply-nested
-    // calls, so the whole tree stays on the eval path (byte-identical).
+  it('NESTED-CONTAINER-body mixin FOLDS through the spine byte-identical (surface descends nested containers carrying the frame, no derive)', async () => {
+    // `.mix(@a) { .inner { … .innest { .mi((@a*2)) } } }` — a non-leaf body with a
+    // DEEPLY-NESTED call reading the mixin's param. The captured surface's container
+    // child descends via `serializeSpineFrameContainer` carrying the surface frame, so
+    // its body resolves `@a` at arbitrary depth AND expands its own nested call in-pass
+    // — no eval-fallback re-descent, no frame loss. Folds byte-identical to eval.
     const compiler = makeCompiler();
     const src = `.mi(@v) { border-width: @v; }\n.mix(@a: 10) { .inner { height: (@a * 10); .innest { .mi((@a * 2)); } } }\n.class { .mix(30); }`;
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const css = await compiler.renderString(src, { language: 'less' });
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+      expect(deriveCalls).toBe(0); // no eval two-walk, no output tree
+      // byte-identical to the eval oracle: `@a`=30 → height 300, deeply-nested `.mi`=60
+      expect(css).toBe('.class .inner {\n  height: 300;\n}\n.class .inner .innest {\n  border-width: 60;\n}\n');
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
+  });
+
+  it('NESTED-CONTAINER-body: a plain-selector container + a leaf sibling folds (byte-identical, no derive)', async () => {
+    const compiler = makeCompiler();
+    const src = `.mix() { color: red; .inner { color: blue; } }\n.class { .mix(); }`;
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const css = await compiler.renderString(src, { language: 'less' });
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before);
+      expect(deriveCalls).toBe(0);
+      expect(css).toBe('.class {\n  color: red;\n}\n.class .inner {\n  color: blue;\n}\n');
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
+  });
+
+  it('NESTED-CONTAINER-body: a plain-selector-child at-rule (no ancestor rewrap) folds (byte-identical)', async () => {
+    // `@media { .plain { … } }` inside a mixin body — the at-rule hoists, its plain-
+    // selector child composes against the call-site selector correctly (no rewrap
+    // needed), so it folds. (`@media { color: … }` — a DIRECT decl needing the call-
+    // site wrapper on hoist — is the DEFER case below.)
+    const compiler = makeCompiler();
+    const src = `.mix() { @media screen { .plain { color: green; } } }\n.class { .mix(); }`;
+    const before = spineRenderCounter.rootRenders;
+    const css = await compiler.renderString(src, { language: 'less' });
+    expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+    expect(css).toBe('@media screen {\n  .class .plain {\n    color: green;\n  }\n}\n');
+  });
+
+  it('AT-RULE `&`-THROUGH-HOIST: a bare-`&` child ruleset in a nested `@media` re-wraps the ancestor selector on hoist (folds, byte-identical)', async () => {
+    // `.a { color: black; @media screen { & { color: red; } &:hover { color: blue; } } }` —
+    // the `@media` hoists to root and each `&`-bearing child re-materializes the ancestor
+    // `.a` around its body (`@media { .a { color: red } .a:hover { color: blue } }`). On the
+    // spine `getHoistedParent` recovers the enclosing ruleset frame from
+    // `context.rulesetFrames` (no `.parent` back-pointer) and the composed parent selector
+    // from `composedSelectorStack`, emitting the hoisted wrapper header. Byte-identical to
+    // eval AND less@4. A re-deferral to eval trips the counter (no move) RED.
+    const compiler = makeCompiler();
+    const src = `.a {\n  color: black;\n  @media screen {\n    & { color: red; }\n    &:hover { color: blue; }\n  }\n}`;
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const css = await compiler.renderString(src, { language: 'less' });
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+      expect(deriveCalls).toBe(0); // no eval two-walk
+      expect(css).toBe('.a {\n  color: black;\n}\n@media screen {\n  .a {\n    color: red;\n  }\n  .a:hover {\n    color: blue;\n  }\n}\n');
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
+  });
+
+  it('AT-RULE DIRECT-DECL THROUGH HOIST: a direct declaration in a nested `@supports` re-wraps the ancestor selector (folds, byte-identical)', async () => {
+    // `html { @supports (display: grid) { display: grid; } }` — a DIRECT declaration inside
+    // a hoisting at-rule. On hoist the ancestor `html` must wrap the decl
+    // (`@supports { html { display: grid } }`). The spine's `getHoistedParent` frame-stack
+    // recovery supplies the `html` wrapper header. Byte-identical to eval AND less@4.
+    const compiler = makeCompiler();
+    const src = `html {\n  @supports (display: grid) {\n    display: grid;\n  }\n}`;
+    const before = spineRenderCounter.rootRenders;
+    const css = await compiler.renderString(src, { language: 'less' });
+    expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+    expect(css).toBe('@supports (display: grid) {\n  html {\n    display: grid;\n  }\n}\n');
+  });
+
+  it('AT-RULE `&`-THROUGH-HOIST: an `&`-collapsing ancestor (`.inside &`) composes correctly through a nested `@supports` (folds)', async () => {
+    // `.top { .inside & { @supports (x: y) { & { color: red; } } } }` — the inner `&` resolves
+    // against the COMPOSED `.inside .top`, and the hoisted `@supports` wraps it
+    // (`@supports { .inside .top { color: red } }`). Byte-identical to eval AND less@4.
+    const compiler = makeCompiler();
+    const src = `.top {\n  .inside & {\n    @supports (x: y) {\n      & { color: red; }\n    }\n  }\n}`;
+    const before = spineRenderCounter.rootRenders;
+    const css = await compiler.renderString(src, { language: 'less' });
+    expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+    expect(css).toBe('@supports (x: y) {\n  .inside .top {\n    color: red;\n  }\n}\n');
+  });
+
+  it('AT-RULE `&`-THROUGH-HOIST: a MIXED body (bare-`&` + plain-selector child + `&:hover`) composes each child on hoist (folds)', async () => {
+    // `.card { @media screen { & {…} .inner {…} &:hover {…} } }` — bare-`&`→`.card`, plain
+    // `.inner`→`.card .inner`, `&:hover`→`.card:hover`, all inside the hoisted `@media`.
+    // Byte-identical to eval AND less@4.
+    const compiler = makeCompiler();
+    const src = `.card {\n  @media screen {\n    & { color: red; }\n    .inner { color: green; }\n    &:hover { color: blue; }\n  }\n}`;
+    const before = spineRenderCounter.rootRenders;
+    const css = await compiler.renderString(src, { language: 'less' });
+    expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+    expect(css).toBe('@media screen {\n  .card {\n    color: red;\n  }\n  .card .inner {\n    color: green;\n  }\n  .card:hover {\n    color: blue;\n  }\n}\n');
+  });
+
+  it('MIXIN-SURFACE AT-RULE THROUGH HOIST: a DIRECT decl in a nested `@media` re-wraps the CALL-SITE selector on hoist (folds, byte-identical)', async () => {
+    // `.mix() { color: red; @media screen { color: green } }` called at `.class` — the
+    // `@media` hoists to root and the CALL-SITE `.class` re-wraps the direct decl
+    // (`@media { .class { color: green } }`). This is the mixin-surface analogue of the
+    // authored at-rule-&-through-hoist fold: the surface's at-rule child is spliced at
+    // the call site, so `getHoistedParent` recovers `.class` from `context.rulesetFrames`
+    // exactly as the authored path does — no call-site-specific machinery needed. Byte-
+    // identical to eval AND less@4. A re-deferral to eval trips the counter RED.
+    const compiler = makeCompiler();
+    const src = `.mix() { color: red; @media screen { color: green; } }\n.class { .mix(); }`;
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const css = await compiler.renderString(src, { language: 'less' });
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+      expect(deriveCalls).toBe(0); // no eval two-walk
+      expect(css).toBe('.class {\n  color: red;\n}\n@media screen {\n  .class {\n    color: green;\n  }\n}\n');
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
+  });
+
+  it('MIXIN-SURFACE AT-RULE THROUGH HOIST: a bare-`&` / `&:hover` child in a nested `@media` re-wraps the call site (folds, byte-identical)', async () => {
+    // `.mix() { @media screen { & {…} &:hover {…} } }` at `.class` — each `&`-bearing
+    // child re-materializes the call-site `.class` around its body inside the hoisted
+    // `@media`. Byte-identical to eval AND less@4.
+    const compiler = makeCompiler();
+    const src = `.mix() { @media screen { & { color: red; } &:hover { color: blue; } } }\n.class { .mix(); }`;
+    const before = spineRenderCounter.rootRenders;
+    const css = await compiler.renderString(src, { language: 'less' });
+    expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+    expect(css).toBe('@media screen {\n  .class {\n    color: red;\n  }\n  .class:hover {\n    color: blue;\n  }\n}\n');
+  });
+
+  it('MIXIN-SURFACE AT-RULE THROUGH HOIST: a mixed body (bare-`&` + plain child + `&:hover`) composes each child on hoist (folds)', async () => {
+    // `.mix() { @media screen { & {…} .inner {…} &:hover {…} } }` at `.class`.
+    const compiler = makeCompiler();
+    const src = `.mix() { @media screen { & { color: red; } .inner { color: green; } &:hover { color: blue; } } }\n.class { .mix(); }`;
+    const before = spineRenderCounter.rootRenders;
+    const css = await compiler.renderString(src, { language: 'less' });
+    expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+    expect(css).toBe('@media screen {\n  .class {\n    color: red;\n  }\n  .class .inner {\n    color: green;\n  }\n  .class:hover {\n    color: blue;\n  }\n}\n');
+  });
+
+  it('MIXIN-SURFACE AT-RULE ISOLATION: a param-dependent at-rule body/prelude re-resolves per call site (folds, no cross-call leak)', async () => {
+    // `.emit(@m) { @media @m { value: @m } }` called at `.one` (screen) and `.two`
+    // (print). The at-rule NODE is SHARED across both call-site splices; its
+    // memoized `_scopeFrame` must be RE-POINTED to each call's surface frame on
+    // descent (`serializeSpineFrameAtRule` per-call re-point, mirroring the container
+    // path) so the body `@m` resolves to the CURRENT call's param, not the first
+    // call's. A leak (`value: screen` in `.two`) trips this RED. Byte-identical to
+    // eval AND less@4 (two distinct `@media` blocks, no merge).
+    const compiler = makeCompiler();
+    const src = `.emit(@m) { @media @m { value: @m; } }\n.one { .emit(screen); }\n.two { .emit(print); }`;
+    const before = spineRenderCounter.rootRenders;
+    const css = await compiler.renderString(src, { language: 'less' });
+    expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+    expect(css).toBe('@media screen {\n  .one {\n    value: screen;\n  }\n}\n@media print {\n  .two {\n    value: print;\n  }\n}\n');
+  });
+
+  it('MIXIN-SURFACE ROOT-ONLY AT-RULE BUBBLE: a `@font-face` in a mixin body bubbles to root, dropping the call-site selector (folds, byte-identical)', async () => {
+    // `.mix() { @font-face { font-family: x } }` at `.class` — a root-only "wrap+emit"
+    // at-rule (NOT a conditional group) bubbles to root and does NOT wrap the call-site
+    // selector. `AtRule.isHoisted`'s `hasRulesetAncestor` check now consults
+    // `context.rulesetFrames` (a PARSED tree has no `.parent`), so the bubble fires on
+    // the spine exactly as eval. Byte-identical to eval AND less@4.
+    const compiler = makeCompiler();
+    const src = `.mix() { @font-face { font-family: x; } }\n.class { .mix(); }`;
+    const before = spineRenderCounter.rootRenders;
+    const css = await compiler.renderString(src, { language: 'less' });
+    expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+    expect(css).toBe('@font-face {\n  font-family: x;\n}\n');
+  });
+
+  it('DEFERRED (residual/IOU): a mixin body containing a nested Mixin DEFINITION stays on eval (byte-identical)', async () => {
+    // `.mix() { … .inner() { … } .inner() }` — a nested mixin DEFINITION in a mixin
+    // body. The SIMPLE shape (nested def called only WITHIN the same body) folds
+    // byte-identically, but the fold cannot be lifted wholesale: a nested def can be a
+    // DYNAMICALLY-CREATED callable resolved by a LATER path-call
+    // (`.Person(@n) { .@{n} { .sayGender() {} } }` then `.person.sayGender()` — jess-
+    // eval supports this via a `mixin-ruleset` lookup, see `mixin.test.ts` "keeps param
+    // vars preferred over outer same-name vars in lazy nested mixin lookups"). Folding
+    // the def away emits it inline instead of REGISTERING it, so the later lookup throws
+    // `No matching mixins found`. Registering a dynamically-created nested callable
+    // through the spine is a SEPARATE surface (callable registration in the fold).
+    // Kept on eval, byte-identical, until that lands. REQUIRED P4 item / IOU.
+    const compiler = makeCompiler();
+    const src = `.mix() { color: red; .inner() { color: blue; } .inner(); }\n.class { .mix(); }`;
     const before = spineRenderCounter.rootRenders;
     const css = await compiler.renderString(src, { language: 'less' });
     expect(spineRenderCounter.rootRenders).toBe(before); // eval path
-    expect(css).toContain('border-width: 60'); // the deeply-nested call still emits
+    expect(css).toBe('.class {\n  color: red;\n  color: blue;\n}\n');
+  });
+
+  it('FOLD (§7 frame-threaded arg rung): a FLAT self-recursive mixin folds through the spine (no derive)', async () => {
+    // `.mixin-recursive(@n) when (@n>0) { level: @n; .mixin-recursive(@n-1) }` — a
+    // name-cycle whose body is declarations + the recursive call with a frame-dependent
+    // arg. Each level's freshly-bound param frame is threaded through the recursive
+    // call's arg-binding eval AND the spliced body decls' dedup-key + emit resolution
+    // (`computeDeclKey` / `processNode` push the entry's `spineFrame`), so `@n - 1`
+    // resolves against level N's `@n`. Byte-identical to eval / less@4, no output tree.
+    const compiler = makeCompiler();
+    const src = `.mixin-recursive(@n) when (@n > 0) {\n  level: @n;\n  .mixin-recursive(@n - 1);\n}\n.mixin-recursive(@n) when (@n <= 0) {\n  done: true;\n}\n.test-recursive {\n  .mixin-recursive(3);\n}`;
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const css = await compiler.renderString(src, { language: 'less' });
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+      expect(deriveCalls).toBe(0); // no output tree materialized
+      expect(css).toBe('.test-recursive {\n  level: 3;\n  level: 2;\n  level: 1;\n  done: true;\n}\n');
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
+  });
+
+  it('DEFERRED (residual/IOU): a recursive mixin with a NESTED CONTAINER (STRIPE) stays on eval (byte-identical)', async () => {
+    // `.stripe(@n) when (@n>0) { a { … } .stripe(@n-1) }` — recursion via a name-cycle
+    // AND a nested container SHARED across levels. The re-entrant splice re-uses the
+    // same canonical `a { … }` child per level, collapsing two levels' blocks into one
+    // instead of eval's two distinct `.wrap a { … }` blocks. `treeHasRecursiveMixinCall`
+    // narrowly defers ONLY this container-in-cycle shape; FLAT recursion folds (above).
+    // Distinct-per-level container surfaces are a separate P4 item.
+    const compiler = makeCompiler();
+    const src = `.stripe(@n) when (@n > 0) {\n  a { border-width: @n; }\n  .stripe(@n - 1);\n}\n.wrap { .stripe(2); }`;
+    const before = spineRenderCounter.rootRenders;
+    const css = await compiler.renderString(src, { language: 'less' });
+    expect(spineRenderCounter.rootRenders).toBe(before); // eval path
+    // eval renders both levels as DISTINCT blocks (byte-identical to less@4)
+    expect(css).toBe('.wrap a {\n  border-width: 2;\n}\n.wrap a {\n  border-width: 1;\n}\n');
   });
 
   it('INCREMENT 7: folds GUARDED (`when`) mixin calls through the spine on the COMPILER path (no derive)', async () => {
@@ -756,21 +1169,27 @@ describe('spine PRODUCTION-path ratchet (P2 wire-in)', () => {
     }
   });
 
-  it('IMPORTS increment 2: a NAMESPACE-PATH call over an imported namespace STAYS on eval (namespace-merge wall)', async () => {
-    // `namespacing-2.less`: a LOCAL `#library` (overriding `.sizes`) plus the imported
-    // `#library` (defining `.add-one`), consumed by `#library.add-one()`. Fallback-frame
-    // linking makes the imported namespace resolvable but does NOT MERGE it with the
-    // same-named local definition — the lookup finds the local `#library` first and never
-    // falls through for a member only the imported one defines. So a tree with a
-    // namespace-path call + an import stays on the eval path (byte-identical). A regression
-    // that folds it throws "No matching mixins for '#library.add-one'". DEFERRED (P4):
-    // cross-definition namespace merge in the fold.
+  it('IMPORTS increment 2: a NAMESPACE-PATH call over an imported namespace FOLDS via the spine (gate 12)', async () => {
+    // `namespacing-2.less`: a LOCAL `#library` (overriding `.sizes`, → 800px) plus the
+    // imported `#library` (defining `.add-one`), consumed by both `#library.sizes[@width]`
+    // (resolves locally) and `#library.add-one(1px)[@return]` (a member ONLY the imported
+    // `#library` defines). This is NOT a same-named-merge case: the local head HITS first,
+    // its remainder MISSES `.add-one`, and the shared namespace-path lookup
+    // (`Rules.findMixinPath`) formerly never re-tried the import `fallbackFrame` — so it
+    // threw "No matching mixins for '#library.add-one'". The fix drains the fallback-frame
+    // chain AFTER the primary walk misses (mirrors the plain-var `findMixin` drain), so an
+    // imported namespace member resolves while a local hit still wins. The tree now FOLDS
+    // through the spine, byte-identical to eval (and to less@4's `namespacing-2.css`).
     const compiler = makeCompiler();
     const lessPath = path.join(testDataRoot, 'tests-config/namespacing/namespacing-2.less');
     const before = spineRenderCounter.rootRenders;
     const result = await compiler.renderToResult(lessPath, {});
-    expect(spineRenderCounter.rootRenders).toBe(before); // eval path (namespace-merge wall)
-    expect(result.css).toContain('width: 800px'); // namespace lookup resolved (eval path)
+    expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path (gate 12 folds)
+    // Byte-identical to less@4 `namespacing-2.css`: local `.sizes` override (800px) + the
+    // imported `.add-one` member (2px, resolved through the fallback-frame drain).
+    expect(result.css).toBe(
+      '.bar {\n  width: 800px;\n  height: 2px;\n}\n.foo {\n  width: 800px;\n}\n.lunch {\n  treat: ice cream;\n}\n'
+    );
   });
 
   it('IMPORTS increment 3: a TRANSITIVE import var chain (main->lib->inner) folds via the spine (no derive)', async () => {
@@ -1072,22 +1491,141 @@ describe('spine PRODUCTION-path ratchet (P2 wire-in)', () => {
     }
   });
 
-  it('IMPORTS increment 5: an `:extend` reaching a `(reference)`-imported selector still emits (via eval — extend-through-import reachability wall)', async () => {
-    // The reference fold + the extend fold's flat topology collide: an `:extend`
-    // whose TARGET lives inside an imported body is not in the spine extend fold's
-    // reachability (true for a plain import too, not reference-specific), so the tree
-    // stays on the eval path — byte-identical: the extender `.x` gains the reference
-    // selector's declarations while the reference `.a` itself stays suppressed.
-    // DEFERRED (a REQUIRED P4 item): extend-reachability through imported bodies in
-    // the spine fold.
+  it('IMPORTS increment 5: an `:extend` reaching a `(reference)`-imported selector FOLDS through the spine (no derive, byte-identical)', async () => {
+    // REFERENCE-EXTEND FOLD (import-spec routing). An `:extend` whose TARGET lives inside a
+    // `@import (reference)` body is SPECULATIVELY admitted (the sync gate can't see the imported
+    // subject). The post-wire re-gate now COLLECTS the reference-body subject (`.a`) and marks it
+    // `reference` in `wireSpineExtends`; its header projection DROPS the own form (branch 0 —
+    // the eval-path `F_EXTEND_TARGET` reference-filter), installing the extender-only header (`.x`).
+    // The container serializer render-enables the reference ruleset because it carries a spine
+    // extend header (the reference-unlock signal), so it emits its declarations under `.x` — the
+    // reference `.a` never surfaces on its own. Byte-identical to eval, no eval two-walk.
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-import-inc5-ext-'));
     fs.writeFileSync(path.join(dir, 'lib.less'), '.a { color: red; }\n');
     fs.writeFileSync(path.join(dir, 'main.less'), '@import (reference) "lib.less";\n.x:extend(.a) {}\n');
     const compiler = makeCompiler();
-    const before = spineRenderCounter.rootRenders;
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const result = await compiler.renderToResult(path.join(dir, 'main.less'), {});
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // routed via spine
+      expect(deriveCalls).toBe(0); // true fold — no eval output tree
+      expect(result.css).toBe('.x {\n  color: red;\n}\n'); // extend reached the suppressed `.a`
+    } finally {
+      Rules.prototype.derive = originalDerive;
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('IMPORTS increment 5: an `:extend(.a all)` reaching a `(reference)` subject folds; the reference target stays suppressed (no derive)', async () => {
+    // The `all`-partial variant + a following own-body extender block (the `ref-main` corpus shape).
+    // `.ext:extend(.target all) { background: blue; }` against a reference `.target { color: red }`.
+    // The reference `.target` is dropped from the header (own-form suppressed); its `color: red`
+    // emits under `.ext`, then `.ext`'s own `background: blue` emits separately — byte-identical to
+    // eval, no derive.
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-import-inc5-refall-'));
+    fs.writeFileSync(path.join(dir, 'ref-base.less'), '.target { color: red; }\n');
+    fs.writeFileSync(
+      path.join(dir, 'main.less'),
+      '@import (reference) "ref-base.less";\n.ext:extend(.target all) { background: blue; }\n'
+    );
+    const compiler = makeCompiler();
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const result = await compiler.renderToResult(path.join(dir, 'main.less'), {});
+      expect(deriveCalls).toBe(0); // true fold — no eval output tree
+      expect(result.css).not.toContain('.target'); // reference target never surfaces on its own
+      expect(result.css).toBe('.ext {\n  color: red;\n}\n.ext {\n  background: blue;\n}\n');
+    } finally {
+      Rules.prototype.derive = originalDerive;
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('IMPORT-SPEC: extend-through-import FOLDS via the spine — an `:extend` whose target is a PLAIN-imported subject (no derive)', async () => {
+    // The extend-through-import fold (import-spec routing). `.x:extend(.a)` where `.a` lives in a
+    // PLAIN (non-reference) imported file. The sync gate speculatively admits; the post-wire re-gate
+    // collects the resolved imported ROOT-LEVEL subject `.a`, proves the topology foldable, and
+    // `wireSpineExtends` descends the imported body so `.a`'s Ruleset gets the composed header
+    // override `.a, .x`. Folds through the spine byte-identical to eval (no output-tree derive).
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-import-spec-ext-'));
+    fs.writeFileSync(path.join(dir, 'lib.less'), '.a {\n  color: red;\n}\n');
+    fs.writeFileSync(path.join(dir, 'main.less'), '@import "lib.less";\n.x:extend(.a) {\n  font-size: 12px;\n}\n');
+    const compiler = makeCompiler();
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const result = await compiler.renderToResult(path.join(dir, 'main.less'), {});
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // routed via spine
+      expect(deriveCalls).toBe(0); // true fold — no eval output tree
+      expect(result.css).toBe('.a,\n.x {\n  color: red;\n}\n.x {\n  font-size: 12px;\n}\n');
+    } finally {
+      Rules.prototype.derive = originalDerive;
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('IMPORT-SPEC: TRANSITIVE extend-through-import FOLDS via the spine — the imported body carries its OWN `:extend` (`.c ← .b ← .a`, no derive)', async () => {
+    // The transitive cross-import closure. `.b:extend(.c)` lives in the imported file and
+    // `.a:extend(.b)` in the main file. The SOLVE fixpoint runs over the union of local +
+    // imported instructions: `.c`→`.c,.b` then `.a` matches the now-present `.b`→`.c,.b,.a`.
+    // The key fold (extend-through-import): an imported body carrying its OWN `:extend` is now
+    // spine-foldable when the extend layer is engaged (`isSpineFoldableImportBody(body, true)`),
+    // so `wireSpineExtends` descends the SAME imported Ruleset node instances the emit fold emits
+    // — the composed header override (`.c`→`.c,.b,.a`, `.b`→`.b,.a`) lands via
+    // `effectiveHeaderSelector`. Previously the extend-bearing imported body fell to the eval
+    // terminal (fresh nodes → override missed → NO cross-import extend). Byte-identical to less@4,
+    // no eval output-tree derive.
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-import-spec-ext-transitive-'));
+    fs.writeFileSync(path.join(dir, 'base.less'), '.c { color: red; }\n.b:extend(.c) { background: blue; }\n');
+    fs.writeFileSync(path.join(dir, 'main.less'), '@import "base.less";\n.a:extend(.b) { font-weight: bold; }\n');
+    const compiler = makeCompiler();
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const result = await compiler.renderToResult(path.join(dir, 'main.less'), {});
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // routed via spine
+      expect(deriveCalls).toBe(0); // true fold — no eval output tree
+      expect(result.css).toBe(
+        '.c,\n.b,\n.a {\n  color: red;\n}\n.b,\n.a {\n  background: blue;\n}\n.a {\n  font-weight: bold;\n}\n'
+      );
+    } finally {
+      Rules.prototype.derive = originalDerive;
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('IMPORT-SPEC: a NON-foldable extend target through an import ABORTS to eval (byte-identical, no double-emit)', async () => {
+    // The clean-abort guardrail. `.x:extend(.nonexistent)` — the speculatively-admitted tree resolves
+    // its imports, the re-gate finds NO subject (imported or local) the target maps to, and ABORTS to
+    // eval. The abort is pre-first-byte, so the output equals eval exactly — crucially, the imported
+    // `.a` and the extender `.x` each emit EXACTLY ONCE (a double-write regression would emit both twice).
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-import-spec-abort-'));
+    fs.writeFileSync(path.join(dir, 'lib.less'), '.a {\n  color: red;\n}\n');
+    fs.writeFileSync(path.join(dir, 'main.less'), '@import "lib.less";\n.x:extend(.nonexistent) {\n  font-size: 12px;\n}\n');
+    const compiler = makeCompiler();
     const result = await compiler.renderToResult(path.join(dir, 'main.less'), {});
-    expect(spineRenderCounter.rootRenders).toBe(before); // eval path (extend-through-import wall)
-    expect(result.css).toBe('.x {\n  color: red;\n}\n'); // extend reached the suppressed `.a`
+    expect(result.css).toBe('.a {\n  color: red;\n}\n.x {\n  font-size: 12px;\n}\n');
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
@@ -1224,23 +1762,101 @@ describe('spine PRODUCTION-path ratchet (P2 wire-in)', () => {
     }
   });
 
-  it('IMPORTS increment 6: an INTERPOLATED-path import STAYS on eval (the `_isPathResolutionError` retry-lane wall)', async () => {
-    // An `@import "theme-@{t}.less"` with a FORWARD dependency (`@t` bound by a LATER
-    // import) resolves only via the eval-loop's path-resolution RETRY lane (defer, retry
-    // after later siblings bind the var) — no clean strictly-downward spine analogue. So
-    // the whole interpolated-path mode stays on eval (byte-identical). A regression that
-    // folds it would fail to resolve the forward-dependent path. DEFERRED (a REQUIRED P4
-    // item): a spine retry/defer-and-resume for forward-dependent interpolated imports.
+  it('IMPORT-SPEC: a FORWARD-dependent interpolated-path import (case B) FOLDS via the spine (defer + retry, no derive)', async () => {
+    // Interpolated-path case (B), import-spec routing. `@import "theme-@{t}.less"` where `@t` is bound
+    // by a LATER import — a FORWARD dependency. The gate admits interpolated paths speculatively; the
+    // wire pass attempts path eval against the live frame, `@t` is not yet bound, so `_preparePathIdentity`
+    // throws `_isPathResolutionError`. The wire pass DEFERS the failing import (mirroring the eval loop's
+    // `pendingImports` reorder), wires the rest — `vars.less` binds `@t` into the live frame — then RETRIES
+    // the deferred import, which now resolves `theme-@{t}` → `theme-a.less` and FOLDS through the spine.
+    // Byte-identical to eval, no output-tree derive. (Only a GENUINELY unresolvable path — the var never
+    // binds — still aborts to eval on the final drain.)
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-import-inc6-interp-'));
     fs.writeFileSync(path.join(dir, 'vars.less'), '@t: "a";\n');
     fs.writeFileSync(path.join(dir, 'theme-a.less'), '.x { color: red; }\n');
     fs.writeFileSync(path.join(dir, 'main.less'), '@import "theme-@{t}.less";\n@import "vars.less";\n');
     const compiler = makeCompiler();
-    const before = spineRenderCounter.rootRenders;
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const result = await compiler.renderToResult(path.join(dir, 'main.less'), {});
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // routed via spine
+      expect(deriveCalls).toBe(0); // true fold — no eval two-walk
+      expect(result.css).toBe('.x {\n  color: red;\n}\n');
+    } finally {
+      Rules.prototype.derive = originalDerive;
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('IMPORT-SPEC: a case-B interpolated-path import whose body has an `(inline)` sub-import ABORTS to eval (residual)', async () => {
+    // RESIDUAL (ratchet-locked, IOU). The pure case-B shape folds (see above), but a DEFERRED
+    // (forward-dependent) interpolated-path import whose resolved body carries an `(inline)` sub-import
+    // is NOT foldable byte-identically: eval's deferred-import RETRY lane (`drainPendingImports`) emits an
+    // extra blank line AFTER a re-evaluated inline block, which the clean spine fold does not reproduce.
+    // The wire pass detects the inline sub-import in the DEFERRED body and aborts the whole tree to eval
+    // (pre-first-byte), so the output — including eval's post-inline blank line — is byte-identical. This
+    // is the `import-interpolation` corpus fixture shape. Case A (downward, non-deferred) is unaffected:
+    // its inline body agrees with eval and folds. IOU: reproduce eval's reorder spacing on the spine (or
+    // eliminate the eval-side artifact) so this abort-gate can be removed at P4.
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-import-inc6-interp-inline-'));
+    fs.writeFileSync(path.join(dir, 'vars.less'), '@t: "x";\n');
+    fs.writeFileSync(path.join(dir, 'raw.less'), '#logo {\n  w: 1px;\n}\n');
+    fs.writeFileSync(path.join(dir, 'theme-x.less'), '@import (inline) "raw.less";\n.k {\n  c: 1;\n}\n');
+    fs.writeFileSync(path.join(dir, 'main.less'), '@import "theme-@{t}.less";\n@import "vars.less";\n');
+    const compiler = makeCompiler();
     const result = await compiler.renderToResult(path.join(dir, 'main.less'), {});
-    expect(spineRenderCounter.rootRenders).toBe(before); // eval path (interpolated-path retry wall)
-    expect(result.css).toBe('.x {\n  color: red;\n}\n'); // forward-dependent path resolved via retry
+    // Eval oracle: the post-inline blank line (`}\n\n.k`) from the retry-lane re-eval — matched by abort.
+    expect(result.css).toBe('#logo {\n  w: 1px;\n}\n\n.k {\n  c: 1;\n}\n');
     fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('IMPORT-SPEC: a GENUINELY-unresolvable interpolated-path import stays byte-identical to eval (final-drain abort)', async () => {
+    // RESIDUAL of the case-B defer/retry fold. `@import "theme-@{nope}.less"` where `@nope` is NEVER
+    // bound (no later import supplies it). The wire pass defers the failing import, drains the rest
+    // (nothing binds `@nope`), then RE-THROWS `_isPathResolutionError` on the final non-retry drain —
+    // exactly as eval's `drainPendingImports(false)` does. The re-thrown error surfaces at `onWireError`
+    // and aborts to eval (pre-first-byte), so the output equals eval by construction. Locks the abort
+    // lane: a genuinely-unresolvable path is NOT silently folded to empty by the spine — eval owns it.
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-import-inc6-unresolvable-'));
+    fs.writeFileSync(path.join(dir, 'main.less'), '@import "theme-@{nope}.less";\n.y {\n  a: 1;\n}\n');
+    const compiler = makeCompiler();
+    const result = await compiler.renderToResult(path.join(dir, 'main.less'), {});
+    // Eval oracle: an unbound interpolation var in a path drops the whole render to empty (unchanged
+    // from the base tip — established eval behavior, not a spine artifact).
+    expect(result.css).toBe('');
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('IMPORT-SPEC: a DOWNWARD-resolvable interpolated-path import (case A) FOLDS via the spine (no derive)', async () => {
+    // Interpolated-path case (A), import-spec routing. `@import "theme-@{t}.less"` where `@t` is bound
+    // EARLIER in document order. The wire pass resolves `@{t}` against the live root frame (populated at
+    // wire time), so the import FOLDS through the spine byte-identical to eval — no output-tree derive.
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-import-spec-interpA-'));
+    fs.writeFileSync(path.join(dir, 'theme-dark.less'), '.dark {\n  color: black;\n}\n');
+    fs.writeFileSync(path.join(dir, 'main.less'), '@t: dark;\n@import "theme-@{t}.less";\n.main {\n  padding: 1px;\n}\n');
+    const compiler = makeCompiler();
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const result = await compiler.renderToResult(path.join(dir, 'main.less'), {});
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // routed via spine
+      expect(deriveCalls).toBe(0); // true fold — no eval output tree
+      expect(result.css).toBe('.dark {\n  color: black;\n}\n.main {\n  padding: 1px;\n}\n');
+    } finally {
+      Rules.prototype.derive = originalDerive;
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it('COMBINATOR SUBJECT: a `>`/`+` subject partially extended folds through the spine (in-place `:is`-wrap)', async () => {
@@ -1344,5 +1960,902 @@ describe('spine PRODUCTION-path ratchet (P2 wire-in)', () => {
     const css = await compiler.renderString(`@name: foo;\n.@{name} { color: red; }`, { language: 'less' });
     expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
     expect(css).toBe('.foo {\n  color: red;\n}\n');
+  });
+
+  // MIXIN-AS-VALUE / detached-ruleset argument (FOLDED). A mixin call passing a
+  // detached ruleset — by REFERENCE (`.wrap(@ruleset)`) or as a NAMED block arg
+  // (`.wrap(@r: { … })`) — used to silently MIS-FOLD to EMPTY output: the outer
+  // call passed the static gate, its non-simple surface was rejected to the eval
+  // terminal, but the still-live surface sink intercepted the NESTED `@r()`
+  // detached-call resolution and dropped its output. The sink is now SUSPENDED
+  // across a rejected candidate's `rules.eval` fall-back (callable-candidate-output.ts),
+  // so the nested detached-ruleset call materializes its own output. The root folds
+  // through the spine; the detached-ruleset-arg call takes the eval-fallback rung
+  // (byte-identical to the pure-eval oracle). A regression re-corrupting the nested
+  // call (empty output) trips these RED.
+  it('MIXIN-AS-VALUE: detached-ruleset by REFERENCE folds through the spine (no empty-output mis-fold)', async () => {
+    const compiler = makeCompiler();
+    const before = spineRenderCounter.rootRenders;
+    const css = await compiler.renderString(
+      `@ruleset: {\n  color: black;\n}\n.wrap(@r) {\n  @r();\n}\n.a {\n  .wrap(@ruleset);\n}`,
+      { language: 'less' }
+    );
+    expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+    expect(css).toBe('.a {\n  color: black;\n}\n');
+  });
+
+  it('MIXIN-AS-VALUE: detached-ruleset as a NAMED block arg folds through the spine', async () => {
+    const compiler = makeCompiler();
+    const before = spineRenderCounter.rootRenders;
+    const css = await compiler.renderString(
+      `.wrap(@r) {\n  @r();\n}\n.a {\n  .wrap(@r: {\n    color: red;\n  });\n}`,
+      { language: 'less' }
+    );
+    expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+    expect(css).toBe('.a {\n  color: red;\n}\n');
+  });
+
+  // Property-MERGE fold: BOTH comma (`+:`) and space (`+_:`) same-body merge chains
+  // coalesce on the single pass (no eval two-walk), byte-identical to the eval
+  // oracle. Before this, only space folded — the raw comma assign `+,:` was missing
+  // from the spine's `MERGE_ASSIGNS` (emit-walk) and the `spine-merge` recognizer, so
+  // a comma-merge body silently routed to eval. A regression re-dropping `+,:` from
+  // either set trips this RED (derive != 0).
+  it('PROPERTY-MERGE: comma `+:` folds through the spine (Rules.derive uncalled)', async () => {
+    const compiler = makeCompiler();
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const css = await compiler.renderString(
+        `.r {\n  transform+: a;\n  transform+: b;\n}`,
+        { language: 'less', suppressWarnings: true }
+      );
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+      expect(deriveCalls).toBe(0); // folded — no eval two-walk
+      expect(css).toBe('.r {\n  transform: a, b;\n}\n');
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
+  });
+
+  it('PROPERTY-MERGE: space `+_:` folds through the spine (Rules.derive uncalled)', async () => {
+    const compiler = makeCompiler();
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const css = await compiler.renderString(
+        `.r {\n  transform+_: a;\n  transform+_: b;\n}`,
+        { language: 'less', suppressWarnings: true }
+      );
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+      expect(deriveCalls).toBe(0); // folded — no eval two-walk
+      expect(css).toBe('.r {\n  transform: a b;\n}\n');
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
+  });
+
+  // A `$prop` read of a merged property, resolved MID-emit on the spine, must see the
+  // coalesced value (the anchor's combined chain), not the last merge sibling's own
+  // truncated value. Folds (derive=0); a regression on the context merge-plan hookup
+  // trips this RED (`foo` reads `b` / `a` only).
+  it('PROPERTY-MERGE: a $ref reads the coalesced merged value on the spine (space + comma)', async () => {
+    const compiler = makeCompiler();
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const space = await compiler.renderString(
+        `.r {\n  transform+_: a;\n  transform+_: b;\n  foo: $transform;\n}`,
+        { language: 'less', suppressWarnings: true }
+      );
+      const comma = await compiler.renderString(
+        `.s {\n  transform+: a;\n  transform+: b;\n  foo: $transform;\n}`,
+        { language: 'less', suppressWarnings: true }
+      );
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+      expect(deriveCalls).toBe(0); // folded — no eval two-walk
+      expect(space).toBe('.r {\n  transform: a b;\n  foo: a b;\n}\n');
+      expect(comma).toBe('.s {\n  transform: a, b;\n  foo: a, b;\n}\n');
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
+  });
+
+  // LEAKY forward-propagation FOLD (gate 9 lifted). In leaky Less mode a mixin
+  // body's plain `@x: …` VarDeclaration leaks into the CALLER scope; a same-scope
+  // consumer reads it. The spine now folds this (caller-frame binding injection),
+  // byte-identical to less@4. A regression that drops the injection trips these RED.
+  it('LEAKY: a mixin-body var leaks into the caller ruleset (later consumer folds via the spine)', async () => {
+    const compiler = makeCompiler();
+    const css = await compiler.renderString(
+      `.m() {\n  @x: 10px;\n}\n.a {\n  .m();\n  width: @x;\n}`,
+      { language: 'less', suppressWarnings: true }
+    );
+    // eval + less@4 oracle: `.a { width: 10px; }`.
+    expect(css).toBe('.a {\n  width: 10px;\n}\n');
+  });
+
+  it('LEAKY: a leaked var is visible to an EARLIER caller sibling (Less lazy scope, not source-order gated)', async () => {
+    const compiler = makeCompiler();
+    const css = await compiler.renderString(
+      `.m() {\n  @x: 10px;\n}\n.a {\n  width: @x;\n  .m();\n}`,
+      { language: 'less', suppressWarnings: true }
+    );
+    // less@4: the whole scope resolves `@x` last-wins → `10px`.
+    expect(css).toBe('.a {\n  width: 10px;\n}\n');
+  });
+
+  it('LEAKY: a PARAM-dependent leak (`@x: @a`) reads the bound param through the fold', async () => {
+    const compiler = makeCompiler();
+    const css = await compiler.renderString(
+      `.m(@a) {\n  @x: @a;\n}\n.a {\n  .m(20px);\n  width: @x;\n}`,
+      { language: 'less', suppressWarnings: true }
+    );
+    // less@4: `.a { width: 20px; }`.
+    expect(css).toBe('.a {\n  width: 20px;\n}\n');
+  });
+
+  it('LEAKY: a ROOT-level mixin call leaks into a later root SIBLING ruleset', async () => {
+    const compiler = makeCompiler();
+    const css = await compiler.renderString(
+      `.setH() {\n  @height: 1024px;\n}\n.setH();\n.heightIsSet {\n  height: @height;\n}`,
+      { language: 'less', suppressWarnings: true }
+    );
+    // less@4: `.heightIsSet { height: 1024px; }` (the mixin def + call emit nothing).
+    expect(css).toBe('.heightIsSet {\n  height: 1024px;\n}\n');
+  });
+
+  it('LEAKY: the leak is SCOPED to the calling ruleset (a later out-of-scope sibling sees the outer binding)', async () => {
+    const compiler = makeCompiler();
+    const css = await compiler.renderString(
+      `@x: 1px;\n.a {\n  width: @x;\n}\n.m() {\n  @x: 10px;\n}\n.b {\n  .m();\n  width: @x;\n}\n.c {\n  width: @x;\n}`,
+      { language: 'less', suppressWarnings: true }
+    );
+    // less@4: `.b` sees the leak (`10px`); `.a`/`.c` see the outer `@x` (`1px`).
+    expect(css).toBe('.a {\n  width: 1px;\n}\n.b {\n  width: 10px;\n}\n.c {\n  width: 1px;\n}\n');
+  });
+
+  it('LEAKY: a folded leak does NOT enter the eval two-walk (Rules.derive uncalled for the container-body shape)', async () => {
+    const compiler = makeCompiler();
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const css = await compiler.renderString(
+        `.m() {\n  @x: 10px;\n}\n.a {\n  .m();\n  width: @x;\n}`,
+        { language: 'less', suppressWarnings: true }
+      );
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+      expect(deriveCalls).toBe(0); // true fold — no eval output tree
+      expect(css).toBe('.a {\n  width: 10px;\n}\n');
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
+  });
+
+  it('NON-LEAKY (strict scope): a mixin-body var does NOT leak — the consumer is unresolved', async () => {
+    const strictCompiler = new Compiler({
+      output: { collapseNesting: true },
+      compile: { plugins: [lessPlugin({ leakyScope: false }), lessCompatPlugin({})] }
+    });
+    await expect(
+      strictCompiler.renderString(
+        `.m() {\n  @x: 10px;\n}\n.a {\n  .m();\n  width: @x;\n}`,
+        { language: 'less', suppressWarnings: true }
+      )
+    ).rejects.toThrow(/not defined/);
+  });
+
+  it('GUARD-FOLD: the FULL `namespacing-7` fixture (bare-`&` `when` ruleset guards) FOLDS byte-identically (derive=0)', async () => {
+    // `namespacing-7.less`: root-level `& when (#ns.options[option])` / `& when (@ns[@options][option])`
+    // guarded rulesets (both static-namespace `#ns` and detached-ruleset `@ns` lookups), including
+    // `= true` (pass) and `= false` (fail → NO output) branches. The guard is evaluated at DESCENT
+    // against the enclosing frame — exactly as `Ruleset.evalNode`'s definition-time guard eval
+    // (`Condition.evaluateBoolean` / `resultPasses`) — so a failing branch (`.no-reach`/`.dr-no-reach`)
+    // emits nothing and a passing one descends its body, byte-identical to eval / less@4's
+    // `namespacing-7.css`, with NO eval two-walk.
+    const compiler = makeCompiler();
+    const lessPath = path.join(testDataRoot, 'tests-config/namespacing/namespacing-7.less');
+    const expected = readFileSync(path.join(testDataRoot, 'tests-config/namespacing/namespacing-7.css'), 'utf8');
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const result = await compiler.renderToResult(lessPath, {});
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path (guard fold)
+      expect(deriveCalls).toBe(0); // no eval two-walk → the guard-fold, not a silent eval fallback
+      expect(result.css).toBe(expected); // byte-identical: `= false` branches suppressed
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
+  });
+
+  it('GUARD-FOLD: ruleset-level `when` PASS/FAIL + NESTED guarded rulesets FOLD byte-identically (derive=0)', async () => {
+    // A `when`-guarded ruleset folds on the spine: PASS descends the body, FAIL emits nothing —
+    // at root AND nested, byte-identical to the eval path. The guard eval mirrors
+    // `Ruleset.evalNode` exactly (`Condition.evaluateBoolean`), so no eval output-tree is
+    // materialized (`derive` uncalled). A NAMED guarded ruleset (`.wrap when`) and a bare-`&`
+    // guarded ruleset both fold.
+    const compiler = makeCompiler();
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const src = [
+        '@opt: true;',
+        '@off: false;',
+        '.pass when (@opt) { color: red; }',        // PASS at root
+        '.fail when (@off) { color: blue; }',        // FAIL at root → no output
+        '.a {',
+        '  .nested-pass when (@opt) { c: d; }',      // PASS nested
+        '  .nested-fail when (@off) { c: e; }',      // FAIL nested → no output
+        '  e: f;',
+        '}'
+      ].join('\n');
+      const before = spineRenderCounter.rootRenders;
+      const css = await compiler.renderString(src, { language: 'less', suppressWarnings: true });
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+      expect(deriveCalls).toBe(0); // true fold — no eval output tree
+      expect(css).toBe('.pass {\n  color: red;\n}\n.a .nested-pass {\n  c: d;\n}\n.a {\n  e: f;\n}\n');
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
+  });
+
+  it('NESTED-DEF (keystone 6b): `namespacing-4` (static namespace-path nested def `#library.core.colors`) FOLDS byte-identically (derive=0)', async () => {
+    // `namespacing-4.less`: `#library { .core() { .colors() { … } } }` — a mixin DEFINITION
+    // nested inside `.core()`, reached ONLY through the STATIC authored-namespace path
+    // `#library.core.colors()`. `findMixinPath` resolves the path by walking authored
+    // container scopes (the gate-12 fallback drain) with NO dynamic per-scope registration,
+    // so the call resolves during the fold. `treeHasUnfoldableContainerBodyMixin` no longer
+    // defers a nested def whose only reachable calls are clean authored-namespace paths.
+    const compiler = makeCompiler();
+    const lessPath = path.join(testDataRoot, 'tests-config/namespacing/namespacing-4.less');
+    const expected = readFileSync(path.join(testDataRoot, 'tests-config/namespacing/namespacing-4.css'), 'utf8');
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const result = await compiler.renderToResult(lessPath, {});
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path (nested-def fold)
+      expect(deriveCalls).toBe(0); // no eval two-walk → true fold, not a silent eval fallback
+      expect(result.css).toBe(expected); // byte-identical to eval / less@4
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
+  });
+
+  it('NESTED-DEF (keystone 6b): `namespacing-3` (namespaced nested `.mixin` + detached-ruleset maps) FOLDS byte-identically (derive=0)', async () => {
+    // `namespacing-3.less`: `#ns { .mixin() { @height: 200px } }` consumed by a map-lookup
+    // (`#ns.mixin[@height]`), plus detached-ruleset maps (`@map: { … @colors: { … } }`) — the
+    // nested `@colors` is a NAMELESS Mixin (a map-lookup value), NOT a callable needing
+    // registration, so it no longer forces eval. All nested-def reachability is via static
+    // namespace-path / map-lookup, so the tree folds on the spine.
+    const compiler = makeCompiler();
+    const lessPath = path.join(testDataRoot, 'tests-config/namespacing/namespacing-3.less');
+    const expected = readFileSync(path.join(testDataRoot, 'tests-config/namespacing/namespacing-3.css'), 'utf8');
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const result = await compiler.renderToResult(lessPath, {});
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path (nested-def fold)
+      expect(deriveCalls).toBe(0); // no eval two-walk → true fold
+      expect(result.css).toBe(expected); // byte-identical to eval / less@4
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
+  });
+
+  it('NESTED-DEF RESIDUAL (keystone 6b boundary): a LEAKY bare-name nested-def call stays on eval (byte-identical)', async () => {
+    // The residual boundary: a nested def reached by a BARE (single-segment) re-registered
+    // name (`.lock-mixin(1)` leaks `.inner-locked-mixin` into the caller scope, then a sibling
+    // `.inner-locked-mixin()` resolves it) needs DYNAMIC per-scope registration the spine
+    // surface descent does not perform. `treeHasUnfoldableContainerBodyMixin` keeps such a
+    // tree on eval — byte-identical, NOT a silent fold. `derive` fires (the eval two-walk ran).
+    const compiler = makeCompiler();
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const src = [
+        '.lock-mixin(@a) {',
+        '  .inner-locked-mixin(@x: @a) when (@a = 1) { a: @a; x: @x; }',
+        '}',
+        '.call-lock-mixin {',
+        '  .lock-mixin(1);',
+        '  .call-inner-lock-mixin { .inner-locked-mixin(); }',
+        '}'
+      ].join('\n');
+      const css = await compiler.renderString(src, { language: 'less', suppressWarnings: true });
+      expect(deriveCalls).toBeGreaterThan(0); // eval two-walk ran — residual, not a fold
+      expect(css).toContain('a: 1');
+      expect(css).toContain('x: 1');
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
+  });
+
+  it('RUNG-1 (detached-ruleset call): a bound-mixin-call `@alias()` FOLDS byte-identically (derive=0)', async () => {
+    // The mixin-as-value fold (`528d465fc`) left the detached-ruleset CALL itself eval-routed.
+    // `@alias: .something(foo); @alias();` — the variable resolves to a detached-ruleset value
+    // (here a bound mixin-call surface), then `@alias()` calls it. The Less parser shapes the
+    // call as an `Expression` wrapping a `variable`-Reference `Call`; the spine now unwraps it
+    // (`unwrapDetachedRulesetCall`), gates the inner call as a mixin call, and drives it through
+    // the SAME `resolveSpineMixinCall` sink — the resolved surface folds inline, no output tree.
+    const compiler = makeCompiler();
+    const src = [
+      '.something(foo) { width: 10px; }',
+      '.rule-1 {',
+      '  @alias: .something(foo);',
+      '  @alias();',
+      '}'
+    ].join('\n');
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const css = await compiler.renderString(src, { language: 'less' });
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path (DR-call fold)
+      expect(deriveCalls).toBe(0); // no eval two-walk → true fold
+      expect(css).toBe('.rule-1 {\n  width: 10px;\n}\n');
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
+  });
+
+  it('RUNG-1 (detached-ruleset call): a literal detached-ruleset `@r()` FOLDS byte-identically (derive=0)', async () => {
+    // The functions-corpus shape: `@r: { c: 3 }; @r();` — a LITERAL detached ruleset bound to a
+    // variable then called. Resolves to a `Rules` surface routed through the callable
+    // special-case "detached ruleset called from a variable" arm, which now hands the wired
+    // surface to the spine sink instead of eval-materializing it.
+    const compiler = makeCompiler();
+    const src = [
+      '.host {',
+      '  @r: { c: 3; };',
+      '  @r();',
+      '}'
+    ].join('\n');
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const css = await compiler.renderString(src, { language: 'less' });
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before);
+      expect(deriveCalls).toBe(0); // literal detached-ruleset call folds through the sink
+      expect(css).toBe('.host {\n  c: 3;\n}\n');
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
+  });
+
+  it('DRARG-1 (detached ruleset passed as a mixin ARG): a variable-aliased DR arg FOLDS byte-identically (derive=0)', async () => {
+    // `namespacing-6` rule-2: a detached-ruleset value passed AS a mixin arg
+    // (`.wrapper(@alias)`, where `@alias: .something(foo)`). Arg-binding used to CLONE
+    // the bound `Rules` value (`cloneDefinedBoundValue` → `cloneBoundValue` → `Rules.clone`
+    // → derive) and the param-var reference READ cloned it again (`evaluateReferenceValueNode`
+    // → `cloneForPlacement` → derive) — two eval-route clones. The DR closes over the surface
+    // where it was WRITTEN (`_closureScope`, captured at arg-binding), so neither clone added
+    // isolation the call path needs. `cloneBoundValue` now binds the Rules surface directly and
+    // the param-var read routes through the shared-children preserved surface, folding onto the
+    // spine (`derive === 0`).
+    const compiler = makeCompiler();
+    const src = [
+      '.wrapper(@another-mixin) { @another-mixin(); }',
+      '.something(foo) { width: 10px; }',
+      '.rule-2 {',
+      '  @alias: .something(foo);',
+      '  .wrapper(@alias);',
+      '}'
+    ].join('\n');
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const css = await compiler.renderString(src, { language: 'less' });
+      expect(deriveCalls).toBe(0); // DR-arg binding + read fold onto the spine
+      expect(css).toBe('.rule-2 {\n  width: 10px;\n}\n');
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
+  });
+
+  it('DRARG-1 (inline DR-call as a mixin ARG): a literal `.mixin(.dr())` arg FOLDS byte-identically (derive=0)', async () => {
+    // `namespacing-6` rule-3: the detached-ruleset value is produced INLINE at the call site
+    // (`.wrapper(.something(foo))` / `.wrapper(.output-height())`) rather than aliased through a
+    // variable — the arg is the evaluated DR-call result, bound to the callee's param and called.
+    // Same fold: no bind-time clone, param-var read through the preserved surface (`derive === 0`).
+    const compiler = makeCompiler();
+    const src = [
+      '.wrapper(@another-mixin) { @another-mixin(); }',
+      '.something(foo) { width: 10px; }',
+      '.output-height() { height: 10px; }',
+      '.rule-3 {',
+      '  .wrapper(.something(foo));',
+      '  .wrapper(.output-height());',
+      '}'
+    ].join('\n');
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const css = await compiler.renderString(src, { language: 'less' });
+      expect(deriveCalls).toBe(0); // both inline DR-call args fold onto the spine
+      expect(css).toBe('.rule-3 {\n  width: 10px;\n  height: 10px;\n}\n');
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
+  });
+
+  it('LOOP-1 (each/$for): a container-nested `each(list, {…})` loop FOLDS byte-identically (derive=0)', async () => {
+    // `each(list, {…})` and `$for` both parse to a `For` node. A loop nested in a
+    // ruleset/at-rule now folds on the spine: `runSpineForExpansion` produces one
+    // bound-body surface per iteration (`For.spineIterationSurfaces`) and splices its
+    // children with the `@value`/`@key`/counter frame, so the loop-variable-bound
+    // decls resolve in-pass — no eval two-walk (`Rules.derive` = 0). An INTERPOLATED
+    // decl name (`item-@{value}`) resolves via the surface's registration prep.
+    const compiler = makeCompiler();
+    const src = '.paren-escapes {\n  each(~(1 2 3); {\n    item-@{value}: @value + 3;\n  })\n}';
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const css = await compiler.renderString(src, { language: 'less' });
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path (loop fold)
+      expect(deriveCalls).toBe(0); // loop iterations spliced on the spine, no output tree
+      expect(css).toBe('.paren-escapes {\n  item-1: 4;\n  item-2: 5;\n  item-3: 6;\n}\n');
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
+  });
+
+  it('LOOP-1 (merge across iterations): an `each(list, {p+_: …})` loop coalesces to ONE property, folded (derive=0)', async () => {
+    // The `starting-style` shape: each iteration emits a space-merge decl (`padding+_:`)
+    // and all iterations coalesce into a single property (eval flattens all iteration
+    // outputs into one body). The loop fold gives every iteration surface the SAME
+    // `mergeOwner` (the `For` node), so the post-expansion merge re-plan
+    // (`replanMergesIfExpanded`) coalesces the spliced merge decls exactly like a merge
+    // across the eval-flattened outputs.
+    const compiler = makeCompiler();
+    const src = '@supports (display: grid) {\n  each(1 2 3 4, {\n    padding+_: (@value * 10px);\n  });\n}';
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const css = await compiler.renderString(src, { language: 'less' });
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path (loop + merge fold)
+      expect(deriveCalls).toBe(0); // merge-across-iterations coalesced in-pass
+      expect(css).toBe('@supports (display: grid) {\n  padding: 10px 20px 30px 40px;\n}\n');
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
+  });
+
+  it('LOOP-1 RESIDUAL (root-direct loop): a ROOT-DIRECT `each(…)` stays on eval (byte-identical, distinct increment)', async () => {
+    // A loop DIRECTLY at document root renders through `Rules._emitRulesBody` (a distinct
+    // root emitter from the container serializer that owns `runSpineForExpansion`), which
+    // treats a `For` as a transparent child-Rules and emits its unexpanded body. So a
+    // root-direct loop stays on eval — byte-identical, a sequenced increment (the container-
+    // nested loop above folds). NOT a silent fold: `derive` fires.
+    const compiler = makeCompiler();
+    const src = 'each(1 2 3, {\n  .item-@{value} { width: (@value * 1px); }\n})';
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const css = await compiler.renderString(src, { language: 'less' });
+      expect(deriveCalls).toBeGreaterThan(0); // root-direct loop → eval, residual not a fold
+      expect(css).toBe('.item-1 {\n  width: 1px;\n}\n.item-2 {\n  width: 2px;\n}\n.item-3 {\n  width: 3px;\n}\n');
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
+  });
+
+  it('MIXVAL-1 (mixin-as-value / map-lookup): `@p: .mk-map(); …@p[key]` FOLDS byte-identically (derive=0)', async () => {
+    // A mixin DEFINITION bound to a variable (`@p: .mk-map()`) then map-subscripted
+    // (`@p[text]`) folds on the spine WITHOUT dedicated machinery: the var cell binds
+    // at scope-enter and `@p[key]` resolves via the KEPT `Reference.eval` against the
+    // live value-frame (`emitLeaf` → `node.eval`), exactly like the eval path. Was a
+    // first-reject (`bodyHasMixinDefinition && bodyHasCallInVarValue`); that gate was
+    // conservative and is removed. Byte-identical to eval + less@4.
+    const compiler = makeCompiler();
+    const src = '.mk-map() {\n  text: red;\n}\n@p: .mk-map();\n.x {\n  color: @p[text];\n}';
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const css = await compiler.renderString(src, { language: 'less' });
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path (mixin-as-value fold)
+      expect(deriveCalls).toBe(0); // map-lookup resolved in-pass, no output tree
+      expect(css).toBe('.x {\n  color: red;\n}\n');
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
+  });
+
+  it('MIXVAL-1 (nested container): a nested mixin-def + `@p: .mk-map()` + `@p[key]` FOLDS byte-identically (derive=0)', async () => {
+    // The same mixin-as-value/map-lookup shape nested one level under a container
+    // ruleset (d=3). The container descent threads the value-frame the same way, so
+    // the nested `@p[text]` resolves in-pass. Byte-identical to eval + less@4.
+    const compiler = makeCompiler();
+    const src = '.outer {\n  .mk-map() {\n    text: red;\n  }\n  @p: .mk-map();\n  .x {\n    color: @p[text];\n  }\n}';
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const css = await compiler.renderString(src, { language: 'less' });
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+      expect(deriveCalls).toBe(0);
+      expect(css).toBe('.outer .x {\n  color: red;\n}\n');
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
+  });
+
+  it('CHAIN-1 (transitive extend): the FULL `extend-chaining` corpus fixture FOLDS byte-identically (derive=0)', async () => {
+    // Single-file TRANSITIVE extend: `.a{…} .b:extend(.a){} .c:extend(.b){}` — `.c` picks up `.a`
+    // through the chain. Also exercises reverse-order chains, `all`-partial chains
+    // (`.g.h ← .i.j:extend(.g all) ← .k:extend(.i all)` → nested `:is(.g, :is(.i, .k).j).h`),
+    // 8-link multi-chains, self-reference (`.w:extend(.w)`), classic circular refs
+    // (`.x ← .y ← .z ← .x`), `&:extend` inside a ruleset, and the `@media (tv)`/`(plasma)`
+    // scoped block. SOLVE's document-level fixpoint drains every closure through the SHARED
+    // target index (`solve.ts`), so the whole file folds on the spine with NO eval two-walk.
+    // Was the `container:notRuleset [Extend]` first-reject → the chaining gate clauses in
+    // `isSpineExtendTopology` (`chainsIntoExtender` + the trailing `extenderSelectors.has(target)`
+    // reject) were removed; both were conservative once SOLVE handled the transitive closure.
+    const lessPath = path.join(testDataRoot, 'tests-unit/extend-chaining/extend-chaining.less');
+    const cssPath = lessPath.replace(/\.less$/, '.css');
+    const expected = readFileSync(cssPath, 'utf8');
+    const compiler = makeCompiler();
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const result = await compiler.renderToResult(lessPath, { outputFile: cssPath });
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path (transitive-extend fold)
+      expect(deriveCalls).toBe(0); // no eval two-walk → the fixpoint drained on the spine
+      expect(result.css).toBe(expected); // byte-identical to the owner-maintained expectation
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
+  });
+
+  it('ATSTMT-1 (bodyless CSS `@import` statement): `at-rules-keyword-comments` FOLDS byte-identically (derive=0)', async () => {
+    // A bodyless CSS `@import "x.css" screen /* c */, print;` statement parses as an
+    // `AtRuleStatement` (not a `StyleImport`) whose MULTI-item prelude (path + media/comment
+    // tail) the builder now wraps in an `Any` (F_STATIC) — so the spine admits it as a leaf
+    // and HOISTS it to the top-of-doc emitter via `queueTopImport` (eval parity), rather than
+    // emitting it at its authored source position (after the `@media` block). Was the
+    // `atRule:notAtRuleWithBody [@import]` first-reject (string prelude never F_STATIC).
+    const lessPath = path.join(testDataRoot, 'tests-unit/at-rules-keyword-comments/at-rules-keyword-comments.less');
+    const cssPath = lessPath.replace(/\.less$/, '.css');
+    const expected = readFileSync(cssPath, 'utf8');
+    const compiler = makeCompiler();
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const result = await compiler.renderToResult(lessPath, { outputFile: cssPath });
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+      expect(deriveCalls).toBe(0); // no eval two-walk → the CSS-import statement folded + hoisted
+      expect(result.css).toBe(expected); // byte-identical (import prepended before the @media block)
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
+  });
+
+  it('ATSTMT-2 (`@import`-in-`@layer` + bodyless `@layer` statement): `layer` FOLDS byte-identically (derive=0)', async () => {
+    // The full `layer` fixture: top-level CSS `@import url(...) layer(foo);` statements (multi-item
+    // static prelude → `Any` F_STATIC, hoisted), a bodyless `@layer reset, base, …;` and `@layer
+    // theme;` LAYER-ORDER statement (emitted INLINE at position via `isSpineFoldableStatementAtRule`),
+    // block `@layer name { … }` (incl. interpolated `@layer @layer-name`), a Less `@import` inside
+    // `@layer legacy { … }`, and deep nesting. Was the stacked `atRule:notAtRuleWithBody [AtRuleStatement
+    // @import]` / `[@layer]` first-rejects; folds byte-identically to the owner-maintained expectation.
+    const lessPath = path.join(testDataRoot, 'tests-unit/layer/layer.less');
+    const cssPath = lessPath.replace(/\.less$/, '.css');
+    const expected = readFileSync(cssPath, 'utf8');
+    const compiler = makeCompiler();
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const result = await compiler.renderToResult(lessPath, { outputFile: cssPath });
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+      expect(deriveCalls).toBe(0); // no eval two-walk → the whole layer file folded
+      expect(result.css).toBe(expected); // byte-identical to the owner-maintained expectation
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
+  });
+
+  it('STMTCALL void: a nested bare statement-position VOID function call folds (derive=0, emits nothing)', async () => {
+    // The `functions` fixture's `if((false), {g: 7});` shape — a `Call` whose name is a
+    // `function`-type Reference (NOT a mixin / DR call), condition false + no else branch → the
+    // eval call-lane resolves it to a VOID `Anonymous` that serializes empty, emitting nothing. It
+    // was the first-reject that forced its `#if` block off the spine (`isSimpleSpineLeaf` rejected
+    // any non-declaration/comment leaf). Now it folds inline (`resolveSpineStatementCallText`), the
+    // surrounding `/* void */` trivia preserved, byte-identical to eval + less@4 (which likewise
+    // emits nothing for the false-no-else `if` statement). A regression re-arming the leaf reject
+    // trips this RED.
+    const compiler = makeCompiler();
+    const src = `#if {\n  a: 1;\n  if((false), {g: 7}); /* void */\n  b: 2;\n}`;
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const css = await compiler.renderString(src, { language: 'less' });
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+      expect(deriveCalls).toBe(0); // no eval two-walk → the statement-call fold
+      // The void call emits NO statement line (and no stray `;`); the comment survives.
+      expect(css).toBe('#if {\n  a: 1;\n  /* void */\n  b: 2;\n}\n');
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
+  });
+
+  it('STMTCALL value: a nested bare statement-position VALUE function call folds (derive=0, emits its value, no `;`)', async () => {
+    // The `css-escapes` fixture's `e('…')` shape nested in a ruleset — a value-returning statement
+    // call (`e()` unquotes to raw text). The eval call-lane emits the resolved value as its own line
+    // with the source `;` DROPPED; the spine fold reproduces that exactly. A ROOT-DIRECT statement
+    // call stays on eval (the root emitter `_emitRulesBody` would append the `;`) — see
+    // `isSpineEligibleRoot`'s root-direct statement-call exclusion; this test covers the NESTED fold.
+    const compiler = makeCompiler();
+    const src = `.a { e('/* raw */'); color: red; }`;
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const css = await compiler.renderString(src, { language: 'less' });
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+      expect(deriveCalls).toBe(0); // no eval two-walk → the statement-call fold
+      expect(css).toBe('.a {\n  /* raw */\n  color: red;\n}\n');
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
+  });
+
+  it('STMTCALL (FOLDED): a DR-call + function-valued-decl tree FOLDS byte-identically (derive=0)', async () => {
+    // Was the `functions` fixture's stacked reject (`treeHasDetachedCallWithFunctionValueDecl`,
+    // now DELETED). ROOT CAUSE: on the spine there is no `Rules.eval` frame for the real root on
+    // `rulesEvalStack`, so a detached-ruleset body (`@r()`) evaluated inside the fold reached
+    // `_evalPreparedRules` as the FIRST `Rules.evalNode` — its `rulesEvalStack.length === 1`
+    // "am I the outermost root?" heuristic fired and REASSIGNED `context.root` to that nested
+    // body, clobbering the real root's built-in function registry. `findFunction`'s dead-end
+    // fallback then missed, so a downstream `length(@list)` emitted RAW. FIX: the spine sets
+    // `context.spineOwnsRoot`, and `_evalPreparedRules` skips the outermost-root reassignment
+    // under it — the registry stays reachable and the function computes. Folds through the spine,
+    // byte-identical to eval; also covers the mixin-body function-value surface (`replace(...)`).
+    const compiler = makeCompiler();
+    const src = `#i { @r: { c: 3; }; @r(); }\n#l { @list: a 1, b 2; length: length(@list); }`;
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const css = await compiler.renderString(src, { language: 'less' });
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path (DR-call + function-decl fold)
+      expect(deriveCalls).toBe(0); // no eval two-walk → the registry-reachability fix, not an eval fallback
+      expect(css).toBe('#i {\n  c: 3;\n}\n#l {\n  length: 2;\n}\n');
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
+  });
+
+  it('WHOLE-FIXTURE lock: `functions.less` FOLDS byte-identically (derive=0)', async () => {
+    // The stacked-head endgame for the `functions` corpus fixture: after the statement-call fold
+    // and the DR-call + function-value-decl registry-reachability fix (`spineOwnsRoot`), the entire
+    // fixture renders through the single spine pass with NO eval two-walk. A regression that re-arms
+    // an eval fallback (or reintroduces the root-clobber) trips this RED. Byte-identity is also
+    // asserted by all-less; this locks the FOLD (derive=0) so a silent eval fallback can't hide.
+    const compiler = new Compiler({
+      output: { collapseNesting: true },
+      compile: { plugins: [lessPlugin(), lessCompatPlugin({})] }
+    });
+    const lessPath = path.join(testDataRoot, 'tests-unit/functions/functions.less');
+    const cssPath = lessPath.replace(/\.less$/, '.css');
+    const expected = readFileSync(cssPath, 'utf8');
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const result = await compiler.renderToResult(lessPath, { outputFile: cssPath });
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+      expect(deriveCalls).toBe(0); // whole fixture folds — no eval two-walk
+      expect(result.css).toBe(expected);
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
+  });
+
+  it('ROOTCALL: a document-ROOT-level mixin call FOLDS (derive=0), parity with a nested call', async () => {
+    // The residual structural gap between a ROOT-direct mixin call and a CONTAINER-nested
+    // one: the container descent (`serializeRulesContainer` → `runSpineMixinExpansion`)
+    // folds a call via `resolveSpineMixinCall`, but the ROOT body emitter (`_emitRulesBody`)
+    // used to emit a root call via the eval-based `Call.render` (a `Rules.derive` two-walk).
+    // The root emitter now folds through the SAME sink — a nested-container surface body and
+    // a leaf both resolve against the mixin's param frame. A regression re-arming the root
+    // `n.render` eval terminal for a foldable call trips this RED. Guard has no bearing (any
+    // root call folded; the guard resolves inside the same drive).
+    const compiler = makeCompiler();
+    const src = `.m(@a: white) when (@a = white) {\n  .test { color: @a; }\n}\n.m();`;
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const css = await compiler.renderString(src, { language: 'less' });
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+      expect(deriveCalls).toBe(0); // no eval two-walk → the root call folded
+      expect(css).toBe('.test {\n  color: white;\n}\n');
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
+  });
+
+  it('WHOLE-FIXTURE lock: `comments.less` FOLDS byte-identically (derive=0)', async () => {
+    // The `comments` corpus fixture's last residual: a ROOT-level guarded mixin call
+    // (`.mixin_def_with_colors() when (@a = white)`) alongside a comment-prelude keyframes
+    // (`@-webkit-keyframes /* Safari */ hover`). The keyframes already folded; the root mixin
+    // call was the only eval two-walk left (it emitted a `.test-rule` output tree via
+    // `Call.render`). With the root-level mixin-call fold the whole fixture renders through
+    // the single spine pass. A regression re-arming an eval fallback trips this RED; byte-
+    // identity is also asserted by all-less, this locks the FOLD (derive=0).
+    const compiler = new Compiler({
+      output: { collapseNesting: true },
+      compile: { plugins: [lessPlugin(), lessCompatPlugin({})] }
+    });
+    const lessPath = path.join(testDataRoot, 'tests-unit/comments/comments.less');
+    const cssPath = lessPath.replace(/\.less$/, '.css');
+    const expected = readFileSync(cssPath, 'utf8');
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const result = await compiler.renderToResult(lessPath, { outputFile: cssPath });
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+      expect(deriveCalls).toBe(0); // whole fixture folds — no eval two-walk
+      expect(result.css).toBe(expected);
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
+  });
+
+  it('WHOLE-FIXTURE lock: `css-escapes.less` FOLDS byte-identically (derive=0)', async () => {
+    // The `css-escapes` corpus fixture's last residual was a document-ROOT-direct bare
+    // statement-position function call (`e('/* anything to unquote */');`). It folded
+    // nested in a container but a root-direct statement call renders through the root
+    // emitter (`_emitRulesBody`), which used to emit the call's resolved text PLUS the
+    // source `requiredSemi` `;` — so the whole tree was routed to eval. The root emitter
+    // grew the same resolve-inline-and-drop-`;` branch (`resolveSpineStatementCallText`,
+    // void → suppressed) the container leaf tail uses, so the fixture — including the
+    // escaped-selector nested mixin call `.mixin\\!tUp()` inside `.\\34 04 strong` — now
+    // renders through the single spine pass. A regression re-arming an eval fallback for a
+    // root-direct statement call trips this RED; byte-identity is also asserted by all-less.
+    const compiler = new Compiler({
+      output: { collapseNesting: true },
+      compile: { plugins: [lessPlugin(), lessCompatPlugin({})] }
+    });
+    const lessPath = path.join(testDataRoot, 'tests-unit/css-escapes/css-escapes.less');
+    const cssPath = lessPath.replace(/\.less$/, '.css');
+    const expected = readFileSync(cssPath, 'utf8');
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const result = await compiler.renderToResult(lessPath, { outputFile: cssPath });
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+      expect(deriveCalls).toBe(0); // whole fixture folds — no eval two-walk
+      expect(result.css).toBe(expected);
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
   });
 });

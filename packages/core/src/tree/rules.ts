@@ -34,7 +34,8 @@ import {
   type DeclarationFindOptions
 } from './util/lookup-utils.js';
 import { processExtends } from './util/extend-roots.js';
-import { isSpineEligibleRoot, renderRootViaSpine, isSpineFoldableImport, isSpineFoldableImportBody, assignSpineChildIndices, spineImportDedupeVerdict, withSpineMultipleScope } from './util/emit-walk.js';
+import { isSpineEligibleRoot, renderRootViaSpine, SPINE_ABORT_TO_EVAL, isSpineFoldableImport, isSpineFoldableImportBody, isSpineFoldableCssImportStatement, assignSpineChildIndices, spineImportDedupeVerdict, withSpineMultipleScope, isSpineEligibleMixinCall, resolveSpineMixinCall, isSpineFoldableStatementCall } from './util/emit-walk.js';
+import type { SpineMixinCallResolution } from './util/emit-walk.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { Nil } from './nil.js';
 import { VarDeclaration } from './declaration-var.js';
@@ -45,7 +46,11 @@ import {
   normalizeBlockTrivia,
   normalizeIndent,
   serializeRulesContainerInline,
-  hasPrintableTriviaAt
+  hasPrintableTriviaAt,
+  withSpineMergePlan,
+  resolveSpineLeafText,
+  resolveSpineStatementCallNode,
+  serializeSpineStatementCallNode
 } from './util/serialize-helper.js';
 import type { AtRule } from './at-rule.js';
 import type { AtRuleStatement } from './at-rule-statement.js';
@@ -4079,7 +4084,15 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         despiteMixinNamespaceOut
       );
       if (rulesetNamespaceFast !== undefined) {
-        return rulesetNamespaceFast.length > 0 ? rulesetNamespaceFast : undefined;
+        if (rulesetNamespaceFast.length > 0) {
+          return rulesetNamespaceFast;
+        }
+        // The ruleset-form walk hit a DEFINITE MISS at this scope (a same-named
+        // local namespace exists but does not define the member). Drain the import
+        // fallback before conceding: an imported same-named namespace may define
+        // the member (`#library.add-one`, defined only in the import). A local hit
+        // never reaches here, so this only ADDS resolution the primary walk missed.
+        return this.drainNamespacePathFallback(keys, filterType, options);
       }
       if (despiteMixinNamespaceOut?.entries !== undefined && despiteMixinNamespaceOut.entries.length > 0) {
         rulesetNamespaceUnion = despiteMixinNamespaceOut.entries;
@@ -4146,7 +4159,12 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
             local: options.local
           });
           if (namespaceRulesets.length !== 0) {
-            return undefined;
+            // A LOCAL ruleset-form namespace owns the head (`#library { .sizes() }`)
+            // so this mixin walk defers to the ruleset path (which already ran and
+            // missed the member locally). Before conceding, drain the import
+            // fallback: an imported same-named namespace may define the member the
+            // local one does not (`#library.add-one`, defined only in the import).
+            return this.drainNamespacePathFallback(keys, filterType, options);
           }
           const exactRulesetPath = this.findCallableRulesetPath(keys, {
             hasTarget: options.hasTarget,
@@ -4156,7 +4174,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
             return exactRulesetPath;
           }
         }
-        return undefined;
+        return this.drainNamespacePathFallback(keys, filterType, options);
       }
       compoundPrefixFast = this.findCompoundPrefixPath(keys, options);
       mixinNamespaceFast = this.findCallableDescendants(
@@ -4194,7 +4212,90 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       }
       return merged;
     }
+    // FALLBACK-FRAME DRAIN (namespace path). The head-namespace resolvers above
+    // consult only `this`'s primary scope chain, so a namespace whose head is
+    // defined ONLY on an imported fallback frame (`linkImportFallbackFrame`) — or
+    // a member (`#library.add-one`) that a same-named LOCAL namespace does not
+    // define — is invisible once the primary walk exhausts. Mirror the string-key
+    // `findMixin` drain: AFTER the primary walk misses, re-run the SAME path
+    // against each fallback frame's rulesNode so an imported namespace resolves
+    // (byte-identical to the eval path, whose `findMixin` already drains fallback).
+    // Fallbacks are consulted only when the primary walk found nothing, so a local
+    // hit always wins. Zero-cost when no fallback frame is linked (the common
+    // case — the guard bails before touching the chain).
+    if (combined === undefined || combined.length === 0) {
+      const drained = this.drainNamespacePathFallback(keys, filterType, options);
+      if (drained !== undefined) {
+        return drained;
+      }
+    }
     return combined;
+  }
+
+  /**
+   * FALLBACK-FRAME DRAIN for a namespace path (`#library.add-one`). The
+   * head-namespace resolvers in `findMixinPath` consult only `this`'s primary
+   * scope chain, so a namespace member defined ONLY on an imported fallback frame
+   * (`linkImportFallbackFrame` / `wireSpineImports`) — including a member a
+   * same-named LOCAL namespace does not define — is invisible once the primary
+   * walk exhausts. Mirrors the string-key `findMixin` fallback drain: re-run the
+   * SAME path against each fallback frame's rulesNode AFTER the primary walk
+   * misses, so a local hit always wins and an imported namespace still resolves
+   * (byte-identical to the eval path, whose `findMixin` already drains fallback).
+   *
+   * Zero-cost when no fallback frame is linked (the common case): the guard bails
+   * before allocating anything or touching the chain. Returns `undefined` when no
+   * fallback frame produced a match (the caller keeps its own miss verdict).
+   */
+  private drainNamespacePathFallback(
+    keys: string[],
+    filterType: string | undefined,
+    options: CallableFindOptions
+  ): MixinEntry[] | undefined {
+    const primaryFrame = this._scopeFrame;
+    if (!primaryFrame) {
+      return undefined;
+    }
+    // Gather the fallback heads reachable from the primary scope chain, in
+    // encounter order (parent-chain first) — mirrors the string-key `findMixin`
+    // drain. The fallback link installed by `linkImportFallbackFrame` hangs off
+    // the frame that OWNED the import (often an ENCLOSING frame, not the leaf
+    // lookup scope), so the leaf's own `.fallbackFrame` may be undefined while an
+    // ancestor carries the imported surface. Walking parents only when
+    // `searchParents` is on keeps a `local`/no-parent lookup zero-extra-cost.
+    const fallbackHeads: ScopeFrame[] = [];
+    let cursor: ScopeFrame | undefined = primaryFrame;
+    const searchParents = options.searchParents !== false;
+    while (cursor) {
+      let head: ScopeFrame | undefined = cursor.fallbackFrame;
+      while (head) {
+        fallbackHeads.push(head);
+        head = head.fallbackFrame;
+      }
+      if (!searchParents) {
+        break;
+      }
+      cursor = cursor.parent;
+    }
+    if (fallbackHeads.length === 0) {
+      return undefined;
+    }
+    const noParentOptions: CallableFindOptions =
+      options.searchParents === false ? options : { ...options, searchParents: false };
+    for (let i = 0; i < fallbackHeads.length; i++) {
+      const fallbackFrame = fallbackHeads[i]!;
+      if (isNode(fallbackFrame.rulesNode, N.Rules)) {
+        const fallbackMatches = fallbackFrame.rulesNode.findMixinPath(
+          keys,
+          filterType,
+          noParentOptions
+        );
+        if (fallbackMatches !== undefined && fallbackMatches.length > 0) {
+          return fallbackMatches;
+        }
+      }
+    }
+    return undefined;
   }
 
   findFunction(
@@ -4521,7 +4622,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       if (cached.dedupe) {
         return undefined;
       }
-      return isSpineFoldableImportBody(cached.body) ? foldBody(cached.body, cached.multiple, cached.reference) : evalFallback();
+      return isSpineFoldableImportBody(cached.body, options.spineExtendHeaders !== undefined) ? foldBody(cached.body, cached.multiple, cached.reference) : evalFallback();
     }
     const applyFresh = (resolved: SpineImportResolution): MaybePromise<void> => {
       if (resolved.kind === 'css') {
@@ -4533,7 +4634,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       if (spineImportDedupeVerdict(resolved.resolvedPath, resolved.multiple, options)) {
         return undefined;
       }
-      return isSpineFoldableImportBody(resolved.body) ? foldBody(resolved.body, resolved.multiple, resolved.reference) : evalFallback();
+      return isSpineFoldableImportBody(resolved.body, options.spineExtendHeaders !== undefined) ? foldBody(resolved.body, resolved.multiple, resolved.reference) : evalFallback();
     };
     const resolution = importNode.resolveForSpine(context);
     return isThenable(resolution) ? resolution.then(applyFresh) : applyFresh(resolution);
@@ -4671,6 +4772,17 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       if (mode === 'render' && context && options.spineMode && isSpineFoldableImport(n)) {
         return this._emitSpineImportFold(n as unknown as StyleImport, options, context, emitNode);
       }
+      // Bodyless CSS `@import` STATEMENT (`AtRuleStatement`, e.g. `@import "x.css"
+      // screen;` or `@import url(...) layer(foo);`). Eval hoists it to the top-of-doc
+      // emitter via `prepareRegistration` → `queueTopImport` (see below); the spine
+      // does the SAME here so it prepends in document order rather than emitting at
+      // its authored source position (which may follow a `@media`/`@layer` block).
+      // `renderRootViaSpine` flushes `context.topImports` ahead of the body. Only a
+      // static prelude reaches here (`isSpineFoldableCssImportStatement`).
+      if (mode === 'render' && context && options.spineMode && isSpineFoldableCssImportStatement(n)) {
+        queueTopImport(context, n as unknown as AtRuleStatement);
+        return;
+      }
       const isContainer = n.type === 'Ruleset' || n.type === 'AtRule' || n.type === 'Rules';
       if (isContainer && n.type === 'Rules') {
         emitLeadingBlockCommentForNode(n);
@@ -4784,24 +4896,205 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         markEmitted(n);
         return;
       }
-      const output = n.render(context!, options);
-      const finishOutput = (resolvedOutput: string): void => {
-        restorePrintState(options, leafSaved);
-        if (!w.hasContentSince(leafMark)) {
-          w.restore(leafMark);
-          if (resolvedOutput) {
-            emitCaptured(resolvedOutput, n, prefix);
+      // ROOT-DIRECT statement-position FUNCTION call (`e('…');`) fold. Mirrors the
+      // CONTAINER path's `finishLeaf` (serialize-helper): evaluate + serialize the
+      // resolved value inline, DROP the source `requiredSemi` `;` (eval emits the
+      // value/void with no trailing `;`), suppress a void result. The resolved node is
+      // first run through `checkValidNodes` at ROOT (`F_ALLOW_ROOT`) so a value-returning
+      // call that resolves to a non-statement node (`rgba(0,0,0,0);` → a `Color`) throws
+      // `eval/invalid-statement` exactly as the eval terminal did — a legal statement
+      // node (`e('…')` → an `Anonymous`) passes. Byte-identical to the eval terminal that
+      // previously handled this at root, so the root gate no longer forces it to eval.
+      if (mode === 'render' && context && options.spineMode && isSpineFoldableStatementCall(n)) {
+        const resolvedNode = resolveSpineStatementCallNode(n, options);
+        const finishStatementCall = (resolved: Node | Nil | undefined): void => {
+          restorePrintState(options, leafSaved);
+          if (this === context.root && resolved && !(resolved instanceof Nil)) {
+            checkValidNodes([resolved], context, true, false);
           }
-          return;
+          const trimmed = serializeSpineStatementCallNode(resolved, options).trim();
+          if (!trimmed) {
+            w.restore(leafMark);
+            return;
+          }
+          w.add(trimmed, n);
+          w.add('\n');
+          markEmitted(n);
+        };
+        return isThenable(resolvedNode)
+          ? resolvedNode.then(finishStatementCall)
+          : finishStatementCall(resolvedNode);
+      }
+      // A document-ROOT-level mixin CALL: mark the drive so the callable terminal
+      // rejects a body that drops a bare property at the root (eval-path parity with
+      // `checkValidNodes`' `isRoot && fromCallOutput` rule; the spine emits the call
+      // as text with no output tree to walk post-hoc). Scoped to this render only —
+      // a call nested in a selector container never sets it (folded property legal).
+      const marksRootCallEmit = mode === 'render'
+        && options.spineMode === true
+        && !!context
+        && this === context.root
+        && isSpineEligibleMixinCall(n);
+      const savedRootCallEmit = context?.spineRootCallEmit;
+      const savedRootCallEmitFrame = context?.spineRootCallEmitFrame;
+      const restoreRootCallEmit = (): void => {
+        if (marksRootCallEmit) {
+          context!.spineRootCallEmit = savedRootCallEmit;
+          context!.spineRootCallEmitFrame = savedRootCallEmitFrame;
         }
-        if (n.requiredSemi && n.options.semi !== false) {
-          w.add(';', n);
-        }
-        markEmitted(n);
       };
-      return isThenable(output)
-        ? output.then(finishOutput)
-        : finishOutput(output);
+      if (marksRootCallEmit) {
+        context!.spineRootCallEmit = true;
+        // Capture the TRUE source-root caller frame for leaky injection: `this` is
+        // the root here (`this === context.root`), but the nested call eval below
+        // reassigns `context.root`, so a later injection can't recover it.
+        context!.spineRootCallEmitFrame = this;
+      }
+      // ROOT-LEVEL mixin CALL fold (cutover P4, UNIFIED-EVAL-EMIT-DESIGN §2/§3). A
+      // document-root-direct mixin call (`.m();`) folds through the SAME
+      // `resolveSpineMixinCall` sink the CONTAINER descent uses — driving the call's
+      // resolution ONCE and, when every guard-passed candidate was spine-simple,
+      // emitting each bound surface's children INLINE (no output tree, `Rules.derive`
+      // = 0). A nested-container surface child (`.m() { .test { … } }`) descends via
+      // `Ruleset.render`'s spineMode branch (`serializeRulesContainer`), a leaf via
+      // `n.render` — both against `context.rulesContext` pushed to the surface, so a
+      // body reference resolves against the mixin's DEFINITION/param frame (increment
+      // 2). A NON-simple body (or a call the sink never saw) resolves `kind:'eval'` and
+      // falls through to the byte-identical eval terminal (`n.render`) below. This
+      // closes the residual where a root call always eval-materialized while a
+      // container-nested call already folded (the ONLY structural gap between the two).
+      const emitEvalTerminal = (): MaybePromise<void> => {
+        let output: string | MaybePromise<string>;
+        try {
+          output = n.render(context!, options);
+        } catch (error) {
+          restoreRootCallEmit();
+          throw error;
+        }
+        const finishOutput = (resolvedOutput: string): void => {
+          restoreRootCallEmit();
+          restorePrintState(options, leafSaved);
+          if (!w.hasContentSince(leafMark)) {
+            w.restore(leafMark);
+            if (resolvedOutput) {
+              emitCaptured(resolvedOutput, n, prefix);
+            }
+            return;
+          }
+          // A spine-eligible mixin CALL that folded to BLOCK output (a nested-container
+          // body — ends in `}`) must NOT append its own statement `;`: the expansion
+          // supplies its own terminators, and a `;` after a `}` is spurious (`.m() { .x
+          // {…} } … .m();` → `.x {…}` with no trailing `;`). A flat/decl-producing call's
+          // decls carry their own `;`. Detect the block close on the just-emitted text.
+          const emittedBlock = /\}\s*$/.test(w.getSince(leafMark));
+          if (n.requiredSemi && n.options.semi !== false && !emittedBlock) {
+            w.add(';', n);
+          }
+          markEmitted(n);
+        };
+        return isThenable(output)
+          ? output.then(finishOutput, (error: unknown) => { restoreRootCallEmit(); throw error; })
+          : finishOutput(output);
+      };
+      if (marksRootCallEmit) {
+        const applyResolution = (resolved: SpineMixinCallResolution): MaybePromise<void> => {
+          // A NON-simple body (or a call the sink never saw) → byte-identical eval
+          // terminal. No byte was written before the resolve (the drive is
+          // side-effect free on the writer), so the terminal owns the emit intact.
+          if (resolved.kind !== 'fold') {
+            return emitEvalTerminal();
+          }
+          // FOLD: the call emits nothing itself; each bound surface's children emit
+          // inline against `context.rulesContext` pushed to the surface (its wired
+          // definition/param frame). Roll back the boundary/prefix so a block child
+          // starts clean, exactly as the container path's fold splice.
+          restoreRootCallEmit();
+          restorePrintState(options, leafSaved);
+          w.restore(leafMark);
+          // LEAKY forward-propagation (spine fold, root parity): in leaky Less mode a
+          // folded surface's plain `@x: …` VarDeclaration LEAKS into the CALLER scope
+          // — here the ROOT — so a later root sibling (`.heightIsSet { height: @x }`,
+          // a following call arg `@x`) reads it. Mirror the container path's
+          // `injectSpineLeakyMixinSurfaceBindings` at the call's source index. Zero-cost
+          // off leaky mode; no-ops when a surface has no plain var.
+          if (context!.options.leakyScope === true && n.index !== undefined) {
+            for (const surface of resolved.surfaces) {
+              this.injectSpineLeakyMixinSurfaceBindings(surface, n.index, context!);
+            }
+          }
+          // A bare property `Declaration` dropped at the ROOT by a mixin/DR call is
+          // invalid Less ("Properties must be inside selector blocks"). The eval path
+          // catches this in `checkValidNodes` (`isRoot && fromCallOutput`); the fold
+          // emits no call-output tree to walk post-hoc, so run the SAME check over each
+          // folded surface's children here — reproducing the exact error byte-for-byte
+          // (tests-error/eval/property-in-root{,2}, detached-ruleset-3). A legitimate
+          // root node (a nested `.rule {}`) passes; only a bare `Declaration` throws.
+          for (const surface of resolved.surfaces) {
+            checkValidNodes(surface.rules, context, true, true);
+          }
+          // Each folded surface child emits itself through `emitNode` (which calls
+          // `markEmitted` on the child it emits); the CALL node itself emits nothing,
+          // so no `markEmitted(n)` here — mirrors the container path where a folded
+          // call contributes no node of its own to the boundary tracking.
+          const savedCtx = context!.rulesContext;
+          const emitChildren = (children: Node[], ci: number): MaybePromise<void> => {
+            for (let c = ci; c < children.length; c++) {
+              const res = emitNode(children[c]!);
+              if (isThenable(res)) {
+                return res.then(() => emitChildren(children, c + 1));
+              }
+            }
+            return undefined;
+          };
+          const emitSurface = (s: number): MaybePromise<void> => {
+            if (s >= resolved.surfaces.length) {
+              context!.rulesContext = savedCtx;
+              return undefined;
+            }
+            const surface = resolved.surfaces[s]!;
+            context!.rulesContext = surface;
+            const done = emitChildren(surface.rules, 0);
+            const next = (): MaybePromise<void> => {
+              context!.rulesContext = savedCtx;
+              return emitSurface(s + 1);
+            };
+            return isThenable(done) ? done.then(next) : next();
+          };
+          return emitSurface(0);
+        };
+        const resolution = resolveSpineMixinCall(n, context!);
+        return isThenable(resolution) ? resolution.then(applyResolution) : applyResolution(resolution);
+      }
+      // ROOT-BODY merge/`?:` fold (cutover root-fold, gates 3/4). A `+:`/`+_:`
+      // merge or `@x ?: v` conditional-assign DIRECTLY in the root body is planned
+      // by the `withSpineMergePlan` wrap installed at the root spine descent (below).
+      // The plan is consumed by `resolveSpineLeafText` (the SAME leaf resolver the
+      // container descent uses): a `suppress` member returns '' (no output); the
+      // anchor / resolved-conditional returns its coalesced bytes. Unlike a plain
+      // `n.render` leaf (which WRITES into the buffer and returns a fallback), the
+      // resolver returns bytes WITHOUT writing — so a planned leaf is emitted here by
+      // writing the returned text explicitly (empty ⇒ nothing, no stray `;`). This
+      // matches the container path's `finishLeaf`. `setDefined` (gate 5) needs no
+      // leaf hook: its binding-WRITE happens at body-enter in the wrap, and the
+      // VarDeclaration itself emits nothing.
+      const hasPlanEntry = options.spineMode && !!context
+        && isNode(n, N.Declaration)
+        && (options.spineMergePlan?.get(n) !== undefined || options.spineCondPlan?.get(n) !== undefined);
+      if (hasPlanEntry) {
+        const planned = resolveSpineLeafText(n, options);
+        const finishPlanned = (text: string): void => {
+          restorePrintState(options, leafSaved);
+          // No content written yet (the resolver does not touch the buffer). Roll the
+          // boundary/prefix back so a suppressed member leaves NO trace, then emit the
+          // anchor/resolved text (with its own `;`) via the shared capture path.
+          w.restore(leafMark);
+          if (text) {
+            emitCaptured(text, n, prefix);
+          }
+        };
+        return isThenable(planned) ? planned.then(finishPlanned) : finishPlanned(planned);
+      }
+      return emitEvalTerminal();
     };
     const finish = (): void => {
       while (lastRenderedFrames.length > renderedFrameBaseline) {
@@ -4822,6 +5115,24 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         }
         return finish();
       };
+      // ROOT-BODY `?:`/`setDefined` fold (cutover root-fold, gates 4/5). The
+      // CONTAINER descent wraps each body in `withSpineMergePlan` (which runs the
+      // `setDefined` binding-write at body-enter and installs the `?:` plan the leaf
+      // resolver consumes). The root spine descent reaches the body HERE — not
+      // through that wrap — so install the SAME plan machinery over the root body.
+      // Scoped to the root spine body; a container/nested Rules descent (already
+      // wrapped by the caller) is untouched. `withSpineMergePlan` fast-bails when
+      // the body has no `?:`/`setDefined` child (a root-direct property MERGE is
+      // gated OFF the spine — gate 3 residual — so the merge plan is never populated
+      // at root). The common case pays a single pre-scan, no plan allocation, and
+      // its return string is unused here — the emit is the `emitRest` side-effect.
+      if (options.spineMode && context && this === context.root) {
+        const wrapped = withSpineMergePlan(value, options, context, () => {
+          const done = emitRest(0);
+          return isThenable(done) ? done.then(() => '') : '';
+        });
+        return isThenable(wrapped) ? wrapped.then(() => undefined) : undefined;
+      }
       return emitRest(0);
     }
     for (const n of value) {
@@ -4907,13 +5218,6 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     // not entered for it. (`preSerializeRoot` is a post-eval visitor hook — a
     // spine-eligible leaf-only root has no such consumer here; P2 folds the
     // visitor hook into the pass generically.)
-    if (sourceWasRoot && !preSerializeRoot && isSpineEligibleRoot(this, context, printOptions?.collapseNesting)) {
-      const prepared = prepareRenderPrintState(context, printOptions);
-      const rendered = renderRootViaSpine(this, context, prepared);
-      return isRenderBuffer(bufferOrOptions)
-        ? writeRenderTextResult(bufferOrOptions, rendered)
-        : rendered;
-    }
     const serialize = (state: RulesRenderState): MaybePromise<string> => {
       checkValidNodes(state.output?.rules, context, sourceWasRoot);
       return isRenderBuffer(bufferOrOptions)
@@ -4929,8 +5233,30 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         serialize(replaced ? { ...state, output: replaced } : state);
       return isThenable(hooked) ? hooked.then(applyHook) : applyHook(hooked);
     };
-    const value = this.evalForRender(context, sourceWasRoot);
-    return isThenable(value) ? value.then(afterEval) : afterEval(value);
+    // The eval render path — reached directly when the root is not spine-eligible, OR as the
+    // ABORT-TO-EVAL fall-back when the spine's post-wire re-gate rejects a speculatively-admitted
+    // import+extend tree (import-spec routing). The abort has already reset the render context, so this
+    // re-render produces exactly the byte-identical eval output.
+    const evalPath = (): MaybePromise<string> => {
+      const value = this.evalForRender(context, sourceWasRoot);
+      return isThenable(value) ? value.then(afterEval) : afterEval(value);
+    };
+    if (sourceWasRoot && !preSerializeRoot && isSpineEligibleRoot(this, context, printOptions?.collapseNesting)) {
+      const prepared = prepareRenderPrintState(context, printOptions);
+      const rendered = renderRootViaSpine(this, context, prepared);
+      // A spine render may ABORT to eval (a resolved sentinel, sync or via the async import chain). On
+      // abort, `evalPath()` owns the WHOLE render including the buffer write (its `serialize` branches
+      // on `isRenderBuffer`), so it must NOT be re-wrapped in `writeRenderTextResult` — that would write
+      // the eval output into the buffer a SECOND time (double-emit). Only genuine spine TEXT is wrapped.
+      const finishSpine = (result: string | typeof SPINE_ABORT_TO_EVAL): MaybePromise<string> => {
+        if (result === SPINE_ABORT_TO_EVAL) {
+          return evalPath();
+        }
+        return isRenderBuffer(bufferOrOptions) ? writeRenderTextResult(bufferOrOptions, result) : result;
+      };
+      return isThenable(rendered) ? rendered.then(finishSpine) : finishSpine(rendered);
+    }
+    return evalPath();
   }
 
   /** All rules, with nested rules flattened */
@@ -5409,6 +5735,67 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       const decl = current.sourceNode;
       decl.index = callIndex;
       injectFrameLeakBinding(frame, name, { cell: current.cell, sourceNode: decl });
+    }
+  }
+
+  /**
+   * Leaky Less mode, SPINE fold: register a FOLDED mixin surface's plain `@x: …`
+   * VarDeclarations into this caller frame at the call's source index — the spine
+   * analogue of {@link injectLeakyMixinOutputBindings}. Unlike the eval path the
+   * surface is NOT pre-evaluated, so each leaked value is bound through a cell that
+   * resolves the declaration's value against the SURFACE frame (its wired
+   * lexical/param bindings), so a param-dependent leak (`@x: @a`) reads the bound
+   * param, byte-identical to the less@4 leak (a shape jess EVAL itself throws on).
+   * A `setDefined` (`!global`) decl is skipped — it writes an outer scope by its own
+   * mechanism, not a forward leak. The binding lands on the caller frame's current
+   * bindings, so a same-scope sibling (earlier OR later — Less resolves a scope's
+   * vars lazily last-wins) resolves it; an out-of-scope sibling still sees the outer
+   * binding. Zero surface vars ⇒ nothing injected.
+   */
+  injectSpineLeakyMixinSurfaceBindings(surface: Rules, callIndex: number, context: Context): void {
+    const frame = this._scopeFrame;
+    const rules = surface.rules;
+    if (!frame || !isArray(rules)) {
+      return;
+    }
+    for (let i = 0; i < rules.length; i++) {
+      const decl = rules[i]!;
+      if (
+        !isNode(decl, N.VarDeclaration)
+        || typeof decl.name !== 'string'
+        || decl.options?.setDefined
+      ) {
+        continue;
+      }
+      const name = decl.name;
+      // The leak's source-order gate keys on `sourceNode.index` = the CALL's index
+      // in the caller. The surface `decl` is SHARED across calls (the fold copies
+      // no nodes), and its OWN `index` is load-bearing for the body's intra-scope
+      // reads (a `snapshot` ref compares against it) — so DO NOT mutate `decl.index`.
+      // Use a prototype-delegating marker that overrides only `index`; identity /
+      // filter / recursion checks still see the real decl through the chain.
+      const gateNode: Node = Object.create(decl);
+      gateNode.index = callIndex;
+      const cell: BindingCell = {
+        prepareValue: () => {
+          const savedRulesContext = context.rulesContext;
+          context.rulesContext = surface;
+          try {
+            const evaluated = decl.valueNode().eval(context);
+            if (isThenable(evaluated)) {
+              // A leaked value that resolves ASYNC (a thenable) is not supported by
+              // the sync binding-cell read path. Fall back to the raw value node so
+              // the caller resolves it against the surface frame at read time.
+              return decl.valueNode();
+            }
+            return evaluated;
+          } finally {
+            context.rulesContext = savedRulesContext;
+          }
+        },
+        sourceNode: gateNode
+      };
+      injectFrameLeakBinding(frame, name, { cell, sourceNode: gateNode });
     }
   }
 
@@ -6518,17 +6905,26 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       return matches && index === prefixItems.length;
     };
     const mergeDeclarationValues = (priorValue: Node, nextValue: Node, assign: string): Node => {
-      if (assign === '&_:') {
-        return spaced([copyMergedValue(priorValue), copyMergedValue(nextValue)]);
-      }
       const priorItems = collectMergedItems(priorValue, assign);
       const nextItems = collectMergedItems(nextValue, assign);
+      // Drop the leading run of `next` that already appears as the tail of `prior`:
+      // the eval-time merge Reference re-emits the immediately-prior sibling's own
+      // contribution, so a naive concat would duplicate it. Find the longest prefix
+      // of `next` that equals a suffix of `prior`. Applies to comma (`&,:`) and
+      // space (`&_:`) merges alike.
       let nextStart = 0;
-      if (priorItems.length > 0 && nextItems.length > 0) {
-        const lastPrior = priorItems[priorItems.length - 1]!;
-        const firstNext = nextItems[0]!;
-        if (sameMergedItem(lastPrior, firstNext)) {
-          nextStart = 1;
+      const maxOverlap = Math.min(priorItems.length, nextItems.length);
+      for (let overlap = maxOverlap; overlap > 0; overlap--) {
+        let matches = true;
+        for (let i = 0; i < overlap; i++) {
+          if (!sameMergedItem(priorItems[priorItems.length - overlap + i]!, nextItems[i]!)) {
+            matches = false;
+            break;
+          }
+        }
+        if (matches) {
+          nextStart = overlap;
+          break;
         }
       }
       const mergedItems = new Array<Node>(priorItems.length + nextItems.length - nextStart);
@@ -6539,7 +6935,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       for (let i = nextStart; i < nextItems.length; i++) {
         mergedItems[mergedIndex++] = copyMergedValue(nextItems[i]!);
       }
-      return new List(mergedItems);
+      return assign === '&_:' ? spaced(mergedItems) : new List(mergedItems);
     };
     const inlineCrossScopeMergedLeadingReference = (
       decl: Node,
@@ -6690,12 +7086,26 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       const priorAccumulatedValue = accumulatedValueByName.get(name);
       const needsCrossScopeCompose = prior
         && prior.ownerRules !== ownerRules;
-      const crossesMixinOutputBoundary = Boolean(
-        prior?.ownerRules.options.mixinOutputSlot
-        || ownerRules.options.mixinOutputSlot
-      );
+      // The eval-time merge Reference reads the PRIOR sibling's own value; across
+      // a mixin-output boundary it truncates to the callee's contribution, so the
+      // current occurrence's value can drop earlier chain items (e.g. a mixin's
+      // `transform+:` contribution vanishing behind the host's own `transform+:`).
+      // The coalesce pass owns the cross-scope combine: compose whenever an earlier
+      // merged anchor accumulated a value that the current value does not already
+      // carry as a prefix — regardless of the mixin-output boundary. `composeMergedValue`
+      // is a no-op (returns the value unchanged) when the prefix already matches, so
+      // this stays byte-identical on the common in-scope path.
+      const currentValueForPrefix = getDeclValue(currentNode);
       const shouldComposeAcrossScopes = Boolean(
-        needsCrossScopeCompose && !crossesMixinOutputBoundary
+        prior
+        && priorAccumulatedValue
+        && (
+          needsCrossScopeCompose
+          || !(
+            currentValueForPrefix
+            && startsWithMergedValue(currentValueForPrefix, priorAccumulatedValue, assign)
+          )
+        )
       );
       if (priorAccumulatedValue && shouldComposeAcrossScopes) {
         currentNode = inlineCrossScopeMergedLeadingReference(currentNode, priorAccumulatedValue, assign);
@@ -7020,7 +7430,12 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     this._setupContextForRules(context, rules);
     // When we're the outermost Rules, use the tree we're evaling as root
     // (may differ from context.root set in getTree, or be a prepared wrapper).
-    if (context.rulesEvalStack.length === 1) {
+    // EXCEPT under the spine fold: there is no `Rules.eval` frame for the real
+    // root on `rulesEvalStack`, so a detached-ruleset/mixin body evaluated inside
+    // the fold hits `length === 1` and would reclaim outermost status — clobbering
+    // the spine-owned root and its built-in function registry (see
+    // `Context.spineOwnsRoot`). The spine already established the root, so skip.
+    if (context.rulesEvalStack.length === 1 && !context.spineOwnsRoot) {
       context.root = rules;
     }
     return this._evalAfterRegistrationPrep(rules, context, importsOnly);

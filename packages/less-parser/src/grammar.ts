@@ -21,15 +21,21 @@ import { cssGrammar } from '@jesscss/css-parser/grammar';
 // one `rules()`; no fragment spreads.
 // ---------------------------------------------------------------------------
 
-export const lessGrammar = compose([cssGrammar, rules((g: any) => {
+// Trivia (`rw`) is declared ONCE on the grammar via `rules({ trivia: rw }, …)`,
+// honored through `compose()`, making it ambient in every rule — no per-rule
+// trivia-establisher wrappers are needed. Hoisted to module scope (mirroring
+// css-parser) so the options-first `rules({ trivia: rw }, …)` call below can
+// reference it. Same shape as CSS (whitespace + block + `//` line comments).
+const ws = regex(/[ \t\n\r\f]+/);
+const comment = regex(/\/\*(?:[^*]|\*(?!\/))*\*\//);
+const lineComment = regex(/\/\/[^\n\r]*/);
+const rw = trivia(oneOrMore(choice(label('whitespace', ws), label('blockComment', comment), label('lineComment', lineComment))));
+
+export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) => {
   // ---------------------------------------------------------------------------
-  // Trivia + terminals (CSS base + Less @var / @{interp}).
+  // Terminals (CSS base + Less @var / @{interp}).
   // ---------------------------------------------------------------------------
 
-  const ws = regex(/[ \t\n\r\f]+/);
-  const comment = regex(/\/\*(?:[^*]|\*(?!\/))*\*\//);
-  const lineComment = regex(/\/\/[^\n\r]*/);
-  const rw = trivia(oneOrMore(choice(label('whitespace', ws), label('blockComment', comment), label('lineComment', lineComment))));
   // Whitespace-only trivia for url() bodies: inside `url(…)`, `//` and `/*` are URL
   // characters, not comments (`url(//host/x)` is protocol-relative), so the normal
   // `rw` (which skips line/block comments) must not apply there.
@@ -92,7 +98,7 @@ export const lessGrammar = compose([cssGrammar, rules((g: any) => {
     sequence(g.Call, optional(literal(';'))), literal(';')
   );
   const Stylesheet = node(
-    parser({ trivia: rw }, many(g.stylesheetItem)));
+    many(g.stylesheetItem));
 
   // Plain helper consts referenced before their section must be defined up-front
   // (Phase-1 evaluation is sequential; only g.* refs resolve lazily).
@@ -122,7 +128,7 @@ export const lessGrammar = compose([cssGrammar, rules((g: any) => {
     sequence(lessVar, regex(/:(?![-_a-zA-Z-￿])/))
   );
   const VarDeclaration = node(
-    parser({ trivia: rw }, sequence(varColon, choice(detachedBlock, sequence(g.valueList, optional(important), optional(literal(';')))))));
+    sequence(varColon, choice(detachedBlock, sequence(g.valueList, optional(important), optional(literal(';'))))));
   const mixinArgsContent = scanTo(literal(')'), { skip: [bParen, bSquare, bCurly, singleStr, doubleStr] });
   // Accessor key tokens, in lookupOrCall's OR2 order: NestedReference ($@x / @@x),
   // AtKeyword (@x), PropertyReference ($x), InterpolatedIdent (…@{x}…), Ident.
@@ -160,14 +166,14 @@ export const lessGrammar = compose([cssGrammar, rules((g: any) => {
   const nonKnownAtVar = regex(/@-?(?!(?:(?:-moz-)?document|(?:-[a-z]+-)?keyframes|(?:-ms-)?viewport|import|media|supports|layer|container|scope|page|font-face|starting-style|property|counter-style|color-profile|font-palette-values|namespace)(?![-_a-zA-Z0-9]))[_a-zA-Z0-9-￿][-_a-zA-Z0-9-￿]*/);
   const knownAtVar = regex(/@(?:(?:-moz-)?document|(?:-[a-z]+-)?keyframes|(?:-ms-)?viewport|import|media|supports|layer|container|scope|page|font-face|starting-style|property|counter-style|color-profile|font-palette-values|namespace)(?![-_a-zA-Z0-9])/);
   const VarCall = node(
-    parser({ trivia: rw }, choice(
+    choice(
       // A var call is `@name(...)` with the `(` ADJACENT to the name (no space).
       // `@foo (bar)` — space before `(` — is never a var call; it's an unknown
       // at-rule prelude, so noTrivia makes this branch defer to AtRuleBlock.
       sequence(noTrivia(sequence(nonKnownAtVar, regex(/(?=\()/))), g.MixinArgs, optional(important), optional(literal(';'))),
       // Known at-rule name with EMPTY parens only.
       sequence(knownAtVar, literal('('), literal(')'), optional(important), optional(literal(';')))
-    )));
+    ));
 
   // ── Mixins ───────────────────────────────────────────────────────────────
   // Mixin arguments are composed from the SAME value combinators as function-call
@@ -197,10 +203,10 @@ export const lessGrammar = compose([cssGrammar, rules((g: any) => {
   //               not a `.`/`#` path and has no block, so it matches NEITHER and is
   //               reported as unconsumed input.
   const MixinOrQualifiedRule = node(
-    parser({ trivia: rw }, choice(
+    choice(
       sequence(g.mixinNamePath, optional(g.MixinArgs), optional(g.Guard), literal('{'), g.declarationList, literal('}')),
       sequence(g.mixinCallPath, optional(g.MixinArgs), optional(g.Guard), optional(important), optional(literal(';')))
-    )));
+    ));
 
   // ── Guards / comparisons ───────────────────────────────────────────────────
   // Faithful port of the Chevrotain guard productions (src/productions/guards.ts):
@@ -225,7 +231,7 @@ export const lessGrammar = compose([cssGrammar, rules((g: any) => {
   // Sequence, dropping the comparison.
   const guardOperand = choice(g.NsAccessor, g.Reference, g.Dimension, g.Num, g.Color, g.NamedColor, g.EscapedValue, g.Quoted, g.Call, g.Paren, g.anyValue);
   const Comparison = node(
-    parser({ trivia: rw }, sequence(g.Reference, compareOp, choice(g.Reference, g.Dimension, g.Num, g.Color, g.NamedColor, g.EscapedValue, g.Quoted, g.anyValue))));
+    sequence(g.Reference, compareOp, choice(g.Reference, g.Dimension, g.Num, g.Color, g.NamedColor, g.EscapedValue, g.Quoted, g.anyValue)));
   const GuardDefault = node(
     regex(/default(?:[ \t\n\r\f]*\([ \t\n\r\f]*\))?(?![-\w])/));
   // '(' guardOr ')' → Paren; or a bare default(). Wrapped in a Paren node.
@@ -252,21 +258,16 @@ export const lessGrammar = compose([cssGrammar, rules((g: any) => {
     sequence(g.GuardAnd, many(sequence(choice(regex(/or(?![-\w])/), literal(',')), g.GuardAnd))));
   const Guard = node(
     sequence(regex(/when(?![-\w])/), g.GuardOr));
-  // `if(cond, then, else)` / `boolean(cond)` reuse the guard sub-grammar, but the
-  // top-level `,` is the ARGUMENT separator, not a guard `or`. `CondOr` is `GuardOr`
-  // without the comma alt (a comma inside `(...)` is still an `or`, handled by the
-  // nested GuardInParens → GuardOr). Builds via the shared 'GuardOr' fold.
-  const CondOr = node('GuardOr',
-    sequence(g.GuardAnd, many(sequence(regex(/or(?![-\w])/), g.GuardAnd))));
 
   // ── Less ampersand / interpolated / extend ──────────────────────────────────
-  // `&` glued to a suffix (`&1`, `&-bar`) OR a prefix (`.foo-&`, `#bar-&`) — Less
-  // appends/prepends it to the parent selector. Mirrors the reference Ampersand
-  // token pattern `(?:[.#]({{ident}}-)?&|&){{nmchar}}*` (lessTokens.ts), so a
-  // prefix template parses as ONE Ampersand node (image `.foo-&`), not a
-  // CompoundSelector of `['.foo-', &]`. The `&(…)` form keeps its paren scan; the
-  // paren only follows a bare `&` in practice (prefix forms have no `(`).
-  const ampToken = regex(/(?:[.#](?:-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*-)?&|&)[-_a-zA-Z0-9-￿]*/);
+  // `&` (the parent reference) optionally glued to a SUFFIX (`&1`, `&-bar`), which
+  // Less appends to the parent's trailing selector (`.rule` + `-bar` → `.rule-bar`).
+  // A number/`-` suffix reads as a merge (elements can't start with those). A `.`/`#`
+  // PREFIX is NOT part of the ampersand: `.foo-` is a complete, valid dash-ending class,
+  // so `.foo-&` is a COMPOUND of the BasicSelector `.foo-` and a plain `&` — it parses
+  // as `['.foo-', &]` (two independent simple selectors), never one merge node. The
+  // `&(…)` form keeps its paren scan.
+  const ampToken = regex(/&[-_a-zA-Z0-9-￿]*/);
   const LessAmpersand = node(
     sequence(ampToken, optional(sequence(literal('('), scanTo(literal(')'), { skip: [bParen, bSquare, bCurly, singleStr, doubleStr] }), literal(')')))));
   // Selector interpolation: an ident/`.`/`#` run interleaved with `@{…}`, with at
@@ -395,7 +396,7 @@ export const lessGrammar = compose([cssGrammar, rules((g: any) => {
     // `ident(` so it never shadows a Declaration (which needs `:`).
     sequence(g.Call, optional(literal(';'))), literal(';')
   );
-  const declarationList = parser({ trivia: rw }, many(g.blockItem));
+  const declarationList = many(g.blockItem);
   // Property name may itself be interpolated (`@{prop}: …`, `pre-@{x}-post: …`).
   // Chevrotain lexes the name as a single Ident/InterpolatedIdent token whose image
   // carries the `@{…}` runs; `declaration` then routes an image containing `@`/`$`
@@ -466,7 +467,12 @@ export const lessGrammar = compose([cssGrammar, rules((g: any) => {
   // operand BEFORE arithmetic folding — otherwise `#ns.options[val1] + 5px` splits
   // into the bare string `#ns.options` plus an Operation whose left operand is the
   // lone `[val1]` SquareParen, so the accessor never binds to the namespace path.
-  // Ordered before SquareParen/anyValue in `value`. Requiring the FIRST segment be
+  // Ordered before Color/SquareParen/anyValue in `value`: a hex-color-shaped head
+  // (`#DEF.colors[primary]`) would otherwise be eaten by Color as a bare `#DEF`,
+  // stranding `.colors[primary]` as a separate single-segment accessor that loses
+  // the `#DEF` namespace hop. NsAccessor requires a glued `[` (refIndex first), so a
+  // plain color `#DEF` — no bracket — still falls through to Color unchanged.
+  // Requiring the FIRST segment be
   // a `[` (not a `(`) keeps every call-headed form — `.mixin()`, `.mixin()[k]`,
   // `#ns.x(.a[])[k]`, chained `.a() > .b()` — on the existing GluedParen /
   // _tryParseNamespaceRef reassembly paths, which structure call args richly.
@@ -481,7 +487,7 @@ export const lessGrammar = compose([cssGrammar, rules((g: any) => {
   // arithmetic. @see https://drafts.csswg.org/css-syntax/#urange-syntax
   const UnicodeRange = node(
     regex(/[Uu]\+[0-9A-Fa-f?]{1,6}(?:-[0-9A-Fa-f]{1,6})?/));
-  const value = choice(g.InterpValue, g.Reference, g.UnicodeRange, g.Dimension, g.Num, g.Color, g.NamedColor, g.Url, g.CalcCall, g.IfCall, g.BooleanCall, g.FormatCall, g.Call, g.EscapedValue, g.NsAccessor, g.GluedParen, g.Paren, g.SquareParen, g.Quoted, g.anyValue);
+  const value = choice(g.InterpValue, g.Reference, g.UnicodeRange, g.Dimension, g.Num, g.NsAccessor, g.Color, g.NamedColor, g.Url, g.CalcCall, g.FormatCall, g.Call, g.EscapedValue, g.GluedParen, g.Paren, g.SquareParen, g.Quoted, g.anyValue);
   // ── Math expressions — precedence in the grammar (port of expressionSum /
   // expressionProduct). `* / %` bind tighter than `+ -`; left-associative. The
   // `collapse` option makes a single-operand level pass its operand straight
@@ -597,7 +603,81 @@ export const lessGrammar = compose([cssGrammar, rules((g: any) => {
   // reinterprets a lone `@name` as a param.
   const argRest = node('Rest', choice(sequence(lessVar, literal('...')), literal('...')));
   const argNamedSeq = node('NamedArg', sequence(lessVar, literal(':'), choice(DetachedRuleset, g.valueSequence)));
-  const callArgSeq = choice(argRest, argNamedSeq, g.AnonymousMixinDefinition, DetachedRuleset, g.valueSequence);
+  // ── Name-independent condition arguments ─────────────────────────────────────
+  // A top-level condition operator (`> < >= <= = and or not`) inside ANY call's
+  // argument makes that argument a `Condition` — no name dispatch on `if`/`boolean`.
+  // The condition operators layer ON TOP of the ordinary value production, so nesting
+  // (`not(2 < 1)`, `true and isnumber(6)`) falls out of the grammar's own recursion:
+  // the `(…)` value-Paren already parses an inner comparison (parenSep = compareOp),
+  // and `and`/`or` split terms so a bare keyword never swallows the operator.
+  //
+  // The whole layer is GATED to only match when a real operator is present: each
+  // `ArgCondition` alternative's distinguishing token past the operand is an operator
+  // (leading `not`, a `compareOp`, or `and`/`or`), so a plain value / space-list arg
+  // matches NONE and falls through to the unchanged `valueSequence` below — the
+  // pre-existing arg is byte-identical, and mixin-DEFINITION params (never a top-level
+  // condition) are unaffected.
+  const notKw = regex(/not(?![-\w])/i);
+  const andKw = regex(/and(?![-\w])/i);
+  const orKw = regex(/or(?![-\w])/i);
+  // A standalone top-level condition operator — used as a negative lookahead so the
+  // bounded value operand stops before it instead of eating it as a keyword/anyValue.
+  const condStopAhead = regex(/(?:>=|<=|=>|=<|=~|[<>=]|(?:and|or)(?![-\w]))/i);
+  // A bounded value/space-list operand: a `valueSequence` that stops at a top-level
+  // condition operator (so `@a > 5 and @b` splits into operands, not one space-list).
+  const condOperand = oneOrMore(sequence(not(condStopAhead), g.topSum));
+  // A PARENTHESIZED sub-condition operand: `( CondArgOr )`. Necessary because a `(`
+  // glued to a preceding word (`not(…)`) takes the permissive mixin-arg Paren, whose
+  // body is a raw value list — it would NOT parse the inner `2 > 1` as a comparison.
+  // Parsing the paren body as a full `CondArgOr` restores the guard-grammar behaviour
+  // (`not(2 > 1)`, `(@a > 0)`, `(true)`), built into a `Paren` wrapping the condition.
+  const CondArgParen = node('GuardInParens',
+    sequence(literal('('), g.CondArgOr, expect(literal(')'))));
+  // A single-operand core: a parenthesized sub-condition OR a bounded value, with an
+  // optional trailing `<op> right` comparison.
+  const condCore = sequence(
+    choice(g.CondArgParen, condOperand),
+    optional(sequence(compareOp, choice(g.CondArgParen, condOperand))));
+  // A single condition term: optional leading `not`, then the operand core. `not`
+  // negates the term into a `Condition{negate}`; a bare comparison folds into
+  // `Condition[left, op, right]`; a plain operand passes through.
+  const CondArgTerm = node(
+    sequence(optional(notKw), condCore));
+  const CondArgAnd = node('CondArgAnd',
+    sequence(g.CondArgTerm, many(sequence(andKw, g.CondArgTerm))));
+  const CondArgOr = node('CondArgOr',
+    sequence(g.CondArgAnd, many(sequence(orKw, g.CondArgAnd))));
+  // An OPERATOR-BEARING term: a leading `not`, OR a comparison (`left <op> right`).
+  // (A bare operand with no `not`/`compareOp` is NOT operator-bearing — that path is
+  // reserved for the plain `valueSequence` arg.) Built via the same `CondArgTerm`
+  // builder — the tag is shared, so `not`/comparison fold into a `Condition`.
+  const CondArgTermOp = node('CondArgTerm',
+    choice(
+      sequence(notKw, condCore),
+      sequence(choice(g.CondArgParen, condOperand), compareOp, choice(g.CondArgParen, condOperand))
+    ));
+  // An `and`-group that carries ≥1 operator: either its FIRST term is operator-bearing,
+  // or it has an explicit `and`. Built via the shared `CondArgAnd` fold.
+  const CondArgAndOp = node('CondArgAnd',
+    choice(
+      sequence(g.CondArgTermOp, many(sequence(andKw, g.CondArgTerm))),
+      sequence(g.CondArgTerm, oneOrMore(sequence(andKw, g.CondArgTerm)))
+    ));
+  // GATE — `ArgCondition` matches ONLY an arg that carries a REAL top-level condition
+  // operator (a `not`, a comparison, or an `and`/`or`); a plain value / space-list
+  // matches NEITHER alternative and falls through to the unchanged `valueSequence`,
+  // so ordinary args (and mixin-def params, never a top-level condition) build
+  // byte-identically. No paren-aware lookahead scan: the operator requirement is
+  // structural (`CondArgAndOp` / a mandatory `oneOrMore` `or`), and nesting
+  // (`not(2 < 1)`, `true and isnumber(6)`) falls out of the grammar's own recursion —
+  // the value-Paren parses its inner comparison; `and`/`or` split terms. Built as a
+  // `CondArgOr` (shared fold): a leading op-bearing and-group, or a bare-headed `or`.
+  const ArgCondition = node('CondArgOr',
+    choice(
+      sequence(g.CondArgAndOp, many(sequence(orKw, g.CondArgAnd))),
+      sequence(g.CondArgAnd, oneOrMore(sequence(orKw, g.CondArgAnd)))
+    ));
+  const callArgSeq = choice(argRest, argNamedSeq, g.AnonymousMixinDefinition, DetachedRuleset, ArgCondition, g.valueSequence);
   // Function-call args and mixin-call args are now IDENTICAL — one `argsInner`. After
   // a semicolon, commas keep splitting args (`sepBy(callArgSeq, ',')`), so both `.m(…)`
   // and `foo(…)` catch the one illegal case: mixing the comma and semicolon ARG
@@ -631,7 +711,7 @@ export const lessGrammar = compose([cssGrammar, rules((g: any) => {
     sequence(calcProduct, many(sequence(sumOp, calcProduct))), undefined, { collapse: true });
   const calcSequence = oneOrMore(calcSum);
   const calcList = sequence(calcSequence, many(sequence(literal(','), calcSequence)));
-  const calcBody = parser({ trivia: rw }, sequence(optional(sequence(calcList, many(sequence(literal(';'), optional(calcList))))), expect(literal(')'))));
+  const calcBody = sequence(optional(sequence(calcList, many(sequence(literal(';'), optional(calcList))))), expect(literal(')')));
   // `CalcCall` (calc(…)) and the plain value-position `Paren` come from the shared
   // `parenRules` fragment (spread below); they defer to g.calcBody / g.parenBody here.
   const Call = node(sequence(ident, literal('('), functionCallArgs));
@@ -665,23 +745,14 @@ export const lessGrammar = compose([cssGrammar, rules((g: any) => {
     ));
 
   // ── Logical / conditional functions (Less) ──────────────────────────────────
-  // `boolean(cond)` and `if(cond, then[, else])` take a GUARD expression as their
-  // condition — the same `and`/`or`/`not`/comparison sub-grammar used by `when`
-  // guards (GuardOr) — so an infix `true and isnumber(6)`, a `not(2 > 1)`, or a
-  // `2 < 1` comparison parses into a Condition, not a bare value list. The
-  // then/else branches of `if` are ordinary call arguments (values OR detached
-  // rulesets: `if(cond, {c: 3}, {d: 4})`). Ordered before the generic `Call` in
-  // `value` so the keyword routes here; every other name falls to `Call`.
-  const BooleanCall = node(
-    sequence(
-      regex(/boolean(?![-\w])/i), literal('('), g.CondOr, expect(literal(')'))
-    ));
-  const IfCall = node(
-    sequence(
-      regex(/if(?![-\w])/i), literal('('), g.CondOr,
-      optional(sequence(regex(/[,;]/), callArgSeq, optional(sequence(regex(/[,;]/), callArgSeq)))),
-      expect(literal(')'), ')')
-    ));
+  // `if(cond, then[, else])` and `boolean(cond)` are NOT name-dispatched in the
+  // grammar: they are ordinary function `Call`s whose condition argument parses
+  // through the name-independent `ArgCondition` layer (a top-level `> < >= <= = and
+  // or not` in ANY call's argument becomes a `Condition`). Eval already registers
+  // `if`/`boolean` as ordinary functions that consume the parsed condition — so this
+  // is a parse-only unification: `if`/`boolean`/`#ns.if`/`.if`/`foo` all route through
+  // one `Call` production. The `and`/`or`/`not`/comparison sub-grammar the `when`
+  // guard uses (GuardOr) is unchanged; only the value-position call dispatch merged.
 
   // ── Deprecated Less `%()` string-format function ─────────────────────────────
   // `%(format, args…)` is printf-style formatting. We LOWER it at build time into a
@@ -750,12 +821,13 @@ export const lessGrammar = compose([cssGrammar, rules((g: any) => {
     rw,
     stylesheetItem, blockItem,
     Stylesheet, VarDeclaration, VarCall, Reference, MixinArgs, mixinNamePath, mixinCallBasicSel, mixinCallPath, MixinCall,
-    AnonymousMixinDefinition, MixinOrQualifiedRule, Comparison, GuardDefault, GuardInParens, GuardTerm, GuardAnd, GuardOr, CondOr, Guard,
+    AnonymousMixinDefinition, MixinOrQualifiedRule, Comparison, GuardDefault, GuardInParens, GuardTerm, GuardAnd, GuardOr, Guard,
+    CondArgParen, CondArgTerm, CondArgAnd, CondArgOr, CondArgTermOp, CondArgAndOp, ArgCondition,
     LessAmpersand, InterpolatedSelector, ExtendStatement, ExtendPseudo, ExtendTarget, extendCompound, extendComplex, simpleSelector,
     CompoundSelector, ComplexSelector, SelectorList, AttributeSelector, PseudoSelector, pseudoArg, pseudoSelectorParens,
     Ruleset, declarationList, Declaration, customValue, customCurlyBlock, cpInner, cpParen, cpSquare, cpCurly, cpValue, CustomDeclaration, declaration,
     valueList, valueSequence, value, UnicodeRange, Negative, mathProduct, mathSum, topProduct, topSum, parenExprList, InterpValue, NsAccessor, EscapedValue, NamedColor, Dimension, Url,
-    parenBody, permissiveParenBody, Paren, GluedParen, DetachedRuleset, functionCallArgs, squareParenBody, calcBody, Call, IfCall, BooleanCall, FormatCall, SquareParen, anyValue, EachFor,
+    parenBody, permissiveParenBody, Paren, GluedParen, DetachedRuleset, functionCallArgs, squareParenBody, calcBody, Call, FormatCall, SquareParen, anyValue, EachFor,
     QueryAtRuleBlock, ImportAtRuleStatement,
     AtRuleBlock, AtRuleStatement, atRuleBody
   };

@@ -61,4 +61,42 @@ describe('extend inside @media (scope boundary)', () => {
 }
 `.trim());
   });
+
+  /**
+   * NEGATIVE-VISIBILITY OUTPUT ORACLE (A3 "inner can't reach out", partial `all` form).
+   * ================================================================================
+   * A partial `:extend(.shared all)` DECLARED INSIDE `@media print` must NOT reach the
+   * root-level `.shared` (or the later root-level `.also-shared`): the inner extend root
+   * cannot see out to the document root. The observable proof is the RENDERED CSS — the
+   * root `.shared` header must stay bare (`.shared`), NEVER `.shared, .x`.
+   *
+   * Expected output derived from the real `less@4` oracle (less 4.6.7, standalone
+   * `less.render`, NOT the jess-backed alpha): the `@media print` extend is dropped, `.x`
+   * renders only inside the media block, and both root rules keep their bare headers.
+   */
+  it('A3 negative: `:extend(.shared all)` inside @media does NOT reach root-level targets', async () => {
+    const css = await render(`
+.shared { color: red; }
+@media print {
+  .x:extend(.shared all) { background: blue; }
+}
+.also-shared { color: green; }
+`);
+    // Positive control: the extender must NOT leak into any root header.
+    expect(css).not.toContain('.shared,');
+    expect(css).not.toContain('.x,');
+    expect(css.trim()).toBe(`
+.shared {
+  color: red;
+}
+@media print {
+  .x {
+    background: blue;
+  }
+}
+.also-shared {
+  color: green;
+}
+`.trim());
+  });
 });

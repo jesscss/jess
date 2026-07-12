@@ -37,4 +37,31 @@ describe('scss plugin render-through', () => {
     const css = await compiler.renderString('.a { color: red; }', { extension: '.scss' });
     expect(css).toContain('color: red');
   });
+
+  /**
+   * Regression guard for the Condition-chain trivia thinning (bisected to
+   * `e025d2691`, repaired by grammar-level trivia in #85). The parser must
+   * hand the eval path a real `@if`/`@else` Condition chain with an evaluable
+   * comparison — not the raw `@if`/`@else` at-rules verbatim. Without this
+   * gate the scss-parser suite stayed green while the product mis-compiled.
+   */
+  it('evaluates an `@if`/`@else` comparison — true branch', async () => {
+    const compiler = new Compiler();
+    const src = '$a: 1;\n.x {\n  @if $a == 1 { color: red; } @else { color: blue; }\n}';
+    const css = await compiler.renderString(src, { extension: '.scss' });
+    expect(css).toContain('color: red');
+    expect(css).not.toContain('color: blue');
+    expect(css).not.toContain('@if');
+    expect(css).not.toContain('@else');
+  });
+
+  it('evaluates an `@if`/`@else` comparison — false branch', async () => {
+    const compiler = new Compiler();
+    const src = '$a: 2;\n.x {\n  @if $a == 1 { color: red; } @else { color: blue; }\n}';
+    const css = await compiler.renderString(src, { extension: '.scss' });
+    expect(css).toContain('color: blue');
+    expect(css).not.toContain('color: red');
+    expect(css).not.toContain('@if');
+    expect(css).not.toContain('@else');
+  });
 });

@@ -139,7 +139,6 @@ const expectedFailureFixtures = new Map<string, string>([
   ['tests-unit/operations/operations-advanced.less', 'advanced math/color operation behavior differs from Less'],
   ['tests-unit/property-accessors/property-accessors.less', 'property accessor precedence differs from Less'],
   ['tests-unit/scope/scope.less', 'parent selector scope output differs from Less'],
-  ['tests-config/namespacing/namespacing-1.less', 'namespace map duplicate precedence differs from Less'],
   ['tests-config/namespacing/namespacing-5.less', 'nested namespace callable lookup does not match Less'],
   ['tests-config/namespacing/namespacing-8.less', 'each() custom-property value lookup inside detached map differs from Less'],
   ['tests-config/namespacing/namespacing-functions.less', 'detached ruleset callable lookup result differs from Less'],
@@ -178,9 +177,9 @@ const expectedFailureFixtures = new Map<string, string>([
 
   // Previously-uncategorized hard failures — render but mismatch Less.
   // (extend.less + mixins-guards.less GRADUATED — the dev-merge extend/mixin-namespace
-  //  fixes made them render byte-identical to Less; they're real passes now.)
-  ['tests-unit/extend-nest/extend-nest.less', 'nested :extend output differs from Less (extend-matcher gap)'],
-  ['tests-unit/extend-selector/extend-selector.less', 'selector :extend output differs from Less (extend-matcher gap)'],
+  //  fixes made them render byte-identical to Less; they're real passes now.
+  //  extend-nest.less + extend-selector.less GRADUATED — the cutover-p1 spine extend
+  //  wire-in now renders both byte-identical to the maintained `.css`; real passes.)
   ['tests-unit/import/import-remote.less', 'renders but throws (n.hasNodeChild is not a function)']
 ]);
 

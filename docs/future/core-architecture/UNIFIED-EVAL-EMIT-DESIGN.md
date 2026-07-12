@@ -3,7 +3,7 @@
 **Status:** DESIGN / pure reasoning. NO wire-in, NO benchmark, NO production `.ts`. This document
 SUPERSEDES and MERGES two priors into one coherent system:
 
-- `EXTEND-GLOBAL-FLOW-DESIGN.md` — the extend global flow (PLAN / SOLVE / EMIT; scope = (A)
+- `archive/EXTEND-GLOBAL-FLOW-DESIGN.md` — the extend global flow (PLAN / SOLVE / EMIT; scope = (A)
   reachability + (B) placement/visibility; OQ-5 folds into (B)).
 - `SINGLE-RENDER-PASS-PLAN.md` — the eval→render fold (A0 provenance verdict; the **B1s REFUTATION**:
   a dynamic leaf's value is a function of the EVAL-MOMENT scope and cannot be re-resolved later from a
