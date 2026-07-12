@@ -263,8 +263,50 @@ export class LessCompatPlugin extends AbstractPlugin {
   }
 
   private sourceMayContainPluginDirective(tree?: Rules): boolean {
-    const source = tree?._treeContext?.file?.source;
-    return typeof source === 'string' && source.includes('@plugin');
+    if (!tree) {
+      return false;
+    }
+    const source = tree._treeContext?.file?.source;
+    if (typeof source === 'string' && source.includes('@plugin')) {
+      return true;
+    }
+    // The parser no longer always threads the caller's TreeContext onto the root
+    // tree's `_treeContext`, so the raw source string may be unavailable. Detect
+    // `@plugin` directly from the parsed tree, where it appears as an
+    // AtRule/AtRuleStatement named `@plugin` (or `plugin`).
+    return this.treeContainsPluginDirective(tree);
+  }
+
+  private treeContainsPluginDirective(node: unknown, depth = 0): boolean {
+    if (!node || typeof node !== 'object' || depth > 32) {
+      return false;
+    }
+    const candidate: { type?: unknown; name?: unknown; rules?: unknown } = node;
+    const type = candidate.type;
+    if (type === 'AtRule' || type === 'AtRuleStatement' || type === 'Directive') {
+      const name = candidate.name;
+      let nameValue: string | undefined;
+      if (typeof name === 'string') {
+        nameValue = name;
+      } else if (name && typeof name === 'object') {
+        const inner: unknown = (name as { value?: unknown }).value;
+        if (typeof inner === 'string') {
+          nameValue = inner;
+        }
+      }
+      if (nameValue === '@plugin' || nameValue === 'plugin') {
+        return true;
+      }
+    }
+    const rules = candidate.rules;
+    if (Array.isArray(rules)) {
+      for (const child of rules) {
+        if (this.treeContainsPluginDirective(child, depth + 1)) {
+          return true;
+        }
+      }
+    }
+    return false;
   }
 
   private warnForPluginDirective(node: any): void {

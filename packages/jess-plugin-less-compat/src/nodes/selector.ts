@@ -1,5 +1,4 @@
 import {
-  Selector,
   ComplexSelector,
   CompoundSelector,
   BasicSelector,
@@ -7,6 +6,7 @@ import {
   Combinator,
   Ampersand,
   Node,
+  isStringCombinator,
   type SelectorLike
 } from '@jesscss/core';
 import { createLessAdapter } from '../transform/less-adapter.js';
@@ -59,6 +59,13 @@ function flattenSelectorToElements(
       }
       if (component instanceof Combinator) {
         nextCombinatorValue = component.value;
+        continue;
+      }
+      // Core now interleaves bare combinator tokens (`>`, `+`, `~`, ` `, `|`) as
+      // strings in a ComplexSelector's value stream. Attach them to the following
+      // component instead of emitting them as their own Less Element.
+      if (typeof component === 'string' && isStringCombinator(component)) {
+        nextCombinatorValue = component;
         continue;
       }
 
@@ -189,11 +196,21 @@ export function transformSelectorToLess(
       length: () => elements.length
     },
     accept: (node, visitor) => {
-      for (const element of elements) {
-        if (element?.accept) {
-          element.accept(visitor);
-        } else if (element && visitor.visitArray) {
-          visitor.visitArray([element]);
+      // Route each Element through the visitor's dispatch (visitArray -> visit)
+      // so Less `visitElement` handlers fire, mirroring the string-selector path.
+      // Calling `element.accept` directly would only walk the element's children
+      // (combinator/value) and never invoke visitElement for the element itself.
+      if (visitor.visitArray) {
+        visitor.visitArray(elements);
+      } else if (visitor.visit) {
+        for (const element of elements) {
+          visitor.visit(element);
+        }
+      } else {
+        for (const element of elements) {
+          if (element?.accept) {
+            element.accept(visitor);
+          }
         }
       }
       return node;
