@@ -1,5 +1,5 @@
-import { type Color, Dimension } from '@jesscss/core'
+import { type Color, Dimension } from '@jesscss/core';
 
 export default function red(color: Color) {
-  return new Dimension([color.rgb[0]])
+  return new Dimension([color.rgb[0]]);
 }

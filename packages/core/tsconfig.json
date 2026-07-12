@@ -2,9 +2,16 @@
   "extends": "../../tsconfig.json",
   "compilerOptions": {
     "composite": true,
+    "noImplicitOverride": true,
     "outDir": "./lib",
-    "rootDir": "./src"
+    "rootDir": "."
   },
-  "include": ["src/**/*", "test/**/*", "vitest.config.ts", "../ast/src/cstVisitor.ts", "../../vitest.d.ts", "../../test/setup.ts"],
+  "include": [
+    "src/**/*",
+    "test/**/*",
+    "vitest.config.ts",
+    "vite.config.ts",
+    "../../vitest.d.ts"
+  ],
   "exclude": ["node_modules", "lib"]
 }

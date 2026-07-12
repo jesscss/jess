@@ -1,65 +1,95 @@
-/* eslint-disable @typescript-eslint/prefer-readonly */
-import { Node, defineType } from './node'
-import { Declaration } from './declaration'
 import {
-  BaseDeclaration,
-  type BaseDeclarationValue,
-  type Name
-} from './base-declaration'
+  Node,
+  defineType,
+  type NodeOptions,
+  type LocationInfo,
+  type TreeContext
+} from './node';
 import {
-  type VarDeclarationOptions
-} from './var-declaration'
-import { Scope } from '../scope'
-import type { Context } from '../context'
-import { isNode } from './util'
-import { type Ruleset } from './ruleset'
-import { type AtRule } from './at-rule'
-import { Nil } from './nil'
-import { type Root } from './root'
+  type Declaration
+} from './declaration';
+import { Context } from '../context';
+import { isNode } from './util/is-node';
+import { cast } from './util/cast';
+import { type Ruleset, type RulesetValue } from './ruleset';
+import { type Mixin } from './mixin';
+import { Interpolated } from './interpolated';
+import type { Selector } from './selector';
+import { spaced } from './sequence';
+
+import { atIndex } from './util/collections';
+import isPlainObject from 'lodash-es/isPlainObject';
+import type { Condition } from './condition';
+import type { Bool } from './bool';
+import { MixinRegistry, SelectorRegistry } from './util/selector-utils';
+import { tryExtendSelector } from './util/extend';
+
+const { isArray } = Array;
 
 export const enum Priority {
   None = 0,
   Low = 1,
   Medium = 2,
-  High = 3
+  High = 3,
+  Highest = 4
 }
 
-type AnyDeclarationValue = BaseDeclarationValue & Record<string, any>
+export type RulesOptions = {
+  /**
+   * - public   = all members are considered in lookup algorithms
+   * - optional = members are only considered if not found in the lookup tree
+   * - private  = can't be looked up
+   * - local    = only visible in the current scope
+   *
+   * Different types may have different defaults
+   *
+   * For Less:
+   *   - When mixins are parsed, their rules body is set to:
+   *     visibility: {
+   *       Ruleset: 'public',
+   *       Declaration: 'public',
+   *       VarDeclaration: 'optional',
+   *       Mixin: 'public'
+   *     }
+   *  - When detached rulesets are parsed, their rules body is set to:
+   *    visibility: {
+   *      Ruleset: 'public',
+   *      Declaration: 'public',
+   *      VarDeclaration: 'private', <-- the one notable difference
+   *      Mixin: 'public'
+   *    }
+   * @note - The reason Less has "optionality" is likely because it tries
+   * to eagerly resolve variables, so even though its in a
+   * child scope, it will still be considered if nothing else in the
+   * scope is found. I'm guessing this is because "overwriting" a local
+   * variable from something like a mixin call would be counter-intuitive,
+   * but at the same time, I guess Alexis thought that eagerly resolving
+   * the variable might be useful.
+   *
+   * Note that right now, only Declarations being set to "optional"
+   * are supported. Everything else must be public or private.
+   *
+   * For Imports, the rules body is set to:
+   *     visibility: {
+   *       Ruleset: 'public',
+   *       Declaration: 'public',
+   *       VarDeclaration: 'public',
+   *       Mixin: 'public'
+   *    }
+   */
+  rulesVisibility?: Record<string, 'public' | 'optional' | 'private'>;
+  readonly?: boolean;
+  /**
+   * all imports other than classic `@import` set returned rules to local.
+   * The reason is that variables are not transitive, and you need to re-use
+   * modules to get the same variables.
+   */
+  local?: boolean;
+};
 
-type QueueItem = {
-  node: Node
-  /** Position in rules array */
-  pos: number
-  nameOnly?: true
-} | {
-  node: BaseDeclaration<Name, AnyDeclarationValue>
-  pos: number
-  /** If we're just evaluating a declaration's name */
-  nameOnly: true
+export interface Rules extends Node<Node[], RulesOptions & NodeOptions> {
+  eval(context: Context): Promise<this>;
 }
-
-type QueueMap = {
-  [Priority.None]?: Set<QueueItem>
-  [Priority.Low]?: Set<QueueItem>
-  [Priority.Medium]?: Set<QueueItem>
-  [Priority.High]?: Set<QueueItem>
-}
-
-function assign(map: QueueMap, key: Priority, value: Node, pos: number): void
-function assign(map: QueueMap, key: Priority, value: BaseDeclaration<Name, AnyDeclarationValue>, pos: number, nameOnly?: true): void
-function assign(map: QueueMap, key: Priority, value: Node, pos: number, nameOnly?: true | undefined) {
-  let set = map[key]
-  if (set) {
-    set.add({ node: value, pos, nameOnly })
-  } else {
-    map[key] = new Set([{ node: value, pos, nameOnly }])
-  }
-}
-
-export type RulesValue = {
-  value: Node[]
-}
-
 /**
  * The class representing a "declaration list".
  * CSS calls it this even though CSS Nesting
@@ -69,381 +99,100 @@ export type RulesValue = {
  * return rules.
  *
  * @example
- * color: black;
- * background-color: white;
+ * [
+ *   (Declaration color: black;)
+ *   (Declaration background-color: white;)
+ * ]
  */
-export class Rules extends Node<Node[]> {
-  // rootRules: Node[] = []
-  // _first: Node
-  // _last: Node
-  private _scope: Scope
+export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
+  type = 'Rules';
+  shortType = 'rules';
+  override allowRuleRoot = true;
+  override allowRoot = true;
 
-  get scope() {
-    let scope = this._scope
-    if (!scope) {
-      scope = this._scope = new Scope()
-    }
-    return this._scope
+  private _selectorRegistry: SelectorRegistry | undefined;
+  get selectorRegistry(): SelectorRegistry {
+    return (this._selectorRegistry ??= new SelectorRegistry(this));
   }
 
-  set scope(s: Scope) {
-    this._scope = s
+  private _mixinRegistry: MixinRegistry | undefined;
+  get mixinRegistry(): MixinRegistry {
+    return (this._mixinRegistry ??= new MixinRegistry(this));
   }
 
-  // constructor(value: { scope: }) {
-  //   super([])
-  // }
+  pendingExtends = new Set<[find: Selector, extendWith: Selector, partial: boolean]>();
 
-  /** Allows iterating with the each() function */
-  * [Symbol.iterator](): Generator<[string, Node]> {
-    for (let item of this.value) {
-      if (!(item instanceof Declaration)) {
-        continue
-      }
-      let name = typeof item.name === 'string' ? item.name : item.name.value
-      yield [name, item]
-    }
+  /**
+   * Register a ruleset for extend operations
+   */
+  registerRuleset(ruleset: Ruleset) {
+    this.selectorRegistry.addRuleset(ruleset);
   }
 
-  entries() {
-    return this[Symbol.iterator]()
+  registerMixin(mixin: Mixin | Ruleset) {
+    this.mixinRegistry.addMixin(mixin);
   }
 
-  toTrimmedString(depth: number = 0) {
-    let space = ''.padStart(depth * 2)
-    let output = ''
-    let outputs = this.value
-      .map(n =>
-        n.toString(depth)
-          .replace(/^\n[ \t]+/gm, `\n${space}`)
-      )
+  /**
+   * Update the registry when a ruleset's selectors change.
+   * Extending only ever adds keys, so we can just add the ruleset again,
+   * and re-index.
+   */
+  updateRuleset(ruleset: Ruleset) {
+    this.selectorRegistry.addRuleset(ruleset);
+  }
+
+  constructor(
+    value: Node[],
+    options?: RulesOptions & NodeOptions,
+    location?: LocationInfo,
+    treeContext?: TreeContext
+  ) {
+    super(value ?? [], options, location, treeContext);
+  }
+
+  * [Symbol.iterator]() {
+    yield* this.value.entries();
+  }
+
+  override toTrimmedString(depth: number = 0) {
+    let space = ''.padStart(depth * 2);
+    let output = '';
+    let { value } = this;
+    let outputs = value
+      .map((n, i) => {
+        let out = n.toString(
+          depth,
+          i === 0
+            ? depth !== 0
+              ? `\n${space}`
+              : ''
+            : '\n'
+        );
+
+        if (n.requiredSemi && n.options.semi !== false && value.length >= i) {
+          out += ';';
+        }
+        if (out === '') {
+          return '';
+        }
+        /**
+         * Replace the initial spaces in the first line with the correct indentation
+         */
+        return out.replace(/^\n+[ \t]*/, `\n${space}`);
+      });
     output += outputs
       .join('')
       /**
        * Replace multiple newlines with single newlines
        * (Remove empty lines)
        */
-      .replace(/\n+/g, '\n')
-    return output
+      .replace(/\n+/g, '\n');
+    return output;
   }
 
   visibleRules() {
-    return this.value.filter(n => n.visible)
-  }
-
-  async eval(context: Context): Promise<Rules | Root> {
-    return await this.evalIfNot(context, async () => {
-      let inheritedScope = context.scope
-      context.scope = this.scope
-      let { hoistDeclarations, leakVariablesIntoScope } = this.treeContext
-      let rules = this.clone()
-      rules.scope = this.scope
-      /**
-       * Make a shallow copy of rules.
-       * This is because we're going to replace
-       * each item in the array when evaluating.
-       */
-      let ruleValues = rules.value = [...this.value]
-      let evalQueue: QueueMap = {}
-
-      /**
-       * First, create a linked list.
-       * This is so folding in mixins can be done
-       * without mutating arrays.
-       */
-      // let prev: Node | undefined
-      let nodeLength = ruleValues.length
-      /** Iterate in reverse order, to assign the _next node */
-      // for (let i = nodeLength - 1; i >= 0; i--) {
-      //   const n = value[i]
-      //   if (i === nodeLength - 1) {
-      //     this._last = n
-      //   }
-      //   if (i === 0) {
-      //     this._first = n
-      //   }
-      //   if (prev) {
-      //     n._next = prev
-      //   }
-      //   prev = n
-      // }
-
-      /**
-       * Assign to the evaluation queue.
-       *
-       * Evalution order (in Less) should go:
-       *   1. static declaration names (names that do not, themselves,
-       *      contain variables). This includes mixin and qualified rule names
-       *   2. variable declaration names
-       *   3. mixin and function calls
-       *   3. everything else
-       *
-       * Everything else:
-       *   1. static declaration names of mixins and functions
-       *   2. variable declaration names of mixins and functions
-       *   3. everything else
-       */
-      for (let i = 0; i < nodeLength; i++) {
-        let n = ruleValues[i]!
-
-        if (n instanceof BaseDeclaration) {
-          if (hoistDeclarations) {
-            if (n.name instanceof Node) {
-              /** Evaluate these names after evaluating static names */
-              assign(evalQueue, Priority.Medium, n, i, true)
-            } else {
-              /** Evaluate static names first */
-              assign(evalQueue, Priority.High, n, i, true)
-            }
-          } else if (isNode(n, ['Mixin', 'Func'])) {
-            if (n.name instanceof Node) {
-              assign(evalQueue, Priority.Medium, n, i, true)
-            } else {
-              assign(evalQueue, Priority.High, n, i, true)
-            }
-          } else {
-            /**
-             * If we're not hoisting variables, evaluate
-             * declarations immediately.
-             */
-            assign(evalQueue, Priority.None, n, i)
-          }
-        /**
-         * Hoist imports
-         *
-         * @note - this might need tweaking
-         */
-        } else if (isNode(n, 'Use') || (hoistDeclarations && isNode(n, 'Call'))) {
-          assign(evalQueue, Priority.Low, n, i)
-        } else {
-          assign(evalQueue, Priority.None, n, i)
-        }
-      }
-
-      /** Start with high priority */
-      for (let i: Priority = Priority.High; i >= 0; i--) {
-        let set = evalQueue[i]
-        if (!set) {
-          continue
-        }
-
-        for (let item of set) {
-          const { node, pos, nameOnly } = item
-          if (nameOnly) {
-            let decl = node.clone() as BaseDeclaration
-            /** Everything in a ruleset root will have a name */
-            let name = decl.name!
-            let ident: string
-            if (name instanceof Node) {
-              ident = (await name.eval(context)).value
-              decl.name = ident
-            } else {
-              ident = name
-            }
-            if (!decl.allowRuleRoot) {
-              decl.visible = false
-            }
-            ruleValues[pos] = decl
-            if (isNode(decl, 'Mixin')) {
-              this._scope.setMixin(ident, decl, decl.options)
-            } else if (isNode(decl, ['VarDeclaration', 'Func'])) {
-              this._scope.setVar(ident, decl, decl.options as VarDeclarationOptions)
-            } else {
-              this._scope.setProp(ident, decl as Declaration)
-            }
-            /**
-             * Now that we've evaluated the name, add it to the evaluation queue.
-             * (Variable values are not evaluated unless they are called)
-             */
-            if (isNode(node, 'Declaration')) {
-              assign(evalQueue, Priority.None, decl, i)
-            }
-          } else {
-            if (hoistDeclarations && node instanceof Declaration) {
-              /**
-               * We've already cloned and partially evaluated this,
-               * so we only need to evaluate the value.
-               */
-              context.declarationScope = node
-              let evald = await node.value.eval(context)
-              context.declarationScope = undefined
-              if (evald instanceof Nil) {
-                ruleValues[pos] = evald
-              } else {
-                node.value = evald
-              }
-            } else {
-              let result: Node
-              /** Late evaluation of vars */
-              if (isNode(node, 'VarDeclaration')) {
-                result = node.clone()
-                if (node.name instanceof Node) {
-                  node.name = await node.name.eval(context) as Name
-                }
-              } else {
-                if (node instanceof Declaration) {
-                  context.declarationScope = node
-                }
-                result = await node.eval(context)
-              }
-              if (!result.allowRuleRoot) {
-                result.visible = false
-              }
-              ruleValues[pos] = result
-
-              /** Set references linearly */
-              if (!hoistDeclarations && result instanceof Declaration) {
-                let ident = result.name instanceof Node ? result.name.value : result.name
-                if (isNode(node, 'VarDeclaration')) {
-                  this._scope.setVar(ident, result, result.options)
-                } else if (isNode(node, 'Declaration')) {
-                  this._scope.setProp(ident, result)
-                }
-              }
-              /** Merge any scope that we need for lookups */
-              if (result instanceof Rules) {
-                this._scope.merge(result._scope, leakVariablesIntoScope)
-              }
-            }
-          }
-        }
-
-        // let current = map[0]
-        // let prevEvald: Node | undefined
-
-        /**
-         * This will dynamically link rulesets like
-         * [rule]._next = [ruleset]._first
-         * [ruleset]._last = [rule]._next._next
-         *
-         * @todo Register declarations for languages
-         *       that merge them in.
-         */
-        // while (current) {
-        //   let evald: Node
-
-        //   if (current.nameOnly) {
-        //     const decl = current.node.clone() as Declaration<Node>
-        //     decl.name = decl.name.eval(context)
-        //     evald = decl
-        //   } else {
-        //     evald = current.node.eval(context)
-        //   }
-        //   const evaldIsRules = evald instanceof Rules
-        //   /**
-        //    * If previous iteration produced a ruleset, link its
-        //    * last value to the currently-evaluated rule
-        //    */
-        //   if (prevEvald) {
-        //     if (prevEvald instanceof Rules) {
-        //       prevEvald._last._next = evald
-        //     } else {
-        //       prevEvald._next = evald
-        //     }
-        //   }
-
-        //   /**
-        //    * If we're on the first node, and it evals to a ruleset,
-        //    * link this ruleset's first node to the first node of
-        //    * the ruleset.
-        //    */
-        //   if (this._first === current.node) {
-        //     if (evaldIsRules) {
-        //       this._first = (evald as Rules)._first
-        //     } else {
-        //       this._first = evald
-        //     }
-        //   }
-
-        //   if (evaldIsRules && prevEvald) {
-        //     prevEvald._next = (evald as Rules)._first
-        //   }
-
-        //   /**
-        //    * If we're on the last node, and it evals to a ruleset,
-        //    * link this ruleset's last node to the last node of
-        //    * the ruleset.
-        //    */
-        //   if (this._last === current.node) {
-        //     if (evaldIsRules) {
-        //       this._last = (evald as Rules)._last
-        //     } else {
-        //       this._last = evald
-        //     }
-        //   }
-
-        //   current = current._next
-        //   prevEvald = evald
-        // }
-      }
-
-      let newRules: Node[] = []
-
-      let bubbleRootRules = (rule: Node) => {
-        let importedRoots =
-          (isNode(rule, 'Ruleset') || isNode(rule, 'AtRule'))
-            ? rule.rules?.rootRules
-            : rule.rootRules
-        if (importedRoots) {
-          const newImportedRoots: Node[] = []
-          for (let r of importedRoots) {
-            if (r.options.hoistToParent) {
-              r.options.hoistToParent = false
-              newRules.push(r)
-              continue
-            }
-            newImportedRoots.push(r)
-          }
-          let { rootRules } = rules
-          if (!rootRules) {
-            rules.rootRules = newImportedRoots
-          } else {
-            rootRules.push(...newImportedRoots)
-          }
-        }
-      }
-      /**
-       * Bubble rules to root as needed
-       */
-      let tryAddToRoot = (rule: Ruleset | AtRule) => {
-        if (
-          rules.type !== 'Root'
-          && (
-            rule.options.hoistToRoot
-            || rule.options.hoistToParent
-            || context.opts.collapseNesting
-          )
-        ) {
-          /** Remove empty rules */
-          if (!rules.rootRules) {
-            rules.rootRules = [rule]
-          } else {
-            rules.rootRules.push(rule)
-          }
-        } else {
-          newRules.push(rule)
-        }
-      }
-
-      let walkRules = (rules: Node[]) => {
-        rules.forEach(rule => {
-          if (isNode(rule, ['Ruleset', 'AtRule'])) {
-            tryAddToRoot(rule)
-            bubbleRootRules(rule)
-          } else if (rule instanceof Rules) {
-            bubbleRootRules(rule)
-            walkRules(rule.value)
-          } else {
-            newRules.push(rule)
-          }
-        })
-      }
-      walkRules(ruleValues)
-      rules.value = newRules
-      /** Restore scope */
-      context.scope = inheritedScope
-      return rules
-    })
+    return this.value.filter(n => n.visible);
   }
 
   /**
@@ -451,124 +200,807 @@ export class Rules extends Node<Node[]> {
    *
    * @todo - get primitive values rendered for things
    * like numbers?
+   *
+   * @todo - Redo from scratch
    */
   toObject() {
-    let output = new Map<string, string>()
+    let output = new Map<string, string>();
     const iterateRules = (rules: Rules) => {
-      let value = rules.value
-      value.forEach(n => {
-        if (n instanceof Declaration) {
-          output.set(n.name.toString(), `${n.value.valueOf()}${n.important ? ` ${n.important}` : ''}`)
+      let value = rules.value;
+      value.forEach((n) => {
+        if (isNode(n, 'Declaration')) {
+          let { name, value, important } = n.value;
+          output.set(name.toString(), `${value.valueOf()}${important ? ` ${important}` : ''}`);
         } else if (n instanceof Rules) {
-          iterateRules(n)
+          iterateRules(n);
         }
-      })
-    }
-    iterateRules(this as unknown as Rules)
-    return Object.fromEntries(output)
+      });
+    };
+    iterateRules(this as unknown as Rules);
+    return Object.fromEntries(output);
   }
 
-  /** @todo move to visitors */
-  // toCSS(context: Context, out: OutputCollector) {
-  //   const value = this.value
-  //   out.add('{\n')
-  //   context.indent++
-  //   let pre = context.pre
-  //   value.forEach(v => {
-  //     out.add(pre)
-  //     v.toCSS(context, out)
-  //     out.add('\n')
-  //   })
-  //   context.indent--
-  //   pre = context.pre
-  //   out.add(`${pre}}`)
-  // }
-
-  // toModule(context: Context, out: OutputCollector) {
-  //   const depth = context.depth
-  //   context.depth = 2
-
-  //   out.add('$J.ruleset(\n', this.location)
-  //   context.indent++
-  //   let pre = context.pre
-  //   out.add(`${pre}(() => {\n`)
-  //   context.indent++
-  //   out.add(`  ${pre}const $OUT = []\n`)
-  //   this.value.forEach((node, i) => {
-  //     out.add(`  ${pre}`)
-  //     if (node instanceof JsNode) {
-  //       node.toModule(context, out)
-  //       out.add('\n')
-  //     } else if (node instanceof Declaration && context.opts.dynamic) {
-  //       /**
-  //        * Creates either runtime vars or var() depending on settings
-  //        */
-  //       const n = node.clone()
-  //       const process = (n: Node) => {
-  //         if (n instanceof JsExpr || n instanceof Call) {
-  //           if (context.isRuntime) {
-  //             context.rootRules.push(new Declaration({
-  //               name: context.getVar(),
-  //               value: n
-  //             }))
-  //             return n
-  //           }
-  //           return new Call({
-  //             name: 'var',
-  //             value: new List([
-  //               context.getVar(),
-  //               n
-  //             ])
-  //           })
-  //         }
-  //         n.processNodes(process)
-  //         return n
-  //       }
-  //       n.processNodes(process)
-
-  //       if (context.isRuntime) {
-  //         context.rootRules.forEach(n => {
-  //           out.add('$OUT.push(')
-  //           n.toModule(context, out)
-  //           out.add(')\n')
-  //         })
-  //         context.rootRules = []
-  //       } else {
-  //         out.add('$OUT.push(')
-  //         n.toModule(context, out)
-  //         out.add(')\n')
-  //       }
-  //     } else {
-  //       out.add('$OUT.push(')
-  //       node.toModule(context, out)
-  //       out.add(')\n')
-  //     }
-  //   })
-  //   out.add(`  ${pre}return $OUT\n${pre}})()`)
-  //   context.indent -= 2
-  //   pre = context.pre
-  //   out.add(`\n${pre})`)
-
-  //   context.depth = depth
-  // }
-}
-const origRules = defineType(Rules, 'Rules')
-type Params = Parameters<typeof origRules>
-export const rules = (
-  value?: Node[],
-  options?: Params[1],
-  location?: Params[2],
-  treeContext?: Params[3]
-) => {
   /**
-   * When using the simplified API, attach
-   * new-lines to each node.
+   * SCOPING
+   * The scope part of rules. Originally, `Scope` this was a separate
+   * class, but making it part of the definition of rules reduces
+   * duplication of concepts like "scope parents" since they
+   * are just Rules parents.
    */
-  if (value) {
-    value.forEach(n => {
-      n.post = ['\n']
-    })
+  /**
+   * All indexed collections, keyed. These are the value
+   * per scope (like a set of rules).
+   *
+   * @note - Types are stored differently for disambiguation
+   *         See the Prefix enum.
+   */
+  private _declarationMap: Map<string, Declaration[]> | undefined;
+  private get declarationMap(): Map<string, Declaration[]> {
+    return (this._declarationMap ??= new Map());
   }
-  return origRules(value, options, location, treeContext)
+
+  /**
+   * Rulesets and mixins. These get indexed multiple times
+   * for each simple selector.
+   */
+  private _selectorMap: Map<string, Array<Mixin | Ruleset>> | undefined;
+  private get selectorMap(): Map<string, Array<Mixin | Ruleset>> {
+    return (this._selectorMap ??= new Map());
+  }
+
+  private _rulesSet: RulesEntry[] | undefined;
+  private get rulesSet(): RulesEntry[] {
+    return (this._rulesSet ??= []);
+  }
+
+  register(node: Node, options?: Record<string, any>) {
+    if (isNode(node, 'Rules')) {
+      let rulesVisibility = options?.rulesVisibility ?? node.options.rulesVisibility ?? {};
+
+      /** These are public by default */
+      rulesVisibility.Declaration ??= 'public';
+      rulesVisibility.Ruleset ??= 'public';
+
+      /** Either one set as readonly will win */
+      let readonly = Boolean(options?.readonly || node.options.readonly);
+      this.rulesSet.push({
+        node,
+        rulesVisibility,
+        readonly
+      });
+    } else if (isNode(node, 'Declaration')) {
+      /**
+       * `setDefined` is an immediate mutation of the last found instance
+       *
+       * @todo - This behavior needs to be changed to be aligned with Sass. It should not
+       * mutate the last found instance, and instead should create a new declaration at
+       * the same scope level as the original declaration, but just before where the
+       * current evaluation is at the top level of the current scope.
+       */
+      if (node.options?.setDefined) {
+        let key = node.value.name.toString();
+        /** Don't set within sibling rules */
+        let opts: FindOptions = {};
+        opts.searchParents = true;
+        opts.start = node.index;
+        let result = this.findDeclaration(key, node.type as 'Declaration', opts);
+        if (result) {
+          if (result.options?.readonly || opts.readonly) {
+            throw new ReferenceError(`"${key}" is readonly`);
+          }
+          /** Over-write value */
+          result.value.value = node.value.value.copy();
+          /** !important always wins */
+          let important = result.value.important || node.value.important;
+          result.value.important = important;
+        } else {
+          throw new ReferenceError(`"${key}" is not defined`);
+        }
+      }
+      let map = this.declarationMap;
+      let key = node.value.name.toString();
+      let queue = map.get(key) ?? [];
+      queue.push(node);
+      map.set(key, queue);
+    } else if (isNode(node, 'Mixin') || isNode(node, 'Ruleset')) {
+      /** Register by selector */
+      const { selector } = node.value;
+      if (selector && !isNode(selector, 'Nil')) {
+        for (const key of selector.keySet) {
+          let queue = this.selectorMap.get(key) ?? [];
+          queue.push(node as Mixin | Ruleset);
+          this.selectorMap.set(key, queue);
+
+          /** @todo - I left off here */
+        }
+      }
+    }
+  }
+
+  push(node: Node) {
+    node.parent = this;
+    this.value.push(node);
+    this.register(node);
+  }
+
+  at(index: number) {
+    return this.value[index];
+  }
+
+  /**
+   * Find the closest declaration from start, in reverse order,
+   * using a binary search
+   */
+  private _findClosestByStart(list: Declaration[], start?: number) {
+    if (start === undefined) {
+      return atIndex(list, -1);
+    }
+    /**
+     * We do this so we start looking above the given position and don't
+     * return the current node.
+     */
+    start -= 1;
+    let bestMatch: number | undefined;
+
+    /** Binary search the queue to find a starting position */
+    let left = 0;
+    let right = list.length - 1;
+
+    while (left <= right) {
+      let mid = Math.floor((left + right) / 2);
+      let midVal = list.at(mid)!.index;
+      if (midVal === start) {
+        bestMatch = mid;
+        break;
+      }
+      if (midVal < start) {
+        bestMatch = mid;
+        left = mid + 1;
+      } else {
+        right = mid - 1;
+      }
+    }
+
+    return bestMatch !== undefined ? list.at(bestMatch) : undefined;
+  }
+
+  /**
+   * Get declarations from map and nested rulesets.
+   * This will return a list of all matching nodes.
+   *
+   * @todo - The pattern for mixins will be similar, no? Can this be
+   * re-used / abstracted?
+   *
+   * @todo - Register declarations and index them only when searching.
+   * This would be similar to how we index rulesets for extending.
+   */
+  findDeclaration(
+    key: string,
+    type: 'VarDeclaration' | 'Declaration' = 'VarDeclaration',
+    opts?: FindOptions
+  ): Declaration | undefined {
+    let declCandidate: [
+      declaration: Declaration,
+      read?: boolean
+    ] | undefined;
+    let rules: Rules | undefined = this;
+    let isPublic = false;
+    const {
+      searchParents = true,
+      local = false,
+      start
+    } = opts ?? {};
+    while (rules) {
+      let currentReadonly = opts?.readonly || rules.options.readonly;
+      if (rules._declarationMap) {
+        let list = rules.declarationMap.get(key);
+        if (list) {
+          list = list.filter(
+            n =>
+              n.type === type
+              && (
+                !opts?.filter
+                || opts.filter(n)
+              )
+          );
+        }
+        if (list) {
+          let result = rules._findClosestByStart(list, start);
+          if (result) {
+            declCandidate = [result, result.options.readonly || currentReadonly];
+          }
+          isPublic = true;
+        }
+      }
+
+      if (rules._rulesSet) {
+        let { rulesSet } = rules;
+        /**
+         * Only consider rules after the last found declaration (if relevant)
+         * and before the start position (if relevant)
+         */
+        rulesSet = rulesSet.filter((n) => {
+          return (!declCandidate || n.node.index > declCandidate[0].index)
+            && (start === undefined || n.node.index < start)
+            && (!(local && Boolean(n.node.options?.local)))
+            && (
+              n.rulesVisibility?.[type] === 'optional'
+              || n.rulesVisibility?.[type] === 'public'
+            );
+        });
+
+        let length = rulesSet.length;
+        if (length) {
+          for (let i = length - 1; i >= 0; i--) {
+            let r = rulesSet.at(i)!;
+            /** Locals can be searched once but not twice */
+            let newLocal = local || Boolean(r.node.options?.local);
+            let newOpts = opts ? { ...opts, readonly: currentReadonly || r.readonly } : { readonly: currentReadonly || r.readonly };
+            newOpts.searchParents = false;
+            newOpts.local = newLocal;
+            newOpts.start = undefined;
+            let result = r.node.findDeclaration(key, type, newOpts);
+            if (result) {
+              /**
+               * If it's public, and it's the lower-most declaration,
+               * it wins.
+               */
+              if (r.rulesVisibility?.[type] === 'public') {
+                if (opts && newOpts.readonly) {
+                  opts.readonly = true;
+                }
+                return result;
+              }
+              /**
+               * The declaration is optional, so we need to keep searching.
+               * If we already have a candidate, that means we have a local
+               * value which should win.
+               */
+              if (!declCandidate) {
+                declCandidate = [result, newOpts.readonly];
+              }
+            }
+          }
+        }
+      }
+      if (isPublic || !searchParents) {
+        if (opts && declCandidate?.[1]) {
+          opts.readonly = true;
+        }
+        return declCandidate?.[0];
+      }
+
+      do {
+        rules = rules?.parent as Rules;
+        /**
+         * If we reach an import boundary, stop unless it's an `@import`
+         * which means these rules can reach into the parent file that imports
+         * this one.
+         */
+        if (isNode(rules, 'StyleImport') && rules.options.type !== 'import') {
+          rules = undefined;
+          break;
+        }
+      } while (rules && !(rules instanceof Rules));
+    }
+    if (opts && declCandidate?.[1]) {
+      opts.readonly = true;
+    }
+    return declCandidate?.[0];
+  }
+
+  /**
+   * Returns an executable function
+   * @todo - Move from scope
+   */
+  getMixinOrRuleset(selector: Selector, opts: FindOptions = {}) {
+    return () => {};
+  }
+
+  /**
+   * Unlike `eval`, preEval of rules within a Rules instance
+   * happens linearly, which helps us assign sequential indexes
+   * while traversing nested rules. The indexes will help us
+   * when searching "upwards" (Sass-style).
+   */
+  override async preEval(context: Context): Promise<this> {
+    if (!this.preEvaluated) {
+      let rules = this.maybeClone(context);
+      /**
+       * Attach this early? Normally the parent will attach
+       * but this causes recursion issues with rules.
+       *
+       * @todo - Should this be added to node.clone()? I need
+       * to think about the implications.
+       */
+      rules.preEvaluated = true;
+      if (rules.index === undefined) {
+        rules.index = context.ruleCounter++;
+      }
+      for (let [, node] of rules) {
+        if (node.index === undefined) {
+          node.index = context.ruleCounter++;
+        }
+      }
+      return rules;
+    }
+    return this;
+  }
+
+  override async evalNode(context: Context): Promise<this> {
+    let rules = this;
+    if (!this.preEvaluated) {
+      rules = await this.preEval(context);
+    }
+    let evalQueue: EvalQueueMap = new Map();
+
+    /** Grab current context */
+    let rulesContext = context.rulesContext;
+    let treeContext = context.treeContext;
+    let treeRoot = context.treeRoot;
+    let root = context.root;
+
+    /** Set new context while evaluating */
+    if (!treeContext || treeContext !== rules.treeContext) {
+      /**
+       * We've encountered a new tree root...
+       * but this isn't the right way to manage this...
+       *
+       * We need a list of _unique_ tree context roots that are visible
+       * from this root AND that are extendable.
+       */
+      context.allRoots.push(rules);
+      context.treeContext = rules.treeContext;
+      context.treeRoot = rules;
+      /** Set this as ultimate root if there isn't a root yet */
+      context.root ??= rules;
+    }
+    context.rulesContext = rules;
+
+    // let { leakVariablesIntoScope } = context.treeContext ?? {}
+    /**
+     * First, push rules onto an evaluation queue.
+     */
+    for (let item of rules) {
+      let [, rule] = item;
+      let priority = NodeTypeToPriority.get(rule.type) ?? Priority.None;
+      let queue = evalQueue.get(priority) ?? [];
+      queue.push(item);
+      evalQueue.set(priority, queue);
+    }
+
+    let rulesToHoist = false;
+
+    /** Now, evaluate the queue in two rounds */
+    for (let method of ['preEval', 'eval'] as const) {
+      for (let i: Priority = Priority.Highest; i >= 0; i--) {
+        let queue = evalQueue.get(i);
+        if (!queue) {
+          continue;
+        }
+        for (let item of queue) {
+          let [i, rule] = item;
+          if (
+            i === Priority.Highest
+            && method === 'preEval'
+            && isNode(rule, 'Declaration')
+            && rule.value.name instanceof Interpolated
+          ) {
+            let lowQueue = evalQueue.get(Priority.High) ?? [];
+            lowQueue.push([i, rule]);
+            evalQueue.set(Priority.High, lowQueue);
+            continue;
+          }
+          /** Only evaluated on reference */
+          if (method === 'eval' && isNode(rule, 'VarDeclaration')) {
+            continue;
+          }
+          let result!: Node;
+          result = await rule[method](context);
+          if (result !== rule) {
+            rules.value[i] = result;
+            queue[i] = [i, result];
+          }
+          if (method === 'eval' && result.options.hoistToRoot) {
+            rulesToHoist = true;
+          }
+          if (method === 'preEval') {
+            /** Do I need to pass in options? */
+            rules.register(result);
+          } else if (method === 'eval') {
+            /** Register rulesets for extending */
+            let rulesetType = isNode(result, 'Ruleset')
+              ? 'Ruleset'
+              : isNode(result, 'Mixin')
+                ? 'Mixin'
+                : undefined;
+            if (rulesetType === 'Ruleset') {
+              /**
+               * We register it at the tree root for extends,
+               * because extends is a global (file-level) operation.
+               *
+               * We also register it at the ruleset for mixin lookup.
+               *
+               * @todo - fix ruleset type so Ruleset<unknown>
+               */
+              context.treeRoot.registerRuleset(result as Ruleset<RulesetValue>);
+            }
+            if (rulesetType) {
+              this.registerMixin(result as Mixin);
+            }
+          }
+          /**
+           * @todo - Figure out if I should try to evaluate again later?
+           * I had this in a try/catch block, but it had hard-to-reason about
+           * behavior.
+          */
+          // if (i === Priority.None) {
+          //   throw e
+          // }
+          // let lowQueue = rules.evalQueue.get(Priority.None) ?? new Queue()
+          // lowQueue.push([i, rule])
+          // rules.evalQueue.set(Priority.None, lowQueue)
+          /** Register in an index - skip declarations already registered */
+
+          // rules.data.setAt(i, rule)
+        }
+      }
+    }
+    /** Bubble any hoisted rules */
+    let frame = context.rulesetFrames[0];
+    if (root && frame && rulesToHoist) {
+      let newRules = new Rules([]);
+      const getRulesetCopy = () => {
+        let newFrame = frame.copy(true);
+        for (let n of newFrame.nodes()) {
+          if (isNode((n.value as any).rules, 'Rules') && (n.value as any).rules.index === rules.index) {
+            (n.value as any).rules = newRules;
+            break;
+          }
+        }
+        return newFrame;
+      };
+      let rootRules: Node[] = !rules.value[0]?.options.hoistToRoot ? [getRulesetCopy()] : [];
+      for (let [i, rule] of rules) {
+        if (!rule.options.hoistToRoot) {
+          newRules.push(rule);
+        } else {
+          rootRules.push(rule);
+          let next = atIndex(rules.value, i + 1);
+          if (next && !next.options.hoistToRoot) {
+            newRules = new Rules([]);
+            rootRules.push(getRulesetCopy());
+          }
+        }
+      }
+      let prevFrameIndex = root.value.indexOf(frame);
+      /** Splice the new rules where that frame was */
+      root.value.splice(prevFrameIndex, 1, ...rootRules);
+    }
+    if (rules === context.root) {
+      /**
+       * We've evaluated all the rules of the "outer" rules
+       * and we can now resolve any pending extends.
+       *
+       * We need to loop through all roots, but we need to properly respect
+       * import scoping, so this isn't correct yet.
+       */
+      for (let root of context.allRoots) {
+        for (let [find, extendWith, partial] of root.pendingExtends) {
+          let rulesetSet = root.selectorRegistry.findCandidateRulesets(find);
+          if (rulesetSet) {
+            rulesetSet.forEach((ruleset) => {
+              let result = tryExtendSelector(ruleset.selector as Selector, find, extendWith, partial);
+              if (result) {
+                /** Just extend it? */
+                ruleset.value.selector = result.value;
+              }
+            });
+          }
+        }
+      }
+    }
+    /**
+     * Restore contexts
+     */
+    context.rulesContext = rulesContext;
+    context.treeRoot = treeRoot;
+    context.root = root;
+    return rules;
+  }
 }
-Rules.prototype.allowRuleRoot = true
+export const rules = defineType(Rules, 'Rules');
+
+export type FindOptions = {
+  filter?: (n: Node) => boolean;
+  /** This gets set if any parent is set to readonly */
+  readonly?: boolean;
+  searchParents?: boolean;
+  start?: number;
+  local?: boolean;
+};
+
+type EvalQueueMap = Map<Priority, Array<[number, Node]>>;
+
+/**
+ * @todo - Will need lots of massaging, to resolve things like
+ * mixins which rely on variables which have interpolated names,
+ * and variables with interpolated names that rely on mixins.
+ */
+const NodeTypeToPriority = new Map([
+  /** First, register vars and props */
+  ['VarDeclaration', Priority.Highest],
+  ['Declaration', Priority.Highest],
+  /** Then, register other items that can be "looked up" */
+  ['Mixin', Priority.High],
+  ['Ruleset', Priority.High],
+  /** Then, resolve imports */
+  ['StyleImport', Priority.Medium],
+  /** Then, resolve any calls */
+  ['Call', Priority.Low]
+  /** Then, everything else? */
+]);
+
+// const TypeToNodeType = new Map([
+//   ['Mixin', NodeType.MIXIN],
+//   ['Ruleset', NodeType.RULESET],
+//   ['Declaration', NodeType.PROPERTY],
+//   ['VarDeclaration', NodeType.VARIABLE],
+//   ['Rules', NodeType.RULES]
+// ])
+
+// export const enum NodeTypeIndex {
+//   NONE             = 0b000000,
+//   MIXIN            = 0b000001,
+//   RULESET          = 0b000010,
+//   MIXIN_OR_RULESET = 0b000011,
+//   PROPERTY         = 0b000100,
+//   VARIABLE         = 0b001000,
+//   VAR_OR_PROP      = 0b001100,
+//   /**
+//    * Variables and mixins can leak
+//   */
+//   LEAKY_RULES      = 0b010000,
+//   /** @note - Properties and rulesets are always visible. */
+//   PRIVATE_RULES    = 0b100000,
+//   RULES            = 0b110000
+// }
+
+// type IndexKey = `${NodeType}${string}`
+
+interface RulesEntry {
+  node: Rules;
+  rulesVisibility?: RulesOptions['rulesVisibility'];
+  /**
+   * These are from use, from, and import statements. Can't be assigned with $$
+   * (verify that this is not possible with SCSS).
+   */
+  readonly?: boolean;
+}
+
+/**
+ * Right now, the only nodes that can be registered to the scope for lookups
+ */
+// type ScopeNodes = Declaration | VarDeclaration | Mixin | Ruleset | Rules
+type MixinEntry = Mixin | Rules;
+
+/**
+ * Returns a plain JS function for calling a set of mixins
+ *
+ * This is in the same file as Rules to avoid circular dependencies.
+ *
+ * @note this will be called as a result after a mixin find is executed.
+ */
+export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
+  let mixinArr = isArray(mixins) ? mixins : [mixins];
+  /**
+   * This will be called by a mixin call or by JavaScript
+   *
+   * @note - Mixins resolve to async functions because they
+   * can contain dynamic imports.
+   */
+  async function returnFunc(this: unknown, ...args: any[]): Promise<Rules | Record<string, string>>;
+  async function returnFunc(this: Context, ...args: any[]): Promise<Rules>;
+  async function returnFunc(this: Context | unknown, ...args: any[]) {
+    const mixinLength = mixinArr.length;
+    let mixinCandidates: MixinEntry[] = [];
+    let evalCandidates: Array<[MixinEntry, number]>;
+    let thisContext = this instanceof Context ? this : new Context();
+    /**
+     * Check named and positional arguments
+     * against mixins, to see which ones match.
+     * (Any mixin with a mis-match of
+     * arguments fails.)
+     */
+    let argEntries = isPlainObject(args[0]) ? Object.entries(args[0]) : null;
+    for (let i = 0; i < mixinLength; i++) {
+      let mixin = mixinArr[i]!;
+      let isPlainRule = isNode(mixin, 'Rules');
+      let paramLength = isPlainRule ? 0 : (mixin as Mixin).value.params?.length ?? 0;
+      if (!paramLength) {
+        /** Exit early if args were passed in, but no args are possible */
+        if (args.length) {
+          continue;
+        }
+        mixinCandidates.push(mixin);
+      } else {
+        /** The mixin has parameters, so let's check args to see if there's a match */
+        let params = (mixin as Mixin).value.params!.clone();
+        let positions = new Set(params.value.map((_, i) => i));
+        /**
+         * First argument can be a plain object with named params
+         * e.g. { a: 1, b: 2 }
+         */
+        let argPos = 0;
+        if (argEntries) {
+          argPos = 1;
+          let namedMap = new Map(argEntries);
+          /**
+           * We iterate through params instead of args,
+           * because we need to track the position
+           * of each parameter.
+           */
+          for (let [i, param] of params) {
+            if (isNode(param, 'VarDeclaration')) {
+              let key = param.value.name as string;
+              let namedValue = namedMap.get(key);
+              /** Replace our param value with the passed in named value */
+              if (namedValue) {
+                params.value[i] = cast(namedValue);
+                /**
+                 * Because we've assigned a named value, any
+                 * positional arguments will be shifted.
+                 */
+                positions.delete(i);
+                namedMap.delete(key);
+              } else {
+                /** This mixin is not a match */
+                break;
+              }
+            }
+          }
+          if (namedMap.size) {
+            /** This mixin is not a match */
+            continue;
+          }
+        }
+        /**
+         * Now we can check remaining positional matches
+         * against the remaining parameters.
+         */
+        if (args.length - argPos !== positions.size) {
+          /** This mixin is not a match */
+          continue;
+        }
+        let match = true;
+
+        for (let i of positions) {
+          let arg = args[argPos];
+          let param = params.value[i]!;
+          if (isNode(param, 'VarDeclaration')) {
+            param.value.value = cast(arg);
+          } else if (isNode(param, 'Rest')) {
+            param.value = spaced(args.slice(argPos));
+            /** Check a pattern-matching node */
+          } else if (param.compare(arg) !== 0) {
+            /** This mixin is not a match */
+            match = false;
+            break;
+          }
+          argPos++;
+        }
+        if (match) {
+          (mixin as Mixin).value.params = params;
+          mixinCandidates.push(mixin);
+        }
+      }
+    }
+    /**
+     * Alright, we have mixin candidates (mixins that match
+     * by arity, pattern, and/or named arguments), now what?
+     *
+     * First, let's make an evaluation order that evaluates
+     * default guards last.
+     */
+    let hasDefault = false;
+    evalCandidates = mixinCandidates
+      .map<[MixinEntry, number]>(
+        (candidate, i) => {
+          let isDefault = candidate.options?.hasDefault;
+          if (isDefault) {
+            if (hasDefault) {
+              throw new Error('Ambiguous use of default guard found');
+            }
+            hasDefault = true;
+          }
+          return [candidate, i];
+        });
+
+    if (hasDefault) {
+      /** There is a default guard, so sort candidates */
+      evalCandidates = evalCandidates.slice(0).sort((a, b) => {
+        let aNode = a[0];
+        let bNode = b[0];
+        let aDefault = aNode.options?.hasDefault;
+        let bDefault = bNode.options?.hasDefault;
+        /** No guard (or is just a plain ruleset) */
+        if (!aDefault && !bDefault) {
+          return 0;
+        }
+
+        if (!aDefault) {
+          return 1;
+        }
+        if (!bDefault) {
+          return -1;
+        }
+        return 0;
+      });
+    }
+
+    /**
+     * Now we have a set of mixins that can return rulesets,
+     * but first we need to create a new scope for each mixin,
+     * and create variable declarations for each parameter.
+     */
+    let hasMatch = false;
+    let outputRules: Array<[Rules, number]> = [];
+    for (let [candidate, i] of evalCandidates) {
+      if (isNode(candidate, 'Rules')) {
+        hasMatch = true;
+        outputRules.push([candidate, i]);
+        continue;
+      }
+      /** Create new rules, and add the candidate rules, to add to scope */
+      let rules = new Rules([]);
+      rules.push(candidate.value.rules);
+
+      /** Now we need to add our parameters, if any */
+      let params = candidate.value.params;
+      if (params) {
+        for (let param of params.value) {
+          if (isNode(param, ['VarDeclaration', 'Rest'])) {
+            /** @todo - Register Rest */
+            rules.register(param);
+          }
+        }
+      }
+      /** Now we can evaluate our guards, if any */
+      let guard: Condition | Bool | undefined = candidate.value.guard;
+      let passes = true;
+      let incomingScope = thisContext.scope;
+      thisContext.scope = rules;
+      if (guard) {
+        passes = false;
+        /** All nodes need context to be evaluated */
+        thisContext.isDefault = !hasMatch;
+        guard = await guard.eval(thisContext);
+        /** The guard condition passed */
+        if (guard.value) {
+          passes = true;
+        }
+      }
+      if (passes) {
+        let newRules = await rules.eval(thisContext);
+        outputRules.push([newRules, i]);
+      }
+      thisContext.scope = incomingScope;
+    }
+    /**
+     * Now that we have output rules, we sort them by
+     * their original order
+     */
+    let rulesArr = outputRules.sort((a, b) => a[1] - b[1]).map(r => r[0]);
+    /** Create a rules wrapper */
+    let output = new Rules(rulesArr);
+
+    /** Now push all rules into the rules value */
+    if (this instanceof Context) {
+      return output;
+    } else {
+      return output.toObject();
+    }
+  }
+
+  return returnFunc;
+}

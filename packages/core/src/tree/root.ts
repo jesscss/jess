@@ -1,28 +1,61 @@
-import { defineType } from './node'
-import { Rules } from './rules'
-import type { Context } from '../context'
-import { type Opaque } from 'type-fest'
+import { defineType, type NoOverride } from './node';
+import { Rules } from './rules';
+import type { Context } from '../context';
+import type { Selector } from './selector';
+import { tryExtendSelector } from './util/extend';
+import { JessError } from '../jess-error';
 
 /**
  * The root node. Contains a collection of nodes.
  * The tree will have a root, but each file will have its own root.
+ *
+ * @todo - I think we can remove and just have Rules
  */
 export class Root extends Rules {
-  async eval(context: Context): Promise<Root> {
-    context.opts.mathMode = this.treeContext.mathMode
-    context.opts.unitMode = this.treeContext.unitMode
-    context.depth++
-    let node = (await super.eval(context)) as Root
-    let rules = node.value
-    node.rootRules?.forEach(rule => rules.push(rule))
-    context.depth--
-    node.value = rules
-    return node
-  }
+  /**
+   * @todo - Rewrite to handle "root rules" better.
+   * There shouldn't be root rules so much as parent / root rules.
+   */
+  // override async evalNode(context: Context): Promise<this> {
+  //   context.opts.mathMode = this.treeContext.mathMode;
+  //   context.opts.unitMode = this.treeContext.unitMode;
+  //   context.depth++;
+  //   let currentCurrentRoot = context.currentRoot;
+  //   context.currentRoot = this;
+  //   context.root ??= this;
+  //   let currentTreeContext = context.treeContext;
+  //   context.treeContext = this.treeContext;
+  //   let node = (await super.evalNode(context)) as this;
+  //   context.depth--;
+  //   /** We've evaluated all roots! We can extend now! */
+  //   if (this === context.root) {
+  //     for (const [find, extendWith, partial] of node.pendingExtends) {
+  //       const candidates = this.selectorRegistry.findCandidateRulesets(find);
+  //       for (const candidate of candidates) {
+  //         /** @todo - Fix Ruleset typing */
+  //         const result = tryExtendSelector(candidate.selector as Selector, find, extendWith, partial);
+  //         if (result.error && result.error.type === 'NOT_FOUND') {
+  //           throw new JessError({
+  //             type: 'ExtendError',
+  //             message: result.error.message
+  //             /** @todo */
+  //             // filePath: this.filePath,
+  //             // line: this.line,
+  //             // column: this.column,
+  //             // source: this.source
+  //           });
+  //         }
+  //       }
+  //     }
+  //   }
+  //   context.treeContext = currentTreeContext;
+  //   context.currentRoot = currentCurrentRoot;
+  //   return node;
+  // }
 
-  toString(depth?: number | undefined) {
+  override toString(depth?: number | undefined) {
     /** Remove leading newlines */
-    return super.toString(depth).replace(/^\n+/, '') as Opaque<string>
+    return super.toString(depth).replace(/^\n+/, '') as NoOverride<string>;
   }
 
   /** @todo - move to visitors */
@@ -110,4 +143,4 @@ export class Root extends Rules {
   // }
 }
 
-export const root = defineType(Root, 'Root')
+export const root = defineType(Root, 'Root');

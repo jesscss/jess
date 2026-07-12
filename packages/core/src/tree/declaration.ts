@@ -1,28 +1,79 @@
 import {
   Node,
-  defineType
-} from './node'
-import { isNode } from './util'
-import { Nil } from './nil'
-import type { Context } from '../context'
-import { Interpolated } from './interpolated'
-import type { General } from './general'
-import {
-  type BaseDeclarationValue,
-  type Name,
-  BaseDeclaration,
-  type BaseDeclarationOptions
-} from './base-declaration'
+  defineType,
+  type LocationInfo
+} from './node';
+import { isNode } from './util/is-node';
+import { Nil } from './nil';
+import type { Context, TreeContext } from '../context';
+import { Interpolated } from './interpolated';
+import type { General, Name } from './general';
+import { Reference } from './reference';
+import { List } from './list';
+import { spaced } from './sequence';
+import { Operation } from './operation';
 
-export type DeclarationOptions = BaseDeclarationOptions & {
-  semi?: boolean
+export const enum AssignmentType {
+  Default = ':',
+  Add = '+:',              // similar to += in JS, but merges lists / sequences / collections
+  // Subtract = '-:',      // math subtraction, like -= in JS
+  // Multiply = '*:',      // math multiplication, like *= in JS
+  // Divide = '/:',        // math division, like /= in JS
+  CondAssign = '?:',       // similar to ??= in JS or !default in Sass
+  // CondAdd = '?+:',      // add if defined, otherwise assign
+  // CondSubtract = '?-:', // subtract if defined, otherwise assign
+  // CondMultiply = '?*:', // multiply if defined, otherwise assign
+  // CondDivide = '?/:',   // divide if defined, otherwise assign
+
+  /** Legacy Less flags */
+  MergeList = '&,:',    // merge into a list if another prop exists with this flag
+  MergeSequence = '&_:' // merge into a sequence if another prop exists with this flag
 }
 
-export type DeclarationValue = BaseDeclarationValue & {
-  value: Node
+export type DeclarationOptions = {
+  assign?: AssignmentType;
+  semi?: boolean;
+  /**
+   * This doesn't prevent shadowing; it prevents declarations like:
+   *   ^$overwrite: foo;
+   *
+   * Written as `!$foo:` in Jess or imported from a readonly context
+   */
+  readonly?: boolean;
+  /**
+   * Instead of implicitly declaring or overriding,
+   * requires a variable to previously be explicitly
+   * declared within scope.
+   *
+   * Used by SCSS (!global) and Jess's (^$foo:)
+   */
+  setDefined?: boolean;
+
+  /**
+   * Used for mixin / function parameters (and args). It's not the
+   * same kind of variable declaration.
+   */
+  paramVar?: boolean;
+
+  /** Used by SCSS (!default) and Jess (?:) */
+  // setIfUndefined?: boolean
+  /**
+   * Throw if already defined in the immediate scope
+   * Will not throw if defined in a parent scope.
+   *
+   * Used by SCSS in the case of mixins... not Jess?
+   */
+  throwIfDefined?: boolean;
+};
+
+type NameValue = string | Name | Interpolated<'Name'>;
+
+export type DeclarationValue = {
+  name: NameValue;
+  value: Node;
   /** The actual string representation of important, if it exists */
-  important?: General<'Flag'>
-}
+  important?: General<'Flag'>;
+};
 
 /**
  * A continuous collection of nodes.
@@ -30,66 +81,139 @@ export type DeclarationValue = BaseDeclarationValue & {
  * Initially, the name can be a Node or string.
  * Once evaluated, name must be a string
  */
-export class Declaration<O extends DeclarationOptions = DeclarationOptions, N extends Name = Name> extends BaseDeclaration<N, DeclarationValue, O> {
-  get name(): N {
-    return this.data.get('name')
+export class Declaration extends Node<DeclarationValue, DeclarationOptions> {
+  type = 'Declaration';
+  shortType = 'decl';
+  override allowRuleRoot = true;
+
+  constructor(
+    value: DeclarationValue,
+    options?: DeclarationOptions,
+    location?: LocationInfo,
+    treeContext?: TreeContext
+  ) {
+    super(value, options, location, treeContext);
   }
 
-  set name(v: N) {
-    this.data.set('name', v)
+  /** If the value has curly braces, a semi-colon is not required */
+  override get requiredSemi() {
+    return !isNode(this.value.value, 'Collection') && !isNode(this.value.value, 'Mixin');
   }
 
-  get value(): Node {
-    return this.data.get('value')
-  }
-
-  set value(v: Node) {
-    this.data.set('value', v)
-  }
-
-  get important() {
-    return this.data.get('important')
-  }
-
-  set important(v: General<'Flag'> | undefined) {
-    this.data.set('important', v)
-  }
-
-  toTrimmedString(depth?: number) {
-    const { name, value, important } = this
-    const { assign = ':' } = this.options
-    let a = assign === ':' ? ':' : ` ${assign}`
-    if (isNode(value, 'Collection')) {
-      return `${name}${a}${value.toString(depth)}`
-    }
-    return `${name}${a}${value.toString(depth)}${important ? `${important}` : ''}`
-  }
-
-  async eval(context: Context): Promise<Node> {
-    return await this.evalIfNot(context, async () => {
-      let node = this.clone()
-      node.evaluated = true
-      let { name, value } = node
+  protected declTrimmedString(depth?: number) {
+    const { name, value, important } = this.value;
+    const { assign = ':' } = this.options;
+    let a = assign === ':' ? ':' : ` ${assign}`;
+    let returnVal = `${name}${a}${
+      value.processPrePost('pre', ' ')
+    }${
+      value.toTrimmedString(depth)
+    }${
+      value.processPrePost('post')
+    }`;
+    if (!isNode(value, 'Collection')) {
+      returnVal += important ? `${important}` : '';
       /**
-       * Name may be a variable or a sequence containing a variable
-       *
-       * @todo - is this valid if rulesets pre-emptively evaluate names?
+       * @note Semi-colon output is handled by the Rules node
        */
+    }
+    return returnVal;
+  }
+
+  override toTrimmedString(depth?: number) {
+    return this.declTrimmedString(depth);
+  }
+
+  override async preEval(context: Context): Promise<this> {
+    if (!this.preEvaluated) {
+      /** We need to clone declarations, because we alter their options */
+      let node = this.clone();
+      node.preEvaluated = true;
+      let { name, value } = node.value;
+      let key: string | Name;
       if (name instanceof Interpolated) {
-        node.name = await name.eval(context) as N
+        key = (await name.eval(context)).createGeneric() as Name;
+        node.value.name = key;
       } else {
-        node.name = name
+        key = name;
       }
-      if (value instanceof Node) {
-        let newValue = await value.eval(context)
-        if (newValue instanceof Nil) {
-          return newValue.inherit(node)
-        } else {
-          node.value = newValue
+      /** Normalize assignment types */
+      let assign = node.options?.assign;
+      if (assign) {
+        value = value.maybeClone(context);
+        /** Reference type */
+        let type: 'property' | 'variable' =
+          node.type === 'Declaration' ? 'property' : 'variable';
+        switch (assign) {
+          case AssignmentType.MergeList:
+          case AssignmentType.MergeSequence: {
+            const ref = new Reference(key.toString(), {
+              type,
+              fallbackValue: new Nil(),
+              filter: (n) => {
+                const assign = n.options?.assign;
+                return assign === AssignmentType.MergeList
+                  || assign === AssignmentType.MergeSequence;
+              }
+            });
+            /**
+             * @note - It's up to Sequence and List to handle
+             *         the merging of the values, if Nil()
+             *         or a nested list.
+             */
+            value = assign === AssignmentType.MergeList
+              ? new List([ref, value])
+              : spaced([ref, value]);
+
+            node.value.value = value;
+            break;
+          }
+          case AssignmentType.Add: {
+            node.value.value =
+              new Operation([
+                new Reference(key.toString(), { type }),
+                '+',
+                value
+              ]);
+            break;
+          }
+          case AssignmentType.CondAssign: {
+            node.value.value =
+              new Reference(key.toString(), {
+                type,
+                fallbackValue: value
+              });
+            break;
+          }
         }
+        node.options.assign = AssignmentType.Default;
       }
-      return node
-    })
+      return node;
+    }
+    return this;
+  }
+
+  override async evalNode(context: Context) {
+    let node = await this.preEval(context);
+    let { name, value } = node.value;
+    /**
+     * Name may be a variable or a sequence containing a variable
+     *
+     * @todo - is this valid if rulesets pre-emptively evaluate names?
+     */
+    if (name instanceof Interpolated) {
+      node.value.name = (await name.eval(context)).createGeneric() as Name;
+    }
+    /** Evaluate the value */
+    if (value instanceof Node) {
+      let newValue = await value.eval(context);
+      if (newValue instanceof Nil) {
+        return newValue.inherit(node);
+      } else {
+        node.value.value = newValue;
+      }
+    }
+    return node;
   }
 
   /** @todo - move to visitors */
@@ -122,29 +246,11 @@ export class Declaration<O extends DeclarationOptions = DeclarationOptions, N ex
   // }
 }
 
-type DeclarationParams = ConstructorParameters<typeof Declaration>
+type DeclarationParams = ConstructorParameters<typeof Declaration>;
 
-const origDefine = defineType<DeclarationValue>(Declaration, 'Declaration', 'decl') as (
+export const decl = defineType<DeclarationValue>(Declaration, 'Declaration', 'decl') as (
   value: DeclarationValue | DeclarationParams[0],
   options?: DeclarationParams[1],
   location?: DeclarationParams[2],
   treeContext?: DeclarationParams[3]
-) => Declaration
-
-export const decl = (
-  value: DeclarationValue | DeclarationParams[0],
-  options?: DeclarationParams[1],
-  location?: DeclarationParams[2],
-  treeContext?: DeclarationParams[3]
-) => {
-  /**
-   * For convenience, add pre-whitespace to value node
-   * @todo - for custom properties, this should be handled differently
-  */
-  const node = origDefine(value, options, location, treeContext)
-  node.value.pre = 1
-  return node
-}
-
-Declaration.prototype.requiredSemi = true
-Declaration.prototype.allowRuleRoot = true
+) => Declaration;

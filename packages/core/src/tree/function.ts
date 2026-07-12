@@ -1,30 +1,33 @@
-import { type Context } from '../context'
-import { AtRule } from './at-rule'
-import { defineType } from './node'
-import { Rules } from './rules'
-import type { Node } from './node'
-import { Mixin } from './mixin'
+import { type Context } from '../context';
+import { AtRule } from './at-rule';
+import { defineType } from './node';
+import { Rules } from './rules';
+import type { Node } from './node';
+import { Mixin } from './mixin';
 
 /**
  * Functions are mixins with a return value,
  * defined in a stylesheet.
  *
- *  e.g. `@ function ($a, $b) { ... }`
+ *  e.g. `$my-function: @($a; $b) > { ... }`
  *
  * Used by Jess / Sass
  */
 export class Func extends Mixin {
-  async eval(context: Context): Promise<Node> {
-    let result = await super.eval(context)
+  override type = 'Func' as const;
+  override shortType = 'fn' as const;
+
+  override async evalNode(context: Context): Promise<Node> {
+    let result = await super.evalNode(context);
     if (result instanceof Rules) {
-      let value = result.value
-      let last = value[value.length - 1]
-      if (last instanceof AtRule && last.name.value.includes('return')) {
-        return last.prelude!
+      /** Find the last valid return */
+      const decl = result.findDeclaration('return', 'Declaration', undefined, false);
+      if (!decl) {
+        throw new Error(`Function ${this.value.name} must return a value`);
       }
     }
-    return result
+    return result;
   }
 }
 
-export const fn = defineType(Func, 'Func', 'fn')
+export const fn = defineType(Func, 'Func', 'fn');

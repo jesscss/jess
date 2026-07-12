@@ -1,22 +1,22 @@
-import type { LessParser, TokenMap, RuleContext } from './scssParser'
-import { tokenMatcher } from 'chevrotain'
+import type { LessParser, TokenMap, RuleContext } from './scssParser';
+import { tokenMatcher } from 'chevrotain';
 
 /** Extensions of the CSS language */
 export function extendRoot(this: LessParser, T: TokenMap) {
-  const $ = this
+  const $ = this;
 
   const isEscapedString = () => {
-    const next = $.LA(1)
-    return tokenMatcher(next, T.QuoteStart) && next.image.startsWith('~')
-  }
+    const next = $.LA(1);
+    return tokenMatcher(next, T.QuoteStart) && next.image.startsWith('~');
+  };
 
   $.OVERRIDE_RULE('main', () => {
-    let needsSemi = false
+    let needsSemi = false;
     $.MANY({
-      GATE: () => !needsSemi ||
-        (needsSemi && (
-          $.LA(1).tokenType === T.Semi ||
-          $.LA(0).tokenType === T.Semi
+      GATE: () => !needsSemi
+        || (needsSemi && (
+          $.LA(1).tokenType === T.Semi
+          || $.LA(0).tokenType === T.Semi
         )),
       DEF: () => {
         $.OR([
@@ -26,8 +26,8 @@ export function extendRoot(this: LessParser, T: TokenMap) {
                 { ALT: () => $.SUBRULE($.mixinDefinition) },
                 {
                   ALT: () => {
-                    $.SUBRULE($.function)
-                    $.CONSUME(T.Semi)
+                    $.SUBRULE($.function);
+                    $.CONSUME(T.Semi);
                   }
                 },
                 { ALT: () => $.SUBRULE($.qualifiedRule) },
@@ -47,28 +47,28 @@ export function extendRoot(this: LessParser, T: TokenMap) {
                   ALT: () => $.CONSUME(T.Charset)
                 },
                 { ALT: () => $.CONSUME2(T.Semi) }
-              ])
-              needsSemi = false
+              ]);
+              needsSemi = false;
             }
           },
           {
             ALT: () => {
-              $.SUBRULE($.mixinCall)
-              needsSemi = true
+              $.SUBRULE($.mixinCall);
+              needsSemi = true;
             }
           }
-        ])
+        ]);
       }
-    })
-  })
+    });
+  });
 
   $.OVERRIDE_RULE('declarationList', () => {
-    let needsSemi = false
+    let needsSemi = false;
     $.MANY({
-      GATE: () => !needsSemi ||
-        (needsSemi && (
-          $.LA(1).tokenType === T.Semi ||
-          $.LA(0).tokenType === T.Semi
+      GATE: () => !needsSemi
+        || (needsSemi && (
+          $.LA(1).tokenType === T.Semi
+          || $.LA(0).tokenType === T.Semi
         )),
       DEF: () => {
         $.OR([
@@ -78,8 +78,8 @@ export function extendRoot(this: LessParser, T: TokenMap) {
                 { ALT: () => $.SUBRULE($.declaration) },
                 { ALT: () => $.SUBRULE($.mixinCall) },
                 { ALT: () => $.SUBRULE($.function) }
-              ])
-              needsSemi = true
+              ]);
+              needsSemi = true;
             }
           },
           {
@@ -89,14 +89,14 @@ export function extendRoot(this: LessParser, T: TokenMap) {
                 { ALT: () => $.SUBRULE($.innerAtRule) },
                 { ALT: () => $.SUBRULE($.qualifiedRule, { ARGS: [{ inner: true }] }) },
                 { ALT: () => $.CONSUME2(T.Semi) }
-              ])
-              needsSemi = false
+              ]);
+              needsSemi = false;
             }
           }
-        ])
+        ]);
       }
-    })
-  })
+    });
+  });
 
   $.OVERRIDE_RULE('declaration', () => {
     $.OR([
@@ -110,12 +110,12 @@ export function extendRoot(this: LessParser, T: TokenMap) {
               GATE: () => $.legacyMode,
               ALT: () => $.CONSUME(T.LegacyPropIdent)
             }
-          ])
-          $.CONSUME(T.Assign)
-          $.SUBRULE($.valueList)
+          ]);
+          $.CONSUME(T.Assign);
+          $.SUBRULE($.valueList);
           $.OPTION(() => {
-            $.CONSUME(T.Important)
-          })
+            $.CONSUME(T.Important);
+          });
         }
       },
       {
@@ -123,13 +123,13 @@ export function extendRoot(this: LessParser, T: TokenMap) {
           $.OR3([
             { ALT: () => $.CONSUME(T.InterpolatedCustomProperty) },
             { ALT: () => $.CONSUME(T.CustomProperty) }
-          ])
-          $.CONSUME2(T.Assign)
-          $.MANY(() => $.SUBRULE($.customValue))
+          ]);
+          $.CONSUME2(T.Assign);
+          $.MANY(() => $.SUBRULE($.customValue));
         }
       }
-    ])
-  })
+    ]);
+  });
 
   // $.OVERRIDE_RULE('mediaQuery', () => {
   //   $.OR([
@@ -176,17 +176,17 @@ export function extendRoot(this: LessParser, T: TokenMap) {
       { ALT: () => $.SUBRULE($.valueReference) },
       {
         ALT: () => {
-          $.CONSUME(T.LParen)
+          $.CONSUME(T.LParen);
           $.OR2([
             { ALT: () => $.SUBRULE($.mediaCondition) },
             { ALT: () => $.SUBRULE($.mediaFeature) }
-          ])
-          $.CONSUME(T.RParen)
+          ]);
+          $.CONSUME(T.RParen);
         }
       },
       { ALT: () => $.SUBRULE($.generalEnclosed) }
-    ])
-  })
+    ]);
+  });
 
   $.OVERRIDE_RULE('mfValue', () => {
     /**
@@ -195,8 +195,8 @@ export function extendRoot(this: LessParser, T: TokenMap) {
      * and it's up to the Less author to know
      * if it's valid.
      */
-    $.SUBRULE($.expression)
-  })
+    $.SUBRULE($.expression);
+  });
 }
 
 // const getRuleContext = (ctx: RuleContext): RuleContext => ({
@@ -208,10 +208,10 @@ export function extendRoot(this: LessParser, T: TokenMap) {
 // })
 
 export function extendSelectors(this: LessParser, T: TokenMap) {
-  const $ = this
+  const $ = this;
 
   $.OVERRIDE_RULE('qualifiedRule', (ctx: RuleContext = {}) => {
-    ctx.qualifiedRule = true
+    ctx.qualifiedRule = true;
     $.OR([
       {
         GATE: () => !ctx.inner,
@@ -220,11 +220,11 @@ export function extendSelectors(this: LessParser, T: TokenMap) {
       {
         GATE: () => !!ctx.inner,
         ALT: () => {
-          ctx.firstSelector = true
-          $.SUBRULE($.forgivingSelectorList, { ARGS: [ctx] })
+          ctx.firstSelector = true;
+          $.SUBRULE($.forgivingSelectorList, { ARGS: [ctx] });
         }
       }
-    ])
+    ]);
 
     $.OR2([
       {
@@ -234,21 +234,21 @@ export function extendSelectors(this: LessParser, T: TokenMap) {
       },
       {
         ALT: () => {
-          $.OPTION(() => $.SUBRULE($.guard))
-          $.CONSUME(T.LCurly)
-          $.SUBRULE($.declarationList)
-          $.CONSUME(T.RCurly)
+          $.OPTION(() => $.SUBRULE($.guard));
+          $.CONSUME(T.LCurly);
+          $.SUBRULE($.declarationList);
+          $.CONSUME(T.RCurly);
         }
       }
-    ])
-  })
+    ]);
+  });
 
   $.OVERRIDE_RULE('complexSelector', (ctx: RuleContext = {}) => {
-    $.SUBRULE($.compoundSelector, { ARGS: [ctx] })
+    $.SUBRULE($.compoundSelector, { ARGS: [ctx] });
     $.MANY(() => {
-      $.SUBRULE($.combinator)
-      $.SUBRULE2($.compoundSelector, { ARGS: [{ ...ctx, firstSelector: false }] })
-    })
+      $.SUBRULE($.combinator);
+      $.SUBRULE2($.compoundSelector, { ARGS: [{ ...ctx, firstSelector: false }] });
+    });
     $.OPTION(() => {
       $.OR([
         { ALT: () => $.SUBRULE($.guard) },
@@ -256,17 +256,17 @@ export function extendSelectors(this: LessParser, T: TokenMap) {
           GATE: () => !!ctx.qualifiedRule,
           ALT: () => $.SUBRULE($.extend, { ARGS: [ctx] })
         }
-      ])
-    })
-  })
+      ]);
+    });
+  });
 
   $.RULE('extend', (ctx: RuleContext = {}) => {
-    ctx.hasExtend = true
-    $.CONSUME(T.Extend)
-    $.SUBRULE($.selectorList)
-    $.OPTION(() => $.CONSUME(T.All))
-    $.CONSUME(T.RParen)
-  })
+    ctx.hasExtend = true;
+    $.CONSUME(T.Extend);
+    $.SUBRULE($.selectorList);
+    $.OPTION(() => $.CONSUME(T.All));
+    $.CONSUME(T.RParen);
+  });
 
   $.OVERRIDE_RULE('simpleSelector', (ctx: RuleContext = {}) => {
     $.OR([
@@ -289,65 +289,65 @@ export function extendSelectors(this: LessParser, T: TokenMap) {
       { ALT: () => $.CONSUME(T.Star) },
       { ALT: () => $.SUBRULE($.pseudoSelector, { ARGS: [ctx] }) },
       { ALT: () => $.SUBRULE($.attributeSelector) }
-    ])
-  })
+    ]);
+  });
 }
 
 export function atVariableDeclarations(this: LessParser, T: TokenMap) {
-  const $ = this
+  const $ = this;
 
   /** Starts with a colon, followed by white space */
-  const isVariableLike = () => $.LA(1).tokenType === T.Colon && $.skippedTokens.has($.currIdx + 1)
+  const isVariableLike = () => $.LA(1).tokenType === T.Colon && $.skippedTokens.has($.currIdx + 1);
 
   /** Doesn't start with a colon or DOES, but it is NOT followed by a space */
-  const isNotVariableLike = () => $.LA(1).tokenType !== T.Colon || !$.skippedTokens.has($.currIdx + 1)
+  const isNotVariableLike = () => $.LA(1).tokenType !== T.Colon || !$.skippedTokens.has($.currIdx + 1);
 
   $.RULE('anonymousMixinDefinition', () => {
     $.OPTION(() => {
-      $.CONSUME(T.AnonMixinStart)
-      $.SUBRULE($.mixinArgList, { ARGS: [{ isDefinition: true }] })
-      $.CONSUME(T.RParen)
-    })
-    $.CONSUME(T.LCurly)
-    $.SUBRULE($.declarationList)
-    $.CONSUME(T.RCurly)
-  })
+      $.CONSUME(T.AnonMixinStart);
+      $.SUBRULE($.mixinArgList, { ARGS: [{ isDefinition: true }] });
+      $.CONSUME(T.RParen);
+    });
+    $.CONSUME(T.LCurly);
+    $.SUBRULE($.declarationList);
+    $.CONSUME(T.RCurly);
+  });
 
   $.OVERRIDE_RULE('importAtRule', () => {
-    $.CONSUME(T.AtImport)
+    $.CONSUME(T.AtImport);
 
     $.OPTION(() => {
-      $.CONSUME(T.LParen)
+      $.CONSUME(T.LParen);
       $.AT_LEAST_ONE_SEP({
         SEP: T.Comma,
         DEF: () => $.CONSUME(T.PlainIdent)
-      })
-      $.CONSUME(T.RParen)
-    })
+      });
+      $.CONSUME(T.RParen);
+    });
 
     $.OR([
       { ALT: () => $.SUBRULE($.urlFunction) },
       { ALT: () => $.SUBRULE($.string) }
-    ])
+    ]);
 
     $.OPTION2(() => {
-      $.CONSUME(T.Supports)
+      $.CONSUME(T.Supports);
       $.OR2([
         { ALT: () => $.SUBRULE($.supportsCondition) },
         { ALT: () => $.SUBRULE($.declaration) }
-      ])
-    })
+      ]);
+    });
 
     $.OPTION3(() => {
-      $.SUBRULE($.mediaQuery)
-    })
+      $.SUBRULE($.mediaQuery);
+    });
 
-    $.CONSUME(T.Semi)
-  })
+    $.CONSUME(T.Semi);
+  });
 
   /** Less variables */
   $.OVERRIDE_RULE('unknownAtRule', () => {
-    $.CONSUME(T.AtKeyword)
+    $.CONSUME(T.AtKeyword);
     $.OR([
       {
         /**
@@ -356,21 +356,21 @@ export function atVariableDeclarations(this: LessParser, T: TokenMap) {
          */
         GATE: isVariableLike,
         ALT: () => {
-          $.CONSUME(T.Colon)
+          $.CONSUME(T.Colon);
           $.OR2([
             {
               ALT: () => {
-                $.SUBRULE($.anonymousMixinDefinition)
-                $.OPTION2(() => $.CONSUME(T.Semi))
+                $.SUBRULE($.anonymousMixinDefinition);
+                $.OPTION2(() => $.CONSUME(T.Semi));
               }
             },
             {
               ALT: () => {
-                $.SUBRULE($.valueList)
-                $.CONSUME2(T.Semi)
+                $.SUBRULE($.valueList);
+                $.CONSUME2(T.Semi);
               }
             }
-          ])
+          ]);
         }
       },
       /** This is a variable call */
@@ -391,39 +391,39 @@ export function atVariableDeclarations(this: LessParser, T: TokenMap) {
       {
         GATE: isNotVariableLike,
         ALT: () => {
-          $.MANY(() => $.SUBRULE2($.anyOuterValue))
+          $.MANY(() => $.SUBRULE2($.anyOuterValue));
           $.OR3([
             { ALT: () => $.CONSUME3(T.Semi) },
             {
               ALT: () => {
-                $.CONSUME2(T.LCurly)
-                $.MANY2(() => $.SUBRULE($.anyInnerValue))
-                $.CONSUME2(T.RCurly)
+                $.CONSUME2(T.LCurly);
+                $.MANY2(() => $.SUBRULE($.anyInnerValue));
+                $.CONSUME2(T.RCurly);
               }
             }
-          ])
+          ]);
         }
       }
-    ])
-  })
+    ]);
+  });
 }
 
 export function expressionsAndValues(this: LessParser, T: TokenMap) {
-  const $ = this
+  const $ = this;
 
   $.OVERRIDE_RULE('valueSequence', (ctx: RuleContext = {}) => {
     $.OR([
       {
         GATE: () => $.looseMode,
-        ALT: () => { $.MANY(() => $.SUBRULE($.expression, { ARGS: [ctx] })) }
+        ALT: () => { $.MANY(() => $.SUBRULE($.expression, { ARGS: [ctx] })); }
       },
       {
         GATE: () => !$.looseMode,
         /** @todo - create warning in the CST Visitor */
-        ALT: () => { $.AT_LEAST_ONE(() => $.SUBRULE2($.expression, { ARGS: [ctx] })) }
+        ALT: () => { $.AT_LEAST_ONE(() => $.SUBRULE2($.expression, { ARGS: [ctx] })); }
       }
-    ])
-  })
+    ]);
+  });
 
   /**
    * In CSS, would be a single value.
@@ -432,7 +432,7 @@ export function expressionsAndValues(this: LessParser, T: TokenMap) {
    * these will be grouped by order of operations.
    */
   $.RULE('expression', (ctx: RuleContext = {}) => {
-    $.SUBRULE($.expressionValue, { LABEL: 'L', ARGS: [ctx] })
+    $.SUBRULE($.expressionValue, { LABEL: 'L', ARGS: [ctx] });
     $.MANY({
       /**
        * What this GATE does. We need to dis-ambiguate
@@ -440,14 +440,14 @@ export function expressionsAndValues(this: LessParser, T: TokenMap) {
        * so Less is white-space sensitive here.
        */
       GATE: () => {
-        const next = $.LA(1)
-        const nextType = next.tokenType
+        const next = $.LA(1);
+        const nextType = next.tokenType;
         return (
-          nextType === T.Plus ||
-          nextType === T.Minus ||
-          nextType === T.Divide ||
-          nextType === T.Star
-        ) || ($.noSep() && tokenMatcher(next, T.Signed))
+          nextType === T.Plus
+          || nextType === T.Minus
+          || nextType === T.Divide
+          || nextType === T.Star
+        ) || ($.noSep() && tokenMatcher(next, T.Signed));
       },
       DEF: () => {
         $.OR([
@@ -458,31 +458,31 @@ export function expressionsAndValues(this: LessParser, T: TokenMap) {
                 { ALT: () => $.CONSUME(T.Minus) },
                 { ALT: () => $.CONSUME(T.Star) },
                 { ALT: () => $.CONSUME(T.Divide) }
-              ])
-              $.SUBRULE2($.expressionValue, { LABEL: 'R', ARGS: [ctx] })
+              ]);
+              $.SUBRULE2($.expressionValue, { LABEL: 'R', ARGS: [ctx] });
             }
           },
           /** This will be interpreted by Less as a complete expression */
           { ALT: () => $.CONSUME(T.Signed) }
-        ])
+        ]);
       }
-    })
-  })
+    });
+  });
 
   $.RULE('expressionValue', (ctx: RuleContext = {}) => {
     /** Can create a negative expression */
-    $.OPTION(() => $.CONSUME(T.Minus))
+    $.OPTION(() => $.CONSUME(T.Minus));
     $.OR([
       {
         ALT: () => {
-          $.CONSUME(T.LParen)
-          $.SUBRULE($.expression, { ARGS: [ctx] })
-          $.CONSUME(T.RParen)
+          $.CONSUME(T.LParen);
+          $.SUBRULE($.expression, { ARGS: [ctx] });
+          $.CONSUME(T.RParen);
         }
       },
       { ALT: () => $.SUBRULE($.value, { ARGS: [ctx] }) }
-    ])
-  })
+    ]);
+  });
 
   /**
    * Add interpolation
@@ -500,45 +500,45 @@ export function expressionsAndValues(this: LessParser, T: TokenMap) {
           $.OR2([
             { ALT: () => $.CONSUME(T.NthDimension) },
             { ALT: () => $.CONSUME(T.NthDimensionSigned) }
-          ])
+          ]);
           $.OPTION(() => {
             $.OR3([
               { ALT: () => $.CONSUME(T.SignedInt) },
               {
                 ALT: () => {
-                  $.CONSUME(T.Minus)
-                  $.CONSUME(T.UnsignedInt)
+                  $.CONSUME(T.Minus);
+                  $.CONSUME(T.UnsignedInt);
                 }
               }
-            ])
-          })
+            ]);
+          });
           $.OPTION2(() => {
-            $.CONSUME(T.Of)
-            $.SUBRULE($.complexSelector)
-          })
+            $.CONSUME(T.Of);
+            $.SUBRULE($.complexSelector);
+          });
         }
       }
-    ])
-  })
+    ]);
+  });
 
   $.OVERRIDE_RULE('function', () => {
     $.OR([
       { ALT: () => $.SUBRULE($.knownFunctions) },
       {
         ALT: () => {
-          $.CONSUME(T.Ident)
+          $.CONSUME(T.Ident);
           $.OR2([{
             GATE: $.noSep,
             ALT: () => {
-              $.CONSUME(T.LParen)
-              $.SUBRULE($.functionValueList)
-              $.CONSUME(T.RParen)
+              $.CONSUME(T.LParen);
+              $.SUBRULE($.functionValueList);
+              $.CONSUME(T.RParen);
             }
-          }])
+          }]);
         }
       }
-    ])
-  })
+    ]);
+  });
 
   $.OVERRIDE_RULE('knownFunctions', () => {
     $.OR([
@@ -547,73 +547,73 @@ export function expressionsAndValues(this: LessParser, T: TokenMap) {
       { ALT: () => $.SUBRULE($.calcFunction) },
       { ALT: () => $.SUBRULE($.ifFunction) },
       { ALT: () => $.SUBRULE($.booleanFunction) }
-    ])
-  })
+    ]);
+  });
 
   $.RULE('ifFunction', () => {
-    $.CONSUME(T.IfFunction)
-    $.SUBRULE($.guardOr, { ARGS: [{ inValueList: true }] })
+    $.CONSUME(T.IfFunction);
+    $.SUBRULE($.guardOr, { ARGS: [{ inValueList: true }] });
     $.OR([
       {
         ALT: () => {
-          $.CONSUME(T.Semi)
-          $.SUBRULE($.valueList, { ARGS: [{ allowAnonymousMixins: true }] })
+          $.CONSUME(T.Semi);
+          $.SUBRULE($.valueList, { ARGS: [{ allowAnonymousMixins: true }] });
           $.OPTION(() => {
-            $.CONSUME2(T.Semi)
-            $.SUBRULE2($.valueList, { ARGS: [{ allowAnonymousMixins: true }] })
-          })
+            $.CONSUME2(T.Semi);
+            $.SUBRULE2($.valueList, { ARGS: [{ allowAnonymousMixins: true }] });
+          });
         }
       },
       {
         ALT: () => {
-          $.CONSUME(T.Comma)
-          $.SUBRULE($.valueSequence, { ARGS: [{ allowAnonymousMixins: true }] })
+          $.CONSUME(T.Comma);
+          $.SUBRULE($.valueSequence, { ARGS: [{ allowAnonymousMixins: true }] });
           $.OPTION2(() => {
-            $.CONSUME2(T.Comma)
-            $.SUBRULE2($.valueSequence, { ARGS: [{ allowAnonymousMixins: true }] })
-          })
+            $.CONSUME2(T.Comma);
+            $.SUBRULE2($.valueSequence, { ARGS: [{ allowAnonymousMixins: true }] });
+          });
         }
       }
-    ])
-    $.CONSUME(T.RParen)
-  })
+    ]);
+    $.CONSUME(T.RParen);
+  });
 
   $.RULE('booleanFunction', () => {
-    $.CONSUME(T.BooleanFunction)
-    $.SUBRULE($.guardOr, { ARGS: [{ inValueList: true }] })
-    $.CONSUME(T.RParen)
-  })
+    $.CONSUME(T.BooleanFunction);
+    $.SUBRULE($.guardOr, { ARGS: [{ inValueList: true }] });
+    $.CONSUME(T.RParen);
+  });
 
   /** At AST time, join comma-lists together if separated by semis */
   $.RULE('functionValueList', (ctx: RuleContext = {}) => {
-    ctx.allowAnonymousMixins = true
-    $.SUBRULE($.valueSequence, { ARGS: [ctx] })
+    ctx.allowAnonymousMixins = true;
+    $.SUBRULE($.valueSequence, { ARGS: [ctx] });
     $.MANY(() => {
       $.OR([
         { ALT: () => $.CONSUME(T.Comma) },
         { ALT: () => $.CONSUME(T.Semi) }
-      ])
-      $.SUBRULE2($.valueSequence, { ARGS: [ctx] })
-    })
-  })
+      ]);
+      $.SUBRULE2($.valueSequence, { ARGS: [ctx] });
+    });
+  });
 
   $.RULE('valueReference', () => {
     $.OR([
       {
         ALT: () => {
-          $.SUBRULE($.mixinReference)
-          $.OPTION(() => $.SUBRULE($.mixinArgs))
-          $.SUBRULE($.accessors)
+          $.SUBRULE($.mixinReference);
+          $.OPTION(() => $.SUBRULE($.mixinArgs));
+          $.SUBRULE($.accessors);
         }
       },
       {
         ALT: () => {
-          $.CONSUME(T.AtKeyword)
-          $.OPTION2(() => $.SUBRULE2($.accessors))
+          $.CONSUME(T.AtKeyword);
+          $.OPTION2(() => $.SUBRULE2($.accessors));
         }
       }
-    ])
-  })
+    ]);
+  });
 
   $.OVERRIDE_RULE('value', (ctx: RuleContext = {}) => {
     $.OR({
@@ -632,8 +632,8 @@ export function expressionsAndValues(this: LessParser, T: TokenMap) {
         },
         {
           ALT: () => {
-            $.CONSUME(T.AtKeyword)
-            $.OPTION(() => $.SUBRULE($.accessors))
+            $.CONSUME(T.AtKeyword);
+            $.OPTION(() => $.SUBRULE($.accessors));
           }
         },
         { ALT: () => $.SUBRULE($.string) },
@@ -642,9 +642,9 @@ export function expressionsAndValues(this: LessParser, T: TokenMap) {
         { ALT: () => $.CONSUME(T.When) },
         {
           ALT: () => {
-            $.CONSUME(T.LSquare)
-            $.CONSUME2(T.Ident)
-            $.CONSUME(T.RSquare)
+            $.CONSUME(T.LSquare);
+            $.CONSUME2(T.Ident);
+            $.CONSUME(T.RSquare);
           }
         },
         {
@@ -653,8 +653,8 @@ export function expressionsAndValues(this: LessParser, T: TokenMap) {
           ALT: () => $.CONSUME(T.LegacyMSFilter)
         }
       ]
-    })
-  })
+    });
+  });
 
   $.OVERRIDE_RULE('mathValue', () => {
     $.OR([
@@ -674,13 +674,13 @@ export function expressionsAndValues(this: LessParser, T: TokenMap) {
       },
       {
         ALT: () => {
-          $.CONSUME(T.LParen)
-          $.SUBRULE($.mathSum)
-          $.CONSUME(T.RParen)
+          $.CONSUME(T.LParen);
+          $.SUBRULE($.mathSum);
+          $.CONSUME(T.RParen);
         }
       }
-    ])
-  })
+    ]);
+  });
 
   /** @todo - add interpolation */
   // $.OVERRIDE_RULE('string', () => {
@@ -704,10 +704,10 @@ export function expressionsAndValues(this: LessParser, T: TokenMap) {
 }
 
 export function guards(this: LessParser, T: TokenMap) {
-  const $ = this
+  const $ = this;
 
   $.RULE('guard', (ctx: RuleContext = {}) => {
-    $.CONSUME(T.When)
+    $.CONSUME(T.When);
     $.OR([
       {
         GATE: () => !!ctx.inValueList,
@@ -716,15 +716,15 @@ export function guards(this: LessParser, T: TokenMap) {
       {
         ALT: () => $.SUBRULE($.guardOr, { ARGS: [{ ...ctx, allowComma: true }] })
       }
-    ])
-  })
+    ]);
+  });
 
   /**
    * 'or' expression
    * Allows an (outer) comma like historical media queries
    */
   $.RULE('guardOr', (ctx: RuleContext = {}) => {
-    $.SUBRULE($.guardAnd, { ARGS: [ctx] })
+    $.SUBRULE($.guardAnd, { ARGS: [ctx] });
     $.MANY({
       GATE: () => !!ctx.allowComma || $.LA(1).tokenType !== T.Comma,
       DEF: () => {
@@ -735,11 +735,11 @@ export function guards(this: LessParser, T: TokenMap) {
         $.OR2([
           { ALT: () => $.CONSUME($.T.Comma) },
           { ALT: () => $.CONSUME($.T.Or) }
-        ])
-        $.SUBRULE2($.guardAnd, { ARGS: [ctx] })
+        ]);
+        $.SUBRULE2($.guardAnd, { ARGS: [ctx] });
       }
-    })
-  })
+    });
+  });
 
   /**
    * 'and' and 'or' expressions
@@ -753,24 +753,24 @@ export function guards(this: LessParser, T: TokenMap) {
     $.MANY_SEP({
       SEP: T.And,
       DEF: () => {
-        $.OPTION(() => $.CONSUME(T.Not))
-        $.SUBRULE($.guardInParens)
+        $.OPTION(() => $.CONSUME(T.Not));
+        $.SUBRULE($.guardInParens);
       }
-    })
-  })
+    });
+  });
 
   $.RULE('guardInParens', () => {
-    $.CONSUME(T.LParen)
+    $.CONSUME(T.LParen);
     $.OR([
       { ALT: () => $.SUBRULE($.guardOr) },
       { ALT: () => $.SUBRULE($.comparison) }
-    ])
-    $.CONSUME(T.RParen)
-  })
+    ]);
+    $.CONSUME(T.RParen);
+  });
 
   /** Currently, Less only allows a single comparison expression */
   $.RULE('comparison', () => {
-    $.SUBRULE($.valueList, { LABEL: 'L' })
+    $.SUBRULE($.valueList, { LABEL: 'L' });
     $.OPTION(() => {
       $.OR([
         { ALT: () => $.CONSUME(T.Eq) },
@@ -780,13 +780,13 @@ export function guards(this: LessParser, T: TokenMap) {
         { ALT: () => $.CONSUME(T.Lt) },
         { ALT: () => $.CONSUME(T.LtEq) },
         { ALT: () => $.CONSUME(T.LtEqAlias) }
-      ])
-      $.SUBRULE2($.valueList, { LABEL: 'R' })
-    })
-  })
+      ]);
+      $.SUBRULE2($.valueList, { LABEL: 'R' });
+    });
+  });
 
   $.RULE('comparison2', () => {
-    $.SUBRULE($.valueList, { LABEL: 'L' })
+    $.SUBRULE($.valueList, { LABEL: 'L' });
     $.OPTION(() => {
       $.OR([
         { ALT: () => $.CONSUME(T.Eq) },
@@ -796,14 +796,14 @@ export function guards(this: LessParser, T: TokenMap) {
         { ALT: () => $.CONSUME(T.Lt) },
         { ALT: () => $.CONSUME(T.LtEq) },
         { ALT: () => $.CONSUME(T.LtEqAlias) }
-      ])
-      $.SUBRULE2($.valueList, { LABEL: 'R' })
-    })
-  })
+      ]);
+      $.SUBRULE2($.valueList, { LABEL: 'R' });
+    });
+  });
 }
 
 export function atRuleBubbling(this: LessParser, T: TokenMap) {
-  const $ = this
+  const $ = this;
 
   /**
    * Less (perhaps unwisely) allows bubling of normally document-root
@@ -819,45 +819,45 @@ export function atRuleBubbling(this: LessParser, T: TokenMap) {
       { ALT: () => $.SUBRULE($.nestedAtRule) },
       { ALT: () => $.SUBRULE($.nonNestedAtRule) },
       { ALT: () => $.SUBRULE($.unknownAtRule) }
-    ])
-  })
+    ]);
+  });
 }
 
 export function mixinsAndNamespaces(this: LessParser, T: TokenMap) {
-  const $ = this
+  const $ = this;
 
   /** e.g. .mixin, #mixin */
   $.RULE('mixinName', () => {
     $.OR([
       { ALT: () => $.SUBRULE($.classSelector) },
       { ALT: () => $.SUBRULE($.idSelector) }
-    ])
-  })
+    ]);
+  });
 
   $.RULE('mixinReference', () => {
-    $.SUBRULE($.mixinName)
+    $.SUBRULE($.mixinName);
     $.MANY(() => {
-      $.OPTION(() => $.CONSUME(T.Gt))
-      $.SUBRULE2($.mixinName)
-    })
-  })
+      $.OPTION(() => $.CONSUME(T.Gt));
+      $.SUBRULE2($.mixinName);
+    });
+  });
 
   /** e.g. #ns > .mixin() */
   $.RULE('mixinCall', () => {
-    $.SUBRULE($.mixinReference)
+    $.SUBRULE($.mixinReference);
 
     /** Either needs to end in parens or in a semi-colon (or both) */
     $.OR([
       {
         ALT: () => {
-          $.SUBRULE($.mixinArgs)
-          $.OPTION2(() => $.CONSUME(T.Important))
-          $.OPTION3(() => $.CONSUME(T.Semi))
+          $.SUBRULE($.mixinArgs);
+          $.OPTION2(() => $.CONSUME(T.Important));
+          $.OPTION3(() => $.CONSUME(T.Semi));
         }
       },
       { ALT: () => $.CONSUME2(T.Semi) }
-    ])
-  })
+    ]);
+  });
 
   /**
    * Used within a value. These can be
@@ -866,43 +866,43 @@ export function mixinsAndNamespaces(this: LessParser, T: TokenMap) {
    *   e.g. .mixin1() > .mixin2[@val1].ns() > .sub-mixin[@val2]
    */
   $.RULE('inlineMixinCall', () => {
-    $.SUBRULE($.mixinReference)
-    $.OPTION(() => $.SUBRULE($.mixinArgs))
-    $.OPTION2(() => $.SUBRULE($.accessors))
-  })
+    $.SUBRULE($.mixinReference);
+    $.OPTION(() => $.SUBRULE($.mixinArgs));
+    $.OPTION2(() => $.SUBRULE($.accessors));
+  });
 
   $.RULE('mixinDefinition', () => {
-    $.SUBRULE($.mixinName)
-    $.SUBRULE($.mixinArgs, { ARGS: [{ isDefinition: true }] })
-    $.OPTION(() => $.SUBRULE($.guard))
-    $.CONSUME(T.LCurly)
-    $.SUBRULE($.declarationList)
-    $.CONSUME(T.RCurly)
-  })
+    $.SUBRULE($.mixinName);
+    $.SUBRULE($.mixinArgs, { ARGS: [{ isDefinition: true }] });
+    $.OPTION(() => $.SUBRULE($.guard));
+    $.CONSUME(T.LCurly);
+    $.SUBRULE($.declarationList);
+    $.CONSUME(T.RCurly);
+  });
 
   $.RULE('mixinArgs', (ctx: RuleContext = {}) => {
-    $.CONSUME(T.LParen)
-    $.OPTION(() => $.SUBRULE($.mixinArgList, { ARGS: [ctx] }))
-    $.CONSUME(T.RParen)
-  })
+    $.CONSUME(T.LParen);
+    $.OPTION(() => $.SUBRULE($.mixinArgList, { ARGS: [ctx] }));
+    $.CONSUME(T.RParen);
+  });
 
   $.RULE('accessors', () => {
-    $.CONSUME(T.LSquare)
+    $.CONSUME(T.LSquare);
     $.OPTION(() => $.OR([
       { ALT: () => $.CONSUME(T.NestedReference) },
       { ALT: () => $.CONSUME(T.AtKeyword) },
       { ALT: () => $.CONSUME(T.PropertyReference) },
       { ALT: () => $.CONSUME(T.Ident) }
-    ]))
-    $.CONSUME(T.RSquare)
+    ]));
+    $.CONSUME(T.RSquare);
     /** Allows chaining of lookups / calls */
     $.OPTION2(() => {
       $.OR2([
         { ALT: () => $.SUBRULE($.inlineMixinCall) },
         { ALT: () => $.SUBRULE($.accessors) }
-      ])
-    })
-  })
+      ]);
+    });
+  });
 
   /**
    * @see https://lesscss.org/features/#mixins-feature-mixins-parametric-feature
@@ -911,37 +911,37 @@ export function mixinsAndNamespaces(this: LessParser, T: TokenMap) {
    * the bounds of each argument in the CST Visitor.
    */
   $.RULE('mixinArgList', (ctx: RuleContext = {}) => {
-    $.SUBRULE($.mixinArg, { ARGS: [ctx] })
+    $.SUBRULE($.mixinArg, { ARGS: [ctx] });
     $.MANY(() => {
       $.OR([
         {
           ALT: () => {
-            $.CONSUME(T.Comma)
-            $.SUBRULE2($.mixinArg, { ARGS: [ctx] })
+            $.CONSUME(T.Comma);
+            $.SUBRULE2($.mixinArg, { ARGS: [ctx] });
           }
         },
         {
           ALT: () => {
-            $.CONSUME(T.Semi)
-            $.OPTION(() => $.SUBRULE3($.mixinArg, { ARGS: [ctx] }))
+            $.CONSUME(T.Semi);
+            $.OPTION(() => $.SUBRULE3($.mixinArg, { ARGS: [ctx] }));
           }
         }
-      ])
-    })
-  })
+      ]);
+    });
+  });
 
   $.RULE('mixinArg', (ctx: RuleContext = {}) => {
-    const definition = !!ctx.isDefinition
+    const definition = !!ctx.isDefinition;
     $.OR([
       {
         ALT: () => {
-          $.CONSUME(T.AtKeyword)
+          $.CONSUME(T.AtKeyword);
           $.OPTION(() => {
             $.OR2([
               {
                 ALT: () => {
-                  $.CONSUME(T.Colon)
-                  $.SUBRULE($.mixinValue)
+                  $.CONSUME(T.Colon);
+                  $.SUBRULE($.mixinValue);
                 }
               },
               /**
@@ -959,8 +959,8 @@ export function mixinsAndNamespaces(this: LessParser, T: TokenMap) {
                * reason?
                */
               { ALT: () => $.CONSUME(T.Ellipsis) }
-            ])
-          })
+            ]);
+          });
         }
       },
       { ALT: () => $.SUBRULE2($.mixinValue) },
@@ -968,19 +968,19 @@ export function mixinsAndNamespaces(this: LessParser, T: TokenMap) {
         GATE: () => definition,
         ALT: () => $.CONSUME2(T.Ellipsis)
       }
-    ])
-  })
+    ]);
+  });
 
   $.RULE('mixinValue', () => {
     $.OR([
       {
         ALT: () => {
-          $.CONSUME(T.LCurly)
-          $.SUBRULE($.declarationList)
-          $.CONSUME(T.RCurly)
+          $.CONSUME(T.LCurly);
+          $.SUBRULE($.declarationList);
+          $.CONSUME(T.RCurly);
         }
       },
       { ALT: () => $.SUBRULE($.valueSequence) }
-    ])
-  })
+    ]);
+  });
 }

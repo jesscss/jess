@@ -1,0 +1,21 @@
+---
+title: Functions
+---
+
+:::info
+
+This section refers to functions defined in stylesheets. For importing functions from other languages, see [the `@-use` at-rule](./atrules#-use).
+
+:::
+
+In Jess, functions are anonymous mixins that have return values.
+
+```less
+// Define a function
+$my-function: @() > {
+  return: #(1 + 2);
+}
+
+// Call a function
+$my-function(); // 3
+```

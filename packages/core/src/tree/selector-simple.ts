@@ -1,21 +1,24 @@
-import { type Context } from '../context'
-import { type Node } from './node'
-import { Selector } from './selector'
+import { type NodeOptions, type NodeValueObject, defineType } from './node';
+import { Selector } from './selector';
 
-type SimpleSelectorValue = {
-  value: string
+type SimpleSelectorValue = string | NodeValueObject;
+
+export abstract class SimpleSelector<
+  T extends SimpleSelectorValue = SimpleSelectorValue,
+  O extends NodeOptions = NodeOptions
+> extends Selector<T, O> {
+  get keySet(): Set<string> {
+    if (this._keySet === undefined) {
+      this._computeKeySetAndFastReject();
+    }
+    return this._keySet!;
+  }
+
+  protected override _computeKeySetAndFastReject(): void {
+    // Simple selectors are always safe for fast rejection
+    this._keySet = new Set([this.valueOf()]);
+    this._canFastReject = true;
+  }
 }
 
-export abstract class SimpleSelector<T extends SimpleSelectorValue = SimpleSelectorValue> extends Selector<T> {
-  get value(): string {
-    return this.data.get('value')
-  }
-
-  set value(v: string) {
-    this.data.set('value', v)
-  }
-
-  async eval(context: Context): Promise<Node> {
-    return this
-  }
-}
+defineType(SimpleSelector, 'SimpleSelector');

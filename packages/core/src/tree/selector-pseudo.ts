@@ -1,17 +1,11 @@
 import {
   defineType,
   type Node
-  // type NodeValueArg,
-  // type NodeOptions,
-  // type TypedMap,
-  // type NodeValueArray
-} from './node'
-// import { SimpleSelector } from './selector-simple'
-import { type Context } from '../context'
-import { Selector } from './selector'
-import { isNode, isRelative } from './util'
-// import { BasicSelector } from './selector-basic'
-// import { type Class, type TupleToUnion } from 'type-fest'
+} from './node';
+import { SimpleSelector } from './selector-simple';
+import { type Context } from '../context';
+import { isNode } from './util/is-node';
+import { Selector } from './selector';
 
 export type PseudoSelectorValue = {
   /**
@@ -19,128 +13,152 @@ export type PseudoSelectorValue = {
    * @note - this will contain the `:` prefix,
    * to support `::before` and `::after`
    */
-  value: string
-  arg?: Node
-}
-
-const { isArray } = Array
-
-export interface PseudoSelector<T extends PseudoSelectorValue = PseudoSelectorValue> extends Selector<T> {
-  get value(): string
-  set value(v: string)
-}
+  name: string;
+  arg?: Node;
+};
 
 /**
  * A pseudo selector
  * @see https://developer.mozilla.org/en-US/docs/Learn/CSS/Building_blocks/Selectors/Pseudo-classes_and_pseudo-elements
  *   e.g. :hover, :focus, :active
 */
-export class PseudoSelector<T extends PseudoSelectorValue = PseudoSelectorValue> extends Selector<T> {
-  get arg(): PseudoSelectorValue['arg'] {
-    return this.data.get('arg')
-  }
+export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
+  type = 'PseudoSelector';
+  shortType = 'pseudo';
 
-  set arg(v: PseudoSelectorValue['arg']) {
-    this.data.set('arg', v)
-  }
-
-  toTrimmedString() {
-    let { value, arg } = this
-    return `${value}${arg ? `(${arg})` : ''}`
-  }
-
-  get keys() {
-    let keys = this._keys
-    if (!keys) {
-      let { value, arg } = this
-      if (arg && arg instanceof Selector) {
-        if (value === ':is') {
-          /**
-           * @todo - Remove, we should be able to use relative
-           * selectors just like we can extend other `&` selectors.
-           */
-          if (isNode(arg, 'SelectorList')) {
-            if (
-              /**
-               * If an :is starts with an ampersand or combinator,
-               * it's relative, and can't be flattened.
-               */
-              !isRelative(arg)
-            ) {
-              /**
-               * Push the first selectors of the inner list to an array
-               * at the front of the return array.
-               */
-              const selKeys = arg.value.map(sel => {
-                const childKeys = sel.keys
-                return isArray(childKeys) ? childKeys.flat(Infinity) : [childKeys]
-              }) as string[][]
-              const returnKeys: [string[], ...string[]] = [[]]
-              selKeys.forEach(keys => {
-                const [first, ...rest] = keys
-                returnKeys[0].push(first!)
-                returnKeys.push(...rest)
-              })
-              keys = returnKeys
-            } else {
-              keys = this.valueOf()
-            }
-          } else if (!isRelative(arg)) {
-            keys = arg.keys
-          } else {
-            keys = this.valueOf()
-          }
-          Object.defineProperty(this, '_keys', { value: keys })
-          return keys
-        } else {
-          keys = this.valueOf()
-        }
-      } else {
-        keys = this.valueOf()
-      }
-      Object.defineProperty(this, '_keys', { value: keys })
+  override get keySet(): Set<string> {
+    if (this._keySet === undefined) {
+      this._computeKeySetAndFastReject();
     }
-    return keys
+    return this._keySet!;
   }
 
-  valueOf() {
-    let valueOf = this._value
+  protected override _computeKeySetAndFastReject(): void {
+    const { name, arg } = this.value;
+
+    // Check if this is a pseudo-selector that contains selectors
+    const hasSelectorArg = arg instanceof Selector;
+    const hasSelectorListArg = isNode(arg, 'SelectorList');
+
+    if (hasSelectorArg || hasSelectorListArg) {
+      const combinedKeySet = new Set<string>();
+
+      if (hasSelectorListArg) {
+        // SelectorList argument - union all selector keySets
+        let combinedKeySet = new Set<string>();
+        for (const selector of arg.value) {
+          combinedKeySet = combinedKeySet.union(selector.keySet);
+        }
+        // Trust the SelectorList's canFastReject (should be false for alternatives)
+        this._keySet = combinedKeySet;
+        this._canFastReject = arg.canFastReject;
+      } else if (hasSelectorArg) {
+        // Single Selector argument - use its keySet
+        this._keySet = arg.keySet;
+        // Trust the selector's canFastReject
+        this._canFastReject = arg.canFastReject;
+      }
+    } else {
+      // For other pseudo-selectors (like :hover, :focus), use valueOf
+      this._keySet = new Set([this.valueOf()]);
+      // Other pseudo-selectors are safe for fast rejection
+      this._canFastReject = true;
+    }
+  }
+
+  override toTrimmedString() {
+    let { name, arg } = this.value;
+    let argString = '';
+    if (arg) {
+      if (isNode(arg, 'SelectorList')) {
+        argString = `(${arg.value.map(v => v.toString()).join(', ')})`;
+      } else {
+        argString = `(${arg.toString()})`;
+      }
+    }
+    return `${name}${argString}`;
+  }
+
+  /**
+   * @todo - This should be vastly simplifiable. For
+   *
+   * Also, :is()
+   */
+  // get keys() {
+  //   let keys = this._keys
+  //   if (!keys) {
+  //     let { arg } = this
+  //     if (arg && (arg instanceof Selector || isNode(arg, 'SelectorList'))) {
+  //       if (isNode(arg, 'SelectorList')) {
+  //         /**
+  //          * If an :is starts with an ampersand with no eval'd selector,
+  //          * it's relative, and can't be flattened.
+  //          *
+  //          * @note As far as I can tell, starting with a combinator
+  //          * is allowed / legal for :is() and :where() but won't
+  //          * actually apply to anything.
+  //          */
+  //         /**
+  //          * Push the first selectors of the inner list to an array
+  //          * at the front of the return array.
+  //          */
+  //         const selKeys = arg.value.map(sel => {
+  //           const childKeys = sel.keys
+  //           return isArray(childKeys) ? childKeys.flat(Infinity) : [childKeys]
+  //         }) as string[][]
+  //         const returnKeys: [string[], ...string[]] = [[]]
+  //         selKeys.forEach(keys => {
+  //           const [first, ...rest] = keys
+  //           returnKeys[0].push(first!)
+  //           returnKeys.push(...rest)
+  //         })
+  //         keys = returnKeys
+  //       } else {
+  //         keys = arg.keys
+  //       }
+  //       Object.defineProperty(this, '_keys', { value: keys })
+  //       return keys
+  //     } else {
+  //       keys = this.valueOf()
+  //     }
+  //     Object.defineProperty(this, '_keys', { value: keys })
+  //   }
+  //   return keys
+  // }
+
+  override valueOf(): string {
+    let valueOf = this._valueOf;
     if (!valueOf) {
-      let { value, arg } = this
-      if (arg && arg instanceof Selector) {
-        if (value === ':is') {
-          valueOf = arg.valueOf()
-        } else {
-          valueOf = `${value}(${arg.valueOf()})`
-        }
-      } else {
-        /**
-         * Normalizes :nth-child(n + 1) to match :nth-child(n+1)
-         * That is, anything that doesn't hold a selector as a value
-         * is, by definition, not space-sensitive.
-         */
-        valueOf = `${value}${arg ? `(${arg.toTrimmedString().replace(/\s+/, '')})` : ''}`
-      }
-      Object.defineProperty(this, '_value', { value: valueOf })
+      let { name, arg } = this.value;
+      // For :is() with SelectorList, use valueOf() to avoid newlines
+
+      /**
+       * Normalizes :nth-child(n + 1) to match :nth-child(n+1)
+       * That is, anything that doesn't hold a selector as a value
+       * is, by definition, not space-sensitive.
+       *
+       * @todo 1n === n, 2n + 0 === 2n
+       */
+      valueOf = `${name}${arg ? `(${arg.valueOf()})` : ''}`;
+
+      this._valueOf = valueOf;
     }
-    return valueOf
+    return valueOf;
   }
 
-  async eval(context: Context) {
-    return await this.evalIfNot(context, async () => {
-      let { arg } = this
-      let node = this.clone()
-      if (!arg) {
-        return node
-      }
-      let canOperate = context.canOperate
-      /** Reset parentheses "state" */
-      context.canOperate = false
-      arg = await arg.eval(context)
-      context.canOperate = canOperate
-      node.arg = arg
-      return node
-    })
+  override async evalNode(context: Context) {
+    let arg = this.value.arg;
+    let node = this.maybeClone(context);
+    if (!arg) {
+      return node;
+    }
+    let canOperate = context.canOperate;
+    /** Reset parentheses "state" */
+    context.canOperate = false;
+    arg = await arg.eval(context);
+    context.canOperate = canOperate;
+    node.value.arg = arg;
+    return node;
   }
 }
 
@@ -172,4 +190,16 @@ export class PseudoSelector<T extends PseudoSelectorValue = PseudoSelectorValue>
 // ])
 // foo.arg
 
-export const pseudo = defineType<PseudoSelectorValue, typeof PseudoSelector>(PseudoSelector, 'PseudoSelector', 'pseudo')
+export const pseudo = defineType<PseudoSelectorValue, typeof PseudoSelector>(PseudoSelector, 'PseudoSelector', 'pseudo');
+
+/**
+ * Convenience function to create a :is() pseudo-selector
+ * @param arg The selector that goes inside :is()
+ * @returns A PseudoSelector with name ":is" and the provided selector as argument
+ */
+export function is(arg: Selector): PseudoSelector {
+  return pseudo({
+    name: ':is',
+    arg: arg
+  });
+}

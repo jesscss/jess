@@ -1,38 +1,50 @@
-import { type Interpolated } from './interpolated'
-import { type General } from './general'
-import { Node, defineType } from './node'
-import type { Context } from '../context'
+import { type Interpolated } from './interpolated';
+import { General } from './general';
+import { Node, defineType } from './node';
+import type { Context } from '../context';
 
 export type QuotedOptions = {
-  quote?: '"' | "'"
-  escaped?: boolean
+  quote?: '"' | '\'';
+  escaped?: boolean;
+};
+
+export interface Quoted extends Node<string | General | Interpolated, QuotedOptions> {
+  eval(context: Context): Promise<Quoted | General | Interpolated>;
 }
 
 /**
  * An quoted value
  */
-export class Quoted extends Node<General | Interpolated, QuotedOptions> {
-  toTrimmedString() {
-    let { quote = '"', escaped } = this.options ?? {}
-    let output = super.toTrimmedString()
-    let escapeChar = escaped ? '~' : ''
-    return `${escapeChar}${quote}${output}${quote}`
+export class Quoted extends Node<string | General | Interpolated, QuotedOptions> {
+  type = 'Quoted' as const;
+  shortType = 'quoted' as const;
+
+  override toTrimmedString() {
+    let { quote = '"', escaped } = this.options ?? {};
+    let output = super.toTrimmedString();
+    let escapeChar = escaped ? '~' : '';
+    return `${escapeChar}${quote}${output}${quote}`;
   }
 
-  valueOf() {
-    return this.value.value
+  override valueOf(): string {
+    const { value } = this;
+    return value instanceof Node ? value.valueOf() : value;
   }
 
-  async eval(context: Context): Promise<Node> {
-    return await this.evalIfNot(context, async () => {
-      let value = await this.value.eval(context)
-      if (this.options.escaped) {
-        return value.inherit(this)
+  override async evalNode(context: Context): Promise<Quoted | General | Interpolated> {
+    let { value } = this;
+    if (value instanceof Node) {
+      value = (await value.eval(context));
+    }
+    if (this.options.escaped) {
+      if (value instanceof Node) {
+        return value;
       }
-      let quoted = this.clone()
-      quoted.value = value
-      return quoted
-    })
+      return new General<'Anonymous'>(value);
+    }
+    let quoted = this.maybeClone(context);
+    quoted.value = value;
+    return quoted;
   }
 }
-export const quoted = defineType(Quoted, 'Quoted')
+export const quoted = defineType(Quoted, 'Quoted');

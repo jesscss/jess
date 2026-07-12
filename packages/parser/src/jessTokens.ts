@@ -1,26 +1,26 @@
-import type { rawTokenConfig } from '@jesscss/css-parser'
+import type { rawTokenConfig } from '@jesscss/css-parser';
 import {
   Fragments as CSSFragments,
   Tokens as CSSTokens,
   LexerType,
   groupCapture
-} from '@jesscss/css-parser'
+} from '@jesscss/css-parser';
 
-type IMerges = Record<string, rawTokenConfig[]>
+type IMerges = Record<string, rawTokenConfig[]>;
 
-export const Fragments = [...CSSFragments]
-export let Tokens = [...CSSTokens]
+export const Fragments = [...CSSFragments];
+export let Tokens = [...CSSTokens];
 
-Fragments.unshift(['lineComment', '\\/\\/[^\\n\\r]*'])
+Fragments.unshift(['lineComment', '\\/\\/[^\\n\\r]*']);
 // Fragments.push(['jsident', '[_a-zA-Z]\\w*'])
 /** Not sure we need all these back-slashes for ` marks */
-Fragments.push(['string3', '\\`(\\\\`|[^\\n\\r\\f\\`]|{{newline}}|{{escape}})*\\`'])
+Fragments.push(['string3', '\\`(\\\\`|[^\\n\\r\\f\\`]|{{newline}}|{{escape}})*\\`']);
 
-Fragments.forEach(fragment => {
+Fragments.forEach((fragment) => {
   if (fragment[0].indexOf('wsorcomment') !== -1) {
-    fragment[1] = '(?:({{ws}})|({{comment}})|({{lineComment}}))'
+    fragment[1] = '(?:({{ws}})|({{comment}})|({{lineComment}}))';
   }
-})
+});
 
 /** Keyed by what to insert after */
 const merges: IMerges = {
@@ -93,35 +93,35 @@ const merges: IMerges = {
   //     line_breaks: true
   //   }
   // ]
-}
+};
 
-let tokenLength = Tokens.length
+let tokenLength = Tokens.length;
 for (let i = 0; i < tokenLength; i++) {
-  let token = Tokens[i]
-  let { name, categories } = token
+  let token = Tokens[i];
+  let { name, categories } = token;
   const copyToken = () => {
-    token = { ...token }
-    categories = categories ? categories.slice(0) : []
-  }
-  let alterations = true
+    token = { ...token };
+    categories = categories ? categories.slice(0) : [];
+  };
+  let alterations = true;
 
   switch (name) {
     case 'StringLiteral':
-      copyToken()
-      token.pattern = '~?(?:{{string1}}|{{string2}}|{{string3}})'
-      break
+      copyToken();
+      token.pattern = '~?(?:{{string1}}|{{string2}}|{{string3}})';
+      break;
     default:
-      alterations = false
+      alterations = false;
   }
   if (alterations) {
-    Tokens[i] = token
+    Tokens[i] = token;
   }
-  const merge = merges[name]
+  const merge = merges[name];
   if (merge) {
     /** Insert after current token */
-    Tokens = Tokens.slice(0, i + 1).concat(merge, Tokens.slice(i + 1))
-    const mergeLength = merge.length
-    tokenLength += mergeLength
-    i += mergeLength
+    Tokens = Tokens.slice(0, i + 1).concat(merge, Tokens.slice(i + 1));
+    const mergeLength = merge.length;
+    tokenLength += mergeLength;
+    i += mergeLength;
   }
 }

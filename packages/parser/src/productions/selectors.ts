@@ -1,17 +1,17 @@
-import type { CstNode, IToken } from '@jesscss/css-parser'
-import type { JessParser } from '../jessParser'
+import type { CstNode, IToken } from '@jesscss/css-parser';
+import type { JessParser } from '../jessParser';
 
 export default function(this: JessParser, $: JessParser) {
   /** Borrowed from the Less parser */
   $.complexSelector = $.OVERRIDE_RULE('complexSelector', () => {
-    const children: CstNode[] = []
+    const children: CstNode[] = [];
     $.OR([
       {
         ALT: () => {
           children.push(
             $.SUBRULE($.compoundSelector)
-          )
-          $.MANY(() => children.push($.SUBRULE($.combinatorSelector)))
+          );
+          $.MANY(() => children.push($.SUBRULE($.combinatorSelector)));
         }
       },
       {
@@ -19,13 +19,13 @@ export default function(this: JessParser, $: JessParser) {
           () => children.push($.SUBRULE2($.combinatorSelector))
         )
       }
-    ])
-    children.push($._())
+    ]);
+    children.push($._());
     return {
       name: 'complexSelector',
       children
-    }
-  })
+    };
+  });
 
   $.nameSelector = $.OVERRIDE_RULE('nameSelector',
     () => $.OR([
@@ -35,8 +35,8 @@ export default function(this: JessParser, $: JessParser) {
       /** We added dot tokens for JS, so we need to match a class name */
       {
         ALT: () => {
-          const dot = $.CONSUME($.T.Dot)
-          const ident = $.CONSUME2($.T.Ident)
+          const dot = $.CONSUME($.T.Dot);
+          const ident = $.CONSUME2($.T.Ident);
           return {
             image: dot.image + ident.image,
             startLine: dot.startLine,
@@ -45,9 +45,9 @@ export default function(this: JessParser, $: JessParser) {
             endLine: ident.endLine,
             endColumn: ident.endColumn,
             endOffset: ident.endOffset
-          } as IToken
+          } as IToken;
         }
       }
     ])
-  )
+  );
 }

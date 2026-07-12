@@ -1,7 +1,7 @@
-import type { Plugin } from 'rollup'
-import * as path from 'path'
+import type { Plugin } from 'rollup';
+import * as path from 'path';
 // import * as fs from 'fs'
-import { renderModule } from '../render-module'
+import { renderModule } from '../render-module';
 
 /**
  * Rollup plugin to transpile .jess at compile-time
@@ -12,9 +12,9 @@ export default function(options: Record<string, any> = {}): Plugin {
 
     async transform(code, id) {
       if (!(/\.jess$/.test(id))) {
-        return null
+        return null;
       }
-      const result = await renderModule(code, id, options)
+      const result = await renderModule(code, id, options);
       // For testing...
       // fs.writeFileSync(id.replace(/\.jess/, '__.js'), result.code)
 
@@ -22,9 +22,9 @@ export default function(options: Record<string, any> = {}): Plugin {
         type: 'asset',
         name: path.basename(id),
         source: result.$js_runtime
-      })
+      });
 
-      return { code: result.$js }
+      return { code: result.$js };
     }
-  }
+  };
 }

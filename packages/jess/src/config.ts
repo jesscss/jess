@@ -1,17 +1,17 @@
-import { cosmiconfigSync } from 'cosmiconfig'
+import { cosmiconfigSync } from 'cosmiconfig';
 
 const explorerSync = cosmiconfigSync('jess', {
   searchPlaces: [
     '.jessrc.js',
     'jess.config.js'
   ]
-})
+});
 
 export const getConfig = (searchFrom?: string): Record<string, any> => {
-  searchFrom ??= process.cwd()
-  let result = explorerSync.search(searchFrom)?.config || { options: {} }
+  searchFrom ??= process.cwd();
+  let result = explorerSync.search(searchFrom)?.config || { options: {} };
   if ('default' in result) {
-    result = result.default
+    result = result.default;
   }
-  return result ?? {}
-}
+  return result ?? {};
+};

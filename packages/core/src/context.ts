@@ -1,10 +1,16 @@
-import { type Node } from './tree/node'
-import type { Ruleset } from './tree/ruleset'
-import { Scope } from './scope'
-import type { Declaration, Root } from './tree'
-import { type Operator } from './tree/util/calculate'
-import type { PluginObject } from './plugin'
-import * as path from 'node:path'
+import type {
+  AtRule,
+  Declaration,
+  Root,
+  Ruleset,
+  Rules,
+  StyleImportValue,
+  StyleImportOptions
+} from './tree';
+import { type Operator } from './tree/util/calculate';
+import type { PluginObject } from './plugin';
+import * as path from 'node:path';
+import { isNode } from './tree/util/is-node';
 
 export const enum MathMode {
   /**
@@ -19,16 +25,21 @@ export const enum MathMode {
 }
 
 export const enum UnitMode {
-  /** Less's default 1.x-5.x */
+  /** Less's default 1.x-4.x */
   LOOSE = 0,
+  /**
+   * @todo - I think Less's current strict unit mode is weirder,
+   * so this may need another mode depending on behavior. But
+   * if it's too weird, it could be a breaking change.
+   */
   STRICT = 1
 }
 
-const { isArray } = Array
+const { isArray } = Array;
 
 export interface ContextOptions {
   /** Hash classes for module output */
-  module?: boolean
+  module?: boolean;
   /**
    * From docs:
    * "Changes compilation mode so dynamic content
@@ -36,15 +47,17 @@ export interface ContextOptions {
    * the runtime module to generate CSS patches."
    *
    * @todo - Change this behavior to "live expressions"
+   * i.e. change compilation to always be static, but
+   * generate a separate module for calculated CSS variables.
    */
-  dynamic?: boolean
-  collapseNesting?: boolean
+  dynamic?: boolean;
+  collapseNesting?: boolean;
 
-  mathMode?: MathMode
-  unitMode?: UnitMode
+  mathMode?: MathMode;
+  unitMode?: UnitMode;
 
   /** Directories to search to resolve files */
-  paths?: string[]
+  paths?: string[];
 }
 
 export interface TreeContextOptions extends ContextOptions {
@@ -52,40 +65,48 @@ export interface TreeContextOptions extends ContextOptions {
    * Hoists variable declarations, so they can be
    * evaluated per scope. Less sets this to true.
    */
-  hoistDeclarations?: boolean
+  // hoistDeclarations?: boolean
 
-  /** In Less 1.x-5.x, Less sets this to true */
-  leakVariablesIntoScope?: boolean
+  /** In Less 1.x-4.x, Less sets this to true */
+  // leakVariablesIntoScope?: boolean
 
-  inlineJavaScript?: boolean
+  inlineJavaScript?: boolean;
 
   /**
    * For instances where a new tree needs to inherit from scope
    * (like Less / SCSS `@import` rule)
    */
-  parentScope?: Scope
-  scope?: Scope
+  parentScope?: Rules;
+  scope?: Rules;
 
-  isModule?: boolean
+  isModule?: boolean;
 
-  [k: string]: any
+  file?: {
+    name: string;
+    path: string;
+    fullPath: string;
+    // contents: string[]
+  };
+
+  [k: string]: any;
 }
 
-const idChars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'.split('')
+const idChars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'.split('');
 
 /**
  * @todo - Redo:
- *   1. Create a hash of the file that is filename + file bytes
+ *   1. Create a hash of the file path; that way hashes
+ *      are unique per file, but also repeatable / predictable.
  *   2. Append file (module) hash after class name
  */
 export const generateId = (length = 8) => {
-  let str = ''
-  let idCharsLength = idChars.length
+  let str = '';
+  let idCharsLength = idChars.length;
   for (let i = 0; i < length; i++) {
-    str += idChars[Math.floor(Math.random() * idCharsLength)]!
+    str += idChars[Math.floor(Math.random() * idCharsLength)]!;
   }
-  return str
-}
+  return str;
+};
 
 /**
  * Tree context is attached to each node
@@ -93,41 +114,27 @@ export const generateId = (length = 8) => {
  *
  * Each file (and hence, tree) will get a new tree
  * context. For the most part, it is passed around
- * as an object reference, but during AST creation,
- * the scope property will be modified (and later
- * restored when the file is finished with AST
- * creation) so that rulesets can inherit scope
- * based on their tree postion.
- *
- * It's used primarily to attach scope to rulesets,
- * since rules have context / scope according
- * to their position in the tree.
+ * as an object reference.
  *
  * Additionally, it sets options that may be
  * unique to the tree, such as the math mode.
  */
 export class TreeContext implements TreeContextOptions {
-  opts: Record<string, any>
-  hoistDeclarations: boolean
-  leakVariablesIntoScope: boolean
-  mathMode: MathMode
-  unitMode: UnitMode
-  isModule: boolean
+  opts: Record<string, any>;
+  // changed to `rulesVisiblity` set during parsing
+  // leakVariablesIntoScope: boolean
+  mathMode: MathMode;
+  unitMode: UnitMode;
 
-  file?: {
-    name: string
-    path: string
-    // contents: string[]
-  }
+  /** @todo - Change how extend works based on this value */
+  isModule: boolean;
 
-  /** Rules will inherit scope when created */
-  scope: Scope
-
+  file?: TreeContextOptions['file'];
   /**
    * The plugin that created this tree. It will have first dibs
    * to resolve any imports.
    */
-  plugin?: PluginObject
+  plugin?: PluginObject;
 
   constructor(opts: TreeContextOptions = {}) {
     /**
@@ -135,26 +142,21 @@ export class TreeContext implements TreeContextOptions {
      * Unknown options are assigned to `opts`
      */
     let {
-      scope,
-      parentScope,
-      hoistDeclarations,
-      leakVariablesIntoScope,
       mathMode,
       unitMode,
       isModule,
+      file,
       ...rest
-    } = opts
-    this.hoistDeclarations = hoistDeclarations ?? false
-    this.leakVariablesIntoScope = leakVariablesIntoScope ?? false
-    this.mathMode = mathMode ?? MathMode.PARENS_DIVISION
-    this.unitMode = unitMode ?? UnitMode.STRICT
-    this.isModule = isModule ?? false
-    this.scope = scope ?? new Scope(parentScope)
-    this.opts = rest
+    } = opts;
+    // this.leakVariablesIntoScope = leakVariablesIntoScope ?? false
+    this.mathMode = mathMode ?? MathMode.PARENS_DIVISION;
+    this.unitMode = unitMode ?? UnitMode.STRICT;
+    this.isModule = isModule ?? false;
+    this.file = file;
+    // this.scope = scope ?? new Scope(parentScope)
+    this.opts = rest;
   }
 }
-let classInts = BigInt(0)
-let inc = BigInt(1)
 
 /**
  * .a.b.c
@@ -173,76 +175,78 @@ let inc = BigInt(1)
  *
  * @note
  * Most of context represents "state" while evaluating.
- * There should only ever be one Context object per
+ * There should only ever be one Context singleton per parse & evaluation.
  */
 export class Context {
-  /**
-   * Selector elements (simple selectors and combinators)
-   * mapped to incremented bigint
-   *
-   * When extending, we can use this to search for
-   * matches within a selector sequence, and then
-   * map the match position (and range) back to the
-   * selector sequence.
-   *
-   * @todo - probably abandon?
-   */
-  static selectorKeys = new Map<string, bigint>()
-  static keysFromSelector = new Map<bigint, string | bigint>()
+  readonly plugins: PluginObject[];
+  readonly opts: ContextOptions;
 
-  readonly plugins: PluginObject[]
-  readonly opts: ContextOptions
+  treeContext!: TreeContext;
 
-  currentTree: TreeContext
+  rulesContext!: Rules;
+  /** Entire context root (ultimate root) */
+  root!: Rules;
+  /** Set so that we can do ruleset selector lookup for extend */
+  treeRoot!: Rules;
+  allRoots: Rules[] = [];
 
   /**
    * When getting vars, the current declaration is ommitted
-   * to prevent recursion errors
+   * to prevent recursion errors. Each subsequent declaration
+   * is then added to prevent back-references to this one.
+   *
+   * We use a set here because we look it up for filtering
    */
-  declarationScope: Declaration | undefined
+  private _declarationScope: Set<Declaration> | undefined;
+  get declarationScope() {
+    return (this._declarationScope ??= new Set());
+  }
 
   /**
    * This is set when entering rulesets so that child nodes
    * can use this to lookup values.
    */
-  scope: Scope
+  scope: Rules | undefined;
   /**
    * The file (eval) context should have the same ID at compile-time
    * as run-time, so this ID will be set in `toModule()` output
+   *
+   * @todo - Make the id a hash of the (project-relative) path + contents
    */
-  id = generateId()
-  varCounter: number = 0
+  id = generateId();
+  ruleCounter = 0;
 
-  _classMap: Map<string, string> | undefined
+  private _classMap: Map<string, string> | undefined;
   get classMap() {
-    let value = this._classMap
-    if (!value) {
-      value = new Map<string, string>()
-      Object.defineProperty(this, '_classMap', { value })
-    }
-    return value
+    return (this._classMap ??= new Map());
   }
 
   /**
    * The ruleset (qualified rule) frames. This is used to resolve
    * '&' when we need to.
    */
-  frames: Ruleset[] = []
+  rulesetFrames: Array<Ruleset<any>> = [];
 
-  /** Keeps track of the indention level */
-  indent = 0
+  /** Like `@media` */
+  atRuleFrames: AtRule[] = [];
 
   /**
    * Keys of @let variables --
    * We need this b/c we need to generate code
    * for over-riding in the exported function.
+   *
+   * @todo - remove?
    */
-  exports = new Set<string>()
+  private _exports: Set<string> | undefined;
+  get exports(): Set<string> {
+    return (this._exports ??= new Set());
+  }
 
-  /** @todo - is this still used? */
-  depth = 0
-
-  rootRules: Node[] = []
+  /**
+   * @todo - is this still used? Or do all toString()
+   * and toTrimmedString() methods pass in depth?
+   */
+  depth = 0;
 
   /**
    * currently generating a runtime module or not
@@ -253,158 +257,198 @@ export class Context {
   /**
    * In a custom declaration's value. All nodes should
    * be preserved as-is and not evaluated, except for
-   * interpolated expressions.
+   * #() expressions.
   */
-  inCustom: boolean
-
-  /**
-   * In a selector
-   * @todo - remove?
-  */
-  // inSelector: boolean
+  inCustom: boolean | undefined;
 
   /** A flag set by expressions */
-  canOperate: boolean
+  canOperate: boolean | undefined;
 
   /** A flag set when evaluating conditions */
-  isDefault: boolean
+  isDefault: boolean | undefined;
+
+  /** A flag to clone nodes before mutating */
+  preserveOriginalNodes: boolean | undefined;
 
   constructor(opts: ContextOptions = {}, plugins?: PluginObject[]) {
-    this.opts = opts
-    this.plugins = plugins ?? []
+    this.opts = opts;
+    this.plugins = plugins ?? [];
   }
 
-  get pre() {
-    return Array(this.indent + 1).join('  ')
-  }
+  /** Full resolved path -> tree */
+  sourceTrees = new Map<string, Rules>();
+  evaldTrees = new Map<string, Rules>();
 
-  async getTree(filePath: string, initialDirectory?: string, options?: Record<string, any>) {
-    initialDirectory ??= path.dirname(filePath)
-    const paths = this.opts.paths ?? []
-    options ??= {}
-    options = { ...this.opts, ...options }
+  /**
+   * @todo - What is this used for? I think I wrote this to resolve
+   * a tree context given a file path. Ohhhh I think, essentially,
+   * if something like a Less `@import` is used, we need to resolve
+   * what the tree context should be for the rules, which is up to
+   * the Less plugin to return.
+   *
+   * I'll revisit this when I finish imports.
+   */
+  async getTree(
+    filePath: string,
+    options?: Record<string, any>
+  ) {
+    const currentTree = this.treeContext;
+    const currentDirectory = currentTree.file?.path ?? process.cwd();
+    const paths = this.opts.paths ?? [];
+    options ??= {};
+    options = { ...this.opts, ...options };
 
-    const plugins = this.plugins
-    const pluginLength = plugins.length
-    let fullPath: string | undefined
-    let resolvedTree: Root | false | undefined
-    const triedPaths: string[] = []
+    const plugins = this.plugins;
+    const pluginLength = plugins.length;
+    let resolvedPath: string | undefined;
+    let resolvedTree: Root | false | undefined;
+    const triedPaths: string[] = [];
 
-    let rootPlugin = this.currentTree?.plugin
+    let rootPlugin = this.treeContext?.plugin;
 
     /** If we have a root plugin, try it first */
     if (rootPlugin?.fileManager) {
-      const result = rootPlugin.fileManager.getPath(filePath, initialDirectory, paths, options)
+      const result = rootPlugin.fileManager.getPath(filePath, currentDirectory, paths, options);
       if (isArray(result)) {
-        triedPaths.push(...result)
+        triedPaths.push(...result);
       } else {
-        fullPath = result
+        resolvedPath = result;
       }
     }
 
-    /** Iterate in reverse, starting with last added plugin */
-    for (let i = pluginLength - 1; i >= 0; i--) {
-      const plugin = plugins[i]!
-      if (plugin === rootPlugin) {
-        continue
-      }
-      if (!plugin.fileManager) {
-        continue
-      }
-      const result = plugin.fileManager.getPath(filePath, initialDirectory, paths, options)
-      if (isArray(result)) {
-        triedPaths.push(...result)
-      } else {
-        fullPath = result
-        break
+    if (!resolvedPath) {
+      /** Iterate in reverse, starting with last added plugin */
+      for (let i = pluginLength - 1; i >= 0; i--) {
+        const plugin = plugins[i]!;
+        if (plugin === rootPlugin) {
+          continue;
+        }
+        if (!plugin.fileManager) {
+          continue;
+        }
+        const result = plugin.fileManager.getPath(filePath, currentDirectory, paths, options);
+        if (isArray(result)) {
+          triedPaths.push(...result);
+        } else {
+          resolvedPath = result;
+          break;
+        }
       }
     }
-    if (!fullPath) {
-      throw new Error('File not found')
+
+    if (!resolvedPath) {
+      /** @todo - Add messaging around tried paths */
+      throw new Error('File not found');
+    }
+
+    /** We already have resolved this file and parsed it. */
+    if (this.sourceTrees.has(resolvedPath)) {
+      return {
+        node: this.sourceTrees.get(resolvedPath)!,
+        triedPaths,
+        resolvedPath
+      };
     }
 
     /** If we have a root plugin, try it first */
     if (rootPlugin?.fileManager) {
-      const result = await rootPlugin.fileManager.getTree(fullPath, options)
+      const result = await rootPlugin.fileManager.getTree(resolvedPath, options);
       if (result) {
-        return result
+        this.sourceTrees.set(resolvedPath, result);
+        return {
+          node: result,
+          triedPaths,
+          resolvedPath
+        };
       }
     }
 
     for (let i = pluginLength - 1; i >= 0; i--) {
-      const plugin = plugins[i]!
+      const plugin = plugins[i]!;
       if (plugin === rootPlugin) {
-        continue
+        continue;
       }
       if (!plugin.fileManager) {
-        continue
+        continue;
       }
-      const tree = await plugin.fileManager.getTree(fullPath, options)
+      const tree = await plugin.fileManager.getTree(resolvedPath, options);
       if (tree) {
-        resolvedTree = tree
-        break
+        resolvedTree = tree;
+        break;
       }
     }
     if (!resolvedTree) {
-      throw new Error(`File "${path.basename(filePath)}" not supported`)
+      throw new Error(`File "${path.basename(filePath)}" not supported`);
     }
-    return resolvedTree
+    this.sourceTrees.set(resolvedPath, resolvedTree);
+    return {
+      node: resolvedTree,
+      triedPaths,
+      resolvedPath
+    };
   }
+
+  // async getRules(
+  //   filePath: string,
+  //   nodeOptions: StyleImportOptions,
+  //   userOptions: Record<string, any> = {},
+  //   withValues?: StyleImportValue['with']
+  // ) {
+  //   let rules = await this.getTree(filePath, userOptions);
+  //   if (withValues && isNode(withValues.node, 'Rules')) {
+  //     if (rules.options.readonly) {
+  //       throw new Error('Cannot set an import\'s "with" values more than once.');
+  //     }
+  //     /** @todo - Throw errors for undefined vars */
+  //     let withRules = withValues.node.clone(true) as Rules;
+  //     withRules.value.unshift(rules);
+  //     rules = withRules;
+  //     if (withValues.type === 'set') {
+  //       this.sourceTrees.set(filePath, rules);
+  //     }
+  //   }
+  //   return rules;
+  // }
 
   /**
    * Hash a CSS class name or not depending on the `module` setting
-   * @todo - module files should have different contexts, therefore different
-   * hash maps.
+   *
+   * @todo - do module files have different contexts, therefore different
+   * hash maps?
    */
   hashClass(name: string) {
     /** Remove dot for mapping */
-    name = name.slice(1)
-    let lookup = this.classMap.get(name)
+    name = name.slice(1);
+    let lookup = this.classMap.get(name);
     if (lookup) {
-      return `.${lookup}`
+      return `.${lookup}`;
     }
-    let mapVal: string
+    let mapVal: string;
     if (this.opts.module) {
-      mapVal = `${name}_${this.id}`
+      mapVal = `${name}_${this.id}`;
     } else {
-      mapVal = name
+      mapVal = name;
     }
-    this.classMap.set(name, mapVal)
-    return `.${mapVal}`
+    this.classMap.set(name, mapVal);
+    return `.${mapVal}`;
   }
 
-  /**
-   * This is only done for simple selectors and combinators
-   * to create a normalized key for searching / extends.
-   */
-  registerSelectorElement(el: string) {
-    let key = Context.selectorKeys.get(el)
-    if (key) {
-      return key
-    }
-    key = (classInts + inc)
-
-    Context.selectorKeys.set(el, key)
-    Context.keysFromSelector.set(key, el)
-    return key
-  }
-
-  getVar() {
-    return `--v${this.id}-${this.varCounter++}`
-  }
+  // getVar() {
+  //   return `--v${this.id}-${this.varCounter++}`;
+  // }
 
   shouldOperate(op: Operator) {
-    const mathMode = this.opts.mathMode
+    const mathMode = this.opts.mathMode;
     /** Parens for Less/SCSS will set `canOperate` to true */
     if (mathMode === MathMode.ALWAYS || this.canOperate) {
-      return true
+      return true;
     }
     if (mathMode === MathMode.PARENS_DIVISION) {
-      return op !== '/'
+      return op !== '/';
     }
     if (mathMode === MathMode.PARENS) {
-      return false
+      return false;
     }
-    return true
+    return true;
   }
 }

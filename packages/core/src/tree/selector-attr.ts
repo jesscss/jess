@@ -1,18 +1,18 @@
-import { defineType, type LocationInfo, type Node } from './node'
-import { type TreeContext } from '../context'
-import { SimpleSelector } from './selector-simple'
-import { compare } from './util/compare'
+import { defineType, type LocationInfo, type Node } from './node';
+import { type TreeContext } from '../context';
+import { SimpleSelector } from './selector-simple';
+import { compare } from './util/compare';
 
 export type AttributeSelectorValue = {
   /** The name of the attribute */
-  key: string | Node
+  name: string | Node;
   /** The operator */
-  op?: string
+  op?: string;
   /** The value of the attribute */
-  value?: Node
+  value?: Node;
   /** The modifier (case insensitivity) */
-  mod?: string
-}
+  mod?: string;
+};
 
 /**
  * An attribute selector
@@ -20,67 +20,42 @@ export type AttributeSelectorValue = {
  *   e.g. [id="foo"]
 */
 export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
-  get key() {
-    return this.data.get('key')
+  type = 'AttributeSelector' as const;
+  shortType = 'attr' as const;
+
+  override toTrimmedString() {
+    let { name, op, value, mod } = this.value;
+    return `[${name}${op ?? ''}${value ?? ''}${mod ? ` ${mod}` : ''}]`;
   }
 
-  set key(v: string | Node) {
-    this.data.set('key', v)
-  }
-
-  get op() {
-    return this.data.get('op')
-  }
-
-  set op(v: string | undefined) {
-    this.data.set('op', v)
-  }
-
-  get mod(): string {
-    const thisMod = this.data.get('mod')
-    if (thisMod) {
-      return thisMod
-    }
-    return ''
-  }
-
-  set mod(v: string | undefined) {
-    this.data.set('mod', v)
-  }
-
-  toTrimmedString() {
-    let { key, op, value, mod } = this
-    return `[${key}${op ?? ''}${value ?? ''}${mod ? ` ${mod}` : ''}]`
-  }
-
-  valueOf() {
-    let valueOf = this._value
+  override valueOf() {
+    let valueOf = this._valueOf;
     if (!valueOf) {
-      let { key, op, value, mod } = this
+      let { name, op, value, mod } = this.value;
       /** Attributes are case-insensitive */
-      let keyStr = (typeof key === 'string' ? key : key.toTrimmedString()).toLowerCase()
+      let keyStr = (typeof name === 'string' ? name : name.toTrimmedString()).toLowerCase();
       if (!op) {
-        return `[${keyStr}]`
+        return `[${keyStr}]`;
       }
-      let valueStr = value?.valueOf() ?? ''
-      valueOf = this._value = `[${key}${op}"${valueStr}"${mod ? ` ${mod}` : ''}]`
+      let valueStr = value?.valueOf() ?? '';
+      valueOf = this._valueOf = `[${keyStr}${op}"${valueStr}"${mod ? ` ${mod}` : ''}]`;
     }
-    return valueOf
+    return valueOf;
   }
 
-  compare(other: Node) {
-    const thisValue = this.valueOf()
+  override compare(other: Node) {
+    const thisValue = this.valueOf();
     if (other instanceof AttributeSelector) {
-      return compare(thisValue, other.valueOf())
+      return compare(thisValue, other.valueOf());
     }
-    return compare(thisValue, other)
+    return compare(thisValue, other);
   }
 }
 
 /** Not sure why types couldn't be properly inferred */
 export const attr = defineType<AttributeSelectorValue>(AttributeSelector, 'AttributeSelector', 'attr') as (
-  value: AttributeSelectorValue | Map<string, any>,
+  value: AttributeSelectorValue,
   options?: undefined,
   location?: LocationInfo | 0,
   treeContext?: TreeContext
-) => AttributeSelector
+) => AttributeSelector;

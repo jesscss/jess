@@ -1,22 +1,22 @@
-import { Node, defineType } from './node'
-import { type List } from './list'
-import { type Context } from '../context'
-import { isNode } from './util'
-import { cast } from './util/cast'
+import { Node, defineType } from './node';
+import { type List } from './list';
+import { type Context } from '../context';
+import { isNode } from './util/is-node';
+import { cast } from './util/cast';
 
 export type CallValue = {
   /**
    * Can be an identifier or something like a mixin or variable lookup
-   *   e.g. #mixin > .class() is [Call (#mixin ())] -> [Call (class ())]
+   *   e.g. #mixin > .class() is [Call (#mixin ())] -> [Call (.class ())]
    */
-  name: string | Node
-  args?: List
+  ref: string | Node;
+  args?: List;
   /**
    * Legacy Less feature -- if a ruleset is returned,
    * all the properties can be marked as important.
    */
-  important?: boolean
-}
+  important?: boolean;
+};
 
 /**
  * This is an exported type that allows extra properties
@@ -31,81 +31,70 @@ export type ExtendedFn<T extends any[] = any[], R = any> = ((this: Context, ...a
    * This is done for Less, which sets this for functions
    * that have a CSS equivalent.
    */
-  allowOptional?: boolean
-  evalArgs?: boolean
-}
+  allowOptional?: boolean;
+  evalArgs?: boolean;
+};
 
 /**
  * @note In Less, the ref for something like `rgb`
  * is not a string, but is an (optional) variable reference.
  */
-export class Call<T extends CallValue = CallValue> extends Node<T> {
-  get name() {
-    return this.data.get('name')
+export class Call extends Node<CallValue> {
+  type = 'Call' as const;
+  shortType = 'call' as const;
+  override _requiredSemi = true;
+
+  override toTrimmedString() {
+    let { ref, args, important } = this.value;
+    return `${ref}(${args ?? ''})${important ? ' !important' : ''}`;
   }
 
-  set name(v: string | Node) {
-    this.data.set('name', v)
-  }
+  override async evalNode(context: Context): Promise<Node> {
+    let canOperate = context.canOperate;
+    /** Reset parentheses "state" */
+    context.canOperate = false;
+    let { ref, args } = this.value;
+    if (ref instanceof Node) {
+      ref = await ref.eval(context);
+    }
 
-  get args() {
-    return this.data.get('args')
-  }
-
-  set args(v: List | undefined) {
-    this.data.set('args', v)
-  }
-
-  get important(): boolean {
-    return this.data.get('important')
-  }
-
-  toTrimmedString() {
-    let { name, args, important } = this
-    return `${name}(${args ?? ''})${important ? ' !important' : ''}`
-  }
-
-  async eval(context: Context): Promise<Node> {
-    return await this.evalIfNot(context, async () => {
-      let canOperate = context.canOperate
-      /** Reset parentheses "state" */
-      context.canOperate = false
-      let { name, args } = this
-      if (name instanceof Node) {
-        name = await name.eval(context)
-      }
-
-      if (isNode(name, 'FunctionValue')) {
-        // try {
-        const func = name.value
-        let result: any
-        if (func.evalArgs !== false) {
-          args = await args?.eval(context)
-        }
+    if (isNode(ref, 'FunctionValue')) {
+      // try {
+      const func = ref.value;
+      let result: any;
+      if (func.evalArgs !== false) {
         if (args) {
-          result = await name.value.call(context, ...args.value)
-        } else {
-          result = await name.value.call(context)
+          args = await args?.eval(context);
         }
-
-        /** @todo - mark results as important */
-        return cast(result).inherit(this)
-        // } catch (e) {
-        /** Do something with JS errors */
-        // console.log(e)
-        // }
-      } else {
-        args = await args?.eval(context)
       }
-      context.canOperate = canOperate
-      let node = this.clone()
-      node.name = name
-      node.args = args
-      return node
-    })
+      if (args) {
+        result = await ref.value.call(context, ...args.value);
+      } else {
+        result = await ref.value.call(context);
+      }
+
+      /** @todo - mark results as important */
+      return cast(result).inherit(this);
+      // } catch (e) {
+      /** Do something with JS errors */
+      // console.log(e)
+      // }
+    } else {
+      args = await args?.eval(context);
+    }
+    context.canOperate = canOperate;
+    let node = this.maybeClone(context);
+    node.value.ref = ref;
+    node.value.args = args;
+    return node;
   }
 }
 
-Call.prototype.requiredSemi = true
+type Params = ConstructorParameters<typeof Call>;
 
-export const call = defineType<CallValue>(Call, 'Call')
+export const call = defineType(Call, 'Call') as (
+  value: Params[0],
+  options?: Params[1],
+  location?: Params[2],
+  treeContext?: Params[3]
+) => Call;

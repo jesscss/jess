@@ -1,18 +1,11 @@
-/* eslint-disable @typescript-eslint/require-array-sort-compare */
 import {
   defineType
-} from './node'
-import type { Context } from '../context'
-import { Nil } from './nil'
-import { Selector, type Keys } from './selector'
-import type { SimpleSelector } from './selector-simple'
-
-export type CompoundSelectorValue = [SimpleSelector, SimpleSelector, ...SimpleSelector[]]
-
-export interface CompoundSelector extends Selector<{ value: CompoundSelectorValue }> {
-  get value(): CompoundSelectorValue
-  set value(v: CompoundSelectorValue)
-}
+} from './node';
+import type { Context } from '../context';
+import { Nil } from './nil';
+import { Selector } from './selector';
+import type { SimpleSelector } from './selector-simple';
+import { getEntries } from './util/collections';
 
 /**
  * @example
@@ -20,62 +13,89 @@ export interface CompoundSelector extends Selector<{ value: CompoundSelectorValu
  *
  * Must have at least 2 selectors. Otherwise it would be collapsed.
  */
-const nonElementRegex = /^[.#:*[]/
-export class CompoundSelector extends Selector<{ value: CompoundSelectorValue }> {
-  get keys() {
-    let keys = this._keys
-    if (!keys) {
-      let { value } = this
-      Object.defineProperty(this, '_keys', { value: keys = value.flatMap(n => n.keys) as Keys })
+/** Anything other than type (element) or universal, which must come first */
+const nonElementRegex = /^[.#:[]/;
+export class CompoundSelector extends Selector<SimpleSelector[]> {
+  type = 'CompoundSelector' as const;
+  shortType = 'compound' as const;
+
+  get keySet() {
+    if (this._keySet === undefined) {
+      this._computeKeySetAndFastReject();
     }
-    return keys
+    return this._keySet!;
   }
 
-  /**
-   */
-  valueOf() {
-    let value = this._value
+  protected override _computeKeySetAndFastReject(): void {
+    let combinedKeySet = new Set<string>();
+    let canFastReject = true;
+
+    for (const selector of this.value) {
+      // Union each child's keySet
+      combinedKeySet = combinedKeySet.union(selector.keySet);
+      // If any child can't fast reject, this compound can't either
+      if (!selector.canFastReject) {
+        canFastReject = false;
+      }
+    }
+
+    this._keySet = combinedKeySet;
+    this._canFastReject = canFastReject;
+  }
+
+  override valueOf() {
+    let value = this._valueOf;
     if (!value) {
-      value = this.value
-        .map(n => n.valueOf())
-        .sort((a, b) => {
-          /** Elements come first */
-          if (!nonElementRegex.test(a)) {
-            if (!nonElementRegex.test(b)) {
-              return a < b ? -1 : 1
-            }
-            return -1
-          } else if (!nonElementRegex.test(b)) {
-            return 1
-          }
-          return a < b ? -1 : 1
-        })
-        .join('')
-      Object.defineProperty(this, '_value', { value })
+      // Convert selectors to strings
+      const components = this.value.map(n => n.valueOf());
+
+      // Find element selectors (those that don't start with .#:[)
+      const elementSelectors: string[] = [];
+      const nonElementSelectors: string[] = [];
+
+      for (const component of components) {
+        if (!nonElementRegex.test(component)) {
+          elementSelectors.push(component);
+        } else {
+          nonElementSelectors.push(component);
+        }
+      }
+
+      // Element selectors must come first for valid CSS
+      // Non-element selectors maintain their original order (no sorting)
+      value = [...elementSelectors, ...nonElementSelectors].join('');
+      this._valueOf = value;
     }
-    return value
+    return value;
   }
 
-  async eval(context: Context): Promise<CompoundSelector | Selector | Nil> {
-    return await this.evalIfNot(context, async () => {
-      const sel = this.clone()
-      let valuePromises = sel.value
-        .map(async n => await n.eval(context))
+  override async evalNode(context: Context): Promise<CompoundSelector | Selector | Nil> {
+    const sel = this.maybeClone(context);
+    let { value } = sel;
+    for (let [item, i] of getEntries(value)) {
+      value[i] = await item.eval(context) as SimpleSelector;
+    }
+    /** Bubble tag selectors to the front of compound selectors */
+    value = value
+      .filter(n => n && !(n instanceof Nil))
+      .sort((a, b) => {
+        let aIsElement = !nonElementRegex.test(a.valueOf());
+        let bIsElement = !nonElementRegex.test(b.valueOf());
+        if (aIsElement && bIsElement) {
+          /** Throw an error? */
+          return a.valueOf() < b.valueOf() ? -1 : 1;
+        }
+        return aIsElement ? -1 : bIsElement ? 1 : 0;
+      });
 
-      const returnVal = (
-        (await Promise.all(valuePromises)).filter(n => n && !(n instanceof Nil))
-      )
-      if (returnVal.length === 0) {
-        return (new Nil()).inherit(this)
-      }
-      if (returnVal.length === 1) {
-        return returnVal[0]!.inherit(this) as Selector
-      }
-
-      sel.value = returnVal as CompoundSelectorValue
-
-      return sel
-    })
+    if (value.length === 0) {
+      return (new Nil()).inherit(this);
+    }
+    if (value.length === 1) {
+      return value[0]!.inherit(this) as Selector;
+    }
+    sel.value = value;
+    return sel;
   }
 
   /** @todo move to visitors */
@@ -96,4 +116,4 @@ export class CompoundSelector extends Selector<{ value: CompoundSelectorValue }>
   // }
 }
 
-export const compound = defineType(CompoundSelector, 'CompoundSelector', 'compound')
+export const compound = defineType(CompoundSelector, 'CompoundSelector', 'compound');

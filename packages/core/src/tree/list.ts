@@ -1,13 +1,20 @@
-import { type Context } from '../context'
-import { defineType, Node } from './node'
-import { compareNodeArray } from './util/compare'
+import { type Context } from '../context';
+import { defineType, Node } from './node';
+import { compareNodeArray } from './util/compare';
+import { type Operator } from './util/calculate';
 
 export type ListOptions = {
   /**
    * Lists can be separated by comma, semi-colon,
    * or slash, depending on the type of list.
+   *
+   * @todo - Is there a more CSS-y way to define this?
    */
-  sep?: ',' | ';' | '/'
+  sep?: ',' | ';' | '/';
+};
+
+export interface List<T extends Node = Node> extends Node<T[], ListOptions> {
+  eval(context: Context): Promise<List<T>>;
 }
 
 /**
@@ -18,55 +25,47 @@ export type ListOptions = {
  * or one / two / three
  */
 export class List<T extends Node = Node> extends Node<T[], ListOptions> {
-  /**
-   * Allow for..of and destructuring for lists
-   * @note Unlike arrays, this will return the index
-   */
-  * [Symbol.iterator](): Generator<[number, T]> {
-    let i = 0
-    for (let item of this.value) {
-      yield [i++, item]
-    }
-  }
-
-  entries() {
-    return this[Symbol.iterator]()
-  }
+  type = 'List';
+  shortType = 'list';
 
   get length() {
-    return this.value.length
+    return this.value.length;
   }
 
-  toTrimmedString() {
-    let { sep = ',' } = this.options ?? {}
-    return this.value.map(v => v.toString()).join(`${sep}`)
+  * [Symbol.iterator]() {
+    yield* this.value.entries();
   }
 
-  compare(other: Node) {
+  override toTrimmedString() {
+    let { sep = ',' } = this.options ?? {};
+    return this.value.map(
+      (v, i) => v.toString(0, i === 0 ? '' : ' ')).join(`${sep}`
+    );
+  }
+
+  override compare(other: Node) {
     if (other instanceof List) {
-      return compareNodeArray(this.value, other.value)
+      return compareNodeArray(this.value, other.value);
     }
-    return super.compare(other)
+    return super.compare(other);
   }
 
-  operate(b: Node, op: string) {
+  override operate(b: Node, op: Operator, context: Context): List<T> {
     if (op !== '+') {
-      throw new Error(`List operation "${op}" not supported`)
+      throw new Error(`List operation "${op}" not supported`);
     }
-    let newList = this.clone()
+    let newList = this.maybeClone(context);
     if (b instanceof List) {
-      newList.value.push(...b.value)
+      newList.value.push(...b.value);
     } else {
       /** @todo - do we need to verify the list type? */
-      newList.value.push(b as T)
+      newList.value.push(b as T);
     }
-    return newList
+    return newList;
   }
 
   /** @todo? Lists should collapse nested lists? */
-  async eval(context: Context): Promise<List<T> | T> {
-    return await (super.eval(context) as Promise<List<T>>)
-  }
+  // override async evalNode(context: Context): Promise<List<T>>
 
   /** @todo move to ToCssVisitor */
   // toCSS(context: Context, out: OutputCollector) {
@@ -112,4 +111,11 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
   // }
 }
 
-export const list = defineType(List, 'List')
+type Params = ConstructorParameters<typeof List>;
+
+export const list = defineType(List, 'List') as (
+  value: Params[0],
+  options?: Params[1],
+  location?: Params[2],
+  treeContext?: Params[3]
+) => List;

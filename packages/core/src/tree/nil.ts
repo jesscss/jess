@@ -3,30 +3,39 @@ import {
   defineType,
   type LocationInfo,
   type NodeOptions
-} from './node'
-import type { TreeContext } from '../context'
+} from './node';
+import type { TreeContext } from '../context';
+
+export interface Nil extends Node<''> {
+  valueOf(): '';
+}
 
 /**
  * A Node type that outputs nothing.
  *
  * We need this for things like rulesets,
  * which need dynamically-linked nodes
+ *
+ * This is also the default value for declarations like:
+ * `$var:;`
  */
-export class Nil extends Node<undefined> {
-  _evaluated: true = true
+export class Nil extends Node<''> {
+  type = 'Nil';
+  shortType = 'nil';
+  override allowRoot = true;
+  override allowRuleRoot = true;
+  override visible = false;
 
   constructor(
     value?: any,
     options?: NodeOptions,
-    location?: LocationInfo | 0,
+    location?: LocationInfo,
     treeContext?: TreeContext) {
-    super(undefined, options, location, treeContext)
+    super('', options, location, treeContext);
   }
 
-  async eval() { return this }
-  toTrimmedString() { return '' }
+  override toTrimmedString() { return ''; }
+  override toString() { return ''; }
 }
-Nil.prototype.allowRoot = true
-Nil.prototype.allowRuleRoot = true
 
-export const nil = defineType(Nil, 'Nil')
+export const nil = defineType(Nil, 'Nil');

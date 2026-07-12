@@ -1,0 +1,52 @@
+---
+title: Expressions
+---
+
+Jess supports expressions, which are used to evaluate values, perform calculations, and more.
+
+Unlike other languages, and unlike Sass and Less, Jess expressions must be wrapped in `#()` even when used in a "value" position. This is to reduce ambiguity and conflict with other CSS syntax.
+
+## Examples
+
+### 1. Basic arithmetic
+
+```less
+value: #(1 + 2); // 3
+value: #(1 - 2); // -1
+value: #(1 * 2); // 2
+value: #(1 / 2); // 0.5
+value: #(1 % 2); // 1 (modulus)
+```
+
+### 2. String concatenation
+
+```less
+value: #("Hello, " + "world!"); // "Hello, world!"
+```
+
+### 3. Comparison operations
+
+```less
+value: #(1 > 2); // false
+value: #(1 < 2); // true
+value: #(1 >= 2); // false
+value: #(1 <= 2); // true
+```
+
+### 4. Support for unique CSS values
+
+```less
+value: #(#222 / 2); // #111
+```
+
+### 5. Use with Jess variables
+
+```less
+$width: 10px;
+$height: #($width + 10px);
+
+#header {
+  width: $width;
+  height: $height;
+}
+```

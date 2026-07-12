@@ -1,20 +1,33 @@
-import { Node, defineType } from './node'
-import { type Rules } from './rules'
-import type { Context } from '../context'
-import { Nil } from './nil'
-import type { Condition } from './condition'
-import type { Selector } from './selector'
+import { Node, defineType, type NodeOptions } from './node';
+import { type Rules } from './rules';
+import type { Context } from '../context';
+import { Nil } from './nil';
+import type { Condition } from './condition';
+import type { Selector } from './selector';
+import { atIndex } from './util/collections';
+import { isNode } from './util/is-node';
+import { Ampersand } from './ampersand';
+import { Combinator } from './combinator';
+import { ComplexSelector } from './selector-complex';
+import { SelectorList } from './selector-list';
 
 export type RulesetValue = {
-  selector: Selector | Nil
+  selector: Selector | Nil;
   /**
    * It's important that any Node that defines a Rules
    * sets it to the `rules` property. This allows us to
    * generalize nodes for the `frames` property in Context
    */
-  rules: Rules
-  guard?: Condition
-}
+  rules: Rules;
+  guard?: Condition;
+};
+
+type RulesetOptions = NodeOptions & {
+  parentSelector?: Selector | Nil;
+};
+
+/** @todo - Fix typing */
+type NarrowRulesetValue<T> = T extends RulesetValue ? T : RulesetValue;
 /**
  * A qualified rule. This is historically called a "Ruleset"
  * by older CSS documentation and by Less.
@@ -26,80 +39,161 @@ export type RulesetValue = {
  *   color: black;
  * }
  */
-export class Ruleset extends Node<RulesetValue> {
+export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, RulesetOptions> {
+  type = 'Ruleset';
+  shortType = 'ruleset';
+  override allowRuleRoot = true;
+  override allowRoot = true;
+
+  override stateRules = ['visible', 'evaluated', 'preEvaluated', 'parentSelector'];
+  parentSelector: Selector | undefined;
+
   get selector() {
-    return this.data.get('selector')
-  }
-
-  set selector(v: Selector | Nil) {
-    this.data.set('selector', v)
-  }
-
-  get rules() {
-    return this.data.get('rules')
-  }
-
-  set rules(v: Rules) {
-    this.data.set('rules', v)
-  }
-
-  get guard() {
-    return this.data.get('guard')
-  }
-
-  set guard(v: Condition | undefined) {
-    this.data.set('guard', v)
+    return this.value.selector;
   }
 
   /** @todo - remove? */
-  valueOf() {
-    return this.selector instanceof Nil ? '' : this.selector.valueOf()
+  override valueOf() {
+    return this.selector instanceof Nil ? '' : this.selector.valueOf();
   }
 
-  toTrimmedString(depth: number = 0): string {
-    // let space = ''.padStart(depth * 2)
-    let output = ''
-    output += `${this.selector.toString()}{`
-    output += `${this.rules.toString(depth + 1)}`
-    output += '}'
-    return output
+  override toTrimmedString(depth: number = 0): string {
+    let space = ''.padStart(depth * 2);
+    let { selector, rules } = this.value;
+    if (selector instanceof Nil) {
+      return '';
+    }
+    let output = '';
+    output += `${selector.toString(depth, undefined, ' ')}{`;
+    output += `${rules.toString(depth + 1)}`;
+    if (rules.post === undefined) {
+      output += '\n';
+    }
+    output += `${space}}`;
+    return output;
   }
 
-  async eval(context: Context): Promise<Ruleset | Nil> {
-    return await this.evalIfNot(context, async () => {
-      let rule = this.clone()
-      if (rule.guard) {
-        let guard = await rule.guard.eval(context)
-        if (!guard.value) {
-          return new Nil().inherit(this)
+  override async preEval(context: Context): Promise<this> {
+    if (!this.preEvaluated) {
+      let node = this.maybeClone(context);
+      node.preEvaluated = true;
+      node.sourceNode ??= this;
+      let { selector } = node.value;
+      node.value.selector = await selector.eval(context) as Selector | Nil;
+      return node;
+    }
+    return this;
+  }
+
+  /** Attach an (invisible) ampersand to the selector(s) if it's not already there */
+  getImplicitSelector() {
+    if (!this.parentSelector) {
+      return this.selector;
+    }
+
+    const selector = this.selector;
+    if (selector instanceof Nil) {
+      return selector;
+    }
+    const invisibleAmp = new Ampersand({ selector: this.parentSelector });
+    invisibleAmp.visible = false;
+    const invisibleCombinator = new Combinator(' ');
+    invisibleCombinator.visible = false;
+
+    // Helper to check for ampersand in a selector's nodes
+    const hasAmpersand = (sel: Selector) => {
+      for (const node of sel.nodes()) {
+        if (isNode(node, 'Ampersand')) return true;
+      }
+
+      return false;
+    };
+
+    // If selector is a SelectorList, process each item
+    if (isNode(selector, 'SelectorList')) {
+      const newList = selector.value.map((sel) => {
+        if (hasAmpersand(sel)) {
+          return sel;
         }
-        /** Remove once evaluated */
-        rule.guard = undefined
-      }
-      /** Allow a selector to signal that nesting should be collapsed */
-      const collapseNesting = context.opts.collapseNesting
-      let sels = (await this.selector.eval(context)) as Selector | Nil
-      let hoistToParent = this.options?.hoistToParent ?? context.opts.collapseNesting
-      if (hoistToParent) {
-        rule.options.hoistToParent = true
-      }
-      context.opts.collapseNesting = collapseNesting
+        if (isNode(sel, 'CompoundSelector') || isNode(sel, 'SimpleSelector')) {
+          return ComplexSelector.create([invisibleAmp, invisibleCombinator, sel]);
+        }
+        if (isNode(sel, 'ComplexSelector')) {
+          const cloned = sel.clone(true);
+          cloned.value.unshift(invisibleAmp, invisibleCombinator);
+          return cloned;
+        }
+        return sel;
+      });
+      return SelectorList.create(newList);
+    }
 
-      if (sels instanceof Nil) {
-        return sels
-      }
-      rule.selector = sels
+    // If selector is not a list, check for ampersand
+    if (hasAmpersand(selector)) {
+      return selector;
+    }
+    if (isNode(selector, 'CompoundSelector') || isNode(selector, 'SimpleSelector')) {
+      return ComplexSelector.create([invisibleAmp, invisibleCombinator, selector]);
+    }
+    if (isNode(selector, 'ComplexSelector')) {
+      const cloned = selector.clone(true);
+      cloned.value.unshift(invisibleAmp, invisibleCombinator);
+      return cloned;
+    }
+    return selector;
+  }
 
-      context.frames.unshift(rule)
-      rule.rules = await this.rules.eval(context)
-      context.frames.shift()
-
-      /** Remove empty rules */
-      if (rule.rules.visibleRules().length === 0) {
-        rule.visible = false
+  override async evalNode(context: Context): Promise<Ruleset | Nil> {
+    let rule = this.maybeClone(context);
+    rule.options = { ...this.options };
+    let frame = atIndex(context.rulesetFrames, -1);
+    /** Store the current frame selector if we need it for serialization */
+    if (frame && isNode(frame.selector, 'Selector')) {
+      rule.parentSelector = frame.selector;
+    }
+    let guard = rule.value.guard;
+    if (guard) {
+      let bool = await guard.eval(context);
+      if (!bool.value) {
+        return new Nil();
       }
-      return rule
-    })
+      /** Remove once evaluated */
+      rule.value.guard = undefined;
+    }
+    /** Allow a selector to signal that nesting should be collapsed */
+    const collapseNesting = context.opts.collapseNesting;
+    let sels = (await this.selector.eval(context)) as Selector | Nil;
+
+    if (frame && (this.options.hoistToRoot ?? context.opts.collapseNesting)) {
+      rule.options.hoistToRoot = true;
+    }
+    context.opts.collapseNesting = collapseNesting;
+
+    /** If the only selector is a generated :is, unwrap it */
+    if (
+      isNode(sels, 'PseudoSelector')
+      && sels.value.name === ':is'
+      && sels.generated
+    ) {
+      sels = sels.value.arg as Selector;
+    }
+
+    if (sels instanceof Nil) {
+      return sels;
+    }
+
+    rule.value.selector = sels;
+
+    context.rulesetFrames.push(rule);
+    rule.value.rules = await this.value.rules.eval(context);
+    context.rulesetFrames.pop();
+
+    /** Remove empty rules */
+    const rules = rule.value.rules;
+    if (rules.visibleRules().length === 0) {
+      rule.visible = false;
+    }
+    return rule;
   }
 
   /** @todo move to ToCssVisitor */
@@ -125,14 +219,12 @@ export class Ruleset extends Node<RulesetValue> {
   //   out.add(`},${JSON.stringify(this.location)})`)
   // }
 }
-Ruleset.prototype.allowRuleRoot = true
-Ruleset.prototype.allowRoot = true
 
-type RulesetParams = ConstructorParameters<typeof Ruleset>
+type RulesetParams = ConstructorParameters<typeof Ruleset>;
 
 export const ruleset = defineType<RulesetValue>(Ruleset, 'Ruleset') as (
   value: RulesetValue | RulesetParams[0],
   options?: RulesetParams[1],
   location?: RulesetParams[2],
   treeContext?: RulesetParams[3]
-) => Ruleset
+) => Ruleset;

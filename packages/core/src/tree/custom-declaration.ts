@@ -1,6 +1,7 @@
-import { Declaration } from './declaration'
-import { defineType } from './node'
-import type { Context } from '../context'
+import { Declaration } from './declaration';
+import { defineType } from './node';
+import type { Context } from '../context';
+import type { Nil } from './nil';
 // import type { OutputCollector } from '../output'
 
 /**
@@ -13,11 +14,11 @@ import type { Context } from '../context'
  * @todo - is this used?
  */
 export class CustomDeclaration extends Declaration {
-  async eval(context: Context) {
-    context.inCustom = true
-    let node = await super.eval(context)
-    context.inCustom = false
-    return node
+  override async evalNode(context: Context): Promise<this | Nil> {
+    context.inCustom = true;
+    let node = await super.evalNode(context);
+    context.inCustom = false;
+    return node;
   }
 
   /** @todo move to visitors */
@@ -47,4 +48,4 @@ export class CustomDeclaration extends Declaration {
   // }
 }
 
-export const customdecl = defineType(CustomDeclaration, 'CustomDeclaration', 'custom')
+export const customdecl = defineType(CustomDeclaration, 'CustomDeclaration', 'custom');

@@ -1,8 +1,8 @@
 /* eslint no-control-regex: "off" */
-import { type WritableDeep } from 'type-fest'
-import type { RawModeConfig } from './util'
-import { LexerType } from './util'
-import { SKIPPED_LABEL } from './advancedCstParser'
+import { type WritableDeep } from 'type-fest';
+import type { RawModeConfig } from './util';
+import { LexerType } from './util';
+import { SKIPPED_LABEL } from './advancedCstParser';
 
 /**
  * references:
@@ -35,7 +35,7 @@ const fragments = () => [
    */
   ['unit', '(?:[a-zA-Z]|{{nonascii}}|{{escape}})+'],
   ['string1', '\\"(\\\\"|[^\\n\\r\\f\\"]|{{newline}}|{{escape}})*\\"'],
-  ['string2', "\\'(\\\\'|[^\\n\\r\\f\\']|{{newline}}|{{escape}})*\\'"],
+  ['string2', '\\\'(\\\\\'|[^\\n\\r\\f\\\']|{{newline}}|{{escape}})*\\\''],
 
   ['integer', '[+-]?\\d+'],
   /**
@@ -43,7 +43,7 @@ const fragments = () => [
   */
   ['number', '(?:\\d*\\.\\d+(?:[eE][+-]\\d+)?|\\d+(?:[eE][+-]\\d+))'],
   ['wsorcomment', '({{ws}})|({{comment}})']
-]
+];
 
 // interface Match { value: string, index: number }
 
@@ -61,21 +61,21 @@ const fragments = () => [
  * When bound to a Regular Expression, it will aggregrate capture groups onto the payload
  */
 export function groupCapture(this: RegExp, text: string, startOffset: number) {
-  let endOffset = startOffset
-  this.lastIndex = startOffset
+  let endOffset = startOffset;
+  this.lastIndex = startOffset;
 
-  let match = this.exec(text)
-  endOffset = this.lastIndex
+  let match = this.exec(text);
+  endOffset = this.lastIndex;
 
   const payload = match?.filter((m, i) => {
-    return i !== 0 && typeof m === 'string'
-  })
-  const returnObj: [string] & any = [text.substring(startOffset, endOffset)]
+    return i !== 0 && typeof m === 'string';
+  });
+  const returnObj: [string] & any = [text.substring(startOffset, endOffset)];
   if (payload) {
-    returnObj.payload = payload
-    return returnObj
+    returnObj.payload = payload;
+    return returnObj;
   }
-  return match
+  return match;
 }
 
 /**
@@ -430,7 +430,7 @@ const tokens = () => ({
        */
       {
         name: 'SingleQuoteStringContents',
-        pattern: "(?:[\\u0000-\\u0026\\u0028-\\u005B\\u005D-\\uFFFF]|\\\\'|{{newline}}|{{escape}})+"
+        pattern: '(?:[\\u0000-\\u0026\\u0028-\\u005B\\u005D-\\uFFFF]|\\\\\'|{{newline}}|{{escape}})+'
       },
       {
         name: 'SingleQuoteEnd',
@@ -477,19 +477,19 @@ const tokens = () => ({
     ]
   },
   defaultMode: 'Default'
-}) as const satisfies RawModeConfig
+}) as const satisfies RawModeConfig;
 
-type TokenModes = ReturnType<typeof tokens>['modes']
+type TokenModes = ReturnType<typeof tokens>['modes'];
 
 export type TokenNameMap<T extends readonly any[]> = {
   [P in keyof T]: T[P] extends { name: string }
     ? T[P]['name']
     : T[P]
-}
-export type TokenNames<T extends readonly any[]> = TokenNameMap<T>[number]
+};
+export type TokenNames<T extends readonly any[]> = TokenNameMap<T>[number];
 
 /** Join all modes to get strong indexing */
-export type CssTokenType = TokenNames<TokenModes[keyof TokenModes]>
+export type CssTokenType = TokenNames<TokenModes[keyof TokenModes]>;
 
-export const cssTokens = () => tokens() as WritableDeep<ReturnType<typeof tokens>>
-export const cssFragments = () => fragments()
+export const cssTokens = () => tokens() as WritableDeep<ReturnType<typeof tokens>>;
+export const cssFragments = () => fragments();

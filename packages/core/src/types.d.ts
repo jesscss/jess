@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/naming-convention */
 /**
  * @see https://github.com/Pyrolistical/consensus-workstation/blob/4102979a7b7f6391bd636c0051722e484185dd02/typings/@bloomberg/record-tuple-polyfill.d.ts
  */
@@ -17,11 +16,11 @@
 // }
 
 declare interface Set<T> {
-  union<U>(b: Set<U>): Set<T | U>
-  intersection<U>(b: Set<U>): Set<T | U>
-  difference<U>(b: Set<U>): Set<T | U>
-  symmetricDifference<U>(b: Set<U>): Set<T | U>
-  isSubsetOf<U>(b: Set<U>): boolean
-  isSupersetOf<U>(b: Set<U>): boolean
-  isDisjointFrom<U>(b: Set<U>): boolean
+  union<U>(b: Set<U>): Set<T | U>;
+  intersection<U>(b: Set<U>): Set<T | U>;
+  difference<U>(b: Set<U>): Set<T | U>;
+  symmetricDifference<U>(b: Set<U>): Set<T | U>;
+  isSubsetOf<U>(b: Set<U>): boolean;
+  isSupersetOf<U>(b: Set<U>): boolean;
+  isDisjointFrom<U>(b: Set<U>): boolean;
 }

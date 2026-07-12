@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/restrict-plus-operands, @typescript-eslint/no-unnecessary-type-assertion */
 import {
   cssFragments,
   cssTokens,
@@ -10,20 +9,20 @@ import {
   type TokenNames,
   type CssTokenType,
   SKIPPED_LABEL
-} from '@jesscss/css-parser'
-import type { WritableDeep } from 'type-fest'
+} from '@jesscss/css-parser';
+import type { WritableDeep } from 'type-fest';
 
-type IMerges = Partial<Record<CssTokenType, RawTokenConfig>>
+type IMerges = Partial<Record<CssTokenType, RawTokenConfig>>;
 
 function $preBuildFragments() {
-  const fragments = cssFragments()
-  fragments.unshift(['lineComment', '\\/\\/[^\\n\\r]*'])
-  fragments.push(['interpolated', '[@$]\\{(?:{{nmchar}}*)\\}'])
+  const fragments = cssFragments();
+  fragments.unshift(['lineComment', '\\/\\/[^\\n\\r]*']);
+  fragments.push(['interpolated', '[@$]\\{(?:{{nmchar}}*)\\}']);
 
-  return fragments
+  return fragments;
 }
 
-type CssTokenModes = ReturnType<typeof cssTokens>['modes']
+type CssTokenModes = ReturnType<typeof cssTokens>['modes'];
 
 function $preBuildTokens() {
   /**
@@ -35,14 +34,14 @@ function $preBuildTokens() {
     J extends keyof U = keyof U
   > = {
     [K in keyof T]: K extends 'Default' ? T[K] | U[J] : T[K]
-  }
+  };
 
   type InferMergeTypes = {
-    modes: Modes
-    defaultMode: 'Default'
-  }
+    modes: Modes;
+    defaultMode: 'Default';
+  };
 
-  const tokens = cssTokens() as InferMergeTypes
+  const tokens = cssTokens() as InferMergeTypes;
 
   /** Keyed by what to insert after */
   const merges = {
@@ -114,7 +113,7 @@ function $preBuildTokens() {
       },
       {
         name: 'PropertyReference',
-        // eslint-disable-next-line no-template-curly-in-string
+
         pattern: '\\${{ident}}',
         categories: ['VarOrProp']
       },
@@ -195,20 +194,20 @@ function $preBuildTokens() {
         line_breaks: true
       }
     ]
-  } as const satisfies IMerges
+  } as const satisfies IMerges;
 
-  let defaultTokens = tokens.modes.Default as WritableDeep<RawToken[]>
+  let defaultTokens = tokens.modes.Default as WritableDeep<RawToken[]>;
 
-  let tokenLength = defaultTokens.length
+  let tokenLength = defaultTokens.length;
   for (let i = 0; i < tokenLength; i++) {
-    let token: WritableDeep<RawToken> = defaultTokens[i]!
+    let token: WritableDeep<RawToken> = defaultTokens[i]!;
 
-    const { name } = token
+    const { name } = token;
     const copyToken = () => {
-      token = structuredClone(token)
-    }
+      token = structuredClone(token);
+    };
 
-    let alterations = true
+    let alterations = true;
 
     switch (name) {
       /**
@@ -218,53 +217,53 @@ function $preBuildTokens() {
        * if present.
        */
       case 'Ampersand':
-        copyToken()
+        copyToken();
         /**
          * e.g. &-foo or &(foo)
          * @note Jess parsing won't absorb the post-ampersand
          * characters, so will properly support the ampersand
          */
-        token.pattern = '&(?:\\({{nmchar}}*\\)|{{nmchar}}*)'
-        break
+        token.pattern = '&(?:\\({{nmchar}}*\\)|{{nmchar}}*)';
+        break;
       case 'Divide':
-        copyToken()
-        token.pattern = /\.?\//
-        break
+        copyToken();
+        token.pattern = /\.?\//;
+        break;
       case 'SingleQuoteStart':
-        copyToken()
-        token.pattern = /~?'/
-        break
+        copyToken();
+        token.pattern = /~?'/;
+        break;
       case 'DoubleQuoteStart':
-        copyToken()
-        token.pattern = /~?"/
-        break
+        copyToken();
+        token.pattern = /~?"/;
+        break;
       default:
-        alterations = false
+        alterations = false;
     }
     if (alterations) {
-      defaultTokens[i] = token
+      defaultTokens[i] = token;
     }
     // @ts-expect-error - Suppress index warning
-    const merge = merges[name]
+    const merge = merges[name];
     if (merge) {
       /** Insert after current token */
       defaultTokens = defaultTokens.slice(0, i + 1).concat(merge, defaultTokens.slice(i + 1))
-      ;(tokens.modes.Default as WritableDeep<RawToken[]>) = defaultTokens
-      const mergeLength = merge.length
-      tokenLength += mergeLength
-      i += mergeLength
+      ;(tokens.modes.Default as WritableDeep<RawToken[]>) = defaultTokens;
+      const mergeLength = merge.length;
+      tokenLength += mergeLength;
+      i += mergeLength;
     }
   }
-  return tokens
+  return tokens;
 }
 
-export const Fragments = $preBuildFragments!()
-export const Tokens = $preBuildTokens!()
+export const Fragments = $preBuildFragments!();
+export const Tokens = $preBuildTokens!();
 
-type ReturnTokens = ReturnType<typeof $preBuildTokens>
-type TokenModes = ReturnTokens['modes']
+type ReturnTokens = ReturnType<typeof $preBuildTokens>;
+type TokenModes = ReturnTokens['modes'];
 
-export type LessTokenType = TokenNames<TokenModes[keyof TokenModes]>
+export type LessTokenType = TokenNames<TokenModes[keyof TokenModes]>;
 
-export const lessFragments = () => Fragments
-export const lessTokens = () => Tokens as WritableDeep<RawModeConfig>
+export const lessFragments = () => Fragments;
+export const lessTokens = () => Tokens as WritableDeep<RawModeConfig>;

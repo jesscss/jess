@@ -1,7 +1,11 @@
+## TODO
+
+Remove, we have container queries now.
+
 
 *container.jess*
 ```less
-@from '@jess/fns' import (if);
+@from '@jesscss/fns' import (if);
 
 @let contain: 640;
 
