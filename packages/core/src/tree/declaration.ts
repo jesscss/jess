@@ -669,16 +669,16 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     }
   }
 
-  override* walk(deep?: boolean, reverse?: boolean): Generator<Node, void, unknown> {
+  override _walkInto(out: Node[], deep?: boolean, reverse?: boolean): void {
     const childValues = reverse
       ? [this.important, this.value, this.name]
       : [this.name, this.value, this.important];
     for (let i = 0; i < childValues.length; i++) {
       const child = childValues[i];
       if (child instanceof Node) {
-        yield child;
+        out.push(child);
         if (deep) {
-          yield* child.walk(deep, reverse);
+          child._walkInto(out, deep, reverse);
         }
       }
     }

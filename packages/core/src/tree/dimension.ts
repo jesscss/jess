@@ -12,7 +12,7 @@ import {
 import { type Operator, calculate } from './util/calculate.js';
 import { logger } from '../logger.js';
 import { WARN } from '../jess-error.js';
-import round from 'lodash-es/round.js';
+import round from './util/round.js';
 import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
 import { finalizeOperationMetadataResult, finalizePublicOperationResult } from './util/operation-result.js';
 import { isRenderBuffer, type RenderBuffer, writeRenderText } from './util/render-buffer.js';

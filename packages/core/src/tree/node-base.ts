@@ -437,6 +437,67 @@ function visitLeafValues(
 }
 
 /**
+ * Push into `out`, in pre-order, the child Nodes reachable from one childKeys
+ * field value (a Node, an array, or a plain-object bag of Nodes/arrays). When
+ * `deep`, each Node's own subtree is appended immediately after it via the
+ * node's (polymorphic) `_walkInto`, reproducing the DFS order of the previous
+ * `_walkFromValue`/`walk` generator exactly. Non-generator hot path.
+ */
+function collectFieldInto(
+  value: unknown,
+  out: Node[],
+  deep?: boolean,
+  reverse?: boolean
+): void {
+  if (isArray(value)) {
+    if (reverse) {
+      for (let i = value.length - 1; i >= 0; i--) {
+        pushNodeInto(value[i], out, deep, reverse);
+      }
+    } else {
+      for (let i = 0; i < value.length; i++) {
+        pushNodeInto(value[i], out, deep, reverse);
+      }
+    }
+    return;
+  }
+  if (isPlainObject(value)) {
+    for (const k in value) {
+      const childValue = value[k];
+      if (isArray(childValue)) {
+        if (reverse) {
+          for (let i = childValue.length - 1; i >= 0; i--) {
+            pushNodeInto(childValue[i], out, deep, reverse);
+          }
+        } else {
+          for (let i = 0; i < childValue.length; i++) {
+            pushNodeInto(childValue[i], out, deep, reverse);
+          }
+        }
+      } else {
+        pushNodeInto(childValue, out, deep, reverse);
+      }
+    }
+    return;
+  }
+  pushNodeInto(value, out, deep, reverse);
+}
+
+function pushNodeInto(
+  value: unknown,
+  out: Node[],
+  deep?: boolean,
+  reverse?: boolean
+): void {
+  if (value instanceof Node) {
+    out.push(value);
+    if (deep) {
+      value._walkInto(out, deep, reverse);
+    }
+  }
+}
+
+/**
  * The underlying type for all Jess nodes
  */
 export abstract class Node<
@@ -1033,103 +1094,49 @@ export abstract class Node<
     }
   }
 
-  private* _walkFromValue(
-    value: unknown,
-    deep?: boolean,
-    reverse?: boolean
-  ): Generator<Node, void, unknown> {
-    if (isArray(value)) {
-      if (reverse) {
-        for (let i = value.length - 1; i >= 0; i--) {
-          const nodeVal = value[i];
-          if (nodeVal instanceof Node) {
-            yield nodeVal;
-            if (deep) {
-              yield* nodeVal.walk(deep, reverse);
-            }
-          }
-        }
-      } else {
-        for (let i = 0; i < value.length; i++) {
-          const nodeVal = value[i];
-          if (nodeVal instanceof Node) {
-            yield nodeVal;
-            if (deep) {
-              yield* nodeVal.walk(deep, reverse);
-            }
-          }
-        }
-      }
-      return;
-    }
-    if (isPlainObject(value)) {
-      for (const k in value) {
-        const childValue = value[k];
-        if (isArray(childValue)) {
-          if (reverse) {
-            for (let i = childValue.length - 1; i >= 0; i--) {
-              const nodeVal = childValue[i];
-              if (nodeVal instanceof Node) {
-                yield nodeVal;
-                if (deep) {
-                  yield* nodeVal.walk(deep, reverse);
-                }
-              }
-            }
-          } else {
-            for (let i = 0; i < childValue.length; i++) {
-              const nodeVal = childValue[i];
-              if (nodeVal instanceof Node) {
-                yield nodeVal;
-                if (deep) {
-                  yield* nodeVal.walk(deep, reverse);
-                }
-              }
-            }
-          }
-        } else if (childValue instanceof Node) {
-          yield childValue;
-          if (deep) {
-            yield* childValue.walk(deep, reverse);
-          }
-        }
-      }
-      return;
-    }
-    if (value instanceof Node) {
-      yield value;
-      if (deep) {
-        yield* value.walk(deep, reverse);
-      }
-    }
-  }
-
   /**
-   * Return an iterator for all nodes / children nodes, including this one
+   * Collect the child Nodes described by `childKeys` into `out`, in the exact
+   * pre-order the (former) generator `walk` produced. Non-generator: V8 pays no
+   * per-yield / per-`yield*`-frame cost, and a deep walk shares ONE output array
+   * across the whole subtree (single allocation, no per-node sub-array). Order is
+   * byte-for-byte identical to the previous generator so emit/eval output is
+   * unchanged. Overridden by nodes with a bespoke field order (e.g. Declaration).
    */
-  * nodes(reverse?: boolean): Generator<Node, void, unknown> {
-    yield this;
-    yield* this.walk(true, reverse);
-  }
-
-  /**
-   * An iterator over semantic child nodes (via childKeys), optionally deep.
-   * Renamed from `children()` — use `.children` (property) for the Parséman structural child array.
-   */
-  * walk(deep?: boolean, reverse?: boolean): Generator<Node, void, unknown> {
+  _walkInto(out: Node[], deep?: boolean, reverse?: boolean): void {
     const childKeys = childKeysOf(this);
     if (!childKeys) {
       return;
     }
     if (reverse) {
       for (let i = childKeys.length - 1; i >= 0; i--) {
-        yield* this._walkFromValue(readNodeField(this, childKeys[i]!), deep, reverse);
+        collectFieldInto(readNodeField(this, childKeys[i]!), out, deep, reverse);
       }
       return;
     }
     for (let i = 0; i < childKeys.length; i++) {
-      yield* this._walkFromValue(readNodeField(this, childKeys[i]!), deep, reverse);
+      collectFieldInto(readNodeField(this, childKeys[i]!), out, deep, reverse);
     }
+  }
+
+  /**
+   * Return all nodes / children nodes, including this one. Array is iterable, so
+   * `for…of` / `yield*` consumers are unchanged.
+   */
+  nodes(reverse?: boolean): Node[] {
+    const out: Node[] = [this];
+    this._walkInto(out, true, reverse);
+    return out;
+  }
+
+  /**
+   * The semantic child nodes (via childKeys), optionally deep. Returns an array
+   * (iterable) rather than a generator — see `_walkInto`.
+   * Renamed from `children()` — use `.children` (property) for the Parséman structural child array.
+   */
+  walk(deep?: boolean, reverse?: boolean): Node[] {
+    const out: Node[] = [];
+    this._walkInto(out, deep, reverse);
+    return out;
   }
 
   /**

@@ -996,6 +996,13 @@ class RulesLookupState {
   varsByName: Map<string, BindingEntry[]> | undefined = undefined;
   functionsByName: Map<string, JsFunction | Func> | undefined = undefined;
   callableLookupCache: Map<string, CallableLookupEntry[] | null> | undefined = undefined;
+  /**
+   * Full callable index for this scope: every callable key -> its ordered entries,
+   * built in ONE pass over `rules` and memoized. `getCallableEntriesForKey` reads a
+   * key out of this instead of re-scanning every rule per distinct key. Invalidated
+   * alongside `callableLookupCache` when the scope's callable set changes.
+   */
+  callableFullIndex: Map<string, CallableLookupEntry[]> | undefined = undefined;
   directChildRuleEntries: Array<RulesEntryLike> | null | undefined = undefined;
   directDeclarationChildEntries: Array<RulesEntryLike> | null | undefined = undefined;
   directDeclarationsByName: Map<string, Declaration[] | null> | undefined = undefined;
@@ -2024,23 +2031,25 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
   }
 
   private addCallableEntry(
-    lookupKey: string,
     key: string | undefined,
     value: MixinEntry,
     match: string[],
-    bucket: CallableLookupEntry[]
+    index: Map<string, CallableLookupEntry[]>
   ): void {
-    if (!key || key !== lookupKey || key.startsWith(':')) {
+    if (!key || key.startsWith(':')) {
       return;
+    }
+    let bucket = index.get(key);
+    if (bucket === undefined) {
+      index.set(key, bucket = []);
     }
     bucket.push({ value, match });
   }
 
   private addCallableSelectors(
-    lookupKey: string,
     ruleset: Ruleset,
     keys: string[],
-    bucket: CallableLookupEntry[],
+    index: Map<string, CallableLookupEntry[]>,
     startAt = 0
   ): void {
     let key: string | undefined;
@@ -2061,13 +2070,12 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     if (key === undefined) {
       return;
     }
-    this.addCallableEntry(lookupKey, key, ruleset, match ?? [], bucket);
+    this.addCallableEntry(key, ruleset, match ?? [], index);
   }
 
   private collectCallablesFor(
     rules: Rules,
-    lookupKey: string,
-    bucket: CallableLookupEntry[]
+    index: Map<string, CallableLookupEntry[]>
   ): void {
     const value = rules.rules;
     for (let i = 0; i < value.length; i++) {
@@ -2075,7 +2083,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       if (isNode(node, N.Mixin)) {
         const name = node.name;
         if (typeof name === 'string') {
-          this.addCallableEntry(lookupKey, name, node, [], bucket);
+          this.addCallableEntry(name, node, [], index);
         }
         continue;
       }
@@ -2087,7 +2095,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         // Parsed simple selectors (`#theme`, `.button`) are stored as plain
         // strings, not Selector nodes, but they are valid callable namespaces —
         // register them under their split ordered keys just like node selectors.
-        this.addCallableSelectors(lookupKey, node, splitSelectorStringKeys(selector), bucket);
+        this.addCallableSelectors(node, splitSelectorStringKeys(selector), index);
         continue;
       }
       if (!selector || isNode(selector, N.Nil)) {
@@ -2115,10 +2123,9 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         for (const item of selector.value) {
           if (typeof item !== 'string') {
             this.addCallableSelectors(
-              lookupKey,
               node,
               getOrderedSelectorKeys(item),
-              bucket
+              index
             );
           }
         }
@@ -2136,12 +2143,29 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
           && keys.length > parentKeys.length
           && keysStartWith(keys, parentKeys)
         ) {
-          this.addCallableSelectors(lookupKey, node, keys, bucket, parentKeys.length);
+          this.addCallableSelectors(node, keys, index, parentKeys.length);
           continue;
         }
       }
-      this.addCallableSelectors(lookupKey, node, keys, bucket);
+      this.addCallableSelectors(node, keys, index);
     }
+  }
+
+  /**
+   * Build (once) and memoize the full callable index for THIS scope: a single pass
+   * over `rules` that buckets every callable by its own key. Reused across all
+   * distinct-key lookups against this scope instead of re-scanning per key.
+   * Invalidated with `callableLookupCache` when the scope's callable set changes.
+   */
+  private ensureCallableIndex(): Map<string, CallableLookupEntry[]> {
+    let index = this._lookup?.callableFullIndex;
+    if (index !== undefined) {
+      return index;
+    }
+    index = new Map();
+    this.collectCallablesFor(this, index);
+    this.ensureLookup().callableFullIndex = index;
+    return index;
   }
 
   private getCallableEntriesForKey(
@@ -2153,15 +2177,16 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       return entries.get(lookupKey) ?? [];
     }
 
-    const bucket: CallableLookupEntry[] = [];
-    this.collectCallablesFor(this, lookupKey, bucket);
-    const sourceRules = sourceRulesOf(this);
-    if (bucket.length === 0 && sourceRules !== this) {
-      this.collectCallablesFor(sourceRules, lookupKey, bucket);
+    let bucket = this.ensureCallableIndex().get(lookupKey);
+    if (bucket === undefined) {
+      const sourceRules = sourceRulesOf(this);
+      if (sourceRules !== this) {
+        bucket = sourceRules.ensureCallableIndex().get(lookupKey);
+      }
     }
     (this.callableLookupCache ??= new Map()).set(
       lookupKey,
-      bucket.length === 0 ? null : bucket
+      bucket === undefined || bucket.length === 0 ? null : bucket
     );
     if (this._scopeFrame) {
       this._scopeFrame.callableBucketsByName = this.callableLookupCache;
@@ -2173,7 +2198,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         this._scopeFrame.mixinCallableMissCoverageKnown = true;
       }
     }
-    return bucket;
+    return bucket ?? [];
   }
 
   private prepareCallableLookupFrame(frame: ScopeFrame, key: string, includeRulesets: boolean): void {
@@ -5505,6 +5530,9 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     if (affectsCallableLookup) {
       this.callableLookupVersion++;
       this.callableLookupCache = undefined;
+      if (this._lookup) {
+        this._lookup.callableFullIndex = undefined;
+      }
       if (this._scopeFrame) {
         this._scopeFrame.callableBucketsByName = undefined;
         this._scopeFrame.callablesCovered = false;
