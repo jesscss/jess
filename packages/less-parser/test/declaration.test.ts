@@ -33,20 +33,22 @@ describe('declaration', () => {
     expect(errors.length).toBe(0);
   });
 
-  it('should parse custom property declaration with generic function value', () => {
+  it('keeps a generic function value in a custom property literal (interpolation-only)', () => {
+    // Less `--*` is interpolation-only: function calls are NOT parsed/evaluated,
+    // they stay verbatim in the value. So the value is a literal Keyword, not a Call.
     const { errors, tree } = parse('--custom: rgba(0, 30, 0, 238)', 'declaration');
     expect(errors.length).toBe(0);
     const value: any = asDeclaration(tree).value;
-    expect(value.type).toBe('Call');
-    expect(value.name).toBeDefined();
+    expect(value.type).toBe('Keyword');
+    expect(String(value.valueOf()).trim()).toBe('rgba(0, 30, 0, 238)');
   });
 
-  it('should parse custom property declaration with if() as a structured call value', () => {
+  it('keeps if() literal in a custom property value (interpolation-only)', () => {
     const { errors, tree } = parse('--custom: if(not(true), 5)', 'declaration');
     expect(errors.length).toBe(0);
     const value: any = asDeclaration(tree).value;
-    expect(value.type).toBe('Call');
-    expect(value.name).toBeDefined();
+    expect(value.type).toBe('Keyword');
+    expect(String(value.valueOf()).trim()).toBe('if(not(true), 5)');
   });
 
   it('should parse custom property declaration with an interpolated name', () => {

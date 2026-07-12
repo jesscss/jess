@@ -407,13 +407,12 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   // first (it requires at least one `@{…}`), else a plain ident.
   const Declaration = node(
     sequence(declPropName, optional(choice(literal('+_'), literal('+'))), literal(':'), optional(g.valueList), optional(important), optional(literal(';'))));
-  const customValue = sequence(g.valueList, not(regex(/[^\s;}]/)));
   // Opportunistic structuring for a `{ … }` custom-property value: try it as a
-  // real declaration body (so nested `@var`/calls evaluate normally, same as the
-  // `[…]` case already does via customValue's valueList), tolerant of anything
-  // that isn't CSS-shaped. No `expect()` on the closing `}` — a non-declaration
-  // body (arbitrary tokens) simply fails this alt with no error recorded, and
-  // `choice` falls through to the raw-text cpValue capture below.
+  // real declaration body (so a `--foo: { color: @a; }` map-style block still
+  // structures), tolerant of anything that isn't CSS-shaped. No `expect()` on the
+  // closing `}` — a non-declaration body (arbitrary tokens) simply fails this alt
+  // with no error recorded, and `choice` falls through to the raw-text cpValue
+  // capture below.
   const customCurlyBlock = node('Block',
     sequence(literal('{'), g.declarationList, literal('}')));
   // Predictive custom-property value region — NO scanTo, NO skip. Content runs
@@ -429,6 +428,13 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   // `//` is NOT a comment here (CSS), just delim content. A `{ … }` value that fits
   // a declaration list is structured upstream by customCurlyBlock; this is the
   // fallback for non-CSS-shaped values.
+  //
+  // Owner rule (Less `--*` = interpolation-ONLY): the value is captured VERBATIM
+  // here; the builder resolves ONLY `@{…}` interpolation within it. Bare `@var`
+  // references and function calls stay LITERAL — the value is NOT parsed as a Less
+  // value expression. This is why the structured `valueList` path is intentionally
+  // absent: it would (wrongly) evaluate bare `@var`/calls and drop comments/spacing.
+  // @see https://www.w3.org/TR/css-variables-1/#defining-variables
   const cpSingleStr = regex(/'(?:[^'\n\\]|\\.)*'/);
   const cpDoubleStr = regex(/"(?:[^"\n\\]|\\.)*"/);
   // Content runs include CSS escapes (`\'`, `\(`, `\;`): `\` + any non-newline is an
@@ -444,7 +450,7 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   const cpValue = noTrivia(many(choice(cpOuterContent, comment, g.cpParen, g.cpSquare, g.cpCurly, cpSingleStr, cpDoubleStr)));
   const CustomDeclaration = node(
     sequence(choice(customPropInterp, customProp), literal(':'),
-      choice(g.customCurlyBlock, g.customValue, g.cpValue),
+      choice(g.customCurlyBlock, g.cpValue),
       optional(literal(';'))));
   const declaration = choice(g.VarDeclaration, g.CustomDeclaration, g.Declaration);
 
@@ -828,7 +834,7 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
     CondArgParen, CondArgTerm, CondArgAnd, CondArgOr, CondArgTermOp, CondArgAndOp, ArgCondition,
     LessAmpersand, InterpolatedSelector, ExtendStatement, ExtendPseudo, ExtendTarget, extendCompound, extendComplex, simpleSelector,
     CompoundSelector, ComplexSelector, SelectorList, AttributeSelector, PseudoSelector, pseudoArg, pseudoSelectorParens,
-    Ruleset, declarationList, Declaration, customValue, customCurlyBlock, cpInner, cpParen, cpSquare, cpCurly, cpValue, CustomDeclaration, declaration,
+    Ruleset, declarationList, Declaration, customCurlyBlock, cpInner, cpParen, cpSquare, cpCurly, cpValue, CustomDeclaration, declaration,
     valueList, valueSequence, value, UnicodeRange, Negative, mathProduct, mathSum, topProduct, topSum, parenExprList, InterpValue, NsAccessor, EscapedValue, NamedColor, Dimension, Url,
     parenBody, permissiveParenBody, Paren, GluedParen, DetachedRuleset, functionCallArgs, squareParenBody, calcBody, Call, FormatCall, SquareParen, anyValue, EachFor,
     QueryAtRuleBlock, ImportAtRuleStatement,

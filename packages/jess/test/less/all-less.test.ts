@@ -173,7 +173,7 @@ const expectedFailureFixtures = new Map<string, string>([
   ['tests-unit/plugin/plugin.less', 'renders but Jess nests @media (no query merging); expected CSS merges queries'],
   ['tests-unit/parse-interpolation/parse-interpolation.less', 'renders but interpolation formatting differs from Less'],
   ['tests-unit/parser-slashed-combinator/parser-slashed-combinator.less', 'slashed combinator not yet supported'],
-  ['tests-unit/permissive-parse/permissive-parse.less', 'renders but permissive-parse output differs (Unexpected token)'],
+  ['tests-unit/permissive-parse/permissive-parse.less', 'throws on Less permissive @variable value (@this: () => {…}, VarDeclaration hot-path — scoped) + @{selectorList} comma-list selector (selector-capture agent). --* interpolation-only + unknown-at-rule prelude @{…}/var interpolation now match; two golden lines (--custom-color, --fortran bare-@) superseded by the interpolation-only owner rule, pending owner golden update'],
 
   // Previously-uncategorized hard failures — render but mismatch Less.
   // (extend.less + mixins-guards.less GRADUATED — the dev-merge extend/mixin-namespace
