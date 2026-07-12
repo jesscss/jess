@@ -119,7 +119,7 @@ export const scssGrammar = compose([lessGrammar, rules({ trivia: rw }, (g: any) 
   const ScssValueParen = node('Paren',
     sequence(literal('('), g.permissiveParenBody));
 
-  // Sass allows trailing commas in comma-separated lists (Less v5 rejects them).
+  // Sass allows trailing commas in comma-separated lists (as does Less v5, matching Less 4.x).
   const valueList = sequence(
     g.valueSequence,
     many(sequence(literal(','), g.valueSequence)),

@@ -245,6 +245,13 @@ export class LessGrammar extends CssParser {
       }
     }
     const valItems = items.slice(colonIdx + 1, end);
+    // A tolerated trailing comma (`@x: a, b, c,;`) is not a value item — Less 4.x
+    // drops it, so a comma-list value keeps N items, not N + 1 empty. (Plain
+    // declarations go through the CSS builder, which already filters empty
+    // segments; the Less var path assembles valItems directly, so strip it here.)
+    if (valItems.length > 0 && valItems[valItems.length - 1]!.comp === ',') {
+      valItems.pop();
+    }
     if (valItems.length) {
       const vText = this._source.slice(valItems[0]!.span.start, valItems[valItems.length - 1]!.span.end);
       if (/(?:^|[\s,])\.-?[_a-zA-Z]/.test(vText)) {

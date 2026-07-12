@@ -162,7 +162,7 @@ const expectedFailureFixtures = new Map<string, string>([
 
   // Former async-deadlock / infinite-loop skips: no longer hang, now render but
   // still mismatch Less. Graduated from skip → expected-failure so they run.
-  ['tests-unit/variables/variable-advanced.less', 'renders but parse errors on an advanced variable form (Unexpected token)'],
+  ['tests-unit/variables/variable-advanced.less', 'now parses (trailing-comma value list fixed); still diverges on eval-layer output (unit math emits calc(), nesting not collapsed, custom-prop spacing)'],
   ['tests-unit/merge/merge.less', 'renders but +/+_ merge output differs from Less'],
   ['tests-unit/selectors/selectors.less', 'renders but throws mid-eval (currentArg.eval is not a function)'],
   ['tests-unit/detached-rulesets/detached-rulesets.less', 'renders but a detached-ruleset mixin call is not found (.wrap-mixin)'],
