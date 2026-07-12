@@ -308,9 +308,22 @@ export class Dimension extends Node<DimensionValue> {
     return out;
   }
 
+  /**
+   * Serialize per CSS Values & Units 4 numeric-constant spelling
+   * (§10.13 Serialization / §10.7.2 `<calc-keyword>`): finite numbers stringify
+   * as-is, while the degenerate constants use the spec keywords `infinity`,
+   * `-infinity` (lowercase) and `NaN` (mixed case).
+   * @see https://drafts.csswg.org/css-values-4/#calc-keyword
+   */
   private serializeSyntax(): string {
     const { number, unit } = this;
-    const numberStr = `${round(number, 8)}`.toLowerCase();
+    const numberStr = Number.isFinite(number)
+      ? `${round(number, 8)}`
+      : Number.isNaN(number)
+        ? 'NaN'
+        : number > 0
+          ? 'infinity'
+          : '-infinity';
     return unit ? `${numberStr}${unit}` : numberStr;
   }
 

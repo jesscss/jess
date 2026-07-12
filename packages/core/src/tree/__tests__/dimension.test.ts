@@ -70,6 +70,15 @@ describe('Dimension', () => {
       expect(writer.reads).toBe(0);
     });
 
+    it('serializes degenerate numeric constants per CSS Values 4', () => {
+      // CSS Values & Units 4 §10.7.2/§10.13: infinity/-infinity are lowercase
+      // keywords, NaN is mixed case.
+      expect(num(Infinity).toTrimmedString()).toBe('infinity');
+      expect(num(-Infinity).toTrimmedString()).toBe('-infinity');
+      expect(num(NaN).toTrimmedString()).toBe('NaN');
+      expect(dimension([Infinity, 'px']).toTrimmedString()).toBe('infinitypx');
+    });
+
     it('renders dimension values through render(context)', () => {
       const sized = dimension([10, 'px']);
       const unitless = num(10);
