@@ -70,8 +70,12 @@ export const cssGrammar = rules({ trivia: rw }, (g: any) => {
   // leaving unconsumed input the driver reports as one syntax error. Required
   // closers below are wrapped in expect() so a missing one is reported (and
   // recovered) by parseman rather than aborting the whole parse.
+  // Top-level at-rule blocks use the STRICT body variants (`*Top`): a bare
+  // declaration directly inside a top-level `@media`/`@supports` has no owning
+  // qualified rule and is a real error. Nested at-rule blocks (reached via a
+  // ruleset's declarationList) use the lenient variants that DO allow declarations.
   const Stylesheet = node(
-    many(choice(g.QueryAtRuleBlock, g.AtRuleBlock, g.AtRuleStatement, g.UnknownAtRuleBlock, g.Ruleset)));
+    many(choice(g.QueryAtRuleBlockTop, g.AtRuleBlockTop, g.ImportStatement, g.AtRuleStatement, g.UnknownAtRuleBlock, g.Ruleset)));
 
   // ── Rulesets ───────────────────────────────────────────────────────────────
   const Ruleset = node(
@@ -116,6 +120,8 @@ export const cssGrammar = rules({ trivia: rw }, (g: any) => {
    * rulesets and nested at-rules, not just declarations.
    * @see https://www.w3.org/TR/css-nesting-1/#syntax
    */
+  // A ruleset body is a nested context, so its at-rule blocks are the lenient
+  // variants (bare declarations are allowed — they apply to the enclosing selector).
   const declarationList = many(choice(
     g.QueryAtRuleBlock, g.AtRuleBlock, g.AtRuleStatement, g.UnknownAtRuleBlock, g.Declaration, g.CustomDeclaration, g.Ruleset, literal(';')
   ));
@@ -213,8 +219,14 @@ export const cssGrammar = rules({ trivia: rw }, (g: any) => {
   // reads `g.queryPrelude` from the fragment.
   // @see https://www.w3.org/TR/mediaqueries-5/#mq-syntax
   const queryAtKeyword = regex(/@(?:media|container|supports)(?![-\w])/i);
+  // Nested variant: body is the lenient `atRuleBody` (declarations allowed — they
+  // belong to the enclosing style rule).
   const QueryAtRuleBlock = node(
     sequence(queryAtKeyword, g.queryPrelude, literal('{'), g.atRuleBody, expect(literal('}'), '}')));
+  // Top-level variant: identical, but the body is the STRICT `atRuleBodyStrict`
+  // (no bare declarations). Built as a `QueryAtRuleBlock` so the AST/CST is unchanged.
+  const QueryAtRuleBlockTop = node('QueryAtRuleBlock',
+    sequence(queryAtKeyword, g.queryPrelude, literal('{'), g.atRuleBodyStrict, expect(literal('}'), '}')));
 
   // ── At-rules ───────────────────────────────────────────────────────────────
   /**
@@ -229,9 +241,19 @@ export const cssGrammar = rules({ trivia: rw }, (g: any) => {
   // it, so `prelude.valueOf()` is the bare prelude and the comment is recoverable
   // via the trivia map (matches the reference's token-based prelude).
   const atTailTrivia = many(choice(ws, comment));
-  const atPrelude = optional(scanTo(sequence(atTailTrivia, choice(literal('{'), literal(';'))), {
+  const atPreludeScan = scanTo(sequence(atTailTrivia, choice(literal('{'), literal(';'))), {
     skip: [balanced('(', ')'), balanced('[', ']'), singleStr, doubleStr]
-  }));
+  });
+  const atPrelude = optional(atPreludeScan);
+  // A REQUIRED prelude: the scan must consume at least one non-trivia char before the
+  // `{`/`;`. `not(...)` asserts we are not sitting directly on the delimiter (after
+  // ambient trivia), so an empty prelude fails; `expect` then reports the missing
+  // prelude and RECOVERS IN PLACE (zero-width) so the enclosing block still parses —
+  // rather than the rule failing and the at-rule falling through to the opaque
+  // UnknownAtRuleBlock (which would silently accept the empty prelude).
+  const notDelim = not(choice(literal('{'), literal(';')));
+  const reqQueryPrelude = expect(sequence(notDelim, atPreludeScan), 'query');
+  const reqImportPrelude = expect(sequence(notDelim, atPreludeScan), 'import path');
   // Known block at-rules (besides the @media/@container/@supports queries) get a
   // STRUCTURED body — garbage inside is a real error. Unknown at-rules have an
   // OPAQUE block (the UA owns its meaning), so their body is scanned over and
@@ -239,18 +261,54 @@ export const cssGrammar = rules({ trivia: rw }, (g: any) => {
   // media/container/supports are included so a non-paren-query prelude
   // (`@media screen { … }`) still gets a structured (erroring) body rather than
   // falling through to the opaque unknown-at-rule rule.
-  const knownBlockAtKeyword = regex(/@(?:media|container|supports|layer|scope|page|font-face|font-feature-values|counter-style|property|(?:-[a-z]+-)?keyframes|document|color-profile|font-palette-values|position-try|starting-style)(?![-\w])/i);
-  const AtRuleBlock = node(
-    sequence(knownBlockAtKeyword, atPrelude, literal('{'), g.atRuleBody, expect(literal('}'), '}')));
+  // media/container/supports reaching AtRuleBlock (rather than the structured
+  // QueryAtRuleBlock) means a NON-paren query such as `@media screen`. These still
+  // REQUIRE a query — an empty query (`@media {}`, `@supports { … }`) is a real
+  // error — so they take a `reqPrelude` arm. The remaining known block at-rules
+  // (`@layer {}`, `@page {}`, `@font-face {}` …) legitimately allow an empty
+  // prelude, so they keep the optional `atPrelude`.
+  const queryFallbackAtKeyword = regex(/@(?:media|container|supports)(?![-\w])/i);
+  const knownBlockAtKeyword = regex(/@(?:layer|scope|page|font-face|font-feature-values|counter-style|property|(?:-[a-z]+-)?keyframes|document|color-profile|font-palette-values|position-try|starting-style)(?![-\w])/i);
+  // Nested variant (lenient body).
+  const AtRuleBlock = node(choice(
+    sequence(queryFallbackAtKeyword, reqQueryPrelude, literal('{'), g.atRuleBody, expect(literal('}'), '}')),
+    sequence(knownBlockAtKeyword, atPrelude, literal('{'), g.atRuleBody, expect(literal('}'), '}'))));
+  // Top-level variant. ONLY the query at-rules (@media/@container/@supports) get the
+  // STRICT body — their content is style rules, so a bare declaration at the root has
+  // no owning qualified rule. The descriptor/other known block at-rules (@font-face,
+  // @page, @property, @counter-style, @layer, @keyframes …) legitimately contain
+  // declarations (descriptors) or rules directly, so they keep the lenient body even
+  // at top level (unchanged from the original grammar). Built as `AtRuleBlock`.
+  const AtRuleBlockTop = node('AtRuleBlock', choice(
+    sequence(queryFallbackAtKeyword, reqQueryPrelude, literal('{'), g.atRuleBodyStrict, expect(literal('}'), '}')),
+    sequence(knownBlockAtKeyword, atPrelude, literal('{'), g.atRuleBody, expect(literal('}'), '}'))));
   const opaqueAtBody = scanTo(literal('}'), { skip: [balanced('{', '}'), singleStr, doubleStr, comment] });
   const UnknownAtRuleBlock = node(
     sequence(atKeyword, atPrelude, literal('{'), opaqueAtBody, literal('}')));
   const AtRuleStatement = node(
     sequence(atKeyword, atPrelude, literal(';')));
+  // `@import` REQUIRES a prelude (a path). `@import ;` is a real error. Ordered
+  // before the generic AtRuleStatement so `@import "x.css";` routes here; the
+  // missing-prelude case is reported by `reqPrelude` and recovers in place so the
+  // trailing `;` still closes the statement. Built as an ordinary AtRuleStatement.
+  const importAtKeyword = regex(/@import(?![-\w])/i);
+  const ImportStatement = node('AtRuleStatement',
+    sequence(importAtKeyword, reqImportPrelude, literal(';')));
   // Body of a known at-rule block. No catch-all: unparseable content stops `many`,
   // and the block's expect('}') reports a syntax error at that point.
+  //
+  // LENIENT body (nested at-rule, reached from a ruleset's declarationList): a bare
+  // declaration is valid because it applies to the enclosing qualified rule (CSS
+  // Nesting). Its own nested at-rules stay lenient (still owned by that rule).
   const atRuleBody = many(choice(
     g.QueryAtRuleBlock, g.AtRuleBlock, g.AtRuleStatement, g.UnknownAtRuleBlock, g.Ruleset, g.Declaration, g.CustomDeclaration, literal(';')
+  ));
+  // STRICT body (top-level at-rule): NO bare declarations — a `@media { color: red }`
+  // at the root has no owning qualified rule, so a lone declaration is a real error.
+  // A `Ruleset` inside re-enters the lenient path via its declarationList (crossing a
+  // style-rule boundary), and nested at-rules stay strict (`*Top`).
+  const atRuleBodyStrict = many(choice(
+    g.QueryAtRuleBlockTop, g.AtRuleBlockTop, g.AtRuleStatement, g.UnknownAtRuleBlock, g.Ruleset, literal(';')
   ));
 
   // ── Value leaves & sub-grammars ────────────────────────────────────────────
@@ -307,8 +365,8 @@ export const cssGrammar = rules({ trivia: rw }, (g: any) => {
     Declaration, CustomDeclaration, declarationList,
     valueList, valueSequence, value, parenBody, mathProduct, mathSum, calcBody,
     Dimension, Url, Call, anyValue,
-    AtRuleBlock, AtRuleStatement, atRuleBody,
-    QueryAtRuleBlock, UnknownAtRuleBlock
+    AtRuleBlock, AtRuleBlockTop, AtRuleStatement, ImportStatement, atRuleBody, atRuleBodyStrict,
+    QueryAtRuleBlock, QueryAtRuleBlockTop, UnknownAtRuleBlock
   };
 });
 
