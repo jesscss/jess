@@ -1439,15 +1439,70 @@ export class LessGrammar extends CssParser {
 
   private _warnAtRulePreludeVars(span: Span) {
     const text = this._source.slice(span.start, span.end);
-    const brace = text.indexOf('{');
-    const prelude = (brace >= 0 ? text.slice(0, brace) : text).replace(/^\s*@-?[\w-]+/, '');
-    const at = prelude.match(/@[a-zA-Z][\w-]*/);
-    if (at && !prelude.includes('@{')) {
+    const varName = this._firstTopLevelBareAtVar(text);
+    if (varName !== null) {
       this._warn(
-        `"${at[0]}" in at-rule preludes is deprecated. Use @{${at[0].slice(1)}} for interpolation.`,
-        'at-rule-prelude-variable'
+        `A bare "@${varName}" in an at-rule prelude is deprecated. Use @{${varName}} interpolation instead.`,
+        'variable-in-at-rule-prelude'
       );
     }
+  }
+
+  /**
+   * The first bare `@ident` reference in an at-rule prelude that is deprecated
+   * under Less 4.x PR #4462 (`variable-in-at-rule-prelude`), or null when there
+   * is none. A bare `@var` in a *structural* (top-level) prelude position still
+   * resolves but is deprecated in favour of `@{var}` interpolation; the scan
+   * therefore ignores, mirroring `hasTopLevelBareVariable` / `warnBareAtRuleVariable`:
+   *   - the leading at-rule name itself (`@media`, `@-moz-document`, …);
+   *   - `@{ident}` interpolation — the supported migration target;
+   *   - a `@var` inside `(...)` — a declaration/feature value (e.g. the `@size`
+   *     in `@media (min-width: @size)`), which stays valid;
+   *   - `@`/`(` characters inside string literals, which are not structural.
+   */
+  private _firstTopLevelBareAtVar(text: string): string | null {
+    let depth = 0;
+    // Skip the leading at-rule name (`@media`, `@-moz-document`, …).
+    let i = /^\s*@-?[\w-]+/.exec(text)?.[0].length ?? 0;
+    for (; i < text.length; i++) {
+      const c = text[i]!;
+      if (c === '"' || c === '\'') {
+        // A string literal: skip its contents so inner `(`/`@` are not counted.
+        i++;
+        while (i < text.length && text[i] !== c) {
+          i++;
+        }
+        continue;
+      }
+      if (c === '@') {
+        if (text[i + 1] === '{') {
+          // `@{ident}` interpolation — skip the whole group (its `}` is not the
+          // block opener, and a later bare `@var` must still be reported).
+          i += 2;
+          while (i < text.length && text[i] !== '}') {
+            i++;
+          }
+          continue;
+        }
+        if (depth === 0) {
+          const m = /^@(-?[a-zA-Z\x80-￿][\w-]*)/.exec(text.slice(i));
+          if (m) {
+            return m[1]!;
+          }
+        }
+        continue;
+      }
+      if (c === '{') {
+        // The block's opening brace ends the prelude.
+        break;
+      }
+      if (c === '(') {
+        depth++;
+      } else if (c === ')' && depth > 0) {
+        depth--;
+      }
+    }
+    return null;
   }
 
   private _buildMixinCall(
