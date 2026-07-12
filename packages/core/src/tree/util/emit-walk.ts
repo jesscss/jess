@@ -42,7 +42,7 @@ import type { AtRuleStatement } from '../at-rule-statement.js';
 import type { VarDeclaration } from '../declaration-var.js';
 import { buildScopeFrame, linkImportFallbackFrame, type BindingCell, type ScopeFrame } from '../scope-frame.js';
 import { getPrintOptions, OutputWriter, type FinalPrintOptions, type PrintOptions } from './print.js';
-import { engageExtendLayer, isSpineExtendTopology, wireSpineExtends, flatLocalSelector } from '../extend/spine-extend.js';
+import { engageExtendLayer, isSpineExtendTopology, wireSpineExtends, flatLocalSelector, treeHasExtendTargetableAppend } from '../extend/spine-extend.js';
 import type { StyleImport, SpineImportResolution } from '../import-style.js';
 
 /**
@@ -708,30 +708,6 @@ function selectorHasAmpersandAppend(selector: unknown): boolean {
     }
   }
   return false;
-}
-
-/**
- * True if ANY ruleset ANYWHERE in `root` carries an ampersand-APPEND selector
- * (`&-modifier`). Used to defer the append × extend interaction (see
- * `isSpineEligibleRoot`): an append-generated selector may be an extend target the
- * static gather cannot see. A single recursive scan over ruleset/at-rule bodies.
- */
-function treeHasAmpersandAppend(root: Rules): boolean {
-  const scan = (children: readonly Node[]): boolean => {
-    for (let i = 0; i < children.length; i++) {
-      const child = children[i]!;
-      if (isNode(child, N.Ruleset) && selectorHasAmpersandAppend(child.selector)) {
-        return true;
-      }
-      if ((isNode(child, N.Ruleset) || isNode(child, N.AtRule)) && isNode(child, N.Rules)) {
-        if (scan(child.rules)) {
-          return true;
-        }
-      }
-    }
-    return false;
-  };
-  return scan(root.rules);
 }
 
 /**
@@ -1741,16 +1717,20 @@ export function isSpineEligibleRoot(root: Rules, context: Context, collapseNesti
   // rejects), so a divergent collapse value here would admit-then-fail-loud in `renderRootViaSpine`.
   const collapse = collapseNesting
     ?? (context.opts?.output?.collapseNesting ?? context.output?.collapseNesting) === true;
-  // APPEND × EXTEND (a precise deferral, REQUIRED P4 item). An `:extend` TARGET may be
-  // an append-GENERATED selector (`.button { &-primary {…} }` extended by
-  // `:extend(.button-primary)`). The spine's extend layer gathers subjects/targets from
-  // the STATIC source tree, where the append target (`.button-primary`) exists only
-  // after resolution — so the static gather misses it and the extend contribution is
-  // dropped. Keep an extend-bearing tree that also carries an append selector on the
-  // eval path (byte-identical), where the append materializes before extend runs.
+  // APPEND × EXTEND (a PRECISE deferral). An `:extend` TARGET may be an append-GENERATED
+  // selector (`.component { &-inner {…} }` extended by `:extend(.component-inner)`). The
+  // spine's extend layer gathers subjects/targets from the STATIC source tree, where the
+  // append target (`.component-inner`) exists only after resolution — so the static gather
+  // misses it and the extend contribution is dropped. `treeHasExtendTargetableAppend` returns
+  // true ONLY for that genuine collision (an extend target atom that could equal an
+  // append-generated atom `parent + suffix`), NOT the former whole-tree "any append + any
+  // extend → eval" over-rejection — which needlessly pinned every stylesheet that merely
+  // appends AND extends unrelated selectors (`benchmark.less`, whose `.component-*` appends are
+  // never extend targets). Reject ⇒ eval, byte-identical; the residual is strictly narrower.
   // SPEC (fold plan follow-up): resolve append selectors into the extend target index
-  // before SOLVE (mirrors OQ-A interpolated-target resolution at capture).
-  if (engageExtendLayer(root) && treeHasAmpersandAppend(root)) {
+  // before SOLVE (mirrors OQ-A interpolated-target resolution at capture) so even a genuine
+  // append-target extend folds.
+  if (engageExtendLayer(root) && treeHasExtendTargetableAppend(root)) {
     return false;
   }
   // SPECULATIVE-ADMIT (import-spec routing). When imports are present, run the extend-topology check in

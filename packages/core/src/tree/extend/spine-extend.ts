@@ -956,6 +956,163 @@ function valueOfSelectorLike(sel: SelectorLike): string {
   return String(sel.valueOf());
 }
 
+/** A selector atom (`.class`, `#id`, or a bare type/tag) inside a selector string — the granularity
+ * an append suffix concatenates onto. Combinators/whitespace/parens are NOT atoms. */
+const SELECTOR_ATOM_RE = /[.#]?[A-Za-z_][A-Za-z0-9_-]*/g;
+
+function selectorAtoms(text: string): string[] {
+  return text.match(SELECTOR_ATOM_RE) ?? [];
+}
+
+/** Every `Ampersand.appendValue` (the `-modifier` suffix) reachable in a ruleset selector. */
+function selectorAppendSuffixes(selector: unknown): string[] {
+  const out: string[] = [];
+  const push = (n: Node): void => {
+    if (isNode(n, N.Ampersand) && n.appendValue !== undefined) {
+      out.push(String(n.appendValue));
+    }
+  };
+  const visit = (n: unknown): void => {
+    if (!n || typeof n === 'string') {
+      return;
+    }
+    if (Array.isArray(n)) {
+      n.forEach(visit);
+      return;
+    }
+    if (!(n instanceof Node)) {
+      return;
+    }
+    push(n);
+    for (const d of n.walk(true)) {
+      push(d);
+    }
+  };
+  visit(selector);
+  return out;
+}
+
+/**
+ * APPEND × EXTEND gate — PRECISE. The static extend gather works over the SOURCE tree, where an
+ * ampersand-APPEND-generated selector (`.component-inner` from `&-inner` inside `.component`) does
+ * not yet exist. So a tree that BOTH appends AND `:extend`s an append-generated selector cannot be
+ * folded (the gather misses the generated target). This predicate returns true ONLY for that genuine
+ * hazard — an extend TARGET whose atom could equal an append-generated atom — instead of the former
+ * whole-tree "any append + any extend → eval" over-rejection (which pinned `benchmark.less`, whose
+ * appends under `.component` are never extend targets).
+ *
+ * SOUND over-approximation. Append-generated atoms are computed by threading the COMPOSED PARENT text
+ * through the descent: a simple `&<suffix>` selector composes to `parentText + suffix` (handling
+ * nested append chains like `&-body { &--large }` → `.component-body--large`); a messier append
+ * (`&&-active`, `& > &-inner`, `&-header, &-footer`) contributes the coarse `parentAtom + suffix`
+ * candidates. An append whose enclosing parent selector is NOT statically knowable (interpolated /
+ * dynamic) sets a conservative flag → reject (that generated name is unbounded). An INTERPOLATED
+ * extend target likewise cannot be excluded → reject. Reject ⇒ eval, byte-identical; the residual is
+ * strictly narrower than the old gate, never wider, so no previously-folding tree regresses.
+ */
+export function treeHasExtendTargetableAppend(root: Rules): boolean {
+  const suffixes = new Set<string>();
+  const generatedAtoms = new Set<string>();
+  const targetAtoms = new Set<string>();
+  let hasExtend = false;
+  let uncleanTarget = false;
+  let uncleanAppendParent = false;
+
+  const addTarget = (ext: Extend): void => {
+    hasExtend = true;
+    const t = ext.target;
+    if (t === undefined || t === null) {
+      uncleanTarget = true;
+      return;
+    }
+    const key = String(t.valueOf());
+    if (key.includes('@{') || key.includes('${') || key.includes('%%')) {
+      uncleanTarget = true;
+      return;
+    }
+    for (const atom of selectorAtoms(key)) {
+      targetAtoms.add(atom);
+    }
+  };
+
+  // `parentText` = the composed selector text of the enclosing ruleset (undefined at document root);
+  // `atRoot` distinguishes "no parent" (root append `&x` has no class prefix — harmless) from an
+  // enclosing parent whose text we cannot compute (unclean → conservative).
+  const walk = (children: readonly Node[], parentText: string | undefined, atRoot: boolean): void => {
+    for (const child of children) {
+      if (child instanceof Extend) {
+        addTarget(child);
+      } else if (child instanceof ExtendList) {
+        for (const e of child.value) {
+          addTarget(e);
+        }
+      }
+      if (!isNode(child, N.Ruleset)) {
+        if (isNode(child, N.AtRule) && isNode(child, N.Rules)) {
+          walk(child.rules, parentText, atRoot);
+        }
+        continue;
+      }
+      const ruleset = child;
+      const localSuffixes = selectorAppendSuffixes(ruleset.selector);
+      const local = flatLocalSelector(ruleset);
+      const localText = local !== undefined ? String(local.valueOf()) : undefined;
+      let composedText: string | undefined;
+      if (localSuffixes.length > 0) {
+        for (const s of localSuffixes) {
+          suffixes.add(s);
+        }
+        // Simple single `&<suffix>` selector composes exactly to parentText + suffix. `valueOf()`
+        // renders the append form as a bare `&` (the suffix rides `Ampersand.appendValue`, not the
+        // serialized text), so a lone `&` local with exactly one suffix IS the simple `&<suffix>` form.
+        const collapsed = localText !== undefined ? localText.replace(/\s+/g, '') : undefined;
+        const isSimpleAppend = localSuffixes.length === 1 && collapsed === '&';
+        if (isSimpleAppend && parentText !== undefined) {
+          composedText = parentText + localSuffixes[0];
+          for (const atom of selectorAtoms(composedText)) {
+            generatedAtoms.add(atom);
+          }
+        } else if (isSimpleAppend && atRoot) {
+          // Root-level `&<suffix>` — no class prefix; the suffix alone yields no class atom.
+          composedText = undefined;
+        } else {
+          // Messier append (compound/combinator/list). Contribute coarse parentAtom+suffix candidates.
+          const parentAtoms = parentText !== undefined ? selectorAtoms(parentText) : [];
+          if (parentAtoms.length === 0 && !atRoot) {
+            uncleanAppendParent = true;
+          }
+          for (const p of parentAtoms) {
+            for (const s of localSuffixes) {
+              generatedAtoms.add(p + s);
+            }
+          }
+          composedText = undefined;
+        }
+      } else if (localText !== undefined) {
+        composedText = localText;
+      } else {
+        composedText = undefined;
+      }
+      walk(ruleset.rules, composedText, false);
+    }
+  };
+
+  walk(root.rules, undefined, true);
+
+  if (suffixes.size === 0 || !hasExtend) {
+    return false;
+  }
+  if (uncleanTarget || uncleanAppendParent) {
+    return true;
+  }
+  for (const atom of targetAtoms) {
+    if (generatedAtoms.has(atom)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /**
  * The SPINE extend topology gate (P3 increment 2) — admits NESTED EXTENDERS (whose composed
  * contribution the document-wide gather resolves against their ancestor frames) while keeping
@@ -1010,6 +1167,11 @@ export function isSpineExtendTopology(
   //     resolved bodies, so any target that still maps to nothing is a genuine non-fold → abort.
   const speculativeImport = importOpts?.speculativeImport === true;
   const importedRootSubjects = importOpts?.importedRootSubjects;
+  // RE-GATE mode: the caller has resolved the imported bodies and supplied their root-level subject
+  // selectors (`importedRootSubjects`). The full subject universe (local + imported) is now known, so
+  // a target that maps to NOTHING is genuinely inert (a no-op extend) rather than a
+  // maybe-imported unknown — enabling the inert-nomatch admission below even though the tree imports.
+  const reGateResolved = importedRootSubjects !== undefined;
   const treeHasImport = ((): boolean => {
     for (const node of root.walk(true)) {
       if (node.type === 'StyleImport') {
@@ -1356,13 +1518,19 @@ export function isSpineExtendTopology(
     // (`targetCouldMatchPath`). Inert iff the target could match NONE. The tokenizer is conservative —
     // any shape it cannot decompose (child/sibling combinator, graft paren) returns "could match" →
     // NOT inert — so it never admits a target it cannot fully reason about.
-    const isInertNomatch = !treeHasImport
+    const isInertNomatch = (!treeHasImport || reGateResolved)
       && !isRootTarget && !isNestedComposedTarget && !isLeadingCompoundTarget
       && !isPseudoCompoundOfRootSubject && !isMatchableCompoundTarget && !isCombinatorSubjectTarget
       && !isPartialWrapOfDescendantLevel && !isExactRootBranchTarget && !isPartialWrapOfNestedLevel
       && descendantCompoundTokens(target) !== undefined
       && ![...cleanSubjectPaths].some(p => targetCouldMatchPath(target, p))
-      && !rootLevelSelectors.has(target);
+      && !rootLevelSelectors.has(target)
+      // In re-gate mode, the target must also be inert against the RESOLVED imported subjects — it is
+      // neither an imported root subject nor a compound-subset of one (a plain reference-body selector
+      // is matched only by exact equality, already handled by `isImportedRootTarget`).
+      && (importedRootSubjects === undefined
+        || (!importedRootSubjects.has(target)
+          && ![...importedRootSubjects].some(p => targetCouldMatchPath(target, p))));
     if (!isRootTarget && !isNestedComposedTarget && !isLeadingCompoundTarget
       && !isPseudoCompoundOfRootSubject && !isMatchableCompoundTarget
       && !isCombinatorSubjectTarget && !isPartialWrapOfDescendantLevel
