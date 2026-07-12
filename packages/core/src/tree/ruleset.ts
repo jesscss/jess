@@ -1,14 +1,12 @@
 import { Node, defineType } from './node'
 import { type Rules } from './rules'
 import type { Context } from '../context'
-// import type { OutputCollector } from '../output'
-import type { SelectorSequence } from './selector-sequence'
-import type { SelectorList } from './selector-list'
-import type { Extend } from './extend'
 import { Nil } from './nil'
 import type { Condition } from './condition'
+import type { Selector } from './selector'
+
 export type RulesetValue = {
-  selector: SelectorList | SelectorSequence | Extend | Nil
+  selector: Selector | Nil
   /**
    * It's important that any Node that defines a Rules
    * sets it to the `rules` property. This allows us to
@@ -33,7 +31,7 @@ export class Ruleset extends Node<RulesetValue> {
     return this.data.get('selector')
   }
 
-  set selector(v: SelectorList | SelectorSequence | Extend | Nil) {
+  set selector(v: Selector | Nil) {
     this.data.set('selector', v)
   }
 
@@ -51,6 +49,11 @@ export class Ruleset extends Node<RulesetValue> {
 
   set guard(v: Condition | undefined) {
     this.data.set('guard', v)
+  }
+
+  /** @todo - remove? */
+  valueOf() {
+    return this.selector instanceof Nil ? '' : this.selector.valueOf()
   }
 
   toTrimmedString(depth: number = 0): string {
@@ -73,11 +76,12 @@ export class Ruleset extends Node<RulesetValue> {
         /** Remove once evaluated */
         rule.guard = undefined
       }
+      /** Allow a selector to signal that nesting should be collapsed */
       const collapseNesting = context.opts.collapseNesting
-      let sels = await this.selector.eval(context)
-      let hoistToRoot = this.options?.hoistToRoot ?? context.opts.collapseNesting
-      if (hoistToRoot) {
-        rule.options.hoistToRoot = true
+      let sels = (await this.selector.eval(context)) as Selector | Nil
+      let hoistToParent = this.options?.hoistToParent ?? context.opts.collapseNesting
+      if (hoistToParent) {
+        rule.options.hoistToParent = true
       }
       context.opts.collapseNesting = collapseNesting
 
@@ -87,12 +91,12 @@ export class Ruleset extends Node<RulesetValue> {
       rule.selector = sels
 
       context.frames.unshift(rule)
-      rule.value = await this.rules.eval(context)
+      rule.rules = await this.rules.eval(context)
       context.frames.shift()
 
       /** Remove empty rules */
-      if (rule.rules.value.length === 0) {
-        return new Nil().inherit(this)
+      if (rule.rules.visibleRules().length === 0) {
+        rule.visible = false
       }
       return rule
     })

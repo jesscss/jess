@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/prefer-readonly */
-import { Node, defineType, type LocationInfo, type TreeContext } from './node'
+import { Node, defineType } from './node'
 import { Declaration } from './declaration'
 import {
   BaseDeclaration,
@@ -15,6 +15,7 @@ import { isNode } from './util'
 import { type Ruleset } from './ruleset'
 import { type AtRule } from './at-rule'
 import { Nil } from './nil'
+import { type Root } from './root'
 
 export const enum Priority {
   None = 0,
@@ -75,58 +76,74 @@ export class Rules extends Node<Node[]> {
   // rootRules: Node[] = []
   // _first: Node
   // _last: Node
-  _scope: Scope
+  private _scope: Scope
 
-  constructor(
-    value: Node[],
-    options?: undefined,
-    location?: LocationInfo | 0,
-    treeContext?: TreeContext
-  ) {
-    super(value, options, location, treeContext)
-    let scope = this.treeContext.scope
-    Object.defineProperty(this, '_scope', {
-      value: new Scope(scope),
-      writable: true
-    })
+  get scope() {
+    let scope = this._scope
+    if (!scope) {
+      scope = this._scope = new Scope()
+    }
+    return this._scope
+  }
+
+  set scope(s: Scope) {
+    this._scope = s
   }
 
   // constructor(value: { scope: }) {
   //   super([])
   // }
 
-  /** Allows array spreading of nodes */
-  // * [Symbol.iterator]() {
-  //   let current = this._first
-  //   while (current) {
-  //     yield current
-  //     current = current._next
-  //   }
-  // }
+  /** Allows iterating with the each() function */
+  * [Symbol.iterator](): Generator<[string, Node]> {
+    for (let item of this.value) {
+      if (!(item instanceof Declaration)) {
+        continue
+      }
+      let name = typeof item.name === 'string' ? item.name : item.name.value
+      yield [name, item]
+    }
+  }
+
+  entries() {
+    return this[Symbol.iterator]()
+  }
 
   toTrimmedString(depth: number = 0) {
-    // let space = ''.padStart(depth * 2)
+    let space = ''.padStart(depth * 2)
     let output = ''
     let outputs = this.value
-      .filter(n => n.visible)
-      .map(n => n.toString(depth))
-    output += outputs.join('')
+      .map(n =>
+        n.toString(depth)
+          .replace(/^\n[ \t]+/gm, `\n${space}`)
+      )
+    output += outputs
+      .join('')
+      /**
+       * Replace multiple newlines with single newlines
+       * (Remove empty lines)
+       */
+      .replace(/\n+/g, '\n')
     return output
   }
 
-  async eval(context: Context): Promise<this> {
+  visibleRules() {
+    return this.value.filter(n => n.visible)
+  }
+
+  async eval(context: Context): Promise<Rules | Root> {
     return await this.evalIfNot(context, async () => {
       let inheritedScope = context.scope
-      context.scope = this._scope
+      context.scope = this.scope
       let { hoistDeclarations, leakVariablesIntoScope } = this.treeContext
-      let ruleset = this.clone()
-      ruleset._scope = this._scope
+      let rules = this.clone()
+      rules.scope = this.scope
       /**
        * Make a shallow copy of rules.
        * This is because we're going to replace
        * each item in the array when evaluating.
        */
-      let rules = ruleset.value = [...this.value]
+      let ruleValues = rules.value = [...this.value]
       let evalQueue: QueueMap = {}
 
       /**
@@ -135,7 +152,7 @@ export class Rules extends Node<Node[]> {
        * without mutating arrays.
        */
       // let prev: Node | undefined
-      let nodeLength = rules.length
+      let nodeLength = ruleValues.length
       /** Iterate in reverse order, to assign the _next node */
       // for (let i = nodeLength - 1; i >= 0; i--) {
       //   const n = value[i]
@@ -167,7 +184,7 @@ export class Rules extends Node<Node[]> {
        *   3. everything else
        */
       for (let i = 0; i < nodeLength; i++) {
-        let n = rules[i]!
+        let n = ruleValues[i]!
 
         if (n instanceof BaseDeclaration) {
           if (hoistDeclarations) {
@@ -226,7 +243,7 @@ export class Rules extends Node<Node[]> {
             if (!decl.allowRuleRoot) {
               decl.visible = false
             }
-            rules[pos] = decl
+            ruleValues[pos] = decl
             if (isNode(decl, 'Mixin')) {
               this._scope.setMixin(ident, decl, decl.options)
             } else if (isNode(decl, ['VarDeclaration', 'Func'])) {
@@ -251,7 +268,7 @@ export class Rules extends Node<Node[]> {
               let evald = await node.value.eval(context)
               context.declarationScope = undefined
               if (evald instanceof Nil) {
-                rules[pos] = evald
+                ruleValues[pos] = evald
               } else {
                 node.value = evald
               }
@@ -272,7 +289,7 @@ export class Rules extends Node<Node[]> {
               if (!result.allowRuleRoot) {
                 result.visible = false
               }
-              rules[pos] = result
+              ruleValues[pos] = result
 
               /** Set references linearly */
               if (!hoistDeclarations && result instanceof Declaration) {
@@ -360,17 +377,28 @@ export class Rules extends Node<Node[]> {
         // }
       }
 
+      let newRules: Node[] = []
+
       let bubbleRootRules = (rule: Node) => {
         let importedRoots =
           (isNode(rule, 'Ruleset') || isNode(rule, 'AtRule'))
             ? rule.rules?.rootRules
             : rule.rootRules
         if (importedRoots) {
-          let { rootRules } = ruleset
+          const newImportedRoots: Node[] = []
+          for (let r of importedRoots) {
+            if (r.options.hoistToParent) {
+              r.options.hoistToParent = false
+              newRules.push(r)
+              continue
+            }
+            newImportedRoots.push(r)
+          }
+          let { rootRules } = rules
           if (!rootRules) {
-            ruleset.rootRules = importedRoots
+            rules.rootRules = newImportedRoots
           } else {
-            rootRules.push(...importedRoots)
+            rootRules.push(...newImportedRoots)
           }
         }
       }
@@ -379,25 +407,29 @@ export class Rules extends Node<Node[]> {
        */
       let tryAddToRoot = (rule: Ruleset | AtRule) => {
         if (
-          ruleset.type !== 'Root' &&
-          (rule.options?.hoistToRoot || context.opts.collapseNesting)
+          rules.type !== 'Root'
+          && (
+            rule.options.hoistToRoot
+            || rule.options.hoistToParent
+            || context.opts.collapseNesting
+          )
         ) {
-          if (!ruleset.rootRules) {
-            ruleset.rootRules = [rule]
+          /** Remove empty rules */
+          if (!rules.rootRules) {
+            rules.rootRules = [rule]
           } else {
-            ruleset.rootRules.push(rule)
+            rules.rootRules.push(rule)
           }
         } else {
           newRules.push(rule)
         }
       }
-      let newRules: Node[] = []
 
       let walkRules = (rules: Node[]) => {
         rules.forEach(rule => {
-          if (isNode(rule, ['Rule', 'AtRule'])) {
-            bubbleRootRules(rule)
+          if (isNode(rule, ['Ruleset', 'AtRule'])) {
             tryAddToRoot(rule)
+            bubbleRootRules(rule)
           } else if (rule instanceof Rules) {
             bubbleRootRules(rule)
             walkRules(rule.value)
@@ -406,11 +438,11 @@ export class Rules extends Node<Node[]> {
           }
         })
       }
-      walkRules(rules)
-      ruleset.value = newRules
+      walkRules(ruleValues)
+      rules.value = newRules
       /** Restore scope */
       context.scope = inheritedScope
-      return ruleset
+      return rules
     })
   }
 
@@ -523,7 +555,7 @@ export class Rules extends Node<Node[]> {
 const origRules = defineType(Rules, 'Rules')
 type Params = Parameters<typeof origRules>
 export const rules = (
-  value?: Params[0],
+  value?: Node[],
   options?: Params[1],
   location?: Params[2],
   treeContext?: Params[3]

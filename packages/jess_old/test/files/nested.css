@@ -1,0 +1,60 @@
+*,
+*::before,
+*::after {
+  box-sizing: inherit;
+}
+.nested .rule {
+  color: red;
+}
+a:hover,
+b:hover {
+  background: blue;
+}
+a + c,
+b + c {
+  background: blue;
+}
+[foo]a,
+[foo]b,
+[foo]c {
+  background: blue;
+}
+a + a,
+b + a,
+a + b,
+b + b {
+  background: blue;
+}
+@media all {
+  a b {
+    color: rebeccapurple;
+  }
+}
+a {
+  color: blue;
+}
+@media all {
+  a {
+    color: rebeccapurple;
+  }
+}
+a b {
+  one: 1;
+}
+a b:hover {
+  two: 2;
+}
+a c {
+  three: 3;
+  four: 4;
+}
+a c d {
+  five: 5;
+}
+.box {
+  a: b;
+}
+.box,
+.box {
+  a: b;
+}

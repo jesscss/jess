@@ -1,0 +1,68 @@
+@import styles from './imports/rule.jess';
+
+*, *::before, *::after {
+  box-sizing: inherit;
+}
+
+.nested {
+  @include styles();
+}
+
+a, b {
+  &:hover {
+    background: blue;
+  }
+}
+
+a, b {
+  + c {
+    background: blue;
+  }
+}
+
+a, b, c {
+  [foo]& {
+    background: blue;
+  }
+}
+
+a, b {
+  & + & {
+    background: blue;
+  }
+}
+
+@media all {
+  a {
+    b {
+      color: rebeccapurple;
+    }
+  }
+}
+
+a {
+  color: blue;
+  @media all { 
+    color: rebeccapurple;
+  }
+}
+
+a {
+  b {
+    one: 1;
+    &:hover {
+      two: 2;
+    }
+  }
+  c {
+    three: 3;
+    d {
+      five: 5;
+    }
+    four: 4;
+  }
+}
+
+& { .box { a: b; } }
+
+&, & { .box { a: b; } }

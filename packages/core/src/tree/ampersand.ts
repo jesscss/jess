@@ -1,12 +1,14 @@
 import { defineType } from './node'
 import { Nil } from './nil'
 import type { Context } from '../context'
-import { type SelectorSequence } from './selector-sequence'
+import { type ComplexSelector } from './selector-complex'
 import { type SelectorList } from './selector-list'
 import { SimpleSelector } from './selector-simple'
 import { BasicSelector } from './selector-basic'
 import { isNode } from './util'
 import { type Extend } from './extend'
+import { type Selector } from './selector'
+import { type tuple } from '@bloomberg/record-tuple-polyfill'
 
 export type AmpersandValue = {
   /**
@@ -59,7 +61,8 @@ export type AmpersandValue = {
      }
 
    */
-  value: string | undefined
+  appendValue?: string
+  value?: Selector | Nil
 }
 
 /**
@@ -72,36 +75,51 @@ export class Ampersand extends SimpleSelector<AmpersandValue> {
     super(value, ...rest)
   }
 
+  get appendValue(): string | undefined {
+    return this.data.get('appendValue')
+  }
+
+  set appendValue(v: string | undefined) {
+    this.data.set('appendValue', v)
+  }
+
   toTrimmedString(): string {
-    let { value } = this
-    let hoistToRoot = this.options?.hoistToRoot
-    return hoistToRoot ?? value ? `&(${value ?? ''})` : '&'
+    let { appendValue } = this
+    return appendValue !== undefined ? `&(${appendValue ?? ''})` : '&'
+  }
+
+  toNormalPrimitive(): string | tuple {
+    const { value } = this
+    if (value && !(value instanceof Nil)) {
+      return value.toNormalPrimitive()
+    }
+    return this.toTrimmedString()
   }
 
   /** Hmm this should never return Extend */
-  async eval(context: Context): Promise<SelectorList | SelectorSequence | Ampersand | Extend | Nil> {
+  async eval(context: Context): Promise<SelectorList | ComplexSelector | Ampersand | Extend | Nil> {
     return await this.evalIfNot(context, () => {
-      if (this.value ?? this.options?.hoistToRoot ?? context.opts.collapseNesting) {
+      const { appendValue } = this
+      if (appendValue ?? context.opts.collapseNesting) {
         let frame = context.frames[0]
         if (frame) {
           let selector = frame.selector.clone(true)
-          const { value } = this
-          if (value && !isNode(selector, 'Nil')) {
-            let appendValue = (n: SelectorSequence | Extend) => {
+          if (appendValue && !isNode(selector, 'Nil')) {
+            let doAppendValue = (n: ComplexSelector | Extend) => {
               if (!n.value) {
-                throw new SyntaxError(`Cannot append "${value}" to this type of selector`)
+                throw new SyntaxError(`Cannot append "${appendValue}" to this type of selector`)
               }
               let last = n.value[n.value.length - 1]
               if (last instanceof BasicSelector) {
-                last.value += value
+                last.value += appendValue
               } else {
-                throw new SyntaxError(`Cannot append "${value}" to this type of selector`)
+                throw new SyntaxError(`Cannot append "${appendValue}" to this type of selector`)
               }
             }
             if (isNode(selector, 'SelectorList')) {
-              selector.value.forEach(appendValue)
+              selector.value.forEach(doAppendValue)
             } else {
-              appendValue(selector)
+              doAppendValue(selector)
             }
           }
           context.opts.collapseNesting = true
@@ -109,7 +127,12 @@ export class Ampersand extends SimpleSelector<AmpersandValue> {
         }
         return new Nil()
       }
-      return this.clone()
+      const amp = this.clone()
+      let frame = context.frames[0]
+      if (frame) {
+        amp.value = frame.selector.clone(true)
+      }
+      return amp
     })
   }
 

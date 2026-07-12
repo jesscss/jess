@@ -1,0 +1,17 @@
+diff --git a/dist/structs/types.d.ts b/dist/structs/types.d.ts
+index 0b15dc8b6f685c4f7fb8eede65f3f557e6532d55..bbbc7c44d76390f3faff5beff9b09e9c4ef966e1 100644
+--- a/dist/structs/types.d.ts
++++ b/dist/structs/types.d.ts
+@@ -47,9 +47,9 @@ export declare function func(): Struct<Function, null>;
+ /**
+  * Ensure that a value is an instance of a specific class.
+  */
+-export declare function instance<T extends {
+-    new (...args: any): any;
+-}>(Class: T): Struct<InstanceType<T>, null>;
++export declare function instance<T extends
++    abstract new (...args: any) => any
++>(Class: T): Struct<InstanceType<T>, null>;
+ /**
+  * Ensure that a value is an integer.
+  */

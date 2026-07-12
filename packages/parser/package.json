@@ -23,7 +23,7 @@
   "author": "Matthew Dean",
   "license": "MIT",
   "dependencies": {
-    "@jesscss/css-parser": "workspace:^2.0.0-alpha.1",
+    "@jesscss/css-parser": "workspace:*",
     "chevrotain": "^10.5.0"
   }
 }

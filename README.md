@@ -17,37 +17,37 @@ Jess is a language-agnostic, CSS pre-processor replacement for:
 - CSS-in-JS
 
 ```less
-@from './values.ts' import (width);
-@from '#less' import (unit);
+$from './values.ts' import (width);
+$from '#less' import (unit);
 
-@use './variables.less' my-vars;
-@include './bootstrap.scss' with my-vars;
+$use './variables.less' my-vars;
+$include './bootstrap.scss' with my-vars;
 
-@use './mixins.jess' (my-mixin);
-@use './mixins.less' (.less-mixin);
+$use './mixins.jess' (my-mixin);
+$use './mixins.less' (.less-mixin);
 
-@let icon-width: $unit($width, px);
+$let icon-width: $unit($width, px);
 
-@mixin overloaded() {
+$mixin overloaded() {
   color: black;
 }
-@mixin overloaded() {
+$mixin overloaded() {
   background-color: green;
 }
 
-// non-overloadable (but replaceable) mixin
-@let square: @(unit: 24px) {
+// non-overloadable (but replaceable) anonymous mixin
+$let square: _(unit: 24px) {
   width: $unit;
   height: $unit;
 };
 
-@let color: cornflowerblue;
+$let color: cornflowerblue;
 
 .icon {
-  @include my-mixin();
-  @include .less-mixin();
-  @include $square($icon-width);
-  @include overloaded();
+  $ -> my-mixin();
+  $ -> .less-mixin();
+  $ -> square($icon-width);
+  $ -> overloaded();
 
   color: $color;
 }

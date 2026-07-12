@@ -1,8 +1,10 @@
 import { type Node } from './tree/node'
 import type { Ruleset } from './tree/ruleset'
 import { Scope } from './scope'
-import type { Declaration } from './tree'
+import type { Declaration, Root } from './tree'
 import { type Operator } from './tree/util/calculate'
+import type { PluginObject } from './plugin'
+import * as path from 'node:path'
 
 export const enum MathMode {
   /**
@@ -22,6 +24,8 @@ export const enum UnitMode {
   STRICT = 1
 }
 
+const { isArray } = Array
+
 export interface ContextOptions {
   /** Hash classes for module output */
   module?: boolean
@@ -38,9 +42,12 @@ export interface ContextOptions {
 
   mathMode?: MathMode
   unitMode?: UnitMode
+
+  /** Directories to search to resolve files */
+  paths?: string[]
 }
 
-export interface TreeContextOptions {
+export interface TreeContextOptions extends ContextOptions {
   /**
    * Hoists variable declarations, so they can be
    * evaluated per scope. Less sets this to true.
@@ -52,18 +59,25 @@ export interface TreeContextOptions {
 
   inlineJavaScript?: boolean
 
-  mathMode?: MathMode
-  unitMode?: UnitMode
-
   /**
    * For instances where a new tree needs to inherit from scope
    * (like Less / SCSS `@import` rule)
    */
+  parentScope?: Scope
   scope?: Scope
+
+  isModule?: boolean
+
+  [k: string]: any
 }
 
 const idChars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'.split('')
 
+/**
+ * @todo - Redo:
+ *   1. Create a hash of the file that is filename + file bytes
+ *   2. Append file (module) hash after class name
+ */
 export const generateId = (length = 8) => {
   let str = ''
   let idCharsLength = idChars.length
@@ -93,52 +107,93 @@ export const generateId = (length = 8) => {
  * unique to the tree, such as the math mode.
  */
 export class TreeContext implements TreeContextOptions {
-  hoistDeclarations?: boolean
-  leakVariablesIntoScope?: boolean
-  mathMode?: MathMode
-  unitMode?: UnitMode
+  opts: Record<string, any>
+  hoistDeclarations: boolean
+  leakVariablesIntoScope: boolean
+  mathMode: MathMode
+  unitMode: UnitMode
+  isModule: boolean
 
   file?: {
     name: string
     path: string
-    /** Contents of the file, separated into lines */
-    contents: string[]
+    // contents: string[]
   }
 
   /** Rules will inherit scope when created */
   scope: Scope
 
+  /**
+   * The plugin that created this tree. It will have first dibs
+   * to resolve any imports.
+   */
+  plugin?: PluginObject
+
   constructor(opts: TreeContextOptions = {}) {
-    this.hoistDeclarations = opts.hoistDeclarations ?? false
-    this.leakVariablesIntoScope = opts.leakVariablesIntoScope ?? false
-    this.mathMode = opts.mathMode ?? MathMode.PARENS_DIVISION
-    this.unitMode = opts.unitMode ?? UnitMode.STRICT
-    this.scope = new Scope(opts.scope)
+    /**
+     * Known options are attached to the instance.
+     * Unknown options are assigned to `opts`
+     */
+    let {
+      scope,
+      parentScope,
+      hoistDeclarations,
+      leakVariablesIntoScope,
+      mathMode,
+      unitMode,
+      isModule,
+      ...rest
+    } = opts
+    this.hoistDeclarations = hoistDeclarations ?? false
+    this.leakVariablesIntoScope = leakVariablesIntoScope ?? false
+    this.mathMode = mathMode ?? MathMode.PARENS_DIVISION
+    this.unitMode = unitMode ?? UnitMode.STRICT
+    this.isModule = isModule ?? false
+    this.scope = scope ?? new Scope(parentScope)
+    this.opts = rest
   }
 }
-let code1 = 0
-let code2 = 0
+let classInts = BigInt(0)
+let inc = BigInt(1)
+
+/**
+ * .a.b.c
+ * simple = 0b1
+ * compound = 0b10
+ * complex = 0b100
+ * a = 0b1000
+ * b = 0b10000
+ * c = 0b100000
+ *
+ * .a.b.c.c = 0b111010
+ */
 
 /**
  * This is the context object used for evaluation.
  *
  * @note
  * Most of context represents "state" while evaluating.
+ * There should only ever be one Context object per
  */
 export class Context {
   /**
    * Selector elements (simple selectors and combinators)
-   * mapped to incremented char codes.
+   * mapped to incremented bigint
    *
    * When extending, we can use this to search for
    * matches within a selector sequence, and then
    * map the match position (and range) back to the
    * selector sequence.
+   *
+   * @todo - probably abandon?
    */
-  static selectorKeys = new Map<string, string>()
-  static keysFromSelector = new Map<string, string>()
+  static selectorKeys = new Map<string, bigint>()
+  static keysFromSelector = new Map<bigint, string | bigint>()
 
+  readonly plugins: PluginObject[]
   readonly opts: ContextOptions
+
+  currentTree: TreeContext
 
   /**
    * When getting vars, the current declaration is ommitted
@@ -158,8 +213,15 @@ export class Context {
   id = generateId()
   varCounter: number = 0
 
-  /** @todo - change to Map() */
-  classMap = new Map<string, string>()
+  _classMap: Map<string, string> | undefined
+  get classMap() {
+    let value = this._classMap
+    if (!value) {
+      value = new Map<string, string>()
+      Object.defineProperty(this, '_classMap', { value })
+    }
+    return value
+  }
 
   /**
    * The ruleset (qualified rule) frames. This is used to resolve
@@ -207,12 +269,86 @@ export class Context {
   /** A flag set when evaluating conditions */
   isDefault: boolean
 
-  constructor(opts: ContextOptions = {}) {
+  constructor(opts: ContextOptions = {}, plugins?: PluginObject[]) {
     this.opts = opts
+    this.plugins = plugins ?? []
   }
 
   get pre() {
     return Array(this.indent + 1).join('  ')
+  }
+
+  async getTree(filePath: string, initialDirectory?: string, options?: Record<string, any>) {
+    initialDirectory ??= path.dirname(filePath)
+    const paths = this.opts.paths ?? []
+    options ??= {}
+    options = { ...this.opts, ...options }
+
+    const plugins = this.plugins
+    const pluginLength = plugins.length
+    let fullPath: string | undefined
+    let resolvedTree: Root | false | undefined
+    const triedPaths: string[] = []
+
+    let rootPlugin = this.currentTree?.plugin
+
+    /** If we have a root plugin, try it first */
+    if (rootPlugin?.fileManager) {
+      const result = rootPlugin.fileManager.getPath(filePath, initialDirectory, paths, options)
+      if (isArray(result)) {
+        triedPaths.push(...result)
+      } else {
+        fullPath = result
+      }
+    }
+
+    /** Iterate in reverse, starting with last added plugin */
+    for (let i = pluginLength - 1; i >= 0; i--) {
+      const plugin = plugins[i]!
+      if (plugin === rootPlugin) {
+        continue
+      }
+      if (!plugin.fileManager) {
+        continue
+      }
+      const result = plugin.fileManager.getPath(filePath, initialDirectory, paths, options)
+      if (isArray(result)) {
+        triedPaths.push(...result)
+      } else {
+        fullPath = result
+        break
+      }
+    }
+    if (!fullPath) {
+      throw new Error('File not found')
+    }
+
+    /** If we have a root plugin, try it first */
+    if (rootPlugin?.fileManager) {
+      const result = await rootPlugin.fileManager.getTree(fullPath, options)
+      if (result) {
+        return result
+      }
+    }
+
+    for (let i = pluginLength - 1; i >= 0; i--) {
+      const plugin = plugins[i]!
+      if (plugin === rootPlugin) {
+        continue
+      }
+      if (!plugin.fileManager) {
+        continue
+      }
+      const tree = await plugin.fileManager.getTree(fullPath, options)
+      if (tree) {
+        resolvedTree = tree
+        break
+      }
+    }
+    if (!resolvedTree) {
+      throw new Error(`File "${path.basename(filePath)}" not supported`)
+    }
+    return resolvedTree
   }
 
   /**
@@ -237,19 +373,19 @@ export class Context {
     return `.${mapVal}`
   }
 
-  /** This is only done for simple selectors and combinators */
+  /**
+   * This is only done for simple selectors and combinators
+   * to create a normalized key for searching / extends.
+   */
   registerSelectorElement(el: string) {
     let key = Context.selectorKeys.get(el)
     if (key) {
       return key
     }
-    key = String.fromCharCode(code1, code2++)
-    if (code2 > 65535) {
-      code2 = 0
-      code1++
-    }
-    Context.selectorKeys.set(key, el)
-    Context.keysFromSelector.set(el, key)
+    key = (classInts + inc)
+
+    Context.selectorKeys.set(el, key)
+    Context.keysFromSelector.set(key, el)
     return key
   }
 
@@ -263,8 +399,8 @@ export class Context {
     if (mathMode === MathMode.ALWAYS || this.canOperate) {
       return true
     }
-    if (mathMode === MathMode.PARENS_DIVISION && op === '/') {
-      return false
+    if (mathMode === MathMode.PARENS_DIVISION) {
+      return op !== '/'
     }
     if (mathMode === MathMode.PARENS) {
       return false

@@ -13,6 +13,7 @@ import type { Bool } from '../tree/bool'
 import type { Condition } from '../tree/condition'
 import { Context } from '../context'
 import type { General } from '../tree/general'
+
 /**
  * The Scope object is meant to be an efficient
  * lookup mechanism for variables, mixins,
@@ -90,15 +91,14 @@ type FilterResult = {
   done: boolean
 }
 
-type GetterOptions = {
+export type GetterOptions = {
   /** Filter is a function or value to compare when looking up values */
   filter?: Node | ((value: any, foundValues?: any[]) => FilterResult)
 
   /** Only return local values, not all scope values */
   local?: boolean
   /**
-   * Not sure this is a good option, as it maybe makes more
-   * sense to throw an error if not found? Depends on user expectations.
+   * Right now used by Less for functions
    */
   suppressUndefinedError?: boolean
 }
@@ -111,6 +111,8 @@ export type ScopeFilter = (
  * This should be extended by each language
  */
 export class Scope {
+  static allScopes: Scope[] = []
+  id = Scope.allScopes.length
   /**
    * Includes vars but also
    * imported functions, JS identifiers, etc
@@ -142,23 +144,8 @@ export class Scope {
   static cachedKeys = new Map<string, string>()
 
   constructor(parent?: Scope) {
+    Scope.allScopes.push(this)
     this._parent = parent
-    /**
-     * Assign to parent entries at first.
-     * This allows us to lazily extend the prototype chain.
-     *
-     * If no keys are ever assigned, we can just lookup
-     * keys from the parent scope.
-     */
-    if (parent) {
-      this._vars = parent._vars
-      this._props = parent._props
-      this._mixins = parent._mixins
-    } else {
-      this._vars = Object.create(null)
-      this._props = Object.create(null)
-      this._mixins = Object.create(null)
-    }
   }
 
   /** Normalizes keys as valid JavaScript identifiers. */
@@ -171,22 +158,26 @@ export class Scope {
     let normalKey = key
       /** Replace initial dash with underscore */
       .replace(/^-/, '_')
-      /** Remove initial . (used by Less) */
-      .replace(/^\./, '')
-      /** Convert dash-case to camelCase, as well as leading '#' */
+      /** Replace dot-name to lowerCamelCase */
+      .replace(/^\.(.+)/g, (_, p1 = '') => `${p1.toLowerCase()}`)
+      /** Convert dash-case to camelCase, as well as leading '#' to UpperCamelCase */
       .replace(/(^_)|(?:[#\-_])(.)/g, (_, p1 = '', p2 = '') => `${p1}${p2.toUpperCase()}`)
 
-    /**
-     * Quick way to identify a valid JS identifier -
-     * try to create a variable with it.
-     *
-     * @see https://stackoverflow.com/questions/2008279/validate-a-javascript-function-name
-     */
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-implied-eval, no-new, no-new-func
-      new Function(`let ${normalKey}`)
-    } catch (err) {
-      throw new SyntaxError(`"${key}" is not a valid name, as it is not exportable`)
+    if (RESERVED.includes(normalKey)) {
+      logger.warn(`"${normalKey}" is a reserved identifier and is not exportable`)
+    } else {
+      /**
+       * Quick way to identify a valid JS identifier -
+       * try to create a variable with it.
+       *
+       * @see https://stackoverflow.com/questions/2008279/validate-a-javascript-function-name
+       */
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-implied-eval, no-new, no-new-func
+        new Function(`let ${normalKey}`)
+      } catch (err) {
+        logger.warn(`"${key}" is not exportable`)
+      }
     }
 
     let lookupKey = Scope.entryKeys.get(normalKey)
@@ -203,21 +194,25 @@ export class Scope {
    * Lazily create prototype chains
    * for improved performance.
    */
-  getEntries(key: '_vars' | '_mixins'): ScopeEntryMap
-  getEntries(key: '_props'): PropMap
-  getEntries(key: '_vars' | '_props' | '_mixins'): ScopeEntryMap | PropMap {
-    let currentEntries = this[key]
-    if (currentEntries === this._parent?.[key]) {
-      let entries = Object.create(this._parent[key])
-      this[key] = entries
-      return entries
+  getEntries(key: 'vars' | 'mixins'): ScopeEntryMap
+  getEntries(key: 'props'): PropMap
+  getEntries(key: 'vars' | 'props' | 'mixins'): ScopeEntryMap | PropMap {
+    let privateKey: '_vars' | '_props' | '_mixins' = `_${key}`
+    let currentEntries = this[privateKey]
+    if (currentEntries) {
+      return currentEntries
+    }
+    if (this._parent) {
+      currentEntries = this[privateKey] = Object.create(this._parent[key])
+    } else {
+      currentEntries = this[privateKey] = Object.create(null)
     }
     return currentEntries
   }
 
   /** Merges a scope (usually child) into this scope object */
   merge(scope: Scope, leakVariablesIntoScope?: boolean) {
-    let props = scope._props
+    let props = scope.props
     let keys = Object.getOwnPropertyNames(props)
     let keyLength = keys.length
     for (let i = 0; i < keyLength; i++) {
@@ -225,10 +220,10 @@ export class Scope {
       this.setProp(key, props[key]!)
     }
     if (leakVariablesIntoScope) {
-      let leakVariables = (lookupKey: '_vars' | '_mixins') => {
+      let leakVariables = (lookupKey: 'vars' | 'mixins') => {
         let importedVars = scope[lookupKey]
         let localVars = this[lookupKey]
-        let setter = lookupKey === '_vars' ? this.setVar : this.setMixin
+        let setter = lookupKey === 'vars' ? this.setVar : this.setMixin
         let keys = Object.getOwnPropertyNames(importedVars)
         let keyLength = keys.length
         for (let i = 0; i < keyLength; i++) {
@@ -245,21 +240,21 @@ export class Scope {
           }
         }
       }
-      leakVariables('_vars')
-      leakVariables('_mixins')
+      leakVariables('vars')
+      leakVariables('mixins')
     }
   }
 
   get mixins(): ScopeEntryMap {
-    return this.getEntries('_mixins')
+    return this.getEntries('mixins')
   }
 
   get vars(): ScopeEntryMap {
-    return this.getEntries('_vars')
+    return this.getEntries('vars')
   }
 
   get props(): PropMap {
-    return this.getEntries('_props')
+    return this.getEntries('props')
   }
 
   setProp(key: string, value: Declaration | Declaration[]) {
@@ -300,9 +295,6 @@ export class Scope {
       normalKey = key
     } else {
       normalKey = this.normalizeKey(key)
-      if (RESERVED.includes(normalKey)) {
-        throw new SyntaxError(`"${normalKey}" is a reserved identifier`)
-      }
     }
     Scope.entryKeys.set(normalKey, key)
 
@@ -355,18 +347,18 @@ export class Scope {
   }
 
   getVar(key: string, options?: GetterOptions) {
-    return this._getBase('_vars', key, options)
+    return this._getBase('vars', key, options)
   }
 
   getMixin(key: string, options?: GetterOptions) {
-    let mixins = this._getBase('_mixins', key, options)
+    let mixins = this._getBase('mixins', key, options)
     if (mixins) {
       return getFunctionFromMixins(mixins)
     }
   }
 
   getProp(key: string, options: GetterOptions = {}) {
-    let props: Declaration | Declaration[] = this._getBase('_props', key, {
+    let props: Declaration | Declaration[] = this._getBase('props', key, {
       filter(value: Declaration) {
         /**
          * Find all declarations, in case we need to merge
@@ -445,9 +437,9 @@ export class Scope {
    * We can pass in a filter to narrow the
    * entries.
    */
-  private _getBase(collection: '_mixins', baseKey: string, options?: GetterOptions): MixinEntry | MixinEntry[] | undefined
-  private _getBase(collection: '_vars' | '_props', baseKey: string, options?: GetterOptions): any
-  private _getBase(collection: '_vars' | '_props' | '_mixins', baseKey: string, options: GetterOptions = {}): any {
+  private _getBase(collection: 'mixins', baseKey: string, options?: GetterOptions): MixinEntry | MixinEntry[] | undefined
+  private _getBase(collection: 'vars' | 'props', baseKey: string, options?: GetterOptions): any
+  private _getBase(collection: 'vars' | 'props' | 'mixins', baseKey: string, options: GetterOptions = {}): any {
     let NONE = Scope.NONE
     let key = this.normalizeKey(baseKey)
     let {
@@ -475,10 +467,9 @@ export class Scope {
      * In Less / Jess, mixins are defined / merged per scope
      * We don't climb the prototype chain, and they aren't filtered.
      */
-    if (collection === '_mixins') {
+    if (collection === 'mixins') {
       let entry = current[key]
       if (!entry) {
-        /** Needed? */
         if (options.suppressUndefinedError) {
           return undefined
         }
@@ -489,13 +480,12 @@ export class Scope {
     while (current) {
       let entry = (options.local && !Object.prototype.hasOwnProperty.call(current, key)) ? undefined : current[key]
       if (!entry) {
-        /** Needed? */
         if (options.suppressUndefinedError) {
           return undefined
         }
         throw new ReferenceError(`"${baseKey}" is not defined`)
       }
-      let entryValue: unknown = collection === '_vars'
+      let entryValue: unknown = collection === 'vars'
         ? (entry as unknown as ScopeEntryMap).value
         : entry
       let lastResult: FilterResult
@@ -548,7 +538,9 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
    * @note - Mixins resolve to async functions because they
    * can contain dynamic imports.
    */
-  return async function(this: Context | unknown, ...args: any[]) {
+  async function returnFunc(this: unknown, ...args: any[]): Promise<Rules | Record<string, string>>
+  async function returnFunc(this: Context, ...args: any[]): Promise<Rules>
+  async function returnFunc(this: Context | unknown, ...args: any[]) {
     const mixinLength = mixinArr.length
     let mixinCandidates: MixinEntry[] = []
     let evalCandidates: Array<[MixinEntry, number]>
@@ -704,7 +696,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
        * a scope by the tree context, so we can use that to
        * create a new scope.
        */
-      let scope = new Scope(rules._scope)
+      let scope = new Scope(rules.scope)
 
       /** Now we need to add our parameters, if any */
       let params = candidate.params
@@ -732,7 +724,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       }
       if (passes) {
         let newRules = rules.clone()
-        newRules._scope = scope
+        newRules.scope = scope
         newRules = await newRules.eval(thisContext)
         outputRules.push([newRules, i])
       }
@@ -740,15 +732,22 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
     }
     /**
      * Now that we have output rules, we sort them by
-     * their original order and wrap them in a final ruleset
+     * their original order
      */
-    let output = new Rules(
-      outputRules.sort((a, b) => a[1] - b[1]).map(r => r[0])
-    )
+    let rulesArr = outputRules.sort((a, b) => a[1] - b[1]).map(r => r[0])
+    /** Create a rules wrapper */
+    let output = new Rules(rulesArr)
+    /** Assign vars to new scope */
+    rulesArr.forEach(r => {
+      output.scope.merge(r.scope)
+    })
+    /** Now push all rules into the rules value */
     if (this instanceof Context) {
       return output
     } else {
       return output.toObject()
     }
   }
+
+  return returnFunc
 }

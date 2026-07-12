@@ -17,6 +17,8 @@ const jsRules = {
       ignoreEOLComments: true
     }
   ],
+  /** Tweak for better readability */
+  'operator-linebreak': ['error', 'before', { overrides: { '=': 'after' } }],
   /** Seems like a silly rule */
   'eol-last': 0
 }

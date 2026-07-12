@@ -1,6 +1,18 @@
 import { Node, defineType } from './node'
 
 export class Combinator extends Node<string> {
+  /** To make forming Sets easier */
+  valueOf() {
+    return this.value
+  }
+
+  get keys() {
+    return this.value
+  }
+
+  normalize() {
+    return this
+  }
   // toTrimmedString() {
   //   let { value } = this
   //   return value === ' ' ? value : ` ${value} `

@@ -1,0 +1,7 @@
+@import colors from './colors.jess';
+@import { config as baseConfig } from './config.jess';
+
+@let config: $baseConfig;
+
+@include colors($config);
+@include nav($config);

@@ -18,9 +18,10 @@ import {
 } from '@jesscss/css-parser'
 
 import {
-  TreeContext,
+  type TreeContext,
   type Scope,
   Node,
+  Ampersand,
   Block,
   Token,
   type LocationInfo,
@@ -64,12 +65,16 @@ export function stylesheet(this: P, T: TokenMap) {
   // stylesheet
   //   : CHARSET? main EOF
   //   ;
-  return () => {
+  return (options: Record<string, any> = {}) => {
     let RECORDING_PHASE = $.RECORDING_PHASE
     let context: TreeContext
     let initialScope: Scope
     if (!RECORDING_PHASE) {
-      context = this.context = new TreeContext()
+      if (options.context) {
+        context = this._context = options.context
+      } else {
+        context = this.context
+      }
       initialScope = context.scope
     }
 
@@ -151,25 +156,25 @@ export function declarationList(this: P, T: TokenMap) {
 let interpolatedRegex = /([$@]){([^}]+)}/g
 let charPlaceholder = String.fromCharCode(0)
 
+const getInterpolated = (name: string, location: LocationInfo, context: TreeContext): Interpolated => {
+  let nodes: Node[] = []
+  let result: RegExpExecArray | null
+
+  let outputName = name
+
+  while (result = interpolatedRegex.exec(name)) {
+    let [match, propOrVar, value] = result
+    outputName = outputName.replace(match, charPlaceholder)
+    nodes.push(new Reference(value!, { type: propOrVar === '$' ? 'property' : 'variable' }))
+  }
+  return new Interpolated([
+    ['value', outputName],
+    ['replacements', nodes]
+  ], undefined, location, context)
+}
+
 export function declaration(this: P, T: TokenMap) {
   const $ = this
-
-  const getInterpolated = (name: string, location: LocationInfo): Interpolated => {
-    let nodes: Node[] = []
-    let result: RegExpExecArray | null
-
-    let outputName = name
-
-    while (result = interpolatedRegex.exec(name)) {
-      let [match, propOrVar, value] = result
-      outputName = outputName.replace(match, charPlaceholder)
-      nodes.push(new Reference(value!, { type: propOrVar === '$' ? 'property' : 'variable' }))
-    }
-    return new Interpolated([
-      ['value', outputName],
-      ['replacements', nodes]
-    ], undefined, location, this.context)
-  }
 
   let ruleAlt = [
     {
@@ -195,7 +200,7 @@ export function declaration(this: P, T: TokenMap) {
           let nameNode: Name
           let nameValue = name!.image
           if (nameValue.includes('@') || nameValue.includes('$')) {
-            nameNode = getInterpolated(nameValue, $.getLocationInfo(name!))
+            nameNode = getInterpolated(nameValue, $.getLocationInfo(name!), this.context)
           } else {
             nameNode = $.wrap(new General(name!.image, { type: 'Name' }, $.getLocationInfo(name!), this.context), true)
           }
@@ -227,7 +232,7 @@ export function declaration(this: P, T: TokenMap) {
           let nameNode: Name
           let nameValue = name.image
           if (nameValue.includes('@') || nameValue.includes('$')) {
-            nameNode = getInterpolated(nameValue, $.getLocationInfo(name))
+            nameNode = getInterpolated(nameValue, $.getLocationInfo(name), this.context)
           } else {
             nameNode = $.wrap(new General(name.image, { type: 'Name' }, $.getLocationInfo(name), this.context), true)
           }
@@ -497,7 +502,14 @@ export function simpleSelector(this: P, T: TokenMap) {
        * to have `&`, and it is just silently absorbed if there
        * is no parent selector.
        */
-      ALT: () => $.CONSUME(T.Ampersand)
+      ALT: () => {
+        let amp = $.CONSUME(T.Ampersand)
+        if (!$.RECORDING_PHASE) {
+          let ampImg = amp.image
+          let value = ampImg.slice(1)
+          return new Ampersand(value || undefined, undefined, $.getLocationInfo(amp), this.context)
+        }
+      }
     },
     { ALT: () => $.CONSUME(T.InterpolatedSelector) },
     { ALT: () => $.SUBRULE($.classSelector) },
@@ -682,6 +694,7 @@ export function importAtRule(this: P, T: TokenMap) {
   }
 }
 
+/* This is for variable variables (e.g. `@id-@num`) */
 const getInterpolatedOrString = (name: string): Interpolated | string => {
   let nextPos = name.indexOf('@', 1)
   if (nextPos === -1) {
@@ -1166,7 +1179,7 @@ export function ifFunction(this: P, T: TokenMap) {
     let RECORDING_PHASE = $.RECORDING_PHASE
     $.startRule()
 
-    $.CONSUME(T.IfFunction)
+    let name = $.CONSUME(T.IfFunction)
 
     $.startRule()
 
@@ -1220,8 +1233,9 @@ export function ifFunction(this: P, T: TokenMap) {
 
     if (!RECORDING_PHASE) {
       let location = $.endRule()
+      let nameNode = new Reference('if', { type: 'variable', optional: true }, $.getLocationInfo(name), this.context)
       return new Call([
-        ['name', 'if'],
+        ['name', nameNode],
         ['args', new List(args!, undefined, argsLocation, this.context)]
       ], undefined, location, this.context)
     }
@@ -1233,14 +1247,15 @@ export function booleanFunction(this: P, T: TokenMap) {
 
   return () => {
     $.startRule()
-    $.CONSUME(T.BooleanFunction)
+    let name = $.CONSUME(T.BooleanFunction)
     let arg: Condition = $.SUBRULE($.guardOr, { ARGS: [{ inValueList: true }] })
     $.CONSUME(T.RParen)
 
     if (!$.RECORDING_PHASE) {
       let location = $.endRule()
+      let nameNode = new Reference('boolean', { type: 'variable', optional: true }, $.getLocationInfo(name), this.context)
       return new Call([
-        ['name', 'boolean'],
+        ['name', nameNode],
         ['args', new List([arg], undefined, arg.location as LocationInfo, this.context)]
       ], undefined, location, this.context)
     }
@@ -1270,7 +1285,7 @@ export function varReference(this: P, T: TokenMap) {
         ALT: () => {
           let token = $.CONSUME(T.PropertyReference)
           if (!RECORDING_PHASE) {
-            return new Reference(token.image, { type: 'property' }, $.getLocationInfo(token), this.context)
+            return new Reference(token.image.slice(1), { type: 'property' }, $.getLocationInfo(token), this.context)
           }
         }
       },
@@ -1288,7 +1303,7 @@ export function varReference(this: P, T: TokenMap) {
         ALT: () => {
           let token = $.CONSUME(T.AtKeyword)
           if (!RECORDING_PHASE) {
-            return new Reference(token.image, { type: 'variable' }, $.getLocationInfo(token), this.context)
+            return new Reference(token.image.slice(1), { type: 'variable' }, $.getLocationInfo(token), this.context)
           }
         }
       }
@@ -1331,40 +1346,41 @@ export function valueReference(this: P, T: TokenMap) {
   }
 }
 
-// export function functionCall(this: P, T: TokenMap) {
-//   const $ = this
+export function functionCall(this: P, T: TokenMap) {
+  const $ = this
 
-//   let funcAlt = [
-//     { ALT: () => $.SUBRULE($.knownFunctions) },
-//     {
-//       ALT: () => {
-//         $.startRule()
+  let funcAlt = [
+    { ALT: () => $.SUBRULE($.knownFunctions) },
+    {
+      ALT: () => {
+        $.startRule()
 
-//         let name = $.CONSUME(T.Ident)
-//         let args: List | undefined
+        let name = $.CONSUME(T.Ident)
+        let args: List | undefined
 
-//         $.OR2([{
-//           GATE: $.noSep,
-//           ALT: () => {
-//             $.CONSUME(T.LParen)
-//             $.OPTION(() => args = $.SUBRULE($.functionCallArgs, { ARGS: [{ allowAnonymousMixins: true }] }))
-//             $.CONSUME(T.RParen)
-//           }
-//         }])
+        $.OR2([{
+          GATE: $.noSep,
+          ALT: () => {
+            $.CONSUME(T.LParen)
+            $.OPTION(() => args = $.SUBRULE($.functionCallArgs))
+            $.CONSUME(T.RParen)
+          }
+        }])
 
-//         if (!$.RECORDING_PHASE) {
-//           let location = $.endRule()
-//           return new Call([
-//             ['name', name.image],
-//             ['args', args]
-//           ], undefined, location, this.context)
-//         }
-//       }
-//     }
-//   ]
+        if (!$.RECORDING_PHASE) {
+          let location = $.endRule()
+          let nameNode = new Reference(name.image, { type: 'variable', optional: true }, $.getLocationInfo(name), this.context)
+          return new Call([
+            ['name', nameNode],
+            ['args', args]
+          ], undefined, location, this.context)
+        }
+      }
+    }
+  ]
 
-//   return () => $.OR(funcAlt)
-// }
+  return () => $.OR(funcAlt)
+}
 
 export function functionCallArgs(this: P, T: TokenMap) {
   const $ = this
@@ -1478,6 +1494,55 @@ export function value(this: P, T: TokenMap) {
       return $.wrap(node)
     }
   }
+}
+
+export function string(this: P, T: TokenMap) {
+  const $ = this
+
+  let stringAlt = [
+    {
+      ALT: () => {
+        $.startRule()
+        let quote = $.CONSUME(T.SingleQuoteStart)
+        let contents: IToken | undefined
+        $.OPTION(() => contents = $.CONSUME(T.SingleQuoteStringContents))
+        $.CONSUME(T.SingleQuoteEnd)
+        if (!$.RECORDING_PHASE) {
+          let quoteImg = quote.image
+          let escaped = false
+          if (quoteImg.startsWith('~')) {
+            escaped = true
+            quoteImg = quoteImg.slice(1)
+          }
+          let location = $.endRule()
+          let value = contents?.image
+          return new Quoted(new General(value ?? ''), { quote: quoteImg as '"' | "'", escaped }, location, this.context)
+        }
+      }
+    },
+    {
+      ALT: () => {
+        $.startRule()
+        let quote = $.CONSUME(T.DoubleQuoteStart)
+        let contents: IToken | undefined
+        $.OPTION2(() => contents = $.CONSUME(T.DoubleQuoteStringContents))
+        $.CONSUME(T.DoubleQuoteEnd)
+        if (!$.RECORDING_PHASE) {
+          let quoteImg = quote.image
+          let escaped = false
+          if (quoteImg.startsWith('~')) {
+            escaped = true
+            quoteImg = quoteImg.slice(1)
+          }
+          let location = $.endRule()
+          let value = contents?.image
+          return new Quoted(new General(value ?? ''), { quote: quoteImg as '"' | "'", escaped }, location, this.context)
+        }
+      }
+    }
+  ]
+
+  return () => $.OR(stringAlt)
 }
 
 export function mathValue(this: P, T: TokenMap) {
@@ -1805,7 +1870,27 @@ export function mixinName(this: P, T: TokenMap) {
   ]
 
   /** e.g. .mixin, #mixin */
-  return () => $.OR(nameAlt)
+  return (asReference?: boolean) => {
+    let name = $.OR(nameAlt)
+    if (!$.RECORDING_PHASE) {
+      let nameNode: Node
+      let nameValue = name.image
+      let location = $.getLocationInfo(name)
+      if (nameValue.includes('@') || nameValue.includes('$')) {
+        nameNode = getInterpolated(nameValue, location, this.context)
+        if (asReference) {
+          nameNode = new Reference(nameNode as Interpolated, { type: 'mixin' }, location, this.context)
+        }
+      } else {
+        if (asReference) {
+          nameNode = new Reference(nameValue, { type: 'mixin' }, location, this.context)
+        } else {
+          nameNode = $.wrap(new General(nameValue, { type: 'Name' }, $.getLocationInfo(name), this.context), true)
+        }
+      }
+      return nameNode
+    }
+  }
 }
 
 /** @todo - should these names be Jess-normalized when saved? */
@@ -1814,30 +1899,25 @@ export function mixinReference(this: P, T: TokenMap) {
 
   return () => {
     let RECORDING_PHASE = $.RECORDING_PHASE
-    let left = $.SUBRULE($.mixinName)
-    let leftNode: Node
-    if (!RECORDING_PHASE) {
-      let location = $.getLocationInfo(left)
-      leftNode = new Reference(left.image, { type: 'mixin' }, location, this.context)
-    }
+    let leftNode = $.SUBRULE($.mixinName, { ARGS: [true] })
     $.MANY(() => {
       $.OPTION(() => $.CONSUME(T.Gt))
-      let right = $.SUBRULE2($.mixinName)
+      let rightNode = $.SUBRULE2($.mixinName, { ARGS: [true] })
       if (!RECORDING_PHASE) {
-        let [,,, endOffset, endLine, endColumn] = leftNode.location
-        let [startOffset, startLine, startColumn] = $.getLocationInfo(right)
+        let [startOffset, startLine, startColumn] = leftNode.location
+        let [,,, endOffset, endLine, endColumn] = rightNode.location
         leftNode = new Lookup(
           [
             ['value', new Call([['name', leftNode]])],
-            ['key', new Reference(right.image, { type: 'mixin' }, $.getLocationInfo(right), this.context)]
+            ['key', rightNode]
           ],
           undefined,
-          [startOffset, startLine, startColumn, endOffset!, endLine!, endColumn!],
+          [startOffset, startLine, startColumn, endOffset, endLine, endColumn],
           this.context
         )
       }
     })
-    return leftNode!
+    return leftNode
   }
 }
 

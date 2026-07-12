@@ -11,6 +11,7 @@ export type LookupValue = {
   /**
    * Number is the (0-based) position in rules.
    * Negative numbers are from the end.
+   * @todo - Add tests for this
    */
   key: string | number | Node
 }
@@ -54,7 +55,7 @@ export class Lookup extends Node<LookupValue> {
     value = await value.eval(context)
 
     if (value instanceof Rules) {
-      context.scope = value._scope
+      context.scope = value.scope
 
       if (typeof key === 'string') {
         key = new Reference(key)

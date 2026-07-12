@@ -1,15 +1,20 @@
-import { Node, defineType } from './node'
+import { defineType } from './node'
 import { type SelectorList } from './selector-list'
-import { SelectorSequence } from './selector-sequence'
+import { type ComplexSelector } from './selector-complex'
 import { type Context } from '../context'
-import { Ampersand } from './ampersand'
+import { Selector } from './selector'
+import { type Nil } from './nil'
+
+export const enum ExtendFlag {
+  All = 1
+}
 
 export type ExtendValue = {
   /** The preceding selector */
-  selector?: SelectorSequence
+  value: Selector | Nil
   /** The selector within () */
-  target: SelectorSequence | SelectorList
-  flag?: '!all'
+  target: Selector
+  flag?: ExtendFlag
 }
 /**
  * Extends selectors
@@ -19,8 +24,8 @@ export type ExtendValue = {
  * @note - there is some pseudo-code somewhere that smartly
  * registers selectors by a string code.
  */
-export class Extend extends Node<ExtendValue> {
-  get flag() {
+export class Extend extends Selector<ExtendValue> {
+  get flag(): ExtendFlag | undefined {
     return this.data.get('flag')
   }
 
@@ -28,25 +33,12 @@ export class Extend extends Node<ExtendValue> {
     return this.data.get('target')
   }
 
-  set target(v: SelectorSequence | SelectorList) {
+  set target(v: ComplexSelector | SelectorList) {
     this.data.set('target', v)
   }
 
-  get selector() {
-    let sel = this.data.get('selector')
-    if (!sel) {
-      sel = new SelectorSequence([new Ampersand()])
-      this.data.set('selector', sel)
-    }
-    return sel
-  }
-
-  set selector(v: SelectorSequence) {
-    this.data.set('selector', v)
-  }
-
-  get value(): SelectorSequence['value'] {
-    return this.data.get('selector').value
+  get value(): Selector | Nil {
+    return this.data.get('value')
   }
 
   toTrimmedString(depth?: number | undefined): string {
@@ -57,13 +49,17 @@ export class Extend extends Node<ExtendValue> {
     return output
   }
 
-  async eval(context: Context): Promise<SelectorSequence> {
-    let { selector } = this
-    selector = await selector.eval(context) as SelectorSequence
+  toPrimitiveSelector() {
+    return this.data.get('value').toPrimitiveSelector()
+  }
+
+  async eval(context: Context): Promise<Selector> {
+    let { value } = this
+    value = await value.eval(context) as Selector
     /** @todo - register target */
-    selector.inherit(this)
-    selector.evaluated = true
-    return selector
+    value.inherit(this)
+    value.evaluated = true
+    return value
   }
 }
 export const extend = defineType(Extend, 'Extend')

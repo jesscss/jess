@@ -1,0 +1,11 @@
+@import { myMixin } from './imports/compute.js';
+
+@mixin square(dimension) {
+  width: $dimension;
+  height: $dimension;
+}
+
+.box {
+  @include square(20px);
+  @include myMixin();
+}

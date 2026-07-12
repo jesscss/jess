@@ -1,16 +1,22 @@
-/* eslint-disable @typescript-eslint/prefer-nullish-coalescing, @typescript-eslint/restrict-plus-operands */
+/* eslint-disable @typescript-eslint/prefer-nullish-coalescing, @typescript-eslint/restrict-plus-operands, @typescript-eslint/no-invalid-void-type */
 import isPlainObject from 'lodash-es/isPlainObject'
-import { type Context, TreeContext } from '../context'
+import {
+  type Context,
+  type TreeContext
+} from '../context'
 import type { Visitor } from '../visitor'
 import type { Comment } from './comment'
 import { type Operator } from './util/calculate'
 // import type { OutputCollector } from '../output'
 import type { Constructor, Writable, Class, ValueOf, Opaque, IsUnknown } from 'type-fest'
 
-export { TreeContext }
+export type { TreeContext }
+
+const { isArray } = Array
 
 type AllNodeOptions = {
   hoistToRoot?: boolean
+  hoistToParent?: boolean
 
   /**
    * For statements with optional semis,
@@ -19,6 +25,10 @@ type AllNodeOptions = {
   semi?: boolean
 }
 
+export const ABORT: unique symbol = Symbol('ABORT')
+export const REMOVE: unique symbol = Symbol('REMOVE')
+export type NodeVisitReturn = void | Node | symbol
+export type NodeVisitFunction = (n: Node) => NodeVisitReturn
 export type NodeOptions = Record<string, boolean | string | number> & AllNodeOptions
 export type NodeValue = unknown
 export type NodeMap = Map<string, NodeValue>
@@ -45,7 +55,7 @@ export type LocationInfo = [
  * This just checks that it can be safely passed to `new Map()`
  */
 export const isNodeMap = (val: any): val is NodeMap | NodeMapArray => {
-  return val instanceof Map || (Array.isArray(val) && Array.isArray(val[0]))
+  return val instanceof Map || (isArray(val) && isArray(val[0]))
 }
 
 export const defineType = <
@@ -58,8 +68,8 @@ export const defineType = <
     shortType?: string
   ) => {
   shortType ??= type.toLowerCase()
-  ;(Clazz.prototype as Writable<InstanceType<T>>).type = type
-  ;(Clazz.prototype as Writable<InstanceType<T>>).shortType = shortType
+  ;(Clazz.prototype as Writable<typeof Clazz.prototype>).type = type
+  ;(Clazz.prototype as Writable<typeof Clazz.prototype>).shortType = shortType
 
   type Args = [value?: P[0] | V, location?: P[1], options?: P[2], treeContext?: P[3]]
   return (...args: Args) => {
@@ -77,22 +87,22 @@ export const defineType = <
  * This strongly binds Map keys to values based
  * on a passed-in interface.
  */
-export type TypeMap<
+export type TypedMap<
   T extends NodeTypeMap = NodeTypeMap,
   K extends keyof T = keyof T,
   V = ValueOf<T>
-> = Omit<Map<K, V>, 'get' | 'set'> & {
+> = Omit<Map<any, any>, 'get' | 'set'> & {
   /**
    * TypeScript sometimes gets confused
    * about whether or not get / set will exist,
    * so this fixes it.
    */
-  get(key: any): any
-  set(key: any, value: any): any
+  get(key: K): any
+  set(key: K, value: V): any
 } & {
   [P in K as 'get']: <U extends P>(key: U) => T[U]
 } & {
-  [P in K as 'set']: <U extends P>(key: U, value: T[U]) => TypeMap<T>
+  [P in K as 'set']: <U extends P>(key: U, value: T[U]) => TypedMap<T>
 }
 
 /**
@@ -117,23 +127,24 @@ type CollectionPair<T> =
 
 type Values<T, K extends keyof T = keyof T> = T[K]
 
-type NodeValueArray<T extends NodeTypeMap> = Array<Values<{
+export type NodeValueArray<T extends NodeTypeMap> = Array<Values<{
   [K in keyof T]: [K, T[K]]
 }>>
 
-type NodeValueArg<M extends NodeTypeMap> =
+export type NodeValueArg<M extends NodeTypeMap> =
   IsUnknown<M['value']> extends true
-    ? TypeMap<M> | NodeValueArray<M>
-    : TypeMap<M> | NodeValueArray<M> | M['value']
+    ? TypedMap<M> | NodeValueArray<M>
+    : TypedMap<M> | NodeValueArray<M> | M['value']
 /**
  * The underlying type for all Jess nodes
  */
 export abstract class Node<
-  T = any,
+  T = unknown,
   O extends NodeOptions = NodeOptions,
   M extends NodeTypeMap = NodeMapType<T>
 > {
   location: LocationInfo | []
+  _treeContext: TreeContext | undefined
   readonly treeContext: TreeContext
 
   _options: Partial<O & AllNodeOptions> | undefined
@@ -154,6 +165,7 @@ export abstract class Node<
   visible = true
 
   evaluated: boolean
+
   allowRoot: boolean
   allowRuleRoot: boolean
 
@@ -173,7 +185,7 @@ export abstract class Node<
   /**
    * This should always represent the `data` of the Node
    */
-  protected readonly data: TypeMap<M>
+  protected readonly data: TypedMap<M>
 
   constructor(
     value: NodeValueArg<M>,
@@ -181,12 +193,17 @@ export abstract class Node<
     location?: LocationInfo | 0,
     treeContext?: TreeContext
   ) {
-    this.data = new Map(isNodeMap(value) ? value : [['value', value]]) as TypeMap<M>
+    this.data = new Map(isNodeMap(value) ? value : [['value', value]]) as TypedMap<M>
     this.location = location || []
-    Object.defineProperty(this, 'treeContext', {
-      value: treeContext ?? new TreeContext(),
+    Object.defineProperty(this, '_treeContext', {
+      value: treeContext,
       writable: true
     })
+    if (treeContext) {
+      this.walkNodes(n => {
+        n._treeContext = treeContext
+      }, true)
+    }
     this._options = options
   }
 
@@ -217,7 +234,7 @@ export abstract class Node<
   processNodes(func: (n: Node) => NodeValue) {
     this.data.forEach((nodeVal, key, map) => {
       /** Process Node arrays only */
-      if (Array.isArray(nodeVal)) {
+      if (isArray(nodeVal)) {
         let out = []
         for (let i = 0; i < nodeVal.length; i++) {
           let node = nodeVal[i]
@@ -268,7 +285,7 @@ export abstract class Node<
        * like async file operations and dynamic imports.
        */
       /** Process Node arrays only */
-      if (Array.isArray(nodeVal)) {
+      if (isArray(nodeVal)) {
         let out = []
         for (let i = 0; i < nodeVal.length; i++) {
           let node = nodeVal[i]
@@ -286,25 +303,63 @@ export abstract class Node<
     })
   }
 
-  /**
-   * Fire a function for each Node in the tree, recursively
-   */
-  walkNodes(func: (n: Node) => void) {
-    this.data.forEach(nodeVal => {
-      /** Process Node arrays only */
-      if (Array.isArray(nodeVal)) {
-        for (let i = 0; i < nodeVal.length; i++) {
-          let node = nodeVal[i]
-          if (node instanceof Node) {
-            func(node)
-            node.walkNodes(func)
-          }
+  /** Mutate nodes in place, used in walkNodes */
+  private _processValueArray(arr: any[], fn: NodeVisitFunction, shallow?: boolean) {
+    const length = arr.length
+    for (let i = 0; i < length; i++) {
+      let node = arr[i]
+      if (node instanceof Node) {
+        let returnVal = fn(node)
+        if (returnVal === ABORT) {
+          return ABORT
+        } else if (returnVal === REMOVE) {
+          arr.splice(i, 1)
+          i--
+        } else if (returnVal instanceof Node && returnVal !== node) {
+          arr[i] = returnVal
         }
-      } else if (nodeVal instanceof Node) {
-        func(nodeVal)
-        nodeVal.walkNodes(func)
+        if (!shallow) {
+          node.walkNodes(fn)
+        }
       }
-    })
+    }
+  }
+
+  /**
+   * Fire a function for each Node in the tree, recursively.
+   * This method can optionally mutate the tree in place,
+   * if the callback function returns a Node.
+   *
+   * @note
+   * A Node return value is intended to be a mutation.
+   * A return value of `false` (ABORT) means to abort the walk.
+   * A return value of `null` (REMOVE) means to remove the current node.
+   */
+  walkNodes(func: NodeVisitFunction, shallow?: boolean, visitPrePost?: boolean) {
+    if (visitPrePost) {
+      let { pre, post } = this
+      isArray(pre) && this._processValueArray(pre, func, true)
+      isArray(post) && this._processValueArray(post, func, true)
+    }
+    for (const [key, nodeVal] of this.data.entries()) {
+      /** Process Node arrays only */
+      if (isArray(nodeVal)) {
+        return this._processValueArray(nodeVal, func, shallow)
+      } else if (nodeVal instanceof Node) {
+        let returnVal = func(nodeVal)
+        if (returnVal === ABORT) {
+          return ABORT
+        } else if (returnVal === REMOVE) {
+          /** @note It's up to the author to make sure this key can be set to unddefined! */
+          this.data.set(key, undefined as M[typeof key])
+        } else if (returnVal instanceof Node && returnVal !== nodeVal) {
+          this.data.set(key, returnVal as M[typeof key])
+        }
+        if (!shallow) {
+          nodeVal.walkNodes(func)
+        }
+      }
+    }
   }
 
   collectRoots(): Node[] {
@@ -326,11 +381,8 @@ export abstract class Node<
 
   /**
    * Creates a copy of the current node.
-   *
-   * @todo - Cloning should strip comments, except in the
-   * case of custom declaration values.
    */
-  clone(deep?: boolean): this {
+  clone(deep?: boolean, cloneFn?: (n: Node) => NodeValue): this {
     let Class: Constructor<this> = Object.getPrototypeOf(this).constructor
 
     let newNode = new Class(
@@ -345,12 +397,43 @@ export abstract class Node<
       this.treeContext
     )
 
+    cloneFn ??= n => n.clone(deep)
+
     if (deep) {
-      newNode.processNodes(n => n.clone(deep))
+      newNode.processNodes(cloneFn)
     }
     newNode.pre = this.pre
     newNode.post = this.post
     newNode.evaluated = this.evaluated
+
+    return newNode
+  }
+
+  /** Remove comments from pre/post */
+  stripPrePost(prePost: Node['pre']) {
+    if (isArray(prePost)) {
+      return prePost.filter(p => !(p instanceof Node && p.type === 'Comment'))
+    }
+    return prePost
+  }
+
+  /**
+   * Same as clone except comments are stripped.
+   * This is used for variable referencing and
+   * selector extending.
+   */
+  copy(deep?: boolean): this {
+    const newNode = this.clone(
+      deep,
+      n => {
+        if (n.type !== 'Comment') {
+          const copy = n.copy(deep)
+          return copy
+        }
+      }
+    )
+    newNode.pre = this.stripPrePost(this.pre)
+    newNode.post = this.stripPrePost(this.post)
 
     return newNode
   }
@@ -375,8 +458,10 @@ export abstract class Node<
   protected async evalIfNot<T extends Node = Node>(context: Context, func: () => T | Promise<T>): Promise<T> {
     if (!this.evaluated) {
       let node = await func()
-      node.inherit(this)
-      node.evaluated = true
+      if (!node.evaluated) {
+        node.inherit(this)
+        node.evaluated = true
+      }
       return node
     }
     return this as unknown as T
@@ -385,7 +470,7 @@ export abstract class Node<
   /** Override normally readonly props to make them inheritable */
   inherit(node: Node) {
     (this as Writable<this>).location = node.location
-    ;(this as Writable<this>).treeContext = node.treeContext
+    ;(this as Writable<this>)._treeContext = node._treeContext
     this.evaluated = node.evaluated
     this.pre = node.pre
     this.post = node.post
@@ -393,16 +478,19 @@ export abstract class Node<
   }
 
   /**
-   * @todo - it's not clear this needs to be in the
-   * root Node class, except it can be then generally
-   * called on any node.
+   * Represents the normalized string value of the node,
+   * for the purposes of comparison with other nodes,
+   * regardless of type.
+   *
+   * Derived nodes will override this with different
+   * normalization algorithms.
    */
-  valueOf(): any {
+  valueOf(): string | number {
     let values = [...this.data.values()]
     if (values.length === 1) {
-      return values[0]
+      return `${values[0]}`
     }
-    return values
+    return `${values}`
   }
 
   processPrePost(key: 'pre' | 'post') {
@@ -440,6 +528,9 @@ export abstract class Node<
    * make sure we don't override
    */
   toString(depth?: number): Opaque<string> { // eslint-disable-line @typescript-eslint/naming-convention
+    if (!this.visible) {
+      return '' as Opaque<string>
+    }
     let output = ''
     output += this.processPrePost('pre')
     output += this.toTrimmedString(depth)
@@ -461,7 +552,7 @@ export abstract class Node<
   toTrimmedString(depth?: number) {
     let output = ''
     this.data.forEach(value => {
-      if (Array.isArray(value)) {
+      if (isArray(value)) {
         output += value.join('')
       } else {
         output += `${value}`
@@ -480,15 +571,12 @@ export abstract class Node<
    * undefined = not comparable
    */
   compare(b: Node, context?: Context): 0 | 1 | -1 | undefined {
-    let aVal = this.toString()
-    let bVal = b.toString()
+    let aVal = this.valueOf()
+    let bVal = b.valueOf()
     if (aVal === bVal) {
       return 0
-    } else if (aVal > bVal) {
-      return 1
-    } else if (aVal < bVal) {
-      return -1
     }
+    return aVal > bVal ? 1 : -1
   }
 
   /** Overridden in index.ts to avoid circularity */
@@ -518,7 +606,7 @@ export abstract class Node<
   // toCSS(context: Context, out: OutputCollector): void {
   //   const value = this.value
   //   const loc = this.location
-  //   if (Array.isArray(value)) {
+  //   if (isArray(value)) {
   //     value.forEach(n => {
   //       if (n instanceof Node) {
   //         n.toCSS(context, out)

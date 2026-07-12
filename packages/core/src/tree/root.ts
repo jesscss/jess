@@ -1,26 +1,28 @@
 import { defineType } from './node'
 import { Rules } from './rules'
 import type { Context } from '../context'
+import { type Opaque } from 'type-fest'
 
 /**
- * The root node. Contains a collection of nodes
+ * The root node. Contains a collection of nodes.
+ * The tree will have a root, but each file will have its own root.
  */
 export class Root extends Rules {
-  async eval(context: Context) {
+  async eval(context: Context): Promise<Root> {
     context.opts.mathMode = this.treeContext.mathMode
     context.opts.unitMode = this.treeContext.unitMode
-    /**
-     * We're evaluating asynchronously,
-     * so we need to evaluate rules out of order,
-     * then sort them into the correct order
-     */
     context.depth++
-    let node = await super.eval(context)
+    let node = (await super.eval(context)) as Root
     let rules = node.value
     node.rootRules?.forEach(rule => rules.push(rule))
     context.depth--
     node.value = rules
     return node
+  }
+
+  toString(depth?: number | undefined) {
+    /** Remove leading newlines */
+    return super.toString(depth).replace(/^\n+/, '') as Opaque<string>
   }
 
   /** @todo - move to visitors */

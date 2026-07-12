@@ -1,5 +1,6 @@
 import { type Context } from '../context'
 import { defineType, Node } from './node'
+import { compareNodeArray } from './util/compare'
 
 export type ListOptions = {
   /**
@@ -28,6 +29,10 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
     }
   }
 
+  entries() {
+    return this[Symbol.iterator]()
+  }
+
   get length() {
     return this.value.length
   }
@@ -35,6 +40,13 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
   toTrimmedString() {
     let { sep = ',' } = this.options ?? {}
     return this.value.map(v => v.toString()).join(`${sep}`)
+  }
+
+  compare(other: Node) {
+    if (other instanceof List) {
+      return compareNodeArray(this.value, other.value)
+    }
+    return super.compare(other)
   }
 
   operate(b: Node, op: string) {
@@ -52,7 +64,7 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
   }
 
   /** @todo? Lists should collapse nested lists? */
-  async eval(context: Context) {
+  async eval(context: Context): Promise<List<T> | T> {
     return await (super.eval(context) as Promise<List<T>>)
   }
 

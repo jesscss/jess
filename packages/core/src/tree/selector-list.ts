@@ -1,21 +1,31 @@
+/* eslint-disable @typescript-eslint/require-array-sort-compare */
 import {
-  Node, defineType
+  defineType
 } from './node'
-import { type SelectorSequence } from './selector-sequence'
-import { type Extend } from './extend'
 import { type Context } from '../context'
+import { type Selector } from './selector'
+import { List } from './list'
+
+// export interface SelectorList extends List<Selector> {
+//   get value(): []
+//   set value(v: T[])
+// }
 
 /** Constructs */
-export class SelectorList<
-  T extends Node = SelectorSequence | Extend
-> extends Node<T[]> {
-  toTrimmedString() {
-    return this.value.map(v => v.toString()).join(',')
+export class SelectorList extends List<Selector> {
+  /** @todo - put in whitespace and line breaks */
+  toTrimmedString(depth: number = 0) {
+    let space = ''.padStart(depth * 2)
+    return this.value.map(v => v.toString(depth)).join(`,\n${space}`)
   }
 
-  async eval(context: Context): Promise<SelectorList<T> | T> {
-    return await this.evalIfNot<SelectorList<T> | T>(context, async () => {
-      const list = await (super.eval(context) as Promise<SelectorList<T>>)
+  valueOf() {
+    return `[${this.value.map(v => v.valueOf()).sort().join(',')}]`
+  }
+
+  async eval(context: Context): Promise<SelectorList | Selector> {
+    return await this.evalIfNot<SelectorList | Selector>(context, async () => {
+      const list = await (super.eval(context) as Promise<SelectorList>)
       const { value } = list
       if (value.length === 1) {
         return value[0]!

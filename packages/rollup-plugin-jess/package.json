@@ -18,7 +18,7 @@
     "lint": "eslint '**/*.{js,ts}'"
   },
   "dependencies": {
-    "jess": "workspace:^2.0.0-alpha.1"
+    "jess": "workspace:*"
   },
   "peerDependencies": {
     "rollup": "^2.0.0"

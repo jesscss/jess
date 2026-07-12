@@ -20,14 +20,11 @@
     "lint": "eslint '**/*.{js,ts}'"
   },
   "dependencies": {
-    "@jesscss/core": "workspace:^2.0.0-alpha.1",
-    "@jesscss/less-parser": "workspace:^2.0.0-alpha.1",
-    "chevrotain": "^11.0.3"
+    "@jesscss/core": "workspace:*",
+    "@jesscss/fns": "workspace:*",
+    "@jesscss/less-parser": "workspace:*"
   },
-  "devDependencies": {
-    "@less/test-data": "^4.1.0",
-    "jess-plugin": "workspace:^2.0.0-alpha.1"
-  },
+  "devDependencies": {},
   "author": "Matthew Dean <matthew-dean@users.noreply.github.com>",
   "license": "MIT",
   "bugs": {

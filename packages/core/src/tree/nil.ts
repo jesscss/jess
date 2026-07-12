@@ -2,9 +2,9 @@ import {
   Node,
   defineType,
   type LocationInfo,
-  type NodeOptions,
-  type TreeContext
+  type NodeOptions
 } from './node'
+import type { TreeContext } from '../context'
 
 /**
  * A Node type that outputs nothing.
@@ -13,7 +13,7 @@ import {
  * which need dynamically-linked nodes
  */
 export class Nil extends Node<undefined> {
-  evaluated: true = true
+  _evaluated: true = true
 
   constructor(
     value?: any,

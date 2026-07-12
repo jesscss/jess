@@ -1,4 +1,4 @@
-import { decl, any } from '../../tree'
+import { decl, any, AssignmentType } from '../../tree'
 import { Scope } from '../index'
 import { logger } from '../../logger'
 
@@ -14,7 +14,7 @@ describe('Scope', async () => {
   describe('set / get', () => {
     it('can do a normal get / set of properties', () => {
       scope.setProp('foo', decl({ name: 'foo', value: any('bar') }))
-      expect(`${scope.getProp('foo')}`).toBe('foo: bar;')
+      expect(`${scope.getProp('foo')}`).toBe('foo: bar')
     })
 
     it('can do a normal get / set of variables', () => {
@@ -90,11 +90,11 @@ describe('Scope', async () => {
     })
 
     it('can merge child scope into parent scope', () => {
-      scope.setProp('foo', decl({ name: 'foo', value: any('one') }, { merge: 'list' }))
+      scope.setProp('foo', decl({ name: 'foo', value: any('one') }, { assign: AssignmentType.MergeList }))
       let child = new Scope()
-      child.setProp('foo', decl({ name: 'foo', value: any('two') }, { merge: 'list' }))
+      child.setProp('foo', decl({ name: 'foo', value: any('two') }, { assign: AssignmentType.MergeList }))
       scope.merge(child)
-      expect(`${scope.getProp('foo')}`).toEqual('foo: one, two;')
+      expect(`${scope.getProp('foo')}`).toEqual('foo: one, two')
     })
 
     it('will leak undefined vars', () => {
@@ -120,9 +120,13 @@ describe('Scope', async () => {
     it('changes a starting dash to underscore', () => {
       expect(scope.normalizeKey('-foo-bar')).toBe('_fooBar')
     })
+    /**
+     * Okay what about #FooBar and .FooBar?
+     */
     it('replaces a leading "." or "#"', () => {
       expect(scope.normalizeKey('.foo-bar')).toBe('fooBar')
       expect(scope.normalizeKey('#foo-bar')).toBe('FooBar')
+      expect(scope.normalizeKey('.Foo-bar')).toBe('fooBar')
     })
   })
 

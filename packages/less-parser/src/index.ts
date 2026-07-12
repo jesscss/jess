@@ -5,6 +5,7 @@ import { createLexerDefinition } from '@jesscss/css-parser'
 import { LessActionsParser, type LessParserConfig, type TokenMap } from './lessActionsParser'
 import { LessErrorMessageProvider } from './lessErrorMessageProvider'
 import type { ConditionalPick } from 'type-fest'
+import type { Root } from '@jesscss/core'
 
 export * from './lessActionsParser'
 export * from './lessTokens'
@@ -42,20 +43,17 @@ export class Parser {
     this.parse = this.parse.bind(this)
   }
 
-  parse<T extends LessRules = LessRules>(text: string, rule: T = 'stylesheet' as T, ...args: Parameters<LessActionsParser[T]>): IParseResult<LessActionsParser> {
+  parse(text: string): IParseResult<Root>
+  parse(text: string, rule: 'stylesheet', ...args: Parameters<LessActionsParser['stylesheet']>): IParseResult<Root>
+  parse<T extends LessRules = LessRules>(text: string, rule?: T, ...args: Parameters<LessActionsParser[T]>): IParseResult
+  parse<T extends LessRules = LessRules>(text: string, rule: T = 'stylesheet' as T, ...args: Parameters<LessActionsParser[T]>): IParseResult {
     const parser = this.parser
     const lexerResult = this.lexer.tokenize(text)
     const lexedTokens: IToken[] = lexerResult.tokens
     parser.input = lexedTokens
     // @ts-expect-error - This is fine
-    const tree = parser[rule](args)
+    const tree = parser[rule](...args)
 
-    let contents: string[] | undefined
-
-    if (!lexerResult.errors.length && !parser.errors.length) {
-      contents = text.split('\n')
-    }
-
-    return { tree, contents, lexerResult, errors: parser.errors }
+    return { tree, lexerResult, errors: parser.errors }
   }
 }

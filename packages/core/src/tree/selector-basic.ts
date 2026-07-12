@@ -7,7 +7,7 @@ import { SimpleSelector } from './selector-simple'
  * @see https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_selectors/Selectors_and_combinators#basic_selectors
  *   e.g. div, .foo, #bar
 */
-export class BasicSelector extends SimpleSelector<string> {
+export class BasicSelector extends SimpleSelector<{ value: string }> {
   get isClass() {
     return /^\./.test(this.value)
   }
@@ -29,6 +29,16 @@ export class BasicSelector extends SimpleSelector<string> {
       }
       return node
     })
+  }
+
+  valueOf(): string {
+    let value = this._value
+    if (!value) {
+      /** Tags are not case-sensitive, but other selectors are */
+      value = this.isTag ? this.value.toLowerCase() : this.value
+      Object.defineProperty(this, '_value', { value })
+    }
+    return value
   }
 
   /** @todo - move to visitors */

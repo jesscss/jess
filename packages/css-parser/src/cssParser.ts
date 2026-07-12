@@ -1,16 +1,15 @@
-import { type ILexingResult, Lexer } from 'chevrotain'
+import { type ILexingResult, Lexer, type IRecognitionException } from 'chevrotain'
 import { cssTokens, cssFragments } from './cssTokens'
 import { type TokenMap, type CssParserConfig, CssActionsParser } from './cssActionsParser'
 import { createLexerDefinition } from './util'
 import { CssErrorMessageProvider } from './cssErrorMessageProvider'
 import type { ConditionalPick } from 'type-fest'
-import { type Node } from '@jesscss/core'
+import { type Node, type Root } from '@jesscss/core'
 
-export interface IParseResult<T extends CssActionsParser = CssActionsParser> {
+export interface IParseResult<T extends Node = Node> {
   lexerResult: ILexingResult
-  errors: T['errors']
-  tree: Node
-  contents?: string[]
+  errors: IRecognitionException[]
+  tree: T
 }
 
 const errorMessageProvider = new CssErrorMessageProvider()
@@ -54,21 +53,18 @@ export class CssParser {
     this.parser = new CssActionsParser(lexer, T as TokenMap, config)
   }
 
+  parse(text: string): IParseResult<Root>
+  parse(text: string, rule: 'stylesheet'): IParseResult<Root>
+  parse(text: string, rule?: CssRules): IParseResult
   parse(text: string, rule: CssRules = 'stylesheet'): IParseResult {
     const parser = this.parser
     const lexerResult = this.lexer.tokenize(text)
     const lexedTokens = lexerResult.tokens
     parser.input = lexedTokens
     const tree = parser[rule]() as Node
-    let contents: string[] | undefined
-
-    if (!lexerResult.errors.length && !parser.errors.length) {
-      contents = text.split('\n')
-    }
 
     return {
       tree,
-      contents,
       lexerResult,
       errors: parser.errors
     }

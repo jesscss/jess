@@ -74,7 +74,7 @@ export class CssActionsParser extends AdvancedActionsParser {
   skipValidations: boolean
 
   /** Rewire, declaring class fields in constructor with `public` */
-  stylesheet: Rule
+  stylesheet: Rule<(options?: Record<string, any>) => void>
   main: Rule<(ctx?: RuleContext) => void>
   qualifiedRule: Rule<(ctx?: RuleContext) => void>
   atRule: Rule
@@ -275,6 +275,7 @@ export class CssActionsParser extends AdvancedActionsParser {
     let RulesConstructor = isRoot ? Root : Rules
     let returnRules =
       new RulesConstructor(rules, undefined, rules.length ? this.getLocationFromNodes(rules) : 0, this.context)
+    returnRules.scope = this.context.scope
     returnRules.post = remainder
     return returnRules
   }
@@ -330,7 +331,7 @@ export class CssActionsParser extends AdvancedActionsParser {
         return node
       }
     }
-    if (node.pre === 0) {
+    if ((!post || post === 'both') && node.pre === 0) {
       let offset = node.location[0]
       if (offset !== undefined) {
         node.pre = this.getPrePost(offset)
