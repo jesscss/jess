@@ -302,7 +302,6 @@ const XFAIL_PARSE_MISSES: readonly string[] = [
   'directives/use/error/syntax/member.hrx::function/no_member',
   'directives/use/error/syntax/member.hrx::identifier_only',
   'directives/use/error/syntax/member.hrx::mixin/definition',
-  'directives/use/error/syntax/member.hrx::mixin/no_namespace',
   'directives/use/error/syntax/member.hrx::variable/no_member',
   'directives/use/error/syntax/member.hrx::variable/no_namespace',
   'directives/use/error/syntax/url.hrx::unquoted',
@@ -340,7 +339,6 @@ const XFAIL_PARSE_MISSES: readonly string[] = [
   'expressions/if/error/semicolon.hrx::multiple/end',
   'expressions/if/error/semicolon.hrx::multiple/middle',
   'libsass-closed-issues/issue_1093/property.hrx::.',
-  'libsass-closed-issues/issue_1355.hrx::.',
   'libsass-closed-issues/issue_2023/id-selector-id.hrx::.',
   'libsass-closed-issues/issue_2023/id-selector-nr.hrx::.',
   'libsass-closed-issues/issue_2023/pseudo-selector-id.hrx::.',
@@ -480,27 +478,71 @@ describeCorpus('sass-spec negative: parse-time error fixtures', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Confirmed minimal parse-time false negatives (the at-rule cluster).
-// These are hand-written reductions of the confirmed grammar gaps. Each is
-// marked `it.fails`: the body asserts a parse error, which currently does NOT
-// happen, so the test passes today. When the grammar is fixed, the assertion
-// succeeds and `it.fails` flips RED — the signal to convert it to a plain `it`.
+// The flow-control / callable at-rule cluster: at-rules that REQUIRE a prelude
+// (a condition, loop header, name, or return expression) and must ERROR when it
+// is missing. Wave 2B hardened the grammar (structural `expect(...)` requirements,
+// macro-safe) so each now reports a parse error IN PLACE — the enclosing block
+// still parses (recovered), so exactly one error is emitted at the prelude site.
+// These are real assertions on the error CATEGORY (message substring) + LINE/COLUMN.
 // ---------------------------------------------------------------------------
-describe('confirmed SCSS parse-time false negatives (tracked via it.fails)', () => {
-  const confirmed: Array<[string, string]> = [
-    ['@if with no condition before block', '@if { color: red }'],
-    ['@each with no variable (in-first)', '@each in $list {}'],
-    ['@for missing "from"/"through"', '@for $i {}'],
-    ['@mixin with no name', '@mixin { color: red }'],
-    ['@include with empty name', '@include ;'],
-    ['@include with no name inside a rule', '.a { @include }'],
-    ['@function @return with no expression', '@function foo(){ @return }'],
-    ['declaration with nullable (empty) value', '.a { color: }']
+/** Parse `src` and return its combined lexer + parser errors. */
+function parseErrors(src: string) {
+  const r = parser.parse(src, 'Stylesheet');
+  return [...r.lexerResult.errors, ...r.errors];
+}
+
+describe('flow-control / callable at-rules reject a missing prelude', () => {
+  // [name, src, message-category substring, expected line, expected column]
+  const cases: Array<[string, string, string, number, number]> = [
+    ['@if with no condition before block', '@if { color: red }', 'condition', 1, 5],
+    ['@each with no variable (in-first)', '@each in $list {}', 'variable', 1, 7],
+    ['@for missing "from"/"through"', '@for $i {}', 'from', 1, 9],
+    ['@mixin with no name', '@mixin { color: red }', 'name', 1, 8],
+    ['@include with empty name', '@include ;', 'name', 1, 10],
+    ['@include with no name inside a rule', '.a { @include }', 'name', 1, 15],
+    ['@function @return with no expression', '@function foo(){ @return }', 'expression', 1, 26]
   ];
 
-  for (const [name, src] of confirmed) {
-    it.fails(name, () => {
-      expect(hasParseError(src), `expected a parse error for: ${src}`).toBe(true);
+  for (const [name, src, category, line, column] of cases) {
+    it(`${name} reports a "${category}" error at ${line}:${column}`, () => {
+      const errs = parseErrors(src);
+      expect(errs.length, `expected a parse error for: ${src}`).toBeGreaterThanOrEqual(1);
+      const err = errs[0]!;
+      expect((err as { code?: string }).code).toBe('parse/syntax-error');
+      expect((err as { message: string }).message.toLowerCase()).toContain(category.toLowerCase());
+      expect({
+        line: (err as { line: number }).line,
+        column: (err as { column: number }).column
+      }).toEqual({ line, column });
     });
   }
+
+  // Their VALID counterparts must still parse CLEAN (positive coverage — the
+  // requirement is exact, not a blanket rejection of the keyword).
+  const valid: Array<[string, string]> = [
+    ['@if $x { }', '@if $x { }'],
+    ['@each $i in $list { }', '@each $i in $list { }'],
+    ['@for $i from 1 through 3 { }', '@for $i from 1 through 3 { }'],
+    ['@mixin foo { }', '@mixin foo { }'],
+    ['@include foo;', '@include foo;'],
+    ['@function f() { @return 1 }', '@function f() { @return 1 }']
+  ];
+  for (const [name, src] of valid) {
+    it(`valid: ${name} parses clean`, () => {
+      expect(parseErrors(src)).toHaveLength(0);
+    });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Remaining tracked false negative OUTSIDE the flow-control/callable scope: an
+// empty declaration value (`.a { color: }`). SCSS `Declaration` intentionally has
+// a nullable value (`optional(g.valueList)`), so this is a separate hardening
+// decision (declaration-level, not a missing at-rule prelude) deferred to a later
+// wave. Kept as `it.fails` so it stays green while tracked.
+// ---------------------------------------------------------------------------
+describe('confirmed SCSS parse-time false negatives (tracked via it.fails)', () => {
+  it.fails('declaration with nullable (empty) value', () => {
+    expect(hasParseError('.a { color: }'), 'expected a parse error for: .a { color: }').toBe(true);
+  });
 });

@@ -245,9 +245,16 @@ export const scssGrammar = compose([lessGrammar, rules({ trivia: rw }, (g: any) 
   const ifKw = regex(/@if(?![-\w])/i);
   const elseKw = regex(/@else(?![-\w])/i);
   const ifWord = regex(/if(?![-\w])/i);
+  // A REQUIRED condition. `@if { … }` (no condition) is a real error. `not('{')`
+  // asserts we are not sitting directly on the block opener; `expect` reports the
+  // missing condition and RECOVERS IN PLACE (zero-width) so the `{ … }` block still
+  // parses (as an `@if` with a recovered error) rather than the whole rule failing
+  // and `@if` falling through to the opaque unknown-at-rule handler. Structural,
+  // context-free — no `withCtx`/`guard`, so the grammar stays macro-compiled.
+  const reqIfCond = expect(sequence(not(literal('{')), g.ScssCondOr), 'condition');
   const ScssIf = node(
     sequence(
-      ifKw, g.ScssCondOr, g.ScssRules,
+      ifKw, reqIfCond, g.ScssRules,
       many(sequence(elseKw, choice(
         sequence(ifWord, g.ScssCondOr, g.ScssRules),
         g.ScssRules
@@ -265,23 +272,32 @@ export const scssGrammar = compose([lessGrammar, rules({ trivia: rw }, (g: any) 
   const forKw = regex(/@for(?![-\w])/i);
   const whileKw = regex(/@while(?![-\w])/i);
 
+  // A REQUIRED loop variable. `@each in $list { … }` (no variable) is a real error.
+  // `not(inKw | '{')` asserts a variable is actually present (missing → we are at
+  // `in` or the block); `expect` reports it and recovers zero-width so `in $list
+  // { … }` still parses as an `@each` with a recovered error.
+  const reqEachVars = expect(
+    sequence(not(choice(inKw, literal('{'))), sepBy(scssVar, literal(','))), 'variable');
   const ScssEach = node(
     sequence(
       eachKw,
-      sepBy(scssVar, literal(',')),
+      reqEachVars,
       inKw,
       g.valueSequence,
       g.ScssRules
     ));
 
+  // A REQUIRED `from … through/to …` range. `@for $i { … }` (no range) is a real
+  // error. The whole range tail is wrapped in one `expect`: on failure it recovers
+  // zero-width (as a unit — `fromKw` is a hard token that fails at `{` without
+  // consuming) so the trailing `{ … }` block still parses as a `@for` with a
+  // recovered error rather than the rule failing and falling through.
+  const forRangeTail = sequence(fromKw, g.topSum, choice(forThrough, forTo), g.topSum);
   const ScssFor = node(
     sequence(
       forKw,
-      scssVar,
-      fromKw,
-      g.topSum,
-      choice(forThrough, forTo),
-      g.topSum,
+      expect(scssVar, 'variable'),
+      expect(forRangeTail, '"from"'),
       g.ScssRules
     ));
 
@@ -341,9 +357,12 @@ export const scssGrammar = compose([lessGrammar, rules({ trivia: rw }, (g: any) 
   const ScssDeclBody = node(
     sequence(literal('{'), g.declarationList, expect(literal('}'), '}')));
 
+  // A REQUIRED mixin name. `@mixin { … }` (no name) is a real error. `expect` reports
+  // the missing name and recovers zero-width so the `{ … }` body still parses (as a
+  // `@mixin` with a recovered error) rather than the rule falling through.
   const ScssMixin = node(
     sequence(
-      mixinKw, scssMixinIdent, optional(g.ScssMixinParams), g.ScssDeclBody
+      mixinKw, expect(scssMixinIdent, 'name'), optional(g.ScssMixinParams), g.ScssDeclBody
     ));
 
   const ScssIncludeUsing = node(
@@ -351,9 +370,12 @@ export const scssGrammar = compose([lessGrammar, rules({ trivia: rw }, (g: any) 
       usingKw, literal('('), sepBy(scssVar, literal(',')), expect(literal(')'))
     ));
 
+  // A REQUIRED mixin name. `@include ;` and `.a { @include }` (no name) are real
+  // errors. `expect` reports the missing name and recovers zero-width so the trailing
+  // `;`/`}` still closes the statement rather than the rule falling through.
   const ScssInclude = node(
     sequence(
-      includeKw, g.ScssMixinName, optionalCallParens,
+      includeKw, expect(g.ScssMixinName, 'name'), optionalCallParens,
       optional(g.ScssIncludeUsing), optional(g.ScssRules), optional(literal(';'))
     ));
 
@@ -369,8 +391,16 @@ export const scssGrammar = compose([lessGrammar, rules({ trivia: rw }, (g: any) 
       functionKw, scssMixinIdent, optional(g.ScssMixinParams), g.ScssDeclBody
     ));
 
+  // A REQUIRED return value. `@return }` / `@return ;` (no expression) is a real
+  // error. `not('}' | ';')` asserts a value is actually present (valueList can match
+  // zero-width); `expect` reports it and recovers zero-width so the enclosing block's
+  // `}` still closes.
   const ScssReturn = node(
-    sequence(returnKw, g.valueList, optional(literal(';'))));
+    sequence(
+      returnKw,
+      expect(sequence(not(choice(literal('}'), literal(';'))), g.valueList), 'expression'),
+      optional(literal(';'))
+    ));
 
   // ── @use / @forward / @import / @extend ───────────────────────────────────
   // Faithful ports of scssUseAtRule / scssForwardAtRule / importAtRule /

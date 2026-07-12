@@ -7,12 +7,15 @@
  *
  * Fixtures live in test/errors/*.jess.
  *
- * Jess is composed from css + less + scss + jess, so it inherits Sass/Less
- * at-rules (@if/@each/@for/@mixin/@include). Several of those currently accept a
- * MISSING prelude without error — genuine false negatives. Those cases are marked
- * `test.fails` so the suite stays green today while tracking every missed error:
- * when the grammar is hardened (Phase 2) the `test.fails` will start failing and
- * must be flipped to a real `test`.
+ * Jess is composed on the CSS base (grammar.ts: `compose([cssGrammar, …])`), NOT
+ * on Less/SCSS. Its control flow is `$if`/`$else`/`$for`/`$while` (dollar-prefixed)
+ * and its mixins are `name(...)` definitions with Less-style `when` guards — those
+ * already reject a missing header correctly (`$if { }` errors, `$if ($x) { }` does
+ * not). The Sass/Less `@if`/`@each`/`@for`/`@mixin`/`@include` at-rules are NOT Jess
+ * syntax: they parse clean only because they fall through to the generic
+ * `UnknownAtRuleBlock` catch-all, which MUST stay permissive so legitimate
+ * unknown/vendor at-rules (`@tailwind`, `@apply`, …) are accepted. So there is no
+ * Jess missing-prelude false negative to fix here.
  */
 import { describe, test, expect } from 'vitest';
 import * as fs from 'fs';
@@ -35,19 +38,6 @@ const DETECTED: Array<[string, string, number, number]> = [
   ['bare-declaration.jess', 'input', 1, 1]   // `color: red` at top level → unparsed input
 ];
 
-// -------------------------------------------------------------------------
-// Cases that SHOULD error but currently DON'T — tracked false negatives.
-// Each parses clean today; `test.fails` keeps the suite green while asserting
-// the missing error. When the grammar is fixed these flip to `test`.
-// -------------------------------------------------------------------------
-const MISSED: Array<[string, string]> = [
-  ['if-no-condition.jess', '@if with no condition'],
-  ['each-no-prelude.jess', '@each with no prelude'],
-  ['for-no-prelude.jess', '@for with no prelude'],
-  ['mixin-no-name.jess', '@mixin with no name'],
-  ['include-no-name.jess', '@include with no name']
-];
-
 // Clearly-valid snippets that must parse CLEAN (positive coverage).
 const VALID: Array<[string, string]> = [
   ['basic rule', '.a { color: red; }'],
@@ -66,16 +56,6 @@ describe('jess syntax errors (parseJessFn)', () => {
       expect(err.code).toBe('parse/syntax-error');
       expect(err.message.toLowerCase()).toContain(category.toLowerCase());
       expect({ line: err.line, column: err.column }).toEqual({ line, column });
-    });
-  }
-
-  // Tracked-failing: these SHOULD error. They don't yet, so `test.fails` is green.
-  // Flip to `test` (and add category/line/column assertions) once the grammar
-  // rejects the missing prelude.
-  for (const [file, desc] of MISSED) {
-    test.fails(`[tracked] ${file} (${desc}) should report a parse error`, () => {
-      const { errors } = parseJessFn(read(file));
-      expect(errors.length).toBeGreaterThanOrEqual(1);
     });
   }
 
