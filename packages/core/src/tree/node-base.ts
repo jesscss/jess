@@ -91,6 +91,15 @@ export type PlacementCloneOptions = {
    * `detachChildren` — a container child is shared frozen instead of deep-copied.
    */
   shareChildren?: boolean;
+  /**
+   * Force an owned surface for THIS node when it structurally holds child nodes,
+   * even if its `F_HAS_NODE_CHILD` flag is still clear (raw `new Foo([...])`
+   * construction shares children without setting it). Used at value boundaries
+   * that must return a caller-owned result — e.g. `extract()` — rather than
+   * sharing a source container by identity. Genuine scalar leaves are still
+   * reused. Leaves the default shared/thin-placement path untouched.
+   */
+  owned?: boolean;
 };
 
 type BasicNodeTypes = PrimitiveOrFunc | Node;
@@ -1298,7 +1307,12 @@ export abstract class Node<
     if (stripComments && this.type === 'Comment') {
       return this.nil().inherit(this);
     }
-    if (reuseLeaves && this.canReuseAsLeaf()) {
+    // An owned boundary must not share a source container by identity: skip the
+    // leaf reuse when this node actually holds child nodes (value-accurate, so a
+    // stale `F_HAS_NODE_CHILD` flag can't misclassify a raw container as a leaf).
+    // Genuine scalar leaves still reuse; the default (non-owned) path is unchanged.
+    const owned = options?.owned === true;
+    if (reuseLeaves && this.canReuseAsLeaf() && !(owned && this.hasNodeChild())) {
       return this.reuseAsLeaf();
     }
     // Thin placement: a new surface node that SHARES this node's child nodes.

@@ -16,7 +16,10 @@ const extract = defineFunction(
       throw new RangeError(`extract() index ${raw} out of range for length ${items.length}`);
     }
     const out = items[normalized - 1]!;
-    return out.cloneForPlacement().detachTrivia(true);
+    // extract() returns a caller-owned value: own the container surface (a shared
+    // source container by identity would alias caller-mutable state) while still
+    // reusing the inert source-free leaves inside it.
+    return out.cloneForPlacement({ owned: true }).detachTrivia(true);
   },
   {
     params: [{
