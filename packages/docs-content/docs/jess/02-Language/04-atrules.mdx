@@ -209,6 +209,19 @@ intended to allow downstream stylesheets to extend its selectors.
 }
 ```
 
+This outputs:
+
+```css
+.box,
+.second-box {
+  border: 1px solid green;
+}
+```
+
+Mutability belongs to the composed module, not to the selector name. Another
+stylesheet can define its own `.box` and remain protected when composed without
+`mutable`; a downstream `$extend .box` cannot reach into that module.
+
 
 ### @-compose (export)
 
