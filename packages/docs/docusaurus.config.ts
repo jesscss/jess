@@ -17,6 +17,7 @@ export default {
   favicon: 'img/favicon.ico',
   organizationName: 'jesscss', // Usually your GitHub org/user name.
   projectName: 'jesscss.github.io', // Usually your repo name.
+  deploymentBranch: 'master',
   plugins: [],
   themeConfig: {
     colorMode: {

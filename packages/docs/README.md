@@ -16,6 +16,16 @@ pnpm --filter jess-docs dev
 pnpm --filter jess-docs build
 ```
 
+## Deploy
+
+The Pages site publishes the generated Docusaurus site from the root of the
+`master` branch in `jesscss/jesscss.github.io`. The source content comes from
+the `alpha` branch of this repository. Deploy it with:
+
+```bash
+pnpm --filter jess-docs run deploy:matthew
+```
+
 ## Canonical content workflow
 
 - Author docs in `packages/docs-content/docs/**`
