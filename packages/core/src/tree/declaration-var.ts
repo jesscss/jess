@@ -35,7 +35,7 @@ export type VarDeclarationOptions = DeclarationOptions & {
  *   SCSS: `$foo: 1 !global`
  *
  * @example `nearestOuter` — Jess `:=` / reassign the nearest enclosing binding
- *   Jess: `$foo := 1`  (nearest-outer non-shadowing; eval TODO)
+ *   Jess: `$foo := 1`  (nearest-outer non-shadowing)
  *
  * @example `liveBinding`
  *   Jess: `$!foo: 1`  (live-binding assignment; eval TODO)
