@@ -205,7 +205,7 @@ intended to allow downstream stylesheets to extend its selectors.
 @-compose (mutable) './library.jess';
 
 .second-box {
-  $extend library|.box;
+  $extend .box;
 }
 ```
 
@@ -218,18 +218,37 @@ This outputs:
 }
 ```
 
-Because `library.jess` is composed without an `as` name, its inferred namespace
-is `library`. Mutability belongs to the composed module, not to the selector
-name: another stylesheet can define its own `.box` and remain protected when
-composed without `mutable`.
+Mutability belongs to the composed module, not to the selector name: another
+stylesheet can define its own `.box` and remain protected when composed without
+`mutable`.
 
-### Namespaced `$extend` targets
+:::note Planned: explicit protected boundaries
 
-An `$extend` namespace filters the **immediate module boundary** it names; it is
-not a path that must repeat every namespace used by nested modules. When a
-query crosses that boundary, the namespace segment is consumed and the
-remaining selector is matched against the module's accessible mutable child
-stylesheets.
+`@-compose (protected)` is the planned explicit opt-out from inherited
+mutability. A mutable library can use it when one of its child modules must
+remain closed to downstream extends:
+
+```less
+// library.jess
+@-compose (protected) './base.jess';
+```
+
+This is a follow-up to the default-protected and recursive-mutable compose
+behavior; it is not implemented yet.
+
+:::
+
+### `$extend`
+
+An `$extend` target does not need a namespace. A bare target such as
+`$extend .box` searches all mutable stylesheets accessible from the current
+extend.
+
+Use a namespace only when you want to filter that search to one immediate
+composed module. The namespace is not a path that must repeat every namespace
+used by nested modules. When a query crosses the named boundary, that namespace
+segment is consumed and the remaining selector is matched against the module's
+accessible mutable child stylesheets.
 
 ```less
 // library.jess
@@ -250,10 +269,6 @@ accessible mutable child stylesheets. The `foundation` namespace still exists
 inside `library.jess`; an extend written there can use
 `$extend foundation|.box`. The outer query does not need to spell
 `foundation`.
-
-Omitting the namespace is allowed: `$extend .box` searches all mutable
-stylesheets accessible from the current extend. Use a namespace when you want
-to filter that search to one immediate composed module.
 
 
 ### @-compose (export)
