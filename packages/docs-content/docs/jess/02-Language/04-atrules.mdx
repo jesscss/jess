@@ -205,7 +205,7 @@ intended to allow downstream stylesheets to extend its selectors.
 @-compose (mutable) './library.jess';
 
 .second-box {
-  $extend .box;
+  $extend library|.box;
 }
 ```
 
@@ -218,9 +218,10 @@ This outputs:
 }
 ```
 
-Mutability belongs to the composed module, not to the selector name. Another
-stylesheet can define its own `.box` and remain protected when composed without
-`mutable`; a downstream `$extend .box` cannot reach into that module.
+Because `library.jess` is composed without an `as` name, its inferred namespace
+is `library`. Mutability belongs to the composed module, not to the selector
+name: another stylesheet can define its own `.box` and remain protected when
+composed without `mutable`.
 
 
 ### @-compose (export)
