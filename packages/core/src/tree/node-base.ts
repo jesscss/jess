@@ -24,7 +24,7 @@ import {
 } from './util/render-buffer.js';
 import {
   setSourceSpan,
-  sourceSpanOf,
+  copySpanFields,
   spanStartOf,
   isSourceFree,
   stampEvalErrorLocation,
@@ -1268,7 +1268,7 @@ export abstract class Node<
     const newNode = new Ctor(
       cloned,
       this._options ? { ...this._options } : undefined,
-      sourceSpanOf(this)
+      undefined
     );
     newNode.inherit(this);
     // Faithful copy: a clone shares/maps the SAME children as its source, so it
@@ -1541,7 +1541,11 @@ export abstract class Node<
     } else {
       setParent(this, this.parent ?? node.parent);
     }
-    setSourceSpan(this, sourceSpanOf(node));
+    if (!isSourceFree(node)) {
+      copySpanFields(this, node);
+    } else if (!isSourceFree(this)) {
+      setSourceSpan(this, undefined);
+    }
     // Per-slot spans are sparse (only source multi-member nodes carry them); the
     // flag check keeps eval nodes free. Carry them across derivation so a derived
     // selector-list / value surface can still place inter-member comment trivia.
