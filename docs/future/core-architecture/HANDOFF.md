@@ -51,6 +51,27 @@ Do not preserve an unreleased or self-invented public-looking method for
 compatibility alone. If repo usage does not need it and the user has not
 approved it as API, delete or reshape it.
 
+## Active Semantics: Compose Extension Surfaces
+
+The current `dev` correctness lane includes one unresolved compose/extend
+contract. `mutable` is placement-local but should propagate through nested
+`@-compose` boundaries by default; an explicit protected boundary stops that
+propagation. A different composition of the same module remains protected
+unless it is also mutable.
+
+`$extend` namespaces are immediate-boundary filters, not full nested namespace
+paths. In `library|.box`, `library` is consumed when entering `library.jess`,
+then `.box` is matched through its reachable mutable child modules. An internal
+alias such as `foundation` remains available to extend statements written
+inside `library.jess`; it is not required in the outer query. Bare `.box` is
+the unfiltered search across all mutable surfaces accessible from the current
+extend.
+
+The implementation must land with focused tests for nested mutable propagation,
+explicit protection barriers, placement-local behavior, immediate namespace
+filtering, and bare-target lookup. Do not mark this contract complete from docs
+alone.
+
 ## Completion Rules
 
 When the user says `continue`, `do all queue items`, `complete the queue`, or

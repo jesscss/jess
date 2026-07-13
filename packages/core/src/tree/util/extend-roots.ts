@@ -436,6 +436,9 @@ export class ExtendRootRegistry {
   private layerName = new WeakMap<Rules, string>();
   private isProtected = new WeakMap<Rules, boolean>();
   private isCompose = new WeakMap<Rules, boolean>();
+  // TODO(dev): consume a namespace as a one-boundary filter during extend
+  // lookup. `library|.box` selects library, then `.box` searches its reachable
+  // mutable descendants; nested aliases stay local to the nested module.
   private rootsByLayerName = new Map<string, Set<Rules>>();
   private rootsByNamespace = new Map<string, Set<Rules>>();
   private allRoots = new Set<Rules>();

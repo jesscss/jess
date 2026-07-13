@@ -146,7 +146,12 @@ import. Compiler at-rules are dash-prefixed so they never clash with future CSS.
 
 - **Namespace** is inferred from the file name, or set with `as name` (use
   `as *` to compose without a namespace — discouraged, since it's harder to
-  trace where values come from).
+  trace where values come from). In `$extend` targets, a namespace filters the
+  immediate composed module only: `library|.box` consumes `library` at that
+  boundary, then matches `.box` through its accessible mutable child modules.
+  Internal names such as `foundation` remain available inside `library`; they
+  are not required in the outer query. A bare `$extend .box` searches all
+  mutable stylesheets accessible from the current extend.
 - **`with { … }`** provides configuration for this compose only. It overrides
   the module's defaults without changing how another compose of that module
   begins.

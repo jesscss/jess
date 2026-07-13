@@ -200,6 +200,10 @@ export type ImportOptions = {
   /**
    * Allow extends to reach into this import.
    * Default is false for @-compose (protected by default), true for @-import.
+   * @todo(dev): A mutable compose placement should propagate through nested
+   * compose boundaries by default, stopping only at an explicit protected
+   * boundary. Keep this placement-local so another composition of the same
+   * module can retain its own protection policy.
    */
   mutable?: boolean;
   /**

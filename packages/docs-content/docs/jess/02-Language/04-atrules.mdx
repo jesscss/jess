@@ -223,6 +223,38 @@ is `library`. Mutability belongs to the composed module, not to the selector
 name: another stylesheet can define its own `.box` and remain protected when
 composed without `mutable`.
 
+### Namespaced `$extend` targets
+
+An `$extend` namespace filters the **immediate module boundary** it names; it is
+not a path that must repeat every namespace used by nested modules. When a
+query crosses that boundary, the namespace segment is consumed and the
+remaining selector is matched against the module's accessible mutable child
+stylesheets.
+
+```less
+// library.jess
+@-compose './base.jess' as foundation;
+```
+
+```less
+// main.jess
+@-compose (mutable) './library.jess';
+
+.second-box {
+  $extend library|.box;
+}
+```
+
+Here, `library|.box` enters `library.jess`, then applies `.box` to its
+accessible mutable child stylesheets. The `foundation` namespace still exists
+inside `library.jess`; an extend written there can use
+`$extend foundation|.box`. The outer query does not need to spell
+`foundation`.
+
+Omitting the namespace is allowed: `$extend .box` searches all mutable
+stylesheets accessible from the current extend. Use a namespace when you want
+to filter that search to one immediate composed module.
+
 
 ### @-compose (export)
 
