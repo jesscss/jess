@@ -189,25 +189,15 @@ This would output:
 }
 ```
 
-### @-compose (protected)
+### Composed modules are protected by default
 
-Rules cannot be extended when composed by other stylesheets.
+Selectors in a composed module cannot be extended from downstream stylesheets
+unless that composition explicitly opts into mutability. This is the default
+module boundary: values and mixins can be consumed without opening the module's
+selectors to outside extension.
 
-```less
-// library.jess
-.box {
-  border: 1px solid green;
-}
-```
-```less
-// main.jess
-@-compose (protected) './library.jess';
-
-// Error!
-.second-box {
-  $extend .box;
-}
-```
+The compiler-level `mutable` option is the explicit opt-in for an intentionally
+extendable composition.
 
 
 ### @-compose (export)

@@ -83,7 +83,7 @@ DONE (corpus green at commit time; see ENVIRONMENT BLOCKER above re running):
   `@-from 'p' import (a, b as c) | * as ns;`. NOTE: `@-import` round-trips as
   `@import` (core's `StyleImport{type:'import'}.writeSyntax` emits `@import` — it
   deliberately overlaps the CSS at-rule; the leading `@-` is authored-only sugar).
-  Base forms only; `@-compose` modifiers `(reference)`/`(protected)`/`(export)` +
+  Base forms only; `@-compose` modifiers `(reference)`/`(export)` +
   `set`/`with` blocks are NOT yet built (follow-up).
 
 - Canonical Docusaurus docs updated to the settled syntax (`60b7b35f6`): `$*[…]`→
@@ -238,7 +238,7 @@ Dependents of `;`-separated `List` found (would need review before dropping):
 
 FOLLOW-UPS (out of the adjudicated scope; not yet built):
 - `$!foo: bar;` live-binding assignment parse + eval (see flag above).
-- `@-compose` option modifiers `(reference)` / `(protected)` / `(export)` +
+- `@-compose` option modifiers `(reference)` / `(export)` +
   `set`/`with` config blocks (StyleImport importOptions.reference/mutable/... + the
   StyleImportValue.with node).
 - Mixin/function call args (comma-only + `~(…)` list-wrapper) — SETTLED, see the
