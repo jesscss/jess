@@ -9,7 +9,7 @@
 import {
   rules, compose,
   node, regex, literal, sequence, choice, optional, trivia,
-  many, expect, sepBy, oneOrMore, scanTo, balanced, label, not
+  many, expect, sepBy, oneOrMore, scanTo, balanced, label, not, withCtx
 } from 'parseman' with { type: 'macro' };
 import { lessGrammar } from '@jesscss/less-parser/grammar';
 
@@ -584,9 +584,24 @@ export const scssGrammar = compose([lessGrammar, rules({ trivia: rw }, (g: any) 
     ScssDiagnostic,
     ScssAtRootFilter, ScssAtRootSelector, ScssAtRootPlain
   );
-  const declarationList = many(choice(
+  // SCSS parent selector `&` is valid only inside a rule block (nested), never at
+  // top level — dart-sass rejects a bare top-level `&`. Mirror of the jess gate:
+  // re-derive Less's `simpleSelector` (Less's `SelectorList`/`CompoundSelector`
+  // resolve `g.simpleSelector` late, so this override applies to inherited rules
+  // too) with the `&` (LessAmpersand) arm gated on the dynamic `inner` flag, which
+  // `declarationList` sets true for any rule body at any depth. `g.basicSel` /
+  // `g.extendAhead` are Less's own token regexes (exposed on its namespace) so
+  // this stays byte-identical to Less apart from the gate. O(1) gated dispatch.
+  const simpleSelector = choice(
+    g.AttributeSelector,
+    sequence(not(g.extendAhead), g.PseudoSelector),
+    { gate: (s: any) => !!(s && s.inner), combinator: g.LessAmpersand },
+    g.InterpolatedSelector,
+    g.basicSel
+  );
+  const declarationList = withCtx({ inner: true }, many(choice(
     scssStatement, g.ScssExtend, g.ScssPlaceholderRuleset, Declaration, CustomDeclaration, g.blockItem
-  ));
+  )));
   const atRuleBody = many(choice(scssStatement, g.ScssPlaceholderRuleset, g.blockItem));
 
   const ScssPlaceholderRuleset = node(
@@ -646,6 +661,6 @@ export const scssGrammar = compose([lessGrammar, rules({ trivia: rw }, (g: any) 
     ScssNestedProps,
     ScssDiagnostic, ScssAtRootFilter, ScssAtRootSelector, ScssAtRootPlain,
     QueryAtRuleBlock, ScssScopeBlock, ScssLayerBlock,
-    Stylesheet, declarationList, atRuleBody
+    Stylesheet, simpleSelector, declarationList, atRuleBody
   };
 })]);

@@ -865,6 +865,9 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
     valueList, valueSequence, value, UnicodeRange, Negative, mathProduct, mathSum, topProduct, topSum, parenExprList, InterpValue, NsAccessor, EscapedValue, NamedColor, Dimension, Url,
     parenBody, permissiveParenBody, Paren, GluedParen, DetachedRuleset, functionCallArgs, squareParenBody, calcBody, Call, FormatCall, SquareParen, anyValue, EachFor,
     queryPrelude, QueryAtRuleBlock, ImportAtRuleStatement,
-    AtRuleBlock, AtRuleStatement, atRuleBody
+    AtRuleBlock, AtRuleStatement, atRuleBody,
+    // Exposed so composing dialects (SCSS) can re-derive `simpleSelector` with a
+    // gated `&` arm without duplicating these token regexes. Non-behavioral.
+    basicSel, extendAhead
   };
 })]);
