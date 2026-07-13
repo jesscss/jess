@@ -1,7 +1,7 @@
 import { sourceSpanOf } from '../util/provenance.js';
 import { beforeEach, describe, expect, it } from 'vitest';
 import * as treeIndex from '../index.js';
-import { Any, Call, Color, F_NON_STATIC, JsFunction, List, Node, Reference, Rules, Sequence, any, call, coll, condition, decl, dimension, el, fn, list, mixin, negative, num, op, query, quoted, ref, rules, ruleset, seq, vardecl } from '../index.js';
+import { Any, Call, Color, F_NON_STATIC, JsFunction, List, Node, Reference, Rules, Sequence, any, call, coll, comment, condition, decl, dimension, el, fn, list, mixin, negative, num, op, query, quoted, ref, rules, ruleset, seq, vardecl } from '../index.js';
 import { Context } from '../../context.js';
 import { isNode } from '../util/is-node.js';
 import { N } from '../node-type.js';
@@ -1523,34 +1523,54 @@ describe('Call', () => {
     }
   });
 
-  it('marks declarations important by replacing owned declaration slots', () => {
+  it('marks declarations important, replacing top-level slots in place and nested rules on a copy', () => {
     const topDeclaration = decl({ name: 'color', value: any('red') });
+    const nestedComment = comment('/* keep me */');
     const nestedDeclaration = decl({ name: 'background', value: any('blue') });
     const nestedRuleset = ruleset({
       selector: el('.nested'),
-      rules: [nestedDeclaration]
+      rules: [nestedComment, nestedDeclaration]
     });
     const root = rules([topDeclaration, nestedRuleset]);
     const rule = call({ name: 'noop' });
 
     expect(rule.makeImportant(root)).toBe(root);
 
+    // Top-level declarations are replaced in place on `root` (which is the call's
+    // own fresh output surface).
     const topReplacement = root.rules[0];
-    const nestedReplacement = nestedRuleset.rules[0];
     expect(topReplacement).not.toBe(topDeclaration);
-    expect(nestedReplacement).not.toBe(nestedDeclaration);
     expect(isNode(topReplacement, N.Declaration)).toBe(true);
-    expect(isNode(nestedReplacement, N.Declaration)).toBe(true);
     expect(topDeclaration.important).toBeUndefined();
-    expect(nestedDeclaration.important).toBeUndefined();
     expect(topReplacement?.parent).toBe(root);
-    expect(nestedReplacement?.parent).toBe(nestedRuleset);
-    expect(root.toTrimmedString()).toBeString(`
-      color: red !important;
-      .nested {
-        background: blue !important;
-      }
-    `);
+
+    // A NESTED rule is made important on a COPY, never the shared canonical node —
+    // so the original `nestedRuleset` (which a mixin-call output can reuse across
+    // later calls) is left untouched, preventing an `!important` leak.
+    const nestedCopy = root.rules[1];
+    expect(nestedCopy).not.toBe(nestedRuleset);
+    expect(isNode(nestedCopy, N.Ruleset)).toBe(true);
+    expect(nestedCopy?.parent).toBe(root);
+    expect(nestedRuleset.rules[0]).toBe(nestedComment);
+    expect(nestedRuleset.rules[1]).toBe(nestedDeclaration);
+    expect(nestedDeclaration.important).toBeUndefined();
+
+    const nestedCopiedComment = isNode(nestedCopy, N.Ruleset) ? nestedCopy.rules[0] : undefined;
+    expect(nestedCopiedComment).toBe(nestedComment);
+    expect(nestedCopiedComment?.parent).toBe(nestedRuleset);
+
+    const nestedReplacement = isNode(nestedCopy, N.Ruleset) ? nestedCopy.rules[1] : undefined;
+    expect(nestedReplacement).not.toBe(nestedDeclaration);
+    expect(isNode(nestedReplacement, N.Declaration)).toBe(true);
+    expect(nestedReplacement?.parent).toBe(nestedCopy);
+
+    expect(root.toTrimmedString().trimEnd()).toBe([
+      'color: red !important;',
+      '.nested {',
+      '  /* keep me */',
+      '  background: blue !important;',
+      '}'
+    ].join('\n'));
   });
 
   it('writes finalized CSS call output into segmented buffers', () => {

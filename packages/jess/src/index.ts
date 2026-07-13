@@ -15,6 +15,7 @@ import {
   type Trivia,
   JessError,
   toDiagnostic,
+  evalErrorFrameFrom,
   WARN,
   logger,
   Deprecation,
@@ -58,6 +59,32 @@ const { isArray } = Array;
 
 function isVisitor(value: unknown): value is Visitor {
   return typeof value === 'object' && value !== null;
+}
+
+/**
+ * Build the `internal/unknown` diagnostic for a generic (non-`JessError`) error
+ * that escaped eval. The eval dispatch stamps the offending node's source span
+ * onto such errors; `evalErrorFrameFrom` recovers it so the diagnostic frames
+ * the real line/column/source instead of the `1:1`/empty-frame fallback.
+ */
+function internalUnknownDiagnostic(
+  err: unknown,
+  errMsg: string,
+  filePath: string | undefined,
+  fallbackReason: string
+): ErrorDiagnostic {
+  const frame = evalErrorFrameFrom(err);
+  return {
+    code: 'internal/unknown',
+    phase: 'eval',
+    message: errMsg || 'Unknown error',
+    reason: errMsg || fallbackReason,
+    fix: 'Check the file and ensure it is valid.',
+    filePath,
+    line: frame?.line ?? 1,
+    column: frame?.column ?? 1,
+    lines: frame?.lines
+  };
 }
 
 type LessOptions = ReturnType<typeof getOptions>;
@@ -1511,16 +1538,12 @@ export class Compiler {
           warnings.push(diagnostic);
         }
       } else {
-        errors.push({
-          code: 'internal/unknown',
-          phase: 'eval',
-          message: errMsg || 'Unknown error',
-          reason: errMsg || 'An unexpected error occurred during compilation.',
-          fix: 'Check the file and ensure it is valid.',
-          filePath: filePath ?? undefined,
-          line: 1,
-          column: 1
-        });
+        errors.push(internalUnknownDiagnostic(
+          err,
+          errMsg,
+          filePath ?? undefined,
+          'An unexpected error occurred during compilation.'
+        ));
       }
 
       if (renderOptions?.suppressWarnings !== true) {
@@ -1594,16 +1617,12 @@ export class Compiler {
           warnings.push(diagnostic);
         }
       } else {
-        errors.push({
-          code: 'internal/unknown',
-          phase: 'eval',
-          message: errMsg || 'Unknown error',
-          reason: errMsg || 'An unexpected error occurred during compilation.',
-          fix: 'Check the file and ensure it is valid.',
+        errors.push(internalUnknownDiagnostic(
+          err,
+          errMsg,
           filePath,
-          line: 1,
-          column: 1
-        });
+          'An unexpected error occurred during compilation.'
+        ));
       }
 
       finalizeRenderProfile(profile, {
@@ -1658,16 +1677,12 @@ export class Compiler {
           warnings.push(diagnostic);
         }
       } else {
-        errors.push({
-          code: 'internal/unknown',
-          phase: 'eval',
-          message: errMsg || 'Unknown error',
-          reason: errMsg || 'An unexpected error occurred during rendering.',
-          fix: 'Check the file and ensure it is valid.',
+        errors.push(internalUnknownDiagnostic(
+          err,
+          errMsg,
           filePath,
-          line: 1,
-          column: 1
-        });
+          'An unexpected error occurred during rendering.'
+        ));
       }
 
       finalizeRenderProfile(profile, {

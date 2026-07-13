@@ -1,0 +1,4 @@
+# API-Extractor reports are build-generated with LF line endings. Pin them to LF
+# so a rebuild on any platform never dirties the committed report (which would
+# otherwise block the release clean-tree gate on a pure line-ending flip).
+*.api.md text eol=lf

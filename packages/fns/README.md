@@ -1,20 +1,44 @@
-# Less / Sass / Jess functions
+# @jesscss/fns
 
-Helper functions, migrated from Less and Sass, with additions.
+**The built-in Less/Sass style-function library — color, math, string, and list
+helpers, split per-file for tree-shaking.**
 
-```less
-@-use '@jesscss/fns' as fns;
+`@jesscss/fns` is the standard function library for
+[Jess](https://github.com/jesscss/jess). It provides the built-in functions the language exposes:
+color operations (`lighten`, `darken`, `mix`, `saturate`, …), math (`round`,
+`floor`, `sqrt`, `pow`, …), unit and type helpers, string helpers, and list/map
+utilities.
 
-.box {
-  color: $brighten(#ABC, 20%);
-}
+Functions live in their own files and are re-exported from a barrel, so bundlers
+can tree-shake down to only the helpers you actually use.
+
+```
+@jesscss/fns          → the Less function set (the alpha surface)
+@jesscss/fns/<name>   → import a single function directly
 ```
 
-Note: in most cases, these functions are called internally and some require a context
-object passed into the `this` context. At some point, this library
-may be expanded to make the functions a little more general purpose / callable from
-JavaScript.
+The Sass-side helpers exist in the source tree as part of the roadmap **Sass+**
+work, but SCSS is not the focus of the Less-focused alpha — treat that surface as
+experimental.
 
-### Tree shaking
+## Who uses it
 
-Functions and helpers are separated into different files for optimal tree shaking
+This is an internal engine package. The functions are primarily invoked by the
+compiler during evaluation, and several expect a Jess evaluation context on
+`this` — they are not yet a general-purpose, standalone JavaScript API. Most
+people should install [`jess`](https://www.npmjs.com/package/jess) and use the
+`jess` CLI. The JavaScript/TypeScript API is **not yet stabilized**.
+
+## Status
+
+Alpha. Published to npm under both the `latest` and `alpha` dist-tags. Please
+[report bugs](https://github.com/jesscss/jess/issues).
+
+## Links
+
+- Repository: <https://github.com/jesscss/jess>
+- Documentation: <https://jesscss.github.io/> (currently pre-alpha content)
+
+## License
+
+[MIT](https://github.com/jesscss/jess/blob/dev/LICENSE)

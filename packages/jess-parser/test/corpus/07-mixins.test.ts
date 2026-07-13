@@ -16,8 +16,9 @@
  * doc examples show `;`-separated args — a doc self-contradiction; `;` args, rest
  * params `...$x`, and `$content()` callbacks are DEFERRED (see NOTES.md).
  */
-import { describe, it } from 'vitest';
-import { expectAstContains, expectRoundTrip, expectParseRejected } from './_util.js';
+import { describe, expect, it } from 'vitest';
+import { isNode, N } from '@jesscss/core';
+import { expectAstContains, expectRoundTrip, expectParseRejected, parse } from './_util.js';
 
 describe('corpus/mixins', () => {
   it('mixin definition (no params) → Mixin', () => {
@@ -194,5 +195,28 @@ describe('corpus/mixins', () => {
               (Keyword [role=keyword] 'blue')
             ]
         )`);
+  });
+
+  it('direct variable mixin call in a ruleset → variable Call', () => {
+    const { tree } = parse('.box { $rounded(8px); }');
+    const ruleset = tree.rules.find(node => isNode(node, N.Ruleset));
+    expect(isNode(ruleset, N.Ruleset)).toBe(true);
+    if (!isNode(ruleset, N.Ruleset)) {
+      return;
+    }
+
+    const call = ruleset.rules[0];
+    expect(isNode(call, N.Call)).toBe(true);
+    if (!isNode(call, N.Call)) {
+      return;
+    }
+    expect(isNode(call.name, N.Reference)).toBe(true);
+    if (isNode(call.name, N.Reference)) {
+      expect(call.name.options.type).toBe('variable');
+      expect(call.name.key).toBe('rounded');
+    }
+    expect(call.args.value).toHaveLength(1);
+    expect(call.args.value[0]?.toTrimmedString()).toBe('8px');
+    expect(String(tree)).toContain('$rounded(8px)');
   });
 });

@@ -343,6 +343,15 @@ export const jessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
       optional(literal(';'))
     ));
 
+  // A direct variable call is a statement-level call to a variable holding a
+  // callable value, e.g. `$rounded(8px)`. Keep it separate from Reference so
+  // ordinary `$name` value reads retain their existing shape.
+  const VariableMixinCall = node(
+    sequence(
+      dollarVar, literal('('), callArgs, expect(literal(')')),
+      optional(literal(';'))
+    ));
+
   // ── `$extend` statement ──────────────────────────────────────────────────────
   // `$extend <target> [!exact];` — a statement (NOT Less's `:extend()` pseudo).
   // The target is a selector (complex/compound/simple — incl. `&`, `$[…]` interp,
@@ -475,7 +484,7 @@ export const jessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   const Stylesheet = node(
     many(choice(
       g.ComposeAtRule, g.ExportAtRule, g.ImportAtRule, g.UseAtRule, g.FromAtRule,
-      g.Extend, g.Apply, g.VarDeclaration, g.If, g.For, g.While, g.MixinCall, g.Mixin,
+      g.Extend, g.Apply, g.VarDeclaration, g.If, g.For, g.While, g.VariableMixinCall, g.MixinCall, g.Mixin,
       g.QueryAtRuleBlock, g.AtRuleBlock, g.AtRuleStatement, g.UnknownAtRuleBlock, g.Ruleset
     )));
 
@@ -484,7 +493,7 @@ export const jessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
 
   const declarationList = many(choice(
     g.ComposeAtRule, g.ExportAtRule, g.ImportAtRule, g.UseAtRule, g.FromAtRule,
-    g.Extend, g.Apply, g.VarDeclaration, g.If, g.For, g.While, g.MixinCall, g.Mixin,
+    g.Extend, g.Apply, g.VarDeclaration, g.If, g.For, g.While, g.VariableMixinCall, g.MixinCall, g.Mixin,
     g.QueryAtRuleBlock, g.AtRuleBlock, g.AtRuleStatement, g.UnknownAtRuleBlock,
     g.Declaration, g.CustomDeclaration, g.Ruleset, literal(';')
   ));
@@ -499,7 +508,7 @@ export const jessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
     condNot, condPrimary, condCompare, condPureAnd, condPureOr, condOr,
     elseClause, forRange,
     If, For, While,
-    MixinParam, mixinParams, mixinGuard, Mixin, callArgs, MixinCall,
+    MixinParam, mixinParams, mixinGuard, Mixin, callArgs, MixinCall, VariableMixinCall,
     AnonMixin, Extend, SelectorCapture, Apply,
     ComposeAtRule, ExportAtRule, ImportAtRule, UseAtRule, FromAtRule,
     Stylesheet, Ruleset, declarationList

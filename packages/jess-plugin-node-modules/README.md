@@ -1,74 +1,35 @@
 # @jesscss/plugin-node-modules
 
-Jess plugin for resolving and loading npm packages from `node_modules`.
+**Import resolver that loads npm packages from `node_modules` — a seed of the
+JavaScript-execution / CSS-in-JS story.**
 
-## Overview
+This plugin gives Jess's language plugins a way to resolve and load npm packages
+by name, using Node's module resolution (`require.resolve` /
+`createRequire`). Other plugins use it to pull in packages referenced from a
+stylesheet — for example [`@jesscss/plugin-less-compat`](../jess-plugin-less-compat)
+resolving a Less `@plugin "package-name"` off `node_modules`.
 
-This plugin provides npm/node_modules resolution and loading capabilities for all Jess language plugins. It uses Node's module resolution algorithm (`require.resolve`) to find and load npm packages.
+## Why it exists — the convergence angle
 
-## Usage
+One of the four tools [Jess](https://github.com/jesscss/jess) aims to converge is
+**CSS-in-JS**: running real JavaScript inside your stylesheets (`@use` /
+`@plugin`) so styles can be dynamic without leaving CSS files. Reaching npm
+packages is a building block of that story. Paired with
+[`@jesscss/plugin-js`](../jess-plugin-js) (which executes the modules), it lets a
+stylesheet pull logic and data from the JS ecosystem.
 
-```typescript
-import { Compiler } from '@jesscss/jess';
-import nodeModulesPlugin from '@jesscss/plugin-node-modules';
+That convergence is **roadmap — being proven through the alpha, not claimed as
+done.** What ships here today is just the resolver seam; don't read it as a
+finished CSS-in-JS system.
 
-const compiler = new Compiler({
-  compile: {
-    plugins: [
-      nodeModulesPlugin(),
-      // ... other plugins
-    ]
-  }
-});
-```
+## Status
 
-## API
+**Alpha.** Part of Jess. The programmatic plugin/compiler API is **not yet
+stabilized** — the `jess` CLI is the documented public surface for the alpha.
+Watch the
+[docs site](https://jesscss.github.io/) for the API once it settles.
 
-### `resolvePackage(packageName: string): string | null`
-
-Resolve an npm package name to its absolute path.
-
-```typescript
-const plugin = new NodeModulesPlugin();
-const path = plugin.resolvePackage('less-plugin-clean-css');
-// Returns: '/path/to/node_modules/less-plugin-clean-css/index.js' or null
-```
-
-### `loadPackage(packageName: string): Promise<Record<string, any> | null>`
-
-Load an npm package module.
-
-```typescript
-const plugin = new NodeModulesPlugin();
-const module = await plugin.loadPackage('less-plugin-clean-css');
-// Returns: the module exports, or null if not found
-```
-
-### `tryResolvePackages(packageNames: string[]): Promise<{ name: string; module: Record<string, any> } | null>`
-
-Try to resolve a package name with multiple possible names. Returns the first successfully resolved package.
-
-```typescript
-const plugin = new NodeModulesPlugin();
-const result = await plugin.tryResolvePackages([
-  'clean-css',
-  'less-plugin-clean-css'
-]);
-// Returns: { name: 'less-plugin-clean-css', module: {...} } or null
-```
-
-## Integration with Other Plugins
-
-Other plugins (like `@jesscss/plugin-less-compat`) can use this plugin to resolve npm packages:
-
-```typescript
-// In jess-plugin-less-compat
-const nodeModulesPlugin = plugins.find(p => p.name === 'node-modules');
-if (nodeModulesPlugin instanceof NodeModulesPlugin) {
-  const module = await nodeModulesPlugin.loadPackage('less-plugin-clean-css');
-}
-```
-
-## Options
-
-- `enabled` (boolean, default: `true`): Whether to enable auto-resolution of npm packages.
+- Project overview & positioning: <https://github.com/jesscss/jess#readme>
+- Docs: <https://jesscss.github.io/> (currently pre-alpha content)
+- Issues: <https://github.com/jesscss/jess/issues>
+- License: MIT

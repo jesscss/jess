@@ -46,6 +46,41 @@ const BOOT_TIMEOUT_MS = 8000;
 const REQUEST_TIMEOUT_MS = 10_000;
 const IDLE_SHUTDOWN_MS = 5_000;
 
+/**
+ * Environment variables that inject a Node.js debugger/inspector bootloader
+ * into child processes (VS Code / Cursor "Auto Attach", `node --inspect`, etc.).
+ *
+ * These must never leak into the sandboxed Deno worker: the injected bootloader
+ * tries to read the environment, the Jess Deno sandbox denies `env` permission,
+ * and the worker never signals ready — producing a spurious
+ * "Timed out waiting for Deno worker startup" failure. Deno does not use any of
+ * these vars, so stripping them is safe.
+ */
+const DEBUG_ENV_KEY_RE = /^(NODE_OPTIONS|NODE_INSPECT|VSCODE_INSPECTOR_OPTIONS)/i;
+const DEBUG_ENV_VALUE_RE = /js-debug|bootloader/i;
+
+/**
+ * Returns a copy of `env` with Node debugger/inspector-attach variables removed,
+ * so a spawned Deno subprocess starts regardless of the parent's debug env.
+ * The Deno permission sandbox is untouched; this only stops leaking the debugger
+ * into it.
+ */
+export const sanitizeSpawnEnv = (
+  env: NodeJS.ProcessEnv = process.env
+): NodeJS.ProcessEnv => {
+  const clean: NodeJS.ProcessEnv = {};
+  for (const [key, value] of Object.entries(env)) {
+    if (DEBUG_ENV_KEY_RE.test(key)) {
+      continue;
+    }
+    if (typeof value === 'string' && DEBUG_ENV_VALUE_RE.test(value)) {
+      continue;
+    }
+    clean[key] = value;
+  }
+  return clean;
+};
+
 const isPathInside = (candidatePath: string, rootPath: string): boolean => {
   const rel = path.relative(rootPath, candidatePath);
   return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
@@ -204,7 +239,8 @@ export class JsPlugin extends AbstractPlugin {
   private ensureRuntimeAvailable(): void {
     const denoCommand = this.opts.denoCommand ?? 'deno';
     const result = spawnSync(denoCommand, ['--version'], {
-      stdio: 'ignore'
+      stdio: 'ignore',
+      env: sanitizeSpawnEnv(process.env)
     });
     if (result.status !== 0) {
       throw new Error(RUNTIME_MISSING_MESSAGE);
@@ -364,7 +400,7 @@ export class JsPlugin extends AbstractPlugin {
       {
         stdio: ['pipe', 'pipe', 'pipe'],
         env: {
-          ...process.env,
+          ...sanitizeSpawnEnv(process.env),
           DENO_PERMISSION_BROKER_PATH: socketPath
         }
       }

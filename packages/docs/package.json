@@ -8,10 +8,10 @@
     "predev": "pnpm run build:facings",
     "dev": "docusaurus start",
     "prebuild": "pnpm run build:facings",
-    "build": "docusaurus build",
+    "build": "pnpm run build:facings && docusaurus build",
     "swizzle": "docusaurus swizzle",
-    "deploy": "docusaurus deploy",
-    "deploy:matthew": "GIT_USER=matthew-dean USE_SSH=true pnpm deploy",
+    "deploy": "pnpm run build:facings && docusaurus deploy",
+    "deploy:matthew": "GIT_USER=matthew-dean USE_SSH=true CURRENT_BRANCH=alpha pnpm run deploy",
     "serve": "docusaurus serve",
     "clear": "docusaurus clear"
   },

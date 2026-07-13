@@ -158,7 +158,7 @@ Sass's `@forward` supports automatic prefixing of all exported members.
 Use explicit namespacing:
 ```jess
 @-compose "theme" as theme;
-// Then access as $theme.colors, theme.button(), etc.
+// Then access values as $theme.colors and keep mixin names explicit.
 ```
 
 **Status:** Parsed and metadata is captured (`forwardAsPrefix` on `StyleImport.importOptions`), but the prefixing semantics are not implemented and will not be.

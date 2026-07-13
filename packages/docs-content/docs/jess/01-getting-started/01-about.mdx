@@ -12,13 +12,13 @@ origin: jess
 @-use '#less'; // Use built-in modules!
 @-use './sizes.ts'; // Use a custom module!
 @-compose './theme.less'; // Compose a theme!
-@-compose './mixins.scss'; // Import mixins from Less and Sass!
+@-compose './mixins.scss' as *; // Import mixins from Sass into local mixin scope!
 
 .container {
   width: $less.unit($sizes.width);
   color: $theme.primary-color;
   display: flex;
-  $ > mixins.box();
+  $box();
 }
 ```
 
@@ -33,7 +33,7 @@ In practice, it can cover most day-to-day use cases people typically reach for:
  - CSS-in-JS
  - CSS modules
 
-Jess is both a compiler and a language. It started as a re-write of Less from the ground up (and now powers Less 5+), then kept evolving into its own language model. That means you can migrate `.scss` and `.less` incrementally to `.jess` while still using cross-language composition when needed.
+Jess is both a compiler and a language. It started as a re-write of Less from the ground up, then kept evolving into its own language model. That means you can migrate `.scss` and `.less` incrementally to `.jess` while still using cross-language composition when needed.
 
 [^1]: Sass is quite a bloated language, so there is some lesser-used syntax that is not supported, and some Jess features are exposed while compiling `.scss` files. Therefore, Jess defines the supported language as "Sass+".
 

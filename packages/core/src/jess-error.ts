@@ -6,6 +6,7 @@ import type { TreeContext } from './context.js';
 import type { LocationInfo } from './tree/node.js';
 import type { Deprecation } from './deprecation.js';
 import type { DiagnosticDisplay } from './warnings.js';
+import { readEvalErrorLocation } from './tree/util/provenance.js';
 
 type JessFile = TreeContext['file'];
 
@@ -466,6 +467,41 @@ export function extractRelevantLines(
   }
 
   return result;
+}
+
+/**
+ * Resolved code-frame position for a plain (non-`JessError`) error thrown during
+ * eval, derived from the source span the eval dispatch stamped onto it.
+ */
+export interface EvalErrorFrame {
+  line: number;
+  column: number;
+  endLine?: number;
+  endColumn?: number;
+  lines?: Record<number, string>;
+}
+
+/**
+ * Recover a code-frame position for a generic error raised during eval. The
+ * central eval seam stamps the offending node's source span + source onto the
+ * error; here we resolve that span into 1-based line/column and the surrounding
+ * source lines. Returns `undefined` when nothing was stamped (e.g. a throw with
+ * no source-bearing node), so callers keep their existing `1:1` fallback.
+ */
+export function evalErrorFrameFrom(err: unknown): EvalErrorFrame | undefined {
+  const loc = readEvalErrorLocation(err);
+  if (!loc || loc.source === undefined) {
+    return undefined;
+  }
+  const { line, column } = lineColAt(loc.source, loc.spanStart);
+  const end = loc.spanEnd !== undefined ? lineColAt(loc.source, loc.spanEnd) : undefined;
+  return {
+    line,
+    column,
+    endLine: end?.line,
+    endColumn: end?.column,
+    lines: extractRelevantLines(loc.source, line)
+  };
 }
 
 function ensureLineStarts(file: JessFile): Uint32Array | undefined {

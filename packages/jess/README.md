@@ -1,92 +1,73 @@
 <div align="center">
-  <img width="144" height="144" src="https://raw.githubusercontent.com/jesscss/jess/master/packages/docs/static/img/android-chrome-192x192.png">
+  <img width="144" height="144" src="https://raw.githubusercontent.com/jesscss/jess/dev/packages/docs/static/img/android-chrome-192x192.png" alt="Jess logo">
 </div>
 
-_Note: This project is in alpha. Expect (and report) bugs!_
-# Jess
-JavaScript Evaluated Style Sheets, from the people who brought you Less.
+# jess
 
-## Why Jess?
+> **Very early alpha.** This package is usable, but the public surface is still
+> narrow and moving. Expect rough edges, missing pieces, and change. Please
+> [report bugs](https://github.com/jesscss/jess/issues).
 
-* Jess does what Sass and Less do, only faster (and does some things they can't).
-* Jess does what CSS-in-JS does, only it keeps your CSS in stylesheets.
-* Jess does what CSS Modules does, but more dynamically.
-* Jess does whatever JavaScript can do, because it transpiles to JavaScript under-the-hood.
+**The current public alpha CLI for Jess.**
 
-You can think of Jess as a middle-ground between Less/Sass and CSS-in-JS. It keeps your styles in stylesheets, but it's equally dynamic. Jess is CSS-in-JS for people who don't like CSS in their JS.
+`jess` is the main entry point right now. In this alpha, the `jess`
+command-line tool compiles `.less` to CSS on the Jess engine.
 
-For more information, see [the docs](https://jesscss.github.io/docs/).
+That is the first step, not the whole story: the alpha starts with familiar
+Less workflows while the broader Jess language surface settles.
 
-### P.S. Why is the logo inspired by a hawk?
+Docs: [jesscss.github.io](https://jesscss.github.io/).
 
-_A "jess" is defined as "a short leather strap that is fastened around each leg of a hawk..."_.
+## Install
 
-## Usage
-```
-yarn install jess
+```sh
 npm install jess
 ```
-To compile a `.jess` file into CSS:
-```
-jess file.jess
-```
 
-## Features
+Requires Node 16+.
 
-### Variables
-```less
-@let myWidth: 3px;
+## CLI
 
-.box {
-  width: $myWidth;
-}
-```
-### Import from JS
-```less
-@-use './constants.js' as constants;
+```sh
+# Compile a Less file to CSS (writes input.css next to it)
+jess input.less
 
-.box {
-  width: $(constants.WIDTH + 10)px;
-}
+# Choose the output file, or an output directory
+jess input.less output.css
+jess input.less -o dist
 ```
 
-### Import from Jess
-```less
-@-from './stylesheet.jess' import (myWidth);
+By default, Jess preserves nesting instead of flattening it. If you want
+flattened selector output, opt in with `--collapse-nesting`.
 
-.box {
-  width: $myWidth;
-}
-```
+## What works today
 
-### Include other stylesheets
-```less
-@import styles from './stylesheet.jess';
-@include styles();
-```
+The current public alpha entry point is:
 
-### Mixins
-```less
-@mixin square(size) {
-  width: $size;
-  height: $size;
-}
+- `.less` compilation through `jess`
+- variables, mixins, guards, nesting, `extend`, maps, operations, and built-in
+  functions
+- the Jess compiler engine under the hood
+- a narrow first step toward the broader Jess language direction
 
-.box {
-  @include square(50px);
-}
-```
+## Programmatic API
 
-### Exporting from Jess
-_In progress, requires the (unfinished) Rollup or Webpack plugin._
-```jsx
-import styles, { square } from './component.m.jess'
-
-export const myComponent = props => {
-  return <div className={styles.box} style={square(props.size)}>Component</div>
-}
-```
-
+The CLI is the public surface today. The JavaScript/TypeScript API is still
+settling, so this README stays focused on the commands you can use now.
 
 ## Contributing
-As this is a WIP, file issues with your ideas/concerns/wants!
+
+Issues and ideas welcome: <https://github.com/jesscss/jess/issues>.
+
+See also:
+
+- [repo README](https://github.com/jesscss/jess#readme)
+- [contributing guide](https://github.com/jesscss/jess/blob/dev/CONTRIBUTING.md)
+
+## License
+
+[MIT](https://github.com/jesscss/jess/blob/dev/LICENSE)
+
+### P.S. Why the hawk?
+
+_A "jess" is a short leather strap fastened around the leg of a hawk._

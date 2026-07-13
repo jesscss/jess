@@ -147,11 +147,15 @@ import. Compiler at-rules are dash-prefixed so they never clash with future CSS.
 - **Namespace** is inferred from the file name, or set with `as name` (use
   `as *` to compose without a namespace — discouraged, since it's harder to
   trace where values come from).
-- **`with { … }`** applies overrides for the current compose only;
-  **`set { … }`** mutates the resolved module in compilation scope.
+- **`with { … }`** provides configuration for this compose only. It overrides
+  the module's defaults without changing how another compose of that module
+  begins.
+- **`set { … }`** establishes a one-time, compilation-wide configuration for
+  the resolved module. Later composes of that same module reuse those values.
 - **`@-compose (reference)`** imports values/mixins without rendering rules
-  (until extended); **`(protected)`** forbids downstream extension;
-  **`(export)`** re-exports what it imports.
+  (until extended); compositions are protected from downstream extension by
+  default; **`@-compose (mutable)`** opts into downstream extension; **`(export)`**
+  re-exports what it imports.
 - **`@-export './x';`** forwards a module's API to consumers (Sass `@forward`).
 
 See the full [at-rule reference](/docs/Language/atrules) for every flag.

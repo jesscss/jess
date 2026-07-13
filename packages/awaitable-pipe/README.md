@@ -1,8 +1,12 @@
-# awaitable-pipe
+# @jesscss/awaitable-pipe
 
-![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen)
+A tiny, strongly-typed pipe that stays synchronous until a step returns a Promise — with one optional error handler.
 
-A tiny, zero-dependency pipe with friendly types that “just works”: it stays sync when everything is sync, and turns into a Promise only when something is async. No wrappers, no ceremony.
+It’s a small utility from the [Jess](https://github.com/jesscss/jess) project,
+where hot paths call functions that are usually — but not always —
+synchronous. It’s zero-dependency and usable on its own: it stays sync when
+everything is sync, and turns into a Promise only when something is async. No
+wrappers, no ceremony.
 
 - **Stays sync when it can**: all-sync pipelines return a plain value
 - **Goes async when it must**: any async input/step returns a Promise
@@ -12,11 +16,11 @@ A tiny, zero-dependency pipe with friendly types that “just works”: it stays
 
 ## Install
 
-```bash
-pnpm add @jesscss/awaitable-pipe
-# or
-npm i @jesscss/awaitable-pipe
+```sh
+npm install @jesscss/awaitable-pipe
 ```
+
+Published to npm under both the `latest` and `alpha` dist-tags.
 
 ## Quick Start
 
@@ -181,5 +185,16 @@ const sum = await serialReduce(items, 0, async (acc, n, i) => {
 // sum === 6
 ```
 
+## Status
+
+Alpha, as part of the Jess monorepo. Please
+[report issues](https://github.com/jesscss/jess/issues).
+
+## Links
+
+- Repository: <https://github.com/jesscss/jess>
+- Documentation: <https://jesscss.github.io/> (currently pre-alpha content)
+
 ## License
-MIT
+
+[MIT](https://github.com/jesscss/jess/blob/dev/LICENSE)
