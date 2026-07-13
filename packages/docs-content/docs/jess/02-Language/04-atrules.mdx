@@ -97,14 +97,22 @@ Composing without a namespace is discouraged, as it can be harder to reason abou
 
 ### `with` and `set`
 
-Jess currently supports both `set` and `with` when composing stylesheets:
+Jess currently supports both `set` and `with` when composing stylesheets. Both
+forms provide values to the composed module; the difference is how long that
+configuration applies:
 
-- `set` mutates the imported module in compilation scope (shared downstream for that resolved module path).
-- `with` applies overrides only for the current compose operation.
+- `set` establishes a one-time, compilation-wide configuration for the
+  resolved module. Later imports of that module reuse the same values.
+- `with` provides overrides for the current compose only. A later compose
+  starts from the module's defaults unless it supplies its own configuration.
 
-Using `set` on a stylesheet import will alter that import within the compilation scope. (In Sass, this is how `with` works, but the `with` keyword works slightly differently in Jess, which we'll explain in a bit.)
+In Sass, the equivalent module-wide configuration uses the `with` keyword. Jess
+uses `with` for the more local form and reserves `set` for configuration that
+should be reused by later imports in the same compilation.
 
-Note that `set` may not be used more than once with the same module (resolved to the same file path), and if you first import the module without using `set` and then try to use it after, this also throws an error. `set` must be used the first time a file is imported or not at all.
+`set` is a one-time choice per resolved module path. If it is used, it must be
+used on the first import of that module: a later `set`, or a second `set`, is an
+error.
 
 Example:
 
@@ -133,7 +141,8 @@ $primary-color: blue;
 
 #### Using the `with` keyword
 
-In contrast to `set`, `with` will set values only while being composed into the current file.
+`with` provides values only while the module is being composed into the current
+file. It does not establish the configuration for later imports.
 
 ```less
 // file1.jess
