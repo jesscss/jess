@@ -103,6 +103,70 @@ export function copySourceSpan(dst: object & Flagged, src: object): void {
   setSourceSpan(dst, sourceSpanOf(src));
 }
 
+/* =========================
+ * Eval-error source location
+ * ========================= */
+
+/**
+ * A thrown error, viewed through the optional source-location fields the eval
+ * dispatch stamps onto it. Plain runtime errors (`ReferenceError`, `TypeError`,
+ * …) raised deep in eval carry no source position; the central eval seam stamps
+ * the offending node's span + source so the top-level catch can render a real
+ * code frame instead of the `1:1`/empty-frame fallback.
+ */
+interface EvalErrorLocationCarrier {
+  _jessEvalSpanStart?: number;
+  _jessEvalSpanEnd?: number;
+  _jessEvalSource?: string;
+}
+
+/** The resolved eval location previously stamped onto an error, if any. */
+export interface EvalErrorLocation {
+  spanStart: number;
+  spanEnd?: number;
+  source?: string;
+}
+
+/**
+ * Stamp the offending `node`'s source span (and its file `source`) onto a thrown
+ * error so a downstream catch can point the code frame at the real location.
+ *
+ * Called from the central eval dispatch on the COLD error path only. The FIRST
+ * (innermost) source-bearing node to unwind past wins: as the error propagates
+ * up through each ancestor's eval, the ancestor sees a location already present
+ * and leaves it untouched. A source-free node (eval-derived, no span) stamps
+ * nothing, so the nearest authored ancestor supplies the position.
+ */
+export function stampEvalErrorLocation(err: unknown, node: object, source: string | undefined): void {
+  if (err === null || typeof err !== 'object') {
+    return;
+  }
+  const start = spanStartOf(node);
+  if (start === undefined) {
+    return;
+  }
+  const carrier = err as EvalErrorLocationCarrier;
+  if (carrier._jessEvalSpanStart !== undefined) {
+    return; // a deeper (innermost) node already stamped the precise location
+  }
+  carrier._jessEvalSpanStart = start;
+  carrier._jessEvalSpanEnd = spanEndOf(node);
+  carrier._jessEvalSource = source;
+}
+
+/** Read back the eval location an earlier `stampEvalErrorLocation` attached, if present. */
+export function readEvalErrorLocation(err: unknown): EvalErrorLocation | undefined {
+  if (err === null || typeof err !== 'object') {
+    return undefined;
+  }
+  const carrier = err as EvalErrorLocationCarrier;
+  const spanStart = carrier._jessEvalSpanStart;
+  if (spanStart === undefined) {
+    return undefined;
+  }
+  return { spanStart, spanEnd: carrier._jessEvalSpanEnd, source: carrier._jessEvalSource };
+}
+
 // Per-slot span arrays (`_valueSpans`/`_fieldSpans`) are SPARSE — they exist
 // only on source-parsed multi-member selector lists / value arrays and on the
 // declaration `value` field. Storing them as Node fields would deoptimize the

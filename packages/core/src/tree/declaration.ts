@@ -129,9 +129,6 @@ export type DeclarationOptions = {
    * Jess `$foo := bar` — NEAREST-OUTER non-shadowing assignment: reassign the
    * nearest enclosing scope that already defines `$foo` (JS-block style), NOT the
    * global/top binding. DISTINCT from `setDefined` (Sass `!global`). Renders `:=`.
-   *
-   * @todo eval — nearest-outer scope-walk + reassignment is NOT implemented; `:=`
-   * currently has no eval effect (preferable to wrong `!global` eval).
    */
   nearestOuter?: boolean;
 

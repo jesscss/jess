@@ -1,6 +1,21 @@
 # @jesscss/less-parser
 
-A [Less](https://lesscss.org/) parser built on [parseman](https://www.npmjs.com/package/parseman). The grammar is the CSS grammar plus a Less delta: `lessGrammar = compose([cssGrammar, <Less delta>])`. It adds `@variable` / `@{interpolation}`, mixins, and the rest of Less on top of the shared CSS base in `@jesscss/css-parser`.
+The Less grammar, layered on the CSS base parser — the parser behind the language Jess ships today.
+
+> **Status: alpha.** Part of [Jess](https://github.com/jesscss/jess), which *is* Less.js v5. Rendering `.less` is the one surface shipping today; everything else is roadmap. Expect gaps and [report bugs](https://github.com/jesscss/jess/issues). Docs live at [jesscss.github.io](https://jesscss.github.io/).
+
+## What it is
+
+The Less grammar is the shared CSS grammar plus a Less delta:
+`lessGrammar = compose([cssGrammar, <Less delta>])`. It adds `@variable` /
+`@{interpolation}`, mixins, and the rest of Less on top of the spec-aligned CSS
+base in [`@jesscss/css-parser`](https://www.npmjs.com/package/@jesscss/css-parser),
+built on [parseman](https://www.npmjs.com/package/parseman) — **the fastest
+general-purpose JavaScript parser** in its
+[published benchmarks](https://matthew-dean.github.io/parseman/guide/benchmarks)
+(see `@jesscss/css-parser` for figures and engineering details). It is the parser
+Jess uses when it compiles `.less` — the "Now" tier of the language roadmap, and
+the one dialect shipping in the alpha.
 
 Two ways to use it:
 
@@ -131,34 +146,4 @@ type BuildHost = (
 
 ## Part of Jess
 
-This package is developed as part of [Jess](https://github.com/jesscss/jess). Jess translates a Less string into a Jess AST; the sections below track the migration rules that entails.
-
-### Converting Less 1.x-5.x to Less 6
-
-1. Auto-wrap parens around division to dis-ambiguate.
-2. Convert `@import` to `@use` and `@include` syntax.
-3. Throw errors on `@plugin` and ask to refactor with `@from`
-4. Convert function references to `@from '#less' ([func])`
-5. Add parentheses after mixin calls e.g. `.ns > .mixin;` to `.ns.mixin();`
-6. Convert local imports from `@import 'local'` to `@include './local.less'`
-7. Convert `@import (less) './file.css';` to `@include './file.css' as less;`
-8. Convert `@import (inline) './file.css';` to `@include './file.css' as text;`
-9. Convert `@import (reference) './file.less';` to `@use './file.less';`
-10. Files that consume variables, mixins, or rules (like with extend) should have a `@use` added.
-11. Don't allow `.class` as a value in a declaration. Convert to `\.class` e.g. `@foo: .class` should be converted to `@foo: \.class` (or `selector(.class)`?).
-12. In a custom property value, convert `@variable` to `@{variable}`.
-
-### Converting Less 1.x-4.x to Jess
-
-1. Auto-wrap expressions (like math) with `$()`
-2. Convert mixin definitions `.my-mixin()` to `@mixin my-mixin()`
-3. Convert mixin calls to function calls: `#ns > .mixin()` to `$ns.mixin()`
-4. Throw errors on mixed case mixins: `.my-mixin()` and `.myMixin()`
-5. Throw errors on mixed hash and class mixins: `#my-mixin()` and `.my-mixin()`
-5. Convert variable declarations `@my-var` with `$my-var`
-6. Convert interpolated vars `@{my-var}` to `$(my-var)`
-7. Convert property references `$prop` to `$[prop]`
-8. Convert color names in expressions to hex values (or wrapped in `color()`?) (because Jess doesn't support color keywords in expressions). Alternatively, should Jess allow `keyword` to denote keywords?
-9. Convert `@rest...` to `...rest`
-10. Convert `.rules()` to `@include .rules()` if `.rules` is a selector. What if it's a selector and mixin? Maybe something like `@include .rules, $rules();`? This might change the execution order from Less though.
-11. Convert `@foo: extract(@bar, 1)` to `@let foo: $bar[0];`?
+This package is developed as part of [Jess](https://github.com/jesscss/jess), the Less.js v5 rewrite. Jess translates a Less string into the core Jess AST, which the compiler then evaluates and renders to CSS. Licensed MIT.

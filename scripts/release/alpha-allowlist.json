@@ -13,7 +13,5 @@
   "@jesscss/plugin-js",
   "@jesscss/plugin-less-compat",
   "@jesscss/patch-css",
-  "@jesscss/scss-parser",
-  "@jesscss/plugin-scss",
   "jess"
 ]

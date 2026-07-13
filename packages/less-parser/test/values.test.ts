@@ -49,10 +49,12 @@ describe('value', () => {
     expect(errors[0]!.message).toContain('Inline JavaScript using backticks is not supported');
   });
 
-  it('should reject a trailing comma in a value list (stricter than Less 4.x)', () => {
-    // A comma must be followed by a value; a dangling comma is a parse error in v5.
-    expect(parse('@x: a, b, c,;', 'Stylesheet').errors.length).toBeGreaterThanOrEqual(1);
-    expect(parse('.a { prop: 1, 2,; }', 'Stylesheet').errors.length).toBeGreaterThanOrEqual(1);
+  it('tolerates a single trailing comma in a value list (Less 4.x parity)', () => {
+    // Less 4.x's `value` parser breaks out of its comma loop when no expression
+    // follows, silently dropping a dangling comma. v5 matches that (the earlier
+    // stricter-than-4.x rejection was reversed — 4.x is the grammar parity oracle).
+    expect(parse('@x: a, b, c,;', 'Stylesheet').errors.length).toBe(0);
+    expect(parse('.a { prop: 1, 2,; }', 'Stylesheet').errors.length).toBe(0);
     // a well-formed comma list still parses cleanly
     expect(parse('@y: a, b, c;', 'Stylesheet').errors.length).toBe(0);
   });

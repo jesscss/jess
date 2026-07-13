@@ -1,10 +1,19 @@
 # styles-config
 
-A general-purpose configuration system for styling frameworks including Jess, Less, Sass, Tailwind, and more.
+**A shared configuration schema and loader for styling tools (Jess, Less, Sass,
+Tailwind, …).**
+
+`styles-config` is part of the [Jess](https://github.com/jesscss/jess) project
+(Less.js v5, a ground-up rewrite of the Less CSS preprocessor). It is published
+**unscoped** — the package name is `styles-config`, not `@jesscss/config`.
 
 ## Overview
 
-`styles-config` provides a unified configuration format and loading system that works across multiple CSS preprocessors and styling frameworks. It allows you to define configuration once and use it with different tools, or maintain separate configurations for different frameworks.
+`styles-config` provides a unified configuration format and loading system that
+works across multiple CSS preprocessors and styling frameworks. It lets you define
+configuration once and use it with different tools, or maintain separate
+configurations for different frameworks. Jess itself reads its compile options
+through this loader.
 
 ## Features
 
@@ -16,13 +25,11 @@ A general-purpose configuration system for styling frameworks including Jess, Le
 
 ## Installation
 
-```bash
+```sh
 npm install styles-config
-# or
-pnpm add styles-config
-# or
-yarn add styles-config
 ```
+
+Published to npm under both the `latest` and `alpha` dist-tags.
 
 ## Configuration File Format
 
@@ -320,6 +327,16 @@ This package is designed to be extensible. To add support for a new framework:
 2. Add the extension mapping in `src/options.ts` if needed
 3. Update the documentation
 
+## Status
+
+Alpha. Part of the Jess monorepo, which is early software under active
+development. Please [report issues](https://github.com/jesscss/jess/issues).
+
+## Links
+
+- Repository: <https://github.com/jesscss/jess>
+- Documentation: <https://jesscss.github.io/> (currently pre-alpha content)
+
 ## License
 
-MIT
+[MIT](https://github.com/jesscss/jess/blob/dev/LICENSE)

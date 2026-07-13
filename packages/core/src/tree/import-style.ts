@@ -17,6 +17,7 @@ import { AtRuleStatement } from './at-rule-statement.js';
 import { Any } from './any.js';
 import { declarationNameKey } from './declaration.js';
 import { Sequence } from './sequence.js';
+import { QueryCondition } from './query-condition.js';
 import { registerRulesetWithRoot } from './util/extend-roots.js';
 import { setScopeFrameLiveBinding, type BindingCell } from './scope-frame.js';
 import {
@@ -703,6 +704,13 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
   private getPostludeNodes(postlude?: Node): Node[] {
     if (!postlude) {
       return [];
+    }
+    // A `QueryCondition` is a SINGLE media query (`screen and (max-width: 600px)`),
+    // even though it is structurally a `Sequence` of keyword/paren terms. It must
+    // stay whole so it wraps the imported rules in ONE `@media <full query>` rather
+    // than one nested `@media` per term (`@media screen { @media and { … } }`).
+    if (postlude instanceof QueryCondition) {
+      return [postlude];
     }
     if (isNode(postlude, N.List)) {
       return postlude.value;

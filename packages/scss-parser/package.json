@@ -4,7 +4,7 @@
     "access": "public"
   },
   "description": "",
-  "version": "2.0.0-alpha.7",
+  "version": "2.0.0-alpha.8",
   "main": "lib/index.cjs",
   "types": "lib/index.d.ts",
   "exports": {
@@ -66,7 +66,7 @@
   },
   "devDependencies": {
     "@jesscss/core": "workspace:*",
-    "parseman": "0.25.0",
+    "parseman": "link:/Users/matthew/git/oss/parser-thing",
     "sass-spec": "github:sass/sass-spec"
   },
   "author": "Matthew Dean <matthew-dean@users.noreply.github.com>",

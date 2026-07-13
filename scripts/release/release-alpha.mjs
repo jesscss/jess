@@ -1,7 +1,12 @@
 #!/usr/bin/env node
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
-import { getAlphaPublishStatus, getAlphaReleasePlan, incrementAlphaVersions } from './release-utils.mjs';
+import {
+  applyLockstepVersion,
+  getAlphaReleasePlan,
+  isReleaseArtifactPath,
+  resolveAlphaPublishVersion
+} from './release-utils.mjs';
 
 function parseArgs(argv) {
   const options = {
@@ -9,6 +14,7 @@ function parseArgs(argv) {
     noPush: false,
     skipVersion: false,
     skipPublish: false,
+    skipCheck: false,
     bump: false
   };
   for (let i = 2; i < argv.length; i += 1) {
@@ -17,9 +23,15 @@ function parseArgs(argv) {
     if (arg === '--no-push') options.noPush = true;
     if (arg === '--skip-version') options.skipVersion = true;
     if (arg === '--skip-publish') options.skipPublish = true;
+    // Skip the heavy step-2 preflight (release:alpha:check) when the current
+    // tree was already verified — for a fast republish. Default stays full-check.
+    if (arg === '--skip-check') options.skipCheck = true;
     // On an already-published manifest version: default is to error; --bump
     // opts into auto-incrementing to the next unused -alpha.N instead.
     if (arg === '--bump') options.bump = true;
+    // GATED: also move the npm `latest` dist-tag to the published version
+    // (forwarded to publish-alpha via ALPHA_SET_LATEST). OFF by default.
+    if (arg === '--set-latest') options.setLatest = true;
   }
   return options;
 }
@@ -69,10 +81,11 @@ function getDirtyFiles(rootDir) {
 }
 
 function assertReadyWorkingTree(rootDir) {
-  const dirty = getDirtyFiles(rootDir).filter(file => !file.startsWith('.cursor/'));
+  const dirty = getDirtyFiles(rootDir).filter(file => !isReleaseArtifactPath(file));
   if (dirty.length > 0) {
     throw new Error(
-      `Working tree is not clean. Commit or stash non-.cursor changes first:\n- ${dirty.join('\n- ')}`
+      `Working tree is not clean. Commit or stash source changes first `
+      + `(build artifacts like lib/ and etc/*.api.md are ignored):\n- ${dirty.join('\n- ')}`
     );
   }
 }
@@ -99,19 +112,84 @@ function tagExists(rootDir, tag) {
   return result.status === 0;
 }
 
-function smokeCheck(plan, expectedVersion) {
-  console.log('\nNPM alpha tag smoke check:');
+/** Synchronous sleep (no extra deps) for the smoke-check propagation backoff. */
+function sleepSync(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+/** Read the version npm currently resolves for `pkgName@tag`, or null. */
+function viewTagVersion(pkgName, tag) {
+  const result = spawnSync('npm', ['view', `${pkgName}@${tag}`, 'version', '--json'], {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+    shell: process.platform === 'win32'
+  });
+  if (result.status !== 0) {
+    return null;
+  }
+  const raw = (result.stdout ?? '').trim();
+  if (!raw) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(raw);
+    if (typeof parsed === 'string') return parsed;
+    if (Array.isArray(parsed)) return parsed.at(-1) ?? null;
+    return null;
+  } catch {
+    return raw;
+  }
+}
+
+/**
+ * Smoke check that TOLERATES registry propagation lag. Newly-created scoped
+ * packages (and fresh versions) can take tens of seconds to become queryable by
+ * `npm view`, so a single immediate query false-reports a successful publish as
+ * a missing/E404 package. This polls each not-yet-visible package with backoff
+ * before deciding, and only warns about packages still not showing the expected
+ * version after the full window.
+ */
+function smokeCheck(plan, expectedVersion, { attempts = 6, delayMs = 10000 } = {}) {
+  console.log('\nNPM alpha tag smoke check (tolerating registry propagation lag)...');
+  const lastSeen = new Map(plan.allowlist.map(name => [name, '(not found)']));
+  const confirmed = new Set();
+
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    for (const pkgName of plan.allowlist) {
+      if (confirmed.has(pkgName)) continue;
+      const seen = viewTagVersion(pkgName, 'alpha');
+      lastSeen.set(pkgName, seen ?? '(not found)');
+      if (seen === expectedVersion) confirmed.add(pkgName);
+    }
+    const remaining = plan.allowlist.filter(name => !confirmed.has(name));
+    if (remaining.length === 0) break;
+    if (attempt < attempts) {
+      console.log(
+        `  attempt ${attempt}/${attempts}: ${remaining.length} package(s) not yet showing `
+        + `${expectedVersion}; waiting ${delayMs / 1000}s for propagation...`
+      );
+      sleepSync(delayMs);
+    }
+  }
+
   for (const pkgName of plan.allowlist) {
-    const result = spawnSync('npm', ['view', `${pkgName}@alpha`, 'version', '--json'], {
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'pipe'],
-      shell: process.platform === 'win32'
-    });
-    const raw = (result.stdout ?? '').trim();
-    const displayed = raw || '(not found)';
-    console.log(`- ${pkgName}@alpha => ${displayed}`);
+    const seen = lastSeen.get(pkgName);
+    const good = confirmed.has(pkgName);
+    console.log(`- ${pkgName}@alpha => ${seen}${good ? '' : `  (expected ${expectedVersion})`}`);
   }
   console.log(`\nExpected published version: ${expectedVersion}`);
+
+  const stillMissing = plan.allowlist.filter(name => !confirmed.has(name));
+  if (stillMissing.length > 0) {
+    console.warn(
+      `\nWarning: ${stillMissing.length} package(s) did not show ${expectedVersion} on the 'alpha' `
+      + `tag within ${(attempts * delayMs) / 1000}s: ${stillMissing.join(', ')}.\n`
+      + `Newly-created packages can lag on first publish. This is NOT proof of a failed publish; `
+      + `re-check with 'npm view <pkg>@alpha version', or re-run 'pnpm run release:alpha:publish' `
+      + `(already-published versions are skipped).`
+    );
+  }
+  return stillMissing.length === 0;
 }
 
 const rootDir = process.cwd();
@@ -148,50 +226,51 @@ if (!options.dryRun) {
   assertReadyWorkingTree(rootDir);
 }
 
-run('pnpm', ['run', 'release:alpha:check'], rootDir);
-
-if (!options.skipVersion) {
-  // Respect the version already written in the manifests: publish it as-is when
-  // npm does not already have it. Only bump/error when the manifest version is
-  // already fully published. The per-version existence check also subsumes the
-  // old double-increment guard: a manifest that was bumped but not yet published
-  // reads back as state 'none' and is republished as-is (no second bump).
-  const { plan: versionPlan, version: localVersion } = getReleaseState(rootDir);
-  console.log(`\nChecking npm for manifest version ${localVersion} across ${versionPlan.allowlist.length} allowlisted package(s)...`);
-  const status = getAlphaPublishStatus({ plan: versionPlan, version: localVersion });
-
-  if (status.state === 'none') {
-    console.log(`Version ${localVersion} is not yet published. Publishing manifest version as-is (no auto-increment).`);
-  } else if (status.state === 'partial') {
-    console.log(
-      `Version ${localVersion} is partially published (${status.published.length}/${status.total} packages).`
-      + ` Resuming: publishing manifest version as-is; already-published packages are skipped by publish-alpha.`
-    );
-    console.log(`  Already published: ${status.published.join(', ')}`);
-  } else {
-    // state === 'all' — the manifest version is already fully published.
-    if (options.bump) {
-      console.log(`Version ${localVersion} is already published. Auto-incrementing (--bump)...`);
-      const { previousVersion, nextVersion } = incrementAlphaVersions({ rootDir });
-      console.log(`  ${previousVersion} -> ${nextVersion}`);
-      run('pnpm', ['install', '--lockfile-only'], rootDir);
-    } else {
-      throw new Error(
-        `Manifest version ${localVersion} is already published to npm for all allowlisted packages.\n`
-        + `Set a new '-alpha.N' version in the allowlisted manifests, or re-run with --bump to auto-increment to the next unused version.`
-      );
-    }
-  }
+if (options.skipCheck) {
+  console.log('\nSkipping preflight suite (--skip-check); assuming the current tree is already verified.');
+} else {
+  run('pnpm', ['run', 'release:alpha:check'], rootDir);
 }
 
-const { plan, version } = getReleaseState(rootDir);
+let resolution = null;
+if (!options.skipVersion) {
+  // Intent-first, registry-guarded version resolution replaces manual bumping:
+  // resolve ONE lockstep version for the whole allowlist that is guaranteed
+  // fresh (unpublished) for every package, then apply it lockstep. No
+  // --skip-version / manual manifest edit is required for a normal release.
+  const { plan: versionPlan } = getReleaseState(rootDir);
+  resolution = resolveAlphaPublishVersion({ rootDir, plan: versionPlan });
+  console.log(`\nResolved lockstep alpha version: ${resolution.resolved}`);
+  console.log(
+    `  intended=${resolution.intended}, `
+    + `publishedMax=${resolution.publishedMax ?? '(none)'}, reason=${resolution.reason}`
+  );
+  if (!options.dryRun) {
+    const applied = applyLockstepVersion(rootDir, resolution.resolved);
+    if (applied.changed.length > 0) {
+      console.log(`  Applied ${resolution.resolved} to ${applied.changed.length} workspace manifest(s).`);
+      run('pnpm', ['install', '--lockfile-only'], rootDir);
+    } else {
+      console.log(`  Manifests already at ${resolution.resolved}.`);
+    }
+  }
+} else {
+  console.log('\nSkipping version resolution (--skip-version); using manifest versions as-is.');
+}
+
+const { plan, version: manifestVersion } = getReleaseState(rootDir);
+// In dry-run we do not mutate manifests, so surface the RESOLVED version rather
+// than the raw (possibly stale) manifest version.
+const version = resolution?.resolved ?? manifestVersion;
 const tag = `v${version}`;
 
 if (options.dryRun) {
   console.log(`\nDry-run summary:`);
-  console.log(`- Next alpha version: ${version}`);
+  console.log(`- Resolved alpha version: ${version}`);
   console.log(`- Planned tag: ${tag}`);
-  run('node', [path.join(rootDir, 'scripts/release/publish-alpha.mjs'), '--dry-run', '--tag', 'alpha'], rootDir);
+  const dryPublishArgs = [path.join(rootDir, 'scripts/release/publish-alpha.mjs'), '--dry-run', '--tag', 'alpha'];
+  if (options.setLatest) dryPublishArgs.push('--set-latest');
+  run('node', dryPublishArgs, rootDir);
   process.exit(0);
 }
 
@@ -220,6 +299,15 @@ if (!options.noPush) {
 }
 
 if (!options.skipPublish) {
+  // Forward the gated latest-tag opt-in across the `pnpm run` boundary via env
+  // (inherited by the child publish-alpha process).
+  if (options.setLatest) {
+    process.env.ALPHA_SET_LATEST = '1';
+    console.log(
+      `\nNote: --set-latest is ON; the npm 'latest' dist-tag will be moved to ${version} `
+      + `for every allowlisted package (relaxes the "non-alpha tags only from main" policy).`
+    );
+  }
   run('pnpm', ['run', 'release:alpha:publish'], rootDir);
   smokeCheck(plan, version);
 } else {

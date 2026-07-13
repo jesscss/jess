@@ -2,6 +2,8 @@ import { describe, it, expect, vi } from 'vitest';
 import { Compiler } from '../src/index.js';
 import { outputDiagnostics } from '../src/diagnostics.js';
 import type { ErrorDiagnostic, WarningDiagnostic } from '@jesscss/core';
+import lessPlugin from '@jesscss/plugin-less';
+import { lessCompatPlugin } from '@jesscss/plugin-less-compat';
 
 describe('Diagnostic Output', () => {
   it('should output errors using CodeDebug', async () => {
@@ -70,6 +72,63 @@ describe('Diagnostic Output', () => {
     expect(stdoutSpy).not.toHaveBeenCalled();
 
     stdoutSpy.mockRestore();
+  });
+});
+
+describe('Eval error source location', () => {
+  function evalCompiler() {
+    return new Compiler({
+      output: { collapseNesting: true },
+      compile: {
+        plugins: [lessPlugin(), lessCompatPlugin()],
+        functionMode: 'error',
+        unitMode: 'strict'
+      }
+    });
+  }
+
+  // Regression: eval-time errors used to report a bogus `1:1` with an empty
+  // source frame. They must point at the offending node's real location.
+  it('points an undefined-mixin-call error at the call site, not 1:1', async () => {
+    const source = [
+      '.a {',
+      '  color: red;',
+      '}',
+      '.missing-mixin();'
+    ].join('\n');
+
+    const result = await evalCompiler().renderToResult(
+      { source, filePath: '/proj/detached.less' },
+      { suppressWarnings: true }
+    );
+
+    expect(result.errors).toHaveLength(1);
+    const err = result.errors[0]!;
+    expect(err.phase).toBe('eval');
+    // The `.missing-mixin();` call is on line 4, column 1 — NOT the old `1:1`.
+    expect(err.line).toBe(4);
+    expect(err.column).toBe(1);
+    expect(err.lines?.[4]).toContain('.missing-mixin');
+  });
+
+  it('points an undefined-variable error at the reference, not 1:1', async () => {
+    const source = [
+      '.a {',
+      '  width: @nope;',
+      '}'
+    ].join('\n');
+
+    const result = await evalCompiler().renderToResult(
+      { source, filePath: '/proj/undef.less' },
+      { suppressWarnings: true }
+    );
+
+    expect(result.errors).toHaveLength(1);
+    const err = result.errors[0]!;
+    // `@nope` sits at line 2, column 10.
+    expect(err.line).toBe(2);
+    expect(err.column).toBe(10);
+    expect(err.lines?.[2]).toContain('@nope');
   });
 });
 

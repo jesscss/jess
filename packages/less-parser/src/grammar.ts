@@ -449,10 +449,11 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   const declaration = choice(g.VarDeclaration, g.CustomDeclaration, g.Declaration);
 
   // ── Values (Less: + Reference, NamedColor, EscapedValue) ────────────────────
-  // A comma must be followed by a value — a trailing comma (`a, b,`) is a parse
-  // error in Less v5 (stricter than Less 4.x, which tolerated it). The dangling
-  // comma is left unconsumed and surfaces as one syntax error via the net.
-  const valueList = sequence(g.valueSequence, many(sequence(literal(','), g.valueSequence)));
+  // A comma-separated value list, tolerating a single trailing comma (`a, b,`) as
+  // Less 4.x does — its `value` parser breaks out of the comma loop when no
+  // expression follows, silently dropping the dangling comma (the value builder's
+  // empty-segment filter mirrors this, so the trailing comma adds no list item).
+  const valueList = sequence(g.valueSequence, many(sequence(literal(','), g.valueSequence)), optional(literal(',')));
   // A space-separated value sequence: each item is a full top-level EXPRESSION
   // (topSum), so arithmetic folds into the grammar (`1 + 2` → one Operation) while
   // non-operator items stay a list (`1px 2px 3px`). topSum collapses to the bare
