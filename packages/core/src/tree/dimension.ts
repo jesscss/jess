@@ -1,4 +1,3 @@
-import { sourceSpanOf } from './util/provenance.js';
 import { type Context } from '../context.js';
 import { Color, ColorFormat } from './color.js';
 import {
@@ -80,8 +79,7 @@ export class Dimension extends Node<DimensionValue> {
   override clone(): this {
     const newNode = new Dimension(
       { number: this.number, unit: this.unit },
-      this._options ? { ...this._options } : undefined,
-      sourceSpanOf(this)
+      this._options ? { ...this._options } : undefined
     );
     newNode.inherit(this);
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
