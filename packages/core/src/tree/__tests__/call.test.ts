@@ -1,7 +1,7 @@
 import { sourceSpanOf } from '../util/provenance.js';
 import { beforeEach, describe, expect, it } from 'vitest';
 import * as treeIndex from '../index.js';
-import { Any, Call, Color, F_NON_STATIC, JsFunction, List, Node, Reference, Rules, Sequence, any, call, coll, condition, decl, dimension, el, fn, list, mixin, negative, num, op, query, quoted, ref, rules, ruleset, seq, vardecl } from '../index.js';
+import { Any, Call, Color, F_NON_STATIC, JsFunction, List, Node, Reference, Rules, Sequence, any, call, coll, comment, condition, decl, dimension, el, fn, list, mixin, negative, num, op, query, quoted, ref, rules, ruleset, seq, vardecl } from '../index.js';
 import { Context } from '../../context.js';
 import { isNode } from '../util/is-node.js';
 import { N } from '../node-type.js';
@@ -1525,10 +1525,11 @@ describe('Call', () => {
 
   it('marks declarations important, replacing top-level slots in place and nested rules on a copy', () => {
     const topDeclaration = decl({ name: 'color', value: any('red') });
+    const nestedComment = comment('/* keep me */');
     const nestedDeclaration = decl({ name: 'background', value: any('blue') });
     const nestedRuleset = ruleset({
       selector: el('.nested'),
-      rules: [nestedDeclaration]
+      rules: [nestedComment, nestedDeclaration]
     });
     const root = rules([topDeclaration, nestedRuleset]);
     const rule = call({ name: 'noop' });
@@ -1550,20 +1551,26 @@ describe('Call', () => {
     expect(nestedCopy).not.toBe(nestedRuleset);
     expect(isNode(nestedCopy, N.Ruleset)).toBe(true);
     expect(nestedCopy?.parent).toBe(root);
-    expect(nestedRuleset.rules[0]).toBe(nestedDeclaration);
+    expect(nestedRuleset.rules[0]).toBe(nestedComment);
+    expect(nestedRuleset.rules[1]).toBe(nestedDeclaration);
     expect(nestedDeclaration.important).toBeUndefined();
 
-    const nestedReplacement = isNode(nestedCopy, N.Ruleset) ? nestedCopy.rules[0] : undefined;
+    const nestedCopiedComment = isNode(nestedCopy, N.Ruleset) ? nestedCopy.rules[0] : undefined;
+    expect(nestedCopiedComment).toBe(nestedComment);
+    expect(nestedCopiedComment?.parent).toBe(nestedRuleset);
+
+    const nestedReplacement = isNode(nestedCopy, N.Ruleset) ? nestedCopy.rules[1] : undefined;
     expect(nestedReplacement).not.toBe(nestedDeclaration);
     expect(isNode(nestedReplacement, N.Declaration)).toBe(true);
     expect(nestedReplacement?.parent).toBe(nestedCopy);
 
-    expect(root.toTrimmedString()).toBeString(`
-      color: red !important;
-      .nested {
-        background: blue !important;
-      }
-    `);
+    expect(root.toTrimmedString().trimEnd()).toBe([
+      'color: red !important;',
+      '.nested {',
+      '  /* keep me */',
+      '  background: blue !important;',
+      '}'
+    ].join('\n'));
   });
 
   it('writes finalized CSS call output into segmented buffers', () => {

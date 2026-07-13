@@ -40,6 +40,7 @@ import { Condition } from './condition.js';
 import { Operation } from './operation.js';
 import { QueryCondition } from './query-condition.js';
 import { Negative } from './negative.js';
+import { copyWithReusableLeavesPreservingComments } from './util/cloning.js';
 
 function stringifyValueOf(value: unknown): string {
   if (value && typeof value === 'object' && 'valueOf' in value) {
@@ -1784,11 +1785,15 @@ export class Call extends Node<CallValue, CallOptions> {
    * architecture); mutating a nested `Rules`/`Ruleset`/`AtRule` in place would
    * leak the `!important` into a LATER call of the same nested mixin
    * (`.m(){ .n(){ margin:5px } .n() } .a{ .m() !important } .b{ .m() }` must not
-   * make `.b` important). `clone()` gives a fresh child array so the in-place
-   * declaration replacement done by `makeImportant` touches only this copy.
+   * make `.b` important). A placement copy gives a fresh child array while
+   * preserving comment leaves, so the in-place declaration replacement done by
+   * `makeImportant` touches only this output surface.
    */
   private makeImportantCopy(parent: Rules, rule: Rules): Rules {
-    const copy = rule.clone();
+    const copy = copyWithReusableLeavesPreservingComments(rule);
+    if (!(copy instanceof Rules)) {
+      throw new TypeError('Expected important-copy rule to remain Rules');
+    }
     this.makeImportant(copy);
     parent.adopt(copy);
     return copy;
