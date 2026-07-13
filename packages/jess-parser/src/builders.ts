@@ -63,6 +63,7 @@ export class JessGrammar extends CssParser {
       case 'Mixin':          return this._buildJessMixin(children, loc(span));
       case 'MixinParam':     return this._buildJessMixinParam(children, rawChildren, loc(span));
       case 'MixinCall':      return this._buildJessMixinCall(children, loc(span));
+      case 'VariableMixinCall': return this._buildJessVariableMixinCall(children, loc(span));
       case 'AnonMixin':      return this._buildJessAnonMixin(children, loc(span));
       case 'SelectorCapture': return this._buildJessSelectorCapture(children, rawChildren, loc(span));
       case 'Extend':         return this._buildJessExtend(children, rawChildren, loc(span));
@@ -675,6 +676,19 @@ export class JessGrammar extends CssParser {
 
     return new Call(
       { name: base, args: new List(args as never, undefined, location) } as never,
+      undefined,
+      location
+    ) as unknown as Node;
+  }
+
+  private _buildJessVariableMixinCall(children: ReadonlyArray<Node | CSTLike>, location: LocationInfo): Node {
+    const name = children.filter(isLeaf).find(leaf => leaf.value.startsWith('$'))?.value ?? '$';
+    const args = children.filter(c => (c as CSTLike)._tag === 'node') as Node[];
+    return new Call(
+      {
+        name: new Reference(name.slice(1), { type: 'variable', role: 'name' }, location),
+        args: new List(args as never, undefined, location)
+      } as never,
       undefined,
       location
     ) as unknown as Node;

@@ -54,12 +54,12 @@ growing toward looks more like this:
 ```jess
 // Pull in styles from Less and Sass sources.
 @-compose './theme.less' as theme;
-@-compose './mixins.scss' as mixins;
+@-compose './mixins.scss' as *;
 
 // Jess keeps stylesheet authoring in CSS-space, but gives it richer composition.
 .card {
   color: $theme.primary-color;
-  $ > mixins.rounded(8px);
+  $rounded(8px);
 
   & > .title {
     font-weight: 700;
