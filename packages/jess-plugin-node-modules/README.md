@@ -24,9 +24,9 @@ finished CSS-in-JS system.
 
 ## Status
 
-**Alpha.** Part of Jess, the ground-up rewrite of Less.js (Jess *is* Less.js
-v5). The programmatic plugin/compiler API is **not yet stabilized** — the `jess`
-/ `lessc` CLIs are the public surface for the alpha. Watch the
+**Alpha.** Part of Jess. The programmatic plugin/compiler API is **not yet
+stabilized** — the `jess` CLI is the documented public surface for the alpha.
+Watch the
 [docs site](https://jesscss.github.io/) for the API once it settles.
 
 - Project overview & positioning: <https://github.com/jesscss/jess#readme>

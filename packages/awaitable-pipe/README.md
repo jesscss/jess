@@ -2,7 +2,11 @@
 
 A tiny, strongly-typed pipe that stays synchronous until a step returns a Promise — with one optional error handler.
 
-It’s a small utility from the [Jess](https://github.com/jesscss/jess) project (Less.js v5, a ground-up rewrite of the Less CSS preprocessor), where hot paths call functions that are usually — but not always — synchronous. It’s zero-dependency and usable on its own: it stays sync when everything is sync, and turns into a Promise only when something is async. No wrappers, no ceremony.
+It’s a small utility from the [Jess](https://github.com/jesscss/jess) project,
+where hot paths call functions that are usually — but not always —
+synchronous. It’s zero-dependency and usable on its own: it stays sync when
+everything is sync, and turns into a Promise only when something is async. No
+wrappers, no ceremony.
 
 - **Stays sync when it can**: all-sync pipelines return a plain value
 - **Goes async when it must**: any async input/step returns a Promise

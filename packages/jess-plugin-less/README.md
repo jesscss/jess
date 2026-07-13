@@ -3,12 +3,12 @@
 **The Less language engine for Jess — the Less parser wired in with Less v5
 rendering defaults.**
 
-This is the one shipping surface today. [Jess](https://github.com/jesscss/jess)
-*is* Less.js v5, and `plugin-less` is where that lives: it layers the Less
-grammar (`@jesscss/less-parser`) onto the Jess compiler, registers the Less
-built-in functions (`@jesscss/fns`), and sets the v5 output defaults. The `jess`
-and `lessc` CLIs load it by default, so if you render `.less` you are already
-using it — you don't need to install this package separately for normal CLI use.
+This is the Less language engine behind the shipping alpha surface.
+`plugin-less` layers the Less grammar (`@jesscss/less-parser`) onto the Jess
+compiler, registers the Less built-in functions (`@jesscss/fns`), and sets the
+current output defaults. The `jess` CLI loads it by default, so if you render
+`.less` you are already using it — you don't need to install this package
+separately for normal CLI use.
 
 ## What it does
 
@@ -16,10 +16,9 @@ using it — you don't need to install this package separately for normal CLI us
   evaluate-and-emit pass.
 - Registers the Less/Sass style-function library so `lighten()`, `percentage()`,
   string and list helpers, etc. are available during evaluation.
-- Owns the **Less v5 output defaults** — the single source of truth the `lessc`
-  CLI imports so CLI and engine defaults can never drift.
+- Owns the current Less-facing output defaults used across the alpha surface.
 
-## Less v5 output defaults
+## Current output defaults
 
 The defaults this plugin applies:
 
@@ -29,18 +28,18 @@ The defaults this plugin applies:
 - `mathMode: 'parens-division'`, `unitMode: 'preserve'`, `equalityMode: 'less'`,
   `leakyScope: true`, `bubbleRootAtRules: true`.
 
-These keep the Less 4.x command surface (flags, stdin/stdout, exit codes) while
-producing Less **v5** output semantics.
+These keep the current Less-facing surface aligned on one set of output
+semantics.
 
 ## Status
 
-**Alpha.** This is the **"Now" / Less.js tier** — the earned, shipping-today
-surface. It is real and renders real Less, but it is early software with known
-rendering gaps and expected failures; don't ship it to production yet, and please
+**Alpha.** This is the shipping Less-facing engine in the current Jess alpha. It
+renders real Less, but it is early software with known rendering gaps and
+expected failures; don't ship it to production yet, and please
 [report bugs](https://github.com/jesscss/jess/issues).
 
-The programmatic plugin/compiler API is **not yet stabilized** — the `jess` /
-`lessc` CLIs are the public surface for the alpha. Watch the
+The programmatic plugin/compiler API is **not yet stabilized** — the `jess` CLI
+is the documented public surface for the alpha. Watch the
 [docs site](https://jesscss.github.io/) for the API once it settles.
 
 - Project overview & positioning: <https://github.com/jesscss/jess#readme>

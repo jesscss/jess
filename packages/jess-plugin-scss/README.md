@@ -25,10 +25,9 @@ preview, not a promise.
 
 ## Status
 
-**Alpha / experimental.** Part of [Jess](https://github.com/jesscss/jess), the
-ground-up rewrite of Less.js (Jess *is* Less.js v5). The programmatic
-plugin/compiler API is **not yet stabilized** — the `jess` / `lessc` CLIs are the
-public surface for the alpha, and they target Less.
+**Alpha / experimental.** Part of [Jess](https://github.com/jesscss/jess). The
+programmatic plugin/compiler API is **not yet stabilized** — the `jess` CLI is
+the documented public surface for the alpha, and it targets Less today.
 
 - Project overview & positioning: <https://github.com/jesscss/jess#readme>
 - Docs: <https://jesscss.github.io/> (currently pre-alpha content)

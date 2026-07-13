@@ -4,8 +4,7 @@
 turn a parsed stylesheet into CSS.**
 
 `@jesscss/core` is the engine at the heart of
-[Jess](https://github.com/jesscss/jess) — Less.js v5, a ground-up rewrite of the
-Less CSS preprocessor. It defines the syntax tree that every Jess parser produces,
+[Jess](https://github.com/jesscss/jess). It defines the syntax tree that every Jess parser produces,
 evaluates that tree (resolving variables, expanding mixins, running functions,
 applying `extend`, and folding nesting), and renders the result to CSS.
 
@@ -30,7 +29,8 @@ plus core — avoiding a circular dependency.
 ## Who uses it
 
 This is an internal engine package. Most people should install
-[`jess`](https://www.npmjs.com/package/jess) and use the `jess` / `lessc` CLIs
+rather than depending on `@jesscss/core` directly. Most people should install
+[`jess`](https://www.npmjs.com/package/jess) and use the `jess` CLI
 rather than depending on `@jesscss/core` directly. Its JavaScript/TypeScript API
 is **not yet stabilized** and is intentionally undocumented for now.
 

@@ -4,10 +4,9 @@
 the document head.**
 
 `@jesscss/patch-css` is a small browser utility from the
-[Jess](https://github.com/jesscss/jess) project (Less.js v5, a ground-up rewrite
-of the Less CSS preprocessor). Loaded synchronously in the `<head>` — without
-`async` or `defer` — it re-attaches any stylesheets that were previously cached in
-`localStorage`, so styling is in place before first paint.
+[Jess](https://github.com/jesscss/jess) project. Loaded synchronously in the
+`<head>` — without `async` or `defer` — it re-attaches any stylesheets that were
+previously cached in `localStorage`, so styling is in place before first paint.
 
 It exposes a single function, `updateSheet(text, id)`, which inserts (or updates)
 a `<style>` element for the given id and writes the current stylesheet cache back

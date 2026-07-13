@@ -4,8 +4,7 @@
 load paths, and extension/index resolution.**
 
 `@jesscss/style-resolver` is a building block for
-[Jess](https://github.com/jesscss/jess) — Less.js v5, a ground-up rewrite of the
-Less CSS preprocessor. Given a stylesheet's source and an import statement, it
+[Jess](https://github.com/jesscss/jess). Given a stylesheet's source and an import statement, it
 figures out which file that import actually points to, applying each language's
 lookup rules (Less and SCSS candidate expansion, partials, index files, search
 paths).
@@ -24,7 +23,7 @@ package is just the resolver, not that feature.
 ## Who uses it
 
 This is an internal package. Most people should install
-[`jess`](https://www.npmjs.com/package/jess) and use the `jess` / `lessc` CLIs.
+[`jess`](https://www.npmjs.com/package/jess) and use the `jess` CLI.
 The JavaScript/TypeScript API is **not yet stabilized** and is intentionally
 undocumented for now.
 

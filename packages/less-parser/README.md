@@ -2,7 +2,11 @@
 
 The Less grammar, layered on the CSS base parser — the parser behind the language Jess ships today.
 
-> **Status: alpha.** Part of [Jess](https://github.com/jesscss/jess), which *is* Less.js v5. Rendering `.less` is the one surface shipping today; everything else is roadmap. Expect gaps and [report bugs](https://github.com/jesscss/jess/issues). Docs live at [jesscss.github.io](https://jesscss.github.io/).
+> **Status: alpha.** Part of [Jess](https://github.com/jesscss/jess). Parsing
+> and compiling `.less` is the main shipping surface today; the broader
+> language/tooling picture is still early. Expect gaps and
+> [report bugs](https://github.com/jesscss/jess/issues). Docs live at
+> [jesscss.github.io](https://jesscss.github.io/).
 
 ## What it is
 
@@ -146,4 +150,6 @@ type BuildHost = (
 
 ## Part of Jess
 
-This package is developed as part of [Jess](https://github.com/jesscss/jess), the Less.js v5 rewrite. Jess translates a Less string into the core Jess AST, which the compiler then evaluates and renders to CSS. Licensed MIT.
+This package is developed as part of [Jess](https://github.com/jesscss/jess).
+Jess translates a Less string into the core Jess AST, which the compiler then
+evaluates and renders to CSS. Licensed MIT.

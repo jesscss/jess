@@ -3,9 +3,9 @@
 **A shared configuration schema and loader for styling tools (Jess, Less, Sass,
 Tailwind, …).**
 
-`styles-config` is part of the [Jess](https://github.com/jesscss/jess) project
-(Less.js v5, a ground-up rewrite of the Less CSS preprocessor). It is published
-**unscoped** — the package name is `styles-config`, not `@jesscss/config`.
+`styles-config` is part of the [Jess](https://github.com/jesscss/jess) project.
+It is published **unscoped** — the package name is `styles-config`, not
+`@jesscss/config`.
 
 ## Overview
 

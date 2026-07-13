@@ -2,7 +2,11 @@
 
 A spec-aligned CSS parser, built on [parseman](https://www.npmjs.com/package/parseman) — the shared base grammar that the Less and SCSS grammars extend, and the real-AST foundation behind Jess's PostCSS-*like* transform-layer vision.
 
-> **Status: alpha.** Part of [Jess](https://github.com/jesscss/jess), which *is* Less.js v5. Rendering `.less` is the one surface shipping today; everything else is roadmap. Expect gaps and [report bugs](https://github.com/jesscss/jess/issues). Docs live at [jesscss.github.io](https://jesscss.github.io/).
+> **Status: alpha.** Part of [Jess](https://github.com/jesscss/jess). The main
+> shipping compiler entry point today is `.less`; the broader language and
+> tooling surface is still early. Expect gaps and
+> [report bugs](https://github.com/jesscss/jess/issues). Docs live at
+> [jesscss.github.io](https://jesscss.github.io/).
 
 ## What it is
 
@@ -176,4 +180,6 @@ result.value   // the root node your host returned
 
 ## Part of Jess
 
-This package is developed as part of [Jess](https://github.com/jesscss/jess), the Less.js v5 rewrite. The core-coupled `.` entry integrates with `@jesscss/core`; the `./cst` and `./grammar` entries are usable on their own. Licensed MIT.
+This package is developed as part of [Jess](https://github.com/jesscss/jess).
+The core-coupled `.` entry integrates with `@jesscss/core`; the `./cst` and
+`./grammar` entries are usable on their own. Licensed MIT.

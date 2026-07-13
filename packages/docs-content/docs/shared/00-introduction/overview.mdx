@@ -1,7 +1,7 @@
 ---
 title: Overview
 sidebar_label: Overview
-description: A stylesheet language and compiler with modern CSS ergonomics and compile-time power — the home of Less, Sass migration, and the Jess language.
+description: A stylesheet language and compiler with modern CSS ergonomics and compile-time power.
 audiences:
   - jess
   - less
@@ -27,8 +27,8 @@ mixins, nesting, functions, and tooling that scale.
 - **Backwards-compatible output** — predictable CSS for production pipelines.
 - **Built for large stylesheets** — structure design tokens, utilities, and
   components without fighting your tooling.
-- **A clear upgrade runway** — Less 5.x runs on the Jess engine, so teams can
-  migrate toward the Jess language over time without a rewrite.
+- **A clear upgrade runway** — Less is one of the ways into Jess, so teams can
+  evolve toward broader Jess workflows over time without rewriting everything at once.
 :::
 
 </AudienceGate>
@@ -37,14 +37,10 @@ mixins, nesting, functions, and tooling that scale.
 
 # Sass, fixed
 
-If you write **Sass/SCSS**, Jess will feel immediately familiar — `$variables`,
-nesting, mixins, maps, `@extend`. Jess parses SCSS today and compiles it, while
-quietly fixing the parts of Sass that painted themselves into a corner: no
-`@at-root` teleporting, a real module system instead of global `@import`, and a
-strict line at *valid CSS* rather than bug-for-bug tolerance.
-
-We call the supported subset **Sass+** — Sass without the bad parts. Everything
-you rely on maps over; the differences are principled, not gaps.
+If you write **Sass/SCSS**, the Jess direction should feel familiar —
+`$variables`, nesting, mixins, maps, `@extend` — but Sass compatibility is not
+the front-door surface today. The aim is a cleaner migration path: keep the
+useful ergonomics, drop the awkward parts, and stay closer to valid CSS.
 
 </AudienceGate>
 
@@ -52,26 +48,17 @@ you rely on maps over; the differences are principled, not gaps.
 
 # Jess
 
-**Jess** is a stylesheet language *and* a compiler, designed for teams that want
-modern CSS ergonomics without giving up compile-time power. It started as a
-ground-up rewrite of Less (and now powers Less 5+), then grew into its own
-language model — so you can migrate `.scss` and `.less` incrementally to `.jess`
-and compose across all three when you need to.
+**Jess** is in **very early alpha**. The public entry point is still narrow and
+moving, with rough edges and missing pieces while the language surface settles.
 
-```scss
-// I am a Jess file
-@-use '#less';              // Use built-in modules!
-@-use './sizes.ts';         // Use a custom module!
-@-compose './theme.less';   // Compose a theme!
-@-compose './mixins.scss';  // Import mixins from Less and Sass!
+Jess is a stylesheet language *and* a compiler, designed for teams that want
+modern CSS ergonomics without giving up compile-time power. The public alpha
+ships today through Less-compatible tooling, but the project itself is broader:
+Jess is the language direction, with richer composition, expressions, and module
+boundaries that still compile down to CSS.
 
-.container {
-  width: $less.unit($sizes.width);
-  color: $theme.primary-color;
-  display: flex;
-  $ > mixins.box();
-}
-```
+The project starts by earning trust on familiar Less workflows, then opens out
+toward broader Jess syntax and composition over time.
 
 </AudienceGate>
 
@@ -89,9 +76,8 @@ queries — but a build-time layer still earns its keep:
 
 <AudienceGate include={['jess']}>
 
-Jess adds first-class expressions (`$(…)`), live bindings, collections, and a
-JS/TS/JSON module system — while producing static CSS by default (and
-patch-friendly output when you need dynamic behavior).
+Jess is being designed around expressions, live bindings, collections, and a
+JS/TS/JSON module system while still producing CSS output by default.
 
 </AudienceGate>
 

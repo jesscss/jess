@@ -2,7 +2,14 @@
 
 An SCSS grammar for Jess, layered on the CSS base parser — **experimental, and not the focus of the Less alpha.**
 
-> **Status: experimental / roadmap.** Part of [Jess](https://github.com/jesscss/jess), which *is* Less.js v5. Only `.less` rendering ships today. SCSS is **not a goal of this phase** — this parser is early and exists to seed the future **"Sass+"** dialect (roadmap milestone #2, after Less.js). Don't rely on it for production; prefer [`@jesscss/css-parser`](https://www.npmjs.com/package/@jesscss/css-parser) / [`@jesscss/less-parser`](https://www.npmjs.com/package/@jesscss/less-parser). [Report bugs](https://github.com/jesscss/jess/issues); docs live at [jesscss.github.io](https://jesscss.github.io/).
+> **Status: experimental / roadmap.** Part of
+> [Jess](https://github.com/jesscss/jess). The current alpha ships through
+> `.less`; SCSS is **not a goal of this phase**. This parser is early and exists
+> to seed the future **"Sass+"** dialect. Don't rely on it for production;
+> prefer [`@jesscss/css-parser`](https://www.npmjs.com/package/@jesscss/css-parser)
+> / [`@jesscss/less-parser`](https://www.npmjs.com/package/@jesscss/less-parser).
+> [Report bugs](https://github.com/jesscss/jess/issues); docs live at
+> [jesscss.github.io](https://jesscss.github.io/).
 
 ## What it is
 
@@ -146,4 +153,7 @@ type BuildHost = (
 
 ## Part of Jess
 
-This package is developed as part of [Jess](https://github.com/jesscss/jess), the Less.js v5 rewrite. SCSS is the least-mature Jess dialect and is not the focus of the Less alpha — it seeds the roadmap "Sass+" dialect. For production use, prefer `@jesscss/css-parser` / `@jesscss/less-parser`. Licensed MIT.
+This package is developed as part of [Jess](https://github.com/jesscss/jess).
+SCSS is the least-mature Jess dialect and is not the focus of the current
+alpha; it seeds the roadmap "Sass+" dialect. For production use, prefer
+`@jesscss/css-parser` / `@jesscss/less-parser`. Licensed MIT.

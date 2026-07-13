@@ -4,16 +4,19 @@
 
 # jess
 
-**Less.js v5 — the Less CSS preprocessor, rebuilt from the ground up.**
+> **Very early alpha.** This package is usable, but the public surface is still
+> narrow and moving. Expect rough edges, missing pieces, and change. Please
+> [report bugs](https://github.com/jesscss/jess/issues).
 
-The `jess` package is the main entry point: the `jess` and `lessc` command-line
-tools that render Less to CSS. Jess is the next major version of Less,
-re-implemented on a new, modern compiler engine.
+**The current public alpha CLI for Jess.**
 
-> **Alpha software.** `2.0.0-alpha.7` is published and renders real Less, but it
-> is early and has known rendering gaps and expected failures. Don't ship it to
-> production yet, and please [report bugs](https://github.com/jesscss/jess/issues).
-> Docs: [jesscss.github.io](https://jesscss.github.io/) (currently pre-alpha content).
+`jess` is the main entry point right now. In this alpha, the `jess`
+command-line tool compiles `.less` to CSS on the Jess engine.
+
+That is the first step, not the whole story: the alpha starts with familiar
+Less workflows while the broader Jess language surface settles.
+
+Docs: [jesscss.github.io](https://jesscss.github.io/).
 
 ## Install
 
@@ -21,8 +24,7 @@ re-implemented on a new, modern compiler engine.
 npm install jess
 ```
 
-The `latest` and `alpha` dist-tags both point at the current alpha. Requires
-Node 16+.
+Requires Node 16+.
 
 ## CLI
 
@@ -33,72 +35,34 @@ jess input.less
 # Choose the output file, or an output directory
 jess input.less output.css
 jess input.less -o dist
-
-# lessc drop-in (Less 4.x command surface, Less v5 output semantics)
-lessc input.less output.css
-lessc --collapse-nesting input.less   # 4.x-style flattened output
 ```
 
-Jess targets Less **v5**, whose default output **preserves nesting** rather than
-flattening it as Less 4.x did. Opt into 4.x-style flattening with
-`--collapse-nesting`. The `lessc` binary is a drop-in for the Less 4.x command
-surface (flags, stdin/stdout, exit codes) with v5 output semantics.
-
-## Programmatic API
-
-The CLI is the stable public surface for the alpha. The JavaScript/TypeScript API
-is **not yet stabilized** and is intentionally undocumented for now — use the CLI,
-and watch the [docs site](https://jesscss.github.io/) for the API once it settles.
+By default, Jess preserves nesting instead of flattening it. If you want
+flattened selector output, opt in with `--collapse-nesting`.
 
 ## What works today
 
-The working language surface is **Less (v5)** — if you write Less, you write Jess:
+The current public alpha entry point is:
 
-```less
-@width: 10px;
-@height: @width + 10px;
+- `.less` compilation through `jess`
+- variables, mixins, guards, nesting, `extend`, maps, operations, and built-in
+  functions
+- the Jess compiler engine under the hood
+- a narrow first step toward the broader Jess language direction
 
-.card {
-  width: @width;
-  height: @height;
-  color: cornflowerblue;
-}
+## Programmatic API
 
-.rounded(@radius: 4px) {
-  border-radius: @radius;
-}
-
-.panel {
-  .rounded(8px);
-  & > .title { font-weight: bold; }
-}
-```
-
-Variables, mixins (parameters and guards), nesting, `extend`, maps, operations,
-and the Less built-in functions are all part of the alpha surface.
-
-## Roadmap (not yet)
-
-The roadmap is an ordered progression — only Less.js is shipping today:
-
-1. **Now — Less.js.** Less v5, the current alpha, stabilizing first.
-2. **Next — the "Sass+" dialect.** The Sass successor (an experimental SCSS
-   parser/plugin is the base; not shipped).
-3. **Final language milestone — native `.jess` syntax.** The `.jess` parser is
-   deliberately unfinished while Less (then Sass+) stabilize.
-4. **After the language — a minimal browser build.** Statically trace which
-   variables a stylesheet references and exports, and emit only the minimum set of
-   CSS custom properties (inlining the rest) — scoping *and* tree-shaking
-   variables, where CSS Modules scopes class names.
-
-A PostCSS-*like* extensibility layer (open, AST-level transforms), JS/TS interop,
-stylesheet exports, and bundler plugins are further future work.
+The CLI is the public surface today. The JavaScript/TypeScript API is still
+settling, so this README stays focused on the commands you can use now.
 
 ## Contributing
 
-Issues and ideas welcome: <https://github.com/jesscss/jess/issues>. See the
-[repo README](https://github.com/jesscss/jess#readme) and
-[contributing guide](https://github.com/jesscss/jess/blob/dev/CONTRIBUTING.md).
+Issues and ideas welcome: <https://github.com/jesscss/jess/issues>.
+
+See also:
+
+- [repo README](https://github.com/jesscss/jess#readme)
+- [contributing guide](https://github.com/jesscss/jess/blob/dev/CONTRIBUTING.md)
 
 ## License
 
