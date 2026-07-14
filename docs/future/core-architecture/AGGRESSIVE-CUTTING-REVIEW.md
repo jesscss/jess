@@ -149,13 +149,16 @@ reviewer cannot satisfy the gate by adding counters or a prose explanation
 while leaving an unconditional rare-feature pass in place.
 
 Registry ownership is closed-world: a new or changed production hot-path owner
-file must add or update a registry contract in the same change. That contract
-must provide the cheap admission predicate, required counters and relations, a
-common no-feature benchmark or counter proof, and any targeted source check
-needed to verify guard placement. Audit records must use registry IDs, and every
-changed production hot-path source file must appear in at least one contract's
-`files` list. Test-only paths still receive the normal danger-token review but
-are excluded from this production-file coverage requirement.
+file must add or update a registry contract in the same change. Each contract
+covers exactly one production file and must provide the cheap admission
+predicate, required counters and relations, a common no-feature benchmark or
+counter proof, and an executable source check for that file's guarded caller.
+Audit records must use registry IDs, and every changed production hot-path
+source file must appear in exactly one such contract. A changed production
+contract must be `accepted`; `rejected`/`deferred` means the experimental code
+was reverted before landing. Test-only paths still receive the normal
+danger-token review but are excluded from this production-file coverage
+requirement.
 
 <!-- BEGIN AGGRESSIVE-CUTTING-COST-CONTRACTS -->
 ```json
@@ -222,8 +225,9 @@ The matching handoff shape is:
 ````
 
 The example counts are illustrative only. Real records must come from the
-focused profile or counter test for the current pass. An unguarded pass may be
-recorded as `rejected` or `deferred`, but it cannot be recorded as `accepted`.
+focused profile or counter test for the current pass. An unguarded pass must be
+reverted; it cannot remain in a changed production file under a
+`rejected`/`deferred` label.
 
 Run:
 

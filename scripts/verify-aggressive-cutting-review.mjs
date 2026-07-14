@@ -119,6 +119,8 @@ function validateCostContractRegistry(registry) {
     }
     if (!Array.isArray(contract.files) || contract.files.length === 0) {
       errors.push(`Cost contract ${contract.id} must name at least one owning file.`);
+    } else if (contract.files.length !== 1) {
+      errors.push(`Cost contract ${contract.id} must cover exactly one owning file so its source check cannot be bypassed by adding another file.`);
     }
     const admission = contract.admission;
     if (!admission || typeof admission !== 'object') {
@@ -151,18 +153,18 @@ function validateCostContractRegistry(registry) {
     if (!Array.isArray(contract.relations) || contract.relations.length === 0) {
       errors.push(`Cost contract ${contract.id} must state at least one counter relation.`);
     }
-    if (contract.sourceCheck !== undefined) {
-      const sourceCheck = contract.sourceCheck;
-      if (!sourceCheck || typeof sourceCheck !== 'object') {
-        errors.push(`Cost contract ${contract.id} has invalid source-check metadata.`);
-      } else if (
-        typeof sourceCheck.file !== 'string'
-        || typeof sourceCheck.caller !== 'string'
-        || typeof sourceCheck.call !== 'string'
-        || typeof sourceCheck.guard !== 'string'
-      ) {
-        errors.push(`Cost contract ${contract.id} source-check metadata is incomplete.`);
-      }
+    const sourceCheck = contract.sourceCheck;
+    if (!sourceCheck || typeof sourceCheck !== 'object') {
+      errors.push(`Cost contract ${contract.id} must include executable source-check metadata.`);
+    } else if (
+      typeof sourceCheck.file !== 'string'
+      || typeof sourceCheck.caller !== 'string'
+      || typeof sourceCheck.call !== 'string'
+      || typeof sourceCheck.guard !== 'string'
+    ) {
+      errors.push(`Cost contract ${contract.id} source-check metadata is incomplete.`);
+    } else if (!Array.isArray(contract.files) || contract.files[0] !== sourceCheck.file) {
+      errors.push(`Cost contract ${contract.id} source-check file must be its sole owning file.`);
     }
   }
   return errors;
@@ -260,6 +262,9 @@ function validateCostAuditRecords(records, registry, changedPaths) {
     const containers = numberCounter(record, ['containers']);
     const featureBearing = numberCounter(record, ['featureBearingCalls', 'featureBearingContainers']);
     const noFeatureAllocations = numberCounter(record, ['noFeatureAllocations']);
+    if (record.verdict !== 'accepted') {
+      errors.push(`Changed production hot-path contract ${contract.id} must be accepted only after rejected/deferred code has been reverted.`);
+    }
     for (const relation of contract.relations) {
       if (relation === 'featureBearingContainers < containers' && !(featureBearing !== null && containers !== null && featureBearing < containers)) {
         errors.push(`Cost contract ${contract.id} relation failed: ${relation}.`);
@@ -267,7 +272,7 @@ function validateCostAuditRecords(records, registry, changedPaths) {
       if (relation === 'featureBearingCalls <= calls' && !(featureBearing !== null && calls !== null && featureBearing <= calls)) {
         errors.push(`Cost contract ${contract.id} relation failed: ${relation}.`);
       }
-      if (relation === 'noFeatureAllocations === 0' && noFeatureAllocations !== 0 && record.verdict === 'accepted') {
+      if (relation === 'noFeatureAllocations === 0' && noFeatureAllocations !== 0) {
         errors.push(`Cost contract ${contract.id} relation failed: ${relation}.`);
       }
     }
@@ -365,14 +370,15 @@ const requiredLabels = [
 
 const dangerPatterns = [
   ['loop/traversal', /\+\s*(for|while)\s*\(/],
-  ['array helper', /\+\s*.*\.(map|filter|reduce|sort|flatMap|slice|join)\s*\(/],
+  ['array helper', /\+\s*.*(?:Array\.(from|of)|Object\.(values|entries|keys)|\.(map|filter|reduce|sort|flatMap|slice|join|forEach))\s*\(/],
+  ['array spread/materialization', /\+\s*.*\[\.\.\.|\+\s*.*\.\.\.\w/],
   ['generator', /\+\s*.*function\s*\*|\+\s*.*yield\b/],
   ['node construction', /\+\s*.*\bnew\s+[A-Z][A-Za-z0-9_]*\s*\(/],
   ['copy helper', /\+\s*.*\b(copyWithReusableLeaves|copyChild|constructCopy|\.copy|\.clone)\b/],
   ['inherit/adopt/frozen', /\+\s*.*(\.inherit\s*\(|\.adopt\s*\(|\.frozen\b|frozen\s*=)/],
   ['parent/source mutation', /\+\s*.*(\.parent\s*=|sourceNode|sourceRoot|_sourceRoot|location\s*=|_location)/],
   ['generic defensive read', /\+\s*.*(Reflect\.|Object\.hasOwn|hasOwnProperty)/],
-  ['side map/set', /\+\s*.*\b(new\s+)?(WeakMap|Map|Set)\b/],
+  ['side map/set', /\+\s*.*\b(new\s+)?(?:WeakMap|Map|Set)\b|\+\s*.*globalThis\.(?:WeakMap|Map|Set)\b/],
   ['routine error control', /\+\s*.*(try\s*\{|catch\s*\(|new\s+Error\b)/],
   ['materialized array/object', /\+\s*.*(new Array<|new Array\(|\[\]|=\s*\{)/]
 ];
