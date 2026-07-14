@@ -339,6 +339,17 @@ sequential, not parallel, even when their descriptions look independent.
   is unsafe for `(multiple)`, reference imports, leaky scope, interpolation,
   and mixin calls. First measure repeated static-import placement/registration
   work before considering a source-owned descriptor.
+- **Static `(multiple)` import attribution closes the path-cache premise.** A
+  current-dev 1×/2×/3× static import probe keeps one parsed source tree (one
+  cache miss then hits) and produces exact repeated CSS. Retained growth is
+  linear, semantic placement state: one `Rules` surface and `ScopeFrame`, one
+  `ImportPlacementState` with `children`/`childSegments`, one segment record,
+  and a shallow Ruleset/body/Declaration placement copy per site. The output
+  buffer is transient and source children remain canonical. Tiny-fixture forced
+  GC bytes were noisy, but retainer/counter evidence is clear: a closed source
+  still needs each placement's fallback and output identity. Do not build a
+  dependency record or path cache from this result; first find a reuse proof
+  that removes an actual placement-owned operation without erasing semantics.
 - **Fresh AC no-op split is still unstable.** On Node v25.9.0/AC/100% with the
   canonical fixture, 5 warmups and 15 alternating no-op pairs gave
   parse+render medians `263.54/270.22 ms` (one 353.87 ms outlier) and
