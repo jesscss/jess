@@ -237,6 +237,15 @@ generated-parser `unwrapTrivia`/start-production runtime seam. No worker worktre
 was reset or cleaned; only the temporary test guards were removed after the
 no-op decisions.
 
+Follow-up existing-lane refresh audit — 2026-07-14: `jess-df-hoisted` was tested
+as the next possible releasable owner lane. Its existing `6d74da74f` one-file
+`serialize-helper.ts` fix is clean on its historical branch, but merging current
+`dev` into that branch produced unrelated conflicts in `rules.ts` and
+`tree/util/emit-walk.ts` before the helper itself auto-merged. The merge was
+aborted successfully, restoring the worktree to `6d74da74f` with no staged or
+unmerged files. No stale branch history was replayed; Q-11 remains owner-bound
+until its owner refreshes the lane around current `dev`.
+
 ## OPEN-ITEM RECONCILIATION (post-drive — read this before trusting any checkbox below)
 
 The tracker was run as a **failure-count-driven drive-to-green**, and its two deferral rules —
