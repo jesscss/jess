@@ -236,6 +236,19 @@ sequential, not parallel, even when their descriptions look independent.
   for Jess's 203 ms render-only result; rank eval/render ahead of parser cuts
   for the <40 ms target while holding parser POCs to separate three-phase gates.
 
+- **Q-40 profile refresh (2026-07-14, diagnostic only).** A fresh current-dev
+  minified-build no-op control with the same fixture/runtime and 20 warmups /
+  45 alternating pairs measured parse+render `217.263 ms` versus `215.872 ms`
+  (`-0.976 ms` median, `27/45` candidate wins) and render-only `183.213 ms`
+  versus `182.340 ms` (`-0.353 ms` median, `23/45` wins). These are still
+  environment/control noise, not a code-speed claim. A separate unminified
+  CPU-profile diagnostic (5 warmups plus one pair, therefore not the canonical
+  timing contract) sampled the largest Jess runtime families as `isNode`
+  `201.29 ms`, `extendSelector` `96.22 ms`, `findWithinScopeSurface`
+  `62.29 ms`, `applyExtendsToSelector` `61.03 ms`, and `processExtends`
+  `56.57 ms`, with `146.36 ms` in GC. The unminified build was restored before
+  further comparisons; these samples rank investigation targets only.
+
 - **Reject the direct custom-declaration fallback writer.** The isolated POC
   bypasses `renderNodeText()` for a map-off, comment-free custom declaration,
   but calls `Declaration.writeSyntax()` directly. That serializer deliberately
