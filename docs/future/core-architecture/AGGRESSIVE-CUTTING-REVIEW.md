@@ -145,6 +145,15 @@ owner file requires the admission guard to appear before the coalescer call.
 That means a reviewer cannot satisfy the gate by adding counters or a prose
 explanation while leaving an unconditional rare-feature pass in place.
 
+Registry ownership is closed-world: a new or changed production hot-path owner
+file must add or update a registry contract in the same change. That contract
+must provide the cheap admission predicate, required counters and relations, a
+common no-feature benchmark or counter proof, and any targeted source check
+needed to verify guard placement. Audit records must use registry IDs, and every
+changed production hot-path source file must appear in at least one contract's
+`files` list. Test-only paths still receive the normal danger-token review but
+are excluded from this production-file coverage requirement.
+
 <!-- BEGIN AGGRESSIVE-CUTTING-COST-CONTRACTS -->
 ```json
 [
