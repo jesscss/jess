@@ -157,6 +157,7 @@ function validateCostAuditRecords(records, registry, changedPaths) {
   if (!records) {
     return ['Latest self-prosecution block is missing a valid Hot-path cost contracts JSON record.'];
   }
+  const registryIds = new Set(registry.map(contract => contract.id));
   const byId = new Map();
   for (const record of records) {
     if (!record || typeof record !== 'object' || typeof record.id !== 'string') {
@@ -165,6 +166,9 @@ function validateCostAuditRecords(records, registry, changedPaths) {
     }
     if (byId.has(record.id)) {
       errors.push(`Hot-path cost audit record ${record.id} is duplicated.`);
+    }
+    if (!registryIds.has(record.id)) {
+      errors.push(`Hot-path cost audit record ${record.id} is not declared in the machine-readable cost-contract registry.`);
     }
     byId.set(record.id, record);
     const admission = record.admission;
@@ -231,6 +235,34 @@ function validateCostAuditRecords(records, registry, changedPaths) {
     }
   }
   return errors;
+}
+
+const hotPathRoots = [
+  'packages/core/src/',
+  'packages/jess/src/',
+  'packages/less-parser/src/',
+  'packages/css-parser/src/'
+];
+
+function isTestOnlyPath(path) {
+  return /(^|\/)(test|tests|__tests__|fixtures|test-data)(\/|$)|\.(test|spec)\.[^/]+$/.test(path);
+}
+
+function isProductionHotPathFile(path) {
+  return !isTestOnlyPath(path) && hotPathRoots.some(rootPath => path.startsWith(rootPath));
+}
+
+function validateProductionHotPathCoverage(registry, changedPaths) {
+  const coveredFiles = new Set();
+  for (const contract of registry) {
+    for (const file of contract.files) {
+      coveredFiles.add(file);
+    }
+  }
+  return changedPaths
+    .filter(isProductionHotPathFile)
+    .filter(path => !coveredFiles.has(path))
+    .map(path => `Changed production hot-path file ${path} is not covered by any machine-readable cost-contract registry entry.`);
 }
 
 function validateSourceChecks(registry, changedPaths) {
@@ -395,22 +427,20 @@ if (findings.length > 0) {
   }
 }
 
-const hotPathRoots = [
-  'packages/core/src/',
-  'packages/jess/src/',
-  'packages/less-parser/src/',
-  'packages/css-parser/src/'
-];
 const hotPathChanged = changedPaths.some(path => hotPathRoots.some(rootPath => path.startsWith(rootPath)));
+const productionHotPathChanged = changedPaths.some(isProductionHotPathFile);
 const requiresCostAudit = hotPathChanged || findings.length > 0;
 if (requiresCostAudit && registryErrors.length === 0) {
   const auditRecords = extractCostAuditRecords(latestPass);
   const auditErrors = validateCostAuditRecords(auditRecords, registry, changedPaths);
   const sourceCheckErrors = validateSourceChecks(registry, changedPaths);
-  if (auditErrors.length > 0 || sourceCheckErrors.length > 0) {
+  const coverageErrors = productionHotPathChanged
+    ? validateProductionHotPathCoverage(registry, changedPaths)
+    : [];
+  if (auditErrors.length > 0 || sourceCheckErrors.length > 0 || coverageErrors.length > 0) {
     failed = true;
     console.error('\nHot-path cost contract review failed:');
-    for (const error of [...auditErrors, ...sourceCheckErrors]) {
+    for (const error of [...auditErrors, ...sourceCheckErrors, ...coverageErrors]) {
       console.error(`- ${error}`);
     }
   }
