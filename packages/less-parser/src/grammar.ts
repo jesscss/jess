@@ -405,8 +405,30 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   // carries the `@{…}` runs; `declaration` then routes an image containing `@`/`$`
   // through getInterpolatedNode. We mirror that: try the interpolated-ident regex
   // first (it requires at least one `@{…}`), else a plain ident.
-  const Declaration = node(
-    sequence(declPropName, optional(choice(literal('+_'), literal('+'))), literal(':'), optional(g.valueList), optional(important), optional(literal(';'))));
+  //
+  // Narrow deferred-value POC: an ordinary, plain-name declaration with exactly
+  // one unsigned integer/dimension/percent token can retain that authored token
+  // as a scalar instead of constructing the value-expression subtree. `noTrivia`
+  // makes comments ineligible; the explicit whitespace is deliberately limited
+  // to whitespace, and the terminal guard rejects every trailing value syntax.
+  // This is an experimental Jess-native family, not a general raw-value grammar.
+  const deferredNumericScalar = regex(/\d+(?:[a-zA-Z]+|%)?/);
+  const DeferredScalarDeclaration = node('Declaration',
+    noTrivia(sequence(
+      ident,
+      optional(ws),
+      literal(':'),
+      optional(ws),
+      deferredNumericScalar,
+      optional(ws),
+      not(regex(/[^\s;}]/)),
+      optional(literal(';'))
+    ))
+  );
+  const Declaration = choice(
+    DeferredScalarDeclaration,
+    node('Declaration', sequence(declPropName, optional(choice(literal('+_'), literal('+'))), literal(':'), optional(g.valueList), optional(important), optional(literal(';'))))
+  );
   // Kept as a composition seam for SCSS's custom-property override. Less no
   // longer selects this permissive value rule; its own CustomDeclaration uses
   // only the interpolation-only `cpValue` fallback below.

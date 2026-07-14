@@ -36,6 +36,7 @@ import {
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { consumeTrivia, emitCommentTriviaAfterNode, emitCommentTriviaAfterOffset, emitCommentTriviaBetweenNodes, emitTriviaTokens, commentRunsWithinSpan, emitNextSpanComment } from './util/trivia.js';
 import { fieldSpanAt } from './util/provenance.js';
+import { coerceValueNode } from './util/evaluate-node-array.js';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object';
@@ -775,7 +776,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       return value;
     }
     if (typeof value === 'string') {
-      return keyword(value);
+      return coerceValueNode(value);
     }
     const groups: Node[][] = [[]];
     for (let i = 0; i < value.length; i++) {
