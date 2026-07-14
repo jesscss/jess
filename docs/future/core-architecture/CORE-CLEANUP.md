@@ -226,6 +226,18 @@ sequential, not parallel, even when their descriptions look independent.
   text with direct `writeSyntax()` without a new evaluated-result ownership
   model.
 
+- **Reject source-node attachment for remaining inline comments.** Standalone
+  comments already lift into `Comment` AST nodes. In a narrow canonical census,
+  the three non-lifted inline comment ranges occur inside bare string-selector
+  headers, with no semantic node `before`/`after` boundary to own them.
+  `sourceNode` is self-owned rather than a stable original-provenance pointer
+  for derived nodes, and `inherit()` deliberately does not replay source
+  boundary trivia into a new placement. Attaching those ranges to a source node
+  would require a new selector-string slot plus carry/drop policy and defeat
+  existing placement semantics. Keep boundary-addressable inline comments in
+  the shared source trivia map; reduce over-eager whitespace persistence at
+  capture time instead of adding comment fields or side maps.
+
 - **Reject local object-table lookup.** Two same-process runs of the existing
   layout benchmark recorded current `Map` reads at `22.02/21.78 ms`,
   null-prototype own-property reads at `32.76/32.82 ms`, and planned numeric
