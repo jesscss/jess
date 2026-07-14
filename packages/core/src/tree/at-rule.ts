@@ -920,7 +920,7 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
     return {
       source: this,
       evalFrame,
-      ...(bodyRules ? { bodyRules } : undefined),
+      bodyRules,
       clearRulesetFrames: hasHoistedRulesetParent,
       restoreRulesetFrames: () => undefined,
       ...createAtRuleBodyEvalRecordState(context, {
