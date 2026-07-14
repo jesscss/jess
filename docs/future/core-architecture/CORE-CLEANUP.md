@@ -223,6 +223,20 @@ SCSS/CSS producer ownership; and the remaining unmerged reference/import,
 namespace, extend, and spine refs map to existing owner worktrees. No clean branch
 tip supplied a disjoint production write set, so no duplicate worker was assigned.
 
+Follow-up owner/no-op audit — 2026-07-14: the live census confirms Q-28D remains
+fenced to `jess-q28a` (its dirty CSS files hash exactly like current `dev`), Q-28E
+to the three dirty SCSS/parser worktrees, Q-28F to the clean selector-capture seed,
+and Q-30 to the six-commit/287-file-divergent `jess-deval-flip` plus dirty value
+instrumentation lanes. Two fresh disjoint core audits were retired without
+production changes: replacing `Negative` or `Range`'s `lodash-es/round` call with
+the local helper is not byte-identical for extreme finite values (`Number.MAX_VALUE`
+overflows to lodash's `NaN` spelling, while the helper preserves the magnitude;
+the Negative audit also found a signed-zero identity difference). Focused audit
+guards passed where run, but the benchmark harness failed before timing on the
+generated-parser `unwrapTrivia`/start-production runtime seam. No worker worktree
+was reset or cleaned; only the temporary test guards were removed after the
+no-op decisions.
+
 ## OPEN-ITEM RECONCILIATION (post-drive — read this before trusting any checkbox below)
 
 The tracker was run as a **failure-count-driven drive-to-green**, and its two deferral rules —
