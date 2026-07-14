@@ -154,6 +154,42 @@ Other active docs in this dir:
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: MERGE-COALESCER ADMISSION — gate the post-evaluation property-merge coalescer behind a cheap feature-surface scan before the coalescer's maps, declaration-item arrays, and recursive merge walk are entered.
+- Architecture surface: `Rules._finishSourceOrderEvaluation` now calls the module-private `hasMergeOutputSurface(rules)` admission predicate before `_coalesceMergedDeclarations`. The predicate visits declarations and inline `Rules` output only; it deliberately does not cross `Ruleset` or `AtRule` scope boundaries.
+- Separation/duplication: the admission scan is the same inline-output surface that the coalescer already owns and is a short-circuiting proof, not a second merge implementation, index, cache, or property lookup table. It prevents the feature-only pass from being entered on ordinary containers.
+- Cumulative node weight: zero. No Node field, scope field, side table, output buffer, or retained cache was added. The no-feature path creates no coalescer `Map`/array state; the predicate is shared at module scope and creates no per-call closure.
+- New traversal: one bounded, short-circuiting scan of direct children and inline `Rules` surfaces per finished container. It does not recurse through selector/at-rule scopes. The scan replaces 10,405 no-feature entries into the old coalescer; feature-bearing containers still run the existing coalescer unchanged.
+- New node/materialization: none in production. The focused test uses `Nil`/list/sequence values and prototype spies only to prove the caller gate; no test-only shape is admitted by the runtime.
+- Render path: canonical `benchmark.less` output remains 133,983 bytes with SHA-256 `adfd26732125a33fc1e264aca7d7ecde8c7c1da43f968e3106bd387a1f78e840` on the merged checkout. The worker's same-checkout parity probe remained byte-identical to its baseline. `+:`, `&,:`, `&_:` list/sequence behavior and mixin-output important state remain covered.
+- Helper/API surface: two module-private admission helpers only; no export or public method was added. `_coalesceMergedDeclarations` remains the existing private feature pass.
+- Metadata mutations: none. The guard reads normalized declaration assignment metadata and does not attach fields, alter parents, or mutate source/provenance state.
+- Review-flagged diff tokens: [loop/traversal] is the bounded admission scan; [node construction] is test-only `Nil` setup; [generic defensive read] is absent; [side map/set] remains only inside the now-gated existing coalescer; [materialized array/object] is absent from production. The no-feature path adds no additional runtime allocation category.
+- Evidence: focused Declaration coverage `80/80`; focused tree suites `231 passed, 5 skipped`; core and Less plugin builds passed; canonical compiler-path counter probe recorded **15** coalescer calls after the guard versus the pre-cut profile's **10,420** calls, with the same **15** feature-bearing containers and **10,405** no-feature containers. The canonical output length/hash above held. Same-checkout 20-warmup/45-pair A/B was parse+render `217.235→217.779 ms` (median delta `+0.456 ms`, `17/45` wins, `t=-0.40`) and render-only `184.05→183.90 ms` (paired median delta `+0.74 ms`, `16/45` wins, `t=-0.81`); these are neutral/noisy controls, not a speed claim.
+- Hot-path cost contracts:
+```json
+[
+  {
+    "id": "rules-merge-coalescing",
+    "admission": {
+      "predicate": "hasMergeOutputSurface(rules)",
+      "cost": "cheap",
+      "before": "collection and allocation"
+    },
+    "calls": 10420,
+    "coalescerCalls": 15,
+    "containers": 10420,
+    "featureBearingContainers": 15,
+    "itemsVisited": 16730,
+    "featureItems": 27,
+    "noFeatureAllocations": 0,
+    "noFeatureMisses": 10405,
+    "commonCaseProof": "same-fixture counter probe: admission checks 10,420; coalescer calls 15; pre-cut calls 10,420",
+    "verdict": "accepted"
+  }
+]
+```
+- Verdict: accepted as a measured no-feature pass/allocation cut. It is not a canonical benchmark speed win; keep the admission contract and source-level caller check in place for future coalescer changes.
+
 - Latest pass: RARE-PASS ADMISSION/COST GUARDRAIL — the aggressive-cutting verifier now rejects a hot-path change that lacks structured admission evidence, common no-feature counters, and a source-level guard for the known merge-coalescing caller.
 - Architecture surface: `scripts/verify-aggressive-cutting-review.mjs` owns review-time contract validation; `docs/future/core-architecture/AGGRESSIVE-CUTTING-REVIEW.md` owns the declarative registry. No runtime node, evaluator, lookup, or writer surface changed.
 - Separation/duplication: the registry describes recurring rare-pass obligations once, while the handoff record carries current-pass measurements. The verifier reuses the existing danger-token scan and adds no runtime instrumentation or duplicate production pass.

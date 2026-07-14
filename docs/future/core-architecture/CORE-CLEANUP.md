@@ -169,6 +169,18 @@ sequential, not parallel, even when their descriptions look independent.
 
 #### Q-40 representation and allocation decisions — 2026-07-14
 
+- **Accept merge-coalescer admission as the first Q-40 rare-pass cut.** The
+  post-evaluation `Rules._coalesceMergedDeclarations` pass was entered 10,420
+  times on the canonical benchmark even though only 15 containers carried
+  merge assignments. A module-private `hasMergeOutputSurface` gate now leaves
+  the existing feature pass unchanged but reduces actual coalescer calls to
+  15; the 10,405 no-feature containers do not allocate its maps/item arrays.
+  The focused declaration/tree coverage and canonical output hash are
+  unchanged. Same-checkout parse/render and render-only A/B were neutral/noisy,
+  so this is accepted as a measured allocation/pass cut, not a speed claim.
+  Future changes to this owner remain subject to the cost-contract registry and
+  caller-level source guard.
+
 - **Accept Ruleset absent-metadata carrying as a resident-state cut.** Canonical
   evaluation has 4,155 live Rulesets where both `guard` and
   `selectorBeforeExtend` are absent, formerly paying 8,310 undefined own
