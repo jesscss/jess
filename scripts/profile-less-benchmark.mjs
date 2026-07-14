@@ -21,6 +21,11 @@ const cliArgs = new Map(
 );
 
 const benchmarkArg = cliArgs.get('--fixture') ?? cliArgs.get('--file') ?? 'benchmark.less';
+const forceEval = cliArgs.has('--force-eval');
+const repeats = Number(cliArgs.get('--repeat') ?? 1);
+if (!Number.isSafeInteger(repeats) || repeats < 1) {
+  throw new Error('--repeat must be a positive integer');
+}
 if (!cliArgs.has('--fixture') && !lessRepoRoot) {
   throw new Error('Pass --fixture or set LESS_REPO_ROOT to a Less checkout');
 }
@@ -33,6 +38,7 @@ const benchmarkFile = path.isAbsolute(benchmarkArg)
   : path.join(benchmarkRoot, benchmarkArg);
 globalThis.__JESS_SERIALIZE_PROFILE_COUNTERS__ = {};
 globalThis.__JESS_DIRECT_LOOKUP_PROFILE_COUNTERS__ = {};
+globalThis.jessBitsetProfileCounters = {};
 
 const coreLib = pathToFileURL(path.join(repoRoot, 'packages/core/lib/index.js')).href;
 const lessParserLib = pathToFileURL(path.join(repoRoot, 'packages/less-parser/lib/index.js')).href;
@@ -227,13 +233,28 @@ const start = performance.now();
 const compiler = new Compiler({
   output: { collapseNesting: true },
   compile: {
-    plugins: [lessPlugin(), lessCompatPlugin()]
+    plugins: [
+      lessPlugin(),
+      lessCompatPlugin(),
+      ...(
+        forceEval
+          ? [{
+              name: 'force-eval',
+              install() {},
+              preRenderVisitor: { isPreEvalVisitor: false, run: rule => rule }
+            }]
+          : []
+      )
+    ]
   }
 });
-await compiler.render(benchmarkFile);
+for (let i = 0; i < repeats; i++) {
+  await compiler.render(benchmarkFile);
+}
 const elapsedMs = performance.now() - start;
 const serializeProfileCounters = globalThis.__JESS_SERIALIZE_PROFILE_COUNTERS__ ?? {};
 const directLookupProfileCounters = globalThis.__JESS_DIRECT_LOOKUP_PROFILE_COUNTERS__ ?? {};
+const bitsetProfileCounters = globalThis.jessBitsetProfileCounters ?? {};
 
 const metricRows = [...stats.entries()]
   .map(([name, metric]) => ({
@@ -247,6 +268,8 @@ const metricRows = [...stats.entries()]
 const result = {
   benchmarkFile,
   compat: true,
+  forceEval,
+  repeats,
   elapsedMs: Number(elapsedMs.toFixed(2)),
   serializeStats: {
     duplicateDeclarationComparisonContainers: serializeProfileCounters.duplicateDeclarationComparisonContainers ?? 0,
@@ -275,6 +298,12 @@ const result = {
     directLookupCounters: Object.fromEntries(printMap(new Map(Object.entries(directLookupProfileCounters)), 40)),
     topReferenceEvalKeys: Object.fromEntries(printMap(lookupStats.referenceEvalByKey, 30)),
     topReferenceEvalSites: Object.fromEntries(printMap(lookupStats.referenceEvalBySite, 40))
+  },
+  bitsetStats: {
+    directScans: bitsetProfileCounters.directScans ?? 0,
+    directWordPairs: bitsetProfileCounters.directWordPairs ?? {},
+    invertedFallbacks: bitsetProfileCounters.invertedFallbacks ?? 0,
+    incompatibleFallbacks: bitsetProfileCounters.incompatibleFallbacks ?? 0
   },
   topMetrics: metricRows.slice(0, 40)
 };

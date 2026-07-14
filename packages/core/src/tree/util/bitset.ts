@@ -1,7 +1,15 @@
 import { default as OriginalBitSet } from 'bitset';
 
 function isNumberArray(value: unknown): value is number[] {
-  return Array.isArray(value) && value.every(item => typeof item === 'number');
+  if (!Array.isArray(value)) {
+    return false;
+  }
+  for (let i = 0; i < value.length; i++) {
+    if (typeof value[i] !== 'number') {
+      return false;
+    }
+  }
+  return true;
 }
 
 function dataOf(bitset: OriginalBitSet & { data?: unknown }): number[] | undefined {
@@ -12,6 +20,17 @@ function dataOf(bitset: OriginalBitSet & { data?: unknown }): number[] | undefin
 function isInverted(bitset: OriginalBitSet & { _?: unknown }): boolean {
   return bitset._ === 1;
 }
+
+type BitSetProfileCounters = {
+  directScans?: number;
+  directWordPairs?: Record<string, number>;
+  invertedFallbacks?: number;
+  incompatibleFallbacks?: number;
+};
+
+const bitsetProfileCounters = (globalThis as typeof globalThis & {
+  jessBitsetProfileCounters?: BitSetProfileCounters;
+}).jessBitsetProfileCounters;
 
 function withLibrary<T>(bitset: OriginalBitSet, library: BitSetLibrary<T> | undefined): BitSet<T> {
   const set = new BitSet<T>(bitset);
@@ -166,6 +185,35 @@ export function isDisjoint(a: BitSet, b: BitSet): boolean {
   if (a._library !== b._library) {
     throw new Error('Bitsets must be from the same library');
   }
+
+  if (a._ === 0 && b._ === 0) {
+    const aData = dataOf(a);
+    const bData = dataOf(b);
+    if (aData && bData) {
+      if (bitsetProfileCounters) {
+        bitsetProfileCounters.directScans = (bitsetProfileCounters.directScans ?? 0) + 1;
+        const wordPair = `${aData.length}x${bData.length}`;
+        const wordPairs = bitsetProfileCounters.directWordPairs ??= {};
+        wordPairs[wordPair] = (wordPairs[wordPair] ?? 0) + 1;
+      }
+      const shorter = aData.length <= bData.length ? aData : bData;
+      const longer = shorter === aData ? bData : aData;
+      for (let i = 0; i < shorter.length; i++) {
+        if ((shorter[i]! & longer[i]!) !== 0) {
+          return false;
+        }
+      }
+      return true;
+    }
+    if (bitsetProfileCounters) {
+      bitsetProfileCounters.incompatibleFallbacks = (bitsetProfileCounters.incompatibleFallbacks ?? 0) + 1;
+    }
+  } else {
+    if (bitsetProfileCounters) {
+      bitsetProfileCounters.invertedFallbacks = (bitsetProfileCounters.invertedFallbacks ?? 0) + 1;
+    }
+  }
+
   const intersection = a.and(b);
   const data = dataOf(intersection);
   if (!data) {
