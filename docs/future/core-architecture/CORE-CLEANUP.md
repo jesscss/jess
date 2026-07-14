@@ -183,11 +183,23 @@ sequential, not parallel, even when their descriptions look independent.
   mutations, leaky bindings, source-position reads, properties, and callables
   are absent. A prototype chain is a test-only comparator for that later slice;
   it must not become a second scope engine.
-- **In flight, one proof each.** The static-local slot POC and the pass-local
-  extend-root chained-target-index POC each own a separate write set. Retain
-  neither without byte parity and same-worktree paired render improvements;
-  the extend POC specifically needs three alternating 1x/2x/3x
-  `(multiple)` rounds before it can advance.
+- **Reject the pass-local extend-root index.** The static 32-extend,
+  `(multiple)` 1x/2x/3x POC was byte-identical to Less and to POC-off across
+  its dedicated parity test, and its focused core/extend/import/ampersand
+  suites passed. But three alternating rounds (5 warmups, 15 off/on pairs)
+  made the important 3x case neutral and direction-changing: `2.960→2.978`,
+  `2.868→2.802`, and `2.778→2.814 ms`. The 2x case was mixed as well. The POC
+  was deleted; do not retain a pass-local index or selector-result cache on
+  this evidence.
+- **Reject the static-local slot proof for this target.** The canonical output
+  hash remained exact and 212 focused tests, core build, binding hot-path checks,
+  aggressive review, and diff check passed. But its counters recorded zero slot
+  or fallback activations on canonical `benchmark.less`; the target does not
+  contain this admitted shape. Same-worktree medians were public
+  `277.43→280.88 ms`, parse+render `262.81→271.25 ms`, and render
+  `226.23→216.44 ms`, all too noisy or regressive to retain. The committed POC
+  stays unmerged. Parent slots and prototype controls are sequenced behind a
+  target that demonstrably activates them, not behind this non-occurring case.
 - **Parser boundary is ready but not yet measured for Less.** Parseman now has
   a branch-local `run(..., { profile: true })` recognizer/capture/host boundary
   based on the existing JSON recognition-only mechanism. Jess's generated Less
