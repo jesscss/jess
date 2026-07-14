@@ -58,9 +58,10 @@ live on the prototype and cost NO instance slot — only **stored fields** count
 
 ### Inherited base `Node` fields (count against `Node`, NOT Rules) — node-base.ts
 Per-instance STORED fields on the base class (getters excluded):
-`_spanStart` (444), `_spanEnd` (445), `_sourceRoot` (447), `_treeContext` (452),
-`_options` (454), `flags` (478), `_requiredSemi` (554, `declare` + ctor-set),
-`sourceNode` (570, `declare` + ctor-set), `index` (578), `parent` (618).
+`_spanStart` (525), `_spanEnd` (526), `_sourceRoot` (528), `_options` (533),
+`flags` (557), `sourceNode` (658, `declare` + ctor-set), `index` (666), and
+`parent` (706). `_treeContext` is Rules-only and `requiredSemi` is backed by
+`flags`; neither is a Node instance slot in the current tree.
 `type`/`shortType`/`nodeType` are prototype props (`declare`, set by `defineType`)
 — no instance slot. `frozen`/`hoistToRoot`/`generated`/`registrationPrepared`/
 `visible`/`requiredSemi` are all **getters backed by `flags` bits** — no slot.
