@@ -175,7 +175,7 @@ explanation while leaving an unconditional rare-feature pass in place.
       "file": "packages/core/src/tree/rules.ts",
       "caller": "_finishSourceOrderEvaluation",
       "call": "_coalesceMergedDeclarations",
-      "guard": "hasMergeOutputSurface|merge[^\\n]*surface"
+      "guard": "hasMergeOutputSurface"
     }
   }
 ]
@@ -184,7 +184,7 @@ explanation while leaving an unconditional rare-feature pass in place.
 
 The matching handoff shape is:
 
-```md
+````md
 - Hot-path cost contracts:
 ```json
 [
@@ -207,6 +207,7 @@ The matching handoff shape is:
   }
 ]
 ```
+````
 
 The example counts are illustrative only. Real records must come from the
 focused profile or counter test for the current pass. An unguarded pass may be

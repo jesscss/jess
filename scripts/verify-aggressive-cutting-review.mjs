@@ -247,10 +247,32 @@ function validateSourceChecks(registry, changedPaths) {
     const callerBody = callerStart < 0
       ? ''
       : source.slice(callerStart, nextMethod < 0 ? undefined : nextMethod);
-    const guardBeforeCall = callIndex >= 0 && callerBody.slice(0, callIndex - callerStart);
-    if (callerStart < 0 || callIndex < 0 || !new RegExp(sourceCheck.guard).test(guardBeforeCall)) {
+    const callOffset = callIndex - callerStart;
+    const guardedCall = (() => {
+      if (callerStart < 0 || callIndex < 0) {
+        return false;
+      }
+      const prefix = callerBody.slice(0, callOffset);
+      const guardPattern = new RegExp(`if\\s*\\([^\\n]*${sourceCheck.guard}[^\\n]*\\)\\s*\\{`, 'g');
+      let match;
+      while ((match = guardPattern.exec(prefix)) !== null) {
+        let balance = 0;
+        for (const character of prefix.slice(match.index)) {
+          if (character === '{') {
+            balance += 1;
+          } else if (character === '}') {
+            balance -= 1;
+          }
+        }
+        if (balance > 0) {
+          return true;
+        }
+      }
+      return false;
+    })();
+    if (!guardedCall) {
       errors.push(
-        `Cost contract ${contract.id} changed its owning file without an admission guard before ${sourceCheck.call}.`
+        `Cost contract ${contract.id} changed its owning file without a conditional admission guard enclosing ${sourceCheck.call}.`
       );
     }
   }
