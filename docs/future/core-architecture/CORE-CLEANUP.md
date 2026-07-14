@@ -233,6 +233,15 @@ sequential, not parallel, even when their descriptions look independent.
   (+0.30%), host construction `26.551→26.603 ms` (+0.20%). It was removed.
   Do not revive a trivia call-site guard; isolate the recognizer's node-frame
   setup/restore cost or capture representation instead.
+- **Reject the recognizer-only node-frame bypass.** Its admission was narrow:
+  recognizer nodes have no CST collectors, raw/trivia children, fields, or host
+  output; tokens/recovery/`withCtx` and all capture/host/backtracking nodes
+  remained framed. Focused behavior, source-map/macro compilation, and
+  structural counts were identical, yet the required 12-warmup/45-sample gate
+  regressed recognizer `11.875→16.469 ms` (+38.69%), capture
+  `28.446→36.819 ms` (+29.43%), and host `26.297→33.984 ms` (+29.23%). It was
+  deleted. Do not bypass generated node frames; pursue the independent
+  collector/raw-child representation proof instead.
 - **Reject the first-set pseudo-selector codegen guard.** The measured target
   was 16,443 failed pseudo-selector parses behind
   `not(extendAhead) + PseudoSelector`, but the final narrow Parseman POC did
