@@ -207,6 +207,13 @@ current `dev` tip, claim the functional producer files plus a narrow materializa
 consumer slice, and publish the required value-heavy allocation/materialization
 evidence before the row can open.
 
+Value-heavy control refresh — 2026-07-14: current `dev` (`6d08db86a`) measured
+`/tmp/jess-value-heavy.less` at `49.42 ms` round median and `49.87 ms` trimmed
+median over 24 samples (Node v25.9.0, darwin arm64, 8 iterations × 3 rounds,
+4 warmups, 10% trim). One `94.27 ms` outlier made the untrimmed signal noisy;
+the trimmed signal was usable. This is a control only, not a speed claim; Q-30
+must rerun the same-directory A/B after each typed-literal batch.
+
 ## OPEN-ITEM RECONCILIATION (post-drive — read this before trusting any checkbox below)
 
 The tracker was run as a **failure-count-driven drive-to-green**, and its two deferral rules —
