@@ -35,6 +35,11 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object';
 }
 
+function storedNodeOptions(n: Node): Record<string, unknown> | undefined {
+  const options = Object.getOwnPropertyDescriptor(n, '_options')?.value;
+  return isPlainObject(options) ? options : undefined;
+}
+
 function truncate(str: string, max: number): string {
   if (str.length <= max) {
     return str;
@@ -133,16 +138,19 @@ function serializeNodeOptions(n: Node, depth: number, opts: Required<SerializeTy
   if (!opts.showOptions) {
     return null;
   }
-  const nodeOptions = n.options;
-  if (!nodeOptions || typeof nodeOptions !== 'object') {
+  const nodeOptions = storedNodeOptions(n);
+  const serializedOptions = n.type === 'Declaration' && nodeOptions?.assign === undefined
+    ? { ...nodeOptions, assign: ':' }
+    : nodeOptions;
+  if (!serializedOptions || typeof serializedOptions !== 'object') {
     return null;
   }
   // Check if there are any non-undefined properties
-  const keys = Object.keys(nodeOptions).filter(k => nodeOptions[k] !== undefined);
+  const keys = Object.keys(serializedOptions).filter(k => serializedOptions[k] !== undefined);
   if (keys.length === 0) {
     return null;
   }
-  return serializePlainObject(nodeOptions, depth + 1, opts, visiting);
+  return serializePlainObject(serializedOptions, depth + 1, opts, visiting);
 }
 
 function serializeNodeChildFields(n: Node, depth: number, opts: Required<SerializeTypesOptions>, visiting: Set<Node>): string | null {
@@ -170,8 +178,8 @@ function serializeNode(n: Node, depth: number, opts: Required<SerializeTypesOpti
   // from `options.role` for others (`Reference` dropped the eager own field in
   // the slim pass) — read the own field first, then fall back to the option.
   // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-  const withRole = n as unknown as { role?: unknown; options?: { role?: unknown } };
-  const roleValue = withRole.role ?? withRole.options?.role;
+  const withRole = n as unknown as { role?: unknown; _options?: { role?: unknown } };
+  const roleValue = withRole.role ?? withRole._options?.role;
   const role = typeof roleValue === 'string' ? roleValue : undefined;
   const meta = role ? ` [role=${role}]` : '';
   const open = `${pad}(${typeName}${meta}`;

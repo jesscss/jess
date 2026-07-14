@@ -154,6 +154,19 @@ Other active docs in this dir:
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: PARSER DECLARATION/OPTION-BAG SLIM.
+- Architecture surface: `packages/css-parser/src/builders.ts`, `packages/less-parser/src/builders.ts`, and `packages/jess-parser/src/builders.ts` now pass absent constructor options as `undefined`; `LessGrammar._buildLessDeclaration` stores assignment metadata only for `+:` and `+_:`; `serializeTypes` reads the own stored option record without invoking the lazy getter and preserves the public default `assign: ':'` view.
+- Separation/duplication: parser construction carries absence at its source instead of allocating an empty record for `Node.options` to represent later. No compatibility wrapper or alternate declaration representation was added.
+- Cumulative node weight: `Declaration` loses the default per-node `{ assign: ':' }` record; no node fields, caches, indexes, or runtime state are added.
+- New traversal: none. Parser construction loses empty-object allocations; `serializeTypes` reads the own stored option record instead of invoking the lazy options getter.
+- New node/materialization: none. No node, wrapper, side map, source span, parent, or provenance representation was added or moved.
+- Render path: unchanged. The public benchmark output remains byte-identical (`671970c15aba5bf05472eeb1f02468f21411fdd20e203674d446775c51c4f9a5`, 130,772 bytes).
+- Helper/API surface: no exported API or node method changed. `serializeTypes(..., { showOptions: true })` retains `Declaration assign: ':'` while remaining non-mutating.
+- Metadata mutations: none.
+- Review-flagged diff tokens: [array helper] `packages/core/src/tree/util/serialize-types.ts` retains its pre-existing cold `Object.keys(...).filter(...)` option serializer; this pass changes its input from `n.options` to the own stored option record, so AST inspection does not allocate a retained option bag. The temporary key array exists only when `showOptions` serialization is requested and does not enter parser construction or render.
+- Evidence: canonical raw parse census is `12,048` nodes before and after; option bags fall `7,533 → 4,344`, empty bags `1,067 → 665`, reachable graph objects `24,820 → 21,631`, and the single-process post-GC retained delta `7.329 → 7.146 MiB`. Focused declaration/merge, AST serialization, and comment/provenance coverage pass; full core is `3,320` passed (`15` skipped, `2` marked deferred), spine-production-ratchet is `136/136`, and all-less byte identity is `106/106`. Same-checkout public benchmark samples were unstable (`261.15 → 255.14 ms` median), so this is allocation/memory evidence only, not a speed claim.
+- Verdict: accepted — this carries absent parser options as absence and removes declaration option records without changing grammar, AST shape, serialization, visitor behavior, or rendered output.
+
 - Latest pass: BITSET DISJOINT ALLOCATION CUT — `isDisjoint()` now directly scans ordinary, non-inverted numeric bitset words instead of allocating `a.and(b)` and then scanning that temporary intersection. Inverted or non-array backing data retains the existing intersection path; cross-library inputs still throw.
 - Architecture surface: `packages/core/src/tree/util/bitset.ts` only, with a focused `bitset-disjoint` semantics test. No profile global, cache, fixture, writer, or selector-result index is retained in the production change.
 - Separation/duplication: this is a rejection fast-path shared by the two existing extend callers. It changes neither selector equivalency nor extend policy; it only answers the same "do these key sets overlap?" question without a throwaway bitset.
