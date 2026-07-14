@@ -154,6 +154,45 @@ Other active docs in this dir:
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: DUPLICATE-DECLARATION SINGLETON ADMISSION — skip the duplicate-property count map and pre-scan when a rendered container has one stable, non-expanding child; retain the existing scan for dynamic expansion shapes and multi-item containers.
+- Architecture surface: `packages/core/src/tree/util/serialize-helper.ts`, inside `serializeRulesContainerInternal`; the admission is the local `skipInitialDuplicateDeclarationScan` predicate before `recomputeDeclCounts()`.
+- Separation/duplication: this does not add an index, cache, node flag, or second duplicate algorithm. It only proves that one stable child cannot contain two sibling declarations at this container level; `Call`, `StyleImport`, and `For` singleton shapes remain on the existing scan because they can expand.
+- Cumulative node weight: zero. No node field, scope field, side table, output buffer, or retained cache was added.
+- New traversal: stable singleton containers remove the old count-map allocation and one-item scan; all other containers retain the existing duplicate-property scan. The canonical counter probe measured `1,644` comparison containers, `749` stable singletons, `4,367` post-cut rules visited versus `5,116` before, and `895` count-map allocations versus `1,644` before.
+- New node/materialization: none. The existing `Map`/`Set` state remains lazy and is created only for containers that still need duplicate analysis or duplicate recording.
+- Render path: canonical/no-repeat/repeated-property output probes remained byte-identical in the worker proof (`133,983`, `58`, and `54` bytes respectively). Full candidate core tests passed `3,326` with `15` skipped; the existing suite status was unchanged. The agreed `benchmark.less` binary A/B with `20` warmups and `45` alternating pairs was parse+render `489.94ms → 491.11ms` (median delta `+2.76ms`, mean delta `-0.29ms`, `22/45` wins) and render-only `355.09ms → 354.10ms` (median delta `-0.75ms`, mean delta `+0.32ms`, `24/45` wins); both are neutral/noisy controls, not a speed claim.
+- Helper/API surface: no export or public method was added; the new admission and counters are local to the existing serializer function.
+- Metadata mutations: none. The admission reads the already-rendered child shape and does not attach fields, alter parents, or mutate source/provenance state.
+- Review-flagged diff tokens: [side map/set] the existing duplicate-analysis maps are now allocated lazily after the singleton admission; no additional retained side state exists and the stable-singleton path allocates zero runtime maps.
+- Evidence: canonical counter probe `calls=1,644`, `containers=1,644`, `stableSingletonContainers=749`, `featureBearingContainers=895`, `rulesVisited=4,367` versus `5,116` pre-cut, `countMapAllocations=895` versus `1,644` pre-cut, `noFeatureAllocations=0`, `noFeatureMisses=749`, `repeatedPropertyContainers=91`; core build and full core tests passed; focused basic-render tests passed `9/9`; all performance samples above were collected from separate before/after binaries on the same machine.
+- Hot-path cost contracts:
+```json
+[
+  {
+    "id": "serialize-helper-duplicate-declaration-prescan",
+    "admission": {
+      "predicate": "stable singleton node shape check",
+      "cost": "cheap",
+      "before": "collection and allocation"
+    },
+    "calls": 1644,
+    "containers": 1644,
+    "featureBearingContainers": 895,
+    "itemsVisited": 4367,
+    "featureItems": 91,
+    "noFeatureAllocations": 0,
+    "noFeatureMisses": 749,
+    "stableSingletonContainers": 749,
+    "countMapAllocations": 895,
+    "preCutCountMapAllocations": 1644,
+    "preCutItemsVisited": 5116,
+    "commonCaseProof": "same-fixture duplicate-declaration counter probe and 20-warmup/45-pair binary benchmark",
+    "verdict": "accepted"
+  }
+]
+```
+- Verdict: accepted as a measured no-feature allocation/traversal cut. It is not a canonical benchmark speed win; preserve the source-level guard and one-file contract before changing this pass.
+
 - Latest pass: MERGE-COALESCER ADMISSION — gate the post-evaluation property-merge coalescer behind a cheap feature-surface scan before the coalescer's maps, declaration-item arrays, and recursive merge walk are entered.
 - Architecture surface: `Rules._finishSourceOrderEvaluation` now calls the module-private `hasMergeOutputSurface(rules)` admission predicate before `_coalesceMergedDeclarations`. The predicate visits declarations and inline `Rules` output only; it deliberately does not cross `Ruleset` or `AtRule` scope boundaries.
 - Separation/duplication: the admission scan is the same inline-output surface that the coalescer already owns and is a short-circuiting proof, not a second merge implementation, index, cache, or property lookup table. It prevents the feature-only pass from being entered on ordinary containers.

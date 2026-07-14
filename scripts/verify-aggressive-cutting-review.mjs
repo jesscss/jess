@@ -65,9 +65,9 @@ function collectBranchDiff() {
 function collectChangedPaths() {
   const base = reviewBase();
   return [...new Set([
-    base
-      ? git(['diff', '--name-only', '--diff-filter=ACMR', `${base}..HEAD`, '--'])
-      : '',
+    ...(base
+      ? git(['diff', '--name-only', '--diff-filter=ACMR', `${base}..HEAD`, '--']).split('\n')
+      : []),
     ...git(['diff', '--name-only']).split('\n'),
     ...git(['diff', '--cached', '--name-only']).split('\n'),
     ...git(['ls-files', '--others', '--exclude-standard']).split('\n')

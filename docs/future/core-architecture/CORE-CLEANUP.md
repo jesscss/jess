@@ -181,6 +181,26 @@ sequential, not parallel, even when their descriptions look independent.
   Future changes to this owner remain subject to the cost-contract registry and
   caller-level source guard.
 
+- **Accept stable-singleton admission for duplicate-declaration pre-scan.** The
+  serializer's duplicate-property preparation compared `1,644` containers and
+  allocated a count map for every one. A caller-local shape gate now skips that
+  pre-scan for `749` stable singleton containers, reducing count-map allocations
+  to `895` and rules visited from `5,116` to `4,367`; dynamic `Call`,
+  `StyleImport`, and `For` singleton shapes remain on the old scan. Output
+  probes stayed byte-identical and the full core suite passed. The 20-warmup,
+  45-pair binary benchmark was neutral/noisy (parse+render median
+  `489.94→491.11 ms`; render-only `355.09→354.10 ms`), so this is an accepted
+  allocation/traversal cut with no speed claim. Its one-file contract and
+  source-level admission check are mandatory for follow-up edits.
+
+- **Harden the aggressive-cutting gate against review escape hatches.** The
+  pre-commit and pre-push paths now run it as a blocking check; it inspects the
+  committed branch delta as well as staged/unstaged changes, requires one
+  source-guarded contract per production owner file, rejects landed
+  `rejected`/`deferred` hot-path records, and flags broader array/materialization
+  and map/set forms. A temporary unregistered `Map`/`.forEach()` production
+  probe was rejected by the gate and removed.
+
 - **Accept Ruleset absent-metadata carrying as a resident-state cut.** Canonical
   evaluation has 4,155 live Rulesets where both `guard` and
   `selectorBeforeExtend` are absent, formerly paying 8,310 undefined own

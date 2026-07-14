@@ -192,6 +192,36 @@ requirement.
       "call": "_coalesceMergedDeclarations",
       "guard": "hasMergeOutputSurface"
     }
+  },
+  {
+    "id": "serialize-helper-duplicate-declaration-prescan",
+    "surface": "serializeRulesContainerInternal duplicate-property pre-scan",
+    "files": ["packages/core/src/tree/util/serialize-helper.ts"],
+    "admission": {
+      "predicate": "stable singleton node shape check",
+      "cost": "cheap",
+      "before": "collection and allocation"
+    },
+    "counters": [
+      "calls",
+      "containers",
+      "featureBearingContainers",
+      "itemsVisited",
+      "featureItems",
+      "noFeatureAllocations",
+      "noFeatureMisses"
+    ],
+    "commonCaseProof": "benchmark and duplicate-declaration counter probe",
+    "relations": [
+      "featureBearingContainers < containers",
+      "noFeatureAllocations === 0"
+    ],
+    "sourceCheck": {
+      "file": "packages/core/src/tree/util/serialize-helper.ts",
+      "caller": "function serializeRulesContainerInternal",
+      "call": "recomputeDeclCounts();",
+      "guard": "skipInitialDuplicateDeclarationScan"
+    }
   }
 ]
 ```
