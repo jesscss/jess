@@ -154,6 +154,19 @@ Other active docs in this dir:
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: RULESET ABSENT-METADATA CARRY.
+- Architecture surface: `Ruleset` now creates and derives `guard` and `selectorBeforeExtend` only when their value is defined. Direct value reads remain unchanged, and a defined field is still copied to derived placement shells.
+- Separation/duplication: construction carries semantic absence as absence; no alternate ruleset shape, side table, cache, or lookup branch was introduced.
+- Cumulative node weight: canonical evaluation removes 8,310 undefined own slots across 4,155 live Rulesets. No field is added to nodes, placement records, frames, source trees, or output buffers.
+- New traversal: none.
+- New node/materialization: none. Constructor and derive continue to create the same Ruleset surfaces; this pass only omits two absent own properties.
+- Render path: unchanged. Passing and failed guards retain their established eval behavior, and defined guard/selector-before-extend metadata remains owned by its source/derived shell.
+- Helper/API surface: none.
+- Metadata mutations: none. The focused `Object.hasOwn` assertions are test-only shape evidence; production uses direct reads only.
+- Review-flagged diff tokens: [parent/source mutation] the two `sourceNode` comparisons are test-only proofs that derive keeps its existing canonical-source ownership; production adds no parent/source write. [generic defensive read] the six `Object.hasOwn` assertions are focused test-only own-slot checks; production uses no structural probe or defensive read.
+- Evidence: focused Ruleset coverage is `61/61`; full core `3,323` passed (`15` skipped, `2` deferred); spine `136/136`; and all-less `106/106` byte identity passed. Same-checkout Node v25.9.0 alternating 20-warmup/45-pair A/B measured parse+render `239.68→239.63 ms` (median delta `-0.46%`) and render-only `211.78→207.04 ms` median but only `22/45` candidate wins and a mixed paired delta. This is a resident-slot reduction, not a speed claim.
+- Verdict: accepted — keep absent Ruleset metadata absent at construction/derive; do not add retained environment switches or delete fields after semantic evaluation.
+
 - Latest pass: DETACHED WRITER SOURCE-MAP GATE.
 - Architecture surface: `renderNodeText` creates detached writers for declaration fallback, rules preview, and its general syntax fallback. It now passes `tracksSources` only when the caller explicitly requests `sourceMap: true`; the caller-owned writer and output-buffer ownership model are unchanged.
 - Separation/duplication: this reuses the existing `OutputWriter` source-tracking switch rather than adding a second writer type, map cache, or render branch. Detached text remains a string; source-map callers retain their existing map-aware writer state.
