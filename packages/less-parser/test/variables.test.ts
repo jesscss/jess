@@ -1,4 +1,5 @@
 import { Parser } from '../src/jess.js';
+import { Context, N, isNode } from '@jesscss/core';
 
 const parser = new Parser();
 const parse = parser.parse;
@@ -12,6 +13,29 @@ describe('varDeclarationOrCall', () => {
   it('should parse variable declaration with mixin value', () => {
     const { errors } = parse('@ruleset: { color: black; background: white; }', 'Stylesheet');
     expect(errors.length).toBe(0);
+  });
+
+  it('renders and evaluates a scalar identifier variable use consistently', async () => {
+    const source = '@mode: block; .sample { display: @mode; }';
+    const parsed = parse(source, 'Stylesheet');
+    expect(parsed.errors.length).toBe(0);
+    const declaration = parsed.tree.rules[0];
+    if (!isNode(declaration, N.VarDeclaration)) {
+      throw new Error('Expected a variable declaration');
+    }
+    expect(declaration.value).toBe('block');
+
+    const renderedContext = new Context({ output: { collapseNesting: true } });
+    const rendered = await parsed.tree.render(renderedContext, {
+      context: renderedContext,
+      collapseNesting: true
+    });
+    expect(rendered).toContain('display: block;');
+
+    const evaluated = await parse(source, 'Stylesheet').tree.eval(
+      new Context({ output: { collapseNesting: true } })
+    );
+    expect(String(evaluated)).toContain('display: block;');
   });
 
   it('should parse variable call', () => {

@@ -1,10 +1,10 @@
 import { Parser } from '../src/jess.js';
-import { serializeTypes, N, isNode, type Node } from '@jesscss/core';
+import { serializeTypes, N, isNode, Node, type Node as NodeType } from '@jesscss/core';
 
 // Tests walk the parsed AST structurally; these views cover the fields they read.
 interface SelView {
   type?: string;
-  value: Node[];
+  value: NodeType[];
   valueOf(): unknown;
   toString(opts?: unknown): string;
 }
@@ -38,14 +38,14 @@ function selectorListValues(selector: unknown): unknown[] {
     return node;
   });
 }
-function asRuleset(n: Node | string | undefined): RuleView {
+function asRuleset(n: NodeType | string | undefined): RuleView {
   if (!isNode(n, N.Ruleset)) {
     throw new Error('Expected a ruleset');
   }
   // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
   return n as unknown as RuleView;
 }
-function asRules(n: Node | string | undefined): RuleView {
+function asRules(n: NodeType | string | undefined): RuleView {
   if (!isNode(n, N.Rules)) {
     throw new Error('Expected a Rules node');
   }
@@ -129,6 +129,60 @@ describe('serializeTypes coverage', () => {
           )
       )
     `);
+  });
+
+  test('keeps a scalar Less identifier variable value as a raw string', () => {
+    const { errors, tree } = parser.parse('@mode: block;');
+    expect(errors.length).toBe(0);
+    const declaration = tree.rules[0];
+    if (!isNode(declaration, N.VarDeclaration)) {
+      throw new Error('Expected a variable declaration');
+    }
+    expect(declaration.value).toBe('block');
+    expect(serializeTypes(tree)).toContainString(`
+      (VarDeclaration
+        name: 'mode'
+        value: 'block'
+      )
+    `);
+  });
+
+  test.each([
+    ['named color', '@color: red;', 'Color'],
+    ['dimension', '@size: 10px;', 'Dimension'],
+    ['number', '@count: 2;', 'Num'],
+    ['reference', '@ref: @other;', 'Reference'],
+    ['accessor', '@ref: @other[key];', 'Reference'],
+    ['call', '@call: fn();', 'Call'],
+    ['namespace path', '@path: #ns.foo;', 'Reference'],
+    ['interpolation', '@interp: @{key};', 'Interpolated'],
+    ['operation', '@math: 1 + 2;', 'Operation'],
+    ['paren', '@paren: (block);', 'Paren']
+  ])('keeps %s variable values as nodes', (_label, source, expectedType) => {
+    const { errors, tree } = parser.parse(source);
+    expect(errors.length).toBe(0);
+    const declaration = tree.rules[0];
+    if (!isNode(declaration, N.VarDeclaration)) {
+      throw new Error('Expected a variable declaration');
+    }
+    const value = declaration.value;
+    if (!(value instanceof Node)) {
+      throw new Error('Expected a semantic value node');
+    }
+    expect(value.type).toBe(expectedType);
+  });
+
+  test.each([
+    ['space list', '@space: one two;'],
+    ['comma list', '@comma: one, two;']
+  ])('keeps %s variable values grouped instead of scalar strings', (_label, source) => {
+    const { errors, tree } = parser.parse(source);
+    expect(errors.length).toBe(0);
+    const declaration = tree.rules[0];
+    if (!isNode(declaration, N.VarDeclaration) || !Array.isArray(declaration.value)) {
+      throw new Error('Expected a grouped variable value');
+    }
+    expect(declaration.value.every(item => typeof item === 'object')).toBe(true);
   });
 
   test('custom property function value stays a verbatim literal (interpolation-only)', () => {
@@ -727,8 +781,7 @@ test('parse known at-rule as variable declaration', () => {
   expect(serializeTypes(result.tree)).toContainString(`
       (VarDeclaration
         name: 'property'
-        value: 
-          (Keyword [role=keyword] 'foo')
+        value: 'foo'
       )
     `);
 });
@@ -740,8 +793,7 @@ test('parse known at-rule as variable declaration', () => {
   expect(serializeTypes(result.tree)).toContainString(`
       (VarDeclaration
         name: 'property'
-        value: 
-          (Keyword [role=keyword] 'foo')
+        value: 'foo'
       )
     `);
 });
