@@ -193,8 +193,20 @@ export class LessPlugin extends AbstractPlugin {
     return out;
   }
 
-  safeParse(filePath: string, source: string, _parseOptions?: SafeParseOptions): ISafeParseResult {
+  safeParse(filePath: string, source: string, parseOptions?: SafeParseOptions): ISafeParseResult {
     const context = this.createTreeContext(filePath, source);
+    const output = parseOptions?.compilerOptions?.output;
+    if (
+      typeof output === 'object'
+      && output !== null
+      && 'sourceMap' in output
+      && Boolean(output.sourceMap)
+    ) {
+      // The scalar POC deliberately retains the normal Dimension/Num node shape
+      // when output maps are requested, because the value needs its own mapping
+      // origin rather than the enclosing Declaration's span.
+      context.opts.sourceMap = true;
+    }
 
     const errors: ErrorDiagnostic[] = [];
     const warnings: WarningDiagnostic[] = [];

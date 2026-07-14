@@ -1012,7 +1012,10 @@ export class Context {
     const ext = path.extname(resolvedPath);
     const plugin = this.findParserPlugin(type, ext);
     const source = await sourceGetter.getSource!(resolvedPath);
-    const parseResult = plugin.safeParse!(resolvedPath, source, { importOptions });
+    const parseResult = plugin.safeParse!(resolvedPath, source, {
+      importOptions,
+      compilerOptions: this.opts
+    });
 
     // Collect normalized errors and warnings from plugin
     this.errors.push(...parseResult.errors);

@@ -11,7 +11,7 @@ import type { FieldMap, Span } from 'parseman';
 import type { CSTLeaf, CSTError } from 'parseman';
 import {
   CssParser,
-  spannedComponents, type Spanned, type Component
+  spannedComponents, setFieldSpan, fieldIndexOf, type Spanned, type Component
 } from '@jesscss/css-parser/jess';
 import { getInterpolatedOrString, getInterpolatedNode, createInterpolatedReference } from './utils.js';
 
@@ -841,6 +841,10 @@ export class LessGrammar extends CssParser {
 
   private _buildLessDeclaration(raw: ReadonlyArray<{ _tag: string }>, loc: LocationInfo) {
     const items = spannedComponents(raw);
+    const deferred = this._buildDeferredScalarDeclaration(items, loc);
+    if (deferred) {
+      return deferred;
+    }
     const decl = this._buildDeclaration(raw, loc);
     const colonIdx = items.findIndex(i => i.comp === ':');
     const merge = colonIdx > 0 ? items[colonIdx - 1]?.comp : undefined;
@@ -907,6 +911,54 @@ export class LessGrammar extends CssParser {
         const legacy = this._buildLegacyMSFilter(rawVal, loc);
         (decl as unknown as { value: unknown }).value = legacy;
       }
+    }
+    return decl;
+  }
+
+  /**
+   * Build the deliberately tiny deferred-value family emitted by
+   * `DeferredScalarDeclaration`: a plain property and one unsigned numeric
+   * terminal. The string is the exact authored source slice; no value node is
+   * made until a node-only declaration consumer calls `valueNode()`.
+   */
+  private _buildDeferredScalarDeclaration(items: Spanned[], loc: LocationInfo): Declaration | undefined {
+    // `noTrivia()` exposes the admitted whitespace as leaf children; discard
+    // only those whitespace leaves before recognizing the intentionally exact
+    // `name : scalar [;]` shape.
+    const significant = items.filter(item => (
+      typeof item.comp !== 'string' || !/^[ \t\n\r\f]+$/u.test(item.comp)
+    ));
+    if (
+      (significant.length !== 3 && significant.length !== 4)
+      || typeof significant[0]?.comp !== 'string'
+      || significant[1]?.comp !== ':'
+      || typeof significant[2]?.comp !== 'string'
+      || (significant.length === 4 && significant[3]?.comp !== ';')
+    ) {
+      return undefined;
+    }
+    const name = significant[0]!;
+    const value = significant[2]!;
+    const authoredValue = this._source.slice(value.span.start, value.span.end);
+    const numeric = /^(\d+)([a-zA-Z]+|%)?$/u.exec(authoredValue);
+    if (!numeric) {
+      return undefined;
+    }
+    // Source-map parse mode retains the pre-POC scalar node shape so its value
+    // span remains a distinct mapping origin. Normal render mode keeps the exact
+    // authored spelling as the deferred scalar string.
+    const declarationValue = this.context?.opts.sourceMap === true
+      ? new Dimension({ number: Number(numeric[1]!), unit: numeric[2] }, undefined, spanToLocation(value.span))
+      : authoredValue;
+    const decl = new Declaration({ name: name.comp, value: declarationValue }, undefined, loc);
+    const jn = decl as unknown as JessNode;
+    const { index: nameIdx, count } = fieldIndexOf(jn, 'name');
+    if (nameIdx >= 0) {
+      setFieldSpan(jn, nameIdx, count, name.span, this._source);
+    }
+    const { index: valueIdx } = fieldIndexOf(jn, 'value');
+    if (valueIdx >= 0) {
+      setFieldSpan(jn, valueIdx, count, value.span, this._source);
     }
     return decl;
   }
