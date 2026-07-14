@@ -1353,6 +1353,7 @@ export class Compiler {
 
     let css = await measureProfileAsync(profile, 'render', async () => {
       const buffer = createRenderBuffer('flat');
+      buffer.shareWriter = true;
       await tree.render(context, buffer, printOptions);
       return finalizeFlatRenderBuffer(buffer);
     });

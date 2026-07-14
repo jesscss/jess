@@ -62,6 +62,22 @@ describe('RenderBuffer', () => {
     expect('writer' in options).toBe(false);
   });
 
+  it('shares only marked flat buffers and never shares source-map output', () => {
+    const context = new Context();
+    const buffer = createRenderBuffer('flat');
+    buffer.shareWriter = true;
+
+    const shared = prepareBufferPrintState(context, undefined, buffer);
+    expect(shared.writer.writesTo(buffer.parts)).toBe(true);
+
+    const sourceMapped = prepareBufferPrintState(context, { sourceMap: true }, buffer);
+    expect(sourceMapped.writer.writesTo(buffer.parts)).toBe(false);
+
+    const callerOwned = createRenderBuffer('flat');
+    const detached = prepareBufferPrintState(context, undefined, callerOwned);
+    expect(detached.writer.writesTo(callerOwned.parts)).toBe(false);
+  });
+
   it('chooses flat mode until delayed finalization is needed', () => {
     expect(createRenderBufferForFlags({}).kind).toBe('flat');
     expect(createRenderBufferForFlags({ hasExtends: false, hasReferenceImports: false }).kind).toBe('flat');

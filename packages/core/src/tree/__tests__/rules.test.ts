@@ -344,6 +344,38 @@ describe('Rules', () => {
     expect(node.registrationPrepared).toBe(false);
   });
 
+  it('shares the writer with an explicitly compiler-owned flat root buffer', async () => {
+    const node = rules([
+      decl({ name: 'color', value: any('red') })
+    ]);
+    const buffer = createRenderBuffer('flat');
+    buffer.shareWriter = true;
+    context.root = node;
+
+    const rendered = await node.render(context, buffer);
+
+    expect(rendered).toBe('color: red;\n');
+    expect(buffer.parts.join('')).toBe(rendered);
+    expect(buffer.parts).not.toContain(rendered);
+    expect(context.printState.writer?.writesTo(buffer.parts)).toBe(true);
+  });
+
+  it('writes a spine-hoisted charset before the shared flat root body', async () => {
+    const node = rules([
+      any('@charset "utf-8";', { role: 'charset' }),
+      decl({ name: 'color', value: any('red') })
+    ]);
+    const buffer = createRenderBuffer('flat');
+    buffer.shareWriter = true;
+    context.root = node;
+
+    const rendered = await node.render(context, buffer);
+
+    expect(rendered).toBe('@charset "utf-8";\ncolor: red;\n');
+    expect(buffer.parts.join('')).toBe(rendered);
+    expect(buffer.parts).not.toContain(rendered);
+  });
+
   it('keeps non-root direct render as a body fragment while buffers keep emitted separators', async () => {
     const node = rules([
       decl({ name: 'color', value: any('red') })

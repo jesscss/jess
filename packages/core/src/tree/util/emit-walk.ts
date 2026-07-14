@@ -2346,7 +2346,8 @@ export const SPINE_ABORT_TO_EVAL = Symbol('spine-abort-to-eval');
 export function renderRootViaSpine(
   root: Rules,
   context: Context,
-  options: FinalPrintOptions
+  options: FinalPrintOptions,
+  shareFlatWriter = false
 ): MaybePromise<string | typeof SPINE_ABORT_TO_EVAL> {
   spineRenderCounter.rootRenders++;
   // EXTEND-WORK GATE (design §4.0). Decide ONCE, here, whether this render must
@@ -2383,6 +2384,23 @@ export function renderRootViaSpine(
   const savedSpineMode = options.spineMode;
   const savedSpineImportPlacements = options.spineImportPlacements;
   options.spineMode = true;
+  let sharedPreludeWritten = false;
+  let sharedPreludeText = '';
+  let sharedBodyMark = -1;
+  const emitSharedPrelude = (): void => {
+    if (!shareFlatWriter || sharedPreludeWritten) {
+      return;
+    }
+    const charsetPrelude = renderQueuedCharset(context, options);
+    const importPrelude = renderQueuedTopImports(context, options);
+    const prelude = `${charsetPrelude}${importPrelude}`;
+    if (prelude) {
+      options.writer.add(prelude);
+    }
+    sharedPreludeText = prelude;
+    sharedBodyMark = options.writer.mark();
+    sharedPreludeWritten = true;
+  };
   // Per-position bookkeeping: number the body children BEFORE building the scope
   // frame, so the frame's declaration buckets carry source indices and a
   // re-declared / `snapshot` read resolves against the binding at its position.
@@ -2461,10 +2479,24 @@ export function renderRootViaSpine(
     // `@charset` FIRST, then `@import`s, then the body. A mid-body root `@charset`
     // folded during the descent registered `context.currentCharset` (emit skipped it);
     // CSS-passthrough imports queued to `context.topImports`.
-    const charsetPrelude = renderQueuedCharset(context, options);
-    const importPrelude = renderQueuedTopImports(context, options);
-    const prelude = `${charsetPrelude}${importPrelude}`;
-    return prelude ? `${prelude}${bodyText}` : bodyText;
+    const prelude = `${renderQueuedCharset(context, options)}${renderQueuedTopImports(context, options)}`;
+    const renderedText = prelude ? `${prelude}${bodyText}` : bodyText;
+    if (shareFlatWriter && sharedBodyMark >= 0) {
+      if (prelude !== sharedPreludeText) {
+        // A late queueing seam changed the document prelude after descent began.
+        // This is exceptional; repair the aliased range once rather than emit a
+        // second body or silently move imports after it.
+        options.writer.replaceSince(initialWriterMark, () => renderedText);
+      } else {
+        // The spine already wrote the body directly. Match its public framing
+        // (trimmed body plus one terminal newline) without joining the chunks.
+        options.writer.trimEndSince(sharedBodyMark);
+        if (bodyText) {
+          options.writer.add('\n');
+        }
+      }
+    }
+    return renderedText;
   };
   const fail = (error: unknown): never => {
     context.rulesContext = savedRulesContext;
@@ -2596,12 +2628,14 @@ export function renderRootViaSpine(
         // §4.3 hoist: subjects whose override is a full root-composed projection (`&`-crossing) —
         // their header emits VERBATIM (skip parent compose). Strictly the crossing subset.
         options.spineExtendHoisted = result.hoisted;
+        emitSharedPrelude();
         return descend();
       };
       // The gather is async only when it expands a `$for`/`each` loop's extenders (loop-generated
       // interpolated extends); the common case resolves synchronously with zero promise overhead.
       return isThenable(wired) ? wired.then(applyWired, error => fail(error)) : applyWired(wired);
     }
+    emitSharedPrelude();
     return descend();
   };
   // IMPORTS (increment 2, document-wide scope registration). Resolve every foldable

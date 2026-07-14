@@ -75,7 +75,7 @@ import {
   isRenderBuffer,
   prepareBufferPrintState,
   type RenderBuffer,
-  writeRenderText,
+  writePreparedRenderTextResult,
   writeRenderTextResult
 } from './util/render-buffer.js';
 import type { JsFunction } from './js-function.js';
@@ -391,7 +391,8 @@ function writeRulesRenderOutput(
   options: PrintOptions | undefined,
   directSourceRender: boolean
 ): MaybePromise<string> {
-  const prepared = prepareBufferPrintState(context, options);
+  const prepared = prepareBufferPrintState(context, options, buffer);
+  const mark = prepared.writer.mark();
   const text = node instanceof Rules && !directSourceRender
     ? (
         node === context.root || source === context.root
@@ -399,9 +400,7 @@ function writeRulesRenderOutput(
           : node.toString(prepared)
       )
     : renderRulesToPreparedString(source, node, context, prepared, directSourceRender);
-  return isThenable(text)
-    ? text.then(resolved => writeRenderText(buffer, resolved))
-    : writeRenderText(buffer, text);
+  return writePreparedRenderTextResult(buffer, prepared, mark, text);
 }
 
 function writeRulesStateRenderOutput(
@@ -5443,8 +5442,13 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       return isThenable(value) ? value.then(afterEval) : afterEval(value);
     };
     if (sourceWasRoot && !preSerializeRoot && isSpineEligibleRoot(this, context, printOptions?.collapseNesting)) {
-      const prepared = prepareRenderPrintState(context, printOptions);
-      const rendered = renderRootViaSpine(this, context, prepared);
+      const prepared = isRenderBuffer(bufferOrOptions)
+        ? prepareBufferPrintState(context, printOptions, bufferOrOptions)
+        : prepareRenderPrintState(context, printOptions);
+      const shareFlatWriter = isRenderBuffer(bufferOrOptions)
+        && bufferOrOptions.kind === 'flat'
+        && prepared.writer.writesTo(bufferOrOptions.parts);
+      const rendered = renderRootViaSpine(this, context, prepared, shareFlatWriter);
       // A spine render may ABORT to eval (a resolved sentinel, sync or via the async import chain). On
       // abort, `evalPath()` owns the WHOLE render including the buffer write (its `serialize` branches
       // on `isRenderBuffer`), so it must NOT be re-wrapped in `writeRenderTextResult` — that would write
@@ -5453,7 +5457,16 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         if (result === SPINE_ABORT_TO_EVAL) {
           return evalPath();
         }
-        return isRenderBuffer(bufferOrOptions) ? writeRenderTextResult(bufferOrOptions, result) : result;
+        // A shared spine writes its prelude and body directly into the compiler-owned
+        // flat buffer. Re-wrapping the returned body would duplicate it; the returned
+        // string remains the public render result, while the aliased writer owns the
+        // buffer bytes already.
+        if (shareFlatWriter) {
+          return result;
+        }
+        return isRenderBuffer(bufferOrOptions)
+          ? writeRenderTextResult(bufferOrOptions, result)
+          : result;
       };
       return isThenable(rendered) ? rendered.then(finishSpine) : finishSpine(rendered);
     }

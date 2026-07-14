@@ -1,6 +1,11 @@
 import type { Context } from '../../context.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
-import { prepareRenderPrintState, type FinalPrintOptions, type PrintOptions } from './print.js';
+import {
+  OutputWriter,
+  prepareRenderPrintState,
+  type FinalPrintOptions,
+  type PrintOptions
+} from './print.js';
 
 export type RenderBufferNode = {
   resolve(context: Context): MaybePromise<RenderableOutput>;
@@ -47,6 +52,8 @@ export type RenderBufferFlags = {
 export type FlatRenderBuffer = {
   kind: 'flat';
   parts: string[];
+  /** Internal compiler-owned buffers may share this array with their writer. */
+  shareWriter?: true;
 };
 
 export type SegmentedRenderBuffer = {
@@ -107,6 +114,10 @@ export function createRenderBuffer(kind: RenderBuffer['kind']): RenderBuffer {
     : { kind, segments: [], extendRecords: [] };
 }
 
+function createSharedFlatRenderBuffer(): FlatRenderBuffer {
+  return { kind: 'flat', parts: [], shareWriter: true };
+}
+
 export function createRenderBufferForFlags(flags: RenderBufferFlags): RenderBuffer {
   return createRenderBuffer(
     flags.hasExtends
@@ -155,13 +166,76 @@ export function writeRenderTextResult(buffer: RenderBuffer, text: MaybePromise<s
     : writeRenderText(buffer, text);
 }
 
-export function prepareBufferPrintState(context: Context, options?: PrintOptions): FinalPrintOptions {
+export function prepareBufferPrintState(
+  context: Context,
+  options?: PrintOptions,
+  buffer?: RenderBuffer
+): FinalPrintOptions {
+  if (
+    buffer?.kind === 'flat'
+    && buffer.shareWriter
+    && options?.writer === undefined
+    && options?.sourceMap !== true
+    && !context.opts.output?.sourceMap
+  ) {
+    const activeWriter = context.printState.writer;
+    const writer = activeWriter?.writesTo(buffer.parts)
+      ? activeWriter
+      : new OutputWriter(false, buffer.parts);
+    const contextTrivia = 'trivia' in context.opts ? context.opts.trivia : undefined;
+    return prepareRenderPrintState(context, {
+      ...options,
+      writer,
+      sourceMap: false,
+      trivia: options?.trivia ?? contextTrivia
+    });
+  }
   if (!options) {
     return prepareRenderPrintState(context);
   }
   const detached = { ...options };
   delete detached.writer;
   return prepareRenderPrintState(context, detached);
+}
+
+export function writePreparedRenderText(
+  buffer: RenderBuffer,
+  options: FinalPrintOptions,
+  mark: number,
+  text: string
+): string {
+  if (
+    buffer.kind === 'flat'
+    && options.writer.writesTo(buffer.parts)
+    && options.writer.hasContentSince(mark)
+  ) {
+    // A serializer can write a prefix and return the complete value. Preserve
+    // the writer's existing chunks, adding only an unwritten suffix. If a
+    // nested detached serializer returned bytes that were not written to the
+    // shared writer, replace the captured range so the buffer remains exact.
+    const written = options.writer.getSince(mark);
+    if (written === text) {
+      return text;
+    }
+    if (text.startsWith(written)) {
+      options.writer.add(text.slice(written.length));
+      return text;
+    }
+    options.writer.replaceSince(mark, () => text);
+    return text;
+  }
+  return writeRenderText(buffer, text);
+}
+
+export function writePreparedRenderTextResult(
+  buffer: RenderBuffer,
+  options: FinalPrintOptions,
+  mark: number,
+  text: MaybePromise<string>
+): MaybePromise<string> {
+  return isThenable(text)
+    ? text.then(resolved => writePreparedRenderText(buffer, options, mark, resolved))
+    : writePreparedRenderText(buffer, options, mark, text);
 }
 
 export function renderInvisibleEffect(
@@ -253,7 +327,9 @@ export function renderNodeToBuffer(
   if (hasNativeBufferRender(node)) {
     return node.render(context, buffer, options);
   }
-  return writeRenderTextResult(buffer, renderNodeToWriter(node, context, prepareBufferPrintState(context, options)));
+  const prepared = prepareBufferPrintState(context, options, buffer);
+  const mark = prepared.writer.mark();
+  return writePreparedRenderTextResult(buffer, prepared, mark, renderNodeToWriter(node, context, prepared));
 }
 
 export function renderNodeToWriter(
@@ -278,7 +354,7 @@ export function renderNodeToString(
   context: Context,
   options?: PrintOptions
 ): MaybePromise<string> {
-  const buffer = createRenderBuffer('flat');
+  const buffer = createSharedFlatRenderBuffer();
   const rendered = renderNodeToBuffer(node, context, buffer, options);
   const finalize = (): string => finalizeFlatRenderBuffer(buffer);
   return isThenable(rendered)
