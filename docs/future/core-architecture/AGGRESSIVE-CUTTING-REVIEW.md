@@ -186,6 +186,9 @@ requirement.
       "featureBearingContainers < containers",
       "noFeatureAllocations === 0"
     ],
+    "evidence": {
+      "command": ["pnpm", "--filter", "@jesscss/core", "test", "--", "src/tree/__tests__/declaration.test.ts", "--run"]
+    },
     "sourceCheck": {
       "file": "packages/core/src/tree/rules.ts",
       "caller": "_finishSourceOrderEvaluation",
@@ -216,6 +219,9 @@ requirement.
       "featureBearingContainers < containers",
       "noFeatureAllocations === 0"
     ],
+    "evidence": {
+      "command": ["pnpm", "--filter", "@jesscss/core", "test", "--", "src/tree/__tests__/ruleset.test.ts", "--run"]
+    },
     "sourceCheck": {
       "file": "packages/core/src/tree/util/serialize-helper.ts",
       "caller": "function serializeRulesContainerInternal",

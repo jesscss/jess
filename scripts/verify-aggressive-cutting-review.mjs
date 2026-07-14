@@ -153,6 +153,17 @@ function validateCostContractRegistry(registry) {
     if (!Array.isArray(contract.relations) || contract.relations.length === 0) {
       errors.push(`Cost contract ${contract.id} must state at least one counter relation.`);
     }
+    const evidence = contract.evidence;
+    if (
+      !evidence
+      || typeof evidence !== 'object'
+      || !Array.isArray(evidence.command)
+      || evidence.command.length < 2
+      || !['node', 'pnpm'].includes(evidence.command[0])
+      || evidence.command.some(argument => ['-c', '-e', '--eval', '--shell'].includes(argument))
+    ) {
+      errors.push(`Cost contract ${contract.id} must name a focused executable test command without shell/eval indirection.`);
+    }
     const sourceCheck = contract.sourceCheck;
     if (!sourceCheck || typeof sourceCheck !== 'object') {
       errors.push(`Cost contract ${contract.id} must include executable source-check metadata.`);
@@ -354,6 +365,29 @@ function validateSourceChecks(registry, changedPaths) {
   return errors;
 }
 
+function validateExecutableEvidence(registry, changedPaths) {
+  const errors = [];
+  for (const contract of registry) {
+    if (!contract.files.some(file => changedPaths.includes(file))) {
+      continue;
+    }
+    const command = contract.evidence.command;
+    try {
+      execFileSync(command[0], command.slice(1), {
+        cwd: root,
+        encoding: 'utf8',
+        timeout: 120000,
+        maxBuffer: 16 * 1024 * 1024,
+        stdio: ['ignore', 'pipe', 'pipe']
+      });
+    } catch (error) {
+      const stderr = error?.stderr?.toString?.().trim() ?? '';
+      errors.push(`Executable evidence failed for ${contract.id}: ${command.join(' ')}${stderr ? ` — ${stderr.slice(-500)}` : ''}.`);
+    }
+  }
+  return errors;
+}
+
 const requiredLabels = [
   '- Architecture surface:',
   '- Separation/duplication:',
@@ -478,13 +512,16 @@ if (requiresCostAudit && registryErrors.length === 0) {
   const auditRecords = extractCostAuditRecords(latestPass);
   const auditErrors = validateCostAuditRecords(auditRecords, registry, changedPaths);
   const sourceCheckErrors = validateSourceChecks(registry, changedPaths);
+  const evidenceErrors = productionHotPathChanged
+    ? validateExecutableEvidence(registry, changedPaths)
+    : [];
   const coverageErrors = productionHotPathChanged
     ? validateProductionHotPathCoverage(registry, changedPaths)
     : [];
-  if (auditErrors.length > 0 || sourceCheckErrors.length > 0 || coverageErrors.length > 0) {
+  if (auditErrors.length > 0 || sourceCheckErrors.length > 0 || evidenceErrors.length > 0 || coverageErrors.length > 0) {
     failed = true;
     console.error('\nHot-path cost contract review failed:');
-    for (const error of [...auditErrors, ...sourceCheckErrors, ...coverageErrors]) {
+    for (const error of [...auditErrors, ...sourceCheckErrors, ...evidenceErrors, ...coverageErrors]) {
       console.error(`- ${error}`);
     }
   }
