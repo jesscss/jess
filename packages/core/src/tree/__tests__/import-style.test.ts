@@ -27,6 +27,7 @@ import {
   Interpolated,
   interpolatedSelector,
   INTERPOLATION_PLACEHOLDER,
+  TreeContext,
   type Rules,
   Node,
   Any,
@@ -41,6 +42,7 @@ import type { CallableFindOptions, DeclarationFindOptions } from '../util/lookup
 import { createRenderBuffer, renderNodeToString } from '../util/render-buffer.js';
 import { OutputWriter, getPrintOptions } from '../util/print.js';
 import { buildSourceMap } from '../util/sourcemap.js';
+import { createTriviaMap, makeTrivia } from '../util/trivia.js';
 import { resolve } from 'node:path';
 import { createTestContext } from './import-style-test-helpers.js';
 import { findPropertyDeclarationOccurrence, findVariableDeclarationOccurrence } from '../util/direct-rules-lookup.js';
@@ -1961,6 +1963,90 @@ describe('Style import', () => {
   });
 
   describe('multiple imports', () => {
+    it('drops retained placement mapping only for a closed static literal `(multiple)` spine run', async () => {
+      const importPath = resolve(process.cwd(), 'closed-static-multiple.jess');
+      const sourceRules = rules([
+        ruleset({
+          selector: sellist([sel([el('.closed-static')])]),
+          rules: [decl({ name: 'color', value: any('green') })]
+        })
+      ]);
+      context.sourceTrees.set(importPath, sourceRules);
+      const imports = [0, 1, 2].map(() => style({
+        path: quoted('closed-static-multiple.jess')
+      }, {
+        type: 'import',
+        importOptions: { multiple: true }
+      }));
+      const root = rules(imports);
+      context.root = root;
+
+      for (const imported of imports) {
+        const resolution = await imported.resolveForSpine(context);
+        expect(resolution.kind).toBe('fold');
+        if (resolution.kind !== 'fold') {
+          throw new TypeError('Expected folded multiple import');
+        }
+        expect(getImportPlacementChildSegments(resolution.body)).toBeUndefined();
+        expect(getImportPlacementSourceChild(resolution.body, resolution.body.rules[0]!)).toBeUndefined();
+      }
+    });
+
+    it('retains spine placement mapping for excluded multiple-import shapes', async () => {
+      const sourcePath = resolve(process.cwd(), 'excluded-static-multiple.jess');
+      const staticSource = () => rules([
+        ruleset({
+          selector: sellist([sel([el('.excluded-static')])]),
+          rules: [decl({ name: 'color', value: any('green') })]
+        })
+      ]);
+      const resolveFirst = async (
+        sourceRules: Rules,
+        importOptions: { multiple: true; reference?: true } = { multiple: true },
+        addConsumer = false
+      ): Promise<Rules> => {
+        context.sourceTrees.set(sourcePath, sourceRules);
+        const imports = [0, 1, 2].map(() => style({
+          path: quoted('excluded-static-multiple.jess')
+        }, {
+          type: 'import',
+          importOptions
+        }));
+        context.root = rules(addConsumer
+          ? [...imports, decl({ name: 'consumer', value: any('black') })]
+          : imports);
+        const resolution = await imports[0]!.resolveForSpine(context);
+        if (resolution.kind !== 'fold') {
+          throw new TypeError('Expected folded multiple import');
+        }
+        return resolution.body;
+      };
+
+      expect(getImportPlacementChildSegments(await resolveFirst(rules([
+        vardecl({ name: 'blocked', value: any('green') })
+      ])))).toBeDefined();
+      expect(getImportPlacementChildSegments(await resolveFirst(staticSource(), {
+        multiple: true,
+        reference: true
+      }))).toBeDefined();
+      context.opts.output = { sourceMap: true };
+      expect(getImportPlacementChildSegments(await resolveFirst(staticSource()))).toBeDefined();
+      context.opts.output = undefined;
+      const commentSource = new RulesClass([
+        ruleset({
+          selector: sellist([sel([el('.commented-static')])]),
+          rules: [decl({ name: 'color', value: any('green') })]
+        })
+      ], undefined, undefined, new TreeContext({
+        trivia: createTriviaMap({
+          before: new Map([[0, makeTrivia('/* keep */', 0, 10)]]),
+          after: new Map([[0, makeTrivia('/* keep */', 0, 10)]])
+        })
+      }));
+      expect(getImportPlacementChildSegments(await resolveFirst(commentSource))).toBeDefined();
+      expect(getImportPlacementChildSegments(await resolveFirst(staticSource(), { multiple: true }, true))).toBeDefined();
+    });
+
     it('reuses source-free scalar leaves for first-use import-local placement', async () => {
       const originalClone = Any.prototype.clone;
       let clonedRedLeaves = 0;
