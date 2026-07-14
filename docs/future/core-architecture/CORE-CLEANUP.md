@@ -167,6 +167,33 @@ sequential, not parallel, even when their descriptions look independent.
 | Q-39 | **CLOSED — lazy OutputWriter transient state** — ordinary `tracksSources=false` writers no longer materialize idle captured-segment or queued-spacer own fields, and the dead trailing-newline-origin diagnostic/accessor is deleted. `_posLength` remains intentionally eager for constant-time rollback. Full core passed `3311` tests with `15` skipped and `2` deferred; focused writer coverage passed `55/55`; the exact same-checkout `benchmark.less` control/candidate/candidate sequence was `253.67 → 289.79 → 242.93 ms` (15 iterations, 5 warmups, 3 rounds), an order-sensitive swing with no causal speed claim. | `packages/core/src/tree/util/print.ts` | generated writer shape, capture/spacer/source-map behavior, full core, core build, benchmark sanity; no AST or eval fallback ownership |
 | Q-40 | **ACTIVE — canonical `benchmark.less` performance program (<40 ms)** — use the Less 4.6.3 fixture at `/Users/matthew/git/oss/less.js/packages/less/benchmark/benchmark.less`, with Jess `Compiler.render()` configured for `collapseNesting: true` plus the Less and Less-compat plugins. The repaired harnesses are `scripts/measure-less-hotpath.mjs` (public end-to-end) and `scripts/compare-less-parse-render-env.mjs` (parse/load+render and parse-once render-only); `scripts/profile-less-benchmark.mjs` supplies diagnostic counters only. Fresh Node v25.9.0 arm64 evidence: Less 4 median **34.69 ms** (30 runs/10 warmups); Jess public median is approximately **270 ms**; Jess core parse/load+render median **255–260 ms**, parse-once render-only median **214–215 ms**. The first diagnostic run recorded 33,607 direct-declaration cache misses, 37,560 child-entry visits, 4,085 declaration preview fallbacks, and 1,644 duplicate-declaration containers. The split counters identify every cache miss as declaration strategy (`d`): 37,554 of 37,560 child entries are misses, with only 6 public hits. Classify its caller/filters before proposing an index. Aggregate scaling proves a structural multiplier: public multiple-import placements take 408/675/1,040 ms at one/two/three while output is linear, and four placements exceed 900 MiB/OOM; literal copies fail earlier. Recursive scope reads and `Rules.eval` grow superlinearly while derives/frame creation are linear. Rank the 3× heap profile allocation/retainer owner before choosing a redesign. First accepted state cut: after expansion proves a container has no repeated non-variable property, duplicate-key maps/sets and the reverse dedup pass stay absent; full core/spine/all-less output remained green, while public `276.31 ms` and render-only paired `217.85/216.90 ms` were neutral/noisy, so no speed claim. Every core change must use a same-checkout before/after public benchmark plus the split where relevant; preserve Jess's own baseline output byte-for-byte. Less 4 output is currently a performance comparator, not a byte oracle (current Jess `sha256=adfd267…78e840`, 133,983 bytes; Less 4 `ace28f…1491a`, 131,674 bytes; first difference is `solid(#a8000b)` versus `solid #a8000b`). | parser, direct lookup, eval/spine/extend, serializer/writer, trivia/provenance | stable medians with fixed Node/fixture/options/cache/Node/warmups/rounds, CPU/heap evidence, byte identity against Jess baseline, core/spine/all-less/aggressive gates, then merge/push |
 
+#### Q-40 representation and allocation decisions — 2026-07-14
+
+- **Reject local object-table lookup.** Two same-process runs of the existing
+  layout benchmark recorded current `Map` reads at `22.02/21.78 ms`,
+  null-prototype own-property reads at `32.76/32.82 ms`, and planned numeric
+  slot reads at `26.46/26.99 ms`. The object table is 49–51% slower than the
+  current map in this local-only test, so it does not justify a runtime branch.
+  The script's value/shadowing assertions passed; this is still not a general
+  Less correctness proof or a canonical benchmark speed claim.
+- **Keep bounded parent plans, not a generic environment.** A future admitted
+  current read can have a source-static `(lexicalDepth, slot)` plan only after
+  generic lookup proves the actual placement parent chain, every skipped frame
+  remains static/unchanged, and imports, child surfaces, pending names,
+  mutations, leaky bindings, source-position reads, properties, and callables
+  are absent. A prototype chain is a test-only comparator for that later slice;
+  it must not become a second scope engine.
+- **In flight, one proof each.** The static-local slot POC and the pass-local
+  extend-root chained-target-index POC each own a separate write set. Retain
+  neither without byte parity and same-worktree paired render improvements;
+  the extend POC specifically needs three alternating 1x/2x/3x
+  `(multiple)` rounds before it can advance.
+- **Parser boundary is ready but not yet measured for Less.** Parseman now has
+  a branch-local `run(..., { profile: true })` recognizer/capture/host boundary
+  based on the existing JSON recognition-only mechanism. Jess's generated Less
+  grammar predates that code; regenerate it in a disposable worktree and record
+  warmup/sample medians before using any parser split to rank Q-40 work.
+
 The queue is considered drained only when every row is landed, explicitly closed
 with evidence, or transferred to an owner-judgment/design lane. A row that merely
 has a checkbox or a clean abandoned worktree is not complete.
