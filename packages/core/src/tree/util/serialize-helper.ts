@@ -34,6 +34,13 @@ import { Condition } from '../condition.js';
 type TriviaSide = 'before' | 'after';
 type SerializeProfileCounter =
   | 'duplicateDeclarationComparisonContainers'
+  | 'duplicateDeclarationRulesVisited'
+  | 'duplicateDeclarationRepeatedPropertyContainers'
+  | 'duplicateDeclarationZeroChildContainers'
+  | 'duplicateDeclarationSingletonContainers'
+  | 'duplicateDeclarationStableSingletonContainers'
+  | 'duplicateDeclarationCountMapAllocations'
+  | 'duplicateDeclarationSeenMapAllocations'
   | 'duplicateDeclarationPrerenderedDeclarations'
   | 'emissionRenderNodeTextPreviewCalls'
   | 'emissionRenderNodeTextRulesPreviewCalls'
@@ -946,6 +953,17 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       current?.type === 'For' || current?.type === 'While' || current?.type === 'If'
     );
     const keepsDuplicateGeneratedOutput = (n: any): boolean => keepsDuplicateMixinOutputDeclaration(n);
+    if (serializeProfileCounters) {
+      if (rulesToRender.length === 0) {
+        incrementSerializeProfileCounter('duplicateDeclarationZeroChildContainers');
+      } else if (rulesToRender.length === 1) {
+        incrementSerializeProfileCounter('duplicateDeclarationSingletonContainers');
+        const singletonNode = rulesToRender[0]!.node;
+        if (singletonNode.type !== 'Call' && singletonNode.type !== 'StyleImport' && singletonNode.type !== 'For') {
+          incrementSerializeProfileCounter('duplicateDeclarationStableSingletonContainers');
+        }
+      }
+    }
     if (rulesToRender.length === 0) {
       return '';
     }
@@ -955,23 +973,45 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
     if (serializeProfileCounters) {
       incrementSerializeProfileCounter('duplicateDeclarationComparisonContainers');
     }
-    const declarationCountsByProp = new Map<string, number>();
+    const singletonNode = rulesToRender.length === 1 ? rulesToRender[0]!.node : undefined;
+    const skipInitialDuplicateDeclarationScan = singletonNode !== undefined
+      && singletonNode.type !== 'Call'
+      && singletonNode.type !== 'StyleImport'
+      && singletonNode.type !== 'For';
+    let declarationCountsByProp: Map<string, number> | undefined;
     let hasRepeatedDeclarationProperty = false;
+    let repeatedPropertyProfileRecorded = false;
     const recomputeDeclCounts = (): void => {
-      declarationCountsByProp.clear();
+      let counts = declarationCountsByProp;
+      if (!counts) {
+        if (serializeProfileCounters) {
+          incrementSerializeProfileCounter('duplicateDeclarationCountMapAllocations');
+        }
+        counts = declarationCountsByProp = new Map<string, number>();
+      }
+      counts.clear();
       hasRepeatedDeclarationProperty = false;
       for (let i = 0; i < rulesToRender.length; i++) {
+        if (serializeProfileCounters) {
+          incrementSerializeProfileCounter('duplicateDeclarationRulesVisited');
+        }
         const node = rulesToRender[i]!.node;
         if (!isNode(node, N.Declaration) || isNode(node, N.VarDeclaration)) {
           continue;
         }
         const declProp = node.name.valueOf();
-        const count = (declarationCountsByProp.get(declProp) ?? 0) + 1;
-        declarationCountsByProp.set(declProp, count);
+        const count = (counts.get(declProp) ?? 0) + 1;
+        counts.set(declProp, count);
         hasRepeatedDeclarationProperty ||= count > 1;
       }
+      if (serializeProfileCounters && hasRepeatedDeclarationProperty && !repeatedPropertyProfileRecorded) {
+        incrementSerializeProfileCounter('duplicateDeclarationRepeatedPropertyContainers');
+        repeatedPropertyProfileRecorded = true;
+      }
     };
-    recomputeDeclCounts();
+    if (!skipInitialDuplicateDeclarationScan) {
+      recomputeDeclCounts();
+    }
     // Per-declaration dedup KEY. Eval path: the static `writeSyntax` of the
     // already-resolved node IS its final bytes. Spine path: the value is still
     // UNRESOLVED at this point, so `writeSyntax` emits opaque `$??(…)` placeholders
@@ -1043,7 +1083,13 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       return `${declOut}${node.requiredSemi ? ';' : ''}`;
     };
     const recordDeclKey = (i: number, declProp: string, declKey: string): void => {
-      const seenByProp = seenDeclarationsByProp ??= new Map<string, Set<string>>();
+      let seenByProp = seenDeclarationsByProp;
+      if (!seenByProp) {
+        if (serializeProfileCounters) {
+          incrementSerializeProfileCounter('duplicateDeclarationSeenMapAllocations');
+        }
+        seenByProp = seenDeclarationsByProp = new Map<string, Set<string>>();
+      }
       let seenValues = seenByProp.get(declProp);
       if (!seenValues) {
         seenValues = new Set<string>();
@@ -1367,7 +1413,8 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       // Count after every expansion splice. A unique final property sequence
       // cannot call computeDeclKey or suppress an entry, so it needs no dedup
       // maps, output previews, or reverse walk.
-      if (!hasRepeatedDeclarationProperty) {
+      const counts = declarationCountsByProp;
+      if (!hasRepeatedDeclarationProperty || !counts) {
         return undefined;
       }
       const stepFrom = (i: number): MaybePromise<void> => {
@@ -1377,7 +1424,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
             continue;
           }
           const declProp = node.name.valueOf();
-          if ((declarationCountsByProp.get(declProp) ?? 0) < 2) {
+          if ((counts.get(declProp) ?? 0) < 2) {
             continue;
           }
           const key = computeDeclKey(node, rulesToRender[idx]!.spineFrame);
