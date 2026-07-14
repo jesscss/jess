@@ -308,6 +308,25 @@ a current-dev refresh. No production or test file was changed by this audit;
 leave the branch owner-bound until its owner explicitly releases or refreshes
 the exact slice.
 
+Follow-up Q-30 owner-refresh handoff — 2026-07-14: no implementation can safely
+start yet. The first Dimension/Num batch would own the functional CSS/Less
+`grammar.ts` and `builders.ts` paths, `packages/core/src/tree/declaration.ts`,
+`packages/core/src/tree/util/evaluate-node-array.ts`, and (if retained after
+design review) a new literal-tag/materializer module. It must not touch the
+legacy recursive-parser files or initially modify `any.ts`, `dimension.ts`,
+`number.ts`, `operation.ts`, or `color.ts`. Direct overlaps are
+`jess-q28a-css-at-rule-strings` (CSS builders), `jess-cond-grammar` (Less
+grammar), and `jess-lazyvalue-spike` (Any/Color/Dimension); the stale
+`work/deval-flip` branch remains 287 paths divergent and must not be replayed.
+Q-30 opens only after Q-28D/E/F owners merge or explicitly release, the narrow
+write set is clean and unclaimed, the owner branches from current `dev`, the
+D-EVAL value-heavy reprofile is current, and the owner resolves source-verbatim
+versus canonicalized numeric output (including the documented `1.0` case).
+Minimum proof remains zero materialization for inert literals, lazy projection
+only for operated/compared slots, no write-back into declaration strings/tags,
+operation/guard/reference parity, AST/trivia/provenance checks, all-less byte
+parity, aggressive review, and same-directory `benchmark.less` A/B.
+
 ## OPEN-ITEM RECONCILIATION (post-drive — read this before trusting any checkbox below)
 
 The tracker was run as a **failure-count-driven drive-to-green**, and its two deferral rules —
