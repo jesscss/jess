@@ -47,7 +47,9 @@ function censusLiveNode(value) {
   for (const key of Object.keys(value)) {
     const child = value[key];
     if (Array.isArray(child)) {
-      for (const item of child) censusLiveNode(item);
+      for (const item of child) {
+        censusLiveNode(item);
+      }
     } else {
       censusLiveNode(child);
     }
