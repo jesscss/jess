@@ -169,6 +169,16 @@ sequential, not parallel, even when their descriptions look independent.
 
 #### Q-40 representation and allocation decisions — 2026-07-14
 
+- **Reconciled legacy perf worktrees before new cuts.** `jess-perf-valueeval`
+  and `jess-perf-lookup` are 132 commits behind current `dev`; their runtime
+  changes are already landed and only stale, non-canonical probes remain.
+  `jess-real-lib` is semantically blocked pending a current Less failure;
+  `jess-deval-measure` duplicates the active D-EVAL lane; and
+  `jess-deval-groundtruth` is rejected because it adds a public probe export
+  and scratch-path instrumentation. None may be refreshed or merged into the
+  current parser/serializer work; their only useful residue is historical
+  evidence. The current serializer POC has no direct file collision.
+
 - **Reject merge-lookup caching as a canonical lever.** The reported 33,607
   direct declaration “cache misses” are all 22 synthesized property-merge
   references (`transition`, `transform`, `font-family`, `box-shadow`) walking
