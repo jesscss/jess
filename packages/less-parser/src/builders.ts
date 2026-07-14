@@ -308,9 +308,7 @@ export class LessGrammar extends CssParser {
         }
       }
     }
-    const value = typeof rawValue === 'string' && rawValue
-      ? this._lessKeyword(rawValue, loc)
-      : rawValue;
+    const value = rawValue;
     // `important` is the verbatim source text (`!important`, `! important`, …),
     // not a boolean — the declaration stores the string it will re-emit.
     let important: string | undefined;
@@ -3198,6 +3196,13 @@ export class LessGrammar extends CssParser {
     valItems: Spanned[],
     loc: LocationInfo
   ): { value: JessNode | string } {
+    // A lone Less identifier is an inert scalar value. Keep it as the raw
+    // DeclarationValue string; nodes below represent colors, calculations,
+    // references, calls, and grouped values with semantics of their own.
+    const scalar = valItems[0]?.comp;
+    if (valItems.length === 1 && typeof scalar === 'string') {
+      return { value: scalar.trim() };
+    }
     const parts: JessNode[] = [];
     for (const item of valItems) {
       const c = item.comp;
