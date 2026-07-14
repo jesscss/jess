@@ -258,6 +258,17 @@ aborted successfully, restoring the worktree to `6d74da74f` with no staged or
 unmerged files. No stale branch history was replayed; Q-11 remains owner-bound
 until its owner refreshes the lane around current `dev`.
 
+Follow-up Q-12 owner audit — 2026-07-14: the three existing extend/layer worktrees
+(`jess-extend-serialized`/`e1eac0409`, `jess-extend-residual`/`5c6875538`, and
+`jess-append-extend`/`e1eac0409`) do not provide a current-dev production tip.
+The append/serialized branches carry the older spine/D-EVAL history and broad
+cross-package divergence; the residual worktree adds only an untracked probe on
+top of the same historical family. The relevant hard-tail and expanded-mode
+folds are already ancestors of current `dev`, while the remaining append×extend
+tip needs a current-dev refresh and the full extend/spine byte gate before any
+layer-registration claim. No branch was merged, reset, cleaned, or assigned a
+duplicate worker; Q-12 remains owner-bound.
+
 Follow-up parser-generation check — 2026-07-14: a dedicated Parseman worktree
 investigated the reported SCSS generated-parser crash and produced no patch,
 test, or commit. The worker's hypothesis is an invalid external `Quoted` rule
