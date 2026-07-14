@@ -246,6 +246,18 @@ aborted successfully, restoring the worktree to `6d74da74f` with no staged or
 unmerged files. No stale branch history was replayed; Q-11 remains owner-bound
 until its owner refreshes the lane around current `dev`.
 
+Follow-up parser-generation check — 2026-07-14: a dedicated Parseman worktree
+investigated the reported SCSS generated-parser crash and produced no patch,
+test, or commit. The worker's hypothesis is an invalid external `Quoted` rule
+reference surviving grammar composition and reaching `parserHasOwnFields()`;
+adding a null guard would conceal a linker/composition defect, so no defensive
+guard was accepted. A fresh `@jesscss/scss-parser` compile on this integration
+checkout emits `lib/grammar.js` (not `grammar2.js`) and imports `scssGrammar`
+successfully; the reported `grammar2.js` artifact is therefore not current
+build evidence. Keep the Parseman issue as separate unresolved triage until an
+exact current artifact reproducer and linker-level regression test exist; it is
+not a Q-28 or Q-30 implementation lane.
+
 ## OPEN-ITEM RECONCILIATION (post-drive — read this before trusting any checkbox below)
 
 The tracker was run as a **failure-count-driven drive-to-green**, and its two deferral rules —
