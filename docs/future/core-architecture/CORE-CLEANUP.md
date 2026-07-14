@@ -214,6 +214,13 @@ median over 24 samples (Node v25.9.0, darwin arm64, 8 iterations × 3 rounds,
 the trimmed signal was usable. This is a control only, not a speed claim; Q-30
 must rerun the same-directory A/B after each typed-literal batch.
 
+Follow-up branch census — 2026-07-14: no additional unowned implementation lane
+was found. The unmerged argument-array, source-span, and Dimension-format refs
+are semantically present in current `dev`; parser-trivia refs overlap the active
+SCSS/CSS producer ownership; and the remaining unmerged reference/import,
+namespace, extend, and spine refs map to existing owner worktrees. No clean branch
+tip supplied a disjoint production write set, so no duplicate worker was assigned.
+
 ## OPEN-ITEM RECONCILIATION (post-drive — read this before trusting any checkbox below)
 
 The tracker was run as a **failure-count-driven drive-to-green**, and its two deferral rules —
