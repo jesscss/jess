@@ -1,7 +1,15 @@
 import { default as OriginalBitSet } from 'bitset';
 
 function isNumberArray(value: unknown): value is number[] {
-  return Array.isArray(value) && value.every(item => typeof item === 'number');
+  if (!Array.isArray(value)) {
+    return false;
+  }
+  for (let i = 0; i < value.length; i++) {
+    if (typeof value[i] !== 'number') {
+      return false;
+    }
+  }
+  return true;
 }
 
 function dataOf(bitset: OriginalBitSet & { data?: unknown }): number[] | undefined {
@@ -166,6 +174,22 @@ export function isDisjoint(a: BitSet, b: BitSet): boolean {
   if (a._library !== b._library) {
     throw new Error('Bitsets must be from the same library');
   }
+
+  if (a._ === 0 && b._ === 0) {
+    const aData = dataOf(a);
+    const bData = dataOf(b);
+    if (aData && bData) {
+      const shorter = aData.length <= bData.length ? aData : bData;
+      const longer = shorter === aData ? bData : aData;
+      for (let i = 0; i < shorter.length; i++) {
+        if ((shorter[i]! & longer[i]!) !== 0) {
+          return false;
+        }
+      }
+      return true;
+    }
+  }
+
   const intersection = a.and(b);
   const data = dataOf(intersection);
   if (!data) {

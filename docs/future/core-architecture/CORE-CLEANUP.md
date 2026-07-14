@@ -212,6 +212,33 @@ sequential, not parallel, even when their descriptions look independent.
   parser story. Next work is a CPU/codegen attribution of the recognizer gap;
   do not claim parser-model equivalence or change the CST contract from this
   comparison alone.
+- **Accept ordinary bitset disjoint scanning as an allocation cut.** The two
+  extend mismatch callers invoke `isDisjoint()` frequently, and the canonical
+  profile recorded 25,439 ordinary numeric-backing scans with zero fallback.
+  Direct word scanning replaces a temporary `and()` bitset plus its follow-up
+  scan; inverted or uncertain backing deliberately retains the old path. Heap
+  sampling removed the sampled `isDisjoint → and/parse` allocation family
+  (13,576 B `parse`, 1,424 B `and` in control). Canonical and repeated-import
+  A/B rounds had no stable regression, and core `3320`, spine `136/136`, and
+  all-less `106/106` are green. This is retained for object reduction, not
+  claimed as a canonical speed win; do not add profile state or a result cache
+  to the hot path.
+- **Dependency-graph direction is placement records, not a path cache.** A
+  `Context` already shares the parsed source `Rules` tree by resolved path, and
+  callable/import placement wrappers already retain canonical children. The
+  reusable boundary ends before the import parent/fallback frame, extend root,
+  bindings, guard/argument frame, and write effects. A future reuse proof must
+  separately identify immutable module identity and a placement dependency
+  record (read binding-cell identities/versions plus writes); a path-only cache
+  is unsafe for `(multiple)`, reference imports, leaky scope, interpolation,
+  and mixin calls. First measure repeated static-import placement/registration
+  work before considering a source-owned descriptor.
+- **Fresh AC no-op split is still unstable.** On Node v25.9.0/AC/100% with the
+  canonical fixture, 5 warmups and 15 alternating no-op pairs gave
+  parse+render medians `263.54/270.22 ms` (one 353.87 ms outlier) and
+  parse-once render medians `234.10/232.83 ms` with 574.38/675.65 ms outliers.
+  Treat this as an environment-quality warning, not a new baseline or a
+  before/after result; continue to require round-level stability for claims.
 
 The queue is considered drained only when every row is landed, explicitly closed
 with evidence, or transferred to an owner-judgment/design lane. A row that merely
