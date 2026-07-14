@@ -254,6 +254,11 @@ function runVerifyBaseline() {
   run('pnpm', ['run', 'verify:baseline'], undefined, { required: true });
 }
 
+function runAggressiveCuttingReview() {
+  console.log('\n==> Running verify:aggressive-cutting-review (hot-path cost/admission contracts)');
+  run('pnpm', ['run', 'verify:aggressive-cutting-review'], undefined, { required: true });
+}
+
 const rawFiles = MODE === 'upstream' ? changedFilesAgainstUpstream() : stagedFiles();
 const files = filterRelevantFiles(rawFiles);
 if (files.length === 0) {
@@ -265,6 +270,7 @@ if (files.length === 0) {
 }
 
 const changedPackages = packageDirs(files);
+runAggressiveCuttingReview();
 let baselineRan = false;
 if (MODE === 'upstream') {
   const needsBaseline = shouldRunFullBaselineForFiles(files) || changedPackages.some(pkg => BASELINE_PACKAGES.has(pkg));

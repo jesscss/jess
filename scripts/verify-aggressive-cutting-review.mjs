@@ -6,6 +6,12 @@ import { resolve } from 'node:path';
 const root = resolve(new URL('..', import.meta.url).pathname);
 const handoffPath = resolve(root, 'docs/future/core-architecture/HANDOFF.md');
 const cuttingReviewPath = resolve(root, 'docs/future/core-architecture/AGGRESSIVE-CUTTING-REVIEW.md');
+const reviewedSourceRoots = [
+  'packages/core/src',
+  'packages/jess/src',
+  'packages/less-parser/src',
+  'packages/css-parser/src'
+];
 
 function git(args) {
   try {
@@ -21,15 +27,47 @@ function git(args) {
   }
 }
 
+function reviewBase() {
+  for (const ref of ['@{upstream}', 'origin/dev', 'origin/main', 'origin/master']) {
+    try {
+      const base = git(['merge-base', 'HEAD', ref]).trim();
+      if (base) {
+        return base;
+      }
+    } catch {
+      // Try the next available branch reference.
+    }
+  }
+  return null;
+}
+
 function collectDiff() {
   return [
-    git(['diff', '--unified=0', '--', 'packages/core/src', 'docs/future/core-architecture', 'scripts', 'package.json', 'AGENTS.md']),
-    git(['diff', '--cached', '--unified=0', '--', 'packages/core/src', 'docs/future/core-architecture', 'scripts', 'package.json', 'AGENTS.md'])
+    git(['diff', '--unified=0', '--', ...reviewedSourceRoots]),
+    git(['diff', '--cached', '--unified=0', '--', ...reviewedSourceRoots])
   ].join('\n');
 }
 
+function collectBranchDiff() {
+  const base = reviewBase();
+  if (!base) {
+    return '';
+  }
+  return git([
+    'diff',
+    '--unified=0',
+    `${base}..HEAD`,
+    '--',
+    ...reviewedSourceRoots
+  ]);
+}
+
 function collectChangedPaths() {
+  const base = reviewBase();
   return [...new Set([
+    base
+      ? git(['diff', '--name-only', '--diff-filter=ACMR', `${base}..HEAD`, '--'])
+      : '',
     ...git(['diff', '--name-only']).split('\n'),
     ...git(['diff', '--cached', '--name-only']).split('\n'),
     ...git(['ls-files', '--others', '--exclude-standard']).split('\n')
@@ -339,7 +377,7 @@ const dangerPatterns = [
   ['materialized array/object', /\+\s*.*(new Array<|new Array\(|\[\]|=\s*\{)/]
 ];
 
-const diff = collectDiff();
+const diff = [collectBranchDiff(), collectDiff()].join('\n');
 const changedPaths = collectChangedPaths();
 const additions = diff.split('\n').filter(line => line.startsWith('+') && !line.startsWith('+++'));
 const findings = [];

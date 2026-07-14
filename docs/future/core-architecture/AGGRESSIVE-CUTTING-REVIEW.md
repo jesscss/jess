@@ -139,11 +139,14 @@ collection/allocation, report calls, feature-bearing calls or containers, items
 visited, no-feature allocations, and no-feature misses, and point to a common
 no-feature benchmark or counter test.
 
-The verifier validates this registry and the matching handoff record. A source
-check is used for the known failure pattern: changing the merge coalescer's
-owner file requires the admission guard to appear before the coalescer call.
-That means a reviewer cannot satisfy the gate by adding counters or a prose
-explanation while leaving an unconditional rare-feature pass in place.
+The verifier validates this registry and the matching handoff record. Its
+danger-token scan is intentionally limited to parser/eval/render source under
+the reviewed package roots; the verifier's own review-time loops and the prose
+that documents them are not runtime hot-path changes. A source check is used
+for the known failure pattern: changing the merge coalescer's owner file
+requires the admission guard to appear before the coalescer call. That means a
+reviewer cannot satisfy the gate by adding counters or a prose explanation
+while leaving an unconditional rare-feature pass in place.
 
 Registry ownership is closed-world: a new or changed production hot-path owner
 file must add or update a registry contract in the same change. That contract
