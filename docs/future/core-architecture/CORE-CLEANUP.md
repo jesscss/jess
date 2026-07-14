@@ -226,6 +226,13 @@ sequential, not parallel, even when their descriptions look independent.
   parser story. Next work is a CPU/codegen attribution of the recognizer gap;
   do not claim parser-model equivalence or change the CST contract from this
   comparison alone.
+- **Reject the generated-trivia first-byte guard.** The guard preserved profile
+  counts and passed focused/typecheck/macro-build proof, but the required
+  12-warmup/45-sample three-phase gate regressed throughout: recognizer
+  `11.958→11.985 ms` (+0.22%), structural capture `28.850→28.938 ms`
+  (+0.30%), host construction `26.551→26.603 ms` (+0.20%). It was removed.
+  Do not revive a trivia call-site guard; isolate the recognizer's node-frame
+  setup/restore cost or capture representation instead.
 - **Reject the first-set pseudo-selector codegen guard.** The measured target
   was 16,443 failed pseudo-selector parses behind
   `not(extendAhead) + PseudoSelector`, but the final narrow Parseman POC did
