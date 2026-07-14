@@ -403,7 +403,7 @@ function renderNodeText(
     }
   }
   if (reason === 'declaration-fallback') {
-    const writer = new OutputWriter();
+    const writer = new OutputWriter(options.sourceMap === true);
     node.writeSyntax(getPrintOptions({
       ...options,
       writer
@@ -411,14 +411,14 @@ function renderNodeText(
     return writer.toString();
   }
   if (reason === 'rules-preview') {
-    const writer = new OutputWriter();
+    const writer = new OutputWriter(options.sourceMap === true);
     node.writeSyntax(getPrintOptions({
       ...options,
       writer
     }));
     return writer.toString();
   }
-  const writer = new OutputWriter();
+  const writer = new OutputWriter(options.sourceMap === true);
   node.writeSyntax(getPrintOptions({
     ...options,
     writer
