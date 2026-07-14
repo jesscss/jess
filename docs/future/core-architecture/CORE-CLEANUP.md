@@ -161,6 +161,7 @@ sequential, not parallel, even when their descriptions look independent.
 | Q-33 | **CLOSED — lazy `AtRule` identity cache** — `_valueOf` is now declaration-only, so uncached `AtRule` instances do not pay an eager own slot; the existing memoized identity remains available to `Node.compare()` and structured preludes, and invalidation only clears an existing cache. Focused AtRule tests passed `87/87`; the full baseline passed core `3310/15/2todo`, all-less `106/106`, compatibility `62/62`, and frontier/export/metadata checks; `spine-production-ratchet` passed `136/136`; aggressive review and `git diff --check` passed. Same-directory clean-build `benchmark.less` A/B was recorded with 36 samples per side: control round median `226.27 ms`, candidate `222.65 ms`, but the candidate was unstable and trimmed medians were `227.97 ms` versus `228.91 ms`, so there is no speed claim. | `packages/core/src/tree/at-rule.ts`, `packages/core/src/tree/__tests__/at-rule.test.ts` | own-key shape assertion before/after `valueOf()`, structured-prelude identity, mutation/eval invalidation, core/ratchet/all-less gates, same-directory clean-build `benchmark.less` A/B, aggressive review |
 | Q-34 | **CLOSED — remove duplicate calc-call predicate** — `Operation.isUnoperable()` no longer repeats the `isCalcCall` test that both callers perform immediately before it. This removes a hot-path branch without changing the operation contract or node shape. Focused Operation/string-normalized-eval coverage passed `32/32`; the full baseline passed, `spine-production-ratchet` passed `136/136`, aggressive review and `git diff --check` passed. Same-directory `benchmark.less` A/B used 24 samples per side: control round median `243.79 ms`, candidate `244.94 ms`; the candidate signal was unstable and the trimmed median moved `244.39 ms` to `241.66 ms`, so there is no speed claim. | `packages/core/src/tree/operation.ts` | caller/precondition audit, Operation and string-normalized-eval tests, same-directory `benchmark.less` A/B, aggressive review, full baseline, spine ratchet |
 | Q-35 | **CLOSED — remove temporary at-rule body-record spread** — `createBodyEvalRecord()` now stores the total `bodyRules` field directly instead of creating a conditional spread object. This preserves the fixed record shape and removes a temporary allocation; no parent, provenance, or body-evaluation semantics changed. Focused AtRule coverage passed `87/87`; the full baseline passed, `spine-production-ratchet` passed `136/136`, aggressive review and `git diff --check` passed. Same-directory `benchmark.less` A/B used 24 samples per side: control round median `234.05 ms`, candidate `241.68 ms`; trimmed medians were `237.75 ms` and `245.35 ms`, so this is accepted as a shape/allocation cut with no speed claim. | `packages/core/src/tree/at-rule.ts` | total-return contract, AtRule body/visibility/writer/source-body tests, same-directory `benchmark.less` A/B, aggressive review, full baseline, spine ratchet |
+| Q-36 | **CLOSED — cast plain-object dependency cut rejected** — `packages/core/src/tree/util/cast.ts` still uses `lodash-es/isPlainObject`: the nearby constructor-only helper does not preserve lodash's accepted/rejected boundary for null-prototype, custom-prototype, Symbol-tagged, and cross-realm objects. An exact native replacement would be larger or riskier than the import, so no production or object-shape change is justified. The bounded object-shape audit passed 29 focused cast/conversion/Bool tests and the aggressive review; a same-built-closure benchmark repeat measured `208.53 ms → 218.00 ms` with identical code, so it is a measurement record only and carries no speed claim. | `packages/core/src/tree/util/cast.ts` | lodash/native object-shape matrix, cast/conversion tests, aggressive review, same-directory benchmark attempt; explicit no-op |
 
 The queue is considered drained only when every row is landed, explicitly closed
 with evidence, or transferred to an owner-judgment/design lane. A row that merely
@@ -281,6 +282,18 @@ without a commit. The S4.1 worktree was also stopped after a live comparison
 showed its current files had regressed to the pre-landed field/test shape; it
 was not merged, reset, or cleaned. These are stale/no-op lanes, not new queue
 assignments.
+
+Follow-up cast audit — 2026-07-14: a fresh ownership check found no existing
+worktree on `packages/core/src/tree/util/cast.ts`, so one worker tested the
+remaining `lodash-es/isPlainObject` import in isolation. The accepted/rejected
+object matrix showed that the nearby constructor-only helper would change
+null-prototype, custom-prototype, Symbol-tagged, and cross-realm behavior; the
+exact native equivalent was not a smaller or safer cut. The worker left no
+production diff or commit. Its 29 focused tests and aggressive review passed;
+the repeated same-built-closure benchmark was `208.53 ms → 218.00 ms` with
+identical code and is explicitly not a performance claim. The temporary test
+probe was removed from the user-owned parent checkout, whose pre-existing dirty
+files remain untouched.
 
 ## OPEN-ITEM RECONCILIATION (post-drive — read this before trusting any checkbox below)
 
