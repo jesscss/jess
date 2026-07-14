@@ -269,6 +269,19 @@ build evidence. Keep the Parseman issue as separate unresolved triage until an
 exact current artifact reproducer and linker-level regression test exist; it is
 not a Q-28 or Q-30 implementation lane.
 
+Follow-up residual-lane audit — 2026-07-14: current `dev` already contains the
+landed S1 lazy optional queue and S4.1 declaration-only `_selectorNode` shape.
+The remaining S1 worktree difference was tested as a one-line initial enqueue
+spelling (`fallbackQueue = [frame.fallbackFrame]` versus the current
+`(fallbackQueue ??= []).push(...)`): matched same-directory `benchmark.less`
+control/candidate medians were `219.58 ms` and `235.87 ms`, respectively, with
+usable signals and no allocation-level benefit. Focused S1 coverage remained
+`17/17`, diff-check and aggressive review passed, and the candidate was retired
+without a commit. The S4.1 worktree was also stopped after a live comparison
+showed its current files had regressed to the pre-landed field/test shape; it
+was not merged, reset, or cleaned. These are stale/no-op lanes, not new queue
+assignments.
+
 ## OPEN-ITEM RECONCILIATION (post-drive — read this before trusting any checkbox below)
 
 The tracker was run as a **failure-count-driven drive-to-green**, and its two deferral rules —
