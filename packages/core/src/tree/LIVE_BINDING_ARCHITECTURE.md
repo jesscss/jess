@@ -344,6 +344,47 @@ importBoundary: configured/reference/inline import visibility or fallback chain
 outputBoundary: extend/merge/trivia/provenance feature requiring placement output
 ```
 
+For the first real graph, make the facts precise rather than treating `F_STATIC`
+as a reuse promise:
+
+```text
+freeReads: names/slots read outside the subtree's own definitions
+localDefinitions: source declarations owned by the subtree
+writes: assignments, leak/setDefined effects, or registration effects
+structural: selector/at-rule ancestry and output-placement requirements
+global: extend, hoist, merge, or source-order registration effects
+dynamic: interpolation, guards/default(), unresolved names, or position-sensitive reads
+```
+
+Only a subtree with no `writes`, `global`, or `dynamic` facts is even a
+candidate for reuse. Its candidate key is deliberately narrow:
+
+```text
+sourceSubtreeId + sourceRevision + structuralPlacementSignature
+  + fingerprint(the specific live BindingCells named by freeReads)
+```
+
+The structural signature must include selector and at-rule ancestry, reference
+and visibility mode, import boundary, extend root/source order, and output
+mode. It is not a hash of a whole scope frame. A fully closed child has no
+binding-cell fingerprint; it can share an evaluated/direct-render plan while
+still emitting at each required structural placement. A child with a free read
+must key only the named live cells, and remains ineligible whenever one of the
+other boundaries is present.
+
+The first proof is a staircase, not a graph conversion:
+
+1. Instrument the source summary and placement boundaries without changing
+   output; verify its classification against a small fixture and the canonical
+   benchmark.
+2. Reuse one closed imported child across two and then three `(multiple)`
+   placements, but emit it at every placement. Pair it with an `@w`-dependent
+   sibling that must still evaluate separately.
+3. Reject the same fixture when it gains a reference/visibility boundary or an
+   extend/source-order effect. Do not proceed to mixins or free-read memoization
+   until the closed-child case is byte-identical and gives an unambiguous
+   same-checkout median improvement at 1x/2x/3x.
+
 The summary may prove a subtree closed and directly reusable. It must not use a
 coarse hash of the whole environment, retain a placement reference on a node, or
 promise memoization where Less's lazy scope/guards make it invalid. For a
