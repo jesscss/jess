@@ -154,6 +154,41 @@ Other active docs in this dir:
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: RARE-PASS ADMISSION/COST GUARDRAIL — the aggressive-cutting verifier now rejects a hot-path change that lacks structured admission evidence, common no-feature counters, and a source-level guard for the known merge-coalescing caller.
+- Architecture surface: `scripts/verify-aggressive-cutting-review.mjs` owns review-time contract validation; `docs/future/core-architecture/AGGRESSIVE-CUTTING-REVIEW.md` owns the declarative registry. No runtime node, evaluator, lookup, or writer surface changed.
+- Separation/duplication: the registry describes recurring rare-pass obligations once, while the handoff record carries current-pass measurements. The verifier reuses the existing danger-token scan and adds no runtime instrumentation or duplicate production pass.
+- Cumulative node weight: none. The change adds no Node field, frame state, cache, output buffer, or evaluator allocation. Review-time `Set`/`Map` values are verifier-local bookkeeping only.
+- New traversal: [loop/traversal] verifier loops validate registry entries and audit records; they run at review time, not in Jess parse/eval/render. No production traversal is added.
+- New node/materialization: [node construction] [side map/set] [materialized array/object] all matches are verifier-local arrays/sets/maps or diagnostic records; no production node or output materialization is introduced.
+- Render path: none; the verifier does not execute or alter rendering. The known coalescing contract records the prior baseline evidence: 10,420 calls, 15 feature-bearing containers, 16,730 declaration visits, and 10,405 no-feature allocations/misses, with verdict `rejected` until a cheap presence guard is in the runtime caller.
+- Helper/API surface: `readCostContractRegistry`, `validateCostContractRegistry`, `validateCostAuditRecords`, and `validateSourceChecks` are private verifier helpers. They add review-time checks only and no package API.
+- Metadata mutations: none. The verifier reads Git diffs, source text, and Markdown JSON; it does not write node/source metadata.
+- Review-flagged diff tokens: [loop/traversal] review-time contract loops only; [array helper] review-time diff/path slicing only; [node construction] [side map/set] verifier-local diagnostics and registry bookkeeping only; [routine error control] JSON/source validation errors are exceptional verifier failures, not runtime control flow; [materialized array/object] review-time records only. No production hot-path token was added.
+- Hot-path cost contracts:
+```json
+[
+  {
+    "id": "rules-merge-coalescing",
+    "admission": {
+      "predicate": "cheap merge-output-surface presence check (missing in baseline)",
+      "cost": "cheap",
+      "before": "collection and allocation"
+    },
+    "calls": 10420,
+    "containers": 10420,
+    "featureBearingContainers": 15,
+    "itemsVisited": 16730,
+    "featureItems": 27,
+    "noFeatureAllocations": 10405,
+    "noFeatureMisses": 10405,
+    "commonCaseProof": "counter profile: canonical no-merge container workload",
+    "verdict": "rejected"
+  }
+]
+```
+- Evidence: `pnpm run verify:aggressive-cutting-review` and `git diff --check` pass after this record is added. The guardrail itself has no speed claim; it makes the known 10,405 no-feature allocation pattern fail review instead of being accepted as an unexplained local optimization.
+- Verdict: accepted — review infrastructure strengthened; runtime coalescing remains an explicitly rejected/open target for the existing merge owner lane.
+
 - Latest pass: IMPORT PLACEMENT STATE POC — omit only the retained `ImportPlacementState` association after a closed root literal `(multiple)` import has already populated its existing placement `Rules` surface.
 - Architecture surface: `packages/core/src/tree/import-style.ts` gates the existing association write. The admitted source has only static declarations/rulesets; every root child is the same unescaped quoted literal `(multiple)` import. Parser-normalized `once: false` is accepted only as the redundant representation of that authored `(multiple)` option.
 - Separation/duplication: existing placement `Rules`, frame parent, source provenance, shallow placement copies, registration, and render descent remain. No cache, compact descriptor, output segment model, or fallback bypass is introduced.

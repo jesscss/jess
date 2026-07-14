@@ -128,6 +128,90 @@ one of:
 
 ## Local Check
 
+### Hot-path cost contracts
+
+The self-prosecution block is now also a cost-accounting boundary. When a
+change touches core/parser source, or introduces one of the existing danger
+tokens, the latest handoff pass must include a `Hot-path cost contracts` JSON
+fence. This is deliberately about shape and relations, not a magic benchmark
+number. The record must name a cheap admission predicate that runs before
+collection/allocation, report calls, feature-bearing calls or containers, items
+visited, no-feature allocations, and no-feature misses, and point to a common
+no-feature benchmark or counter test.
+
+The verifier validates this registry and the matching handoff record. A source
+check is used for the known failure pattern: changing the merge coalescer's
+owner file requires the admission guard to appear before the coalescer call.
+That means a reviewer cannot satisfy the gate by adding counters or a prose
+explanation while leaving an unconditional rare-feature pass in place.
+
+<!-- BEGIN AGGRESSIVE-CUTTING-COST-CONTRACTS -->
+```json
+[
+  {
+    "id": "rules-merge-coalescing",
+    "surface": "Rules._coalesceMergedDeclarations",
+    "files": ["packages/core/src/tree/rules.ts"],
+    "admission": {
+      "predicate": "cheap merge-output-surface presence check",
+      "cost": "cheap",
+      "before": "collection and allocation"
+    },
+    "counters": [
+      "calls",
+      "containers",
+      "featureBearingContainers",
+      "itemsVisited",
+      "featureItems",
+      "noFeatureAllocations",
+      "noFeatureMisses"
+    ],
+    "commonCaseProof": "counter test and no-merge benchmark workload",
+    "relations": [
+      "featureBearingContainers < containers",
+      "noFeatureAllocations === 0"
+    ],
+    "sourceCheck": {
+      "file": "packages/core/src/tree/rules.ts",
+      "caller": "_finishSourceOrderEvaluation",
+      "call": "_coalesceMergedDeclarations",
+      "guard": "hasMergeOutputSurface|merge[^\\n]*surface"
+    }
+  }
+]
+```
+<!-- END AGGRESSIVE-CUTTING-COST-CONTRACTS -->
+
+The matching handoff shape is:
+
+```md
+- Hot-path cost contracts:
+```json
+[
+  {
+    "id": "rules-merge-coalescing",
+    "admission": {
+      "predicate": "hasMergeOutputSurface(rules)",
+      "cost": "cheap",
+      "before": "collection and allocation"
+    },
+    "calls": 10420,
+    "containers": 10420,
+    "featureBearingContainers": 15,
+    "itemsVisited": 16730,
+    "featureItems": 27,
+    "noFeatureAllocations": 0,
+    "noFeatureMisses": 10405,
+    "commonCaseProof": "counter test: no-merge container workload",
+    "verdict": "accepted"
+  }
+]
+```
+
+The example counts are illustrative only. Real records must come from the
+focused profile or counter test for the current pass. An unguarded pass may be
+recorded as `rejected` or `deferred`, but it cannot be recorded as `accepted`.
+
 Run:
 
 ```sh
