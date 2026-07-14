@@ -3,7 +3,7 @@ import { rules, decl, spaced, el, vardecl, ref, ruleset, sel, amp, call, list, o
 import { Context } from '../../context.js';
 import { Rules } from '../rules.js';
 import { isThenable } from '@jesscss/awaitable-pipe';
-import { spineRenderCounter, isSpineEligibleRoot } from '../util/emit-walk.js';
+import { spineRenderCounter, isSpineEligibleRoot, isSpineEligibleMixinCall } from '../util/emit-walk.js';
 import { bodyHasConditionalAssign } from '../util/spine-cond.js';
 import { bodyHasSetDefined } from '../util/spine-setdefined.js';
 import { Parser } from '../../../../less-parser/src/index.js';
@@ -1180,6 +1180,47 @@ describe('emit-walk MIXIN-FOLD ratchet (cutover increment 1)', () => {
     expect(css).toContain('.a');
     expect(css).toContain('.inner');
     expect(css).toContain('color: red');
+  });
+
+  it('Q-27: admits static array namespace keys and preserves source-span overload order', async () => {
+    const namespace = (value: string, start: number) => mixin({
+      name: '#ns',
+      rules: [mixin({
+        name: '#deeper',
+        rules: [mixin({
+          name: '.m',
+          rules: [decl({ name: 'value', value: spaced([el(value)]) })]
+        }, undefined, { start: start + 20, end: start + 40 })]
+      }, undefined, { start: start + 10, end: start + 50 })]
+    }, undefined, { start, end: start + 60 });
+    const callNode = call({
+      name: ref({ key: ['#ns', '#deeper', '.m'], rawKey: '#ns > #deeper > .m' }, { type: 'mixin-ruleset' })
+    });
+    const root = rules([
+      namespace('first', 0),
+      namespace('second', 100),
+      ruleset({ selector: sel([el('.a')]), rules: [callNode] })
+    ]);
+    context.opts.output = { ...context.opts.output, collapseNesting: true };
+    context.root = root;
+
+    expect(isSpineEligibleMixinCall(callNode)).toBe(true);
+    expect(isSpineEligibleRoot(root, context)).toBe(true);
+    const original = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return original.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const css = await root.render(context);
+      expect(spineRenderCounter.rootRenders).toBe(before + 1);
+      expect(deriveCalls).toBe(0);
+      expect(css).toBe('.a {\n  value: first;\n  value: second;\n}\n');
+    } finally {
+      Rules.prototype.derive = original;
+    }
   });
 
   it('INCREMENT 7: folds GUARDED mixin overloads — the passing guard SELECTS, the failing one emits nothing', async () => {

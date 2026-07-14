@@ -34,6 +34,7 @@ import { Node, F_STATIC } from '../node.js';
 import { N } from '../node-type.js';
 import { isNode } from './is-node.js';
 import { comparePosition } from './compare.js';
+import { spanStartOf } from './provenance.js';
 import { Nil } from '../nil.js';
 import { Rules } from '../rules.js';
 import { Ruleset } from '../ruleset.js';
@@ -382,8 +383,17 @@ export function isSpineEligibleMixinCall(node: Node): boolean {
   // name). Both static forms are fine — resolution is by `call.eval`, not the key
   // text — but a NON-string, non-Keyword key (a SelectorCapture `*[.foo]()`) stays
   // deferred.
+  // `rawKey` is the parser's authored-path marker. Without it, an array key can
+  // also be a runtime-produced/interpolated selector path; keep that legacy shape
+  // on eval rather than widening the spine gate from its flattened key alone.
+  const keyIsStaticPathArray = name.rawKey !== undefined
+    && Array.isArray(name.key)
+    && name.key.length > 0
+    && name.key.every((segment: unknown) => typeof segment === 'string');
   const keyIsKeyword = name.key instanceof Node && name.key.type === 'Keyword';
-  if (typeof name.key !== 'string' && !(type === 'variable' && keyIsKeyword)) {
+  if (typeof name.key !== 'string'
+    && !keyIsStaticPathArray
+    && !(type === 'variable' && keyIsKeyword)) {
     return false;
   }
   // NAMESPACE-PATH / cross-scope call (`.scope > .mixin()`, `#ns.m()`, `#a > #b >
@@ -604,6 +614,16 @@ export function resolveSpineMixinCall(
         && a.source.index !== undefined
         && b.source.index !== undefined) {
         return a.source.index - b.source.index;
+      }
+      // Namespace-path overloads may resolve from disjoint authored subtrees. Their
+      // parent chains are wired for closure resolution but are not guaranteed to
+      // share an ancestor for comparePosition's parent walk. Source spans provide
+      // stable document order for static authored candidates; retain structural
+      // comparison only when spans are unavailable.
+      const aStart = spanStartOf(a.source);
+      const bStart = spanStartOf(b.source);
+      if (aStart !== undefined && bStart !== undefined) {
+        return aStart - bStart;
       }
       return comparePosition(a.source, b.source);
     });
