@@ -157,6 +157,7 @@ sequential, not parallel, even when their descriptions look independent.
 | Q-29 | **CLOSED — creative selector-bitset experiment retired as a no-op** — an isolated agent tested replacing the one-component iterable path in `selector-analysis.ts:146-160` with direct `BitSet` operations. Exact bit-array equality, semantic membership, and cardinality matched. On Node v24.11.1 arm64 with 4 warmups and 12 timed samples, 1,000 repeated normalized selector strings measured `0.255 ms → 0.243 ms` (~4.8%, noisy), while 10,000 measured `1.830 ms → 1.832 ms` (~0.1% slower). The larger workload did not move meaningfully and the shortcut would duplicate `BitSetLibrary.getBitset()` internals, so no production write set or owner escalation is justified. | `/tmp/jess-selector-bitset-bench.mjs` only; no repo files changed | scratch experiment, exact output/shape parity, scaled workload A/B, no production patch, explicit no-op retirement |
 | Q-30 | **FENCED BY D-EVAL LANE — typed value literals as `(string, tag)`** — extend the inert-string boundary from keywords/idents to static dimensions, numbers, colors, and Less booleans. Parser output should retain the verbatim literal plus a compact parse-time tag; `Declaration` carries a scalar tag or packed per-slot tag array, and only an operated/matched slot materializes the corresponding `Dimension`/`Num`/`Color`/`Bool`/`Keyword` node. This is separate from Q-28: Q-28 removes already-node-free static parser wrappers, while Q-30 removes wrappers for typed literals without losing calculation semantics. The existing local `work/deval-flip` / `jess-deval-flip` lane is not a current-dev integration tip: it has six old commits but a 284-file divergence from current `dev`, and `origin/work/deval-flip` resolves to an unrelated ref. Do not replay it; require an owner refresh from current `dev`, an exact tested sub-batch, and the mandated post-flip value-heavy profile before opening this row. Dimension/Num comes first, then Color, then keyword/bool unification. | `packages/css-parser/src/cssRecursiveParser.ts`, `packages/less-parser/src/lessRecursiveParser.ts`, `packages/core/src/tree/declaration.ts`, `packages/core/src/tree/util/evaluate-node-array.ts`, `packages/core/src/tree/any.ts`, `packages/core/src/tree/dimension.ts`, `packages/core/src/tree/color.ts` | D-EVAL owner refresh, value-heavy allocation/materialization census, no-write-back/tag-shape tests, operated-path parity, all-less byte triage, same-directory `benchmark.less` A/B plus value-heavy fixture, aggressive review |
 | Q-31 | **PARKED — selector containers as nested arrays** — do not generalize Q-30's string-plus-tag idea to `SelectorList`/`ComplexSelector` containers yet. Selectors are computed on the extend/match path that matters for `benchmark.less`; replacing typed containers with nested arrays could save resident nodes while adding `typeof`/`Array.isArray` dispatch to every match. Revisit only as an isolated experiment after Q-30, gated on extend-match performance rather than serialization or heap size. | selector container classes and extend/match pipeline | explicit match-path benchmark, recursive `:is()`/`:not()` shape matrix, byte parity, owner review before any production claim |
+| Q-32 | **TRANSFERRED TO OWNER-JUDGMENT/DESIGN — sparse provenance backend** — the old unconditional span-stamp premise is disproven by landed `b19b66a92`: comment-free parse containers already skip the per-node span entry. The remaining unified side-table versus serialize-time-boundary-recovery choice changes trivia ownership and has a known comment-placement revert trap; do not assign a production worker until an owner selects the exact A/B protocol and accepts the broader serializer risk. | `packages/css-parser/src/builders.ts`, `packages/core/src/tree/util/provenance.ts`, `packages/core/src/tree/util/trivia.ts`, selector/declaration serializers | current stamp-gate evidence, same-directory parse+render A/B, `comments`/`comments2`, render-scaling guard, all-less byte parity, aggressive review, explicit owner decision |
 
 The queue is considered drained only when every row is landed, explicitly closed
 with evidence, or transferred to an owner-judgment/design lane. A row that merely
@@ -543,7 +544,10 @@ right fix depends on **how granular span tracking needs to be**, and the consume
 - `_fieldSpans`/`_valueSpans` (SUB-NODE granularity) — consumed by **exactly one thing: authored-trivia
   round-trip serialization** (selector-*/at-rule/declaration read them to emit whitespace BETWEEN sub-components
   and look up the `TriviaMap` by offset). Sourcemaps DON'T use them; plain CSS render DOESN'T use them; no edit
-  mode exists. YET the parsers set them **unconditionally on every parse** (css-parser `setValueSpans`).
+  mode exists. The old "unconditionally on every parse" premise is now stale: `b19b66a92` gates
+  `setFieldSpan`/`setValueSpans` on a cheap source-range comment marker, so comment-free containers do not get
+  a per-node span entry or packed span array. The remaining question is only whether the sparse comment-bearing
+  backend should be unified or recovered at serialize time.
   - **NOT "selector-only" by design** — List / any array-valued node would need them too *if* we want sub-node
     round-trip fidelity for those. The current selector-only readership is incomplete usage, not intent.
   - ⚠️ **RE-DECIDED 2026-07-11 (owner): this is a THREE-WAY *MEASURED* fork — PERF is the oracle, NOT the
@@ -560,16 +564,18 @@ right fix depends on **how granular span tracking needs to be**, and the consume
     cursor drop.**
   - **The three candidates — decide by controlled A/B** (same worktree, toggle each, warmup + N-median of
     parse + total, byte-identical normal render, `comments`/`comments2` green):
-    1. **Keep WeakMap side-tables** (current, `311cf9232`). Correct today. Cost: parser populates per-node
-       UNCONDITIONALLY at parse + a serialize lookup.
+    1. **Keep the current side-table** (`311cf9232` plus the `b19b66a92` stamp gate). Correct today.
+       Cost: comment-bearing containers pay the packed span array + serialize lookup; comment-free containers
+       skip the side-table write entirely.
     2. **Unified WeakMap** — fuse per-slot spans + trivia into one node-keyed structure. Restores the per-gap
        boundaries → correct; still a side-table (a tidier *exception*, not elimination).
     3. **Serialize-time boundary recovery, gated on the cheap node-level "any comment in my span?" check.** Store
        NOTHING per node; only for the sparse comment-bearing nodes, recover member boundaries from the source slice
        / Parséman CST and map comment-offset → gap. The only option that kills the side-table WITHOUT reintroducing
        per-member node weight; affordable *because* comment-bearing nodes are sparse.
-  - **Perf hypothesis (MEASURE, don't assert):** options 1 & 2 both pay unconditional per-node work at PARSE (our
-    measured bottleneck); option 3 pays ~0 at parse, deferring to sparse serialize-time work → perf-plausible
+  - **Perf hypothesis (MEASURE, don't assert):** option 1 now pays parse-side work only on comment-bearing
+    containers; option 2 may reduce side-table bookkeeping, while option 3 defers boundary recovery to sparse
+    serialize-time work → both remain perf-plausible
     winner. Fold this A/B into the parse-side measurement pass. **Whatever measures best wins — including "keep the
     WeakMap" if recovery's re-scan costs more than the map it removes.** The "never a WeakMap" standing rule does
     NOT override this measurement: it was validated on HOT/UNIVERSAL provenance fields; this field is sparse/cold,
