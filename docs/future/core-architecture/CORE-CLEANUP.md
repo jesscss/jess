@@ -213,6 +213,19 @@ sequential, not parallel, even when their descriptions look independent.
   formatting design. Leave the POC dirty and unmerged; do not revive it as a
   benchmark shortcut.
 
+- **Reject a broader direct-container declaration route.** The tempting
+  map-off/default-merge/no-`!important` predicate admits 4,069 of 4,085
+  canonical fallback declarations (99.61%) and preserves the canonical hash,
+  but it bypasses the evaluated-text boundary. The full Less corpus changed in
+  44 of 106 fixtures, leaving unresolved values such as `$['color']` and
+  `$??(...)` in CSS. All canonical fallbacks are non-static evaluated-tree
+  emissions after the spine attempt has restored ordinary rendering; no safe
+  “already evaluated” discriminator exists. `renderNodeText()` therefore owns
+  real value evaluation before the outer tail handles indentation, semicolon,
+  newline, and trivia. The temporary POC was removed; do not replace detached
+  text with direct `writeSyntax()` without a new evaluated-result ownership
+  model.
+
 - **Reject local object-table lookup.** Two same-process runs of the existing
   layout benchmark recorded current `Map` reads at `22.02/21.78 ms`,
   null-prototype own-property reads at `32.76/32.82 ms`, and planned numeric
