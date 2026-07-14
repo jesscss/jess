@@ -229,7 +229,7 @@ Other active docs in this dir:
 ```
 - Verdict: accepted as a measured no-feature pass/allocation cut. It is not a canonical benchmark speed win; keep the admission contract and source-level caller check in place for future coalescer changes.
 
-- Latest pass: RARE-PASS ADMISSION/COST GUARDRAIL — the aggressive-cutting verifier now rejects a hot-path change that lacks structured admission evidence, common no-feature counters, and a source-level guard for the known merge-coalescing caller.
+- Latest pass: RARE-PASS ADMISSION/COST GUARDRAIL — the aggressive-cutting verifier now rejects a hot-path change that lacks structured admission evidence, common no-feature counters, and a source-level guard for the known merge-coalescing caller. The registry is now enforced as a closed-world, exactly-one-owner map for reviewed production files, and every registered caller/call/guard must still exist in its source file.
 - Architecture surface: `scripts/verify-aggressive-cutting-review.mjs` owns review-time contract validation; `docs/future/core-architecture/AGGRESSIVE-CUTTING-REVIEW.md` owns the declarative registry. No runtime node, evaluator, lookup, or writer surface changed.
 - Separation/duplication: the registry describes recurring rare-pass obligations once, while the handoff record carries current-pass measurements. The verifier reuses the existing danger-token scan and adds no runtime instrumentation or duplicate production pass.
 - Cumulative node weight: none. The change adds no Node field, frame state, cache, output buffer, or evaluator allocation. Review-time `Set`/`Map` values are verifier-local bookkeeping only.
@@ -261,7 +261,7 @@ Other active docs in this dir:
   }
 ]
 ```
-- Evidence: `pnpm run verify:aggressive-cutting-review` and `git diff --check` pass after this record is added. The guardrail itself has no speed claim; it makes the known 10,405 no-feature allocation pattern fail review instead of being accepted as an unexplained local optimization.
+- Evidence: `pnpm run verify:aggressive-cutting-review` and `git diff --check` pass after this record is added. The verifier also rejects duplicate contract ownership, contracts outside the reviewed production roots, and stale source-check metadata. The guardrail itself has no speed claim; it makes the known 10,405 no-feature allocation pattern fail review instead of being accepted as an unexplained local optimization.
 - Verdict: accepted — review infrastructure strengthened; runtime coalescing remains an explicitly rejected/open target for the existing merge owner lane.
 
 - Latest pass: IMPORT PLACEMENT STATE POC — omit only the retained `ImportPlacementState` association after a closed root literal `(multiple)` import has already populated its existing placement `Rules` surface.

@@ -12,6 +12,7 @@ const reviewedSourceRoots = [
   'packages/less-parser/src',
   'packages/css-parser/src'
 ];
+const hotPathRoots = reviewedSourceRoots.map(rootPath => `${rootPath}/`);
 
 function git(args) {
   try {
@@ -181,6 +182,48 @@ function validateCostContractRegistry(registry) {
   return errors;
 }
 
+function validateCostContractOwnership(registry) {
+  const errors = [];
+  const owners = new Map();
+  for (const contract of registry) {
+    for (const file of contract.files ?? []) {
+      if (!hotPathRoots.some(rootPath => file.startsWith(rootPath))) {
+        errors.push(`Cost contract ${contract.id} owns file outside the reviewed production roots: ${file}.`);
+      }
+      const priorOwner = owners.get(file);
+      if (priorOwner) {
+        errors.push(`Production hot-path file ${file} is owned by both ${priorOwner} and ${contract.id}.`);
+      } else {
+        owners.set(file, contract.id);
+      }
+    }
+  }
+  return errors;
+}
+
+function validateRegisteredSourceMetadata(registry) {
+  const errors = [];
+  for (const contract of registry) {
+    const sourceCheck = contract.sourceCheck;
+    if (!sourceCheck) {
+      continue;
+    }
+    let source;
+    try {
+      source = readFileSync(resolve(root, sourceCheck.file), 'utf8');
+    } catch (error) {
+      errors.push(`Cost contract ${contract.id} source-check file cannot be read: ${sourceCheck.file}.`);
+      continue;
+    }
+    for (const field of ['caller', 'call', 'guard']) {
+      if (!source.includes(sourceCheck[field])) {
+        errors.push(`Cost contract ${contract.id} source-check ${field} is absent from ${sourceCheck.file}: ${sourceCheck[field]}.`);
+      }
+    }
+  }
+  return errors;
+}
+
 function extractCostAuditRecords(latestPass) {
   const match = latestPass.match(/- Hot-path cost contracts:\s*```json\s*([\s\S]*?)\s*```/);
   if (!match) {
@@ -291,13 +334,6 @@ function validateCostAuditRecords(records, registry, changedPaths) {
   return errors;
 }
 
-const hotPathRoots = [
-  'packages/core/src/',
-  'packages/jess/src/',
-  'packages/less-parser/src/',
-  'packages/css-parser/src/'
-];
-
 function isTestOnlyPath(path) {
   return /(^|\/)(test|tests|__tests__|fixtures|test-data)(\/|$)|\.(test|spec)\.[^/]+$/.test(path);
 }
@@ -307,16 +343,26 @@ function isProductionHotPathFile(path) {
 }
 
 function validateProductionHotPathCoverage(registry, changedPaths) {
-  const coveredFiles = new Set();
+  const ownership = new Map();
   for (const contract of registry) {
     for (const file of contract.files) {
-      coveredFiles.add(file);
+      const owners = ownership.get(file) ?? [];
+      owners.push(contract.id);
+      ownership.set(file, owners);
     }
   }
   return changedPaths
     .filter(isProductionHotPathFile)
-    .filter(path => !coveredFiles.has(path))
-    .map(path => `Changed production hot-path file ${path} is not covered by any machine-readable cost-contract registry entry.`);
+    .flatMap(path => {
+      const owners = ownership.get(path) ?? [];
+      if (owners.length === 0) {
+        return [`Changed production hot-path file ${path} is not covered by any machine-readable cost-contract registry entry.`];
+      }
+      if (owners.length !== 1) {
+        return [`Changed production hot-path file ${path} must have exactly one cost-contract owner; found ${owners.join(', ')}.`];
+      }
+      return [];
+    });
 }
 
 function validateSourceChecks(registry, changedPaths) {
@@ -436,6 +482,8 @@ let registry = [];
 try {
   registry = readCostContractRegistry(review);
   registryErrors.push(...validateCostContractRegistry(registry));
+  registryErrors.push(...validateCostContractOwnership(registry));
+  registryErrors.push(...validateRegisteredSourceMetadata(registry));
 } catch (error) {
   registryErrors.push(error.message);
 }
