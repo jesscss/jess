@@ -204,6 +204,15 @@ sequential, not parallel, even when their descriptions look independent.
   for Jess's 203 ms render-only result; rank eval/render ahead of parser cuts
   for the <40 ms target while holding parser POCs to separate three-phase gates.
 
+- **Reject the direct custom-declaration fallback writer.** The isolated POC
+  bypasses `renderNodeText()` for a map-off, comment-free custom declaration,
+  but calls `Declaration.writeSyntax()` directly. That serializer deliberately
+  emits `important` only on its non-custom branch, so the POC drops
+  `!important` from a custom property. Restoring that semantic formatting would
+  widen the change beyond a narrow transport cut and needs an owned declaration
+  formatting design. Leave the POC dirty and unmerged; do not revive it as a
+  benchmark shortcut.
+
 - **Reject local object-table lookup.** Two same-process runs of the existing
   layout benchmark recorded current `Map` reads at `22.02/21.78 ms`,
   null-prototype own-property reads at `32.76/32.82 ms`, and planned numeric
