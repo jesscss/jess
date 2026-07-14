@@ -209,12 +209,23 @@ current `dev` tip, claim the functional producer files plus a narrow materializa
 consumer slice, and publish the required value-heavy allocation/materialization
 evidence before the row can open.
 
-Value-heavy control refresh — 2026-07-14: current `dev` (`6d08db86a`) measured
-`/tmp/jess-value-heavy.less` at `49.42 ms` round median and `49.87 ms` trimmed
-median over 24 samples (Node v25.9.0, darwin arm64, 8 iterations × 3 rounds,
-4 warmups, 10% trim). One `94.27 ms` outlier made the untrimmed signal noisy;
-the trimmed signal was usable. This is a control only, not a speed claim; Q-30
-must rerun the same-directory A/B after each typed-literal batch.
+Value-heavy control refresh — 2026-07-14: the code-equivalent pre-doc tip
+`6d08db86a` measured `/tmp/jess-value-heavy.less` at `49.42 ms` round median
+and `49.87 ms` trimmed median over 24 samples (Node v25.9.0, darwin arm64,
+8 iterations × 3 rounds, 4 warmups, 10% trim). One `94.27 ms` outlier made the
+untrimmed signal noisy; the trimmed signal was usable. This is a control only,
+not a speed claim; Q-30 must rerun the same-directory A/B after each
+typed-literal batch.
+
+Q-30 allocation census — 2026-07-14: a read-only parse of the existing
+`/tmp/jess-value-heavy.less` fixture (113,407 bytes, 6,000 declarations, zero
+parse errors) found 2,000 `Dimension`, 2,000 `Color`, and 500 `Num` value nodes;
+the remaining 1,500 scalar declaration values were already strings. A separate
+mixed probe kept `Expression`/`Operation`, `Reference`, and `Call` values
+node-backed, confirming the intended static-versus-calculated boundary. This
+quantifies Q-30's potential node surface but is not an implementation result:
+the exact producer/materializer files remain dirty in existing value-evaluation
+worktrees, so no new owner was assigned.
 
 Follow-up branch census — 2026-07-14: no additional unowned implementation lane
 was found. The unmerged argument-array, source-span, and Dimension-format refs
