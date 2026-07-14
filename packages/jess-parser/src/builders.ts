@@ -178,7 +178,7 @@ export class JessGrammar extends CssParser {
       }
     }
     const interp = new Interpolated({ source, replacements }, { role: 'ident' }, location);
-    return new InterpolatedSelector(interp as never, {}, location) as unknown as Node;
+    return new InterpolatedSelector(interp as never, undefined, location) as unknown as Node;
   }
 
   /**
@@ -348,13 +348,17 @@ export class JessGrammar extends CssParser {
     // preferable to wrong `!global` eval).
     const nearestOuter = op === ':=';
 
+    const declarationOptions = assign || nearestOuter || liveBinding
+      ? {
+          ...(assign ? { assign } : {}),
+          ...(nearestOuter ? { nearestOuter: true } : {}),
+          ...(liveBinding ? { liveBinding: true } : {})
+        }
+      : undefined;
+
     return new VarDeclaration(
       { name, value, important } as never,
-      {
-        ...(assign ? { assign } : {}),
-        ...(nearestOuter ? { nearestOuter: true } : {}),
-        ...(liveBinding ? { liveBinding: true } : {})
-      },
+      declarationOptions,
       location
     ) as unknown as Node;
   }
@@ -646,7 +650,7 @@ export class JessGrammar extends CssParser {
       const valueItems = items.slice(colonIdx + 1) as Spanned[];
       ({ value } = this._assembleValue(valueItems, location) as { value: Node | string });
     } else {
-      value = new Nil('', {}, location) as unknown as Node;
+      value = new Nil('', undefined, location) as unknown as Node;
     }
 
     return new VarDeclaration(
@@ -799,7 +803,7 @@ export class JessGrammar extends CssParser {
     ) as Node[];
     if (nodeTargets.length) {
       const made = nodeTargets.map(t =>
-        new Extend({ target: t as never, flag } as never, {}, location) as unknown as Node
+        new Extend({ target: t as never, flag } as never, undefined, location) as unknown as Node
       );
       return made.length === 1 ? made[0]! : new List(made as never, undefined, location) as unknown as Node;
     }
@@ -1021,7 +1025,7 @@ export class JessGrammar extends CssParser {
 
   private _buildForPattern(bindingNames: string[], location: LocationInfo): ForPattern {
     const decls = bindingNames.map(
-      name => new VarDeclaration({ name, value: '' } as never, {}, location)
+      name => new VarDeclaration({ name, value: '' } as never, undefined, location)
     );
     if (decls.length === 1) {
       return { kind: 'single', value: decls[0]! } as unknown as ForPattern;

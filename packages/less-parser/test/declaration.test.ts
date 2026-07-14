@@ -1,5 +1,5 @@
 import { Parser } from '../src/jess.js';
-import { Context, isNode, N, type Declaration, type Node } from '@jesscss/core';
+import { Context, isNode, N, serializeTypes, type Declaration, type Node } from '@jesscss/core';
 
 const parser = new Parser();
 const parse = parser.parse;
@@ -16,6 +16,15 @@ describe('declaration', () => {
   it('should parse simple declaration', () => {
     const { errors } = parse('color: green', 'declaration');
     expect(errors.length).toBe(0);
+  });
+
+  it('keeps default assignment implicit without changing AST serialization', () => {
+    const { errors, tree } = parse('color: green', 'declaration');
+    expect(errors.length).toBe(0);
+    const declaration = asDeclaration(tree);
+    expect(Object.getOwnPropertyDescriptor(declaration, '_options')?.value).toBeUndefined();
+    expect(serializeTypes(declaration, { showOptions: true })).toContain('assign: \':\'');
+    expect(Object.getOwnPropertyDescriptor(declaration, '_options')?.value).toBeUndefined();
   });
 
   it('should parse declaration with variable reference', () => {
@@ -108,15 +117,15 @@ describe('declaration', () => {
   it('normalizes Less property merge "+:" to the list-merge assign form', () => {
     const { errors, tree } = parse('src+: url(foo)', 'declaration');
     expect(errors.length).toBe(0);
-    const decl: any = asDeclaration(tree);
-    expect(decl.options.assign).toBe('+,:');
+    const declaration = asDeclaration(tree);
+    expect(Object.getOwnPropertyDescriptor(declaration, '_options')?.value).toEqual({ assign: '+,:' });
   });
 
   it('normalizes Less property merge "+_:" to the sequence-merge assign form', () => {
     const { errors, tree } = parse('src+_: format("woff")', 'declaration');
     expect(errors.length).toBe(0);
-    const decl: any = asDeclaration(tree);
-    expect(decl.options.assign).toBe('+_:');
+    const declaration = asDeclaration(tree);
+    expect(Object.getOwnPropertyDescriptor(declaration, '_options')?.value).toEqual({ assign: '+_:' });
   });
 });
 

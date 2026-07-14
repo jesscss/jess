@@ -484,7 +484,7 @@ export class CssParser {
       case 'QueryCondition':    return this._buildQueryConditionRule(children, loc) as unknown as JessNode;
       case 'QueryInParens':     return this._buildQueryInParens(children, loc) as unknown as JessNode;
       case 'QueryFeature':      return this._buildQueryFeature(children, loc) as unknown as JessNode;
-      default:                  return new Any(leafText(children) || type, {}, loc);
+      default:                  return new Any(leafText(children) || type, undefined, loc);
     }
   }
 
@@ -835,7 +835,7 @@ export class CssParser {
     if ((raw.startsWith('\'') && raw.endsWith('\'')) || (raw.startsWith('"') && raw.endsWith('"'))) {
       return new Quoted(raw.slice(1, -1), { quote: raw[0] as '"' | '\'' }, loc);
     }
-    return new Any(raw, {}, loc);
+    return new Any(raw, undefined, loc);
   }
 
   protected _buildPseudoSelector(children: ReadonlyArray<Child>, loc: LocationInfo) {
@@ -1088,7 +1088,7 @@ export class CssParser {
     const propName = ls[0]?.value ?? '';
     const valueText = ls.slice(2).filter(l => l.value !== ';').map(l => l.value).join('').trim();
     return new CustomDeclaration(
-      { name: propName, value: new Any(valueText, {}, loc) },
+      { name: propName, value: new Any(valueText, undefined, loc) },
       undefined, loc
     );
   }
@@ -1120,7 +1120,7 @@ export class CssParser {
     const quote = inner[0];
     const innerValue = (quote === '"' || quote === '\'') && inner.at(-1) === quote
       ? new Quoted(inner.slice(1, -1), { quote }, loc)
-      : new Any(inner, {}, loc);
+      : new Any(inner, undefined, loc);
     return new Url(innerValue as unknown as Node, undefined, loc);
   }
 
@@ -1236,7 +1236,7 @@ export class CssParser {
         ? comp.valueOf()
         : undefined;
     if (text && CSS_COLOR_NAMES.has(text.toLowerCase())) {
-      return new Color({ node: text }, {}, loc) as unknown as Component;
+      return new Color({ node: text }, undefined, loc) as unknown as Component;
     }
     return comp;
   }
@@ -1290,7 +1290,7 @@ export class CssParser {
         prelude: preludeText && !preludeSource.includes('/*')
           ? preludeText
           : preludeText
-            ? new Any(preludeText, {}, loc)
+            ? new Any(preludeText, undefined, loc)
             : undefined
       },
       undefined, loc
@@ -1327,7 +1327,7 @@ export class CssParser {
     const prelude = preludeText && !preludeSource.includes('/*')
       ? preludeText
       : preludeText
-        ? new Any(preludeText, {}, loc)
+        ? new Any(preludeText, undefined, loc)
         : undefined;
     return new AtRule({ name, prelude, rules: [] }, undefined, loc) as unknown as JessNode;
   }
@@ -1343,7 +1343,7 @@ export class CssParser {
     const nodes = nodeChildren(children);
     const name = ls[0]?.value ?? '';
     if (ls[1]?.value === ':') {
-      const value = nodes[0] ?? new Any('', {}, loc);
+      const value = nodes[0] ?? new Any('', undefined, loc);
       return new Declaration({ name, value: value as unknown as Node }, undefined, loc) as unknown as JessNode;
     }
     if (ls.length >= 2) {
