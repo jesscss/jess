@@ -200,11 +200,18 @@ sequential, not parallel, even when their descriptions look independent.
   `226.23→216.44 ms`, all too noisy or regressive to retain. The committed POC
   stays unmerged. Parent slots and prototype controls are sequenced behind a
   target that demonstrably activates them, not behind this non-occurring case.
-- **Parser boundary is ready but not yet measured for Less.** Parseman now has
-  a branch-local `run(..., { profile: true })` recognizer/capture/host boundary
-  based on the existing JSON recognition-only mechanism. Jess's generated Less
-  grammar predates that code; regenerate it in a disposable worktree and record
-  warmup/sample medians before using any parser split to rank Q-40 work.
+- **Parser boundary measured; recognition itself is a ranked problem.** With a
+  regenerated grammar, the canonical 106,797-byte fixture on Node v24.11.1/M4
+  Pro (12 warmups, 45 samples) measured Parseman recognizer-only at `12.784 ms`,
+  structural capture at `28.873 ms`, and CSS-CST host construction at
+  `37.558 ms` (56,043 grammar nodes; capture records 86,807 child, 86,771 raw,
+  and 66,060 trivia slots; host calls 24,800 times). On the exact same runtime
+  and fixture, Less 4.6.3 `less.parse()` to its native AST was `4.417 ms`
+  (`processImports: false`). These output models are not equivalent, but the
+  outputless 2.89x recognizer gap means CST/AST construction is not the whole
+  parser story. Next work is a CPU/codegen attribution of the recognizer gap;
+  do not claim parser-model equivalence or change the CST contract from this
+  comparison alone.
 
 The queue is considered drained only when every row is landed, explicitly closed
 with evidence, or transferred to an owner-judgment/design lane. A row that merely
