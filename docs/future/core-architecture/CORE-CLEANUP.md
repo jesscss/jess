@@ -256,6 +256,22 @@ sequential, not parallel, even when their descriptions look independent.
   parser story. Next work is a CPU/codegen attribution of the recognizer gap;
   do not claim parser-model equivalence or change the CST contract from this
   comparison alone.
+- **Parseman/less flow attribution changes the next proof.** The current
+  “recognizer-only” profile suppresses output but remains the same generated
+  parser under a runtime mode flag: every structural rule still saves and
+  installs collector context, restores it, and checks/increments profile state.
+  It is not a separately compiled `voidOf` artifact. The Less 4 parser instead
+  keeps one mutable cursor and routes a normal declaration through a property
+  regex plus `anonymousValue()` before its full value grammar; on this fixture
+  2,024 of 2,902 declarations (69.7%) take that raw `Anonymous` route. Our
+  grammar eagerly enters `valueList → valueSequence → topSum → topProduct →
+  operand → value`, and its overlapping body choice places Ruleset before
+  Declaration where both admit an identifier. This is a code-shape and
+  evaluation-timing mismatch, not evidence that macro compilation cannot reach
+  handwritten-parser speed. First prove a compile-time stripped recognizer with
+  no structural-frame/profile branches; separately prove a safe declaration vs
+  ruleset dispatcher. Do not call a lazy raw-value representation a parser
+  micro-cut: it changes Jess's semantic materialization boundary.
 - **Reject the generated-trivia first-byte guard.** The guard preserved profile
   counts and passed focused/typecheck/macro-build proof, but the required
   12-warmup/45-sample three-phase gate regressed throughout: recognizer
