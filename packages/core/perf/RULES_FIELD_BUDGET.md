@@ -5,7 +5,7 @@ READ-ONLY audit for the owner's HARD BUDGET rule (CORE-CLEANUP.md § "⛔ HARD B
 `Rules` declares and every field `Ruleset` adds, separates class-unique from
 inherited, classifies each, and gives the ordered slice plan to ≤5.
 
-Grounded in `origin/dev` (`a09976d45`). Line numbers are from
+Grounded in `origin/dev` (`9bfec19be`). Line numbers are from
 `packages/core/src/tree/{rules,ruleset,node-base}.ts` at that commit. Getters/setters
 live on the prototype and cost NO instance slot — only **stored fields** count.
 

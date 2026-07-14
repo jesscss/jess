@@ -5,6 +5,19 @@ standing rule (lean shapes for good V8 hidden classes; prefer type-specializatio
 + shared util fns over fat nodes; rare data on a subtype, never a WeakMap
 side-table; performance is the driver).
 
+> **Current-state correction (2026-07-13, `dev` `9bfec19be`).** This document is
+> historical audit evidence, not the live queue. Do not reopen its ranked items
+> without checking [CORE-CLEANUP.md](../../../docs/future/core-architecture/CORE-CLEANUP.md)
+> and the current [Rules field budget](./RULES_FIELD_BUDGET.md). In particular,
+> `Rules` is currently at five class-unique fields (`rules`, `_lookup`,
+> `rulesFlags`, `_scopeFrame`, `_treeContext`); `lookupVersion`, `varsByName`,
+> and `pendingExtends` are historical rows already folded or deleted. The
+> selector marker and `Node.frozen` eager slot are also historical: selector
+> identity is derived and frozen state is packed into `Node.flags`. Per-node
+> source spans are inline on `Node`; per-slot value/field spans remain a separate
+> parser/trivia design question. The live tracker is the authority for what is
+> still unclaimed.
+
 ## Method / grounding
 
 - **Live-instance census (frequency):** captured a V8 heap snapshot of the LIVE
