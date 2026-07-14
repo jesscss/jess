@@ -582,9 +582,9 @@ export function lookupScopeFrameVariable(
   // mixin-body frame AND the root that holds the `@import`ed decls). Queue each
   // one — an inner frame's fallback must not shadow an outer frame's, so a single
   // first-wins slot dropped every import fallback above the innermost placement.
-  const fallbackQueue: ScopeFrame[] = [];
+  let fallbackQueue: ScopeFrame[] | undefined;
   if (includeFallbackFrames && frame?.fallbackFrame) {
-    fallbackQueue.push(frame.fallbackFrame);
+    (fallbackQueue ??= []).push(frame.fallbackFrame);
   }
   let visitedFallbackFrames: Set<ScopeFrame> | undefined;
   while (true) {
@@ -714,7 +714,7 @@ export function lookupScopeFrameVariable(
         return { kind: 'miss' };
       }
       if (includeFallbackFrames && f.fallbackFrame) {
-        fallbackQueue.push(f.fallbackFrame);
+        (fallbackQueue ??= []).push(f.fallbackFrame);
       }
       start = undefined;
       // A leak binding on the parent frame is source-order gated against where
@@ -733,7 +733,7 @@ export function lookupScopeFrameVariable(
     // on — the `visitedFallbackFrames` set makes each parent walk total. When the
     // queue drains, the symbol is genuinely absent.
     let nextFallback: ScopeFrame | undefined;
-    while (fallbackQueue.length > 0) {
+    while (fallbackQueue?.length) {
       const candidate = fallbackQueue.shift()!;
       if (!visitedFallbackFrames?.has(candidate)) {
         nextFallback = candidate;
@@ -747,7 +747,7 @@ export function lookupScopeFrameVariable(
     f = nextFallback;
     visitedFallbackFrames ??= new Set();
     if (nextFallback.fallbackFrame) {
-      fallbackQueue.push(nextFallback.fallbackFrame);
+      (fallbackQueue ??= []).push(nextFallback.fallbackFrame);
     }
     start = undefined;
   }

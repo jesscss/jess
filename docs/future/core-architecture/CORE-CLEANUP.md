@@ -10,9 +10,77 @@ set of focus-trackers and audit docs that had drifted out of sync with the code
 - **Guides that are NOT trackers** (invariants, review rules, the router) stay where
   they are — see [Standing guides](#standing-guides).
 
-Branch: `feature/parseman`. Author/verify convention: build core, run the core suite,
+Integration target: `dev`. Historical sections may name older branches. Author/verify convention: build core, run the core suite,
 diff the **stable** failure set (run twice; flaky ±) against the prior baseline — a
 change is real only if the stable set moves.
+
+## CURRENT SCALE — ALLOCATION / SLIMMING HARVEST (2026-07-13)
+
+This is the active queue for the current cleanup campaign. It is deliberately one
+scale, not an arbitrary three-to-five-item batch: drain every eligible row below
+before reseeding. Keep parser work, Less-integration semantics, and high-risk
+scope/frame redesigns in their own lanes. A row is eligible only when live-code
+inspection shows a bounded allocation or redundant-state cut with a focused proof
+surface; stale or semantically risky candidates are closed with evidence.
+
+### Ledger
+
+- [x] **Argument-container transport** — `call.ts` / `define-function.ts`, merged
+  in `a665f20dd`. Removes per-call argument-array spreading. The stable hot-path
+  check was flat-to-slightly-slower (`functions.less`: 11.09ms → 11.32ms at
+  1,400 samples), so this is recorded as an object/allocation slimming cut, not
+  a runtime-speed claim.
+- [x] **Inline source-span copying** — `node-base.ts` / `provenance.ts` /
+  `dimension.ts`, merged in `9d7ee7613`. Copies fixed span fields without making
+  a span object during clone/inherit; compatibility gates passed.
+- [x] **Fixed-shape rules-like reference surface** — already landed; do not
+  reopen the stale reflective-descriptor item below.
+- [x] **S1 — Lazy scope fallback queue** — make the lookup fallback queue in
+  `scope-frame.ts` materialize only when a fallback is actually queued; preserve
+  queue order, cycle handling, and all lookup result kinds. `scope-frame.test.ts`
+  passed 17/17; aggressive review passed.
+- [x] **S2 — Empty callable-miss sentinel** — reuse one never-mutated empty
+  callable bucket for cached misses in `rules.ts`; retain the array return
+  contract and leave the mutable-looking `findMixinsFast` path out of scope.
+  The targeted mixin miss set passed 3/3 (full mixin file 200/200); aggressive
+  review passed.
+- [x] **S3 — Temporary writer sites audit CLOSED** — the remaining
+  `serialize-helper.ts` / `interpolated.ts` writers are detached or reentrant
+  seams. Reusing the active writer would require a new queue-state snapshot or
+  print-context threading and changes semantics; no low-risk allocation cut
+  remains in this scale.
+- [x] **S4 — Live node-shape audit** — recheck `Node`/`Rules`/`Ruleset` and
+  selector fields against all internal callers and tests; land a field/state cut
+  only if it is genuinely dead or can move to existing flags without a side map.
+  Current child rows:
+  - [x] **S4.1 — Lazy `SelectorCapture._selectorNode`** — make the optional
+    cache declaration-only so node-backed captures do not pay an eager slot;
+    prove the lazy string/array lift still owns the cache. Core selector-capture
+    coverage passed 10/10 in the integration worktree; the worker also passed
+    the parser/AST surface; aggressive review passed.
+  - [x] **S4.2 — Selector `_valueOf` specialization** — move the eager cache
+    slot to Basic/Compound/Complex/Pseudo/Attribute, with invalidation preserved
+    on those families and no cache slot on the other selector shapes. Core
+    selector/type coverage passed 26/26; core compile and aggressive review
+    passed. Matched four-fixture A/B was neutral overall with one noisy/unstable
+    fixture; this is recorded as shape slimming, not a speed claim.
+- [x] **S5 — Eval/lookup scratch audit CLOSED** — the live audit produced S1
+  and S2 as the two bounded rows; `findMixinsFast`'s mutable-looking miss array,
+  extend scratch, document-order state, and path-offset lookup arrays are
+  explicitly rejected for this scale.
+
+**Drain rule:** continue through S1–S5 and any narrowly discovered child rows
+until the scale is empty, the next item changes semantics or needs owner
+judgment, or evidence rejects the approach. Every landed row gets
+`git diff --check`, `verify:aggressive-cutting-review`, focused tests, and the
+stable compatibility gate. Runtime speed is reported only with matched before /
+after measurements; slimming rows may be accepted on allocation and behavior
+evidence alone.
+
+**Scale status (2026-07-13):** drained. S1, S2, S4.1, and S4.2 landed in this
+integration batch; S3 and S5 were closed by audit with no eligible low-risk row.
+The next candidate must therefore be a new scale or a materially different
+semantic/performance lane, not a stale reopening of these rows.
 
 ## OPEN-ITEM RECONCILIATION (post-drive — read this before trusting any checkbox below)
 

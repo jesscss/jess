@@ -97,6 +97,7 @@ import {
 } from './util/direct-rules-lookup.js';
 import { checkValidNodes } from './util/check-valid-nodes.js';
 const { isArray } = Array;
+const EMPTY_CALLABLE_BUCKET: CallableLookupEntry[] = [];
 const NESTABLE_AT_RULE_NAMES = new Set(['@media', '@supports', '@layer', '@container', '@scope']);
 const MAX_DECLARATION_NAME_REGISTRATION_RETRIES = 5;
 type PathResolutionError = Error & { _isPathResolutionError?: boolean };
@@ -2186,7 +2187,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
   ): CallableLookupEntry[] {
     const entries = this.callableLookupCache;
     if (entries?.has(lookupKey)) {
-      return entries.get(lookupKey) ?? [];
+      return entries.get(lookupKey) ?? EMPTY_CALLABLE_BUCKET;
     }
 
     let bucket = this.ensureCallableIndex().get(lookupKey);
@@ -2210,7 +2211,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         this._scopeFrame.mixinCallableMissCoverageKnown = true;
       }
     }
-    return bucket ?? [];
+    return bucket ?? EMPTY_CALLABLE_BUCKET;
   }
 
   private prepareCallableLookupFrame(frame: ScopeFrame, key: string, includeRulesets: boolean): void {

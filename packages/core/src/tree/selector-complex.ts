@@ -56,6 +56,7 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
   static override childKeys = ['value'] as const;
 
   override readonly value: ComplexSelectorValue;
+  declare protected _valueOf: string | undefined;
 
   constructor(
     value: ComplexSelectorValue,
@@ -64,6 +65,10 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
   ) {
     super(value, options, location);
     this.value = value;
+  }
+
+  override invalidateCache(): void {
+    this._valueOf = undefined;
   }
 
   private ownComponent(component: ComplexSelectorComponent): ComplexSelectorComponent {

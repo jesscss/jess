@@ -17,6 +17,7 @@ export class BasicSelector extends SimpleSelector<string> {
   static override childKeys = null;
 
   override readonly value: string;
+  declare protected _valueOf: string | undefined;
 
   constructor(
     value: string,
@@ -57,6 +58,10 @@ export class BasicSelector extends SimpleSelector<string> {
 
   override valueOf(): string {
     return (this._valueOf ??= (this.isTag && !this.value.includes('\\') ? this.value.toLowerCase() : this.value));
+  }
+
+  override invalidateCache(): void {
+    this._valueOf = undefined;
   }
 
   override toTrimmedString(options?: PrintOptions): string {

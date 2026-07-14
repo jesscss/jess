@@ -76,6 +76,8 @@ function findAttributeVarDeclarationInScope(
  *   e.g. [id="foo"]
 */
 export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
+  declare protected _valueOf: string | undefined;
+
   // Exception to the "separate field values" rule: the `{name, op, value, mod}`
   // record is a normalization decomposition, so the whole object IS this node's
   // canonical `value` (stored + typed by the Selector base, childKeys=['value']).
@@ -95,6 +97,10 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
 
   get mod(): string | undefined {
     return this.value.mod;
+  }
+
+  override invalidateCache(): void {
+    this._valueOf = undefined;
   }
 
   private resolveAttributeValue(context: Context): MaybePromise<Node | undefined> {

@@ -91,6 +91,7 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
 
   readonly name: string;
   arg: Node | undefined;
+  declare protected _valueOf: string | undefined;
   /**
    * Rare: only set on generated `:is()` wrappers (see `setGeneratedPseudoPlacementOverride`).
    * `declare` + conditional ctor assignment so the common pseudo shape (`:hover`,
@@ -260,6 +261,10 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
       this._valueOf = valueOf;
     }
     return valueOf;
+  }
+
+  override invalidateCache(): void {
+    this._valueOf = undefined;
   }
 
   override clone(cloneFn?: (n: Node) => Node): this {

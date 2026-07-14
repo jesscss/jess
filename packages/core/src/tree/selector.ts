@@ -83,8 +83,6 @@ export abstract class Selector<T = any, O extends NodeOptions = NodeOptions> ext
     return this.structuralStaticFlag();
   }
 
-  protected _valueOf: string | undefined;
-
   keySetLibrary: BitSetLibrary<string> | undefined;
 
   /**
@@ -199,7 +197,7 @@ export abstract class Selector<T = any, O extends NodeOptions = NodeOptions> ext
   // visibleKeySetOf / requiredKeySetOf free helpers. The node holds no key-set getters
   // or fields; it only carries `keySetLibrary` so the service instance can be found.
   invalidateCache(): void {
-    this._valueOf = undefined;
+    // Selector families with a valueOf() cache override this method.
   }
 }
 
