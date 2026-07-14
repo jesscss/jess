@@ -76,6 +76,82 @@ describe('Rule', () => {
     expect('value' in leaf).toBe(true);
   });
 
+  it('keeps absent Ruleset guard metadata absent through derive, while preserving defined metadata ownership', () => {
+    const selector = sellist([sel([el('.source')])]);
+    const body = decl({ name: 'color', value: any('red') });
+    const source = ruleset({ selector, rules: [body] });
+
+    expect(Object.hasOwn(source, 'guard')).toBe(false);
+    expect(Object.hasOwn(source, 'selectorBeforeExtend')).toBe(false);
+
+    const emptyDerived = source.derive();
+    expect(emptyDerived).toBeInstanceOf(Ruleset);
+    if (!(emptyDerived instanceof Ruleset)) {
+      throw new TypeError('expected Ruleset derive shell');
+    }
+    expect(Object.hasOwn(emptyDerived, 'guard')).toBe(false);
+    expect(Object.hasOwn(emptyDerived, 'selectorBeforeExtend')).toBe(false);
+    expect(emptyDerived.sourceNode).toBe(source);
+    expect(emptyDerived.rules[0]).toBe(body);
+    expect(body.parent).toBe(source);
+
+    const guard = condition([bool(true)]);
+    const selectorBeforeExtend = sellist([sel([el('.before-extend')])]);
+    const withMetadata = ruleset({
+      selector: sellist([sel([el('.metadata')])]),
+      guard,
+      selectorBeforeExtend,
+      rules: [body]
+    });
+    const derived = withMetadata.derive();
+    expect(derived).toBeInstanceOf(Ruleset);
+    if (!(derived instanceof Ruleset)) {
+      throw new TypeError('expected Ruleset derive shell');
+    }
+    expect(Object.hasOwn(derived, 'guard')).toBe(true);
+    expect(Object.hasOwn(derived, 'selectorBeforeExtend')).toBe(true);
+    expect(derived.guard).toBe(guard);
+    expect(derived.selectorBeforeExtend).toBe(selectorBeforeExtend);
+    expect(derived.sourceNode).toBe(withMetadata);
+    expect(guard.parent).toBe(withMetadata);
+    expect(selectorBeforeExtend.parent).toBe(withMetadata);
+    expect(derived.rules[0]).toBe(body);
+    expect(body.parent).toBe(withMetadata);
+
+    source.guard = guard;
+    source.selectorBeforeExtend = selectorBeforeExtend;
+    const mutatedDerived = source.derive();
+    expect(mutatedDerived).toBeInstanceOf(Ruleset);
+    if (!(mutatedDerived instanceof Ruleset)) {
+      throw new TypeError('expected Ruleset derive shell');
+    }
+    expect(mutatedDerived.guard).toBe(guard);
+    expect(mutatedDerived.selectorBeforeExtend).toBe(selectorBeforeExtend);
+  });
+
+  it('keeps passing and failed Ruleset guard rendering unchanged', async () => {
+    const passing = ruleset({
+      selector: sellist([sel([el('.passes')])]),
+      guard: condition([bool(true)]),
+      rules: [decl({ name: 'color', value: any('red') })]
+    });
+    const failed = ruleset({
+      selector: sellist([sel([el('.fails')])]),
+      guard: condition([bool(false)]),
+      rules: [decl({ name: 'color', value: any('blue') })]
+    });
+
+    const passingOutput = await passing.eval(context);
+    const failedOutput = await failed.eval(context);
+
+    expect(failedOutput).toBeInstanceOf(Nil);
+    expect(await renderNodeToString(rules([passingOutput, failedOutput]), context)).toBeString(`
+      .passes {
+        color: red;
+      }
+    `);
+  });
+
   it('should serialize to CSS', async () => {
     let node = ruleset({
       selector: sellist([sel([el('foo')])]),

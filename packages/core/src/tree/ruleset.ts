@@ -109,8 +109,8 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
   /** Stored as delivered: string, node, or plain array (an array IS a selector list). */
   selector: SelectorLike | Nil | undefined;
   declare readonly rules: Node[];
-  guard: RulesetValue['guard'];
-  selectorBeforeExtend: RulesetValue['selectorBeforeExtend'];
+  declare guard?: RulesetValue['guard'];
+  declare selectorBeforeExtend?: RulesetValue['selectorBeforeExtend'];
   /** Canonical selector-cache owner for derived registration-prep wrappers. */
   declare _selectorCacheOwner?: Ruleset;
 
@@ -135,8 +135,12 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     } else {
       this.selector = value.selector;
     }
-    this.guard = 'guard' in value ? value.guard : undefined;
-    this.selectorBeforeExtend = 'selectorBeforeExtend' in value ? value.selectorBeforeExtend : undefined;
+    if (value.guard !== undefined) {
+      this.guard = value.guard;
+    }
+    if (value.selectorBeforeExtend !== undefined) {
+      this.selectorBeforeExtend = value.selectorBeforeExtend;
+    }
     // R2 SINGLE-FRAME: the Ruleset IS its own canonical body. Body children are
     // parented to the Ruleset by the `ruleset()` factory's parentChildren
     // (childKeys includes 'rules'); the Ruleset's own scope frame is the single
@@ -161,8 +165,12 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
       this.sourceRoot?._treeContext
     );
     shell.selector = this.selector;
-    shell.guard = this.guard;
-    shell.selectorBeforeExtend = this.selectorBeforeExtend;
+    if (this.guard !== undefined) {
+      shell.guard = this.guard;
+    }
+    if (this.selectorBeforeExtend !== undefined) {
+      shell.selectorBeforeExtend = this.selectorBeforeExtend;
+    }
     return shell;
   }
 

@@ -169,6 +169,17 @@ sequential, not parallel, even when their descriptions look independent.
 
 #### Q-40 representation and allocation decisions — 2026-07-14
 
+- **Accept Ruleset absent-metadata carrying as a resident-state cut.** Canonical
+  evaluation has 4,155 live Rulesets where both `guard` and
+  `selectorBeforeExtend` are absent, formerly paying 8,310 undefined own
+  properties. The constructor and derive shell now write either field only when
+  defined; direct consumers retain their reads and a defined field still carries
+  to a derived shell. Focused Ruleset, full core `3323`, spine `136/136`, and
+  all-less `106/106` passed. Same-checkout 20-warmup/45-pair control/candidate
+  was parse+render `239.68→239.63 ms`; render-only `211.78→207.04 ms` had only
+  22/45 candidate wins. Accept the clear slot reduction, not a speed claim; do
+  not retain the temporary environment switch used for the A/B.
+
 - **Reconciled legacy perf worktrees before new cuts.** `jess-perf-valueeval`
   and `jess-perf-lookup` are 132 commits behind current `dev`; their runtime
   changes are already landed and only stale, non-canonical probes remain.
