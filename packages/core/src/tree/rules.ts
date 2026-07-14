@@ -100,6 +100,14 @@ const { isArray } = Array;
 const EMPTY_CALLABLE_BUCKET: CallableLookupEntry[] = [];
 const NESTABLE_AT_RULE_NAMES = new Set(['@media', '@supports', '@layer', '@container', '@scope']);
 const MAX_DECLARATION_NAME_REGISTRATION_RETRIES = 5;
+const SCOPE_FRAME_PROFILE_COUNTERS_KEY = '__JESS_SCOPE_FRAME_PROFILE_COUNTERS__';
+type ScopeFrameProfileGlobals = typeof globalThis & {
+  [SCOPE_FRAME_PROFILE_COUNTERS_KEY]?: Record<string, number>;
+};
+const scopeFrameProfileCounters = (globalThis as ScopeFrameProfileGlobals)[SCOPE_FRAME_PROFILE_COUNTERS_KEY];
+const scopeFrameProfileNow = scopeFrameProfileCounters
+  ? globalThis.performance?.now.bind(globalThis.performance)
+  : undefined;
 type PathResolutionError = Error & { _isPathResolutionError?: boolean };
 type PendingPrepHandler = (resolvedNode: Node, node: Node, stillUnresolved: Node[]) => boolean;
 type RulesRenderContextSnapshot = {
@@ -122,6 +130,27 @@ type RulesResolveState = {
   output: Rules;
   kind: 'public-resolve';
 };
+
+const recordScopeFrameProfile = scopeFrameProfileCounters
+  ? (event: 'cacheHit' | 'create', rules: Rules, frame: ScopeFrame, startedAt: number | undefined): void => {
+      const counters = scopeFrameProfileCounters;
+      const placement = rules.sourceNode instanceof Rules && rules.sourceNode !== rules;
+      const placementKey = placement ? 'placement' : 'canonical';
+      let depth = 0;
+      let cursor: ScopeFrame | undefined = frame;
+      while (cursor) {
+        depth++;
+        cursor = cursor.parent;
+      }
+      counters[`getScopeFrame.${event}`] = (counters[`getScopeFrame.${event}`] ?? 0) + 1;
+      counters[`getScopeFrame.${event}.${placementKey}`] = (counters[`getScopeFrame.${event}.${placementKey}`] ?? 0) + 1;
+      counters[`getScopeFrame.${event}.depth.${depth}`] = (counters[`getScopeFrame.${event}.depth.${depth}`] ?? 0) + 1;
+      if (startedAt !== undefined) {
+        counters[`getScopeFrame.${event}.ms`] = (counters[`getScopeFrame.${event}.ms`] ?? 0)
+          + scopeFrameProfileNow!() - startedAt;
+      }
+    }
+  : undefined;
 
 type ExactCallableFindOptions = {
   hasTarget?: boolean;
@@ -1520,6 +1549,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
   }
 
   getScopeFrame(parent?: ScopeFrame, prepareCallableCoverage = true): ScopeFrame {
+    const startedAt = scopeFrameProfileNow?.();
     if (!this._scopeFrame) {
       const rulesBody = this.rules;
       let pendingDeclarationNames: VarDeclaration[] | undefined;
@@ -1554,6 +1584,9 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       );
       this.prepareScopeFrameAssignmentBindings(this._scopeFrame, rulesBody);
       this.linkInlineImportFallbackFrames(this._scopeFrame, rulesBody);
+      recordScopeFrameProfile?.('create', this, this._scopeFrame, startedAt);
+    } else {
+      recordScopeFrameProfile?.('cacheHit', this, this._scopeFrame, startedAt);
     }
     return this._scopeFrame;
   }
