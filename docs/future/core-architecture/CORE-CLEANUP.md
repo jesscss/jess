@@ -239,6 +239,26 @@ sequential, not parallel, even when their descriptions look independent.
   parse-once render medians `234.10/232.83 ms` with 574.38/675.65 ms outliers.
   Treat this as an environment-quality warning, not a new baseline or a
   before/after result; continue to require round-level stability for claims.
+- **Keep node discriminators on prototypes and retain generic `isNode`.** The
+  representative static/dynamic ASTs have zero own `type`/`nodeType` fields;
+  those prototype-owned discriminators avoid a universal node slot. A pure
+  property-load microbenchmark favors an own field, but would add an estimated
+  0.30/0.41 MiB across the measured live trees and changes key/JSON shape, so
+  it is rejected. `isNode` remains necessary at polymorphic/module-identity
+  boundaries; a future POC may cache `nodeType` in one already-trusted local
+  container loop, never replace the helper globally. Declaration literal
+  slimming is instead `value` plus a scalar tag/packed `valueTypes` sequence,
+  fenced behind the D-EVAL/value-heavy profile because literals must retain
+  authored spelling until materialized.
+- **Trivia and final output assembly are not the present cut.** No-trivia and
+  single-space probes made the same writer/trivia-map calls; comments add real
+  sparse correctness work (canonical: 49,118 trivia lookups and 8,879 comment
+  runs), so neither proves a span/map deletion. The normal map-off root already
+  shares one writer/buffer array (15,340 chunks), with no detached final buffer;
+  maps-on deliberately retains a detached final result. The targeted writer
+  POC is instead `renderNodeText`'s 14,903 map-off detached fragment writers
+  and their 59,612 unnecessary source-position arrays. It must keep source-map
+  output exact when enabled and add no compensating state.
 
 The queue is considered drained only when every row is landed, explicitly closed
 with evidence, or transferred to an owner-judgment/design lane. A row that merely
