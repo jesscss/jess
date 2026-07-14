@@ -1870,26 +1870,33 @@ describe('spine PRODUCTION-path ratchet (P2 wire-in)', () => {
     }
   });
 
-  it('IMPORT-SPEC: a case-B interpolated-path import whose body has an `(inline)` sub-import ABORTS to eval (residual)', async () => {
-    // RESIDUAL (ratchet-locked, IOU). The pure case-B shape folds (see above), but a DEFERRED
-    // (forward-dependent) interpolated-path import whose resolved body carries an `(inline)` sub-import
-    // is NOT foldable byte-identically: eval's deferred-import RETRY lane (`drainPendingImports`) emits an
-    // extra blank line AFTER a re-evaluated inline block, which the clean spine fold does not reproduce.
-    // The wire pass detects the inline sub-import in the DEFERRED body and aborts the whole tree to eval
-    // (pre-first-byte), so the output — including eval's post-inline blank line — is byte-identical. This
-    // is the `import-interpolation` corpus fixture shape. Case A (downward, non-deferred) is unaffected:
-    // its inline body agrees with eval and folds. IOU: reproduce eval's reorder spacing on the spine (or
-    // eliminate the eval-side artifact) so this abort-gate can be removed at P4.
+  it('IMPORT-SPEC: a case-B interpolated-path import with an `(inline)` sub-import FOLDS byte-identically', async () => {
+    // The deferred import is retried after `vars.less` binds `@t`; its inline child
+    // emits from a nested import-fold closure. The writer-level boundary bit carries
+    // that inline-source fact to the following `.k` block, preserving eval's blank line
+    // without falling back to the two-walk derive path.
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-import-inc6-interp-inline-'));
     fs.writeFileSync(path.join(dir, 'vars.less'), '@t: "x";\n');
     fs.writeFileSync(path.join(dir, 'raw.less'), '#logo {\n  w: 1px;\n}\n');
     fs.writeFileSync(path.join(dir, 'theme-x.less'), '@import (inline) "raw.less";\n.k {\n  c: 1;\n}\n');
     fs.writeFileSync(path.join(dir, 'main.less'), '@import "theme-@{t}.less";\n@import "vars.less";\n');
     const compiler = makeCompiler();
-    const result = await compiler.renderToResult(path.join(dir, 'main.less'), {});
-    // Eval oracle: the post-inline blank line (`}\n\n.k`) from the retry-lane re-eval — matched by abort.
-    expect(result.css).toBe('#logo {\n  w: 1px;\n}\n\n.k {\n  c: 1;\n}\n');
-    fs.rmSync(dir, { recursive: true, force: true });
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const result = await compiler.renderToResult(path.join(dir, 'main.less'), {});
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before);
+      expect(deriveCalls).toBe(0);
+      expect(result.css).toBe('#logo {\n  w: 1px;\n}\n\n.k {\n  c: 1;\n}\n');
+    } finally {
+      Rules.prototype.derive = originalDerive;
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it('IMPORT-SPEC: a GENUINELY-unresolvable interpolated-path import stays byte-identical to eval (final-drain abort)', async () => {

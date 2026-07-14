@@ -270,6 +270,15 @@ function ensureFinalPrintOptions(options: PrintOptions): asserts options is Fina
 }
 
 export interface OutputWriter {
+  /**
+   * Document-global flag: true when the LAST content emitted was an `(inline)`
+   * `@import`'s RAW source (an `Any` role-`any` leaf / its wrapper Rules). Read by
+   * `Rules._emitRulesBody`'s boundary check to insert the post-inline blank line
+   * separating an inlined block from the following top-level block, even when the
+   * inline text was emitted by a deeper import-fold closure whose per-closure
+   * inline-source state never reaches the following node's `emitNode`.
+   */
+  lastEmitWasInlineSource: boolean;
   add(text: string, origin?: unknown): void;
   markSource(origin?: unknown): void;
   addSpacer(text: string): void;
@@ -567,6 +576,8 @@ export class OutputWriter implements OutputWriter {
   private _capturedSegments: SourceSegment[] | null = null;
   private _queuedSpacerText = '';
   private _queuedSpacerShouldAdd: ((nextText: string) => boolean) | undefined;
+  /** See `OutputWriter` interface: post-inline-import blank-line boundary flag. */
+  lastEmitWasInlineSource = false;
 
   constructor(private readonly tracksSources = true, chunks?: string[]) {
     if (chunks) {

@@ -69,44 +69,6 @@ function isSpinePathResolutionError(error: unknown): boolean {
     && (error as Error & Record<'_isPathResolutionError', unknown>)._isPathResolutionError === true;
 }
 
-/**
- * Marker property on an error the wire pass throws when a DEFERRED (forward-dependent, case-B)
- * interpolated-path import resolves to a body it cannot fold byte-identically — specifically a body
- * carrying an `(inline)` sub-import. Eval's deferred-import RETRY lane (`drainPendingImports`) emits an
- * extra blank line AFTER a re-evaluated inline block; the clean spine fold does not reproduce that
- * reorder-specific spacing artifact. Routing this shape to eval keeps it byte-identical. `onWireError`
- * aborts to eval on this marker exactly as it does for a still-unresolvable path.
- */
-const SPINE_DEFERRED_UNSUPPORTED = '_isSpineDeferredUnsupported';
-function markDeferredUnsupported(): Error {
-  const error = new Error('spine: deferred interpolated-path import body is not foldable byte-identically (inline sub-import)');
-  (error as Error & Record<string, unknown>)[SPINE_DEFERRED_UNSUPPORTED] = true;
-  return error;
-}
-function isSpineDeferredUnsupportedError(error: unknown): boolean {
-  return error instanceof Error
-    && SPINE_DEFERRED_UNSUPPORTED in error
-    && (error as Error & Record<string, unknown>)[SPINE_DEFERRED_UNSUPPORTED] === true;
-}
-
-/**
- * True if `body`'s DIRECT children include an `(inline)` `@import` — the shape a deferred (case-B)
- * interpolated-path import cannot fold byte-identically (eval's retry lane adds a post-inline blank
- * line the spine fold does not). Direct-child scan only: a nested container's inline import is emitted
- * under that container's own serialization (not the reorder-affected root inline path).
- */
-function deferredBodyHasInlineImport(body: Rules): boolean {
-  for (const child of body.rules) {
-    if (isStyleImportNode(child)) {
-      const io = 'importOptions' in child.options ? child.options.importOptions : undefined;
-      if (io?.inline === true) {
-        return true;
-      }
-    }
-  }
-  return false;
-}
-
 function isAtRuleStatementNode(node: Node): node is AtRuleStatement {
   return node.type === 'AtRuleStatement';
 }
@@ -2641,7 +2603,7 @@ export function renderRootViaSpine(
   // genuine error identically), byte-identical. A genuine error (missing file, parse failure) is NOT
   // a path-resolution error and propagates via `fail`.
   const onWireError = (error: unknown): string | typeof SPINE_ABORT_TO_EVAL | never =>
-    isSpinePathResolutionError(error) || isSpineDeferredUnsupportedError(error)
+    isSpinePathResolutionError(error)
       ? abortToEval()
       : (fail(error) as never);
   const wireImports = (): MaybePromise<string | typeof SPINE_ABORT_TO_EVAL> => {
@@ -2869,7 +2831,7 @@ function wireSpineImportsInBody(
   // byte-identical. One retry-allowed drain + a final non-retry drain matches eval exactly
   // (a single reorder suffices for the acyclic forward dependency; a cycle re-throws).
   const pending: number[] = [];
-  const wireOne = (i: number, allowDefer: boolean, deferred: boolean): MaybePromise<void> => {
+  const wireOne = (i: number, allowDefer: boolean): MaybePromise<void> => {
     const child = children[i]!;
     const importNode = child as StyleImport;
     // ISOLATE per-import context (design §2 async discipline). Each import's
@@ -2901,14 +2863,6 @@ function wireSpineImportsInBody(
         return undefined;
       }
       const body = resolved.body;
-      // RESIDUAL (ratchet-locked, IOU): a DEFERRED (case-B) import whose body carries an `(inline)`
-      // sub-import is NOT foldable byte-identically — eval's retry lane adds a post-inline blank line
-      // the clean spine fold does not reproduce. Abort the whole tree to eval for this shape only; the
-      // pure case-B shape (plain rulesets / non-inline sub-imports) folds. `import-interpolation`
-      // corpus fixture. Case A (downward, non-deferred) is unaffected — its inline body agrees with eval.
-      if (deferred && deferredBodyHasInlineImport(body)) {
-        throw markDeferredUnsupported();
-      }
       const dedupe = spineImportDedupeVerdict(resolved.resolvedPath, resolved.multiple, options);
       const registered = body.prepareRegistration(context);
       const finishRegister = (): MaybePromise<void> => {
@@ -2968,7 +2922,7 @@ function wireSpineImportsInBody(
       if (!isStyleImportNode(child) || !isSpineFoldableImport(child) || cache.has(child)) {
         continue;
       }
-      const wired = wireOne(i, true, false);
+      const wired = wireOne(i, true);
       if (isThenable(wired)) {
         return wired.then(() => wireFrom(i + 1));
       }
@@ -2986,7 +2940,7 @@ function wireSpineImportsInBody(
     const batch = pending.splice(0);
     const drainRest = (start: number): MaybePromise<void> => {
       for (let k = start; k < batch.length; k++) {
-        const wired = wireOne(batch[k]!, allowRetry, true);
+        const wired = wireOne(batch[k]!, allowRetry);
         if (isThenable(wired)) {
           return wired.then(() => drainRest(k + 1));
         }
