@@ -121,7 +121,7 @@ sequential, not parallel, even when their descriptions look independent.
 | ID | Bounded question / intended result | Primary write set | Proof required |
 |---|---|---|---|
 | Q-01 | **CLOSED by live code** — `lookupVersion` is already lazy through `_lookup`; verify callers before reopening. | `packages/core/src/tree/rules.ts` | current-code inspection and lookup tests |
-| Q-02 | Can `_scopeFrame` be owned by evaluated surfaces or a lean subtype without penalizing the hot lookup path? | `rules.ts`, scope-frame helpers | reference/mixin tests plus lookup/render A/B |
+| Q-02 | **CLOSED by the field-budget audit** — `_scopeFrame` is the irreducible, 91-site scope-chain cache and is explicitly fenced as load-bearing; moving it into `_lookup` would trade an eager slot for a per-frame state allocation/indirection. | `packages/core/src/tree/rules.ts`, `packages/core/perf/RULES_FIELD_BUDGET.md` | current field-budget evidence; do not reopen without a new measured design |
 | Q-03 | **CLOSED by live code** — `varsByName` is already behind `_lookup`; verify docs and do not duplicate it. | `packages/core/src/tree/rules.ts` | current-code inspection and variable/scope tests |
 | Q-04 | **CLOSED before this scale** — `PseudoSelector` placement/omit-wrapper state is already packed in `pseudoFlags` (`b8faeca2f`). | `selector-pseudo.ts` | selector fixtures and shape history |
 | Q-05 | Audit `Ruleset` optional guard/selector metadata for a subtype or lazy record; land only if it reduces total work. | `ruleset.ts` | guarded/extend corpus and shape/A-B evidence |
