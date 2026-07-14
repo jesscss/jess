@@ -565,10 +565,13 @@ export class OutputWriter implements OutputWriter {
   private _length = 0;
   private _line = 0;
   private _column = 0;
-  private _segments: SourceSegment[] = [];
-  private _posLine: number[] = [];
-  private _posColumn: number[] = [];
-  private _posSegments: number[] = [];
+  // These arrays are only needed for source-map position tracking. Keep them
+  // out of the common no-source-map writer shape until that path actually
+  // needs them.
+  private _segments?: SourceSegment[];
+  private _posLine?: number[];
+  private _posColumn?: number[];
+  private _posSegments?: number[];
   private _posLength: number[] = [];
   /** Diagnostic: remember the origin that last wrote a trailing newline */
   private _lastNewlineOrigin: unknown = undefined;
@@ -580,6 +583,12 @@ export class OutputWriter implements OutputWriter {
   lastEmitWasInlineSource = false;
 
   constructor(private readonly tracksSources = true, chunks?: string[]) {
+    if (tracksSources) {
+      this._segments = [];
+      this._posLine = [];
+      this._posColumn = [];
+      this._posSegments = [];
+    }
     if (chunks) {
       this.chunks = chunks;
       if (chunks.length > 0) {
@@ -602,7 +611,7 @@ export class OutputWriter implements OutputWriter {
     }
     const segment = sourceSegmentFor(originParam, this._line, this._column);
     if (segment) {
-      this._segments.push(segment);
+      this._segments!.push(segment);
     }
   }
 
@@ -640,7 +649,7 @@ export class OutputWriter implements OutputWriter {
         // If segment is on the same line as capture start, add column offset
         // If segment is on a different line, column is already correct (relative to that line)
         const adjustedColumn = seg.genLine === 0 ? currentColumn + seg.genColumn : seg.genColumn;
-        this._segments.push({
+        this._segments!.push({
           genLine: currentLine + seg.genLine,
           genColumn: adjustedColumn,
           source: seg.source,
@@ -752,10 +761,12 @@ export class OutputWriter implements OutputWriter {
   preview(fn: () => Promise<string | void>, preserveSegments?: boolean): Promise<string>;
   preview(fn: () => MaybePromise<string | void>, preserveSegments = false): MaybePromise<string> {
     const mark = this.mark();
-    const segmentsBefore = this._segments.length;
+    const segmentsBefore = this.tracksSources ? this._segments!.length : 0;
     const finish = (out: string | void): string => {
       const text = this.getSince(mark) || (typeof out === 'string' ? out : '');
-      const segmentsCreated = preserveSegments ? this._segments.slice(segmentsBefore) : [];
+      const segmentsCreated = preserveSegments && this.tracksSources
+        ? this._segments!.slice(segmentsBefore)
+        : [];
       this.restore(mark);
       if (preserveSegments) {
         this._capturedSegments = segmentsCreated.length > 0 ? segmentsCreated : null;
@@ -803,8 +814,9 @@ export class OutputWriter implements OutputWriter {
     if (mark < 0 || mark > this.chunks.length) {
       return;
     }
-    const segmentMark = mark > 0 ? (this._posSegments[mark - 1] ?? 0) : 0;
-    const segmentsCreated = this._segments.slice(segmentMark);
+    const segmentsCreated = this.tracksSources
+      ? this._segments!.slice(mark > 0 ? (this._posSegments![mark - 1] ?? 0) : 0)
+      : [];
     const replacement = replacer(this.getSince(mark));
     this.restore(mark);
     this._capturedSegments = segmentsCreated.length > 0 ? segmentsCreated : null;
@@ -908,20 +920,19 @@ export class OutputWriter implements OutputWriter {
       this._length = posIndex >= 0 ? (this._posLength[posIndex] ?? 0) : 0;
       this._line = 0;
       this._column = 0;
-      this._segments.length = 0;
       this.truncatePositions(mark);
       this.clearQueuedSpacer();
       return;
     }
-    if (posIndex >= 0 && posIndex < this._posLine.length) {
-      this._line = this._posLine[posIndex] ?? 0;
-      this._column = this._posColumn[posIndex] ?? 0;
-      this._segments.length = this._posSegments[posIndex] ?? 0;
+    if (posIndex >= 0 && posIndex < this._posLine!.length) {
+      this._line = this._posLine![posIndex] ?? 0;
+      this._column = this._posColumn![posIndex] ?? 0;
+      this._segments!.length = this._posSegments![posIndex] ?? 0;
       this._length = this._posLength[posIndex] ?? 0;
     } else {
       this._line = 0;
       this._column = 0;
-      this._segments.length = 0;
+      this._segments!.length = 0;
       this._length = 0;
     }
     this.truncatePositions(mark);
@@ -938,22 +949,16 @@ export class OutputWriter implements OutputWriter {
         this._posLength[i] = this._length;
       }
       this._posLength.length = this.chunks.length;
-      // The tracksSources arrays are unused in this branch, but keep
-      // line/column/segments in their reset state to match prior behavior.
       if (start === 0) {
-        this._posLine.length = 0;
-        this._posColumn.length = 0;
-        this._posSegments.length = 0;
         this._line = 0;
         this._column = 0;
-        this._segments.length = 0;
       }
       return;
     }
-    if (seedIndex >= 0 && seedIndex < this._posLine.length) {
+    if (seedIndex >= 0 && seedIndex < this._posLine!.length) {
       this._length = this._posLength[seedIndex] ?? 0;
-      this._line = this._posLine[seedIndex] ?? 0;
-      this._column = this._posColumn[seedIndex] ?? 0;
+      this._line = this._posLine![seedIndex] ?? 0;
+      this._column = this._posColumn![seedIndex] ?? 0;
     } else {
       this._length = 0;
       this._line = 0;
@@ -961,7 +966,7 @@ export class OutputWriter implements OutputWriter {
     }
     for (let i = start; i < this.chunks.length; i++) {
       const text = this.chunks[i]!;
-      const segmentCount = this._posSegments[i] ?? this._segments.length;
+      const segmentCount = this._posSegments![i] ?? this._segments!.length;
       this._length += text.length;
       const newline = text.lastIndexOf('\n');
       if (newline === -1) {
@@ -978,17 +983,17 @@ export class OutputWriter implements OutputWriter {
         this._column = text.length - (newline + 1);
         this._line += lineBreaks;
       }
-      this._posLine[i] = this._line;
-      this._posColumn[i] = this._column;
-      this._posSegments[i] = segmentCount;
+      this._posLine![i] = this._line;
+      this._posColumn![i] = this._column;
+      this._posSegments![i] = segmentCount;
       this._posLength[i] = this._length;
     }
-    this._posLine.length = this.chunks.length;
-    this._posColumn.length = this.chunks.length;
+    this._posLine!.length = this.chunks.length;
+    this._posColumn!.length = this.chunks.length;
     this._posLength.length = this.chunks.length;
-    this._posSegments.length = this.chunks.length;
+    this._posSegments!.length = this.chunks.length;
     const lastIndex = this.chunks.length - 1;
-    this._segments.length = lastIndex >= 0 ? (this._posSegments[lastIndex] ?? 0) : 0;
+    this._segments!.length = lastIndex >= 0 ? (this._posSegments![lastIndex] ?? 0) : 0;
   }
 
   private recordPosition(index: number): void {
@@ -996,17 +1001,17 @@ export class OutputWriter implements OutputWriter {
       this._posLength[index] = this._length;
       return;
     }
-    this._posLine[index] = this._line;
-    this._posColumn[index] = this._column;
-    this._posSegments[index] = this._segments.length;
+    this._posLine![index] = this._line;
+    this._posColumn![index] = this._column;
+    this._posSegments![index] = this._segments!.length;
     this._posLength[index] = this._length;
   }
 
   private truncatePositions(length: number): void {
     if (this.tracksSources) {
-      this._posLine.length = length;
-      this._posColumn.length = length;
-      this._posSegments.length = length;
+      this._posLine!.length = length;
+      this._posColumn!.length = length;
+      this._posSegments!.length = length;
     }
     this._posLength.length = length;
   }
@@ -1019,11 +1024,13 @@ export class OutputWriter implements OutputWriter {
   /** Capture output from a function without committing to the main buffer */
   capture(fn: () => void): string {
     const m = this.mark();
-    const segmentsBefore = this._segments.length;
+    const segmentsBefore = this.tracksSources ? this._segments!.length : 0;
     fn();
     const s = this.getSince(m);
     // Store segments created during capture (but don't add to main buffer)
-    const segmentsCreated = this._segments.slice(segmentsBefore);
+    const segmentsCreated = this.tracksSources
+      ? this._segments!.slice(segmentsBefore)
+      : [];
     this.restore(m);
     // Store captured segments for potential merging when content is added back
     this._capturedSegments = segmentsCreated.length > 0 ? segmentsCreated : null;
@@ -1039,7 +1046,7 @@ export class OutputWriter implements OutputWriter {
   }
 
   getSegments(): SourceSegment[] {
-    return this._segments;
+    return this._segments ?? [];
   }
 
   /** Diagnostic accessor */

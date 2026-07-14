@@ -457,6 +457,20 @@ describe('OutputWriter', () => {
   });
 
   describe('parallel position array behavior', () => {
+    it('defers source-map arrays for non-source-map writers', () => {
+      const w = new OutputWriter(false);
+
+      expect(writerField(w, '_segments')).toBeUndefined();
+      expect(writerField(w, '_posLine')).toBeUndefined();
+      expect(writerField(w, '_posColumn')).toBeUndefined();
+      expect(writerField(w, '_posSegments')).toBeUndefined();
+
+      w.add('hello');
+
+      expect(w.getSegments()).toEqual([]);
+      expect(writerField(w, '_posLength')).toEqual([5]);
+    });
+
     it('tracks positions for each chunk', () => {
       const w = new OutputWriter();
 
