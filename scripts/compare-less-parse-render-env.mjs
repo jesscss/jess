@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 import { performance } from 'node:perf_hooks';
-import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { Context, TreeContext } from '../packages/core/lib/index.js';
-import { Parser } from '../packages/less-parser/lib/index.js';
+import { Context, createRenderBuffer, finalizeFlatRenderBuffer } from '../packages/core/lib/index.js';
+import lessPlugin from '../packages/jess-plugin-less/lib/index.js';
+import { lessCompatPlugin } from '../packages/jess-plugin-less-compat/lib/index.js';
 
 function parseArgs(argv) {
   const options = {
@@ -114,52 +114,41 @@ function percentile(sorted, p) {
   return sorted[lower] * (1 - weight) + sorted[upper] * weight;
 }
 
-function createContext(file) {
-  const treeContext = new TreeContext({
-    collapseNesting: true,
-    file: {
-      name: path.basename(file),
-      path: path.dirname(file),
-      fullPath: file
-    }
-  });
-  const context = new Context({
-    collapseNesting: true,
-    file: treeContext.file
-  });
-  context.treeContext = treeContext;
-  return context;
+function createContext() {
+  return new Context({
+    output: { collapseNesting: true }
+  }, [lessPlugin(), lessCompatPlugin()]);
 }
 
-function parseFixture(parser, source, file, context) {
-  const parsed = parser.parse(source, 'stylesheet', { context: context.treeContext });
-  if (parsed.errors.length > 0 || !parsed.tree) {
-    throw new Error(`Parse failed: ${parsed.errors.map(error => String(error)).join('; ')}`);
+async function parseFixture(file, context) {
+  const parsed = await context.getTree(file);
+  if (!parsed.node) {
+    throw new Error(`Parse failed: ${file}`);
   }
-  context.root = parsed.tree;
-  return parsed.tree;
+  context.root = parsed.node;
+  return parsed.node;
 }
 
-async function parseAndRender(parser, source, file, envName, envValue, phase) {
+async function parseAndRender(file, envName, envValue, phase) {
   process.env[envName] = envValue;
-  const context = createContext(file);
+  const context = createContext();
   let start = performance.now();
-  const tree = parseFixture(parser, source, file, context);
+  const tree = await parseFixture(file, context);
   if (phase === 'render') {
     start = performance.now();
   }
-  await tree.render(context, { context, collapseNesting: true });
+  const buffer = createRenderBuffer('flat');
+  buffer.shareWriter = true;
+  await tree.render(context, buffer, { context, collapseNesting: true });
+  finalizeFlatRenderBuffer(buffer);
   return performance.now() - start;
 }
 
 const options = parseArgs(process.argv.slice(2));
 const file = resolveFixture(options.fixture);
-const source = fs.readFileSync(file, 'utf8');
-const parser = new Parser();
-
 for (let i = 0; i < options.warmup; i++) {
-  await parseAndRender(parser, source, file, options.env, options.baseline, options.phase);
-  await parseAndRender(parser, source, file, options.env, options.candidate, options.phase);
+  await parseAndRender(file, options.env, options.baseline, options.phase);
+  await parseAndRender(file, options.env, options.candidate, options.phase);
 }
 
 const pairs = [];
@@ -168,11 +157,11 @@ for (let i = 0; i < options.pairs; i++) {
   let baselineMs;
   let candidateMs;
   if (candidateFirst) {
-    candidateMs = await parseAndRender(parser, source, file, options.env, options.candidate, options.phase);
-    baselineMs = await parseAndRender(parser, source, file, options.env, options.baseline, options.phase);
+    candidateMs = await parseAndRender(file, options.env, options.candidate, options.phase);
+    baselineMs = await parseAndRender(file, options.env, options.baseline, options.phase);
   } else {
-    baselineMs = await parseAndRender(parser, source, file, options.env, options.baseline, options.phase);
-    candidateMs = await parseAndRender(parser, source, file, options.env, options.candidate, options.phase);
+    baselineMs = await parseAndRender(file, options.env, options.baseline, options.phase);
+    candidateMs = await parseAndRender(file, options.env, options.candidate, options.phase);
   }
   pairs.push({
     index: i + 1,

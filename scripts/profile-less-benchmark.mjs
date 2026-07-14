@@ -1,14 +1,17 @@
 #!/usr/bin/env node
 
-import fs from 'node:fs/promises';
 import path from 'node:path';
+import { existsSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { performance } from 'node:perf_hooks';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, '..');
-const lessRepoRoot = path.resolve(repoRoot, '../less.js');
-const lessPkgRoot = path.join(lessRepoRoot, 'packages/less');
+const lessRepoRoot = [
+  process.env.LESS_REPO_ROOT,
+  path.resolve(repoRoot, '../less.js'),
+  '/Users/matthew/git/oss/less.js'
+].find(candidate => candidate && existsSync(path.join(candidate, 'packages/less/benchmark')));
 
 const cliArgs = new Map(
   process.argv.slice(2).map((arg) => {
@@ -18,18 +21,24 @@ const cliArgs = new Map(
 );
 
 const benchmarkArg = cliArgs.get('--fixture') ?? cliArgs.get('--file') ?? 'benchmark.less';
-const benchmarkRoot = cliArgs.has('--fixture') ? repoRoot : path.join(lessPkgRoot, 'benchmark');
+if (!cliArgs.has('--fixture') && !lessRepoRoot) {
+  throw new Error('Pass --fixture or set LESS_REPO_ROOT to a Less checkout');
+}
+let benchmarkRoot = repoRoot;
+if (!cliArgs.has('--fixture')) {
+  benchmarkRoot = path.join(lessRepoRoot, 'packages/less/benchmark');
+}
 const benchmarkFile = path.isAbsolute(benchmarkArg)
   ? benchmarkArg
   : path.join(benchmarkRoot, benchmarkArg);
-const useCompat = cliArgs.get('--compat') !== 'false';
 globalThis.__JESS_SERIALIZE_PROFILE_COUNTERS__ = {};
 globalThis.__JESS_DIRECT_LOOKUP_PROFILE_COUNTERS__ = {};
 
 const coreLib = pathToFileURL(path.join(repoRoot, 'packages/core/lib/index.js')).href;
 const lessParserLib = pathToFileURL(path.join(repoRoot, 'packages/less-parser/lib/index.js')).href;
-const lessFacadeLib = pathToFileURL(path.join(lessPkgRoot, 'lib/index.js')).href;
 const jessLib = pathToFileURL(path.join(repoRoot, 'packages/jess/lib/index.js')).href;
+const lessPluginLib = pathToFileURL(path.join(repoRoot, 'packages/jess-plugin-less/lib/index.js')).href;
+const lessCompatPluginLib = pathToFileURL(path.join(repoRoot, 'packages/jess-plugin-less-compat/lib/index.js')).href;
 
 const stats = new Map();
 const lookupStats = {
@@ -121,16 +130,19 @@ function printMap(map, limit = 10) {
     .slice(0, limit);
 }
 
-const [{ Node, OutputWriter, Rules, Context, Reference }, { Parser: LessParser }, { Compiler }] = await Promise.all([
+const [
+  { Node, Rules, Context, Reference },
+  { Parser: LessParser },
+  { Compiler },
+  { default: lessPlugin },
+  { lessCompatPlugin }
+] = await Promise.all([
   import(coreLib),
   import(lessParserLib),
-  import(jessLib)
+  import(jessLib),
+  import(lessPluginLib),
+  import(lessCompatPluginLib)
 ]);
-
-wrapMethod(OutputWriter.prototype, 'mark', 'OutputWriter.mark');
-wrapMethod(OutputWriter.prototype, 'getSince', 'OutputWriter.getSince');
-wrapMethod(OutputWriter.prototype, 'restore', 'OutputWriter.restore');
-wrapMethod(OutputWriter.prototype, 'capture', 'OutputWriter.capture');
 
 wrapMethod(Node.prototype, 'clone', 'Node.clone');
 wrapMethod(Node.prototype, 'copy', 'Node.copy');
@@ -211,43 +223,14 @@ wrapMethod(LessParser.prototype, 'parse', 'LessParser.parse', function(args) {
   recordPath(importStats.parseByRule, String(rule));
 });
 
-const source = await fs.readFile(benchmarkFile, 'utf8');
 const start = performance.now();
-if (useCompat) {
-  const less = (await import(lessFacadeLib)).default;
-  await new Promise((resolve, reject) => {
-    less.render(
-      source,
-      {
-        filename: benchmarkFile,
-        paths: [path.dirname(benchmarkFile)],
-        math: 'always'
-      },
-      (err) => {
-        if (err) {
-          reject(err);
-          return;
-        }
-        resolve();
-      }
-    );
-  });
-} else {
-  const config = {
-    compile: {
-      mathMode: 'always',
-      searchPaths: [path.dirname(benchmarkFile)],
-      plugins: []
-    },
-    output: {},
-    language: {}
-  };
-  const compiler = new Compiler(config);
-  await compiler.renderToResult(
-    { source, filePath: benchmarkFile, language: 'less', extension: '.less' },
-    config
-  );
-}
+const compiler = new Compiler({
+  output: { collapseNesting: true },
+  compile: {
+    plugins: [lessPlugin(), lessCompatPlugin()]
+  }
+});
+await compiler.render(benchmarkFile);
 const elapsedMs = performance.now() - start;
 const serializeProfileCounters = globalThis.__JESS_SERIALIZE_PROFILE_COUNTERS__ ?? {};
 const directLookupProfileCounters = globalThis.__JESS_DIRECT_LOOKUP_PROFILE_COUNTERS__ ?? {};
@@ -263,12 +246,11 @@ const metricRows = [...stats.entries()]
 
 const result = {
   benchmarkFile,
-  compat: useCompat,
+  compat: true,
   elapsedMs: Number(elapsedMs.toFixed(2)),
   serializeStats: {
     duplicateDeclarationComparisonContainers: serializeProfileCounters.duplicateDeclarationComparisonContainers ?? 0,
     duplicateDeclarationPrerenderedDeclarations: serializeProfileCounters.duplicateDeclarationPrerenderedDeclarations ?? 0,
-    duplicateDeclarationCachedOutputReuses: serializeProfileCounters.duplicateDeclarationCachedOutputReuses ?? 0,
     emissionRenderNodeTextPreviewCalls: serializeProfileCounters.emissionRenderNodeTextPreviewCalls ?? 0,
     emissionRenderNodeTextRulesPreviewCalls: serializeProfileCounters.emissionRenderNodeTextRulesPreviewCalls ?? 0,
     emissionRenderNodeTextDeclarationFallbackCalls: serializeProfileCounters.emissionRenderNodeTextDeclarationFallbackCalls ?? 0,

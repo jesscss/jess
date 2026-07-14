@@ -906,8 +906,11 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       options.collapseNesting === true
       && (isNode(node, N.Ruleset) || Boolean(getHoistedParent(node, options)))
     );
-    const skippedDuplicateDeclarations = new Set<number>();
-    const seenDeclarationsByProp = new Map<string, Set<string>>();
+    // Most containers do not have repeated declaration properties. Keep the
+    // duplicate-output state absent until the post-expansion count proves it is
+    // needed; imports, loops, and mixin folds can introduce repeats later.
+    let skippedDuplicateDeclarations: Set<number> | undefined;
+    let seenDeclarationsByProp: Map<string, Set<string>> | undefined;
     // MERGE-ACROSS-MIXIN fold: set when a mixin-call expansion splices surface
     // children into `rulesToRender`. Gates the post-expansion merge re-plan so a
     // body with no expansion pays nothing (the pre-expansion plan stays valid).
@@ -953,15 +956,19 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       incrementSerializeProfileCounter('duplicateDeclarationComparisonContainers');
     }
     const declarationCountsByProp = new Map<string, number>();
+    let hasRepeatedDeclarationProperty = false;
     const recomputeDeclCounts = (): void => {
       declarationCountsByProp.clear();
+      hasRepeatedDeclarationProperty = false;
       for (let i = 0; i < rulesToRender.length; i++) {
         const node = rulesToRender[i]!.node;
         if (!isNode(node, N.Declaration) || isNode(node, N.VarDeclaration)) {
           continue;
         }
         const declProp = node.name.valueOf();
-        declarationCountsByProp.set(declProp, (declarationCountsByProp.get(declProp) ?? 0) + 1);
+        const count = (declarationCountsByProp.get(declProp) ?? 0) + 1;
+        declarationCountsByProp.set(declProp, count);
+        hasRepeatedDeclarationProperty ||= count > 1;
       }
     };
     recomputeDeclCounts();
@@ -1036,10 +1043,11 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       return `${declOut}${node.requiredSemi ? ';' : ''}`;
     };
     const recordDeclKey = (i: number, declProp: string, declKey: string): void => {
-      let seenValues = seenDeclarationsByProp.get(declProp);
+      const seenByProp = seenDeclarationsByProp ??= new Map<string, Set<string>>();
+      let seenValues = seenByProp.get(declProp);
       if (!seenValues) {
         seenValues = new Set<string>();
-        seenDeclarationsByProp.set(declProp, seenValues);
+        seenByProp.set(declProp, seenValues);
       }
       const node = rulesToRender[i]!.node;
       if (
@@ -1049,7 +1057,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
         && !originatesFromControl(node)
         && !keepsDuplicateGeneratedOutput(node)
       ) {
-        skippedDuplicateDeclarations.add(i);
+        (skippedDuplicateDeclarations ??= new Set<number>()).add(i);
       } else {
         seenValues.add(declKey);
       }
@@ -1356,6 +1364,12 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
     };
 
     const runDedupPass = (): MaybePromise<void> => {
+      // Count after every expansion splice. A unique final property sequence
+      // cannot call computeDeclKey or suppress an entry, so it needs no dedup
+      // maps, output previews, or reverse walk.
+      if (!hasRepeatedDeclarationProperty) {
+        return undefined;
+      }
       const stepFrom = (i: number): MaybePromise<void> => {
         for (let idx = i; idx >= 0; idx--) {
           const node = rulesToRender[idx]!.node;
@@ -1536,7 +1550,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
         if (inReferenceMode && !renderEnabled && !isContainer) {
           return;
         }
-        if (isNode(n, N.Declaration) && !isNode(n, N.VarDeclaration) && skippedDuplicateDeclarations.has(idx)) {
+        if (isNode(n, N.Declaration) && !isNode(n, N.VarDeclaration) && skippedDuplicateDeclarations?.has(idx)) {
           return;
         }
 
