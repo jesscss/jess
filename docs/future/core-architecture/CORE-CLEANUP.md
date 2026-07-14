@@ -212,6 +212,15 @@ sequential, not parallel, even when their descriptions look independent.
   parser story. Next work is a CPU/codegen attribution of the recognizer gap;
   do not claim parser-model equivalence or change the CST contract from this
   comparison alone.
+- **Reject the first-set pseudo-selector codegen guard.** The measured target
+  was 16,443 failed pseudo-selector parses behind
+  `not(extendAhead) + PseudoSelector`, but the final narrow Parseman POC did
+  not clear the three-phase gate: recognizer `12.291→12.248 ms` (-0.35%),
+  structural capture `28.642→28.785 ms` (+0.50%), and real Jess host
+  `38.132→38.767 ms` (+1.67%) over 12 warmups and 45 samples. Differential
+  parsing, Parseman build/typecheck, and all-less `106/106` passed, but the
+  implementation was reverted. Do not revive this guard without a solution
+  that improves the whole recognizer/capture/host boundary.
 - **Accept ordinary bitset disjoint scanning as an allocation cut.** The two
   extend mismatch callers invoke `isDisjoint()` frequently, and the canonical
   profile recorded 25,439 ordinary numeric-backing scans with zero fallback.
