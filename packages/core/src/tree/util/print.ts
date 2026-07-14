@@ -573,12 +573,10 @@ export class OutputWriter implements OutputWriter {
   private _posColumn?: number[];
   private _posSegments?: number[];
   private _posLength: number[] = [];
-  /** Diagnostic: remember the origin that last wrote a trailing newline */
-  private _lastNewlineOrigin: unknown = undefined;
   /** Store segments from the most recent capture for merging when content is added back */
-  private _capturedSegments: SourceSegment[] | null = null;
-  private _queuedSpacerText = '';
-  private _queuedSpacerShouldAdd: ((nextText: string) => boolean) | undefined;
+  declare private _capturedSegments?: SourceSegment[];
+  declare private _queuedSpacerText?: string;
+  declare private _queuedSpacerShouldAdd?: (nextText: string) => boolean;
   /** See `OutputWriter` interface: post-inline-import blank-line boundary flag. */
   lastEmitWasInlineSource = false;
 
@@ -632,9 +630,6 @@ export class OutputWriter implements OutputWriter {
     this._length += text.length;
     if (!this.tracksSources) {
       this.recordPosition(chunkIndex);
-      if (!originParam) {
-        this._capturedSegments = null;
-      }
       return;
     }
 
@@ -657,16 +652,11 @@ export class OutputWriter implements OutputWriter {
           origColumn: seg.origColumn
         });
       }
-      this._capturedSegments = null; // Clear after merging
+      this._capturedSegments = undefined; // Clear after merging
     }
 
     // Record a mapping segment if we have origin location info
     this.markSource(originParam);
-
-    // Track if the chunk ends with a newline and record its origin (for diagnostics)
-    if (text.endsWith('\n')) {
-      this._lastNewlineOrigin = originParam;
-    }
 
     // Fast path: no newlines
     let i = text.indexOf('\n');
@@ -674,8 +664,8 @@ export class OutputWriter implements OutputWriter {
       this._column += text.length;
       this.recordPosition(chunkIndex);
       // Clear captured segments if we added content without origin (normal add, not merging captured content)
-      if (!originParam) {
-        this._capturedSegments = null;
+      if (!originParam && this._capturedSegments) {
+        this._capturedSegments = undefined;
       }
       return;
     }
@@ -693,8 +683,8 @@ export class OutputWriter implements OutputWriter {
     this._column = text.length - (i + 1);
     this.recordPosition(chunkIndex);
     // Clear captured segments if we added content without origin
-    if (!originParam) {
-      this._capturedSegments = null;
+    if (!originParam && this._capturedSegments) {
+      this._capturedSegments = undefined;
     }
   }
 
@@ -769,7 +759,11 @@ export class OutputWriter implements OutputWriter {
         : [];
       this.restore(mark);
       if (preserveSegments) {
-        this._capturedSegments = segmentsCreated.length > 0 ? segmentsCreated : null;
+        if (segmentsCreated.length > 0) {
+          this._capturedSegments = segmentsCreated;
+        } else if (this._capturedSegments) {
+          this._capturedSegments = undefined;
+        }
       }
       return text;
     };
@@ -819,7 +813,11 @@ export class OutputWriter implements OutputWriter {
       : [];
     const replacement = replacer(this.getSince(mark));
     this.restore(mark);
-    this._capturedSegments = segmentsCreated.length > 0 ? segmentsCreated : null;
+    if (segmentsCreated.length > 0) {
+      this._capturedSegments = segmentsCreated;
+    } else if (this._capturedSegments) {
+      this._capturedSegments = undefined;
+    }
     this.add(replacement, origin);
   }
 
@@ -1017,8 +1015,12 @@ export class OutputWriter implements OutputWriter {
   }
 
   private clearQueuedSpacer(): void {
-    this._queuedSpacerText = '';
-    this._queuedSpacerShouldAdd = undefined;
+    if (this._queuedSpacerText !== undefined) {
+      this._queuedSpacerText = undefined;
+    }
+    if (this._queuedSpacerShouldAdd !== undefined) {
+      this._queuedSpacerShouldAdd = undefined;
+    }
   }
 
   /** Capture output from a function without committing to the main buffer */
@@ -1033,7 +1035,11 @@ export class OutputWriter implements OutputWriter {
       : [];
     this.restore(m);
     // Store captured segments for potential merging when content is added back
-    this._capturedSegments = segmentsCreated.length > 0 ? segmentsCreated : null;
+    if (segmentsCreated.length > 0) {
+      this._capturedSegments = segmentsCreated;
+    } else if (this._capturedSegments) {
+      this._capturedSegments = undefined;
+    }
     return s;
   }
 
@@ -1047,10 +1053,5 @@ export class OutputWriter implements OutputWriter {
 
   getSegments(): SourceSegment[] {
     return this._segments ?? [];
-  }
-
-  /** Diagnostic accessor */
-  getLastNewlineOrigin(): unknown {
-    return this._lastNewlineOrigin;
   }
 }

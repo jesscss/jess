@@ -25,6 +25,10 @@ function writerField(writer: OutputWriter, key: string): unknown {
   return (writer as unknown as Record<string, unknown>)[key];
 }
 
+function writerOwnsField(writer: OutputWriter, key: string): boolean {
+  return Object.hasOwn(writer, key);
+}
+
 function positionArraysFor(writer: OutputWriter): WriterPositionArrays {
   const oldPositions: unknown = writerField(writer, '_positions');
   if (oldPositions !== undefined) {
@@ -315,7 +319,7 @@ describe('OutputWriter', () => {
       w.add('two');
 
       expect(w.toString()).toBe('one two');
-      expect(writerField(w, '_queuedSpacerText')).toBe('');
+      expect(writerField(w, '_queuedSpacerText')).toBeUndefined();
       expect(writerField(w, '_queuedSpacerShouldAdd')).toBeUndefined();
     });
 
@@ -352,7 +356,7 @@ describe('OutputWriter', () => {
 
       expect(w.toString()).toBe('onetwo');
       expect(writerField(w, '_queuedSpacer')).toBeUndefined();
-      expect(writerField(w, '_queuedSpacerText')).toBe('');
+      expect(writerField(w, '_queuedSpacerText')).toBeUndefined();
       expect(writerField(w, '_queuedSpacerShouldAdd')).toBeUndefined();
     });
 
@@ -469,6 +473,20 @@ describe('OutputWriter', () => {
 
       expect(w.getSegments()).toEqual([]);
       expect(writerField(w, '_posLength')).toEqual([5]);
+    });
+
+    it('defers transient capture and spacer state until it is needed', () => {
+      const w = new OutputWriter(false);
+
+      expect(writerOwnsField(w, '_capturedSegments')).toBe(false);
+      expect(writerOwnsField(w, '_queuedSpacerText')).toBe(false);
+      expect(writerOwnsField(w, '_queuedSpacerShouldAdd')).toBe(false);
+
+      w.add('plain output');
+
+      expect(writerOwnsField(w, '_capturedSegments')).toBe(false);
+      expect(writerOwnsField(w, '_queuedSpacerText')).toBe(false);
+      expect(writerOwnsField(w, '_queuedSpacerShouldAdd')).toBe(false);
     });
 
     it('tracks positions for each chunk', () => {
