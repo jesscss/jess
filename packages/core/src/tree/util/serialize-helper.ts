@@ -1568,7 +1568,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
           // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
           const childOutResult = serializeRulesContainerInternal(n as AtRule | Ruleset, options, false);
           const finishChild = (childOut: string): void => {
-            if (!childOut && !hasPrintableTrivia(n, options)) {
+            if (!childOut && !w.hasContentSince(childPositionBaseline) && !hasPrintableTrivia(n, options)) {
               w.restore(childPositionBaseline);
               restoreArrayState(lastRenderedFrames, childFrameSnapshot);
               restoreArrayState(frameHeaders, childHeaderSnapshot);
