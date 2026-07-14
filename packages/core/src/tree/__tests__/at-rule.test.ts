@@ -160,6 +160,32 @@ describe('AtRule', () => {
     expect(node.valueOf()).toBe('@media screen');
   });
 
+  it('lazily materializes the at-rule identity cache', () => {
+    const node = atrule({
+      name: '@media',
+      prelude: 'screen',
+      rules: Array<Node>(0)
+    });
+
+    expect('_valueOf' in node).toBe(false);
+    expect(node.valueOf()).toBe('@media screen');
+    expect('_valueOf' in node).toBe(true);
+    expect(node.valueOf()).toBe('@media screen');
+  });
+
+  it('does not recreate an uncached identity slot during interpolated-name preparation', async () => {
+    const node = atrule({
+      name: interpolated({ source: '@media', replacements: Array<never>(0) }),
+      prelude: 'screen',
+      rules: Array<Node>(0)
+    });
+
+    expect('_valueOf' in node).toBe(false);
+    const prepared = await node.prepareRegistration(context);
+    expect('_valueOf' in prepared).toBe(false);
+    expect(prepared.valueOf()).toBe('@media screen');
+  });
+
   it('includes structured preludes in raw-name at-rule identity', () => {
     const grid = new AtRule({
       name: '@supports',

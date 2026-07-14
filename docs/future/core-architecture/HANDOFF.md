@@ -154,6 +154,19 @@ Other active docs in this dir:
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: Q-33 LAZY AT-RULE IDENTITY CACHE — the eager `_valueOf` class slot is now declaration-only, so an uncached `AtRule` instance keeps the lean prototype shape while `valueOf()` still memoizes the same identity string.
+- Architecture surface: `packages/core/src/tree/at-rule.ts` changes only the `_valueOf` declaration and three invalidation sites. Cache clearing is conditional, so invalidation does not materialize an own slot on an instance that has never used `valueOf()`.
+- Separation/duplication: this is a bounded refinement of the existing AtRule field audit, not a new at-rule representation, identity algorithm, or broader field split. Structured preludes and `Node.compare()` continue through the existing identity path.
+- Cumulative node weight: uncached AtRule instances no longer carry the eager identity slot; cached instances retain the same memoized value. No replacement state, side channel, or wrapper was added.
+- New traversal: none. The diff changes one field declaration and conditional cache invalidation; evaluation, rendering, comparison, and structured-prelude walks are unchanged.
+- New node/materialization: none. The cache is only materialized by the existing `valueOf()` path; no output node or temporary identity object is introduced.
+- Render path: focused identity, structured-prelude, mutation, and interpolated-name preparation tests preserve output and registration behavior; full baseline and spine ratchet remain green.
+- Helper/API surface: no export, method, node-class, or public-type changes. `node.type` remains the prototype string discriminant and is unrelated to this pass.
+- Metadata mutations: no source, parent, placement, span, or provenance writes were added.
+- Review-flagged diff tokens: [field] the removed eager slot is the intended shape cut; [cache] memoization and invalidation semantics are retained; [negative guard] an uncached instance remains uncached until `valueOf()` is called.
+- Evidence: focused AtRule tests passed `87/87`; full baseline passed core `3310/15/2todo`, all-less `106/106`, compatibility `62/62`, and frontier/export/metadata checks; `spine-production-ratchet` passed `136/136`; clean core and Jess builds, aggressive review, and `git diff --check` passed. Same-directory clean-build `benchmark.less` A/B used 36 samples per side: control round median `226.27 ms`, candidate `222.65 ms`; the candidate was unstable and trimmed medians were `227.97 ms` versus `228.91 ms`, so no speed claim.
+- Verdict: accepted and closed as a shape/allocation-only AtRule refinement. The next typed-value lane is Q-30: after Q-28D/E/F ownership resolves or explicitly releases, refresh the D-EVAL owner from current `dev`, then start with Dimension/Num, followed by Color, then keyword/bool unification.
+
 - Latest pass: Q-28B SCALAR LESS VALUE LEAVES — the Less variable-declaration producer now leaves one inert static identifier as a raw declaration string; semantic/calculated values remain nodes.
 - Architecture surface: `packages/less-parser/src/builders.ts` changes only `_buildVarDeclaration` and `_assembleLessValue`; the final scalar-to-`Keyword` wrapper is removed, and `_assembleLessValue` returns a string only for a single string component. Custom declarations, grammar, SCSS composition, and core consumers are untouched.
 - Separation/duplication: this is the bounded scalar Less variable producer slice, not a global `_lessKeyword` change and not Q-28C's custom-property fallback. It reuses the existing `DeclarationValue` string contract and lazy coercion boundary; no parallel serializer or resolver was added.
