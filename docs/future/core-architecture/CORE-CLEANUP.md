@@ -104,13 +104,13 @@ action is review/rebase-or-merge/test, not fresh implementation.
 
 | ID | Existing lane | Worktrees / branches to inspect first |
 |---|---|---|
-| WT-1 | Walk and render-perf batch | `jess-perf-pass1` / `work/perf-pass1-gate-walks`, `jess-perf-walk-degen` / `perf/walk-degen`, `jess-perf-batch` / `work/perf-batch-integration` |
-| WT-2 | Loop/body folding | `jess-each-fold` / `work/each-loop-fold`, `jess-bootstrap-forfold` / `work/bootstrap-forfold` |
+| WT-1 | **PARTIAL — batch and de-generatorify tips are ancestors of current `dev`; perf-pass1 remains owner-bound** | `jess-perf-batch` / `work/perf-batch-integration` (`52394e053`, current); `jess-perf-walk-degen` / `perf/walk-degen` (`c1b0174e4`, current); `jess-perf-pass1` / `work/perf-pass1-gate-walks` (`dcd99eb9f`, diverged) |
+| WT-2 | **CLOSED on current `dev` ancestry** — loop/body folding work is already integrated; do not replay it | `jess-each-fold` / `work/each-loop-fold` (`b7ef7e6f0`); `jess-bootstrap-forfold` / `work/bootstrap-forfold` (`c300b4387`) |
 | WT-3 | Clone/source-span allocation | `agent-a2ef7321592f6c336` / `lane-a-value-alloc`, `jess-lane-a2` / `lane-a2-span-copy` |
-| WT-4 | Namespace-path and guarded lookup | `jess-mg-nspath` / `work/mg-ns-path-call`, `jess-mg-guardedns` / `work/mg-guarded-ns`, `jess-gate12` / `work/gate12-namespace-fallback` |
+| WT-4 | **PARTIAL — gate-12 namespace fallback is an ancestor; guarded/leaky namespace tips remain owner-bound** | `jess-gate12` / `work/gate12-namespace-fallback` (`0b3ccd259`, current); `jess-mg-nspath` / `work/mg-ns-path-call` (`bac41d242`, diverged); `jess-mg-guardedns` / `work/mg-guarded-ns` (`6edfa7dca`, diverged) |
 | WT-5 | Reference/import/extend spine work | `jess-ref-sharedbody`, `jess-refext-mech2`, `jess-refflake`, `jess-refimport-wire`, `jess-extend-serialized`, `jess-extend-residual`, `jess-import-*`, and `jess-leaky-wall`; inspect each branch rather than assuming the family is one patch |
-| WT-6 | Callable argument/miss allocation | `agent-a5b9de0704be21715` / `lane-b-argalloc`, `jess-s2-callable-miss-sentinel*` |
-| WT-7 | Dead-symbol and parser/provenance follow-ups | `jess-deadsym` / `work/dead-symbol-cleanup`, `jess-parseman-026` / `work/parser-error-hardening` |
+| WT-6 | **PARTIAL — callable-miss sentinel is an ancestor; argument-allocation lane remains owner-bound** | `jess-s2-callable-miss-sentinel*` (`a665f20dd`, current); `agent-a5b9de0704be21715` / `lane-b-argalloc` |
+| WT-7 | **PARTIAL — dead-symbol tip landed; parser-hardening lane remains owner-bound** | `jess-deadsym` / `work/dead-symbol-cleanup` (`4abb2c50a`, integrated as `f7b3760bf`); `jess-parseman-026` / `work/parser-error-hardening` (`e7f448467`, diverged) |
 
 ### Queue rows
 
@@ -144,6 +144,7 @@ sequential, not parallel, even when their descriptions look independent.
 | Q-22 | **CLOSED with Q-14** — the parse/trivia implementation and its focused tests are already included in current `dev`; the remaining parser worktrees are historical/ancestor or docs-only state, not an in-flight implementation. No second parser lane is justified. | css/less parser packages and parser fixtures | current-dev ancestry plus parser suites; no speed claim |
 | Q-23 | **CLOSED by current-state audit** — `RulesLookupState` already centralizes the cold maps, owns the full callable index, and invalidates it with the callable cache. The remaining per-name maps/epochs serve distinct lookup consumers; the uncommitted `jess-perf-lookup` worktree is a stale mixed diff (including removal of the comma-selector and charset fixes), not a safe Q-23 implementation. No bounded packing/reuse win is supported. | `rules.ts`, `reference.ts` | live state audit, lookup/namespace call-site inspection; no speed claim |
 | Q-24 | **CLOSED by current frontier/code audit** — render-buffer descriptor probing and legacy helper sites are gone; remaining `OutputWriter` constructions are scoped to reentrant, source-map, or temporary serialization seams. Reusing them would require threading/snapshot semantics, so no bounded buffer-shape cut is supported here. | render-buffer and output helpers | render-buffer frontier, current construction-site audit, baseline gates |
+| Q-25 | **CLOSED by existing WT-7 lane** — `TreeVisitor` was an unused auto-walk export with no production subclass/import; delete the class and its test, retain generic `Visitor`/`Node.accept`, and keep eval/visitor machinery that remains load-bearing. Core visitor `4/4`, Less-compat visitor `8/8`, core 3307/15/2todo, spine 136/136, all-less 106/106, and matched benchmark recorded with no speed claim. | `packages/core/src/visitor/index.ts`, visitor test, visitor integration comments | repository-wide consumer search, focused visitor tests, full repo gate, benchmark before/after |
 
 The queue is considered drained only when every row is landed, explicitly closed
 with evidence, or transferred to an owner-judgment/design lane. A row that merely
@@ -153,10 +154,12 @@ has a checkbox or a clean abandoned worktree is not complete.
 
 The candidate pass inspected the exact worktree status, tip, and changed paths before
 making the closures above. The result is deliberately asymmetric: Q-07, Q-14, Q-22,
-and Q-23 closed on current-code/ancestry evidence; Q-16 transferred to owner
-judgment; Q-10/11/12/15 remain open but are fenced to existing lanes. No new worker
-was assigned to any of those rows, and no partial worktree was reset, cleaned, or
-replayed.
+Q-23, and Q-25 closed on current-code/ancestry or landed-lane evidence; Q-16
+transferred to owner judgment; Q-10/11/12/15 remain open but are fenced to existing
+lanes. WT-1/4/6 are explicitly split between ancestor tips and diverged owners; WT-2
+is fully ancestral; WT-7's dead-symbol half is integrated while parser hardening remains
+owner-bound. No new worker was assigned to any overlapping row, and no partial worktree
+was reset, cleaned, or replayed.
 
 The relevant partial lanes are all clean or explicitly user-owned except
 `jess-perf-lookup`, which has an uncommitted mixed diff and is therefore left untouched.
