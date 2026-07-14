@@ -272,6 +272,14 @@ sequential, not parallel, even when their descriptions look independent.
   `28.446→36.819 ms` (+29.43%), and host `26.297→33.984 ms` (+29.23%). It was
   deleted. Do not bypass generated node frames; pursue the independent
   collector/raw-child representation proof instead.
+- **Reject the raw-child collector alias proof.** On the exact real-LessGrammar
+  phase harness (12 warmups, 45 samples), the POC-off/candidate medians were
+  recognizer `12.052→12.676 ms` (+5.2%), structural capture
+  `28.608→30.247 ms` (+5.7%), and host construction `40.524→43.491 ms`
+  (+7.3%). It did not clear any phase, so the Parseman collector worktree,
+  temporary Jess phase harness, and standalone profiling script were deleted
+  without a commit. Do not reopen raw-child aliasing; finish the source-level
+  recognizer control-flow attribution first.
 - **Reject the first-set pseudo-selector codegen guard.** The measured target
   was 16,443 failed pseudo-selector parses behind
   `not(extendAhead) + PseudoSelector`, but the final narrow Parseman POC did
