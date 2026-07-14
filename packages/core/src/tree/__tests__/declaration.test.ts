@@ -1,5 +1,6 @@
+import { describe, expect, it, vi } from 'vitest';
 import { setSourceSpan, sourceSpanOf } from '../util/provenance.js';
-import { decl, spaced, coll, color, rules, any, ref, atrule, ruleset, el, forNode, list, List, Sequence, VarDeclaration, Ruleset, Declaration, op, num, dimension, AssignmentType, vardecl, interpolated, call, JsFunction, customdecl, Node, Any, mixin } from '../index.js';
+import { decl, spaced, coll, color, rules, any, ref, atrule, ruleset, el, forNode, list, List, Sequence, VarDeclaration, Rules, Ruleset, Declaration, op, num, dimension, AssignmentType, vardecl, interpolated, call, JsFunction, customdecl, Node, Any, mixin, F_VISIBLE } from '../index.js';
 import { Context } from '../../context.js';
 import { INTERPOLATION_PLACEHOLDER, Interpolated } from '../interpolated.js';
 import type { TriviaMap } from '../../types/index.js';
@@ -1439,6 +1440,40 @@ describe('Declaration', () => {
       expect(srcValueCopies).toBe(0);
     } finally {
       Node.prototype.cloneForPlacement = originalCopy;
+    }
+  });
+
+  it('admits only containers with normalized property merges', () => {
+    const noMerge = rules([
+      decl({ name: 'color', value: any('red') }),
+      rules([
+        decl({ name: 'margin', value: any('0') })
+      ])
+    ]);
+    const noMergeCoalescer = vi.spyOn(Object.getPrototypeOf(noMerge), '_coalesceMergedDeclarations');
+    Object.getPrototypeOf(noMerge)['_finishSourceOrderEvaluation'].call(noMerge, noMerge, false);
+    expect(noMergeCoalescer).not.toHaveBeenCalled();
+    noMergeCoalescer.mockRestore();
+
+    const cases: Array<[AssignmentType, string, (value: string) => Node]> = [
+      [AssignmentType.Add, 'List', value => list([new Nil(), any(value)])],
+      [AssignmentType.MergeList, 'List', value => list([new Nil(), any(value)])],
+      [AssignmentType.MergeSequence, 'Sequence', value => spaced([new Nil(), any(value)])]
+    ];
+    for (const [assign, expectedValueType, makeValue] of cases) {
+      const first = decl({ name: 'src', value: makeValue('one') }, { normalizedFromAssign: assign });
+      const second = decl({ name: 'src', value: makeValue('two') }, { normalizedFromAssign: assign });
+      const merged = rules([first, second]);
+      first.addFlag(F_VISIBLE);
+      second.addFlag(F_VISIBLE);
+
+      const coalescer = vi.spyOn(Object.getPrototypeOf(merged), '_coalesceMergedDeclarations');
+      Object.getPrototypeOf(merged)['_finishSourceOrderEvaluation'].call(merged, merged, false);
+
+      expect(coalescer).toHaveBeenCalledTimes(1);
+      expect(merged.rules[0]).toHaveProperty('visible', false);
+      expect(merged.rules[1]).toHaveProperty('value.type', expectedValueType);
+      coalescer.mockRestore();
     }
   });
 

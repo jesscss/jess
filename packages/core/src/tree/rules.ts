@@ -591,6 +591,31 @@ function rulesMayContainDeclarationSurface(rules: Rules): boolean {
   return false;
 }
 
+function hasMergedDeclaration(node: Node): boolean {
+  if (isNode(node, N.Declaration)) {
+    const assign = node.options.normalizedFromAssign;
+    return assign === '+:' || assign === '&,:' || assign === '&_:';
+  }
+  if (!isNode(node, N.Rules) || isNode(node, N.Ruleset | N.AtRule)) {
+    return false;
+  }
+  for (let i = 0; i < node.rules.length; i++) {
+    if (hasMergedDeclaration(node.rules[i]!)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function hasMergeOutputSurface(rules: Rules): boolean {
+  for (let i = 0; i < rules.rules.length; i++) {
+    if (hasMergedDeclaration(rules.rules[i]!)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function rulesMayContainVarDeclarationSurface(rules: Rules): boolean {
   const value = rules.rules;
   for (let i = 0; i < value.length; i++) {
@@ -7493,6 +7518,17 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     }
   }
 
+  private _finishSourceOrderEvaluation(rules: Rules, rulesToHoist: boolean): { rules: Rules; rulesToHoist: boolean } {
+    this._normalizeCallDeclarationRulesOrder(rules);
+    if (hasMergeOutputSurface(rules)) {
+      this._coalesceMergedDeclarations(rules);
+    }
+    return {
+      rules,
+      rulesToHoist
+    };
+  }
+
   /**
    * After registration prep: ensure root on extend stack, then evaluate
    * children in source order.
@@ -7512,15 +7548,6 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     }
     const { output, rulesToHoist } = evaluated;
     return this._finishSourceOrderEvaluation(output, rulesToHoist);
-  }
-
-  private _finishSourceOrderEvaluation(rules: Rules, rulesToHoist: boolean): { rules: Rules; rulesToHoist: boolean } {
-    this._normalizeCallDeclarationRulesOrder(rules);
-    this._coalesceMergedDeclarations(rules);
-    return {
-      rules,
-      rulesToHoist
-    };
   }
 
   private _checkReadonlyImportShadows(rules: Rules): void {
