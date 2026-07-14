@@ -27,6 +27,40 @@ writeFileSync(p, src);
 // Hold the live tree in scope so the snapshot captures it.
 const { tree, context } = await new Compiler().compile(p, { output: { collapseNesting: false } });
 
+// Constructor names are minified in the production bundle. Keep a live-tree
+// census keyed by Jess's stable node discriminant so this script remains useful
+// after bundling; the constructor-labeled heap table below is historical when
+// run against a minified bundle.
+const liveByType = new Map();
+const liveSeen = new Set();
+function censusLiveNode(value) {
+  if (!value || typeof value !== 'object' || liveSeen.has(value)) {
+    return;
+  }
+  liveSeen.add(value);
+  if (value._tag === 'node' && typeof value.type === 'string') {
+    const row = liveByType.get(value.type) ?? { count: 0, ownKeys: 0 };
+    row.count++;
+    row.ownKeys += Object.keys(value).length;
+    liveByType.set(value.type, row);
+  }
+  for (const key of Object.keys(value)) {
+    const child = value[key];
+    if (Array.isArray(child)) {
+      for (const item of child) censusLiveNode(item);
+    } else {
+      censusLiveNode(child);
+    }
+  }
+}
+censusLiveNode(tree);
+console.log('Live node shape census (stable type / own enumerable keys):');
+console.log('| type | count | avg own keys |');
+console.log('|---|---:|---:|');
+for (const [type, row] of [...liveByType.entries()].sort((a, b) => b[1].count - a[1].count)) {
+  console.log(`| ${type} | ${row.count} | ${(row.ownKeys / row.count).toFixed(1)} |`);
+}
+
 if (global.gc) {
   global.gc();
   global.gc();
@@ -84,6 +118,7 @@ const rows = [...byClass.entries()]
 
 const fmt = b => b >= 1e6 ? (b / 1e6).toFixed(2) + 'MB' : b >= 1e3 ? (b / 1e3).toFixed(1) + 'KB' : b + 'B';
 let totNodes = 0, totBytes = 0;
+console.log('Historical constructor-labeled heap table:');
 console.log('| class | count | avg bytes | total |');
 console.log('|---|--:|--:|--:|');
 for (const r of rows) {
