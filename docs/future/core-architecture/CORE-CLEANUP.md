@@ -82,6 +82,73 @@ integration batch; S3 and S5 were closed by audit with no eligible low-risk row.
 The next candidate must therefore be a new scale or a materially different
 semantic/performance lane, not a stale reopening of these rows.
 
+## CURRENT SCALE — broad cleanup queue (2026-07-13)
+
+The small allocation/slimming harvest above is complete. This is the next working
+scale: fifteen-plus meaningful rows, not fifteen line edits. Each row must have one
+owner, a bounded write set, a focused proof, and a clear reason to land. A row may
+be closed as stale or not-worth-doing when the evidence says so; that is a useful
+result, but it is not permission to silently skip the queue.
+
+Before claiming a row, run `git worktree list --porcelain` and inspect the candidate
+branch's status, tip, and changed paths. A clean worktree can still contain an
+unmerged implementation. Existing work is finished, triaged, or explicitly
+retired; it is never reimplemented in a new worktree. New workers branch from the
+current `dev` tip and do not share files with another active worker.
+
+### Existing lanes — triage or finish; do not duplicate
+
+These are live or unmerged lanes found during the 2026-07-13 inventory. Their
+presence does not mean they are correct or ready to merge; it means the first
+action is review/rebase-or-merge/test, not fresh implementation.
+
+| ID | Existing lane | Worktrees / branches to inspect first |
+|---|---|---|
+| WT-1 | Walk and render-perf batch | `jess-perf-pass1` / `work/perf-pass1-gate-walks`, `jess-perf-walk-degen` / `perf/walk-degen`, `jess-perf-batch` / `work/perf-batch-integration` |
+| WT-2 | Loop/body folding | `jess-each-fold` / `work/each-loop-fold`, `jess-bootstrap-forfold` / `work/bootstrap-forfold` |
+| WT-3 | Clone/source-span allocation | `agent-a2ef7321592f6c336` / `lane-a-value-alloc`, `jess-lane-a2` / `lane-a2-span-copy` |
+| WT-4 | Namespace-path and guarded lookup | `jess-mg-nspath` / `work/mg-ns-path-call`, `jess-mg-guardedns` / `work/mg-guarded-ns`, `jess-gate12` / `work/gate12-namespace-fallback` |
+| WT-5 | Reference/import/extend spine work | `jess-ref-sharedbody`, `jess-refext-mech2`, `jess-refflake`, `jess-refimport-wire`, `jess-extend-serialized`, `jess-extend-residual`, `jess-import-*`, and `jess-leaky-wall`; inspect each branch rather than assuming the family is one patch |
+| WT-6 | Callable argument/miss allocation | `agent-a5b9de0704be21715` / `lane-b-argalloc`, `jess-s2-callable-miss-sentinel*` |
+| WT-7 | Dead-symbol and parser/provenance follow-ups | `jess-deadsym` / `work/dead-symbol-cleanup`, `jess-parseman-026` / `work/parser-error-hardening` |
+
+### Queue rows
+
+`WT-*` rows are the ownership guard. The following rows are the work to audit and
+then either claim or close, in roughly this order. Rows with shared hot files are
+sequential, not parallel, even when their descriptions look independent.
+
+| ID | Bounded question / intended result | Primary write set | Proof required |
+|---|---|---|---|
+| Q-01 | **CLOSED by live code** — `lookupVersion` is already lazy through `_lookup`; verify callers before reopening. | `packages/core/src/tree/rules.ts` | current-code inspection and lookup tests |
+| Q-02 | Can `_scopeFrame` be owned by evaluated surfaces or a lean subtype without penalizing the hot lookup path? | `rules.ts`, scope-frame helpers | reference/mixin tests plus lookup/render A/B |
+| Q-03 | **CLOSED by live code** — `varsByName` is already behind `_lookup`; verify docs and do not duplicate it. | `packages/core/src/tree/rules.ts` | current-code inspection and variable/scope tests |
+| Q-04 | **CLOSED before this scale** — `PseudoSelector` placement/omit-wrapper state is already packed in `pseudoFlags` (`b8faeca2f`). | `selector-pseudo.ts` | selector fixtures and shape history |
+| Q-05 | Audit `Ruleset` optional guard/selector metadata for a subtype or lazy record; land only if it reduces total work. | `ruleset.ts` | guarded/extend corpus and shape/A-B evidence |
+| Q-06 | Audit the `AtRule` optional-field matrix and remove only fields that are derivable or genuinely cold. | `at-rule.ts` | at-rule/layer/hoist fixtures and shape census |
+| Q-07 | Finish the selector-family field matrix after the dead selector marker removal; target Ampersand/Compound/Pseudo rare slots. | selector-family files | selector corpus and own-key/heap evidence |
+| Q-08 | **CLOSED before this scale** — render-path descriptor probing was already replaced by direct own/inherited checks (`a652e89c7`). | `tree/util/render-buffer.ts` | render-buffer history and current tests |
+| Q-09 | **CLOSED by audit** — no remaining function-registration `defineProperties`; `name` needs its descriptor and record `Object.assign` sites are data merges, not shape setup. | `define-function.ts` | current-code inspection and function suite |
+| Q-10 | Re-audit `Ruleset` source-direct eligibility and bare-ampersand header handling after WT-1/WT-2/hoist work. | `ruleset.ts`, serialize helpers | same-worktree render A/B and full Less corpus |
+| Q-11 | **Existing-lane check first** — resolve the `AtRule.frames` ancestor-chain migration only if `jess-df-hoisted` does not already own it. | `at-rule.ts`, `serialize-helper.ts`, emit walk | deep nesting byte identity and spine ratchet |
+| Q-12 | Evaluate a construction-time index for static layer-name registration; interpolated names must remain on the correct dynamic path. | layer/extend registration files | layer-extend fixtures, all-less, A/B |
+| Q-13 | Characterize the remaining render-buffer `add`/array-growth cost and make one bounded allocation cut if it improves total render work. | `tree/util/render-buffer.ts` | allocation/heap evidence and render A/B |
+| Q-14 | Reconcile the provenance/span documentation and parser stamps with the live inline representation; remove stale side-table guidance, not runtime behavior. | `CORE-CLEANUP.md`, `SLIM_NODES_AUDIT.md`, parser docs/code only if needed | clean parser build, source-span fixtures, docs/code agreement |
+| Q-15 | Audit the remaining reference/copy helper tail for redundant materialization or dynamic-shape construction after WT-5; no broad rewrite. | `reference.ts`, cloning helpers | reference suite, heap/allocation evidence |
+| Q-16 | Audit `F_VISIBLE` stage 1b/2b as one bounded architectural question; either produce a scoped design or record why it needs owner judgment. | `rules.ts`, render/visibility helpers | no code until semantic contract is explicit |
+| Q-17 | Remove only confirmed dead duplicate collapse/source helpers after WT-7 and the extend/reference branches are reconciled. | `cloning.ts`, related tests | zero callers, typecheck, aggressive review |
+| Q-18 | Run a fresh node-shape census and update the ranked slim-node table so future rows use current counts rather than stale snapshots. | `packages/core/perf/SLIM_NODES_AUDIT.md`, audit scripts/docs | reproducible census and current `dev` reference |
+| Q-19 | Audit `Declaration`'s common shape and merge/reference metadata for a real field or allocation cut; do not split a hot common node for cosmetic purity. | `declaration.ts`, cloning/reference helpers | declaration/merge corpus, shape and heap evidence |
+| Q-20 | Audit remaining `Node` base slots (`_options`, `sourceNode`, `index`, parent/context) for derivable or placement-only state. | `node-base.ts`, placement helpers | whole-core shape census, clone/inherit tests, A/B if runtime path changes |
+| Q-21 | Characterize whether `Color`'s mutually exclusive channel caches justify a lazy record/subtype; close it if the indirection costs more than the slots. | `color.ts` | color/function corpus, heap census, same-worktree A/B |
+| Q-22 | Measure parser span/trivia construction on a parse-once/render-many workload and isolate any remaining per-node allocation cut. | css/less parser packages and parser fixtures | clean rebuild, parser A/B, byte-identical AST/render output |
+| Q-23 | Audit `RulesLookupState`'s invalidation epochs and maps for one existing-state packing or epoch reuse; no new side table. | `rules.ts`, `reference.ts` | lookup/namespace suite, allocation evidence, A/B |
+| Q-24 | Audit render/output adapter state for varying-shape objects or duplicate writer buffers outside the already-closed descriptor check. | render-buffer and output helpers | render corpus, heap/allocation evidence, aggressive review |
+
+The queue is considered drained only when every row is landed, explicitly closed
+with evidence, or transferred to an owner-judgment/design lane. A row that merely
+has a checkbox or a clean abandoned worktree is not complete.
+
 ## OPEN-ITEM RECONCILIATION (post-drive — read this before trusting any checkbox below)
 
 The tracker was run as a **failure-count-driven drive-to-green**, and its two deferral rules —
