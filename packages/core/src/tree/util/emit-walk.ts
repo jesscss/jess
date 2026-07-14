@@ -114,7 +114,7 @@ export function isSpineFoldableCssImportStatement(node: Node): boolean {
   if (prelude === undefined) {
     return true;
   }
-  return prelude instanceof Node && prelude.hasFlag(F_STATIC);
+  return typeof prelude === 'string' || (prelude instanceof Node && prelude.hasFlag(F_STATIC));
 }
 
 /**
@@ -124,8 +124,8 @@ export function isSpineFoldableCssImportStatement(node: Node): boolean {
  * body); its bytes serialize verbatim at their source position (no hoist, unlike
  * `@import`, which reorders to the top-of-doc emitter). No scope effect, no eval
  * side effect — a pure token statement, admitted only when its NAME is a static
- * string and its prelude is absent or a static Node (an interpolated prelude needs
- * frame eval and is deferred). `@import` is EXCLUDED here (it hoists via
+ * string and its prelude is absent, a static string, or a static Node (an
+ * interpolated prelude needs frame eval and is deferred). `@import` is EXCLUDED here (it hoists via
  * `isSpineFoldableCssImportStatement` + `queueTopImport`); `@charset` never reaches
  * this shape (it parses to a role-`charset` `Any`, gated by `isSpineEligibleRoot`).
  */
@@ -143,7 +143,7 @@ export function isSpineFoldableStatementAtRule(node: Node): boolean {
   if (prelude === undefined) {
     return true;
   }
-  return prelude instanceof Node && prelude.hasFlag(F_STATIC);
+  return typeof prelude === 'string' || (prelude instanceof Node && prelude.hasFlag(F_STATIC));
 }
 
 /**

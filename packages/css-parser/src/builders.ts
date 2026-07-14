@@ -1280,8 +1280,19 @@ export class CssParser {
       return new Any(text, { role: 'charset' }, loc);
     }
     const preludeText = ls.slice(1).filter(l => l.value !== ';').map(l => l.value).join('').trim();
+    const semicolon = ls[ls.length - 1];
+    const preludeSource = ls[0] && semicolon?.value === ';'
+      ? this._source.slice(ls[0].span.end, semicolon.span.start)
+      : '';
     const node = new AtRuleStatement(
-      { name, prelude: preludeText ? new Any(preludeText, {}, loc) : undefined },
+      {
+        name,
+        prelude: preludeText && !preludeSource.includes('/*')
+          ? preludeText
+          : preludeText
+            ? new Any(preludeText, {}, loc)
+            : undefined
+      },
       undefined, loc
     );
     this._setNameFieldSpan(node as unknown as JessNode, ls[0]?.span);
@@ -1310,8 +1321,15 @@ export class CssParser {
     const braceIdx = ls.findIndex(l => l.value === '{');
     const preludeText = (braceIdx > 1 ? ls.slice(1, braceIdx) : [])
       .map(l => l.value).join('').trim();
-    const prelude = preludeText ? new Any(preludeText, {}, loc) : undefined;
-    return new AtRule({ name, prelude: prelude as unknown as Node, rules: [] }, undefined, loc) as unknown as JessNode;
+    const preludeSource = ls[0] && braceIdx > 0
+      ? this._source.slice(ls[0].span.end, ls[braceIdx]!.span.start)
+      : '';
+    const prelude = preludeText && !preludeSource.includes('/*')
+      ? preludeText
+      : preludeText
+        ? new Any(preludeText, {}, loc)
+        : undefined;
+    return new AtRule({ name, prelude, rules: [] }, undefined, loc) as unknown as JessNode;
   }
 
   /**

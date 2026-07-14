@@ -1,5 +1,5 @@
 import { parseCssFn } from '../src/functional-parser.js';
-import { N, isNode, serializeTypes, type Trivia, sourceSpanOf } from '@jesscss/core';
+import { Any, AtRuleStatement, N, isNode, serializeTypes, type Trivia, sourceSpanOf } from '@jesscss/core';
 
 const cssParser = { parse: (input: string) => parseCssFn(input) };
 
@@ -33,9 +33,51 @@ function selectorMemberValueOf(item: unknown): string {
 describe('serializeTypes coverage', () => {
   test('charset', () => {
     const { tree } = cssParser.parse('@charset "UTF-8";');
+    expect(tree.rules[0]).toBeInstanceOf(Any);
     expect(serializeTypes(tree)).toContainString(`
       (Any [role=charset] '@charset "UTF-8";')
     `);
+  });
+
+  test('static statement and unknown-block at-rule preludes are strings', () => {
+    const statementSource = '@layer theme;';
+    const statementResult = cssParser.parse(statementSource);
+    const statement = statementResult.tree.rules[0];
+    expect(statement).toBeInstanceOf(AtRuleStatement);
+    if (!(statement instanceof AtRuleStatement)) {
+      throw new Error('Expected a generic statement at-rule');
+    }
+    expect(statement.prelude).toBe('theme');
+    expect(statementResult.tree.toString({ trivia: statementResult.trivia })).toBe('@layer theme;\n');
+
+    const blockSource = '@vendor feature {}';
+    const blockResult = cssParser.parse(blockSource);
+    const block = blockResult.tree.rules[0];
+    expect(isNode(block, N.AtRule)).toBe(true);
+    if (!isNode(block, N.AtRule)) {
+      throw new Error('Expected an opaque block at-rule');
+    }
+    expect(block).not.toBeInstanceOf(AtRuleStatement);
+    expect(block.prelude).toBe('feature');
+    expect(blockResult.tree.toString({ trivia: blockResult.trivia })).toBe('@vendor feature {\n');
+  });
+
+  test('commented at-rule preludes keep node wrappers for trivia safety', () => {
+    const statementResult = cssParser.parse('@layer /*before*/ theme /*after*/;');
+    const statement = statementResult.tree.rules[0];
+    expect(statement).toBeInstanceOf(AtRuleStatement);
+    if (!(statement instanceof AtRuleStatement)) {
+      throw new Error('Expected a generic statement at-rule');
+    }
+    expect(statement.prelude).toBeInstanceOf(Any);
+
+    const blockResult = cssParser.parse('@vendor /*before*/ feature /*after*/ {}');
+    const block = blockResult.tree.rules[0];
+    expect(isNode(block, N.AtRule)).toBe(true);
+    if (!isNode(block, N.AtRule)) {
+      throw new Error('Expected an opaque block at-rule');
+    }
+    expect(block.prelude).toBeInstanceOf(Any);
   });
   test('single rule with declaration', () => {
     const { tree } = cssParser.parse('a { b: c; }');
