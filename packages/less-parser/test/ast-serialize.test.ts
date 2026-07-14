@@ -131,14 +131,16 @@ describe('serializeTypes coverage', () => {
     `);
   });
 
-  test('custom property generic function value stays structured', () => {
+  test('custom property function value stays a verbatim literal (interpolation-only)', () => {
+    // Less `--*` is interpolation-only: `if(...)`/any call stays a literal Keyword
+    // in the value, not a structured Call node.
     const { errors, tree } = parser.parse('--custom: if(not(true), 5)', 'declaration');
     expect(errors.length).toBe(0);
     expect(serializeTypes(tree)).toContainString(`
       (CustomDeclaration
         name: '--custom'
         value:
-          (Call
+          (Keyword
     `);
   });
 

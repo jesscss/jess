@@ -1399,8 +1399,22 @@ export class LessGrammar extends CssParser {
       const value = valueNodes.length === 1 ? valueNodes[0]! : valueNodes;
       return new CustomDeclaration({ name: name as any, value: value as any }, undefined, loc);
     }
-    const valueText = ls.slice(2).filter(l => l.value !== ';').map(l => l.value).join('').trim();
-    return new CustomDeclaration({ name: name as any, value: this._lessKeyword(valueText, loc) as any }, undefined, loc);
+    // Verbatim custom-property value (grammar's cpValue). Owner rule: Less `--*`
+    // is interpolation-ONLY — resolve ONLY `@{…}` interpolation, leaving bare
+    // `@var` references and function calls LITERAL. `getInterpolatedNode` builds an
+    // Interpolated whose `@{…}` runs become evaluated replacements and whose
+    // remaining text is verbatim; with no `@{…}` present the value stays a plain
+    // literal Keyword.
+    // The whitespace after the `:` is consumed as ambient trivia before cpValue
+    // starts, so re-introduce the canonical single space the golden renders
+    // (`--this: () => …`). Right-trim trailing whitespace before the terminating
+    // `;`/`}` so semicolon insertion stays inline.
+    const rawText = ls.slice(2).filter(l => l.value !== ';').map(l => l.value).join('').replace(/\s+$/, '');
+    const valueText = rawText === '' ? '' : ' ' + rawText;
+    const value = valueText.includes('@{')
+      ? getInterpolatedNode(valueText, loc)
+      : this._lessKeyword(valueText, loc);
+    return new CustomDeclaration({ name: name as any, value: value as any }, undefined, loc);
   }
 
   /**
@@ -2470,6 +2484,15 @@ export class LessGrammar extends CssParser {
       if (es) {
         return this._buildEscapedQuoted(es[2]!, es[1] as '\'' | '"', loc);
       }
+      // A plain quoted string whose body carries `@{…}` / `${…}` interpolation
+      // (e.g. an at-rule prelude arg `regexp("(\d{0,@{d-value}})")`): build an
+      // interpolating Quoted so the substitution renders, instead of a literal
+      // Keyword. Non-interpolated strings stay a plain keyword (unchanged).
+      const plainStr = /^(['"])([\s\S]*)\1$/.exec(w);
+      if (plainStr && (plainStr[2]!.includes('@{') || plainStr[2]!.includes('${'))) {
+        const value = this._buildStringInterpolation(plainStr[2]!, loc);
+        return new Quoted(value as any, { quote: plainStr[1] as '"' | '\'' }, loc) as unknown as JessNode;
+      }
       const mv = singleVarRe.exec(w);
       if (mv) {
         return new Reference(mv[1]!, { type: 'index' as const, role: 'ident' as const }, loc) as unknown as JessNode;
@@ -2540,6 +2563,15 @@ export class LessGrammar extends CssParser {
       const ratio = /^(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)$/.exec(propVal);
       if (ratio) {
         return this._lessKeyword(`${ratio[1]} / ${ratio[2]}`, loc) as unknown as JessNode;
+      }
+      // A multi-token feature value carrying a variable (e.g. an unknown-at-rule
+      // prelude `(foo: "(" @boom-boom ")")`): tokenize into a space-separated run so
+      // the bare `@var` evaluates. Strings still interpolate `@{…}` via buildWord.
+      if (/\s/.test(propVal) && propVal.includes('@')) {
+        const toks = tokenize(propVal);
+        if (toks.length > 1) {
+          return new QueryCondition(toks as any, undefined, loc) as unknown as JessNode;
+        }
       }
       return this._lessKeyword(propVal, loc) as unknown as JessNode;
     };
