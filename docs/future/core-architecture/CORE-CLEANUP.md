@@ -295,6 +295,19 @@ identical code and is explicitly not a performance claim. The temporary test
 probe was removed from the user-owned parent checkout, whose pre-existing dirty
 files remain untouched.
 
+Follow-up reference/extend branch audit — 2026-07-14: the unmerged
+`worktree-agent-af15497e9bcbf2f24` tip (`2bc666b98`) is not a fresh small lane.
+Its diff is `spine-extend.ts` plus `spine-production-ratchet.test.ts` (322 lines
+of combinator/interpolation-aware inertness scanning and one ratchet), while
+both `agent-ab6671bed6d7880d1` and `jess-benchmark-flip` currently modify that
+same ratchet test for the benchmark-flip lane. The older append×extend behavior
+in the branch's ancestry was already proven superseded by the current
+collision-aware gate; replaying the newer 322-line scan would duplicate the
+active test ownership and widen a correctness-sensitive spine predicate without
+a current-dev refresh. No production or test file was changed by this audit;
+leave the branch owner-bound until its owner explicitly releases or refreshes
+the exact slice.
+
 ## OPEN-ITEM RECONCILIATION (post-drive — read this before trusting any checkbox below)
 
 The tracker was run as a **failure-count-driven drive-to-green**, and its two deferral rules —
