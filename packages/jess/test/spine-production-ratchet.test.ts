@@ -1384,6 +1384,22 @@ describe('spine PRODUCTION-path ratchet (P2 wire-in)', () => {
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
+  it('IMPORTS placement POC: closed static literal `(multiple)` imports re-emit byte-identically', async () => {
+    const compiler = makeCompiler();
+    const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), '../benchmark/import-placement-multiple');
+    for (const count of [1, 2, 4, 8]) {
+      const before = spineRenderCounter.rootRenders;
+      const file = path.join(root, `main-${count}x.less`);
+      const result = await compiler.renderToResult(file, {});
+      const less = await import('less');
+      const lessResult = await less.render(fs.readFileSync(file, 'utf8'), {
+        filename: file
+      });
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before);
+      expect(result.css).toBe(lessResult.css);
+    }
+  });
+
   it('IMPORTS increment 4: `strict-imports` (dedup across root/@media/ruleset) folds byte-identically', async () => {
     // The corpus dedup fixture: `imported.less` imported at root + inside `@media` +
     // inside `.container`. Emit at root, scope-only at the nested positions. Byte-

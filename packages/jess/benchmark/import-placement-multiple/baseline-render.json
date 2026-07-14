@@ -1,0 +1,154 @@
+[
+  {
+    "fixture": "main-1x.less",
+    "phase": "render",
+    "warmupPerRound": 10,
+    "rounds": 3,
+    "samplesPerRound": 15,
+    "parity": {
+      "lessBytes": 28462,
+      "jessBytes": 28462,
+      "exact": true
+    },
+    "source": {
+      "bytes": 18463,
+      "rules": 500,
+      "declarations": 2000
+    },
+    "placement": {
+      "activations": 1,
+      "retainedStates": 1,
+      "retainedArrays": 2,
+      "retainedSegmentRecords": 500
+    },
+    "summary": {
+      "samples": 45,
+      "medianMs": 19.02954099999988,
+      "meanMs": 20.007960111111082,
+      "p25Ms": 18.65316699999994,
+      "p75Ms": 20.435749999999985,
+      "iqrMs": 1.782583000000045,
+      "madMs": 0.5757909999999811,
+      "relativeStdDev": 0.1703707720275909
+    },
+    "roundMediansMs": [
+      20.682500000000005,
+      18.885749999999916,
+      18.64799999999991
+    ]
+  },
+  {
+    "fixture": "main-2x.less",
+    "phase": "render",
+    "warmupPerRound": 10,
+    "rounds": 3,
+    "samplesPerRound": 15,
+    "parity": {
+      "lessBytes": 56924,
+      "jessBytes": 56924,
+      "exact": true
+    },
+    "source": {
+      "bytes": 18463,
+      "rules": 500,
+      "declarations": 2000
+    },
+    "placement": {
+      "activations": 2,
+      "retainedStates": 2,
+      "retainedArrays": 4,
+      "retainedSegmentRecords": 1000
+    },
+    "summary": {
+      "samples": 45,
+      "medianMs": 29.34125000000006,
+      "meanMs": 29.800587977777752,
+      "p25Ms": 28.505083999999897,
+      "p75Ms": 31.11283299999991,
+      "iqrMs": 2.6077490000000125,
+      "madMs": 1.139041999999904,
+      "relativeStdDev": 0.06426098313233751
+    },
+    "roundMediansMs": [
+      31.11283299999991,
+      28.650458999999955,
+      28.746708000000126
+    ]
+  },
+  {
+    "fixture": "main-4x.less",
+    "phase": "render",
+    "warmupPerRound": 10,
+    "rounds": 3,
+    "samplesPerRound": 15,
+    "parity": {
+      "lessBytes": 113848,
+      "jessBytes": 113848,
+      "exact": true
+    },
+    "source": {
+      "bytes": 18463,
+      "rules": 500,
+      "declarations": 2000
+    },
+    "placement": {
+      "activations": 4,
+      "retainedStates": 4,
+      "retainedArrays": 8,
+      "retainedSegmentRecords": 2000
+    },
+    "summary": {
+      "samples": 45,
+      "medianMs": 49.82604099999935,
+      "meanMs": 54.40820835555563,
+      "p25Ms": 48.853000000000065,
+      "p75Ms": 53.70008299999995,
+      "iqrMs": 4.847082999999884,
+      "madMs": 1.8638760000003458,
+      "relativeStdDev": 0.21324056272923847
+    },
+    "roundMediansMs": [
+      56.01700000000005,
+      49.324583000000075,
+      48.853000000000065
+    ]
+  },
+  {
+    "fixture": "main-8x.less",
+    "phase": "render",
+    "warmupPerRound": 10,
+    "rounds": 3,
+    "samplesPerRound": 15,
+    "parity": {
+      "lessBytes": 227696,
+      "jessBytes": 227696,
+      "exact": true
+    },
+    "source": {
+      "bytes": 18463,
+      "rules": 500,
+      "declarations": 2000
+    },
+    "placement": {
+      "activations": 8,
+      "retainedStates": 8,
+      "retainedArrays": 16,
+      "retainedSegmentRecords": 4000
+    },
+    "summary": {
+      "samples": 45,
+      "medianMs": 88.95208400000047,
+      "meanMs": 95.07433804444445,
+      "p25Ms": 87.3284590000003,
+      "p75Ms": 94.19924999999967,
+      "iqrMs": 6.870790999999372,
+      "madMs": 2.750959000000421,
+      "relativeStdDev": 0.1676484490019049
+    },
+    "roundMediansMs": [
+      88.55483299999969,
+      88.99474999999984,
+      89.12887499999943
+    ]
+  }
+]

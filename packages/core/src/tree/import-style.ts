@@ -384,6 +384,33 @@ function isPlacementScalarChild(node: Node): boolean {
   return false;
 }
 
+function isStaticPlacementScalarChild(node: Node): boolean {
+  if (node.hasFlag(F_NON_STATIC)) {
+    return false;
+  }
+  if (isNode(node, N.VarDeclaration)) {
+    return false;
+  }
+  if (isNode(node, N.Declaration)) {
+    return true;
+  }
+  if (node instanceof Rules) {
+    for (let i = 0; i < node.rules.length; i++) {
+      if (!isStaticPlacementScalarChild(node.rules[i]!)) {
+        return false;
+      }
+    }
+    return true;
+  }
+  return false;
+}
+
+function hasPlacementTrivia(rules: Rules): boolean {
+  const trivia = rules._treeContext?.opts?.trivia;
+  return trivia !== undefined
+    && (!trivia.entries('before').next().done || !trivia.entries('after').next().done);
+}
+
 function findImportPlacementValuePath(
   value: unknown,
   target: Node,
@@ -683,7 +710,8 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
 
   private materializeImportPlacementState(
     state: ImportPlacementState,
-    importSite: Rules
+    importSite: Rules,
+    retainPlacementState = true
   ): Rules {
     const placement = this.deriveRulesSurface(state.source, state.children, {
       shareChildren: true,
@@ -701,7 +729,9 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     // at the canonical imported tree (preserveSourceNode above), so the
     // scope-frame parent-walk re-points the shared children up the import-site
     // chain with no marker. See LIVE_BINDING_ARCHITECTURE.md §4 / §6.2.
-    importPlacementStates.set(placement, state);
+    if (retainPlacementState) {
+      importPlacementStates.set(placement, state);
+    }
     return placement;
   }
 
@@ -1040,6 +1070,50 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     return isThenable(maybePath) ? maybePath.then(finish) : finish(maybePath);
   }
 
+  private isClosedLiteralMultipleImport(path: string): boolean {
+    const io = this.options.importOptions;
+    if (
+      this.options.type !== 'import'
+      || this.with !== undefined
+      || io?.multiple !== true
+      || !isNode(this.path, N.Quoted)
+    ) {
+      return false;
+    }
+    for (const key in io) {
+      if (key !== 'multiple' && (key !== 'once' || io.once !== false)) {
+        return false;
+      }
+    }
+    const quoted = this.path as Quoted;
+    return quoted.options?.escaped !== true
+      && typeof quoted.value === 'string'
+      && quoted.value === path;
+  }
+
+  private canDiscardSpinePlacementState(context: Context, sourceRules: Rules, importSite: Rules): boolean {
+    const path = isNode(this.path, N.Quoted) && typeof (this.path as Quoted).value === 'string'
+      ? (this.path as Quoted).value
+      : undefined;
+    if (
+      path === undefined
+      || !this.isClosedLiteralMultipleImport(path)
+      || importSite !== context.root
+    ) {
+      return false;
+    }
+    if (context.opts.output?.sourceMap === true || hasPlacementTrivia(sourceRules) || !isStaticPlacementScalarChild(sourceRules)) {
+      return false;
+    }
+    for (let i = 0; i < context.root.rules.length; i++) {
+      const node = context.root.rules[i]!;
+      if (!(node instanceof StyleImport) || !node.isClosedLiteralMultipleImport(path)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   private async _foldLessImportForSpine(context: Context, finalPath: string): Promise<SpineImportResolution> {
     const io = this.options.importOptions ?? {};
     // Bracket `context.treeContext` around `getTree` exactly as `evalNode`'s
@@ -1125,7 +1199,8 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
       // wiring). The spine descends these children resolving each leaf live.
       let placement = this.materializeImportPlacementState(
         this.createFirstUseImportPlacementState(loaded.node),
-        importSite
+        importSite,
+        !this.canDiscardSpinePlacementState(context, loaded.node, importSite)
       );
       // A `(reference)` placement carries `referenceMode` (mirrors `getFinalRules`):
       // the descent SUPPRESSES its output while registration + extend-reach still run.
