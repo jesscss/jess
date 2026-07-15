@@ -225,6 +225,21 @@ recursively scans 10,777 evaluated surfaces to find 15 merge-bearing ones.
   bulk. Do not reopen the completed merge admission, generic declaration
   lookup, callable-map, or duplicate-pre-scan audits without new evidence.
 
+- **Reject the first source-order normalization gate as canonical progress.**
+  The bounded producer marker was set at the actual `out.rules[idx] = result`
+  seam, preserved an unmarked API fallback, and passed its focused core
+  semantics/profile cases (`8/8`) with exact fixture-output assertions. But the
+  required 20-warmup/45-pair same-checkout A/B regressed parse-render
+  `202.6457→204.3287 ms` (+0.8305%) and render-only
+  `167.5032→167.7328 ms` (+0.1370%), with identical 133,751-byte output and
+  SHA-256 `1c11c928bc5213efbbfbde0748d7f3d04a8ebd6770697115f6f7e399e62aac6f`.
+  The canonical spine path also produced empty source-order counters, so the
+  benchmark did not exercise the claimed scan reduction. The local commit
+  `7bb9b483e` remains an unmerged POC; do not merge or widen it until a real
+  activating workload produces a clear result and the missing Jess fixture
+  package gate is rebuilt. This is a rejection of the target, not evidence that
+  producer-side admission is wrong in an activating legacy path.
+
 - **Accept merge-coalescer admission as the first Q-40 rare-pass cut.** The
   post-evaluation `Rules._coalesceMergedDeclarations` pass was entered 10,420
   times on the canonical benchmark even though only 15 containers carried
