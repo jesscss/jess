@@ -2,15 +2,15 @@
  * Shared VALUE-EVAL SERVICE interface (the boundary-safe seam for value math).
  *
  * Owner decision governing this rung: value computation (arithmetic + function
- * calls) is NOT reimplemented inside tree2, nor does tree2 reach into `../tree`
- * value methods. Instead tree2 owns the value STRUCTURE (its own `Operation` /
+ * calls) is NOT reimplemented inside tree2, nor does tree2 reach into the legacy
+ * tree's value methods. Instead tree2 owns the value STRUCTURE (its own `Operation` /
  * `FunctionCall` / `Paren` nodes) and the byte EMISSION of operands, and
  * delegates the MATH to a service it receives as an INJECTED INTERFACE — the
  * only allowed boundary crossing ("context objects cross the boundary").
  *
  * tree2 depends ONLY on this interface. The real implementation lives OUTSIDE
  * `tree2/` (see `tree2-frontend/value-service.ts`) and MAY use the existing fns
- * registry + `../tree` operation logic — that is fine outside the boundary.
+ * registry + the legacy tree's operation logic — fine outside the boundary.
  *
  * Contract: operands and results are already-serialized value BYTES. tree2
  * resolves variable references through its own lexical scope and folds nested
