@@ -186,6 +186,7 @@ row in this table is not a claim that the implementation has landed on `dev`.
 | Parseman versus Less recognizer gap and true recognizer POC | [`PARSER-RECOGNIZER-GAP.md`](./PARSER-RECOGNIZER-GAP.md); Parseman `/Users/matthew/git/oss/parser-thing/notes/PERF_IDEAS.md` | Flow analysis and the `12.58 ms` recognizer result are recorded. Parseman commit `c84d777` is local/unpublished, so Jess has not adopted it and no Jess speed claim follows. |
 | Less declaration-versus-ruleset statement-dispatch proof | [`PARSER-RECOGNIZER-GAP.md`](./PARSER-RECOGNIZER-GAP.md); rejected worker commit `0d6879277` in `/Users/matthew/git/worktrees/jess-q40-less-statement-dispatch-20260715` | Rejected. Moving `Declaration` before `Ruleset` accepted a prefix before a following `{` and stopped the canonical parse at byte `93,456` with `3` errors. The probe was removed; no source change or valid candidate A/B remains. |
 | Parseman zero-copy structural-builder POC | [`PARSER-RECOGNIZER-GAP.md`](./PARSER-RECOGNIZER-GAP.md); Parseman `/Users/matthew/git/oss/parser-thing/notes/PERF_IDEAS.md`; isolated source at `/private/tmp/parseman-zero-copy-builder-20260715` | Retained local Parseman commit `950e8b4`: `62` focused tests; array `10.97 ms` → range `4.35 ms` on the 106,797-byte Less grammar; output hash identical; transient heap regressed about `1.95 MB` → `7.17 MB`. The default API is unchanged, and Jess host adoption is blocked by the current `compileLinkable`/fused path boundary. This is a generic Parseman POC, not a Jess speed claim. |
+| Parser-host declaration `Spanned[]` reuse proof | Read-only parser/CST audit; active ownership is `packages/css-parser/src/builders.ts` and `packages/less-parser/src/builders.ts` plus focused builder tests | The shipping functional parser is Parseman, not the retired Chevrotain `consumeName` path. Less declaration construction currently converts the same raw children twice; the bounded host-only reuse proof is active. No Parseman, grammar, late-value, or speed claim exists yet. |
 | Parseman trivia/capture separation and sparse trivia designs | [`parseman-trivia-audit.md`](../parseman-trivia-audit.md), [`trivia-offset-inference-model.md`](../trivia-offset-inference-model.md), and [`parseman-perf-proposals.md`](../parseman-perf-proposals.md) | The generic Parseman responsibilities, CSS/Less capture policy, comment-only capture idea, and span-based inference are documented as proposals/evidence. No CSS-shaped Parseman change is being treated as landed. |
 | From-scratch AST creativity pass: packed arenas, structs, semantic islands, direct emitters, dependency-aware reuse, and debug projections | [`AST-FROM-SCRATCH-DESIGN.md`](./AST-FROM-SCRATCH-DESIGN.md) | The alternatives are explicitly design candidates, not a hidden commitment to a class-for-class rewrite. CSS output, not legacy field/class shape, is the acceptance oracle. |
 | Lookup, merge, fallback, and evaluator-action audit | [`CORE-CLEANUP.md`](./CORE-CLEANUP.md), [`HANDOFF.md`](./HANDOFF.md), and [`AGGRESSIVE-CUTTING-REVIEW.md`](./AGGRESSIVE-CUTTING-REVIEW.md) | The 10,777 repeated preparation/admission scans, explicit merge-surface mistake, fallback topology, rejected generic index/prototype-chain shortcuts, and rejected terminal-miss sentinel are recorded. No broad lookup redesign is silently assumed. |
@@ -283,6 +284,18 @@ segmented buffers, source-map paths, and detached leaf writers unchanged. The
 worker must prove root fallback/spine behavior, caller-prefix behavior,
 source-map and buffer parity, exact CSS output, and the agreed canonical A/B;
 no speed claim exists until the readback/allocation change clears those gates.
+
+### Q-40 parser-host duplicate Spanned[] audit — active proof (2026-07-15)
+
+The parser/CST audit confirmed that the shipping Less parser uses functional
+Parseman; the old Chevrotain `consumeName` helper is not on the benchmark path.
+The current Less host builds the same declaration raw children into `Spanned[]`
+twice across the CSS/Less builder boundary. A bounded worker is testing private
+reuse of that array only, preserving Parseman capture/trivia, public builder
+signatures, spans, AST serialization, and CSS output. Conversion counts,
+allocation/GC, parse time, exact output, and both canonical benchmark phases
+are required before acceptance. Detailed ownership is recorded in
+[`CORE-CLEANUP.md`](./CORE-CLEANUP.md).
 
 ### Q-40 CPU/heap attribution refresh — diagnostic only (2026-07-15)
 

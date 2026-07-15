@@ -240,6 +240,18 @@ output, source-map/caller-buffer behavior, root fallback/spine behavior, and
 both canonical benchmark phases are required before acceptance. Detailed
 ownership and gates are recorded in [`CORE-CLEANUP.md`](./CORE-CLEANUP.md).
 
+## Q-40 — parser-host duplicate Spanned[] (active proof, 2026-07-15)
+
+The parser/CST audit confirmed that the shipping Less parser uses functional
+Parseman; the old Chevrotain `consumeName` helper is not on the benchmark path.
+The current Less host builds the same declaration raw children into `Spanned[]`
+twice across the CSS/Less builder boundary. A bounded worker is testing private
+reuse of that array only, preserving Parseman capture/trivia, public builder
+signatures, spans, AST serialization, and CSS output. Conversion counts,
+allocation/GC, parse time, exact output, and both canonical benchmark phases
+are required before acceptance. Detailed ownership is recorded in
+[`CORE-CLEANUP.md`](./CORE-CLEANUP.md).
+
 ## Q-40 — import-placement audit handoff
 
 The fresh read-only retained-placement audit is recorded in detail in
