@@ -901,6 +901,23 @@ declarations-coverage state.
   emits a profile-conditional `_tl` initializer (`1,735` passed, `1` failed).
   This is a generic parser result, not a Jess runtime change; Jess adoption
   requires the published Parseman dependency path and a fresh Jess parser build.
+- **Parseman true-recognizer Jess adoption proof (2026-07-15, rejected for
+  now).** Clean disposable Jess chains consumed Parseman baseline `d9c4873` and
+  candidate `c84d777`, built core/CSS/Less parser/plugins/Jess, and ran the same
+  `benchmark.less` fixture (`106,802` bytes, `collapseNesting:true`, Less plus
+  compatibility plugins, `JESS_STATIC_NAMESPACE_TABLE=0`) with `20` warmups and
+  `45` alternating pairs. Parse+render was `273.558292→260.023458 ms`
+  (`−4.95%`, candidate p95 `323.854583` vs `337.561167` ms); render-only was
+  `60.901166→61.567417 ms` (`+1.09%`, candidate p95 `69.930750` vs
+  `68.434750` ms). Parser-stage medians were `42.302375→39.217000 ms`, and
+  render-stage medians were `227.818083→221.846249 ms`. CSS was exactly
+  identical in both phases: `131,578` bytes, SHA-256
+  `98a0536086c7e555b1a98e2372ad4000d51e25f1418c6345b6b8a9a97d80972f`.
+  Reject adoption: Jess's current grammar does not request
+  `mode:'recognizer'`, so this is not exercising the new code-generation lane,
+  and render-only regressed. No Jess or published Parseman source changed;
+  only disposable manifests, lockfiles, and generated outputs were used.
+  Do not claim this package POC moved Jess performance.
 - **Parser/AST shape audit refresh (2026-07-14).** A fresh functional-parser
   census of the 106,802-byte Less fixture measured recognition `44.69 ms`,
   structural capture `58.10 ms`, and host construction `70.71 ms`, with

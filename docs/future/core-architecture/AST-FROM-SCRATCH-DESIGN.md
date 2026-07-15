@@ -7,7 +7,7 @@ Status: design evidence and POC queue, 2026-07-14.
 The current design record is durable on `dev`. The corresponding no-class
 implementation remains intentionally isolated at
 `/Users/matthew/git/worktrees/jess-greenfield-ast-design-20260714`, on branch
-`feature/greenfield-ast-design-20260714`, currently at tip `a345b8aad`. Its
+`feature/greenfield-ast-design-20260714`, with base checkpoint `a345b8aad`. Its
 implementation is staged but not committed in that worktree; it is therefore
 an explicitly preserved local artifact, not a durable production change. Its
 implementation and focused tests are under:
@@ -31,6 +31,26 @@ commit. The canonical design document on `dev` is newer than the copy in the
 experimental worktree; consult this copy for the current design/status record.
 The experiment branch is allowed to lag current `dev` while the artifact is
 reviewed and must not be treated as an integration branch.
+
+### Evaluated mixed-root follow-up — in flight
+
+On 2026-07-15 the same isolated worktree was assigned a second, bounded proof:
+build an evaluated root as a mixed representation in which only direct, flat,
+statically provable ruleset siblings use native arena records and every
+variable-dependent, nested, import, mixin, extend, at-rule, trivia-sensitive,
+or otherwise uncertain region remains an explicit legacy escape. The goal is
+to test a real AST boundary with exact CSS output, not to benchmark a route
+that falls back to the legacy root.
+
+The follow-up currently has `30/30` focused tests green, including native plus
+legacy siblings, variable and nested-selector rejection, parent/source-link
+preservation, raw-input rejection, and source-map gating. Its short exact
+probes cover the synthetic native shapes; the canonical fixture has not yet
+earned a comparable result and a hash mismatch is treated as rejection. The
+required final `20`-warmup/`45`-pair representative run and final route report
+are still in the isolated worktree. Until that report is copied here, this is
+an active experiment, not an AST result, production change, or performance
+claim.
 
 This is a design record for the Q-40 performance program. It is not permission
 to rewrite the tree or to trade away Less semantics. Every production change
