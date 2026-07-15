@@ -1,40 +1,64 @@
 import { describe, it, expect } from 'vitest';
-import { shapes, renderOld, renderNewFast, renderNewTracked, type Shape } from '../shapes.js';
+import {
+  renderOld,
+  renderNewFast,
+  renderNewTracked,
+  newContext,
+  withLegacyOpCounters,
+} from '../shapes.js';
+import {
+  buildFlatNew,
+  buildFlatOld,
+  buildCompNew,
+  buildCompOld,
+  countNodesNew,
+} from '../generate.js';
+import { Context } from '../../context.js';
+import * as t2 from '../../tree2/index.js';
 
 /**
- * Per-shape head-to-head race: build+serialize, three lanes.
- *   - tree2 (no tracking)   — the fast path (primary result)
- *   - tree2 (with tracking) — the optional sourcemap feature
- *   - tree (legacy)         — however the legacy renderer does it
+ * AT-SCALE race (~10k+ node stylesheets). At this size the real
+ * creation+serialize work dwarfs the fixed Context/resolve setup, so setup
+ * contamination stops mattering and the numbers are trustworthy directly.
  *
- * Reports median wall-clock AND an allocation/GC proxy for each lane. Byte
- * identity is asserted before any timing is reported. Gated behind TREE2_RACE=1
- * so it does not run in the normal suite; run with `--expose-gc` for the
- * memory numbers (falls back gracefully without it).
+ * Two variants, three lanes (tree2 no-tracking, tree2 with-tracking, tree),
+ * creation and serialize measured separately + peak-ish heap. Byte-identity is
+ * asserted (tree = oracle) before any timing. The composition-heavy variant
+ * also reports composition-op counts (tree2 compositions vs legacy
+ * clone/inherit/withComponents) — the scale indicator.
  *
- * Protocol: warmup >= 10 batches, N >= 21 samples, median of per-render time.
+ * Serialize isolation (stated):
+ *   - tree2: pre-build the AST once; time `serialize(root)` (tree2 has no eval
+ *     step — composition happens inside serialize).
+ *   - legacy: pre-build once and pre-`resolve` once; time
+ *     `resolvedRoot.toString(opts)` — a pure, repeatable serialize that is
+ *     byte-identical to the full render (composition runs inside it).
+ *
+ * Gated behind TREE2_RACE=1; run with `--expose-gc` for the memory numbers.
  */
 
 const ENABLED = process.env.TREE2_RACE === '1';
 const race = ENABLED ? it : it.skip;
 
-const WARMUP_BATCHES = 12;
-const SAMPLES = 25; // N
-const BATCH = 4000; // renders per timed sample
-const MEM_BATCH = 50_000; // renders for the allocation proxy
+const FLAT_RULES = 3200; // ~10k statement nodes (~22k total incl. selectors/values)
+const COMP_BLOCKS = 850; // ~10k statement nodes, ~4250 compositions
+const WARMUP = 3;
+const RUNS = 9;
+const CN = { collapseNesting: true } as const;
 
 const gc: (() => void) | undefined = (globalThis as { gc?: () => void }).gc;
 
-interface Lane {
-  label: string;
-  run: (shape: Shape) => string; // one build+serialize, returns the css
+interface Serializable {
+  toString(options: unknown): string;
 }
-
-const lanes: Lane[] = [
-  { label: 'tree2 (no tracking)', run: (s) => renderNewFast(s.buildNew()) },
-  { label: 'tree2 (with tracking)', run: (s) => renderNewTracked(s.buildNew()) },
-  { label: 'tree (legacy)', run: (s) => renderOld(s.buildOld()) },
-];
+function resolveSync(node: unknown, ctx: Context): Serializable {
+  const n = node as { resolve(c: Context): unknown };
+  const r = n.resolve(ctx);
+  if (r && typeof (r as { then?: unknown }).then === 'function') {
+    throw new Error('async resolve; harness expects sync');
+  }
+  return r as Serializable;
+}
 
 function median(xs: number[]): number {
   const s = [...xs].sort((a, b) => a - b);
@@ -42,82 +66,130 @@ function median(xs: number[]): number {
   return s.length % 2 ? s[mid]! : (s[mid - 1]! + s[mid]!) / 2;
 }
 
-/** Median per-render time in ms over N batched samples. */
-function timePerRenderMs(fn: () => void): number {
-  for (let w = 0; w < WARMUP_BATCHES; w++) {
-    for (let i = 0; i < BATCH; i++) fn();
-  }
+/** Median wall-clock (ms) of a whole operation over RUNS, after WARMUP. */
+function timeOp(fn: () => void): number {
+  for (let w = 0; w < WARMUP; w++) fn();
   const samples: number[] = [];
-  for (let n = 0; n < SAMPLES; n++) {
+  for (let r = 0; r < RUNS; r++) {
     const t0 = performance.now();
-    for (let i = 0; i < BATCH; i++) fn();
+    fn();
     const t1 = performance.now();
-    samples.push((t1 - t0) / BATCH);
+    samples.push(t1 - t0);
   }
   return median(samples);
 }
 
-/** Allocation proxy: net heapUsed growth per render over a large batch (bytes). */
-function allocPerRenderBytes(fn: () => void): number {
+/** Approx heap growth (MB) retained by producing `fn()`'s result (gc'd first). */
+function heapMB(fn: () => unknown): number {
   gc?.();
   const before = process.memoryUsage().heapUsed;
-  let sink = 0;
-  for (let i = 0; i < MEM_BATCH; i++) {
-    // Touch the result so the call is not optimized away.
-    sink += fn() as unknown as number;
-  }
+  const held = fn();
   const after = process.memoryUsage().heapUsed;
-  void sink;
-  return (after - before) / MEM_BATCH;
+  void held;
+  return (after - before) / (1024 * 1024);
 }
 
-describe('tree2 vs tree — race', () => {
-  race('build+serialize race (median ms + alloc proxy)', () => {
-    const rows: Array<{
-      rung: string;
-      lane: string;
-      medMs: number;
-      allocBytes: number;
-    }> = [];
+const ms = (x: number): string => x.toFixed(3);
 
-    for (const shape of shapes) {
-      // Correctness gate first.
-      const oracle = renderOld(shape.buildOld());
-      expect(oracle).toBe(shape.expected);
-      for (const lane of lanes) {
-        expect(lane.run(shape)).toBe(oracle);
-      }
+interface Variant {
+  name: string;
+  buildNew: () => t2.Root;
+  buildOld: () => unknown;
+  composition: boolean;
+}
 
-      for (const lane of lanes) {
-        const fn = (): void => {
-          lane.run(shape);
-        };
-        const medMs = timePerRenderMs(fn);
-        // allocPerRenderBytes needs a value-returning fn; wrap to return length.
-        const allocBytes = allocPerRenderBytes(() => lane.run(shape).length as unknown as void);
-        rows.push({ rung: shape.name, lane: lane.label, medMs, allocBytes });
-      }
-    }
+const variants: Variant[] = [
+  {
+    name: `flat (${FLAT_RULES} rules)`,
+    buildNew: () => buildFlatNew(FLAT_RULES),
+    buildOld: () => buildFlatOld(FLAT_RULES),
+    composition: false,
+  },
+  {
+    name: `composition-heavy (${COMP_BLOCKS} blocks)`,
+    buildNew: () => buildCompNew(COMP_BLOCKS),
+    buildOld: () => buildCompOld(COMP_BLOCKS),
+    composition: true,
+  },
+];
 
-    // Emit the which-wins table.
-    const lines: string[] = [];
-    lines.push('');
-    lines.push(`tree2 race — warmup=${WARMUP_BATCHES} batches, N=${SAMPLES} samples, batch=${BATCH}, gc=${gc ? 'on' : 'off'}`);
-    for (const shape of shapes) {
-      const group = rows.filter((r) => r.rung === shape.name);
-      const best = Math.min(...group.map((r) => r.medMs));
-      lines.push('');
-      lines.push(shape.name);
-      lines.push('  lane                     median ms/render   x-vs-fastest   alloc proxy B/render');
-      for (const r of group) {
-        const ratio = (r.medMs / best).toFixed(2);
-        const win = r.medMs === best ? '  <= fastest' : '';
-        lines.push(
-          `  ${r.lane.padEnd(24)} ${r.medMs.toExponential(3).padStart(12)}   ${ratio.padStart(6)}x       ${r.allocBytes.toFixed(1).padStart(8)}${win}`,
+describe('tree2 vs tree — at-scale race', () => {
+  race('10k-node build + serialize, three lanes', () => {
+    const out: string[] = [];
+    out.push('');
+    out.push(`AT-SCALE race — warmup=${WARMUP}, runs=${RUNS} (median), gc=${gc ? 'on' : 'off'}`);
+
+    for (const v of variants) {
+      const ctx = newContext();
+
+      // --- byte-identity (tree = oracle) -----------------------------------
+      const oracle = renderOld(v.buildOld(), ctx);
+      const t2FastCss = renderNewFast(v.buildNew());
+      const t2TrackCss = renderNewTracked(v.buildNew());
+      expect(t2FastCss, `${v.name} t2-fast bytes`).toBe(oracle);
+      expect(t2TrackCss, `${v.name} t2-tracked bytes`).toBe(oracle);
+
+      const nodeCount = countNodesNew(v.buildNew());
+
+      // --- creation timings -------------------------------------------------
+      const t2Create = timeOp(() => {
+        v.buildNew();
+      });
+      const lgCreate = timeOp(() => {
+        v.buildOld();
+      });
+
+      // --- serialize timings (pre-built / pre-resolved) --------------------
+      const t2Root = v.buildNew();
+      const t2SerFast = timeOp(() => {
+        t2.serialize(t2Root);
+      });
+      const t2SerTrack = timeOp(() => {
+        t2.serialize(t2Root, { trackPositions: true });
+      });
+      const lgResolved = resolveSync(v.buildOld(), ctx);
+      const lgSer = timeOp(() => {
+        lgResolved.toString(CN);
+      });
+
+      // --- memory ----------------------------------------------------------
+      const t2AstMB = heapMB(() => v.buildNew());
+      const lgAstMB = heapMB(() => v.buildOld());
+      const t2SerMB = heapMB(() => t2.serialize(t2Root).css);
+      const lgSerMB = heapMB(() => resolveSync(v.buildOld(), newContext()).toString(CN));
+
+      out.push('');
+      out.push(`### ${v.name}  — tree2 nodes=${nodeCount}, output bytes=${oracle.length}`);
+      out.push('  phase        tree2-fast   tree2-track  tree(legacy)   |  heap MB: t2 / legacy');
+      out.push(
+        `  creation     ${ms(t2Create).padStart(9)}    ${'—'.padStart(9)}    ${ms(lgCreate).padStart(9)}   |  AST ${t2AstMB.toFixed(2)} / ${lgAstMB.toFixed(2)}`,
+      );
+      out.push(
+        `  serialize    ${ms(t2SerFast).padStart(9)}    ${ms(t2SerTrack).padStart(9)}    ${ms(lgSer).padStart(9)}   |  ser ${t2SerMB.toFixed(2)} / ${lgSerMB.toFixed(2)}`,
+      );
+      const t2Total = t2Create + t2SerFast;
+      const lgTotal = lgCreate + lgSer;
+      out.push(
+        `  total(c+s)   ${ms(t2Total).padStart(9)}    ${'—'.padStart(9)}    ${ms(lgTotal).padStart(9)}   |  legacy/tree2 = ${(lgTotal / t2Total).toFixed(1)}x`,
+      );
+
+      // --- composition-op counts (scale indicator) -------------------------
+      if (v.composition) {
+        const t2c = t2.composeStats(v.buildNew());
+        const lg = withLegacyOpCounters(() => {
+          renderOld(v.buildOld(), newContext());
+        });
+        out.push(
+          `  ops/render   tree2 compose/alloc/distinct = ${t2c.composeOps}/${t2c.selectorAllocs}/${t2c.distinctSelectors}` +
+            `   |  legacy clone/inherit/withComponents = ${lg.cloneForPlacement}/${lg.inherit}/${lg.withComponents}`,
+        );
+        out.push(
+          `               => per composition: tree2 ~1 string op; legacy ~${((lg.cloneForPlacement + lg.inherit + lg.withComponents) / Math.max(1, t2c.composeOps)).toFixed(1)} node ops`,
         );
       }
     }
+
     // eslint-disable-next-line no-console
-    console.log(lines.join('\n'));
-  });
+    console.log(out.join('\n'));
+  }, 300_000);
 });

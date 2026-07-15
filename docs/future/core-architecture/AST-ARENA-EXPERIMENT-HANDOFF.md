@@ -123,6 +123,38 @@ the log below every iteration so the track compounds instead of repeating.
 
 <!-- newest first; each entry: date · hypothesis · prediction · byte-identical? · measured Δ · kept/dropped · why · next -->
 
+- 2026-07-15 — **tree2 rungs 3–4 (selectors + nesting/`&` composition) + at-scale race —
+  the thesis holds; composition SCALES, no wall (branch `experiment/tree2-cleanroom-20260715`).**
+  Rung 3 (compound `.a.b` / child `.a > .b` / descendant `.a .b` / list `.a, .b`) and rung 4
+  (nesting `.a{.b}`→`.a .b`, `&:hover`, `&.b`, 3-level deep, list×list `:is(.a, .b) .c`) are all
+  **triple byte-identical** (tree2-fast === tree2-tracked === legacy === expected). tree2 grew a
+  real selector model (SelectorList/Complex/Compound/Simple, cached canonical strings) and a
+  FLATTENING serializer that composes parent×child by STRING ops on the cached canonical text —
+  `&` → substitute parent for each `&`; else descendant `parent + ' ' + child`; multi-selector
+  parent → `:is(...)` wrap. **No `cloneForPlacement`/`inherit` analog; composition is one
+  interned-string build per placement.** Measurement (owner steer): dropped the setup-dominated
+  tiny-rung microbench; built ~10k-node stylesheets (flat 3200 rules / 9,601 nodes; composition-
+  heavy 850 blocks / 10,201 nodes, 4,250 compositions) and raced build+serialize at scale where
+  setup contamination is negligible. **Same-worktree, warmup 3, N=9 median, `--expose-gc`:**
+    - flat: creation t2 0.47 ms vs legacy 5.88 ms; serialize t2-fast 1.34 / t2-track 1.49 ms vs
+      legacy 48.1 ms; total **1.81 vs 54.0 ms = 29.8×**. Heap: AST 2.7 vs 6.6 MB; serialize
+      **5.7 vs 54.2 MB**.
+    - composition-heavy: creation t2 0.63 vs 7.25 ms; serialize t2-fast 1.48 / t2-track 1.41 ms
+      vs legacy 60.1 ms; total **2.11 vs 67.4 ms = 32×**. Heap: AST 3.8 vs 8.3 MB; serialize
+      **5.4 vs 39.5 MB**.
+    - **Composition-op counts (the 70k scaling indicator): tree2 = 4,250 compositions (≈1 string
+      op each); legacy = 26,350 `cloneForPlacement` + 33,150 `inherit` + 2,550 `withComponents`
+      = ~62,050 node ops ≈ 14.6 legacy node-ops per composition.** Position-tracking adds ~0–10%
+      (often within noise). **Verdict: tree2's composition is O(compositions) with a tiny constant
+      (one interned-string build); it does NOT hit a wall.** Linear extrapolation to the
+      benchmark's ~70k compositions ≈ 70000/4250 × ~1.5 ms ≈ ~25 ms of compose+serialize with NO
+      eval pass — in Less-4.x's ~37 ms neighborhood, and legacy stays ~14.6× node-ops-per-comp.
+      Kept (experimental scaffold, NOT merged). **Known gap (deferred rung):** a standalone `&`
+      followed by a combinator under a COMPLEX parent (e.g. `& > .x` under `.a .b`) → Less wraps
+      `:is(.a .b) > .x`; tree2's `:is()`-wrapping rule doesn't yet cover that position (in-compound
+      `&` and list parents ARE covered). Next rungs: complete the `:is()` `&`-placement algorithm,
+      then mixin definition+placement (needs binding/eval — its own dispatch), then extend.
+
 - 2026-07-15 — **clean-room `tree2` scaffold + rungs 1–2 (branch
   `experiment/tree2-cleanroom-20260715`).** Pivot from departure #1 (below): grow a
   from-scratch `tree2` bottom-up via a per-shape `tree2`-vs-`tree` serialization head-to-head.

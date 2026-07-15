@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { shapes, renderOld, renderNewFast, renderNewTracked } from '../shapes.js';
+import { allShapes as shapes, renderOld, renderNewFast, renderNewTracked } from '../shapes.js';
+import { buildFlatNew, buildFlatOld, buildCompNew, buildCompOld } from '../generate.js';
 
 /**
  * Triple byte-identity: for every rung, the clean-room tree2 serializer (both
@@ -28,4 +29,21 @@ describe('tree2 vs tree — byte identity', () => {
       });
     });
   }
+});
+
+/**
+ * The at-scale generators (small instances) must also be byte-identical, so the
+ * perf race compares like-for-like. tree = oracle.
+ */
+describe('tree2 vs tree — scale generators (byte identity)', () => {
+  it('flat generator', () => {
+    const oracle = renderOld(buildFlatOld(4));
+    expect(renderNewFast(buildFlatNew(4))).toBe(oracle);
+    expect(renderNewTracked(buildFlatNew(4))).toBe(oracle);
+  });
+  it('composition-heavy generator', () => {
+    const oracle = renderOld(buildCompOld(3));
+    expect(renderNewFast(buildCompNew(3))).toBe(oracle);
+    expect(renderNewTracked(buildCompNew(3))).toBe(oracle);
+  });
 });

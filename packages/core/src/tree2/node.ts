@@ -19,11 +19,17 @@ export enum Kind {
   Rule = 1,
   Declaration = 2,
   Comment = 3,
-  Selector = 4,
-  Word = 5,
-  Dimension = 6,
-  SpacedValue = 7,
+  SelectorList = 4,
+  Complex = 5,
+  Compound = 6,
+  Simple = 7,
+  Word = 8,
+  Dimension = 9,
+  SpacedValue = 10,
 }
+
+/** Combinator between two compounds in a complex selector. */
+export type Combinator = ' ' | '>' | '+' | '~';
 
 /** Base of every clean-room tree2 node. Owns nothing but its tag. */
 export abstract class Tree2Node {
