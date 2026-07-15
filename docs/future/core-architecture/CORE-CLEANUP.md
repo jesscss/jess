@@ -482,6 +482,19 @@ recursively scans 10,777 evaluated surfaces to find 15 merge-bearing ones.
   `226.23→216.44 ms`, all too noisy or regressive to retain. The committed POC
   stays unmerged. Parent slots and prototype controls are sequenced behind a
   target that demonstrably activates them, not behind this non-occurring case.
+- **Reference.evalNode audit (2026-07-14) — no new general lane.** Five clean
+  current-dev profile runs reproduced `3,577` calls (`2,667` variable,
+  `491` function, `397` mixin-ruleset, `22` declaration) and roughly
+  `68.42–76.70 ms` total. The `33,607` declaration misses are the 22 explicit
+  property-merge references (`+:`, `+_:`, declaration `+`, and conditional
+  assignment), carrying source-order starts, exclusions, semantic filters, and
+  required assignment kinds; they are not ordinary variable misses. A generic
+  cache/index is therefore rejected. The only bounded ordinary-variable lane
+  remains the already-owned `jess-scope-slot-proof` worktree; do not open a
+  duplicate `Reference.evalNode` or prototype-chain lane. Any future
+  merge-specific predecessor index needs ownership across declaration/rules/
+  lookup and parity for merge chains, mixin boundaries, cross-scope merges,
+  exclusions, and `!important`.
 - **Parser boundary measured; recognition itself is a ranked problem.** With a
   regenerated grammar, the canonical 106,797-byte fixture on Node v24.11.1/M4
   Pro (12 warmups, 45 samples) measured Parseman recognizer-only at `12.784 ms`,
