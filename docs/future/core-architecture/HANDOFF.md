@@ -1188,6 +1188,22 @@ work.
 - Evidence: STRIPE self/mutual/≥3-level/root-scope/interpolated-selector recursion folds `deriveCalls===0`, distinct-per-level blocks, byte-identical to the eval toggle + less@4 (`lessc 4.6.3` diff clean on the recursion mechanism). Suites green: core 3300/0, jess `spine-production-ratchet` 126/0, all-less 105/0, error 92/0, less-parser 508/0. Perf A/B (same-worktree revert toggle, warmup + N median): STRIPE fixture folds faster than eval; benchmark neutral (stays on eval either way).
 - Verdict: accepted — deletes the recursion gate + its pre-scan traversal, folds STRIPE via the loop fold's existing projection primitive, no new node state, no tree mutation.
 
+## Q-40 latest rejected proof
+
+The registration-map sentinel proof (2026-07-15) at
+`/private/tmp/jess-varsbyname-proof-20260715` tested reusing
+`_registrationPrepared` instead of allocating an empty `varsByName` map for
+every prepared `Rules` surface. The bit is set early for re-entrancy and
+`resetDerivedState()` deliberately preserves it while clearing `varsByName`
+(`rules.ts:1570-1575`), so it cannot safely mean “declaration buckets are
+covered” after derive/reset. A safe replacement needs a second lifecycle fact
+or broader registration/reset plumbing. The diagnostic baseline recorded
+`3,131` registration stamps, `3,249` empty-map writes, `5,366`
+`RulesLookupState` allocations, and exact `133,983`-byte output (SHA-256
+`adfd26732125a33fc1e264aca7d7ecde8c7c1da43f968e3106bd387a1f78e840`). The
+worktree is clean with no source or commit; no focused/A-B gate was run because
+the semantic proof failed first.
+
 ## History
 
 Landed design/plan/readout/audit docs and this router's former pass-by-pass

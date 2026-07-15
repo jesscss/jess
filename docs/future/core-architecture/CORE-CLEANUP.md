@@ -788,6 +788,24 @@ declarations-coverage state.
   found and no duplicate worker was dispatched. Keep this lane closed until a
   distinct seam has an activating proof.
 
+- **Q-40 registration-map sentinel proof (2026-07-15, rejected).** The
+  apparent allocation cut was to stop `_stampRegistrationMaps()` from writing
+  an empty `varsByName` map on every prepared `Rules` surface and reuse the
+  packed `_registrationPrepared` bit as the scope-frame “declarations covered”
+  fact. The isolated proof at
+  `/private/tmp/jess-varsbyname-proof-20260715` found that this bit is set early
+  for re-entrancy and is deliberately preserved by `resetDerivedState()` while
+  `varsByName` is cleared (`rules.ts:1570-1575`). Reusing it would therefore
+  mark a derived frame covered after its declaration buckets had been removed.
+  A safe version requires a second lifecycle fact or altered registration/reset
+  plumbing, so it is not a bounded cut. Diagnostic counters recorded `3,131`
+  registration stamps, `3,249` empty-map writes, and `5,366`
+  `RulesLookupState` allocations; output was `133,983` bytes with SHA-256
+  `adfd26732125a33fc1e264aca7d7ecde8c7c1da43f968e3106bd387a1f78e840`. The
+  worktree is clean, no source/test files or commit remain, and no focused or
+  canonical A/B was run because the semantic proof failed first. Reopen only
+  as an explicitly owned combined registration-sentinel/scope-frame redesign.
+
 - **Q-40 profile refresh (2026-07-14, diagnostic only).** A fresh current-dev
   minified-build no-op control with the same fixture/runtime and 20 warmups /
   45 alternating pairs measured parse+render `217.263 ms` versus `215.872 ms`
