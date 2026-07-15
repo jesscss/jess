@@ -1,10 +1,11 @@
 import { describe, it } from 'vitest';
 import * as fs from 'fs';
 import { parseLessFn } from '@jesscss/less-parser';
-import { serialize } from '../../tree2/index.js';
+import { serialize, composeStats } from '../../tree2/index.js';
 import { bridgeToTree2 } from '../bridge.js';
 import { Context } from '../../context.js';
 import { renderNodeToString } from '../../tree/util/render-buffer.js';
+import { withLegacyOpCounters } from '../../tree2-harness/shapes.js';
 
 const CN = { collapseNesting: true } as const;
 
@@ -15,75 +16,85 @@ async function renderLegacy(tree: unknown): Promise<string> {
 }
 
 const R = '/Users/matthew/git/worktrees/less.js/packages/test-data/tests-unit';
+const read = (p: string): string => fs.readFileSync(`${R}/${p}`, 'utf8');
 
-// Real corpus clean-passers that EMIT non-empty output (the meaningful races),
-// plus a couple of constructed real-syntax nesting/mixin inputs (parsed + bridged
-// through the real front end) to exercise the composition cost center that the
-// static corpus fixtures don't reach.
+// Newly-passing (rung 7) REAL variable fixtures — byte-identical to the tree
+// oracle and genuinely exercising variable resolution — plus a rung-6 static
+// baseline, plus constructed variable-heavy real-syntax inputs (parsed +
+// bridged through the real front end) to exercise deeper scope chains.
 const corpus: Array<[string, string]> = [
-  ['logo.less', fs.readFileSync(`${R}/import/import/imports/logo.less`, 'utf8')],
-  ['simple-ruleset-2162.less', fs.readFileSync(`${R}/import/import-reference-issues/simple-ruleset-2162.less`, 'utf8')],
-  ['global-scope-nested.less', fs.readFileSync(`${R}/import/import-reference-issues/global-scope-nested.less`, 'utf8')],
+  ['lazy-eval.less', read('lazy-eval/lazy-eval.less')],
+  ['import-test-c.less', read('import/import/import-test-c.less')],
+  ['logo.less (static)', read('import/import/imports/logo.less')],
 ];
 const constructed: Array<[string, string]> = [
-  ['nesting-3deep', '.a { .b { .c { color: red; width: 1px; } } }\n'],
-  ['mixin-call-nested', '.box() { color: red; .inner { width: 1px; } &:hover { color: blue; } }\n.a { .box(); }\n.b { .box(); }\n'],
+  ['var-chain-deep', '@a: 1px; @b: @a; @c: @b; @d: @c;\n.x { width: @d; }\n'],
+  ['var-scope-nested', '@c: red;\n.a { @c: blue; .b { color: @c; } color: @c; }\n'],
+  ['var-mixin-arg-scope', '.paint(@c) { color: @c; border-color: @c; }\n@x: teal;\n.a { .paint(@x); }\n.b { .paint(gold); }\n'],
 ];
 
 function median(xs: number[]): number {
   const s = [...xs].sort((a, b) => a - b);
   return s[Math.floor(s.length / 2)]!;
 }
-
 const gc: (() => void) | undefined = (globalThis as { gc?: () => void }).gc;
 
 async function race(name: string, src: string): Promise<void> {
   const parsed = parseLessFn(src);
-  const parsedTree = parsed.tree;
-  // Verify byte-identity first (gate).
-  const t2 = serialize(bridgeToTree2(parsedTree, src)).css;
-  const leg = await renderLegacy(parsedTree);
+  const tree = parsed.tree;
+  const t2 = serialize(bridgeToTree2(tree, src)).css;
+  const leg = await renderLegacy(tree);
   const identical = t2 === leg;
 
   const WARM = 5;
   const N = 15;
 
-  // tree2 lane: build-from-parse (bridge) + serialize.
-  for (let i = 0; i < WARM; i++) serialize(bridgeToTree2(parsedTree, src));
+  for (let i = 0; i < WARM; i++) serialize(bridgeToTree2(tree, src));
   gc?.();
+  const m0 = process.memoryUsage().heapUsed;
   const t2times: number[] = [];
   for (let i = 0; i < N; i++) {
     const a = performance.now();
-    serialize(bridgeToTree2(parsedTree, src));
+    serialize(bridgeToTree2(tree, src));
     t2times.push(performance.now() - a);
   }
+  const t2heap = (process.memoryUsage().heapUsed - m0) / N;
 
-  // tree lane: full legacy render (async eval+emit). Fresh Context each call.
-  for (let i = 0; i < WARM; i++) await renderLegacy(parsedTree);
+  for (let i = 0; i < WARM; i++) await renderLegacy(tree);
   gc?.();
+  const l0 = process.memoryUsage().heapUsed;
   const legtimes: number[] = [];
   for (let i = 0; i < N; i++) {
     const a = performance.now();
-    await renderLegacy(parsedTree);
+    await renderLegacy(tree);
     legtimes.push(performance.now() - a);
   }
+  const legheap = (process.memoryUsage().heapUsed - l0) / N;
+
+  // Op-counts: tree2 compositions vs legacy clone/inherit/withComponents.
+  const t2ops = composeStats(bridgeToTree2(tree, src));
+  const legops = await withLegacyOpCounters(async () => {
+    await renderLegacy(tree);
+  });
 
   const t2m = median(t2times);
   const legm = median(legtimes);
   console.log(
-    `  ${name.padEnd(26)} identical=${identical ? 'YES' : 'NO '}  ` +
-      `tree2 ${t2m.toFixed(4)}ms  tree ${legm.toFixed(4)}ms  ` +
-      `speedup ${(legm / t2m).toFixed(1)}x  outBytes=${t2.length}`,
+    `  ${name.padEnd(22)} id=${identical ? 'Y' : 'N'} ` +
+      `t2 ${t2m.toFixed(4)}ms tree ${legm.toFixed(4)}ms (${(legm / t2m).toFixed(1)}x)  ` +
+      `heap/rnd t2 ${(t2heap / 1024).toFixed(1)}KB tree ${(legheap / 1024).toFixed(1)}KB  ` +
+      `ops t2[compose ${t2ops.composeOps}] ` +
+      `tree[clone ${legops.cloneForPlacement}+inherit ${legops.inherit}+withComp ${legops.withComponents}]`,
   );
 }
 
-describe('tree2 bridge — real-fixture race', () => {
+describe('tree2 bridge — real-fixture race (rung 7: variables)', () => {
   it('race', async () => {
-    console.log(`\n============ TREE2 vs TREE — REAL-FIXTURE RACE (gc=${gc ? 'on' : 'off'}) ============`);
-    console.log('build-from-parse+serialize (tree2) vs full render (tree); parse shared/excluded');
-    console.log('-- real corpus fixtures --');
+    console.log(`\n===== TREE2 vs TREE RACE — variables rung (gc=${gc ? 'on' : 'off'}) =====`);
+    console.log('t2 = build-from-parse(bridge)+serialize ; tree = full legacy render ; parse excluded');
+    console.log('-- newly-passing real corpus (variable + static) --');
     for (const [n, s] of corpus) await race(n, s);
-    console.log('-- constructed real-syntax (parsed+bridged through real front end) --');
+    console.log('-- constructed variable-heavy real-syntax --');
     for (const [n, s] of constructed) await race(n, s);
     console.log('=================================================================\n');
   }, 120000);

@@ -123,6 +123,66 @@ the log below every iteration so the track compounds instead of repeating.
 
 <!-- newest first; each entry: date · hypothesis · prediction · byte-identical? · measured Δ · kept/dropped · why · next -->
 
+- 2026-07-15 — **rung 7: VARIABLES + real lexical scope (reference substitution only). VERDICT:
+  variable resolution is correct AND stays cheap — a scope-map lookup through a frame chain, ZERO
+  clone/inherit/materialize analog; the #1 census blocker (was 36) is eliminated (branch
+  `experiment/tree2-cleanroom-20260715`, experimental scaffold, NOT merged).** Built on rung 6.
+  - **Scope model.** tree2 gained a `VarDeclaration` node + a `Concat` value node (literal text +
+    `@ref` parts, no-separator join) and a real lexical scope: each rule/root/mixin-call frame holds
+    a `vars` map built by `collectVars` (LAST-wins per scope) collected UP-FRONT before any value
+    emits (so LAZY intra-scope refs resolve). `VarRef` resolves through the frame chain (nearest
+    wins → correct shadowing); values resolve recursively (chains like `@b: @a`). Mixin args are
+    evaluated EAGERLY in the CALLER frame then bound (Less semantics; avoids re-resolving an arg
+    `@x` against the callee). Params + body-local vars unified into one call frame. A depth guard
+    caps ref cycles. Definitions (`@x:`, mixin defs) emit nothing.
+  - **Bridge.** Added `VarDeclaration` translation + a value tokenizer (`@name` → `VarRef`, else
+    literal; `@{interp}` left literal — later rung) applied to decl values, var-decl values, mixin
+    defaults, and call args. Also FIXED a comment gap surfaced by the corpus: Less drops standalone
+    `//` line comments (not valid CSS) — the bridge now drops them (block `/* */` kept). Bridge
+    stays OUTSIDE `tree2/`; **boundary guard GREEN** (grep of `src/tree2` for `../tree` empty,
+    vitest guard passes). No `as any`.
+  - **Correctness (tree = oracle).** 10 constructed variable cases byte-identical incl. chain, lazy
+    (`@var: @a; @a: 100%` used before decl), last-wins, rule-scope, nested-scope, shadow, arg-in-
+    caller-scope, default. The tricky nested last-wins+lazy (`.class{@var:1;.brass{@var:2;three:@var;
+    @var:3}one:@var}` → `.class .brass{three:3}` `.class{one:1}`) is byte-identical.
+  - **Non-synthetic corpus (133 less.js `tests-unit` files).** CLEAN byte-identical passes vs the
+    tree oracle **15 (rung 6) → 25 (rung 7)**. Of the 25: **3 are meaningful VARIABLE passes**
+    (var-ref, no fn): `lazy-eval/lazy-eval.less` (chained+lazy `@var→@a→100%`), `import/import/
+    import-test-c.less`, `import-once-test-c.less` (`@c: red; color: @c`); 14 static; **8 are
+    fn-hollow** (color-functions/* + svg-gradient) — see the oracle caveat below. **HONEST ORACLE
+    CAVEAT: the bare-context `renderNodeToString` oracle evaluates variables/mixins/nesting but NOT
+    color/math functions (no function registry wired in the bare core Context), so a fixture that
+    calls `lighten(...)`/`rgb(...)` is byte-identical only because BOTH sides pass the call through
+    un-evaluated — these do NOT demonstrate function handling (that is the NEXT rung) and are tagged
+    `fn-hollow` in the census, not hidden.** Variable eval IS genuinely exercised (verified: oracle
+    computes `@var → 100%`).
+  - **DIFF classification (scope bug vs later rung).** 18 fixtures bridge structurally but differ.
+    Classified: NONE is a scope bug. Explained by later rungs — function-call ~10 (color funcs,
+    css-escapes, ie-filters, maps), escaping 2, calc 2, operation 2; plus isolated feature gaps:
+    leading-combinator nesting (`#theme{ > .mixin }` → tree2 drops the `>`), namespace/closure mixin
+    call (`.scope > .mixin()`), `@{}`/`$@` interpolation, `+:` merge, property-important. Variable
+    resolution itself produced no divergence.
+  - **Race (same worktree, warmup 5, N=15 median, `--expose-gc`; t2 = bridge+serialize, tree = full
+    legacy render, parse excluded, all byte-identical):**
+      - `lazy-eval.less`: t2 **0.0084 ms** vs tree **0.1502 ms = 17.9×**; heap/render t2 ~0 vs tree
+        63 KB; ops t2 compose 0 / **tree clone 1 + inherit 5**.
+      - `import-test-c.less`: **13.8×** (0.0039 vs 0.0534 ms); tree inherit 3, t2 0.
+      - `logo.less` (static): **30.2×**; heap t2 7 KB vs tree 98 KB.
+      - constructed var-chain-deep (4-deep `@a→@b→@c→@d`): **17.2×**; tree clone 3 + inherit 9, t2 0.
+      - constructed var-mixin-arg-scope (2 calls, arg resolved in caller): **34.6×**; heap t2 9 KB vs
+        tree **185 KB**; tree clone 2 + **inherit 25**, t2 compose 0.
+  - **Honest verdict.** YES — the scope model stays cheap: lookup is a Map walk over a short frame
+    chain (O(scope depth), depth tiny), values resolve by string concat, and **tree2's variable
+    resolution introduces NO clone / inherit / materialize op** (the tree2 op-count columns for those
+    are structurally ZERO while legacy pays clone+inherit even for pure variable fixtures). No
+    per-lookup blowup, no clone/materialize regression; eval stays O(work). Kept (experimental
+    scaffold, NOT merged). **Recommended next rung: value operations + functions** (the dominant
+    remaining DIFF category AND it requires wiring a real evaluating oracle — the bare-context
+    render does not evaluate functions, so the next agent must render through the full jess/less
+    function path to get a valid oracle for that rung). Then at-rules/@media, then @import, then
+    extend. Code: `tree2/{node,nodes,serialize}.ts` (VarDeclaration/Concat + scope),
+    `tree2-frontend/bridge.ts`, `__tests__/{bridge-byte-identity,census,race}.test.ts`.
+
 - 2026-07-15 — **rung 6: parser→tree2 BRIDGE + FIRST NON-SYNTHETIC byte-identity + real-corpus
   census. VERDICT: the arena escapes the synthetic caveat — real `.less` fixtures parse → bridge
   → tree2 → serialize BYTE-IDENTICAL to the legacy `tree` render, and the census gives a grounded

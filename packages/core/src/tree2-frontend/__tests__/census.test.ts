@@ -104,11 +104,30 @@ describe('tree2 bridge — real corpus census', () => {
     console.log(`parse errors/skipped        : ${parseErrors.length}`);
     console.log(`legacy-render errors        : ${legacyErrors.length}`);
 
-    console.log('\n--- CLEAN PASSES (real fixtures, byte-identical) ---');
+    // Honesty tags on clean passes: the bare-context legacy oracle evaluates
+    // variables/mixins/nesting but NOT color/math functions (no function
+    // registry wired), so a pass whose source calls a function is byte-identical
+    // only because BOTH sides pass the call through un-evaluated (oracle-hollow
+    // for functions). A pass whose value contains a `@ref` genuinely exercises
+    // this rung's variable resolution.
+    const FN =
+      /\b(lighten|darken|fade|fadein|fadeout|saturate|desaturate|rgba?|hsla?|hsv|spin|mix|tint|shade|alpha|luma|luminance|contrast|red|green|blue|hue|saturation|lightness|percentage|round|ceil|floor|unit|convert|calc)\s*\(/i;
+    let meaningfulVarPasses = 0;
+    let fnHollowPasses = 0;
+    console.log('\n--- CLEAN PASSES (real fixtures, byte-identical to tree oracle) ---');
     for (const p of passes) {
-      const sz = fs.statSync(path.join(LESS_ROOT, p)).size;
-      console.log(`  PASS  ${p}  (${sz}B)`);
+      const abs = path.join(LESS_ROOT, p);
+      const sz = fs.statSync(abs).size;
+      const s = fs.readFileSync(abs, 'utf8');
+      const hasVarRef = /:\s*[^;{}]*@[A-Za-z_]/.test(s);
+      const hasFn = FN.test(s);
+      const tag = [hasVarRef ? 'VAR' : '', hasFn ? 'fn-hollow' : ''].filter(Boolean).join(',') || 'static';
+      if (hasVarRef && !hasFn) meaningfulVarPasses++;
+      if (hasFn) fnHollowPasses++;
+      console.log(`  PASS  ${p}  (${sz}B)  [${tag}]`);
     }
+    console.log(`  => meaningful VARIABLE passes (var ref, no fn): ${meaningfulVarPasses}`);
+    console.log(`  => fn-hollow passes (oracle doesn't eval fns): ${fnHollowPasses}`);
 
     console.log('\n--- RANKED BLOCKERS (unsupported feature -> #fixtures) ---');
     for (const [feat, n] of rankedUnsupported) console.log(`  ${String(n).padStart(4)}  ${feat}`);

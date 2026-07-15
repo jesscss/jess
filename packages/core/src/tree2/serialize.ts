@@ -26,6 +26,7 @@
  */
 
 import { Kind, Tree2Node } from './node.js';
+import { Word } from './nodes.js';
 import type {
   Complex,
   MixinCall,
@@ -80,6 +81,23 @@ function collectMixins(statements: Statement[]): Map<string, MixinDef> | null {
   return map;
 }
 
+/**
+ * Collect variable declarations in a scope. Less variable semantics: LAST-wins
+ * within a scope (a later `@x` overrides an earlier one) and LAZY (a reference
+ * can resolve a variable declared textually later in the same scope). Building
+ * the whole scope's var map up-front — before any value is emitted — gives both
+ * for free: `set` overwrites (last-wins) and the map is complete before use.
+ */
+function collectVars(statements: Statement[]): Map<string, ValueNode> | null {
+  let map: Map<string, ValueNode> | null = null;
+  for (const s of statements) {
+    if (s.kind === Kind.VarDeclaration) {
+      (map ??= new Map()).set(s.name, s.value);
+    }
+  }
+  return map;
+}
+
 function lookupMixin(frame: Frame | null, name: string): MixinDef | undefined {
   for (let f = frame; f; f = f.parent) {
     const hit = f.mixins?.get(name);
@@ -96,33 +114,53 @@ function lookupVar(frame: Frame | null, name: string): ValueNode | undefined {
   return undefined;
 }
 
-function bindParams(params: Param[], args: ValueNode[]): Map<string, ValueNode> | null {
+/**
+ * Bind call args to params. Args are evaluated EAGERLY in the CALLER's frame
+ * (Less evaluates mixin arguments in the caller scope) and stored as resolved
+ * literals, so an arg like `@c` resolves against the caller — never re-resolved
+ * against the callee's scope (which would find the wrong binding or loop).
+ */
+function bindParams(
+  params: Param[],
+  args: ValueNode[],
+  callerFrame: Frame | null,
+): Map<string, ValueNode> | null {
   if (params.length === 0) return null;
   const vars = new Map<string, ValueNode>();
   for (let i = 0; i < params.length; i++) {
     const p = params[i]!;
     const v = i < args.length ? args[i]! : p.default;
-    if (v !== undefined) vars.set(p.name, v);
+    if (v !== undefined) vars.set(p.name, new Word(valueText(v, callerFrame)));
   }
   return vars;
 }
 
 /* ----------------------------------------------------------- value bytes */
 
-function valueText(node: ValueNode, frame: Frame | null): string {
+const MAX_VAR_DEPTH = 64;
+
+function valueText(node: ValueNode, frame: Frame | null, depth = 0): string {
   switch (node.kind) {
     case Kind.Word:
       return node.text;
     case Kind.Dimension:
       return `${node.value}${node.unit}`;
     case Kind.VarRef: {
+      if (depth > MAX_VAR_DEPTH) return `@${node.name}`; // cycle guard
       const bound = lookupVar(frame, node.name);
-      return bound ? valueText(bound, frame) : node.name;
+      // Unbound: emit the byte form so the output visibly diverges rather than
+      // silently dropping (a real fixture that reaches here needs another rung).
+      return bound ? valueText(bound, frame, depth + 1) : `@${node.name}`;
+    }
+    case Kind.Concat: {
+      let out = '';
+      for (const part of node.parts) out += valueText(part, frame, depth);
+      return out;
     }
     case Kind.SpacedValue: {
       const parts = node.parts;
-      let out = parts.length > 0 ? valueText(parts[0]!, frame) : '';
-      for (let i = 1; i < parts.length; i++) out += ' ' + valueText(parts[i]!, frame);
+      let out = parts.length > 0 ? valueText(parts[0]!, frame, depth) : '';
+      for (let i = 1; i < parts.length; i++) out += ' ' + valueText(parts[i]!, frame, depth);
       return out;
     }
   }
@@ -174,7 +212,11 @@ interface Leaf {
 
 export function serialize(root: Root, options?: SerializeOptions): SerializeResult {
   const e: Emit = { chunks: [], off: 0, positions: options?.trackPositions ? [] : null };
-  const rootFrame: Frame = { parent: null, mixins: collectMixins(root.children), vars: null };
+  const rootFrame: Frame = {
+    parent: null,
+    mixins: collectMixins(root.children),
+    vars: collectVars(root.children),
+  };
   const start = e.off;
   for (const child of root.children) {
     switch (child.kind) {
@@ -182,6 +224,7 @@ export function serialize(root: Root, options?: SerializeOptions): SerializeResu
         flatten(child, null, rootFrame, e);
         break;
       case Kind.MixinDef:
+      case Kind.VarDeclaration:
         break; // definitions emit nothing
       case Kind.MixinCall: {
         const group: Leaf[] = [];
@@ -200,7 +243,11 @@ export function serialize(root: Root, options?: SerializeOptions): SerializeResu
 
 function flatten(rule: Rule, parent: string[] | null, frame: Frame, e: Emit): void {
   const composed = parent === null ? ownStrings(rule.selector) : compose(parent, rule.selector);
-  const childFrame: Frame = { parent: frame, mixins: collectMixins(rule.body), vars: null };
+  const childFrame: Frame = {
+    parent: frame,
+    mixins: collectMixins(rule.body),
+    vars: collectVars(rule.body),
+  };
   const group: Leaf[] = [];
   const flush = (): void => {
     if (group.length) {
@@ -235,9 +282,22 @@ function walkBody(
         expandCall(node, composed, frame, group, flush, e);
         break;
       case Kind.MixinDef:
+      case Kind.VarDeclaration:
         break;
     }
   }
+}
+
+/** Merge param bindings and body-local vars into one frame map (params first). */
+function mergeVars(
+  a: Map<string, ValueNode> | null,
+  b: Map<string, ValueNode> | null,
+): Map<string, ValueNode> | null {
+  if (!a) return b;
+  if (!b) return a;
+  const out = new Map(a);
+  for (const [k, v] of b) out.set(k, v);
+  return out;
 }
 
 /**
@@ -257,7 +317,7 @@ function expandCall(
   const callFrame: Frame = {
     parent: frame,
     mixins: collectMixins(def.body),
-    vars: bindParams(def.params, call.args),
+    vars: mergeVars(bindParams(def.params, call.args, frame), collectVars(def.body)),
   };
   walkBody(def.body, composed ?? [], callFrame, group, flush, e);
 }
@@ -340,7 +400,7 @@ export function composeStats(root: Root): ComposeStats {
           const callFrame: Frame = {
             parent: frame,
             mixins: collectMixins(def.body),
-            vars: bindParams(def.params, node.args),
+            vars: mergeVars(bindParams(def.params, node.args, frame), collectVars(def.body)),
           };
           walk(def.body, composed, callFrame);
         }

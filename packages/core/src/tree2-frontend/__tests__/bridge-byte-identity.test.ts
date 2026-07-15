@@ -28,6 +28,17 @@ const inputs: Array<[string, string]> = [
   ['spaced-value', '.a { border: 1px solid black; }\n'],
   ['mixin-noparen-body', '.mix() { color: red; width: 10px; }\n.a { .mix(); }\n'],
   ['mixin-nested', '.box() { color: red; .inner { width: 1px; } }\n.a { .box(); }\n'],
+  // rung 7: variables + real scope (reference substitution only)
+  ['var-simple', '@c: red;\n.a { color: @c; }\n'],
+  ['var-chain', '@a: red;\n@b: @a;\n.a { color: @b; }\n'],
+  ['var-in-spaced', '@w: 1px;\n.a { border: @w solid black; }\n'],
+  ['var-lazy', '.a { color: @c; }\n@c: blue;\n'],
+  ['var-last-wins', '@c: red;\n@c: green;\n.a { color: @c; }\n'],
+  ['var-rule-scope', '.a { @c: blue; color: @c; }\n'],
+  ['var-nested-scope', '@c: red;\n.a { .b { color: @c; } }\n'],
+  ['var-shadow', '@c: red;\n.a { @c: blue; color: @c; }\n'],
+  ['var-mixin-arg', '.paint(@c) { color: @c; }\n@x: teal;\n.a { .paint(@x); }\n'],
+  ['var-mixin-default', '.paint(@c: red) { color: @c; }\n.a { .paint(); }\n'],
 ];
 
 describe('bridge byte-identity (constructed .less)', () => {

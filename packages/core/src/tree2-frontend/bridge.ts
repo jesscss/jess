@@ -183,19 +183,40 @@ function isSelectorListNode(sel: AnyNode): boolean {
 
 /* ------------------------------------------------------------ declarations */
 
-function declValueText(ctx: BridgeCtx, decl: AnyNode): string {
-  const declText = slice(ctx, decl);
-  if (declText === undefined) throw new UnsupportedShape('decl:no-span', String(decl.name));
-  const name = decl.name;
-  if (typeof name !== 'string') throw new UnsupportedShape('decl:name', typeOf(name));
-  // Strip a trailing ';' and whitespace, then split off "name :".
+/**
+ * Raw value bytes of a `name: value;` / `@name: value;` node from its source
+ * span (works for both Declaration and VarDeclaration — same source shape).
+ * `!important`, when present, is included (tree2 has no important field).
+ */
+function rawDeclValue(ctx: BridgeCtx, node: AnyNode): string {
+  const declText = slice(ctx, node);
+  if (declText === undefined) throw new UnsupportedShape('decl:no-span', String(node.name));
   const body = declText.replace(/;\s*$/, '');
   const colon = body.indexOf(':');
-  if (colon < 0) throw new UnsupportedShape('decl:no-colon', name);
-  const value = body.slice(colon + 1).trim();
-  // `important` is folded into the value bytes since tree2 has no important
-  // field; the source span already includes ` !important` when present.
-  return value;
+  if (colon < 0) throw new UnsupportedShape('decl:no-colon', String(node.name));
+  return body.slice(colon + 1).trim();
+}
+
+/**
+ * Tokenize static value bytes into a tree2 value, turning `@name` references
+ * into `VarRef` nodes and leaving everything else literal. Reference
+ * substitution only — `@{interp}` (no `[A-Za-z_]` after `@`) is left literal
+ * (interpolation is a later rung), and no arithmetic/functions are parsed.
+ */
+function parseValue(text: string): t2.ValueNode {
+  if (text.indexOf('@') < 0) return t2.word(text);
+  const re = /@([A-Za-z_][\w-]*)/g;
+  const parts: t2.ValueNode[] = [];
+  let last = 0;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > last) parts.push(t2.word(text.slice(last, m.index)));
+    parts.push(t2.varRef(m[1]!));
+    last = m.index + m[0].length;
+  }
+  if (parts.length === 0) return t2.word(text);
+  if (last < text.length) parts.push(t2.word(text.slice(last)));
+  return parts.length === 1 ? parts[0]! : t2.concat(parts);
 }
 
 /* --------------------------------------------------------------- mixins */
@@ -215,7 +236,7 @@ function mixinParams(ctx: BridgeCtx, params: unknown): t2.Param[] {
     let def: t2.ValueNode | undefined;
     if (isNode(rawDefault) && typeOf(rawDefault) !== 'Nil') {
       const dtext = slice(ctx, rawDefault);
-      if (dtext !== undefined) def = t2.word(dtext);
+      if (dtext !== undefined) def = parseValue(dtext);
     }
     out.push({ name: name.replace(/^@/, ''), default: def });
   }
@@ -229,7 +250,7 @@ function callArgs(ctx: BridgeCtx, args: unknown): t2.ValueNode[] {
   return arr.map((a) => {
     const text = typeof a === 'string' ? a : isNode(a) ? slice(ctx, a) : undefined;
     if (text === undefined) throw new UnsupportedShape('call:arg', typeOf(a));
-    return t2.word(text);
+    return parseValue(text);
   });
 }
 
@@ -248,18 +269,27 @@ function mixinName(node: AnyNode): string {
 
 /* ---------------------------------------------------------- statements */
 
-function toStatement(ctx: BridgeCtx, node: unknown): t2.Statement {
+function toStatement(ctx: BridgeCtx, node: unknown): t2.Statement | null {
   if (!isNode(node)) throw new UnsupportedShape('statement', typeOf(node));
   const t = typeOf(node);
   switch (t) {
     case 'Declaration': {
       const name = (node as AnyNode).name;
       if (typeof name !== 'string') throw new UnsupportedShape('decl:name', typeOf(name));
-      return t2.decl(name, t2.word(declValueText(ctx, node as AnyNode)));
+      return t2.decl(name, parseValue(rawDeclValue(ctx, node as AnyNode)));
+    }
+    case 'VarDeclaration': {
+      const name = (node as AnyNode).name;
+      if (typeof name !== 'string') throw new UnsupportedShape('var-decl:name', typeOf(name));
+      if ((node as AnyNode).important) throw new UnsupportedShape('var-decl:important', name);
+      return t2.varDecl(name, parseValue(rawDeclValue(ctx, node as AnyNode)));
     }
     case 'Comment': {
       const raw = slice(ctx, node);
       if (raw === undefined) throw new UnsupportedShape('comment:no-span', '');
+      // Less drops standalone `//` line comments (not valid CSS); block
+      // comments `/* … */` are preserved. Match that.
+      if (raw.startsWith('//')) return null;
       return t2.comment(raw);
     }
     case 'Ruleset':
@@ -275,7 +305,12 @@ function toStatement(ctx: BridgeCtx, node: unknown): t2.Statement {
 
 function toBody(ctx: BridgeCtx, rules: unknown): t2.Statement[] {
   if (!Array.isArray(rules)) throw new UnsupportedShape('body', typeOf(rules));
-  return rules.map((r) => toStatement(ctx, r));
+  const out: t2.Statement[] = [];
+  for (const r of rules) {
+    const s = toStatement(ctx, r);
+    if (s !== null) out.push(s);
+  }
+  return out;
 }
 
 function toRuleset(ctx: BridgeCtx, node: AnyNode): t2.Rule {
@@ -311,5 +346,5 @@ export function bridgeToTree2(root: unknown, source: string): t2.Root {
   if (!isNode(root)) throw new UnsupportedShape('root', typeOf(root));
   const rules = (root as AnyNode).rules;
   if (!Array.isArray(rules)) throw new UnsupportedShape('root:rules', typeOf(rules));
-  return t2.root(rules.map((r) => toStatement(ctx, r)));
+  return t2.root(toBody(ctx, rules));
 }

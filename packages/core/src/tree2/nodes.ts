@@ -55,7 +55,21 @@ export class VarRef extends Tree2Node {
   }
 }
 
-export type ValueNode = Word | Dimension | SpacedValue | VarRef;
+/**
+ * A value template: literal text and `@var` references concatenated with NO
+ * separator (the literal parts already carry their own spacing). This is how a
+ * static value that embeds variable references is represented — e.g.
+ * `1px solid @c` => Concat[Word('1px solid '), VarRef('c')]. Reference
+ * substitution only (this rung): no arithmetic, no function evaluation.
+ */
+export class Concat extends Tree2Node {
+  readonly kind = Kind.Concat as const;
+  constructor(readonly parts: ValueNode[]) {
+    super();
+  }
+}
+
+export type ValueNode = Word | Dimension | SpacedValue | VarRef | Concat;
 
 /* ---------------------------------------------------------------- selectors */
 
@@ -157,6 +171,17 @@ export class Declaration extends Tree2Node {
   }
 }
 
+/** A `@name: value;` variable declaration. Emits nothing; lives in scope. */
+export class VarDeclaration extends Tree2Node {
+  readonly kind = Kind.VarDeclaration as const;
+  constructor(
+    readonly name: string,
+    readonly value: ValueNode,
+  ) {
+    super();
+  }
+}
+
 /** A comment carried structurally in source order (block or line text as-is). */
 export class Comment extends Tree2Node {
   readonly kind = Kind.Comment as const;
@@ -217,7 +242,7 @@ export class Root extends Tree2Node {
   }
 }
 
-export type Statement = Rule | Declaration | Comment | MixinDef | MixinCall;
+export type Statement = Rule | Declaration | Comment | MixinDef | MixinCall | VarDeclaration;
 
 /* ------------------------------------------------------------ constructors */
 
@@ -242,6 +267,9 @@ export const selist = (...selectors: Complex[]): SelectorList => new SelectorLis
 export const decl = (name: string, value: ValueNode): Declaration => new Declaration(name, value);
 export const comment = (text: string): Comment => new Comment(text);
 export const varRef = (name: string): VarRef => new VarRef(name);
+export const concat = (parts: ValueNode[]): Concat => new Concat(parts);
+export const varDecl = (name: string, value: ValueNode): VarDeclaration =>
+  new VarDeclaration(name, value);
 export const mixinDef = (name: string, params: Param[], body: Statement[]): MixinDef =>
   new MixinDef(name, params, body);
 export const mixinCall = (name: string, args: ValueNode[] = []): MixinCall => new MixinCall(name, args);
