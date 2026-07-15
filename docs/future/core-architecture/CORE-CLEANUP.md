@@ -163,9 +163,16 @@ sequential, not parallel, even when their descriptions look independent.
 | Q-35 | **CLOSED — remove temporary at-rule body-record spread** — `createBodyEvalRecord()` now stores the total `bodyRules` field directly instead of creating a conditional spread object. This preserves the fixed record shape and removes a temporary allocation; no parent, provenance, or body-evaluation semantics changed. Focused AtRule coverage passed `87/87`; the full baseline passed, `spine-production-ratchet` passed `136/136`, aggressive review and `git diff --check` passed. Same-directory `benchmark.less` A/B used 24 samples per side: control round median `234.05 ms`, candidate `241.68 ms`; trimmed medians were `237.75 ms` and `245.35 ms`, so this is accepted as a shape/allocation cut with no speed claim. | `packages/core/src/tree/at-rule.ts` | total-return contract, AtRule body/visibility/writer/source-body tests, same-directory `benchmark.less` A/B, aggressive review, full baseline, spine ratchet |
 | Q-36 | **CLOSED — cast plain-object dependency cut rejected** — `packages/core/src/tree/util/cast.ts` still uses `lodash-es/isPlainObject`: the nearby constructor-only helper does not preserve lodash's accepted/rejected boundary for null-prototype, custom-prototype, Symbol-tagged, and cross-realm objects. An exact native replacement would be larger or riskier than the import, so no production or object-shape change is justified. The bounded object-shape audit passed 29 focused cast/conversion/Bool tests and the aggressive review; a same-built-closure benchmark repeat measured `208.53 ms → 218.00 ms` with identical code, so it is a measurement record only and carries no speed claim. | `packages/core/src/tree/util/cast.ts` | lodash/native object-shape matrix, cast/conversion tests, aggressive review, same-directory benchmark attempt; explicit no-op |
 | Q-37 | **CLOSED — root flat writer/buffer transport** — the compiler-owned flat render buffer now aliases `OutputWriter.chunks` through `RenderBuffer.parts`, so root spine output no longer stores the writer chunks plus a second whole-document buffer entry. The spine writes charset/import prelude bytes before descent and fixes the direct body's terminal framing in place; explicit caller-owned flat buffers, segmented buffers, and source-map output stay detached. Focused core render-buffer/rules/node-buffer tests passed `121/121` with `5` skipped, core/Jess compile passed, and the final matched control/candidate benchmark was `246.64 ms → 245.77 ms` (`-0.87 ms`, `-0.35%`, qualified/no causal speed claim). The eval-fallback audit found no safe `emit-walk.ts`-only removal; imported-extend topology belongs to `spine-extend.ts`, while unresolved interpolated imports and root-direct loops remain semantic gates. | `packages/core/src/tree/util/render-buffer.ts`, `packages/core/src/tree/rules.ts`, `packages/core/src/tree/util/emit-walk.ts`, `packages/jess/src/index.ts`, focused tests | shared-buffer ownership, prelude/newline parity, source-map/caller-owned isolation, core/Jess compile, spine/all-less/full baseline gates, aggressive review, matched benchmark A/B, fallback residual audit |
-| Q-38 | **OWNER-GATED — remaining eval fallback residuals** — no safe `emit-walk.ts`-only removal was found. Unmatched imported `:extend` now remains on the spine, but the representative `benchmark.less` import/extend shape still enters the spine and falls back after the strict resolved-topology re-gate (`spine=1`, `derive=831`). A genuinely unresolvable interpolated import must retain eval ownership for Less error semantics, and root-direct loops remain outside the current spine emitter. Continue only with an owner of `packages/core/src/tree/extend/spine-extend.ts` and a topology/parity test batch; do not weaken the re-gate or duplicate the existing worker's investigation. | `packages/core/src/tree/extend/spine-extend.ts`, `packages/core/src/tree/util/emit-walk.ts`, spine topology tests | current-dev owner refresh, imported-extend topology proof, root-loop and unresolved-import parity, spine derive counter, all-less byte identity, benchmark A/B, aggressive review |
+| Q-38 | **OWNER-GATED — remaining eval fallback residuals** — the canonical Less 4.x fixture makes one spine admission, aborts before output on `extend topology`, and enters whole-file eval fallback (`10,777` eval-node/preparation entries, `10,776` repeated preparations, `846` derives). No safe `emit-walk.ts`-only removal was found. A genuinely unresolvable interpolated import must retain eval ownership for Less error semantics, and root-direct loops remain outside the current spine emitter. Continue only with an owner of `packages/core/src/tree/extend/spine-extend.ts` and a topology/parity test batch; do not weaken the re-gate or duplicate the existing worker's investigation. | `packages/core/src/tree/extend/spine-extend.ts`, `packages/core/src/tree/util/emit-walk.ts`, spine topology tests | current-dev owner refresh, imported-extend topology proof, root-loop and unresolved-import parity, spine derive counter, all-less byte identity, benchmark A/B, aggressive review |
 | Q-39 | **CLOSED — lazy OutputWriter transient state** — ordinary `tracksSources=false` writers no longer materialize idle captured-segment or queued-spacer own fields, and the dead trailing-newline-origin diagnostic/accessor is deleted. `_posLength` remains intentionally eager for constant-time rollback. Full core passed `3311` tests with `15` skipped and `2` deferred; focused writer coverage passed `55/55`; the exact same-checkout `benchmark.less` control/candidate/candidate sequence was `253.67 → 289.79 → 242.93 ms` (15 iterations, 5 warmups, 3 rounds), an order-sensitive swing with no causal speed claim. | `packages/core/src/tree/util/print.ts` | generated writer shape, capture/spacer/source-map behavior, full core, core build, benchmark sanity; no AST or eval fallback ownership |
 | Q-40 | **ACTIVE — canonical `benchmark.less` performance program (<40 ms)** — use the Less 4.6.3 fixture at `/Users/matthew/git/oss/less.js/packages/less/benchmark/benchmark.less`, with Jess `Compiler.render()` configured for `collapseNesting: true` plus the Less and Less-compat plugins. The contract is `scripts/compare-less-parse-render-env.mjs`, Node v25.9.0 arm64, 20 warmups, 45 alternating no-op pairs, fixed fixture/options/cache process, and a separate `parse-render` versus parse-once `render` phase; `profile-less-benchmark.mjs` is diagnostic only. Current same-checkout controls: Jess parse+render **238.98 ms** median (control 238.98, no-op candidate 241.79) and parse-once/render-only **202.92 ms** (control 202.92, no-op candidate 202.38)—both far from the target and proving render/eval is the immediate dominant gap. On the same machine/runtime, Less 4.6.3 measured `less.parse(..., { processImports: false })` **4.258 ms** and `less.render()` **31.101 ms** median (20 warmups, 45 samples). Jess preserves its own baseline output byte-for-byte (133,983 bytes); Less output is a speed comparator, not a byte oracle (131,674 bytes). The direct profile records 4,085 declaration preview fallbacks, 1,644 duplicate-declaration containers, and 33,607 declaration-strategy child-surface traversals. Those traversals are only 22 property-merge references and the safe local short-circuit activates once, so generic lookup cache/index work is rejected. Parseman remains separately ranked: equal-contract no-import parsing measured Less AST 6.01 ms, Jess `parseLessFn` 35.77 ms, and recognizer-only 12.58 ms; the next parser work is a capture/raw-child representation proof plus a separate no-op-trivia-call guard, not a claim that AST building explains the whole gap. Every retained core change must have same-checkout A/B evidence plus core/spine/all-less/aggressive gates. | eval/render/fallback, detached declaration formatting, parser recognizer/capture, import/mixin placement scaling, node allocation | stable medians with fixed Node/fixture/options/cache/warmups/rounds, byte identity against Jess baseline, core/spine/all-less/aggressive gates, then merge/push |
+
+**Q-40 active-row correction (2026-07-15):** the older `238.98/202.92 ms`
+and `133,983`-byte values in the ledger row above are historical evidence.
+The latest corrected current-dev profile below uses the agreed Less 4.x
+fixture and reports `227.862→229.434 ms` parse+render,
+`197.435→200.022 ms` render-only, and `135,794` output bytes with hash
+`9a58451bd3b0c9d80913df38be3b199994d2b93d34a9d2851f1b18d9dcaaa7cc`.
 
 ### Q-40 CPU/heap attribution refresh — diagnostic only (2026-07-15)
 
@@ -207,36 +214,52 @@ extend-chain preparation, and OutputWriter tail work are already owned or
 rejected. No source change was made by this lane; exact profiles remain under
 `/private/tmp/jess-q40-cpu-heap-20260715.ojL1Lb`.
 
-### Q-38 fallback-topology measurement — completed, no implementation (2026-07-15)
+### Q-38 fallback-topology measurement — canonical result, no implementation (2026-07-15)
 
-The isolated fallback worker refreshed from `e4fb26616`, removed all temporary
-instrumentation, rebuilt clean artifacts, and returned
-`/Users/matthew/git/worktrees/jess-fallback-topology-measure-20260715` clean.
-The canonical route recorded one spine admission, zero spine rejections, one
-spine abort, one eval fallback, one eval render entry, `10,420` eval-node
-entries, `10,420` eval-preparation entries, `10,419` repeated fallback
-preparations, and `831` derive entries. The abort reason was
-`extend topology`; the root had `728` children. This confirms the route is
-whole-file fallback: spine admission happens, the strict imported-extend
-topology re-gate aborts before output, and eval renders the complete file.
+The first run used the wrong internal Jess fixture and is withdrawn. The
+corrected run explicitly used
+`/Users/matthew/git/oss/less.js/packages/less/benchmark/benchmark.less`
+(`106,797` source bytes). Its output was `135,794` bytes with SHA-256
+`9a58451bd3b0c9d80913df38be3b199994d2b93d34a9d2851f1b18d9dcaaa7cc`.
 
-The output was `133,389` bytes with SHA-256
-`39a4812a88ea77a94f846f8392fb536da882e84452d03880103d256cb1d73a4c`.
-Under the fixed 20-warmup/45-pair same-build control, parse+render was
-`228.692167→226.026583 ms` (median delta `-0.130208 ms`) and render-only was
-`189.945791→189.245250 ms` (median delta `+0.446792 ms`). Both phases were
-byte-identical; this is noise, not a speed result. The matrix activated
-unresolved imports, root-direct constructs, extend topology, and at-rule/
-trivia; interpolated values, source order, and callable forms completed on
-the spine. The generic-unknown probe errored before a fallback event and is
-not a successful coverage result.
+The canonical route made one spine admission, aborted once before emitting
+spine output, and entered whole-file eval fallback. Counters were: one spine
+admission, zero rejections, zero completions, one abort, one eval fallback,
+one eval-render entry, `10,777` eval-node entries, `10,777` preparation
+entries, `10,776` repeated preparations, and `846` derive entries. The first
+and only fallback reason was `extend topology`.
 
-No safe `emit-walk.ts`-only cut was found. The only evidence-supported follow-
-up is an owner-gated imported-extend topology/parity batch in
+Under the fixed 20-warmup/45-pair controls, parse+render was
+`235.873584→236.721125 ms` (median ratio `+0.359320%`) and render-only was
+`195.819292→197.385416 ms` (median ratio `+0.799780%`). Both phases were
+byte-identical; these are noise-floor controls, not a speed result.
+
+The generated less-parser issue recurred, so the worker reused the matching
+built parser artifact and did not investigate Parseman in this lane. Temporary
+instrumentation was removed; the isolated worktree is clean at `e4fb26616`.
+No safe `emit-walk.ts`-only cut was found. The only supported follow-up is
+owner-gated imported-extend topology/parity work under
 `packages/core/src/tree/extend/spine-extend.ts`; do not weaken the re-gate or
-duplicate this investigation. The known generated less-parser runtime issue
-recurred, so the worker reused the existing built parser artifact and did not
-open a Parseman investigation.
+duplicate this measurement.
+
+### Q-40 extend-root admission POC — rejected, no patch (2026-07-15)
+
+The isolated implementation lane tested a root-local required-key admission
+guard before `classifyInstructionMatch`, with the parent/ampersand path left
+unchanged. The semantic matrix covered `18` cases (`14/17` comparable cases
+already exact against Less 4.6.3; existing divergences were `all`, circular,
+`@layer`, and a `:is()` parser error). The candidate skipped `0` canonical
+classifications, so it did not cut the observed `42,926` probes or `39,562`
+no-matches. The implementation and instrumentation were deleted; the stale
+root-index POC at
+`/Users/matthew/git/worktrees/jess-extend-root-index-poc` was untouched.
+
+Focused proof passed `162` tests with `1` skipped. The uninstrumented A/B was
+parse+render `235.90→234.06 ms` (`24/45` wins) and render-only
+`200.42→200.31 ms` (`20/45` wins), both noise. The candidate/control output
+was `136,178` bytes with SHA-256
+`ba0f39975b45534096037639514f866f9cd3d3e3f2a490d08c1d74de0713fb90`.
+No source, commit, or push remains from this lane.
 
 ### Q-40 greenfield tree2 AST POC audit — incomplete, not integrated (2026-07-14)
 

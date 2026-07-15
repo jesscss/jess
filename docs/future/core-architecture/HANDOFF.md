@@ -153,10 +153,11 @@ Other active docs in this dir:
   cold. The experiment is not production-wired until its stage-separated
   comparisons prove a useful end-to-end path.
 - **`PARSER-RECOGNIZER-GAP.md`** — parser-generation attribution: the current
-  Parseman recognizer still pays runtime structural protocol work. The
-  implementation is deferred after an analysis-only follow-up; its generic
-  zero-copy builder target and separate stripped-recognizer target are recorded
-  in the Parseman repository's `notes/PERF_IDEAS.md`.
+  Parseman recognizer still pays runtime structural protocol work. A separate
+  compile-time-stripped recognizer POC now exists as unpublished local commit
+  `c84d777`; Jess adoption remains deferred pending a consumable dependency and
+  a fresh parser/render A/B. Its generic zero-copy builder target remains
+  recorded in the Parseman repository's `notes/PERF_IDEAS.md`.
 - **`AGGRESSIVE-CUTTING-REVIEW.md`** — the patch-shape refusal checklist; run before
   committing changes to AST/eval/render/lookup/traversal/copy/output/metadata.
 - **`STRINGS-OVER-NODES.md`** — active reference (producer flips still pending).
@@ -1219,23 +1220,35 @@ reference/protected roots, imports/layers/namespaces, source order, and the
 Less oracle. `recheckProbes=0` is a coverage gap. Do not duplicate the dirty
 `extend.ts` or `spine-extend.ts` owner lanes.
 
-The completed fallback-topology measurement (2026-07-15) refreshed from
-`e4fb26616` and returned
-`/Users/matthew/git/worktrees/jess-fallback-topology-measure-20260715` clean
-after removing instrumentation. It recorded one spine admission, one spine
-abort, one eval fallback, `10,420` eval-node entries, `10,420` preparation
-entries, `10,419` repeated fallback preparations, and `831` derive entries;
-the abort reason was `extend topology`, with `728` root children. This is
-whole-file fallback, not mixed rendering. Output was `133,389` bytes with
-SHA-256
-`39a4812a88ea77a94f846f8392fb536da882e84452d03880103d256cb1d73a4c`.
-Under the fixed 20-warmup/45-pair same-build A/B, parse+render was
-`228.692167→226.026583 ms` (median `-0.130208 ms`) and render-only was
-`189.945791→189.245250 ms` (median `+0.446792 ms`); both were byte-identical
-and neither is a speed claim. No safe `emit-walk.ts`-only cut was found.
-Imported-extend topology remains owner-gated to `spine-extend.ts`. The known
-generated less-parser runtime issue recurred, so the worker reused the current
-built parser artifact and did not investigate Parseman in this lane.
+The first fallback-topology run used the wrong internal Jess fixture and is
+withdrawn. The corrected run explicitly used
+`/Users/matthew/git/oss/less.js/packages/less/benchmark/benchmark.less`
+(`106,797` source bytes). Its output was `135,794` bytes with SHA-256
+`9a58451bd3b0c9d80913df38be3b199994d2b93d34a9d2851f1b18d9dcaaa7cc`.
+The canonical route made one spine admission, aborted once before emitting
+spine output, and entered whole-file eval fallback. It recorded zero spine
+rejections, zero completions, one eval fallback, one eval-render entry,
+`10,777` eval-node entries, `10,777` preparation entries, `10,776` repeated
+preparations, and `846` derive entries. The first and only fallback reason was
+`extend topology`.
+
+The fixed 20-warmup/45-pair controls were parse+render
+`235.873584→236.721125 ms` (median ratio `+0.359320%`) and render-only
+`195.819292→197.385416 ms` (median ratio `+0.799780%`). Both phases were
+byte-identical and are noise-floor controls, not a speed result. The generated
+less-parser issue recurred, so the worker reused the matching built parser
+artifact and did not investigate Parseman. Temporary instrumentation was
+removed and the isolated worktree is clean at `e4fb26616`. No safe
+`emit-walk.ts`-only cut was found; follow-up remains owner-gated to imported-
+extend topology/parity work under `spine-extend.ts`.
+
+The separate root-local extend admission POC was also rejected without a
+patch. Its `18`-case matrix had `14/17` comparable Less matches already exact,
+but the candidate skipped `0` canonical classifications; it therefore did not
+reduce the `42,926` probes or `39,562` no-matches. The implementation and
+instrumentation were deleted after `162` focused tests plus `1` skipped, and
+the uninstrumented A/B was noise (`235.90→234.06 ms` parse+render,
+`200.42→200.31 ms` render-only). Do not revive the stale root-index POC.
 
 The corrected CPU/heap attribution lane (2026-07-15) used the same fixed
 20-warmup/45-pair contract on Node v25.9.0 arm64 Darwin. Its 0→0 controls were
