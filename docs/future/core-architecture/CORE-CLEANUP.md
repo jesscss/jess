@@ -208,6 +208,23 @@ recursively scans 10,777 evaluated surfaces to find 15 merge-bearing ones.
   neutral/noisy and carrying no speed claim. This is accepted because it
   removes repeated work and allocations without changing merge semantics.
 
+- **Q-40 action ledger refresh (2026-07-14).** An exact-tip diagnostic ledger
+  counted `Node.adopt=28,501`, `Node.eval=50,791`,
+  `Rules._prepareForEval=10,777`, `Rules._evaluateSourceOrder=10,777`,
+  `Ruleset.evalNode=6,240`, `Call.evalNode=894`, `Reference.evalNode=3,577`,
+  `Rules.getScopeFrame=92,459` (`89,243` cache hits), `Rules.derive=846`,
+  `Node.clone=10,421`, `Node.cloneForPlacement=15,612`, and
+  `Node.inherit=36,777`. The diagnostic was instrumented and is not a timing
+  claim. The next bounded owner is `_normalizeCallDeclarationRulesOrder`,
+  which scanned `24,670` entries across `10,777` calls and produced no reorder
+  on the canonical benchmark; a focused `each()` call workload also produced
+  no reorder. A worker is testing a producer-side marker with a guarded
+  fallback. The next ranked queues are source-order lane consolidation,
+  repeated cached scope-frame call-site probes, recursive `rulesMayContain*`
+  predicates, extend document-order assignment, and import-placement record
+  bulk. Do not reopen the completed merge admission, generic declaration
+  lookup, callable-map, or duplicate-pre-scan audits without new evidence.
+
 - **Accept merge-coalescer admission as the first Q-40 rare-pass cut.** The
   post-evaluation `Rules._coalesceMergedDeclarations` pass was entered 10,420
   times on the canonical benchmark even though only 15 containers carried
