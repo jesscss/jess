@@ -173,6 +173,22 @@ suite('Jess extension E2E', () => {
     assert.ok(Array.isArray(links) && links.length > 0, 'expected a document link for `@import "vars"`');
   });
 
+  test('value completions round-trip (restriction-driven: color functions + CSS-wide keywords)', async () => {
+    const doc = await openFixture('values.css');
+    const text = doc.getText();
+    // Caret right after `color: ` on line 2.
+    const at = text.indexOf('color: ') + 'color: '.length;
+    const position = offsetToPosition(doc, at);
+    const list = await waitFor(
+      () => vscode.commands.executeCommand<vscode.CompletionList>('vscode.executeCompletionItemProvider', doc.uri, position),
+      l => !!l && l.items.some(i => String(typeof i.label === 'string' ? i.label : i.label.label) === 'inherit')
+    );
+    const labels = (list?.items ?? []).map(i => (typeof i.label === 'string' ? i.label : i.label.label));
+    assert.ok(labels.includes('inherit'), `expected CSS-wide keyword 'inherit', got: ${labels.slice(0, 25).join(', ')}`);
+    assert.ok(labels.includes('rgb()'), 'expected color-restriction function `rgb()` for `color:`');
+    assert.ok(labels.includes('var()'), 'expected `var()` in a value context');
+  });
+
   test('references round-trip (@primary used in two rules)', async () => {
     const doc = await openFixture('main.less');
     const text = doc.getText();

@@ -338,10 +338,13 @@ function editDistance(a: string, b: string): number {
 const require = createRequire(import.meta.url);
 
 type AtDirectiveEntry = { name: string; description?: string | { value: string; kind?: string } };
-type PropertyEntry = { name: string; description?: string | { value: string; kind?: string }; values?: Array<{ name: string; description?: string | { value: string; kind?: string } }> };
+type PropertyEntry = { name: string; description?: string | { value: string; kind?: string }; values?: Array<{ name: string; description?: string | { value: string; kind?: string } }>; restrictions?: string[] };
+type PseudoEntry = { name: string; description?: string | { value: string; kind?: string } };
 type WebCssData = {
   atDirectives?: AtDirectiveEntry[];
   properties?: PropertyEntry[];
+  pseudoClasses?: PseudoEntry[];
+  pseudoElements?: PseudoEntry[];
 };
 
 const webCssData: WebCssData = require('@vscode/web-custom-data/data/browsers.css-data.json');
@@ -360,13 +363,73 @@ const CSS_PROPERTIES: string[] = Array.isArray(knownCssProperties.all) ? knownCs
 // Build property name -> property data map for hover/completions.
 const PROPERTIES_MAP = new Map<string, PropertyEntry>();
 const PROPERTY_VALUES = new Map<string, string[]>();
+// `restrictions` is the value-KIND hint (color/length/timing-function/…) that
+// drives rich value completions — the data MS reads and Jess previously ignored.
+const PROPERTY_RESTRICTIONS = new Map<string, string[]>();
 for (const prop of webCssData.properties ?? []) {
   if (prop.name) {
-    PROPERTIES_MAP.set(prop.name.toLowerCase(), prop);
+    const key = prop.name.toLowerCase();
+    PROPERTIES_MAP.set(key, prop);
     if (prop.values) {
-      PROPERTY_VALUES.set(prop.name.toLowerCase(), prop.values.map(v => v.name).filter(Boolean) as string[]);
+      PROPERTY_VALUES.set(key, prop.values.map(v => v.name).filter(Boolean) as string[]);
+    }
+    if (prop.restrictions) {
+      PROPERTY_RESTRICTIONS.set(key, prop.restrictions);
     }
   }
+}
+
+// Pseudo-class / -element names (leading `:` / `::` included by the data).
+const PSEUDO_CLASSES: string[] = (webCssData.pseudoClasses ?? []).map(p => p.name).filter(Boolean);
+const PSEUDO_ELEMENTS: string[] = (webCssData.pseudoElements ?? []).map(p => p.name).filter(Boolean);
+
+// Value-completion vocab. CSS-wide keywords are valid for every property; the
+// rest are gated on the property's `restrictions`.
+const CSS_WIDE_KEYWORDS = ['inherit', 'initial', 'unset', 'revert', 'revert-layer'];
+const COLOR_FUNCTIONS = ['rgb()', 'rgba()', 'hsl()', 'hsla()', 'hwb()', 'lab()', 'lch()', 'oklab()', 'oklch()', 'color()'];
+const TIMING_FUNCTIONS = ['ease', 'linear', 'ease-in', 'ease-out', 'ease-in-out', 'step-start', 'step-end', 'cubic-bezier()', 'steps()'];
+
+/**
+ * Rich value completions for a declaration value: the property's enum values
+ * (data) PLUS restriction-driven kinds (color functions, timing functions),
+ * the CSS-wide keywords, and var()/calc() — valid for any property. This is the
+ * depth MS gets from the `restrictions` field, which Jess previously ignored.
+ */
+function buildValueCompletions(propName: string, prefix: string, replaceRange: Range): CompletionItem[] {
+  const items: CompletionItem[] = [];
+  const seen = new Set<string>();
+  const add = (label: string, kind: CompletionItemKind) => {
+    const lower = label.toLowerCase();
+    if (seen.has(lower)) {
+      return;
+    }
+    if (prefix && !lower.startsWith(prefix)) {
+      return;
+    }
+    seen.add(lower);
+    items.push({ label, kind, textEdit: TextEdit.replace(replaceRange, label) });
+  };
+  const key = propName.toLowerCase();
+  const restrictions = PROPERTY_RESTRICTIONS.get(key) ?? [];
+  for (const v of PROPERTY_VALUES.get(key) ?? []) {
+    add(v, CompletionItemKind.Value);
+  }
+  if (restrictions.includes('color')) {
+    for (const f of COLOR_FUNCTIONS) {
+      add(f, CompletionItemKind.Function);
+    }
+  }
+  if (restrictions.includes('timing-function')) {
+    for (const t of TIMING_FUNCTIONS) {
+      add(t, CompletionItemKind.Value);
+    }
+  }
+  for (const k of CSS_WIDE_KEYWORDS) {
+    add(k, CompletionItemKind.Keyword);
+  }
+  add('var()', CompletionItemKind.Function);
+  add('calc()', CompletionItemKind.Function);
+  return items;
 }
 
 export type JessLanguageServiceEngine = {
@@ -831,97 +894,110 @@ export function createEngine(): JessLanguageServiceEngine {
     },
 
     getCompletions(uri, position) {
-      // CST-grounded for the SYNTACTIC path (declared-variable names): reads the
-      // tolerant CST (no AST reparse) so variable completion survives half-typed
-      // input. At-rule / property / property-value completions are text-driven
-      // and need no tree at all.
+      // CST-grounded for the syntactic paths (declared variables/mixins): reads
+      // the tolerant CST (no AST reparse) so completion survives half-typed input.
+      // Property / value / at-rule / pseudo completions are data + text driven.
       const tracked = get(uri);
       const document = tracked.document;
       const text = document.getText();
       const offset = document.offsetAt(position);
       const currentWord = getCurrentWord(text, offset);
-      const replaceRange = toRange(document, offset - currentWord.length, offset);
+      const wordStart = offset - currentWord.length;
+      const before = text.slice(0, wordStart);
+      const replaceRange = toRange(document, wordStart, offset);
+      const prefix = currentWord.toLowerCase();
+      const cstTree = tracked.cstDoc?.tree;
 
       const suggestions = suggestWithJess(text, tracked.lang, offset).map(s => String(s.nextTokenType).toLowerCase());
       const wantsAt = currentWord.startsWith('@') || suggestions.some(t => t.includes('at'));
       const wantsIdent = suggestions.some(t => t.includes('ident')) || suggestions.length === 0;
 
       const items: CompletionItem[] = [];
+      const push = (label: string, kind: CompletionItemKind, insert?: string) => {
+        items.push({ label, kind, textEdit: TextEdit.replace(replaceRange, insert ?? label) });
+      };
 
-      // Variable completions: Less @var, SCSS $var, CSS custom properties --x
+      // 1) Variable completions: Less @var, SCSS $var, CSS custom properties --x.
       const wantVar =
         tracked.lang === 'less'
           ? currentWord.startsWith('@')
           : tracked.lang === 'scss'
             ? currentWord.startsWith('$')
             : currentWord.startsWith('--');
-
-      const cstTree = tracked.cstDoc?.tree;
       if (wantVar && cstTree) {
-        const prefix = currentWord.toLowerCase();
-        // Bare declared-variable names off the CST; wrap in the dialect sigil.
         for (const nameWithoutPrefix of cstVariableNames(cstTree, document)) {
-          const label =
-            tracked.lang === 'less'
-              ? `@${nameWithoutPrefix}`
-              : tracked.lang === 'scss'
-                ? `$${nameWithoutPrefix}`
-                : `--${nameWithoutPrefix}`;
-
-          if (prefix && !label.toLowerCase().startsWith(prefix.toLowerCase())) {
+          const label = tracked.lang === 'less'
+            ? `@${nameWithoutPrefix}`
+            : tracked.lang === 'scss' ? `$${nameWithoutPrefix}` : `--${nameWithoutPrefix}`;
+          if (prefix && !label.toLowerCase().startsWith(prefix)) {
             continue;
           }
-
-          items.push({
-            label,
-            kind: CompletionItemKind.Variable,
-            textEdit: TextEdit.replace(replaceRange, label)
-          });
+          push(label, CompletionItemKind.Variable);
         }
         if (items.length > 0) {
           return { isIncomplete: false, items };
         }
       }
 
+      // 2) SCSS mixin completions after `@include ` — reuses the CST declared-mixin
+      //    inventory (same one the did-you-mean quick fix uses).
+      if (tracked.lang === 'scss' && cstTree && /@include\s+$/.test(before)) {
+        for (const name of cstDeclaredSymbols(cstTree, document).mixins) {
+          if (prefix && !name.toLowerCase().startsWith(prefix)) {
+            continue;
+          }
+          push(name, CompletionItemKind.Function);
+        }
+        return { isIncomplete: false, items };
+      }
+
+      // 3) Pseudo-class / -element completions: a `:`/`::` in SELECTOR position —
+      //    i.e. the colon is NOT a declaration value colon after a known property.
+      if (text.charAt(wordStart - 1) === ':') {
+        const doubleColon = text.charAt(wordStart - 2) === ':';
+        const propBeforeColon = findPropertyNameBeforeColon(text, offset);
+        const isValueColon = propBeforeColon !== null && PROPERTIES_MAP.has(propBeforeColon.toLowerCase());
+        if (!isValueColon) {
+          const pool = doubleColon ? PSEUDO_ELEMENTS : [...PSEUDO_CLASSES, ...PSEUDO_ELEMENTS];
+          for (const name of pool) {
+            const bare = name.replace(/^:+/, '');
+            if (prefix && !bare.toLowerCase().startsWith(prefix)) {
+              continue;
+            }
+            // Insert the bare name — the `:`/`::` the user typed is before wordStart.
+            push(name, doubleColon ? CompletionItemKind.Function : CompletionItemKind.Value, bare);
+          }
+          if (items.length > 0) {
+            return { isIncomplete: false, items };
+          }
+        }
+      }
+
+      // 4) At-rule names.
       if (wantsAt) {
-        const prefix = currentWord.toLowerCase();
         for (const name of AT_RULES) {
           if (prefix && !name.toLowerCase().startsWith(prefix)) {
             continue;
           }
-          items.push({
-            label: name,
-            kind: CompletionItemKind.Keyword,
-            textEdit: TextEdit.replace(replaceRange, name)
-          });
+          push(name, CompletionItemKind.Keyword);
         }
         return { isIncomplete: false, items };
       }
 
       if (wantsIdent) {
-        // Check if we're in a property value context (after `:`).
+        // 5) Declaration value context: rich, restriction-driven values + !important.
         const propName = findPropertyNameBeforeColon(text, offset);
         if (propName) {
-          const values = PROPERTY_VALUES.get(propName.toLowerCase());
-          if (values && values.length > 0) {
-            const prefix = currentWord.toLowerCase();
-            for (const value of values) {
-              if (prefix && !value.toLowerCase().startsWith(prefix)) {
-                continue;
-              }
-              items.push({
-                label: value,
-                kind: CompletionItemKind.Value,
-                textEdit: TextEdit.replace(replaceRange, value)
-              });
-            }
-            if (items.length > 0) {
-              return { isIncomplete: false, items };
-            }
+          const valueItems = buildValueCompletions(propName, prefix, replaceRange);
+          if (!prefix || '!important'.startsWith(prefix)) {
+            valueItems.push({ label: '!important', kind: CompletionItemKind.Keyword, textEdit: TextEdit.replace(replaceRange, '!important') });
+          }
+          if (valueItems.length > 0) {
+            return { isIncomplete: false, items: valueItems };
           }
         }
 
-        // Otherwise, suggest property names (inside a block).
+        // 6) Property names (inside a block).
         let depth = 0;
         for (let i = 0; i < Math.min(offset, text.length); i++) {
           const ch = text.charCodeAt(i);
@@ -932,16 +1008,11 @@ export function createEngine(): JessLanguageServiceEngine {
           }
         }
         if (depth > 0) {
-          const prefix = currentWord.toLowerCase();
           for (const name of CSS_PROPERTIES) {
             if (prefix && !name.toLowerCase().startsWith(prefix)) {
               continue;
             }
-            items.push({
-              label: name,
-              kind: CompletionItemKind.Property,
-              textEdit: TextEdit.replace(replaceRange, name)
-            });
+            push(name, CompletionItemKind.Property);
           }
           return { isIncomplete: false, items };
         }
