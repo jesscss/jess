@@ -676,23 +676,11 @@ declarations-coverage state.
   claims, but it identifies a concrete `childRulesOf` fast-path proof target;
   no global `isNode` rewrite is implied.
 
-- **Q-40 `childRulesOf` fast-path probe (2026-07-15, provisional).** The
-  isolated candidate changes only `packages/core/src/tree/rules.ts`: real Jess
-  `Rules` instances are returned before the three ordinary `isNode` protocol
-  checks, while the duck-typed `N.Rules` fallback remains. Focused rules suites
-  passed `160` tests and the core build passed. A valid rebuilt-chain A/B against
-  current `dev` used `benchmark.less`, 20 warmups, and 45 alternating pairs;
-  output stayed exact at `135,794` bytes with SHA-256
-  `9a58451bd3b0c9d80913df38be3b199994d2b93d34a9d2851f1b18d9dcaaa7cc`.
-  The first parse/render run was `235.019959→237.725958 ms` (+1.151%) and is
-  not evidence of a win. Two repeat runs were parse/render
-  `246.709333→242.606167 ms` (−1.663%, `39/45` wins) and render-only
-  `199.144208→195.783708 ms` (−1.687%, `35/45` wins); an earlier render-only
-  `204.9445→191.1545 ms` (−6.729%) was treated as an unstable outlier. The
-  repeated result is a promising but still provisional signal, not an accepted
-  speed claim: the candidate remains isolated at
-  `/private/tmp/jess-q40-child-rules-fastpath-20260715`, with aggressive review
-  and full integration gates still outstanding.
+- **Q-40 `childRulesOf` fast path (2026-07-15, accepted in `c08feb9a9`, source candidate `ce60697f4`).** `childRulesOf()` now checks the real `Rules` instance before the three ordinary `isNode` protocol checks and retains the duck-typed `N.Rules` fallback. The focused compatibility test covers all five local `Rules` subclasses plus a foreign `N.Rules` value; full core passed `3,329` tests (`15` skipped, `2` todo), spine ratchet `137/137`, baseline/all-less `106/106`, Less alpha verification, core/plugin/Jess builds, ESLint, aggressive review, and `git diff --check`. The current exact rebuilt-chain A/B used 20 warmups and 45 alternating pairs: parse/render `237.349125→231.947792 ms` (−5.401333 ms, `−2.275691%`, `31/45` wins) and render-only `199.381666→197.704750 ms` (−1.676916 ms, `−0.841058%`, `27/45` wins). Output was byte-identical at `133,389` bytes, SHA-256 `39a4812a88ea77a94f846f8392fb536da882e84452d03880103d256cb1d73a4c`. The signal is modest and environment-sensitive, so retain this as a bounded work reduction with no causal speed claim; do not generalize to a global `isNode` rewrite.
+
+- **Q-40 `hasDirectChildRuleSurface` pre-collection guard (2026-07-15, rejected).** The find-within-scope audit identified a distinct possible cut—skip `collectDirectDeclarationChildEntries()` when the existing producer fact is false. The implementation proof found that `derive()` intentionally clears `R_HAS_DIRECT_CHILD_RULE_SURFACE` while sharing the child array, so a derived placement can contain a direct Rules child while the proposed guard reads false. Repairing that would require another traversal/state graph or a new authoritative ownership protocol, violating the bounded-cut rule. No source change or POC was retained; keep the existing child-entry path and do not use this flag as a lookup shortcut.
+
+- **Q-40 extend chain-only preparation audit (2026-07-15, pending owner proof).** The extend audit found that `applyExtendsToSelector()` eagerly prepares `collectSelectorSubtreeValues()`, expanded extend targets, tuples, and the target index even when no selector changes and chained discovery is never entered. The current dirty user checkout already contains a partial lazy-preparation change in `packages/core/src/tree/util/extend.ts`; it was not touched or duplicated. Removing/reusing the subtree scan remains rejected without a focused matrix covering chained/partial/list/`:is`/ampersand/self/circular/reference/protected-root semantics plus canonical A/B. The existing target index and pass memo remain required and must not be revived as a root-level cache.
 
 - **Q-40 reference-surface allocator audit (2026-07-15, blocked/rejected as a
   new cut).** The current `createRulesLikeReferenceSurface` remains the

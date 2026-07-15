@@ -204,6 +204,45 @@ work.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: Q-40 CHILD-RULE CONTAINER CLASSIFICATION FAST PATH + COMPATIBILITY TEST
+- Architecture surface: `packages/core/src/tree/rules.ts` checks the concrete
+  `Rules` instance before the existing `N.Rules` duck-typed fallback in
+  `childRulesOf()`; `packages/core/src/tree/__tests__/child-rules-of.test.ts`
+  proves the local subclass and foreign-protocol cases.
+- Separation/duplication: no new lookup, cache, traversal, or serializer
+  mechanism; the production change only orders the existing concrete and
+  protocol checks.
+- Cumulative node weight: no production field, map, set, wrapper, or placement
+  state was added. The test constructs bounded compatibility fixtures only.
+- New traversal: [loop/traversal] the test iterates six bounded child values;
+  production `childRulesOf()` adds no traversal.
+- New node/materialization: [materialized array/object] and
+  [array spread/materialization] are test-only fixture setup; no production
+  array, object, or node materialization was added by the fast path.
+- Render path: existing child-container classification is preserved; no
+  serializer/writer behavior changed, and canonical output bytes and hash are
+  identical.
+- Helper/API surface: no new export or package API; `childRulesOf()` remains
+  module-local.
+- Metadata mutations: none in production; the test only assembles its bounded
+  parent fixture.
+- Review-flagged diff tokens: [loop/traversal] [array spread/materialization]
+  [materialized array/object] are bounded test-only setup; the production
+  hunk contains no corresponding machinery.
+- Evidence: focused compatibility test passed; core `3,329` passed with `15`
+  skipped and `2` marked cases; build, baseline/all-less, spine `137/137`, Less alpha,
+  ESLint, diff-check, and aggressive review passed. The exact 20-warmup,
+  45-pair A/B was byte-identical at `133,389` bytes with SHA-256
+  `39a4812a88ea77a94f846f8392fb536da882e84452d03880103d256cb1d73a4c`;
+  timing was modest and environment-sensitive, so it is not a causal speed
+  claim.
+- Verdict: accepted as a bounded classification work reduction; do not
+  generalize it to a global `isNode` rewrite.
+- Hot-path cost contracts:
+```json
+[]
+```
+
 - Latest pass: IMPORT-PLACEMENT STATE-CONSTRUCTION CUT — carry the existing
   closed-static `(multiple)` discard/admission result into first-use placement
   construction so a discarded placement does not allocate child-segment records
@@ -896,7 +935,9 @@ work.
 - Q-40 declaration-child assignment metadata cut (2026-07-15, integrated `d443a559b`): direct declaration-child collection now asks for uncovered assignment-target metadata only when the `Rules` surface already advertises a variable-declaration or reference-import producer. Instrumented canonical counts fell collection `27,899→15,714`, inclusive time `18.707→7.170 ms`, uncovered-surface calls `6,927→204`, assignment propagation `6,927→204`, nested propagation `10,190→3,467`, and source items `101,693→71,975`. Matched A/B was parse+render `229.09→237.50 ms` and render-only `193.11→193.83 ms`; no speed claim. Output was `135,794` bytes with SHA-256 `9a58451bd3b0c9d80913df38be3b199994d2b93d34a9d2851f1b18d9dcaaa7cc`; focused reference, core, spine, all-less, build, lint, and aggressive gates passed.
 - Q-40 current post-cut control/profile refresh (2026-07-15, diagnostic only): the latest same-checkout no-op control on Node v25.9.0 arm64 measured parse+render `227.150542→227.980167 ms` (means `229.840→233.436 ms`, `24/45` candidate wins, paired median ratio `−0.176%`, mean ratio `+1.884%`) and render-only `186.348125→183.990750 ms` (means `192.249→189.799 ms`, `25/45` wins, paired median ratio `−0.358%`, mean ratio `−0.635%`). The spread remains a noise floor, not a speed claim. The following instrumented profile took `541.84 ms` and recorded `4,098` preview calls (`4,085` declaration fallbacks, `13` leaves), `1,644` duplicate-comparison containers, `884` prerendered declarations, `10,777` merge-admission calls with only `15` feature-bearing surfaces and zero child-item visits, `5` import-tree calls (`3` misses/`2` hits), and `43,167` direct declaration cache misses—all `.d` strategy—with `53,360` child-entry admissions, `16,486` child scans, and only `6` public hits. Live shape census counted `10,007` Declarations, `8,405` Rulesets, `7,211` References, `4,803` Dimensions, and `3,604` Colors. These measurements rank work; instrumentation distorts timing and does not justify a generic lookup index.
 - Q-40 unminified CPU call-tree refresh (2026-07-15, diagnostic only): a real compiler-path Node CPU profile with 2 warmups and 2 alternating pairs, run after an unminified core build and followed by restoration of the normal minified build, sampled `isNode` at `129.19 ms`, GC at `123.41 ms`, `extendSelector` at `62.62 ms`, `findWithinScopeSurface` at `42.64 ms`, `applyExtendsToSelector` at `40.57 ms`, `findMixinsFastForUncoveredCallable` at `39.43 ms`, and `processExtends` at `25.68 ms`. Call-tree attribution puts about `27.46 ms` of sampled `isNode` time under `childRulesOf`, `12.75 ms` under `walk`, and `10.54 ms` under `collectSelectorSubtreeValues`. The sample is too small for throughput claims, but it identifies a concrete `childRulesOf` fast-path proof target; no global `isNode` rewrite is implied.
-- Q-40 `childRulesOf` fast-path probe (2026-07-15, provisional): an isolated `packages/core/src/tree/rules.ts` candidate returns real `Rules` instances before the three ordinary `isNode` checks and preserves the duck-typed `N.Rules` fallback. Focused rules suites passed `160` tests and the core build passed. A rebuilt-chain `benchmark.less` A/B with 20 warmups and 45 alternating pairs preserved exact `135,794`-byte output, SHA-256 `9a58451bd3b0c9d80913df38be3b199994d2b93d34a9d2851f1b18d9dcaaa7cc`. The first parse/render run was `235.019959→237.725958 ms` (+1.151%) and is not a win; repeat parse/render was `246.709333→242.606167 ms` (−1.663%, `39/45` wins), repeat render-only was `199.144208→195.783708 ms` (−1.687%, `35/45` wins), and an earlier −6.729% render-only result was rejected as an outlier. This remains a provisional signal pending aggressive review and full gates; the source is isolated at `/private/tmp/jess-q40-child-rules-fastpath-20260715` and is not merged.
+- Q-40 `childRulesOf` fast path (2026-07-15, accepted in `c08feb9a9`, source candidate `ce60697f4`): `childRulesOf()` now checks the real `Rules` instance before the three ordinary `isNode` protocol checks and retains the duck-typed `N.Rules` fallback. The focused compatibility test covers all five local `Rules` subclasses plus a foreign `N.Rules` value; full core passed `3,329` tests (`15` skipped, `2` todo), spine ratchet `137/137`, baseline/all-less `106/106`, Less alpha verification, core/plugin/Jess builds, ESLint, aggressive review, and `git diff --check`. The current exact rebuilt-chain A/B used 20 warmups and 45 alternating pairs: parse/render `237.349125→231.947792 ms` (−5.401333 ms, `−2.275691%`, `31/45` wins) and render-only `199.381666→197.704750 ms` (−1.676916 ms, `−0.841058%`, `27/45` wins). Output was byte-identical at `133,389` bytes, SHA-256 `39a4812a88ea77a94f846f8392fb536da882e84452d03880103d256cb1d73a4c`. The signal is modest and environment-sensitive, so retain this as a bounded work reduction with no causal speed claim; do not generalize to a global `isNode` rewrite.
+- Q-40 `hasDirectChildRuleSurface` pre-collection guard (2026-07-15, rejected): the find-within-scope audit identified a distinct possible cut—skip `collectDirectDeclarationChildEntries()` when the existing producer fact is false. The implementation proof found that `derive()` intentionally clears `R_HAS_DIRECT_CHILD_RULE_SURFACE` while sharing the child array, so a derived placement can contain a direct Rules child while the proposed guard reads false. Repairing that would require another traversal/state graph or a new authoritative ownership protocol, violating the bounded-cut rule. No source change or POC was retained; keep the existing child-entry path and do not use this flag as a lookup shortcut.
+- Q-40 extend chain-only preparation audit (2026-07-15, pending owner proof): the extend audit found that `applyExtendsToSelector()` eagerly prepares `collectSelectorSubtreeValues()`, expanded extend targets, tuples, and the target index even when no selector changes and chained discovery is never entered. The current dirty user checkout already contains a partial lazy-preparation change in `packages/core/src/tree/util/extend.ts`; it was not touched or duplicated. Removing/reusing the subtree scan remains rejected without a focused matrix covering chained/partial/list/`:is`/ampersand/self/circular/reference/protected-root semantics plus canonical A/B. The existing target index and pass memo remain required and must not be revived as a root-level cache.
 - Q-40 local artifact/worktree reconciliation (2026-07-15): superseded registration-prep `f4ee226ce` and declaration-child-metadata `42c707c7a` worktrees are explicitly retired in `CORE-CLEANUP.md` in favor of integrated `3a3f71d9e` and `d443a559b`; the uncommitted import-placement variant remains audit-only. CPU/heap and parser profile files under `/private/tmp` are local diagnostics whose durable summaries are in the tracker, not published artifacts.
 - Q-40 reference-surface allocator audit (2026-07-15, blocked/rejected as a new cut): the current `createRulesLikeReferenceSurface` remains the already-landed `Object.create`/`Object.keys` field-copy shape with shallow `_options` and `_lookup` copies. The isolated worker made no implementation or commit because the clean benchmark could not start with missing `packages/less-parser/lib`, and the recursive rebuild hit unrelated Parseman linking/`NodeModulesPlugin` declaration failures. No allocator A/B or semantic proof exists; do not claim a win or reopen the older reflective-descriptor lane without a repaired build and a workload that exercises reference-surface creation.
 - Q-40 explicit merge-only lookup audit (2026-07-15, rejected): the canonical profile reproduced `43,167` declaration cache misses, `53,360` child-entry admissions, `16,486` child scans, only `16` local matches, and `22` declaration references. A merge-heavy fixture rendered exactly (`186` bytes, SHA-256 `4d01b5cbdf83e120e5d3b16f9a8ef8c05288976185f74df0c515e1da58067dfe`) but activated zero direct-lookup counters, including an eval-forcing probe, because its merges were structurally coalesced before `findAnyDeclarationOccurrence`. A bucket-only descriptor therefore has no activating proof and cannot be admitted without reintroducing cross-scope/import/mixin visibility plus self/source-order filtering. No source change or commit was made.
