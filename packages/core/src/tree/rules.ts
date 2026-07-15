@@ -529,7 +529,10 @@ function finishRulesRenderState<T extends string>(
 }
 
 function childRulesOf(node: Node): Rules | undefined {
-  if ((isNode(node, N.Ruleset) || isNode(node, N.AtRule) || isNode(node, N.Mixin)) && node instanceof Rules) {
+  // Real Jess rule containers are all `Rules` instances. Keep the bitmask
+  // fallback below for foreign/duck-typed node values, but do not make every
+  // ordinary container pay three protocol checks before the instance check.
+  if (node instanceof Rules) {
     return node;
   }
   if (isNode(node, N.Rules)) {
