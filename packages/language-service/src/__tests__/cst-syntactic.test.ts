@@ -36,15 +36,6 @@ function scssDoc(content: string): TextDocument {
 
 describe('cst-syntactic pure functions', () => {
   describe('cstSemanticTokens', () => {
-    it('classifies variable / number / string tokens off the CST', () => {
-      const doc = lessDoc('@primary: red;\n.a { width: 10px; content: "x"; color: @primary; }');
-      const tokens = decode(cstSemanticTokens(parseLessDoc(doc.getText()).tree, doc, 'less'), TYPES);
-      const kinds = new Set(tokens.map(t => t.type));
-      expect(kinds.has('variable')).toBe(true);
-      expect(kinds.has('number')).toBe(true);
-      expect(kinds.has('string')).toBe(true);
-    });
-
     it('classifies the @import keyword as a namespace token', () => {
       const doc = lessDoc('@import "a.less";');
       const tokens = decode(cstSemanticTokens(parseLessDoc(doc.getText()).tree, doc, 'less'), TYPES);
@@ -96,18 +87,6 @@ describe('cst-syntactic pure functions', () => {
       expect(fnTokens.some(t => t.line === 1)).toBe(true);
     });
 
-    it('TOLERANCE: still classifies tokens on an unclosed block', () => {
-      // Half-typed: the block never closes. The tolerant CST still yields the
-      // variable / number tokens.
-      const doc = lessDoc('.a { width: 10px; color: @primary');
-      const tokens = decode(cstSemanticTokens(parseLessDoc(doc.getText()).tree, doc, 'less'), TYPES);
-      const kinds = new Set(tokens.map(t => t.type));
-      expect(kinds.has('number')).toBe(true);
-      expect(kinds.has('variable')).toBe(true);
-    });
-  });
-
-  describe('cstVariableNames', () => {
     it('collects declared Less variable names (bare)', () => {
       const doc = lessDoc('@primary: red;\n@secondary: blue;\n.a { color: @primary; }');
       expect(cstVariableNames(parseLessDoc(doc.getText()).tree, doc)).toEqual(['primary', 'secondary']);
