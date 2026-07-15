@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 const root = resolve(new URL('..', import.meta.url).pathname);
 const handoffPath = resolve(root, 'docs/future/core-architecture/HANDOFF.md');
 const cuttingReviewPath = resolve(root, 'docs/future/core-architecture/AGGRESSIVE-CUTTING-REVIEW.md');
+const skipExecutableEvidence = process.argv.includes('--skip-executable-evidence');
 const reviewedSourceRoots = [
   'packages/core/src',
   'packages/jess/src',
@@ -772,7 +773,7 @@ function runVerifier() {
     const auditErrors = validateCostAuditRecords(auditRecords, registry, changedPaths, diff);
     const sourceCheckErrors = validateSourceChecks(registry, changedPaths);
     const changedSurfaceErrors = validateChangedContractSurface(registry, changedPaths, diff);
-    const evidenceErrors = productionHotPathChanged
+    const evidenceErrors = productionHotPathChanged && !skipExecutableEvidence
       ? validateExecutableEvidence(registry, changedPaths, diff)
       : [];
     const coverageErrors = productionHotPathChanged

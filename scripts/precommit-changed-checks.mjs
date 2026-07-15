@@ -254,9 +254,13 @@ function runVerifyBaseline() {
   run('pnpm', ['run', 'verify:baseline'], undefined, { required: true });
 }
 
-function runAggressiveCuttingReview() {
+function runAggressiveCuttingReview({ skipExecutableEvidence = false } = {}) {
   console.log('\n==> Running verify:aggressive-cutting-review (hot-path cost/admission contracts)');
-  run('pnpm', ['run', 'verify:aggressive-cutting-review'], undefined, { required: true });
+  const args = ['run', 'verify:aggressive-cutting-review'];
+  if (skipExecutableEvidence) {
+    args.push('--', '--skip-executable-evidence');
+  }
+  run('pnpm', args, undefined, { required: true });
 }
 
 const rawFiles = MODE === 'upstream' ? changedFilesAgainstUpstream() : stagedFiles();
@@ -270,7 +274,6 @@ if (files.length === 0) {
 }
 
 const changedPackages = packageDirs(files);
-runAggressiveCuttingReview();
 let baselineRan = false;
 if (MODE === 'upstream') {
   const needsBaseline = shouldRunFullBaselineForFiles(files) || changedPackages.some(pkg => BASELINE_PACKAGES.has(pkg));
@@ -279,6 +282,12 @@ if (MODE === 'upstream') {
     baselineRan = true;
   }
 }
+
+// Staged pre-commit checks intentionally avoid live profile evidence because
+// generated package output may still belong to the previous source revision.
+// The upstream/pre-push path runs the baseline build above before collecting
+// executable evidence.
+runAggressiveCuttingReview({ skipExecutableEvidence: MODE !== 'upstream' });
 
 if (changedPackages.length === 0) {
   console.log(MODE === 'upstream'

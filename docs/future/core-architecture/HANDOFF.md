@@ -154,6 +154,39 @@ Other active docs in this dir:
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: BUILD-FRESH EXECUTABLE-EVIDENCE GATE — stop review tooling from
+  accepting profile output produced by stale ignored `lib/` artifacts.
+- Architecture surface: `scripts/precommit-changed-checks.mjs` now runs the
+  affected upstream baseline/build before the full aggressive-cutting verifier;
+  staged pre-commit review passes `--skip-executable-evidence` and retains the
+  static contract, source-surface, and danger-token checks. The verifier's
+  skip flag is explicit and does not weaken the upstream/push gate.
+- Separation/duplication: this is review workflow ordering only. It adds no
+  runtime flag, cache, traversal, node state, benchmark path, or generated
+  output dependency to Jess.
+- Cumulative node weight: none.
+- New traversal: none in production; the pre-push path only reorders existing
+  build and review commands.
+- New node/materialization: none in production. The skip option is a review
+  process argument.
+- Render path: unchanged; no output or performance claim applies.
+- Helper/API surface: one explicit verifier CLI option and one pre-commit
+  option pass-through; no package export changed.
+- Metadata mutations: none.
+- Review-flagged diff tokens: none in production; command ordering and CLI
+  plumbing only.
+- Evidence: a clean candidate build exposed that the prior profile's
+  `admissionCalls=10,777`, `admissionItemsVisited=69,901`, and `calls=15`
+  came from stale generated output; the freshly built canonical spine reported
+  zero legacy merge-admission calls. The proposed per-admission counter was
+  rejected rather than integrated because its profile contract was not live on
+  the clean canonical path. The focused verifier suite passes `5/5`, changed
+  scripts pass `node --check`, and the explicit static-only verifier mode
+  passes.
+- Verdict: accepted as review-workflow hardening. Live executable evidence is
+  now only admissible after the upstream build gate; the legacy merge contract
+  remains open for re-targeting to a live feature-specific path.
+
 - Latest pass: RUNTIME ADMISSION-WORK EVIDENCE — make rare-pass contracts
   measure the admission itself, not only the expensive operation that follows.
 - Architecture surface: `packages/core/src/tree/rules.ts` now exposes
