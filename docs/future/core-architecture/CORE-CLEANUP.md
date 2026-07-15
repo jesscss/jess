@@ -224,6 +224,49 @@ deferred simplification candidate; any retry must use an isolated worktree,
 match the current source-map writer contract, and pass the aggressive-cutting
 surface review before it can enter the Q-40 batch.
 
+### Q-40 import-placement reuse audit — no new delta (2026-07-15)
+
+The fresh current-`dev` audit did not discover an unlanded import-reuse change:
+the bounded closed-static-`(multiple)` placement-state cut is already present
+in `aadd0710b` (`perf(core): drop closed multiple import mapping state`) and is
+an ancestor of the current `dev`. The agent therefore made no source or docs
+patch and did not duplicate that implementation. This is an ownership/result
+record, not an additional performance claim.
+
+The focused import suite passed `94/94` with `1` skipped; core, Jess, and the
+relevant plugin builds passed. The production import ratchet could not complete
+in the isolated worktree because the separately built
+`@jesscss/style-resolver` artifact was unavailable. No canonical benchmark was
+run. The existing landed import gate remains the source of truth; any further
+import work must first prove a smaller placement descriptor or direct segment
+shape rather than reopening the same mapping-state cut.
+
+### Q-40 static-local scope-slot audit — rejected for current target (2026-07-15)
+
+The current-dev audit of the stale `f6bca2ba4` scope-slot proof was isolated in
+`/Users/matthew/git/worktrees/jess-scope-slot-audit-20260715`. The worker ported
+only the narrow candidate shape for review: a source-owned local-name-to-slot
+layout, a lazy per-frame `BindingCell[]`, and an optional read plan on the
+existing lookup handle. It did not change `dev` or the dirty checkout, and no
+commit was created.
+
+The shape was semantically valid inside its admission boundary. Focused
+declaration-order/shadowing and dynamic-disqualification tests passed; core
+passed `3328` tests, the spine production ratchet passed `137`, the Less unit
+corpus passed `77` with its known expected failures, and the relevant builds
+passed. Parse+render and render-only output were byte-identical at `133,389`
+bytes with SHA-256 `39a4812a…73a4c`. The admitted proof recorded `slot=1,
+fallback=0` and no repeated `Map` reads; the dynamic case recorded
+`slot=0,fallback=1`. Canonical `benchmark.less` recorded zero slot activation.
+
+The same-worktree timing was not a win: parse+render median was `+0.56%`
+(`22/23` wins) and render-only was `+0.41%` (`20/25` wins), so no speed claim
+or integration follows. The extra lazy layout `Map`, per-frame cell array, and
+lookup-plan branch are not justified on a workload that never enters the path.
+Do not widen this to parent slots or prototype-chain environments until a real
+target fixture activates the admitted family and the total allocation cost is
+measured.
+
 Q-40 audit mandate (2026-07-14): before accepting another evaluator optimization,
 inspect every action from parser adoption through final serialization. The action
 ledger must account for node construction, adoption/parenting, span/trivia
