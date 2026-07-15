@@ -204,7 +204,7 @@ syntax matrix, and the no-op controls are recorded in
 [`PARSER-RECOGNIZER-GAP.md`](./PARSER-RECOGNIZER-GAP.md), with the isolated
 handoff at commit `0d6879277`.
 
-## Q-40 — scope-frame empty pending-name vector (active proof, 2026-07-15)
+## Q-40 — scope-frame empty pending-name vector (rejected, 2026-07-15)
 
 A read-only flow/heap audit found `3,200` scope-frame creations and about
 `2.32 MB` sampled allocation in `buildScopeFrame`; the current
@@ -220,8 +220,12 @@ materialize a private array before the sole mutation path. Ownership is limited
 to `scope-frame.ts` and focused ScopeFrame/reference/mixin tests. It must prove
 empty/non-empty activation, total allocation or retained-heap impact, semantic
 parity, exact output, and the canonical parse+render/render-only A/B before it
-can land. No implementation or speed claim exists yet; detailed evidence is in
-[`CORE-CLEANUP.md`](./CORE-CLEANUP.md).
+can land. The candidate failed semantic proof because `rules.ts` directly
+mutates the array, contaminating later empty frames. Production code was
+removed; only the regression test and rejection evidence in commit `6dc929a36`
+remain. The trial regressed parse+render `244.214500→245.270125 ms` and
+render-only `196.456375→198.914833 ms`, with no retained-heap improvement and
+higher RSS. Detailed evidence is in [`CORE-CLEANUP.md`](./CORE-CLEANUP.md).
 
 ## Q-40 — compiler-root writer readback (active proof, 2026-07-15)
 

@@ -192,7 +192,7 @@ row in this table is not a claim that the implementation has landed on `dev`.
 | Lookup, merge, fallback, and evaluator-action audit | [`CORE-CLEANUP.md`](./CORE-CLEANUP.md), [`HANDOFF.md`](./HANDOFF.md), and [`AGGRESSIVE-CUTTING-REVIEW.md`](./AGGRESSIVE-CUTTING-REVIEW.md) | The 10,777 repeated preparation/admission scans, explicit merge-surface mistake, fallback topology, rejected generic index/prototype-chain shortcuts, and rejected terminal-miss sentinel are recorded. No broad lookup redesign is silently assumed. |
 | Flat writer sharing and OutputWriter state slimming | Q-37 and Q-39 in this tracker; [`HANDOFF.md`](./HANDOFF.md) | Flat root sharing and lazy transient writer state are landed/reviewed with byte identity. Their timing results are qualified; neither is presented as the missing `<40 ms` win. |
 | Evaluator/serializer frame-boundary proof | Worker branch `feature/q40-evaluator-serializer-frame-proof-20260715`, local commit `04a230e89`; landed integration commit `d211e8964` | The worker's structural result and two-phase/no-op evidence are captured. Current-dev dependency builds, focused tests, aggressive review, core, spine, all-less, and fresh same-checkout A/B are green. The fresh canonical A/B was parse+render `234.714→234.657 ms` (paired delta `-0.878 ms`, `24/45`) and render-only `198.801→198.271 ms` (paired delta `+2.695 ms`, `21/45`); output remained byte-identical at `135,794` bytes, hash `9a58451bd3b0c9d80913df38be3b199994d2b93d34a9d2851f1b18d9dcaaa7cc`. Retained as a structural simplification, not a speed win. |
-| Scope-frame allocation audit and empty pending-name proof | Read-only flow/heap audit; active worker owns `packages/core/src/tree/scope-frame.ts` and focused ScopeFrame/reference/mixin tests | Audit found `3,200` frame creations and about `2.32 MB` sampled `buildScopeFrame` allocation, including a fresh empty `pendingDeclarationNames` array. The shared-sentinel proof is active; activation, mutation safety, total allocation/heap, exact output, and canonical A/B are not yet resolved. |
+| Scope-frame allocation audit and empty pending-name proof | Read-only flow/heap audit; rejected worker commit `6dc929a36` plus the retained regression test | Rejected. `rules.ts` directly mutates `pendingDeclarationNames`, so a shared empty sentinel contaminated later frames. The trial also regressed both benchmark phases and had higher RSS; no production source change is retained. |
 | Compiler-root writer readback audit and writer-only result proof | Read-only OutputWriter/RenderBuffer audit; active worker owns the compiler-root path and directly relevant buffer/rules tests | Audit found `13,235` `getSince()` calls scanning `109,102` chunks and `10,907` `trimEndSince()` calls. A private compiler-owned flat/shared/source-map-off root-result proof is active; no OutputWriter tail cut, speed result, or acceptance claim exists yet. |
 | Extend/spine topology and fallback ownership audit | Read-only extend/spine/fallback audit against the existing extend worktrees and Q-40 ledger | Canonical rendering admits spine once and aborts on extend topology. Extend classification has `42,926` probes with `99.82%` no-matches; application has `39,605` calls with `99.89%` no-matches. Existing append×extend/spine/fallback lanes own the performance work; the only unowned `@layer` slice is correctness-oriented, not a Q-40 performance target. |
 | Import/mixin reuse, placement frames, static slots, dependency graph, and tree-shaken custom-property module direction | Q-40 import-placement sections, [`HANDOFF.md`](./HANDOFF.md), and the recommended shape in [`AST-FROM-SCRATCH-DESIGN.md`](./AST-FROM-SCRATCH-DESIGN.md) | The canonical-body/placement-overlay and dependency-graph ideas are recorded as design direction. The import/mixin reuse model is not being claimed as implemented, and the exported-custom-property tree-shaking path remains future product work. |
@@ -236,7 +236,7 @@ are evidence records, not merged Jess changes or unqualified performance wins;
 currently active implementation and read-only audit lanes must be added here
 when they return a durable result.
 
-### Q-40 scope-frame empty-pending-vector audit — active proof (2026-07-15)
+### Q-40 scope-frame empty-pending-vector audit — rejected proof (2026-07-15)
 
 The returned read-only registration/source-order audit traced the canonical
 flow from `Compiler.render()` through registration, scope-frame construction,
@@ -266,6 +266,22 @@ ScopeFrame/reference/mixin tests. The worker must split shared-empty versus
 private-nonempty activation, measure total allocation or retained heap, run
 the full correctness gates, and perform the agreed canonical A/B before this
 can be accepted. No implementation or speed claim exists yet.
+
+The candidate failed the semantic proof: `rules.ts` directly pushes into
+`pendingDeclarationNames`, so a shared empty sentinel contaminated later empty
+frames. The worker retained only the regression test in commit `6dc929a36`;
+production code and temporary instrumentation were removed. Focused scope/
+reference/mixin tests passed `429`, core passed `3,330`, spine ratchet passed
+`137/137`, all-less passed `106/106`, and aggressive review passed.
+
+The canonical allocation trial saw `16,875` empty frames and no non-empty
+frames; sampled allocation moved `1,674,608→1,624,840` bytes and transient
+heap `79,456,016→79,069,704` bytes, but retained heap did not improve and RSS
+was higher (`~757 MB` versus `~668 MB`). The fixed `20/45` A/B also regressed:
+parse+render `244.214500→245.270125 ms` (`20/25` wins/losses) and render-only
+`196.456375→198.914833 ms` (`18/27`). Output was exact at `135,794` bytes with
+hash `9a58451bd3b0c9d80913df38be3b199994d2b93d34a9d2851f1b18d9dcaaa7cc`.
+Do not revive the sentinel without an explicit copy-on-first-mutation design.
 
 ### Q-40 compiler-root writer-readback audit — active proof (2026-07-15)
 

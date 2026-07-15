@@ -149,6 +149,23 @@ describe('ScopeFrame variable facade', () => {
     expect(hit.kind).toBe('miss');
   });
 
+  it('keeps late dynamic registration private to an already-built empty frame', () => {
+    const root = rules();
+    const frame = root.getScopeFrame();
+    const dynamic = vardecl({
+      name: interpolated({
+        source: '%%',
+        replacements: [ref({ key: 'suffix' }, { type: 'variable' })]
+      }),
+      value: any('red')
+    });
+
+    root.push(dynamic);
+
+    expect(frame.pendingDeclarationNames).toEqual([dynamic]);
+    expect(rules().getScopeFrame().pendingDeclarationNames).toHaveLength(0);
+  });
+
   it('returns uncovered when pending static declarations can still affect the key', async () => {
     const root = rules([]);
     await root.eval(new Context());
