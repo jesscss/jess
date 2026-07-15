@@ -1190,18 +1190,34 @@ work.
 
 ## Q-40 latest rejected proof
 
-The extend-root measurement worker (2026-07-15) was stopped after its
-preliminary run and before the final exact-output handoff. Its isolated
-temporary instrumentation was removed, and
-`/private/tmp/jess-extend-root-measure-20260715` is clean. No production
-change was made. Preliminary canonical `benchmark.less` counters were
-`1,651` ruleset registrations, `7` roots visited, `42,926` classification
-probes, `39,605` apply calls, `43` selector changes, `39,562` apply
-no-matches, and `extendMatchWork=145`; a static control was zero. The
-synthetic direct/import fixture was default-spine-routed and only activated
-the legacy path under an eval-forced diagnostic route. Because the worker did
-not return the required per-shape hashes or completed phase-separated result,
-this is a lead only, not a performance claim or implementation handoff.
+The completed extend-root measurement worker (2026-07-15) refreshed its
+isolated worktree from `e4fb26616`, removed temporary instrumentation, and
+returned `/private/tmp/jess-extend-root-measure-20260715` clean. No production
+change was made; the focused extend-roots slice passed `21` tests with `1`
+skipped. The full report is
+`/private/tmp/jess-extend-root-measure-20260715-results.md`.
+
+The canonical `benchmark.less` default route produced exact `133,389`-byte
+output with SHA-256
+`39a4812a88ea77a94f846f8392fb536da882e84452d03880103d256cb1d73a4c` in both
+parse+render and render-only phases. It recorded `1,651` registrations,
+`7` distinct/visited roots, `210` visibility probes, `182` visible
+instructions, `1,651` classified rulesets, `42,926` classification probes
+(`42,847` no-match), `39,605` apply calls (`43` selector changes and `39,562`
+no-match), and `extendMatchWork=145`. Static and default synthetic controls
+were zero. The forced-eval synthetic route is diagnostic only: its output hash
+`8da379e3...` differs from the default route's `7a73926a...`.
+
+This closes the measurement handoff, not the optimization. Repeated
+classification is a real hotspot, but a safe cut still requires a semantic
+matrix and Less oracle. The bounded candidate seam is the first-pass loop at
+`packages/core/src/tree/util/extend-roots.ts:795-803`, where a root-local cheap
+admission/candidate selection could precede `classifyInstructionMatch`.
+Required coverage includes exact/partial/`all`, lists/`:is()`, combinators,
+nested ampersand/recheck, self/circular/chained extends, explicit overrides,
+reference/protected roots, imports/layers/namespaces, source order, and the
+Less oracle. `recheckProbes=0` is a coverage gap. Do not duplicate the dirty
+`extend.ts` or `spine-extend.ts` owner lanes.
 
 The registration-map sentinel proof (2026-07-15) at
 `/private/tmp/jess-varsbyname-proof-20260715` tested reusing
