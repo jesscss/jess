@@ -254,11 +254,13 @@ no-matches. The implementation and instrumentation were deleted; the stale
 root-index POC at
 `/Users/matthew/git/worktrees/jess-extend-root-index-poc` was untouched.
 
-Focused proof passed `162` tests with `1` skipped. The uninstrumented A/B was
-parse+render `235.90→234.06 ms` (`24/45` wins) and render-only
-`200.42→200.31 ms` (`20/45` wins), both noise. The candidate/control output
-was `136,178` bytes with SHA-256
+Focused proof passed `162` tests with `1` skipped. The worker's uninstrumented
+A/B was parse+render `235.90→234.06 ms` (`24/45` wins) and render-only
+`200.42→200.31 ms` (`20/45` wins), both noise. Its runner reported
+`136,178` bytes with SHA-256
 `ba0f39975b45534096037639514f866f9cd3d3e3f2a490d08c1d74de0713fb90`.
+Treat that as the isolated worker's output record, not the current canonical
+baseline; it did not match the current-dev direct hash above.
 No source, commit, or push remains from this lane.
 
 ### Q-40 greenfield tree2 AST POC audit — incomplete, not integrated (2026-07-14)
