@@ -246,6 +246,50 @@ the canonical 20-warmup/45-pair `benchmark.less` A/B gate. Current coverage
 does not establish full Less-corpus, source-map-on, comment-heavy,
 import/mixin-placement, or typed-value parity; those are explicit follow-ups.
 
+### Q-40 OutputWriter trim-tail audit (2026-07-15, rejected)
+
+The read-only writer audit measured the live canonical path at `15,581` writer
+instances, `13,400` marks, `7,123` restores, `13,235` `getSince()` calls
+scanning `109,102` chunks, and `10,907` `trimEndSince()` calls causing
+`69,780` position updates. `capture()` and `preview()` were both unused.
+Replacing the no-source-map tail refresh with direct `_length`/last-entry
+bookkeeping was exact in the focused model: `68/68` writer/source-map tests,
+core build, lint, and diff-check passed. It did not clear the canonical A/B:
+parse-render baseline `234.925 ms` versus candidate `232.575 ms` had paired
+median delta `+1.187 ms` and only `20/45` wins; render-only was
+`198.693→197.714 ms`, paired median delta `−0.066 ms`, `23/45` wins. Output
+was exact at `135,794` bytes with hash
+`9a58451bd3b0c9d80913df38be3b199994d2b93d34a9d2851f1b18d9dcaaa7cc`.
+Reject the added complexity; preserve `_posLength` and the existing source-map
+path. The isolated worktree retains the uncommitted rejected diff at
+`/private/tmp/jess-outputwriter-trim-tail-20260715`; it is not a production
+change.
+
+### Q-40 callable uncovered-child result adoption audit (2026-07-15, rejected)
+
+The callable full index and miss sentinel are already integrated. The only
+bounded remaining candidate was to adopt the first fresh result array in
+`findMixinsFastForUncoveredCallable()` rather than allocate `frameResults` and
+copy into it. Synthetic semantic counters proved direct hits (`2`), recursive
+hits (`2`), first-result adoption, later merges, source order, filters,
+reference fallback, miss/unsupported results, and callable-bucket immutability.
+The canonical `benchmark.less` run nevertheless activated zero direct or
+recursive callable hits on either side: each `45`-sample phase recorded
+`9,225` misses and `1,407,375` unsupported outcomes. Parse-render was
+`237.47→219.28 ms` but cannot be attributed with zero activation; render-only
+was `189.70→186.27 ms` (about `1.8%`, noise). Output bytes and hashes were
+identical, focused callable coverage was `217/217`, and the isolated source
+was reverted. Reject the candidate as non-activating; do not reopen generic
+callable caching or direct-frame bypasses.
+
+### Q-40 current no-op control refresh (2026-07-15)
+
+On clean current `dev` (`e44fc7764`), the same `JESS_STATIC_NAMESPACE_TABLE`
+`0→1` control with `20` warmups and `45` alternating pairs measured
+parse-render `237.499→238.559 ms` (`20/45` wins, median ratio `+0.38%`,
+`t=0.15`) and render-only `184.529→182.927 ms` (`21/45` wins, median ratio
+`+1.08%`, `t≈0`). These are the current noise floor, not speed claims.
+
 ### Q-40 deferred serializer branch-collapse POC (2026-07-15)
 
 A worker collapsed the three `renderNodeText` reason branches
