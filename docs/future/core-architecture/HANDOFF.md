@@ -263,6 +263,16 @@ worktrees already own or reject the relevant performance paths. A direct
 same-layer `@layer` admission fixture is an unowned correctness/coverage idea,
 not a Q-40 speed lane, so no duplicate worker was dispatched.
 
+## Q-40 — fresh canonical control refresh (2026-07-15)
+
+The current `dev` no-op control used the external `benchmark.less`, Node
+v25.9.0 arm64, 20 warmups, and 45 alternating pairs. Parse+render medians were
+`235.084→233.454 ms` with `20/45` candidate wins; render-only medians were
+`200.186→203.527 ms` with `19/45` wins. Render-only standard deviations were
+about `49.9/45.1 ms`, so these are a noise-floor refresh only, not a speed
+claim. The current exact Jess output remains `135,794` bytes with hash
+`9a58451bd3b0c9d80913df38be3b199994d2b93d34a9d2851f1b18d9dcaaa7cc`.
+
 ## Q-40 — import-placement audit handoff
 
 The fresh read-only retained-placement audit is recorded in detail in

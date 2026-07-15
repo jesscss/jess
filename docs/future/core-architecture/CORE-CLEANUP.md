@@ -321,6 +321,14 @@ delta `+0.951 ms` and `22/45` wins. Output was `135,794` bytes with SHA-256
 `9a58451bd3b0c9d80913df38be3b199994d2b93d34a9d2851f1b18d9dcaaa7cc`.
 These are no-op controls and carry no speed claim.
 
+Fresh same-checkout no-op refresh (2026-07-15, current `dev`, external
+`benchmark.less`, Node v25.9.0 arm64, 20 warmups, 45 alternating pairs) measured
+parse+render `235.084→233.454 ms` with `20/45` candidate wins and render-only
+`200.186→203.527 ms` with `19/45` wins. The render-only spread is especially
+wide (`stddev` about `49.9/45.1 ms`), so these values establish the noise floor
+only; they are not a speed result. Output remains the current exact
+`135,794`-byte Jess hash recorded above.
+
 Parsing was outside the corrected render-only sampling window. Normalized
 self-time per profiled render was: `isNode` `13.6 ms`, GC `7.6 ms`,
 `findWithinScopeSurface` `6.9 ms`, `consumeName` `5.5 ms`, `extendSelector`
