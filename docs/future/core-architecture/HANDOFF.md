@@ -1426,6 +1426,53 @@ left unmerged; only the evidence record was retained in commit `3056554`.
 - Evidence: STRIPE self/mutual/≥3-level/root-scope/interpolated-selector recursion folds `deriveCalls===0`, distinct-per-level blocks, byte-identical to the eval toggle + less@4 (`lessc 4.6.3` diff clean on the recursion mechanism). Suites green: core 3300/0, jess `spine-production-ratchet` 126/0, all-less 105/0, error 92/0, less-parser 508/0. Perf A/B (same-worktree revert toggle, warmup + N median): STRIPE fixture folds faster than eval; benchmark neutral (stays on eval either way).
 - Verdict: accepted — deletes the recursion gate + its pre-scan traversal, folds STRIPE via the loop fold's existing projection primitive, no new node state, no tree mutation.
 
+## Aggressive Cutting Self-Prosecution
+
+- Latest pass: Q-40 imported/reference partial admission — the candidate was rejected and all
+  production probes were removed. The focused test retains only the current-dev post-wire rejection
+  for the canonical `h1` shadow topology.
+- Architecture surface: `packages/core/src/tree/extend/__tests__/extend-work-gate.test.ts` only.
+  `packages/core/src/tree/util/emit-walk.ts` and `packages/core/src/tree/extend/spine-extend.ts` are
+  byte-identical to `origin/dev`; no import resolver, reference serializer, root admission, or legacy
+  island was added.
+- Separation/duplication: the test reuses `Parser` and `isSpineExtendTopology`; it adds no second
+  topology check, no runtime diagnostic counter, and no production fallback path.
+- Cumulative node weight: zero production/runtime fields. The test-local parsed tree and subject set
+  are released after the assertion and never attached to a node or render context.
+- New traversal: none in production. The test invokes the existing topology predicate once in
+  speculative mode and once in resolved re-gate mode.
+- New node/materialization: [node construction] the parser necessarily creates the small synthetic
+  source tree for the focused fixture; [side map/set] the resolved imported-subject `Set` is test-local
+  evidence only. No output tree, copy, cache, or retained placement state is introduced.
+- Render path: unchanged. The external canonical control remains whole-document eval fallback after
+  one spine attempt; no bytes are emitted before the abort.
+- Helper/API surface: none. No production export, helper, or method changed.
+- Metadata mutations: none. The test reads the parsed tree and does not assign parent, source-root,
+  placement, span, or caller-buffer state.
+- Review-flagged diff tokens: [node construction] test-only parser fixture, released after assertion;
+  [side map/set] test-only imported-subject set, not runtime state; [loop/traversal] none added;
+  [materialized array/object] none added beyond parser-owned fixture state; [routine error control] none;
+  [field] none; [copy] none; [parent/source mutation] none; [API] none.
+- Evidence: focused import/extend gate `7/7`; focused core import/extend/emit ratchets `125/125` with
+  `1` skipped; full core `3331` passed, `15` skipped, `2` deferred declarations; Jess spine-production-ratchet `137/137`;
+  all-less unit and config gates passed (`29/29` config; unit gate passed); aggressive review passes after
+  this block. External `/Users/matthew/git/oss/less.js/packages/less/benchmark/benchmark.less` control
+  output was `133,983` bytes, SHA-256
+  `adfd26732125a33fc1e264aca7d7ecde8c7c1da43f968e3106bd387a1f78e840`, with `1` spine attempt and
+  `846` derives. The paired current-dev no-op control was exact at `135,794` bytes with SHA-256
+  `9a58451bd3b0c9d80913df38be3b199994d2b93d34a9d2851f1b18d9dcaaa7cc`: parse+render median
+  `247.391917→248.694834 ms` (`+0.799625 ms`, `20/45` wins), render-only
+  `198.968125→199.893791 ms` (`+0.976792 ms`, `25/45` wins). These are noise-floor controls, not
+  a speed claim. Allowing the single `h1` branch admission then disabling the complex-reference gate
+  reached `TypeError: EMIT contribution collapsed to empty (extender IS a target ancestor)` before
+  output, so the branch was not safe to retain.
+- Verdict: rejected — retain the strict import/reference boundary and assign the next owner a
+  source-order-aware reference/extend topology proof before any partial admission.
+- Hot-path cost contracts:
+```json
+[]
+```
+
 ## Q-40 latest rejected proof
 
 The completed extend-root measurement worker (2026-07-15) refreshed its
