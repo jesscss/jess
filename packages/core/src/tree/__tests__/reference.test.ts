@@ -3697,6 +3697,58 @@ describe('reference', () => {
       }
     });
 
+    it('does not propagate assignment metadata for children without variable or reference-import surfaces', () => {
+      const childRules = ruleset({
+        selector: el('.child'),
+        rules: [
+          decl({ name: 'child-color', value: any('blue') })
+        ]
+      });
+      let uncoveredSurfaceCalls = 0;
+      let bindingPropagationCalls = 0;
+      Object.defineProperties(childRules, {
+        getHasUncoveredAssignmentTargetEntrySurface: {
+          configurable: true,
+          value() {
+            uncoveredSurfaceCalls++;
+            return false;
+          }
+        },
+        collectPublicVariableAssignmentBindingsInto: {
+          configurable: true,
+          value() {
+            bindingPropagationCalls++;
+          }
+        }
+      });
+
+      const root = rules([childRules]);
+      root.collectDirectDeclarationChildEntries();
+
+      const cachedRoot = rules([
+        decl({ name: 'cached-color', value: any('green') })
+      ]);
+      cachedRoot.collectDirectDeclarationChildEntries();
+      cachedRoot.registerNode(childRules, undefined, context);
+
+      expect(uncoveredSurfaceCalls).toBe(0);
+      expect(bindingPropagationCalls).toBe(0);
+      expect(root.directDeclarationChildEntries?.[0]).toMatchObject({
+        node: childRules,
+        hasDeclarationSurface: true,
+        hasVarDeclarationSurface: false,
+        hasReferenceImportSurface: false,
+        hasUncoveredAssignmentTargetSurface: false
+      });
+      expect(cachedRoot.directDeclarationChildEntries?.[0]).toMatchObject({
+        node: childRules,
+        hasDeclarationSurface: true,
+        hasVarDeclarationSurface: false,
+        hasReferenceImportSurface: false,
+        hasUncoveredAssignmentTargetSurface: false
+      });
+    });
+
     it('direct property lookup skips child rules whose visibility cannot contain properties', async () => {
       const childRules = rules([
         vardecl({ name: 'child-color', value: any('blue') })

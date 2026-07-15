@@ -2400,6 +2400,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       const hasDeclarationSurface = rulesMayContainDeclarationSurface(child);
       const hasVarDeclarationSurface = rulesMayContainVarDeclarationSurface(child);
       const hasReferenceImportSurface = rulesMayContainReferenceImports(child);
+      const hasAssignmentSurface = hasVarDeclarationSurface || hasReferenceImportSurface;
       this.hasDeclarationChildSurface ||= hasDeclarationSurface;
       this.hasVarDeclarationChildSurface ||= hasVarDeclarationSurface;
       this.hasReferenceImportChildSurface ||= hasReferenceImportSurface;
@@ -2410,9 +2411,12 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         hasDeclarationSurface,
         hasVarDeclarationSurface,
         hasReferenceImportSurface,
-        hasUncoveredAssignmentTargetSurface: child.getHasUncoveredAssignmentTargetEntrySurface()
+        hasUncoveredAssignmentTargetSurface: false
       };
-      child.collectPublicVariableAssignmentBindingsInto(Boolean(child.options.readonly), entry);
+      if (hasAssignmentSurface) {
+        entry.hasUncoveredAssignmentTargetSurface = child.getHasUncoveredAssignmentTargetEntrySurface();
+        child.collectPublicVariableAssignmentBindingsInto(Boolean(child.options.readonly), entry);
+      }
       (out ??= []).push(entry);
     }
     this.directDeclarationChildEntries = out ?? null;
@@ -2432,6 +2436,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     const hasDeclarationSurface = rulesMayContainDeclarationSurface(child);
     const hasVarDeclarationSurface = rulesMayContainVarDeclarationSurface(child);
     const hasReferenceImportSurface = rulesMayContainReferenceImports(child);
+    const hasAssignmentSurface = hasVarDeclarationSurface || hasReferenceImportSurface;
     this.hasDeclarationChildSurface ||= hasDeclarationSurface;
     this.hasVarDeclarationChildSurface ||= hasVarDeclarationSurface;
     this.hasReferenceImportChildSurface ||= hasReferenceImportSurface;
@@ -2447,9 +2452,12 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       hasDeclarationSurface,
       hasVarDeclarationSurface,
       hasReferenceImportSurface,
-      hasUncoveredAssignmentTargetSurface: child.getHasUncoveredAssignmentTargetEntrySurface()
+      hasUncoveredAssignmentTargetSurface: false
     };
-    child.collectPublicVariableAssignmentBindingsInto(readonly, entry);
+    if (hasAssignmentSurface) {
+      entry.hasUncoveredAssignmentTargetSurface = child.getHasUncoveredAssignmentTargetEntrySurface();
+      child.collectPublicVariableAssignmentBindingsInto(readonly, entry);
+    }
     entries.push(entry);
   }
 
@@ -2527,8 +2535,12 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       entry.hasReferenceImportSurface = rulesMayContainReferenceImports(child);
       entry.assignmentBindingsByName = undefined;
       entry.assignmentReadonlyByName = undefined;
-      child.collectPublicVariableAssignmentBindingsInto(Boolean(entry.readonly), entry);
-      entry.hasUncoveredAssignmentTargetSurface = child.getHasUncoveredAssignmentTargetEntrySurface();
+      if (entry.hasVarDeclarationSurface || entry.hasReferenceImportSurface) {
+        child.collectPublicVariableAssignmentBindingsInto(Boolean(entry.readonly), entry);
+        entry.hasUncoveredAssignmentTargetSurface = child.getHasUncoveredAssignmentTargetEntrySurface();
+      } else {
+        entry.hasUncoveredAssignmentTargetSurface = false;
+      }
     }
     if (changedVariable && patched) {
       return;
