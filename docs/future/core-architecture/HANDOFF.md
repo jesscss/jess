@@ -162,12 +162,45 @@ Other active docs in this dir:
 - **`STRINGS-OVER-NODES.md`** — active reference (producer flips still pending).
 - **`ASSIGNABLE-CONTROL-NODES-PLAN.md`** — queued future feature track.
 
-Tree2 status: the isolated no-class arena now passes `22/22` focused tests and
+Tree2 status: the isolated no-class arena now passes `11/11` distinct focused
+tests (`22/22` only in the root aggregate because Vitest runs the same file in
+two projects) and
 has exact output hashes on its exploratory static/mixed probes. It is not an
 accepted performance change. The canonical raw `benchmark.less` route still
 uses one whole-document legacy escape (`native=0`, `legacyRoot=1`), so its
 timing cannot support a tree2 speed claim. Require an evaluated canonical route
-or an explicit rejection before any production integration.
+or an explicit rejection before any production integration. The eight-file
+implementation is staged but uncommitted in the isolated worktree; its
+checkpoint was stopped by aggressive-cutting review because the unwired
+`packages/core/src/tree2/` surface has no production cost-contract entries.
+No hook bypass was used. The design record is durable here; the source remains
+an explicitly preserved local experiment pending artifact review.
+
+## Q-40 — import-placement audit handoff
+
+The fresh read-only retained-placement audit is recorded in detail in
+[`CORE-CLEANUP.md`](./CORE-CLEANUP.md). Its four scale points report exact CSS
+parity (`exact: true`) at 1×, 2×, 4×, and 8×. The corresponding `Ruleset`
+placement-clone counts are 1000 / 2000 / 4000 / 8000; `varsByName` setter writes
+are 2002 / 3004 / 5008 / 9016, with every write producing an empty map; and
+`heapUsed` after render is about 25.07 / 29.56 / 32.33 / 37.15 MB. These are
+heap-audit observations, not throughput or speed claims.
+
+The lazy `EMPTY_DECLARATION_BUCKETS` sentinel is a rejected/no-op proof, not an
+accepted Q-40 win. It passed scope-frame `18/18`, rules/reference `300/305`,
+core build, and exact import-placement output; on the activating import fixture
+at 1×, Map constructors were unchanged at `5,041→5,041`, Map sets differed only
+`66,184→66,186`, and after-render heap was within noise. `varsByName` is usually
+already defined on this path, so the sentinel is not a useful Q-40 cut.
+
+The all-empty writes do not make `varsByName` directly removable:
+`_stampRegistrationMaps` uses the empty `Map` as the registration-complete
+sentinel, while `buildScopeFrame` uses undefined-versus-defined
+`varsByName` to set `declarationsCovered`. A future cut must preserve both
+states. The property-merge/sequence simplification remains a proposal, not an
+implemented or rejected result. The tree-shaken exported-custom-property
+dependency graph remains a future product/design direction, not proven runtime
+work.
 
 ## Aggressive Cutting Self-Prosecution
 

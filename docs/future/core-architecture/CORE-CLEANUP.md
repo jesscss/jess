@@ -172,10 +172,19 @@ sequential, not parallel, even when their descriptions look independent.
 The isolated worktree `/Users/matthew/git/worktrees/jess-greenfield-ast-design-20260714`
 now has a no-class, columnar `tree2` arena under `packages/core/src/tree2/`,
 with explicit legacy-island records and a cold debug projection. It is not
-exported or wired into production. Focused parity coverage passes `22/22`,
+exported or wired into production. Package-scoped parity coverage passes
+`11/11` distinct cases (`22/22` only in the root aggregate because Vitest runs
+the same file in two projects),
 including caller-owned flat-buffer append behavior and invalid escape-payload
 rejection. The first benchmark attempt exposed a context/trivia parity problem;
 the corrected run now produces exact hashes.
+
+The eight-file implementation is staged but uncommitted in the isolated
+worktree. Its checkpoint commit was intentionally stopped by the aggressive-
+cutting review because `packages/core/src/tree2/` is under the reviewed source
+root but has no production cost-contract entries; no hook bypass was used. The
+design is durable here, while the implementation remains an unintegrated local
+experiment until it receives an explicit artifact-review decision.
 
 The corrected exploratory run used `TREE2_WARMUPS=3` and `TREE2_SAMPLES=5`
 (not the canonical 20/45 A/B gate). `large-static-720` routed all `720`
@@ -198,6 +207,23 @@ do not merge it, and require an evaluated-canonical/import-capable route or
 explicitly reject the approach before assigning another tree2 implementation
 pass.
 
+### Q-40 deferred serializer branch-collapse POC (2026-07-15)
+
+A worker collapsed the three `renderNodeText` reason branches
+(`declaration-fallback`, `rules-preview`, and leaf) into one shared writer path;
+the profile-counter classification remained unchanged. The focused serializer
+slice passed `363` tests with `5` skipped, the core build passed, and output was
+exact at `131,578` bytes with identical hashes both with and without source
+maps. The worker's A/B was `219.77 ms → 218.64 ms` (`-0.51%`), but trimmed
+medians reversed, so this is a neutral/noise result and not a speed claim.
+
+This is not an integrated source change: the worker accidentally edited the
+user-dirty checkout, the exact worker diff was extracted and that checkout was
+restored, and the candidate was not replayed onto `dev`. Keep the result as a
+deferred simplification candidate; any retry must use an isolated worktree,
+match the current source-map writer contract, and pass the aggressive-cutting
+surface review before it can enter the Q-40 batch.
+
 Q-40 audit mandate (2026-07-14): before accepting another evaluator optimization,
 inspect every action from parser adoption through final serialization. The action
 ledger must account for node construction, adoption/parenting, span/trivia
@@ -210,6 +236,56 @@ fixture proves the fact cannot be carried. “Avoids a downstream expensive pass
 does not qualify as necessity; total work and the common no-feature path must be
 measured. The first confirmed violation is `Rules.hasMergeOutputSurface`, which
 recursively scans 10,777 evaluated surfaces to find 15 merge-bearing ones.
+
+### Q-40 — retained import-placement heap audit (read-only, 2026-07-14)
+
+The run used four local JSON snapshots from the temporary retained-audit
+harness (Node `v25.9.0`, `main-1x.less`). The audit's `exact` field is `true` at
+every scale, which is the supplied exact CSS-parity result. The raw snapshots
+are diagnostic scratch artifacts rather than durable acceptance inputs; the
+table below is the durable retained record. The heap values are post-render
+`heapUsed`; they are not a throughput benchmark or a speed claim.
+
+| Scale | Exact CSS parity | `Ruleset` placement clones | `varsByName` setter writes | Empty / non-empty writes | `heapUsed` after render |
+| ---: | :---: | ---: | ---: | ---: | ---: |
+| 1× | `true` | 1000 | 2002 | 2002 / 0 | 25,071,616 bytes (~25.07 MB) |
+| 2× | `true` | 2000 | 3004 | 3004 / 0 | 29,562,400 bytes (~29.56 MB) |
+| 4× | `true` | 4000 | 5008 | 5008 / 0 | 32,334,304 bytes (~32.33 MB) |
+| 8× | `true` | 8000 | 9016 | 9016 / 0 | 37,147,664 bytes (~37.15 MB) |
+
+### Q-40 decision — lazy `EMPTY_DECLARATION_BUCKETS` sentinel: rejected/no-op
+
+The lazy `EMPTY_DECLARATION_BUCKETS` sentinel is a rejected/no-op proof, not an
+accepted Q-40 win. It passed scope-frame `18/18`, rules/reference `300/305`,
+the core build, and exact import-placement output. On the activating import
+fixture at 1×, Map constructors were unchanged at `5,041→5,041`, Map sets
+differed only `66,184→66,186`, and after-render heap was within noise. No
+benchmark or speed claim follows from these observations.
+
+The reason is path-specific: `varsByName` is usually already defined on this
+import path, so substituting a lazy empty declaration-bucket sentinel does not
+remove a useful allocation or lookup state. Treat the sentinel as a rejected
+no-op for Q-40 and leave it out of the accepted-win ledger.
+
+The all-empty `varsByName` writes are not proof that the field is dead. In
+`packages/core/src/tree/rules.ts`, `_stampRegistrationMaps` performs
+`rules.varsByName ??= new Map()` so fast lookup can distinguish registration
+preparation that completed with no registerable declarations from a scope that
+has not been processed. In `packages/core/src/tree/scope-frame.ts`,
+`buildScopeFrame` derives `declarationsCovered` from `varsByName !== undefined`;
+later lookup treats an uncovered frame differently. Therefore an empty defined
+`Map` and `undefined` are semantically distinct. Directly removing `varsByName`
+is unsafe unless a replacement preserves both the registration sentinel and the
+declarations-coverage state.
+
+### Q-40 design-status corrections
+
+- Property-merge/sequence simplification is still a proposal. Q-40 did not
+  implement it and did not reject it; record it as an open design gap, not as a
+  landed or disproven runtime result.
+- A tree-shaken exported-custom-property dependency graph is a future
+  product/design direction. Q-40 provides no proven runtime implementation or
+  benchmark evidence for it; do not describe it as current machinery.
 
 #### Q-40 representation and allocation decisions — 2026-07-14
 
