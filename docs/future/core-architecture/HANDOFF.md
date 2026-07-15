@@ -1481,6 +1481,189 @@ left unmerged; only the evidence record was retained in commit `3056554`.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: EXTEND KEYSET PRE-REJECT (conservative-filter) + CHAINED-DISCOVERY
+  DEFERRAL (precise). Two byte-identical extend perf wins on `benchmark.less`
+  (`collapseNesting:true`, `131578` bytes, sha `98a0536086c7e555`). (1) A cheap
+  conservative keyset gate (`targetCanPossiblyMatch`) hoisted to the top of
+  `classifyInstructionMatch` skips the speculative
+  `classifyExtendMatch`/`applyExtendsToSelector` machinery for the ~37.9k of
+  ~38.0k per-render probes that can never match; it admits a superset (86 admitted
+  ⊇ 44 feature-bearing) and allocates keyset bitsets on the no-feature path, so it
+  is registered under the new `conservative-filter` contract kind. (2) The
+  chained-discovery machinery in `applyExtendsToSelector` (subtree-value walk +
+  allExtends expansion + tuple map + target index) is deferred behind a memoized
+  `chain()` initializer, built only after an applied extend actually changes the
+  selector (43 of 116 invocations); a precise, zero-no-feature-allocation deferral.
+- Architecture surface: `packages/core/src/tree/util/extend-roots.ts`
+  (`targetCanPossiblyMatch` gate + `classifyInstructionMatch` guard enclosure +
+  `processExtends` governed-function timing) and
+  `packages/core/src/tree/util/extend.ts` (`applyExtendsToSelector` `chain()`
+  lazy init). No AST node, selector field, writer, provenance, or public API
+  changed. The verifier/registry gained a `conservative-filter` contract kind.
+- Separation/duplication: the keyset gate reuses the existing selector keyset
+  service (`requiredKeySetOf`/`visibleKeySetOf`/`keySetOf` + `isSubsetOf`/
+  `isDisjoint`) already trusted by the match core; no new match algorithm was
+  added. The deferral reuses the identical build inputs, moved from eager into a
+  single memoized closure — no duplicated discovery logic.
+- Cumulative node weight: zero. No node, scope field, retained tree, or output
+  materialization was added. The deferral REDUCES per-invocation allocation (one
+  subtree-value Set + tuple array + index Map skipped on the ~99% no-change path).
+- New traversal: none added on the feature-free path; both changes DELETE work
+  there. The keyset gate replaces a full speculative classify/apply per non-match
+  probe with a bounded bitset subset/disjoint test; the deferral removes the
+  eager subtree walk + list expansion + tuple map + index build entirely on the
+  no-change path.
+- New node/materialization: none. The keyset gate allocates only transient
+  bitsets (the conservative-filter's declared, speedup-justified no-feature
+  allocation); the deferral allocates strictly less than before.
+- Render path: byte-identical. Both filter-on/off and eager/lazy variants render
+  `benchmark.less` to the identical `131578` bytes / sha
+  `98a0536086c7e555b1a98e2372ad4000d51e25f1418c6345b6b8a9a97d80972f`, proving the
+  conservative gate never drops a true match and the deferral computes identical
+  values.
+- Helper/API surface: no export or public method changed. `targetCanPossiblyMatch`
+  and `chain()` are file-local; the only added module state is the profile-gated
+  `recordExtendProfile`/`extendProfileNow` counters (mirroring the existing
+  `recordMergeProfile` pattern), inert unless the profile global is installed.
+- Metadata mutations: none. No parent/source/provenance/location field is touched.
+- Review-flagged diff tokens: the extend hot-path additions carry loop/traversal,
+  array-helper, array-spread, node-construction, side map/set, and materialized
+  array/object tokens, all inside the deferred `chain()` builder and the batched
+  chained-discovery blocks that run ONLY after a selector change, plus the
+  profile-gated counter closures. None run on the admission/no-feature path.
+  Prosecuted by category:
+  [loop/traversal] the `for...of chained` loops iterate discovered chained
+  extends only inside the post-change blocks; zero on the no-change path.
+  [array helper] `expandedAllExtends.map`/`.find` build/scan the chained tuple
+  set inside `chain()`, computed lazily on first post-change use.
+  [array spread/materialization] the `[...instruction]`/spread forms construct
+  the per-instruction fallback list only for admitted probes.
+  [node construction] `new Set`/`new ComplexSelector` occur in the deferred
+  builder and per-admitted-probe fallback, never on the rejected-probe path.
+  [side map/set] the `Set<string>`/`Map` chained-discovery structures are built
+  inside the memoized `chain()` and skipped entirely when nothing changes.
+  [materialized array/object] the `_chain = { ... }` memo object and tuple
+  arrays are the deferred machinery itself, allocated at most once per changed
+  invocation.
+- Evidence: focused counter test (`scripts/profile-less-benchmark.mjs
+  --assert-extend-filter-contract` / `--assert-extend-defer-contract`) green.
+  Filter counters: 37,973 admission checks, 86 admitted, 44 feature-bearing
+  (superset), 39,557 no-feature bitset allocations, 37,887 no-feature misses.
+  Deferral counters: 116 invocations, 43 chain builds (= admitted = feature-
+  bearing), 0 no-feature allocations. Same-worktree paired A/B (filter neutralized
+  vs active, 20 warmup / 45 pairs, byte-identical both): governed
+  `processExtends` 51.768→27.315 ms/render (24.453 ms, 45/45 wins, ~47% faster),
+  whole compile 270.239→223.599 ms (41/45 wins). Deferral paired A/B (eager vs
+  lazy, byte-identical): `processExtends` 28.073→27.315 ms (31/45 wins), whole
+  compile 246.220→223.599 ms (41/45 wins). Output exact at `131578` bytes / sha
+  `98a0536086c7e555b1a98e2372ad4000d51e25f1418c6345b6b8a9a97d80972f`.
+- Verdict: accepted. Both changes are byte-identical, measurably faster, and
+  land under machine-checked cost contracts (one conservative-filter, one
+  precise).
+- Hot-path cost contracts:
+```json
+[
+  {
+    "id": "extend-keyset-pre-reject",
+    "kind": "conservative-filter",
+    "necessity": {
+      "status": "proven",
+      "factSource": "the selector keyset library already carries each selector's simple-key membership from parse/adoption",
+      "rediscovery": "classifyInstructionMatch ran the speculative classify/apply machinery per non-matching probe to discover it does not match",
+      "carryForward": "the carried keyset bitsets are read by the gate, unioning candidate and parent key-space before any classify or apply work",
+      "whyNotCarried": "the guaranteed-false subset relation is now hoisted ahead of the expensive setup instead of being rediscovered by executing it"
+    },
+    "admission": {
+      "predicate": "targetCanPossiblyMatch keyset subset/disjoint gate",
+      "cost": "cheap",
+      "before": "collection and allocation"
+    },
+    "calls": 86,
+    "admittedCalls": 86,
+    "featureBearingCalls": 44,
+    "itemsVisited": 86,
+    "noFeatureAllocations": 39557,
+    "noFeatureMisses": 37887,
+    "admissionCalls": 37973,
+    "admissionItemsVisited": 37973,
+    "governedFunction": { "name": "processExtends", "beforeMs": 51.768, "afterMs": 27.315 },
+    "commonCaseProof": "counter test: 37,973 admission checks, 86 admitted, 44 feature-bearing on benchmark.less",
+    "benchmark": {
+      "fixture": "benchmark.less",
+      "warmup": 20,
+      "pairs": 45,
+      "parse-render": {
+        "beforeMedianMs": 270.239,
+        "afterMedianMs": 223.599,
+        "medianDeltaMs": 46.640,
+        "wins": 41,
+        "byteIdentical": true,
+        "outputBytes": 131578,
+        "outputSha256": "98a0536086c7e555b1a98e2372ad4000d51e25f1418c6345b6b8a9a97d80972f"
+      },
+      "render": {
+        "beforeMedianMs": 51.768,
+        "afterMedianMs": 27.315,
+        "medianDeltaMs": 24.453,
+        "wins": 45,
+        "byteIdentical": true,
+        "outputBytes": 131578,
+        "outputSha256": "98a0536086c7e555b1a98e2372ad4000d51e25f1418c6345b6b8a9a97d80972f"
+      }
+    },
+    "verdict": "accepted"
+  },
+  {
+    "id": "extend-chained-discovery-deferral",
+    "kind": "precise",
+    "necessity": {
+      "status": "proven",
+      "factSource": "the chained-discovery inputs are pure functions of the immutable pass inputs originalSelector and allExtends",
+      "rediscovery": "applyExtendsToSelector eagerly built the subtree values, expansion, tuple map, and index on every invocation regardless of any change",
+      "carryForward": "a single memoized initializer chain() computes the identical values on first post-change use",
+      "whyNotCarried": "the inputs depend on the per-call originalSelector and cannot be hoisted out of the call; the leanest carry is the in-call memo"
+    },
+    "admission": {
+      "predicate": "afterValue !== beforeValue post-change gate before chain() consult",
+      "cost": "cheap",
+      "before": "collection and allocation"
+    },
+    "calls": 43,
+    "admittedCalls": 43,
+    "featureBearingContainers": 43,
+    "itemsVisited": 142,
+    "noFeatureAllocations": 0,
+    "noFeatureMisses": 73,
+    "admissionCalls": 116,
+    "admissionItemsVisited": 57,
+    "commonCaseProof": "counter test: 116 invocations, 43 chain builds, 0 no-feature allocations on benchmark.less",
+    "benchmark": {
+      "fixture": "benchmark.less",
+      "warmup": 20,
+      "pairs": 45,
+      "parse-render": {
+        "beforeMedianMs": 246.220,
+        "afterMedianMs": 223.599,
+        "medianDeltaMs": 22.621,
+        "wins": 41,
+        "byteIdentical": true,
+        "outputBytes": 131578,
+        "outputSha256": "98a0536086c7e555b1a98e2372ad4000d51e25f1418c6345b6b8a9a97d80972f"
+      },
+      "render": {
+        "beforeMedianMs": 28.073,
+        "afterMedianMs": 27.315,
+        "medianDeltaMs": 0.758,
+        "wins": 31,
+        "byteIdentical": true,
+        "outputBytes": 131578,
+        "outputSha256": "98a0536086c7e555b1a98e2372ad4000d51e25f1418c6345b6b8a9a97d80972f"
+      }
+    },
+    "verdict": "accepted"
+  }
+]
+```
 - Latest pass: Q-40 imported/reference partial admission — the candidate was rejected and all
   production probes were removed. The focused test retains only the current-dev post-wire rejection
   for the canonical `h1` shadow topology.

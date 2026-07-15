@@ -176,6 +176,94 @@ function validateDeclaredCounterRelations(contract) {
   return errors;
 }
 
+/**
+ * Conservative-filter registry metadata. Unlike the precise model (which forbids
+ * no-feature allocations outright), a conservative filter may allocate to admit a
+ * superset of true matches — but ONLY when it is byte-identical AND measurably
+ * faster. This block makes both non-negotiable and machine-checkable: it names the
+ * governed hot function, requires a positive speedup margin on a real benchmark
+ * phase, and forces the contract to acknowledge its no-feature-path allocation is
+ * paid for by that net speedup. Removing any of these turns the shape back into an
+ * unjustified allocation, so they gate the allocation escape rather than open it.
+ */
+function validateConservativeFilterMetadata(contract) {
+  const errors = [];
+  const cf = contract.conservativeFilter;
+  if (!cf || typeof cf !== 'object') {
+    return [`Conservative-filter cost contract ${contract.id} must include a conservativeFilter block.`];
+  }
+  if (
+    typeof cf.supersetOf !== 'string'
+    || !contract.counters?.includes(cf.supersetOf)
+    || !/^featureBearing/i.test(cf.supersetOf)
+  ) {
+    errors.push(`Conservative-filter cost contract ${contract.id} conservativeFilter.supersetOf must name a declared featureBearing counter.`);
+  }
+  if (typeof cf.governedFunction !== 'string' || cf.governedFunction.length === 0) {
+    errors.push(`Conservative-filter cost contract ${contract.id} must name the governed hot function it speeds up.`);
+  }
+  const speedup = cf.speedup;
+  if (
+    !speedup
+    || typeof speedup !== 'object'
+    || !['parse-render', 'render'].includes(speedup.phase)
+    || !Number.isFinite(speedup.minPercentFaster)
+    || speedup.minPercentFaster <= 0
+  ) {
+    errors.push(`Conservative-filter cost contract ${contract.id} must require a positive measured speedup on a benchmark phase (speedup.phase + speedup.minPercentFaster > 0).`);
+  }
+  const allocation = cf.allocation;
+  if (
+    !allocation
+    || typeof allocation !== 'object'
+    || allocation.onNoFeaturePath !== true
+    || allocation.justifiedBy !== 'net-speedup'
+  ) {
+    errors.push(`Conservative-filter cost contract ${contract.id} must acknowledge its no-feature-path allocation is justified by net speedup (allocation.onNoFeaturePath: true, justifiedBy: "net-speedup").`);
+  }
+  return errors;
+}
+
+/**
+ * Byte-identity + measured-speedup gate for a conservative-filter audit record.
+ * Byte-identity is the non-negotiable core: both benchmark phases must render the
+ * same output (equal outputSha256), on top of the per-phase byteIdentical A/B the
+ * generic validator already enforces. The governed hot function must be measurably
+ * faster than before by the contract's declared margin — a filter that isn't faster
+ * is rejected (no defensive slowdown). Returns false (and records why) on any gap,
+ * which the caller uses to refuse the no-feature allocation escape.
+ */
+function checkConservativeFilterSpeedup(record, filterMeta, errors) {
+  const gov = record.governedFunction;
+  if (
+    !gov
+    || typeof gov !== 'object'
+    || gov.name !== filterMeta.governedFunction
+    || !Number.isFinite(gov.beforeMs)
+    || gov.beforeMs <= 0
+    || !Number.isFinite(gov.afterMs)
+    || gov.afterMs <= 0
+  ) {
+    errors.push(`Conservative-filter record ${record.id} must record a governedFunction { name: "${filterMeta.governedFunction}", beforeMs, afterMs } measurement.`);
+    return false;
+  }
+  const margin = Number.isFinite(filterMeta.speedup?.minPercentFaster)
+    ? filterMeta.speedup.minPercentFaster
+    : 0;
+  const required = gov.beforeMs * (1 - margin / 100);
+  if (!(gov.afterMs < gov.beforeMs) || gov.afterMs > required) {
+    errors.push(`Conservative-filter record ${record.id} governedFunction speedup insufficient: after ${gov.afterMs}ms must be < before ${gov.beforeMs}ms by >= ${margin}% (<= ${required.toFixed(3)}ms).`);
+    return false;
+  }
+  const parseRenderSha = record.benchmark?.['parse-render']?.outputSha256;
+  const renderSha = record.benchmark?.render?.outputSha256;
+  if (typeof parseRenderSha !== 'string' || parseRenderSha !== renderSha) {
+    errors.push(`Conservative-filter record ${record.id} must render byte-identical output across both benchmark phases (equal outputSha256).`);
+    return false;
+  }
+  return true;
+}
+
 function validateCostContractRegistry(registry) {
   const errors = [];
   const ids = new Set();
@@ -261,6 +349,10 @@ function validateCostContractRegistry(registry) {
         `Cost contract ${contract.id} must require the canonical benchmark.less parse-render/render A/B with 20 warmups and 45 alternating pairs.`
       );
     }
+    const kind = contract.kind ?? 'precise';
+    if (!['precise', 'conservative-filter'].includes(kind)) {
+      errors.push(`Cost contract ${contract.id} kind must be "precise" or "conservative-filter".`);
+    }
     if (!Array.isArray(contract.relations) || contract.relations.length === 0) {
       errors.push(`Cost contract ${contract.id} must state at least one counter relation.`);
     } else {
@@ -268,13 +360,32 @@ function validateCostContractRegistry(registry) {
       if (!contract.relations.includes('calls <= admittedCalls')) {
         errors.push(`Cost contract ${contract.id} must bind expensive calls to admitted calls with calls <= admittedCalls.`);
       }
-      const hasFeatureAdmissionBound = contract.relations.some((relation) => {
+      // Precise admission proves an EXACT feature bit: admittedCalls <= featureBearing*
+      // (combined with the audit-record featureBearing <= calls <= admittedCalls this
+      // forces equality). A conservative-filter instead admits a SUPERSET of the true
+      // matches, so it must state the FLIPPED bound featureBearing* <= admittedCalls and
+      // must NOT claim the precise equality bound.
+      const preciseBound = contract.relations.some((relation) => {
         const parsed = parseCounterRelation(relation);
         return parsed?.left === 'admittedCalls'
           && parsed.operator === '<='
           && /^featureBearing/i.test(parsed.right);
       });
-      if (!hasFeatureAdmissionBound) {
+      const supersetBound = contract.relations.some((relation) => {
+        const parsed = parseCounterRelation(relation);
+        return parsed?.operator === '<='
+          && parsed.right === 'admittedCalls'
+          && /^featureBearing/i.test(parsed.left);
+      });
+      if (kind === 'conservative-filter') {
+        if (!supersetBound) {
+          errors.push(`Conservative-filter cost contract ${contract.id} must admit a superset: bind featureBearing* <= admittedCalls.`);
+        }
+        if (preciseBound) {
+          errors.push(`Conservative-filter cost contract ${contract.id} must not also claim the precise admittedCalls <= featureBearing* bound; a filter admits a superset, not an exact bit.`);
+        }
+        errors.push(...validateConservativeFilterMetadata(contract));
+      } else if (!preciseBound) {
         errors.push(`Cost contract ${contract.id} must bind admitted calls to a feature-bearing counter.`);
       }
     }
@@ -487,8 +598,19 @@ function validateCostAuditRecords(records, registry, changedPaths, diff) {
       if (featureBearing > calls) {
         errors.push(`Hot-path cost audit record ${record.id} has more feature-bearing calls than calls.`);
       }
+      const kind = contract?.kind ?? 'precise';
+      const filterMeta = kind === 'conservative-filter' ? contract.conservativeFilter : undefined;
+      // A conservative filter must ALWAYS prove byte-identity + speedup when accepted;
+      // its no-feature allocation is only excused once that proof passes.
+      const speedupProven = filterMeta && record.verdict === 'accepted'
+        ? checkConservativeFilterSpeedup(record, filterMeta, errors)
+        : false;
       if (noFeatureAllocations > 0 && record.verdict === 'accepted') {
-        errors.push(`Hot-path cost audit record ${record.id} accepts a pass with no-feature allocations.`);
+        if (kind !== 'conservative-filter') {
+          errors.push(`Hot-path cost audit record ${record.id} accepts a pass with no-feature allocations.`);
+        } else if (!speedupProven) {
+          errors.push(`Conservative-filter record ${record.id} allocates on the no-feature path without a proven byte-identical net speedup.`);
+        }
       }
       const maxItemsPerContainer = contract?.admission?.maxItemsPerContainer;
       if (Number.isInteger(maxItemsPerContainer) && admissionWork > admissionCount * maxItemsPerContainer) {

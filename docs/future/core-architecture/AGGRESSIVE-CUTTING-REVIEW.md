@@ -190,6 +190,50 @@ escape hatch of moving the same cost into a supposedly cheap recursive scan.
 In every record, `calls` means invocations of the expensive operation and the
 named admission counter means opportunities inspected by the admission.
 
+### Contract kinds: precise vs conservative-filter
+
+The default contract `kind` is `precise`: the admission proves an exact feature
+bit. Combined with the audit relation `featureBearing <= calls <= admittedCalls`
+and the registry-required `admittedCalls <= featureBearing*`, a precise contract
+forces `calls === admittedCalls === featureBearing` and forbids any no-feature
+allocation. That fits a presence bit like `hasMergeOutputSurface`, but it cannot
+admit a **conservative pre-filter** that legitimately lets a *superset* through
+and allocates cheaply to do so.
+
+A `kind: "conservative-filter"` contract declares that instead. It is held to a
+different but strictly-as-rigorous bar:
+
+- **Byte-identity is the non-negotiable core.** Both benchmark phases must be
+  byte-identical A/Bs (`byteIdentical: true`) *and* render the same output
+  (equal `outputSha256` across phases). A filter that changes output is rejected
+  outright, and the landing gate re-verifies all-less byte-identity.
+- **Superset relation (flipped).** Instead of the precise `admittedCalls <=
+  featureBearing*`, it must state `featureBearing* <= admittedCalls`: the filter
+  may admit more than the true matches, but it must never admit *fewer* (which
+  would mean it dropped a real match). The precise bound is forbidden here.
+- **Measured speedup is required.** The `conservativeFilter.speedup` block names
+  a governed hot function and a positive `minPercentFaster` on a benchmark phase;
+  the audit record's `governedFunction { beforeMs, afterMs }` must beat that
+  margin. A filter that is not measurably faster is rejected (no defensive
+  slowdown).
+- **Bounded allocation is allowed only when the speedup pays for it.** Unlike the
+  precise zero-allocation rule, a conservative filter may allocate on the
+  no-feature path, but `conservativeFilter.allocation` must acknowledge it and
+  the no-feature allocation is excused *only* once the byte-identity + speedup
+  proof passes.
+
+This shape cannot launder an uncontracted regular change: it still requires the
+cheap admission + enclosing source-check guard, `calls <= admittedCalls`, a
+byte-identical two-phase A/B, and a measured governed-function speedup. A change
+that alters output, is not faster, or drops a true match cannot honestly satisfy
+those, so the only thing the kind relaxes — the no-feature allocation ban — stays
+gated behind the proof rather than opened.
+
+The correctness argument for a conservative filter (why it can never reject a
+true match) is reviewed as prose in `necessity`, but it is *also* backed by the
+byte-identity proof: if the gate ever dropped a real match, the output would
+differ and `byteIdentical` would be false.
+
 <!-- BEGIN AGGRESSIVE-CUTTING-COST-CONTRACTS -->
 ```json
 [
@@ -312,6 +356,116 @@ named admission counter means opportunities inspected by the admission.
       "caller": "function serializeRulesContainerInternal",
       "call": "recomputeDeclCounts();",
       "guard": "skipInitialDuplicateDeclarationScan"
+    }
+  },
+  {
+    "id": "extend-keyset-pre-reject",
+    "kind": "conservative-filter",
+    "surface": "classifyInstructionMatch keyset pre-reject (targetCanPossiblyMatch)",
+    "files": ["packages/core/src/tree/util/extend-roots.ts"],
+    "necessity": {
+      "status": "proven",
+      "factSource": "The selector keyset library (requiredKeySetOf/visibleKeySetOf/keySetOf over context.selectorBits) already carries each selector's simple-key membership from parse/adoption.",
+      "rediscovery": "classifyInstructionMatch ran the full speculative classifyExtendMatch/applyExtendsToSelector machinery for every (selector x extend) probe, ~37.9k of which can never match.",
+      "carryForward": "The keyset bitsets are the carried fact; the gate reads them and unions candidate+parent key-space before any classify/apply work.",
+      "whyNotCarried": "The match core already trusts the same required-subset relation deeper in tryExtendSelector; this hoists that guaranteed-false decision ahead of the expensive setup instead of rediscovering non-matches by executing it."
+    },
+    "admission": {
+      "predicate": "targetCanPossiblyMatch keyset subset/disjoint gate",
+      "cost": "cheap",
+      "counter": "admissionCalls",
+      "workCounter": "admissionItemsVisited",
+      "maxItemsPerContainer": 8,
+      "before": "collection and allocation"
+    },
+    "conservativeFilter": {
+      "supersetOf": "featureBearingCalls",
+      "governedFunction": "processExtends",
+      "speedup": { "phase": "render", "minPercentFaster": 20 },
+      "allocation": { "onNoFeaturePath": true, "justifiedBy": "net-speedup" }
+    },
+    "counters": [
+      "calls",
+      "admittedCalls",
+      "admissionCalls",
+      "admissionItemsVisited",
+      "itemsVisited",
+      "featureBearingCalls",
+      "noFeatureAllocations",
+      "noFeatureMisses"
+    ],
+    "commonCaseProof": "benchmark.less counter test: 37,973 admission checks, 86 admitted, 44 feature-bearing (admitted superset of matches)",
+    "benchmark": {
+      "fixture": "benchmark.less",
+      "phases": ["parse-render", "render"],
+      "warmup": 20,
+      "pairs": 45
+    },
+    "relations": [
+      "calls <= admittedCalls",
+      "featureBearingCalls <= admittedCalls"
+    ],
+    "evidence": {
+      "command": ["node", "scripts/profile-less-benchmark.mjs", "--fixture=packages/jess/benchmark/benchmark.less", "--assert-extend-filter-contract"]
+    },
+    "sourceCheck": {
+      "file": "packages/core/src/tree/util/extend-roots.ts",
+      "caller": "function classifyInstructionMatch",
+      "call": "applyExtendsToSelector",
+      "guard": "targetCanPossiblyMatch",
+      "profile": ["recordExtendProfile", "EXTEND_PROFILE_COUNTERS_KEY", "extendProfileNow", "requiredKeySetOf", "isDisjoint"]
+    }
+  },
+  {
+    "id": "extend-chained-discovery-deferral",
+    "kind": "precise",
+    "surface": "applyExtendsToSelector chained-discovery lazy init (chain())",
+    "files": ["packages/core/src/tree/util/extend.ts"],
+    "necessity": {
+      "status": "proven",
+      "factSource": "The chained-discovery inputs (subtree values, expanded allExtends, tuple map, target index) are pure functions of the immutable pass inputs (originalSelector, allExtends).",
+      "rediscovery": "applyExtendsToSelector built all four eagerly on every invocation, the overwhelming majority of which apply no selector-changing extend and never consult them.",
+      "carryForward": "A single memoized initializer (chain()) computes them on first post-change use; identical values, computed lazily.",
+      "whyNotCarried": "They depend on the per-call originalSelector and cannot be hoisted out of the call; the leanest carry is the in-call memo that skips the build entirely on the no-change path."
+    },
+    "admission": {
+      "predicate": "afterValue !== beforeValue post-change gate before chain() consult",
+      "cost": "cheap",
+      "counter": "admissionCalls",
+      "workCounter": "admissionItemsVisited",
+      "maxItemsPerContainer": 8,
+      "before": "collection and allocation"
+    },
+    "counters": [
+      "calls",
+      "admittedCalls",
+      "admissionCalls",
+      "admissionItemsVisited",
+      "itemsVisited",
+      "featureBearingContainers",
+      "noFeatureAllocations",
+      "noFeatureMisses"
+    ],
+    "commonCaseProof": "benchmark.less counter test: 116 invocations, 43 build the chain (feature-bearing), 0 no-feature allocations",
+    "benchmark": {
+      "fixture": "benchmark.less",
+      "phases": ["parse-render", "render"],
+      "warmup": 20,
+      "pairs": 45
+    },
+    "relations": [
+      "calls <= admittedCalls",
+      "admittedCalls <= featureBearingContainers"
+    ],
+    "evidence": {
+      "command": ["node", "scripts/profile-less-benchmark.mjs", "--fixture=packages/jess/benchmark/benchmark.less", "--assert-extend-defer-contract"]
+    },
+    "sourceCheck": {
+      "file": "packages/core/src/tree/util/extend.ts",
+      "caller": "export function applyExtendsToSelector",
+      "call": "collectSelectorSubtreeValues",
+      "guard": "!chainMemo",
+      "profile": ["recordExtendProfile", "extendTargetIndex", "originalSelectorValues", "allExtendTuples", "expandedAllExtends", "buildExtendTargetIndex"]
     }
   }
 ]

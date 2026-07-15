@@ -176,3 +176,102 @@ describe('hot-path admission counter relations', () => {
     );
   });
 });
+
+const filterContract = {
+  ...registry[0],
+  id: 'test-filter-contract',
+  kind: 'conservative-filter',
+  counters: [
+    'calls',
+    'admittedCalls',
+    'admissionCalls',
+    'admissionItemsVisited',
+    'featureBearingCalls',
+    'itemsVisited',
+    'noFeatureAllocations',
+    'noFeatureMisses'
+  ],
+  conservativeFilter: {
+    supersetOf: 'featureBearingCalls',
+    governedFunction: 'processExtends',
+    speedup: { phase: 'render', minPercentFaster: 20 },
+    allocation: { onNoFeaturePath: true, justifiedBy: 'net-speedup' }
+  },
+  relations: ['calls <= admittedCalls', 'featureBearingCalls <= admittedCalls']
+};
+const filterRegistry = [filterContract];
+
+function makeFilterRecord(overrides: Record<string, unknown> = {}) {
+  const phase = {
+    beforeMedianMs: 50,
+    afterMedianMs: 27,
+    medianDeltaMs: 23,
+    wins: 45,
+    byteIdentical: true,
+    outputBytes: 131578,
+    outputSha256: 'b'.repeat(64)
+  };
+  return {
+    id: 'test-filter-contract',
+    kind: 'conservative-filter',
+    necessity: registry[0].necessity,
+    admission: { predicate: 'cheap admission', cost: 'cheap', before: 'before collection and allocation' },
+    calls: 86,
+    admittedCalls: 86,
+    admissionCalls: 37_973,
+    admissionItemsVisited: 37_973,
+    featureBearingCalls: 44,
+    itemsVisited: 86,
+    noFeatureAllocations: 39_557,
+    noFeatureMisses: 37_887,
+    governedFunction: { name: 'processExtends', beforeMs: 50, afterMs: 27 },
+    commonCaseProof: 'focused counter test',
+    benchmark: { fixture: 'benchmark.less', warmup: 20, pairs: 45, ['parse-render']: phase, render: phase },
+    verdict: 'accepted',
+    ...overrides
+  };
+}
+
+describe('conservative-filter contract kind', () => {
+  it('accepts a byte-identical, faster, superset-admitting filter that allocates', () => {
+    expect(validateCostContractRegistry(filterRegistry)).toEqual([]);
+    expect(validateCostAuditRecords([makeFilterRecord()], filterRegistry, [sourceFile], diff)).toEqual([]);
+  });
+
+  it('requires the flipped superset relation featureBearing* <= admittedCalls', () => {
+    const badRegistry = [{ ...filterContract, relations: ['calls <= admittedCalls', 'admittedCalls <= featureBearingCalls'] }];
+    expect(validateCostContractRegistry(badRegistry)).toContain(
+      'Conservative-filter cost contract test-filter-contract must admit a superset: bind featureBearing* <= admittedCalls.'
+    );
+  });
+
+  it('refuses the no-feature allocation escape when the filter is not faster', () => {
+    const errors = validateCostAuditRecords(
+      [makeFilterRecord({ governedFunction: { name: 'processExtends', beforeMs: 50, afterMs: 49 } })],
+      filterRegistry,
+      [sourceFile],
+      diff
+    );
+    expect(errors.some(e => /speedup insufficient/.test(e))).toBe(true);
+    expect(errors.some(e => /allocates on the no-feature path without a proven/.test(e))).toBe(true);
+  });
+
+  it('refuses the escape when the benchmark phases are not byte-identical to each other', () => {
+    const phaseA = { beforeMedianMs: 50, afterMedianMs: 27, medianDeltaMs: 23, wins: 45, byteIdentical: true, outputBytes: 131578, outputSha256: 'b'.repeat(64) };
+    const phaseB = { ...phaseA, outputSha256: 'c'.repeat(64) };
+    const errors = validateCostAuditRecords(
+      [makeFilterRecord({ benchmark: { fixture: 'benchmark.less', warmup: 20, pairs: 45, ['parse-render']: phaseA, render: phaseB } })],
+      filterRegistry,
+      [sourceFile],
+      diff
+    );
+    expect(errors.some(e => /byte-identical output across both benchmark phases/.test(e))).toBe(true);
+  });
+
+  it('still rejects a precise contract that omits the feature-admission bound', () => {
+    const preciseNoBound = { ...registry[0], relations: ['calls <= admittedCalls'] };
+    expect(validateCostContractRegistry([preciseNoBound])).toContain(
+      'Cost contract test-admission-contract must bind admitted calls to a feature-bearing counter.'
+    );
+  });
+});

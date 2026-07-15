@@ -34,6 +34,7 @@ const benchmarkFile = path.isAbsolute(benchmarkArg)
 globalThis.__JESS_SERIALIZE_PROFILE_COUNTERS__ = {};
 globalThis.__JESS_DIRECT_LOOKUP_PROFILE_COUNTERS__ = {};
 globalThis.__JESS_MERGE_PROFILE_COUNTERS__ = {};
+globalThis.__JESS_EXTEND_PROFILE_COUNTERS__ = {};
 
 const coreLib = pathToFileURL(path.join(repoRoot, 'packages/core/lib/index.js')).href;
 const lessParserLib = pathToFileURL(path.join(repoRoot, 'packages/less-parser/lib/index.js')).href;
@@ -236,6 +237,65 @@ const elapsedMs = performance.now() - start;
 const serializeProfileCounters = globalThis.__JESS_SERIALIZE_PROFILE_COUNTERS__ ?? {};
 const directLookupProfileCounters = globalThis.__JESS_DIRECT_LOOKUP_PROFILE_COUNTERS__ ?? {};
 const mergeProfileCounters = globalThis.__JESS_MERGE_PROFILE_COUNTERS__ ?? {};
+const extendProfileCounters = globalThis.__JESS_EXTEND_PROFILE_COUNTERS__ ?? {};
+
+const extendFilterStats = {
+  admissionCalls: extendProfileCounters['filter.admissionCalls'] ?? 0,
+  admittedCalls: extendProfileCounters['filter.admittedCalls'] ?? 0,
+  calls: extendProfileCounters['filter.calls'] ?? 0,
+  featureBearingCalls: extendProfileCounters['filter.featureBearingCalls'] ?? 0,
+  admissionItemsVisited: extendProfileCounters['filter.admissionItemsVisited'] ?? 0,
+  itemsVisited: extendProfileCounters['filter.calls'] ?? 0,
+  noFeatureAllocations: extendProfileCounters['filter.noFeatureAllocations'] ?? 0,
+  noFeatureMisses: extendProfileCounters['filter.noFeatureMisses'] ?? 0
+};
+const extendDeferStats = {
+  admissionCalls: extendProfileCounters['defer.admissionCalls'] ?? 0,
+  admittedCalls: extendProfileCounters['defer.admittedCalls'] ?? 0,
+  calls: extendProfileCounters['defer.calls'] ?? 0,
+  featureBearingContainers: extendProfileCounters['defer.featureBearingContainers'] ?? 0,
+  admissionItemsVisited: extendProfileCounters['defer.admissionItemsVisited'] ?? 0,
+  itemsVisited: extendProfileCounters['defer.itemsVisited'] ?? 0,
+  noFeatureAllocations: 0,
+  noFeatureMisses: Math.max(
+    0,
+    (extendProfileCounters['defer.admissionCalls'] ?? 0) - (extendProfileCounters['defer.admittedCalls'] ?? 0)
+  )
+};
+
+if (cliArgs.has('--assert-extend-filter-contract')) {
+  const s = extendFilterStats;
+  const failures = [
+    ['admissionCalls > 0', s.admissionCalls > 0],
+    ['calls <= admittedCalls', s.calls <= s.admittedCalls],
+    ['featureBearingCalls <= admittedCalls (superset)', s.featureBearingCalls <= s.admittedCalls],
+    ['admittedCalls >= featureBearingCalls with margin (real superset)', s.admittedCalls >= s.featureBearingCalls],
+    ['noFeatureAllocations > 0 (filter allocates)', s.noFeatureAllocations > 0],
+    ['admissionItemsVisited <= admissionCalls * 8', s.admissionItemsVisited <= s.admissionCalls * 8]
+  ].filter(([, ok]) => !ok).map(([relation]) => relation);
+  if (failures.length > 0) {
+    throw new Error(
+      `Extend keyset-filter cost contract failed: ${failures.join(', ')}; counters=${JSON.stringify(s)}`
+    );
+  }
+}
+
+if (cliArgs.has('--assert-extend-defer-contract')) {
+  const s = extendDeferStats;
+  const failures = [
+    ['admissionCalls > 0', s.admissionCalls > 0],
+    ['calls <= admittedCalls', s.calls <= s.admittedCalls],
+    ['admittedCalls <= featureBearingContainers', s.admittedCalls <= s.featureBearingContainers],
+    ['featureBearingContainers <= calls (precise)', s.featureBearingContainers <= s.calls],
+    ['noFeatureAllocations === 0', s.noFeatureAllocations === 0],
+    ['admissionItemsVisited <= admissionCalls * 8', s.admissionItemsVisited <= s.admissionCalls * 8]
+  ].filter(([, ok]) => !ok).map(([relation]) => relation);
+  if (failures.length > 0) {
+    throw new Error(
+      `Extend deferral cost contract failed: ${failures.join(', ')}; counters=${JSON.stringify(s)}`
+    );
+  }
+}
 
 if (cliArgs.has('--assert-merge-contract')) {
   const containers = mergeProfileCounters.admissionCalls ?? 0;
@@ -316,6 +376,8 @@ const result = {
     ),
     noFeatureAllocations: 0
   },
+  extendFilterStats,
+  extendDeferStats,
   importStats: {
     getTreeCalls: importStats.getTreeCalls,
     getTreeCacheHits: importStats.getTreeCacheHits,
