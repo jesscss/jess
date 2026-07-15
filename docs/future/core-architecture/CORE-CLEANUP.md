@@ -199,6 +199,17 @@ row in this table is not a claim that the implementation has landed on `dev`.
 These workers and artifacts are intentionally listed here so a later agent
 does not duplicate a lane or lose a result that remains isolated:
 
+- In flight at the 2026-07-15 snapshot: fixed-shape reference-surface
+  allocation proof, owned by `packages/core/src/tree/reference.ts` and its
+  focused tests in `/private/tmp/jess-q40-reference-surface-allocation-20260715`
+  on `feature/q40-reference-surface-allocation-20260715`. This targets the
+  previously profiled reflective `createRulesLikeReferenceSurface` path; no
+  implementation result or speed claim exists yet.
+- In flight at the same snapshot: four read-only ownership audits covering
+  registration/source-order preparation, parser/CST/trivia capture,
+  OutputWriter/RenderBuffer assembly, and extend/spine/fallback topology. They
+  have no returned findings or source changes yet; do not treat these lanes as
+  completed evidence or dispatch duplicates until their reports arrive.
 - Rejected: Less `blockItem` statement-dispatch proof:
   `feature/q40-less-statement-dispatch-20260715`, worktree
   `/Users/matthew/git/worktrees/jess-q40-less-statement-dispatch-20260715`,
