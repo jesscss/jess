@@ -140,6 +140,24 @@ dependency is rebuilt and Jess's own parser/render contract is A/B tested.
 4. Revisit generic capture/raw-child representations only if fresh evidence
    shows the stripped recognizer leaves capture protocol as the dominant cost.
 
+## Generic recognizer codegen cleanup proof — rejected (2026-07-15)
+
+An evidence-only Parseman worker also tested removing profiling/output branches
+from the ordinary `compileLinkable` path. The generated macro source shrank by
+`63,031` bytes (`4.81%`), but that did not establish a safe runtime win on the
+default Jess-consumable contract. The real Less default workload had a
+`37.048833 ms` baseline; one candidate was `36.969458 ms`, followed by three
+retries at `39.184125`, `38.618917`, and `38.670708 ms` (`+5.76%`, `+4.24%`,
+and `+4.38%`). The candidate was therefore rejected as unstable/negative and
+no source or docs commit was retained in Parseman.
+
+The worker's profile separates the remaining phases as recognizer `56,038`
+nodes / `46.19 ms`, structural capture `86,805` child entries,
+`86,769` raw entries, `66,124` trivia entries / `54.23 ms`, and host
+construction `24,799` calls / `95.98 ms`. The next Parseman work must target a
+consumable generic contract (the true recognizer or zero-copy builder) and
+must not present this branch-removal attempt as a Jess result.
+
 ## Declaration-versus-ruleset dispatch proof — rejected (2026-07-15)
 
 The isolated worker `feature/q40-less-statement-dispatch-20260715` tested the

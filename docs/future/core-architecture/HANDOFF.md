@@ -272,6 +272,59 @@ the lane because the parser builders lack required machine-readable cost
 contracts and adding them was outside ownership. Rejection commit `9f35c2921`
 retains no source or test changes.
 
+## Q-40 — source-order normalization admission gate (accepted, 2026-07-15)
+
+`Rules._finishSourceOrderEvaluation` now calls the normalization walk only when
+the producer-owned `hasDirectChildRuleSurface` fact proves that a direct child
+rule can have produced `callDeclarationOutput`. On the canonical profile this
+covered `10,777` finishes: `7,853` scans were skipped and `2,924` remained
+admitted. The cut is a structural work reduction with unchanged source-order,
+lookup, and serialization behavior; it is not a generic cache or fallback.
+
+Worker commit `5280032ba` is merged into `dev` as `bc00da8f2`. Focused tests,
+core (`3,331` passed, `15` skipped, `2` todo), spine (`137/137`), all-less
+(`106/106`), aggressive review, and ESLint passed. The worker's A/B was
+parse+render `254.67→253.75 ms` and render-only `214.99→214.98 ms`, with
+near-even wins; no stable speed claim is made. The current benchmark contract
+still requires a fresh same-checkout measurement after the integration build.
+
+## Q-40 — ordinary reference-evaluation transport proof (rejected, 2026-07-15)
+
+Removing the temporary args object around `evaluateReferenceNode` passed
+reference tests but produced no clear speed win and was reverted. The separate
+scope-slot experiment had zero canonical activation and ran `3.6–4.2%` slower
+on its synthetic activating workload. The remaining `43,167` ordinary
+declaration cache misses are a direct-lookup/rules investigation target, not a
+reason to add a generic lookup cache or prototype-chain scope. No worker source
+change remains.
+
+## Q-40 — shared flat-writer fragment proof (rejected, 2026-07-15)
+
+The source-map-off shared-writer experiment could not prove caller-owned
+trivia/reentrant state because `OutputWriter.restore()` clears queued
+spacer/trivia state. Aggressive review also required an out-of-scope handoff
+cost-contract update, so all temporary source and tests were reverted. Core
+(`3,331` passed), spine (`137/137`), and all-less (`106/106`) passed; the raw
+parse+render A/B was `259.712→250.248 ms` (`41/45` wins) and render-only
+`207.468→205.590 ms` (`30/45` wins), but it is not an accepted performance
+result. Output was exact at `135,794` bytes with the current Jess hash.
+
+## Q-40 — imported/reference partial admission (rejected, 2026-07-15)
+
+The worker tested provisional spine admission followed by a strict
+post-import/reference gate. The canonical `.prose h1:extend(h1)` shadows the
+`h1` branch in `h1, h2 > a > p, h3`; relaxing the gate then fails with
+`EMIT contribution collapsed to empty (extender IS a target ancestor)`. The
+strict boundary remains required, and production `emit-walk.ts` and
+`spine-extend.ts` were unchanged.
+
+The retained rejection test and focused coverage passed; full core was
+`3,331` passed, spine `137/137`, all-less and aggressive review were green.
+The worker recorded one spine attempt and `846` derives. Its branch-local
+output was `133,983` bytes; current-dev no-op controls were exact at
+`135,794` bytes and showed no speed signal. Do not reopen partial admission
+without a source-order-aware reference/extend topology proof.
+
 ## Q-40 — extend/spine topology audit (no new performance lane, 2026-07-15)
 
 The audit traced the canonical root admission through the extend-topology abort,

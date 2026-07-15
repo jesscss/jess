@@ -351,6 +351,77 @@ candidate because the parser builders lack required machine-readable cost
 contracts and adding those entries was outside worker ownership. Rejection
 commit `9f35c2921` retains no source or test changes.
 
+### Q-40 source-order normalization admission gate — accepted structural cut (2026-07-15)
+
+The registration/source-order worker proved a producer-owned admission fact:
+`callDeclarationOutput` can only exist when a `Rules` surface has a direct
+child-rule surface. `_finishSourceOrderEvaluation` now skips the normalization
+walk for the other shapes and retains the existing normalization path for
+admitted surfaces. The canonical diagnostic counted `10,777` source-order
+finishes; `7,853` scans were skipped and `2,924` were admitted. This removes
+unnecessary work without changing source order, lookup, or serialization
+semantics; it does not add an index, cache, or fallback path.
+
+The worker commit was `5280032ba` and is merged into current `dev` as
+`bc00da8f2`. Focused tests, core (`3,331` passed, `15` skipped, `2` todo),
+the spine production ratchet (`137/137`), all-less (`106/106`), aggressive
+review, and ESLint passed. The worker's matched A/B was parse+render
+`254.67→253.75 ms` (`23/22` wins) and render-only `214.99→214.98 ms`
+(`22/23` wins); these are not a stable speed claim. Retain this as a proven
+work-reduction gate, not as evidence that the canonical benchmark moved.
+
+### Q-40 ordinary reference-evaluation argument transport — rejected proof (2026-07-15)
+
+The bounded common-path proof removed the temporary argument object around
+`evaluateReferenceNode` in `reference.ts`. It passed reference semantics but
+showed no causal canonical speed win, so the source change was reverted and
+the worktree is clean at `origin/dev` (`145e97ce5`). The separate scope-slot
+variant had zero canonical activation and was `3.6–4.2%` slower on its
+synthetic activating workload. The fixed-contract controls were noise-floor
+controls, not a performance result.
+
+The profile still identifies `43,167` ordinary declaration cache misses, but
+that is a next direct-lookup/rules ownership question, not evidence that this
+argument wrapper or a generic prototype-chain shape should be retained. No
+source or tests were merged from this worker; only this rejection record is
+durable.
+
+### Q-40 shared flat-writer fragment proof — rejected (2026-07-15)
+
+The source-map-off shared-writer experiment reused the caller writer for a
+fragment path and looked favorable in one benchmark run, but it could not
+prove the required caller-owned trivia and reentrant state contract because
+`OutputWriter.restore()` clears queued spacer/trivia state. Aggressive review
+also required an out-of-scope handoff cost-contract update. The temporary
+source and tests were fully reverted; the worktree is clean at
+`origin/dev` (`145e97ce5`). Focused tests, core (`3,331` passed), spine
+(`137/137`), and all-less (`106/106`) passed. The raw A/B was parse+render
+`259.712→250.248 ms` (`41/45` wins) and render-only `207.468→205.590 ms`
+(`30/45` wins), but it is not an accepted performance result because the
+semantic boundary and review gate were unresolved. Output was exact at
+`135,794` bytes with the current Jess hash.
+
+### Q-40 imported/reference partial admission — rejected topology proof (2026-07-15)
+
+The import/reference worker tested whether the spine gate could admit the
+canonical root provisionally and defer the strict decision until imported
+subjects were wired. The canonical `.prose h1:extend(h1)` shadows the `h1`
+branch in `h1, h2 > a > p, h3`; relaxing the gate then fails with
+`EMIT contribution collapsed to empty (extender IS a target ancestor)`. The
+strict boundary is therefore still required. Production `emit-walk.ts` and
+`spine-extend.ts` were unchanged.
+
+The worker retained a focused rejection test and passed focused coverage
+(`125` core tests with `1` skipped), core (`3,331` passed, `15` skipped,
+`2` todo), spine (`137/137`), all-less, aggressive review, and pre-commit.
+The canonical route remained one spine attempt with `846` derives; its
+`133,983`-byte branch-local output was exact for that harness, while the
+current-dev no-op control remained exact at `135,794` bytes with the current
+Jess hash. The paired controls were parse+render `247.391917→248.694834 ms`
+and render-only `198.968125→199.893791 ms`, so no speed claim is made. The
+next owner needs a source-order-aware reference/extend topology proof before
+any partial admission is reconsidered.
+
 ### Q-40 extend/spine topology audit — no new performance lane (2026-07-15)
 
 The audit traced the canonical route through root spine admission, the
