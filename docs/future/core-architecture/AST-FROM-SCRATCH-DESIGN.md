@@ -26,6 +26,12 @@ because this unwired experiment has no production cost-contract entries; no
 implementation or as a performance win; preserve the staged source or create
 a reviewed experiment snapshot before deleting that worktree.
 
+The source is an explicitly preserved local artifact, not a durable source
+commit. The canonical design document on `dev` is newer than the copy in the
+experimental worktree; consult this copy for the current design/status record.
+The experiment branch is allowed to lag current `dev` while the artifact is
+reviewed and must not be treated as an integration branch.
+
 This is a design record for the Q-40 performance program. It is not permission
 to rewrite the tree or to trade away Less semantics. Every production change
 must first prove a real shape on `benchmark.less` or a representative fixture,
@@ -84,6 +90,40 @@ The greenfield implementation therefore measures different cardinalities,
 primitive representations, and dispatch strategies directly. It must not be
 judged by whether it looks like a smaller class-based version of the current
 tree.
+
+## Relationship to the settled eval/emit architecture
+
+`tree2` is a secondary arena/adapter over a parsed Jess `sourceRoot`; it is not
+yet a replacement canonical AST and it does not replace the settled
+single-eval-emit architecture. Escape records retain references to legacy
+nodes and route unsupported or dynamic regions through the existing runtime.
+That makes the current artifact useful for testing representation boundaries
+and exact-output fallback behavior, but it cannot claim that the legacy AST has
+been removed, that evaluation has been fused into emission, or that
+imports/mixins have acquired dependency-aware reuse.
+
+The intended eventual relationship is compatible with the settled design:
+canonical source ownership and placement-local state remain explicit, while a
+direct emitter consumes compact records for proven static regions and dynamic
+regions use named escapes. The present artifact is only the first structural
+probe toward that shape.
+
+## Current `tree2` implementation boundary
+
+The staged implementation is a **structural columnar arena**, not yet the
+design's tagged-value-leaf implementation. Its tags currently distinguish
+`Root`, `Ruleset`, `Declaration`, and legacy escapes. Native scalar values are
+admitted only when they can be represented as text; the arena does not yet
+store typed `Dimension`/`Color`/keyword records or defer their later typed
+materialization. Tagged value leaves remain POC 1, not a completed result.
+
+The current adapter also deliberately retains costs that a production design
+must remove or isolate: a recursive source census, a whole-document feature
+scan, temporary plan/child arrays, a string-interning `Map`, typed-array
+finalization, and references to legacy nodes for escapes. The renderer builds
+`parts` arrays and joins them, then appends the completed string to a caller
+buffer; it is therefore not evidence for a direct shared output-writer path.
+These are recorded limitations, not hidden acceptance criteria.
 
 ## Acceptance oracle
 
@@ -279,3 +319,24 @@ islands**, tested first through the five POCs above. This preserves the value of
 a complete AST for debugging, tooling, and minification while stopping inert
 values, imports, mixin bodies, whitespace captures, and no-feature evaluator
 surfaces from paying dynamic costs they do not use.
+
+## Tree2 benchmark protocol and current coverage
+
+The dedicated benchmark is opt-in and excluded from the normal core test glob:
+
+```sh
+TREE2_BENCH=1 TREE2_WARMUPS=3 TREE2_SAMPLES=5 \
+  pnpm --filter @jesscss/core test:bench -- --run
+```
+
+It compares a fresh-root legacy render with a tree2 build/render and records
+parse, adapter, eval, native-render, legacy-escape, and total stages. The
+synthetic static and mixed fixtures are useful stage probes, but they are not
+the canonical 20-warmup/45-pair `benchmark.less` A/B contract. The raw
+canonical fixture currently takes one whole-document legacy escape; the
+evaluated canonical case fails before producing a comparable route. Therefore
+the current benchmark proves exact-output plumbing and exposes where the
+prototype falls back; it does not prove an end-to-end speedup, a full Less
+feature-parity route, or a production AST replacement. Full Less-corpus,
+source-map-on, comment-heavy, import/mixin-placement, and typed-value coverage
+remain required before any tree2 result can enter the Q-40 integration queue.

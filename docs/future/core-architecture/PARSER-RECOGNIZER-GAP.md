@@ -1,7 +1,8 @@
 # Parseman versus Less parser gap
 
-Status: attribution complete; implementation intentionally deferred after the
-analysis-only follow-up, 2026-07-14.
+Status: attribution complete; the first generic implementation proof now exists
+in Parseman as an unpublished local commit, with Jess adoption still pending a
+published dependency and fresh Jess parser A/B, 2026-07-15.
 
 This is a parser-generation investigation, separate from CSS/Less trivia policy
 and separate from Jess AST-shape experiments. The goal is to identify the work
@@ -72,17 +73,19 @@ anonymous-value route. Jess's current deferred route is narrower and therefore
 enters more of the value grammar. This is a Less-grammar/input-shape difference,
 not a generic Parseman trivia decision.
 
-## Decisive experiment (not yet implemented)
+## Decisive experiment — true recognizer POC
 
-No current worker is implementing this artifact. The analysis-only Parseman
-follow-up inspected the compiler, interpreter, macro, linker, and existing
-worktrees, then recorded the implementation ranking in
-`/Users/matthew/git/oss/parser-thing/notes/PERF_IDEAS.md` at isolated commit
-`916c52b`. It made no `src/` changes and no generated-output changes.
+The analysis-only Parseman follow-up first recorded the generic implementation
+ranking in `/Users/matthew/git/oss/parser-thing/notes/PERF_IDEAS.md` at
+isolated documentation commit `916c52b`. A follow-up then implemented the
+highest-upside generic proof in Parseman branch
+`feature/true-recognizer-20260715`, local commit `c84d777`. The commit is not
+published because SSH credentials were unavailable from that checkout; it is
+not yet a Jess dependency change.
 
-The eventual experiment is a generic compile-time outputless artifact. It must
-preserve recognition-affecting behavior while removing output-only work from
-generated code:
+`compile(..., { mode: 'recognizer' })` now emits a separate acceptance/end/
+failure-cursor contract at code-generation time. It removes output-only work
+from generated code:
 
 - collector setup/install/restore;
 - CST child/raw/trivia collection;
@@ -90,34 +93,51 @@ generated code:
 - output-only profile and parent-push branches;
 - dead output temporaries and state cloning.
 
-It must retain lookahead, guards, context operations, rollback/failure
-semantics, consumed offsets, and diagnostics. Acceptance requires semantic
-parity tests, generated-code inspection, and 20 warmups plus 45 timed samples
-against the current recognizer on the same fixture/runtime. A neutral or
-regressing result is a valid rejection; no CSS/Less-specific behavior belongs
-in this Parseman change.
+The POC retains lookahead, guards, context operations, rollback/failure
+semantics, consumed offsets, and diagnostics. Its acceptance evidence includes
+semantic parity tests, generated-code inspection, focused contract/perf tests,
+and equal-contract timing against the current recognizer. A neutral or
+regressing result remains a valid rejection; no CSS/Less-specific behavior
+belongs in this Parseman change.
 
-The result will separate two hypotheses:
+The result separates two hypotheses:
 
-- a large drop means the current runtime structural protocol is the dominant
-  recognizer penalty;
-- a result near 12–13 ms means the remaining gap is primarily grammar shape,
-  dispatch, regex, or value-recognition work.
+- the 25% Less-grammar drop proves that generated output/capture protocol is a
+  material recognizer penalty;
+- the remaining gap means grammar shape, dispatch, regex, and value-recognition
+  work still matter, so the POC is not by itself a Less-4.x parity result.
+
+## POC result and interpretation
+
+The equal-contract proof improved JSON-like 16,946-byte parsing from
+`0.180875` to `0.095291 ms` (−47.32%, p95 `0.236375` to `0.119792 ms`) and
+the real 106,802-byte Less grammar from `7.38425` to `5.534 ms` (−25.06%,
+p95 `8.0435` to `5.96925 ms`), with zero GC events. Focused contract tests
+were `39/39`, perf tests `5/5`, and typecheck/build/lint passed. The Parseman
+full suite still has one pre-existing source-shape failure at
+`test/unit/build-arity.test.ts:116` (`1,735` passed, `1` failed); it is not
+evidence against the recognizer behavior.
+
+The artifact retains lookahead, guards, context operations, rollback/failure
+semantics, consumed offsets, and diagnostics. It is generic Parseman behavior,
+not CSS/Less trivia logic. Do not claim Jess speed movement until the published
+dependency is rebuilt and Jess's own parser/render contract is A/B tested.
 
 ## Follow-up order
 
-1. Implement and benchmark the opt-in generic zero-copy structural-builder
-   contract first; it is the first bounded implementation target because the
-   capture family has measured ceilings and can preserve the default API.
-2. Separately implement the genuinely stripped recognizer and reconcile its
-   exact counters; runtime output suppression is not equivalent.
+1. Publish or otherwise make the Parseman recognizer artifact consumable, then
+   rebuild the Jess parser chain and rerun equal-contract recognizer/capture/
+   host measurements on the same fixture/runtime.
+2. Implement and benchmark the opt-in generic zero-copy structural-builder
+   contract; it remains the first capture-side target because it preserves the
+   default API and keeps semantic/raw channels separate.
 3. Measure declaration-versus-ruleset candidate attempts; current Jess body
    order tests `Ruleset` before `Declaration` for overlapping inputs.
 4. Expand Less-specific late materialization only with semantic predicates for
    variables, interpolation, comments, math, custom properties, filters, and
    source maps.
-5. Revisit generic capture/raw-child representations only if the stripped
-   recognizer proves structural output protocol is not the dominant cost.
+5. Revisit generic capture/raw-child representations only if fresh evidence
+   shows the stripped recognizer leaves capture protocol as the dominant cost.
 
 Do not infer from this investigation that every value should become a string,
 that Parseman should understand CSS comments, or that the existing Jess AST

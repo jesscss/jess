@@ -186,6 +186,18 @@ root but has no production cost-contract entries; no hook bypass was used. The
 design is durable here, while the implementation remains an unintegrated local
 experiment until it receives an explicit artifact-review decision.
 
+This artifact is a structural columnar adapter over the existing `sourceRoot`,
+not yet the design's tagged-value-leaf POC and not a replacement canonical AST.
+Its current tags cover `Root`, `Ruleset`, `Declaration`, and legacy escapes;
+scalar values are retained as text after admission. The adapter performs a
+recursive source census and whole-document feature scan, allocates temporary
+plans/child arrays plus a string-interning `Map`, finalizes typed arrays, and
+retains legacy node references for escapes. Its renderer builds `parts` and
+joins them before appending to a caller buffer. These are prototype costs and
+deviations that must be removed or isolated before a production comparison;
+they are not evidence that the settled single-eval-emit architecture or direct
+shared writer path has been achieved.
+
 The corrected exploratory run used `TREE2_WARMUPS=3` and `TREE2_SAMPLES=5`
 (not the canonical 20/45 A/B gate). `large-static-720` routed all `720`
 rulesets natively and measured tree2 total `15.25 ms` versus the sequential
@@ -207,6 +219,13 @@ do not merge it, and require an evaluated-canonical/import-capable route or
 explicitly reject the approach before assigning another tree2 implementation
 pass.
 
+The opt-in benchmark is excluded from the normal core test glob and runs with
+`TREE2_BENCH=1 TREE2_WARMUPS=3 TREE2_SAMPLES=5 pnpm --filter
+@jesscss/core test:bench -- --run`. It is a fresh-root stage comparison, not
+the canonical 20-warmup/45-pair `benchmark.less` A/B gate. Current coverage
+does not establish full Less-corpus, source-map-on, comment-heavy,
+import/mixin-placement, or typed-value parity; those are explicit follow-ups.
+
 ### Q-40 deferred serializer branch-collapse POC (2026-07-15)
 
 A worker collapsed the three `renderNodeText` reason branches
@@ -223,6 +242,33 @@ restored, and the candidate was not replayed onto `dev`. Keep the result as a
 deferred simplification candidate; any retry must use an isolated worktree,
 match the current source-map writer contract, and pass the aggressive-cutting
 surface review before it can enter the Q-40 batch.
+
+### Q-40 local artifact/worktree reconciliation — 2026-07-15
+
+The following local worktrees are now explicitly classified so they cannot
+silently become duplicate assignments:
+
+- `/private/tmp/jess-q40-registration-prep-20260715` at `f4ee226ce` is
+  superseded by the integrated `3a3f71d9e` lazy registration-pending-lane cut.
+- `/Users/matthew/git/worktrees/jess-declaration-child-metadata-20260715` at
+  `42c707c7a` is superseded by the integrated `d443a559b` declaration-child
+  metadata cut.
+- `/private/tmp/jess-import-placement-allocation-20260715` still has an
+  uncommitted import-style/docs variant. It is not an accepted implementation;
+  the current `dev` mapping-state cut is already recorded above, so any reuse
+  must begin with a diff/ownership audit rather than replaying it.
+
+The July 15 parser/CPU artifacts are also local-only diagnostics, not source
+changes: `/private/tmp/jess-q40-parseman-build-20260715`,
+`/private/tmp/parseman-less-current.cpuprofile`,
+`/private/tmp/parseman-less-specialized.cpuprofile`,
+`/private/tmp/jess-q40-cpu-unmin.cpuprofile`,
+`/private/tmp/jess-q40-cpu-result.json`,
+`/private/tmp/jess-q40-cpu-unmin-result.json`,
+`/private/tmp/jess-q40-current.heapprofile`, and
+`/private/tmp/jess-q40-retained.heapsnapshot`. Their durable summarized
+findings are recorded in `HANDOFF.md` and this tracker; the files may disappear
+with local temp cleanup and must not be treated as published evidence.
 
 ### Q-40 import-placement reuse audit — no new delta (2026-07-15)
 
@@ -629,6 +675,24 @@ declarations-coverage state.
   `collectSelectorSubtreeValues`. The sample is too small for throughput
   claims, but it identifies a concrete `childRulesOf` fast-path proof target;
   no global `isNode` rewrite is implied.
+
+- **Q-40 `childRulesOf` fast-path probe (2026-07-15, provisional).** The
+  isolated candidate changes only `packages/core/src/tree/rules.ts`: real Jess
+  `Rules` instances are returned before the three ordinary `isNode` protocol
+  checks, while the duck-typed `N.Rules` fallback remains. Focused rules suites
+  passed `160` tests and the core build passed. A valid rebuilt-chain A/B against
+  current `dev` used `benchmark.less`, 20 warmups, and 45 alternating pairs;
+  output stayed exact at `135,794` bytes with SHA-256
+  `9a58451bd3b0c9d80913df38be3b199994d2b93d34a9d2851f1b18d9dcaaa7cc`.
+  The first parse/render run was `235.019959→237.725958 ms` (+1.151%) and is
+  not evidence of a win. Two repeat runs were parse/render
+  `246.709333→242.606167 ms` (−1.663%, `39/45` wins) and render-only
+  `199.144208→195.783708 ms` (−1.687%, `35/45` wins); an earlier render-only
+  `204.9445→191.1545 ms` (−6.729%) was treated as an unstable outlier. The
+  repeated result is a promising but still provisional signal, not an accepted
+  speed claim: the candidate remains isolated at
+  `/private/tmp/jess-q40-child-rules-fastpath-20260715`, with aggressive review
+  and full integration gates still outstanding.
 
 - **Q-40 reference-surface allocator audit (2026-07-15, blocked/rejected as a
   new cut).** The current `createRulesLikeReferenceSurface` remains the
