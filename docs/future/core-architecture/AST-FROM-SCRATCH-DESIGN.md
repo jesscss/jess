@@ -40,7 +40,10 @@ today's `Node` subclasses. A single static declaration run may be one packed
 record; one legacy node may split into a static source leaf plus a dynamic
 escape; several inert value nodes may fuse into a tagged value sequence; and a
 placement may be represented by a frame/handle rather than a copied subtree.
-These are semantic shapes, not public AST promises.
+It may use no classes at all: arrays, tagged tuples, packed numeric/string
+tables, typed arrays, plain records, closures, or dispatch functions are all
+valid choices when their measured cost and semantics are better. These are
+semantic shapes, not public AST promises.
 
 Correctness is maintained by explicit ownership rather than by preserving
 class identity:
@@ -53,9 +56,10 @@ class identity:
 - every shape conversion is compared against the existing AST for output,
   source-map/caller-buffer behavior, and feature-route parity.
 
-The greenfield implementation therefore measures different cardinalities and
-different dispatch strategies directly. It must not be judged by whether it
-looks like a smaller version of the current tree.
+The greenfield implementation therefore measures different cardinalities,
+primitive representations, and dispatch strategies directly. It must not be
+judged by whether it looks like a smaller class-based version of the current
+tree.
 
 ## Acceptance oracle
 
