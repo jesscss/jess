@@ -123,6 +123,43 @@ the log below every iteration so the track compounds instead of repeating.
 
 <!-- newest first; each entry: date · hypothesis · prediction · byte-identical? · measured Δ · kept/dropped · why · next -->
 
+- 2026-07-15 — **rung 5: tree2 mixin-placement EVAL — the decisive rung. VERDICT: tree2
+  PRODUCES the compositions cheaply; eval+placement stays O(placements) with a tiny constant,
+  NO wall (branch `experiment/tree2-cleanroom-20260715`, still SYNTHETIC).** Thesis under test
+  was not "printing a pre-composed tree is cheap" (already proven) but "tree2 can PRODUCE the
+  ~70k compositions during eval without paying tree's per-placement cost." Architecture built =
+  handoff departure #4 (canonical-body + placement-overlay): a mixin body is stored ONCE; a call
+  is a cheap overlay = a binding frame (param→arg value node) + the current parent-selector
+  context; expansion WALKS the shared body in place — **no clone, no `cloneForPlacement`/`inherit`
+  analog** — composing nested selectors via the interned-string primitive and resolving `@param`
+  refs through the frame. Added tree2 `MixinDef`/`MixinCall`/`VarRef` + a minimal scope/binding
+  model (mixin defs + positional params + static/spaced values). **Byte-identity (tree = oracle):
+  mixin decls placed under distinct parents, mixin with nested `.inner` + `&:hover` in body, and a
+  parametrized mixin called with distinct args — all triple-identical (tree2-fast === tree2-tracked
+  === legacy).** At-scale eval race (both sides now eval; legacy mixin render is ASYNC = part of its
+  real cost; warmup 3, N=9 median, `--expose-gc`):
+    - **mixin-heavy (1,200 calls of one canonical `.card(@c)` body → 2,400 compositions):** total
+      build+eval+serialize **tree2-fast 1.31 ms / tree2-track 1.35 ms vs legacy 140.7 ms = 107×**;
+      creation 0.16 vs 2.07 ms; heap total 8.4 vs 29.8 MB. tree2 node count only **2,407** (body
+      stored once + 1,200 call sites) — the canonical-body win made concrete; legacy materializes
+      far more. **Ops: tree2 2,400 compositions (≈1 interned-string build each, clone/inherit = 0
+      — it has no such op); legacy 20,400 `cloneForPlacement` + 28,800 `inherit` + 1,200
+      `withComponents` = 50,400 node ops ≈ 21 legacy node-ops PER composition.**
+    - flat (3,200 rules): total 1.76 vs 64.7 ms = 36.9×. composition-static (850 blocks, 4,250
+      comps): total 2.20 vs 120.7 ms = 55.0× (≈14.6 legacy node-ops/comp).
+  **Straight verdict: YES — producing the compositions does NOT reintroduce tree's cost.** tree2's
+  eval is a linear walk of a shared body with one string build per placed selector and one frame
+  lookup per declaration; the clone/inherit/withComponents columns are structurally ZERO for
+  tree2. Position-tracking adds ~2–25% (still ~100× ahead). Extrapolating the O(placements)
+  structure to benchmark's ~70k compositions keeps tree2 string-op-bound (no eval-engine tax),
+  i.e. the ~37 ms Less-4.x neighborhood is reachable — the arena thesis is validated at the
+  measured cost center. Kept (experimental scaffold, NOT merged). **Caveats/next:** (1) still
+  SYNTHETIC — the real gate is running `benchmark.less` end-to-end through tree2 (needs a
+  parser→tree2 front end + the deferred rungs). (2) Deferred to later rungs: value operations,
+  guards, pattern-matching/overloaded mixins, `extend`, `@media`/at-rules, imports, real variable
+  scoping beyond params, and the `:is()` `&`-placement gap from rung 4. (3) legacy's mixin path is
+  async; tree2's is sync — a real structural difference, flagged not hidden.
+
 - 2026-07-15 — **tree2 rungs 3–4 (selectors + nesting/`&` composition) + at-scale race —
   the thesis holds; composition SCALES, no wall (branch `experiment/tree2-cleanroom-20260715`).**
   Rung 3 (compound `.a.b` / child `.a > .b` / descendant `.a .b` / list `.a, .b`) and rung 4

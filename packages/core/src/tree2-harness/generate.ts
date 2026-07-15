@@ -26,6 +26,12 @@ import {
   spaced as tSpaced,
   dimension,
   amp,
+  mixin,
+  call,
+  ref,
+  list,
+  vardecl,
+  any,
 } from '../tree/index.js';
 import * as t2 from '../tree2/index.js';
 import type { Root as T2Root, Statement as T2Statement } from '../tree2/index.js';
@@ -99,6 +105,58 @@ export function buildCompOld(blocks: number): unknown {
     );
   }
   return rules(list);
+}
+
+/* ---------------------------------------- mixin-heavy (the benchmark pattern) */
+
+// A single mixin `.card(@c)` defined ONCE, called under N distinct parents with
+// distinct args — each call places a body with 2 nested compositions
+// (`.inner`, `&:hover`). This is exactly how benchmark.less generates its ~70k
+// compositions: one canonical body, many placements.
+const COLORS = ['red', 'blue', 'green'];
+
+export function buildMixinNew(calls: number): T2Root {
+  const def = t2.mixinDef(
+    '.card',
+    [{ name: 'c', default: t2.word('red') }],
+    [
+      t2.decl('color', t2.varRef('c')),
+      t2.rule('.inner', [px('width', 10)]),
+      t2.rule(ampCompound(':hover'), [px('border', 1)]),
+    ],
+  );
+  const children: T2Statement[] = [def];
+  for (let i = 0; i < calls; i++) {
+    children.push(t2.rule(`.item${i}`, [t2.mixinCall('.card', [t2.word(COLORS[i % COLORS.length]!)])]));
+  }
+  return t2.root(children);
+}
+
+export function buildMixinOld(calls: number): unknown {
+  const def = mixin({
+    name: '.card',
+    params: list([vardecl({ name: 'c', value: any('red') }, { paramVar: true })]),
+    rules: [
+      tDecl({ name: 'color', value: ref({ key: 'c' }, { type: 'variable' }) }),
+      ruleset({ selector: tSel([el('.inner')]), rules: [tPx('width', 10)] }),
+      ruleset({ selector: tSel([amp(), el(':hover')]), rules: [tPx('border', 1)] }),
+    ],
+  });
+  const list2: Array<ReturnType<typeof mixin> | ReturnType<typeof ruleset>> = [def];
+  for (let i = 0; i < calls; i++) {
+    list2.push(
+      ruleset({
+        selector: tSel([el(`.item${i}`)]),
+        rules: [
+          call({
+            name: ref({ key: '.card' }, { type: 'mixin' }),
+            args: list([any(COLORS[i % COLORS.length]!)]),
+          }),
+        ],
+      }),
+    );
+  }
+  return rules(list2);
 }
 
 /** Rough tree2 node count for reporting. */

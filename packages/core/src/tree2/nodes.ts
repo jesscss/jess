@@ -47,7 +47,15 @@ export class SpacedValue extends Tree2Node {
   }
 }
 
-export type ValueNode = Word | Dimension | SpacedValue;
+/** A reference to a mixin parameter / bound variable, e.g. `@c`. */
+export class VarRef extends Tree2Node {
+  readonly kind = Kind.VarRef as const;
+  constructor(readonly name: string) {
+    super();
+  }
+}
+
+export type ValueNode = Word | Dimension | SpacedValue | VarRef;
 
 /* ---------------------------------------------------------------- selectors */
 
@@ -168,6 +176,39 @@ export class Rule extends Tree2Node {
   }
 }
 
+/** A mixin parameter: a name and an optional default value. */
+export interface Param {
+  name: string;
+  default?: ValueNode;
+}
+
+/**
+ * A mixin definition. Its `body` is the CANONICAL body, stored ONCE — every
+ * call reads it through an overlay (bindings + parent-selector context) and
+ * NEVER clones it.
+ */
+export class MixinDef extends Tree2Node {
+  readonly kind = Kind.MixinDef as const;
+  constructor(
+    readonly name: string,
+    readonly params: Param[],
+    readonly body: Statement[],
+  ) {
+    super();
+  }
+}
+
+/** A mixin call. Args bind positionally to the def's params. */
+export class MixinCall extends Tree2Node {
+  readonly kind = Kind.MixinCall as const;
+  constructor(
+    readonly name: string,
+    readonly args: ValueNode[],
+  ) {
+    super();
+  }
+}
+
 /** The document root: an ordered list of top-level statements. */
 export class Root extends Tree2Node {
   readonly kind = Kind.Root as const;
@@ -176,7 +217,7 @@ export class Root extends Tree2Node {
   }
 }
 
-export type Statement = Rule | Declaration | Comment;
+export type Statement = Rule | Declaration | Comment | MixinDef | MixinCall;
 
 /* ------------------------------------------------------------ constructors */
 
@@ -200,6 +241,10 @@ export const selist = (...selectors: Complex[]): SelectorList => new SelectorLis
 
 export const decl = (name: string, value: ValueNode): Declaration => new Declaration(name, value);
 export const comment = (text: string): Comment => new Comment(text);
+export const varRef = (name: string): VarRef => new VarRef(name);
+export const mixinDef = (name: string, params: Param[], body: Statement[]): MixinDef =>
+  new MixinDef(name, params, body);
+export const mixinCall = (name: string, args: ValueNode[] = []): MixinCall => new MixinCall(name, args);
 
 /** A single simple-string complex selector, e.g. `sel('.test')`. */
 export const sel = (text: string): Complex => complex([{ compound: compound(text) }]);

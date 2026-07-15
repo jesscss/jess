@@ -26,6 +26,9 @@ export enum Kind {
   Word = 8,
   Dimension = 9,
   SpacedValue = 10,
+  VarRef = 11,
+  MixinDef = 12,
+  MixinCall = 13,
 }
 
 /** Combinator between two compounds in a complex selector. */
