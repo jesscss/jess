@@ -1,415 +1,352 @@
-# Jess AST from scratch: speed-first design
+# Jess AST from scratch: packed-arena emit POC
 
-Status: design evidence and POC queue, started 2026-07-14 and updated 2026-07-15.
+Status: design record plus a real proof-of-concept, updated 2026-07-15.
 
-## Experiment artifact
+This document covers the greenfield `packages/core/src/tree2/` work. It is both a
+design record for the Q-40 performance program **and** an accurate account of the
+POC code that now exists in this worktree. Earlier drafts framed the effort as a
+survey ("not permission to rewrite the tree", "candidate shapes considered, not
+rewrites to schedule"). That prose under-represented what was actually built: a
+genuine from-scratch, struct-of-arrays **packed arena** with tag-dispatched emit.
+This rewrite reconciles the prose to the code, and — just as importantly — states
+the honest limitations the code carries today.
 
-The current design record is durable on `dev`. The corresponding no-class
-implementation remains intentionally isolated at
-`/Users/matthew/git/worktrees/jess-greenfield-ast-design-20260714`, on branch
-`feature/greenfield-ast-design-20260714`, with base checkpoint `a345b8aad`. Its
-implementation is staged but not committed in that worktree; it is therefore
-an explicitly preserved local artifact, not a durable production change. Its
-implementation and focused tests are under:
-
-- `packages/core/src/tree2/`
-- `packages/core/src/tree2/__tests__/`
-
-The corrected exploratory run used `TREE2_WARMUPS=3` and
-`TREE2_SAMPLES=5`. The package-scoped tree2 suite passed `11/11` distinct
-cases; the root invocation reports `22/22` only because Vitest runs that same
-file in two projects. The source is not exported or wired into production. The
-initial raw canonical probe routes through one legacy root escape; the later
-evaluated mixed-root follow-up is recorded below and rejects the canonical route
-on an exact-output hash mismatch.
-The attempted checkpoint commit was stopped by the aggressive-cutting guard
-because this unwired experiment has no production cost-contract entries; no
-`--no-verify` commit was made. Do not treat the worktree as a merged
-implementation or as a performance win; preserve the staged source or create
-a reviewed experiment snapshot before deleting that worktree.
-
-The source is an explicitly preserved local artifact, not a durable source
-commit. The canonical design document on `dev` is newer than the copy in the
-experimental worktree; consult this copy for the current design/status record.
-The experiment branch is allowed to lag current `dev` while the artifact is
-reviewed and must not be treated as an integration branch.
-
-### Evaluated mixed-root follow-up — completed, rejected for canonical use
-
-On 2026-07-15 the same isolated worktree was assigned a second, bounded proof:
-build an evaluated root as a mixed representation in which only direct, flat,
-statically provable ruleset siblings use native arena records and every
-variable-dependent, nested, import, mixin, extend, at-rule, trivia-sensitive,
-or otherwise uncertain region remains an explicit legacy escape. The goal is
-to test a real AST boundary with exact CSS output, not to benchmark a route
-that falls back to the legacy root.
-
-The final follow-up has `30/30` focused tests green, including native plus
-legacy siblings, variable and nested-selector rejection, parent/source-link
-preservation, raw-input rejection, and source-map gating. Its `TREE2_BENCH`
-static and mixed fixtures were exact under both the short `3/5` probe and the
-required `20`-warmup/`45`-pair run. The mixed route produced `720` native
-rulesets plus one legacy `@layer` island, with no whole-document fallback. The
-static CSS hash is
-`b7d402d73e705d8cfcfa93e1d24045bee3b384531e7b68e85ae7d0b01b9b953b`; the
-mixed hash is
-`52866c029f75245a20900e21e591ce3f1f5c39f9436ddacda7c8f2d08c740836`.
-
-The canonical evaluated fixture is rejected on exact-output mismatch: legacy
-hash `450437656c359981eb751275e0ac56150f8ee02ddd9c8c98a306395f0061d319`
-versus tree2 hash
-`d76a17d9ae71958b9e815d59acea93b0111e5fdda1d98b8605140acb0b7d869e`.
-Therefore this proves a bounded mixed representation and explicit legacy-island
-boundary on synthetic shapes, not a canonical AST replacement or speedup.
-Native render timings also exclude evaluation and adapter construction, so no
-performance claim is allowed. The worktree remains isolated, uncommitted, and
-unexported pending a future parity repair or explicit retirement.
-
-This is a design record for the Q-40 performance program. It is not permission
-to rewrite the tree or to trade away Less semantics. Every production change
+The discipline the earlier draft got right is preserved: every production change
 must first prove a real shape on `benchmark.less` or a representative fixture,
-preserve Jess byte output, and pass the core, spine, all-less, and aggressive
-cutting gates.
+preserve Jess byte output, carry allocation/GC evidence (not one timing number),
+and pass the core, spine, all-less, and aggressive-cutting gates.
 
-## What the current evidence says
+## What was actually built: `tree2/`
 
-The current Jess tree is not slow because one universal node class is
-intrinsically wrong. The expensive shape is the accumulation of work across
-parse, placement evaluation, fallback preparation, lookup/traversal, and
-serialization. The current canonical measurements are recorded in
-`CORE-CLEANUP.md` under Q-40:
+`tree2/` is not a slimmed object AST and not a refinement of the existing tree. It
+is a separate, from-scratch representation:
 
-- Jess is roughly 239 ms parse-plus-render and 203 ms render-only on the
-  canonical `benchmark.less` run, versus roughly 31 ms for Less render.
-- Parseman recognizer-only is about 12.6 ms, so AST construction is not the
-  whole parser gap. The recognizer itself still pays generated frame/context
-  work and is not a compile-time stripped `voidOf` parser.
-- The evaluator has already demonstrated a serious category error: a recursive
-  merge-presence discovery pass scanned 69,901 child items to find 15
-  feature-bearing surfaces. The fix is to carry the fact at the producer, not
-  to add a better search.
-- The common tree is mostly static declarations and values, but Less's
-  dynamic islands are real: variable rebinding, source-order lookup, mixins,
-  detached rulesets, interpolation, imports, guards, plugins, and extend.
+- **A struct-of-arrays packed arena** (`types.ts`, `Tree2Arena`). Records are
+  parallel typed arrays: `Uint8Array` `tags`; `Int32Array` columns
+  `childStart` / `childCount` / `children` / `escapeId` / `textId` /
+  `authoredId` / `spanStart` / `spanEnd`. Only escape records retain references
+  to legacy `Node` objects (`escapeNodes`).
+- **A string-interning pool** (`adapter.ts` `stringId`, `strings` + `stringIds`).
+  Selectors and packed declaration text are deduplicated into an id-addressed
+  pool. Declaration records pack `name value` into one interned string
+  (`render.ts` `declarationText`).
+- **Tag-dispatched emit** (`render.ts`). Five tags
+  (`Root`, `Ruleset`, `Declaration`, `LegacySubtree`, `WholeDocumentEscape`;
+  `types.ts:10`) drive a switch that writes native rulesets straight to a render
+  buffer and delegates everything else.
 
-The design target is therefore: make the common path structurally cheap and
-make every dynamic escape explicit. Do not make the common path pay for the
-dynamic language merely because the language supports it somewhere.
+That is a legitimate packed-arena AST experiment. The rest of this document
+describes what it does and does not yet do, honestly.
 
-## Shape cardinality is not a compatibility contract
+## Implemented vs Designed vs Proven
 
-The experimental representation must not preserve a one-to-one mapping with
-today's `Node` subclasses. A single static declaration run may be one packed
-record; one legacy node may split into a static source leaf plus a dynamic
-escape; several inert value nodes may fuse into a tagged value sequence; and a
-placement may be represented by a frame/handle rather than a copied subtree.
-It may use no classes at all: arrays, tagged tuples, packed numeric/string
-tables, typed arrays, plain records, closures, or dispatch functions are all
-valid choices when their measured cost and semantics are better. These are
-semantic shapes, not public AST promises.
+### Implemented (code exists and runs)
 
-Correctness is maintained by explicit ownership rather than by preserving
-class identity:
+- **`buildTree2(sourceRoot, { input })`** — `adapter.ts:437`. Walks an
+  **already-evaluated** `Rules` root **without cloning** it (a non-mutating
+  projection, consistent with the project's "spine is projection, not mutation"
+  principle). It admits only flat `selector { static-decl; … }` rulesets to
+  native arena records; everything dynamic becomes an **escape record** that
+  holds the original `Node`.
+  - The admission gate is strict. A ruleset is native only if the selector is a
+    single, comma-free, non-interpolated string with no guard and no
+    `selectorBeforeExtend` (`selectorText`, `adapter.ts:273`), it is its own
+    `sourceNode` (not a mixin expansion), and it carries no printable trivia
+    (`nativeFlatPlan`, `adapter.ts:290`). Every child must be a static
+    declaration whose value is a `NATIVE_VALUE_TYPES` leaf with no dynamic
+    markers (`$`, `@{`, `#{`, `~`) and whose **authored** source proves neither a
+    variable/`@`-reference nor a parenthesised operation
+    (`authoredDependencyReason`, `adapter.ts:216`; `staticValueText`,
+    `adapter.ts:193`). Any nested ruleset disqualifies the whole ruleset.
+  - Everything else — variables, operations, interpolation, merges, nesting,
+    comments, imports, mixins, extend, at-rules — becomes a `LegacySubtree`
+    escape (`appendEscape`, `adapter.ts:172`) tagged with a reason
+    (`EscapeReason`, `types.ts:18`). Imports anywhere in the tree, or a
+    non-evaluated root, force a single `WholeDocumentEscape` covering the whole
+    document (`adapter.ts:466-491`).
+- **`renderTree2`** — `render.ts:169`. Emits native rulesets directly to the
+  buffer (`nativeRuleset`, `render.ts:40`); escape records delegate to the legacy
+  renderer (`escape.ts` → `renderNodeToString` / `writeSyntax` /
+  `renderNodeToBuffer`). It threads route statistics (`Tree2RenderStats`) so a
+  test can assert exactly which records went native vs legacy and why.
 
-- source text, authored spans, and debug identity handles remain available;
-- source-order and scope-sensitive behavior belongs to placement frames;
-- dynamic features escape to a defined legacy/runtime operation;
-- a debug projection can reconstruct an inspectable view without allocating
-  debug objects on the hot path;
-- every shape conversion is compared against the existing AST for output,
-  source-map/caller-buffer behavior, and feature-route parity.
+### Designed only (described here, **not** in the code — 0 hits)
 
-The greenfield implementation therefore measures different cardinalities,
-primitive representations, and dispatch strategies directly. It must not be
-judged by whether it looks like a smaller class-based version of the current
-tree.
+These appear in the "recommended target shape" and POC sections below but have **no
+implementation** in `tree2/`. They must not be read as built:
 
-## Relationship to the settled eval/emit architecture
+- **Tagged VALUE leaves with lazy materialization** (POC 1). This is the doc's own
+  "decisive lever," but `tree2/` has no value-leaf representation at all —
+  declaration values are captured as already-serialized text via `textOf`, and
+  `NATIVE_VALUE_TYPES` is merely a whitelist deciding *whether text extraction is
+  safe*, not a lazy leaf. **This is the same idea as
+  [`VALUE-LITERAL-TAG-SPEC.md`](./VALUE-LITERAL-TAG-SPEC.md)** (NODE-SLIM-FOLLOWONS
+  Question 1); the two must not diverge into competing plans. Treat that spec as
+  the canonical home for the tagged-value-leaf design and this document's POC 1 as
+  a pointer to it.
+- **Placement frames / live bindings** (target-shape layer 2). No frame, cell, or
+  binding structure exists; the arena has no notion of placement-local state.
+- **Canonical DAG import/mixin reuse.** Imports currently force a whole-document
+  escape; there is no shared-body reuse.
+- **Sparse-trivia representation** (POC 4) and **stripped Parseman recognizer**
+  (POC 5). Neither exists; trivia today is a disqualifier for the native path, not
+  a representation.
 
-`tree2` is a secondary arena/adapter over a parsed Jess `sourceRoot`; it is not
-yet a replacement canonical AST and it does not replace the settled
-single-eval-emit architecture. Escape records retain references to legacy
-nodes and route unsupported or dynamic regions through the existing runtime.
-That makes the current artifact useful for testing representation boundaries
-and exact-output fallback behavior, but it cannot claim that the legacy AST has
-been removed, that evaluation has been fused into emission, or that
-imports/mixins have acquired dependency-aware reuse.
+### Proven (what the tests actually assert)
 
-The intended eventual relationship is compatible with the settled design:
-canonical source ownership and placement-local state remain explicit, while a
-direct emitter consumes compact records for proven static regions and dynamic
-regions use named escapes. The present artifact is only the first structural
-probe toward that shape.
+- **Correctness / byte-identity of the packed emit path.** `tree2.test.ts`
+  asserts byte-identical output and route counts on small fixtures
+  (static-only, single at-rule escape, variable escapes, raw-root
+  whole-document escape).
+- **Nothing about speed.** The benchmark, `tree2-bench.test.ts`, is
+  **`it.skip` unless `TREE2_BENCH=1`** (`bench = ENABLED ? it : it.skip`,
+  line 239) and asserts only exact-hash equality and routing counts
+  (`nativeRenderCount > 0`, `legacyRootRenderCount === 0`, an expected at-rule
+  reason). There is **no `toBeLessThan` on any timing** — it records
+  medians to a `console.log`, it does not gate on them.
+- The production cuts that this effort *did* land are each self-described in
+  [`CORE-CLEANUP.md`](./CORE-CLEANUP.md) (merge-presence carry, coalescer
+  admission, duplicate pre-scan) as **"neutral / noisy, no speed claim."**
 
-## Steering decisions captured on 2026-07-15
+**Bottom line: the work to date proves the feasibility and correctness of a packed
+emit path, not a performance win.**
 
-These decisions constrain future experiments even when the implementation shape
-changes:
+## Current limitations / what this does NOT yet address
 
-- If Jess can reach Less 4.x speed with a complete semantic tree, that is the
-  preferred outcome over a faster string-only representation. The target is a
-  lightweight, efficient AST—not the elimination of every AST object. A useful
-  design may use plain records, arrays, packed tables, or no classes at all,
-  with a cold debug projection where that improves the hot path.
-- Authored scalar text remains authoritative. A representation may retain a
-  compact semantic tag or field-level type table beside the value, but it must
-  not rewrite `1.0` as `1` or overwrite the authored value with a calculated
-  result. `node.type` remains the existing node discriminant; typed-value
-  metadata belongs to the value/declaration representation or a deliberately
-  owned side table, not to a repurposed node field.
-- Imports and mixins should reuse one canonical source body. Only regions whose
-  result depends on the placement environment need placement-local overlays or
-  evaluation. A dependency graph is therefore a prerequisite for safe reuse
-  and for the later tree-shaken custom-property-to-JavaScript module direction;
-  neither capability is claimed as implemented by this experiment.
-- Prototype-chain environments and ordinal/static slots are bounded lookup
-  candidates only for shapes proven to be local, immutable, and statically
-  bound. They are not a replacement for Less's dynamic scope model. The
-  existing static-local slot proof had zero canonical activation and was slower
-  on its activating synthetic workload, so it does not justify a generic
-  prototype-chain lane.
-- Properties without an explicit merge shape should not enter merge lookup or
-  merge-coalescing machinery. The proposed simplification is ordinary
-  assignment plus automatic flattening for spaced and list values; the legacy
-  `sequence` concept is treated as deprecated. This is a semantic redesign
-  proposal, not a current-runtime change or an accepted benchmark result.
-- Parseman optimization and CSS/Less trivia policy remain separate axes.
-  Parseman changes must be grammar-general; the grammar/host decides whether
-  comments, whitespace boundaries, spans, or late value typing are needed for
-  its output contract. In particular, selector-descendant meaning may be
-  recoverable from spans and comment positions without retaining every
-  whitespace capture as a node or object.
+1. **Emit-only, and it runs after full eval.** `buildTree2` requires a
+   fully-evaluated root (`input: 'evaluated'`; raw roots become one escape,
+   `adapter.ts:468-470`). The dominant cost — eval-walk — is paid in full before
+   `tree2` runs. Per the 2026-07-15 ground truth below, eval is ~37% of CPU and
+   emit only ~15%; `tree2` competes for a slice of that ~15%. **As implemented it
+   cannot reach the <40 ms target**, because it does not touch the larger cost.
 
-## Current `tree2` implementation boundary
+2. **The native path contributes ZERO on the canonical benchmark.** `renderTree2`
+   **hard-rejects** the native path under `collapseNesting: true`
+   (`nativeBoundaryError`, `render.ts:162`) — as well as under source-maps,
+   compression, and explicit trivia. `collapseNesting: true` is `benchmark.less`'s
+   own configuration, so on the canonical benchmark the whole document escapes to
+   the legacy renderer and the packed path does no work. This directly contradicts
+   the "must first prove a real shape on `benchmark.less`" mandate; the mandate and
+   the current POC are not yet reconciled. Any claim that this POC helps the
+   canonical benchmark is currently unsupported.
 
-The staged implementation is a **structural columnar arena**, not yet the
-design's tagged-value-leaf implementation. Its tags currently distinguish
-`Root`, `Ruleset`, `Declaration`, and legacy escapes. Native scalar values are
-admitted only when they can be represented as text; the arena does not yet
-store typed `Dimension`/`Color`/keyword records or defer their later typed
-materialization. Tagged value leaves remain POC 1, not a completed result.
+3. **No speedup is proven anywhere** (see "Proven" above). Feasibility and
+   byte-identity only.
 
-The current adapter also deliberately retains costs that a production design
-must remove or isolate: a recursive source census, a whole-document feature
-scan, temporary plan/child arrays, a string-interning `Map`, typed-array
-finalization, and references to legacy nodes for escapes. The renderer builds
-`parts` arrays and joins them, then appends the completed string to a caller
-buffer; it is therefore not evidence for a direct shared output-writer path.
-These are recorded limitations, not hidden acceptance criteria.
+4. **Relationship to the committed spine is unspecified — and is an open risk.**
+   The shipped render path is the "spine" (`emit-walk.ts` / `serialize-helper.ts`).
+   `tree2`'s escape path bypasses the spine entirely and routes to the *legacy
+   node renderer* (`escape.ts`). Whether `tree2` is meant to **replace** the spine,
+   **feed** it, or **compete** with it is undecided. Standing up a third emit lane
+   alongside eval and the spine is a real maintenance and correctness risk and must
+   be resolved before any production wiring.
 
-## Acceptance oracle
+## Perf ground truth (measured 2026-07-15)
 
-The end-to-end acceptance criterion for the experimental representation is
-byte-identical CSS output against the existing AST, not preservation of legacy
-field layouts, class identity, node counts, or object shapes. Those shape tests
-remain useful diagnostics for the current production implementation and must
-not be weakened or deleted, but they do not constrain a separate fast-AST
-experiment. The experiment may fuse, split, or replace shapes freely if its
-rendered CSS remains exact; source-map and caller-owned buffer contracts are
-also compared when the workload exercises them. Unsupported semantics must
-route through an explicit legacy escape that produces exact output, or remain
-an honestly recorded gap.
+Controlled: dev `5df23b76e`, warmup 10 / N=21 median, same worktree.
 
-## Recommended target shape
+- `benchmark.less`, `collapseNesting: true`: Less 4.x **35.4 ms** · jess default
+  **271.6 ms** (7.7×) · jess eval-only **216.2 ms**.
+- The default path **double-walks**: a speculative spine gather aborts back to
+  eval at `emit-walk.ts:2533`, then runs a full eval — roughly **55 ms / 26%**
+  wasted-spine tax on top of eval.
+- CPU split: eval-walk ~37% · value/node ~10% · emit ~15% · parse ~12% · GC ~5% ·
+  **async ≈ 0%**.
 
-Use a three-layer representation:
+Implication for `tree2`: the gap is **raw per-node eval/emit compute**. Async /
+promise overhead is **not** a lever (the `isThenable` fast-path already collapses
+it); do not chase it. Because eval dominates and `tree2` is emit-only, `tree2`'s
+reachable ceiling is a fraction of the ~15% emit slice — and zero on the canonical
+benchmark until the `collapseNesting` rejection is addressed.
 
-1. **Canonical source tree.** Lean, stable containers own source order,
-   authored spans, and only semantic facts needed by all placements. Static
-   leaves are source text plus a compact semantic tag, not eagerly allocated
-   `Dimension`, `Color`, `Keyword`, or `Bool` objects.
-2. **Placement frames.** A placement owns live bindings, source-order cells,
-   and sparse overlays only when evaluation changes the source result. An
-   import or mixin reuses the canonical body; it does not clone or re-evaluate
-   independent static subtrees just because it has a new placement.
-3. **A direct evaluator/emitter.** A pure static region runs as a tight
-   tagged-value loop and writes directly to the output buffer. A dynamic node
-   has an explicit escape operation into the existing object/runtime path.
-   There is no generic “preview everything, then discover what happened” pass.
+## Q-40 per-node diagnosis (measured 2026-07-15, this worktree)
 
-The important boundary is semantic, not syntactic: a value becomes a full
-runtime object when arithmetic, comparison, a guard, a reference result, a
-plugin, an interpolation, or another operation actually needs object
-behavior. Debugging can retain source text and tags without making those
-representations the runtime AST contract.
+Instrumented render of `benchmark.less` (`collapseNesting:true`) on branch
+`feature/greenfield-ast-design-20260714`. Harnesses live in `packages/core/perf/`
+(`q40-bench.mjs`, `q40-prof.mjs`, `prof-agg.mjs`). Same-worktree, warmup 10, median.
+Phase split (JESS_PROFILE, steady state): **parse ~42 ms · render(eval+emit) ~220 ms
+· total ~250–265 ms** — reproduces the ground truth above.
 
-## Candidate AST shapes
+### Redundant-vs-intrinsic split (the decision inputs)
 
-These are alternatives considered, not ten rewrites to schedule. The first
-five are the most credible; the rest are useful as design checks.
+- **Grammar does NOT run at render time.** Decisive counter test: grammar-rule
+  entry counts (`_r_value`, `_r_ComplexSelector`, `_r_CompoundSelector`,
+  `_r_simpleSelector`) are **byte-for-byte identical** between a full `render()`
+  and a parse-only `LessParser().parse()` (value 18789, ComplexSelector 6267,
+  CompoundSelector 10997, simpleSelector 17644). The grammar frames in flat CPU
+  profiles are 100% **parse** (getTree), conflated only because `render()`
+  re-parses each call. `selector-capture.ts` is the *only* eval-path parser
+  re-entry and is a niche `*[…]` node. **Suspicion #1 (grammar-at-render) is
+  false — not a render lever.**
+- **Render cost is node ALLOCATION, and it is ~86% selectors.** One render
+  constructs **102,284 nodes** over a **21,199-node** source tree → eval creates
+  **81,085 new nodes (3.8×)**, with **35,033 `inherit` provenance-copies**.
+  By type, eval-new: ComplexSelector 32,995 · BasicSelector 25,709 (0 at parse) ·
+  CompoundSelector 8,414 · SelectorList 1,439 · PseudoSelector 800 —
+  **selector family ≈ 69.9k of 81k eval-new nodes (~86%)**. Values are tiny by
+  comparison (Dimension 1,609 · Color 613). **This corrects the doc/tree2 fixation
+  on tagged VALUE leaves (POC1 / VALUE-LITERAL-TAG): the measured hot allocation is
+  SELECTORS, not values.**
+- **Already-optimized, NOT levers:** selector `valueOf()` is memoized
+  (`_valueOf`, selector-complex.ts:250); 44% of eval calls (21,772 / 49,098) are
+  F_STATIC no-op short-circuits; `ComplexSelector.evalNode` runs only 117× (the
+  bulk selector allocation is NOT from selector `eval`).
+- **Biggest LOCALIZED lever — the extend pipeline: ~47 ms of render (~19%) for a
+  stylesheet with only 26 `:extend` clauses.** `processExtends` is a single 47.4 ms
+  call; skipping it (byte-changing A/B) recovers exactly that. The dominant
+  selector-allocation stack is `_finishEval → processExtends → As/Tb/Ec/W → new
+  ComplexSelector` (28k+ from the top bucket). The matcher re-materializes
+  string-backed selector leaves into fresh node trees per match attempt
+  (`materializeStringLeaves`, `selectorListItemForMatch`) and re-matches
+  O(rulesets × extends). This is largely **redundant recompute + redundant
+  allocation** — fixable WITHOUT a new representation.
 
-| ID | Shape | Likely benefit | Main risk |
-| --- | --- | --- | --- |
-| A1 | Full object AST, aggressively slimmed | Lowest migration risk | Still pays per-leaf objects and call ladders |
-| A2 | Semantic AST plus packed sidecars | Separates hot facts from cold metadata | Side-table indirection and ownership complexity |
-| A3 | Canonical source DAG plus placement frames | Reuses imports/mixins and isolates live state | Dependency/escape analysis must be correct |
-| A4 | Container/leaf split with tagged scalar leaves | Keeps structure while removing inert wrappers | Materialization boundary must preserve exact semantics |
-| A5 | Fixed-shape tagged records | Predictable V8 shapes and compact fields | Record access can become index-heavy or opaque |
-| A6 | Lean class per semantic kind | Good V8 locality and readable debugging | More classes and dispatch paths |
-| A7 | Parentless zipper/tree plus explicit traversal stack | Removes parent maintenance and recursive walks | Trivia and mutation APIs need redesign |
-| A8 | Region/rope tree for source and output | Cheap reuse and contiguous serialization | Hard interaction with evaluated replacement values |
-| A9 | Two-tier statement/value AST | Optimizes values without destabilizing statement semantics | Boundary between tiers can proliferate |
-| A10 | Normalized semantic IR | Excellent direct evaluation potential | Highest semantic conversion and compatibility risk |
+### POC attempted + honest result
 
-## Ten ways to reduce trivia bulk
+Memoized `materializeStringLeaves` (selector-match-core.ts) on input-selector
+identity via a `WeakMap` — it is called **12,001×** on only **2,317** unique
+inputs (5.2× redundancy) and is deterministic in its immutable post-eval input, so
+caching is safe. Result: **byte-identical output ✔** but **timing neutral**
+(same-worktree, same-build env-toggle A/B: baseline median 246.8 ms / min 237.9 ms
+vs memo 252.0 ms / min 235.9 ms). Cause: the 5.2× redundancy is mostly the
+read-only fast path (`changed===false` returns the input without allocating), so
+the cached calls weren't allocating anyway, and the WeakMap get/set overhead
+offsets. **The memo was reverted.** The 47 ms extend cost is diffuse across the
+whole matcher (keyset prefilter, `areComplexSelectorsEquivalent`,
+`selectorListItemForMatch` wrapping, O(rulesets×extends) iteration), not
+concentrated in one cheap-to-cache call.
 
-Trivia is a separate design axis. Do not force Parseman to know that CSS has
-comments, and do not make CSS/Less retain every whitespace boundary merely
-because a generic grammar can report it.
+### Recommended rewrite shape + next slices
 
-1. Store only comment intervals; infer ordinary spaces from source spans and
-   the serializer's separator rules.
-2. Store one packed document trivia tape with `(start, length, kind)` records.
-3. Store per-container gap ranges, not one record per parser trivia capture.
-4. Store a comment-only sidecar and replay untouched source gaps when legal.
-5. Store a bitset of “gap may contain comment” ranges, scanning exact text only
-   when a serializer needs the gap.
-6. Store sparse field/value spans only for fields whose output can move.
-7. Store source slices and use render-time scanning for cold unknown rules.
-8. Intern repeated whitespace forms (`" "`, newline, indentation) and retain
-   only references for the uncommon forms.
-9. Use a token arena for comments and line-break metadata, with indexes owned
-   by the source root rather than each node.
-10. Make trivia policy an explicit parser capability: a grammar requests the
-    distinctions it needs, while Parseman still exposes a generic lossless
-    mode for grammars that require it.
+The deciding evidence: after removing the (small, cheap) redundant-recompute, the
+residual ~170 ms is **intrinsic per-placement selector-object materialization** —
+each placement/flatten builds fresh ComplexSelector/CompoundSelector/BasicSelector
+trees + `inherit`. That favors an **evolutionary lean-SELECTOR representation**
+(string-joined / interned selectors on the flatten+extend path) over a full packed
+arena, and it relocates the first target from *values* to *selectors*. Next slices:
+1. **Extend matcher, cheaper structural match** — profile *inside* `processExtends`
+   (As/Tb/Ec) to find the 47 ms's real center; prefer string/keyset comparison over
+   re-materialized node trees. Target: cut the 47 ms without changing output.
+2. **Selector flatten without object rebuild** — make nesting-collapse join parent+
+   child selectors as interned strings, not by allocating selector node trees +
+   `inherit` (attacks the 69.9k eval-new selector allocations directly on the
+   render path).
+3. **Emit-time header-selector rebuild** — `renderHeaderSelectorString` /
+   `writeHeaderSelector` construct ~5.5k BasicSelectors at emit just to stringify;
+   emit from the already-known selector string.
 
-The likely first POC is (1) plus (6), because it tests whether the current
-CSS/Less serializer actually needs the 66k captured trivia slots or only the
-roughly 8.9k comment runs and a smaller set of movable spans. The POC must
-include no-trivia, single-space, comment-heavy, multiline, unknown-rule, and
-source-map-on cases.
+## Open question: flip vs. rewrite (evidence-gated — no winner declared)
 
-## Ten alternatives to a conventional object AST
+There is a pending decisive measurement that this document deliberately does **not**
+pre-resolve:
 
-1. Array-of-structs arena with integer child indexes.
-2. Struct-of-arrays for tags, spans, child ranges, and payload indexes.
-3. Relocatable packed records with string/number pools.
-4. Stack bytecode for pure expression/value regions.
-5. Register bytecode with explicit dynamic escape instructions.
-6. Compile-time generated dispatch blocks for static grammar regions.
-7. Selector and extend decision DAGs keyed by canonical source identities.
-8. Source tape plus semantic islands: raw source for inert regions, nodes only
-   at semantic boundaries.
-9. Piece-table output IR that can reuse unchanged imported/mixin fragments.
-10. Native/Wasm packed IR for a proven pure subset, behind an explicit
-    boundary rather than as a whole-language replacement.
+- **Finish the D-EVAL flip** so `benchmark.less` renders spine-only (no
+  double-walk, no eval fallback), then re-measure. If that gets materially closer
+  to 35 ms, it favors **keeping the object AST** and investing in the spine.
+- **If it stays far off**, that strengthens the case for a **packed-arena rewrite**
+  along the lines of `tree2`.
 
-The recommended order is (8) and (5) as JavaScript POCs, then (2)/(3) only if
-the object implementation still dominates after the semantic cuts. Wasm or
-native code is not a substitute for removing unnecessary work.
+**Pending evidence:** the flip-vs-rewrite decision is open and gated on the
+post-flip re-profile. Do not declare a winner in this document or schedule a
+rewrite off it. Note also that `VALUE-LITERAL-TAG-SPEC.md` is itself sequenced
+*after* the D-EVAL flip and its mandated re-profile — the same gate applies here.
 
-## Ten mixed AST/runtime designs
+## Design target (the intended end shape, if the rewrite path is chosen)
 
-1. Tagged leaves + sparse comment trivia + live-frame direct emitter.
-2. Lean classes + source tape + shared canonical import/mixin bodies.
-3. Packed records for static regions + object dynamic islands.
-4. Semantic AST + columnar value payloads + pure operation bytecode.
-5. Register value IR + statement AST + source-tape fallback.
-6. Region tree + semantic islands + explicit source-order cells.
-7. Selector decision graph + ordinary declaration containers.
-8. Canonical DAG + piece-table output fragments + placement overlays.
-9. Semantic IR + object escape points for references/calls/plugins.
-10. Feature-specialized emitters selected by a closed-world capability mask,
-    with the general evaluator retained for unsupported features.
+The diagnosis behind the design still holds: the current tree is not slow because
+one universal node class is intrinsically wrong. The cost is accumulated work
+across parse, placement evaluation, fallback preparation, traversal, and
+serialization. The common tree is mostly static declarations and values, but
+Less's dynamic islands are real (variable rebinding, source-order lookup, mixins,
+detached rulesets, interpolation, imports, guards, plugins, extend). The target is
+to make the common path structurally cheap and every dynamic escape explicit —
+which is exactly the native-vs-escape split `tree2` already implements structurally.
 
-The first candidate to test is (1). The most promising follow-up is (10),
-because the canonical benchmark can select a direct emitter only when its
-feature mask proves that path safe. Candidate (3) is the fallback if V8 object
-allocation remains the dominant measured cost after the first two POCs.
+The fuller intended shape (not yet built) is a three-layer representation:
 
-## What this rules out
+1. **Canonical source tree** — lean containers own source order, authored spans,
+   and only semantic facts all placements need; static leaves are source text plus
+   a compact tag, not eager `Dimension` / `Color` / `Keyword` / `Bool` objects.
+   (This leaf idea is `VALUE-LITERAL-TAG-SPEC.md`.)
+2. **Placement frames** — a placement owns live bindings and sparse overlays only
+   where evaluation changes the source result; imports/mixins reuse the canonical
+   body instead of cloning.
+3. **A direct evaluator/emitter** — a pure static region runs as a tight
+   tagged-value loop writing to the buffer; dynamic nodes take an explicit escape
+   into the object/runtime path, with no "preview everything, then discover what
+   happened" pass.
 
-- A universal prototype-chain scope engine. Prototype inheritance is useful
-  for a bounded static lookup experiment, but it cannot represent Less's live
-  writes and call-site visibility. It must not become the semantic scope model.
-- A generic AST index that rediscovers facts already explicit on a node. Carry
-  those facts at construction/evaluation time, as the merge-presence cut now
-  does.
-- Turning every whitespace capture into an object or node. That increases
-  allocation and GC without improving the output contract.
-- Replacing every node with a string. Arithmetic, comparison, guards,
-  interpolation, references, calls, and plugins need typed behavior; the
-  correct target is a lightweight representation with explicit materialization.
-- A parser-only rewrite as the sole route to the <40 ms target. Parser work is
-  necessary, but render/eval is currently the larger gap.
+The boundary is semantic, not syntactic: a value becomes a full runtime object
+only when arithmetic, comparison, a guard, a reference result, a plugin, or an
+interpolation actually needs object behavior.
+
+## What this rules out (still valid)
+
+- **A universal prototype-chain scope engine.** Prototype inheritance is fine for a
+  bounded static-lookup experiment but cannot represent Less's live writes and
+  call-site visibility; it must not become the semantic scope model.
+- **A generic AST index that rediscovers facts already explicit on a node.** Carry
+  facts at construction/evaluation time, as the merge-presence cut now does.
+- **Turning every whitespace capture into a node.** Pure allocation/GC cost with no
+  output benefit.
+- **Replacing every node with a string.** Arithmetic, comparison, guards,
+  interpolation, references, calls, and plugins need typed behavior; the target is
+  a lightweight representation with explicit materialization.
+- **A parser-only rewrite as the sole route to <40 ms.** Parser work is necessary
+  but render/eval is the larger gap (see ground truth: parse ~12%, eval ~37%).
 
 ## Perf-gated POC sequence
 
-### POC 1: tagged value leaves
+Methodology (unchanged, and worth keeping): each POC is gated on byte-identical
+output, allocation/GC evidence rather than a single timing number, and A/B on the
+canonical benchmark **plus** a representative fixture. A variant is kept only if it
+reduces total work or retained memory with identical output.
 
-Use source text plus a compact tag for dimensions/numbers, colors, booleans,
-and keywords. Keep the original text exactly; do not normalize `1.0` to `1`
-or write calculated values back into source storage. Materialize only on
-arithmetic, comparison, guard, reference result, interpolation, plugin, or
-other typed escape.
+- **POC 1 — tagged value leaves.** Source text plus a compact tag for
+  dimensions/numbers/colors/booleans/keywords; keep original text exactly (no
+  `1.0`→`1`); materialize only on arithmetic, comparison, guard, reference,
+  interpolation, or plugin. **This is the same design as
+  [`VALUE-LITERAL-TAG-SPEC.md`](./VALUE-LITERAL-TAG-SPEC.md); execute it there,
+  not as a divergent plan here.** Not implemented in `tree2/` today.
+- **POC 2 — pure-value register island.** Compile a closed subset of
+  literal/list/operation values to a tiny register representation; reference,
+  interpolation, call, guard, plugin, and async operations emit explicit escapes.
+  Must prove it never evaluates a dynamic node as static.
+- **POC 3 — feature-specialized direct emitter.** Select a direct emitter only for
+  a proven capability mask; count every fallback and name its reason. `tree2`'s
+  native-vs-escape routing is an early form of this, but it currently emits nothing
+  on the `collapseNesting` benchmark config (limitation 2).
+- **POC 4 — trivia representation.** Run no-trivia, one-space, comment-heavy,
+  multiline, unknown-rule, and source-map-on workloads through comment-only /
+  sparse variants; keep only if total work or retained memory drops with identical
+  output.
+- **POC 5 — recognizer boundary.** Build a genuinely stripped Parseman recognizer
+  artifact (not a runtime flag in the capture-capable parser) and compare code
+  shape and CPU against the current recognizer and Less's cursor/regex fast paths.
+  Keep the Parseman change grammar-general.
 
-Required counters and gates:
+## Appendix: alternative representations considered (not scheduled)
 
-- inert values created, materialized values, and materializations by reason;
-- decimals, units, colors, booleans, multi-token values, interpolation,
-  arithmetic, guards, variable reads, mixins, and imports;
-- byte-identical output and no materialization for inert values;
-- parse/render A/B on the canonical benchmark and a value-heavy fixture;
-- allocation/GC evidence, not just one timing number.
+Kept for design-check reference; the credible near-term candidates are the packed
+struct-of-arrays already prototyped in `tree2/`, tagged value leaves (POC 1 /
+`VALUE-LITERAL-TAG-SPEC.md`), and a feature-masked direct emitter (POC 3). The
+remainder are recorded to show they were weighed and set aside, not to schedule
+them:
 
-### POC 2: pure-value register island
+- Full object AST, aggressively slimmed — lowest migration risk, but still pays
+  per-leaf objects and call ladders.
+- Semantic AST plus packed sidecars — separates hot facts from cold metadata at
+  the cost of side-table indirection.
+- Canonical source DAG plus placement frames — reuses imports/mixins but needs
+  correct dependency/escape analysis.
+- Fixed-shape tagged records / lean class-per-kind — predictable V8 shapes vs.
+  readable debugging trade-offs.
+- Parentless zipper, region/rope source tree, two-tier statement/value AST,
+  normalized semantic IR, expression bytecode (stack or register), selector/extend
+  decision DAGs, piece-table output IR, and a native/Wasm packed subset behind an
+  explicit boundary.
 
-Compile only a closed subset of literal/list/operation values to a tiny
-register representation. Reference, interpolation, call, guard, plugin, and
-async operations emit explicit escape instructions to the normal evaluator.
-The POC must prove that it does not silently evaluate a dynamic node as static.
-
-### POC 3: feature-specialized direct emitter
-
-Select a direct emitter only for a proven capability mask. It may share
-canonical source bodies and emit unchanged static import/mixin regions directly;
-placement-specific overlays remain in frames. Every fallback must be counted
-and its semantic reason named.
-
-### POC 4: trivia representation
-
-Run no-trivia, one-space, comment-heavy, multiline, unknown-rule, and
-source-map-on workloads through the current and comment-only/sparse variants.
-Count trivia lookups, comment scans, writer marks, joins, chunks, and flattened
-parts. Keep a variant only if it reduces total work or retained memory with
-byte-identical output.
-
-### POC 5: recognizer boundary
-
-Build a genuinely stripped Parseman recognizer artifact, not a runtime flag in
-the same capture-capable parser. Compare generated code shape and CPU profile
-against the current recognizer and Less's cursor/regex fast paths. Keep the
-Parseman change grammar-general; CSS/Less-specific late materialization belongs
-in the grammar/host boundary.
-
-## Decision
-
-The design to pursue is **a canonical light semantic tree with tagged static
-leaves, sparse trivia, placement-local live frames, and explicit dynamic
-islands**, tested first through the five POCs above. This preserves the value of
-a complete AST for debugging, tooling, and minification while stopping inert
-values, imports, mixin bodies, whitespace captures, and no-feature evaluator
-surfaces from paying dynamic costs they do not use.
-
-## Tree2 benchmark protocol and current coverage
-
-The dedicated benchmark is opt-in and excluded from the normal core test glob:
-
-```sh
-TREE2_BENCH=1 TREE2_WARMUPS=3 TREE2_SAMPLES=5 \
-  pnpm --filter @jesscss/core test:bench -- --run
-```
-
-It compares a fresh-root legacy render with a tree2 build/render and records
-parse, adapter, eval, native-render, legacy-escape, and total stages. The
-synthetic static and mixed fixtures are useful stage probes, but they are not
-the canonical 20-warmup/45-pair `benchmark.less` A/B contract. The raw
-canonical fixture takes one whole-document legacy escape; the evaluated
-mixed-root follow-up rejects the canonical route on the output hash recorded
-above. Therefore the current benchmark proves exact-output plumbing and
-exposes where the prototype falls back; it does not prove an end-to-end
-speedup, a full Less feature-parity route, or a production AST replacement.
-Full Less-corpus,
-source-map-on, comment-heavy, import/mixin-placement, and typed-value coverage
-remain required before any tree2 result can enter the Q-40 integration queue.
+Wasm or native code is not a substitute for removing unnecessary work and is not a
+near-term candidate.
+</content>
+</invoke>
