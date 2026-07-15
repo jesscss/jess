@@ -153,17 +153,29 @@ while leaving an unconditional rare-feature pass in place.
 
 Registry ownership is closed-world: a new or changed production hot-path owner
 file must add or update a registry contract in the same change. Each contract
-covers exactly one production file and must provide the cheap admission
-predicate, required counters and relations, a common no-feature benchmark or
-counter proof, and an executable source check for that file's guarded caller.
-Audit records must use registry IDs, and every changed production hot-path
-source file must appear in exactly one such contract. The changed hunk must
-also touch that contract's caller, expensive operation, or admission guard;
+covers exactly one production file and one named source surface, and must
+provide the cheap admission predicate, required counters and relations, a
+common no-feature benchmark or counter proof, and an executable source check
+for that surface's guarded caller. Multiple contracts may cover one file only
+when their caller/operation surfaces are disjoint. Audit records must use
+registry IDs, and every changed production hot-path hunk must match exactly one
+such surface. A hunk that matches none or multiple surfaces fails closed;
 file-level ownership cannot silently cover an unrelated evaluator or serializer
 change. A changed production contract must be `accepted`; `rejected`/`deferred`
 means the experimental code was reverted before landing. Test-only paths still
 receive the normal danger-token review but are excluded from this production-
 file coverage requirement.
+
+Relations are machine-checked counter expressions, not prose labels. A contract
+whose admission controls an expensive operation should expose the count of
+successful admissions as `admittedCalls` (or another explicitly declared
+counter) and bind the expensive call count to it, for example
+`calls <= admittedCalls` and `admittedCalls <= featureBearingContainers`.
+This is required for every registered contract. It rejects a report that claims
+10,000 expensive calls while the cheap admission found no feature-bearing work.
+The verifier checks the arithmetic and the declared counter names; it does not
+independently collect runtime counters, so the focused evidence command remains
+the source-of-truth check for whether the reported values are real.
 
 <!-- BEGIN AGGRESSIVE-CUTTING-COST-CONTRACTS -->
 ```json
@@ -179,6 +191,7 @@ file coverage requirement.
     },
     "counters": [
       "calls",
+      "admittedCalls",
       "containers",
       "featureBearingContainers",
       "itemsVisited",
@@ -194,6 +207,8 @@ file coverage requirement.
       "pairs": 45
     },
     "relations": [
+      "calls <= admittedCalls",
+      "admittedCalls <= featureBearingContainers",
       "featureBearingContainers < containers",
       "noFeatureAllocations === 0"
     ],
@@ -218,6 +233,7 @@ file coverage requirement.
     },
     "counters": [
       "calls",
+      "admittedCalls",
       "containers",
       "featureBearingContainers",
       "itemsVisited",
@@ -233,6 +249,8 @@ file coverage requirement.
       "pairs": 45
     },
     "relations": [
+      "calls <= admittedCalls",
+      "admittedCalls <= featureBearingContainers",
       "featureBearingContainers < containers",
       "noFeatureAllocations === 0"
     ],
@@ -263,7 +281,8 @@ The matching handoff shape is:
       "cost": "cheap",
       "before": "collection and allocation"
     },
-    "calls": 10420,
+    "calls": 15,
+    "admittedCalls": 15,
     "containers": 10420,
     "featureBearingContainers": 15,
     "itemsVisited": 16730,
@@ -293,7 +312,7 @@ The matching handoff shape is:
         "outputSha256": "adfd26732125a33fc1e264aca7d7ecde8c7c1da43f968e3106bd387a1f78e840"
       }
     },
-    "commonCaseProof": "counter test: no-merge container workload",
+    "commonCaseProof": "counter test: 10,420 admission checks, 15 admitted/coalescer calls",
     "verdict": "accepted"
   }
 ]

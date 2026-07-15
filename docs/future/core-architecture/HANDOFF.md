@@ -154,6 +154,74 @@ Other active docs in this dir:
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: ADMITTED-CALL COUNTER RELATION — make the cost contract reject
+  an expensive operation whose call count outruns the cheap admission that
+  supposedly justified it.
+- Architecture surface: `parseCounterRelation`,
+  `evaluateCounterRelation`, and the registry/audit validation in
+  `scripts/verify-aggressive-cutting-review.mjs`, with regression coverage in
+  `scripts/__tests__/verify-aggressive-cutting-review.test.ts`. No Jess runtime
+  source changed.
+- Separation/duplication: the check is generic review-time arithmetic over
+  declared counters; it adds no runtime instrumentation and no second
+  benchmark harness. The coalescer contract now states `calls <= admittedCalls`
+  and `admittedCalls <= featureBearingContainers`.
+- Cumulative node weight: zero. Test records and verifier-local counter values
+  are not runtime nodes, frames, caches, or output state.
+- New traversal: none in production. The verifier parses declared relation
+  strings and compares scalar record fields.
+- New node/materialization: none in production. The new test builds only small
+  JSON-like records for the review helper.
+- Render path: unchanged. This is a pre-commit review failure, not a render
+  branch or runtime admission mechanism.
+- Helper/API surface: one private relation parser/evaluator pair is exported
+  only for focused verifier tests; no Jess package API changed.
+- Metadata mutations: none.
+- Review-flagged diff tokens: [loop/traversal] and [materialized array/object]
+  are review/test bookkeeping only; no production hot-path category was added.
+- Evidence: the focused verifier tests pass `2/2`; the negative case rejects
+  `calls=10,000, admittedCalls=0, featureBearingContainers=0`, while the
+  consistent admitted chain passes. `node --check`,
+  `pnpm run verify:aggressive-cutting-review`, and `git diff --check` pass.
+  No performance claim applies.
+- Verdict: accepted as a review-system hardening pass; future expensive-call
+  contracts cannot omit the admission-to-feature counter relation.
+
+- Latest pass: SOURCE-SURFACE COST CONTRACT OWNERSHIP — refine the hot-path
+  review gate from file-level ownership to changed-hunk ownership, allowing
+  multiple disjoint contracts in a hot file while failing closed when a hunk
+  matches none or more than one registered surface.
+- Architecture surface: `scripts/verify-aggressive-cutting-review.mjs`
+  (`changedHunks`, `contractsForChangedHunk`, and the production coverage
+  checks) plus the registry rule in
+  `docs/future/core-architecture/AGGRESSIVE-CUTTING-REVIEW.md`. No Jess
+  runtime, parser, AST, evaluator, lookup, writer, or output source changed.
+- Separation/duplication: the verifier reuses the existing Git diff and
+  registry; it adds no runtime counters, source-tree walk, cache, or second
+  benchmark path. Contract identity is now the named caller/operation surface,
+  not the entire file.
+- Cumulative node weight: zero. All arrays/sets are review-time bookkeeping;
+  no Node, frame, placement, output, or retained benchmark state changed.
+- New traversal: review-time parsing of unified-diff hunks only. No production
+  traversal, parser work, eval work, or render work was added.
+- New node/materialization: none in production. The verifier materializes only
+  short-lived hunk strings and contract-match sets while reviewing a patch.
+- Render path: unchanged. A source hunk cannot inherit an unrelated contract's
+  audit record or executable evidence merely because both changes share a file.
+- Helper/API surface: private verifier helpers only; no package export or Jess
+  runtime API was added.
+- Metadata mutations: none. The verifier reads Git/source/Markdown state only.
+- Review-flagged diff tokens: [loop/traversal] and [materialized array/object]
+  are review-time hunk bookkeeping, not production runtime changes.
+- Evidence: `node --check scripts/verify-aggressive-cutting-review.mjs`,
+  `git diff --check`, and `pnpm run verify:aggressive-cutting-review` pass.
+  A temporary unrelated `rules.ts` comment hunk was rejected with
+  `does not touch any registered source surface`; the probe was removed.
+  No performance claim applies.
+- Verdict: accepted as review-system hardening; future changes in `rules.ts`
+  must register and measure their own disjoint surface instead of inheriting
+  the merge-coalescer contract.
+
 - Latest pass: CANONICAL BENCHMARK EVIDENCE CONTRACT — require every changed
   production hot-path contract to record both parse+render and render-only
   same-checkout A/B medians, exact 20 warmups/45 alternating pairs, wins, and

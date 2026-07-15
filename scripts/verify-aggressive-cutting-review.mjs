@@ -2,6 +2,7 @@
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const root = resolve(new URL('..', import.meta.url).pathname);
 const handoffPath = resolve(root, 'docs/future/core-architecture/HANDOFF.md');
@@ -98,10 +99,62 @@ function readCostContractRegistry(review) {
 
 const requiredCounterNames = [
   'calls',
+  'admittedCalls',
   'itemsVisited',
   'noFeatureAllocations',
   'noFeatureMisses'
 ];
+
+const counterRelationPattern = /^([A-Za-z][A-Za-z0-9_]*)\s*(<=|<|===)\s*([A-Za-z][A-Za-z0-9_]*|0)$/;
+
+function parseCounterRelation(relation) {
+  if (typeof relation !== 'string') {
+    return null;
+  }
+  const match = relation.match(counterRelationPattern);
+  if (!match) {
+    return null;
+  }
+  return { left: match[1], operator: match[2], right: match[3] };
+}
+
+function counterValue(record, name) {
+  return Number.isInteger(record[name]) && record[name] >= 0 ? record[name] : null;
+}
+
+function evaluateCounterRelation(relation, record) {
+  const parsed = parseCounterRelation(relation);
+  if (!parsed) {
+    return { ok: false, reason: 'invalid relation syntax' };
+  }
+  const left = counterValue(record, parsed.left);
+  const right = parsed.right === '0' ? 0 : counterValue(record, parsed.right);
+  if (left === null || right === null) {
+    return { ok: false, reason: `missing numeric counter (${parsed.left}, ${parsed.right})` };
+  }
+  const ok = parsed.operator === '<='
+    ? left <= right
+    : parsed.operator === '<'
+      ? left < right
+      : left === right;
+  return { ok, left, operator: parsed.operator, right };
+}
+
+function validateDeclaredCounterRelations(contract) {
+  const errors = [];
+  const declared = new Set(contract.counters ?? []);
+  for (const relation of contract.relations ?? []) {
+    const parsed = parseCounterRelation(relation);
+    if (!parsed) {
+      errors.push(`Cost contract ${contract.id} has invalid counter relation: ${String(relation)}.`);
+      continue;
+    }
+    if (!declared.has(parsed.left) || (parsed.right !== '0' && !declared.has(parsed.right))) {
+      errors.push(`Cost contract ${contract.id} relation must use counters declared by the contract: ${relation}.`);
+    }
+  }
+  return errors;
+}
 
 function validateCostContractRegistry(registry) {
   const errors = [];
@@ -168,6 +221,20 @@ function validateCostContractRegistry(registry) {
     }
     if (!Array.isArray(contract.relations) || contract.relations.length === 0) {
       errors.push(`Cost contract ${contract.id} must state at least one counter relation.`);
+    } else {
+      errors.push(...validateDeclaredCounterRelations(contract));
+      if (!contract.relations.includes('calls <= admittedCalls')) {
+        errors.push(`Cost contract ${contract.id} must bind expensive calls to admitted calls with calls <= admittedCalls.`);
+      }
+      const hasFeatureAdmissionBound = contract.relations.some((relation) => {
+        const parsed = parseCounterRelation(relation);
+        return parsed?.left === 'admittedCalls'
+          && parsed.operator === '<='
+          && /^featureBearing/i.test(parsed.right);
+      });
+      if (!hasFeatureAdmissionBound) {
+        errors.push(`Cost contract ${contract.id} must bind admitted calls to a feature-bearing counter.`);
+      }
     }
     const evidence = contract.evidence;
     if (
@@ -199,17 +266,21 @@ function validateCostContractRegistry(registry) {
 
 function validateCostContractOwnership(registry) {
   const errors = [];
-  const owners = new Map();
+  const surfaces = new Map();
   for (const contract of registry) {
     for (const file of contract.files ?? []) {
       if (!hotPathRoots.some(rootPath => file.startsWith(rootPath))) {
         errors.push(`Cost contract ${contract.id} owns file outside the reviewed production roots: ${file}.`);
       }
-      const priorOwner = owners.get(file);
+      const sourceCheck = contract.sourceCheck;
+      const surfaceKey = sourceCheck
+        ? [file, sourceCheck.caller, sourceCheck.call].join('\u0000')
+        : `${file}\u0000${contract.id}`;
+      const priorOwner = surfaces.get(surfaceKey);
       if (priorOwner) {
-        errors.push(`Production hot-path file ${file} is owned by both ${priorOwner} and ${contract.id}.`);
+        errors.push(`Production hot-path surface ${file} / ${sourceCheck?.caller ?? contract.id} / ${sourceCheck?.call ?? 'missing source check'} is owned by both ${priorOwner} and ${contract.id}.`);
       } else {
-        owners.set(file, contract.id);
+        surfaces.set(surfaceKey, contract.id);
       }
     }
   }
@@ -261,7 +332,56 @@ function numberCounter(record, names) {
   return null;
 }
 
-function validateCostAuditRecords(records, registry, changedPaths) {
+function changedHunks(diff) {
+  const hunks = [];
+  let file = null;
+  let lines = null;
+  const finish = () => {
+    if (file && lines) {
+      hunks.push({ file, text: lines.join('\n') });
+    }
+  };
+  for (const line of diff.split('\n')) {
+    if (line.startsWith('+++ b/')) {
+      finish();
+      file = line.slice('+++ b/'.length);
+      lines = null;
+      continue;
+    }
+    if (line.startsWith('@@')) {
+      finish();
+      lines = [line];
+      continue;
+    }
+    if (lines) {
+      lines.push(line);
+    }
+  }
+  finish();
+  return hunks;
+}
+
+function contractsForChangedHunk(registry, file, hunk) {
+  return registry.filter((contract) => {
+    if (!contract.files.includes(file) || !contract.sourceCheck) {
+      return false;
+    }
+    const { caller, call, guard } = contract.sourceCheck;
+    return [caller, call, guard].some(anchor => hunk.includes(anchor));
+  });
+}
+
+function contractsForChangedSurface(registry, path, diff) {
+  const matches = new Set();
+  for (const hunk of changedHunks(diff).filter(candidate => candidate.file === path)) {
+    for (const contract of contractsForChangedHunk(registry, path, hunk.text)) {
+      matches.add(contract);
+    }
+  }
+  return [...matches];
+}
+
+function validateCostAuditRecords(records, registry, changedPaths, diff) {
   const errors = [];
   if (!records) {
     return ['Latest self-prosecution block is missing a valid Hot-path cost contracts JSON record.'];
@@ -352,7 +472,9 @@ function validateCostAuditRecords(records, registry, changedPaths) {
   }
 
   for (const contract of registry) {
-    const ownsChangedFile = contract.files.some(file => changedPaths.includes(file));
+    const ownsChangedFile = contract.files.some(file =>
+      changedPaths.includes(file) && contractsForChangedSurface(registry, file, diff).includes(contract)
+    );
     if (!ownsChangedFile) {
       continue;
     }
@@ -361,22 +483,13 @@ function validateCostAuditRecords(records, registry, changedPaths) {
       errors.push(`Changed files require the ${contract.id} hot-path cost audit record.`);
       continue;
     }
-    const calls = numberCounter(record, ['calls']);
-    const containers = numberCounter(record, ['containers']);
-    const featureBearing = numberCounter(record, ['featureBearingCalls', 'featureBearingContainers']);
-    const noFeatureAllocations = numberCounter(record, ['noFeatureAllocations']);
     if (record.verdict !== 'accepted') {
       errors.push(`Changed production hot-path contract ${contract.id} must be accepted only after rejected/deferred code has been reverted.`);
     }
     for (const relation of contract.relations) {
-      if (relation === 'featureBearingContainers < containers' && !(featureBearing !== null && containers !== null && featureBearing < containers)) {
-        errors.push(`Cost contract ${contract.id} relation failed: ${relation}.`);
-      }
-      if (relation === 'featureBearingCalls <= calls' && !(featureBearing !== null && calls !== null && featureBearing <= calls)) {
-        errors.push(`Cost contract ${contract.id} relation failed: ${relation}.`);
-      }
-      if (relation === 'noFeatureAllocations === 0' && noFeatureAllocations !== 0) {
-        errors.push(`Cost contract ${contract.id} relation failed: ${relation}.`);
+      const result = evaluateCounterRelation(relation, record);
+      if (!result.ok) {
+        errors.push(`Cost contract ${contract.id} relation failed: ${relation}${result.reason ? ` (${result.reason})` : ''}.`);
       }
     }
   }
@@ -392,23 +505,12 @@ function isProductionHotPathFile(path) {
 }
 
 function validateProductionHotPathCoverage(registry, changedPaths) {
-  const ownership = new Map();
-  for (const contract of registry) {
-    for (const file of contract.files) {
-      const owners = ownership.get(file) ?? [];
-      owners.push(contract.id);
-      ownership.set(file, owners);
-    }
-  }
   return changedPaths
     .filter(isProductionHotPathFile)
-    .flatMap(path => {
-      const owners = ownership.get(path) ?? [];
+    .flatMap((path) => {
+      const owners = registry.filter(contract => contract.files.includes(path));
       if (owners.length === 0) {
         return [`Changed production hot-path file ${path} is not covered by any machine-readable cost-contract registry entry.`];
-      }
-      if (owners.length !== 1) {
-        return [`Changed production hot-path file ${path} must have exactly one cost-contract owner; found ${owners.join(', ')}.`];
       }
       return [];
     });
@@ -462,25 +564,30 @@ function validateSourceChecks(registry, changedPaths) {
 
 function validateChangedContractSurface(registry, changedPaths, diff) {
   const errors = [];
-  for (const contract of registry) {
-    const sourceCheck = contract.sourceCheck;
-    if (!sourceCheck || !changedPaths.includes(sourceCheck.file)) {
+  for (const path of changedPaths.filter(isProductionHotPathFile)) {
+    const owners = registry.filter(contract => contract.files.includes(path));
+    const hunks = changedHunks(diff).filter(hunk => hunk.file === path);
+    if (owners.length === 0 || hunks.length === 0) {
       continue;
     }
-    const anchors = [sourceCheck.caller, sourceCheck.call, sourceCheck.guard];
-    if (!anchors.some(anchor => diff.includes(anchor))) {
-      errors.push(
-        `Changed production hot-path file ${sourceCheck.file} does not touch the guarded surface for ${contract.id}; add a contract for the changed surface instead of inheriting an unrelated file-level contract.`
-      );
+    for (const hunk of hunks) {
+      const matched = contractsForChangedHunk(registry, path, hunk.text);
+      if (matched.length === 0) {
+        errors.push(`Changed production hot-path hunk in ${path} does not touch any registered source surface; add or update the contract for the changed hunk.`);
+      } else if (matched.length !== 1) {
+        errors.push(`Changed production hot-path hunk in ${path} matches multiple cost-contract surfaces: ${matched.map(contract => contract.id).join(', ')}.`);
+      }
     }
   }
   return errors;
 }
 
-function validateExecutableEvidence(registry, changedPaths) {
+function validateExecutableEvidence(registry, changedPaths, diff) {
   const errors = [];
   for (const contract of registry) {
-    if (!contract.files.some(file => changedPaths.includes(file))) {
+    if (!contract.files.some(file =>
+      changedPaths.includes(file) && contractsForChangedSurface(registry, file, diff).includes(contract)
+    )) {
       continue;
     }
     const command = contract.evidence.command;
@@ -500,167 +607,175 @@ function validateExecutableEvidence(registry, changedPaths) {
   return errors;
 }
 
-const requiredLabels = [
-  '- Architecture surface:',
-  '- Separation/duplication:',
-  '- Cumulative node weight:',
-  '- New traversal:',
-  '- New node/materialization:',
-  '- Render path:',
-  '- Helper/API surface:',
-  '- Metadata mutations:',
-  '- Review-flagged diff tokens:',
-  '- Evidence:',
-  '- Verdict:'
-];
+function runVerifier() {
+  const requiredLabels = [
+    '- Architecture surface:',
+    '- Separation/duplication:',
+    '- Cumulative node weight:',
+    '- New traversal:',
+    '- New node/materialization:',
+    '- Render path:',
+    '- Helper/API surface:',
+    '- Metadata mutations:',
+    '- Review-flagged diff tokens:',
+    '- Evidence:',
+    '- Verdict:'
+  ];
 
-const dangerPatterns = [
-  ['loop/traversal', /\+\s*(for|while)\s*\(/],
-  ['array helper', /\+\s*.*(?:Array\.(from|of)|Object\.(values|entries|keys)|\.(map|filter|reduce|sort|flatMap|slice|join|forEach))\s*\(/],
-  ['array spread/materialization', /\+\s*.*\[\.\.\.|\+\s*.*\.\.\.\w/],
-  ['generator', /\+\s*.*function\s*\*|\+\s*.*yield\b/],
-  ['node construction', /\+\s*.*\bnew\s+[A-Z][A-Za-z0-9_]*\s*\(/],
-  ['copy helper', /\+\s*.*\b(copyWithReusableLeaves|copyChild|constructCopy|\.copy|\.clone)\b/],
-  ['inherit/adopt/frozen', /\+\s*.*(\.inherit\s*\(|\.adopt\s*\(|\.frozen\b|frozen\s*=)/],
-  ['parent/source mutation', /\+\s*.*(\.parent\s*=|sourceNode|sourceRoot|_sourceRoot|location\s*=|_location)/],
-  ['generic defensive read', /\+\s*.*(Reflect\.|Object\.hasOwn|hasOwnProperty)/],
-  ['side map/set', /\+\s*.*\b(new\s+)?(?:WeakMap|Map|Set)\b|\+\s*.*globalThis\.(?:WeakMap|Map|Set)\b/],
-  ['routine error control', /\+\s*.*(try\s*\{|catch\s*\(|new\s+Error\b)/],
-  ['materialized array/object', /\+\s*.*(new Array<|new Array\(|\[\]|=\s*\{)/]
-];
+  const dangerPatterns = [
+    ['loop/traversal', /\+\s*(for|while)\s*\(/],
+    ['array helper', /\+\s*.*(?:Array\.(from|of)|Object\.(values|entries|keys)|\.(map|filter|reduce|sort|flatMap|slice|join|forEach))\s*\(/],
+    ['array spread/materialization', /\+\s*.*\[\.\.\.|\+\s*.*\.\.\.\w/],
+    ['generator', /\+\s*.*function\s*\*|\+\s*.*yield\b/],
+    ['node construction', /\+\s*.*\bnew\s+[A-Z][A-Za-z0-9_]*\s*\(/],
+    ['copy helper', /\+\s*.*\b(copyWithReusableLeaves|copyChild|constructCopy|\.copy|\.clone)\b/],
+    ['inherit/adopt/frozen', /\+\s*.*(\.inherit\s*\(|\.adopt\s*\(|\.frozen\b|frozen\s*=)/],
+    ['parent/source mutation', /\+\s*.*(\.parent\s*=|sourceNode|sourceRoot|_sourceRoot|location\s*=|_location)/],
+    ['generic defensive read', /\+\s*.*(Reflect\.|Object\.hasOwn|hasOwnProperty)/],
+    ['side map/set', /\+\s*.*\b(new\s+)?(?:WeakMap|Map|Set)\b|\+\s*.*globalThis\.(?:WeakMap|Map|Set)\b/],
+    ['routine error control', /\+\s*.*(try\s*\{|catch\s*\(|new\s+Error\b)/],
+    ['materialized array/object', /\+\s*.*(new Array<|new Array\(|\[\]|=\s*\{)/]
+  ];
 
-const diff = [collectBranchDiff(), collectDiff()].join('\n');
-const changedPaths = collectChangedPaths();
-const additions = diff.split('\n').filter(line => line.startsWith('+') && !line.startsWith('+++'));
-const findings = [];
+  const diff = [collectBranchDiff(), collectDiff()].join('\n');
+  const changedPaths = collectChangedPaths();
+  const additions = diff.split('\n').filter(line => line.startsWith('+') && !line.startsWith('+++'));
+  const findings = [];
 
-for (const [label, pattern] of dangerPatterns) {
-  const matches = additions.filter(line => pattern.test(line));
-  if (matches.length > 0) {
-    findings.push({ label, matches: matches.slice(0, 8), count: matches.length });
-  }
-}
-
-const handoff = readFileSync(handoffPath, 'utf8');
-const review = readFileSync(cuttingReviewPath, 'utf8');
-const registryErrors = [];
-let registry = [];
-try {
-  registry = readCostContractRegistry(review);
-  registryErrors.push(...validateCostContractRegistry(registry));
-  registryErrors.push(...validateCostContractOwnership(registry));
-  registryErrors.push(...validateRegisteredSourceMetadata(registry));
-} catch (error) {
-  registryErrors.push(error.message);
-}
-const sectionIndex = handoff.lastIndexOf('## Aggressive Cutting Self-Prosecution');
-const section = sectionIndex === -1 ? '' : handoff.slice(sectionIndex);
-const latestPassIndex = section.indexOf('- Latest pass:');
-const nextPassIndex = latestPassIndex === -1
-  ? -1
-  : section.indexOf('\n- Latest pass:', latestPassIndex + 1);
-const latestPass = latestPassIndex === -1
-  ? section
-  : section.slice(latestPassIndex, nextPassIndex === -1 ? undefined : nextPassIndex);
-const missingLabels = requiredLabels.filter(label => !latestPass.includes(label));
-const stalePlaceholders = /\b(TODO|TBD|fill in|pending)\b/i.test(latestPass);
-
-let failed = false;
-
-if (registryErrors.length > 0) {
-  failed = true;
-  console.error('\nInvalid aggressive-cutting cost-contract registry:');
-  for (const error of registryErrors) {
-    console.error(`- ${error}`);
-  }
-}
-
-if (sectionIndex === -1 || missingLabels.length > 0) {
-  failed = true;
-  console.error('Missing required Aggressive Cutting Self-Prosecution block in docs/future/core-architecture/HANDOFF.md.');
-  if (missingLabels.length > 0) {
-    console.error(`Missing labels: ${missingLabels.join(', ')}`);
-  }
-}
-
-if (stalePlaceholders) {
-  failed = true;
-  console.error('Self-prosecution block still contains a placeholder word: TODO/TBD/fill in/pending.');
-}
-
-if (findings.length > 0) {
-  console.error('\nDanger tokens found in the current diff. Each must be prosecuted in the handoff block:');
-  for (const finding of findings) {
-    console.error(`\n[${finding.label}] ${finding.count} match(es)`);
-    for (const match of finding.matches) {
-      console.error(match.slice(0, 220));
-    }
-    if (finding.count > finding.matches.length) {
-      console.error(`... ${finding.count - finding.matches.length} more`);
+  for (const [label, pattern] of dangerPatterns) {
+    const matches = additions.filter(line => pattern.test(line));
+    if (matches.length > 0) {
+      findings.push({ label, matches: matches.slice(0, 8), count: matches.length });
     }
   }
-  const reviewTokenLine = latestPass
-    .split('\n')
-    .find(line => line.startsWith('- Review-flagged diff tokens:'));
-  if (!reviewTokenLine || /\b(none|no new|n\/a)\b/i.test(reviewTokenLine)) {
-    failed = true;
-    console.error(
-      '\nDanger tokens require a non-empty "- Review-flagged diff tokens:" accounting line in the latest self-prosecution block.'
-    );
-  }
-  const missingFindingLabels = findings
-    .map(finding => finding.label)
-    .filter(label => !latestPass.includes(`[${label}]`));
-  if (missingFindingLabels.length > 0) {
-    failed = true;
-    console.error(
-      `\nLatest self-prosecution block must explicitly account for every danger category by label. Missing: ${missingFindingLabels.map(label => `[${label}]`).join(', ')}`
-    );
-  }
-}
 
-const hotPathChanged = changedPaths.some(path => hotPathRoots.some(rootPath => path.startsWith(rootPath)));
-const productionHotPathChanged = changedPaths.some(isProductionHotPathFile);
-const requiresCostAudit = hotPathChanged || findings.length > 0;
-if (requiresCostAudit && registryErrors.length === 0) {
-  const auditRecords = extractCostAuditRecords(latestPass);
-  const auditErrors = validateCostAuditRecords(auditRecords, registry, changedPaths);
-  const sourceCheckErrors = validateSourceChecks(registry, changedPaths);
-  const changedSurfaceErrors = validateChangedContractSurface(registry, changedPaths, diff);
-  const evidenceErrors = productionHotPathChanged
-    ? validateExecutableEvidence(registry, changedPaths)
-    : [];
-  const coverageErrors = productionHotPathChanged
-    ? validateProductionHotPathCoverage(registry, changedPaths)
-    : [];
-  if (
-    auditErrors.length > 0
-    || sourceCheckErrors.length > 0
-    || changedSurfaceErrors.length > 0
-    || evidenceErrors.length > 0
-    || coverageErrors.length > 0
-  ) {
+  const handoff = readFileSync(handoffPath, 'utf8');
+  const review = readFileSync(cuttingReviewPath, 'utf8');
+  const registryErrors = [];
+  let registry = [];
+  try {
+    registry = readCostContractRegistry(review);
+    registryErrors.push(...validateCostContractRegistry(registry));
+    registryErrors.push(...validateCostContractOwnership(registry));
+    registryErrors.push(...validateRegisteredSourceMetadata(registry));
+  } catch (error) {
+    registryErrors.push(error.message);
+  }
+  const sectionIndex = handoff.lastIndexOf('## Aggressive Cutting Self-Prosecution');
+  const section = sectionIndex === -1 ? '' : handoff.slice(sectionIndex);
+  const latestPassIndex = section.indexOf('- Latest pass:');
+  const nextPassIndex = latestPassIndex === -1
+    ? -1
+    : section.indexOf('\n- Latest pass:', latestPassIndex + 1);
+  const latestPass = latestPassIndex === -1
+    ? section
+    : section.slice(latestPassIndex, nextPassIndex === -1 ? undefined : nextPassIndex);
+  const missingLabels = requiredLabels.filter(label => !latestPass.includes(label));
+  const stalePlaceholders = /\b(TODO|TBD|fill in|pending)\b/i.test(latestPass);
+
+  let failed = false;
+
+  if (registryErrors.length > 0) {
     failed = true;
-    console.error('\nHot-path cost contract review failed:');
-    for (const error of [
-      ...auditErrors,
-      ...sourceCheckErrors,
-      ...changedSurfaceErrors,
-      ...evidenceErrors,
-      ...coverageErrors
-    ]) {
+    console.error('\nInvalid aggressive-cutting cost-contract registry:');
+    for (const error of registryErrors) {
       console.error(`- ${error}`);
     }
   }
-}
 
-if (failed) {
-  process.exitCode = 1;
-} else {
-  console.log('Aggressive cutting review block present.');
-  if (findings.length === 0) {
-    console.log('No danger tokens found in scoped diff.');
+  if (sectionIndex === -1 || missingLabels.length > 0) {
+    failed = true;
+    console.error('Missing required Aggressive Cutting Self-Prosecution block in docs/future/core-architecture/HANDOFF.md.');
+    if (missingLabels.length > 0) {
+      console.error(`Missing labels: ${missingLabels.join(', ')}`);
+    }
+  }
+
+  if (stalePlaceholders) {
+    failed = true;
+    console.error('Self-prosecution block still contains a placeholder word: TODO/TBD/fill in/pending.');
+  }
+
+  if (findings.length > 0) {
+    console.error('\nDanger tokens found in the current diff. Each must be prosecuted in the handoff block:');
+    for (const finding of findings) {
+      console.error(`\n[${finding.label}] ${finding.count} match(es)`);
+      for (const match of finding.matches) {
+        console.error(match.slice(0, 220));
+      }
+      if (finding.count > finding.matches.length) {
+        console.error(`... ${finding.count - finding.matches.length} more`);
+      }
+    }
+    const reviewTokenLine = latestPass
+      .split('\n')
+      .find(line => line.startsWith('- Review-flagged diff tokens:'));
+    if (!reviewTokenLine || /\b(none|no new|n\/a)\b/i.test(reviewTokenLine)) {
+      failed = true;
+      console.error(
+        '\nDanger tokens require a non-empty "- Review-flagged diff tokens:" accounting line in the latest self-prosecution block.'
+      );
+    }
+    const missingFindingLabels = findings
+      .map(finding => finding.label)
+      .filter(label => !latestPass.includes(`[${label}]`));
+    if (missingFindingLabels.length > 0) {
+      failed = true;
+      console.error(
+        `\nLatest self-prosecution block must explicitly account for every danger category by label. Missing: ${missingFindingLabels.map(label => `[${label}]`).join(', ')}`
+      );
+    }
+  }
+
+  const hotPathChanged = changedPaths.some(path => hotPathRoots.some(rootPath => path.startsWith(rootPath)));
+  const productionHotPathChanged = changedPaths.some(isProductionHotPathFile);
+  const requiresCostAudit = hotPathChanged || findings.length > 0;
+  if (requiresCostAudit && registryErrors.length === 0) {
+    const auditRecords = extractCostAuditRecords(latestPass);
+    const auditErrors = validateCostAuditRecords(auditRecords, registry, changedPaths, diff);
+    const sourceCheckErrors = validateSourceChecks(registry, changedPaths);
+    const changedSurfaceErrors = validateChangedContractSurface(registry, changedPaths, diff);
+    const evidenceErrors = productionHotPathChanged
+      ? validateExecutableEvidence(registry, changedPaths, diff)
+      : [];
+    const coverageErrors = productionHotPathChanged
+      ? validateProductionHotPathCoverage(registry, changedPaths)
+      : [];
+    if (
+      auditErrors.length > 0
+      || sourceCheckErrors.length > 0
+      || changedSurfaceErrors.length > 0
+      || evidenceErrors.length > 0
+      || coverageErrors.length > 0
+    ) {
+      failed = true;
+      console.error('\nHot-path cost contract review failed:');
+      for (const error of [
+        ...auditErrors,
+        ...sourceCheckErrors,
+        ...changedSurfaceErrors,
+        ...evidenceErrors,
+        ...coverageErrors
+      ]) {
+        console.error(`- ${error}`);
+      }
+    }
+  }
+
+  if (failed) {
+    process.exitCode = 1;
   } else {
-    console.log('Danger tokens accounted for in the handoff self-prosecution block.');
+    console.log('Aggressive cutting review block present.');
+    if (findings.length === 0) {
+      console.log('No danger tokens found in scoped diff.');
+    } else {
+      console.log('Danger tokens accounted for in the handoff self-prosecution block.');
+    }
   }
 }
+
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  runVerifier();
+}
+
+export { evaluateCounterRelation, validateCostAuditRecords, validateCostContractRegistry };
