@@ -146,7 +146,7 @@ Each item is one line of implementation sketch. Ordered by the user's priority.
 3. ✅ **DONE.** **Pseudo-class / pseudo-element completions** on `:` / `::` in selector
    context, with argument snippets for `:nth-*`. Pure data + a selector-context
    check (reuse the brace-depth scanner already in `getCompletions`).
-4. ⏳ **PARTIAL (SCSS `@include` done; Less `.foo()` call still TODO).** **SCSS/Less mixin completions.** The declared-mixin inventory already exists
+4. ✅ **DONE (SCSS `@include` + Less `.foo()` calls).** **SCSS/Less mixin completions.** The declared-mixin inventory already exists
    (`cstDeclaredSymbols().mixins`, used for did-you-mean). Surface it as
    completions in `@include ` (scss) / `.` call context (less) — symmetric to the
    existing `cstVariableNames` path.
@@ -162,16 +162,17 @@ Each item is one line of implementation sketch. Ordered by the user's priority.
    web-custom-data at-rule `values`.
 8. **Snippet completions** — emit `InsertTextFormat.Snippet` for at-rules and
    function calls (`@media $1 { $0 }`), instead of plain `textEdit`.
-9. **Lint rules** — port the high-value subset first: `emptyRules`,
+9. ✅ **DONE (6 configurable CST rules: empty-rules, unknown-property,
+    unknown-at-rule, duplicate-property, hex-color-length, zero-units).** **Lint rules** — port the high-value subset first: `emptyRules`,
    `unknownProperties`, `unknownAtRules`, `duplicateProperties`,
    `hexColorLength`, `argumentsInColorFunction`. Data + CST walk; wire into the
    existing configurable-severity map (extend beyond the 2 semantic codes).
 10. **Hover enrichment** — add pseudo hover, and append browser-compat/status +
     MDN link to property/at-rule hover (web-custom-data carries `status`;
     compat needs the MDN `browsers` field — may require MS's `browsernames`/BCD).
-11. **`findDocumentHighlights`** — add to the engine interface; reuse
+11. ✅ **DONE (highlights all occurrences of the symbol under the cursor).** **`findDocumentHighlights`** — add to the engine interface; reuse
     `collectReferenceSet` but scope to the current document only.
-12. **Named-color + color-function value completions** in color contexts, with
+12. ✅ **DONE (named colors w/ swatch + color functions; units on numeric prefix).** **Named-color + color-function value completions** in color contexts, with
     a color swatch (`CompletionItemKind.Color`) — the color math already exists
     in `color-utils.ts`.
 13. **Context-aware at-rule filtering** — restrict the at-rule list by nesting

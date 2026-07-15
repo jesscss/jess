@@ -16,6 +16,7 @@ import {
   type HoverParams,
   type DefinitionParams,
   type ReferenceParams,
+  type DocumentHighlightParams,
   type DocumentSymbolParams,
   type SemanticTokensParams,
   type DocumentColorParams,
@@ -60,6 +61,7 @@ connection.onInitialize((_params: InitializeParams): InitializeResult => {
       hoverProvider: true,
       definitionProvider: true,
       referencesProvider: true,
+      documentHighlightProvider: true,
       documentSymbolProvider: true,
       foldingRangeProvider: true,
       selectionRangeProvider: true,
@@ -128,6 +130,10 @@ connection.onDefinition((params: DefinitionParams) => {
 
 connection.onReferences((params: ReferenceParams) => {
   return engine.findReferences(params.textDocument.uri, params.position);
+});
+
+connection.onDocumentHighlight((params: DocumentHighlightParams) => {
+  return engine.findDocumentHighlights(params.textDocument.uri, params.position);
 });
 
 connection.onDocumentSymbol((params: DocumentSymbolParams) => {

@@ -39,7 +39,8 @@ import {
   SemanticTokens,
   TextEdit,
   ColorInformation,
-  ColorPresentation
+  ColorPresentation,
+  DocumentHighlight
 } from 'vscode-languageserver-types';
 
 export type JessLang = 'css' | 'less' | 'scss' | 'jess';
@@ -493,6 +494,7 @@ export type JessLanguageServiceEngine = {
   getHover(uri: string, position: Position): Hover | null;
   findDefinition(uri: string, position: Position): Location | null;
   findReferences(uri: string, position: Position): Location[];
+  findDocumentHighlights(uri: string, position: Position): DocumentHighlight[];
   prepareRename(uri: string, position: Position): { range: Range; placeholder: string } | null;
   rename(uri: string, position: Position, newName: string): WorkspaceEdit | null;
   getDocumentSymbols(uri: string): DocumentSymbol[];
@@ -1179,6 +1181,16 @@ export function createEngine(): JessLanguageServiceEngine {
 
     findReferences(uri, position) {
       return collectReferenceSet(uri, position)?.locations ?? [];
+    },
+
+    findDocumentHighlights(uri, position) {
+      // Highlight all occurrences of the symbol under the cursor in THIS document
+      // (reuses the reference resolver, scoped to the current file).
+      const set = collectReferenceSet(uri, position);
+      if (!set) {
+        return [];
+      }
+      return set.locations.filter(l => l.uri === uri).map(l => ({ range: l.range }));
     },
 
     prepareRename(uri, position) {

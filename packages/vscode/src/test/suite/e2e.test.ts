@@ -200,4 +200,16 @@ suite('Jess extension E2E', () => {
     );
     assert.ok(Array.isArray(refs) && refs.length >= 2, `expected >=2 references to @primary, got ${Array.isArray(refs) ? refs.length : 'none'}`);
   });
+
+  test('document highlights round-trip (@primary occurrences)', async () => {
+    const doc = await openFixture('main.less');
+    const text = doc.getText();
+    const at = text.indexOf('@primary', text.indexOf('.button'));
+    const position = offsetToPosition(doc, at + 2);
+    const highlights = await waitFor(
+      () => vscode.commands.executeCommand<vscode.DocumentHighlight[]>('vscode.executeDocumentHighlights', doc.uri, position),
+      h => Array.isArray(h) && h.length >= 2
+    );
+    assert.ok(Array.isArray(highlights) && highlights.length >= 2, `expected >=2 highlights of @primary, got ${Array.isArray(highlights) ? highlights.length : 'none'}`);
+  });
 });
