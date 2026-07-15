@@ -242,34 +242,40 @@ declaration-child entries (`0.88 MiB`). Largest inclusive families were
 (`19.4 MiB`), `evaluateRest` (`14.8 MiB`), `_prepareForEval` (`9.9 MiB`),
 callable fallback (`9.9 MiB`), and direct lookup (`8.3 MiB`).
 
-The ranked next unowned seam is the evaluator–serializer frame/state boundary
-around `serialize-helper.ts:826/1569` and `rules.ts:4930`; it warrants a
-counter/proof pass before implementation. Registration/source-order fallback
-is the highest-potential seam but is already owned by the existing
-`7bb9b483e` lane. Scope/lookup allocation, callable misses, global `isNode`,
-extend-chain preparation, and OutputWriter tail work are already owned or
-rejected. No source change was made by this lane; exact profiles remain under
+The evaluator–serializer frame/state boundary around
+`serialize-helper.ts:826/1569` and `rules.ts:4930` now has a completed worker
+proof recorded below. Registration/source-order fallback remains the
+highest-potential seam but is already owned by the existing `7bb9b483e` lane.
+Scope/lookup allocation, callable misses, global `isNode`, extend-chain
+preparation, and OutputWriter tail work are already owned or rejected. The
+CPU/heap source profile remains diagnostic only under
 `/private/tmp/jess-q40-cpu-heap-20260715.ojL1Lb`.
 
-### Q-40 evaluator/serializer boundary proof — active, provisional (2026-07-15)
+### Q-40 evaluator/serializer boundary proof — worker complete; current-dev replay provisional (2026-07-15)
 
 The isolated worker at
 `/Users/matthew/git/worktrees/jess-q40-evaluator-serializer-frame-proof-20260715`
-is measuring whether the common direct-body serializer pays a redundant
-`processNode` frame-selection wrapper. Current counters show `1,644` direct-
-body traversals, `0` frame-aware traversals, `5,116` `processNode` entries and
-`5,116` inner entries on the canonical benchmark; the mixin control exercises
-one frame switch. The same probe saw `4,085` declaration-fallback renders,
-`13` stable leaf renders, and `0` rules-preview renders. Source-map on/off and
-caller-owned flat-buffer focused cases are byte-identical.
+proved that the common direct-body serializer can avoid a redundant
+`processNode` frame-selection wrapper. Its counters were `1,644` direct-body
+drives, `0` frame-aware drives, `5,116` wrapper and inner entries, `4,085`
+declaration fallbacks, `13` stable leaves, and `0` rules-preview routes; the
+mixin control exercises one frame switch. Source-map on/off and caller-owned
+flat-buffer focused cases are byte-identical.
 
 The smallest candidate selects the already-known direct processor once per
 container while preserving frame-aware routing. Its first parse+render A/B was
-`221.57→220.89 ms` (`25/45` wins), but the paired statistic was `t=-0.21`, so
-the signal is not a speed claim; render-only and a same-path no-op control are
-still pending. Temporary counters, candidate code, and tests remain isolated;
-do not integrate or describe this as an accepted cut until the worker returns a
-clean final disposition with the required gates and both-phase A/B.
+`221.569709→220.894500 ms` (`25/45` wins, `t=-0.21`) and render-only was
+`189.014834→190.553792 ms` (`22/45` wins, `t=-0.73`). The same-path no-op
+controls were also noise, so this is a structural simplification, not a speed
+claim. The worker passed its `30/30` focused tests, full core suite, core build,
+and aggressive review; its branch-local output was `133,983` bytes with hash
+`adfd26732125a33fc1e264aca7d7ecde8c7c1da43f968e3106bd387a1f78e840`.
+
+Only the source/test hunk is replayed in the current integration worktree.
+Current-dev dependency builds and the focused public-path tests pass, but the
+replayed source is still uncommitted and has not yet received the current-dev
+full gates or canonical A/B. Do not describe the replay as landed until those
+checks complete.
 
 ### Q-38 fallback-topology measurement — canonical result, no implementation (2026-07-15)
 
