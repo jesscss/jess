@@ -109,6 +109,23 @@ const requiredCounterNames = [
 ];
 
 const counterRelationPattern = /^([A-Za-z][A-Za-z0-9_]*)\s*(<=|<|===)\s*([A-Za-z][A-Za-z0-9_]*|0)$/;
+const necessityFields = ['factSource', 'rediscovery', 'carryForward', 'whyNotCarried'];
+
+function validateNecessityMetadata(metadata, label) {
+  const errors = [];
+  if (!metadata || typeof metadata !== 'object') {
+    return [`${label} must include proof-of-necessity metadata.`];
+  }
+  for (const field of necessityFields) {
+    if (typeof metadata[field] !== 'string' || metadata[field].trim().length < 12) {
+      errors.push(`${label} necessity.${field} must contain an evidence-backed explanation.`);
+    }
+  }
+  if (!['audit-required', 'proven'].includes(metadata.status)) {
+    errors.push(`${label} necessity.status must be audit-required or proven.`);
+  }
+  return errors;
+}
 
 function parseCounterRelation(relation) {
   if (typeof relation !== 'string') {
@@ -174,6 +191,7 @@ function validateCostContractRegistry(registry) {
     if (typeof contract.surface !== 'string' || contract.surface.length === 0) {
       errors.push(`Cost contract ${contract.id} is missing its named surface.`);
     }
+    errors.push(...validateNecessityMetadata(contract.necessity, `Cost contract ${contract.id}`));
     if (!Array.isArray(contract.files) || contract.files.length === 0) {
       errors.push(`Cost contract ${contract.id} must name at least one owning file.`);
     } else if (contract.files.length !== 1) {
@@ -449,6 +467,10 @@ function validateCostAuditRecords(records, registry, changedPaths, diff) {
     const itemsVisited = numberCounter(record, ['itemsVisited']);
     const noFeatureAllocations = numberCounter(record, ['noFeatureAllocations']);
     const noFeatureMisses = numberCounter(record, ['noFeatureMisses']);
+    errors.push(...validateNecessityMetadata(record.necessity, `Hot-path cost audit record ${record.id}`));
+    if (contract?.necessity?.status === 'audit-required' && changedPaths.includes(contract.files?.[0])) {
+      errors.push(`Hot-path cost audit record ${record.id} cannot change its owner while necessity.status is audit-required; prove the fact flow or remove the action first.`);
+    }
     if (calls === null || featureBearing === null || admissionCount === null || admissionWork === null || itemsVisited === null || noFeatureAllocations === null || noFeatureMisses === null) {
       errors.push(
         `Hot-path cost audit record ${record.id} must include numeric calls, feature-bearing calls/containers, admission calls/work, itemsVisited, noFeatureAllocations, and noFeatureMisses.`

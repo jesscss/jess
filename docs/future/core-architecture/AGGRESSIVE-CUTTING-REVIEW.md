@@ -142,6 +142,16 @@ the canonical `benchmark.less` before/after A/B for both parse+render and
 render-only, using 20 warmups and 45 alternating pairs, with byte count/hash
 parity. A focused test alone is not a performance proof.
 
+Every contract must also include a proof-of-necessity record. It names the
+authoritative fact source, the action that rediscoveries that fact, where the
+fact could be carried forward, and the evidence-backed reason it is not already
+carried. `necessity.status` is `audit-required` for existing machinery awaiting
+the action audit and `proven` only after the producer-to-consumer flow has been
+traced. A production change cannot touch an `audit-required` owner: the agent
+must carry the fact, delete the rediscovery, or prove the rediscovery is
+semantically unavoidable. “It avoids a more expensive pass” is not sufficient;
+the total work and the common no-feature path must be measured.
+
 The verifier validates this registry and the matching handoff record. Its
 danger-token scan is intentionally limited to parser/eval/render source under
 the reviewed package roots; the verifier's own review-time loops and the prose
@@ -187,6 +197,13 @@ named admission counter means opportunities inspected by the admission.
     "id": "rules-merge-coalescing",
     "surface": "Rules._coalesceMergedDeclarations",
     "files": ["packages/core/src/tree/rules.ts"],
+    "necessity": {
+      "status": "audit-required",
+      "factSource": "Declaration.options.assign and normalizedFromAssign explicitly identify merge assignments",
+      "rediscovery": "hasMergeOutputSurface recursively scans every Rules surface and child Rules node",
+      "carryForward": "Rules construction or evaluation can carry one merge-presence bit with the surface",
+      "whyNotCarried": "No evidence currently justifies rediscovering explicit declaration metadata at every finish step"
+    },
     "admission": {
       "predicate": "cheap merge-output-surface presence check",
       "cost": "cheap",
@@ -236,6 +253,13 @@ named admission counter means opportunities inspected by the admission.
     "id": "serialize-helper-duplicate-declaration-prescan",
     "surface": "serializeRulesContainerInternal duplicate-property pre-scan",
     "files": ["packages/core/src/tree/util/serialize-helper.ts"],
+    "necessity": {
+      "status": "audit-required",
+      "factSource": "declaration names and merge/output metadata are already present on child nodes",
+      "rediscovery": "serializeRulesContainerInternal pre-scans a container before duplicate-property preparation",
+      "carryForward": "adoption or declaration registration can carry stable singleton and duplicate facts",
+      "whyNotCarried": "The current allocation cut has not yet proven the remaining pre-scan is semantically unavoidable"
+    },
     "admission": {
       "predicate": "stable singleton node shape check",
       "cost": "cheap",

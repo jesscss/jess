@@ -154,6 +154,30 @@ Other active docs in this dir:
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: PROOF-OF-NECESSITY / NO-REDISCOVERY GATE — an admission is no
+  longer reviewable merely because it avoids a downstream expensive pass.
+- Architecture surface: `necessity` metadata in the machine-readable cost
+  registry plus validation in `scripts/verify-aggressive-cutting-review.mjs`;
+  focused regression coverage is `6/6`. No Jess runtime source changed.
+- Separation/duplication: the gate adds review-time metadata and validation
+  only; it adds no runtime field, scan, counter, or benchmark path.
+- Cumulative node weight: zero. Registry and audit records are documentation
+  and verifier data, never runtime AST state.
+- New traversal: none in production; the verifier checks four fact-flow
+  strings and one status per contract.
+- New node/materialization: none in production.
+- Render path: unchanged; no output behavior or performance claim applies.
+- Helper/API surface: private verifier validation only; no package API changed.
+- Metadata mutations: none.
+- Review-flagged diff tokens: review-time JSON/prose only; no production token.
+- Evidence: the focused verifier suite passes `6/6`; the gate now requires each
+  contract to name its authoritative fact, rediscovery action, carry-forward
+  location, and reason for non-carrying. The merge admission is explicitly
+  marked `audit-required` because its scan has not earned a necessity proof.
+- Verdict: accepted as process hardening. The full AST-to-serialization action
+  audit is now the primary Q-40 lane; “avoids a more expensive pass” is not a
+  sufficient justification without total-work evidence.
+
 - Latest pass: BUILD-FRESH EXECUTABLE-EVIDENCE GATE — stop review tooling from
   accepting profile output produced by stale ignored `lib/` artifacts.
 - Architecture surface: `scripts/precommit-changed-checks.mjs` now runs the
@@ -241,6 +265,13 @@ Other active docs in this dir:
 [
   {
     "id": "rules-merge-coalescing",
+    "necessity": {
+      "status": "audit-required",
+      "factSource": "Declaration.options.assign and normalizedFromAssign explicitly identify merge assignments",
+      "rediscovery": "hasMergeOutputSurface recursively scans every Rules surface and child Rules node",
+      "carryForward": "Rules construction or evaluation can carry one merge-presence bit with the surface",
+      "whyNotCarried": "No evidence currently justifies rediscovering explicit declaration metadata at every finish step"
+    },
     "admission": {
       "predicate": "hasMergeOutputSurface(rules)",
       "cost": "cheap",

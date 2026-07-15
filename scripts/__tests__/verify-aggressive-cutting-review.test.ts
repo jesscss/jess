@@ -9,6 +9,13 @@ const registry = [{
   id: 'test-admission-contract',
   surface: 'test admission surface',
   files: [sourceFile],
+  necessity: {
+    status: 'proven',
+    factSource: 'declaration assignment metadata is authoritative',
+    rediscovery: 'the admission scans child rules to rediscover merge presence',
+    carryForward: 'construction can carry a presence bit on each Rules surface',
+    whyNotCarried: 'this test contract assumes the fact is already explicit'
+  },
   admission: {
     predicate: 'cheap admission',
     cost: 'cheap',
@@ -68,6 +75,7 @@ function makeRecord(overrides: Record<string, unknown> = {}) {
   };
   return {
     id: 'test-admission-contract',
+    necessity: registry[0].necessity,
     admission: {
       predicate: 'cheap admission',
       cost: 'cheap',
@@ -95,6 +103,13 @@ function makeRecord(overrides: Record<string, unknown> = {}) {
 }
 
 describe('hot-path admission counter relations', () => {
+  it('requires a proof-of-necessity record for every contract', () => {
+    const withoutNecessity = { ...registry[0], necessity: undefined };
+    expect(validateCostContractRegistry([withoutNecessity])).toContain(
+      'Cost contract test-admission-contract must include proof-of-necessity metadata.'
+    );
+  });
+
   it('requires the expensive-call admission chain in every contract', () => {
     expect(validateCostContractRegistry(registry)).toEqual([]);
     const withoutAdmissionBound = {
