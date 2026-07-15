@@ -140,4 +140,48 @@ suite('Jess extension E2E', () => {
     );
     assert.ok(Array.isArray(actions) && actions.length > 0, 'expected at least one code action');
   });
+
+  test('folding ranges round-trip (multi-line rulesets)', async () => {
+    const doc = await openFixture('main.less');
+    const folds = await waitFor(
+      () => vscode.commands.executeCommand<vscode.FoldingRange[]>('vscode.executeFoldingRangeProvider', doc.uri),
+      f => Array.isArray(f) && f.length > 0
+    );
+    assert.ok(Array.isArray(folds) && folds.length > 0, 'expected folding ranges for the multi-line rulesets');
+  });
+
+  test('selection ranges round-trip (nested chain)', async () => {
+    const doc = await openFixture('main.less');
+    const text = doc.getText();
+    const at = text.indexOf('@primary', text.indexOf('.button'));
+    const position = offsetToPosition(doc, at + 2);
+    const ranges = await waitFor(
+      () => vscode.commands.executeCommand<vscode.SelectionRange[]>('vscode.executeSelectionRangeProvider', doc.uri, [position]),
+      r => Array.isArray(r) && r.length > 0 && !!r[0]?.parent
+    );
+    assert.ok(Array.isArray(ranges) && ranges.length > 0, 'expected a selection range');
+    // The cursor sits inside `@primary` → Declaration → Ruleset, so the chain widens.
+    assert.ok(ranges[0]!.parent, 'selection range should nest to a parent (widening chain)');
+  });
+
+  test('document links round-trip (@import target)', async () => {
+    const doc = await openFixture('main.less');
+    const links = await waitFor(
+      () => vscode.commands.executeCommand<vscode.DocumentLink[]>('vscode.executeLinkProvider', doc.uri),
+      l => Array.isArray(l) && l.length > 0
+    );
+    assert.ok(Array.isArray(links) && links.length > 0, 'expected a document link for `@import "vars"`');
+  });
+
+  test('references round-trip (@primary used in two rules)', async () => {
+    const doc = await openFixture('main.less');
+    const text = doc.getText();
+    const at = text.indexOf('@primary', text.indexOf('.button'));
+    const position = offsetToPosition(doc, at + 2);
+    const refs = await waitFor(
+      () => vscode.commands.executeCommand<vscode.Location[]>('vscode.executeReferenceProvider', doc.uri, position),
+      r => Array.isArray(r) && r.length >= 2
+    );
+    assert.ok(Array.isArray(refs) && refs.length >= 2, `expected >=2 references to @primary, got ${Array.isArray(refs) ? refs.length : 'none'}`);
+  });
 });
