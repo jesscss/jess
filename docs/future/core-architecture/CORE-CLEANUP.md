@@ -525,6 +525,16 @@ recursively scans 10,777 evaluated surfaces to find 15 merge-bearing ones.
   micro-cut: it changes Jess's semantic materialization boundary. Detailed
   source-flow evidence and the active generic Parseman experiment are tracked
   in [`PARSER-RECOGNIZER-GAP.md`](./PARSER-RECOGNIZER-GAP.md).
+- **Parseman generic follow-up handoff (2026-07-14).** The analysis-only audit
+  is recorded in `parser-thing/notes/PERF_IDEAS.md` (isolated documentation
+  commit `916c52b`). Its first implementable generic target is opt-in zero-copy
+  structural builder input with shared capture storage and range/cursor views,
+  preserving separate semantic/raw channels. A genuinely compile-time-stripped
+  recognizer is a separate higher-upside architecture proof; runtime output
+  suppression is not equivalent. The audit excluded existing Parseman
+  worktrees, ran focused JSON/GraphQL/CSS measurements, and keeps CSS/Less
+  late-value materialization outside Parseman's generic contract. No Parseman
+  implementation was made.
 - **Parser/AST shape audit refresh (2026-07-14).** A fresh functional-parser
   census of the 106,802-byte Less fixture measured recognition `44.69 ms`,
   structural capture `58.10 ms`, and host construction `70.71 ms`, with
