@@ -4,7 +4,9 @@ import path from 'node:path';
 import {
   applyLockstepVersion,
   compareSemver,
+  computeMinAlphaTag,
   getAlphaReleasePlan,
+  isAlphaClobber,
   resolveAlphaPublishVersion
 } from './release-utils.mjs';
 
@@ -219,6 +221,32 @@ if (options.tag === 'alpha') {
   // A dry-run must never leave the working tree mutated.
   if (options.dryRun) {
     restoreVersions = applied.restore;
+  }
+
+  // Alpha-clobber guard. A dev->alpha squash that skips the version bump resets
+  // the alpha branch manifest back to dev's placeholder, silently landing the
+  // release manifest BELOW the alpha dist-tag already live on npm. This has
+  // slipped through 3x, so turn it into a loud, actionable error. The guard runs
+  // on BOTH --dry-run and real publish, so `release:alpha:check` (which invokes
+  // this script with --dry-run) catches it before anything is published.
+  //
+  // We compare the BRANCH MANIFEST version (`resolution.intended` -- the thing
+  // that gets clobbered) against `minTag`, the MINIMUM (laggard) `alpha`
+  // dist-tag across the allowlisted publish set. Using the min keeps a
+  // partially-completed publish resumable, while `isAlphaClobber`'s `<=` also
+  // refuses an already-published equal version (a code refresh must bump above
+  // it). A matching-base check leaves legitimate minor/major bumps alone.
+  const minAlphaTag = computeMinAlphaTag(plan.publishOrder, (pkgName) =>
+    getTaggedVersion(pkgName, 'alpha')
+  );
+  const manifestVersion = resolution.intended;
+  if (isAlphaClobber({ manifestVersion, minTag: minAlphaTag })) {
+    console.error(
+      `Refusing: alpha branch manifest is ${manifestVersion} but the npm 'alpha' tag already `
+      + `publishes ${minAlphaTag}. That version is already released -- a dev->alpha refresh must `
+      + `bump above it. Run 'node scripts/release/increment-alpha.mjs'.`
+    );
+    finish(1);
   }
 } else {
   publishVersion = plan.packages[0]?.manifest.version ?? '';
