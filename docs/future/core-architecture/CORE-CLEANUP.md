@@ -194,6 +194,7 @@ row in this table is not a claim that the implementation has landed on `dev`.
 | Evaluator/serializer frame-boundary proof | Worker branch `feature/q40-evaluator-serializer-frame-proof-20260715`, local commit `04a230e89`; landed integration commit `d211e8964` | The worker's structural result and two-phase/no-op evidence are captured. Current-dev dependency builds, focused tests, aggressive review, core, spine, all-less, and fresh same-checkout A/B are green. The fresh canonical A/B was parse+render `234.714→234.657 ms` (paired delta `-0.878 ms`, `24/45`) and render-only `198.801→198.271 ms` (paired delta `+2.695 ms`, `21/45`); output remained byte-identical at `135,794` bytes, hash `9a58451bd3b0c9d80913df38be3b199994d2b93d34a9d2851f1b18d9dcaaa7cc`. Retained as a structural simplification, not a speed win. |
 | Scope-frame allocation audit and empty pending-name proof | Read-only flow/heap audit; active worker owns `packages/core/src/tree/scope-frame.ts` and focused ScopeFrame/reference/mixin tests | Audit found `3,200` frame creations and about `2.32 MB` sampled `buildScopeFrame` allocation, including a fresh empty `pendingDeclarationNames` array. The shared-sentinel proof is active; activation, mutation safety, total allocation/heap, exact output, and canonical A/B are not yet resolved. |
 | Compiler-root writer readback audit and writer-only result proof | Read-only OutputWriter/RenderBuffer audit; active worker owns the compiler-root path and directly relevant buffer/rules tests | Audit found `13,235` `getSince()` calls scanning `109,102` chunks and `10,907` `trimEndSince()` calls. A private compiler-owned flat/shared/source-map-off root-result proof is active; no OutputWriter tail cut, speed result, or acceptance claim exists yet. |
+| Extend/spine topology and fallback ownership audit | Read-only extend/spine/fallback audit against the existing extend worktrees and Q-40 ledger | Canonical rendering admits spine once and aborts on extend topology. Extend classification has `42,926` probes with `99.82%` no-matches; application has `39,605` calls with `99.89%` no-matches. Existing append×extend/spine/fallback lanes own the performance work; the only unowned `@layer` slice is correctness-oriented, not a Q-40 performance target. |
 | Import/mixin reuse, placement frames, static slots, dependency graph, and tree-shaken custom-property module direction | Q-40 import-placement sections, [`HANDOFF.md`](./HANDOFF.md), and the recommended shape in [`AST-FROM-SCRATCH-DESIGN.md`](./AST-FROM-SCRATCH-DESIGN.md) | The canonical-body/placement-overlay and dependency-graph ideas are recorded as design direction. The import/mixin reuse model is not being claimed as implemented, and the exported-custom-property tree-shaking path remains future product work. |
 | Typed string-plus-tag values and value materialization boundary | Q-30 in this tracker and POC 1 in [`AST-FROM-SCRATCH-DESIGN.md`](./AST-FROM-SCRATCH-DESIGN.md) | Explicitly fenced behind the active producer lanes. It covers dimensions, numbers, colors, booleans, and multi-token values while preserving authored strings; no partial scalar puppet test is being treated as the implementation. |
 
@@ -296,6 +297,18 @@ signatures, spans, AST serialization, and CSS output. Conversion counts,
 allocation/GC, parse time, exact output, and both canonical benchmark phases
 are required before acceptance. Detailed ownership is recorded in
 [`CORE-CLEANUP.md`](./CORE-CLEANUP.md).
+
+### Q-40 extend/spine topology audit — no new performance lane (2026-07-15)
+
+The audit traced the canonical route through root spine admission, the
+extend-topology abort, ordinary evaluation, registration, and final
+`processExtends()`. The benchmark has `1,651` extend registrations,
+`42,926` classification probes (`42,847` no-matches), and `39,605` apply calls
+with only `43` selector changes. Existing append×extend, extend-serialized,
+compound-amp, root-admission, and fallback worktrees already own or reject the
+relevant performance paths. A direct same-layer `@layer` admission fixture is
+the only unowned adjacent idea, but it is a correctness/coverage slice and is
+not being dispatched as a Q-40 speed worker.
 
 ### Q-40 CPU/heap attribution refresh — diagnostic only (2026-07-15)
 

@@ -252,6 +252,17 @@ allocation/GC, parse time, exact output, and both canonical benchmark phases
 are required before acceptance. Detailed ownership is recorded in
 [`CORE-CLEANUP.md`](./CORE-CLEANUP.md).
 
+## Q-40 — extend/spine topology audit (no new performance lane, 2026-07-15)
+
+The audit traced the canonical root admission through the extend-topology abort,
+ordinary evaluation, registration, and final `processExtends()`. The benchmark
+has `1,651` extend registrations, `42,926` classification probes with `42,847`
+no-matches, and `39,605` apply calls with only `43` selector changes. Existing
+append×extend, extend-serialized, compound-amp, root-admission, and fallback
+worktrees already own or reject the relevant performance paths. A direct
+same-layer `@layer` admission fixture is an unowned correctness/coverage idea,
+not a Q-40 speed lane, so no duplicate worker was dispatched.
+
 ## Q-40 — import-placement audit handoff
 
 The fresh read-only retained-placement audit is recorded in detail in
