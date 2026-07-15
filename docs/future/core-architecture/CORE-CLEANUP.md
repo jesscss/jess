@@ -167,6 +167,77 @@ sequential, not parallel, even when their descriptions look independent.
 | Q-39 | **CLOSED — lazy OutputWriter transient state** — ordinary `tracksSources=false` writers no longer materialize idle captured-segment or queued-spacer own fields, and the dead trailing-newline-origin diagnostic/accessor is deleted. `_posLength` remains intentionally eager for constant-time rollback. Full core passed `3311` tests with `15` skipped and `2` deferred; focused writer coverage passed `55/55`; the exact same-checkout `benchmark.less` control/candidate/candidate sequence was `253.67 → 289.79 → 242.93 ms` (15 iterations, 5 warmups, 3 rounds), an order-sensitive swing with no causal speed claim. | `packages/core/src/tree/util/print.ts` | generated writer shape, capture/spacer/source-map behavior, full core, core build, benchmark sanity; no AST or eval fallback ownership |
 | Q-40 | **ACTIVE — canonical `benchmark.less` performance program (<40 ms)** — use the Less 4.6.3 fixture at `/Users/matthew/git/oss/less.js/packages/less/benchmark/benchmark.less`, with Jess `Compiler.render()` configured for `collapseNesting: true` plus the Less and Less-compat plugins. The contract is `scripts/compare-less-parse-render-env.mjs`, Node v25.9.0 arm64, 20 warmups, 45 alternating no-op pairs, fixed fixture/options/cache process, and a separate `parse-render` versus parse-once `render` phase; `profile-less-benchmark.mjs` is diagnostic only. Current same-checkout controls: Jess parse+render **238.98 ms** median (control 238.98, no-op candidate 241.79) and parse-once/render-only **202.92 ms** (control 202.92, no-op candidate 202.38)—both far from the target and proving render/eval is the immediate dominant gap. On the same machine/runtime, Less 4.6.3 measured `less.parse(..., { processImports: false })` **4.258 ms** and `less.render()` **31.101 ms** median (20 warmups, 45 samples). Jess preserves its own baseline output byte-for-byte (133,983 bytes); Less output is a speed comparator, not a byte oracle (131,674 bytes). The direct profile records 4,085 declaration preview fallbacks, 1,644 duplicate-declaration containers, and 33,607 declaration-strategy child-surface traversals. Those traversals are only 22 property-merge references and the safe local short-circuit activates once, so generic lookup cache/index work is rejected. Parseman remains separately ranked: equal-contract no-import parsing measured Less AST 6.01 ms, Jess `parseLessFn` 35.77 ms, and recognizer-only 12.58 ms; the next parser work is a capture/raw-child representation proof plus a separate no-op-trivia-call guard, not a claim that AST building explains the whole gap. Every retained core change must have same-checkout A/B evidence plus core/spine/all-less/aggressive gates. | eval/render/fallback, detached declaration formatting, parser recognizer/capture, import/mixin placement scaling, node allocation | stable medians with fixed Node/fixture/options/cache/warmups/rounds, byte identity against Jess baseline, core/spine/all-less/aggressive gates, then merge/push |
 
+### Q-40 CPU/heap attribution refresh — diagnostic only (2026-07-15)
+
+The corrected current-dev profiling lane used Node v25.9.0 arm64 Darwin,
+`benchmark.less`, the Less and Less-compat plugins, `collapseNesting:true`,
+and the fixed 20-warmup/45-pair contract. The 0→0 controls were noise checks:
+parse+render was `227.862→229.434 ms` with paired median delta `+0.033 ms`
+and `22/45` wins; render-only was `197.435→200.022 ms` with paired median
+delta `+0.951 ms` and `22/45` wins. Output was `135,794` bytes with SHA-256
+`9a58451bd3b0c9d80913df38be3b199994d2b93d34a9d2851f1b18d9dcaaa7cc`.
+These are no-op controls and carry no speed claim.
+
+Parsing was outside the corrected render-only sampling window. Normalized
+self-time per profiled render was: `isNode` `13.6 ms`, GC `7.6 ms`,
+`findWithinScopeSurface` `6.9 ms`, `consumeName` `5.5 ms`, `extendSelector`
+`5.3 ms`, and `processExtends` `4.5 ms`. The larger inclusive paths were
+`eval`/`evalStatic`, `evaluateRest`, `serializeRulesContainerInternal`,
+`_prepareForEval`, `_evaluateSourceOrder`, `processNodeInner`, and
+`_emitRulesBody`. The prior global `isNode` reorder remains rejected; these
+profiles do not justify a global type-test rewrite.
+
+The corrected render-only allocation profile sampled `39.9 MiB` across three
+renders (`13.3 MiB/render`), which is sampled allocation rather than retained
+heap. Largest self-allocation families were `Map` (`8.30 MiB`), native
+`Set.set` (`5.64 MiB`), `buildScopeFrame` (`2.32 MiB`), `Rules` construction
+(`2.25 MiB`), `makeTrivia` (`2.16 MiB`), callable-selector/live-slot setup
+(`1.28 MiB` each), `varsByName` population (`1.25 MiB`), and direct
+declaration-child entries (`0.88 MiB`). Largest inclusive families were
+`_prepareRegistrationOnce` (`22.4 MiB`), Ruleset registration preparation
+(`19.4 MiB`), `evaluateRest` (`14.8 MiB`), `_prepareForEval` (`9.9 MiB`),
+callable fallback (`9.9 MiB`), and direct lookup (`8.3 MiB`).
+
+The ranked next unowned seam is the evaluator–serializer frame/state boundary
+around `serialize-helper.ts:826/1569` and `rules.ts:4930`; it warrants a
+counter/proof pass before implementation. Registration/source-order fallback
+is the highest-potential seam but is already owned by the existing
+`7bb9b483e` lane. Scope/lookup allocation, callable misses, global `isNode`,
+extend-chain preparation, and OutputWriter tail work are already owned or
+rejected. No source change was made by this lane; exact profiles remain under
+`/private/tmp/jess-q40-cpu-heap-20260715.ojL1Lb`.
+
+### Q-38 fallback-topology measurement — completed, no implementation (2026-07-15)
+
+The isolated fallback worker refreshed from `e4fb26616`, removed all temporary
+instrumentation, rebuilt clean artifacts, and returned
+`/Users/matthew/git/worktrees/jess-fallback-topology-measure-20260715` clean.
+The canonical route recorded one spine admission, zero spine rejections, one
+spine abort, one eval fallback, one eval render entry, `10,420` eval-node
+entries, `10,420` eval-preparation entries, `10,419` repeated fallback
+preparations, and `831` derive entries. The abort reason was
+`extend topology`; the root had `728` children. This confirms the route is
+whole-file fallback: spine admission happens, the strict imported-extend
+topology re-gate aborts before output, and eval renders the complete file.
+
+The output was `133,389` bytes with SHA-256
+`39a4812a88ea77a94f846f8392fb536da882e84452d03880103d256cb1d73a4c`.
+Under the fixed 20-warmup/45-pair same-build control, parse+render was
+`228.692167→226.026583 ms` (median delta `-0.130208 ms`) and render-only was
+`189.945791→189.245250 ms` (median delta `+0.446792 ms`). Both phases were
+byte-identical; this is noise, not a speed result. The matrix activated
+unresolved imports, root-direct constructs, extend topology, and at-rule/
+trivia; interpolated values, source order, and callable forms completed on
+the spine. The generic-unknown probe errored before a fallback event and is
+not a successful coverage result.
+
+No safe `emit-walk.ts`-only cut was found. The only evidence-supported follow-
+up is an owner-gated imported-extend topology/parity batch in
+`packages/core/src/tree/extend/spine-extend.ts`; do not weaken the re-gate or
+duplicate this investigation. The known generated less-parser runtime issue
+recurred, so the worker reused the existing built parser artifact and did not
+open a Parseman investigation.
+
 ### Q-40 greenfield tree2 AST POC audit — incomplete, not integrated (2026-07-14)
 
 The isolated worktree `/Users/matthew/git/worktrees/jess-greenfield-ast-design-20260714`

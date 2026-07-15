@@ -1219,6 +1219,48 @@ reference/protected roots, imports/layers/namespaces, source order, and the
 Less oracle. `recheckProbes=0` is a coverage gap. Do not duplicate the dirty
 `extend.ts` or `spine-extend.ts` owner lanes.
 
+The completed fallback-topology measurement (2026-07-15) refreshed from
+`e4fb26616` and returned
+`/Users/matthew/git/worktrees/jess-fallback-topology-measure-20260715` clean
+after removing instrumentation. It recorded one spine admission, one spine
+abort, one eval fallback, `10,420` eval-node entries, `10,420` preparation
+entries, `10,419` repeated fallback preparations, and `831` derive entries;
+the abort reason was `extend topology`, with `728` root children. This is
+whole-file fallback, not mixed rendering. Output was `133,389` bytes with
+SHA-256
+`39a4812a88ea77a94f846f8392fb536da882e84452d03880103d256cb1d73a4c`.
+Under the fixed 20-warmup/45-pair same-build A/B, parse+render was
+`228.692167→226.026583 ms` (median `-0.130208 ms`) and render-only was
+`189.945791→189.245250 ms` (median `+0.446792 ms`); both were byte-identical
+and neither is a speed claim. No safe `emit-walk.ts`-only cut was found.
+Imported-extend topology remains owner-gated to `spine-extend.ts`. The known
+generated less-parser runtime issue recurred, so the worker reused the current
+built parser artifact and did not investigate Parseman in this lane.
+
+The corrected CPU/heap attribution lane (2026-07-15) used the same fixed
+20-warmup/45-pair contract on Node v25.9.0 arm64 Darwin. Its 0→0 controls were
+parse+render `227.862→229.434 ms` (paired median delta `+0.033 ms`, `22/45`
+wins) and render-only `197.435→200.022 ms` (paired median delta `+0.951 ms`,
+`22/45` wins), with no speed claim. The profile output was `135,794` bytes,
+SHA-256
+`9a58451bd3b0c9d80913df38be3b199994d2b93d34a9d2851f1b18d9dcaaa7cc`.
+
+Corrected render-only sampled self-time per render ranked `isNode` (`13.6 ms`),
+GC (`7.6 ms`), `findWithinScopeSurface` (`6.9 ms`), `consumeName` (`5.5 ms`),
+`extendSelector` (`5.3 ms`), and `processExtends` (`4.5 ms`). Allocation
+sampling across three renders totaled `39.9 MiB` (`13.3 MiB/render`, sampled
+allocation rather than retained heap). Largest self-allocation families were
+`Map` (`8.30 MiB`), `Set.set` (`5.64 MiB`), `buildScopeFrame` (`2.32 MiB`),
+`Rules` construction (`2.25 MiB`), `makeTrivia` (`2.16 MiB`), callable
+selector/live-slot setup (`1.28 MiB` each), `varsByName` (`1.25 MiB`), and
+direct declaration-child entries (`0.88 MiB`).
+
+The next unowned proof seam is the evaluator–serializer frame/state boundary
+around `serialize-helper.ts:826/1569` and `rules.ts:4930`. Registration/source
+order fallback is already owner-held by `7bb9b483e`; scope/lookup allocation,
+callable misses, global `isNode`, extend-chain preparation, and OutputWriter
+tail work are already occupied or rejected. No source change was made.
+
 The registration-map sentinel proof (2026-07-15) at
 `/private/tmp/jess-varsbyname-proof-20260715` tested reusing
 `_registrationPrepared` instead of allocating an empty `varsByName` map for
