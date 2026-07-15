@@ -38,6 +38,7 @@ import type {
   Statement,
   ValueNode,
 } from './nodes.js';
+import type { ValueService } from './value-service.js';
 
 export interface Tree2Position {
   node: Tree2Node;
@@ -48,6 +49,13 @@ export interface Tree2Position {
 
 export interface SerializeOptions {
   trackPositions?: boolean;
+  /**
+   * Injected value-eval service (the boundary-safe seam). When present, tree2's
+   * `Operation` / `FunctionCall` value nodes are COMPUTED through it; when
+   * absent they fall back to un-evaluated source assembly (tree2 does no math
+   * itself). tree2 depends only on the `ValueService` interface.
+   */
+  valueService?: ValueService;
 }
 
 export interface SerializeResult {
@@ -124,13 +132,14 @@ function bindParams(
   params: Param[],
   args: ValueNode[],
   callerFrame: Frame | null,
+  service: ValueService | null,
 ): Map<string, ValueNode> | null {
   if (params.length === 0) return null;
   const vars = new Map<string, ValueNode>();
   for (let i = 0; i < params.length; i++) {
     const p = params[i]!;
     const v = i < args.length ? args[i]! : p.default;
-    if (v !== undefined) vars.set(p.name, new Word(valueText(v, callerFrame)));
+    if (v !== undefined) vars.set(p.name, new Word(valueText(v, callerFrame, service)));
   }
   return vars;
 }
@@ -139,7 +148,12 @@ function bindParams(
 
 const MAX_VAR_DEPTH = 64;
 
-function valueText(node: ValueNode, frame: Frame | null, depth = 0): string {
+function valueText(
+  node: ValueNode,
+  frame: Frame | null,
+  service: ValueService | null,
+  depth = 0,
+): string {
   switch (node.kind) {
     case Kind.Word:
       return node.text;
@@ -150,18 +164,44 @@ function valueText(node: ValueNode, frame: Frame | null, depth = 0): string {
       const bound = lookupVar(frame, node.name);
       // Unbound: emit the byte form so the output visibly diverges rather than
       // silently dropping (a real fixture that reaches here needs another rung).
-      return bound ? valueText(bound, frame, depth + 1) : `@${node.name}`;
+      return bound ? valueText(bound, frame, service, depth + 1) : `@${node.name}`;
     }
     case Kind.Concat: {
       let out = '';
-      for (const part of node.parts) out += valueText(part, frame, depth);
+      for (const part of node.parts) out += valueText(part, frame, service, depth);
       return out;
     }
     case Kind.SpacedValue: {
       const parts = node.parts;
-      let out = parts.length > 0 ? valueText(parts[0]!, frame, depth) : '';
-      for (let i = 1; i < parts.length; i++) out += ' ' + valueText(parts[i]!, frame, depth);
+      let out = parts.length > 0 ? valueText(parts[0]!, frame, service, depth) : '';
+      for (let i = 1; i < parts.length; i++) out += ' ' + valueText(parts[i]!, frame, service, depth);
       return out;
+    }
+    case Kind.Paren: {
+      // Transparent to computed bytes: a parenthesized operation is evaluated by
+      // the service (which strips the paren), matching the legacy oracle. With
+      // no service, keep the parens for faithful un-evaluated source.
+      const inner = valueText(node.inner, frame, service, depth);
+      return service ? inner : `(${inner})`;
+    }
+    case Kind.Operation: {
+      // Operands are serialized to their UN-EVALUATED, variable-resolved SOURCE
+      // (null service): only the OUTERMOST computed node in an emitted value
+      // calls the service, handing it the full (possibly nested) expression
+      // source. That keeps the service call site deterministic (a nested op is
+      // never separately computed), so precedence is carried by the source and
+      // the record/replay key is identical across passes.
+      const left = valueText(node.left, frame, null, depth);
+      const right = valueText(node.right, frame, null, depth);
+      return service
+        ? service.evaluateOperation(node.operator, left, right)
+        : `${left} ${node.operator} ${right}`;
+    }
+    case Kind.FunctionCall: {
+      // `args` serializes to the (variable-resolved) inner argument SOURCE; the
+      // service performs the call and returns computed bytes.
+      const args = valueText(node.args, frame, null, depth);
+      return service ? service.callFunction(node.name, args) : `${node.name}(${args})`;
     }
   }
 }
@@ -197,6 +237,7 @@ interface Emit {
   chunks: string[];
   off: number;
   positions: Tree2Position[] | null;
+  service: ValueService | null;
 }
 
 function put(e: Emit, s: string): void {
@@ -211,7 +252,12 @@ interface Leaf {
 }
 
 export function serialize(root: Root, options?: SerializeOptions): SerializeResult {
-  const e: Emit = { chunks: [], off: 0, positions: options?.trackPositions ? [] : null };
+  const e: Emit = {
+    chunks: [],
+    off: 0,
+    positions: options?.trackPositions ? [] : null,
+    service: options?.valueService ?? null,
+  };
   const rootFrame: Frame = {
     parent: null,
     mixins: collectMixins(root.children),
@@ -317,7 +363,7 @@ function expandCall(
   const callFrame: Frame = {
     parent: frame,
     mixins: collectMixins(def.body),
-    vars: mergeVars(bindParams(def.params, call.args, frame), collectVars(def.body)),
+    vars: mergeVars(bindParams(def.params, call.args, frame, e.service), collectVars(def.body)),
   };
   walkBody(def.body, composed ?? [], callFrame, group, flush, e);
 }
@@ -341,7 +387,7 @@ function emitLeaf(leaf: Leaf, e: Emit): void {
     put(e, node.name);
     put(e, ': ');
     const valStart = e.off;
-    put(e, valueText(node.value, frame));
+    put(e, valueText(node.value, frame, e.service));
     if (e.positions) {
       e.positions.push({ node: node.value, kind: node.value.kind, start: valStart, end: e.off });
       e.positions.push({ node, kind: node.kind, start, end: e.off });
@@ -400,7 +446,7 @@ export function composeStats(root: Root): ComposeStats {
           const callFrame: Frame = {
             parent: frame,
             mixins: collectMixins(def.body),
-            vars: mergeVars(bindParams(def.params, node.args, frame), collectVars(def.body)),
+            vars: mergeVars(bindParams(def.params, node.args, frame, null), collectVars(def.body)),
           };
           walk(def.body, composed, callFrame);
         }

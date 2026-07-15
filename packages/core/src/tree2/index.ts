@@ -8,6 +8,7 @@
 
 export { Kind, Tree2Node, type Combinator } from './node.js';
 export * from './nodes.js';
+export type { ValueService } from './value-service.js';
 export {
   serialize,
   composeStats,

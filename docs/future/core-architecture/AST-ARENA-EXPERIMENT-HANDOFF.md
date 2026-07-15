@@ -123,6 +123,87 @@ the log below every iteration so the track compounds instead of repeating.
 
 <!-- newest first; each entry: date · hypothesis · prediction · byte-identical? · measured Δ · kept/dropped · why · next -->
 
+- 2026-07-15 — **rung 8: VALUE OPERATIONS + FUNCTION CALLS via a SHARED VALUE SERVICE, proven
+  BYTE-IDENTICAL against a REAL (function-evaluating) oracle. VERDICT: adding value-eval kept
+  tree2's eval free of any clone/inherit/materialize op (still structurally ZERO), the shared-
+  service indirection adds no representation regression, and the switch to the stricter real
+  oracle caused ZERO byte-identity regressions — 8 census passes upgraded from "fn-hollow" to
+  GENUINE computed-function passes (branch `experiment/tree2-cleanroom-20260715`, experimental
+  scaffold, NOT merged).** Built on rung 7.
+  - **FIRST fixed the oracle (prerequisite).** The bare-context `renderNodeToString` oracle used
+    through rung 7 does NOT evaluate color/math functions (no function registry on the bare
+    Context), so function fixtures were byte-identical only because BOTH sides left calls
+    un-evaluated (`fn-hollow`). Wired a REAL evaluating oracle (`tree2-frontend/oracle.ts`):
+    register the `@jesscss/fns` registry onto the parsed root exactly as the less plugin does
+    (`tree.setFunctionBinding(name, new JsFunction({name, fn}))`) then render. PROOF it now
+    computes: `lighten(blue, 10%)` bare oracle → `lighten(blue, 10%)` (literal); real oracle →
+    `#3333ff` (computed). All rung-8 byte-identity is vs THIS real oracle.
+  - **Shared value service (the owner-mandated seam).** tree2 gained its OWN structural value
+    nodes — `Operation(op, left, right)`, `FunctionCall(name, args)`, `Paren(inner)` — plus a
+    `ValueService` INTERFACE defined IN tree2 (`tree2/value-service.ts`): `evaluateOperation(op,
+    left, right)` / `callFunction(name, argsSource)`, operands/results as BYTES. tree2 owns the
+    value STRUCTURE and the byte emission of operands (it resolves `@var` refs through its own
+    scope and serializes operands to un-evaluated source); the service owns the MATH. The
+    IMPLEMENTATION lives OUTSIDE the boundary (`tree2-frontend/value-service.ts`) and reuses the
+    SAME pipeline the oracle uses (wrap `_x{_v:<expr>;}`, render through the fns-registered Less
+    path, extract the computed value bytes) — byte-identity by construction. tree2 imports ONLY
+    the interface. **Boundary guard GREEN** (grep of `src/tree2` for real `../tree` imports empty
+    — only prose in comments; vitest guard passes). No `as any`.
+  - **Sync/async bridge (necessary, documented).** Function eval renders on the ASYNC path but
+    tree2's serializer is synchronous by design. So the service is built in two phases: a sync
+    recording serialize pass gathers every (variable-resolved) expression key, they are computed
+    ONCE async into a cache, then a sync map-backed `ValueService` replays. KEY FIX: operands
+    handed to the service are always the UN-EVALUATED variable-resolved source (null-service), so
+    only the OUTERMOST computed node calls the service with the full nested source — this made
+    the record/replay key deterministic and fixed chained ops (`(#110000 + #000011 + #001100)`,
+    which first regressed because a nested op's replay value ≠ its recording placeholder).
+  - **Byte-identity (vs REAL oracle).** 22 targeted fixtures byte-identical: color functions
+    (`lighten`/`darken`/`rgba`/`argb`/`hsla`/nested `red(rgb(...))`/modern `rgb(0 128 255 / 50%)`/
+    `fade`/`mix`/`saturate`/percentage args), color operations (`#111111 - #444444`, `#aaa * 3`,
+    `#eee + #fff`), and chained mixed-unit arithmetic (`(10px / 2px + 6px - 1px * 2)` → `9px`,
+    `(2 * 4 - 5em)` → `3em`). **Real-corpus census (133 less.js `tests-unit`) vs the REAL oracle:
+    CLEAN byte-identical passes = 25 — UNCHANGED from rung 7's 25 despite the oracle getting
+    strictly harder (it now evaluates functions).** That is the result: the stricter oracle caused
+    ZERO regressions, and **8 of the 25 are now GENUINE computed-function passes** (color-functions
+    /basic/formats/modern-syntax/modern/comprehensive/alpha + 2 svg-gradient) where tree2 actually
+    computes e.g. `lighten(blue,10%)`→`#3333ff` and matches — no longer hollow. Remaining DIFFs
+    (19): the whole-file `operations/operations.less` + `color-functions/operations.less` diff on
+    NESTING / trailing `//`-line-comment / empty-parent-block framing, NOT value-eval (their inner
+    operations compute correctly in isolation); `calc/*` is a separate beast (Less-v5 calc
+    simplification) and was not attempted.
+  - **Race (same worktree, warmup 5, N=15 median, `--expose-gc`; HONEST framing: value MATH is
+    delegated to the shared service = EQUAL cost both sides, reported straight as a separate `svc`
+    column, NOT a representation signal. t2 lane = sync serialize with the pre-built map service
+    i.e. representation + value emission, math precomputed; tree lane = full REAL oracle render
+    with math inline; all byte-identical):**
+      - `color-functions/basic`: t2 **0.0176 ms** vs tree **1.085 ms = 61.6×**; svc 1.76 ms; heap
+        t2 35 KB vs tree 1455 KB; **ops t2 compose 0 vs tree clone 6 + inherit 36**.
+      - `color-functions/modern-syntax`: **136.4×** (0.0062 vs 0.842 ms); tree clone 8 + inherit 48,
+        t2 0.
+      - `fn-lighten`: **113.2×**; `op-chain-color`: **73.1×** (tree clone 0 + inherit 9, t2 0);
+        `fn-mix-heavy` (20 mix calls): **82.0×**, tree clone 20 + inherit 120, t2 0.
+  - **Honest verdict.** YES on both questions. (1) Adding value-eval introduced NO clone / inherit
+    / materialize regression: tree2's structural op-count columns stay ZERO for every value fixture
+    while legacy pays clone+inherit even for pure color/operation fixtures — value structure is a
+    thin node the serializer walks, math is delegated. (2) The shared-service indirection adds no
+    meaningful representation overhead: the timed sync-serialize stays in the sub-0.03 ms range and
+    the delegated math is explicitly equal-cost on both sides (the service impl re-uses the very
+    eval it is compared against — so the comparison remains about representation, as instructed).
+    Kept (experimental scaffold, NOT merged). Code: `tree2/{node,nodes,serialize,value-service}.ts`,
+    `tree2-frontend/{bridge,oracle,value-service}.ts`, `__tests__/{value-byte-identity,value-race,
+    census}.test.ts`.
+  - **Remaining blockers to bridging `benchmark.less` end-to-end (ranked — decides parallel fan-out).**
+    (1) **at-rules / `@media` (`AtRule` 16 + `AtRuleStatement` 11 = 27)** — biggest single bridge-
+    reject bucket and pervasive in real fixtures; needed for media bubbling. (2) **`@import` /
+    `StyleImport` (20)** — benchmark's imports are 0-byte but real fixtures need it; also unblocks
+    the import corpus. (3) **`Extend` (9)** — the concentrated ~50 ms legacy cost; its own
+    plan/solve/emit pipeline, the hardest rung. (4) **guards (6) + pattern/named-param mixins (3)** —
+    overloaded-mixin dispatch. (5) **nesting-with-line-comments / empty-parent-block framing** — the
+    residual structural diffs surfaced by operations/operations.less. (6) **calc simplification** —
+    Less-v5-specific, isolated. Recommended parallel fan-out AFTER at-rules land (they gate the most
+    fixtures): extend, @import, and guards/overloads can then proceed independently; value-eval
+    (this rung), variables (rung 7), selectors/nesting (rungs 3-4), and mixins (rung 5) are done.
+
 - 2026-07-15 — **rung 7: VARIABLES + real lexical scope (reference substitution only). VERDICT:
   variable resolution is correct AND stays cheap — a scope-map lookup through a frame chain, ZERO
   clone/inherit/materialize analog; the #1 census blocker (was 36) is eliminated (branch

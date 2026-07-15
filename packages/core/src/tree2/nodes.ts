@@ -69,7 +69,60 @@ export class Concat extends Tree2Node {
   }
 }
 
-export type ValueNode = Word | Dimension | SpacedValue | VarRef | Concat;
+/**
+ * A binary value operation, e.g. `#aaa * 3` or `@a + @b`. tree2 owns the
+ * STRUCTURE (operator + operand value nodes); the MATH is delegated to the
+ * injected value service. Operands are themselves value nodes so nested
+ * operations / variable refs fold bottom-up (each sub-operation is computed to
+ * bytes before the outer one runs — precedence is carried by the tree shape).
+ */
+export class Operation extends Tree2Node {
+  readonly kind = Kind.Operation as const;
+  constructor(
+    readonly operator: string,
+    readonly left: ValueNode,
+    readonly right: ValueNode,
+  ) {
+    super();
+  }
+}
+
+/**
+ * A function call value, e.g. `lighten(blue, 10%)`. tree2 owns the STRUCTURE
+ * (name + an argument value node) and emits the resolved argument source; the
+ * value service performs the actual call (arithmetic/color math) and returns
+ * the computed bytes. `args` is a single value node whose serialized bytes are
+ * the (variable-resolved) inner argument source — this keeps arbitrary argument
+ * separators (`,`, space, `/`) byte-faithful without tree2 modeling every list
+ * shape, while still resolving `@var` references through scope before the call.
+ */
+export class FunctionCall extends Tree2Node {
+  readonly kind = Kind.FunctionCall as const;
+  constructor(
+    readonly name: string,
+    readonly args: ValueNode,
+  ) {
+    super();
+  }
+}
+
+/** A parenthesized value, e.g. `(#aaa * 3)`. Transparent to computed bytes. */
+export class Paren extends Tree2Node {
+  readonly kind = Kind.Paren as const;
+  constructor(readonly inner: ValueNode) {
+    super();
+  }
+}
+
+export type ValueNode =
+  | Word
+  | Dimension
+  | SpacedValue
+  | VarRef
+  | Concat
+  | Operation
+  | FunctionCall
+  | Paren;
 
 /* ---------------------------------------------------------------- selectors */
 
@@ -268,6 +321,11 @@ export const decl = (name: string, value: ValueNode): Declaration => new Declara
 export const comment = (text: string): Comment => new Comment(text);
 export const varRef = (name: string): VarRef => new VarRef(name);
 export const concat = (parts: ValueNode[]): Concat => new Concat(parts);
+export const operation = (operator: string, left: ValueNode, right: ValueNode): Operation =>
+  new Operation(operator, left, right);
+export const funcCall = (name: string, args: ValueNode): FunctionCall =>
+  new FunctionCall(name, args);
+export const paren = (inner: ValueNode): Paren => new Paren(inner);
 export const varDecl = (name: string, value: ValueNode): VarDeclaration =>
   new VarDeclaration(name, value);
 export const mixinDef = (name: string, params: Param[], body: Statement[]): MixinDef =>

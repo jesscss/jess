@@ -31,6 +31,9 @@ export enum Kind {
   MixinCall = 13,
   VarDeclaration = 14,
   Concat = 15,
+  Operation = 16,
+  FunctionCall = 17,
+  Paren = 18,
 }
 
 /** Combinator between two compounds in a complex selector. */

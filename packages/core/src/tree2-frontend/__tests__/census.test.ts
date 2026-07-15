@@ -4,16 +4,11 @@ import * as path from 'path';
 import { parseLessFn } from '@jesscss/less-parser';
 import { serialize } from '../../tree2/index.js';
 import { bridgeToTree2, UnsupportedShape } from '../bridge.js';
-import { Context } from '../../context.js';
-import { renderNodeToString } from '../../tree/util/render-buffer.js';
+import { buildValueService } from '../value-service.js';
+import { renderRealOracle } from '../oracle.js';
 
-const CN = { collapseNesting: true } as const;
-
-async function renderLegacy(tree: unknown): Promise<string> {
-  const ctx = new Context();
-  (ctx as unknown as { root: unknown }).root = tree;
-  return await renderNodeToString(tree as Parameters<typeof renderNodeToString>[0], ctx, CN);
-}
+// Rung 8: the oracle is now the REAL (function-evaluating) pipeline.
+const renderLegacy = renderRealOracle;
 
 function findLess(root: string): string[] {
   const out: string[] = [];
@@ -68,7 +63,8 @@ describe('tree2 bridge — real corpus census', () => {
       }
       let t2css: string;
       try {
-        t2css = serialize(bridged).css;
+        const service = await buildValueService(bridged);
+        t2css = serialize(bridged, { valueService: service }).css;
       } catch (e) {
         unsupported.set('serialize-error', (unsupported.get('serialize-error') ?? 0) + 1);
         continue;
@@ -104,30 +100,29 @@ describe('tree2 bridge — real corpus census', () => {
     console.log(`parse errors/skipped        : ${parseErrors.length}`);
     console.log(`legacy-render errors        : ${legacyErrors.length}`);
 
-    // Honesty tags on clean passes: the bare-context legacy oracle evaluates
-    // variables/mixins/nesting but NOT color/math functions (no function
-    // registry wired), so a pass whose source calls a function is byte-identical
-    // only because BOTH sides pass the call through un-evaluated (oracle-hollow
-    // for functions). A pass whose value contains a `@ref` genuinely exercises
-    // this rung's variable resolution.
+    // Rung 8: the oracle now EVALUATES functions (fns registry wired), and tree2
+    // computes them through the injected value service, so a pass whose source
+    // calls a function is a GENUINE computed-function pass (both sides compute
+    // the same bytes) — no longer "fn-hollow". A pass whose value contains a
+    // `@ref` exercises variable resolution.
     const FN =
       /\b(lighten|darken|fade|fadein|fadeout|saturate|desaturate|rgba?|hsla?|hsv|spin|mix|tint|shade|alpha|luma|luminance|contrast|red|green|blue|hue|saturation|lightness|percentage|round|ceil|floor|unit|convert|calc)\s*\(/i;
     let meaningfulVarPasses = 0;
-    let fnHollowPasses = 0;
-    console.log('\n--- CLEAN PASSES (real fixtures, byte-identical to tree oracle) ---');
+    let computedFnPasses = 0;
+    console.log('\n--- CLEAN PASSES (real fixtures, byte-identical to REAL oracle) ---');
     for (const p of passes) {
       const abs = path.join(LESS_ROOT, p);
       const sz = fs.statSync(abs).size;
       const s = fs.readFileSync(abs, 'utf8');
       const hasVarRef = /:\s*[^;{}]*@[A-Za-z_]/.test(s);
       const hasFn = FN.test(s);
-      const tag = [hasVarRef ? 'VAR' : '', hasFn ? 'fn-hollow' : ''].filter(Boolean).join(',') || 'static';
+      const tag = [hasVarRef ? 'VAR' : '', hasFn ? 'computed-fn' : ''].filter(Boolean).join(',') || 'static';
       if (hasVarRef && !hasFn) meaningfulVarPasses++;
-      if (hasFn) fnHollowPasses++;
+      if (hasFn) computedFnPasses++;
       console.log(`  PASS  ${p}  (${sz}B)  [${tag}]`);
     }
     console.log(`  => meaningful VARIABLE passes (var ref, no fn): ${meaningfulVarPasses}`);
-    console.log(`  => fn-hollow passes (oracle doesn't eval fns): ${fnHollowPasses}`);
+    console.log(`  => GENUINE computed-function passes (fns evaluated both sides): ${computedFnPasses}`);
 
     console.log('\n--- RANKED BLOCKERS (unsupported feature -> #fixtures) ---');
     for (const [feat, n] of rankedUnsupported) console.log(`  ${String(n).padStart(4)}  ${feat}`);

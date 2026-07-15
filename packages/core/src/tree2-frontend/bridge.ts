@@ -219,6 +219,72 @@ function parseValue(text: string): t2.ValueNode {
   return parts.length === 1 ? parts[0]! : t2.concat(parts);
 }
 
+/* ------------------------------------------------------ value expressions */
+
+/** Inner argument source of a call: text between the first `(` and last `)`. */
+function innerArgsSource(callSource: string): string {
+  const open = callSource.indexOf('(');
+  const close = callSource.lastIndexOf(')');
+  if (open < 0 || close <= open) return '';
+  return callSource.slice(open + 1, close);
+}
+
+/**
+ * Build a tree2 value node from a parsed Less value node, producing STRUCTURED
+ * tree2 `FunctionCall` / `Operation` / `Paren` nodes for computed expressions.
+ * Returns `null` for anything that is not (and does not contain at this level) a
+ * computed expression, so the caller falls back to raw-bytes capture — keeping
+ * every existing static/variable pass byte-identical.
+ *
+ * Value MATH is not performed here: the nodes carry structure only, and the
+ * injected value service computes them at serialize time.
+ */
+function toComputedValue(ctx: BridgeCtx, node: unknown): t2.ValueNode | null {
+  if (!isNode(node)) return null;
+  const t = typeOf(node);
+  switch (t) {
+    case 'Call': {
+      const name = mixinName(node as AnyNode);
+      const callSource = slice(ctx, node);
+      if (callSource === undefined) return null;
+      // Args are captured as their (possibly `@var`-bearing) source text; the
+      // service re-parses the assembled call, so any argument separator (`,`,
+      // space, `/`) and nested calls stay byte-faithful.
+      return t2.funcCall(name, parseValue(innerArgsSource(callSource)));
+    }
+    case 'Paren': {
+      const inner = toComputedValue(ctx, (node as AnyNode).value);
+      if (inner === null) {
+        const raw = slice(ctx, (node as AnyNode).value as object);
+        return raw === undefined ? null : t2.paren(parseValue(raw));
+      }
+      return t2.paren(inner);
+    }
+    case 'Operation': {
+      const operator = (node as AnyNode).operator;
+      if (typeof operator !== 'string') return null;
+      const left = toOperand(ctx, (node as AnyNode).left);
+      const right = toOperand(ctx, (node as AnyNode).right);
+      if (left === null || right === null) return null;
+      return t2.operation(operator, left, right);
+    }
+    default:
+      return null;
+  }
+}
+
+/** An operand of an operation: a nested computed expression or a raw leaf. */
+function toOperand(ctx: BridgeCtx, node: unknown): t2.ValueNode | null {
+  const computed = toComputedValue(ctx, node);
+  if (computed !== null) return computed;
+  if (typeof node === 'string') return parseValue(node);
+  if (isNode(node)) {
+    const raw = slice(ctx, node);
+    if (raw !== undefined) return parseValue(raw);
+  }
+  return null;
+}
+
 /* --------------------------------------------------------------- mixins */
 
 function mixinParams(ctx: BridgeCtx, params: unknown): t2.Param[] {
@@ -276,7 +342,10 @@ function toStatement(ctx: BridgeCtx, node: unknown): t2.Statement | null {
     case 'Declaration': {
       const name = (node as AnyNode).name;
       if (typeof name !== 'string') throw new UnsupportedShape('decl:name', typeOf(name));
-      return t2.decl(name, parseValue(rawDeclValue(ctx, node as AnyNode)));
+      // Prefer a structured computed value (function call / operation); fall back
+      // to raw-bytes capture for plain static / variable-only values.
+      const computed = toComputedValue(ctx, (node as AnyNode).value);
+      return t2.decl(name, computed ?? parseValue(rawDeclValue(ctx, node as AnyNode)));
     }
     case 'VarDeclaration': {
       const name = (node as AnyNode).name;
