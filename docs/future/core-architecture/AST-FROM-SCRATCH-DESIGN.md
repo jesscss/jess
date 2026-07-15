@@ -33,6 +33,43 @@ The design target is therefore: make the common path structurally cheap and
 make every dynamic escape explicit. Do not make the common path pay for the
 dynamic language merely because the language supports it somewhere.
 
+## Shape cardinality is not a compatibility contract
+
+The experimental representation must not preserve a one-to-one mapping with
+today's `Node` subclasses. A single static declaration run may be one packed
+record; one legacy node may split into a static source leaf plus a dynamic
+escape; several inert value nodes may fuse into a tagged value sequence; and a
+placement may be represented by a frame/handle rather than a copied subtree.
+These are semantic shapes, not public AST promises.
+
+Correctness is maintained by explicit ownership rather than by preserving
+class identity:
+
+- source text, authored spans, and debug identity handles remain available;
+- source-order and scope-sensitive behavior belongs to placement frames;
+- dynamic features escape to a defined legacy/runtime operation;
+- a debug projection can reconstruct an inspectable view without allocating
+  debug objects on the hot path;
+- every shape conversion is compared against the existing AST for output,
+  source-map/caller-buffer behavior, and feature-route parity.
+
+The greenfield implementation therefore measures different cardinalities and
+different dispatch strategies directly. It must not be judged by whether it
+looks like a smaller version of the current tree.
+
+## Acceptance oracle
+
+The end-to-end acceptance criterion for the experimental representation is
+byte-identical CSS output against the existing AST, not preservation of legacy
+field layouts, class identity, node counts, or object shapes. Those shape tests
+remain useful diagnostics for the current production implementation and must
+not be weakened or deleted, but they do not constrain a separate fast-AST
+experiment. The experiment may fuse, split, or replace shapes freely if its
+rendered CSS remains exact; source-map and caller-owned buffer contracts are
+also compared when the workload exercises them. Unsupported semantics must
+route through an explicit legacy escape that produces exact output, or remain
+an honestly recorded gap.
+
 ## Recommended target shape
 
 Use a three-layer representation:
@@ -214,4 +251,3 @@ islands**, tested first through the five POCs above. This preserves the value of
 a complete AST for debugging, tooling, and minification while stopping inert
 values, imports, mixin bodies, whitespace captures, and no-feature evaluator
 surfaces from paying dynamic costs they do not use.
-
