@@ -922,6 +922,10 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
     // children into `rulesToRender`. Gates the post-expansion merge re-plan so a
     // body with no expansion pays nothing (the pre-expansion plan stays valid).
     let mixinExpansionOccurred = false;
+    // Track whether any expansion inserts entries that need a live frame switch during
+    // emission. This is separate from the merge re-plan gate because imported
+    // folded children are frame-bearing without being mixin expansions.
+    let frameAwareEntriesOccurred = false;
     const sourceChainHas = (start: any, predicate: (n: any) => boolean): boolean => {
       const seen = new Set<any>();
       const queue: any[] = [start];
@@ -1188,6 +1192,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
             () => resolveSpineMixinCall(entryNode, spineContext)
           );
           const apply = (resolved: SpineMixinCallResolution): MaybePromise<void> => {
+            frameAwareEntriesOccurred = true;
             restoreFrame(undefined);
             // FOLD: splice each bound surface's children, TAGGED with the surface
             // as their `spineFrame` — so a body reference resolves against the
@@ -1281,6 +1286,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
             return expandFrom(i);
           };
           const foldBody = (body: Rules, reference: boolean): MaybePromise<void> => {
+            frameAwareEntriesOccurred = true;
             // A `(reference)` import (increment 5) splices the placement AS A SINGLE
             // `Rules` entry, NOT its children: the body loop's Rules-child path reads
             // the placement's own `options.referenceMode` and the container serializer
@@ -1389,6 +1395,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
             () => forNode.spineIterationSurfaces(spineContext)
           );
           const apply = (surfaces: Rules[]): MaybePromise<void> => {
+            frameAwareEntriesOccurred = true;
             restoreFrame(undefined);
             const childEntries: RenderRuleEntry[] = surfaces.flatMap(surface =>
               surface.rules.map(child => ({ node: child, spineFrame: surface, mergeOwner: entryNode })));
@@ -1878,12 +1885,17 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
           throw error;
         }
       };
+      // Expansion is complete before the body driver starts. When no frame-bearing
+      // expansion occurred, every entry is authored in this container and cannot
+      // carry a frame; select the direct processor once instead of rechecking that
+      // fact for every entry. Expanded bodies retain the frame-aware wrapper.
+      const processEntry = frameAwareEntriesOccurred ? processNode : processNodeInner;
       // Drive the per-node processor in source order, threading a promise only if
       // a node resolved async (spine-mode `calc()`/function leaf or nested async
       // container). The common all-sync case never allocates a promise.
       const processFrom = (idx: number): MaybePromise<void> => {
         for (let i = idx; i < rulesToRender.length; i++) {
-          const step = processNode(i);
+          const step = processEntry(i);
           if (isThenable(step)) {
             return step.then(() => processFrom(i + 1));
           }
