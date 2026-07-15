@@ -1,0 +1,102 @@
+/**
+ * Clean-room tree2 mixin GUARD model + evaluation. (rung: guards)
+ *
+ * HARD MODULE BOUNDARY: this file lives under `tree2/` and therefore imports
+ * NOTHING from the legacy `../tree`. A guard is tree2's OWN structural node set;
+ * the only value MATH it delegates is the LEAF condition truth (comparison /
+ * type-check function) — handed to the injected `ValueService` as an
+ * already-resolved source string, exactly mirroring the rung-8 value seam
+ * (tree2 owns STRUCTURE + operand byte emission, the service owns the MATH).
+ *
+ * tree2 owns the whole boolean STRUCTURE:
+ *   - `and` / `or` are combined here (over leaf booleans),
+ *   - `not` negates here,
+ *   - truthiness (`when (@a)`, `when (true)`) is a pure byte test here
+ *     (Less: a bare value guard is true iff it evaluates to the keyword `true`),
+ *   - `default()` is a DISPATCH decision tree2 owns (true iff no other def
+ *     matched), supplied to `evalGuard` as a callback.
+ * Only `cmp` (a comparison like `@a > 0`) and `call` (a boolean function like
+ * `iscolor(@a)`) reach the service.
+ *
+ * Determinism note: `and`/`or` are evaluated WITHOUT short-circuit so that a
+ * record pass visits every leaf (guards have no side effects, so this is
+ * semantically identical to short-circuiting). This keeps the async
+ * record/replay key set for the value service complete.
+ */
+
+import type { ValueNode } from './nodes.js';
+import type { ValueService } from './value-service.js';
+
+/** A guard condition tree. Never serialized to CSS — evaluated to a boolean. */
+export type GuardNode =
+  | { readonly g: 'cmp'; readonly op: string; readonly left: ValueNode; readonly right: ValueNode }
+  | { readonly g: 'and'; readonly left: GuardNode; readonly right: GuardNode }
+  | { readonly g: 'or'; readonly left: GuardNode; readonly right: GuardNode }
+  | { readonly g: 'not'; readonly inner: GuardNode }
+  | { readonly g: 'truth'; readonly value: ValueNode }
+  | { readonly g: 'call'; readonly name: string; readonly args: ValueNode }
+  | { readonly g: 'default' };
+
+/** Resolve a value node to its (variable-resolved, un-evaluated) source bytes. */
+export type ValueResolver = (v: ValueNode) => string;
+
+export interface GuardEvalDeps {
+  resolve: ValueResolver;
+  service: ValueService | null;
+  /** True iff no non-default definition matched (the `default()` value). */
+  isDefault: () => boolean;
+}
+
+/**
+ * Evaluate a guard tree to a boolean. Leaf comparisons/functions are delegated
+ * to the value service (real Less semantics by construction); logic/negation/
+ * truthiness/default are owned here.
+ */
+export function evalGuard(node: GuardNode, deps: GuardEvalDeps): boolean {
+  switch (node.g) {
+    case 'and': {
+      const l = evalGuard(node.left, deps);
+      const r = evalGuard(node.right, deps);
+      return l && r;
+    }
+    case 'or': {
+      const l = evalGuard(node.left, deps);
+      const r = evalGuard(node.right, deps);
+      return l || r;
+    }
+    case 'not':
+      return !evalGuard(node.inner, deps);
+    case 'truth':
+      // Less: a bare-value guard is true only if it evaluates to `true`.
+      return deps.resolve(node.value).trim() === 'true';
+    case 'cmp': {
+      const left = deps.resolve(node.left);
+      const right = deps.resolve(node.right);
+      const source = `${left} ${node.op} ${right}`;
+      return deps.service ? deps.service.evaluateGuardCondition(source) : false;
+    }
+    case 'call': {
+      const args = deps.resolve(node.args);
+      const source = `${node.name}(${args})`;
+      return deps.service ? deps.service.evaluateGuardCondition(source) : false;
+    }
+    case 'default':
+      return deps.isDefault();
+  }
+}
+
+/** Whether a guard tree references `default()` anywhere (a default candidate). */
+export function guardUsesDefault(node: GuardNode | undefined): boolean {
+  if (!node) return false;
+  switch (node.g) {
+    case 'default':
+      return true;
+    case 'and':
+    case 'or':
+      return guardUsesDefault(node.left) || guardUsesDefault(node.right);
+    case 'not':
+      return guardUsesDefault(node.inner);
+    default:
+      return false;
+  }
+}

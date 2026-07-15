@@ -9,6 +9,14 @@
 export { Kind, Tree2Node, type Combinator } from './node.js';
 export * from './nodes.js';
 export type { ValueService } from './value-service.js';
+// [guards] guard model + overloaded-mixin dispatch
+export { evalGuard, guardUsesDefault, type GuardNode, type ValueResolver } from './guard.js';
+export {
+  bindArgs,
+  selectDefinitions,
+  type CallArg,
+  type Selection,
+} from './mixin-dispatch.js';
 export {
   serialize,
   composeStats,

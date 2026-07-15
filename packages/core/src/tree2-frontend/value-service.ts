@@ -60,11 +60,27 @@ async function computeExpression(exprSource: string): Promise<string> {
 }
 
 /**
+ * [guards] Evaluate a single guard-leaf condition to a boolean through the real
+ * Less guard evaluator: a probe mixin guarded by the condition emits a marker
+ * declaration iff the guard fires. Byte/semantic-identity with the oracle by
+ * construction (same parser + same guard evaluation).
+ */
+async function computeGuard(conditionSource: string): Promise<boolean> {
+  const src = `.__g() when (${conditionSource}) {__r:1}\n.__o {.__g()}`;
+  const root = parseLessFn(src).tree as unknown as Rules;
+  const ctx = new Context();
+  (ctx as unknown as { root: unknown }).root = root;
+  registerLessFunctions(root);
+  const rendered = await renderNodeToString(root as never, ctx, COLLAPSE);
+  return rendered.includes('__r');
+}
+
+/**
  * A synchronous recording `ValueService`: it does no math, it just collects the
  * (already variable-resolved) expression sources tree2 asks about and returns
  * the un-evaluated source as a stable placeholder.
  */
-function recordingService(keys: Set<string>): ValueService {
+function recordingService(keys: Set<string>, guardKeys: Set<string>): ValueService {
   return {
     evaluateOperation(operator, left, right) {
       const key = operationKey(operator, left, right);
@@ -75,12 +91,20 @@ function recordingService(keys: Set<string>): ValueService {
       const key = callKey(name, argsSource);
       keys.add(key);
       return key;
+    },
+    // [guards] record every guard-leaf source; the boolean is precomputed later.
+    evaluateGuardCondition(source) {
+      guardKeys.add(source);
+      return false;
     },
   };
 }
 
-/** A synchronous replay `ValueService` backed by the precomputed cache. */
-function mapValueService(cache: Map<string, string>): ValueService {
+/** A synchronous replay `ValueService` backed by the precomputed caches. */
+function mapValueService(
+  cache: Map<string, string>,
+  guardCache: Map<string, boolean>, // [guards]
+): ValueService {
   return {
     evaluateOperation(operator, left, right) {
       const key = operationKey(operator, left, right);
@@ -89,6 +113,9 @@ function mapValueService(cache: Map<string, string>): ValueService {
     callFunction(name, argsSource) {
       const key = callKey(name, argsSource);
       return cache.get(key) ?? key;
+    },
+    evaluateGuardCondition(source) {
+      return guardCache.get(source) ?? false; // [guards]
     },
   };
 }
@@ -100,11 +127,18 @@ function mapValueService(cache: Map<string, string>): ValueService {
  */
 export async function buildValueService(root: Root): Promise<ValueService> {
   const keys = new Set<string>();
+  const guardKeys = new Set<string>(); // [guards]
   // Synchronous recording pass (no math): gather resolved expression sources.
-  serialize(root, { valueService: recordingService(keys) });
+  // [guards] `guardMode: 'record'` walks every candidate body + guard leaf so
+  // the collected key set is complete regardless of guard-based selection.
+  serialize(root, { valueService: recordingService(keys, guardKeys), guardMode: 'record' });
   const cache = new Map<string, string>();
   for (const key of keys) {
     cache.set(key, await computeExpression(key));
   }
-  return mapValueService(cache);
+  const guardCache = new Map<string, boolean>(); // [guards]
+  for (const gk of guardKeys) {
+    guardCache.set(gk, await computeGuard(gk));
+  }
+  return mapValueService(cache, guardCache);
 }

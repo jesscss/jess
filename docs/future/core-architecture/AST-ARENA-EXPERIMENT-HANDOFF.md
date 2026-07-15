@@ -123,6 +123,68 @@ the log below every iteration so the track compounds instead of repeating.
 
 <!-- newest first; each entry: date · hypothesis · prediction · byte-identical? · measured Δ · kept/dropped · why · next -->
 
+- 2026-07-15 — **rung 9 (parallel fan-out #4): MIXIN GUARDS + PATTERN/OVERLOADED DISPATCH +
+  NAMED/DEFAULT PARAMS, proven BYTE-IDENTICAL vs the REAL oracle. VERDICT: overloaded-mixin
+  dispatch (arity + literal pattern + named/default binding + `when(...)` guards + `default()`)
+  stays clone/inherit/withComponents-FREE — tree2's structural op columns are ZERO for every
+  guard/pattern fixture while legacy pays clone+inherit per placement; the guard-leaf math reuses
+  the SAME shared value service as rung 8 (no new engine). Built on rung 8; branch
+  `experiment/tree2-guards-20260715`, experimental scaffold, NOT merged.**
+  - **Structure vs math split (owner seam, unchanged).** tree2 owns the whole DISPATCH + boolean
+    STRUCTURE: a name maps to ALL same-name defs (overloads, def order); a call selects candidates
+    by arity, literal-value pattern (`.icon(add)`), and named/default/variadic binding, evaluates
+    guards, and emits ALL matching bodies in order. Guards are tree2's OWN node set
+    (`tree2/guard.ts`: cmp / and / or / not / truth / call / default) — `and`/`or`/`not`/truthiness
+    (`when (@a)` true iff bytes === `true`)/`default()` (a dispatch decision: true iff no non-default
+    matched) are computed IN tree2; only the two LEAVES that need Less math — a comparison
+    (`5 > 0`) and a boolean function (`iscolor(red)`) — go to the value service via ONE new
+    interface method `evaluateGuardCondition(source): boolean`. Feature code is NEW files
+    (`tree2/guard.ts`, `tree2/mixin-dispatch.ts`); shared dispatch in `serialize.ts` touched
+    minimally (Frame.mixins → `MixinDef[]`, `lookupMixinCandidates`, `expandCall` selects+walks),
+    all marked `// [guards]`. **Boundary guard GREEN** (grep of `src/tree2` for `../tree` empty;
+    vitest guard passes). No `as any`.
+  - **Async record/replay (extends rung-8 machinery).** Guard-leaf truth renders async (real Less
+    guard evaluator: a probe `.__g() when (COND){__r:1}` fires iff true). `buildValueService` gains a
+    `guardMode:'record'` serialize pre-pass that walks EVERY arity/pattern candidate (ignoring guard
+    truth, non-short-circuit and/or) so the async key set is complete; a depth cap (64) bounds
+    guard-terminated recursion in record mode (eval mode is unbounded, terminates via guards). Real
+    guard/value bytes are precomputed once, then the sync serialize replays from the map.
+  - **Byte-identity (vs REAL oracle).** 9 targeted census fixtures byte-identical: comparison guards
+    selecting overloads, `and`/`or`(comma)/`not`, type-check-fn guards (`iscolor`/`isnumber`),
+    truthiness (`true`/`false`), `default()` fallback; literal pattern match; order-independent named
+    args; default params (omit / positional / named). **Real-corpus census (133 less.js tests-unit)
+    unchanged at 25 CLEAN passes** — the dedicated guard/pattern fixtures are large multi-feature
+    files that still first-block on OTHER unbuilt rungs (StyleImport/AtRule/Extend/operations), so
+    none flips to a full-file pass — **but the CENSUS ADVANCED: guard bridge-rejects 6→1 (only CSS
+    ruleset-guards remain, deferred) and pattern/named-param rejects 3→0.** ~8 fixtures moved from
+    mixin-layer REJECT to BRIDGED (now blocked by later rungs, e.g. `mixins-pattern.less`,
+    `mixins-advanced.less` now bridge; `mixins-guards.less` advances to a `call:arg(Array)` list-arg
+    reject; the named-args file is blocked by a REAL-ORACLE bug — the oracle itself throws
+    `'arguments' is not defined`, so it is not a valid target).
+  - **Race (same worktree, warmup 5, N=15 median, `--expose-gc`; HONEST framing identical to rung 8 —
+    guard-leaf + value math delegated to the shared service = EQUAL cost both sides, reported straight
+    in a `svc` column, NOT a repr signal; t2 lane = sync serialize + overload dispatch with the
+    pre-built map service; tree lane = full REAL oracle render; all byte-identical):**
+      - `guard-cmp-40` (40 calls, 3-overload comparison mixin): t2 **0.150 ms** vs tree **4.57 ms =
+        30.5×**; heap t2 446 KB vs tree 2680 KB; **ops t2 compose 0 / clone 0 / inherit 0 vs tree
+        clone 120 + inherit 880**.
+      - `pattern-30` (30 literal-pattern-dispatch calls): **42.8×** (0.094 vs 4.03 ms); tree inherit
+        150, t2 0.
+      - `named-default-30` (30 default/named/positional calls): **41.2×** (0.100 vs 4.12 ms); tree
+        clone 90 + inherit 510, t2 0.
+  - **Honest verdict.** YES — overloaded dispatch does NOT reintroduce tree's per-placement cost:
+    tree2 selects candidates by cheap sync predicates and walks the shared canonical body, so its
+    clone/inherit/withComponents columns stay structurally ZERO while legacy pays them for every
+    guard/pattern placement; the added guard indirection reuses the rung-8 service (equal-cost math).
+    Kept (experimental scaffold, NOT merged). **Integrator note:** the `ValueService` interface GAINED
+    `evaluateGuardCondition(source): boolean` — the three parallel branches (at-rules, @import, guards)
+    must reconcile this one additive method (+ the frontend impl's record/replay). `serialize.ts`
+    Frame.mixins changed `MixinDef → MixinDef[]`; `MixinCall.args` is now `CallArg[]` and `Param`
+    gained `pattern`/`rest` (all additive, marked `// [guards]`). Code: `tree2/{guard,mixin-dispatch}.ts`
+    (NEW), `tree2/{nodes,serialize,value-service,index}.ts`, `tree2-frontend/{bridge,value-service}.ts`,
+    `__tests__/{guard-byte-identity,guard-race}.test.ts`. **Remaining after this rung:** at-rules/@media
+    (sibling), @import (sibling), extend, CSS ruleset-guards, list-value patterns, calc.
+
 - 2026-07-15 — **rung 8: VALUE OPERATIONS + FUNCTION CALLS via a SHARED VALUE SERVICE, proven
   BYTE-IDENTICAL against a REAL (function-evaluating) oracle. VERDICT: adding value-eval kept
   tree2's eval free of any clone/inherit/materialize op (still structurally ZERO), the shared-
