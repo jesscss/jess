@@ -24,14 +24,24 @@ this track is for the departures too big to bolt onto the current node model.
    profile the real fixture first, state the expected win (profile-fraction × reduction −
    the new machinery's own cost), and treat a sub-threshold bet as a no-go. Synthetic
    microbenchmarks are DISQUALIFIED — only same-worktree A/B on the real fixture counts.
-3. **DO NOT reuse the old machinery on the hot path — this is the whole point.** The first
-   arena POC (`tree2/`) failed *specifically* because it: (a) required a fully-evaluated
-   root, so it never touched eval; (b) was emit-only; (c) **reused `extend.ts`/node
-   materialization for its rewrite step**; and (d) was hard-disabled under
-   `collapseNesting:true` — the benchmark's own config. Net: it moved benchmark by **zero**.
-   A real arena experiment MUST attack the eval-time cost and MUST NOT call the old node
-   constructors / `withComponents` / `cloneForPlacement` / `inherit` on its hot path. If an
-   experiment leans on those, it is testing the old engine in a new coat — stop and rethink.
+3. **HARD MODULE BOUNDARY: no `tree2/` file may import from `../tree` — anywhere, not
+   just the hot path (owner, twice-emphasized, non-negotiable).** `tree2/` is a CLEAN-ROOM
+   rewrite. It writes its OWN base node, its OWN Declaration/Rule/value nodes, its OWN
+   byte-faithful serializer — it does NOT borrow node types, helpers, serializers
+   (`writeSyntax`/`valueOf`), extend, or materialization from `../tree`. "Byte-faithful"
+   means reproduce the exact OUTPUT BYTES `../tree` emits; it does NOT mean mirror `../tree`'s
+   serialization METHOD (the owner said "absolutely not" — the legacy serializer may itself
+   be too heavy, so porting it would inherit the problem). Only neutral context/config
+   objects may cross the boundary. Enforced mechanically: `grep -rn "\.\./tree\b\|from
+   '.*tree/" packages/core/src/tree2` must be empty (sibling tree2 refs only), plus a vitest
+   guard (`tree2-harness/__tests__/boundary-guard.test.ts`) that parses every tree2 import
+   specifier and fails on any legacy-tree reference. The OLD side of the comparison lives in
+   the harness (`tree2-harness/`), never inside `tree2/`. A build that borrows from `../tree`
+   is meaningless and will be discarded. (The first arena POC failed *specifically* by
+   violating this: it reused `extend.ts`/node materialization, was emit-only after full eval,
+   and was hard-disabled under `collapseNesting:true` — it moved benchmark by **zero**. That
+   POC is preserved on branch `feature/greenfield-ast-design-20260714` as the anti-pattern;
+   it is NOT on `origin/dev`.)
 4. **Measure allocation AND time, but trust TIME.** "Fewer allocations" has been a false
    signal all session (GC is ~5%). A departure must reduce wall-clock on the real fixture,
    not just an allocation counter.
@@ -112,6 +122,43 @@ the log below every iteration so the track compounds instead of repeating.
 ## Experiment log
 
 <!-- newest first; each entry: date · hypothesis · prediction · byte-identical? · measured Δ · kept/dropped · why · next -->
+
+- 2026-07-15 — **clean-room `tree2` scaffold + rungs 1–2 (branch
+  `experiment/tree2-cleanroom-20260715`).** Pivot from departure #1 (below): grow a
+  from-scratch `tree2` bottom-up via a per-shape `tree2`-vs-`tree` serialization head-to-head.
+  Delivered: clean-room `packages/core/src/tree2/` (`node.ts` own base `Tree2Node`;
+  `nodes.ts` Root/Rule/Selector/Declaration/Comment + Word/Dimension/SpacedValue value nodes;
+  `serialize.ts` a from-scratch byte-faithful serializer with a FAST path and an OPTIONAL
+  position-tracking path), and a harness in `tree2-harness/` (byte-identity, boundary-guard,
+  race — all outside `tree2/` so the OLD side's `../tree` imports never pollute the boundary).
+  Hard-boundary guard: grep of `src/tree2` empty; vitest guard passes. **Byte-identity: rung 1
+  (`.test { color: red; }`) and rung 2 (comment trivia + `0px`/`10px` dimensions + 3 decls) both
+  triple-identical** — tree2 fast === tree2 tracked === legacy `tree` === expected literal.
+  Trivia is carried STRUCTURALLY (a `Comment` body child), so byte-identity holds with ZERO
+  position tracking. Race (warmup 12, N=25, batch 4000, gc on): rung 1 tree2-fast **2.35e-4 ms**
+  vs legacy **1.47e-2 ms** (~63× faster); rung 2 tree2-fast **5.77e-4 ms** vs legacy
+  **3.05e-2 ms** (~53× faster); tracking path adds ~1–11% over fast. **Caveat (honest): the huge
+  margin at the bottom is legacy's fixed per-render setup (new `Context` + render buffer +
+  `resolve` contract), NOT the per-placement selector-reconstruction cost this track targets —
+  the meaningful race arrives at the selector-composition / nesting / mixin / extend rungs.**
+  Next rungs (mechanical from here): selector lists/compound/combinators → nesting & `&`
+  composition → mixin definition+placement → extend. Friction: legacy serialization requires a
+  `Context` and goes through `renderNodeToString`'s resolve path even for fully-static shapes;
+  fine for the oracle but it inflates the legacy lane's floor. Kept (experimental scaffold, NOT
+  merged to dev).
+
+- 2026-07-15 — **departure #1: position-sharing on same-extend-root placements — measured NO-GO.**
+  Hypothesis: the ~35,033 per-render `inherit` provenance-copies (and the clones they back)
+  exist mainly to carry distinct source positions, so same-extend-root placements could SHARE
+  position data (reference, not copy) and collapse both the clones and the inherits.
+  Diagnostic: no-op'ing all 35,033 `copySpanFields` calls moved render by **≤2%** and broke
+  bytes by **−46** — i.e. provenance copying is NOT the cost, and it IS load-bearing for output.
+  Same-extend-root is **≈100%** on `benchmark.less` (its imports are 0-byte, so cross-root is
+  untestable on this fixture) → position-sharing has nothing to gate on here. The clones are
+  dominated by **intrinsic per-placement composition**, not provenance. Dropped: the clone is
+  not a position-carrying artifact; sharing positions saves nothing measurable and the real cost
+  is rebuilding selector node trees per placement. → pivot to the clean-room `tree2` entry above:
+  attack the representation itself, prove it bottom-up shape by shape.
 
 - (seed) 2026-07-15 — track opened. Baseline ~215–250ms; sha `98a0536086c7e555`. Pending input:
   the mixin-expansion clone redundant-vs-intrinsic + position-sharing diagnostic (whether the
