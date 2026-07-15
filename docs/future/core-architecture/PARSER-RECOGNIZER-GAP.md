@@ -134,13 +134,36 @@ dependency is rebuilt and Jess's own parser/render contract is A/B tested.
    heap regresses `1.95→7.17 MB`. Keep it as an evidence artifact; do not call
    it a Jess win until a `compileLinkable`/fused-host integration is built and
    measured, and do not hide the memory regression.
-3. Measure declaration-versus-ruleset candidate attempts; current Jess body
-   order tests `Ruleset` before `Declaration` for overlapping inputs.
-4. Expand Less-specific late materialization only with semantic predicates for
+3. Expand Less-specific late materialization only with semantic predicates for
    variables, interpolation, comments, math, custom properties, filters, and
    source maps.
-5. Revisit generic capture/raw-child representations only if fresh evidence
+4. Revisit generic capture/raw-child representations only if fresh evidence
    shows the stripped recognizer leaves capture protocol as the dominant cost.
+
+## Declaration-versus-ruleset dispatch proof — rejected (2026-07-15)
+
+The isolated worker `feature/q40-less-statement-dispatch-20260715` tested the
+smallest grammar-specific candidate: move `Declaration` before `Ruleset` in
+the nested `blockItem` choice. The probe was removed and retained no parser
+source change. Its handoff commit was `0d6879277` in
+`/Users/matthew/git/worktrees/jess-q40-less-statement-dispatch-20260715`.
+
+The baseline canonical fixture was `106,802` bytes. With the candidate order,
+parsing stopped at byte `93,456` with `3` errors and premature successful
+`Declaration` parses: a declaration accepted the prefix before a following
+`{` ruleset body. That violates Less's ordered-choice contract, so this is a
+semantic rejection, not an optimization result. The adversarial matrix
+covered ordinary/pseudo rulesets, nested declarations, mixins, custom
+properties, interpolation, at-rules, `:extend`, malformed input, comments,
+and SCSS-like mixin syntax.
+
+The parser suite passed `40` files (`549` passed, `2` expected failures, `5`
+skipped), and the parser-only median was `37.63 ms`; no candidate canonical
+CSS A/B was valid. Same-path no-op controls were parse+render
+`222.06→221.72 ms` (`23/45` wins) and render-only `187.99→187.06 ms`
+(`24/45` wins), which are noise-floor controls only. The worker also passed
+build, diff-check, and aggressive review. Do not retry this reorder without a
+real discriminator that proves full-input consumption and Less error parity.
 
 Do not infer from this investigation that every value should become a string,
 that Parseman should understand CSS comments, or that the existing Jess AST

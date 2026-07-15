@@ -194,6 +194,16 @@ render timings exclude evaluation and adapter construction, so this is not a
 performance claim or production AST result. Keep the worktree isolated until
 canonical evaluated parity is repaired or the POC is explicitly retired.
 
+## Q-40 — Less statement-dispatch proof (rejected, 2026-07-15)
+
+The isolated `blockItem` reorder proof is complete and rejected. Moving
+`Declaration` before `Ruleset` caused premature declaration successes and
+stopped the canonical parse at byte `93,456` with `3` errors. The probe was
+removed; no parser source change was retained. Full evidence, the adversarial
+syntax matrix, and the no-op controls are recorded in
+[`PARSER-RECOGNIZER-GAP.md`](./PARSER-RECOGNIZER-GAP.md), with the isolated
+handoff at commit `0d6879277`.
+
 ## Q-40 — import-placement audit handoff
 
 The fresh read-only retained-placement audit is recorded in detail in

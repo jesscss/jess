@@ -184,6 +184,7 @@ row in this table is not a claim that the implementation has landed on `dev`.
 |---|---|---|
 | Greenfield AST design, alternative representations, and the no-class `tree2` experiment | [`AST-FROM-SCRATCH-DESIGN.md`](./AST-FROM-SCRATCH-DESIGN.md); isolated source under `/Users/matthew/git/worktrees/jess-greenfield-ast-design-20260714/packages/core/src/tree2/` and `__tests__/` | Design, ten-way alternatives, five POC sequence, and rejection evidence are durable. The staged source is uncommitted/unexported. The mixed-root synthetic route passed its focused/exact-output gates, but the canonical evaluated route failed its output hash comparison; there is no tree2 speed or production-AST claim. |
 | Parseman versus Less recognizer gap and true recognizer POC | [`PARSER-RECOGNIZER-GAP.md`](./PARSER-RECOGNIZER-GAP.md); Parseman `/Users/matthew/git/oss/parser-thing/notes/PERF_IDEAS.md` | Flow analysis and the `12.58 ms` recognizer result are recorded. Parseman commit `c84d777` is local/unpublished, so Jess has not adopted it and no Jess speed claim follows. |
+| Less declaration-versus-ruleset statement-dispatch proof | [`PARSER-RECOGNIZER-GAP.md`](./PARSER-RECOGNIZER-GAP.md); rejected worker commit `0d6879277` in `/Users/matthew/git/worktrees/jess-q40-less-statement-dispatch-20260715` | Rejected. Moving `Declaration` before `Ruleset` accepted a prefix before a following `{` and stopped the canonical parse at byte `93,456` with `3` errors. The probe was removed; no source change or valid candidate A/B remains. |
 | Parseman zero-copy structural-builder POC | [`PARSER-RECOGNIZER-GAP.md`](./PARSER-RECOGNIZER-GAP.md); Parseman `/Users/matthew/git/oss/parser-thing/notes/PERF_IDEAS.md`; isolated source at `/private/tmp/parseman-zero-copy-builder-20260715` | Retained local Parseman commit `950e8b4`: `62` focused tests; array `10.97 ms` → range `4.35 ms` on the 106,797-byte Less grammar; output hash identical; transient heap regressed about `1.95 MB` → `7.17 MB`. The default API is unchanged, and Jess host adoption is blocked by the current `compileLinkable`/fused path boundary. This is a generic Parseman POC, not a Jess speed claim. |
 | Parseman trivia/capture separation and sparse trivia designs | [`parseman-trivia-audit.md`](../parseman-trivia-audit.md), [`trivia-offset-inference-model.md`](../trivia-offset-inference-model.md), and [`parseman-perf-proposals.md`](../parseman-perf-proposals.md) | The generic Parseman responsibilities, CSS/Less capture policy, comment-only capture idea, and span-based inference are documented as proposals/evidence. No CSS-shaped Parseman change is being treated as landed. |
 | From-scratch AST creativity pass: packed arenas, structs, semantic islands, direct emitters, dependency-aware reuse, and debug projections | [`AST-FROM-SCRATCH-DESIGN.md`](./AST-FROM-SCRATCH-DESIGN.md) | The alternatives are explicitly design candidates, not a hidden commitment to a class-for-class rewrite. CSS output, not legacy field/class shape, is the acceptance oracle. |
@@ -198,9 +199,12 @@ row in this table is not a claim that the implementation has landed on `dev`.
 These workers and artifacts are intentionally listed here so a later agent
 does not duplicate a lane or lose a result that remains isolated:
 
-- Active: Less `blockItem` statement-dispatch proof:
+- Rejected: Less `blockItem` statement-dispatch proof:
   `feature/q40-less-statement-dispatch-20260715`, worktree
-  `/Users/matthew/git/worktrees/jess-q40-less-statement-dispatch-20260715`.
+  `/Users/matthew/git/worktrees/jess-q40-less-statement-dispatch-20260715`,
+  handoff commit `0d6879277`. Moving `Declaration` before `Ruleset` caused
+  premature declaration successes and stopped the canonical parse at byte
+  `93,456`; the probe was removed and no source change was retained.
 - Retained local POC: Parseman generic zero-copy structural builder,
   `feature/parseman-zero-copy-builder-20260715`, commit `950e8b4`, worktree
   `/private/tmp/parseman-zero-copy-builder-20260715`. It is not published or
@@ -212,9 +216,10 @@ does not duplicate a lane or lose a result that remains isolated:
   `201.534→202.190 ms` render-only) and failed the hot-path cost contract;
   only its rejection record was retained.
 
-The remaining active lane is explicitly the statement-dispatch proof. The
-completed lanes above are evidence records, not merged Jess changes or
-unqualified performance wins.
+The statement-dispatch lane is complete and rejected. The completed lanes above
+are evidence records, not merged Jess changes or unqualified performance wins;
+currently active implementation and read-only audit lanes must be added here
+when they return a durable result.
 
 ### Q-40 CPU/heap attribution refresh — diagnostic only (2026-07-15)
 
