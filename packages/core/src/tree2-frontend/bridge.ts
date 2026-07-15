@@ -335,7 +335,62 @@ function mixinName(node: AnyNode): string {
 
 /* ---------------------------------------------------------- statements */
 
-function toStatement(ctx: BridgeCtx, node: unknown): t2.Statement | null {
+/* -------------------------------------------------------------- at-rules */
+
+/**
+ * Prelude BYTES of an at-rule. A prelude node's own provenance span is
+ * unreliable (it often reports the whole at-rule span), so the header text is
+ * recovered from source directly: everything between the name and the block's
+ * `{` (block form) or the trailing `;` / end (statement form). When the parser
+ * gives a plain string prelude, that is authoritative and used as-is.
+ */
+function atRuleHeaderPrelude(
+  ctx: BridgeCtx,
+  node: AnyNode,
+  name: string,
+  isBlock: boolean,
+): string | undefined {
+  const prelude = node.prelude;
+  if (prelude === undefined || prelude === null || prelude === '') return undefined;
+  if (typeof prelude === 'string') {
+    const trimmed = prelude.trim();
+    return trimmed.length > 0 ? trimmed : undefined;
+  }
+  const span = sourceSpanOf(node);
+  if (!span) return undefined;
+  const full = ctx.source.slice(span.start, span.end);
+  if (!full.startsWith(name)) return undefined;
+  let rest = full.slice(name.length);
+  if (isBlock) {
+    const brace = rest.indexOf('{');
+    if (brace >= 0) rest = rest.slice(0, brace);
+  } else {
+    rest = rest.replace(/;\s*$/u, '');
+  }
+  rest = rest.trim();
+  return rest.length > 0 ? rest : undefined;
+}
+
+function toAtRuleBlock(ctx: BridgeCtx, node: AnyNode): t2.AtRuleBlock {
+  const name = node.name;
+  if (typeof name !== 'string') throw new UnsupportedShape('atrule:name', typeOf(name));
+  const preludeText = atRuleHeaderPrelude(ctx, node, name, true);
+  // A block at-rule body is itself a nesting boundary; nested at-rules ARE
+  // allowed (they stay nested — no bubbling between at-rules), so allowAtRules
+  // stays true for the recursive body.
+  const body = toBody(ctx, node.rules, true);
+  const prelude = preludeText === undefined ? null : parseValue(preludeText);
+  return t2.atRuleBlock(name, prelude, body);
+}
+
+function toAtRuleStatement(ctx: BridgeCtx, node: AnyNode): t2.AtRuleStatement {
+  const name = node.name;
+  if (typeof name !== 'string') throw new UnsupportedShape('atrule-statement:name', typeOf(name));
+  const preludeText = atRuleHeaderPrelude(ctx, node, name, false);
+  return t2.atRuleStatement(name, preludeText ?? null);
+}
+
+function toStatement(ctx: BridgeCtx, node: unknown, allowAtRules: boolean): t2.Statement | null {
   if (!isNode(node)) throw new UnsupportedShape('statement', typeOf(node));
   const t = typeOf(node);
   switch (t) {
@@ -367,16 +422,26 @@ function toStatement(ctx: BridgeCtx, node: unknown): t2.Statement | null {
       return toMixinDef(ctx, node as AnyNode);
     case 'Call':
       return toMixinCall(ctx, node as AnyNode);
+    // [atrule] block + statement at-rules. When NOT at root / inside another
+    // at-rule (i.e. directly inside a ruleset or mixin body), full v5 bubbling
+    // would hoist the at-rule to root and move the selector inside — a deferred
+    // rung — so those are rejected to keep the census honest.
+    case 'AtRule':
+      if (!allowAtRules) throw new UnsupportedShape('atrule-bubbling', 'in-ruleset');
+      return toAtRuleBlock(ctx, node as AnyNode);
+    case 'AtRuleStatement':
+      if (!allowAtRules) throw new UnsupportedShape('atrule-bubbling', 'in-ruleset');
+      return toAtRuleStatement(ctx, node as AnyNode);
     default:
       throw new UnsupportedShape('statement', t);
   }
 }
 
-function toBody(ctx: BridgeCtx, rules: unknown): t2.Statement[] {
+function toBody(ctx: BridgeCtx, rules: unknown, allowAtRules: boolean): t2.Statement[] {
   if (!Array.isArray(rules)) throw new UnsupportedShape('body', typeOf(rules));
   const out: t2.Statement[] = [];
   for (const r of rules) {
-    const s = toStatement(ctx, r);
+    const s = toStatement(ctx, r, allowAtRules);
     if (s !== null) out.push(s);
   }
   return out;
@@ -385,7 +450,8 @@ function toBody(ctx: BridgeCtx, rules: unknown): t2.Statement[] {
 function toRuleset(ctx: BridgeCtx, node: AnyNode): t2.Rule {
   if ((node as AnyNode).guard) throw new UnsupportedShape('guard', 'ruleset-guard');
   const sel = toSelectorList(ctx, node.selector);
-  const body = toBody(ctx, node.rules);
+  // [atrule] at-rules directly under a ruleset bubble in v5 (deferred) — reject.
+  const body = toBody(ctx, node.rules, false);
   return new t2.Rule(sel, body);
 }
 
@@ -393,7 +459,8 @@ function toMixinDef(ctx: BridgeCtx, node: AnyNode): t2.MixinDef {
   if (node.guard) throw new UnsupportedShape('guard', 'mixin-guard');
   const name = mixinName(node);
   const params = mixinParams(ctx, node.params);
-  const body = toBody(ctx, node.rules);
+  // [atrule] at-rules inside a mixin body bubble at the call site (deferred) — reject.
+  const body = toBody(ctx, node.rules, false);
   return t2.mixinDef(name, params, body);
 }
 
@@ -415,5 +482,6 @@ export function bridgeToTree2(root: unknown, source: string): t2.Root {
   if (!isNode(root)) throw new UnsupportedShape('root', typeOf(root));
   const rules = (root as AnyNode).rules;
   if (!Array.isArray(rules)) throw new UnsupportedShape('root:rules', typeOf(rules));
-  return t2.root(toBody(ctx, rules));
+  // [atrule] at-rules are valid at the document root.
+  return t2.root(toBody(ctx, rules, true));
 }

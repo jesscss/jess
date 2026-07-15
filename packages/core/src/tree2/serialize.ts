@@ -38,6 +38,8 @@ import type {
   Statement,
   ValueNode,
 } from './nodes.js';
+// [atrule] block + statement at-rule node types
+import type { AtRuleBlock, AtRuleStatement } from './at-rule.js';
 import type { ValueService } from './value-service.js';
 
 export interface Tree2Position {
@@ -238,6 +240,9 @@ interface Emit {
   off: number;
   positions: Tree2Position[] | null;
   service: ValueService | null;
+  // [atrule] current block-nesting depth (0 = top level). At-rule bodies raise it
+  // so declarations/selectors inside a block indent one level deeper.
+  depth: number;
 }
 
 function put(e: Emit, s: string): void {
@@ -257,6 +262,7 @@ export function serialize(root: Root, options?: SerializeOptions): SerializeResu
     off: 0,
     positions: options?.trackPositions ? [] : null,
     service: options?.valueService ?? null,
+    depth: 0, // [atrule]
   };
   const rootFrame: Frame = {
     parent: null,
@@ -280,6 +286,13 @@ export function serialize(root: Root, options?: SerializeOptions): SerializeResu
       case Kind.Declaration:
       case Kind.Comment:
         emitLeaf({ node: child, frame: rootFrame }, e);
+        break;
+      // [atrule] top-level at-rules
+      case Kind.AtRuleBlock:
+        emitAtRuleBlock(child, rootFrame, e);
+        break;
+      case Kind.AtRuleStatement:
+        emitAtRuleStatement(child, e);
         break;
     }
   }
@@ -327,6 +340,17 @@ function walkBody(
       case Kind.MixinCall:
         expandCall(node, composed, frame, group, flush, e);
         break;
+      // [atrule] at-rule nested directly inside a ruleset body. Full v5 bubbling
+      // (hoist the at-rule to root, move the selector inside) is a deferred rung;
+      // the bridge rejects this shape, so this is a best-effort fallback only.
+      case Kind.AtRuleBlock:
+        flush();
+        emitAtRuleBlock(node, frame, e);
+        break;
+      case Kind.AtRuleStatement:
+        flush();
+        emitAtRuleStatement(node, e);
+        break;
       case Kind.MixinDef:
       case Kind.VarDeclaration:
         break;
@@ -369,21 +393,27 @@ function expandCall(
 }
 
 function flushBlock(sel: string[], group: Leaf[], e: Emit, selNode?: SelectorList): void {
+  // [atrule] indent by the current block depth (0 at top level == prior behavior).
+  const idt = e.depth > 0 ? INDENT.repeat(e.depth) : '';
+  if (idt) put(e, idt);
   const selStart = e.off;
-  put(e, sel.join(',\n'));
+  put(e, idt ? sel.join(',\n' + idt) : sel.join(',\n'));
   if (e.positions && selNode) {
     e.positions.push({ node: selNode, kind: selNode.kind, start: selStart, end: e.off });
   }
   put(e, ' {\n');
   for (const leaf of group) emitLeaf(leaf, e);
+  if (idt) put(e, idt);
   put(e, '}\n');
 }
 
 function emitLeaf(leaf: Leaf, e: Emit): void {
   const { node, frame } = leaf;
   const start = e.off;
+  // [atrule] a declaration/comment sits one level in from its container's depth.
+  const idt = e.depth > 0 ? INDENT.repeat(e.depth + 1) : INDENT;
   if (node.kind === Kind.Declaration) {
-    put(e, INDENT);
+    put(e, idt);
     put(e, node.name);
     put(e, ': ');
     const valStart = e.off;
@@ -394,11 +424,118 @@ function emitLeaf(leaf: Leaf, e: Emit): void {
     }
     put(e, ';\n');
   } else if (node.kind === Kind.Comment) {
-    put(e, INDENT);
+    put(e, idt);
     put(e, node.text);
     put(e, '\n');
     if (e.positions) e.positions.push({ node, kind: node.kind, start, end: e.off });
   }
+}
+
+/* ------------------------------------------------------------ [atrule] emit */
+
+/** A statement at-rule: `@name prelude;` with prelude bytes kept literal. */
+function emitAtRuleStatement(node: AtRuleStatement, e: Emit): void {
+  const start = e.off;
+  if (e.depth > 0) put(e, INDENT.repeat(e.depth));
+  put(e, node.name);
+  if (node.prelude !== null) {
+    const p = node.prelude.replace(/^\s+/u, '');
+    if (p.length > 0) {
+      put(e, ' ');
+      put(e, p);
+    }
+  }
+  put(e, ';\n');
+  if (e.positions) e.positions.push({ node, kind: node.kind, start, end: e.off });
+}
+
+/**
+ * A block at-rule: `@name prelude { …body }`. The body is a fresh nesting
+ * context (parent selector resets to none) whose direct declarations emit one
+ * level in and whose nested rulesets/at-rules descend a further level. An at-rule
+ * whose body renders empty is dropped entirely (header + braces), matching v5.
+ */
+function emitAtRuleBlock(node: AtRuleBlock, frame: Frame, e: Emit): void {
+  const markChunks = e.chunks.length;
+  const markOff = e.off;
+  const markPos = e.positions ? e.positions.length : 0;
+  const start = e.off;
+  const idt = e.depth > 0 ? INDENT.repeat(e.depth) : '';
+  if (idt) put(e, idt);
+  put(e, node.name);
+  if (node.prelude !== null) {
+    const p = valueText(node.prelude, frame, e.service);
+    if (p.length > 0) {
+      put(e, ' ');
+      put(e, p);
+    }
+  }
+  put(e, ' {\n');
+  const afterHeader = e.chunks.length;
+  const bodyFrame: Frame = {
+    parent: frame,
+    mixins: collectMixins(node.body),
+    vars: collectVars(node.body),
+  };
+  emitAtRuleBody(node.body, bodyFrame, e);
+  if (e.chunks.length === afterHeader) {
+    // Nothing emitted: drop the whole at-rule (rewind chunks/offset/positions).
+    e.chunks.length = markChunks;
+    e.off = markOff;
+    if (e.positions) e.positions.length = markPos;
+    return;
+  }
+  if (idt) put(e, idt);
+  put(e, '}\n');
+  if (e.positions) e.positions.push({ node, kind: node.kind, start, end: e.off });
+}
+
+/**
+ * Emit an at-rule body. Consecutive declarations/comments group as DIRECT block
+ * children (no selector wrapper). A nested ruleset / at-rule descends one level.
+ */
+function emitAtRuleBody(statements: Statement[], frame: Frame, e: Emit): void {
+  const group: Leaf[] = [];
+  const flushDirect = (): void => {
+    if (group.length > 0) {
+      for (const leaf of group) emitLeaf(leaf, e);
+      group.length = 0;
+    }
+  };
+  for (const node of statements) {
+    switch (node.kind) {
+      case Kind.Declaration:
+      case Kind.Comment:
+        group.push({ node, frame });
+        break;
+      case Kind.Rule:
+        flushDirect();
+        e.depth++;
+        flatten(node, null, frame, e);
+        e.depth--;
+        break;
+      case Kind.AtRuleBlock:
+        flushDirect();
+        e.depth++;
+        emitAtRuleBlock(node, frame, e);
+        e.depth--;
+        break;
+      case Kind.AtRuleStatement:
+        flushDirect();
+        e.depth++;
+        emitAtRuleStatement(node, e);
+        e.depth--;
+        break;
+      case Kind.MixinCall:
+        // Best-effort: expand into the direct-declaration group.
+        expandCall(node, null, frame, group, flushDirect, e);
+        break;
+      case Kind.MixinDef:
+      case Kind.VarDeclaration:
+        break;
+    }
+  }
+  flushDirect();
 }
 
 /* ---------------------------------------------- composition-op instrumentation */
@@ -450,6 +587,9 @@ export function composeStats(root: Root): ComposeStats {
           };
           walk(def.body, composed, callFrame);
         }
+      } else if (node.kind === Kind.AtRuleBlock) {
+        // [atrule] an at-rule body is a fresh nesting context (see enterAtRule).
+        enterAtRule(node, frame);
       }
     }
   };
@@ -459,9 +599,21 @@ export function composeStats(root: Root): ComposeStats {
     walk(rule.body, composed, childFrame);
   };
 
+  // [atrule] enter at-rule bodies from the root too (top-level `@media {…}`),
+  // so nested-ruleset compositions inside a block are counted, not skipped.
+  const enterAtRule = (node: AtRuleBlock, frame: Frame): void => {
+    const bodyFrame: Frame = { parent: frame, mixins: collectMixins(node.body), vars: null };
+    for (const child of node.body) {
+      if (child.kind === Kind.Rule) walkRule(child, null, bodyFrame);
+      else if (child.kind === Kind.MixinCall) walk([child], [], bodyFrame);
+      else if (child.kind === Kind.AtRuleBlock) enterAtRule(child, bodyFrame);
+    }
+  };
+
   const rootFrame: Frame = { parent: null, mixins: collectMixins(root.children), vars: null };
   for (const child of root.children) {
     if (child.kind === Kind.Rule) walkRule(child, null, rootFrame);
+    else if (child.kind === Kind.AtRuleBlock) enterAtRule(child, rootFrame);
   }
   stats.distinctSelectors = seen.size;
   return stats;

@@ -8,6 +8,8 @@
 
 export { Kind, Tree2Node, type Combinator } from './node.js';
 export * from './nodes.js';
+// [atrule] at-rule node types + constructors
+export * from './at-rule.js';
 export type { ValueService } from './value-service.js';
 export {
   serialize,

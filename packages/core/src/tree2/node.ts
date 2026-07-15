@@ -34,6 +34,9 @@ export enum Kind {
   Operation = 16,
   FunctionCall = 17,
   Paren = 18,
+  // [atrule] block-bearing at-rule (`@media {…}`) + statement at-rule (`@charset …;`)
+  AtRuleBlock = 19,
+  AtRuleStatement = 20,
 }
 
 /** Combinator between two compounds in a complex selector. */

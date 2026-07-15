@@ -295,7 +295,19 @@ export class Root extends Tree2Node {
   }
 }
 
-export type Statement = Rule | Declaration | Comment | MixinDef | MixinCall | VarDeclaration;
+// [atrule] at-rule nodes are valid body/root statements; type-only import keeps
+// nodes.ts free of a runtime dependency on the sibling at-rule module.
+import type { AtRuleBlock, AtRuleStatement } from './at-rule.js';
+
+export type Statement =
+  | Rule
+  | Declaration
+  | Comment
+  | MixinDef
+  | MixinCall
+  | VarDeclaration
+  | AtRuleBlock
+  | AtRuleStatement;
 
 /* ------------------------------------------------------------ constructors */
 
