@@ -569,6 +569,48 @@ declarations-coverage state.
   allocation/state, while the separate Parseman recognizer POC has its own
   parser-phase speed evidence.
 
+- **Q-40 lazy registration pending lanes (2026-07-15, integrated as
+  `3a3f71d9e`).** `Rules` registration-prep state now allocates the declaration
+  and ordered-identity pending lanes only when a node actually enters that
+  lane. On the canonical fixture the worker observed `3,131` prep states,
+  `485` pending states (`15.5%`), and `2,646` common-path states that avoid
+  `5,292` lane objects and `10,584` arrays; `1,118` nodes entered the pending
+  path. The worker's exact output was `135,794` bytes with SHA-256
+  `9a58451bd3b0c9d80913df38be3b199994d2b93d34a9d2851f1b18d9dcaaa7cc`.
+  Its matched 20-warmup/45-pair A/B was parse+render `233.34→239.29 ms`
+  (`+4.95 ms`, `+2.55%`) and render-only `213.04→202.67 ms`
+  (`−9.34 ms`, `−4.87%`), so this is an allocation/shape simplification,
+  not a claimed speed win. The isolated worker passed core, spine,
+  all-less, aggressive-cutting, and binding-guard gates; the change is now
+  on `dev` and remains subject to the combined integration gates.
+
+- **Q-40 declaration-child assignment metadata cut (2026-07-15, integrated as
+  `d443a559b`).** Direct declaration-child collection now consults uncovered
+  assignment-target metadata only when the containing `Rules` surface already
+  has a variable-declaration or reference-import producer. In the instrumented
+  canonical profile, collection calls fell `27,899→15,714`, inclusive time
+  `18.707→7.170 ms`, uncovered-surface calls `6,927→204`, assignment
+  propagation `6,927→204`, nested propagation `10,190→3,467`, and source
+  items `101,693→71,975`. The matched worker A/B was parse+render
+  `229.09→237.50 ms` and render-only `193.11→193.83 ms`, so it carries no
+  speed claim; the justification is removal of provably empty metadata work.
+  Output remained `135,794` bytes with SHA-256
+  `9a58451bd3b0c9d80913df38be3b199994d2b93d34a9d2851f1b18d9dcaaa7cc`.
+  Focused reference coverage, core, spine, all-less, build, lint, and
+  aggressive-cutting gates passed.
+
+- **Q-40 source-order preparation audit (2026-07-15, rejected as a new
+  canonical cut).** The legacy source-order route still performed
+  `_prepareForEval` `10,420` times (`865.8 ms` inclusive),
+  `_prepareRegistrationOnce` `3,060` times (`85.7 ms`), and
+  `_evaluateSourceOrder` `10,420` times (`807.4 ms`); normalization found
+  only `8` candidates and performed `0` actual reorders, while live-binding
+  placements repointed `6,987` times. The canonical spine bypasses this route,
+  so deleting or consolidating it would not activate on `benchmark.less` and
+  would risk legacy import/call/live-binding semantics. Existing source-order
+  normalization work is owned by `7bb9b483e`; no duplicate implementation was
+  made. Keep this as a rejected lane until a real activating topology is found.
+
 - **Q-40 profile refresh (2026-07-14, diagnostic only).** A fresh current-dev
   minified-build no-op control with the same fixture/runtime and 20 warmups /
   45 alternating pairs measured parse+render `217.263 ms` versus `215.872 ms`
