@@ -182,6 +182,17 @@ recursively scans 10,777 evaluated surfaces to find 15 merge-bearing ones.
 
 #### Q-40 representation and allocation decisions — 2026-07-14
 
+- **Greenfield AST design is now explicit.** The speed-first target is a
+  canonical light semantic tree with tagged static leaves, sparse trivia,
+  placement-local live frames, and explicit dynamic islands; it is not a
+  whole-language string AST or an immediate rewrite mandate. The alternatives,
+  rejected shapes, and five perf-gated POCs are recorded in
+  [`AST-FROM-SCRATCH-DESIGN.md`](./AST-FROM-SCRATCH-DESIGN.md). The first
+  implementation proof is tagged value leaves with exact source text retained,
+  followed by a pure-value register island and a capability-gated direct
+  emitter. Do not assign a broad conversion until those proofs show reduced
+  total work on real static and dynamic shapes.
+
 - **Accept packed merge-presence carry as the first completed Q-40 action
   audit cut.** The old `hasMergeOutputSurface()` recursively rediscovered an
   explicit `Declaration.options.normalizedFromAssign` fact at every finished
@@ -270,6 +281,20 @@ recursively scans 10,777 evaluated surfaces to find 15 merge-bearing ones.
   and only six public hits. The sole safe local-dominance proof fires once and
   deletes one child scan, so it is not worth landing; do not build an index,
   generic cache, or prototype scope engine from this counter.
+
+- **Reject the existing callable `Map.has()` + `Map.get()` replacement as a
+  landed optimization.** The already-started `jess-perf-lookup` worktree
+  changed `lookupScopeFrameCallable()` to use one `get()` while preserving the
+  important `undefined` (uncovered) versus `null` (covered miss) distinction;
+  its focused scope tests passed `18/18` and mixin tests passed `200/200`.
+  A fresh same-built-tree 20-warmup/45-pair A/B against the pushed
+  `660303005` baseline was byte-identical but measured parse-render
+  `227.87→228.92 ms` (`19/45` wins; paired median delta `+0.53 ms`) and
+  render-only `195.87→199.29 ms` (`25/45` wins; paired median delta
+  `−0.41 ms`). The result is neutral-to-slower and removes no allocation, so
+  the code is deliberately not merged; leave the existing worker worktree
+  untouched for the record. This is a rejected experiment, not a reason to
+  reopen generic lookup indexing.
 - **Refresh the benchmark contract before every core comparison.** Current
   uninstrumented no-op pairs are 238.98 ms parse+render and 202.92 ms
   parse-once/render-only. Less 4 is 31.101 ms render on the same 20-warmup,
