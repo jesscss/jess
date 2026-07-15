@@ -6440,7 +6440,9 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       this._restoreRegistrationContext(context, saved);
       return this;
     }
-    const declarationResult = this._finishDeclarationNameRegistrationPrep(rules, context, prepState.declarationNames);
+    const declarationResult = prepState.declarationNames
+      ? this._finishDeclarationNameRegistrationPrep(rules, context, prepState.declarationNames)
+      : undefined;
     const finishAfterDeclarations = () => {
       return this._finishOrderedIdentityRegistrationPrep(rules, context, saved, prepState);
     };
@@ -6689,12 +6691,14 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       );
     };
 
-    const orderedIdentities = prepState.orderedIdentity.nodes;
-    const orderedResult = orderedIdentities.length === 0
+    const orderedIdentities = prepState.orderedIdentity?.nodes;
+    const orderedResult = !orderedIdentities || orderedIdentities.length === 0
       ? undefined
       : this._prepareOrderedIdentitiesInSourceOrder(context, orderedIdentities, handleResolvedNode);
     const finish = () => {
-      this._applyResolvedRegistrationNodes(rules, prepState.orderedIdentity.resolvedNodes);
+      if (prepState.orderedIdentity) {
+        this._applyResolvedRegistrationNodes(rules, prepState.orderedIdentity.resolvedNodes);
+      }
       this._restoreRegistrationContext(context, saved);
       return this;
     };
@@ -6773,14 +6777,23 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
 
   private _addPendingPrep(prepState: RegistrationPrepState, node: Node): void {
     if (isNode(node, N.VarDeclaration | N.Declaration)) {
-      prepState.declarationNames.nodes.push(node);
+      const declarationNames = prepState.declarationNames ??= {
+        nodes: [],
+        resolvedNodes: []
+      };
+      declarationNames.nodes.push(node);
       return;
     }
-    prepState.orderedIdentity.nodes.push(node);
+    const orderedIdentity = prepState.orderedIdentity ??= {
+      nodes: [],
+      resolvedNodes: []
+    };
+    orderedIdentity.nodes.push(node);
   }
 
   private _hasPendingPrep(prepState: RegistrationPrepState): boolean {
-    return prepState.declarationNames.nodes.length > 0 || prepState.orderedIdentity.nodes.length > 0;
+    return (prepState.declarationNames?.nodes.length ?? 0) > 0
+      || (prepState.orderedIdentity?.nodes.length ?? 0) > 0;
   }
 
   private _retryPendingDeclarationNamePrep(
@@ -7831,14 +7844,8 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
 
   private _createRegistrationPrepState(): RegistrationPrepState {
     return {
-      declarationNames: {
-        nodes: [],
-        resolvedNodes: []
-      },
-      orderedIdentity: {
-        nodes: [],
-        resolvedNodes: []
-      }
+      declarationNames: undefined,
+      orderedIdentity: undefined
     };
   }
 
@@ -8017,8 +8024,8 @@ export function resolveRulesetBySelector(
 // fixed-point state because one declaration name can unblock another; every
 // other unresolved identity stays in one source-ordered lane for now.
 type RegistrationPrepState = {
-  declarationNames: PendingDeclarationNamePrepState;
-  orderedIdentity: PendingOrderedIdentityPrepState;
+  declarationNames?: PendingDeclarationNamePrepState;
+  orderedIdentity?: PendingOrderedIdentityPrepState;
 };
 
 type PendingDeclarationNamePrepState = {
