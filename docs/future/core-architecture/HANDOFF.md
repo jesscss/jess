@@ -157,7 +157,10 @@ Other active docs in this dir:
   compile-time-stripped recognizer POC now exists as unpublished local commit
   `c84d777`; Jess adoption remains deferred pending a consumable dependency and
   a fresh parser/render A/B. Its generic zero-copy builder target remains
-  recorded in the Parseman repository's `notes/PERF_IDEAS.md`.
+  recorded in the Parseman repository's `notes/PERF_IDEAS.md`; as of
+  2026-07-15 that target is being tested by the isolated worker
+  `feature/parseman-zero-copy-builder-20260715` from Parseman commit `1ca3940`.
+  No zero-copy result or Jess adoption claim exists yet.
 - **`AGGRESSIVE-CUTTING-REVIEW.md`** — the patch-shape refusal checklist; run before
   committing changes to AST/eval/render/lookup/traversal/copy/output/metadata.
 - **`STRINGS-OVER-NODES.md`** — active reference (producer flips still pending).
