@@ -39,7 +39,7 @@ import { serializeRulesContainer, normalizeIndent, normalizeLeadingBlockTrivia, 
 import { isRenderBuffer, prepareBufferPrintState, writeRenderText, type RenderBuffer } from './util/render-buffer.js';
 import { registerRulesetWithRoot } from './util/extend-roots.js';
 import { createTriviaMap } from './util/trivia.js';
-import { copyOwnedWithReusableLeaves, copyWithReusableLeavesPreservingComments, copyNodesForOwnership } from './util/cloning.js';
+import { copyOwnedWithReusableLeaves, copyWithReusableLeavesPreservingComments, copyNodesForOwnership, reuseLeaf } from './util/cloning.js';
 import { callableGuardContainsDefault } from './util/callable-entry.js';
 
 export type RulesetValue = {
@@ -412,6 +412,26 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     // Flatten it into the parent's component stream so compose stays flat.
     if (isNode(component, N.ComplexSelector)) {
       return component.value.flatMap(inner => Ruleset._ownForCompose(inner));
+    }
+    // Overlay-only selector sharing: composition is an EMIT-time projection that
+    // runs after `processExtends` (eval-end), so no per-placement extend rewrite
+    // can corrupt a shared component here. The composed ComplexSelector adopts
+    // these components via `inherit`/`adopt`, and the frozen bit makes that adopt
+    // skip the `.parent` re-point — so the canonical component is shared, not
+    // cloned, and needs no private parent. Composition reads structure + an
+    // explicit parent parameter (`composedSelectorStack`), never the component's
+    // own `.parent`.
+    if (
+      component instanceof SimpleSelector
+      || isNode(component, N.CompoundSelector)
+      || isCombinator(component)
+      || isNode(component, N.Ampersand)
+    ) {
+      // `reuseLeaf` freezes the canonical node and returns it as a shared inert
+      // placement — the same primitive the leaf-reuse path already uses. Freezing
+      // is what makes the composed ComplexSelector's `adopt` skip the `.parent`
+      // re-point, so the shared component is not mutated.
+      return [reuseLeaf(component)];
     }
     const owned = copyOwnedWithReusableLeaves(component);
     if (
@@ -1678,8 +1698,13 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
       return false;
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-    let renderSelector: Selector | Nil | SelectorListItem[] = withoutComments ? this.ownSelector(selector) as Selector | Nil : selector;
+    // Overlay-only selector sharing: the comparable-header (`withoutComments`)
+    // path is EMIT-time, after `processExtends` (eval-end), so the shared source
+    // selector cannot be extend-rewritten here. Comment trivia is already stripped
+    // for this path via the empty `createTriviaMap()` installed below (and again in
+    // the array branch), so no comment-stripping placement clone is needed — the
+    // canonical selector is shared, not cloned.
+    let renderSelector: SelectorLike | Nil = selector;
     // An array is a selector-list surface (a valid parser/extend selector form); it
     // carries no node flags, so skip the node-only reference-filter/compose logic and
     // emit it directly below (mirroring the string surface branch above).

@@ -400,6 +400,41 @@ left unmerged; only the evidence record was retained in commit `3056554`.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Pass 2026-07-15 (overlay-only selectors — clone DELETION, not addition; see
+  `AST-ARENA-EXPERIMENT-HANDOFF.md` departure #1/#4). This pass REMOVES emit-time
+  selector placement machinery; it adds no admission filter, so it carries no
+  guarded-admission cost contract (the verify gate finds zero danger tokens in the
+  scoped diff — the change deletes `copyOwnedWithReusableLeaves` calls and reuses the
+  existing `reuseLeaf` primitive).
+  - Architecture surface: `packages/core/src/tree/ruleset.ts` — `Ruleset._ownForCompose`
+    (emit-time compose ownership) and `Ruleset.writeHeaderSelector` comparable-header
+    (`withoutComments`) path.
+  - Separation/duplication: none added. Two selector-copy drivers now SHARE the canonical
+    node (frozen via `reuseLeaf`) instead of allocating a placement surface; the comparable
+    header drops its comment-strip clone because that path already installs an empty
+    `createTriviaMap()`.
+  - Cumulative node weight: reduced. ~8,900 per-render selector placement surface clones
+    (compose ~7,100 + comparable-header ~3,798, less overlap) are no longer allocated.
+  - New traversal: none.
+  - New node/materialization: none — this deletes materialization. No `new`, copy, map, or
+    array was added; `reuseLeaf` returns the shared canonical node.
+  - Render path: byte-identical — benchmark.less 131578 / `98a0536086c7e555`; all-less
+    (106), extend (762), core (3332), spine-production-ratchet (137) all green.
+  - Helper/API surface: none added; reuses exported `reuseLeaf` from `util/cloning.ts`.
+  - Metadata mutations: `reuseLeaf` sets `frozen` on the shared canonical selector so the
+    composed `ComplexSelector`'s `adopt` skips the `.parent` re-point — this REMOVES the
+    per-placement `.parent`/spans mutation that forced the clone (owner reframe: the clone
+    was old-mutation-model debt). Extend safety: `processExtends` runs at eval-end
+    (`rules.ts:7886`), before serialize, so no extend rewrite can touch a shared selector on
+    the emit path. The eval-time registration clone (`_storeOwnSelector` →
+    `copySelectorForRulesetMetadata`) and reference-mode `filterExtendedItems` copy are KEPT
+    — they precede/mutate for extend and are the legitimate boundary.
+  - Review-flagged diff tokens: none (verify gate scoped diff is clean).
+  - Evidence: interleaved in-process A/B (runtime flag, same process, N=21 median, 5–7
+    rounds under machine load ~14; in-process ordering clean) — ON beat OFF every round,
+    ~2.5–3.4% faster on benchmark.less.
+  - Verdict: accepted.
+
 - Latest pass: Q-40 EVALUATOR/SERIALIZER FRAME BOUNDARY — select the per-entry
   processor once after expansion. A container with no frame-bearing mixin,
   import, or loop expansion cannot have `spineFrame` entries, so the common body

@@ -113,6 +113,34 @@ the log below every iteration so the track compounds instead of repeating.
 
 <!-- newest first; each entry: date · hypothesis · prediction · byte-identical? · measured Δ · kept/dropped · why · next -->
 
+- 2026-07-15 — **Departure #1/#4: overlay-only (share-not-clone) selectors on the EMIT path — LANDED.**
+  · *Hypothesis:* the per-placement selector `cloneForPlacement`/`copyOwnedWithReusableLeaves` copies made at
+  EMIT time are pure mutation-model debt: they exist only to give a placement a private `.parent`/spans, but
+  (a) `processExtends` runs at eval-end (`rules.ts:7886`) so NO extend rewrite can touch a selector during
+  serialize, and (b) selector composition reads its parent from an EXPLICIT parameter + the live
+  `composedSelectorStack` overlay, never the node's own `.parent`. So the two emit-time selector-copy drivers
+  can SHARE the canonical node (frozen so `inherit`/`adopt` skips the `.parent` re-point) with nothing left to
+  carry — the clone's reason to exist is removed, not relocated.
+  · *Changed:* `Ruleset._ownForCompose` (compose driver, ~7,100/render) and the comparable-header
+  (`writeHeaderSelector` `withoutComments`, ~3,798/render — its comment strip is already covered by the empty
+  `createTriviaMap()` on that path) now freeze-and-share the canonical selector component instead of copying.
+  · *KEPT clone (the one legitimate boundary):* the registration clone `_storeOwnSelector` →
+  `copySelectorForRulesetMetadata` (~1,100/render) is EVAL-time and feeds the extend matching layer (stores
+  `ownSelector` + attaches per-root selector bits BEFORE `processExtends`); that is exactly "a shared node
+  extend could mutate," so it stays a private copy. Reference-mode `filterExtendedItems` copy (`ruleset.ts:1826`)
+  also stays — it genuinely mutates (filters extend targets).
+  · *Byte-identical:* YES — benchmark.less 131578 / `98a0536086c7e555`, all-less (106), extend (762), full core
+  (3332), spine-production-ratchet (137) all green.
+  · *Measured Δ:* interleaved in-process A/B (runtime flag, same process/thermal state, N=21 median, 5–7 rounds;
+  machine was under load ~14 so cross-run medians drift but in-process ordering is clean): ON beat OFF in EVERY
+  round, ~2.5–3.4% faster (e.g. 240.9→232.7ms and 264.2→255.9ms median-of-medians).
+  · *Why not more:* the big remaining bulk is the value-eval `inherit` (~35k) which is the unified-pass
+  value-frame work, out of this slice's scope. The registration + reference clones are small and genuinely
+  extend/mutation-bearing.
+  · *Next:* the ~35k `inherit` value-provenance copies (departure #4 canonical-body + placement-overlay for
+  mixin VALUES) is the next-largest lever; and whether `_storeOwnSelector`'s share can be recovered by routing
+  extend match keys off the canonical node (loosened canonical-mutation invariant §4.4.6) rather than a copy.
+
 - (seed) 2026-07-15 — track opened. Baseline ~215–250ms; sha `98a0536086c7e555`. Pending input:
   the mixin-expansion clone redundant-vs-intrinsic + position-sharing diagnostic (whether the
   clone is fundamentally a position-carrying artifact). First experiment should be departure #1
