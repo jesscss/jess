@@ -14,7 +14,7 @@
  * consumer absolute offsets via `spanOf`.
  */
 import type { CssCstChild, CssCstNode } from '@jesscss/css-parser';
-import { SymbolKind, type DocumentSymbol, type Range } from 'vscode-languageserver-types';
+import { SymbolKind, FoldingRangeKind, Position, type DocumentSymbol, type FoldingRange, type Range, type SelectionRange } from 'vscode-languageserver-types';
 import type { TextDocument } from 'vscode-languageserver-textdocument';
 
 export type CstIndexEntry = { node: CssCstNode; start: number; end: number };
@@ -169,4 +169,76 @@ export function cstDocumentSymbols(root: CssCstNode, doc: TextDocument): Documen
     }
   }
   return result;
+}
+
+const FOLD_TYPES = new Set(['Ruleset', ...ATRULE_TYPES, ...MIXIN_TYPES, ...FUNC_TYPES]);
+
+/** CST-grounded folding: every multi-line structural block. Matches the AST
+ * folding set (Ruleset/at-rule/Mixin/Func), sourced from the tolerant CST. */
+export function cstFoldingRanges(root: CssCstNode, doc: TextDocument): FoldingRange[] {
+  const index = buildCstIndex(root);
+  const out: FoldingRange[] = [];
+  const seen = new Set<string>();
+  for (const { node, start, end } of index.nodes) {
+    if (!FOLD_TYPES.has(node.grammarType)) {
+      continue;
+    }
+    const s = doc.positionAt(start);
+    const e = doc.positionAt(end);
+    if (e.line <= s.line) {
+      continue;
+    }
+    const key = `${s.line}:${e.line}:${node.grammarType}`;
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    out.push({ startLine: s.line, endLine: e.line, kind: FoldingRangeKind.Region });
+    if (out.length >= 2000) {
+      break;
+    }
+  }
+  out.sort((a, b) => (a.startLine - b.startLine) || (a.endLine - b.endLine));
+  return out;
+}
+
+/** CST-grounded selection ranges: the nested chain of containing nodes at each
+ * position. Purely positional — no node-type knowledge — so it's a direct read
+ * off the CST index's absolute spans. */
+export function cstSelectionRanges(root: CssCstNode, doc: TextDocument, positions: Position[]): SelectionRange[] {
+  const index = buildCstIndex(root);
+
+  const rangesForOffset = (offset: number): Range[] => {
+    const containing = index.nodes.filter(e => e.start <= offset && offset <= e.end);
+    containing.sort((a, b) => (a.end - a.start) - (b.end - b.start));
+    const out: Range[] = [];
+    const seen = new Set<string>();
+    for (const c of containing) {
+      const r: Range = { start: doc.positionAt(c.start), end: doc.positionAt(c.end) };
+      const key = `${r.start.line}:${r.start.character}:${r.end.line}:${r.end.character}`;
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      out.push(r);
+      if (out.length >= 50) {
+        break;
+      }
+    }
+    return out;
+  };
+
+  const toChain = (ranges: Range[]): SelectionRange => {
+    if (ranges.length === 0) {
+      const zero = Position.create(0, 0);
+      return { range: { start: zero, end: zero } };
+    }
+    let current: SelectionRange = { range: ranges[ranges.length - 1]! };
+    for (let i = ranges.length - 2; i >= 0; i--) {
+      current = { range: ranges[i]!, parent: current };
+    }
+    return current;
+  };
+
+  return positions.map(pos => toChain(rangesForOffset(doc.offsetAt(pos))));
 }

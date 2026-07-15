@@ -12,7 +12,7 @@ import * as path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { extractImports, resolveImport } from '@jesscss/style-resolver';
 import * as colorUtils from './color-utils.js';
-import { cstDocumentSymbols } from './cst-analysis.js';
+import { cstDocumentSymbols, cstFoldingRanges, cstSelectionRanges } from './cst-analysis.js';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import {
   CompletionItem,
@@ -1895,111 +1895,21 @@ export function createEngine(): JessLanguageServiceEngine {
     },
 
     getFoldingRanges(uri) {
-      const tracked = ensure(uri);
-      const doc = tracked.document;
-      const index = tracked.index;
-      if (!index) {
+      const tracked = get(uri);
+      const tree = tracked.cstDoc?.tree;
+      if (!tree) {
         return [];
       }
-
-      const out: FoldingRange[] = [];
-      const seen = new Set<string>();
-
-      for (const entry of index.nodes) {
-        const n: any = entry.node;
-        // Only fold structural blocks.
-        const foldable =
-          n?.type === 'Ruleset'
-          || n?.type === 'AtRule'
-          || n?.type === 'Mixin'
-          || n?.type === 'Func';
-        if (!foldable) {
-          continue;
-        }
-
-        const span = getSpan(entry.node);
-        if (!span) {
-          continue;
-        }
-
-        const start = doc.positionAt(span.start);
-        const end = doc.positionAt(span.end);
-        if (end.line <= start.line) {
-          continue;
-        }
-
-        const key = `${start.line}:${end.line}:${n.type}`;
-        if (seen.has(key)) {
-          continue;
-        }
-        seen.add(key);
-
-        out.push({
-          startLine: start.line,
-          endLine: end.line,
-          kind: FoldingRangeKind.Region
-        });
-
-        if (out.length >= 2000) {
-          break;
-        }
-      }
-
-      out.sort((a, b) => (a.startLine - b.startLine) || (a.endLine - b.endLine));
-      return out;
+      return cstFoldingRanges(tree, tracked.document);
     },
 
     getSelectionRanges(uri, positions) {
-      const tracked = ensure(uri);
-      const doc = tracked.document;
-      const index = tracked.index;
-      if (!index) {
+      const tracked = get(uri);
+      const tree = tracked.cstDoc?.tree;
+      if (!tree) {
         return positions.map(p => ({ range: { start: p, end: p } as Range }));
       }
-
-      const rangesForOffset = (offset: number): Range[] => {
-        const containing: Array<{ start: number; end: number }> = [];
-        for (const entry of index.nodes) {
-          if (entry.start <= offset && offset <= entry.end) {
-            containing.push({ start: entry.start, end: entry.end });
-          }
-        }
-        containing.sort((a, b) => (a.end - a.start) - (b.end - b.start));
-        const out: Range[] = [];
-        const seen = new Set<string>();
-        for (const c of containing) {
-          const r = { start: doc.positionAt(c.start), end: doc.positionAt(c.end) } as Range;
-          const key = `${r.start.line}:${r.start.character}:${r.end.line}:${r.end.character}`;
-          if (seen.has(key)) {
-            continue;
-          }
-          seen.add(key);
-          out.push(r);
-          if (out.length >= 50) {
-            break;
-          }
-        }
-        return out;
-      };
-
-      const toSelectionChain = (ranges: Range[]): SelectionRange => {
-        if (ranges.length === 0) {
-          const zero = Position.create(0, 0);
-          return { range: { start: zero, end: zero } as Range };
-        }
-        const last = ranges[ranges.length - 1]!;
-        let current: SelectionRange = { range: last };
-        for (let i = ranges.length - 2; i >= 0; i--) {
-          current = { range: ranges[i]!, parent: current };
-        }
-        return current;
-      };
-
-      return positions.map((pos) => {
-        const offset = doc.offsetAt(pos);
-        const ranges = rangesForOffset(offset);
-        return toSelectionChain(ranges);
-      });
+      return cstSelectionRanges(tree, tracked.document, positions);
     },
 
     getCodeActions(uri, range, context) {
