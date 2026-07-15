@@ -461,6 +461,16 @@ declarations-coverage state.
   outliers and order-dependent spread make both controls non-causal; retain
   them as the current noise floor, not as a speed claim.
 
+- **Q-40 control refresh (2026-07-15, same-checkout no-op).** The current
+  `dev` build, same fixture/runtime, `JESS_STATIC_NAMESPACE_TABLE`, 20 warmups,
+  and 45 alternating pairs measured parse+render `227.30 ms` baseline versus
+  `231.27 ms` no-op candidate (paired median delta `+1.66 ms`, mean `+3.24 ms`,
+  `19/45` wins), and render-only `194.43 ms` versus `193.02 ms` (paired median
+  delta `+2.43 ms`, mean `+1.05 ms`, `17/45` wins). These are a fresh noise
+  floor, not a speed claim; the profile run immediately afterward remained
+  diagnostic-only (`Reference.evalNode` 3,577 calls / 68.31 ms,
+  `Context.getTree` 5 calls / 133.88 ms under instrumentation).
+
 - **Q-40 profile refresh (2026-07-14, diagnostic only).** A fresh current-dev
   minified-build no-op control with the same fixture/runtime and 20 warmups /
   45 alternating pairs measured parse+render `217.263 ms` versus `215.872 ms`
