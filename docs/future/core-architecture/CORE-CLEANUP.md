@@ -771,16 +771,22 @@ declarations-coverage state.
   source change or commit was made.
 
 - **Q-40 source-order preparation audit (2026-07-15, rejected as a new
-  canonical cut).** The legacy source-order route still performed
+  canonical cut).** The earlier legacy-only profile performed
   `_prepareForEval` `10,420` times (`865.8 ms` inclusive),
   `_prepareRegistrationOnce` `3,060` times (`85.7 ms`), and
   `_evaluateSourceOrder` `10,420` times (`807.4 ms`); normalization found
   only `8` candidates and performed `0` actual reorders, while live-binding
-  placements repointed `6,987` times. The canonical spine bypasses this route,
-  so deleting or consolidating it would not activate on `benchmark.less` and
-  would risk legacy import/call/live-binding semantics. Existing source-order
-  normalization work is owned by `7bb9b483e`; no duplicate implementation was
-  made. Keep this as a rejected lane until a real activating topology is found.
+  placements repointed `6,987` times. A follow-up current-dev instrumentation
+  corrected the activation story: canonical `benchmark.less` has one spine
+  root attempt but then enters the normal fallback path `10,777` times for
+  `_prepareForEval`, `_evaluateSourceOrder`, and
+  `_normalizeCallDeclarationRulesOrder` (imports-only preparations: `0`).
+  Therefore this is real canonical work, not legacy-only work; however, the
+  existing normalization target is already owned by `7bb9b483e`, and deleting
+  or consolidating the broader evaluation route would risk source-order,
+  import, call, and live-binding semantics. No new bounded candidate was
+  found and no duplicate worker was dispatched. Keep this lane closed until a
+  distinct seam has an activating proof.
 
 - **Q-40 profile refresh (2026-07-14, diagnostic only).** A fresh current-dev
   minified-build no-op control with the same fixture/runtime and 20 warmups /
