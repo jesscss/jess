@@ -617,6 +617,19 @@ declarations-coverage state.
   `4,803` Dimensions, and `3,604` Colors. These measurements rank work;
   instrumentation distorts timing and does not justify a generic lookup index.
 
+- **Q-40 unminified CPU call-tree refresh (2026-07-15, diagnostic only).** A
+  real compiler-path Node CPU profile with 2 warmups and 2 alternating pairs,
+  run after an unminified core build and followed by restoration of the normal
+  minified build, sampled `isNode` at `129.19 ms`, GC at `123.41 ms`,
+  `extendSelector` at `62.62 ms`, `findWithinScopeSurface` at `42.64 ms`,
+  `applyExtendsToSelector` at `40.57 ms`,
+  `findMixinsFastForUncoveredCallable` at `39.43 ms`, and `processExtends` at
+  `25.68 ms`. Call-tree attribution puts about `27.46 ms` of sampled `isNode`
+  time under `childRulesOf`, `12.75 ms` under `walk`, and `10.54 ms` under
+  `collectSelectorSubtreeValues`. The sample is too small for throughput
+  claims, but it identifies a concrete `childRulesOf` fast-path proof target;
+  no global `isNode` rewrite is implied.
+
 - **Q-40 reference-surface allocator audit (2026-07-15, blocked/rejected as a
   new cut).** The current `createRulesLikeReferenceSurface` remains the
   already-landed `Object.create`/`Object.keys` field-copy shape with shallow
