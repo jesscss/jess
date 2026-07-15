@@ -1,13 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { SymbolKind } from 'vscode-languageserver-types';
-import { parseCssCst } from '@jesscss/css-parser';
+import { parseCssDoc } from '@jesscss/css-parser';
 import { parseCssFn } from '@jesscss/css-parser/jess';
 import { cstDocumentSymbols, buildCstIndex } from '../cst-analysis.js';
 
 function symbolsOf(text: string) {
   const doc = TextDocument.create('file:///t.css', 'css', 1, text);
-  const { tree } = parseCssCst(text);
+  // The engine drives the incremental ParseDoc (parent-relative spans), so test
+  // that path — not the one-shot parseCssCst (absolute).
+  const tree = parseCssDoc(text).tree;
   return cstDocumentSymbols(tree, doc);
 }
 
@@ -15,10 +17,8 @@ function symbolsOf(text: string) {
 const KIND_NAME: Record<number, string> = {
   [SymbolKind.Class]: 'Class',
   [SymbolKind.Namespace]: 'Namespace',
-  [SymbolKind.Field]: 'Field',
   [SymbolKind.Variable]: 'Variable'
 };
-// Flatten to name/kind pairs for terse assertions.
 function flat(syms: ReturnType<typeof cstDocumentSymbols>, depth = 0): string[] {
   const out: string[] = [];
   for (const s of syms) {
@@ -31,14 +31,13 @@ function flat(syms: ReturnType<typeof cstDocumentSymbols>, depth = 0): string[] 
 }
 
 describe('CST-grounded document symbols (Option B slice)', () => {
-  it('produces the outline for valid CSS', () => {
+  // Matches the AST getDocumentSymbols set: rulesets + at-rules (no plain-decl fields).
+  it('produces the outline for valid CSS with nesting', () => {
     const syms = symbolsOf('.a { color: red; } @media screen { .b { x: 1 } }');
     expect(flat(syms)).toEqual([
       'Class .a',
-      '  Field color',
       'Namespace @media screen',
-      '  Class .b',
-      '    Field x'
+      '  Class .b'
     ]);
   });
 
@@ -47,8 +46,7 @@ describe('CST-grounded document symbols (Option B slice)', () => {
     expect(flat(syms)).toEqual([
       'Namespace @media print',
       '  Class .card',
-      '    Class .inner',
-      '      Field c'
+      '    Class .inner'
     ]);
   });
 
@@ -56,24 +54,20 @@ describe('CST-grounded document symbols (Option B slice)', () => {
   // producing the outline, which is exactly when an editor most needs it.
   it('STILL yields symbols on invalid / half-typed input where the eval AST fails', () => {
     const broken = '.foo { color: '; // unclosed declaration + block
-
-    // AST path: parse does not cleanly succeed → no usable tree for features.
     const ast = parseCssFn(broken);
-    const astUnusable = !ast.ok || (ast.errors?.length ?? 0) > 0;
-    expect(astUnusable).toBe(true);
+    expect(!ast.ok || (ast.errors?.length ?? 0) > 0).toBe(true);
 
-    // CST path: the tolerant tree still carries the `.foo` ruleset.
     const syms = symbolsOf(broken);
     expect(flat(syms)).toContain('Class .foo');
   });
 
-  it('buildCstIndex.findNodeAtOffset resolves the smallest covering node', () => {
-    const text = '.a { color: red }';
-    const { tree } = parseCssCst(text);
-    const idx = buildCstIndex(tree);
-    const at = idx.findNodeAtOffset(text.indexOf('red'));
+  it('buildCstIndex resolves absolute spans from parent-relative CST', () => {
+    const text = '@media screen { .a { color: red } }';
+    const idx = buildCstIndex(parseCssDoc(text).tree);
+    const at = idx.findNodeAtOffset(text.indexOf('.a'));
     expect(at).not.toBeNull();
-    // The tightest node over `red` is a value token, well inside the declaration.
-    expect(Number(at!.span.start)).toBeGreaterThanOrEqual(text.indexOf('color'));
+    const span = idx.spanOf(at!)!;
+    // Absolute resolution: the node over `.a` must sit where `.a` actually is.
+    expect(text.slice(span.start, span.end)).toContain('.a');
   });
 });

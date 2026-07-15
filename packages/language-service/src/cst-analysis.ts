@@ -8,8 +8,10 @@
  * CST (`parseCssDoc` / `.edit()`) is the correct foundation for syntactic
  * features; the eval AST should be reached for only by genuinely-evaluated ones.
  *
- * This module is the first slice: a position index over the CST and a
- * CST-grounded `getDocumentSymbols`, so the outline survives half-typed code.
+ * SPAN MODEL: the incremental `ParseDoc` CST stores PARENT-RELATIVE spans (for
+ * cheap `.edit()`), so a node's absolute offset is `parentAbsStart +
+ * node.span.start`. `buildCstIndex` accumulates that once and hands every
+ * consumer absolute offsets via `spanOf`.
  */
 import type { CssCstChild, CssCstNode } from '@jesscss/css-parser';
 import { SymbolKind, type DocumentSymbol, type Range } from 'vscode-languageserver-types';
@@ -17,37 +19,46 @@ import type { TextDocument } from 'vscode-languageserver-textdocument';
 
 export type CstIndexEntry = { node: CssCstNode; start: number; end: number };
 
-/** Position → smallest-covering CST node. Mirrors `buildJessIndex.findNodeAtOffset`. */
+/** Position → smallest-covering CST node, with absolute spans. Mirrors the AST
+ * `buildJessIndex`, but over the tolerant CST. */
 export type CstIndex = {
   nodes: CstIndexEntry[];
+  /** Absolute [start,end) of a node, resolved from parent-relative spans. */
+  spanOf(node: CssCstNode): { start: number; end: number } | undefined;
   findNodeAtOffset(offset: number): CssCstNode | null;
 };
 
-function isNode(c: CssCstChild): c is CssCstNode {
+function isCstNode(c: CssCstChild): c is CssCstNode {
   return c._tag === 'node';
 }
 
-/** Depth-first collect of every CST node with a span, sorted by position. */
+/** Depth-first collect, accumulating parent-relative spans into absolute
+ * offsets, sorted by position. */
 export function buildCstIndex(root: CssCstNode): CstIndex {
   const out: CstIndexEntry[] = [];
-  const stack: CssCstNode[] = [root];
-  while (stack.length) {
-    const node = stack.pop()!;
-    const s = Number(node.span.start);
-    const e = Number(node.span.end);
+  const abs = new Map<CssCstNode, [number, number]>();
+  const walk = (node: CssCstNode, base: number) => {
+    const s = base + Number(node.span.start);
+    const e = base + Number(node.span.end);
+    abs.set(node, [s, e]);
     if (Number.isFinite(s) && Number.isFinite(e) && e >= s) {
       out.push({ node, start: s, end: e });
     }
     for (const child of node.children) {
-      if (isNode(child)) {
-        stack.push(child);
+      if (isCstNode(child)) {
+        walk(child, s);
       }
     }
-  }
+  };
+  walk(root, 0);
   out.sort((a, b) => (a.start - b.start) || (a.end - b.end));
   return {
     nodes: out,
-    findNodeAtOffset(offset: number) {
+    spanOf(node) {
+      const a = abs.get(node);
+      return a ? { start: a[0], end: a[1] } : undefined;
+    },
+    findNodeAtOffset(offset) {
       let best: CstIndexEntry | null = null;
       for (const entry of out) {
         if (entry.start <= offset && offset <= entry.end) {
@@ -61,26 +72,21 @@ export function buildCstIndex(root: CssCstNode): CstIndex {
   };
 }
 
-/** Lossless source slice over a node's span — preserves whitespace (which lives
- * in trivia, not leaves), so `@media print` and `.a .b` keep their spaces. */
-function srcOf(src: string, node: CssCstNode): string {
-  return src.slice(Number(node.span.start), Number(node.span.end)).trim();
-}
+// Grammar types (raw `grammarType`, shared across css/less/scss/jess) grouped by
+// the symbol they yield — matching the AST-based `getDocumentSymbols` exactly.
+const SELECTOR_TYPES = new Set(['SelectorList', 'ComplexSelector', 'CompoundSelector', 'InterpolatedSelector', 'BasicSelector']);
+const ATRULE_TYPES = new Set(['AtRuleBlock', 'AtRuleStatement', 'UnknownAtRuleBlock', 'QueryAtRuleBlock']);
+const MIXIN_TYPES = new Set(['Mixin', 'MixinDefinition']);
+const FUNC_TYPES = new Set(['Func', 'FunctionDefinition']);
 
-function firstChildOfType(node: CssCstNode, grammarTypes: ReadonlySet<string>): CssCstNode | null {
+function firstSelectorChild(node: CssCstNode): CssCstNode | null {
   for (const c of node.children) {
-    if (c._tag === 'node' && grammarTypes.has(c.grammarType)) {
+    if (c._tag === 'node' && SELECTOR_TYPES.has(c.grammarType)) {
       return c;
     }
   }
   return null;
 }
-
-const SELECTOR_TYPES = new Set(['SelectorList', 'ComplexSelector', 'CompoundSelector', 'InterpolatedSelector']);
-const RULESET_TYPES = new Set(['Ruleset']);
-const ATRULE_TYPES = new Set(['AtRuleBlock', 'AtRuleStatement', 'UnknownAtRuleBlock', 'QueryAtRuleBlock']);
-const DECL_TYPES = new Set(['Declaration', 'CustomDeclaration']);
-const BODY_TYPES = new Set([...RULESET_TYPES, ...ATRULE_TYPES]);
 
 function toRange(doc: TextDocument, start: number, end: number): Range {
   return { start: doc.positionAt(start), end: doc.positionAt(end) };
@@ -94,10 +100,11 @@ function containsRange(outer: Range, inner: Range): boolean {
 }
 
 /**
- * CST-grounded document outline. Walks the position-sorted CST index building a
- * span-containment hierarchy — identical shape to the AST-based
- * `getDocumentSymbols`, but sourced from the tolerant CST so a partial/invalid
- * document still yields its rulesets and at-rules.
+ * CST-grounded document outline. Same symbol set + hierarchy as the AST-based
+ * `getDocumentSymbols` (Ruleset→Class, at-rule→Namespace, VarDeclaration→
+ * Variable, Mixin/Func→Function), but sourced from the tolerant CST so a
+ * partial/invalid document still yields its structure. Names are sliced
+ * losslessly from source (whitespace lives in trivia, not leaves).
  */
 export function cstDocumentSymbols(root: CssCstNode, doc: TextDocument): DocumentSymbol[] {
   const src = doc.getText();
@@ -105,11 +112,21 @@ export function cstDocumentSymbols(root: CssCstNode, doc: TextDocument): Documen
   const result: DocumentSymbol[] = [];
   const parents: Array<[DocumentSymbol, Range]> = [];
 
+  const sliceOf = (node: CssCstNode): string => {
+    const s = index.spanOf(node);
+    return s ? src.slice(s.start, s.end).trim() : '';
+  };
+
   const add = (name: string, kind: SymbolKind, node: CssCstNode, nameNode: CssCstNode | null, hasBody: boolean) => {
-    const range = toRange(doc, Number(node.span.start), Number(node.span.end));
+    const span = index.spanOf(node);
+    if (!span) {
+      return;
+    }
+    const range = toRange(doc, span.start, span.end);
     let selectionRange: Range = { start: range.start, end: range.start };
-    if (nameNode) {
-      const nr = toRange(doc, Number(nameNode.span.start), Number(nameNode.span.end));
+    const nameSpan = nameNode ? index.spanOf(nameNode) : undefined;
+    if (nameSpan) {
+      const nr = toRange(doc, nameSpan.start, nameSpan.end);
       if (containsRange(range, nr)) {
         selectionRange = nr;
       }
@@ -133,18 +150,22 @@ export function cstDocumentSymbols(root: CssCstNode, doc: TextDocument): Documen
 
   for (const { node } of index.nodes) {
     const gt = node.grammarType;
-    if (RULESET_TYPES.has(gt)) {
-      const sel = firstChildOfType(node, SELECTOR_TYPES);
-      const name = sel ? srcOf(src, sel) : srcOf(src, node).split('{')[0]!.trim();
+    if (gt === 'Ruleset') {
+      const sel = firstSelectorChild(node);
+      const name = sel ? sliceOf(sel) : sliceOf(node).split('{')[0]!.trim();
       add(name || 'ruleset', SymbolKind.Class, node, sel, true);
     } else if (ATRULE_TYPES.has(gt)) {
-      const name = srcOf(src, node).split(/[{;]/)[0]!.trim();
-      add(name || 'at-rule', SymbolKind.Namespace, node, null, BODY_TYPES.has(gt));
-    } else if (DECL_TYPES.has(gt)) {
-      const prop = srcOf(src, node).split(':')[0]!.trim();
-      // $x:/@x: variable definitions read as Variables; ordinary props as Fields.
-      const kind = /^[$@]/.test(prop) ? SymbolKind.Variable : SymbolKind.Field;
-      add(prop || 'declaration', kind, node, null, false);
+      const name = sliceOf(node).split(/[{;]/)[0]!.trim();
+      add(name || 'at-rule', SymbolKind.Namespace, node, null, true);
+    } else if (gt === 'VarDeclaration') {
+      const name = sliceOf(node).split(':')[0]!.trim();
+      add(name || 'variable', SymbolKind.Variable, node, null, false);
+    } else if (MIXIN_TYPES.has(gt)) {
+      const name = sliceOf(node).split(/[({]/)[0]!.trim();
+      add(name || 'mixin', SymbolKind.Function, node, null, true);
+    } else if (FUNC_TYPES.has(gt)) {
+      const name = sliceOf(node).split(/[({]/)[0]!.trim();
+      add(name || 'function', SymbolKind.Function, node, null, true);
     }
   }
   return result;

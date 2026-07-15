@@ -12,6 +12,7 @@ import * as path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { extractImports, resolveImport } from '@jesscss/style-resolver';
 import * as colorUtils from './color-utils.js';
+import { cstDocumentSymbols } from './cst-analysis.js';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import {
   CompletionItem,
@@ -1428,117 +1429,15 @@ export function createEngine(): JessLanguageServiceEngine {
     },
 
     getDocumentSymbols(uri) {
-      const tracked = ensure(uri);
-      const document = tracked.document;
-      const index = tracked.index;
-      if (!index) {
+      // CST-grounded (Option B): the tolerant, incremental CST powers the
+      // outline, so it survives half-typed input where the eval AST yields
+      // nothing. No AST reparse needed (uses the eagerly-synced cstDoc).
+      const tracked = get(uri);
+      const tree = tracked.cstDoc?.tree;
+      if (!tree) {
         return [];
       }
-
-      const result: DocumentSymbol[] = [];
-      const seen = new Set<Node>();
-      const parents: [DocumentSymbol, Range][] = [];
-
-      // Helper to add a document symbol with hierarchy
-      const addDocumentSymbol = (
-        name: string,
-        kind: SymbolKind,
-        symbolNode: Node,
-        nameNode: Node | null,
-        hasBody: boolean
-      ) => {
-        const symbolSpan = getSpan(symbolNode);
-        if (!symbolSpan) {
-          return;
-        }
-
-        const range = toRange(document, symbolSpan.start, symbolSpan.end);
-        let selectionRange: Range;
-        if (nameNode) {
-          const nameSpan = getSpan(nameNode);
-          if (nameSpan) {
-            const nameRange = toRange(document, nameSpan.start, nameSpan.end);
-            if (containsRange(range, nameRange)) {
-              selectionRange = nameRange;
-            } else {
-              selectionRange = Range.create(range.start, range.start);
-            }
-          } else {
-            selectionRange = Range.create(range.start, range.start);
-          }
-        } else {
-          selectionRange = Range.create(range.start, range.start);
-        }
-
-        const entry: DocumentSymbol = {
-          name: name || '<undefined>',
-          kind,
-          range,
-          selectionRange
-        };
-
-        // Find parent: pop from stack until we find one that contains this symbol
-        let top = parents.length > 0 ? parents[parents.length - 1] : null;
-        while (top && !containsRange(top[1], range)) {
-          parents.pop();
-          top = parents.length > 0 ? parents[parents.length - 1] : null;
-        }
-
-        if (top) {
-          const topSymbol = top[0];
-          if (!topSymbol.children) {
-            topSymbol.children = [];
-          }
-          topSymbol.children.push(entry);
-        } else {
-          result.push(entry);
-        }
-
-        // If this symbol has a body (block), push it onto the parent stack so
-        // nested statements nest under it. The functional AST exposes a block's
-        // children as a plain `rules` array (no wrapping `Rules` node with its
-        // own span), so containment is keyed off the block node's own span —
-        // its children fall strictly within it.
-        if (hasBody) {
-          parents.push([entry, range]);
-        }
-      };
-
-      const asNodeOrNull = (v: unknown): Node | null => isNode(v) ? v : null;
-
-      // Collect symbols in document order (index is already sorted)
-      for (const entry of index.nodes) {
-        const n = entry.node;
-        if (!n || seen.has(n)) {
-          continue;
-        }
-
-        seen.add(n);
-
-        if (n.type === 'Ruleset') {
-          const selector = nodeField(n, 'selector');
-          const name = asStringName(typeof n.valueOf === 'function' ? (n.valueOf() ?? (selector ? asStringName(selector) : 'ruleset')) : 'ruleset');
-          addDocumentSymbol(name, SymbolKind.Class, n, asNodeOrNull(selector), true);
-        } else if (n.type === 'AtRule') {
-          const nameNode = nodeField(n, 'name');
-          const atRuleName = asStringName(nameNode);
-          addDocumentSymbol(atRuleName, SymbolKind.Namespace, n, asNodeOrNull(nameNode), true);
-        } else if (n.type === 'VarDeclaration') {
-          const nameNode = nodeField(n, 'name');
-          const varName = formatVarName(tracked.lang, asStringName(nameNode));
-          addDocumentSymbol(varName, SymbolKind.Variable, n, asNodeOrNull(nameNode), false);
-        } else if (n.type === 'Mixin') {
-          const nameNode = nodeField(n, 'name');
-          const mixinName = asStringName(nodeField(n, 'name') ?? 'mixin');
-          addDocumentSymbol(mixinName, SymbolKind.Function, n, asNodeOrNull(nameNode), true);
-        } else if (n.type === 'Func') {
-          const nameNode = nodeField(n, 'name');
-          const funcName = asStringName(nodeField(n, 'nameKey') ?? nodeField(n, 'name') ?? 'function');
-          addDocumentSymbol(funcName, SymbolKind.Function, n, asNodeOrNull(nameNode), true);
-        }
-      }
-
-      return result;
+      return cstDocumentSymbols(tree, tracked.document);
     },
 
     getDiagnostics(uri) {
