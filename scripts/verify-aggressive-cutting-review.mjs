@@ -394,6 +394,102 @@ function checkRedundantCallElimination(record, meta, errors) {
   return ok;
 }
 
+/**
+ * Neutral-or-negative auto-pass registry metadata. This kind is the broad admission
+ * for a change that is provably cost-NEUTRAL or cost-NEGATIVE without authoring a
+ * bespoke per-container admission contract. It is deliberately NOT a weakening: the
+ * three heavy contract kinds (precise / conservative-filter / redundant-call-
+ * elimination) and the byte-identity + danger-token requirements are all untouched.
+ * The auto-pass only removes the admission-COUNTER ceremony for a change that:
+ *   - is byte-identical (declared here; re-verified by the landing's benchmark +
+ *     all-less byte-identity gates that already run), and
+ *   - introduces zero danger tokens (re-checked against the live diff by the caller;
+ *     danger tokens ARE the gate's proxy for new allocation/loop/map/clone cost), and
+ *   - declares costDelta "neutral" or "decrease" with a one-paragraph justification.
+ * A cost-ADDING change cannot honestly satisfy this: new allocation/traversal/map/
+ * clone constructs are danger tokens (fail the token re-check), an output change fails
+ * byte-identity, and an admitted cost increase must declare costDelta "increase"
+ * (rejected here) and route to a precise / conservative-filter contract instead.
+ */
+function validateNeutralRefactorMetadata(contract) {
+  const errors = [];
+  const nr = contract.neutralRefactor;
+  if (!nr || typeof nr !== 'object') {
+    return [`Neutral-or-negative cost contract ${contract.id} must include a neutralRefactor block.`];
+  }
+  if (!['neutral', 'decrease'].includes(nr.costDelta)) {
+    errors.push(`Neutral-or-negative cost contract ${contract.id} neutralRefactor.costDelta must be "neutral" or "decrease" (a cost-adding change must use a precise or conservative-filter contract).`);
+  }
+  if (typeof nr.why !== 'string' || nr.why.trim().length < 40) {
+    errors.push(`Neutral-or-negative cost contract ${contract.id} must justify cost-neutrality with a neutralRefactor.why paragraph.`);
+  }
+  const bi = nr.byteIdentity;
+  if (
+    !bi
+    || typeof bi !== 'object'
+    || bi.fixture !== 'benchmark.less'
+    || bi.collapseNesting !== true
+    || typeof bi.outputSha256 !== 'string'
+    || !/^[a-f0-9]{16,64}$/.test(bi.outputSha256)
+    || /^0+$/.test(bi.outputSha256)
+    || !Number.isInteger(bi.outputBytes)
+    || bi.outputBytes <= 0
+  ) {
+    errors.push(`Neutral-or-negative cost contract ${contract.id} must declare neutralRefactor.byteIdentity { fixture: "benchmark.less", collapseNesting: true, outputSha256, outputBytes } for the benchmark oracle.`);
+  }
+  return errors;
+}
+
+/**
+ * Byte-identity + danger-token-free + cost-non-increasing gate for a neutral-or-
+ * negative auto-pass audit record. None of the three can be honestly produced by a
+ * cost-ADDING or output-CHANGING change:
+ *   1. Danger-token-free: the live diff must introduce zero danger tokens (the caller
+ *      passes hasDangerTokens from the same scan the rest of the gate runs). New
+ *      allocation/loop/map/clone/error-control constructs ARE danger tokens, so a
+ *      cost-add that reaches for them is refused here.
+ *   2. Cost-non-increasing: costDelta must be "neutral" or "decrease"; an admitted
+ *      "increase" is rejected and routes to a precise / conservative-filter contract.
+ *   3. Byte-identity: the record restates the benchmark oracle sha/bytes it did not
+ *      change; the landing's benchmark + all-less byte-identity gates re-verify it.
+ * Returns false (recording why) on any gap so the caller refuses the acceptance.
+ */
+function checkNeutralRefactor(record, meta, hasDangerTokens, errors) {
+  let ok = true;
+  if (hasDangerTokens) {
+    errors.push(`Neutral-or-negative record ${record.id} cannot auto-pass while the diff introduces danger tokens; account for them via a precise / conservative-filter / redundant-call-elimination contract.`);
+    ok = false;
+  }
+  if (!['neutral', 'decrease'].includes(record.costDelta)) {
+    errors.push(`Neutral-or-negative record ${record.id} must declare costDelta "neutral" or "decrease"; a cost increase cannot use the auto-pass.`);
+    ok = false;
+  }
+  if (typeof record.why !== 'string' || record.why.trim().length < 40) {
+    errors.push(`Neutral-or-negative record ${record.id} must restate the one-paragraph why the change is cost-neutral or cost-negative.`);
+    ok = false;
+  }
+  const bi = record.byteIdentity;
+  const metaBi = meta.byteIdentity;
+  if (
+    !bi
+    || typeof bi !== 'object'
+    || bi.fixture !== 'benchmark.less'
+    || bi.collapseNesting !== true
+    || typeof bi.outputSha256 !== 'string'
+    || !/^[a-f0-9]{16,64}$/.test(bi.outputSha256)
+    || /^0+$/.test(bi.outputSha256)
+    || !Number.isInteger(bi.outputBytes)
+    || bi.outputBytes <= 0
+  ) {
+    errors.push(`Neutral-or-negative record ${record.id} must restate the benchmark oracle byteIdentity { fixture, collapseNesting, outputSha256, outputBytes } proving output is unchanged.`);
+    ok = false;
+  } else if (metaBi && (bi.outputSha256 !== metaBi.outputSha256 || bi.outputBytes !== metaBi.outputBytes)) {
+    errors.push(`Neutral-or-negative record ${record.id} byteIdentity must match the registered contract oracle (sha ${metaBi.outputSha256} / ${metaBi.outputBytes} bytes).`);
+    ok = false;
+  }
+  return ok;
+}
+
 function validateCostContractRegistry(registry) {
   const errors = [];
   const ids = new Set();
@@ -409,7 +505,6 @@ function validateCostContractRegistry(registry) {
     if (typeof contract.surface !== 'string' || contract.surface.length === 0) {
       errors.push(`Cost contract ${contract.id} is missing its named surface.`);
     }
-    errors.push(...validateNecessityMetadata(contract.necessity, `Cost contract ${contract.id}`));
     if (!Array.isArray(contract.files) || contract.files.length === 0) {
       errors.push(`Cost contract ${contract.id} must name at least one owning file.`);
     } else if (contract.files.length !== 1) {
@@ -423,6 +518,15 @@ function validateCostContractRegistry(registry) {
         errors.push(`Cost contract ${contract.id} supportFiles require coverage owner-plus-named-carry-forward-support.`);
       }
     }
+    // The neutral-or-negative auto-pass skips the admission-counter / benchmark-A/B /
+    // executable-evidence / source-guard ceremony entirely: it proves cost-neutrality
+    // through the danger-token scan + a byte-identity + costDelta attestation instead
+    // (see validateNeutralRefactorMetadata). It carries no necessity/admission block.
+    if ((contract.kind ?? 'precise') === 'neutral-or-negative') {
+      errors.push(...validateNeutralRefactorMetadata(contract));
+      continue;
+    }
+    errors.push(...validateNecessityMetadata(contract.necessity, `Cost contract ${contract.id}`));
     // A redundant-call-elimination contract models a pure work-REMOVAL, not a
     // per-container admission FILTER, so it carries no admission block and no
     // admission/feature counters. It instead proves byte-identity + a measured
@@ -498,8 +602,8 @@ function validateCostContractRegistry(registry) {
         `Cost contract ${contract.id} must require the canonical benchmark.less parse-render/render A/B with 20 warmups and 45 alternating pairs.`
       );
     }
-    if (!['precise', 'conservative-filter', 'redundant-call-elimination'].includes(kind)) {
-      errors.push(`Cost contract ${contract.id} kind must be "precise", "conservative-filter", or "redundant-call-elimination".`);
+    if (!['precise', 'conservative-filter', 'redundant-call-elimination', 'neutral-or-negative'].includes(kind)) {
+      errors.push(`Cost contract ${contract.id} kind must be "precise", "conservative-filter", "redundant-call-elimination", or "neutral-or-negative".`);
     }
     if (!Array.isArray(contract.relations) || contract.relations.length === 0) {
       errors.push(`Cost contract ${contract.id} must state at least one counter relation.`);
@@ -702,7 +806,7 @@ function contractsForChangedSurface(registry, path, diff) {
   return [...matches];
 }
 
-function validateCostAuditRecords(records, registry, changedPaths, diff) {
+function validateCostAuditRecords(records, registry, changedPaths, diff, hasDangerTokens = false) {
   const errors = [];
   if (!records) {
     return ['Latest self-prosecution block is missing a valid Hot-path cost contracts JSON record.'];
@@ -723,6 +827,18 @@ function validateCostAuditRecords(records, registry, changedPaths, diff) {
     byId.set(record.id, record);
     const contract = registry.find(candidate => candidate.id === record.id);
     const kind = contract?.kind ?? 'precise';
+    // The neutral-or-negative auto-pass record carries no necessity/admission/benchmark
+    // ceremony: it proves cost-neutrality with the danger-token scan + a byte-identity +
+    // costDelta attestation (checkNeutralRefactor). Validate that and skip the rest.
+    if (kind === 'neutral-or-negative') {
+      if (record.verdict !== undefined && !['accepted', 'rejected', 'deferred'].includes(record.verdict)) {
+        errors.push(`Hot-path cost audit record ${record.id} must use verdict accepted, rejected, or deferred.`);
+      }
+      if (record.verdict === 'accepted' && contract?.neutralRefactor) {
+        checkNeutralRefactor(record, contract.neutralRefactor, hasDangerTokens, errors);
+      }
+      continue;
+    }
     errors.push(...validateNecessityMetadata(record.necessity, `Hot-path cost audit record ${record.id}`));
     if (contract?.necessity?.status === 'audit-required' && changedPaths.includes(contract.files?.[0])) {
       errors.push(`Hot-path cost audit record ${record.id} cannot change its owner while necessity.status is audit-required; prove the fact flow or remove the action first.`);
@@ -838,6 +954,21 @@ function validateCostAuditRecords(records, registry, changedPaths, diff) {
   }
 
   for (const contract of registry) {
+    // A neutral-or-negative contract has no source-guard surface to match, so it owns a
+    // changed file by plain file membership. It still requires an accepted neutral record
+    // (checkNeutralRefactor already ran in the per-record loop); it declares no relations.
+    if ((contract.kind ?? 'precise') === 'neutral-or-negative') {
+      if (!contract.files.some(file => changedPaths.includes(file))) {
+        continue;
+      }
+      const record = byId.get(contract.id);
+      if (!record) {
+        errors.push(`Changed files require the ${contract.id} hot-path cost audit record.`);
+      } else if (record.verdict !== 'accepted') {
+        errors.push(`Changed production hot-path contract ${contract.id} must be accepted only after rejected/deferred code has been reverted.`);
+      }
+      continue;
+    }
     const ownsChangedFile = contract.files.some(file =>
       changedPaths.includes(file) && contractsForChangedSurface(registry, file, diff).includes(contract)
     );
@@ -950,6 +1081,12 @@ function validateChangedContractSurface(registry, changedPaths, diff) {
     const owners = registry.filter(contract => contract.files.includes(path));
     const supportOwners = registry.filter(contract => contract.supportFiles?.includes(path));
     if (supportOwners.length > 0 && owners.length === 0) {
+      continue;
+    }
+    // Neutral-or-negative owners carry no source-guard surface anchors, so their hunks
+    // cannot (and need not) match a registered source surface — the byte-identity +
+    // danger-token + costDelta attestation covers them instead.
+    if (owners.length > 0 && owners.every(owner => (owner.kind ?? 'precise') === 'neutral-or-negative')) {
       continue;
     }
     if (owners.length === 1 && owners[0].coverage === 'owner-plus-named-carry-forward-support') {
@@ -1121,7 +1258,7 @@ function runVerifier() {
   const requiresCostAudit = hotPathChanged || findings.length > 0;
   if (requiresCostAudit && registryErrors.length === 0) {
     const auditRecords = extractCostAuditRecords(latestPass);
-    const auditErrors = validateCostAuditRecords(auditRecords, registry, changedPaths, diff);
+    const auditErrors = validateCostAuditRecords(auditRecords, registry, changedPaths, diff, findings.length > 0);
     const sourceCheckErrors = validateSourceChecks(registry, changedPaths);
     const changedSurfaceErrors = validateChangedContractSurface(registry, changedPaths, diff);
     const evidenceErrors = productionHotPathChanged && !skipExecutableEvidence

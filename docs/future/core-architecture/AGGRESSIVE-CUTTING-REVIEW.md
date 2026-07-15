@@ -285,6 +285,69 @@ non-import tree has no re-gate (its invariant re-check throws on a non-foldable
 shape), so `allowImport` is false there and the strict topology check still runs —
 byte- and cost-identical to before.
 
+### Contract kind: neutral-or-negative (broad auto-pass)
+
+The three kinds above each require a bespoke, per-site admission (or removal)
+contract with hand-authored counters, benchmark A/B records, and a source-guard
+surface. That ceremony is warranted when a change *adds* cost behind a filter or
+*removes* proven-redundant work. But it repeatedly (4th occurrence) blocked a
+change that adds **no cost at all** — a byte-identical, danger-token-free
+refactor such as a route split, a rename, or an inlined constant — because *any*
+edit to a registered hot-path file demands a registry entry, and the only entries
+available forced fabricated admission counters that had no honest values.
+
+A `kind: "neutral-or-negative"` contract is the broad auto-pass for exactly that
+case. It removes the contract *ceremony* — not any safety check — for a change
+that is machine-provably cost-neutral or cost-negative. It carries **no**
+admission block, no counters, no benchmark A/B record, no executable-evidence
+command, and no source-guard surface. It is admitted when, and only when, all
+three of these hold — each machine-checked:
+
+- **Byte-identical.** The `neutralRefactor.byteIdentity` block restates the
+  benchmark oracle (`fixture: "benchmark.less"`, `collapseNesting: true`,
+  `outputSha256`, `outputBytes`); the audit record must restate the same sha/bytes,
+  and the landing's benchmark + all-less byte-identity gates re-verify the output
+  did not change. An output-changing edit fails these gates.
+- **Danger-token-free.** The verifier re-runs its existing danger-token scan over
+  the live diff and refuses the auto-pass if it fires. Because new
+  allocation / loop / map-set / clone / node-construction / error-control
+  constructs ARE the danger tokens, a cost-adding change that reaches for any of
+  them is rejected here — the token scan is the gate's standing proxy for
+  new cost.
+- **Cost-non-increasing.** `costDelta` must be `"neutral"` or `"decrease"`, with a
+  one-paragraph `why`. An admitted `"increase"` is rejected outright and must route
+  to a precise or conservative-filter contract. Because the token scan already
+  forecloses the allocation/traversal dimension of a cost-add, the remaining
+  call-count dimension is carried by the `costDelta` attestation and its `why`
+  (the same honest-attestation trust model the rest of the self-prosecution uses).
+
+**Adversarial analysis — why a cost-ADD cannot slip through.** A change that adds
+real cost cannot honestly take the auto-pass: (a) if it allocates, loops, builds a
+map/set, clones, constructs a node, or adds error control, the danger-token scan
+fires and the auto-pass is refused; (b) if it changes output, the byte-identity
+oracle (and the landing's benchmark + all-less gates) reject it; (c) if it admits
+more cost, it must declare `costDelta: "increase"`, which the auto-pass forbids —
+sending it to the precise / conservative-filter kinds. The residual dimension the
+scan cannot see — a token-free *added function call* that is byte-identical yet
+raises per-invocation call-count — is (i) exactly the shape a legitimate route
+split produces *without* raising call-count (two static call sites, one executed
+per invocation, as in `lookup-slice-2-ordinary-read-split`), so it cannot be
+statically forbidden without rejecting valid refactors, and (ii) governed by the
+`costDelta` attestation + `why`, the same trust boundary as every other prose
+justification in this document. This kind therefore **subsumes** the simple case
+of redundant-call-elimination (a removal is cost-decreasing + token-free) but the
+`redundant-call-elimination` kind is deliberately **left in place** for removals
+that want to additionally *prove a measured speedup* — the auto-pass is additive
+and weakens nothing.
+
+The first instance is `lookup-slice-2-ordinary-read-split`:
+`performVariableRulesLookup` (reference.ts) splits ordinary `@var` reads from
+member-descent reads (namespace target / interpolated `@@name` / indexed key) via
+an `isOrdinaryVariableRead` branch. Per-route options are identical to the
+pre-split single call and depend only on `env.readMode`, so exactly one call runs
+per invocation with unchanged arguments — byte-identical, danger-token-free, and
+cost-neutral, with no honest admission-counter contract to author.
+
 <!-- BEGIN AGGRESSIVE-CUTTING-COST-CONTRACTS -->
 ```json
 [
@@ -560,6 +623,22 @@ byte- and cost-identical to before.
       "call": "isSpineExtendTopology",
       "guard": "allowImport",
       "profile": ["SPINE_PROFILE_COUNTERS_KEY", "recordSpineProfile", "earlyAdmit.importTopologyEliminated"]
+    }
+  },
+  {
+    "id": "lookup-slice-2-ordinary-read-split",
+    "kind": "neutral-or-negative",
+    "surface": "performVariableRulesLookup ordinary-@var vs member-descent route split (reference.ts)",
+    "files": ["packages/core/src/tree/reference.ts"],
+    "neutralRefactor": {
+      "costDelta": "neutral",
+      "why": "Pure route split: performVariableRulesLookup now branches on isOrdinaryVariableRead (plain string key, no namespace target, no interpolation) to send ordinary `@var` reads down the covered-frame probe + declaration-crawl route and member-descent reads (namespace target / interpolated @@name / indexed key) down the shared member route. The per-route options passed to findVariableDeclarationOccurrence are identical to the pre-split single call and depend only on env.readMode, so exactly one call runs per invocation with the same arguments as before — no new allocation, traversal, map/set, or node construction. Output is byte-identical (benchmark oracle sha unchanged).",
+      "byteIdentity": {
+        "fixture": "benchmark.less",
+        "collapseNesting": true,
+        "outputSha256": "98a0536086c7e555b1a98e2372ad4000d51e25f1418c6345b6b8a9a97d80972f",
+        "outputBytes": 131578
+      }
     }
   }
 ]

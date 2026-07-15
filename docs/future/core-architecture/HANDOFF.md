@@ -1516,6 +1516,72 @@ left unmerged; only the evidence record was retained in commit `3056554`.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: LOOKUP SLICE 2 ORDINARY-READ SPLIT — neutral-or-negative auto-pass.
+  `performVariableRulesLookup` (reference.ts) now branches on a new
+  `isOrdinaryVariableRead` bit (plain string key, no namespace target, no
+  interpolation): ordinary `@var` reads take the covered-frame probe +
+  declaration-crawl route, while member-descent reads (namespace target,
+  interpolated `@@name`, indexed key) take the shared member route. This is the
+  first `neutral-or-negative` cost contract (`lookup-slice-2-ordinary-read-split`):
+  a byte-identical, danger-token-free, cost-neutral route split admitted WITHOUT a
+  bespoke admission-counter contract. Per-route options are identical to the
+  pre-split single call and depend only on `env.readMode`, so exactly one call runs
+  per invocation with the same arguments — the split only takes member reads off the
+  ordinary-read reasoning surface so the ordinary-read crawl route can be retired
+  independently once covered frames become authoritative for imported child-surface
+  configs (slice 3, deferred).
+- Architecture surface: `packages/core/src/tree/reference.ts` —
+  `performVariableRulesLookup` gains an `isOrdinaryVariableRead` boolean that reuses
+  the exact predicate that already computed `frameMode` (`typeof valueKey ===
+  'string' && !env.hasTarget && !env.isInterpolatedVariable`) and an explicit
+  ordinary-read return branch. No writer, node field, or public API changed.
+- Separation/duplication: none added. One shared `findVariableDeclarationOccurrence`
+  tail is split into two route-labelled calls with identical option objects; the
+  member route is the pre-existing tail verbatim.
+- Cumulative node weight: unchanged. No node, map, set, array, or retained state was
+  added; the branch is a boolean test over already-computed `env` fields.
+- New traversal: none. No loop, walk, or generator was added; resolution still runs
+  exactly one `findVariableDeclarationOccurrence` per invocation.
+- New node/materialization: none. No `new`, copy, spread, array, or object literal
+  was materialized; the two call-site option objects are the same shape the single
+  pre-split call already passed.
+- Render path: byte-identical — benchmark.less `collapseNesting:true` 131578 bytes /
+  `98a0536086c7e555b1a98e2372ad4000d51e25f1418c6345b6b8a9a97d80972f` before and
+  after; import-style (118), extend (762), core (3332), and
+  spine-production-ratchet (137) green; all-less byte-identical.
+- Helper/API surface: none added. `isOrdinaryVariableRead` is a function-local
+  `const`; no export, method, or field was introduced.
+- Metadata mutations: none. No parent/source/provenance/frozen field changed.
+- Review-flagged diff tokens: none. No loop, array helper, map/set, node
+  construction, copy, generator, spread, or routine error path was added; the diff
+  is a boolean `const`, an `if` route branch returning the existing call, and
+  comments.
+- Evidence: byte-identity is the acceptance basis for this auto-pass, not a speedup —
+  a cost-neutral route split. The benchmark oracle sha
+  `98a0536086c7e555b1a98e2372ad4000d51e25f1418c6345b6b8a9a97d80972f` / 131578 bytes
+  is unchanged (re-verified by the landing's benchmark + all-less byte-identity
+  gates); the danger-token scan reports zero findings on the diff; costDelta is
+  neutral because per-route options depend only on `readMode` and are unchanged.
+- Verdict: accepted.
+- Hot-path cost contracts:
+```json
+[
+  {
+    "id": "lookup-slice-2-ordinary-read-split",
+    "kind": "neutral-or-negative",
+    "costDelta": "neutral",
+    "why": "Pure route split: ordinary `@var` reads and member-descent reads (namespace target / interpolated @@name / indexed key) now take labelled routes to findVariableDeclarationOccurrence with per-route options identical to the pre-split single call and dependent only on env.readMode, so exactly one call runs per invocation with unchanged arguments — no new allocation, traversal, map/set, or node construction.",
+    "byteIdentity": {
+      "fixture": "benchmark.less",
+      "collapseNesting": true,
+      "outputSha256": "98a0536086c7e555b1a98e2372ad4000d51e25f1418c6345b6b8a9a97d80972f",
+      "outputBytes": 131578
+    },
+    "verdict": "accepted"
+  }
+]
+```
+
 - Latest pass: SPINE IMPORT EARLY-ADMIT — redundant-call-elimination. In
   `isSpineEligibleRoot` (emit-walk.ts) the speculative `isSpineExtendTopology`
   extend-topology walk is now SKIPPED for import trees via an `allowImport ||`

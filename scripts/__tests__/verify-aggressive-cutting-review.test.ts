@@ -401,3 +401,105 @@ describe('redundant-call-elimination contract kind', () => {
     expect(validateCostContractRegistry(filterRegistry)).toEqual([]);
   });
 });
+
+const neutralFile = 'packages/core/src/tree/reference.ts';
+const neutralOracleSha = '98a0536086c7e555b1a98e2372ad4000d51e25f1418c6345b6b8a9a97d80972f';
+const neutralContract = {
+  id: 'test-neutral-contract',
+  kind: 'neutral-or-negative',
+  surface: 'neutral route split surface',
+  files: [neutralFile],
+  neutralRefactor: {
+    costDelta: 'neutral',
+    why: 'Pure route split: exactly one call runs per invocation with identical options depending only on readMode, so no new allocation or traversal is introduced.',
+    byteIdentity: {
+      fixture: 'benchmark.less',
+      collapseNesting: true,
+      outputSha256: neutralOracleSha,
+      outputBytes: 131578
+    }
+  }
+};
+const neutralRegistry = [neutralContract];
+const neutralDiff = [
+  `diff --git a/${neutralFile} b/${neutralFile}`,
+  `+++ b/${neutralFile}`,
+  '@@ -1 +1 @@',
+  '+  const isOrdinaryVariableRead = typeof valueKey === \'string\''
+].join('\n');
+
+function makeNeutralRecord(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'test-neutral-contract',
+    kind: 'neutral-or-negative',
+    costDelta: 'neutral',
+    why: neutralContract.neutralRefactor.why,
+    byteIdentity: { ...neutralContract.neutralRefactor.byteIdentity },
+    verdict: 'accepted',
+    ...overrides
+  };
+}
+
+describe('neutral-or-negative auto-pass contract kind', () => {
+  it('accepts a byte-identical, token-free, cost-neutral change without an admission contract', () => {
+    expect(validateCostContractRegistry(neutralRegistry)).toEqual([]);
+    expect(
+      validateCostAuditRecords([makeNeutralRecord()], neutralRegistry, [neutralFile], neutralDiff, false)
+    ).toEqual([]);
+  });
+
+  it('rejects a neutral auto-pass when the diff introduces danger tokens', () => {
+    const errors = validateCostAuditRecords(
+      [makeNeutralRecord()],
+      neutralRegistry,
+      [neutralFile],
+      neutralDiff,
+      true
+    );
+    expect(errors.some(e => /cannot auto-pass while the diff introduces danger tokens/.test(e))).toBe(true);
+  });
+
+  it('rejects a neutral auto-pass that declares costDelta increase', () => {
+    const errors = validateCostAuditRecords(
+      [makeNeutralRecord({ costDelta: 'increase' })],
+      neutralRegistry,
+      [neutralFile],
+      neutralDiff,
+      false
+    );
+    expect(errors.some(e => /must declare costDelta "neutral" or "decrease"; a cost increase cannot use the auto-pass/.test(e))).toBe(true);
+  });
+
+  it('rejects a neutral auto-pass whose byteIdentity does not match the registered oracle', () => {
+    const errors = validateCostAuditRecords(
+      [makeNeutralRecord({ byteIdentity: { fixture: 'benchmark.less', collapseNesting: true, outputSha256: 'f'.repeat(64), outputBytes: 999 } })],
+      neutralRegistry,
+      [neutralFile],
+      neutralDiff,
+      false
+    );
+    expect(errors.some(e => /byteIdentity must match the registered contract oracle/.test(e))).toBe(true);
+  });
+
+  it('rejects a neutral contract missing its neutralRefactor block or byte-identity', () => {
+    expect(validateCostContractRegistry([{ ...neutralContract, neutralRefactor: undefined }])).toContain(
+      'Neutral-or-negative cost contract test-neutral-contract must include a neutralRefactor block.'
+    );
+    const noByteIdentity = {
+      ...neutralContract,
+      neutralRefactor: { ...neutralContract.neutralRefactor, byteIdentity: undefined }
+    };
+    expect(validateCostContractRegistry([noByteIdentity]).some(e => /must declare neutralRefactor\.byteIdentity/.test(e))).toBe(true);
+  });
+
+  it('requires an accepted neutral record when the owning file changed', () => {
+    const errors = validateCostAuditRecords([], neutralRegistry, [neutralFile], neutralDiff, false);
+    expect(errors).toContain('Changed files require the test-neutral-contract hot-path cost audit record.');
+  });
+
+  it('leaves the precise, conservative-filter, and redundant-call-elimination kinds validating unchanged', () => {
+    expect(validateCostContractRegistry(registry)).toEqual([]);
+    expect(validateCostContractRegistry(filterRegistry)).toEqual([]);
+    expect(validateCostAuditRecords([makeRecord()], registry, [sourceFile], diff)).toEqual([]);
+  });
+});
