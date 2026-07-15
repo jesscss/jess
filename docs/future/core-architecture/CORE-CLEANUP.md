@@ -630,6 +630,15 @@ recursively scans 10,777 evaluated surfaces to find 15 merge-bearing ones.
   this result; first perform a field-by-field minimality proof and remove one
   actual placement-owned family only when a compact descriptor/direct segment
   preserves fallback, source-map, extend, mixin, and reentrancy semantics.
+- **Import-placement diagnostic harness is now integrated.** The existing
+  measurement lane's fixtures, byte-identity test, and
+  `scripts/measure-import-placement.mjs` are in current `dev`; focused coverage
+  passes `3/3`. A bounded run (`--warmup=3 --iterations=5 --rounds=2`) reports
+  exact hashes at 1×/2×/3×, source-tree import hits `0/1/2` after one miss,
+  and linear placement/registration/spine calls `1/2/3`, `2/4/6`, and
+  `1/2/3`. It is a measurement surface, not a production optimization or a
+  canonical `<40 ms` claim; use it for the next field-by-field placement-state
+  and dependency-record proof.
 - **Fresh AC no-op split is still unstable.** On Node v25.9.0/AC/100% with the
   canonical fixture, 5 warmups and 15 alternating no-op pairs gave
   parse+render medians `263.54/270.22 ms` (one 353.87 ms outlier) and
