@@ -443,7 +443,9 @@ recursively scans 10,777 evaluated surfaces to find 15 merge-bearing ones.
   handwritten-parser speed. First prove a compile-time stripped recognizer with
   no structural-frame/profile branches; separately prove a safe declaration vs
   ruleset dispatcher. Do not call a lazy raw-value representation a parser
-  micro-cut: it changes Jess's semantic materialization boundary.
+  micro-cut: it changes Jess's semantic materialization boundary. Detailed
+  source-flow evidence and the active generic Parseman experiment are tracked
+  in [`PARSER-RECOGNIZER-GAP.md`](./PARSER-RECOGNIZER-GAP.md).
 - **Reject the generated-trivia first-byte guard.** The guard preserved profile
   counts and passed focused/typecheck/macro-build proof, but the required
   12-warmup/45-sample three-phase gate regressed throughout: recognizer
