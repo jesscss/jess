@@ -99,7 +99,7 @@ importers:
         version: 2.6.1
       parseman:
         specifier: link:/Users/matthew/git/oss/parser-thing
-        version: link:../../oss/parser-thing
+        version: link:../parser-thing
       puppeteer:
         specifier: ^19.10.1
         version: 19.11.1(typescript@7.0.1-rc)
@@ -257,7 +257,7 @@ importers:
         version: 4.4.0
       parseman:
         specifier: link:/Users/matthew/git/oss/parser-thing
-        version: link:../../../../oss/parser-thing
+        version: link:../../../parser-thing
       tsx:
         specifier: ~4.21.0
         version: 4.21.0
@@ -443,7 +443,7 @@ importers:
         version: 1.1.5
       parseman:
         specifier: link:/Users/matthew/git/oss/parser-thing
-        version: link:../../../../oss/parser-thing
+        version: link:../../../parser-thing
 
   packages/jess-plugin:
     dependencies:
@@ -549,6 +549,9 @@ importers:
       '@jesscss/fns':
         specifier: workspace:*
         version: link:../fns
+      '@jesscss/jess-parser':
+        specifier: workspace:*
+        version: link:../jess-parser
       '@jesscss/less-parser':
         specifier: workspace:*
         version: link:../less-parser
@@ -616,7 +619,7 @@ importers:
         version: 4.6.3
       parseman:
         specifier: link:/Users/matthew/git/oss/parser-thing
-        version: link:../../../../oss/parser-thing
+        version: link:../../../parser-thing
       tsx:
         specifier: ~4.21.0
         version: 4.21.0
@@ -653,7 +656,7 @@ importers:
         version: link:../core
       parseman:
         specifier: link:/Users/matthew/git/oss/parser-thing
-        version: link:../../../../oss/parser-thing
+        version: link:../../../parser-thing
       sass-spec:
         specifier: github:sass/sass-spec
         version: github.com/sass/sass-spec/f282e3844db9889a0747b810898f67571272e8e5(@babel/core@7.28.6)

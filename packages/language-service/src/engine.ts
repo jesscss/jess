@@ -4,6 +4,8 @@ import { Parser as ScssParser } from '@jesscss/scss-parser/jess';
 import { parseCssDoc, type CssCstNode, type ParseDoc } from '@jesscss/css-parser';
 import { parseLessDoc } from '@jesscss/less-parser';
 import { parseScssDoc } from '@jesscss/scss-parser';
+import { parseJessFn } from '@jesscss/jess-parser/jess';
+import { parseJessDoc } from '@jesscss/jess-parser';
 import type { IParseResult, Rules, Node } from '@jesscss/core';
 import { isNode, sourceSpanOf } from '@jesscss/core';
 import { createRequire } from 'node:module';
@@ -168,7 +170,11 @@ function parseWithJess(text: string, lang: JessLang): IParseResult<Rules> {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     return scssParser.parse(text) as unknown as IParseResult<Rules>;
   }
-  // TODO: add dedicated .jess parser; for now treat as css-ish.
+  if (lang === 'jess') {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    return parseJessFn(text) as unknown as IParseResult<Rules>;
+  }
+  // Plain CSS.
   // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
   return parseCssFn(text) as unknown as IParseResult<Rules>;
 }
@@ -182,6 +188,9 @@ function parseDocFor(text: string, lang: JessLang): ParseDoc<CssCstNode> {
   }
   if (lang === 'scss') {
     return parseScssDoc(text);
+  }
+  if (lang === 'jess') {
+    return parseJessDoc(text);
   }
   return parseCssDoc(text);
 }
@@ -982,17 +991,19 @@ export function createEngine(): JessLanguageServiceEngine {
       };
 
       // 1) Variable completions: Less @var, SCSS $var, CSS custom properties --x.
+      // .jess uses `$`-sigil variables like SCSS (both parse to VarDeclaration/Reference).
+      const scssLike = tracked.lang === 'scss' || tracked.lang === 'jess';
       const wantVar =
         tracked.lang === 'less'
           ? currentWord.startsWith('@')
-          : tracked.lang === 'scss'
+          : scssLike
             ? currentWord.startsWith('$')
             : currentWord.startsWith('--');
       if (wantVar && cstTree) {
         for (const nameWithoutPrefix of cstVariableNames(cstTree, document)) {
           const label = tracked.lang === 'less'
             ? `@${nameWithoutPrefix}`
-            : tracked.lang === 'scss' ? `$${nameWithoutPrefix}` : `--${nameWithoutPrefix}`;
+            : scssLike ? `$${nameWithoutPrefix}` : `--${nameWithoutPrefix}`;
           if (prefix && !label.toLowerCase().startsWith(prefix)) {
             continue;
           }
