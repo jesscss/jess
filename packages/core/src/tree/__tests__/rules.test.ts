@@ -200,6 +200,36 @@ describe('Rules', () => {
     expect(node.registrationPrepared).toBe(true);
   });
 
+  it('admits source-order normalization only for direct Rules output surfaces', async () => {
+    const leaf = rules([
+      decl({ name: 'color', value: any('red') })
+    ]);
+    expect(leaf.hasDirectChildRuleSurface).toBe(false);
+
+    const root = rules([
+      ruleset({
+        selector: sellist([sel([el('.box')])]),
+        rules: [
+          ruleset({
+            selector: sellist([sel([el('.nested')])]),
+            rules: [decl({ name: 'background', value: any('blue') })]
+          }),
+          call({
+            name: ref('decls', { type: 'function' })
+          })
+        ]
+      })
+    ]);
+    root.setFunctionBinding('decls', () => rules([decl({ name: 'color', value: any('red') })]));
+
+    const evaluated = await root.eval(context);
+    const body = expectRulesNode(evaluated.at(0));
+    expect(body.hasDirectChildRuleSurface).toBe(true);
+    expect(evaluated.render(context)).toBe(
+      '.box {\n  color: red;\n  .nested {\n    background: blue;\n  }\n}\n'
+    );
+  });
+
   it('renders already evaluated rules without deriving another root surface', async () => {
     const source = rules([
       vardecl({ name: 'brand', value: any('red') }),
