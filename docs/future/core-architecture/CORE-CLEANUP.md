@@ -191,6 +191,8 @@ row in this table is not a claim that the implementation has landed on `dev`.
 | Lookup, merge, fallback, and evaluator-action audit | [`CORE-CLEANUP.md`](./CORE-CLEANUP.md), [`HANDOFF.md`](./HANDOFF.md), and [`AGGRESSIVE-CUTTING-REVIEW.md`](./AGGRESSIVE-CUTTING-REVIEW.md) | The 10,777 repeated preparation/admission scans, explicit merge-surface mistake, fallback topology, rejected generic index/prototype-chain shortcuts, and rejected terminal-miss sentinel are recorded. No broad lookup redesign is silently assumed. |
 | Flat writer sharing and OutputWriter state slimming | Q-37 and Q-39 in this tracker; [`HANDOFF.md`](./HANDOFF.md) | Flat root sharing and lazy transient writer state are landed/reviewed with byte identity. Their timing results are qualified; neither is presented as the missing `<40 ms` win. |
 | Evaluator/serializer frame-boundary proof | Worker branch `feature/q40-evaluator-serializer-frame-proof-20260715`, local commit `04a230e89`; landed integration commit `d211e8964` | The worker's structural result and two-phase/no-op evidence are captured. Current-dev dependency builds, focused tests, aggressive review, core, spine, all-less, and fresh same-checkout A/B are green. The fresh canonical A/B was parse+render `234.714→234.657 ms` (paired delta `-0.878 ms`, `24/45`) and render-only `198.801→198.271 ms` (paired delta `+2.695 ms`, `21/45`); output remained byte-identical at `135,794` bytes, hash `9a58451bd3b0c9d80913df38be3b199994d2b93d34a9d2851f1b18d9dcaaa7cc`. Retained as a structural simplification, not a speed win. |
+| Scope-frame allocation audit and empty pending-name proof | Read-only flow/heap audit; active worker owns `packages/core/src/tree/scope-frame.ts` and focused ScopeFrame/reference/mixin tests | Audit found `3,200` frame creations and about `2.32 MB` sampled `buildScopeFrame` allocation, including a fresh empty `pendingDeclarationNames` array. The shared-sentinel proof is active; activation, mutation safety, total allocation/heap, exact output, and canonical A/B are not yet resolved. |
+| Compiler-root writer readback audit and writer-only result proof | Read-only OutputWriter/RenderBuffer audit; active worker owns the compiler-root path and directly relevant buffer/rules tests | Audit found `13,235` `getSince()` calls scanning `109,102` chunks and `10,907` `trimEndSince()` calls. A private compiler-owned flat/shared/source-map-off root-result proof is active; no OutputWriter tail cut, speed result, or acceptance claim exists yet. |
 | Import/mixin reuse, placement frames, static slots, dependency graph, and tree-shaken custom-property module direction | Q-40 import-placement sections, [`HANDOFF.md`](./HANDOFF.md), and the recommended shape in [`AST-FROM-SCRATCH-DESIGN.md`](./AST-FROM-SCRATCH-DESIGN.md) | The canonical-body/placement-overlay and dependency-graph ideas are recorded as design direction. The import/mixin reuse model is not being claimed as implemented, and the exported-custom-property tree-shaking path remains future product work. |
 | Typed string-plus-tag values and value materialization boundary | Q-30 in this tracker and POC 1 in [`AST-FROM-SCRATCH-DESIGN.md`](./AST-FROM-SCRATCH-DESIGN.md) | Explicitly fenced behind the active producer lanes. It covers dimensions, numbers, colors, booleans, and multi-token values while preserving authored strings; no partial scalar puppet test is being treated as the implementation. |
 
@@ -231,6 +233,56 @@ The statement-dispatch lane is complete and rejected. The completed lanes above
 are evidence records, not merged Jess changes or unqualified performance wins;
 currently active implementation and read-only audit lanes must be added here
 when they return a durable result.
+
+### Q-40 scope-frame empty-pending-vector audit — active proof (2026-07-15)
+
+The returned read-only registration/source-order audit traced the canonical
+flow from `Compiler.render()` through registration, scope-frame construction,
+source-order evaluation, fallback, and serialization. Its diagnostic evidence
+is:
+
+- `prepareRegistration`: `200.4 ms` inclusive and about `45.84 MB` sampled
+  allocation through `_prepareRegistrationOnce`;
+- `buildScopeFrame`: `3,200` frame creations, `65,836` cache hits, and about
+  `2.32 MB` sampled allocation;
+- `pendingDeclarationNames`: `scope-frame.ts` currently defaults to a fresh
+  `[]` even when no dynamic declaration name is pending;
+- canonical fallback: one spine admission, one extend-topology abort, then
+  `10,777` ordinary preparation/evaluation/normalization entries;
+- current allocation context: `39.9 MiB` sampled across three renders, with
+  `Map` at `8.30 MiB`, `Set.set` at `5.64 MiB`, and `Rules` construction at
+  `2.25 MiB`.
+
+The audit rejected opening duplicate source-order, generic lookup-cache,
+prototype-chain, global `isNode`, callable-miss, OutputWriter-tail, and direct
+declaration-writer lanes because those are already owned, measured, or
+rejected. It identified one bounded unowned proof: use a shared empty
+`pendingDeclarationNames` sentinel and materialize a private array at the
+sole mutation path, preserving all non-empty ordering, pruning, and lookup
+semantics. Worker ownership is limited to `scope-frame.ts` and its focused
+ScopeFrame/reference/mixin tests. The worker must split shared-empty versus
+private-nonempty activation, measure total allocation or retained heap, run
+the full correctness gates, and perform the agreed canonical A/B before this
+can be accepted. No implementation or speed claim exists yet.
+
+### Q-40 compiler-root writer-readback audit — active proof (2026-07-15)
+
+The OutputWriter/RenderBuffer audit found no safe new `OutputWriter` tail
+optimization. The existing direct tail-bookkeeping prototype is rejected as
+noise/complexity. It did find one distinct, unowned seam: the canonical
+compiler-owned flat buffer has `shareWriter=true`, source maps off, and writer
+chunks aliased to `buffer.parts`, but root `_toDocumentString()` and
+`writePreparedRenderText()` still read back the root range before the public
+final `parts.join('')`. The audit counted `13,235` `getSince()` calls scanning
+`109,102` chunks and `10,907` `trimEndSince()` calls.
+
+The active proof is a private writer-only root-result mode restricted to the
+compiler-owned, flat, shared, source-map-off root call. It must leave
+OutputWriter data structures, nested return contracts, caller-owned buffers,
+segmented buffers, source-map paths, and detached leaf writers unchanged. The
+worker must prove root fallback/spine behavior, caller-prefix behavior,
+source-map and buffer parity, exact CSS output, and the agreed canonical A/B;
+no speed claim exists until the readback/allocation change clears those gates.
 
 ### Q-40 CPU/heap attribution refresh — diagnostic only (2026-07-15)
 

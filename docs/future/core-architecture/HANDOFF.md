@@ -204,6 +204,42 @@ syntax matrix, and the no-op controls are recorded in
 [`PARSER-RECOGNIZER-GAP.md`](./PARSER-RECOGNIZER-GAP.md), with the isolated
 handoff at commit `0d6879277`.
 
+## Q-40 — scope-frame empty pending-name vector (active proof, 2026-07-15)
+
+A read-only flow/heap audit found `3,200` scope-frame creations and about
+`2.32 MB` sampled allocation in `buildScopeFrame`; the current
+`pendingDeclarationNames ?? []` creates a fresh empty array even when no
+dynamic declaration name is pending. The canonical route also performs
+`10,777` ordinary preparation/evaluation/normalization entries after one
+extend-topology spine abort. The audit rejected duplicate lookup, source-order,
+prototype-chain, `isNode`, callable-miss, OutputWriter-tail, and direct-writer
+lanes as already owned or disproven.
+
+The active bounded proof is to share an empty pending-name sentinel and
+materialize a private array before the sole mutation path. Ownership is limited
+to `scope-frame.ts` and focused ScopeFrame/reference/mixin tests. It must prove
+empty/non-empty activation, total allocation or retained-heap impact, semantic
+parity, exact output, and the canonical parse+render/render-only A/B before it
+can land. No implementation or speed claim exists yet; detailed evidence is in
+[`CORE-CLEANUP.md`](./CORE-CLEANUP.md).
+
+## Q-40 — compiler-root writer readback (active proof, 2026-07-15)
+
+The OutputWriter/RenderBuffer audit found no safe new tail-bookkeeping cut; the
+existing tail prototype remains rejected as noisy and more complex. It did
+find a separate compiler-owned seam: the flat, source-map-off shared writer
+already aliases `buffer.parts`, yet root evaluation still constructs a full
+string through writer readback before public finalization joins those parts.
+The audit observed `13,235` `getSince()` calls scanning `109,102` chunks and
+`10,907` `trimEndSince()` calls.
+
+The active proof is restricted to a private writer-only root result for that
+compiler-owned path. Caller-owned buffers, segmented buffers, source-map paths,
+nested return contracts, and OutputWriter internals remain unchanged. Exact
+output, source-map/caller-buffer behavior, root fallback/spine behavior, and
+both canonical benchmark phases are required before acceptance. Detailed
+ownership and gates are recorded in [`CORE-CLEANUP.md`](./CORE-CLEANUP.md).
+
 ## Q-40 — import-placement audit handoff
 
 The fresh read-only retained-placement audit is recorded in detail in
