@@ -24,7 +24,6 @@ import {
   DiagnosticSeverity,
   DocumentSymbol,
   FoldingRange,
-  FoldingRangeKind,
   Hover,
   Location,
   MarkupKind,
@@ -37,7 +36,6 @@ import {
   WorkspaceEdit,
   SelectionRange,
   SemanticTokens,
-  SymbolKind,
   TextEdit,
   ColorInformation,
   ColorPresentation
@@ -275,27 +273,6 @@ function toRange(document: TextDocument, startOffset: number, endOffset: number)
     start: document.positionAt(Math.max(0, startOffset)),
     end: document.positionAt(Math.max(Math.max(0, startOffset), endOffset))
   };
-}
-
-function containsRange(range: Range, otherRange: Range): boolean {
-  const otherStartLine = otherRange.start.line;
-  const otherEndLine = otherRange.end.line;
-  const rangeStartLine = range.start.line;
-  const rangeEndLine = range.end.line;
-
-  if (otherStartLine < rangeStartLine || otherEndLine < rangeStartLine) {
-    return false;
-  }
-  if (otherStartLine > rangeEndLine || otherEndLine > rangeEndLine) {
-    return false;
-  }
-  if (otherStartLine === rangeStartLine && otherRange.start.character < range.start.character) {
-    return false;
-  }
-  if (otherEndLine === rangeEndLine && otherRange.end.character > range.end.character) {
-    return false;
-  }
-  return true;
 }
 
 function pos(line1: number | undefined, col1: number | undefined): Position {

@@ -244,7 +244,7 @@ export function cstSemanticTokens(root: CssCstNode, doc: TextDocument, lang: Jes
         push(start, start + kw[0].length, 'namespace');
       }
       const nm = /^@[-\w]+\s+([\w-]+)/.exec(slice);
-      if (nm) {
+      if (nm && nm[1]) {
         const nameStart = start + nm[0].length - nm[1].length;
         push(nameStart, nameStart + nm[1].length, 'function');
       }
