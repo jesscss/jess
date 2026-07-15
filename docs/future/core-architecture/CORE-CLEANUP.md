@@ -529,12 +529,14 @@ recursively scans 10,777 evaluated surfaces to find 15 merge-bearing ones.
   operand → value`, and its overlapping body choice places Ruleset before
   Declaration where both admit an identifier. This is a code-shape and
   evaluation-timing mismatch, not evidence that macro compilation cannot reach
-  handwritten-parser speed. First prove a compile-time stripped recognizer with
-  no structural-frame/profile branches; separately prove a safe declaration vs
-  ruleset dispatcher. Do not call a lazy raw-value representation a parser
-  micro-cut: it changes Jess's semantic materialization boundary. Detailed
-  source-flow evidence and the active generic Parseman experiment are tracked
-  in [`PARSER-RECOGNIZER-GAP.md`](./PARSER-RECOGNIZER-GAP.md).
+  handwritten-parser speed. The implementation is deferred after an
+  analysis-only Parseman follow-up: its first generic target is zero-copy
+  structural builder input, followed separately by a genuinely stripped
+  recognizer and a safe declaration-vs-ruleset dispatcher. Do not call a lazy
+  raw-value representation a parser micro-cut: it changes Jess's semantic
+  materialization boundary. Detailed source-flow evidence and the Parseman
+  handoff are tracked in [`PARSER-RECOGNIZER-GAP.md`](./PARSER-RECOGNIZER-GAP.md)
+  and the linked `parser-thing/notes/PERF_IDEAS.md` record.
 - **Parseman generic follow-up handoff (2026-07-14).** The analysis-only audit
   is recorded in `parser-thing/notes/PERF_IDEAS.md` (isolated documentation
   commit `916c52b`). Its first implementable generic target is opt-in zero-copy

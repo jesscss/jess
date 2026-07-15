@@ -1,6 +1,7 @@
 # Parseman versus Less parser gap
 
-Status: attribution complete; compile-time-stripped recognizer experiment in progress, 2026-07-14.
+Status: attribution complete; implementation intentionally deferred after the
+analysis-only follow-up, 2026-07-14.
 
 This is a parser-generation investigation, separate from CSS/Less trivia policy
 and separate from Jess AST-shape experiments. The goal is to identify the work
@@ -71,11 +72,17 @@ anonymous-value route. Jess's current deferred route is narrower and therefore
 enters more of the value grammar. This is a Less-grammar/input-shape difference,
 not a generic Parseman trivia decision.
 
-## Decisive experiment
+## Decisive experiment (not yet implemented)
 
-The active Parseman worker is building a generic compile-time outputless
-artifact. It must preserve recognition-affecting behavior while removing
-output-only work from generated code:
+No current worker is implementing this artifact. The analysis-only Parseman
+follow-up inspected the compiler, interpreter, macro, linker, and existing
+worktrees, then recorded the implementation ranking in
+`/Users/matthew/git/oss/parser-thing/notes/PERF_IDEAS.md` at isolated commit
+`916c52b`. It made no `src/` changes and no generated-output changes.
+
+The eventual experiment is a generic compile-time outputless artifact. It must
+preserve recognition-affecting behavior while removing output-only work from
+generated code:
 
 - collector setup/install/restore;
 - CST child/raw/trivia collection;
@@ -99,13 +106,17 @@ The result will separate two hypotheses:
 
 ## Follow-up order
 
-1. Finish the stripped recognizer and reconcile its exact counters.
-2. Measure declaration-versus-ruleset candidate attempts; current Jess body
+1. Implement and benchmark the opt-in generic zero-copy structural-builder
+   contract first; it is the first bounded implementation target because the
+   capture family has measured ceilings and can preserve the default API.
+2. Separately implement the genuinely stripped recognizer and reconcile its
+   exact counters; runtime output suppression is not equivalent.
+3. Measure declaration-versus-ruleset candidate attempts; current Jess body
    order tests `Ruleset` before `Declaration` for overlapping inputs.
-3. Expand Less-specific late materialization only with semantic predicates for
+4. Expand Less-specific late materialization only with semantic predicates for
    variables, interpolation, comments, math, custom properties, filters, and
    source maps.
-4. Revisit generic capture/raw-child representations only if the stripped
+5. Revisit generic capture/raw-child representations only if the stripped
    recognizer proves structural output protocol is not the dominant cost.
 
 Do not infer from this investigation that every value should become a string,

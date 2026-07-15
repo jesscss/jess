@@ -153,9 +153,10 @@ Other active docs in this dir:
   cold. The experiment is not production-wired until its stage-separated
   comparisons prove a useful end-to-end path.
 - **`PARSER-RECOGNIZER-GAP.md`** — parser-generation attribution: the current
-  Parseman recognizer still pays runtime structural protocol work; the active
-  generic stripped-recognizer experiment must settle how much of the gap is
-  removable before CSS/Less-specific late-value work is expanded.
+  Parseman recognizer still pays runtime structural protocol work. The
+  implementation is deferred after an analysis-only follow-up; its generic
+  zero-copy builder target and separate stripped-recognizer target are recorded
+  in the Parseman repository's `notes/PERF_IDEAS.md`.
 - **`AGGRESSIVE-CUTTING-REVIEW.md`** — the patch-shape refusal checklist; run before
   committing changes to AST/eval/render/lookup/traversal/copy/output/metadata.
 - **`STRINGS-OVER-NODES.md`** — active reference (producer flips still pending).

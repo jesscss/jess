@@ -2,6 +2,25 @@
 
 Status: design evidence and POC queue, 2026-07-14.
 
+## Experiment artifact
+
+The current design record is durable on `dev`. The corresponding no-class
+implementation remains intentionally isolated at
+`/Users/matthew/git/worktrees/jess-greenfield-ast-design-20260714`, on branch
+`feature/greenfield-ast-design-20260714`, currently at tip `a345b8aad` with
+the experimental source still untracked in that worktree. Its implementation
+and focused tests are under:
+
+- `packages/core/src/tree2/`
+- `packages/core/src/tree2/__tests__/`
+
+The corrected exploratory run used `TREE2_WARMUPS=3` and
+`TREE2_SAMPLES=5`. The focused tree2 suite passed `22/22`, but the source is
+not exported or wired into production, and the canonical evaluated route still
+fails before producing a comparable result. Do not treat the worktree as a
+merged implementation or as a performance win; preserve or snapshot the
+isolated source before deleting that worktree.
+
 This is a design record for the Q-40 performance program. It is not permission
 to rewrite the tree or to trade away Less semantics. Every production change
 must first prove a real shape on `benchmark.less` or a representative fixture,
