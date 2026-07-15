@@ -599,6 +599,35 @@ declarations-coverage state.
   Focused reference coverage, core, spine, all-less, build, lint, and
   aggressive-cutting gates passed.
 
+- **Q-40 current post-cut control/profile refresh (2026-07-15, diagnostic
+  only).** The latest same-checkout no-op control on Node v25.9.0 arm64
+  measured parse+render `227.150542→227.980167 ms` (means
+  `229.840→233.436 ms`, `24/45` candidate wins, paired median ratio
+  `−0.176%`, mean ratio `+1.884%`) and render-only `186.348125→183.990750 ms`
+  (means `192.249→189.799 ms`, `25/45` wins, paired median ratio `−0.358%`,
+  mean ratio `−0.635%`). The spread remains a noise floor, not a speed claim.
+  The following instrumented profile took `541.84 ms` and recorded `4,098`
+  preview calls (`4,085` declaration fallbacks, `13` leaves), `1,644`
+  duplicate-comparison containers, `884` prerendered declarations, `10,777`
+  merge-admission calls with only `15` feature-bearing surfaces and zero
+  child-item visits, `5` import-tree calls (`3` misses/`2` hits), and `43,167`
+  direct declaration cache misses—all `.d` strategy—with `53,360` child-entry
+  admissions, `16,486` child scans, and only `6` public hits. A live shape
+  census counted `10,007` Declarations, `8,405` Rulesets, `7,211` References,
+  `4,803` Dimensions, and `3,604` Colors. These measurements rank work;
+  instrumentation distorts timing and does not justify a generic lookup index.
+
+- **Q-40 reference-surface allocator audit (2026-07-15, blocked/rejected as a
+  new cut).** The current `createRulesLikeReferenceSurface` remains the
+  already-landed `Object.create`/`Object.keys` field-copy shape with shallow
+  `_options` and `_lookup` copies. The isolated worker made no implementation
+  or commit because the clean benchmark could not start with missing
+  `packages/less-parser/lib`, and the recursive rebuild hit unrelated Parseman
+  linking/`NodeModulesPlugin` declaration failures. No allocator A/B or
+  semantic proof exists; do not claim a win or reopen the older
+  reflective-descriptor lane without a repaired build and a workload that
+  exercises reference-surface creation.
+
 - **Q-40 source-order preparation audit (2026-07-15, rejected as a new
   canonical cut).** The legacy source-order route still performed
   `_prepareForEval` `10,420` times (`865.8 ms` inclusive),
