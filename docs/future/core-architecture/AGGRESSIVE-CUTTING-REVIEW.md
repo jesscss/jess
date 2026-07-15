@@ -290,7 +290,8 @@ Executable evidence is build-freshness gated. A staged pre-commit review may
 run the static contract, source-surface, and danger-token checks with
 `--skip-executable-evidence`, because generated `lib/` output can still belong
 to the previous source revision. The upstream/pre-push check must run the
-affected baseline build first and then invoke the verifier without that flag;
+affected baseline/runtime dependency builds first and then invoke the verifier
+without that flag;
 otherwise a profile result is not admissible evidence.
 
 ````md

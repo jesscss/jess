@@ -16,6 +16,7 @@ const BASELINE_PACKAGES = new Set([
   'packages/less-parser',
   'packages/css-parser',
   'packages/jess',
+  'packages/jess-plugin-less',
   'packages/jess-plugin-less-compat'
 ]);
 

@@ -157,7 +157,8 @@ Other active docs in this dir:
 - Latest pass: BUILD-FRESH EXECUTABLE-EVIDENCE GATE — stop review tooling from
   accepting profile output produced by stale ignored `lib/` artifacts.
 - Architecture surface: `scripts/precommit-changed-checks.mjs` now runs the
-  affected upstream baseline/build before the full aggressive-cutting verifier;
+  affected upstream baseline/runtime dependency build before the full
+  aggressive-cutting verifier;
   staged pre-commit review passes `--skip-executable-evidence` and retains the
   static contract, source-surface, and danger-token checks. The verifier's
   skip flag is explicit and does not weaken the upstream/push gate.
@@ -175,12 +176,14 @@ Other active docs in this dir:
 - Metadata mutations: none.
 - Review-flagged diff tokens: none in production; command ordering and CLI
   plumbing only.
-- Evidence: a clean candidate build exposed that the prior profile's
-  `admissionCalls=10,777`, `admissionItemsVisited=69,901`, and `calls=15`
-  came from stale generated output; the freshly built canonical spine reported
-  zero legacy merge-admission calls. The proposed per-admission counter was
-  rejected rather than integrated because its profile contract was not live on
-  the clean canonical path. The focused verifier suite passes `5/5`, changed
+- Evidence: a complete clean runtime-chain build still reports
+  `admissionCalls=10,777`, `admissionItemsVisited=69,901`,
+  `admittedCalls=15`, `calls=15`, and `featureBearingContainers=15` on the
+  canonical fixture. The stale result was the earlier `10,420` actual
+  coalescer-call figure from before the presence gate; it is not the current
+  admission count. The proposed per-admission counter was rejected because
+  its candidate build changed the observed path and did not provide trustworthy
+  same-source semantics. The focused verifier suite passes `5/5`, changed
   scripts pass `node --check`, and the explicit static-only verifier mode
   passes.
 - Verdict: accepted as review-workflow hardening. Live executable evidence is
