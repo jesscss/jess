@@ -327,6 +327,17 @@ recursively scans 10,777 evaluated surfaces to find 15 merge-bearing ones.
   the code is deliberately not merged; leave the existing worker worktree
   untouched for the record. This is a rejected experiment, not a reason to
   reopen generic lookup indexing.
+- **Reconfirm callable lookup rejection on current `dev` (2026-07-14).** The
+  same two-line `get()` fusion was refreshed from current `origin/dev` in a
+  clean detached worktree. Focused coverage was `226/226`, full core was
+  `3,327` passed (`15` skipped, `2` todo), and the core build/binding guard
+  passed. Output remained byte-identical at `135,794` bytes with SHA-256
+  `9a58451bd3b0c9d80913df38be3b199994d2b93d34a9d2851f1b18d9dcaaa7cc`, but
+  20-warmup/45-pair current-dev A/B moved parse-render mean
+  `256.242→256.436 ms` (+0.194 ms) and render-only mean
+  `221.906→227.167 ms` (+5.261 ms), with render-only paired median delta
+  `+7.407 ms` (14 wins/31 losses). No code was committed or merged; retain
+  the semantic distinction as a reference, not as a performance cut.
 - **Refresh the benchmark contract before every core comparison.** Current
   uninstrumented no-op pairs are 238.98 ms parse+render and 202.92 ms
   parse-once/render-only. Less 4 is 31.101 ms render on the same 20-warmup,
