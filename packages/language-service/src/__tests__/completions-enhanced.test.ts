@@ -91,4 +91,14 @@ describe('enhanced completions (MS-parity: values / pseudo / mixin / !important)
     const labels = completeAt('less', '.card() { color: red; }\n.a { .| }');
     expect(labels).toContain('.card()');
   });
+
+  it('@media prelude completes feature names + types + operators', () => {
+    const labels = completeAt('css', '@media (min-w|');
+    expect(labels).toContain('min-width');
+  });
+
+  it('@keyframes body completes from / to', () => {
+    const labels = completeAt('css', '@keyframes spin { fr| }');
+    expect(labels).toContain('from');
+  });
 });

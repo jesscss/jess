@@ -407,6 +407,9 @@ const PSEUDO_ELEMENTS: string[] = (webCssData.pseudoElements ?? []).map(p => p.n
 // rest are gated on the property's `restrictions`.
 const CSS_WIDE_KEYWORDS = ['inherit', 'initial', 'unset', 'revert', 'revert-layer'];
 const COLOR_FUNCTIONS = ['rgb()', 'rgba()', 'hsl()', 'hsla()', 'hwb()', 'lab()', 'lch()', 'oklab()', 'oklch()', 'color()'];
+// @media prelude vocabulary (feature names + types + logical operators).
+const MEDIA_FEATURES = ['width', 'min-width', 'max-width', 'height', 'min-height', 'max-height', 'aspect-ratio', 'orientation', 'resolution', 'min-resolution', 'max-resolution', 'prefers-color-scheme', 'prefers-reduced-motion', 'prefers-contrast', 'hover', 'any-hover', 'pointer', 'any-pointer', 'display-mode', 'color', 'color-gamut', 'forced-colors', 'scripting'];
+const MEDIA_PRELUDE = [...MEDIA_FEATURES, 'screen', 'print', 'all', 'speech', 'and', 'or', 'not', 'only'];
 const TIMING_FUNCTIONS = ['ease', 'linear', 'ease-in', 'ease-out', 'ease-in-out', 'step-start', 'step-end', 'cubic-bezier()', 'steps()'];
 // Units to append to a numeric prefix, keyed by the property's restriction kind.
 const UNITS_BY_RESTRICTION: Record<string, string[]> = {
@@ -1021,6 +1024,32 @@ export function createEngine(): JessLanguageServiceEngine {
             continue;
           }
           push(`.${name}()`, CompletionItemKind.Function);
+        }
+        if (items.length > 0) {
+          return { isIncomplete: false, items };
+        }
+      }
+
+      // 2c) @media prelude: feature names / media types / logical operators.
+      if (/@media\b[^{}]*$/.test(before)) {
+        for (const f of MEDIA_PRELUDE) {
+          if (prefix && !f.toLowerCase().startsWith(prefix)) {
+            continue;
+          }
+          push(f, CompletionItemKind.Property);
+        }
+        if (items.length > 0) {
+          return { isIncomplete: false, items };
+        }
+      }
+
+      // 2d) @keyframes body: from / to selectors.
+      if (/@keyframes\s+[\w-]+\s*\{[^{}]*$/.test(before)) {
+        for (const k of ['from', 'to']) {
+          if (prefix && !k.startsWith(prefix)) {
+            continue;
+          }
+          push(k, CompletionItemKind.Keyword);
         }
         if (items.length > 0) {
           return { isIncomplete: false, items };
