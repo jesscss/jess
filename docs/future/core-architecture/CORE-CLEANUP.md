@@ -290,6 +290,28 @@ parse-render `237.499→238.559 ms` (`20/45` wins, median ratio `+0.38%`,
 `t=0.15`) and render-only `184.529→182.927 ms` (`21/45` wins, median ratio
 `+1.08%`, `t≈0`). These are the current noise floor, not speed claims.
 
+### Q-40 extend-root measurement — preliminary only, not closed (2026-07-15)
+
+The isolated measurement worker at
+`/private/tmp/jess-extend-root-measure-20260715` was stopped after producing
+preliminary counters but before the final exact-output report and durable
+artifact handoff. Its temporary instrumentation was removed and the worktree
+is clean; no production source or optimization was retained.
+
+The useful preliminary result is that the canonical `benchmark.less` default
+route does activate the legacy extend-root machinery: `1,651` ruleset
+registrations, `7` roots visited, `42,926` classification probes, `39,605`
+`applyExtendsToSelector` calls, `43` selector changes, and `39,562` apply
+no-matches; the existing `extendMatchWork` snapshot was `145`. A static
+no-extend control was zero across the extend-root counters. The synthetic
+direct/import-heavy fixture was spine-routed by default and only activated
+the old path under an eval-forced diagnostic route. The worker did not return
+the required per-shape CSS hashes or a clean phase-separated result, so these
+counters are an investigation lead, not a performance claim or an accepted
+candidate. Any follow-up must rerun the measurement from current `dev` with
+exact output hashes before assigning an optimization worker, and must not
+duplicate the existing `extend.ts` or spine ownership.
+
 ### Q-40 deferred serializer branch-collapse POC (2026-07-15)
 
 A worker collapsed the three `renderNodeText` reason branches
