@@ -2095,7 +2095,7 @@ export function createEngine(): JessLanguageServiceEngine {
     },
 
     getDocumentLinks(uri) {
-      const tracked = ensure(uri);
+      const tracked = get(uri);
       const doc = tracked.document;
       const text = doc.getText();
 
