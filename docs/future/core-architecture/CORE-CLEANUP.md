@@ -185,7 +185,7 @@ row in this table is not a claim that the implementation has landed on `dev`.
 | Greenfield AST design, alternative representations, and the no-class `tree2` experiment | [`AST-FROM-SCRATCH-DESIGN.md`](./AST-FROM-SCRATCH-DESIGN.md); isolated source under `/Users/matthew/git/worktrees/jess-greenfield-ast-design-20260714/packages/core/src/tree2/` and `__tests__/` | Design, ten-way alternatives, five POC sequence, and rejection evidence are durable. The staged source is uncommitted/unexported. The mixed-root synthetic route passed its focused/exact-output gates, but the canonical evaluated route failed its output hash comparison; there is no tree2 speed or production-AST claim. |
 | Parseman versus Less recognizer gap and true recognizer POC | [`PARSER-RECOGNIZER-GAP.md`](./PARSER-RECOGNIZER-GAP.md); Parseman `/Users/matthew/git/oss/parser-thing/notes/PERF_IDEAS.md` | Flow analysis and the `12.58 ms` recognizer result are recorded. Parseman commit `c84d777` is local/unpublished, so Jess has not adopted it and no Jess speed claim follows. |
 | Less declaration-versus-ruleset statement-dispatch proof | [`PARSER-RECOGNIZER-GAP.md`](./PARSER-RECOGNIZER-GAP.md); rejected worker commit `0d6879277` in `/Users/matthew/git/worktrees/jess-q40-less-statement-dispatch-20260715` | Rejected. Moving `Declaration` before `Ruleset` accepted a prefix before a following `{` and stopped the canonical parse at byte `93,456` with `3` errors. The probe was removed; no source change or valid candidate A/B remains. |
-| Parseman zero-copy structural-builder POC | [`PARSER-RECOGNIZER-GAP.md`](./PARSER-RECOGNIZER-GAP.md); Parseman `/Users/matthew/git/oss/parser-thing/notes/PERF_IDEAS.md`; isolated source at `/private/tmp/parseman-zero-copy-builder-20260715` | Retained local Parseman commit `950e8b4`: `62` focused tests; array `10.97 ms` → range `4.35 ms` on the 106,797-byte Less grammar; output hash identical; transient heap regressed about `1.95 MB` → `7.17 MB`. The default API is unchanged, and Jess host adoption is blocked by the current `compileLinkable`/fused path boundary. This is a generic Parseman POC, not a Jess speed claim. |
+| Parseman zero-copy structural-builder POC | [`PARSER-RECOGNIZER-GAP.md`](./PARSER-RECOGNIZER-GAP.md); Parseman `/Users/matthew/git/oss/parser-thing/notes/PERF_IDEAS.md`; isolated source at `/private/tmp/parseman-zero-copy-builder-20260715` | Retained local Parseman commit `950e8b4`: `62` focused tests; array `10.97 ms` → range `4.35 ms` on the 106,797-byte Less grammar; output hash identical; transient heap regressed about `1.95 MB` → `7.17 MB`. The fused `compileLinkable` host integration was technically repaired and exact-output, but real Less parse rose `58.6→88.6 ms`, heap rose, and generated code grew `747` bytes; reject Jess adoption. This is a generic Parseman POC, not a Jess speed claim. |
 | Parser-host declaration `Spanned[]` reuse proof | Read-only parser/CST audit; rejected worker commit `9f35c2921` on `feature/q40-parser-host-20260715` | The shipping functional parser is Parseman, not the retired Chevrotain `consumeName` path. Reuse eliminated `1,938→0` duplicate conversions per external benchmark parse while Less declaration builds stayed `2,800`; parse median was neutral at `57.274→57.359 ms`, transient heap `46.24→45.54 MiB`, and canonical A/B was noise (`232.230→227.630 ms` parse+render, `196.080→196.483 ms` render-only). Output was exact at `135,794` bytes with hash `9a58451bd3b0c9d80913df38be3b199994d2b93d34a9d2851f1b18d9dcaaa7cc`. Focused parser, core `3,329`, baseline, spine `137/137`, all-less `106/106`, and compatibility `62/62` passed; aggressive review rejected the lane because builders lack required machine-readable cost contracts. No source or tests were retained. |
 | Parseman trivia/capture separation and sparse trivia designs | [`parseman-trivia-audit.md`](../parseman-trivia-audit.md), [`trivia-offset-inference-model.md`](../trivia-offset-inference-model.md), and [`parseman-perf-proposals.md`](../parseman-perf-proposals.md) | The generic Parseman responsibilities, CSS/Less capture policy, comment-only capture idea, and span-based inference are documented as proposals/evidence. No CSS-shaped Parseman change is being treated as landed. |
 | From-scratch AST creativity pass: packed arenas, structs, semantic islands, direct emitters, dependency-aware reuse, and debug projections | [`AST-FROM-SCRATCH-DESIGN.md`](./AST-FROM-SCRATCH-DESIGN.md) | The alternatives are explicitly design candidates, not a hidden commitment to a class-for-class rewrite. CSS output, not legacy field/class shape, is the acceptance oracle. |
@@ -1072,6 +1072,28 @@ declarations-coverage state.
   generic lookup caches, scope-slot tables, and pass-local extend indexes remain
   rejected by their dedicated evidence.
 
+- **Q-40 allocation-audit follow-up (2026-07-15, no new worker).** The
+  `RulesLookupState` count is already the one lazy fixed-shape `_lookup` slot;
+  declaration-only leaves avoid it, so no new cache or side-map lane is
+  justified. `collectDirectDeclarationChildEntries()` remains a real allocator
+  (`~18.58 MB` inclusive, `~4.8 MB` self), but the existing producer flag is
+  invalid on derived placements that share children, so the proposed guard and
+  any rediscovery repair are rejected. The serializer-array aggregate was also
+  not a retained-object target: focused heap inspection found only eight empty
+  serializer frame arrays and two `OutputWriter` instances. The only plausible
+  next allocation proof is owner-scoped registration instrumentation around
+  `_createRegistrationPrepState` and retry arrays; it must extend the
+  existing registration lane, not open a duplicate worker.
+
+- **Q-40 root candidate-admission proof (2026-07-15, rejected).** A fresh
+  worker tested a cheap predicate before the root `classifyInstructionMatch`
+  loop in `extend-roots.ts`. Its focused test failed immediately (`10/10`)
+  because `isEmptyBitSet` was not a function; canonical skip count was `0`,
+  output/hash parity was unproven, and no benchmark or full gate was run. No
+  source was committed. Do not revive this lane without a valid focused proof
+  that skips nonzero canonical work and preserves the full extend semantic
+  matrix.
+
 - **Q-40 `Context.getTree` attribution correction (2026-07-15).** The direct
   flow is path resolution, source-tree cache lookup, source loading, parsing,
   diagnostics, and cache insertion. It does not evaluate placements or
@@ -1226,6 +1248,20 @@ declarations-coverage state.
   import, call, and live-binding semantics. No new bounded candidate was
   found and no duplicate worker was dispatched. Keep this lane closed until a
   distinct seam has an activating proof.
+
+- **Q-40 scope-frame callable `Map.has` + `Map.get` proof (2026-07-15,
+  rejected).** The semantically valid candidate replaced the two probes in
+  `lookupScopeFrameCallable` with one `Map.get`, preserving the distinction
+  between an absent key (`undefined`) and a cached null bucket. Focused
+  scope-frame/rules tests passed `110` with `5` skipped, and output stayed at
+  `130,772` bytes with SHA-256
+  `671970c15aba5bf05472eeb1f02468f21411fdd20e203674d446775c51c4f9a5`.
+  Same-checkout render-only medians over three 5-warmup/45-sample runs were
+  baseline `227.92`, `219.20`, `214.43 ms` versus candidate `238.08`,
+  `216.09`, `212.72 ms`; this is noise/negative evidence, not a speed win.
+  Aggressive review also rejects the unregistered `scope-frame.ts` production
+  hunk. Leave the candidate uncommitted and do not add a generic lookup cache
+  or index.
 
 - **Q-40 registration-map sentinel proof (2026-07-15, rejected).** The
   apparent allocation cut was to stop `_stampRegistrationMaps()` from writing
