@@ -275,6 +275,20 @@ function toRange(document: TextDocument, startOffset: number, endOffset: number)
   };
 }
 
+// Net `{`/`}` nesting depth before an offset (>0 = inside a rule block).
+function braceDepthBefore(text: string, offset: number): number {
+  let depth = 0;
+  for (let i = 0; i < Math.min(offset, text.length); i++) {
+    const ch = text.charCodeAt(i);
+    if (ch === 123) {
+      depth++;
+    } else if (ch === 125) {
+      depth = Math.max(0, depth - 1);
+    }
+  }
+  return depth;
+}
+
 function pos(line1: number | undefined, col1: number | undefined): Position {
   return Position.create(Math.max(0, (line1 ?? 1) - 1), Math.max(0, (col1 ?? 1) - 1));
 }
@@ -388,6 +402,15 @@ const PSEUDO_ELEMENTS: string[] = (webCssData.pseudoElements ?? []).map(p => p.n
 const CSS_WIDE_KEYWORDS = ['inherit', 'initial', 'unset', 'revert', 'revert-layer'];
 const COLOR_FUNCTIONS = ['rgb()', 'rgba()', 'hsl()', 'hsla()', 'hwb()', 'lab()', 'lch()', 'oklab()', 'oklch()', 'color()'];
 const TIMING_FUNCTIONS = ['ease', 'linear', 'ease-in', 'ease-out', 'ease-in-out', 'step-start', 'step-end', 'cubic-bezier()', 'steps()'];
+// Units to append to a numeric prefix, keyed by the property's restriction kind.
+const UNITS_BY_RESTRICTION: Record<string, string[]> = {
+  length: ['px', 'em', 'rem', 'vh', 'vw', 'vmin', 'vmax', 'pt', 'cm', 'mm', 'in', 'pc', 'ex', 'ch', 'q'],
+  percentage: ['%'],
+  time: ['s', 'ms'],
+  angle: ['deg', 'rad', 'grad', 'turn'],
+  frequency: ['Hz', 'kHz'],
+  resolution: ['dpi', 'dpcm', 'dppx']
+};
 
 /**
  * Rich value completions for a declaration value: the property's enum values
@@ -398,7 +421,7 @@ const TIMING_FUNCTIONS = ['ease', 'linear', 'ease-in', 'ease-out', 'ease-in-out'
 function buildValueCompletions(propName: string, prefix: string, replaceRange: Range): CompletionItem[] {
   const items: CompletionItem[] = [];
   const seen = new Set<string>();
-  const add = (label: string, kind: CompletionItemKind) => {
+  const add = (label: string, kind: CompletionItemKind, documentation?: string) => {
     const lower = label.toLowerCase();
     if (seen.has(lower)) {
       return;
@@ -407,7 +430,11 @@ function buildValueCompletions(propName: string, prefix: string, replaceRange: R
       return;
     }
     seen.add(lower);
-    items.push({ label, kind, textEdit: TextEdit.replace(replaceRange, label) });
+    const item: CompletionItem = { label, kind, textEdit: TextEdit.replace(replaceRange, label) };
+    if (documentation !== undefined) {
+      item.documentation = documentation;
+    }
+    items.push(item);
   };
   const key = propName.toLowerCase();
   const restrictions = PROPERTY_RESTRICTIONS.get(key) ?? [];
@@ -418,10 +445,26 @@ function buildValueCompletions(propName: string, prefix: string, replaceRange: R
     for (const f of COLOR_FUNCTIONS) {
       add(f, CompletionItemKind.Function);
     }
+    // Named CSS colors rendered with a swatch (kind Color + hex documentation).
+    for (const [name, hex] of Object.entries(colorUtils.colorKeywords)) {
+      add(name, CompletionItemKind.Color, hex);
+    }
   }
   if (restrictions.includes('timing-function')) {
     for (const t of TIMING_FUNCTIONS) {
       add(t, CompletionItemKind.Value);
+    }
+  }
+  // Units appended to a numeric prefix (`10` → `10px`), per restriction kind.
+  if (/^\d*\.?\d+$/.test(prefix)) {
+    const units = new Set<string>();
+    for (const r of restrictions) {
+      for (const u of UNITS_BY_RESTRICTION[r] ?? []) {
+        units.add(u);
+      }
+    }
+    for (const u of units) {
+      add(`${prefix}${u}`, CompletionItemKind.Unit);
     }
   }
   for (const k of CSS_WIDE_KEYWORDS) {
@@ -949,6 +992,21 @@ export function createEngine(): JessLanguageServiceEngine {
           push(name, CompletionItemKind.Function);
         }
         return { isIncomplete: false, items };
+      }
+
+      // 2b) Less mixin-call completions: `.foo(` inside a rule block (a `.foo` at
+      //     top level is a selector definition, so gate on nesting depth).
+      if (tracked.lang === 'less' && cstTree && currentWord.startsWith('.') && braceDepthBefore(text, offset) > 0) {
+        const bare = currentWord.slice(1).toLowerCase();
+        for (const name of cstDeclaredSymbols(cstTree, document).mixins) {
+          if (bare && !name.toLowerCase().startsWith(bare)) {
+            continue;
+          }
+          push(`.${name}()`, CompletionItemKind.Function);
+        }
+        if (items.length > 0) {
+          return { isIncomplete: false, items };
+        }
       }
 
       // 3) Pseudo-class / -element completions: a `:`/`::` in SELECTOR position —

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { CompletionItemKind } from 'vscode-languageserver-types';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { createEngine } from '../engine.js';
 
@@ -58,5 +59,36 @@ describe('enhanced completions (MS-parity: values / pseudo / mixin / !important)
   it('existing variable completion still works (regression)', () => {
     const labels = completeAt('less', '@primary: red;\n.a { color: @|; }');
     expect(labels).toContain('@primary');
+  });
+
+  it('named CSS colors are offered for color properties', () => {
+    const labels = completeAt('css', '.a { color: | }');
+    expect(labels).toContain('red');
+    expect(labels).toContain('rebeccapurple');
+  });
+
+  it('a named color completion carries a Color kind + hex swatch documentation', () => {
+    const ext = 'css';
+    const caret = '.a { color: re| }'.indexOf('|');
+    const text = '.a { color: re| }'.replace('|', '');
+    const doc = TextDocument.create(`file:///t.${ext}`, ext, 1, text);
+    const engine = createEngine();
+    engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+    const items = engine.getCompletions(doc.uri, doc.positionAt(caret)).items;
+    const red = items.find(i => (typeof i.label === 'string' ? i.label : i.label.label) === 'red');
+    expect(red).toBeDefined();
+    expect(red!.kind).toBe(CompletionItemKind.Color);
+    expect(String(red!.documentation)).toMatch(/^#/); // hex → VS Code renders a swatch
+  });
+
+  it('units complete on a numeric prefix (length restriction)', () => {
+    const labels = completeAt('css', '.a { width: 10| }');
+    expect(labels).toContain('10px');
+    expect(labels).toContain('10%');
+  });
+
+  it('Less `.foo()` mixin-call completions inside a block', () => {
+    const labels = completeAt('less', '.card() { color: red; }\n.a { .| }');
+    expect(labels).toContain('.card()');
   });
 });
