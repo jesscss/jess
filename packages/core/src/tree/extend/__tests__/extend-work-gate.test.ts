@@ -12,7 +12,6 @@ import {
 import { Ruleset } from '../../ruleset.js';
 import { F_EXTENDED } from '../../node.js';
 import { Parser } from '../../../../../less-parser/src/index.js';
-import type { Rules } from '../../rules.js';
 
 /**
  * RATCHET — the EXTEND-WORK GATE (§4.0), the zero-regression safety floor for P3.
@@ -111,7 +110,7 @@ describe('extend-work gate (P3 increment 0)', () => {
 describe('spine extend gate — `&`-under-multi-branch-list now ADMITTED (CASE 3 solved)', () => {
   const gateOf = (src: string): boolean => {
     const { tree } = new Parser().parse(src);
-    return isSpineExtendTopology(tree as unknown as Rules, true);
+    return isSpineExtendTopology(tree, true);
   };
 
   it('ADMITS an `&`-combinator extender under a multi-branch (OR) parent (amp-test `&+&`)', () => {
@@ -133,4 +132,32 @@ describe('spine extend gate — `&`-under-multi-branch-list now ADMITTED (CASE 3
   });
   // (The `&`-APPEND `&-mod` exclusion — composeSelector cannot build the anonymous suffix — is
   // ratcheted in emit-walk-ratchet.test.ts via the `amp('-mod')` AST builder.)
+});
+
+/**
+ * Q-40 REJECTION LOCK — the canonical imported/reference root still has a real post-wire blocker.
+ *
+ * `benchmark.less` contains the same shape: a root selector list with an `h1` branch, then a nested
+ * `.prose h1:extend(h1)` shadow. The synchronous import gate must admit provisionally so imports can
+ * resolve, but the strict post-wire gate must reject the shape: treating `h1` as the root branch
+ * would rewrite the wrong subject. A later worker may only relax this with a source-order/reference
+ * proof and exact canonical output; this test prevents silently reopening the rejected zero-proof cut.
+ */
+describe('spine extend gate — imported/reference partial admission remains rejected', () => {
+  it('rejects the resolved h1 shadow while preserving speculative import admission', () => {
+    const src = `
+@import "benchmark-import-target.less";
+@import (reference) "benchmark-import-reference-target.less";
+h1, h2 > a > p, h3 { color: red; }
+.prose { h1:extend(h1) {} }
+.typography-base { line-height: 1.6; }
+.heading-base:extend(.typography-base) { font-weight: bold; }
+h1:extend(.heading-base) { font-size: 2.5em; }
+`;
+    const { tree } = new Parser().parse(src);
+    const importedRootSubjects = new Set(['.ref-button', '.ref-alert', '.ref-grid-system']);
+
+    expect(isSpineExtendTopology(tree, true, { speculativeImport: true })).toBe(true);
+    expect(isSpineExtendTopology(tree, true, { importedRootSubjects })).toBe(false);
+  });
 });
