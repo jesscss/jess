@@ -214,6 +214,26 @@ extend-chain preparation, and OutputWriter tail work are already owned or
 rejected. No source change was made by this lane; exact profiles remain under
 `/private/tmp/jess-q40-cpu-heap-20260715.ojL1Lb`.
 
+### Q-40 evaluator/serializer boundary proof — active, provisional (2026-07-15)
+
+The isolated worker at
+`/Users/matthew/git/worktrees/jess-q40-evaluator-serializer-frame-proof-20260715`
+is measuring whether the common direct-body serializer pays a redundant
+`processNode` frame-selection wrapper. Current counters show `1,644` direct-
+body traversals, `0` frame-aware traversals, `5,116` `processNode` entries and
+`5,116` inner entries on the canonical benchmark; the mixin control exercises
+one frame switch. The same probe saw `4,085` declaration-fallback renders,
+`13` stable leaf renders, and `0` rules-preview renders. Source-map on/off and
+caller-owned flat-buffer focused cases are byte-identical.
+
+The smallest candidate selects the already-known direct processor once per
+container while preserving frame-aware routing. Its first parse+render A/B was
+`221.57→220.89 ms` (`25/45` wins), but the paired statistic was `t=-0.21`, so
+the signal is not a speed claim; render-only and a same-path no-op control are
+still pending. Temporary counters, candidate code, and tests remain isolated;
+do not integrate or describe this as an accepted cut until the worker returns a
+clean final disposition with the required gates and both-phase A/B.
+
 ### Q-38 fallback-topology measurement — canonical result, no implementation (2026-07-15)
 
 The first run used the wrong internal Jess fixture and is withdrawn. The
