@@ -31,4 +31,12 @@ export interface ValueService {
    * inner argument text exactly as it should be parsed (separators preserved).
    */
   callFunction(name: string, argsSource: string): string;
+
+  /**
+   * [guards] Evaluate a single mixin-guard LEAF condition (a comparison such as
+   * `5 > 0` or a boolean function such as `iscolor(red)`) to a boolean. Operands
+   * are already variable-resolved bytes; tree2 owns the surrounding
+   * `and`/`or`/`not`/`default()` structure and only delegates the leaf truth.
+   */
+  evaluateGuardCondition(source: string): boolean;
 }

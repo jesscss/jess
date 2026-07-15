@@ -31,7 +31,6 @@ import type {
   Complex,
   MixinCall,
   MixinDef,
-  Param,
   Root,
   Rule,
   SelectorList,
@@ -41,6 +40,8 @@ import type {
 // [atrule] block + statement at-rule node types
 import type { AtRuleBlock, AtRuleStatement } from './at-rule.js';
 import type { ValueService } from './value-service.js';
+import { selectDefinitions } from './mixin-dispatch.js'; // [guards]
+import type { ValueResolver } from './guard.js'; // [guards]
 
 export interface Tree2Position {
   node: Tree2Node;
@@ -58,6 +59,13 @@ export interface SerializeOptions {
    * itself). tree2 depends only on the `ValueService` interface.
    */
   valueService?: ValueService;
+  /**
+   * [guards] `'record'` makes mixin dispatch walk EVERY arity/pattern candidate
+   * (ignoring guard truth) and evaluate every guard leaf, so an async
+   * value-service pre-pass collects a complete key set. Default `'eval'` does
+   * real guard-based selection.
+   */
+  guardMode?: 'eval' | 'record';
 }
 
 export interface SerializeResult {
@@ -77,15 +85,19 @@ const INDENT = '  ';
  */
 interface Frame {
   parent: Frame | null;
-  mixins: Map<string, MixinDef> | null;
+  // [guards] a name maps to ALL same-name defs (overloads), in definition order.
+  mixins: Map<string, MixinDef[]> | null;
   vars: Map<string, ValueNode> | null;
 }
 
-function collectMixins(statements: Statement[]): Map<string, MixinDef> | null {
-  let map: Map<string, MixinDef> | null = null;
+// [guards] collect ALL definitions per name (overloaded dispatch), not last-wins.
+function collectMixins(statements: Statement[]): Map<string, MixinDef[]> | null {
+  let map: Map<string, MixinDef[]> | null = null;
   for (const s of statements) {
     if (s.kind === Kind.MixinDef) {
-      (map ??= new Map()).set(s.name, s);
+      const list = (map ??= new Map()).get(s.name);
+      if (list) list.push(s);
+      else map.set(s.name, [s]);
     }
   }
   return map;
@@ -108,12 +120,18 @@ function collectVars(statements: Statement[]): Map<string, ValueNode> | null {
   return map;
 }
 
-function lookupMixin(frame: Frame | null, name: string): MixinDef | undefined {
+// [guards] collect every visible same-name def up the scope chain (nearest
+// scope first), so overload resolution sees all candidates.
+function lookupMixinCandidates(frame: Frame | null, name: string): MixinDef[] {
+  let out: MixinDef[] | null = null;
   for (let f = frame; f; f = f.parent) {
     const hit = f.mixins?.get(name);
-    if (hit) return hit;
+    if (hit) {
+      if (!out) out = hit.slice();
+      else out.push(...hit);
+    }
   }
-  return undefined;
+  return out ?? [];
 }
 
 function lookupVar(frame: Frame | null, name: string): ValueNode | undefined {
@@ -125,25 +143,12 @@ function lookupVar(frame: Frame | null, name: string): ValueNode | undefined {
 }
 
 /**
- * Bind call args to params. Args are evaluated EAGERLY in the CALLER's frame
- * (Less evaluates mixin arguments in the caller scope) and stored as resolved
- * literals, so an arg like `@c` resolves against the caller — never re-resolved
- * against the callee's scope (which would find the wrong binding or loop).
+ * [guards] A value resolver bound to a frame — resolves a value node to its
+ * (variable-resolved) byte source. Used by mixin dispatch to eagerly resolve
+ * args in the caller frame and to resolve guard operands in the callee frame.
  */
-function bindParams(
-  params: Param[],
-  args: ValueNode[],
-  callerFrame: Frame | null,
-  service: ValueService | null,
-): Map<string, ValueNode> | null {
-  if (params.length === 0) return null;
-  const vars = new Map<string, ValueNode>();
-  for (let i = 0; i < params.length; i++) {
-    const p = params[i]!;
-    const v = i < args.length ? args[i]! : p.default;
-    if (v !== undefined) vars.set(p.name, new Word(valueText(v, callerFrame, service)));
-  }
-  return vars;
+function makeResolver(frame: Frame | null, service: ValueService | null): ValueResolver {
+  return (v: ValueNode) => valueText(v, frame, service);
 }
 
 /* ----------------------------------------------------------- value bytes */
@@ -243,7 +248,17 @@ interface Emit {
   // [atrule] current block-nesting depth (0 = top level). At-rule bodies raise it
   // so declarations/selectors inside a block indent one level deeper.
   depth: number;
+  record: boolean; // [guards] record mode for the async value-service pre-pass
+  // [guards] mixin-expansion depth (bounds record-mode recursion). Kept SEPARATE
+  // from `depth` above: mixin expansion must not shift at-rule indentation.
+  recordDepth: number;
 }
+
+// [guards] Record mode walks EVERY candidate body ignoring guard truth, so
+// guard-terminated recursion (e.g. `.loop(@n) when (@n>0){ .loop(@n - 1) }`)
+// would not terminate. A generous depth cap bounds it; the eval path is
+// unbounded and terminates naturally via guards.
+const MAX_RECORD_DEPTH = 64;
 
 function put(e: Emit, s: string): void {
   e.chunks.push(s);
@@ -263,6 +278,8 @@ export function serialize(root: Root, options?: SerializeOptions): SerializeResu
     positions: options?.trackPositions ? [] : null,
     service: options?.valueService ?? null,
     depth: 0, // [atrule]
+    record: options?.guardMode === 'record', // [guards]
+    recordDepth: 0, // [guards]
   };
   const rootFrame: Frame = {
     parent: null,
@@ -371,8 +388,10 @@ function mergeVars(
 }
 
 /**
- * Expand a mixin call: bind args, then WALK the shared def body in place under
- * the current composed selector. No clone, no per-placement node build.
+ * Expand a mixin call: [guards] resolve the overloaded definitions that match
+ * (arity + literal pattern + named/default params + guards), then WALK each
+ * matching shared def body in place under the current composed selector. No
+ * clone, no per-placement node build.
  */
 function expandCall(
   call: MixinCall,
@@ -382,14 +401,32 @@ function expandCall(
   flush: () => void,
   e: Emit,
 ): void {
-  const def = lookupMixin(frame, call.name);
-  if (!def) return; // unknown mixin: minimal scope emits nothing
-  const callFrame: Frame = {
-    parent: frame,
-    mixins: collectMixins(def.body),
-    vars: mergeVars(bindParams(def.params, call.args, frame, e.service), collectVars(def.body)),
-  };
-  walkBody(def.body, composed ?? [], callFrame, group, flush, e);
+  const candidates = lookupMixinCandidates(frame, call.name);
+  if (candidates.length === 0) return; // unknown mixin: minimal scope emits nothing
+  if (e.record && e.recordDepth >= MAX_RECORD_DEPTH) return; // [guards] bound recording
+  const resolveCaller = makeResolver(frame, e.service);
+  // Guard operands resolve in the CALLEE scope (params bound + globals via the
+  // caller-frame parent chain).
+  const makeCalleeResolver = (bindings: Map<string, ValueNode> | null): ValueResolver =>
+    makeResolver({ parent: frame, mixins: null, vars: bindings }, e.service);
+  const selected = selectDefinitions(
+    candidates,
+    call,
+    resolveCaller,
+    makeCalleeResolver,
+    e.service,
+    e.record,
+  );
+  e.recordDepth++; // [guards]
+  for (const { def, bindings } of selected) {
+    const callFrame: Frame = {
+      parent: frame,
+      mixins: collectMixins(def.body),
+      vars: mergeVars(bindings, collectVars(def.body)),
+    };
+    walkBody(def.body, composed ?? [], callFrame, group, flush, e);
+  }
+  e.recordDepth--; // [guards]
 }
 
 function flushBlock(sel: string[], group: Leaf[], e: Emit, selNode?: SelectorList): void {
@@ -555,9 +592,10 @@ export interface ComposeStats {
  * indicator to compare against legacy `withComponents`/`cloneForPlacement`/
  * `inherit` counts. Kept OUT of the timed path.
  */
-export function composeStats(root: Root): ComposeStats {
+export function composeStats(root: Root, service?: ValueService): ComposeStats {
   const stats: ComposeStats = { composeOps: 0, selectorAllocs: 0, distinctSelectors: 0 };
   const seen = new Set<string>();
+  const svc = service ?? null;
 
   const composeCount = (parents: string[], child: SelectorList): string[] => {
     if (parents.length > 1) stats.selectorAllocs++; // the :is(...) wrap
@@ -578,12 +616,25 @@ export function composeStats(root: Root): ComposeStats {
       if (node.kind === Kind.Rule) {
         walkRule(node, composed, frame);
       } else if (node.kind === Kind.MixinCall) {
-        const def = lookupMixin(frame, node.name);
-        if (def) {
+        // [guards] mirror the real overloaded dispatch so guarded/pattern
+        // fixtures count the compositions they actually produce.
+        const candidates = lookupMixinCandidates(frame, node.name);
+        if (candidates.length === 0) continue;
+        const resolveCaller = makeResolver(frame, svc);
+        const makeCalleeResolver = (b: Map<string, ValueNode> | null): ValueResolver =>
+          makeResolver({ parent: frame, mixins: null, vars: b }, svc);
+        for (const { def, bindings } of selectDefinitions(
+          candidates,
+          node,
+          resolveCaller,
+          makeCalleeResolver,
+          svc,
+          false,
+        )) {
           const callFrame: Frame = {
             parent: frame,
             mixins: collectMixins(def.body),
-            vars: mergeVars(bindParams(def.params, node.args, frame, null), collectVars(def.body)),
+            vars: mergeVars(bindings, collectVars(def.body)),
           };
           walk(def.body, composed, callFrame);
         }
@@ -595,14 +646,22 @@ export function composeStats(root: Root): ComposeStats {
   };
   const walkRule = (rule: Rule, parent: string[] | null, frame: Frame): void => {
     const composed = parent === null ? ownStrings(rule.selector) : composeCount(parent, rule.selector);
-    const childFrame: Frame = { parent: frame, mixins: collectMixins(rule.body), vars: null };
+    const childFrame: Frame = {
+      parent: frame,
+      mixins: collectMixins(rule.body),
+      vars: collectVars(rule.body),
+    };
     walk(rule.body, composed, childFrame);
   };
 
   // [atrule] enter at-rule bodies from the root too (top-level `@media {…}`),
   // so nested-ruleset compositions inside a block are counted, not skipped.
   const enterAtRule = (node: AtRuleBlock, frame: Frame): void => {
-    const bodyFrame: Frame = { parent: frame, mixins: collectMixins(node.body), vars: null };
+    const bodyFrame: Frame = {
+      parent: frame,
+      mixins: collectMixins(node.body),
+      vars: collectVars(node.body),
+    };
     for (const child of node.body) {
       if (child.kind === Kind.Rule) walkRule(child, null, bodyFrame);
       else if (child.kind === Kind.MixinCall) walk([child], [], bodyFrame);
@@ -610,7 +669,11 @@ export function composeStats(root: Root): ComposeStats {
     }
   };
 
-  const rootFrame: Frame = { parent: null, mixins: collectMixins(root.children), vars: null };
+  const rootFrame: Frame = {
+    parent: null,
+    mixins: collectMixins(root.children),
+    vars: collectVars(root.children),
+  };
   for (const child of root.children) {
     if (child.kind === Kind.Rule) walkRule(child, null, rootFrame);
     else if (child.kind === Kind.AtRuleBlock) enterAtRule(child, rootFrame);

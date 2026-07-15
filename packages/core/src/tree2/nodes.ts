@@ -17,6 +17,8 @@
  */
 
 import { Combinator, Kind, Tree2Node } from './node.js';
+import type { GuardNode } from './guard.js'; // [guards]
+import type { CallArg } from './mixin-dispatch.js'; // [guards]
 
 /* ------------------------------------------------------------------ values */
 
@@ -254,16 +256,23 @@ export class Rule extends Tree2Node {
   }
 }
 
-/** A mixin parameter: a name and an optional default value. */
+/**
+ * A mixin parameter. [guards] A param is one of:
+ *   - a binding: `{ name }` (optionally `{ name, default }`),
+ *   - a literal PATTERN: `{ pattern }` (no name — the arg must equal it),
+ *   - a variadic rest: `{ rest: true, name? }` (`...` / `@rest...`).
+ */
 export interface Param {
-  name: string;
+  name?: string;
   default?: ValueNode;
+  pattern?: ValueNode; // [guards] literal-value pattern-match param
+  rest?: boolean; // [guards] variadic `...`
 }
 
 /**
  * A mixin definition. Its `body` is the CANONICAL body, stored ONCE — every
  * call reads it through an overlay (bindings + parent-selector context) and
- * NEVER clones it.
+ * NEVER clones it. [guards] `guard` is an optional `when (...)` condition.
  */
 export class MixinDef extends Tree2Node {
   readonly kind = Kind.MixinDef as const;
@@ -271,17 +280,18 @@ export class MixinDef extends Tree2Node {
     readonly name: string,
     readonly params: Param[],
     readonly body: Statement[],
+    readonly guard?: GuardNode, // [guards]
   ) {
     super();
   }
 }
 
-/** A mixin call. Args bind positionally to the def's params. */
+/** A mixin call. Args bind to the def's params (positional or named). [guards] */
 export class MixinCall extends Tree2Node {
   readonly kind = Kind.MixinCall as const;
   constructor(
     readonly name: string,
-    readonly args: ValueNode[],
+    readonly args: CallArg[],
   ) {
     super();
   }
@@ -340,9 +350,18 @@ export const funcCall = (name: string, args: ValueNode): FunctionCall =>
 export const paren = (inner: ValueNode): Paren => new Paren(inner);
 export const varDecl = (name: string, value: ValueNode): VarDeclaration =>
   new VarDeclaration(name, value);
-export const mixinDef = (name: string, params: Param[], body: Statement[]): MixinDef =>
-  new MixinDef(name, params, body);
-export const mixinCall = (name: string, args: ValueNode[] = []): MixinCall => new MixinCall(name, args);
+export const mixinDef = (
+  name: string,
+  params: Param[],
+  body: Statement[],
+  guard?: GuardNode, // [guards]
+): MixinDef => new MixinDef(name, params, body, guard);
+/** [guards] Args may be bare value nodes (positional) or `{ value, name? }`. */
+export const mixinCall = (name: string, args: Array<ValueNode | CallArg> = []): MixinCall =>
+  new MixinCall(
+    name,
+    args.map((a) => (a instanceof Tree2Node ? { value: a } : a)),
+  );
 
 /** A single simple-string complex selector, e.g. `sel('.test')`. */
 export const sel = (text: string): Complex => complex([{ compound: compound(text) }]);

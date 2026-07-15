@@ -281,12 +281,17 @@ function toComputedValue(ctx: BridgeCtx, node: unknown): t2.ValueNode | null {
   }
 }
 
-/** An operand of an operation: a nested computed expression or a raw leaf. */
+/** An operand of an operation / guard / mixin arg: computed expr or raw leaf. */
 function toOperand(ctx: BridgeCtx, node: unknown): t2.ValueNode | null {
   const computed = toComputedValue(ctx, node);
   if (computed !== null) return computed;
   if (typeof node === 'string') return parseValue(node);
   if (isNode(node)) {
+    // [guards] A `Keyword` node's source span can include a wrapping `(...)`
+    // (parser quirk for single mixin args); its `.value` is the clean text.
+    if (typeOf(node) === 'Keyword' && typeof (node as AnyNode).value === 'string') {
+      return parseValue((node as AnyNode).value as string);
+    }
     const raw = slice(ctx, node);
     if (raw !== undefined) return parseValue(raw);
   }
@@ -295,37 +300,120 @@ function toOperand(ctx: BridgeCtx, node: unknown): t2.ValueNode | null {
 
 /* --------------------------------------------------------------- mixins */
 
+/**
+ * [guards] Bridge one mixin param. A `VarDeclaration` is a binding (optionally
+ * with a default); a `Rest` is variadic `...`; anything else (Keyword / Num /
+ * Dimension / Color) is a literal PATTERN param the arg must equal. A list
+ * pattern (`Paren` wrapping a `List`) is deferred.
+ */
 function mixinParams(ctx: BridgeCtx, params: unknown): t2.Param[] {
   if (params === undefined || params === null) return [];
-  // params is a List node whose `.value` is an array of VarDeclaration.
   const arr = isNode(params) ? (params as AnyNode).value : params;
   if (!Array.isArray(arr)) throw new UnsupportedShape('mixin:params-shape', typeOf(params));
   const out: t2.Param[] = [];
   for (const p of arr) {
     if (!isNode(p)) throw new UnsupportedShape('mixin:param', typeOf(p));
-    const name = (p as AnyNode).name;
-    if (typeof name !== 'string') throw new UnsupportedShape('mixin:param-name', typeOf(name));
-    // Default value: a Nil value means no default.
-    const rawDefault = (p as AnyNode).value;
-    let def: t2.ValueNode | undefined;
-    if (isNode(rawDefault) && typeOf(rawDefault) !== 'Nil') {
-      const dtext = slice(ctx, rawDefault);
-      if (dtext !== undefined) def = parseValue(dtext);
+    const t = typeOf(p);
+    if (t === 'VarDeclaration') {
+      const name = (p as AnyNode).name;
+      if (typeof name !== 'string') throw new UnsupportedShape('mixin:param-name', typeOf(name));
+      const rawDefault = (p as AnyNode).value;
+      let def: t2.ValueNode | undefined;
+      if (isNode(rawDefault) && typeOf(rawDefault) !== 'Nil') {
+        const dtext = slice(ctx, rawDefault);
+        if (dtext !== undefined) def = parseValue(dtext);
+      }
+      out.push({ name: name.replace(/^@/, ''), default: def });
+    } else if (t === 'Rest') {
+      // `...` (anonymous) or `@rest...` (named). `.value` is '' or the name.
+      const restName = (p as AnyNode).value;
+      out.push({ rest: true, name: typeof restName === 'string' && restName ? restName : undefined });
+    } else if (t === 'Paren') {
+      throw new UnsupportedShape('mixin:list-pattern', t);
+    } else {
+      // Literal-value pattern param (`.m(dark)`, `.m(2px)`).
+      const pat = toOperand(ctx, p);
+      if (pat === null) throw new UnsupportedShape('mixin:pattern-param', t);
+      out.push({ pattern: pat });
     }
-    out.push({ name: name.replace(/^@/, ''), default: def });
   }
   return out;
 }
 
-function callArgs(ctx: BridgeCtx, args: unknown): t2.ValueNode[] {
+/** [guards] A single call argument value (computed / variable / literal). */
+function argValue(ctx: BridgeCtx, node: unknown): t2.ValueNode {
+  const v = toOperand(ctx, node);
+  if (v === null) throw new UnsupportedShape('call:arg', typeOf(node));
+  return v;
+}
+
+/**
+ * [guards] Bridge call args. A `VarDeclaration` arg is a NAMED argument
+ * (`.m(@b: 2)`); everything else is positional.
+ */
+function callArgs(ctx: BridgeCtx, args: unknown): t2.CallArg[] {
   if (args === undefined || args === null) return [];
   const arr = isNode(args) ? (args as AnyNode).value : args;
   if (!Array.isArray(arr)) throw new UnsupportedShape('call:args-shape', typeOf(args));
   return arr.map((a) => {
-    const text = typeof a === 'string' ? a : isNode(a) ? slice(ctx, a) : undefined;
-    if (text === undefined) throw new UnsupportedShape('call:arg', typeOf(a));
-    return parseValue(text);
+    if (isNode(a) && typeOf(a) === 'VarDeclaration') {
+      const name = (a as AnyNode).name;
+      if (typeof name !== 'string') throw new UnsupportedShape('call:named-arg', typeOf(name));
+      return { name: name.replace(/^@/, ''), value: argValue(ctx, (a as AnyNode).value) };
+    }
+    return { value: argValue(ctx, a) };
   });
+}
+
+/* ----------------------------------------------------------------- guards */
+
+const GUARD_CMP_OPS = new Set(['>', '<', '>=', '<=', '=']); // [guards]
+
+/**
+ * [guards] Bridge a parsed Less mixin guard (`when (...)`) into tree2's own
+ * `GuardNode` structure. tree2 owns the boolean structure (and/or/not/truth/
+ * default) and delegates only leaf comparison/function truth to the service.
+ */
+function bridgeGuard(ctx: BridgeCtx, node: unknown): t2.GuardNode {
+  if (!isNode(node)) throw new UnsupportedShape('guard', typeOf(node));
+  const t = typeOf(node);
+  switch (t) {
+    case 'Condition': {
+      const op = (node as AnyNode).operator;
+      const negate = (node as AnyNode).negate === true;
+      let g: t2.GuardNode;
+      if (op === 'and' || op === 'or') {
+        g = { g: op, left: bridgeGuard(ctx, (node as AnyNode).left), right: bridgeGuard(ctx, (node as AnyNode).right) };
+      } else if (typeof op === 'string' && GUARD_CMP_OPS.has(op)) {
+        const left = toOperand(ctx, (node as AnyNode).left);
+        const right = toOperand(ctx, (node as AnyNode).right);
+        if (left === null || right === null) throw new UnsupportedShape('guard:cmp-operand', op);
+        g = { g: 'cmp', op, left, right };
+      } else if (op === undefined || op === null) {
+        // Unary wrapper: just its single operand (negation applied below).
+        g = bridgeGuard(ctx, (node as AnyNode).left);
+      } else {
+        throw new UnsupportedShape('guard:operator', String(op));
+      }
+      return negate ? { g: 'not', inner: g } : g;
+    }
+    case 'Paren':
+      return bridgeGuard(ctx, (node as AnyNode).value);
+    case 'Call': {
+      const name = mixinName(node as AnyNode);
+      const callSource = slice(ctx, node);
+      if (callSource === undefined) throw new UnsupportedShape('guard:call-span', name);
+      return { g: 'call', name, args: parseValue(innerArgsSource(callSource)) };
+    }
+    case 'DefaultGuard':
+      return { g: 'default' };
+    default: {
+      // Truthiness of a bare value (keyword `true`/`false`, `@ref`, number...).
+      const v = toOperand(ctx, node);
+      if (v === null) throw new UnsupportedShape('guard:truth', t);
+      return { g: 'truth', value: v };
+    }
+  }
 }
 
 function mixinName(node: AnyNode): string {
@@ -481,12 +569,12 @@ function toRuleset(ctx: BridgeCtx, node: AnyNode): t2.Rule {
 }
 
 function toMixinDef(ctx: BridgeCtx, node: AnyNode): t2.MixinDef {
-  if (node.guard) throw new UnsupportedShape('guard', 'mixin-guard');
   const name = mixinName(node);
   const params = mixinParams(ctx, node.params);
   // [atrule] at-rules inside a mixin body bubble at the call site (deferred) — reject.
   const body = toBody(ctx, node.rules, false);
-  return t2.mixinDef(name, params, body);
+  const guard = node.guard ? bridgeGuard(ctx, node.guard) : undefined; // [guards]
+  return t2.mixinDef(name, params, body, guard);
 }
 
 function toMixinCall(ctx: BridgeCtx, node: AnyNode): t2.MixinCall {

@@ -11,6 +11,14 @@ export * from './nodes.js';
 // [atrule] at-rule node types + constructors
 export * from './at-rule.js';
 export type { ValueService } from './value-service.js';
+// [guards] guard model + overloaded-mixin dispatch
+export { evalGuard, guardUsesDefault, type GuardNode, type ValueResolver } from './guard.js';
+export {
+  bindArgs,
+  selectDefinitions,
+  type CallArg,
+  type Selection,
+} from './mixin-dispatch.js';
 export {
   serialize,
   composeStats,
