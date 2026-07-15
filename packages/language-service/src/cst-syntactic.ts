@@ -12,10 +12,11 @@
  *   - string literal      → `Quoted`
  *   - variable reference   → `Reference`      (`@primary` / `$primary`)
  *   - variable declaration → `VarDeclaration` (`@primary: red;`)
- *   - mixin definition     → `MixinOrQualifiedRule` (`.button() { … }`)
- *   - mixin call           → `MixinCall`      (`.button();`)
+ *   - mixin definition     → `MixinOrQualifiedRule` (`.button() { … }`) / `ScssMixin` (`@mixin foo`)
+ *   - mixin call           → `MixinCall`      (`.button();`) / `ScssInclude` (`@include foo`)
+ *   - scss function def    → `ScssFunction`   (`@function bar`)
  *   - numbers              → `Num` / `Dimension` / `Color`
- *   - at-rules             → `AtRuleBlock` / `AtRuleStatement` / `Scss*` …
+ *   - at-rules             → `AtRuleBlock` / `AtRuleStatement` / `QueryAtRuleBlock` / `ScssUse` …
  * Comments are trivia (not CST nodes), so comment tokens are recovered by a
  * source scan for `/* … *​/` blocks.
  *
@@ -52,10 +53,24 @@ const SEMANTIC_TOKEN_TYPE_INDEX = new Map<SemanticTokenType, number>(
   SEMANTIC_TOKEN_TYPES.map((t, i) => [t, i])
 );
 
-// Node grammarTypes that carry a leading `@keyword` to classify as `namespace`.
 const NUMBER_TYPES = new Set(['Num', 'Dimension', 'Color']);
-// Nodes that are `@`-prefixed but are NOT at-rules (handled elsewhere / skipped).
-const NOT_ATRULE_TYPES = new Set(['VarDeclaration', 'Reference']);
+// Genuine at-rule grammarTypes whose leading `@keyword` is a `namespace` token.
+// An ALLOW-list (not "any slice starting with `@`") so `@`-prefixed NON-at-rules
+// — a Less `@primary:` (`VarDeclaration`), a `@primary` `Reference`, and above all
+// a container like `Stylesheet` whose slice merely STARTS at a leading `@var` —
+// are never mis-tokenized as a `namespace` keyword.
+const NAMESPACE_KEYWORD_TYPES = new Set([
+  'AtRuleBlock',
+  'AtRuleStatement',
+  'UnknownAtRuleBlock',
+  'QueryAtRuleBlock',
+  'ScssUse',
+  'ScssIf',
+  'ScssReturn'
+]);
+// SCSS callable statements: `@mixin foo` / `@include foo` / `@function bar`. The
+// `@keyword` is a `namespace` token and the name that follows is a `function`.
+const SCSS_CALLABLE_TYPES = new Set(['ScssMixin', 'ScssInclude', 'ScssFunction']);
 
 function isCstNode(c: CssCstChild): c is CssCstNode {
   return c._tag === 'node';
@@ -68,10 +83,12 @@ function varNameOf(slice: string): string {
   return head.trim().replace(/^[$@]/, '').trim();
 }
 
-/** Bare mixin identifier from a `MixinCall`/`MixinOrQualifiedRule` slice: head
- * before `(`/`{`, leading `.`/`#` dropped. */
+/** Bare mixin identifier from a `MixinCall`/`MixinOrQualifiedRule` (Less) or a
+ * `ScssMixin` (`@mixin foo`) slice: head before `(`/`{`, then the SCSS keyword or
+ * the Less `.`/`#` combinator dropped. */
 function mixinIdentOf(slice: string): string {
-  return slice.split(/[({]/)[0]!.trim().replace(/^[.#]/, '').trim();
+  const head = slice.split(/[({]/)[0]!.trim().replace(/^@(?:mixin|include|function)\s+/, '');
+  return head.replace(/^[.#]/, '').trim();
 }
 
 /**
@@ -91,7 +108,7 @@ export function cstDeclaredSymbols(root: CssCstNode, doc: TextDocument): { vars:
       if (name) {
         vars.add(name);
       }
-    } else if (gt === 'MixinOrQualifiedRule' || gt === 'MixinDefinition' || gt === 'Mixin') {
+    } else if (gt === 'MixinOrQualifiedRule' || gt === 'MixinDefinition' || gt === 'Mixin' || gt === 'ScssMixin') {
       const name = mixinIdentOf(src.slice(start, end));
       if (name) {
         mixins.add(name);
@@ -218,15 +235,26 @@ export function cstSemanticTokens(root: CssCstNode, doc: TextDocument, lang: Jes
       if (looksQuoted(start, end)) {
         emitStringRegion(start, end);
       }
-    } else if (!NOT_ATRULE_TYPES.has(gt)) {
-      // At-rule keyword: any `@`-prefixed node that is not a variable
-      // declaration / reference (those are handled above / are not namespaces).
+    } else if (SCSS_CALLABLE_TYPES.has(gt)) {
+      // `@mixin foo` / `@include foo` / `@function bar`: the keyword is a
+      // `namespace` token and the name after it is a `function` token.
       const slice = text.slice(start, end);
-      if (slice.charCodeAt(0) === 64 /* @ */) {
-        const head = /^@[-\w]+/.exec(slice);
-        if (head) {
-          push(start, start + head[0].length, 'namespace');
-        }
+      const kw = /^@[-\w]+/.exec(slice);
+      if (kw) {
+        push(start, start + kw[0].length, 'namespace');
+      }
+      const nm = /^@[-\w]+\s+([\w-]+)/.exec(slice);
+      if (nm) {
+        const nameStart = start + nm[0].length - nm[1].length;
+        push(nameStart, nameStart + nm[1].length, 'function');
+      }
+    } else if (NAMESPACE_KEYWORD_TYPES.has(gt)) {
+      // At-rule keyword `@keyword` → namespace. Gated to genuine at-rule types
+      // (an allow-list), so `@`-prefixed non-at-rules / containers are skipped.
+      const slice = text.slice(start, end);
+      const head = /^@[-\w]+/.exec(slice);
+      if (head) {
+        push(start, start + head[0].length, 'namespace');
       }
     }
   }

@@ -26,8 +26,13 @@ import { buildCstIndex } from './cst-analysis.js';
 
 const VAR_REF = 'Reference';
 const VAR_DECL = 'VarDeclaration';
-const MIXIN_REF_TYPES = new Set(['MixinCall']);
-const MIXIN_DEF_TYPES = new Set(['MixinOrQualifiedRule', 'MixinDefinition', 'Mixin']);
+// A mixin CALL site: Less `MixinCall` / SCSS `@include foo` (`ScssInclude`).
+const MIXIN_REF_TYPES = new Set(['MixinCall', 'ScssInclude']);
+// A mixin/function DEFINITION: Less `MixinOrQualifiedRule` / SCSS `@mixin foo`
+// (`ScssMixin`) and `@function bar` (`ScssFunction`). `@include`/`@mixin` are
+// DISTINCT grammarTypes (call vs def); `mixinNameOf` strips the differing keyword
+// so both resolve to the same bare `matchName`.
+const MIXIN_DEF_TYPES = new Set(['MixinOrQualifiedRule', 'MixinDefinition', 'Mixin', 'ScssMixin', 'ScssFunction']);
 
 /** A variable/mixin symbol resolved from a cursor position. */
 export type CstSymbol = {
@@ -59,10 +64,13 @@ function varNameOf(slice: string): string {
   return head.trim().replace(/^[$@]/, '').trim();
 }
 
-/** Selector-with-combinator mixin name from a `MixinCall` (`.button();`) or
- * `MixinOrQualifiedRule` (`.button() { … }`) slice: the head before `(`/`{`. */
+/** Cross-site match name for a mixin/function. For Less this is the
+ * selector-with-combinator (`.button`) from a `MixinCall`/`MixinOrQualifiedRule`;
+ * for SCSS it is the bare name after the `@mixin`/`@include`/`@function` keyword
+ * (`foo`), so a `@mixin foo` def and its `@include foo` calls share one name. */
 function mixinNameOf(slice: string): string {
-  return slice.split(/[({]/)[0]!.trim();
+  const head = slice.split(/[({]/)[0]!.trim();
+  return head.replace(/^@(?:mixin|include|function)\s+/, '').trim();
 }
 
 /** Strip a mixin name to its bare identifier (drop leading `.`/`#`, trailing `()`). */

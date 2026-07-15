@@ -89,8 +89,12 @@ export function buildCstIndex(root: CssCstNode): CstIndex {
 // the symbol they yield — matching the AST-based `getDocumentSymbols` exactly.
 const SELECTOR_TYPES = new Set(['SelectorList', 'ComplexSelector', 'CompoundSelector', 'InterpolatedSelector', 'BasicSelector']);
 const ATRULE_TYPES = new Set(['AtRuleBlock', 'AtRuleStatement', 'UnknownAtRuleBlock', 'QueryAtRuleBlock']);
-const MIXIN_TYPES = new Set(['Mixin', 'MixinDefinition']);
-const FUNC_TYPES = new Set(['Func', 'FunctionDefinition']);
+// Mixin DEFINITIONS: `Mixin`/`MixinDefinition` (legacy), the Less
+// `MixinOrQualifiedRule` (a `.foo() { … }` def — a bodyless `.foo();` CALL is the
+// SAME grammarType and is filtered out below), and the SCSS `@mixin foo` def.
+const MIXIN_TYPES = new Set(['Mixin', 'MixinDefinition', 'MixinOrQualifiedRule', 'ScssMixin']);
+// Function DEFINITIONS: legacy `Func`/`FunctionDefinition` + the SCSS `@function`.
+const FUNC_TYPES = new Set(['Func', 'FunctionDefinition', 'ScssFunction']);
 
 function firstSelectorChild(node: CssCstNode): CssCstNode | null {
   for (const c of node.children) {
@@ -174,7 +178,13 @@ export function cstDocumentSymbols(root: CssCstNode, doc: TextDocument): Documen
       const name = sliceOf(node).split(':')[0]!.trim();
       add(name || 'variable', SymbolKind.Variable, node, null, false);
     } else if (MIXIN_TYPES.has(gt)) {
-      const name = sliceOf(node).split(/[({]/)[0]!.trim();
+      const raw = sliceOf(node);
+      // A Less `MixinOrQualifiedRule` with no block is a mixin CALL (`.h();`),
+      // not a definition — the outline lists definitions only (matches the AST).
+      if (gt === 'MixinOrQualifiedRule' && !raw.includes('{')) {
+        continue;
+      }
+      const name = raw.split(/[({]/)[0]!.trim();
       add(name || 'mixin', SymbolKind.Function, node, null, true);
     } else if (FUNC_TYPES.has(gt)) {
       const name = sliceOf(node).split(/[({]/)[0]!.trim();

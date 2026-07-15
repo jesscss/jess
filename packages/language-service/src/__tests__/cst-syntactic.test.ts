@@ -64,6 +64,38 @@ describe('cst-syntactic pure functions', () => {
       expect(tokens.some(t => t.type === 'comment' && t.line === 0)).toBe(true);
     });
 
+    it('BUG 3: a leading Less @var is NOT mis-tokenized as a namespace keyword', () => {
+      // The `Stylesheet`/`VarDeclaration` slices START with `@primary`, but they
+      // are not at-rules — no `namespace` keyword token should be emitted for a
+      // file that contains no at-rule.
+      const doc = lessDoc('@primary: red;\n.a { color: @primary; }');
+      const tokens = decode(cstSemanticTokens(parseLessDoc(doc.getText()).tree, doc, 'less'), TYPES);
+      expect(tokens.filter(t => t.type === 'namespace')).toHaveLength(0);
+      // The declaration name IS a variable, and the reference IS a variable.
+      expect(tokens.filter(t => t.type === 'variable').length).toBeGreaterThanOrEqual(1);
+    });
+
+    it('BUG 3: a genuine @import keyword is still a namespace token (allow-list)', () => {
+      const doc = lessDoc('@primary: red;\n@import "a.less";');
+      const tokens = decode(cstSemanticTokens(parseLessDoc(doc.getText()).tree, doc, 'less'), TYPES);
+      // Exactly one namespace token — the `@import`, not the `@primary`.
+      const ns = tokens.filter(t => t.type === 'namespace');
+      expect(ns).toHaveLength(1);
+      expect(ns[0]!.line).toBe(1);
+      expect(ns[0]!.length).toBe('@import'.length);
+    });
+
+    it('BUG 1: SCSS @mixin/@include get a namespace keyword + a function name token', () => {
+      const doc = scssDoc('@mixin foo($a) { color: $a; }\n.x { @include foo(red); }');
+      const tokens = decode(cstSemanticTokens(parseScssDoc(doc.getText()).tree, doc, 'scss'), TYPES);
+      // `@mixin` and `@include` keywords → namespace.
+      expect(tokens.filter(t => t.type === 'namespace').length).toBeGreaterThanOrEqual(2);
+      // Each `foo` name → function (the def name on line 0, the call name on line 1).
+      const fnTokens = tokens.filter(t => t.type === 'function');
+      expect(fnTokens.some(t => t.line === 0)).toBe(true);
+      expect(fnTokens.some(t => t.line === 1)).toBe(true);
+    });
+
     it('TOLERANCE: still classifies tokens on an unclosed block', () => {
       // Half-typed: the block never closes. The tolerant CST still yields the
       // variable / number tokens.
@@ -98,6 +130,13 @@ describe('cst-syntactic pure functions', () => {
       const { vars, mixins } = cstDeclaredSymbols(parseLessDoc(doc.getText()).tree, doc);
       expect(vars.has('primary')).toBe(true);
       expect(mixins.has('button')).toBe(true);
+    });
+
+    it('BUG 1: collects an SCSS @mixin as a declared mixin (bare name)', () => {
+      const doc = scssDoc('$primary: red;\n@mixin foo($a) { color: $a; }\n.x { @include foo(red); }');
+      const { vars, mixins } = cstDeclaredSymbols(parseScssDoc(doc.getText()).tree, doc);
+      expect(vars.has('primary')).toBe(true);
+      expect(mixins.has('foo')).toBe(true);
     });
   });
 });
