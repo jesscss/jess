@@ -482,6 +482,16 @@ recursively scans 10,777 evaluated surfaces to find 15 merge-bearing ones.
   `226.23→216.44 ms`, all too noisy or regressive to retain. The committed POC
   stays unmerged. Parent slots and prototype controls are sequenced behind a
   target that demonstrably activates them, not behind this non-occurring case.
+- **Fresh activation check rejects the slot mechanism for integration.** The
+  existing `f6bca2ba4` candidate passed the focused scope-slot proof (`4/4`)
+  and core compile. A synthetic static-local workload activated the slot path
+  `359,997` times and preserved checksum `23,999,994`, but four sequential
+  1,000,000-read runs measured candidate medians `259.619 ms` and `260.924 ms`
+  versus current `origin/dev` baseline medians `250.790 ms` and `250.473 ms`
+  (roughly `+3.6–4.2%`). This is an activating mechanism check, not a canonical
+  benchmark claim; combined with zero canonical activation, do not cherry-pick
+  the slot POC or widen it to parent/prototype slots. Keep the existing owner
+  evidence for a future target workload only.
 - **Reference.evalNode audit (2026-07-14) — no new general lane.** Five clean
   current-dev profile runs reproduced `3,577` calls (`2,667` variable,
   `491` function, `397` mixin-ruleset, `22` declaration) and roughly
