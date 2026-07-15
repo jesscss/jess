@@ -13,6 +13,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { extractImports, resolveImport } from '@jesscss/style-resolver';
 import * as colorUtils from './color-utils.js';
 import { cstDocumentSymbols, cstFoldingRanges, cstSelectionRanges } from './cst-analysis.js';
+import { cstSymbolAtOffset, cstFindDefinitionInDoc, cstCollectReferencesInDoc, type CstSymbol } from './cst-symbols.js';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import {
   CompletionItem,
@@ -618,9 +619,11 @@ export function createEngine(): JessLanguageServiceEngine {
     }
 
     const document = TextDocument.create(importedUri, inferredLang, 0, text);
-    // Imported files are loaded from disk and never edited in place, so they need
-    // no incremental CST doc; analyze them eagerly.
+    // Imported files are loaded from disk and never edited in place. They still
+    // need a CST doc so the CST-grounded symbol features (def/refs/rename) can
+    // search across imports; build it once, eagerly, alongside the AST.
     const tracked: TrackedDoc = { document, lang: inferredLang, parse: null, index: null, cstDoc: null, analysisDirty: false, editApplied: 0, fullRebuild: 0 };
+    rebuildCstDoc(tracked);
     reparse(tracked);
     importedDocs.set(importedUri, tracked);
     return tracked;
@@ -677,45 +680,38 @@ export function createEngine(): JessLanguageServiceEngine {
     importGraph.set(uri, imports);
   }
 
-  // Helper: find variable definition across documents
-  function findVarDefinitionAcrossDocs(targetUri: string, normalizedName: string, visited: Set<string>): Location | null {
+  // Resolve a URI to its CST tree + document, for cross-document symbol search.
+  // Both open (`docs`) and imported (`importedDocs`) files carry an eagerly-built
+  // CST doc; a doc whose CST failed to build (null tree) is skipped.
+  function cstDocRef(targetUri: string): { doc: TextDocument; tree: CssCstNode } | null {
+    const tracked = docs.get(targetUri) ?? importedDocs.get(targetUri);
+    const tree = tracked?.cstDoc?.tree;
+    if (!tracked || !tree) {
+      return null;
+    }
+    return { doc: tracked.document, tree };
+  }
+
+  // Helper: find a symbol's definition across documents (current doc first, then
+  // its imports, depth-first with cycle detection) off the tolerant CST.
+  function findDefinitionAcrossDocs(targetUri: string, target: CstSymbol, visited: Set<string>): Location | null {
     if (visited.has(targetUri)) {
       return null; // Cycle detection
     }
     visited.add(targetUri);
 
-    // Check current document
-    const tracked = docs.get(targetUri) ?? importedDocs.get(targetUri);
-    if (tracked) {
-      ensureAnalysis(tracked);
-    }
-    if (!tracked?.index) {
-      return null;
-    }
-
-    for (const entry of tracked.index.nodes) {
-      const n: any = entry.node;
-      if (n.type === 'VarDeclaration') {
-        const nameNode = n.name;
-        const declNameStr = asStringName(nameNode);
-        const declName = declNameStr.replace(/^[$@]/, '');
-        if (declName === normalizedName) {
-          const span = getSpan(n);
-          if (span) {
-            return {
-              uri: targetUri,
-              range: toRange(tracked.document, span.start, span.end)
-            };
-          }
-        }
+    const ref = cstDocRef(targetUri);
+    if (ref) {
+      const def = cstFindDefinitionInDoc(ref.tree, ref.doc, targetUri, target);
+      if (def) {
+        return def;
       }
     }
 
-    // Search imported files
     const imports = importGraph.get(targetUri);
     if (imports) {
       for (const importedUri of imports) {
-        const result = findVarDefinitionAcrossDocs(importedUri, normalizedName, visited);
+        const result = findDefinitionAcrossDocs(importedUri, target, visited);
         if (result) {
           return result;
         }
@@ -725,248 +721,50 @@ export function createEngine(): JessLanguageServiceEngine {
     return null;
   }
 
-  // Helper: find mixin definition across documents
-  function findMixinDefinitionAcrossDocs(targetUri: string, mixinName: string, visited: Set<string>): Location | null {
-    if (visited.has(targetUri)) {
-      return null; // Cycle detection
-    }
-    visited.add(targetUri);
-
-    // Check current document
-    const tracked = docs.get(targetUri) ?? importedDocs.get(targetUri);
-    if (tracked) {
-      ensureAnalysis(tracked);
-    }
-    if (!tracked?.index) {
-      return null;
-    }
-
-    for (const entry of tracked.index.nodes) {
-      const n: any = entry.node;
-      if (n.type === 'Mixin') {
-        const nameNode = n.name;
-        const declNameStr = asStringName(nameNode);
-        let declName = declNameStr.trim();
-        // Normalize mixin name: remove parentheses if present
-        if (declName.endsWith('()')) {
-          declName = declName.slice(0, -2);
-        }
-        if (declName === mixinName) {
-          const span = getSpan(n);
-          if (span) {
-            return {
-              uri: targetUri,
-              range: toRange(tracked.document, span.start, span.end)
-            };
-          }
-        }
-      }
-    }
-
-    // Search imported files
-    const imports = importGraph.get(targetUri);
-    if (imports) {
-      for (const importedUri of imports) {
-        const result = findMixinDefinitionAcrossDocs(importedUri, mixinName, visited);
-        if (result) {
-          return result;
-        }
-      }
-    }
-
-    return null;
-  }
-
-  // Helper: find all variable references in a single document
-  function findVarReferencesAcrossDocs(targetUri: string, normalizedName: string, visited: Set<string>, results: Location[]): void {
+  // Helper: collect a symbol's references + declaration in a single document's
+  // CST (the caller loops all open + imported docs with a shared `visited` set,
+  // so each doc is processed once regardless of import edges).
+  function collectReferencesInDoc(targetUri: string, target: CstSymbol, visited: Set<string>, results: Location[]): void {
     if (visited.has(targetUri)) {
       return; // Already processed
     }
     visited.add(targetUri);
 
-    // Check current document
-    const tracked = docs.get(targetUri) ?? importedDocs.get(targetUri);
-    if (tracked) {
-      ensureAnalysis(tracked);
-    }
-    if (!tracked?.index) {
+    const ref = cstDocRef(targetUri);
+    if (!ref) {
       return;
     }
-
-    for (const entry of tracked.index.nodes) {
-      const n: any = entry.node;
-      const span = getSpan(n);
-      if (!span) {
-        continue;
-      }
-
-      // Collect references
-      if (n.type === 'Reference' && n.options?.type === 'variable') {
-        const k = n.key;
-        const refName = typeof k === 'string' ? k : Array.isArray(k) ? k.join('') : null;
-        if (refName && refName.replace(/^[$@]/, '') === normalizedName) {
-          results.push({
-            uri: targetUri,
-            range: toRange(tracked.document, span.start, span.end)
-          });
-        }
-      }
-
-      // Collect the declaration itself
-      if (n.type === 'VarDeclaration') {
-        const nameNode = n.name;
-        const declNameStr = asStringName(nameNode);
-        const declName = declNameStr.replace(/^[$@]/, '');
-        if (declName === normalizedName) {
-          results.push({
-            uri: targetUri,
-            range: toRange(tracked.document, span.start, span.end)
-          });
-        }
-      }
-    }
-  }
-
-  // Helper: find all mixin references in a single document
-  function findMixinReferencesAcrossDocs(targetUri: string, mixinName: string, visited: Set<string>, results: Location[]): void {
-    if (visited.has(targetUri)) {
-      return; // Already processed
-    }
-    visited.add(targetUri);
-
-    // Check current document
-    const tracked = docs.get(targetUri) ?? importedDocs.get(targetUri);
-    if (tracked) {
-      ensureAnalysis(tracked);
-    }
-    if (!tracked?.index) {
-      return;
-    }
-
-    for (const entry of tracked.index.nodes) {
-      const n: any = entry.node;
-      const span = getSpan(n);
-      if (!span) {
-        continue;
-      }
-
-      // Collect references
-      if (n.type === 'Reference' && (n.options?.type === 'mixin' || n.options?.type === 'mixin-ruleset')) {
-        const k = n.key;
-        const refName = typeof k === 'string' ? k : Array.isArray(k) ? k.join('') : null;
-        let refNameStr = refName ? refName.trim() : '';
-        // Normalize mixin name: remove parentheses if present
-        if (refNameStr.endsWith('()')) {
-          refNameStr = refNameStr.slice(0, -2);
-        }
-        if (refNameStr === mixinName) {
-          results.push({
-            uri: targetUri,
-            range: toRange(tracked.document, span.start, span.end)
-          });
-        }
-      }
-
-      // Collect the declaration itself
-      if (n.type === 'Mixin') {
-        const nameNode = n.name;
-        const declNameStr = asStringName(nameNode);
-        const declName = declNameStr.trim();
-        if (declName === mixinName) {
-          results.push({
-            uri: targetUri,
-            range: toRange(tracked.document, span.start, span.end)
-          });
-        }
-      }
-    }
+    cstCollectReferencesInDoc(ref.tree, ref.doc, targetUri, target, results);
   }
 
   // Shared resolver behind find-references AND rename: from a cursor position,
-  // walk up to the nearest variable/mixin declaration or reference, then collect
-  // every reference to that symbol across the current + imported + open docs.
-  // Returns the symbol kind, the bare identifier to target inside each span, and
-  // the node-level locations. `findReferences` returns `.locations` verbatim;
-  // rename narrows each location to its identifier token via `findIdentInSpan`.
+  // resolve the innermost variable/mixin declaration or reference off the CST,
+  // then collect every reference to that symbol across the current + imported +
+  // open docs. Returns the symbol kind, the bare identifier to target inside each
+  // span, and the node-level locations. `findReferences` returns `.locations`
+  // verbatim; rename narrows each location to its identifier via `findIdentInSpan`.
   function collectReferenceSet(uri: string, position: Position):
     { kind: 'variable' | 'mixin'; refineIdent: string; locations: Location[] } | null {
-    const tracked = ensure(uri);
+    const tracked = get(uri);
     const document = tracked.document;
-    const index = tracked.index;
-    if (!index) {
+    const tree = tracked.cstDoc?.tree;
+    if (!tree) {
       return null;
     }
 
     const offset = document.offsetAt(position);
-    let node = index.findNodeAtOffset(offset);
-    if (!node) {
-      return null;
-    }
-
-    let targetNode: Node | undefined = node;
-    const maxDepth = 10;
-    let depth = 0;
-    while (depth < maxDepth && targetNode) {
-      if (targetNode.type === 'VarDeclaration' || targetNode.type === 'Mixin'
-        || (targetNode.type === 'Reference' && (targetNode.options?.type === 'variable' || targetNode.options?.type === 'mixin' || targetNode.options?.type === 'mixin-ruleset'))) {
-        break;
-      }
-      targetNode = targetNode.parent;
-      depth++;
-    }
-    if (!targetNode) {
-      return null;
-    }
-    node = targetNode;
-
-    let targetName: string | null = null;
-    let isVariable = false;
-    let isMixin = false;
-
-    if (node.type === 'Reference' && node.options?.type === 'variable') {
-      const key = nodeField(node, 'key');
-      targetName = typeof key === 'string' ? key : Array.isArray(key) ? key.join('') : null;
-      isVariable = true;
-    } else if (node.type === 'VarDeclaration') {
-      const nameNode = nodeField(node, 'name');
-      targetName = asStringName(nameNode);
-      isVariable = true;
-    } else if (node.type === 'Reference' && (node.options?.type === 'mixin' || node.options?.type === 'mixin-ruleset')) {
-      const key = nodeField(node, 'key');
-      targetName = typeof key === 'string' ? key : Array.isArray(key) ? key.join('') : null;
-      isMixin = true;
-    } else if (node.type === 'Mixin') {
-      const nameNode = nodeField(node, 'name');
-      targetName = asStringName(nameNode);
-      isMixin = true;
-    }
-
-    if (!targetName) {
+    const sym = cstSymbolAtOffset(tree, document, offset);
+    if (!sym) {
       return null;
     }
 
     const out: Location[] = [];
     const visited = new Set<string>();
     const allDocs = new Set([...docs.keys(), ...importedDocs.keys()]);
-
-    if (isVariable) {
-      const normalizedTarget = targetName.replace(/^[$@]/, '');
-      for (const docUri of allDocs) {
-        findVarReferencesAcrossDocs(docUri, normalizedTarget, visited, out);
-      }
-      return { kind: 'variable', refineIdent: normalizedTarget, locations: out };
+    for (const docUri of allDocs) {
+      collectReferencesInDoc(docUri, sym, visited, out);
     }
-
-    if (isMixin) {
-      const mixinName = targetName.trim();
-      for (const docUri of allDocs) {
-        findMixinReferencesAcrossDocs(docUri, mixinName, visited, out);
-      }
-      const refineIdent = mixinName.replace(/^[.#]/, '').replace(/\(\s*\)\s*$/, '');
-      return { kind: 'mixin', refineIdent, locations: out };
-    }
-
-    return null;
+    return { kind: sym.kind, refineIdent: sym.refineIdent, locations: out };
   }
 
   return {
@@ -1242,111 +1040,24 @@ export function createEngine(): JessLanguageServiceEngine {
     },
 
     findDefinition(uri, position) {
-      const tracked = ensure(uri);
+      // CST-grounded (Option B): resolve the symbol under the cursor off the
+      // tolerant CST (no AST reparse), then search the current doc + its imports
+      // for its declaration. Only a REFERENCE navigates (a cursor on a
+      // declaration has nothing to go to), matching the AST behavior.
+      const tracked = get(uri);
       const document = tracked.document;
-      const index = tracked.index;
-      if (!index) {
+      const tree = tracked.cstDoc?.tree;
+      if (!tree) {
         return null;
       }
 
       const offset = document.offsetAt(position);
-      let node = index.findNodeAtOffset(offset);
-      if (!node) {
+      const sym = cstSymbolAtOffset(tree, document, offset);
+      if (!sym || sym.role !== 'reference') {
         return null;
       }
 
-      // Walk up the tree to find Reference or Mixin if the node at position isn't one
-      let targetNode: Node | undefined = node;
-      const maxDepth = 10;
-      let depth = 0;
-      while (depth < maxDepth && targetNode) {
-        if (targetNode.type === 'Reference' || targetNode.type === 'Mixin') {
-          break;
-        }
-        targetNode = targetNode.parent;
-        depth++;
-      }
-      if (!targetNode) {
-        return null;
-      }
-      node = targetNode;
-
-      // Variable definition lookup: find VarDeclaration for a Reference(type=variable).
-      if (node.type === 'Reference' && node.options?.type === 'variable') {
-        const key = nodeField(node, 'key');
-        const name = typeof key === 'string' ? key : Array.isArray(key) ? key.join('') : null;
-        if (!name) {
-          return null;
-        }
-
-        // Normalize name (strip prefix for comparison).
-        const normalizedName = name.replace(/^[$@]/, '');
-
-        // First search current document
-        for (const entry of index.nodes) {
-          const n = entry.node;
-          if (n.type === 'VarDeclaration') {
-            const nameNode = nodeField(n, 'name');
-            const declNameStr = asStringName(nameNode);
-            const declName = declNameStr.replace(/^[$@]/, '');
-            if (declName === normalizedName) {
-              const span = getSpan(n);
-              if (span) {
-                return {
-                  uri,
-                  range: toRange(document, span.start, span.end)
-                };
-              }
-            }
-          }
-        }
-
-        // Then search imported files
-        return findVarDefinitionAcrossDocs(uri, normalizedName, new Set());
-      }
-
-      // Mixin definition lookup: find Mixin for a Reference(type=mixin or mixin-ruleset).
-      if (node.type === 'Reference' && (node.options?.type === 'mixin' || node.options?.type === 'mixin-ruleset')) {
-        const key = nodeField(node, 'key');
-        const name = typeof key === 'string' ? key : Array.isArray(key) ? key.join('') : null;
-        if (!name) {
-          return null;
-        }
-
-        // Normalize mixin name: remove parentheses if present (e.g., ".button()" -> ".button")
-        let mixinName = name.trim();
-        if (mixinName.endsWith('()')) {
-          mixinName = mixinName.slice(0, -2);
-        }
-
-        // First search current document
-        for (const entry of index.nodes) {
-          const n = entry.node;
-          if (n.type === 'Mixin') {
-            const nameNode = nodeField(n, 'name');
-            const declNameStr = asStringName(nameNode);
-            let declName = declNameStr.trim();
-            // Normalize mixin name: remove parentheses if present
-            if (declName.endsWith('()')) {
-              declName = declName.slice(0, -2);
-            }
-            if (declName === mixinName) {
-              const span = getSpan(n);
-              if (span) {
-                return {
-                  uri,
-                  range: toRange(document, span.start, span.end)
-                };
-              }
-            }
-          }
-        }
-
-        // Then search imported files
-        return findMixinDefinitionAcrossDocs(uri, mixinName, new Set());
-      }
-
-      return null;
+      return findDefinitionAcrossDocs(uri, sym, new Set());
     },
 
     findReferences(uri, position) {
@@ -1358,7 +1069,7 @@ export function createEngine(): JessLanguageServiceEngine {
       if (!set) {
         return null;
       }
-      const tracked = ensure(uri);
+      const tracked = get(uri);
       const doc = tracked.document;
       const offset = doc.offsetAt(position);
       const text = doc.getText();
@@ -1406,7 +1117,6 @@ export function createEngine(): JessLanguageServiceEngine {
         if (!d) {
           continue;
         }
-        ensureAnalysis(d);
         const text = d.document.getText();
         const from = d.document.offsetAt(loc.range.start);
         const to = d.document.offsetAt(loc.range.end);
