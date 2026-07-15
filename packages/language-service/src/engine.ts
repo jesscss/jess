@@ -15,6 +15,7 @@ import * as colorUtils from './color-utils.js';
 import { cstDocumentSymbols, cstFoldingRanges, cstSelectionRanges } from './cst-analysis.js';
 import { cstSymbolAtOffset, cstFindDefinitionInDoc, cstCollectReferencesInDoc, type CstSymbol } from './cst-symbols.js';
 import { cstVariableNames, cstDeclaredSymbols } from './cst-syntactic.js';
+import { cstLintDiagnostics, LINT_CODES } from './cst-lint.js';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import {
   CompletionItem,
@@ -373,6 +374,10 @@ for (const d of webCssData.atDirectives ?? []) {
 
 const knownCssProperties: { all?: unknown } = require('known-css-properties');
 const CSS_PROPERTIES: string[] = Array.isArray(knownCssProperties.all) ? knownCssProperties.all.filter((v): v is string => typeof v === 'string') : [];
+// Lowercased set for the unknown-property lint (reuses the `known-css-properties`
+// data that also feeds completions). The web-custom-data `PROPERTIES_MAP` is
+// consulted alongside it at lint time for extra coverage.
+const CSS_PROPERTY_SET = new Set<string>(CSS_PROPERTIES.map(p => p.toLowerCase()));
 
 // Build property name -> property data map for hover/completions.
 const PROPERTIES_MAP = new Map<string, PropertyEntry>();
@@ -565,7 +570,16 @@ export function createEngine(): JessLanguageServiceEngine {
   let semanticDiagnosticSeverities: Record<string, DiagnosticSeverity> = {
     /* eslint-disable @typescript-eslint/naming-convention */
     'var/undefined': DiagnosticSeverity.Warning,
-    'mixin/undefined': DiagnosticSeverity.Warning
+    'mixin/undefined': DiagnosticSeverity.Warning,
+    // CST lint rules (MS vscode-css-languageservice parity). Keys match
+    // `LINT_CODES`; every rule's severity is settable via `configure()` and
+    // disabled with `ignore`/`off`.
+    [LINT_CODES.emptyRules]: DiagnosticSeverity.Warning,
+    [LINT_CODES.unknownProperties]: DiagnosticSeverity.Warning,
+    [LINT_CODES.unknownAtRules]: DiagnosticSeverity.Warning,
+    [LINT_CODES.duplicateProperties]: DiagnosticSeverity.Warning,
+    [LINT_CODES.hexColorLength]: DiagnosticSeverity.Error,
+    [LINT_CODES.zeroUnits]: DiagnosticSeverity.Hint
     /* eslint-enable @typescript-eslint/naming-convention */
   };
 
@@ -580,6 +594,8 @@ export function createEngine(): JessLanguageServiceEngine {
       case 'hint':
         return DiagnosticSeverity.Hint;
       case 'off':
+        return null;
+      case 'ignore':
         return null;
       default:
         return null;
@@ -865,9 +881,9 @@ export function createEngine(): JessLanguageServiceEngine {
         for (const [k, v] of Object.entries(severity)) {
           const parsed = parseSeverity(v);
           if (parsed === null) {
-            // off or invalid: delete to fall back to default behavior (or skip if off explicitly)
-            if (v === 'off') {
-              // Mark as off by deleting and remembering absence; handled at lookup-time by parseSeverity.
+            // off/ignore or invalid: delete so the rule is disabled (a missing
+            // key yields no severity at lookup-time, so the rule emits nothing).
+            if (v === 'off' || v === 'ignore') {
               delete next[k];
             }
             continue;
@@ -1678,6 +1694,26 @@ export function createEngine(): JessLanguageServiceEngine {
               }
             }
           }
+        }
+      }
+
+      // CST-based lint rules (MS vscode-css-languageservice parity). Sourced from
+      // the tolerant, incremental CST so they keep firing on partially-invalid
+      // input — unlike the AST-based semantic diagnostics above, which are gated
+      // on a clean parse. Severity (and enable/disable) flows through the same
+      // configurable `semanticDiagnosticSeverities` map as the semantic codes.
+      const cstTree = tracked.cstDoc?.tree;
+      if (cstTree) {
+        const lintDiags = cstLintDiagnostics(cstTree, doc, tracked.lang, {
+          severityOf: (code) => {
+            const s = semanticDiagnosticSeverities[code];
+            return typeof s === 'number' ? s : null;
+          },
+          isKnownProperty: name => CSS_PROPERTY_SET.has(name) || PROPERTIES_MAP.has(name),
+          isKnownAtRule: name => AT_RULES_MAP.has(`@${name}`)
+        });
+        for (const d of lintDiags) {
+          diagnostics.push(d);
         }
       }
 
