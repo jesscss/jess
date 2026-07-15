@@ -190,11 +190,13 @@ The canonical raw `benchmark.less` probe is exact-hash parity
 (`450437656c359981eb751275e0ac56150f8ee02ddd9c8c98a306395f0061d319`), but
 routes `nativeRenderCount=0`, `legacyRootRenderCount=1`, and
 `wholeDocumentEscapes=1`. Its timing therefore proves only that the fallback
-wrapper can preserve output; it does not prove a faster AST path. A native or
-evaluated canonical route has not been established. Verdict: retain the
-worktree as an isolated design experiment, do not merge it, and require an
-evaluated-canonical/import-capable route or explicitly reject the approach
-before assigning another tree2 implementation pass.
+wrapper can preserve output; it does not prove a faster AST path. The added
+evaluated-canonical case rejects with `Maximum call stack size exceeded` before
+it can produce a route or hash, so no evaluated canonical route has been
+established. Verdict: retain the worktree as an isolated design experiment,
+do not merge it, and require an evaluated-canonical/import-capable route or
+explicitly reject the approach before assigning another tree2 implementation
+pass.
 
 Q-40 audit mandate (2026-07-14): before accepting another evaluator optimization,
 inspect every action from parser adoption through final serialization. The action
