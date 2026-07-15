@@ -23,9 +23,13 @@
  * else raises `UnsupportedShape`, which the census collects and ranks.
  */
 
+import { parseLessFn } from '@jesscss/less-parser';
 import * as t2 from '../tree2/index.js';
 import type { Combinator } from '../tree2/index.js';
 import { sourceSpanOf } from '../tree/util/provenance.js';
+// [import] resolution/inlining lives in a sibling front-end file (kept out of
+// this shared dispatch file to minimize churn); wired in via `toStatement`.
+import { createImportState, resolveImportStatements, type ImportState } from './import-bridge.js';
 
 export class UnsupportedShape extends Error {
   constructor(
@@ -39,6 +43,10 @@ export class UnsupportedShape extends Error {
 
 interface BridgeCtx {
   source: string;
+  // [import] absolute path of the file being bridged (import paths resolve
+  // relative to it) + the shared once-dedup/cycle state for the whole run.
+  filePath?: string;
+  importState: ImportState;
 }
 
 /** A tree node is any object; we read its structural fields defensively. */
@@ -335,10 +343,21 @@ function mixinName(node: AnyNode): string {
 
 /* ---------------------------------------------------------- statements */
 
-function toStatement(ctx: BridgeCtx, node: unknown): t2.Statement | null {
+function toStatement(ctx: BridgeCtx, node: unknown): t2.Statement | t2.Statement[] | null {
   if (!isNode(node)) throw new UnsupportedShape('statement', typeOf(node));
   const t = typeOf(node);
   switch (t) {
+    // [import] resolve + inline the imported file's bridged statements here.
+    case 'StyleImport':
+      return resolveImportStatements(
+        node as AnyNode,
+        ctx.filePath,
+        ctx.importState,
+        (source, filePath, state) => bridgeToTree2Body(source, filePath, state),
+        (feature, detail) => {
+          throw new UnsupportedShape(feature, detail);
+        },
+      );
     case 'Declaration': {
       const name = (node as AnyNode).name;
       if (typeof name !== 'string') throw new UnsupportedShape('decl:name', typeOf(name));
@@ -377,7 +396,9 @@ function toBody(ctx: BridgeCtx, rules: unknown): t2.Statement[] {
   const out: t2.Statement[] = [];
   for (const r of rules) {
     const s = toStatement(ctx, r);
-    if (s !== null) out.push(s);
+    // [import] a StyleImport bridges to MANY statements (its inlined body).
+    if (Array.isArray(s)) out.push(...s);
+    else if (s !== null) out.push(s);
   }
   return out;
 }
@@ -409,11 +430,39 @@ function toMixinCall(ctx: BridgeCtx, node: AnyNode): t2.MixinCall {
 /**
  * Bridge a parsed Less `tree` root (`Rules`) into a tree2 `Root`. Throws
  * `UnsupportedShape` on the first shape tree2 does not yet cover.
+ *
+ * [import] `filePath` (the absolute path of the source file) enables `@import`
+ * resolution relative to it, and `importState` carries the once-dedup/cycle set
+ * across the whole recursive run. Both are optional so existing call sites
+ * (import-free fixtures) are unaffected.
  */
-export function bridgeToTree2(root: unknown, source: string): t2.Root {
-  const ctx: BridgeCtx = { source };
+export function bridgeToTree2(
+  root: unknown,
+  source: string,
+  filePath?: string,
+  importState?: ImportState,
+): t2.Root {
+  const ctx: BridgeCtx = { source, filePath, importState: importState ?? createImportState() };
   if (!isNode(root)) throw new UnsupportedShape('root', typeOf(root));
   const rules = (root as AnyNode).rules;
   if (!Array.isArray(rules)) throw new UnsupportedShape('root:rules', typeOf(rules));
   return t2.root(toBody(ctx, rules));
+}
+
+/**
+ * [import] Parse + bridge an imported file's SOURCE into its top-level tree2
+ * statements (the recursion the import bridge splices at the call site). Parsing
+ * is the shared front end; this keeps the parser dependency here in bridge.ts.
+ */
+function bridgeToTree2Body(source: string, filePath: string, state: ImportState): t2.Statement[] {
+  const parsed = parseLessFn(source);
+  if (parsed.errors.length > 0) {
+    throw new UnsupportedShape('import:parse-error', filePath);
+  }
+  const root = parsed.tree as unknown;
+  if (!isNode(root)) throw new UnsupportedShape('import:root', typeOf(root));
+  const rules = (root as AnyNode).rules;
+  if (!Array.isArray(rules)) throw new UnsupportedShape('import:root-rules', typeOf(rules));
+  const ctx: BridgeCtx = { source, filePath, importState: state };
+  return toBody(ctx, rules);
 }
