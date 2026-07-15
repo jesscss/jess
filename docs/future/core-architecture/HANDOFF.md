@@ -161,6 +161,13 @@ Other active docs in this dir:
 - **`STRINGS-OVER-NODES.md`** — active reference (producer flips still pending).
 - **`ASSIGNABLE-CONTROL-NODES-PLAN.md`** — queued future feature track.
 
+Tree2 status: the isolated no-class arena now passes `22/22` focused tests and
+has exact output hashes on its exploratory static/mixed probes. It is not an
+accepted performance change. The canonical raw `benchmark.less` route still
+uses one whole-document legacy escape (`native=0`, `legacyRoot=1`), so its
+timing cannot support a tree2 speed claim. Require an evaluated canonical route
+or an explicit rejection before any production integration.
+
 ## Aggressive Cutting Self-Prosecution
 
 - Latest pass: MERGE-OUTPUT SURFACE CARRY — delete recursive merge-admission

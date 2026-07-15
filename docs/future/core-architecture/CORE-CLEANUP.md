@@ -167,6 +167,35 @@ sequential, not parallel, even when their descriptions look independent.
 | Q-39 | **CLOSED — lazy OutputWriter transient state** — ordinary `tracksSources=false` writers no longer materialize idle captured-segment or queued-spacer own fields, and the dead trailing-newline-origin diagnostic/accessor is deleted. `_posLength` remains intentionally eager for constant-time rollback. Full core passed `3311` tests with `15` skipped and `2` deferred; focused writer coverage passed `55/55`; the exact same-checkout `benchmark.less` control/candidate/candidate sequence was `253.67 → 289.79 → 242.93 ms` (15 iterations, 5 warmups, 3 rounds), an order-sensitive swing with no causal speed claim. | `packages/core/src/tree/util/print.ts` | generated writer shape, capture/spacer/source-map behavior, full core, core build, benchmark sanity; no AST or eval fallback ownership |
 | Q-40 | **ACTIVE — canonical `benchmark.less` performance program (<40 ms)** — use the Less 4.6.3 fixture at `/Users/matthew/git/oss/less.js/packages/less/benchmark/benchmark.less`, with Jess `Compiler.render()` configured for `collapseNesting: true` plus the Less and Less-compat plugins. The contract is `scripts/compare-less-parse-render-env.mjs`, Node v25.9.0 arm64, 20 warmups, 45 alternating no-op pairs, fixed fixture/options/cache process, and a separate `parse-render` versus parse-once `render` phase; `profile-less-benchmark.mjs` is diagnostic only. Current same-checkout controls: Jess parse+render **238.98 ms** median (control 238.98, no-op candidate 241.79) and parse-once/render-only **202.92 ms** (control 202.92, no-op candidate 202.38)—both far from the target and proving render/eval is the immediate dominant gap. On the same machine/runtime, Less 4.6.3 measured `less.parse(..., { processImports: false })` **4.258 ms** and `less.render()` **31.101 ms** median (20 warmups, 45 samples). Jess preserves its own baseline output byte-for-byte (133,983 bytes); Less output is a speed comparator, not a byte oracle (131,674 bytes). The direct profile records 4,085 declaration preview fallbacks, 1,644 duplicate-declaration containers, and 33,607 declaration-strategy child-surface traversals. Those traversals are only 22 property-merge references and the safe local short-circuit activates once, so generic lookup cache/index work is rejected. Parseman remains separately ranked: equal-contract no-import parsing measured Less AST 6.01 ms, Jess `parseLessFn` 35.77 ms, and recognizer-only 12.58 ms; the next parser work is a capture/raw-child representation proof plus a separate no-op-trivia-call guard, not a claim that AST building explains the whole gap. Every retained core change must have same-checkout A/B evidence plus core/spine/all-less/aggressive gates. | eval/render/fallback, detached declaration formatting, parser recognizer/capture, import/mixin placement scaling, node allocation | stable medians with fixed Node/fixture/options/cache/warmups/rounds, byte identity against Jess baseline, core/spine/all-less/aggressive gates, then merge/push |
 
+### Q-40 greenfield tree2 AST POC audit — incomplete, not integrated (2026-07-14)
+
+The isolated worktree `/Users/matthew/git/worktrees/jess-greenfield-ast-design-20260714`
+now has a no-class, columnar `tree2` arena under `packages/core/src/tree2/`,
+with explicit legacy-island records and a cold debug projection. It is not
+exported or wired into production. Focused parity coverage passes `22/22`,
+including caller-owned flat-buffer append behavior and invalid escape-payload
+rejection. The first benchmark attempt exposed a context/trivia parity problem;
+the corrected run now produces exact hashes.
+
+The corrected exploratory run used `TREE2_WARMUPS=3` and `TREE2_SAMPLES=5`
+(not the canonical 20/45 A/B gate). `large-static-720` routed all `720`
+rulesets natively and measured tree2 total `15.25 ms` versus the sequential
+baseline `21.57 ms`; `large-mixed-evaluated-720` routed `720` native rulesets
+plus one legacy subtree and measured `10.03 ms` versus `9.93 ms`. These are
+stage probes, not causal before/after claims: they were not alternating
+same-checkout A/B samples and the synthetic fixtures do not represent the
+canonical Less topology.
+
+The canonical raw `benchmark.less` probe is exact-hash parity
+(`450437656c359981eb751275e0ac56150f8ee02ddd9c8c98a306395f0061d319`), but
+routes `nativeRenderCount=0`, `legacyRootRenderCount=1`, and
+`wholeDocumentEscapes=1`. Its timing therefore proves only that the fallback
+wrapper can preserve output; it does not prove a faster AST path. A native or
+evaluated canonical route has not been established. Verdict: retain the
+worktree as an isolated design experiment, do not merge it, and require an
+evaluated-canonical/import-capable route or explicitly reject the approach
+before assigning another tree2 implementation pass.
+
 Q-40 audit mandate (2026-07-14): before accepting another evaluator optimization,
 inspect every action from parser adoption through final serialization. The action
 ledger must account for node construction, adoption/parenting, span/trivia
