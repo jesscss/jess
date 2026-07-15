@@ -174,6 +174,43 @@ fixture and reports `227.862→229.434 ms` parse+render,
 `197.435→200.022 ms` render-only, and `135,794` output bytes with hash
 `9a58451bd3b0c9d80913df38be3b199994d2b93d34a9d2851f1b18d9dcaaa7cc`.
 
+## Predict before building
+
+These are REQUIRED pre-checks before committing effort to any perf-architecture
+change. They are not advice; a lane that skips them is not started. Two big bets
+died against these checks and both were predictable from cheap pre-work we
+skipped: the single-eval-emit "spine" flip ("fewer walks = faster") benched
+SLOWER because the real cost is per-node SELECTOR allocation, not pass-count —
+one profile of `benchmark.less` would have shown it; and the indexed-extend
+prototype ("indexing = faster") was 3.8× slower because the fixture has only
+26 extends over 1–2-compound selectors, below any index break-even.
+
+1. **Profile the real fixture first, and locate the ms.** No perf-architecture
+   work starts without a current profile of `benchmark.less` showing the cost is
+   where you think it is. The current profile puts the cost in per-node SELECTOR
+   allocation plus the extend step — NOT pass-count, value materialization,
+   async, or GC. If your idea targets one of those, the profile already says no.
+
+2. **Compute the break-even for any index/cache/batch/arena.** State N (item
+   count) and the per-item constant, then compute the crossover against the
+   structure's fixed cost. Small N or cheap per-item work → predict the structure
+   LOSES because fixed cost dominates. Worked example: the extend prototype indexed
+   N=26 extends with 1–2-compound selectors; a linear scan already finished before
+   the index paid for itself — it lost, as the estimate would have said up front.
+
+3. **Synthetic microbenchmarks are disqualified as evidence.** Only a
+   byte-identical same-checkout A/B on the real fixture counts. A synthetic win
+   is not a reason to build, land, or keep anything.
+
+4. **Recurring "neutral / no speed claim" after real effort = WRONG LEVER.** It
+   is not "not yet." Re-diagnose against the profile and move the effort; do not
+   push harder on the same structure.
+
+5. **State the expected win before building.** Compute
+   `profile-fraction × expected-reduction − the fix's own cost`. A bet that
+   cannot clear a stated threshold on that arithmetic is a no-go before a line is
+   written.
+
 ### Q-40 capture ledger — 2026-07-15
 
 This is the index for today's architecture/performance work. It deliberately
