@@ -64,6 +64,35 @@ is doing ~6× the per-node work, concentrated in per-placement reconstruction.
   need gating on `sourceMap` disabled. (Ties to the standing fieldSpans/valueSpans
   position/span machinery question.)
 
+## Extend architecture: adopt the bucket-path model, NOT eval's flatten model (decided 2026-07-15)
+
+**The arena's extend renderer MUST be built on the bucket-path / walk model** (the spine's
+`packages/core/src/tree/extend/emit.ts` + `spine-extend.ts` — compose/project/fold from an
+explicit BucketPath), **NOT** eval's legacy **flatten model** (`extend-roots.ts` /
+`extend.ts` / `extend-walk.ts`).
+
+Why: eval's flatten model is **structurally incapable** of representing `&`-in-`:is()` +
+ancestral-branch compositions — stated in eval's own source (`extend-walk.ts:22-46`:
+"Flattening cannot represent this"; `:44` ComplexSelector find is "diagnostics only … falls
+through to legacy"). The spine's ~2700-line bucket-path architecture exists *precisely
+because* eval can't. Measured 2026-07-15 (agent a09eb84e, forced-eval): eval renders
+`tests-unit/extend-nest/extend-nest.less` + `tests-unit/extend-selector/extend-selector.less`
+WRONG — drops nested-extender ancestors (`.type1 .sidebar3` → `.sidebar3`), no `:is()`
+collapse of pseudo-suffixed groups (`:is(.button, .submit):hover`), leaks raw `&` into
+`:is()` — while the spine renders both byte-identical to golden. **These two fixtures are the
+precise oracle for extend correctness.**
+
+Consequences for the arena:
+- **KEEP/adopt** the bucket-path compose/project/fold, the PLAN `reachesRoot` scope
+  predicate, and the own-construction/`UNSUPPORTED` discipline. Eval's flatten extend is the
+  eventual **DISCARD**, not the spine's extend renderer. (This corrects an earlier "delete the
+  spine" framing — the spine's extend renderer is load-bearing and CORRECT; only the
+  `CompoundSetTrie` is proven discard.)
+- Do NOT port extend into a flatten model or reintroduce one.
+- The ~43ms "wasted spine attempt" tax (spine gathers extends then aborts to eval on
+  abort-bound trees like benchmark) **dissolves once the arena unifies on bucket-path extend
+  and retires the flatten path** — rather than by deleting the spine.
+
 ## Candidate radical departures to test (pick one per iteration, measure, log)
 
 Each must obey guardrail #3 (no old-machinery hot path). Rough order of promise:
