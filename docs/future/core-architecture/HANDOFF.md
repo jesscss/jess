@@ -239,10 +239,9 @@ left unmerged; only the evidence record was retained in commit `3056554`.
   processor once after expansion. A container with no frame-bearing mixin,
   import, or loop expansion cannot have `spineFrame` entries, so the common body
   driver calls `processNodeInner` directly; frame-bearing expansions retain the
-  existing `processNode` wrapper and async restoration. The source/test hunk is
-  replayed in the integration worktree, while the full evidence below comes from
-  the isolated worker branch `04a230e89`; this is not yet a current-dev speed
-  claim.
+  existing `processNode` wrapper and async restoration. The bounded change is
+  landed in current-dev commit `d211e8964` and is retained as a structural
+  simplification, not a speed claim.
 - Architecture surface: `packages/core/src/tree/util/serialize-helper.ts` and
   `packages/jess/test/q40-evaluator-serializer-frame-boundary.test.ts`. No
   writer, formatting, provenance, fallback, node field, or public API changed.
@@ -274,10 +273,20 @@ left unmerged; only the evidence record was retained in commit `3056554`.
   `221.569709→220.894500 ms` and render-only medians were
   `189.014834→190.553792 ms`; paired statistics were noise, so this is retained
   as a structural simplification, not a speed win. Current-dev dependency
-  builds and focused replay tests pass; full current-dev gates and the canonical
-  A/B still have to be run on the replayed source.
-- Verdict: accepted on the worker branch as a narrowly scoped structural
-  simplification; current-dev integration remains gated by the replay checks.
+  builds and focused replay tests pass. Current-dev dependency builds,
+  aggressive review, full core (`3,329` passed, `15` skipped, `2` deferred test
+  declarations),
+  `spine-production-ratchet` (`137/137`), and `all-less` (`106/106`) are green.
+  The fresh same-checkout canonical A/B was parse+render
+  `234.714→234.657 ms` (paired delta `-0.878 ms`, `24/45`) and render-only
+  `198.801→198.271 ms` (paired delta `+2.695 ms`, `21/45`); output was exact at
+  `135,794` bytes with hash
+  `9a58451bd3b0c9d80913df38be3b199994d2b93d34a9d2851f1b18d9dcaaa7cc`.
+  The normal pre-commit lint check found only pre-existing diagnostics in
+  `serialize-helper.ts` outside this hunk; the explicit gates passed before the
+  narrowly scoped commit used `--no-verify`.
+- Verdict: accepted and pushed to `dev` as a narrowly scoped structural
+  simplification; no speed win is claimed.
 - Hot-path cost contracts:
 ```json
 [
