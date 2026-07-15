@@ -14,6 +14,7 @@ import { extractImports, resolveImport } from '@jesscss/style-resolver';
 import * as colorUtils from './color-utils.js';
 import { cstDocumentSymbols, cstFoldingRanges, cstSelectionRanges } from './cst-analysis.js';
 import { cstSymbolAtOffset, cstFindDefinitionInDoc, cstCollectReferencesInDoc, type CstSymbol } from './cst-symbols.js';
+import { cstSemanticTokens, cstVariableNames, cstDeclaredSymbols } from './cst-syntactic.js';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import {
   CompletionItem,
@@ -417,28 +418,6 @@ export type JessLanguageServiceEngine = {
   getDocumentColors(uri: string): Promise<ColorInformation[]> | ColorInformation[];
   getColorPresentations(uri: string, color: import('vscode-languageserver-types').Color, range: Range): ColorPresentation[];
 };
-
-// Keep in sync with server semantic token legend.
-const SEMANTIC_TOKEN_TYPES = [
-  'comment',
-  'string',
-  'keyword',
-  'enumMember',
-  'number',
-  'operator',
-  'function',
-  'variable',
-  'property',
-  'type',
-  'class',
-  'namespace'
-] as const;
-
-type SemanticTokenType = (typeof SEMANTIC_TOKEN_TYPES)[number];
-
-const SEMANTIC_TOKEN_TYPE_INDEX = new Map<SemanticTokenType, number>(
-  SEMANTIC_TOKEN_TYPES.map((t, i) => [t, i])
-);
 
 function asStringName(value: unknown): string {
   if (typeof value === 'string') {
@@ -854,7 +833,11 @@ export function createEngine(): JessLanguageServiceEngine {
     },
 
     getCompletions(uri, position) {
-      const tracked = ensure(uri);
+      // CST-grounded for the SYNTACTIC path (declared-variable names): reads the
+      // tolerant CST (no AST reparse) so variable completion survives half-typed
+      // input. At-rule / property / property-value completions are text-driven
+      // and need no tree at all.
+      const tracked = get(uri);
       const document = tracked.document;
       const text = document.getText();
       const offset = document.offsetAt(position);
@@ -875,20 +858,11 @@ export function createEngine(): JessLanguageServiceEngine {
             ? currentWord.startsWith('$')
             : currentWord.startsWith('--');
 
-      if (wantVar && tracked.index) {
+      const cstTree = tracked.cstDoc?.tree;
+      if (wantVar && cstTree) {
         const prefix = currentWord.toLowerCase();
-        for (const { node } of tracked.index.nodes) {
-          if (node.type !== 'VarDeclaration') {
-            continue;
-          }
-          const nameNode = nodeField(node, 'name');
-          if (!nameNode) {
-            continue;
-          }
-          // Extract string value from node (might be Any node with valueOf(), or already a string)
-          const nameStr = asStringName(nameNode);
-          // Remove prefix if present for normalization (SCSS already strips $, Less might keep @)
-          const nameWithoutPrefix = nameStr.replace(/^[$@]/, '');
+        // Bare declared-variable names off the CST; wrap in the dialect sigil.
+        for (const nameWithoutPrefix of cstVariableNames(cstTree, document)) {
           const label =
             tracked.lang === 'less'
               ? `@${nameWithoutPrefix}`
@@ -1622,38 +1596,24 @@ export function createEngine(): JessLanguageServiceEngine {
       return cstSelectionRanges(tree, tracked.document, positions);
     },
 
-    getCodeActions(uri, range, context) {
-      const tracked = ensure(uri);
+    getCodeActions(uri, _range, context) {
+      // CST-grounded for the SYNTACTIC paths: the declared-symbol inventory
+      // behind "did you mean" reads the tolerant CST (no AST reparse), and the
+      // undefined identifier is recovered from the diagnostic message. The
+      // create-variable / create-mixin fixes are pure text edits. All of this
+      // survives an otherwise-invalid document.
+      const tracked = get(uri);
       const doc = tracked.document;
       const actions: CodeAction[] = [];
 
       const diagnostics = Array.isArray(context?.diagnostics) ? context.diagnostics : [];
-      const findNodeAt = (pos: Position) => tracked.index?.findNodeAtOffset(doc.offsetAt(pos)) ?? null;
       const text = doc.getText();
 
       // Declared-symbol inventories (bare identifiers) for "did you mean" fixes.
-      const declaredVars = new Set<string>();
-      const declaredMixins = new Set<string>();
-      if (tracked.index) {
-        for (const { node } of tracked.index.nodes) {
-          if (node.type === 'VarDeclaration') {
-            const bare = asStringName(nodeField(node, 'name')).trim().replace(/^[$@]/, '');
-            if (bare) {
-              declaredVars.add(bare);
-            }
-          } else if (node.type === 'Mixin') {
-            let bare = asStringName(nodeField(node, 'name')).trim();
-            const parenIdx = bare.indexOf('(');
-            if (parenIdx >= 0) {
-              bare = bare.slice(0, parenIdx);
-            }
-            bare = bare.replace(/^[.#]/, '');
-            if (bare) {
-              declaredMixins.add(bare);
-            }
-          }
-        }
-      }
+      const cstTree = tracked.cstDoc?.tree;
+      const declared = cstTree ? cstDeclaredSymbols(cstTree, doc) : { vars: new Set<string>(), mixins: new Set<string>() };
+      const declaredVars = declared.vars;
+      const declaredMixins = declared.mixins;
 
       // Closest declared identifiers to `name` (edit distance <= 2), nearest first.
       const suggestClosest = (name: string, pool: Set<string>): string[] => {
@@ -1703,14 +1663,9 @@ export function createEngine(): JessLanguageServiceEngine {
       for (const diag of diagnostics) {
         const code = String(diag?.code ?? '');
         if (code === 'var/undefined') {
-          const node = findNodeAt(diag.range?.start ?? range.start);
-          let raw = '';
-          if (node?.type === 'Reference' && node.options?.type === 'variable') {
-            const key = nodeField(node, 'key');
-            raw = typeof key === 'string' ? key : Array.isArray(key) ? key.join('') : asStringName(key);
-          } else {
-            raw = String(diag?.message ?? '').match(/Undefined variable\s+(.+)$/)?.[1] ?? '';
-          }
+          // The undefined name is carried by the diagnostic message (produced by
+          // getDiagnostics), so no AST node lookup is needed.
+          const raw = String(diag?.message ?? '').match(/Undefined variable\s+(.+)$/)?.[1] ?? '';
           const name = raw.trim() || 'var';
 
           const insertText = tracked.lang === 'scss'
@@ -1738,14 +1693,8 @@ export function createEngine(): JessLanguageServiceEngine {
         }
 
         if (code === 'mixin/undefined') {
-          const node = findNodeAt(diag.range?.start ?? range.start);
-          let name = '';
-          if (node?.type === 'Reference' && (node.options?.type === 'mixin' || node.options?.type === 'mixin-ruleset')) {
-            const key = nodeField(node, 'key');
-            name = typeof key === 'string' ? key : Array.isArray(key) ? key.join('') : asStringName(key);
-          } else {
-            name = String(diag?.message ?? '').match(/Undefined mixin\s+(.+)$/)?.[1] ?? '';
-          }
+          // The undefined mixin name is carried by the diagnostic message.
+          let name = String(diag?.message ?? '').match(/Undefined mixin\s+(.+)$/)?.[1] ?? '';
           name = name.trim() || '.mixin';
 
           const insertText = `${name}() {\n  \n}\n\n`;
@@ -1954,190 +1903,15 @@ export function createEngine(): JessLanguageServiceEngine {
     },
 
     getSemanticTokens(uri) {
-      const tracked = ensure(uri);
-      const doc = tracked.document;
-      const parse = tracked.parse;
-      const index = tracked.index;
-      const data: number[] = [];
-
-      // Rebuilt off the functional Jess AST + source text. The legacy Chevrotain
-      // token stream (`parse.lexerResult.tokens`) no longer exists, so tokens are
-      // derived by walking the indexed nodes and classifying by node type/span.
-      // Interpolated strings are split into string/variable pieces by rescanning
-      // the source within the string's span (the AST collapses each interpolation
-      // to a single coarse `Reference`, so precise offsets come from the text).
-      if (!parse?.tree || !index) {
-        return { data };
+      // CST-grounded (Option B): token classification is purely syntactic, so it
+      // reads off the tolerant, incremental CST (no AST reparse) and keeps
+      // working on half-typed input where the eval AST yields nothing.
+      const tracked = get(uri);
+      const tree = tracked.cstDoc?.tree;
+      if (!tree) {
+        return { data: [] };
       }
-
-      const text = doc.getText();
-      const typeIdxOf = (t: SemanticTokenType) => SEMANTIC_TOKEN_TYPE_INDEX.get(t) ?? 0;
-
-      type Cand = { start: number; end: number; typeIdx: number };
-      const cands: Cand[] = [];
-      const push = (start: number, end: number, type: SemanticTokenType) => {
-        if (Number.isFinite(start) && Number.isFinite(end) && end > start) {
-          cands.push({ start, end, typeIdx: typeIdxOf(type) });
-        }
-      };
-
-      // Split an interpolated string region [s, e) into quote/string/variable
-      // pieces. Quotes (if present) become their own `string` tokens so themes
-      // color them, and each `@{…}` / `#{…}` interpolation becomes a `variable`.
-      const interpSource = tracked.lang === 'scss' ? '#\\{[^}]*\\}' : '@\\{[^}]*\\}';
-      const emitStringRegion = (s: number, e: number) => {
-        let contentStart = s;
-        let contentEnd = e;
-        const openCh = text.charAt(s);
-        if (openCh === '"' || openCh === '\'') {
-          push(s, s + 1, 'string');
-          contentStart = s + 1;
-        }
-        const closeCh = text.charAt(e - 1);
-        const hasClose = (closeCh === '"' || closeCh === '\'') && e - 1 >= contentStart;
-        if (hasClose) {
-          contentEnd = e - 1;
-        }
-        const content = text.slice(contentStart, contentEnd);
-        const re = new RegExp(interpSource, 'g');
-        let last = contentStart;
-        let m: RegExpExecArray | null;
-        while ((m = re.exec(content)) !== null) {
-          const ms = contentStart + m.index;
-          const me = ms + m[0].length;
-          if (ms > last) {
-            push(last, ms, 'string');
-          }
-          push(ms, me, 'variable');
-          last = me;
-          if (me === ms) {
-            re.lastIndex++;
-          }
-        }
-        if (contentEnd > last) {
-          push(last, contentEnd, 'string');
-        }
-        if (hasClose) {
-          push(e - 1, e, 'string');
-        }
-      };
-
-      const looksQuoted = (s: number, e: number) => {
-        const c = text.charAt(s);
-        return (c === '"' || c === '\'') && e > s + 1;
-      };
-
-      for (const { node } of index.nodes) {
-        const span = getSpan(node);
-        if (!span) {
-          continue;
-        }
-        switch (node.type) {
-          case 'Comment': {
-            push(span.start, span.end, 'comment');
-            break;
-          }
-          case 'StyleImport':
-          case 'AtRule':
-          case 'AtRuleStatement': {
-            // Classify the leading `@keyword` (the rest is covered by child nodes).
-            const head = /^@[-\w]+/.exec(text.slice(span.start, span.end));
-            if (head) {
-              push(span.start, span.start + head[0].length, 'namespace');
-            }
-            break;
-          }
-          case 'Reference': {
-            const kind = node.options?.type;
-            if (kind === 'variable') {
-              push(span.start, span.end, 'variable');
-            } else if (kind === 'mixin' || kind === 'mixin-ruleset' || kind === 'function') {
-              push(span.start, span.end, 'function');
-            }
-            break;
-          }
-          case 'Color':
-          case 'Num':
-          case 'Dimension': {
-            push(span.start, span.end, 'number');
-            break;
-          }
-          case 'Interpolated': {
-            // The reliable string-region span (the wrapping `Quoted` node's own
-            // span is coarse/unreliable when it carries an interpolation).
-            if (looksQuoted(span.start, span.end)) {
-              emitStringRegion(span.start, span.end);
-            } else {
-              // Bare (unquoted) interpolation, e.g. a selector/ident fragment.
-              const re = new RegExp(interpSource, 'g');
-              let m: RegExpExecArray | null;
-              const region = text.slice(span.start, span.end);
-              while ((m = re.exec(region)) !== null) {
-                push(span.start + m.index, span.start + m.index + m[0].length, 'variable');
-              }
-            }
-            break;
-          }
-          case 'Quoted': {
-            // Plain (non-interpolated) string. Interpolated strings surface via
-            // their `Interpolated` child; the `Quoted` span is unreliable there,
-            // so only emit when the span actually points at a quoted literal.
-            if (looksQuoted(span.start, span.end)) {
-              emitStringRegion(span.start, span.end);
-            }
-            break;
-          }
-          default:
-            break;
-        }
-      }
-
-      // Resolve overlaps: prefer the innermost (shortest) token at any position.
-      // Sorting by (start asc, length asc) then greedily accepting anything that
-      // starts at/after the last accepted end yields a non-overlapping, fine-
-      // grained set (a coarse parent span loses to the finer pieces inside it).
-      cands.sort((a, b) => (a.start - b.start) || ((a.end - a.start) - (b.end - b.start)));
-
-      type Pending = { line: number; char: number; length: number; typeIdx: number; modifiers: number };
-      const pending: Pending[] = [];
-      let acceptedEnd = -1;
-      for (const c of cands) {
-        if (c.start < acceptedEnd) {
-          continue;
-        }
-        acceptedEnd = c.end;
-        // A single semantic token cannot span multiple lines; split on newlines.
-        let segStart = c.start;
-        while (segStart < c.end) {
-          const startPos = doc.positionAt(segStart);
-          const lineEndOffset = doc.offsetAt(Position.create(startPos.line + 1, 0));
-          const segEnd = Math.min(c.end, lineEndOffset);
-          // Trim a trailing newline out of the segment length.
-          let len = segEnd - segStart;
-          const endPos = doc.positionAt(segEnd);
-          if (endPos.line !== startPos.line && len > 0) {
-            len -= 1;
-          }
-          if (len > 0) {
-            pending.push({ line: startPos.line, char: startPos.character, length: len, typeIdx: c.typeIdx, modifiers: 0 });
-          }
-          segStart = segEnd;
-        }
-      }
-
-      // LSP semantic tokens are delta-encoded in document order.
-      pending.sort((a, b) => (a.line - b.line) || (a.char - b.char));
-      let prevLine = 0;
-      let prevChar = 0;
-      for (const t of pending) {
-        const deltaLine = t.line - prevLine;
-        const deltaStart = deltaLine === 0 ? (t.char - prevChar) : t.char;
-        data.push(deltaLine, deltaStart, t.length, t.typeIdx, t.modifiers);
-        prevLine = t.line;
-        prevChar = t.char;
-      }
-
-      return { data };
+      return { data: cstSemanticTokens(tree, tracked.document, tracked.lang) };
     },
 
     async getDocumentColors(uri) {
