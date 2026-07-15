@@ -134,23 +134,23 @@ Each item is one line of implementation sketch. Ordered by the user's priority.
 
 **P0 — completions & the data behind them**
 
-1. **Load `restrictions` + pseudo data from `@vscode/web-custom-data`.** The
+1. ✅ **DONE (dev f00b51fb2).** **Load `restrictions` + pseudo data from `@vscode/web-custom-data`.** The
    property value-completion depth is entirely gated on data: currently only
    `values[]` names are read. Also load pseudo-classes/elements (web-custom-data
    ships `pseudoClasses`/`pseudoElements`) — Jess ignores them today.
-2. **Restriction-driven value completions.** Given the property before the `:`,
+2. ✅ **DONE.** **Restriction-driven value completions.** Given the property before the `:`,
    read its `restrictions` (e.g. `color`, `length`, `enum`, `timing-function`)
    and emit the matching value kinds: enum names *plus* units (`px/em/rem/%/…`),
    CSS-wide keywords (`inherit/initial/unset/revert`), and `var()`/`calc()`.
    Mirror MS's `cssCompletion.getValueEnumProposals`/`getCSSWideKeywordProposals`.
-3. **Pseudo-class / pseudo-element completions** on `:` / `::` in selector
+3. ✅ **DONE.** **Pseudo-class / pseudo-element completions** on `:` / `::` in selector
    context, with argument snippets for `:nth-*`. Pure data + a selector-context
    check (reuse the brace-depth scanner already in `getCompletions`).
-4. **SCSS/Less mixin completions.** The declared-mixin inventory already exists
+4. ⏳ **PARTIAL (SCSS `@include` done; Less `.foo()` call still TODO).** **SCSS/Less mixin completions.** The declared-mixin inventory already exists
    (`cstDeclaredSymbols().mixins`, used for did-you-mean). Surface it as
    completions in `@include ` (scss) / `.` call context (less) — symmetric to the
    existing `cstVariableNames` path.
-5. **`!important`** after a value — trivial keyword completion; near-zero cost.
+5. ✅ **DONE.** **`!important`** after a value — trivial keyword completion; near-zero cost.
 
 **P1 — feels-like-real-support**
 
