@@ -123,6 +123,57 @@ the log below every iteration so the track compounds instead of repeating.
 
 <!-- newest first; each entry: date · hypothesis · prediction · byte-identical? · measured Δ · kept/dropped · why · next -->
 
+- 2026-07-15 — **rung (parallel fan-out) @IMPORT: resolve + inline imported files in the FRONT END,
+  proven BYTE-IDENTICAL against the REAL import-resolving oracle. VERDICT: `@import` inlining is a
+  pure front-end concern that adds NO clone/inherit/materialize op to tree2 — the imported file's
+  bridged statements splice into the parent body and tree2's per-scope `collectVars` sees imported
+  variables alongside the importer's for free (branch `experiment/tree2-import-20260715`, experimental
+  scaffold, NOT merged; built in parallel with the at-rules + guards rungs).**
+  - **Boundary-clean resolution.** All import RESOLUTION (find path → read file → parse → recursively
+    bridge → inline) lives OUTSIDE `tree2/` in a NEW front-end file `tree2-frontend/import-bridge.ts`
+    (touches only `node:fs`/`node:path` + the tree2 public surface — NOT even `../tree`). `bridge.ts`
+    took a MINIMAL, `// [import]`-marked change: `BridgeCtx` gained `filePath` + a shared
+    `ImportState` (once-dedup set + cycle stack); `bridgeToTree2` gained two OPTIONAL trailing params
+    (existing import-free call sites unaffected); `toStatement` got one `case 'StyleImport'` delegating
+    to the new file; `toBody` flattens the many-statement import result. **Boundary guard GREEN** (grep
+    of `src/tree2` for `../tree` empty; vitest guard passes). No `as any`.
+  - **The oracle had to resolve imports too.** The bare-context `renderRealOracle` has no file manager,
+    so it does NOT resolve `@import`. Added a TEST-ONLY oracle (`__tests__/import-oracle.ts`) = the jess
+    `Compiler` with the Less + less-compat plugins (the real, file-resolving import pipeline). It lives
+    under `__tests__/` (excluded from the core build) so importing the `jess` app never pollutes core's
+    build graph; vitest aliases the workspace packages to source.
+  - **Semantics covered to match oracle bytes:** plain Less `@import "x"`/`"x.less"` (relative-path
+    resolution incl. `..`), scope sharing across the boundary (a `@c` defined in the import resolves in
+    the importer), `once` dedup (a repeat import of the same resolved path emits nothing), and
+    `(multiple)`/`once:false` re-emit — where a `multiple` import re-emits its WHOLE subtree including its
+    own nested `once` imports (fresh dedup scope per multiple placement, which was the one non-obvious
+    Less rule; fixed after `import-once.less` first diffed). `(reference)`, `(optional)`-missing, cycles,
+    and `@-compose`/`with` are handled or cleanly rejected. CSS-passthrough (`(css)`/`.css`/`url()`/remote)
+    is deferred (it hoists to top-of-document) — RAISED as `UnsupportedShape`, never mis-emitted.
+  - **Byte-identity (vs the REAL import-resolving oracle).** 5 targeted fixtures pass:
+    `import-test-f.less` (static import inline), `import-test-b.less` (import + cross-boundary variable +
+    mixin), `import-once.less` (3× once-dedup + 2× multiple re-emit + deeper `..` resolution), plus two
+    no-import controls. **Import-fixture census (32 real less.js fixtures containing `@import`): 7 CLEAN
+    byte-identical passes, ZERO diffs (every non-pass cleanly REJECTS on a deferred rung — AtRule 4,
+    AtRuleStatement 4, Extend 3, Any 2, inline-import 2, url()-specifier 2, unresolved 1).** Before this
+    rung all 32 rejected at the bridge's missing `StyleImport` case; now 7 pass and the other 18 bridge
+    past the import and reject on their NEXT blocker (advancing them). No false positives.
+  - **Race (same worktree, warmup 5, N=15 median, `--expose-gc`; t2 = bridge(resolve+inline: read+parse+
+    bridge each imported file, main-file parse excluded)+serialize ; tree = the jess Compiler FULL import
+    pipeline, the only faithful oracle ; all byte-identical):**
+      - `import-test-f`: t2 **0.1216 ms** vs tree **1.5307 ms = 12.6×**; heap/rnd t2 50.5 KB vs tree
+        644.7 KB; **ops t2 clone 0 + inherit 0 vs tree clone 1 + inherit 2**.
+      - `import-test-b`: **14.5×** (0.1065 vs 1.5450 ms); tree clone 3 + inherit 10, t2 0.
+      - `import-once`: **10.3×** (0.4729 vs 4.8721 ms); heap t2 270 KB vs tree 2234 KB; tree clone 15 +
+        inherit 25, t2 0.
+    Straight, no extrapolation. tree2's clone/inherit/withComponents stay structurally ZERO on every
+    import fixture (the representation has no such op), while the legacy import fold pays clone+inherit per
+    placed child. Kept (experimental scaffold, NOT merged). **Integrator note:** `bridge.ts` edits are
+    additive + `// [import]`-marked and confined to the `StyleImport` case + `BridgeCtx`/`bridgeToTree2`
+    signatures; no `serialize.ts`/`nodes.ts` change — should merge cleanly alongside the at-rules/guards
+    branches. Code: `tree2-frontend/import-bridge.ts` (new), `tree2-frontend/bridge.ts` (marked), and
+    `__tests__/{import-oracle,import-byte-identity,import-census,import-race}` (new).
+
 - 2026-07-15 — **rung 8: VALUE OPERATIONS + FUNCTION CALLS via a SHARED VALUE SERVICE, proven
   BYTE-IDENTICAL against a REAL (function-evaluating) oracle. VERDICT: adding value-eval kept
   tree2's eval free of any clone/inherit/materialize op (still structurally ZERO), the shared-
