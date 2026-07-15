@@ -147,6 +147,11 @@ Other active docs in this dir:
 
 - **`CORE-CLEANUP.md`** — the single live @jesscss/core cleanup queue (binding/lookup,
   serialization, node field budgets, perf evidence). Focus router above points here.
+- **`AST-FROM-SCRATCH-DESIGN.md`** — isolated greenfield fast-AST experiment:
+  non-1:1 semantic shapes are allowed, CSS output is the acceptance oracle,
+  dynamic behavior has explicit legacy escapes, and debug projection remains
+  cold. The experiment is not production-wired until its stage-separated
+  comparisons prove a useful end-to-end path.
 - **`AGGRESSIVE-CUTTING-REVIEW.md`** — the patch-shape refusal checklist; run before
   committing changes to AST/eval/render/lookup/traversal/copy/output/metadata.
 - **`STRINGS-OVER-NODES.md`** — active reference (producer flips still pending).
