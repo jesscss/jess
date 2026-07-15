@@ -302,7 +302,7 @@ Other active docs in this dir:
 - Helper/API surface: no export or public method was added; the new admission and counters are local to the existing serializer function.
 - Metadata mutations: none. The admission reads the already-rendered child shape and does not attach fields, alter parents, or mutate source/provenance state.
 - Review-flagged diff tokens: [side map/set] the existing duplicate-analysis maps are now allocated lazily after the singleton admission; no additional retained side state exists and the stable-singleton path allocates zero runtime maps.
-- Evidence: canonical counter probe `calls=1,644`, `containers=1,644`, `stableSingletonContainers=749`, `featureBearingContainers=895`, `rulesVisited=4,367` versus `5,116` pre-cut, `countMapAllocations=895` versus `1,644` pre-cut, `noFeatureAllocations=0`, `noFeatureMisses=749`, `repeatedPropertyContainers=91`; core build and full core tests passed; focused basic-render tests passed `9/9`; all performance samples above were collected from separate before/after binaries on the same machine.
+- Evidence: canonical counter probe `containers=1,644`, `calls=895`, `admittedCalls=895`, `stableSingletonContainers=749`, `featureBearingContainers=895`, `rulesVisited=4,367` versus `5,116` pre-cut, `countMapAllocations=895` versus `1,644` pre-cut, `noFeatureAllocations=0`, `noFeatureMisses=749`, `repeatedPropertyContainers=91`; core build and full core tests passed; focused basic-render tests passed `9/9`; all performance samples above were collected from separate before/after binaries on the same machine.
 - Hot-path cost contracts:
 ```json
 [
@@ -313,7 +313,8 @@ Other active docs in this dir:
       "cost": "cheap",
       "before": "collection and allocation"
     },
-    "calls": 1644,
+    "calls": 895,
+    "admittedCalls": 895,
     "containers": 1644,
     "featureBearingContainers": 895,
     "itemsVisited": 4367,

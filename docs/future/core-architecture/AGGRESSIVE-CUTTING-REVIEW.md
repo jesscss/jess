@@ -175,7 +175,10 @@ This is required for every registered contract. It rejects a report that claims
 10,000 expensive calls while the cheap admission found no feature-bearing work.
 The verifier checks the arithmetic and the declared counter names; it does not
 independently collect runtime counters, so the focused evidence command remains
-the source-of-truth check for whether the reported values are real.
+the source-of-truth check for whether the reported values are real. In every
+record, `calls` means invocations of the expensive operation; `containers` (or
+another explicitly named admission counter) means opportunities inspected by
+the cheap predicate.
 
 <!-- BEGIN AGGRESSIVE-CUTTING-COST-CONTRACTS -->
 ```json
