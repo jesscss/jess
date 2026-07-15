@@ -4,6 +4,7 @@ import path from 'node:path';
 import { existsSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { performance } from 'node:perf_hooks';
+import { createHash } from 'node:crypto';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, '..');
@@ -35,6 +36,7 @@ globalThis.__JESS_SERIALIZE_PROFILE_COUNTERS__ = {};
 globalThis.__JESS_DIRECT_LOOKUP_PROFILE_COUNTERS__ = {};
 globalThis.__JESS_MERGE_PROFILE_COUNTERS__ = {};
 globalThis.__JESS_EXTEND_PROFILE_COUNTERS__ = {};
+globalThis.__JESS_SPINE_PROFILE_COUNTERS__ = {};
 
 const coreLib = pathToFileURL(path.join(repoRoot, 'packages/core/lib/index.js')).href;
 const lessParserLib = pathToFileURL(path.join(repoRoot, 'packages/less-parser/lib/index.js')).href;
@@ -232,8 +234,10 @@ const compiler = new Compiler({
     plugins: [lessPlugin(), lessCompatPlugin()]
   }
 });
-await compiler.render(benchmarkFile);
+const renderedCss = await compiler.render(benchmarkFile);
 const elapsedMs = performance.now() - start;
+const renderedOutputSha256 = createHash('sha256').update(String(renderedCss)).digest('hex');
+const spineProfileCounters = globalThis.__JESS_SPINE_PROFILE_COUNTERS__ ?? {};
 const serializeProfileCounters = globalThis.__JESS_SERIALIZE_PROFILE_COUNTERS__ ?? {};
 const directLookupProfileCounters = globalThis.__JESS_DIRECT_LOOKUP_PROFILE_COUNTERS__ ?? {};
 const mergeProfileCounters = globalThis.__JESS_MERGE_PROFILE_COUNTERS__ ?? {};
@@ -324,6 +328,28 @@ if (cliArgs.has('--assert-live-merge-contract')) {
   if (failures.length > 0) {
     throw new Error(
       `Live merge contract failed: ${failures.join(', ')}; counters=${JSON.stringify(mergeProfileCounters)}`
+    );
+  }
+}
+
+if (cliArgs.has('--assert-early-admit-contract')) {
+  // Redundant-call-elimination proof for the import-tree speculative extend-topology
+  // early-admit (emit-walk.ts isSpineEligibleRoot). Two things must hold on the
+  // canonical benchmark: (1) the render is byte-identical to the known oracle sha
+  // (removal changed no output), and (2) the eliminated `isSpineExtendTopology`
+  // calls for import trees actually fired (net removal is real, not vacuous).
+  const importTopologyEliminated = spineProfileCounters['earlyAdmit.importTopologyEliminated'] ?? 0;
+  const expectedSha = cliArgs.get('--expect-sha');
+  const failures = [
+    ['import-tree topology calls eliminated > 0', importTopologyEliminated > 0]
+  ];
+  if (expectedSha && expectedSha !== 'true') {
+    failures.push([`render byte-identical to oracle sha ${expectedSha}`, renderedOutputSha256 === expectedSha]);
+  }
+  const failed = failures.filter(([, ok]) => !ok).map(([relation]) => relation);
+  if (failed.length > 0) {
+    throw new Error(
+      `Early-admit redundant-call-elimination contract failed: ${failed.join(', ')}; sha=${renderedOutputSha256}, counters=${JSON.stringify(spineProfileCounters)}`
     );
   }
 }

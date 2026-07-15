@@ -1516,6 +1516,101 @@ left unmerged; only the evidence record was retained in commit `3056554`.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: SPINE IMPORT EARLY-ADMIT — redundant-call-elimination. In
+  `isSpineEligibleRoot` (emit-walk.ts) the speculative `isSpineExtendTopology`
+  extend-topology walk is now SKIPPED for import trees via an `allowImport ||`
+  short-circuit; the sole authority for an import+extend tree is
+  `renderRootViaSpine`'s post-wire re-gate, which re-runs the strict topology
+  check over the resolved imported subjects and aborts to eval byte-identically.
+  This is the first `redundant-call-elimination` cost contract
+  (`spine-import-early-admit`): a byte-identical work REMOVAL, not an admission
+  filter.
+- Architecture surface: `packages/core/src/tree/util/emit-walk.ts` —
+  `isSpineEligibleRoot`'s `allowExtend` computation and a profile-gated
+  `recordSpineProfile` counter (zero-cost when the global bag is absent, mirroring
+  `extend-roots.ts`). No writer, node field, or public API changed.
+- Separation/duplication: none added. The speculative topology call is removed
+  for import trees; the authoritative post-wire re-gate already existed. The
+  non-import path is unchanged (`allowImport` is false → the strict
+  `isSpineExtendTopology` still runs).
+- Cumulative node weight: reduced. One O(targets×tree) speculative topology walk
+  per import root is eliminated; no node, map, set, or retained state was added.
+- New traversal: none. This removes a traversal (the speculative walk); the
+  short-circuit adds only a boolean test.
+- New node/materialization: none. No `new`, copy, array, or object was
+  materialized; the counter increments a pre-existing global bag only under a
+  profiling flag.
+- Render path: byte-identical — benchmark.less 131578 bytes /
+  `98a0536086c7e555b1a98e2372ad4000d51e25f1418c6345b6b8a9a97d80972f` before and
+  after; all-less, extend (762), core, and spine-production-ratchet (137) green.
+- Helper/API surface: none added; `SPINE_PROFILE_COUNTERS_KEY`/`recordSpineProfile`
+  are module-local and profile-gated.
+- Metadata mutations: none. No parent/source/provenance/frozen field changed.
+- Review-flagged diff tokens: none. No loop, array helper, map/set, node
+  construction, copy, generator, or routine error path was added; the two added
+  hunks are the module-local profile counter and the short-circuit.
+- Evidence: same-worktree toggle A/B (git-free source toggle + core rebuild,
+  20 warmups, 45 samples/build). Render-only median `160.249 → 150.318 ms`
+  (`-9.931 ms`, `-6.20%`, 35/45 paired wins); parse+render median
+  `194.786 → 187.632 ms` (`-7.154 ms`, `-3.67%`, 29/45). Output byte-identical
+  across both variants at `131578` bytes / sha
+  `98a0536086c7e555b1a98e2372ad4000d51e25f1418c6345b6b8a9a97d80972f`. The
+  profile counter records `earlyAdmit.importTopologyEliminated = 1` topology
+  call eliminated per render at the import root (callsBefore 1 → callsAfter 0);
+  `earlyAdmit.strictTopologyCalls = 0` (benchmark.less's one extend root is an
+  import root). The `--assert-early-admit-contract` evidence command asserts both
+  the elimination fired and the oracle sha.
+- Verdict: accepted.
+- Hot-path cost contracts:
+```json
+[
+  {
+    "id": "spine-import-early-admit",
+    "kind": "redundant-call-elimination",
+    "necessity": {
+      "status": "proven",
+      "factSource": "For an import tree, renderRootViaSpine's post-wire re-gate (isSpineExtendTopology over importedRootSubjects) is the sole authority on spine-vs-eval and aborts to eval byte-identically; the speculative isSpineEligibleRoot verdict is discarded/overridden.",
+      "rediscovery": "isSpineEligibleRoot ran the full O(targets x tree) isSpineExtendTopology speculative walk for every import root, whose verdict the post-wire re-gate then recomputes and overrides.",
+      "carryForward": "No fact is carried forward; the speculative call is removed for import trees via the allowImport short-circuit and the authoritative re-gate decides after imports resolve.",
+      "whyNotCarried": "The import-tree topology cannot be decided before imports resolve, so the sync speculative walk is pure discarded work; the leanest path is to not run it and let the post-wire re-gate rule."
+    },
+    "callsBefore": 1,
+    "callsAfter": 0,
+    "noFeatureAllocations": 0,
+    "governedFunction": { "name": "isSpineExtendTopology", "beforeMs": 160.249, "afterMs": 150.318 },
+    "redundancyProof": {
+      "basis": "covered-by-later-check",
+      "authority": "renderRootViaSpine post-wire re-gate isSpineExtendTopology(root, ..., { importedRootSubjects }) at emit-walk.ts ~line 2603, which aborts to eval byte-identically; the non-import invariant re-check is skipped for import trees so no guard is lost."
+    },
+    "commonCaseProof": "benchmark.less counter test: earlyAdmit.importTopologyEliminated = 1 topology call eliminated per render, byte-identical output",
+    "benchmark": {
+      "fixture": "benchmark.less",
+      "warmup": 20,
+      "pairs": 45,
+      "parse-render": {
+        "beforeMedianMs": 194.786,
+        "afterMedianMs": 187.632,
+        "medianDeltaMs": -7.154,
+        "wins": 29,
+        "byteIdentical": true,
+        "outputBytes": 131578,
+        "outputSha256": "98a0536086c7e555b1a98e2372ad4000d51e25f1418c6345b6b8a9a97d80972f"
+      },
+      "render": {
+        "beforeMedianMs": 160.249,
+        "afterMedianMs": 150.318,
+        "medianDeltaMs": -9.931,
+        "wins": 35,
+        "byteIdentical": true,
+        "outputBytes": 131578,
+        "outputSha256": "98a0536086c7e555b1a98e2372ad4000d51e25f1418c6345b6b8a9a97d80972f"
+      }
+    },
+    "verdict": "accepted"
+  }
+]
+```
+
 - Latest pass: EXTEND KEYSET PRE-REJECT (conservative-filter) + CHAINED-DISCOVERY
   DEFERRAL (precise). Two byte-identical extend perf wins on `benchmark.less`
   (`collapseNesting:true`, `131578` bytes, sha `98a0536086c7e555`). (1) A cheap

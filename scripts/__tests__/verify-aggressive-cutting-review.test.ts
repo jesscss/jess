@@ -275,3 +275,129 @@ describe('conservative-filter contract kind', () => {
     );
   });
 });
+
+const removalContract = {
+  id: 'test-removal-contract',
+  kind: 'redundant-call-elimination',
+  surface: 'test removal surface',
+  files: [sourceFile],
+  necessity: registry[0].necessity,
+  redundantCallElimination: {
+    governedFunction: 'isSpineExtendTopology',
+    eliminatedSite: 'isSpineEligibleRoot',
+    speedup: { phase: 'render', minPercentFaster: 3 },
+    redundancyProof: {
+      basis: 'covered-by-later-check',
+      authority: 'post-wire re-gate is the sole authority and aborts to eval byte-identically'
+    }
+  },
+  counters: ['callsBefore', 'callsAfter', 'noFeatureAllocations'],
+  commonCaseProof: 'benchmark counter test',
+  benchmark: { fixture: 'benchmark.less', phases: ['parse-render', 'render'], warmup: 20, pairs: 45 },
+  relations: ['callsAfter <= callsBefore'],
+  evidence: { command: ['node', '--check', 'scripts/verify-aggressive-cutting-review.mjs'] },
+  sourceCheck: {
+    file: sourceFile,
+    caller: 'export function isSpineEligibleRoot',
+    call: 'isSpineExtendTopology',
+    guard: 'allowImport'
+  }
+};
+const removalRegistry = [removalContract];
+const removalDiff = [
+  `diff --git a/${sourceFile} b/${sourceFile}`,
+  `+++ b/${sourceFile}`,
+  '@@ -1 +1 @@',
+  '+ export function isSpineEligibleRoot allowImport || isSpineExtendTopology'
+].join('\n');
+
+function makeRemovalRecord(overrides: Record<string, unknown> = {}) {
+  const phase = {
+    beforeMedianMs: 160,
+    afterMedianMs: 150,
+    medianDeltaMs: -10,
+    wins: 35,
+    byteIdentical: true,
+    outputBytes: 131578,
+    outputSha256: 'd'.repeat(64)
+  };
+  return {
+    id: 'test-removal-contract',
+    kind: 'redundant-call-elimination',
+    necessity: registry[0].necessity,
+    callsBefore: 1,
+    callsAfter: 0,
+    noFeatureAllocations: 0,
+    governedFunction: { name: 'isSpineExtendTopology', beforeMs: 160, afterMs: 150 },
+    redundancyProof: {
+      basis: 'covered-by-later-check',
+      authority: 'post-wire re-gate is the sole authority and aborts to eval byte-identically'
+    },
+    commonCaseProof: 'benchmark counter test',
+    benchmark: { fixture: 'benchmark.less', warmup: 20, pairs: 45, ['parse-render']: phase, render: phase },
+    verdict: 'accepted',
+    ...overrides
+  };
+}
+
+describe('redundant-call-elimination contract kind', () => {
+  it('accepts a byte-identical, faster, net-removal contract with a redundancy proof', () => {
+    expect(validateCostContractRegistry(removalRegistry)).toEqual([]);
+    expect(validateCostAuditRecords([makeRemovalRecord()], removalRegistry, [sourceFile], removalDiff)).toEqual([]);
+  });
+
+  it('rejects a cost-ADD wearing the kind (callsAfter > callsBefore)', () => {
+    const errors = validateCostAuditRecords(
+      [makeRemovalRecord({ callsBefore: 1, callsAfter: 5 })],
+      removalRegistry,
+      [sourceFile],
+      removalDiff
+    );
+    expect(errors.some(e => /is not a removal: callsAfter 5 > callsBefore 1/.test(e))).toBe(true);
+  });
+
+  it('rejects a removal whose benchmark phases are not byte-identical to each other', () => {
+    const phaseA = { beforeMedianMs: 160, afterMedianMs: 150, medianDeltaMs: -10, wins: 35, byteIdentical: true, outputBytes: 131578, outputSha256: 'd'.repeat(64) };
+    const phaseB = { ...phaseA, outputSha256: 'e'.repeat(64) };
+    const errors = validateCostAuditRecords(
+      [makeRemovalRecord({ benchmark: { fixture: 'benchmark.less', warmup: 20, pairs: 45, ['parse-render']: phaseA, render: phaseB } })],
+      removalRegistry,
+      [sourceFile],
+      removalDiff
+    );
+    expect(errors.some(e => /byte-identical output across both benchmark phases/.test(e))).toBe(true);
+  });
+
+  it('rejects a removal that is not measurably faster by the declared margin', () => {
+    const errors = validateCostAuditRecords(
+      [makeRemovalRecord({ governedFunction: { name: 'isSpineExtendTopology', beforeMs: 160, afterMs: 159 } })],
+      removalRegistry,
+      [sourceFile],
+      removalDiff
+    );
+    expect(errors.some(e => /speedup insufficient/.test(e))).toBe(true);
+  });
+
+  it('rejects a removal that borrows the admission-filter relation calls <= admittedCalls', () => {
+    const badRegistry = [{ ...removalContract, relations: ['callsAfter <= callsBefore', 'calls <= admittedCalls'] }];
+    expect(validateCostContractRegistry(badRegistry)).toContain(
+      'Redundant-call-elimination cost contract test-removal-contract must not claim the admission-filter relation calls <= admittedCalls; it removes work, it does not admit it.'
+    );
+  });
+
+  it('requires the redundantCallElimination block and net-removal relation in the registry', () => {
+    const noBlock = { ...removalContract, redundantCallElimination: undefined };
+    expect(validateCostContractRegistry([noBlock])).toContain(
+      'Redundant-call-elimination cost contract test-removal-contract must include a redundantCallElimination block.'
+    );
+    const noRelation = { ...removalContract, relations: ['callsAfter <= 0'] };
+    expect(validateCostContractRegistry([noRelation])).toContain(
+      'Redundant-call-elimination cost contract test-removal-contract must bind the eliminated work with callsAfter <= callsBefore.'
+    );
+  });
+
+  it('still validates the precise and conservative-filter kinds unchanged', () => {
+    expect(validateCostContractRegistry(registry)).toEqual([]);
+    expect(validateCostContractRegistry(filterRegistry)).toEqual([]);
+  });
+});

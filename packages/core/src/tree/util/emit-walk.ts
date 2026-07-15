@@ -47,6 +47,25 @@ import { engageExtendLayer, isSpineExtendTopology, wireSpineExtends, flatLocalSe
 import type { StyleImport, SpineImportResolution } from '../import-style.js';
 
 /**
+ * Profile-gated spine counters (zero-cost when the global bag is absent — the same
+ * pattern as `extend-roots.ts`'s `EXTEND_PROFILE_COUNTERS_KEY`). Captured once at
+ * module load, so a profiling harness must install the bag before importing core.
+ * Used by the `redundant-call-elimination` cost contract for the import-tree
+ * speculative-topology early-admit: it records the eliminated `isSpineExtendTopology`
+ * calls (import trees skip it; the post-wire re-gate is the sole authority).
+ */
+const SPINE_PROFILE_COUNTERS_KEY = '__JESS_SPINE_PROFILE_COUNTERS__';
+type SpineProfileGlobals = typeof globalThis & {
+  [SPINE_PROFILE_COUNTERS_KEY]?: Record<string, number>;
+};
+const spineProfileCounters = (globalThis as SpineProfileGlobals)[SPINE_PROFILE_COUNTERS_KEY];
+const recordSpineProfile = spineProfileCounters
+  ? (event: string, amount = 1): void => {
+      spineProfileCounters[event] = (spineProfileCounters[event] ?? 0) + amount;
+    }
+  : undefined;
+
+/**
  * `.type`-discriminant guards — narrow a base `Node` to a leaf class WITHOUT a
  * runtime (value) import of that class. A value import of `import-style.ts` /
  * `at-rule-statement.ts` here would pull those modules into this file's eager
@@ -1798,8 +1817,21 @@ export function isSpineEligibleRoot(root: Rules, context: Context, collapseNesti
   // check over the resolved imported subjects and ABORTS to eval, byte-identical, if still unmapped).
   // A no-import tree passes `speculativeImport: false`, so the gate is byte-and-alloc identical to today
   // for the common case (the extra Set is never allocated).
+  //
+  // REDUNDANT-CALL-ELIMINATION (import trees): the speculative extend-topology check here is a pure
+  // PERF short-circuit for the import case — `renderRootViaSpine`'s post-wire RE-GATE re-runs the
+  // STRICT `isSpineExtendTopology` over the resolved imported subjects (line ~2603) and is the SOLE
+  // authority on spine-vs-eval for an import+extend tree (it aborts to eval byte-identically when the
+  // shape is not foldable, and the invariant throw at `renderRootViaSpine` is SKIPPED for import trees).
+  // So the `allowImport ||` short-circuit skips the ~O(targets×tree) speculative walk and admits
+  // optimistically; the re-gate decides. A NON-import tree has NO re-gate (the invariant check there
+  // THROWS on a non-foldable shape), so `allowImport` is false and its topology is still proven strictly
+  // here — byte- and cost-identical to before.
+  if (recordSpineProfile && engageExtendLayer(root)) {
+    recordSpineProfile(allowImport ? 'earlyAdmit.importTopologyEliminated' : 'earlyAdmit.strictTopologyCalls');
+  }
   const allowExtend = engageExtendLayer(root)
-    && isSpineExtendTopology(root, collapse === true, allowImport ? { speculativeImport: true } : undefined);
+    && (allowImport || isSpineExtendTopology(root, collapse === true, undefined));
   return isSpineEligibleBody(root.rules, allowExtend, allowImport);
 }
 

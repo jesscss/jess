@@ -234,6 +234,57 @@ true match) is reviewed as prose in `necessity`, but it is *also* backed by the
 byte-identity proof: if the gate ever dropped a real match, the output would
 differ and `byteIdentical` would be false.
 
+### Contract kind: redundant-call-elimination
+
+Both `precise` and `conservative-filter` model an admission FILTER — a cheap gate
+placed *ahead* of expensive work. Neither can model the third recurring shape the
+gate kept blocking: a byte-identical work **REMOVAL** — deleting a call or
+computation that is either dead or redundantly recomputed by a later authority.
+A removal has no per-container admission, no `admittedCalls` surface, and no
+`maxItemsPerContainer` budget, so it never fit the admission schema and was
+repeatedly (3rd occurrence) refused despite being a strict improvement.
+
+A `kind: "redundant-call-elimination"` contract declares a removal. It carries no
+admission block and no admission/feature counters; instead it is held to four
+non-negotiable, self-contained proofs, none of which a cost-ADDING or
+output-CHANGING change can honestly produce:
+
+- **Byte-identity (non-negotiable core).** Both benchmark phases must be
+  byte-identical A/Bs (`byteIdentical: true`) *and* render the same output
+  (equal `outputSha256` across phases). The landing gate re-verifies all-less.
+  A removal that changes output is rejected outright.
+- **Measured speedup (required).** `redundantCallElimination.speedup` names a
+  governed function and a positive `minPercentFaster` on a benchmark phase; the
+  audit record's `governedFunction { beforeMs, afterMs }` must beat that margin.
+  A removal that isn't faster is pointless and rejected.
+- **Net removal (not addition).** The contract must declare the counters
+  `callsBefore`, `callsAfter` and the relation `callsAfter <= callsBefore` for
+  the eliminated function; the record must reduce work
+  (`callsAfter < callsBefore`, or a positive `deletedLineCount` for fully-dead
+  code). The admission-filter relation `calls <= admittedCalls` is forbidden — a
+  removal removes work, it does not admit it. This is what blocks a cost-ADD from
+  wearing this kind: a cost-add's `callsAfter > callsBefore`.
+- **Redundancy proof (correctness argument).** `redundancyProof.basis` is either
+  `dead` (no consumer) or `covered-by-later-check` (a NAMED later authoritative
+  check re-derives and overrides the removed result). The record must restate it.
+  A genuine cost-add cannot name an authority that makes its ADDED work redundant.
+
+The danger-token and no-allocation rules are **not** relaxed for this kind (a pure
+removal has no reason to allocate): `noFeatureAllocations` must be present and
+zero, and any danger token in the diff must still be prosecuted. The only thing
+this kind changes is the *shape* of the source-check: because the call is removed
+(not gated by a new `if (guard) { … }` enclosure), the guard must instead
+short-circuit the same expression as the eliminated call — `guard || call` or
+`guard && call` — which the verifier checks structurally.
+
+The first instance is `spine-import-early-admit`: `isSpineEligibleRoot` skips the
+speculative `isSpineExtendTopology` topology walk for import trees (via the
+`allowImport ||` short-circuit) because `renderRootViaSpine`'s post-wire re-gate
+is the sole authority for an import+extend tree and decides byte-identically. A
+non-import tree has no re-gate (its invariant re-check throws on a non-foldable
+shape), so `allowImport` is false there and the strict topology check still runs —
+byte- and cost-identical to before.
+
 <!-- BEGIN AGGRESSIVE-CUTTING-COST-CONTRACTS -->
 ```json
 [
@@ -466,6 +517,49 @@ differ and `byteIdentical` would be false.
       "call": "collectSelectorSubtreeValues",
       "guard": "!chainMemo",
       "profile": ["recordExtendProfile", "extendTargetIndex", "originalSelectorValues", "allExtendTuples", "expandedAllExtends", "buildExtendTargetIndex"]
+    }
+  },
+  {
+    "id": "spine-import-early-admit",
+    "kind": "redundant-call-elimination",
+    "surface": "isSpineEligibleRoot speculative extend-topology early-admit (import trees)",
+    "files": ["packages/core/src/tree/util/emit-walk.ts"],
+    "necessity": {
+      "status": "proven",
+      "factSource": "For an import tree, renderRootViaSpine's post-wire re-gate (isSpineExtendTopology over importedRootSubjects) is the sole authority on spine-vs-eval and aborts to eval byte-identically; the speculative isSpineEligibleRoot verdict is discarded/overridden.",
+      "rediscovery": "isSpineEligibleRoot ran the full O(targets x tree) isSpineExtendTopology speculative walk for every import root, whose verdict the post-wire re-gate then recomputes and overrides.",
+      "carryForward": "No fact is carried forward; the speculative call is removed for import trees via the allowImport short-circuit and the authoritative re-gate decides after imports resolve.",
+      "whyNotCarried": "The import-tree topology cannot be decided before imports resolve, so the sync speculative walk is pure discarded work; the leanest path is to not run it and let the post-wire re-gate rule."
+    },
+    "redundantCallElimination": {
+      "governedFunction": "isSpineExtendTopology",
+      "eliminatedSite": "isSpineEligibleRoot",
+      "speedup": { "phase": "render", "minPercentFaster": 3 },
+      "redundancyProof": {
+        "basis": "covered-by-later-check",
+        "authority": "renderRootViaSpine post-wire re-gate isSpineExtendTopology(root, ..., { importedRootSubjects }) at emit-walk.ts ~line 2603, which aborts to eval byte-identically when the resolved shape is not foldable; the non-import invariant re-check (~line 2373) is intentionally SKIPPED for import trees, so removing the speculative call loses no guard."
+      }
+    },
+    "counters": ["callsBefore", "callsAfter", "noFeatureAllocations"],
+    "commonCaseProof": "benchmark.less counter test: earlyAdmit.importTopologyEliminated = 1 topology call eliminated per render at the import root, byte-identical output (sha 98a0536086c7e555)",
+    "benchmark": {
+      "fixture": "benchmark.less",
+      "phases": ["parse-render", "render"],
+      "warmup": 20,
+      "pairs": 45
+    },
+    "relations": [
+      "callsAfter <= callsBefore"
+    ],
+    "evidence": {
+      "command": ["node", "scripts/profile-less-benchmark.mjs", "--fixture=packages/jess/benchmark/benchmark.less", "--assert-early-admit-contract", "--expect-sha=98a0536086c7e555b1a98e2372ad4000d51e25f1418c6345b6b8a9a97d80972f"]
+    },
+    "sourceCheck": {
+      "file": "packages/core/src/tree/util/emit-walk.ts",
+      "caller": "export function isSpineEligibleRoot",
+      "call": "isSpineExtendTopology",
+      "guard": "allowImport",
+      "profile": ["SPINE_PROFILE_COUNTERS_KEY", "recordSpineProfile", "earlyAdmit.importTopologyEliminated"]
     }
   }
 ]

@@ -16,6 +16,10 @@ const reviewedSourceRoots = [
 ];
 const hotPathRoots = reviewedSourceRoots.map(rootPath => `${rootPath}/`);
 
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 function git(args) {
   try {
     return execFileSync('git', args, {
@@ -264,6 +268,132 @@ function checkConservativeFilterSpeedup(record, filterMeta, errors) {
   return true;
 }
 
+/**
+ * Redundant-call-elimination registry metadata. This kind models a pure work
+ * REMOVAL — a call/computation deleted for a subset of inputs — rather than an
+ * admission FILTER. It is the third recurring shape the gate kept blocking:
+ * byte-identical work removal. Acceptance is deliberately hard and cannot be
+ * honestly satisfied by a cost-ADDING or output-CHANGING change:
+ *   - governedFunction: the function whose invocations are eliminated.
+ *   - eliminatedSite:   the caller/site where the call was removed.
+ *   - speedup:          a REQUIRED positive measured speedup on a benchmark phase
+ *                       (a removal that is not faster is pointless and rejected).
+ *   - redundancyProof:  the correctness argument for WHY the removed work is safe
+ *                       to drop — either DEAD (no consumer) or COVERED by a named
+ *                       later authoritative check. A genuine cost-add cannot name
+ *                       an authority that makes its ADDED work redundant.
+ * The net-removal counter delta (callsAfter <= callsBefore) is enforced via the
+ * declared relations; the record-side proof lives in checkRedundantCallElimination.
+ */
+function validateRedundantCallEliminationMetadata(contract) {
+  const errors = [];
+  const rce = contract.redundantCallElimination;
+  if (!rce || typeof rce !== 'object') {
+    return [`Redundant-call-elimination cost contract ${contract.id} must include a redundantCallElimination block.`];
+  }
+  if (typeof rce.governedFunction !== 'string' || rce.governedFunction.length === 0) {
+    errors.push(`Redundant-call-elimination cost contract ${contract.id} must name the governedFunction whose calls are eliminated.`);
+  }
+  if (typeof rce.eliminatedSite !== 'string' || rce.eliminatedSite.length === 0) {
+    errors.push(`Redundant-call-elimination cost contract ${contract.id} must name the eliminatedSite (the caller the call was removed from).`);
+  }
+  const speedup = rce.speedup;
+  if (
+    !speedup
+    || typeof speedup !== 'object'
+    || !['parse-render', 'render'].includes(speedup.phase)
+    || !Number.isFinite(speedup.minPercentFaster)
+    || speedup.minPercentFaster <= 0
+  ) {
+    errors.push(`Redundant-call-elimination cost contract ${contract.id} must require a positive measured speedup on a benchmark phase (speedup.phase + speedup.minPercentFaster > 0).`);
+  }
+  const proof = rce.redundancyProof;
+  if (
+    !proof
+    || typeof proof !== 'object'
+    || !['dead', 'covered-by-later-check'].includes(proof.basis)
+    || typeof proof.authority !== 'string'
+    || proof.authority.trim().length < 12
+  ) {
+    errors.push(`Redundant-call-elimination cost contract ${contract.id} must justify the removal with redundancyProof.basis ("dead" or "covered-by-later-check") and a named authority.`);
+  }
+  return errors;
+}
+
+/**
+ * Byte-identity + measured-speedup + net-removal + redundancy gate for a
+ * redundant-call-elimination audit record. All four are non-negotiable, and none
+ * can be honestly produced by a cost-ADDING or output-CHANGING change:
+ *   1. Byte-identity: both benchmark phases render the same output (equal
+ *      outputSha256), on top of the per-phase byteIdentical A/B the generic
+ *      validator already enforces.
+ *   2. Speedup: the governed function must be measurably faster than before by the
+ *      contract's declared margin (no defensive slowdown).
+ *   3. Net removal: callsAfter <= callsBefore for the eliminated function, and the
+ *      change must actually reduce work (callsAfter < callsBefore, OR a positive
+ *      deletedLineCount for a fully-dead removal).
+ *   4. Redundancy proof: the record restates why the removal is safe (basis +
+ *      authority), matching the contract.
+ * Returns false (recording why) on any gap so the caller refuses the acceptance.
+ */
+function checkRedundantCallElimination(record, meta, errors) {
+  let ok = true;
+  const gov = record.governedFunction;
+  if (
+    !gov
+    || typeof gov !== 'object'
+    || gov.name !== meta.governedFunction
+    || !Number.isFinite(gov.beforeMs)
+    || gov.beforeMs <= 0
+    || !Number.isFinite(gov.afterMs)
+    || gov.afterMs <= 0
+  ) {
+    errors.push(`Redundant-call-elimination record ${record.id} must record a governedFunction { name: "${meta.governedFunction}", beforeMs, afterMs } measurement.`);
+    ok = false;
+  } else {
+    const margin = Number.isFinite(meta.speedup?.minPercentFaster) ? meta.speedup.minPercentFaster : 0;
+    const required = gov.beforeMs * (1 - margin / 100);
+    if (!(gov.afterMs < gov.beforeMs) || gov.afterMs > required) {
+      errors.push(`Redundant-call-elimination record ${record.id} governedFunction speedup insufficient: after ${gov.afterMs}ms must be < before ${gov.beforeMs}ms by >= ${margin}% (<= ${required.toFixed(3)}ms).`);
+      ok = false;
+    }
+  }
+  const parseRenderSha = record.benchmark?.['parse-render']?.outputSha256;
+  const renderSha = record.benchmark?.render?.outputSha256;
+  if (typeof parseRenderSha !== 'string' || parseRenderSha !== renderSha) {
+    errors.push(`Redundant-call-elimination record ${record.id} must render byte-identical output across both benchmark phases (equal outputSha256).`);
+    ok = false;
+  }
+  const callsBefore = counterValue(record, 'callsBefore');
+  const callsAfter = counterValue(record, 'callsAfter');
+  const deletedLineCount = Number.isInteger(record.deletedLineCount) && record.deletedLineCount > 0
+    ? record.deletedLineCount
+    : 0;
+  if (callsBefore === null || callsAfter === null) {
+    errors.push(`Redundant-call-elimination record ${record.id} must record integer callsBefore and callsAfter for the eliminated function.`);
+    ok = false;
+  } else if (callsAfter > callsBefore) {
+    errors.push(`Redundant-call-elimination record ${record.id} is not a removal: callsAfter ${callsAfter} > callsBefore ${callsBefore}.`);
+    ok = false;
+  } else if (callsAfter === callsBefore && deletedLineCount === 0) {
+    errors.push(`Redundant-call-elimination record ${record.id} removes nothing: callsAfter === callsBefore and no deletedLineCount > 0.`);
+    ok = false;
+  }
+  const proof = record.redundancyProof;
+  if (
+    !proof
+    || typeof proof !== 'object'
+    || proof.basis !== meta.redundancyProof?.basis
+    || !['dead', 'covered-by-later-check'].includes(proof.basis)
+    || typeof proof.authority !== 'string'
+    || proof.authority.trim().length < 12
+  ) {
+    errors.push(`Redundant-call-elimination record ${record.id} must restate the redundancyProof (basis matching the contract + named authority) explaining why the removed work is safe.`);
+    ok = false;
+  }
+  return ok;
+}
+
 function validateCostContractRegistry(registry) {
   const errors = [];
   const ids = new Set();
@@ -293,43 +423,62 @@ function validateCostContractRegistry(registry) {
         errors.push(`Cost contract ${contract.id} supportFiles require coverage owner-plus-named-carry-forward-support.`);
       }
     }
-    const admission = contract.admission;
-    if (!admission || typeof admission !== 'object') {
-      errors.push(`Cost contract ${contract.id} is missing admission metadata.`);
+    // A redundant-call-elimination contract models a pure work-REMOVAL, not a
+    // per-container admission FILTER, so it carries no admission block and no
+    // admission/feature counters. It instead proves byte-identity + a measured
+    // speedup + a net-removal counter delta + a redundancy argument (see
+    // validateRedundantCallEliminationMetadata). Every OTHER kind keeps the full,
+    // unchanged admission requirement below.
+    const kind = contract.kind ?? 'precise';
+    if (kind === 'redundant-call-elimination') {
+      errors.push(...validateRedundantCallEliminationMetadata(contract));
     } else {
-      if (typeof admission.predicate !== 'string' || admission.predicate.length === 0) {
-        errors.push(`Cost contract ${contract.id} must name an admission predicate.`);
+      const admission = contract.admission;
+      if (!admission || typeof admission !== 'object') {
+        errors.push(`Cost contract ${contract.id} is missing admission metadata.`);
+      } else {
+        if (typeof admission.predicate !== 'string' || admission.predicate.length === 0) {
+          errors.push(`Cost contract ${contract.id} must name an admission predicate.`);
+        }
+        if (admission.cost !== 'cheap') {
+          errors.push(`Cost contract ${contract.id} admission cost must be cheap.`);
+        }
+        if (typeof admission.counter !== 'string' || !contract.counters?.includes(admission.counter)) {
+          errors.push(`Cost contract ${contract.id} must name a declared admission counter.`);
+        }
+        if (typeof admission.workCounter !== 'string' || !contract.counters?.includes(admission.workCounter)) {
+          errors.push(`Cost contract ${contract.id} must name a declared admission-work counter.`);
+        }
+        if (
+          !Number.isInteger(admission.maxItemsPerContainer)
+          || admission.maxItemsPerContainer <= 0
+          || admission.maxItemsPerContainer > 32
+        ) {
+          errors.push(`Cost contract ${contract.id} must cap cheap admission work at 1..32 items per inspected container.`);
+        }
+        if (
+          typeof admission.before !== 'string'
+          || !/collection/i.test(admission.before)
+          || !/allocation/i.test(admission.before)
+        ) {
+          errors.push(
+            `Cost contract ${contract.id} must put admission before collection and allocation.`
+          );
+        }
       }
-      if (admission.cost !== 'cheap') {
-        errors.push(`Cost contract ${contract.id} admission cost must be cheap.`);
-      }
-      if (typeof admission.counter !== 'string' || !contract.counters?.includes(admission.counter)) {
-        errors.push(`Cost contract ${contract.id} must name a declared admission counter.`);
-      }
-      if (typeof admission.workCounter !== 'string' || !contract.counters?.includes(admission.workCounter)) {
-        errors.push(`Cost contract ${contract.id} must name a declared admission-work counter.`);
-      }
-      if (
-        !Number.isInteger(admission.maxItemsPerContainer)
-        || admission.maxItemsPerContainer <= 0
-        || admission.maxItemsPerContainer > 32
-      ) {
-        errors.push(`Cost contract ${contract.id} must cap cheap admission work at 1..32 items per inspected container.`);
-      }
-      if (
-        typeof admission.before !== 'string'
-        || !/collection/i.test(admission.before)
-        || !/allocation/i.test(admission.before)
-      ) {
+      if (!Array.isArray(contract.counters) || !requiredCounterNames.every(name => contract.counters.includes(name))) {
         errors.push(
-          `Cost contract ${contract.id} must put admission before collection and allocation.`
+          `Cost contract ${contract.id} must list calls, admissionCalls, admissionItemsVisited, itemsVisited, noFeatureAllocations, and noFeatureMisses.`
         );
       }
     }
-    if (!Array.isArray(contract.counters) || !requiredCounterNames.every(name => contract.counters.includes(name))) {
-      errors.push(
-        `Cost contract ${contract.id} must list calls, admissionCalls, admissionItemsVisited, itemsVisited, noFeatureAllocations, and noFeatureMisses.`
-      );
+    if (kind === 'redundant-call-elimination') {
+      const removalCounters = ['callsBefore', 'callsAfter', 'noFeatureAllocations'];
+      if (!Array.isArray(contract.counters) || !removalCounters.every(name => contract.counters.includes(name))) {
+        errors.push(
+          `Redundant-call-elimination cost contract ${contract.id} must declare callsBefore, callsAfter, and noFeatureAllocations counters.`
+        );
+      }
     }
     if (typeof contract.commonCaseProof !== 'string' || !/(benchmark|counter|test)/i.test(contract.commonCaseProof)) {
       errors.push(`Cost contract ${contract.id} must name a common no-feature benchmark or counter test.`);
@@ -349,12 +498,22 @@ function validateCostContractRegistry(registry) {
         `Cost contract ${contract.id} must require the canonical benchmark.less parse-render/render A/B with 20 warmups and 45 alternating pairs.`
       );
     }
-    const kind = contract.kind ?? 'precise';
-    if (!['precise', 'conservative-filter'].includes(kind)) {
-      errors.push(`Cost contract ${contract.id} kind must be "precise" or "conservative-filter".`);
+    if (!['precise', 'conservative-filter', 'redundant-call-elimination'].includes(kind)) {
+      errors.push(`Cost contract ${contract.id} kind must be "precise", "conservative-filter", or "redundant-call-elimination".`);
     }
     if (!Array.isArray(contract.relations) || contract.relations.length === 0) {
       errors.push(`Cost contract ${contract.id} must state at least one counter relation.`);
+    } else if (kind === 'redundant-call-elimination') {
+      // A removal proves NET REMOVAL, not an admission bound: the eliminated
+      // function must run no more often after the change than before. It must NOT
+      // borrow the admission-filter relations (there is no admittedCalls surface).
+      errors.push(...validateDeclaredCounterRelations(contract));
+      if (!contract.relations.includes('callsAfter <= callsBefore')) {
+        errors.push(`Redundant-call-elimination cost contract ${contract.id} must bind the eliminated work with callsAfter <= callsBefore.`);
+      }
+      if (contract.relations.includes('calls <= admittedCalls')) {
+        errors.push(`Redundant-call-elimination cost contract ${contract.id} must not claim the admission-filter relation calls <= admittedCalls; it removes work, it does not admit it.`);
+      }
     } else {
       errors.push(...validateDeclaredCounterRelations(contract));
       if (!contract.relations.includes('calls <= admittedCalls')) {
@@ -562,61 +721,78 @@ function validateCostAuditRecords(records, registry, changedPaths, diff) {
       errors.push(`Hot-path cost audit record ${record.id} is not declared in the machine-readable cost-contract registry.`);
     }
     byId.set(record.id, record);
-    const admission = record.admission;
-    if (
-      !admission
-      || typeof admission.predicate !== 'string'
-      || admission.predicate.length === 0
-      || admission.cost !== 'cheap'
-      || typeof admission.before !== 'string'
-      || !/collection/i.test(admission.before)
-      || !/allocation/i.test(admission.before)
-    ) {
-      errors.push(`Hot-path cost audit record ${record.id} lacks a cheap pre-collection/allocation admission.`);
-    }
-    const calls = numberCounter(record, ['calls']);
-    const featureBearing = numberCounter(record, ['featureBearingCalls', 'featureBearingContainers']);
     const contract = registry.find(candidate => candidate.id === record.id);
-    const admissionCount = contract?.admission?.counter
-      ? numberCounter(record, [contract.admission.counter])
-      : null;
-    const admissionWork = contract?.admission?.workCounter
-      ? numberCounter(record, [contract.admission.workCounter])
-      : null;
-    const itemsVisited = numberCounter(record, ['itemsVisited']);
-    const noFeatureAllocations = numberCounter(record, ['noFeatureAllocations']);
-    const noFeatureMisses = numberCounter(record, ['noFeatureMisses']);
+    const kind = contract?.kind ?? 'precise';
     errors.push(...validateNecessityMetadata(record.necessity, `Hot-path cost audit record ${record.id}`));
     if (contract?.necessity?.status === 'audit-required' && changedPaths.includes(contract.files?.[0])) {
       errors.push(`Hot-path cost audit record ${record.id} cannot change its owner while necessity.status is audit-required; prove the fact flow or remove the action first.`);
     }
-    if (calls === null || featureBearing === null || admissionCount === null || admissionWork === null || itemsVisited === null || noFeatureAllocations === null || noFeatureMisses === null) {
-      errors.push(
-        `Hot-path cost audit record ${record.id} must include numeric calls, feature-bearing calls/containers, admission calls/work, itemsVisited, noFeatureAllocations, and noFeatureMisses.`
-      );
+    if (kind === 'redundant-call-elimination') {
+      // A removal record carries NO admission surface and no admission/feature
+      // counters — it proves byte-identity + measured speedup + net removal +
+      // redundancy (checkRedundantCallElimination). The allocation rule is NOT
+      // relaxed: a pure removal must not allocate on any path, so noFeatureAllocations
+      // must be present and zero.
+      const noFeatureAllocations = numberCounter(record, ['noFeatureAllocations']);
+      if (noFeatureAllocations === null) {
+        errors.push(`Redundant-call-elimination record ${record.id} must record integer noFeatureAllocations.`);
+      } else if (noFeatureAllocations > 0 && record.verdict === 'accepted') {
+        errors.push(`Redundant-call-elimination record ${record.id} accepts a pass with no-feature allocations; a pure removal must not allocate.`);
+      }
+      if (contract?.redundantCallElimination && record.verdict === 'accepted') {
+        checkRedundantCallElimination(record, contract.redundantCallElimination, errors);
+      }
     } else {
-      if (featureBearing > calls) {
-        errors.push(`Hot-path cost audit record ${record.id} has more feature-bearing calls than calls.`);
+      const admission = record.admission;
+      if (
+        !admission
+        || typeof admission.predicate !== 'string'
+        || admission.predicate.length === 0
+        || admission.cost !== 'cheap'
+        || typeof admission.before !== 'string'
+        || !/collection/i.test(admission.before)
+        || !/allocation/i.test(admission.before)
+      ) {
+        errors.push(`Hot-path cost audit record ${record.id} lacks a cheap pre-collection/allocation admission.`);
       }
-      const kind = contract?.kind ?? 'precise';
-      const filterMeta = kind === 'conservative-filter' ? contract.conservativeFilter : undefined;
-      // A conservative filter must ALWAYS prove byte-identity + speedup when accepted;
-      // its no-feature allocation is only excused once that proof passes.
-      const speedupProven = filterMeta && record.verdict === 'accepted'
-        ? checkConservativeFilterSpeedup(record, filterMeta, errors)
-        : false;
-      if (noFeatureAllocations > 0 && record.verdict === 'accepted') {
-        if (kind !== 'conservative-filter') {
-          errors.push(`Hot-path cost audit record ${record.id} accepts a pass with no-feature allocations.`);
-        } else if (!speedupProven) {
-          errors.push(`Conservative-filter record ${record.id} allocates on the no-feature path without a proven byte-identical net speedup.`);
-        }
-      }
-      const maxItemsPerContainer = contract?.admission?.maxItemsPerContainer;
-      if (Number.isInteger(maxItemsPerContainer) && admissionWork > admissionCount * maxItemsPerContainer) {
+      const calls = numberCounter(record, ['calls']);
+      const featureBearing = numberCounter(record, ['featureBearingCalls', 'featureBearingContainers']);
+      const admissionCount = contract?.admission?.counter
+        ? numberCounter(record, [contract.admission.counter])
+        : null;
+      const admissionWork = contract?.admission?.workCounter
+        ? numberCounter(record, [contract.admission.workCounter])
+        : null;
+      const itemsVisited = numberCounter(record, ['itemsVisited']);
+      const noFeatureAllocations = numberCounter(record, ['noFeatureAllocations']);
+      const noFeatureMisses = numberCounter(record, ['noFeatureMisses']);
+      if (calls === null || featureBearing === null || admissionCount === null || admissionWork === null || itemsVisited === null || noFeatureAllocations === null || noFeatureMisses === null) {
         errors.push(
-          `Hot-path cost audit record ${record.id} exceeds its admission-work budget: ${admissionWork} > ${admissionCount} * ${maxItemsPerContainer}.`
+          `Hot-path cost audit record ${record.id} must include numeric calls, feature-bearing calls/containers, admission calls/work, itemsVisited, noFeatureAllocations, and noFeatureMisses.`
         );
+      } else {
+        if (featureBearing > calls) {
+          errors.push(`Hot-path cost audit record ${record.id} has more feature-bearing calls than calls.`);
+        }
+        const filterMeta = kind === 'conservative-filter' ? contract.conservativeFilter : undefined;
+        // A conservative filter must ALWAYS prove byte-identity + speedup when accepted;
+        // its no-feature allocation is only excused once that proof passes.
+        const speedupProven = filterMeta && record.verdict === 'accepted'
+          ? checkConservativeFilterSpeedup(record, filterMeta, errors)
+          : false;
+        if (noFeatureAllocations > 0 && record.verdict === 'accepted') {
+          if (kind !== 'conservative-filter') {
+            errors.push(`Hot-path cost audit record ${record.id} accepts a pass with no-feature allocations.`);
+          } else if (!speedupProven) {
+            errors.push(`Conservative-filter record ${record.id} allocates on the no-feature path without a proven byte-identical net speedup.`);
+          }
+        }
+        const maxItemsPerContainer = contract?.admission?.maxItemsPerContainer;
+        if (Number.isInteger(maxItemsPerContainer) && admissionWork > admissionCount * maxItemsPerContainer) {
+          errors.push(
+            `Hot-path cost audit record ${record.id} exceeds its admission-work budget: ${admissionWork} > ${admissionCount} * ${maxItemsPerContainer}.`
+          );
+        }
       }
     }
     if (typeof record.commonCaseProof !== 'string' || !/(benchmark|counter|test)/i.test(record.commonCaseProof)) {
@@ -721,6 +897,22 @@ function validateSourceChecks(registry, changedPaths) {
       ? ''
       : source.slice(callerStart, nextMethod < 0 ? undefined : nextMethod);
     const callOffset = callIndex - callerStart;
+    if ((contract.kind ?? 'precise') === 'redundant-call-elimination') {
+      // A removal has no surviving `if (guard) { call }` enclosure; the call is
+      // ELIMINATED for a subset of inputs by a boolean short-circuit whose guard
+      // operand skips it. Require the guard to short-circuit the SAME expression as
+      // the (still-present, now-guarded) call: `<guard> || <call>` or
+      // `<guard> && <call>` with no statement boundary between them.
+      const shortCircuit = new RegExp(
+        `${escapeRegExp(sourceCheck.guard)}\\s*(?:\\|\\||&&)[^;{}]*${escapeRegExp(sourceCheck.call)}`
+      );
+      if (callerStart < 0 || callIndex < 0 || !shortCircuit.test(callerBody)) {
+        errors.push(
+          `Redundant-call-elimination cost contract ${contract.id} changed its owning file without a short-circuit guard (${sourceCheck.guard} ||/&& ${sourceCheck.call}) eliminating ${sourceCheck.call}.`
+        );
+      }
+      continue;
+    }
     const guardedCall = (() => {
       if (callerStart < 0 || callIndex < 0) {
         return false;
