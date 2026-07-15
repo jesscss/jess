@@ -32,7 +32,7 @@ experimental worktree; consult this copy for the current design/status record.
 The experiment branch is allowed to lag current `dev` while the artifact is
 reviewed and must not be treated as an integration branch.
 
-### Evaluated mixed-root follow-up — in flight
+### Evaluated mixed-root follow-up — completed, rejected for canonical use
 
 On 2026-07-15 the same isolated worktree was assigned a second, bounded proof:
 build an evaluated root as a mixed representation in which only direct, flat,
@@ -42,15 +42,26 @@ or otherwise uncertain region remains an explicit legacy escape. The goal is
 to test a real AST boundary with exact CSS output, not to benchmark a route
 that falls back to the legacy root.
 
-The follow-up currently has `30/30` focused tests green, including native plus
+The final follow-up has `30/30` focused tests green, including native plus
 legacy siblings, variable and nested-selector rejection, parent/source-link
-preservation, raw-input rejection, and source-map gating. Its short exact
-probes cover the synthetic native shapes; the canonical fixture has not yet
-earned a comparable result and a hash mismatch is treated as rejection. The
-required final `20`-warmup/`45`-pair representative run and final route report
-are still in the isolated worktree. Until that report is copied here, this is
-an active experiment, not an AST result, production change, or performance
-claim.
+preservation, raw-input rejection, and source-map gating. Its `TREE2_BENCH`
+static and mixed fixtures were exact under both the short `3/5` probe and the
+required `20`-warmup/`45`-pair run. The mixed route produced `720` native
+rulesets plus one legacy `@layer` island, with no whole-document fallback. The
+static CSS hash is
+`b7d402d73e705d8cfcfa93e1d24045bee3b384531e7b68e85ae7d0b01b9b953b`; the
+mixed hash is
+`52866c029f75245a20900e21e591ce3f1f5c39f9436ddacda7c8f2d08c740836`.
+
+The canonical evaluated fixture is rejected on exact-output mismatch: legacy
+hash `450437656c359981eb751275e0ac56150f8ee02ddd9c8c98a306395f0061d319`
+versus tree2 hash
+`d76a17d9ae71958b9e815d59acea93b0111e5fdda1d98b8605140acb0b7d869e`.
+Therefore this proves a bounded mixed representation and explicit legacy-island
+boundary on synthetic shapes, not a canonical AST replacement or speedup.
+Native render timings also exclude evaluation and adapter construction, so no
+performance claim is allowed. The worktree remains isolated, uncommitted, and
+unexported pending a future parity repair or explicit retirement.
 
 This is a design record for the Q-40 performance program. It is not permission
 to rewrite the tree or to trade away Less semantics. Every production change
@@ -353,10 +364,11 @@ It compares a fresh-root legacy render with a tree2 build/render and records
 parse, adapter, eval, native-render, legacy-escape, and total stages. The
 synthetic static and mixed fixtures are useful stage probes, but they are not
 the canonical 20-warmup/45-pair `benchmark.less` A/B contract. The raw
-canonical fixture currently takes one whole-document legacy escape; the
-evaluated canonical case fails before producing a comparable route. Therefore
-the current benchmark proves exact-output plumbing and exposes where the
-prototype falls back; it does not prove an end-to-end speedup, a full Less
-feature-parity route, or a production AST replacement. Full Less-corpus,
+canonical fixture takes one whole-document legacy escape; the evaluated
+mixed-root follow-up rejects the canonical route on the output hash recorded
+above. Therefore the current benchmark proves exact-output plumbing and
+exposes where the prototype falls back; it does not prove an end-to-end
+speedup, a full Less feature-parity route, or a production AST replacement.
+Full Less-corpus,
 source-map-on, comment-heavy, import/mixin-placement, and typed-value coverage
 remain required before any tree2 result can enter the Q-40 integration queue.

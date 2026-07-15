@@ -176,6 +176,19 @@ checkpoint was stopped by aggressive-cutting review because the unwired
 No hook bypass was used. The design record is durable here; the source remains
 an explicitly preserved local experiment pending artifact review.
 
+The evaluated mixed-root follow-up completed in the same worktree on
+2026-07-15. It passed `30/30` focused tests and the exact `TREE2_BENCH` static
+and mixed fixtures under both `3/5` and `20/45`; the mixed route produced `720`
+native rulesets plus one legacy `@layer` island with no whole-document
+fallback. Static hash: `b7d402d73e705d8cfcfa93e1d24045bee3b384531e7b68e85ae7d0b01b9b953b`;
+mixed hash: `52866c029f75245a20900e21e591ce3f1f5c39f9436ddacda7c8f2d08c740836`.
+The canonical evaluated route was rejected on exact-output mismatch (legacy
+`450437656c359981eb751275e0ac56150f8ee02ddd9c8c98a306395f0061d319`, tree2
+`d76a17d9ae71958b9e815d59acea93b0111e5fdda1d98b8605140acb0b7d869e`). Native
+render timings exclude evaluation and adapter construction, so this is not a
+performance claim or production AST result. Keep the worktree isolated until
+canonical evaluated parity is repaired or the POC is explicitly retired.
+
 ## Q-40 — import-placement audit handoff
 
 The fresh read-only retained-placement audit is recorded in detail in

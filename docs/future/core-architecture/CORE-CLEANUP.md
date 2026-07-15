@@ -212,12 +212,32 @@ The canonical raw `benchmark.less` probe is exact-hash parity
 routes `nativeRenderCount=0`, `legacyRootRenderCount=1`, and
 `wholeDocumentEscapes=1`. Its timing therefore proves only that the fallback
 wrapper can preserve output; it does not prove a faster AST path. The added
-evaluated-canonical case rejects with `Maximum call stack size exceeded` before
-it can produce a route or hash, so no evaluated canonical route has been
-established. Verdict: retain the worktree as an isolated design experiment,
-do not merge it, and require an evaluated-canonical/import-capable route or
-explicitly reject the approach before assigning another tree2 implementation
-pass.
+evaluated mixed-root follow-up now rejects the canonical route on an exact
+output-hash mismatch. Verdict: retain the worktree as an isolated design
+experiment, do not merge it, and require a parity-repaired
+evaluated-canonical/import-capable route before assigning another tree2 pass.
+
+### Q-40 tree2 evaluated mixed-root follow-up (2026-07-15, rejected for canonical use)
+
+The final isolated follow-up kept the production boundary honest: only direct,
+flat, visible rulesets with proven scalar declarations took native arena
+records; variables, operations, mixins, imports, at-rules, extends, nested
+selectors, trivia, source maps, and uncertain regions remained explicit legacy
+escapes. Focused coverage passed `30/30`. The static and mixed `TREE2_BENCH`
+fixtures were exact under both `3/5` and `20/45`; the mixed route had `720`
+native rulesets plus one legacy `@layer` island and no whole-document fallback.
+Static hash: `b7d402d73e705d8cfcfa93e1d24045bee3b384531e7b68e85ae7d0b01b9b953b`.
+Mixed hash: `52866c029f75245a20900e21e591ce3f1f5c39f9436ddacda7c8f2d08c740836`.
+
+The canonical evaluated fixture did not preserve CSS: legacy hash
+`450437656c359981eb751275e0ac56150f8ee02ddd9c8c98a306395f0061d319` versus
+tree2 hash
+`d76a17d9ae71958b9e815d59acea93b0111e5fdda1d98b8605140acb0b7d869e`.
+No speed win is claimed; native render timings exclude evaluation and adapter
+construction, and the canonical parity gate failed. The worktree remains
+isolated and uncommitted under
+`/Users/matthew/git/worktrees/jess-greenfield-ast-design-20260714`; do not
+merge or export this POC until canonical evaluated parity is repaired.
 
 The opt-in benchmark is excluded from the normal core test glob and runs with
 `TREE2_BENCH=1 TREE2_WARMUPS=3 TREE2_SAMPLES=5 pnpm --filter
