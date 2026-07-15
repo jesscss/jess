@@ -7644,7 +7644,13 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
   }
 
   private _finishSourceOrderEvaluation(rules: Rules, rulesToHoist: boolean): { rules: Rules; rulesToHoist: boolean } {
-    this._normalizeCallDeclarationRulesOrder(rules);
+    // Only a direct Rules child can carry callDeclarationOutput. Registration
+    // records that producer fact for both authored callable containers and
+    // generated call results, so declaration-only surfaces cannot need this
+    // source-order scan.
+    if (rules.hasDirectChildRuleSurface) {
+      this._normalizeCallDeclarationRulesOrder(rules);
+    }
     if (hasMergeOutputSurface(rules)) {
       recordMergeProfile?.('admittedCalls');
       this._coalesceMergedDeclarations(rules);
