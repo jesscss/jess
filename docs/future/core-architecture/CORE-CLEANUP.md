@@ -186,15 +186,15 @@ row in this table is not a claim that the implementation has landed on `dev`.
 | Parseman versus Less recognizer gap and true recognizer POC | [`PARSER-RECOGNIZER-GAP.md`](./PARSER-RECOGNIZER-GAP.md); Parseman `/Users/matthew/git/oss/parser-thing/notes/PERF_IDEAS.md` | Flow analysis and the `12.58 ms` recognizer result are recorded. Parseman commit `c84d777` is local/unpublished, so Jess has not adopted it and no Jess speed claim follows. |
 | Less declaration-versus-ruleset statement-dispatch proof | [`PARSER-RECOGNIZER-GAP.md`](./PARSER-RECOGNIZER-GAP.md); rejected worker commit `0d6879277` in `/Users/matthew/git/worktrees/jess-q40-less-statement-dispatch-20260715` | Rejected. Moving `Declaration` before `Ruleset` accepted a prefix before a following `{` and stopped the canonical parse at byte `93,456` with `3` errors. The probe was removed; no source change or valid candidate A/B remains. |
 | Parseman zero-copy structural-builder POC | [`PARSER-RECOGNIZER-GAP.md`](./PARSER-RECOGNIZER-GAP.md); Parseman `/Users/matthew/git/oss/parser-thing/notes/PERF_IDEAS.md`; isolated source at `/private/tmp/parseman-zero-copy-builder-20260715` | Retained local Parseman commit `950e8b4`: `62` focused tests; array `10.97 ms` → range `4.35 ms` on the 106,797-byte Less grammar; output hash identical; transient heap regressed about `1.95 MB` → `7.17 MB`. The default API is unchanged, and Jess host adoption is blocked by the current `compileLinkable`/fused path boundary. This is a generic Parseman POC, not a Jess speed claim. |
-| Parser-host declaration `Spanned[]` reuse proof | Read-only parser/CST audit; active ownership is `packages/css-parser/src/builders.ts` and `packages/less-parser/src/builders.ts` plus focused builder tests | The shipping functional parser is Parseman, not the retired Chevrotain `consumeName` path. Less declaration construction currently converts the same raw children twice; the bounded host-only reuse proof is active. No Parseman, grammar, late-value, or speed claim exists yet. |
+| Parser-host declaration `Spanned[]` reuse proof | Read-only parser/CST audit; rejected worker commit `9f35c2921` on `feature/q40-parser-host-20260715` | The shipping functional parser is Parseman, not the retired Chevrotain `consumeName` path. Reuse eliminated `1,938→0` duplicate conversions per external benchmark parse while Less declaration builds stayed `2,800`; parse median was neutral at `57.274→57.359 ms`, transient heap `46.24→45.54 MiB`, and canonical A/B was noise (`232.230→227.630 ms` parse+render, `196.080→196.483 ms` render-only). Output was exact at `135,794` bytes with hash `9a58451bd3b0c9d80913df38be3b199994d2b93d34a9d2851f1b18d9dcaaa7cc`. Focused parser, core `3,329`, baseline, spine `137/137`, all-less `106/106`, and compatibility `62/62` passed; aggressive review rejected the lane because builders lack required machine-readable cost contracts. No source or tests were retained. |
 | Parseman trivia/capture separation and sparse trivia designs | [`parseman-trivia-audit.md`](../parseman-trivia-audit.md), [`trivia-offset-inference-model.md`](../trivia-offset-inference-model.md), and [`parseman-perf-proposals.md`](../parseman-perf-proposals.md) | The generic Parseman responsibilities, CSS/Less capture policy, comment-only capture idea, and span-based inference are documented as proposals/evidence. No CSS-shaped Parseman change is being treated as landed. |
 | From-scratch AST creativity pass: packed arenas, structs, semantic islands, direct emitters, dependency-aware reuse, and debug projections | [`AST-FROM-SCRATCH-DESIGN.md`](./AST-FROM-SCRATCH-DESIGN.md) | The alternatives are explicitly design candidates, not a hidden commitment to a class-for-class rewrite. CSS output, not legacy field/class shape, is the acceptance oracle. |
 | Lookup, merge, fallback, and evaluator-action audit | [`CORE-CLEANUP.md`](./CORE-CLEANUP.md), [`HANDOFF.md`](./HANDOFF.md), and [`AGGRESSIVE-CUTTING-REVIEW.md`](./AGGRESSIVE-CUTTING-REVIEW.md) | The 10,777 repeated preparation/admission scans, explicit merge-surface mistake, fallback topology, rejected generic index/prototype-chain shortcuts, and rejected terminal-miss sentinel are recorded. No broad lookup redesign is silently assumed. |
 | Flat writer sharing and OutputWriter state slimming | Q-37 and Q-39 in this tracker; [`HANDOFF.md`](./HANDOFF.md) | Flat root sharing and lazy transient writer state are landed/reviewed with byte identity. Their timing results are qualified; neither is presented as the missing `<40 ms` win. |
 | Evaluator/serializer frame-boundary proof | Worker branch `feature/q40-evaluator-serializer-frame-proof-20260715`, local commit `04a230e89`; landed integration commit `d211e8964` | The worker's structural result and two-phase/no-op evidence are captured. Current-dev dependency builds, focused tests, aggressive review, core, spine, all-less, and fresh same-checkout A/B are green. The fresh canonical A/B was parse+render `234.714→234.657 ms` (paired delta `-0.878 ms`, `24/45`) and render-only `198.801→198.271 ms` (paired delta `+2.695 ms`, `21/45`); output remained byte-identical at `135,794` bytes, hash `9a58451bd3b0c9d80913df38be3b199994d2b93d34a9d2851f1b18d9dcaaa7cc`. Retained as a structural simplification, not a speed win. |
 | Scope-frame allocation audit and empty pending-name proof | Read-only flow/heap audit; rejected worker commit `6dc929a36` plus the retained regression test | Rejected. `rules.ts` directly mutates `pendingDeclarationNames`, so a shared empty sentinel contaminated later frames. The trial also regressed both benchmark phases and had higher RSS; no production source change is retained. |
-| Compiler-root writer readback audit and writer-only result proof | Read-only OutputWriter/RenderBuffer audit; active worker owns the compiler-root path and directly relevant buffer/rules tests | Audit found `13,235` `getSince()` calls scanning `109,102` chunks and `10,907` `trimEndSince()` calls. A private compiler-owned flat/shared/source-map-off root-result proof is active; no OutputWriter tail cut, speed result, or acceptance claim exists yet. |
-| Extend/spine topology and fallback ownership audit | Read-only extend/spine/fallback audit against the existing extend worktrees and Q-40 ledger | Canonical rendering admits spine once and aborts on extend topology. Extend classification has `42,926` probes with `99.82%` no-matches; application has `39,605` calls with `99.89%` no-matches. Existing append×extend/spine/fallback lanes own the performance work; the only unowned `@layer` slice is correctness-oriented, not a Q-40 performance target. |
+| Compiler-root writer readback audit and writer-only result proof | Read-only OutputWriter/RenderBuffer audit; isolated worker commit `763eb1535` in `/private/tmp/jess-q40-root-writer-readback-20260715` | Audit found `13,235` `getSince()` calls scanning `109,102` chunks and `10,907` `trimEndSince()` calls. The bounded proof reduced fallback `getSince()` readbacks `3→1` and whole-buffer reads `2→0`; focused output and canonical output were exact. A/B was parse+render `237.066→236.102 ms` (`23/45`) and render-only `197.764→198.235 ms` (`23/45`), so no stable speed claim. Core `3,333`, builds, compiler reuse, public API, spine `137`, and all-less `106` passed; the candidate remains isolated because the aggressive-review registry needs out-of-scope handoff edits. |
+| Extend/spine topology and fallback ownership audit | Read-only extend/spine/fallback audit plus current-dev append×extend revalidation commit `91f4881d9` in `/Users/matthew/git/worktrees/jess-append-extend-revalidation-20260715` | Canonical rendering admits spine once and aborts on imported/reference topology. Extend classification has `42,926` probes with `99.82%` no-matches; application has `39,605` calls with `99.89%` no-matches. The append revalidation found `spineAttempts=1`, `ampAppend=7`, `extend=26`, and `0` append-target collisions: canonical append cases already fold safely. The only retained result is a test-only rejection; stale append×extend/spine/fallback lanes must not be reopened for this fixture. The only unowned `@layer` slice is correctness-oriented, not a Q-40 performance target. |
 | Import/mixin reuse, placement frames, static slots, dependency graph, and tree-shaken custom-property module direction | Q-40 import-placement sections, [`HANDOFF.md`](./HANDOFF.md), and the recommended shape in [`AST-FROM-SCRATCH-DESIGN.md`](./AST-FROM-SCRATCH-DESIGN.md) | The canonical-body/placement-overlay and dependency-graph ideas are recorded as design direction. The import/mixin reuse model is not being claimed as implemented, and the exported-custom-property tree-shaking path remains future product work. |
 | Typed string-plus-tag values and value materialization boundary | Q-30 in this tracker and POC 1 in [`AST-FROM-SCRATCH-DESIGN.md`](./AST-FROM-SCRATCH-DESIGN.md) | Explicitly fenced behind the active producer lanes. It covers dimensions, numbers, colors, booleans, and multi-token values while preserving authored strings; no partial scalar puppet test is being treated as the implementation. |
 
@@ -203,17 +203,27 @@ row in this table is not a claim that the implementation has landed on `dev`.
 These workers and artifacts are intentionally listed here so a later agent
 does not duplicate a lane or lose a result that remains isolated:
 
-- In flight at the 2026-07-15 snapshot: fixed-shape reference-surface
-  allocation proof, owned by `packages/core/src/tree/reference.ts` and its
-  focused tests in `/private/tmp/jess-q40-reference-surface-allocation-20260715`
-  on `feature/q40-reference-surface-allocation-20260715`. This targets the
-  previously profiled reflective `createRulesLikeReferenceSurface` path; no
-  implementation result or speed claim exists yet.
-- In flight at the same snapshot: four read-only ownership audits covering
-  registration/source-order preparation, parser/CST/trivia capture,
-  OutputWriter/RenderBuffer assembly, and extend/spine/fallback topology. They
-  have no returned findings or source changes yet; do not treat these lanes as
-  completed evidence or dispatch duplicates until their reports arrive.
+- Rejected: fixed-shape reference-surface allocation proof, owned by
+  `packages/core/src/tree/reference.ts` and focused tests in
+  `/private/tmp/jess-q40-reference-surface-allocation-20260715` on
+  `feature/q40-reference-surface-allocation-20260715`, commit `a69f51b5d`.
+  The semantically valid candidate was benchmark-activated (`1,428` seam calls
+  on `benchmark.less`, `1,200` on a dynamic fixture) but showed no causal speed
+  or consistent memory win; it was reverted to evidence-only. Benchmark
+  parse/render was `230.686→231.084 ms` and render-only `200.831→197.308 ms`;
+  dynamic fixture parse/render was `243.909→216.267 ms` and render-only
+  `134.793→134.009 ms`, without a stable canonical signal. Outputs were exact
+  (`135,794` bytes, hash `9a58451bd3b0c9d80913df38be3b199994d2b93d34a9d2851f1b18d9dcaaa7cc`;
+  dynamic `192,519` bytes, hash `38a968f24a8bd34be03fc667cddb679bc0e35a9335fbb731ec0cef38e0f337cc`).
+  Do not reopen the reflective/reference-surface lane without a new workload
+  and a simpler, consistently beneficial shape.
+- Returned ownership audits at the same snapshot cover registration/source-order
+  preparation, parser/CST/trivia capture, OutputWriter/RenderBuffer assembly,
+  and extend/spine/fallback topology. Their findings are recorded in the Q-40
+  sections below; they do not imply that every proposed follow-up is safe or
+  implemented. The parser-host duplicate-`Spanned[]` proof was rejected after
+  its measured neutral result; the compiler-root writer-readback proof remains
+  isolated and unaccepted on `dev`.
 - Rejected: Less `blockItem` statement-dispatch proof:
   `feature/q40-less-statement-dispatch-20260715`, worktree
   `/Users/matthew/git/worktrees/jess-q40-less-statement-dispatch-20260715`,
@@ -230,6 +240,18 @@ does not duplicate a lane or lose a result that remains isolated:
   It was byte-identical but neutral/noisy (`238.904→238.728 ms` parse+render,
   `201.534→202.190 ms` render-only) and failed the hot-path cost contract;
   only its rejection record was retained.
+- Rejected: current-dev append×extend revalidation,
+  `feature/q40-append-extend-revalidation-20260715`, commit `91f4881d9`,
+  worktree `/Users/matthew/git/worktrees/jess-append-extend-revalidation-20260715`.
+  Canonical append activation had zero target collisions; the remaining abort
+  is imported/reference topology. The worker retained only a test documenting
+  that boundary, so the older append artifacts are not a current Q-40 source
+  candidate.
+- Rejected: parser-host duplicate-`Spanned[]` reuse, `feature/q40-parser-host-20260715`,
+  commit `9f35c2921`. It removed `1,938` duplicate conversions per parse but
+  did not move parse or canonical benchmark medians, and the required parser
+  cost-contract metadata was outside the worker's ownership. No source or
+  tests were retained.
 
 The statement-dispatch lane is complete and rejected. The completed lanes above
 are evidence records, not merged Jess changes or unqualified performance wins;
@@ -283,7 +305,7 @@ parse+render `244.214500→245.270125 ms` (`20/25` wins/losses) and render-only
 hash `9a58451bd3b0c9d80913df38be3b199994d2b93d34a9d2851f1b18d9dcaaa7cc`.
 Do not revive the sentinel without an explicit copy-on-first-mutation design.
 
-### Q-40 compiler-root writer-readback audit — active proof (2026-07-15)
+### Q-40 compiler-root writer-readback audit — completed isolated proof (2026-07-15)
 
 The OutputWriter/RenderBuffer audit found no safe new `OutputWriter` tail
 optimization. The existing direct tail-bookkeeping prototype is rejected as
@@ -294,25 +316,40 @@ chunks aliased to `buffer.parts`, but root `_toDocumentString()` and
 final `parts.join('')`. The audit counted `13,235` `getSince()` calls scanning
 `109,102` chunks and `10,907` `trimEndSince()` calls.
 
-The active proof is a private writer-only root-result mode restricted to the
-compiler-owned, flat, shared, source-map-off root call. It must leave
-OutputWriter data structures, nested return contracts, caller-owned buffers,
-segmented buffers, source-map paths, and detached leaf writers unchanged. The
-worker must prove root fallback/spine behavior, caller-prefix behavior,
-source-map and buffer parity, exact CSS output, and the agreed canonical A/B;
-no speed claim exists until the readback/allocation change clears those gates.
+The completed isolated proof used a private writer-only root-result mode
+restricted to the compiler-owned, flat, shared, source-map-off root call. It
+left OutputWriter data structures, nested return contracts, caller-owned
+buffers, segmented buffers, source-map paths, and detached leaf writers
+unchanged. Fallback `getSince()` readbacks fell `3→1` and whole-buffer reads
+fell `2→0`; focused output was exact (`color: red;\n`) and the canonical output
+was `135,794` bytes with SHA-256
+`9a58451bd3b0c9d80913df38be3b199994d2b93d34a9d2851f1b18d9dcaaa7cc`.
+The isolated A/B was parse+render `237.066→236.102 ms` (`23/45` wins) and
+render-only `197.764→198.235 ms` (`23/45` wins), so this is not a stable speed
+win. Focused tests, full core (`3,333` passed), builds, compiler reuse, public
+API, spine ratchet (`137` passed), and all-less (`106` passed) passed. Worker
+commit `763eb1535` remains isolated because the aggressive-cutting registry
+requires out-of-scope handoff edits; do not merge it until that review issue is
+resolved and the candidate is replayed from current `dev`.
 
-### Q-40 parser-host duplicate Spanned[] audit — active proof (2026-07-15)
+### Q-40 parser-host duplicate Spanned[] audit — rejected proof (2026-07-15)
 
 The parser/CST audit confirmed that the shipping Less parser uses functional
 Parseman; the old Chevrotain `consumeName` helper is not on the benchmark path.
 The current Less host builds the same declaration raw children into `Spanned[]`
-twice across the CSS/Less builder boundary. A bounded worker is testing private
-reuse of that array only, preserving Parseman capture/trivia, public builder
-signatures, spans, AST serialization, and CSS output. Conversion counts,
-allocation/GC, parse time, exact output, and both canonical benchmark phases
-are required before acceptance. Detailed ownership is recorded in
-[`CORE-CLEANUP.md`](./CORE-CLEANUP.md).
+twice across the CSS/Less builder boundary. The bounded reuse proof eliminated
+`1,938→0` duplicate conversions per external benchmark parse while Less
+declaration builds remained `2,800`; parse median was neutral at
+`57.274→57.359 ms`, with transient heap `46.24→45.54 MiB`. The canonical A/B
+was parse+render `232.230→227.630 ms` (`23/45` wins) and render-only
+`196.080→196.483 ms` (`24/45` wins), so this is not a stable speed win.
+Output was exact at `135,794` bytes with SHA-256
+`9a58451bd3b0c9d80913df38be3b199994d2b93d34a9d2851f1b18d9dcaaa7cc`.
+Focused parser suites, core `3,329`, baseline, spine `137/137`, all-less
+`106/106`, and compatibility `62/62` passed. Aggressive review rejected the
+candidate because the parser builders lack required machine-readable cost
+contracts and adding those entries was outside worker ownership. Rejection
+commit `9f35c2921` retains no source or test changes.
 
 ### Q-40 extend/spine topology audit — no new performance lane (2026-07-15)
 
@@ -1071,16 +1108,22 @@ declarations-coverage state.
 
 - **Q-40 extend chain-only preparation audit (2026-07-15, pending owner proof).** The extend audit found that `applyExtendsToSelector()` eagerly prepares `collectSelectorSubtreeValues()`, expanded extend targets, tuples, and the target index even when no selector changes and chained discovery is never entered. The current dirty user checkout already contains a partial lazy-preparation change in `packages/core/src/tree/util/extend.ts`; it was not touched or duplicated. Removing/reusing the subtree scan remains rejected without a focused matrix covering chained/partial/list/`:is`/ampersand/self/circular/reference/protected-root semantics plus canonical A/B. The existing target index and pass memo remain required and must not be revived as a root-level cache.
 
-- **Q-40 reference-surface allocator audit (2026-07-15, blocked/rejected as a
-  new cut).** The current `createRulesLikeReferenceSurface` remains the
-  already-landed `Object.create`/`Object.keys` field-copy shape with shallow
-  `_options` and `_lookup` copies. The isolated worker made no implementation
-  or commit because the clean benchmark could not start with missing
-  `packages/less-parser/lib`, and the recursive rebuild hit unrelated Parseman
-  linking/`NodeModulesPlugin` declaration failures. No allocator A/B or
-  semantic proof exists; do not claim a win or reopen the older
-  reflective-descriptor lane without a repaired build and a workload that
-  exercises reference-surface creation.
+- **Q-40 reference-surface allocator audit (2026-07-15, rejected as a new
+  cut).** The semantically valid fixed-shape candidate was benchmark-activated
+  (`1,428` seam calls on `benchmark.less`, `1,200` on a dynamic fixture), but
+  showed no causal speed or consistent memory win and was materially more
+  complex, so the source was reverted. Benchmark parse/render was
+  `230.686→231.084 ms` and render-only `200.831→197.308 ms`; dynamic fixture
+  parse/render was `243.909→216.267 ms` and render-only `134.793→134.009 ms`,
+  without a stable canonical signal. Outputs were exact: benchmark `135,794`
+  bytes with SHA-256
+  `9a58451bd3b0c9d80913df38be3b199994d2b93d34a9d2851f1b18d9dcaaa7cc`, and
+  dynamic `192,519` bytes with SHA-256
+  `38a968f24a8bd34be03fc667cddb679bc0e35a9335fbb731ec0cef38e0f337cc`.
+  Focused `515/516`, core `3,331`, full build, spine `137/137`, all-less,
+  aggressive review, and ESLint passed. Evidence-only worker commit is
+  `a69f51b5d`; do not reopen the lane without a new workload and a simpler,
+  consistently beneficial shape.
 
 - **Q-40 explicit merge-only lookup audit (2026-07-15, rejected).** The
   canonical profile reproduced `43,167` declaration cache misses, `53,360`

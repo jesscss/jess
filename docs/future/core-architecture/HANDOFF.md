@@ -227,7 +227,7 @@ remain. The trial regressed parse+render `244.214500→245.270125 ms` and
 render-only `196.456375→198.914833 ms`, with no retained-heap improvement and
 higher RSS. Detailed evidence is in [`CORE-CLEANUP.md`](./CORE-CLEANUP.md).
 
-## Q-40 — compiler-root writer readback (active proof, 2026-07-15)
+## Q-40 — compiler-root writer readback (completed isolated proof, 2026-07-15)
 
 The OutputWriter/RenderBuffer audit found no safe new tail-bookkeeping cut; the
 existing tail prototype remains rejected as noisy and more complex. It did
@@ -237,24 +237,40 @@ string through writer readback before public finalization joins those parts.
 The audit observed `13,235` `getSince()` calls scanning `109,102` chunks and
 `10,907` `trimEndSince()` calls.
 
-The active proof is restricted to a private writer-only root result for that
-compiler-owned path. Caller-owned buffers, segmented buffers, source-map paths,
-nested return contracts, and OutputWriter internals remain unchanged. Exact
-output, source-map/caller-buffer behavior, root fallback/spine behavior, and
-both canonical benchmark phases are required before acceptance. Detailed
+The isolated proof restricted the change to a private writer-only root result
+for that compiler-owned path. Caller-owned buffers, segmented buffers,
+source-map paths, nested return contracts, and OutputWriter internals remain
+unchanged. It reduced fallback `getSince()` readbacks from `3` to `1` and
+whole-buffer reads from `2` to `0`, with exact focused output (`color: red;\n`)
+and canonical output of `135,794` bytes with SHA-256
+`9a58451bd3b0c9d80913df38be3b199994d2b93d34a9d2851f1b18d9dcaaa7cc`.
+The isolated A/B was parse+render `237.066→236.102 ms` (`23/45` wins) and
+render-only `197.764→198.235 ms` (`23/45` wins): no stable speed win, but the
+readback/allocation simplification is behaviorally useful. Focused tests, full
+core (`3,333` passed), builds, compiler reuse, public API, spine ratchet
+(`137` passed), and all-less (`106` passed) passed. The candidate remains
+unmerged at worker commit `763eb1535` because its aggressive-review registry
+needs out-of-scope handoff/registry edits; no push was performed. Detailed
 ownership and gates are recorded in [`CORE-CLEANUP.md`](./CORE-CLEANUP.md).
 
-## Q-40 — parser-host duplicate Spanned[] (active proof, 2026-07-15)
+## Q-40 — parser-host duplicate Spanned[] (rejected, 2026-07-15)
 
 The parser/CST audit confirmed that the shipping Less parser uses functional
 Parseman; the old Chevrotain `consumeName` helper is not on the benchmark path.
 The current Less host builds the same declaration raw children into `Spanned[]`
-twice across the CSS/Less builder boundary. A bounded worker is testing private
-reuse of that array only, preserving Parseman capture/trivia, public builder
-signatures, spans, AST serialization, and CSS output. Conversion counts,
-allocation/GC, parse time, exact output, and both canonical benchmark phases
-are required before acceptance. Detailed ownership is recorded in
-[`CORE-CLEANUP.md`](./CORE-CLEANUP.md).
+twice across the CSS/Less builder boundary. The bounded reuse proof eliminated
+`1,938→0` duplicate conversions per external benchmark parse while Less
+declaration builds remained `2,800`; parse median was neutral at
+`57.274→57.359 ms`, with transient heap `46.24→45.54 MiB`. The canonical A/B
+was parse+render `232.230→227.630 ms` (`23/45` wins) and render-only
+`196.080→196.483 ms` (`24/45` wins), so no stable speed claim is allowed.
+Output remained exact at `135,794` bytes with SHA-256
+`9a58451bd3b0c9d80913df38be3b199994d2b93d34a9d2851f1b18d9dcaaa7cc`.
+Focused parser suites, core `3,329`, baseline, spine `137/137`, all-less
+`106/106`, and compatibility `62/62` passed, but aggressive review rejected
+the lane because the parser builders lack required machine-readable cost
+contracts and adding them was outside ownership. Rejection commit `9f35c2921`
+retains no source or test changes.
 
 ## Q-40 — extend/spine topology audit (no new performance lane, 2026-07-15)
 
@@ -266,6 +282,19 @@ append×extend, extend-serialized, compound-amp, root-admission, and fallback
 worktrees already own or reject the relevant performance paths. A direct
 same-layer `@layer` admission fixture is an unowned correctness/coverage idea,
 not a Q-40 speed lane, so no duplicate worker was dispatched.
+
+The current-dev append×extend revalidation is now also closed. On the canonical
+fixture, `spineAttempts=1`, `ampAppend=7`, `extend=26`, and append-target
+collisions were `0`; the append cases at lines `4254–4264` were already safely
+foldable. The remaining abort comes from imported/reference topology at lines
+`3986–4042`, not from compound or append-generated targets. The worker retained
+only the test-only rejection record `91f4881d9`, with focused append/extend/
+differential/spine coverage `157/157`, spine `137`, full core `3,329`, builds,
+API Extractor, aggressive review, and all-less identity green. Its canonical
+external output was `133,983` bytes with SHA-256
+`adfd26732125a33fc1e264aca7d7ecde8c7c1da43f968e3106bd387a1f78e840`; the
+20-warmup/45-pair numbers were baseline=0/candidate=0 controls, not a source
+improvement. Do not reopen the stale append worktrees for this benchmark.
 
 ## Q-40 — fresh canonical control refresh (2026-07-15)
 
@@ -1162,7 +1191,7 @@ left unmerged; only the evidence record was retained in commit `3056554`.
 - Q-40 `hasDirectChildRuleSurface` pre-collection guard (2026-07-15, rejected): the find-within-scope audit identified a distinct possible cut—skip `collectDirectDeclarationChildEntries()` when the existing producer fact is false. The implementation proof found that `derive()` intentionally clears `R_HAS_DIRECT_CHILD_RULE_SURFACE` while sharing the child array, so a derived placement can contain a direct Rules child while the proposed guard reads false. Repairing that would require another traversal/state graph or a new authoritative ownership protocol, violating the bounded-cut rule. No source change or POC was retained; keep the existing child-entry path and do not use this flag as a lookup shortcut.
 - Q-40 extend chain-only preparation audit (2026-07-15, pending owner proof): the extend audit found that `applyExtendsToSelector()` eagerly prepares `collectSelectorSubtreeValues()`, expanded extend targets, tuples, and the target index even when no selector changes and chained discovery is never entered. The current dirty user checkout already contains a partial lazy-preparation change in `packages/core/src/tree/util/extend.ts`; it was not touched or duplicated. Removing/reusing the subtree scan remains rejected without a focused matrix covering chained/partial/list/`:is`/ampersand/self/circular/reference/protected-root semantics plus canonical A/B. The existing target index and pass memo remain required and must not be revived as a root-level cache.
 - Q-40 local artifact/worktree reconciliation (2026-07-15): superseded registration-prep `f4ee226ce` and declaration-child-metadata `42c707c7a` worktrees are explicitly retired in `CORE-CLEANUP.md` in favor of integrated `3a3f71d9e` and `d443a559b`; the uncommitted import-placement variant remains audit-only. CPU/heap and parser profile files under `/private/tmp` are local diagnostics whose durable summaries are in the tracker, not published artifacts.
-- Q-40 reference-surface allocator audit (2026-07-15, blocked/rejected as a new cut): the current `createRulesLikeReferenceSurface` remains the already-landed `Object.create`/`Object.keys` field-copy shape with shallow `_options` and `_lookup` copies. The isolated worker made no implementation or commit because the clean benchmark could not start with missing `packages/less-parser/lib`, and the recursive rebuild hit unrelated Parseman linking/`NodeModulesPlugin` declaration failures. No allocator A/B or semantic proof exists; do not claim a win or reopen the older reflective-descriptor lane without a repaired build and a workload that exercises reference-surface creation.
+- Q-40 reference-surface allocator audit (2026-07-15, rejected as a new cut): the semantically valid fixed-shape candidate was benchmark-activated (`1,428` seam calls on `benchmark.less`, `1,200` on a dynamic fixture), but showed no causal speed or consistent memory win and was materially more complex, so the source was reverted. Benchmark parse/render was `230.686→231.084 ms` and render-only `200.831→197.308 ms`; dynamic fixture parse/render was `243.909→216.267 ms` and render-only `134.793→134.009 ms`, without a stable canonical signal. Outputs were exact: benchmark `135,794` bytes with SHA-256 `9a58451bd3b0c9d80913df38be3b199994d2b93d34a9d2851f1b18d9dcaaa7cc`, dynamic `192,519` bytes with SHA-256 `38a968f24a8bd34be03fc667cddb679bc0e35a9335fbb731ec0cef38e0f337cc`. Focused `515/516`, core `3,331`, full build, spine `137/137`, all-less, aggressive review, and ESLint passed. Evidence-only worker commit is `a69f51b5d`; do not reopen the lane without a new workload and a simpler, consistently beneficial shape.
 - Q-40 explicit merge-only lookup audit (2026-07-15, rejected): the canonical profile reproduced `43,167` declaration cache misses, `53,360` child-entry admissions, `16,486` child scans, only `16` local matches, and `22` declaration references. A merge-heavy fixture rendered exactly (`186` bytes, SHA-256 `4d01b5cbdf83e120e5d3b16f9a8ef8c05288976185f74df0c515e1da58067dfe`) but activated zero direct-lookup counters, including an eval-forcing probe, because its merges were structurally coalesced before `findAnyDeclarationOccurrence`. A bucket-only descriptor therefore has no activating proof and cannot be admitted without reintroducing cross-scope/import/mixin visibility plus self/source-order filtering. No source change or commit was made.
 - Q-40 source-order preparation audit (2026-07-15, rejected as a new canonical cut): the earlier legacy-only profile measured `_prepareForEval` `10,420` calls / `865.8 ms`, `_prepareRegistrationOnce` `3,060` / `85.7 ms`, and `_evaluateSourceOrder` `10,420` / `807.4 ms`; normalization found `8` candidates but performed `0` reorders, while live-binding placements repointed `6,987` times. A follow-up current-dev instrumentation corrected the activation story: canonical `benchmark.less` makes one spine root attempt, then enters the normal fallback path `10,777` times for `_prepareForEval`, `_evaluateSourceOrder`, and `_normalizeCallDeclarationRulesOrder` (imports-only preparations: `0`). This is real canonical work, not legacy-only work; nevertheless, the existing normalization target is owned by `7bb9b483e`, and broader route consolidation risks source-order, import, call, and live-binding semantics. No new bounded candidate or duplicate worker was dispatched.
 - Q-40 OutputWriter trim-tail audit (2026-07-15, rejected): the live canonical path counted `15,581` writers, `13,400` marks, `7,123` restores, `13,235` `getSince()` calls scanning `109,102` chunks, and `10,907` `trimEndSince()` calls causing `69,780` position updates; `capture()`/`preview()` were unused. A no-source-map tail-bookkeeping prototype was exact in `68/68` writer/source-map tests and the core build, but parse-render `234.925→232.575 ms` had paired median delta `+1.187 ms` with `20/45` wins, and render-only `198.693→197.714 ms` had paired delta `−0.066 ms` with `23/45`. Output was exact at `135,794` bytes, SHA-256 `9a58451bd3b0c9d80913df38be3b199994d2b93d34a9d2851f1b18d9dcaaa7cc`; reject the complexity and preserve `_posLength`/source-map behavior. Rejected uncommitted artifact remains isolated at `/private/tmp/jess-outputwriter-trim-tail-20260715`.
