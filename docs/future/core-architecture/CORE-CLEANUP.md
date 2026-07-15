@@ -628,6 +628,19 @@ declarations-coverage state.
   reflective-descriptor lane without a repaired build and a workload that
   exercises reference-surface creation.
 
+- **Q-40 explicit merge-only lookup audit (2026-07-15, rejected).** The
+  canonical profile reproduced `43,167` declaration cache misses, `53,360`
+  child-entry admissions, `16,486` child scans, only `16` local matches, and
+  `22` declaration references. A merge-heavy fixture rendered exactly
+  (`186` bytes, SHA-256
+  `4d01b5cbdf83e120e5d3b16f9a8ef8c05288976185f74df0c515e1da58067dfe`) but
+  activated zero direct-lookup counters, including an eval-forcing probe,
+  because its merges were structurally coalesced before
+  `findAnyDeclarationOccurrence`. A bucket-only descriptor therefore has no
+  activating proof and cannot be admitted without reintroducing cross-scope,
+  import/mixin visibility, self-exclusion, and source-order filtering. No
+  source change or commit was made.
+
 - **Q-40 source-order preparation audit (2026-07-15, rejected as a new
   canonical cut).** The legacy source-order route still performed
   `_prepareForEval` `10,420` times (`865.8 ms` inclusive),
