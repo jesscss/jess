@@ -32,9 +32,20 @@ function isCstNode(c: CssCstChild): c is CssCstNode {
   return c._tag === 'node';
 }
 
+// M4: memoize the index by tree identity. `cstDoc.edit()` yields a NEW tree per
+// edit, so a keyed cache auto-invalidates on change while every feature run
+// within one document version reuses a single build — no per-call rebuild, no
+// stale index. (True subtree-incremental patching is a deferred micro-opt; the
+// full walk is O(nodes) and cheap.)
+const INDEX_CACHE = new WeakMap<CssCstNode, CstIndex>();
+
 /** Depth-first collect, accumulating parent-relative spans into absolute
- * offsets, sorted by position. */
+ * offsets, sorted by position. Memoized by tree identity (see M4 note). */
 export function buildCstIndex(root: CssCstNode): CstIndex {
+  const cached = INDEX_CACHE.get(root);
+  if (cached) {
+    return cached;
+  }
   const out: CstIndexEntry[] = [];
   const abs = new Map<CssCstNode, [number, number]>();
   const walk = (node: CssCstNode, base: number) => {
@@ -52,7 +63,7 @@ export function buildCstIndex(root: CssCstNode): CstIndex {
   };
   walk(root, 0);
   out.sort((a, b) => (a.start - b.start) || (a.end - b.end));
-  return {
+  const index: CstIndex = {
     nodes: out,
     spanOf(node) {
       const a = abs.get(node);
@@ -70,6 +81,8 @@ export function buildCstIndex(root: CssCstNode): CstIndex {
       return best?.node ?? null;
     }
   };
+  INDEX_CACHE.set(root, index);
+  return index;
 }
 
 // Grammar types (raw `grammarType`, shared across css/less/scss/jess) grouped by

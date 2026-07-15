@@ -61,6 +61,15 @@ describe('CST-grounded document symbols (Option B slice)', () => {
     expect(flat(syms)).toContain('Class .foo');
   });
 
+  it('buildCstIndex is memoized by tree identity (M4: one build per doc version)', () => {
+    const tree = parseCssDoc('.a { x: 1 }').tree;
+    const a = buildCstIndex(tree);
+    const b = buildCstIndex(tree);
+    expect(a).toBe(b); // same tree -> same cached index, no rebuild
+    const other = buildCstIndex(parseCssDoc('.b { y: 2 }').tree);
+    expect(other).not.toBe(a); // a new tree (a new edit) yields a fresh index
+  });
+
   it('buildCstIndex resolves absolute spans from parent-relative CST', () => {
     const text = '@media screen { .a { color: red } }';
     const idx = buildCstIndex(parseCssDoc(text).tree);
