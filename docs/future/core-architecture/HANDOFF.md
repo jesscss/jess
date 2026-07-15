@@ -156,11 +156,12 @@ Other active docs in this dir:
   Parseman recognizer still pays runtime structural protocol work. A separate
   compile-time-stripped recognizer POC now exists as unpublished local commit
   `c84d777`; Jess adoption remains deferred pending a consumable dependency and
-  a fresh parser/render A/B. Its generic zero-copy builder target remains
-  recorded in the Parseman repository's `notes/PERF_IDEAS.md`; as of
-  2026-07-15 that target is being tested by the isolated worker
-  `feature/parseman-zero-copy-builder-20260715` from Parseman commit `1ca3940`.
-  No zero-copy result or Jess adoption claim exists yet.
+  a fresh parser/render A/B. The generic zero-copy builder POC is now retained
+  locally as Parseman commit `950e8b4` in
+  `/private/tmp/parseman-zero-copy-builder-20260715`: it improved the generic
+  structural benchmark `10.97→4.35 ms` with identical output, but regressed
+  transient heap `1.95→7.17 MB` and cannot be adopted by Jess until the
+  `compileLinkable`/fused host boundary is solved. No Jess speed claim exists.
 - **`AGGRESSIVE-CUTTING-REVIEW.md`** — the patch-shape refusal checklist; run before
   committing changes to AST/eval/render/lookup/traversal/copy/output/metadata.
 - **`STRINGS-OVER-NODES.md`** — active reference (producer flips still pending).
@@ -218,6 +219,19 @@ states. The property-merge/sequence simplification remains a proposal, not an
 implemented or rejected result. The tree-shaken exported-custom-property
 dependency graph remains a future product/design direction, not proven runtime
 work.
+
+## Q-40 — terminal direct-lookup miss-state proof (rejected, 2026-07-15)
+
+The isolated candidate reused a readonly terminal-miss sentinel in
+`findWithinScopeSurface`, without adding a generic lookup index, cache, or
+prototype-chain scope. Its semantic matrix, core suite, build, and all-less
+corpus were green and the output was byte-identical at `135,794` bytes with
+SHA-256 `9a58451bd3b0c9d80913df38be3b199994d2b93d34a9d2851f1b18d9dcaaa7cc`.
+
+The fixed-contract A/B was neutral/noisy: parse+render `238.904→238.728 ms`
+(`18/45` wins) and render-only `201.534→202.190 ms` (`24/45` wins). The
+candidate also failed the hot-path cost-contract review. It was rejected and
+left unmerged; only the evidence record was retained in commit `3056554`.
 
 ## Aggressive Cutting Self-Prosecution
 

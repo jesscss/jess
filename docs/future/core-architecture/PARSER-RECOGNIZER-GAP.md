@@ -128,9 +128,12 @@ dependency is rebuilt and Jess's own parser/render contract is A/B tested.
 1. Publish or otherwise make the Parseman recognizer artifact consumable, then
    rebuild the Jess parser chain and rerun equal-contract recognizer/capture/
    host measurements on the same fixture/runtime.
-2. Implement and benchmark the opt-in generic zero-copy structural-builder
-   contract; it remains the first capture-side target because it preserves the
-   default API and keeps semantic/raw channels separate.
+2. The generic zero-copy structural-builder POC is complete as local Parseman
+   commit `950e8b4`. It passes `62` focused tests and improves the generic
+   structural benchmark `10.97→4.35 ms` with identical output, but transient
+   heap regresses `1.95→7.17 MB`. Keep it as an evidence artifact; do not call
+   it a Jess win until a `compileLinkable`/fused-host integration is built and
+   measured, and do not hide the memory regression.
 3. Measure declaration-versus-ruleset candidate attempts; current Jess body
    order tests `Ruleset` before `Declaration` for overlapping inputs.
 4. Expand Less-specific late materialization only with semantic predicates for
