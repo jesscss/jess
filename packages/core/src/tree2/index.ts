@@ -6,7 +6,7 @@
  * per-shape tree2-vs-tree head-to-head harness.
  */
 
-export { Kind, Tree2Node, type Combinator } from './node.js';
+export { Kind, Node, type Combinator } from './node.js';
 export * from './nodes.js';
 // [atrule] at-rule node types + constructors
 export * from './at-rule.js';
@@ -25,5 +25,5 @@ export {
   type ComposeStats,
   type SerializeOptions,
   type SerializeResult,
-  type Tree2Position,
+  type Position,
 } from './serialize.js';

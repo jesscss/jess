@@ -25,7 +25,7 @@
  *   - `composeStats(root)`                  — untimed op-count instrumentation.
  */
 
-import { Kind, Tree2Node } from './node.js';
+import { Kind, Node } from './node.js';
 import { Word } from './nodes.js';
 import type {
   Complex,
@@ -43,8 +43,8 @@ import type { ValueService } from './value-service.js';
 import { selectDefinitions } from './mixin-dispatch.js'; // [guards]
 import type { ValueResolver } from './guard.js'; // [guards]
 
-export interface Tree2Position {
-  node: Tree2Node;
+export interface Position {
+  node: Node;
   kind: Kind;
   start: number;
   end: number;
@@ -71,7 +71,7 @@ export interface SerializeOptions {
 export interface SerializeResult {
   css: string;
   /** Present only when `trackPositions` is set. */
-  positions?: Tree2Position[];
+  positions?: Position[];
 }
 
 const INDENT = '  ';
@@ -243,7 +243,7 @@ function ownStrings(list: SelectorList): string[] {
 interface Emit {
   chunks: string[];
   off: number;
-  positions: Tree2Position[] | null;
+  positions: Position[] | null;
   service: ValueService | null;
   // [atrule] current block-nesting depth (0 = top level). At-rule bodies raise it
   // so declarations/selectors inside a block indent one level deeper.

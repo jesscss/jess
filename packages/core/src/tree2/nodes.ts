@@ -16,14 +16,14 @@
  * holds with zero source-position tracking.
  */
 
-import { Combinator, Kind, Tree2Node } from './node.js';
+import { Combinator, Kind, Node } from './node.js';
 import type { GuardNode } from './guard.js'; // [guards]
 import type { CallArg } from './mixin-dispatch.js'; // [guards]
 
 /* ------------------------------------------------------------------ values */
 
 /** A bare identifier / keyword leaf, e.g. `red`, `solid`. */
-export class Word extends Tree2Node {
+export class Word extends Node {
   readonly kind = Kind.Word as const;
   constructor(readonly text: string) {
     super();
@@ -31,7 +31,7 @@ export class Word extends Tree2Node {
 }
 
 /** A numeric dimension leaf, e.g. `0px`, `10px`. */
-export class Dimension extends Tree2Node {
+export class Dimension extends Node {
   readonly kind = Kind.Dimension as const;
   constructor(
     readonly value: number,
@@ -42,7 +42,7 @@ export class Dimension extends Tree2Node {
 }
 
 /** A space-separated list of value parts, e.g. `1px solid black`. */
-export class SpacedValue extends Tree2Node {
+export class SpacedValue extends Node {
   readonly kind = Kind.SpacedValue as const;
   constructor(readonly parts: ValueNode[]) {
     super();
@@ -50,7 +50,7 @@ export class SpacedValue extends Tree2Node {
 }
 
 /** A reference to a mixin parameter / bound variable, e.g. `@c`. */
-export class VarRef extends Tree2Node {
+export class VarRef extends Node {
   readonly kind = Kind.VarRef as const;
   constructor(readonly name: string) {
     super();
@@ -64,7 +64,7 @@ export class VarRef extends Tree2Node {
  * `1px solid @c` => Concat[Word('1px solid '), VarRef('c')]. Reference
  * substitution only (this rung): no arithmetic, no function evaluation.
  */
-export class Concat extends Tree2Node {
+export class Concat extends Node {
   readonly kind = Kind.Concat as const;
   constructor(readonly parts: ValueNode[]) {
     super();
@@ -78,7 +78,7 @@ export class Concat extends Tree2Node {
  * operations / variable refs fold bottom-up (each sub-operation is computed to
  * bytes before the outer one runs — precedence is carried by the tree shape).
  */
-export class Operation extends Tree2Node {
+export class Operation extends Node {
   readonly kind = Kind.Operation as const;
   constructor(
     readonly operator: string,
@@ -98,7 +98,7 @@ export class Operation extends Tree2Node {
  * separators (`,`, space, `/`) byte-faithful without tree2 modeling every list
  * shape, while still resolving `@var` references through scope before the call.
  */
-export class FunctionCall extends Tree2Node {
+export class FunctionCall extends Node {
   readonly kind = Kind.FunctionCall as const;
   constructor(
     readonly name: string,
@@ -109,7 +109,7 @@ export class FunctionCall extends Tree2Node {
 }
 
 /** A parenthesized value, e.g. `(#aaa * 3)`. Transparent to computed bytes. */
-export class Paren extends Tree2Node {
+export class Paren extends Node {
   readonly kind = Kind.Paren as const;
   constructor(readonly inner: ValueNode) {
     super();
@@ -134,7 +134,7 @@ function renderCombinator(comb: Combinator): string {
 }
 
 /** A single simple-selector token, e.g. `.a`, `:hover`, `&`. */
-export class Simple extends Tree2Node {
+export class Simple extends Node {
   readonly kind = Kind.Simple as const;
   constructor(readonly text: string) {
     super();
@@ -142,7 +142,7 @@ export class Simple extends Tree2Node {
 }
 
 /** A run of simple tokens with no separator, e.g. `.a.b`, `&:hover`. */
-export class Compound extends Tree2Node {
+export class Compound extends Node {
   readonly kind = Kind.Compound as const;
   private _canon: string | undefined;
   constructor(readonly simples: Simple[]) {
@@ -168,7 +168,7 @@ export interface ComplexSegment {
 }
 
 /** A head compound plus combinator-joined tail compounds. */
-export class Complex extends Tree2Node {
+export class Complex extends Node {
   readonly kind = Kind.Complex as const;
   private _canon: string | undefined;
   private _hasAmp: boolean | undefined;
@@ -206,7 +206,7 @@ export class Complex extends Tree2Node {
 }
 
 /** A comma-separated list of complex selectors, e.g. `.a, .b`. */
-export class SelectorList extends Tree2Node {
+export class SelectorList extends Node {
   readonly kind = Kind.SelectorList as const;
   constructor(readonly selectors: Complex[]) {
     super();
@@ -216,7 +216,7 @@ export class SelectorList extends Tree2Node {
 /* -------------------------------------------------------------- statements */
 
 /** A `name: value;` declaration. */
-export class Declaration extends Tree2Node {
+export class Declaration extends Node {
   readonly kind = Kind.Declaration as const;
   constructor(
     readonly name: string,
@@ -227,7 +227,7 @@ export class Declaration extends Tree2Node {
 }
 
 /** A `@name: value;` variable declaration. Emits nothing; lives in scope. */
-export class VarDeclaration extends Tree2Node {
+export class VarDeclaration extends Node {
   readonly kind = Kind.VarDeclaration as const;
   constructor(
     readonly name: string,
@@ -238,7 +238,7 @@ export class VarDeclaration extends Tree2Node {
 }
 
 /** A comment carried structurally in source order (block or line text as-is). */
-export class Comment extends Tree2Node {
+export class Comment extends Node {
   readonly kind = Kind.Comment as const;
   constructor(readonly text: string) {
     super();
@@ -246,7 +246,7 @@ export class Comment extends Tree2Node {
 }
 
 /** A `selector { ...body }` rule; body may nest further rules. */
-export class Rule extends Tree2Node {
+export class Rule extends Node {
   readonly kind = Kind.Rule as const;
   constructor(
     readonly selector: SelectorList,
@@ -274,7 +274,7 @@ export interface Param {
  * call reads it through an overlay (bindings + parent-selector context) and
  * NEVER clones it. [guards] `guard` is an optional `when (...)` condition.
  */
-export class MixinDef extends Tree2Node {
+export class MixinDef extends Node {
   readonly kind = Kind.MixinDef as const;
   constructor(
     readonly name: string,
@@ -287,7 +287,7 @@ export class MixinDef extends Tree2Node {
 }
 
 /** A mixin call. Args bind to the def's params (positional or named). [guards] */
-export class MixinCall extends Tree2Node {
+export class MixinCall extends Node {
   readonly kind = Kind.MixinCall as const;
   constructor(
     readonly name: string,
@@ -298,7 +298,7 @@ export class MixinCall extends Tree2Node {
 }
 
 /** The document root: an ordered list of top-level statements. */
-export class Root extends Tree2Node {
+export class Root extends Node {
   readonly kind = Kind.Root as const;
   constructor(readonly children: Statement[]) {
     super();
@@ -360,7 +360,7 @@ export const mixinDef = (
 export const mixinCall = (name: string, args: Array<ValueNode | CallArg> = []): MixinCall =>
   new MixinCall(
     name,
-    args.map((a) => (a instanceof Tree2Node ? { value: a } : a)),
+    args.map((a) => (a instanceof Node ? { value: a } : a)),
   );
 
 /** A single simple-string complex selector, e.g. `sel('.test')`. */

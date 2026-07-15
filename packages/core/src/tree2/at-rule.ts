@@ -25,11 +25,11 @@
  * modules (`node`, `nodes`) — never the legacy tree.
  */
 
-import { Kind, Tree2Node } from './node.js';
+import { Kind, Node } from './node.js';
 import type { Statement, ValueNode } from './nodes.js';
 
 /** A block-bearing at-rule: `@name prelude { …body }`. */
-export class AtRuleBlock extends Tree2Node {
+export class AtRuleBlock extends Node {
   readonly kind = Kind.AtRuleBlock as const;
   constructor(
     readonly name: string,
@@ -41,7 +41,7 @@ export class AtRuleBlock extends Tree2Node {
 }
 
 /** A statement-form at-rule: `@name prelude;` (prelude bytes kept literal). */
-export class AtRuleStatement extends Tree2Node {
+export class AtRuleStatement extends Node {
   readonly kind = Kind.AtRuleStatement as const;
   constructor(
     readonly name: string,

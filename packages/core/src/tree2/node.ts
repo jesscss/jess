@@ -43,6 +43,6 @@ export enum Kind {
 export type Combinator = ' ' | '>' | '+' | '~';
 
 /** Base of every clean-room tree2 node. Owns nothing but its tag. */
-export abstract class Tree2Node {
+export abstract class Node {
   abstract readonly kind: Kind;
 }
