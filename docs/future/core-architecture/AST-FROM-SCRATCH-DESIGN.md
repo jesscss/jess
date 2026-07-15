@@ -2,6 +2,8 @@
 
 Status: design record plus a real proof-of-concept, updated 2026-07-15.
 
+> The standing, open-ended arena experiment track lives in `AST-ARENA-EXPERIMENT-HANDOFF.md`.
+
 This document covers the greenfield `packages/core/src/tree2/` work. It is both a
 design record for the Q-40 performance program **and** an accurate account of the
 POC code that now exists in this worktree. Earlier drafts framed the effort as a
