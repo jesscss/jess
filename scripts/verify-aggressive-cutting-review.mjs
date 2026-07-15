@@ -151,6 +151,21 @@ function validateCostContractRegistry(registry) {
     if (typeof contract.commonCaseProof !== 'string' || !/(benchmark|counter|test)/i.test(contract.commonCaseProof)) {
       errors.push(`Cost contract ${contract.id} must name a common no-feature benchmark or counter test.`);
     }
+    const benchmark = contract.benchmark;
+    if (
+      !benchmark
+      || typeof benchmark !== 'object'
+      || benchmark.fixture !== 'benchmark.less'
+      || !Array.isArray(benchmark.phases)
+      || !benchmark.phases.includes('parse-render')
+      || !benchmark.phases.includes('render')
+      || benchmark.warmup !== 20
+      || benchmark.pairs !== 45
+    ) {
+      errors.push(
+        `Cost contract ${contract.id} must require the canonical benchmark.less parse-render/render A/B with 20 warmups and 45 alternating pairs.`
+      );
+    }
     if (!Array.isArray(contract.relations) || contract.relations.length === 0) {
       errors.push(`Cost contract ${contract.id} must state at least one counter relation.`);
     }
@@ -296,6 +311,40 @@ function validateCostAuditRecords(records, registry, changedPaths) {
     }
     if (typeof record.commonCaseProof !== 'string' || !/(benchmark|counter|test)/i.test(record.commonCaseProof)) {
       errors.push(`Hot-path cost audit record ${record.id} must name a common no-feature benchmark or counter test.`);
+    }
+    const benchmark = record.benchmark;
+    if (
+      !benchmark
+      || typeof benchmark !== 'object'
+      || benchmark.fixture !== 'benchmark.less'
+      || benchmark.warmup !== 20
+      || benchmark.pairs !== 45
+    ) {
+      errors.push(`Hot-path cost audit record ${record.id} must include the canonical benchmark.less A/B contract with 20 warmups and 45 pairs.`);
+    } else {
+      for (const phase of ['parse-render', 'render']) {
+        const result = benchmark[phase];
+        if (
+          !result
+          || typeof result !== 'object'
+          || !Number.isFinite(result.beforeMedianMs)
+          || result.beforeMedianMs <= 0
+          || !Number.isFinite(result.afterMedianMs)
+          || result.afterMedianMs <= 0
+          || !Number.isFinite(result.medianDeltaMs)
+          || !Number.isInteger(result.wins)
+          || result.wins < 0
+          || result.wins > benchmark.pairs
+          || result.byteIdentical !== true
+          || !Number.isInteger(result.outputBytes)
+          || result.outputBytes <= 0
+          || typeof result.outputSha256 !== 'string'
+          || !/^[a-f0-9]{64}$/.test(result.outputSha256)
+          || /^0{64}$/.test(result.outputSha256)
+        ) {
+          errors.push(`Hot-path cost audit record ${record.id} has incomplete ${phase} benchmark evidence.`);
+        }
+      }
     }
     if (!['accepted', 'rejected', 'deferred'].includes(record.verdict)) {
       errors.push(`Hot-path cost audit record ${record.id} must use verdict accepted, rejected, or deferred.`);

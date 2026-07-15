@@ -249,6 +249,25 @@ sequential, not parallel, even when their descriptions look independent.
   `56.57 ms`, with `146.36 ms` in GC. The unminified build was restored before
   further comparisons; these samples rank investigation targets only.
 
+- **Q-40 isNode reorder rejected (2026-07-14).** The current `isNode` mask
+  path is already a direct numeric `nodeType` read plus bitwise test; foreign
+  node-like compatibility requires the existing no-mask `type`/`children`
+  check. A one-line no-mask branch reorder passed the focused 9-test semantic
+  suite and preserved the canonical `133,983`-byte output/hash
+  `adfd26732125a33fc1e264aca7d7ecde8c7c1da43f968e3106bd387a1f78e840`, but
+  separate 20-warmup/45-pair runs drifted with the machine and did not provide
+  a stable speed signal. The source and generated build were restored; do not
+  land a type/prototype rewrite without a stronger paired proof.
+
+- **Q-40 direct declaration lookup rejection (2026-07-14).** The canonical
+  profile records `33,607` uncached `d` attempts, `37,560` child entries
+  entered, `37,554` misses, only `6` public hits, `12,934` qualifying child
+  scans, and `2,318` family skips. `d` is the intentionally restricted
+  `$theme.foo` member-declaration strategy; exact-name indexing would be new
+  construction-time state, not a safe omission. No production change or
+  benchmark claim was made; keep this as an owner-gated dependency-graph/index
+  candidate rather than adding another generic lookup cache.
+
 - **Reject the direct custom-declaration fallback writer.** The isolated POC
   bypasses `renderNodeText()` for a map-off, comment-free custom declaration,
   but calls `Declaration.writeSyntax()` directly. That serializer deliberately

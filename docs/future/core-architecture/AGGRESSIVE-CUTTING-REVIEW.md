@@ -137,7 +137,10 @@ fence. This is deliberately about shape and relations, not a magic benchmark
 number. The record must name a cheap admission predicate that runs before
 collection/allocation, report calls, feature-bearing calls or containers, items
 visited, no-feature allocations, and no-feature misses, and point to a common
-no-feature benchmark or counter test.
+no-feature benchmark or counter test. Every production record must also carry
+the canonical `benchmark.less` before/after A/B for both parse+render and
+render-only, using 20 warmups and 45 alternating pairs, with byte count/hash
+parity. A focused test alone is not a performance proof.
 
 The verifier validates this registry and the matching handoff record. Its
 danger-token scan is intentionally limited to parser/eval/render source under
@@ -184,6 +187,12 @@ file coverage requirement.
       "noFeatureMisses"
     ],
     "commonCaseProof": "counter test and no-merge benchmark workload",
+    "benchmark": {
+      "fixture": "benchmark.less",
+      "phases": ["parse-render", "render"],
+      "warmup": 20,
+      "pairs": 45
+    },
     "relations": [
       "featureBearingContainers < containers",
       "noFeatureAllocations === 0"
@@ -217,6 +226,12 @@ file coverage requirement.
       "noFeatureMisses"
     ],
     "commonCaseProof": "benchmark and duplicate-declaration counter probe",
+    "benchmark": {
+      "fixture": "benchmark.less",
+      "phases": ["parse-render", "render"],
+      "warmup": 20,
+      "pairs": 45
+    },
     "relations": [
       "featureBearingContainers < containers",
       "noFeatureAllocations === 0"
@@ -255,6 +270,29 @@ The matching handoff shape is:
     "featureItems": 27,
     "noFeatureAllocations": 0,
     "noFeatureMisses": 10405,
+    "benchmark": {
+      "fixture": "benchmark.less",
+      "warmup": 20,
+      "pairs": 45,
+      "parse-render": {
+        "beforeMedianMs": 217.235,
+        "afterMedianMs": 217.779,
+        "medianDeltaMs": 0.456,
+        "wins": 17,
+        "byteIdentical": true,
+        "outputBytes": 133983,
+        "outputSha256": "adfd26732125a33fc1e264aca7d7ecde8c7c1da43f968e3106bd387a1f78e840"
+      },
+      "render": {
+        "beforeMedianMs": 184.05,
+        "afterMedianMs": 183.90,
+        "medianDeltaMs": 0.74,
+        "wins": 16,
+        "byteIdentical": true,
+        "outputBytes": 133983,
+        "outputSha256": "adfd26732125a33fc1e264aca7d7ecde8c7c1da43f968e3106bd387a1f78e840"
+      }
+    },
     "commonCaseProof": "counter test: no-merge container workload",
     "verdict": "accepted"
   }

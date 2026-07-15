@@ -154,6 +154,42 @@ Other active docs in this dir:
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: CANONICAL BENCHMARK EVIDENCE CONTRACT — require every changed
+  production hot-path contract to record both parse+render and render-only
+  same-checkout A/B medians, exact 20 warmups/45 alternating pairs, wins, and
+  byte count/hash parity before the change can pass review.
+- Architecture surface: review-time `validateCostContractRegistry` and
+  `validateCostAuditRecords` in `scripts/verify-aggressive-cutting-review.mjs`.
+  No Jess runtime source, parser, AST, evaluator, lookup, writer, or output
+  path changed.
+- Separation/duplication: the verifier extends the existing cost-contract
+  record; it does not add a second benchmark harness or runtime measurement
+  pass. Focused tests remain behavior evidence, while the canonical A/B record
+  is explicitly required for performance claims.
+- Cumulative node weight: zero. No runtime node, frame, cache, side table,
+  buffer, or retained benchmark state was added.
+- New traversal: review-time validation of two phase records only; no production
+  traversal or parser/eval/render work was added.
+- New node/materialization: none in production. The JSON record is handoff
+  evidence, not runtime data.
+- Render path: unchanged. The gate now rejects a production hot-path change
+  that omits either benchmark phase or output parity evidence.
+- Helper/API surface: no runtime helper or package API; existing verifier
+  validation only.
+- Metadata mutations: none. The verifier reads Markdown JSON and Git/source
+  state only.
+- Review-flagged diff tokens: [loop/traversal] is review-time record checking;
+  no production danger-token category was added.
+- Evidence: current canonical control refresh on `benchmark.less` was
+  parse+render `221.24ms` baseline versus `222.02ms` env-toggle candidate
+  (median delta `+1.51ms`, `21/45` wins), and render-only `195.46ms` versus
+  `196.35ms` (median delta `+1.51ms`, `21/45` wins). These are neutral controls,
+  not code A/B or speed claims. `node --check`, `git diff --check`, and the
+  aggressive review passed after the guard was added.
+- Verdict: accepted as review-system hardening; future runtime changes must
+  provide actual before/after values and parity rather than copying this
+  illustrative zero-valued documentation example.
+
 - Latest pass: GUARDED CONTRACT-HUNK OWNERSHIP — require a changed production
   hot-path hunk to touch the caller, expensive operation, or admission guard
   named by its one-file cost contract; a broad file-level contract cannot cover
