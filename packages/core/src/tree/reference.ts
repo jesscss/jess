@@ -997,9 +997,15 @@ function performVariableRulesLookup(
   const occurrenceStart = env.readMode === 'snapshot'
     ? shape.start
     : undefined;
-  const frameMode: ScopeFrameVariableBindingMode | undefined = typeof valueKey === 'string'
+  // An ordinary `@var` read: a plain string key with no namespace target and no
+  // interpolation. These resolve authoritatively through the primary ScopeFrame
+  // probe ('full'); only an *uncovered* frame falls through to the declaration
+  // crawl below. Every other shape (namespace target, interpolated `@@name`,
+  // indexed key) is a member-descent read, not an ordinary variable read.
+  const isOrdinaryVariableRead = typeof valueKey === 'string'
     && !env.hasTarget
-    && !env.isInterpolatedVariable
+    && !env.isInterpolatedVariable;
+  const frameMode: ScopeFrameVariableBindingMode | undefined = isOrdinaryVariableRead
     ? 'full'
     : env.readMode !== 'snapshot'
       ? 'live-current'
@@ -1013,6 +1019,23 @@ function performVariableRulesLookup(
       return frameHit === SCOPE_FRAME_VARIABLE_MISS ? undefined : frameHit;
     }
   }
+  // Ordinary-read crawl route (slice-1 retirement target): reached only when the
+  // covered-frame probe reports 'uncovered'.
+  if (isOrdinaryVariableRead) {
+    return findVariableDeclarationOccurrence(scope, keyStr, {
+      start: occurrenceStart,
+      context: env.context,
+      hasTarget: env.hasTarget,
+      local: shape.local || undefined,
+      filter: env.filter,
+      includeLiveBindings: env.readMode !== 'snapshot',
+      ignoreCurrentScopeStart: env.readMode !== 'snapshot',
+      ignoreParentScopeStart: shape.ignoreParentScopeStart || undefined
+    });
+  }
+  // Member-descent route: targeted / interpolated / indexed variable reads share
+  // the namespace member-descent resolution, kept off the ordinary-read surface.
+  // Resolution is shared with lookupIndexReference's member branch.
   return findVariableDeclarationOccurrence(scope, keyStr, {
     start: occurrenceStart,
     context: env.context,
