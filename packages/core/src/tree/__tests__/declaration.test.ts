@@ -1451,6 +1451,7 @@ describe('Declaration', () => {
       ])
     ]);
     const noMergeCoalescer = vi.spyOn(Object.getPrototypeOf(noMerge), '_coalesceMergedDeclarations');
+    expect(noMerge.hasMergeOutputSurface).toBe(false);
     Object.getPrototypeOf(noMerge)['_finishSourceOrderEvaluation'].call(noMerge, noMerge, false);
     expect(noMergeCoalescer).not.toHaveBeenCalled();
     noMergeCoalescer.mockRestore();
@@ -1466,6 +1467,7 @@ describe('Declaration', () => {
       const merged = rules([first, second]);
       first.addFlag(F_VISIBLE);
       second.addFlag(F_VISIBLE);
+      expect(merged.hasMergeOutputSurface).toBe(true);
 
       const coalescer = vi.spyOn(Object.getPrototypeOf(merged), '_coalesceMergedDeclarations');
       Object.getPrototypeOf(merged)['_finishSourceOrderEvaluation'].call(merged, merged, false);

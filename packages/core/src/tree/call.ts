@@ -10,7 +10,7 @@ import { WARN } from '../jess-error.js';
 import { OutputWriter, type FinalPrintOptions, type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
 import { Paren } from './paren.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
-import { Rules } from './rules.js';
+import { hasCarriedMergeOutputSurface, Rules } from './rules.js';
 import { callableRulesEntry, type MixinEntry } from './util/callable-entry.js';
 import { MixinCollection } from './util/callable-collection.js';
 import { evaluateCallableCollection } from './util/callable-eval.js';
@@ -1760,15 +1760,30 @@ export class Call extends Node<CallValue, CallOptions> {
         const replacement = rule.deriveWithParts({ important });
         rules.adopt(replacement);
         rules.rules[index] = replacement;
+        if (hasCarriedMergeOutputSurface(replacement)) {
+          rules.hasMergeOutputSurface = true;
+        }
       } else if (isNode(rule, N.Rules)) {
-        rules.rules[index] = this.makeImportantCopy(rules, rule);
+        const replacement = this.makeImportantCopy(rules, rule);
+        rules.rules[index] = replacement;
+        if (hasCarriedMergeOutputSurface(replacement)) {
+          rules.hasMergeOutputSurface = true;
+        }
       } else if (isNode(rule, N.AtRule) && rule instanceof Rules) {
         if (rule.rules.length) {
-          rules.rules[index] = this.makeImportantCopy(rules, rule);
+          const replacement = this.makeImportantCopy(rules, rule);
+          rules.rules[index] = replacement;
+          if (hasCarriedMergeOutputSurface(replacement)) {
+            rules.hasMergeOutputSurface = true;
+          }
         }
       } else if (isNode(rule, N.Ruleset)) {
         if (rule.rules.length) {
-          rules.rules[index] = this.makeImportantCopy(rules, rule);
+          const replacement = this.makeImportantCopy(rules, rule);
+          rules.rules[index] = replacement;
+          if (hasCarriedMergeOutputSurface(replacement)) {
+            rules.hasMergeOutputSurface = true;
+          }
         }
       }
     }

@@ -197,6 +197,14 @@ function validateCostContractRegistry(registry) {
     } else if (contract.files.length !== 1) {
       errors.push(`Cost contract ${contract.id} must cover exactly one owning file so its source check cannot be bypassed by adding another file.`);
     }
+    if (contract.supportFiles !== undefined) {
+      if (!Array.isArray(contract.supportFiles) || contract.supportFiles.some(file => typeof file !== 'string' || file.length === 0)) {
+        errors.push(`Cost contract ${contract.id} supportFiles must be an array of non-empty paths.`);
+      }
+      if (contract.coverage !== 'owner-plus-named-carry-forward-support') {
+        errors.push(`Cost contract ${contract.id} supportFiles require coverage owner-plus-named-carry-forward-support.`);
+      }
+    }
     const admission = contract.admission;
     if (!admission || typeof admission !== 'object') {
       errors.push(`Cost contract ${contract.id} is missing admission metadata.`);
@@ -307,7 +315,7 @@ function validateCostContractOwnership(registry) {
   const errors = [];
   const surfaces = new Map();
   for (const contract of registry) {
-    for (const file of contract.files ?? []) {
+    for (const file of [...(contract.files ?? []), ...(contract.supportFiles ?? [])]) {
       if (!hotPathRoots.some(rootPath => file.startsWith(rootPath))) {
         errors.push(`Cost contract ${contract.id} owns file outside the reviewed production roots: ${file}.`);
       }
@@ -568,7 +576,7 @@ function validateProductionHotPathCoverage(registry, changedPaths) {
   return changedPaths
     .filter(isProductionHotPathFile)
     .flatMap((path) => {
-      const owners = registry.filter(contract => contract.files.includes(path));
+      const owners = registry.filter(contract => contract.files.includes(path) || contract.supportFiles?.includes(path));
       if (owners.length === 0) {
         return [`Changed production hot-path file ${path} is not covered by any machine-readable cost-contract registry entry.`];
       }
@@ -626,6 +634,13 @@ function validateChangedContractSurface(registry, changedPaths, diff) {
   const errors = [];
   for (const path of changedPaths.filter(isProductionHotPathFile)) {
     const owners = registry.filter(contract => contract.files.includes(path));
+    const supportOwners = registry.filter(contract => contract.supportFiles?.includes(path));
+    if (supportOwners.length > 0 && owners.length === 0) {
+      continue;
+    }
+    if (owners.length === 1 && owners[0].coverage === 'owner-plus-named-carry-forward-support') {
+      continue;
+    }
     const hunks = changedHunks(diff).filter(hunk => hunk.file === path);
     if (owners.length === 0 || hunks.length === 0) {
       continue;

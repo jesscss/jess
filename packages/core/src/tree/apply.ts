@@ -1,7 +1,7 @@
 import { type Context } from '../context.js';
 import { Node, defineType, type LocationInfo } from './node.js';
 import { type SelectorValue } from './selector.js';
-import { Rules, resolveRulesetBySelector } from './rules.js';
+import { hasCarriedMergeOutputSurface, Rules, resolveRulesetBySelector } from './rules.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { createCallableRulesSurface } from './util/callable-surface.js';
@@ -112,6 +112,9 @@ export class Apply extends Node<SelectorValue[]> {
     for (const surface of surfaces) {
       // Share the thin surface WITHOUT adopting (keep the live binding intact).
       container.rules.push(surface);
+      if (hasCarriedMergeOutputSurface(surface)) {
+        container.hasMergeOutputSurface = true;
+      }
     }
 
     return container.eval(context);

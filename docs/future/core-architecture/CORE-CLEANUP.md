@@ -182,6 +182,21 @@ recursively scans 10,777 evaluated surfaces to find 15 merge-bearing ones.
 
 #### Q-40 representation and allocation decisions — 2026-07-14
 
+- **Accept packed merge-presence carry as the first completed Q-40 action
+  audit cut.** The old `hasMergeOutputSurface()` recursively rediscovered an
+  explicit `Declaration.options.normalizedFromAssign` fact at every finished
+  `Rules` surface: the canonical profile made `10,777` admission calls and
+  visited `69,901` child items to find `15` feature-bearing surfaces. The
+  producer seams now carry one bit in the existing packed `Rules.rulesFlags`
+  state; actual insertions/replacements update it, and only destructive
+  whole-array rewrites use bounded repair. The fresh profile is
+  `admissionItemsVisited=0`, `calls=15`, `featureBearingContainers=15`,
+  `noFeatureMisses=10,762`, and `noFeatureAllocations=0`. Focused tests and the
+  live merge contract pass. The exact 20-warmup/45-pair A/B is byte-identical:
+  parse-render `236.04→234.38 ms` and render-only `202.71→203.00 ms`, both
+  neutral/noisy and carrying no speed claim. This is accepted because it
+  removes repeated work and allocations without changing merge semantics.
+
 - **Accept merge-coalescer admission as the first Q-40 rare-pass cut.** The
   post-evaluation `Rules._coalesceMergedDeclarations` pass was entered 10,420
   times on the canonical benchmark even though only 15 containers carried

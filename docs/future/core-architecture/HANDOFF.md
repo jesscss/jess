@@ -154,6 +154,128 @@ Other active docs in this dir:
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: MERGE-OUTPUT SURFACE CARRY — delete recursive merge-admission
+  rediscovery by carrying an explicit presence fact from the producer seams to
+  `Rules._finishSourceOrderEvaluation`.
+- Architecture surface: `packages/core/src/tree/rules.ts` owns the packed
+  `R_HAS_MERGE_OUTPUT_SURFACE` bit, `hasCarriedMergeOutputSurface`, the direct
+  constructor/derive/append/replacement paths, and the bounded
+  `refreshMergeOutputSurface()` repair. The named carry-forward support seams
+  are `apply.ts`, `control.ts`, `import-style.ts`, `util/callable-surface.ts`,
+  `ruleset.ts`, `at-rule.ts`, and `call.ts`.
+- Separation/duplication: the old finish-time recursive scan is removed. The
+  coalescer remains the sole owner of merge semantics; the new bit is only an
+  admission fact. The declaration source fact is `Declaration.options.normalizedFromAssign`;
+  `Mixin`, `Ruleset`, and `AtRule` are definition/scope boundaries and are not
+  searched through by a parent-surface admission.
+- Cumulative node weight: one boolean was added to the already packed
+  `Rules.rulesFlags` integer, not as a new own property, map, WeakMap, array, or
+  placement record. The flag is part of `R_DERIVED_STATE_MASK` and is copied or
+  recomputed with the existing Rules lifecycle.
+- New traversal: [loop/traversal] the recursive per-admission scan is deleted.
+  Direct-child loops remain in the constructor and `derive()` because those are
+  the producer boundary where the fact is first available. `refreshMergeOutputSurface()`
+  is a bounded repair only after destructive whole-array replacement; it is not
+  called by the ordinary admission path. No parent walk or child-surface
+  rediscovery was added.
+- New node/materialization: [materialized array/object] no normal-path array,
+  map, set, wrapper, or node is introduced. [side map/set] none. Existing
+  `Rules` arrays are updated in place at their actual insertion/replacement
+  seams.
+- Render path: [render path] coalescing, serialization, writer ownership,
+  source-map behavior, and output bytes are unchanged. The live merge fixture
+  still reports `admissionCalls=4`, `admissionItemsVisited=0`, `admittedCalls=3`,
+  `calls=3`, `featureBearingContainers=3`, and `noFeatureMisses=1`.
+- Helper/API surface: [helper/API surface] `hasCarriedMergeOutputSurface` is
+  module-internal runtime plumbing; no package export or public API changed.
+  The verifier gained an explicit, named support-file coverage mode so producer
+  seams cannot be mistaken for unrelated evaluator surfaces.
+- Metadata mutations: [metadata mutations] no new parent/source/location
+  mutation. Existing `adopt()` calls remain where the owning array already
+  requires them. An initial attempt to set the bit in `adopt()` was rejected
+  because adoption can precede insertion and caused false positives; that code
+  was removed, and the bit is now set only after actual insertion/replacement.
+- Review-flagged diff tokens: [loop/traversal] direct producer loops and bounded
+  destructive-rewrite repair are accounted for above; the deleted recursive
+  admission walk is the net traversal reduction. [inherit/adopt/frozen] existing
+  adoption is preserved, while the unsafe adopt-time flagging was removed.
+  [parent/source mutation] none added. [materialized array/object] and
+  [side map/set] none in production. [node construction] none.
+- Evidence: the fresh runtime profile reports `admissionCalls=10,777`,
+  `admissionItemsVisited=0`, `admittedCalls=15`, `calls=15`,
+  `featureBearingContainers=15`, `noFeatureMisses=10,762`, and
+  `noFeatureAllocations=0`; the pre-cut profile visited `69,901` admission
+  items. Focused declaration/tree/live-merge tests pass. The exact 20-warmup,
+  45-pair A/B is byte-identical: parse-render `236.04→234.38 ms` with
+  `21/45` wins and paired-delta median `+2.41 ms`; render-only
+  `202.71→203.00 ms` with `24/45` wins and paired-delta median `−0.31 ms`.
+  These are neutral/noisy measurements, not a speed claim. Output is 135,794
+  bytes with SHA-256
+  `9a58451bd3b0c9d80913df38be3b199994d2b93d34a9d2851f1b18d9dcaaa7cc`.
+- Verdict: accepted — explicit producer fact carried, recursive rediscovery
+  deleted, byte identity held, and the cut is accepted as an allocation/pass
+  reduction rather than a canonical benchmark win.
+- Hot-path cost contracts:
+```json
+[
+  {
+    "id": "rules-merge-coalescing",
+    "necessity": {
+      "status": "proven",
+      "factSource": "Declaration.options.normalizedFromAssign explicitly identifies merge assignments at construction/evaluation boundaries",
+      "rediscovery": "The old hasMergeOutputSurface recursively scanned every Rules surface and child Rules node at finish time",
+      "carryForward": "Rules.rulesFlags carries one merge-presence bit; constructors, derive, actual insertions, replacements, and destructive-array repair update it",
+      "whyNotCarried": "This pass establishes the missing producer-to-consumer carry path; bounded refresh remains only after destructive whole-array rewrites"
+    },
+    "admission": {
+      "predicate": "hasMergeOutputSurface(rules)",
+      "cost": "cheap",
+      "counter": "admissionCalls",
+      "workCounter": "admissionItemsVisited",
+      "maxItemsPerContainer": 8,
+      "before": "collection and allocation"
+    },
+    "calls": 15,
+    "admittedCalls": 15,
+    "admissionCalls": 10777,
+    "admissionItemsVisited": 0,
+    "containers": 10777,
+    "featureBearingContainers": 15,
+    "itemsVisited": 16730,
+    "featureItems": 27,
+    "noFeatureAllocations": 0,
+    "noFeatureMisses": 10762,
+    "commonCaseProof": "fresh canonical profile plus live merge fixture counter test",
+    "benchmark": {
+      "fixture": "benchmark.less",
+      "warmup": 20,
+      "pairs": 45,
+      "parse-render": {
+        "beforeMedianMs": 236.04,
+        "afterMedianMs": 234.38,
+        "medianDeltaMs": 2.41,
+        "aggregateMedianDeltaMs": -1.66,
+        "wins": 21,
+        "byteIdentical": true,
+        "outputBytes": 135794,
+        "outputSha256": "9a58451bd3b0c9d80913df38be3b199994d2b93d34a9d2851f1b18d9dcaaa7cc"
+      },
+      "render": {
+        "beforeMedianMs": 202.71,
+        "afterMedianMs": 203.00,
+        "medianDeltaMs": -0.31,
+        "aggregateMedianDeltaMs": 0.29,
+        "wins": 24,
+        "byteIdentical": true,
+        "outputBytes": 135794,
+        "outputSha256": "9a58451bd3b0c9d80913df38be3b199994d2b93d34a9d2851f1b18d9dcaaa7cc"
+      }
+    },
+    "verdict": "accepted"
+  }
+]
+```
+
 - Latest pass: PROOF-OF-NECESSITY / NO-REDISCOVERY GATE — an admission is no
   longer reviewable merely because it avoids a downstream expensive pass.
 - Architecture surface: `necessity` metadata in the machine-readable cost

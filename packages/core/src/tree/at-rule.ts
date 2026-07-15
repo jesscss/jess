@@ -586,6 +586,7 @@ function applyAtRuleBodyPublicResultState(
     for (let i = 0; i < node.rules.length; i++) {
       node.adopt(node.rules[i]!);
     }
+    node.refreshMergeOutputSurface();
   }
   if (record.visible === false) {
     node.removeFlag(F_VISIBLE);
@@ -1182,6 +1183,7 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
             if (resolvedRules !== rules) {
               node = ensureDerived();
               (node as { rules: Node[] }).rules = resolvedRules.rules;
+              node.refreshMergeOutputSurface();
               node.registrationPrepared = true;
             }
             this.restoreBodyParentage(node);
@@ -1200,6 +1202,7 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
       if (preparedRules !== rules) {
         node = ensureDerived();
         (node as { rules: Node[] }).rules = preparedRules.rules;
+        node.refreshMergeOutputSurface();
         node.registrationPrepared = true;
       }
       this.restoreBodyParentage(node);

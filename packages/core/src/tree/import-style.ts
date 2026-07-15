@@ -3,7 +3,7 @@ import { basename, dirname, extname, join, relative } from 'node:path';
 import { TreeContext, type Context } from '../context.js';
 import { Node, F_NON_STATIC, F_VISIBLE, defineType, type NodeLocation, type LocationInfo } from './node.js';
 import { type Reference } from './reference.js';
-import { Rules, type RulesOptions, type RulesVisibility } from './rules.js';
+import { hasCarriedMergeOutputSurface, Rules, type RulesOptions, type RulesVisibility } from './rules.js';
 import { type Quoted } from './quoted.js';
 import { Interpolated } from './interpolated.js';
 import { Url } from './url.js';
@@ -652,6 +652,9 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
           wrapped.adopt(childNode);
         }
         wrapped.rules.push(childNode);
+        if (hasCarriedMergeOutputSurface(childNode)) {
+          wrapped.hasMergeOutputSurface = true;
+        }
       }
     }
     return wrapped;
@@ -839,11 +842,15 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     }
 
     importedRules.rules.length = 0;
+    importedRules.hasMergeOutputSurface = false;
     for (let index = 0; index < sourceRules.rules.length; index++) {
       const originalNode = sourceRules.rules[index]!;
       const nextNode = replacementsByIndex.get(index) ?? originalNode;
       importedRules.adopt(nextNode);
       importedRules.rules.push(nextNode);
+      if (hasCarriedMergeOutputSurface(nextNode)) {
+        importedRules.hasMergeOutputSurface = true;
+      }
     }
     return importedRules;
   }
@@ -873,10 +880,16 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     for (const newNode of additiveNonVariableNodes) {
       finalRules.adopt(newNode);
       finalRules.rules.push(newNode);
+      if (hasCarriedMergeOutputSurface(newNode)) {
+        finalRules.hasMergeOutputSurface = true;
+      }
     }
     this.attachConfiguredVarBindings(finalRules, additiveVariableNodes);
     finalRules.adopt(importedRules);
     finalRules.rules.push(importedRules);
+    if (hasCarriedMergeOutputSurface(importedRules)) {
+      finalRules.hasMergeOutputSurface = true;
+    }
     return finalRules;
   }
 

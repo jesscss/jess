@@ -197,12 +197,22 @@ named admission counter means opportunities inspected by the admission.
     "id": "rules-merge-coalescing",
     "surface": "Rules._coalesceMergedDeclarations",
     "files": ["packages/core/src/tree/rules.ts"],
+    "coverage": "owner-plus-named-carry-forward-support",
+    "supportFiles": [
+      "packages/core/src/tree/apply.ts",
+      "packages/core/src/tree/at-rule.ts",
+      "packages/core/src/tree/call.ts",
+      "packages/core/src/tree/control.ts",
+      "packages/core/src/tree/import-style.ts",
+      "packages/core/src/tree/ruleset.ts",
+      "packages/core/src/tree/util/callable-surface.ts"
+    ],
     "necessity": {
-      "status": "audit-required",
-      "factSource": "Declaration.options.assign and normalizedFromAssign explicitly identify merge assignments",
-      "rediscovery": "hasMergeOutputSurface recursively scans every Rules surface and child Rules node",
-      "carryForward": "Rules construction or evaluation can carry one merge-presence bit with the surface",
-      "whyNotCarried": "No evidence currently justifies rediscovering explicit declaration metadata at every finish step"
+      "status": "proven",
+      "factSource": "Declaration.options.normalizedFromAssign explicitly identifies merge assignments at construction/evaluation boundaries",
+      "rediscovery": "The old hasMergeOutputSurface recursively scanned every Rules surface and child Rules node at finish time",
+      "carryForward": "Rules.rulesFlags carries one merge-presence bit; constructors, derive, actual insertions, replacements, and destructive-array repair update it",
+      "whyNotCarried": "This pass establishes the missing producer-to-consumer carry path; bounded refresh remains only after destructive whole-array rewrites"
     },
     "admission": {
       "predicate": "cheap merge-output-surface presence check",

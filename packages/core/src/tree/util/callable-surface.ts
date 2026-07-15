@@ -3,7 +3,7 @@ import { attachMixinOutputSlot } from './mixin-output-slot.js';
 import { F_VISIBLE, Node } from '../node.js';
 import { N } from '../node-type.js';
 import { isNode } from './is-node.js';
-import { Rules } from '../rules.js';
+import { hasCarriedMergeOutputSurface, Rules } from '../rules.js';
 
 export function isIndexedRuleChild(node: Node): boolean {
   return !isNode(node, N.Comment);
@@ -46,6 +46,9 @@ export function createCallableRulesSurface(sourceRules: Rules): Rules {
     // per-call eval surface carries call state in its attached scope frame, not
     // in cloned nodes; the body resolves against this surface via context.
     output.rules.push(source[i]!);
+    if (hasCarriedMergeOutputSurface(source[i]!)) {
+      output.hasMergeOutputSurface = true;
+    }
   }
   return output;
 }

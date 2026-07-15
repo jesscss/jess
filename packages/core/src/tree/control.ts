@@ -1,7 +1,7 @@
 import { sourceSpanOf } from './util/provenance.js';
 import { Node, defineType, F_VISIBLE, F_NON_STATIC, type NodeLocation, type LocationInfo, type NodeOptions } from './node.js';
 import type { Context } from '../context.js';
-import { Rules } from './rules.js';
+import { hasCarriedMergeOutputSurface, Rules } from './rules.js';
 import { Any } from './any.js';
 import { Num } from './number.js';
 import { Bool } from './bool.js';
@@ -139,6 +139,9 @@ function createDerivedIterationRulesSurface(
       // scope frame to this surface via §4. Flags come from `.inherit()` above.
       for (const childNode of childNodes) {
         output.rules.push(childNode);
+        if (hasCarriedMergeOutputSurface(childNode)) {
+          output.hasMergeOutputSurface = true;
+        }
       }
     } else {
       // COPY path ($while): the children are per-iteration COPIES owned by this

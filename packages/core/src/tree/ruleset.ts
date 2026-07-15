@@ -1854,6 +1854,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
 
   override prepareRegistration(context: Context): MaybePromise<this> {
     if (!this.registrationPrepared) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       return this._prepareRulesetRegistration(context) as MaybePromise<this>;
     }
     return this;
@@ -2091,6 +2092,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
           for (let i = 0; i < shell.rules.length; i++) {
             shell.adopt(shell.rules[i]!);
           }
+          shell.refreshMergeOutputSurface();
           shell.sourceNode = this;
           shell.hoistToRoot = this.hoistToRoot;
           if (!shell.hasVisibleRules()) {
@@ -2103,6 +2105,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
         for (let i = 0; i < this.rules.length; i++) {
           this.adopt(this.rules[i]!);
         }
+        this.refreshMergeOutputSurface();
       }
 
       if (!this.hasVisibleRules()) {
@@ -2184,11 +2187,13 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
         return undefined;
       };
 
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       return (isThenable(guardResult)
         ? guardResult.then(result => evalBodyAfterGuard(finishGuard(result)))
         : evalBodyAfterGuard(finishGuard(guardResult))) as MaybePromise<Rules>;
     }
 
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     return evalBodyAfterGuard(undefined) as MaybePromise<Rules>;
   }
 }

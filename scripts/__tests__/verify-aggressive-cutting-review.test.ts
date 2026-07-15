@@ -121,6 +121,20 @@ describe('hot-path admission counter relations', () => {
     );
   });
 
+  it('requires named carry-forward coverage for producer support files', () => {
+    const withSupport = {
+      ...registry[0],
+      coverage: 'owner-plus-named-carry-forward-support',
+      supportFiles: ['packages/core/src/tree/apply.ts']
+    };
+    expect(validateCostContractRegistry([withSupport])).toEqual([]);
+
+    const withoutCoverage = { ...withSupport, coverage: undefined };
+    expect(validateCostContractRegistry([withoutCoverage])).toContain(
+      'Cost contract test-admission-contract supportFiles require coverage owner-plus-named-carry-forward-support.'
+    );
+  });
+
   it('rejects 10,000 expensive calls when the cheap admission found no feature', () => {
     const errors = validateCostAuditRecords(
       [makeRecord({ calls: 10_000, admittedCalls: 0, featureBearingContainers: 0 })],
