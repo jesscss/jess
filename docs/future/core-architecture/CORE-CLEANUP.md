@@ -201,18 +201,18 @@ sequential, not parallel, even when their descriptions look independent.
   and map/set forms. A temporary unregistered `Map`/`.forEach()` production
   probe was rejected by the gate and removed.
 
-- **Make admission work observable and bounded.** The merge-coalescer cut
-  correctly reduced actual coalescer calls from the old `10,420`-scale pass to
-  `15`, but its supposedly cheap recursive admission still measured `10,777`
-  admission calls and `69,901` visited items on the current canonical profile.
-  `rules.ts` now exposes those counts only under the existing profile hook;
-  `profile-less-benchmark.mjs --assert-merge-contract` is executable evidence,
-  and the aggressive-cutting registry requires each cheap admission to name a
-  work counter and explicit bounded-work budget. The same-process
-  `compare-less-builds.mjs` utility supplies true before/after build A/Bs with
-  20 warmups, 45 alternating pairs, and byte/hash parity. Next target: carry
-  merge-surface presence earlier or otherwise remove the recursive admission
-  scan; do not relabel its measured work as free.
+- **Make admission work observable and bounded — live-path retargeting still
+  required.** The earlier `10,420`-scale coalescer / `10,777` admission-call /
+  `69,901` visited-item figures came from stale generated `lib/` output, not a
+  clean current canonical profile. After rebuilding core, the canonical spine
+  reported zero legacy merge-admission calls, so the per-admission guardrail
+  experiment was rejected rather than merged. `rules.ts` still exposes the
+  historical counters only under the profile hook, and the aggressive-cutting
+  registry remains useful as a review contract, but the next target must first
+  provide a fresh feature-specific fixture that actually reaches the live
+  merge path. The same-process `compare-less-builds.mjs` utility supplies true
+  before/after build A/Bs with 20 warmups, 45 alternating pairs, and byte/hash
+  parity; do not relabel stale generated-output measurements as current work.
 
 - **Accept Ruleset absent-metadata carrying as a resident-state cut.** Canonical
   evaluation has 4,155 live Rulesets where both `guard` and
