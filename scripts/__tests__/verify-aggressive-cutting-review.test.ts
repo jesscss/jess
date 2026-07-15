@@ -117,6 +117,19 @@ describe('hot-path admission counter relations', () => {
     expect(errors).toContain('Cost contract test-admission-contract relation failed: calls <= admittedCalls.');
   });
 
+  it('rejects 10,000 admitted calls when only 15 containers bear the feature', () => {
+    const errors = validateCostAuditRecords(
+      [makeRecord({ calls: 10_000, admittedCalls: 10_000, featureBearingContainers: 15 })],
+      registry,
+      [sourceFile],
+      diff
+    );
+
+    expect(errors).toContain(
+      'Cost contract test-admission-contract relation failed: admittedCalls <= featureBearingContainers.'
+    );
+  });
+
   it('accepts a consistent admitted-call chain', () => {
     expect(validateCostAuditRecords([makeRecord()], registry, [sourceFile], diff)).toEqual([]);
   });
