@@ -348,6 +348,79 @@ pre-split single call and depend only on `env.readMode`, so exactly one call run
 per invocation with unchanged arguments — byte-identical, danger-token-free, and
 cost-neutral, with no honest admission-counter contract to author.
 
+### Contract kind: off-benchmark-call-reduction
+
+The `precise`, `conservative-filter`, and `redundant-call-elimination` kinds all
+require a positive **wall-clock speedup on benchmark.less**. That is the right bar
+when the eliminated work is *on* the canonical benchmark. It becomes a blind spot
+when a change is a correct, byte-identical work REMOVAL whose benefit is **off**
+benchmark.less — the benchmark simply does not exercise the eliminated path, so it
+shows no measurable speedup even though real workloads that DO exercise the path get
+strictly less work. Blocking such a change is a false negative: the gate would
+reject a proven improvement purely because its win does not land on one fixture.
+
+A `kind: "off-benchmark-call-reduction"` contract closes that blind spot. Instead of
+a benchmark speedup it proves its benefit as a **measured CALL-COUNT reduction of a
+named hot function on a NAMED representative fixture**. It carries no admission block
+and no admission/feature counters (like `redundant-call-elimination`), and it is held
+to four non-negotiable requirements — schema in `validateOffBenchmarkCallReductionMetadata`
+/ `checkOffBenchmarkCallReduction`:
+
+- **`offBenchmarkCallReduction.governedFunction`** — the hot function whose
+  invocations are eliminated.
+- **`offBenchmarkCallReduction.measuredOn`** — the named representative fixture the
+  reduction is measured on. It **must NOT be benchmark.less** (that is the wall-clock
+  oracle; this kind exists precisely because the benefit is off it). The reduction is
+  bound by the declared relation `callsAfter < callsBefore` and re-checked in the
+  record.
+- **`offBenchmarkCallReduction.boundedTraversal`** — a self-prosecution paragraph
+  asserting the ADDED traversal is bounded (a walk over the import fallback-frame
+  chain, NOT a new whole-tree / per-node scan). Any new loop / map / set the traversal
+  introduces is ALSO a danger token the diff must account for by label, so an
+  unbounded traversal cannot hide here.
+- **`offBenchmarkCallReduction.benchmarkNonRegression`** — the **hard safety rail**.
+  benchmark.less must stay byte-identical AND non-regressing: the record's measured
+  median on the declared phase must be within a tight noise cap (0..5%) of the before
+  median, *not slower*. This is what prevents admitting a change that is cost-neutral
+  off benchmark but a REGRESSION on benchmark.
+
+Acceptance in `checkOffBenchmarkCallReduction` enforces all four on the audit record:
+(1) byte-identity — both benchmark phases render equal `outputSha256`, on top of the
+per-phase `byteIdentical` A/B the generic validator already enforces; (2) the
+benchmark-non-regression rail on the named phase; (3) net removal — `measuredOn`
+matches (and is not benchmark.less) and `callsAfter < callsBefore`; (4) the
+bounded-traversal disclosure is restated.
+
+**Adversarial analysis** (why this cannot launder a bad change):
+
+- A change that **REGRESSES benchmark** fails the benchmark-non-regression rail
+  (`afterMedianMs > beforeMedianMs * (1 + cap%)`). This rail is the whole safety of
+  the extension and is not optional.
+- An **output-changing** change fails byte-identity — the generic per-phase
+  `byteIdentical` check and the `parseRenderSha === renderSha` equality both trip, and
+  the landing's benchmark + all-less byte-identity gates re-verify it independently.
+- A change that **does not actually reduce calls** fails `callsAfter < callsBefore`
+  (both in the declared relation and the record check) — an inert or cost-adding
+  change cannot claim a strict reduction.
+- An **unbounded new traversal** must be disclosed: its loop/map/set are danger tokens
+  the self-prosecution block must account for by label, and the `boundedTraversal`
+  paragraph is required. It is not a bounded fallback walk and cannot be dressed as one
+  without the disclosure the token scan forces.
+
+The extension is strictly **additive**: the `precise`, `conservative-filter`,
+`redundant-call-elimination`, and `neutral-or-negative` kinds, the byte-identity
+requirements, and the danger-token accounting are all untouched — a change that CAN
+prove a benchmark speedup still routes to the speedup-bearing kinds, and only a
+byte-identical, benchmark-non-regressing, genuinely-reducing change qualifies here.
+
+The first instance is `callable-fallback-uncovered-retire`:
+`lookupScopeFrameCallable` (scope-frame.ts) walks the import `fallbackFrame` chain so
+imported guarded mixins resolve on the frame, retiring the
+`findMixinsFastForUncoveredCallable` child-ruleset descent for them. benchmark.less has
+no imported guarded mixins (no speedup to show), but on
+`packages/jess/benchmark/callable-fallback/main.less` the descent count drops
+`6 -> 0`, byte-identically, with benchmark.less non-regressing.
+
 <!-- BEGIN AGGRESSIVE-CUTTING-COST-CONTRACTS -->
 ```json
 [
@@ -639,6 +712,47 @@ cost-neutral, with no honest admission-counter contract to author.
         "outputSha256": "98a0536086c7e555b1a98e2372ad4000d51e25f1418c6345b6b8a9a97d80972f",
         "outputBytes": 131578
       }
+    }
+  },
+  {
+    "id": "callable-fallback-uncovered-retire",
+    "kind": "off-benchmark-call-reduction",
+    "surface": "lookupScopeFrameCallable import fallback-frame-chain traversal (scope-frame.ts)",
+    "files": ["packages/core/src/tree/scope-frame.ts"],
+    "coverage": "owner-plus-named-carry-forward-support",
+    "supportFiles": ["packages/core/src/tree/rules.ts"],
+    "necessity": {
+      "status": "proven",
+      "factSource": "A frame whose only obstruction is an imported child surface already carries its import origin as the fallbackFrame chain; imported guarded mixins resolve authoritatively on those frames once their callable coverage is prepared.",
+      "rediscovery": "lookupScopeFrameCallable stopped at the first 'child-surface'/'reference-import' uncovered frame and handed off to findMixinsFastForUncoveredCallable, which re-descended the child ruleset surface for imported guarded mixins the fallback chain could have answered directly.",
+      "carryForward": "No new fact is carried; the existing fallbackFrame links are walked (with a Rules-side prepareFrame hook to materialize per-frame callable coverage), retiring the uncovered descent for imported guarded mixins.",
+      "whyNotCarried": "The import origin frames already exist on the fallback chain; the leanest path is to traverse them under the same visibility rules rather than rediscover the callable by re-scanning child rulesets."
+    },
+    "offBenchmarkCallReduction": {
+      "governedFunction": "findMixinsFastForUncoveredCallable",
+      "measuredOn": "packages/jess/benchmark/callable-fallback/main.less",
+      "boundedTraversal": "The added traversal is walkFallbackCallable: a single acyclic walk over the frame's fallbackFrame (import) chain, visited-guarded against cycles, entered ONLY when a frame's uncovered reason is 'child-surface' or 'reference-import' and it has a fallbackFrame. It is bounded by the import-chain depth (typically 1) — NOT a whole-tree or per-node scan — and it REPLACES the heavier findMixinsFastForUncoveredCallable child-ruleset descent it retires, so it is net-negative work on the affected path.",
+      "benchmarkNonRegression": { "phase": "render", "maxPercentSlower": 3 }
+    },
+    "counters": ["callsBefore", "callsAfter"],
+    "commonCaseProof": "callable-fallback fixture counter test: findMixinsFastForUncoveredCallable total 6 -> 0 (.configured-guarded 2 -> 0, .sized-guarded 2 -> 0, .plain-surface 2 -> 0) on packages/jess/benchmark/callable-fallback/main.less, byte-identical (fixture oracle sha ff73511c0756ecb6). benchmark.less canonical output stays byte-identical (98a0536086c7e555) and non-regressing.",
+    "benchmark": {
+      "fixture": "benchmark.less",
+      "phases": ["parse-render", "render"],
+      "warmup": 20,
+      "pairs": 45
+    },
+    "relations": [
+      "callsAfter < callsBefore"
+    ],
+    "evidence": {
+      "command": ["node", "scripts/profile-less-benchmark.mjs", "--fixture=packages/jess/benchmark/callable-fallback/main.less", "--assert-callable-fallback-contract", "--expect-sha=ff73511c0756ecb623aef56a41306800c9de947cb29bb343a0f1627dc928454b"]
+    },
+    "sourceCheck": {
+      "file": "packages/core/src/tree/scope-frame.ts",
+      "caller": "export function lookupScopeFrameCallable",
+      "call": "walkFallbackCallable",
+      "guard": "result.reason === 'child-surface'"
     }
   }
 ]

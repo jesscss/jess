@@ -1516,6 +1516,100 @@ left unmerged; only the evidence record was retained in commit `3056554`.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: CALLABLE-FALLBACK UNCOVERED-CALLABLE RETIRE — `lookupScopeFrameCallable`
+  now walks the import `fallbackFrame` chain (via a threaded Rules-side `prepareFrame`
+  hook) so imported guarded mixins resolve authoritatively on the frame, retiring the
+  `findMixinsFastForUncoveredCallable` child-ruleset descent for them. This is the first
+  change admitted through the NEW `off-benchmark-call-reduction` cost-contract kind: its
+  benefit is a MEASURED call-count reduction on a NAMED representative fixture
+  (benchmark.less has no imported guarded mixins, so it shows no wall-clock speedup),
+  gated by benchmark byte-identity + a hard benchmark-non-regression rail. See
+  `AGGRESSIVE-CUTTING-REVIEW.md` for the kind's schema and adversarial analysis.
+- Architecture surface: `packages/core/src/tree/scope-frame.ts` (`lookupScopeFrameCallable`
+  + new `probeScopeFrameCallable` / `walkFallbackCallable`) with callback threading in
+  `packages/core/src/tree/rules.ts` (the `findMixin` retry walk + two
+  `lookupScopeFrameCallable` call sites).
+- Separation/duplication: the per-frame callable probe is factored into
+  `probeScopeFrameCallable` and REUSED by both the primary frame walk and the
+  fallback-chain walk — one visibility rule, not two copies.
+- Cumulative node weight: zero. No node, scope field, retained state, or output tree was
+  added; the walk reads the existing `fallbackFrame` links.
+- New traversal: one BOUNDED walk — `walkFallbackCallable` over the import
+  `fallbackFrame` chain (visited-guarded, typically depth 1), entered ONLY on a
+  `child-surface` / `reference-import` uncovered frame that has a `fallbackFrame`. It
+  REPLACES the heavier `findMixinsFastForUncoveredCallable` child-ruleset descent it
+  retires, so it is net-negative work on that path — not a new whole-tree/per-node scan.
+- New node/materialization: none. A single `visited` Set bounds the walk against cycles;
+  no output or source node is materialized.
+- Render path: byte-identical — benchmark.less 131578 / `98a0536086c7e555` (profiler
+  early-admit assert green with the patch); callable-fallback fixture oracle
+  `ff73511c0756ecb6`; all-less / extend / core / spine-production-ratchet re-verified by
+  the landing gates.
+- Helper/API surface: `lookupScopeFrameCallable` gains an optional `prepareFrame` hook
+  so the no-`../tree`-import primitive can materialize each frame's callable coverage via
+  the Rules side; no public export changed.
+- Metadata mutations: none. No parent/source/provenance field or context frame is
+  changed by the traversal.
+- Review-flagged diff tokens: [loop/traversal] the reused per-frame candidate scan
+  `for (let i = bucket.length - 1 ...)` (relocated into `probeScopeFrameCallable`, not new
+  work) and the bounded `while (f && !visited.has(f))` fallback-chain walk; [side map/set]
+  the `new Set<ScopeFrame>()` `visited` guard that keeps that walk acyclic. All three live
+  on the uncovered fallback path and REPLACE the heavier
+  `findMixinsFastForUncoveredCallable` descent — net-negative work, disclosed as the
+  bounded traversal in the `callable-fallback-uncovered-retire` off-benchmark contract.
+- Evidence: same-worktree build-toggle A/B on benchmark.less (warmup 20, 45 samples per
+  phase, direct render-buffer methodology, 133389 bytes, byte-identical before==after):
+  parse-render `175.014 -> 171.438 ms` (`-2.04%`, `29/45`), render `164.149 -> 163.721 ms`
+  (`-0.26%`, `25/45`) — non-regressing. `findMixinsFastForUncoveredCallable` on
+  `packages/jess/benchmark/callable-fallback/main.less`: total `6 -> 0`
+  (`.configured-guarded` `2 -> 0`, `.sized-guarded` `2 -> 0`, `.plain-surface` `2 -> 0`).
+  Executable evidence `--assert-callable-fallback-contract` green.
+- Verdict: accepted.
+- Hot-path cost contracts:
+```json
+[
+  {
+    "id": "callable-fallback-uncovered-retire",
+    "necessity": {
+      "status": "proven",
+      "factSource": "Imported guarded mixins resolve authoritatively on the frame's fallbackFrame (import origin) chain once each frame's callable coverage is prepared.",
+      "rediscovery": "lookupScopeFrameCallable stopped at the first uncovered child-surface/reference-import frame and re-descended the child ruleset surface via findMixinsFastForUncoveredCallable.",
+      "carryForward": "No new fact is carried; the existing fallbackFrame links are walked under the same visibility rules, retiring the descent for imported guarded mixins.",
+      "whyNotCarried": "The import origin frames already exist on the fallback chain; walking them is leaner than rediscovering the callable by re-scanning child rulesets."
+    },
+    "measuredOn": "packages/jess/benchmark/callable-fallback/main.less",
+    "callsBefore": 6,
+    "callsAfter": 0,
+    "boundedTraversal": "walkFallbackCallable is a single acyclic walk over the frame's fallbackFrame (import) chain, visited-guarded against cycles, entered only on a child-surface/reference-import uncovered frame with a fallbackFrame. Bounded by import-chain depth (typically 1), NOT a whole-tree or per-node scan, and it replaces the heavier findMixinsFastForUncoveredCallable descent it retires.",
+    "commonCaseProof": "callable-fallback fixture counter test: findMixinsFastForUncoveredCallable total 6 -> 0, byte-identical (fixture oracle sha ff73511c0756ecb6); benchmark.less canonical output byte-identical and non-regressing.",
+    "benchmark": {
+      "fixture": "benchmark.less",
+      "warmup": 20,
+      "pairs": 45,
+      "parse-render": {
+        "beforeMedianMs": 175.014,
+        "afterMedianMs": 171.438,
+        "medianDeltaMs": -3.576,
+        "wins": 29,
+        "byteIdentical": true,
+        "outputBytes": 133389,
+        "outputSha256": "39a4812a88ea77a94f846f8392fb536da882e84452d03880103d256cb1d73a4c"
+      },
+      "render": {
+        "beforeMedianMs": 164.149,
+        "afterMedianMs": 163.721,
+        "medianDeltaMs": -0.428,
+        "wins": 25,
+        "byteIdentical": true,
+        "outputBytes": 133389,
+        "outputSha256": "39a4812a88ea77a94f846f8392fb536da882e84452d03880103d256cb1d73a4c"
+      }
+    },
+    "verdict": "accepted"
+  }
+]
+```
+
 - Latest pass: LOOKUP SLICE 2 ORDINARY-READ SPLIT — neutral-or-negative auto-pass.
   `performVariableRulesLookup` (reference.ts) now branches on a new
   `isOrdinaryVariableRead` bit (plain string key, no namespace target, no

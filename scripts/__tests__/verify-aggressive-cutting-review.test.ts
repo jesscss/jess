@@ -503,3 +503,156 @@ describe('neutral-or-negative auto-pass contract kind', () => {
     expect(validateCostAuditRecords([makeRecord()], registry, [sourceFile], diff)).toEqual([]);
   });
 });
+
+const scopeFile = 'packages/core/src/tree/scope-frame.ts';
+const offBenchContract = {
+  id: 'test-off-bench-contract',
+  kind: 'off-benchmark-call-reduction',
+  surface: 'lookupScopeFrameCallable import fallback-chain traversal',
+  files: [scopeFile],
+  necessity: {
+    status: 'proven',
+    factSource: 'imported guarded mixins resolve on the frame fallbackFrame chain once coverage is prepared',
+    rediscovery: 'the lookup re-descended child rulesets via findMixinsFastForUncoveredCallable',
+    carryForward: 'the existing fallbackFrame links are walked under the same visibility rules',
+    whyNotCarried: 'the import origin frames already exist; walking them is leaner than rescanning children'
+  },
+  offBenchmarkCallReduction: {
+    governedFunction: 'findMixinsFastForUncoveredCallable',
+    measuredOn: 'packages/jess/benchmark/callable-fallback/main.less',
+    boundedTraversal: 'a single acyclic walk over the import fallbackFrame chain, bounded by import depth, not a whole-tree scan',
+    benchmarkNonRegression: { phase: 'render', maxPercentSlower: 3 }
+  },
+  counters: ['callsBefore', 'callsAfter'],
+  commonCaseProof: 'callable-fallback fixture counter test',
+  benchmark: {
+    fixture: 'benchmark.less',
+    phases: ['parse-render', 'render'],
+    warmup: 20,
+    pairs: 45
+  },
+  relations: ['callsAfter < callsBefore'],
+  evidence: {
+    command: ['node', '--check', 'scripts/verify-aggressive-cutting-review.mjs']
+  },
+  sourceCheck: {
+    file: scopeFile,
+    caller: 'export function lookupScopeFrameCallable',
+    call: 'walkFallbackCallable',
+    guard: "result.reason === 'child-surface'"
+  }
+};
+const offBenchRegistry = [offBenchContract];
+
+function makeOffBenchRecord(overrides: Record<string, unknown> = {}) {
+  const okPhase = (sha = 'a'.repeat(64)) => ({
+    beforeMedianMs: 100,
+    afterMedianMs: 100,
+    medianDeltaMs: 0,
+    wins: 20,
+    byteIdentical: true,
+    outputBytes: 100,
+    outputSha256: sha
+  });
+  return {
+    id: 'test-off-bench-contract',
+    necessity: offBenchContract.necessity,
+    measuredOn: 'packages/jess/benchmark/callable-fallback/main.less',
+    callsBefore: 6,
+    callsAfter: 0,
+    boundedTraversal: 'a single acyclic walk over the import fallbackFrame chain, bounded by import depth, not a whole-tree scan',
+    commonCaseProof: 'callable-fallback fixture counter test',
+    benchmark: {
+      fixture: 'benchmark.less',
+      warmup: 20,
+      pairs: 45,
+      ['parse-render']: okPhase(),
+      render: okPhase()
+    },
+    verdict: 'accepted',
+    ...overrides
+  };
+}
+
+describe('off-benchmark call-reduction cost-contract kind', () => {
+  it('accepts a valid off-benchmark call-count reduction contract and record', () => {
+    expect(validateCostContractRegistry(offBenchRegistry)).toEqual([]);
+    expect(validateCostAuditRecords([makeOffBenchRecord()], offBenchRegistry, [], '')).toEqual([]);
+  });
+
+  it('rejects a record that REGRESSES benchmark on the non-regression rail', () => {
+    const regressing = makeOffBenchRecord({
+      benchmark: {
+        fixture: 'benchmark.less',
+        warmup: 20,
+        pairs: 45,
+        ['parse-render']: {
+          beforeMedianMs: 100, afterMedianMs: 100, medianDeltaMs: 0,
+          wins: 20, byteIdentical: true, outputBytes: 100, outputSha256: 'a'.repeat(64)
+        },
+        // render after-median 200ms is far beyond the 3% noise cap over 100ms before.
+        render: {
+          beforeMedianMs: 100, afterMedianMs: 200, medianDeltaMs: 100,
+          wins: 0, byteIdentical: true, outputBytes: 100, outputSha256: 'a'.repeat(64)
+        }
+      }
+    });
+    const errors = validateCostAuditRecords([regressing], offBenchRegistry, [], '');
+    expect(errors.some(error => error.includes('REGRESSES benchmark render'))).toBe(true);
+  });
+
+  it('rejects a record whose callsAfter is not below callsBefore (inert removal)', () => {
+    const inert = makeOffBenchRecord({ callsBefore: 6, callsAfter: 6 });
+    const errors = validateCostAuditRecords([inert], offBenchRegistry, [], '');
+    expect(errors.some(error => error.includes('is not a reduction: callsAfter 6 must be < callsBefore 6'))).toBe(true);
+  });
+
+  it('rejects an output-changing record (benchmark phases render different bytes)', () => {
+    const outputChanging = makeOffBenchRecord({
+      benchmark: {
+        fixture: 'benchmark.less',
+        warmup: 20,
+        pairs: 45,
+        ['parse-render']: {
+          beforeMedianMs: 100, afterMedianMs: 100, medianDeltaMs: 0,
+          wins: 20, byteIdentical: true, outputBytes: 100, outputSha256: 'a'.repeat(64)
+        },
+        render: {
+          beforeMedianMs: 100, afterMedianMs: 100, medianDeltaMs: 0,
+          wins: 20, byteIdentical: true, outputBytes: 100, outputSha256: 'b'.repeat(64)
+        }
+      }
+    });
+    const errors = validateCostAuditRecords([outputChanging], offBenchRegistry, [], '');
+    expect(errors.some(error => error.includes('byte-identical benchmark output across both phases'))).toBe(true);
+  });
+
+  it('rejects a contract whose measuredOn is benchmark.less (benefit must be off the oracle)', () => {
+    const onBenchmark = {
+      ...offBenchContract,
+      offBenchmarkCallReduction: {
+        ...offBenchContract.offBenchmarkCallReduction,
+        measuredOn: 'packages/jess/benchmark/benchmark.less'
+      }
+    };
+    expect(validateCostContractRegistry([onBenchmark])).toContain(
+      'Off-benchmark call-reduction cost contract test-off-bench-contract must name a representative measuredOn fixture that is NOT benchmark.less (the benefit is off the wall-clock oracle).'
+    );
+  });
+
+  it('rejects a contract that borrows the admission-filter relation', () => {
+    const borrowed = {
+      ...offBenchContract,
+      relations: ['callsAfter < callsBefore', 'calls <= admittedCalls']
+    };
+    expect(validateCostContractRegistry([borrowed])).toContain(
+      'Off-benchmark call-reduction cost contract test-off-bench-contract must not claim the admission-filter relation calls <= admittedCalls; it removes work, it does not admit it.'
+    );
+  });
+
+  it('leaves the existing precise / conservative-filter kinds validating unchanged', () => {
+    expect(validateCostContractRegistry(registry)).toEqual([]);
+    expect(validateCostContractRegistry(filterRegistry)).toEqual([]);
+    expect(validateCostAuditRecords([makeRecord()], registry, [sourceFile], diff)).toEqual([]);
+  });
+});

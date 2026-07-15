@@ -37,6 +37,7 @@ globalThis.__JESS_DIRECT_LOOKUP_PROFILE_COUNTERS__ = {};
 globalThis.__JESS_MERGE_PROFILE_COUNTERS__ = {};
 globalThis.__JESS_EXTEND_PROFILE_COUNTERS__ = {};
 globalThis.__JESS_SPINE_PROFILE_COUNTERS__ = {};
+globalThis.__JESS_UNCOVERED_CALLABLE_PROFILE_COUNTERS__ = {};
 
 const coreLib = pathToFileURL(path.join(repoRoot, 'packages/core/lib/index.js')).href;
 const lessParserLib = pathToFileURL(path.join(repoRoot, 'packages/less-parser/lib/index.js')).href;
@@ -242,6 +243,7 @@ const serializeProfileCounters = globalThis.__JESS_SERIALIZE_PROFILE_COUNTERS__ 
 const directLookupProfileCounters = globalThis.__JESS_DIRECT_LOOKUP_PROFILE_COUNTERS__ ?? {};
 const mergeProfileCounters = globalThis.__JESS_MERGE_PROFILE_COUNTERS__ ?? {};
 const extendProfileCounters = globalThis.__JESS_EXTEND_PROFILE_COUNTERS__ ?? {};
+const uncoveredCallableProfileCounters = globalThis.__JESS_UNCOVERED_CALLABLE_PROFILE_COUNTERS__ ?? {};
 
 const extendFilterStats = {
   admissionCalls: extendProfileCounters['filter.admissionCalls'] ?? 0,
@@ -350,6 +352,34 @@ if (cliArgs.has('--assert-early-admit-contract')) {
   if (failed.length > 0) {
     throw new Error(
       `Early-admit redundant-call-elimination contract failed: ${failed.join(', ')}; sha=${renderedOutputSha256}, counters=${JSON.stringify(spineProfileCounters)}`
+    );
+  }
+}
+
+if (cliArgs.has('--assert-callable-fallback-contract')) {
+  // Off-benchmark call-count reduction proof for the callable-fallback slice
+  // (scope-frame.ts lookupScopeFrameCallable fallback-chain traversal). On the
+  // named import-guarded fixture, two things must hold: (1) the rendered output
+  // is byte-identical to the fixture oracle sha (the traversal changed no
+  // output), and (2) every findMixinsFastForUncoveredCallable descent for an
+  // imported guarded mixin is retired (post-slice call count is 0 on this
+  // fixture — the whole point of the slice). callsBefore (measured via the
+  // same-worktree A/B recorded in the audit record) proves the retirement is
+  // real; this executable check proves the after-state and byte-identity.
+  const uncoveredTotal = uncoveredCallableProfileCounters.total ?? 0;
+  const guardedCalls = uncoveredCallableProfileCounters['key..configured-guarded'] ?? 0;
+  const expectedSha = cliArgs.get('--expect-sha');
+  const failures = [
+    ['imported guarded-mixin uncovered descent retired (total === 0)', uncoveredTotal === 0],
+    ['.configured-guarded uncovered descent retired (=== 0)', guardedCalls === 0]
+  ];
+  if (expectedSha && expectedSha !== 'true') {
+    failures.push([`render byte-identical to fixture oracle sha ${expectedSha}`, renderedOutputSha256 === expectedSha]);
+  }
+  const failed = failures.filter(([, ok]) => !ok).map(([relation]) => relation);
+  if (failed.length > 0) {
+    throw new Error(
+      `Callable-fallback off-benchmark contract failed: ${failed.join(', ')}; sha=${renderedOutputSha256}, counters=${JSON.stringify(uncoveredCallableProfileCounters)}`
     );
   }
 }

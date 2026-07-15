@@ -105,8 +105,24 @@ const MERGE_PROFILE_COUNTERS_KEY = '__JESS_MERGE_PROFILE_COUNTERS__';
 type ScopeFrameProfileGlobals = typeof globalThis & {
   [SCOPE_FRAME_PROFILE_COUNTERS_KEY]?: Record<string, number>;
   [MERGE_PROFILE_COUNTERS_KEY]?: Record<string, number>;
+  ['__JESS_UNCOVERED_CALLABLE_PROFILE_COUNTERS__']?: Record<string, number>;
 };
 const scopeFrameProfileCounters = (globalThis as ScopeFrameProfileGlobals)[SCOPE_FRAME_PROFILE_COUNTERS_KEY];
+// Cost-neutral profiling hook for the uncovered-callable descent. When the
+// counters global is absent (the production default) this is `undefined`, so the
+// `recordUncoveredCallable?.(key)` call site compiles to a zero-cost optional
+// call. It is the measured witness for the callable-fallback off-benchmark
+// contract: it counts every findMixinsFastForUncoveredCallable entry per key so
+// a retirement (callsAfter === 0 for an imported guarded mixin) is provable.
+const uncoveredCallableProfileCounters =
+  (globalThis as ScopeFrameProfileGlobals)['__JESS_UNCOVERED_CALLABLE_PROFILE_COUNTERS__'];
+const recordUncoveredCallable = uncoveredCallableProfileCounters
+  ? (key: string): void => {
+      const counters = uncoveredCallableProfileCounters;
+      counters.total = (counters.total ?? 0) + 1;
+      counters[`key.${key}`] = (counters[`key.${key}`] ?? 0) + 1;
+    }
+  : undefined;
 const mergeProfileCounters = (globalThis as ScopeFrameProfileGlobals)[MERGE_PROFILE_COUNTERS_KEY];
 const scopeFrameProfileNow = scopeFrameProfileCounters
   ? globalThis.performance?.now.bind(globalThis.performance)
@@ -2033,6 +2049,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     options: CallableFindOptions,
     rulesetsOnly = false
   ): UncoveredCallableResult {
+    recordUncoveredCallable?.(key);
     if (reason !== 'child-surface' && reason !== 'reference-import') {
       return UNCOVERED_CALLABLE_UNSUPPORTED;
     }
@@ -2840,7 +2857,12 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         scope.prepareCallableLookupFrame(scope._scopeFrame, segment, includeRulesets);
         const frameHit = lookupScopeFrameCallable(scope._scopeFrame, segment, {
           includeRulesets,
-          searchParents
+          searchParents,
+          prepareFrame: (fr, incR) => {
+            if (isNode(fr.rulesNode, N.Rules)) {
+              fr.rulesNode.prepareCallableLookupFrame(fr, segment, incR);
+            }
+          }
         });
         let frameMissCovered = false;
         if (frameHit.kind === 'hit') {
@@ -4032,7 +4054,12 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         this.prepareCallableLookupFrame(callableFrame, keys, includeRulesets);
         const frameHit = lookupScopeFrameCallable(callableFrame, keys, {
           includeRulesets,
-          searchParents: false
+          searchParents: false,
+          prepareFrame: (fr, incR) => {
+            if (isNode(fr.rulesNode, N.Rules)) {
+              fr.rulesNode.prepareCallableLookupFrame(fr, keys, incR);
+            }
+          }
         });
         let frameMissCovered = false;
         if (frameHit.kind === 'hit') {
@@ -4088,17 +4115,24 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
             queuedFallback = queuedFallback.fallbackFrame;
           }
           let drainingFallbacks = false;
+          const retryPrepareFrame = (fr: ScopeFrame, incR: boolean) => {
+            if (isNode(fr.rulesNode, N.Rules)) {
+              fr.rulesNode.prepareCallableLookupFrame(fr, keys, incR);
+            }
+          };
           while (retryFrame) {
             let retryHit = lookupScopeFrameCallable(retryFrame, keys, {
               includeRulesets,
-              searchParents: false
+              searchParents: false,
+              prepareFrame: retryPrepareFrame
             });
             if (retryHit.kind === 'uncovered' && (retryHit.reason === 'frame' || retryHit.reason === 'key')) {
               if (isNode(retryFrame.rulesNode, N.Rules)) {
                 this.prepareCallableLookupFrame(retryFrame, keys, includeRulesets);
                 retryHit = lookupScopeFrameCallable(retryFrame, keys, {
                   includeRulesets,
-                  searchParents: false
+                  searchParents: false,
+                  prepareFrame: retryPrepareFrame
                 });
               }
             }

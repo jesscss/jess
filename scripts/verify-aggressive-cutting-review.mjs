@@ -490,6 +490,137 @@ function checkNeutralRefactor(record, meta, hasDangerTokens, errors) {
   return ok;
 }
 
+/**
+ * Off-benchmark call-reduction registry metadata. This kind closes a real blind
+ * spot: a correct, byte-identical work REMOVAL whose benefit is OFF the canonical
+ * benchmark (benchmark.less does not exercise the eliminated path, so it shows no
+ * wall-clock speedup). Instead of a benchmark.less speedup, such a change proves
+ * its benefit as a MEASURED CALL-COUNT REDUCTION of a named hot function on a
+ * NAMED representative fixture. Acceptance is deliberately hard and CANNOT be
+ * honestly satisfied by a benchmark-regressing or output-changing change:
+ *   - governedFunction: the hot function whose invocations are eliminated.
+ *   - measuredOn:       the NAMED representative fixture the reduction is measured
+ *                       on. It must NOT be benchmark.less (that is the wall-clock
+ *                       oracle; this kind exists precisely because the benefit is
+ *                       off it) — the reduction is proved by callsAfter<callsBefore
+ *                       on this fixture (enforced by the declared relation + the
+ *                       record check).
+ *   - boundedTraversal: a self-prosecution paragraph asserting the ADDED traversal
+ *                       is bounded (a walk over the import fallback-frame chain,
+ *                       NOT a new whole-tree / per-node scan). Any new loop/map/set
+ *                       is ALSO a danger token that the diff must account for by
+ *                       label, so an unbounded traversal cannot hide here.
+ *   - benchmarkNonRegression: the HARD SAFETY RAIL. benchmark.less must stay
+ *                       byte-identical AND non-regressing (its measured median on
+ *                       the named phase within a small noise cap, not slower). This
+ *                       is what prevents admitting a change that is cost-neutral off
+ *                       benchmark but a REGRESSION on benchmark: a benchmark
+ *                       slowdown fails this rail.
+ * The net-removal counter delta (callsAfter < callsBefore) is enforced via the
+ * declared relations; the record-side proof lives in checkOffBenchmarkCallReduction.
+ */
+function validateOffBenchmarkCallReductionMetadata(contract) {
+  const errors = [];
+  const ob = contract.offBenchmarkCallReduction;
+  if (!ob || typeof ob !== 'object') {
+    return [`Off-benchmark call-reduction cost contract ${contract.id} must include an offBenchmarkCallReduction block.`];
+  }
+  if (typeof ob.governedFunction !== 'string' || ob.governedFunction.length === 0) {
+    errors.push(`Off-benchmark call-reduction cost contract ${contract.id} must name the governedFunction whose calls are eliminated.`);
+  }
+  if (
+    typeof ob.measuredOn !== 'string'
+    || ob.measuredOn.length === 0
+    || /(^|\/)benchmark\.less$/.test(ob.measuredOn)
+  ) {
+    errors.push(`Off-benchmark call-reduction cost contract ${contract.id} must name a representative measuredOn fixture that is NOT benchmark.less (the benefit is off the wall-clock oracle).`);
+  }
+  if (typeof ob.boundedTraversal !== 'string' || ob.boundedTraversal.trim().length < 40) {
+    errors.push(`Off-benchmark call-reduction cost contract ${contract.id} must self-prosecute the added traversal as bounded (offBenchmarkCallReduction.boundedTraversal paragraph).`);
+  }
+  const nr = ob.benchmarkNonRegression;
+  if (
+    !nr
+    || typeof nr !== 'object'
+    || !['parse-render', 'render'].includes(nr.phase)
+    || !Number.isFinite(nr.maxPercentSlower)
+    || nr.maxPercentSlower < 0
+    || nr.maxPercentSlower > 5
+  ) {
+    errors.push(`Off-benchmark call-reduction cost contract ${contract.id} must declare a benchmarkNonRegression { phase, maxPercentSlower } rail with a tight noise cap (0..5%).`);
+  }
+  return errors;
+}
+
+/**
+ * Byte-identity + benchmark-non-regression + net-removal gate for an off-benchmark
+ * call-reduction audit record. All are non-negotiable, and none can be honestly
+ * produced by a benchmark-regressing or output-changing change:
+ *   1. Byte-identity: both benchmark phases render the same output (equal
+ *      outputSha256), on top of the per-phase byteIdentical A/B the generic
+ *      validator already enforces.
+ *   2. Benchmark non-regression (the hard rail): the named benchmark phase's after
+ *      median must be within the declared noise cap of the before median (not
+ *      slower). A change that regresses benchmark fails here.
+ *   3. Net removal on the named fixture: measuredOn matches the contract (and is not
+ *      benchmark.less), and callsAfter < callsBefore for the eliminated function on
+ *      that fixture (a change that does not actually reduce calls fails).
+ *   4. Bounded traversal: the record restates the bounded-walk self-prosecution.
+ * Returns false (recording why) on any gap so the caller refuses the acceptance.
+ */
+function checkOffBenchmarkCallReduction(record, meta, errors) {
+  let ok = true;
+  if (typeof record.measuredOn !== 'string' || record.measuredOn !== meta.measuredOn) {
+    errors.push(`Off-benchmark call-reduction record ${record.id} must restate measuredOn matching the contract fixture (${meta.measuredOn}).`);
+    ok = false;
+  } else if (/(^|\/)benchmark\.less$/.test(record.measuredOn)) {
+    errors.push(`Off-benchmark call-reduction record ${record.id} measuredOn must not be benchmark.less.`);
+    ok = false;
+  }
+  const callsBefore = counterValue(record, 'callsBefore');
+  const callsAfter = counterValue(record, 'callsAfter');
+  if (callsBefore === null || callsAfter === null) {
+    errors.push(`Off-benchmark call-reduction record ${record.id} must record integer callsBefore and callsAfter for the eliminated function on the named fixture.`);
+    ok = false;
+  } else if (!(callsAfter < callsBefore)) {
+    errors.push(`Off-benchmark call-reduction record ${record.id} is not a reduction: callsAfter ${callsAfter} must be < callsBefore ${callsBefore} on ${meta.measuredOn}.`);
+    ok = false;
+  }
+  const parseRenderSha = record.benchmark?.['parse-render']?.outputSha256;
+  const renderSha = record.benchmark?.render?.outputSha256;
+  if (typeof parseRenderSha !== 'string' || parseRenderSha !== renderSha) {
+    errors.push(`Off-benchmark call-reduction record ${record.id} must render byte-identical benchmark output across both phases (equal outputSha256).`);
+    ok = false;
+  }
+  const phase = meta.benchmarkNonRegression?.phase;
+  const cap = Number.isFinite(meta.benchmarkNonRegression?.maxPercentSlower)
+    ? meta.benchmarkNonRegression.maxPercentSlower
+    : 0;
+  const phaseResult = phase ? record.benchmark?.[phase] : undefined;
+  if (
+    !phaseResult
+    || typeof phaseResult !== 'object'
+    || !Number.isFinite(phaseResult.beforeMedianMs)
+    || phaseResult.beforeMedianMs <= 0
+    || !Number.isFinite(phaseResult.afterMedianMs)
+    || phaseResult.afterMedianMs <= 0
+  ) {
+    errors.push(`Off-benchmark call-reduction record ${record.id} must record a ${phase} benchmark { beforeMedianMs, afterMedianMs } for the non-regression rail.`);
+    ok = false;
+  } else {
+    const allowed = phaseResult.beforeMedianMs * (1 + cap / 100);
+    if (phaseResult.afterMedianMs > allowed) {
+      errors.push(`Off-benchmark call-reduction record ${record.id} REGRESSES benchmark ${phase}: after ${phaseResult.afterMedianMs}ms exceeds before ${phaseResult.beforeMedianMs}ms + ${cap}% (<= ${allowed.toFixed(3)}ms). The benchmark-non-regression rail forbids admitting an off-benchmark change that is slower on benchmark.`);
+      ok = false;
+    }
+  }
+  if (typeof record.boundedTraversal !== 'string' || record.boundedTraversal.trim().length < 40) {
+    errors.push(`Off-benchmark call-reduction record ${record.id} must restate the bounded-traversal self-prosecution (fallback-frame-chain walk, not a whole-tree/per-node scan).`);
+    ok = false;
+  }
+  return ok;
+}
+
 function validateCostContractRegistry(registry) {
   const errors = [];
   const ids = new Set();
@@ -536,6 +667,14 @@ function validateCostContractRegistry(registry) {
     const kind = contract.kind ?? 'precise';
     if (kind === 'redundant-call-elimination') {
       errors.push(...validateRedundantCallEliminationMetadata(contract));
+    } else if (kind === 'off-benchmark-call-reduction') {
+      // An off-benchmark call-reduction models a byte-identical work REMOVAL whose
+      // benefit is off benchmark.less, so it carries no admission block and no
+      // admission/feature counters. It proves byte-identity + benchmark
+      // non-regression + a net call-count reduction on a NAMED fixture (see
+      // validateOffBenchmarkCallReductionMetadata). The heavy admission ceremony
+      // below is skipped exactly as it is for redundant-call-elimination.
+      errors.push(...validateOffBenchmarkCallReductionMetadata(contract));
     } else {
       const admission = contract.admission;
       if (!admission || typeof admission !== 'object') {
@@ -584,6 +723,14 @@ function validateCostContractRegistry(registry) {
         );
       }
     }
+    if (kind === 'off-benchmark-call-reduction') {
+      const reductionCounters = ['callsBefore', 'callsAfter'];
+      if (!Array.isArray(contract.counters) || !reductionCounters.every(name => contract.counters.includes(name))) {
+        errors.push(
+          `Off-benchmark call-reduction cost contract ${contract.id} must declare callsBefore and callsAfter counters (measured on the named fixture).`
+        );
+      }
+    }
     if (typeof contract.commonCaseProof !== 'string' || !/(benchmark|counter|test)/i.test(contract.commonCaseProof)) {
       errors.push(`Cost contract ${contract.id} must name a common no-feature benchmark or counter test.`);
     }
@@ -602,8 +749,8 @@ function validateCostContractRegistry(registry) {
         `Cost contract ${contract.id} must require the canonical benchmark.less parse-render/render A/B with 20 warmups and 45 alternating pairs.`
       );
     }
-    if (!['precise', 'conservative-filter', 'redundant-call-elimination', 'neutral-or-negative'].includes(kind)) {
-      errors.push(`Cost contract ${contract.id} kind must be "precise", "conservative-filter", "redundant-call-elimination", or "neutral-or-negative".`);
+    if (!['precise', 'conservative-filter', 'redundant-call-elimination', 'neutral-or-negative', 'off-benchmark-call-reduction'].includes(kind)) {
+      errors.push(`Cost contract ${contract.id} kind must be "precise", "conservative-filter", "redundant-call-elimination", "neutral-or-negative", or "off-benchmark-call-reduction".`);
     }
     if (!Array.isArray(contract.relations) || contract.relations.length === 0) {
       errors.push(`Cost contract ${contract.id} must state at least one counter relation.`);
@@ -617,6 +764,18 @@ function validateCostContractRegistry(registry) {
       }
       if (contract.relations.includes('calls <= admittedCalls')) {
         errors.push(`Redundant-call-elimination cost contract ${contract.id} must not claim the admission-filter relation calls <= admittedCalls; it removes work, it does not admit it.`);
+      }
+    } else if (kind === 'off-benchmark-call-reduction') {
+      // An off-benchmark reduction proves a STRICT net reduction of the eliminated
+      // work on the named fixture (callsAfter < callsBefore). It must NOT borrow the
+      // admission-filter relation (there is no admittedCalls surface) — the benefit
+      // is a call-count delta, not an admission bound.
+      errors.push(...validateDeclaredCounterRelations(contract));
+      if (!contract.relations.includes('callsAfter < callsBefore')) {
+        errors.push(`Off-benchmark call-reduction cost contract ${contract.id} must bind the eliminated work with callsAfter < callsBefore.`);
+      }
+      if (contract.relations.includes('calls <= admittedCalls')) {
+        errors.push(`Off-benchmark call-reduction cost contract ${contract.id} must not claim the admission-filter relation calls <= admittedCalls; it removes work, it does not admit it.`);
       }
     } else {
       errors.push(...validateDeclaredCounterRelations(contract));
@@ -858,6 +1017,16 @@ function validateCostAuditRecords(records, registry, changedPaths, diff, hasDang
       if (contract?.redundantCallElimination && record.verdict === 'accepted') {
         checkRedundantCallElimination(record, contract.redundantCallElimination, errors);
       }
+    } else if (kind === 'off-benchmark-call-reduction') {
+      // An off-benchmark reduction record carries NO admission surface: it proves
+      // byte-identity + benchmark non-regression + a net call-count reduction on a
+      // NAMED fixture + a bounded-traversal disclosure (checkOffBenchmarkCallReduction).
+      // Its added fallback-chain walk MAY allocate (it replaces a heavier descent),
+      // so noFeatureAllocations is NOT forced to zero here — the allocation is instead
+      // disclosed via the danger-token accounting the rest of the gate enforces.
+      if (contract?.offBenchmarkCallReduction && record.verdict === 'accepted') {
+        checkOffBenchmarkCallReduction(record, contract.offBenchmarkCallReduction, errors);
+      }
     } else {
       const admission = record.admission;
       if (
@@ -1028,6 +1197,62 @@ function validateSourceChecks(registry, changedPaths) {
       ? ''
       : source.slice(callerStart, nextMethod < 0 ? undefined : nextMethod);
     const callOffset = callIndex - callerStart;
+    if ((contract.kind ?? 'precise') === 'off-benchmark-call-reduction') {
+      // The bounded fallback walk is entered under a multiline guard condition
+      // (`if ( ... <guard> ... ) { ... <call> ... }`), so the single-line guarded-call
+      // regex the other kinds use will not match. Require a guard BLOCK — an `if`
+      // whose (possibly multiline) condition contains the guard and whose body still
+      // encloses the call — so the reduction's traversal cannot be moved out from
+      // under its admission guard without the source check noticing.
+      const enclosed = (() => {
+        if (callerStart < 0 || callIndex < 0) {
+          return false;
+        }
+        const prefix = callerBody.slice(0, callOffset);
+        const ifPattern = /if\s*\(/g;
+        let match;
+        while ((match = ifPattern.exec(prefix)) !== null) {
+          let depth = 0;
+          let condEnd = -1;
+          for (let i = match.index + match[0].length - 1; i < prefix.length; i++) {
+            const character = prefix[i];
+            if (character === '(') {
+              depth += 1;
+            } else if (character === ')') {
+              depth -= 1;
+              if (depth === 0) {
+                condEnd = i;
+                break;
+              }
+            }
+          }
+          if (condEnd < 0 || !prefix.slice(match.index, condEnd + 1).includes(sourceCheck.guard)) {
+            continue;
+          }
+          let balance = 0;
+          let opened = false;
+          for (let j = condEnd + 1; j < prefix.length; j++) {
+            const character = prefix[j];
+            if (character === '{') {
+              balance += 1;
+              opened = true;
+            } else if (character === '}') {
+              balance -= 1;
+            }
+          }
+          if (opened && balance > 0) {
+            return true;
+          }
+        }
+        return false;
+      })();
+      if (!enclosed) {
+        errors.push(
+          `Off-benchmark call-reduction cost contract ${contract.id} changed its owning file without a guard block (if (... ${sourceCheck.guard} ...) { ... }) enclosing ${sourceCheck.call}.`
+        );
+      }
+      continue;
+    }
     if ((contract.kind ?? 'precise') === 'redundant-call-elimination') {
       // A removal has no surviving `if (guard) { call }` enclosure; the call is
       // ELIMINATED for a subset of inputs by a boolean short-circuit whose guard
