@@ -514,6 +514,61 @@ declarations-coverage state.
   diagnostic-only (`Reference.evalNode` 3,577 calls / 68.31 ms,
   `Context.getTree` 5 calls / 133.88 ms under instrumentation).
 
+- **Q-40 flow/heap attribution refresh (2026-07-15, diagnostic only).** A fresh
+  uninstrumented topology profile ranked registration preparation first:
+  `prepareRegistration` was `200.4 ms` inclusive and `_prepareRegistrationOnce`
+  allocated about `45.84 MB` in the sampled render path. The retained heap was
+  led by `RulesLookupState` (`11,088` objects / `1.52 MB`), `Ruleset` (`8,526`
+  / `1.17 MB`), and `Map` (`36,128` / `1.10 MB`). Other ranked families were
+  direct declaration-child collection (`18.58 MB` inclusive allocation),
+  extend matching (`processExtends` / `extendSelector` /
+  `applyExtendsToSelector`), source-order normalization (`10,777` prepare and
+  `10,777` source-order calls despite no reorder), and serializer frame/array
+  state (about `50,665` arrays / `1.55 MB` after parse+render sampling). These
+  are attribution priorities, not normalized timings or acceptance claims;
+  generic lookup caches, scope-slot tables, and pass-local extend indexes remain
+  rejected by their dedicated evidence.
+
+- **Q-40 `Context.getTree` attribution correction (2026-07-15).** The direct
+  flow is path resolution, source-tree cache lookup, source loading, parsing,
+  diagnostics, and cache insertion. It does not evaluate placements or
+  serialize output. The earlier `133.88 ms` figure came from visitors and
+  profiling wrapped around the public call and is instrumentation distortion,
+  not a `getTree` cost. Direct root parsing measured about `36.38 ms`; a static
+  imported tree measured about `0.44/0.24 ms` on misses and `0.14/0.13 ms` on
+  hits in the worker's direct probes. A 1×/2×/3× closed static `(multiple)`
+  fixture made `2/3/4` `getTree` calls with `2/0`, `2/1`, and `2/2` miss/hit
+  pairs and exact repeated CSS. This confirms source-tree reuse and moves the
+  remaining question to placement materialization, not path-cache construction.
+
+- **Q-40 producer-fact admission cut (2026-07-15).** Four `rulesMayContain*`
+  helpers now return immediately when the `Rules` surface already carries the
+  corresponding producer fact (`hasExactMixinChildSurface`,
+  `hasExactRulesetChildSurface`, `hasDeclarationChildSurface`, or
+  `hasVarDeclarationChildSurface`). On the canonical profile, declaration
+  recursive visits fell `1,447→412` and var-declaration visits
+  `14,552→14,096`; ruleset visits fell `2,058→2,006`. The current-dev A/B was
+  output-identical (`135,794` bytes, Jess hash
+  `9a58451bd3b0c9d80913df38be3b199994d2b93d34a9d2851f1b18d9dcaaa7cc`) but
+  timing remained noise-level: parse+render `248.38→246.39 ms` with `20/45`
+  wins, render-only `199.53→201.46 ms` with `18/45` wins. Core `3326` passed,
+  the production spine was `137/137`, all-less was `106/106`, focused
+  source-map/render checks were `126` passed, and the aggressive-cutting review
+  passed. Keep the cut as eliminated work; do not call it a speed win.
+
+- **Q-40 combined final A/B (2026-07-15).** After integrating the producer-fact
+  admission cut and the bounded import-placement allocation cut, a fresh
+  current-`dev` versus candidate build comparison used the canonical fixture,
+  20 warmups, 45 alternating pairs, and held generated parser/plugin artifacts
+  constant. Parse+render was `217.181792→216.742542 ms` (median ratio
+  `−0.20%`, `21/45` wins); render-only was `182.083875→181.264208 ms`
+  (`−0.45%`, `18/45` wins). Both phases were byte-identical at `133,389` bytes,
+  SHA-256 `39a4812a88ea77a94f846f8392fb536da882e84452d03880103d256cb1d73a4c`.
+  This is consistent with the noise floor and carries no canonical throughput
+  claim; the accepted Jess cuts are justified by eliminated scans and placement
+  allocation/state, while the separate Parseman recognizer POC has its own
+  parser-phase speed evidence.
+
 - **Q-40 profile refresh (2026-07-14, diagnostic only).** A fresh current-dev
   minified-build no-op control with the same fixture/runtime and 20 warmups /
   45 alternating pairs measured parse+render `217.263 ms` versus `215.872 ms`
@@ -676,6 +731,27 @@ declarations-coverage state.
   worktrees, ran focused JSON/GraphQL/CSS measurements, and keeps CSS/Less
   late-value materialization outside Parseman's generic contract. No Parseman
   implementation was made.
+
+- **Parseman true recognizer POC (2026-07-15).** The highest-ranked generic
+  candidate was implemented in Parseman branch `feature/true-recognizer-20260715`
+  at commit `c84d777` (the SSH push was unavailable from this checkout, so it is
+  locally committed but not published). `compile(..., { mode: 'recognizer' })`
+  now emits a separate acceptance/end/failure-cursor contract at code-generation
+  time, omitting CST/raw/trivia/fields/host/profile/output-slice work while
+  retaining cursor movement, lookahead, rollback, repetition, and expected
+  failures. The default compiler contract is unchanged; runtime-only parser
+  fallbacks are rejected. The typed map-source overload and
+  `compileLinkable(..., { mode: 'recognizer' })` plus `fuseRules` parity test were
+  added before acceptance. Equal-contract A/B improved JSON-like 16,946-byte
+  parsing `0.180875→0.095291 ms` (`47.32%`, p95 `0.236375→0.119792 ms`) and the
+  real 106,802-byte Less grammar `7.38425→5.534 ms` (`25.06%`, p95
+  `8.0435→5.96925 ms`), with zero GC events. Focused contract tests were
+  `39/39`, perf tests `5/5`, typecheck/build/lint passed. The Parseman full suite
+  still has one pre-existing `test/unit/build-arity.test.ts:116` failure because
+  its stale source-shape regex expects literal `=[]` while current baseline
+  emits a profile-conditional `_tl` initializer (`1,735` passed, `1` failed).
+  This is a generic parser result, not a Jess runtime change; Jess adoption
+  requires the published Parseman dependency path and a fresh Jess parser build.
 - **Parser/AST shape audit refresh (2026-07-14).** A fresh functional-parser
   census of the 106,802-byte Less fixture measured recognition `44.69 ms`,
   structural capture `58.10 ms`, and host construction `70.71 ms`, with

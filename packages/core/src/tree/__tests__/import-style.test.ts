@@ -1,6 +1,6 @@
 import { sourceSpanOf } from '../util/provenance.js';
 /* eslint-disable @typescript-eslint/no-unsafe-type-assertion */
-import { describe, it, expect, beforeEach, beforeAll } from 'vitest';
+import { describe, it, expect, beforeEach, beforeAll, vi } from 'vitest';
 import {
   style,
   rules,
@@ -43,6 +43,7 @@ import { createRenderBuffer, renderNodeToString } from '../util/render-buffer.js
 import { OutputWriter, getPrintOptions } from '../util/print.js';
 import { buildSourceMap } from '../util/sourcemap.js';
 import { createTriviaMap, makeTrivia } from '../util/trivia.js';
+import * as placementState from '../util/placement-state.js';
 import { resolve } from 'node:path';
 import { createTestContext } from './import-style-test-helpers.js';
 import { findPropertyDeclarationOccurrence, findVariableDeclarationOccurrence } from '../util/direct-rules-lookup.js';
@@ -1989,6 +1990,82 @@ describe('Style import', () => {
         }
         expect(getImportPlacementChildSegments(resolution.body)).toBeUndefined();
         expect(getImportPlacementSourceChild(resolution.body, resolution.body.rules[0]!)).toBeUndefined();
+      }
+    });
+
+    it('allocates placement mapping only when the admission retains state', async () => {
+      const segmentSpy = vi.spyOn(placementState, 'createPlacementChildSegment');
+      const resolveOne = async (
+        sourcePath: string,
+        sourceRules: Rules,
+        importOptions: { multiple: true; reference?: true } = { multiple: true }
+      ): Promise<Rules> => {
+        context.sourceTrees.set(sourcePath, sourceRules);
+        const imported = style({
+          path: quoted(sourcePath)
+        }, {
+          type: 'import',
+          importOptions
+        });
+        context.root = rules([imported]);
+        const resolution = await imported.resolveForSpine(context);
+        if (resolution.kind !== 'fold') {
+          throw new TypeError('Expected folded multiple import');
+        }
+        return resolution.body;
+      };
+
+      try {
+        const closedSource = rules([
+          ruleset({
+            selector: sellist([sel([el('.closed-static-allocation')])]),
+            rules: [decl({ name: 'color', value: any('green') })]
+          })
+        ]);
+        segmentSpy.mockClear();
+        const discardedBody = await resolveOne(resolve(process.cwd(), 'closed-static-allocation.jess'), closedSource);
+        expect(segmentSpy).not.toHaveBeenCalled();
+        expect(getImportPlacementChildSegments(discardedBody)).toBeUndefined();
+
+        const dynamicSource = rules([
+          vardecl({ name: 'dynamic', value: any('green') })
+        ]);
+        segmentSpy.mockClear();
+        const dynamicBody = await resolveOne(resolve(process.cwd(), 'dynamic-allocation.jess'), dynamicSource);
+        expect(segmentSpy).toHaveBeenCalledTimes(dynamicSource.rules.length);
+        expect(getImportPlacementChildSegments(dynamicBody)).toHaveLength(dynamicSource.rules.length);
+
+        const commentSource = new RulesClass([
+          comment('/* keep */'),
+          ruleset({
+            selector: sellist([sel([el('.commented-allocation')])]),
+            rules: [decl({ name: 'color', value: any('green') })]
+          })
+        ], undefined, undefined, new TreeContext({
+          trivia: createTriviaMap({
+            before: new Map([[0, makeTrivia('/* before */', 0, 11)]]),
+            after: new Map([[1, makeTrivia('/* after */', 0, 10)]])
+          })
+        }));
+        segmentSpy.mockClear();
+        const commentBody = await resolveOne(resolve(process.cwd(), 'commented-allocation.jess'), commentSource);
+        expect(segmentSpy).toHaveBeenCalledTimes(commentSource.rules.length);
+        expect(getImportPlacementChildSegments(commentBody)).toHaveLength(commentSource.rules.length);
+
+        context.opts.output = { sourceMap: true };
+        const sourceMapSource = rules([
+          ruleset({
+            selector: sellist([sel([el('.source-map-allocation')])]),
+            rules: [decl({ name: 'color', value: any('green') })]
+          })
+        ]);
+        segmentSpy.mockClear();
+        const sourceMapBody = await resolveOne(resolve(process.cwd(), 'source-map-allocation.jess'), sourceMapSource);
+        expect(segmentSpy).toHaveBeenCalledTimes(sourceMapSource.rules.length);
+        expect(getImportPlacementChildSegments(sourceMapBody)).toHaveLength(sourceMapSource.rules.length);
+      } finally {
+        context.opts.output = undefined;
+        segmentSpy.mockRestore();
       }
     });
 

@@ -294,7 +294,7 @@ export interface StyleImport extends Node<StyleImportValue, StyleImportOptions> 
 type ImportPlacementState = {
   source: Rules;
   children: Node[];
-  childSegments: readonly ImportPlacementChildSegment[];
+  childSegments: readonly ImportPlacementChildSegment[] | undefined;
 };
 
 export type ImportPlacementChildSegment = PlacementChildSegment;
@@ -516,6 +516,9 @@ export function getImportPlacementSegmentSourceChild(
   if (!state) {
     return undefined;
   }
+  if (!state.childSegments) {
+    return undefined;
+  }
   // NOTE: a placement child may itself LOOK like a reusable leaf (a cloned
   // container whose only child was reused-as-leaf clears F_HAS_NODE_CHILD) yet
   // still map to a distinct source child. So resolve positionally through the
@@ -538,7 +541,7 @@ export function getImportPlacementSegmentSourceChild(
 
 export function getImportPlacementChildSegments(placementRules: Rules): readonly ImportPlacementChildSegment[] | undefined {
   const state = findImportPlacementState(placementRules);
-  if (!state) {
+  if (!state?.childSegments) {
     return undefined;
   }
   const segments = new Array<ImportPlacementChildSegment>(state.childSegments.length);
@@ -680,7 +683,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     return node;
   }
 
-  private createFirstUseImportPlacementState(sourceRules: Rules): ImportPlacementState {
+  private createFirstUseImportPlacementState(sourceRules: Rules, retainPlacementState = true): ImportPlacementState {
     // Thin placement: the placement OWNS its child containers (a fresh
     // declaration/ruleset surface per placement) while REUSING inert scalar
     // leaves (shared by identity via `reuseAsLeaf`). The canonical source
@@ -690,7 +693,12 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     // and a reusable leaf placement child IS its own source. See
     // LIVE_BINDING_ARCHITECTURE.md §4.
     const children = new Array<Node>(sourceRules.rules.length);
-    const childSegments = new Array<PlacementChildSegment>(sourceRules.rules.length);
+    // `false` is only passed after the closed-static admission has already
+    // proved every source child is placement-scalar. Keep the shallow child
+    // array, but do not repeat that recursive check or allocate mapping state.
+    const childSegments = retainPlacementState
+      ? new Array<PlacementChildSegment>(sourceRules.rules.length)
+      : undefined;
     for (let index = 0; index < sourceRules.rules.length; index++) {
       const source = sourceRules.rules[index]!;
       // Only pure scalar-declaration content is placement-owned (a fresh
@@ -698,11 +706,15 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
       // content (mixins with guards/params, at-rules, nested imports) MUST stay
       // shared: a reference-import's mixin guards resolve caller scope through
       // the shared source parent chain, which cloning would sever.
-      const output = isPlacementScalarChild(source)
-        ? source.cloneForPlacement({ detachChildren: true })
-        : source;
+      const output = retainPlacementState
+        ? isPlacementScalarChild(source)
+          ? source.cloneForPlacement({ detachChildren: true })
+          : source
+        : source.cloneForPlacement({ detachChildren: true });
       children[index] = output;
-      childSegments[index] = createPlacementChildSegment(source, output, index);
+      if (childSegments) {
+        childSegments[index] = createPlacementChildSegment(source, output, index);
+      }
     }
     return {
       source: sourceRules,
@@ -1206,14 +1218,15 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
         return emptyFold(loaded.resolvedPath);
       }
       const importSite = this.getImportAnchorRules(context);
+      const retainPlacementState = !this.canDiscardSpinePlacementState(context, loaded.node, importSite);
       // Build the import-site placement over the parsed (un-evaled) imported body:
       // shares the canonical children, frame parent = the import site so a free var
       // resolves up the import chain (reuses `materializeImportPlacementState`'s
       // wiring). The spine descends these children resolving each leaf live.
       let placement = this.materializeImportPlacementState(
-        this.createFirstUseImportPlacementState(loaded.node),
+        this.createFirstUseImportPlacementState(loaded.node, retainPlacementState),
         importSite,
-        !this.canDiscardSpinePlacementState(context, loaded.node, importSite)
+        retainPlacementState
       );
       // A `(reference)` placement carries `referenceMode` (mirrors `getFinalRules`):
       // the descent SUPPRESSES its output while registration + extend-reach still run.

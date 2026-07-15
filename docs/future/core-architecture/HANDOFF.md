@@ -204,6 +204,59 @@ work.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: IMPORT-PLACEMENT STATE-CONSTRUCTION CUT — carry the existing
+  closed-static `(multiple)` discard/admission result into first-use placement
+  construction so a discarded placement does not allocate child-segment records
+  or retain mapping state.
+- Architecture surface: `packages/core/src/tree/import-style.ts` only. The
+  placement `Rules` wrapper, shallow child array, source/frame wiring, and
+  reentrant spine descent remain unchanged. No second recursive static check,
+  side map, descriptor, fallback path, or new placement representation was added.
+- Separation/duplication: the existing admission result is passed directly into
+  state construction and materialization; it is not recomputed and no second
+  recursive static-shape check was added.
+- Cumulative node weight: discarded placements retain the existing shallow
+  `children` array and required child copies, but allocate no child-segment
+  array, segment records, or retained placement-state entry.
+- New traversal: none. The existing `canDiscardSpinePlacementState` walk remains
+  the sole admission walk; the construction loop is still a direct-child loop.
+- New node/materialization: [materialized array/object] only the pre-existing
+  shallow child array remains on the discarded path; conditional segment storage
+  is omitted. Test-only fixtures are bounded and do not enter production.
+- Render path: no serializer or render-to-node route changed. Child/frame wiring,
+  output buffers, source maps, comments, variables, mixins, nested imports, and
+  excluded shapes retain the existing route.
+- Helper/API surface: no new exported helper or package API; existing mapping
+  readers return `undefined` for the deliberately unretained state.
+- Metadata mutations: no parent, source, frame, location, trivia, or source-map
+  mutation was added.
+- Review-flagged diff tokens: [node construction] test-only `Rules`/trivia
+  fixtures and expected-error assertions; [side map/set] test-only trivia maps;
+  [routine error control] test-only `try/finally` restores the spy and options;
+  [materialized array/object] production retains only the pre-existing child
+  array, with the segment array conditional. No new production machinery is
+  represented by these tokens.
+- Hot-path cost contracts:
+```json
+[]
+```
+- Render path and metadata: no serializer or render-to-node route changed; no
+  parent, source, frame, location, trivia, or source-map mutation was added.
+  Dynamic, comment-bearing, source-map, nested, mixin, and excluded shapes retain
+  the existing mapping state.
+- Evidence: focused import coverage was `95 passed, 1 skipped`; core/plugin/Jess
+  builds and API Extractor passed; spine ratchet `137/137`; all-less `106/106`;
+  aggressive review, ESLint, and diff check passed. At 1×/2×/3× the candidate
+  retained zero states/segment arrays/segment records versus `500/1000/1500`
+  transient segment records in the control, with exact CSS bytes
+  `28,462/56,924/85,386`. Canonical output remained exact at `133,389` bytes,
+  hash `39a4812a88ea77a94f846f8392fb536da882e84452d03880103d256cb1d73a4c`.
+  Timing was mixed (`219.872→223.442 ms` parse+render and
+  `189.103→187.030 ms` render-only), so this is an allocation/retained-state
+  cut, not a speed claim.
+- Verdict: accepted as a bounded allocation cut; do not broaden the admission
+  predicate or claim canonical throughput improvement.
+
 - Latest pass: MERGE-OUTPUT SURFACE CARRY — delete recursive merge-admission
   rediscovery by carrying an explicit presence fact from the producer seams to
   `Rules._finishSourceOrderEvaluation`.
@@ -829,12 +882,16 @@ work.
 - Reference.evalNode audit (2026-07-14): five clean current-dev profile runs reproduced `3,577` calls (`2,667` variable, `491` function, `397` mixin-ruleset, `22` declaration) and `68.42–76.70 ms` total. The `33,607` declaration misses belong to the 22 explicit property-merge references, which carry source-order starts, exclusions, semantic filters, and required assignment kinds; they are not ordinary variable misses. Do not open a generic Reference cache/index or a new prototype-chain lane. The bounded ordinary-variable path is already owned by `jess-scope-slot-proof`; a future merge-specific predecessor index would require declaration/rules/lookup ownership and merge-chain, mixin-boundary, cross-scope, exclusion, and `!important` parity.
 - Parser boundary evidence: after regenerating the Less grammar against the Parseman profile branch, the canonical 106,797-byte fixture (Node v24.11.1, M4 Pro, 12 warmups + 45 samples) measured compiled recognizer-only `12.784 ms`, structural capture `28.873 ms`, and CSS-CST host construction `37.558 ms`; all 45 fully consumed with invariant 56,043-node counters. On the same runtime, Less 4.6.3 `less.parse()` to its native AST was `4.417 ms` with `processImports: false`. The models differ, but the outputless 2.89x recognizer gap disproves “Jess AST construction is the whole parser delta.” Profile generated recognizer control flow against Less before choosing a Parseman-level POC.
 - Parseman generic follow-up handoff (2026-07-14): the analysis-only audit is recorded in `/Users/matthew/git/oss/parser-thing/notes/PERF_IDEAS.md` (isolated documentation commit `916c52b`). The first implementable generic target is opt-in zero-copy structural builder input with shared capture storage and range/cursor views, preserving separate semantic/raw channels. A genuinely compile-time-stripped recognizer is a separate higher-upside architecture proof; runtime output suppression is not equivalent. The audit excluded existing Parseman worktrees, ran focused JSON/GraphQL/CSS measurements, and keeps CSS/Less late-value materialization outside Parseman's generic contract. No Parseman implementation was made.
+- Parseman true recognizer POC (2026-07-15): Parseman branch `feature/true-recognizer-20260715`, local commit `c84d777`, now has an opt-in code-generation mode that returns only acceptance/end/failure-cursor data and removes CST/raw/trivia/fields/host/profile/output-slice work while retaining recognition and rollback. JSON-like parsing improved `0.180875→0.095291 ms` (`47.32%`) and the real Less grammar `7.38425→5.534 ms` (`25.06%`), with p95 and GC also improved/neutral. Typed map-source overloads and `compileLinkable`/`fuseRules` parity are covered; focused contract tests are `39/39`, perf `5/5`, and typecheck/build/lint pass. The Parseman full suite still has the unrelated baseline `build-arity` source-shape failure at `test/unit/build-arity.test.ts:116` (`1,735` passed, `1` failed). The branch could not push from this checkout because GitHub SSH credentials were unavailable. Do not claim Jess speed movement until the published dependency is rebuilt and Jess's own parser/render contract is A/B tested.
 - Scope-frame diagnostic: a globally gated profile separates cached `getScopeFrame` reads from creation without changing normal runtime behavior. The canonical run recorded `65,836` cache hits (including `28,061` placement hits) and `3,200` creations (`1,359` placement); its instrumented timing total is `25.868 ms` for hits and `13.107 ms` for creation. Instrumentation depth-walk/timer overhead means these are attribution evidence, not production cost claims.
 - Review-flagged instrumentation tokens: [loop/traversal] the profile-only parent-chain depth walk runs only when its global counter object is present and does not enter normal runtime; [parent/source mutation] the `sourceNode` comparison is read-only placement classification, not a mutation; [materialized array/object] `BindingCell[]` appears in the architecture specification to define per-placement ownership, and this diagnostic allocates no array/object on the normal path.
 - Verdict: accepted as a small, output-neutral state cut and benchmark-harness repair. Next, profile the serializer/eval boundary with counters that separate declaration lookup strategies; do not revive stale lookup indexes or bypass the detached declaration fallback writer without a dedicated formatting/provenance design.
 - Q-40 refresh (2026-07-14): current uninstrumented same-checkout, alternating no-op controls on Node v25.9.0 arm64 (20 warmups, 45 pairs) are `238.98 ms` parse+render and `202.92 ms` parse-once/render-only. Less 4.6.3 on the same fixture/runtime (20 warmups, 45 samples) is `4.258 ms` parse with imports disabled and `31.101 ms` full render. The `33,607` direct declaration traversals are only 22 property-merge references; the only safe dominance shortcut activates once, so reject a lookup cache/index. Keep parser recognition/capture work separately gated (equal-contract recognizer `12.58 ms` versus Less AST parse `6.01 ms`), but prioritize eval/render toward the <40 ms goal.
 - Q-40 control refresh (2026-07-14, same-checkout no-op): on Node v25.9.0 arm64 with the canonical fixture, `JESS_STATIC_NAMESPACE_TABLE`, 20 warmups, and 45 alternating pairs, parse+render was `239.933 ms` versus `242.942 ms` (median delta `-1.501 ms`, mean delta `+2.709 ms`, `26/45` wins); parse-once/render-only was `194.292 ms` versus `195.835 ms` (median delta `+1.421 ms`, mean delta `+2.293 ms`, `19/45` wins). These are order-dependent/noisy no-op controls and carry no speed claim; use them as the current same-checkout noise floor.
 - Q-40 control refresh (2026-07-15, same-checkout no-op): current `dev` with the same fixture/runtime, `JESS_STATIC_NAMESPACE_TABLE`, 20 warmups, and 45 alternating pairs measured parse+render `227.30 ms` baseline versus `231.27 ms` no-op candidate (paired median delta `+1.66 ms`, mean `+3.24 ms`, `19/45` wins), and parse-once/render-only `194.43 ms` versus `193.02 ms` (paired median delta `+2.43 ms`, mean `+1.05 ms`, `17/45` wins). This is the fresh noise floor, not a speed claim; the following diagnostic profile recorded `Reference.evalNode` 3,577 calls / 68.31 ms and `Context.getTree` 5 calls / 133.88 ms under instrumentation.
+- Q-40 flow/heap attribution refresh (2026-07-15, diagnostic only): `prepareRegistration` was `200.4 ms` inclusive and `_prepareRegistrationOnce` allocated about `45.84 MB` in the sampled render path; retained heap leaders were `RulesLookupState` (`11,088` / `1.52 MB`), `Ruleset` (`8,526` / `1.17 MB`), and `Map` (`36,128` / `1.10 MB`). Direct declaration-child collection allocated `18.58 MB` inclusive; source-order preparation/evaluation each ran `10,777` times despite no reorder; serializer sampling retained about `50,665` arrays / `1.55 MB`. These are investigation rankings, not normalized speed claims. `Context.getTree` itself is path/cache/load/parse/diagnostics/cache insertion; its earlier `133.88 ms` instrumented figure included wrappers. Direct root parse was about `36.38 ms`, while static import misses/hits were about `0.44/0.24` and `0.14/0.13 ms`; do not pursue a generic path cache from that evidence.
+- Q-40 producer-fact admission cut (2026-07-15): four `rulesMayContain*` helpers now short-circuit on their existing producer facts. Canonical recursive visits fell declaration `1,447→412`, var-declaration `14,552→14,096`, and ruleset `2,058→2,006`. Exact Jess output remained `135,794` bytes with hash `9a58451bd3b0c9d80913df38be3b199994d2b93d34a9d2851f1b18d9dcaaa7cc`; A/B timing was noise-level (`248.38→246.39 ms` parse+render, `20/45` wins; `199.53→201.46 ms` render-only, `18/45` wins). Core `3326`, spine `137/137`, all-less `106/106`, focused source-map/render `126`, and aggressive review passed. Keep this as eliminated work, not as a speed win.
+- Q-40 combined final A/B (2026-07-15): with the producer-fact and import-placement cuts together, fresh current-`dev` versus candidate build comparison (20 warmups, 45 alternating pairs, constant generated parser/plugin artifacts) measured parse+render `217.181792→216.742542 ms` (`−0.20%`, `21/45` wins) and render-only `182.083875→181.264208 ms` (`−0.45%`, `18/45` wins). Both phases were byte-identical at `133,389` bytes, SHA-256 `39a4812a88ea77a94f846f8392fb536da882e84452d03880103d256cb1d73a4c`; this is noise-floor evidence, not a speed claim.
 - Parser flow attribution: outputless Parseman profiling is not a separately compiled `voidOf` artifact — every structural rule still runs generated collector-context save/install/restore plus profile-mode branches. Less keeps one cursor and its `primary()` tries declaration before ruleset; 2,024/2,902 (69.7%) benchmark declarations take the raw `anonymousValue()` route rather than its full value grammar. Jess eagerly enters `valueList → valueSequence → topSum → topProduct → operand → value`, and overlapping body dispatch places Ruleset before Declaration. First prove a compile-time stripped recognizer with no structural frames; separately prove safe statement dispatch. Lazy raw values are an evaluation-materialization design, not a parser micro-cut.
 - Static `(multiple)` import attribution: 1×/2×/3× static imports retain one source tree (one cache miss then hits); current-runtime growth is `Rules`/`ScopeFrame`, `ImportPlacementState` children/segments, segment record, and shallow placement copies. Output buffers are transient. This proves source reuse, **not** that every wrapper/array/clone is semantically required: a closed source needs repeated output occurrences and placement identity, possibly as a smaller descriptor/direct segment. Field-by-field minimality proof is required before a cache or reuse POC.
 - Fresh import-placement ownership audit (2026-07-15): the current-`dev` audit found no new implementation to port. The closed-static-`(multiple)` mapping-state cut is already landed in `aadd0710b`; the worker made no source or docs change. Focused import tests passed `94/94` with `1` skipped, core/Jess/relevant plugin builds passed, and the production import ratchet was blocked only by the unavailable isolated `@jesscss/style-resolver` build. No benchmark was run. Treat the landed gate as the current source of truth and require a smaller descriptor/direct-segment proof before reopening this lane.

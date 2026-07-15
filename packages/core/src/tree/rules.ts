@@ -560,6 +560,9 @@ function rulesMayContainExactCallableSurface(rules: Rules): boolean {
 }
 
 function rulesMayContainExactMixinSurface(rules: Rules): boolean {
+  if (rules.hasExactMixinChildSurface) {
+    return true;
+  }
   const value = rules.rules;
   for (let i = 0; i < value.length; i++) {
     const node = value[i]!;
@@ -575,6 +578,9 @@ function rulesMayContainExactMixinSurface(rules: Rules): boolean {
 }
 
 function rulesMayContainExactRulesetSurface(rules: Rules): boolean {
+  if (rules.hasExactRulesetChildSurface) {
+    return true;
+  }
   const value = rules.rules;
   for (let i = 0; i < value.length; i++) {
     const node = value[i]!;
@@ -590,6 +596,9 @@ function rulesMayContainExactRulesetSurface(rules: Rules): boolean {
 }
 
 function rulesMayContainDeclarationSurface(rules: Rules): boolean {
+  if (rules.hasDeclarationChildSurface) {
+    return true;
+  }
   const value = rules.rules;
   for (let i = 0; i < value.length; i++) {
     const node = value[i]!;
@@ -633,6 +642,9 @@ function hasMergeOutputSurface(rules: Rules): boolean {
 }
 
 function rulesMayContainVarDeclarationSurface(rules: Rules): boolean {
+  if (rules.hasVarDeclarationChildSurface) {
+    return true;
+  }
   const value = rules.rules;
   for (let i = 0; i < value.length; i++) {
     const node = value[i]!;
