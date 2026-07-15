@@ -123,6 +123,60 @@ the log below every iteration so the track compounds instead of repeating.
 
 <!-- newest first; each entry: date · hypothesis · prediction · byte-identical? · measured Δ · kept/dropped · why · next -->
 
+- 2026-07-15 — **rung 6: parser→tree2 BRIDGE + FIRST NON-SYNTHETIC byte-identity + real-corpus
+  census. VERDICT: the arena escapes the synthetic caveat — real `.less` fixtures parse → bridge
+  → tree2 → serialize BYTE-IDENTICAL to the legacy `tree` render, and the census gives a grounded
+  climb order (branch `experiment/tree2-cleanroom-20260715`, still an experimental scaffold, NOT
+  merged).**
+  - **Bridge (source + location).** Source = the Less functional parser's structural `tree` AST
+    (`parseLessFn(src).tree`, a `Rules` root), NOT the raw CST. Rationale: the tree AST is exactly
+    what the oracle renders and the parser builders have already resolved selectors / compounds /
+    combinators / mixins into clean structural nodes; re-deriving that from CST leaves/tokens would
+    duplicate the builder's work for zero gain on the shapes tree2 supports. The bridge lives
+    OUTSIDE `tree2/` at `packages/core/src/tree2-frontend/bridge.ts` (touches parser + `../tree`
+    provenance only — allowed; parsing is the shared ~17% front end). It maps Ruleset→Rule,
+    Mixin→MixinDef, Call→MixinCall, Declaration→decl, Comment; converts string / `CompoundSelector`
+    / `ComplexSelector` / selector-array into tree2 SelectorList/Complex/Compound (with `&` as its
+    own Simple so tree2's composition detects it); and captures STATIC value bytes verbatim from the
+    declaration's source span (tree2 does no value eval by design → an opaque token, faithful to its
+    model). Anything else raises `UnsupportedShape`, which the census ranks. **tree2 boundary guard
+    STILL GREEN** (grep of `src/tree2` for `../tree` empty; vitest guard passes) — the bridge's
+    output is pure tree2 nodes.
+  - **Non-synthetic byte-identity (tree = oracle).** Corpus scanned = 133 `.less` files under
+    less.js `tests-unit`. **15 real fixtures render BYTE-IDENTICAL** through parse→bridge→tree2→
+    serialize vs the legacy `tree` render. Substantive emitters among them: `import/import/imports/
+    logo.less` (117B, `#logo` with 4 static decls incl `url('…')`/`url("…")`), `simple-ruleset-2162
+    .less` (40B), `global-scope-nested.less` (31B); several are mixin-DEFINITION-only files that
+    correctly emit empty. Plus 13 constructed real-syntax inputs (authored `.less`, parsed + bridged
+    through the REAL front end: nesting, `&:hover`/`&.b`, 3-deep, compound/child/descendant/list,
+    spaced values, mixin call incl nested body) — ALL byte-identical. Zero diffs among accepted-and-
+    static fixtures. (Honest note: the pure-static-nesting real fixture is RARE — the corpus couples
+    nesting with variables/operations, which is itself the census's headline finding.)
+  - **RANKED BLOCKER CENSUS (first blocker per fixture → the grounded climb order).** Bridge-reject
+    (99 fixtures): **VarDeclaration/real variable scoping = 36** (dominant), **StyleImport/`@import`
+    = 18**, **at-rules (`AtRule` 15 + `AtRuleStatement` 11) = 26**, **`Extend` = 8**, bare `Any` = 4,
+    mixin guard = 3, pattern/named param (`mixin:param-name`) = 3, `CustomDeclaration` = 1. Separately,
+    14 fixtures BRIDGED structurally (tree2 handled the shape) but bytes DIFFER — the value-semantics
+    layer: **value operations/functions ≈ 10** (color-functions, operations), variable-in-value 2,
+    other 2. So the real-input climb order is: **(1) variables + real scope, (2) value operations/
+    functions, (3) at-rules/@media, (4) @import, (5) extend, (6) guards, (7) pattern/overloaded
+    mixins.** Deferred from rung 4 (`:is()` `&`-under-complex-parent) did not surface as a top blocker.
+  - **Real-fixture race (straight, no extrapolation; same worktree, warmup 5, N=15 median,
+    `--expose-gc`).** tree2 lane = build-from-parse (bridge) + serialize; tree lane = full legacy
+    render (async eval+emit); parse shared/excluded; all byte-identical:
+      - `logo.less`: tree2 **0.0122 ms** vs tree **0.1547 ms** = **12.7×** (117B out)
+      - `simple-ruleset-2162.less`: **0.0029 vs 0.0418 ms = 14.5×** (40B)
+      - `global-scope-nested.less`: **0.0019 vs 0.0448 ms = 23.9×** (31B)
+      - constructed nesting-3deep: **0.0045 vs 0.1141 ms = 25.6×** (41B)
+      - constructed mixin-call-nested (2 placements of a nested-body mixin): **0.0106 vs 0.4630 ms =
+        43.6×** (154B)
+    Small real numbers, reported straight; consistent with rungs 3–5's at-scale 30–107× and legacy's
+    async mixin path. Kept (experimental scaffold). **Recommended next rung: variables + real scope
+    (#1 blocker by a wide margin — 36 fixtures, and it gates most nesting fixtures), then value
+    operations/functions (the #1 DIFF category). Only after those two does the corpus open up enough
+    to bridge `benchmark.less` end-to-end (the real gate).** Code: `tree2-frontend/bridge.ts` +
+    `__tests__/{bridge-byte-identity,census,race}.test.ts`.
+
 - 2026-07-15 — **rung 5: tree2 mixin-placement EVAL — the decisive rung. VERDICT: tree2
   PRODUCES the compositions cheaply; eval+placement stays O(placements) with a tiny constant,
   NO wall (branch `experiment/tree2-cleanroom-20260715`, still SYNTHETIC).** Thesis under test
