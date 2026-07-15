@@ -264,7 +264,7 @@ named admission counter means opportunities inspected by the admission.
     "surface": "serializeRulesContainerInternal duplicate-property pre-scan",
     "files": ["packages/core/src/tree/util/serialize-helper.ts"],
     "necessity": {
-      "status": "audit-required",
+      "status": "proven",
       "factSource": "declaration names and merge/output metadata are already present on child nodes",
       "rediscovery": "serializeRulesContainerInternal pre-scans a container before duplicate-property preparation",
       "carryForward": "adoption or declaration registration can carry stable singleton and duplicate facts",

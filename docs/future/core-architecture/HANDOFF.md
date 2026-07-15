@@ -221,6 +221,105 @@ work.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: Q-40 EVALUATOR/SERIALIZER FRAME BOUNDARY — select the per-entry
+  processor once after expansion. A container with no frame-bearing mixin,
+  import, or loop expansion cannot have `spineFrame` entries, so the common body
+  driver calls `processNodeInner` directly; frame-bearing expansions retain the
+  existing `processNode` wrapper and async restoration. The source/test hunk is
+  replayed in the integration worktree, while the full evidence below comes from
+  the isolated worker branch `04a230e89`; this is not yet a current-dev speed
+  claim.
+- Architecture surface: `packages/core/src/tree/util/serialize-helper.ts` and
+  `packages/jess/test/q40-evaluator-serializer-frame-boundary.test.ts`. No
+  writer, formatting, provenance, fallback, node field, or public API changed.
+- Separation/duplication: one container-local function selection replaces one
+  per-entry frame-presence branch/call ladder on the no-expansion path. Mixin,
+  folded-import, and loop expansion sites conservatively mark the body
+  frame-aware before the existing wrapper remains selected.
+- Cumulative node weight: zero. No node, scope field, retained state, writer,
+  map, set, or output tree was added.
+- New traversal: none. The change removes a per-entry branch/call on the proven
+  no-expansion path; expansion and source-order traversal remain unchanged.
+- New node/materialization: none. The selected function reference is transient
+  container-local state; no output or source tree is materialized.
+- Render path: source-map off/on direct-body output and frame-aware mixin output
+  are byte-identical through the caller-owned render buffer. The existing
+  `processNode` save/restore remains the sole frame switch for expanded entries.
+- Helper/API surface: no export or public method changed. The only retained
+  runtime addition is `frameAwareEntriesOccurred` plus `processEntry` selection.
+- Metadata mutations: none. No parent/source/provenance field or context frame
+  is changed by the direct path.
+- Review-flagged diff tokens: none. No loop, array helper, map/set, node
+  construction, copy, routine error path, or generic cache was added.
+- Evidence: the worker's focused tests passed `30/30`; its canonical counters
+  were `1,644` direct-body drives, `0` frame-aware drives, `5,116` wrapper and
+  inner entries, `4,085` declaration fallbacks, `13` stable leaves, and `0`
+  rules-preview routes. Its branch-local output was `133,983` bytes with hash
+  `adfd26732125a33fc1e264aca7d7ecde8c7c1da43f968e3106bd387a1f78e840` with
+  source maps off/on. The worker's parse+render medians were
+  `221.569709→220.894500 ms` and render-only medians were
+  `189.014834→190.553792 ms`; paired statistics were noise, so this is retained
+  as a structural simplification, not a speed win. Current-dev dependency
+  builds and focused replay tests pass; full current-dev gates and the canonical
+  A/B still have to be run on the replayed source.
+- Verdict: accepted on the worker branch as a narrowly scoped structural
+  simplification; current-dev integration remains gated by the replay checks.
+- Hot-path cost contracts:
+```json
+[
+  {
+    "id": "serialize-helper-duplicate-declaration-prescan",
+    "necessity": {
+      "status": "proven",
+      "factSource": "declaration names and merge/output metadata remain owned by the existing child-node surface",
+      "rediscovery": "the existing serializer pre-scan remains unchanged and is not part of this frame-boundary cut",
+      "carryForward": "the accepted singleton admission and duplicate counters remain the existing contract",
+      "whyNotCarried": "the frame-boundary change is structurally separate and does not replace or bypass duplicate declaration handling"
+    },
+    "admission": {
+      "predicate": "stable singleton node shape check",
+      "cost": "cheap",
+      "before": "collection and allocation"
+    },
+    "calls": 895,
+    "admittedCalls": 895,
+    "containers": 1644,
+    "featureBearingContainers": 895,
+    "itemsVisited": 4367,
+    "featureItems": 91,
+    "noFeatureAllocations": 0,
+    "noFeatureMisses": 749,
+    "admissionCalls": 1644,
+    "admissionItemsVisited": 5116,
+    "commonCaseProof": "counter test and benchmark.less 20-warmup/45-pair alternating benchmark",
+    "benchmark": {
+      "fixture": "benchmark.less",
+      "warmup": 20,
+      "pairs": 45,
+      "parse-render": {
+        "beforeMedianMs": 221.569709,
+        "afterMedianMs": 220.8945,
+        "medianDeltaMs": -0.986125,
+        "wins": 25,
+        "byteIdentical": true,
+        "outputBytes": 133983,
+        "outputSha256": "adfd26732125a33fc1e264aca7d7ecde8c7c1da43f968e3106bd387a1f78e840"
+      },
+      "render": {
+        "beforeMedianMs": 189.014834,
+        "afterMedianMs": 190.553792,
+        "medianDeltaMs": 0.041792,
+        "wins": 22,
+        "byteIdentical": true,
+        "outputBytes": 133983,
+        "outputSha256": "adfd26732125a33fc1e264aca7d7ecde8c7c1da43f968e3106bd387a1f78e840"
+      }
+    },
+    "verdict": "accepted"
+  }
+]
+```
+
 - Latest pass: Q-40 CHILD-RULE CONTAINER CLASSIFICATION FAST PATH + COMPATIBILITY TEST
 - Architecture surface: `packages/core/src/tree/rules.ts` checks the concrete
   `Rules` instance before the existing `N.Rules` duck-typed fallback in

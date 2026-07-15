@@ -174,6 +174,43 @@ fixture and reports `227.862→229.434 ms` parse+render,
 `197.435→200.022 ms` render-only, and `135,794` output bytes with hash
 `9a58451bd3b0c9d80913df38be3b199994d2b93d34a9d2851f1b18d9dcaaa7cc`.
 
+### Q-40 capture ledger — 2026-07-15
+
+This is the index for today's architecture/performance work. It deliberately
+separates durable conclusions from isolated artifacts and active workers: a
+row in this table is not a claim that the implementation has landed on `dev`.
+
+| Work captured today | Durable record | Current state / truth boundary |
+|---|---|---|
+| Greenfield AST design, alternative representations, and the no-class `tree2` experiment | [`AST-FROM-SCRATCH-DESIGN.md`](./AST-FROM-SCRATCH-DESIGN.md); isolated source under `/Users/matthew/git/worktrees/jess-greenfield-ast-design-20260714/packages/core/src/tree2/` and `__tests__/` | Design, ten-way alternatives, five POC sequence, and rejection evidence are durable. The staged source is uncommitted/unexported. The mixed-root synthetic route passed its focused/exact-output gates, but the canonical evaluated route failed its output hash comparison; there is no tree2 speed or production-AST claim. |
+| Parseman versus Less recognizer gap and true recognizer POC | [`PARSER-RECOGNIZER-GAP.md`](./PARSER-RECOGNIZER-GAP.md); Parseman `/Users/matthew/git/oss/parser-thing/notes/PERF_IDEAS.md` | Flow analysis and the `12.58 ms` recognizer result are recorded. Parseman commit `c84d777` is local/unpublished, so Jess has not adopted it and no Jess speed claim follows. |
+| Parseman trivia/capture separation and sparse trivia designs | [`parseman-trivia-audit.md`](../parseman-trivia-audit.md), [`trivia-offset-inference-model.md`](../trivia-offset-inference-model.md), and [`parseman-perf-proposals.md`](../parseman-perf-proposals.md) | The generic Parseman responsibilities, CSS/Less capture policy, comment-only capture idea, and span-based inference are documented as proposals/evidence. No CSS-shaped Parseman change is being treated as landed. |
+| From-scratch AST creativity pass: packed arenas, structs, semantic islands, direct emitters, dependency-aware reuse, and debug projections | [`AST-FROM-SCRATCH-DESIGN.md`](./AST-FROM-SCRATCH-DESIGN.md) | The alternatives are explicitly design candidates, not a hidden commitment to a class-for-class rewrite. CSS output, not legacy field/class shape, is the acceptance oracle. |
+| Lookup, merge, fallback, and evaluator-action audit | [`CORE-CLEANUP.md`](./CORE-CLEANUP.md), [`HANDOFF.md`](./HANDOFF.md), and [`AGGRESSIVE-CUTTING-REVIEW.md`](./AGGRESSIVE-CUTTING-REVIEW.md) | The 10,777 repeated preparation/admission scans, explicit merge-surface mistake, fallback topology, and rejected generic index/prototype-chain shortcuts are recorded. The remaining terminal-miss proof is active below; no broad lookup redesign is silently assumed. |
+| Flat writer sharing and OutputWriter state slimming | Q-37 and Q-39 in this tracker; [`HANDOFF.md`](./HANDOFF.md) | Flat root sharing and lazy transient writer state are landed/reviewed with byte identity. Their timing results are qualified; neither is presented as the missing `<40 ms` win. |
+| Evaluator/serializer frame-boundary proof | Worker branch `feature/q40-evaluator-serializer-frame-proof-20260715`, local commit `04a230e89`; source/test replay is visible in the integration worktree | The worker's structural result and two-phase/no-op evidence are captured on its branch. Only the source/test hunk is replayed locally; current-dev rebuild and final gates are still pending, so it remains provisional here. |
+| Import/mixin reuse, placement frames, static slots, dependency graph, and tree-shaken custom-property module direction | Q-40 import-placement sections, [`HANDOFF.md`](./HANDOFF.md), and the recommended shape in [`AST-FROM-SCRATCH-DESIGN.md`](./AST-FROM-SCRATCH-DESIGN.md) | The canonical-body/placement-overlay and dependency-graph ideas are recorded as design direction. The import/mixin reuse model is not being claimed as implemented, and the exported-custom-property tree-shaking path remains future product work. |
+| Typed string-plus-tag values and value materialization boundary | Q-30 in this tracker and POC 1 in [`AST-FROM-SCRATCH-DESIGN.md`](./AST-FROM-SCRATCH-DESIGN.md) | Explicitly fenced behind the active producer lanes. It covers dimensions, numbers, colors, booleans, and multi-token values while preserving authored strings; no partial scalar puppet test is being treated as the implementation. |
+
+### Active proof lanes captured in the ledger
+
+These workers are intentionally listed here so a later agent does not create a
+duplicate worktree while the result is still pending:
+
+- Parseman generic zero-copy structural-builder proof:
+  `feature/parseman-zero-copy-builder-20260715`, based on Parseman `1ca3940`,
+  worktree `/private/tmp/parseman-zero-copy-builder-20260715`.
+- Terminal direct-lookup miss-state proof:
+  `feature/q40-direct-lookup-miss-state-20260715`, worktree
+  `/Users/matthew/git/worktrees/jess-q40-direct-lookup-miss-state-20260715`.
+- Less `blockItem` statement-dispatch proof:
+  `feature/q40-less-statement-dispatch-20260715`, worktree
+  `/Users/matthew/git/worktrees/jess-q40-less-statement-dispatch-20260715`.
+
+All three are evidence-first and unmerged. Their absence of a result is itself
+recorded here; do not describe any of them as a performance win until their
+exact-output, focused-test, and fixed-contract A/B gates return.
+
 ### Q-40 CPU/heap attribution refresh — diagnostic only (2026-07-15)
 
 The corrected current-dev profiling lane used Node v25.9.0 arm64 Darwin,
