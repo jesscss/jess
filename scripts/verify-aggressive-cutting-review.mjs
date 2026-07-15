@@ -411,6 +411,23 @@ function validateSourceChecks(registry, changedPaths) {
   return errors;
 }
 
+function validateChangedContractSurface(registry, changedPaths, diff) {
+  const errors = [];
+  for (const contract of registry) {
+    const sourceCheck = contract.sourceCheck;
+    if (!sourceCheck || !changedPaths.includes(sourceCheck.file)) {
+      continue;
+    }
+    const anchors = [sourceCheck.caller, sourceCheck.call, sourceCheck.guard];
+    if (!anchors.some(anchor => diff.includes(anchor))) {
+      errors.push(
+        `Changed production hot-path file ${sourceCheck.file} does not touch the guarded surface for ${contract.id}; add a contract for the changed surface instead of inheriting an unrelated file-level contract.`
+      );
+    }
+  }
+  return errors;
+}
+
 function validateExecutableEvidence(registry, changedPaths) {
   const errors = [];
   for (const contract of registry) {
@@ -560,16 +577,29 @@ if (requiresCostAudit && registryErrors.length === 0) {
   const auditRecords = extractCostAuditRecords(latestPass);
   const auditErrors = validateCostAuditRecords(auditRecords, registry, changedPaths);
   const sourceCheckErrors = validateSourceChecks(registry, changedPaths);
+  const changedSurfaceErrors = validateChangedContractSurface(registry, changedPaths, diff);
   const evidenceErrors = productionHotPathChanged
     ? validateExecutableEvidence(registry, changedPaths)
     : [];
   const coverageErrors = productionHotPathChanged
     ? validateProductionHotPathCoverage(registry, changedPaths)
     : [];
-  if (auditErrors.length > 0 || sourceCheckErrors.length > 0 || evidenceErrors.length > 0 || coverageErrors.length > 0) {
+  if (
+    auditErrors.length > 0
+    || sourceCheckErrors.length > 0
+    || changedSurfaceErrors.length > 0
+    || evidenceErrors.length > 0
+    || coverageErrors.length > 0
+  ) {
     failed = true;
     console.error('\nHot-path cost contract review failed:');
-    for (const error of [...auditErrors, ...sourceCheckErrors, ...evidenceErrors, ...coverageErrors]) {
+    for (const error of [
+      ...auditErrors,
+      ...sourceCheckErrors,
+      ...changedSurfaceErrors,
+      ...evidenceErrors,
+      ...coverageErrors
+    ]) {
       console.error(`- ${error}`);
     }
   }

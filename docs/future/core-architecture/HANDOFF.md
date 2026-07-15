@@ -154,6 +154,40 @@ Other active docs in this dir:
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: GUARDED CONTRACT-HUNK OWNERSHIP — require a changed production
+  hot-path hunk to touch the caller, expensive operation, or admission guard
+  named by its one-file cost contract; a broad file-level contract cannot cover
+  an unrelated evaluator/serializer edit.
+- Architecture surface: review-time `validateChangedContractSurface` in
+  `scripts/verify-aggressive-cutting-review.mjs`, with the declarative rule in
+  `docs/future/core-architecture/AGGRESSIVE-CUTTING-REVIEW.md`. No Jess runtime
+  source, node, evaluator, lookup, writer, or parser changed.
+- Separation/duplication: the check reuses the existing registry and Git diff;
+  it adds no runtime counter, side table, or duplicate production traversal.
+- Cumulative node weight: zero. No node, frame, AST field, output buffer, or
+  retained review artifact was added to the runtime.
+- New traversal: review-time registry iteration only. It scans three existing
+  source anchors per changed contract and runs outside parse/eval/render.
+- New node/materialization: none in production. Review diagnostics use the
+  existing strings/arrays only; no runtime node or materialized output shape is
+  introduced.
+- Render path: unchanged. The guard does not execute or alter rendering; it
+  blocks a hot-path change before it can land without a surface-specific proof.
+- Helper/API surface: one private verifier helper; no package export or runtime
+  API was added.
+- Metadata mutations: none. The verifier reads source text and Git diffs only.
+- Review-flagged diff tokens: [loop/traversal] is review-time registry
+  bookkeeping, not production traversal. No production danger-token category
+  was added.
+- Evidence: `node --check scripts/verify-aggressive-cutting-review.mjs`,
+  `git diff --check`, and `pnpm run verify:aggressive-cutting-review` passed.
+  The verifier now rejects a changed production file whose diff does not touch
+  the guarded surface named by its contract; this closes the prior file-level
+  ownership loophole. No performance claim applies.
+- Verdict: accepted as a review-system hardening pass; keep the evaluator COW
+  investigation separate and require its own contract if it changes
+  `rules.ts` outside the merge-coalescer surface.
+
 - Latest pass: DUPLICATE-DECLARATION SINGLETON ADMISSION — skip the duplicate-property count map and pre-scan when a rendered container has one stable, non-expanding child; retain the existing scan for dynamic expansion shapes and multi-item containers.
 - Architecture surface: `packages/core/src/tree/util/serialize-helper.ts`, inside `serializeRulesContainerInternal`; the admission is the local `skipInitialDuplicateDeclarationScan` predicate before `recomputeDeclCounts()`.
 - Separation/duplication: this does not add an index, cache, node flag, or second duplicate algorithm. It only proves that one stable child cannot contain two sibling declarations at this container level; `Call`, `StyleImport`, and `For` singleton shapes remain on the existing scan because they can expand.

@@ -154,11 +154,13 @@ covers exactly one production file and must provide the cheap admission
 predicate, required counters and relations, a common no-feature benchmark or
 counter proof, and an executable source check for that file's guarded caller.
 Audit records must use registry IDs, and every changed production hot-path
-source file must appear in exactly one such contract. A changed production
-contract must be `accepted`; `rejected`/`deferred` means the experimental code
-was reverted before landing. Test-only paths still receive the normal
-danger-token review but are excluded from this production-file coverage
-requirement.
+source file must appear in exactly one such contract. The changed hunk must
+also touch that contract's caller, expensive operation, or admission guard;
+file-level ownership cannot silently cover an unrelated evaluator or serializer
+change. A changed production contract must be `accepted`; `rejected`/`deferred`
+means the experimental code was reverted before landing. Test-only paths still
+receive the normal danger-token review but are excluded from this production-
+file coverage requirement.
 
 <!-- BEGIN AGGRESSIVE-CUTTING-COST-CONTRACTS -->
 ```json
