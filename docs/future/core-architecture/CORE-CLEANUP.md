@@ -461,6 +461,23 @@ recursively scans 10,777 evaluated surfaces to find 15 merge-bearing ones.
   micro-cut: it changes Jess's semantic materialization boundary. Detailed
   source-flow evidence and the active generic Parseman experiment are tracked
   in [`PARSER-RECOGNIZER-GAP.md`](./PARSER-RECOGNIZER-GAP.md).
+- **Parser/AST shape audit refresh (2026-07-14).** A fresh functional-parser
+  census of the 106,802-byte Less fixture measured recognition `44.69 ms`,
+  structural capture `58.10 ms`, and host construction `70.71 ms`, with
+  `53,461` grammar nodes, `84,542` semantic child slots, `84,506` raw-child
+  slots, `62,688` trivia slots, and `23,940` host calls. A separate CSS corpus
+  reached `577` AST nodes, with spans on `573`, field-span tables on `26`,
+  value-span tables on `2`, and only `6` adoption calls; this supports keeping
+  one-level parenting and sparse provenance rather than adding eager deep
+  adoption. The ranked shape candidates are: (1) remove inert static
+  `Any`/`Keyword` wrappers where consumer contracts admit strings (`127`
+  instances on the focused CSS corpus), (2) investigate a host-specific view
+  for duplicated child/raw-child capture without changing Parseman's default
+  ABI, (3) replace scalar-only `sourceSpanOf()` object callers with direct
+  start/end accessors, and (4) measure Less comment-only trivia masks against
+  its standalone-comment rescans. These are evidence-backed follow-ups, not
+  accepted production changes; preserve interpolation, math, references,
+  lists, computed values, trivia order, and source-map behavior.
 - **Reject the generated-trivia first-byte guard.** The guard preserved profile
   counts and passed focused/typecheck/macro-build proof, but the required
   12-warmup/45-sample three-phase gate regressed throughout: recognizer
