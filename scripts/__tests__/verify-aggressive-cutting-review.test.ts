@@ -12,11 +12,16 @@ const registry = [{
   admission: {
     predicate: 'cheap admission',
     cost: 'cheap',
+    counter: 'admissionCalls',
+    workCounter: 'admissionItemsVisited',
+    maxItemsPerContainer: 8,
     before: 'before collection and allocation'
   },
   counters: [
     'calls',
     'admittedCalls',
+    'admissionCalls',
+    'admissionItemsVisited',
     'featureBearingContainers',
     'itemsVisited',
     'noFeatureAllocations',
@@ -31,6 +36,7 @@ const registry = [{
   },
   relations: [
     'calls <= admittedCalls',
+    'admittedCalls <= admissionCalls',
     'admittedCalls <= featureBearingContainers'
   ],
   evidence: {
@@ -69,6 +75,8 @@ function makeRecord(overrides: Record<string, unknown> = {}) {
     },
     calls: 15,
     admittedCalls: 15,
+    admissionCalls: 15,
+    admissionItemsVisited: 15,
     featureBearingContainers: 15,
     itemsVisited: 1,
     noFeatureAllocations: 0,
@@ -111,5 +119,18 @@ describe('hot-path admission counter relations', () => {
 
   it('accepts a consistent admitted-call chain', () => {
     expect(validateCostAuditRecords([makeRecord()], registry, [sourceFile], diff)).toEqual([]);
+  });
+
+  it('rejects an admission that hides excessive scan work', () => {
+    const errors = validateCostAuditRecords(
+      [makeRecord({ admissionItemsVisited: 10_000 })],
+      registry,
+      [sourceFile],
+      diff
+    );
+
+    expect(errors).toContain(
+      'Hot-path cost audit record test-admission-contract exceeds its admission-work budget: 10000 > 15 * 8.'
+    );
   });
 });

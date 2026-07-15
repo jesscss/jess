@@ -154,6 +154,108 @@ Other active docs in this dir:
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: RUNTIME ADMISSION-WORK EVIDENCE — make rare-pass contracts
+  measure the admission itself, not only the expensive operation that follows.
+- Architecture surface: `packages/core/src/tree/rules.ts` now exposes
+  profile-only counters for merge admission calls, visited admission items,
+  admitted calls, and actual coalescer calls; `scripts/profile-less-benchmark.mjs`
+  reports those counters and has a blocking `--assert-merge-contract` mode.
+  `scripts/verify-aggressive-cutting-review.mjs` requires every registered
+  contract to name its admission/work counters and a bounded work budget.
+- Separation/duplication: the counters are inactive unless the existing global
+  profile hook is installed; no production cache, flag, traversal, or second
+  merge implementation was added. The executable evidence command now checks
+  the live built path instead of trusting hand-entered counter prose alone.
+- Cumulative node weight: none. No Node, Rules field, scope state, output
+  buffer, map, or retained diagnostic object was added to the normal runtime.
+- New traversal: no new production traversal. The existing merge admission's
+  traversal is now measured; the canonical profile recorded `10,777` admission
+  calls and `69,901` visited admission items, which proves that the prior
+  “cheap” label concealed non-trivial scan work and is a follow-up target.
+- New node/materialization: none in production. Profile counters are scalar
+  increments in an opt-in global record; review JSON is transient evidence.
+- Render path: the public `Compiler.render()` parity probe remains
+  `133,983` bytes with SHA-256
+  `adfd26732125a33fc1e264aca7d7ecde8c7c1da43f968e3106bd387a1f78e840`.
+  The new same-process build comparator's direct tree transport is separately
+  byte-identical at `135,794` bytes with SHA-256
+  `9a58451bd3b0c9d80913df38be3b199994d2b93d34a9d2851f1b18d9dcaaa7cc`.
+  This diagnostic/guard change makes no speed claim.
+- Helper/API surface: no package export or runtime API. The profile-only
+  counter key is an existing diagnostic convention, and the verifier's
+  contract helpers remain review-time only.
+- Metadata mutations: none.
+- Review-flagged diff tokens: [loop/traversal] refers to the pre-existing
+  admission scan being measured; [materialized array/object] is limited to
+  profile JSON and verifier records. No new normal-path danger-token category
+  was added.
+- Evidence: `mergeStats` on the canonical fixture reports
+  `admissionCalls=10,777`, `admissionItemsVisited=69,901`,
+  `admittedCalls=15`, `calls=15`, `featureBearingContainers=15`, and
+  `noFeatureMisses=10,762`; the executable `--assert-merge-contract` check
+  passes the `8`-items-per-inspected-container budget. The same-process
+  before/after build A/B measured parse-render `223.362→226.763 ms` medians
+  (paired median delta `+0.035 ms`, `22/45` wins) and render-only
+  `183.157→183.461 ms` (paired median delta `−0.176 ms`, `25/45` wins), with
+  identical direct-tree output bytes/hash. Core build passed, and the verifier
+  regression suite plus aggressive review are the remaining commit gates. No
+  performance claim applies.
+- Hot-path cost contracts:
+```json
+[
+  {
+    "id": "rules-merge-coalescing",
+    "admission": {
+      "predicate": "hasMergeOutputSurface(rules)",
+      "cost": "cheap",
+      "counter": "admissionCalls",
+      "workCounter": "admissionItemsVisited",
+      "maxItemsPerContainer": 8,
+      "before": "collection and allocation"
+    },
+    "calls": 15,
+    "admittedCalls": 15,
+    "admissionCalls": 10777,
+    "admissionItemsVisited": 69901,
+    "containers": 10777,
+    "featureBearingContainers": 15,
+    "itemsVisited": 16730,
+    "featureItems": 27,
+    "noFeatureAllocations": 0,
+    "noFeatureMisses": 10762,
+    "commonCaseProof": "executable canonical profile: admission work and coalescer call counters",
+    "benchmark": {
+      "fixture": "benchmark.less",
+      "warmup": 20,
+      "pairs": 45,
+      "parse-render": {
+        "beforeMedianMs": 223.362,
+        "afterMedianMs": 226.763,
+        "medianDeltaMs": 0.035,
+        "wins": 22,
+        "byteIdentical": true,
+        "outputBytes": 135794,
+        "outputSha256": "9a58451bd3b0c9d80913df38be3b199994d2b93d34a9d2851f1b18d9dcaaa7cc"
+      },
+      "render": {
+        "beforeMedianMs": 183.157,
+        "afterMedianMs": 183.461,
+        "medianDeltaMs": -0.176,
+        "wins": 25,
+        "byteIdentical": true,
+        "outputBytes": 135794,
+        "outputSha256": "9a58451bd3b0c9d80913df38be3b199994d2b93d34a9d2851f1b18d9dcaaa7cc"
+      }
+    },
+    "verdict": "accepted"
+  }
+]
+```
+- Verdict: accepted as diagnostic/review hardening, with the measured
+  admission scan explicitly reopened as the next optimization target. A future
+  “cheap” admission cannot land without live counter evidence and a bounded
+  admission-work assertion.
+
 - Latest pass: ADMITTED-CALL COUNTER RELATION — make the cost contract reject
   an expensive operation whose call count outruns the cheap admission that
   supposedly justified it.

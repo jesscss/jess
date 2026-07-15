@@ -100,6 +100,8 @@ function readCostContractRegistry(review) {
 const requiredCounterNames = [
   'calls',
   'admittedCalls',
+  'admissionCalls',
+  'admissionItemsVisited',
   'itemsVisited',
   'noFeatureAllocations',
   'noFeatureMisses'
@@ -186,6 +188,19 @@ function validateCostContractRegistry(registry) {
       if (admission.cost !== 'cheap') {
         errors.push(`Cost contract ${contract.id} admission cost must be cheap.`);
       }
+      if (typeof admission.counter !== 'string' || !contract.counters?.includes(admission.counter)) {
+        errors.push(`Cost contract ${contract.id} must name a declared admission counter.`);
+      }
+      if (typeof admission.workCounter !== 'string' || !contract.counters?.includes(admission.workCounter)) {
+        errors.push(`Cost contract ${contract.id} must name a declared admission-work counter.`);
+      }
+      if (
+        !Number.isInteger(admission.maxItemsPerContainer)
+        || admission.maxItemsPerContainer <= 0
+        || admission.maxItemsPerContainer > 32
+      ) {
+        errors.push(`Cost contract ${contract.id} must cap cheap admission work at 1..32 items per inspected container.`);
+      }
       if (
         typeof admission.before !== 'string'
         || !/collection/i.test(admission.before)
@@ -198,7 +213,7 @@ function validateCostContractRegistry(registry) {
     }
     if (!Array.isArray(contract.counters) || !requiredCounterNames.every(name => contract.counters.includes(name))) {
       errors.push(
-        `Cost contract ${contract.id} must list calls, itemsVisited, noFeatureAllocations, and noFeatureMisses.`
+        `Cost contract ${contract.id} must list calls, admissionCalls, admissionItemsVisited, itemsVisited, noFeatureAllocations, and noFeatureMisses.`
       );
     }
     if (typeof contract.commonCaseProof !== 'string' || !/(benchmark|counter|test)/i.test(contract.commonCaseProof)) {
@@ -255,6 +270,11 @@ function validateCostContractRegistry(registry) {
       || typeof sourceCheck.caller !== 'string'
       || typeof sourceCheck.call !== 'string'
       || typeof sourceCheck.guard !== 'string'
+      || (
+        sourceCheck.profile !== undefined
+        && typeof sourceCheck.profile !== 'string'
+        && !Array.isArray(sourceCheck.profile)
+      )
     ) {
       errors.push(`Cost contract ${contract.id} source-check metadata is incomplete.`);
     } else if (!Array.isArray(contract.files) || contract.files[0] !== sourceCheck.file) {
@@ -301,9 +321,12 @@ function validateRegisteredSourceMetadata(registry) {
       errors.push(`Cost contract ${contract.id} source-check file cannot be read: ${sourceCheck.file}.`);
       continue;
     }
-    for (const field of ['caller', 'call', 'guard']) {
-      if (!source.includes(sourceCheck[field])) {
-        errors.push(`Cost contract ${contract.id} source-check ${field} is absent from ${sourceCheck.file}: ${sourceCheck[field]}.`);
+    for (const field of ['caller', 'call', 'guard', 'profile'].filter(name => sourceCheck[name] !== undefined)) {
+      const anchors = Array.isArray(sourceCheck[field]) ? sourceCheck[field] : [sourceCheck[field]];
+      for (const anchor of anchors) {
+        if (!source.includes(anchor)) {
+          errors.push(`Cost contract ${contract.id} source-check ${field} is absent from ${sourceCheck.file}: ${anchor}.`);
+        }
       }
     }
   }
@@ -366,8 +389,9 @@ function contractsForChangedHunk(registry, file, hunk) {
     if (!contract.files.includes(file) || !contract.sourceCheck) {
       return false;
     }
-    const { caller, call, guard } = contract.sourceCheck;
-    return [caller, call, guard].some(anchor => hunk.includes(anchor));
+    const { caller, call, guard, profile } = contract.sourceCheck;
+    const profileAnchors = Array.isArray(profile) ? profile : [profile];
+    return [caller, call, guard, ...profileAnchors].filter(Boolean).some(anchor => hunk.includes(anchor));
   });
 }
 
@@ -414,12 +438,19 @@ function validateCostAuditRecords(records, registry, changedPaths, diff) {
     }
     const calls = numberCounter(record, ['calls']);
     const featureBearing = numberCounter(record, ['featureBearingCalls', 'featureBearingContainers']);
+    const contract = registry.find(candidate => candidate.id === record.id);
+    const admissionCount = contract?.admission?.counter
+      ? numberCounter(record, [contract.admission.counter])
+      : null;
+    const admissionWork = contract?.admission?.workCounter
+      ? numberCounter(record, [contract.admission.workCounter])
+      : null;
     const itemsVisited = numberCounter(record, ['itemsVisited']);
     const noFeatureAllocations = numberCounter(record, ['noFeatureAllocations']);
     const noFeatureMisses = numberCounter(record, ['noFeatureMisses']);
-    if (calls === null || featureBearing === null || itemsVisited === null || noFeatureAllocations === null || noFeatureMisses === null) {
+    if (calls === null || featureBearing === null || admissionCount === null || admissionWork === null || itemsVisited === null || noFeatureAllocations === null || noFeatureMisses === null) {
       errors.push(
-        `Hot-path cost audit record ${record.id} must include numeric calls, feature-bearing calls/containers, itemsVisited, noFeatureAllocations, and noFeatureMisses.`
+        `Hot-path cost audit record ${record.id} must include numeric calls, feature-bearing calls/containers, admission calls/work, itemsVisited, noFeatureAllocations, and noFeatureMisses.`
       );
     } else {
       if (featureBearing > calls) {
@@ -427,6 +458,12 @@ function validateCostAuditRecords(records, registry, changedPaths, diff) {
       }
       if (noFeatureAllocations > 0 && record.verdict === 'accepted') {
         errors.push(`Hot-path cost audit record ${record.id} accepts a pass with no-feature allocations.`);
+      }
+      const maxItemsPerContainer = contract?.admission?.maxItemsPerContainer;
+      if (Number.isInteger(maxItemsPerContainer) && admissionWork > admissionCount * maxItemsPerContainer) {
+        errors.push(
+          `Hot-path cost audit record ${record.id} exceeds its admission-work budget: ${admissionWork} > ${admissionCount} * ${maxItemsPerContainer}.`
+        );
       }
     }
     if (typeof record.commonCaseProof !== 'string' || !/(benchmark|counter|test)/i.test(record.commonCaseProof)) {

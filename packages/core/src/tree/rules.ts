@@ -101,10 +101,13 @@ const EMPTY_CALLABLE_BUCKET: CallableLookupEntry[] = [];
 const NESTABLE_AT_RULE_NAMES = new Set(['@media', '@supports', '@layer', '@container', '@scope']);
 const MAX_DECLARATION_NAME_REGISTRATION_RETRIES = 5;
 const SCOPE_FRAME_PROFILE_COUNTERS_KEY = '__JESS_SCOPE_FRAME_PROFILE_COUNTERS__';
+const MERGE_PROFILE_COUNTERS_KEY = '__JESS_MERGE_PROFILE_COUNTERS__';
 type ScopeFrameProfileGlobals = typeof globalThis & {
   [SCOPE_FRAME_PROFILE_COUNTERS_KEY]?: Record<string, number>;
+  [MERGE_PROFILE_COUNTERS_KEY]?: Record<string, number>;
 };
 const scopeFrameProfileCounters = (globalThis as ScopeFrameProfileGlobals)[SCOPE_FRAME_PROFILE_COUNTERS_KEY];
+const mergeProfileCounters = (globalThis as ScopeFrameProfileGlobals)[MERGE_PROFILE_COUNTERS_KEY];
 const scopeFrameProfileNow = scopeFrameProfileCounters
   ? globalThis.performance?.now.bind(globalThis.performance)
   : undefined;
@@ -149,6 +152,12 @@ const recordScopeFrameProfile = scopeFrameProfileCounters
         counters[`getScopeFrame.${event}.ms`] = (counters[`getScopeFrame.${event}.ms`] ?? 0)
           + scopeFrameProfileNow!() - startedAt;
       }
+    }
+  : undefined;
+
+const recordMergeProfile = mergeProfileCounters
+  ? (event: 'admissionCalls' | 'admissionItemsVisited' | 'admittedCalls' | 'calls' | 'featureBearingContainers'): void => {
+      mergeProfileCounters[event] = (mergeProfileCounters[event] ?? 0) + 1;
     }
   : undefined;
 
@@ -592,6 +601,7 @@ function rulesMayContainDeclarationSurface(rules: Rules): boolean {
 }
 
 function hasMergedDeclaration(node: Node): boolean {
+  recordMergeProfile?.('admissionItemsVisited');
   if (isNode(node, N.Declaration)) {
     const assign = node.options.normalizedFromAssign;
     return assign === '+:' || assign === '&,:' || assign === '&_:';
@@ -608,8 +618,10 @@ function hasMergedDeclaration(node: Node): boolean {
 }
 
 function hasMergeOutputSurface(rules: Rules): boolean {
+  recordMergeProfile?.('admissionCalls');
   for (let i = 0; i < rules.rules.length; i++) {
     if (hasMergedDeclaration(rules.rules[i]!)) {
+      recordMergeProfile?.('featureBearingContainers');
       return true;
     }
   }
@@ -7521,7 +7533,9 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
   private _finishSourceOrderEvaluation(rules: Rules, rulesToHoist: boolean): { rules: Rules; rulesToHoist: boolean } {
     this._normalizeCallDeclarationRulesOrder(rules);
     if (hasMergeOutputSurface(rules)) {
+      recordMergeProfile?.('admittedCalls');
       this._coalesceMergedDeclarations(rules);
+      recordMergeProfile?.('calls');
     }
     return {
       rules,

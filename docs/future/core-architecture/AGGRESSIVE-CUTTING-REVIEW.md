@@ -167,18 +167,18 @@ receive the normal danger-token review but are excluded from this production-
 file coverage requirement.
 
 Relations are machine-checked counter expressions, not prose labels. A contract
-whose admission controls an expensive operation should expose the count of
-successful admissions as `admittedCalls` (or another explicitly declared
-counter) and bind the expensive call count to it, for example
-`calls <= admittedCalls` and `admittedCalls <= featureBearingContainers`.
-This is required for every registered contract. It rejects a report that claims
-10,000 expensive calls while the cheap admission found no feature-bearing work.
-The verifier checks the arithmetic and the declared counter names; it does not
-independently collect runtime counters, so the focused evidence command remains
-the source-of-truth check for whether the reported values are real. In every
-record, `calls` means invocations of the expensive operation; `containers` (or
-another explicitly named admission counter) means opportunities inspected by
-the cheap predicate.
+whose admission controls an expensive operation must expose the number of
+containers inspected and the work performed by that admission, in addition to
+the successful-admission count. The registry names those counters explicitly
+(`admission.counter`, `admission.workCounter`) and caps cheap admission work at
+a small fixed number of visited items per inspected container. The record must
+bind the expensive call count to successful admissions, for example
+`calls <= admittedCalls` and `admittedCalls <= featureBearingContainers`, while
+the executable evidence command independently asserts the admission-work
+budget. This rejects both “10,000 expensive calls with no feature” and the
+escape hatch of moving the same cost into a supposedly cheap recursive scan.
+In every record, `calls` means invocations of the expensive operation and the
+named admission counter means opportunities inspected by the admission.
 
 <!-- BEGIN AGGRESSIVE-CUTTING-COST-CONTRACTS -->
 ```json
@@ -190,11 +190,16 @@ the cheap predicate.
     "admission": {
       "predicate": "cheap merge-output-surface presence check",
       "cost": "cheap",
+      "counter": "admissionCalls",
+      "workCounter": "admissionItemsVisited",
+      "maxItemsPerContainer": 8,
       "before": "collection and allocation"
     },
     "counters": [
       "calls",
       "admittedCalls",
+      "admissionCalls",
+      "admissionItemsVisited",
       "containers",
       "featureBearingContainers",
       "itemsVisited",
@@ -211,18 +216,20 @@ the cheap predicate.
     },
     "relations": [
       "calls <= admittedCalls",
+      "admittedCalls <= admissionCalls",
       "admittedCalls <= featureBearingContainers",
       "featureBearingContainers < containers",
       "noFeatureAllocations === 0"
     ],
     "evidence": {
-      "command": ["pnpm", "--filter", "@jesscss/core", "test", "--", "src/tree/__tests__/declaration.test.ts", "--run"]
+      "command": ["node", "scripts/profile-less-benchmark.mjs", "--assert-merge-contract"]
     },
     "sourceCheck": {
       "file": "packages/core/src/tree/rules.ts",
       "caller": "_finishSourceOrderEvaluation",
       "call": "_coalesceMergedDeclarations",
-      "guard": "hasMergeOutputSurface"
+      "guard": "hasMergeOutputSurface",
+      "profile": ["MERGE_PROFILE_COUNTERS_KEY", "recordMergeProfile"]
     }
   },
   {
@@ -232,11 +239,16 @@ the cheap predicate.
     "admission": {
       "predicate": "stable singleton node shape check",
       "cost": "cheap",
+      "counter": "admissionCalls",
+      "workCounter": "admissionItemsVisited",
+      "maxItemsPerContainer": 4,
       "before": "collection and allocation"
     },
     "counters": [
       "calls",
       "admittedCalls",
+      "admissionCalls",
+      "admissionItemsVisited",
       "containers",
       "featureBearingContainers",
       "itemsVisited",
@@ -253,12 +265,13 @@ the cheap predicate.
     },
     "relations": [
       "calls <= admittedCalls",
+      "admittedCalls <= admissionCalls",
       "admittedCalls <= featureBearingContainers",
       "featureBearingContainers < containers",
       "noFeatureAllocations === 0"
     ],
     "evidence": {
-      "command": ["pnpm", "--filter", "@jesscss/core", "test", "--", "src/tree/__tests__/ruleset.test.ts", "--run"]
+      "command": ["node", "scripts/profile-less-benchmark.mjs", "--assert-duplicate-contract"]
     },
     "sourceCheck": {
       "file": "packages/core/src/tree/util/serialize-helper.ts",

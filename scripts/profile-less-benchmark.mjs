@@ -33,6 +33,7 @@ const benchmarkFile = path.isAbsolute(benchmarkArg)
   : path.join(benchmarkRoot, benchmarkArg);
 globalThis.__JESS_SERIALIZE_PROFILE_COUNTERS__ = {};
 globalThis.__JESS_DIRECT_LOOKUP_PROFILE_COUNTERS__ = {};
+globalThis.__JESS_MERGE_PROFILE_COUNTERS__ = {};
 
 const coreLib = pathToFileURL(path.join(repoRoot, 'packages/core/lib/index.js')).href;
 const lessParserLib = pathToFileURL(path.join(repoRoot, 'packages/less-parser/lib/index.js')).href;
@@ -234,6 +235,41 @@ await compiler.render(benchmarkFile);
 const elapsedMs = performance.now() - start;
 const serializeProfileCounters = globalThis.__JESS_SERIALIZE_PROFILE_COUNTERS__ ?? {};
 const directLookupProfileCounters = globalThis.__JESS_DIRECT_LOOKUP_PROFILE_COUNTERS__ ?? {};
+const mergeProfileCounters = globalThis.__JESS_MERGE_PROFILE_COUNTERS__ ?? {};
+
+if (cliArgs.has('--assert-merge-contract')) {
+  const containers = mergeProfileCounters.admissionCalls ?? 0;
+  const admittedCalls = mergeProfileCounters.admittedCalls ?? 0;
+  const calls = mergeProfileCounters.calls ?? 0;
+  const featureBearingContainers = mergeProfileCounters.featureBearingContainers ?? 0;
+  const failures = [
+    ['calls <= admittedCalls', calls <= admittedCalls],
+    ['admittedCalls <= featureBearingContainers', admittedCalls <= featureBearingContainers],
+    ['featureBearingContainers < admissionCalls', featureBearingContainers < containers],
+    ['admissionItemsVisited <= admissionCalls * 8', (mergeProfileCounters.admissionItemsVisited ?? 0) <= containers * 8],
+    ['calls > 0 when feature-bearing containers exist', featureBearingContainers === 0 || calls > 0]
+  ].filter(([, ok]) => !ok).map(([relation]) => relation);
+  if (failures.length > 0) {
+    throw new Error(
+      `Merge cost contract failed: ${failures.join(', ')}; counters=${JSON.stringify(mergeProfileCounters)}`
+    );
+  }
+}
+
+if (cliArgs.has('--assert-duplicate-contract')) {
+  const containers = serializeProfileCounters.duplicateDeclarationComparisonContainers ?? 0;
+  const admittedCalls = serializeProfileCounters.duplicateDeclarationCountMapAllocations ?? 0;
+  const itemsVisited = serializeProfileCounters.duplicateDeclarationRulesVisited ?? 0;
+  const failures = [
+    ['admittedCalls <= containers', admittedCalls <= containers],
+    ['itemsVisited <= containers * 4', itemsVisited <= containers * 4]
+  ].filter(([, ok]) => !ok).map(([relation]) => relation);
+  if (failures.length > 0) {
+    throw new Error(
+      `Duplicate-declaration cost contract failed: ${failures.join(', ')}; counters=${JSON.stringify(serializeProfileCounters)}`
+    );
+  }
+}
 
 const metricRows = [...stats.entries()]
   .map(([name, metric]) => ({
@@ -255,6 +291,18 @@ const result = {
     emissionRenderNodeTextRulesPreviewCalls: serializeProfileCounters.emissionRenderNodeTextRulesPreviewCalls ?? 0,
     emissionRenderNodeTextDeclarationFallbackCalls: serializeProfileCounters.emissionRenderNodeTextDeclarationFallbackCalls ?? 0,
     emissionRenderNodeTextLeafCalls: serializeProfileCounters.emissionRenderNodeTextLeafCalls ?? 0
+  },
+  mergeStats: {
+    admissionCalls: mergeProfileCounters.admissionCalls ?? 0,
+    admissionItemsVisited: mergeProfileCounters.admissionItemsVisited ?? 0,
+    admittedCalls: mergeProfileCounters.admittedCalls ?? 0,
+    calls: mergeProfileCounters.calls ?? 0,
+    featureBearingContainers: mergeProfileCounters.featureBearingContainers ?? 0,
+    noFeatureMisses: Math.max(
+      0,
+      (mergeProfileCounters.admissionCalls ?? 0) - (mergeProfileCounters.admittedCalls ?? 0)
+    ),
+    noFeatureAllocations: 0
   },
   importStats: {
     getTreeCalls: importStats.getTreeCalls,
