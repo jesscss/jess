@@ -239,7 +239,7 @@ named admission counter means opportunities inspected by the admission.
       "noFeatureAllocations === 0"
     ],
     "evidence": {
-      "command": ["node", "scripts/profile-less-benchmark.mjs", "--assert-merge-contract"]
+      "command": ["node", "scripts/profile-less-benchmark.mjs", "--assert-merge-contract", "--assert-live-merge-contract"]
     },
     "sourceCheck": {
       "file": "packages/core/src/tree/rules.ts",

@@ -256,6 +256,18 @@ if (cliArgs.has('--assert-merge-contract')) {
   }
 }
 
+if (cliArgs.has('--assert-live-merge-contract')) {
+  const requiredPositiveCounters = ['admissionCalls', 'admittedCalls', 'calls'];
+  const failures = requiredPositiveCounters
+    .filter(name => (mergeProfileCounters[name] ?? 0) <= 0)
+    .map(name => `${name} > 0`);
+  if (failures.length > 0) {
+    throw new Error(
+      `Live merge contract failed: ${failures.join(', ')}; counters=${JSON.stringify(mergeProfileCounters)}`
+    );
+  }
+}
+
 if (cliArgs.has('--assert-duplicate-contract')) {
   const containers = serializeProfileCounters.duplicateDeclarationComparisonContainers ?? 0;
   const admittedCalls = serializeProfileCounters.duplicateDeclarationCountMapAllocations ?? 0;
