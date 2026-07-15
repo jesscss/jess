@@ -1,6 +1,6 @@
 # Jess AST from scratch: speed-first design
 
-Status: design evidence and POC queue, 2026-07-14.
+Status: design evidence and POC queue, started 2026-07-14 and updated 2026-07-15.
 
 ## Experiment artifact
 
@@ -18,8 +18,10 @@ implementation and focused tests are under:
 The corrected exploratory run used `TREE2_WARMUPS=3` and
 `TREE2_SAMPLES=5`. The package-scoped tree2 suite passed `11/11` distinct
 cases; the root invocation reports `22/22` only because Vitest runs that same
-file in two projects. The source is not exported or wired into production, and
-the canonical evaluated route still fails before producing a comparable result.
+file in two projects. The source is not exported or wired into production. The
+initial raw canonical probe routes through one legacy root escape; the later
+evaluated mixed-root follow-up is recorded below and rejects the canonical route
+on an exact-output hash mismatch.
 The attempted checkpoint commit was stopped by the aggressive-cutting guard
 because this unwired experiment has no production cost-contract entries; no
 `--no-verify` commit was made. Do not treat the worktree as a merged
