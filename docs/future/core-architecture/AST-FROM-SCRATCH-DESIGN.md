@@ -141,6 +141,45 @@ direct emitter consumes compact records for proven static regions and dynamic
 regions use named escapes. The present artifact is only the first structural
 probe toward that shape.
 
+## Steering decisions captured on 2026-07-15
+
+These decisions constrain future experiments even when the implementation shape
+changes:
+
+- If Jess can reach Less 4.x speed with a complete semantic tree, that is the
+  preferred outcome over a faster string-only representation. The target is a
+  lightweight, efficient AST—not the elimination of every AST object. A useful
+  design may use plain records, arrays, packed tables, or no classes at all,
+  with a cold debug projection where that improves the hot path.
+- Authored scalar text remains authoritative. A representation may retain a
+  compact semantic tag or field-level type table beside the value, but it must
+  not rewrite `1.0` as `1` or overwrite the authored value with a calculated
+  result. `node.type` remains the existing node discriminant; typed-value
+  metadata belongs to the value/declaration representation or a deliberately
+  owned side table, not to a repurposed node field.
+- Imports and mixins should reuse one canonical source body. Only regions whose
+  result depends on the placement environment need placement-local overlays or
+  evaluation. A dependency graph is therefore a prerequisite for safe reuse
+  and for the later tree-shaken custom-property-to-JavaScript module direction;
+  neither capability is claimed as implemented by this experiment.
+- Prototype-chain environments and ordinal/static slots are bounded lookup
+  candidates only for shapes proven to be local, immutable, and statically
+  bound. They are not a replacement for Less's dynamic scope model. The
+  existing static-local slot proof had zero canonical activation and was slower
+  on its activating synthetic workload, so it does not justify a generic
+  prototype-chain lane.
+- Properties without an explicit merge shape should not enter merge lookup or
+  merge-coalescing machinery. The proposed simplification is ordinary
+  assignment plus automatic flattening for spaced and list values; the legacy
+  `sequence` concept is treated as deprecated. This is a semantic redesign
+  proposal, not a current-runtime change or an accepted benchmark result.
+- Parseman optimization and CSS/Less trivia policy remain separate axes.
+  Parseman changes must be grammar-general; the grammar/host decides whether
+  comments, whitespace boundaries, spans, or late value typing are needed for
+  its output contract. In particular, selector-descendant meaning may be
+  recoverable from spans and comment positions without retaining every
+  whitespace capture as a node or object.
+
 ## Current `tree2` implementation boundary
 
 The staged implementation is a **structural columnar arena**, not yet the
