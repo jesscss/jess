@@ -903,15 +903,15 @@ function toStatement(
       return toMixinDef(ctx, node as AnyNode);
     case 'Call':
       return toMixinCall(ctx, node as AnyNode);
-    // [atrule] block + statement at-rules. When NOT at root / inside another
-    // at-rule (i.e. directly inside a ruleset or mixin body), full v5 bubbling
-    // would hoist the at-rule to root and move the selector inside — a deferred
-    // rung — so those are rejected to keep the census honest.
+    // [atrule][WS1] block + statement at-rules. A nested at-rule (directly inside
+    // a ruleset or mixin body) is kept as a normal child AtRule node of the
+    // tree2 body — NO throw, NO hoist/mutation here. The serializer owns v5
+    // bubbling (projecting it to root); the bridge's contract is only that the
+    // AtRule node is present in the body. `allowAtRules` no longer gates
+    // construction (at-rules are valid everywhere the parser produced them).
     case 'AtRule':
-      if (!allowAtRules) throw new UnsupportedShape('atrule-bubbling', 'in-ruleset');
       return toAtRuleBlock(ctx, node as AnyNode);
     case 'AtRuleStatement':
-      if (!allowAtRules) throw new UnsupportedShape('atrule-bubbling', 'in-ruleset');
       return toAtRuleStatement(ctx, node as AnyNode);
     // [charset] A mid-document `@charset "utf-8";` parses as a role-'charset'
     // `Any` token (its `.value` is the full source slice). It is a document-
