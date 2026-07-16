@@ -118,3 +118,25 @@ export function selectorText(
 export function isStatement(x: unknown): x is t2.Statement {
   return x instanceof t2.Node;
 }
+
+/**
+ * One argument slot of a `MixinArgs` group (`( … )`), kept INTERPRETATION-NEUTRAL:
+ * a mixin DEFINITION reads it as a `Param` (binding / default / rest / pattern),
+ * a mixin CALL reads it as a `CallArg` (positional / named value). `text` is the
+ * verbatim slot bytes (already split paren/bracket-aware by the grammar, so no
+ * re-tokenizing); `value` is the built value node for the slot when one exists.
+ * The shared `MixinArgs` action (mixin-def family) produces `RawArg[]`; the def
+ * and call families each classify it. Branded so it is unambiguous among a build's
+ * children.
+ */
+export interface RawArg {
+  readonly __rawArg: true;
+  readonly text: string;
+  /** The built node for the slot when one exists (a value leaf in call/arg
+   *  position); the consumer narrows to `ValueNode` as needed. */
+  readonly value?: t2.Node;
+}
+
+export function isRawArgList(x: unknown): x is readonly RawArg[] {
+  return Array.isArray(x) && (x.length === 0 || (!!x[0] && (x[0] as RawArg).__rawArg === true));
+}
