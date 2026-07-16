@@ -577,20 +577,52 @@ interface Emit extends EvalCtx {
   hoistMode: boolean;
 }
 
-/** [R2] Emit a value at a leaf/prelude site: sync `put`, or reserve an async slot. */
-function putValue(e: Emit, node: ValueNode, frame: Frame | null, positionNode?: Node): void {
+/**
+ * [whitespace] Re-indent a multi-line value's continuation lines. A value whose
+ * source spans several lines keeps its interior newlines, but Less never lets a
+ * continuation line sit LEFT of the property's continuation column: each line
+ * after the first whose leading whitespace is shallower than `contIndent` is
+ * clamped up to it, while a deeper source indent is preserved verbatim. No-op
+ * (single scan, no split) for the single-line values that dominate.
+ */
+function reindentContinuations(bytes: string, contIndent: string): string {
+  if (bytes.indexOf('\n') === -1) return bytes;
+  const lines = bytes.split('\n');
+  for (let i = 1; i < lines.length; i++) {
+    const line = lines[i]!;
+    let ws = 0;
+    while (ws < line.length && (line[ws] === ' ' || line[ws] === '\t')) ws++;
+    if (ws < contIndent.length) lines[i] = contIndent + line.slice(ws);
+  }
+  return lines.join('\n');
+}
+
+/** True when resolved value bytes already carry a trailing `!important` (any
+ * case, optional trailing whitespace) — so the declaration's own `!important`
+ * append would double it. */
+function valueEndsImportant(bytes: string): boolean {
+  return /!important\s*$/iu.test(bytes);
+}
+
+/** [R2] Emit a value at a leaf/prelude site: sync `put`, or reserve an async slot.
+ * `contIndent`, when given, re-indents multi-line value continuation lines.
+ * Returns the emitted sync bytes (for trailing-`!important` dedup), or `null`
+ * when the value deferred to an async slot. */
+function putValue(e: Emit, node: ValueNode, frame: Frame | null, positionNode?: Node, contIndent?: string): string | null {
   const b = evalBytes(node, frame, e);
   if (isThenable(b)) {
     const i = e.chunks.length;
     e.chunks.push('');
-    e.pending.push({ i, p: Promise.resolve(b) });
-    return;
+    e.pending.push({ i, p: Promise.resolve(contIndent !== undefined ? mapMaybe(b, (s) => reindentContinuations(s, contIndent)) : b) });
+    return null;
   }
+  const bytes = contIndent !== undefined ? reindentContinuations(b, contIndent) : b;
   const valStart = e.off;
-  put(e, b);
+  put(e, bytes);
   if (e.positions && positionNode) {
     e.positions.push({ node: positionNode, kind: positionNode.kind, start: valStart, end: e.off });
   }
+  return bytes;
 }
 
 /* ------------------------------------------------------------- [extend] */
@@ -1035,8 +1067,9 @@ function emitLeaf(leaf: Leaf, e: Emit): void {
     put(e, idt);
     put(e, declName(node, frame, e)); // [R4] resolve interpolated property name
     put(e, ': ');
-    putValue(e, node.value, frame, node.value);
-    if (node.important || leaf.important) put(e, ' !important'); // [R4] merge important
+    const vb = putValue(e, node.value, frame, node.value, idt + INDENT); // [whitespace] continuation indent
+    // [R4] merge important — but never double a `!important` already in the value bytes.
+    if ((node.important || leaf.important) && !(vb !== null && valueEndsImportant(vb))) put(e, ' !important');
     if (e.positions) e.positions.push({ node, kind: node.kind, start, end: e.off });
     put(e, ';\n');
   } else if (node.kind === Kind.Comment) {
@@ -1293,8 +1326,9 @@ function emitNestedLeaf(leaf: Leaf, e: Emit): void {
     put(e, declName(node, frame, e)); // [R4] resolve interpolated property name
     put(e, ': ');
     const valStart = e.off;
-    putValue(e, node.value, frame, node.value);
-    if (node.important || leaf.important) put(e, ' !important'); // [R4] merge important
+    const vb = putValue(e, node.value, frame, node.value, idt + INDENT); // [whitespace] continuation indent
+    // [R4] merge important — but never double a `!important` already in the value bytes.
+    if ((node.important || leaf.important) && !(vb !== null && valueEndsImportant(vb))) put(e, ' !important');
     if (e.positions) {
       e.positions.push({ node: node.value, kind: node.value.kind, start: valStart, end: e.off });
       e.positions.push({ node, kind: node.kind, start, end: e.off });
