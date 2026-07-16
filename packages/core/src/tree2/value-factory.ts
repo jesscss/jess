@@ -69,7 +69,7 @@ export function makeColorRgb(
   rgb: readonly [number, number, number],
   alpha: number,
   format: number,
-  opts?: { modernSyntax?: boolean; node?: string },
+  opts?: { modernSyntax?: boolean; node?: string; rgbPct?: readonly (number | undefined)[]; alphaPct?: number },
 ): Color {
   const base: Color = {
     kind: 'color',
@@ -78,6 +78,8 @@ export function makeColorRgb(
     format,
     ...(opts?.modernSyntax ? { modernSyntax: true } : {}),
     ...(opts?.node !== undefined ? { node: opts.node } : {}),
+    ...(opts?.rgbPct !== undefined ? { rgbPct: opts.rgbPct } : {}),
+    ...(opts?.alphaPct !== undefined ? { alphaPct: opts.alphaPct } : {}),
     bytes: '',
   };
   return { ...base, bytes: serializeColor(base) };
@@ -89,6 +91,7 @@ export function makeColorHsl(
   alpha: number,
   format: number,
   modernSyntax?: boolean,
+  opts?: { hueUnit?: string; alphaPct?: number },
 ): Color {
   const rgb: readonly [number, number, number] = [0, 0, 0]; // derived lazily by serializer
   const base: Color = {
@@ -98,6 +101,8 @@ export function makeColorHsl(
     hsl,
     format,
     ...(modernSyntax ? { modernSyntax: true } : {}),
+    ...(opts?.hueUnit ? { hueUnit: opts.hueUnit } : {}),
+    ...(opts?.alphaPct !== undefined ? { alphaPct: opts.alphaPct } : {}),
     bytes: '',
   };
   return { ...base, bytes: serializeColor(base) };

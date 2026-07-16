@@ -10,12 +10,16 @@ import type { NativeFn } from './types.js';
  * domain-representable cases: r/g/b via `percentOf(255)`, optional alpha via
  * `percentOf(1)`, modern-syntax picked from the call separator.
  *
- * KNOWN v5 value-domain limitation (documented in `serialize-value.ts`): a raw
- * PERCENTAGE channel (`rgb(50%, 0, 0)`) is NOT preserved as `50%` in the output —
- * the value domain carries no per-channel unit source, so it canonicalizes to the
- * rounded integer channel. Un-representable overloads (relative-color `from`) are
- * out of Tier-B scope.
+ * SOURCE-FORMAT preservation (the verbatim rule for color literals): an un-operated
+ * constructor keeps its authored spelling — a `%` channel (`rgb(50%, 0, 0)`) stays
+ * `50%`, a `%` alpha stays `50%`. The authored percents ride on the `Color`
+ * (`rgbPct`/`alphaPct`); an OPERATED result rebuilds without them → canonical
+ * channels. Un-representable overloads (relative-color `from`) are out of Tier-B scope.
  */
+/** A `%` dimension's authored number (for source-format preservation), else undefined. */
+const pctOf = (d: Dimension | undefined): number | undefined =>
+  d !== undefined && d.unit === '%' ? d.number : undefined;
+
 export function makeRgb(list: List): Color {
   const items = list.items;
   const modernSyntax = isModern(list);
@@ -25,7 +29,10 @@ export function makeRgb(list: List): Color {
     const g = percentOf(items[1] as Dimension, 255);
     const b = percentOf(items[2] as Dimension, 255);
     const a = items[3] !== undefined ? percentOf(items[3] as Dimension, 1) : 1;
-    return makeColorRgb([r, g, b], a, RGB, { modernSyntax });
+    const p0 = pctOf(items[0] as Dimension), p1 = pctOf(items[1] as Dimension), p2 = pctOf(items[2] as Dimension);
+    const rgbPct = p0 !== undefined || p1 !== undefined || p2 !== undefined ? [p0, p1, p2] : undefined;
+    const alphaPct = pctOf(items[3] as Dimension | undefined);
+    return makeColorRgb([r, g, b], a, RGB, { modernSyntax, ...(rgbPct ? { rgbPct } : {}), ...(alphaPct !== undefined ? { alphaPct } : {}) });
   }
   if (isColor(first)) {
     const c = first as Color;

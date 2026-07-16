@@ -130,10 +130,21 @@ export function serializeDimension(n: Dimension, mode: OutputMode = OutputMode.E
 }
 
 /**
+ * The serialized alpha text — the authored `%` spelling (`round(pct,8)%`) when the
+ * alpha was written as a percent, else the decimal alpha. Byte-identical to legacy
+ * `Color.getSerializedAlphaText` (non-compress path).
+ */
+function alphaText(c: Color, a: number): string {
+  return c.alphaPct !== undefined ? `${round(c.alphaPct, 8)}%` : `${a}`;
+}
+
+/**
  * Byte-identical port of `Color.serializeScalarSyntax` (non-compress path). A
  * verbatim source literal (`c.node`) wins; else format-based emit (RGB/HSL/HEX).
- * The value domain carries no channel-tuple / alpha-unit source, so the RGB/HSL
- * text mirrors the legacy no-source branch (`${rgb[idx]}` / `${alpha}`).
+ * The optional SOURCE-FORMAT state (`rgbPct`/`alphaPct`/`hueUnit`) reproduces an
+ * un-operated constructor's authored spelling (`%` channels, `%` alpha, hue unit),
+ * mirroring the legacy `getSerializedRgbText`/`getSerializedAlphaText`; when absent
+ * the emit is the canonical no-source branch (`${rgb[idx]}` / `${alpha}`).
  */
 export function serializeColor(c: Color, mode: OutputMode = OutputMode.Expanded): string {
   // COMPRESSED HOOK (not implemented): dart-sass `compressed` shortens hex
@@ -143,11 +154,15 @@ export function serializeColor(c: Color, mode: OutputMode = OutputMode.Expanded)
   if (c.node !== undefined) return c.node;
   const format = c.format ?? HEX;
   if (format === RGB) {
-    const [r, g, b] = colorRgb(c);
+    const rgb = colorRgb(c);
+    const pct = c.rgbPct;
+    const chan = (idx: number): string =>
+      pct?.[idx] !== undefined ? `${round(clamp(pct[idx]!, 100), 8)}%` : `${rgb[idx]}`;
+    const r = chan(0), g = chan(1), b = chan(2);
     const a = clamp(c.alpha, 1);
     const modern = c.modernSyntax === true;
-    if (modern) return a < 1 ? `rgb(${r} ${g} ${b} / ${a})` : `rgb(${r} ${g} ${b})`;
-    return a < 1 ? `rgba(${r}, ${g}, ${b}, ${a})` : `rgb(${r}, ${g}, ${b})`;
+    if (modern) return a < 1 ? `rgb(${r} ${g} ${b} / ${alphaText(c, a)})` : `rgb(${r} ${g} ${b})`;
+    return a < 1 ? `rgba(${r}, ${g}, ${b}, ${alphaText(c, a)})` : `rgb(${r}, ${g}, ${b})`;
   }
   if (format === HSL) {
     const [h, s, l] = c.hsl ?? rgbToHsl(c.rgb[0], c.rgb[1], c.rgb[2]);
@@ -156,8 +171,11 @@ export function serializeColor(c: Color, mode: OutputMode = OutputMode.Expanded)
     const S = round(clamp(s, 1) * 100, 8);
     const L = round(clamp(l, 1) * 100, 8);
     const modern = c.modernSyntax === true;
-    if (modern) return a < 1 ? `hsl(${roundedHue}deg ${S}% ${L}% / ${a})` : `hsl(${roundedHue}deg ${S}% ${L}%)`;
-    return a < 1 ? `hsla(${roundedHue}, ${S}%, ${L}%, ${a})` : `hsl(${roundedHue}, ${S}%, ${L}%)`;
+    // Legacy hue-unit rule: modern defaults to `deg` when unauthored; the
+    // comma form preserves the authored unit (empty when unitless/derived).
+    const hueUnit = modern ? (c.hueUnit || 'deg') : (c.hueUnit ?? '');
+    if (modern) return a < 1 ? `hsl(${roundedHue}${hueUnit} ${S}% ${L}% / ${alphaText(c, a)})` : `hsl(${roundedHue}${hueUnit} ${S}% ${L}%)`;
+    return a < 1 ? `hsla(${roundedHue}${hueUnit}, ${S}%, ${L}%, ${alphaText(c, a)})` : `hsl(${roundedHue}${hueUnit}, ${S}%, ${L}%)`;
   }
   return toHex(c);
 }

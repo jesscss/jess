@@ -25,9 +25,15 @@ export function makeHsl(list: List): Color {
     const s = clamp01(percentOf(items[1] as Dimension, 1));
     const l = clamp01(percentOf(items[2] as Dimension, 1));
     const a = items[3] !== undefined ? percentOf(items[3] as Dimension, 1) : 1;
-    const hueColor = makeColorHsl([h, s, l], a, HSL, modernSyntax);
+    // SOURCE-FORMAT preservation (verbatim rule): keep the authored hue unit
+    // (`0deg` → `deg`) + a `%` alpha spelling; an operated result drops them.
+    const hueUnit = (items[0] as Dimension).unit || undefined;
+    const alphaD = items[3] as Dimension | undefined;
+    const alphaPct = alphaD !== undefined && alphaD.unit === '%' ? alphaD.number : undefined;
+    const fmtOpts = { ...(hueUnit ? { hueUnit } : {}), ...(alphaPct !== undefined ? { alphaPct } : {}) };
+    const hueColor = makeColorHsl([h, s, l], a, HSL, modernSyntax, fmtOpts);
     if (s === 0 || l === 0 || l === 1) {
-      return makeColorRgb(colorRgbRounded(hueColor), a, HSL, { modernSyntax });
+      return makeColorRgb(colorRgbRounded(hueColor), a, HSL, { modernSyntax, ...(alphaPct !== undefined ? { alphaPct } : {}) });
     }
     return hueColor;
   }
