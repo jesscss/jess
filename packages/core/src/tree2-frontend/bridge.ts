@@ -716,6 +716,18 @@ function toAtRuleStatement(ctx: BridgeCtx, node: AnyNode): t2.AtRuleStatement {
   return t2.atRuleStatement(name, preludeText ?? null);
 }
 
+/**
+ * [charset] Split a `@charset "utf-8";` source token into (keyword, prelude
+ * bytes) and build a statement-form at-rule. The keyword casing is preserved
+ * from source; the trailing `;` is dropped (re-emitted by the serializer).
+ */
+function charsetStatement(text: string): t2.AtRuleStatement {
+  const m = /^\s*(@[^\s;]*)\s*([^;]*?)\s*;?\s*$/u.exec(text);
+  const name = m?.[1] ?? '@charset';
+  const prelude = m?.[2] ?? '';
+  return t2.atRuleStatement(name, prelude.length > 0 ? prelude : null);
+}
+
 function toStatement(
   ctx: BridgeCtx,
   node: unknown,
@@ -797,6 +809,18 @@ function toStatement(
     case 'AtRuleStatement':
       if (!allowAtRules) throw new UnsupportedShape('atrule-bubbling', 'in-ruleset');
       return toAtRuleStatement(ctx, node as AnyNode);
+    // [charset] A mid-document `@charset "utf-8";` parses as a role-'charset'
+    // `Any` token (its `.value` is the full source slice). It is a document-
+    // prelude construct: the tree2 serializer HOISTS the first to the top of the
+    // output and DROPS (dedupes) every other one — matching legacy jess / Less
+    // 4.x. Model it as a statement-form at-rule; the serializer owns the hoist.
+    case 'Any': {
+      const anyNode = node as AnyNode;
+      if (anyNode.role === 'charset' && typeof anyNode.value === 'string') {
+        return charsetStatement(anyNode.value);
+      }
+      throw new UnsupportedShape('statement', t);
+    }
     default:
       throw new UnsupportedShape('statement', t);
   }

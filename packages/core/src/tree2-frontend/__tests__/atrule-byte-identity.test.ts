@@ -32,6 +32,12 @@ const inputs: Array<[string, string]> = [
   ['empty-block-dropped', '@media screen { }\n'],
   ['keyframes-var-prelude', '@name: slidein;\n@keyframes @name { from { top: 0; } }\n'],
   ['sibling-media-not-merged', '@media print { .a { color: red; } }\n@media print { .b { color: blue; } }\n'],
+  // [charset] `@charset` is a document-prelude construct: the first is hoisted to
+  // the top of the output and every other one is dropped (dedupe).
+  ['charset-single', '@charset "UTF-8";\n.a { color: red; }\n'],
+  ['charset-hoist-from-midbody', '.a { color: red; }\n@charset "UTF-8";\n.b { color: blue; }\n'],
+  ['charset-dedupe', '.a { color: red; }\n@charset "utf-8";\n.b { color: blue; }\n@charset "utf-8";\n'],
+  ['charset-dedupe-different-value', '@charset "UTF-8";\n.a { color: red; }\n@charset "ISO-8859-1";\n'],
 ];
 
 async function render(name: string, src: string): Promise<void> {

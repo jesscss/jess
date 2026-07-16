@@ -633,6 +633,9 @@ export function serialize(root: Root, options?: SerializeOptions): SerializeRetu
     stmts: root.children,
   };
   const start = e.off;
+  // [charset] Hoist the first document-level `@charset` ahead of all body
+  // content; inline occurrences are dropped during the walk (dedupe).
+  emitHoistedCharset(root.children, e);
   if (!e.collapse) {
     // [nested/R0] Less v5 default: preserve authored block structure. The root's
     // children are the top-level content level (indent 0).
@@ -1037,7 +1040,34 @@ function emitLeaf(leaf: Leaf, e: Emit): void {
 /* ------------------------------------------------------------ [atrule] emit */
 
 /** A statement at-rule: `@name prelude;` with prelude bytes kept literal. */
+/** [charset] `@charset` is a document-prelude construct, not an inline at-rule. */
+function isCharset(node: AtRuleStatement): boolean {
+  return node.name.toLowerCase() === '@charset';
+}
+
+/**
+ * [charset] Emit the FIRST document-level `@charset` at the top of the output.
+ * Every inline occurrence (including this one) is dropped by
+ * `emitAtRuleStatement`, so the single hoisted copy is the whole output — the
+ * dedupe. Mirrors legacy jess / Less 4.x: first charset wins, rest dropped.
+ */
+function emitHoistedCharset(children: Statement[], e: Emit): void {
+  for (const c of children) {
+    if (c.kind === Kind.AtRuleStatement && isCharset(c as AtRuleStatement)) {
+      emitAtRuleStatementRaw(c as AtRuleStatement, e);
+      return;
+    }
+  }
+}
+
 function emitAtRuleStatement(node: AtRuleStatement, e: Emit): void {
+  // [charset] Inline `@charset` occurrences are dropped; `serialize` hoists the
+  // first to the document top (dedupe).
+  if (isCharset(node)) return;
+  emitAtRuleStatementRaw(node, e);
+}
+
+function emitAtRuleStatementRaw(node: AtRuleStatement, e: Emit): void {
   const start = e.off;
   if (e.depth > 0) put(e, INDENT.repeat(e.depth));
   put(e, node.name);
