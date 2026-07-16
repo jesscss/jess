@@ -66,6 +66,41 @@ describe('tree2 @import — import-mode byte-identity (authored fixtures)', () =
     expect(t2css).toContain('from: interpolated-import');
   });
 
+  // Less is last-declaration-wins: a variable redefined BEFORE an interpolated
+  // import path must resolve to the LAST value (`@theme` = "interp-target", not
+  // the earlier "does-not-exist"). Regression for the first-wins bug in
+  // collectFileVars — a first-wins collector would resolve the stale first value
+  // and fail to find the target. Verified against `less@4.6.3`.
+  it('(specifier): a variable redefined before the import resolves to the LAST value', async () => {
+    const file = `${DIR}/interp-redefine-main.less`;
+    const t2css = await renderTree2File(file);
+    expect(t2css).toBe(await renderImportOracle(file));
+    expect(t2css).toContain('from: interpolated-import');
+  });
+
+  // The `.themed` block (from interp-target) then the local `.own` rule — the
+  // exact `less@4.6.3` output for the two cross-file cases below. The legacy jess
+  // Compiler oracle MIS-resolves these (it reads the stale local value at path-
+  // resolution time and throws `File not found: does-not-exist.less`), so the
+  // trustworthy anchor is the real Less 4.x output, not that oracle.
+  const CROSS_FILE_EXPECTED = '.themed {\n  from: interpolated-import;\n}\n.own {\n  color: blue;\n}\n';
+
+  // A plain import placed AFTER the stale own decl splices its `@theme` at that
+  // position, so (last-wins by source position) the imported value overrides the
+  // earlier own value. Guards the source-order interleave in collectFileVars.
+  it('(specifier): an import after a stale own decl overrides it (positional last-wins)', async () => {
+    const t2css = await renderTree2File(`${DIR}/interp-import-after-main.less`);
+    expect(t2css).toBe(CROSS_FILE_EXPECTED);
+  });
+
+  // Cross-file scope shadowing: the importing (inner) file redefines `@theme`
+  // locally; that innermost binding must win over the outer file's stale value.
+  // Guards importScopeVars keeping the innermost value. Verified against 4.x.
+  it('(specifier): an inner redefinition shadows the outer value (innermost wins)', async () => {
+    const t2css = await renderTree2File(`${DIR}/interp-shadow-main.less`);
+    expect(t2css).toBe(CROSS_FILE_EXPECTED);
+  });
+
   it('(inline): raw bytes of the target emitted verbatim', async () => {
     const file = `${DIR}/inline-main.less`;
     expect(await renderTree2File(file)).toBe(await renderImportOracle(file));

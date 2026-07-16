@@ -186,16 +186,19 @@ function collectFileVars(
     /* unreadable/unparsable file contributes no scope */
   }
 
+  // Walk the rules in SOURCE ORDER, folding both own `@var` decls and the vars
+  // of each plainly-imported file at the position the `@import` appears. Less is
+  // last-declaration-wins BY POSITION — an imported file's bindings are spliced
+  // at its import site, so a later own decl overrides an earlier import and a
+  // later import overrides an earlier own decl (both verified against Less 4.x).
+  // Assigning unconditionally in source order realises exactly that ordering.
   const fromDir = path.dirname(filePath);
-  const nestedImports: string[] = [];
   for (const r of rules) {
     if (!isNode(r)) continue;
     const t = nodeType(r);
     if (t === 'VarDeclaration' && typeof (r as AnyNode).name === 'string') {
       const lit = literalVarValue((r as AnyNode).value);
-      if (lit !== null && !vars.has((r as AnyNode).name as string)) {
-        vars.set((r as AnyNode).name as string, lit);
-      }
+      if (lit !== null) vars.set((r as AnyNode).name as string, lit);
     } else if (t === 'StyleImport') {
       // Only descend into PLAIN, statically-resolvable imports for scope; an
       // interpolated child import can't be followed without a value it may not
@@ -205,12 +208,8 @@ function collectFileVars(
       const flags = readFlags(r as AnyNode);
       if (flags.inline || isCssPassthrough(spec, flags)) continue;
       const child = resolveLessPath(spec, fromDir);
-      if (child !== null) nestedImports.push(child);
-    }
-  }
-  for (const child of nestedImports) {
-    for (const [k, v] of collectFileVars(child, state, visiting)) {
-      if (!vars.has(k)) vars.set(k, v);
+      if (child === null) continue;
+      for (const [k, v] of collectFileVars(child, state, visiting)) vars.set(k, v);
     }
   }
 
@@ -234,6 +233,10 @@ function importScopeVars(
   if (fromFilePath) files.push(fromFilePath);
   for (const f of state.stack) files.push(f);
   if (state.entry.file) files.push(state.entry.file);
+  // `files` runs importer-inward-first (this file, then its importers, then the
+  // entry root): a variable defined in an INNER scope shadows the same name in an
+  // outer one (verified against Less 4.x — an inner redefinition wins), so keep
+  // the first (innermost) value seen and let outer scopes only fill gaps.
   for (const f of files) {
     for (const [k, v] of collectFileVars(f, state, new Set())) {
       if (!merged.has(k)) merged.set(k, v);
