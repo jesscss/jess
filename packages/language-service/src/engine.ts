@@ -2260,12 +2260,18 @@ export function createEngine(): JessLanguageServiceEngine {
             const kind = node.options?.type;
             if (kind === 'variable') {
               // .jess treats `$` as a distinct sigil/operator (it also heads
-              // control-flow `$…{}`, scope `${}`, mutation `:=`), so color the `$`
-              // and the variable name as SEPARATE tokens rather than one blob.
+              // control-flow `$…{}`, scope `${}`, mutation `:=`), and the jess
+              // grammar now captures the sigil as its own leaf and the name
+              // without it — so color the `$` (plus a live-binding `!`) and the
+              // variable name as SEPARATE tokens rather than one blob.
               // css/less/scss keep the conventional single-token variable.
               if (tracked.lang === 'jess' && text.charAt(span.start) === '$') {
-                push(span.start, span.start + 1, 'operator');
-                push(span.start + 1, span.end, 'variable');
+                let sigilEnd = span.start + 1;
+                if (text.charAt(sigilEnd) === '!') {
+                  sigilEnd += 1; // live-binding `$!foo`
+                }
+                push(span.start, sigilEnd, 'operator');
+                push(sigilEnd, span.end, 'variable');
               } else {
                 push(span.start, span.end, 'variable');
               }

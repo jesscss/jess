@@ -33,14 +33,19 @@ describe('@jesscss/jess-parser/cst', () => {
   });
 
   it('collapses transparent CST wrappers without dropping leaves', () => {
-    const expanded = parseJessCst('$color: red; .x { color: $color; }');
-    const collapsed = parseJessCst('$color: red; .x { color: $color; }', 'Stylesheet', { collapse: true });
+    // A bare `$[side]` selector is a single-child `InterpolatedSelector` — the
+    // canonical transparent wrapper that `collapse` folds to its child. (A `$foo`
+    // `Reference` is NOT a collapse witness: it carries the `$` sigil and the name
+    // as two distinct leaves, so it's a genuine container, not a passthrough.)
+    const src = '$color: red; $[side] { color: $color; }';
+    const expanded = parseJessCst(src);
+    const collapsed = parseJessCst(src, 'Stylesheet', { collapse: true });
 
     expect(expanded.errors).toHaveLength(0);
     expect(collapsed.errors).toHaveLength(0);
     expect([...stats(expanded.tree).types]).not.toContain('Unknown');
     expect(stats(expanded.tree).types).toContain('VarDeclaration');
-    expect(stats(expanded.tree).grammarTypes.get('Reference')).toBeGreaterThan(stats(collapsed.tree).grammarTypes.get('Reference') ?? 0);
+    expect(stats(expanded.tree).grammarTypes.get('InterpolatedSelector')).toBeGreaterThan(stats(collapsed.tree).grammarTypes.get('InterpolatedSelector') ?? 0);
     expect(stats(collapsed.tree).leaves).toBe(stats(expanded.tree).leaves);
     expect(collapsed.tree.children.some(c => c._tag === 'node' && c.grammarType === 'VarDeclaration')).toBe(true);
   });

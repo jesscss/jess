@@ -53,7 +53,13 @@ export const jessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   //   $foo?             optional (undefined → nil)
   // The builder folds `.name` / `[key]` accessors left-associatively into nested
   // Reference nodes. (Reference-CALL `$foo.bar(…)` lands with the call feature.)
-  const dollarVar = regex(/\$!?-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
+  // The `$` sigil is its OWN leaf so the name is captured without it \u2014 jess treats
+  // `$` as a real operator (it also heads `$\u2026{}`/`${}`/`:=`), and this lets the CST
+  // carry the sigil and the name as distinct nodes (e.g. for two-color highlighting)
+  // instead of a fused `$foo` token. `!` (live-binding) stays on the name leaf, where
+  // the builder already strips it.
+  const dollarName = regex(/!?-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
+  const dollarVar = sequence(literal('$'), dollarName);
   // Bracket key as ONE leaf: `$var` (dynamic) | quoted string | number | keyword.
   const refIndexKey = regex(/\$-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*|'(?:[^'\\]|\\[\s\S])*'|"(?:[^"\\]|\\[\s\S])*"|[+-]?\d+(?:\.\d+)?|-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
   const refDot = sequence(literal('.'), ident);

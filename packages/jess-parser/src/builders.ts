@@ -87,7 +87,9 @@ export class JessGrammar extends CssParser {
   // A trailing `?` marks the outermost reference optional (undefined → nil).
   private _buildJessReference(children: ReadonlyArray<Node | CSTLike>, location: LocationInfo): Node {
     const ls = children.filter(isLeaf);
-    let head = (ls[0]?.value ?? '$').slice(1); // strip leading `$`
+    // Leaves are `['$', name, …accessors]` — the `$` sigil is its own leaf, so the
+    // name (`ls[1]`) is already captured without it.
+    let head = ls[1]?.value ?? '';
     // `$!foo` is a live binding: a `!` right after `$` → readMode 'snapshot'
     // (the option that renders back as `!`).
     const live = head[0] === '!';
@@ -100,7 +102,7 @@ export class JessGrammar extends CssParser {
     let base: Node = new Reference(head, baseOptions, location) as unknown as Node;
     let fallback = false;
 
-    for (let i = 1; i < ls.length;) {
+    for (let i = 2; i < ls.length;) {
       const tok = ls[i]!.value;
       if (tok === '?') {
         fallback = true;
@@ -686,11 +688,14 @@ export class JessGrammar extends CssParser {
   }
 
   private _buildJessVariableMixinCall(children: ReadonlyArray<Node | CSTLike>, location: LocationInfo): Node {
-    const name = children.filter(isLeaf).find(leaf => leaf.value.startsWith('$'))?.value ?? '$';
+    // Leaves are `['$', name, '(', ')', …]` — the `$` sigil is its own leaf now,
+    // so the variable name is the leaf immediately after it (already sans `$`).
+    const ls = children.filter(isLeaf);
+    const name = ls[ls.findIndex(leaf => leaf.value === '$') + 1]?.value ?? '';
     const args = children.filter(c => (c as CSTLike)._tag === 'node') as Node[];
     return new Call(
       {
-        name: new Reference(name.slice(1), { type: 'variable', role: 'name' }, location),
+        name: new Reference(name, { type: 'variable', role: 'name' }, location),
         args: new List(args as never, undefined, location)
       } as never,
       undefined,
