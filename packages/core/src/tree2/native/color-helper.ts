@@ -37,6 +37,34 @@ export function mixColors(c1: Color, c2: Color, weightPct: number): Color {
   return makeColorRgb(rgb, alpha, alpha < 1 ? RGB : c1.format);
 }
 
+/**
+ * Photoshop-style per-channel blend of two colors — the kernel the blend-mode fns
+ * (`multiply`/`screen`/`overlay`/…) reduce to. `mode(cb, cs)` is the per-channel
+ * blend over the 0-1 backdrop/source channels; the alpha compositing wrapper is the
+ * W3C compositing-1 formula. Byte-faithful port of `@jesscss/fns`'s
+ * `util/colorHelper#colorBlend`: rounded-rgb operands (legacy `Color.get rgb`),
+ * raw (unrounded) result channels handed to the factory (the serializer rounds),
+ * format = the first operand's format (preserved even when translucent).
+ */
+export function colorBlend(mode: (cb: number, cs: number) => number, c1: Color, c2: Color): Color {
+  const ab = c1.alpha; // backdrop alpha
+  const as = c2.alpha; // source alpha
+  const r1 = colorRgbRounded(c1);
+  const r2 = colorRgbRounded(c2);
+  const ar = as + ab * (1 - as); // result alpha
+  const rgb: [number, number, number] = [0, 0, 0];
+  for (let i = 0; i < 3; i++) {
+    const cb = r1[i]! / 255; // backdrop channel
+    const cs = r2[i]! / 255; // source channel
+    let cr = mode(cb, cs);
+    if (ar) {
+      cr = (as * cs + ab * (cb - as * (cb + cs - cr))) / ar;
+    }
+    rgb[i] = cr * 255;
+  }
+  return makeColorRgb(rgb, ar, c1.format);
+}
+
 /** WCAG relative luminance (0-1) over the rounded rgb — legacy `util/get-luma`. */
 export function getLuma(c: Color): number {
   const chan = (v: number): number => {

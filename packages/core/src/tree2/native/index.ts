@@ -77,6 +77,17 @@ import { hsvsaturation } from './hsvsaturation.js';
 import { hsvvalue } from './hsvvalue.js';
 // --- color: luma-threshold pick ---
 import { contrast } from './contrast.js';
+// --- color: blend modes (two colors → color; per-channel over color-helper's
+//     `colorBlend` kernel). overlay reuses multiply+screen; hardlight reuses overlay. ---
+import { multiply } from './multiply.js';
+import { screen } from './screen.js';
+import { overlay } from './overlay.js';
+import { softlight } from './softlight.js';
+import { hardlight } from './hardlight.js';
+import { difference } from './difference.js';
+import { exclusion } from './exclusion.js';
+import { average } from './average.js';
+import { negation } from './negation.js';
 // --- color: constructors / string producers (Tier-B — need modern-syntax /
 //     serialize context; overloaded arity → variadic) ---
 import { rgb } from './rgb.js';
@@ -107,6 +118,7 @@ export const NATIVE_FN_LIST: readonly NativeFn[] = [
   hue, saturation, lightness, luma, luminance,
   hsvhue, hsvsaturation, hsvvalue,
   contrast,
+  multiply, screen, overlay, softlight, hardlight, difference, exclusion, average, negation,
   rgb, rgba, hsl, hsla, hsv, hsva, argb, color,
   replace, format, escape,
   e,

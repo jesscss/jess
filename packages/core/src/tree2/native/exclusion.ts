@@ -1,0 +1,13 @@
+import type { Color } from '../value-eval.js';
+import { colorBlend } from './color-helper.js';
+import type { NativeFn } from './types.js';
+
+/** per-channel `exclusion` blend (W3C compositing-1). */
+export const exclusionBase = (cb: number, cs: number): number => cb + cs - 2 * cb * cs;
+
+/** `exclusion(color1, color2)` — Photoshop exclusion blend. Byte-faithful to `less/exclusion`. */
+export const exclusion: NativeFn = {
+  name: 'exclusion',
+  params: [{ kinds: ['color'] }, { kinds: ['color'] }],
+  body: (c1, c2) => colorBlend(exclusionBase, c1 as Color, c2 as Color),
+};

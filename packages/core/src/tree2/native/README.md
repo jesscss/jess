@@ -18,8 +18,11 @@ against that adapter (the oracle) in
   `min`/`max` see the real elements), `verbatimCall`, and the Less-4.x `minMax`
   reducer. A fn marked `variadic: true` (in its `FnSpec`) receives the whole arg
   `List` (items + separator) instead of positionally-bound params.
-- **`color-helper.ts`** — the shared color kernels (`mixColors`, `getLuma`,
-  `toHsv`) the color mixers/readers reduce to. The hsl adjusters instead reduce to
+- **`color-helper.ts`** — the shared color kernels (`mixColors`, `colorBlend`,
+  `getLuma`, `toHsv`) the color mixers/blend-modes/readers reduce to. Each
+  Photoshop-style blend fn (`multiply`/`screen`/`overlay`/…) is a one-liner over
+  `colorBlend` + its per-channel `mode` (overlay reuses multiply+screen, hardlight
+  reuses overlay). The hsl adjusters instead reduce to
   a `[h,s,l]` tweak → `makeColorHsl(...)` one-liner over the value-factory. A named
   color reaches these fns as a materialized `Color` via `tree2/color-names.ts`.
 - **`types.ts`** — the `NativeFn` / `FnSpec` / `ParamSpec` contract.

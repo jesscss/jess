@@ -23,7 +23,10 @@ import { buildEvaluator } from '../value-eval.js';
  * (`fade`/`fadein`/`fadeout`), mixers (`mix`/`tint`/`shade`), channel getters
  * (`red`/`green`/`blue`/`alpha`), hsl/hsv/luma readers, and `contrast` — plus
  * NAMED-COLOR operands (now materialized to a `Color` via the shared color-name
- * table) and CHAINED hsl ops (hsl source-of-truth carry, the drift guard).
+ * table), the BLEND modes (`multiply`/`screen`/`overlay`/`softlight`/`hardlight`/
+ * `difference`/`exclusion`/`average`/`negation` — two colors → color over the
+ * W3C compositing-1 `colorBlend` kernel), and CHAINED hsl ops (hsl source-of-truth
+ * carry, the drift guard).
  *
  * COVERED by the Tier-B batch (native ≡ adapter): the color CONSTRUCTORS
  * (`rgb`/`rgba`/`hsl`/`hsla`/`hsv`/`hsva`/`argb`) + `color()` on a color arg — they
@@ -224,6 +227,23 @@ const CORPUS: Array<[string, string]> = [
   ['fn-contrast-custom', '.a { color: contrast(#333333, #111111, #eeeeee); }\n'],
   ['fn-contrast-threshold', '.a { color: contrast(#777777, black, white, 30%); }\n'],
   ['fn-contrast-named', '.a { color: contrast(darkslategray); }\n'],
+
+  // --- blend modes (two colors → color; per-channel W3C compositing-1 kernel).
+  //     native ≡ adapter (adapter's blend math is correct); output also verified
+  //     against real Less 4.6.7. overlay/hardlight exercise the multiply+screen
+  //     reuse; alpha cases exercise the compositing wrapper (ar != 1). ---
+  ['fn-multiply', '.a { color: multiply(#ff6600, #3366cc); }\n'],
+  ['fn-screen', '.a { color: screen(#ff6600, #3366cc); }\n'],
+  ['fn-overlay', '.a { color: overlay(#ff6600, #3366cc); }\n'],
+  ['fn-overlay-alpha', '.a { color: overlay(rgba(255, 102, 0, 0.5), #3366cc); }\n'],
+  ['fn-softlight', '.a { color: softlight(#ff6600, #3366cc); }\n'],
+  ['fn-hardlight', '.a { color: hardlight(#ff6600, #3366cc); }\n'],
+  ['fn-difference', '.a { color: difference(#ff6600, #3366cc); }\n'],
+  ['fn-difference-alpha', '.a { color: difference(#996633, rgba(51, 102, 204, 0.4)); }\n'],
+  ['fn-exclusion', '.a { color: exclusion(#ff6600, #3366cc); }\n'],
+  ['fn-average', '.a { color: average(#ff6600, #3366cc); }\n'],
+  ['fn-negation', '.a { color: negation(#ff6600, #3366cc); }\n'],
+  ['fn-multiply-named', '.a { color: multiply(orange, steelblue); }\n'],
 
   // --- CHAINED hsl ops (hsl source-of-truth carry; drift guard) ---
   ['fn-chain-lighten-desaturate', '.a { color: lighten(desaturate(#3498db, 20%), 10%); }\n'],
