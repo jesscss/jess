@@ -51,7 +51,12 @@ describe('tree2 bridge — real corpus census', () => {
       }
       let bridged;
       try {
-        bridged = bridgeToTree2(parsed.tree, src);
+        // Pass the fixture's absolute path as `filePath` so `@import`
+        // resolves relative to the source file — matching the product path
+        // (`compiler.render(path.resolve(sourceArg), …)`). Without it, imports
+        // resolve against the vitest cwd and fail spuriously as
+        // `import:unresolved`, a harness artifact rather than an engine gap.
+        bridged = bridgeToTree2(parsed.tree, src, file);
       } catch (e) {
         if (e instanceof UnsupportedShape) {
           const key = e.feature === 'statement' ? `statement:${e.detail}` : e.feature;

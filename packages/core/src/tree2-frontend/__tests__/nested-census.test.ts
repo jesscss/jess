@@ -51,7 +51,10 @@ describe('R0 — nested corpus census', () => {
       if (parsed.errors.length > 0) continue;
       let tree2Root;
       try {
-        tree2Root = bridgeToTree2(parsed.tree, src);
+        // Pass the fixture's absolute path as `filePath` so `@import`
+        // resolves relative to the source file (matches the product path),
+        // instead of failing spuriously against the vitest cwd.
+        tree2Root = bridgeToTree2(parsed.tree, src, file);
       } catch (e) {
         if (!(e instanceof UnsupportedShape)) throw e;
         continue;
