@@ -969,6 +969,34 @@ export function createEngine(): JessLanguageServiceEngine {
     return { doc: tracked.document, tree };
   }
 
+  // Collect declared CSS custom properties (`--name:`) from a document and all of
+  // its transitive imports, for `var()` completion. Text-mined (cheap + tolerant);
+  // custom properties are a flat global namespace, so cross-import merge is exact.
+  function collectCustomProps(startUri: string): Set<string> {
+    const props = new Set<string>();
+    const visited = new Set<string>();
+    const walk = (uri: string) => {
+      if (visited.has(uri)) {
+        return;
+      }
+      visited.add(uri);
+      const tracked = docs.get(uri) ?? importedDocs.get(uri);
+      if (tracked) {
+        const re = /(--[-\w]+)\s*:/g;
+        const src = tracked.document.getText();
+        let m: RegExpExecArray | null;
+        while ((m = re.exec(src)) !== null) {
+          props.add(m[1]!);
+        }
+      }
+      for (const imported of importGraph.get(uri) ?? []) {
+        walk(imported);
+      }
+    };
+    walk(startUri);
+    return props;
+  }
+
   // Helper: find a symbol's definition across documents (current doc first, then
   // its imports, depth-first with cycle detection) off the tolerant CST.
   function findDefinitionAcrossDocs(targetUri: string, target: CstSymbol, visited: Set<string>): Location | null {
@@ -1181,6 +1209,24 @@ export function createEngine(): JessLanguageServiceEngine {
         }
         if (items.length > 0) {
           return { isIncomplete: false, items };
+        }
+      }
+
+      // 0a2) `var(…)` custom-property completion, mined across the document AND its
+      //      transitive imports (custom props are a flat global namespace).
+      {
+        const lineStart = text.lastIndexOf('\n', offset - 1) + 1;
+        const lineBefore = text.slice(lineStart, offset);
+        if (/var\(\s*(?:--[-\w]*)?$/i.test(lineBefore)) {
+          for (const name of collectCustomProps(uri)) {
+            if (prefix && !name.toLowerCase().startsWith(prefix)) {
+              continue;
+            }
+            push(name, CompletionItemKind.Variable);
+          }
+          if (items.length > 0) {
+            return { isIncomplete: false, items };
+          }
         }
       }
 
