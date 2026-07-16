@@ -1,26 +1,22 @@
 import { describe, it, expect } from 'vitest';
-import * as fs from 'fs';
-import * as path from 'path';
-import { execFileSync } from 'child_process';
 import { parseLessFn } from '@jesscss/less-parser';
 import { serialize, composeStats } from '../../tree2/index.js';
 import { bridgeToTree2, UnsupportedShape } from '../bridge.js';
 import { buildValueService } from '../value-service.js';
+import { expectedCss, fixtureLess } from '../oracle-source.js';
 
 /**
  * R1 extend — byte-identity against the ORACLE (less.js `alpha` branch,
  * TOP-LEVEL `.css` goldens, read READ-ONLY via `git show`). Alpha's top-level
- * output is the Jess-v5 `:is()`-compacted nested form.
+ * output is the Jess-v5 `:is()`-compacted nested form, so NESTED mode is the
+ * byte-identity gate; flatten mode is a downstream projection with no independent
+ * alpha golden (it matches only for fixtures whose alpha `.css` has no nesting).
  *
- * The 7 extend fixtures are rendered through tree2 in flatten + nested modes and
- * compared to the alpha golden. This test asserts only the CONFIRMED-matching
- * subset (so the suite stays green as the remaining nested-child-flatten work
- * lands) and logs the full per-fixture/per-mode result for the record.
+ * Both input `.less` and expected `.css` are fetched ONLY through the fixed-path
+ * oracle helper (`oracle-source.ts`) — no test hand-picks a golden. See
+ * `docs/future/core-architecture/ORACLE.md`.
  */
 
-const LESS_REPO = path.join(process.env.HOME ?? '', 'git/oss/less.js');
-const FIXTURE_ROOT =
-  '/Users/matthew/git/worktrees/less.js/alpha-release-port/packages/test-data/tests-unit';
 const NAMES = [
   'extend',
   'extend-chaining',
@@ -31,26 +27,14 @@ const NAMES = [
   'extend-selector',
 ];
 
-function alphaGolden(name: string): string | null {
-  try {
-    return execFileSync(
-      'git',
-      ['-C', LESS_REPO, 'show', `alpha:packages/test-data/tests-unit/${name}/${name}.css`],
-      { encoding: 'utf8' },
-    );
-  } catch {
-    return null;
-  }
-}
-
-// Confirmed byte-identical to alpha today (both flatten + nested).
-const CONFIRMED_BOTH = new Set(['extend-chaining', 'extend-media']);
+// Confirmed byte-identical to alpha's nested top-level golden.
+const CONFIRMED_NESTED = new Set(['extend-chaining', 'extend-media']);
 
 describe('R1 extend — byte-identity vs less.js alpha top-level', () => {
   it('renders the 7 extend fixtures and matches the confirmed subset', async () => {
     const report: string[] = [];
     for (const name of NAMES) {
-      const src = fs.readFileSync(path.join(FIXTURE_ROOT, name, `${name}.less`), 'utf8');
+      const src = fixtureLess(name);
       let root;
       try {
         root = bridgeToTree2(parseLessFn(src).tree, src);
@@ -64,11 +48,11 @@ describe('R1 extend — byte-identity vs less.js alpha top-level', () => {
       const svc = await buildValueService(root);
       const flat = serialize(root, { valueService: svc, collapseNesting: true }).css;
       const nested = serialize(root, { valueService: svc, collapseNesting: false }).css;
-      const gold = alphaGolden(name);
-      const fm = gold !== null && flat === gold;
-      const nm = gold !== null && nested === gold;
+      const gold = expectedCss(name);
+      const fm = flat === gold;
+      const nm = nested === gold;
       report.push(`${name}: flat=${fm ? 'MATCH' : 'diff'} nested=${nm ? 'MATCH' : 'diff'}`);
-      if (CONFIRMED_BOTH.has(name)) {
+      if (CONFIRMED_NESTED.has(name)) {
         expect(nested, `${name} nested must match alpha`).toBe(gold);
       }
     }
@@ -77,7 +61,7 @@ describe('R1 extend — byte-identity vs less.js alpha top-level', () => {
   });
 
   it('extend-nest builds with ZERO node cloning (composeStats has no clone op)', async () => {
-    const src = fs.readFileSync(path.join(FIXTURE_ROOT, 'extend-nest', 'extend-nest.less'), 'utf8');
+    const src = fixtureLess('extend-nest');
     const root = bridgeToTree2(parseLessFn(src).tree, src);
     const stats = composeStats(root, await buildValueService(root));
     // tree2 never clones/inherits/withComponents by construction; composeStats
