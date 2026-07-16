@@ -896,9 +896,20 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
         finalRules.hasMergeOutputSurface = true;
       }
     }
-    this.attachConfiguredVarBindings(finalRules, additiveVariableNodes);
+    // The imported module surface holds the composed-in members (mixins, rulesets,
+    // decls). Nested as a child of the boundary result surface, its public callables
+    // were previously reached only via the `directChildRuleEntries` descent
+    // (`findMixinsFastForUncoveredCallable`). Mark it as inlining its members to the
+    // parent so `linkInlineImportFallbackFrames` (run when the frame is built below)
+    // chains it as `finalRules`'s fallback frame — unifying it with the plain/`@import`
+    // inline model so the callable lookup resolves imported (guarded) mixins on the
+    // frame fallback chain and retires that descent. It must be adopted BEFORE the
+    // frame is built so the inline-import link is wired. Members stay behind the outer
+    // `importBoundary`.
+    importedRules.options.inlinesMembersToParent = true;
     finalRules.adopt(importedRules);
     finalRules.rules.push(importedRules);
+    this.attachConfiguredVarBindings(finalRules, additiveVariableNodes);
     if (hasCarriedMergeOutputSurface(importedRules)) {
       finalRules.hasMergeOutputSurface = true;
     }

@@ -1729,6 +1729,23 @@ describe('Style import', () => {
     it('keeps child-surface additive "with" configs visible to imported guarded mixins', async () => {
       const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
       const directChildSurfaceBridges: string[] = [];
+      // The imported guarded mixin now resolves on the result-surface fallback
+      // frame chain (the imported module surface is linked as an inline-member
+      // fallback), so the `findMixinsFastForUncoveredCallable` child-surface
+      // descent is retired for it. Assert it never fires (was 4 calls pre-slice).
+      type UncoveredCallableProbe = (
+        this: unknown,
+        key: string,
+        reason: unknown,
+        includeRulesets: boolean,
+        options: unknown,
+        rulesetsOnly?: boolean
+      ) => unknown;
+      const uncoveredCallableView = RulesClass.prototype as unknown as {
+        findMixinsFastForUncoveredCallable: UncoveredCallableProbe;
+      };
+      const originalFindUncovered = uncoveredCallableView.findMixinsFastForUncoveredCallable;
+      let guardedChildSurfaceDescents = 0;
       const libraryPath = resolve(process.cwd(), 'library-child-surface-guarded-mixin.jess');
       context.sourceTrees.set(libraryPath, rules([
         mixin({
@@ -1804,6 +1821,19 @@ describe('Style import', () => {
         }
         return originalFindMixinsFast.apply(this, args);
       };
+      uncoveredCallableView.findMixinsFastForUncoveredCallable = function(
+        this: unknown,
+        key: string,
+        reason: unknown,
+        includeRulesets: boolean,
+        options: unknown,
+        rulesetsOnly?: boolean
+      ) {
+        if (key === '.guarded-child-surface') {
+          guardedChildSurfaceDescents++;
+        }
+        return originalFindUncovered.call(this, key, reason, includeRulesets, options, rulesetsOnly);
+      };
 
       try {
         const css = await renderNodeToString(node, context, { context });
@@ -1814,8 +1844,10 @@ describe('Style import', () => {
         expect(css).toContain('border-color: purple;');
         expect(css).not.toContain('.light {\n  color: red;');
         expect(directChildSurfaceBridges).toEqual([]);
+        expect(guardedChildSurfaceDescents).toBe(0);
       } finally {
         RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        uncoveredCallableView.findMixinsFastForUncoveredCallable = originalFindUncovered;
       }
     });
 
