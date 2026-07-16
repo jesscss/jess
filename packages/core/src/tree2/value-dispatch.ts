@@ -10,7 +10,7 @@
  * HARD MODULE BOUNDARY: value domain + native fns only.
  */
 import type { List, ValueObj } from './value-eval.js';
-import type { FnSpec } from './native/types.js';
+import type { FnSpec, NativeCtx } from './native/types.js';
 import { NATIVE_FN_LIST } from './native/index.js';
 
 /** name → spec, assembled from the per-fn modules (names are lower-case). */
@@ -38,14 +38,16 @@ function bind(name: string, spec: FnSpec, args: readonly ValueObj[]): ValueObj[]
 export const hasNativeFn = (name: string): boolean => TABLE.has(name.toLowerCase());
 
 /**
- * Dispatch a native Tier-A call by name over the typed arg `List`. A VARIADIC fn
- * receives the whole `List` (items + separator) so a list / rest fn can recover
- * the real elements; a positional fn binds `list.items` by kind as before.
+ * Dispatch a native call by name over the typed arg `List`. A VARIADIC fn
+ * receives the whole `List` (items + separator) plus the minimal {@link NativeCtx}
+ * (modes + the value→string host hook) so a list / rest fn can recover the real
+ * elements and a context-sensitive Tier-B fn can serialize / read the separator;
+ * a positional fn binds `list.items` by kind and needs no context.
  */
-export function dispatchNative(name: string, list: List): ValueObj {
+export function dispatchNative(name: string, list: List, ctx: NativeCtx): ValueObj {
   const spec = TABLE.get(name.toLowerCase());
   if (!spec) throw new Error(`no native fn: ${name}`);
-  if (spec.variadic) return spec.body(list);
+  if (spec.variadic) return spec.body(list, ctx);
   return spec.body(...bind(name, spec, list.items));
 }
 

@@ -77,6 +77,20 @@ import { hsvsaturation } from './hsvsaturation.js';
 import { hsvvalue } from './hsvvalue.js';
 // --- color: luma-threshold pick ---
 import { contrast } from './contrast.js';
+// --- color: constructors / string producers (Tier-B — need modern-syntax /
+//     serialize context; overloaded arity → variadic) ---
+import { rgb } from './rgb.js';
+import { rgba } from './rgba.js';
+import { hsl } from './hsl.js';
+import { hsla } from './hsla.js';
+import { hsv } from './hsv.js';
+import { hsva } from './hsva.js';
+import { argb } from './argb.js';
+import { color } from './color.js';
+// --- string producers (Tier-B — need the value→string serialize hook) ---
+import { replace } from './replace.js';
+import { format } from './format.js';
+import { escape } from './escape.js';
 // --- misc ---
 import { e } from './e.js';
 
@@ -93,6 +107,8 @@ export const NATIVE_FN_LIST: readonly NativeFn[] = [
   hue, saturation, lightness, luma, luminance,
   hsvhue, hsvsaturation, hsvvalue,
   contrast,
+  rgb, rgba, hsl, hsla, hsv, hsva, argb, color,
+  replace, format, escape,
   e,
 ];
 

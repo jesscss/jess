@@ -25,8 +25,16 @@ import { buildEvaluator } from '../value-eval.js';
  * NAMED-COLOR operands (now materialized to a `Color` via the shared color-name
  * table) and CHAINED hsl ops (hsl source-of-truth carry, the drift guard).
  *
- * SCOPED OUT (Tier-B — need the serializer/eval CONTEXT or produce strings):
- * `rgb()`/`hsl()`/`hsla()`/`rgba()` CONSTRUCTORS, `argb`, `color()` string parsing.
+ * COVERED by the Tier-B batch (native ≡ adapter): the color CONSTRUCTORS
+ * (`rgb`/`rgba`/`hsl`/`hsla`/`hsv`/`hsva`/`argb`) + `color()` on a color arg — they
+ * thread the minimal eval-context seam (modes + a value→string host hook) through
+ * `dispatchNative`. The STRING PRODUCERS (`replace`/`%`/`escape`) and `color("…")`
+ * string parsing are asserted native = Less 4.x in their own block below (the
+ * adapter is provably wrong on quoted args — see that block's header).
+ *
+ * SCOPED OUT (Tier-C — need file IO / a ruleset value-kind / lazy thunks):
+ * `data-uri`, `image-size`/`image-width`/`image-height`, `svg-gradient`,
+ * `isruleset`/`isdefined`/`iif`.
  */
 
 async function render(src: string, native: boolean): Promise<string> {
@@ -224,6 +232,31 @@ const CORPUS: Array<[string, string]> = [
   ['fn-chain-greyscale-named', '.a { color: lighten(greyscale(tomato), 5%); }\n'],
   ['fn-chain-hue-of-spin', '.a { m: hue(spin(#ff0000, 40)); }\n'],
 
+  // --- converted COLOR CONSTRUCTORS (Tier-B) — native ≡ adapter (v5 preserves the
+  //     `rgb()`/`hsl()` output FORMAT rather than collapsing to hex like Less 4.x;
+  //     that hex-vs-format divergence is the INTENDED v5 behavior the adapter also
+  //     produces, so the differential holds native ≡ adapter here). ---
+  ['fn-rgb-ints', '.a { color: rgb(255, 0, 0); }\n'],
+  ['fn-rgb-modern', '.a { color: rgb(255 0 0); }\n'],
+  ['fn-rgb-modern-alpha', '.a { color: rgb(255 0 0 / 0.5); }\n'], // modern `rgb( / )` syntax
+  ['fn-rgba-ints', '.a { color: rgba(255, 0, 0, 0.5); }\n'],
+  ['fn-rgb-from-color', '.a { color: rgb(#ff0000); }\n'],
+  ['fn-rgb-from-named', '.a { color: rgb(red); }\n'], // named-color arg (4x → #ff0000)
+  ['fn-rgba-from-color-alpha', '.a { color: rgba(#123456, 0.4); }\n'],
+  ['fn-hsl', '.a { color: hsl(120, 50%, 50%); }\n'],
+  ['fn-hsla', '.a { color: hsla(120, 50%, 50%, 0.5); }\n'],
+  // FLAG: the GREY canonical branch — native ≡ adapter emit `hsl(0, 0%, 50.19607843%)`
+  // (rounds 127.5→128 then recomputes hsl). Less 4.x emits `hsl(0, 0%, 50%)`; the
+  // native path matches the v5 adapter (owner may want to reconcile the fns impl).
+  ['fn-hsl-grey-canonical', '.a { color: hsl(120, 0%, 50%); }\n'],
+  ['fn-hsl-from-color', '.a { color: hsl(#80a0c0); }\n'],
+  ['fn-hsla-from-color-alpha', '.a { color: hsla(#80a0c0, 0.5); }\n'],
+  ['fn-hsv-hex', '.a { color: hsv(90, 100%, 50%); }\n'], // hsv → HEX format
+  ['fn-hsva-rgb', '.a { color: hsva(90, 100%, 50%, 0.5); }\n'],
+  ['fn-argb', '.a { color: argb(rgba(90, 23, 148, 0.5)); }\n'],
+  ['fn-color-named-arg', '.a { color: color(red); }\n'], // Color naming a CSS color → hex
+  ['fn-color-hex-arg', '.a { color: color(#abc); }\n'], // verbatim hex passes through
+
   // --- unknown fn (verbatim) ---
   ['unknown-fn', '.a { filter: some-unknown(1px, 2px); }\n'],
   ['unknown-fn-solo', '.a { transform: rotate3d(1, 1, 1); }\n'],
@@ -315,6 +348,55 @@ describe('[tree2] native list / variadic fns — vs Less 4.6.7 (adapter diverges
     ['min-pct-px', '.a { m: min(50%, 40px, 30%); }\n', 'm: min(50%, 40px, 30%)'], // adapter: min(30%, 40px)
     ['min-var-list', '@l: 1px 5px 3px;\n.a { m: min(@l); }\n', 'm: 1px'], // adapter: THROWS
     ['min-space-arg', '.a { m: min(1px 2px, 3px); }\n', 'm: 1px'], // adapter: THROWS
+  ];
+
+  for (const [name, src, want] of LESS4X) {
+    it(`native = Less 4.x: ${name}`, async () => {
+      const css = await render(src, true);
+      expect(css).toContain(want);
+    });
+  }
+});
+
+/**
+ * STRING PRODUCERS + quoted `color()` (`replace`/`%`/`escape`/`color("…")`) — the
+ * `@jesscss/fns` ADAPTER is PROVABLY WRONG here, so real Less 4.6.7 is the oracle.
+ * The adapter reconstructs a legacy `Quoted` whose class identity differs across
+ * the built-vs-source module boundary, so `serializeNodeValue`'s `instanceof Quoted`
+ * misses → it renders WITH quotes (doubling / URL-encoding them), throws on a
+ * quoted-`RegExp`-flag arg, and its `color()` rejects every quoted string. The
+ * native path serializes through the injected `ctx.stringify` hook (a Quoted's
+ * inner text) and matches Less 4.x. Each case notes the adapter's wrong output.
+ *
+ * NOTE: a `%("literal", …)` template is LOWERED to interpolation by the less-parser
+ * (it never reaches the fn), so `%`'s fn body is exercised via a VARIABLE template
+ * (`@t: "%d"; %(@t, …)`), the shape that actually dispatches.
+ */
+describe('[tree2] native string producers — vs Less 4.6.7 (adapter diverges)', () => {
+  const LESS4X: Array<[string, string, string]> = [
+    // color("…") — adapter THROWS on every quoted arg (see note); native parses it.
+    ['color-named-string', '.a { m: color("red"); }\n', 'm: #ff0000'], // adapter: THROWS
+    ['color-mixedcase-named', '.a { m: color("BlueViolet"); }\n', 'm: #8a2be2'], // adapter: THROWS
+    ['color-hex3-string', '.a { m: color("#fff"); }\n', 'm: #fff'], // adapter: THROWS
+    ['color-hex4-string', '.a { m: color("#abcd"); }\n', 'm: #abcd'], // adapter: THROWS
+
+    // replace — adapter doubles the quotes / drops the match; throws on a flag arg.
+    ['replace-quoted-escaped-pat', '.a { m: replace("Hello, Mars?", "Mars\\?", "Earth!"); }\n', 'm: "Hello, Earth!"'], // adapter: ""Hello, Mars?""
+    ['replace-escaped-input-bare', '.a { m: replace(~"Hello", "H", "J"); }\n', 'm: Jello'], // adapter: Hello
+    ['replace-global-flag', '.a { m: replace("hello", "l", "L", "g"); }\n', 'm: "heLLo"'], // adapter: THROWS
+    ['replace-var-pattern', '@p: "l";\n.a { m: replace("hello", @p, "L"); }\n', 'm: "heLlo"'], // adapter: ""hello""
+
+    // % / format — via a VARIABLE template (literal templates are parser-lowered).
+    // adapter re-quotes the template (`""5 apples""`) or throws.
+    ['format-d-number', '@t: "%d apples";\n.a { m: %(@t, 5); }\n', 'm: "5 apples"'], // adapter: ""5 apples""
+    ['format-s-string', '@t: "val %s";\n.a { m: %(@t, "x"); }\n', 'm: "val x"'], // adapter: ""val "x"""
+    ['format-d-quoted-keeps-quotes', '@t: "%d";\n.a { m: %(@t, "hi"); }\n', 'm: ""hi""'], // %d = CSS form
+    ['format-leftover-token', '@t: "%s %s";\n.a { m: %(@t, "a"); }\n', 'm: "a %s"'],
+    ['format-double-percent', '@t: "100%% x %s";\n.a { m: %(@t, "y"); }\n', 'm: "100% x y"'],
+
+    // escape — adapter encodes the surrounding quotes too (`%22…%22`).
+    ['escape-eq', '.a { m: escape("a=1"); }\n', 'm: a%3D1'], // adapter: %22a%3D1%22
+    ['escape-space-amp', '.a { m: escape("a b&c"); }\n', 'm: a%20b&c'], // adapter: %22a%20b&c%22
   ];
 
   for (const [name, src, want] of LESS4X) {

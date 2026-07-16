@@ -27,6 +27,14 @@ function verbatimArgs(args: ValueList): string {
 }
 
 /**
+ * The value→string host hook supplied to native Tier-B fns — the tree2 twin of
+ * legacy `serializeNodeValue`: a Quoted's INNER text (unquoted; escaped `~"…"`
+ * already arrives as a `Keyword` whose bytes ARE the inner text), any other value
+ * its canonical emitted bytes. Boundary-clean (operates on the value domain only).
+ */
+const stringify = (v: ValueObj): string => (v.kind === 'quoted' ? v.value : v.bytes);
+
+/**
  * Build the native synchronous typed `ValueEvaluator`. No pre-pass: values are
  * computed on demand during the single serialize walk.
  */
@@ -37,8 +45,8 @@ export function buildNativeEvaluator(): ValueEvaluator {
   const operate = (op: string, left: ValueObj, right: ValueObj, modes: EvalModes): ValueObj =>
     nativeOperate(op, left, right, modes);
 
-  const call = (name: string, args: ValueList, _modes: EvalModes): ValueObj => {
-    if (hasNativeFn(name)) return dispatchNative(name, args);
+  const call = (name: string, args: ValueList, modes: EvalModes): ValueObj => {
+    if (hasNativeFn(name)) return dispatchNative(name, args, { modes, stringify });
     // Unknown function: emit verbatim (byte-identical to the adapter).
     return makeKeyword(`${name}(${verbatimArgs(args)})`);
   };
