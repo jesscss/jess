@@ -1,5 +1,37 @@
 # R1 EXTEND — status + handoff (tree2 rewrite)
 
+## UPDATE — both engine gaps CLOSED; extend fully landed (this session)
+
+All resolvable extend fixtures are byte-identical in their configured mode and
+`extend-selector` cleanly defers (`UnsupportedShape`). The two KNOWN GAPs are
+fixed and the `it.fails` trackers were promoted to real passing assertions:
+
+- **extend-nest (FLAT)** — MATCHES alpha. Two fixes in `tree2/extend.ts`:
+  (1) the extended FLAT header now runs through `siblingCompact`
+  (`.button:hover, .submit:hover` → `:is(.button, .submit):hover`);
+  (2) `substituteAmp` now wraps a MULTI-SEGMENT parent in `:is(…)` when the `&`
+  is fused into a compound (`.amp-test-f:is(.amp-test-c …)`), instead of fusing
+  the parent bare.
+- **extend-exact (NESTED)** — MATCHES the proposed correction. Fix: a decl-less
+  parent whose only child is a pure-`&` self-compound (`.e { && {…} }`) is now a
+  TRANSPARENT collapse (`collapseTransparent` in the nested plan) — the child is
+  emitted at the parent's level with `&` composed against the parent (`.e.e`) and
+  behaves like a top-level rule (exact `.dbl:extend(.e.e)` folds/splits against
+  the composed `.e.e`, splitting `.dbl` because `.e.e` has the surviving `&:hover`
+  child). Blocks 3/4/5 are alpha's exact-into-children bug → gated against
+  `proposed-alpha-corrections/extend-exact.css` (emitted this session), NOT
+  alpha's buggy bytes.
+
+Final matrix (all green in `extend-byte-identity.test.ts`): extend-chaining FLAT
+MATCH alpha, extend-clearfix FLAT MATCH alpha, extend-media NESTED MATCH alpha,
+extend-nest FLAT MATCH alpha, extend NESTED MATCH corrected, extend-exact NESTED
+MATCH corrected, extend-selector DEFERRED. Full tree2 suite green (166 passed, 1
+skipped). clone/inherit/withComponents stay structurally ZERO; no `src/tree2` →
+`../tree` import; no `as any`. The R1 branch was committed and the cleanroom head
+`experiment/tree2-cleanroom-20260715` fast-forwarded.
+
+---
+
 Branch: `experiment/tree2-r1-extend-20260715`. Oracle: less.js `alpha` TOP-LEVEL
 `.css`, read-only via `git show` (see `ORACLE.md`). This doc SUPERSEDES the
 oracle wording in `_R1_IMPL_BRIEF.md` (that brief gated on `renderRealOracle`,

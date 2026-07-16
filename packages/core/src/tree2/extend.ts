@@ -172,19 +172,39 @@ function prefixDescendant(child: Branch): Branch {
   return { segs };
 }
 
-/** Substitute every `&` text token in `child` with the parent's rendered text. */
+/**
+ * Substitute every `&` text token in `child` with the parent selector. When the
+ * parent is a MULTI-SEGMENT complex (a descendant selector such as `.a .b`) and
+ * the `&` is FUSED into a compound alongside other simples, the parent is wrapped
+ * in `:is(...)` so the compound stays a single element target (`.f&` under `.a .b`
+ * → `.f:is(.a .b)`, not `.f.a .b`). A standalone `&` (the whole compound) or a
+ * single-compound parent substitutes the parent's bare text.
+ */
 function substituteAmp(child: Branch, parent: Branch): Branch {
   const parentStr = branchText(parent);
-  const segs = child.segs.map((seg) => ({
-    comb: seg.comb,
-    compound: {
-      simples: seg.compound.simples.map((s): Simple =>
-        s.t === 'text' && s.text.includes('&')
-          ? { t: 'text', text: s.text.split('&').join(parentStr) }
-          : cloneSimple(s),
-      ),
-    },
-  }));
+  const parentMultiSeg = parent.segs.length > 1;
+  const segs = child.segs.map((seg) => {
+    const fused = seg.compound.simples.length > 1;
+    const wrap = parentMultiSeg && fused;
+    const simples: Simple[] = [];
+    for (const s of seg.compound.simples) {
+      if (s.t === 'text' && s.text.includes('&')) {
+        if (wrap) {
+          // Splice `:is(parent)` in place of each `&`, preserving any fused text.
+          const parts = s.text.split('&');
+          for (let i = 0; i < parts.length; i++) {
+            if (parts[i]!.length > 0) simples.push({ t: 'text', text: parts[i]! });
+            if (i < parts.length - 1) simples.push(isSimple([parent]));
+          }
+        } else {
+          simples.push({ t: 'text', text: s.text.split('&').join(parentStr) });
+        }
+      } else {
+        simples.push(cloneSimple(s));
+      }
+    }
+    return { comb: seg.comb, compound: { simples } };
+  });
   return { segs };
 }
 
@@ -615,6 +635,12 @@ export interface NestedRulePlan {
   /** Sibling rules (target's direct decls only) to emit after this rule's block —
    * split-out exact extenders that cannot carry the rule's nested children. */
   splits: string[][];
+  /**
+   * A decl-less parent whose single child is a pure-`&` self-compound (`.e { &&
+   * {…} }`) is TRANSPARENT: it emits no wrapper of its own; the child is emitted
+   * at the parent's level with `&` composed against the parent (`&&` → `.e.e`).
+   */
+  collapseTransparent?: boolean;
 }
 
 export interface ExtendResults {
@@ -813,7 +839,10 @@ export function computeExtends(root: Root): ExtendResults | null {
     rawBySubject.set(s, raw);
     const flat = solveComposed(s, plan);
     flatBySubject.set(s, flat);
-    if (listKey(flat) !== listKey(raw)) flatByRule.set(s.rule, flat.map(branchText));
+    // A rule the extend engine actually changed emits its EXTENDED header with
+    // sibling `:is()`-compaction (`.button:hover, .submit:hover` →
+    // `:is(.button, .submit):hover`); an unchanged rule keeps its authored form.
+    if (listKey(flat) !== listKey(raw)) flatByRule.set(s.rule, siblingCompact(flat).map(branchText));
   }
 
   const reachingOf = (s: PlanSubject): PlanInstruction[] =>
@@ -822,6 +851,43 @@ export function computeExtends(root: Root): ExtendResults | null {
   const childrenOf = new Map<PlanSubject, PlanSubject[]>();
   for (const s of plan.subjects) {
     if (s.parent) (childrenOf.get(s.parent) ?? childrenOf.set(s.parent, []).get(s.parent)!).push(s);
+  }
+
+  // ---- decl-less `&&` self-collapse (`.e { && {…} }` → `.e.e { … }`) ----
+  // A decl-less parent whose ONLY emitting statement is a single child rule whose
+  // own-local is a pure-`&` self-compound (`&&`, `&&&`) is TRANSPARENT: it emits
+  // no wrapper; the child is emitted at the parent's level with `&` composed
+  // against the parent (so the child behaves like a top-level rule keyed on its
+  // COMPOSED complex). This is a general nested-emit collapse, gated tightly so it
+  // does not disturb ordinary nesting.
+  const collapsedParent = new Set<Rule>();
+  const collapsedChild = new Set<PlanSubject>();
+  const isPureAmpSelfCompound = (s: PlanSubject): boolean => {
+    if (s.ownLocal.length !== 1) return false;
+    const br = s.ownLocal[0]!;
+    if (br.segs.length !== 1) return false;
+    const simples = br.segs[0]!.compound.simples;
+    return simples.length >= 2 && simples.every((x) => x.t === 'text' && x.text === '&');
+  };
+  for (const p of plan.subjects) {
+    let onlyRule: Statement | null = null;
+    let bail = false;
+    for (const st of p.rule.body) {
+      if (st.kind === Kind.MixinDef || st.kind === Kind.VarDeclaration) continue;
+      if (st.kind === Kind.Rule && onlyRule === null) {
+        onlyRule = st;
+        continue;
+      }
+      bail = true; // a direct decl/comment/mixin-call/at-rule, or a second rule
+      break;
+    }
+    if (bail || onlyRule === null) continue;
+    const kids = childrenOf.get(p) ?? [];
+    if (kids.length !== 1) continue;
+    const c = kids[0]!;
+    if (c.rule !== onlyRule || !isPureAmpSelfCompound(c)) continue;
+    collapsedParent.add(p.rule);
+    collapsedChild.add(c);
   }
 
   /** The `all`-extender folds that alias a parent's whole complex (deterministic —
@@ -883,20 +949,26 @@ export function computeExtends(root: Root): ExtendResults | null {
       hoistHeader.set(s.rule, siblingCompact(flatBySubject.get(s)!).map(branchText));
       continue;
     }
-    const isTop = s.parent === null;
+    // A collapsed `&&` child is keyed on its COMPOSED complex, so it takes the
+    // top-level path (exact matches fold/split against the composed form, not the
+    // literal `&&`).
+    const asTop = s.parent === null || collapsedChild.has(s);
     const reaching = reachingOf(s);
     const survivors = hasSurvivingChild(s);
     let header: Branch[];
     const splits: Branch[] = [];
-    if (isTop) {
+    if (asTop) {
       // A top-level rule's header is its FULL flat solve (so transitive chaining +
       // sub-part substitution carry), minus any EXACT extender that folds into a
       // whole-complex match but cannot carry surviving nested children — those
-      // SPLIT to sibling rules with the target's direct declarations.
+      // SPLIT to sibling rules with the target's direct declarations. Match the
+      // exact target against the rule's COMPOSED complex (identical to own-local
+      // for a real top rule; the composed `.e.e` for a collapsed `&&` child).
+      const identity = rawBySubject.get(s)!;
       if (survivors) {
         for (const inst of reaching) {
           if (inst.partial) continue;
-          if (s.ownLocal.some((b) => branchText(b) === branchText(inst.target))) {
+          if (identity.some((b) => branchText(b) === branchText(inst.target))) {
             for (const e of composePath(inst.extenderPath)) splits.push(e);
           }
         }
@@ -922,6 +994,7 @@ export function computeExtends(root: Root): ExtendResults | null {
       flatten: false,
       header: header.map(branchText),
       splits: dedupBranchTexts(splits).map((t) => [t]),
+      collapseTransparent: collapsedParent.has(s.rule),
     });
   }
 

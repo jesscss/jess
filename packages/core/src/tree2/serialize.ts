@@ -700,6 +700,18 @@ function emitNestedLeaf(leaf: Leaf, e: Emit): void {
  */
 function emitNestedRule(rule: Rule, frame: Frame, e: Emit): void {
   const plan = e.extends?.nestedPlan.get(rule);
+  if (plan?.collapseTransparent) {
+    // [extend] decl-less `&&` self-collapse: emit the body (the pure-`&` child,
+    // which carries its composed header via its own plan) at THIS level, dropping
+    // this rule's wrapper.
+    const childFrame: Frame = {
+      parent: frame,
+      mixins: collectMixins(rule.body),
+      vars: collectVars(rule.body),
+    };
+    emitNestedBody(rule.body, childFrame, e);
+    return;
+  }
   if (plan?.flatten) {
     // Fallback (a top-level rule never flattens; a body-nested one is deferred by
     // emitNestedBody's hoist queue). Emit via the flat path with compaction.

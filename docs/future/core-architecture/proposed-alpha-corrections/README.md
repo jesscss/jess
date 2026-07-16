@@ -35,10 +35,20 @@ output and is byte-identical to alpha OUTSIDE the buggy region.
   hoists, etc.) is byte-identical to alpha and is included so the file is a
   drop-in golden.
 
-## Not yet proposed
+- `extend-exact.css` — corrects three exact-into-children instances:
+  - block 3 `.a { prop:is_effected; .b {…} .b.c {…} }` — `.effected:extend(.a)`
+    is exact and `.a` has children, so alpha's `.a, .effected { .b … }` (which
+    leaks `.effected .b`) becomes `.a { … }` PLUS separate
+    `.effected { prop:is_effected; }`.
+  - block 4 `.c, .a { .b, .a { .a, .c {…} } }` — extended by `.effected` (via
+    `.c` and `.a`) exact; the block has children and NO direct declarations, so
+    the split rule is empty and `.effected` is dropped entirely.
+  - block 5 `.e.e { prop:extend-double; &:hover {…} }` — `.dbl:extend(.e.e)` is
+    exact and `.e.e` has the surviving `&:hover` child, so alpha's
+    `.e.e, .dbl { …; &:hover {…} }` (which leaks `.dbl:hover`) becomes
+    `.e.e { … }` PLUS separate `.dbl { prop:extend-double; }`. The `.e.e` header
+    itself is the decl-less `&&` self-collapse (`.e { && {…} }` → `.e.e { … }`).
 
-- `extend-exact.css` — blocks 3/4 (the `.a` / `.c,.a` exact-into-children bug)
-  and block 1 (`.rep_ace` multi-segment) are already correct in tree2, but
-  block 5 (`.e.e` from `.e { && {} }`) needs a nested `&`-wrapper collapse that
-  tree2 does not yet implement, so a complete corrected `extend-exact.css` is
-  not emitted here. See `R1-EXTEND-HANDOFF.md`.
+  The rest of `extend-exact.css` (block 1's `.rep_ace` multi-segment +
+  `:is(.replace, .c)` compaction) is byte-identical to alpha and is included so
+  the file is a drop-in golden.

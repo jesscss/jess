@@ -74,7 +74,9 @@ const RESOLVED: Record<string, 'alpha' | 'corrected'> = {
   'extend-chaining': 'alpha', // FLAT
   'extend-clearfix': 'alpha', // FLAT
   'extend-media': 'alpha', // NESTED
+  'extend-nest': 'alpha', // FLAT — sibling `:is()`-compaction + amp `:is()`-wrap
   extend: 'corrected', // NESTED — alpha golden carries the exact-into-children bug
+  'extend-exact': 'corrected', // NESTED — alpha golden carries the exact-into-children bug (blocks 3/4/5)
 };
 
 /** Fixtures the bridge cleanly refuses (fail-loud `UnsupportedShape`). */
@@ -90,22 +92,7 @@ const DEFERRED_UNSUPPORTED = new Set([
  * fixed the assertion will PASS and `it.fails` will FAIL, forcing promotion into
  * `RESOLVED`. NOT clean deferrals — do NOT fast-forward while these remain.
  */
-const KNOWN_GAPS: Record<string, string> = {
-  // FLAT. Two residual gaps vs alpha golden:
-  //  (1) `.button:hover, .submit:hover` should sibling-`:is()`-compact to
-  //      `:is(.button, .submit):hover` (flat header not run through siblingCompact).
-  //  (2) the `.amp-test-*` mega-selector: a MULTI-PART extender spliced into a
-  //      fused compound position must be `:is()`-wrapped
-  //      (`.amp-test-f:is(.amp-test-c … .amp-test-e)`), not fused bare.
-  'extend-nest': 'flat :is()-wrap of multi-part / sibling-compacted extender',
-  // NESTED. Two residual gaps vs alpha golden:
-  //  (1) exact-extend-into-children: `.effected:extend(.a)` should merge to a
-  //      shared `.a, .effected { … }` header (alpha golden is itself buggy here;
-  //      needs a proposed-correction like `extend`).
-  //  (2) block 5 `.e { && { … } }` should collapse the nested `&&` to `.e.e`
-  //      and hoist to `.e.e, .dbl { … }`.
-  'extend-exact': 'nested exact-into-children merge + `&&` self-collapse',
-};
+const KNOWN_GAPS: Record<string, string> = {};
 
 const NAMES = [
   ...Object.keys(RESOLVED),
