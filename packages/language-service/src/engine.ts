@@ -403,9 +403,13 @@ function editDistance(a: string, b: string): number {
 // - Property values: from web custom data (properties have `values` arrays).
 const require = createRequire(import.meta.url);
 
-type AtDirectiveEntry = { name: string; description?: string | { value: string; kind?: string } };
-type PropertyEntry = { name: string; description?: string | { value: string; kind?: string }; values?: Array<{ name: string; description?: string | { value: string; kind?: string } }>; restrictions?: string[] };
-type PseudoEntry = { name: string; description?: string | { value: string; kind?: string } };
+// Shared enrichment fields carried by web-custom-data entries (used in hover).
+type MdnRef = { name: string; url: string };
+type Baseline = { status?: 'high' | 'low' | false; baseline_low_date?: string; baseline_high_date?: string };
+type Enrich = { syntax?: string; references?: MdnRef[]; baseline?: Baseline };
+type AtDirectiveEntry = { name: string; description?: string | { value: string; kind?: string } } & Enrich;
+type PropertyEntry = { name: string; description?: string | { value: string; kind?: string }; values?: Array<{ name: string; description?: string | { value: string; kind?: string } }>; restrictions?: string[] } & Enrich;
+type PseudoEntry = { name: string; description?: string | { value: string; kind?: string } } & Enrich;
 type WebCssData = {
   atDirectives?: AtDirectiveEntry[];
   properties?: PropertyEntry[];
@@ -461,6 +465,40 @@ for (const prop of webCssData.properties ?? []) {
 // Pseudo-class / -element names (leading `:` / `::` included by the data).
 const PSEUDO_CLASSES: string[] = (webCssData.pseudoClasses ?? []).map(p => p.name).filter(Boolean);
 const PSEUDO_ELEMENTS: string[] = (webCssData.pseudoElements ?? []).map(p => p.name).filter(Boolean);
+const PSEUDO_CLASSES_MAP = new Map<string, PseudoEntry>();
+const PSEUDO_ELEMENTS_MAP = new Map<string, PseudoEntry>();
+for (const p of webCssData.pseudoClasses ?? []) {
+  if (p.name) {
+    PSEUDO_CLASSES_MAP.set(p.name.toLowerCase(), p);
+  }
+}
+for (const p of webCssData.pseudoElements ?? []) {
+  if (p.name) {
+    PSEUDO_ELEMENTS_MAP.set(p.name.toLowerCase(), p);
+  }
+}
+
+/** Append MDN link + Baseline status + formal syntax to a hover, from the
+ * enrichment fields web-custom-data ships. Empty string when nothing to add. */
+function hoverExtras(entry: Enrich): string {
+  const parts: string[] = [];
+  if (entry.syntax) {
+    parts.push(`**Syntax:** \`${entry.syntax}\``);
+  }
+  const status = entry.baseline?.status;
+  if (status === 'high') {
+    parts.push('✓ Baseline: widely available');
+  } else if (status === 'low') {
+    parts.push('⚠ Baseline: newly available');
+  } else if (status === false) {
+    parts.push('⚠ Limited availability — not Baseline');
+  }
+  const mdn = entry.references?.find(r => /mdn/i.test(r.name));
+  if (mdn) {
+    parts.push(`[MDN Reference](${mdn.url})`);
+  }
+  return parts.length ? `\n\n${parts.join('  \n')}` : '';
+}
 
 // Value-completion vocab. CSS-wide keywords are valid for every property; the
 // rest are gated on the property's `restrictions`.
@@ -1261,9 +1299,37 @@ export function createEngine(): JessLanguageServiceEngine {
           return {
             contents: {
               kind: MarkupKind.Markdown,
-              value: `**${entry.name}**\n\n${desc}`
+              value: `**${entry.name}**\n\n${desc}${hoverExtras(entry)}`
             }
           };
+        }
+      }
+
+      // Pseudo-class / -element hover (the word is the ident after `:` / `::`).
+      {
+        const WB = ' \t\n\r":{[()]},*>+;}';
+        let s = offset - 1;
+        while (s >= 0 && WB.indexOf(text.charAt(s)) === -1) {
+          s--;
+        }
+        let colons = 0;
+        while (s >= 0 && text.charAt(s) === ':') {
+          colons++;
+          s--;
+        }
+        if (colons === 1 || colons === 2) {
+          const entry = colons === 2
+            ? PSEUDO_ELEMENTS_MAP.get(`::${word}`.toLowerCase())
+            : (PSEUDO_CLASSES_MAP.get(`:${word}`.toLowerCase()) ?? PSEUDO_ELEMENTS_MAP.get(`::${word}`.toLowerCase()));
+          if (entry?.description) {
+            const desc = typeof entry.description === 'string' ? entry.description : entry.description.value;
+            return {
+              contents: {
+                kind: MarkupKind.Markdown,
+                value: `**${entry.name}**\n\n${desc}${hoverExtras(entry)}`
+              }
+            };
+          }
         }
       }
 
@@ -1274,7 +1340,7 @@ export function createEngine(): JessLanguageServiceEngine {
         return {
           contents: {
             kind: MarkupKind.Markdown,
-            value: `**${propEntry.name}**\n\n${desc}`
+            value: `**${propEntry.name}**\n\n${desc}${hoverExtras(propEntry)}`
           }
         };
       }
