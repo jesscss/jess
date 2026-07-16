@@ -6,11 +6,53 @@
  *
  * HARD MODULE BOUNDARY: value domain only (no `../tree`, no legacy node).
  */
-import type { Color } from '../value-eval.js';
-import { RGB } from '../serialize-value.js';
-import { colorRawRgb, colorRgbRounded, makeColorRgb } from '../value-factory.js';
+import type { Color, Dimension, Keyword, Quoted, ValueObj } from '../value-eval.js';
+import { HEX, RGB, round, serializeColor } from '../serialize-value.js';
+import { colorHsl, colorRawRgb, colorRgbRounded, makeColorHsl, makeColorRgb, textOf } from '../value-factory.js';
+import { clamp01 } from './color-ctor-helper.js';
 
-const clamp01 = (v: number): number => Math.min(Math.max(v, 0), 1);
+/**
+ * Rebuild `c` re-tagged to `format`, recomputing its serialized bytes (mirrors
+ * `makeColorRgb`'s self-serialize). The reformat-to-input-format dance the
+ * format-preserving fns (`contrast`/`tint`/`shade`) share.
+ */
+export function reformatColor(c: Color, format: number): Color {
+  const base: Color = { ...c, format, bytes: '' };
+  return { ...base, bytes: serializeColor(base) };
+}
+
+/** Collapse a hair's-breadth-of-1 alpha (mix float drift) back to exactly 1. */
+export const snapAlpha = (a: number): number => (Math.abs(a - 1) < 1e-12 ? 1 : a);
+
+/**
+ * The one alpha-adjust kernel for `fade`/`fadein`/`fadeout`: rebuild `color` at
+ * `newAlpha`, rounded to Less's 8-decimal numeric precision (Less `fround`) so
+ * float drift emits `0.7`, not `0.7000000000000001`. A `#`-hex input keeps HEX
+ * format; anything else becomes RGB.
+ */
+export function withAlpha(color: Color, newAlpha: number): Color {
+  const node = color.node;
+  const preserveHex = color.format === HEX && typeof node === 'string' && node.startsWith('#');
+  return makeColorRgb(colorRawRgb(color), round(newAlpha, 8), preserveHex ? HEX : RGB, { modernSyntax: color.modernSyntax === true });
+}
+
+/**
+ * Factory for the four HSL single-channel adjusters (`lighten`/`darken` on `l`,
+ * `saturate`/`desaturate` on `s`). `channel` indexes `[h, s, l]`; `sign` adds or
+ * subtracts the amount. A `relative` method scales the delta by the current
+ * channel value. Preserves the input's alpha + output format.
+ */
+export function hslAdjust(channel: 1 | 2, sign: 1 | -1): (...args: ValueObj[]) => ValueObj {
+  return (c, amt, m) => {
+    const color = c as Color;
+    const hsl = colorHsl(color);
+    let adjust = (amt as Dimension).number / 100;
+    if (m !== undefined && textOf(m as Keyword | Quoted) === 'relative') adjust = hsl[channel] * adjust;
+    const out: [number, number, number] = [hsl[0], hsl[1], hsl[2]];
+    out[channel] += sign * adjust;
+    return makeColorHsl(out, color.alpha, color.format);
+  };
+}
 
 /**
  * Weighted blend of two colors (`mix`'s kernel; `tint`/`shade` are one-liners over

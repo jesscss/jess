@@ -21,7 +21,7 @@ export function makeHsl(list: List): Color {
   const modernSyntax = isModern(list);
   const first = items[0];
   if (items.length >= 3 && !isColor(first)) {
-    const h = ((normalizeHue(items[0] as Dimension) % 360) + 360) % 360;
+    const h = normalizeHue(items[0] as Dimension);
     const s = clamp01(percentOf(items[1] as Dimension, 1));
     const l = clamp01(percentOf(items[2] as Dimension, 1));
     const a = items[3] !== undefined ? percentOf(items[3] as Dimension, 1) : 1;

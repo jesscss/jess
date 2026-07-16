@@ -1,7 +1,7 @@
 import type { Color, Dimension } from '../value-eval.js';
 import { makeColorRgb } from '../value-factory.js';
-import { RGB, serializeColor } from '../serialize-value.js';
-import { getLuma } from './color-helper.js';
+import { RGB } from '../serialize-value.js';
+import { getLuma, reformatColor } from './color-helper.js';
 import type { NativeFn } from './types.js';
 
 /**
@@ -33,8 +33,6 @@ export const contrast: NativeFn = {
       const d = threshold as Dimension;
       thr = d.unit === '%' ? d.number / 100 : d.number;
     }
-    const out = getLuma(color) < thr ? lightC : darkC;
-    const rebuilt: Color = { ...out, format: color.format, bytes: '' };
-    return { ...rebuilt, bytes: serializeColor(rebuilt) };
+    return reformatColor(getLuma(color) < thr ? lightC : darkC, color.format);
   },
 };
