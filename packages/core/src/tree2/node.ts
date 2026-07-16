@@ -37,6 +37,16 @@ export enum Kind {
   // [atrule] block-bearing at-rule (`@media {…}`) + statement at-rule (`@charset …;`)
   AtRuleBlock = 19,
   AtRuleStatement = 20,
+  // [R4] interpolation template (`@{var}` / `~"…@{x}…"`) resolving to bytes.
+  Interp = 21,
+  // [R4] indirect variable (`@@name`): a variable whose NAME comes from another.
+  VarIndirect = 22,
+  // [R4] detached ruleset value (`@rs: { … }`), callable to splice its body.
+  DetachedRuleset = 23,
+  // [R4] map / namespace accessor value (`@p[text]`, `#ns[$@prop]`).
+  MapAccessor = 24,
+  // [R4] a call of a detached-ruleset-valued variable (`@ruleset();`).
+  DetachedCall = 25,
 }
 
 /** Combinator between two compounds in a complex selector. */

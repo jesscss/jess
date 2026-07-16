@@ -77,10 +77,12 @@ function simpleText(ctx: BridgeCtx, el: unknown): string {
   if (isNode(el)) {
     const t = typeOf(el);
     if (t === 'Ampersand') {
-      // A bare `&`, or `&`-with-append (`&-foo`). Append is not yet supported.
+      // A bare `&`, or `&`-with-append (`&-foo` → the fused token `&-foo`).
       const appendValue = (el as AnyNode).appendValue;
       if (appendValue !== undefined && appendValue !== null && appendValue !== '') {
-        throw new UnsupportedShape('selector:ampersand-append', String(appendValue));
+        if (typeof appendValue === 'string') return '&' + appendValue;
+        // An interpolated append (`&@{x}`) is deferred.
+        throw new UnsupportedShape('selector:ampersand-append', typeOf(appendValue));
       }
       return '&';
     }
@@ -93,16 +95,37 @@ function simpleText(ctx: BridgeCtx, el: unknown): string {
   throw new UnsupportedShape('selector:simple', typeOf(el));
 }
 
+/** [R4] Build a tree2 Simple from a string token, interpolating `@{…}`. */
+function toSimpleFromString(s: string): t2.Simple {
+  if (s.includes('@{')) {
+    const interp = interpFromString(s, false); // selector context: refs as-is
+    if (interp.kind === t2.Kind.Interp) return t2.simpleInterp(interp);
+  }
+  return t2.simple(s);
+}
+
+/** [R4] Build a tree2 Simple from a selector element (string / node), detecting
+ * `InterpolatedSelector` and inline `@{…}` interpolation. */
+function toSimple(ctx: BridgeCtx, el: unknown): t2.Simple {
+  if (isNode(el) && typeOf(el) === 'InterpolatedSelector') {
+    return t2.simpleInterp(interpFromInterpolated(ctx, (el as AnyNode).value as AnyNode, false));
+  }
+  return toSimpleFromString(simpleText(ctx, el));
+}
+
 /** Build a tree2 Compound from a CompoundSelector node or a bare string. */
 function toCompound(ctx: BridgeCtx, sel: unknown): t2.Compound {
-  if (typeof sel === 'string') return t2.compound(sel);
+  if (typeof sel === 'string') return new t2.Compound([toSimpleFromString(sel)]);
+  if (isNode(sel) && typeOf(sel) === 'InterpolatedSelector') {
+    return new t2.Compound([toSimple(ctx, sel)]);
+  }
   if (isNode(sel) && typeOf(sel) === 'CompoundSelector') {
     const parts = (sel as AnyNode).value;
     if (!Array.isArray(parts)) throw new UnsupportedShape('selector:compound-shape', typeOf(sel));
-    return t2.compound(...parts.map((p) => simpleText(ctx, p)));
+    return new t2.Compound(parts.map((p) => toSimple(ctx, p)));
   }
   // A single simple node (e.g. Ampersand alone, PseudoSelector alone).
-  return t2.compound(simpleText(ctx, sel));
+  return new t2.Compound([toSimple(ctx, sel)]);
 }
 
 /** Build a tree2 Complex from a string / CompoundSelector / ComplexSelector. */
@@ -213,12 +236,19 @@ function rawDeclValue(ctx: BridgeCtx, node: AnyNode): string {
 
 /**
  * Tokenize static value bytes into a tree2 value, turning `@name` references
- * into `VarRef` nodes and leaving everything else literal. Reference
- * substitution only — `@{interp}` (no `[A-Za-z_]` after `@`) is left literal
- * (interpolation is a later rung), and no arithmetic/functions are parsed.
+ * into `VarRef` nodes and leaving everything else literal. [R4] `@{name}`
+ * interpolation tokens (before the bare-`@name` pass) yield an `Interp`; a bare
+ * `@@name` indirect variable yields a `VarIndirect`; a value with only bare
+ * `@name` still yields `Concat`/`VarRef` (byte-unchanged).
  */
 function parseValue(text: string): t2.ValueNode {
   if (text.indexOf('@') < 0) return t2.word(text);
+  // [R4] `@@name` indirect variable (standalone).
+  const indirect = /^@@([A-Za-z_][\w-]*)$/.exec(text.trim());
+  if (indirect) return t2.varIndirect(t2.varRef(indirect[1]!));
+  // [R4] `@{name}` interpolation present → build an Interp (value context: refs
+  // splice unquoted).
+  if (text.includes('@{')) return interpFromString(text, true);
   const re = /@([A-Za-z_][\w-]*)/g;
   const parts: t2.ValueNode[] = [];
   let last = 0;
@@ -231,6 +261,89 @@ function parseValue(text: string): t2.ValueNode {
   if (parts.length === 0) return t2.word(text);
   if (last < text.length) parts.push(t2.word(text.slice(last)));
   return parts.length === 1 ? parts[0]! : t2.concat(parts);
+}
+
+/* --------------------------------------------------------- [R4] interpolation */
+
+/**
+ * [R4] Build an `Interp` from a raw string containing `@{name}` tokens. `unquote`
+ * controls whether spliced refs strip one surrounding quote layer (true in
+ * value/string context; false in selector / property-name context). Bare `@name`
+ * inside the literal chunks is left literal (matches Less: only `@{…}` interps).
+ */
+function interpFromString(text: string, unquote: boolean): t2.ValueNode {
+  const re = /@\{\s*([^}]+?)\s*\}/g;
+  const parts: t2.InterpPart[] = [];
+  let last = 0;
+  let m: RegExpExecArray | null;
+  let sawRef = false;
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > last) parts.push({ lit: text.slice(last, m.index) });
+    parts.push({ ref: t2.varRef(m[1]!), unquote });
+    sawRef = true;
+    last = m.index + m[0].length;
+  }
+  if (!sawRef) return t2.word(text);
+  if (last < text.length) parts.push({ lit: text.slice(last) });
+  return t2.interp(parts);
+}
+
+/** [R4] The variable NAME of a parser `Reference.key` (string / Keyword / raw). */
+function referenceKeyName(ctx: BridgeCtx, key: unknown): string {
+  if (typeof key === 'string') return key;
+  if (isNode(key)) {
+    const t = typeOf(key);
+    if (t === 'Keyword' && typeof (key as AnyNode).value === 'string') return (key as AnyNode).value as string;
+    const raw = slice(ctx, key);
+    if (raw !== undefined) return raw;
+  }
+  throw new UnsupportedShape('reference:key', typeOf(key));
+}
+
+/** [R4] Convert one interpolation replacement (a parser `Reference`) to a ref. */
+function replacementToValue(ctx: BridgeCtx, repl: unknown): t2.ValueNode {
+  if (isNode(repl) && typeOf(repl) === 'Reference') {
+    const key = (repl as AnyNode).key;
+    // A nested-interpolated name (`@{box-@{suffix}}`) resolves to a NAME, then
+    // that variable is looked up → an indirect variable over the inner interp.
+    if (isNode(key) && typeOf(key) === 'Interpolated') {
+      return t2.varIndirect(interpFromInterpolated(ctx, key as AnyNode, true));
+    }
+    return t2.varRef(referenceKeyName(ctx, key));
+  }
+  // Fallback: a literal replacement.
+  if (typeof repl === 'string') return t2.word(repl);
+  const raw = isNode(repl) ? slice(ctx, repl) : undefined;
+  return t2.word(raw ?? '');
+}
+
+/**
+ * [R4] Build an `Interp` from a parser `Interpolated` node (`source` with `%%`
+ * placeholders + `replacements`). `unquote` controls ref quote-stripping.
+ */
+function interpFromInterpolated(ctx: BridgeCtx, node: AnyNode, unquote: boolean): t2.Interp {
+  const source = typeof node.source === 'string' ? node.source : '';
+  const replacements = Array.isArray(node.replacements) ? node.replacements : [];
+  const segs = source.split('%%');
+  const parts: t2.InterpPart[] = [];
+  for (let i = 0; i < segs.length; i++) {
+    if (segs[i]!.length > 0) parts.push({ lit: segs[i]! });
+    if (i < replacements.length) parts.push({ ref: replacementToValue(ctx, replacements[i]), unquote });
+  }
+  return t2.interp(parts);
+}
+
+/** [R4] Build an interpolation value from a parser `Quoted` wrapping an
+ * `Interpolated`. Non-escaped keeps the surrounding quote bytes; escaped
+ * (`~"…"`) drops them. Refs splice unquoted (value/string context). */
+function interpFromQuoted(ctx: BridgeCtx, node: AnyNode): t2.ValueNode {
+  const inner = node.value;
+  if (!isNode(inner) || typeOf(inner) !== 'Interpolated') return t2.word(slice(ctx, node) ?? '');
+  const escaped = node.escaped === true;
+  const quote = escaped ? '' : typeof node.quote === 'string' ? node.quote : '"';
+  const interp = interpFromInterpolated(ctx, inner as AnyNode, true);
+  if (!quote) return interp;
+  return t2.interp([{ lit: quote }, ...interp.parts, { lit: quote }]);
 }
 
 /* ------------------------------------------------------ value expressions */
@@ -328,9 +441,70 @@ function toComputedValue(ctx: BridgeCtx, node: unknown): t2.ValueNode | null {
       if (left === null || right === null) return null;
       return t2.operation(operator, left, right);
     }
+    // [R4] a quoted string that embeds interpolation (`"…@{x}…"` / `~"…@{x}…"`),
+    // or an escaped literal (`~'x'` → `x`, unquoted).
+    case 'Quoted': {
+      const q = node as AnyNode;
+      const inner = q.value;
+      if (isNode(inner) && typeOf(inner) === 'Interpolated') return interpFromQuoted(ctx, q);
+      if (q.escaped === true && typeof inner === 'string') return t2.word(inner); // `~'x'` → x
+      return null; // plain quoted string → byte-identical raw-bytes fallback
+    }
+    // [R4] a bare interpolation value (unquoted context).
+    case 'Interpolated':
+      return interpFromInterpolated(ctx, node as AnyNode, true);
+    // [R4] a map / namespace accessor `@p[text]` / `#ns[$@prop]` (Reference with a
+    // `target`), OR an `@@name` indirect variable.
+    case 'Reference': {
+      const ref = node as AnyNode;
+      if (ref.target !== undefined && ref.target !== null) return buildMapAccessor(ctx, ref);
+      return null; // plain `@name` → raw-bytes VarRef fallback (byte-unchanged)
+    }
+    // [R4] a detached ruleset value `{ … }` (parser: a Mixin with no name/params).
+    case 'Mixin': {
+      const m = node as AnyNode;
+      if (m.name === undefined && m.params === undefined) {
+        return t2.detachedRuleset(toBody(ctx, m.rules, true));
+      }
+      return null;
+    }
     default:
       return null;
   }
+}
+
+/** [R4] Build a `MapAccessor` from a parser `Reference` with a `target`. */
+function buildMapAccessor(ctx: BridgeCtx, ref: AnyNode): t2.ValueNode {
+  const target = ref.target;
+  if (!isNode(target)) throw new UnsupportedShape('map:target', typeOf(target));
+  const baseName = referenceKeyName(ctx, (target as AnyNode).key);
+  const base: t2.ValueNode =
+    baseName.startsWith('#') || baseName.startsWith('.') ? t2.word(baseName) : t2.varRef(baseName);
+  const key = ref.key;
+  // Numeric index (`[1]` / `[-1]`).
+  if (typeof key === 'number') return t2.mapAccessor(base, key, false);
+  if (isNode(key)) {
+    const t = typeOf(key);
+    if (t === 'Quoted') {
+      const v = (key as AnyNode).value;
+      if (isNode(v) && typeOf(v) === 'Interpolated') {
+        return t2.mapAccessor(base, interpFromInterpolated(ctx, v as AnyNode, false), true);
+      }
+      if (typeof v === 'string') return t2.mapAccessor(base, t2.word(v), true);
+    }
+    if (t === 'Interpolated') {
+      return t2.mapAccessor(base, interpFromInterpolated(ctx, key as AnyNode, false), true);
+    }
+    // A dimension / number key node → numeric index.
+    if (t === 'Dimension' || t === 'Num') {
+      const n = Number((key as AnyNode).value ?? (key as AnyNode).number);
+      if (Number.isFinite(n)) return t2.mapAccessor(base, n, false);
+    }
+    const raw = slice(ctx, key);
+    if (raw !== undefined) return t2.mapAccessor(base, t2.word(raw), true);
+  }
+  if (typeof key === 'string') return t2.mapAccessor(base, t2.word(key), true);
+  throw new UnsupportedShape('map:key', typeOf(key));
 }
 
 /** An operand of an operation / guard / mixin arg: computed expr or raw leaf. */
@@ -372,8 +546,13 @@ function mixinParams(ctx: BridgeCtx, params: unknown): t2.Param[] {
       const rawDefault = (p as AnyNode).value;
       let def: t2.ValueNode | undefined;
       if (isNode(rawDefault) && typeOf(rawDefault) !== 'Nil') {
-        const dtext = slice(ctx, rawDefault);
-        if (dtext !== undefined) def = parseValue(dtext);
+        // [R4] a detached-ruleset default (`@a: {}`) bridges structurally.
+        const computed = toComputedValue(ctx, rawDefault);
+        if (computed !== null) def = computed;
+        else {
+          const dtext = slice(ctx, rawDefault);
+          if (dtext !== undefined) def = parseValue(dtext);
+        }
       }
       out.push({ name: name.replace(/^@/, ''), default: def });
     } else if (t === 'Rest') {
@@ -557,24 +736,48 @@ function toStatement(
         },
       );
     case 'Declaration': {
-      const name = (node as AnyNode).name;
-      if (typeof name !== 'string') throw new UnsupportedShape('decl:name', typeOf(name));
-      // Prefer a structured computed value (function call / operation); fall back
-      // to raw-bytes capture for plain static / variable-only values.
+      const rawName = (node as AnyNode).name;
+      // [R4] property name may be an interpolation template (`@{prefix}width`).
+      let name: string | t2.Interp;
+      if (typeof rawName === 'string') name = rawName;
+      else if (isNode(rawName) && typeOf(rawName) === 'Interpolated')
+        name = interpFromInterpolated(ctx, rawName as AnyNode, false);
+      else throw new UnsupportedShape('decl:name', typeOf(rawName));
+      // [R4] merge (`+`/`+_`) + structured `!important` recovered from source.
+      const { merge, important } = detectMergeImportant(ctx, node as AnyNode);
+      // Prefer a structured computed value (function call / operation / interp);
+      // fall back to raw-bytes capture for plain static / variable-only values.
       const computed = toComputedValue(ctx, (node as AnyNode).value);
-      return t2.decl(name, computed ?? parseValue(rawDeclValue(ctx, node as AnyNode)));
+      let value = computed ?? parseValue(rawDeclValue(ctx, node as AnyNode));
+      // [R4] for a merged decl carrying `!important` in its raw bytes, strip it
+      // (the structured flag re-emits it once at the end of the combined line).
+      if (merge !== null && important) value = stripImportantBytes(value);
+      return new t2.Declaration(name, value, merge, important);
     }
     case 'VarDeclaration': {
       const name = (node as AnyNode).name;
       if (typeof name !== 'string') throw new UnsupportedShape('var-decl:name', typeOf(name));
-      if ((node as AnyNode).important) throw new UnsupportedShape('var-decl:important', name);
-      return t2.varDecl(name, parseValue(rawDeclValue(ctx, node as AnyNode)));
+      // [R4] a detached-ruleset value (`@rs: { … }`, parser: nameless Mixin). A
+      // `!important` variable value keeps `!important` in its bytes (VarDeclarations
+      // emit nothing; the flag surfaces only where the variable is referenced).
+      const computed = toComputedValue(ctx, (node as AnyNode).value);
+      return t2.varDecl(name, computed ?? parseValue(rawDeclValue(ctx, node as AnyNode)));
+    }
+    // [R4] a detached-ruleset call statement (`@rs();`): an Expression wrapping a
+    // Call whose callee is a variable Reference.
+    case 'Expression': {
+      const detached = detachedCallFromExpression(ctx, node as AnyNode);
+      if (detached !== null) return detached;
+      throw new UnsupportedShape('statement', t);
     }
     case 'Comment': {
+      // A `//` line comment's source span is unreliable (the parser reports the
+      // enclosing rule span), but its `.value` carries the exact comment text —
+      // use it to drop line comments faithfully (Less drops `//`).
+      const val = (node as AnyNode).value;
+      if (typeof val === 'string' && val.startsWith('//')) return null;
       const raw = slice(ctx, node);
       if (raw === undefined) throw new UnsupportedShape('comment:no-span', '');
-      // Less drops standalone `//` line comments (not valid CSS); block
-      // comments `/* … */` are preserved. Match that.
       if (raw.startsWith('//')) return null;
       return t2.comment(raw);
     }
@@ -690,11 +893,94 @@ function toMixinDef(ctx: BridgeCtx, node: AnyNode): t2.MixinDef {
   return t2.mixinDef(name, params, body, guard);
 }
 
-function toMixinCall(ctx: BridgeCtx, node: AnyNode): t2.MixinCall {
+function toMixinCall(ctx: BridgeCtx, node: AnyNode): t2.MixinCall | t2.DetachedCall {
   if (node.contentNode) throw new UnsupportedShape('mixin:content', 'call-content');
-  const name = mixinName(node);
+  // [R4] a call whose callee is a variable (`@rs()`) is a detached-ruleset call.
+  const varName = callVarName(ctx, node);
+  if (varName !== null && (node.args === undefined || node.args === null)) {
+    return t2.detachedCall(varName);
+  }
+  const rawName = mixinName(node);
+  // [R4] a namespaced call (`#ns > .b()`, `#ns .b .c()`) descends a path; the
+  // parser flattens the path into the name key (combinators embedded). Split it.
+  const { path, name } = splitNamespacePath(rawName);
   const args = callArgs(ctx, node.args);
-  return t2.mixinCall(name, args);
+  // [R4] `.m() !important` (recovered from source — the parser drops it).
+  const callSrc = slice(ctx, node);
+  const important = callSrc !== undefined && /!\s*important\s*;?\s*$/iu.test(callSrc);
+  return new t2.MixinCall(name, args, path, important);
+}
+
+/** [R4] The variable name if a Call's callee is a variable Reference (Keyword
+ * key), else null (a selector-keyed mixin/namespace call). */
+function callVarName(ctx: BridgeCtx, callNode: AnyNode): string | null {
+  const nm = callNode.name;
+  if (isNode(nm) && typeOf(nm) === 'Reference') {
+    const key = (nm as AnyNode).key;
+    if (isNode(key) && typeOf(key) === 'Keyword' && typeof (key as AnyNode).value === 'string') {
+      return (key as AnyNode).value as string;
+    }
+  }
+  return null;
+}
+
+/** [R4] A detached-ruleset call from an `Expression` wrapping a variable `Call`. */
+function detachedCallFromExpression(ctx: BridgeCtx, node: AnyNode): t2.DetachedCall | null {
+  const val = node.value;
+  if (!isNode(val) || typeOf(val) !== 'Call') return null;
+  const callNode = val as AnyNode;
+  if (callNode.contentNode) return null;
+  const varName = callVarName(ctx, callNode);
+  if (varName === null) return null;
+  if (callNode.args !== undefined && callNode.args !== null) return null;
+  return t2.detachedCall(varName);
+}
+
+/**
+ * [R4] Split a parser mixin-call key into a namespace path + final mixin name.
+ * The parser flattens `#ns > .b` to `#ns>.b` and `#ns .b .c` to `#ns.b.c`
+ * (descendant spaces stripped). A key with an EXPLICIT `>` combinator, or a
+ * leading `#namespace` id followed by class segments, is a namespace descent;
+ * everything else stays a flat name (`path: []`, byte-unchanged dispatch).
+ */
+function splitNamespacePath(key: string): { path: t2.PathSeg[]; name: string } {
+  // Only `>`-separated paths are unambiguous from the flattened key; treat those
+  // as namespace descents. (Descendant-space paths collapse to a bare compound in
+  // the parser key and are indistinguishable from a compound mixin name, so they
+  // stay flat — a known bridge limitation, tracked as a deferred namespace case.)
+  if (!key.includes('>')) return { path: [], name: key };
+  const segs = key.split('>').map((s) => s.trim()).filter((s) => s.length > 0);
+  if (segs.length < 2) return { path: [], name: key };
+  const name = segs[segs.length - 1]!;
+  const path: t2.PathSeg[] = segs.slice(0, -1).map((sel) => ({ comb: '>' as t2.Combinator, sel }));
+  // The final segment's own combinator to its parent is `>`; represented via the
+  // path already. Descent frames match each `sel` by own-local canonical string.
+  return { path, name };
+}
+
+/** [R4] Recover the `+`/`+_` merge marker + structured `!important` from a
+ * declaration's source (the parser drops both from the tree). */
+function detectMergeImportant(ctx: BridgeCtx, node: AnyNode): { merge: null | ',' | ' '; important: boolean } {
+  const declText = slice(ctx, node);
+  if (declText === undefined) return { merge: null, important: false };
+  const body = declText.replace(/;\s*$/u, '');
+  const colon = body.indexOf(':');
+  if (colon < 0) return { merge: null, important: false };
+  const namePart = body.slice(0, colon).replace(/\s+$/u, '');
+  let merge: null | ',' | ' ' = null;
+  if (namePart.endsWith('+_')) merge = ' ';
+  else if (namePart.endsWith('+')) merge = ',';
+  const important = /!\s*important\s*$/iu.test(body);
+  return { merge, important };
+}
+
+/** [R4] Strip a trailing `!important` from a value node's bytes (merged decls
+ * re-emit it once via the structured flag). */
+function stripImportantBytes(v: t2.ValueNode): t2.ValueNode {
+  if (v.kind === t2.Kind.Word) {
+    return t2.word(v.text.replace(/\s*!\s*important\s*$/iu, ''));
+  }
+  return v;
 }
 
 /* --------------------------------------------------------------- entry */

@@ -116,6 +116,74 @@ export class Paren extends Node {
   }
 }
 
+/* -------------------------------------------------------------- [R4] value */
+
+/**
+ * [R4] One part of an interpolation template. A `lit` is verbatim bytes
+ * (including any surrounding literal quote chars); a `ref` is a resolved value
+ * node spliced in — `unquote:true` strips ONE layer of surrounding matching
+ * quotes from the resolved bytes (Less "unquote-on-interpolation", used in
+ * value/string context), `unquote:false` splices the value's CSS bytes verbatim
+ * (selector / property-name context).
+ */
+export type InterpPart = { lit: string } | { ref: ValueNode; unquote: boolean };
+
+/**
+ * [R4] An interpolation template `@{var}` / `~"…@{x}…"` that resolves to bytes:
+ * literal chunks and embedded references spliced in order. Distinct from
+ * `Concat` because a `ref` may be unquoted (`@{c}` strips quotes; `@c` does not)
+ * and the literals carry their own (possibly quote) bytes.
+ */
+export class Interp extends Node {
+  readonly kind = Kind.Interp as const;
+  constructor(readonly parts: InterpPart[]) {
+    super();
+  }
+}
+
+/**
+ * [R4] Indirect variable `@@name`: a variable whose NAME is the resolved bytes
+ * of another value node (`@name: var; x: @@name` → the value of `@var`). Two-step
+ * `VarRef` — no braces, no quote-strip.
+ */
+export class VarIndirect extends Node {
+  readonly kind = Kind.VarIndirect as const;
+  constructor(readonly nameRef: ValueNode) {
+    super();
+  }
+}
+
+/**
+ * [R4] A detached ruleset value `@rs: { … }`: a block of statements bound to a
+ * value, callable (`@rs()`) to splice its body at the call site. `body` is the
+ * CANONICAL block, stored once (never cloned). `defFrame` is the lexical closure
+ * captured at definition-evaluation time (mutable: filled when the binding is
+ * first resolved, `null` until then).
+ */
+export class DetachedRuleset extends Node {
+  readonly kind = Kind.DetachedRuleset as const;
+  defFrame: object | null = null;
+  constructor(readonly body: Statement[]) {
+    super();
+  }
+}
+
+/**
+ * [R4] A map / namespace accessor value `@p[text]` / `#ns[$@prop]` / `@list[1]`.
+ * `base` resolves to a ruleset-like scope; `key` is a property-name value (may be
+ * an `Interp`) when `keyIsProp`, else a numeric index (negative counts from end).
+ */
+export class MapAccessor extends Node {
+  readonly kind = Kind.MapAccessor as const;
+  constructor(
+    readonly base: ValueNode,
+    readonly key: ValueNode | number,
+    readonly keyIsProp: boolean,
+  ) {
+    super();
+  }
+}
+
 export type ValueNode =
   | Word
   | Dimension
@@ -124,7 +192,11 @@ export type ValueNode =
   | Concat
   | Operation
   | FunctionCall
-  | Paren;
+  | Paren
+  | Interp
+  | VarIndirect
+  | DetachedRuleset
+  | MapAccessor;
 
 /* ---------------------------------------------------------------- selectors */
 
@@ -133,11 +205,21 @@ function renderCombinator(comb: Combinator): string {
   return comb === ' ' ? ' ' : ` ${comb} `;
 }
 
-/** A single simple-selector token, e.g. `.a`, `:hover`, `&`. */
+/**
+ * A single simple-selector token, e.g. `.a`, `:hover`, `&`. [R4] A token that
+ * contains `@{…}` carries an `interp` template and `text: null`; the concrete
+ * text is resolved at ruleset-enter in the entering frame. A static token keeps
+ * `text` and `interp: null` (the cached `canonical()` fast path).
+ */
 export class Simple extends Node {
   readonly kind = Kind.Simple as const;
-  constructor(readonly text: string) {
+  readonly interp: Interp | null;
+  constructor(
+    readonly text: string | null,
+    interp?: Interp | null,
+  ) {
     super();
+    this.interp = interp ?? null;
   }
 }
 
@@ -145,19 +227,30 @@ export class Simple extends Node {
 export class Compound extends Node {
   readonly kind = Kind.Compound as const;
   private _canon: string | undefined;
+  private _hasInterp: boolean | undefined;
   constructor(readonly simples: Simple[]) {
     super();
   }
   canonical(): string {
     if (this._canon === undefined) {
       let s = '';
-      for (const sim of this.simples) s += sim.text;
+      for (const sim of this.simples) s += sim.text ?? '';
       this._canon = s;
     }
     return this._canon;
   }
+  // [R4] true iff any token needs frame-dependent interpolation resolution.
+  get hasInterp(): boolean {
+    if (this._hasInterp === undefined) {
+      let has = false;
+      for (const sim of this.simples) if (sim.interp !== null) { has = true; break; }
+      this._hasInterp = has;
+    }
+    return this._hasInterp;
+  }
   get hasAmpersand(): boolean {
-    for (const sim of this.simples) if (sim.text === '&') return true;
+    // A `&` may be a bare token or fused into an appended token (`&-foo`).
+    for (const sim of this.simples) if (sim.text !== null && sim.text.includes('&')) return true;
     return false;
   }
 }
@@ -177,6 +270,7 @@ export class Complex extends Node {
   readonly kind = Kind.Complex as const;
   private _canon: string | undefined;
   private _hasAmp: boolean | undefined;
+  private _hasInterp: boolean | undefined;
   constructor(
     readonly head: Compound,
     readonly tail: ComplexSegment[] = [],
@@ -215,6 +309,19 @@ export class Complex extends Node {
     }
     return this._hasAmp;
   }
+  // [R4] true iff any compound carries an interpolated token (fast-path gate).
+  get hasInterp(): boolean {
+    if (this._hasInterp === undefined) {
+      let has = this.head.hasInterp;
+      if (!has) {
+        for (const seg of this.tail) {
+          if (seg.compound.hasInterp) { has = true; break; }
+        }
+      }
+      this._hasInterp = has;
+    }
+    return this._hasInterp;
+  }
 }
 
 /** A comma-separated list of complex selectors, e.g. `.a, .b`. */
@@ -227,12 +334,19 @@ export class SelectorList extends Node {
 
 /* -------------------------------------------------------------- statements */
 
-/** A `name: value;` declaration. */
+/**
+ * A `name: value;` declaration. [R4] `name` may be an `Interp` template
+ * (`@{prefix}width`). `merge` is `','` for `+`, `' '` for `+_`, else `null`.
+ * `important` is the structured `!important` flag (parsed off the value bytes at
+ * bridge time), promoted so merge can OR it across members and emit it once.
+ */
 export class Declaration extends Node {
   readonly kind = Kind.Declaration as const;
   constructor(
-    readonly name: string,
+    readonly name: string | Interp,
     readonly value: ValueNode,
+    readonly merge: null | ',' | ' ' = null,
+    readonly important: boolean = false,
   ) {
     super();
   }
@@ -317,13 +431,41 @@ export class MixinDef extends Node {
   }
 }
 
-/** A mixin call. Args bind to the def's params (positional or named). [guards] */
+/**
+ * [R4] One segment of a namespaced-call path: a combinator (`' '` descendant or
+ * `'>'` child) and a selector string (`#namespace`, `.borders`).
+ */
+export interface PathSeg {
+  comb: Combinator;
+  sel: string;
+}
+
+/**
+ * A mixin call. Args bind to the def's params (positional or named). [guards]
+ * [R4] `path` is the namespace descent prefix for `#ns .a .b()` (empty for a
+ * plain flat `.mixin()` call — byte-unchanged flat dispatch).
+ */
 export class MixinCall extends Node {
   readonly kind = Kind.MixinCall as const;
   constructor(
     readonly name: string,
     readonly args: CallArg[],
+    readonly path: PathSeg[] = [],
+    /** [R4] `.m() !important` promotes every declaration the body emits. */
+    readonly important: boolean = false,
   ) {
+    super();
+  }
+}
+
+/**
+ * [R4] A call of a detached-ruleset-valued variable: `@ruleset();`. Resolves the
+ * variable to a `DetachedRuleset` value and splices its body through an overlay
+ * frame (caller-first, definition-fallback scope).
+ */
+export class DetachedCall extends Node {
+  readonly kind = Kind.DetachedCall as const;
+  constructor(readonly varName: string) {
     super();
   }
 }
@@ -348,7 +490,8 @@ export type Statement =
   | MixinCall
   | VarDeclaration
   | AtRuleBlock
-  | AtRuleStatement;
+  | AtRuleStatement
+  | DetachedCall;
 
 /* ------------------------------------------------------------ constructors */
 
@@ -357,6 +500,17 @@ export const dim = (value: number, unit = ''): Dimension => new Dimension(value,
 export const spaced = (parts: ValueNode[]): SpacedValue => new SpacedValue(parts);
 
 export const simple = (text: string): Simple => new Simple(text);
+/** [R4] An interpolated simple token, e.g. `.icon-@{type}`. */
+export const simpleInterp = (interp: Interp): Simple => new Simple(null, interp);
+export const interp = (parts: InterpPart[]): Interp => new Interp(parts);
+export const varIndirect = (nameRef: ValueNode): VarIndirect => new VarIndirect(nameRef);
+export const detachedRuleset = (body: Statement[]): DetachedRuleset => new DetachedRuleset(body);
+export const detachedCall = (varName: string): DetachedCall => new DetachedCall(varName);
+export const mapAccessor = (
+  base: ValueNode,
+  key: ValueNode | number,
+  keyIsProp: boolean,
+): MapAccessor => new MapAccessor(base, key, keyIsProp);
 /** `compound('.a', '.b')` => `.a.b`. */
 export const compound = (...texts: string[]): Compound => new Compound(texts.map(simple));
 /** `complex([{ compound: compound('.a') }, { comb: '>', compound: compound('.b') }])` => `.a > .b`. */

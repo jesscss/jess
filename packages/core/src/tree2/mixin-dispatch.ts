@@ -23,6 +23,7 @@
 
 import type { MixinCall, MixinDef, Param, ValueNode } from './nodes.js';
 import { Word } from './nodes.js';
+import { Kind } from './node.js';
 import type { EvalModes, ValueEvaluator } from './value-eval.js';
 import { evalGuard, guardUsesDefault, type TypedResolver, type ValueResolver } from './guard.js';
 
@@ -117,6 +118,9 @@ export function bindArgs(
 }
 
 function resolveEager(v: ValueNode, resolveCaller: ValueResolver): ValueNode {
+  // [R4] a detached-ruleset arg binds BY REFERENCE (never byte-flattened) so its
+  // body + closure survive to the call site.
+  if (v.kind === Kind.DetachedRuleset) return v;
   return new Word(resolveCaller(v));
 }
 
