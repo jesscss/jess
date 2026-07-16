@@ -887,11 +887,19 @@ function toStatement(
       throw new UnsupportedShape('statement', t);
     }
     case 'Comment': {
-      // A `//` line comment's source span is unreliable (the parser reports the
-      // enclosing rule span), but its `.value` carries the exact comment text —
-      // use it to drop line comments faithfully (Less drops `//`).
+      // A comment node's source SPAN is over-wide: the parser reports the
+      // ENCLOSING scope span (a root block comment spans `[0 … end-of-document]`),
+      // so slicing it would re-dump every preceding `@var`/mixin/rule verbatim —
+      // O(n²) blowup (193 comments in benchmark.less → a ~6.1 MB render). The
+      // node's `.value` carries the EXACT comment text (`/* … */` incl. multi-line
+      // bytes, or `// …`), so use it verbatim. A `//` line comment is dropped
+      // (Less drops them).
       const val = (node as AnyNode).value;
-      if (typeof val === 'string' && val.startsWith('//')) return null;
+      if (typeof val === 'string') {
+        if (val.startsWith('//')) return null;
+        return t2.comment(val);
+      }
+      // Fallback: no usable `.value` string — recover from the (narrow) span.
       const raw = slice(ctx, node);
       if (raw === undefined) throw new UnsupportedShape('comment:no-span', '');
       if (raw.startsWith('//')) return null;
