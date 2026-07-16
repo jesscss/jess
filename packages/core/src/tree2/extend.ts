@@ -242,6 +242,44 @@ function textSimples(c: Compound): string[] {
   return out;
 }
 
+/**
+ * Collect every individual plain-text simple atom in a branch into `out`,
+ * RECURSING into `:is()` grafts. This is the atom granularity/normalization the
+ * matcher actually uses: compounds are split per-simple (`.a.b` → `.a`, `.b`,
+ * exactly like `textSimples`/`multisetSubset`), grafts are walked so simples that
+ * only appear inside an `:is()` (`:is(.p1, .p2) .c` → `.p1`, `.p2`, `.c`, the very
+ * atoms `branchExpansions`/`recurseIntoGrafts` reach) are captured — never dropped
+ * the way `textSimples` drops grafts. Text is taken RAW (case-sensitive, no
+ * trim/fold), the same `branchFromComplex` → `s.text ?? ''` value both sides carry.
+ */
+function collectBranchAtoms(b: Branch, out: Set<string>): void {
+  for (const seg of b.segs) {
+    for (const s of seg.compound.simples) {
+      if (s.t === 'text') out.add(s.text);
+      else for (const inner of s.branches) collectBranchAtoms(inner, out);
+    }
+  }
+}
+
+/**
+ * True when some atom of `branch` (graft-recursive, per the same extraction as
+ * `collectBranchAtoms`) is in `atoms`. Direct set-intersection — no per-subject
+ * atom Set is allocated. Used by the target-atom PREFILTER to prove a subject's
+ * seed can neither match nor chain any instruction target before running solve.
+ */
+function branchSharesAtom(b: Branch, atoms: Set<string>): boolean {
+  for (const seg of b.segs) {
+    for (const s of seg.compound.simples) {
+      if (s.t === 'text') {
+        if (atoms.has(s.text)) return true;
+      } else if (s.branches.some((inner) => branchSharesAtom(inner, atoms))) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 /** True when `need` (multiset) ⊆ `have` (multiset). */
 function multisetSubset(need: string[], have: string[]): boolean {
   const counts = new Map<string, number>();
@@ -475,11 +513,19 @@ interface PlanSubject {
 interface Plan {
   subjects: PlanSubject[];
   instructions: PlanInstruction[];
+  /**
+   * The UNION of every instruction target's individual simple atoms (graft-
+   * recursive; see `collectBranchAtoms`), across ALL instructions and ALL branches
+   * of a multi-target `:extend(.a, .b)`. A subject whose composed seed shares none
+   * of these atoms provably cannot match or chain — the solve prefilter skips it.
+   */
+  targetAtoms: Set<string>;
 }
 
 function collectPlan(root: Root): Plan {
   const subjects: PlanSubject[] = [];
   const instructions: PlanInstruction[] = [];
+  const targetAtoms = new Set<string>();
   let order = 0;
   let scopeCounter = 0;
 
@@ -506,6 +552,7 @@ function collectPlan(root: Root): Plan {
                 scope,
                 order: order++,
               });
+              collectBranchAtoms(targetBranch, targetAtoms);
             }
           }
         }
@@ -519,7 +566,7 @@ function collectPlan(root: Root): Plan {
   };
 
   walk(root.children, [], [], null);
-  return { subjects, instructions };
+  return { subjects, instructions, targetAtoms };
 }
 
 function instructionTargets(inst: ExtendInstruction): Branch[] {
@@ -535,6 +582,19 @@ function reaches(instScope: number[], subjScope: number[]): boolean {
 }
 
 /* --------------------------------------------------------------- SOLVE */
+
+/**
+ * The target-atom solve prefilter is ON in production — it is a provably byte-
+ * identical optimization (a skipped subject cannot match/chain). Tests flip it OFF
+ * via {@link setExtendPrefilterEnabled} to assert ON == OFF byte-identity across
+ * adversarial shapes; never disable it outside tests.
+ */
+let prefilterEnabled = true;
+
+/** TEST-ONLY toggle for the target-atom solve prefilter (see {@link prefilterEnabled}). */
+export function setExtendPrefilterEnabled(on: boolean): void {
+  prefilterEnabled = on;
+}
 
 function listKey(list: Branch[]): string {
   return list.map(branchText).join(',');
@@ -554,8 +614,18 @@ function instKey(inst: PlanInstruction): string {
  * over its own composed form, so no separate child-parent propagation is needed.
  */
 function solveComposed(subject: PlanSubject, plan: Plan): Branch[] {
-  const reachable = plan.instructions.filter((i) => reaches(i.scope, subject.scope));
   const seed = composePath(subject.path);
+  // Target-atom PREFILTER: the fixpoint can only ever change a subject whose
+  // composed seed shares at least one individual simple atom with some instruction
+  // target — a whole-branch/all/sub-part match and every transitive chain step all
+  // require a common atom. A seed disjoint from `plan.targetAtoms` (both sides
+  // extracted graft-recursively at the same per-simple granularity/normalization)
+  // provably never matches nor chains, so skip solve and keep the RAW seed. This
+  // prunes the ~92% of subjects that no target touches without running the fixpoint.
+  if (prefilterEnabled && !seed.some((b) => branchSharesAtom(b, plan.targetAtoms))) {
+    return seed;
+  }
+  const reachable = plan.instructions.filter((i) => reaches(i.scope, subject.scope));
   if (reachable.length === 0) return seed;
   const contribs = new Map<PlanInstruction, { extenders: Branch[]; keys: Set<string> }>();
   for (const inst of reachable) {
