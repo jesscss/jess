@@ -27,9 +27,11 @@ import type { BuildAction } from '../host-context.js';
 import { RULESET_ACTIONS } from './ruleset.js';
 import { DECLARATION_STATIC_ACTIONS } from './declaration-static.js';
 import { VALUE_LEAF_ACTIONS } from './value-leaf.js';
+import { CHARSET_ACTIONS } from './charset.js';
 
 export const ACTION_LIST: readonly BuildAction[] = [
   ...RULESET_ACTIONS,
   ...DECLARATION_STATIC_ACTIONS,
   ...VALUE_LEAF_ACTIONS,
+  ...CHARSET_ACTIONS,
 ];
