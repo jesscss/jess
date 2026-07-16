@@ -269,7 +269,7 @@ its **validated design source and interim shipping path** — not a parallel des
 
 Each rung: what it adds · matrix rows closed · where the current tree2 design must change.
 
-**R0 — collapseNesting:false nested-output mode (RATIFIED to precede extend).**
+**R0 — collapseNesting:false nested-output mode (RATIFIED to precede extend). BUILT ✓.**
 - Adds: the v5 *default* nested emit form; second emit policy on the same walk (arch E1).
 - Closes: 1(a)/1(b) collapseNesting rows; 1(c) E1.
 - Design change: `serialize.ts` `flatten`/`compose` currently *only* build flattened
@@ -279,6 +279,16 @@ Each rung: what it adds · matrix rows closed · where the current tree2 design 
   D-EMIT); the benchmark-tuned flatten-only path would otherwise make nested extend output
   impossible. This gap is currently masked because every rung was benched under
   `collapseNesting:true`.
+- **BUILT (spec: [`TREE2-DESIGN-SPEC.md` § R0](./TREE2-DESIGN-SPEC.md#r0--collapsenestingfalse-nested-output-mode-the-less-v5-default)).**
+  `SerializeOptions.collapseNesting` (default `true`); nested path = the
+  `emitNested*` family in `serialize.ts` (same single walk, second policy). Selectors emit
+  their OWN local text (no parent composition, no `:is()`); mixin bodies splice inline under
+  the call site; `@media` bodies keep inner rules nested; empty blocks elide. Proven
+  byte-identical vs the REAL pipeline rendered `collapseNesting:false`: **33/33 corpus
+  fixtures pass in nested form — identical set to the flattened form (0 regressions)**;
+  clone/inherit/withComponents stay structurally ZERO. Flagged for owner: leading-combinator
+  child selectors (`> .b` as a nested child) need the `Complex` model to carry a leading
+  combinator — a pre-existing bridge/selector-model gap, orthogonal to the collapse policy.
 
 **R1 — Extend (PLAN/SOLVE/EMIT as an emit-time index over composed selector strings).**
 - Adds: `:extend`, `&:extend`, `all`, selector-attached extend, reference/import-scope

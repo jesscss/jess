@@ -17,6 +17,7 @@ import { JsFunction } from '../tree/index.js';
 import type { Rules } from '../tree/index.js';
 
 const COLLAPSE = { collapseNesting: true } as const;
+const NESTED = { collapseNesting: false } as const;
 
 /** Register the Less fns registry onto a parsed root (mirrors the less plugin). */
 export function registerLessFunctions(root: Rules): void {
@@ -37,4 +38,17 @@ export async function renderRealOracle(tree: unknown): Promise<string> {
   (ctx as unknown as { root: unknown }).root = root;
   registerLessFunctions(root);
   return await renderNodeToString(root as never, ctx, COLLAPSE);
+}
+
+/**
+ * [nested/R0] Render through the REAL oracle in the Less v5 DEFAULT nested form
+ * (`collapseNesting:false`) — the proxy for the intended-v5 nested goldens where
+ * the legacy render agrees with them.
+ */
+export async function renderRealOracleNested(tree: unknown): Promise<string> {
+  const root = tree as Rules;
+  const ctx = new Context();
+  (ctx as unknown as { root: unknown }).root = root;
+  registerLessFunctions(root);
+  return await renderNodeToString(root as never, ctx, NESTED);
 }

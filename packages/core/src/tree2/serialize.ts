@@ -66,6 +66,16 @@ export interface SerializeOptions {
    * real guard-based selection.
    */
   guardMode?: 'eval' | 'record';
+  /**
+   * [nested/R0] Selector collapse policy (arch E1). `true` (default, 4.x /
+   * `collapseNesting:true`) flattens the authored block structure into composed
+   * selector strings. `false` (the Less v5 DEFAULT) preserves the authored block
+   * structure: a parent rule contains its nested child rules verbatim (each child
+   * emits its OWN local selector — `&`/`> .x`/`.b, .c` stay literal), placed
+   * mixin bodies splice inline under the call site, and `@media` bodies keep
+   * their inner rules nested. Same single walk, second emit form.
+   */
+  collapseNesting?: boolean;
 }
 
 export interface SerializeResult {
@@ -252,6 +262,9 @@ interface Emit {
   // [guards] mixin-expansion depth (bounds record-mode recursion). Kept SEPARATE
   // from `depth` above: mixin expansion must not shift at-rule indentation.
   recordDepth: number;
+  // [nested/R0] false => preserve authored nesting (Less v5 default); true =>
+  // flatten to composed selector strings (4.x / collapseNesting:true).
+  collapse: boolean;
 }
 
 // [guards] Record mode walks EVERY candidate body ignoring guard truth, so
@@ -280,6 +293,7 @@ export function serialize(root: Root, options?: SerializeOptions): SerializeResu
     depth: 0, // [atrule]
     record: options?.guardMode === 'record', // [guards]
     recordDepth: 0, // [guards]
+    collapse: options?.collapseNesting !== false, // [nested/R0] default = flatten
   };
   const rootFrame: Frame = {
     parent: null,
@@ -287,6 +301,11 @@ export function serialize(root: Root, options?: SerializeOptions): SerializeResu
     vars: collectVars(root.children),
   };
   const start = e.off;
+  if (!e.collapse) {
+    // [nested/R0] Less v5 default: preserve authored block structure. The root's
+    // children are the top-level content level (indent 0).
+    emitNestedBody(root.children, rootFrame, e);
+  } else
   for (const child of root.children) {
     switch (child.kind) {
       case Kind.Rule:
@@ -573,6 +592,189 @@ function emitAtRuleBody(statements: Statement[], frame: Frame, e: Emit): void {
     }
   }
   flushDirect();
+}
+
+/* ------------------------------------------------------ [nested/R0] emit */
+
+/**
+ * Nested-output emit (Less v5 default, `collapseNesting:false`).
+ *
+ * Convention: when a `*Nested*` emitter runs, `e.depth` is the indentation
+ * LEVEL of the statements it emits — a direct declaration, a child-rule header,
+ * or a nested at-rule header all sit at `INDENT.repeat(e.depth)`. Entering a
+ * rule/at-rule body raises the level by one for the body's contents.
+ *
+ * Unlike the flattened path, selectors are NEVER composed with the parent: each
+ * rule emits its own local selector text verbatim (so `&:hover`, `> .b`,
+ * `.b &`, and `.b, .c` all stay literal), and a placed mixin body splices its
+ * statements inline at the call-site level (its own nested rules therefore nest
+ * under the call site, keeping their own local selectors).
+ */
+function emitNestedBody(statements: Statement[], frame: Frame, e: Emit): void {
+  for (const node of statements) {
+    switch (node.kind) {
+      case Kind.Declaration:
+      case Kind.Comment:
+        emitNestedLeaf({ node, frame }, e);
+        break;
+      case Kind.Rule:
+        emitNestedRule(node, frame, e);
+        break;
+      case Kind.MixinCall:
+        expandNestedCall(node, frame, e);
+        break;
+      case Kind.AtRuleBlock:
+        emitNestedAtRuleBlock(node, frame, e);
+        break;
+      case Kind.AtRuleStatement:
+        emitAtRuleStatement(node, e);
+        break;
+      case Kind.MixinDef:
+      case Kind.VarDeclaration:
+        break; // definitions emit nothing
+    }
+  }
+}
+
+/** A `name: value;` / comment leaf at exactly the current `e.depth` level. */
+function emitNestedLeaf(leaf: Leaf, e: Emit): void {
+  const { node, frame } = leaf;
+  const start = e.off;
+  const idt = e.depth > 0 ? INDENT.repeat(e.depth) : '';
+  if (node.kind === Kind.Declaration) {
+    if (idt) put(e, idt);
+    put(e, node.name);
+    put(e, ': ');
+    const valStart = e.off;
+    put(e, valueText(node.value, frame, e.service));
+    if (e.positions) {
+      e.positions.push({ node: node.value, kind: node.value.kind, start: valStart, end: e.off });
+      e.positions.push({ node, kind: node.kind, start, end: e.off });
+    }
+    put(e, ';\n');
+  } else if (node.kind === Kind.Comment) {
+    if (idt) put(e, idt);
+    put(e, node.text);
+    put(e, '\n');
+    if (e.positions) e.positions.push({ node, kind: node.kind, start, end: e.off });
+  }
+}
+
+/**
+ * Emit one rule with its authored nesting preserved. The header is the rule's
+ * OWN selector list (never composed with the parent); the body is emitted one
+ * level deeper. A rule whose body produces no output (empty, definition-only, or
+ * only-nested-rules-that-themselves-drop) is dropped entirely — header and
+ * braces rewound — matching v5.
+ */
+function emitNestedRule(rule: Rule, frame: Frame, e: Emit): void {
+  const markChunks = e.chunks.length;
+  const markOff = e.off;
+  const markPos = e.positions ? e.positions.length : 0;
+  const start = e.off;
+  const idt = e.depth > 0 ? INDENT.repeat(e.depth) : '';
+  if (idt) put(e, idt);
+  const own = ownStrings(rule.selector);
+  const selStart = e.off;
+  put(e, idt ? own.join(',\n' + idt) : own.join(',\n'));
+  if (e.positions) {
+    e.positions.push({ node: rule.selector, kind: rule.selector.kind, start: selStart, end: e.off });
+  }
+  put(e, ' {\n');
+  const afterHeader = e.chunks.length;
+  const childFrame: Frame = {
+    parent: frame,
+    mixins: collectMixins(rule.body),
+    vars: collectVars(rule.body),
+  };
+  e.depth++;
+  emitNestedBody(rule.body, childFrame, e);
+  e.depth--;
+  if (e.chunks.length === afterHeader) {
+    // Nothing emitted: drop the whole rule (rewind chunks/offset/positions).
+    e.chunks.length = markChunks;
+    e.off = markOff;
+    if (e.positions) e.positions.length = markPos;
+    return;
+  }
+  if (idt) put(e, idt);
+  put(e, '}\n');
+  if (e.positions) e.positions.push({ node: rule, kind: rule.kind, start, end: e.off });
+}
+
+/**
+ * Expand a mixin call in nested mode: select the matching overloaded
+ * definitions, then SPLICE each shared body inline at the current level — the
+ * body's declarations join the call-site block and its nested rules nest under
+ * the call site (own selectors). No clone, no per-placement node build.
+ */
+function expandNestedCall(call: MixinCall, frame: Frame, e: Emit): void {
+  const candidates = lookupMixinCandidates(frame, call.name);
+  if (candidates.length === 0) return;
+  if (e.record && e.recordDepth >= MAX_RECORD_DEPTH) return; // [guards]
+  const resolveCaller = makeResolver(frame, e.service);
+  const makeCalleeResolver = (bindings: Map<string, ValueNode> | null): ValueResolver =>
+    makeResolver({ parent: frame, mixins: null, vars: bindings }, e.service);
+  const selected = selectDefinitions(
+    candidates,
+    call,
+    resolveCaller,
+    makeCalleeResolver,
+    e.service,
+    e.record,
+  );
+  e.recordDepth++;
+  for (const { def, bindings } of selected) {
+    const callFrame: Frame = {
+      parent: frame,
+      mixins: collectMixins(def.body),
+      vars: mergeVars(bindings, collectVars(def.body)),
+    };
+    emitNestedBody(def.body, callFrame, e);
+  }
+  e.recordDepth--;
+}
+
+/**
+ * A block at-rule in nested mode: `@name prelude { …body }`. The header sits at
+ * the current level; the body is a fresh nesting context one level deeper whose
+ * nested rulesets STAY nested (they are not flattened). An at-rule whose body
+ * renders empty is dropped entirely.
+ */
+function emitNestedAtRuleBlock(node: AtRuleBlock, frame: Frame, e: Emit): void {
+  const markChunks = e.chunks.length;
+  const markOff = e.off;
+  const markPos = e.positions ? e.positions.length : 0;
+  const start = e.off;
+  const idt = e.depth > 0 ? INDENT.repeat(e.depth) : '';
+  if (idt) put(e, idt);
+  put(e, node.name);
+  if (node.prelude !== null) {
+    const p = valueText(node.prelude, frame, e.service);
+    if (p.length > 0) {
+      put(e, ' ');
+      put(e, p);
+    }
+  }
+  put(e, ' {\n');
+  const afterHeader = e.chunks.length;
+  const bodyFrame: Frame = {
+    parent: frame,
+    mixins: collectMixins(node.body),
+    vars: collectVars(node.body),
+  };
+  e.depth++;
+  emitNestedBody(node.body, bodyFrame, e);
+  e.depth--;
+  if (e.chunks.length === afterHeader) {
+    e.chunks.length = markChunks;
+    e.off = markOff;
+    if (e.positions) e.positions.length = markPos;
+    return;
+  }
+  if (idt) put(e, idt);
+  put(e, '}\n');
+  if (e.positions) e.positions.push({ node, kind: node.kind, start, end: e.off });
 }
 
 /* ---------------------------------------------- composition-op instrumentation */

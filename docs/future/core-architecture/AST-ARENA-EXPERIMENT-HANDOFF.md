@@ -136,6 +136,47 @@ the log below every iteration so the track compounds instead of repeating.
 
 <!-- newest first; each entry: date · hypothesis · prediction · byte-identical? · measured Δ · kept/dropped · why · next -->
 
+- 2026-07-15 — **R0 (RATIFIED to precede extend): `collapseNesting:false` NESTED-output mode —
+  the Less v5 DEFAULT. VERDICT: built as a SECOND emit policy on the SAME single walk, proven
+  BYTE-IDENTICAL vs the REAL pipeline rendered nested. tree2 now emits the v5-default nested
+  form; the nested corpus pass set EQUALS the flattened pass set (0 regressions), and
+  clone/inherit/withComponents stay structurally ZERO in nested mode. Branch
+  `experiment/tree2-r0-nested-20260715`, fast-forwarded onto `experiment/tree2-cleanroom-20260715`.**
+  - **What/where.** `SerializeOptions.collapseNesting` (default `true` = flatten, unchanged);
+    `collapseNesting:false` routes through the new `emitNested*` family in
+    `packages/core/src/tree2/serialize.ts` (emitNestedBody / emitNestedRule / emitNestedLeaf /
+    expandNestedCall / emitNestedAtRuleBlock). NO new node types — same model, same walk, second
+    policy. Spec section: `TREE2-DESIGN-SPEC.md § R0` (data/algorithm/invariants/oracle).
+  - **Non-obvious shapes, SOURCED from the oracle (not assumed).** `&`/descendant nesting renders
+    LITERALLY (`&:hover`, `& > .b`, `.b &`, nested `.b, .c` verbatim — NO `:is()`, NO parent
+    composition, unlike flatten). Mixin placement SPLICES the body inline under the call site: its
+    decls join the block in source order, its nested rules nest there keeping their OWN selectors.
+    Source order preserved within a block (decls after a nested rule stay in the same block — flatten
+    would split them). `@media` bodies keep inner rules nested (no bubble/merge). Empty blocks elide
+    recursively.
+  - **Oracle (corrected policy).** Intended-v5 = owner `.css` goldens / full pipeline
+    `collapseNesting:false`, NOT Less 4.x. Added `renderRealOracleNested` (`oracle.ts`) = the
+    function-evaluating pipeline rendered nested; all R0 byte-identity is vs THIS.
+  - **Byte-identity.** `nested-byte-identity.test.ts`: 30 curated cases (plain/nesting/`&`/vars/
+    mixin-placement/at-rules/`@media`/guards/empty-elision) all byte-identical. `nested-census.test.ts`
+    (133 less.js `tests-unit`): **NESTED byte-identical = 33 — the SAME 33 as FLAT (0 nested-only, 0
+    flat-only)**. The remaining bridged diffs (maps `#map[key]`, per-mixin arithmetic/scope,
+    namespace/closure, comma-list values, calc, escaping, leading-combinator) ALL also diff in flatten
+    — pre-existing feature gaps, not nesting defects.
+  - **Race (same worktree, warmup 5, N=11 median, threads pool + `--expose-gc`; nested tree2 serialize
+    with pre-built value service vs full REAL oracle rendered nested; all byte-identical):**
+    `deep-nest-8` t2 0.0175 ms vs tree 0.54 ms = 30.8×; `wide-nest-40` 63.8× (t2 263 KB vs tree
+    5122 KB; tree clone 80 + inherit 280 + withComp 40, t2 0); `mixin-nest-60` 43.7× (tree inherit 300,
+    t2 0). tree2's clone/inherit/withComponents columns are structurally ZERO in nested mode too.
+  - **Gates.** Boundary grep of `src/tree2` for `../tree` EMPTY; no `as any`; full tree2 +
+    tree2-frontend + tree2-harness suite GREEN (163 passed, 1 env-gated race skip) INCLUDING the
+    unchanged flattened byte-identity suite (collapseNesting:true not regressed); core `lib/` builds.
+  - **Flagged for owner.** Leading-combinator child selectors (`.a { > .b {…} }`) — the `Complex`
+    model has no leading-combinator slot so the bridge drops it; surfaces in nested mode because the
+    child header is verbatim. Pre-existing bridge/selector-model gap, orthogonal to R0; fix once in the
+    selector model and both emit modes get it. **Next: R1 extend** (its EMIT projects through this same
+    collapse policy).
+
 - 2026-07-15 — **INTEGRATION of the three parallel rung-9 fan-out branches (at-rules/@media,
   @import, guards+pattern/overloaded mixins) back onto `experiment/tree2-cleanroom-20260715`.
   VERDICT: all three merge and COEXIST byte-identically — the full tree2 + tree2-frontend suite is
