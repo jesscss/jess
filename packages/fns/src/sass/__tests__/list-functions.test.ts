@@ -1,4 +1,4 @@
-import { Any, List, Dimension, Context, Num, Quoted, Bool, Paren } from '@jesscss/core';
+import { Any, List, Dimension, Context, Num, Quoted, Bool, Paren, paren } from '@jesscss/core';
 import { beforeAll, describe, it, expect } from 'vitest';
 import length from '../list/length.js';
 import nth from '../list/nth.js';
@@ -181,7 +181,7 @@ describe('Sass list functions', () => {
   describe('is-bracketed()', () => {
     it('returns true for a list wrapped in square delimiters', () => {
       const list = new List([new Num(1), new Num(2)]);
-      new Paren(list, { delimiter: 'square' });
+      paren(list, { delimiter: 'square' });
       const result = isBracketed(list);
       expect(result).toBeInstanceOf(Bool);
       expect((result as Bool).value).toBe(true);
@@ -189,7 +189,7 @@ describe('Sass list functions', () => {
 
     it('returns false for a list wrapped in ordinary parens', () => {
       const list = new List([new Num(1), new Num(2)]);
-      new Paren(list, { delimiter: 'paren' });
+      paren(list, { delimiter: 'paren' });
       const result = isBracketed(list);
       expect(result).toBeInstanceOf(Bool);
       expect((result as Bool).value).toBe(false);
@@ -204,7 +204,7 @@ describe('Sass list functions', () => {
 
     it('works with object parameters', () => {
       const list = new List([new Num(1)]);
-      new Paren(list, { delimiter: 'square' });
+      paren(list, { delimiter: 'square' });
       const result = isBracketed({ list });
       expect(result).toBeInstanceOf(Bool);
       expect((result as Bool).value).toBe(true);
