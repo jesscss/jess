@@ -116,12 +116,17 @@ function compoundFromSimples(texts: string[]): Compound {
 
 function branchFromComplex(c: Complex): Branch {
   const segs: Seg[] = [];
+  // A selector token carrying `@{…}` interpolation has `text: null` (its concrete
+  // text is only known once resolved in an entering frame, which the extend
+  // engine has no access to). Represent it by its literal contribution (`''`),
+  // matching `Compound.canonical()`'s `sim.text ?? ''` convention, so the IR is
+  // always a plain string and no downstream `.includes`/`.split` hits null.
   segs.push({
     comb: c.leadingComb ?? ' ',
-    compound: compoundFromSimples(c.head.simples.map((s) => s.text)),
+    compound: compoundFromSimples(c.head.simples.map((s) => s.text ?? '')),
   });
   for (const seg of c.tail) {
-    segs.push({ comb: seg.comb, compound: compoundFromSimples(seg.compound.simples.map((s) => s.text)) });
+    segs.push({ comb: seg.comb, compound: compoundFromSimples(seg.compound.simples.map((s) => s.text ?? '')) });
   }
   return segs.length === 0 ? { segs: [{ comb: ' ', compound: { simples: [] } }] } : { segs };
 }
