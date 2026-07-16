@@ -48,3 +48,9 @@ export {
   type SerializeReturn,
   type Position,
 } from './serialize.js';
+// [native value path] boundary-clean serializer + operate + kind-dispatch that
+// the fns/ conversion sits on. Built ALONGSIDE the transitional adapter and
+// gated byte-identical against it (see native-evaluator.ts).
+export { serializeValue, serializeColor, serializeDimension, serializeQuoted } from './serialize-value.js';
+export { buildNativeEvaluator } from './native-evaluator.js';
+export { dispatchNative, hasNativeFn, NATIVE_FNS } from './value-dispatch.js';
