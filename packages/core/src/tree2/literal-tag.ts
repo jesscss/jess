@@ -109,12 +109,15 @@ export function materializeLiteral(str: string, tag: LiteralTag): ValueObj {
 }
 
 /**
- * Recover the literal tag for a tree2 `Word` leaf from its bytes. tree2's bridge
- * collapses dimensions/colors/keywords into verbatim `Word` nodes and does NOT
- * carry the parser's finer classification, so the tag is derived here. When the
- * bridge/producer stamps the tag (spec §5), this becomes a direct field read.
- * `Kind.Dimension` AST nodes DO carry their class — those are tagged from `Kind`,
- * not here.
+ * FALLBACK classifier for a genuinely-synthetic / untagged `Word` — a leaf with
+ * no producer-stamped `tag` (e.g. a joined computed fragment forced onto the
+ * typed path). It re-derives the `LIT_*` tag from the bytes.
+ *
+ * This is NOT on the hot path for a PARSED literal: the bridge (spec §5) stamps
+ * the tag at production onto the `Word`, and `evalTyped` reads that field
+ * directly — a re-classification here would be the exact anti-pattern the tag
+ * exists to remove. `Kind.Dimension` AST nodes carry their class in `Kind` and
+ * never reach here either.
  */
 export function tagForWord(text: string): LiteralTag {
   const c0 = text.charCodeAt(0);

@@ -19,13 +19,27 @@
 import { Combinator, Kind, Node } from './node.js';
 import type { GuardNode } from './guard.js'; // [guards]
 import type { CallArg } from './mixin-dispatch.js'; // [guards]
+import type { LiteralTag } from './literal-tag.js'; // [value-literal-tag]
 
 /* ------------------------------------------------------------------ values */
 
-/** A bare identifier / keyword leaf, e.g. `red`, `solid`. */
+/**
+ * A bare literal leaf, e.g. `red`, `solid`, `10px`, `#fff`.
+ *
+ * [value-literal-tag] `tag` carries the PRODUCER's `LIT_*` classification of the
+ * literal (VALUE-LITERAL-TAG-SPEC §5). When a leaf is forced onto the typed path
+ * (operated / compared / typed param) `materialize` reads this stamped FIELD
+ * instead of re-classifying the bytes. It is `undefined` only for a genuinely
+ * synthetic / untagged Word (e.g. a joined computed fragment), where the typed
+ * path falls back to a byte sniff. The bridge stamps it today; the future
+ * tree2-emitting parser-host stamps it at parse (same principle, no reshape).
+ */
 export class Word extends Node {
   readonly kind = Kind.Word as const;
-  constructor(readonly text: string) {
+  constructor(
+    readonly text: string,
+    readonly tag?: LiteralTag,
+  ) {
     super();
   }
 }
@@ -509,7 +523,7 @@ export type Statement =
 
 /* ------------------------------------------------------------ constructors */
 
-export const word = (text: string): Word => new Word(text);
+export const word = (text: string, tag?: LiteralTag): Word => new Word(text, tag);
 export const dim = (value: number, unit = ''): Dimension => new Dimension(value, unit);
 export const spaced = (parts: ValueNode[]): SpacedValue => new SpacedValue(parts);
 

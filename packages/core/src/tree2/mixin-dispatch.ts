@@ -121,6 +121,11 @@ function resolveEager(v: ValueNode, resolveCaller: ValueResolver): ValueNode {
   // [R4] a detached-ruleset arg binds BY REFERENCE (never byte-flattened) so its
   // body + closure survive to the call site.
   if (v.kind === Kind.DetachedRuleset) return v;
+  // [value-literal-tag] a pure literal `Word` carries the producer's `LIT_*` tag
+  // and has no caller-frame refs to flatten — bind it BY REFERENCE so the tag
+  // survives to the callee side (a guard/typed-param materialize reads the stamped
+  // field instead of re-sniffing the bytes). Everything else flattens to bytes.
+  if (v instanceof Word && v.tag !== undefined) return v;
   return new Word(resolveCaller(v));
 }
 

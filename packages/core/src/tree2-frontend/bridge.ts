@@ -25,7 +25,7 @@
 
 import { parseLessFn } from '@jesscss/less-parser';
 import * as t2 from '../tree2/index.js';
-import type { Combinator } from '../tree2/index.js';
+import { LiteralTag, type Combinator } from '../tree2/index.js';
 import { sourceSpanOf } from '../tree/util/provenance.js';
 // [import] resolution/inlining lives in a sibling front-end file (kept out of
 // this shared dispatch file to minimize churn); wired in via `toStatement`.
@@ -595,6 +595,50 @@ function arrayValue(ctx: BridgeCtx, arr: readonly unknown[]): t2.ValueNode | nul
   return parseValue(text.trim());
 }
 
+/**
+ * [value-literal-tag] Map a typed legacy value LEAF to its parser `LIT_*` tag,
+ * so the produced tree2 `Word` carries the classification the parser already knew
+ * (VALUE-LITERAL-TAG-SPEC §5) — `materialize` reads it as a FIELD instead of
+ * re-sniffing the bytes. Returns `undefined` for a non-leaf / unclassified node,
+ * where the typed path's byte-sniff fallback still holds.
+ */
+function leafTagOf(node: AnyNode): LiteralTag | undefined {
+  switch (typeOf(node)) {
+    case 'Dimension':
+      return LiteralTag.Dimension;
+    case 'Num':
+      return LiteralTag.Num;
+    case 'Color':
+      // Hex literal (`#fff`) vs. a named color / `transparent`. The Color node's
+      // own literal spelling (`.node`) is the parser's authoritative field.
+      return typeof node.node === 'string' && node.node.charCodeAt(0) === 35 /* # */
+        ? LiteralTag.ColorHex
+        : LiteralTag.ColorNamed;
+    case 'Bool':
+      return LiteralTag.Bool;
+    case 'Keyword':
+      return LiteralTag.Keyword;
+    // A role-typed / verbatim `Any` (and a quoted-string leaf) rides as `LIT_ANY`:
+    // `materialize` leaves it un-coerced (keyword / quoted), never re-sniffing.
+    case 'Anonymous':
+    case 'Quoted':
+      return LiteralTag.Any;
+    default:
+      return undefined;
+  }
+}
+
+/**
+ * [value-literal-tag] Stamp a producer tag onto a freshly-parsed leaf. A typed
+ * legacy leaf's bytes carry no `@`, so `parseValue` returns a bare `Word` — the
+ * tag rides on it. A multi-part value (`Concat`/`VarRef`/…) is not a single
+ * literal and is returned unchanged.
+ */
+function stampLeaf(v: t2.ValueNode, tag: LiteralTag | undefined): t2.ValueNode {
+  if (tag === undefined || v.kind !== t2.Kind.Word) return v;
+  return t2.word(v.text, tag);
+}
+
 /** An operand of an operation / guard / mixin arg: computed expr or raw leaf. */
 function toOperand(ctx: BridgeCtx, node: unknown): t2.ValueNode | null {
   const computed = toComputedValue(ctx, node);
@@ -603,13 +647,14 @@ function toOperand(ctx: BridgeCtx, node: unknown): t2.ValueNode | null {
   // [E3] a space-separated list arg (`.m(a b c)`) arrives as a bare Array.
   if (Array.isArray(node)) return arrayValue(ctx, node);
   if (isNode(node)) {
+    const tag = leafTagOf(node); // [value-literal-tag] stamp at production
     // [guards] A `Keyword` node's source span can include a wrapping `(...)`
     // (parser quirk for single mixin args); its `.value` is the clean text.
     if (typeOf(node) === 'Keyword' && typeof (node as AnyNode).value === 'string') {
-      return parseValue((node as AnyNode).value as string);
+      return stampLeaf(parseValue((node as AnyNode).value as string), tag);
     }
     const raw = slice(ctx, node);
-    if (raw !== undefined) return parseValue(raw);
+    if (raw !== undefined) return stampLeaf(parseValue(raw), tag);
   }
   return null;
 }

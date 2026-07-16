@@ -297,19 +297,22 @@ function forceLiteral(e: EvalCtx, bytes: string, tag: LiteralTag): ValueObj {
 /**
  * [R2] TYPED fold: materialize a value node to a typed `ValueObj` for an OPERATED
  * / compared / typed-param position — sourcing the literal's TYPE from the parse
- * (the packed node's `Kind`), NOT by re-classifying bytes. A `Kind.Dimension`
- * node carries the parser's payload (`value`/`unit`) → built directly, no
- * re-parse. A `Kind.Word` leaf carries verbatim bytes; tree2's bridge collapses
- * dimensions/colors/keywords into `Word` (no finer tag yet), so its tag is
- * recovered by `tagForWord` — a direct field read once the producer stamps it
- * (spec §5). Variable refs / parens are transparent, threading the tag through.
+ * (the packed node's `Kind` / stamped `tag`), NOT by re-classifying bytes. A
+ * `Kind.Dimension` node carries the parser's payload (`value`/`unit`) → built
+ * directly, no re-parse. A `Kind.Word` leaf carries verbatim bytes PLUS the
+ * producer's stamped `LIT_*` `tag` (spec §5): `materialize` reads it as a FIELD.
+ * `tagForWord` is only a fallback for a genuinely-synthetic / untagged Word (no
+ * `tag`) — never on the hot path for a parsed literal. Variable refs / parens are
+ * transparent, threading the tag through.
  */
 function evalTyped(node: ValueNode, frame: Frame | null, e: EvalCtx, depth = 0): MaybePromise<ValueObj> {
   switch (node.kind) {
     case Kind.Dimension:
       return { kind: 'dimension', number: node.value, unit: node.unit, bytes: `${node.value}${node.unit}` };
     case Kind.Word:
-      return forceLiteral(e, node.text, tagForWord(node.text));
+      // The producer stamps `tag` (bridge today, parser-host later); fall back to
+      // a byte sniff only for an untagged/synthetic Word.
+      return forceLiteral(e, node.text, node.tag ?? tagForWord(node.text));
     case Kind.VarRef: {
       if (depth > MAX_VAR_DEPTH) return forceLiteral(e, `@${node.name}`, LiteralTag.Keyword);
       const bound = lookupVar(frame, node.name);
