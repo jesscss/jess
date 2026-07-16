@@ -118,6 +118,11 @@ describe('.jess dialect parity (LS features on jess stylesheets)', () => {
     expect(labels).toContain('@media');
   });
 
+  it('`$[…]` interpolation completes bare variable names', () => {
+    const labels = completeAt('$primary: red;\n.a-$[pri| ] { x: 1 }');
+    expect(labels).toContain('primary');
+  });
+
   it('colors the `$` sigil and the variable name as SEPARATE tokens (not one blob)', () => {
     const { engine, doc } = engineWith('$foo: red;\n.a { color: $foo; }');
     const data = engine.getSemanticTokens(doc.uri).data;

@@ -817,7 +817,7 @@ export function createEngine(): JessLanguageServiceEngine {
       } else {
         t.index = null;
       }
-    } catch (e) {
+    } catch {
       // On exception, still try to use partial parse result if available
       t.parse = null;
       t.index = null;
@@ -855,7 +855,7 @@ export function createEngine(): JessLanguageServiceEngine {
   }
 
   // Load and parse an imported file from disk
-  function loadImportedFile(importedUri: string, lang: JessLang, visited: Set<string>): TrackedDoc | null {
+  function loadImportedFile(importedUri: string, lang: JessLang, _visited: Set<string>): TrackedDoc | null {
     // Check cache first
     const cached = importedDocs.get(importedUri);
     if (cached) {
@@ -1159,6 +1159,51 @@ export function createEngine(): JessLanguageServiceEngine {
       const pathItems = pathCompletions(document, offset);
       if (pathItems) {
         return { isIncomplete: false, items: pathItems };
+      }
+
+      // 0b) SCSS `%placeholder` completions (after `%` or `@extend %`). Mined from
+      //     every `%name` token in the document (defs + prior usages), deduped.
+      if (tracked.lang === 'scss' && currentWord.startsWith('%')) {
+        const seen = new Set<string>();
+        const re = /%[-\w]+/g;
+        let m: RegExpExecArray | null;
+        while ((m = re.exec(text)) !== null) {
+          seen.add(m[0]);
+        }
+        for (const ph of seen) {
+          if (ph.toLowerCase() === prefix) {
+            continue; // the partial under the cursor, not a real candidate
+          }
+          if (prefix.length > 1 && !ph.toLowerCase().startsWith(prefix)) {
+            continue;
+          }
+          push(ph, CompletionItemKind.Class);
+        }
+        if (items.length > 0) {
+          return { isIncomplete: false, items };
+        }
+      }
+
+      // 0c) Interpolation-context variable completion: inside Less `@{…}` or Jess
+      //     `$[…]` the sigil is the wrapper, so offer BARE variable names. (SCSS
+      //     `#{$x}` already flows through the `$`-prefixed variable path below.)
+      {
+        const lineStart = text.lastIndexOf('\n', offset - 1) + 1;
+        const lineBefore = text.slice(lineStart, offset);
+        const inInterp =
+          (tracked.lang === 'less' && /@\{[-\w]*$/.test(lineBefore))
+          || (tracked.lang === 'jess' && /\$\[[-\w]*$/.test(lineBefore));
+        if (inInterp && cstTree) {
+          for (const name of cstVariableNames(cstTree, document)) {
+            if (prefix && !name.toLowerCase().startsWith(prefix)) {
+              continue;
+            }
+            push(name, CompletionItemKind.Variable);
+          }
+          if (items.length > 0) {
+            return { isIncomplete: false, items };
+          }
+        }
       }
 
       // 1) Variable completions: Less @var, SCSS $var, CSS custom properties --x.

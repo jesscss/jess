@@ -143,4 +143,26 @@ describe('enhanced completions (MS-parity: values / pseudo / mixin / !important)
     expect(labels).toContain('@font-face');
     expect(labels).not.toContain('@import'); // root-only everywhere
   });
+
+  it('SCSS %placeholder completes after @extend %', () => {
+    const labels = completeAt('scss', '%button { color: red; }\n.a { @extend %| }');
+    expect(labels).toContain('%button');
+  });
+
+  it('SCSS %placeholder filters by prefix and excludes the partial typed', () => {
+    const labels = completeAt('scss', '%button {} %card {}\n.a { @extend %bu| }');
+    expect(labels).toContain('%button');
+    expect(labels).not.toContain('%card');
+    expect(labels).not.toContain('%bu');
+  });
+
+  it('Less `@{…}` interpolation completes bare variable names', () => {
+    const labels = completeAt('less', '@primary: red;\n.a-@{pri| } { x: 1 }');
+    expect(labels).toContain('primary');
+  });
+
+  it('SCSS `#{$…}` interpolation still completes variables', () => {
+    const labels = completeAt('scss', '$primary: red;\n.a { width: #{$pri| }; }');
+    expect(labels).toContain('$primary');
+  });
 });
