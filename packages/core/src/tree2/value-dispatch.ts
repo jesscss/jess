@@ -1,26 +1,20 @@
 /**
- * Lean typed KIND-DISPATCH table — replaces `define-function.ts`'s `instanceof`
- * coercion for the tree2 value domain. A spec table declares each param's
- * accepted `kind`(s) + optionality; the dispatcher validates/binds positionally
- * by kind and calls the native body. Registering a fn = ONE spec entry + one
- * native body. Deliberately minimal (owner complexity guardrail): a spec table,
- * NOT a rebuilt coercion monster.
+ * Lean typed KIND-DISPATCH for the tree2 value domain — replaces
+ * `define-function.ts`'s `instanceof` coercion. Each native fn declares its
+ * accepted param `kind`(s) + optionality (its `NativeFn` spec, co-located with its
+ * body in `native/<fn>.ts`); this dispatcher validates/binds positionally by kind
+ * and calls the body. The TABLE is ASSEMBLED from `native/index.ts` — adding a fn
+ * touches only that module + list, never this file. Deliberately minimal (owner
+ * complexity guardrail): a spec table, NOT a rebuilt coercion monster.
  *
  * HARD MODULE BOUNDARY: value domain + native fns only.
  */
-import type { Color, Dimension, Keyword, Quoted, ValueObj } from './value-eval.js';
-import { lightenNative, percentageNative, eNative } from './fns-native.js';
+import type { ValueObj } from './value-eval.js';
+import type { FnSpec } from './native/types.js';
+import { NATIVE_FN_LIST } from './native/index.js';
 
-type Kind = ValueObj['kind'];
-
-interface ParamSpec {
-  readonly kinds: readonly Kind[] | 'any';
-  readonly optional?: boolean;
-}
-interface FnSpec {
-  readonly params: readonly ParamSpec[];
-  readonly body: (...args: ValueObj[]) => ValueObj;
-}
+/** name → spec, assembled from the per-fn modules (names are lower-case). */
+const TABLE: ReadonlyMap<string, FnSpec> = new Map(NATIVE_FN_LIST.map((f) => [f.name, f]));
 
 /** Positional bind by kind; throws on arity / kind mismatch (missing required, wrong kind). */
 function bind(name: string, spec: FnSpec, args: readonly ValueObj[]): ValueObj[] {
@@ -40,31 +34,15 @@ function bind(name: string, spec: FnSpec, args: readonly ValueObj[]): ValueObj[]
   return out;
 }
 
-const TABLE: Record<string, FnSpec> = {
-  lighten: {
-    params: [{ kinds: ['color'] }, { kinds: ['dimension'] }, { kinds: ['keyword', 'quoted'], optional: true }],
-    body: (c, amt, m) => lightenNative(c as Color, amt as Dimension, m as Keyword | Quoted | undefined),
-  },
-  percentage: {
-    params: [{ kinds: ['dimension'] }],
-    body: (v) => percentageNative(v as Dimension),
-  },
-  e: {
-    params: [{ kinds: 'any' }],
-    body: (v) => eNative(v),
-  },
-};
-
 /** Whether a native Tier-A implementation exists for `name`. */
-export const hasNativeFn = (name: string): boolean =>
-  Object.prototype.hasOwnProperty.call(TABLE, name.toLowerCase());
+export const hasNativeFn = (name: string): boolean => TABLE.has(name.toLowerCase());
 
 /** Dispatch a native Tier-A call by name over typed value args. */
 export function dispatchNative(name: string, args: readonly ValueObj[]): ValueObj {
-  const spec = TABLE[name.toLowerCase()];
+  const spec = TABLE.get(name.toLowerCase());
   if (!spec) throw new Error(`no native fn: ${name}`);
   return spec.body(...bind(name, spec, args));
 }
 
-/** The set of natively-converted fn names (proof set for the foundation). */
-export const NATIVE_FNS: ReadonlySet<string> = new Set(Object.keys(TABLE));
+/** The set of natively-converted fn names. */
+export const NATIVE_FNS: ReadonlySet<string> = new Set(TABLE.keys());

@@ -96,6 +96,45 @@ const CORPUS: Array<[string, string]> = [
   ['fn-percentage', '.a { width: percentage(0.5); }\n'],
   ['fn-percentage-frac', '.a { width: percentage(0.375); }\n'],
 
+  // --- converted MATH group (Tier-A) — rounding / sign / roots / powers ---
+  ['fn-round-int', '.a { m: round(2.5); }\n'],
+  ['fn-round-unit', '.a { m: round(2.4px); }\n'],
+  ['fn-round-precision', '.a { m: round(3.14159, 2); }\n'],
+  ['fn-round-neg', '.a { m: round(-1.5); }\n'],
+  ['fn-ceil-unit', '.a { m: ceil(2.1px); }\n'],
+  ['fn-ceil-num', '.a { m: ceil(4.001); }\n'],
+  ['fn-floor-unit', '.a { m: floor(2.9px); }\n'],
+  ['fn-floor-num', '.a { m: floor(4.999); }\n'],
+  ['fn-abs-neg', '.a { m: abs(-5px); }\n'],
+  ['fn-abs-pos', '.a { m: abs(7); }\n'],
+  ['fn-sqrt-num', '.a { m: sqrt(9); }\n'],
+  ['fn-sqrt-unit', '.a { m: sqrt(16px); }\n'],
+  ['fn-pow-num', '.a { m: pow(2, 3); }\n'],
+  ['fn-pow-unit', '.a { m: pow(3px, 2); }\n'],
+  ['fn-mod-num', '.a { m: mod(7, 3); }\n'],
+  ['fn-mod-unit', '.a { m: mod(10px, 3); }\n'],
+
+  // --- constants / percentage / unit ---
+  ['fn-pi', '.a { m: pi(); }\n'],
+  ['fn-unit-set', '.a { m: unit(5, px); }\n'],
+  ['fn-unit-strip', '.a { m: unit(5px); }\n'],
+  ['fn-unit-replace', '.a { m: unit(3px, em); }\n'],
+  ['fn-convert-length', '.a { m: convert(1cm, mm); }\n'],
+  ['fn-convert-angle', '.a { m: convert(90deg, rad); }\n'],
+  ['fn-convert-same', '.a { m: convert(5px, px); }\n'],
+  ['fn-convert-incompat', '.a { m: convert(5px, s); }\n'],
+
+  // --- trigonometry (deg/grad/turn → rad normalization) ---
+  ['fn-sin-deg', '.a { m: sin(90deg); }\n'],
+  ['fn-sin-num', '.a { m: sin(1); }\n'],
+  ['fn-cos-deg', '.a { m: cos(0deg); }\n'],
+  ['fn-cos-grad', '.a { m: cos(100grad); }\n'],
+  ['fn-tan-deg', '.a { m: tan(45deg); }\n'],
+  ['fn-tan-turn', '.a { m: tan(0.125turn); }\n'],
+  ['fn-asin', '.a { m: asin(1); }\n'],
+  ['fn-acos', '.a { m: acos(0.5); }\n'],
+  ['fn-atan', '.a { m: atan(1); }\n'],
+
   // --- unknown fn (verbatim) ---
   ['unknown-fn', '.a { filter: some-unknown(1px, 2px); }\n'],
   ['unknown-fn-solo', '.a { transform: rotate3d(1, 1, 1); }\n'],
