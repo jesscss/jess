@@ -902,13 +902,28 @@ describe('scss-parser (baseline)', () => {
     expect(serializeTypes(result.tree)).toContainString('(Ampersand');
   });
 
-  functionalIt('parses placeholder rulesets', () => {
+  functionalIt('parses placeholder rulesets — selector lowers to `\\\\foo` and isPlaceholder is set', () => {
     const parser = new Parser();
     const result = parser.parse(`%foo { color: red; }`);
     expect(result.lexerResult.errors.length).toBe(0);
     expect(result.errors.map(e => e.message)).toEqual([]);
-    expect(serializeTypes(result.tree)).toContainString(`(Ruleset`);
-    expect(serializeTypes(result.tree)).toContainString(`\\\\foo`); // `%foo` → `\\foo`
+    expect(isNode(result.tree, N.Rules)).toBe(true);
+    if (isNode(result.tree, N.Rules)) {
+      const ruleset = result.tree.rules[0]!;
+      expect(isNode(ruleset, N.Ruleset)).toBe(true);
+      if (isNode(ruleset, N.Ruleset)) {
+        expect(ruleset.selector).toBe('\\\\foo'); // `%foo` → `\\foo`, exactly
+        expect(ruleset.isPlaceholder).toBe(true);
+      }
+    }
+    // A normal ruleset is NOT flagged.
+    const normal = parser.parse(`.a { color: red; }`);
+    if (isNode(normal.tree, N.Rules)) {
+      const nr = normal.tree.rules[0]!;
+      if (isNode(nr, N.Ruleset)) {
+        expect(nr.isPlaceholder).toBe(false);
+      }
+    }
   });
 
   functionalIt('lowers @at-root selector shorthand to a null-parent ampersand selector', () => {

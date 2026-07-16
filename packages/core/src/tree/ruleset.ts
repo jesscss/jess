@@ -85,6 +85,32 @@ function isRulesetSelectorMetadata(value: unknown): value is Selector {
   return value instanceof Selector;
 }
 
+/**
+ * A placeholder selector uses the escaped-backslash sigil `\\name` — a literal `\`
+ * in the selector text (what the SCSS parser lowers `%name` to, and what `.jess`
+ * writes directly, since `%` is modulo/percent in Jess). Detected from the text.
+ */
+function selectorTextIsPlaceholder(sel: unknown): boolean {
+  if (typeof sel === 'string') {
+    return sel.startsWith('\\\\');
+  }
+  if (sel instanceof Selector) {
+    const v = sel.valueOf();
+    return typeof v === 'string' && v.startsWith('\\\\');
+  }
+  return false;
+}
+
+/** A ruleset is a placeholder when EVERY one of its selectors is a `\\name`
+ * placeholder — it then emits no output of its own and is realized only via
+ * extend. (A mixed list like `\\foo, .bar` is NOT a whole-ruleset placeholder.) */
+function rulesetSelectorIsPlaceholder(selector: SelectorLike | Nil | undefined): boolean {
+  if (Array.isArray(selector)) {
+    return selector.length > 0 && selector.every(selectorTextIsPlaceholder);
+  }
+  return selectorTextIsPlaceholder(selector);
+}
+
 type RulesetOptions = NodeOptions & {
   parentSelector?: Selector | Nil;
   /** Own selector before parent resolution (getImplicitSelector); used by extend so nested rulesets extend .replace,.c not the resolved form. */
@@ -108,6 +134,14 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
   // Ruleset owns registration prep and marks `registrationPrepared` directly.
   /** Stored as delivered: string, node, or plain array (an array IS a selector list). */
   selector: SelectorLike | Nil | undefined;
+  /**
+   * True when every selector was a `\\name` placeholder AT PARSE — the ruleset
+   * emits no output of its own and is only realized through `@extend` / `$extend`.
+   * STORED (not derived) so it survives selector resolution during eval, where a
+   * placeholder stays invisible even after being extended. Output-suppression
+   * itself is applied downstream in eval (still an open TODO there).
+   */
+  isPlaceholder = false;
   declare readonly rules: Node[];
   declare guard?: RulesetValue['guard'];
   declare selectorBeforeExtend?: RulesetValue['selectorBeforeExtend'];
@@ -135,6 +169,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     } else {
       this.selector = value.selector;
     }
+    this.isPlaceholder = rulesetSelectorIsPlaceholder(this.selector);
     if (value.guard !== undefined) {
       this.guard = value.guard;
     }
@@ -165,6 +200,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
       this.sourceRoot?._treeContext
     );
     shell.selector = this.selector;
+    shell.isPlaceholder = this.isPlaceholder;
     if (this.guard !== undefined) {
       shell.guard = this.guard;
     }

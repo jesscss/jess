@@ -7,35 +7,55 @@
  * representation. Parsing rides on the generic CSS-escape handling in `basicSel`;
  * private placeholders are just a leading `_` (`\\_name`).
  *
- * NOTE: output-suppression / extend-only semantics live in core eval (an open
- * @todo in tree/selector.ts) — this corpus only pins the PARSE + round-trip.
+ * A ruleset whose selector(s) are ALL placeholders carries `isPlaceholder = true`
+ * (marked at parse) — it emits no output of its own and is realized only via
+ * extend. The output-suppression itself is a core-eval TODO; this corpus pins the
+ * PARSE, the flag, and the round-trip with EXACT assertions.
  */
 import { describe, it, expect } from 'vitest';
-import { expectAstContains, expectRoundTrip, parse } from './_util.js';
+import { parse } from './_util.js';
+
+// eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+const firstRule = (src: string) => (parse(src).tree as unknown as { rules: Array<Record<string, unknown>> }).rules[0]!;
 
 describe('corpus/placeholders', () => {
-  it('a `\\\\name` placeholder parses as a Ruleset selector', () => {
-    // Source `\\foo { … }` → Ruleset whose selector is the escaped `\\foo`.
-    expectAstContains('\\\\foo { color: red; }', '\\\\foo');
+  it('a `\\\\name` placeholder ruleset: selector + isPlaceholder flag', () => {
+    const rs = firstRule('\\\\foo { color: red; }');
+    expect(rs.type).toBe('Ruleset');
+    expect(rs.selector).toBe('\\\\foo'); // two backslashes, exactly
+    expect(rs.isPlaceholder).toBe(true);
   });
 
-  it('a private `\\\\_name` placeholder parses', () => {
-    expectAstContains('\\\\_priv { x: 1 }', '\\\\_priv');
+  it('a private `\\\\_name` placeholder is flagged too', () => {
+    const rs = firstRule('\\\\_priv { x: 1 }');
+    expect(rs.selector).toBe('\\\\_priv');
+    expect(rs.isPlaceholder).toBe(true);
   });
 
-  it('placeholder ruleset round-trips', () => {
-    expectRoundTrip('\\\\foo { color: red; }', '\\\\foo');
+  it('a normal selector is NOT a placeholder', () => {
+    expect(firstRule('.a { color: red; }').isPlaceholder).toBe(false);
   });
 
-  it('`$extend \\\\name` builds an Extend targeting the placeholder', () => {
-    const { tree } = parse('.a { $extend \\\\foo; }');
-    // .a { … } → the inner statement is an Extend whose target carries `\\foo`.
+  it('a mixed list `\\\\foo, .bar` is NOT a whole-ruleset placeholder', () => {
+    expect(firstRule('\\\\foo, .bar { x: 1 }').isPlaceholder).toBe(false);
+  });
+
+  it('an all-placeholder list `\\\\a, \\\\b` IS a placeholder', () => {
+    expect(firstRule('\\\\a, \\\\b { x: 1 }').isPlaceholder).toBe(true);
+  });
+
+  it('placeholder ruleset round-trips exactly', () => {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-    const outer = (tree as unknown as { rules: Array<{ type?: string; rules?: unknown[] }> }).rules[0];
-    expect(outer?.type).toBe('Ruleset');
+    const rs = firstRule('\\\\foo { color: red; }') as { toTrimmedString(o: unknown): string };
+    expect(rs.toTrimmedString({ compress: false })).toBe('\\\\foo {\n  color: red;\n}\n');
+  });
+
+  it('`$extend \\\\name` builds an Extend targeting the placeholder exactly', () => {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-    const inner = outer?.rules?.[0] as { type?: string; target?: { value?: string } };
-    expect(inner.type).toBe('Extend');
-    expect(String(inner.target?.value ?? '')).toContain('\\\\foo');
+    const outer = firstRule('.a { $extend \\\\foo; }') as { type: string; rules: Array<{ type?: string; target?: { value?: string } }> };
+    expect(outer.type).toBe('Ruleset');
+    const ext = outer.rules[0]!;
+    expect(ext.type).toBe('Extend');
+    expect(ext.target?.value).toBe('\\\\foo');
   });
 });
