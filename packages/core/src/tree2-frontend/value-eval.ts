@@ -31,6 +31,7 @@ import { Anonymous, Bool, Color, ColorFormat, Dimension, Nil, Quoted, List } fro
 import { callWithContext } from '../define-function.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import { LiteralTag } from '../tree2/index.js';
+import { calcInner } from '../tree2/value-operate.js';
 import type {
   EvalModes,
   List as ValueList,
@@ -49,28 +50,6 @@ interface LegacyNode {
 const HEX_RE = /^#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/;
 const NUM_RE = /^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?([a-zA-Z%]*)$/;
 const QUOTE_RE = /^(['"])([\s\S]*)\1$/;
-
-/**
- * A single `calc(...)` wrapper: the capture group is its inner expression.
- * Calc-keyword operands in this adapter are always singly wrapped (guard 1
- * below fires before guard 2 whenever both sides are calc, and the
- * unit-clash fallback wraps a single composed operation), so the greedy
- * capture never mis-splits a composed `calc(a) + calc(b)`.
- */
-const CALC_WRAP_RE = /^calc\(([\s\S]*)\)$/;
-
-/**
- * If `bytes` is a `calc(...)` wrapper, return its inner expression; otherwise
- * return `null`. Byte-level port of the legacy `Operation.unwrapCalcOperand`:
- * CSS flattens nested calc, so a `calc(...)` operand composing into an outer
- * operation has its inner expression spliced in directly, yielding one flat
- * `calc(...)` rather than `calc(calc(...) op Y)`. A Paren-wrapped inner
- * expression keeps its paren (`calc((a - b))` -> `(a - b)`).
- */
-const calcInner = (bytes: string): string | null => {
-  const m = CALC_WRAP_RE.exec(bytes.trim());
-  return m ? m[1]! : null;
-};
 
 /* -------------------------------------------------------- fns registry */
 
@@ -232,6 +211,8 @@ export function buildEvaluator(_options?: EvaluatorOptions): ValueEvaluator {
     // `Operation.unwrapCalcOperand` + `createCalcFallback`). Splice the inner
     // expression(s) directly so `calc(100% * 100%) * 2` composes to a flat
     // `calc(100% * 100% * 2)`, never `calc(calc(100% * 100%) * 2)`.
+    // byte-faithful: opaque operand, no structured node — the operand crosses the
+    // seam already materialized to a keyword, so the calc wrapper is string-unwrapped.
     const leftInner = left.kind === 'keyword' ? calcInner(left.bytes) : null;
     const rightInner = right.kind === 'keyword' ? calcInner(right.bytes) : null;
     if (leftInner !== null || rightInner !== null) {

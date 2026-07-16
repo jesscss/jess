@@ -139,8 +139,27 @@ function dimensionAsColor(a: Dimension, b: Color, op: string, modes: EvalModes):
 
 /* -------------------------------------------------------- calc guards */
 
+/**
+ * A single `calc(...)` wrapper: the capture group is its inner expression.
+ * Calc-keyword operands are always singly wrapped (guard 1 fires before guard 2
+ * whenever both sides are calc, and the unit-clash fallback wraps a single
+ * composed operation), so the greedy capture never mis-splits a composed
+ * `calc(a) + calc(b)`.
+ */
 const CALC_WRAP_RE = /^calc\(([\s\S]*)\)$/;
-const calcInner = (bytes: string): string | null => {
+
+/**
+ * If `bytes` is a `calc(...)` wrapper, return its inner expression; otherwise
+ * `null`. Byte-level port of the legacy `Operation.unwrapCalcOperand`: CSS
+ * flattens nested calc, so a `calc(...)` operand composing into an outer
+ * operation has its inner expression spliced in directly, yielding one flat
+ * `calc(...)` rather than `calc(calc(...) op Y)`. A Paren-wrapped inner
+ * expression keeps its paren (`calc((a - b))` -> `(a - b)`).
+ *
+ * SINGLE implementation: the transitional adapter (`tree2-frontend/value-eval`)
+ * imports this rather than carrying its own twin.
+ */
+export const calcInner = (bytes: string): string | null => {
   const m = CALC_WRAP_RE.exec(bytes.trim());
   return m ? m[1]! : null;
 };
@@ -154,6 +173,10 @@ const calcInner = (bytes: string): string | null => {
  */
 export function nativeOperate(op: string, left: ValueObj, right: ValueObj, modes: EvalModes): ValueObj {
   // Guard 1: calc-wrapper keyword operand → flat calc splice.
+  // byte-faithful: opaque operand, no structured node — at the seam a calc
+  // operand is always an already-materialized keyword (the structured `calc(...)`
+  // FunctionCall was folded to bytes upstream), and a computed preserve-mode
+  // `calc(...)` fallback result has no node at all, so both are string-unwrapped.
   const leftInner = left.kind === 'keyword' ? calcInner(left.bytes) : null;
   const rightInner = right.kind === 'keyword' ? calcInner(right.bytes) : null;
   if (leftInner !== null || rightInner !== null) {
