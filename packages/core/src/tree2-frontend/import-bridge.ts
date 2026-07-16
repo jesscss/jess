@@ -83,7 +83,18 @@ function specifierOf(node: AnyNode): string | null {
   const p = node.path;
   if (!isNode(p)) return null;
   const value = (p as AnyNode).value;
+  // A `Quoted` path carries the specifier directly as a string.
   if (typeof value === 'string') return value;
+  // [import:specifier] An unquoted `url(...)` path (`@import url(foo.less)`) wraps
+  // its target in an inner value node whose `.value` is the raw URL string. A
+  // QUOTED url (`url("foo.less")`) parses as a plain `Quoted` and is handled by
+  // the branch above. An interpolated inner value (an `Interpolated`, which has no
+  // string `.value`) is deliberately not matched here — it falls through to the
+  // interpolation-template path.
+  if (isNode(value)) {
+    const inner = (value as AnyNode).value;
+    if (typeof inner === 'string') return inner;
+  }
   return null;
 }
 
@@ -238,7 +249,6 @@ interface ImportFlags {
   inline: boolean;
   css: boolean;
   escaped: boolean;
-  isUrl: boolean;
 }
 
 /**
@@ -261,18 +271,23 @@ function readFlags(node: AnyNode): ImportFlags {
     inline: io?.inline === true,
     css: io?.css === true || (isNode(io) && (io as AnyNode).type === 'css'),
     escaped: p?.escaped === true,
-    isUrl: nodeType(p) === 'Url',
   };
 }
 
 /**
  * A specifier resolves to a plain-CSS `@import` (which the legacy path hoists to
- * the top of the document as a literal `@import`) when it is a `url(...)`, has a
- * `.css` extension, or is a remote/protocol-relative URL. tree2 does not yet
- * reproduce the top-of-document hoist, so these are rejected (not mis-inlined).
+ * the top of the document as a literal `@import`) when it carries the explicit
+ * `(css)` option, has a `.css` extension, or is a remote/protocol-relative URL.
+ * tree2 does not yet reproduce the top-of-document hoist, so these are rejected
+ * (not mis-inlined).
+ *
+ * A bare `url(...)` wrapper does NOT force CSS — Less decides import kind from the
+ * extension/options alone, so `@import url(foo.less)` is a LESS import that inlines
+ * (verified against Less 4.x), while `@import url(foo.css)` is caught by the `.css`
+ * test below. Only an explicit `(css)` option or a `.css`/remote target is CSS.
  */
 function isCssPassthrough(spec: string, flags: ImportFlags): boolean {
-  if (flags.css || flags.isUrl) return true;
+  if (flags.css) return true;
   const lower = spec.toLowerCase();
   if (/\.css([?#].*)?$/.test(lower)) return true;
   return lower.startsWith('http://') || lower.startsWith('https://') || lower.startsWith('//');
