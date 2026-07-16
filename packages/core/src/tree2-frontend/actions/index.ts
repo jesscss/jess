@@ -31,6 +31,7 @@ import { CHARSET_ACTIONS } from './charset.js';
 import { SELECTOR_ACTIONS } from './selector.js';
 import { AT_RULES_ACTIONS } from './at-rules.js';
 import { VARIABLES_ACTIONS } from './variables.js';
+import { COMMENTS_ACTIONS } from './comments.js';
 
 export const ACTION_LIST: readonly BuildAction[] = [
   ...RULESET_ACTIONS,
@@ -40,4 +41,5 @@ export const ACTION_LIST: readonly BuildAction[] = [
   ...SELECTOR_ACTIONS,
   ...AT_RULES_ACTIONS,
   ...VARIABLES_ACTIONS,
+  ...COMMENTS_ACTIONS
 ];
