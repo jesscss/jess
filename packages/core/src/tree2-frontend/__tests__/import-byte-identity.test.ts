@@ -5,7 +5,7 @@ import { parseLessFn } from '@jesscss/less-parser';
 import { serialize } from '../../tree2/index.js';
 import { bridgeToTree2 } from '../bridge.js';
 import { createImportState } from '../import-bridge.js';
-import { buildEvaluator } from '../value-eval.js';
+import { buildNativeEvaluator } from '../../tree2/native-evaluator.js';
 import { renderImportOracle } from './import-oracle.js';
 
 const ROOT = '/Users/matthew/git/worktrees/less.js/packages/test-data/tests-unit';
@@ -16,7 +16,7 @@ async function renderTree2File(file: string): Promise<string> {
   const parsed = parseLessFn(src);
   if (parsed.errors.length > 0) throw new Error(`parse errors in ${file}`);
   const bridged = bridgeToTree2(parsed.tree, src, file, createImportState());
-  const evaluator = buildEvaluator();
+  const evaluator = buildNativeEvaluator();
   return (await serialize(bridged, { evaluator })).css;
 }
 

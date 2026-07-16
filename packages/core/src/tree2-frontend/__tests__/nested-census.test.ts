@@ -4,7 +4,7 @@ import * as path from 'path';
 import { parseLessFn } from '@jesscss/less-parser';
 import { serialize } from '../../tree2/index.js';
 import { bridgeToTree2, UnsupportedShape } from '../bridge.js';
-import { buildEvaluator } from '../value-eval.js';
+import { buildNativeEvaluator } from '../../tree2/native-evaluator.js';
 import { renderRealOracle, renderRealOracleNested } from '../oracle.js';
 
 /**
@@ -62,7 +62,7 @@ describe('R0 — nested corpus census', () => {
       bridged.push(rel);
       let service;
       try {
-        evaluator = buildEvaluator();
+        evaluator = buildNativeEvaluator();
       } catch {
         continue;
       }

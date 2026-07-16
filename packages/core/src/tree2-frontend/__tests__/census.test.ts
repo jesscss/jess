@@ -4,7 +4,7 @@ import * as path from 'path';
 import { parseLessFn } from '@jesscss/less-parser';
 import { serialize } from '../../tree2/index.js';
 import { bridgeToTree2, UnsupportedShape } from '../bridge.js';
-import { buildEvaluator } from '../value-eval.js';
+import { buildNativeEvaluator } from '../../tree2/native-evaluator.js';
 import { renderRealOracle } from '../oracle.js';
 
 // Rung 8: the oracle is now the REAL (function-evaluating) pipeline.
@@ -68,7 +68,7 @@ describe('tree2 bridge — real corpus census', () => {
       }
       let t2css: string;
       try {
-        const evaluator = buildEvaluator();
+        const evaluator = buildNativeEvaluator();
         t2css = (await serialize(bridged, { evaluator })).css;
       } catch (e) {
         unsupported.set('serialize-error', (unsupported.get('serialize-error') ?? 0) + 1);

@@ -5,7 +5,7 @@ import { fileURLToPath } from 'url';
 import { parseLessFn } from '@jesscss/less-parser';
 import { serialize } from '../../tree2/index.js';
 import { bridgeToTree2 } from '../bridge.js';
-import { buildEvaluator } from '../value-eval.js';
+import { buildNativeEvaluator } from '../../tree2/native-evaluator.js';
 import { expectedCss, fixtureLess, resolveCollapseNesting } from '../oracle-source.js';
 
 /**
@@ -28,7 +28,7 @@ const correction = (name: string): string =>
 
 async function render(src: string, collapse: boolean): Promise<string> {
   const root = bridgeToTree2(parseLessFn(src).tree, src);
-  return (await serialize(root, { evaluator: buildEvaluator(), collapseNesting: collapse })).css;
+  return (await serialize(root, { evaluator: buildNativeEvaluator(), collapseNesting: collapse })).css;
 }
 
 describe('R4 — byte-identity vs oracle', () => {

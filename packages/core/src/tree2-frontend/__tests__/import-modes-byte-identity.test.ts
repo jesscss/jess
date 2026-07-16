@@ -4,7 +4,7 @@ import { parseLessFn } from '@jesscss/less-parser';
 import { serialize } from '../../tree2/index.js';
 import { bridgeToTree2 } from '../bridge.js';
 import { createImportState } from '../import-bridge.js';
-import { buildEvaluator } from '../value-eval.js';
+import { buildNativeEvaluator } from '../../tree2/native-evaluator.js';
 import { renderImportOracle } from './import-oracle.js';
 
 // Authored fixtures pinning each @import MODE explicitly. The real less.js
@@ -22,7 +22,7 @@ async function renderTree2File(file: string): Promise<string> {
   const src = fs.readFileSync(file, 'utf8');
   const parsed = parseLessFn(src);
   const bridged = bridgeToTree2(parsed.tree, src, file, createImportState());
-  const evaluator = buildEvaluator();
+  const evaluator = buildNativeEvaluator();
   return (await serialize(bridged, { evaluator })).css;
 }
 
