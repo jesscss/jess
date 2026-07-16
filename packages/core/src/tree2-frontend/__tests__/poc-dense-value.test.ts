@@ -5,9 +5,9 @@ import { buildEvaluator } from '../value-eval.js';
 /**
  * [tree2-poc] DENSE-EAGER value struct vs the R2 LAZY value leaf.
  *
- * Current model (R2): a value is a lazy `ValueLiteral { bytes, tag }`; emit reads
+ * Current model (R2): a value is a bare-string literal (rep B); emit reads
  * `bytes` verbatim; on the first operation/compare/typed-param it is
- * `materialize()`d into a `ValueObj` (a Numeric `{ number, unit, bytes }`) by
+ * `materialize()`d into a `ValueObj` (a value `Dimension` `{ number, unit, bytes }`) by
  * RE-PARSING the bytes at eval time.
  *
  * Proposed (parser cutover): the tree2 parser is already tokenizing the value, so
@@ -51,19 +51,19 @@ describe('[tree2-poc] dense-eager value struct', () => {
   it('byte-identity: dense rawBytes emit === lazy leaf emit === verbatim source', () => {
     for (const tok of tokens) {
       const dense = parseDense(tok);
-      const lazy = literal(tok, 'numeric');
+      const lazy = literal(tok);
       // Both emit the verbatim original — no canonicalization.
       expect(emitDense(dense)).toBe(tok);
-      expect(lazy.bytes).toBe(tok);
-      expect(emitDense(dense)).toBe(lazy.bytes);
+      expect(lazy).toBe(tok);
+      expect(emitDense(dense)).toBe(lazy);
     }
   });
 
   it('eval-identity: dense (value,unit) === what lazy materialize would parse', () => {
     for (const tok of tokens) {
       const dense = parseDense(tok);
-      const mat = evaluator.materialize(literal(tok, 'numeric')) as Extract<ValueObj, { kind: 'numeric' }>;
-      expect(mat.kind).toBe('numeric');
+      const mat = evaluator.materialize(literal(tok)) as Extract<ValueObj, { kind: 'dimension' }>;
+      expect(mat.kind).toBe('dimension');
       expect(dense.value).toBe(mat.number);
       expect(dense.unit).toBe(mat.unit);
     }
@@ -98,9 +98,9 @@ describe('[tree2-poc] dense-eager value struct', () => {
     const lazyRun = (): number => {
       let acc = 0;
       for (let i = 0; i < N; i++) {
-        const leaf = literal(corpus[i]!, 'numeric');
-        acc += leaf.bytes.length; // emit
-        const m = evaluator.materialize(leaf) as Extract<ValueObj, { kind: 'numeric' }>;
+        const leaf = literal(corpus[i]!);
+        acc += leaf.length; // emit
+        const m = evaluator.materialize(leaf) as Extract<ValueObj, { kind: 'dimension' }>;
         acc += m.number + m.unit.length; // eval touch
       }
       return acc;
@@ -137,7 +137,7 @@ describe('[tree2-poc] dense-eager value struct', () => {
       lazyBytes = measure(() => {
         const held: unknown[] = new Array(N);
         for (let i = 0; i < N; i++) {
-          const leaf = literal(corpus[i]!, 'numeric');
+          const leaf = literal(corpus[i]!);
           const mat = evaluator.materialize(leaf); // value-heavy: materialized retained
           held[i] = [leaf, mat];
         }

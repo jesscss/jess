@@ -25,7 +25,7 @@
  */
 
 import type { ValueNode } from './nodes.js';
-import type { EvalModes, ListVal, ValueEvaluator, ValueObj } from './value-eval.js';
+import type { EvalModes, List as ValueList, ValueEvaluator, ValueObj } from './value-eval.js';
 
 /** A guard condition tree. Never serialized to CSS — evaluated to a boolean. */
 export type GuardNode =
@@ -86,7 +86,7 @@ export function evalGuard(node: GuardNode, deps: GuardEvalDeps): boolean {
     case 'call': {
       if (!deps.ev) return false;
       const items = node.args.map((a) => deps.resolveTyped(a));
-      const list: ListVal = { kind: 'list', items, sep: ',', bytes: '' };
+      const list: ValueList = { kind: 'list', items, sep: ',', bytes: '' };
       return deps.ev.guardCall(node.name, list, deps.modes);
     }
     case 'default':

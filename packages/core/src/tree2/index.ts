@@ -11,24 +11,25 @@ export * from './nodes.js';
 // [atrule] at-rule node types + constructors
 export * from './at-rule.js';
 // [R2] typed synchronous value-evaluator seam + boundary-clean value domain.
+// NOTE: the value `Dimension` is NOT re-exported here — it collides with the AST
+// `Dimension` node (`nodes.ts`). It stays module-qualified: import it directly
+// from `./value-eval.js`. The split is perf-justified (a static `3px` is a bare
+// literal string, never a value `Dimension`).
 export {
   DEFAULT_MODES,
   emitValue,
   isLiteral,
   literal,
-  type BoolVal,
-  type ColorVal,
+  type Bool,
+  type Color,
   type EvalModes,
   type Keyword,
-  type ListVal,
-  type NilVal,
-  type Numeric,
+  type List,
+  type Nil,
   type Quoted,
   type Value,
   type ValueEvaluator,
-  type ValueLiteral,
   type ValueObj,
-  type VTag,
 } from './value-eval.js';
 // [guards] guard model + overloaded-mixin dispatch
 export { evalGuard, guardUsesDefault, type GuardNode, type TypedResolver, type ValueResolver } from './guard.js';

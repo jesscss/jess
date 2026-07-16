@@ -57,7 +57,7 @@ import {
   isLiteral,
   literal,
   type EvalModes,
-  type ListVal,
+  type List as ValueList,
   type Value,
   type ValueEvaluator,
   type ValueObj,
@@ -280,15 +280,15 @@ interface EvalCtx {
   modes: EvalModes;
 }
 
-/** Force a lazy leaf to a typed value object (idempotent). */
+/** Force an un-materialized literal (bare string) to a typed value object (idempotent). */
 function force(e: EvalCtx, v: Value): ValueObj {
   if (!isLiteral(v)) return v;
-  if (!e.ev) return { kind: 'keyword', text: v.bytes, bytes: v.bytes };
+  if (!e.ev) return { kind: 'keyword', text: v, bytes: v };
   return e.ev.materialize(v);
 }
 
 /**
- * [R2] Fold a value AST node bottom-up to a typed `Value` (a lazy `ValueLiteral`
+ * [R2] Fold a value AST node bottom-up to a typed `Value` (a bare-string literal
  * for the static ~98% case, or a materialized `ValueObj` for a computed
  * operation/function). Lifts to `MaybePromise` only when a function call returns
  * a genuine thenable.
@@ -298,7 +298,7 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx, depth = 0):
     case Kind.Word:
       return literal(node.text);
     case Kind.Dimension:
-      return literal(`${node.value}${node.unit}`, 'numeric');
+      return literal(`${node.value}${node.unit}`);
     case Kind.VarRef: {
       if (depth > MAX_VAR_DEPTH) return literal(`@${node.name}`); // cycle guard
       const bound = lookupVar(frame, node.name);
@@ -312,7 +312,7 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx, depth = 0):
       // Transparent to computed bytes: a materialized (operated) inner strips the
       // paren (matching the legacy oracle); an un-forced literal keeps its parens.
       return mapMaybe(evalValue(node.inner, frame, e, depth), (v) =>
-        isLiteral(v) ? literal(`(${v.bytes})`) : v,
+        isLiteral(v) ? literal(`(${v})`) : v,
       );
     case Kind.Operation: {
       const l = evalValue(node.left, frame, e, depth);
@@ -462,7 +462,7 @@ function evalCall(node: FunctionCall, frame: Frame | null, e: EvalCtx, depth: nu
   }
   const ev = e.ev;
   return combineAll(items, (vals) => {
-    const list: ListVal = {
+    const list: ValueList = {
       kind: 'list',
       items: vals.map((v) => force(e, v)),
       sep,

@@ -7,19 +7,26 @@
  * Two things live here, both boundary-clean (NO `../tree` import):
  *
  *  1. The runtime VALUE DOMAIN (`ValueObj`) — the typed *results* an evaluation
- *     produces and operates on (`Numeric`/`Color`/`Quoted`/`Keyword`/`List`/
+ *     produces and operates on (`Dimension`/`Color`/`Quoted`/`Keyword`/`List`/
  *     `Bool`/`Nil`), distinct from the value AST (`Operation`/`FunctionCall`/…)
- *     that describes HOW to compute. Plus the lazy value-literal leaf
- *     (`ValueLiteral = { bytes, tag }`) that stays a string-shaped leaf until
- *     something FORCES object behaviour (VALUE-LITERAL-TAG, perf #2).
+ *     that describes HOW to compute. The kinds carry TREE's names (module-
+ *     qualified against the AST `Dimension` node in `nodes.ts` — the split is
+ *     perf-justified: a static `3px` is a bare literal string, never a value
+ *     `Dimension`).
  *
  *  2. The `ValueEvaluator` seam — the only allowed boundary crossing (an injected
  *     interface, like the old `ValueService`), whose currency is now TYPED value
- *     objects rather than serialized bytes. The real implementation lives OUTSIDE
- *     `tree2/` (`tree2-frontend/value-eval.ts`); it MAY reach the shared value
- *     math (the fns registry + the legacy value nodes' arithmetic) — that is math
- *     machinery, not the eval/render engine tree2 replaces. tree2 depends ONLY on
- *     this interface.
+ *     objects rather than serialized bytes. Implementations: the transitional
+ *     ADAPTER (`tree2-frontend/value-eval.ts`, reaches legacy math — being
+ *     retired) and the NATIVE evaluator (`tree2/native-evaluator.ts`, boundary-
+ *     clean). tree2 depends ONLY on this interface.
+ *
+ * REPRESENTATION (bake-off winner, "B"): an UN-MATERIALIZED value literal is a
+ * BARE `string` — its bytes, nothing else. NO `{ bytes, tag }` wrapper, NO stored
+ * type tag, NO allocation. The seam is `Value = ValueObj | string`; emit is
+ * `typeof v === 'string' ? v : serializeValue(v)`. A literal's type is DERIVED on
+ * demand when something forces object behaviour (materialize classifies from the
+ * bytes — the parse it has to do anyway).
  *
  * Sync by default (arch C1): `operate`/`guardCmp`/`guardCall`/`materialize` are
  * synchronous; only `call` returns `MaybePromise` (a genuinely async built-in —
@@ -30,42 +37,35 @@
 
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
 
-/* ------------------------------------------------------------ lazy leaf */
-
-/** A value-literal tag: lets a forcing site skip re-classification in hot cases. */
-export type VTag = 'keyword' | 'numeric' | 'color' | 'quoted' | 'unknown';
-
-/**
- * The lazy value-literal leaf (VALUE-LITERAL-TAG, perf #2): the authored/canonical
- * byte string plus a small tag. Emit reads `bytes` directly — NO object is
- * materialized for the common static case. Materialization to a `ValueObj` happens
- * on demand, only when an operation / comparison / guard / typed function param
- * forces object behaviour.
- */
-export interface ValueLiteral {
-  readonly lit: true;
-  readonly bytes: string;
-  readonly tag: VTag;
-}
-
-export const literal = (bytes: string, tag: VTag = 'unknown'): ValueLiteral => ({ lit: true, bytes, tag });
-
 /* --------------------------------------------------------- value domain */
 
-/** A number + unit result, e.g. `3px`, `50%`, `5`. */
-export interface Numeric {
-  readonly kind: 'numeric';
+/**
+ * A number + unit result, e.g. `3px`, `50%`, `5`. The value-domain `Dimension`
+ * (module-qualified against the AST `Dimension` node in `nodes.ts`).
+ */
+export interface Dimension {
+  readonly kind: 'dimension';
   readonly number: number;
   readonly unit: string;
-  /** Canonical emitted bytes (produced by the evaluator, byte-faithful). */
+  /** Canonical emitted bytes (byte-faithful; produced by the free serializer). */
   readonly bytes: string;
 }
 
 /** A color result. `format`/`modernSyntax`/`node` preserve output spelling. */
-export interface ColorVal {
+export interface Color {
   readonly kind: 'color';
   readonly rgb: readonly [number, number, number];
   readonly alpha: number;
+  /**
+   * OPTIONAL / LAZY HSL source of truth (perf-neutral, converged-shape addition).
+   * Present ONLY when the color was authored or derived in HSL (`hsl(...)`, or an
+   * hsl op like `lighten`/`desaturate`); ABSENT for static hex/rgb literals so
+   * they never allocate it. When present, it is the exact hsl carried across
+   * chained hsl ops (no rgb round-trip → no hue drift), mirroring the legacy
+   * `Color._hslChannels`. Unclamped: `[h(deg), s(0-1), l(0-1)]`. Read it through
+   * `colorHsl(c)` (which derives from rgb when absent).
+   */
+  readonly hsl?: readonly [number, number, number];
   /** Output-format tag (a small opaque enum value shared with the adapter). */
   readonly format: number;
   readonly modernSyntax?: boolean;
@@ -91,7 +91,7 @@ export interface Keyword {
 }
 
 /** A list result (comma / space / slash separated). */
-export interface ListVal {
+export interface List {
   readonly kind: 'list';
   readonly items: readonly ValueObj[];
   readonly sep: ',' | ' ' | '/';
@@ -99,26 +99,38 @@ export interface ListVal {
 }
 
 /** A boolean result (guards, logical fns). */
-export interface BoolVal {
+export interface Bool {
   readonly kind: 'bool';
   readonly value: boolean;
   readonly bytes: string;
 }
 
 /** An empty / absent value. */
-export interface NilVal {
+export interface Nil {
   readonly kind: 'nil';
   readonly bytes: string;
 }
 
-export type ValueObj = Numeric | ColorVal | Quoted | Keyword | ListVal | BoolVal | NilVal;
+export type ValueObj = Dimension | Color | Quoted | Keyword | List | Bool | Nil;
 
-/** Every materialized value carries its emit bytes; a literal leaf does too. */
-export type Value = ValueObj | ValueLiteral;
+/**
+ * A `Value` in the evaluation lane: either a materialized typed object, or a BARE
+ * `string` — the un-materialized literal leaf carrying just its bytes (rep "B").
+ */
+export type Value = ValueObj | string;
 
-export const emitValue = (v: Value): string => v.bytes;
+/** Emit a value's bytes. A bare-string literal is its own bytes. */
+export const emitValue = (v: Value): string => (typeof v === 'string' ? v : v.bytes);
 
-export const isLiteral = (v: Value): v is ValueLiteral => (v as ValueLiteral).lit === true;
+/** Whether a value is an un-materialized (bare-string) literal leaf. */
+export const isLiteral = (v: Value): v is string => typeof v === 'string';
+
+/**
+ * Construct an un-materialized literal leaf. In rep "B" this is the identity on
+ * the bytes — kept as a named helper so fold call-sites read intentionally and a
+ * future representation change has one seam.
+ */
+export const literal = (bytes: string): string => bytes;
 
 /* --------------------------------------------------------------- modes */
 
@@ -148,15 +160,15 @@ export const DEFAULT_MODES: EvalModes = {
  * type-fns, and calc/escaping become possible because types survive the seam.
  */
 export interface ValueEvaluator {
-  /** Classify / parse a value-literal leaf into a typed value, on demand. */
-  materialize(leaf: ValueLiteral): ValueObj;
+  /** Classify / parse an un-materialized literal (its bytes) into a typed value. */
+  materialize(bytes: string): ValueObj;
   /** Binary operation on two materialized operands (native / delegated math). */
   operate(op: string, left: ValueObj, right: ValueObj, modes: EvalModes): ValueObj;
   /** Named-function call on a materialized arg list. Sync unless a genuinely
    * async built-in forces a thenable (scoped to the forcing leaf). */
-  call(name: string, args: ListVal, modes: EvalModes): MaybePromise<ValueObj>;
+  call(name: string, args: List, modes: EvalModes): MaybePromise<ValueObj>;
   /** Guard comparison leaf (`@a > 0`) on typed operands -> boolean. */
   guardCmp(op: string, left: ValueObj, right: ValueObj, modes: EvalModes): boolean;
   /** Guard type-function leaf (`iscolor(@a)`) on typed args -> boolean. */
-  guardCall(name: string, args: ListVal, modes: EvalModes): boolean;
+  guardCall(name: string, args: List, modes: EvalModes): boolean;
 }

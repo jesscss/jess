@@ -32,9 +32,8 @@ import { callWithContext } from '../define-function.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import type {
   EvalModes,
-  ListVal,
+  List as ValueList,
   ValueEvaluator,
-  ValueLiteral,
   ValueObj,
 } from '../tree2/index.js';
 
@@ -104,7 +103,7 @@ export function buildEvaluator(_options?: EvaluatorOptions): ValueEvaluator {
   /* ---- ValueObj -> legacy node ---- */
   const toLegacy = (v: ValueObj): LegacyNode => {
     switch (v.kind) {
-      case 'numeric':
+      case 'dimension':
         return new Dimension({ number: v.number, unit: v.unit || undefined }) as unknown as LegacyNode;
       case 'color': {
         const opts: { format?: number; modernSyntax?: boolean } = { format: v.format };
@@ -135,7 +134,7 @@ export function buildEvaluator(_options?: EvaluatorOptions): ValueEvaluator {
   const fromLegacy = (node: unknown): ValueObj => {
     const bytes = (node as LegacyNode).render(ctx);
     if (node instanceof Dimension) {
-      return { kind: 'numeric', number: node.number, unit: node.unit ?? '', bytes };
+      return { kind: 'dimension', number: node.number, unit: node.unit ?? '', bytes };
     }
     if (node instanceof Color) {
       const [r, g, b] = node.rgb;
@@ -162,19 +161,19 @@ export function buildEvaluator(_options?: EvaluatorOptions): ValueEvaluator {
     return { kind: 'keyword', text: bytes, bytes };
   };
 
-  /* ---- materialize a lazy leaf ---- */
-  const materialize = (leaf: ValueLiteral): ValueObj => {
-    const b = leaf.bytes.trim();
+  /* ---- materialize an un-materialized literal (its bytes) ---- */
+  const materialize = (rawBytes: string): ValueObj => {
+    const b = rawBytes.trim();
     // Hex color.
-    if (leaf.tag !== 'numeric' && HEX_RE.test(b)) {
+    if (HEX_RE.test(b)) {
       const c = new Color(b);
       return fromLegacyColorPreservingNode(c, b);
     }
     // Numeric (optionally united / %).
-    if (leaf.tag === 'numeric' || NUM_RE.test(b)) {
+    if (NUM_RE.test(b)) {
       const m = NUM_RE.exec(b);
       if (m) {
-        return { kind: 'numeric', number: Number(b.slice(0, b.length - m[1]!.length)), unit: m[1] ?? '', bytes: b };
+        return { kind: 'dimension', number: Number(b.slice(0, b.length - m[1]!.length)), unit: m[1] ?? '', bytes: b };
       }
     }
     // Quoted string.
@@ -247,7 +246,7 @@ export function buildEvaluator(_options?: EvaluatorOptions): ValueEvaluator {
   };
 
   /* ---- functions ---- */
-  const call = (name: string, args: ListVal, _modes: EvalModes): MaybePromise<ValueObj> => {
+  const call = (name: string, args: ValueList, _modes: EvalModes): MaybePromise<ValueObj> => {
     const entry = fnTable.get(name.toLowerCase());
     if (!entry) {
       // Unknown function: emit verbatim (functionMode preserve).
@@ -266,7 +265,7 @@ export function buildEvaluator(_options?: EvaluatorOptions): ValueEvaluator {
   /* ---- guards ---- */
   const guardCmp = (op: string, left: ValueObj, right: ValueObj, _modes: EvalModes): boolean => {
     // Numeric comparison when both are numbers; else byte/keyword comparison.
-    if (left.kind === 'numeric' && right.kind === 'numeric') {
+    if (left.kind === 'dimension' && right.kind === 'dimension') {
       const a = left.number;
       const b = right.number;
       switch (op) {
@@ -289,7 +288,7 @@ export function buildEvaluator(_options?: EvaluatorOptions): ValueEvaluator {
     return false;
   };
 
-  const guardCall = (name: string, args: ListVal, _modes: EvalModes): boolean => {
+  const guardCall = (name: string, args: ValueList, _modes: EvalModes): boolean => {
     const entry = fnTable.get(name.toLowerCase());
     if (!entry) return false;
     // Type-fns (`iscolor`/`isnumber`/…) are sync bodies over typed nodes: invoke
