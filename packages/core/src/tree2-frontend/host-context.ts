@@ -140,3 +140,57 @@ export interface RawArg {
 export function isRawArgList(x: unknown): x is readonly RawArg[] {
   return Array.isArray(x) && (x.length === 0 || (!!x[0] && (x[0] as RawArg).__rawArg === true));
 }
+
+/* -------------------------------------------------------------- [extend F11] */
+
+/**
+ * A built `:extend(...)` / `&:extend(...)` marker: the tree2 `ExtendInstruction`s
+ * it contributes to the enclosing Rule. It is NOT a tree2 `Node`, so it is
+ * filtered out of every real body (`isStatement` is false) and never emitted as a
+ * selector token — the selector / ruleset families HOIST its instructions onto the
+ * carrying `Rule.extendInstructions` (where the R1 serialize-time extend engine
+ * reads them). Kept in `host-context` (not `actions/extend.ts`) so the selector /
+ * ruleset families recognize it without a cross-family import.
+ */
+export interface ExtendMarker {
+  readonly __t2extend: t2.ExtendInstruction[];
+}
+export function extendMarker(instructions: t2.ExtendInstruction[]): ExtendMarker {
+  return { __t2extend: instructions };
+}
+export function isExtendMarker(x: unknown): x is ExtendMarker {
+  return !!x && typeof x === 'object' && '__t2extend' in (x as object);
+}
+
+/**
+ * One `:extend()` target branch (a comma-separated find selector + its `all`
+ * flag), built by the `ExtendTarget` action and consumed by `ExtendPseudo`. `all`
+ * (`!all`) → `partial: true` (the parser's flag=0), else an exact extend.
+ */
+export interface ExtendTargetMarker {
+  readonly __t2extendTarget: { complex: t2.Complex; partial: boolean };
+}
+export function extendTargetMarker(complex: t2.Complex, partial: boolean): ExtendTargetMarker {
+  return { __t2extendTarget: { complex, partial } };
+}
+export function isExtendTargetMarker(x: unknown): x is ExtendTargetMarker {
+  return !!x && typeof x === 'object' && '__t2extendTarget' in (x as object);
+}
+
+/**
+ * Side table: a built selector node (`Complex` / `SelectorList`) → the `:extend()`
+ * instructions authored on it (`.a:extend(.b)`). A WeakMap so the selector
+ * builders never pollute the tree2 selector node with a non-selector field; the
+ * Ruleset family DRAINS it onto the enclosing Rule. Keyed on unique per-parse node
+ * objects, so entries can never collide across parses.
+ */
+const SELECTOR_EXTENDS = new WeakMap<object, t2.ExtendInstruction[]>();
+export function attachSelectorExtends(sel: object, instructions: t2.ExtendInstruction[]): void {
+  if (instructions.length === 0) return;
+  const prev = SELECTOR_EXTENDS.get(sel);
+  if (prev) prev.push(...instructions);
+  else SELECTOR_EXTENDS.set(sel, instructions.slice());
+}
+export function takeSelectorExtends(sel: object): t2.ExtendInstruction[] | undefined {
+  return SELECTOR_EXTENDS.get(sel);
+}

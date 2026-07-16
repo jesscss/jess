@@ -585,14 +585,19 @@ export const mixinCall = (name: string, args: Array<ValueNode | CallArg> = []): 
 /** A single simple-string complex selector, e.g. `sel('.test')`. */
 export const sel = (text: string): Complex => complex([{ compound: compound(text) }]);
 
-/** `rule('.test', [...])`, `rule(sel('.a > .b'), ...)`, or `rule(selist(...), ...)`. */
-export const rule = (selector: string | Complex | SelectorList, body: Statement[]): Rule => {
+/** `rule('.test', [...])`, `rule(sel('.a > .b'), ...)`, or `rule(selist(...), ...)`.
+ *  `extendInstructions` (optional) carries hoisted `:extend()` instructions. */
+export const rule = (
+  selector: string | Complex | SelectorList,
+  body: Statement[],
+  extendInstructions?: ExtendInstruction[],
+): Rule => {
   const list =
     typeof selector === 'string'
       ? selist(sel(selector))
       : selector.kind === Kind.SelectorList
         ? selector
         : selist(selector);
-  return new Rule(list, body);
+  return new Rule(list, body, extendInstructions);
 };
 export const root = (children: Statement[]): Root => new Root(children);

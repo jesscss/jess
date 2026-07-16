@@ -23,7 +23,13 @@
  */
 import * as t2 from '../../tree2/index.js';
 import type { Combinator } from '../../tree2/index.js';
-import { type BuildAction, type BuildArgs } from '../host-context.js';
+import {
+  type BuildAction,
+  type BuildArgs,
+  attachSelectorExtends,
+  isExtendMarker,
+  takeSelectorExtends,
+} from '../host-context.js';
 // [F4] interp-aware simple-token builder: a `@{…}`-bearing part becomes an
 // interpolation `Simple` (resolved at ruleset-enter); any other part stays the
 // verbatim-bytes `t2.simple` this used before. See `selector-interp.ts`.
@@ -89,10 +95,19 @@ function buildCompound(args: BuildArgs): t2.Compound | t2.Complex {
 function buildComplex(args: BuildArgs): t2.Complex {
   const src = args.ctx.src;
   const segments: Array<{ comb?: Combinator; compound: t2.Compound }> = [];
+  const extendInstructions: t2.ExtendInstruction[] = [];
   let leadingComb: Combinator | undefined;
   let pending: Combinator = ' ';
   let sawSegment = false;
   for (let i = 0; i < args.rawChildren.length; i++) {
+    // [extend F11] A trailing `:extend(...)` pseudo rides here as an ExtendMarker —
+    // it is NOT a selector token: hoist its instructions onto the built Complex so
+    // the enclosing Rule fires them, and never emit it as a compound.
+    const child = args.children[i];
+    if (isExtendMarker(child)) {
+      extendInstructions.push(...child.__t2extend);
+      continue;
+    }
     const span = rawSpan(args.rawChildren[i]);
     if (!span) continue;
     const text = src.slice(span.start, span.end);
@@ -113,8 +128,12 @@ function buildComplex(args: BuildArgs): t2.Complex {
     if (complex) for (const seg of complex.tail) segments.push({ comb: seg.comb, compound: seg.compound });
     pending = ' ';
   }
-  if (segments.length === 0) return t2.complex([{ compound: new t2.Compound([]) }]);
-  return t2.complex(segments, leadingComb);
+  const out =
+    segments.length === 0
+      ? t2.complex([{ compound: new t2.Compound([]) }])
+      : t2.complex(segments, leadingComb);
+  attachSelectorExtends(out, extendInstructions);
+  return out;
 }
 
 /** `SelectorList`: comma-separated complexes → a tree2 `SelectorList`. */
@@ -128,7 +147,16 @@ function buildSelectorList(args: BuildArgs): t2.SelectorList | t2.Complex {
     if (text === ',') continue;
     complexes.push(segmentToComplex(args.children[i], text));
   }
-  return complexes.length === 1 ? complexes[0]! : t2.selist(...complexes);
+  if (complexes.length === 1) return complexes[0]!;
+  const list = t2.selist(...complexes);
+  // [extend F11] Roll each group member's `:extend()` instructions up onto the
+  // list node so the enclosing Rule sees the whole group's extends (`.a:extend(.b),
+  // .c { … }`). A single-complex return needs no roll-up — the Rule drains it directly.
+  for (const c of complexes) {
+    const exts = takeSelectorExtends(c);
+    if (exts) attachSelectorExtends(list, exts);
+  }
+  return list;
 }
 
 export const SELECTOR_ACTIONS: readonly BuildAction[] = [

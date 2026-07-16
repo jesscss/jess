@@ -11,8 +11,10 @@ import * as t2 from '../../tree2/index.js';
 import {
   type BuildAction,
   type BuildArgs,
+  isExtendMarker,
   isStatement,
   selectorText,
+  takeSelectorExtends,
 } from '../host-context.js';
 
 /** The selector value a `Rule` accepts: a built selector node, or raw bytes. */
@@ -28,9 +30,35 @@ const stylesheet: BuildAction = {
   build: (args) => t2.root(args.children.filter(isStatement) as t2.Statement[]),
 };
 
+/**
+ * [extend F11] The `:extend()` instructions this rule carries: those authored on
+ * its selector (`.a:extend(.b)`, hoisted onto the selector node by the selector
+ * family) plus any standalone body `&:extend(.b);` statements (`ExtendMarker`
+ * children, filtered out of the body since they are not tree2 nodes). Undefined
+ * when none, so the serializer's zero-cost no-extend gate holds.
+ */
+function ruleExtends(
+  args: BuildArgs,
+  selector: string | t2.Complex | t2.SelectorList,
+): t2.ExtendInstruction[] | undefined {
+  const instructions: t2.ExtendInstruction[] = [];
+  if (typeof selector !== 'string') {
+    const fromSelector = takeSelectorExtends(selector);
+    if (fromSelector) instructions.push(...fromSelector);
+  }
+  for (const child of args.children) {
+    if (isExtendMarker(child)) instructions.push(...child.__t2extend);
+  }
+  return instructions.length > 0 ? instructions : undefined;
+}
+
 const ruleset: BuildAction = {
   type: 'Ruleset',
-  build: (args) => t2.rule(ruleSelector(args), args.children.filter(isStatement) as t2.Statement[]),
+  build: (args) => {
+    const selector = ruleSelector(args);
+    const body = args.children.filter(isStatement) as t2.Statement[];
+    return t2.rule(selector, body, ruleExtends(args, selector));
+  },
 };
 
 export const RULESET_ACTIONS: readonly BuildAction[] = [stylesheet, ruleset];

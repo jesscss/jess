@@ -35,6 +35,7 @@ import { VARIABLES_ACTIONS } from './variables.js';
 import { COMMENTS_ACTIONS } from './comments.js';
 import { MIXINS_DEF_ACTIONS } from './mixins-def.js';
 import { CUSTOM_PROPS_ACTIONS } from './custom-props.js';
+import { EXTEND_ACTIONS } from './extend.js';
 
 export const ACTION_LIST: readonly BuildAction[] = [
   ...RULESET_ACTIONS,
@@ -48,4 +49,5 @@ export const ACTION_LIST: readonly BuildAction[] = [
   ...COMMENTS_ACTIONS,
   ...MIXINS_DEF_ACTIONS,
   ...CUSTOM_PROPS_ACTIONS,
+  ...EXTEND_ACTIONS
 ];
