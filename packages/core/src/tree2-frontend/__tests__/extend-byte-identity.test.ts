@@ -80,9 +80,11 @@ const RESOLVED: Record<string, 'alpha' | 'corrected'> = {
 };
 
 /** Fixtures the bridge cleanly refuses (fail-loud `UnsupportedShape`). */
-const DEFERRED_UNSUPPORTED = new Set([
-  // extend-selector: `[data=@{x}]` attribute-interpolation extend shape → R4.
-  'extend-selector',
+const DEFERRED_UNSUPPORTED = new Set<string>([
+  // (empty) extend-selector used to defer here on the `statement:Rules` shape;
+  // WS4 added that bridge case, so it now bridges cleanly — see the dedicated
+  // WS4 test below. Its full render remains an extend-ENGINE gap (interpolated
+  // attribute selector participating in extend), tracked separately.
 ]);
 
 /**
@@ -135,6 +137,18 @@ describe('R1 extend — byte-identity vs less.js alpha, per-fixture config mode'
       expect(() => bridgeToTree2(parseLessFn(src).tree, src)).toThrow(UnsupportedShape);
     });
   }
+
+  // [WS4] extend-selector now BRIDGES cleanly (the `statement:Rules` subject-
+  // scoped-extend shape is supported) and RENDERS (the interp-simple extend NPE
+  // is fixed upstream). Its full render is not yet byte-identical to the alpha
+  // golden — a remaining NESTED-mode `:is()` extend-composition diff, owned by
+  // the extend/serialize side; the bridge's WS4 contract is only that the shape
+  // bridges. A minimal subject-scoped extend group IS byte-identical to the v5
+  // `:is()` oracle (proven in the bridge WS4 verification).
+  it('extend-selector bridges cleanly (WS4: statement:Rules subject-scoped extend)', () => {
+    const src = fixtureLess('extend-selector');
+    expect(() => bridgeToTree2(parseLessFn(src).tree, src)).not.toThrow();
+  });
 
   for (const [name, reason] of Object.entries(KNOWN_GAPS)) {
     // Fail-loud tracker: currently NOT byte-identical (so this test passes). When

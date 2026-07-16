@@ -897,6 +897,28 @@ function toStatement(
       if (raw.startsWith('//')) return null;
       return t2.comment(raw);
     }
+    // [WS4] A `Rules` wrapper pairs one or more standalone `Extend` nodes with
+    // the `Ruleset` they attach to. The parser emits this shape when a
+    // multi-selector group carries a `:extend()` on only SOME of its selectors
+    // (`.should-not-exist, .ext7:extend(.ext5 all) {}`): the extend's SUBJECT is
+    // that one selector (`Extend.selector`), not the whole group. Bridge the
+    // inner ruleset(s) normally (empty bodies drop out), and turn each
+    // standalone Extend into a subject-scoped extend Rule.
+    case 'Rules': {
+      const inner = (node as AnyNode).rules;
+      if (!Array.isArray(inner)) throw new UnsupportedShape('statement', t);
+      const out: t2.Statement[] = [];
+      for (const child of inner) {
+        if (isNode(child) && typeOf(child) === 'Extend') {
+          out.push(extendSubjectRule(ctx, child as AnyNode));
+          continue;
+        }
+        const s = toStatement(ctx, child, allowAtRules);
+        if (Array.isArray(s)) out.push(...s);
+        else if (s !== null) out.push(s);
+      }
+      return out;
+    }
     case 'Ruleset':
       return toRuleset(ctx, node as AnyNode);
     case 'Mixin':
@@ -998,6 +1020,24 @@ function extractExtends(
     }
   }
   return { instructions, rest };
+}
+
+/**
+ * [WS4] Build a subject-scoped extend Rule from a standalone `Extend` node (one
+ * whose `.selector` is the extending subject and `.target` the find selector).
+ * The carrying Rule's own selector list IS the extend subject in tree2's model,
+ * so the subject selector becomes an empty-body Rule bearing the instruction —
+ * the empty body drops from output while the instruction fires the extend.
+ */
+function extendSubjectRule(ctx: BridgeCtx, node: AnyNode): t2.Rule {
+  const target = node.target;
+  guardExtendTargetSupported(ctx, node, target);
+  const partial = node.flag === 0;
+  const instructions: t2.ExtendInstruction[] = extendTargetComplexes(ctx, target).map((complex) => ({
+    target: t2.selist(complex),
+    partial,
+  }));
+  return new t2.Rule(toSelectorList(ctx, node.selector), [], instructions);
 }
 
 function toRuleset(ctx: BridgeCtx, node: AnyNode): t2.Rule {
