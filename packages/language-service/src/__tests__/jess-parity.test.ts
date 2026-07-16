@@ -118,6 +118,13 @@ describe('.jess dialect parity (LS features on jess stylesheets)', () => {
     expect(labels).toContain('@media');
   });
 
+  it('`\\\\name` placeholder completion (jess uses the escaped-backslash sigil, not %)', () => {
+    const labels = completeAt('\\\\button { } \\\\card { }\n.a { $extend \\\\bu| }');
+    expect(labels).toContain('\\\\button');
+    expect(labels).not.toContain('\\\\card'); // prefix filter
+    expect(labels).not.toContain('%button'); // jess is NOT the scss `%` sigil
+  });
+
   it('`$[…]` interpolation completes bare variable names', () => {
     const labels = completeAt('$primary: red;\n.a-$[pri| ] { x: 1 }');
     expect(labels).toContain('primary');

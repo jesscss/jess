@@ -1221,11 +1221,19 @@ export function createEngine(): JessLanguageServiceEngine {
         return { isIncomplete: false, items: pathItems };
       }
 
-      // 0b) SCSS `%placeholder` completions (after `%` or `@extend %`). Mined from
-      //     every `%name` token in the document (defs + prior usages), deduped.
-      if (tracked.lang === 'scss' && currentWord.startsWith('%')) {
+      // 0b) Placeholder completions, mined from every placeholder token in the doc
+      //     (defs + prior usages), deduped. SCSS uses the `%name` sigil (after `%`
+      //     / `@extend %`); Jess uses `\\name` (after `\\` / `$extend \\`) — the
+      //     escaped-backslash sigil the scss `%` lowers to.
+      const placeholderSigil =
+        tracked.lang === 'scss' && currentWord.startsWith('%')
+          ? /%[-\w]+/g
+          : tracked.lang === 'jess' && currentWord.startsWith('\\')
+            ? /\\\\[-\w]+/g
+            : null;
+      if (placeholderSigil) {
         const seen = new Set<string>();
-        const re = /%[-\w]+/g;
+        const re = placeholderSigil;
         let m: RegExpExecArray | null;
         while ((m = re.exec(text)) !== null) {
           seen.add(m[0]);
