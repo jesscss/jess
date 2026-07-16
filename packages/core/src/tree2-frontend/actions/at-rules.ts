@@ -42,6 +42,14 @@ import {
  *  prefixes preserved: `@MEDIA`, `@-moz-keyframes`). */
 const AT_KEYWORD = /^@-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*/u;
 
+// TODO(tier-b): at-rule prelude interpolation is a PARSER GAP. The `AtRuleBlock`
+// prelude arrives as a SINGLE opaque `scanTo` leaf (not split like an
+// `InterpolatedSelector`), and `scanTo` even stops AT `@{`, so `@media @{q}` /
+// `@keyframes @{name}` MISPARSE today. This family therefore cannot cleanly consume
+// split children — it must slice + tokenize the prelude bytes itself (the helpers
+// below). Fix by structuring the prelude in `grammar.ts` (leaf-split like
+// `InterpolatedSelector`), then consume the leaves here and drop these regexes.
+
 /**
  * Split a block at-rule's raw source into (name, prelude bytes). Mirrors the
  * bridge's `atRuleHeaderPrelude` (block form): name = the leading at-keyword;

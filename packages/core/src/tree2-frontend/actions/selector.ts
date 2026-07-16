@@ -17,9 +17,10 @@
  * parts — the same signal the legacy builder reads from the whitespace trivia log.
  *
  * Leaf text is sliced VERBATIM from each part's span, so pseudo (`:hover`),
- * attribute (`[x="y"]`), `&` / `&-suffix`, and interpolation (`@{x}`) tokens ride
- * as `Simple` bytes — byte-identical to the bridge's per-token serialization for
- * these shapes (structured attribute/interp eval is a later family's concern).
+ * attribute (`[x="y"]`), and `&` / `&-suffix` tokens ride as `Simple` bytes —
+ * byte-identical to the bridge's per-token serialization (structured attribute
+ * eval is a later family's concern). An interpolation part (`.@{x}`) is instead a
+ * grammar-built `Compound` child whose interp `Simple`s are spliced in directly.
  */
 import * as t2 from '../../tree2/index.js';
 import type { Combinator } from '../../tree2/index.js';
@@ -30,10 +31,6 @@ import {
   isExtendMarker,
   takeSelectorExtends,
 } from '../host-context.js';
-// [F4] interp-aware simple-token builder: a `@{…}`-bearing part becomes an
-// interpolation `Simple` (resolved at ruleset-enter); any other part stays the
-// verbatim-bytes `t2.simple` this used before. See `selector-interp.ts`.
-import { simpleFromText } from './selector-interp.js';
 
 const COMBINATORS = new Set<string>(['>', '+', '~']);
 
@@ -68,17 +65,23 @@ function segmentToCompound(built: unknown, text: string): { compound: t2.Compoun
 /**
  * `CompoundSelector`: consecutive parts with NO span gap concatenate into one
  * `Compound` (`.a:hover`); a span gap is a DESCENDANT combinator that splits into
- * a `Complex` (`.a .b`, `.a.b .c`). Parts are sliced verbatim from their spans.
+ * a `Complex` (`.a .b`, `.a.b .c`). A part the grammar already built into a
+ * `Compound` (an `InterpolatedSelector` — `.a.@{n}`, `&.@{mod}`) contributes its
+ * interp `Simple`s directly (P0: consume the built child, don't re-slice `@{…}`);
+ * every other part is a verbatim-bytes `Simple` sliced from its own leaf span.
  */
 function buildCompound(args: BuildArgs): t2.Compound | t2.Complex {
   const src = args.ctx.src;
   const groups: t2.Simple[][] = [[]];
   let prevEnd = -1;
-  for (const rc of args.rawChildren) {
-    const span = rawSpan(rc);
+  for (let i = 0; i < args.rawChildren.length; i++) {
+    const span = rawSpan(args.rawChildren[i]);
     if (!span) continue;
     if (prevEnd >= 0 && span.start > prevEnd) groups.push([]); // gap → descendant
-    groups[groups.length - 1]!.push(simpleFromText(src.slice(span.start, span.end)));
+    const built = args.children[i];
+    const group = groups[groups.length - 1]!;
+    if (built instanceof t2.Compound) group.push(...built.simples);
+    else group.push(t2.simple(src.slice(span.start, span.end)));
     prevEnd = span.end;
   }
   const compounds = groups.filter((g) => g.length > 0).map((g) => new t2.Compound(g));
