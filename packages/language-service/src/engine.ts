@@ -2259,22 +2259,17 @@ export function createEngine(): JessLanguageServiceEngine {
           case 'Reference': {
             const kind = node.options?.type;
             if (kind === 'variable') {
-              // .jess treats `$` as a distinct sigil/operator (it also heads
-              // control-flow `$…{}`, scope `${}`, mutation `:=`), and the jess
-              // grammar now captures the sigil as its own leaf and the name
-              // without it — so color the `$` (plus a live-binding `!`) and the
-              // variable name as SEPARATE tokens rather than one blob.
+              // .jess treats `$` as a distinct sigil/operator (it starts a Jess
+              // expression, and also heads `$…{}` / `${}` / `:=`). The AST
+              // Reference span is the NAME only — the `$` lives in the CST, not the
+              // AST — so color the name as `variable` and emit a separate
+              // `operator` token for the adjacent `$` sigil (grammar `noTrivia`
+              // guarantees it sits immediately before the name).
               // css/less/scss keep the conventional single-token variable.
-              if (tracked.lang === 'jess' && text.charAt(span.start) === '$') {
-                let sigilEnd = span.start + 1;
-                if (text.charAt(sigilEnd) === '!') {
-                  sigilEnd += 1; // live-binding `$!foo`
-                }
-                push(span.start, sigilEnd, 'operator');
-                push(sigilEnd, span.end, 'variable');
-              } else {
-                push(span.start, span.end, 'variable');
+              if (tracked.lang === 'jess' && span.start > 0 && text.charAt(span.start - 1) === '$') {
+                push(span.start - 1, span.start, 'operator');
               }
+              push(span.start, span.end, 'variable');
             } else if (kind === 'mixin' || kind === 'mixin-ruleset' || kind === 'function') {
               push(span.start, span.end, 'function');
             }

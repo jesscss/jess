@@ -89,7 +89,8 @@ export class JessGrammar extends CssParser {
     const ls = children.filter(isLeaf);
     // Leaves are `['$', name, …accessors]` — the `$` sigil is its own leaf, so the
     // name (`ls[1]`) is already captured without it.
-    let head = ls[1]?.value ?? '';
+    const nameLeaf = ls[1]?.value ?? '';
+    let head = nameLeaf;
     // `$!foo` is a live binding: a `!` right after `$` → readMode 'snapshot'
     // (the option that renders back as `!`).
     const live = head[0] === '!';
@@ -99,7 +100,13 @@ export class JessGrammar extends CssParser {
     const baseOptions: ReferenceOptions = live
       ? { type: 'variable', readMode: 'snapshot' }
       : { type: 'variable' };
-    let base: Node = new Reference(head, baseOptions, location) as unknown as Node;
+    // The `$` sigil is expression syntax, NOT part of the Reference — keep it out
+    // of the AST spans (the CST retains it as a leaf). `$` is one char at the node
+    // start, so the name begins right after it; the accessor chain covers the rest.
+    const afterDollar = location.start + 1;
+    const nameLoc: LocationInfo = { start: afterDollar, end: afterDollar + nameLeaf.length } as LocationInfo;
+    const chainLoc: LocationInfo = { start: afterDollar, end: location.end } as LocationInfo;
+    let base: Node = new Reference(head, baseOptions, nameLoc) as unknown as Node;
     let fallback = false;
 
     for (let i = 2; i < ls.length;) {
@@ -114,18 +121,18 @@ export class JessGrammar extends CssParser {
         base = new Reference(
           { target: base, key } as unknown as ReferenceValue,
           { type: 'declaration' },
-          location
+          chainLoc
         ) as unknown as Node;
         i += 2;
         continue;
       }
       if (tok === '[') {
         const rawKey = ls[i + 1]!.value;
-        const { key, type } = this._referenceBracketKey(rawKey, location);
+        const { key, type } = this._referenceBracketKey(rawKey, chainLoc);
         base = new Reference(
           { target: base, key } as unknown as ReferenceValue,
           { type },
-          location
+          chainLoc
         ) as unknown as Node;
         i += 3; // `[` key `]`
         continue;

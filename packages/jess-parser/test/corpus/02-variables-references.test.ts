@@ -10,8 +10,37 @@
  *   +: / ?:            → assignment ops on VarDeclaration
  */
 import { describe, it, expect } from 'vitest';
+import { sourceSpanOf, type Node } from '@jesscss/core';
 import { expectAst, expectAstContains, parse } from './_util.js';
 import { parseJessFn } from '../../src/functional-parser.js';
+
+/** First `Reference`-typed node found by a pre-order walk. */
+function firstReference(root: unknown): Node | undefined {
+  const seen = new Set<unknown>();
+  const walk = (n: unknown): Node | undefined => {
+    if (!n || typeof n !== 'object' || seen.has(n)) {
+      return undefined;
+    }
+    seen.add(n);
+    // `type` is a prototype getter on AST nodes — read it prototype-aware (own-only
+    // `Object.entries` would miss it); children live in own enumerable props.
+    if (Reflect.get(n, 'type') === 'Reference') {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      return n as unknown as Node;
+    }
+    for (const [k, v] of Object.entries(n)) {
+      if (k === 'parent') {
+        continue;
+      }
+      const hit = Array.isArray(v) ? v.map(walk).find(Boolean) : walk(v);
+      if (hit) {
+        return hit;
+      }
+    }
+    return undefined;
+  };
+  return walk(root);
+}
 
 /** Parse a top-level `$name…;` and return the VarDeclaration node's own
  * serialization (a top-level VarDeclaration is invisible in full CSS output). */
@@ -157,6 +186,17 @@ describe('corpus/variables', () => {
             )
           ]
       )`);
+  });
+
+  it('AST Reference span excludes the `$` sigil (sigil is expression syntax, CST-only)', () => {
+    const src = '.a { color: $primary; }';
+    const { tree } = parse(src);
+    const ref = firstReference(tree);
+    expect(ref).toBeDefined();
+    const span = sourceSpanOf(ref!);
+    expect(span).toBeTruthy();
+    // The span must cover `primary`, NOT `$primary` — the `$` is not stored in the AST.
+    expect(src.slice(Number(span!.start), Number(span!.end))).toBe('primary');
   });
 
   it('dot access (declaration lookup)', () => {
