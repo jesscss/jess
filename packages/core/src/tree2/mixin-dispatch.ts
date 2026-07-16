@@ -110,8 +110,19 @@ export function bindArgs(
     }
   }
 
-  // `@arguments`: all positional args joined by a space (Less special var).
-  const argWords = positional.map((a) => valueBytes(resolveEager(a.value, resolveCaller)));
+  // `@arguments` (Less special var): the bound value of EVERY variable param slot,
+  // in PARAMETER order — with named args placed in their slot, defaulted slots
+  // filled, all post-eval — joined by a space. This is NOT the raw positional call
+  // args: a named-only call still populates @arguments, defaulted slots appear, and
+  // the order follows the params, not the call. Pattern-literal slots bind no
+  // variable and contribute nothing; an empty variadic slot contributes nothing.
+  // `bound` already holds exactly these values in insertion (= parameter) order, so
+  // read them straight off it (matches less@4.6.3).
+  const argWords: string[] = [];
+  for (const val of bound.values()) {
+    const bytes = valueBytes(val);
+    if (bytes !== '') argWords.push(bytes);
+  }
   bound.set('arguments', new Word(argWords.join(' ')));
 
   return bound;
