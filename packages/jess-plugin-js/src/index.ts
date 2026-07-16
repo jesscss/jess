@@ -9,6 +9,23 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { decodeBridgeValue, encodeBridgeArgs } from './bridge.js';
 
+/**
+ * Child-process stdio streams are typed as bare `Writable`/`Readable`, which do
+ * not declare `unref`, but the underlying pipe sockets expose it at runtime.
+ * The optional structural member lets any stream be passed without an unsafe
+ * cast; the runtime `?.` guard covers streams that genuinely lack the method.
+ */
+const unrefStream = (stream: unknown): void => {
+  if (
+    typeof stream === 'object'
+    && stream !== null
+    && 'unref' in stream
+    && typeof stream.unref === 'function'
+  ) {
+    stream.unref();
+  }
+};
+
 export type JavaScriptSandboxConfig = {
   allowHttp?: boolean;
   allowNetHosts?: string[];
@@ -407,9 +424,9 @@ export class JsPlugin extends AbstractPlugin {
     );
     this.worker = child;
     child.unref();
-    child.stdin.unref?.();
-    child.stdout.unref?.();
-    child.stderr.unref?.();
+    unrefStream(child.stdin);
+    unrefStream(child.stdout);
+    unrefStream(child.stderr);
     child.stdout.setEncoding('utf8');
     child.stderr.setEncoding('utf8');
     child.stdout.on('data', chunk => this.onWorkerStdout(chunk));
