@@ -167,7 +167,12 @@ export interface ComplexSegment {
   compound: Compound;
 }
 
-/** A head compound plus combinator-joined tail compounds. */
+/**
+ * A head compound plus combinator-joined tail compounds. `leadingComb` is an
+ * optional leading combinator so an authored child selector like `> .b` (in
+ * `.a { > .b {} }`) keeps its leading `>` verbatim in both flatten and nested
+ * emit — the combinator prefixes the head compound (`> .b`).
+ */
 export class Complex extends Node {
   readonly kind = Kind.Complex as const;
   private _canon: string | undefined;
@@ -175,12 +180,19 @@ export class Complex extends Node {
   constructor(
     readonly head: Compound,
     readonly tail: ComplexSegment[] = [],
+    readonly leadingComb?: Combinator,
   ) {
     super();
   }
   canonical(): string {
     if (this._canon === undefined) {
       let s = this.head.canonical();
+      // A leading combinator (e.g. `> .b`) is rendered surrounded on the right
+      // only: `renderCombinator` yields ` > `; the head has no left context, so
+      // trim the leading space to emit `> .b`.
+      if (this.leadingComb !== undefined && this.leadingComb !== ' ') {
+        s = renderCombinator(this.leadingComb).trimStart() + s;
+      }
       for (const seg of this.tail) {
         s += renderCombinator(seg.comb) + seg.compound.canonical();
       }
@@ -245,12 +257,31 @@ export class Comment extends Node {
   }
 }
 
-/** A `selector { ...body }` rule; body may nest further rules. */
+/**
+ * One `:extend()` instruction extracted from a ruleset body (or an attached
+ * `.a:extend(...)`). The SUBJECT (the thing appended / substituted-in) is the
+ * carrying Rule's own selector list; `target` is the FIND selector list;
+ * `partial` is `true` for `all` (the parser's flag=0) and `false` for an exact
+ * extend (flag=1). A multi-target `:extend(.aa, .bb)` fans into one instruction
+ * per target branch, all sharing this `partial`.
+ */
+export interface ExtendInstruction {
+  target: SelectorList;
+  partial: boolean;
+}
+
+/**
+ * A `selector { ...body }` rule; body may nest further rules.
+ * `extendInstructions` carries the `:extend()` instructions the bridge extracted
+ * from the body (the `Extend` body statements are removed and hoisted here);
+ * absent for the common no-extend rule so the serializer's zero-cost gate holds.
+ */
 export class Rule extends Node {
   readonly kind = Kind.Rule as const;
   constructor(
     readonly selector: SelectorList,
     readonly body: Statement[],
+    readonly extendInstructions?: ExtendInstruction[],
   ) {
     super();
   }
@@ -329,12 +360,16 @@ export const simple = (text: string): Simple => new Simple(text);
 /** `compound('.a', '.b')` => `.a.b`. */
 export const compound = (...texts: string[]): Compound => new Compound(texts.map(simple));
 /** `complex([{ compound: compound('.a') }, { comb: '>', compound: compound('.b') }])` => `.a > .b`. */
-export const complex = (segments: Array<{ comb?: Combinator; compound: Compound }>): Complex => {
+export const complex = (
+  segments: Array<{ comb?: Combinator; compound: Compound }>,
+  leadingComb?: Combinator,
+): Complex => {
   const [head, ...tail] = segments;
   if (!head) throw new Error('complex() needs at least one segment');
   return new Complex(
     head.compound,
     tail.map((s) => ({ comb: s.comb ?? ' ', compound: s.compound })),
+    leadingComb,
   );
 };
 export const selist = (...selectors: Complex[]): SelectorList => new SelectorList(selectors);

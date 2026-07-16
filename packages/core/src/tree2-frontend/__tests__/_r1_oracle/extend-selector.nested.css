@@ -1,0 +1,77 @@
+.error,
+.badError {
+  border: 1px #f00;
+  background: #fdd;
+}
+:is(.error, .badError).intrusion {
+  font-size: 1.3em;
+  font-weight: bold;
+}
+.intrusion :is(.error, .badError) {
+  display: none;
+}
+.badError {
+  border-width: 3px;
+}
+:is(.foo, .ext1 .ext2, .ext3, .ext4) .bar,
+:is(.foo, .ext1 .ext2, .ext3, .ext4) .baz {
+  display: none;
+}
+div:is(.ext5, .ext7),
+.ext6 > :is(.ext5, .ext7) {
+  width: 100px;
+}
+.ext,
+:is(.a, .b) .c {
+  test: 1;
+}
+.a,
+.b {
+  test: 2;
+  .c {
+    test: 3;
+    .d {
+      test: 4;
+    }
+  }
+}
+:is(.replace, .rep_ace):is(.replace, .rep_ace),
+.c:is(.replace, .rep_ace) + :is(.replace, .rep_ace) {
+  .replace,
+  .c,
+  .rep_ace {
+    prop: copy-paste-replace;
+  }
+}
+.attributes {
+  [data="test"],
+  .attribute-test {
+    extend: attributes;
+  }
+  [data],
+  .attribute-test2 {
+    extend: attributes2;
+  }
+  [data="test3"],
+  .attribute-test {
+    extend: attributes2;
+  }
+}
+.header .header-nav,
+.footer .footer-nav {
+  background: red;
+  &:before {
+    background: blue;
+  }
+}
+.issue-2586-bordered,
+.issue-2586-somepage .content {
+  border: solid 1px black;
+}
+.issue-2586-somepage {
+  .content {
+    & > span {
+      margin-bottom: 10px;
+    }
+  }
+}

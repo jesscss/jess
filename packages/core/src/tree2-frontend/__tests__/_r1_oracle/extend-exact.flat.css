@@ -1,0 +1,28 @@
+:is(.replace.replace, .c.replace + .replace) .replace,
+:is(.replace.replace, .c.replace + .replace) .c {
+  prop: copy-paste-replace;
+}
+.a .b .c {
+  prop: not_effected;
+}
+.a,
+.effected {
+  prop: is_effected;
+}
+:is(.a, .effected) .b {
+  prop: not_effected;
+}
+:is(.a, .effected) .b.c {
+  prop: not_effected;
+}
+:is(:is(.c, .a, .effected) .b, :is(.c, .a, .effected) .a) .a,
+:is(:is(.c, .a, .effected) .b, :is(.c, .a, .effected) .a) .c {
+  prop: not_effected;
+}
+.e.e,
+.dbl {
+  prop: extend-double;
+}
+:is(.e.e, .dbl):hover {
+  hover: not-extended;
+}

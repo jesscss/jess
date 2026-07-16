@@ -123,12 +123,18 @@ function toComplex(ctx: BridgeCtx, sel: unknown): t2.Complex {
       if (!Array.isArray(items)) throw new UnsupportedShape('selector:complex-shape', t);
       const segments: Array<{ comb?: Combinator; compound: t2.Compound }> = [];
       let pendingComb: Combinator = ' ';
+      let leadingComb: Combinator | undefined;
       let first = true;
+      let sawItem = false;
       for (const item of items) {
         if (typeof item === 'string' && COMBINATORS.has(item)) {
           pendingComb = item as Combinator;
+          // A combinator BEFORE any compound is a leading combinator (e.g.
+          // `.a { > .b {} }` → child selector `> .b`), preserved verbatim.
+          if (!sawItem && item !== ' ') leadingComb = item as Combinator;
           continue;
         }
+        sawItem = true;
         if (first) {
           segments.push({ compound: toCompound(ctx, item) });
           first = false;
@@ -138,7 +144,7 @@ function toComplex(ctx: BridgeCtx, sel: unknown): t2.Complex {
         }
       }
       if (segments.length === 0) throw new UnsupportedShape('selector:complex-empty', t);
-      return t2.complex(segments);
+      return t2.complex(segments, leadingComb);
     }
     if (t === 'CompoundSelector') {
       return t2.complex([{ compound: toCompound(ctx, sel) }]);
@@ -560,12 +566,74 @@ function toBody(ctx: BridgeCtx, rules: unknown, allowAtRules: boolean): t2.State
   return out;
 }
 
+/* --------------------------------------------------------------- [extend] */
+
+/**
+ * [extend] Build the tree2 target complexes of one `Extend.target`. The parser
+ * represents a target as a string (`.error`), a CompoundSelector / ComplexSelector
+ * / AttributeSelector node, a SelectorList node, or a JS array (multi-target
+ * `:extend(.aa, .bb)`). Each branch becomes one tree2 Complex.
+ */
+function extendTargetComplexes(ctx: BridgeCtx, target: unknown): t2.Complex[] {
+  if (Array.isArray(target)) {
+    return target.flatMap((t) => extendTargetComplexes(ctx, t));
+  }
+  if (isNode(target) && Array.isArray((target as AnyNode).value) && isSelectorListNode(target)) {
+    return ((target as AnyNode).value as unknown[]).flatMap((t) => extendTargetComplexes(ctx, t));
+  }
+  return [toComplex(ctx, target)];
+}
+
+/** [extend] An interpolated (`[data=@{x}]`) target is DEFERRED — raise fail-loud. */
+function guardExtendTargetSupported(ctx: BridgeCtx, node: AnyNode, target: unknown): void {
+  const raw = isNode(target) ? slice(ctx, target) : typeof target === 'string' ? target : undefined;
+  const text = raw ?? slice(ctx, node);
+  if (text !== undefined && text.includes('@{')) {
+    throw new UnsupportedShape('extend:interpolated-target', text);
+  }
+  // Reference-import extend is DEFERRED. The Extend node carries no reliable
+  // reference marker here; the fixtures in scope use no reference imports, so no
+  // detection is wired — a reference extend surfaces as a byte diff, not a fake.
+}
+
+/**
+ * [extend] Pull `Extend` nodes out of a ruleset's `rules`. Returns the extracted
+ * instructions (never emitted as body statements) and the remaining rule nodes.
+ * An `Extend` is `flag===0` for `all` (partial) and `flag===1` for exact; a
+ * multi-target fans into one instruction per branch.
+ */
+function extractExtends(
+  ctx: BridgeCtx,
+  rules: unknown[],
+): { instructions: t2.ExtendInstruction[]; rest: unknown[] } {
+  const instructions: t2.ExtendInstruction[] = [];
+  const rest: unknown[] = [];
+  for (const r of rules) {
+    if (isNode(r) && typeOf(r) === 'Extend') {
+      const node = r as AnyNode;
+      const target = node.target;
+      guardExtendTargetSupported(ctx, node, target);
+      const partial = node.flag === 0;
+      for (const complex of extendTargetComplexes(ctx, target)) {
+        instructions.push({ target: t2.selist(complex), partial });
+      }
+    } else {
+      rest.push(r);
+    }
+  }
+  return { instructions, rest };
+}
+
 function toRuleset(ctx: BridgeCtx, node: AnyNode): t2.Rule {
   if ((node as AnyNode).guard) throw new UnsupportedShape('guard', 'ruleset-guard');
   const sel = toSelectorList(ctx, node.selector);
+  // [extend] hoist `:extend()` instructions out of the body; the rest bridges as
+  // normal body statements.
+  const rules = Array.isArray(node.rules) ? node.rules : [];
+  const { instructions, rest } = extractExtends(ctx, rules);
   // [atrule] at-rules directly under a ruleset bubble in v5 (deferred) — reject.
-  const body = toBody(ctx, node.rules, false);
-  return new t2.Rule(sel, body);
+  const body = toBody(ctx, rest, false);
+  return new t2.Rule(sel, body, instructions.length > 0 ? instructions : undefined);
 }
 
 function toMixinDef(ctx: BridgeCtx, node: AnyNode): t2.MixinDef {

@@ -42,6 +42,7 @@ import type { AtRuleBlock, AtRuleStatement } from './at-rule.js';
 import type { ValueService } from './value-service.js';
 import { selectDefinitions } from './mixin-dispatch.js'; // [guards]
 import type { ValueResolver } from './guard.js'; // [guards]
+import { computeExtends, type ExtendResults } from './extend.js'; // [extend]
 
 export interface Position {
   node: Node;
@@ -265,7 +266,13 @@ interface Emit {
   // [nested/R0] false => preserve authored nesting (Less v5 default); true =>
   // flatten to composed selector strings (4.x / collapseNesting:true).
   collapse: boolean;
+  // [extend] per-rule extend overrides, or null when the document has no
+  // `:extend()` (zero-cost gate: emit is byte-identical to the no-extend path).
+  extends: ExtendResults | null;
 }
+
+/* ------------------------------------------------------------- [extend] */
+
 
 // [guards] Record mode walks EVERY candidate body ignoring guard truth, so
 // guard-terminated recursion (e.g. `.loop(@n) when (@n>0){ .loop(@n - 1) }`)
@@ -294,6 +301,7 @@ export function serialize(root: Root, options?: SerializeOptions): SerializeResu
     record: options?.guardMode === 'record', // [guards]
     recordDepth: 0, // [guards]
     collapse: options?.collapseNesting !== false, // [nested/R0] default = flatten
+    extends: computeExtends(root), // [extend] null when no `:extend()` anywhere
   };
   const rootFrame: Frame = {
     parent: null,
@@ -337,7 +345,12 @@ export function serialize(root: Root, options?: SerializeOptions): SerializeResu
 }
 
 function flatten(rule: Rule, parent: string[] | null, frame: Frame, e: Emit): void {
-  const composed = parent === null ? ownStrings(rule.selector) : compose(parent, rule.selector);
+  const rawComposed = parent === null ? ownStrings(rule.selector) : compose(parent, rule.selector);
+  // [extend] the rule's HEADER uses its fully-extended composed branches;
+  // children still compose against the RAW composed selector and extend
+  // independently (the composed model needs no parent-child override). Absent an
+  // extend override the header is byte-identical to the no-extend serializer.
+  const header = e.extends?.flatByRule.get(rule) ?? rawComposed;
   const childFrame: Frame = {
     parent: frame,
     mixins: collectMixins(rule.body),
@@ -346,11 +359,11 @@ function flatten(rule: Rule, parent: string[] | null, frame: Frame, e: Emit): vo
   const group: Leaf[] = [];
   const flush = (): void => {
     if (group.length) {
-      flushBlock(composed, group, e, rule.selector);
+      flushBlock(header, group, e, rule.selector);
       group.length = 0;
     }
   };
-  walkBody(rule.body, composed, childFrame, group, flush, e);
+  walkBody(rule.body, rawComposed, childFrame, group, flush, e);
   flush();
 }
 
@@ -674,7 +687,10 @@ function emitNestedRule(rule: Rule, frame: Frame, e: Emit): void {
   const start = e.off;
   const idt = e.depth > 0 ? INDENT.repeat(e.depth) : '';
   if (idt) put(e, idt);
-  const own = ownStrings(rule.selector);
+  // [extend] nested header uses the extended own-local branch list; children
+  // stay literal (nested mode composes nothing).
+  const ext = e.extends?.nestedByRule.get(rule);
+  const own = ext ? ext.map((b) => b.text) : ownStrings(rule.selector);
   const selStart = e.off;
   put(e, idt ? own.join(',\n' + idt) : own.join(',\n'));
   if (e.positions) {
