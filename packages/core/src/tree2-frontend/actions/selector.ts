@@ -24,6 +24,10 @@
 import * as t2 from '../../tree2/index.js';
 import type { Combinator } from '../../tree2/index.js';
 import { type BuildAction, type BuildArgs } from '../host-context.js';
+// [F4] interp-aware simple-token builder: a `@{…}`-bearing part becomes an
+// interpolation `Simple` (resolved at ruleset-enter); any other part stays the
+// verbatim-bytes `t2.simple` this used before. See `selector-interp.ts`.
+import { simpleFromText } from './selector-interp.js';
 
 const COMBINATORS = new Set<string>(['>', '+', '~']);
 
@@ -68,7 +72,7 @@ function buildCompound(args: BuildArgs): t2.Compound | t2.Complex {
     const span = rawSpan(rc);
     if (!span) continue;
     if (prevEnd >= 0 && span.start > prevEnd) groups.push([]); // gap → descendant
-    groups[groups.length - 1]!.push(t2.simple(src.slice(span.start, span.end)));
+    groups[groups.length - 1]!.push(simpleFromText(src.slice(span.start, span.end)));
     prevEnd = span.end;
   }
   const compounds = groups.filter((g) => g.length > 0).map((g) => new t2.Compound(g));
