@@ -39,6 +39,8 @@ import { tan } from './tan.js';
 import { asin } from './asin.js';
 import { acos } from './acos.js';
 import { atan } from './atan.js';
+// --- list (Tier-A: pure value→value, constructs its own list; no eval context) ---
+import { range } from './range.js';
 // --- proof set (converted pre-batch; color = a LATER batch) ---
 import { lighten } from './lighten.js';
 import { e } from './e.js';
@@ -48,6 +50,7 @@ export const NATIVE_FN_LIST: readonly NativeFn[] = [
   round, ceil, floor, abs, sqrt, pow, mod,
   pi, percentage, unit, convert,
   sin, cos, tan, asin, acos, atan,
+  range,
   lighten, e,
 ];
 

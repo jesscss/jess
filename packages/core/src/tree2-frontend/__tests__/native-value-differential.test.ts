@@ -135,6 +135,17 @@ const CORPUS: Array<[string, string]> = [
   ['fn-acos', '.a { m: acos(0.5); }\n'],
   ['fn-atan', '.a { m: atan(1); }\n'],
 
+  // --- converted LIST group (Tier-A) — `range` constructs its own list, no ctx.
+  //     (`length`/`extract` are DEFERRED: the value layer flattens list literals
+  //     to bytes before a fn arg sees them — no `list` ValueObj reaches the fn —
+  //     so both paths return 1, wrong vs Less 4.x. Blocked on list-structure
+  //     preservation in arg materialization, not on this batch.) ---
+  ['fn-range-count', '.a { m: range(3); }\n'],
+  ['fn-range-start-end', '.a { m: range(2, 5); }\n'],
+  ['fn-range-step', '.a { m: range(1, 10, 3); }\n'],
+  ['fn-range-unit', '.a { m: range(1px, 3px); }\n'],
+  ['fn-range-neg-step', '.a { m: range(1, 5, 2); }\n'],
+
   // --- unknown fn (verbatim) ---
   ['unknown-fn', '.a { filter: some-unknown(1px, 2px); }\n'],
   ['unknown-fn-solo', '.a { transform: rotate3d(1, 1, 1); }\n'],
