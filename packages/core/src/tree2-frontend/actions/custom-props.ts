@@ -24,7 +24,7 @@
  * that a discarded branch (or a parent re-deriving from source) drops.
  */
 import * as t2 from '../../tree2/index.js';
-import { type BuildAction, type BuildArgs, sliceSpan } from '../host-context.js';
+import { type BuildAction, type BuildArgs, type Span, sliceSpan } from '../host-context.js';
 
 /* ------------------------------------------------ source-bytes value helpers */
 
@@ -98,6 +98,45 @@ function declBody(args: BuildArgs): string {
   return sliceSpan(args.ctx, args.span).replace(/;\s*$/u, '');
 }
 
+/** The value's source span `[start,end)` within a `name: value` declaration span. */
+function valueSpan(src: string, start: number, end: number): { start: number; end: number } | null {
+  const body = src.slice(start, end).replace(/;\s*$/u, '');
+  const colon = body.indexOf(':');
+  if (colon < 0) return null;
+  let i = colon + 1;
+  while (i < body.length && /\s/u.test(body[i]!)) i++;
+  let j = body.length;
+  while (j > i && /\s/u.test(body[j - 1]!)) j--;
+  return { start: start + i, end: start + j };
+}
+
+/**
+ * [F6/F7] A whole-value computed node (`Paren` / `FunctionCall`) whose source span
+ * equals the declaration's value span, else `null`. These are the shapes the
+ * bridge structures at the declaration level; a top-level `Operation` /
+ * `SpacedValue` is deliberately NOT consumed here (the bridge's declaration value
+ * for `1 + 2` / `12px/1.5` is a raw Word — those `Operation` nodes are only the
+ * operands paren / call bodies consume), so the source-bytes fallback stays
+ * byte-identical to the bridge. Span coverage rejects a trailing `!important`.
+ */
+function wholeValueComputed(args: BuildArgs): t2.ValueNode | null {
+  let node: t2.ValueNode | null = null;
+  let idx = -1;
+  for (let k = 0; k < args.children.length; k++) {
+    if (args.children[k] instanceof t2.Node) {
+      if (node !== null) return null; // more than one value node → not whole-value
+      node = args.children[k] as t2.ValueNode;
+      idx = k;
+    }
+  }
+  if (node === null) return null;
+  if (node.kind !== t2.Kind.Paren && node.kind !== t2.Kind.FunctionCall) return null;
+  const vSpan = valueSpan(args.ctx.src, args.span.start, args.span.end);
+  const raw = args.rawChildren[idx] as { span?: Span } | undefined;
+  if (!vSpan || !raw?.span) return null;
+  return raw.span.start === vSpan.start && raw.span.end === vSpan.end ? node : null;
+}
+
 /* --------------------------------------------------------------- actions */
 
 /**
@@ -151,9 +190,12 @@ const declaration: BuildAction = {
     const valueBytes = body.slice(colon + 1).trim();
     const built = args.children.filter((c): c is t2.ValueNode => c instanceof t2.Node);
     let value: t2.ValueNode = parseValue(valueBytes);
-    if (built.length === 1) {
-      const only = built[0]!;
-      if (only.kind === t2.Kind.Word && (only as t2.Word).text === valueBytes) value = only;
+    if (built.length === 1 && built[0]!.kind === t2.Kind.Word && (built[0]! as t2.Word).text === valueBytes) {
+      value = built[0]!; // F5 leaf (`red`, `10px`, …)
+    } else {
+      // [F6/F7] a whole-value Paren / FunctionCall (`rgb(1,2,3)`, `(1 + 2)`, calc()).
+      const computed = wholeValueComputed(args);
+      if (computed !== null) value = computed;
     }
     // A merged decl carrying `!important` in its bytes strips it (the structured
     // flag re-emits it once at the end of the combined line).

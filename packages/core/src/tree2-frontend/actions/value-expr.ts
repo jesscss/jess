@@ -1,0 +1,219 @@
+/**
+ * [tree2-native] Value-expressions family (F6 operations + F7 function calls,
+ * together because they share the declaration whole-value guard).
+ *
+ * Grammar `type`s constructed:
+ *   • `Operation`     — a math expression whose slash DIVIDES (paren / calc body).
+ *   • `OperationTop`  — the declaration-level math variant (slash is a list under
+ *                       default math). Both fold the flat `operand op operand …`
+ *                       children into left-associative `t2.Operation` nodes; the
+ *                       grammar already carries precedence by nesting product
+ *                       inside sum, so one build only folds a single precedence
+ *                       level. (`collapse:true` means a lone operand never reaches
+ *                       here — a plain value builds no Operation.)
+ *   • `Paren`         — `( expr )`: a transparent wrapper around one inner value.
+ *   • `Call`          — `name( args )` / `calc( … )`: a STRUCTURED `FunctionCall`
+ *                       whose args keep their full shape — comma args, space
+ *                       lists, AND the modern `/` separator (`rgb(0 128 255 / 50%)`
+ *                       → `[space-list 0 128 (255 / 50%)]`). We do NOT flatten the
+ *                       space group (the bridge's `flattenSpaceGroup` DROPS the
+ *                       `/` — a bug); the direct path preserves it so the call is
+ *                       reconstructable.
+ *
+ * Oracle: the bridge, EXCEPT where it is provably buggy. Clean shapes are gated
+ * byte-identical against `bridgeToTree2`. Two shapes diverge on purpose (the
+ * bridge is wrong, the direct path matches real Less 4.x):
+ *   • modern `/` in a call (`rgb(0 128 255 / 50%)`, `hsl(… / .5)`) — bridge drops
+ *     the `/`; direct keeps it.
+ *   • a space-list call arg (`foo(1px solid red)`) — bridge re-slices with a
+ *     leading-space defect (`1px  solid`); direct emits single spaces.
+ *
+ * The declaration whole-value guard (in `custom-props.ts`, the family that owns
+ * the live `Declaration` action) consumes a whole-value `Paren`/`FunctionCall`
+ * (the shapes the bridge structures at the declaration level); a top-level
+ * `Operation` stays raw bytes there — matching the bridge, whose declaration value
+ * for `1 + 2` / `12px/1.5` is a raw Word. The built `Operation` nodes are the
+ * OPERANDS the paren / call bodies consume.
+ *
+ * TOTALITY: parseman builds backtracked branches, so every action returns a valid
+ * node (never throws) even on a doomed shape.
+ */
+import * as t2 from '../../tree2/index.js';
+import {
+  type BuildAction,
+  type BuildArgs,
+  type Span,
+  sliceSpan,
+} from '../host-context.js';
+
+/** A parseman child leaf `{ _tag:'leaf', value, span }` (operators / separators). */
+interface Leaf {
+  readonly _tag: 'leaf';
+  readonly value: string;
+  readonly span?: Span;
+}
+
+function isLeaf(x: unknown): x is Leaf {
+  return !!x && typeof x === 'object' && (x as { _tag?: string })._tag === 'leaf';
+}
+
+function isValueNode(x: unknown): x is t2.ValueNode {
+  return x instanceof t2.Node;
+}
+
+/** Raw leaf text of a child (operator / separator / bare ident). */
+function leafText(x: unknown): string {
+  return isLeaf(x) ? x.value : '';
+}
+
+/**
+ * A value operand from child slot `i`: a built value node as-is, else the child's
+ * verbatim source bytes as a `Word` (a bare ident like `solid`, or an
+ * unmodelled/placeholder shape — kept byte-faithful so the action stays total).
+ */
+function operandAt(args: BuildArgs, i: number): t2.ValueNode {
+  const c = args.children[i];
+  if (isValueNode(c)) return c;
+  const raw = args.rawChildren[i] as { span?: Span } | undefined;
+  const text = raw?.span ? sliceSpan(args.ctx, raw.span) : leafText(c);
+  return t2.word(text.trim());
+}
+
+/**
+ * Fold a flat `operand (op operand)*` child run into left-associative `Operation`
+ * nodes. Operators sit at odd indices (raw leaves), operands at even indices.
+ */
+function foldOperation(args: BuildArgs): t2.ValueNode {
+  const n = args.children.length;
+  let left = operandAt(args, 0);
+  for (let i = 1; i + 1 < n; i += 2) {
+    const op = leafText(args.children[i]).trim();
+    const right = operandAt(args, i + 1);
+    left = t2.operation(op, left, right);
+  }
+  return left;
+}
+
+const operation: BuildAction = { type: 'Operation', build: foldOperation };
+const operationTop: BuildAction = { type: 'OperationTop', build: foldOperation };
+
+/* ------------------------------------------------------------------ Paren */
+
+/** Source bytes strictly between the outer `(` … `)` of a paren/call child run. */
+function betweenBytes(args: BuildArgs, openIdx: number, closeIdx: number): string {
+  const openRaw = args.rawChildren[openIdx] as { span?: Span } | undefined;
+  const closeRaw = args.rawChildren[closeIdx] as { span?: Span } | undefined;
+  if (openRaw?.span && closeRaw?.span) {
+    return args.ctx.src.slice(openRaw.span.end, closeRaw.span.start).trim();
+  }
+  return '';
+}
+
+/** Index of the first `(` leaf, and the last `)` leaf, in a child run. */
+function parenBounds(children: ReadonlyArray<unknown>): { open: number; close: number } {
+  let open = -1;
+  let close = -1;
+  for (let i = 0; i < children.length; i++) {
+    const v = leafText(children[i]);
+    if (open < 0 && v === '(') open = i;
+    if (v === ')') close = i;
+  }
+  return { open, close };
+}
+
+/**
+ * `( expr )` — a transparent wrapper around ONE inner value. A single inner value
+ * node wraps directly; a space list wraps as a `SpacedValue`; a comma list (rare
+ * in value position) keeps its inner source bytes verbatim (mirrors the bridge's
+ * `parseValue` fallback for a non-computable paren body).
+ */
+const paren: BuildAction = {
+  type: 'Paren',
+  build: (args) => {
+    const { open, close } = parenBounds(args.children);
+    const lo = open < 0 ? 0 : open + 1;
+    const hi = close < 0 ? args.children.length : close;
+    let hasComma = false;
+    const items: t2.ValueNode[] = [];
+    for (let i = lo; i < hi; i++) {
+      const c = args.children[i];
+      if (isValueNode(c)) {
+        items.push(c);
+        continue;
+      }
+      const v = leafText(c);
+      if (v === ',' || v === ';') {
+        hasComma = true;
+        continue;
+      }
+      if (v === '' && !(args.rawChildren[i] as { span?: Span })?.span) continue;
+      items.push(operandAt(args, i));
+    }
+    if (hasComma && open >= 0 && close >= 0) {
+      return t2.paren(t2.word(betweenBytes(args, open, close)));
+    }
+    if (items.length === 0) return t2.paren(t2.word(''));
+    const inner = items.length === 1 ? items[0]! : t2.spaced(items);
+    return t2.paren(inner);
+  },
+};
+
+/* ------------------------------------------------------------------ Call */
+
+/**
+ * Assemble ONE argument value from the run of children in a comma segment: a lone
+ * item passes through; multiple space-separated items become a `SpacedValue` (this
+ * is what preserves the modern `/` — the `/` folds into an `Operation` operand
+ * inside the space list, so the group serializes with the slash intact).
+ */
+function assembleSegment(items: t2.ValueNode[]): t2.ValueNode | null {
+  if (items.length === 0) return null;
+  return items.length === 1 ? items[0]! : t2.spaced(items);
+}
+
+/**
+ * `name( args )` / `calc( … )` → a structured `FunctionCall`. Args are split on
+ * top-level `,` (a `;` group separator is treated the same for value assembly —
+ * a semicolon-in-args call is a rare mixin-ish shape flagged separately). Each
+ * segment's items (built value nodes + bare-ident leaves) assemble to one arg.
+ * `modern` stays false: the space/slash structure is preserved in the arg nodes
+ * themselves, so the serializer needs no modern flag to reproduce the spelling.
+ */
+const call: BuildAction = {
+  type: 'Call',
+  build: (args) => {
+    const children = args.children;
+    const name = leafText(children[0]).trim() || sliceSpan(args.ctx, { start: args.span.start, end: args.span.start });
+    const { open, close } = parenBounds(children);
+    if (open < 0) {
+      // No `(` — a bare keyword collapsed here; keep it byte-faithful.
+      return t2.word(sliceSpan(args.ctx, args.span).trim());
+    }
+    const hi = close < 0 ? children.length : close;
+    const segments: t2.ValueNode[][] = [[]];
+    for (let i = open + 1; i < hi; i++) {
+      const c = children[i];
+      if (isValueNode(c)) {
+        segments[segments.length - 1]!.push(c);
+        continue;
+      }
+      const v = leafText(c);
+      if (v === ',' || v === ';') {
+        segments.push([]);
+        continue;
+      }
+      // A bare value leaf (ident like `solid`, or an unmodelled shape): keep its
+      // verbatim bytes. Skip a zero-width structural leaf (a built node's wrapper).
+      if (v === '' && !(args.rawChildren[i] as { span?: Span })?.span) continue;
+      segments[segments.length - 1]!.push(operandAt(args, i));
+    }
+    const argList: t2.ValueNode[] = [];
+    for (const seg of segments) {
+      const a = assembleSegment(seg);
+      if (a !== null) argList.push(a);
+    }
+    return t2.funcCall(name, argList, false);
+  },
+};
+
+export const VALUE_EXPR_ACTIONS: readonly BuildAction[] = [operation, operationTop, paren, call];
