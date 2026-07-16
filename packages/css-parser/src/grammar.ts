@@ -13,7 +13,7 @@
  */
 import {
   node, regex, literal, sequence, choice, many, oneOrMore, optional,
-  not, scanTo, balanced, trivia, rules, expect, field, label
+  not, noTrivia, scanTo, balanced, trivia, rules, expect, field, label
 } from 'parseman' with { type: 'macro' };
 
 // ---------------------------------------------------------------------------
@@ -55,6 +55,8 @@ const doubleStr = regex(/"(?:[^"\\]|\\[\s\S])*"/);
 const customProp = regex(/--[-_a-zA-Z0-9\u0080-\uffff]*/);
 const atKeyword = regex(/@-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
 const numPart = regex(/[+-]?(?:\d*\.\d+(?:[eE][+-]?\d+)?|\d+(?:[eE][+-]?\d+)?|\d+)/);
+// A dimension unit or `%`, collapsed to one regex (read as a single leaf).
+const unitRegex = regex(/-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*|%/);
 const urlOpen = regex(/url\(/i);
 const urlInner = regex(/[^)"'\s]+/);
 const anyValueTok = regex(/[+\-*/=<>|~^]+|[^\s;{}\[\]()'",!]+/);
@@ -239,7 +241,7 @@ export const cssGrammar = rules({ trivia: rw }, (g: any) => {
    * A single value component.
    * @see https://www.w3.org/TR/css-values-4/#component-types
    */
-  const value = choice(g.Dimension, g.Num, g.Color, g.Url, g.CalcCall, g.Call, g.Paren, g.Quoted, g.anyValue);
+  const value = choice(g.numeric, g.Color, g.Url, g.CalcCall, g.Call, g.Paren, g.Quoted, g.anyValue);
   // ── Math expressions ───────────────────────────────────────────────────────
   // CSS does arithmetic ONLY inside `calc()` (and the parens nested in it), so these
   // rules are reached only via `CalcCall` and the calc-nested `calcParen`, never the
@@ -256,7 +258,7 @@ export const cssGrammar = rules({ trivia: rw }, (g: any) => {
   // general permissive `Paren`. Everything else matches the ordinary value set.
   /** A math-context parenthesized sub-expression (folds). @see https://www.w3.org/TR/css-values-4/#calc-syntax */
   const calcParen = node('Paren', sequence(literal('('), g.mathSum, expect(literal(')'))));
-  const calcValue = choice(g.Dimension, g.Num, g.Color, g.Url, g.CalcCall, g.Call, calcParen, g.Quoted, g.anyValue);
+  const calcValue = choice(g.numeric, g.Color, g.Url, g.CalcCall, g.Call, calcParen, g.Quoted, g.anyValue);
   /** A `* / %` product level (left-assoc), folded into an Operation. @see https://www.w3.org/TR/css-values-4/#calc-syntax */
   const mathProduct = node('Operation',
     sequence(calcValue, many(sequence(prodOp, calcValue))), undefined, { collapse: true });
@@ -266,9 +268,18 @@ export const cssGrammar = rules({ trivia: rw }, (g: any) => {
 
   /**
    * A dimension — a number immediately followed by a unit or `%` (`10px`, `50%`).
+   * `noTrivia` forbids whitespace between number and unit, so `1 px` / `1 %` stay a
+   * bare number plus a separate token rather than gluing into a Dimension.
    * @see https://www.w3.org/TR/css-values-4/#dimensions
    */
-  const Dimension = node(sequence(numPart, regex(/-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*|%/)));
+  const Dimension = node(noTrivia(sequence(numPart, unitRegex)));
+  /**
+   * Unified numeric leaf: parse the number ONCE, then continue into the unit only
+   * if it is present — no Dimension→Num backtrack. The build host turns a
+   * unit-present match into a `Dimension` and a unit-absent match into a `Num`, so
+   * downstream node types/fields are identical to the split `Dimension`/`Num` rules.
+   */
+  const numeric = node('Numeric', noTrivia(sequence(numPart, optional(unitRegex))));
   /**
    * A `url()` value with an optional quoted or unquoted body.
    * @see https://developer.mozilla.org/en-US/docs/Web/CSS/url_function
@@ -630,7 +641,7 @@ export const cssGrammar = rules({ trivia: rw }, (g: any) => {
     keyframeSelector, KeyframeSelectorList, KeyframeBlock, keyframesBody,
     MarginAtRule, pageBody, FeatureValueBlock, fontFeatureValuesBody,
     valueList, valueSequence, value, parenBody, mathProduct, mathSum, calcBody,
-    Dimension, Url, Call, anyValue,
+    Dimension, numeric, Url, Call, anyValue,
     AtRuleBlock, AtRuleBlockTop, AtRuleStatement, ImportStatement,
     QueryAtRuleBlock, QueryAtRuleBlockTop, UnknownAtRuleBlock
   };

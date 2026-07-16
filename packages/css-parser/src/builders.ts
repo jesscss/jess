@@ -470,6 +470,12 @@ export class CssParser {
       case 'CustomDeclaration': return this._buildCustomDeclaration(children, loc);
       case 'Dimension':         return this._buildDimension(children, loc);
       case 'Num':               return new Num(parseFloat(leafText(children)), undefined, loc);
+      // Unified numeric leaf. `numeric` is noTrivia(numPart, optional(unit)) with no
+      // sub-nodes, so children are exactly the captured leaves: two → Dimension (the
+      // same node the split `Dimension` rule built), one → Num (same as split `Num`).
+      case 'Numeric':           return children.length > 1
+        ? this._buildDimension(children, loc)
+        : new Num(parseFloat(leafText(children)), undefined, loc);
       case 'Color':             return this._buildColor(leafText(children), loc);
       case 'Url':               return this._buildUrl(children, loc);
       case 'Call':              return this._buildCall(rawChildren, loc);

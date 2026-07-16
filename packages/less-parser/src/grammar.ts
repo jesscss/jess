@@ -71,7 +71,6 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   // would otherwise match only `--`, failing the declaration outright.
   const customPropInterp = regex(/--(?:-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*|-)?@\{-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*\}(?:@\{-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*\}|[-_a-zA-Z0-9\u0080-\uffff])*/);
   const atKeyword = regex(/@-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
-  const numPart = regex(/[+-]?(?:\d*\.\d+(?:[eE][+-]?\d+)?|\d+(?:[eE][+-]?\d+)?|\d+)/);
   const urlOpen = regex(/url\(/i);
   // Unquoted url() body: any run of non-delimiter chars, with CSS escapes (\" \( …)
   // so escaped quotes/parens inside the URL don't terminate it.
@@ -232,9 +231,9 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   // — so it must parse as ONE operand (ordered before Quoted/anyValue), else the bare
   // `Quoted` alt fails on the leading `~` and `anyValue` swallows `~"…" = @s` into a
   // Sequence, dropping the comparison.
-  const guardOperand = choice(g.NsAccessor, g.Reference, g.Dimension, g.Num, g.Color, g.NamedColor, g.EscapedValue, g.Quoted, g.Call, g.Paren, g.anyValue);
+  const guardOperand = choice(g.NsAccessor, g.Reference, g.numeric, g.Color, g.NamedColor, g.EscapedValue, g.Quoted, g.Call, g.Paren, g.anyValue);
   const Comparison = node(
-    sequence(g.Reference, compareOp, choice(g.Reference, g.Dimension, g.Num, g.Color, g.NamedColor, g.EscapedValue, g.Quoted, g.anyValue)));
+    sequence(g.Reference, compareOp, choice(g.Reference, g.numeric, g.Color, g.NamedColor, g.EscapedValue, g.Quoted, g.anyValue)));
   const GuardDefault = node(
     regex(/default(?:[ \t\n\r\f]*\([ \t\n\r\f]*\))?(?![-\w])/));
   // '(' guardOr ')' → Paren; or a bare default(). Wrapped in a Paren node.
@@ -523,7 +522,7 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   // arithmetic. @see https://drafts.csswg.org/css-syntax/#urange-syntax
   const UnicodeRange = node(
     regex(/[Uu]\+[0-9A-Fa-f?]{1,6}(?:-[0-9A-Fa-f]{1,6})?/));
-  const value = choice(g.InterpValue, g.Reference, g.UnicodeRange, g.Dimension, g.Num, g.NsAccessor, g.Color, g.NamedColor, g.Url, g.CalcCall, g.FormatCall, g.Call, g.EscapedValue, g.GluedParen, g.Paren, g.SquareParen, g.Quoted, g.anyValue);
+  const value = choice(g.InterpValue, g.Reference, g.UnicodeRange, g.numeric, g.NsAccessor, g.Color, g.NamedColor, g.Url, g.CalcCall, g.FormatCall, g.Call, g.EscapedValue, g.GluedParen, g.Paren, g.SquareParen, g.Quoted, g.anyValue);
   // ── Math expressions — precedence in the grammar (port of expressionSum /
   // expressionProduct). `* / %` bind tighter than `+ -`; left-associative. The
   // `collapse` option makes a single-operand level pass its operand straight
@@ -578,11 +577,8 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   const EscapedValue = node(
     sequence(literal('~'), choice(escapedParen, g.Quoted)));
   const NamedColor = node(regex(/(?:lightgoldenrodyellow|mediumspringgreen|mediumaquamarine|mediumslateblue|mediumturquoise|mediumvioletred|blanchedalmond|cornflowerblue|darkolivegreen|lightslategray|lightslategrey|lightsteelblue|mediumseagreen|darkgoldenrod|darkslateblue|darkslategray|darkslategrey|darkturquoise|lavenderblush|lightseagreen|palegoldenrod|paleturquoise|palevioletred|rebeccapurple|antiquewhite|currentcolor|darkseagreen|lemonchiffon|lightskyblue|mediumorchid|mediumpurple|midnightblue|darkmagenta|deepskyblue|floralwhite|forestgreen|greenyellow|lightsalmon|lightyellow|navajowhite|saddlebrown|springgreen|transparent|yellowgreen|aquamarine|blueviolet|chartreuse|darkorange|darkorchid|darksalmon|darkviolet|dodgerblue|ghostwhite|lightcoral|lightgreen|mediumblue|papayawhip|powderblue|sandybrown|whitesmoke|aliceblue|burlywood|cadetblue|chocolate|darkgreen|darkkhaki|firebrick|gainsboro|goldenrod|indianred|lawngreen|lightblue|lightcyan|lightgray|lightgrey|lightpink|limegreen|mintcream|mistyrose|olivedrab|orangered|palegreen|peachpuff|rosybrown|royalblue|slateblue|slategray|slategrey|steelblue|turquoise|cornsilk|darkblue|darkcyan|darkgray|darkgrey|deeppink|honeydew|lavender|moccasin|seagreen|seashell|crimson|darkred|dimgray|dimgrey|fuchsia|hotpink|magenta|oldlace|skyblue|thistle|bisque|indigo|maroon|orange|orchid|purple|salmon|sienna|silver|tomato|violet|yellow|azure|beige|black|brown|coral|green|ivory|khaki|linen|olive|wheat|white|aqua|blue|cyan|gold|gray|grey|lime|navy|peru|pink|plum|snow|teal|red|tan)(?![-_a-zA-Z0-9(])/i));
-  // unit collapsed to one regex (Dimension still reads number + unit as two leaves).
-  // number + unit must be contiguous \u2014 the surrounding valueSequence runs with
-  // trivia enabled, so without noTrivia() a space (`1 %`, `10 px`) would still be
-  // glued into a Dimension. Chevrotain lexes those as Num + a separate token.
-  const Dimension = node(noTrivia(sequence(numPart, regex(/-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*|%/))));
+  // `Dimension` / `Num` / the unified `numeric` leaf are inherited verbatim from
+  // the shared CSS grammar (number + optional unit, contiguous via noTrivia).
   // `Num` and `Color` now come from the shared `numericRules` fragment, spread into
   // the return object below (identical to the CSS grammar's definitions).
   const Url = node(parser({ trivia: urlWs }, sequence(urlOpen, optional(choice(singleStr, doubleStr, urlInner)), literal(')'))));
@@ -735,7 +731,7 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   // (`100%`) is a Dimension and unaffected.
   const calcAnyTok = regex(/[+\-*/=<>|~^]+|[^\s;{}\[\]()'",!%]+/);
   const calcAnyValue = choice(ident, calcAnyTok);
-  const calcValue = choice(g.InterpValue, g.Reference, g.Dimension, g.Num, g.Color, g.NamedColor, g.Url, g.Call, g.EscapedValue, g.Paren, g.SquareParen, g.Quoted, calcAnyValue);
+  const calcValue = choice(g.InterpValue, g.Reference, g.numeric, g.Color, g.NamedColor, g.Url, g.Call, g.EscapedValue, g.Paren, g.SquareParen, g.Quoted, calcAnyValue);
   // calc math grammar (port of mathSum/mathProduct): operators are ONLY `+ - * /` —
   // NO `%` (a standalone `%` stays unconsumed → the `)` fails → syntax error, per
   // CSS calc). `/` always divides here (calc is a math context), built as
@@ -894,7 +890,7 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
     LessAmpersand, InterpolatedSelector, ExtendStatement, ExtendPseudo, ExtendTarget, extendCompound, extendComplex, simpleSelector,
     CompoundSelector, ComplexSelector, SelectorList, AttributeSelector, PseudoSelector, pseudoArg, pseudoSelectorParens,
     Ruleset, declarationList, Declaration, customValue, customCurlyBlock, cpInner, cpParen, cpSquare, cpCurly, cpValue, CustomDeclaration, declaration,
-    valueList, valueSequence, value, UnicodeRange, Negative, mathProduct, mathSum, topProduct, topSum, parenExprList, InterpValue, NsAccessor, EscapedValue, NamedColor, Dimension, Url,
+    valueList, valueSequence, value, UnicodeRange, Negative, mathProduct, mathSum, topProduct, topSum, parenExprList, InterpValue, NsAccessor, EscapedValue, NamedColor, Url,
     parenBody, permissiveParenBody, Paren, GluedParen, DetachedRuleset, functionCallArgs, squareParenBody, calcBody, Call, FormatCall, SquareParen, anyValue, EachFor,
     queryPrelude, QueryAtRuleBlock, ImportAtRuleStatement,
     AtRuleBlock, AtRuleStatement, atRuleBody,
