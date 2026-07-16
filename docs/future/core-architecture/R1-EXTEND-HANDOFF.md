@@ -81,18 +81,56 @@ match the buggy golden, do NOT edit any less.js file):
 exact-into-parent-with-children instance (their exact extenders target childless
 rules, so they correctly fold).
 
-## Per-fixture matrix (NESTED mode vs alpha; nested is the gate — flatten has no
-independent alpha golden and matches only non-nested fixtures)
+## Per-fixture matrix — CURRENT (nested re-projection LANDED on this branch)
 
-| fixture         | status | detail |
-|-----------------|--------|--------|
-| extend-chaining | MATCH  | byte-identical both modes |
-| extend-media    | MATCH  | byte-identical both modes |
-| extend-clearfix | needs HOIST | tree2 FLAT is byte-identical to alpha (alpha's golden IS the hoisted/flat form). Nested over-nests `&:after`; needs the child-hoist to equal flat. |
-| extend          | PROPOSED-FIX (bug 1,2) + HOIST | outside the `.aa`/`.bb` region, alpha already matches tree2 FLAT (incl. `.buu`/`.fuu` already hoisted). `.aa`/`.bb` region = alpha bug → propose corrected `.css` below. Nested also needs `.buu`/`.fuu` composed-whole-complex hoist. |
-| extend-exact    | PROPOSED-FIX (bug 3,4,5) + gaps | also has a MISSING extend `.rep_ace:extend(.replace.replace .replace)` (multi-segment target not matched) and a child `:is()`-compaction gap (`… .replace, … .c` should compact to `… :is(.replace, .c)`). |
-| extend-nest     | HANDOFF | needs (a) sibling `:is()`-compaction `.button:hover, .submit:hover` → `:is(.button, .submit):hover`; (b) `.box`/`&:hover` child hoist; (c) the `amp-test` `&`-substitution-inside-`:is` monster. |
-| extend-selector | DEFERRED | contains `[data=@{attr-data}]` (interpolated selector — R4 rung) and standalone `:extend()` selectors; bridge raises `UnsupportedShape('statement: Rules')`. Also holds the interpolated-target extend deferral case. |
+Gated by `extend-byte-identity.test.ts` (green). NESTED is the gate.
+
+| fixture         | nested status | detail |
+|-----------------|---------------|--------|
+| extend-chaining | MATCH alpha   | byte-identical both modes. GATED vs alpha. |
+| extend-media    | MATCH alpha   | byte-identical both modes. GATED vs alpha. |
+| extend-clearfix | MATCH alpha   | nested now byte-identical to alpha (the `&:after` crosses `&` → flattens). GATED vs alpha. |
+| extend          | MATCH CORRECTED | byte-identical to alpha OUTSIDE the `.aa`/`.bb` bug region; that region emits the CORRECT re-nesting. GATED vs `proposed-alpha-corrections/extend.css` (the proposed patch). `.ext8`/`.buu`/`.fuu` hoists + `.aa`/`.bb` split all correct. |
+| extend-exact    | 4/5 blocks correct | block 1 (`.rep_ace` multi-segment + `:is(.replace,.c)` compaction + flatten) ✓; blocks 3/4 (exact-into-children bug) emit the CORRECT re-nesting ✓. **BLOCK 5 GAP**: `.e { && {} }` needs a nested `&`-wrapper collapse (→ `.e.e { …; &:hover {} }` + split `.dbl`). Not gated. |
+| extend-nest     | 2 GAPS        | `.sidebar*`/`.box`/`&:hover` hoists + sibling `:is()`-compaction all correct. **GAP a**: `.button2 { :hover {} }` should flatten to `.button2 :hover` (a plain-nesting flatten with no clear extend trigger — likely an alpha quirk or a standalone-`:extend()` interaction; needs oracle-verified rule). **GAP b**: the `amp-test` `&`-substitution-inside-`:is` renders `.amp-test-f.amp-test-c :is(…)` where alpha renders `.amp-test-f:is(.amp-test-c :is(…))` (amp-form differs). Not gated. |
+| extend-selector | DEFERRED      | `[data=@{attr-data}]` (interpolated selector — R4) + standalone `:extend()`; bridge raises `UnsupportedShape('statement: Rules')`. |
+
+### What the nested re-projection does (LANDED — `tree2/extend.ts` + `serialize.ts`)
+
+NESTED output re-nests the correct FLAT result. A rule STAYS NESTED and extend
+rewrites its local selector in place; it FLATTENS (emitted flat at top level via
+the flat path, bubbled out of its parent block) ONLY when the extend match
+crosses the `&`. The three operational flatten triggers (validated against the
+alpha oracle):
+- **B**: a nested rule that itself carries `:extend()` (its extender contribution
+  spans the parent context) — e.g. `.type1 .sidebar3`, `.type2.sidebar4`.
+- **P**: a nested rule whose parent is aliased by an `all`-extender whose target
+  does NOT also hit the child's own compound (foreign parent-context alias) —
+  e.g. `.sidebar .box`, `.clearfix &:after`. A UNIFORM alias that also rewrites
+  the child's own compound (`.ff:extend(.bb all)` on `.bb { .bb {} }`) does NOT
+  cross → stays nested (`.bb, .ff { .bb, .ff {} }`).
+- **X**: a structural-leaf whose flat solve gained a whole-complex sibling that
+  does not descend from the parent header — e.g. `.ext8 .ext9, .buu`; `.rep_ace`.
+
+Plus: EXACT extenders folding into a target WITH surviving nested children SPLIT
+to sibling rules (target's direct decls only, empty → dropped); `all`-extenders
+fold and propagate; sibling `:is()`-compaction on hoisted headers.
+
+### OWNER conflict flagged (needs a decision; does not block the LANDED work)
+
+The owner's mid-task rule ("flatten IFF the match crosses `&`; a match ENTIRELY
+in the parent portion does NOT cross → stays nested") predicts `.sidebar .box`
+and `.clearfix &:after` STAY NESTED (the all-target `.sidebar`/`.clearfix` is
+entirely in the parent portion). But alpha's `extend-nest.css` / `extend-clearfix.css`
+goldens emit them FLAT, and the handoff's GOAL for clearfix is to MATCH alpha's
+flat golden. These two cannot both hold. The LANDED code follows the ORACLE
+(alpha) — trigger P flattens `.box`/`&:after` to match the goldens — because the
+owner also said "validate every `&`/hoist case against alpha's actual nested
+`.css`". If the owner instead wants the literal "stays nested" rule, `extend-nest`
+/ `extend-clearfix` alpha goldens are themselves buggy (flat instead of nested)
+and would move to the proposed-correction lane. The deferred `.header .header-nav
+{ &:before }` case (owner's example) is NOT reproduced by trigger P and does not
+gate (it lives in the DEFERRED extend-selector fixture).
 
 ## Remaining engine work (precise, for the next agent)
 
@@ -135,11 +173,38 @@ NESTED projection + two compaction/matching features:
   guarded in `bridge.ts::guardExtendTargetSupported`.
 - reference-import extend — no fixture in scope; surfaces as a diff, not faked.
 
+## Remaining work (precise, for the next agent)
+
+1. **extend-exact block 5 — nested `&`-wrapper collapse.** `.e { && { prop;
+   &:hover {} } }` (`.e` is decl-less, its only child `&&` is a `&`-absorbing
+   compound) must collapse: emit the `&&` rule at `.e`'s level with header =
+   composed `.e.e`, keep its `&:hover` child nested, and SPLIT the exact extender
+   `.dbl` (`.e.e` has a surviving child). This is a GENERAL nested-emit collapse
+   (a decl-less parent whose children fully absorb it via `&`), not extend-only —
+   scope it carefully so it does not disturb the plain nested emitter. Once done,
+   emit `proposed-alpha-corrections/extend-exact.css` (blocks 3/4/5 are alpha
+   bugs) and gate `extend-exact` against it.
+2. **extend-nest gap a — `.button2 { :hover {} }` → `.button2 :hover`.** No clean
+   extend trigger produces this; determine from the oracle whether it is a plain
+   nested-flatten (does v5 flatten a descendant `:hover` child?) or a standalone-
+   `:extend(.button2:hover)` interaction, then encode the verified rule.
+3. **extend-nest gap b — amp-form.** The `amp-test` deep `&`-inside-`:is`
+   substitution must render `.amp-test-f:is(.amp-test-c :is(…))` (alpha), not
+   `.amp-test-f.amp-test-c :is(…)` (current). The FLAT `substituteAmp` inlines the
+   parent text; alpha wraps the substituted parent in `:is(…)` when the parent is
+   itself a composed multi-segment token.
+4. Resolve the OWNER conflict above (P-flatten vs literal "stays nested").
+
 ## Land decision
-NOT fast-forwarded. Resolvable fixtures are not yet all byte-identical in nested
-mode (clearfix/extend/extend-exact need the nested re-projection + hoist;
-extend-nest needs compaction + amp). Progress is committed on the branch. The
-oracle-lock (STEP 1) and the correct FLAT engine + this precise handoff are the
-deliverables. Do the nested re-projection + hoist + compaction, then propose the
-corrected `.css` for `extend`/`extend-exact` (bug instances 1–5) and FF the
-cleanroom head.
+NOT fast-forwarded (deliberate). Resolvable fixtures are NOT all byte-identical:
+`extend-exact` (block 5) and `extend-nest` (gaps a/b) remain. LANDED this branch:
+- The NESTED re-projection engine (`tree2/extend.ts` `computeExtends` nested
+  plan + `serialize.ts` hoist/split/flatten wiring). clone/inherit/withComponents
+  stay structurally ZERO; `src/tree2` has NO `../tree` import; flat mode unchanged.
+- Byte-clean NESTED: `extend-chaining`, `extend-media`, `extend-clearfix` (vs
+  alpha) and `extend` (vs the proposed correction). Gated by
+  `extend-byte-identity.test.ts` (green); full tree2 suite green (165 passed).
+- `proposed-alpha-corrections/extend.css` (+ README) — the owner-applies patch
+  for the `.aa`/`.bb` alpha bug.
+Do items 1–4, then emit the `extend-exact` correction, gate both remaining
+fixtures, and FF the cleanroom head `experiment/tree2-cleanroom-20260715`.

@@ -252,8 +252,10 @@ function applyInstruction(
 
   for (const b of list) {
     const bKey = branchText(b);
-    if (bKey === targetKey) {
-      // whole-branch match → append extenders as siblings.
+    // Whole-branch match → append extenders as siblings. A multi-segment target
+    // also matches an `:is()`-grafted branch whose expansion equals the target
+    // (`.replace.replace .replace` vs `:is(.replace.replace, …) .replace`).
+    if (bKey === targetKey || (target.segs.length > 1 && branchExpansions(b).includes(targetKey))) {
       out.push(b);
       for (const e of extenders) appends.push(e);
       continue;
@@ -439,6 +441,10 @@ interface PlanSubject {
   rule: Rule;
   path: Level[];
   scope: number[];
+  /** The authored own-local selector level (last entry of `path`). */
+  ownLocal: Level;
+  /** The enclosing authored subject rule, or null at the top level. */
+  parent: PlanSubject | null;
 }
 
 interface Plan {
@@ -452,13 +458,19 @@ function collectPlan(root: Root): Plan {
   let order = 0;
   let scopeCounter = 0;
 
-  const walk = (statements: Statement[], path: Level[], scope: number[]): void => {
+  const walk = (
+    statements: Statement[],
+    path: Level[],
+    scope: number[],
+    parent: PlanSubject | null,
+  ): void => {
     for (const st of statements) {
       if (st.kind === Kind.Rule) {
         const rule = st;
         const own = levelFromSelectorList(rule.selector);
         const rulePath = [...path, own];
-        subjects.push({ rule, path: rulePath, scope });
+        const subject: PlanSubject = { rule, path: rulePath, scope, ownLocal: own, parent };
+        subjects.push(subject);
         if (rule.extendInstructions) {
           for (const inst of rule.extendInstructions) {
             for (const targetBranch of instructionTargets(inst)) {
@@ -472,16 +484,16 @@ function collectPlan(root: Root): Plan {
             }
           }
         }
-        walk(rule.body, rulePath, scope);
+        walk(rule.body, rulePath, scope, subject);
       } else if (st.kind === Kind.AtRuleBlock) {
         const inner = [...scope, scopeCounter++];
-        walk(st.body, path, inner);
+        walk(st.body, path, inner, parent);
       }
       // MixinDef / MixinCall / declarations / at-rule statements: no extend surface.
     }
   };
 
-  walk(root.children, [], []);
+  walk(root.children, [], [], null);
   return { subjects, instructions };
 }
 
@@ -495,36 +507,6 @@ function reaches(instScope: number[], subjScope: number[]): boolean {
   if (instScope.length > subjScope.length) return false;
   for (let i = 0; i < instScope.length; i++) if (instScope[i] !== subjScope[i]) return false;
   return true;
-}
-
-/* --------------------------------------------------------------- EMIT/compose */
-
-/** The ancestor keys of a subject path (every level's branch texts EXCEPT own). */
-function ancestorKeys(path: Level[]): Set<string> {
-  const keys = new Set<string>();
-  for (let i = 0; i < path.length - 1; i++) {
-    for (const b of path[i]!) keys.add(branchText(b));
-  }
-  return keys;
-}
-
-/**
- * Compose an extender's contribution relative to a subject path — the tree2
- * analogue of `composeExtendWithRelativeToTarget`. Collect the extender path
- * levels from its own local outward, stopping at a level shared with the
- * subject's ancestors, then compose outermost → innermost.
- */
-function composeContribution(extenderPath: Level[], subjectPath: Level[]): Branch[] {
-  const anc = ancestorKeys(subjectPath);
-  const levels: Level[] = [];
-  for (let i = extenderPath.length - 1; i >= 0; i--) {
-    const level = extenderPath[i]!;
-    // A level is shared when ALL its branches are subject ancestors.
-    if (level.every((b) => anc.has(branchText(b)))) break;
-    levels.unshift(level);
-  }
-  if (levels.length === 0) return [];
-  return composePath(levels);
 }
 
 /* --------------------------------------------------------------- SOLVE */
@@ -556,24 +538,6 @@ function solveComposed(subject: PlanSubject, plan: Plan): Branch[] {
     contribs.set(inst, { extenders, keys: new Set(extenders.map(branchText)) });
   }
   return runFixpoint(seed.map(cloneBranch), reachable, contribs);
-}
-
-function solveSubject(subject: PlanSubject, plan: Plan, partialOnly: boolean): Branch[] {
-  const own = subject.rule ? levelFromSelectorList(subject.rule.selector) : [];
-  let list = own.map(cloneBranch);
-
-  const reachable = plan.instructions.filter(
-    (i) => reaches(i.scope, subject.scope) && (!partialOnly || i.partial),
-  );
-  if (reachable.length === 0) return list;
-
-  // Precompute each instruction's extender contributions relative to this subject.
-  const contribs = new Map<PlanInstruction, { extenders: Branch[]; keys: Set<string> }>();
-  for (const inst of reachable) {
-    const extenders = composeContribution(inst.extenderPath, subject.path);
-    contribs.set(inst, { extenders, keys: new Set(extenders.map(branchText)) });
-  }
-  return runFixpoint(list, reachable, contribs);
 }
 
 function runFixpoint(
@@ -614,12 +578,43 @@ function runFixpoint(
   return list;
 }
 
-/* --------------------------------------------------------------- public API */
+/* ---------------------------------------------------- NESTED re-projection */
 
-/** One subject rule's extended own-local branch list, as text + `&` flag. */
-export interface ExtendedBranch {
-  text: string;
-  hasAmp: boolean;
+/**
+ * NESTED mode does NOT re-derive extend semantics — it RE-NESTS the correct FLAT
+ * result. A rule STAYS NESTED and its extend just rewrites the local selector in
+ * place, EXCEPT when an extend match CROSSES the `&` (the join between the parent
+ * context and the child-appended compound), which the nested structure cannot
+ * express locally — then the rule (and its descendants) FLATTEN to a top-level
+ * block (emitted via the flat path). Owner rule, validated against the alpha
+ * `.css` oracle:
+ *
+ *  - trigger B: a NESTED rule that itself carries `:extend()` — its extender
+ *    contribution incorporates the parent context, so it crosses → FLATTEN.
+ *  - trigger P: a NESTED rule whose PARENT is aliased by an `all`-extender whose
+ *    target does NOT also match the child's own local compound (a foreign
+ *    parent-context alias, e.g. `.sidebar2:extend(.sidebar all)` reaching
+ *    `.sidebar .box`) → the child's parent context changed under it → FLATTEN.
+ *    A uniform alias that also rewrites the child's own compound (e.g.
+ *    `.ff:extend(.bb all)` on `.bb { .bb {} }`) does NOT cross → stays nested.
+ *  - trigger X: a NESTED rule whose whole composed complex is matched EXACTLY by
+ *    an extender that does not descend from its parent (a hoisted whole-complex
+ *    sibling, e.g. `.rep_ace:extend(.replace.replace .replace)`) → FLATTEN.
+ *
+ * An EXACT extender that folds into a target which HAS surviving nested children
+ * cannot carry those children (exact never propagates into sub-parts); it SPLITS
+ * to a separate sibling rule with the target's DIRECT declarations only (empty →
+ * dropped). `all`-extenders fold into the header and DO propagate to children.
+ */
+
+export interface NestedRulePlan {
+  /** Emit this rule (and its descendants) via the flat path at top level. */
+  flatten: boolean;
+  /** The rewritten own-local header branch texts (when not flattened). */
+  header: string[];
+  /** Sibling rules (target's direct decls only) to emit after this rule's block —
+   * split-out exact extenders that cannot carry the rule's nested children. */
+  splits: string[][];
 }
 
 export interface ExtendResults {
@@ -630,15 +625,172 @@ export interface ExtendResults {
    * child-parent propagation).
    */
   flatByRule: Map<Rule, string[]>;
+  /** NESTED mode: per-rule projection (flatten / rewritten header / splits). */
+  nestedPlan: Map<Rule, NestedRulePlan>;
   /**
-   * NESTED mode: per-rule EXTENDED own-local header branches (text + `&` flag).
-   * Nested keeps authored structure; only the local header is rewritten.
+   * NESTED mode: per-rule FLAT header branches to use when a rule is hoisted to
+   * top level — the flat composition with sibling `:is()`-compaction applied.
    */
-  nestedByRule: Map<Rule, ExtendedBranch[]>;
+  hoistHeader: Map<Rule, string[]>;
 }
 
-function toExtendedBranches(list: Branch[]): ExtendedBranch[] {
-  return list.map((b) => ({ text: branchText(b), hasAmp: branchHasAmp(b) }));
+/** The single compound of a one-segment branch, or null. */
+function branchSingleCompound(b: Branch): Compound | null {
+  return b.segs.length === 1 ? b.segs[0]!.compound : null;
+}
+
+/** True when `target`'s text-simples are ⊆ some compound in `level`. */
+function compoundHitsLevel(target: Compound, level: Level): boolean {
+  const need = textSimples(target);
+  if (need.length === 0) return false;
+  for (const b of level) {
+    for (const seg of b.segs) {
+      if (multisetSubset(need, textSimples(seg.compound))) return true;
+    }
+  }
+  return false;
+}
+
+/** True when composed branch text `b` descends from (nests under) some parent
+ * header branch in `headerSet` — either `b` equals the multi-branch `:is()` token,
+ * or `b` begins with a header branch at a selector boundary (descendant space or a
+ * fused compound/pseudo/combinator start). A branch that descends can stay nested;
+ * one that does not has crossed the `&`. */
+function descendsFrom(b: string, headerSet: string[]): boolean {
+  const token = headerSet.length === 1 ? headerSet[0]! : `:is(${headerSet.join(', ')})`;
+  const cands = headerSet.length > 1 ? [token, ...headerSet] : headerSet;
+  for (const h of cands) {
+    if (b === h) return true;
+    if (b.startsWith(h)) {
+      const next = b[h.length]!;
+      if (' .#:[>+~&'.includes(next)) return true;
+    }
+  }
+  return false;
+}
+
+/** Expand a branch's `:is()` grafts into the set of flat complex texts it denotes. */
+function branchExpansions(b: Branch): string[] {
+  let acc: Seg[][] = [[]];
+  for (const seg of b.segs) {
+    // A segment whose compound is a single `:is(...)` graft expands to its args.
+    const single = seg.compound.simples.length === 1 ? seg.compound.simples[0]! : null;
+    if (single && single.t === 'is') {
+      const next: Seg[][] = [];
+      for (const arg of single.branches) {
+        for (const pre of acc) {
+          // Graft the arg's segments in place (first arg-seg takes this seg's comb).
+          const grafted = arg.segs.map((as, i) => ({
+            comb: i === 0 ? seg.comb : as.comb,
+            compound: as.compound,
+          }));
+          next.push([...pre, ...grafted]);
+        }
+      }
+      acc = next;
+    } else {
+      acc = acc.map((pre) => [...pre, seg]);
+    }
+  }
+  return acc.map((segs) => branchText({ segs }));
+}
+
+function dedupBranchTexts(list: Branch[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const b of list) {
+    const k = branchText(b);
+    if (!seen.has(k)) {
+      seen.add(k);
+      out.push(k);
+    }
+  }
+  return out;
+}
+
+/**
+ * Two whole sibling branches sharing every segment except ONE compound (differing
+ * by a single simple in the same position) compact to `:is(a, b)` at that
+ * compound. Applied left-to-right, greedily, across the flat header branch list.
+ * (`.button:hover, .submit:hover` → `:is(.button, .submit):hover`; not applied to
+ * branches that share nothing.)
+ */
+function siblingCompact(branches: Branch[]): Branch[] {
+  const out = branches.map(cloneBranch);
+  for (let i = 0; i < out.length; i++) {
+    for (let j = i + 1; j < out.length; j++) {
+      const merged = tryMergeSiblings(out[i]!, out[j]!);
+      if (merged) {
+        out[i] = merged;
+        out.splice(j, 1);
+        j = i; // re-scan against the widened branch
+      }
+    }
+  }
+  return out;
+}
+
+/** Merge two branches that differ in exactly one compound position into one whose
+ * differing compound is a maximally-compacted `:is(...)`. Returns null if they
+ * differ in structure or in more than one compound. */
+function tryMergeSiblings(a: Branch, b: Branch): Branch | null {
+  if (a.segs.length !== b.segs.length) return null;
+  let diff = -1;
+  for (let i = 0; i < a.segs.length; i++) {
+    const as = a.segs[i]!;
+    const bs = b.segs[i]!;
+    if (as.comb !== bs.comb) return null;
+    if (compoundText(as.compound) !== compoundText(bs.compound)) {
+      if (diff !== -1) return null;
+      diff = i;
+    }
+  }
+  if (diff === -1) return null;
+  // Merge the differing compound into `:is()`. When the branch is a single segment
+  // (no shared segment context), only merge if the compounds share a suffix — two
+  // whole branches sharing NOTHING (`.ext8.ext9` / `.fuu`) stay a comma list.
+  const merged = mergeCompoundsToIs(
+    a.segs[diff]!.compound,
+    b.segs[diff]!.compound,
+    a.segs.length > 1,
+  );
+  if (!merged) return null;
+  const segs = a.segs.map((s, i) =>
+    i === diff ? { comb: s.comb, compound: merged } : cloneSeg(s),
+  );
+  return { segs };
+}
+
+/**
+ * Merge two compounds that share a common suffix into `:is(<lead-a>, <lead-b>)<suffix>`.
+ * `.button` / `.submit` (no shared suffix) → `:is(.button, .submit)`.
+ * `.replace` / `.c` → `:is(.replace, .c)`.
+ * An existing leading `:is(...)` on either side is flattened into the new group.
+ */
+function mergeCompoundsToIs(a: Compound, b: Compound, allowNoSuffix: boolean): Compound | null {
+  // Find the longest shared trailing simple run (by text).
+  const as = a.simples;
+  const bs = b.simples;
+  let suffix = 0;
+  while (
+    suffix < as.length &&
+    suffix < bs.length &&
+    simpleText(as[as.length - 1 - suffix]!) === simpleText(bs[bs.length - 1 - suffix]!)
+  ) {
+    suffix++;
+  }
+  if (suffix === 0 && !allowNoSuffix) return null;
+  const aLead = as.slice(0, as.length - suffix);
+  const bLead = bs.slice(0, bs.length - suffix);
+  if (aLead.length === 0 || bLead.length === 0) return null;
+  const leadBranch = (lead: Simple[]): Branch[] => {
+    // A single leading `:is(...)` flattens into the merged group.
+    if (lead.length === 1 && lead[0]!.t === 'is') return lead[0]!.branches.map(cloneBranch);
+    return [{ segs: [{ comb: ' ', compound: { simples: lead.map(cloneSimple) } }] }];
+  };
+  const isGroup = isSimple([...leadBranch(aLead), ...leadBranch(bLead)]);
+  const suffixSimples = as.slice(as.length - suffix).map(cloneSimple);
+  return { simples: [isGroup, ...suffixSimples] };
 }
 
 /**
@@ -650,20 +802,128 @@ export function computeExtends(root: Root): ExtendResults | null {
   if (plan.instructions.length === 0) return null;
 
   const flatByRule = new Map<Rule, string[]>();
-  const nestedByRule = new Map<Rule, ExtendedBranch[]>();
-  for (const subject of plan.subjects) {
-    // FLAT — solve over the composed selector.
-    const rawComposed = composePath(subject.path);
-    const flat = solveComposed(subject, plan);
-    if (listKey(flat) !== listKey(rawComposed)) {
-      flatByRule.set(subject.rule, flat.map(branchText));
-    }
-    // NESTED — solve over the own-local selector.
-    const own = levelFromSelectorList(subject.rule.selector);
-    const nested = solveSubject(subject, plan, false);
-    if (listKey(nested) !== listKey(own)) {
-      nestedByRule.set(subject.rule, toExtendedBranches(nested));
-    }
+  const nestedPlan = new Map<Rule, NestedRulePlan>();
+  const hoistHeader = new Map<Rule, string[]>();
+
+  // Precompute per-subject FLAT solve + raw composed once.
+  const rawBySubject = new Map<PlanSubject, Branch[]>();
+  const flatBySubject = new Map<PlanSubject, Branch[]>();
+  for (const s of plan.subjects) {
+    const raw = composePath(s.path);
+    rawBySubject.set(s, raw);
+    const flat = solveComposed(s, plan);
+    flatBySubject.set(s, flat);
+    if (listKey(flat) !== listKey(raw)) flatByRule.set(s.rule, flat.map(branchText));
   }
-  return { flatByRule, nestedByRule };
+
+  const reachingOf = (s: PlanSubject): PlanInstruction[] =>
+    plan.instructions.filter((i) => reaches(i.scope, s.scope));
+
+  const childrenOf = new Map<PlanSubject, PlanSubject[]>();
+  for (const s of plan.subjects) {
+    if (s.parent) (childrenOf.get(s.parent) ?? childrenOf.set(s.parent, []).get(s.parent)!).push(s);
+  }
+
+  /** The `all`-extender folds that alias a parent's whole complex (deterministic —
+   * independent of the split/children decisions), plus the raw parent branches.
+   * This is the set a nested child may descend from without crossing the `&`. */
+  const parentHeaderSet = (p: PlanSubject): Branch[] => {
+    const raw = rawBySubject.get(p)!;
+    const keys = new Set(raw.map(branchText));
+    const out = raw.slice();
+    for (const inst of reachingOf(p)) {
+      if (inst.partial && keys.has(branchText(inst.target))) out.push(...composePath(inst.extenderPath));
+    }
+    return out;
+  };
+
+  // ---- flatten decision (top-down; cascades to descendants) ----
+  const flattenOf = new Map<PlanSubject, boolean>();
+  const ownFlatten = (s: PlanSubject): boolean => {
+    if (s.parent === null) return false;
+    // trigger B: a nested rule that itself carries an extend crosses the `&`.
+    if (s.rule.extendInstructions && s.rule.extendInstructions.length > 0) return true;
+    const parentRaw = rawBySubject.get(s.parent)!;
+    const parentKeys = new Set(parentRaw.map(branchText));
+    // trigger P: an `all`-extender aliasing the parent whole complex whose target
+    // does NOT also hit the child's own local compound (foreign parent-context
+    // alias — the parent context changed under the child, so it cannot stay local).
+    for (const inst of reachingOf(s)) {
+      const single = branchSingleCompound(inst.target);
+      if (inst.partial && single && parentKeys.has(branchText(inst.target))) {
+        if (!compoundHitsLevel(single, s.ownLocal)) return true;
+      }
+    }
+    // trigger X: a STRUCTURAL LEAF whose flat solve gained a whole-complex sibling
+    // that does not descend from the parent header (a hoisted sibling branch, e.g.
+    // `.ext8 .ext9, .buu`). A rule WITH surviving children instead SPLITS the
+    // extender and stays nested, so X is gated on being a leaf.
+    if ((childrenOf.get(s) ?? []).length === 0) {
+      const headerSet = parentHeaderSet(s.parent).map(branchText);
+      for (const b of flatBySubject.get(s)!) {
+        if (!descendsFrom(branchText(b), headerSet)) return true;
+      }
+    }
+    return false;
+  };
+  for (const s of plan.subjects) {
+    const f = ownFlatten(s) || (s.parent !== null && flattenOf.get(s.parent) === true);
+    flattenOf.set(s, f);
+  }
+
+  const hasSurvivingChild = (s: PlanSubject): boolean =>
+    (childrenOf.get(s) ?? []).some((c) => flattenOf.get(c) !== true);
+
+  // ---- per-subject nested header + splits ----
+  for (const s of plan.subjects) {
+    const flatten = flattenOf.get(s) === true;
+    if (flatten) {
+      nestedPlan.set(s.rule, { flatten: true, header: [], splits: [] });
+      // hoisted header = flat solve with sibling :is()-compaction.
+      hoistHeader.set(s.rule, siblingCompact(flatBySubject.get(s)!).map(branchText));
+      continue;
+    }
+    const isTop = s.parent === null;
+    const reaching = reachingOf(s);
+    const survivors = hasSurvivingChild(s);
+    let header: Branch[];
+    const splits: Branch[] = [];
+    if (isTop) {
+      // A top-level rule's header is its FULL flat solve (so transitive chaining +
+      // sub-part substitution carry), minus any EXACT extender that folds into a
+      // whole-complex match but cannot carry surviving nested children — those
+      // SPLIT to sibling rules with the target's direct declarations.
+      if (survivors) {
+        for (const inst of reaching) {
+          if (inst.partial) continue;
+          if (s.ownLocal.some((b) => branchText(b) === branchText(inst.target))) {
+            for (const e of composePath(inst.extenderPath)) splits.push(e);
+          }
+        }
+      }
+      const splitKeys = new Set(splits.map(branchText));
+      header = flatBySubject.get(s)!.filter((b) => !splitKeys.has(branchText(b)));
+    } else {
+      // A surviving nested rule: rewrite ONLY the own-local selector with the
+      // child-side `all`-matches (whole-segment → comma; sub-compound → `:is()`);
+      // parent-context and exact matches are handled by the parent / flatten.
+      const applied = reaching.filter((inst) => {
+        const single = branchSingleCompound(inst.target);
+        return inst.partial && single !== null && compoundHitsLevel(single, s.ownLocal);
+      });
+      const contribs = new Map<PlanInstruction, { extenders: Branch[]; keys: Set<string> }>();
+      for (const inst of applied) {
+        const extenders = composePath(inst.extenderPath);
+        contribs.set(inst, { extenders, keys: new Set(extenders.map(branchText)) });
+      }
+      header = runFixpoint(s.ownLocal.map(cloneBranch), applied, contribs);
+    }
+    nestedPlan.set(s.rule, {
+      flatten: false,
+      header: header.map(branchText),
+      splits: dedupBranchTexts(splits).map((t) => [t]),
+    });
+  }
+
+  return { flatByRule, nestedPlan, hoistHeader };
 }

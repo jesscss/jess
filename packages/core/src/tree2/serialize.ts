@@ -269,6 +269,9 @@ interface Emit {
   // [extend] per-rule extend overrides, or null when the document has no
   // `:extend()` (zero-cost gate: emit is byte-identical to the no-extend path).
   extends: ExtendResults | null;
+  // [extend] set while emitting a hoisted (flattened) nested subtree via the flat
+  // path, so headers use the compacted nested-hoist form. Never set in flat mode.
+  hoistMode: boolean;
 }
 
 /* ------------------------------------------------------------- [extend] */
@@ -302,6 +305,7 @@ export function serialize(root: Root, options?: SerializeOptions): SerializeResu
     recordDepth: 0, // [guards]
     collapse: options?.collapseNesting !== false, // [nested/R0] default = flatten
     extends: computeExtends(root), // [extend] null when no `:extend()` anywhere
+    hoistMode: false, // [extend]
   };
   const rootFrame: Frame = {
     parent: null,
@@ -350,7 +354,9 @@ function flatten(rule: Rule, parent: string[] | null, frame: Frame, e: Emit): vo
   // children still compose against the RAW composed selector and extend
   // independently (the composed model needs no parent-child override). Absent an
   // extend override the header is byte-identical to the no-extend serializer.
-  const header = e.extends?.flatByRule.get(rule) ?? rawComposed;
+  const header = e.hoistMode
+    ? e.extends?.hoistHeader.get(rule) ?? e.extends?.flatByRule.get(rule) ?? rawComposed
+    : e.extends?.flatByRule.get(rule) ?? rawComposed;
   const childFrame: Frame = {
     parent: frame,
     mixins: collectMixins(rule.body),
@@ -623,16 +629,28 @@ function emitAtRuleBody(statements: Statement[], frame: Frame, e: Emit): void {
  * statements inline at the call-site level (its own nested rules therefore nest
  * under the call site, keeping their own local selectors).
  */
-function emitNestedBody(statements: Statement[], frame: Frame, e: Emit): void {
+function emitNestedBody(
+  statements: Statement[],
+  frame: Frame,
+  e: Emit,
+  hoist?: { rule: Rule; frame: Frame }[],
+): void {
   for (const node of statements) {
     switch (node.kind) {
       case Kind.Declaration:
       case Kind.Comment:
         emitNestedLeaf({ node, frame }, e);
         break;
-      case Kind.Rule:
+      case Kind.Rule: {
+        // [extend] a rule whose extend match crosses the `&` FLATTENS: defer it to
+        // the enclosing rule's hoist queue (emitted flat at that rule's depth).
+        if (hoist && e.extends?.nestedPlan.get(node)?.flatten) {
+          hoist.push({ rule: node, frame });
+          break;
+        }
         emitNestedRule(node, frame, e);
         break;
+      }
       case Kind.MixinCall:
         expandNestedCall(node, frame, e);
         break;
@@ -681,16 +699,22 @@ function emitNestedLeaf(leaf: Leaf, e: Emit): void {
  * braces rewound — matching v5.
  */
 function emitNestedRule(rule: Rule, frame: Frame, e: Emit): void {
+  const plan = e.extends?.nestedPlan.get(rule);
+  if (plan?.flatten) {
+    // Fallback (a top-level rule never flattens; a body-nested one is deferred by
+    // emitNestedBody's hoist queue). Emit via the flat path with compaction.
+    emitHoisted(rule, frame, e);
+    return;
+  }
   const markChunks = e.chunks.length;
   const markOff = e.off;
   const markPos = e.positions ? e.positions.length : 0;
   const start = e.off;
   const idt = e.depth > 0 ? INDENT.repeat(e.depth) : '';
   if (idt) put(e, idt);
-  // [extend] nested header uses the extended own-local branch list; children
+  // [extend] nested header uses the projected own-local branch list; children
   // stay literal (nested mode composes nothing).
-  const ext = e.extends?.nestedByRule.get(rule);
-  const own = ext ? ext.map((b) => b.text) : ownStrings(rule.selector);
+  const own = plan ? plan.header : ownStrings(rule.selector);
   const selStart = e.off;
   put(e, idt ? own.join(',\n' + idt) : own.join(',\n'));
   if (e.positions) {
@@ -703,19 +727,46 @@ function emitNestedRule(rule: Rule, frame: Frame, e: Emit): void {
     mixins: collectMixins(rule.body),
     vars: collectVars(rule.body),
   };
+  // [extend] children that flatten (extend crossed the `&`) bubble out to this
+  // rule's depth; collect them and emit flat after the block closes.
+  const hoist: { rule: Rule; frame: Frame }[] = [];
   e.depth++;
-  emitNestedBody(rule.body, childFrame, e);
+  emitNestedBody(rule.body, childFrame, e, hoist);
   e.depth--;
   if (e.chunks.length === afterHeader) {
-    // Nothing emitted: drop the whole rule (rewind chunks/offset/positions).
+    // Nothing emitted in the block: drop the header/braces (rewind).
     e.chunks.length = markChunks;
     e.off = markOff;
     if (e.positions) e.positions.length = markPos;
-    return;
+  } else {
+    if (idt) put(e, idt);
+    put(e, '}\n');
+    if (e.positions) e.positions.push({ node: rule, kind: rule.kind, start, end: e.off });
   }
-  if (idt) put(e, idt);
-  put(e, '}\n');
-  if (e.positions) e.positions.push({ node: rule, kind: rule.kind, start, end: e.off });
+  // [extend] split-out exact extenders (target has surviving nested children):
+  // sibling rules carrying only the target's DIRECT declarations (empty → drop).
+  if (plan && plan.splits.length > 0) {
+    const direct: Leaf[] = [];
+    for (const st of rule.body) {
+      if (st.kind === Kind.Declaration || st.kind === Kind.Comment) {
+        direct.push({ node: st, frame: childFrame });
+      }
+    }
+    if (direct.length > 0) {
+      for (const header of plan.splits) flushBlock(header, direct, e);
+    }
+  }
+  // [extend] hoisted (flattened) children, emitted flat at this rule's depth.
+  for (const h of hoist) emitHoisted(h.rule, h.frame, e);
+}
+
+/** Emit a flattened rule (and its descendants) via the flat path at `e.depth`,
+ * using the nested-mode hoist header (flat composition + `:is()`-compaction). */
+function emitHoisted(rule: Rule, frame: Frame, e: Emit): void {
+  const prev = e.hoistMode;
+  e.hoistMode = true;
+  flatten(rule, null, frame, e);
+  e.hoistMode = prev;
 }
 
 /**
