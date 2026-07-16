@@ -594,7 +594,7 @@ export const scssGrammar = compose([lessGrammar, rules({ trivia: rw }, (g: any) 
   // this stays byte-identical to Less apart from the gate. O(1) gated dispatch.
   const simpleSelector = choice(
     g.AttributeSelector,
-    sequence(not(g.extendAhead), g.PseudoSelector),
+    g.PseudoSelector,
     { gate: (s: any) => !!(s && s.inner), combinator: g.LessAmpersand },
     g.InterpolatedSelector,
     g.basicSel

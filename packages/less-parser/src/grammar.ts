@@ -305,7 +305,14 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   // exec. Used only in the `many(...)` run stops; the standalone extendAhead gate
   // before PseudoSelector is unchanged.
   const selectorBoundary = regex(/when(?![-\w])|::?extend[ \t\n\r\f]*\(/i);
-  const simpleSelector = choice(g.AttributeSelector, sequence(not(extendAhead), g.PseudoSelector), g.LessAmpersand, g.InterpolatedSelector, basicSel);
+  // `InterpolatedSelector` (`.a-@{n}`, `@{p}`) and `basicSel` (`.btn`, `*`, `10%`)
+  // share the `.`/`#`/ident leading char, so as two sibling arms they forced the
+  // whole `simpleSelector` choice onto firstMatch. Nesting them into ONE ordered
+  // sub-rule (interp first, unchanged order → byte-identical) lets the outer choice
+  // see a single arm whose first-set is disjoint from `[` / `:` / `&`, so it
+  // dispatches by first char. (The inner interp/basic order is preserved exactly.)
+  const interpOrBasic = choice(g.InterpolatedSelector, basicSel);
+  const simpleSelector = choice(g.AttributeSelector, g.PseudoSelector, g.LessAmpersand, g.interpOrBasic);
   // unwrap: a single simple selector (76% of compounds — `.btn`, `a`, `:hover`)
   // IS that token; skip the build+frame and pass the child straight through. The
   // builder's single-child path already returned the bare component, so this is
@@ -339,8 +346,14 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
     sequence(literal('('), choice(nth, g.SelectorList), literal(')')),
     sequence(literal('('), scanTo(literal(')'), { skip: [bParen, bSquare, bCurly, singleStr, doubleStr] }), literal(')'))
   );
+  // `:extend(` tail (after the pseudo colon) — a `:extend(...)` is NOT a generic
+  // pseudo (it routes through ExtendPseudo), so PseudoSelector rejects it. The
+  // guard sits AFTER the non-nullable `pseudoColon` so this rule's first-set stays
+  // `:` — a leading `not()` would union `any()` and force the `simpleSelector`
+  // choice off its O(1) first-char dispatch onto firstMatch.
+  const extendTailAhead = regex(/extend[ \t\n\r\f]*\(/);
   const PseudoSelector = node(
-    sequence(pseudoColon, choice(interpKey, ident), optional(g.pseudoSelectorParens)));
+    sequence(pseudoColon, not(extendTailAhead), choice(interpKey, ident), optional(g.pseudoSelectorParens)));
 
   // ── Extend grammar (faithful port of selectors.ts `extend`/`ampersandExtend`)
   // Chevrotain models extend as: `:extend(` selectorList[inExtend] `)` where each
@@ -887,7 +900,7 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
     Stylesheet, VarDeclaration, VarCall, Reference, MixinArgs, mixinNamePath, mixinCallBasicSel, mixinCallPath, MixinCall,
     AnonymousMixinDefinition, MixinOrQualifiedRule, Comparison, GuardDefault, GuardInParens, GuardTerm, GuardAnd, GuardOr, Guard,
     CondArgParen, CondArgTerm, CondArgAnd, CondArgOr, CondArgTermOp, CondArgAndOp, ArgCondition,
-    LessAmpersand, InterpolatedSelector, ExtendStatement, ExtendPseudo, ExtendTarget, extendCompound, extendComplex, simpleSelector,
+    LessAmpersand, InterpolatedSelector, interpOrBasic, ExtendStatement, ExtendPseudo, ExtendTarget, extendCompound, extendComplex, simpleSelector,
     CompoundSelector, ComplexSelector, SelectorList, AttributeSelector, PseudoSelector, pseudoArg, pseudoSelectorParens,
     Ruleset, declarationList, Declaration, customValue, customCurlyBlock, cpInner, cpParen, cpSquare, cpCurly, cpValue, CustomDeclaration, declaration,
     valueList, valueSequence, value, UnicodeRange, Negative, mathProduct, mathSum, topProduct, topSum, parenExprList, InterpValue, NsAccessor, EscapedValue, NamedColor, Url,
