@@ -341,6 +341,66 @@ function enclosingBlockIsStyleRule(text: string, offset: number): boolean {
   return !NESTABLE_GROUP_AT.test(prelude);
 }
 
+const STYLE_EXTS = new Set(['.css', '.less', '.scss', '.jess', '.sass']);
+
+/** Completions for a filesystem path inside `url(…)` or an `@import`/`@use`/
+ * `@forward`/`@from` string. Returns null when the cursor is NOT in such a context
+ * (so normal completion proceeds), or a (possibly empty) item list when it is —
+ * an empty list still suppresses unrelated completions. Only `file:` docs resolve. */
+function pathCompletions(document: TextDocument, offset: number): CompletionItem[] | null {
+  const docUri = document.uri;
+  if (!docUri.startsWith('file:')) {
+    return null;
+  }
+  const text = document.getText();
+  const lineStart = text.lastIndexOf('\n', offset - 1) + 1;
+  const lineBefore = text.slice(lineStart, offset);
+  const urlM = /url\(\s*['"]?([^'")]*)$/i.exec(lineBefore);
+  const impM = /@-?(?:import|use|forward|from)\s+['"]([^'"]*)$/i.exec(lineBefore);
+  const m = urlM ?? impM;
+  if (!m) {
+    return null;
+  }
+  const partial = m[1] ?? '';
+  // Skip absolute URLs / protocol / data URIs / fragments — nothing on disk.
+  if (/^(?:[a-z][\w+.-]*:|\/\/|#|\/)/i.test(partial)) {
+    return null;
+  }
+  const slash = partial.lastIndexOf('/');
+  const dirPart = slash >= 0 ? partial.slice(0, slash + 1) : '';
+  const namePrefix = (slash >= 0 ? partial.slice(slash + 1) : partial).toLowerCase();
+  let baseDir: string;
+  try {
+    baseDir = path.resolve(path.dirname(fileURLToPath(docUri)), dirPart);
+  } catch {
+    return null;
+  }
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(baseDir, { withFileTypes: true });
+  } catch {
+    return []; // valid context, unreadable dir → suppress unrelated completions
+  }
+  const wantStyleOnly = urlM == null; // @import/@use → style files + dirs only
+  const replace = toRange(document, offset - namePrefix.length, offset);
+  const items: CompletionItem[] = [];
+  for (const ent of entries) {
+    const name = ent.name;
+    if (name.startsWith('.') && !namePrefix.startsWith('.')) {
+      continue; // hide dotfiles unless the user is explicitly typing a dot
+    }
+    if (namePrefix && !name.toLowerCase().startsWith(namePrefix)) {
+      continue;
+    }
+    if (ent.isDirectory()) {
+      items.push({ label: `${name}/`, kind: CompletionItemKind.Folder, textEdit: TextEdit.replace(replace, `${name}/`) });
+    } else if (!wantStyleOnly || STYLE_EXTS.has(path.extname(name).toLowerCase())) {
+      items.push({ label: name, kind: CompletionItemKind.File, textEdit: TextEdit.replace(replace, name) });
+    }
+  }
+  return items;
+}
+
 function pos(line1: number | undefined, col1: number | undefined): Position {
   return Position.create(Math.max(0, (line1 ?? 1) - 1), Math.max(0, (col1 ?? 1) - 1));
 }
@@ -1093,6 +1153,13 @@ export function createEngine(): JessLanguageServiceEngine {
       const push = (label: string, kind: CompletionItemKind, insert?: string) => {
         items.push({ label, kind, textEdit: TextEdit.replace(replaceRange, insert ?? label) });
       };
+
+      // 0) Filesystem path completion inside `url(…)` / `@import`/`@use` strings.
+      //    Returns null when not in a path context (fall through to normal logic).
+      const pathItems = pathCompletions(document, offset);
+      if (pathItems) {
+        return { isIncomplete: false, items: pathItems };
+      }
 
       // 1) Variable completions: Less @var, SCSS $var, CSS custom properties --x.
       // .jess uses `$`-sigil variables like SCSS (both parse to VarDeclaration/Reference).
