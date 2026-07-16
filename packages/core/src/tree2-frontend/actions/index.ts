@@ -30,6 +30,7 @@ import { VALUE_LEAF_ACTIONS } from './value-leaf.js';
 import { CHARSET_ACTIONS } from './charset.js';
 import { SELECTOR_ACTIONS } from './selector.js';
 import { AT_RULES_ACTIONS } from './at-rules.js';
+import { VARIABLES_ACTIONS } from './variables.js';
 
 export const ACTION_LIST: readonly BuildAction[] = [
   ...RULESET_ACTIONS,
@@ -38,4 +39,5 @@ export const ACTION_LIST: readonly BuildAction[] = [
   ...CHARSET_ACTIONS,
   ...SELECTOR_ACTIONS,
   ...AT_RULES_ACTIONS,
+  ...VARIABLES_ACTIONS,
 ];

@@ -28,8 +28,19 @@ const declaration: BuildAction = {
     let valueNode: t2.ValueNode = t2.word(value);
     if (built.length === 1) {
       const only = built[0]!;
-      // Whole-value guard: only a single leaf Word that spans the entire value.
-      if (only.kind === t2.Kind.Word && only.text === value) valueNode = only;
+      // Whole-value guard: a single built node that spans the ENTIRE value. A
+      // fragment (`1px solid @c` → only `@c` builds) stays a verbatim-bytes Word.
+      if (only.kind === t2.Kind.Word && only.text === value) {
+        valueNode = only; // F5 leaf (`red`, `10px`, …)
+      } else if (only.kind === t2.Kind.VarRef && `@${only.name}` === value) {
+        valueNode = only; // F1 variable reference (`@c`)
+      } else if (
+        only.kind === t2.Kind.VarIndirect &&
+        only.nameRef.kind === t2.Kind.VarRef &&
+        `@@${only.nameRef.name}` === value
+      ) {
+        valueNode = only; // F1 indirect variable reference (`@@c`)
+      }
     }
     return new t2.Declaration(name, valueNode);
   },
