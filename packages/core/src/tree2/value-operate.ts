@@ -11,70 +11,7 @@
  * async-dispatch throw.
  */
 import type { Color, Dimension, EvalModes, ValueObj } from './value-eval.js';
-import { HEX } from './serialize-value.js';
 import { makeColorRgb, makeDimension, makeKeyword } from './value-factory.js';
-
-/* --------------------------------------------------- classify / materialize */
-
-const HEX_RE = /^#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/;
-const NUM_RE = /^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?([a-zA-Z%]*)$/;
-const QUOTE_RE = /^(['"])([\s\S]*)\1$/;
-
-/** Byte-identical port of `parseHexString` (tree/color.ts). */
-function parseHex(hex: string): { rgb: [number, number, number]; alpha: number } {
-  const hexValue = hex.slice(1);
-  const rgba: number[] = [];
-  if (hexValue.length >= 6) {
-    const chunks = hexValue.match(/.{2}/g) ?? [];
-    chunks.forEach((c, i) => {
-      if (i < 3) rgba.push(parseInt(c, 16));
-      else rgba.push(parseInt(c, 16) / 255);
-    });
-  } else {
-    hexValue.split('').forEach((c, i) => {
-      if (i < 3) rgba.push(parseInt(c + c, 16));
-      else rgba.push(parseInt(c + c, 16) / 255);
-    });
-  }
-  const [r = 0, g = 0, b = 0, a = 1] = rgba;
-  return { rgb: [r, g, b], alpha: a };
-}
-
-/**
- * Classify an un-materialized literal (its bytes) into a typed value. Type is
- * DERIVED here (rep "B") — the parse the forcing site has to do anyway. A leading
- * `#` (charCode 35) fast-paths the hex branch. Named colors are NOT resolved here
- * (they stay keywords in the foundation); a bare identifier is a keyword.
- */
-export function nativeMaterialize(rawBytes: string): ValueObj {
-  const b = rawBytes.trim();
-  const c0 = b.charCodeAt(0);
-  // Hex color (`#…`).
-  if (c0 === 35 /* # */ && HEX_RE.test(b)) {
-    const { rgb, alpha } = parseHex(b);
-    return makeColorRgb(rgb, alpha, HEX, { node: b });
-  }
-  // Numeric (optionally united / %). Leading digit / sign / dot.
-  if ((c0 >= 48 && c0 <= 57) || c0 === 43 || c0 === 45 || c0 === 46) {
-    const m = NUM_RE.exec(b);
-    if (m) {
-      const d: Dimension = {
-        kind: 'dimension',
-        number: Number(b.slice(0, b.length - m[1]!.length)),
-        unit: m[1] ?? '',
-        bytes: b,
-      };
-      return d;
-    }
-  }
-  // Quoted string.
-  if (c0 === 34 /* " */ || c0 === 39 /* ' */) {
-    const q = QUOTE_RE.exec(b);
-    if (q) return { kind: 'quoted', value: q[2]!, quote: q[1]!, escaped: false, bytes: b };
-  }
-  // Bare identifier / anything else: a keyword carrying its bytes.
-  return makeKeyword(b);
-}
 
 /* --------------------------------------------------------- unit conversion */
 

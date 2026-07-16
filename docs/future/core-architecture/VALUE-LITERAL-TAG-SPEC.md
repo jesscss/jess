@@ -58,6 +58,26 @@ This asymmetry is the single most important finding: moving Dimension to a verba
 **changes** un-operated output from canonicalized → source-verbatim. Color has no such
 change.
 
+> **§0 ASYMMETRY — RESOLVED (owner 2026-07-16): VERBATIM FOR BOTH.** Dimension and
+> Color are treated identically: an **un-operated** value preserves its
+> **source-verbatim** form (`1.0px`→`1.0px`, `2PX`→`2PX`, `1e3px`→`1e3px`); **only a
+> computed** value (arithmetic result — it has no source form) is canonicalized via
+> the Less number formatter. This is the natural representation-B behavior (value =
+> its source bytes; only computed values re-serialize) and INTENTIONALLY diverges
+> from the legacy engine, which canonicalizes un-operated dimensions via
+> `Dimension.serializeSyntax`. Where a legacy/adapter render or an alpha `.css`
+> golden encodes the canonicalized form for a non-canonical source, that is stale
+> 4.x behavior — flag for owner review, do not match it.
+>
+> **tree2 native value path (foundation, this branch) already conforms.** tree2's
+> bridge represents un-operated value literals as verbatim `Word` nodes (it does NOT
+> create `Kind.Dimension` value nodes for static/operand parsing), so an un-operated
+> dimension emits its source bytes; a dimension is only materialized+canonicalized
+> when it is an operand of an operation. Confirmed by the `native-value-differential`
+> suite (`verbatim-trailing-zero`/`verbatim-upper-unit`/`verbatim-sci` stay verbatim
+> on BOTH the native and adapter paths — no divergence, since neither canonicalizes
+> an un-operated value — and `(1.0px + 2.0px)`→`3px` shows computed canonicalization).
+
 ## 1. Tag enum
 
 | Tag | Const | Source token / builder | Materializes to |

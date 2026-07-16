@@ -15,7 +15,8 @@
  * HARD MODULE BOUNDARY: imports only the tree2 value modules.
  */
 import type { EvalModes, List as ValueList, ValueEvaluator, ValueObj } from './value-eval.js';
-import { nativeMaterialize, nativeOperate, nativeGuardCmp, nativeGuardCall } from './value-operate.js';
+import { nativeOperate, nativeGuardCmp, nativeGuardCall } from './value-operate.js';
+import { LiteralTag, materializeLiteral, sniffLiteral } from './literal-tag.js';
 import { dispatchNative, hasNativeFn } from './value-dispatch.js';
 import { makeKeyword } from './value-factory.js';
 
@@ -30,7 +31,8 @@ function verbatimArgs(args: ValueList): string {
  * computed on demand during the single serialize walk.
  */
 export function buildNativeEvaluator(): ValueEvaluator {
-  const materialize = (bytes: string): ValueObj => nativeMaterialize(bytes);
+  const materialize = (bytes: string, tag?: LiteralTag): ValueObj =>
+    tag !== undefined ? materializeLiteral(bytes, tag) : sniffLiteral(bytes);
 
   const operate = (op: string, left: ValueObj, right: ValueObj, modes: EvalModes): ValueObj =>
     nativeOperate(op, left, right, modes);

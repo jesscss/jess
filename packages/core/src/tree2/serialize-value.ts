@@ -18,6 +18,17 @@ export const RGB = 1;
 export const HSL = 2;
 
 /**
+ * Output style for value emit. A future COMPRESSED mode (dart-sass `compressed`
+ * PARITY — leading-zero strip `0.5`→`.5`, hex-shorten `#ffffff`→`#fff`, etc.) is
+ * committed; it is a MODE-BRANCH here, not a rewrite. Only `Expanded` is
+ * implemented now — the minified branches are marked hooks (see `serializeColor`
+ * / `serializeDimension`). `mode` threads through emit so nothing hard-codes
+ * expanded-only formatting. Statement-level compress (whitespace/newlines/comment
+ * strip / final `;` drop) is `serialize.ts`'s concern, not the value serializer's.
+ */
+export enum OutputMode { Expanded = 0, Compressed = 1 }
+
+/**
  * Lean number rounding, byte-identical to `tree/util/round.ts` (inlined to stay
  * boundary-clean). Replicates lodash's exponential-shift algorithm exactly.
  */
@@ -107,7 +118,10 @@ function toHex(c: Color): string {
 /* ---------------------------------------------------------- serializers */
 
 /** Byte-identical port of `Dimension.serializeSyntax`. */
-export function serializeDimension(n: Dimension): string {
+export function serializeDimension(n: Dimension, mode: OutputMode = OutputMode.Expanded): string {
+  // COMPRESSED HOOK (not implemented): dart-sass `compressed` minifies the number
+  // (leading-zero strip `0.5`→`.5`, drop trailing `.0`), unit unchanged. Branch here.
+  void mode;
   const { number, unit } = n;
   const s = Number.isFinite(number)
     ? `${round(number, 8)}`
@@ -121,7 +135,11 @@ export function serializeDimension(n: Dimension): string {
  * The value domain carries no channel-tuple / alpha-unit source, so the RGB/HSL
  * text mirrors the legacy no-source branch (`${rgb[idx]}` / `${alpha}`).
  */
-export function serializeColor(c: Color): string {
+export function serializeColor(c: Color, mode: OutputMode = OutputMode.Expanded): string {
+  // COMPRESSED HOOK (not implemented): dart-sass `compressed` shortens hex
+  // (`#ffffff`→`#fff`), prefers the shortest of hex/name, drops rgb/hsl spaces.
+  // Verbatim `c.node` may itself be non-minimal — branch here to minify.
+  void mode;
   if (c.node !== undefined) return c.node;
   const format = c.format ?? HEX;
   if (format === RGB) {
@@ -150,18 +168,19 @@ export function serializeQuoted(q: Quoted): string {
   return `${q.escaped ? '~' : ''}${quote}${q.value}${quote}`;
 }
 
-/** Serialize any `ValueObj` to its canonical bytes. */
-export function serializeValue(v: ValueObj): string {
+/** Serialize any `ValueObj` to its canonical bytes (mode threads through). */
+export function serializeValue(v: ValueObj, mode: OutputMode = OutputMode.Expanded): string {
   switch (v.kind) {
-    case 'dimension': return serializeDimension(v);
-    case 'color': return serializeColor(v);
+    case 'dimension': return serializeDimension(v, mode);
+    case 'color': return serializeColor(v, mode);
     case 'quoted': return serializeQuoted(v);
     case 'keyword': return v.text;
     case 'bool': return v.value ? 'true' : 'false';
     case 'nil': return v.bytes ?? '';
     case 'list': {
+      // COMPRESSED HOOK: dart-sass tightens comma-list separators (`,` not `, `).
       const sep = v.sep === ',' ? ', ' : v.sep === '/' ? ' / ' : ' ';
-      return v.items.map(serializeValue).join(sep);
+      return v.items.map((it) => serializeValue(it, mode)).join(sep);
     }
   }
 }

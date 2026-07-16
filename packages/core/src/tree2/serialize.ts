@@ -63,6 +63,7 @@ import {
   type ValueObj,
 } from './value-eval.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
+import { LiteralTag, tagForWord } from './literal-tag.js'; // [value-literal-tag]
 import { selectDefinitions, type Selection } from './mixin-dispatch.js'; // [guards]
 import type { ValueResolver, TypedResolver } from './guard.js'; // [guards]
 import { computeExtends, type ExtendResults } from './extend.js'; // [extend]
@@ -264,9 +265,9 @@ function makeResolver(frame: Frame | null, e: EvalCtx): ValueResolver {
  */
 function makeTypedResolver(frame: Frame | null, e: EvalCtx): TypedResolver {
   return (v: ValueNode) => {
-    const val = evalValue(v, frame, e);
+    const val = evalTyped(v, frame, e);
     if (isThenable(val)) throw new Error('async value in a synchronous guard position');
-    return force(e, val);
+    return val;
   };
 }
 
@@ -280,11 +281,48 @@ interface EvalCtx {
   modes: EvalModes;
 }
 
-/** Force an un-materialized literal (bare string) to a typed value object (idempotent). */
+/** Force a computed `Value` to a typed object. A computed STRING carries no parse
+ * tag → the evaluator sniffs (untagged fallback); a materialized object passes through. */
 function force(e: EvalCtx, v: Value): ValueObj {
   if (!isLiteral(v)) return v;
   if (!e.ev) return { kind: 'keyword', text: v, bytes: v };
   return e.ev.materialize(v);
+}
+
+/** Materialize a leaf literal with its parse tag (VALUE-LITERAL-TAG-SPEC). */
+function forceLiteral(e: EvalCtx, bytes: string, tag: LiteralTag): ValueObj {
+  return e.ev ? e.ev.materialize(bytes, tag) : { kind: 'keyword', text: bytes, bytes };
+}
+
+/**
+ * [R2] TYPED fold: materialize a value node to a typed `ValueObj` for an OPERATED
+ * / compared / typed-param position — sourcing the literal's TYPE from the parse
+ * (the packed node's `Kind`), NOT by re-classifying bytes. A `Kind.Dimension`
+ * node carries the parser's payload (`value`/`unit`) → built directly, no
+ * re-parse. A `Kind.Word` leaf carries verbatim bytes; tree2's bridge collapses
+ * dimensions/colors/keywords into `Word` (no finer tag yet), so its tag is
+ * recovered by `tagForWord` — a direct field read once the producer stamps it
+ * (spec §5). Variable refs / parens are transparent, threading the tag through.
+ */
+function evalTyped(node: ValueNode, frame: Frame | null, e: EvalCtx, depth = 0): MaybePromise<ValueObj> {
+  switch (node.kind) {
+    case Kind.Dimension:
+      return { kind: 'dimension', number: node.value, unit: node.unit, bytes: `${node.value}${node.unit}` };
+    case Kind.Word:
+      return forceLiteral(e, node.text, tagForWord(node.text));
+    case Kind.VarRef: {
+      if (depth > MAX_VAR_DEPTH) return forceLiteral(e, `@${node.name}`, LiteralTag.Keyword);
+      const bound = lookupVar(frame, node.name);
+      return bound ? evalTyped(bound, frame, e, depth + 1) : forceLiteral(e, `@${node.name}`, LiteralTag.Keyword);
+    }
+    case Kind.Paren:
+      return evalTyped(node.inner, frame, e, depth);
+    default:
+      // Computed / joined shapes (Operation, FunctionCall, Concat, SpacedValue,
+      // Interp, VarIndirect, MapAccessor, …): fold to a Value then force. A
+      // computed string has no parse tag → the evaluator sniffs.
+      return mapMaybe(evalValue(node, frame, e, depth), (v) => force(e, v));
+  }
 }
 
 /**
@@ -315,16 +353,19 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx, depth = 0):
         isLiteral(v) ? literal(`(${v})`) : v,
       );
     case Kind.Operation: {
-      const l = evalValue(node.left, frame, e, depth);
-      const r = evalValue(node.right, frame, e, depth);
       if (!e.ev) {
         // Fallback: un-evaluated, variable-resolved source assembly (no math).
+        const l = evalValue(node.left, frame, e, depth);
+        const r = evalValue(node.right, frame, e, depth);
         return combineAll([l, r], ([lv, rv]) =>
           literal(`${emitValue(lv)} ${node.operator} ${emitValue(rv)}`),
         );
       }
       const ev = e.ev;
-      return combineAll([l, r], ([lv, rv]) => ev.operate(node.operator, force(e, lv), force(e, rv), e.modes));
+      // Operands are materialized TYPED (tag sourced from the parse), not re-sniffed.
+      const l = evalTyped(node.left, frame, e, depth);
+      const r = evalTyped(node.right, frame, e, depth);
+      return combineAll([l, r], ([lv, rv]) => ev.operate(node.operator, lv, rv, e.modes));
     }
     case Kind.FunctionCall:
       return evalCall(node, frame, e, depth);
@@ -452,22 +493,19 @@ function evalMapAccessor(node: MapAccessor, frame: Frame | null, e: EvalCtx, dep
 
 /** Evaluate a function call: materialize the modeled arg list, then `ev.call`. */
 function evalCall(node: FunctionCall, frame: Frame | null, e: EvalCtx, depth: number): MaybePromise<Value> {
-  const items = node.args.map((a) => evalValue(a, frame, e, depth));
   const sep = node.modern ? ' ' : ',';
   if (!e.ev) {
+    const items = node.args.map((a) => evalValue(a, frame, e, depth));
     return combineAll(items, (vals) => {
       const inner = vals.map(emitValue).join(sep === ' ' ? ' ' : ', ');
       return literal(`${node.name}(${inner})`);
     });
   }
   const ev = e.ev;
-  return combineAll(items, (vals) => {
-    const list: ValueList = {
-      kind: 'list',
-      items: vals.map((v) => force(e, v)),
-      sep,
-      bytes: '',
-    };
+  // Args are materialized TYPED (each arg's tag sourced from its parse node).
+  const typed = node.args.map((a) => evalTyped(a, frame, e, depth));
+  return combineAll(typed, (vals) => {
+    const list: ValueList = { kind: 'list', items: vals, sep, bytes: '' };
     return ev.call(node.name, list, e.modes);
   });
 }

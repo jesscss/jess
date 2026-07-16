@@ -30,6 +30,7 @@ import { Context } from '../context.js';
 import { Anonymous, Bool, Color, ColorFormat, Dimension, Nil, Quoted, List } from '../tree/index.js';
 import { callWithContext } from '../define-function.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
+import { LiteralTag } from '../tree2/index.js';
 import type {
   EvalModes,
   List as ValueList,
@@ -161,9 +162,29 @@ export function buildEvaluator(_options?: EvaluatorOptions): ValueEvaluator {
     return { kind: 'keyword', text: bytes, bytes };
   };
 
-  /* ---- materialize an un-materialized literal (its bytes) ---- */
-  const materialize = (rawBytes: string): ValueObj => {
+  /**
+   * Materialize a literal to a typed value. When the parser's `LIT_*` tag is
+   * supplied, the common leaves (`Dimension`/`Num`/`ColorHex`) take a direct
+   * branch; otherwise (keyword / named-color / untagged) the full regex `sniff`
+   * runs — which still resolves NAMED colors via the legacy `Color` (needed for
+   * `lighten(blue,…)` etc.).
+   */
+  const materialize = (rawBytes: string, tag?: LiteralTag): ValueObj => {
     const b = rawBytes.trim();
+    if (tag === LiteralTag.Dimension || tag === LiteralTag.Num) {
+      const m = NUM_RE.exec(b);
+      if (m) {
+        return { kind: 'dimension', number: Number(b.slice(0, b.length - m[1]!.length)), unit: m[1] ?? '', bytes: b };
+      }
+    }
+    if (tag === LiteralTag.ColorHex) {
+      return fromLegacyColorPreservingNode(new Color(b), b);
+    }
+    return sniff(b);
+  };
+
+  /** The full regex classification (untagged / keyword / named-color path). */
+  const sniff = (b: string): ValueObj => {
     // Hex color.
     if (HEX_RE.test(b)) {
       const c = new Color(b);

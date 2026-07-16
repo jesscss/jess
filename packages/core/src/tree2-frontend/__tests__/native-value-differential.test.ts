@@ -33,6 +33,14 @@ async function render(src: string, native: boolean): Promise<string> {
 }
 
 const CORPUS: Array<[string, string]> = [
+  // --- un-operated dimensions: SOURCE-VERBATIM (owner 2026-07-16, spec §0
+  //     RESOLVED). Non-canonical source stays verbatim; both native and adapter
+  //     emit the Word verbatim (never materialized), so they agree. ---
+  ['verbatim-trailing-zero', '.a { width: 1.0px; }\n'],
+  ['verbatim-upper-unit', '.a { width: 2PX; }\n'],
+  ['verbatim-sci', '.a { width: 1e3px; }\n'],
+  ['verbatim-leading-dot', '.a { width: .5em; }\n'],
+
   // --- dimensions / arithmetic ---
   ['add-px', '.a { width: 2px + 3px; }\n'],
   ['sub-px', '.a { width: 10px - 4px; }\n'],
@@ -119,5 +127,24 @@ describe('[tree2] native value path — differential byte-identity vs adapter', 
     const css = await render('.a { m: e("solid"); }\n', true);
     expect(css).toContain('m: solid');
     expect(css).not.toContain('"solid"');
+  });
+
+  // Owner 2026-07-16 (VALUE-LITERAL-TAG-SPEC §0 RESOLVED): un-operated values are
+  // SOURCE-VERBATIM; only COMPUTED values canonicalize. Confirm both sides.
+  it('un-operated dimension emits source-verbatim (not canonicalized)', async () => {
+    for (const [src, want] of [
+      ['.a { width: 1.0px; }\n', 'width: 1.0px'],
+      ['.a { width: 2PX; }\n', 'width: 2PX'],
+      ['.a { width: 1e3px; }\n', 'width: 1e3px'],
+    ] as const) {
+      const css = await render(src, true);
+      expect(css).toContain(want); // verbatim, NOT 1px / 2px / 1000px
+    }
+  });
+
+  it('COMPUTED dimension canonicalizes via the number formatter', async () => {
+    // 1.0px + 2.0px → operated → canonical 3px (not 3.0px).
+    const css = await render('.a { width: (1.0px + 2.0px); }\n', true);
+    expect(css).toContain('width: 3px');
   });
 });
