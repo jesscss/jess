@@ -455,9 +455,10 @@ describe('scss-parser (baseline)', () => {
     const result = parser.parse(`.a { @extend %foo; }`);
     expect(result.lexerResult.errors.length).toBe(0);
     expect(result.errors.map(e => e.message)).toEqual([]);
-    // Placeholder token `%foo` becomes `\\foo` and we prefix `*|` for global placeholder lookup.
+    // Placeholder token `%foo` becomes `\\foo` (escaped backslash sigil) and we
+    // prefix `*|` for global placeholder lookup.
     expect(serializeTypes(result.tree)).toContainString('(Extend');
-    expect(serializeTypes(result.tree)).toContainString('\\foo');
+    expect(serializeTypes(result.tree)).toContainString('\\\\foo');
     expect(isNode(result.tree, N.Rules)).toBe(true);
     if (isNode(result.tree, N.Rules)) {
       const ruleset = result.tree.rules.find(n => isNode(n, N.Ruleset));
@@ -907,7 +908,7 @@ describe('scss-parser (baseline)', () => {
     expect(result.lexerResult.errors.length).toBe(0);
     expect(result.errors.map(e => e.message)).toEqual([]);
     expect(serializeTypes(result.tree)).toContainString(`(Ruleset`);
-    expect(serializeTypes(result.tree)).toContainString(`\\foo`);
+    expect(serializeTypes(result.tree)).toContainString(`\\\\foo`); // `%foo` → `\\foo`
   });
 
   functionalIt('lowers @at-root selector shorthand to a null-parent ampersand selector', () => {

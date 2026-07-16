@@ -227,7 +227,7 @@ describe('scss-parser (ast serialize)', () => {
     expect(serializeTypes(tree)).toContainString(`
       (Ruleset
     `);
-    expect(serializeTypes(tree)).toContainString(`\\foo`);
+    expect(serializeTypes(tree)).toContainString(`\\\\foo`); // `%foo` lowers to `\\foo`
   });
 
   functionalIt('serializes @if $a == $b as a Condition using =', () => {

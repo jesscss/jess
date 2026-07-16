@@ -416,7 +416,7 @@ describe('ScssParser — @use / @forward / @import / @extend', () => {
       expect(isNode(ext, N.Extend)).toBe(true);
       if (isNode(ext, N.Extend)) {
         expect(ext.namespace).toBe('*');
-        expect(serializeTypes(ext.target)).toContain('\\foo');
+        expect(serializeTypes(ext.target)).toContain('\\\\foo'); // `%foo` → `\\foo`
       }
     }
   });

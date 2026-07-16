@@ -1108,7 +1108,7 @@ export class ScssGrammar extends LessGrammar {
   private _buildScssPlaceholderSelector(children: ReadonlyArray<Child>, loc: LocationInfo) {
     const ls = children.filter((c): c is CSTLeaf => c?._tag === 'leaf');
     const raw = ls[0]?.value ?? '';
-    const name = `\\${raw.slice(1)}`;
+    const name = `\\\\${raw.slice(1)}`;
     return this._makeBasicSelector(name, loc);
   }
 
@@ -1188,7 +1188,7 @@ export class ScssGrammar extends LessGrammar {
       c?._tag === 'leaf' && typeof (c as CSTLeaf).value === 'string' && (c as CSTLeaf).value.startsWith('%')
     );
     if (placeholderLeaf) {
-      return `\\${placeholderLeaf.value.slice(1)}` as unknown as JessNode;
+      return `\\\\${placeholderLeaf.value.slice(1)}` as unknown as JessNode;
     }
     const items = nodeChildren(children);
     if (items.length === 1) {
@@ -1200,7 +1200,7 @@ export class ScssGrammar extends LessGrammar {
     const spanItems = spannedComponents(raw).filter(i => i.comp !== ',');
     if (spanItems.length === 1 && typeof spanItems[0]!.comp === 'string') {
       const sel = spanItems[0]!.comp as string;
-      return (sel.startsWith('%') ? `\\${sel.slice(1)}` : sel) as unknown as JessNode;
+      return (sel.startsWith('%') ? `\\\\${sel.slice(1)}` : sel) as unknown as JessNode;
     }
     return items[0] as unknown as JessNode;
   }
@@ -1225,7 +1225,7 @@ export class ScssGrammar extends LessGrammar {
     if (items.length === 1 && typeof items[0]!.comp === 'string') {
       const sel = items[0]!.comp as string;
       if (sel.startsWith('%')) {
-        return `\\${sel.slice(1)}`;
+        return `\\\\${sel.slice(1)}`;
       }
       return sel;
     }
