@@ -42,8 +42,8 @@ branch unless marked `origin/dev`.
 
 Rungs done: selectors+nesting (3-4), mixin canonical-body+overlay (5), parser bridge+census
 (6), variables+lexical scope (7), value-ops+functions (8), at-rules/@media (9a), @import
-inline (9b), guards+pattern+named/default dispatch (9c). **Extend is the next rung and is
-not built.**
+inline (9b), guards+pattern+named/default dispatch (9c). **Extend is BUILT** (`tree2/extend.ts`,
+wired into `serialize.ts` — `computeExtends(root)`, zero-cost when no `:extend()` present).
 
 **Critical distinction:** the doc `AST-FROM-SCRATCH-DESIGN.md` describes a *different,
 older* arena POC (`adapter.ts`/`render.ts`/`types.ts`, emit-only after full eval, reused
@@ -101,12 +101,12 @@ free/cleanly · **NOTYET** = deferred but straightforward on current design · *
 | `!important` (declaration) | INCORP (as bytes) | bridge `rawDeclValue` keeps `!important` in the value text | No `important` field; carried in value bytes. Risk: no structured control (§4 R-important). |
 | `@media` block + `@charset`/statement at-rules | INCORP | `at-rule.ts`; `emitAtRuleBlock`/`emitAtRuleStatement` | v5 does NOT merge sibling `@media` — matches intent. |
 | `@import (reference)` / inline / `(css)` / url()/remote | NOTYET | `import-bridge.ts` raises `UnsupportedShape` | reference-mode needs visibility/suppression state (§4 R-ref). |
-| Extend (`:extend`, `&:extend`, `all`, selector-attached) | NOTYET (next rung) | none in tree2; design in `tree/extend/{plan,solve,emit,pipeline}.ts` | Roadmap R1. |
+| Extend (`:extend`, `&:extend`, `all`, selector-attached) | INCORP | `tree2/extend.ts` (`computeExtends`); wired into `serialize.ts` (zero-cost when no `:extend()`) | Ported from `tree/extend/{plan,solve,emit,pipeline}.ts`. |
 | Detached rulesets | NEEDS-DESIGN | none | Ruleset-as-value; tree2 value model has no ruleset value. |
 | Merge `+` / `+_` | NEEDS-DESIGN | none | v5 last-occurrence anchor (owner) — build to Jess intent, not Less. |
 | Namespaces / accessors `#ns.mixin()`, chained lookups | NEEDS-DESIGN | none; dispatch is flat-name only (`lookupMixinCandidates`) | Needs namespace-path resolution. |
 | Maps `#map[key]`, ruleset/collection indexing | NEEDS-DESIGN | none | |
-| Interpolation `@{var}` (selector/value/property) | NEEDS-DESIGN | bridge `parseValue` leaves `@{...}` **literal** | Deferred; needs interp value node + early resolution (extend depends on it). |
+| Interpolation `@{var}` (selector/value/property) | INCORP | bridge builds `Interp` value nodes (`parseValue`/`interpFromString`); `serialize.ts` `evalInterp` resolves + renders them | Landed (selector/value/property-name interpolation render). |
 | Escaping `~"..."`, string interpolation, `e()`/`%()` | NEEDS-DESIGN | none (escape via fns service partial) | |
 | `@plugin` | NEEDS-DESIGN | none | v5-deprecated but must parse/gate. |
 | Inline JS backtick | BYCON (removed) | n/a | Removed in v5 → parse error; nothing to build. |
@@ -204,7 +204,7 @@ allocation** (`AST-ARENA-EXPERIMENT-HANDOFF.md`; `AST-FROM-SCRATCH-DESIGN.md` §
 | Loosened invariant: output-invisible in-place mutation permitted (B2) | AVAILABLE-BYCON | cached `_canon`/`_hasAmp` on Complex/Compound | tree2 already memoizes canonical strings on the node — the permitted output-invisible cache. |
 | Never reparent (`adopt`/`setParent` dissolved) (B3/B5) | BYCON | tree2 nodes have no `.parent`/`adopt`/`frozen` | The reparenting problem is designed out. |
 | Async: sync by default, async only on genuine thenable (C1) | PARTIAL-DIVERGENCE | `serialize.ts` fully sync; async pushed into the value-service record pre-pass | tree2 sidesteps async by precomputing; the done-right value path must keep sync-by-default without a whole record pre-pass. |
-| Extend = PLAN/SOLVE/EMIT woven in one pass; structural layer decoupled from value-frame; list-append order, no sort; zero-cost gate (D1–D7) | NOTYET (must carry) | `tree/extend/{plan,solve,emit,pipeline}.ts` | Design written + differential-validated but unwired; R1 ports it. |
+| Extend = PLAN/SOLVE/EMIT woven in one pass; structural layer decoupled from value-frame; list-append order, no sort; zero-cost gate (D1–D7) | INCORP | `tree2/extend.ts` (`computeExtends`), wired into `serialize.ts` | Ported from `tree/extend/{plan,solve,emit,pipeline}.ts` and wired (zero-cost gate live). |
 | collapseNesting is an emit-time policy; same walk, both forms (E1) | **MISSING — NEEDS-DESIGN** | tree2 does only the collapsed form | The key gap — R0. |
 | Plugin/visitor = projection read model, `(node)=>Node\|void`, node in output form; exit optional; whole-tree machinery deleted; whole-tree mutate-observe unserved (F1–F5, G2) | ALIGNED-BYCON (unwired) | tree2 per-emit-position node = the settled contract | Wire a hook edge, don't build a walk framework. |
 | Pre-eval visitors kept as separate gated pre-walk (F6/G1) | CARRY | — | Cannot fold into the single pass. |
