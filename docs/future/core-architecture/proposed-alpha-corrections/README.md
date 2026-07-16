@@ -52,3 +52,28 @@ output and is byte-identical to alpha OUTSIDE the buggy region.
   The rest of `extend-exact.css` (block 1's `.rep_ace` multi-segment +
   `:is(.replace, .c)` compaction) is byte-identical to alpha and is included so
   the file is a drop-in golden.
+
+
+## Merge (`+` / `+_`) — v5 LAST-occurrence anchor (R4)
+
+`merge.css` is a DIFFERENT kind of correction from the extend files above: it is
+NOT a bug fix but an intended **v5 semantic divergence**. Alpha's committed
+`merge.css` encodes Less's FIRST-occurrence line anchor for interleaved merge
+groups; Jess v5 anchors each combined `+`/`+_` line at the property's **LAST**
+occurrence (owner decision, project memory `spine-merge-last-occurrence-anchor`).
+
+Only two blocks differ from alpha's golden (member content is identical; only the
+combined LINE position moves):
+
+- `.test-rule-interleaved` — `transform`'s last member (`t3`) follows
+  `background`'s last (`b2, b3`), so under last-occurrence `background:` anchors
+  first: `background: b1, b2, b3;` then `transform: t1, t2, t3;` (alpha emits
+  `transform` first).
+- `.test-rule-spaced` — same swap: `background: b1 b2, b3;` then
+  `transform: t1 t2 t3;`.
+
+`.test-rule-interleaved-with-spaced` is byte-identical to alpha (there
+`transform`'s last member already precedes `background`'s, so first- and
+last-occurrence agree). Every other block matches alpha, so `merge.css` is a
+drop-in v5 golden. tree2's R4 merge fold is gated against THIS file
+(`r4-byte-identity.test.ts`), never against alpha's first-occurrence golden.

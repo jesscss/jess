@@ -1,0 +1,38 @@
+.replace.replace,
+.c.replace + .replace {
+  .replace,
+  .c {
+    prop: copy-paste-replace;
+  }
+}
+.a .b .c {
+  prop: not_effected;
+}
+.a,
+.effected {
+  prop: is_effected;
+  .b {
+    prop: not_effected;
+  }
+  .b.c {
+    prop: not_effected;
+  }
+}
+.c,
+.a,
+.effected {
+  .b,
+  .a {
+    .a,
+    .c {
+      prop: not_effected;
+    }
+  }
+}
+.e.e,
+.dbl {
+  prop: extend-double;
+  &:hover {
+    hover: not-extended;
+  }
+}

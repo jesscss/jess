@@ -25,6 +25,8 @@
       "@jesscss/scss-parser/*": ["./packages/scss-parser/src/*.ts"],
       "@jesscss/jess-parser/*": ["./packages/jess-parser/src/*.ts"],
       "@jesscss/parser": ["./packages/parser/src/index.ts"],
+      "@jesscss/fns": ["./packages/fns/src/index.ts"],
+      "@jesscss/fns/*": ["./packages/fns/src/*.ts"],
       "@jesscss/plugin-node-modules": ["./packages/jess-plugin-node-modules/src/index.ts"],
       "@jesscss/plugin-less": ["./packages/jess-plugin-less/src/index.ts"],
       "styles-config": ["./packages/config/src/index.ts"]

@@ -1,0 +1,68 @@
+.error,
+.badError {
+  border: 1px #f00;
+  background: #fdd;
+}
+:is(.error, .badError).intrusion {
+  font-size: 1.3em;
+  font-weight: bold;
+}
+.intrusion :is(.error, .badError) {
+  display: none;
+}
+.badError {
+  border-width: 3px;
+}
+:is(.foo, .ext1 .ext2, .ext3, .ext4) .bar,
+:is(.foo, .ext1 .ext2, .ext3, .ext4) .baz {
+  display: none;
+}
+div:is(.ext5, .ext7),
+.ext6 > :is(.ext5, .ext7) {
+  width: 100px;
+}
+.ext,
+.c {
+  test: 1;
+}
+.a,
+.b {
+  test: 2;
+}
+:is(.a, .b) .c {
+  test: 3;
+}
+:is(.a, .b) .c .d {
+  test: 4;
+}
+:is(:is(.replace, .rep_ace):is(.replace, .rep_ace), .c:is(.replace, .rep_ace) + :is(.replace, .rep_ace)) .replace,
+:is(:is(.replace, .rep_ace):is(.replace, .rep_ace), .c:is(.replace, .rep_ace) + :is(.replace, .rep_ace)) .c,
+:is(:is(.replace, .rep_ace):is(.replace, .rep_ace), .c:is(.replace, .rep_ace) + :is(.replace, .rep_ace)) .rep_ace {
+  prop: copy-paste-replace;
+}
+.attributes [data="test"],
+.attributes .attribute-test {
+  extend: attributes;
+}
+.attributes [data],
+.attributes .attribute-test2 {
+  extend: attributes2;
+}
+.attributes [data="test3"],
+.attributes .attribute-test {
+  extend: attributes2;
+}
+.header .header-nav,
+.footer-nav {
+  background: red;
+}
+:is(.header .header-nav, .footer-nav):before {
+  background: blue;
+}
+.issue-2586-bordered,
+.content {
+  border: solid 1px black;
+}
+:is(.issue-2586-somepage .content) > span {
+  margin-bottom: 10px;
+}
