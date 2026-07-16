@@ -69,4 +69,28 @@ describe('.jess dialect parity (LS features on jess stylesheets)', () => {
     const diags = engine.getDiagnostics(doc.uri);
     expect(diags.some(d => String(d.code).includes('empty'))).toBe(true);
   });
+
+  it('colors the `$` sigil and the variable name as SEPARATE tokens (not one blob)', () => {
+    const { engine, doc } = engineWith('$foo: red;\n.a { color: $foo; }');
+    const data = engine.getSemanticTokens(doc.uri).data;
+    // decode delta-encoded 5-tuples
+    let line = 0, ch = 0;
+    const toks: Array<{ line: number; ch: number; len: number; type: number }> = [];
+    for (let i = 0; i < data.length; i += 5) {
+      line += data[i]!;
+      if (data[i]) {
+        ch = 0;
+      }
+      ch += data[i + 1]!;
+      toks.push({ line, ch, len: data[i + 2]!, type: data[i + 3]! });
+    }
+    // Legend: operator=5, variable=7. The `$foo` reference on line 1 must be TWO
+    // tokens: a 1-char operator (`$`) then a 3-char variable (`foo`).
+    const ref = toks.filter(t => t.line === 1);
+    const dollar = ref.find(t => t.len === 1 && t.type === 5);
+    const name = ref.find(t => t.len === 3 && t.type === 7);
+    expect(dollar).toBeDefined();
+    expect(name).toBeDefined();
+    expect(name!.ch).toBe(dollar!.ch + 1);
+  });
 });

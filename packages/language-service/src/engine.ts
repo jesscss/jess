@@ -2259,7 +2259,16 @@ export function createEngine(): JessLanguageServiceEngine {
           case 'Reference': {
             const kind = node.options?.type;
             if (kind === 'variable') {
-              push(span.start, span.end, 'variable');
+              // .jess treats `$` as a distinct sigil/operator (it also heads
+              // control-flow `$…{}`, scope `${}`, mutation `:=`), so color the `$`
+              // and the variable name as SEPARATE tokens rather than one blob.
+              // css/less/scss keep the conventional single-token variable.
+              if (tracked.lang === 'jess' && text.charAt(span.start) === '$') {
+                push(span.start, span.start + 1, 'operator');
+                push(span.start + 1, span.end, 'variable');
+              } else {
+                push(span.start, span.end, 'variable');
+              }
             } else if (kind === 'mixin' || kind === 'mixin-ruleset' || kind === 'function') {
               push(span.start, span.end, 'function');
             }
