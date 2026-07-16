@@ -10,6 +10,7 @@ import {
   type CodeActionParams,
   type DocumentLinkParams,
   type DocumentFormattingParams,
+  type DocumentRangeFormattingParams,
   type FoldingRangeParams,
   type SelectionRangeParams,
   type CompletionParams,
@@ -56,7 +57,11 @@ connection.onInitialize((_params: InitializeParams): InitializeResult => {
     capabilities: {
       textDocumentSync: TextDocumentSyncKind.Incremental,
       completionProvider: {
-        triggerCharacters: ['@', '-', '$', ':', '{', ';', ' ']
+        // Sigils/openers that begin a completion context: variables (@ $ -),
+        // selectors/mixins (. #), pseudo (:), scss placeholder (%), jess
+        // placeholder (\\), value/function/var()/url() ((), path segments (/),
+        // scss interpolation (#{) and jess interpolation ($[).
+        triggerCharacters: ['@', '-', '$', ':', '{', ';', ' ', '.', '#', '%', '\\', '(', '/', '[']
       },
       hoverProvider: true,
       definitionProvider: true,
@@ -72,6 +77,7 @@ connection.onInitialize((_params: InitializeParams): InitializeResult => {
         prepareProvider: true
       },
       documentFormattingProvider: true,
+      documentRangeFormattingProvider: true,
       documentLinkProvider: {
         resolveProvider: false
       },
@@ -162,6 +168,10 @@ connection.onRenameRequest((params: RenameParams) => {
 
 connection.onDocumentFormatting((params: DocumentFormattingParams) => {
   return engine.formatDocument(params.textDocument.uri);
+});
+
+connection.onDocumentRangeFormatting((params: DocumentRangeFormattingParams) => {
+  return engine.formatRange(params.textDocument.uri, params.range);
 });
 
 connection.onDocumentLinks((params: DocumentLinkParams) => {

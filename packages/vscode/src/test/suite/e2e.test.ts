@@ -212,4 +212,24 @@ suite('Jess extension E2E', () => {
     );
     assert.ok(Array.isArray(highlights) && highlights.length >= 2, `expected >=2 highlights of @primary, got ${Array.isArray(highlights) ? highlights.length : 'none'}`);
   });
+
+  test('range formatting round-trip (formats only the selected rule)', async () => {
+    const doc = await openFixture('unformatted.css');
+    const text = doc.getText();
+    // Select just the first rule `.a{color:red}` (line 0).
+    const range = new vscode.Range(doc.positionAt(0), doc.positionAt(text.indexOf('\n')));
+    const edits = await waitFor(
+      () => vscode.commands.executeCommand<vscode.TextEdit[]>('vscode.executeFormatRangeProvider', doc.uri, range, { insertSpaces: true, tabSize: 2 }),
+      e => Array.isArray(e) && e.length > 0
+    );
+    assert.ok(Array.isArray(edits) && edits.length > 0, 'expected range-format edits');
+    // VS Code returns minimal diffs — apply them to check the formatted result.
+    const sorted = [...edits].sort((a, b) => doc.offsetAt(b.range.start) - doc.offsetAt(a.range.start));
+    let out = text;
+    for (const e of sorted) {
+      out = out.slice(0, doc.offsetAt(e.range.start)) + e.newText + out.slice(doc.offsetAt(e.range.end));
+    }
+    assert.ok(out.startsWith('.a {\n  color: red;\n}'), `selected rule should reformat, got: ${JSON.stringify(out)}`);
+    assert.ok(out.includes('.b{color:blue}'), `the unselected rule must stay untouched, got: ${JSON.stringify(out)}`);
+  });
 });
