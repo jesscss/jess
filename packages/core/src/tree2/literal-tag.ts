@@ -17,6 +17,7 @@
 import type { ValueObj } from './value-eval.js';
 import { HEX } from './serialize-value.js';
 import { makeBool, makeColorRgb, makeDimension, makeKeyword } from './value-factory.js';
+import { namedColor } from './color-names.js';
 
 export enum LiteralTag {
   /** ident/keyword (`solid`,`auto`) — default + safe fallback for untagged strings. */
@@ -80,11 +81,11 @@ function dimensionFromString(str: string): ValueObj {
  * TAG — a `switch`, no regex sniff. The result is a FRESH object handed to the
  * operated/compared slot; it is never stored back (projection-not-mutation).
  *
- * NOTE (tree2 bridge gap): tree2's AST collapses value literals into verbatim
- * `Word` nodes, so `LIT_COLOR_NAMED` cannot resolve to a `Color` without a shared
- * color-name table — it stays a `Keyword` in the foundation (named-color color-ops
- * are scoped out). When the producer/bridge propagates the parser's finer
- * classification (spec §5), named colors materialize here.
+ * A `LIT_COLOR_NAMED` word resolves to a `Color` through the shared color-name
+ * table (`color-names.ts`), so operated/compared named colors (`lighten(red,…)`,
+ * `iscolor(blue)`) behave like the legacy `Color`. The verbatim spelling rides in
+ * `node` for byte-faithful emit; a name absent from the table falls through to a
+ * plain keyword.
  */
 export function materializeLiteral(str: string, tag: LiteralTag): ValueObj {
   switch (tag & LIT_TAG_MASK) {
@@ -95,9 +96,13 @@ export function materializeLiteral(str: string, tag: LiteralTag): ValueObj {
       const { rgb, alpha } = parseHex(str);
       return makeColorRgb(rgb, alpha, HEX, { node: str });
     }
+    case LiteralTag.ColorNamed: {
+      const named = namedColor(str);
+      if (named) return makeColorRgb(named.rgb, named.alpha, HEX, { node: str });
+      return makeKeyword(str);
+    }
     case LiteralTag.Bool:
       return makeBool(str === 'true');
-    case LiteralTag.ColorNamed:
     case LiteralTag.Any:
     case LiteralTag.Keyword:
     default: {
@@ -127,6 +132,9 @@ export function tagForWord(text: string): LiteralTag {
     if (m) return m[1] ? LiteralTag.Dimension : LiteralTag.Num;
   }
   if (text === 'true' || text === 'false') return LiteralTag.Bool;
+  // A bare identifier that names a CSS color materializes as a Color (parity with
+  // the adapter's `sniff`, which resolves named colors before falling to keyword).
+  if (/^[a-zA-Z][a-zA-Z0-9]*$/.test(text) && namedColor(text)) return LiteralTag.ColorNamed;
   return LiteralTag.Keyword;
 }
 

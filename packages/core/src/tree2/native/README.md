@@ -13,6 +13,10 @@ against that adapter (the oracle) in
   tree-shakes: a stylesheet that never calls `pow` must not ship `pow`.
 - **`math-helper.ts`** — the shared `mathHelper` kernel (`applyMath` + the
   `unaryMath` spec builder) most number/unit math fns reduce to a one-liner over.
+- **`color-helper.ts`** — the shared color kernels (`mixColors`, `getLuma`,
+  `toHsv`) the color mixers/readers reduce to. The hsl adjusters instead reduce to
+  a `[h,s,l]` tweak → `makeColorHsl(...)` one-liner over the value-factory. A named
+  color reaches these fns as a materialized `Color` via `tree2/color-names.ts`.
 - **`types.ts`** — the `NativeFn` / `FnSpec` / `ParamSpec` contract.
 - **`index.ts`** — the single assembly point (`NATIVE_FN_LIST`). `value-dispatch.ts`
   turns it into the dispatch Map.

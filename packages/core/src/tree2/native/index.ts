@@ -41,8 +41,38 @@ import { acos } from './acos.js';
 import { atan } from './atan.js';
 // --- list (Tier-A: pure value→value, constructs its own list; no eval context) ---
 import { range } from './range.js';
-// --- proof set (converted pre-batch; color = a LATER batch) ---
+// --- color: hsl adjusters (lighten = proof; darken/saturate/… = this batch) ---
 import { lighten } from './lighten.js';
+import { darken } from './darken.js';
+import { saturate } from './saturate.js';
+import { desaturate } from './desaturate.js';
+import { spin } from './spin.js';
+import { greyscale } from './greyscale.js';
+// --- color: alpha adjusters ---
+import { fade } from './fade.js';
+import { fadein } from './fadein.js';
+import { fadeout } from './fadeout.js';
+// --- color: mixers ---
+import { mix } from './mix.js';
+import { tint } from './tint.js';
+import { shade } from './shade.js';
+// --- color: channel getters (rgb / alpha) ---
+import { red } from './red.js';
+import { green } from './green.js';
+import { blue } from './blue.js';
+import { alpha } from './alpha.js';
+// --- color: hsl / hsv / luma readers ---
+import { hue } from './hue.js';
+import { saturation } from './saturation.js';
+import { lightness } from './lightness.js';
+import { luma } from './luma.js';
+import { luminance } from './luminance.js';
+import { hsvhue } from './hsvhue.js';
+import { hsvsaturation } from './hsvsaturation.js';
+import { hsvvalue } from './hsvvalue.js';
+// --- color: luma-threshold pick ---
+import { contrast } from './contrast.js';
+// --- misc ---
 import { e } from './e.js';
 
 /** Every native Tier-A fn, in registration order. */
@@ -51,7 +81,14 @@ export const NATIVE_FN_LIST: readonly NativeFn[] = [
   pi, percentage, unit, convert,
   sin, cos, tan, asin, acos, atan,
   range,
-  lighten, e,
+  lighten, darken, saturate, desaturate, spin, greyscale,
+  fade, fadein, fadeout,
+  mix, tint, shade,
+  red, green, blue, alpha,
+  hue, saturation, lightness, luma, luminance,
+  hsvhue, hsvsaturation, hsvvalue,
+  contrast,
+  e,
 ];
 
 export type { FnSpec, NativeFn, ParamSpec, Kind } from './types.js';

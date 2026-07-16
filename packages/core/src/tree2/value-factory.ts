@@ -9,6 +9,8 @@
  */
 import type { Color, Dimension, Keyword, Quoted, Bool, Nil, List, ValueObj } from './value-eval.js';
 import {
+  colorRgb,
+  hslToRgb,
   rgbToHsl,
   serializeColor,
   serializeDimension,
@@ -30,6 +32,30 @@ export const colorHsl = (c: Color): [number, number, number] =>
   c.hsl ? [c.hsl[0], c.hsl[1], c.hsl[2]] : rgbToHsl(c.rgb[0], c.rgb[1], c.rgb[2]);
 
 export const textOf = (v: Keyword | Quoted): string => (v.kind === 'quoted' ? v.value : v.text);
+
+const clamp01 = (v: number, max: number): number => Math.min(Math.max(v, 0), max);
+
+/**
+ * A color's CLAMPED hsl triple — hue wrapped to 0-360, s/l clamped to 0-1. This
+ * is the legacy `Color.get hsl()` / `toHSL()` view that the READER fns
+ * (`hue`/`saturation`/`lightness`) consume, distinct from the UNCLAMPED `colorHsl`
+ * the adjuster fns operate on.
+ */
+export const colorHslClamped = (c: Color): [number, number, number] => {
+  const [h, s, l] = colorHsl(c);
+  return [((h % 360) + 360) % 360, clamp01(s, 1), clamp01(l, 1)];
+};
+
+/** A color's ROUNDED + clamped concrete rgb (legacy `Color.get rgb()`). */
+export const colorRgbRounded = (c: Color): [number, number, number] => colorRgb(c);
+
+/**
+ * A color's RAW (unrounded, unclamped) rgb — derived from the hsl source when that
+ * is authoritative, else the stored rgb. Mirrors legacy `Color.get _rgb()`; the
+ * hsv reader fns consume this.
+ */
+export const colorRawRgb = (c: Color): [number, number, number] =>
+  c.hsl ? hslToRgb(c.hsl[0], c.hsl[1], c.hsl[2]) : [c.rgb[0], c.rgb[1], c.rgb[2]];
 
 /* -------------------------------------------------------- constructors */
 

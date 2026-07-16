@@ -18,11 +18,15 @@ import { buildEvaluator } from '../value-eval.js';
  * ops, lists, guards (comparison + kind type-predicates), and the 3 CONVERTED fns
  * (`lighten`/`percentage`/`e`) + genuinely-unknown fns (verbatim).
  *
- * SCOPED OUT (needs the ~50 unconverted fns — the NEXT wave): `rgb()`/`hsl()`/
- * `saturate()`/`mix()`/… and named-color operands as color-op inputs (the native
- * materialize keeps bare identifiers as keywords in the foundation; a shared
- * color-name table is a trivial later addition). Bare named-color LITERALS still
- * emit verbatim and are covered below.
+ * COVERED by the COLOR batch: the Tier-A color group — hsl adjusters
+ * (`darken`/`saturate`/`desaturate`/`spin`/`greyscale`), alpha adjusters
+ * (`fade`/`fadein`/`fadeout`), mixers (`mix`/`tint`/`shade`), channel getters
+ * (`red`/`green`/`blue`/`alpha`), hsl/hsv/luma readers, and `contrast` — plus
+ * NAMED-COLOR operands (now materialized to a `Color` via the shared color-name
+ * table) and CHAINED hsl ops (hsl source-of-truth carry, the drift guard).
+ *
+ * SCOPED OUT (Tier-B — need the serializer/eval CONTEXT or produce strings):
+ * `rgb()`/`hsl()`/`hsla()`/`rgba()` CONSTRUCTORS, `argb`, `color()` string parsing.
  */
 
 async function render(src: string, native: boolean): Promise<string> {
@@ -145,6 +149,70 @@ const CORPUS: Array<[string, string]> = [
   ['fn-range-step', '.a { m: range(1, 10, 3); }\n'],
   ['fn-range-unit', '.a { m: range(1px, 3px); }\n'],
   ['fn-range-neg-step', '.a { m: range(1, 5, 2); }\n'],
+
+  // --- converted COLOR group (Tier-A) — hsl adjusters (hex + named operands) ---
+  ['fn-darken-hex', '.a { color: darken(#ff0000, 10%); }\n'],
+  ['fn-darken-named', '.a { color: darken(red, 10%); }\n'],
+  ['fn-darken-relative', '.a { color: darken(#808080, 10%, relative); }\n'],
+  ['fn-saturate-hex', '.a { color: saturate(#80a0c0, 20%); }\n'],
+  ['fn-saturate-named', '.a { color: saturate(cornflowerblue, 20%); }\n'],
+  ['fn-desaturate-hex', '.a { color: desaturate(#80a0c0, 20%); }\n'],
+  ['fn-desaturate-named', '.a { color: desaturate(tomato, 30%); }\n'],
+  ['fn-spin-pos', '.a { color: spin(#ff0000, 30); }\n'],
+  ['fn-spin-neg', '.a { color: spin(#ff0000, -30); }\n'],
+  ['fn-spin-named', '.a { color: spin(green, 90); }\n'],
+  ['fn-greyscale-hex', '.a { color: greyscale(#80a0c0); }\n'],
+  ['fn-greyscale-named', '.a { color: greyscale(orange); }\n'],
+
+  // --- alpha adjusters (hex-format preserve + rgb output) ---
+  ['fn-fade-hex', '.a { color: fade(#ff0000, 50%); }\n'],
+  ['fn-fade-named', '.a { color: fade(blue, 25%); }\n'],
+  ['fn-fadein-hex', '.a { color: fadein(#ff000033, 30%); }\n'],
+  ['fn-fadeout-hex', '.a { color: fadeout(#ff0000, 40%); }\n'],
+  ['fn-fadeout-named', '.a { color: fadeout(green, 10%); }\n'],
+
+  // --- mixers ---
+  ['fn-mix-default', '.a { color: mix(#ff0000, #0000ff); }\n'],
+  ['fn-mix-weight', '.a { color: mix(#ff0000, #0000ff, 25%); }\n'],
+  ['fn-mix-named', '.a { color: mix(red, white, 40%); }\n'],
+  ['fn-tint-hex', '.a { color: tint(#ff0000, 30%); }\n'],
+  ['fn-tint-named', '.a { color: tint(navy, 50%); }\n'],
+  ['fn-shade-hex', '.a { color: shade(#ff0000, 30%); }\n'],
+  ['fn-shade-named', '.a { color: shade(orange, 50%); }\n'],
+
+  // --- channel getters ---
+  ['fn-red-hex', '.a { m: red(#123456); }\n'],
+  ['fn-red-named', '.a { m: red(red); }\n'],
+  ['fn-green-hex', '.a { m: green(#123456); }\n'],
+  ['fn-blue-hex', '.a { m: blue(#123456); }\n'],
+  ['fn-alpha-hex', '.a { m: alpha(#00000066); }\n'],
+  ['fn-alpha-named', '.a { m: alpha(transparent); }\n'],
+
+  // --- hsl / hsv / luma readers ---
+  ['fn-hue-hex', '.a { m: hue(#80a0c0); }\n'],
+  ['fn-hue-named', '.a { m: hue(cornflowerblue); }\n'],
+  ['fn-saturation-hex', '.a { m: saturation(#80a0c0); }\n'],
+  ['fn-lightness-hex', '.a { m: lightness(#80a0c0); }\n'],
+  ['fn-luma-hex', '.a { m: luma(#ffffff); }\n'],
+  ['fn-luma-named', '.a { m: luma(red); }\n'],
+  ['fn-luminance-hex', '.a { m: luminance(#808080); }\n'],
+  ['fn-hsvhue-hex', '.a { m: hsvhue(#80a0c0); }\n'],
+  ['fn-hsvsaturation-hex', '.a { m: hsvsaturation(#80a0c0); }\n'],
+  ['fn-hsvvalue-hex', '.a { m: hsvvalue(#80a0c0); }\n'],
+
+  // --- contrast (luma-threshold pick) ---
+  ['fn-contrast-light', '.a { color: contrast(#ffffff); }\n'],
+  ['fn-contrast-dark', '.a { color: contrast(#000000); }\n'],
+  ['fn-contrast-custom', '.a { color: contrast(#333333, #111111, #eeeeee); }\n'],
+  ['fn-contrast-threshold', '.a { color: contrast(#777777, black, white, 30%); }\n'],
+  ['fn-contrast-named', '.a { color: contrast(darkslategray); }\n'],
+
+  // --- CHAINED hsl ops (hsl source-of-truth carry; drift guard) ---
+  ['fn-chain-lighten-desaturate', '.a { color: lighten(desaturate(#3498db, 20%), 10%); }\n'],
+  ['fn-chain-darken-saturate', '.a { color: darken(saturate(#3498db, 20%), 10%); }\n'],
+  ['fn-chain-spin-lighten', '.a { color: spin(lighten(#ff0000, 10%), 45); }\n'],
+  ['fn-chain-greyscale-named', '.a { color: lighten(greyscale(tomato), 5%); }\n'],
+  ['fn-chain-hue-of-spin', '.a { m: hue(spin(#ff0000, 40)); }\n'],
 
   // --- unknown fn (verbatim) ---
   ['unknown-fn', '.a { filter: some-unknown(1px, 2px); }\n'],
