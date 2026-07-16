@@ -6,6 +6,7 @@ import { invalidLess } from '@jesscss/shared';
 import { Compiler } from '../../src/index.js';
 import { outputDiagnostics } from '../../src/diagnostics.js';
 import { getTestCases, resolveLessTestDataRoot } from '../test-utils.js';
+import { getConfig } from '../../src/config.js';
 import lessPlugin from '@jesscss/plugin-less';
 import { lessCompatPlugin } from '@jesscss/plugin-less-compat';
 
@@ -52,8 +53,13 @@ const lessHarnessFunctionsPlugin = {
 
 const testData = resolveLessTestDataRoot();
 
+// Default output options come from the top-level `styles.config` above the
+// fixture folders (the config cascade) instead of being hardcoded here. Fixture
+// directories with their own `styles.config` override this per directory.
+const defaultOutput = getConfig(testData).output;
+
 const baseCompiler = new Compiler({
-  output: { collapseNesting: true }, // Default for most files
+  output: (defaultOutput && !Array.isArray(defaultOutput) ? defaultOutput : {}),
   compile: {
     // Upstream Less @plugin fixtures reference shared scripts under
     // test-data/plugin/*.js from fixtures in sibling directories; widen the
@@ -219,9 +225,10 @@ describe('Can render Less files to CSS', () => {
           const runFixture = async () => {
             const expectedCss = readFileSync(testCase.expectedFile, 'utf8');
 
-            // Merge test case config with base compiler config
-            // Default: collapseNesting: true (from baseCompiler)
-            // Override: testCase.config.output (from styles.config.ts) takes precedence
+            // Merge test case config with base compiler config.
+            // Default output (collapseNesting) comes from the top-level
+            // test-data styles.config via baseCompiler; the fixture's own
+            // styles.config output (testCase.config.output) takes precedence.
             const testCompileConfig = (testCase.config.compile || {}) as Record<string, any>;
             const {
               plugins: testCasePlugins = [],
