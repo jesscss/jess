@@ -5,6 +5,58 @@ Branch: `experiment/tree2-r1-extend-20260715`. Oracle: less.js `alpha` TOP-LEVEL
 oracle wording in `_R1_IMPL_BRIEF.md` (that brief gated on `renderRealOracle`,
 which is a KNOWN-BUGGY engine and is NOT the oracle).
 
+## UPDATE — config-driven per-fixture mode (harness fix, this session)
+
+The byte-identity harness now renders EACH fixture in ITS OWN configured output
+mode instead of gating everything NESTED. This removes the phantom "flat vs
+nested" conflict: `extend-chaining`, `extend-clearfix`, `extend-nest` have NO
+`styles.config.ts`, so the `tests-unit/` DIRECTORY config
+(`output: { collapseNesting: true }`) cascades in and they render FLAT — their
+top-level `.css` is flat, so gating them nested was comparing against the wrong
+shape.
+
+- `oracle-source.ts` gained `resolveCollapseNesting(fixture)` — reproduces the
+  `styles-config`/cosmiconfig CASCADE (fixture's own `styles.config.ts` wins,
+  else the `tests-unit/` directory config's `collapseNesting: true`) READ-ONLY
+  over `git show alpha:…` (no hardcoded default; not coupled to the live less.js
+  worktree branch, matching the rest of the locked helper). Handles both
+  `output: {…}` and `output: [{…}]` shapes. Also added `legacyCss(fixture)` (reads
+  the ONE allowed off-path sibling `legacy/{name}.css`; still throws on any other
+  off-path read).
+- `extend-byte-identity.test.ts` rewritten: renders each fixture in its resolved
+  mode, gates vs top-level `.css` (or the proposed correction where alpha is
+  buggy), defers `extend-selector` (asserts `UnsupportedShape`), and tracks the
+  two real gaps as `it.fails` KNOWN GAPs (fail-loud: they flip red when fixed).
+  Full tree2 suite green (166 passed, 2 expected-fail, 1 skipped).
+
+### Confirmed default + corrected per-fixture matrix (resolved mode)
+
+Default for a no-config fixture = `collapseNesting: true` (FLAT), SOURCED from
+`tests-unit/styles.config.ts` (`output: { collapseNesting: true }`) via the
+cascade — confirmed empirically (no-config `extend-nest`/`extend-clearfix`/
+`extend-chaining` have structurally-flat top-level `.css`, e.g. top-level
+`:is(.sidebar, …) .box`, not a nested `.box`).
+
+| fixture         | resolved mode | gate result |
+|-----------------|---------------|-------------|
+| extend-chaining | FLAT (default)   | MATCH alpha |
+| extend-clearfix | FLAT (default)   | MATCH alpha |
+| extend-media    | NESTED (config)  | MATCH alpha |
+| extend          | NESTED (config)  | MATCH proposed-correction (`extend.css`) |
+| extend-selector | NESTED (config)  | DEFERRED (`UnsupportedShape`, R4) |
+| extend-nest     | FLAT (default)   | KNOWN GAP (gaps a/b below) |
+| extend-exact    | NESTED (config)  | KNOWN GAP (block 5 + exact-into-children) |
+
+**flat-vs-legacy is NOT a tree2 gate.** `legacy/{name}.css` is the 4.x EXPANDED
+form (`.clearfix:after, .foo:after, .bar:after`); tree2's flat mode emits the v5
+`:is()`-COMPACTED form (`:is(.clearfix, .foo, .bar):after`). So tree2 flat diffs
+`legacy/` for ALL fixtures — legacy/ is the 4.x reference, not a tree2 oracle
+(the v5 flat oracle is the top-level `.css`). tree2 has no non-`:is()` emission
+mode. The matrix column exists only informationally.
+
+Still NOT fast-forwarded: `extend-nest` and `extend-exact` are genuine engine
+gaps (not clean deferrals). Items 1–4 in "Remaining work" stand.
+
 ## What landed (done + verified)
 
 1. **The extend engine is preserved and committed** (`tree2/extend.ts`, plus the
