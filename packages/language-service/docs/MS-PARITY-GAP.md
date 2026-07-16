@@ -22,6 +22,11 @@ to have / niche.
 Depth is judged honestly, not yes/no. "✓" without qualification means genuinely
 comparable; a qualifier ("names only", "no context") flags shallow support.
 
+> **Status note:** the matrix below is the ORIGINAL gap snapshot. Section 2 is the
+> live tracker — all P0/P1 items and the P2 completion tail (#14–17) are now ✅ done
+> and merged, for css/less/scss **and** `.jess`. Rows still reading "Missing" below
+> are superseded by the ✅ entries in section 2.
+
 ### Completions (the P0 area)
 
 | Feature | MS provides | Jess provides | Gap | Prio |
@@ -167,24 +172,30 @@ Each item is one line of implementation sketch. Ordered by the user's priority.
    `unknownProperties`, `unknownAtRules`, `duplicateProperties`,
    `hexColorLength`, `argumentsInColorFunction`. Data + CST walk; wire into the
    existing configurable-severity map (extend beyond the 2 semantic codes).
-10. **Hover enrichment** — add pseudo hover, and append browser-compat/status +
-    MDN link to property/at-rule hover (web-custom-data carries `status`;
-    compat needs the MDN `browsers` field — may require MS's `browsernames`/BCD).
+10. ✅ **DONE.** **Hover enrichment** — pseudo-class/element hover added; property +
+    at-rule hover append formal `syntax`, Baseline status, and the MDN reference
+    link (from web-custom-data `references`/`baseline`/`syntax`).
 11. ✅ **DONE (highlights all occurrences of the symbol under the cursor).** **`findDocumentHighlights`** — add to the engine interface; reuse
     `collectReferenceSet` but scope to the current document only.
 12. ✅ **DONE (named colors w/ swatch + color functions; units on numeric prefix).** **Named-color + color-function value completions** in color contexts, with
     a color swatch (`CompletionItemKind.Color`) — the color math already exists
     in `color-utils.ts`.
-13. **Context-aware at-rule filtering** — restrict the at-rule list by nesting
-    (top-level vs inside a ruleset), instead of dumping every `@name`.
+13. ✅ **DONE.** **Context-aware at-rule filtering** — `@import`/`@charset`/`@namespace`
+    hidden whenever nested; `@font-face`/`@keyframes`/… hidden inside a style rule
+    but kept in conditional-group at-rules; `@media`/`@supports`/… stay offered
+    inside style rules.
 
 **P2 — polish / niche**
 
-14. `url()` and `@import` path completion (filesystem-backed).
-15. SCSS placeholder `%name` completions; interpolation-context completions.
-16. `var()` custom-property completions mined across imports.
-17. Region-comment folding (`/* #region */`), range formatting, more format
-    options, `setDataProviders`-style custom-data extensibility.
+14. ✅ **DONE.** `url()` and `@import`/`@use` path completion (filesystem-backed;
+    style-file-filtered for imports, all files for `url()`).
+15. ✅ **DONE.** SCSS placeholder `%name` completions; interpolation-context
+    completions (Less `@{…}`, Jess `$[…]`; SCSS `#{$x}` already flowed through).
+16. ✅ **DONE.** `var()` custom-property completions mined across the document + imports.
+17. ✅ **DONE.** Region-comment folding (`/* #region */`), range formatting (formats
+    the top-level rules the selection intersects), and `setDataProviders`-style
+    custom-data extensibility (custom properties + at-rules → completion & hover).
+    *Remaining niche:* richer format options (indent size, etc.).
 
 ---
 
