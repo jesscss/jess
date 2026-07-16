@@ -1043,9 +1043,10 @@ export function createEngine(): JessLanguageServiceEngine {
         return { isIncomplete: false, items };
       }
 
-      // 2b) Less mixin-call completions: `.foo(` inside a rule block (a `.foo` at
-      //     top level is a selector definition, so gate on nesting depth).
-      if (tracked.lang === 'less' && cstTree && currentWord.startsWith('.') && braceDepthBefore(text, offset) > 0) {
+      // 2b) Less/Jess mixin-call completions: `.foo(` inside a rule block (a `.foo`
+      //     at top level is a selector definition, so gate on nesting depth). Jess
+      //     reuses Less-style `.name() { … }` mixins (grammarType `Mixin`).
+      if ((tracked.lang === 'less' || tracked.lang === 'jess') && cstTree && currentWord.startsWith('.') && braceDepthBefore(text, offset) > 0) {
         const bare = currentWord.slice(1).toLowerCase();
         for (const name of cstDeclaredSymbols(cstTree, document).mixins) {
           if (bare && !name.toLowerCase().startsWith(bare)) {

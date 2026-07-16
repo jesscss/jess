@@ -70,6 +70,48 @@ describe('.jess dialect parity (LS features on jess stylesheets)', () => {
     expect(diags.some(d => String(d.code).includes('empty'))).toBe(true);
   });
 
+  it('Less-style `.card()` mixin-call completion', () => {
+    const labels = completeAt('.card() { color: red; }\n.a { .| }');
+    expect(labels).toContain('.card()');
+  });
+
+  it('@media prelude completion', () => {
+    expect(completeAt('@media (min-w|')).toContain('min-width');
+  });
+
+  it('@keyframes body completion (from/to)', () => {
+    expect(completeAt('@keyframes spin { fr| }')).toContain('from');
+  });
+
+  it('named-color value completion', () => {
+    const labels = completeAt('.a { color: | }');
+    expect(labels).toContain('rebeccapurple');
+  });
+
+  it('!important completion', () => {
+    expect(completeAt('.a { color: red !| }')).toContain('!important');
+  });
+
+  it('units complete on a numeric prefix', () => {
+    expect(completeAt('.a { width: 10| }')).toContain('10px');
+  });
+
+  it('pseudo-element completion after `::`', () => {
+    expect(completeAt('.a::be|').some(l => l.startsWith('::'))).toBe(true);
+  });
+
+  it('function value completions insert as snippets', () => {
+    const { engine, doc } = engineWith('.a { color: rgb }');
+    const at = doc.getText().indexOf('rgb') + 3;
+    const rgb = engine.getCompletions(doc.uri, doc.positionAt(at)).items.find(i => (typeof i.label === 'string' ? i.label : i.label.label) === 'rgb()');
+    expect(rgb).toBeDefined();
+    expect(rgb!.insertTextFormat).toBe(2); // InsertTextFormat.Snippet
+  });
+
+  it('sass module member completion (math.)', () => {
+    expect(completeAt('.a { width: math.| }').some(l => l.startsWith('math.'))).toBe(true);
+  });
+
   it('colors the `$` sigil and the variable name as SEPARATE tokens (not one blob)', () => {
     const { engine, doc } = engineWith('$foo: red;\n.a { color: $foo; }');
     const data = engine.getSemanticTokens(doc.uri).data;
