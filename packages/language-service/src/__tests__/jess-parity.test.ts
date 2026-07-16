@@ -112,6 +112,12 @@ describe('.jess dialect parity (LS features on jess stylesheets)', () => {
     expect(completeAt('.a { width: math.| }').some(l => l.startsWith('math.'))).toBe(true);
   });
 
+  it('at-rule completion is context-filtered (no @import inside a style rule)', () => {
+    const labels = completeAt('.a { @| }');
+    expect(labels).not.toContain('@import');
+    expect(labels).toContain('@media');
+  });
+
   it('colors the `$` sigil and the variable name as SEPARATE tokens (not one blob)', () => {
     const { engine, doc } = engineWith('$foo: red;\n.a { color: $foo; }');
     const data = engine.getSemanticTokens(doc.uri).data;

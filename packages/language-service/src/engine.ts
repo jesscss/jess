@@ -301,6 +301,46 @@ function braceDepthBefore(text: string, offset: number): number {
   return depth;
 }
 
+// Conditional-group at-rules whose body may hold nested at-rules AND style rules,
+// so at-rules valid at stylesheet root stay valid inside them (`@font-face` inside
+// `@media` is fine; `@font-face` inside `.a { … }` is not).
+const NESTABLE_GROUP_AT = /@(?:media|supports|container|layer|scope|document|-moz-document)\b/i;
+
+/** Is the block enclosing `offset` a STYLE-RULE body (`selector { … }`) rather than
+ * the stylesheet root or a conditional-group at-rule body (`@media { … }`)? Used to
+ * hide top-level-only at-rules (`@import`, `@font-face`, …) inside style rules. */
+function enclosingBlockIsStyleRule(text: string, offset: number): boolean {
+  // Walk back to the nearest unclosed `{`.
+  let depth = 0;
+  let openAt = -1;
+  for (let i = Math.min(offset, text.length) - 1; i >= 0; i--) {
+    const ch = text.charCodeAt(i);
+    if (ch === 125) {
+      depth++;
+    } else if (ch === 123) {
+      if (depth === 0) {
+        openAt = i;
+        break;
+      }
+      depth--;
+    }
+  }
+  if (openAt < 0) {
+    return false; // stylesheet root
+  }
+  // The block's header runs back to the previous `{` / `}` / `;`.
+  let start = openAt - 1;
+  while (start >= 0) {
+    const ch = text.charCodeAt(start);
+    if (ch === 123 || ch === 125 || ch === 59) {
+      break;
+    }
+    start--;
+  }
+  const prelude = text.slice(start + 1, openAt);
+  return !NESTABLE_GROUP_AT.test(prelude);
+}
+
 function pos(line1: number | undefined, col1: number | undefined): Position {
   return Position.create(Math.max(0, (line1 ?? 1) - 1), Math.max(0, (col1 ?? 1) - 1));
 }
@@ -376,6 +416,15 @@ type WebCssData = {
 const webCssData: WebCssData = require('@vscode/web-custom-data/data/browsers.css-data.json');
 
 const AT_RULES: string[] = (webCssData.atDirectives ?? []).map(d => d.name).filter(Boolean);
+// At-rules valid ONLY at stylesheet root — never nested at all (not even in a
+// conditional-group like `@media`). `@import`/`@charset` must precede all rules.
+const ROOT_ONLY_AT_RULES = new Set(['charset', 'import', 'namespace']);
+// At-rules invalid directly inside a STYLE rule, but fine at root or in a
+// conditional-group (`@font-face` inside `@media` is valid). Mirrors MS filtering.
+const STYLE_RULE_INVALID_AT_RULES = new Set([
+  'font-face', 'keyframes', 'page', 'property', 'counter-style',
+  'font-feature-values', 'viewport', 'document'
+]);
 const AT_RULES_MAP = new Map<string, AtDirectiveEntry>();
 for (const d of webCssData.atDirectives ?? []) {
   if (d.name) {
@@ -1135,10 +1184,20 @@ export function createEngine(): JessLanguageServiceEngine {
         }
       }
 
-      // 4) At-rule names.
+      // 4) At-rule names — context-filtered: inside a style rule, hide at-rules
+      //    that are only valid at stylesheet root (or in a conditional-group).
       if (wantsAt) {
+        const nested = braceDepthBefore(text, offset) > 0;
+        const inStyleRule = nested && enclosingBlockIsStyleRule(text, offset);
         for (const name of AT_RULES) {
           if (prefix && !name.toLowerCase().startsWith(prefix)) {
+            continue;
+          }
+          const bare = name.replace(/^@/, '').toLowerCase();
+          if (nested && ROOT_ONLY_AT_RULES.has(bare)) {
+            continue;
+          }
+          if (inStyleRule && STYLE_RULE_INVALID_AT_RULES.has(bare)) {
             continue;
           }
           push(name, CompletionItemKind.Keyword);

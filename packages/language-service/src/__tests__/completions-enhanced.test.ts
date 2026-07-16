@@ -123,4 +123,24 @@ describe('enhanced completions (MS-parity: values / pseudo / mixin / !important)
     const labels = completeAt('jess', '.a { width: math.| }');
     expect(labels.some(l => l.startsWith('math.'))).toBe(true);
   });
+
+  it('at-rules: top level offers @import + @media + @font-face', () => {
+    const labels = completeAt('css', '@|');
+    expect(labels).toContain('@import');
+    expect(labels).toContain('@media');
+    expect(labels).toContain('@font-face');
+  });
+
+  it('at-rules: inside a style rule hides root-only/top-level-only, keeps @media', () => {
+    const labels = completeAt('css', '.a { @| }');
+    expect(labels).not.toContain('@import');
+    expect(labels).not.toContain('@font-face');
+    expect(labels).toContain('@media'); // conditional-group nests inside style rules
+  });
+
+  it('at-rules: inside @media, @font-face is valid but @import is not', () => {
+    const labels = completeAt('css', '@media screen { @| }');
+    expect(labels).toContain('@font-face');
+    expect(labels).not.toContain('@import'); // root-only everywhere
+  });
 });
