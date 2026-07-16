@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { parseLessFn } from '@jesscss/less-parser';
 import { serialize } from '../../tree2/index.js';
 import { bridgeToTree2, UnsupportedShape } from '../bridge.js';
-import { buildValueService } from '../value-service.js';
+import { buildEvaluator } from '../value-eval.js';
 import { renderRealOracle } from '../oracle.js';
 
 /**
@@ -51,8 +51,8 @@ describe('guards + pattern/named/default mixins — byte-identity (vs REAL oracl
         if (e instanceof UnsupportedShape) throw new Error(`UNSUPPORTED ${e.feature} (${e.detail}) for: ${src.trim()}`);
         throw e;
       }
-      const service = await buildValueService(bridged);
-      const t2css = serialize(bridged, { valueService: service }).css;
+      const evaluator = buildEvaluator();
+      const t2css = (await serialize(bridged, { evaluator })).css;
       const oracle = await renderRealOracle(parseLessFn(src).tree);
       if (t2css !== oracle) {
         console.log(`\n--- ${name} ---\nSRC:\n${src}\nT2 :\n${t2css}\nORC:\n${oracle}`);

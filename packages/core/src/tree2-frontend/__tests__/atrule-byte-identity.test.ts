@@ -4,7 +4,7 @@ import * as path from 'path';
 import { parseLessFn } from '@jesscss/less-parser';
 import { serialize } from '../../tree2/index.js';
 import { bridgeToTree2, UnsupportedShape } from '../bridge.js';
-import { buildValueService } from '../value-service.js';
+import { buildEvaluator } from '../value-eval.js';
 import { renderRealOracle } from '../oracle.js';
 
 /**
@@ -45,8 +45,8 @@ async function render(name: string, src: string): Promise<void> {
     }
     throw e;
   }
-  const service = await buildValueService(bridged);
-  const t2css = serialize(bridged, { valueService: service }).css;
+  const evaluator = buildEvaluator();
+  const t2css = (await serialize(bridged, { evaluator })).css;
   const oracle = await renderRealOracle(parsed.tree);
   if (t2css !== oracle) {
     console.log(`\n--- ${name} ---\nSRC: ${JSON.stringify(src)}\nT2 : ${JSON.stringify(t2css)}\nORA: ${JSON.stringify(oracle)}`);
@@ -78,8 +78,8 @@ describe('at-rule byte-identity (real less.js fixtures)', () => {
       const src = fs.readFileSync(abs, 'utf8');
       const parsed = parseLessFn(src);
       const bridged = bridgeToTree2(parsed.tree, src);
-      const service = await buildValueService(bridged);
-      const t2css = serialize(bridged, { valueService: service }).css;
+      const evaluator = buildEvaluator();
+      const t2css = (await serialize(bridged, { evaluator })).css;
       const oracle = await renderRealOracle(parsed.tree);
       expect(t2css).toBe(oracle);
     });

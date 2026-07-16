@@ -23,8 +23,8 @@
 
 import type { MixinCall, MixinDef, Param, ValueNode } from './nodes.js';
 import { Word } from './nodes.js';
-import type { ValueService } from './value-service.js';
-import { evalGuard, guardUsesDefault, type ValueResolver } from './guard.js';
+import type { EvalModes, ValueEvaluator } from './value-eval.js';
+import { evalGuard, guardUsesDefault, type TypedResolver, type ValueResolver } from './guard.js';
 
 /** One resolved call argument: positional (no name) or named. */
 export interface CallArg {
@@ -126,18 +126,18 @@ function valueBytes(v: ValueNode): string {
 }
 
 /**
- * Select every definition that matches a call, in definition order, with its
- * bindings. `record` mode (async value-service pre-pass) ignores guard truth
- * and returns EVERY arity/pattern candidate so the pass visits all guard leaves
- * and all candidate bodies — guaranteeing the value-service key set is complete.
+ * [R2] Select every definition that matches a call, in definition order, with
+ * its bindings. Args resolve to bytes in the caller frame (arity/pattern);
+ * guard leaves compare TYPED values in the callee frame through the injected
+ * `ValueEvaluator`.
  */
 export function selectDefinitions(
   candidates: MixinDef[],
   call: MixinCall,
   resolveCaller: ValueResolver,
-  makeCalleeResolver: (bindings: Map<string, ValueNode> | null) => ValueResolver,
-  service: ValueService | null,
-  record: boolean,
+  makeCalleeTyped: (bindings: Map<string, ValueNode> | null) => TypedResolver,
+  ev: ValueEvaluator | null,
+  modes: EvalModes,
 ): Selection[] {
   // Arity + literal-pattern pre-filter (guard-independent).
   const viable: Array<{ def: MixinDef; bindings: Map<string, ValueNode> | null; order: number }> = [];
@@ -148,19 +148,16 @@ export function selectDefinitions(
     viable.push({ def, bindings, order: i });
   }
 
-  if (record) {
-    // Evaluate every guard (records leaf keys) and keep every candidate.
-    for (const v of viable) {
-      if (v.def.guard) {
-        evalGuard(v.def.guard, {
-          resolve: makeCalleeResolver(v.bindings),
-          service,
-          isDefault: () => false,
-        });
-      }
-    }
-    return viable.map((v) => ({ def: v.def, bindings: v.bindings }));
-  }
+  const guardDeps = (bindings: Map<string, ValueNode> | null, isDefault: () => boolean) => {
+    const typed = makeCalleeTyped(bindings);
+    return {
+      resolve: (v: ValueNode) => typed(v).bytes,
+      resolveTyped: typed,
+      ev,
+      modes,
+      isDefault,
+    };
+  };
 
   // First pass: non-default guarded/unguarded matches.
   const matched: typeof viable = [];
@@ -170,24 +167,14 @@ export function selectDefinitions(
       defaultCandidates.push(v);
       continue;
     }
-    const ok =
-      !v.def.guard ||
-      evalGuard(v.def.guard, {
-        resolve: makeCalleeResolver(v.bindings),
-        service,
-        isDefault: () => false,
-      });
+    const ok = !v.def.guard || evalGuard(v.def.guard, guardDeps(v.bindings, () => false));
     if (ok) matched.push(v);
   }
 
   // Second pass: `default()` candidates fire iff no non-default match.
   const noNonDefaultMatch = matched.length === 0;
   for (const v of defaultCandidates) {
-    const ok = evalGuard(v.def.guard!, {
-      resolve: makeCalleeResolver(v.bindings),
-      service,
-      isDefault: () => noNonDefaultMatch,
-    });
+    const ok = evalGuard(v.def.guard!, guardDeps(v.bindings, () => noNonDefaultMatch));
     if (ok) matched.push(v);
   }
 

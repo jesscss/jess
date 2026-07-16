@@ -1,22 +1,22 @@
 import { describe, it } from 'vitest';
 import * as fs from 'fs';
 import { parseLessFn } from '@jesscss/less-parser';
-import { serialize, composeStats, type ValueService } from '../../tree2/index.js';
+import { serialize, composeStats } from '../../tree2/index.js';
 import { bridgeToTree2 } from '../bridge.js';
-import { buildValueService } from '../value-service.js';
+import { buildEvaluator } from '../value-eval.js';
 import { renderRealOracle } from '../oracle.js';
 import { withLegacyOpCounters } from '../../tree2-harness/shapes.js';
 
 /**
- * Rung 8 race — value operations + functions, vs the REAL (function-evaluating)
- * oracle. HONEST FRAMING: value MATH is delegated to the shared value service
- * (the same fns registry + Less eval the oracle uses), so that cost is EQUAL on
- * both sides and is NOT a representation signal. tree2's timed lane is the
- * synchronous serialize with a PRE-BUILT (map-backed) service — i.e. tree2's
- * representation + value emission, with the shared math precomputed. The
- * separately-reported `svc` column is that async precompute (the shared math),
- * so nothing is hidden. The tree lane is the full real-oracle render (which
- * includes the same math inline). Straight numbers, no extrapolation.
+ * R2 value-eval race — operations + functions, vs the REAL oracle.
+ *
+ * HONEST FRAMING (post-R2): value math is now tree2-NATIVE — operators delegate
+ * to the shared value-node arithmetic and functions to `@jesscss/fns` invoked
+ * DIRECTLY on typed operands (NO reparse, NO legacy render, NO record pre-pass).
+ * So this is no longer an "equal cost both sides" race: the tree2 lane is the
+ * FULL synchronous serialize INCLUDING the inline value evaluation, timed against
+ * the full REAL oracle render. Straight numbers, no extrapolation, no hidden
+ * precompute lane.
  */
 
 const R = '/Users/matthew/git/worktrees/less.js/packages/test-data/tests-unit';
@@ -42,34 +42,24 @@ const gc: (() => void) | undefined = (globalThis as { gc?: () => void }).gc;
 async function race(name: string, src: string): Promise<void> {
   const parsed = parseLessFn(src);
   const tree = parsed.tree;
-  const service: ValueService = await buildValueService(bridgeToTree2(tree, src));
-  const t2 = serialize(bridgeToTree2(tree, src), { valueService: service }).css;
+  const t2 = (await serialize(bridgeToTree2(tree, src), { evaluator: buildEvaluator() })).css;
   const leg = await renderRealOracle(tree);
   const identical = t2 === leg;
 
   const WARM = 5;
   const N = 15;
 
-  // tree2 lane: sync serialize with the pre-built (map) service (math precomputed).
-  for (let i = 0; i < WARM; i++) serialize(bridgeToTree2(tree, src), { valueService: service });
+  // tree2 lane: full synchronous serialize INCLUDING native value eval.
+  for (let i = 0; i < WARM; i++) await serialize(bridgeToTree2(tree, src), { evaluator: buildEvaluator() });
   gc?.();
   const m0 = process.memoryUsage().heapUsed;
   const t2times: number[] = [];
   for (let i = 0; i < N; i++) {
     const a = performance.now();
-    serialize(bridgeToTree2(tree, src), { valueService: service });
+    await serialize(bridgeToTree2(tree, src), { evaluator: buildEvaluator() });
     t2times.push(performance.now() - a);
   }
   const t2heap = (process.memoryUsage().heapUsed - m0) / N;
-
-  // Shared value-math precompute cost (async), reported separately, NOT hidden.
-  for (let i = 0; i < WARM; i++) await buildValueService(bridgeToTree2(tree, src));
-  const svcTimes: number[] = [];
-  for (let i = 0; i < N; i++) {
-    const a = performance.now();
-    await buildValueService(bridgeToTree2(tree, src));
-    svcTimes.push(performance.now() - a);
-  }
 
   // tree lane: full real-oracle render (math inline).
   for (let i = 0; i < WARM; i++) await renderRealOracle(parseLessFn(src).tree);
@@ -90,21 +80,18 @@ async function race(name: string, src: string): Promise<void> {
 
   const t2m = median(t2times);
   const legm = median(legtimes);
-  const svcm = median(svcTimes);
   console.log(
     `  ${name.padEnd(26)} id=${identical ? 'Y' : 'N'} ` +
       `t2 ${t2m.toFixed(4)}ms tree ${legm.toFixed(4)}ms (${(legm / t2m).toFixed(1)}x)  ` +
-      `svc(shared-math) ${svcm.toFixed(4)}ms  ` +
       `heap/rnd t2 ${(t2heap / 1024).toFixed(1)}KB tree ${(legheap / 1024).toFixed(1)}KB  ` +
       `ops t2[compose ${t2ops.composeOps}] tree[clone ${legops.cloneForPlacement}+inherit ${legops.inherit}+withComp ${legops.withComponents}]`,
   );
 }
 
-describe('tree2 bridge — value-eval race (rung 8: operations + functions)', () => {
+describe('tree2 bridge — value-eval race (R2: native operations + functions)', () => {
   it('race', async () => {
-    console.log(`\n===== TREE2 vs TREE RACE — value-eval rung (gc=${gc ? 'on' : 'off'}) =====`);
-    console.log('t2 = sync serialize w/ pre-built map service (shared math precomputed) ; tree = full REAL oracle render');
-    console.log('svc = async shared value-math precompute (EQUAL cost on both sides — reported straight, not a repr signal)');
+    console.log(`\n===== TREE2 vs TREE RACE — R2 native value-eval (gc=${gc ? 'on' : 'off'}) =====`);
+    console.log('t2 = full sync serialize INCLUDING native value eval ; tree = full REAL oracle render (math inline)');
     console.log('-- real color-function corpus (byte-identical vs REAL oracle) --');
     for (const [n, s] of corpus) await race(n, s);
     console.log('-- constructed value-heavy --');

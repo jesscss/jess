@@ -1,8 +1,8 @@
 import { describe, it } from 'vitest';
 import { parseLessFn } from '@jesscss/less-parser';
-import { serialize, composeStats, type ValueService } from '../../tree2/index.js';
+import { serialize, composeStats } from '../../tree2/index.js';
 import { bridgeToTree2 } from '../bridge.js';
-import { buildValueService } from '../value-service.js';
+import { buildEvaluator } from '../value-eval.js';
 import { renderRealOracleNested } from '../oracle.js';
 import { withLegacyOpCounters } from '../../tree2-harness/shapes.js';
 
@@ -47,8 +47,8 @@ const gc: (() => void) | undefined = (globalThis as { gc?: () => void }).gc;
 
 async function race(name: string, src: string): Promise<void> {
   const tree = parseLessFn(src).tree;
-  const service: ValueService = await buildValueService(bridgeToTree2(tree, src));
-  const t2 = serialize(bridgeToTree2(tree, src), { valueService: service, collapseNesting: false }).css;
+  const evaluator = buildEvaluator();
+  const t2 = (await serialize(bridgeToTree2(tree, src), { evaluator, collapseNesting: false })).css;
   const leg = await renderRealOracleNested(parseLessFn(src).tree);
   const identical = t2 === leg;
 
@@ -56,13 +56,13 @@ async function race(name: string, src: string): Promise<void> {
   const N = 11;
 
   for (let i = 0; i < WARM; i++)
-    serialize(bridgeToTree2(tree, src), { valueService: service, collapseNesting: false });
+    await serialize(bridgeToTree2(tree, src), { evaluator, collapseNesting: false });
   gc?.();
   const m0 = process.memoryUsage().heapUsed;
   const t2times: number[] = [];
   for (let i = 0; i < N; i++) {
     const a = performance.now();
-    serialize(bridgeToTree2(tree, src), { valueService: service, collapseNesting: false });
+    await serialize(bridgeToTree2(tree, src), { evaluator, collapseNesting: false });
     t2times.push(performance.now() - a);
   }
   const t2heap = (process.memoryUsage().heapUsed - m0) / N;

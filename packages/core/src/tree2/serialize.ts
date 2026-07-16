@@ -29,6 +29,7 @@ import { Kind, Node } from './node.js';
 import { Word } from './nodes.js';
 import type {
   Complex,
+  FunctionCall,
   MixinCall,
   MixinDef,
   Root,
@@ -39,10 +40,35 @@ import type {
 } from './nodes.js';
 // [atrule] block + statement at-rule node types
 import type { AtRuleBlock, AtRuleStatement } from './at-rule.js';
-import type { ValueService } from './value-service.js';
-import { selectDefinitions } from './mixin-dispatch.js'; // [guards]
-import type { ValueResolver } from './guard.js'; // [guards]
+// [R2] typed synchronous value evaluator seam + boundary-clean value domain.
+import {
+  DEFAULT_MODES,
+  emitValue,
+  isLiteral,
+  literal,
+  type EvalModes,
+  type ListVal,
+  type Value,
+  type ValueEvaluator,
+  type ValueObj,
+} from './value-eval.js';
+import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
+import { selectDefinitions, type Selection } from './mixin-dispatch.js'; // [guards]
+import type { ValueResolver, TypedResolver } from './guard.js'; // [guards]
 import { computeExtends, type ExtendResults } from './extend.js'; // [extend]
+
+/* ---------------------------------------------------- [R2] MaybePromise glue */
+
+function mapMaybe<T, U>(m: MaybePromise<T>, f: (t: T) => MaybePromise<U>): MaybePromise<U> {
+  return isThenable(m) ? m.then(f) : f(m);
+}
+
+function combineAll<T, U>(arr: Array<MaybePromise<T>>, f: (ts: T[]) => MaybePromise<U>): MaybePromise<U> {
+  for (let i = 0; i < arr.length; i++) {
+    if (isThenable(arr[i])) return Promise.all(arr).then(f);
+  }
+  return f(arr as T[]);
+}
 
 export interface Position {
   node: Node;
@@ -54,19 +80,15 @@ export interface Position {
 export interface SerializeOptions {
   trackPositions?: boolean;
   /**
-   * Injected value-eval service (the boundary-safe seam). When present, tree2's
-   * `Operation` / `FunctionCall` value nodes are COMPUTED through it; when
-   * absent they fall back to un-evaluated source assembly (tree2 does no math
-   * itself). tree2 depends only on the `ValueService` interface.
+   * [R2] Injected TYPED synchronous value evaluator (the boundary-safe seam).
+   * When present, tree2's `Operation` / `FunctionCall` value nodes are COMPUTED
+   * through it over materialized typed value objects; when absent they fall back
+   * to un-evaluated source assembly (tree2 does no math itself). tree2 depends
+   * only on the `ValueEvaluator` interface.
    */
-  valueService?: ValueService;
-  /**
-   * [guards] `'record'` makes mixin dispatch walk EVERY arity/pattern candidate
-   * (ignoring guard truth) and evaluate every guard leaf, so an async
-   * value-service pre-pass collects a complete key set. Default `'eval'` does
-   * real guard-based selection.
-   */
-  guardMode?: 'eval' | 'record';
+  evaluator?: ValueEvaluator;
+  /** [R2] Configured math/unit/function modes (defaults to `DEFAULT_MODES`). */
+  modes?: EvalModes;
   /**
    * [nested/R0] Selector collapse policy (arch E1). `true` (default, 4.x /
    * `collapseNesting:true`) flattens the authored block structure into composed
@@ -84,6 +106,14 @@ export interface SerializeResult {
   /** Present only when `trackPositions` is set. */
   positions?: Position[];
 }
+
+/**
+ * [R2] `serialize` stays SYNCHRONOUS for all-sync value graphs and lifts to
+ * `Promise<SerializeResult>` ONLY when a genuinely async built-in (a color-format
+ * fn / file-IO fn) forces a leaf onto the async branch — the `isThenable` fork,
+ * NOT a global record pre-pass.
+ */
+export type SerializeReturn = MaybePromise<SerializeResult>;
 
 const INDENT = '  ';
 
@@ -154,74 +184,137 @@ function lookupVar(frame: Frame | null, name: string): ValueNode | undefined {
 }
 
 /**
- * [guards] A value resolver bound to a frame — resolves a value node to its
- * (variable-resolved) byte source. Used by mixin dispatch to eagerly resolve
- * args in the caller frame and to resolve guard operands in the callee frame.
+ * [guards] A SYNC byte resolver bound to a frame — resolves a value node to its
+ * (variable-resolved) byte source. Used by mixin dispatch to eagerly resolve args
+ * in the caller frame (pattern-match by bytes) and `@arguments`/rest joining.
+ * Dispatch positions are sync (no async fns appear in guard/pattern positions);
+ * a stray async value there raises rather than being silently mis-dispatched.
  */
-function makeResolver(frame: Frame | null, service: ValueService | null): ValueResolver {
-  return (v: ValueNode) => valueText(v, frame, service);
+function makeResolver(frame: Frame | null, e: EvalCtx): ValueResolver {
+  return (v: ValueNode) => {
+    const b = evalBytes(v, frame, e);
+    if (isThenable(b)) throw new Error('async value in a synchronous dispatch position');
+    return b;
+  };
 }
 
-/* ----------------------------------------------------------- value bytes */
+/**
+ * [R2/guards] A TYPED resolver: materializes a value node to a typed `ValueObj`
+ * (guard leaves compare typed values / call type-fns). Sync for the same reason.
+ */
+function makeTypedResolver(frame: Frame | null, e: EvalCtx): TypedResolver {
+  return (v: ValueNode) => {
+    const val = evalValue(v, frame, e);
+    if (isThenable(val)) throw new Error('async value in a synchronous guard position');
+    return force(e, val);
+  };
+}
+
+/* ---------------------------------------------------- [R2] typed value eval */
 
 const MAX_VAR_DEPTH = 64;
 
-function valueText(
-  node: ValueNode,
-  frame: Frame | null,
-  service: ValueService | null,
-  depth = 0,
-): string {
+/** The evaluator + modes carried through the value lane (a slim view of Emit). */
+interface EvalCtx {
+  ev: ValueEvaluator | null;
+  modes: EvalModes;
+}
+
+/** Force a lazy leaf to a typed value object (idempotent). */
+function force(e: EvalCtx, v: Value): ValueObj {
+  if (!isLiteral(v)) return v;
+  if (!e.ev) return { kind: 'keyword', text: v.bytes, bytes: v.bytes };
+  return e.ev.materialize(v);
+}
+
+/**
+ * [R2] Fold a value AST node bottom-up to a typed `Value` (a lazy `ValueLiteral`
+ * for the static ~98% case, or a materialized `ValueObj` for a computed
+ * operation/function). Lifts to `MaybePromise` only when a function call returns
+ * a genuine thenable.
+ */
+function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx, depth = 0): MaybePromise<Value> {
   switch (node.kind) {
     case Kind.Word:
-      return node.text;
+      return literal(node.text);
     case Kind.Dimension:
-      return `${node.value}${node.unit}`;
+      return literal(`${node.value}${node.unit}`, 'numeric');
     case Kind.VarRef: {
-      if (depth > MAX_VAR_DEPTH) return `@${node.name}`; // cycle guard
+      if (depth > MAX_VAR_DEPTH) return literal(`@${node.name}`); // cycle guard
       const bound = lookupVar(frame, node.name);
-      // Unbound: emit the byte form so the output visibly diverges rather than
-      // silently dropping (a real fixture that reaches here needs another rung).
-      return bound ? valueText(bound, frame, service, depth + 1) : `@${node.name}`;
+      return bound ? evalValue(bound, frame, e, depth + 1) : literal(`@${node.name}`);
     }
-    case Kind.Concat: {
-      let out = '';
-      for (const part of node.parts) out += valueText(part, frame, service, depth);
-      return out;
-    }
-    case Kind.SpacedValue: {
-      const parts = node.parts;
-      let out = parts.length > 0 ? valueText(parts[0]!, frame, service, depth) : '';
-      for (let i = 1; i < parts.length; i++) out += ' ' + valueText(parts[i]!, frame, service, depth);
-      return out;
-    }
-    case Kind.Paren: {
-      // Transparent to computed bytes: a parenthesized operation is evaluated by
-      // the service (which strips the paren), matching the legacy oracle. With
-      // no service, keep the parens for faithful un-evaluated source.
-      const inner = valueText(node.inner, frame, service, depth);
-      return service ? inner : `(${inner})`;
-    }
+    case Kind.Concat:
+      return joinBytes(node.parts, '', frame, e, depth);
+    case Kind.SpacedValue:
+      return joinBytes(node.parts, ' ', frame, e, depth);
+    case Kind.Paren:
+      // Transparent to computed bytes: a materialized (operated) inner strips the
+      // paren (matching the legacy oracle); an un-forced literal keeps its parens.
+      return mapMaybe(evalValue(node.inner, frame, e, depth), (v) =>
+        isLiteral(v) ? literal(`(${v.bytes})`) : v,
+      );
     case Kind.Operation: {
-      // Operands are serialized to their UN-EVALUATED, variable-resolved SOURCE
-      // (null service): only the OUTERMOST computed node in an emitted value
-      // calls the service, handing it the full (possibly nested) expression
-      // source. That keeps the service call site deterministic (a nested op is
-      // never separately computed), so precedence is carried by the source and
-      // the record/replay key is identical across passes.
-      const left = valueText(node.left, frame, null, depth);
-      const right = valueText(node.right, frame, null, depth);
-      return service
-        ? service.evaluateOperation(node.operator, left, right)
-        : `${left} ${node.operator} ${right}`;
+      const l = evalValue(node.left, frame, e, depth);
+      const r = evalValue(node.right, frame, e, depth);
+      if (!e.ev) {
+        // Fallback: un-evaluated, variable-resolved source assembly (no math).
+        return combineAll([l, r], ([lv, rv]) =>
+          literal(`${emitValue(lv)} ${node.operator} ${emitValue(rv)}`),
+        );
+      }
+      const ev = e.ev;
+      return combineAll([l, r], ([lv, rv]) => ev.operate(node.operator, force(e, lv), force(e, rv), e.modes));
     }
-    case Kind.FunctionCall: {
-      // `args` serializes to the (variable-resolved) inner argument SOURCE; the
-      // service performs the call and returns computed bytes.
-      const args = valueText(node.args, frame, null, depth);
-      return service ? service.callFunction(node.name, args) : `${node.name}(${args})`;
-    }
+    case Kind.FunctionCall:
+      return evalCall(node, frame, e, depth);
   }
+}
+
+/** Evaluate a function call: materialize the modeled arg list, then `ev.call`. */
+function evalCall(node: FunctionCall, frame: Frame | null, e: EvalCtx, depth: number): MaybePromise<Value> {
+  const items = node.args.map((a) => evalValue(a, frame, e, depth));
+  const sep = node.modern ? ' ' : ',';
+  if (!e.ev) {
+    return combineAll(items, (vals) => {
+      const inner = vals.map(emitValue).join(sep === ' ' ? ' ' : ', ');
+      return literal(`${node.name}(${inner})`);
+    });
+  }
+  const ev = e.ev;
+  return combineAll(items, (vals) => {
+    const list: ListVal = {
+      kind: 'list',
+      items: vals.map((v) => force(e, v)),
+      sep,
+      bytes: '',
+    };
+    return ev.call(node.name, list, e.modes);
+  });
+}
+
+/** Join value parts to bytes (Concat = '', SpacedValue = ' '); stays a literal. */
+function joinBytes(
+  parts: ValueNode[],
+  sep: string,
+  frame: Frame | null,
+  e: EvalCtx,
+  depth: number,
+): MaybePromise<Value> {
+  const items = parts.map((p) => evalValue(p, frame, e, depth));
+  return combineAll(items, (vals) => literal(vals.map(emitValue).join(sep)));
+}
+
+/** Fold a value node and return its emitted bytes. */
+function evalBytes(node: ValueNode, frame: Frame | null, e: EvalCtx, depth = 0): MaybePromise<string> {
+  return mapMaybe(evalValue(node, frame, e, depth), emitValue);
+}
+
+/** Bytes for a synchronous position (at-rule prelude); async there is out of scope. */
+function evalBytesSync(node: ValueNode, frame: Frame | null, e: EvalCtx): string {
+  const b = evalBytes(node, frame, e);
+  if (isThenable(b)) throw new Error('async value in an at-rule prelude is unsupported');
+  return b;
 }
 
 /* ---------------------------------------------------- selector composition */
@@ -251,18 +344,17 @@ function ownStrings(list: SelectorList): string[] {
 
 /* ------------------------------------------------------------- emit engine */
 
-interface Emit {
+interface Emit extends EvalCtx {
   chunks: string[];
   off: number;
   positions: Position[] | null;
-  service: ValueService | null;
+  // [R2] typed value evaluator + configured modes (from EvalCtx: `ev`, `modes`).
+  // [R2] async patches: a leaf whose value forced an async built-in reserves a
+  // placeholder chunk index; the promise resolves the bytes after the sync walk.
+  pending: Array<{ i: number; p: Promise<string> }>;
   // [atrule] current block-nesting depth (0 = top level). At-rule bodies raise it
   // so declarations/selectors inside a block indent one level deeper.
   depth: number;
-  record: boolean; // [guards] record mode for the async value-service pre-pass
-  // [guards] mixin-expansion depth (bounds record-mode recursion). Kept SEPARATE
-  // from `depth` above: mixin expansion must not shift at-rule indentation.
-  recordDepth: number;
   // [nested/R0] false => preserve authored nesting (Less v5 default); true =>
   // flatten to composed selector strings (4.x / collapseNesting:true).
   collapse: boolean;
@@ -274,14 +366,23 @@ interface Emit {
   hoistMode: boolean;
 }
 
+/** [R2] Emit a value at a leaf/prelude site: sync `put`, or reserve an async slot. */
+function putValue(e: Emit, node: ValueNode, frame: Frame | null, positionNode?: Node): void {
+  const b = evalBytes(node, frame, e);
+  if (isThenable(b)) {
+    const i = e.chunks.length;
+    e.chunks.push('');
+    e.pending.push({ i, p: Promise.resolve(b) });
+    return;
+  }
+  const valStart = e.off;
+  put(e, b);
+  if (e.positions && positionNode) {
+    e.positions.push({ node: positionNode, kind: positionNode.kind, start: valStart, end: e.off });
+  }
+}
+
 /* ------------------------------------------------------------- [extend] */
-
-
-// [guards] Record mode walks EVERY candidate body ignoring guard truth, so
-// guard-terminated recursion (e.g. `.loop(@n) when (@n>0){ .loop(@n - 1) }`)
-// would not terminate. A generous depth cap bounds it; the eval path is
-// unbounded and terminates naturally via guards.
-const MAX_RECORD_DEPTH = 64;
 
 function put(e: Emit, s: string): void {
   e.chunks.push(s);
@@ -294,15 +395,15 @@ interface Leaf {
   frame: Frame | null;
 }
 
-export function serialize(root: Root, options?: SerializeOptions): SerializeResult {
+export function serialize(root: Root, options?: SerializeOptions): SerializeReturn {
   const e: Emit = {
     chunks: [],
     off: 0,
     positions: options?.trackPositions ? [] : null,
-    service: options?.valueService ?? null,
+    ev: options?.evaluator ?? null, // [R2] typed value evaluator
+    modes: options?.modes ?? DEFAULT_MODES, // [R2]
+    pending: [], // [R2] async patches
     depth: 0, // [atrule]
-    record: options?.guardMode === 'record', // [guards]
-    recordDepth: 0, // [guards]
     collapse: options?.collapseNesting !== false, // [nested/R0] default = flatten
     extends: computeExtends(root), // [extend] null when no `:extend()` anywhere
     hoistMode: false, // [extend]
@@ -345,7 +446,15 @@ export function serialize(root: Root, options?: SerializeOptions): SerializeResu
     }
   }
   if (e.positions) e.positions.push({ node: root, kind: root.kind, start, end: e.off });
-  return e.positions ? { css: e.chunks.join(''), positions: e.positions } : { css: e.chunks.join('') };
+  const finalize = (): SerializeResult =>
+    e.positions ? { css: e.chunks.join(''), positions: e.positions } : { css: e.chunks.join('') };
+  // [R2] lift to async ONLY if a genuinely-async built-in reserved a placeholder.
+  if (e.pending.length > 0) {
+    return Promise.all(
+      e.pending.map((x) => x.p.then((b) => { e.chunks[x.i] = b; })),
+    ).then(finalize);
+  }
+  return finalize();
 }
 
 function flatten(rule: Rule, parent: string[] | null, frame: Frame, e: Emit): void {
@@ -441,21 +550,7 @@ function expandCall(
 ): void {
   const candidates = lookupMixinCandidates(frame, call.name);
   if (candidates.length === 0) return; // unknown mixin: minimal scope emits nothing
-  if (e.record && e.recordDepth >= MAX_RECORD_DEPTH) return; // [guards] bound recording
-  const resolveCaller = makeResolver(frame, e.service);
-  // Guard operands resolve in the CALLEE scope (params bound + globals via the
-  // caller-frame parent chain).
-  const makeCalleeResolver = (bindings: Map<string, ValueNode> | null): ValueResolver =>
-    makeResolver({ parent: frame, mixins: null, vars: bindings }, e.service);
-  const selected = selectDefinitions(
-    candidates,
-    call,
-    resolveCaller,
-    makeCalleeResolver,
-    e.service,
-    e.record,
-  );
-  e.recordDepth++; // [guards]
+  const selected = dispatch(candidates, call, frame, e);
   for (const { def, bindings } of selected) {
     const callFrame: Frame = {
       parent: frame,
@@ -464,7 +559,18 @@ function expandCall(
     };
     walkBody(def.body, composed ?? [], callFrame, group, flush, e);
   }
-  e.recordDepth--; // [guards]
+}
+
+/**
+ * [guards] Resolve the overloaded definitions that match a call. Args resolve to
+ * BYTES in the caller frame (pattern-match); guard leaves compare TYPED values
+ * in the callee frame through the injected `ValueEvaluator`.
+ */
+function dispatch(candidates: MixinDef[], call: MixinCall, frame: Frame, e: EvalCtx): Selection[] {
+  const resolveCaller = makeResolver(frame, e);
+  const makeCalleeTyped = (bindings: Map<string, ValueNode> | null): TypedResolver =>
+    makeTypedResolver({ parent: frame, mixins: null, vars: bindings }, e);
+  return selectDefinitions(candidates, call, resolveCaller, makeCalleeTyped, e.ev, e.modes);
 }
 
 function flushBlock(sel: string[], group: Leaf[], e: Emit, selNode?: SelectorList): void {
@@ -491,12 +597,8 @@ function emitLeaf(leaf: Leaf, e: Emit): void {
     put(e, idt);
     put(e, node.name);
     put(e, ': ');
-    const valStart = e.off;
-    put(e, valueText(node.value, frame, e.service));
-    if (e.positions) {
-      e.positions.push({ node: node.value, kind: node.value.kind, start: valStart, end: e.off });
-      e.positions.push({ node, kind: node.kind, start, end: e.off });
-    }
+    putValue(e, node.value, frame, node.value);
+    if (e.positions) e.positions.push({ node, kind: node.kind, start, end: e.off });
     put(e, ';\n');
   } else if (node.kind === Kind.Comment) {
     put(e, idt);
@@ -539,7 +641,7 @@ function emitAtRuleBlock(node: AtRuleBlock, frame: Frame, e: Emit): void {
   if (idt) put(e, idt);
   put(e, node.name);
   if (node.prelude !== null) {
-    const p = valueText(node.prelude, frame, e.service);
+    const p = evalBytesSync(node.prelude, frame, e);
     if (p.length > 0) {
       put(e, ' ');
       put(e, p);
@@ -677,7 +779,7 @@ function emitNestedLeaf(leaf: Leaf, e: Emit): void {
     put(e, node.name);
     put(e, ': ');
     const valStart = e.off;
-    put(e, valueText(node.value, frame, e.service));
+    putValue(e, node.value, frame, node.value);
     if (e.positions) {
       e.positions.push({ node: node.value, kind: node.value.kind, start: valStart, end: e.off });
       e.positions.push({ node, kind: node.kind, start, end: e.off });
@@ -790,19 +892,7 @@ function emitHoisted(rule: Rule, frame: Frame, e: Emit): void {
 function expandNestedCall(call: MixinCall, frame: Frame, e: Emit): void {
   const candidates = lookupMixinCandidates(frame, call.name);
   if (candidates.length === 0) return;
-  if (e.record && e.recordDepth >= MAX_RECORD_DEPTH) return; // [guards]
-  const resolveCaller = makeResolver(frame, e.service);
-  const makeCalleeResolver = (bindings: Map<string, ValueNode> | null): ValueResolver =>
-    makeResolver({ parent: frame, mixins: null, vars: bindings }, e.service);
-  const selected = selectDefinitions(
-    candidates,
-    call,
-    resolveCaller,
-    makeCalleeResolver,
-    e.service,
-    e.record,
-  );
-  e.recordDepth++;
+  const selected = dispatch(candidates, call, frame, e);
   for (const { def, bindings } of selected) {
     const callFrame: Frame = {
       parent: frame,
@@ -811,7 +901,6 @@ function expandNestedCall(call: MixinCall, frame: Frame, e: Emit): void {
     };
     emitNestedBody(def.body, callFrame, e);
   }
-  e.recordDepth--;
 }
 
 /**
@@ -829,7 +918,7 @@ function emitNestedAtRuleBlock(node: AtRuleBlock, frame: Frame, e: Emit): void {
   if (idt) put(e, idt);
   put(e, node.name);
   if (node.prelude !== null) {
-    const p = valueText(node.prelude, frame, e.service);
+    const p = evalBytesSync(node.prelude, frame, e);
     if (p.length > 0) {
       put(e, ' ');
       put(e, p);
@@ -873,10 +962,10 @@ export interface ComposeStats {
  * indicator to compare against legacy `withComponents`/`cloneForPlacement`/
  * `inherit` counts. Kept OUT of the timed path.
  */
-export function composeStats(root: Root, service?: ValueService): ComposeStats {
+export function composeStats(root: Root, evaluator?: ValueEvaluator, modes?: EvalModes): ComposeStats {
   const stats: ComposeStats = { composeOps: 0, selectorAllocs: 0, distinctSelectors: 0 };
   const seen = new Set<string>();
-  const svc = service ?? null;
+  const ectx: EvalCtx = { ev: evaluator ?? null, modes: modes ?? DEFAULT_MODES };
 
   const composeCount = (parents: string[], child: SelectorList): string[] => {
     if (parents.length > 1) stats.selectorAllocs++; // the :is(...) wrap
@@ -901,17 +990,7 @@ export function composeStats(root: Root, service?: ValueService): ComposeStats {
         // fixtures count the compositions they actually produce.
         const candidates = lookupMixinCandidates(frame, node.name);
         if (candidates.length === 0) continue;
-        const resolveCaller = makeResolver(frame, svc);
-        const makeCalleeResolver = (b: Map<string, ValueNode> | null): ValueResolver =>
-          makeResolver({ parent: frame, mixins: null, vars: b }, svc);
-        for (const { def, bindings } of selectDefinitions(
-          candidates,
-          node,
-          resolveCaller,
-          makeCalleeResolver,
-          svc,
-          false,
-        )) {
+        for (const { def, bindings } of dispatch(candidates, node, frame, ectx)) {
           const callFrame: Frame = {
             parent: frame,
             mixins: collectMixins(def.body),

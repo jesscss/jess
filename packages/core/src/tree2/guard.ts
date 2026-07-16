@@ -25,7 +25,7 @@
  */
 
 import type { ValueNode } from './nodes.js';
-import type { ValueService } from './value-service.js';
+import type { EvalModes, ListVal, ValueEvaluator, ValueObj } from './value-eval.js';
 
 /** A guard condition tree. Never serialized to CSS — evaluated to a boolean. */
 export type GuardNode =
@@ -34,23 +34,31 @@ export type GuardNode =
   | { readonly g: 'or'; readonly left: GuardNode; readonly right: GuardNode }
   | { readonly g: 'not'; readonly inner: GuardNode }
   | { readonly g: 'truth'; readonly value: ValueNode }
-  | { readonly g: 'call'; readonly name: string; readonly args: ValueNode }
+  | { readonly g: 'call'; readonly name: string; readonly args: ValueNode[] }
   | { readonly g: 'default' };
 
 /** Resolve a value node to its (variable-resolved, un-evaluated) source bytes. */
 export type ValueResolver = (v: ValueNode) => string;
 
+/** [R2] Resolve a value node to a materialized TYPED value object. */
+export type TypedResolver = (v: ValueNode) => ValueObj;
+
 export interface GuardEvalDeps {
+  /** Byte resolver (truthiness). */
   resolve: ValueResolver;
-  service: ValueService | null;
+  /** [R2] Typed resolver (comparison / type-fn leaves compare typed values). */
+  resolveTyped: TypedResolver;
+  ev: ValueEvaluator | null;
+  modes: EvalModes;
   /** True iff no non-default definition matched (the `default()` value). */
   isDefault: () => boolean;
 }
 
 /**
- * Evaluate a guard tree to a boolean. Leaf comparisons/functions are delegated
- * to the value service (real Less semantics by construction); logic/negation/
- * truthiness/default are owned here.
+ * [R2] Evaluate a guard tree to a boolean. Leaf comparisons/type-functions are
+ * delegated to the TYPED value evaluator (`guardCmp`/`guardCall`) over
+ * materialized value objects — real Less semantics by construction; logic/
+ * negation/truthiness/default are owned here.
  */
 export function evalGuard(node: GuardNode, deps: GuardEvalDeps): boolean {
   switch (node.g) {
@@ -70,15 +78,16 @@ export function evalGuard(node: GuardNode, deps: GuardEvalDeps): boolean {
       // Less: a bare-value guard is true only if it evaluates to `true`.
       return deps.resolve(node.value).trim() === 'true';
     case 'cmp': {
-      const left = deps.resolve(node.left);
-      const right = deps.resolve(node.right);
-      const source = `${left} ${node.op} ${right}`;
-      return deps.service ? deps.service.evaluateGuardCondition(source) : false;
+      if (!deps.ev) return false;
+      const left = deps.resolveTyped(node.left);
+      const right = deps.resolveTyped(node.right);
+      return deps.ev.guardCmp(node.op, left, right, deps.modes);
     }
     case 'call': {
-      const args = deps.resolve(node.args);
-      const source = `${node.name}(${args})`;
-      return deps.service ? deps.service.evaluateGuardCondition(source) : false;
+      if (!deps.ev) return false;
+      const items = node.args.map((a) => deps.resolveTyped(a));
+      const list: ListVal = { kind: 'list', items, sep: ',', bytes: '' };
+      return deps.ev.guardCall(node.name, list, deps.modes);
     }
     case 'default':
       return deps.isDefault();

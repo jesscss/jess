@@ -244,6 +244,52 @@ function innerArgsSource(callSource: string): string {
 }
 
 /**
+ * [R2] Model a function call's arguments as a typed tree2 value list. The parsed
+ * Less `Call.args` is a `List` whose `.value` is either a flat array of comma
+ * args, or (for CSS Color-4 modern syntax) a single space-separated group whose
+ * `/`-separated sub-lists flatten to scalar leaves. Returns the flat arg nodes
+ * plus a `modern` flag so the evaluator preserves the `rgb(a b c / d)` spelling.
+ */
+function bridgeFnArgs(ctx: BridgeCtx, argsNode: unknown): { args: t2.ValueNode[]; modern: boolean } {
+  const arr = isNode(argsNode) ? (argsNode as AnyNode).value : argsNode;
+  if (!Array.isArray(arr)) return { args: [], modern: false };
+  let modern = false;
+  let flat: unknown[];
+  if (arr.length === 1 && (Array.isArray(arr[0]) || isSpaceGroup(arr[0]))) {
+    modern = true;
+    flat = [];
+    flattenSpaceGroup(arr[0], flat);
+  } else {
+    flat = arr;
+  }
+  const args: t2.ValueNode[] = [];
+  for (const a of flat) {
+    const v = toOperand(ctx, a);
+    if (v === null) throw new UnsupportedShape('call:arg', typeOf(a));
+    args.push(v);
+  }
+  return { args, modern };
+}
+
+/** A space/slash-separated arg group (a `List` node used inside modern syntax). */
+function isSpaceGroup(x: unknown): boolean {
+  return isNode(x) && typeOf(x) === 'List' && Array.isArray((x as AnyNode).value);
+}
+
+/** Flatten a modern-syntax arg group (nested arrays / slash-lists) to scalar leaves. */
+function flattenSpaceGroup(group: unknown, out: unknown[]): void {
+  const items = Array.isArray(group) ? group : isNode(group) ? (group as AnyNode).value : undefined;
+  if (!Array.isArray(items)) {
+    out.push(group);
+    return;
+  }
+  for (const it of items) {
+    if (Array.isArray(it) || isSpaceGroup(it)) flattenSpaceGroup(it, out);
+    else out.push(it);
+  }
+}
+
+/**
  * Build a tree2 value node from a parsed Less value node, producing STRUCTURED
  * tree2 `FunctionCall` / `Operation` / `Paren` nodes for computed expressions.
  * Returns `null` for anything that is not (and does not contain at this level) a
@@ -259,12 +305,12 @@ function toComputedValue(ctx: BridgeCtx, node: unknown): t2.ValueNode | null {
   switch (t) {
     case 'Call': {
       const name = mixinName(node as AnyNode);
-      const callSource = slice(ctx, node);
-      if (callSource === undefined) return null;
-      // Args are captured as their (possibly `@var`-bearing) source text; the
-      // service re-parses the assembled call, so any argument separator (`,`,
-      // space, `/`) and nested calls stay byte-faithful.
-      return t2.funcCall(name, parseValue(innerArgsSource(callSource)));
+      // [R2] Model the arg LIST (typed params bind at eval): comma args are a flat
+      // array; CSS Color-4 modern syntax (`rgb(0 128 255 / 50%)`) is a single
+      // space-separated group (possibly nested slash-lists) — flatten to leaves and
+      // flag `modern` so the evaluator preserves the output spelling.
+      const { args, modern } = bridgeFnArgs(ctx, (node as AnyNode).args);
+      return t2.funcCall(name, args, modern);
     }
     case 'Paren': {
       const inner = toComputedValue(ctx, (node as AnyNode).value);
@@ -407,9 +453,8 @@ function bridgeGuard(ctx: BridgeCtx, node: unknown): t2.GuardNode {
       return bridgeGuard(ctx, (node as AnyNode).value);
     case 'Call': {
       const name = mixinName(node as AnyNode);
-      const callSource = slice(ctx, node);
-      if (callSource === undefined) throw new UnsupportedShape('guard:call-span', name);
-      return { g: 'call', name, args: parseValue(innerArgsSource(callSource)) };
+      const { args } = bridgeFnArgs(ctx, (node as AnyNode).args);
+      return { g: 'call', name, args };
     }
     case 'DefaultGuard':
       return { g: 'default' };

@@ -90,19 +90,19 @@ export class Operation extends Node {
 }
 
 /**
- * A function call value, e.g. `lighten(blue, 10%)`. tree2 owns the STRUCTURE
- * (name + an argument value node) and emits the resolved argument source; the
- * value service performs the actual call (arithmetic/color math) and returns
- * the computed bytes. `args` is a single value node whose serialized bytes are
- * the (variable-resolved) inner argument source — this keeps arbitrary argument
- * separators (`,`, space, `/`) byte-faithful without tree2 modeling every list
- * shape, while still resolving `@var` references through scope before the call.
+ * A function call value, e.g. `lighten(blue, 10%)`. [R2] tree2 owns the STRUCTURE
+ * (name + a MODELED argument list) so the evaluator can bind TYPED params. Each
+ * arg is an independent value node (folded bottom-up to a typed value). `modern`
+ * marks CSS Color-4 modern syntax (`rgb(0 128 255 / 50%)`) — space/slash
+ * separators — vs the legacy comma form, so the evaluator preserves the output
+ * spelling.
  */
 export class FunctionCall extends Node {
   readonly kind = Kind.FunctionCall as const;
   constructor(
     readonly name: string,
-    readonly args: ValueNode,
+    readonly args: ValueNode[],
+    readonly modern: boolean = false,
   ) {
     super();
   }
@@ -380,8 +380,8 @@ export const varRef = (name: string): VarRef => new VarRef(name);
 export const concat = (parts: ValueNode[]): Concat => new Concat(parts);
 export const operation = (operator: string, left: ValueNode, right: ValueNode): Operation =>
   new Operation(operator, left, right);
-export const funcCall = (name: string, args: ValueNode): FunctionCall =>
-  new FunctionCall(name, args);
+export const funcCall = (name: string, args: ValueNode[], modern = false): FunctionCall =>
+  new FunctionCall(name, args, modern);
 export const paren = (inner: ValueNode): Paren => new Paren(inner);
 export const varDecl = (name: string, value: ValueNode): VarDeclaration =>
   new VarDeclaration(name, value);

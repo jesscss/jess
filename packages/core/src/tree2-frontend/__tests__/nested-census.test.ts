@@ -4,7 +4,7 @@ import * as path from 'path';
 import { parseLessFn } from '@jesscss/less-parser';
 import { serialize } from '../../tree2/index.js';
 import { bridgeToTree2, UnsupportedShape } from '../bridge.js';
-import { buildValueService } from '../value-service.js';
+import { buildEvaluator } from '../value-eval.js';
 import { renderRealOracle, renderRealOracleNested } from '../oracle.js';
 
 /**
@@ -59,14 +59,14 @@ describe('R0 — nested corpus census', () => {
       bridged.push(rel);
       let service;
       try {
-        service = await buildValueService(tree2Root);
+        evaluator = buildEvaluator();
       } catch {
         continue;
       }
       // FLAT
       let flatPass = false;
       try {
-        const t2 = serialize(tree2Root, { valueService: service }).css;
+        const t2 = (await serialize(tree2Root, { evaluator })).css;
         const orc = await renderRealOracle(parseLessFn(src).tree);
         flatPass = t2 === orc;
       } catch {
@@ -75,7 +75,7 @@ describe('R0 — nested corpus census', () => {
       // NESTED
       let nestedPass = false;
       try {
-        const t2 = serialize(tree2Root, { valueService: service, collapseNesting: false }).css;
+        const t2 = (await serialize(tree2Root, { evaluator, collapseNesting: false })).css;
         const orc = await renderRealOracleNested(parseLessFn(src).tree);
         nestedPass = t2 === orc;
         if (!nestedPass) nestedDiffs.push(rel);
