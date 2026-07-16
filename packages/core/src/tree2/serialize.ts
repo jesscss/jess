@@ -553,6 +553,19 @@ function ownStrings(list: SelectorList, frame: Frame | null, e: EvalCtx): string
   return out;
 }
 
+/** [atrule-bubbling] Flat-mode own selectors at a ROOT context (no parent): like
+ * `ownStrings`, but a `&` with no enclosing parent resolves to EMPTY (Less drops
+ * a parentless ampersand), so `.outOfMedia &` at the top of a bubbled at-rule
+ * becomes `.outOfMedia`. Non-ampersand selectors keep the fast canonical path. */
+function rootStrings(list: SelectorList, frame: Frame | null, e: EvalCtx): string[] {
+  const out: string[] = [];
+  for (const c of list.selectors) {
+    if (c.hasAmpersand) out.push(resolveComplex(c, frame, e).split('&').join('').trim());
+    else out.push(resolveComplex(c, frame, e));
+  }
+  return out;
+}
+
 /* ------------------------------------------------------------- emit engine */
 
 interface Emit extends EvalCtx {
@@ -734,7 +747,7 @@ export function serialize(root: Root, options?: SerializeOptions): SerializeRetu
 
 function flatten(rule: Rule, parent: string[] | null, frame: Frame, e: Emit): void {
   const rawComposed =
-    parent === null ? ownStrings(rule.selector, frame, e) : compose(parent, rule.selector, frame, e);
+    parent === null ? rootStrings(rule.selector, frame, e) : compose(parent, rule.selector, frame, e);
   // [extend] the rule's HEADER uses its fully-extended composed branches;
   // children still compose against the RAW composed selector and extend
   // independently (the composed model needs no parent-child override). Absent an
@@ -787,12 +800,14 @@ function walkBody(
       case Kind.DetachedCall:
         expandDetachedCall(node, composed, frame, group, flush, e);
         break;
-      // [atrule] at-rule nested directly inside a ruleset body. Full v5 bubbling
-      // (hoist the at-rule to root, move the selector inside) is a deferred rung;
-      // the bridge rejects this shape, so this is a best-effort fallback only.
+      // [atrule-bubbling] an at-rule nested inside a ruleset body PROJECTS to this
+      // block level (flat mode already emits everything at `e.depth`), carrying the
+      // enclosing composed selector as its body context so a bubbleable at-rule
+      // wraps the ruleset's selector inside. The decl group flushes first so the
+      // at-rule sits after the ruleset's own block, matching Less's bubbling order.
       case Kind.AtRuleBlock:
         flush();
-        emitAtRuleBlock(node, frame, e);
+        emitAtRuleBlock(node, frame, e, composed);
         break;
       case Kind.AtRuleStatement:
         flush();
@@ -1139,12 +1154,40 @@ function emitRawInline(node: RawInline, e: Emit): void {
 }
 
 /**
- * A block at-rule: `@name prelude { …body }`. The body is a fresh nesting
- * context (parent selector resets to none) whose direct declarations emit one
- * level in and whose nested rulesets/at-rules descend a further level. An at-rule
- * whose body renders empty is dropped entirely (header + braces), matching v5.
+ * [atrule-bubbling] Conditional-group at-rules whose bodies participate in
+ * selector nesting: when such an at-rule is bubbled OUT of a ruleset, the
+ * enclosing composed selector PROPAGATES inside — direct declarations wrap in a
+ * ruleset with that selector and nested rulesets compose against it. Every other
+ * (directive) at-rule — `@font-face`, `@keyframes`, `@page`, `@counter-style`,
+ * `@property`, `@viewport`, `@font-feature-values`, … — bubbles to the same
+ * level but does NOT take a selector context (its declarations / keyframe
+ * selectors stay bare). Matches Less's media/atrule bubbling.
  */
-function emitAtRuleBlock(node: AtRuleBlock, frame: Frame, e: Emit): void {
+const BUBBLEABLE_ATRULES: ReadonlySet<string> = new Set([
+  '@media',
+  '@supports',
+  '@document',
+  '@-moz-document',
+  '@container',
+  '@layer',
+  '@scope',
+  '@starting-style',
+]);
+function isBubbleable(name: string): boolean {
+  return BUBBLEABLE_ATRULES.has(name.toLowerCase());
+}
+
+/**
+ * A block at-rule: `@name prelude { …body }`, emitted at the current block depth.
+ *
+ * [atrule-bubbling] `ctx` is the enclosing composed selector context this at-rule
+ * bubbled out of (null / empty at document root or directly inside another
+ * at-rule). For a bubbleable (conditional-group) at-rule the body PROJECTS that
+ * context inside (see `emitBubbleBody`); for a directive at-rule the body is a
+ * plain declaration/keyframe block (`emitAtRuleBody`) and `ctx` is ignored. An
+ * at-rule whose body renders empty is dropped entirely (header + braces).
+ */
+function emitAtRuleBlock(node: AtRuleBlock, frame: Frame, e: Emit, ctx: string[] | null = null): void {
   const markChunks = e.chunks.length;
   const markOff = e.off;
   const markPos = e.positions ? e.positions.length : 0;
@@ -1167,7 +1210,14 @@ function emitAtRuleBlock(node: AtRuleBlock, frame: Frame, e: Emit): void {
     vars: collectVars(node.body),
     stmts: node.body,
   };
-  emitAtRuleBody(node.body, bodyFrame, e);
+  if (isBubbleable(node.name)) {
+    // A non-empty selector context propagates inside; null/empty keeps the
+    // top-level shape (bare direct decls) but still bubbles nested at-rules out
+    // of the body's rulesets.
+    emitBubbleBody(node.body, ctx && ctx.length > 0 ? ctx : null, bodyFrame, e);
+  } else {
+    emitAtRuleBody(node.body, bodyFrame, e);
+  }
   if (e.chunks.length === afterHeader) {
     // Nothing emitted: drop the whole at-rule (rewind chunks/offset/positions).
     e.chunks.length = markChunks;
@@ -1228,6 +1278,75 @@ function emitAtRuleBody(statements: Statement[], frame: Frame, e: Emit): void {
       case Kind.RawInline:
         flushDirect();
         emitRawInline(node, e);
+        break;
+      case Kind.MixinDef:
+      case Kind.VarDeclaration:
+        break;
+    }
+  }
+  flushDirect();
+}
+
+/**
+ * [atrule-bubbling] Emit a bubbleable (conditional-group) at-rule body, PROJECTING
+ * the enclosing selector context `ctx` inside per the spine-is-projection
+ * principle (no tree mutation):
+ *   - `ctx !== null`  — the at-rule bubbled out of a ruleset: consecutive direct
+ *     declarations wrap in a `ctx { … }` block, and a nested ruleset composes
+ *     against `ctx` (so `.b &` under `.a` → `.b .a`). Everything sits one block
+ *     level in from the at-rule header.
+ *   - `ctx === null`  — a top-level (or directly at-rule-nested) bubbleable
+ *     at-rule: direct declarations stay bare and nested rulesets keep their own
+ *     selectors — byte-identical to `emitAtRuleBody`.
+ * In BOTH cases a further-nested at-rule bubbles: one inside a nested ruleset
+ * carries that ruleset's composed selector as its context (via `walkBody`); one
+ * directly inside this body inherits `ctx` unchanged.
+ */
+function emitBubbleBody(statements: Statement[], ctx: string[] | null, frame: Frame, e: Emit): void {
+  const group: Leaf[] = [];
+  const flushDirect = (): void => {
+    if (group.length === 0) return;
+    if (ctx !== null) {
+      // Wrap the direct declarations in the propagated selector context.
+      e.depth++;
+      flushBlock(ctx, group, e);
+      e.depth--;
+    } else if (groupHasMerge(group)) {
+      mergeFold(group, e, INDENT.repeat(e.depth + 1));
+    } else {
+      for (const leaf of group) emitLeaf(leaf, e);
+    }
+    group.length = 0;
+  };
+  for (const node of statements) {
+    switch (node.kind) {
+      case Kind.Declaration:
+      case Kind.Comment:
+        group.push({ node, frame });
+        break;
+      case Kind.Rule:
+        flushDirect();
+        e.depth++;
+        flatten(node, ctx, frame, e);
+        e.depth--;
+        break;
+      case Kind.AtRuleBlock:
+        flushDirect();
+        e.depth++;
+        emitAtRuleBlock(node, frame, e, ctx); // directly-nested at-rule inherits ctx
+        e.depth--;
+        break;
+      case Kind.AtRuleStatement:
+        flushDirect();
+        e.depth++;
+        emitAtRuleStatement(node, e);
+        e.depth--;
+        break;
+      case Kind.MixinCall:
+        expandCall(node, ctx, frame, group, flushDirect, e);
+        break;
+      case Kind.DetachedCall:
+        expandDetachedCall(node, ctx, frame, group, flushDirect, e);
         break;
       case Kind.MixinDef:
       case Kind.VarDeclaration:
