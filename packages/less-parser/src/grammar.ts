@@ -535,7 +535,7 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   // arithmetic. @see https://drafts.csswg.org/css-syntax/#urange-syntax
   const UnicodeRange = node(
     regex(/[Uu]\+[0-9A-Fa-f?]{1,6}(?:-[0-9A-Fa-f]{1,6})?/));
-  const value = choice(g.InterpValue, g.Reference, g.UnicodeRange, g.numeric, g.NsAccessor, g.Color, g.NamedColor, g.Url, g.CalcCall, g.FormatCall, g.Call, g.EscapedValue, g.GluedParen, g.Paren, g.SquareParen, g.Quoted, g.anyValue);
+  const value = choice(g.InterpValue, g.Reference, g.UnicodeRange, g.numeric, g.NsAccessor, g.Color, g.NamedColor, g.Url, g.FormatCall, g.Call, g.EscapedValue, g.GluedParen, g.Paren, g.SquareParen, g.Quoted, g.anyValue);
   // ── Math expressions — precedence in the grammar (port of expressionSum /
   // expressionProduct). `* / %` bind tighter than `+ -`; left-associative. The
   // `collapse` option makes a single-operand level pass its operand straight
@@ -757,9 +757,16 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   const calcSequence = oneOrMore(calcSum);
   const calcList = sequence(calcSequence, many(sequence(literal(','), calcSequence)));
   const calcBody = sequence(optional(sequence(calcList, many(sequence(literal(';'), optional(calcList))))), expect(literal(')')));
-  // `CalcCall` (calc(…)) and the plain value-position `Paren` come from the shared
-  // `parenRules` fragment (spread below); they defer to g.calcBody / g.parenBody here.
-  const Call = node(sequence(ident, literal('('), functionCallArgs));
+  // `calc(…)` OR a generic function call as ONE node, so a generic call no longer
+  // pays a separate `calc(` node frame ahead of it in the value choice. The calc arm
+  // (its body is the folded math grammar) is tried first so `calc(` routes to math;
+  // any other ident takes the generic call-args tail. Built identically to the old
+  // inherited `CalcCall` / `Call` (same `Call` node type + children per arm). The
+  // plain value-position `Paren` still comes from the shared fragment (g.parenBody).
+  const Call = node(choice(
+    sequence(regex(/calc(?=\()/i), literal('('), g.calcBody),
+    sequence(ident, literal('('), functionCallArgs)
+  ));
   // A bare value paren `( … )`. Defined locally (not inherited from CSS) so the `(`→body
   // trivia uses Less `rw`, which skips `//` line comments — CSS `rw` does not, so a `//`
   // right after `(` (e.g. `(@a * // c\n @b)`) would otherwise not be consumed as trivia.

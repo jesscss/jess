@@ -241,7 +241,7 @@ export const cssGrammar = rules({ trivia: rw }, (g: any) => {
    * A single value component.
    * @see https://www.w3.org/TR/css-values-4/#component-types
    */
-  const value = choice(g.numeric, g.Color, g.Url, g.CalcCall, g.Call, g.Paren, g.Quoted, g.anyValue);
+  const value = choice(g.numeric, g.Color, g.Url, g.Call, g.Paren, g.Quoted, g.anyValue);
   // ── Math expressions ───────────────────────────────────────────────────────
   // CSS does arithmetic ONLY inside `calc()` (and the parens nested in it), so these
   // rules are reached only via `CalcCall` and the calc-nested `calcParen`, never the
@@ -258,7 +258,7 @@ export const cssGrammar = rules({ trivia: rw }, (g: any) => {
   // general permissive `Paren`. Everything else matches the ordinary value set.
   /** A math-context parenthesized sub-expression (folds). @see https://www.w3.org/TR/css-values-4/#calc-syntax */
   const calcParen = node('Paren', sequence(literal('('), g.mathSum, expect(literal(')'))));
-  const calcValue = choice(g.numeric, g.Color, g.Url, g.CalcCall, g.Call, calcParen, g.Quoted, g.anyValue);
+  const calcValue = choice(g.numeric, g.Color, g.Url, g.Call, calcParen, g.Quoted, g.anyValue);
   /** A `* / %` product level (left-assoc), folded into an Operation. @see https://www.w3.org/TR/css-values-4/#calc-syntax */
   const mathProduct = node('Operation',
     sequence(calcValue, many(sequence(prodOp, calcValue))), undefined, { collapse: true });
@@ -293,12 +293,20 @@ export const cssGrammar = rules({ trivia: rw }, (g: any) => {
    */
   const parenBody = sequence(optional(g.valueList), literal(')'));
   /**
-   * A function call OR a bare ident, parsing the ident exactly once: the call-args
-   * tail is taken only when `(` follows. `_buildCall` returns a Call node when args
-   * are present, otherwise the bare ident string.
+   * `calc(…)` OR a generic function call OR a bare ident, as ONE node so a generic
+   * call/ident no longer pays a separate `calc(` node frame ahead of it. The calc
+   * arm (its body is ONE math expression — the only place plain CSS folds operators)
+   * is tried first so `calc(` routes to math; everything else parses the ident once
+   * and takes the call-args tail only when `(` follows. `_buildCall` returns a Call
+   * node when args are present, otherwise the bare ident string — identical for both
+   * arms (calc built exactly as the old `CalcCall` did).
    * @see https://www.w3.org/TR/css-values-4/#functional-notation
+   * @see https://developer.mozilla.org/en-US/docs/Web/CSS/calc
    */
-  const Call = node(sequence(ident, optional(sequence(literal('('), g.parenBody))));
+  const Call = node(choice(
+    sequence(regex(/calc(?=\()/i), literal('('), g.calcBody),
+    sequence(ident, optional(sequence(literal('('), g.parenBody)))
+  ));
   /**
    * `calc(…)` body — ONE math expression (the only place plain CSS folds
    * operators). Matched before the generic `Call` so `calc(` routes here.
