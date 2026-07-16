@@ -28,6 +28,7 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { parseLessFn } from '@jesscss/less-parser';
 import type * as t2 from '../tree2/index.js';
 import { Kind } from '../tree2/index.js';
 
@@ -37,10 +38,18 @@ export interface ImportState {
   readonly seen: Set<string>;
   /** Guard against an import cycle (a file importing itself, directly or not). */
   readonly stack: string[];
+  /**
+   * [import:specifier] Per-file cache of the simple (literal) top-level variable
+   * bindings reachable from a file — its own `@var: "literal"` decls plus those
+   * of the files it plainly imports (transitively). Used to resolve interpolated
+   * import PATHS (`@import "@{theme}.less"`) at bridge time. Keyed by absolute
+   * path; the value is the file's own+descendant literal-variable scope.
+   */
+  readonly varScopeCache: Map<string, ReadonlyMap<string, string>>;
 }
 
 export function createImportState(): ImportState {
-  return { seen: new Set(), stack: [] };
+  return { seen: new Set(), stack: [], varScopeCache: new Map() };
 }
 
 /** A node the bridge reads structurally; mirrors bridge.ts's local shape. */
@@ -68,6 +77,147 @@ function specifierOf(node: AnyNode): string | null {
   const value = (p as AnyNode).value;
   if (typeof value === 'string') return value;
   return null;
+}
+
+/**
+ * [import:specifier] The `path`'s inner `Interpolated` template, when the import
+ * specifier is a variable-interpolated string (`@import "@{theme}/x.less"`). The
+ * parser wraps the template in a `Quoted` whose `.value` is an `Interpolated`
+ * (`source` with `%%` placeholders + `replacements` — each a variable `Reference`
+ * with a `.key`). A plain string specifier has no template (returns null).
+ */
+function interpTemplateOf(node: AnyNode): AnyNode | null {
+  const p = node.path;
+  if (!isNode(p)) return null;
+  const value = (p as AnyNode).value;
+  if (isNode(value) && nodeType(value) === 'Interpolated') return value as AnyNode;
+  return null;
+}
+
+/** The variable name a template `replacement` (a `Reference`) interpolates. */
+function replacementKey(rep: unknown): string | null {
+  if (isNode(rep) && typeof (rep as AnyNode).key === 'string') return (rep as AnyNode).key as string;
+  return null;
+}
+
+/**
+ * [import:specifier] Substitute an `Interpolated` path template's `%%` slots with
+ * the string values of its variable replacements, resolved from `vars`. Returns
+ * the concrete specifier, or null if any referenced variable is not a known
+ * literal (that import can't be resolved at bridge time → the caller rejects it).
+ */
+function fillInterpTemplate(tpl: AnyNode, vars: ReadonlyMap<string, string>): string | null {
+  const source = typeof tpl.source === 'string' ? tpl.source : '';
+  const replacements = Array.isArray(tpl.replacements) ? tpl.replacements : [];
+  const segs = source.split('%%');
+  let out = '';
+  for (let i = 0; i < segs.length; i++) {
+    out += segs[i] ?? '';
+    if (i < replacements.length) {
+      const key = replacementKey(replacements[i]);
+      if (key === null) return null;
+      const v = vars.get(key);
+      if (v === undefined) return null;
+      out += v;
+    }
+  }
+  return out;
+}
+
+/** The literal string a simple `VarDeclaration` value carries, else null. */
+function literalVarValue(value: unknown): string | null {
+  if (typeof value === 'string') return value;
+  if (!isNode(value)) return null;
+  const v = value as AnyNode;
+  const t = nodeType(v);
+  // A `Quoted` literal (`@x: "s"`) contributes its unquoted text (Less strips the
+  // quotes when a variable is interpolated into a path).
+  if (t === 'Quoted' && typeof v.value === 'string') return v.value;
+  // A numeric literal (`@x: 3`) with no unit interpolates as its bare number.
+  if (t === 'Num' && typeof v.number === 'number' && v.unit == null) return String(v.number);
+  return null;
+}
+
+/**
+ * [import:specifier] Build (memoised) the literal top-level variable scope
+ * reachable from `filePath`: its own `@var: <literal>` declarations plus those of
+ * every file it PLAINLY imports (a non-interpolated, non-CSS, resolvable path),
+ * transitively. This mirrors Less's lazy cross-file variable scope for the narrow
+ * case an interpolated import PATH needs — a value known before render. Files that
+ * fail to read/parse, and non-literal values, simply don't contribute.
+ */
+function collectFileVars(
+  filePath: string,
+  state: ImportState,
+  visiting: Set<string>,
+): ReadonlyMap<string, string> {
+  const cached = state.varScopeCache.get(filePath);
+  if (cached) return cached;
+  if (visiting.has(filePath)) return new Map();
+  visiting.add(filePath);
+
+  const vars = new Map<string, string>();
+  let rules: unknown[] = [];
+  try {
+    const parsed = parseLessFn(fs.readFileSync(filePath, 'utf8'));
+    if (parsed.errors.length === 0 && isNode(parsed.tree) && Array.isArray((parsed.tree as AnyNode).rules)) {
+      rules = (parsed.tree as AnyNode).rules as unknown[];
+    }
+  } catch {
+    /* unreadable/unparsable file contributes no scope */
+  }
+
+  const fromDir = path.dirname(filePath);
+  const nestedImports: string[] = [];
+  for (const r of rules) {
+    if (!isNode(r)) continue;
+    const t = nodeType(r);
+    if (t === 'VarDeclaration' && typeof (r as AnyNode).name === 'string') {
+      const lit = literalVarValue((r as AnyNode).value);
+      if (lit !== null && !vars.has((r as AnyNode).name as string)) {
+        vars.set((r as AnyNode).name as string, lit);
+      }
+    } else if (t === 'StyleImport') {
+      // Only descend into PLAIN, statically-resolvable imports for scope; an
+      // interpolated child import can't be followed without a value it may not
+      // yet have, and CSS-passthrough imports contribute no Less variables.
+      const spec = specifierOf(r as AnyNode);
+      if (spec === null) continue;
+      const flags = readFlags(r as AnyNode);
+      if (flags.inline || isCssPassthrough(spec, flags)) continue;
+      const child = resolveLessPath(spec, fromDir);
+      if (child !== null) nestedImports.push(child);
+    }
+  }
+  for (const child of nestedImports) {
+    for (const [k, v] of collectFileVars(child, state, visiting)) {
+      if (!vars.has(k)) vars.set(k, v);
+    }
+  }
+
+  visiting.delete(filePath);
+  state.varScopeCache.set(filePath, vars);
+  return vars;
+}
+
+/**
+ * [import:specifier] The literal variable scope visible to an interpolated import
+ * in `fromFilePath`: the file's own+descendant scope unioned with each ancestor
+ * file's (Less hoists imported variables into the importing scope, so an inner
+ * file sees its importers' definitions).
+ */
+function importScopeVars(
+  fromFilePath: string | undefined,
+  state: ImportState,
+): ReadonlyMap<string, string> {
+  const merged = new Map<string, string>();
+  const files = fromFilePath ? [fromFilePath, ...state.stack] : [...state.stack];
+  for (const f of files) {
+    for (const [k, v] of collectFileVars(f, state, new Set())) {
+      if (!merged.has(k)) merged.set(k, v);
+    }
+  }
+  return merged;
 }
 
 interface ImportFlags {
@@ -139,7 +289,15 @@ export function resolveImportStatements(
   }
   if (node.with !== undefined && node.with !== null) unsupported('import:with', 'configured import');
 
-  const spec = specifierOf(node);
+  // [import:specifier] A plain string specifier is read directly; a variable-
+  // interpolated one (`@import "@{theme}.less"`) is filled from the literal
+  // variable scope reachable at bridge time. An interpolation that references a
+  // value not statically known is rejected (counted, never mis-resolved).
+  let spec = specifierOf(node);
+  if (spec === null) {
+    const tpl = interpTemplateOf(node);
+    if (tpl !== null) spec = fillInterpTemplate(tpl, importScopeVars(fromFilePath, state));
+  }
   if (spec === null) unsupported('import:specifier', nodeType(node.path));
 
   const flags = readFlags(node);

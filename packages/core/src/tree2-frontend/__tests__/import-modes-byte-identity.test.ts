@@ -48,6 +48,24 @@ describe('tree2 @import — import-mode byte-identity (authored fixtures)', () =
     expect(t2css).toContain('width: 42px');
   });
 
+  it('(specifier): a variable-interpolated path resolves + inlines', async () => {
+    const file = `${DIR}/interp-main.less`;
+    const t2css = await renderTree2File(file);
+    expect(t2css).toBe(await renderImportOracle(file));
+    // The `@{theme}.less` path resolved to interp-target.less and inlined.
+    expect(t2css).toContain('from: interpolated-import');
+  });
+
+  it('(specifier): interpolation vars hoisted from a later plain import resolve', async () => {
+    // `@{prefix}-@{suffix}` are defined in a file imported AFTER the interpolated
+    // import — Less hoists imported variables into scope, so the path still
+    // resolves. Exercises the transitive plain-import variable collection.
+    const file = `${DIR}/interp-cross-main.less`;
+    const t2css = await renderTree2File(file);
+    expect(t2css).toBe(await renderImportOracle(file));
+    expect(t2css).toContain('from: interpolated-import');
+  });
+
   // DEFERRED: `@import (inline)` emits the target file's RAW bytes verbatim (no
   // parse). tree2 has no raw-literal statement node yet, and adding one is a
   // serialize-layer change outside the import-resolution boundary, so the bridge
