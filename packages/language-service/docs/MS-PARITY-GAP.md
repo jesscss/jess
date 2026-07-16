@@ -154,13 +154,13 @@ Each item is one line of implementation sketch. Ordered by the user's priority.
 
 **P1 — feels-like-real-support**
 
-6. **Built-in Sass module + function catalog.** Ship a static dataset of the 7
+6. ✅ **DONE (namespace member completions: math./color./string./list./map./meta./selector.).** **Built-in Sass module + function catalog.** Ship a static dataset of the 7
    `sass:*` modules and their members (+ Less built-ins) and complete them; also
    complete namespaced `ns.$x` / `ns.fn()` after `@use`.
 7. ✅ **DONE (@media features/types/operators + @keyframes from/to).** **At-rule body completions** — `@media` feature names/values, `@supports`
    conditions, `@keyframes from/to`, `@font-face` descriptors. Data-driven off
    web-custom-data at-rule `values`.
-8. **Snippet completions** — emit `InsertTextFormat.Snippet` for at-rules and
+8. ✅ **DONE (function completions insert as `name($1)` snippets).** **Snippet completions** — emit `InsertTextFormat.Snippet` for at-rules and
    function calls (`@media $1 { $0 }`), instead of plain `textEdit`.
 9. ✅ **DONE (6 configurable CST rules: empty-rules, unknown-property,
     unknown-at-rule, duplicate-property, hex-color-length, zero-units).** **Lint rules** — port the high-value subset first: `emptyRules`,

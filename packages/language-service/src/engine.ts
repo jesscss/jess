@@ -21,6 +21,7 @@ import { cstLintDiagnostics, LINT_CODES } from './cst-lint.js';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import {
   CompletionItem,
+  InsertTextFormat,
   CompletionItemKind,
   CompletionList,
   Diagnostic,
@@ -419,6 +420,16 @@ const COLOR_FUNCTIONS = ['rgb()', 'rgba()', 'hsl()', 'hsla()', 'hwb()', 'lab()',
 // @media prelude vocabulary (feature names + types + logical operators).
 const MEDIA_FEATURES = ['width', 'min-width', 'max-width', 'height', 'min-height', 'max-height', 'aspect-ratio', 'orientation', 'resolution', 'min-resolution', 'max-resolution', 'prefers-color-scheme', 'prefers-reduced-motion', 'prefers-contrast', 'hover', 'any-hover', 'pointer', 'any-pointer', 'display-mode', 'color', 'color-gamut', 'forced-colors', 'scripting'];
 const MEDIA_PRELUDE = [...MEDIA_FEATURES, 'screen', 'print', 'all', 'speech', 'and', 'or', 'not', 'only'];
+// Built-in Sass modules (scss/jess) and their members — for `math.<x>` completions.
+const SASS_MODULES: Record<string, string[]> = {
+  math: ['abs()', 'ceil()', 'floor()', 'round()', 'div()', 'max()', 'min()', 'percentage()', 'random()', 'clamp()', 'pow()', 'sqrt()', 'hypot()', 'log()', 'sin()', 'cos()', 'tan()', 'compatible()', 'is-unitless()', 'unit()', '$pi', '$e'],
+  color: ['adjust()', 'change()', 'scale()', 'red()', 'green()', 'blue()', 'hue()', 'saturation()', 'lightness()', 'alpha()', 'mix()', 'complement()', 'invert()', 'grayscale()', 'ie-hex-str()'],
+  string: ['quote()', 'unquote()', 'index()', 'insert()', 'length()', 'slice()', 'to-upper-case()', 'to-lower-case()', 'unique-id()', 'split()'],
+  list: ['append()', 'index()', 'join()', 'length()', 'nth()', 'set-nth()', 'separator()', 'is-bracketed()', 'slash()', 'zip()'],
+  map: ['get()', 'has-key()', 'keys()', 'merge()', 'remove()', 'values()', 'set()', 'deep-merge()', 'deep-remove()'],
+  meta: ['type-of()', 'inspect()', 'keywords()', 'call()', 'content-exists()', 'feature-exists()', 'function-exists()', 'global-variable-exists()', 'mixin-exists()', 'variable-exists()', 'module-variables()', 'module-functions()', 'get-function()', 'get-mixin()', 'apply()', 'accepts-content()', 'calc-name()', 'calc-args()'],
+  selector: ['append()', 'extend()', 'is-superselector()', 'nest()', 'parse()', 'replace()', 'simple-selectors()', 'unify()']
+};
 const TIMING_FUNCTIONS = ['ease', 'linear', 'ease-in', 'ease-out', 'ease-in-out', 'step-start', 'step-end', 'cubic-bezier()', 'steps()'];
 // Units to append to a numeric prefix, keyed by the property's restriction kind.
 const UNITS_BY_RESTRICTION: Record<string, string[]> = {
@@ -448,7 +459,13 @@ function buildValueCompletions(propName: string, prefix: string, replaceRange: R
       return;
     }
     seen.add(lower);
-    const item: CompletionItem = { label, kind, textEdit: TextEdit.replace(replaceRange, label) };
+    // A `foo()` completion inserts as a snippet placing the cursor inside the parens.
+    const isFn = label.endsWith('()');
+    const newText = isFn ? `${label.slice(0, -1)}$1)` : label;
+    const item: CompletionItem = { label, kind, textEdit: TextEdit.replace(replaceRange, newText) };
+    if (isFn) {
+      item.insertTextFormat = InsertTextFormat.Snippet;
+    }
     if (documentation !== undefined) {
       item.documentation = documentation;
     }
@@ -1038,6 +1055,34 @@ export function createEngine(): JessLanguageServiceEngine {
         }
         if (items.length > 0) {
           return { isIncomplete: false, items };
+        }
+      }
+
+      // 2e) Sass built-in module members: `math.<x>` (scss/jess).
+      if (scssLike) {
+        const nsMatch = /^(math|color|string|list|map|meta|selector)\.([\w-]*)$/.exec(currentWord);
+        if (nsMatch) {
+          const ns = nsMatch[1]!;
+          const memberPrefix = nsMatch[2]!.toLowerCase();
+          for (const member of SASS_MODULES[ns] ?? []) {
+            if (memberPrefix && !member.toLowerCase().startsWith(memberPrefix)) {
+              continue;
+            }
+            const full = `${ns}.${member}`;
+            const isFn = member.endsWith('()');
+            const item: CompletionItem = {
+              label: full,
+              kind: isFn ? CompletionItemKind.Function : CompletionItemKind.Variable,
+              textEdit: TextEdit.replace(replaceRange, isFn ? `${full.slice(0, -1)}$1)` : full)
+            };
+            if (isFn) {
+              item.insertTextFormat = InsertTextFormat.Snippet;
+            }
+            items.push(item);
+          }
+          if (items.length > 0) {
+            return { isIncomplete: false, items };
+          }
         }
       }
 

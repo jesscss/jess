@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { CompletionItemKind } from 'vscode-languageserver-types';
+import { CompletionItemKind, InsertTextFormat } from 'vscode-languageserver-types';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { createEngine } from '../engine.js';
 
 // `|` marks the caret; it's stripped before parsing and its index is the position.
 function completeAt(lang: string, contentWithCaret: string): string[] {
-  const ext = lang === 'scss' ? 'scss' : lang === 'less' ? 'less' : 'css';
+  const ext = lang === 'scss' ? 'scss' : lang === 'less' ? 'less' : lang === 'jess' ? 'jess' : 'css';
   const caret = contentWithCaret.indexOf('|');
   const text = contentWithCaret.replace('|', '');
   const doc = TextDocument.create(`file:///t.${ext}`, lang, 1, text);
@@ -100,5 +100,27 @@ describe('enhanced completions (MS-parity: values / pseudo / mixin / !important)
   it('@keyframes body completes from / to', () => {
     const labels = completeAt('css', '@keyframes spin { fr| }');
     expect(labels).toContain('from');
+  });
+
+  it('function value completions insert as snippets (cursor inside parens)', () => {
+    const caret = '.a { color: rgb| }'.indexOf('|');
+    const text = '.a { color: rgb| }'.replace('|', '');
+    const doc = TextDocument.create('file:///t.css', 'css', 1, text);
+    const engine = createEngine();
+    engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+    const rgb = engine.getCompletions(doc.uri, doc.positionAt(caret)).items.find(i => (typeof i.label === 'string' ? i.label : i.label.label) === 'rgb()');
+    expect(rgb).toBeDefined();
+    expect(rgb!.insertTextFormat).toBe(InsertTextFormat.Snippet);
+    expect(String(rgb!.textEdit && 'newText' in rgb!.textEdit ? rgb!.textEdit.newText : '')).toBe('rgb($1)');
+  });
+
+  it('SCSS sass module members complete after `math.`', () => {
+    const labels = completeAt('scss', '.a { width: math.di| }');
+    expect(labels).toContain('math.div()');
+  });
+
+  it('.jess also gets sass module member completions', () => {
+    const labels = completeAt('jess', '.a { width: math.| }');
+    expect(labels.some(l => l.startsWith('math.'))).toBe(true);
   });
 });
