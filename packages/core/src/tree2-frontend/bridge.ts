@@ -507,11 +507,77 @@ function buildMapAccessor(ctx: BridgeCtx, ref: AnyNode): t2.ValueNode {
   throw new UnsupportedShape('map:key', typeOf(key));
 }
 
+/**
+ * [E3] The source span of a parser Array (a space-separated arg group), spanning
+ * its first through last leaf. A nested `/`-separated `List` wrapper carries no
+ * own span, so descend its `.value` for the bounding offsets.
+ */
+function arraySpan(arr: readonly unknown[]): { start: number; end: number } | null {
+  let start = Infinity;
+  let end = -Infinity;
+  const visit = (x: unknown): void => {
+    if (Array.isArray(x)) {
+      x.forEach(visit);
+      return;
+    }
+    if (!isNode(x)) return;
+    const sp = sourceSpanOf(x);
+    if (sp) {
+      if (sp.start < start) start = sp.start;
+      if (sp.end > end) end = sp.end;
+      return;
+    }
+    const v = (x as AnyNode).value;
+    if (Array.isArray(v)) v.forEach(visit);
+  };
+  arr.forEach(visit);
+  return end >= start ? { start, end } : null;
+}
+
+/** [E3] `s` begins with `(` and ends with `)` AND that opening paren matches the
+ *  closing one (depth returns to 0 only at the final char) — a single wrap. */
+function isBalancedWrap(s: string): boolean {
+  let depth = 0;
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (c === '(') depth++;
+    else if (c === ')') {
+      depth--;
+      if (depth === 0 && i !== s.length - 1) return false;
+    }
+  }
+  return depth === 0;
+}
+
+/**
+ * [E3] A space-separated arg group (parser Array — a list / grid-track arg, e.g.
+ * `.m(a b c)` or `.grid(1fr 1fr / auto)`). Capture its source bytes verbatim so
+ * the bound param re-emits them faithfully — consistent with the raw-bytes
+ * fallback used for a single static/variable value.
+ *
+ * A `Keyword` element's source span carries the parser's parenthesis quirk (its
+ * span includes the call's own wrapping `(...)`); when such a keyword sits at the
+ * group's boundary the raw slice picks up those parens, so strip a single
+ * balanced outer pair. A space list itself never carries meaningful outer parens
+ * — a genuinely parenthesized value parses to a `Paren`/`Operation`, not an Array.
+ */
+function arrayValue(ctx: BridgeCtx, arr: readonly unknown[]): t2.ValueNode | null {
+  const span = arraySpan(arr);
+  if (span === null) return null;
+  let text = ctx.source.slice(span.start, span.end);
+  if (text.length >= 2 && text[0] === '(' && text[text.length - 1] === ')' && isBalancedWrap(text)) {
+    text = text.slice(1, -1);
+  }
+  return parseValue(text.trim());
+}
+
 /** An operand of an operation / guard / mixin arg: computed expr or raw leaf. */
 function toOperand(ctx: BridgeCtx, node: unknown): t2.ValueNode | null {
   const computed = toComputedValue(ctx, node);
   if (computed !== null) return computed;
   if (typeof node === 'string') return parseValue(node);
+  // [E3] a space-separated list arg (`.m(a b c)`) arrives as a bare Array.
+  if (Array.isArray(node)) return arrayValue(ctx, node);
   if (isNode(node)) {
     // [guards] A `Keyword` node's source span can include a wrapping `(...)`
     // (parser quirk for single mixin args); its `.value` is the clean text.

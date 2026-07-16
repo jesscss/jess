@@ -39,6 +39,11 @@ const inputs: Array<[string, string]> = [
   ['var-shadow', '@c: red;\n.a { @c: blue; color: @c; }\n'],
   ['var-mixin-arg', '.paint(@c) { color: @c; }\n@x: teal;\n.a { .paint(@x); }\n'],
   ['var-mixin-default', '.paint(@c: red) { color: @c; }\n.a { .paint(); }\n'],
+  // [E3] space-separated list args bind to a positional param and re-emit verbatim.
+  ['mixin-list-arg-keywords', '.m(@x) { transition: @x; }\n.a { .m(all 0.3s ease); }\n'],
+  ['mixin-list-arg-dims', '.grid(@x) { grid-template-columns: @x; }\n.a { .grid(1fr 1fr auto); }\n'],
+  ['mixin-list-arg-slash', '.grid(@x) { grid-template: @x; }\n.a { .grid(1fr 1fr / auto); }\n'],
+  ['mixin-multi-list-args', '.m(@a, @b) { margin: @a; padding: @b; }\n.a { .m(1px 2px, 3px 4px); }\n'],
 ];
 
 describe('bridge byte-identity (constructed .less)', () => {
