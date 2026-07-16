@@ -235,6 +235,30 @@ function rawDeclValue(ctx: BridgeCtx, node: AnyNode): string {
 }
 
 /**
+ * [WS2] Raw value bytes of a `--custom: …;` CUSTOM-PROPERTY declaration, kept
+ * VERBATIM (Less v5 does NOT alter custom properties — they can carry any
+ * unknown token stream, functions/bare `@var` stay literal), with ONLY `@{…}`
+ * interpolation resolved. The serializer emits `name` + `: ` (colon + one
+ * space) + value, so one leading whitespace char is dropped from the captured
+ * bytes to keep the authored inner spacing byte-faithful; a whitespace-only
+ * value collapses to empty (`--x: ;`). Any inline `!important` stays in the
+ * bytes (verbatim), so no structured important flag is set.
+ */
+function customDeclValue(ctx: BridgeCtx, node: AnyNode): t2.ValueNode {
+  const declText = slice(ctx, node);
+  if (declText === undefined) throw new UnsupportedShape('custom-decl:no-span', String(node.name));
+  const body = declText.replace(/;\s*$/u, '');
+  const colon = body.indexOf(':');
+  if (colon < 0) throw new UnsupportedShape('custom-decl:no-colon', String(node.name));
+  let raw = body.slice(colon + 1);
+  if (raw.trim() === '') return t2.word('');
+  if (raw[0] === ' ' || raw[0] === '\t') raw = raw.slice(1);
+  // interpFromString resolves `@{…}` (value context, unquote) and returns a
+  // verbatim Word when no interpolation is present (bare `@var`/fns literal).
+  return interpFromString(raw, true);
+}
+
+/**
  * Tokenize static value bytes into a tree2 value, turning `@name` references
  * into `VarRef` nodes and leaving everything else literal. [R4] `@{name}`
  * interpolation tokens (before the bare-`@name` pass) yield an `Interp`; a bare
@@ -831,6 +855,20 @@ function toStatement(
       // (the structured flag re-emits it once at the end of the combined line).
       if (merge !== null && important) value = stripImportantBytes(value);
       return new t2.Declaration(name, value, merge, important);
+    }
+    // [WS2] a custom-property declaration (`--x: …;`). CustomDeclaration extends
+    // Declaration (same `name`/`value` source shape) but its value is kept
+    // VERBATIM (v5 leaves custom properties unaltered) with only `@{…}`
+    // interpolation resolved — no computed function/operation eval, bare `@var`
+    // stays literal, and inline `!important` rides along in the bytes.
+    case 'CustomDeclaration': {
+      const rawName = (node as AnyNode).name;
+      let name: string | t2.Interp;
+      if (typeof rawName === 'string') name = rawName;
+      else if (isNode(rawName) && typeOf(rawName) === 'Interpolated')
+        name = interpFromInterpolated(ctx, rawName as AnyNode, false);
+      else throw new UnsupportedShape('custom-decl:name', typeOf(rawName));
+      return new t2.Declaration(name, customDeclValue(ctx, node as AnyNode), null, false);
     }
     case 'VarDeclaration': {
       const name = (node as AnyNode).name;
