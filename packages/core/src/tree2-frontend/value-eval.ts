@@ -50,6 +50,28 @@ const HEX_RE = /^#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/;
 const NUM_RE = /^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?([a-zA-Z%]*)$/;
 const QUOTE_RE = /^(['"])([\s\S]*)\1$/;
 
+/**
+ * A single `calc(...)` wrapper: the capture group is its inner expression.
+ * Calc-keyword operands in this adapter are always singly wrapped (guard 1
+ * below fires before guard 2 whenever both sides are calc, and the
+ * unit-clash fallback wraps a single composed operation), so the greedy
+ * capture never mis-splits a composed `calc(a) + calc(b)`.
+ */
+const CALC_WRAP_RE = /^calc\(([\s\S]*)\)$/;
+
+/**
+ * If `bytes` is a `calc(...)` wrapper, return its inner expression; otherwise
+ * return `null`. Byte-level port of the legacy `Operation.unwrapCalcOperand`:
+ * CSS flattens nested calc, so a `calc(...)` operand composing into an outer
+ * operation has its inner expression spliced in directly, yielding one flat
+ * `calc(...)` rather than `calc(calc(...) op Y)`. A Paren-wrapped inner
+ * expression keeps its paren (`calc((a - b))` -> `(a - b)`).
+ */
+const calcInner = (bytes: string): string | null => {
+  const m = CALC_WRAP_RE.exec(bytes.trim());
+  return m ? m[1]! : null;
+};
+
 /* -------------------------------------------------------- fns registry */
 
 /** The named-function table (mirrors the less plugin registration). */
@@ -186,6 +208,25 @@ export function buildEvaluator(_options?: EvaluatorOptions): ValueEvaluator {
   /* ---- operators ---- */
   const operate = (op: string, left: ValueObj, right: ValueObj, modes: EvalModes): ValueObj => {
     ctx.options.unitMode = modes.unitMode;
+    // Guard 1: a `calc(...)` operand -> NESTED calc fallback (mirror the legacy
+    // `Operation.unwrapCalcOperand` + `createCalcFallback`). Splice the inner
+    // expression(s) directly so `calc(100% * 100%) * 2` composes to a flat
+    // `calc(100% * 100% * 2)`, never `calc(calc(100% * 100%) * 2)`.
+    const leftInner = left.kind === 'keyword' ? calcInner(left.bytes) : null;
+    const rightInner = right.kind === 'keyword' ? calcInner(right.bytes) : null;
+    if (leftInner !== null || rightInner !== null) {
+      const bytes = `calc(${leftInner ?? left.bytes} ${op} ${rightInner ?? right.bytes})`;
+      return { kind: 'keyword', text: bytes, bytes };
+    }
+    // Guard 2: an unoperable operand (a keyword / `Anonymous` whose `.operate`
+    // throws a plain `Error`, mirror `Operation.isUnoperable`) -> preserve
+    // source. The `typeof l.operate` check below can't catch this because
+    // `Anonymous` inherits a throwing base `operate`, and the plain `Error` it
+    // raises slips past the `TypeError`-only catch.
+    if (left.kind === 'keyword' || right.kind === 'keyword') {
+      const bytes = `${left.bytes} ${op} ${right.bytes}`;
+      return { kind: 'keyword', text: bytes, bytes };
+    }
     const l = toLegacy(left);
     const r = toLegacy(right);
     if (typeof l.operate !== 'function') {
