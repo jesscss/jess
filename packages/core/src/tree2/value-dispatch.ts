@@ -9,7 +9,7 @@
  *
  * HARD MODULE BOUNDARY: value domain + native fns only.
  */
-import type { ValueObj } from './value-eval.js';
+import type { List, ValueObj } from './value-eval.js';
 import type { FnSpec } from './native/types.js';
 import { NATIVE_FN_LIST } from './native/index.js';
 
@@ -37,11 +37,16 @@ function bind(name: string, spec: FnSpec, args: readonly ValueObj[]): ValueObj[]
 /** Whether a native Tier-A implementation exists for `name`. */
 export const hasNativeFn = (name: string): boolean => TABLE.has(name.toLowerCase());
 
-/** Dispatch a native Tier-A call by name over typed value args. */
-export function dispatchNative(name: string, args: readonly ValueObj[]): ValueObj {
+/**
+ * Dispatch a native Tier-A call by name over the typed arg `List`. A VARIADIC fn
+ * receives the whole `List` (items + separator) so a list / rest fn can recover
+ * the real elements; a positional fn binds `list.items` by kind as before.
+ */
+export function dispatchNative(name: string, list: List): ValueObj {
   const spec = TABLE.get(name.toLowerCase());
   if (!spec) throw new Error(`no native fn: ${name}`);
-  return spec.body(...bind(name, spec, args));
+  if (spec.variadic) return spec.body(list);
+  return spec.body(...bind(name, spec, list.items));
 }
 
 /** The set of natively-converted fn names. */

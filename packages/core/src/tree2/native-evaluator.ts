@@ -38,7 +38,7 @@ export function buildNativeEvaluator(): ValueEvaluator {
     nativeOperate(op, left, right, modes);
 
   const call = (name: string, args: ValueList, _modes: EvalModes): ValueObj => {
-    if (hasNativeFn(name)) return dispatchNative(name, args.items);
+    if (hasNativeFn(name)) return dispatchNative(name, args);
     // Unknown function: emit verbatim (byte-identical to the adapter).
     return makeKeyword(`${name}(${verbatimArgs(args)})`);
   };

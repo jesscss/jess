@@ -13,6 +13,11 @@ against that adapter (the oracle) in
   tree-shakes: a stylesheet that never calls `pow` must not ship `pow`.
 - **`math-helper.ts`** — the shared `mathHelper` kernel (`applyMath` + the
   `unaryMath` spec builder) most number/unit math fns reduce to a one-liner over.
+- **`list-helper.ts`** — the shared LIST / VARIADIC kernel: `coerceListItems`
+  (recovers list structure from a flattened `Word`'s bytes so `length`/`extract`/
+  `min`/`max` see the real elements), `verbatimCall`, and the Less-4.x `minMax`
+  reducer. A fn marked `variadic: true` (in its `FnSpec`) receives the whole arg
+  `List` (items + separator) instead of positionally-bound params.
 - **`color-helper.ts`** — the shared color kernels (`mixColors`, `getLuma`,
   `toHsv`) the color mixers/readers reduce to. The hsl adjusters instead reduce to
   a `[h,s,l]` tweak → `makeColorHsl(...)` one-liner over the value-factory. A named

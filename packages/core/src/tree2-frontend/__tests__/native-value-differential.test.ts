@@ -139,16 +139,26 @@ const CORPUS: Array<[string, string]> = [
   ['fn-acos', '.a { m: acos(0.5); }\n'],
   ['fn-atan', '.a { m: atan(1); }\n'],
 
-  // --- converted LIST group (Tier-A) — `range` constructs its own list, no ctx.
-  //     (`length`/`extract` are DEFERRED: the value layer flattens list literals
-  //     to bytes before a fn arg sees them — no `list` ValueObj reaches the fn —
-  //     so both paths return 1, wrong vs Less 4.x. Blocked on list-structure
-  //     preservation in arg materialization, not on this batch.) ---
+  // --- converted LIST group (Tier-A) — `range` constructs its own list, no ctx. ---
   ['fn-range-count', '.a { m: range(3); }\n'],
   ['fn-range-start-end', '.a { m: range(2, 5); }\n'],
   ['fn-range-step', '.a { m: range(1, 10, 3); }\n'],
   ['fn-range-unit', '.a { m: range(1px, 3px); }\n'],
   ['fn-range-neg-step', '.a { m: range(1, 5, 2); }\n'],
+
+  // --- converted min / max (Tier-A, variadic) — CASES WHERE THE ADAPTER AGREES.
+  //     `min`/`max` are genuinely variadic, so the adapter evaluates these
+  //     compatible-unit inputs correctly (native ≡ adapter ≡ Less 4.x). The
+  //     multi-INCOMPATIBLE-unit + list-arg cases (where the adapter's `@jesscss/fns`
+  //     port DIVERGES from Less 4.x) are asserted directly below, not here. ---
+  ['fn-min-nums', '.a { m: min(3, 1, 2); }\n'],
+  ['fn-max-px', '.a { m: max(3px, 1px, 2px); }\n'],
+  ['fn-min-incompat-pair', '.a { m: min(5px, 3em); }\n'], // both leave `min(5px, 3em)` verbatim
+  ['fn-min-length-convert', '.a { m: min(1cm, 5mm); }\n'],
+  ['fn-min-pct', '.a { m: min(2%, 1%); }\n'],
+  ['fn-min-single', '.a { m: min(3); }\n'],
+  ['fn-max-count', '.a { m: max(1, 2, 3, 4, 5); }\n'],
+  ['fn-min-unitless-mix', '.a { m: min(1, 2px, 3); }\n'],
 
   // --- converted COLOR group (Tier-A) — hsl adjusters (hex + named operands) ---
   ['fn-darken-hex', '.a { color: darken(#ff0000, 10%); }\n'],
@@ -265,4 +275,52 @@ describe('[tree2] native value path — differential byte-identity vs adapter', 
     const css = await render('.a { width: (1.0px + 2.0px); }\n', true);
     expect(css).toContain('width: 3px');
   });
+});
+
+/**
+ * LIST / VARIADIC fns (`length`/`extract`/`min`/`max`) — the adapter is PROVABLY
+ * WRONG here, so real Less 4.6.7 is the oracle (not the adapter). The value layer
+ * flattens a list literal to bare `Word` bytes before a fn arg materializes, so
+ * the adapter's `coerceListItems` sees a single node (`length(@l)` = 1, not 3) or
+ * the legacy fn rejects the arity; the native path recovers the list structure at
+ * consumption time (`native/list-helper.ts`) and matches Less 4.x. Each case below
+ * notes what the (buggy) adapter does, so the divergence is explicit and audited.
+ */
+describe('[tree2] native list / variadic fns — vs Less 4.6.7 (adapter diverges)', () => {
+  // want = the exact Less 4.6.7 output (verified against a local less-node build).
+  const LESS4X: Array<[string, string, string]> = [
+    // length — adapter returns 1 for every variable-held list (flattened to a Word)
+    // and THROWS on a multi-arg call ("No matching function signature for 3 args").
+    ['length-space-literal', '.a { m: length(a b c); }\n', 'm: 3'], // adapter: THROWS
+    // NOTE (FLAG): Less 4.x `length(a, b, c)` = 1 — commas are ARGUMENT delimiters,
+    // so length only sees its first arg `a`. (The batch brief's illustrative "=3"
+    // is not what Less 4.x does; matched to the measured oracle. A comma list bound
+    // to a VARIABLE is a real list → 3, asserted next.) adapter: THROWS.
+    ['length-comma-literal', '.a { m: length(a, b, c); }\n', 'm: 1'],
+    ['length-var-space', '@l: a b c;\n.a { m: length(@l); }\n', 'm: 3'], // adapter: 1
+    ['length-var-comma', '@l: a, b, c;\n.a { m: length(@l); }\n', 'm: 3'], // adapter: 1
+    ['length-single', '.a { m: length(a); }\n', 'm: 1'], // adapter also 1 (agrees)
+    ['length-dims', '.a { m: length(1px 2px); }\n', 'm: 2'], // adapter: THROWS
+
+    // extract — adapter THROWS / returns out-of-range (sees a 1-element list).
+    ['extract-var', '@l: a b c;\n.a { m: extract(@l, 2); }\n', 'm: b'], // adapter: THROWS
+    ['extract-dims', '.a { m: extract(1px 2px 3px, 3); }\n', 'm: 3px'], // adapter: THROWS
+    ['extract-out-of-range', '@l: a b c;\n.a { m: extract(@l, 4); }\n', 'm: extract(a b c, 4)'],
+    ['extract-bad-arity', '.a { m: extract(a, b, c); }\n', 'm: extract(a, b, c)'],
+
+    // min / max — the adapter (`@jesscss/fns` port) added a `loose`-mode branch that
+    // Less 4.x does NOT have: Less THROWS (→ verbatim) on ANY incompatible-unit
+    // pairing. So native (correct) diverges from the adapter here.
+    ['min-multi-incompat', '.a { m: min(2em, 3px, 1em); }\n', 'm: min(2em, 3px, 1em)'], // adapter: min(1em, 3px)
+    ['min-pct-px', '.a { m: min(50%, 40px, 30%); }\n', 'm: min(50%, 40px, 30%)'], // adapter: min(30%, 40px)
+    ['min-var-list', '@l: 1px 5px 3px;\n.a { m: min(@l); }\n', 'm: 1px'], // adapter: THROWS
+    ['min-space-arg', '.a { m: min(1px 2px, 3px); }\n', 'm: 1px'], // adapter: THROWS
+  ];
+
+  for (const [name, src, want] of LESS4X) {
+    it(`native = Less 4.x: ${name}`, async () => {
+      const css = await render(src, true);
+      expect(css).toContain(want);
+    });
+  }
 });

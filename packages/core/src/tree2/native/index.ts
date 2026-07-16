@@ -41,6 +41,11 @@ import { acos } from './acos.js';
 import { atan } from './atan.js';
 // --- list (Tier-A: pure value→value, constructs its own list; no eval context) ---
 import { range } from './range.js';
+// --- list / variadic (materialize flattened list structure; oracle = Less 4.x) ---
+import { length } from './length.js';
+import { extract } from './extract.js';
+import { min } from './min.js';
+import { max } from './max.js';
 // --- color: hsl adjusters (lighten = proof; darken/saturate/… = this batch) ---
 import { lighten } from './lighten.js';
 import { darken } from './darken.js';
@@ -80,7 +85,7 @@ export const NATIVE_FN_LIST: readonly NativeFn[] = [
   round, ceil, floor, abs, sqrt, pow, mod,
   pi, percentage, unit, convert,
   sin, cos, tan, asin, acos, atan,
-  range,
+  range, length, extract, min, max,
   lighten, darken, saturate, desaturate, spin, greyscale,
   fade, fadein, fadeout,
   mix, tint, shade,

@@ -22,6 +22,14 @@ export interface ParamSpec {
 
 export interface FnSpec {
   readonly params: readonly ParamSpec[];
+  /**
+   * VARIADIC marker (owner complexity guardrail: a flag, not a rebuilt coercion
+   * layer). When set, the dispatcher SKIPS positional bind and hands the body the
+   * whole arg `List` (items + separator) as its single argument — the shape a
+   * list / rest fn (`length`/`extract`/`min`/`max`) needs to see the real elements
+   * and the call's separator. `params` is then documentation-only.
+   */
+  readonly variadic?: boolean;
   readonly body: (...args: ValueObj[]) => ValueObj;
 }
 
