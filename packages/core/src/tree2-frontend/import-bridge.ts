@@ -30,7 +30,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { parseLessFn } from '@jesscss/less-parser';
 import type * as t2 from '../tree2/index.js';
-import { Kind } from '../tree2/index.js';
+import { Kind, rawInline as rawInlineStatement } from '../tree2/index.js';
 
 /** Shared, mutable state threaded through a whole (recursive) bridge run. */
 export interface ImportState {
@@ -46,10 +46,18 @@ export interface ImportState {
    * path; the value is the file's own+descendant literal-variable scope.
    */
   readonly varScopeCache: Map<string, ReadonlyMap<string, string>>;
+  /**
+   * [import:specifier] The entry (root) file of the whole bridge run, in a mutable
+   * box set on first import resolution. The root is never pushed onto `stack`
+   * (only imported files are), so its literal-variable scope must be included
+   * explicitly when resolving an interpolated path reached from a deep import
+   * (Less hoists the root's variables into every descendant scope).
+   */
+  readonly entry: { file: string | undefined };
 }
 
 export function createImportState(): ImportState {
-  return { seen: new Set(), stack: [], varScopeCache: new Map() };
+  return { seen: new Set(), stack: [], varScopeCache: new Map(), entry: { file: undefined } };
 }
 
 /** A node the bridge reads structurally; mirrors bridge.ts's local shape. */
@@ -211,7 +219,10 @@ function importScopeVars(
   state: ImportState,
 ): ReadonlyMap<string, string> {
   const merged = new Map<string, string>();
-  const files = fromFilePath ? [fromFilePath, ...state.stack] : [...state.stack];
+  const files: string[] = [];
+  if (fromFilePath) files.push(fromFilePath);
+  for (const f of state.stack) files.push(f);
+  if (state.entry.file) files.push(state.entry.file);
   for (const f of files) {
     for (const [k, v] of collectFileVars(f, state, new Set())) {
       if (!merged.has(k)) merged.set(k, v);
@@ -228,6 +239,16 @@ interface ImportFlags {
   css: boolean;
   escaped: boolean;
   isUrl: boolean;
+}
+
+/**
+ * [import:inline] Whether an import carries a media-query postlude
+ * (`@import (inline) "x" (min-width:…)`), which wraps the splice in an @media
+ * block. Stored on `options.importOptions.postlude` (a QueryCondition node).
+ */
+function hasPostlude(node: AnyNode): boolean {
+  const io = isNode(node.options) ? ((node.options as AnyNode).importOptions as AnyNode | undefined) : undefined;
+  return isNode(io) && io.postlude != null;
 }
 
 function readFlags(node: AnyNode): ImportFlags {
@@ -289,6 +310,10 @@ export function resolveImportStatements(
   }
   if (node.with !== undefined && node.with !== null) unsupported('import:with', 'configured import');
 
+  // [import:specifier] Record the entry file once (the outermost importer), so a
+  // deep interpolated import still sees the root's hoisted literal variables.
+  if (state.entry.file === undefined && fromFilePath !== undefined) state.entry.file = fromFilePath;
+
   // [import:specifier] A plain string specifier is read directly; a variable-
   // interpolated one (`@import "@{theme}.less"`) is filled from the literal
   // variable scope reachable at bridge time. An interpolation that references a
@@ -302,10 +327,26 @@ export function resolveImportStatements(
 
   const flags = readFlags(node);
   if (flags.escaped) unsupported('import:escaped-path', spec);
-  if (flags.inline) unsupported('import:inline', spec);
-  if (isCssPassthrough(spec, flags)) unsupported('import:css-passthrough', spec);
 
   const fromDir = fromFilePath ? path.dirname(fromFilePath) : process.cwd();
+
+  // [import:inline] `@import (inline) "x"` splices the target file's RAW bytes
+  // verbatim (unparsed, unreformatted) at the import site. A media-query postlude
+  // (`@import (inline) "x" (min-width:…)`) would wrap the raw bytes in an @media
+  // block — that shape needs the postlude query serialized as a prelude and is
+  // deferred, so only the plain top-level inline splice is produced here.
+  if (flags.inline) {
+    if (hasPostlude(node)) unsupported('import:inline-media', spec);
+    const rawPath = resolveLessPath(spec, fromDir);
+    if (rawPath === null) {
+      if (flags.optional) return [];
+      unsupported('import:unresolved', spec);
+    }
+    return [rawInlineStatement(fs.readFileSync(rawPath, 'utf8'))];
+  }
+
+  if (isCssPassthrough(spec, flags)) unsupported('import:css-passthrough', spec);
+
   const resolved = resolveLessPath(spec, fromDir);
   if (resolved === null) {
     if (flags.optional) return [];
@@ -322,7 +363,7 @@ export function resolveImportStatements(
   // re-emit) that shares the cycle stack; it never registers in the parent's
   // once-set (a multiple import is, by definition, never deduped).
   const recurseState: ImportState = flags.multiple
-    ? { seen: new Set(), stack: state.stack }
+    ? { seen: new Set(), stack: state.stack, varScopeCache: state.varScopeCache, entry: state.entry }
     : state;
 
   const source = fs.readFileSync(resolved, 'utf8');

@@ -47,6 +47,9 @@ export enum Kind {
   MapAccessor = 24,
   // [R4] a call of a detached-ruleset-valued variable (`@ruleset();`).
   DetachedCall = 25,
+  // [import:inline] verbatim raw bytes spliced by `@import (inline)` — emitted
+  // exactly as read from the target file, never parsed or reformatted.
+  RawInline = 26,
 }
 
 /** Combinator between two compounds in a complex selector. */

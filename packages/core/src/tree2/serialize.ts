@@ -39,6 +39,7 @@ import type {
   MapAccessor,
   MixinCall,
   MixinDef,
+  RawInline,
   Root,
   Rule,
   Simple,
@@ -681,6 +682,10 @@ export function serialize(root: Root, options?: SerializeOptions): SerializeRetu
       case Kind.AtRuleStatement:
         emitAtRuleStatement(child, e);
         break;
+      // [import:inline] raw verbatim bytes spliced by `@import (inline)`.
+      case Kind.RawInline:
+        emitRawInline(child, e);
+        break;
     }
   }
   if (e.positions) e.positions.push({ node: root, kind: root.kind, start, end: e.off });
@@ -760,6 +765,11 @@ function walkBody(
       case Kind.AtRuleStatement:
         flush();
         emitAtRuleStatement(node, e);
+        break;
+      // [import:inline] raw verbatim bytes spliced by `@import (inline)`.
+      case Kind.RawInline:
+        flush();
+        emitRawInline(node, e);
         break;
       case Kind.MixinDef:
       case Kind.VarDeclaration:
@@ -1083,6 +1093,19 @@ function emitAtRuleStatementRaw(node: AtRuleStatement, e: Emit): void {
 }
 
 /**
+ * [import:inline] Emit `@import (inline)` raw bytes verbatim: the target file's
+ * exact text, unparsed and unindented, followed by a single newline separating it
+ * from the next statement (mirrors Less's inline splice — an `Anonymous` value
+ * printed as-is with a trailing rule separator).
+ */
+function emitRawInline(node: RawInline, e: Emit): void {
+  const start = e.off;
+  put(e, node.text);
+  put(e, '\n');
+  if (e.positions) e.positions.push({ node, kind: node.kind, start, end: e.off });
+}
+
+/**
  * A block at-rule: `@name prelude { …body }`. The body is a fresh nesting
  * context (parent selector resets to none) whose direct declarations emit one
  * level in and whose nested rulesets/at-rules descend a further level. An at-rule
@@ -1168,6 +1191,11 @@ function emitAtRuleBody(statements: Statement[], frame: Frame, e: Emit): void {
       case Kind.DetachedCall:
         expandDetachedCall(node, null, frame, group, flushDirect, e);
         break;
+      // [import:inline] raw verbatim bytes spliced by `@import (inline)`.
+      case Kind.RawInline:
+        flushDirect();
+        emitRawInline(node, e);
+        break;
       case Kind.MixinDef:
       case Kind.VarDeclaration:
         break;
@@ -1241,6 +1269,11 @@ function emitNestedBody(
       case Kind.AtRuleStatement:
         flushBuf();
         emitAtRuleStatement(node, e);
+        break;
+      // [import:inline] raw verbatim bytes spliced by `@import (inline)`.
+      case Kind.RawInline:
+        flushBuf();
+        emitRawInline(node, e);
         break;
       case Kind.MixinDef:
       case Kind.VarDeclaration:

@@ -66,13 +66,17 @@ describe('tree2 @import — import-mode byte-identity (authored fixtures)', () =
     expect(t2css).toContain('from: interpolated-import');
   });
 
-  // DEFERRED: `@import (inline)` emits the target file's RAW bytes verbatim (no
-  // parse). tree2 has no raw-literal statement node yet, and adding one is a
-  // serialize-layer change outside the import-resolution boundary, so the bridge
-  // still rejects `import:inline` (the census counts it; no mis-emit). Un-skip
-  // once a raw passthrough statement lands.
-  it.skip('(inline): raw bytes of the target emitted verbatim', async () => {
+  it('(inline): raw bytes of the target emitted verbatim', async () => {
     const file = `${DIR}/inline-main.less`;
+    expect(await renderTree2File(file)).toBe(await renderImportOracle(file));
+  });
+
+  // DEFERRED: a media-query postlude (`@import (inline) "x" (min-width:…)`) wraps
+  // the raw splice in an `@media` block; that needs the postlude query serialized
+  // as an at-rule prelude, so the bridge still rejects `import:inline-media` (the
+  // census counts it; no mis-emit). Un-skip once the postlude wrap lands.
+  it.skip('(inline media): raw bytes wrapped in @media (postlude)', async () => {
+    const file = `${DIR}/inline-media-main.less`;
     expect(await renderTree2File(file)).toBe(await renderImportOracle(file));
   });
 });

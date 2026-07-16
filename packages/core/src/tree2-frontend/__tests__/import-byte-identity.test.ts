@@ -28,6 +28,8 @@ const REAL_FIXTURES = [
   'import/import/import-test-c.less', // control: no import, var used in rule
   'import/import/import-test-e.less', // control: trivial single rule
   'import/import-once.less', // `once` dedup (3x same file) + `(multiple)` re-emit + deeper `..` resolution
+  'import/import/import-inline-invalid-css.less', // [import:inline] raw-bytes splice (no media)
+  'import/import-interpolation.less', // [import:specifier] interpolated paths + hoisted cross-import vars + nested inline splice
 ];
 
 describe('tree2 @import — byte-identity vs the real import-resolving oracle', () => {

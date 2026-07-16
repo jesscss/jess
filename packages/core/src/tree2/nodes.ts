@@ -372,6 +372,19 @@ export class Comment extends Node {
 }
 
 /**
+ * [import:inline] Verbatim raw bytes produced by `@import (inline)`. The target
+ * file's bytes are spliced UNPARSED at the import site; the serializer emits
+ * `text` exactly (a single trailing newline separates it from the next
+ * statement, matching Less's inline splice). Carries no scope and no structure.
+ */
+export class RawInline extends Node {
+  readonly kind = Kind.RawInline as const;
+  constructor(readonly text: string) {
+    super();
+  }
+}
+
+/**
  * One `:extend()` instruction extracted from a ruleset body (or an attached
  * `.a:extend(...)`). The SUBJECT (the thing appended / substituted-in) is the
  * carrying Rule's own selector list; `target` is the FIND selector list;
@@ -491,7 +504,8 @@ export type Statement =
   | VarDeclaration
   | AtRuleBlock
   | AtRuleStatement
-  | DetachedCall;
+  | DetachedCall
+  | RawInline;
 
 /* ------------------------------------------------------------ constructors */
 
@@ -530,6 +544,8 @@ export const selist = (...selectors: Complex[]): SelectorList => new SelectorLis
 
 export const decl = (name: string, value: ValueNode): Declaration => new Declaration(name, value);
 export const comment = (text: string): Comment => new Comment(text);
+/** [import:inline] A verbatim raw-bytes statement (`@import (inline)` splice). */
+export const rawInline = (text: string): RawInline => new RawInline(text);
 export const varRef = (name: string): VarRef => new VarRef(name);
 export const concat = (parts: ValueNode[]): Concat => new Concat(parts);
 export const operation = (operator: string, left: ValueNode, right: ValueNode): Operation =>
