@@ -341,6 +341,28 @@ function enclosingBlockIsStyleRule(text: string, offset: number): boolean {
   return !NESTABLE_GROUP_AT.test(prelude);
 }
 
+/** Folding ranges from `/* #region *​/` … `/* #endregion *​/` marker comments
+ * (the VS Code convention), paired via a stack so they nest correctly. */
+function regionFoldingRanges(document: TextDocument): FoldingRange[] {
+  const text = document.getText();
+  const re = /\/\*\s*#(region|endregion)\b.*?\*\//g;
+  const stack: number[] = [];
+  const out: FoldingRange[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    const line = document.positionAt(m.index).line;
+    if (m[1] === 'region') {
+      stack.push(line);
+    } else {
+      const start = stack.pop();
+      if (start !== undefined && line > start) {
+        out.push({ startLine: start, endLine: line, kind: 'region' });
+      }
+    }
+  }
+  return out;
+}
+
 const STYLE_EXTS = new Set(['.css', '.less', '.scss', '.jess', '.sass']);
 
 /** Completions for a filesystem path inside `url(…)` or an `@import`/`@use`/
@@ -476,6 +498,10 @@ type WebCssData = {
   pseudoClasses?: PseudoEntry[];
   pseudoElements?: PseudoEntry[];
 };
+
+// Host-injectable custom CSS data (MS `setDataProviders` shape) — extra
+// properties / at-rules / pseudos merged into completion + hover per engine.
+export type CustomCssData = WebCssData;
 
 const webCssData: WebCssData = require('@vscode/web-custom-data/data/browsers.css-data.json');
 
@@ -679,6 +705,8 @@ export type JessLanguageServiceEngine = {
   getSelectionRanges(uri: string, positions: Position[]): SelectionRange[];
   getCodeActions(uri: string, range: Range, context: CodeActionContext): CodeAction[];
   formatDocument(uri: string): TextEdit[];
+  formatRange(uri: string, range: Range): TextEdit[];
+  setDataProviders(data: CustomCssData[]): void;
   getDocumentLinks(uri: string): DocumentLink[];
   getSemanticTokens(uri: string): SemanticTokens;
   getDocumentColors(uri: string): Promise<ColorInformation[]> | ColorInformation[];
@@ -741,6 +769,10 @@ const SEMANTIC_TOKEN_TYPE_INDEX = new Map<SemanticTokenType, number>(
 
 export function createEngine(): JessLanguageServiceEngine {
   const docs = new Map<string, TrackedDoc>();
+  // Host-injected custom CSS data (setDataProviders), merged into completion/hover.
+  let customData: CustomCssData[] = [];
+  const customProperties = () => customData.flatMap(d => d.properties ?? []);
+  const customAtRules = () => customData.flatMap(d => d.atDirectives ?? []);
   // Import graph: maps URI -> Set of imported URIs
   const importGraph = new Map<string, Set<string>>();
   // Cached imported documents (loaded from disk)
@@ -1385,7 +1417,7 @@ export function createEngine(): JessLanguageServiceEngine {
       if (wantsAt) {
         const nested = braceDepthBefore(text, offset) > 0;
         const inStyleRule = nested && enclosingBlockIsStyleRule(text, offset);
-        for (const name of AT_RULES) {
+        for (const name of [...AT_RULES, ...customAtRules().map(a => a.name).filter(Boolean)]) {
           if (prefix && !name.toLowerCase().startsWith(prefix)) {
             continue;
           }
@@ -1425,7 +1457,7 @@ export function createEngine(): JessLanguageServiceEngine {
           }
         }
         if (depth > 0) {
-          for (const name of CSS_PROPERTIES) {
+          for (const name of [...CSS_PROPERTIES, ...customProperties().map(p => p.name).filter(Boolean)]) {
             if (prefix && !name.toLowerCase().startsWith(prefix)) {
               continue;
             }
@@ -1451,7 +1483,8 @@ export function createEngine(): JessLanguageServiceEngine {
 
       // Check for at-rule hover.
       if (word.startsWith('@')) {
-        const entry = AT_RULES_MAP.get(word.toLowerCase());
+        const entry = AT_RULES_MAP.get(word.toLowerCase())
+          ?? customAtRules().find(a => a.name.toLowerCase() === word.toLowerCase());
         if (entry?.description) {
           const desc = typeof entry.description === 'string' ? entry.description : entry.description.value;
           return {
@@ -1492,7 +1525,8 @@ export function createEngine(): JessLanguageServiceEngine {
       }
 
       // Check for property name hover.
-      const propEntry = PROPERTIES_MAP.get(word.toLowerCase());
+      const propEntry = PROPERTIES_MAP.get(word.toLowerCase())
+        ?? customProperties().find(p => p.name.toLowerCase() === word.toLowerCase());
       if (propEntry?.description) {
         const desc = typeof propEntry.description === 'string' ? propEntry.description : propEntry.description.value;
         return {
@@ -2125,10 +2159,9 @@ export function createEngine(): JessLanguageServiceEngine {
     getFoldingRanges(uri) {
       const tracked = get(uri);
       const tree = tracked.cstDoc?.tree;
-      if (!tree) {
-        return [];
-      }
-      return cstFoldingRanges(tree, tracked.document);
+      const structural = tree ? cstFoldingRanges(tree, tracked.document) : [];
+      // Region markers fold independently of structure (and survive invalid input).
+      return structural.concat(regionFoldingRanges(tracked.document));
     },
 
     getSelectionRanges(uri, positions) {
@@ -2295,6 +2328,42 @@ export function createEngine(): JessLanguageServiceEngine {
       }
 
       return [TextEdit.replace(fullRange, formatted)];
+    },
+
+    formatRange(uri, range) {
+      // Format every TOP-LEVEL rule the range intersects (MS behavior), replacing
+      // just their combined span — content outside the touched rules is untouched.
+      const tracked = ensure(uri);
+      const doc = tracked.document;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const tree = tracked.parse?.tree as unknown as { rules?: Node[] } | undefined;
+      const rules = tree?.rules ?? [];
+      const startOff = doc.offsetAt(range.start);
+      const endOff = doc.offsetAt(range.end);
+      const hit: Array<{ start: number; end: number; node: Node }> = [];
+      for (const r of rules) {
+        const sp = getSpan(r);
+        if (sp && sp.end > startOff && sp.start < endOff) {
+          hit.push({ start: sp.start, end: sp.end, node: r });
+        }
+      }
+      if (hit.length === 0) {
+        return [];
+      }
+      const minStart = Math.min(...hit.map(h => h.start));
+      const maxEnd = Math.max(...hit.map(h => h.end));
+      const formatted = hit
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        .map(h => String((h.node as unknown as { toTrimmedString?: (o: unknown) => string }).toTrimmedString?.({ compress: false, collapseNesting: false }) ?? '').replace(/\n+$/, ''))
+        .join('\n');
+      if (doc.getText().slice(minStart, maxEnd) === formatted) {
+        return [];
+      }
+      return [TextEdit.replace(toRange(doc, minStart, maxEnd), formatted)];
+    },
+
+    setDataProviders(data) {
+      customData = Array.isArray(data) ? data : [];
     },
 
     getDocumentLinks(uri) {
