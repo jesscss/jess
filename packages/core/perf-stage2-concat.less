@@ -1,0 +1,452 @@
+// Merge functionality tests
+.first-transform() {
+  transform+: rotate(90deg), skew(30deg);
+}
+.second-transform() {
+  transform+: scale(2,4);
+}
+.third-transform() {
+  transform: scaleX(45deg);
+}
+.fourth-transform() {
+  transform+: scaleX(45deg);
+}
+.fifth-transform() {
+  transform+: scale(2,4) !important;
+}
+.first-background() {
+  background+: url(data://img1.png);
+}
+.second-background() {
+  background+: url(data://img2.png);
+}
+
+.test-rule1 {
+  // Can merge values
+  .first-transform();
+  .second-transform();
+}
+.test-rule2 {
+  // Won't merge values without +: merge directive, for backwards compatibility with css
+  .first-transform();
+  .third-transform();
+}
+.test-rule3 {
+  // Won't merge values from two sources with different properties
+  .fourth-transform();
+  .first-background();
+}
+.test-rule4 {
+  .first-transform();
+  .fifth-transform();
+}
+.test-rule5 {
+  .first-transform();
+  .second-transform() !important;
+}
+.test-rule6 {
+  .second-transform();
+}
+.test-rule7 {
+  // inherit !important from merged subrules
+  .second-transform();
+  .second-transform() !important;
+  .second-transform();
+}
+
+.test-rule-interleaved {
+    transform+:  t1;
+    background+: b1;
+    transform+:  t2;
+    background+: b2, b3;
+    transform+:  t3;
+}
+
+.test-rule-spaced {
+    transform+_:  t1;
+    background+_: b1;
+    transform+_:  t2;
+    background+_: b2, b3;
+    transform+_:  t3;
+}
+
+.test-rule-interleaved-with-spaced {
+    transform+_:  t1s;
+    transform+:   t2;
+    background+:  b1;
+    transform+_:  t3s;
+    transform+:   t4 t5s;
+    background+_: b2s, b3;
+    transform+_:  t6s;
+    background+:  b4;
+}
+
+//very simple chaining
+.a {
+  color: black;
+}
+.b:extend(.a) {}
+.c:extend(.b) {}
+
+//very simple chaining, ordering not important
+
+.d:extend(.e) {}
+.e:extend(.f) {}
+.f {
+  color: black;
+}
+
+//extend with all
+
+.g.h {
+  color: black;
+}
+.i.j:extend(.g all) {
+  color: inherit;
+}
+.k:extend(.i all) {}
+
+//extend multi-chaining
+
+.l {
+  color: black;
+}
+.m:extend(.l){}
+.n:extend(.m){}
+.o:extend(.n){}
+.p:extend(.o){}
+.q:extend(.p){}
+.r:extend(.q){}
+.s:extend(.r){}
+.t:extend(.s){}
+
+// self referencing is ignored
+
+.u {color: black;}
+.v.u.v:extend(.u all){}
+
+// circular reference because the new extend product will match the existing extend
+
+.w:extend(.w) {color: black;}
+.v.w.v:extend(.w all){}
+
+// classic circular references
+
+.x:extend(.z) {
+  color: x;
+}
+.y:extend(.x) {
+  color: y;
+}
+.z:extend(.y) {
+  color: z;
+}
+
+//very simple chaining, but with the extend inside the ruleset
+.va {
+  color: black;
+}
+.vb {
+  &:extend(.va);
+  color: inherit;
+}
+.vc {
+  &:extend(.vb);
+}
+
+// media queries - don't extend outside, do extend inside
+
+@media (tv) {
+  .ma:extend(.a,.b,.c,.d,.e,.f,.g,.h,.i,.j,.k,.l,.m,.n,.o,.p,.q,.r,.s,.t,.u,.v,.w,.x,.y,.z,.md) {
+    color: black;
+  }
+  .md {
+    color: inherit;
+  }
+  @media (plasma) {
+    .me, .mf {
+      &:extend(.mb,.md);
+      background: red;
+    }
+  }
+}
+.mb:extend(.ma) {};
+.mc:extend(.mb) {};
+
+
+.mixin (...) {
+  variadic: true;
+}
+.mixin (@a...) {
+  named-variadic: true;
+}
+.mixin () {
+    zero: 0;
+}
+.mixin (@a: 1px) {
+    one: 1;
+}
+.mixin (@a) {
+    one-req: 1;
+}
+.mixin (@a: 1px, @b: 2px) {
+    two: 2;
+}
+
+.mixin (@a, @b, @c) {
+    three-req: 3;
+}
+
+.mixin (@a: 1px, @b: 2px, @c: 3px) {
+    three: 3;
+}
+
+.zero {
+    .mixin();
+}
+
+.one {
+    .mixin(1);
+}
+
+.two {
+    .mixin(1, 2);
+}
+
+.three {
+    .mixin(1, 2, 3);
+}
+
+//
+
+.mixout ('left') {
+    left: 1;
+}
+
+.mixout ('right') {
+    right: 1;
+}
+
+.left {
+    .mixout('left');
+}
+.right {
+    .mixout('right');
+}
+
+//
+
+.border (@side, @width) {
+    color: black;
+    .border-side(@side, @width);
+}
+.border-side (left, @w) {
+    border-left: @w;
+}
+.border-side (right, @w) {
+    border-right: @w;
+}
+
+.border-right {
+    .border(right, 4px);
+}
+.border-left {
+    .border(left, 4px);
+}
+
+//
+
+
+.border-radius (@r) {
+    both: (@r * 10);
+}
+.border-radius (@r, left) {
+    left: @r;
+}
+.border-radius (@r, right) {
+    right: @r;
+}
+
+.only-right {
+    .border-radius(33, right);
+}
+.only-left {
+    .border-radius(33, left);
+}
+.left-right {
+    .border-radius(33);
+}
+
+// Comprehensive color function tests - all color functions without problematic nesting
+// Less v5 preserves original color expressions when possible
+.lightenblue {
+    color: lighten(blue, 10%);
+}
+
+.darkenblue {
+    color: darken(blue, 10%);
+}
+
+.unknowncolors {
+    color: blue2;
+    border: 2px solid superred;
+}
+
+.transparent {
+    color: transparent;
+    background-color: rgba(0, 0, 0, 0);
+}
+
+#alpha {
+    @colorvar: rgba(150, 200, 150, 0.7);
+    #fromvar {
+        opacity: alpha(@colorvar);
+    }
+    #short {
+        opacity: alpha(#aaa);
+    }
+    #long {
+        opacity: alpha(#bababa);
+    }
+    #rgba {
+        opacity: alpha(rgba(50, 120, 95, 0.2));
+    }
+    #hsl {
+        opacity: alpha(hsl(120, 100%, 50%));
+    }
+}
+
+#percentage {
+  color: red(rgb(100%, 0, 0));
+  border-color: rgba(100%, 0, 0, 50%);
+}
+
+#grey {
+  color: rgb(200, 200, 200);
+}
+
+#aa3333 {
+  color: rgb(66.66%, 20%, 20%);
+}
+
+#bb8080 {
+  color: hsl(0deg, 30%, 62%);
+}
+
+#ccff00 {
+  color: hsl(72deg, 100%, 50%);
+}
+
+// Targeted tests for specific uncovered lines in namespace-value.js
+
+// Lines 51-52: $@var interpolation (property interpolation with variable)
+// This tests: name.substring(0, 2) === '$@'
+// The syntax is #namespace[$@var-name] where @var-name contains the property name
+@prop-name: my-prop;
+#namespace {
+  my-prop: prop-value;
+}
+.test-prop-interp {
+  value: #namespace[$@prop-name];
+}
+
+// Lines 43-47: Variable not found error path
+// Access a variable that doesn't exist in the namespace
+#namespace-with-var {
+  @existing-var: value;
+}
+.test-var-not-found {
+  // This will error: variable @nonexistent-var not found
+  // color: #namespace-with-var[@nonexistent-var];
+}
+
+// Lines 61-65: Property not found error path
+// Access a property that doesn't exist in the namespace
+#namespace-with-prop {
+  existing-prop: value;
+}
+.test-prop-not-found {
+  // This will error: property "nonexistent-prop" not found
+  // value: #namespace-with-prop[$nonexistent-prop];
+}
+
+
+// Ruleset nesting and selector tests
+#first > .one {
+  > #second .two > #deux {
+    width: 50%;
+    #third {
+      &:focus {
+        color: black;
+        #fifth {
+          > #sixth {
+            .seventh #eighth {
+              + #ninth {
+                color: purple;
+              }
+            }
+          }
+        }
+      }
+      height: 100%;
+    }
+    #fourth, #five, #six {
+      color: #110000;
+      .seven, .eight > #nine {
+        border: 1px solid black;
+      }
+      #ten {
+        color: red;
+      }
+    }
+  }
+  font-size: 2em;
+  hasOwnProperty: blue;
+}
+
+// Test for slashedCombinator parser (lines 1392-1399)
+// This tests /deep/ and /shadow/ combinators
+// NOTE: These combinators are DEPRECATED in CSS and should not be used in new code
+// They were part of the Shadow DOM specification but have been removed
+
+// /deep/ combinator (deprecated)
+// .parent /deep/ .child {
+//   color: red;
+// }
+
+// // /shadow/ combinator (deprecated)
+// .container /shadow/ .content {
+//   background: blue;
+// }
+
+// // Test with nested selectors
+// .wrapper /deep/ .inner /deep/ .deepest {
+//   padding: 10px;
+// }
+
+
+// Tests for atrule.js line 117 - genCSS with simpleBlock declarations
+// Covers parser + genCSS + outputRuleset with declarations path
+
+// @page with declarations (simpleBlock)
+@page {
+  margin: 2cm;
+  size: A4;
+  marks: crop cross;
+}
+
+// @font-face with declarations
+@font-face {
+  font-family: "MyFont";
+  src: url("myfont.woff2");
+  font-weight: 400;
+  font-style: normal;
+}
+
+// @counter-style with declarations
+@counter-style my-counter {
+  system: fixed;
+  symbols: "A" "B" "C";
+  suffix: ". ";
+}
+
