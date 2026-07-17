@@ -69,6 +69,11 @@ const DETECTED: Array<[string, string, number, number]> = [
   // whitespace (css-syntax-3 §4.3.6 — `url(foo bar)` is a <bad-url-token>). The
   // `url(` open commits, so the trailing `)` is expected right after the body run.
   ['url-interior-whitespace.css', ')', 1, 17],  // `url(foo bar)` — ws inside unquoted url
+  // The unquoted <url-token> body is `( url-code-point | escape )+` (css-syntax-3
+  // §4.3.6). `(` and a bare `"`/`'` are NOT url code points (a `(` inside makes a
+  // <bad-url-token>), so the body stops there and the committed `)` is missing.
+  ['url-token-open-paren.css', ')', 1, 14],     // `url(a(b))` — `(` inside url-token
+  ['url-token-bare-quote.css', ')', 1, 14],     // `url(a"b)` — bare `"` inside url-token
   // A `calc(...)` body is a <calc-sum>, which requires ≥1 <calc-value>
   // (css-values-4 §10). An empty `calc()` and a lone-operator `calc(+)` have no
   // value; the `calc(` open commits (expect), so they error rather than
@@ -120,6 +125,7 @@ describe('css syntax errors (parseCssFn)', () => {
     expect(parseCssFn('.a { x: url( foo ) }').errors).toHaveLength(0); // leading/trailing ws trimmed
     expect(parseCssFn('.a { x: url() }').errors).toHaveLength(0);      // empty
     expect(parseCssFn('.a { x: url("a b") }').errors).toHaveLength(0); // quoted function form (ws ok)
+    expect(parseCssFn('.a { x: url(a\\ b) }').errors).toHaveLength(0);  // escaped space = one url code point
   });
 
   // Counter-cases for the `calc(...)` boundary: only the value-less bodies are

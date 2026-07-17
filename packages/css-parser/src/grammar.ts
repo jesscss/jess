@@ -58,7 +58,18 @@ const numPart = regex(/[+-]?(?:\d*\.\d+(?:[eE][+-]?\d+)?|\d+(?:[eE][+-]?\d+)?|\d
 // A dimension unit or `%`, collapsed to one regex (read as a single leaf).
 const unitRegex = regex(/-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*|%/);
 const urlOpen = regex(/url\(/i);
-const urlInner = regex(/[^)"'\s]+/);
+/**
+ * The unquoted `<url-token>` body — `( url-code-point | escape )+` per
+ * consume-a-url-token. A url code point is any code point EXCEPT `"` `'` `(` `)`,
+ * whitespace (tab U+0009, newline U+000A, form-feed U+000C, CR U+000D, space
+ * U+0020), a non-printable (U+0000–08, U+000B, U+000E–1F, U+007F), and `\`; a `\`
+ * begins an escape and is valid only when NOT followed by a newline (`\[^\n\r\f]`).
+ * Note this deliberately EXCLUDES `(` (a `(` inside the body is a bad-url-token)
+ * and non-printables, while INCLUDING Unicode spaces such as U+00A0 (which are
+ * valid url code points — `\s` would wrongly strip them).
+ * @see https://www.w3.org/TR/css-syntax-3/#consume-url-token
+ */
+const urlInner = regex(/(?:[^"'()\\ \t\n\f\r\x00-\x08\x0B\x0E-\x1F\x7F]|\\[^\n\r\f])+/);
 const anyValueTok = regex(/[+\-*/=<>|~^]+|[^\s;{}\[\]()'",!]+/);
 
 // ---------------------------------------------------------------------------
