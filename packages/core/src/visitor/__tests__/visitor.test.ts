@@ -101,13 +101,7 @@ describe('Visitor Pattern', () => {
 
       // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       const rs = ruleset({ selector: null as unknown as ReturnType<typeof nil>, rules: [] });
-      const visitorInstance = new (class extends Visitor {
-        override visit(n: Parameters<Visitor['visit']>[0]) {
-          return super.visit(n);
-        }
-      })();
-      Object.assign(visitorInstance, visitor);
-      rs.accept(visitorInstance);
+      rs.accept(visitor);
 
       // Should stop after enter returns ABORT
       expect(visited).toContain('enter');

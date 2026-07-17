@@ -3,7 +3,6 @@ import { describe, it, expect } from 'vitest';
 import { defineFunction, Color, ColorFormat, Dimension, Context, callWithContext, Sequence, List, Any, Call, Operation } from '@jesscss/core';
 import {
   percentOf,
-  angleToDegrees,
   normalizeHue,
   alphaToNumber,
   toNumber,

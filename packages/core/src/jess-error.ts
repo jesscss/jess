@@ -677,35 +677,6 @@ export class JessError extends Error {
 }
 
 /* =========================
- * Printing helpers
- * ========================= */
-
-// eslint-disable-next-line @typescript-eslint/naming-convention
-const _seen = new Set<string>();
-
-/**
- * Emits a diagnostic to stderr (or a custom stream).
- * Set `dedupe: true` to suppress repeats from the same location/message.
- */
-export function emit(diag: JessError, opts?: { stream?: NodeJS.WriteStream; dedupe?: boolean }): void {
-  const stream = opts?.stream ?? process.stderr;
-  if (opts?.dedupe) {
-    const abs = diag.fileObj?.fullPath ?? diag.filePath ?? '';
-    const key = `${diag.severity}|${diag.code}|${abs}|${diag.line}|${diag.column}|${diag.message}`;
-    if (_seen.has(key)) {
-      return;
-    }
-    _seen.add(key);
-  }
-  stream.write(String(diag) + '\n');
-}
-
-/** Clears the in-process de-duplication set. Useful for tests. */
-export function resetDedupe(): void {
-  _seen.clear();
-}
-
-/* =========================
  * Factories / Public API
  * ========================= */
 
@@ -809,7 +780,7 @@ export const ERR = {
 /**
  * Primary **warning** helpers.
  * Same API shape as `ERR`, but default `severity: 'warn'`.
- * Call `emit(WARN.*(...))` to log without throwing.
+ * Pass `WARN.*(...)` to `context.warn(...)` to surface without throwing.
  */
 export const WARN = {
   deprecated(args: Common & { meta: { what: string; use: string; deprecation?: Deprecation } }) {

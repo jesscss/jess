@@ -81,7 +81,6 @@ export {
 } from './tree/util/render-buffer.js';
 export {
   alphaToNumber,
-  angleToDegrees,
   normalizeHue,
   percentOf,
   splitSequence,

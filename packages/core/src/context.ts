@@ -319,18 +319,6 @@ export class TreeContext {
 }
 
 /**
- * .a.b.c
- * simple = 0b1
- * compound = 0b10
- * complex = 0b100
- * a = 0b1000
- * b = 0b10000
- * c = 0b100000
- *
- * .a.b.c.c = 0b111010
- */
-
-/**
  * This is the context object used for evaluation.
  *
  * @note
