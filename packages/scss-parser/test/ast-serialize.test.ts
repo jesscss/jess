@@ -514,4 +514,55 @@ describe('scss-parser (ast serialize)', () => {
     expect(String(tree)).not.toContain('@warn');
     expect(String(tree)).not.toContain('@error');
   });
+
+  // A `#{ … }` interpolation in a query at-rule prelude (@media/@container/@supports)
+  // must lower to canonical jess interpolation: a single bare variable reference
+  // becomes the single-lookup shorthand `$[cond]`, anything richer becomes general
+  // interpolation `$( … )`. (Regression: these used to emit garbage `$($ > *#{…})`.)
+  const singleVarQueries: Array<[string, string]> = [
+    ['@supports #{$cond} { .a { color: red; } }', '@supports $[cond]'],
+    ['@media #{$cond} { .a { color: red; } }', '@media $[cond]'],
+    ['@container #{$cond} { .a { color: red; } }', '@container $[cond]']
+  ];
+  for (const [src, expected] of singleVarQueries) {
+    functionalIt(`lowers single-var interpolation prelude: ${src}`, () => {
+      const { tree, errors, lexerResult } = parser.parse(src);
+      expect(lexerResult.errors).toEqual([]);
+      expect(errors).toEqual([]);
+      expect(trimmedStylesheet(tree)).toContain(expected);
+      expect(trimmedStylesheet(tree)).not.toContain('#{');
+      expect(trimmedStylesheet(tree)).not.toContain('$ > *');
+    });
+  }
+
+  functionalIt('lowers a complex-expression interpolation prelude to $( … )', () => {
+    const { tree, errors, lexerResult } = parser.parse('@supports #{$a + $b} { .a { color: red; } }');
+    expect(lexerResult.errors).toEqual([]);
+    expect(errors).toEqual([]);
+    expect(trimmedStylesheet(tree)).toContain('@supports $($a + $b)');
+    expect(trimmedStylesheet(tree)).not.toContain('#{');
+  });
+
+  functionalIt('preserves surrounding query text around an interpolation', () => {
+    const { tree, errors, lexerResult } = parser.parse('@media #{$bp} and (min-width: 5px) { .a { color: red; } }');
+    expect(lexerResult.errors).toEqual([]);
+    expect(errors).toEqual([]);
+    expect(trimmedStylesheet(tree)).toContain('@media $[bp] and (min-width: 5px)');
+  });
+
+  // Non-interpolated query preludes flow through the structured base grammar and
+  // are unchanged by the interpolation-lowering rule.
+  const passthroughQueries = [
+    ['@supports (color: red) { .a { color: red; } }', '@supports (color: red)'],
+    ['@media screen { .a { color: red; } }', '@media screen'],
+    ['@container name (width > 0) { .a { color: red; } }', '@container name (width > 0)']
+  ];
+  for (const [src, expected] of passthroughQueries) {
+    functionalIt(`leaves a non-interpolated prelude unchanged: ${src}`, () => {
+      const { tree, errors, lexerResult } = parser.parse(src);
+      expect(lexerResult.errors).toEqual([]);
+      expect(errors).toEqual([]);
+      expect(trimmedStylesheet(tree)).toContain(expected);
+    });
+  }
 });

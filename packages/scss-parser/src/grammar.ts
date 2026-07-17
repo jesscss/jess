@@ -557,6 +557,16 @@ export const scssGrammar = compose([lessGrammar, rules({ trivia: rw }, (g: any) 
   // `SupportsAtRuleBlock` below — `@supports`, whose `<supports-condition>` prelude
   // is validated for a legal opener before this scan consumes it.
   const scssPermissivePrelude = oneOrMore(scssPreludeSegment);
+  // A query at-rule prelude that carries at least one `#{ … }` interpolation.
+  // Anchored on a REQUIRED `ScssInterpBare` so a non-interpolated prelude
+  // (`(color: red)`, `screen`, `name (width > 0)`) never matches here and falls
+  // through to the base structured query grammar, staying byte-identical. The
+  // presence of interpolation IS the gate — no opener lookahead is needed.
+  const scssInterpPrelude = sequence(
+    many(scssPreludeText),
+    ScssInterpBare,
+    many(scssPreludeSegment)
+  );
 
   // Generic unknown at-rule statement (`@charset "x";`, or a bare `@c` used as a
   // content placeholder in the sass-spec corpus). Overrides Less's
@@ -604,9 +614,9 @@ export const scssGrammar = compose([lessGrammar, rules({ trivia: rw }, (g: any) 
     g.basicSel
   );
   const declarationList = withCtx({ inner: true }, many(choice(
-    scssStatement, g.ScssExtend, g.ScssPlaceholderRuleset, Declaration, CustomDeclaration, g.blockItem
+    scssStatement, g.ScssExtend, g.ScssPlaceholderRuleset, g.ScssQueryInterpBlock, Declaration, CustomDeclaration, g.blockItem
   )));
-  const atRuleBody = many(choice(scssStatement, g.ScssPlaceholderRuleset, g.blockItem));
+  const atRuleBody = many(choice(scssStatement, g.ScssPlaceholderRuleset, g.ScssQueryInterpBlock, g.blockItem));
 
   const ScssPlaceholderRuleset = node(
     sequence(
@@ -649,6 +659,25 @@ export const scssGrammar = compose([lessGrammar, rules({ trivia: rw }, (g: any) 
       atRuleBody,
       expect(literal('}'))
     ));
+  // ── SCSS-interpolated query at-rule preludes ─────────────────────────────────
+  // `@media` / `@container` / `@supports` whose prelude carries a `#{ … }`
+  // interpolation. The base CSS/Less query grammar (structured `<query>` /
+  // `<supports-condition>`) cannot parse an interpolation, so without this rule
+  // the prelude falls through to Less's generic `AtRuleBlock`, which mis-reads
+  // `#{$cond}` as a mixin-ruleset lookup and serializes garbage
+  // (`$($ > *#{$cond})`). Gated on `scssInterpPrelude` (a required interpolation),
+  // so non-interpolated preludes keep flowing through the structured base grammar
+  // untouched. Its own builder lowers each `#{ … }` to canonical interpolation
+  // syntax (`$[cond]` for a single bare variable, `$( … )` otherwise).
+  const scssQueryInterpKeyword = regex(/@(?:media|container|supports)(?![-\w])/i);
+  const ScssQueryInterpBlock = node(
+    sequence(
+      scssQueryInterpKeyword,
+      scssInterpPrelude,
+      expect(literal('{')),
+      atRuleBody,
+      expect(literal('}'))
+    ));
   const scopeKw = regex(/@scope(?![-\w])/i);
   const ScssScopeBlock = node(
     sequence(
@@ -669,7 +698,7 @@ export const scssGrammar = compose([lessGrammar, rules({ trivia: rw }, (g: any) 
     ));
   const Stylesheet = node(
     many(choice(
-      scssStatement, ScssPlaceholderRuleset, ScssScopeBlock, ScssLayerBlock, g.stylesheetItem
+      scssStatement, ScssPlaceholderRuleset, ScssQueryInterpBlock, ScssScopeBlock, ScssLayerBlock, g.stylesheetItem
     )));
 
   return {
@@ -688,7 +717,7 @@ export const scssGrammar = compose([lessGrammar, rules({ trivia: rw }, (g: any) 
     ScssImportItem, ImportAtRuleStatement,
     ScssNestedProps,
     ScssDiagnostic, ScssAtRootFilter, ScssAtRootSelector, ScssAtRootPlain,
-    QueryAtRuleBlock, SupportsAtRuleBlock, ScssScopeBlock, ScssLayerBlock,
+    QueryAtRuleBlock, SupportsAtRuleBlock, ScssQueryInterpBlock, ScssScopeBlock, ScssLayerBlock,
     Stylesheet, simpleSelector, declarationList, atRuleBody
   };
 })]);

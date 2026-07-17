@@ -219,6 +219,7 @@ export class ScssGrammar extends LessGrammar {
       case 'ScssAtRootSelector': return this._buildScssAtRootSelector(children, loc);
       case 'ScssAtRootPlain':   return this._buildScssAtRootPlain(children, loc);
       case 'ScssScopeBlock':    return this._buildScssPermissiveAtRule(children, loc);
+      case 'ScssQueryInterpBlock': return this._buildScssQueryInterpBlock(children, loc);
       case 'ScssLayerBlock':    return this._buildScssLayerBlock(children, loc);
       case 'Call':              return this._buildCall(_rawChildren, loc);
       case 'SquareParen':       return this._buildSquareParen(_rawChildren, loc);
@@ -1124,6 +1125,68 @@ export class ScssGrammar extends LessGrammar {
       undefined,
       loc
     ) as unknown as JessNode;
+  }
+
+  /**
+   * `@media` / `@container` / `@supports` with a `#{ … }`-interpolated prelude.
+   * The prelude is reconstructed from source (verbatim text with the `#{ … }`
+   * spans replaced by interpolation placeholders), so surrounding query text
+   * (`@media #{$bp} and (min-width: 5px)`) is preserved with its original spacing.
+   * A prelude that is a SINGLE bare `#{ … }` is lowered to canonical jess
+   * interpolation: a single bare variable reference (`#{$cond}`) → the single-
+   * lookup shorthand `$[cond]`, any richer content (operation, call, multiple
+   * terms) → general interpolation `$( … )`.
+   */
+  private _buildScssQueryInterpBlock(children: ReadonlyArray<Child>, loc: LocationInfo) {
+    const braceIdx = children.findIndex(c => c._tag === 'leaf' && (c as CSTLeaf).value === '{');
+    const keyword = children[0] as CSTLeaf | undefined;
+    const brace = braceIdx >= 0 ? (children[braceIdx] as CSTLeaf) : undefined;
+    const name = keyword?._tag === 'leaf' ? keyword.value : '';
+    const bodyChildren = braceIdx >= 0 ? children.slice(braceIdx + 1) : [];
+
+    const preludeChildren = braceIdx >= 0 ? children.slice(1, braceIdx) : children.slice(1);
+    const interpNodes = nodeChildren(preludeChildren) as Node[];
+
+    const src = this._source;
+    const preludeStart = keyword?._tag === 'leaf' ? keyword.span.end : loc.start;
+    const preludeEnd = brace ? brace.span.start : loc.end;
+
+    // Splice each `#{ … }` span out of the raw prelude text as a placeholder,
+    // keeping every other byte (and its spacing) verbatim.
+    let source = '';
+    let cursor = preludeStart;
+    const replacements: Node[] = [];
+    for (const node of interpNodes) {
+      source += src.slice(cursor, node._spanStart);
+      source += INTERPOLATION_PLACEHOLDER;
+      replacements.push(...(isNode(node, N.Interpolated) ? (node as Interpolated).replacements : [node]));
+      cursor = node._spanEnd;
+    }
+    source += src.slice(cursor, preludeEnd);
+    source = source.trim();
+
+    const prelude = this._lowerQueryPrelude(source, replacements, loc);
+    return new AtRule(
+      { name, prelude, rules: nodeChildren(bodyChildren) },
+      undefined,
+      loc
+    ) as unknown as JessNode;
+  }
+
+  /**
+   * A prelude that is exactly one `#{ … }` → the single-lookup shorthand `$[cond]`
+   * (bare variable reference) or general interpolation `$( … )` (anything richer).
+   * A prelude with surrounding query text stays one `Interpolated` over the raw
+   * source so the text renders verbatim with `$[…]` splices.
+   */
+  private _lowerQueryPrelude(source: string, replacements: Node[], loc: LocationInfo): Node {
+    if (source === INTERPOLATION_PLACEHOLDER && replacements.length === 1) {
+      const replacement = replacements[0]!;
+      if (!isNode(replacement, N.Reference)) {
+        return new Expression(replacement, undefined, loc);
+      }
+    }
+    return new Interpolated({ source, replacements }, { role: 'any' }, loc) as unknown as Node;
   }
 
   private _buildScssLayerBlock(children: ReadonlyArray<Child>, loc: LocationInfo) {
