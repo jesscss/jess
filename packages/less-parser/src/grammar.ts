@@ -841,7 +841,41 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
     sequence(regex(/%(?=\()/), literal('('), functionCallArgs));
 
   // ── At-rules ───────────────────────────────────────────────────────────────
-  const atPrelude = optional(scanTo(choice(literal('{'), literal(';')), { skip: [bParen, bSquare, bCurly, singleStr, doubleStr] }));
+  // Generic at-rule prelude (`@keyframes @name`, `@page :first`, `@layer a.b`,
+  // `@unknown foo 42`), structured into value tokens so the tree2 host consumes
+  // leaves instead of re-tokenizing the prelude bytes with regex (Tier-B). The
+  // Less value tokens — `@{interp}`, `@@indirect`, `@var` — are isolated as their
+  // own leaves; everything else (idents, `:`, whitespace, and balanced `()`/`[]`
+  // groups + strings, which may themselves contain `{`/`;`) is a literal chunk.
+  // `noTrivia` keeps internal whitespace inside the chunk bytes (the old opaque
+  // `scanTo` leaf included it), so a multi-token prelude round-trips verbatim.
+  //
+  // Isolating `@{…}` as a real `lessInterp` leaf also FIXES the early-termination
+  // bug: the old `scanTo` sentinel matched the `{` of `@{n}` before the (dead)
+  // `bCurly` skip could run, so `@keyframes @{n} {` cut the prelude at the
+  // interpolation's brace. A token run consumes `@{n}` whole and runs on to the
+  // real block `{` (validated against Less 4.x — this is a deliberate correction,
+  // not a byte-preserving pass). `@media`/`@container`/`@supports` are unaffected
+  // (structured `QueryAtRuleBlock`); this generic prelude serves the block/
+  // statement at-rules that misparsed before.
+  // A literal chunk stops before a Less value token (`@{`/`@@`/`@name`), a
+  // terminator (`{`/`;`), or a bracket/string opener; a bare `@` not introducing a
+  // token (`@ `, `@)`) stays literal content.
+  const preludeChunk = regex(/(?:[^@{};()[\]'"]|@(?![{@\-_a-zA-Z0-9-￿]))+/);
+  // Balanced `()`/`[]` groups are STRUCTURED (recursive `preludeToken`), not opaque
+  // scans, so a Less value token inside a group — `@media (min-width: @bp)` — stays
+  // an isolated `@var`/`@{…}` leaf the host consumes, and nested groups nest by
+  // recursion. Strings stay opaque leaves (`@{…}` inside a string is string
+  // interpolation, a separate Tier-B shape). The `{`/`;` terminators are never
+  // consumed here — a `{` ends the prelude at the block opener.
+  // A `(`/`[` must open a BALANCED group (plain `literal(')')`, no recovery): an
+  // unclosed `@unknown url( {` leaves the `(` unconsumed, so the prelude ends before
+  // it and the block `{` never matches — the at-rule fails and the malformed input
+  // is rejected, exactly as the old opaque scan did (a `<bad-token>` parse error).
+  const preludeToken = choice(lessInterp, nestedRef, lessVar, preludeChunk, g.preludeParen, g.preludeSquare, singleStr, doubleStr);
+  const preludeParen = sequence(literal('('), many(g.preludeToken), literal(')'));
+  const preludeSquare = sequence(literal('['), many(g.preludeToken), literal(']'));
+  const atPrelude = optional(noTrivia(oneOrMore(g.preludeToken)));
 
   // ── Structured, committed query block (@media / @container / @supports) ──────
   // The flat `atPrelude` above walks past ANY bracket content to the first
@@ -979,6 +1013,7 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
     valueList, valueSequence, value, UnicodeRange, Negative, mathProduct, mathSum, topProduct, topSum, parenExprList, InterpValue, NsAccessor, EscapedValue, NamedColor, Url,
     parenBody, permissiveParenBody, Paren, GluedParen, DetachedRuleset, functionCallArgs, squareParenBody, calcBody, Call, FormatCall, SquareParen, anyValue, EachFor,
     queryPrelude, QueryAtRuleBlock, SupportsAtRuleBlock, ImportAtRuleStatement,
+    preludeToken, preludeParen, preludeSquare,
     AtRuleBlock, AtRuleStatement, atRuleBody,
     // Exposed so composing dialects (SCSS) can re-derive `simpleSelector` with a
     // gated `&` arm without duplicating these token regexes. Non-behavioral.

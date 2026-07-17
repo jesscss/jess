@@ -4,70 +4,161 @@
  * `@charset` / `@namespace` / `@layer a, b;` — is owned by the charset/raw-
  * statement family, so it is NOT registered here.)
  *
- * Two grammar types converge on `AtRuleBlock`:
- *   - `AtRuleBlock`       — a generic block at-rule (`@font-face`, `@keyframes`,
- *                           `@page`, `@layer base { … }`, unknown block at-rules).
- *   - `QueryAtRuleBlock`  — a conditional-group block (`@media`/`@supports`/
- *                           `@container`) whose prelude the grammar parses as a
- *                           structured query list; both block shapes reconstruct
- *                           the prelude from SOURCE BYTES (identical to the bridge),
- *                           so one builder serves both.
+ * Two grammar types are served here:
  *
- * Construction: the at-keyword is the leading `@name` token; the prelude
- * is the bytes between the name and the block `{`, trimmed, and built into a value
- * node (so `@keyframes @name` resolves `@name` through scope) by the bridge's
- * `parseValue` algorithm. Body statements are the real tree2 child nodes (leaf
- * tokens / placeholders filtered out); NESTED at-rules stay nested here — the
- * serializer owns v5 bubbling (projecting a nested conditional-group at-rule to the
- * block level).
+ *   - `AtRuleBlock` (generic — `@font-face`, `@keyframes`, `@page`, `@layer base
+ *     { … }`, unknown block at-rules). Tier-B: the grammar splits the head into
+ *     LEAF children — the at-keyword, then the prelude token run (`@{interp}` /
+ *     `@@indirect` / `@var` isolated among literal chunks), then `{`, body, `}`.
+ *     `buildGenericBlock` CONSUMES those structured children (P0 — no re-tokenizing
+ *     of `ctx.src`): the name is the keyword leaf verbatim, the prelude leaves build
+ *     the value via the shared `preludeFromLeaves`. Isolating `@{…}` as a real leaf
+ *     also fixes the early-termination bug (`@keyframes @{n} {` used to cut the
+ *     prelude at the interpolation's `{`).
  *
- * Actions are TOTAL: a doomed/backtracked branch never throws — the head parse is
- * pure string slicing and the prelude builder always returns a value node.
+ *   - `QueryAtRuleBlock` (`@media`/`@supports`/`@container`). Its prelude is the
+ *     grammar's STRUCTURED query list, delivered as ONE opaque `QueryCondition`
+ *     child (the tree2 host does not descend into the query grammar), so its Less
+ *     value tokens (`@var`/`@{…}` in `(min-width: @bp)`) are not exposed as leaves
+ *     here. Structuring the query prelude into consumable leaves is a SEPARATE
+ *     Tier-B shape (§3.4 defers it — "query/import families keep their own committed
+ *     preludes"); until then `buildQueryBlock` re-derives the prelude from the
+ *     source bytes, byte-identically to the pre-Tier-B path.
  *
- * Boundary: emits tree2 directly; no legacy `../tree` import. The prelude value
- * builders replicate the bridge's pure `parseValue` / `interpFromString` helpers
- * (self-contained per family; the bridge is the reference, not an import).
+ * Actions are TOTAL: a doomed/backtracked branch never throws.
+ *
+ * Boundary: emits tree2 directly; no legacy `../tree` import.
  */
 import * as t2 from '../../index.js';
 import {
   type BuildAction,
   type BuildArgs,
+  type Span,
   isStatement,
   sliceSpan,
 } from '../host-context.js';
 
-/** The at-keyword token — same regex the grammar's `atKeyword` consumes, so the
- *  extracted name is byte-identical to what the parser matched (casing + vendor
- *  prefixes preserved: `@MEDIA`, `@-moz-keyframes`). */
-const AT_KEYWORD = /^@-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*/u;
+/** The string value of a parseman leaf child, or `undefined` for a non-leaf. */
+function leafValue(x: unknown): string | undefined {
+  const leaf = x as { _tag?: string; value?: unknown } | undefined;
+  return leaf?._tag === 'leaf' && typeof leaf.value === 'string' ? leaf.value : undefined;
+}
+/** The source span of a leaf child, if it carries one. */
+function leafSpan(x: unknown): Span | undefined {
+  return (x as { span?: Span } | undefined)?.span;
+}
 
-// TODO(tier-b): at-rule prelude interpolation is a PARSER GAP. The `AtRuleBlock`
-// prelude arrives as a SINGLE opaque `scanTo` leaf (not split like an
-// `InterpolatedSelector`), and `scanTo` even stops AT `@{`, so `@media @{q}` /
-// `@keyframes @{name}` MISPARSE today. This family therefore cannot cleanly consume
-// split children — it must slice + tokenize the prelude bytes itself (the helpers
-// below). Fix by structuring the prelude in `grammar.ts` (leaf-split like
-// `InterpolatedSelector`), then consume the leaves here and drop these regexes.
+function isWs(c: string): boolean {
+  return c === ' ' || c === '\t' || c === '\n' || c === '\r' || c === '\f';
+}
 
-/**
- * Split a block at-rule's raw source into (name, prelude bytes). Mirrors the
- * bridge's `atRuleHeaderPrelude` (block form): name = the leading at-keyword;
- * prelude = everything between the name and the block `{`, trimmed. An empty
- * prelude is `undefined`.
- */
-function atRuleHead(full: string): { name: string; prelude: string | undefined } {
-  const m = AT_KEYWORD.exec(full);
-  const name = m ? m[0] : '@';
-  let rest = full.slice(name.length);
-  const brace = rest.indexOf('{');
-  if (brace >= 0) rest = rest.slice(0, brace);
-  rest = rest.trim();
-  return { name, prelude: rest.length > 0 ? rest : undefined };
+/** A Less value token the grammar isolated in the prelude, keyed by its span. */
+interface PreludeTok {
+  readonly kind: 'var' | 'interp' | 'indirect';
+  readonly name: string;
+  readonly start: number;
+  readonly end: number;
 }
 
 /**
+ * Generic block at-rule → `AtRuleBlock`. The grammar splits the head into leaf
+ * children (`@keyword`, the prelude token run, `{`, body, `}`); this CONSUMES the
+ * Less value tokens the grammar isolated in the prelude — `@{interp}` / `@@indirect`
+ * / `@var` leaves — and fills the gaps between them with the VERBATIM prelude source
+ * (P0: the token boundaries come from the parser's leaf spans, never a re-scan; the
+ * gaps carry comments and exact spacing unchanged). Mirrors the classification the
+ * old prelude regexes produced:
+ *   • no `@` token          → a single literal `Word` (comments preserved)
+ *   • exactly `@@name`      → `VarIndirect`
+ *   • any top-level `@{…}`  → `Interp` (bare `@var` stays literal, as the old
+ *                             `@{`-only split left it; `@{…}` inside a string/paren-
+ *                             string is not a top-level leaf, so it stays literal —
+ *                             string interpolation is a separate Tier-B shape)
+ *   • otherwise `@var` runs → `VarRef`s interleaved with literal `Word` gaps
+ */
+function buildGenericBlock(args: BuildArgs): t2.AtRuleBlock {
+  const { children } = args;
+  const name = leafValue(children[0]) ?? '@';
+  const body = children.filter(isStatement) as t2.Statement[];
+
+  // Prelude region: from the keyword leaf end to the first block `{` leaf start.
+  const src = args.ctx.src;
+  let ps = leafSpan(children[0])?.end ?? args.span.start;
+  let braceStart = args.span.end;
+  const toks: PreludeTok[] = [];
+  for (let i = 1; i < children.length; i++) {
+    const v = leafValue(children[i]);
+    if (v === '{') {
+      braceStart = leafSpan(children[i])?.start ?? braceStart;
+      break;
+    }
+    const span = leafSpan(children[i]);
+    if (v === undefined || span === undefined) continue;
+    const c0 = v.charCodeAt(0);
+    if (c0 !== 0x40 /* @ */) continue;
+    const c1 = v.charCodeAt(1);
+    if (c1 === 0x7b /* { */) toks.push({ kind: 'interp', name: v.slice(2, -1).trim(), start: span.start, end: span.end });
+    else if (c1 === 0x40 /* @ */) toks.push({ kind: 'indirect', name: v.slice(2), start: span.start, end: span.end });
+    else toks.push({ kind: 'var', name: v.slice(1), start: span.start, end: span.end });
+  }
+  let pe = braceStart;
+  // Trim the region's outer WHITESPACE (the old prelude slice was `.trim()`ed);
+  // interior comments / spacing survive verbatim in the gaps below.
+  while (ps < pe && isWs(src[ps]!)) ps++;
+  while (pe > ps && isWs(src[pe - 1]!)) pe--;
+  if (ps >= pe) return t2.atRuleBlock(name, null, body);
+
+  // No Less value token → the region is a single verbatim literal.
+  if (toks.length === 0) return t2.atRuleBlock(name, t2.word(src.slice(ps, pe)), body);
+
+  // Exactly `@@name` spanning the whole (trimmed) region → indirect reference.
+  if (toks.length === 1 && toks[0]!.kind === 'indirect' && toks[0]!.start === ps && toks[0]!.end === pe) {
+    return t2.atRuleBlock(name, t2.varIndirect(t2.varRef(toks[0]!.name)), body);
+  }
+
+  // Any top-level `@{…}` → an `Interp`; interp tokens become refs, every other byte
+  // (literal gaps AND bare `@var` bytes) is a verbatim literal part.
+  const hasInterp = toks.some((t) => t.kind === 'interp');
+  if (hasInterp) {
+    const parts: t2.InterpPart[] = [];
+    let cursor = ps;
+    for (const t of toks) {
+      if (t.kind !== 'interp') continue;
+      if (t.start > cursor) parts.push({ lit: src.slice(cursor, t.start) });
+      parts.push({ ref: t2.varRef(t.name), unquote: true });
+      cursor = t.end;
+    }
+    if (cursor < pe) parts.push({ lit: src.slice(cursor, pe) });
+    return t2.atRuleBlock(name, t2.interp(parts), body);
+  }
+
+  // `@var` (and lone `@@name`) split: each token → a reference, gaps → verbatim `Word`.
+  const parts: t2.ValueNode[] = [];
+  let cursor = ps;
+  for (const t of toks) {
+    if (t.start > cursor) parts.push(t2.word(src.slice(cursor, t.start)));
+    parts.push(t.kind === 'indirect' ? t2.varIndirect(t2.varRef(t.name)) : t2.varRef(t.name));
+    cursor = t.end;
+  }
+  if (cursor < pe) parts.push(t2.word(src.slice(cursor, pe)));
+  const prelude = parts.length === 1 ? parts[0]! : t2.concat(parts);
+  return t2.atRuleBlock(name, prelude, body);
+}
+
+// TODO(tier-b): QUERY-prelude structuring is a separate shape. `@media`/`@supports`/
+// `@container` deliver their prelude as one opaque `QueryCondition` node, so the
+// Less value tokens inside a query (`@media (min-width: @bp)`) are not consumable as
+// leaves here. Until the query grammar splits them (like `InterpolatedSelector`),
+// this path re-derives the prelude from source bytes and tokenizes `@name` / `@{…}`
+// / `@@name` with the helpers below — the residual bucket-(a) re-tokenizer for the
+// query family (§3.4 keeps the query prelude committed). The GENERIC block path
+// above is already regex-free.
+
+/** The at-keyword token — same shape the grammar's `atKeyword` consumes. */
+const AT_KEYWORD = /^@-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*/u;
+
+/**
  * `@{name}` interpolation → tree2 `Interp` (value context: refs splice unquoted).
- * Replicates the bridge's `interpFromString`.
  */
 function interpFromString(text: string, unquote: boolean): t2.ValueNode {
   const re = /@\{\s*([^}]+?)\s*\}/gu;
@@ -87,10 +178,9 @@ function interpFromString(text: string, unquote: boolean): t2.ValueNode {
 }
 
 /**
- * Tokenize a block at-rule's prelude bytes into a value, turning `@name`
- * references into `VarRef`, `@{name}` into `Interp`, and `@@name` into
- * `VarIndirect`, leaving everything else literal. A static prelude collapses to a
- * single `Word`.
+ * Tokenize a query at-rule's prelude bytes into a value, turning `@name` into
+ * `VarRef`, `@{name}` into `Interp`, and `@@name` into `VarIndirect`, leaving
+ * everything else literal. A static prelude collapses to a single `Word`.
  */
 function parsePreludeValue(text: string): t2.ValueNode {
   if (text.indexOf('@') < 0) return t2.word(text);
@@ -111,16 +201,20 @@ function parsePreludeValue(text: string): t2.ValueNode {
   return parts.length === 1 ? parts[0]! : t2.concat(parts);
 }
 
-/** Generic + query block at-rule → `AtRuleBlock`. */
-function buildBlock(args: BuildArgs): t2.AtRuleBlock {
+/** Conditional-group (query) block at-rule → `AtRuleBlock` (query-prelude path). */
+function buildQueryBlock(args: BuildArgs): t2.AtRuleBlock {
   const full = sliceSpan(args.ctx, args.span);
-  const { name, prelude } = atRuleHead(full);
+  const m = AT_KEYWORD.exec(full);
+  const name = m ? m[0] : '@';
+  let rest = full.slice(name.length);
+  const brace = rest.indexOf('{');
+  if (brace >= 0) rest = rest.slice(0, brace);
+  rest = rest.trim();
   const body = args.children.filter(isStatement) as t2.Statement[];
-  const preludeNode = prelude === undefined ? null : parsePreludeValue(prelude);
-  return t2.atRuleBlock(name, preludeNode, body);
+  return t2.atRuleBlock(name, rest.length > 0 ? parsePreludeValue(rest) : null, body);
 }
 
-const atRuleBlock: BuildAction = { type: 'AtRuleBlock', build: buildBlock };
-const queryAtRuleBlock: BuildAction = { type: 'QueryAtRuleBlock', build: buildBlock };
+const atRuleBlock: BuildAction = { type: 'AtRuleBlock', build: buildGenericBlock };
+const queryAtRuleBlock: BuildAction = { type: 'QueryAtRuleBlock', build: buildQueryBlock };
 
 export const AT_RULES_ACTIONS: readonly BuildAction[] = [atRuleBlock, queryAtRuleBlock];
