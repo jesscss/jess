@@ -79,7 +79,44 @@ const DETECTED: Array<[string, string, number, number]> = [
   // value; the `calc(` open commits (expect), so they error rather than
   // backtracking into the generic Call arm that would accept them.
   ['calc-empty.css', 'calc value', 1, 14],       // `calc()` — no <calc-value>
-  ['calc-lone-operator.css', 'calc value', 1, 14] // `calc(+)` — a bare operator is not a value
+  ['calc-lone-operator.css', 'calc value', 1, 14], // `calc(+)` — a bare operator is not a value
+  // Selectors — structural garbage the qualified-rule prelude can't parse. A
+  // combinator with no operand, a nameless pseudo/hash, an empty selector-list
+  // slot, an unclosed/numeric-named attribute, and a malformed An+B all leave
+  // the prelude unable to reach `{`, so the whole rule is unparsed input.
+  ['selector-trailing-combinator.css', 'input', 1, 1],   // `.a > { }` — combinator with no rhs
+  ['selector-double-combinator.css', 'input', 1, 1],     // `.a > > .b` — two combinators in a row
+  ['selector-leading-combinator.css', 'input', 1, 1],    // `> .a` — combinator with no lhs at top level
+  ['selector-pseudo-element-noname.css', 'input', 1, 1], // `::` — pseudo-element with no name
+  ['selector-bare-colon.css', 'input', 1, 1],            // `:` — pseudo-class with no name
+  ['selector-hash-noname.css', 'input', 1, 1],           // `#` — id selector with no name
+  ['selector-unclosed-attribute.css', 'input', 1, 1],    // `.a[href { }` — `[` never closed
+  ['selector-attribute-numeric-name.css', 'input', 1, 1], // `.a[1x=y]` — attr name is a dimension-token, not an ident
+  ['selector-empty-slot-double-comma.css', 'input', 1, 1], // `.a,, .b` — empty middle selector-list slot
+  ['selector-empty-slot-leading.css', 'input', 1, 1],    // `, .a` — empty leading selector-list slot
+  ['selector-empty-slot-trailing.css', 'input', 1, 1],   // `.a, { }` — empty trailing selector-list slot
+  ['selector-anb-dangling-sign.css', 'input', 1, 1],     // `:nth-child(2n +)` — An+B sign with no B
+  ['selector-anb-noninteger.css', 'input', 1, 1],        // `:nth-child(1.5)` — An+B must be an integer
+  // Declarations / values — inside a declaration body, a malformed declaration or
+  // an unbalanced/stray bracket run leaves the parser unable to close the block,
+  // so `expect('}')` fires at the reported position.
+  ['declaration-empty-value.css', '}', 1, 6],   // `color: ;` — declaration value is empty
+  ['declaration-missing-colon.css', '}', 1, 6], // `color red` — no `:` between name and value
+  ['declaration-starts-colon.css', '}', 1, 6],  // `: red` — declaration with no property name
+  ['important-misplaced.css', '}', 1, 6],       // `color: !important red` — `!important` before the value
+  ['important-doubled.css', '}', 1, 28],        // `red !important !important` — doubled `!important`
+  ['important-lone.css', '}', 1, 6],            // `!important` alone — no declaration
+  ['value-unclosed-function.css', '}', 1, 16],  // `rgb(1,2,3 ` — function paren never closed
+  ['value-unclosed-bracket.css', '}', 1, 6],    // `[1px ` — `[` in value never closed
+  ['value-stray-close-paren.css', '}', 1, 16],  // `1px)` — stray `)` with no opener
+  ['value-stray-close-bracket.css', '}', 1, 16], // `1px]` — stray `]` with no opener
+  ['value-unterminated-string.css', '}', 1, 6], // `"abc ` — string never terminated (runs to EOF)
+  // At-rules / structure — an EOF-in-comment, a selectorless keyframe block, and
+  // unclosed rule/at-rule bodies.
+  ['comment-eof-unclosed.css', 'input', 1, 19], // `/* unclosed comment` — comment runs to EOF
+  ['keyframes-block-no-selector.css', '}', 1, 16], // `@keyframes x { { ... } }` — a block with no keyframe selector
+  ['media-unclosed-block.css', '}', 1, 28],     // `@media screen { .a { x: 1 }` — at-rule body never closed
+  ['ruleset-unclosed.css', '}', 1, 16]          // `.a { color: red` — ruleset body never closed
 ];
 
 describe('css syntax errors (parseCssFn)', () => {
@@ -109,6 +146,17 @@ describe('css syntax errors (parseCssFn)', () => {
   test('a dimension-token is valid in value position', () => {
     // `1foo` is a <dimension-token>; a declaration value accepts arbitrary component values.
     expect(parseCssFn('.a { x: 1foo }').errors).toHaveLength(0);
+  });
+
+  // Counter-cases for the An+B boundary: the malformed `:nth-child` forms above
+  // are rejected, but the well-formed An+B micro-syntax (integer coefficients,
+  // keywords, signed forms) parses clean.
+  test('valid :nth-child An+B selectors parse clean', () => {
+    expect(parseCssFn('.a:nth-child(2n+1) { color: red }').errors).toHaveLength(0);
+    expect(parseCssFn('.a:nth-child(even) { color: red }').errors).toHaveLength(0);
+    expect(parseCssFn('.a:nth-child(odd) { color: red }').errors).toHaveLength(0);
+    expect(parseCssFn('.a:nth-child(-n+3) { color: red }').errors).toHaveLength(0);
+    expect(parseCssFn('.a:nth-child(3) { color: red }').errors).toHaveLength(0);
   });
 
   test('@keyframes accepts from/to/<percentage> selectors', () => {
