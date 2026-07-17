@@ -484,6 +484,29 @@ export interface DetachedCall {
   readonly varName: string;
 }
 
+/**
+ * A Less `each(<iterable>, <callback>)` loop — the grammar lowers `each(...)` to
+ * this control-flow node (never a `FunctionCall`). At serialize it EMITS the
+ * callback `rules` once per iterable item, binding the loop variables in each
+ * iteration's scope (Less `each` semantics):
+ *   - `valueName` ← the item value (`@value` by default),
+ *   - `keyName`   ← the map key, or the 1-based index for a plain list (`@key`),
+ *   - `indexName` ← the 1-based index (`@index`).
+ * A `null` name means that binding is not introduced (an anonymous-mixin callback
+ * `.(@v)` / `.(@v, @k)` omits the trailing names). The iterable is a value node:
+ * a map (`DetachedRuleset` / a var bound to one / a `@map[k]` accessor) iterates
+ * its declarations; anything else evaluates to a list (a `range(…)` call, a
+ * `@list` var, or a literal `1 2 3` / `a, b` byte-list) and iterates its items.
+ */
+export interface For {
+  readonly type: 'For';
+  readonly iterable: ValueNode;
+  readonly rules: Statement[];
+  readonly valueName: string | null;
+  readonly keyName: string | null;
+  readonly indexName: string | null;
+}
+
 /** The document root: an ordered list of top-level statements. */
 export interface Root {
   readonly type: 'Root';
@@ -504,6 +527,7 @@ export type Statement =
   | AtRuleBlock
   | AtRuleStatement
   | DetachedCall
+  | For
   | RawInline
   | StyleImport;
 
@@ -525,6 +549,13 @@ export const interp = (parts: InterpPart[]): Interp => ({ type: 'Interp', parts 
 export const varIndirect = (nameRef: ValueNode): VarIndirect => ({ type: 'VarIndirect', nameRef });
 export const detachedRuleset = (body: Statement[]): DetachedRuleset => ({ type: 'DetachedRuleset', body, defFrame: null });
 export const detachedCall = (varName: string): DetachedCall => ({ type: 'DetachedCall', varName });
+export const forNode = (
+  iterable: ValueNode,
+  rules: Statement[],
+  valueName: string | null,
+  keyName: string | null,
+  indexName: string | null,
+): For => ({ type: 'For', iterable, rules, valueName, keyName, indexName });
 export const mapAccessor = (
   base: ValueNode,
   key: ValueNode | number,

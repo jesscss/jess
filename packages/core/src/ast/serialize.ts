@@ -29,6 +29,7 @@ import { renderCombinator } from './node.js';
 import type { Node, NodeType } from './node.js';
 import {
   word,
+  dim,
   compoundCanonical,
   compoundHasInterp,
   complexCanonical,
@@ -41,6 +42,7 @@ import type {
   Declaration,
   DetachedCall,
   DetachedRuleset,
+  For,
   FunctionCall,
   Interp,
   MapAccessor,
@@ -999,6 +1001,17 @@ export function serialize(root: Root, options?: SerializeOptions): SerializeRetu
         flush();
         break;
       }
+      case 'For': {
+        // a top-level `each(...)` loop — its body emits at the document level.
+        const group: Leaf[] = [];
+        const flush = (): void => {
+          if (group.length) flushBlock([], group, e);
+          group.length = 0;
+        };
+        expandFor(child, null, rootFrame, group, flush, e);
+        flush();
+        break;
+      }
       case 'Declaration':
       case 'Comment':
         emitLeaf({ node: child, frame: rootFrame }, e);
@@ -1092,6 +1105,9 @@ function walkBody(
         break;
       case 'DetachedCall':
         expandDetachedCall(node, composed, frame, group, flush, e, protectedDup);
+        break;
+      case 'For':
+        expandFor(node, composed, frame, group, flush, e, imp, protectedDup);
         break;
       // [atrule-bubbling] an at-rule nested inside a ruleset body PROJECTS to this
       // block level (flat mode already emits everything at `e.depth`), carrying the
@@ -1320,6 +1336,199 @@ function expandDetachedCall(
   const r = detachedCallFrame(call.varName, frame);
   if (!r) return;
   walkBody(r.dr.body, composed, r.callFrame, group, flush, e, false, protectedDup);
+}
+
+/* --------------------------------------------------------------- [each/For] */
+
+/** One iterable item: its value node plus the map KEY (`null` for a plain list,
+ *  where the key defaults to the 1-based index). */
+interface ForItem {
+  value: ValueNode;
+  key: ValueNode | null;
+}
+
+/**
+ * Split `text` at the TOP level on `,` (comma list) else a whitespace run (space
+ * list), skipping anything nested in `()[]{}` or inside a quoted string. Mirrors
+ * Less's value model: a comma binds looser than a space, so a top-level comma
+ * makes a comma list, otherwise the whitespace runs make a space list. Returns the
+ * trimmed non-empty pieces (a single-element array when there is no separator).
+ */
+function splitListBytes(text: string): string[] {
+  const comma = hasTopLevelComma(text);
+  const parts: string[] = [];
+  let depth = 0;
+  let quote = '';
+  let start = 0;
+  const push = (end: number): void => {
+    const piece = text.slice(start, end).trim();
+    if (piece !== '') parts.push(piece);
+  };
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i]!;
+    if (quote !== '') {
+      if (c === quote) quote = '';
+      continue;
+    }
+    if (c === '"' || c === "'") quote = c;
+    else if (c === '(' || c === '[' || c === '{') depth++;
+    else if (c === ')' || c === ']' || c === '}') depth--;
+    else if (depth === 0 && (comma ? c === ',' : c === ' ' || c === '\t' || c === '\n' || c === '\r')) {
+      push(i);
+      start = i + 1;
+    }
+  }
+  push(text.length);
+  return parts;
+}
+
+/** Whether `text` has a top-level `,` (outside any `()[]{}` group / quoted string). */
+function hasTopLevelComma(text: string): boolean {
+  let depth = 0;
+  let quote = '';
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i]!;
+    if (quote !== '') {
+      if (c === quote) quote = '';
+      continue;
+    }
+    if (c === '"' || c === "'") quote = c;
+    else if (c === '(' || c === '[' || c === '{') depth++;
+    else if (c === ')' || c === ']' || c === '}') depth--;
+    else if (depth === 0 && c === ',') return true;
+  }
+  return false;
+}
+
+/**
+ * If the iterable resolves to a MAP (a detached ruleset — inline, a var bound to
+ * one, or a `@map[key]` accessor selecting one), return its declaration body + the
+ * frame those declarations belong to; else `null` (a list iterable). A map iterates
+ * its Declaration / VarDeclaration entries: key = the entry name, value = its value
+ * node. Comments are skipped.
+ */
+function resolveForRuleset(
+  node: ValueNode,
+  frame: Frame | null,
+  e: EvalCtx,
+): { body: Statement[]; frame: Frame | null } | null {
+  if (node.type === 'DetachedRuleset') {
+    return { body: node.body, frame: (node.defFrame as Frame | null) ?? frame };
+  }
+  if (node.type === 'VarRef') {
+    const bound = lookupVar(frame, node.name);
+    if (bound && bound.type === 'DetachedRuleset') {
+      return { body: bound.body, frame: (bound.defFrame as Frame | null) ?? frame };
+    }
+    return null;
+  }
+  if (node.type === 'MapAccessor') {
+    const map = resolveBaseDeclMap(node.base, frame, e);
+    if (!map) return null;
+    const key = typeof node.key === 'number' ? undefined : evalBytesSync(node.key, frame, e);
+    const matched = key !== undefined ? map.byName.get(key) : undefined;
+    if (matched && matched.value.type === 'DetachedRuleset') {
+      return { body: matched.value.body, frame: (matched.value.defFrame as Frame | null) ?? matched.frame };
+    }
+    // A var-valued map entry bound to a detached ruleset (`@map[k]` → `@x: { … }`).
+    if (matched && matched.value.type === 'VarRef') {
+      const bound = lookupVar(matched.frame, matched.value.name);
+      if (bound && bound.type === 'DetachedRuleset') {
+        return { body: bound.body, frame: (bound.defFrame as Frame | null) ?? matched.frame };
+      }
+    }
+    return null;
+  }
+  return null;
+}
+
+/** Follow a `VarRef` / `Paren` chain to the underlying value node + its owning
+ *  frame, so an `each()` iterable's list-vs-scalar shape reads off the DECLARED
+ *  node (a literal `Word` list) rather than its flattened bytes. */
+function resolveForNode(
+  node: ValueNode,
+  frame: Frame | null,
+  e: EvalCtx,
+): { node: ValueNode; frame: Frame | null } {
+  let cur = node;
+  let f = frame;
+  for (;;) {
+    if (cur.type === 'Paren') { cur = cur.inner; continue; }
+    if (cur.type === 'VarRef') {
+      const hit = resolveVarRef(f, cur.name, e);
+      if (!hit) return { node: cur, frame: f };
+      cur = hit.value;
+      f = hit.frame;
+      continue;
+    }
+    return { node: cur, frame: f };
+  }
+}
+
+/** The ordered items an `each()` iterable expands to. */
+function forItems(node: ValueNode, frame: Frame | null, e: EvalCtx): ForItem[] {
+  const map = resolveForRuleset(node, frame, e);
+  if (map) {
+    const items: ForItem[] = [];
+    for (const s of map.body) {
+      if (s.type === 'Declaration') {
+        const name = typeof s.name === 'string' ? s.name : evalBytesSync(s.name, map.frame, e);
+        items.push({ value: s.value, key: word(name) });
+      } else if (s.type === 'VarDeclaration') {
+        items.push({ value: s.value, key: word(s.name) });
+      }
+    }
+    return items;
+  }
+  // A list iterable. A LITERAL word — an authored list (`1 2 3`, `a, b`) or a var
+  // bound to one — is byte-split into its top-level items (Less's Expression/Value
+  // list model, which the flattened value domain does not preserve structurally). A
+  // COMPUTED value evaluates: a genuine `List` (`range(…)`) iterates its typed
+  // items; any other single value (an escaped `e("…")`, a scalar) is ONE item — it
+  // is not a list, so it is never split.
+  const { node: base, frame: baseFrame } = resolveForNode(node, frame, e);
+  if (base.type === 'Word') {
+    return splitListBytes(base.text).map((b) => ({ value: word(b), key: null }));
+  }
+  const v = evalTyped(base, baseFrame, e);
+  if (isThenable(v)) throw new Error('async value in an each() iterable is unsupported');
+  if (v.type === 'List') return v.items.map((it) => ({ value: word(it.bytes), key: null }));
+  return [{ value: word(v.bytes), key: null }];
+}
+
+/**
+ * Expand a Less `each()` loop: emit the callback `rules` once per iterable item,
+ * binding the loop variables (`@value`/`@key`/`@index`, or the anonymous-mixin
+ * param names) in each iteration's scope. The statement-emitting counterpart to
+ * {@link expandCall}: it walks the SAME shared `group`/`flush` so a `+`/`+_` merge
+ * accumulates across iterations (`index+: @index` → `1, 2, 3`).
+ */
+function expandFor(
+  node: For,
+  composed: string[] | null,
+  frame: Frame,
+  group: Leaf[],
+  flush: () => void,
+  e: Emit,
+  imp = false,
+  protectedDup = false,
+): void {
+  const items = forItems(node.iterable, frame, e);
+  for (let i = 0; i < items.length; i++) {
+    const { value, key } = items[i]!;
+    const index = dim(i + 1);
+    const bindings = new Map<string, ValueNode>();
+    if (node.valueName) bindings.set(node.valueName, value);
+    if (node.keyName) bindings.set(node.keyName, key ?? index);
+    if (node.indexName) bindings.set(node.indexName, index);
+    const loopFrame: Frame = {
+      parent: frame,
+      mixins: collectMixins(node.rules),
+      vars: mergeVars(bindings, collectVars(node.rules)),
+      statements: node.rules,
+    };
+    walkBody(node.rules, composed, loopFrame, group, flush, e, imp, protectedDup);
+  }
 }
 
 /**
@@ -1704,6 +1913,9 @@ function emitAtRuleBody(statements: Statement[], frame: Frame, e: Emit): void {
       case 'DetachedCall':
         expandDetachedCall(node, null, frame, group, flushDirect, e);
         break;
+      case 'For':
+        expandFor(node, null, frame, group, flushDirect, e);
+        break;
       // [import:inline] raw verbatim bytes spliced by `@import (inline)`.
       case 'RawInline':
         flushDirect();
@@ -1778,6 +1990,9 @@ function emitBubbleBody(statements: Statement[], ctx: string[] | null, frame: Fr
       case 'DetachedCall':
         expandDetachedCall(node, ctx, frame, group, flushDirect, e);
         break;
+      case 'For':
+        expandFor(node, ctx, frame, group, flushDirect, e);
+        break;
       case 'MixinDef':
       case 'VarDeclaration':
         break;
@@ -1843,6 +2058,10 @@ function emitNestedBody(
       case 'DetachedCall':
         flushBuf();
         expandNestedDetachedCall(node, frame, e);
+        break;
+      case 'For':
+        flushBuf();
+        expandNestedFor(node, frame, e);
         break;
       case 'AtRuleBlock':
         flushBuf();
@@ -2011,6 +2230,28 @@ function expandNestedDetachedCall(call: DetachedCall, frame: Frame, e: Emit): vo
   const r = detachedCallFrame(call.varName, frame);
   if (!r) return;
   emitNestedBody(r.dr.body, r.callFrame, e);
+}
+
+/** Expand an `each()` loop in nested mode: splice the callback body once per item
+ *  with that iteration's loop-variable bindings. (A cross-iteration `+`/`+_` merge
+ *  does not fold across the per-iteration bodies in nested mode — flat mode does.) */
+function expandNestedFor(node: For, frame: Frame, e: Emit): void {
+  const items = forItems(node.iterable, frame, e);
+  for (let i = 0; i < items.length; i++) {
+    const { value, key } = items[i]!;
+    const index = dim(i + 1);
+    const bindings = new Map<string, ValueNode>();
+    if (node.valueName) bindings.set(node.valueName, value);
+    if (node.keyName) bindings.set(node.keyName, key ?? index);
+    if (node.indexName) bindings.set(node.indexName, index);
+    const loopFrame: Frame = {
+      parent: frame,
+      mixins: collectMixins(node.rules),
+      vars: mergeVars(bindings, collectVars(node.rules)),
+      statements: node.rules,
+    };
+    emitNestedBody(node.rules, loopFrame, e);
+  }
 }
 
 /**

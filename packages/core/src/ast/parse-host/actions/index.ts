@@ -38,6 +38,7 @@ import { GUARD_ACTIONS } from './guard.js';
 import { CUSTOM_PROPS_ACTIONS } from './custom-props.js';
 import { EXTEND_ACTIONS } from './extend.js';
 import { VALUE_EXPR_ACTIONS } from './value-expr.js';
+import { CONTROL_FLOW_ACTIONS } from './control-flow.js';
 
 export const ACTION_LIST: readonly BuildAction[] = [
   ...RULESET_ACTIONS,
@@ -54,4 +55,5 @@ export const ACTION_LIST: readonly BuildAction[] = [
   ...CUSTOM_PROPS_ACTIONS,
   ...EXTEND_ACTIONS,
   ...VALUE_EXPR_ACTIONS,
+  ...CONTROL_FLOW_ACTIONS,
 ];
