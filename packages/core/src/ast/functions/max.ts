@@ -9,7 +9,7 @@ import type { Fn } from './types.js';
  */
 export const max: Fn = {
   name: 'max',
-  params: [{ kinds: ['dimension'] }],
+  params: [{ kinds: ['Dimension'] }],
   variadic: true,
   body: (list) => minMax(false, asList(list)),
 };

@@ -80,7 +80,7 @@ export function wholeValueNode(args: BuildArgs, valueBytes: string): t2.Node | n
   let idx = -1;
   for (let i = 0; i < args.children.length; i++) {
     const c = args.children[i];
-    if (c instanceof t2.Node) {
+    if (t2.isNode(c)) {
       if (node !== null) return null; // more than one value node → not whole-value
       node = c;
       idx = i;

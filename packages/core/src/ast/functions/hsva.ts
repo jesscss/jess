@@ -11,7 +11,7 @@ import type { Fn } from './types.js';
  */
 export const hsva: Fn = {
   name: 'hsva',
-  params: [{ kinds: ['dimension'] }, { kinds: ['dimension'] }, { kinds: ['dimension'] }, { kinds: ['dimension'] }],
+  params: [{ kinds: ['Dimension'] }, { kinds: ['Dimension'] }, { kinds: ['Dimension'] }, { kinds: ['Dimension'] }],
   body: (hD, sD, vD, aD) => {
     const h = normalizeHue(hD as Dimension);
     const s = percentOf(sD as Dimension, 1);

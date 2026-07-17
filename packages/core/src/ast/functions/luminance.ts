@@ -5,7 +5,7 @@ import type { Fn } from './types.js';
 /** `luminance(color)` — perceptual luminance × alpha as a percentage. Byte-faithful to `less/luminance`. */
 export const luminance: Fn = {
   name: 'luminance',
-  params: [{ kinds: ['color'] }],
+  params: [{ kinds: ['Color'] }],
   body: (c) => {
     const color = c as Color;
     const [r, g, b] = colorRgbRounded(color);

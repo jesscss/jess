@@ -138,6 +138,11 @@ export function parseToAst(
   if (!res.ok) errors.push({ message: res.expected.join(', ') || 'Parse error', offset: res.span.start });
   if (res.unconsumedFrom !== null) errors.push({ message: 'Unexpected input', offset: res.unconsumedFrom });
 
-  const root = res.ok && res.value instanceof t2.Root ? res.value : host.root instanceof t2.Root ? host.root : undefined;
+  const root =
+    res.ok && t2.isNode(res.value) && res.value.type === 'Root'
+      ? res.value
+      : t2.isNode(host.root) && host.root.type === 'Root'
+        ? host.root
+        : undefined;
   return { root, errors };
 }

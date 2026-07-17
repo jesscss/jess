@@ -9,7 +9,7 @@ import type { Fn } from './types.js';
  */
 export const min: Fn = {
   name: 'min',
-  params: [{ kinds: ['dimension'] }],
+  params: [{ kinds: ['Dimension'] }],
   variadic: true,
   body: (list) => minMax(true, asList(list)),
 };

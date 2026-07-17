@@ -5,7 +5,7 @@ import type { Fn } from './types.js';
 /** `spin(color, amount)` — rotate hue by `amount` degrees (wrapped 0-360). Byte-faithful to `less/spin`. */
 export const spin: Fn = {
   name: 'spin',
-  params: [{ kinds: ['color'] }, { kinds: ['dimension'] }],
+  params: [{ kinds: ['Color'] }, { kinds: ['Dimension'] }],
   body: (c, amt) => {
     const color = c as Color;
     const [h, s, l] = colorHsl(color);

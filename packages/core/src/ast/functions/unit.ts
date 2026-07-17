@@ -8,7 +8,7 @@ import type { Fn } from './types.js';
  */
 export const unit: Fn = {
   name: 'unit',
-  params: [{ kinds: ['dimension'] }, { kinds: ['keyword', 'quoted'], optional: true }],
+  params: [{ kinds: ['Dimension'] }, { kinds: ['Keyword', 'Quoted'], optional: true }],
   body: (d, u) => {
     const resolved = u !== undefined ? textOf(u as Keyword | Quoted) : '';
     return makeDimension((d as Dimension).number, resolved || '');

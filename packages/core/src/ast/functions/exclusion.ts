@@ -8,6 +8,6 @@ export const exclusionBase = (cb: number, cs: number): number => cb + cs - 2 * c
 /** `exclusion(color1, color2)` — Photoshop exclusion blend. Byte-faithful to `less/exclusion`. */
 export const exclusion: Fn = {
   name: 'exclusion',
-  params: [{ kinds: ['color'] }, { kinds: ['color'] }],
+  params: [{ kinds: ['Color'] }, { kinds: ['Color'] }],
   body: (c1, c2) => colorBlend(exclusionBase, c1 as Color, c2 as Color),
 };

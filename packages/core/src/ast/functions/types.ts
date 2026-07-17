@@ -11,7 +11,7 @@
  */
 import type { EvalModes, List, ValueObj } from '../value-eval.js';
 
-export type Kind = ValueObj['kind'];
+export type Kind = ValueObj['type'];
 
 export interface ParamSpec {
   /** Accepted kinds for this positional slot, or `'any'`. */

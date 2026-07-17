@@ -27,7 +27,7 @@
  * composes it correctly; and `&`-crossing hoist-to-root is not modelled.
  */
 
-import { Kind, renderCombinator } from './node.js';
+import { renderCombinator } from './node.js';
 import type { Combinator } from './node.js';
 import type {
   Complex,
@@ -522,7 +522,7 @@ function collectPlan(root: Root): Plan {
     parent: PlanSubject | null,
   ): void => {
     for (const st of statements) {
-      if (st.kind === Kind.Rule) {
+      if (st.type === 'Rule') {
         const rule = st;
         const own = levelFromSelectorList(rule.selector);
         const rulePath = [...path, own];
@@ -543,7 +543,7 @@ function collectPlan(root: Root): Plan {
           }
         }
         walk(rule.body, rulePath, scope, subject);
-      } else if (st.kind === Kind.AtRuleBlock) {
+      } else if (st.type === 'AtRuleBlock') {
         const inner = [...scope, scopeCounter++];
         walk(st.body, path, inner, parent);
       }
@@ -942,8 +942,8 @@ export function computeExtends(root: Root): ExtendResults | null {
     let onlyRule: Statement | null = null;
     let bail = false;
     for (const st of p.rule.body) {
-      if (st.kind === Kind.MixinDef || st.kind === Kind.VarDeclaration) continue;
-      if (st.kind === Kind.Rule && onlyRule === null) {
+      if (st.type === 'MixinDef' || st.type === 'VarDeclaration') continue;
+      if (st.type === 'Rule' && onlyRule === null) {
         onlyRule = st;
         continue;
       }

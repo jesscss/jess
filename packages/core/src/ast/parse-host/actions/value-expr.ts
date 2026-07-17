@@ -58,7 +58,7 @@ function isLeaf(x: unknown): x is Leaf {
 }
 
 function isValueNode(x: unknown): x is t2.ValueNode {
-  return x instanceof t2.Node;
+  return t2.isNode(x);
 }
 
 /** Raw leaf text of a child (operator / separator / bare ident). */

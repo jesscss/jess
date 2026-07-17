@@ -8,6 +8,6 @@ export const differenceBase = (cb: number, cs: number): number => Math.abs(cb - 
 /** `difference(color1, color2)` — Photoshop difference blend. Byte-faithful to `less/difference`. */
 export const difference: Fn = {
   name: 'difference',
-  params: [{ kinds: ['color'] }, { kinds: ['color'] }],
+  params: [{ kinds: ['Color'] }, { kinds: ['Color'] }],
   body: (c1, c2) => colorBlend(differenceBase, c1 as Color, c2 as Color),
 };

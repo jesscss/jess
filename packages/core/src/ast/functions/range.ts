@@ -11,7 +11,7 @@ import type { Fn } from './types.js';
  */
 export const range: Fn = {
   name: 'range',
-  params: [{ kinds: ['dimension'] }, { kinds: ['dimension'], optional: true }, { kinds: ['dimension'], optional: true }],
+  params: [{ kinds: ['Dimension'] }, { kinds: ['Dimension'], optional: true }, { kinds: ['Dimension'], optional: true }],
   body: (start, end, step) => {
     const stepValue = step !== undefined ? (step as Dimension).number : 1;
     if (stepValue === 0) throw new RangeError('range() step cannot be 0');

@@ -6,7 +6,7 @@ import type { Fn } from './types.js';
 /** `fadein(color, amount, method?)` — increase alpha. Byte-faithful to `less/fadein`. */
 export const fadein: Fn = {
   name: 'fadein',
-  params: [{ kinds: ['color'] }, { kinds: ['dimension'] }, { kinds: ['keyword', 'quoted'], optional: true }],
+  params: [{ kinds: ['Color'] }, { kinds: ['Dimension'] }, { kinds: ['Keyword', 'Quoted'], optional: true }],
   body: (c, amt, m) => {
     const color = c as Color;
     let adjust = (amt as Dimension).number / 100;

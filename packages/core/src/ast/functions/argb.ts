@@ -15,7 +15,7 @@ const hex2 = (v: number): string => {
  */
 export const argb: Fn = {
   name: 'argb',
-  params: [{ kinds: ['color'] }],
+  params: [{ kinds: ['Color'] }],
   body: (c) => {
     const color = c as Color;
     const [r, g, b] = colorRgbRounded(color);

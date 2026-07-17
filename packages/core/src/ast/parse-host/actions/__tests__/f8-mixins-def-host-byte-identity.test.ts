@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { parseLessFn, lessGrammar } from '@jesscss/less-parser';
-import { serialize, Root, MixinDef, Declaration, root as t2root, type ValueNode, type Param } from '../../../index.js';
+import { serialize, decl, root as t2root, type Root, type MixinDef, type ValueNode, type Param } from '../../../index.js';
 import { bridgeToAst } from '../../__tests__/bridge.js';
 import { parseToAst } from '../../dispatch-host.js';
 
@@ -20,13 +20,13 @@ const g = lessGrammar as Record<string, unknown>;
 
 function directDef(src: string): MixinDef {
   const { root } = parseToAst(src, g['Stylesheet'], undefined, { trivia: g['rw'] });
-  const def = (root?.children ?? []).find((s): s is MixinDef => s instanceof MixinDef);
+  const def = (root?.children ?? []).find((s): s is MixinDef => s.type === 'MixinDef');
   if (!def) throw new Error('f8: no MixinDef produced');
   return def;
 }
 function bridgeDef(src: string): MixinDef {
   const root = bridgeToAst(parseLessFn(src).tree, src) as unknown as Root;
-  const def = (root.children ?? []).find((s): s is MixinDef => s instanceof MixinDef);
+  const def = (root.children ?? []).find((s): s is MixinDef => s.type === 'MixinDef');
   if (!def) throw new Error('f8: bridge produced no MixinDef');
   return def;
 }
@@ -34,7 +34,7 @@ function bridgeDef(src: string): MixinDef {
 /** Serialize one value node in isolation (byte projection of a default/pattern). */
 function valueCss(v: ValueNode | undefined): string {
   if (v === undefined) return '-';
-  return serialize(t2root([new Declaration('_', v)])).css.trim();
+  return serialize(t2root([decl('_', v)])).css.trim();
 }
 
 function paramSig(p: Param): string {

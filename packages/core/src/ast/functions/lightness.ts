@@ -5,6 +5,6 @@ import type { Fn } from './types.js';
 /** `lightness(color)` — the hsl lightness as a percentage. Byte-faithful to `less/lightness`. */
 export const lightness: Fn = {
   name: 'lightness',
-  params: [{ kinds: ['color'] }],
+  params: [{ kinds: ['Color'] }],
   body: (c) => makeDimension(colorHslClamped(c as Color)[2] * 100, '%'),
 };

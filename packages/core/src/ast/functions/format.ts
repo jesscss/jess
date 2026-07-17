@@ -34,7 +34,7 @@ export const format: Fn = {
       result = result.slice(0, m.index) + tokenValue(m[0], arg, ctx) + result.slice(m.index + m[0].length);
     }
     result = result.replace(/%%/g, '%');
-    if (template.kind === 'quoted' && !(template as Quoted).escaped) {
+    if (template.type === 'Quoted' && !(template as Quoted).escaped) {
       return makeQuoted(result, (template as Quoted).quote, false);
     }
     return makeKeyword(result);

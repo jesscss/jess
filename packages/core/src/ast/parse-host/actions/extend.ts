@@ -54,10 +54,12 @@ function rawSpan(rc: unknown): Span | undefined {
  *  `Complex`; degrade a bare compound/simple/foreign child so the action stays
  *  total on a doomed branch). */
 function toFindComplex(built: unknown, text: string): t2.Complex {
-  if (built instanceof t2.Complex) return built;
-  if (built instanceof t2.Compound) return t2.complex([{ compound: built }]);
-  if (built instanceof t2.Simple) return t2.complex([{ compound: new t2.Compound([built]) }]);
-  return t2.complex([{ compound: new t2.Compound([t2.simple(text)]) }]);
+  if (t2.isNode(built)) {
+    if (built.type === 'Complex') return built;
+    if (built.type === 'Compound') return t2.complex([{ compound: built }]);
+    if (built.type === 'Simple') return t2.complex([{ compound: t2.compoundOf([built]) }]);
+  }
+  return t2.complex([{ compound: t2.compoundOf([t2.simple(text)]) }]);
 }
 
 /**

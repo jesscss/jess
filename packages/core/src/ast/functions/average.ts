@@ -8,6 +8,6 @@ export const averageBase = (cb: number, cs: number): number => (cb + cs) / 2;
 /** `average(color1, color2)` — per-channel average blend. Byte-faithful to `less/average`. */
 export const average: Fn = {
   name: 'average',
-  params: [{ kinds: ['color'] }, { kinds: ['color'] }],
+  params: [{ kinds: ['Color'] }, { kinds: ['Color'] }],
   body: (c1, c2) => colorBlend(averageBase, c1 as Color, c2 as Color),
 };

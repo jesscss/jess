@@ -189,7 +189,7 @@ export function selectorText(
 
 /** Only real tree2 nodes count as body statements (placeholders/leaves excluded). */
 export function isStatement(x: unknown): x is t2.Statement {
-  return x instanceof t2.Node;
+  return t2.isNode(x);
 }
 
 /**

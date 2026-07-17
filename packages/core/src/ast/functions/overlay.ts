@@ -13,6 +13,6 @@ export const overlayBase = (cb: number, cs: number): number => {
 /** `overlay(color1, color2)` — Photoshop overlay blend. Byte-faithful to `less/overlay`. */
 export const overlay: Fn = {
   name: 'overlay',
-  params: [{ kinds: ['color'] }, { kinds: ['color'] }],
+  params: [{ kinds: ['Color'] }, { kinds: ['Color'] }],
   body: (c1, c2) => colorBlend(overlayBase, c1 as Color, c2 as Color),
 };

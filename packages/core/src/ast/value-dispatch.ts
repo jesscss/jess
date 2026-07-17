@@ -23,8 +23,8 @@ function bind(name: string, spec: FnSpec, args: readonly ValueObj[]): ValueObj[]
       if (p.optional) continue;
       throw new TypeError(`${name}: missing required argument ${i}`);
     }
-    if (p.kinds !== 'any' && !p.kinds.includes(a.kind)) {
-      throw new TypeError(`${name}: arg ${i} expected ${p.kinds.join('|')}, got ${a.kind}`);
+    if (p.kinds !== 'any' && !p.kinds.includes(a.type)) {
+      throw new TypeError(`${name}: arg ${i} expected ${p.kinds.join('|')}, got ${a.type}`);
     }
     out.push(a);
   }

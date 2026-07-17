@@ -22,9 +22,9 @@ const HEX_RE = /^#([A-Fa-f0-9]{8}|[A-Fa-f0-9]{6}|[A-Fa-f0-9]{3,4})$/;
  */
 export const color: Fn = {
   name: 'color',
-  params: [{ kinds: ['color', 'quoted'] }],
+  params: [{ kinds: ['Color', 'Quoted'] }],
   body: (arg) => {
-    if (arg.kind === 'color') {
+    if (arg.type === 'Color') {
       const c = arg as Color;
       const named = typeof c.node === 'string' ? namedColor(c.node) : undefined;
       if (named) return makeColorRgb(colorRgbRounded(c), c.alpha, HEX);

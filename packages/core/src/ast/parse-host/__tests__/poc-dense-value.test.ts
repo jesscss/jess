@@ -62,8 +62,8 @@ describe('dense-eager value struct', () => {
   it('eval-identity: dense (value,unit) === what lazy materialize would parse', () => {
     for (const tok of tokens) {
       const dense = parseDense(tok);
-      const mat = evaluator.materialize(literal(tok)) as Extract<ValueObj, { kind: 'dimension' }>;
-      expect(mat.kind).toBe('dimension');
+      const mat = evaluator.materialize(literal(tok)) as Extract<ValueObj, { type: 'Dimension' }>;
+      expect(mat.type).toBe('Dimension');
       expect(dense.value).toBe(mat.number);
       expect(dense.unit).toBe(mat.unit);
     }
@@ -100,7 +100,7 @@ describe('dense-eager value struct', () => {
       for (let i = 0; i < N; i++) {
         const leaf = literal(corpus[i]!);
         acc += leaf.length; // emit
-        const m = evaluator.materialize(leaf) as Extract<ValueObj, { kind: 'dimension' }>;
+        const m = evaluator.materialize(leaf) as Extract<ValueObj, { type: 'Dimension' }>;
         acc += m.number + m.unit.length; // eval touch
       }
       return acc;

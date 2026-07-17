@@ -82,10 +82,10 @@ export function buildAdapterEvaluator(_options?: EvaluatorOptions): ValueEvaluat
 
   /* ---- ValueObj -> legacy node ---- */
   const toLegacy = (v: ValueObj): LegacyNode => {
-    switch (v.kind) {
-      case 'dimension':
+    switch (v.type) {
+      case 'Dimension':
         return new Dimension({ number: v.number, unit: v.unit || undefined }) as unknown as LegacyNode;
-      case 'color': {
+      case 'Color': {
         const opts: { format?: number; modernSyntax?: boolean } = { format: v.format };
         if (v.modernSyntax) opts.modernSyntax = true;
         // Preserve the original literal `node` (e.g. `#ff0000`): fns like `fade`
@@ -97,15 +97,15 @@ export function buildAdapterEvaluator(_options?: EvaluatorOptions): ValueEvaluat
         if (v.node !== undefined) data.node = v.node;
         return new Color(data, opts) as unknown as LegacyNode;
       }
-      case 'quoted':
+      case 'Quoted':
         return new Quoted(v.quote + v.value + v.quote, v.value, v.escaped) as unknown as LegacyNode;
-      case 'keyword':
+      case 'Keyword':
         return new Anonymous(v.text) as unknown as LegacyNode;
-      case 'bool':
+      case 'Bool':
         return new Bool(v.value) as unknown as LegacyNode;
-      case 'nil':
+      case 'Nil':
         return new Nil() as unknown as LegacyNode;
-      case 'list':
+      case 'List':
         return new List(v.items.map(toLegacy)) as unknown as LegacyNode;
     }
   };
@@ -114,12 +114,12 @@ export function buildAdapterEvaluator(_options?: EvaluatorOptions): ValueEvaluat
   const fromLegacy = (node: unknown): ValueObj => {
     const bytes = (node as LegacyNode).render(ctx);
     if (node instanceof Dimension) {
-      return { kind: 'dimension', number: node.number, unit: node.unit ?? '', bytes };
+      return { type: 'Dimension', number: node.number, unit: node.unit ?? '', bytes };
     }
     if (node instanceof Color) {
       const [r, g, b] = node.rgb;
       return {
-        kind: 'color',
+        type: 'Color',
         rgb: [r, g, b],
         alpha: node.alpha,
         format: (node.options?.format as number | undefined) ?? ColorFormat.HEX,
@@ -129,16 +129,16 @@ export function buildAdapterEvaluator(_options?: EvaluatorOptions): ValueEvaluat
       };
     }
     if (node instanceof Quoted) {
-      return { kind: 'quoted', value: node.value, quote: node.quote ?? '"', escaped: node.escaped === true, bytes };
+      return { type: 'Quoted', value: node.value, quote: node.quote ?? '"', escaped: node.escaped === true, bytes };
     }
     if (node instanceof Bool) {
-      return { kind: 'bool', value: Boolean(node.value), bytes };
+      return { type: 'Bool', value: Boolean(node.value), bytes };
     }
     if (node instanceof Nil) {
-      return { kind: 'nil', bytes };
+      return { type: 'Nil', bytes };
     }
     // Fallback: a keyword-shaped result carries its bytes.
-    return { kind: 'keyword', text: bytes, bytes };
+    return { type: 'Keyword', text: bytes, bytes };
   };
 
   /**
@@ -153,7 +153,7 @@ export function buildAdapterEvaluator(_options?: EvaluatorOptions): ValueEvaluat
     if (tag === LiteralTag.Dimension || tag === LiteralTag.Num) {
       const m = NUM_RE.exec(b);
       if (m) {
-        return { kind: 'dimension', number: Number(b.slice(0, b.length - m[1]!.length)), unit: m[1] ?? '', bytes: b };
+        return { type: 'Dimension', number: Number(b.slice(0, b.length - m[1]!.length)), unit: m[1] ?? '', bytes: b };
       }
     }
     if (tag === LiteralTag.ColorHex) {
@@ -173,13 +173,13 @@ export function buildAdapterEvaluator(_options?: EvaluatorOptions): ValueEvaluat
     if (NUM_RE.test(b)) {
       const m = NUM_RE.exec(b);
       if (m) {
-        return { kind: 'dimension', number: Number(b.slice(0, b.length - m[1]!.length)), unit: m[1] ?? '', bytes: b };
+        return { type: 'Dimension', number: Number(b.slice(0, b.length - m[1]!.length)), unit: m[1] ?? '', bytes: b };
       }
     }
     // Quoted string.
     const q = QUOTE_RE.exec(b);
     if (q) {
-      return { kind: 'quoted', value: q[2]!, quote: q[1]!, escaped: false, bytes: b };
+      return { type: 'Quoted', value: q[2]!, quote: q[1]!, escaped: false, bytes: b };
     }
     // Named color? (`blue`, `red`) — a keyword that names a color is a Color for
     // operations / color-typed params / `iscolor`; otherwise a plain keyword.
@@ -189,13 +189,13 @@ export function buildAdapterEvaluator(_options?: EvaluatorOptions): ValueEvaluat
         return fromLegacyColorPreservingNode(named, b);
       }
     }
-    return { kind: 'keyword', text: b, bytes: b };
+    return { type: 'Keyword', text: b, bytes: b };
   };
 
   const fromLegacyColorPreservingNode = (c: Color, source: string): ValueObj => {
     const [r, g, b] = c.rgb;
     return {
-      kind: 'color',
+      type: 'Color',
       rgb: [r, g, b],
       alpha: c.alpha,
       format: (c.options?.format as number | undefined) ?? ColorFormat.HEX,
@@ -213,26 +213,26 @@ export function buildAdapterEvaluator(_options?: EvaluatorOptions): ValueEvaluat
     // `calc(100% * 100% * 2)`, never `calc(calc(100% * 100%) * 2)`.
     // byte-faithful: opaque operand, no structured node — the operand crosses the
     // seam already materialized to a keyword, so the calc wrapper is string-unwrapped.
-    const leftInner = left.kind === 'keyword' ? calcInner(left.bytes) : null;
-    const rightInner = right.kind === 'keyword' ? calcInner(right.bytes) : null;
+    const leftInner = left.type === 'Keyword' ? calcInner(left.bytes) : null;
+    const rightInner = right.type === 'Keyword' ? calcInner(right.bytes) : null;
     if (leftInner !== null || rightInner !== null) {
       const bytes = `calc(${leftInner ?? left.bytes} ${op} ${rightInner ?? right.bytes})`;
-      return { kind: 'keyword', text: bytes, bytes };
+      return { type: 'Keyword', text: bytes, bytes };
     }
     // Guard 2: an unoperable operand (a keyword / `Anonymous` whose `.operate`
     // throws a plain `Error`, mirror `Operation.isUnoperable`) -> preserve
     // source. The `typeof l.operate` check below can't catch this because
     // `Anonymous` inherits a throwing base `operate`, and the plain `Error` it
     // raises slips past the `TypeError`-only catch.
-    if (left.kind === 'keyword' || right.kind === 'keyword') {
+    if (left.type === 'Keyword' || right.type === 'Keyword') {
       const bytes = `${left.bytes} ${op} ${right.bytes}`;
-      return { kind: 'keyword', text: bytes, bytes };
+      return { type: 'Keyword', text: bytes, bytes };
     }
     const l = toLegacy(left);
     const r = toLegacy(right);
     if (typeof l.operate !== 'function') {
       // Non-operable operand: preserve source.
-      return { kind: 'keyword', text: `${left.bytes} ${op} ${right.bytes}`, bytes: `${left.bytes} ${op} ${right.bytes}` };
+      return { type: 'Keyword', text: `${left.bytes} ${op} ${right.bytes}`, bytes: `${left.bytes} ${op} ${right.bytes}` };
     }
     try {
       const out = l.operate(r as unknown, op, ctx);
@@ -241,7 +241,7 @@ export function buildAdapterEvaluator(_options?: EvaluatorOptions): ValueEvaluat
       if (err instanceof TypeError && modes.unitMode === 'preserve') {
         // Unit-clash → `calc(...)` fallback (mirror Operation.createCalcFallback).
         const bytes = `calc(${left.bytes} ${op} ${right.bytes})`;
-        return { kind: 'keyword', text: bytes, bytes };
+        return { type: 'Keyword', text: bytes, bytes };
       }
       throw err;
     }
@@ -254,7 +254,7 @@ export function buildAdapterEvaluator(_options?: EvaluatorOptions): ValueEvaluat
       // Unknown function: emit verbatim (functionMode preserve).
       const inner = args.items.map((a) => a.bytes).join(args.sep === ',' ? ', ' : ` ${args.sep === '/' ? '/ ' : ''}`);
       const bytes = `${name}(${inner})`;
-      return { kind: 'keyword', text: bytes, bytes };
+      return { type: 'Keyword', text: bytes, bytes };
     }
     const argNodes = args.items.map(toLegacy);
     const modern = args.sep === ' ' || args.sep === '/';
@@ -267,7 +267,7 @@ export function buildAdapterEvaluator(_options?: EvaluatorOptions): ValueEvaluat
   /* ---- guards ---- */
   const compare = (op: string, left: ValueObj, right: ValueObj, _modes: EvalModes): boolean => {
     // Numeric comparison when both are numbers; else byte/keyword comparison.
-    if (left.kind === 'dimension' && right.kind === 'dimension') {
+    if (left.type === 'Dimension' && right.type === 'Dimension') {
       const a = left.number;
       const b = right.number;
       switch (op) {

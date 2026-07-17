@@ -10,7 +10,7 @@ import type { Fn } from './types.js';
  */
 export const hsv: Fn = {
   name: 'hsv',
-  params: [{ kinds: ['dimension'] }, { kinds: ['dimension'] }, { kinds: ['dimension'] }],
+  params: [{ kinds: ['Dimension'] }, { kinds: ['Dimension'] }, { kinds: ['Dimension'] }],
   body: (hD, sD, vD) => {
     const h = normalizeHue(hD as Dimension);
     const s = percentOf(sD as Dimension, 1);

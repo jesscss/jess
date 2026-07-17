@@ -25,37 +25,28 @@
  * modules (`node`, `nodes`) — never the legacy tree.
  */
 
-import { Kind, Node } from './node.js';
 import type { Statement, ValueNode } from './nodes.js';
 
 /** A block-bearing at-rule: `@name prelude { …body }`. */
-export class AtRuleBlock extends Node {
-  readonly kind = Kind.AtRuleBlock as const;
-  constructor(
-    readonly name: string,
-    readonly prelude: ValueNode | null,
-    readonly body: Statement[],
-  ) {
-    super();
-  }
+export interface AtRuleBlock {
+  readonly type: 'AtRuleBlock';
+  readonly name: string;
+  readonly prelude: ValueNode | null;
+  readonly body: Statement[];
 }
 
 /** A statement-form at-rule: `@name prelude;` (prelude bytes kept literal). */
-export class AtRuleStatement extends Node {
-  readonly kind = Kind.AtRuleStatement as const;
-  constructor(
-    readonly name: string,
-    readonly prelude: string | null,
-  ) {
-    super();
-  }
+export interface AtRuleStatement {
+  readonly type: 'AtRuleStatement';
+  readonly name: string;
+  readonly prelude: string | null;
 }
 
 export const atRuleBlock = (
   name: string,
   prelude: ValueNode | null,
   body: Statement[],
-): AtRuleBlock => new AtRuleBlock(name, prelude, body);
+): AtRuleBlock => ({ type: 'AtRuleBlock', name, prelude, body });
 
 export const atRuleStatement = (name: string, prelude: string | null): AtRuleStatement =>
-  new AtRuleStatement(name, prelude);
+  ({ type: 'AtRuleStatement', name, prelude });

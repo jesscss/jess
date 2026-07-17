@@ -78,7 +78,7 @@ export function evalGuard(node: GuardNode, deps: GuardEvalDeps): boolean {
     case 'call': {
       if (!deps.ev) return false;
       const items = node.args.map((a) => deps.resolveTyped(a));
-      const list: ValueList = { kind: 'list', items, sep: ',', bytes: '' };
+      const list: ValueList = { type: 'List', items, sep: ',', bytes: '' };
       return deps.ev.typeCheck(node.name, list, deps.modes);
     }
     case 'default':

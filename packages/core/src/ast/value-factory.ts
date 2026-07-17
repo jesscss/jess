@@ -31,7 +31,7 @@ export const unitOf = (v: Dimension | number): string => (typeof v === 'number' 
 export const colorHsl = (c: Color): [number, number, number] =>
   c.hsl ? [c.hsl[0], c.hsl[1], c.hsl[2]] : rgbToHsl(c.rgb[0], c.rgb[1], c.rgb[2]);
 
-export const textOf = (v: Keyword | Quoted): string => (v.kind === 'quoted' ? v.value : v.text);
+export const textOf = (v: Keyword | Quoted): string => (v.type === 'Quoted' ? v.value : v.text);
 
 const clamp01 = (v: number, max: number): number => Math.min(Math.max(v, 0), max);
 
@@ -59,7 +59,7 @@ export const colorRawRgb = colorSourceRgb;
 /* -------------------------------------------------------- constructors */
 
 export function makeDimension(number: number, unit = ''): Dimension {
-  const n: Dimension = { kind: 'dimension', number, unit, bytes: '' };
+  const n: Dimension = { type: 'Dimension', number, unit, bytes: '' };
   return { ...n, bytes: serializeDimension(n) };
 }
 
@@ -71,7 +71,7 @@ export function makeColorRgb(
   opts?: { modernSyntax?: boolean; node?: string; rgbPct?: readonly (number | undefined)[]; alphaPct?: number },
 ): Color {
   const base: Color = {
-    kind: 'color',
+    type: 'Color',
     rgb,
     alpha,
     format,
@@ -94,7 +94,7 @@ export function makeColorHsl(
 ): Color {
   const rgb: readonly [number, number, number] = [0, 0, 0]; // derived lazily by serializer
   const base: Color = {
-    kind: 'color',
+    type: 'Color',
     rgb,
     alpha,
     hsl,
@@ -108,17 +108,17 @@ export function makeColorHsl(
 }
 
 export function makeQuoted(value: string, quote: string, escaped: boolean): Quoted {
-  const q: Quoted = { kind: 'quoted', value, quote, escaped, bytes: '' };
+  const q: Quoted = { type: 'Quoted', value, quote, escaped, bytes: '' };
   return { ...q, bytes: serializeQuoted(q) };
 }
 
-export const makeKeyword = (text: string): Keyword => ({ kind: 'keyword', text, bytes: text });
+export const makeKeyword = (text: string): Keyword => ({ type: 'Keyword', text, bytes: text });
 
-export const makeBool = (value: boolean): Bool => ({ kind: 'bool', value, bytes: value ? 'true' : 'false' });
+export const makeBool = (value: boolean): Bool => ({ type: 'Bool', value, bytes: value ? 'true' : 'false' });
 
-export const makeNil = (bytes = ''): Nil => ({ kind: 'nil', bytes });
+export const makeNil = (bytes = ''): Nil => ({ type: 'Nil', bytes });
 
 export function makeList(items: readonly ValueObj[], sep: ',' | ' ' | '/'): List {
-  const l: List = { kind: 'list', items, sep, bytes: '' };
+  const l: List = { type: 'List', items, sep, bytes: '' };
   return { ...l, bytes: serializeValue(l) };
 }

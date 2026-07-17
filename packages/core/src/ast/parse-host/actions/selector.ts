@@ -49,18 +49,22 @@ function rawSpan(rc: unknown): Span | undefined {
 /** A `Complex` for one selector-list / complex segment: reuse a built selector
  *  node, else wrap the verbatim token text in a single-compound Complex. */
 function segmentToComplex(built: unknown, text: string): t2.Complex {
-  if (built instanceof t2.Complex) return built;
-  if (built instanceof t2.Compound) return t2.complex([{ compound: built }]);
-  if (built instanceof t2.Simple) return t2.complex([{ compound: new t2.Compound([built]) }]);
-  return t2.complex([{ compound: new t2.Compound([t2.simple(text)]) }]);
+  if (t2.isNode(built)) {
+    if (built.type === 'Complex') return built;
+    if (built.type === 'Compound') return t2.complex([{ compound: built }]);
+    if (built.type === 'Simple') return t2.complex([{ compound: t2.compoundOf([built]) }]);
+  }
+  return t2.complex([{ compound: t2.compoundOf([t2.simple(text)]) }]);
 }
 
 /** A `Compound` for one complex segment: reuse a built compound, else the token. */
 function segmentToCompound(built: unknown, text: string): { compound: t2.Compound; complex?: t2.Complex } {
-  if (built instanceof t2.Compound) return { compound: built };
-  if (built instanceof t2.Complex) return { compound: built.head, complex: built };
-  if (built instanceof t2.Simple) return { compound: new t2.Compound([built]) };
-  return { compound: new t2.Compound([t2.simple(text)]) };
+  if (t2.isNode(built)) {
+    if (built.type === 'Compound') return { compound: built };
+    if (built.type === 'Complex') return { compound: built.head, complex: built };
+    if (built.type === 'Simple') return { compound: t2.compoundOf([built]) };
+  }
+  return { compound: t2.compoundOf([t2.simple(text)]) };
 }
 
 /**
@@ -84,11 +88,11 @@ function buildCompound(args: BuildArgs): t2.Compound | t2.Complex {
     if (cur.length > 0 && hasWhitespaceTriviaBefore(args.triviaLog, i)) groups.push([]); // ws → descendant
     const built = args.children[i];
     const group = groups[groups.length - 1]!;
-    if (built instanceof t2.Compound) group.push(...built.simples);
+    if (t2.isNode(built) && built.type === 'Compound') group.push(...built.simples);
     else group.push(t2.simple(src.slice(span.start, span.end)));
   }
-  const compounds = groups.filter((g) => g.length > 0).map((g) => new t2.Compound(g));
-  if (compounds.length <= 1) return compounds[0] ?? new t2.Compound([]);
+  const compounds = groups.filter((g) => g.length > 0).map((g) => t2.compoundOf(g));
+  if (compounds.length <= 1) return compounds[0] ?? t2.compoundOf([]);
   const [head, ...tail] = compounds;
   return t2.complex([{ compound: head! }, ...tail.map((c) => ({ comb: ' ' as Combinator, compound: c }))]);
 }
@@ -136,7 +140,7 @@ function buildComplex(args: BuildArgs): t2.Complex {
   }
   const out =
     segments.length === 0
-      ? t2.complex([{ compound: new t2.Compound([]) }])
+      ? t2.complex([{ compound: t2.compoundOf([]) }])
       : t2.complex(segments, leadingComb);
   attachSelectorExtends(out, extendInstructions);
   return out;

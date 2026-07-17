@@ -5,5 +5,5 @@ import type { Fn } from './types.js';
 export const e: Fn = {
   name: 'e',
   params: [{ kinds: 'any' }],
-  body: (v) => (v.kind === 'quoted' ? makeKeyword(v.value) : v),
+  body: (v) => (v.type === 'Quoted' ? makeKeyword(v.value) : v),
 };

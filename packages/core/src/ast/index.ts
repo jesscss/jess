@@ -6,15 +6,17 @@
  * per-shape tree2-vs-tree head-to-head harness.
  */
 
-export { Kind, Node, type Combinator } from './node.js';
+export { type Node, type NodeType, type Combinator, isNode, AST_NODE_TYPES } from './node.js';
 export * from './nodes.js';
 // [atrule] at-rule node types + constructors
 export * from './at-rule.js';
 // typed synchronous value-evaluator seam + boundary-clean value domain.
-// NOTE: the value `Dimension` is NOT re-exported here — it collides with the AST
-// `Dimension` node (`nodes.ts`). It stays module-qualified: import it directly
-// from `./value-eval.js`. The split is perf-justified (a static `3px` is a bare
-// literal string, never a value `Dimension`).
+// NOTE: the value `type:'Dimension'` result is NOT re-exported here — it collides
+// with the AST `type:'Dimension'` node (`nodes.ts`). It stays module-qualified:
+// import it directly from `./value-eval.js`. The split is perf-justified (a static
+// `3px` is a bare literal string, never a value `Dimension`); the two share a
+// `type` string but live in disjoint unions (`Node` vs `ValueObj`) that are never
+// merged, so never form a `Node | ValueObj` union.
 export {
   DEFAULT_MODES,
   emitValue,

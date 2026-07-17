@@ -7,7 +7,7 @@ import type { Fn } from './types.js';
 /** `tint(color, amount)` — mix with white, preserve the input's format. Byte-faithful to `less/tint`. */
 export const tint: Fn = {
   name: 'tint',
-  params: [{ kinds: ['color'] }, { kinds: ['dimension'] }],
+  params: [{ kinds: ['Color'] }, { kinds: ['Dimension'] }],
   body: (c, amt) => {
     const color = c as Color;
     const white = makeColorRgb([255, 255, 255], 1, RGB);

@@ -14,10 +14,10 @@ import type { Fn } from './types.js';
 export const contrast: Fn = {
   name: 'contrast',
   params: [
-    { kinds: ['color'] },
-    { kinds: ['color'], optional: true },
-    { kinds: ['color'], optional: true },
-    { kinds: ['dimension'], optional: true },
+    { kinds: ['Color'] },
+    { kinds: ['Color'], optional: true },
+    { kinds: ['Color'], optional: true },
+    { kinds: ['Dimension'], optional: true },
   ],
   body: (c, dark, light, threshold) => {
     const color = c as Color;

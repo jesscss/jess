@@ -29,7 +29,7 @@ function buildInterpolatedSelector(args: BuildArgs): t2.Compound {
   const leaves = args.children.filter(isLeaf);
   const interp = interpFromLeaves(leaves, false);
   const simple = interp !== null ? t2.simpleInterp(interp) : t2.simple(leaves.map((l) => l.value).join(''));
-  return new t2.Compound([simple]);
+  return t2.compoundOf([simple]);
 }
 
 export const SELECTOR_INTERP_ACTIONS: readonly BuildAction[] = [

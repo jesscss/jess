@@ -110,7 +110,7 @@ export function parseHex(hex: string): { rgb: [number, number, number]; alpha: n
 function dimensionFromString(str: string): ValueObj {
   const m = NUM_RE.exec(str);
   const unit = m?.[1] ?? '';
-  return { kind: 'dimension', number: Number(str.slice(0, str.length - unit.length)), unit, bytes: str };
+  return { type: 'Dimension', number: Number(str.slice(0, str.length - unit.length)), unit, bytes: str };
 }
 
 /** True when `s` opens and closes with the SAME quote char (`"…"` / `'…'`). */
@@ -121,7 +121,7 @@ function isQuotedBytes(s: string): boolean {
 
 /** A quoted `ValueObj` from its verbatim bytes (quote char known from the bytes). */
 function quotedFromBytes(str: string): ValueObj {
-  return { kind: 'quoted', value: str.slice(1, -1), quote: str[0]!, escaped: false, bytes: str };
+  return { type: 'Quoted', value: str.slice(1, -1), quote: str[0]!, escaped: false, bytes: str };
 }
 
 /**
@@ -143,7 +143,7 @@ export function materializeLiteral(str: string, tag: LiteralTag, lit?: LitFields
     // One numeric tag (`Num` is a same-value alias of `Dimension`).
     case LiteralTag.Dimension:
       // Parser carried the number/unit split → read it; else split a synthetic.
-      if (lit && 'number' in lit) return { kind: 'dimension', number: lit.number, unit: lit.unit, bytes: str };
+      if (lit && 'number' in lit) return { type: 'Dimension', number: lit.number, unit: lit.unit, bytes: str };
       return dimensionFromString(str);
     case LiteralTag.ColorHex: {
       const { rgb, alpha } = parseHex(str);
@@ -159,7 +159,7 @@ export function materializeLiteral(str: string, tag: LiteralTag, lit?: LitFields
     case LiteralTag.Quoted:
       // Parser classified the string leaf → read its quote/value/escaped fields;
       // a synthetic quoted (no `lit`) recovers them from the bytes (no regex).
-      if (lit && 'value' in lit) return { kind: 'quoted', value: lit.value, quote: lit.quote, escaped: lit.escaped, bytes: str };
+      if (lit && 'value' in lit) return { type: 'Quoted', value: lit.value, quote: lit.quote, escaped: lit.escaped, bytes: str };
       return quotedFromBytes(str);
     case LiteralTag.Any:
     case LiteralTag.Keyword:

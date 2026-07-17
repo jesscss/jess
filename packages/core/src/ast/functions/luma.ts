@@ -6,7 +6,7 @@ import type { Fn } from './types.js';
 /** `luma(color)` — WCAG luma × alpha as a percentage. Byte-faithful to `less/luma`. */
 export const luma: Fn = {
   name: 'luma',
-  params: [{ kinds: ['color'] }],
+  params: [{ kinds: ['Color'] }],
   body: (c) => {
     const color = c as Color;
     const a = Math.min(Math.max(color.alpha, 0), 1);

@@ -5,6 +5,6 @@ import type { Fn } from './types.js';
 /** `mod(a, b)` — `a % b`, keeping `a`'s unit. */
 export const mod: Fn = {
   name: 'mod',
-  params: [{ kinds: ['dimension'] }, { kinds: ['dimension'] }],
+  params: [{ kinds: ['Dimension'] }, { kinds: ['Dimension'] }],
   body: (a, b) => makeDimension((a as Dimension).number % (b as Dimension).number, (a as Dimension).unit),
 };

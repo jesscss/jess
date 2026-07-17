@@ -33,16 +33,16 @@ function colorOperate(a: Color, b: ValueObj, op: string, modes: EvalModes): Colo
   const aRGB = colorRawRgb(a);
   let newAlpha = a.alpha;
   let out: [number, number, number];
-  if (b.kind === 'dimension') {
+  if (b.type === 'Dimension') {
     const isStrictLike = modes.unitMode === 'strict' || modes.unitMode === 'preserve';
     if (b.unit && isStrictLike) throw new TypeError(`Cannot convert "${b.bytes}" to a color`);
     out = [calculate(aRGB[0], op, b.number), calculate(aRGB[1], op, b.number), calculate(aRGB[2], op, b.number)];
-  } else if (b.kind === 'color') {
+  } else if (b.type === 'Color') {
     const bRGB = colorRawRgb(b);
     out = [calculate(aRGB[0], op, bRGB[0]), calculate(aRGB[1], op, bRGB[1]), calculate(aRGB[2], op, bRGB[2])];
     newAlpha = a.alpha * (1 - b.alpha) + b.alpha;
   } else {
-    throw new TypeError(`Cannot operate on ${b.kind}`);
+    throw new TypeError(`Cannot operate on ${b.type}`);
   }
   return makeColorRgb(out, newAlpha, a.format, a.modernSyntax ? { modernSyntax: true } : undefined);
 }
@@ -141,26 +141,26 @@ export function operate(op: string, left: ValueObj, right: ValueObj, modes: Eval
   // operand is always an already-materialized keyword (the structured `calc(...)`
   // FunctionCall was folded to bytes upstream), and a computed preserve-mode
   // `calc(...)` fallback result has no node at all, so both are string-unwrapped.
-  const leftInner = left.kind === 'keyword' ? calcInner(left.bytes) : null;
-  const rightInner = right.kind === 'keyword' ? calcInner(right.bytes) : null;
+  const leftInner = left.type === 'Keyword' ? calcInner(left.bytes) : null;
+  const rightInner = right.type === 'Keyword' ? calcInner(right.bytes) : null;
   if (leftInner !== null || rightInner !== null) {
     return makeKeyword(`calc(${leftInner ?? left.bytes} ${op} ${rightInner ?? right.bytes})`);
   }
   // Guard 2: an un-operable keyword operand → preserve source.
-  if (left.kind === 'keyword' || right.kind === 'keyword') {
+  if (left.type === 'Keyword' || right.type === 'Keyword') {
     return makeKeyword(`${left.bytes} ${op} ${right.bytes}`);
   }
   try {
-    if (left.kind === 'dimension' && right.kind === 'dimension') {
+    if (left.type === 'Dimension' && right.type === 'Dimension') {
       return dimensionOperate(left, right, op, modes);
     }
-    if (left.kind === 'dimension' && right.kind === 'color') {
+    if (left.type === 'Dimension' && right.type === 'Color') {
       return dimensionAsColor(left, right, op, modes);
     }
-    if (left.kind === 'color') {
+    if (left.type === 'Color') {
       return colorOperate(left, right, op, modes);
     }
-    throw new TypeError(`Cannot operate on ${left.kind}`);
+    throw new TypeError(`Cannot operate on ${left.type}`);
   } catch (err) {
     if (err instanceof TypeError && modes.unitMode === 'preserve') {
       return makeKeyword(`calc(${left.bytes} ${op} ${right.bytes})`);
@@ -200,7 +200,7 @@ function dimensionCompare(a: Dimension, b: Dimension): -1 | 0 | 1 | undefined {
  */
 export function compare(op: string, left: ValueObj, right: ValueObj): boolean {
   const c: -1 | 0 | 1 | undefined =
-    left.kind === 'dimension' && right.kind === 'dimension'
+    left.type === 'Dimension' && right.type === 'Dimension'
       ? dimensionCompare(left, right)
       : left.bytes === right.bytes ? 0 : undefined;
   switch (op) {
@@ -222,17 +222,17 @@ export function typeCheck(name: string, args: readonly ValueObj[]): boolean {
   const a = args[0];
   if (a === undefined) return false;
   switch (name.toLowerCase()) {
-    case 'iscolor': return a.kind === 'color';
-    case 'isnumber': return a.kind === 'dimension';
-    case 'isstring': return a.kind === 'quoted';
-    case 'iskeyword': return a.kind === 'keyword';
-    case 'ispixel': return a.kind === 'dimension' && a.unit === 'px';
-    case 'ispercentage': return a.kind === 'dimension' && a.unit === '%';
-    case 'isem': return a.kind === 'dimension' && a.unit === 'em';
+    case 'iscolor': return a.type === 'Color';
+    case 'isnumber': return a.type === 'Dimension';
+    case 'isstring': return a.type === 'Quoted';
+    case 'iskeyword': return a.type === 'Keyword';
+    case 'ispixel': return a.type === 'Dimension' && a.unit === 'px';
+    case 'ispercentage': return a.type === 'Dimension' && a.unit === '%';
+    case 'isem': return a.type === 'Dimension' && a.unit === 'em';
     case 'isunit': {
       const u = args[1];
-      const want = u === undefined ? '' : u.kind === 'quoted' ? u.value : u.bytes;
-      return a.kind === 'dimension' && a.unit === want;
+      const want = u === undefined ? '' : u.type === 'Quoted' ? u.value : u.bytes;
+      return a.type === 'Dimension' && a.unit === want;
     }
     default: return false;
   }

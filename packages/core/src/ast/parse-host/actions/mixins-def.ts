@@ -44,7 +44,7 @@ import {
 
 /** A GuardNode is a plain discriminated object (`{ g: … }`), not a tree2 Node. */
 function isGuardNode(x: unknown): x is t2.GuardNode {
-  return !!x && typeof x === 'object' && !(x instanceof t2.Node) && 'g' in (x as object);
+  return !!x && typeof x === 'object' && !t2.isNode(x) && 'g' in (x as object);
 }
 
 /** The string value of a parseman leaf child, or `undefined` for a non-leaf. */
@@ -108,7 +108,7 @@ function buildNamedArg(args: BuildArgs): NamedMarker {
 
 function namedArgValue(args: BuildArgs): t2.ValueNode {
   const vals = args.children.slice(2);
-  if (vals.length === 1 && vals[0] instanceof t2.Node) return vals[0] as t2.ValueNode;
+  if (vals.length === 1 && t2.isNode(vals[0])) return vals[0] as t2.ValueNode;
   // TODO(tier-b): PARSER GAP — a multi-token space-list default (`thin dotted`)
   // is not assembled into a value node (single-token defaults DO arrive built),
   // so the verbatim bytes after the `:` are consumed here until the grammar emits
@@ -146,7 +146,7 @@ function buildMixinArgs(args: BuildArgs): ArgSlot[] {
     if (text === undefined) continue;
     if (text === '(' || text === ')' || text === ';' || text === ',') continue;
     const built = args.children[i];
-    out.push({ __rawArg: true, text, value: built instanceof t2.Node ? built : undefined, built });
+    out.push({ __rawArg: true, text, value: t2.isNode(built) ? built : undefined, built });
   }
   return out;
 }
@@ -163,8 +163,8 @@ function classifyParam(arg: ArgSlot): t2.Param {
   const built = arg.built;
   if (isRestMarker(built)) return built.name !== undefined ? { rest: true, name: built.name } : { rest: true };
   if (isNamedMarker(built)) return { name: built.name, default: built.value };
-  if (built instanceof t2.VarRef) return { name: built.name };
-  return { pattern: built instanceof t2.Node ? (built as t2.ValueNode) : t2.word(arg.text) };
+  if (t2.isNode(built) && built.type === 'VarRef') return { name: built.name };
+  return { pattern: t2.isNode(built) ? (built as t2.ValueNode) : t2.word(arg.text) };
 }
 
 /** `MixinOrQualifiedRule` (block form) → `MixinDef`. */

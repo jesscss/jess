@@ -10,7 +10,7 @@ import type { Fn } from './types.js';
  */
 export const convert: Fn = {
   name: 'convert',
-  params: [{ kinds: ['dimension'] }, { kinds: ['keyword', 'quoted'] }],
+  params: [{ kinds: ['Dimension'] }, { kinds: ['Keyword', 'Quoted'] }],
   body: (value, unitArg) => {
     const v = value as Dimension;
     const from = v.unit;

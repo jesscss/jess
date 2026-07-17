@@ -30,7 +30,7 @@ function verbatimArgs(args: ValueList): string {
  * arrives as a `Keyword` whose bytes ARE the inner text), any other value its
  * canonical emitted bytes. Boundary-clean (operates on the value domain only).
  */
-const stringify = (v: ValueObj): string => (v.kind === 'quoted' ? v.value : v.bytes);
+const stringify = (v: ValueObj): string => (v.type === 'Quoted' ? v.value : v.bytes);
 
 /**
  * Build the synchronous typed `ValueEvaluator`. No pre-pass: values are computed

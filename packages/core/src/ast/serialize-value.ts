@@ -197,14 +197,14 @@ export function serializeQuoted(q: Quoted): string {
 
 /** Serialize any `ValueObj` to its canonical bytes (mode threads through). */
 export function serializeValue(v: ValueObj, mode: OutputMode = OutputMode.Expanded): string {
-  switch (v.kind) {
-    case 'dimension': return serializeDimension(v, mode);
-    case 'color': return serializeColor(v, mode);
-    case 'quoted': return serializeQuoted(v);
-    case 'keyword': return v.text;
-    case 'bool': return v.value ? 'true' : 'false';
-    case 'nil': return v.bytes ?? '';
-    case 'list': {
+  switch (v.type) {
+    case 'Dimension': return serializeDimension(v, mode);
+    case 'Color': return serializeColor(v, mode);
+    case 'Quoted': return serializeQuoted(v);
+    case 'Keyword': return v.text;
+    case 'Bool': return v.value ? 'true' : 'false';
+    case 'Nil': return v.bytes ?? '';
+    case 'List': {
       // COMPRESSED HOOK: dart-sass tightens comma-list separators (`,` not `, `).
       const sep = v.sep === ',' ? ', ' : v.sep === '/' ? ' / ' : ' ';
       return v.items.map((it) => serializeValue(it, mode)).join(sep);

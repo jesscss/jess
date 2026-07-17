@@ -63,7 +63,7 @@ function interpFromString(text: string, unquote: boolean): t2.ValueNode {
 /** Strip a trailing `!important` from a value node's bytes (merged decls
  *  re-emit it once via the structured flag) — mirror of the bridge helper. */
 function stripImportantBytes(v: t2.ValueNode): t2.ValueNode {
-  if (v.kind === t2.Kind.Word) {
+  if (v.type === 'Word') {
     return t2.word((v as t2.Word).text.replace(/\s*!\s*important\s*$/iu, ''));
   }
   return v;
@@ -78,7 +78,7 @@ function declName(nameBytes: string): string | t2.Interp {
   const interp = interpFromString(nameBytes, false);
   // `@{…}` was present, so `interpFromString` returned an `Interp`; a doomed span
   // without a real ref falls back to the raw string.
-  return interp.kind === t2.Kind.Interp ? (interp as t2.Interp) : nameBytes;
+  return interp.type === 'Interp' ? (interp as t2.Interp) : nameBytes;
 }
 
 /** The declaration's source bytes with any trailing `;` dropped. */
@@ -97,8 +97,8 @@ function declBody(args: BuildArgs): string {
 function consumableWholeValue(args: BuildArgs, valueBytes: string): t2.ValueNode | null {
   const node = wholeValueNode(args, valueBytes);
   if (node === null) return null;
-  const k = node.kind;
-  return k === t2.Kind.Word || k === t2.Kind.VarRef || k === t2.Kind.Paren || k === t2.Kind.FunctionCall
+  const k = node.type;
+  return k === 'Word' || k === 'VarRef' || k === 'Paren' || k === 'FunctionCall'
     ? (node as t2.ValueNode)
     : null;
 }
@@ -116,12 +116,12 @@ const customDeclaration: BuildAction = {
   build: (args) => {
     const body = declBody(args);
     const colon = body.indexOf(':');
-    if (colon < 0) return new t2.Declaration(body.trim(), t2.word(''), null, false);
+    if (colon < 0) return t2.decl(body.trim(), t2.word(''), null, false);
     const name = declName(body.slice(0, colon).trim());
     let raw = body.slice(colon + 1);
-    if (raw.trim() === '') return new t2.Declaration(name, t2.word(''), null, false);
+    if (raw.trim() === '') return t2.decl(name, t2.word(''), null, false);
     if (raw[0] === ' ' || raw[0] === '\t') raw = raw.slice(1);
-    return new t2.Declaration(name, interpFromString(raw, true), null, false);
+    return t2.decl(name, interpFromString(raw, true), null, false);
   },
 };
 
@@ -136,7 +136,7 @@ const declaration: BuildAction = {
     const body = declBody(args);
     const colon = body.indexOf(':');
     // TOTAL: a colon-less span is a doomed/backtracked branch — inert node.
-    if (colon < 0) return new t2.Declaration(body.trim(), t2.word(''), null, false);
+    if (colon < 0) return t2.decl(body.trim(), t2.word(''), null, false);
 
     const namePart = body.slice(0, colon).replace(/\s+$/u, '');
     let merge: null | ',' | ' ' = null;
@@ -158,7 +158,7 @@ const declaration: BuildAction = {
     // A merged decl carrying `!important` in its bytes strips it (the structured
     // flag re-emits it once at the end of the combined line).
     if (merge !== null && important) value = stripImportantBytes(value);
-    return new t2.Declaration(name, value, merge, important);
+    return t2.decl(name, value, merge, important);
   },
 };
 

@@ -22,7 +22,7 @@ export const replace: Fn = {
     const replacement = ctx.stringify(items[2]!);
     const flags = items[3] !== undefined ? ctx.stringify(items[3]!) : '';
     const result = source.replace(new RegExp(pattern, flags), replacement);
-    if (input.kind === 'quoted' && !(input as Quoted).escaped) {
+    if (input.type === 'Quoted' && !(input as Quoted).escaped) {
       return makeQuoted(result, (input as Quoted).quote, false);
     }
     return makeKeyword(result);

@@ -8,6 +8,6 @@ export const multiplyBase = (cb: number, cs: number): number => cb * cs;
 /** `multiply(color1, color2)` — Photoshop multiply blend. Byte-faithful to `less/multiply`. */
 export const multiply: Fn = {
   name: 'multiply',
-  params: [{ kinds: ['color'] }, { kinds: ['color'] }],
+  params: [{ kinds: ['Color'] }, { kinds: ['Color'] }],
   body: (c1, c2) => colorBlend(multiplyBase, c1 as Color, c2 as Color),
 };

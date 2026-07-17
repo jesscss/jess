@@ -23,7 +23,7 @@ import { unify as unifyRaw } from '../value-units.js';
  * makes that invariant type-safe (no cast) and documents it.
  */
 export function asList(v: ValueObj): List {
-  if (v.kind !== 'list') throw new TypeError('variadic fn expected a List argument');
+  if (v.type !== 'List') throw new TypeError('variadic fn expected a List argument');
   return v;
 }
 
@@ -97,8 +97,8 @@ function hasTopLevelComma(text: string): boolean {
  */
 export function coerceListItems(v: ValueObj | undefined): ValueObj[] {
   if (v === undefined) return [];
-  if (v.kind === 'list') return [...v.items];
-  if (v.kind === 'keyword') {
+  if (v.type === 'List') return [...v.items];
+  if (v.type === 'Keyword') {
     const text = v.text;
     const pieces = topLevelSplit(text, hasTopLevelComma(text) ? ',' : ' ');
     if (pieces.length <= 1) return [v];
@@ -132,7 +132,7 @@ export function minMax(isMin: boolean, list: List): ValueObj {
 
   for (let i = 0; i < args.length; i++) {
     const current = args[i]!;
-    if (current.kind !== 'dimension') return verbatimCall(name, list);
+    if (current.type !== 'Dimension') return verbatimCall(name, list);
 
     const currentUnified =
       current.unit === '' && unitClone !== undefined ? unifyRaw(current.number, unitClone) : unify(current);

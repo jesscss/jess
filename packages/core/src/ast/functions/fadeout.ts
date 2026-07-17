@@ -6,7 +6,7 @@ import type { Fn } from './types.js';
 /** `fadeout(color, amount, method?)` — decrease alpha. Byte-faithful to `less/fadeout`. */
 export const fadeout: Fn = {
   name: 'fadeout',
-  params: [{ kinds: ['color'] }, { kinds: ['dimension'] }, { kinds: ['keyword', 'quoted'], optional: true }],
+  params: [{ kinds: ['Color'] }, { kinds: ['Dimension'] }, { kinds: ['Keyword', 'Quoted'], optional: true }],
   body: (c, amt, m) => {
     const color = c as Color;
     let adjust = (amt as Dimension).number / 100;

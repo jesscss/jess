@@ -9,6 +9,6 @@ export const hardlightBase = (cb: number, cs: number): number => overlayBase(cs,
 /** `hardlight(color1, color2)` — Photoshop hard-light blend. Byte-faithful to `less/hardlight`. */
 export const hardlight: Fn = {
   name: 'hardlight',
-  params: [{ kinds: ['color'] }, { kinds: ['color'] }],
+  params: [{ kinds: ['Color'] }, { kinds: ['Color'] }],
   body: (c1, c2) => colorBlend(hardlightBase, c1 as Color, c2 as Color),
 };

@@ -6,6 +6,6 @@ import type { Fn } from './types.js';
 /** `hsvvalue(color)` — the hsv value as a percentage. Byte-faithful to `less/hsvvalue`. */
 export const hsvvalue: Fn = {
   name: 'hsvvalue',
-  params: [{ kinds: ['color'] }],
+  params: [{ kinds: ['Color'] }],
   body: (c) => makeDimension(toHsv(c as Color)[2] * 100, '%'),
 };

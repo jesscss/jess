@@ -4,6 +4,6 @@ import type { Fn } from './types.js';
 /** `darken(color, amount, method?)` — bump HSL lightness DOWN. Byte-faithful to `less/darken`. */
 export const darken: Fn = {
   name: 'darken',
-  params: [{ kinds: ['color'] }, { kinds: ['dimension'] }, { kinds: ['keyword', 'quoted'], optional: true }],
+  params: [{ kinds: ['Color'] }, { kinds: ['Dimension'] }, { kinds: ['Keyword', 'Quoted'], optional: true }],
   body: hslAdjust(2, -1),
 };

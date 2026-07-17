@@ -8,6 +8,6 @@ export const screenBase = (cb: number, cs: number): number => cb + cs - cb * cs;
 /** `screen(color1, color2)` — Photoshop screen blend. Byte-faithful to `less/screen`. */
 export const screen: Fn = {
   name: 'screen',
-  params: [{ kinds: ['color'] }, { kinds: ['color'] }],
+  params: [{ kinds: ['Color'] }, { kinds: ['Color'] }],
   body: (c1, c2) => colorBlend(screenBase, c1 as Color, c2 as Color),
 };

@@ -14,6 +14,6 @@ const ZERO = makeDimension(0);
  */
 export const round: Fn = {
   name: 'round',
-  params: [{ kinds: ['dimension'] }, { kinds: ['dimension'], optional: true }],
+  params: [{ kinds: ['Dimension'] }, { kinds: ['Dimension'], optional: true }],
   body: (v, p) => applyMath((n, pr) => roundNum(n, pr), undefined, [v as Dimension, (p ?? ZERO) as Dimension]),
 };

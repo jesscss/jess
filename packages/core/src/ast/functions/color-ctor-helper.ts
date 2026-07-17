@@ -42,7 +42,7 @@ export function alphaToNumber(d: Dimension): number {
 }
 
 /** Whether an arg-list item is a materialized color operand. */
-export const isColor = (v: ValueObj | undefined): boolean => v?.kind === 'color';
+export const isColor = (v: ValueObj | undefined): boolean => v?.type === 'Color';
 
 /** Modern color syntax is signalled by a space / slash separated call. */
 export const isModern = (list: List): boolean => list.sep === ' ' || list.sep === '/';

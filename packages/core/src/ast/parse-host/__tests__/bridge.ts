@@ -93,7 +93,7 @@ function simpleText(ctx: BridgeCtx, el: unknown): string {
 function toSimpleFromString(s: string): t2.Simple {
   if (s.includes('@{')) {
     const interp = interpFromString(s, false); // selector context: refs as-is
-    if (interp.kind === t2.Kind.Interp) return t2.simpleInterp(interp);
+    if (interp.type === 'Interp') return t2.simpleInterp(interp);
   }
   return t2.simple(s);
 }
@@ -109,17 +109,17 @@ function toSimple(ctx: BridgeCtx, el: unknown): t2.Simple {
 
 /** Build a tree2 Compound from a CompoundSelector node or a bare string. */
 function toCompound(ctx: BridgeCtx, sel: unknown): t2.Compound {
-  if (typeof sel === 'string') return new t2.Compound([toSimpleFromString(sel)]);
+  if (typeof sel === 'string') return t2.compoundOf([toSimpleFromString(sel)]);
   if (isNode(sel) && typeOf(sel) === 'InterpolatedSelector') {
-    return new t2.Compound([toSimple(ctx, sel)]);
+    return t2.compoundOf([toSimple(ctx, sel)]);
   }
   if (isNode(sel) && typeOf(sel) === 'CompoundSelector') {
     const parts = (sel as AnyNode).value;
     if (!Array.isArray(parts)) throw new UnsupportedShape('selector:compound-shape', typeOf(sel));
-    return new t2.Compound(parts.map((p) => toSimple(ctx, p)));
+    return t2.compoundOf(parts.map((p) => toSimple(ctx, p)));
   }
   // A single simple node (e.g. Ampersand alone, PseudoSelector alone).
-  return new t2.Compound([toSimple(ctx, sel)]);
+  return t2.compoundOf([toSimple(ctx, sel)]);
 }
 
 /** Build a tree2 Complex from a string / CompoundSelector / ComplexSelector. */
@@ -647,7 +647,7 @@ function litOf(node: AnyNode, tag: LiteralTag | undefined): t2.LitFields | undef
  * (`Concat`/`VarRef`/…) is not a single literal and is returned unchanged.
  */
 function stampLeaf(v: t2.ValueNode, tag: LiteralTag | undefined, lit?: t2.LitFields): t2.ValueNode {
-  if (tag === undefined || v.kind !== t2.Kind.Word) return v;
+  if (tag === undefined || v.type !== 'Word') return v;
   return t2.word(v.text, tag, lit);
 }
 
@@ -912,7 +912,7 @@ function toStatement(
       // for a merged decl carrying `!important` in its raw bytes, strip it
       // (the structured flag re-emits it once at the end of the combined line).
       if (merge !== null && important) value = stripImportantBytes(value);
-      return new t2.Declaration(name, value, merge, important);
+      return t2.decl(name, value, merge, important);
     }
     // [WS2] a custom-property declaration (`--x: …;`). CustomDeclaration extends
     // Declaration (same `name`/`value` source shape) but its value is kept
@@ -926,7 +926,7 @@ function toStatement(
       else if (isNode(rawName) && typeOf(rawName) === 'Interpolated')
         name = interpFromInterpolated(ctx, rawName as AnyNode, false);
       else throw new UnsupportedShape('custom-decl:name', typeOf(rawName));
-      return new t2.Declaration(name, customDeclValue(ctx, node as AnyNode), null, false);
+      return t2.decl(name, customDeclValue(ctx, node as AnyNode), null, false);
     }
     case 'VarDeclaration': {
       const name = (node as AnyNode).name;
@@ -1103,7 +1103,7 @@ function extendSubjectRule(ctx: BridgeCtx, node: AnyNode): t2.Rule {
     target: t2.selist(complex),
     partial,
   }));
-  return new t2.Rule(toSelectorList(ctx, node.selector), [], instructions);
+  return t2.rule(toSelectorList(ctx, node.selector), [], instructions);
 }
 
 function toRuleset(ctx: BridgeCtx, node: AnyNode): t2.Rule {
@@ -1115,7 +1115,7 @@ function toRuleset(ctx: BridgeCtx, node: AnyNode): t2.Rule {
   const { instructions, rest } = extractExtends(ctx, rules);
   // [atrule] at-rules directly under a ruleset bubble in v5 (deferred) — reject.
   const body = toBody(ctx, rest, false);
-  return new t2.Rule(sel, body, instructions.length > 0 ? instructions : undefined);
+  return t2.rule(sel, body, instructions.length > 0 ? instructions : undefined);
 }
 
 function toMixinDef(ctx: BridgeCtx, node: AnyNode): t2.MixinDef {
@@ -1142,7 +1142,7 @@ function toMixinCall(ctx: BridgeCtx, node: AnyNode): t2.MixinCall | t2.DetachedC
   // `.m() !important` (recovered from source — the parser drops it).
   const callSrc = slice(ctx, node);
   const important = callSrc !== undefined && /!\s*important\s*;?\s*$/iu.test(callSrc);
-  return new t2.MixinCall(name, args, path, important);
+  return { type: 'MixinCall', name, args, path, important };
 }
 
 /** The variable name if a Call's callee is a variable Reference (Keyword
@@ -1211,7 +1211,7 @@ function detectMergeImportant(ctx: BridgeCtx, node: AnyNode): { merge: null | ',
 /** Strip a trailing `!important` from a value node's bytes (merged decls
  * re-emit it once via the structured flag). */
 function stripImportantBytes(v: t2.ValueNode): t2.ValueNode {
-  if (v.kind === t2.Kind.Word) {
+  if (v.type === 'Word') {
     return t2.word(v.text.replace(/\s*!\s*important\s*$/iu, ''));
   }
   return v;

@@ -20,8 +20,10 @@ import {
 /** The selector value a `Rule` accepts: a built selector node, or raw bytes. */
 function ruleSelector(args: BuildArgs): string | t2.Complex | t2.SelectorList {
   const first = args.children[0];
-  if (first instanceof t2.SelectorList || first instanceof t2.Complex) return first;
-  if (first instanceof t2.Compound) return t2.complex([{ compound: first }]);
+  if (t2.isNode(first)) {
+    if (first.type === 'SelectorList' || first.type === 'Complex') return first;
+    if (first.type === 'Compound') return t2.complex([{ compound: first }]);
+  }
   return selectorText(args.ctx.src, args.children, args.rawChildren);
 }
 

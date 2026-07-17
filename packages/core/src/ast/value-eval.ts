@@ -45,7 +45,7 @@ import type { LiteralTag, LitFields } from './literal-tag.js';
  * (module-qualified against the AST `Dimension` node in `nodes.ts`).
  */
 export interface Dimension {
-  readonly kind: 'dimension';
+  readonly type: 'Dimension';
   readonly number: number;
   readonly unit: string;
   /** Canonical emitted bytes (byte-faithful; produced by the free serializer). */
@@ -54,7 +54,7 @@ export interface Dimension {
 
 /** A color result. `format`/`modernSyntax`/`node` preserve output spelling. */
 export interface Color {
-  readonly kind: 'color';
+  readonly type: 'Color';
   readonly rgb: readonly [number, number, number];
   readonly alpha: number;
   /**
@@ -93,7 +93,7 @@ export interface Color {
 
 /** A quoted string result (`~"..."` escaping tracked). */
 export interface Quoted {
-  readonly kind: 'quoted';
+  readonly type: 'Quoted';
   readonly value: string;
   readonly quote: string;
   readonly escaped: boolean;
@@ -102,14 +102,14 @@ export interface Quoted {
 
 /** A non-operable identifier (`solid`, `red` before color-ification). */
 export interface Keyword {
-  readonly kind: 'keyword';
+  readonly type: 'Keyword';
   readonly text: string;
   readonly bytes: string;
 }
 
 /** A list result (comma / space / slash separated). */
 export interface List {
-  readonly kind: 'list';
+  readonly type: 'List';
   readonly items: readonly ValueObj[];
   readonly sep: ',' | ' ' | '/';
   readonly bytes: string;
@@ -117,14 +117,14 @@ export interface List {
 
 /** A boolean result (guards, logical fns). */
 export interface Bool {
-  readonly kind: 'bool';
+  readonly type: 'Bool';
   readonly value: boolean;
   readonly bytes: string;
 }
 
 /** An empty / absent value. */
 export interface Nil {
-  readonly kind: 'nil';
+  readonly type: 'Nil';
   readonly bytes: string;
 }
 

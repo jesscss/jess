@@ -17,7 +17,7 @@ import {
   mixinDef,
   mixinCall,
   word,
-  Word,
+  type Word,
   type MixinCall,
   type MixinDef,
   type Param,
@@ -26,13 +26,13 @@ import {
 
 // Caller-frame resolver for byte-literal args: our test args/defaults are plain
 // `Word`s, so their bytes are their text (mirrors the pipeline's eval-to-bytes).
-const resolve = (v: ValueNode): string => (v instanceof Word ? v.text : '');
+const resolve = (v: ValueNode): string => (v.type === 'Word' ? v.text : '');
 
 const argumentsOf = (def: MixinDef, call: MixinCall): string => {
   const bound = bindArgs(def, call, resolve);
   expect(bound).not.toBeNull();
   const a = bound!.get('arguments');
-  expect(a).toBeInstanceOf(Word);
+  expect(a?.type).toBe('Word');
   return (a as Word).text;
 };
 

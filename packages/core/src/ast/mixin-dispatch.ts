@@ -21,8 +21,7 @@
  */
 
 import type { MixinCall, MixinDef, Param, ValueNode } from './nodes.js';
-import { Word } from './nodes.js';
-import { Kind } from './node.js';
+import { word } from './nodes.js';
 import type { EvalModes, ValueEvaluator } from './value-eval.js';
 import { evalGuard, guardUsesDefault, type TypedResolver, type ValueResolver } from './guard.js';
 
@@ -105,7 +104,7 @@ export function bindArgs(
     const restParam = params[restIndex]!;
     const restBytes = leftover.map((a) => valueBytes(resolveEager(a.value, resolveCaller)));
     if (restParam.name !== undefined) {
-      bound.set(restParam.name, new Word(restBytes.join(' ')));
+      bound.set(restParam.name, word(restBytes.join(' ')));
     }
   }
 
@@ -122,7 +121,7 @@ export function bindArgs(
     const bytes = valueBytes(val);
     if (bytes !== '') argWords.push(bytes);
   }
-  bound.set('arguments', new Word(argWords.join(' ')));
+  bound.set('arguments', word(argWords.join(' ')));
 
   return bound;
 }
@@ -130,18 +129,18 @@ export function bindArgs(
 function resolveEager(v: ValueNode, resolveCaller: ValueResolver): ValueNode {
   // a detached-ruleset arg binds BY REFERENCE (never byte-flattened) so its
   // body + closure survive to the call site.
-  if (v.kind === Kind.DetachedRuleset) return v;
+  if (v.type === 'DetachedRuleset') return v;
   // [value-literal-tag] a pure literal `Word` carries the producer's `LIT_*` tag
   // and has no caller-frame refs to flatten — bind it BY REFERENCE so the tag
   // survives to the callee side (a guard/typed-param materialize reads the stamped
   // field instead of re-sniffing the bytes). Everything else flattens to bytes.
-  if (v instanceof Word && v.tag !== undefined) return v;
-  return new Word(resolveCaller(v));
+  if (v.type === 'Word' && v.tag !== undefined) return v;
+  return word(resolveCaller(v));
 }
 
 function valueBytes(v: ValueNode): string {
   // After eager resolution every arg is a Word carrying its bytes.
-  return v instanceof Word ? v.text : '';
+  return v.type === 'Word' ? v.text : '';
 }
 
 /**

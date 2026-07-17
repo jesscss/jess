@@ -110,7 +110,7 @@ function liftComments(
   };
   for (const s of statements) {
     if (s.start >= gapStart) {
-      const followingIsNestedRule = !atRoot && s.node instanceof t2.Rule;
+      const followingIsNestedRule = !atRoot && s.node.type === 'Rule';
       emitGap(s.start, s.start, followingIsNestedRule);
       gapStart = s.end;
     }
@@ -191,7 +191,7 @@ const ruleset: BuildAction = {
     // Reuse the ruleset family's selector derivation (its own build), then rebuild
     // the body with lifted comments interleaved.
     const base = baseRuleset(args);
-    if (!(base instanceof t2.Rule)) {
+    if (!(t2.isNode(base) && base.type === 'Rule')) {
       return base;
     }
     // Body window: [after `{` … before `}`], from the brace literal leaves.
@@ -204,7 +204,7 @@ const ruleset: BuildAction = {
       window.end,
       false
     );
-    return new t2.Rule(base.selector, body, base.extendInstructions);
+    return t2.rule(base.selector, body, base.extendInstructions);
   }
 };
 

@@ -2,55 +2,55 @@
  * Clean-room tree2 base node abstraction.
  *
  * HARD MODULE BOUNDARY: nothing in `tree2/` may import from the legacy tree
- * directory. This file defines tree2's OWN base node from scratch — it does NOT
- * extend the legacy `Node`. The only things allowed to cross the boundary are neutral
- * context/config objects, and this scaffold does not need any.
+ * directory. This file defines tree2's OWN node vocabulary from scratch — it does
+ * NOT extend the legacy `Node`. The only things allowed to cross the boundary are
+ * neutral context/config objects, and this scaffold does not need any.
  *
- * The representation is a lean tagged node: every node carries a numeric
- * `kind` tag so the serializer can dispatch with a `switch` instead of virtual
- * calls. This keeps the door open to a later struct-of-arrays packing without
- * committing to it now — the scaffold stays a plain object tree so the harness
- * can grow rung by rung.
+ * The representation is plain-data: every node is a plain object carrying a
+ * PascalCase string `type` discriminant (Less-matching, e.g. `type: 'Dimension'`),
+ * so the serializer dispatches with a `switch (node.type)`. `Node` is the exported
+ * NAME — a discriminated UNION of the plain-data member interfaces, not a base
+ * class. Construction goes through the free-function factories in `nodes.ts` /
+ * `at-rule.ts`; there is no `new`.
  */
 
-/** Numeric discriminant for every tree2 node. */
-export enum Kind {
-  Root = 0,
-  Rule = 1,
-  Declaration = 2,
-  Comment = 3,
-  SelectorList = 4,
-  Complex = 5,
-  Compound = 6,
-  Simple = 7,
-  Word = 8,
-  Dimension = 9,
-  SpacedValue = 10,
-  VarRef = 11,
-  MixinDef = 12,
-  MixinCall = 13,
-  VarDeclaration = 14,
-  Concat = 15,
-  Operation = 16,
-  FunctionCall = 17,
-  Paren = 18,
-  // [atrule] block-bearing at-rule (`@media {…}`) + statement at-rule (`@charset …;`)
-  AtRuleBlock = 19,
-  AtRuleStatement = 20,
-  // interpolation template (`@{var}` / `~"…@{x}…"`) resolving to bytes.
-  Interp = 21,
-  // indirect variable (`@@name`): a variable whose NAME comes from another.
-  VarIndirect = 22,
-  // detached ruleset value (`@rs: { … }`), callable to splice its body.
-  DetachedRuleset = 23,
-  // map / namespace accessor value (`@p[text]`, `#ns[$@prop]`).
-  MapAccessor = 24,
-  // a call of a detached-ruleset-valued variable (`@ruleset();`).
-  DetachedCall = 25,
-  // [import:inline] verbatim raw bytes spliced by `@import (inline)` — emitted
-  // exactly as read from the target file, never parsed or reformatted.
-  RawInline = 26,
-}
+import type {
+  Root,
+  Rule,
+  Declaration,
+  Comment,
+  SelectorList,
+  Complex,
+  Compound,
+  Simple,
+  Word,
+  Dimension,
+  SpacedValue,
+  VarRef,
+  MixinDef,
+  MixinCall,
+  VarDeclaration,
+  Sequence,
+  Operation,
+  FunctionCall,
+  Paren,
+  Interp,
+  VarIndirect,
+  DetachedRuleset,
+  MapAccessor,
+  DetachedCall,
+  RawInline,
+} from './nodes.js';
+import type { AtRuleBlock, AtRuleStatement } from './at-rule.js';
+
+/** Every tree2 node's PascalCase `type` discriminant (Less-matching). */
+export type NodeType =
+  | 'Root' | 'Rule' | 'Declaration' | 'Comment' | 'SelectorList'
+  | 'Complex' | 'Compound' | 'Simple' | 'Word' | 'Dimension'
+  | 'SpacedValue' | 'VarRef' | 'MixinDef' | 'MixinCall' | 'VarDeclaration'
+  | 'Sequence' | 'Operation' | 'FunctionCall' | 'Paren'
+  | 'AtRuleBlock' | 'AtRuleStatement' | 'Interp' | 'VarIndirect'
+  | 'DetachedRuleset' | 'MapAccessor' | 'DetachedCall' | 'RawInline';
 
 /** Combinator between two compounds in a complex selector. */
 export type Combinator = ' ' | '>' | '+' | '~';
@@ -60,7 +60,43 @@ export function renderCombinator(comb: Combinator): string {
   return comb === ' ' ? ' ' : ` ${comb} `;
 }
 
-/** Base of every clean-room tree2 node. Owns nothing but its tag. */
-export abstract class Node {
-  abstract readonly kind: Kind;
+/**
+ * The tree2 node union. `Node` is the exported NAME — a discriminated union of
+ * the plain-data member interfaces (no base class, no `instanceof`). Narrow with
+ * `node.type === '…'` or the {@link isNode} value predicate.
+ */
+export type Node =
+  | Root | Rule | Declaration | Comment | SelectorList | Complex | Compound
+  | Simple | Word | Dimension | SpacedValue | VarRef | MixinDef | MixinCall
+  | VarDeclaration | Sequence | Operation | FunctionCall | Paren
+  | AtRuleBlock | AtRuleStatement | Interp | VarIndirect | DetachedRuleset
+  | MapAccessor | DetachedCall | RawInline;
+
+/**
+ * The frozen set of the 27 structural `type` strings — the membership basis for
+ * {@link isNode}. A bare `'type' in x` is NOT a sound node test: the value domain
+ * (`ValueObj`) now also carries a PascalCase `type` (`'Dimension'`/`'Color'`/…),
+ * so a property test would misclassify an eval RESULT as an AST node. Membership
+ * in this AST set neutralizes every collision except the shared `Dimension`
+ * string, which is neutralized in turn by the lane invariant (a value-domain
+ * `ValueObj` never enters the AST-build lane; never form a `Node | ValueObj`
+ * union — disambiguate on a structural field like `'bytes' in v` if ever needed).
+ */
+export const AST_NODE_TYPES: ReadonlySet<string> = new Set<NodeType>([
+  'Root', 'Rule', 'Declaration', 'Comment', 'SelectorList',
+  'Complex', 'Compound', 'Simple', 'Word', 'Dimension',
+  'SpacedValue', 'VarRef', 'MixinDef', 'MixinCall', 'VarDeclaration',
+  'Sequence', 'Operation', 'FunctionCall', 'Paren',
+  'AtRuleBlock', 'AtRuleStatement', 'Interp', 'VarIndirect',
+  'DetachedRuleset', 'MapAccessor', 'DetachedCall', 'RawInline',
+]);
+
+/** Value predicate for a tree2 AST node (replaces the old `x instanceof Node`). */
+export function isNode(x: unknown): x is Node {
+  return (
+    typeof x === 'object' &&
+    x !== null &&
+    typeof (x as { type?: unknown }).type === 'string' &&
+    AST_NODE_TYPES.has((x as { type: string }).type)
+  );
 }

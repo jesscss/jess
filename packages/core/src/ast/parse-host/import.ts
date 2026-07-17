@@ -30,7 +30,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { parseLessFn } from '@jesscss/less-parser';
 import type * as t2 from '../index.js';
-import { Kind, rawInline as rawInlineStatement } from '../index.js';
+import { rawInline as rawInlineStatement } from '../index.js';
 
 /** Shared, mutable state threaded through a whole (recursive) bridge run. */
 export interface ImportState {
@@ -401,5 +401,5 @@ export function resolveImportStatements(
 
 /** A statement that emits no bytes on its own (contributes only scope). */
 function isDefinitionStatement(s: t2.Statement): boolean {
-  return s.kind === Kind.VarDeclaration || s.kind === Kind.MixinDef;
+  return s.type === 'VarDeclaration' || s.type === 'MixinDef';
 }

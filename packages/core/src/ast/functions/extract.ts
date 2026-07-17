@@ -10,13 +10,13 @@ import type { Fn } from './types.js';
  */
 export const extract: Fn = {
   name: 'extract',
-  params: [{ kinds: 'any' }, { kinds: ['dimension'] }],
+  params: [{ kinds: 'any' }, { kinds: ['Dimension'] }],
   variadic: true,
   body: (list) => {
     const l = asList(list);
     if (l.items.length !== 2) return verbatimCall('extract', l);
     const idxArg = l.items[1]!;
-    if (idxArg.kind !== 'dimension') return verbatimCall('extract', l);
+    if (idxArg.type !== 'Dimension') return verbatimCall('extract', l);
     const index = Math.trunc(numOf(idxArg));
     if (!Number.isFinite(index)) return verbatimCall('extract', l);
     const items = coerceListItems(l.items[0]);

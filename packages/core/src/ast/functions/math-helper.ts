@@ -44,6 +44,6 @@ export function applyMath(
 
 /** Spec builder for a unary `dimension → dimension` math fn. Centralizes the bind-guaranteed cast. */
 export const unaryMath = (fn: (n: number) => number, outUnit: string | null | undefined): FnSpec => ({
-  params: [{ kinds: ['dimension'] }],
+  params: [{ kinds: ['Dimension'] }],
   body: (v) => applyMath(fn, outUnit, [v as Dimension]),
 });
