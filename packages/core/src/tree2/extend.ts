@@ -28,7 +28,7 @@
  * it correctly; and `&`-crossing hoist-to-root is not modelled.
  */
 
-import { Kind } from './node.js';
+import { Kind, renderCombinator } from './node.js';
 import type { Combinator } from './node.js';
 import type {
   Complex,
@@ -65,10 +65,6 @@ interface Branch {
 type Level = Branch[];
 
 /* --------------------------------------------------------- IR: serialize */
-
-function renderCombinator(comb: Combinator): string {
-  return comb === ' ' ? ' ' : ` ${comb} `;
-}
 
 function simpleText(s: Simple): string {
   if (s.t === 'text') return s.text;

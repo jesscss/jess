@@ -55,6 +55,11 @@ export enum Kind {
 /** Combinator between two compounds in a complex selector. */
 export type Combinator = ' ' | '>' | '+' | '~';
 
+/** Render a combinator: descendant is a single space; the rest are surrounded by spaces. */
+export function renderCombinator(comb: Combinator): string {
+  return comb === ' ' ? ' ' : ` ${comb} `;
+}
+
 /** Base of every clean-room tree2 node. Owns nothing but its tag. */
 export abstract class Node {
   abstract readonly kind: Kind;
