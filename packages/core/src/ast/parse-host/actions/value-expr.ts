@@ -203,9 +203,7 @@ function assembleSegment(items: t2.ValueNode[]): t2.ValueNode | null {
  * `modern` stays false: the space/slash structure is preserved in the arg nodes
  * themselves, so the serializer needs no modern flag to reproduce the spelling.
  */
-const call: BuildAction = {
-  type: 'Call',
-  build: (args) => {
+function buildCall(args: BuildArgs): t2.ValueNode {
     const children = args.children;
     const name = leafText(children[0]).trim() || sliceSpan(args.ctx, { start: args.span.start, end: args.span.start });
     const { open, close } = parenBounds(children);
@@ -237,7 +235,20 @@ const call: BuildAction = {
       if (a !== null) argList.push(a);
     }
     return t2.funcCall(name, argList, false);
-  },
-};
+}
 
-export const VALUE_EXPR_ACTIONS: readonly BuildAction[] = [operation, operationTop, paren, call];
+const call: BuildAction = { type: 'Call', build: buildCall };
+
+/**
+ * `%( template, args… )` — the deprecated Less `%()` string-format call. The
+ * grammar tags it a distinct `FormatCall` (so the bare `%` mod operator is
+ * unaffected), but its child run is a normal `name( args )` shape whose name leaf
+ * is `%`. We build a PLAIN function call to the existing `%` format fn (registered
+ * in `@jesscss/fns` under the name `%`) — no parse-time interpolation lowering; the
+ * fn substitutes `%s`/`%d`/`%a` at eval and re-wraps/unwraps the quote exactly as
+ * Less 4.x does, so the serialized bytes match the legacy oracle. (A later
+ * output-neutral cleanup renames `%`→`str-format` at the parse boundary.)
+ */
+const formatCall: BuildAction = { type: 'FormatCall', build: buildCall };
+
+export const VALUE_EXPR_ACTIONS: readonly BuildAction[] = [operation, operationTop, paren, call, formatCall];
