@@ -29,7 +29,7 @@
   },
   "calc/calc.less": {
     "status": "DIFF",
-    "bytes": 570
+    "bytes": 567
   },
   "charsets/charsets.less": {
     "status": "MATCH",
@@ -60,8 +60,8 @@
     "bytes": 841
   },
   "color-functions/operations.less": {
-    "status": "DIFF",
-    "bytes": 196
+    "status": "MATCH",
+    "bytes": 190
   },
   "color-functions/rgba.less": {
     "status": "MATCH",
@@ -69,7 +69,7 @@
   },
   "comments/comments.less": {
     "status": "DIFF",
-    "bytes": 1297
+    "bytes": 1294
   },
   "comments/comments2.less": {
     "status": "DIFF",
@@ -133,7 +133,7 @@
   },
   "extract-and-length/extract-and-length.less": {
     "status": "DIFF",
-    "bytes": 2332
+    "bytes": 2239
   },
   "functions-each/functions-each.less": {
     "status": "DIFF",
@@ -141,7 +141,7 @@
   },
   "functions/functions.less": {
     "status": "DIFF",
-    "bytes": 5900
+    "bytes": 5795
   },
   "impor/impor.less": {
     "status": "MATCH",
@@ -210,7 +210,7 @@
   },
   "mixins-guards/mixins-guards.less": {
     "status": "DIFF",
-    "bytes": 3880
+    "bytes": 3926
   },
   "mixins-important/mixins-important.less": {
     "status": "DIFF",
@@ -218,7 +218,7 @@
   },
   "mixins-interpolated/mixins-interpolated.less": {
     "status": "DIFF",
-    "bytes": 180
+    "bytes": 168
   },
   "mixins-named-args/mixins-named-args.less": {
     "status": "MATCH",
@@ -266,7 +266,7 @@
   },
   "parse-interpolation/parse-interpolation.less": {
     "status": "DIFF",
-    "bytes": 842
+    "bytes": 815
   },
   "parser-property-interp/parser-property-interp.less": {
     "status": "DIFF",
@@ -302,7 +302,7 @@
   },
   "property-name-interp/property-name-interp.less": {
     "status": "DIFF",
-    "bytes": 524
+    "bytes": 515
   },
   "property-targeted/property-targeted.less": {
     "status": "MATCH",
@@ -318,15 +318,15 @@
   },
   "selectors/selectors.less": {
     "status": "DIFF",
-    "bytes": 3427
+    "bytes": 3409
   },
   "starting-style/starting-style.less": {
     "status": "DIFF",
     "bytes": 1014
   },
   "strings/strings.less": {
-    "status": "DIFF",
-    "bytes": 1132
+    "status": "MATCH",
+    "bytes": 1045
   },
   "tailwind/tailwind.less": {
     "status": "DIFF",
@@ -342,11 +342,11 @@
   },
   "variables/variable-advanced.less": {
     "status": "DIFF",
-    "bytes": 1090
+    "bytes": 1083
   },
   "variables/variables.less": {
     "status": "DIFF",
-    "bytes": 907
+    "bytes": 904
   },
   "whitespace/whitespace.less": {
     "status": "MATCH",

@@ -706,7 +706,58 @@ function evalInterp(node: Interp, frame: Frame | null, e: EvalCtx): MaybePromise
       pieces.push(part.unquote ? mapMaybe(bytes, stripOuterQuotes) : bytes);
     }
   }
-  return combineAll(pieces, (strs) => literal(strs.join('')));
+  return combineAll(pieces, (strs) => literal(resolveEmergentInterp(strs.join(''), frame, e)));
+}
+
+/** A Less identifier byte (`@{name}` name class: `-_A-Za-z0-9` + non-ASCII). */
+function isInterpNameByte(c: number): boolean {
+  return c === 0x2d /* - */ || c === 0x5f /* _ */
+    || (c >= 0x30 && c <= 0x39) || (c >= 0x41 && c <= 0x5a) || (c >= 0x61 && c <= 0x7a) || c >= 0x80;
+}
+
+/**
+ * Re-resolve any `@{ident}` token that EMERGED after a first-pass splice, matching
+ * less.js's iterative `Quoted.eval` (`@{box-@{suffix}}` → `@{box-large}` → `100px`;
+ * `@{box}-@{suffix}}` where `@box` is `@{box` → `@{box-large}` → `100px`). Each
+ * clean `@{name}` whose variable resolves is replaced with its unquoted bytes; the
+ * scan repeats until the string stops changing. A token whose variable is NOT in
+ * scope (or resolves asynchronously) is left literal — a non-resolving emergent
+ * token never turns a value into an error. Short-circuits when no `@{` remains.
+ */
+function resolveEmergentInterp(input: string, frame: Frame | null, e: EvalCtx): string {
+  let cur = input;
+  while (cur.indexOf('@{') !== -1) {
+    let out = '';
+    let i = 0;
+    let changed = false;
+    const n = cur.length;
+    while (i < n) {
+      if (cur.charCodeAt(i) === 0x40 /* @ */ && i + 1 < n && cur.charCodeAt(i + 1) === 0x7b /* { */) {
+        let j = i + 2;
+        if (j < n && cur.charCodeAt(j) === 0x2d /* - */) j++;
+        const nameStart = j;
+        while (j < n && isInterpNameByte(cur.charCodeAt(j))) j++;
+        if (j > nameStart && j < n && cur.charCodeAt(j) === 0x7d /* } */) {
+          const name = cur.slice(i + 2, j).trim();
+          const hit = resolveVarRef(frame, name, e);
+          if (hit) {
+            const val = withExcluded(e, hit.value, () => evalValue(hit.value, hit.frame, e));
+            if (!isThenable(val)) {
+              out += stripOuterQuotes(emitValue(val));
+              i = j + 1;
+              changed = true;
+              continue;
+            }
+          }
+        }
+      }
+      out += cur[i]!;
+      i++;
+    }
+    if (!changed) break;
+    cur = out;
+  }
+  return cur;
 }
 
 /** Strip ONE matching layer of surrounding `'…'` / `"…"` quotes. */

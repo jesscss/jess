@@ -150,6 +150,28 @@ function quotedLeaf(args: BuildArgs): t2.Word | t2.Interp {
   return t2.word(bytes, LiteralTag.Quoted, lit);
 }
 
+/**
+ * An escaped value `~"…"` / `~'…'` (Less "unquote"): the result is the inner
+ * string's bytes WITHOUT the surrounding quotes. Interpolation inside the string
+ * resolves exactly as in a plain quoted string, but the literal parts carry the
+ * INNER bytes only (no quote chars) — so `~"@{a}"` emits the resolved value bare
+ * (`blue`), not `"blue"`. A `~"…"` with no `@{ident}` token becomes a plain `Word`
+ * of the unquoted inner bytes (`~"@{box"` → the literal `@{box`), which the
+ * declaration / variable whole-value path consumes byte-for-byte.
+ *
+ * An escaped PAREN `~( … )` is a raw-list shape this leaf does not model; it keeps
+ * its verbatim `~(…)` bytes (unchanged from the prior no-action behavior).
+ */
+function escapedLeaf(args: BuildArgs): t2.ValueNode {
+  const bytes = leafBytes(args);
+  const q = bytes.charCodeAt(1);
+  if (q === 0x22 /* " */ || q === 0x27 /* ' */) {
+    const inner = bytes.slice(2, -1); // strip the `~` and the surrounding quotes
+    return quotedInterp(inner) ?? t2.word(inner);
+  }
+  return t2.word(bytes);
+}
+
 export const VALUE_LEAF_ACTIONS: readonly BuildAction[] = [
   { type: 'Numeric', build: numericLeaf },
   // `#fff` / `#AABBCC` — hex color.
@@ -160,6 +182,8 @@ export const VALUE_LEAF_ACTIONS: readonly BuildAction[] = [
   // A bare identifier keyword (`solid`, `auto`) in a typed position.
   leaf('Keyword', () => LiteralTag.Keyword),
   { type: 'Quoted', build: quotedLeaf },
+  // `~"…"` / `~'…'` — escaped (unquoted-output) string with interpolation.
+  { type: 'EscapedValue', build: escapedLeaf },
   // `url(...)` — the bridge leaves url untagged; match it (verbatim, no coercion).
   leaf('Url', () => undefined),
 ];
