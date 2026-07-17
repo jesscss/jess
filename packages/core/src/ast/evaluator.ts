@@ -12,15 +12,16 @@
  * HARD MODULE BOUNDARY: imports only the engine value modules.
  */
 import type { EvalModes, List as ValueList, ValueEvaluator, ValueObj } from './value-eval.js';
-import { operate, compare as compareValues, typeCheck as typeCheckValues } from './value-operate.js';
+import { sepGlue } from './value-eval.js';
+import { operate } from './value-operate.js';
+import { compare as compareValues, typeCheck as typeCheckValues } from './value-guards.js';
 import { LiteralTag, type LitFields, materializeLiteral, sniffLiteral } from './literal-tag.js';
 import type { FnRegistry } from './value-dispatch.js';
 import { makeKeyword } from './value-factory.js';
 
-/** Join an unknown-fn's arg bytes exactly as the adapter does (per separator). */
+/** Join an unknown-fn's arg bytes verbatim (per separator). */
 function verbatimArgs(args: ValueList): string {
-  const glue = args.sep === ',' ? ', ' : args.sep === '/' ? ' / ' : ' ';
-  return args.items.map((a) => a.bytes).join(glue);
+  return args.items.map((a) => a.bytes).join(sepGlue(args.sep));
 }
 
 /**

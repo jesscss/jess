@@ -5,18 +5,16 @@
  * classification so a forced (operated / compared / typed-param) literal
  * materializes to a typed `ValueObj` via a `switch` on the tag — NOT by
  * re-classifying the bytes with a regex/charCode heuristic. This is the spec's
- * `LIT_*` enum + `materializeLiteral` table, homed boundary-clean under `tree2/`
- * (the value path forbids importing `../tree`; when the legacy value-literal-tag
- * workstream lands `tree/util/literal-tag.ts`, these constants are the shared
- * cross-package contract).
+ * `LIT_*` enum + `materializeLiteral` table. These constants are the shared
+ * core↔parser contract (the parser stamps the tag; core reads it).
  *
  * A real (non-`const`) enum on purpose: the tag crosses the core↔parser package
  * boundary, where a `const enum` under `isolatedModules` won't inline reliably
  * (mirrors `ColorFormat`).
  */
 import type { ValueObj } from './value-eval.js';
-import { HEX } from './serialize-value.js';
-import { makeBool, makeColorRgb, makeDimension, makeKeyword } from './value-factory.js';
+import { HEX } from './color.js';
+import { makeColorRgb, makeKeyword } from './value-factory.js';
 import { namedColor } from './color-names.js';
 
 export enum LiteralTag {
@@ -31,10 +29,9 @@ export enum LiteralTag {
    */
   Dimension = 1,
   /**
-   * @deprecated Bridge-legacy alias of `Dimension` (SAME value → one numeric tag).
-   * Only `bridge.ts` / legacy `tree2-frontend/value-eval.ts` still name it, and
-   * both are the double-build being deleted (constitution P1). New code uses
-   * `Dimension`.
+   * @deprecated Alias of `Dimension` (SAME value → one numeric tag), retained only
+   * for the differential-oracle test (`parse-host/__tests__/bridge.ts`). New code
+   * uses `Dimension`.
    */
   Num = 1,
   /** `T.Color` (`#…`) → `Color` (verbatim node). */
@@ -69,7 +66,7 @@ export type LitFields =
   | { readonly value: string; readonly quote: string; readonly escaped: boolean };
 
 /**
- * The kind occupies the low 3 bits (values 0-6). Bit 3 is RESERVED for compressed
+ * The kind occupies the low 3 bits (values 0-7). Bit 3 is RESERVED for compressed
  * mode (not used yet): `LIT_ALREADY_MINIMAL` marks a verbatim value that is
  * already minimal (dart-sass `compressed` would leave it unchanged), so the
  * future minifier can skip it. Reserving the bit now is free; adding it to the
@@ -155,7 +152,7 @@ export function materializeLiteral(str: string, tag: LiteralTag, lit?: LitFields
       return makeKeyword(str);
     }
     case LiteralTag.Bool:
-      return makeBool(str === 'true');
+      return { type: 'Bool', value: str === 'true', bytes: str };
     case LiteralTag.Quoted:
       // Parser classified the string leaf → read its quote/value/escaped fields;
       // a synthetic quoted (no `lit`) recovers them from the bytes (no regex).
@@ -186,8 +183,8 @@ export function tagForWord(text: string): LiteralTag {
     if (NUM_RE.test(text)) return LiteralTag.Dimension;
   }
   if (text === 'true' || text === 'false') return LiteralTag.Bool;
-  // A bare identifier that names a CSS color materializes as a Color (parity with
-  // the adapter's `sniff`, which resolves named colors before falling to keyword).
+  // A bare identifier that names a CSS color materializes as a Color — named
+  // colors resolve before falling through to a plain keyword.
   if (/^[a-zA-Z][a-zA-Z0-9]*$/.test(text) && namedColor(text)) return LiteralTag.ColorNamed;
   return LiteralTag.Keyword;
 }

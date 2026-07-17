@@ -1,42 +1,32 @@
 /**
- * tree2 VALUE domain + the synchronous VALUE-EVALUATOR seam (R2).
+ * The VALUE domain + the synchronous VALUE-EVALUATOR seam.
  *
- * This replaces the rung-8 `ValueService` (bytes-in / bytes-out) scaffold with a
- * TYPED, synchronous evaluator over a boundary-clean runtime value domain.
- *
- * Two things live here, both boundary-clean (NO `../tree` import):
+ * Two things live here, both boundary-clean (imports only pure types):
  *
  *  1. The runtime VALUE DOMAIN (`ValueObj`) — the typed *results* an evaluation
  *     produces and operates on (`Dimension`/`Color`/`Quoted`/`Keyword`/`List`/
  *     `Bool`/`Nil`), distinct from the value AST (`Operation`/`FunctionCall`/…)
- *     that describes HOW to compute. The kinds carry TREE's names (module-
- *     qualified against the AST `Dimension` node in `nodes.ts` — the split is
- *     perf-justified: a static `3px` is a bare literal string, never a value
- *     `Dimension`).
+ *     that describes HOW to compute. The value `Dimension` is module-qualified
+ *     against the AST `Dimension` node in `nodes.ts` — the split is perf-justified
+ *     (a static `3px` is a bare literal string, never a value `Dimension`).
  *
- *  2. The `ValueEvaluator` seam — the only allowed boundary crossing (an injected
- *     interface, like the old `ValueService`), whose currency is now TYPED value
- *     objects rather than serialized bytes. Implementation: the built-in evaluator
- *     (`evaluator.ts`, boundary-clean). (A transitional `buildAdapterEvaluator`
- *     delegating to legacy math existed as the differential oracle; it was deleted
- *     once its outputs were frozen into the differential fixture.) tree2 depends
- *     ONLY on this interface.
+ *  2. The `ValueEvaluator` seam — an injected interface whose currency is TYPED
+ *     value objects rather than serialized bytes, so pattern-match-by-type,
+ *     type-fns, and calc/escaping survive it. Implementation: `evaluator.ts`.
  *
- * REPRESENTATION (bake-off winner, "B"): an UN-MATERIALIZED value literal is a
- * BARE `string` — its bytes, nothing else. NO `{ bytes, tag }` wrapper, NO stored
- * type tag, NO allocation. The seam is `Value = ValueObj | string`; emit is
- * `typeof v === 'string' ? v : serializeValue(v)`. A literal's type is DERIVED on
- * demand when something forces object behaviour (materialize classifies from the
- * bytes — the parse it has to do anyway).
+ * REPRESENTATION: an UN-MATERIALIZED value literal is a BARE `string` — its bytes,
+ * nothing else (no wrapper, no stored tag, no allocation). The seam is
+ * `Value = ValueObj | string`; a literal's type is DERIVED on demand only when
+ * something forces object behaviour (`materialize`).
  *
- * Sync by default (arch C1): `operate`/`compare`/`typeCheck`/`materialize` are
- * synchronous; only `call` returns `MaybePromise` (a genuinely async built-in —
- * `data-uri`, or the async color-format fns — forces the enclosing declaration's
- * emit onto the async branch, scoped to that leaf; there is NO global record
- * pre-pass).
+ * Sync by default: `operate`/`compare`/`typeCheck`/`materialize` are synchronous;
+ * only `call` returns `MaybePromise` (a genuinely async built-in — `data-uri`, or
+ * an async color-format fn — forces the enclosing declaration's emit onto the
+ * async branch, scoped to that leaf).
  */
 
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
+import type { UnitMode } from '../types/modes.js';
 import type { LiteralTag, LitFields } from './literal-tag.js';
 
 /* --------------------------------------------------------- value domain */
@@ -68,7 +58,7 @@ export interface Color {
    * `colorHsl(c)` (which derives from rgb when absent).
    */
   readonly hsl?: readonly [number, number, number];
-  /** Output-format tag (a small opaque enum value shared with the adapter). */
+  /** Output-format tag (a small opaque enum value; see `color.ts` HEX/RGB/HSL). */
   readonly format: number;
   readonly modernSyntax?: boolean;
   /** Original literal source (e.g. `#aaa`, `blue`) preserved for verbatim emit. */
@@ -140,6 +130,9 @@ export type Value = ValueObj | string;
 /** Emit a value's bytes. A bare-string literal is its own bytes. */
 export const emitValue = (v: Value): string => (typeof v === 'string' ? v : v.bytes);
 
+/** The whitespace glue joining a list's items for its separator (`,`→`, `, `/`→` / `). */
+export const sepGlue = (sep: ',' | ' ' | '/'): string => (sep === ',' ? ', ' : sep === '/' ? ' / ' : ' ');
+
 /** Whether a value is an un-materialized (bare-string) literal leaf. */
 export const isLiteral = (v: Value): v is string => typeof v === 'string';
 
@@ -153,11 +146,11 @@ export const literal = (bytes: string): string => bytes;
 /* --------------------------------------------------------------- modes */
 
 /**
- * The configured mode value evaluation honors, injected at the seam (NOT the
- * whole legacy `Context`). `unitMode` governs the unit-clash → `calc()` fallback.
+ * The configured mode value evaluation honors, injected at the seam. `unitMode`
+ * (the canonical {@link UnitMode}) governs the unit-clash → `calc()` fallback.
  */
 export interface EvalModes {
-  readonly unitMode: 'preserve' | 'canonicalize' | 'strict';
+  readonly unitMode: UnitMode;
 }
 
 export const DEFAULT_MODES: EvalModes = {
