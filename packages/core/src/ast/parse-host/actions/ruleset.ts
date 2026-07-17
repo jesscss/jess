@@ -45,7 +45,7 @@ function ruleExtends(
 ): t2.ExtendInstruction[] | undefined {
   const instructions: t2.ExtendInstruction[] = [];
   if (typeof selector !== 'string') {
-    const fromSelector = takeSelectorExtends(selector);
+    const fromSelector = takeSelectorExtends(args.ctx, selector);
     if (fromSelector) instructions.push(...fromSelector);
   }
   for (const child of args.children) {

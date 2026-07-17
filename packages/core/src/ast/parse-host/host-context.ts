@@ -20,6 +20,12 @@ export interface Span {
   readonly end: number;
 }
 
+/** The source span of a raw parseman child leaf/node, if it carries one. */
+export function rawSpan(rc: unknown): Span | undefined {
+  const span = (rc as { span?: Span } | undefined)?.span;
+  return span && typeof span.start === 'number' && typeof span.end === 'number' ? span : undefined;
+}
+
 /* --------------------------------------------------------------- trivia log */
 
 /**
@@ -102,6 +108,14 @@ export function rulesetBodyWindow(rawChildren: ReadonlyArray<unknown>): { start:
 export interface BuildContext {
   /** The full source text being parsed (for verbatim byte capture). */
   readonly src: string;
+  /**
+   * [extend F11] Per-parse side table: a built selector node (`Complex` /
+   * `SelectorList`) → the `:extend()` instructions authored on it. Replaces the
+   * former module-global WeakMap so no ambient state survives a parse. Lazily
+   * created on first `attachSelectorExtends` (kept out of `setSource`'s hot path);
+   * keyed on unique per-parse node objects, so entries can never collide.
+   */
+  selectorExtends?: WeakMap<object, t2.ExtendInstruction[]>;
 }
 
 /** The arguments a build action receives — the parseman `build(...)` tuple plus
@@ -251,19 +265,23 @@ export function isExtendTargetMarker(x: unknown): x is ExtendTargetMarker {
 }
 
 /**
- * Side table: a built selector node (`Complex` / `SelectorList`) → the `:extend()`
- * instructions authored on it (`.a:extend(.b)`). A WeakMap so the selector
- * builders never pollute the tree2 selector node with a non-selector field; the
- * Ruleset family DRAINS it onto the enclosing Rule. Keyed on unique per-parse node
- * objects, so entries can never collide across parses.
+ * Attach `:extend()` instructions to a built selector node (`.a:extend(.b)`) on
+ * the per-parse `ctx.selectorExtends` side table — the selector builders never
+ * pollute the tree2 selector node with a non-selector field, and the Ruleset
+ * family DRAINS it onto the enclosing Rule. The map lives on `BuildContext`
+ * (per-parse), so no ambient module state survives a parse.
  */
-const SELECTOR_EXTENDS = new WeakMap<object, t2.ExtendInstruction[]>();
-export function attachSelectorExtends(sel: object, instructions: t2.ExtendInstruction[]): void {
+export function attachSelectorExtends(
+  ctx: BuildContext,
+  sel: object,
+  instructions: t2.ExtendInstruction[],
+): void {
   if (instructions.length === 0) return;
-  const prev = SELECTOR_EXTENDS.get(sel);
+  const table = (ctx.selectorExtends ??= new WeakMap<object, t2.ExtendInstruction[]>());
+  const prev = table.get(sel);
   if (prev) prev.push(...instructions);
-  else SELECTOR_EXTENDS.set(sel, instructions.slice());
+  else table.set(sel, instructions.slice());
 }
-export function takeSelectorExtends(sel: object): t2.ExtendInstruction[] | undefined {
-  return SELECTOR_EXTENDS.get(sel);
+export function takeSelectorExtends(ctx: BuildContext, sel: object): t2.ExtendInstruction[] | undefined {
+  return ctx.selectorExtends?.get(sel);
 }

@@ -36,19 +36,11 @@ import {
   extendTargetMarker,
   isExtendMarker,
   isExtendTargetMarker,
+  rawSpan,
 } from '../host-context.js';
 
 /** The parser's per-target flag: `all` / `!all` (both collapse to partial). */
 const ALL_FLAG = /^!?all$/;
-
-interface Span {
-  start: number;
-  end: number;
-}
-function rawSpan(rc: unknown): Span | undefined {
-  const span = (rc as { span?: Span } | undefined)?.span;
-  return span && typeof span.start === 'number' && typeof span.end === 'number' ? span : undefined;
-}
 
 /** Coerce F3's built find selector to a `Complex` (it is a `ComplexSelector` →
  *  `Complex`; degrade a bare compound/simple/foreign child so the action stays

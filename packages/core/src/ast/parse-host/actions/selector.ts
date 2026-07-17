@@ -30,21 +30,11 @@ import {
   attachSelectorExtends,
   hasWhitespaceTriviaBefore,
   isExtendMarker,
+  rawSpan,
   takeSelectorExtends,
 } from '../host-context.js';
 
 const COMBINATORS = new Set<string>(['>', '+', '~']);
-
-interface Span {
-  start: number;
-  end: number;
-}
-
-/** The source span of a raw parseman child leaf/node, if it carries one. */
-function rawSpan(rc: unknown): Span | undefined {
-  const span = (rc as { span?: Span } | undefined)?.span;
-  return span && typeof span.start === 'number' && typeof span.end === 'number' ? span : undefined;
-}
 
 /** A `Complex` for one selector-list / complex segment: reuse a built selector
  *  node, else wrap the verbatim token text in a single-compound Complex. */
@@ -142,7 +132,7 @@ function buildComplex(args: BuildArgs): t2.Complex {
     segments.length === 0
       ? t2.complex([{ compound: t2.compoundOf([]) }])
       : t2.complex(segments, leadingComb);
-  attachSelectorExtends(out, extendInstructions);
+  attachSelectorExtends(args.ctx, out, extendInstructions);
   return out;
 }
 
@@ -163,8 +153,8 @@ function buildSelectorList(args: BuildArgs): t2.SelectorList | t2.Complex {
   // list node so the enclosing Rule sees the whole group's extends (`.a:extend(.b),
   // .c { … }`). A single-complex return needs no roll-up — the Rule drains it directly.
   for (const c of complexes) {
-    const exts = takeSelectorExtends(c);
-    if (exts) attachSelectorExtends(list, exts);
+    const exts = takeSelectorExtends(args.ctx, c);
+    if (exts) attachSelectorExtends(args.ctx, list, exts);
   }
   return list;
 }
