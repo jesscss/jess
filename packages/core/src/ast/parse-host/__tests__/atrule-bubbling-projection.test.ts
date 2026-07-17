@@ -15,7 +15,7 @@
 import { describe, it, expect } from 'vitest';
 import { serialize } from '../../index.js';
 import { buildEvaluator } from '../../evaluator.js';
-import { makeBuiltinRegistry } from '../../functions/index.js';
+import { makeBuiltinRegistry } from './make-builtin-registry.js';
 import { root, rule, decl, word, complex, compound } from '../../nodes.js';
 import { atRuleBlock } from '../../at-rule.js';
 

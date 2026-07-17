@@ -5,7 +5,10 @@
  *
  * Co-locating the spec WITH the body in one per-fn module is what makes the
  * registry tree-shakeable (a stylesheet that never calls `pow` must not ship
- * `pow`) and additive (a new fn = a new module + one line in `functions/index.ts`).
+ * `pow`) and additive (a new fn = a new module + one line in the assembly list).
+ *
+ * This contract stays in core (it is the fn-authoring surface, re-exported via
+ * `@jesscss/core/value`); the fn BODIES live in `@jesscss/fns` (`builtins/`).
  *
  * HARD MODULE BOUNDARY: value domain only — no `../tree`, no legacy nodes.
  */

@@ -5,7 +5,7 @@ import { serialize } from '../../index.js';
 import { bridgeToAst } from './bridge.js';
 import { createImportState } from '../import.js';
 import { buildEvaluator } from '../../evaluator.js';
-import { makeBuiltinRegistry } from '../../functions/index.js';
+import { makeBuiltinRegistry } from './make-builtin-registry.js';
 import { renderImportOracle } from './import-oracle.js';
 
 // Authored fixtures pinning each @import MODE explicitly. The real less.js

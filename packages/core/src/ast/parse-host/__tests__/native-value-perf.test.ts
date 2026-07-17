@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { parseLessFn } from '@jesscss/less-parser';
 import { serialize } from '../../index.js';
 import { buildEvaluator } from '../../evaluator.js';
-import { makeBuiltinRegistry } from '../../functions/index.js';
+import { makeBuiltinRegistry } from './make-builtin-registry.js';
 import { bridgeToAst } from './bridge.js';
 import { buildAdapterEvaluator } from '../value-eval.js';
 

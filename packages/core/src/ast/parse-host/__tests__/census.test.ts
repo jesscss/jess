@@ -5,7 +5,7 @@ import { parseLessFn } from '@jesscss/less-parser';
 import { serialize } from '../../index.js';
 import { bridgeToAst, UnsupportedShape } from './bridge.js';
 import { buildEvaluator } from '../../evaluator.js';
-import { makeBuiltinRegistry } from '../../functions/index.js';
+import { makeBuiltinRegistry } from './make-builtin-registry.js';
 import { renderRealOracle } from './oracle.js';
 
 // Rung 8: the oracle is now the REAL (function-evaluating) pipeline.

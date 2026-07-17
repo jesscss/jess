@@ -6,7 +6,7 @@ import { parseLessFn } from '@jesscss/less-parser';
 import { serialize, composeStats } from '../../index.js';
 import { bridgeToAst, UnsupportedShape } from './bridge.js';
 import { buildEvaluator } from '../../evaluator.js';
-import { makeBuiltinRegistry } from '../../functions/index.js';
+import { makeBuiltinRegistry } from './make-builtin-registry.js';
 import { expectedCss, fixtureLess, legacyCss, resolveCollapseNesting } from './oracle-source.js';
 
 /**

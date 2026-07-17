@@ -4,7 +4,7 @@ import { serialize, Root } from '../../../index.js';
 import { bridgeToAst } from '../../__tests__/bridge.js';
 import { parseToAst } from '../../dispatch-host.js';
 import { buildEvaluator } from '../../../evaluator.js';
-import { makeBuiltinRegistry } from '../../../functions/index.js';
+import { makeBuiltinRegistry } from '../../__tests__/make-builtin-registry.js';
 
 /**
  * F4 byte-identity: interpolated selectors carry a structured

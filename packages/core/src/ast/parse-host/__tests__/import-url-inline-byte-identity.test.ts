@@ -20,7 +20,7 @@ import { serialize } from '../../index.js';
 import { bridgeToAst } from './bridge.js';
 import { createImportState } from '../import.js';
 import { buildEvaluator } from '../../evaluator.js';
-import { makeBuiltinRegistry } from '../../functions/index.js';
+import { makeBuiltinRegistry } from './make-builtin-registry.js';
 
 const ROOT = '/Users/matthew/git/worktrees/less.js/packages/test-data/tests-unit';
 
