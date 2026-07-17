@@ -5,9 +5,19 @@ import type {
   WarningDiagnostic,
   WarningsConfigInput
 } from '@jesscss/core';
-import { displayOverrideFor, oscLink, resolveErrorsConfig, resolveWarningsConfig } from '@jesscss/core';
+import { displayOverrideFor, resolveErrorsConfig, resolveWarningsConfig } from '@jesscss/core';
 import { relative, resolve } from 'node:path';
 import { CodeDebug, Region } from 'linecraft';
+
+/**
+ * OSC-8 terminal hyperlink: wraps `label` as a clickable link to `uri` for
+ * terminals that support it. We keep our own wrapper (rather than linecraft's
+ * `fileLink`) because it hardcodes the `file://` scheme, whereas we link with
+ * `vscode://file/…:line:col` so the click jumps to the exact location.
+ */
+function oscLink(uri: string, label: string): string {
+  return `\x1b]8;;${uri}\x1b\\${label}\x1b]8;;\x1b\\`;
+}
 
 type AnyDiagnostic = ErrorDiagnostic | WarningDiagnostic;
 
