@@ -11,7 +11,12 @@ export { LessGrammar } from './builders.js';
 import { LessParser } from './functional-parser.js';
 export { LessParser };
 export { lessGrammar } from './grammar.js';
-export { parseLessFn, type LessFnParseResult } from './functional-parser.js';
+export {
+  parseLessFn,
+  firstInlineJsBacktick,
+  INLINE_JS_UNSUPPORTED_MESSAGE,
+  type LessFnParseResult
+} from './functional-parser.js';
 export { parseLessCst, parseLessDoc } from './cst.js';
 export type {
   LessCstChild, LessCstError, LessCstLeaf, LessCstNode, LessCstParseResult, LessCstType

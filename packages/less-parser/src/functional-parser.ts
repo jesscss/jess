@@ -92,12 +92,20 @@ export function parseLessFn(
 }
 
 /**
+ * The single canonical diagnostic for inline JavaScript (backticks), which was
+ * removed in Less v5. Exported so the `ast/` render path surfaces the identical
+ * message + error type rather than inventing its own.
+ */
+export const INLINE_JS_UNSUPPORTED_MESSAGE =
+  'Inline JavaScript using backticks is not supported. Use @use / @-use to import a script module instead.';
+
+/**
  * Index of the first backtick in CODE position (i.e. real inline JS), or -1.
  * Skips `//` line comments, `/* … *​/` block comments, and quoted strings so a
  * backtick inside a comment/string (common in Less doc comments) is not
  * mistaken for inline JavaScript.
  */
-function firstInlineJsBacktick(text: string): number {
+export function firstInlineJsBacktick(text: string): number {
   for (let i = 0; i < text.length; i++) {
     const c = text[i];
     if (c === '`') {
@@ -150,7 +158,7 @@ export class LessParser {
       return {
         // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         tree: nil() as unknown as Rules,
-        errors: [toParseError('Inline JavaScript using backticks is not supported. Use @use / @-use to import a script module instead.', backtick, text)],
+        errors: [toParseError(INLINE_JS_UNSUPPORTED_MESSAGE, backtick, text)],
         warnings: [],
         trivia: buildLazyTriviaMap([], text),
         liftedCommentRanges: [],

@@ -151,7 +151,10 @@ Clustered by the failing feature (fixture counts are where the cluster is the do
 9. **Plugin system** — `plugin`, `plugin-module`, `plugin-preeval`, `tailwind` (`@apply`
    inside a rule dropped). *Plugin-eval; likely a separate workstream, lower GOAL-#1 priority.*
 10. **Removed-feature fixtures (declared)** — `javascript-REMOVED/legacy/javascript.less`
-    (backtick JS removed in v5 — ast/ still emits raw `` `…` ``), `ie-filters-REMOVED/legacy/ie-filters.less`.
+    (backtick JS removed in v5 — ast/ now ERRORS with the `@use / @-use` migration message
+    instead of emitting raw `` `…` ``; the whole-doc driver reuses `less-parser`'s exported
+    `firstInlineJsBacktick` + `INLINE_JS_UNSUPPORTED_MESSAGE`, mirroring `LessParser.parse`'s
+    wrapper guard), `ie-filters-REMOVED/legacy/ie-filters.less`.
     Low priority; the golden reflects removal, ast/ should error/normalize. (These live under
     `legacy/` and are now excluded from the gated corpus.)
 11. **At-rule prelude interpolation (P2)** — `container`, `layer`, `media`,

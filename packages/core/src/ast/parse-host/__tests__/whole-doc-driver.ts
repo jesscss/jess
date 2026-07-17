@@ -28,7 +28,7 @@
  */
 import * as fs from 'node:fs';
 import { isThenable } from '@jesscss/awaitable-pipe';
-import { lessGrammar } from '@jesscss/less-parser';
+import { lessGrammar, firstInlineJsBacktick, INLINE_JS_UNSUPPORTED_MESSAGE } from '@jesscss/less-parser';
 import { serialize } from '../../index.js';
 import type { Root, Statement } from '../../index.js';
 import type { SerializeResult } from '../../serialize.js';
@@ -63,6 +63,18 @@ export interface AstRenderOptions {
   trivia?: unknown;
 }
 
+/**
+ * Throw the canonical inline-JS diagnostic if `src` contains a backtick in code
+ * position. Reuses `less-parser`'s exported scanner + message so the ast/ render
+ * path errors identically to `LessParser.parse` (which guards the same way before
+ * `parseLessFn`). The throw is captured on `AstRenderResult.threw` by the caller.
+ */
+function guardInlineJs(src: string): void {
+  if (firstInlineJsBacktick(src) !== -1) {
+    throw new Error(INLINE_JS_UNSUPPORTED_MESSAGE);
+  }
+}
+
 /** The synchronous driver requires a synchronous evaluator; a Promise is a bug. */
 function requireSync(r: ReturnType<typeof serialize>): SerializeResult {
   if (isThenable(r)) {
@@ -80,6 +92,13 @@ export function renderAstDoc(src: string, options: AstRenderOptions = {}): AstRe
   try {
     const grammar = options.grammar ?? g['Stylesheet'];
     const trivia = options.trivia ?? g['rw'];
+    // Inline JavaScript (backticks) was removed in v5. The Parseman grammar has no
+    // backtick token, so `parseToAst` would otherwise pass the raw `` `…` `` bytes
+    // straight through to serialize. Mirror `LessParser.parse`'s wrapper guard here
+    // — the same source scan + identical diagnostic — so the ast/ render path surfaces
+    // the migration error instead of emitting inline JS verbatim. Imported files are
+    // scanned too (see the `parse` closure below).
+    guardInlineJs(src);
     const { root, errors } = parseToAst(src, grammar, undefined, { trivia });
     if (root === undefined) {
       return {
@@ -94,6 +113,7 @@ export function renderAstDoc(src: string, options: AstRenderOptions = {}): AstRe
     // the import site (once / multiple / reference / optional / inline semantics
     // in `resolveDirectImports`). Deferred shapes stay verbatim (see driver doc).
     const parse = (source: string): Statement[] => {
+      guardInlineJs(source);
       const res = parseToAst(source, grammar, undefined, { trivia });
       return res.root ? res.root.children : [];
     };
