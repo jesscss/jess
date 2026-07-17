@@ -1,5 +1,5 @@
 import {
-  Node,
+  type Node,
   type NodeVisitReturn,
   ABORT,
   REMOVE
@@ -11,7 +11,6 @@ import type * as tree from '../tree/index.js';
 
 // type GuardedType<T> = typeof isNode extends (value: any, type: T) => value is infer U ? U : never
 
-const lowerFirst = (s: string) => s.charAt(0).toLowerCase() + s.slice(1);
 export { ABORT, REMOVE };
 export const SKIP: unique symbol = Symbol('SKIP');
 
@@ -120,67 +119,4 @@ export interface Visitor {
   defaultGuardExit?(n: tree.DefaultGuard, ctx?: VisitorContext): void;
   rest?(n: tree.Rest, ctx?: VisitorContext): VisitorReturn;
   restExit?(n: tree.Rest, ctx?: VisitorContext): void;
-}
-
-export abstract class Visitor {
-  private readonly _methodMap = new Map<string, ((n: Node, ctx?: VisitorContext) => VisitorReturn) | false>();
-  /** Temporary state, set on first visit and later un-set when exiting */
-  protected startNode: Node | undefined;
-
-  getMethod(s: string) {
-    let lower = this._methodMap.get(s);
-    /**
-     * if we previously looked for the method and it doesn't exist,
-     * then explicitly set the map record to false.
-     */
-    if (!lower && lower !== false) {
-      // @ts-expect-error - Its ok if it doesn't exist
-      lower = this[lowerFirst(s)];
-      this._methodMap.set(s, lower ?? false);
-    }
-    return lower;
-  }
-
-  protected _visit(n: Node, ctx?: VisitorContext): VisitorReturn {
-    let fn = this.getMethod(n.type);
-    if (fn) {
-      return fn.call(this, n, ctx) ?? n;
-    }
-    return n;
-  }
-
-  visitExit(n: Node, ctx?: VisitorContext) {
-    let fn = this.getMethod(`${n.type}Exit`);
-    if (fn) {
-      fn.call(this, n, ctx);
-    }
-  }
-
-  /**
-   * Visit will always return a Node
-   */
-  visit(n: Node): Node {
-    this.startNode = n;
-    const originalVisit = this.visit;
-    /**
-     * Bind to inner _visit, so that all inner calls will not call this current method again
-     */
-    this.visit = (node: Node): Node => {
-      const result = this._visit(node);
-      return result instanceof Node ? result : node;
-    };
-    let possibleAbort = this.enter?.(n);
-    if (possibleAbort === ABORT) {
-      return n;
-    }
-    let returnVal = this._visit(n);
-    this.visit = originalVisit.bind(this);
-    /** Apply any final transformations / decisions */
-    returnVal = this.exit?.(returnVal) ?? returnVal;
-    this.startNode = undefined;
-    if (returnVal instanceof Node) {
-      return returnVal;
-    }
-    return n;
-  }
 }
