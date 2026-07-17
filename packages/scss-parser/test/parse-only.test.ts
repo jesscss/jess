@@ -107,7 +107,16 @@ const positiveCases: ParseCase[] = [
   { name: '@supports function-token condition', src: '@supports selector(:has(a)) { .a { color: red; } }' },
   // #{…} interpolation opener is covered by 'interpolation inside @supports prelude' above.
   { name: '@media bare form stays valid', src: '@media screen { .a { color: red; } }' },
-  { name: '@container bare form stays valid', src: '@container name (width > 0) { .a { color: red; } }' }
+  { name: '@container bare form stays valid', src: '@container name (width > 0) { .a { color: red; } }' },
+  // Strict at-rule prelude (Sass+), generalized from @supports to every position:
+  // `#{…}` interpolation + bare names stay valid, and a `$var` inside `(…)` (a
+  // declaration value) stays valid — even inside an unknown at-rule.
+  { name: '@keyframes #{$v} interpolated name', src: '@keyframes #{$v} { from { top: 0; } }' },
+  { name: '@keyframes bare name stays valid', src: '@keyframes slidein { from { top: 0; } }' },
+  { name: '@layer #{$v} interpolated name', src: '@layer #{$v} { .a { color: red; } }' },
+  { name: '@layer name list stays valid', src: '@layer a, b;' },
+  { name: 'unknown at-rule with #{$v} interpolation', src: '@foo #{$v} { .a { color: red; } }' },
+  { name: 'unknown at-rule with paren-wrapped $var declaration value', src: '@foo (x: $v) { .a { color: red; } }' }
 ];
 
 const errorCases: ErrorCase[] = [
@@ -143,6 +152,32 @@ const errorCases: ErrorCase[] = [
     name: 'bare $variable @supports prelude rejection',
     src: '@supports $cond { .a { color: red; } }',
     message: 'supports condition'
+  },
+  // v5/Sass+: a top-level bare `$variable` in a non-value at-rule prelude/name is a
+  // HARD parse error at that position (the `#{…}` interpolation form is the valid
+  // migration target — covered in the positive cases above).
+  {
+    name: 'bare $var @keyframes name rejection',
+    src: '@keyframes $v { from { top: 0; } }',
+    message: 'at-rule block or ;'
+  },
+  {
+    // `@media`/`@container` commit their block brace, so the missing-block error is
+    // reported ON the bare `$var` as `expected {` (the other positions, which fall
+    // to the generic `AtRuleMalformed`, report `at-rule block or ;`).
+    name: 'bare $var @media query rejection',
+    src: '@media $v { .a { color: red; } }',
+    message: 'expected {'
+  },
+  {
+    name: 'bare $var @layer name rejection',
+    src: '@layer $v { .a { color: red; } }',
+    message: 'at-rule block or ;'
+  },
+  {
+    name: 'bare $var unknown at-rule prelude rejection',
+    src: '@foo $v { .a { color: red; } }',
+    message: 'at-rule block or ;'
   }
 ];
 

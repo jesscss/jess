@@ -568,18 +568,60 @@ export const scssGrammar = compose([lessGrammar, rules({ trivia: rw }, (g: any) 
     many(scssPreludeSegment)
   );
 
+  // ── Strict generic at-rule prelude (Sass+) ──────────────────────────────────
+  // Mirror of the Less strict `atPrelude`, but for SCSS. Sass+ rejects invalid CSS:
+  // a TOP-LEVEL (paren-depth 0) bare `$variable` in a non-value at-rule
+  // prelude/name/identifier position is a HARD parse error, while `#{…}`
+  // interpolation is accepted (the migration target), a bare ident/name stays
+  // valid, and a `$var` INSIDE `(…)`/`[…]` — a declaration value — stays valid +
+  // resolving (even inside an unknown/custom at-rule). The atom set: balanced
+  // `(…)`/`[…]` + strings (opaque — a `$var` inside is a declaration value), a
+  // `#{…}` interpolation atom (`ScssInterpBare`), and runs of ordinary prelude
+  // chars. The run stops at `$`, so a top-level bare `$var` is never consumed and
+  // the sequence stops there; the run's `#(?!\{)` keeps a bare `#` (colors/ids)
+  // literal while a `#{` is taken by the interpolation atom. Generalizes the
+  // `@supports` precedent (b799d9a49) to every SCSS at-rule position.
+  const scssStrictRun = regex(/(?:[^${}()\[\];"'#]|#(?!\{))+/);
+  const scssStrictAtom = choice(bParen, bSquare, singleStr, doubleStr, ScssInterpBare, scssStrictRun);
+  const scssStrictPrelude = many(scssStrictAtom);
+
   // Generic unknown at-rule statement (`@charset "x";`, or a bare `@c` used as a
   // content placeholder in the sass-spec corpus). Overrides Less's
-  // `AtRuleStatement`, whose `;` is mandatory and whose prelude scan stops only
-  // at `{`/`;`: Sass allows omitting the terminator before `}`/EOF, so the
-  // prelude also stops at `}`/EOF and the trailing `;` is optional.
+  // `AtRuleStatement`. Sass allows omitting the `;` before `}`/EOF, so the prelude
+  // scan stops at `{`/`;`/`}`/EOF AND at a top-level `$` (so a bare `$var` is not
+  // swallowed), and the tail REQUIRES a real terminator (`;`, or a zero-width `}` /
+  // EOF): a prelude that stopped at a top-level bare `$var` therefore does NOT match
+  // here and falls to the committed `AtRuleMalformed` fallback below.
   const scssAtKeyword = regex(/@-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*/);
   const scssAtPrelude = optional(scanTo(
-    choice(literal('{'), literal(';'), literal('}')),
+    choice(literal('{'), literal(';'), literal('}'), literal('$')),
     { skip: scanSkip, orEOF: true }
   ));
+  const scssStmtEnd = choice(literal(';'), regex(/(?=\})/), not(regex(/[\s\S]/)));
   const AtRuleStatement = node('AtRuleStatement',
-    sequence(scssAtKeyword, scssAtPrelude, optional(literal(';'))));
+    sequence(scssAtKeyword, scssAtPrelude, scssStmtEnd));
+
+  // Generic block at-rule (`@keyframes`, `@counter-style`, `@font-face`, unknown
+  // `@foo … { … }`). Overrides Less's `AtRuleBlock` so the strict prelude excludes a
+  // top-level `$var` and understands SCSS `#{…}` interpolation (Less's atom set only
+  // knows `@{…}`, and its run would mis-read `#{`'s brace as the block opener).
+  const AtRuleBlock = node('AtRuleBlock',
+    sequence(scssAtKeyword, scssStrictPrelude, literal('{'), g.atRuleBody, expect(literal('}'), '}')));
+
+  // Committed fallback: a generic at-rule whose strict prelude stopped before a
+  // top-level bare `$var` that neither the block `{` nor the statement terminator
+  // can consume (`@keyframes $v {}`, `@layer $v {}`, unknown `@foo $v {}`). Ordered
+  // after AtRuleBlock / AtRuleStatement, it reports ONE legible error AT that
+  // position and recovers, consuming to the real tail so `many` resumes cleanly —
+  // the SCSS mirror of Less's `AtRuleMalformed`.
+  const scssAtTailAhead = regex(/(?=[{;}]|$)/);
+  const AtRuleMalformed = node('AtRuleBlock',
+    sequence(
+      scssAtKeyword, scssStrictPrelude,
+      expect(scssAtTailAhead, 'at-rule block or ;'),
+      optional(scanTo(choice(literal('{'), literal(';'), literal('}')), { skip: scanSkip, orEOF: true })),
+      optional(choice(sequence(literal('{'), g.atRuleBody, expect(literal('}'), '}')), literal(';')))
+    ));
 
   // ── Statement injection ─────────────────────────────────────────────────
   // Override Less's containers to try the SCSS control statements first, then
@@ -626,12 +668,18 @@ export const scssGrammar = compose([lessGrammar, rules({ trivia: rw }, (g: any) 
       declarationList,
       expect(literal('}'))
     ));
+  // `@media` / `@container` keep their bare forms (`screen`, `name (width > 0)`) via
+  // the strict prelude, which — unlike the old permissive scan — rejects a top-level
+  // bare `$var` (`@media $v`): the run stops at `$`, so the committed `expect('{')`
+  // fails ON the `$var` and reports the missing block there (a hard error). A
+  // `#{…}`-interpolated prelude is taken earlier by `ScssQueryInterpBlock`; a `$var`
+  // inside `(…)` stays a valid declaration value; a missing block still errors.
   const queryAtKeyword = regex(/@(?:media|container)(?![-\w])/i);
   const QueryAtRuleBlock = node(
     sequence(
       queryAtKeyword,
-      scssPermissivePrelude,
-      expect(literal('{')),
+      scssStrictPrelude,
+      expect(literal('{'), '{'),
       atRuleBody,
       expect(literal('}'))
     ));
@@ -718,6 +766,7 @@ export const scssGrammar = compose([lessGrammar, rules({ trivia: rw }, (g: any) 
     ScssNestedProps,
     ScssDiagnostic, ScssAtRootFilter, ScssAtRootSelector, ScssAtRootPlain,
     QueryAtRuleBlock, SupportsAtRuleBlock, ScssQueryInterpBlock, ScssScopeBlock, ScssLayerBlock,
+    AtRuleBlock, AtRuleMalformed,
     Stylesheet, simpleSelector, declarationList, atRuleBody
   };
 })]);
