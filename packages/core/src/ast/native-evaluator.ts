@@ -16,7 +16,7 @@
  */
 import type { EvalModes, List as ValueList, ValueEvaluator, ValueObj } from './value-eval.js';
 import { operate, compare as compareValues, typeCheck as typeCheckValues } from './value-operate.js';
-import { LiteralTag, materializeLiteral, sniffLiteral } from './literal-tag.js';
+import { LiteralTag, type LitFields, materializeLiteral, sniffLiteral } from './literal-tag.js';
 import { dispatchNative, hasNativeFn } from './value-dispatch.js';
 import { makeKeyword } from './value-factory.js';
 
@@ -39,8 +39,8 @@ const stringify = (v: ValueObj): string => (v.kind === 'quoted' ? v.value : v.by
  * computed on demand during the single serialize walk.
  */
 export function buildNativeEvaluator(): ValueEvaluator {
-  const materialize = (bytes: string, tag?: LiteralTag): ValueObj =>
-    tag !== undefined ? materializeLiteral(bytes, tag) : sniffLiteral(bytes);
+  const materialize = (bytes: string, tag?: LiteralTag, lit?: LitFields): ValueObj =>
+    tag !== undefined ? materializeLiteral(bytes, tag, lit) : sniffLiteral(bytes);
 
   const call = (name: string, args: ValueList, modes: EvalModes): ValueObj => {
     if (hasNativeFn(name)) return dispatchNative(name, args, { modes, stringify });

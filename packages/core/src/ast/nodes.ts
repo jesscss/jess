@@ -19,7 +19,7 @@
 import { Combinator, Kind, Node, renderCombinator } from './node.js';
 import type { GuardNode } from './guard.js'; // [guards]
 import type { CallArg } from './mixin-dispatch.js'; // [guards]
-import type { LiteralTag } from './literal-tag.js'; // [value-literal-tag]
+import type { LiteralTag, LitFields } from './literal-tag.js'; // [value-literal-tag]
 
 /* ------------------------------------------------------------------ values */
 
@@ -39,6 +39,13 @@ export class Word extends Node {
   constructor(
     readonly text: string,
     readonly tag?: LiteralTag,
+    /**
+     * [value-literal-tag] The parser's pre-split classification of the literal
+     * (numeric `number`+`unit`, or quoted `value`+`quote`+`escaped`). When
+     * present, `materialize` reads it instead of re-splitting `text` with a
+     * regex; absent only for a synthetic / untagged Word.
+     */
+    readonly lit?: LitFields,
   ) {
     super();
   }
@@ -518,7 +525,7 @@ export type Statement =
 
 /* ------------------------------------------------------------ constructors */
 
-export const word = (text: string, tag?: LiteralTag): Word => new Word(text, tag);
+export const word = (text: string, tag?: LiteralTag, lit?: LitFields): Word => new Word(text, tag, lit);
 export const dim = (value: number, unit = ''): Dimension => new Dimension(value, unit);
 export const spaced = (parts: ValueNode[]): SpacedValue => new SpacedValue(parts);
 

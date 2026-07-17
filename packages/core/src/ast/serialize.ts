@@ -62,7 +62,7 @@ import {
   type ValueObj,
 } from './value-eval.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
-import { LiteralTag, tagForWord } from './literal-tag.js'; // [value-literal-tag]
+import { LiteralTag, type LitFields, tagForWord } from './literal-tag.js'; // [value-literal-tag]
 import { selectDefinitions, type Selection } from './mixin-dispatch.js'; // [guards]
 import type { ValueResolver, TypedResolver } from './guard.js'; // [guards]
 import { computeExtends, type ExtendResults } from './extend.js'; // [extend]
@@ -288,9 +288,10 @@ function force(e: EvalCtx, v: Value): ValueObj {
   return e.ev.materialize(v);
 }
 
-/** Materialize a leaf literal with its parse tag (VALUE-LITERAL-TAG-SPEC). */
-function forceLiteral(e: EvalCtx, bytes: string, tag: LiteralTag): ValueObj {
-  return e.ev ? e.ev.materialize(bytes, tag) : { kind: 'keyword', text: bytes, bytes };
+/** Materialize a leaf literal with its parse tag + optional pre-split fields
+ *  (VALUE-LITERAL-TAG-SPEC). */
+function forceLiteral(e: EvalCtx, bytes: string, tag: LiteralTag, lit?: LitFields): ValueObj {
+  return e.ev ? e.ev.materialize(bytes, tag, lit) : { kind: 'keyword', text: bytes, bytes };
 }
 
 /**
@@ -309,9 +310,9 @@ function evalTyped(node: ValueNode, frame: Frame | null, e: EvalCtx, depth = 0):
     case Kind.Dimension:
       return { kind: 'dimension', number: node.value, unit: node.unit, bytes: `${node.value}${node.unit}` };
     case Kind.Word:
-      // The producer stamps `tag` (bridge today, parser-host later); fall back to
-      // a byte sniff only for an untagged/synthetic Word.
-      return forceLiteral(e, node.text, node.tag ?? tagForWord(node.text));
+      // The producer stamps `tag` (+ pre-split `lit`); fall back to a byte sniff
+      // only for an untagged/synthetic Word.
+      return forceLiteral(e, node.text, node.tag ?? tagForWord(node.text), node.lit);
     case Kind.VarRef: {
       if (depth > MAX_VAR_DEPTH) return forceLiteral(e, `@${node.name}`, LiteralTag.Keyword);
       const bound = lookupVar(frame, node.name);

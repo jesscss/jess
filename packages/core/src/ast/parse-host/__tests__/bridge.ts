@@ -618,10 +618,11 @@ function leafTagOf(node: AnyNode): LiteralTag | undefined {
       return LiteralTag.Bool;
     case 'Keyword':
       return LiteralTag.Keyword;
-    // A role-typed / verbatim `Any` (and a quoted-string leaf) rides as `LIT_ANY`:
-    // `materialize` leaves it un-coerced (keyword / quoted), never re-sniffing.
-    case 'Anonymous':
+    // A quoted-string leaf is DISTINCT (`Quoted` tag + its quote/value fields); a
+    // role-typed / verbatim `Anonymous` rides as `LIT_ANY` (un-coerced keyword).
     case 'Quoted':
+      return LiteralTag.Quoted;
+    case 'Anonymous':
       return LiteralTag.Any;
     default:
       return undefined;
@@ -629,14 +630,31 @@ function leafTagOf(node: AnyNode): LiteralTag | undefined {
 }
 
 /**
- * [value-literal-tag] Stamp a producer tag onto a freshly-parsed leaf. A typed
- * legacy leaf's bytes carry no `@`, so `parseValue` returns a bare `Word` — the
- * tag rides on it. A multi-part value (`Concat`/`VarRef`/…) is not a single
- * literal and is returned unchanged.
+ * [value-literal-tag] The parser's pre-split fields for a numeric / quoted leaf,
+ * so `materialize` reads them instead of re-splitting the bytes. The legacy node
+ * carries `number`/`unit` (Dimension / Num) or the inner `value` + `quote` +
+ * `escaped` (a plain, non-escaped Quoted — escaped `~"…"` is lowered upstream to a
+ * bare word before reaching here). Any other leaf carries no fields.
  */
-function stampLeaf(v: t2.ValueNode, tag: LiteralTag | undefined): t2.ValueNode {
+function litOf(node: AnyNode, tag: LiteralTag | undefined): t2.LitFields | undefined {
+  if (tag === LiteralTag.Dimension || tag === LiteralTag.Num) {
+    return { number: node.number as number, unit: (node.unit as string | undefined) ?? '' };
+  }
+  if (tag === LiteralTag.Quoted && typeof node.value === 'string') {
+    return { value: node.value, quote: typeof node.quote === 'string' ? node.quote : '"', escaped: node.escaped === true };
+  }
+  return undefined;
+}
+
+/**
+ * [value-literal-tag] Stamp a producer tag (+ pre-split `lit` fields) onto a
+ * freshly-parsed leaf. A typed legacy leaf's bytes carry no `@`, so `parseValue`
+ * returns a bare `Word` — the tag rides on it. A multi-part value
+ * (`Concat`/`VarRef`/…) is not a single literal and is returned unchanged.
+ */
+function stampLeaf(v: t2.ValueNode, tag: LiteralTag | undefined, lit?: t2.LitFields): t2.ValueNode {
   if (tag === undefined || v.kind !== t2.Kind.Word) return v;
-  return t2.word(v.text, tag);
+  return t2.word(v.text, tag, lit);
 }
 
 /** An operand of an operation / guard / mixin arg: computed expr or raw leaf. */
@@ -648,13 +666,14 @@ function toOperand(ctx: BridgeCtx, node: unknown): t2.ValueNode | null {
   if (Array.isArray(node)) return arrayValue(ctx, node);
   if (isNode(node)) {
     const tag = leafTagOf(node); // [value-literal-tag] stamp at production
+    const lit = litOf(node, tag); // pre-split number/unit or quote/value/escaped
     // [guards] A `Keyword` node's source span can include a wrapping `(...)`
     // (parser quirk for single mixin args); its `.value` is the clean text.
     if (typeOf(node) === 'Keyword' && typeof (node as AnyNode).value === 'string') {
-      return stampLeaf(parseValue((node as AnyNode).value as string), tag);
+      return stampLeaf(parseValue((node as AnyNode).value as string), tag, lit);
     }
     const raw = slice(ctx, node);
-    if (raw !== undefined) return stampLeaf(parseValue(raw), tag);
+    if (raw !== undefined) return stampLeaf(parseValue(raw), tag, lit);
   }
   return null;
 }

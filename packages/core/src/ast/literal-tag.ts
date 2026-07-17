@@ -45,7 +45,28 @@ export enum LiteralTag {
   Bool = 5,
   /** verbatim fallback / role-typed `Any` → keyword, no coercion. */
   Any = 6,
+  /**
+   * A quoted string (`"…"` / `'…'`) → value `Quoted`. The parser tokenizes a
+   * string leaf DISTINCT from an ident, so the class rides on this tag rather than
+   * a `QUOTE_RE` re-scan at materialize; the inner value + quote char + real
+   * escaped flag ride in `LitFields`. Fits the 3-bit kind space (`LIT_TAG_MASK`),
+   * below the reserved `LIT_ALREADY_MINIMAL` bit.
+   */
+  Quoted = 7,
 }
+
+/**
+ * The pre-classified leaf payload the PARSER already resolved, carried on the
+ * value leaf so `materializeLiteral` READS it instead of re-splitting the bytes
+ * with a regex (constitution P0 — core never re-derives what the parser knows).
+ * A numeric leaf carries `number`+`unit` (the grammar split them at
+ * tokenization); a quoted leaf carries the inner `value`, the `quote` char, and
+ * the real `escaped` flag. The tag discriminates which shape is present;
+ * consumers narrow with an `in` guard (no cast).
+ */
+export type LitFields =
+  | { readonly number: number; readonly unit: string }
+  | { readonly value: string; readonly quote: string; readonly escaped: boolean };
 
 /**
  * The kind occupies the low 3 bits (values 0-6). Bit 3 is RESERVED for compressed
@@ -57,9 +78,13 @@ export enum LiteralTag {
 export const LIT_TAG_MASK = 0b111;
 export const LIT_ALREADY_MINIMAL = 1 << 3; // 8 — reserved, unused
 
+// SYNTHETIC-ONLY classifiers. A PARSED literal reaches materialize already
+// classified (its `LitFields` / `tag`), so it never touches these. They fire only
+// for a genuinely-synthetic string with no parse origin — a computed / joined
+// fragment or a re-split list piece (`tagForWord` / `sniffLiteral`) — which the
+// parser never saw, so classifying it here is not re-deriving parser output.
 const NUM_RE = /^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?([a-zA-Z%]*)$/;
 const HEX_RE = /^#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/;
-const QUOTE_RE = /^(['"])([\s\S]*)\1$/;
 
 /** Byte-identical port of `parseHexString` (tree/color.ts). */
 export function parseHex(hex: string): { rgb: [number, number, number]; alpha: number } {
@@ -81,16 +106,31 @@ export function parseHex(hex: string): { rgb: [number, number, number]; alpha: n
   return { rgb: [r, g, b], alpha: a };
 }
 
+/** Synthetic-only numeric split (no `LitFields`): a computed numeric string. */
 function dimensionFromString(str: string): ValueObj {
   const m = NUM_RE.exec(str);
   const unit = m?.[1] ?? '';
   return { kind: 'dimension', number: Number(str.slice(0, str.length - unit.length)), unit, bytes: str };
 }
 
+/** True when `s` opens and closes with the SAME quote char (`"…"` / `'…'`). */
+function isQuotedBytes(s: string): boolean {
+  const c = s.charCodeAt(0);
+  return s.length >= 2 && (c === 34 /* " */ || c === 39 /* ' */) && s.charCodeAt(s.length - 1) === c;
+}
+
+/** A quoted `ValueObj` from its verbatim bytes (quote char known from the bytes). */
+function quotedFromBytes(str: string): ValueObj {
+  return { kind: 'quoted', value: str.slice(1, -1), quote: str[0]!, escaped: false, bytes: str };
+}
+
 /**
  * Materialize a literal (its verbatim bytes) to a typed `ValueObj`, driven by the
- * TAG — a `switch`, no regex sniff. The result is a FRESH object handed to the
- * operated/compared slot; it is never stored back (projection-not-mutation).
+ * TAG + the parser's `LitFields` — a `switch`, no regex sniff. When the parser
+ * carried the split (`lit`) the numeric / quoted fields are read directly; only a
+ * genuinely-synthetic string (no `lit`) falls back to a byte split. The result is
+ * a FRESH object handed to the operated/compared slot; it is never stored back
+ * (projection-not-mutation).
  *
  * A `LIT_COLOR_NAMED` word resolves to a `Color` through the shared color-name
  * table (`color-names.ts`), so operated/compared named colors (`lighten(red,…)`,
@@ -98,10 +138,12 @@ function dimensionFromString(str: string): ValueObj {
  * `node` for byte-faithful emit; a name absent from the table falls through to a
  * plain keyword.
  */
-export function materializeLiteral(str: string, tag: LiteralTag): ValueObj {
+export function materializeLiteral(str: string, tag: LiteralTag, lit?: LitFields): ValueObj {
   switch (tag & LIT_TAG_MASK) {
     // One numeric tag (`Num` is a same-value alias of `Dimension`).
     case LiteralTag.Dimension:
+      // Parser carried the number/unit split → read it; else split a synthetic.
+      if (lit && 'number' in lit) return { kind: 'dimension', number: lit.number, unit: lit.unit, bytes: str };
       return dimensionFromString(str);
     case LiteralTag.ColorHex: {
       const { rgb, alpha } = parseHex(str);
@@ -114,26 +156,27 @@ export function materializeLiteral(str: string, tag: LiteralTag): ValueObj {
     }
     case LiteralTag.Bool:
       return makeBool(str === 'true');
+    case LiteralTag.Quoted:
+      // Parser classified the string leaf → read its quote/value/escaped fields;
+      // a synthetic quoted (no `lit`) recovers them from the bytes (no regex).
+      if (lit && 'value' in lit) return { kind: 'quoted', value: lit.value, quote: lit.quote, escaped: lit.escaped, bytes: str };
+      return quotedFromBytes(str);
     case LiteralTag.Any:
     case LiteralTag.Keyword:
-    default: {
-      const q = QUOTE_RE.exec(str);
-      if (q) return { kind: 'quoted', value: q[2]!, quote: q[1]!, escaped: false, bytes: str };
-      return makeKeyword(str);
-    }
+    default:
+      // Untagged / verbatim-`Any` leaf: a quoted-looking string still materializes
+      // as a quoted value (byte-identical to the former `QUOTE_RE`), else keyword.
+      return isQuotedBytes(str) ? quotedFromBytes(str) : makeKeyword(str);
   }
 }
 
 /**
- * FALLBACK classifier for a genuinely-synthetic / untagged `Word` — a leaf with
- * no producer-stamped `tag` (e.g. a joined computed fragment forced onto the
- * typed path). It re-derives the `LIT_*` tag from the bytes.
- *
- * This is NOT on the hot path for a PARSED literal: the bridge (spec §5) stamps
- * the tag at production onto the `Word`, and `evalTyped` reads that field
- * directly — a re-classification here would be the exact anti-pattern the tag
- * exists to remove. `Kind.Dimension` AST nodes carry their class in `Kind` and
- * never reach here either.
+ * SYNTHETIC-only classifier for a `Word` with no producer-stamped `tag` — a
+ * computed / joined fragment forced onto the typed path. The parser never saw
+ * this string, so classifying its bytes here is NOT re-deriving parser output
+ * (constitution P0): a PARSED literal always arrives tagged (+ `LitFields`) and
+ * bypasses this entirely. A quoted-looking synthetic string is left `Keyword`;
+ * `materializeLiteral`'s default recovers its quotedness from the bytes.
  */
 export function tagForWord(text: string): LiteralTag {
   const c0 = text.charCodeAt(0);
