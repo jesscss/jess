@@ -67,7 +67,13 @@ const DETECTED: Array<[string, string, number, number]> = [
   // An unquoted `url(...)` body is a <url-token>, which may not contain interior
   // whitespace (css-syntax-3 §4.3.6 — `url(foo bar)` is a <bad-url-token>). The
   // `url(` open commits, so the trailing `)` is expected right after the body run.
-  ['url-interior-whitespace.css', ')', 1, 17]   // `url(foo bar)` — ws inside unquoted url
+  ['url-interior-whitespace.css', ')', 1, 17],  // `url(foo bar)` — ws inside unquoted url
+  // A `calc(...)` body is a <calc-sum>, which requires ≥1 <calc-value>
+  // (css-values-4 §10). An empty `calc()` and a lone-operator `calc(+)` have no
+  // value; the `calc(` open commits (expect), so they error rather than
+  // backtracking into the generic Call arm that would accept them.
+  ['calc-empty.css', 'calc value', 1, 14],       // `calc()` — no <calc-value>
+  ['calc-lone-operator.css', 'calc value', 1, 14] // `calc(+)` — a bare operator is not a value
 ];
 
 describe('css syntax errors (parseCssFn)', () => {
@@ -113,5 +119,14 @@ describe('css syntax errors (parseCssFn)', () => {
     expect(parseCssFn('.a { x: url( foo ) }').errors).toHaveLength(0); // leading/trailing ws trimmed
     expect(parseCssFn('.a { x: url() }').errors).toHaveLength(0);      // empty
     expect(parseCssFn('.a { x: url("a b") }').errors).toHaveLength(0); // quoted function form (ws ok)
+  });
+
+  // Counter-cases for the `calc(...)` boundary: only the value-less bodies are
+  // rejected. A single value, an operator expression, and a whitespace-padded
+  // value all stay valid.
+  test('valid calc() forms parse clean', () => {
+    expect(parseCssFn('.a { x: calc(1) }').errors).toHaveLength(0);     // single value
+    expect(parseCssFn('.a { x: calc(1 + 2) }').errors).toHaveLength(0); // sum expression
+    expect(parseCssFn('.a { x: calc( 1 ) }').errors).toHaveLength(0);   // padded value
   });
 });

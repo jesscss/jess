@@ -258,7 +258,17 @@ export const cssGrammar = rules({ trivia: rw }, (g: any) => {
   // general permissive `Paren`. Everything else matches the ordinary value set.
   /** A math-context parenthesized sub-expression (folds). @see https://www.w3.org/TR/css-values-4/#calc-syntax */
   const calcParen = node('Paren', sequence(literal('('), g.mathSum, expect(literal(')'))));
-  const calcValue = choice(g.numeric, g.Color, g.Url, g.Call, calcParen, g.Quoted, g.anyValue);
+  // A calc-scoped catch-all value token. Unlike the general `anyValue` (which
+  // matches an operator-run — `[+\-*/=<>|~^]+` — as its FIRST alternative), a calc
+  // value must not be a bare operator run: in `calc(...)` those characters are
+  // ONLY operators (handled by `sumOp`/`prodOp`), never operands, so a lone `+` /
+  // `*` is not a <calc-value> (css-values-4 §10). Excluding the operator chars
+  // from the leaf keeps `calc(+)` / `calc(*)` from matching an operator as a value
+  // (they now fail the required <calc-value> and error). Non-operator keyword
+  // operands (`pi`, `e`, `infinity`) still match, so valid calc is unchanged; the
+  // global `anyValue` used by ordinary values is untouched.
+  const calcAnyTok = regex(/[^\s;{}[\]()'",!+\-*\/=<>|~^]+/);
+  const calcValue = choice(g.numeric, g.Color, g.Url, g.Call, calcParen, g.Quoted, calcAnyTok);
   /** A `* / %` product level (left-assoc), folded into an Operation. @see https://www.w3.org/TR/css-values-4/#calc-syntax */
   const mathProduct = node('Operation',
     sequence(calcValue, many(sequence(prodOp, calcValue))), undefined, { collapse: true });
@@ -321,9 +331,18 @@ export const cssGrammar = rules({ trivia: rw }, (g: any) => {
   /**
    * `calc(…)` body — ONE math expression (the only place plain CSS folds
    * operators). Matched before the generic `Call` so `calc(` routes here.
+   *
+   * The `<calc-sum>` is REQUIRED (css-values-4 §10 — a `<calc-sum>` needs ≥1
+   * `<calc-value>`), so it is `expect`ed: an empty `calc()` or a lone-operator
+   * `calc(+)` produces no `<calc-value>`, and rather than the calc arm failing and
+   * backtracking into the generic `Call` arm (which would silently accept
+   * `calc()` / `calc(+)` as an ordinary function call), `expect` commits the
+   * `calc(` open and reports the missing value in place. Well-formed calc is
+   * unchanged — `mathSum` matches and `expect` passes straight through.
+   * @see https://www.w3.org/TR/css-values-4/#calc-func
    * @see https://developer.mozilla.org/en-US/docs/Web/CSS/calc
    */
-  const calcBody = sequence(g.mathSum, expect(literal(')')));
+  const calcBody = sequence(expect(g.mathSum, 'calc value'), expect(literal(')')));
   // `CalcCall` (calc(…)) and the general value-position `Paren` come from the shared
   // `parenRules` fragment (spread below) — they defer to g.calcBody / g.parenBody here.
   // `Quoted` likewise comes from the `stringRules` fragment.
