@@ -40,7 +40,9 @@ import {
 } from '../host-context.js';
 
 /** The parser's per-target flag: `all` / `!all` (both collapse to partial). */
-const ALL_FLAG = /^!?all$/;
+function isAllFlag(s: string): boolean {
+  return s === 'all' || s === '!all';
+}
 
 /** Coerce F3's built find selector to a `Complex` (it is a `ComplexSelector` →
  *  `Complex`; degrade a bare compound/simple/foreign child so the action stays
@@ -67,7 +69,7 @@ function buildExtendTarget(args: BuildArgs) {
   let partial = false;
   for (let i = 1; i < args.rawChildren.length; i++) {
     const span = rawSpan(args.rawChildren[i]);
-    if (span && ALL_FLAG.test(src.slice(span.start, span.end))) {
+    if (span && isAllFlag(src.slice(span.start, span.end))) {
       partial = true;
       break;
     }

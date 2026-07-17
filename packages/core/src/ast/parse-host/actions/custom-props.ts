@@ -39,6 +39,41 @@ function isWs(c: string): boolean {
   return c === ' ' || c === '\t' || c === '\n' || c === '\r' || c === '\f';
 }
 
+/** Drop a trailing `;` and any whitespace after it (non-regex mirror of `/;\s*$/`). */
+function stripTrailingSemi(s: string): string {
+  let i = s.length;
+  while (i > 0 && isWs(s[i - 1]!)) i--;
+  return i > 0 && s[i - 1] === ';' ? s.slice(0, i - 1) : s;
+}
+
+/**
+ * Index where a trailing `!important` begins (consuming any surrounding /
+ * interior whitespace, case-insensitive on the keyword), or -1 if `s` has none.
+ * Non-regex mirror of `/\s*!\s*important\s*$/iu` — used both to DETECT (index >= 0)
+ * and to STRIP (`s.slice(0, index)`) the marker recovered from a declaration's bytes.
+ */
+function importantStart(s: string): number {
+  let i = s.length;
+  while (i > 0 && isWs(s[i - 1]!)) i--;
+  const kw = 'important';
+  if (i < kw.length) return -1;
+  for (let k = kw.length - 1; k >= 0; k--) {
+    if (s[i - kw.length + k]!.toLowerCase() !== kw[k]) return -1;
+  }
+  i -= kw.length;
+  while (i > 0 && isWs(s[i - 1]!)) i--;
+  if (i === 0 || s[i - 1] !== '!') return -1;
+  i--;
+  while (i > 0 && isWs(s[i - 1]!)) i--;
+  return i;
+}
+
+/** Strip a trailing `!important` (any spacing / case) from `s`, else return `s`. */
+function stripImportant(s: string): string {
+  const i = importantStart(s);
+  return i < 0 ? s : s.slice(0, i);
+}
+
 /** The string value of a parseman leaf child, or `undefined` for a non-leaf. */
 function leafValue(x: unknown): string | undefined {
   const leaf = x as { _tag?: string; value?: unknown } | undefined;
@@ -91,7 +126,7 @@ function interpFromString(text: string, unquote: boolean): t2.ValueNode {
  *  re-emit it once via the structured flag) — mirror of the bridge helper. */
 function stripImportantBytes(v: t2.ValueNode): t2.ValueNode {
   if (v.type === 'Word') {
-    return t2.word((v as t2.Word).text.replace(/\s*!\s*important\s*$/iu, ''));
+    return t2.word(stripImportant((v as t2.Word).text));
   }
   return v;
 }
@@ -105,7 +140,7 @@ function declName(nameBytes: string): string | t2.Interp {
 
 /** The declaration's source bytes with any trailing `;` dropped. */
 function declBody(args: BuildArgs): string {
-  return sliceSpan(args.ctx, args.span).replace(/;\s*$/u, '');
+  return stripTrailingSemi(sliceSpan(args.ctx, args.span));
 }
 
 /**
@@ -229,7 +264,7 @@ const customDeclaration: BuildAction = {
       }
     }
     // TOTAL: a colon-less doomed branch degrades to an inert declaration.
-    if (colonIdx < 0) return t2.decl(sliceSpan(args.ctx, args.span).replace(/;\s*$/u, '').trim(), t2.word(''), null, false);
+    if (colonIdx < 0) return t2.decl(stripTrailingSemi(sliceSpan(args.ctx, args.span)).trim(), t2.word(''), null, false);
 
     const colonSpan = leafSpan(children[colonIdx])!;
     // NAME: from the first child leaf to the colon, outer-trimmed. The interpolated
@@ -274,11 +309,11 @@ const declaration: BuildAction = {
     // TOTAL: a colon-less span is a doomed/backtracked branch — inert node.
     if (colon < 0) return t2.decl(body.trim(), t2.word(''), null, false);
 
-    const namePart = body.slice(0, colon).replace(/\s+$/u, '');
+    const namePart = body.slice(0, colon).trimEnd();
     let merge: null | ',' | ' ' = null;
     if (namePart.endsWith('+_')) merge = ' ';
     else if (namePart.endsWith('+')) merge = ',';
-    const important = /!\s*important\s*$/iu.test(body);
+    const important = importantStart(body) >= 0;
 
     let nameBytes = namePart;
     if (merge === ' ') nameBytes = nameBytes.slice(0, -2);
@@ -309,7 +344,7 @@ const declaration: BuildAction = {
     // `scale(2, 4)`) instead of freezing the whole run (incl. `!important`) as raw
     // bytes. Only the merge path strips (non-merge value handling is unchanged).
     const coreBytes = merge !== null && important
-      ? valueBytes.replace(/\s*!\s*important\s*$/iu, '')
+      ? stripImportant(valueBytes)
       : valueBytes;
     let value: t2.ValueNode =
       consumableWholeValue(args, coreBytes)
