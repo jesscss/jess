@@ -552,6 +552,7 @@ export const scssGrammar = compose([lessGrammar, rules({ trivia: rw }, (g: any) 
   // ── SCSS at-rule prelude interpolation (segments) ────────────────────────
   const scssPreludeText = regex(/(?:[^{#]|#(?!\{))+/);
   const scssPreludeSegment = choice(ScssInterpBare, scssPreludeText);
+  /** @todo(css-spec-parity): this fully permissive raw-text prelude feeds `QueryAtRuleBlock` for @media/@container/@supports (below), so a bare `@supports color` is accepted with no <supports-condition> check — unlike the tightened css-parser (726124397). Once SCSS interpolation is factored out, require a real <supports-condition> for @supports while keeping @media/@container bare forms valid; see css-conditional-3 §2. (Url/urlInner, calc grammar, and generic AtRuleBlock are inherited from less-parser/grammar and flagged there.) */
   const scssPermissivePrelude = oneOrMore(scssPreludeSegment);
 
   // Generic unknown at-rule statement (`@charset "x";`, or a bare `@c` used as a

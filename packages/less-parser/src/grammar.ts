@@ -52,6 +52,7 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   // letter is accepted (`[a=b c]`). A digit / underscore / other non-letter is
   // still rejected.
   const attrMod = regex(/[a-zA-Z]/);
+  /** @todo(css-spec-parity): ad-hoc An+B microsyntax regex — mirror the css-parser `nth` once its spec audit (css-syntax-3 §the-anb-type / selectors-4 §6.6.2) lands; overrides the CSS base so any tightening there must be ported here too. */
   const nth = regex(/even|odd|[-+]?\d*n(?:[ \t\n\r\f]*[+-][ \t\n\r\f]*\d+)?|[-+]?\d+/i);
   // Same pattern as shared-value-rules.ts `singleStr`/`doubleStr` — local so the macro
   // can statically evaluate regex(); `\\` + newline is valid CSS line continuation.
@@ -74,6 +75,7 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   const urlOpen = regex(/url\(/i);
   // Unquoted url() body: any run of non-delimiter chars, with CSS escapes (\" \( …)
   // so escaped quotes/parens inside the URL don't terminate it.
+  /** @todo(css-spec-parity): ad-hoc `/[^)"'\s]+/`-style body diverges from consume-a-url-token — port the spec-exact url code points from css-parser 102bb4c9f (`/(?:[^"'()\\ \t\n\f\r\x00-\x08\x0B\x0E-\x1F\x7F]|\\[^\n\r\f])+/`); see css-syntax-3 §4.3.6. */
   const urlInner = regex(/(?:\\.|[^)"'\s])+/);
   const anyValueTok = regex(/[+\-*/=<>|~^]+|[^\s;{}\[\]()'",!]+/);
 
@@ -594,6 +596,7 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   // the shared CSS grammar (number + optional unit, contiguous via noTrivia).
   // `Num` and `Color` now come from the shared `numericRules` fragment, spread into
   // the return object below (identical to the CSS grammar's definitions).
+  /** @todo(css-spec-parity): closing `)` is `literal(')')`, so an unquoted url with interior whitespace backtracks instead of committing to a <bad-url-token> error — port the `expect(literal(')'))` commit from css-parser c5ff7836e; see css-syntax-3 §4.3.6 (consume-a-url-token / bad-url). */
   const Url = node(parser({ trivia: urlWs }, sequence(urlOpen, optional(choice(singleStr, doubleStr, urlInner)), literal(')'))));
   // A bare paren holds ONE expression per comma-segment (a Sum), NOT a
   // space-separated value sequence — `(12 13)` / `(12 (13))` are incoherent (two
@@ -756,6 +759,7 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
     sequence(calcProduct, many(sequence(sumOp, calcProduct))), undefined, { collapse: true });
   const calcSequence = oneOrMore(calcSum);
   const calcList = sequence(calcSequence, many(sequence(literal(','), calcSequence)));
+  /** @todo(css-spec-parity): the whole `calcList` is `optional`, so empty `calc()` parses; and `calcAnyTok`/`calcAnyValue` still admits a bare operator run (`calc(+)`) as a <calc-value>. Require ≥1 real <calc-value> and exclude lone operators — port from css-parser 7627722c2 (`expect(mathSum, 'calc value')` + operator-excluding calc token); see css-values-4 §10 (<calc-sum> / <calc-value>). */
   const calcBody = sequence(optional(sequence(calcList, many(sequence(literal(';'), optional(calcList))))), expect(literal(')')));
   // `calc(…)` OR a generic function call as ONE node, so a generic call no longer
   // pays a separate `calc(` node frame ahead of it in the value choice. The calc arm
@@ -865,12 +869,14 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
     mediaType,
     many(sequence(regex(/and(?![-\w])/i), g.QueryInParens)));
   const mediaQueryItem = choice(g.QueryCondition, mediaTypeQuery);
+  /** @todo(css-spec-parity): `queryPrelude` treats @media/@container/@supports uniformly and does not require a real <supports-condition> for @supports (a bare `@supports color` still parses), unlike the tightened css-parser which rejects it while keeping @media/@container bare forms valid — port from css-parser 726124397; see css-conditional-3 §2 (<supports-condition>). */
   const queryPrelude = sequence(
     optional(containerName), g.QueryCondition, many(sequence(literal(','), mediaQueryItem)));
   const queryAtKeyword = regex(/@(?:media|container|supports)(?![-\w])/i);
   const QueryAtRuleBlock = node(
     sequence(queryAtKeyword, g.queryPrelude, expect(literal('{'), '{'), g.atRuleBody, expect(literal('}'), '}')));
 
+  /** @todo(css-spec-parity): generic `AtRuleBlock` overrides the CSS base with a flat, permissive `atPrelude` — re-check against the css-parser `AtRuleBlock` after the @supports/query-prelude tightenings (726124397) so structured at-rules aren't silently accepted here that the base now rejects; see css-syntax-3 §5.4.2 (consume-an-at-rule). */
   const AtRuleBlock = node(
     sequence(atKeyword, atPrelude, literal('{'), g.atRuleBody, expect(literal('}'), '}')));
 
