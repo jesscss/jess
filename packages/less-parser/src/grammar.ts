@@ -750,7 +750,16 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   // Call whose body excludes a standalone `%` token, so `1 %` leaves the `%`
   // unconsumed and the `)` fails → one parse error. A percentage glued to a number
   // (`100%`) is a Dimension and unaffected.
-  const calcAnyTok = regex(/[+\-*/=<>|~^]+|[^\s;{}\[\]()'",!%]+/);
+  // A calc-scoped catch-all leaf. Unlike an ordinary value token it must NOT be a
+  // bare operator run: inside `calc(…)` the chars `+ - * /` (and `= < > | ~ ^`) are
+  // ONLY operators (handled by `calcProdOp`/`sumOp`), never operands, so a lone
+  // `+` / `*` is not a <calc-value> (css-values-4 §10). Excluding the operator
+  // chars — and `%`, kept out so a standalone `%` stays unconsumed and errors at
+  // the `)` — from the leaf keeps `calc(+)` / `calc(*)` from matching an operator
+  // as a value; they now fail the required <calc-value> and error. Non-operator
+  // keyword operands (`pi`, `e`, `infinity`) still match via `ident`, so valid
+  // calc is unchanged. Mirrors css-parser 7627722c2 (operator-excluding calc leaf).
+  const calcAnyTok = regex(/[^\s;{}\[\]()'",!%+\-*\/=<>|~^]+/);
   const calcAnyValue = choice(ident, calcAnyTok);
   const calcValue = choice(g.InterpValue, g.Reference, g.numeric, g.Color, g.NamedColor, g.Url, g.Call, g.EscapedValue, g.Paren, g.SquareParen, g.Quoted, calcAnyValue);
   // calc math grammar (port of mathSum/mathProduct): operators are ONLY `+ - * /` —
@@ -764,8 +773,15 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
     sequence(calcProduct, many(sequence(sumOp, calcProduct))), undefined, { collapse: true });
   const calcSequence = oneOrMore(calcSum);
   const calcList = sequence(calcSequence, many(sequence(literal(','), calcSequence)));
-  /** @todo(css-spec-parity): the whole `calcList` is `optional`, so empty `calc()` parses; and `calcAnyTok`/`calcAnyValue` still admits a bare operator run (`calc(+)`) as a <calc-value>. Require ≥1 real <calc-value> and exclude lone operators — port from css-parser 7627722c2 (`expect(mathSum, 'calc value')` + operator-excluding calc token); see css-values-4 §10 (<calc-sum> / <calc-value>). */
-  const calcBody = sequence(optional(sequence(calcList, many(sequence(literal(';'), optional(calcList))))), expect(literal(')')));
+  // A `calc(…)` body is a <calc-sum>, which REQUIRES ≥1 <calc-value> (css-values-4
+  // §10): an empty `calc()` produces no value, so the leading `calcList` is
+  // `expect`ed rather than `optional`. Without this the calc arm would fail and
+  // backtrack into the generic `Call` arm, which silently accepts `calc()` as an
+  // ordinary function call; `expect` commits the `calc(` open and reports the
+  // missing value in place. Well-formed calc is unchanged (`calcList` matches and
+  // `expect` passes straight through). The trailing `; calcList` groups stay
+  // optional. Mirrors css-parser 7627722c2 (`expect(mathSum, 'calc value')`).
+  const calcBody = sequence(expect(calcList, 'calc value'), many(sequence(literal(';'), optional(calcList))), expect(literal(')')));
   // `calc(…)` OR a generic function call as ONE node, so a generic call no longer
   // pays a separate `calc(` node frame ahead of it in the value choice. The calc arm
   // (its body is the folded math grammar) is tried first so `calc(` routes to math;
