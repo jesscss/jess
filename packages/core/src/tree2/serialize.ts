@@ -25,9 +25,8 @@
  *   - `composeStats(root)`                  — untimed op-count instrumentation.
  */
 
-import { Kind, Node } from './node.js';
+import { Kind, Node, renderCombinator } from './node.js';
 import { Word, MixinCall as MixinCallClass } from './nodes.js';
-import type { Combinator } from './node.js';
 import type {
   Complex,
   Compound,
@@ -541,11 +540,6 @@ function evalBytesSync(node: ValueNode, frame: Frame | null, e: EvalCtx): string
 
 function parentToken(parents: string[]): string {
   return parents.length === 1 ? parents[0]! : `:is(${parents.join(', ')})`;
-}
-
-// [R4] mirror nodes.ts renderCombinator (module-private there).
-function renderCombinator(comb: Combinator): string {
-  return comb === ' ' ? ' ' : ` ${comb} `;
 }
 
 /** [R4] Resolve one interpolated simple token's text in `frame`. */

@@ -16,7 +16,7 @@
  * holds with zero source-position tracking.
  */
 
-import { Combinator, Kind, Node } from './node.js';
+import { Combinator, Kind, Node, renderCombinator } from './node.js';
 import type { GuardNode } from './guard.js'; // [guards]
 import type { CallArg } from './mixin-dispatch.js'; // [guards]
 import type { LiteralTag } from './literal-tag.js'; // [value-literal-tag]
@@ -213,11 +213,6 @@ export type ValueNode =
   | MapAccessor;
 
 /* ---------------------------------------------------------------- selectors */
-
-function renderCombinator(comb: Combinator): string {
-  // Descendant is a single space; the rest are surrounded by spaces.
-  return comb === ' ' ? ' ' : ` ${comb} `;
-}
 
 /**
  * A single simple-selector token, e.g. `.a`, `:hover`, `&`. [R4] A token that
