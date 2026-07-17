@@ -1,23 +1,37 @@
 import { describe, it, expect, afterEach } from 'vitest';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { parseLessFn } from '@jesscss/less-parser';
 import { serialize } from '../../index.js';
 import { bridgeToAst } from './bridge.js';
 import { buildEvaluator } from '../../evaluator.js';
 import { makeBuiltinRegistry } from './make-builtin-registry.js';
 import { setExtendPrefilterEnabled } from '../../extend.js';
+import { renderAstFile } from './whole-doc-driver.js';
+
+const BENCHMARK = path.join(
+  path.dirname(fileURLToPath(import.meta.url)),
+  '../../../../../../packages/jess/benchmark/benchmark.less',
+);
 
 /**
- * Soundness gate for the target-atom SOLVE PREFILTER in `extend.ts`. The prefilter
- * skips `solveComposed` for any subject whose composed seed shares no individual
- * simple atom with any instruction target — a provably byte-identical optimization.
+ * Soundness gate for the extend FAST-REJECT. `setExtendPrefilterEnabled(false)`
+ * turns OFF both the target-atom solve prefilter AND the `computeExtends` candidate
+ * PRUNE, giving a full-scan reference: every subject composes + solves and every
+ * rule gets a computed map entry. `true` is production: a subject enters the
+ * expensive composePath/solve path only when it is a candidate (may-match via an
+ * inherited path-atom boolean, carries its own `:extend()`, or is a `&&`
+ * self-collapse pair) or a descendant of one. Both must be byte-IDENTICAL.
  *
- * The naive version (extracting subject atoms WITHOUT recursing into `:is()` grafts,
- * or at compound rather than per-simple granularity, or with any normalization drift)
- * is UNSOUND: it would wrongly skip a subject that matches only via a graft atom, and
- * silently drop the extend. These 6 adversarial shapes each exercise a distinct trap;
- * every one asserts the render is byte-IDENTICAL with the prefilter ON vs OFF, in BOTH
- * flat and nested output modes. A `fired` check on each proves the case is live (the
- * extend actually applies), so ON == OFF is not a vacuous both-empty pass.
+ * The unsound version silently DROPS a valid extend: extracting subject atoms
+ * WITHOUT recursing into `:is()` grafts, at compound rather than per-simple
+ * granularity, with normalization drift, or a candidate prune that misses a
+ * trigger-B / flatten-cascade / collapse subject. Each shape below exercises a
+ * distinct trap and asserts the render is byte-identical with the fast-reject ON
+ * vs OFF, in BOTH flat and nested modes; a `fired` check proves the extend actually
+ * applies (so ON == OFF is not a vacuous both-empty pass). The whole-document
+ * benchmark.less ON == OFF check at the end proves it on the real corpus.
  */
 
 async function render(src: string, collapseNesting: boolean): Promise<string> {
@@ -116,6 +130,69 @@ const CASES: Case[] = [
       `.y:extend(.a.b) { color: 5; }`,
     firedFlat: ['.x', '.y'],
   },
+  {
+    // 7. Trigger-B seed. `.ext:extend(.tgt)` is a NESTED rule whose OWN selector
+    // (`.ext`) shares NO atom with any target — so `mayMatch(.ext)` is false. It is
+    // a candidate ONLY via the `hasOwnExtend` seed; a prune that keyed candidacy on
+    // may-match alone would drop the flatten and mis-nest it.
+    name: 'trigger-B: nested own-extend whose selector is not a target',
+    src: `.tgt { color: 1; }\n.wrap {\n  .ext:extend(.tgt) { color: 2; }\n}`,
+    firedFlat: ['.ext'],
+  },
+  {
+    // 8. Flatten cascade to a NON-may-match descendant. `.side2:extend(.side all)`
+    // aliases `.side`'s whole context; `.side .leaf .twig`'s deepest rule `.twig`
+    // must flatten under the aliased context. `.twig`'s own compound shares no
+    // target atom — it is pulled in ONLY by the downward closure from the flattened
+    // ancestor. A prune without the cascade would leave it nested/stale.
+    name: 'flatten cascade to non-may-match descendant',
+    src:
+      `.side {\n  .leaf {\n    .twig { color: 1; }\n  }\n}\n` +
+      `.side2:extend(.side all) { color: 2; }`,
+    firedFlat: ['.side2'],
+  },
+  {
+    // 9. media-bubbled extend: the extend lives INSIDE `@media` and must only reach
+    // subjects in the same at-rule scope. A bystander outside the media block shares
+    // the atom but must stay untouched (scope reachability), and the prune must not
+    // conflate scopes.
+    name: 'media-bubbled extend scoped correctly',
+    src:
+      `@media screen {\n  .box { color: 1; }\n  .m:extend(.box) { color: 2; }\n}\n` +
+      `.box { color: 3; }`,
+    firedFlat: ['.m'],
+  },
+  {
+    // 10. self-referential extend `.a:extend(.a)` — the subject IS its own target.
+    // Self-avoidance must not loop, and ON == OFF must hold.
+    name: 'self-referential extend',
+    src: `.a:extend(.a) { color: 1; }\n.b:extend(.a) { color: 2; }`,
+    firedFlat: ['.a', '.b'],
+  },
+  {
+    // 11. Multi-segment COMBINATOR target `.a > .b`. The whole-branch match must
+    // append `.ext` as a sibling of the combinator complex, identically under the
+    // prune (the target's atoms `.a`,`.b` gate candidacy through a `>` combinator).
+    name: 'combinator target whole-branch append',
+    src:
+      `.a > .b { color: 1; }\n` +
+      `.host .a > .b .c { color: 2; }\n` +
+      `.ext:extend(.a > .b all) { color: 3; }`,
+    firedFlat: ['.a > .b,\n.ext'],
+  },
+  {
+    // 12. Interpolated bystander selector. `.@{v}x` carries `@{…}` interpolation
+    // (its IR atom is the literal fragment only); it shares no target atom and must
+    // render byte-identically under prune ON (default entry) vs OFF (computed entry).
+    // Proves the non-candidate default header path matches the full-scan path for an
+    // interpolated selector.
+    name: 'interpolated bystander untouched by prune',
+    src:
+      `@v: foo;\n` +
+      `.host {\n  .@{v}x { color: 1; }\n  .inner:extend(.tgt) { color: 2; }\n}\n` +
+      `.tgt { color: 3; }`,
+    firedFlat: ['.inner'],
+  },
 ];
 
 describe('extend target-atom prefilter — adversarial soundness (ON == OFF)', () => {
@@ -141,5 +218,24 @@ describe('extend target-atom prefilter — adversarial soundness (ON == OFF)', (
         expect(line.includes('.x'), '`.A` must not gain `.x` from a `.a` extend').toBe(false);
       }
     }
+  });
+});
+
+describe('extend fast-reject — whole-document benchmark.less (ON == OFF)', () => {
+  it('benchmark.less renders byte-identically with the candidate prune ON vs OFF', () => {
+    const src = fs.readFileSync(BENCHMARK, 'utf8');
+    const ev = () => buildEvaluator(makeBuiltinRegistry());
+    setExtendPrefilterEnabled(false);
+    const off = renderAstFile(BENCHMARK, { evaluator: ev() });
+    setExtendPrefilterEnabled(true);
+    const on = renderAstFile(BENCHMARK, { evaluator: ev() });
+    setExtendPrefilterEnabled(true);
+    expect(off.threw, 'full-scan render must not throw').toBeNull();
+    expect(on.threw, 'pruned render must not throw').toBeNull();
+    expect(on.css, 'benchmark.less: prune ON must be byte-identical to full-scan OFF').toBe(off.css);
+    // guard against a vacuous both-undefined pass.
+    expect(typeof on.css).toBe('string');
+    expect(on.css!.length).toBeGreaterThan(1000);
+    void src;
   });
 });
