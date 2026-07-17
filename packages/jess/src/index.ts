@@ -7,6 +7,7 @@ import { getConfigWithMeta } from './config.js';
 import {
   Context,
   Rules,
+  type TreeContext,
   type ContextOptions,
   type PrintOptions,
   type ErrorDiagnostic,
@@ -297,7 +298,7 @@ function commentAwareTrivia(trivia: TriviaMap, liftedRanges: readonly CommentRan
  * (multi-line lists, custom-property value spacing) survives to output. The root
  * file wins; imports keep their own per-node context for anything context-scoped.
  */
-function adoptSourceTrivia(context: Context, node: { _treeContext?: Context } | null): void {
+function adoptSourceTrivia(context: Context, node: { _treeContext?: TreeContext } | null): void {
   if (!node || 'trivia' in context.opts) {
     return;
   }

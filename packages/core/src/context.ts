@@ -168,6 +168,19 @@ export interface ContextOptions {
    * plugin-free parse/eval paths.
    */
   loadPluginForExtension?(extension: string): Promise<PluginInterface | undefined> | PluginInterface | undefined;
+
+  /**
+   * Per-tree transient serialization data threaded from the parser (source-anchored
+   * comment/whitespace runs). Seeded onto the render {@link Context} (and per-tree
+   * {@link TreeContext}) and read back at emit time.
+   */
+  trivia?: TriviaMap;
+
+  /**
+   * Source `[start, end)` ranges of comments lifted to standalone `Comment` nodes;
+   * the render-time trivia view hides these so they aren't double-emitted.
+   */
+  liftedCommentRanges?: ReadonlyArray<readonly [number, number]>;
 }
 
 /**
@@ -250,10 +263,10 @@ export interface TreeContextOptions extends ContextOptions {
   plugin?: PluginInterface;
 
   /**
-   * Per-tree transient serialization data threaded from the parser (source-anchored
-   * comment/whitespace runs). Read back off {@link TreeContext.opts} at emit time.
+   * Transient per-tree flag: emit a value-level source map for this tree (scalar
+   * POC). Set by the plugin when output maps are requested.
    */
-  trivia?: TriviaMap;
+  sourceMap?: boolean;
 
   /** Per-tree selector key-set library shared by selectors of this tree. */
   selectorBits?: BitSetLibrary<string>;

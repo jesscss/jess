@@ -17,7 +17,7 @@ export class OutputCollector {
      * @see https://hacks.mozilla.org/2013/05/compiling-to-javascript-and-debugging-with-source-maps/
      * @see https://github.com/mozilla/source-map
      */
-    if (originalLocation?.length === 6) {
+    if (Array.isArray(originalLocation) && originalLocation.length === 6) {
       this.map.push(originalLocation);
     }
   }

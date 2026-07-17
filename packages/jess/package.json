@@ -42,7 +42,7 @@
     "prepublishOnly": "pnpm build && pnpm test",
     "benchmark": "node bin/cli.mjs benchmark/benchmark.jess",
     "build": "pnpm compile && pnpm api-extractor",
-    "compile": "tsdown --tsconfig tsconfig.build.json --no-dts && tsc -p tsconfig.build.json --emitDeclarationOnly --noCheck",
+    "compile": "tsdown --tsconfig tsconfig.build.json --no-dts && tsc -p tsconfig.build.json --emitDeclarationOnly",
     "api-extractor": "api-extractor run --local --config ./api-extractor.json",
     "verify:api": "api-extractor run --config ./api-extractor.json",
     "dev": "tsdown --tsconfig tsconfig.build.json --watch",

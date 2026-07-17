@@ -44,7 +44,7 @@ export type JessErrorInit = {
   note?: string;
 
   /** Raw parser/lexer error data */
-  errors?: IRecognitionException[];
+  errors?: ReadonlyArray<IRecognitionException | JessError>;
   lexerErrors?: ILexingResult['errors'];
 };
 
@@ -72,7 +72,7 @@ export class JessError extends Error {
   fix = '';
   note?: string;
 
-  errors?: IRecognitionException[];
+  errors?: ReadonlyArray<IRecognitionException | JessError>;
   lexerErrors?: ILexingResult['errors'];
 
   constructor(init: JessErrorInit) {

@@ -7,6 +7,8 @@ import { readFile } from 'node:fs/promises';
 import type { Visitor } from './visitor/index.js';
 import type { Node } from './tree/node.js';
 import { type ErrorDiagnostic, type WarningDiagnostic, makeJessErrorFromDiagnostic } from './jess-error.js';
+import type { ContextOptions } from './context.js';
+import type { ExtendSelectorKind } from './types/config.js';
 
 export type PluginVisitor = Partial<Omit<Visitor, 'visit'>> & {
   visit?: (node: Node) => unknown;
@@ -34,7 +36,15 @@ export type ISafeParseResult = {
 };
 
 export type SafeParseOptions = {
-  compilerOptions?: Record<string, unknown>;
+  /**
+   * The compile-level option bag threaded to a plugin's `safeParse` (the caller
+   * passes the render {@link Context}'s `opts`). Includes `allowExtendSelectors`,
+   * which lives on the per-tree {@link TreeContextOptions} rather than the base.
+   */
+  compilerOptions?: ContextOptions & {
+    /** Extend-selector kinds a plugin permits; consumed when building the TreeContext. */
+    allowExtendSelectors?: ExtendSelectorKind[];
+  };
   importOptions?: ImportOptions;
 };
 
@@ -132,8 +142,6 @@ const { isArray } = Array;
 export abstract class AbstractPlugin implements PluginInterface {
   abstract name: string;
 
-  declare safeParse: PluginInterface['safeParse'];
-
   /**
    * Does a basic path resolution. Node resolution is in other plugins.
    */
@@ -172,7 +180,7 @@ export abstract class AbstractPlugin implements PluginInterface {
   }
 
   parse(filePath: string, source: string): Rules {
-    const safeParse = this.safeParse;
+    const safeParse = (this as PluginInterface).safeParse;
     if (!safeParse) {
       throw new Error(`Plugin "${this.name}" does not support parsing`);
     }

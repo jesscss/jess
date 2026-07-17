@@ -32,7 +32,7 @@ export interface ErrorDiagnostic {
   lines?: Record<number, string>;
 
   // Raw error data (for parser/lexer errors)
-  errors?: IRecognitionException[];
+  errors?: ReadonlyArray<IRecognitionException | JessError>;
   lexerErrors?: ILexingResult['errors'];
 }
 
@@ -200,7 +200,7 @@ function finiteNumber(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 }
 
-function isLexerError(error: IRecognitionException | ILexingError): error is ILexingError {
+function isLexerError(error: IRecognitionException | ILexingError | JessError): error is ILexingError {
   return !('token' in error);
 }
 
@@ -220,7 +220,7 @@ function lexerTokenText(error: ILexingError): string {
  * @param ctx Optional TreeContext to auto-fill file/line/col/source
  */
 export function getErrorFromParser(
-  errors: IRecognitionException[],
+  errors: ReadonlyArray<IRecognitionException | JessError>,
   lexerErrors: ILexingResult['errors'] | undefined,
   filePath: string,
   source: string,

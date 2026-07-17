@@ -101,9 +101,11 @@ const EMPTY_LEXER_RESULT: ILexingResult = { tokens: [], errors: [], groups: {} }
 function toParseResult(result: ScssFnParseResult): IParseResult<Rules> {
   return {
     tree: result.tree,
-    // JessError is the normalized error shape; compatible with IParseResult consumers.
+    // JessError is the normalized error shape; consumers read it structurally.
+    // Cross the parseman `IRecognitionException[]` boundary via `unknown` (the
+    // shapes don't overlap nominally, but the consumers only read message/line).
     /* eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion */
-    errors: result.errors as IParseResult['errors'],
+    errors: result.errors as unknown as IParseResult['errors'],
     warnings: result.warnings,
     trivia: result.trivia,
     lexerResult: EMPTY_LEXER_RESULT

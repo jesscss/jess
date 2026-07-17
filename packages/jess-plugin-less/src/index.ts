@@ -38,6 +38,16 @@ export const lessPluginDefaults = {
   collapseNesting: false
 } as const;
 
+/**
+ * The 1-based source position of a parser diagnostic, read from its optional
+ * token (the recursive parser tags deprecation warnings with a token; the
+ * functional parser reports point diagnostics without one). Absent token → the
+ * `1,1` fallback used for the code-frame line lookup.
+ */
+function diagnosticStart(d: { message?: string; token?: { startLine?: number; startColumn?: number } }): { line: number; column: number } {
+  return { line: d.token?.startLine ?? 1, column: d.token?.startColumn ?? 1 };
+}
+
 export class LessPlugin extends AbstractPlugin {
   name = 'less';
   supportedExtensions = ['.less'];
@@ -241,8 +251,7 @@ export class LessPlugin extends AbstractPlugin {
       // Convert parser deprecation warnings to diagnostics
       if ('warnings' in parseResult && parseResult.warnings) {
         for (const warning of parseResult.warnings) {
-          const line = warning.token?.startLine ?? 1;
-          const column = warning.token?.startColumn ?? 1;
+          const { line, column } = diagnosticStart(warning);
           warnings.push({
             code: 'parse/deprecated',
             phase: 'parse',
@@ -262,7 +271,7 @@ export class LessPlugin extends AbstractPlugin {
       // has no separate lexer phase, so there are no lexer errors to convert.
       if (parseResult.errors.length) {
         for (const error of parseResult.errors) {
-          const line = error.token?.startLine ?? 1;
+          const { line } = diagnosticStart(error);
           const jessError = getErrorFromParser([error], undefined, filePath, source, { file: context.file });
           const diagnostic = toDiagnostic(jessError);
           // Ensure lines are extracted

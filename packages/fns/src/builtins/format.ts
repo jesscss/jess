@@ -1,4 +1,4 @@
-import type { Quoted, ValueObj } from '@jesscss/core/value';
+import type { List, Quoted, ValueObj } from '@jesscss/core/value';
 import { makeKeyword, makeQuoted } from '@jesscss/core/value';
 import type { FnCtx, Fn } from '@jesscss/core/value';
 
@@ -19,7 +19,7 @@ function tokenValue(token: string, arg: ValueObj, ctx: FnCtx): string {
  * non-escaped Quoted template re-wraps; else emits bare. Validated against Less 4.x
  * (the adapter mishandles reconstructed Quoted args).
  */
-const formatKernel: Fn['body'] = (list, ctx) => {
+const formatKernel = (list: List, ctx: FnCtx): ValueObj => {
   const items = list.items;
   const template = items[0]!;
   const args = items.slice(1);

@@ -16,12 +16,11 @@ import {
 
 export function createNullParentAmpersand(context?: TreeContext, selector?: Selector): Ampersand {
   const location = selector ? sourceSpanOf(selector) : undefined;
-  const nil = new Nil(undefined, undefined, location, context);
+  const nil = new Nil(undefined, undefined, location);
   const amp = new Ampersand(
     { selectorContainer: { selector: nil } },
     undefined,
-    location,
-    context
+    location
   );
   amp.adopt(nil);
   return amp;
@@ -37,8 +36,7 @@ export function prefixAtRootSelector(selector: Selector, context?: TreeContext):
     return new SelectorList(
       list.value.map(item => prefixAtRootSelector(item, context)),
       undefined,
-      getNodeLocation(selector),
-      context
+      getNodeLocation(selector)
     );
   }
 
@@ -48,12 +46,11 @@ export function prefixAtRootSelector(selector: Selector, context?: TreeContext):
     return new ComplexSelector(
       [amp, ...complex.value],
       undefined,
-      getNodeLocation(selector),
-      context
+      getNodeLocation(selector)
     );
   }
 
-  return new ComplexSelector([amp, selector], undefined, getNodeLocation(selector), context);
+  return new ComplexSelector([amp, selector], undefined, getNodeLocation(selector));
 }
 
 export function lowerPlainAtRootRules(rules: Rules, context?: TreeContext): void {
