@@ -967,6 +967,11 @@ export function serialize(root: Root, options?: SerializeOptions): SerializeRetu
   // [charset] Hoist the first document-level `@charset` ahead of all body
   // content; inline occurrences are dropped during the walk (dedupe).
   emitHoistedCharset(root.children, e);
+  // [import:hoist] Plain-CSS `@import`s are not inlined; Less hoists them to the
+  // document top (after `@charset`) in source-encounter order and emits them as
+  // literal `@import …;`. The resolution pass marked each with `hoist`; emit them
+  // here and skip them at their in-place position below.
+  emitHoistedImports(root.children, e);
   if (!e.collapse) {
     // [nested/R0] Less v5 default: preserve authored block structure. The root's
     // children are the top-level content level (indent 0).
@@ -1027,9 +1032,10 @@ export function serialize(root: Root, options?: SerializeOptions): SerializeRetu
       case 'RawInline':
         emitRawInline(child, e);
         break;
-      // [import] an unresolved import the resolution pass left in place.
+      // [import] an unresolved import the resolution pass left in place. A
+      // css-passthrough import (`hoist`) was already emitted at the document top.
       case 'StyleImport':
-        emitStyleImport(child, e);
+        if (!child.hoist) emitStyleImport(child, e);
         break;
     }
   }
@@ -1742,6 +1748,33 @@ function emitHoistedCharset(children: Statement[], e: Emit): void {
     if (c.type === 'AtRuleStatement' && isCharset(c as AtRuleStatement)) {
       emitAtRuleStatementRaw(c as AtRuleStatement, e);
       return;
+    }
+  }
+}
+
+/**
+ * [import:hoist] Emit every css-passthrough `@import` (marked `hoist` by the
+ * resolution pass) at the document top, in source-encounter order, as literal
+ * `@import …;` bytes. Recurses into nested ruleset / at-rule bodies so an import
+ * that resolved inside a nested block still hoists to the top (matching Less).
+ */
+function emitHoistedImports(children: Statement[], e: Emit): void {
+  const imports: StyleImport[] = [];
+  collectHoistedImports(children, imports);
+  for (const imp of imports) {
+    const start = e.off;
+    put(e, imp.raw);
+    put(e, '\n');
+    if (e.positions) e.positions.push({ node: imp, type: imp.type, start, end: e.off });
+  }
+}
+
+function collectHoistedImports(statements: Statement[], out: StyleImport[]): void {
+  for (const s of statements) {
+    if (s.type === 'StyleImport') {
+      if (s.hoist) out.push(s);
+    } else if (s.type === 'Rule' || s.type === 'AtRuleBlock') {
+      collectHoistedImports(s.body, out);
     }
   }
 }

@@ -391,6 +391,13 @@ export interface StyleImport {
   readonly escaped: boolean;
   /** Media-query postlude bytes (`@import (inline) "x" (min-width:…)`), else `null`. */
   readonly media: string | null;
+  /**
+   * [import:hoist] Set by the resolution pass when this is a plain-CSS `@import`
+   * (`(css)` / `.css` / remote) — NOT inlined. Less keeps it as a literal
+   * `@import` and hoists it to the top of the output document; the serializer's
+   * hoist pass emits it there (in source-encounter order) and skips it in place.
+   */
+  readonly hoist?: boolean;
 }
 
 /**

@@ -614,9 +614,20 @@ export function resolveDirectImports(
         out.push(s);
         continue;
       }
+      const flags = directFlags(s);
+      // [import:hoist] A plain-CSS `@import` (`(css)` / `.css` / remote) is NOT
+      // inlined — Less keeps it as a literal `@import` and HOISTS it to the top
+      // of the output document (verified vs Less 4.x + the alpha goldens). Mark
+      // it for the serializer's hoist pass and leave it in the stream at its
+      // source position, so the hoist pass emits the collected imports in
+      // document-encounter order ahead of all other content.
+      if (!flags.inline && isCssPassthrough(spec, flags)) {
+        out.push({ ...s, hoist: true });
+        continue;
+      }
       try {
         const fromDir = fromFilePath ? path.dirname(fromFilePath) : process.cwd();
-        const spliced = spliceImport(spec, directFlags(s), fromDir, state, bridgeBody, raise);
+        const spliced = spliceImport(spec, flags, fromDir, state, bridgeBody, raise);
         for (const r of spliced) out.push(r);
       } catch (e) {
         if (!(e instanceof ImportDeferral)) throw e;
