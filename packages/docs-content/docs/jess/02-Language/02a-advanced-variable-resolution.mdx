@@ -1,0 +1,184 @@
+---
+title: 'Advanced: variable resolution & scoping'
+sidebar_position: 2.5
+audiences:
+  - jess
+origin: jess
+---
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+This page goes deeper than [Variables](./02-variables.mdx): how a variable
+*reference* is actually resolved, why self-references are safe, and how live
+bindings differ. If you just want to declare and use variables, the
+[Variables](./02-variables.mdx) page is enough.
+
+Jess has **two variable models**, chosen by how you *reference* the variable:
+
+- **Regular variables** (`$foo`, or `@foo` in Less) — declarative and
+  CSS-like. Most variables.
+- **Live bindings** (`$!foo`) — imperative, like a JavaScript variable.
+
+## Regular variables resolve like CSS custom properties
+
+A regular variable reference resolves against its **scope**, not against source
+order. This mirrors how CSS custom properties work — the value is looked up per
+scope, and the *stylesheet* scope (nesting), rather than the DOM, is what
+determines the answer.
+
+### Lazy evaluation
+
+A variable's value is computed **when it is referenced**, not when it is
+declared. Nothing happens at the declaration site until something reads the
+variable.
+
+### Order-independent, scope-upward, last-wins
+
+Because resolution is by scope rather than by order:
+
+- **Forward references work** — you can use a variable before you declare it.
+- Lookup walks the **current scope, then each enclosing scope** outward.
+- If a name is declared more than once in a scope, the **last** one wins.
+
+<Tabs>
+  <TabItem value="jess" label="Jess">
+    ```scss
+    .x {
+      color: $a;   // resolves to red, even though $a is declared below
+    }
+    $a: red;
+    ```
+  </TabItem>
+  <TabItem value="less" label="Less">
+    ```less
+    .x {
+      color: @a;   // resolves to red
+    }
+    @a: red;
+    ```
+  </TabItem>
+  <TabItem value="css" label="CSS (analogy)">
+    ```css
+    .x {
+      color: var(--a);   // custom properties resolve by scope, not order
+    }
+    :root { --a: red; }
+    ```
+  </TabItem>
+</Tabs>
+
+## Self-reference is safe
+
+A common surprise: what does `$a: $a + 1` mean? In Jess, **while a declaration's
+value is being computed, that declaration is hidden from lookups of its own
+name.** The reference falls back to another declaration of the same name — an
+earlier one in the same scope, or one in an enclosing scope.
+
+This is exactly the CSS custom-property rule: in `--a: var(--a)`, the `var(--a)`
+resolves to a *prior* `--a`, never to the one being defined.
+
+<Tabs>
+  <TabItem value="same-scope" label="Redefine in same scope">
+    ```scss
+    $a: 1;
+    $a: $a + 1;   // the second $a is hidden from itself → reads the first (1) → 2
+    .x { v: $a; } // v: 2
+    ```
+  </TabItem>
+  <TabItem value="outer-scope" label="Redefine in nested scope">
+    ```scss
+    $a: 5;
+    .x {
+      $a: $a + 1;  // inner $a hidden from itself → reads the outer (5) → 6
+      v: $a;       // v: 6
+    }
+    ```
+  </TabItem>
+  <TabItem value="css" label="CSS (analogy)">
+    ```css
+    :root {
+      --a: foo;
+      --a: var(--a);  // resolves to the prior --a → foo
+    }
+    ```
+  </TabItem>
+</Tabs>
+
+### Cycles can't hang the compiler
+
+Because each declaration hides itself (and every declaration already on the
+resolution path stays hidden), a reference cycle can never loop forever. It
+simply runs out of candidates and the value is **undefined**, which is reported
+as an error — never a hang, and never a special "cyclic reference" message.
+
+```scss
+$a: $a;          // no other $a to fall back to → error
+$a: $b; $b: $a;  // mutual reference → error
+$a: $a + 1;      // no earlier/outer $a → error
+```
+
+## Missing variables are errors
+
+Referencing a variable that doesn't resolve is an error:
+
+```scss
+.x { v: $nope; }   // Error: $nope is not defined
+```
+
+The one exception is an **existence test** — `isdefined($x)` and the default
+assignment `$x?: …` ask *whether* a variable is defined, so a miss is not an
+error, it's just "not defined."
+
+## Live bindings (`$!`) work the other way
+
+`$!foo` is the opposite model: **imperative and order-dependent**, like a
+variable in JavaScript. `$!foo` reads the value bound **right now**, at that
+point in evaluation — not hoisted, not last-wins.
+
+<Tabs>
+  <TabItem value="jess" label="Jess">
+    ```scss
+    .btn {
+      $color: red;
+      color: $!color;  // live: reflects the latest value
+      $color: blue;    // → color resolves to blue
+    }
+    ```
+  </TabItem>
+  <TabItem value="js" label="JavaScript (analogy)">
+    ```js
+    let color = 'red';
+    const shown = () => color; // reads current value
+    color = 'blue';
+    shown(); // 'blue'
+    ```
+  </TabItem>
+</Tabs>
+
+You can also **assign** a live binding to reassign an existing variable instead
+of shadowing it — `$!foo: value`, or the nearest-enclosing `$foo := value`
+(see [assignment operators](./02-variables.mdx#assignment-operators)). Assigning a
+live binding to a name that was never declared is an **error** — live-assign
+reassigns an existing binding, it does not create one.
+
+```scss
+$color: red;
+.btn {
+  $!color: blue;   // reassign the existing color, don't shadow
+}
+.box {
+  color: $color;   // blue
+}
+
+.bad {
+  $!never: 1;      // Error: no existing `never` binding to reassign
+}
+```
+
+:::note
+
+The deep resolution model (lazy evaluation, per-declaration exclusion, cycle
+termination, and the strict/optional error contract) is documented for
+contributors in `docs/future/core-architecture/VARIABLE-RESOLUTION-SEMANTICS.md`.
+
+:::

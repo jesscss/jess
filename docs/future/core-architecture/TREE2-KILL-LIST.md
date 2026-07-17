@@ -1,5 +1,7 @@
 # tree2 Demolition Kill-List — Ranked Execution Plan
 
+> **Provenance.** Produced by a multi-agent adversarial review sweep (run `wf_e11e8fd6-90b`): 12 per-module reviewers → adversarial verify → synthesis. 125 verified findings (80 CONFIRMED / 33 PLAUSIBLE / 12 REJECTED). Companion to the later remaining-debt pass in `AST-REMAINING-DEBT-KILL-LIST.md`.
+
 Grounded in `docs/future/core-architecture/TREE2-CONSTITUTION.md`. Byte-identity is the FLOOR; every action below is anchored to a constitution principle (P0 keystone = re-derivation from bytes; P1 = kill bridge; P2 = kill verbatim ports; P3 = names; P4 = DRY; P5 = complexity).
 
 The single largest lever runs through everything: **the parser trivia log + structured children already exist but are ignored** (`host-context.ts:41` `triviaLog` threaded to every action, read by none). Wiring actions to consume it collapses a whole cluster of P0 findings at once.
