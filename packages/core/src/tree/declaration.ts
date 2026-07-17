@@ -343,7 +343,7 @@ const emitLeadingTriviaForSingleInterpolatedCustomValue = (
     return;
   }
   const trivia = options.trivia ?? value.sourceRoot?._treeContext?.opts?.trivia;
-  if (!trivia || trivia === true) {
+  if (!trivia) {
     return;
   }
   emitTriviaTokens(consumeTrivia(trivia, spanStartOf(source), 'before', options), options);
@@ -360,7 +360,7 @@ const emitLeadingTriviaForCustomValue = (
   fallbackSpanStart?: number
 ): void => {
   const trivia = options.trivia ?? value.sourceRoot?._treeContext?.opts?.trivia;
-  if (!trivia || trivia === true) {
+  if (!trivia) {
     return;
   }
   // Evaluated values (e.g. an rgba() Call) are re-created without a source span,

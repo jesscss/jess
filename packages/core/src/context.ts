@@ -13,6 +13,8 @@ import { ExtendRootRegistry } from './tree/util/extend-roots.js';
 import { type Operator } from './tree/util/calculate.js';
 import type { PluginInterface } from './plugin.js';
 import type { StylesConfig } from './types.js';
+import type { TriviaMap } from './types/index.js';
+import type { ExtendSelectorKind } from './types/config.js';
 import { EqualityMode, FunctionMode, MathMode, UnitMode } from './types/modes.js';
 import * as path from 'node:path';
 import { readFile } from 'node:fs/promises';
@@ -241,7 +243,26 @@ export interface TreeContextOptions extends ContextOptions {
     source?: string;
   };
 
-  [k: string]: any;
+  /**
+   * The plugin that created this tree; it gets first dibs at resolving imports.
+   * Lifted onto the {@link TreeContext} instance at construction.
+   */
+  plugin?: PluginInterface;
+
+  /**
+   * Per-tree transient serialization data threaded from the parser (source-anchored
+   * comment/whitespace runs). Read back off {@link TreeContext.opts} at emit time.
+   */
+  trivia?: TriviaMap;
+
+  /** Per-tree selector key-set library shared by selectors of this tree. */
+  selectorBits?: BitSetLibrary<string>;
+
+  /** Plugin-supplied output policy carried on the tree (read via print/emit options). */
+  collapseNesting?: boolean;
+
+  /** Plugin-supplied allow-list of extend selector kinds. */
+  allowExtendSelectors?: ExtendSelectorKind[];
 }
 
 const idChars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'.split('');
@@ -274,7 +295,7 @@ export const generateId = (length = 8) => {
  */
 export class TreeContext {
   /** Non-option, per-tree transient data (trivia, lifted-comment ranges, …). */
-  opts: Record<string, any>;
+  opts: Omit<TreeContextOptions, 'isModule' | 'file' | 'plugin'>;
 
   /**
    * The single resolved option set for this tree. Built once at construction
