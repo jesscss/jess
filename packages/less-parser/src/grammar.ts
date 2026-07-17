@@ -84,12 +84,15 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   // valid (Less accepts it). Digits are allowed anywhere (`@3` \u2014 flagged, not rejected).
   const lessVar = regex(/@[-_a-zA-Z0-9\u0080-\uffff]+/);
   const lessInterp = regex(/@\{-?[_a-zA-Z0-9\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*\}/);
-  // Interpolated custom-property name (`--@{key}`, `--foo-@{key}-bar`). Kept as ONE
-  // token (NOT leaf-split): the legacy BuilderHost that drives the less-compat bridge
-  // consumes this single-leaf shape, so splitting it into leaves regresses the
-  // bridge's custom-prop name (an external contract). The Tier-B name-split waits on
-  // the legacy-builder retirement; the tree2 host consumes this leaf via `declName`
-  // for now. (The custom-prop VALUE below IS split \u2014 the legacy builder tolerates it.)
+  // Interpolated custom-property name (`--@{key}`, `--foo-@{key}-bar`).
+  // TODO(tier-b/A4): WHAT \u2014 kept as ONE token (NOT leaf-split like the value below).
+  // WHY \u2014 the legacy BuilderHost that drives the less-compat bridge consumes this
+  // single-leaf shape; splitting it into `@{\u2026}` leaves regressed the bridge's
+  // custom-prop name emission (`--@{k}` \u2192 `--`), an external-contract break. RETIREMENT
+  // TRIGGER \u2014 split into `--` + ident-chunk + isolated `lessInterp` leaves (mirroring
+  // `InterpolatedSelector`) when the legacy BuilderHost is retired (reorg Phase A4);
+  // the tree2 host's `declName` re-tokenizer retires with it. (The VALUE below IS
+  // split \u2014 the legacy builder tolerates that.)
   const customPropInterp = regex(/--(?:-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*|-)?@\{-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*\}(?:@\{-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*\}|[-_a-zA-Z0-9\u0080-\uffff])*/);
 
   // ---------------------------------------------------------------------------

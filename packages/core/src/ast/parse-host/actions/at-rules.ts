@@ -145,14 +145,16 @@ function buildGenericBlock(args: BuildArgs): t2.AtRuleBlock {
   return t2.atRuleBlock(name, prelude, body);
 }
 
-// TODO(tier-b): QUERY-prelude structuring is a separate shape. `@media`/`@supports`/
-// `@container` deliver their prelude as one opaque `QueryCondition` node, so the
-// Less value tokens inside a query (`@media (min-width: @bp)`) are not consumable as
-// leaves here. Until the query grammar splits them (like `InterpolatedSelector`),
-// this path re-derives the prelude from source bytes and tokenizes `@name` / `@{…}`
-// / `@@name` with the helpers below — the residual bucket-(a) re-tokenizer for the
-// query family (§3.4 keeps the query prelude committed). The GENERIC block path
-// above is already regex-free.
+// TODO(tier-b/query-prelude): WHAT — the `AT_KEYWORD` / `parsePreludeValue` /
+// `interpFromString` byte re-tokenizers below (this file's only remaining regexes)
+// serve the QUERY at-rule prelude. WHY — `@media`/`@supports`/`@container` deliver
+// their prelude as one opaque `QueryCondition` node, so the Less value tokens inside
+// a query (`@media (min-width: @bp)`, `@media all and (…: ~'@{r}')`) are NOT
+// consumable as leaves here (unlike the generic block path above, which is
+// regex-free). RETIREMENT TRIGGER — remove when the QUERY grammar splits its prelude
+// into `@var`/`@{…}` leaves (a separate Tier-B shape; §3.4 keeps the query prelude
+// committed for now). This is NOT legacy-builder-coupled — it is a grammar-coverage
+// gap, safe to structure whenever the query grammar is reworked.
 
 /** The at-keyword token — same shape the grammar's `atKeyword` consumes. */
 const AT_KEYWORD = /^@-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*/u;

@@ -58,11 +58,17 @@ function interpSpanOf(x: unknown): InterpSpan | null {
 }
 
 /**
- * TODO(tier-b): the REGULAR declaration's interpolated PROPERTY name (`@{prop}: v`)
- * is a separate shape — its name is one opaque `declPropName` leaf, so the
- * `declaration` action below still tokenizes it with `interpFromString`/`declName`.
- * The CUSTOM declaration name + value are structured by the grammar (Tier-B) and
- * consumed as leaves via `interpFromRegion` (no re-tokenizing).
+ * TODO(tier-b/A4): WHAT — `interpFromString` + `declName` (this file's only remaining
+ * `@{…}` regex re-tokenizers) tokenize the CUSTOM-prop interpolated NAME (`--@{k}`)
+ * and the REGULAR declaration's interpolated PROPERTY name (`@{prop}: v`). WHY —
+ * (a) cp-NAME: the grammar's `customPropInterp` is kept as ONE leaf because the legacy
+ * BuilderHost that drives the less-compat bridge consumes that single-leaf shape;
+ * splitting it into `@{…}` leaves regressed the bridge's name emission (`--@{k}` →
+ * `--`), an external-contract break. (b) regular-decl name: its `declPropName` is one
+ * opaque leaf (a separate, un-structured shape). RETIREMENT TRIGGER — split
+ * `customPropInterp` (and `declPropName`) into leaves + consume via `interpFromRegion`
+ * when the legacy BuilderHost is retired (reorg Phase A4). The custom-prop VALUE is
+ * already leaf-consumed (grammar-structured, legacy-tolerant).
  */
 function interpFromString(text: string, unquote: boolean): t2.ValueNode {
   const re = /@\{\s*([^}]+?)\s*\}/g;
