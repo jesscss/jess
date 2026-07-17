@@ -460,3 +460,192 @@ Importers that break or must change, grouped by edge:
    unification lands in core first, so the 68 bodies move exactly once.
 4. **§5F:** `builtinLessFns` is additive to the existing legacy `@jesscss/fns` root
    export until Sass converts — confirm the dual-export transition window.
+
+---
+
+## 8. Execution Plan (Wave 2 — re-surveyed against `origin/dev` @ `2a898e9db`)
+
+Concrete, staged, byte-identity-gated. Written so an executor cannot improvise the
+oracle handling. **Read §8.0 first — three landed facts change the sequence vs §4.**
+
+### 8.0 Landed-state deltas since §0/§4 (verified on `2a898e9db`)
+
+1. **The node-model flip (§4 S0) is DONE.** The value discriminant is now `.type`
+   with PascalCase values: fn bodies read `arg.type === 'Color'`, params spell
+   `kinds: ['Dimension']` / `kinds: 'any'`, and `functions/types.ts` defines
+   `Kind = ValueObj['type']`; `value-dispatch.ts` binds on `a.type`. **The 68 bodies
+   are already in final shape** — the move is a *pure relocation*, no flip to
+   sequence, no cross-package chase. §4's S0 and its "flip before move" concern are
+   retired.
+
+2. **The AST-v2 render path is TEST-ONLY today.** No production code constructs
+   `buildEvaluator` or calls `serialize(..., { evaluator })` / `composeStats` with an
+   evaluator (`grep` of non-test `core/src` + `jess-plugin-less/src`: the only
+   `buildEvaluator` caller is `evaluator.ts` itself; the only non-test
+   `composeStats`/`serialize({evaluator})` references are JSDoc). `jess-plugin-less`
+   renders via the **legacy tree path** and its `_registerFunctions` (index.ts:115)
+   feeds `tree.setFunctionBinding(name, new JsFunction(...))` — the legacy eval path,
+   NOT the registry. **Consequence:** the plugin's AST-v2 evaluator wiring is part of
+   the *spine render cutover*, not a blocker for the fns relocation. The relocation
+   lands behind the **test-exercised** evaluator + a `makeBuiltinRegistry()` helper;
+   the plugin adopts `builtinLessFns` when it adopts the AST-v2 render path (§8.6).
+
+3. **There is NO public import path from `@jesscss/core` to the value substrate.**
+   Core's root `src/index.ts` does **not** re-export `./ast`; `ast/index.ts` surfaces
+   `serialize`/`buildEvaluator`/`createFnRegistry`/serializer/`literal-tag` but **not**
+   `value-factory` (`makeDimension`/`makeColor*` are exported nowhere). So relocated
+   bodies calling `make*` have **no import target today**. **This makes the
+   `@jesscss/core/value` subpath a hard PREREQUISITE of relocation, not optional
+   hardening** — it cannot come "last"; it must precede Stage D. (Widening the root
+   export instead would drag the entire `ast/` engine onto `@jesscss/core`'s public
+   surface — rejected.)
+
+### 8.1 The oracle knot, resolved (the crux — do not improvise)
+
+`native-value-differential.test.ts` runs the corpus **twice** — once with
+`buildEvaluator()` (built-in) and once with `buildAdapterEvaluator()` (adapter) — and
+asserts `builtinCss === adapterCss` (test lines 45–46, 301). **The adapter IS the
+oracle.** Deleting it (task #10) with no successor leaves the built-in fn results
+ungated. Successor = a **frozen static fixture of the differential outputs captured
+while the adapter still exists**. Hard rule: **the fixture-freeze stage (B) MUST land,
+and gate the built-in path, before the adapter-deletion stage (E) is even eligible.**
+No stage deletes `buildAdapterEvaluator` until Stage B's fixture is the active gate.
+
+### 8.2 Stage list (dependency-ordered; destructive stages flagged 🔴 + checkpoint)
+
+| Stage | What | Destructive? | Gate | Rollback |
+| --- | --- | --- | --- | --- |
+| **A. Registry injection** | Change `buildEvaluator()` → `buildEvaluator(registry: FnRegistry)`; drop the `FN_LIST` + `createFnRegistry` self-import from `evaluator.ts`. Add `makeBuiltinRegistry()` (co-located, e.g. `functions/index.ts`) = `createFnRegistry().registerAll(FN_LIST)`. Update the **18** `buildEvaluator()` call sites → `buildEvaluator(makeBuiltinRegistry())` (list in §8.5). **In-core, fns still in core.** | No | Full `*-byte-identity` + `census` + `native-value-differential` (built-in vs adapter, unchanged) green | Revert one commit (`evaluator.ts` + 18 sites) |
+| **B. Freeze the oracle** 🔒 | While `buildAdapterEvaluator` still exists and differential is green, capture a static fixture `parse-host/__tests__/__fixtures__/native-value-differential.snap.json` = every corpus case → its emitted bytes. Convert the differential test to assert **built-in bytes === frozen fixture** (keep the adapter arm as a *third* triple-check for this one commit, then it's redundant). | No | Fixture matches **both** built-in and adapter today (triple-checked in the freezing commit) | Delete fixture + revert test file |
+| **C. `@jesscss/core/value` subpath** 🔴 **CHECKPOINT** | Add the narrow build entry (exact diff in §8.3). Additive: `.` export unchanged. New `src/value.ts` barrel; second tsdown entry; new `./value` exports block. No behaviour change. | 🔴 build-config | `pnpm --filter @jesscss/core build` emits `lib/value.js`/`.cjs`/`.d.ts`; typecheck; grep-gate: nothing reachable from `src/value.ts` imports `@jesscss/fns` | Revert config + delete `src/value.ts` |
+| **D. Relocate the 68 + helpers** 🔴 | Move the 68 bodies + 4 private helpers (`color-helper`, `color-ctor-helper`, `math-helper`, `list-helper`) from `core/ast/functions/` to `packages/fns/src/less/` (replacing legacy twins); rewrite their core imports to `@jesscss/core/value`. Export `builtinLessFns` (successor to `FN_LIST`) from `@jesscss/fns`. Point `makeBuiltinRegistry()` / test helper at `builtinLessFns`. Delete `core/ast/functions/*` bodies + `functions/index.ts`. | 🔴 deletes core fn bodies (git-reversible; **oracle = Stage B fixture**) | Stage B fixture green (built-in path now sourced from fns) + per-fn `fns/src/less/__tests__` + all `*-byte-identity` | Revert relocation commit (bodies restored in `functions/`) |
+| **E. Delete the adapter** 🔴 **CHECKPOINT** | Delete `parse-host/value-eval.ts` (`buildAdapterEvaluator`) + `parse-host/__tests__/oracle.ts`; re-anchor/delete the **7** adapter-oracle tests (§8.5). Removes the phantom `core → @jesscss/fns` import. | 🔴 removes the oracle (Stage B fixture is now sole gate) | Stage B fixture green; **grep-gate: zero `@jesscss/fns` in `core/src`**; `pnpm -r build`; all-less non-regressing | Revert deletion commit |
+| **F. Convert the 11 Tier-C fns** | In `packages/fns` directly: `data-uri`, `each`, `get-unit`, `iif`, `image-height/size/width`, `isdefined`, `isruleset`, `logical`, `svg-gradient`. Extend `FnCtx` with IO/ruleset capability per wave (per `functions/types.ts` deferral note). | No | New differential/golden case per fn; Less-4.x oracle | Per-fn revert |
+
+**Checkpoint-before-destructive falls at the boundary before Stage C and before
+Stage E.** A→B are non-destructive and land freely. **C is the first checkpoint**
+(build-config; additive/reversible but touches the build). **E is the second, harder
+checkpoint** (irreversible-in-spirit oracle removal — only eligible once B's fixture
+gates the built-in path and D has made the built-in path the sole fn path). D deletes
+core bodies but is git-reversible and fixture-gated, so it rides between the two
+checkpoints rather than needing its own.
+
+### 8.3 Exact `@jesscss/core/value` build-entry change (Stage C)
+
+Mirror the landed multi-entry precedent in `packages/less-parser` (`./cst`,
+`./grammar`, `./jess`).
+
+**(a) New barrel `packages/core/src/value.ts`** — the narrow, append-only surface:
+
+```ts
+// Value substrate + fn-authoring surface for @jesscss/fns. Append-only.
+export type { ValueObj, Value, Dimension, Color, Quoted, Keyword, Bool, Nil, List, EvalModes } from './ast/value-eval.js';
+export { makeDimension, makeColor, makeColorRgb, makeQuoted, makeKeyword, makeList /* …value-factory */ } from './ast/value-factory.js';
+export { operate, compare, typeCheck } from './ast/value-operate.js';
+export { serializeValue, serializeColor, serializeDimension, serializeQuoted, OutputMode } from './ast/serialize-value.js';
+export { convertUnit /* …value-units */ } from './ast/value-units.js';
+export { materializeLiteral, sniffLiteral, tagForWord, LiteralTag } from './ast/literal-tag.js';
+export { colorFromName /* …color-names */ } from './ast/color-names.js';
+export type { Fn, FnSpec, ParamSpec, FnCtx, Kind } from './ast/functions/types.js';
+export { createFnRegistry, type FnRegistry } from './ast/value-dispatch.js';
+```
+
+**(b) `packages/core/tsdown.config.ts`** — replace the single-entry helper with an
+explicit two-entry config (the helper hard-codes one string `entry` + sets
+`codeSplitting: false`; for two entries that share the substrate we want the shared
+chunk, so mirror `less-parser` which omits `codeSplitting: false`):
+
+```ts
+import { defineConfig } from 'tsdown';
+export default defineConfig({
+  entry: { index: './src/index.ts', value: './src/value.ts' },
+  format: ['esm', 'cjs'], dts: true, clean: true, outDir: './lib',
+  platform: 'node', fixedExtension: false, hash: false,
+  deps: { onlyBundle: false },
+  outputOptions(options, format) {
+    return format === 'cjs' ? { ...options, exports: 'named' } : options;
+  },
+});
+```
+
+> **Why drop `codeSplitting: false`:** with two entries and no splitting, rolldown
+> inlines the value substrate into **both** `index.js` and `value.js` — byte
+> duplication **and** two runtime instances. The substrate is stateless except
+> `value-units.ts`'s `UNIT_TO_GROUP` (a `Map` built once at load from a `const`
+> table, never mutated after), so duplication is *correctness-safe*, but splitting
+> (a shared chunk → single instance, no duplication) is the precedent-backed choice.
+> If splitting proves awkward under the parseman-less core build, duplication is an
+> acceptable documented fallback given the frozen-const-only state.
+
+**(c) `packages/core/package.json` `exports`** — add the `./value` block (leave `.`
+untouched):
+
+```jsonc
+"exports": {
+  ".": { "types": "./lib/index.d.ts", "import": "./lib/index.js", "require": "./lib/index.cjs" },
+  "./value": {
+    "types": "./lib/value.d.ts",
+    "source": "./src/value.ts",
+    "import": "./lib/value.js",
+    "require": "./lib/value.cjs"
+  },
+  "./package.json": "./package.json"
+}
+```
+
+**Grep-gate (blocks the checkpoint):** no file reachable from `src/value.ts` may
+import `@jesscss/fns`. Verified today: the closure `value-eval → {awaitable-pipe,
+literal-tag}`, `value-factory → {value-eval, serialize-value}`, `serialize-value →
+value-eval`, `value-units → ∅`, `literal-tag → {value-eval, serialize-value,
+value-factory, color-names}`, `color-names → color-name`, `value-operate → {value-eval,
+value-factory, value-units}`, `functions/types → value-eval` — **none reach `../tree`,
+`nodes.ts`, `serialize.ts`, `evaluator.ts`, or `@jesscss/fns`.**
+
+### 8.4 Where the default built-in set registers (zero-user-wiring answer)
+
+- **`@jesscss/fns` exports `builtinLessFns`** (the AST-v2 `Fn[]`, successor to core's
+  `FN_LIST`), **additive** to the existing legacy root export (`export * from
+  './less/index.js'`) — kept until Sass converts (§5F). fns already depends on
+  `@jesscss/core` (`workspace:*`) and its `exports` already has `.` + `./*`, so a
+  named `builtinLessFns` on the root needs no manifest change.
+- **The consumer that constructs the evaluator registers them** —
+  `createFnRegistry().registerAll(builtinLessFns)` — never core. Because AST-v2 render
+  is test-only today (§8.0.2), the *interim* registration site is
+  `makeBuiltinRegistry()` (test helper, Stage A→D). When the plugin adopts the AST-v2
+  render path, `jess-plugin-less` builds the registry once per plugin instance (like
+  `_registerFunctions` runs once per tree) and **injects it via the existing seam**:
+  `serialize(root, { evaluator: buildEvaluator(registry) })` — `SerializeOptions`
+  already carries the optional `evaluator?`, so no core plumbing changes. A bare
+  `less` render "just works" because it always goes through the plugin, which owns the
+  one `registerAll(builtinLessFns)` call. **Core imports zero fns and stays empty.**
+
+### 8.5 Downstream blast radius (concrete file lists)
+
+**18 `buildEvaluator()` call sites (Stage A → `buildEvaluator(makeBuiltinRegistry())`):**
+`atrule-bubbling-projection`, `atrule-byte-identity`, `census`, `extend-byte-identity`,
+`extend-prefilter-soundness`, `guard-byte-identity`, `import-byte-identity`,
+`import-census`, `import-modes-byte-identity`, `import-url-inline-byte-identity`,
+`native-value-differential`, `native-value-perf`, `nested-byte-identity`,
+`nested-census`, `r4-byte-identity`, `value-byte-identity`, `var-exclusion` (all
+`parse-host/__tests__/`), and `actions/__tests__/selector-interp-host-byte-identity`.
+A single `makeBuiltinRegistry()` helper absorbs the churn.
+
+**7 `buildAdapterEvaluator()` call sites (Stage E — re-anchor to the Stage B fixture or
+delete):** `atrule-race`, `guard-race`, `nested-race`, `value-race`, `poc-dense-value`,
+`native-value-perf`, `native-value-differential` (all `parse-host/__tests__/`). The
+`*-race` + `poc` + perf tests compare *adapter vs built-in*; once the adapter is gone
+they become built-in-only (perf) or are deleted (adapter-vs-built-in comparisons are
+moot). `native-value-differential` already re-anchored to the fixture in Stage B.
+
+**Plugin / manifests:** `jess-plugin-less/src/index.ts` `_registerFunctions`
+(AST-v2 path adoption, §8.6); `packages/core/package.json` gains `./value` (Stage C),
+must **never** gain `@jesscss/fns` (grep-gate, Stage E); `packages/fns/package.json`
+keeps `@jesscss/core`, adds no dep.
+
+### 8.6 Deferred (not this migration): plugin AST-v2 render adoption
+
+Switching `jess-plugin-less` from the legacy tree render to the AST-v2
+`serialize({ evaluator })` path is a **spine-cutover** task, tracked separately. This
+migration makes it a *one-line* adoption when it lands (`registerAll(builtinLessFns)` +
+inject), but does not require it: Stages A–F are complete and byte-identity-gated with
+the built-in evaluator exercised by the test corpus + the Stage B fixture.
