@@ -29,7 +29,14 @@ import { LiteralTag, type Combinator } from '../../index.js';
 import { sourceSpanOf } from '../../../tree/util/provenance.js';
 // [import] resolution/inlining lives in a sibling front-end file (kept out of
 // this shared dispatch file to minimize churn); wired in via `toStatement`.
-import { createImportState, resolveImportStatements, type ImportState } from '../import.js';
+import {
+  createImportState,
+  resolveImportStatements,
+  isNode,
+  nodeType as typeOf,
+  type AnyNode,
+  type ImportState,
+} from '../import.js';
 
 export class UnsupportedShape extends Error {
   constructor(
@@ -47,19 +54,6 @@ interface BridgeCtx {
   // relative to it) + the shared once-dedup/cycle state for the whole run.
   filePath?: string;
   importState: ImportState;
-}
-
-/** A tree node is any object; we read its structural fields defensively. */
-type AnyNode = Record<string, unknown> & { type?: unknown };
-
-function isNode(x: unknown): x is AnyNode {
-  return !!x && typeof x === 'object';
-}
-
-function typeOf(x: unknown): string {
-  if (typeof x === 'string') return 'string';
-  if (isNode(x)) return String((x as AnyNode).type ?? (x as { constructor?: { name?: string } }).constructor?.name ?? 'unknown');
-  return typeof x;
 }
 
 function slice(ctx: BridgeCtx, node: object): string | undefined {

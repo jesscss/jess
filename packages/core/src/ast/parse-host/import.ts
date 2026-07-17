@@ -60,14 +60,14 @@ export function createImportState(): ImportState {
   return { seen: new Set(), stack: [], varScopeCache: new Map(), entry: { file: undefined } };
 }
 
-/** A node the bridge reads structurally; mirrors bridge.ts's local shape. */
-type AnyNode = Record<string, unknown> & { type?: unknown };
+/** A node read structurally by the import + bridge front ends. */
+export type AnyNode = Record<string, unknown> & { type?: unknown };
 
-function isNode(x: unknown): x is AnyNode {
+export function isNode(x: unknown): x is AnyNode {
   return !!x && typeof x === 'object';
 }
 
-function nodeType(x: unknown): string {
+export function nodeType(x: unknown): string {
   if (isNode(x)) {
     return String(
       (x as AnyNode).type ??
@@ -250,7 +250,6 @@ interface ImportFlags {
   optional: boolean;
   multiple: boolean;
   inline: boolean;
-  css: boolean;
   escaped: boolean;
 }
 
@@ -270,9 +269,8 @@ function readFlags(node: AnyNode): ImportFlags {
   return {
     reference: io?.reference === true,
     optional: io?.optional === true,
-    multiple: io?.multiple === true || io?.once === false,
+    multiple: io?.once === false,
     inline: io?.inline === true,
-    css: io?.css === true || (isNode(io) && (io as AnyNode).type === 'css'),
     escaped: p?.escaped === true,
   };
 }
@@ -290,7 +288,6 @@ function readFlags(node: AnyNode): ImportFlags {
  * test below. Only an explicit `(css)` option or a `.css`/remote target is CSS.
  */
 function isCssPassthrough(spec: string, flags: ImportFlags): boolean {
-  if (flags.css) return true;
   const lower = spec.toLowerCase();
   if (/\.css([?#].*)?$/.test(lower)) return true;
   return lower.startsWith('http://') || lower.startsWith('https://') || lower.startsWith('//');
