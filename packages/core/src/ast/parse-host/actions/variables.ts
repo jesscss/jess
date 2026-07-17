@@ -24,8 +24,8 @@
  * throws) so parseman's speculative / backtracked branches are safe.
  */
 import * as t2 from '../../index.js';
-import { type BuildAction, declParts, isStatement, placeholder } from '../host-context.js';
-import { isLeaf, wholeValueNode } from './interp.js';
+import { type BuildAction, declParts, isStatement, placeholder, sliceSpan } from '../host-context.js';
+import { type Leaf, isLeaf, wholeValueNode } from './interp.js';
 
 /**
  * `@x: value;` — split the span into name + value bytes (drop a trailing `;`, split
@@ -74,21 +74,79 @@ const varCall: BuildAction = {
   },
 };
 
+/** True when every char of `s` is an ASCII digit (optionally a leading `-`); an
+ *  all-digit accessor key is a 1-based list index, not a property name. */
+function isIntLiteral(s: string): boolean {
+  let i = 0;
+  if (s.charCodeAt(0) === 0x2d /* - */) i = 1;
+  if (i >= s.length) return false;
+  for (; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    if (c < 0x30 || c > 0x39) return false;
+  }
+  return true;
+}
+
 /**
- * A value-position `@name` reference → `VarRef`. The parser bounds the reference as
- * a `Reference` node with a single bare-`@name` leaf child; consume it. A
- * non-variable `Reference` shape (a `$property` ref, or an accessor / call chain,
- * which carry extra `[…]` / `(…)` children) is declined with an inert placeholder,
- * so a family that models it can and a speculative branch is never broken.
+ * One `[key]` accessor key → `{ node, keyIsProp }` (mirrors the legacy
+ * `_applyReferenceAccessor` key typing). A Less lookup key names a member of the
+ * BASE map by LITERAL name — it is NOT evaluated in the outer scope:
+ *   • `@name` / `$name` / bare `name` → the literal member name `name` (a `Word`);
+ *     resolved by NAME against the base's members (`keyIsProp`).
+ *   • `@@name` → the name is INTERPOLATED from outer variable `@name` (`VarIndirect`
+ *     resolves in the outer scope to the member name to look up).
+ *   • an all-digit token → a 1-based numeric list index (not a name).
+ */
+function accessorKey(keyStr: string): { key: t2.ValueNode | number; keyIsProp: boolean } {
+  if (keyStr.charCodeAt(0) === 0x40 /* @ */) {
+    if (keyStr.charCodeAt(1) === 0x40) return { key: t2.varIndirect(t2.varRef(keyStr.slice(2))), keyIsProp: true };
+    return { key: t2.word(keyStr.slice(1)), keyIsProp: true };
+  }
+  if (keyStr.charCodeAt(0) === 0x24 /* $ */) return { key: t2.word(keyStr.slice(1)), keyIsProp: true };
+  if (isIntLiteral(keyStr)) return { key: parseInt(keyStr, 10), keyIsProp: false };
+  return { key: t2.word(keyStr), keyIsProp: true };
+}
+
+/**
+ * A value-position reference → `VarRef` (`@name`), `PropRef` (`$prop` property
+ * accessor), or a `MapAccessor` chain (`@map[key]` / `@list[1]` / `@m[@k]`). The
+ * parser bounds the reference as a `Reference` node: a head leaf (`@name` / `$prop`)
+ * glued to a chain of `[key]` / `(call)` accessors, each delivered as bracket-leaf
+ * runs (`[`, optional key, `]`). This consumes those leaves (P0 — no re-tokenizing
+ * of `ctx.src`) and builds the accessor value. A CALL accessor (`(…)`) in the chain
+ * is a namespace / detached-call shape this family does not model — declined with
+ * an inert placeholder so the declaration keeps its verbatim bytes (unchanged).
  */
 const reference: BuildAction = {
   type: 'Reference',
   build: (args) => {
-    const only = args.children.length === 1 ? args.children[0] : undefined;
-    if (isLeaf(only) && only.value.charCodeAt(0) === 0x40 /* @ */) {
-      return t2.varRef(only.value.slice(1));
+    const leaves: Leaf[] = args.children.filter(isLeaf);
+    const head = leaves[0];
+    if (!head) return placeholder(args.type);
+    const sigil = head.value.charCodeAt(0);
+    let base: t2.ValueNode;
+    if (sigil === 0x40 /* @ */) base = t2.varRef(head.value.slice(1));
+    else if (sigil === 0x24 /* $ */) base = t2.propRef(head.value.slice(1), head.value);
+    else return placeholder(args.type);
+
+    const bytes = sliceSpan(args.ctx, args.span);
+    // Walk the `[key]` accessor chain. A `(call)` accessor is out of this family's
+    // scope — decline the whole reference so its bytes stay verbatim (prior behavior).
+    let i = 1;
+    while (i < leaves.length) {
+      const tok = leaves[i]!.value;
+      if (tok !== '[') return placeholder(args.type);
+      if (leaves[i + 1]?.value === ']') {
+        // Empty `@x[]` → last element (index -1), per lookupOrCall's else-branch.
+        base = t2.mapAccessor(base, -1, false, bytes);
+        i += 2;
+      } else {
+        const { key, keyIsProp } = accessorKey(leaves[i + 1]!.value);
+        base = t2.mapAccessor(base, key, keyIsProp, bytes);
+        i += 3; // '[', key, ']'
+      }
     }
-    return placeholder(args.type);
+    return base;
   },
 };
 

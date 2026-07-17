@@ -122,6 +122,7 @@ function consumableWholeValue(args: BuildArgs, valueBytes: string): t2.ValueNode
   if (node === null) return null;
   const k = node.type;
   return k === 'Word' || k === 'VarRef' || k === 'Paren' || k === 'FunctionCall'
+    || k === 'MapAccessor' || k === 'PropRef'
     ? (node as t2.ValueNode)
     : null;
 }

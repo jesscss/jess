@@ -317,8 +317,8 @@
     "bytes": 524
   },
   "property-targeted/property-targeted.less": {
-    "status": "DIFF",
-    "bytes": 67
+    "status": "MATCH",
+    "bytes": 75
   },
   "rulesets/rulesets.less": {
     "status": "MATCH",

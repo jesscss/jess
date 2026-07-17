@@ -71,6 +71,23 @@ export interface VarRef {
 }
 
 /**
+ * A property accessor `$name` (Less "property accessors"): reads the CURRENT value
+ * of the CSS property `name` from the enclosing declaration scope — last-wins, and
+ * cascading up the ruleset chain (`$color` inside a nested rule reads the parent
+ * ruleset's final `color`). The resolved value carries the source declaration's
+ * `!important` flag (`$color` of `color: red !important` → `red !important`).
+ * `bytes` is the verbatim source (`$name`) emitted as a literal fallback when the
+ * property is not resolvable in the current ast/ scope (e.g. it would only exist
+ * after a not-yet-modelled expansion), so an unresolved accessor never regresses
+ * below its prior verbatim output.
+ */
+export interface PropRef {
+  readonly type: 'PropRef';
+  readonly name: string;
+  readonly bytes: string;
+}
+
+/**
  * A value template: literal text and `@var` references concatenated with NO
  * separator (the literal parts already carry their own spacing). This is how a
  * static value that embeds variable references is represented — e.g.
@@ -167,12 +184,17 @@ export interface DetachedRuleset {
  * A map / namespace accessor value `@p[text]` / `#ns[$@prop]` / `@list[1]`.
  * `base` resolves to a ruleset-like scope; `key` is a property-name value (may be
  * an `Interp`) when `keyIsProp`, else a numeric index (negative counts from end).
+ * `bytes` is the verbatim source of the whole accessor, emitted as a literal
+ * fallback when the base does not resolve to a map/ruleset in the current ast/
+ * scope (e.g. the base is bound by a not-yet-modelled mixin-call / `each` result),
+ * so an unresolved accessor never regresses below its prior verbatim output.
  */
 export interface MapAccessor {
   readonly type: 'MapAccessor';
   readonly base: ValueNode;
   readonly key: ValueNode | number;
   readonly keyIsProp: boolean;
+  readonly bytes: string;
 }
 
 export type ValueNode =
@@ -180,6 +202,7 @@ export type ValueNode =
   | Dimension
   | SpacedValue
   | VarRef
+  | PropRef
   | Sequence
   | Operation
   | FunctionCall
@@ -571,7 +594,9 @@ export const mapAccessor = (
   base: ValueNode,
   key: ValueNode | number,
   keyIsProp: boolean,
-): MapAccessor => ({ type: 'MapAccessor', base, key, keyIsProp });
+  bytes: string,
+): MapAccessor => ({ type: 'MapAccessor', base, key, keyIsProp, bytes });
+export const propRef = (name: string, bytes: string = `$${name}`): PropRef => ({ type: 'PropRef', name, bytes });
 /** A compound from an already-built list of simple tokens. */
 export const compoundOf = (simples: Simple[]): Compound => ({ type: 'Compound', simples });
 /** `compound('.a', '.b')` => `.a.b`. */

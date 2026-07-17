@@ -38,6 +38,7 @@ import type {
   VarIndirect,
   DetachedRuleset,
   MapAccessor,
+  PropRef,
   DetachedCall,
   For,
   RawInline,
@@ -52,7 +53,7 @@ export type NodeType =
   | 'SpacedValue' | 'VarRef' | 'MixinDef' | 'MixinCall' | 'VarDeclaration'
   | 'Sequence' | 'Operation' | 'FunctionCall' | 'Paren'
   | 'AtRuleBlock' | 'AtRuleStatement' | 'Interp' | 'VarIndirect'
-  | 'DetachedRuleset' | 'MapAccessor' | 'DetachedCall' | 'For' | 'RawInline'
+  | 'DetachedRuleset' | 'MapAccessor' | 'PropRef' | 'DetachedCall' | 'For' | 'RawInline'
   | 'StyleImport';
 
 /** Combinator between two compounds in a complex selector. `|` is the CSS
@@ -76,7 +77,7 @@ export type Node =
   | Simple | Word | Dimension | SpacedValue | VarRef | MixinDef | MixinCall
   | VarDeclaration | Sequence | Operation | FunctionCall | Paren
   | AtRuleBlock | AtRuleStatement | Interp | VarIndirect | DetachedRuleset
-  | MapAccessor | DetachedCall | For | RawInline | StyleImport;
+  | MapAccessor | PropRef | DetachedCall | For | RawInline | StyleImport;
 
 /**
  * The frozen set of the structural `type` strings — the membership basis for
@@ -94,7 +95,7 @@ export const AST_NODE_TYPES: ReadonlySet<string> = new Set<NodeType>([
   'SpacedValue', 'VarRef', 'MixinDef', 'MixinCall', 'VarDeclaration',
   'Sequence', 'Operation', 'FunctionCall', 'Paren',
   'AtRuleBlock', 'AtRuleStatement', 'Interp', 'VarIndirect',
-  'DetachedRuleset', 'MapAccessor', 'DetachedCall', 'For', 'RawInline',
+  'DetachedRuleset', 'MapAccessor', 'PropRef', 'DetachedCall', 'For', 'RawInline',
   'StyleImport',
 ]);
 

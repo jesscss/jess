@@ -457,6 +457,41 @@ function resolveVarRef(frame: Frame | null, name: string, e: EvalCtx): { value: 
 }
 
 /**
+ * [property-accessor] Resolve a `$name` property accessor to the winning
+ * declaration of CSS property `name` in scope. Less "property accessors" read the
+ * LAST declaration of the property in the enclosing ruleset (last-wins, lazy) and
+ * cascade up the ruleset chain (`$color` in a nested rule reads the parent
+ * ruleset's final `color`). The source declaration's `!important` rides along in
+ * the returned value node's own bytes (a non-merge declaration keeps it verbatim).
+ * Only DIRECT declarations a frame carries in `statements` are considered — the
+ * backward stack walk skips any declaration whose value is currently on the
+ * exclusion set, which breaks the self-reference `color: $color` (its own value
+ * node is excluded during evaluation, so the accessor falls back to an earlier /
+ * ancestor `color`). Returns the value node and its owning frame; `undefined` when
+ * no such property is in scope. */
+function resolvePropRef(
+  frame: Frame | null,
+  name: string,
+  e: EvalCtx,
+): { value: ValueNode; frame: Frame } | undefined {
+  let fb: Frame | null | undefined;
+  for (let f = frame; f; f = f.parent) {
+    const st = f.statements;
+    if (st) {
+      for (let i = st.length - 1; i >= 0; i--) {
+        const s = st[i]!;
+        if (s.type !== 'Declaration') continue;
+        if (e.excluded.has(s.value)) continue;
+        if (declName(s, f, e) === name) return { value: s.value, frame: f };
+      }
+    }
+    if (f.fallback && !fb) fb = f.fallback;
+  }
+  if (fb) return resolvePropRef(fb, name, e);
+  return undefined;
+}
+
+/**
  * [resolver] Evaluate a resolved variable's value node while it is EXCLUDED for
  * the sync span of the eval — added before the (possibly recursive) evaluation
  * begins, removed the instant that call returns SYNCHRONOUSLY (the `finally` runs
@@ -589,6 +624,17 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
     case 'VarRef': {
       const hit = resolveVarRef(frame, node.name, e);
       if (!hit) return unresolvedRef(node.name, e);
+      return withExcluded(e, hit.value, () => evalValue(hit.value, hit.frame, e));
+    }
+    case 'PropRef': {
+      // A `$name` property accessor: resolve the winning `name` declaration in
+      // scope and fold its value. The resolved value node carries any `!important`
+      // verbatim in its own bytes (a non-merge declaration keeps it), so the flag
+      // rides along for free — `$color` of `color: red !important` → `red !important`.
+      // An unresolvable property (only reachable after a not-yet-modelled expansion)
+      // keeps the verbatim `$name` bytes rather than throwing (no regression).
+      const hit = resolvePropRef(frame, node.name, e);
+      if (!hit) return literal(node.bytes);
       return withExcluded(e, hit.value, () => evalValue(hit.value, hit.frame, e));
     }
     case 'Sequence':
@@ -733,17 +779,27 @@ function resolveBaseDeclMap(
 
 function evalMapAccessor(node: MapAccessor, frame: Frame | null, e: EvalCtx): MaybePromise<Value> {
   const map = resolveBaseDeclMap(node.base, frame, e);
-  if (!map) throw new Error('map/namespace accessor: base not found');
+  // The base does not resolve to a map/ruleset in the current ast/ scope (e.g. it
+  // is bound by a not-yet-modelled mixin-call / `each` result) — keep the verbatim
+  // accessor bytes rather than throwing, so the value never regresses (it resolves
+  // once the base binding is modelled).
+  if (!map) return literal(node.bytes);
   let matched: DeclEntry | undefined;
   if (node.keyIsProp) {
     const key = typeof node.key === 'number' ? String(node.key) : evalBytesSync(node.key, frame, e);
     matched = map.byName.get(key);
+    // A property-style key whose resolved value is a bare integer is a 1-based list
+    // index (`@list[@i]` where `@i` is numeric), not a property name.
+    if (!matched && isIntegerString(key)) {
+      const i = parseInt(key, 10);
+      matched = map.list[i < 0 ? map.list.length + i : i - 1];
+    }
   } else {
     const idx = node.key as number;
     const i = idx < 0 ? map.list.length + idx : idx - 1; // 1-based; negative from end
     matched = map.list[i];
   }
-  if (!matched) throw new Error('map/namespace accessor: property not found');
+  if (!matched) return literal(node.bytes);
   return evalValue(matched.value, matched.frame, e);
 }
 
@@ -785,6 +841,17 @@ function evalIntrospection(node: FunctionCall, frame: Frame | null): Value | und
     return literal(bound?.type === 'DetachedRuleset' ? 'true' : 'false');
   }
   return undefined;
+}
+
+/** True when every char of `s` is an ASCII digit (optionally a leading `-`). */
+function isIntegerString(s: string): boolean {
+  let i = s.charCodeAt(0) === 0x2d /* - */ ? 1 : 0;
+  if (i >= s.length) return false;
+  for (; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    if (c < 0x30 || c > 0x39) return false;
+  }
+  return true;
 }
 
 /** Evaluate a function call: materialize the modeled arg list, then `ev.call`. */

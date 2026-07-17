@@ -499,29 +499,30 @@ function buildMapAccessor(ctx: BridgeCtx, ref: AnyNode): t2.ValueNode {
   const base: t2.ValueNode =
     baseName.startsWith('#') || baseName.startsWith('.') ? t2.word(baseName) : t2.varRef(baseName);
   const key = ref.key;
+  const bytes = slice(ctx, ref) ?? '';
   // Numeric index (`[1]` / `[-1]`).
-  if (typeof key === 'number') return t2.mapAccessor(base, key, false);
+  if (typeof key === 'number') return t2.mapAccessor(base, key, false, bytes);
   if (isNode(key)) {
     const t = typeOf(key);
     if (t === 'Quoted') {
       const v = (key as AnyNode).value;
       if (isNode(v) && typeOf(v) === 'Interpolated') {
-        return t2.mapAccessor(base, interpFromInterpolated(ctx, v as AnyNode, false), true);
+        return t2.mapAccessor(base, interpFromInterpolated(ctx, v as AnyNode, false), true, bytes);
       }
-      if (typeof v === 'string') return t2.mapAccessor(base, t2.word(v), true);
+      if (typeof v === 'string') return t2.mapAccessor(base, t2.word(v), true, bytes);
     }
     if (t === 'Interpolated') {
-      return t2.mapAccessor(base, interpFromInterpolated(ctx, key as AnyNode, false), true);
+      return t2.mapAccessor(base, interpFromInterpolated(ctx, key as AnyNode, false), true, bytes);
     }
     // A dimension / number key node → numeric index.
     if (t === 'Dimension' || t === 'Num') {
       const n = Number((key as AnyNode).value ?? (key as AnyNode).number);
-      if (Number.isFinite(n)) return t2.mapAccessor(base, n, false);
+      if (Number.isFinite(n)) return t2.mapAccessor(base, n, false, bytes);
     }
     const raw = slice(ctx, key);
-    if (raw !== undefined) return t2.mapAccessor(base, t2.word(raw), true);
+    if (raw !== undefined) return t2.mapAccessor(base, t2.word(raw), true, bytes);
   }
-  if (typeof key === 'string') return t2.mapAccessor(base, t2.word(key), true);
+  if (typeof key === 'string') return t2.mapAccessor(base, t2.word(key), true, bytes);
   throw new UnsupportedShape('map:key', typeOf(key));
 }
 
