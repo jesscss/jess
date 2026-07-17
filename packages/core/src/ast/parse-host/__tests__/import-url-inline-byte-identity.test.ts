@@ -19,7 +19,7 @@ import { parseLessFn } from '@jesscss/less-parser';
 import { serialize } from '../../index.js';
 import { bridgeToAst } from './bridge.js';
 import { createImportState } from '../import.js';
-import { buildNativeEvaluator } from '../../native-evaluator.js';
+import { buildEvaluator } from '../../evaluator.js';
 
 const ROOT = '/Users/matthew/git/worktrees/less.js/packages/test-data/tests-unit';
 
@@ -46,7 +46,7 @@ body {
 async function renderAst(file: string): Promise<string> {
   const src = fs.readFileSync(file, 'utf8');
   const bridged = bridgeToAst(parseLessFn(src).tree, src, file, createImportState());
-  return (await serialize(bridged, { evaluator: buildNativeEvaluator() })).css;
+  return (await serialize(bridged, { evaluator: buildEvaluator() })).css;
 }
 
 describe('tree2 @import — url(<x>.less) inlines as Less (byte-identical to Less 4.x)', () => {

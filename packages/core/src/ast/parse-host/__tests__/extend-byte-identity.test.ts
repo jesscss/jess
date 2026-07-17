@@ -5,7 +5,7 @@ import { fileURLToPath } from 'url';
 import { parseLessFn } from '@jesscss/less-parser';
 import { serialize, composeStats } from '../../index.js';
 import { bridgeToAst, UnsupportedShape } from './bridge.js';
-import { buildNativeEvaluator } from '../../native-evaluator.js';
+import { buildEvaluator } from '../../evaluator.js';
 import { expectedCss, fixtureLess, legacyCss, resolveCollapseNesting } from './oracle-source.js';
 
 /**
@@ -56,7 +56,7 @@ async function renderInConfigMode(
     if (e instanceof UnsupportedShape) return { deferred: e.message };
     throw e;
   }
-  const evaluator = buildNativeEvaluator();
+  const evaluator = buildEvaluator();
   const flatCss = (await serialize(root, { evaluator, collapseNesting: true })).css;
   const css = collapseNesting
     ? flatCss
@@ -164,7 +164,7 @@ describe('R1 extend — byte-identity vs less.js alpha, per-fixture config mode'
   it('extend-nest builds with ZERO node cloning (composeStats has no clone op)', async () => {
     const src = fixtureLess('extend-nest');
     const root = bridgeToAst(parseLessFn(src).tree, src);
-    const stats = composeStats(root, buildNativeEvaluator());
+    const stats = composeStats(root, buildEvaluator());
     // tree2 never clones/inherits/withComponents by construction; composeStats
     // only counts string compositions. Assert the structural invariant holds
     // (the stats object exposes no clone/inherit/withComponents counter).

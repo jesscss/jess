@@ -6,7 +6,7 @@
  *
  * HARD MODULE BOUNDARY: imports ONLY the value-domain types and a locally-inlined
  * lean `round` (byte-identical to `tree/util/round.ts`). Serializes color
- * (scalar syntax / hex), dimension, and quoted-string leaves so native output is
+ * (scalar syntax / hex), dimension, and quoted-string leaves so output is
  * byte-identical to the adapter's `render()`-derived bytes.
  */
 import type { Color, Dimension, Quoted, ValueObj } from './value-eval.js';

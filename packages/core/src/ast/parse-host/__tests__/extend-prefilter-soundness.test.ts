@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { parseLessFn } from '@jesscss/less-parser';
 import { serialize } from '../../index.js';
 import { bridgeToAst } from './bridge.js';
-import { buildNativeEvaluator } from '../../native-evaluator.js';
+import { buildEvaluator } from '../../evaluator.js';
 import { setExtendPrefilterEnabled } from '../../extend.js';
 
 /**
@@ -21,7 +21,7 @@ import { setExtendPrefilterEnabled } from '../../extend.js';
 
 async function render(src: string, collapseNesting: boolean): Promise<string> {
   const root = bridgeToAst(parseLessFn(src).tree, src);
-  const evaluator = buildNativeEvaluator();
+  const evaluator = buildEvaluator();
   return (await serialize(root, { evaluator, collapseNesting })).css;
 }
 

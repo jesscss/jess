@@ -14,11 +14,11 @@
  */
 import { describe, it, expect } from 'vitest';
 import { serialize } from '../../index.js';
-import { buildNativeEvaluator } from '../../native-evaluator.js';
+import { buildEvaluator } from '../../evaluator.js';
 import { root, rule, decl, word, complex, compound } from '../../nodes.js';
 import { atRuleBlock } from '../../at-rule.js';
 
-const ev = buildNativeEvaluator();
+const ev = buildEvaluator();
 async function ser(r: Parameters<typeof serialize>[0]): Promise<string> {
   return (await serialize(r, { evaluator: ev, collapseNesting: true })).css;
 }

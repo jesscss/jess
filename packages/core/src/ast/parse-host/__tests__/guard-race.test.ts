@@ -2,7 +2,7 @@ import { describe, it } from 'vitest';
 import { parseLessFn } from '@jesscss/less-parser';
 import { serialize, composeStats } from '../../index.js';
 import { bridgeToAst } from './bridge.js';
-import { buildEvaluator } from '../value-eval.js';
+import { buildAdapterEvaluator } from '../value-eval.js';
 import { renderRealOracle } from './oracle.js';
 import { withLegacyOpCounters } from './harness/shapes.js';
 
@@ -60,7 +60,7 @@ const gc: (() => void) | undefined = (globalThis as { gc?: () => void }).gc;
 async function race(name: string, src: string): Promise<void> {
   const parsed = parseLessFn(src);
   const tree = parsed.tree;
-  const evaluator = buildEvaluator();
+  const evaluator = buildAdapterEvaluator();
   const t2 = (await serialize(bridgeToAst(tree, src), { evaluator })).css;
   const leg = await renderRealOracle(tree);
   const identical = t2 === leg;
@@ -79,11 +79,11 @@ async function race(name: string, src: string): Promise<void> {
   }
   const t2heap = (process.memoryUsage().heapUsed - m0) / N;
 
-  for (let i = 0; i < WARM; i++) buildEvaluator();
+  for (let i = 0; i < WARM; i++) buildAdapterEvaluator();
   const svcTimes: number[] = [];
   for (let i = 0; i < N; i++) {
     const a = performance.now();
-    buildEvaluator();
+    buildAdapterEvaluator();
     svcTimes.push(performance.now() - a);
   }
 

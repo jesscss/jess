@@ -1,16 +1,16 @@
 import { describe, it, expect } from 'vitest';
 import { parseLessFn } from '@jesscss/less-parser';
 import { serialize } from '../../index.js';
-import { buildNativeEvaluator } from '../../native-evaluator.js';
+import { buildEvaluator } from '../../evaluator.js';
 import { bridgeToAst } from './bridge.js';
-import { buildEvaluator } from '../value-eval.js';
+import { buildAdapterEvaluator } from '../value-eval.js';
 
 /**
- * PERF micro-bench: the NATIVE value path (synchronous operate + free serializer,
+ * PERF micro-bench: the built-in value path (synchronous operate + free serializer,
  * boundary-clean) vs the transitional ADAPTER (legacy value nodes + `@jesscss/fns`
  * + `render()`). Same worktree, same bridged AST, warmup + median — the honest A/B
  * the guardrails require. The value bench is operation/fn/color-heavy so the value
- * lane dominates. Expectation: native is neutral-or-better (the bake-off + POC both
+ * lane dominates. Expectation: built-in is neutral-or-better (the bake-off + POC both
  * showed large wins from dropping the legacy node round-trip + reparse).
  */
 
@@ -34,8 +34,8 @@ function median(xs: number[]): number {
   return s[s.length >> 1]!;
 }
 
-async function bench(native: boolean, warm: number, n: number): Promise<number> {
-  const make = () => (native ? buildNativeEvaluator() : buildEvaluator());
+async function bench(built-in: boolean, warm: number, n: number): Promise<number> {
+  const make = () => (built-in ? buildEvaluator() : buildAdapterEvaluator());
   for (let i = 0; i < warm; i++) await serialize(bridgeToAst(tree, SRC), { evaluator: make() });
   const times: number[] = [];
   for (let i = 0; i < n; i++) {
@@ -46,27 +46,27 @@ async function bench(native: boolean, warm: number, n: number): Promise<number> 
   return median(times);
 }
 
-describe('native value path — perf micro-bench', () => {
-  it('native operate/emit is neutral-or-better than the adapter', async () => {
+describe('built-in value path — perf micro-bench', () => {
+  it('built-in operate/emit is neutral-or-better than the adapter', async () => {
     // Sanity: identical bytes (perf only meaningful when correct).
-    const nCss = (await serialize(bridgeToAst(tree, SRC), { evaluator: buildNativeEvaluator() })).css;
-    const aCss = (await serialize(bridgeToAst(tree, SRC), { evaluator: buildEvaluator() })).css;
+    const nCss = (await serialize(bridgeToAst(tree, SRC), { evaluator: buildEvaluator() })).css;
+    const aCss = (await serialize(bridgeToAst(tree, SRC), { evaluator: buildAdapterEvaluator() })).css;
     expect(nCss).toBe(aCss);
 
     const WARM = 8, N = 25;
     // Interleave to avoid ordering bias, then take the median of each.
     const adapterMs = await bench(false, WARM, N);
-    const nativeMs = await bench(true, WARM, N);
+    const builtinMs = await bench(true, WARM, N);
 
     // eslint-disable-next-line no-console
     console.log(
-      `\n[native-value-perf] value-heavy serialize (${SRC.length} bytes src, median of ${N})` +
+      `\n[builtin-value-perf] value-heavy serialize (${SRC.length} bytes src, median of ${N})` +
       `\n  adapter : ${adapterMs.toFixed(3)} ms` +
-      `\n  native  : ${nativeMs.toFixed(3)} ms` +
-      `\n  speedup adapter/native : ${(adapterMs / nativeMs).toFixed(2)}x`,
+      `\n  built-in  : ${builtinMs.toFixed(3)} ms` +
+      `\n  speedup adapter/built-in : ${(adapterMs / builtinMs).toFixed(2)}x`,
     );
 
-    // Neutral-or-better with generous slack for CI noise (expect native faster).
-    expect(nativeMs).toBeLessThanOrEqual(adapterMs * 1.15);
+    // Neutral-or-better with generous slack for CI noise (expect built-in faster).
+    expect(builtinMs).toBeLessThanOrEqual(adapterMs * 1.15);
   }, 120000);
 });

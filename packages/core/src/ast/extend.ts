@@ -2,7 +2,7 @@
  * Clean-room tree2 EXTEND engine.
  *
  * BOUNDARY-CLEAN: this file imports NOTHING from the legacy `../tree`. It builds
- * a tiny tree2-native selector IR from `Complex`/`Compound` tokens (no node
+ * a tiny tree2 selector IR from `Complex`/`Compound` tokens (no node
  * cloning) and runs the PLAN / SOLVE / EMIT flow ported — as a SPEC, not an
  * import — from `tree/extend/{plan,solve,emit,extend-index}.ts`.
  *

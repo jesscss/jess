@@ -76,7 +76,7 @@ export interface EvaluatorOptions {
  * root/pre-pass argument: values are computed on demand during the single
  * serialize walk.
  */
-export function buildEvaluator(_options?: EvaluatorOptions): ValueEvaluator {
+export function buildAdapterEvaluator(_options?: EvaluatorOptions): ValueEvaluator {
   const ctx = new Context();
   const fnTable = buildFnTable();
 

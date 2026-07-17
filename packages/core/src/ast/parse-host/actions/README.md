@@ -1,4 +1,4 @@
-# tree2-native build-host actions
+# tree2 build-host actions
 
 Boundary-clean construction **actions** for the tree2-emitting Less parser. Each
 module maps one node **family**'s grammar `type`s to tree2 node constructors,

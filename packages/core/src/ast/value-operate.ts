@@ -1,5 +1,5 @@
 /**
- * Native, SYNCHRONOUS value operations for the tree2 value domain — the
+ * SYNCHRONOUS value operations for the tree2 value domain — the
  * boundary-clean replacement for the adapter's legacy-delegating `operate` /
  * `materialize` / guard leaves. Implements dimension/color arithmetic (unit
  * conversion + rgb/hsl color math), plus the calc-splice + unoperable-keyword-
@@ -129,10 +129,10 @@ export const calcInner = (bytes: string): string | null => {
 };
 
 /**
- * Native binary operation. Reproduces the adapter's guard order byte-for-byte:
+ * Binary operation. Reproduces the adapter's guard order byte-for-byte:
  *   1. a `calc(...)` keyword operand → splice its inner expression (flat calc),
  *   2. an un-operable keyword operand → preserve source `l op r`,
- *   3. else native arithmetic; a unit-clash `TypeError` in `preserve` mode →
+ *   3. else direct arithmetic; a unit-clash `TypeError` in `preserve` mode →
  *      `calc(l op r)` fallback.
  */
 export function operate(op: string, left: ValueObj, right: ValueObj, modes: EvalModes): ValueObj {
@@ -214,7 +214,7 @@ export function compare(op: string, left: ValueObj, right: ValueObj): boolean {
 }
 
 /**
- * Guard type-predicate (`iscolor(@a)` / `isnumber(@a)` / …) evaluated natively by
+ * Guard type-predicate (`iscolor(@a)` / `isnumber(@a)` / …) evaluated directly by
  * kind. Covers the foundation's predicate set; predicates that key off legacy
  * machinery are out of foundation scope (return `false`).
  */

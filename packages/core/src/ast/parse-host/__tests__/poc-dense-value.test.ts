@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { literal, type ValueObj } from '../../value-eval.js';
-import { buildEvaluator } from '../value-eval.js';
+import { buildAdapterEvaluator } from '../value-eval.js';
 
 /**
  * DENSE-EAGER value struct vs the R2 LAZY value leaf.
@@ -42,7 +42,7 @@ function parseDense(raw: string): DenseDimension {
 /** Emit of an un-operated dense value: verbatim source bytes. */
 const emitDense = (d: DenseDimension): string => d.rawBytes;
 
-const evaluator = buildEvaluator();
+const evaluator = buildAdapterEvaluator();
 
 describe('dense-eager value struct', () => {
   // Verbatim tokens that MUST NOT be canonicalized on emit.

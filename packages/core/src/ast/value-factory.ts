@@ -1,8 +1,8 @@
 /**
  * Accessor + constructor helpers for the tree2 value domain — the ergonomic
- * layer that makes native value math + fn conversion mechanical. Functions READ
+ * layer that makes value math + fn conversion mechanical. Functions READ
  * via typed accessors and WRITE via constructors that compute canonical `bytes`
- * up front (via the free serializer), so native code never touches a legacy node
+ * up front (via the free serializer), so this code never touches a legacy node
  * or a `render()` walk.
  *
  * HARD MODULE BOUNDARY: imports only the value domain + the free serializer.

@@ -1,12 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import { parseLessFn } from '@jesscss/less-parser';
 import { serialize } from '../../index.js';
-import { buildNativeEvaluator } from '../../native-evaluator.js';
+import { buildEvaluator } from '../../evaluator.js';
 import { bridgeToAst } from './bridge.js';
-import { buildEvaluator } from '../value-eval.js';
+import { buildAdapterEvaluator } from '../value-eval.js';
 
 /**
- * DIFFERENTIAL byte-identity: the NATIVE value path (materialize + operate +
+ * DIFFERENTIAL byte-identity: the built-in value path (materialize + operate +
  * kind-dispatch + free serializer, all boundary-clean under `tree2/`) vs the
  * transitional ADAPTER (which delegates to the legacy value nodes + `@jesscss/fns`).
  * The adapter is the ORACLE. Each case renders through the SAME bridged tree2 AST
@@ -28,11 +28,11 @@ import { buildEvaluator } from '../value-eval.js';
  * W3C compositing-1 `colorBlend` kernel), and CHAINED hsl ops (hsl source-of-truth
  * carry, the drift guard).
  *
- * COVERED by the Tier-B batch (native ≡ adapter): the color CONSTRUCTORS
+ * COVERED by the Tier-B batch (built-in ≡ adapter): the color CONSTRUCTORS
  * (`rgb`/`rgba`/`hsl`/`hsla`/`hsv`/`hsva`/`argb`) + `color()` on a color arg — they
  * thread the minimal eval-context seam (modes + a value→string host hook) through
- * `dispatchNative`. The STRING PRODUCERS (`replace`/`%`/`escape`) and `color("…")`
- * string parsing are asserted native = Less 4.x in their own block below (the
+ * the fn registry's `dispatch`. The STRING PRODUCERS (`replace`/`%`/`escape`) and `color("…")`
+ * string parsing are asserted built-in = Less 4.x in their own block below (the
  * adapter is provably wrong on quoted args — see that block's header).
  *
  * SCOPED OUT (Tier-C — need file IO / a ruleset value-kind / lazy thunks):
@@ -40,16 +40,16 @@ import { buildEvaluator } from '../value-eval.js';
  * `isruleset`/`isdefined`/`iif`.
  */
 
-async function render(src: string, native: boolean): Promise<string> {
+async function render(src: string, built-in: boolean): Promise<string> {
   const tree = parseLessFn(src).tree;
-  const evaluator = native ? buildNativeEvaluator() : buildEvaluator();
+  const evaluator = built-in ? buildEvaluator() : buildAdapterEvaluator();
   const out = await serialize(bridgeToAst(tree, src), { evaluator });
   return out.css;
 }
 
 const CORPUS: Array<[string, string]> = [
   // --- un-operated dimensions: SOURCE-VERBATIM (owner 2026-07-16, spec §0
-  //     RESOLVED). Non-canonical source stays verbatim; both native and adapter
+  //     RESOLVED). Non-canonical source stays verbatim; both built-in and adapter
   //     emit the Word verbatim (never materialized), so they agree. ---
   ['verbatim-trailing-zero', '.a { width: 1.0px; }\n'],
   ['verbatim-upper-unit', '.a { width: 2PX; }\n'],
@@ -93,8 +93,8 @@ const CORPUS: Array<[string, string]> = [
   ['escape-e', '.a { width: ~"calc(100% - 5px)"; }\n'],
   // NOTE: `e("solid")` (quoted → bare string) is intentionally NOT differential:
   // the ADAPTER oracle cannot render it (legacy `e` returns a bare JS string and
-  // the adapter's `fromLegacy` calls `.render` on it → throws). Native handles it;
-  // covered by the native-direct assertion below.
+  // the adapter's `fromLegacy` calls `.render` on it → throws). Built-in handles it;
+  // covered by the built-in-direct assertion below.
 
   // --- keywords + keyword-preserve ops ---
   ['keyword', '.a { display: block; }\n'],
@@ -159,7 +159,7 @@ const CORPUS: Array<[string, string]> = [
 
   // --- converted min / max (Tier-A, variadic) — CASES WHERE THE ADAPTER AGREES.
   //     `min`/`max` are genuinely variadic, so the adapter evaluates these
-  //     compatible-unit inputs correctly (native ≡ adapter ≡ Less 4.x). The
+  //     compatible-unit inputs correctly (built-in ≡ adapter ≡ Less 4.x). The
   //     multi-INCOMPATIBLE-unit + list-arg cases (where the adapter's `@jesscss/fns`
   //     port DIVERGES from Less 4.x) are asserted directly below, not here. ---
   ['fn-min-nums', '.a { m: min(3, 1, 2); }\n'],
@@ -229,7 +229,7 @@ const CORPUS: Array<[string, string]> = [
   ['fn-contrast-named', '.a { color: contrast(darkslategray); }\n'],
 
   // --- blend modes (two colors → color; per-channel W3C compositing-1 kernel).
-  //     native ≡ adapter (adapter's blend math is correct); output also verified
+  //     built-in ≡ adapter (adapter's blend math is correct); output also verified
   //     against real Less 4.6.7. overlay/hardlight exercise the multiply+screen
   //     reuse; alpha cases exercise the compositing wrapper (ar != 1). ---
   ['fn-multiply', '.a { color: multiply(#ff6600, #3366cc); }\n'],
@@ -252,10 +252,10 @@ const CORPUS: Array<[string, string]> = [
   ['fn-chain-greyscale-named', '.a { color: lighten(greyscale(tomato), 5%); }\n'],
   ['fn-chain-hue-of-spin', '.a { m: hue(spin(#ff0000, 40)); }\n'],
 
-  // --- converted COLOR CONSTRUCTORS (Tier-B) — native ≡ adapter (v5 preserves the
+  // --- converted COLOR CONSTRUCTORS (Tier-B) — built-in ≡ adapter (v5 preserves the
   //     `rgb()`/`hsl()` output FORMAT rather than collapsing to hex like Less 4.x;
   //     that hex-vs-format divergence is the INTENDED v5 behavior the adapter also
-  //     produces, so the differential holds native ≡ adapter here). ---
+  //     produces, so the differential holds built-in ≡ adapter here). ---
   ['fn-rgb-ints', '.a { color: rgb(255, 0, 0); }\n'],
   ['fn-rgb-modern', '.a { color: rgb(255 0 0); }\n'],
   ['fn-rgb-modern-alpha', '.a { color: rgb(255 0 0 / 0.5); }\n'], // modern `rgb( / )` syntax
@@ -265,9 +265,9 @@ const CORPUS: Array<[string, string]> = [
   ['fn-rgba-from-color-alpha', '.a { color: rgba(#123456, 0.4); }\n'],
   ['fn-hsl', '.a { color: hsl(120, 50%, 50%); }\n'],
   ['fn-hsla', '.a { color: hsla(120, 50%, 50%, 0.5); }\n'],
-  // FLAG: the GREY canonical branch — native ≡ adapter emit `hsl(0, 0%, 50.19607843%)`
+  // FLAG: the GREY canonical branch — built-in ≡ adapter emit `hsl(0, 0%, 50.19607843%)`
   // (rounds 127.5→128 then recomputes hsl). Less 4.x emits `hsl(0, 0%, 50%)`; the
-  // native path matches the v5 adapter (owner may want to reconcile the fns impl).
+  // built-in path matches the v5 adapter (owner may want to reconcile the fns impl).
   ['fn-hsl-grey-canonical', '.a { color: hsl(120, 0%, 50%); }\n'],
   ['fn-hsl-from-color', '.a { color: hsl(#80a0c0); }\n'],
   ['fn-hsla-from-color-alpha', '.a { color: hsla(#80a0c0, 0.5); }\n'],
@@ -293,18 +293,18 @@ const CORPUS: Array<[string, string]> = [
   ['guard-isstring', '.m(@x) when (isstring(@x)) { a: s; }\n.a { .m("hi"); }\n'],
 ];
 
-describe('native value path — differential byte-identity vs adapter', () => {
+describe('built-in value path — differential byte-identity vs adapter', () => {
   for (const [name, src] of CORPUS) {
-    it(`native ≡ adapter: ${name}`, async () => {
-      const nativeCss = await render(src, true);
+    it(`built-in ≡ adapter: ${name}`, async () => {
+      const builtinCss = await render(src, true);
       const adapterCss = await render(src, false);
-      expect(nativeCss).toBe(adapterCss);
+      expect(builtinCss).toBe(adapterCss);
     });
   }
 
   // `e("solid")` → bare `solid`: adapter-unrenderable (see note above), so assert
-  // the native intended output directly (quotes stripped, not re-quoted).
-  it('native e("solid") strips quotes to a bare keyword', async () => {
+  // the built-in intended output directly (quotes stripped, not re-quoted).
+  it('built-in e("solid") strips quotes to a bare keyword', async () => {
     const css = await render('.a { m: e("solid"); }\n', true);
     expect(css).toContain('m: solid');
     expect(css).not.toContain('"solid"');
@@ -335,11 +335,11 @@ describe('native value path — differential byte-identity vs adapter', () => {
  * WRONG here, so real Less 4.6.7 is the oracle (not the adapter). The value layer
  * flattens a list literal to bare `Word` bytes before a fn arg materializes, so
  * the adapter's `coerceListItems` sees a single node (`length(@l)` = 1, not 3) or
- * the legacy fn rejects the arity; the native path recovers the list structure at
- * consumption time (`native/list-helper.ts`) and matches Less 4.x. Each case below
+ * the legacy fn rejects the arity; the built-in path recovers the list structure at
+ * consumption time (`functions/list-helper.ts`) and matches Less 4.x. Each case below
  * notes what the (buggy) adapter does, so the divergence is explicit and audited.
  */
-describe('native list / variadic fns — vs Less 4.6.7 (adapter diverges)', () => {
+describe('built-in list / variadic fns — vs Less 4.6.7 (adapter diverges)', () => {
   // want = the exact Less 4.6.7 output (verified against a local less-node build).
   const LESS4X: Array<[string, string, string]> = [
     // length — adapter returns 1 for every variable-held list (flattened to a Word)
@@ -363,7 +363,7 @@ describe('native list / variadic fns — vs Less 4.6.7 (adapter diverges)', () =
 
     // min / max — the adapter (`@jesscss/fns` port) added a `loose`-mode branch that
     // Less 4.x does NOT have: Less THROWS (→ verbatim) on ANY incompatible-unit
-    // pairing. So native (correct) diverges from the adapter here.
+    // pairing. So built-in (correct) diverges from the adapter here.
     ['min-multi-incompat', '.a { m: min(2em, 3px, 1em); }\n', 'm: min(2em, 3px, 1em)'], // adapter: min(1em, 3px)
     ['min-pct-px', '.a { m: min(50%, 40px, 30%); }\n', 'm: min(50%, 40px, 30%)'], // adapter: min(30%, 40px)
     ['min-var-list', '@l: 1px 5px 3px;\n.a { m: min(@l); }\n', 'm: 1px'], // adapter: THROWS
@@ -371,7 +371,7 @@ describe('native list / variadic fns — vs Less 4.6.7 (adapter diverges)', () =
   ];
 
   for (const [name, src, want] of LESS4X) {
-    it(`native = Less 4.x: ${name}`, async () => {
+    it(`built-in = Less 4.x: ${name}`, async () => {
       const css = await render(src, true);
       expect(css).toContain(want);
     });
@@ -385,16 +385,16 @@ describe('native list / variadic fns — vs Less 4.6.7 (adapter diverges)', () =
  * the built-vs-source module boundary, so `serializeNodeValue`'s `instanceof Quoted`
  * misses → it renders WITH quotes (doubling / URL-encoding them), throws on a
  * quoted-`RegExp`-flag arg, and its `color()` rejects every quoted string. The
- * native path serializes through the injected `ctx.stringify` hook (a Quoted's
+ * built-in path serializes through the injected `ctx.stringify` hook (a Quoted's
  * inner text) and matches Less 4.x. Each case notes the adapter's wrong output.
  *
  * NOTE: a `%("literal", …)` template is LOWERED to interpolation by the less-parser
  * (it never reaches the fn), so `%`'s fn body is exercised via a VARIABLE template
  * (`@t: "%d"; %(@t, …)`), the shape that actually dispatches.
  */
-describe('native string producers — vs Less 4.6.7 (adapter diverges)', () => {
+describe('built-in string producers — vs Less 4.6.7 (adapter diverges)', () => {
   const LESS4X: Array<[string, string, string]> = [
-    // color("…") — adapter THROWS on every quoted arg (see note); native parses it.
+    // color("…") — adapter THROWS on every quoted arg (see note); built-in parses it.
     ['color-named-string', '.a { m: color("red"); }\n', 'm: #ff0000'], // adapter: THROWS
     ['color-mixedcase-named', '.a { m: color("BlueViolet"); }\n', 'm: #8a2be2'], // adapter: THROWS
     ['color-hex3-string', '.a { m: color("#fff"); }\n', 'm: #fff'], // adapter: THROWS
@@ -420,7 +420,7 @@ describe('native string producers — vs Less 4.6.7 (adapter diverges)', () => {
   ];
 
   for (const [name, src, want] of LESS4X) {
-    it(`native = Less 4.x: ${name}`, async () => {
+    it(`built-in = Less 4.x: ${name}`, async () => {
       const css = await render(src, true);
       expect(css).toContain(want);
     });

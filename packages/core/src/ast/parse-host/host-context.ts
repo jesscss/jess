@@ -1,7 +1,7 @@
 /**
  * Shared context + helpers for the tree2-emitting build host.
  *
- * The tree2-native Less parser drives the SAME parseman grammar as the legacy
+ * The tree2 Less parser drives the SAME parseman grammar as the legacy
  * parser, but supplies a different `build(type, …)` host that constructs tree2
  * nodes DIRECTLY (no legacy `../tree` AST, no bridge walk). Each node FAMILY is a
  * module of `BuildAction`s (see `actions/`); this file holds the pieces every

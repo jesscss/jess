@@ -48,11 +48,11 @@ export {
   type SerializeReturn,
   type Position,
 } from './serialize.js';
-// [native value path] boundary-clean serializer + operate + kind-dispatch that
-// the fns/ conversion sits on. Built ALONGSIDE the transitional adapter and
-// gated byte-identical against it (see native-evaluator.ts).
+// [value path] boundary-clean serializer + operate + kind-dispatch that the
+// fns/ conversion sits on. Built ALONGSIDE the transitional adapter and gated
+// byte-identical against it (see evaluator.ts).
 export { serializeValue, serializeColor, serializeDimension, serializeQuoted, OutputMode } from './serialize-value.js';
-export { buildNativeEvaluator } from './native-evaluator.js';
-export { dispatchNative, hasNativeFn } from './value-dispatch.js';
+export { buildEvaluator } from './evaluator.js';
+export { createFnRegistry, type FnRegistry } from './value-dispatch.js';
 // [value-literal-tag] the parser's LIT_* classification (VALUE-LITERAL-TAG-SPEC).
 export { LiteralTag, materializeLiteral, tagForWord, sniffLiteral } from './literal-tag.js';

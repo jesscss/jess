@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { parseLessFn } from '@jesscss/less-parser';
 import { serialize } from '../../index.js';
 import { bridgeToAst, UnsupportedShape } from './bridge.js';
-import { buildNativeEvaluator } from '../../native-evaluator.js';
+import { buildEvaluator } from '../../evaluator.js';
 import { renderRealOracle } from './oracle.js';
 
 /**
@@ -47,7 +47,7 @@ describe('rung 8 — computed value byte-identity (vs REAL oracle)', () => {
         if (e instanceof UnsupportedShape) throw new Error(`UNSUPPORTED ${e.feature} (${e.detail}) for: ${src.trim()}`);
         throw e;
       }
-      const evaluator = buildNativeEvaluator();
+      const evaluator = buildEvaluator();
       const t2css = (await serialize(bridged, { evaluator })).css;
       const oracle = await renderRealOracle(parseLessFn(src).tree);
       if (t2css !== oracle) {

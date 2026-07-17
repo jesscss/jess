@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { parseLessFn } from '@jesscss/less-parser';
 import { serialize } from '../../index.js';
 import { bridgeToAst, UnsupportedShape } from './bridge.js';
-import { buildNativeEvaluator } from '../../native-evaluator.js';
+import { buildEvaluator } from '../../evaluator.js';
 import { renderRealOracleNested } from './oracle.js';
 
 /**
@@ -73,7 +73,7 @@ describe('R0 — nested (collapseNesting:false) byte-identity (vs REAL nested or
           throw new Error(`UNSUPPORTED ${e.feature} (${e.detail}) for: ${src.trim()}`);
         throw e;
       }
-      const evaluator = buildNativeEvaluator();
+      const evaluator = buildEvaluator();
       const t2css = (await serialize(bridged, { evaluator, collapseNesting: false })).css;
       const oracle = await renderRealOracleNested(parseLessFn(src).tree);
       if (t2css !== oracle) {

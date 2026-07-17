@@ -5,7 +5,7 @@ import { parseLessFn } from '@jesscss/less-parser';
 import { serialize } from '../../index.js';
 import { bridgeToAst } from './bridge.js';
 import { createImportState } from '../import.js';
-import { buildNativeEvaluator } from '../../native-evaluator.js';
+import { buildEvaluator } from '../../evaluator.js';
 import { renderImportOracle } from './import-oracle.js';
 
 const ROOT = '/Users/matthew/git/worktrees/less.js/packages/test-data/tests-unit';
@@ -16,7 +16,7 @@ async function renderAstFile(file: string): Promise<string> {
   const parsed = parseLessFn(src);
   if (parsed.errors.length > 0) throw new Error(`parse errors in ${file}`);
   const bridged = bridgeToAst(parsed.tree, src, file, createImportState());
-  const evaluator = buildNativeEvaluator();
+  const evaluator = buildEvaluator();
   return (await serialize(bridged, { evaluator })).css;
 }
 

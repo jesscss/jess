@@ -18,7 +18,7 @@
  *     interface, like the old `ValueService`), whose currency is now TYPED value
  *     objects rather than serialized bytes. Implementations: the transitional
  *     ADAPTER (`tree2-frontend/value-eval.ts`, reaches legacy math — being
- *     retired) and the NATIVE evaluator (`tree2/native-evaluator.ts`, boundary-
+ *     retired) and the evaluator (`evaluator.ts`, boundary-
  *     clean). tree2 depends ONLY on this interface.
  *
  * REPRESENTATION (bake-off winner, "B"): an UN-MATERIALIZED value literal is a
@@ -180,7 +180,7 @@ export interface ValueEvaluator {
    * literals emit their verbatim bytes and never reach here.
    */
   materialize(bytes: string, tag?: LiteralTag): ValueObj;
-  /** Binary operation on two materialized operands (native / delegated math). */
+  /** Binary operation on two materialized operands (direct / delegated math). */
   operate(op: string, left: ValueObj, right: ValueObj, modes: EvalModes): ValueObj;
   /** Named-function call on a materialized arg list. Sync unless a genuinely
    * async built-in forces a thenable (scoped to the forcing leaf). */

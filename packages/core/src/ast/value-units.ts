@@ -1,8 +1,8 @@
 /**
  * The SINGLE unit-conversion table for the tree2 value domain: length / duration /
  * angle units and their factors relative to each group's base. Consumed by
- * dimension arithmetic + comparison (`value-operate`), `convert()` (`native/convert`),
- * and the min/max unify kernel (`native/list-helper`) — previously triplicated with
+ * dimension arithmetic + comparison (`value-operate`), `convert()` (`functions/convert`),
+ * and the min/max unify kernel (`functions/list-helper`) — previously triplicated with
  * identical factors.
  *
  * HARD MODULE BOUNDARY: pure data + pure lookups, imports nothing.
