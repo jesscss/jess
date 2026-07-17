@@ -122,7 +122,7 @@ authoritative"* framing is superseded by this row. Source:
 | A2 | `@import`/`@-import` = leaky source-fold, DISCOURAGED (warn → `@compose`); `@compose`/`@-compose` (isolated/namespaced) + `@use`/`@-use` (script import, replaces `@plugin`) = the module system, NOT deprecated. | SETTLED | `memory:import-atrule-semantics-less-vs-jess` |
 | A3 | Inline backtick JavaScript (`` `expr` ``) is REMOVED entirely in v5 (not opt-in) → use `@use`/`@-use` script modules. | SETTLED | `memory:backtick-js-removed-v5` |
 | A4 | `@-export` (repurposed `@forward`) first concrete role = expose ROOT/entry-level VARIABLES as an external JS API (variables-only initially); DISTINCT from module-member re-export, and distinct from R3 live-binding. | OPEN thread | `memory:forward-as-export-design-thread` |
-| A5 | `%()` string-format parses as a PLAIN call to a public fn (canonical string-format = interpolation). Rename the kernel off the illegal `%` name; NOT `format` (CSS `format()` collision), NOT `sprintf` (owner-rejected). Runtime NAME is unresolved (recommended `str-format`, pending owner). | SETTLED shape, OPEN name | `memory:percent-format-to-sprintf-design` |
+| A5 | `%()` string-format parses as a PLAIN call to the public `string-format` fn (canonical string-format = interpolation; `%()` is a compat alias). Name is `string-format` (whole-word) — NOT `format` (CSS `format()` collision), NOT `sprintf` (owner-rejected). | SETTLED | `memory:percent-format-to-sprintf-design` |
 | A6 | Deprecation infrastructure EXISTS but is NOT wired in v5 — only `selector/parentless-ampersand` + extend-roots diagnostics fire today; deprecation emission is unstarted feature work. | SETTLED (state of the world) | `memory:deprecation-emission-not-wired-v5` |
 
 ## 8. Core architecture
@@ -141,3 +141,10 @@ authoritative"* framing is superseded by this row. Source:
 |---|--------|--------|-----------------|
 | Z1 | Jess = spiritual successor to Less.js + Sass + CSS Modules + CSS-in-JS + PostCSS (no Stylus). | SETTLED | `memory:positioning-spiritual-successor` |
 | Z2 | Immediate goal = v5 ALPHA matching Less 4.x perf on `.less` (benchmark.less, not bootstrap). SCSS perf = non-goal for the alpha. | SETTLED | `memory:immediate-goal-less-alpha-4x-perf` |
+
+## 10. Documentation scope
+
+| # | Ruling | Status | Source / detail |
+|---|--------|--------|-----------------|
+| D1 | There is NO formal plugin architecture. Public plugin docs = the DE-FACTO shape of the existing plugins (`jess-plugin`, `jess-plugin-less`, `jess-plugin-scss`, `jess-plugin-node-modules`, `rollup-plugin-jess`). IN SCOPE: (a) registering a language/dialect, (b) extending parsers + resolution. OUT OF SCOPE for public docs: the VISITOR pattern (`visitor`/`beforeEvalVisitor`/`postEvalVisitor`) — that surface is the internal `jess-plugin-less-compat` less.js-4.x mechanism, NOT a stable public API; do not present it as supported. | SETTLED | `memory:jess-plugin-api-documented-scope` (owner 2026-07-17); page `docs-content/docs/jess/06-Advanced/06-plugins.md` |
+| D2 | Owner 3-LOCATION documentation rule for decided features: (1) in-code JSDoc, (2) internal design doc (`docs/future/core-architecture/**` or `.cursor/rules/**`), (3) user-facing Docusaurus page (Jess and/or Less site). Coverage matrix + ranked gap backlog = `docs/future/core-architecture/DOC-COVERAGE.md`. | SETTLED | `DOC-COVERAGE.md` |

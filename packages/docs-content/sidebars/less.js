@@ -67,6 +67,19 @@ export default {
     },
     {
       type: 'category',
+      label: 'Advanced',
+      items: [
+        'advanced/overview',
+        'advanced/output-model',
+        'advanced/extend-is-wrapping',
+        'advanced/merge-anchoring',
+        'advanced/verbatim-values',
+        'advanced/string-format',
+        'advanced/inline-javascript'
+      ]
+    },
+    {
+      type: 'category',
       label: 'Usage and Tooling',
       items: [
         'usage/using-less',
