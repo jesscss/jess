@@ -39,8 +39,8 @@ import {
   type RawArg,
   type Span,
   isStatement,
-  placeholder,
 } from '../host-context.js';
+import { buildMixinCall } from './mixin-call.js';
 
 /** A GuardNode is a plain discriminated object (`{ g: … }`), not a tree2 Node. */
 function isGuardNode(x: unknown): x is t2.GuardNode {
@@ -167,10 +167,12 @@ function classifyParam(arg: ArgSlot): t2.Param {
   return { pattern: t2.isNode(built) ? (built as t2.ValueNode) : t2.word(arg.text) };
 }
 
-/** `MixinOrQualifiedRule` (block form) → `MixinDef`. */
+/** `MixinOrQualifiedRule` → `MixinDef` (block form) or `MixinCall` (statement
+ *  form). The block form (a `{` body) is a definition; the no-brace form is a
+ *  document-level mixin CALL (`.loop(3);`) — the same call a ruleset body parses
+ *  directly as `MixinCall`, so it delegates to that family's builder rather than
+ *  dropping to a placeholder (which would silently discard top-level calls). */
 function buildMixinDef(args: BuildArgs): unknown {
-  // Only the block (definition) form — a `{` body brace must be present. The
-  // statement (call) form is the MixinCall family's; leave it to fall through.
   let hasBrace = false;
   for (const rc of args.rawChildren) {
     if (rawText(args, rc) === '{') {
@@ -178,7 +180,7 @@ function buildMixinDef(args: BuildArgs): unknown {
       break;
     }
   }
-  if (!hasBrace) return placeholder('MixinOrQualifiedRule');
+  if (!hasBrace) return buildMixinCall(args);
 
   const name = typeof args.children[0] === 'string' ? args.children[0] : rawText(args, args.rawChildren[0]) ?? '';
   const slots = args.children.find(isArgSlotList) ?? [];

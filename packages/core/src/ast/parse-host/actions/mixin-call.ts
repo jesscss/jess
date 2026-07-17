@@ -44,8 +44,14 @@ function slotToCallArg(slot: ArgSlot): t2.CallArg {
   return { value: t2.word(slot.text.trim()) };
 }
 
-/** `MixinCall` grammar rule → tree2 `MixinCall`. */
-function buildMixinCall(args: BuildArgs): unknown {
+/**
+ * `MixinCall` grammar rule → tree2 `MixinCall`. Exported so the mixin-def family
+ * can reuse it for the STATEMENT (no-brace) form of `MixinOrQualifiedRule`: the
+ * top-level ambiguity wrapper carries an identical leaf/`MixinArgs` child shape,
+ * so a document-level `.loop(3);` builds the same `MixinCall` a body-level call
+ * does (body-level calls parse straight to `MixinCall`; top-level ones do not).
+ */
+export function buildMixinCall(args: BuildArgs): unknown {
   const segs: Seg[] = [];
   let pendingComb: t2.Combinator = ' ';
   let slots: readonly ArgSlot[] = [];
