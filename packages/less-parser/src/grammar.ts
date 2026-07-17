@@ -975,14 +975,13 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   // @see https://www.w3.org/TR/css-conditional-3/#at-supports
   const supportsAtKeyword = regex(/@supports(?![-\w])/i);
   const supportsCondAhead = regex(/(?=\(|not(?![-\w])|@\{|-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*\()/i);
-  // The generic `atPrelude` scan stops at the first top-level `{`, which collides
-  // with a `@{…}` interpolation's opening brace (the balanced-curly skip only fires
-  // ONCE the scanner is already at `{`, but the stop wins there). Adding `lessInterp`
-  // to the skip list consumes a `@{…}` atom at its leading `@`, before the scanner
-  // ever reaches the interpolation `{`, so `@supports @{cond} { … }` reaches the real
-  // block brace. Scoped to this rule so the generic prelude scan is unchanged.
-  const supportsPreludeScan = optional(scanTo(choice(literal('{'), literal(';')),
-    { skip: [bParen, bSquare, bCurly, lessInterp, singleStr, doubleStr] }));
+  // After the committed opener lookahead, the condition uses the SAME leaf-split
+  // prelude as the generic `atPrelude` (`preludeTokenTop`): `(…)`/`not`/function-token
+  // conditions become chunk + balanced-group leaves, and a `@{…}` interpolation is an
+  // isolated `lessInterp` leaf — so the tree2 host RESOLVES `@supports @{cond}`
+  // (a bare `@cond`/ident is already rejected by the opener lookahead, and this token
+  // run stops at the block `{` rather than colliding with a `@{…}` interpolation brace).
+  const supportsPreludeScan = optional(noTrivia(oneOrMore(preludeTokenTop)));
   const reqSupportsPrelude = sequence(expect(supportsCondAhead, 'supports condition'), supportsPreludeScan);
   const SupportsAtRuleBlock = node('AtRuleBlock',
     sequence(supportsAtKeyword, reqSupportsPrelude, expect(literal('{'), '{'), g.atRuleBody, expect(literal('}'), '}')));
