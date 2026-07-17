@@ -2154,6 +2154,21 @@ function isBubbleable(name: string): boolean {
 }
 
 /**
+ * [atrule-supports] v5 NORMALIZES an `@supports` condition's prelude to the
+ * compact single-line form, diverging from 4.x (which preserves source spacing).
+ * Collapse whitespace runs (incl. authored newlines/indent) to a single space,
+ * then strip the padding immediately inside each condition's parens:
+ *   `( box-shadow: … ) or\n   ( -moz-box-shadow: … )`
+ *     → `(box-shadow: …) or (-moz-box-shadow: …)`
+ * `not (…)` / operator spacing is preserved (a space that is neither right after
+ * `(` nor right before `)` stays). All other corpus `@supports` preludes are
+ * already compact, so this is a no-op there.
+ */
+function normalizeSupportsPrelude(p: string): string {
+  return p.replace(/\s+/gu, ' ').replace(/\(\s+/gu, '(').replace(/\s+\)/gu, ')');
+}
+
+/**
  * A block at-rule: `@name prelude { …body }`, emitted at the current block depth.
  *
  * [atrule-bubbling] `ctx` is the enclosing composed selector context this at-rule
@@ -2172,7 +2187,8 @@ function emitAtRuleBlock(node: AtRuleBlock, frame: Frame, e: Emit, ctx: string[]
   if (idt) put(e, idt);
   put(e, node.name);
   if (node.prelude !== null) {
-    const p = evalBytesSync(node.prelude, frame, e);
+    let p = evalBytesSync(node.prelude, frame, e);
+    if (node.name.toLowerCase() === '@supports') p = normalizeSupportsPrelude(p);
     if (p.length > 0) {
       put(e, ' ');
       put(e, p);
@@ -2606,7 +2622,8 @@ function emitNestedAtRuleBlock(node: AtRuleBlock, frame: Frame, e: Emit): void {
   if (idt) put(e, idt);
   put(e, node.name);
   if (node.prelude !== null) {
-    const p = evalBytesSync(node.prelude, frame, e);
+    let p = evalBytesSync(node.prelude, frame, e);
+    if (node.name.toLowerCase() === '@supports') p = normalizeSupportsPrelude(p);
     if (p.length > 0) {
       put(e, ' ');
       put(e, p);

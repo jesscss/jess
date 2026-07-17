@@ -80,8 +80,8 @@
     "bytes": 5203
   },
   "css-3/css-3.less": {
-    "status": "DIFF",
-    "bytes": 2293
+    "status": "MATCH",
+    "bytes": 2267
   },
   "css-escapes/css-escapes.less": {
     "status": "DIFF",

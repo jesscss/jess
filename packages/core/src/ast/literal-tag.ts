@@ -16,6 +16,7 @@ import type { ValueObj } from './value-eval.js';
 import { HEX } from './color.js';
 import { makeColorRgb, makeKeyword } from './value-factory.js';
 import { namedColor } from './color-names.js';
+import { round } from './round.js';
 
 export enum LiteralTag {
   /** ident/keyword (`solid`,`auto`) — default + safe fallback for untagged strings. */
@@ -140,7 +141,19 @@ export function materializeLiteral(str: string, tag: LiteralTag, lit?: LitFields
     // One numeric tag (`Num` is a same-value alias of `Dimension`).
     case LiteralTag.Dimension:
       // Parser carried the number/unit split → read it; else split a synthetic.
-      if (lit && 'number' in lit) return { type: 'Dimension', number: lit.number, unit: lit.unit, bytes: str };
+      if (lit && 'number' in lit) {
+        // Un-operated dimensions preserve their SOURCE spelling verbatim
+        // (`1.0px`→`1.0px`, `2PX`→`2PX`, `1e3px`→`1e3px`). The ONE exception is
+        // sub-precision float noise: a source whose value cannot be represented at
+        // the 8-dp canonical floor (`-0.0000000001` rounds to `0`) is DENOISED to
+        // the canonical rounded form (`0deg`), matching the v5 golden. A value that
+        // round-trips unchanged at 8 dp keeps its exact source spelling.
+        const r = round(lit.number, 8);
+        if (Number.isFinite(lit.number) && r !== lit.number) {
+          return { type: 'Dimension', number: r, unit: lit.unit, bytes: `${r}${lit.unit}` };
+        }
+        return { type: 'Dimension', number: lit.number, unit: lit.unit, bytes: str };
+      }
       return dimensionFromString(str);
     case LiteralTag.ColorHex: {
       const { rgb, alpha } = parseHex(str);
