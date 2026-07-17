@@ -31,22 +31,38 @@
  */
 import * as t2 from '../../index.js';
 import { type BuildAction, type BuildArgs, type Span, sliceSpan } from '../host-context.js';
-import { wholeValueNode } from './interp.js';
+import { type InterpSpan, interpFromRegion, wholeValueNode } from './interp.js';
 
 /* ------------------------------------------------ source-bytes value helpers */
 
+function isWs(c: string): boolean {
+  return c === ' ' || c === '\t' || c === '\n' || c === '\r' || c === '\f';
+}
+
+/** The string value of a parseman leaf child, or `undefined` for a non-leaf. */
+function leafValue(x: unknown): string | undefined {
+  const leaf = x as { _tag?: string; value?: unknown } | undefined;
+  return leaf?._tag === 'leaf' && typeof leaf.value === 'string' ? leaf.value : undefined;
+}
+/** The source span of a leaf child, if it carries one. */
+function leafSpan(x: unknown): Span | undefined {
+  return (x as { span?: Span } | undefined)?.span;
+}
+/** A leaf's `@{name}` interpolation span, or `null` for any other leaf. */
+function interpSpanOf(x: unknown): InterpSpan | null {
+  const v = leafValue(x);
+  const s = leafSpan(x);
+  if (v === undefined || s === undefined) return null;
+  if (v.charCodeAt(0) !== 0x40 /* @ */ || v.charCodeAt(1) !== 0x7b /* { */) return null;
+  return { start: s.start, end: s.end, name: v.slice(2, -1).trim() };
+}
+
 /**
- * TODO(tier-b): custom-property interpolation is a PARSER GAP. Unlike an
- * `InterpolatedSelector` (split into `.`/`a-`/`@{n}` leaves), the custom-prop name
- * and value arrive as an OPAQUE token run (`--n: @{base}px` splits as `--n`, `:`,
- * `@{base`… not a clean `@{base}` leaf), so there is no structured child to
- * consume — this helper must still tokenize the `@{…}` bytes itself. Split these in
- * `grammar.ts` (like `InterpolatedSelector`), then consume the leaves here.
- *
- * Build an `Interp` from raw bytes containing `@{name}` tokens (mirror of the
- * bridge's `interpFromString`). `unquote` controls whether spliced refs strip a
- * surrounding quote layer (true in value/string context, false in property-name
- * context). With no `@{…}` present the bytes stay a verbatim `Word`.
+ * TODO(tier-b): the REGULAR declaration's interpolated PROPERTY name (`@{prop}: v`)
+ * is a separate shape — its name is one opaque `declPropName` leaf, so the
+ * `declaration` action below still tokenizes it with `interpFromString`/`declName`.
+ * The CUSTOM declaration name + value are structured by the grammar (Tier-B) and
+ * consumed as leaves via `interpFromRegion` (no re-tokenizing).
  */
 function interpFromString(text: string, unquote: boolean): t2.ValueNode {
   const re = /@\{\s*([^}]+?)\s*\}/g;
@@ -74,15 +90,10 @@ function stripImportantBytes(v: t2.ValueNode): t2.ValueNode {
   return v;
 }
 
-/** A declaration name: a bare string, or an `@{…}`-interpolated template.
- *  TODO(tier-b): see `interpFromString` — the interpolated NAME is an opaque token
- *  run too (`--@{k}` → `--@`, `{`, `k`, `}`), so it is tokenized here rather than
- *  consumed as split leaves. */
+/** A REGULAR declaration name (see the TODO above): bare string, or `@{…}` template. */
 function declName(nameBytes: string): string | t2.Interp {
   if (!nameBytes.includes('@{')) return nameBytes;
   const interp = interpFromString(nameBytes, false);
-  // `@{…}` was present, so `interpFromString` returned an `Interp`; a doomed span
-  // without a real ref falls back to the raw string.
   return interp.type === 'Interp' ? (interp as t2.Interp) : nameBytes;
 }
 
@@ -196,14 +207,50 @@ function assembleMultiPartValue(args: BuildArgs, valStart: number, valueBytes: s
 const customDeclaration: BuildAction = {
   type: 'CustomDeclaration',
   build: (args) => {
-    const body = declBody(args);
-    const colon = body.indexOf(':');
-    if (colon < 0) return t2.decl(body.trim(), t2.word(''), null, false);
-    const name = declName(body.slice(0, colon).trim());
-    let raw = body.slice(colon + 1);
-    if (raw.trim() === '') return t2.decl(name, t2.word(''), null, false);
-    if (raw[0] === ' ' || raw[0] === '\t') raw = raw.slice(1);
-    return t2.decl(name, interpFromString(raw, true), null, false);
+    const { children } = args;
+    const src = args.ctx.src;
+    // The grammar splits the head into leaves: the name token run (`--` + ident
+    // chunks + isolated `@{…}` leaves), the `:` leaf, the value token run (`@{…}`
+    // leaves isolated among opaque content), and an optional `;`. This CONSUMES
+    // those leaves — the `@{…}` boundaries come from the parser's leaf spans, the
+    // gaps are verbatim source (bare `@var` / comments / spacing stay literal).
+    let colonIdx = -1;
+    for (let i = 0; i < children.length; i++) {
+      if (leafValue(children[i]) === ':') {
+        colonIdx = i;
+        break;
+      }
+    }
+    // TOTAL: a colon-less doomed branch degrades to an inert declaration.
+    if (colonIdx < 0) return t2.decl(sliceSpan(args.ctx, args.span).replace(/;\s*$/u, '').trim(), t2.word(''), null, false);
+
+    const colonSpan = leafSpan(children[colonIdx])!;
+    // NAME: from the first child leaf to the colon, outer-trimmed. The interpolated
+    // NAME stays ONE grammar leaf (the legacy bridge consumes that shape — see the
+    // grammar comment), so it is tokenized by `declName` for now; the name-leaf split
+    // is DEFERRED to the legacy-builder retirement (the VALUE below IS leaf-consumed).
+    let ns = leafSpan(children[0])?.start ?? args.span.start;
+    let ne = colonSpan.start;
+    while (ns < ne && isWs(src[ns]!)) ns++;
+    while (ne > ns && isWs(src[ne - 1]!)) ne--;
+    const name = declName(src.slice(ns, ne));
+
+    // VALUE: from after the colon to the terminating `;` (or the declaration end).
+    // A whitespace-only value collapses to empty; otherwise drop ONE leading
+    // whitespace char (the serializer re-adds `name: value`) and keep the rest —
+    // including trailing spacing before the `;` — verbatim, matching the old slice.
+    let ve = args.span.end;
+    const lastLeaf = children[children.length - 1];
+    if (leafValue(lastLeaf) === ';') ve = leafSpan(lastLeaf)?.start ?? ve;
+    const vStart = colonSpan.end;
+    if (src.slice(vStart, ve).trim() === '') return t2.decl(name, t2.word(''), null, false);
+    const vs = src[vStart] === ' ' || src[vStart] === '\t' ? vStart + 1 : vStart;
+    const valueSpans: InterpSpan[] = [];
+    for (let i = colonIdx + 1; i < children.length; i++) {
+      const s = interpSpanOf(children[i]);
+      if (s !== null && s.start >= vs && s.end <= ve) valueSpans.push(s);
+    }
+    return t2.decl(name, interpFromRegion(src, vs, ve, valueSpans, true), null, false);
   },
 };
 

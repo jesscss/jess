@@ -65,12 +65,6 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   const bSquare = balanced('[', ']', { skip: strHole });
   const bCurly = balanced('{', '}', { skip: strHole });
   const customProp = regex(/--[-_a-zA-Z0-9\u0080-\uffff]*/);
-  // Interpolated custom-property name (`--@{key}`, `--foo-@{key}-bar`). Port of the
-  // reference's InterpolatedCustomProperty token: `--` + optional ident run, then
-  // one-or-more `@{...}` interpolations interleaved with further ident runs. Tried
-  // before the plain `customProp` regex, which stops at `@` (not an ident char) and
-  // would otherwise match only `--`, failing the declaration outright.
-  const customPropInterp = regex(/--(?:-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*|-)?@\{-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*\}(?:@\{-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*\}|[-_a-zA-Z0-9\u0080-\uffff])*/);
   const atKeyword = regex(/@-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
   const urlOpen = regex(/url\(/i);
   // Unquoted url() body — spec-exact <url-token> code points (consume-a-url-token,
@@ -90,6 +84,13 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   // valid (Less accepts it). Digits are allowed anywhere (`@3` \u2014 flagged, not rejected).
   const lessVar = regex(/@[-_a-zA-Z0-9\u0080-\uffff]+/);
   const lessInterp = regex(/@\{-?[_a-zA-Z0-9\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*\}/);
+  // Interpolated custom-property name (`--@{key}`, `--foo-@{key}-bar`). Kept as ONE
+  // token (NOT leaf-split): the legacy BuilderHost that drives the less-compat bridge
+  // consumes this single-leaf shape, so splitting it into leaves regresses the
+  // bridge's custom-prop name (an external contract). The Tier-B name-split waits on
+  // the legacy-builder retirement; the tree2 host consumes this leaf via `declName`
+  // for now. (The custom-prop VALUE below IS split \u2014 the legacy builder tolerates it.)
+  const customPropInterp = regex(/--(?:-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*|-)?@\{-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*\}(?:@\{-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*\}|[-_a-zA-Z0-9\u0080-\uffff])*/);
 
   // ---------------------------------------------------------------------------
   // Grammar — CSS base rules + Less overrides/additions (mirrors LessGrammar).
@@ -488,11 +489,16 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   // `/*` is left for the comment alt.
   const cpInnerContent = regex(/(?:\\[^\n]|[^(){}[\]'"\/\\])+|\/(?!\*)/);
   const cpOuterContent = regex(/(?:\\[^\n]|[^(){}[\];'"\/\\])+|\/(?!\*)/);
-  const cpInner = many(choice(cpInnerContent, comment, g.cpParen, g.cpSquare, g.cpCurly, cpSingleStr, cpDoubleStr));
+  // Tier-B: `lessInterp` is tried FIRST so a strict `@{name}` is isolated as its own
+  // leaf the host consumes (owner rule: a custom-prop value resolves ONLY `@{…}`).
+  // A bare `@var` or a non-strict `@{ base }`/`@{a.b}` falls through to the content
+  // runs and stays LITERAL — `@` is still an ordinary content char, so the isolation
+  // is additive (no content-regex boundary tweak, no over-structuring).
+  const cpInner = many(choice(lessInterp, cpInnerContent, comment, g.cpParen, g.cpSquare, g.cpCurly, cpSingleStr, cpDoubleStr));
   const cpParen = sequence(literal('('), g.cpInner, expect(literal(')')));
   const cpSquare = sequence(literal('['), g.cpInner, expect(literal(']')));
   const cpCurly = sequence(literal('{'), g.cpInner, expect(literal('}')));
-  const cpValue = noTrivia(many(choice(cpOuterContent, comment, g.cpParen, g.cpSquare, g.cpCurly, cpSingleStr, cpDoubleStr)));
+  const cpValue = noTrivia(many(choice(lessInterp, cpOuterContent, comment, g.cpParen, g.cpSquare, g.cpCurly, cpSingleStr, cpDoubleStr)));
   const CustomDeclaration = node(
     sequence(choice(customPropInterp, customProp), literal(':'),
       choice(g.customCurlyBlock, g.cpValue),

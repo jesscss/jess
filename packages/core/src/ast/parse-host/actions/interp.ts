@@ -68,6 +68,40 @@ export function interpFromLeaves(leaves: readonly { value: string }[], unquote: 
   return sawRef ? t2.interp(parts) : null;
 }
 
+/** A `@{name}` interpolation leaf's source range + resolved variable name. */
+export interface InterpSpan {
+  readonly start: number;
+  readonly end: number;
+  readonly name: string;
+}
+
+/**
+ * Build a value from a SOURCE region `[start, end)` and the `@{…}` interpolation
+ * leaves the grammar isolated within it (Tier-B). The token boundaries come from
+ * the parser's leaf spans (never a re-scan); the gaps between them are carried
+ * VERBATIM from source, so bare `@var` bytes, comments, and exact spacing survive
+ * as literal parts (owner rule: a custom-prop / prelude value resolves ONLY `@{…}`).
+ * With no interpolation leaf the whole region is one verbatim `Word`.
+ */
+export function interpFromRegion(
+  src: string,
+  start: number,
+  end: number,
+  spans: readonly InterpSpan[],
+  unquote: boolean,
+): t2.ValueNode {
+  if (spans.length === 0) return t2.word(src.slice(start, end));
+  const parts: t2.InterpPart[] = [];
+  let cursor = start;
+  for (const s of spans) {
+    if (s.start > cursor) parts.push({ lit: src.slice(cursor, s.start) });
+    parts.push({ ref: t2.varRef(s.name), unquote });
+    cursor = s.end;
+  }
+  if (cursor < end) parts.push({ lit: src.slice(cursor, end) });
+  return t2.interp(parts);
+}
+
 /**
  * The single built value node that spans the WHOLE value, or `null` when the value
  * is multi-token (more than one built node, or a built node that does not cover the
