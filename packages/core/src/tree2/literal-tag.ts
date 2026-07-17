@@ -22,10 +22,21 @@ import { namedColor } from './color-names.js';
 export enum LiteralTag {
   /** ident/keyword (`solid`,`auto`) — default + safe fallback for untagged strings. */
   Keyword = 0,
-  /** `T.Dimension`, `Signed`+unit → value `Dimension`. */
+  /**
+   * Any numeric literal → value `Dimension` (unit may be `''`). ONE tag for the
+   * whole numeric family: the grammar rule (`Numeric`) is authoritative that the
+   * leaf is a number, and `materialize` treats united and unitless numbers
+   * identically (`dimensionFromString`), so there is no Dimension-vs-Num split to
+   * re-decide from the bytes.
+   */
   Dimension = 1,
-  /** `T.Number`, `MathConstant` → unitless value `Dimension`. */
-  Num = 2,
+  /**
+   * @deprecated Bridge-legacy alias of `Dimension` (SAME value → one numeric tag).
+   * Only `bridge.ts` / legacy `tree2-frontend/value-eval.ts` still name it, and
+   * both are the double-build being deleted (constitution P1). New code uses
+   * `Dimension`.
+   */
+  Num = 1,
   /** `T.Color` (`#…`) → `Color` (verbatim node). */
   ColorHex = 3,
   /** color-table ident / `transparent` → named `Color`. */
@@ -89,8 +100,8 @@ function dimensionFromString(str: string): ValueObj {
  */
 export function materializeLiteral(str: string, tag: LiteralTag): ValueObj {
   switch (tag & LIT_TAG_MASK) {
+    // One numeric tag (`Num` is a same-value alias of `Dimension`).
     case LiteralTag.Dimension:
-    case LiteralTag.Num:
       return dimensionFromString(str);
     case LiteralTag.ColorHex: {
       const { rgb, alpha } = parseHex(str);
@@ -127,9 +138,9 @@ export function materializeLiteral(str: string, tag: LiteralTag): ValueObj {
 export function tagForWord(text: string): LiteralTag {
   const c0 = text.charCodeAt(0);
   if (c0 === 35 /* # */ && HEX_RE.test(text)) return LiteralTag.ColorHex;
+  // Numeric: ONE tag for the whole family (united or unitless — no split).
   if ((c0 >= 48 && c0 <= 57) || c0 === 43 || c0 === 45 || c0 === 46) {
-    const m = NUM_RE.exec(text);
-    if (m) return m[1] ? LiteralTag.Dimension : LiteralTag.Num;
+    if (NUM_RE.test(text)) return LiteralTag.Dimension;
   }
   if (text === 'true' || text === 'false') return LiteralTag.Bool;
   // A bare identifier that names a CSS color materializes as a Color (parity with
