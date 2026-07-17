@@ -76,9 +76,8 @@
     "bytes": 252
   },
   "container/container.less": {
-    "status": "THREW",
-    "bytes": null,
-    "threw": "ReferenceError: variable @varfoo (min-width: @threshold)  is undefined"
+    "status": "DIFF",
+    "bytes": 5197
   },
   "css-3/css-3.less": {
     "status": "DIFF",
@@ -179,9 +178,8 @@
     "bytes": 331
   },
   "import/import-reference.less": {
-    "status": "THREW",
-    "bytes": null,
-    "threw": "ReferenceError: variable @keyframeName  is undefined"
+    "status": "DIFF",
+    "bytes": 411
   },
   "import/import-remote.less": {
     "status": "THREW",
@@ -197,18 +195,16 @@
     "bytes": 150
   },
   "layer/layer.less": {
-    "status": "THREW",
-    "bytes": null,
-    "threw": "ReferenceError: variable @layer-name  is undefined"
+    "status": "DIFF",
+    "bytes": 2089
   },
   "lazy-eval/lazy-eval.less": {
     "status": "MATCH",
     "bytes": 30
   },
   "media/media.less": {
-    "status": "THREW",
-    "bytes": null,
-    "threw": "ReferenceError: variable @smartphone  is undefined"
+    "status": "DIFF",
+    "bytes": 4137
   },
   "merge/merge.less": {
     "status": "DIFF",
@@ -295,9 +291,8 @@
     "bytes": 0
   },
   "permissive-parse/permissive-parse.less": {
-    "status": "THREW",
-    "bytes": null,
-    "threw": "ReferenceError: variable @function-name(\"(\\d{0,@{d-value}})\")  is undefined"
+    "status": "DIFF",
+    "bytes": 252
   },
   "plugi/plugi.less": {
     "status": "MATCH",
@@ -356,9 +351,8 @@
     "bytes": 3040
   },
   "variables-in-at-rules/variables-in-at-rules.less": {
-    "status": "THREW",
-    "bytes": null,
-    "threw": "ReferenceError: variable @ns \"http://lesscss.org\" is undefined"
+    "status": "DIFF",
+    "bytes": 207
   },
   "variables/variable-advanced.less": {
     "status": "DIFF",

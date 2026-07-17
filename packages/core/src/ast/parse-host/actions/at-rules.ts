@@ -52,6 +52,45 @@ function isWs(c: string): boolean {
   return c === ' ' || c === '\t' || c === '\n' || c === '\r' || c === '\f';
 }
 
+/** A Less identifier byte (the `lessVar` / `lessInterp` name class: `-_A-Za-z0-9`
+ *  plus the non-ASCII `-￿` run). */
+function isIdentByte(c: number): boolean {
+  return c === 0x2d /* - */ || c === 0x5f /* _ */
+    || (c >= 0x30 && c <= 0x39) /* 0-9 */
+    || (c >= 0x41 && c <= 0x5a) /* A-Z */
+    || (c >= 0x61 && c <= 0x7a) /* a-z */
+    || c >= 0x80; /* -￿ */
+}
+
+/**
+ * True iff `v` is ONE clean Less value token — the grammar's isolated `@name`
+ * (`lessVar`), `@@name` (indirect), or `@{name}` (`lessInterp`) leaf — with no
+ * interior junk. A grammar-isolated token is always clean; the ONLY unclean
+ * `@`-leaf is the opaque `scanTo` region the `AtRuleMalformed` fallback emits for a
+ * bare `@var` prelude (v5 hard-rejects it — commit 63663e900), which carries the
+ * rest of the prelude (interior spaces / parens / quotes) glued on. Classifying
+ * that region as a `@var` synthesized a `VarRef` whose "name" was the whole malformed
+ * prelude, which then threw `variable @… is undefined` at eval. Emitting it verbatim
+ * instead recovers gracefully (parse error already recorded; render diverges from the
+ * 4.x-style golden — the intended v5 divergence), never throwing.
+ */
+function isCleanRefToken(v: string): boolean {
+  const n = v.length;
+  if (n < 2 || v.charCodeAt(0) !== 0x40 /* @ */) return false;
+  const c1 = v.charCodeAt(1);
+  if (c1 === 0x7b /* { */) {
+    // `@{name}`: closes with `}`, interior is an identifier run (a leading `-` ok).
+    if (n < 3 || v.charCodeAt(n - 1) !== 0x7d /* } */) return false;
+    for (let i = 2; i < n - 1; i++) if (!isIdentByte(v.charCodeAt(i))) return false;
+    return n > 3;
+  }
+  // `@name` / `@@name`: every byte after the sigil(s) is an identifier byte.
+  const start = c1 === 0x40 /* @ */ ? 2 : 1;
+  if (start >= n) return false;
+  for (let i = start; i < n; i++) if (!isIdentByte(v.charCodeAt(i))) return false;
+  return true;
+}
+
 /** A Less value token the grammar isolated in the prelude, keyed by its span. */
 interface PreludeTok {
   readonly kind: 'var' | 'interp' | 'indirect';
@@ -96,6 +135,10 @@ function buildGenericBlock(args: BuildArgs): t2.AtRuleBlock {
     if (v === undefined || span === undefined) continue;
     const c0 = v.charCodeAt(0);
     if (c0 !== 0x40 /* @ */) continue;
+    // A malformed bare-`@var` prelude arrives as one opaque `scanTo` leaf (interior
+    // spaces/parens); it is NOT a clean ref token, so leave it in the literal gap
+    // (rendered verbatim) rather than synthesizing a throwing `VarRef` from it.
+    if (!isCleanRefToken(v)) continue;
     const c1 = v.charCodeAt(1);
     if (c1 === 0x7b /* { */) toks.push({ kind: 'interp', name: v.slice(2, -1).trim(), start: span.start, end: span.end });
     else if (c1 === 0x40 /* @ */) toks.push({ kind: 'indirect', name: v.slice(2), start: span.start, end: span.end });

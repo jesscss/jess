@@ -74,15 +74,78 @@ function numericLeaf(args: BuildArgs): t2.Word {
   return t2.word(bytes, LiteralTag.Dimension, lit);
 }
 
+/** A Less identifier byte (`lessInterp` name class: `-_A-Za-z0-9` + non-ASCII). */
+function isIdentByte(c: number): boolean {
+  return c === 0x2d /* - */ || c === 0x5f /* _ */
+    || (c >= 0x30 && c <= 0x39) /* 0-9 */
+    || (c >= 0x41 && c <= 0x5a) /* A-Z */
+    || (c >= 0x61 && c <= 0x7a) /* a-z */
+    || c >= 0x80;
+}
+
+/**
+ * TODO(tier-b/A4): host-side `@{name}` re-tokenizer for interpolation INSIDE a
+ * quoted string (`"http://x@{var}/y"`). WHY — the maintained grammar emits the
+ * whole `"…@{…}…"` as ONE opaque `singleStr`/`doubleStr` leaf (interpolation inside
+ * a string is not split), so the direct ast/ host re-scans the bytes here, exactly
+ * as the legacy bridge does via `_buildStringInterpolation`/`INTERPOLATION_REGEX`.
+ * RETIREMENT TRIGGER — the §3.3 `Quoted` grammar split (structured `string | Node[]`);
+ * it touches the SHARED css `Quoted` the legacy BuilderHost re-tokenizes, so it
+ * lands with the legacy-BuilderHost retirement (reorg A4). This host tokenizer keeps
+ * the direct-host string interpolation resolving in the meantime, WITHOUT touching
+ * the grammar or the bridge (so bridge byte-identity is unaffected by construction).
+ *
+ * STRICT (matches the §4.1 owner decision): only a clean `@{ident}` token (no
+ * interior whitespace/dot, and NOT nested `@{…@{…}…}`) is a ref; anything else
+ * stays a literal chunk. Returns `null` when the string carries no resolvable
+ * `@{ident}` token, so the caller keeps the byte-identical plain-`Quoted` path.
+ * Quote chars ride in the literal parts, and each ref splices `unquote:true`
+ * (Less "unquote-on-interpolation" — `evalInterp` strips one quote layer).
+ */
+function quotedInterp(bytes: string): t2.Interp | null {
+  const parts: t2.InterpPart[] = [];
+  let lit = '';
+  let sawRef = false;
+  const n = bytes.length;
+  let i = 0;
+  while (i < n) {
+    // Detect a clean `@{ident}` token: `@` `{` (`-`? ident-run) `}`.
+    if (bytes.charCodeAt(i) === 0x40 /* @ */ && i + 1 < n && bytes.charCodeAt(i + 1) === 0x7b /* { */) {
+      let j = i + 2;
+      if (j < n && bytes.charCodeAt(j) === 0x2d /* - */) j++;
+      const nameStart = j;
+      while (j < n && isIdentByte(bytes.charCodeAt(j))) j++;
+      if (j > nameStart && j < n && bytes.charCodeAt(j) === 0x7d /* } */) {
+        if (lit) { parts.push({ lit }); lit = ''; }
+        parts.push({ ref: t2.varRef(bytes.slice(i + 2, j).trim()), unquote: true });
+        sawRef = true;
+        i = j + 1;
+        continue;
+      }
+    }
+    lit += bytes[i]!;
+    i++;
+  }
+  if (!sawRef) return null;
+  if (lit) parts.push({ lit });
+  return t2.interp(parts);
+}
+
 /**
  * A quoted string `"…"` / `'…'`. The `Quoted` grammar rule is DISTINCT from an
  * ident, so it is tagged `Quoted` and carries its inner value + quote char as
  * `LitFields` — materialize reads them instead of a `QUOTE_RE` re-scan. `escaped`
  * is false by construction: an escaped `~"…"` is a separate `EscapedValue` rule,
  * never this leaf, so the flag is read from the grammar structure, not hardcoded.
+ *
+ * A string carrying `@{name}` interpolation becomes an `Interp` template (the
+ * literal parts keep the quote chars) so the reference resolves; a plain string
+ * stays the byte-identical tagged `Word`. See `quotedInterp` for the Tier-B note.
  */
-function quotedLeaf(args: BuildArgs): t2.Word {
+function quotedLeaf(args: BuildArgs): t2.Word | t2.Interp {
   const bytes = leafBytes(args);
+  const interp = quotedInterp(bytes);
+  if (interp !== null) return interp;
   const lit: LitFields = { value: bytes.slice(1, -1), quote: bytes[0]!, escaped: false };
   return t2.word(bytes, LiteralTag.Quoted, lit);
 }
