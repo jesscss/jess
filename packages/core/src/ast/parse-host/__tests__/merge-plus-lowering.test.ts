@@ -1,11 +1,12 @@
 /**
  * `+:` (comma-merge) / `+_:` (space-merge) declaration merge — ast/ engine.
  *
- * Faithful to less.js `_mergeRules` (to-css-visitor): merge declarations with the
- * same resolved name in ONE block combine into a SINGLE declaration anchored at the
- * FIRST occurrence. `+` starts a new comma group (only when the current space group
- * is non-empty); `+_` space-appends to the current comma group. `!important` on any
- * member promotes the whole combined line.
+ * v5 LAST-occurrence anchor (deliberate divergence from less.js `_mergeRules`,
+ * which anchors FIRST — see CUTOVER-STATUS.md): merge declarations with the same
+ * resolved name in ONE block combine into a SINGLE declaration anchored at the
+ * LAST occurrence; members keep source order. `+` starts a new comma group (only
+ * when the current space group is non-empty); `+_` space-appends to the current
+ * comma group. `!important` on any member promotes the whole combined line.
  */
 import { describe, it, expect } from 'vitest';
 import { renderAstDoc } from './whole-doc-driver.js';
@@ -46,15 +47,16 @@ const CASES: Array<[name: string, src: string, expected: string]> = [
     '.r {\n  transform: rotate(90deg), skew(30deg), scale(2, 4) !important;\n}\n',
   ],
   [
-    // first occurrence anchors; interleaved names keep first-seen order.
+    // LAST occurrence anchors; the combined line sits at each property's final
+    // member, so background (last at idx 3) emits before transform (last at idx 4).
     'interleaved-comma',
     '.r {\n  transform+: t1;\n  background+: b1;\n  transform+: t2;\n  background+: b2, b3;\n  transform+: t3;\n}\n',
-    '.r {\n  transform: t1, t2, t3;\n  background: b1, b2, b3;\n}\n',
+    '.r {\n  background: b1, b2, b3;\n  transform: t1, t2, t3;\n}\n',
   ],
   [
     'interleaved-spaced',
     '.r {\n  transform+_: t1;\n  background+_: b1;\n  transform+_: t2;\n  background+_: b2, b3;\n  transform+_: t3;\n}\n',
-    '.r {\n  transform: t1 t2 t3;\n  background: b1 b2, b3;\n}\n',
+    '.r {\n  background: b1 b2, b3;\n  transform: t1 t2 t3;\n}\n',
   ],
   [
     // mixed +/+_ — the golden's hardest case.
@@ -64,7 +66,7 @@ const CASES: Array<[name: string, src: string, expected: string]> = [
   ],
 ];
 
-describe('+:/+_: merge lowering (ast/) vs less.js _mergeRules', () => {
+describe('+:/+_: merge lowering (ast/) — v5 LAST-occurrence anchor', () => {
   for (const [name, src, expected] of CASES) {
     it(name, () => {
       expect(render(src)).toBe(expected);

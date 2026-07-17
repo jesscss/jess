@@ -81,8 +81,7 @@ Tier-B **A0** work already named a hard prerequisite in the reorg; it retires th
 > Note: G1–G5 from the (stale, base `75e324105`) `BENCHMARK-AST-FAILURE-INVENTORY.md` —
 > multi-part value assembly, mixin-call, detached-ruleset, namespace, `@import` — **have all
 > landed** as `actions/*.ts` and are **no longer blockers** (verified: benchmark renders with
-> 0 deferred imports). `+:`/`+_:` merge **works** (FIRST-occurrence anchor, byte-identical to
-less.js — task #36; `merge/merge.less` oracle status is **MATCH**). Do
+> 0 deferred imports). `+:`/`+_:` merge **works** (last-occurrence anchor, intended v5). Do
 > not reopen them. The stale doc's 325/2,463-line residual figures are obsolete; the
 > differential oracle (§4) is now the live residual source.
 
@@ -106,7 +105,7 @@ Intended v5 behavior (matches less.js `alpha` goldens, diverges from 4.x); never
 as blockers: `:is()` selector compaction; nested output (default `collapseNesting:false`, not
 4.x flatten); no `@media` merge; trailing-comment indentation; **verbatim un-operated values**
 (`1.0px`→`1.0px`, computed-only canonicalization); **CSS-superset pass-through** (`rgb(50%,0,0)`
-un-operated emits verbatim); and the value-expr
+un-operated emits verbatim); `+:`/`+_:` **last-occurrence** merge anchor; and the value-expr
 cases where ast/ already matches real 4.x and the *legacy bridge* is the buggy one (modern
 `/` in `rgb(0 128 255 / 50%)`, space-list call args).
 

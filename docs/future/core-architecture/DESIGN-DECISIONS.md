@@ -44,21 +44,23 @@ authoritative"* framing is superseded by this row. Source:
 
 | # | Ruling | Status | Source / detail |
 |---|--------|--------|-----------------|
-| M1 | Merge ANCHOR = **LAST-occurrence** (jess v5), NOT less@4 first-occurrence anchor. Emit-order divergence on `merge.less` is intended, not a bug. | **SETTLED** ⚠ see note | `CUTOVER-STATUS.md:43` ("no less@4 first-anchor golden adopted"); `memory:spine-merge-last-occurrence-anchor` |
+| M1 | Merge ANCHOR = **LAST-occurrence** (jess v5), NOT less@4 first-occurrence anchor. Emit-order divergence on `merge.less` is intended, not a bug. | **SETTLED** | `CUTOVER-STATUS.md:44` ("LAST-occurrence anchoring kept, no less@4 first-anchor golden adopted"); `memory:spine-merge-last-occurrence-anchor` |
 | M2 | `+:` = comma-merge, `+_:` = space-merge. Both LOWER (parse/build-time) to a self-ref declaration `prop: $['prop']?<sep>v` (`?` = optional self-lookup, empty if unbound, no error). Normal eval + resolver do the rest — no special merge pass. | SETTLED | `memory:less-merge-plus-lowering-self-ref` (owner 2026-07-17) |
 | M3 | Flatten is associative ONLY when both operands materialize to same-kind List/Sequence nodes (→ one flat list); otherwise it is a serialize-time concat `<self><sep><value>`. | SETTLED | `memory:less-merge-plus-lowering-self-ref` |
 | M4 | Flatten is a serialize-time PROJECTION — do NOT eagerly clone a merged node; materialize only if a visitor needs to traverse it. | SETTLED | `memory:less-merge-plus-lowering-self-ref`, `memory:spine-is-projection-not-mutation` |
 | M5 | Nil-elision on serialize: a Nil value (unbound optional self-ref) emits nothing AND drops the separator that would follow it — so the first/unbound occurrence prints with no leading separator. | SETTLED | `memory:less-merge-plus-lowering-self-ref` |
 | M6 | `!important` on any chain member propagates to the merged emit (fixed `3cc298585`). | SETTLED | `memory:spine-merge-last-occurrence-anchor` |
 
-> ⚠ **M1 CONTRADICTION FLAG (2026-07-17).** A recent agent (task #36) mis-flipped
-> the `ast/` merge path + the alpha `merge.less`/`merge.css` test-data + the
-> bottom section of `proposed-alpha-corrections/README.md` to **FIRST**-occurrence
-> ("matches less.js `_mergeRules`"). That contradicts the LAST-occurrence ruling
-> (M1). A separate agent is reverting the code/test-data flip; the ruling here is
-> **LAST-occurrence**. Do not re-adopt first-anchor from those docs until the
-> owner explicitly reverses M1. The legacy `tree/util/spine-merge.ts` correctly
-> still implements last-occurrence.
+> ✅ **M1 CONTRADICTION RESOLVED (2026-07-17).** Task #36 (`23b78263e`) had mis-flipped
+> the `ast/` merge path + docs to **FIRST**-occurrence ("matches less.js `_mergeRules`"),
+> contradicting the LAST-occurrence ruling (M1). REVERTED on
+> `fix/merge-anchor-revert-to-last`: `serialize.ts` `mergeFold` anchors at
+> `indices[indices.length - 1]` again; `proposed-alpha-corrections/merge.css` (LAST-order
+> golden) restored; the R4 spec / feature-completeness / corrections README all read
+> LAST; `alpha-oracle-baseline.json` records `merge/merge.less` as an expected `DIFF`
+> (ast/ correct per design, alpha golden is the outlier awaiting upstream correction to
+> LAST). The task-#36 `!important`-strip / value-canonicalization fix in `custom-props.ts`
+> was KEPT (correct, unrelated). Legacy `tree/util/spine-merge.ts` was always LAST.
 
 ## 2. Extend (`:extend` / `$extend`)
 

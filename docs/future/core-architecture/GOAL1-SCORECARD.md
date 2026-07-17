@@ -16,11 +16,19 @@ across the rebases:
 
 | Status | Count |
 |---|---|
-| MATCH | 29 |
+| MATCH | 28 |
 | MATCH_NORM | 1 |
-| DIFF | 52 |
+| DIFF | 53 |
 | THREW | 9 |
 | **Total** | **91** |
+
+> **`merge/merge.less` is a DIFF by design, not a gap.** ast/ correctly emits the v5
+> LAST-occurrence merge anchor (`CUTOVER-STATUS.md:44`; memory
+> `spine-merge-last-occurrence-anchor`), so it diverges from alpha's FIRST-occurrence
+> `merge.css` golden — the golden is the outlier awaiting an upstream correction to
+> LAST (hand-off in `proposed-alpha-corrections/README.md §Merge`). Task #36 briefly
+> flipped ast/ to FIRST (making it a MATCH → count 29); that was reverted on
+> `fix/merge-anchor-revert-to-last`, restoring the intended DIFF (count 28 MATCH).
 
 Full core suite green with this build: **241 files pass / 3 skip; 4097 tests pass /
 17 skip / 2 todo** (the differential-oracle test included, no regression vs baseline).
@@ -63,18 +71,21 @@ Every *other* DIFF fixture whose golden differs from 4.x does so for a **documen
 (the golden holds the v5 target that ast/ has not yet reached) — those are ast gaps (§3), **not**
 wrong goldens.
 
-## 3. Categorized DIFF residual (52)
+## 3. Categorized DIFF residual (53)
 
 The oracle's **`alpha-oracle-baseline.json` already IS the intended-divergence allowlist**
 (the gate is baseline-diff, not `diff==0`; a recorded DIFF/THREW is an *accepted* gap). No
 oracle code change is needed to "silence" intended divergences — they are already non-failures.
 This section is the categorized rationale.
 
-**Key reconciliation finding:** at today's maturity, **ast/ matches the v5 golden in ZERO of
-the 52 DIFF fixtures** — every one is a genuine ast/ gap. A subset *also* sits on an intended-v5
-divergence axis (that is *why* their golden differs from 4.x), but ast/ has not reached even the
-v5 target on any of them. So the practically-actionable split is **1 wrong golden + 51 real
-gaps**, with the intended-v5 rules noted where they explain the golden's shape.
+**Key reconciliation finding:** at today's maturity, of the 53 DIFF fixtures, **52 are genuine
+ast/ gaps** (ast/ matches the v5 golden in ZERO of them; a subset *also* sits on an intended-v5
+divergence axis — that is *why* their golden differs from 4.x — but ast/ has not reached even the
+v5 target on any of them). The **one exception is `merge/merge.less`**: ast/ already emits the
+correct v5 output (LAST-occurrence anchor) and DIFFs *only* because the alpha golden encodes the
+FIRST-occurrence order — an outlier golden awaiting upstream correction, NOT an ast/ gap. So the
+practically-actionable split is **1 wrong golden (`scope`) + 1 outlier-golden v5 divergence
+(`merge`) + 51 real gaps**, with the intended-v5 rules noted where they explain the golden's shape.
 
 ### 3a. Intended-v5 divergence is the *reason the golden ≠ 4.x* (cited)
 

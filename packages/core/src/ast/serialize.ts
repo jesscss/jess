@@ -1644,11 +1644,12 @@ function groupHasMerge(group: Leaf[]): boolean {
 }
 
 /**
- * Emit a leaf group, folding `+`/`+_` merge declarations. FIRST-occurrence
- * anchor (faithful to less.js `_mergeRules`): a merged property's combined line
- * sits at its FIRST member's position; members keep source order; any member's
- * `!important` promotes the whole line. Non-merge decls and comments emit in
- * place (unchanged). `idt` is the leaf indentation of the enclosing block.
+ * Emit a leaf group, folding `+`/`+_` merge declarations. v5 LAST-occurrence
+ * anchor: a merged property's combined line sits at its LAST member's position;
+ * members keep source order; any member's `!important` promotes the whole line.
+ * Non-merge decls and comments emit in place (unchanged). `idt` is the leaf
+ * indentation of the enclosing block. Deliberate v5 divergence from less.js
+ * `_mergeRules` (which anchors FIRST); see CUTOVER-STATUS.md.
  */
 function mergeFold(group: Leaf[], e: Emit, idt: string, emitOne: (l: Leaf, e: Emit) => void = emitLeaf): void {
   // Resolve each declaration's name once.
@@ -1671,7 +1672,7 @@ function mergeFold(group: Leaf[], e: Emit, idt: string, emitOne: (l: Leaf, e: Em
     const n = leaf.node;
     if (n.type === 'Declaration' && n.merge !== null) {
       const indices = mergeGroups.get(names[i]!)!;
-      if (i !== indices[0]) continue; // only the FIRST member emits; the rest fold in
+      if (i !== indices[indices.length - 1]) continue; // earlier members emit nothing; anchor at LAST
       let combined = '';
       let important = false;
       for (let k = 0; k < indices.length; k++) {

@@ -54,18 +54,37 @@ output and is byte-identical to alpha OUTSIDE the buggy region.
   the file is a drop-in golden.
 
 
-## Merge (`+` / `+_`) — FIRST-occurrence anchor, matches less.js (R4, task #36)
+## Merge (`+` / `+_`) — v5 LAST-occurrence anchor (R4)
 
-The `ast/` engine's `+`/`+_` merge now matches less.js 4.x `_mergeRules` EXACTLY:
-a merged property's combined line anchors at its property's **FIRST** occurrence.
-`r4-byte-identity.test.ts` gates the merge fixture against alpha's committed
-`merge.css` golden directly (byte-identical), and the differential oracle
-(`alpha-oracle-differential.test.ts`) records `merge/merge.less` as **MATCH**.
+`merge.css` is a DIFFERENT kind of correction from the extend files above: it is
+NOT a bug fix but an intended **v5 semantic divergence**. Alpha's committed
+`merge.css` encodes Less's FIRST-occurrence line anchor for interleaved merge
+groups; Jess v5 anchors each combined `+`/`+_` line at the property's **LAST**
+occurrence (owner decision, project memory `spine-merge-last-occurrence-anchor`).
 
-This SUPERSEDES the earlier "v5 LAST-occurrence anchor" intent (project memory
-`spine-merge-last-occurrence-anchor`); the retired last-anchor golden that used
-to live here (`merge.css`) is gone. NOTE: the legacy `tree/` spine/eval path
-(`packages/core/src/tree/util/spine-merge.ts`) still implements last-occurrence
-and is documented as such in `CUTOVER-STATUS.md` / `BENCHMARK-PERF-PATH.md`; those
-paths were NOT changed by task #36 (ast/-render only) and now diverge from the
-ast/ engine — reconcile when the eval path is retired.
+Only two blocks differ from alpha's golden (member content is identical; only the
+combined LINE position moves):
+
+- `.test-rule-interleaved` — `transform`'s last member (`t3`) follows
+  `background`'s last (`b2, b3`), so under last-occurrence `background:` anchors
+  first: `background: b1, b2, b3;` then `transform: t1, t2, t3;` (alpha emits
+  `transform` first).
+- `.test-rule-spaced` — same swap: `background: b1 b2, b3;` then
+  `transform: t1 t2 t3;`.
+
+`.test-rule-interleaved-with-spaced` is byte-identical to alpha (there
+`transform`'s last member already precedes `background`'s, so first- and
+last-occurrence agree). Every other block matches alpha, so `merge.css` is a
+drop-in v5 golden. tree2's R4 merge fold is gated against THIS file
+(`r4-byte-identity.test.ts`), never against alpha's first-occurrence golden.
+
+**Differential-oracle hand-off (like `scope.less` #989, GOAL1-SCORECARD §2):**
+because the ast/ engine correctly emits the v5 LAST-occurrence order (matching
+`CUTOVER-STATUS.md:44` "LAST-occurrence anchoring kept" and the legacy `tree/`
+spine/eval path), it DIFFs from alpha's committed first-occurrence `merge.css`.
+That divergence is recorded in `alpha-oracle-baseline.json` as an **expected
+`DIFF`** for `merge/merge.less` — the golden is the outlier, not ast/. The alpha
+corpus `merge.less`/`merge.css` (READ-ONLY, owner-maintained) needs the upstream
+correction to LAST-occurrence captured by THIS `merge.css`; once synced, the
+baseline entry promotes to `MATCH`. Task #36 wrongly flipped ast/ to FIRST to
+chase the outlier golden; reverted on `fix/merge-anchor-revert-to-last`.

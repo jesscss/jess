@@ -1,4 +1,7 @@
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'fs';
+import * as path from 'path';
+import { fileURLToPath } from 'url';
 import { parseLessFn } from '@jesscss/less-parser';
 import { serialize } from '../../index.js';
 import { bridgeToAst } from './bridge.js';
@@ -11,11 +14,18 @@ import { expectedCss, fixtureLess, resolveCollapseNesting } from './oracle-sourc
  *
  * Two gate kinds:
  *   1. FIXTURE byte-identity in the fixture's resolved config mode, vs the oracle
- *      (less.js `alpha`). Merge (`+`/`+_`) matches less.js's FIRST-occurrence anchor
- *      exactly (task #36), so it too gates against alpha's committed golden.
+ *      (less.js `alpha`) — or, for merge (v5 last-occurrence anchor diverges from
+ *      alpha's first-occurrence golden), vs the checked-in proposed correction.
  *   2. FEATURE snippets — minimal cases proving each R4 feature works independent
  *      of the larger fixtures' adjacent (non-R4) gaps.
  */
+
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+const correction = (name: string): string =>
+  readFileSync(
+    path.resolve(HERE, '../../../../../../docs/future/core-architecture/proposed-alpha-corrections', `${name}.css`),
+    'utf8',
+  );
 
 async function render(src: string, collapse: boolean): Promise<string> {
   const root = bridgeToAst(parseLessFn(src).tree, src);
@@ -28,13 +38,12 @@ describe('R4 — byte-identity vs oracle', () => {
     expect(css).toBe(expectedCss('namespace-targeted'));
   });
 
-  it('merge folds to the less.js FIRST-occurrence anchor (byte-identical to alpha)', async () => {
-    // Task #36: the ast/ engine matches less.js 4.x `_mergeRules` EXACTLY — a merged
-    // property's combined line anchors at its FIRST member's position (superseding the
-    // earlier v5 LAST-occurrence intent). This is now byte-identical to alpha's
-    // committed `merge.css` golden, so it gates against that golden directly.
+  it('merge folds to the v5 LAST-occurrence anchor (vs proposed alpha correction)', async () => {
+    // The committed alpha `merge.css` encodes Less FIRST-occurrence; v5 anchors at
+    // LAST occurrence (owner intent), which reorders test-rule-interleaved /
+    // -spaced. Gated against the checked-in proposed correction, NOT alpha's golden.
     const css = await render(fixtureLess('merge'), resolveCollapseNesting('merge'));
-    expect(css).toBe(expectedCss('merge'));
+    expect(css).toBe(correction('merge'));
   });
 });
 
