@@ -1,12 +1,11 @@
 /**
- * Clean-room tree2 EXTEND engine.
+ * Clean-room EXTEND engine.
  *
  * BOUNDARY-CLEAN: this file imports NOTHING from the legacy `../tree`. It builds
- * a tiny tree2 selector IR from `Complex`/`Compound` tokens (no node
- * cloning) and runs the PLAN / SOLVE / EMIT flow ported — as a SPEC, not an
- * import — from `tree/extend/{plan,solve,emit,extend-index}.ts`.
+ * a small self-contained selector IR from `Complex`/`Compound` tokens (no node
+ * cloning) and runs its own PLAN / SOLVE / EMIT flow.
  *
- * PLAN   — walk the bridged tree2 tree, recording each rule's ancestor path +
+ * PLAN   — walk the parsed AST, recording each rule's ancestor path +
  *          at-rule (media) scope, its own-local selector branches, and each
  *          `:extend()` instruction (target branch, partial flag, the extender
  *          rule's ancestor path, scope, document order).
@@ -23,9 +22,9 @@
  *          `:is()` `parentToken` path.
  *
  * The engine matches the Jess-v5 `:is()`-COMPACTED cascade the real oracle
- * emits. Known divergences from renderRealOracle (owner items): the flat legacy
- * renderer contributes a nested extender as a BARE fragment where tree2 composes
- * it correctly; and `&`-crossing hoist-to-root is not modelled.
+ * emits. Known divergences from the legacy eval renderer (owner items): that flat
+ * renderer contributes a nested extender as a BARE fragment where this engine
+ * composes it correctly; and `&`-crossing hoist-to-root is not modelled.
  */
 
 import { Kind, renderCombinator } from './node.js';
@@ -104,7 +103,7 @@ function branchHasAmp(b: Branch): boolean {
   return false;
 }
 
-/* --------------------------------------------------------- IR: from tree2 */
+/* --------------------------------------------------------- IR: from AST */
 
 function compoundFromSimples(texts: string[]): Compound {
   return { simples: texts.map((text) => ({ t: 'text', text })) };
@@ -157,20 +156,11 @@ function parentToken(parents: Branch[]): Branch {
 function composeOne(parent: Branch, child: Branch): Branch {
   if (branchHasAmp(child)) return substituteAmp(child, parent);
   // Descendant: parent then space then child.
-  return { segs: [...parent.segs.map(cloneSeg), ...prefixDescendant(child).segs] };
+  return { segs: [...parent.segs.map(cloneSeg), ...cloneBranch(child).segs] };
 }
 
 function cloneSeg(seg: Seg): Seg {
   return { comb: seg.comb, compound: { simples: seg.compound.simples.map(cloneSimple) } };
-}
-
-/** Ensure the child's head segment joins the parent with a descendant space. */
-function prefixDescendant(child: Branch): Branch {
-  const segs = child.segs.map(cloneSeg);
-  if (segs.length > 0 && segs[0]!.comb === ' ') {
-    // head already descendant-joinable
-  }
-  return { segs };
 }
 
 /**
@@ -600,6 +590,19 @@ function instKey(inst: PlanInstruction): string {
   return `${inst.partial ? 1 : 0}|${branchText(inst.target)}|${inst.order}`;
 }
 
+/** Precompute each instruction's composed extender branches (+ their text keys)
+ * for the fixpoint. */
+function buildContribs(
+  instructions: PlanInstruction[],
+): Map<PlanInstruction, { extenders: Branch[]; keys: Set<string> }> {
+  const contribs = new Map<PlanInstruction, { extenders: Branch[]; keys: Set<string> }>();
+  for (const inst of instructions) {
+    const extenders = composePath(inst.extenderPath);
+    contribs.set(inst, { extenders, keys: new Set(extenders.map(branchText)) });
+  }
+  return contribs;
+}
+
 /**
  * Solve a subject over its FLAT (fully composed) selector branches. This is the
  * definitive model: extend operates on fully-qualified selectors, so a whole-
@@ -623,12 +626,7 @@ function solveComposed(subject: PlanSubject, plan: Plan): Branch[] {
   }
   const reachable = plan.instructions.filter((i) => reaches(i.scope, subject.scope));
   if (reachable.length === 0) return seed;
-  const contribs = new Map<PlanInstruction, { extenders: Branch[]; keys: Set<string> }>();
-  for (const inst of reachable) {
-    const extenders = composePath(inst.extenderPath);
-    contribs.set(inst, { extenders, keys: new Set(extenders.map(branchText)) });
-  }
-  return runFixpoint(seed.map(cloneBranch), reachable, contribs);
+  return runFixpoint(seed.map(cloneBranch), reachable, buildContribs(reachable));
 }
 
 function runFixpoint(
@@ -891,7 +889,7 @@ function mergeCompoundsToIs(a: Compound, b: Compound, allowNoSuffix: boolean): C
 }
 
 /**
- * Compute extend results for a bridged tree2 root. Returns `null` when the
+ * Compute extend results for a parsed AST root. Returns `null` when the
  * document has NO `:extend()` at all (the serializer's zero-cost gate).
  */
 export function computeExtends(root: Root): ExtendResults | null {
@@ -1054,12 +1052,7 @@ export function computeExtends(root: Root): ExtendResults | null {
         const single = branchSingleCompound(inst.target);
         return inst.partial && single !== null && compoundHitsLevel(single, s.ownLocal);
       });
-      const contribs = new Map<PlanInstruction, { extenders: Branch[]; keys: Set<string> }>();
-      for (const inst of applied) {
-        const extenders = composePath(inst.extenderPath);
-        contribs.set(inst, { extenders, keys: new Set(extenders.map(branchText)) });
-      }
-      header = runFixpoint(s.ownLocal.map(cloneBranch), applied, contribs);
+      header = runFixpoint(s.ownLocal.map(cloneBranch), applied, buildContribs(applied));
     }
     nestedPlan.set(s.rule, {
       flatten: false,

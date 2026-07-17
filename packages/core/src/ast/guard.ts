@@ -1,22 +1,21 @@
 /**
- * Clean-room tree2 mixin GUARD model + evaluation.
+ * Clean-room mixin GUARD model + evaluation.
  *
- * HARD MODULE BOUNDARY: this file lives under `tree2/` and therefore imports
- * NOTHING from the legacy tree module. A guard is tree2's OWN structural node set;
- * the only value MATH it delegates is the LEAF condition truth (comparison /
- * type-check function) — handed to the injected `ValueService` as an
- * already-resolved source string, exactly mirroring the rung-8 value seam
- * (tree2 owns STRUCTURE + operand byte emission, the service owns the MATH).
+ * BOUNDARY-CLEAN: this module imports NOTHING from the legacy `../tree`. A guard
+ * is this engine's OWN structural node set; the only value MATH it delegates is
+ * the LEAF condition truth (comparison / type-check function) — handed to the
+ * injected value evaluator as an already-resolved source string (this module owns
+ * STRUCTURE + operand byte emission, the evaluator owns the MATH).
  *
- * tree2 owns the whole boolean STRUCTURE:
+ * This module owns the whole boolean STRUCTURE:
  *   - `and` / `or` are combined here (over leaf booleans),
  *   - `not` negates here,
  *   - truthiness (`when (@a)`, `when (true)`) is a pure byte test here
  *     (Less: a bare value guard is true iff it evaluates to the keyword `true`),
- *   - `default()` is a DISPATCH decision tree2 owns (true iff no other def
+ *   - `default()` is a DISPATCH decision owned here (true iff no other def
  *     matched), supplied to `evalGuard` as a callback.
  * Only `cmp` (a comparison like `@a > 0`) and `call` (a boolean function like
- * `iscolor(@a)`) reach the service.
+ * `iscolor(@a)`) reach the evaluator.
  */
 
 import type { ValueNode } from './nodes.js';

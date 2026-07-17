@@ -1,9 +1,8 @@
 /**
- * Clean-room tree2 mixin DISPATCH: overloaded-definition selection by arity,
+ * Clean-room mixin DISPATCH: overloaded-definition selection by arity,
  * literal-value pattern match, named/default params, and guards.
  *
- * HARD MODULE BOUNDARY: under `tree2/`, imports nothing from the legacy tree
- * module. Argument
+ * BOUNDARY-CLEAN: imports nothing from the legacy `../tree` module. Argument
  * values are resolved to bytes through a caller-supplied resolver (the same
  * `valueText` the serializer uses) and guard leaves go through the injected
  * `ValueService`. All selection STRUCTURE (arity/pattern/named/default) is owned
