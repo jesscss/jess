@@ -9,17 +9,20 @@
  * reusing the ruleset family's selector/statement derivation and then INTERLEAVING
  * lifted comments between the body statements.
  *
- * The lift ports the legacy CST builder's `_liftStandaloneComments` /
- * `_maybeEmitComment` (`@jesscss/css-parser` builders) — the exact source the
- * bridge oracle (`bridge.ts` `case 'Comment'`) consumes:
- *   - A comment is emitted VERBATIM from its own source bytes (the `/* … *​/`
- *     text), never from an over-wide node span (which would re-dump the enclosing
- *     scope — the prior O(n²) bug).
+ * Source of truth is the parser's per-node TRIVIA LOG (P0): each build receives
+ * the comment ranges its rule consumed (`blockCommentTrivia`), so the lift reads
+ * structured comment spans instead of re-tokenizing `ctx.src`. Rules:
+ *   - A comment is emitted VERBATIM from its own source bytes; block comments only
+ *     (line `// …` comments are dropped by Less, so the log helper omits them).
  *   - A comment on the same source line as the FOLLOWING node stays inline
  *     (trivia, not lifted) ONLY when that node is a nested rule; before a
  *     declaration (or at the root) it is always lifted.
- *   - Line comments (`// …`) are DROPPED (Less drops them; the bridge's Comment
- *     case returns null for `//`), so this family never emits them.
+ *
+ * The one gap the per-node log can't cover is the Stylesheet TRAILING region: the
+ * parser consumes end-of-source trivia in a throwaway context that never reaches
+ * the root node's log, so a trailing root comment (`a{}\n/* c *​/`) is lifted by a
+ * small residual source scan — see `scanTrailingBlockComments`. A ruleset's
+ * trailing region (before `}`) IS in the log and needs no scan.
  *
  * Boundary: front-end only — touches `../../tree2` + the sibling ruleset family's
  * public `RULESET_ACTIONS`; never the legacy `../../tree`.
@@ -28,8 +31,11 @@ import * as t2 from '../../tree2/index.js';
 import {
   type BuildAction,
   type BuildArgs,
+  type CommentRange,
   type Span,
-  isStatement
+  blockCommentTrivia,
+  isStatement,
+  rulesetBodyWindow,
 } from '../host-context.js';
 import { RULESET_ACTIONS } from './ruleset.js';
 
@@ -57,76 +63,96 @@ function sameLine(src: string, a: number, b: number): boolean {
 }
 
 /**
- * Scan `src[gapStart, gapEnd)` for comments and push a `Comment` for each
- * STANDALONE block comment. A block comment stays inline (skipped) when it ends on
- * the same line the following node starts on AND that node is a nested rule. Line
- * comments are always skipped (dropped by Less). Ports `_scanStandaloneComments` +
- * `_maybeEmitComment`.
+ * Emit a `Comment` for `src[start, end)` unless it is inline — i.e. it ends on
+ * the same source line the following node starts on AND that node is a nested
+ * rule (whose leading trivia the serializer recovers from the trivia map). A
+ * same-line comment ahead of a declaration, or at the root, is always lifted.
  */
-function scanStandalone(
+function maybeEmitComment(
   src: string,
-  gapStart: number,
-  gapEnd: number,
+  start: number,
+  end: number,
   followingStart: number | undefined,
   followingIsNestedRule: boolean,
   out: t2.Statement[]
 ): void {
-  let i = gapStart;
-  while (i < gapEnd) {
-    const c = src.charCodeAt(i);
-    // Block comment: /* … */
-    if (c === 47 /* / */ && src.charCodeAt(i + 1) === 42 /* * */) {
-      let j = i + 2;
-      while (j + 1 < gapEnd && !(src.charCodeAt(j) === 42 && src.charCodeAt(j + 1) === 47)) {
-        j++;
-      }
-      const end = Math.min(j + 2, gapEnd);
-      const inline =
-        followingIsNestedRule && followingStart !== undefined && sameLine(src, end - 1, followingStart);
-      if (!inline) {
-        out.push(t2.comment(src.slice(i, end)));
-      }
-      i = end;
-      continue;
-    }
-    // Line comment: // … (to end of line) — dropped, but advance past it.
-    if (c === 47 /* / */ && src.charCodeAt(i + 1) === 47 /* / */) {
-      let j = i + 2;
-      while (j < gapEnd && src.charCodeAt(j) !== 10 && src.charCodeAt(j) !== 13) {
-        j++;
-      }
-      i = j;
-      continue;
-    }
-    i++;
+  if (followingIsNestedRule && followingStart !== undefined && sameLine(src, end - 1, followingStart)) {
+    return;
   }
+  out.push(t2.comment(src.slice(start, end)));
 }
 
 /**
- * Interleave lifted standalone comments between `statements`, scanning the source
- * gaps [bodyStart … stmt.start), each inter-statement gap, and the trailing gap.
- * Ports `_liftStandaloneComments`.
+ * Interleave lifted standalone comments (from the trivia-log `comments`, in
+ * source order) between `statements`. Each source gap `[gapStart, stmt.start)`
+ * emits the comments that fall in it; comments inside a statement's own span are
+ * skipped (its inline trivia). The trailing region after the last statement emits
+ * its comments too — from the log for a ruleset, and (since the root log omits
+ * end-of-source trivia) from a residual source scan for the stylesheet.
  */
 function liftComments(
   src: string,
   statements: readonly SpannedStatement[],
+  comments: readonly CommentRange[],
   bodyStart: number,
   bodyEnd: number,
   atRoot: boolean
 ): t2.Statement[] {
   const out: t2.Statement[] = [];
+  let ci = 0;
   let gapStart = bodyStart;
+  const emitGap = (gapEnd: number, followingStart: number | undefined, followingIsNestedRule: boolean) => {
+    while (ci < comments.length && comments[ci]!.start < gapStart) ci++;
+    while (ci < comments.length && comments[ci]!.start < gapEnd) {
+      const { start, end } = comments[ci++]!;
+      maybeEmitComment(src, start, end, followingStart, followingIsNestedRule, out);
+    }
+  };
   for (const s of statements) {
     if (s.start >= gapStart) {
       const followingIsNestedRule = !atRoot && s.node instanceof t2.Rule;
-      scanStandalone(src, gapStart, s.start, s.start, followingIsNestedRule, out);
+      emitGap(s.start, s.start, followingIsNestedRule);
       gapStart = s.end;
     }
     out.push(s.node);
   }
-  // Trailing gap (after the last node): no following node → always standalone.
-  scanStandalone(src, gapStart, bodyEnd, undefined, false, out);
+  // Trailing region (after the last node): no following node → always standalone.
+  if (atRoot) {
+    scanTrailingBlockComments(src, gapStart, bodyEnd, out);
+  } else {
+    emitGap(bodyEnd, undefined, false);
+  }
   return out;
+}
+
+/**
+ * Residual source scan for the Stylesheet TRAILING gap only: emit a `Comment` for
+ * each block comment in `src[gapStart, bodyEnd)`. Needed because the parser drops
+ * end-of-source trivia from the root node's trivia log (it is consumed in a
+ * throwaway trailing-trivia context), so these comments never reach the log.
+ * TODO(A0.2): remove once the tree2 driver threads the end-of-source trivia run
+ * onto the Stylesheet node (a `dispatch-host` change, out of this task's scope).
+ */
+function scanTrailingBlockComments(src: string, gapStart: number, gapEnd: number, out: t2.Statement[]): void {
+  let i = gapStart;
+  while (i < gapEnd) {
+    const c = src.charCodeAt(i);
+    if (c === 47 /* / */ && src.charCodeAt(i + 1) === 42 /* * */) {
+      let j = i + 2;
+      while (j + 1 < gapEnd && !(src.charCodeAt(j) === 42 && src.charCodeAt(j + 1) === 47)) j++;
+      const end = Math.min(j + 2, gapEnd);
+      out.push(t2.comment(src.slice(i, end)));
+      i = end;
+      continue;
+    }
+    if (c === 47 /* / */ && src.charCodeAt(i + 1) === 47 /* / */) {
+      let j = i + 2;
+      while (j < gapEnd && src.charCodeAt(j) !== 10 && src.charCodeAt(j) !== 13) j++;
+      i = j;
+      continue;
+    }
+    i++;
+  }
 }
 
 /** Pair each statement child with its source span from the parallel rawChildren. */
@@ -154,7 +180,7 @@ const stylesheet: BuildAction = {
     // comment on the last line) sits past `span.end` — scan to the true source end.
     const bodyStart = args.span.start;
     const bodyEnd = Math.max(args.span.end, src.length);
-    const body = liftComments(src, spannedStatements(args), bodyStart, bodyEnd, true);
+    const body = liftComments(src, spannedStatements(args), blockCommentTrivia(args.triviaLog), bodyStart, bodyEnd, true);
     return t2.root(body);
   }
 };
@@ -162,20 +188,22 @@ const stylesheet: BuildAction = {
 const ruleset: BuildAction = {
   type: 'Ruleset',
   build: (args) => {
-    const src = args.ctx.src;
     // Reuse the ruleset family's selector derivation (its own build), then rebuild
     // the body with lifted comments interleaved.
     const base = baseRuleset(args);
     if (!(base instanceof t2.Rule)) {
       return base;
     }
-    // Body window: [after `{` … before the matching `}`], mirroring _buildRuleset.
-    const selectorSpan = (args.rawChildren[0] as { span?: Span } | undefined)?.span;
-    const braceIdx = src.indexOf('{', selectorSpan ? selectorSpan.end : args.span.start);
-    const bodyStart = braceIdx >= 0 ? braceIdx + 1 : args.span.start;
-    const closeIdx = src.lastIndexOf('}', args.span.end - 1);
-    const bodyEnd = closeIdx >= bodyStart ? closeIdx : args.span.end;
-    const body = liftComments(src, spannedStatements(args), bodyStart, bodyEnd, false);
+    // Body window: [after `{` … before `}`], from the brace literal leaves.
+    const window = rulesetBodyWindow(args.rawChildren) ?? { start: args.span.start, end: args.span.end };
+    const body = liftComments(
+      args.ctx.src,
+      spannedStatements(args),
+      blockCommentTrivia(args.triviaLog),
+      window.start,
+      window.end,
+      false
+    );
     return new t2.Rule(base.selector, body, base.extendInstructions);
   }
 };

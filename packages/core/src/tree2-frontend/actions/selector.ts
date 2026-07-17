@@ -28,6 +28,7 @@ import {
   type BuildAction,
   type BuildArgs,
   attachSelectorExtends,
+  hasWhitespaceTriviaBefore,
   isExtendMarker,
   takeSelectorExtends,
 } from '../host-context.js';
@@ -63,26 +64,28 @@ function segmentToCompound(built: unknown, text: string): { compound: t2.Compoun
 }
 
 /**
- * `CompoundSelector`: consecutive parts with NO span gap concatenate into one
- * `Compound` (`.a:hover`); a span gap is a DESCENDANT combinator that splits into
- * a `Complex` (`.a .b`, `.a.b .c`). A part the grammar already built into a
- * `Compound` (an `InterpolatedSelector` — `.a.@{n}`, `&.@{mod}`) contributes its
- * interp `Simple`s directly (P0: consume the built child, don't re-slice `@{…}`);
- * every other part is a verbatim-bytes `Simple` sliced from its own leaf span.
+ * `CompoundSelector`: consecutive parts concatenate into one `Compound`
+ * (`.a:hover`, `.a/* *​/.b`); WHITESPACE trivia between two parts is a DESCENDANT
+ * combinator that splits into a `Complex` (`.a .b`, `.a.b .c`). The split signal
+ * is the parser's whitespace trivia — NOT a raw byte gap: a comment between
+ * simples (`.a/* *​/.b`) opens a byte gap with no whitespace and must stay one
+ * compound. A part the grammar already built into a `Compound` (an
+ * `InterpolatedSelector` — `.a.@{n}`, `&.@{mod}`) contributes its interp `Simple`s
+ * directly (P0: consume the built child, don't re-slice `@{…}`); every other part
+ * is a verbatim-bytes `Simple` sliced from its own leaf span.
  */
 function buildCompound(args: BuildArgs): t2.Compound | t2.Complex {
   const src = args.ctx.src;
   const groups: t2.Simple[][] = [[]];
-  let prevEnd = -1;
   for (let i = 0; i < args.rawChildren.length; i++) {
     const span = rawSpan(args.rawChildren[i]);
     if (!span) continue;
-    if (prevEnd >= 0 && span.start > prevEnd) groups.push([]); // gap → descendant
+    const cur = groups[groups.length - 1]!;
+    if (cur.length > 0 && hasWhitespaceTriviaBefore(args.triviaLog, i)) groups.push([]); // ws → descendant
     const built = args.children[i];
     const group = groups[groups.length - 1]!;
     if (built instanceof t2.Compound) group.push(...built.simples);
     else group.push(t2.simple(src.slice(span.start, span.end)));
-    prevEnd = span.end;
   }
   const compounds = groups.filter((g) => g.length > 0).map((g) => new t2.Compound(g));
   if (compounds.length <= 1) return compounds[0] ?? new t2.Compound([]);
