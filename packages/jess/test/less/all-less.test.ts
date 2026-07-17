@@ -179,6 +179,16 @@ const expectedFailureFixtures = new Map<string, string>([
   ['tests-unit/parser-slashed-combinator/parser-slashed-combinator.less', 'slashed combinator not yet supported'],
   ['tests-unit/permissive-parse/permissive-parse.less', 'throws on Less permissive @variable value (@this: () => {…}, VarDeclaration hot-path — scoped) + @{selectorList} comma-list selector (selector-capture agent). --* interpolation-only + unknown-at-rule prelude @{…}/var interpolation now match; two golden lines (--custom-color, --fortran bare-@) superseded by the interpolation-only owner rule, pending owner golden update'],
 
+  // v5 STRICT at-rule preludes: a top-level bare `@variable` in a non-value at-rule
+  // prelude/name/identifier is a HARD parse error (4.x only warned). These upstream
+  // 4.x fixtures use the bare form (`@media @smartphone`, `@layer @layer-name`,
+  // `@container @varfoo (…)`); the migration target is `@{…}` interpolation, and a
+  // `@var` inside `(...)` stays valid. Kept running (asserted to fail) so a change to
+  // the ruling trips the marker; goldens are the external less.js 4.x oracle, unedited.
+  ['tests-unit/media/media.less', 'v5 rejects a top-level bare @var at-rule prelude (@media @smartphone / @media @all and @tv)'],
+  ['tests-unit/layer/layer.less', 'v5 rejects a top-level bare @var at-rule prelude (@layer @layer-name)'],
+  ['tests-unit/container/container.less', 'v5 rejects a top-level bare @var at-rule prelude (@container @varfoo (…))'],
+
   // Previously-uncategorized hard failures — render but mismatch Less.
   // (extend.less + mixins-guards.less GRADUATED — the dev-merge extend/mixin-namespace
   //  fixes made them render byte-identical to Less; they're real passes now.
