@@ -443,6 +443,12 @@ export interface MixinDef {
   readonly params: Param[];
   readonly body: Statement[];
   readonly guard?: GuardNode; // [guards]
+  // [dedup] set only on a def SYNTHESIZED from a paren-less ruleset callable as a
+  // zero-arg mixin (`.foo {…}` dispatched via `.foo()`). A real parametric
+  // `MixinDef` leaves it undefined. Duplicate-declaration dedup keeps overloaded
+  // PARAMETRIC output verbatim (Less restricts its ambient lookup) but collapses
+  // identical ruleset-mixin output, so the serializer must tell them apart.
+  readonly ruleMixin?: boolean;
 }
 
 /**

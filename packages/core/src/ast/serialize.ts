@@ -170,6 +170,11 @@ export interface Frame {
   // string (namespace path descent). Lazily built only when a namespaced call or
   // map/namespace accessor needs it.
   rulesets?: Map<string, Rule[]> | null;
+  // [dedup] source-ordered dispatch candidates keyed by name: parametric MixinDefs
+  // AND paren-less ruleset-mixins INTERLEAVED in authored order (unlike `mixins`,
+  // which groups all parametric defs). Lazily built once from `statements` and
+  // cached; published (unlocked) defs are merged in at lookup from `mixins`.
+  orderedMixins?: Map<string, MixinDef[]> | null;
   // the statements this frame was built from (for lazy rulesets / decl-map).
   statements?: Statement[] | null;
 }
@@ -277,40 +282,98 @@ function lookupMixinCandidates(frame: Frame | null, name: string): MixinDef[] {
   return out ?? [];
 }
 
-/** Own-scope (no parent walk) explicit `MixinDef`s for `name` — the candidate set
- * for a NAMESPACED call, confined to the descended namespace body. */
-function ownMixinCandidates(frame: Frame, name: string): MixinDef[] {
-  return frame.mixins?.get(name)?.slice() ?? [];
-}
-
-/** Own-scope (no parent walk) ruleset-mixins for `name` — the paren-less/plain
- * rulesets callable as zero-arg mixins directly inside a descended namespace body. */
-function ownRuleMixins(frame: Frame, name: string): MixinDef[] {
-  const hit = frame.rulesets !== undefined || frame.statements ? frameRulesets(frame)?.get(name) : undefined;
-  return hit ? hit.map((r) => ({ type: 'MixinDef', name, params: [], body: r.body })) : [];
+/**
+ * [guards] Source-ordered candidate set for `name` within ONE frame: explicit
+ * parametric `MixinDef`s AND paren-less rulesets callable as zero-arg mixins,
+ * INTERLEAVED in authored order. Less expands every matching body in definition
+ * order, and a braceless `.m {…}` sits at its source position AMONG the `.m(…)`
+ * overloads — not lumped after all of them (the bug the old `[...defs, ...rules]`
+ * concat produced). A frame with no `statements` list (e.g. a decl-map closure)
+ * has no rule-mixins and falls back to its explicit-def map.
+ */
+/**
+ * [dedup] Build (once, cached) a frame's source-ordered candidate map: for every
+ * name, its parametric `MixinDef`s and paren-less ruleset-mixins in the order they
+ * were authored. One O(statements) pass — the same cost class as
+ * {@link collectMixins} / {@link collectRulesets} — so per-call lookup stays O(1)
+ * (a map `get`), not a per-call statement walk.
+ */
+function frameOrderedMixins(f: Frame): Map<string, MixinDef[]> | null {
+  if (f.orderedMixins !== undefined) return f.orderedMixins;
+  const st = f.statements;
+  if (!st) return (f.orderedMixins = null);
+  let map: Map<string, MixinDef[]> | null = null;
+  for (const s of st) {
+    if (s.type === 'MixinDef') {
+      const list = (map ??= new Map()).get(s.name);
+      if (list) list.push(s);
+      else map.set(s.name, [s]);
+    } else if (s.type === 'Rule') {
+      // The names this rule answers to as a zero-arg mixin: each selector's
+      // canonical form plus its leading-combinator-stripped form (mirrors the keys
+      // `collectRulesets` builds). Collect UNIQUE keys first so a rule with two
+      // selectors that canonicalize alike adds ONE candidate, not two.
+      let keys: Set<string> | null = null;
+      for (const c of s.selector.selectors) {
+        const key = complexCanonical(c);
+        (keys ??= new Set<string>()).add(key);
+        const stripped = key.replace(/^[>+~]\s*/u, '');
+        if (stripped !== key) keys.add(stripped);
+      }
+      if (keys) for (const key of keys) {
+        // one synthesized candidate per name, interleaved at the rule's source position.
+        const rm: MixinDef = { type: 'MixinDef', name: key, params: [], body: s.body, ruleMixin: true };
+        const list = (map ??= new Map()).get(key);
+        if (list) list.push(rm); else map.set(key, [rm]);
+      }
+    }
+  }
+  return (f.orderedMixins = map);
 }
 
 /**
- * Collect the RULESETS callable as zero-param mixins for `name` up the scope chain
- * (Less: any `.foo {…}` / `#ns { .foo {…} }` ruleset is callable as `.foo()` with
- * no args). Each matching `Rule` is synthesized into a paramless `MixinDef` sharing
- * the rule's body. These are ADDITIVE candidates alongside the explicit `MixinDef`s
- * from {@link lookupMixinCandidates} — a paren-less ruleset never shadows a real
- * parametric definition; both remain dispatch candidates in definition order.
+ * [dedup] A frame's source-ordered candidate list for `name`: the cached
+ * interleaved parametric-def/ruleset-mixin list, plus any dynamically PUBLISHED
+ * defs (detached-ruleset scope unlocking via `@rs()`, which pushes into `mixins`
+ * without touching `statements`) appended.
  */
-function lookupRuleMixins(frame: Frame | null, name: string): MixinDef[] {
+function frameCandidatesInOrder(f: Frame, name: string): MixinDef[] {
+  const mapDefs = f.mixins?.get(name);
+  if (!f.statements) return mapDefs?.slice() ?? [];
+  const base = frameOrderedMixins(f)?.get(name);
+  if (!mapDefs) return base ? base.slice() : [];
+  const out = base ? base.slice() : [];
+  // Append published defs (in `mixins` but not authored in `statements`).
+  for (const d of mapDefs) if (!out.includes(d)) out.push(d);
+  return out;
+}
+
+/**
+ * [guards] All source-ordered candidates for a bare `.m()` call up the scope chain
+ * (nearest frame first), then the detached-ruleset `fallback` closure. The
+ * interleaving replacement for the old `[...lookupMixinCandidates, ...lookupRuleMixins]`
+ * concat, which dispatched every rule-mixin after every parametric def and so
+ * mis-ordered overloaded output (`A B C border` instead of `A B border C`).
+ */
+function lookupCandidates(frame: Frame | null, name: string): MixinDef[] {
   let out: MixinDef[] | null = null;
   let fb: Frame | null | undefined;
   for (let f = frame; f; f = f.parent) {
-    const hit = f.rulesets !== undefined || f.statements ? frameRulesets(f)?.get(name) : undefined;
-    if (hit) for (const r of hit) (out ??= []).push({ type: 'MixinDef', name, params: [], body: r.body });
+    const hit = frameCandidatesInOrder(f, name);
+    if (hit.length) { if (!out) out = hit; else out.push(...hit); }
     if (f.fallback && !fb) fb = f.fallback;
   }
   if (fb) {
-    const more = lookupRuleMixins(fb, name);
-    if (more.length) (out ??= []).push(...more);
+    const more = lookupCandidates(fb, name);
+    if (more.length) { if (!out) out = more; else out.push(...more); }
   }
   return out ?? [];
+}
+
+/** [guards] Own-scope (no parent walk) source-ordered candidates for a NAMESPACED
+ * call, confined to the descended namespace body. */
+function ownCandidates(frame: Frame, name: string): MixinDef[] {
+  return frameCandidatesInOrder(frame, name);
 }
 
 /**
@@ -849,6 +912,10 @@ interface Leaf {
   node: Statement;
   frame: Frame | null;
   important?: boolean;
+  // [dedup] the leaf was emitted from RESTRICTED mixin output (a real parametric
+  // `MixinDef` expansion, or anything nested under one). Such duplicates are kept
+  // verbatim — only unrestricted (authored / ruleset-mixin) duplicates collapse.
+  protectedDup?: boolean;
 }
 
 /** The resolved property name of a declaration (interp names resolve sync). */
@@ -984,12 +1051,18 @@ function walkBody(
   flush: () => void,
   e: Emit,
   imp = false, // call-level !important override
+  protectedDup = false, // [dedup] emitting inside restricted mixin output
 ): void {
   for (const node of statements) {
     switch (node.type) {
       case 'Declaration':
       case 'Comment':
-        group.push(imp ? { node, frame, important: true } : { node, frame });
+        group.push({
+          node,
+          frame,
+          ...(imp ? { important: true } : {}),
+          ...(protectedDup ? { protectedDup: true } : {}),
+        });
         break;
       case 'Rule':
         flush();
@@ -998,10 +1071,10 @@ function walkBody(
         flatten(node, composed, frame, e);
         break;
       case 'MixinCall':
-        expandCall(node, composed, frame, group, flush, e, imp);
+        expandCall(node, composed, frame, group, flush, e, imp, protectedDup);
         break;
       case 'DetachedCall':
-        expandDetachedCall(node, composed, frame, group, flush, e);
+        expandDetachedCall(node, composed, frame, group, flush, e, protectedDup);
         break;
       // [atrule-bubbling] an at-rule nested inside a ruleset body PROJECTS to this
       // block level (flat mode already emits everything at `e.depth`), carrying the
@@ -1064,6 +1137,7 @@ function expandCall(
   flush: () => void,
   e: Emit,
   imp = false,
+  protectedDup = false, // [dedup] already inside restricted mixin output
 ): void {
   // a namespaced call (`#ns .a .b()`) descends a ruleset path first.
   const namespaced = call.path.length > 0;
@@ -1076,8 +1150,8 @@ function expandCall(
   // does NOT fall through to same-name defs in the enclosing/root scope — so it uses
   // an own-scope lookup rather than the chain walk a bare `.m()` call uses.
   const candidates = namespaced
-    ? [...ownMixinCandidates(dispatchFrame, call.name), ...ownRuleMixins(dispatchFrame, call.name)]
-    : [...lookupMixinCandidates(dispatchFrame, call.name), ...lookupRuleMixins(dispatchFrame, call.name)];
+    ? ownCandidates(dispatchFrame, call.name)
+    : lookupCandidates(dispatchFrame, call.name);
   if (candidates.length === 0) return; // unknown mixin: minimal scope emits nothing
   const selected = dispatch(candidates, call, frame, e);
   const bodyImp = imp || call.important; // propagate call-level !important
@@ -1089,7 +1163,11 @@ function expandCall(
       vars: mergeVars(bindings, collectVars(def.body)),
       statements: def.body,
     };
-    walkBody(def.body, composed, callFrame, group, flush, e, bodyImp);
+    // [dedup] a real parametric MixinDef produces RESTRICTED output (its overloaded
+    // duplicates survive); a synthesized ruleset-mixin does not, unless it is already
+    // nested inside restricted output (chain-sticky, matching isFromRestrictedMixinOutput).
+    const bodyProtected = protectedDup || def.ruleMixin !== true;
+    walkBody(def.body, composed, callFrame, group, flush, e, bodyImp, bodyProtected);
   }
 }
 
@@ -1173,10 +1251,11 @@ function expandDetachedCall(
   group: Leaf[],
   flush: () => void,
   e: Emit,
+  protectedDup = false, // [dedup] inherit restriction from the enclosing context
 ): void {
   const r = detachedCallFrame(call.varName, frame);
   if (!r) return;
-  walkBody(r.dr.body, composed, r.callFrame, group, flush, e);
+  walkBody(r.dr.body, composed, r.callFrame, group, flush, e, false, protectedDup);
 }
 
 /**
@@ -1223,11 +1302,65 @@ function flushBlock(sel: string[], group: Leaf[], e: Emit, selNode?: SelectorLis
   }
   put(e, ' {\n');
   // a leaf group with any `+`/`+_` merge folds; otherwise the byte-identical
-  // per-leaf path (zero-cost gate).
+  // per-leaf path (zero-cost gate), after collapsing duplicate declarations.
   if (groupHasMerge(group)) mergeFold(group, e, INDENT.repeat(e.depth + 1));
-  else for (const leaf of group) emitLeaf(leaf, e);
+  else {
+    const kept = dedupGroup(group, e);
+    for (const leaf of kept) emitLeaf(leaf, e);
+  }
   if (idt) put(e, idt);
   put(e, '}\n');
+}
+
+/**
+ * [dedup] Less duplicate-declaration handling: within one block, for each
+ * (name, value, !important) key keep only the LAST occurrence and drop earlier
+ * exact duplicates — EXCEPT leaves flagged `protectedDup` (restricted overloaded-
+ * mixin output), which are always kept. A cheap gate counts resolved names first
+ * and bails when no property repeats, so a block without duplicates resolves no
+ * value bytes (perf-neutral common path). Merge (`+`/`+_`) groups take the fold
+ * path and never reach here.
+ */
+function dedupGroup(group: Leaf[], e: Emit): Leaf[] {
+  if (group.length < 2) return group;
+  // Gate: resolve each declaration NAME (cheap for string names); dedup only runs
+  // if some property name occurs more than once in the block.
+  const names: (string | null)[] = new Array(group.length).fill(null);
+  const nameCounts = new Map<string, number>();
+  let repeats = false;
+  for (let i = 0; i < group.length; i++) {
+    const n = group[i]!.node;
+    if (n.type !== 'Declaration') continue;
+    const nm = declName(n, group[i]!.frame, e);
+    names[i] = nm;
+    const c = (nameCounts.get(nm) ?? 0) + 1;
+    nameCounts.set(nm, c);
+    if (c > 1) repeats = true;
+  }
+  if (!repeats) return group;
+  // Reverse keep-last: a key already recorded from a LATER position collapses this
+  // (earlier) occurrence, unless it is protected restricted-mixin output.
+  const seen = new Set<string>();
+  let suppressed: Set<number> | null = null;
+  for (let i = group.length - 1; i >= 0; i--) {
+    const leaf = group[i]!;
+    const n = leaf.node;
+    if (n.type !== 'Declaration') continue;
+    const nm = names[i]!;
+    if ((nameCounts.get(nm) ?? 0) < 2) continue; // unique name → nothing to collapse
+    const val = evalBytesSync(n.value, leaf.frame, e);
+    const important = n.important || leaf.important === true;
+    const key = `${nm} ${val} ${important ? '!' : ''}`;
+    if (seen.has(key) && leaf.protectedDup !== true) {
+      (suppressed ??= new Set<number>()).add(i);
+    } else {
+      seen.add(key);
+    }
+  }
+  if (!suppressed) return group;
+  const out: Leaf[] = [];
+  for (let i = 0; i < group.length; i++) if (!suppressed.has(i)) out.push(group[i]!);
+  return out;
 }
 
 /* --------------------------------------------------------------- merge */
