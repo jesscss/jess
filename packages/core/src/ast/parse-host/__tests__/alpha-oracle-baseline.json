@@ -77,11 +77,11 @@
   },
   "container/container.less": {
     "status": "DIFF",
-    "bytes": 5197
+    "bytes": 5203
   },
   "css-3/css-3.less": {
     "status": "DIFF",
-    "bytes": 2299
+    "bytes": 2293
   },
   "css-escapes/css-escapes.less": {
     "status": "DIFF",
@@ -137,19 +137,11 @@
   },
   "functions-each/functions-each.less": {
     "status": "DIFF",
-    "bytes": 998
+    "bytes": 941
   },
   "functions/functions.less": {
     "status": "DIFF",
-    "bytes": 5877
-  },
-  "functions/legacy/functions.less": {
-    "status": "DIFF",
-    "bytes": 5875
-  },
-  "ie-filters-REMOVED/legacy/ie-filters.less": {
-    "status": "DIFF",
-    "bytes": 404
+    "bytes": 5900
   },
   "impor/impor.less": {
     "status": "MATCH",
@@ -165,7 +157,7 @@
   },
   "import/import-module.less": {
     "status": "DIFF",
-    "bytes": 147
+    "bytes": 150
   },
   "import/import-once.less": {
     "status": "MATCH",
@@ -187,10 +179,6 @@
   "import/import.less": {
     "status": "DIFF",
     "bytes": 713
-  },
-  "javascript-REMOVED/legacy/javascript.less": {
-    "status": "DIFF",
-    "bytes": 150
   },
   "layer/layer.less": {
     "status": "DIFF",
@@ -310,7 +298,7 @@
   },
   "property-accessors/property-accessors.less": {
     "status": "DIFF",
-    "bytes": 782
+    "bytes": 728
   },
   "property-name-interp/property-name-interp.less": {
     "status": "DIFF",

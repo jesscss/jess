@@ -69,14 +69,26 @@ function normalize(s: string): string {
   return s.replace(/[ \t]+$/gm, '').replace(/\n+$/, '\n').trimEnd();
 }
 
-/** Recursively collect `.less` files that have a sibling `.css` golden. */
+/**
+ * Recursively collect `.less` files that have a sibling `.css` golden.
+ *
+ * EXCLUDES any fixture under a `legacy/` segment: in the alpha corpus a
+ * `legacy/` subfolder holds the OLD Less 4.x reference output, not the v5
+ * target. The top-level `.css` next to a `.less` is the accepted v5 golden;
+ * the `legacy/*.css` files are 4.x and MUST NOT be diffed against v5 ast/
+ * output (doing so flags every intended 4.x→v5 divergence as a false gap).
+ */
 function pairedFixtures(root: string): string[] {
   const out: string[] = [];
   const walk = (dir: string) => {
     for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
-      const p = path.join(dir, ent.name);
-      if (ent.isDirectory()) walk(p);
-      else if (ent.name.endsWith('.less') && fs.existsSync(`${p.slice(0, -5)}.css`)) out.push(p);
+      if (ent.isDirectory()) {
+        if (ent.name === 'legacy') continue; // 4.x reference, not a v5 target
+        walk(path.join(dir, ent.name));
+      } else {
+        const p = path.join(dir, ent.name);
+        if (ent.name.endsWith('.less') && fs.existsSync(`${p.slice(0, -5)}.css`)) out.push(p);
+      }
     }
   };
   walk(root);
