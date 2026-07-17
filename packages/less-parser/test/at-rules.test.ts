@@ -66,6 +66,60 @@ describe('innerAtRule', () => {
   });
 });
 
+// `@supports`'s prelude is a `<supports-condition>` (css-conditional-3 §2) — no
+// bare form. v5 .less is STRICTER than 4.x (which only warns): a bare CSS ident or
+// a bare `@var` prelude is a HARD parse error. Valid openers: `(`, `not`, a
+// function-token (`selector(…)`), AND Less `@{…}` interpolation.
+describe('strict @supports prelude (v5)', () => {
+  it('rejects a bare CSS ident prelude (@supports color)', () => {
+    const { errors } = parse('@supports color { a { color: red } }', 'Stylesheet');
+    expect(errors.length).toBe(1);
+    const e: any = errors[0];
+    expect(String(e.message)).toContain('supports condition');
+    expect(e.line).toBe(1);
+    expect(e.column).toBe(11);
+  });
+
+  it('rejects a bare variable-reference prelude (@supports @cond)', () => {
+    const { errors } = parse('@supports @cond { a { color: red } }', 'Stylesheet');
+    expect(errors.length).toBe(1);
+    const e: any = errors[0];
+    expect(String(e.message)).toContain('supports condition');
+    expect(e.line).toBe(1);
+    expect(e.column).toBe(11);
+  });
+
+  it('accepts a parenthesized condition (@supports (color: red))', () => {
+    const { errors } = parse('@supports (color: red) { a { color: red } }', 'Stylesheet');
+    expect(errors.length).toBe(0);
+  });
+
+  it('accepts a not-led condition (@supports not (x: y))', () => {
+    const { errors } = parse('@supports not (x: y) { a { color: red } }', 'Stylesheet');
+    expect(errors.length).toBe(0);
+  });
+
+  it('accepts a function-token condition (@supports selector(:has(a)))', () => {
+    const { errors } = parse('@supports selector(:has(a)) { a { color: red } }', 'Stylesheet');
+    expect(errors.length).toBe(0);
+  });
+
+  it('accepts a Less @{…} interpolation prelude (@supports @{cond})', () => {
+    const { errors } = parse('@supports @{cond} { a { color: red } }', 'Stylesheet');
+    expect(errors.length).toBe(0);
+  });
+
+  it('keeps @media bare form valid (@media screen)', () => {
+    const { errors } = parse('@media screen { a { color: red } }', 'Stylesheet');
+    expect(errors.length).toBe(0);
+  });
+
+  it('keeps @container bare form valid (@container name (width > 0))', () => {
+    const { errors } = parse('@container name (width > 0) { a { color: red } }', 'Stylesheet');
+    expect(errors.length).toBe(0);
+  });
+});
+
 describe('layerName', () => {
   it('should parse @layer with name', () => {
     const { errors } = parse('@layer theme { }', 'Stylesheet');

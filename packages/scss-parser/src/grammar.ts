@@ -552,7 +552,10 @@ export const scssGrammar = compose([lessGrammar, rules({ trivia: rw }, (g: any) 
   // ── SCSS at-rule prelude interpolation (segments) ────────────────────────
   const scssPreludeText = regex(/(?:[^{#]|#(?!\{))+/);
   const scssPreludeSegment = choice(ScssInterpBare, scssPreludeText);
-  /** @todo(css-spec-parity): this fully permissive raw-text prelude feeds `QueryAtRuleBlock` for @media/@container/@supports (below), so a bare `@supports color` is accepted with no <supports-condition> check — unlike the tightened css-parser (726124397). Once SCSS interpolation is factored out, require a real <supports-condition> for @supports while keeping @media/@container bare forms valid; see css-conditional-3 §2. (Url/urlInner, calc grammar, and generic AtRuleBlock are inherited from less-parser/grammar and flagged there.) */
+  // Fully permissive raw-text + `#{…}`-interpolation prelude. Feeds `@media` /
+  // `@container` (which have bare forms) AND — via the dedicated, opener-gated
+  // `SupportsAtRuleBlock` below — `@supports`, whose `<supports-condition>` prelude
+  // is validated for a legal opener before this scan consumes it.
   const scssPermissivePrelude = oneOrMore(scssPreludeSegment);
 
   // Generic unknown at-rule statement (`@charset "x";`, or a bare `@c` used as a
@@ -613,10 +616,34 @@ export const scssGrammar = compose([lessGrammar, rules({ trivia: rw }, (g: any) 
       declarationList,
       expect(literal('}'))
     ));
-  const queryAtKeyword = regex(/@(?:media|container|supports)(?![-\w])/i);
+  const queryAtKeyword = regex(/@(?:media|container)(?![-\w])/i);
   const QueryAtRuleBlock = node(
     sequence(
       queryAtKeyword,
+      scssPermissivePrelude,
+      expect(literal('{')),
+      atRuleBody,
+      expect(literal('}'))
+    ));
+
+  // ── Strict `@supports` prelude (Sass+) ───────────────────────────────────────
+  // `@supports`'s prelude is a `<supports-condition>` (css-conditional-3 §2) — no
+  // bare form. Valid openers: `(`, the `not` keyword, a `<function-token>` (ident
+  // glued to `(`, e.g. `selector(…)`), OR — the SCSS interpolation form — `#{…}`.
+  // A bare CSS ident (`@supports color {}`) or a bare `$variable`
+  // (`@supports $cond {}`) is INVALID (a hard parse error — Sass+ rejects invalid
+  // CSS). `@media`/`@container` keep their bare forms (handled by the permissive
+  // `QueryAtRuleBlock` above, from which `@supports` is now excluded). Built as a
+  // `QueryAtRuleBlock` node so the SCSS `_buildQueryAtRuleBlock` builder assembles
+  // the identical AtRule from the same prelude nodes — the zero-width opener
+  // lookahead adds no child, so only the acceptance set changes. @see
+  // https://www.w3.org/TR/css-conditional-3/#at-supports
+  const supportsAtKeyword = regex(/@supports(?![-\w])/i);
+  const supportsCondAhead = regex(/(?=\(|not(?![-\w])|#\{|-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*\()/i);
+  const SupportsAtRuleBlock = node('QueryAtRuleBlock',
+    sequence(
+      supportsAtKeyword,
+      expect(supportsCondAhead, 'supports condition'),
       scssPermissivePrelude,
       expect(literal('{')),
       atRuleBody,
@@ -661,7 +688,7 @@ export const scssGrammar = compose([lessGrammar, rules({ trivia: rw }, (g: any) 
     ScssImportItem, ImportAtRuleStatement,
     ScssNestedProps,
     ScssDiagnostic, ScssAtRootFilter, ScssAtRootSelector, ScssAtRootPlain,
-    QueryAtRuleBlock, ScssScopeBlock, ScssLayerBlock,
+    QueryAtRuleBlock, SupportsAtRuleBlock, ScssScopeBlock, ScssLayerBlock,
     Stylesheet, simpleSelector, declarationList, atRuleBody
   };
 })]);

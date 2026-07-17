@@ -281,7 +281,6 @@ const XFAIL_PARSE_MISSES: readonly string[] = [
   'css/supports/error.hrx::syntax/anything/non_identifier_start',
   'css/supports/error.hrx::syntax/declaration/multiple',
   'css/supports/error.hrx::syntax/function/not',
-  'css/supports/error.hrx::syntax/none',
   'css/supports/error.hrx::syntax/operator/and_after_not',
   'css/supports/error.hrx::syntax/operator/lonely_not',
   'css/supports/error.hrx::syntax/operator/trailing_and',

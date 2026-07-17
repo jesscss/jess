@@ -100,7 +100,14 @@ const positiveCases: ParseCase[] = [
   { name: '@use with config var flags', src: '@use "foo" with ($a: 1 !default, $b: 2 !global);' },
   { name: 'diagnostic at-rules', src: '@debug "x"; @warn "y"; @error "z";' },
   { name: '@at-root', src: '@at-root { .a { color: red; } }' },
-  { name: '@at-root selector shorthand', src: '@at-root .a { color: red; }' }
+  { name: '@at-root selector shorthand', src: '@at-root .a { color: red; }' },
+  // Strict @supports prelude (Sass+): valid <supports-condition> openers.
+  { name: '@supports parenthesized condition', src: '@supports (color: red) { .a { color: red; } }' },
+  { name: '@supports not-led condition', src: '@supports not (x: y) { .a { color: red; } }' },
+  { name: '@supports function-token condition', src: '@supports selector(:has(a)) { .a { color: red; } }' },
+  // #{…} interpolation opener is covered by 'interpolation inside @supports prelude' above.
+  { name: '@media bare form stays valid', src: '@media screen { .a { color: red; } }' },
+  { name: '@container bare form stays valid', src: '@container name (width > 0) { .a { color: red; } }' }
 ];
 
 const errorCases: ErrorCase[] = [
@@ -124,6 +131,18 @@ const errorCases: ErrorCase[] = [
     name: '@at-root filter rejection',
     src: '@at-root (without: media) { .a { color: red; } }',
     message: '@at-root prelude/filter forms are not yet supported in Jess'
+  },
+  // Strict @supports prelude (Sass+): a bare CSS ident or a bare $variable is not
+  // a <supports-condition> (css-conditional-3 §2) and is a hard parse error.
+  {
+    name: 'bare CSS ident @supports prelude rejection',
+    src: '@supports color { .a { color: red; } }',
+    message: 'supports condition'
+  },
+  {
+    name: 'bare $variable @supports prelude rejection',
+    src: '@supports $cond { .a { color: red; } }',
+    message: 'supports condition'
   }
 ];
 

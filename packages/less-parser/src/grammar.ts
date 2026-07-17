@@ -103,7 +103,7 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   // statements ahead of it — `many(choice(g.ScssIf, …, g.stylesheetItem))` —
   // without re-listing the whole set. Keeps the extension seam in one place.
   const stylesheetItem = choice(
-    g.VarDeclaration, g.VarCall, g.QueryAtRuleBlock, g.AtRuleBlock, g.ImportAtRuleStatement, g.AtRuleStatement, g.ExtendStatement, g.Ruleset, g.MixinOrQualifiedRule, g.EachFor,
+    g.VarDeclaration, g.VarCall, g.QueryAtRuleBlock, g.SupportsAtRuleBlock, g.AtRuleBlock, g.ImportAtRuleStatement, g.AtRuleStatement, g.ExtendStatement, g.Ruleset, g.MixinOrQualifiedRule, g.EachFor,
     sequence(g.Call, optional(literal(';'))), literal(';')
   );
   const Stylesheet = node(
@@ -413,7 +413,7 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   // block statements ahead of it — `many(choice(g.ScssIf, …, g.blockItem))`.
   // `NestedMixinDefinition` stays a local const referenced here (Less-only).
   const blockItem = choice(
-    g.VarDeclaration, g.VarCall, g.QueryAtRuleBlock, g.AtRuleBlock, g.ImportAtRuleStatement, g.AtRuleStatement, g.ExtendStatement, g.Ruleset, NestedMixinDefinition, g.EachFor, g.MixinCall, g.Declaration, g.CustomDeclaration,
+    g.VarDeclaration, g.VarCall, g.QueryAtRuleBlock, g.SupportsAtRuleBlock, g.AtRuleBlock, g.ImportAtRuleStatement, g.AtRuleStatement, g.ExtendStatement, g.Ruleset, NestedMixinDefinition, g.EachFor, g.MixinCall, g.Declaration, g.CustomDeclaration,
     // A bare function-call statement in a body, e.g. `each(@list, { … });`. Needs
     // `ident(` so it never shadows a Declaration (which needs `:`).
     sequence(g.Call, optional(literal(';'))), literal(';')
@@ -890,12 +890,51 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
     mediaType,
     many(sequence(regex(/and(?![-\w])/i), g.QueryInParens)));
   const mediaQueryItem = choice(g.QueryCondition, mediaTypeQuery);
-  /** @todo(css-spec-parity): `queryPrelude` treats @media/@container/@supports uniformly and does not require a real <supports-condition> for @supports (a bare `@supports color` still parses), unlike the tightened css-parser which rejects it while keeping @media/@container bare forms valid — port from css-parser 726124397; see css-conditional-3 §2 (<supports-condition>). */
   const queryPrelude = sequence(
     optional(containerName), g.QueryCondition, many(sequence(literal(','), mediaQueryItem)));
+  // `@supports` stays in the STRUCTURED query block for well-formed parenthesized /
+  // `not` conditions (so a stray/unbalanced bracket is still rejected, not
+  // swallowed). Its stricter opener rule is enforced by the dedicated
+  // `SupportsAtRuleBlock` fallback below, which catches the leftovers this
+  // structured shape can't parse.
   const queryAtKeyword = regex(/@(?:media|container|supports)(?![-\w])/i);
   const QueryAtRuleBlock = node(
     sequence(queryAtKeyword, g.queryPrelude, expect(literal('{'), '{'), g.atRuleBody, expect(literal('}'), '}')));
+
+  // ── Strict `@supports` prelude (v5 .less) ────────────────────────────────────
+  // `@supports`'s prelude is a `<supports-condition>` (css-conditional-3 §2), which
+  // — unlike a `@media`/`@container` query — has NO bare form. It must OPEN with
+  // `(` (parenthesized), the `not` keyword, a `<function-token>` (an ident glued to
+  // `(`, e.g. `selector(…)` / `<general-enclosed>`), OR — the Less addition — a
+  // `@{…}` interpolation (the migration target: an interpolated condition is
+  // allowed where a bare `@var` is not). A bare CSS ident (`@supports color {}`) or
+  // a bare variable reference (`@supports @cond {}`) is INVALID. v5 .less makes this
+  // a HARD PARSE ERROR — stricter by design than Less 4.x, which only deprecates the
+  // bare form with a warning (4.x `feat: deprecate bare @variable in non-value
+  // at-rule positions`). Well-formed parenthesized/`not` conditions are already
+  // taken by the structured `QueryAtRuleBlock` above; this required-condition
+  // fallback exists so the leftovers that reach it (a bare ident, a bare `@var`, or
+  // — now VALID — a `@{…}` interpolation opener) either commit or report the missing
+  // condition, instead of being swallowed by the permissive generic `AtRuleBlock`.
+  // A zero-width lookahead asserts the opener without consuming, so the shared
+  // `atPrelude` scan still owns the walk to `{`; on failure `expect` recovers in
+  // place and the scan continues, so the block still parses (one error, no cascade).
+  // Ordered AFTER `QueryAtRuleBlock` and BEFORE the generic `AtRuleBlock` in the
+  // statement choice, so `@supports` never falls through to the permissive arm.
+  // @see https://www.w3.org/TR/css-conditional-3/#at-supports
+  const supportsAtKeyword = regex(/@supports(?![-\w])/i);
+  const supportsCondAhead = regex(/(?=\(|not(?![-\w])|@\{|-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*\()/i);
+  // The generic `atPrelude` scan stops at the first top-level `{`, which collides
+  // with a `@{…}` interpolation's opening brace (the balanced-curly skip only fires
+  // ONCE the scanner is already at `{`, but the stop wins there). Adding `lessInterp`
+  // to the skip list consumes a `@{…}` atom at its leading `@`, before the scanner
+  // ever reaches the interpolation `{`, so `@supports @{cond} { … }` reaches the real
+  // block brace. Scoped to this rule so the generic prelude scan is unchanged.
+  const supportsPreludeScan = optional(scanTo(choice(literal('{'), literal(';')),
+    { skip: [bParen, bSquare, bCurly, lessInterp, singleStr, doubleStr] }));
+  const reqSupportsPrelude = sequence(expect(supportsCondAhead, 'supports condition'), supportsPreludeScan);
+  const SupportsAtRuleBlock = node('AtRuleBlock',
+    sequence(supportsAtKeyword, reqSupportsPrelude, expect(literal('{'), '{'), g.atRuleBody, expect(literal('}'), '}')));
 
   /** @todo(css-spec-parity): generic `AtRuleBlock` overrides the CSS base with a flat, permissive `atPrelude` — re-check against the css-parser `AtRuleBlock` after the @supports/query-prelude tightenings (726124397) so structured at-rules aren't silently accepted here that the base now rejects; see css-syntax-3 §5.4.2 (consume-an-at-rule). */
   const AtRuleBlock = node(
@@ -939,7 +978,7 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
     Ruleset, declarationList, Declaration, customValue, customCurlyBlock, cpInner, cpParen, cpSquare, cpCurly, cpValue, CustomDeclaration, declaration,
     valueList, valueSequence, value, UnicodeRange, Negative, mathProduct, mathSum, topProduct, topSum, parenExprList, InterpValue, NsAccessor, EscapedValue, NamedColor, Url,
     parenBody, permissiveParenBody, Paren, GluedParen, DetachedRuleset, functionCallArgs, squareParenBody, calcBody, Call, FormatCall, SquareParen, anyValue, EachFor,
-    queryPrelude, QueryAtRuleBlock, ImportAtRuleStatement,
+    queryPrelude, QueryAtRuleBlock, SupportsAtRuleBlock, ImportAtRuleStatement,
     AtRuleBlock, AtRuleStatement, atRuleBody,
     // Exposed so composing dialects (SCSS) can re-derive `simpleSelector` with a
     // gated `&` arm without duplicating these token regexes. Non-behavioral.
