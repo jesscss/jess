@@ -56,3 +56,4 @@ export { buildEvaluator } from './evaluator.js';
 export { createFnRegistry, type FnRegistry } from './value-dispatch.js';
 // [value-literal-tag] the parser's LIT_* classification (VALUE-LITERAL-TAG-SPEC).
 export { LiteralTag, materializeLiteral, tagForWord, sniffLiteral } from './literal-tag.js';
+export type { LitFields } from './literal-tag.js';

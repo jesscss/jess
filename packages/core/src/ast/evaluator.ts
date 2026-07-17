@@ -13,7 +13,7 @@
  */
 import type { EvalModes, List as ValueList, ValueEvaluator, ValueObj } from './value-eval.js';
 import { operate, compare as compareValues, typeCheck as typeCheckValues } from './value-operate.js';
-import { LiteralTag, materializeLiteral, sniffLiteral } from './literal-tag.js';
+import { LiteralTag, type LitFields, materializeLiteral, sniffLiteral } from './literal-tag.js';
 import { createFnRegistry } from './value-dispatch.js';
 import { FN_LIST } from './functions/index.js';
 import { makeKeyword } from './value-factory.js';
@@ -41,8 +41,8 @@ export function buildEvaluator(): ValueEvaluator {
   const registry = createFnRegistry();
   registry.registerAll(FN_LIST);
 
-  const materialize = (bytes: string, tag?: LiteralTag): ValueObj =>
-    tag !== undefined ? materializeLiteral(bytes, tag) : sniffLiteral(bytes);
+  const materialize = (bytes: string, tag?: LiteralTag, lit?: LitFields): ValueObj =>
+    tag !== undefined ? materializeLiteral(bytes, tag, lit) : sniffLiteral(bytes);
 
   const call = (name: string, args: ValueList, modes: EvalModes): ValueObj => {
     if (registry.has(name)) return registry.dispatch(name, args, { modes, stringify });

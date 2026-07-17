@@ -36,7 +36,7 @@
  */
 
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
-import type { LiteralTag } from './literal-tag.js';
+import type { LiteralTag, LitFields } from './literal-tag.js';
 
 /* --------------------------------------------------------- value domain */
 
@@ -179,7 +179,7 @@ export interface ValueEvaluator {
    * back to a sniff. Only OPERATED literals are materialized; the ~98% inert
    * literals emit their verbatim bytes and never reach here.
    */
-  materialize(bytes: string, tag?: LiteralTag): ValueObj;
+  materialize(bytes: string, tag?: LiteralTag, lit?: LitFields): ValueObj;
   /** Binary operation on two materialized operands (direct / delegated math). */
   operate(op: string, left: ValueObj, right: ValueObj, modes: EvalModes): ValueObj;
   /** Named-function call on a materialized arg list. Sync unless a genuinely
