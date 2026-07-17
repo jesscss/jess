@@ -225,13 +225,21 @@ function asStacks(m: Map<string, ValueNode> | null): Map<string, ValueNode[]> | 
 // selector string (namespace-path descent). Built lazily on first path lookup.
 function collectRulesets(statements: Statement[]): Map<string, Rule[]> | null {
   let map: Map<string, Rule[]> | null = null;
+  const add = (key: string, s: Rule): void => {
+    const list = (map ??= new Map()).get(key);
+    if (list) { if (!list.includes(s)) list.push(s); }
+    else map.set(key, [s]);
+  };
   for (const s of statements) {
     if (s.type === 'Rule') {
       for (const c of s.selector.selectors) {
         const key = complexCanonical(c);
-        const list = (map ??= new Map()).get(key);
-        if (list) list.push(s);
-        else map.set(key, [s]);
+        add(key, s);
+        // A leading combinator (`#theme { > .mixin {} }` → key `> .mixin`) is a
+        // child-descent placement; a namespace-accessor call (`#theme > .mixin()`)
+        // dispatches by the bare own-local selector, so also key the stripped form.
+        const stripped = key.replace(/^[>+~]\s*/u, '');
+        if (stripped !== key) add(stripped, s);
       }
     }
   }
@@ -265,6 +273,42 @@ function lookupMixinCandidates(frame: Frame | null, name: string): MixinDef[] {
       if (!out) out = more;
       else out.push(...more);
     }
+  }
+  return out ?? [];
+}
+
+/** Own-scope (no parent walk) explicit `MixinDef`s for `name` — the candidate set
+ * for a NAMESPACED call, confined to the descended namespace body. */
+function ownMixinCandidates(frame: Frame, name: string): MixinDef[] {
+  return frame.mixins?.get(name)?.slice() ?? [];
+}
+
+/** Own-scope (no parent walk) ruleset-mixins for `name` — the paren-less/plain
+ * rulesets callable as zero-arg mixins directly inside a descended namespace body. */
+function ownRuleMixins(frame: Frame, name: string): MixinDef[] {
+  const hit = frame.rulesets !== undefined || frame.statements ? frameRulesets(frame)?.get(name) : undefined;
+  return hit ? hit.map((r) => ({ type: 'MixinDef', name, params: [], body: r.body })) : [];
+}
+
+/**
+ * Collect the RULESETS callable as zero-param mixins for `name` up the scope chain
+ * (Less: any `.foo {…}` / `#ns { .foo {…} }` ruleset is callable as `.foo()` with
+ * no args). Each matching `Rule` is synthesized into a paramless `MixinDef` sharing
+ * the rule's body. These are ADDITIVE candidates alongside the explicit `MixinDef`s
+ * from {@link lookupMixinCandidates} — a paren-less ruleset never shadows a real
+ * parametric definition; both remain dispatch candidates in definition order.
+ */
+function lookupRuleMixins(frame: Frame | null, name: string): MixinDef[] {
+  let out: MixinDef[] | null = null;
+  let fb: Frame | null | undefined;
+  for (let f = frame; f; f = f.parent) {
+    const hit = f.rulesets !== undefined || f.statements ? frameRulesets(f)?.get(name) : undefined;
+    if (hit) for (const r of hit) (out ??= []).push({ type: 'MixinDef', name, params: [], body: r.body });
+    if (f.fallback && !fb) fb = f.fallback;
+  }
+  if (fb) {
+    const more = lookupRuleMixins(fb, name);
+    if (more.length) (out ??= []).push(...more);
   }
   return out ?? [];
 }
@@ -1022,9 +1066,18 @@ function expandCall(
   imp = false,
 ): void {
   // a namespaced call (`#ns .a .b()`) descends a ruleset path first.
-  const dispatchFrame = call.path.length > 0 ? descendNamespacePath(call.path, frame) : frame;
+  const namespaced = call.path.length > 0;
+  const dispatchFrame = namespaced ? descendNamespacePath(call.path, frame) : frame;
   if (dispatchFrame === null) return; // unknown namespace → nothing
-  const candidates = lookupMixinCandidates(dispatchFrame, call.name);
+  // Explicit `MixinDef`s AND paren-less/plain rulesets callable as zero-arg mixins
+  // (Less: `.foo {}` is a mixin). Rule candidates are ADDITIVE — appended after the
+  // parametric defs so both dispatch, in definition order. A NAMESPACED call
+  // (`#ns > .m()`) resolves the name ONLY inside the descended namespace body — it
+  // does NOT fall through to same-name defs in the enclosing/root scope — so it uses
+  // an own-scope lookup rather than the chain walk a bare `.m()` call uses.
+  const candidates = namespaced
+    ? [...ownMixinCandidates(dispatchFrame, call.name), ...ownRuleMixins(dispatchFrame, call.name)]
+    : [...lookupMixinCandidates(dispatchFrame, call.name), ...lookupRuleMixins(dispatchFrame, call.name)];
   if (candidates.length === 0) return; // unknown mixin: minimal scope emits nothing
   const selected = dispatch(candidates, call, frame, e);
   const bodyImp = imp || call.important; // propagate call-level !important
