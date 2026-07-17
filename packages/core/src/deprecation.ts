@@ -51,13 +51,13 @@ export class Deprecation {
       description: 'The ./ operator is deprecated.'
     }),
     new Deprecation('variable-in-unknown-value', {
-      description: '@[ident] in custom property values is treated as literal text, not a variable reference. Use @{[ident]} if you want it to be evaluated.'
+      description: '@variable in custom property values is treated as literal text.'
     }),
     new Deprecation('variable-in-at-rule-prelude', {
       description: 'A bare @variable in an at-rule prelude (e.g. @media @foo) is deprecated. Use @{variable} interpolation instead.'
     }),
     new Deprecation('property-in-unknown-value', {
-      description: '$[ident] in custom property values is treated as literal text, not a property reference. Use ${[ident]} if you want it to be evaluated.'
+      description: '$property in custom property values is treated as literal text.'
     }),
     new Deprecation('less-plugin', {
       description: 'Less @plugin is deprecated. Use @use / @-use for script integration in .less files.'
