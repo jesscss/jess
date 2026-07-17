@@ -9,6 +9,17 @@ End state: package graph strictly **parser → core** (acyclic).
 
 ## Sequencing (live state — update as items land)
 
+> **A4 IS THE ACTIVE NEXT ARC (owner, 2026-07-17), gated ONLY on the ast/ feature-gap
+> list.** A4 (retire the legacy `BuilderHost`, single-target the grammar) is no longer a
+> deferral — it is the arc that makes `ast/` the engine. Its execution plan, the empirical
+> feature-gap inventory it gates on, the render-flip design, and the differential oracle are
+> in **`AST-FEATURE-COMPLETENESS-AND-ENGINE-CUTOVER.md`**. Key reframe carried from there:
+> A4's *deletion* of the legacy `BuilderHost` cannot precede the **C1 render flip**
+> (`Compiler.render` still consumes legacy `tree/` nodes; the `less-compat` visitor wraps
+> them) — so the order is *feature-complete ast/ (close P1/P2 parse + E1–E5 eval gaps) →
+> flip render → then A4 deletion*, not delete-then-fix. The completeness bar is
+> `benchmark.less` byte-correct AND `bootstrap.less` rendering correctly.
+
 The whole cleanup wave is gated behind a **byte-identical benchmark oracle** so every
 structural cut can prove it changed no output. Order:
 
@@ -30,7 +41,7 @@ structural cut can prove it changed no output. Order:
 - **No regex outside Parseman's `regex()` combinator** (§0.10). Gate: NO ad-hoc `.test/.exec/.match/new RegExp//…/`-literal in builder/action/host/resolve code. `regex()` in `grammar*.ts` is the ONE sanctioned home (may run a real RegExp — fine). Grep MUST be empty per phase.
 - **Builders are LEAN** — thin node-assembly over the grammar's already-structured children. Yardstick: if a builder tokenizes/splits/classifies-by-pattern, the grammar UNDER-structured — push work into the grammar, not the builder.
 - **Chevrotain (`less-parser/src/productions/*.ts`, `@ts-nocheck`) = COVERAGE + SEMANTICS oracle, NOT a 1:1 structural template.** It confirms which cases must work + what they mean; structure them in Parseman's cleanest CONTEXTUAL idiom (scannerless → finer than Chevrotain's lexer-forced coarseness). Don't copy its node shape; don't under-structure.
-- **Byte-identity gate every step** — parse→serialize output byte-for-byte vs bridge oracle across corpus (bridge/census/nested-census/atrule/extend/guard/import/value + whole-doc driver). Any non-identical byte = botched step; fix before advancing. **CAVEAT:** the whole-doc legacy oracle (`oracle-run.mjs`) is NOT ground truth — it has real `&`-expansion bugs on benchmark.less (doubles segments, drops ancestors; ast/ is correct — see the known-262 baseline residual). Gate = **no NEW diff beyond the categorized baseline** (intended-v5 divergences + declared-deferred features + legacy-oracle-bug lines where ast/ already wins), and validate contested selector lines against real Less 4.x (`~/git/worktrees/less.js/`, READ-ONLY), NOT `diff==0`.
+- **Byte-identity gate every step** — parse→serialize output byte-for-byte vs bridge oracle across corpus (bridge/census/nested-census/atrule/extend/guard/import/value + whole-doc driver). Any non-identical byte = botched step; fix before advancing. **CAVEAT:** the whole-doc legacy oracle (`oracle-run.mjs`) is NOT ground truth — it has real `&`-expansion bugs on benchmark.less (doubles segments, drops ancestors; ast/ is correct — see the known-262 baseline residual). Gate = **no NEW diff beyond the categorized baseline** (intended-v5 divergences + declared-deferred features + legacy-oracle-bug lines where ast/ already wins), and validate contested selector lines against real Less 4.x (`~/git/worktrees/less.js/`, READ-ONLY), NOT `diff==0`. **The buggy `oracle-run.mjs` is superseded by the differential oracle `packages/core/src/ast/parse-host/__tests__/alpha-oracle-differential.test.ts` (ast/ vs less.js `alpha` v5 goldens, baseline-diff gate) — see `AST-FEATURE-COMPLETENESS-AND-ENGINE-CUTOVER.md` §4.**
 - **No `as any`.** Proper guards/types.
 
 ## Phases (checklist)
@@ -62,12 +73,21 @@ Interpolation-bearing families CANNOT relocate until the grammar hands over stru
 - [ ] **trivia/`declParts`/`sliceSpan`** (§0.8c): port span/trivia semantics VERBATIM into v2 build path (same offsets/trim/`%%`/`;`/`:`) — do NOT assume legacy has equivalents.
 - **GATE:** byte-identical (incl. moved import corpus) + §0.10 grep empty over v2 builder/host/resolve files. §0.8c move runs FULL census, not just family suite.
 
-### A4 — delete parse-host + retire legacy seam (§0.5, §5)
+### A4 — flip render to ast/, then delete parse-host + retire legacy seam (§0.5, §5)
+**PRECONDITION (the C1 render flip): `Compiler.render` must first stop consuming legacy
+`tree/` nodes.** Full plan + gates in `AST-FEATURE-COMPLETENESS-AND-ENGINE-CUTOVER.md` §2.
+Deletion below is the C2 half and cannot land before C1.
+- [ ] **C1 (gate for everything below):** flip `Compiler.render` from `parseLessFn`+`tree.eval`
+  to `parseToAst`+ast/`serialize`; re-point the `import.ts:31/182` legacy `parseLessFn` edge at
+  the ast/ parse. Gated on the feature-gap list (P1/P2 parse + E1–E5 eval) being closed:
+  `benchmark.less` byte-correct AND `bootstrap.less` renders correctly.
 - [ ] Delete `core/ast/parse-host/` entirely (dispatch-host, host-context, actions, import).
 - [ ] Retire legacy `BuilderHost`/`FunctionalParseHost` two-target seam; delete legacy-TREE construction in `builders.ts`.
 - [ ] Re-verify `git grep "parseman|css-parser|less-parser"` over `packages/core/src` → EMPTY.
-- **GATE:** full corpus byte-identical via relocated harness; package graph acyclic (`parser → core`).
+- **GATE:** differential oracle (`alpha-oracle-differential.test.ts`) no-regression + both
+  target fixtures green as the PRODUCTION renderer; package graph acyclic (`parser → core`).
 - **Note:** A4 removes only legacy-tree portion; MAINTAINED `builders.ts` re-parse regexes (§0.11) survive and retire shape-by-shape via A0-family grammar-structuring — §0.10 exclusion lifts per shape, reaching empty at last offender.
+- **Coordination:** land dialect-re-base **W1** (name-keyed builder map, key≡rule-name) FIRST; the ast/ `ACTION_LIST` already honors that invariant. C1/C2 touch the build-host target, not `grammar.ts` rule composition, so they run parallel to W5–W7 provided C2 consumes the re-base's final grammar shape.
 
 ### Phase B — in-core family co-location (§1, §4). Serial, one executor; shared drains stomp parallel agents.
 - [ ] B1 `engine/scope.ts` — extract Frame/lookups FIRST (shared substrate).

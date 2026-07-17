@@ -1,0 +1,377 @@
+{
+  "at-rules-bubbling/at-rules-bubbling.less": {
+    "status": "MATCH",
+    "bytes": 2014
+  },
+  "at-rules-declarations/at-rules-declarations.less": {
+    "status": "MATCH",
+    "bytes": 255
+  },
+  "at-rules-empty-block/at-rules-empty-block.less": {
+    "status": "MATCH",
+    "bytes": 0
+  },
+  "at-rules-empty/at-rules-empty.less": {
+    "status": "DIFF",
+    "bytes": 130
+  },
+  "at-rules-keyword-comments/at-rules-keyword-comments.less": {
+    "status": "DIFF",
+    "bytes": 144
+  },
+  "at-rules-targeted/at-rules-targeted.less": {
+    "status": "MATCH",
+    "bytes": 641
+  },
+  "at-rules/at-rules.less": {
+    "status": "DIFF",
+    "bytes": 1677
+  },
+  "calc/calc.less": {
+    "status": "DIFF",
+    "bytes": 654
+  },
+  "charsets/charsets.less": {
+    "status": "MATCH",
+    "bytes": 18
+  },
+  "color-functions/alpha.less": {
+    "status": "MATCH",
+    "bytes": 248
+  },
+  "color-functions/basic.less": {
+    "status": "MATCH",
+    "bytes": 280
+  },
+  "color-functions/comprehensive.less": {
+    "status": "MATCH",
+    "bytes": 611
+  },
+  "color-functions/formats.less": {
+    "status": "MATCH",
+    "bytes": 357
+  },
+  "color-functions/modern-syntax.less": {
+    "status": "THREW",
+    "bytes": null,
+    "threw": "Error: Invalid arguments for hsl function"
+  },
+  "color-functions/modern.less": {
+    "status": "THREW",
+    "bytes": null,
+    "threw": "Error: Invalid arguments for hsl function"
+  },
+  "color-functions/operations.less": {
+    "status": "DIFF",
+    "bytes": 196
+  },
+  "color-functions/rgba.less": {
+    "status": "THREW",
+    "bytes": null,
+    "threw": "Error: Invalid arguments for hsl function"
+  },
+  "comments/comments.less": {
+    "status": "DIFF",
+    "bytes": 1297
+  },
+  "comments/comments2.less": {
+    "status": "DIFF",
+    "bytes": 252
+  },
+  "container/container.less": {
+    "status": "DIFF",
+    "bytes": 5188
+  },
+  "css-3/css-3.less": {
+    "status": "DIFF",
+    "bytes": 2299
+  },
+  "css-escapes/css-escapes.less": {
+    "status": "DIFF",
+    "bytes": 578
+  },
+  "css-grid/css-grid.less": {
+    "status": "DIFF",
+    "bytes": 1329
+  },
+  "css-guards/css-guards.less": {
+    "status": "DIFF",
+    "bytes": 865
+  },
+  "detached-rulesets/detached-rulesets.less": {
+    "status": "DIFF",
+    "bytes": 552
+  },
+  "empty/empty.less": {
+    "status": "MATCH",
+    "bytes": 0
+  },
+  "extend-chaining/extend-chaining.less": {
+    "status": "MATCH",
+    "bytes": 591
+  },
+  "extend-clearfix/extend-clearfix.less": {
+    "status": "MATCH",
+    "bytes": 183
+  },
+  "extend-exact/extend-exact.less": {
+    "status": "DIFF",
+    "bytes": 426
+  },
+  "extend-media/extend-media.less": {
+    "status": "MATCH",
+    "bytes": 314
+  },
+  "extend-nest/extend-nest.less": {
+    "status": "MATCH",
+    "bytes": 784
+  },
+  "extend-selector/extend-selector.less": {
+    "status": "DIFF",
+    "bytes": 1000
+  },
+  "extend/extend.less": {
+    "status": "DIFF",
+    "bytes": 806
+  },
+  "extract-and-length/extract-and-length.less": {
+    "status": "DIFF",
+    "bytes": 2332
+  },
+  "functions-each/functions-each.less": {
+    "status": "DIFF",
+    "bytes": 34
+  },
+  "functions/functions.less": {
+    "status": "THREW",
+    "bytes": null,
+    "threw": "TypeError: contrast: arg 0 expected Color, got Dimension"
+  },
+  "functions/legacy/functions.less": {
+    "status": "THREW",
+    "bytes": null,
+    "threw": "TypeError: contrast: arg 0 expected Color, got Dimension"
+  },
+  "ie-filters-REMOVED/legacy/ie-filters.less": {
+    "status": "DIFF",
+    "bytes": 404
+  },
+  "impor/impor.less": {
+    "status": "MATCH",
+    "bytes": 48
+  },
+  "import/import-inline.less": {
+    "status": "DIFF",
+    "bytes": 78
+  },
+  "import/import-interpolation.less": {
+    "status": "DIFF",
+    "bytes": 128
+  },
+  "import/import-module.less": {
+    "status": "DIFF",
+    "bytes": 147
+  },
+  "import/import-once.less": {
+    "status": "MATCH",
+    "bytes": 140
+  },
+  "import/import-reference-issues.less": {
+    "status": "DIFF",
+    "bytes": 331
+  },
+  "import/import-reference.less": {
+    "status": "DIFF",
+    "bytes": 403
+  },
+  "import/import-remote.less": {
+    "status": "THREW",
+    "bytes": null,
+    "threw": "ReferenceError: variable @var is undefined"
+  },
+  "import/import.less": {
+    "status": "DIFF",
+    "bytes": 709
+  },
+  "javascript-REMOVED/legacy/javascript.less": {
+    "status": "DIFF",
+    "bytes": 150
+  },
+  "layer/layer.less": {
+    "status": "DIFF",
+    "bytes": 2086
+  },
+  "lazy-eval/lazy-eval.less": {
+    "status": "MATCH",
+    "bytes": 30
+  },
+  "media/media.less": {
+    "status": "DIFF",
+    "bytes": 4137
+  },
+  "merge/merge.less": {
+    "status": "DIFF",
+    "bytes": 772
+  },
+  "mixin-noparens/mixin-noparens.less": {
+    "status": "MATCH",
+    "bytes": 103
+  },
+  "mixins-closure/mixins-closure.less": {
+    "status": "DIFF",
+    "bytes": 90
+  },
+  "mixins-guards-default-func/mixins-guards-default-func.less": {
+    "status": "DIFF",
+    "bytes": 1836
+  },
+  "mixins-guards/mixins-guards.less": {
+    "status": "DIFF",
+    "bytes": 3880
+  },
+  "mixins-important/mixins-important.less": {
+    "status": "DIFF",
+    "bytes": 932
+  },
+  "mixins-interpolated/mixins-interpolated.less": {
+    "status": "DIFF",
+    "bytes": 180
+  },
+  "mixins-named-args/mixins-named-args.less": {
+    "status": "MATCH",
+    "bytes": 356
+  },
+  "mixins-nested/mixins-nested.less": {
+    "status": "MATCH",
+    "bytes": 187
+  },
+  "mixins-pattern/mixins-pattern.less": {
+    "status": "MATCH",
+    "bytes": 583
+  },
+  "mixins/maps.less": {
+    "status": "DIFF",
+    "bytes": 60
+  },
+  "mixins/mixins-advanced.less": {
+    "status": "DIFF",
+    "bytes": 394
+  },
+  "mixins/mixins.less": {
+    "status": "THREW",
+    "bytes": null,
+    "threw": "RangeError: Maximum call stack size exceeded"
+  },
+  "namespace-targeted/namespace-targeted.less": {
+    "status": "DIFF",
+    "bytes": 143
+  },
+  "nesting/nesting.less": {
+    "status": "DIFF",
+    "bytes": 400
+  },
+  "no-output/no-output.less": {
+    "status": "MATCH",
+    "bytes": 0
+  },
+  "operations/operations-advanced.less": {
+    "status": "DIFF",
+    "bytes": 446
+  },
+  "operations/operations.less": {
+    "status": "DIFF",
+    "bytes": 821
+  },
+  "parse-interpolation/parse-interpolation.less": {
+    "status": "DIFF",
+    "bytes": 842
+  },
+  "parser-property-interp/parser-property-interp.less": {
+    "status": "DIFF",
+    "bytes": 119
+  },
+  "parser-slashed-combinator/parser-slashed-combinator.less": {
+    "status": "MATCH_NORM",
+    "bytes": 0
+  },
+  "permissive-parse/permissive-parse.less": {
+    "status": "DIFF",
+    "bytes": 227
+  },
+  "plugi/plugi.less": {
+    "status": "MATCH",
+    "bytes": 43
+  },
+  "plugin-module/plugin-module.less": {
+    "status": "DIFF",
+    "bytes": 47
+  },
+  "plugin-preeval/plugin-preeval.less": {
+    "status": "DIFF",
+    "bytes": 39
+  },
+  "plugin/plugin.less": {
+    "status": "DIFF",
+    "bytes": 2435
+  },
+  "property-accessors/property-accessors.less": {
+    "status": "THREW",
+    "bytes": null,
+    "threw": "TypeError: lighten: arg 0 expected Color, got Keyword"
+  },
+  "property-name-interp/property-name-interp.less": {
+    "status": "DIFF",
+    "bytes": 524
+  },
+  "property-targeted/property-targeted.less": {
+    "status": "DIFF",
+    "bytes": 67
+  },
+  "rulesets/rulesets.less": {
+    "status": "MATCH",
+    "bytes": 1004
+  },
+  "scope/scope.less": {
+    "status": "THREW",
+    "bytes": null,
+    "threw": "ReferenceError: variable @height is undefined"
+  },
+  "selectors/selectors.less": {
+    "status": "DIFF",
+    "bytes": 3427
+  },
+  "starting-style/starting-style.less": {
+    "status": "DIFF",
+    "bytes": 921
+  },
+  "strings/strings.less": {
+    "status": "DIFF",
+    "bytes": 1156
+  },
+  "tailwind/tailwind.less": {
+    "status": "DIFF",
+    "bytes": 18
+  },
+  "urls/urls.less": {
+    "status": "DIFF",
+    "bytes": 3040
+  },
+  "variables-in-at-rules/variables-in-at-rules.less": {
+    "status": "DIFF",
+    "bytes": 249
+  },
+  "variables/variable-advanced.less": {
+    "status": "THREW",
+    "bytes": null,
+    "threw": "TypeError: unit: arg 0 expected Dimension, got Keyword"
+  },
+  "variables/variables.less": {
+    "status": "THREW",
+    "bytes": null,
+    "threw": "TypeError: unit: arg 0 expected Dimension, got Keyword"
+  },
+  "whitespace/whitespace.less": {
+    "status": "MATCH",
+    "bytes": 543
+  }
+}
