@@ -7,9 +7,10 @@
  * `Url`) maps to a tree2 `Word` of its verbatim source bytes plus a `LiteralTag`.
  * The tag is the same classification the bridge stamps via `stampLeaf`/`leafTagOf`
  * (VALUE-LITERAL-TAG-SPEC): it rides as a FIELD so `materialize` reads it instead
- * of re-sniffing the bytes. `tagForWord` is the shared byte→tag path for the
- * numeric/hex cases; the grammar type is authoritative for named-color / keyword /
- * quoted, which the bytes alone can misclassify.
+ * of re-sniffing the bytes. Every leaf tag is fixed by the grammar RULE (`Numeric`
+ * → the single numeric `Dimension` tag, `Color` → `ColorHex`, …): the parser
+ * already decided the class, so the build host never re-scans the bytes to
+ * classify them.
  *
  * Byte-identity: the leaf `Word` is verbatim source bytes, so it serializes
  * exactly as the bridge's raw-bytes `Word` does (serialize emits `.text`; the tag
@@ -28,7 +29,7 @@
  * shape) so the byte-identity oracle holds during the transition.
  */
 import * as t2 from '../../tree2/index.js';
-import { LiteralTag, tagForWord } from '../../tree2/index.js';
+import { LiteralTag } from '../../tree2/index.js';
 import { type BuildAction, type BuildArgs, sliceSpan } from '../host-context.js';
 
 /** Verbatim source bytes of the leaf's own span. */
@@ -48,8 +49,11 @@ function leaf(type: string, tagOf: (bytes: string) => LiteralTag | undefined): B
 }
 
 export const VALUE_LEAF_ACTIONS: readonly BuildAction[] = [
-  // `1.0px` / `-3px` / `.5s` / `50%` → Dimension; bare `1` / `0` → Num.
-  leaf('Numeric', tagForWord),
+  // `1.0px` / `-3px` / `.5s` / `50%` / bare `1` / `0` — the grammar rule is
+  // authoritative that this leaf is numeric, so it is tagged directly with the
+  // single numeric tag (`Dimension`); no `tagForWord` byte re-sniff, and no
+  // Dimension-vs-Num split (the materializer treats them identically).
+  leaf('Numeric', () => LiteralTag.Dimension),
   // `#fff` / `#AABBCC` — hex color.
   leaf('Color', () => LiteralTag.ColorHex),
   // `red` / `transparent` — the grammar resolved a named color (authoritative
