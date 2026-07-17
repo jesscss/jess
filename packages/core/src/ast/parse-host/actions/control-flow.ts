@@ -113,11 +113,14 @@ function buildFor(args: BuildArgs): t2.For {
 /**
  * Assemble the iterable value node from the children between `(` and the
  * callback. A single built value node (`@list`, `range(4)`, `@map[k]`) passes
- * through so it evaluates structurally; anything else (a literal list `1 2 3`,
- * `a, b`, `10px 15px, 20px 25px`) keeps its verbatim source bytes as a `Word` —
- * the serializer byte-splits it into items (top-level comma, else space).
+ * through so it evaluates structurally; a mixin-call shape (`.mixin()`,
+ * `#ns > .m()` — selector leaf(s) + a `Paren` arg group) rebuilds as a
+ * `MixinCall` so the serializer dispatches it and iterates its OUTPUT; anything
+ * else (a literal list `1 2 3`, `a, b`, `10px 15px, 20px 25px`) keeps its verbatim
+ * source bytes as a `Word` — the serializer byte-splits it into items (top-level
+ * comma, else space).
  */
-function buildIterable(args: BuildArgs, open: number, cbIdx: number): t2.ValueNode {
+function buildIterable(args: BuildArgs, open: number, cbIdx: number): t2.ValueNode | t2.MixinCall {
   const children = args.children;
   const lo = open + 1;
   const hi = cbIdx >= 0 ? cbIdx : children.length;
@@ -139,11 +142,66 @@ function buildIterable(args: BuildArgs, open: number, cbIdx: number): t2.ValueNo
     }
   }
   if (valueNodes.length === 1 && !sawBareLeaf) return valueNodes[0]!;
+  // [each mixin-call iterable] `.mixin()` / `#ns > .m()` used as the each iterable:
+  // its OUTPUT (the mixin's emitted declarations) is iterated. The each-arg grammar
+  // hands the call as selector leaf(s) + a `Paren` (the arg group) rather than a
+  // `MixinArgs` slot list, so reconstruct the `MixinCall` node here — structurally,
+  // from the already-parsed children (no byte re-tokenization) — for the serializer
+  // to dispatch and iterate (`forItems` mixin-call branch).
+  const mixinCall = tryMixinCallIterable(children, lo, hi);
+  if (mixinCall) return mixinCall;
   // Fallback: the verbatim source bytes spanning the iterable region — the
   // serializer byte-splits this into list items (top-level comma, else space).
   const from = firstSpan?.start ?? args.span.start;
   const to = lastSpan?.end ?? args.span.end;
   return t2.word(args.ctx.src.slice(from, to).trim());
+}
+
+/** Combinator leaves that separate namespace-path segments in a mixin call. */
+function isCombinator(v: string): v is t2.Combinator {
+  return v === '>' || v === '+' || v === '~';
+}
+
+/**
+ * Recognize a mixin-call iterable shape — leading selector token(s)
+ * (`.set-2`, `#ns > .m`) followed by a single `Paren` arg group — and build the
+ * `MixinCall` node from those structured children. Returns `undefined` for any
+ * other child shape (a real list/value iterable), which keeps the byte fallback.
+ */
+function tryMixinCallIterable(
+  children: readonly unknown[],
+  lo: number,
+  hi: number,
+): t2.MixinCall | undefined {
+  const segs: Array<{ comb: t2.Combinator; sel: string }> = [];
+  let pendingComb: t2.Combinator = ' ';
+  let paren: t2.Paren | undefined;
+  for (let i = lo; i < hi; i++) {
+    const c = children[i];
+    const v = leafText(c);
+    if (v === ',' || v === ';' || v === '') continue; // separators / zero-width
+    if (t2.isNode(c)) {
+      if (c.type === 'Paren' && paren === undefined) { paren = c; continue; }
+      return undefined; // any other node → not a plain mixin call
+    }
+    if (v === undefined) continue;
+    if (isCombinator(v)) { pendingComb = v; continue; }
+    if (paren !== undefined) return undefined; // a token after the args → not a call
+    segs.push({ comb: pendingComb, sel: v });
+    pendingComb = ' ';
+  }
+  if (paren === undefined || segs.length === 0) return undefined;
+  // A mixin name is a class/id selector token (`.foo` / `#foo`).
+  const first = segs[0]!.sel;
+  if (!(first.startsWith('.') || first.startsWith('#'))) return undefined;
+  const name = segs[segs.length - 1]!.sel;
+  const path: t2.PathSeg[] = segs.slice(0, -1).map((s) => ({ comb: s.comb, sel: s.sel }));
+  // Empty `()` → zero-arg call; otherwise the paren's inner value is one positional
+  // argument (the common each-over-mixin-output shape passes no or one argument).
+  const inner = paren.inner;
+  const callArgs: t2.CallArg[] =
+    inner.type === 'Word' && inner.text === '' ? [] : [{ value: inner }];
+  return { type: 'MixinCall', name, args: callArgs, path, important: false };
 }
 
 export const CONTROL_FLOW_ACTIONS: readonly BuildAction[] = [

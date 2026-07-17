@@ -1197,7 +1197,7 @@ export function serialize(root: Root, options?: SerializeOptions): SerializeRetu
           if (group.length) flushBlock([], group, e);
           group.length = 0;
         };
-        expandCall(child, null, rootFrame, group, flush, e);
+        expandCall(child, null, rootFrame, group, flush, null, e);
         flush();
         break;
       }
@@ -1208,7 +1208,7 @@ export function serialize(root: Root, options?: SerializeOptions): SerializeRetu
           if (group.length) flushBlock([], group, e);
           group.length = 0;
         };
-        expandDetachedCall(child, null, rootFrame, group, flush, e);
+        expandDetachedCall(child, null, rootFrame, group, flush, null, e);
         flush();
         break;
       }
@@ -1219,7 +1219,7 @@ export function serialize(root: Root, options?: SerializeOptions): SerializeRetu
           if (group.length) flushBlock([], group, e);
           group.length = 0;
         };
-        expandFor(child, null, rootFrame, group, flush, e);
+        expandFor(child, null, rootFrame, group, flush, null, e);
         flush();
         break;
       }
@@ -1280,8 +1280,31 @@ function flatten(rule: Rule, parent: string[] | null, frame: Frame, e: Emit): vo
       group.length = 0;
     }
   };
-  walkBody(rule.body, rawComposed, childFrame, group, flush, e);
+  // [partition] Collect nested rulesets that follow the block's FIRST declaration
+  // and emit them AFTER the block's own declarations flush; rulesets that PRECEDE
+  // the first declaration stay inline (see `Partition`). This reproduces the alpha
+  // v5 order: a ruleset's declaration block sits at the position of its first
+  // declaration, with nested rulesets before/after it in source order.
+  const partition: Partition = { deferred: [], sawDecl: false };
+  walkBody(rule.body, rawComposed, childFrame, group, flush, partition, e);
   flush();
+  for (const emit of partition.deferred) emit();
+}
+
+/**
+ * [partition] Nested-ruleset emission sink for a ruleset body. A ruleset's own
+ * declarations form ONE block, emitted at the position of its FIRST declaration
+ * (`sawDecl` flips once any declaration is collected — persistently, even across a
+ * mid-body flush). A nested `Rule` encountered BEFORE the first declaration emits
+ * inline (in source order, ahead of the block); one encountered AT/AFTER it defers
+ * into `deferred`, drained after the block flushes. This matches the alpha v5
+ * order (declaration block anchored at its first declaration), which diverges from
+ * less.js 4.x's always-declarations-first `Ruleset.genCSS`. Passing `null` (top
+ * level, at-rule bodies) keeps every rule inline in source order.
+ */
+interface Partition {
+  deferred: Array<() => void>;
+  sawDecl: boolean;
 }
 
 /** Walk a body, expanding mixin calls inline against the shared canonical body. */
@@ -1291,6 +1314,7 @@ function walkBody(
   frame: Frame,
   group: Leaf[],
   flush: () => void,
+  partition: Partition | null,
   e: Emit,
   imp = false, // call-level !important override
   protectedDup = false, // [dedup] emitting inside restricted mixin output
@@ -1299,6 +1323,7 @@ function walkBody(
     switch (node.type) {
       case 'Declaration':
       case 'Comment':
+        if (partition) partition.sawDecl = true;
         group.push({
           node,
           frame,
@@ -1306,20 +1331,30 @@ function walkBody(
           ...(protectedDup ? { protectedDup: true } : {}),
         });
         break;
-      case 'Rule':
-        flush();
+      case 'Rule': {
         // a null `composed` (top-level mixin/detached call) keeps nested
         // rules at the top level (own-strings), not composed against `[]`.
-        flatten(node, composed, frame, e);
+        const rule = node;
+        const rFrame = frame;
+        const rComposed = composed;
+        if (partition && partition.sawDecl) {
+          // [partition] after the block's first declaration → defer past its flush.
+          partition.deferred.push(() => flatten(rule, rComposed, rFrame, e));
+        } else {
+          // before any declaration (or unpartitioned) → emit inline, in place.
+          flush();
+          flatten(rule, rComposed, rFrame, e);
+        }
         break;
+      }
       case 'MixinCall':
-        expandCall(node, composed, frame, group, flush, e, imp, protectedDup);
+        expandCall(node, composed, frame, group, flush, partition, e, imp, protectedDup);
         break;
       case 'DetachedCall':
-        expandDetachedCall(node, composed, frame, group, flush, e, protectedDup);
+        expandDetachedCall(node, composed, frame, group, flush, partition, e, protectedDup);
         break;
       case 'For':
-        expandFor(node, composed, frame, group, flush, e, imp, protectedDup);
+        expandFor(node, composed, frame, group, flush, partition, e, imp, protectedDup);
         break;
       // [atrule-bubbling] an at-rule nested inside a ruleset body PROJECTS to this
       // block level (flat mode already emits everything at `e.depth`), carrying the
@@ -1380,6 +1415,7 @@ function expandCall(
   frame: Frame,
   group: Leaf[],
   flush: () => void,
+  partition: Partition | null, // [partition] nested-ruleset sink (see walkBody)
   e: Emit,
   imp = false,
   protectedDup = false, // [dedup] already inside restricted mixin output
@@ -1440,7 +1476,7 @@ function expandCall(
     // duplicates survive); a synthesized ruleset-mixin does not, unless it is already
     // nested inside restricted output (chain-sticky, matching isFromRestrictedMixinOutput).
     const bodyProtected = protectedDup || def.ruleMixin !== true;
-    walkBody(def.body, composed, callFrame, group, flush, e, bodyImp, bodyProtected);
+    walkBody(def.body, composed, callFrame, group, flush, partition, e, bodyImp, bodyProtected);
     // [scope-leak] after expansion the mixin's own `@x:` declarations unlock into
     // the caller scope (visible to later siblings), matching less@4.
     leakBodyVars(frame, def.body, callFrame, e);
@@ -1557,12 +1593,13 @@ function expandDetachedCall(
   frame: Frame,
   group: Leaf[],
   flush: () => void,
+  partition: Partition | null, // [partition] nested-ruleset sink (see walkBody)
   e: Emit,
   protectedDup = false, // [dedup] inherit restriction from the enclosing context
 ): void {
   const r = detachedCallFrame(call.varName, frame);
   if (!r) return;
-  walkBody(r.dr.body, composed, r.callFrame, group, flush, e, false, protectedDup);
+  walkBody(r.dr.body, composed, r.callFrame, group, flush, partition, e, false, protectedDup);
 }
 
 /* --------------------------------------------------------------- [each/For] */
@@ -1692,8 +1729,39 @@ function resolveForNode(
   }
 }
 
+/**
+ * Resolve an `each(.mixin(), …)` iterable: the ITERABLE is a mixin CALL whose
+ * OUTPUT is iterated. Dispatch the call, collect its emitted declarations, and
+ * present them as map items (key = declaration name, value = its value node) —
+ * exactly the shape a detached-ruleset map iterates. Nested rulesets in the mixin
+ * body are captured but discarded (a map iterates declarations, not rules).
+ */
+function forItemsFromMixinCall(call: MixinCall, frame: Frame, e: Emit): ForItem[] {
+  const collected: Leaf[] = [];
+  const noop = (): void => {};
+  // Capture (never emit) any nested rules: `sawDecl:true` forces every rule into
+  // the discarded `deferred` list rather than emitting it inline to the output.
+  const discard: Partition = { deferred: [], sawDecl: true };
+  expandCall(call, null, frame, collected, noop, discard, e);
+  const items: ForItem[] = [];
+  for (const leaf of collected) {
+    const n = leaf.node;
+    if (n.type === 'Declaration') {
+      const name = typeof n.name === 'string' ? n.name : evalBytesSync(n.name, leaf.frame, e);
+      items.push({ value: n.value, key: word(name) });
+    } else if (n.type === 'VarDeclaration') {
+      items.push({ value: n.value, key: word(n.name) });
+    }
+  }
+  return items;
+}
+
 /** The ordered items an `each()` iterable expands to. */
-function forItems(node: ValueNode, frame: Frame | null, e: EvalCtx): ForItem[] {
+function forItems(node: ValueNode | MixinCall, frame: Frame | null, e: Emit): ForItem[] {
+  // [each mixin-call iterable] `.mixin()` output → iterate its declarations.
+  if (node.type === 'MixinCall') {
+    return frame === null ? [] : forItemsFromMixinCall(node, frame, e);
+  }
   const map = resolveForRuleset(node, frame, e);
   if (map) {
     const items: ForItem[] = [];
@@ -1736,6 +1804,7 @@ function expandFor(
   frame: Frame,
   group: Leaf[],
   flush: () => void,
+  partition: Partition | null, // [partition] nested-ruleset sink (see walkBody)
   e: Emit,
   imp = false,
   protectedDup = false,
@@ -1754,7 +1823,7 @@ function expandFor(
       vars: mergeVars(bindings, collectVars(node.rules)),
       statements: node.rules,
     };
-    walkBody(node.rules, composed, loopFrame, group, flush, e, imp, protectedDup);
+    walkBody(node.rules, composed, loopFrame, group, flush, partition, e, imp, protectedDup);
   }
 }
 
@@ -2176,13 +2245,13 @@ function emitAtRuleBody(statements: Statement[], frame: Frame, e: Emit): void {
         break;
       case 'MixinCall':
         // Best-effort: expand into the direct-declaration group.
-        expandCall(node, null, frame, group, flushDirect, e);
+        expandCall(node, null, frame, group, flushDirect, null, e);
         break;
       case 'DetachedCall':
-        expandDetachedCall(node, null, frame, group, flushDirect, e);
+        expandDetachedCall(node, null, frame, group, flushDirect, null, e);
         break;
       case 'For':
-        expandFor(node, null, frame, group, flushDirect, e);
+        expandFor(node, null, frame, group, flushDirect, null, e);
         break;
       // [import:inline] raw verbatim bytes spliced by `@import (inline)`.
       case 'RawInline':
@@ -2253,13 +2322,13 @@ function emitBubbleBody(statements: Statement[], ctx: string[] | null, frame: Fr
         e.depth--;
         break;
       case 'MixinCall':
-        expandCall(node, ctx, frame, group, flushDirect, e);
+        expandCall(node, ctx, frame, group, flushDirect, null, e);
         break;
       case 'DetachedCall':
-        expandDetachedCall(node, ctx, frame, group, flushDirect, e);
+        expandDetachedCall(node, ctx, frame, group, flushDirect, null, e);
         break;
       case 'For':
-        expandFor(node, ctx, frame, group, flushDirect, e);
+        expandFor(node, ctx, frame, group, flushDirect, null, e);
         break;
       case 'MixinDef':
       case 'VarDeclaration':
