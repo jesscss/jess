@@ -305,14 +305,19 @@ regex (cp-VALUE §3.2, at-PRELUDE §3.4).
 This is **NOT** true of cp-NAME (§3.1): `customPropInterp` (`grammar.ts:72`) is ALREADY the strict
 regex, so there is no permissive oracle to diverge from — its "Low" rating stands.
 
-**Owner decision required** (I'll surface it when Tier-B is next):
+**✅ OWNER DECISION (2026-07-17): ADOPT STRICT.** `lessInterp` stays `@{name}`-only; `@{ base }`
+(interior whitespace) and `@{a.b}` (dot) are NOT interpolation — matches the real Less 4.x
+reference lexer. Any golden that leaned on the permissive-but-buggy behavior is a jess-only
+artifact and gets corrected (validate against real 4.x per the suspect-golden rule before landing).
+Rationale (owner): the permissive regex swallows `a.b` as a single flat variable name `"a.b"` —
+that is a *misread*, not module access. If Less v5 `@use` later grows `@{module.member}`
+interpolation, it will be a **deliberate structured grammar extension** (member-access nodes, gated
+on module context), NOT a loosened flat-string regex — so preserving the permissive form would bake
+in exactly the wrong shape. `@{module.member}` stays PARKED until `@use` namespace-access syntax is
+decided. Strict now costs nothing there and keeps byte-identity with 4.x.
 
-- **Adopt strict grammar** — real Less 4.x rejects `@{ base }` / `@{a.b}` (the reference lexer's
-  interpolation token is name-only too), so `lessInterp` is *more correct*; but goldens that lean
-  on the permissive-but-buggy current behavior change. Preferred if those goldens are jess-only
-  artifacts (validate against real 4.x per the suspect-golden rule).
-- **Loosen `lessInterp`** to `@{ [^}]+ }` to match the oracle — byte-preserving, but ports a bug
-  into the maintained grammar.
+- ~~**Loosen `lessInterp`** to `@{ [^}]+ }`~~ — REJECTED: ports a bug + a flat-string misread into
+  the maintained grammar.
 
 Riskiest gate cases to run both ways before deciding: `@{ x }`, `@{a.b}`, each **inside a string**
 (`"@{ x }"`, §3.3) and **inside an at-prelude** (`@keyframes @{ x }`, `@media @{a.b}` via the
@@ -444,11 +449,12 @@ name-only so the nested case is structurally impossible to over-match.
      value-node type NOW (not `VarRef`), even though Less only ever puts a `VarRef` there, so the
      later widen to a general expression node needs no serializer/resolver fan-out — the
      serialize/resolve sites already accept the wide type.
-2. **§3.4 golden change (owner-facing).** The early-termination bug is VERIFIED (dead `bCurly`,
-   §1.4): `@keyframes @{n} {` misparses today. Is the correction in scope for this workstream, or
-   should the prelude split be byte-preserving of the current (buggy) behavior and the correction
-   spun out separately? Distinct from — and on top of — the §4.1 strict-`lessInterp` owner
-   decision, which every prelude/value/string interpolation site shares.
+2. **§3.4 golden change — ✅ OWNER DECISION (2026-07-17): FIX IT INLINE.** The early-termination
+   bug is VERIFIED (dead `bCurly`, §1.4): `@keyframes @{n} {` misparses today. Owner: "if it's
+   buggy, fix it — we have to parse things in the correct way." The grammar split ships the
+   correction in-scope; do NOT byte-preserve the buggy behavior. The ONE discipline: the corrected
+   `@keyframes @{n} {` output is validated against **real Less 4.x** (not jess's own output) before
+   landing — suspect-golden check, not a reason to preserve the bug.
 3. **Bridge lifetime.** §4's follow-on deletions (`utils.ts` regexes) depend on P1 bridge
    deletion. Confirm the ordering: grammar split → tree2 deletions → bridge deletion → bridge-
    regex deletion, so the byte-identity oracle survives until the tree2 side is proven.
