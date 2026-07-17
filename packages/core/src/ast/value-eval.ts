@@ -16,10 +16,11 @@
  *
  *  2. The `ValueEvaluator` seam — the only allowed boundary crossing (an injected
  *     interface, like the old `ValueService`), whose currency is now TYPED value
- *     objects rather than serialized bytes. Implementations: the transitional
- *     ADAPTER (`parse-host/value-eval.ts`, `buildAdapterEvaluator` — reaches
- *     legacy math, being retired) and the built-in evaluator (`evaluator.ts`,
- *     boundary-clean). tree2 depends ONLY on this interface.
+ *     objects rather than serialized bytes. Implementation: the built-in evaluator
+ *     (`evaluator.ts`, boundary-clean). (A transitional `buildAdapterEvaluator`
+ *     delegating to legacy math existed as the differential oracle; it was deleted
+ *     once its outputs were frozen into the differential fixture.) tree2 depends
+ *     ONLY on this interface.
  *
  * REPRESENTATION (bake-off winner, "B"): an UN-MATERIALIZED value literal is a
  * BARE `string` — its bytes, nothing else. NO `{ bytes, tag }` wrapper, NO stored

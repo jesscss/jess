@@ -6,18 +6,14 @@ import { serialize } from '../../index.js';
 import { buildEvaluator } from '../../evaluator.js';
 import { makeBuiltinRegistry } from './make-builtin-registry.js';
 import { bridgeToAst } from './bridge.js';
-import { buildAdapterEvaluator } from '../value-eval.js';
 
 /**
  * FROZEN ORACLE (fns-migration Stage B). The differential corpus below was
  * historically gated built-in ≡ live adapter (`buildAdapterEvaluator`). That
- * couples the built-in path's coverage to the transitional adapter, which a later
- * stage deletes. To decouple, the adapter's corpus outputs were captured ONCE (while
- * the adapter still existed and built-in ≡ adapter held) into a static fixture; the
- * corpus now asserts **built-in bytes === frozen fixture**. The adapter is retained
- * as an ADDITIONAL third-arm check for as long as it exists (proving the freeze stays
- * faithful) — that one arm is what the adapter-deletion stage removes, leaving the
- * fixture as the sole, self-contained oracle.
+ * coupled the built-in path's coverage to the transitional adapter. Stage B
+ * captured the adapter's corpus outputs ONCE (while built-in ≡ adapter held) into a
+ * static fixture; Stage E then DELETED the adapter, leaving this fixture as the sole,
+ * self-contained oracle: the corpus asserts **built-in bytes === frozen fixture**.
  *
  * Regenerate (only after an INTENTIONAL, owner-reviewed corpus/semantics change):
  *   GEN_DIFF_FIXTURE=1 pnpm -C packages/core test native-value-differential
@@ -29,10 +25,11 @@ const FROZEN_ORACLE: Record<string, string> = JSON.parse(readFileSync(FIXTURE_PA
 
 /**
  * DIFFERENTIAL byte-identity: the built-in value path (materialize + operate +
- * kind-dispatch + free serializer, all boundary-clean under `tree2/`) vs the
- * transitional ADAPTER (which delegates to the legacy value nodes + `@jesscss/fns`).
- * The adapter is the ORACLE. Each case renders through the SAME bridged tree2 AST
- * once with each evaluator; the emitted bytes MUST be identical.
+ * kind-dispatch + free serializer, all boundary-clean under `tree2/`) vs the FROZEN
+ * fixture. The fixture was captured from the (now-deleted) transitional adapter while
+ * built-in ≡ adapter held, so it encodes the adapter's outputs as the oracle. Each
+ * case renders through the bridged tree2 AST via the built-in evaluator; the emitted
+ * bytes MUST equal the frozen fixture.
  *
  * SCOPE (the foundation covers): arithmetic (dimension ⊕ dimension, unit
  * convert/cancel, unitless), the unit-clash / multiply-units → `calc()` fallback,
@@ -62,9 +59,9 @@ const FROZEN_ORACLE: Record<string, string> = JSON.parse(readFileSync(FIXTURE_PA
  * `isruleset`/`isdefined`/`iif`.
  */
 
-async function render(src: string, builtIn: boolean): Promise<string> {
+async function render(src: string): Promise<string> {
   const tree = parseLessFn(src).tree;
-  const evaluator = builtIn ? buildEvaluator(makeBuiltinRegistry()) : buildAdapterEvaluator();
+  const evaluator = buildEvaluator(makeBuiltinRegistry());
   const out = await serialize(bridgeToAst(tree, src), { evaluator });
   return out.css;
 }
@@ -315,18 +312,16 @@ const CORPUS: Array<[string, string]> = [
   ['guard-isstring', '.m(@x) when (isstring(@x)) { a: s; }\n.a { .m("hi"); }\n'],
 ];
 
-// One-shot regeneration: rewrite the frozen fixture from the CURRENT built-in path,
-// but only after triple-checking every case still equals the live adapter (the
-// original oracle). Guarded by an env flag so a normal run never rewrites goldens.
+// One-shot regeneration: rewrite the frozen fixture from the CURRENT built-in path.
+// (The adapter, formerly the triple-check oracle, was deleted in Stage E; the fixture
+// is now the self-contained oracle.) Guarded by an env flag so a normal run never
+// rewrites goldens — regenerate ONLY after an INTENTIONAL, owner-reviewed change.
 if (process.env.GEN_DIFF_FIXTURE === '1') {
   describe('regenerate frozen differential fixture', () => {
-    it('captures built-in ≡ adapter corpus outputs to the fixture', async () => {
+    it('captures the built-in corpus outputs to the fixture', async () => {
       const snap: Record<string, string> = {};
       for (const [name, src] of CORPUS) {
-        const builtinCss = await render(src, true);
-        const adapterCss = await render(src, false);
-        expect(builtinCss, `built-in ≠ adapter for ${name}; refusing to freeze`).toBe(adapterCss);
-        snap[name] = builtinCss;
+        snap[name] = await render(src);
       }
       writeFileSync(FIXTURE_PATH, `${JSON.stringify(snap, null, 2)}\n`);
     });
@@ -336,21 +331,18 @@ if (process.env.GEN_DIFF_FIXTURE === '1') {
 describe('built-in value path — differential byte-identity vs frozen oracle', () => {
   for (const [name, src] of CORPUS) {
     it(`built-in ≡ frozen oracle: ${name}`, async () => {
-      const builtinCss = await render(src, true);
-      // Primary gate: the built-in path matches the frozen oracle fixture.
+      const builtinCss = await render(src);
+      // The built-in path matches the frozen oracle fixture (the sole gate since
+      // Stage E deleted the transitional adapter).
       expect(FROZEN_ORACLE, `no frozen entry for ${name}`).toHaveProperty(name);
       expect(builtinCss).toBe(FROZEN_ORACLE[name]);
-      // Third-arm check (while the adapter still exists): the frozen oracle is a
-      // faithful capture of the live adapter. Removed when the adapter is deleted.
-      const adapterCss = await render(src, false);
-      expect(adapterCss).toBe(FROZEN_ORACLE[name]);
     });
   }
 
   // `e("solid")` → bare `solid`: adapter-unrenderable (see note above), so assert
   // the built-in intended output directly (quotes stripped, not re-quoted).
   it('built-in e("solid") strips quotes to a bare keyword', async () => {
-    const css = await render('.a { m: e("solid"); }\n', true);
+    const css = await render('.a { m: e("solid"); }\n');
     expect(css).toContain('m: solid');
     expect(css).not.toContain('"solid"');
   });
@@ -363,14 +355,14 @@ describe('built-in value path — differential byte-identity vs frozen oracle', 
       ['.a { width: 2PX; }\n', 'width: 2PX'],
       ['.a { width: 1e3px; }\n', 'width: 1e3px'],
     ] as const) {
-      const css = await render(src, true);
+      const css = await render(src);
       expect(css).toContain(want); // verbatim, NOT 1px / 2px / 1000px
     }
   });
 
   it('COMPUTED dimension canonicalizes via the number formatter', async () => {
     // 1.0px + 2.0px → operated → canonical 3px (not 3.0px).
-    const css = await render('.a { width: (1.0px + 2.0px); }\n', true);
+    const css = await render('.a { width: (1.0px + 2.0px); }\n');
     expect(css).toContain('width: 3px');
   });
 });
@@ -417,7 +409,7 @@ describe('built-in list / variadic fns — vs Less 4.6.7 (adapter diverges)', ()
 
   for (const [name, src, want] of LESS4X) {
     it(`built-in = Less 4.x: ${name}`, async () => {
-      const css = await render(src, true);
+      const css = await render(src);
       expect(css).toContain(want);
     });
   }
@@ -466,7 +458,7 @@ describe('built-in string producers — vs Less 4.6.7 (adapter diverges)', () =>
 
   for (const [name, src, want] of LESS4X) {
     it(`built-in = Less 4.x: ${name}`, async () => {
-      const css = await render(src, true);
+      const css = await render(src);
       expect(css).toContain(want);
     });
   }

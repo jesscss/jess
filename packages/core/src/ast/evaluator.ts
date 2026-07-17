@@ -1,13 +1,13 @@
 /**
  * The `ValueEvaluator` seam implementation — boundary-clean, fully synchronous,
  * built entirely on the value domain (materialize + operate + kind-dispatch + free
- * serializer). This is the path that RETIRES the transitional adapter
- * (`parse-host/value-eval.ts`): no legacy `../tree` node, no reparse, no
+ * serializer). This is the path that REPLACED the transitional adapter (formerly
+ * `parse-host/value-eval.ts`, now deleted): no legacy `../tree` node, no reparse, no
  * `render()` walk, no async record/replay.
  *
  * Named calls dispatch through a caller-populated {@link FnRegistry}; every other
  * named call is treated as an unknown function emitted verbatim (byte-identical to
- * the adapter's unknown-fn path).
+ * the former adapter's unknown-fn path).
  *
  * HARD MODULE BOUNDARY: imports only the engine value modules.
  */

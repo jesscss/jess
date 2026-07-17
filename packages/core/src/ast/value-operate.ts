@@ -119,8 +119,8 @@ const CALC_WRAP_RE = /^calc\(([\s\S]*)\)$/;
  * `calc(...)` rather than `calc(calc(...) op Y)`. A Paren-wrapped inner
  * expression keeps its paren (`calc((a - b))` -> `(a - b)`).
  *
- * SINGLE implementation: the transitional adapter (`parse-host/value-eval.ts`)
- * imports this rather than carrying its own twin.
+ * SINGLE implementation shared across the value-operate path (formerly also the
+ * transitional adapter, now deleted).
  */
 export const calcInner = (bytes: string): string | null => {
   const m = CALC_WRAP_RE.exec(bytes.trim());
