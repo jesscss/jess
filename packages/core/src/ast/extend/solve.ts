@@ -35,8 +35,10 @@ export function setExtendPrefilterEnabled(on: boolean): void {
   prefilterEnabled = on;
 }
 
-export function listKey(list: Branch[]): string {
-  return list.map(branchText).join(',');
+/** Whether the target-atom prefilter (and, in `emit.ts`, the candidate prune it
+ * authorizes) is ON. OFF ⇒ full-scan reference path for the differential gate. */
+export function isExtendPrefilterEnabled(): boolean {
+  return prefilterEnabled;
 }
 
 function instKey(inst: PlanInstruction): string {
@@ -63,8 +65,21 @@ export function buildContribs(instructions: PlanInstruction[]): ContribMap {
  * `all` (flag=0) additionally matches sub-parts. Each rule solves INDEPENDENTLY
  * over its own composed form, so no separate child-parent propagation is needed.
  */
-export function solveComposed(subject: PlanSubject, plan: Plan): Branch[] {
-  const seed = composePath(subject.path);
+export interface SolveResult {
+  /** The (possibly extended) branch list. When `changed` is false this is the
+   * RAW seed, untouched — the caller keeps its authored/raw form. */
+  list: Branch[];
+  /** Whether the fixpoint actually changed the seed (drives `flatByRule`). */
+  changed: boolean;
+}
+
+/**
+ * Solve a subject over its already-composed seed. The seed (`composePath(path)`)
+ * is passed in so `computeExtends` composes it at most ONCE (lazy + memoized);
+ * this never recomposes. Returns the RAW seed with `changed: false` on a prefilter
+ * miss or a no-op fixpoint, else the extended list with `changed: true`.
+ */
+export function solveComposed(seed: Branch[], subject: PlanSubject, plan: Plan): SolveResult {
   // Target-atom PREFILTER: the fixpoint can only ever change a subject whose
   // composed seed shares at least one individual simple atom with some instruction
   // target — a whole-branch/all/sub-part match and every transitive chain step all
@@ -73,14 +88,14 @@ export function solveComposed(subject: PlanSubject, plan: Plan): Branch[] {
   // provably never matches nor chains, so skip solve and keep the RAW seed. This
   // prunes the ~92% of subjects that no target touches without running the fixpoint.
   if (prefilterEnabled && !seed.some((b) => branchSharesAtom(b, plan.targetAtoms))) {
-    return seed;
+    return { list: seed, changed: false };
   }
   const reachable = plan.instructions.filter((i) => reaches(i.scope, subject.scope));
-  if (reachable.length === 0) return seed;
+  if (reachable.length === 0) return { list: seed, changed: false };
   return runFixpoint(seed.map(cloneBranch), reachable, buildContribs(reachable));
 }
 
-export function runFixpoint(seed: Branch[], reachable: PlanInstruction[], contribs: ContribMap): Branch[] {
+export function runFixpoint(seed: Branch[], reachable: PlanInstruction[], contribs: ContribMap): SolveResult {
   let list = seed;
 
   // Fire-once GLOBALLY per instruction: an instruction that has already CHANGED
@@ -89,27 +104,35 @@ export function runFixpoint(seed: Branch[], reachable: PlanInstruction[], contri
   // instruction that does not yet match (its target not present) stays UNFIRED
   // so a later chained change can still trigger it. The outer loop re-passes
   // until a full pass changes nothing.
+  //
+  // `applyInstruction` returns null EXACTLY when it changed nothing (an append
+  // only counts a genuinely-new branch key; a partial rewrite only returns
+  // non-null when `branchText` differs), so a non-null result IS the change
+  // signal — no per-round `listKey` serialization is needed to detect it. This is
+  // the single-materialization property: the IR is threaded through every step and
+  // only the final branch list is serialized to strings by the emit layer.
   const fired = new Set<string>();
   const guardMax = (reachable.length + 2) * (reachable.length + 2);
   let rounds = 0;
-  let changed = true;
-  while (changed && rounds <= guardMax) {
-    changed = false;
+  let ever = false;
+  let roundChanged = true;
+  while (roundChanged && rounds <= guardMax) {
+    roundChanged = false;
     rounds++;
     for (const inst of reachable) {
       const key = instKey(inst);
       if (fired.has(key)) continue;
       const c = contribs.get(inst)!;
       if (c.extenders.length === 0 && !inst.partial) continue;
-      const value = listKey(list);
       const next = applyInstruction(list, inst.target, c.extenders, inst.partial, c.keys);
-      if (next && listKey(next) !== value) {
+      if (next) {
         list = next;
         fired.add(key);
-        changed = true;
+        roundChanged = true;
+        ever = true;
         break;
       }
     }
   }
-  return list;
+  return { list, changed: ever };
 }

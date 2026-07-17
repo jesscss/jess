@@ -5,7 +5,7 @@
  * scope, document order).
  */
 
-import { branchFromComplex, collectBranchAtoms, levelFromSelectorList } from './ir.js';
+import { branchFromComplex, branchSharesAtom, collectBranchAtoms, levelFromSelectorList } from './ir.js';
 import type { Branch, Level } from './ir.js';
 import type { ExtendInstruction, Root, Rule, Statement } from '../nodes.js';
 
@@ -25,6 +25,16 @@ export interface PlanSubject {
   ownLocal: Level;
   /** The enclosing authored subject rule, or null at the top level. */
   parent: PlanSubject | null;
+  /**
+   * FAST-REJECT: true when some level on this subject's ancestor path (own-local ∪
+   * ancestors) contains an atom that is also an instruction-target atom. Computed
+   * as an inherited boolean — O(own-local atoms) per subject, no `composePath`.
+   * A subject with `mayMatch === false` provably cannot match or chain any extend
+   * (its composed seed's atoms ⊆ the per-level atom union; see EXTEND-REDESIGN.md),
+   * so it keeps its raw form and needs no expensive solve. Only meaningful when
+   * `targetAtoms` is populated (i.e. the document has extends).
+   */
+  mayMatch: boolean;
 }
 
 export interface Plan {
@@ -61,7 +71,7 @@ export function collectPlan(root: Root): Plan {
         const rule = st;
         const own = levelFromSelectorList(rule.selector);
         const rulePath = [...path, own];
-        const subject: PlanSubject = { rule, path: rulePath, scope, ownLocal: own, parent };
+        const subject: PlanSubject = { rule, path: rulePath, scope, ownLocal: own, parent, mayMatch: false };
         subjects.push(subject);
         if (rule.extendInstructions) {
           for (const inst of rule.extendInstructions) {
@@ -87,7 +97,37 @@ export function collectPlan(root: Root): Plan {
   };
 
   walk(root.children, [], [], null);
+
+  // FAST-REJECT boolean, computed as an inherited flag over subjects in document
+  // (pre-)order — a parent always precedes its descendants, so one forward pass
+  // suffices. `own || parent.mayMatch`: no `composePath`, O(own-local atoms).
+  for (const s of subjects) {
+    s.mayMatch =
+      (s.parent !== null && s.parent.mayMatch) ||
+      s.ownLocal.some((b) => branchSharesAtom(b, targetAtoms));
+  }
+
   return { subjects, instructions, targetAtoms };
+}
+
+/**
+ * Allocation-free pre-scan: does the document contain ANY `:extend()` instruction?
+ * The common case (no extends) returns false without building the subject/instruction
+ * plan at all — the serializer's true zero-cost gate.
+ */
+export function documentHasExtend(root: Root): boolean {
+  const scan = (statements: Statement[]): boolean => {
+    for (const st of statements) {
+      if (st.type === 'Rule') {
+        if (st.extendInstructions && st.extendInstructions.length > 0) return true;
+        if (scan(st.body)) return true;
+      } else if (st.type === 'AtRuleBlock') {
+        if (scan(st.body)) return true;
+      }
+    }
+    return false;
+  };
+  return scan(root.children);
 }
 
 /** Reachability: an instruction reaches a subject iff the subject scope is the

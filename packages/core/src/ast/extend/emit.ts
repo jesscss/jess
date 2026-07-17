@@ -44,9 +44,9 @@ import {
 } from './ir.js';
 import type { Branch, Compound, Level, Simple } from './ir.js';
 import { composePath } from './compose.js';
-import { collectPlan, reaches } from './plan.js';
+import { collectPlan, documentHasExtend, reaches } from './plan.js';
 import type { PlanInstruction, PlanSubject } from './plan.js';
-import { buildContribs, listKey, runFixpoint, solveComposed } from './solve.js';
+import { buildContribs, isExtendPrefilterEnabled, runFixpoint, solveComposed } from './solve.js';
 import type { Root, Rule, Statement } from '../nodes.js';
 
 export interface NestedRulePlan {
@@ -218,6 +218,9 @@ function mergeCompoundsToIs(a: Compound, b: Compound, allowNoSuffix: boolean): C
  * document has NO `:extend()` at all (the serializer's zero-cost gate).
  */
 export function computeExtends(root: Root): ExtendResults | null {
+  // Zero-cost gate: an allocation-free pre-scan short-circuits the common case (no
+  // `:extend()` anywhere) before any subject/instruction plan is built.
+  if (!documentHasExtend(root)) return null;
   const plan = collectPlan(root);
   if (plan.instructions.length === 0) return null;
 
@@ -225,19 +228,20 @@ export function computeExtends(root: Root): ExtendResults | null {
   const nestedPlan = new Map<Rule, NestedRulePlan>();
   const hoistHeader = new Map<Rule, string[]>();
 
-  // Precompute per-subject FLAT solve + raw composed once.
-  const rawBySubject = new Map<PlanSubject, Branch[]>();
-  const flatBySubject = new Map<PlanSubject, Branch[]>();
-  for (const s of plan.subjects) {
-    const raw = composePath(s.path);
-    rawBySubject.set(s, raw);
-    const flat = solveComposed(s, plan);
-    flatBySubject.set(s, flat);
-    // A rule the extend engine actually changed emits its EXTENDED header with
-    // sibling `:is()`-compaction (`.button:hover, .submit:hover` →
-    // `:is(.button, .submit):hover`); an unchanged rule keeps its authored form.
-    if (listKey(flat) !== listKey(raw)) flatByRule.set(s.rule, siblingCompact(flat).map(branchText));
-  }
+  // LAZY + MEMOIZED composePath. `composePath(s.path)` (full ancestor fold + Branch-
+  // IR allocation) is THE expensive primitive; it is computed at most once per
+  // subject and ONLY for subjects a candidate actually needs (candidates + the
+  // parents a flatten trigger reads). A non-candidate never referenced here is
+  // never composed.
+  const rawCache = new Map<PlanSubject, Branch[]>();
+  const rawOf = (s: PlanSubject): Branch[] => {
+    let r = rawCache.get(s);
+    if (r === undefined) {
+      r = composePath(s.path);
+      rawCache.set(s, r);
+    }
+    return r;
+  };
 
   const reachingOf = (s: PlanSubject): PlanInstruction[] =>
     plan.instructions.filter((i) => reaches(i.scope, s.scope));
@@ -284,11 +288,45 @@ export function computeExtends(root: Root): ExtendResults | null {
     collapsedChild.add(c);
   }
 
+  // ---- candidate set C (the prune) ----
+  // A rule receives a NON-DEFAULT map entry only inside the extend-touched region.
+  // SEEDS are the rules that can originate a change/flatten: a may-match subject, a
+  // nested rule carrying its own `:extend()` (trigger B), or a `&&` self-collapse
+  // pair. C is the DOWNWARD closure of the seeds (flatten cascades to descendants):
+  // a subject is a candidate iff it or any ancestor is a seed. Everything else gets
+  // the cheap default and is proven (EXTEND-REDESIGN.md §2) to need nothing more.
+  // The prune is gated by the same flag as the solve prefilter so the OFF path is a
+  // full scan (every subject a candidate) — the differential-soundness reference.
+  const pruneOn = isExtendPrefilterEnabled();
+  const isSeed = (s: PlanSubject): boolean =>
+    s.mayMatch ||
+    (s.parent !== null && s.rule.extendInstructions !== undefined && s.rule.extendInstructions.length > 0) ||
+    collapsedParent.has(s.rule) ||
+    collapsedChild.has(s);
+  const candidate = new Set<PlanSubject>();
+  for (const s of plan.subjects) {
+    // document (pre-)order ⇒ parent precedes child, so the ancestor's membership is
+    // already decided when the closure test reads it.
+    if (!pruneOn || isSeed(s) || (s.parent !== null && candidate.has(s.parent))) candidate.add(s);
+  }
+
+  // ---- FLAT solve, candidates ONLY ----
+  const flatBySubject = new Map<PlanSubject, Branch[]>();
+  for (const s of plan.subjects) {
+    if (!candidate.has(s)) continue;
+    const { list: flat, changed } = solveComposed(rawOf(s), s, plan);
+    flatBySubject.set(s, flat);
+    // A rule the extend engine actually changed emits its EXTENDED header with
+    // sibling `:is()`-compaction (`.button:hover, .submit:hover` →
+    // `:is(.button, .submit):hover`); an unchanged rule keeps its authored form.
+    if (changed) flatByRule.set(s.rule, siblingCompact(flat).map(branchText));
+  }
+
   /** The `all`-extender folds that alias a parent's whole complex (deterministic —
    * independent of the split/children decisions), plus the raw parent branches.
    * This is the set a nested child may descend from without crossing the `&`. */
   const parentHeaderSet = (p: PlanSubject): Branch[] => {
-    const raw = rawBySubject.get(p)!;
+    const raw = rawOf(p);
     const keys = new Set(raw.map(branchText));
     const out = raw.slice();
     for (const inst of reachingOf(p)) {
@@ -303,7 +341,7 @@ export function computeExtends(root: Root): ExtendResults | null {
     if (s.parent === null) return false;
     // trigger B: a nested rule that itself carries an extend crosses the `&`.
     if (s.rule.extendInstructions && s.rule.extendInstructions.length > 0) return true;
-    const parentRaw = rawBySubject.get(s.parent)!;
+    const parentRaw = rawOf(s.parent);
     const parentKeys = new Set(parentRaw.map(branchText));
     // trigger P: an `all`-extender aliasing the parent whole complex whose target
     // does NOT also hit the child's own local compound (foreign parent-context
@@ -327,6 +365,11 @@ export function computeExtends(root: Root): ExtendResults | null {
     return false;
   };
   for (const s of plan.subjects) {
+    // Only candidates can flatten (a non-candidate has no seed on its path, so
+    // ownFlatten is false and no ancestor flattened); leave them out of the map so
+    // they take the cheap default. Document order guarantees the parent's flatten is
+    // decided first for the cascade read.
+    if (!candidate.has(s)) continue;
     const f = ownFlatten(s) || (s.parent !== null && flattenOf.get(s.parent) === true);
     flattenOf.set(s, f);
   }
@@ -336,6 +379,23 @@ export function computeExtends(root: Root): ExtendResults | null {
 
   // ---- per-subject nested header + splits ----
   for (const s of plan.subjects) {
+    if (!candidate.has(s)) {
+      // Non-candidate: the DEFAULT entry. A top-level rule never reads `nestedPlan`
+      // (it renders through `flatByRule`/`rawComposed`), so it needs nothing. A
+      // nested non-candidate gets its authored own-local header — byte-identical to
+      // the `runFixpoint(ownLocal, [])` the affected path would compute, but with no
+      // `composePath`/solve. (Absent this entry the serializer would fall back to its
+      // native `ownStrings`; we keep the IR header to match the affected path
+      // exactly.)
+      if (s.parent !== null) {
+        nestedPlan.set(s.rule, {
+          flatten: false,
+          header: s.ownLocal.map(branchText),
+          splits: [],
+        });
+      }
+      continue;
+    }
     const flatten = flattenOf.get(s) === true;
     if (flatten) {
       nestedPlan.set(s.rule, { flatten: true, header: [], splits: [] });
@@ -358,7 +418,7 @@ export function computeExtends(root: Root): ExtendResults | null {
       // SPLIT to sibling rules with the target's direct declarations. Match the
       // exact target against the rule's COMPOSED complex (identical to own-local
       // for a real top rule; the composed `.e.e` for a collapsed `&&` child).
-      const identity = rawBySubject.get(s)!;
+      const identity = rawOf(s);
       if (survivors) {
         for (const inst of reaching) {
           if (inst.partial) continue;
@@ -377,7 +437,7 @@ export function computeExtends(root: Root): ExtendResults | null {
         const single = branchSingleCompound(inst.target);
         return inst.partial && single !== null && compoundHitsLevel(single, s.ownLocal);
       });
-      header = runFixpoint(s.ownLocal.map(cloneBranch), applied, buildContribs(applied));
+      header = runFixpoint(s.ownLocal.map(cloneBranch), applied, buildContribs(applied)).list;
     }
     nestedPlan.set(s.rule, {
       flatten: false,
