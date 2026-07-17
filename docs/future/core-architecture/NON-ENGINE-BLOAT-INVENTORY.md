@@ -1,5 +1,14 @@
 # Non-Engine Bloat Inventory (ranked kill-list)
 
+> ✅ **LARGELY RESOLVED (2026-07-17).** The top targets in this sweep were demolished:
+> jess-error decomposed to a 45-line data model with rendering moved to CLI
+> `packages/jess/src/diagnostics.ts` using linecraft (`6c0f1bfa6`); `plugin.ts`
+> as-any casts removed (`2f5401d1c`/`56b2ef3cd`) → 0 `any`; `context.ts` last 2 `any`
+> removed (`d7b2955cd`). The counts below are the PRE-demolition state — historical.
+> **Remaining genuine non-engine debt:** ~136 baseline `tsc` errors (repo builds with
+> `--noCheck`) — tracked separately as a typecheck burn-down. Retire this file once
+> that lands.
+
 READ-ONLY sweep of everything the `ast/` engine museum reviews did **not** cover:
 `packages/core/src/**` outside `ast/` and `tree/`, plus the other packages' `src/`
 (`jess` CLI, `jess-plugin-less`, `jess-plugin-less-compat`, `jess-plugin-scss`, `fns`,
