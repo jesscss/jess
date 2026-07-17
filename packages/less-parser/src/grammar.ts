@@ -41,10 +41,10 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   // `rw` (which skips line/block comments) must not apply there.
   const urlWs = trivia(ws);
 
-  const ident = regex(/-?(?:[_a-zA-Z-￿]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n]))(?:[-_a-zA-Z0-9-￿]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n]))*/);
+  const ident = regex(/-?(?:[_a-zA-Z-￿]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9-￿]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/);
   // Selectors / mixin names / idents include CSS escapes (\hex, \char) — same
   // definition as css-parser grammar.ts (a mixin call is just a selector).
-  const basicSel = regex(/(?:[.#]?-?(?:[_a-zA-Z-￿]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n]))(?:[-_a-zA-Z0-9-￿]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n]))*|\d+(?:\.\d+)?%|\*)/);
+  const basicSel = regex(/(?:[.#]?-?(?:[_a-zA-Z-￿]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9-￿]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*|\d+(?:\.\d+)?%|\*)/);
   const combinator = choice(literal('||'), literal('>'), literal('+'), literal('~'), literal('|'));
   const pseudoColon = regex(/::?/);
   const attrOp = regex(/[*~|^$]?=/);
@@ -73,10 +73,15 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   const customPropInterp = regex(/--(?:-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*|-)?@\{-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*\}(?:@\{-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*\}|[-_a-zA-Z0-9\u0080-\uffff])*/);
   const atKeyword = regex(/@-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
   const urlOpen = regex(/url\(/i);
-  // Unquoted url() body: any run of non-delimiter chars, with CSS escapes (\" \( …)
-  // so escaped quotes/parens inside the URL don't terminate it.
-  /** @todo(css-spec-parity): ad-hoc `/[^)"'\s]+/`-style body diverges from consume-a-url-token — port the spec-exact url code points from css-parser 102bb4c9f (`/(?:[^"'()\\ \t\n\f\r\x00-\x08\x0B\x0E-\x1F\x7F]|\\[^\n\r\f])+/`); see css-syntax-3 §4.3.6. */
-  const urlInner = regex(/(?:\\.|[^)"'\s])+/);
+  // Unquoted url() body — spec-exact <url-token> code points (consume-a-url-token,
+  // css-syntax-3 §4.3.6). A url code point is any code point EXCEPT `"` `'` `(` `)`,
+  // whitespace (tab/newline/form-feed/CR/space), a non-printable (U+0000–08, U+000B,
+  // U+000E–1F, U+007F), and `\`; a `\` begins an escaped code point (§4.3.7): `\` +
+  // 1–6 hex digits with one optional trailing whitespace terminator, OR `\` + any
+  // single non-newline code point — the same escape idiom `ident` uses. Ported
+  // verbatim from css-parser (5250b736b); Less inherits it and SCSS inherits it from
+  // Less.
+  const urlInner = regex(/(?:[^"'()\\ \t\n\f\r\x00-\x08\x0B\x0E-\x1F\x7F]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+/);
   const anyValueTok = regex(/[+\-*/=<>|~^]+|[^\s;{}\[\]()'",!]+/);
 
   // Less-specific terminals.
@@ -143,7 +148,7 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   // A purely-numeric name (`100:`) is a Less detached-ruleset map key, e.g.
   // `@grays: { 100: @gray-100; }` (Bootstrap). Not valid CSS, but Less accepts it
   // and `@grays[100]` reads it back; the whole-number alternative is tried first.
-  const declPropName = regex(/[0-9]+|\*?-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n])|[@$]\{[^}]*\})(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n])|[@$]\{[^}]*\})*/);
+  const declPropName = regex(/[0-9]+|\*?-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f])|[@$]\{[^}]*\})(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f])|[@$]\{[^}]*\})*/);
   const refKey = choice(nestedRef, lessVar, propRef, interpKey, ident);
   // One accessor: glued '[' / '(', trivia re-enabled inside the brackets/parens.
   const refIndex = sequence(literal('['), optional(refKey), literal(']'));
@@ -187,7 +192,7 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   // reuse them directly. See `_buildMixinArgs` (which reuses the shared `_assembleArgs`).
   const mixinNamePath = sequence(basicSel, many(sequence(optional(combinator), basicSel)));
   // MixinCall names must start with . or # — plain idents are properties, not mixins.
-  const mixinCallBasicSel = regex(/[.#]-?(?:[_a-zA-Z-￿]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n]))(?:[-_a-zA-Z0-9-￿]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n]))*/);
+  const mixinCallBasicSel = regex(/[.#]-?(?:[_a-zA-Z-￿]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9-￿]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/);
   const mixinCallPath = sequence(g.mixinCallBasicSel, many(sequence(optional(combinator), basicSel)));
   const MixinCall = node(
     sequence(g.mixinCallPath, optional(g.MixinArgs), optional(important), optional(literal(';'))));
