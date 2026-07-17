@@ -46,7 +46,7 @@ export function round(number: number, precision?: number): number {
 
 const clamp = (v: number, max: number): number => Math.min(Math.max(v, 0), max);
 
-/* ---------------------------------------------------- color math (ported) */
+/* ---------------------------------------------------------- color math */
 
 /** HSL(h deg, s 0-1, l 0-1) -> RGB 0-255, byte-identical to Color._rgb HSL branch. */
 export function hslToRgb(h: number, s: number, l: number): [number, number, number] {
@@ -111,7 +111,7 @@ export function colorRgb(c: Color): [number, number, number] {
   return [clamp(round(r), 255), clamp(round(g), 255), clamp(round(b), 255)];
 }
 
-/** Byte-identical port of `Color.toHex`. */
+/** Serialize a color to hex — `#rrggbb`, with a trailing `aa` byte when alpha < 1. */
 function toHex(c: Color): string {
   const values = colorRgb(c) as number[];
   const alpha = clamp(c.alpha, 1);
@@ -126,7 +126,7 @@ function toHex(c: Color): string {
 
 /* ---------------------------------------------------------- serializers */
 
-/** Byte-identical port of `Dimension.serializeSyntax`. */
+/** Serialize a dimension: number rounded to 8 dp + unit; non-finite spelled `NaN`/`infinity`/`-infinity`. */
 export function serializeDimension(n: Dimension, mode: OutputMode = OutputMode.Expanded): string {
   // COMPRESSED HOOK (not implemented): dart-sass `compressed` minifies the number
   // (leading-zero strip `0.5`→`.5`, drop trailing `.0`), unit unchanged. Branch here.
@@ -140,19 +140,17 @@ export function serializeDimension(n: Dimension, mode: OutputMode = OutputMode.E
 
 /**
  * The serialized alpha text — the authored `%` spelling (`round(pct,8)%`) when the
- * alpha was written as a percent, else the decimal alpha. Byte-identical to legacy
- * `Color.getSerializedAlphaText` (non-compress path).
+ * alpha was written as a percent, else the decimal alpha (non-compress path).
  */
 function alphaText(c: Color, a: number): string {
   return c.alphaPct !== undefined ? `${round(c.alphaPct, 8)}%` : `${a}`;
 }
 
 /**
- * Byte-identical port of `Color.serializeScalarSyntax` (non-compress path). A
- * verbatim source literal (`c.node`) wins; else format-based emit (RGB/HSL/HEX).
- * The optional SOURCE-FORMAT state (`rgbPct`/`alphaPct`/`hueUnit`) reproduces an
- * un-operated constructor's authored spelling (`%` channels, `%` alpha, hue unit),
- * mirroring the legacy `getSerializedRgbText`/`getSerializedAlphaText`; when absent
+ * Serialize a color in scalar syntax (non-compress path). A verbatim source
+ * literal (`c.node`) wins; else format-based emit (RGB/HSL/HEX). The optional
+ * SOURCE-FORMAT state (`rgbPct`/`alphaPct`/`hueUnit`) reproduces an un-operated
+ * constructor's authored spelling (`%` channels, `%` alpha, hue unit); when absent
  * the emit is the canonical no-source branch (`${rgb[idx]}` / `${alpha}`).
  */
 export function serializeColor(c: Color, mode: OutputMode = OutputMode.Expanded): string {
@@ -189,7 +187,7 @@ export function serializeColor(c: Color, mode: OutputMode = OutputMode.Expanded)
   return toHex(c);
 }
 
-/** Byte-identical port of `Quoted` render (escaping-aware). */
+/** Serialize a quoted string (escaping-aware: `~` prefix when escaped). */
 export function serializeQuoted(q: Quoted): string {
   const quote = q.quote || '"';
   return `${q.escaped ? '~' : ''}${quote}${q.value}${quote}`;

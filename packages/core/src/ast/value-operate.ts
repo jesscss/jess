@@ -28,7 +28,7 @@ function calculate(a: number, op: string, b: number): number {
 
 /* ---------------------------------------------------------- color math */
 
-/** Port of `Color.operate` (color ⊕ dimension | color ⊕ color). */
+/** Color arithmetic: color ⊕ dimension (per-channel scalar) or color ⊕ color (per-channel + alpha compositing). */
 function colorOperate(a: Color, b: ValueObj, op: string, modes: EvalModes): Color {
   const aRGB = colorRawRgb(a);
   let newAlpha = a.alpha;
@@ -47,7 +47,7 @@ function colorOperate(a: Color, b: ValueObj, op: string, modes: EvalModes): Colo
   return makeColorRgb(out, newAlpha, a.format, a.modernSyntax ? { modernSyntax: true } : undefined);
 }
 
-/** Port of `Dimension.operate` (dimension ⊕ dimension), unit-aware. */
+/** Unit-aware dimension arithmetic (dimension ⊕ dimension), reconciling or canceling units. */
 function dimensionOperate(a: Dimension, b: Dimension, op: string, modes: EvalModes): Dimension {
   const aVal = a.number;
   let bVal = b.number;
@@ -114,13 +114,12 @@ const CALC_WRAP_RE = /^calc\(([\s\S]*)\)$/;
 
 /**
  * If `bytes` is a `calc(...)` wrapper, return its inner expression; otherwise
- * `null`. Byte-level port of the legacy `Operation.unwrapCalcOperand`: CSS
- * flattens nested calc, so a `calc(...)` operand composing into an outer
- * operation has its inner expression spliced in directly, yielding one flat
+ * `null`. CSS flattens nested calc, so a `calc(...)` operand composing into an
+ * outer operation has its inner expression spliced in directly, yielding one flat
  * `calc(...)` rather than `calc(calc(...) op Y)`. A Paren-wrapped inner
  * expression keeps its paren (`calc((a - b))` -> `(a - b)`).
  *
- * SINGLE implementation: the transitional adapter (`tree2-frontend/value-eval`)
+ * SINGLE implementation: the transitional adapter (`parse-host/value-eval.ts`)
  * imports this rather than carrying its own twin.
  */
 export const calcInner = (bytes: string): string | null => {
@@ -129,7 +128,7 @@ export const calcInner = (bytes: string): string | null => {
 };
 
 /**
- * Binary operation. Reproduces the adapter's guard order byte-for-byte:
+ * Binary operation. Guard order (byte-faithful):
  *   1. a `calc(...)` keyword operand → splice its inner expression (flat calc),
  *   2. an un-operable keyword operand → preserve source `l op r`,
  *   3. else direct arithmetic; a unit-clash `TypeError` in `preserve` mode →
