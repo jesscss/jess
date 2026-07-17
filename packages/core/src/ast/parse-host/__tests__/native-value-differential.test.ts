@@ -1,3 +1,5 @@
+import { readFileSync, writeFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { describe, it, expect } from 'vitest';
 import { parseLessFn } from '@jesscss/less-parser';
 import { serialize } from '../../index.js';
@@ -5,6 +7,25 @@ import { buildEvaluator } from '../../evaluator.js';
 import { makeBuiltinRegistry } from '../../functions/index.js';
 import { bridgeToAst } from './bridge.js';
 import { buildAdapterEvaluator } from '../value-eval.js';
+
+/**
+ * FROZEN ORACLE (fns-migration Stage B). The differential corpus below was
+ * historically gated built-in ≡ live adapter (`buildAdapterEvaluator`). That
+ * couples the built-in path's coverage to the transitional adapter, which a later
+ * stage deletes. To decouple, the adapter's corpus outputs were captured ONCE (while
+ * the adapter still existed and built-in ≡ adapter held) into a static fixture; the
+ * corpus now asserts **built-in bytes === frozen fixture**. The adapter is retained
+ * as an ADDITIONAL third-arm check for as long as it exists (proving the freeze stays
+ * faithful) — that one arm is what the adapter-deletion stage removes, leaving the
+ * fixture as the sole, self-contained oracle.
+ *
+ * Regenerate (only after an INTENTIONAL, owner-reviewed corpus/semantics change):
+ *   GEN_DIFF_FIXTURE=1 pnpm -C packages/core test native-value-differential
+ */
+const FIXTURE_PATH = fileURLToPath(
+  new URL('./__fixtures__/native-value-differential.snap.json', import.meta.url),
+);
+const FROZEN_ORACLE: Record<string, string> = JSON.parse(readFileSync(FIXTURE_PATH, 'utf8'));
 
 /**
  * DIFFERENTIAL byte-identity: the built-in value path (materialize + operate +
@@ -294,12 +315,35 @@ const CORPUS: Array<[string, string]> = [
   ['guard-isstring', '.m(@x) when (isstring(@x)) { a: s; }\n.a { .m("hi"); }\n'],
 ];
 
-describe('built-in value path — differential byte-identity vs adapter', () => {
+// One-shot regeneration: rewrite the frozen fixture from the CURRENT built-in path,
+// but only after triple-checking every case still equals the live adapter (the
+// original oracle). Guarded by an env flag so a normal run never rewrites goldens.
+if (process.env.GEN_DIFF_FIXTURE === '1') {
+  describe('regenerate frozen differential fixture', () => {
+    it('captures built-in ≡ adapter corpus outputs to the fixture', async () => {
+      const snap: Record<string, string> = {};
+      for (const [name, src] of CORPUS) {
+        const builtinCss = await render(src, true);
+        const adapterCss = await render(src, false);
+        expect(builtinCss, `built-in ≠ adapter for ${name}; refusing to freeze`).toBe(adapterCss);
+        snap[name] = builtinCss;
+      }
+      writeFileSync(FIXTURE_PATH, `${JSON.stringify(snap, null, 2)}\n`);
+    });
+  });
+}
+
+describe('built-in value path — differential byte-identity vs frozen oracle', () => {
   for (const [name, src] of CORPUS) {
-    it(`built-in ≡ adapter: ${name}`, async () => {
+    it(`built-in ≡ frozen oracle: ${name}`, async () => {
       const builtinCss = await render(src, true);
+      // Primary gate: the built-in path matches the frozen oracle fixture.
+      expect(FROZEN_ORACLE, `no frozen entry for ${name}`).toHaveProperty(name);
+      expect(builtinCss).toBe(FROZEN_ORACLE[name]);
+      // Third-arm check (while the adapter still exists): the frozen oracle is a
+      // faithful capture of the live adapter. Removed when the adapter is deleted.
       const adapterCss = await render(src, false);
-      expect(builtinCss).toBe(adapterCss);
+      expect(adapterCss).toBe(FROZEN_ORACLE[name]);
     });
   }
 
