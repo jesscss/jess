@@ -1,28 +1,22 @@
 /**
- * Accessor + constructor helpers for the tree2 value domain — the ergonomic
- * layer that makes value math + fn conversion mechanical. Functions READ
- * via typed accessors and WRITE via constructors that compute canonical `bytes`
- * up front (via the free serializer), so this code never touches a legacy node
- * or a `render()` walk.
+ * Accessor + constructor helpers for the value domain — the ergonomic layer that
+ * makes value math + fn conversion mechanical. Functions READ via typed accessors
+ * and WRITE via constructors that compute canonical `bytes` up front (via the free
+ * serializer), building each result object once and stamping its bytes in place.
  *
  * HARD MODULE BOUNDARY: imports only the value domain + the free serializer.
  */
-import type { Color, Dimension, Keyword, Quoted, Bool, Nil, List, ValueObj } from './value-eval.js';
-import {
-  colorRgb,
-  colorSourceRgb,
-  rgbToHsl,
-  serializeColor,
-  serializeDimension,
-  serializeQuoted,
-  serializeValue,
-} from './serialize-value.js';
+import type { Color, Dimension, Keyword, Quoted, List, ValueObj } from './value-eval.js';
+import { colorRgb, colorSourceRgb, rgbToHsl, serializeColor } from './color.js';
+import { serializeDimension, serializeQuoted, serializeValue } from './serialize-value.js';
+
+/** A writable view of a value object, so a constructor can stamp `bytes` in place. */
+type Mutable<T> = { -readonly [P in keyof T]: T[P] };
 
 /* ----------------------------------------------------------- accessors */
 
 /** A numeric operand's scalar (a value `Dimension` or a bare JS number). */
 export const numOf = (v: Dimension | number): number => (typeof v === 'number' ? v : v.number);
-export const unitOf = (v: Dimension | number): string => (typeof v === 'number' ? '' : v.unit);
 
 /**
  * A color's hsl triple — the LAZY-HSL accessor. Returns the carried `hsl` source
@@ -52,15 +46,16 @@ export const colorRgbRounded = colorRgb;
 /**
  * A color's RAW (unrounded, unclamped) rgb — derived from the hsl source when that
  * is authoritative, else the stored rgb. Mirrors legacy `Color.get _rgb()`; the
- * hsv reader fns consume this. (The single selector lives in `serialize-value`.)
+ * hsv reader fns consume this.
  */
 export const colorRawRgb = colorSourceRgb;
 
 /* -------------------------------------------------------- constructors */
 
 export function makeDimension(number: number, unit = ''): Dimension {
-  const n: Dimension = { type: 'Dimension', number, unit, bytes: '' };
-  return { ...n, bytes: serializeDimension(n) };
+  const n: Mutable<Dimension> = { type: 'Dimension', number, unit, bytes: '' };
+  n.bytes = serializeDimension(n);
+  return n;
 }
 
 /** Build a color from an RGB source. `node` (verbatim spelling) is optional. */
@@ -70,18 +65,13 @@ export function makeColorRgb(
   format: number,
   opts?: { modernSyntax?: boolean; node?: string; rgbPct?: readonly (number | undefined)[]; alphaPct?: number },
 ): Color {
-  const base: Color = {
-    type: 'Color',
-    rgb,
-    alpha,
-    format,
-    ...(opts?.modernSyntax ? { modernSyntax: true } : {}),
-    ...(opts?.node !== undefined ? { node: opts.node } : {}),
-    ...(opts?.rgbPct !== undefined ? { rgbPct: opts.rgbPct } : {}),
-    ...(opts?.alphaPct !== undefined ? { alphaPct: opts.alphaPct } : {}),
-    bytes: '',
-  };
-  return { ...base, bytes: serializeColor(base) };
+  const c: Mutable<Color> = { type: 'Color', rgb, alpha, format, bytes: '' };
+  if (opts?.modernSyntax) c.modernSyntax = true;
+  if (opts?.node !== undefined) c.node = opts.node;
+  if (opts?.rgbPct !== undefined) c.rgbPct = opts.rgbPct;
+  if (opts?.alphaPct !== undefined) c.alphaPct = opts.alphaPct;
+  c.bytes = serializeColor(c);
+  return c;
 }
 
 /** Build a color from an HSL source (the hsl op result path). rgb stays derived. */
@@ -92,33 +82,24 @@ export function makeColorHsl(
   modernSyntax?: boolean,
   opts?: { hueUnit?: string; alphaPct?: number },
 ): Color {
-  const rgb: readonly [number, number, number] = [0, 0, 0]; // derived lazily by serializer
-  const base: Color = {
-    type: 'Color',
-    rgb,
-    alpha,
-    hsl,
-    format,
-    ...(modernSyntax ? { modernSyntax: true } : {}),
-    ...(opts?.hueUnit ? { hueUnit: opts.hueUnit } : {}),
-    ...(opts?.alphaPct !== undefined ? { alphaPct: opts.alphaPct } : {}),
-    bytes: '',
-  };
-  return { ...base, bytes: serializeColor(base) };
+  const c: Mutable<Color> = { type: 'Color', rgb: [0, 0, 0], alpha, hsl, format, bytes: '' };
+  if (modernSyntax) c.modernSyntax = true;
+  if (opts?.hueUnit) c.hueUnit = opts.hueUnit;
+  if (opts?.alphaPct !== undefined) c.alphaPct = opts.alphaPct;
+  c.bytes = serializeColor(c);
+  return c;
 }
 
 export function makeQuoted(value: string, quote: string, escaped: boolean): Quoted {
-  const q: Quoted = { type: 'Quoted', value, quote, escaped, bytes: '' };
-  return { ...q, bytes: serializeQuoted(q) };
+  const q: Mutable<Quoted> = { type: 'Quoted', value, quote, escaped, bytes: '' };
+  q.bytes = serializeQuoted(q);
+  return q;
 }
 
 export const makeKeyword = (text: string): Keyword => ({ type: 'Keyword', text, bytes: text });
 
-export const makeBool = (value: boolean): Bool => ({ type: 'Bool', value, bytes: value ? 'true' : 'false' });
-
-export const makeNil = (bytes = ''): Nil => ({ type: 'Nil', bytes });
-
 export function makeList(items: readonly ValueObj[], sep: ',' | ' ' | '/'): List {
-  const l: List = { type: 'List', items, sep, bytes: '' };
-  return { ...l, bytes: serializeValue(l) };
+  const l: Mutable<List> = { type: 'List', items, sep, bytes: '' };
+  l.bytes = serializeValue(l);
+  return l;
 }

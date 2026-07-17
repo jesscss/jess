@@ -9,7 +9,7 @@
  *   2px < 1em   → false (incomparable, no throw)    foo < bar    → false
  */
 import { describe, expect, it } from 'vitest';
-import { compare } from '../value-operate.js';
+import { compare } from '../value-guards.js';
 import { makeDimension, makeKeyword, makeQuoted } from '../value-factory.js';
 import type { ValueObj } from '../value-eval.js';
 

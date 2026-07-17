@@ -1,9 +1,8 @@
 /**
- * The SINGLE unit-conversion table for the tree2 value domain: length / duration /
- * angle units and their factors relative to each group's base. Consumed by
- * dimension arithmetic + comparison (`value-operate`), `convert()` (`functions/convert`),
- * and the min/max unify kernel (`functions/list-helper`) — previously triplicated with
- * identical factors.
+ * The SINGLE unit-conversion table for the value domain: length / duration / angle
+ * units and their factors relative to each group's base. Consumed by dimension
+ * arithmetic (`value-operate`), comparison (`value-guards`), and the `convert()` /
+ * min-max unify fns.
  *
  * HARD MODULE BOUNDARY: pure data + pure lookups, imports nothing.
  */
@@ -19,6 +18,9 @@ const GROUP_FACTORS: readonly Readonly<Record<string, number>>[] = [
 
 /** The canonical unit each group unifies TO (`Dimension.unify`): length→px, duration→s, angle→rad. */
 const GROUP_CANONICAL = ['px', 's', 'rad'] as const;
+
+/** Each group's canonical-unit factor, so `unify` needn't re-look-it-up per call. */
+const GROUP_CANONICAL_FACTOR = GROUP_FACTORS.map((f, g) => f[GROUP_CANONICAL[g]!]!);
 
 const UNIT_TO_GROUP = new Map<string, UnitGroup>();
 for (let g = 0; g < GROUP_FACTORS.length; g++) {
@@ -41,6 +43,5 @@ export const unitFactor = (unit: string): number | undefined => {
 export function unify(number: number, unit: string): { number: number; unit: string } {
   const g = UNIT_TO_GROUP.get(unit);
   if (g === undefined) return { number, unit };
-  const canon = GROUP_CANONICAL[g];
-  return { number: number * (GROUP_FACTORS[g]![unit]! / GROUP_FACTORS[g]![canon]!), unit: canon };
+  return { number: number * (GROUP_FACTORS[g]![unit]! / GROUP_CANONICAL_FACTOR[g]!), unit: GROUP_CANONICAL[g] };
 }

@@ -1,9 +1,8 @@
 /**
- * Clean-room tree2 public surface.
+ * The `ast/` public surface.
  *
- * HARD MODULE BOUNDARY: no file under `tree2/` imports from the legacy tree
- * directory. This is a from-scratch AST + serializer grown bottom-up via the
- * per-shape tree2-vs-tree head-to-head harness.
+ * HARD MODULE BOUNDARY: no file under `ast/` imports from the legacy `tree/`
+ * directory. This is a from-scratch AST + serializer.
  */
 
 export { type Node, type NodeType, type Combinator, isNode, AST_NODE_TYPES } from './node.js';
@@ -50,10 +49,10 @@ export {
   type SerializeReturn,
   type Position,
 } from './serialize.js';
-// [value path] boundary-clean serializer + operate + kind-dispatch that the
-// fns/ conversion sits on. Built ALONGSIDE the transitional adapter and gated
-// byte-identical against it (see evaluator.ts).
-export { serializeValue, serializeColor, serializeDimension, serializeQuoted, OutputMode } from './serialize-value.js';
+// [value path] the boundary-clean value serializer + operate + kind-dispatch that
+// the fns/ conversion sits on.
+export { serializeValue, serializeDimension, serializeQuoted } from './serialize-value.js';
+export { serializeColor } from './color.js';
 export { buildEvaluator } from './evaluator.js';
 export { createFnRegistry, type FnRegistry } from './value-dispatch.js';
 // [value-literal-tag] the parser's LIT_* classification (VALUE-LITERAL-TAG-SPEC).

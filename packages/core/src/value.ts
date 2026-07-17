@@ -36,7 +36,8 @@ export {
 } from './ast/value-factory.js';
 
 // --- value serializer ---
-export { HEX, RGB, HSL, round, serializeColor } from './ast/serialize-value.js';
+export { HEX, RGB, HSL, serializeColor } from './ast/color.js';
+export { round } from './ast/round.js';
 
 // --- unit table / conversion ---
 export { groupOf, unify, unitFactor } from './ast/value-units.js';

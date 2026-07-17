@@ -55,12 +55,13 @@ export interface FnRegistry {
 /** Create an empty {@link FnRegistry}; the caller populates it via `registerAll`. */
 export function createFnRegistry(): FnRegistry {
   const table = new Map<string, FnSpec>();
+  // Keys are stored lower-cased so lookups (also lower-cased) can't silently miss.
   return {
     register(fn) {
-      table.set(fn.name, fn);
+      table.set(fn.name.toLowerCase(), fn);
     },
     registerAll(fns) {
-      for (const fn of fns) table.set(fn.name, fn);
+      for (const fn of fns) table.set(fn.name.toLowerCase(), fn);
     },
     has(name) {
       return table.has(name.toLowerCase());
