@@ -348,6 +348,33 @@ pre-split single call and depend only on `env.readMode`, so exactly one call run
 per invocation with unchanged arguments — byte-identical, danger-token-free, and
 cost-neutral, with no honest admission-counter contract to author.
 
+**Opt-in escape: `allowsProsecutedDangerTokens` for a structural refactor that
+owns structure.** The danger-token-free requirement above is exactly right for a
+route split or rename, but it is *too strict* for one honest class of change: a
+byte-identical **structural refactor where the parser starts owning structure it
+previously left the core to re-derive from bytes**. Building the structure
+(e.g. a `Sequence` of spanned `Any` tokens where a whitespace-split byte blob used
+to be) necessarily introduces node-construction / array / materialization danger
+tokens — but those tokens *replace* the `.split`/`.map`/`.join`/`new List`/`new
+Any` work they retire, so net cost is equal-or-less. A neutral-or-negative
+contract may set `neutralRefactor.allowsProsecutedDangerTokens: true` to admit
+those tokens through the auto-pass. This relaxes **nothing** about safety: (a)
+byte-identity is still machine-checked against the benchmark oracle; (b) the
+pass-level per-label prosecution (`- Review-flagged diff tokens:`) still forces
+every danger category to be named in `[brackets]`; (c) the audit record must
+restate a `dangerTokensJustification` (≥40 chars) explaining why each flagged
+construct offsets removed work or sits off the benchmark render path; and (d)
+`costDelta` is pinned to exactly `"neutral"` — a `"decrease"` claim beside
+newly-added constructs is not honest and is rejected. The escape only lets a
+prosecuted, cost-neutral, byte-identical structural refactor take the auto-pass
+instead of forcing a speedup contract (`precise` / `conservative-filter` /
+`redundant-call-elimination`) that a non-perf change cannot honestly satisfy. The
+first instances are the three `atrule-prelude-unknown-tokenstream-*` contracts:
+the unknown at-rule prelude becomes a grammar-owned token stream of spanned `Any`
+nodes (parser owns structure; core no longer re-derives it from bytes), which is
+off the benchmark render path (benchmark.less has no unknown at-rules) and hence
+byte-identical.
+
 ### Contract kind: off-benchmark-call-reduction
 
 The `precise`, `conservative-filter`, and `redundant-call-elimination` kinds all
@@ -753,6 +780,57 @@ no imported guarded mixins (no speedup to show), but on
       "caller": "export function lookupScopeFrameCallable",
       "call": "walkFallbackCallable",
       "guard": "result.reason === 'child-surface'"
+    }
+  },
+  {
+    "id": "atrule-prelude-unknown-tokenstream-builders",
+    "kind": "neutral-or-negative",
+    "surface": "_buildUnknownAtRuleBlock unknown at-rule prelude token-stream assembly (builders.ts)",
+    "files": ["packages/css-parser/src/builders.ts"],
+    "neutralRefactor": {
+      "costDelta": "neutral",
+      "allowsProsecutedDangerTokens": true,
+      "why": "Byte-identical structural refactor — the unknown at-rule prelude is now built by the grammar as a token stream of spanned Any nodes instead of a whitespace-split byte blob. _buildUnknownAtRuleBlock collects the already-built Any nodes between the name and `{` and wraps 2+ of them in a Sequence, REPLACING the prior `.split`/`.map`/`.join`/`preludeSource.includes`/`new Any`/`new List` byte re-derivation, so net allocation is equal-or-less. benchmark.less has no unknown at-rules, so this builder path is never reached and render output is byte-identical (oracle sha/bytes unchanged).",
+      "byteIdentity": {
+        "fixture": "benchmark.less",
+        "collapseNesting": true,
+        "outputSha256": "adfd26732125a33fc1e264aca7d7ecde8c7c1da43f968e3106bd387a1f78e840",
+        "outputBytes": 133983
+      }
+    }
+  },
+  {
+    "id": "atrule-prelude-unknown-tokenstream-grammar",
+    "kind": "neutral-or-negative",
+    "surface": "UnknownAtRuleBlock atTokenStream verbatim per-token prelude scan (grammar.ts)",
+    "files": ["packages/css-parser/src/grammar.ts"],
+    "neutralRefactor": {
+      "costDelta": "neutral",
+      "allowsProsecutedDangerTokens": true,
+      "why": "Byte-identical structural refactor — UnknownAtRuleBlock now consumes its prelude via atTokenStream (a `many` of verbatim per-token `node('Any', scanTo(...))` runs plus comma tokens) instead of one opaque atPrelude scanTo leaf, so the grammar OWNS the prelude structure as spanned Any nodes rather than the core re-deriving it from bytes. The scan uses the same balanced()/string skip machinery the old atPreludeScan used. benchmark.less has no unknown at-rules, so the changed alternative is never entered and render output is byte-identical (oracle sha/bytes unchanged).",
+      "byteIdentity": {
+        "fixture": "benchmark.less",
+        "collapseNesting": true,
+        "outputSha256": "adfd26732125a33fc1e264aca7d7ecde8c7c1da43f968e3106bd387a1f78e840",
+        "outputBytes": 133983
+      }
+    }
+  },
+  {
+    "id": "atrule-prelude-unknown-tokenstream-sequence",
+    "kind": "neutral-or-negative",
+    "surface": "emitDirectSeparator leading-comma-token space suppression (sequence.ts)",
+    "files": ["packages/core/src/tree/sequence.ts"],
+    "neutralRefactor": {
+      "costDelta": "neutral",
+      "allowsProsecutedDangerTokens": true,
+      "why": "Byte-identical structural refactor — emitDirectSeparator adds one allocation-free branch (isLeadingCommaToken: a type check plus a valueOf compare) so a comma token carried as its own Sequence member does not get a spurious leading space, matching List's emitListSeparator canonical `foo, bar`. The guard only fires for a bare comma Any member, which is produced solely by the new unknown-at-rule prelude token stream; benchmark.less Sequences carry no comma-Any members, so the branch is always false there and render output is byte-identical (oracle sha/bytes unchanged).",
+      "byteIdentity": {
+        "fixture": "benchmark.less",
+        "collapseNesting": true,
+        "outputSha256": "adfd26732125a33fc1e264aca7d7ecde8c7c1da43f968e3106bd387a1f78e840",
+        "outputBytes": 133983
+      }
     }
   }
 ]

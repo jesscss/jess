@@ -39,7 +39,7 @@ describe('serializeTypes coverage', () => {
     `);
   });
 
-  test('static statement and unknown-block at-rule preludes are strings', () => {
+  test('static statement prelude is a string; unknown-block prelude is a spanned node', () => {
     const statementSource = '@layer theme;';
     const statementResult = cssParser.parse(statementSource);
     const statement = statementResult.tree.rules[0];
@@ -58,7 +58,11 @@ describe('serializeTypes coverage', () => {
       throw new Error('Expected an opaque block at-rule');
     }
     expect(block).not.toBeInstanceOf(AtRuleStatement);
-    expect(block.prelude).toBe('feature');
+    // The prelude is now a REAL spanned token node (a single-token stream folds to
+    // the node directly, no wrapper), NOT an opaque string.
+    expect(typeof block.prelude).not.toBe('string');
+    expect(isNode(block.prelude)).toBe(true);
+    expect(String(block.prelude?.valueOf())).toBe('feature');
     expect(blockResult.tree.toString({ trivia: blockResult.trivia })).toBe('@vendor feature {\n');
   });
 
@@ -71,13 +75,75 @@ describe('serializeTypes coverage', () => {
     }
     expect(statement.prelude).toBeInstanceOf(Any);
 
-    const blockResult = cssParser.parse('@vendor /*before*/ feature /*after*/ {}');
+    const blockSource = '@vendor /*before*/ feature /*after*/ {}';
+    const blockResult = cssParser.parse(blockSource);
     const block = blockResult.tree.rules[0];
     expect(isNode(block, N.AtRule)).toBe(true);
     if (!isNode(block, N.AtRule)) {
       throw new Error('Expected an opaque block at-rule');
     }
-    expect(block.prelude).toBeInstanceOf(Any);
+    // The prelude is now a spanned token node (single-token stream → the node
+    // directly); the surrounding comments are trivia, recovered via the trivia map.
+    expect(typeof block.prelude).not.toBe('string');
+    expect(isNode(block.prelude)).toBe(true);
+    expect(String(block.prelude?.valueOf())).toBe('feature');
+    expect(blockResult.tree.toString({ trivia: blockResult.trivia }))
+      .toBe('@vendor /*before*/ feature /*after*/ {\n');
+  });
+
+  test('unknown-block at-rule prelude is a verbatim token stream of distinct Any nodes', () => {
+    const source = '@vendor foo, "bar", baz(1) {}';
+    const { tree, trivia } = cssParser.parse(source);
+    const block = tree.rules[0];
+    expect(isNode(block, N.AtRule)).toBe(true);
+    if (!isNode(block, N.AtRule)) {
+      throw new Error('Expected an opaque block at-rule');
+    }
+    const prelude = block.prelude;
+    expect(isNode(prelude, N.Sequence)).toBe(true);
+    if (!isNode(prelude, N.Sequence)) {
+      throw new Error('Expected a Sequence prelude for a multi-token stream');
+    }
+    const members = prelude.value as Array<{ valueOf(): unknown }>;
+    // Five DISTINCT verbatim tokens — never one opaque leaf. Unknown-at-rule tokens
+    // are kept verbatim (all Any), not typed value nodes; a comma is its own token,
+    // and `baz(1)` stays one glued token (its inner parens are not split).
+    expect(members).toHaveLength(5);
+    for (const m of members) {
+      expect(m).toBeInstanceOf(Any);
+    }
+    expect(members.map(m => String(m.valueOf()))).toEqual(['foo', ',', '"bar"', ',', 'baz(1)']);
+    // The header (name + real token-stream prelude) round-trips byte-identically via
+    // the offset-keyed trivia map hanging off each token's span.
+    expect(tree.toString({ trivia })).toBe('@vendor foo, "bar", baz(1) {\n');
+  });
+
+  test('unknown-block at-rule preludes keep exotic tokens verbatim and byte-identical', () => {
+    // The verbatim per-token scan skips balanced ()/[] and strings, so stray
+    // operators, brackets, and glued runs round-trip exactly (0 parse errors) —
+    // no regression vs the old opaque `scanTo` prelude. Multi-space runs between
+    // tokens normalize to a single space (consistent with the whitespace-separated
+    // token model), which is expected.
+    const cases: Array<[string, string]> = [
+      ['@vendor [x] {}', '@vendor [x] {\n'],
+      ['@vendor foo!bar {}', '@vendor foo!bar {\n'],
+      ['@vendor a=b {}', '@vendor a=b {\n'],
+      ['@vendor >x {}', '@vendor >x {\n'],
+      ['@vendor foo(a, b) {}', '@vendor foo(a, b) {\n'],
+      ['@vendor 50% {}', '@vendor 50% {\n'],
+      ['@vendor #fff {}', '@vendor #fff {\n'],
+      ['@vendor a b {}', '@vendor a b {\n'],
+      ['@vendor a  b {}', '@vendor a b {\n']
+    ];
+    for (const [source, expected] of cases) {
+      const { tree, trivia } = cssParser.parse(source);
+      const block = tree.rules[0];
+      expect(isNode(block, N.AtRule)).toBe(true);
+      if (!isNode(block, N.AtRule)) {
+        throw new Error(`Expected an opaque block at-rule for ${source}`);
+      }
+      expect(tree.toString({ trivia })).toBe(expected);
+    }
   });
   test('single rule with declaration', () => {
     const { tree } = cssParser.parse('a { b: c; }');

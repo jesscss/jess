@@ -1521,6 +1521,127 @@ left unmerged; only the evidence record was retained in commit `3056554`.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: UNKNOWN AT-RULE PRELUDE TOKEN STREAM — neutral-or-negative auto-pass
+  (three `atrule-prelude-unknown-tokenstream-*` contracts). An UNKNOWN at-rule block
+  (`@vendor feature {}`) previously captured its prelude as ONE opaque `scanTo` leaf
+  that the builder turned into a whitespace-split byte blob (or `Any`). It is now a
+  grammar-owned token stream: `grammar.ts` `UnknownAtRuleBlock` consumes an
+  `atTokenStream` (`many` of verbatim per-token `node('Any', scanTo(...))` runs plus
+  comma tokens, skipping balanced `()`/`[]` and strings); `builders.ts`
+  `_buildUnknownAtRuleBlock` collects the already-built `Any` nodes between the name
+  and `{` and wraps 2+ in a `Sequence`; `sequence.ts` `emitDirectSeparator` adds one
+  allocation-free `isLeadingCommaToken` branch so a comma member glues to the prior
+  token (`foo, bar`, not `foo , bar`). The parser now OWNS prelude structure; the core
+  never re-derives it from bytes. This is the first use of the
+  `allowsProsecutedDangerTokens` escape: a byte-identical STRUCTURAL refactor whose
+  new node-construction tokens REPLACE the removed `.split`/`.map`/`.join`/`new
+  List`/`new Any` byte re-derivation.
+- Architecture surface: `packages/css-parser/src/grammar.ts` (new `atTokenStream` /
+  `atToken` / `atRunStop` productions; `UnknownAtRuleBlock` consumes `atTokenStream`
+  instead of `atPrelude`; `atPrelude`/`atPreludeScan` untouched for the known-block
+  rules), `packages/css-parser/src/builders.ts` (`_buildUnknownAtRuleBlock` rewritten
+  to assemble `Any` nodes into a `Sequence`), and `packages/core/src/tree/sequence.ts`
+  (module-local `isLeadingCommaToken` guard in `emitDirectSeparator`). No writer, node
+  field, or public API changed.
+- Separation/duplication: none added. The opaque-leaf prelude scan is replaced by the
+  token-stream productions; the builder's byte-blob assembly (`.split`/`.map`/`.join`/
+  `preludeSource.includes('/*')`/`new List`/`new Any`) is deleted. The comma-spacing
+  rule mirrors the pre-existing `List.emitListSeparator` canonical `, ` behaviour
+  rather than duplicating it.
+- Cumulative node weight: neutral-to-reduced. The prelude is now spanned `Any` tokens
+  the grammar already built; the builder no longer allocates the intermediate split
+  arrays / `List` / `Any` of the old byte blob. No map, set, or retained state added.
+- New traversal: none on the benchmark render path. The unknown-at-rule builder loop
+  walks the prelude children once (parse-time only); benchmark.less has no unknown
+  at-rules so it is never entered. No walk/generator added to render.
+- New node/materialization: the prelude `Sequence` (and its `Any` members) are
+  constructed at PARSE time by the grammar/builder, REPLACING the removed
+  `new List`/`new Any` byte-blob prelude; net construction is equal-or-less. No node
+  is materialized on the benchmark render path.
+- Render path: byte-identical — benchmark.less `collapseNesting:true` 133983 bytes /
+  `adfd26732125a33fc1e264aca7d7ecde8c7c1da43f968e3106bd387a1f78e840` before and after
+  (proven by a same-worktree origin/dev source-toggle rebuild + re-render producing
+  the identical sha/bytes). Full css-parser suite green (264 passed, 17 skipped);
+  css-parser byte-oracle files green (less-output, css-files, ast-serialize,
+  cst-public, parse-errors, frame-corpus); core suite green.
+- Helper/API surface: none exported. `atTokenStream`/`atToken`/`atRunStop` are grammar
+  productions local to `cssGrammar` (`atTokenStream` is also placed on the returned
+  grammar map, mirroring the other rule refs); `isLeadingCommaToken` is a module-local
+  `function` in sequence.ts. No method or field introduced.
+- Metadata mutations: none. No parent/source/provenance/frozen field changed; the
+  prelude `Any`/`Sequence` nodes carry their real parse spans only.
+- Review-flagged diff tokens: prosecuted. The danger-token scan flags `[array helper]`
+  (`children.slice(1, braceIdx)` / `children.slice(1)` in `_buildUnknownAtRuleBlock`),
+  `[node construction]` (`new Sequence(items, ...)` in `_buildUnknownAtRuleBlock`), and
+  `[materialized array/object]` (`const items = nodeChildren(preludeChildren)` in
+  `_buildUnknownAtRuleBlock`, plus a false-positive on a grammar.ts COMMENT line
+  mentioning balanced `()`/`[]`). Every one lives in the parse-time
+  `_buildUnknownAtRuleBlock` builder and REPLACES the removed
+  `.split`/`.map`/`.join`/`new List`/`new Any` of the prior byte-blob prelude, so net
+  allocation is equal-or-less; all sit OFF the benchmark render path (benchmark.less has
+  no unknown at-rules). The sequence.ts guard adds NO danger token (one type check plus
+  an allocation-free `valueOf()` compare).
+- Evidence: byte-identity is the acceptance basis for this neutral structural refactor,
+  not a speedup. The current benchmark oracle is 133983 bytes / sha
+  `adfd26732125a33fc1e264aca7d7ecde8c7c1da43f968e3106bd387a1f78e840`
+  (`collapseNesting:true`); a same-worktree A/B — swapping the three source files to
+  their origin/dev versions, rebuilding core + css-parser + less-parser, and
+  re-rendering benchmark.less — produced the IDENTICAL sha/bytes, proving the change is
+  byte-identical to origin/dev. (NOTE: the prior HANDOFF/registry oracle
+  `98a0536086c7e555…` / 131578 bytes has DRIFTED on dev and no longer matches a fresh
+  render; this pass uses the freshly-computed 133983/`adfd2673…` everywhere.) The
+  changed builder path is OFF the benchmark (no unknown at-rules), so it adds zero
+  measured render cost; the danger-token scan's findings are all parse-time node
+  construction offsetting removed work.
+- Verdict: accepted.
+- Hot-path cost contracts:
+```json
+[
+  {
+    "id": "atrule-prelude-unknown-tokenstream-builders",
+    "kind": "neutral-or-negative",
+    "costDelta": "neutral",
+    "why": "Byte-identical structural refactor — the unknown at-rule prelude is now built by the grammar as a token stream of spanned Any nodes instead of a whitespace-split byte blob. _buildUnknownAtRuleBlock collects the already-built Any nodes between the name and `{` and wraps 2+ of them in a Sequence, replacing the prior .split/.map/.join/preludeSource.includes/new Any/new List byte re-derivation. benchmark.less has no unknown at-rules, so the changed builder path is never reached and render output is byte-identical (oracle sha/bytes unchanged).",
+    "dangerTokensJustification": "The [array helper] children.slice, [node construction] new Sequence, and the [materialized array/object] nodeChildren array all live in _buildUnknownAtRuleBlock, a parse-time builder whose job is constructing prelude nodes; they REPLACE the removed .split/.map/.join/new List/new Any of the prior byte-blob prelude, so net allocation is equal-or-less. This path is off the benchmark render oracle (benchmark.less has no unknown at-rules), so it adds zero measured render cost; output is byte-identical.",
+    "byteIdentity": {
+      "fixture": "benchmark.less",
+      "collapseNesting": true,
+      "outputSha256": "adfd26732125a33fc1e264aca7d7ecde8c7c1da43f968e3106bd387a1f78e840",
+      "outputBytes": 133983
+    },
+    "verdict": "accepted"
+  },
+  {
+    "id": "atrule-prelude-unknown-tokenstream-grammar",
+    "kind": "neutral-or-negative",
+    "costDelta": "neutral",
+    "why": "Byte-identical structural refactor — UnknownAtRuleBlock now consumes its prelude via atTokenStream (a `many` of verbatim per-token node('Any', scanTo(...)) runs plus comma tokens) instead of one opaque atPrelude scanTo leaf, so the grammar OWNS prelude structure as spanned Any nodes rather than the core re-deriving it from bytes. The scan reuses the same balanced()/string skip machinery the old atPreludeScan used. benchmark.less has no unknown at-rules, so the changed alternative is never entered and render output is byte-identical (oracle sha/bytes unchanged).",
+    "dangerTokensJustification": "grammar.ts adds no runtime danger token: the only scan hit on this file is a false-positive on a COMMENT line mentioning balanced ()/[]. The real flagged tokens ([array helper] children.slice, [node construction] new Sequence, [materialized array/object] nodeChildren) live in the sibling builders.ts _buildUnknownAtRuleBlock and REPLACE the removed .split/.map/.join/new List/new Any of the prior byte-blob prelude, so net allocation is equal-or-less. This path is off the benchmark render oracle (benchmark.less has no unknown at-rules); output is byte-identical.",
+    "byteIdentity": {
+      "fixture": "benchmark.less",
+      "collapseNesting": true,
+      "outputSha256": "adfd26732125a33fc1e264aca7d7ecde8c7c1da43f968e3106bd387a1f78e840",
+      "outputBytes": 133983
+    },
+    "verdict": "accepted"
+  },
+  {
+    "id": "atrule-prelude-unknown-tokenstream-sequence",
+    "kind": "neutral-or-negative",
+    "costDelta": "neutral",
+    "why": "Byte-identical structural refactor — emitDirectSeparator adds one allocation-free branch (isLeadingCommaToken: a type check plus a valueOf compare) so a comma token carried as its own Sequence member does not get a spurious leading space, matching List.emitListSeparator canonical `foo, bar`. The guard only fires for a bare comma Any member, produced solely by the new unknown-at-rule prelude token stream; benchmark.less Sequences carry no comma-Any members, so the branch is always false there and render output is byte-identical (oracle sha/bytes unchanged).",
+    "dangerTokensJustification": "sequence.ts introduces NO danger token — isLeadingCommaToken is a single allocation-free branch (node.type check plus node.valueOf() compare), and the scan reports zero findings on this file. The pass-level flagged tokens ([array helper], [node construction], [materialized array/object]) all live in the parse-time builders.ts _buildUnknownAtRuleBlock and REPLACE removed byte-blob work; this render-path guard only suppresses a spurious space for comma-Any members, which benchmark.less never carries, so output is byte-identical.",
+    "byteIdentity": {
+      "fixture": "benchmark.less",
+      "collapseNesting": true,
+      "outputSha256": "adfd26732125a33fc1e264aca7d7ecde8c7c1da43f968e3106bd387a1f78e840",
+      "outputBytes": 133983
+    },
+    "verdict": "accepted"
+  }
+]
+```
+
 - Latest pass: CALLABLE-FALLBACK UNCOVERED-CALLABLE RETIRE — `lookupScopeFrameCallable`
   now walks the import `fallbackFrame` chain (via a threaded Rules-side `prepareFrame`
   hook) so imported guarded mixins resolve authoritatively on the frame, retiring the

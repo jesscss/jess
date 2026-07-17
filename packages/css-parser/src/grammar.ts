@@ -439,6 +439,24 @@ export const cssGrammar = rules({ trivia: rw }, (g: any) => {
   // `expect` recovers in place and the scan continues, so the block still parses.
   const supportsCondAhead = regex(/(?=\(|not(?![-\w])|-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*\()/i);
   const reqSupportsPrelude = sequence(expect(supportsCondAhead, 'supports condition'), atPreludeScan);
+  // An UNKNOWN at-rule prelude as a REAL token stream — distinct, properly-spanned
+  // VERBATIM tokens, NOT one opaque leaf. Typed/semantic value nodes are reserved
+  // for KNOWN at-rules (later increments); here every top-level token is kept
+  // verbatim as one `Any` so glued runs (`a=b`, `foo(1)`, `[x]`, `foo!bar`) round-
+  // trip byte-for-byte. One token is a maximal run that stops at a TOP-LEVEL
+  // whitespace / `,` / `{` / `;`, skipping balanced ()/[] and strings so an inner
+  // comma/space/paren never splits it; a top-level comma is its own token. The
+  // `not(atRunStop)` guard forbids entering on a stop char, so `atToken` can never
+  // match empty (no infinite `many` loop). Ambient trivia (`rw`) skips whitespace
+  // between iterations; a trailing comment before `{` stays trivia (recoverable
+  // via the trivia map) — same guarantee as the old atPreludeScan sentinel.
+  // @see https://www.w3.org/TR/css-syntax-3/#consume-at-rule
+  const atRunStop = choice(ws, comment, literal(','), literal('{'), literal(';'));
+  const atToken = node('Any', sequence(
+    not(atRunStop),
+    scanTo(atRunStop, { skip: [balanced('(', ')'), balanced('[', ']'), singleStr, doubleStr] })
+  ));
+  const atTokenStream = many(choice(node('Any', literal(',')), atToken));
   // Known block at-rules are dispatched to a SHAPE-appropriate body per spec
   // (rather than one grab-bag): conditional-group + `@layer` + `@starting-style`
   // are transparent (ambient frame); the descriptor family is declarations-only;
@@ -615,7 +633,7 @@ export const cssGrammar = rules({ trivia: rw }, (g: any) => {
    */
   const opaqueAtBody = scanTo(literal('}'), { skip: [balanced('{', '}'), singleStr, doubleStr, comment] });
   const UnknownAtRuleBlock = node(
-    sequence(atKeyword, atPrelude, literal('{'), opaqueAtBody, literal('}')));
+    sequence(atKeyword, g.atTokenStream, literal('{'), opaqueAtBody, literal('}')));
   /**
    * A statement at-rule — `@name <prelude> ;` with no block (`@charset`,
    * `@namespace`, `@layer a, b;` …).
@@ -720,7 +738,7 @@ export const cssGrammar = rules({ trivia: rw }, (g: any) => {
     valueList, valueSequence, value, parenBody, mathProduct, mathSum, calcBody,
     Dimension, numeric, Url, Call, anyValue,
     AtRuleBlock, AtRuleBlockTop, AtRuleStatement, ImportStatement,
-    QueryAtRuleBlock, QueryAtRuleBlockTop, UnknownAtRuleBlock
+    QueryAtRuleBlock, QueryAtRuleBlockTop, UnknownAtRuleBlock, atTokenStream
   };
 });
 

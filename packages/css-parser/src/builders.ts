@@ -1321,23 +1321,33 @@ export class CssParser {
 
   /**
    * An unknown at-rule with a `{}` block. The block is opaque (the UA owns its
-   * meaning), so it is scanned over without parsing or erroring — we keep the
-   * name and prelude text and drop the opaque body.
+   * meaning), so it is scanned over without parsing or erroring — we drop the
+   * opaque body and keep the name plus a REAL token-stream prelude: the grammar's
+   * `atTokenStream` delivers the prelude as distinct spanned VERBATIM `Any` nodes
+   * (each token, and each comma, is its own `Any`), so structure is grammar-owned
+   * and the builder never re-derives it from bytes. Inter-token whitespace/comments
+   * round-trip via the offset-keyed trivia map off each node's real span.
    */
   protected _buildUnknownAtRuleBlock(children: ReadonlyArray<Child>, loc: LocationInfo) {
-    const ls = children.filter((c): c is CSTLeaf => c._tag === 'leaf');
-    const name = ls[0]?.value ?? '';
-    const braceIdx = ls.findIndex(l => l.value === '{');
-    const preludeText = (braceIdx > 1 ? ls.slice(1, braceIdx) : [])
-      .map(l => l.value).join('').trim();
-    const preludeSource = ls[0] && braceIdx > 0
-      ? this._source.slice(ls[0].span.end, ls[braceIdx]!.span.start)
-      : '';
-    const prelude = preludeText && !preludeSource.includes('/*')
-      ? preludeText
-      : preludeText
-        ? new Any(preludeText, undefined, loc)
-        : undefined;
+    const nameLeaf = children[0]?._tag === 'leaf' ? children[0] as CSTLeaf : undefined;
+    const name = nameLeaf?.value ?? '';
+    // Ordered prelude tokens are the built `Any` nodes between the name leaf and
+    // the `{` leaf (tokens + commas alike). `nodeChildren` keeps only built nodes,
+    // dropping the name/`{`/`}`/body leaves.
+    const braceIdx = children.findIndex(c => c._tag === 'leaf' && (c as CSTLeaf).value === '{');
+    const preludeChildren = braceIdx >= 0 ? children.slice(1, braceIdx) : children.slice(1);
+    const items = nodeChildren(preludeChildren) as unknown as Node[];
+    let prelude: Node | undefined;
+    if (items.length === 1) {
+      prelude = items[0];
+    } else if (items.length > 1) {
+      const first = rawChildSpan(items[0]);
+      const last = rawChildSpan(items[items.length - 1]);
+      const span = first && last
+        ? spanToLocation({ start: first.start, end: last.end })
+        : loc;
+      prelude = new Sequence(items, undefined, span) as unknown as Node;
+    }
     return new AtRule({ name, prelude, rules: [] }, undefined, loc) as unknown as JessNode;
   }
 

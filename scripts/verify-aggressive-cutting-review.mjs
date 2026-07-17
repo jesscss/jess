@@ -423,6 +423,16 @@ function validateNeutralRefactorMetadata(contract) {
   if (typeof nr.why !== 'string' || nr.why.trim().length < 40) {
     errors.push(`Neutral-or-negative cost contract ${contract.id} must justify cost-neutrality with a neutralRefactor.why paragraph.`);
   }
+  // Opt-in escape for a byte-identical STRUCTURAL refactor whose only new danger
+  // tokens are node construction that replaces equivalent removed work (e.g. the
+  // parser now OWNING structure — building a Sequence where it previously split a
+  // byte blob). Off by default; when true it does NOT relax byte-identity or the
+  // pass-level per-label prosecution — it only lets a prosecuted, cost-neutral,
+  // byte-identical refactor take the auto-pass instead of forcing a speedup
+  // contract that a non-perf structural change cannot honestly satisfy.
+  if ('allowsProsecutedDangerTokens' in nr && typeof nr.allowsProsecutedDangerTokens !== 'boolean') {
+    errors.push(`Neutral-or-negative cost contract ${contract.id} neutralRefactor.allowsProsecutedDangerTokens must be a boolean when present.`);
+  }
   const bi = nr.byteIdentity;
   if (
     !bi
@@ -447,7 +457,11 @@ function validateNeutralRefactorMetadata(contract) {
  *   1. Danger-token-free: the live diff must introduce zero danger tokens (the caller
  *      passes hasDangerTokens from the same scan the rest of the gate runs). New
  *      allocation/loop/map/clone/error-control constructs ARE danger tokens, so a
- *      cost-add that reaches for them is refused here.
+ *      cost-add that reaches for them is refused here — UNLESS the contract opts in
+ *      via allowsProsecutedDangerTokens for a byte-identical STRUCTURAL refactor
+ *      (parser owning structure), in which case the tokens are admitted only with a
+ *      per-label pass prosecution, a dangerTokensJustification, and strict-neutral
+ *      costDelta; byte-identity and the prosecution requirement are NOT relaxed.
  *   2. Cost-non-increasing: costDelta must be "neutral" or "decrease"; an admitted
  *      "increase" is rejected and routes to a precise / conservative-filter contract.
  *   3. Byte-identity: the record restates the benchmark oracle sha/bytes it did not
@@ -456,9 +470,25 @@ function validateNeutralRefactorMetadata(contract) {
  */
 function checkNeutralRefactor(record, meta, hasDangerTokens, errors) {
   let ok = true;
-  if (hasDangerTokens) {
-    errors.push(`Neutral-or-negative record ${record.id} cannot auto-pass while the diff introduces danger tokens; account for them via a precise / conservative-filter / redundant-call-elimination contract.`);
+  if (hasDangerTokens && !meta.allowsProsecutedDangerTokens) {
+    errors.push(`Neutral-or-negative record ${record.id} cannot auto-pass while the diff introduces danger tokens; account for them via a precise / conservative-filter / redundant-call-elimination contract, or — for a byte-identical STRUCTURAL refactor whose only new tokens are node construction replacing equivalent removed work — set neutralRefactor.allowsProsecutedDangerTokens and restate a dangerTokensJustification.`);
     ok = false;
+  }
+  if (hasDangerTokens && meta.allowsProsecutedDangerTokens) {
+    // The pass-level per-label prosecution ("Review-flagged diff tokens:") already
+    // forces every danger category to be accounted for; here the record must
+    // additionally restate WHY those constructs add no net cost (they offset
+    // removed work, or sit off the benchmark render path), and costDelta must be
+    // strictly "neutral" — a "decrease" claim beside newly-added constructs is not
+    // honest.
+    if (record.costDelta !== 'neutral') {
+      errors.push(`Neutral-or-negative record ${record.id} admits prosecuted danger tokens, so costDelta must be exactly "neutral" (not "decrease").`);
+      ok = false;
+    }
+    if (typeof record.dangerTokensJustification !== 'string' || record.dangerTokensJustification.trim().length < 40) {
+      errors.push(`Neutral-or-negative record ${record.id} admits prosecuted danger tokens, so it must restate a dangerTokensJustification paragraph explaining why each flagged construct is byte-identical and cost-neutral (offsets removed work / off the benchmark render path).`);
+      ok = false;
+    }
   }
   if (!['neutral', 'decrease'].includes(record.costDelta)) {
     errors.push(`Neutral-or-negative record ${record.id} must declare costDelta "neutral" or "decrease"; a cost increase cannot use the auto-pass.`);
