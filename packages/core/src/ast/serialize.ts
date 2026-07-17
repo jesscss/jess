@@ -755,26 +755,34 @@ function reindentContinuations(bytes: string, contIndent: string): string {
   return lines.join('\n');
 }
 
-/** True when resolved value bytes already carry a trailing `!important` (any
- * case, optional trailing whitespace) — so the declaration's own `!important`
- * append would double it. */
-function valueEndsImportant(bytes: string): boolean {
-  return /!important\s*$/iu.test(bytes);
+/** Normalize a declaration's `!important` on resolved value bytes: a trailing
+ * `!important` (any case, `!` and `important` optionally spaced) is respaced to a
+ * single leading space (`100%!important` → `100% !important`) and kept verbatim
+ * (never doubled — `20px ! important` stays as-is); an absent one is appended.
+ * Only applied when the declaration carries `!important`. */
+function normalizeImportant(bytes: string): string {
+  const m = /(\s*)(!\s*important)\s*$/iu.exec(bytes);
+  return m ? bytes.slice(0, m.index) + ' ' + m[2] : bytes + ' !important';
 }
 
 /** Emit a value at a leaf/prelude site: sync `put`, or reserve an async slot.
  * `contIndent`, when given, re-indents multi-line value continuation lines.
- * Returns the emitted sync bytes (for trailing-`!important` dedup), or `null`
- * when the value deferred to an async slot. */
-function putValue(e: Emit, node: ValueNode, frame: Frame | null, positionNode?: Node, contIndent?: string): string | null {
+ * `emitImportant` normalizes/appends the declaration's `!important` onto the
+ * resolved bytes (see {@link normalizeImportant}). Returns the emitted sync bytes,
+ * or `null` when the value deferred to an async slot. */
+function putValue(e: Emit, node: ValueNode, frame: Frame | null, positionNode?: Node, contIndent?: string, emitImportant?: boolean): string | null {
   const b = evalBytes(node, frame, e);
+  const finish = (s: string): string => {
+    const r = contIndent !== undefined ? reindentContinuations(s, contIndent) : s;
+    return emitImportant ? normalizeImportant(r) : r;
+  };
   if (isThenable(b)) {
     const i = e.chunks.length;
     e.chunks.push('');
-    e.pending.push({ i, p: Promise.resolve(contIndent !== undefined ? mapMaybe(b, (s) => reindentContinuations(s, contIndent)) : b) });
+    e.pending.push({ i, p: Promise.resolve(mapMaybe(b, finish)) });
     return null;
   }
-  const bytes = contIndent !== undefined ? reindentContinuations(b, contIndent) : b;
+  const bytes = finish(b);
   const valStart = e.off;
   put(e, bytes);
   if (e.positions && positionNode) {
@@ -1243,9 +1251,8 @@ function emitLeaf(leaf: Leaf, e: Emit): void {
     put(e, idt);
     put(e, declName(node, frame, e)); // resolve interpolated property name
     put(e, ': ');
-    const vb = putValue(e, node.value, frame, node.value, idt + INDENT); // [whitespace] continuation indent
-    // merge important — but never double a `!important` already in the value bytes.
-    if ((node.important || leaf.important) && !(vb !== null && valueEndsImportant(vb))) put(e, ' !important');
+    const important = node.important === true || leaf.important === true;
+    putValue(e, node.value, frame, node.value, idt + INDENT, important); // [whitespace] continuation indent
     if (e.positions) e.positions.push({ node, type: node.type, start, end: e.off });
     put(e, ';\n');
   } else if (node.type === 'Comment') {
@@ -1618,9 +1625,8 @@ function emitNestedLeaf(leaf: Leaf, e: Emit): void {
     put(e, declName(node, frame, e)); // resolve interpolated property name
     put(e, ': ');
     const valStart = e.off;
-    const vb = putValue(e, node.value, frame, node.value, idt + INDENT); // [whitespace] continuation indent
-    // merge important — but never double a `!important` already in the value bytes.
-    if ((node.important || leaf.important) && !(vb !== null && valueEndsImportant(vb))) put(e, ' !important');
+    const important = node.important === true || leaf.important === true;
+    putValue(e, node.value, frame, node.value, idt + INDENT, important); // [whitespace] continuation indent
     if (e.positions) {
       e.positions.push({ node: node.value, type: node.value.type, start: valStart, end: e.off });
       e.positions.push({ node, type: node.type, start, end: e.off });
