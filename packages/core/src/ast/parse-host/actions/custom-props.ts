@@ -15,17 +15,22 @@
  *     exactly like the bridge's `detectMergeImportant`. The value consumes the
  *     single WHOLE-value built node the parser bounded (an F5 value leaf, an F1
  *     `VarRef`, or an F6/F7 paren / call — via the shared `wholeValueNode`); a
- *     multi-token / top-level-operation value keeps its verbatim source bytes, so
- *     plain declarations stay byte-identical to the seed while merge/important
- *     shapes fold at serialize time. `ACTION_LIST` is later-wins, so appending this
- *     family supersedes the seed's `Declaration` entry.
+ *     MULTI-PART value (`1px solid @a`, `@bg url(…) …`, `1px solid (@bg * .5)`) is
+ *     ASSEMBLED — each operable component the parser isolated (var ref / operation /
+ *     call) is interleaved with the verbatim source bytes between components into a
+ *     `Sequence`, so at serialize time refs resolve and operations run while inert
+ *     idents / separators / spacing stay source-VERBATIM (v5). A value with no
+ *     operable component keeps its raw bytes (byte-identical to the seed). A merged
+ *     (`+`/`+_`) value stays raw-bytes (its `!important` is re-emitted by the flag,
+ *     which the `Sequence` shape would double). `ACTION_LIST` is later-wins, so
+ *     appending this family supersedes the seed's `Declaration` entry.
  *
  * TOTAL: parseman speculatively builds backtracked branches, so neither action
  * throws on a doomed shape — a colon-less span degrades to an inert declaration
  * that a discarded branch (or a parent re-deriving from source) drops.
  */
 import * as t2 from '../../index.js';
-import { type BuildAction, type BuildArgs, sliceSpan } from '../host-context.js';
+import { type BuildAction, type BuildArgs, type Span, sliceSpan } from '../host-context.js';
 import { wholeValueNode } from './interp.js';
 
 /* ------------------------------------------------ source-bytes value helpers */
@@ -89,10 +94,11 @@ function declBody(args: BuildArgs): string {
 /**
  * The single whole-value built node the parser bounded, when it is a shape this
  * family structures at the declaration level (an F5 value leaf, an F1 `VarRef`, or
- * an F6/F7 `Paren` / `FunctionCall`). A top-level `Operation` / `SpacedValue` is
- * deliberately EXCLUDED — the bridge's declaration value for `1 + 2` / `12px/1.5`
- * is a raw `Word` (those `Operation` nodes are only the operands a paren / call
- * body consumes), so the source-bytes fallback stays byte-identical to the bridge.
+ * an F6/F7 `Paren` / `FunctionCall`). A whole-value top-level `Operation` /
+ * `SpacedValue` is not returned here — it flows to `assembleMultiPartValue`, which
+ * consumes it (the direct path has no separate eval pass, so a top-level operation
+ * must be STRUCTURED to evaluate at serialize; `12px/1.5` serializes as a slash
+ * list, `@a * .5 + @b * .5` computes).
  */
 function consumableWholeValue(args: BuildArgs, valueBytes: string): t2.ValueNode | null {
   const node = wholeValueNode(args, valueBytes);
@@ -101,6 +107,82 @@ function consumableWholeValue(args: BuildArgs, valueBytes: string): t2.ValueNode
   return k === 'Word' || k === 'VarRef' || k === 'Paren' || k === 'FunctionCall'
     ? (node as t2.ValueNode)
     : null;
+}
+
+/* ---------------------------------------------- multi-part value assembly */
+
+/** A built value node the parser bounded, plus its verbatim source span. */
+interface Hole {
+  readonly node: t2.ValueNode;
+  readonly start: number;
+  readonly end: number;
+}
+
+/** A value node built by the grammar (declines a raw parseman leaf token). */
+function asValueNode(x: unknown): t2.ValueNode | null {
+  return t2.isNode(x) ? (x as t2.ValueNode) : null;
+}
+
+/**
+ * A hole that emits DIFFERENTLY from its verbatim source bytes — a `VarRef`,
+ * `Operation`, `FunctionCall`, `Paren`, or interpolation. A plain `Word` /
+ * `Dimension` leaf emits its bytes verbatim, so a value whose only built nodes are
+ * those needs no assembly (the raw-bytes fallback is already byte-identical, and
+ * cheaper). This is the gate that keeps every value that ALREADY worked untouched.
+ */
+function resolvesDifferently(node: t2.ValueNode): boolean {
+  return node.type !== 'Word' && node.type !== 'Dimension';
+}
+
+/**
+ * A multi-part / operated declaration value (`1px solid @a`, `@bg url(...) …`,
+ * `1px solid (@bg * 0.66)`). The parser already isolated each operable component as
+ * a built value node (`VarRef` / `Operation` / `FunctionCall` / `Paren`) among the
+ * value children, and left the inert bytes (idents like `solid`, separators, the
+ * exact whitespace) between them. This CONSUMES those built children (P0 — no
+ * re-tokenizing of `ctx.src`): it interleaves each built node with the verbatim
+ * source bytes that sit between the nodes, producing a `Sequence` (the shape
+ * `nodes.ts` documents: `1px solid @c` → `Sequence[Word('1px solid '), VarRef]`).
+ * At serialize time the `Sequence` resolves each ref / runs each operation and
+ * emits the literal gaps verbatim, so un-operated components stay SOURCE-VERBATIM
+ * (v5 rule) while operated / referenced ones canonicalize.
+ *
+ * Falls back to the verbatim-bytes `Word` (byte-identical to the prior behavior)
+ * when nothing needs resolving, or when the reconstructed region does not match the
+ * value bytes exactly (e.g. a trailing `!important` outside the built-node span).
+ */
+function assembleMultiPartValue(args: BuildArgs, valStart: number, valueBytes: string): t2.ValueNode {
+  const src = args.ctx.src;
+  const vEnd = valStart + valueBytes.length;
+  // The value region must line up with the source bytes exactly (a re-derived
+  // offset guards against any trailing-`!important` / trimming skew).
+  if (src.slice(valStart, vEnd) !== valueBytes) return t2.word(valueBytes);
+
+  const holes: Hole[] = [];
+  let anyResolves = false;
+  for (let i = 0; i < args.children.length; i++) {
+    const node = asValueNode(args.children[i]);
+    if (node === null) continue;
+    const raw = args.rawChildren[i] as { span?: Span } | undefined;
+    if (!raw?.span || raw.span.start < valStart || raw.span.end > vEnd) continue;
+    holes.push({ node, start: raw.span.start, end: raw.span.end });
+    if (resolvesDifferently(node)) anyResolves = true;
+  }
+  // No operable component → the raw bytes are already byte-identical (and cheaper).
+  if (!anyResolves) return t2.word(valueBytes);
+  holes.sort((a, b) => a.start - b.start);
+
+  // Interleave each built node with the verbatim source bytes between the nodes,
+  // so inert idents / separators / exact spacing survive as literal `Word` gaps.
+  const parts: t2.ValueNode[] = [];
+  let cursor = valStart;
+  for (const h of holes) {
+    if (h.start > cursor) parts.push(t2.word(src.slice(cursor, h.start)));
+    parts.push(h.node);
+    cursor = h.end;
+  }
+  if (cursor < vEnd) parts.push(t2.word(src.slice(cursor, vEnd)));
+  return parts.length === 1 ? parts[0]! : t2.sequence(parts);
 }
 
 /* --------------------------------------------------------------- actions */
@@ -149,12 +231,20 @@ const declaration: BuildAction = {
     else if (merge === ',') nameBytes = nameBytes.slice(0, -1);
     const name = declName(nameBytes.trim());
 
-    // Value strategy mirrors the F0/F5 static-decl seed: consume the single built
-    // WHOLE-value node the parser bounded (leaf / ref / paren / call); otherwise
-    // re-derive from the verbatim source bytes — no re-tokenizing of `@name` refs
-    // the parser already isolated as `Reference` children.
-    const valueBytes = body.slice(colon + 1).trim();
-    let value: t2.ValueNode = consumableWholeValue(args, valueBytes) ?? t2.word(valueBytes);
+    // Value strategy: consume the single built WHOLE-value node the parser bounded
+    // (leaf / ref / paren / call); else ASSEMBLE a multi-part value — interleaving
+    // each built component (var ref / operation / call) with the verbatim source
+    // bytes between them (P0 — no re-tokenizing of the `@name` refs the parser
+    // already isolated). A merged (`+`/`+_`) value keeps the raw-bytes fallback: its
+    // `!important` is re-emitted by the structured flag, which the `Sequence` shape
+    // would double — an uncommon merged-multipart-var case left byte-safe.
+    const rawValue = body.slice(colon + 1);
+    const leadingWs = rawValue.length - rawValue.trimStart().length;
+    const valStart = args.span.start + colon + 1 + leadingWs;
+    const valueBytes = rawValue.trim();
+    let value: t2.ValueNode =
+      consumableWholeValue(args, valueBytes)
+      ?? (merge === null ? assembleMultiPartValue(args, valStart, valueBytes) : t2.word(valueBytes));
     // A merged decl carrying `!important` in its bytes strips it (the structured
     // flag re-emits it once at the end of the combined line).
     if (merge !== null && important) value = stripImportantBytes(value);

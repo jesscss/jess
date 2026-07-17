@@ -3,14 +3,18 @@
  * together because they share the declaration whole-value guard).
  *
  * Grammar `type`s constructed:
- *   • `Operation`     — a math expression whose slash DIVIDES (paren / calc body).
- *   • `OperationTop`  — the declaration-level math variant (slash is a list under
- *                       default math). Both fold the flat `operand op operand …`
- *                       children into left-associative `t2.Operation` nodes; the
- *                       grammar already carries precedence by nesting product
- *                       inside sum, so one build only folds a single precedence
- *                       level. (`collapse:true` means a lone operand never reaches
- *                       here — a plain value builds no Operation.)
+ *   • `Operation`     — a math expression whose slash DIVIDES (paren / calc body):
+ *                       every operator folds to a computed `t2.Operation`.
+ *   • `OperationTop`  — the declaration-level math variant. Default Less math treats
+ *                       a top-level `/` as a LIST separator, not division (the
+ *                       grammar encodes the math mode by tagging this run `Top`), so
+ *                       a `/` step folds to a slash `SpacedValue` (`12px / 16px` —
+ *                       operands resolve but never divide) while `* + - %` fold to a
+ *                       computed `Operation`. Both fold the flat `operand op operand
+ *                       …` children left-associatively; the grammar carries
+ *                       precedence by nesting product inside sum, so one build folds
+ *                       a single precedence level. (`collapse:true` means a lone
+ *                       operand never reaches here — a plain value builds no node.)
  *   • `Paren`         — `( expr )`: a transparent wrapper around one inner value.
  *   • `Call`          — `name( args )` / `calc( … )`: a STRUCTURED `FunctionCall`
  *                       whose args keep their full shape — comma args, space
@@ -28,12 +32,12 @@
  *   • a space-list call arg (`foo(1px solid red)`) — bridge re-slices with a
  *     leading-space defect (`1px  solid`); direct emits single spaces.
  *
- * The declaration whole-value guard (in `custom-props.ts`, the family that owns
- * the live `Declaration` action) consumes a whole-value `Paren`/`FunctionCall`
- * (the shapes the bridge structures at the declaration level); a top-level
- * `Operation` stays raw bytes there — matching the bridge, whose declaration value
- * for `1 + 2` / `12px/1.5` is a raw Word. The built `Operation` nodes are the
- * OPERANDS the paren / call bodies consume.
+ * The `Declaration` action (in `custom-props.ts`) consumes a whole-value
+ * `Paren`/`FunctionCall` directly, and ASSEMBLES multi-part values — interleaving
+ * these built `Operation` / slash-list / call nodes with the verbatim bytes between
+ * them. A top-level operation therefore STRUCTURES and evaluates at serialize
+ * (`@a * .5 + @b * .5` → a color; `12px/16px` → a `12px / 16px` slash list), unlike
+ * the bridge, which defers it as a raw declaration `Word` for a later eval pass.
  *
  * TOTALITY: parseman builds backtracked branches, so every action returns a valid
  * node (never throws) even on a doomed shape.
@@ -94,8 +98,28 @@ function foldOperation(args: BuildArgs): t2.ValueNode {
   return left;
 }
 
+/**
+ * Declaration-level fold. Identical to `foldOperation` EXCEPT the slash: at the top
+ * level (outside parens/calc) Less default math treats `/` as a LIST separator, not
+ * division (the grammar encodes the math mode by tagging this run `OperationTop`
+ * rather than `Operation`). A `/` step therefore builds a slash-separated
+ * `SpacedValue` (`left / right`) whose operands still resolve (`@a / @b`) but are
+ * NEVER divided — matching the legacy oracle (`font: 12px/16px` → `12px / 16px`).
+ * `*` / `+` / `-` / `%` still fold to a computed `Operation`.
+ */
+function foldOperationTop(args: BuildArgs): t2.ValueNode {
+  const n = args.children.length;
+  let left = operandAt(args, 0);
+  for (let i = 1; i + 1 < n; i += 2) {
+    const op = leafText(args.children[i]).trim();
+    const right = operandAt(args, i + 1);
+    left = op === '/' ? t2.spaced([left, t2.word('/'), right]) : t2.operation(op, left, right);
+  }
+  return left;
+}
+
 const operation: BuildAction = { type: 'Operation', build: foldOperation };
-const operationTop: BuildAction = { type: 'OperationTop', build: foldOperation };
+const operationTop: BuildAction = { type: 'OperationTop', build: foldOperationTop };
 
 /* ------------------------------------------------------------------ Paren */
 

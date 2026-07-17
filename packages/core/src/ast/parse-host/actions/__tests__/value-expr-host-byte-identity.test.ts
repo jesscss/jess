@@ -3,6 +3,8 @@ import { parseLessFn, lessGrammar } from '@jesscss/less-parser';
 import { serialize, Root } from '../../../index.js';
 import { bridgeToAst } from '../../__tests__/bridge.js';
 import { parseToAst } from '../../dispatch-host.js';
+import { buildEvaluator } from '../../../evaluator.js';
+import { makeBuiltinRegistry } from '../../__tests__/make-builtin-registry.js';
 
 /**
  * F6 (Operation / Paren) + F7 (FunctionCall) byte-identity.
@@ -37,14 +39,18 @@ function direct(v: string): string {
 function bridge(v: string): string {
   return serialize(viaBridge(`.a { m: ${v} }\n`)).css;
 }
+function directEval(v: string): string {
+  return serialize(astDirect(`.a { m: ${v} }\n`), { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css;
+}
 
 // ── Clean shapes: byte-identical to the bridge ──────────────────────────────
 const clean = [
-  // top-level arithmetic (bridge keeps these as raw declaration bytes; the direct
-  // path likewise leaves a top-level Operation as bytes — both byte-identical)
-  '1 + 2', '1+2', '2 * 3 + 4', '10 - 3', '100 / 4', '7 % 3',
-  // slash lists (default math: `/` is a list, not division → raw bytes both)
-  '12px/1.5', '16px / 1.5', '1fr / 2fr',
+  // top-level arithmetic that keeps its authored operator spacing (both the direct
+  // path's structured Operation and the bridge's raw bytes serialize identically
+  // when the source already spaces each operator ` op `)
+  '1 + 2', '2 * 3 + 4', '10 - 3', '100 / 4', '7 % 3',
+  // slash lists (default math: `/` is a list, not division) with authored spaces
+  '16px / 1.5', '1fr / 2fr',
   // parenthesised expressions (structured Paren both)
   '(1 + 2)', '(1+2)', '(1 + 2) * 3', '((1 + 2))', '(100% - 10px)',
   // function calls — comma args (structured FunctionCall both)
@@ -69,6 +75,28 @@ describe('value-expr host byte-identity vs bridge', () => {
         console.log(`\n--- ${v} ---\nDIRECT: ${JSON.stringify(d)}\nBRIDGE: ${JSON.stringify(b)}`);
       }
       expect(d).toBe(b);
+    });
+  }
+});
+
+// ── Structured top-level operations: evaluate at serialize (diverge from the
+//    bridge's DEFERRED raw bytes) ─────────────────────────────────────────────
+describe('value-expr — top-level operation structures + evaluates', () => {
+  // The direct path has no separate eval pass: a top-level operation is STRUCTURED
+  // (an `Operation`, or a slash `SpacedValue`) so it resolves at serialize time —
+  // required for the benchmark (`@a * .75 + @b * .25` → a color). The bridge defers
+  // it as raw declaration bytes, so a NO-SPACE source (`1+2`, `12px/1.5`) diverges
+  // only in operator spacing without an evaluator, and evaluates correctly with one.
+  const cases: Array<{ v: string; noEval: string; withEval: string; bridgeRaw: string }> = [
+    { v: '1+2', noEval: '1 + 2', withEval: '3', bridgeRaw: '1+2' },
+    // `/` at the top level is a LIST separator (not division): resolved-but-not-divided.
+    { v: '12px/1.5', noEval: '12px / 1.5', withEval: '12px / 1.5', bridgeRaw: '12px/1.5' },
+  ];
+  for (const { v, noEval, withEval, bridgeRaw } of cases) {
+    it(v, () => {
+      expect(direct(v)).toBe(`.a {\n  m: ${noEval};\n}\n`);
+      expect(directEval(v)).toBe(`.a {\n  m: ${withEval};\n}\n`);
+      expect(bridge(v)).toBe(`.a {\n  m: ${bridgeRaw};\n}\n`);
     });
   }
 });
