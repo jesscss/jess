@@ -31,10 +31,10 @@ function workspaceSrcAliases() {
     if (!name) continue;
     alias.push({ find: new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`), replacement: src });
   }
-  // [tree2-poc] the css-parser `./jess` subpath (functional-parse driver) — the
-  // tree2 front-end POC drives the grammar through `runFunctionalParse` with a
-  // tree2 build host. Subpaths normally fall through to node resolution, which
-  // misses from core (no hoist); a src alias keeps the TS-aware run working.
+  // The css-parser `./jess` subpath (functional-parse driver) — the ast parse
+  // host drives the grammar through `runFunctionalParse` with a build host.
+  // Subpaths normally fall through to node resolution, which misses from core
+  // (no hoist); a src alias keeps the TS-aware run working.
   const cssJess = resolve(root, 'packages/css-parser/src/jess.ts');
   if (existsSync(cssJess)) {
     alias.push({ find: /^@jesscss\/css-parser\/jess$/, replacement: cssJess });
