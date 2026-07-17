@@ -10,7 +10,7 @@
 import type { Color, Dimension, Keyword, Quoted, Bool, Nil, List, ValueObj } from './value-eval.js';
 import {
   colorRgb,
-  hslToRgb,
+  colorSourceRgb,
   rgbToHsl,
   serializeColor,
   serializeDimension,
@@ -47,15 +47,14 @@ export const colorHslClamped = (c: Color): [number, number, number] => {
 };
 
 /** A color's ROUNDED + clamped concrete rgb (legacy `Color.get rgb()`). */
-export const colorRgbRounded = (c: Color): [number, number, number] => colorRgb(c);
+export const colorRgbRounded = colorRgb;
 
 /**
  * A color's RAW (unrounded, unclamped) rgb — derived from the hsl source when that
  * is authoritative, else the stored rgb. Mirrors legacy `Color.get _rgb()`; the
- * hsv reader fns consume this.
+ * hsv reader fns consume this. (The single selector lives in `serialize-value`.)
  */
-export const colorRawRgb = (c: Color): [number, number, number] =>
-  c.hsl ? hslToRgb(c.hsl[0], c.hsl[1], c.hsl[2]) : [c.rgb[0], c.rgb[1], c.rgb[2]];
+export const colorRawRgb = colorSourceRgb;
 
 /* -------------------------------------------------------- constructors */
 

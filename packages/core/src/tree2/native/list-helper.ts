@@ -15,6 +15,7 @@
 import type { Dimension, List, ValueObj } from '../value-eval.js';
 import { sniffLiteral } from '../literal-tag.js';
 import { makeKeyword } from '../value-factory.js';
+import { unify as unifyRaw } from '../value-units.js';
 
 /**
  * Narrow the single arg a VARIADIC fn receives to its `List`. The dispatcher
@@ -107,27 +108,6 @@ export function coerceListItems(v: ValueObj | undefined): ValueObj[] {
 }
 
 /* --------------------------------------------------- min / max unit kernel */
-
-type UnitGroup = Record<string, number>;
-
-/** Length / duration / angle conversion factors (byte-identical to legacy `min`/`max`). */
-const UNIT_GROUPS: readonly UnitGroup[] = [
-  { m: 1, cm: 0.01, mm: 0.001, in: 0.0254, px: 0.0254 / 96, pt: 0.0254 / 72, pc: (0.0254 / 72) * 12 },
-  { s: 1, ms: 0.001 },
-  { rad: 1 / (2 * Math.PI), deg: 1 / 360, grad: 1 / 400, turn: 1 },
-];
-
-/** `Dimension.unify()`: convert `number`+`unit` to its group's canonical unit. */
-function unifyRaw(number: number, unit: string): { number: number; unit: string } {
-  if (unit === '') return { number, unit: '' };
-  for (const g of UNIT_GROUPS) {
-    if (g[unit] !== undefined) {
-      const canon = 'px' in g ? 'px' : 's' in g ? 's' : 'rad';
-      return { number: number * (g[unit]! / g[canon]!), unit: canon };
-    }
-  }
-  return { number, unit };
-}
 
 const unify = (d: Dimension): { number: number; unit: string } => unifyRaw(d.number, d.unit);
 

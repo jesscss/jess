@@ -94,11 +94,21 @@ export function rgbToHsl(r0: number, g0: number, b0: number): [number, number, n
 }
 
 /**
+ * The RAW (unrounded, unclamped) rgb SOURCE of a color — derived from `hsl` when
+ * that is the source of truth, else the stored rgb. The single hsl-or-stored-rgb
+ * selector that `colorRgb` (rounds/clamps on top) and the value factory's
+ * `colorRawRgb` both consume; color arithmetic operates on this.
+ */
+export function colorSourceRgb(c: Color): [number, number, number] {
+  return c.hsl ? hslToRgb(c.hsl[0], c.hsl[1], c.hsl[2]) : [c.rgb[0], c.rgb[1], c.rgb[2]];
+}
+
+/**
  * Concrete RGB (clamped 0-255, rounded) for a color — the value the legacy
- * `get rgb()` returns. Derives from `hsl` when that is the source of truth.
+ * `get rgb()` returns. Rounds/clamps the raw `colorSourceRgb`.
  */
 export function colorRgb(c: Color): [number, number, number] {
-  const [r, g, b] = c.hsl ? hslToRgb(c.hsl[0], c.hsl[1], c.hsl[2]) : c.rgb;
+  const [r, g, b] = colorSourceRgb(c);
   return [clamp(round(r), 255), clamp(round(g), 255), clamp(round(b), 255)];
 }
 

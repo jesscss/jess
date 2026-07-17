@@ -6,27 +6,15 @@
  * rgb/hsl color math), plus the calc-splice + unoperable-keyword-preserve +
  * unit-clash → `calc()` guards that landed in the adapter.
  *
- * HARD MODULE BOUNDARY: imports only the value domain, the factory, and the free
- * serializer. Being synchronous is also what dissolves the benchmark's
- * async-dispatch throw.
+ * HARD MODULE BOUNDARY: imports only the value domain, the factory, the free
+ * serializer, and the shared units table. Being synchronous is also what dissolves
+ * the benchmark's async-dispatch throw.
  */
 import type { Color, Dimension, EvalModes, ValueObj } from './value-eval.js';
-import { makeColorRgb, makeDimension, makeKeyword } from './value-factory.js';
+import { colorRawRgb, makeColorRgb, makeDimension, makeKeyword } from './value-factory.js';
+import { groupOf, unify, unitFactor } from './value-units.js';
 
-/* --------------------------------------------------------- unit conversion */
-
-const enum Group { Length = 0, Duration = 1, Angle = 2 }
-const UNIT_TO_GROUP = new Map<string, Group>([
-  ['m', Group.Length], ['cm', Group.Length], ['mm', Group.Length], ['in', Group.Length],
-  ['px', Group.Length], ['pt', Group.Length], ['pc', Group.Length],
-  ['s', Group.Duration], ['ms', Group.Duration],
-  ['rad', Group.Angle], ['deg', Group.Angle], ['grad', Group.Angle], ['turn', Group.Angle],
-]);
-const CONVERSIONS: Record<Group, Partial<Record<string, number>>> = {
-  [Group.Length]: { m: 1, cm: 0.01, mm: 0.001, in: 0.0254, px: 0.0254 / 96, pt: 0.0254 / 72, pc: 0.0254 / 72 * 12 },
-  [Group.Duration]: { s: 1, ms: 0.001 },
-  [Group.Angle]: { rad: 1 / (2 * Math.PI), deg: 1 / 360, grad: 1 / 400, turn: 1 },
-};
+/* --------------------------------------------------------- arithmetic */
 
 function calculate(a: number, op: string, b: number): number {
   switch (op) {
@@ -41,31 +29,9 @@ function calculate(a: number, op: string, b: number): number {
 
 /* ---------------------------------------------------------- color math */
 
-/** UNCLAMPED rgb source for color arithmetic (legacy `Color._rgb`). */
-function rgbUnclamped(c: Color): [number, number, number] {
-  if (c.hsl) {
-    // hslToRgb without the round/clamp the serializer applies.
-    const [h, s, l] = c.hsl;
-    const hue = h / 360;
-    if (s === 0) { const v = l * 255; return [v, v, v]; }
-    const hue2rgb = (p: number, q: number, t: number): number => {
-      if (t < 0) t += 1;
-      if (t > 1) t -= 1;
-      if (t < 1 / 6) return p + (q - p) * 6 * t;
-      if (t < 1 / 2) return q;
-      if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
-      return p;
-    };
-    const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
-    const p = 2 * l - q;
-    return [hue2rgb(p, q, hue + 1 / 3) * 255, hue2rgb(p, q, hue) * 255, hue2rgb(p, q, hue - 1 / 3) * 255];
-  }
-  return [c.rgb[0], c.rgb[1], c.rgb[2]];
-}
-
 /** Port of `Color.operate` (color ⊕ dimension | color ⊕ color). */
 function colorOperate(a: Color, b: ValueObj, op: string, modes: EvalModes): Color {
-  const aRGB = rgbUnclamped(a);
+  const aRGB = colorRawRgb(a);
   let newAlpha = a.alpha;
   let out: [number, number, number];
   if (b.kind === 'dimension') {
@@ -73,7 +39,7 @@ function colorOperate(a: Color, b: ValueObj, op: string, modes: EvalModes): Colo
     if (b.unit && isStrictLike) throw new TypeError(`Cannot convert "${b.bytes}" to a color`);
     out = [calculate(aRGB[0], op, b.number), calculate(aRGB[1], op, b.number), calculate(aRGB[2], op, b.number)];
   } else if (b.kind === 'color') {
-    const bRGB = rgbUnclamped(b);
+    const bRGB = colorRawRgb(b);
     out = [calculate(aRGB[0], op, bRGB[0]), calculate(aRGB[1], op, bRGB[1]), calculate(aRGB[2], op, bRGB[2])];
     newAlpha = a.alpha * (1 - b.alpha) + b.alpha;
   } else {
@@ -110,15 +76,14 @@ function dimensionOperate(a: Dimension, b: Dimension, op: string, modes: EvalMod
     return makeDimension(calculate(aVal, op, bVal), aUnit);
   }
 
-  const aGroup = UNIT_TO_GROUP.get(aUnit);
-  const bGroup = UNIT_TO_GROUP.get(bUnit);
+  const aGroup = groupOf(aUnit);
+  const bGroup = groupOf(bUnit);
   if (aGroup === undefined || bGroup === undefined || aGroup !== bGroup) {
     if (isStrict || isPreserve) throw new TypeError('Incompatible units. Change the units or use the unit function');
     return makeDimension(calculate(aVal, op, bVal), aUnit);
   }
-  const group = CONVERSIONS[bGroup];
-  const atomicUnit = group[aUnit];
-  const targetUnit = group[bUnit];
+  const atomicUnit = unitFactor(aUnit);
+  const targetUnit = unitFactor(bUnit);
   if (atomicUnit === undefined || targetUnit === undefined) {
     throw new TypeError('Incompatible units. Change the units or use the unit function');
   }
@@ -207,25 +172,44 @@ export function nativeOperate(op: string, left: ValueObj, right: ValueObj, modes
 
 /* -------------------------------------------------------------- guards */
 
-/** Guard comparison (`@a > 0`) on typed operands. Port of the adapter's guardCmp. */
+/** `Node.numericCompare`: EPSILON-fuzzed 3-way compare (float-precision tolerant). */
+const numericCompare = (a: number, b: number): -1 | 0 | 1 =>
+  a === b || Math.abs(a - b) < Number.EPSILON ? 0 : a > b ? 1 : -1;
+
+/**
+ * Dimension ⊕ Dimension comparison, unit-reconciling (stock Less 4.x
+ * `Dimension.compare`, verified vs less@4.6.3):
+ *  - either side unitless → compare raw numbers,
+ *  - both have units → `unify` each to its group's canonical unit; equal canonical
+ *    units compare numerically, incompatible/non-convertible units are INCOMPARABLE.
+ * `%` is a REGULAR unit (NOT normalized to /100 — less@4.6.3: `50% = 0.5` is false,
+ * `50% = 50` is true).
+ */
+function dimensionCompare(a: Dimension, b: Dimension): -1 | 0 | 1 | undefined {
+  if (!a.unit || !b.unit) return numericCompare(a.number, b.number);
+  const au = unify(a.number, a.unit);
+  const bu = unify(b.number, b.unit);
+  if (au.unit !== bu.unit) return undefined;
+  return numericCompare(au.number, bu.number);
+}
+
+/**
+ * Guard comparison (`@a > 0`) on typed operands. Dimensions reconcile units; any
+ * other operand pair is equal iff its canonical bytes match, else INCOMPARABLE —
+ * ordered `<`/`>`/`>=`/`<=` never fall back to a lexical byte compare (less@4.6.3
+ * returns `undefined` for e.g. `foo < bar`, `#f00 > #0f0`, `"a" > "b"`).
+ */
 export function nativeGuardCmp(op: string, left: ValueObj, right: ValueObj): boolean {
-  if (left.kind === 'dimension' && right.kind === 'dimension') {
-    const a = left.number, b = right.number;
-    switch (op) {
-      case '>': return a > b;
-      case '<': return a < b;
-      case '>=': return a >= b;
-      case '<=': return a <= b;
-      case '=': return a === b;
-    }
-  }
-  const a = left.bytes, b = right.bytes;
+  const c: -1 | 0 | 1 | undefined =
+    left.kind === 'dimension' && right.kind === 'dimension'
+      ? dimensionCompare(left, right)
+      : left.bytes === right.bytes ? 0 : undefined;
   switch (op) {
-    case '=': return a === b;
-    case '>': return a > b;
-    case '<': return a < b;
-    case '>=': return a >= b;
-    case '<=': return a <= b;
+    case '=': return c === 0;
+    case '>': return c === 1;
+    case '<': return c === -1;
+    case '>=': return c === 0 || c === 1;
+    case '<=': return c === 0 || c === -1;
   }
   return false;
 }
