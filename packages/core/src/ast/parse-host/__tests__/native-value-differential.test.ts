@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { parseLessFn } from '@jesscss/less-parser';
 import { serialize } from '../../index.js';
 import { buildEvaluator } from '../../evaluator.js';
+import { makeBuiltinRegistry } from '../../functions/index.js';
 import { bridgeToAst } from './bridge.js';
 import { buildAdapterEvaluator } from '../value-eval.js';
 
@@ -42,7 +43,7 @@ import { buildAdapterEvaluator } from '../value-eval.js';
 
 async function render(src: string, builtIn: boolean): Promise<string> {
   const tree = parseLessFn(src).tree;
-  const evaluator = builtIn ? buildEvaluator() : buildAdapterEvaluator();
+  const evaluator = builtIn ? buildEvaluator(makeBuiltinRegistry()) : buildAdapterEvaluator();
   const out = await serialize(bridgeToAst(tree, src), { evaluator });
   return out.css;
 }

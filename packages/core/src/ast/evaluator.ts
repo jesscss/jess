@@ -14,8 +14,7 @@
 import type { EvalModes, List as ValueList, ValueEvaluator, ValueObj } from './value-eval.js';
 import { operate, compare as compareValues, typeCheck as typeCheckValues } from './value-operate.js';
 import { LiteralTag, type LitFields, materializeLiteral, sniffLiteral } from './literal-tag.js';
-import { createFnRegistry } from './value-dispatch.js';
-import { FN_LIST } from './functions/index.js';
+import type { FnRegistry } from './value-dispatch.js';
 import { makeKeyword } from './value-factory.js';
 
 /** Join an unknown-fn's arg bytes exactly as the adapter does (per separator). */
@@ -34,13 +33,12 @@ const stringify = (v: ValueObj): string => (v.type === 'Quoted' ? v.value : v.by
 
 /**
  * Build the synchronous typed `ValueEvaluator`. No pre-pass: values are computed
- * on demand during the single serialize walk. The built-in fns are registered up
- * front; a later stage can register them from `@jesscss/fns` instead.
+ * on demand during the single serialize walk. The fn set is CALLER-INJECTED via
+ * `registry` (populate it with `makeBuiltinRegistry()` for the built-in set), so a
+ * later stage can register fns from `@jesscss/fns` without touching this module.
+ * Core imports no fn bodies here.
  */
-export function buildEvaluator(): ValueEvaluator {
-  const registry = createFnRegistry();
-  registry.registerAll(FN_LIST);
-
+export function buildEvaluator(registry: FnRegistry): ValueEvaluator {
   const materialize = (bytes: string, tag?: LiteralTag, lit?: LitFields): ValueObj =>
     tag !== undefined ? materializeLiteral(bytes, tag, lit) : sniffLiteral(bytes);
 

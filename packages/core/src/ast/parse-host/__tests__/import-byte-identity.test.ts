@@ -6,6 +6,7 @@ import { serialize } from '../../index.js';
 import { bridgeToAst } from './bridge.js';
 import { createImportState } from '../import.js';
 import { buildEvaluator } from '../../evaluator.js';
+import { makeBuiltinRegistry } from '../../functions/index.js';
 import { renderImportOracle } from './import-oracle.js';
 
 const ROOT = '/Users/matthew/git/worktrees/less.js/packages/test-data/tests-unit';
@@ -16,7 +17,7 @@ async function renderAstFile(file: string): Promise<string> {
   const parsed = parseLessFn(src);
   if (parsed.errors.length > 0) throw new Error(`parse errors in ${file}`);
   const bridged = bridgeToAst(parsed.tree, src, file, createImportState());
-  const evaluator = buildEvaluator();
+  const evaluator = buildEvaluator(makeBuiltinRegistry());
   return (await serialize(bridged, { evaluator })).css;
 }
 

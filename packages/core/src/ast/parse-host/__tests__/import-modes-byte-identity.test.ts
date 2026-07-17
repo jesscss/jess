@@ -5,6 +5,7 @@ import { serialize } from '../../index.js';
 import { bridgeToAst } from './bridge.js';
 import { createImportState } from '../import.js';
 import { buildEvaluator } from '../../evaluator.js';
+import { makeBuiltinRegistry } from '../../functions/index.js';
 import { renderImportOracle } from './import-oracle.js';
 
 // Authored fixtures pinning each @import MODE explicitly. The real less.js
@@ -22,7 +23,7 @@ async function renderAstFile(file: string): Promise<string> {
   const src = fs.readFileSync(file, 'utf8');
   const parsed = parseLessFn(src);
   const bridged = bridgeToAst(parsed.tree, src, file, createImportState());
-  const evaluator = buildEvaluator();
+  const evaluator = buildEvaluator(makeBuiltinRegistry());
   return (await serialize(bridged, { evaluator })).css;
 }
 

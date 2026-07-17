@@ -18,6 +18,7 @@
  * HARD MODULE BOUNDARY: value domain only.
  */
 import type { Fn } from './types.js';
+import { createFnRegistry, type FnRegistry } from '../value-dispatch.js';
 
 // --- math: rounding / sign / roots / powers ---
 import { round } from './round.js';
@@ -125,3 +126,17 @@ export const FN_LIST: readonly Fn[] = [
 ];
 
 export type { FnSpec, Fn, ParamSpec, Kind } from './types.js';
+
+/**
+ * Build a {@link FnRegistry} populated with the full built-in set ({@link FN_LIST}).
+ * This is the DEFAULT registration used everywhere the built-in evaluator is
+ * exercised today (tests + the interim wiring). A later stage relocates the fn
+ * bodies to `@jesscss/fns` and re-points this helper at that package's
+ * `builtinLessFns`; the seam ({@link buildEvaluator} taking an injected registry)
+ * stays unchanged.
+ */
+export function makeBuiltinRegistry(): FnRegistry {
+  const registry = createFnRegistry();
+  registry.registerAll(FN_LIST);
+  return registry;
+}

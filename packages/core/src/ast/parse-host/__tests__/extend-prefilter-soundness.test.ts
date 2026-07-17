@@ -3,6 +3,7 @@ import { parseLessFn } from '@jesscss/less-parser';
 import { serialize } from '../../index.js';
 import { bridgeToAst } from './bridge.js';
 import { buildEvaluator } from '../../evaluator.js';
+import { makeBuiltinRegistry } from '../../functions/index.js';
 import { setExtendPrefilterEnabled } from '../../extend.js';
 
 /**
@@ -21,7 +22,7 @@ import { setExtendPrefilterEnabled } from '../../extend.js';
 
 async function render(src: string, collapseNesting: boolean): Promise<string> {
   const root = bridgeToAst(parseLessFn(src).tree, src);
-  const evaluator = buildEvaluator();
+  const evaluator = buildEvaluator(makeBuiltinRegistry());
   return (await serialize(root, { evaluator, collapseNesting })).css;
 }
 

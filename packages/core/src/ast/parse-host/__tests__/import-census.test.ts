@@ -6,6 +6,7 @@ import { serialize } from '../../index.js';
 import { bridgeToAst, UnsupportedShape } from './bridge.js';
 import { createImportState } from '../import.js';
 import { buildEvaluator } from '../../evaluator.js';
+import { makeBuiltinRegistry } from '../../functions/index.js';
 import { renderImportOracle } from './import-oracle.js';
 
 const ROOT = '/Users/matthew/git/worktrees/less.js/packages/test-data/tests-unit';
@@ -59,7 +60,7 @@ describe('tree2 @import — import-fixture census', () => {
       let t2css: string;
       try {
         const bridged = bridgeToAst(parsed.tree, src, file, createImportState());
-        const evaluator = buildEvaluator();
+        const evaluator = buildEvaluator(makeBuiltinRegistry());
         t2css = (await serialize(bridged, { evaluator })).css;
       } catch (e) {
         if (e instanceof UnsupportedShape) {

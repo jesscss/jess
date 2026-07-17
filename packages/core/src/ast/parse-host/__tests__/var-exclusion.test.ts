@@ -3,6 +3,7 @@ import { parseLessFn } from '@jesscss/less-parser';
 import { serialize } from '../../index.js';
 import { bridgeToAst } from './bridge.js';
 import { buildEvaluator } from '../../evaluator.js';
+import { makeBuiltinRegistry } from '../../functions/index.js';
 
 /**
  * ORACLE — per-declaration variable EXCLUSION + strict/optional resolution
@@ -27,7 +28,7 @@ import { buildEvaluator } from '../../evaluator.js';
 async function render(src: string): Promise<string> {
   const parsed = parseLessFn(src);
   const bridged = bridgeToAst(parsed.tree, src);
-  return (await serialize(bridged, { evaluator: buildEvaluator() })).css;
+  return (await serialize(bridged, { evaluator: buildEvaluator(makeBuiltinRegistry()) })).css;
 }
 
 describe('variable per-declaration exclusion (resolver correctness)', () => {

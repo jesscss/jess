@@ -6,6 +6,7 @@ import { parseLessFn } from '@jesscss/less-parser';
 import { serialize } from '../../index.js';
 import { bridgeToAst } from './bridge.js';
 import { buildEvaluator } from '../../evaluator.js';
+import { makeBuiltinRegistry } from '../../functions/index.js';
 import { expectedCss, fixtureLess, resolveCollapseNesting } from './oracle-source.js';
 
 /**
@@ -28,7 +29,7 @@ const correction = (name: string): string =>
 
 async function render(src: string, collapse: boolean): Promise<string> {
   const root = bridgeToAst(parseLessFn(src).tree, src);
-  return (await serialize(root, { evaluator: buildEvaluator(), collapseNesting: collapse })).css;
+  return (await serialize(root, { evaluator: buildEvaluator(makeBuiltinRegistry()), collapseNesting: collapse })).css;
 }
 
 describe('R4 — byte-identity vs oracle', () => {

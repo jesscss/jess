@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { parseLessFn } from '@jesscss/less-parser';
 import { serialize } from '../../index.js';
 import { buildEvaluator } from '../../evaluator.js';
+import { makeBuiltinRegistry } from '../../functions/index.js';
 import { bridgeToAst } from './bridge.js';
 import { buildAdapterEvaluator } from '../value-eval.js';
 
@@ -35,7 +36,7 @@ function median(xs: number[]): number {
 }
 
 async function bench(builtIn: boolean, warm: number, n: number): Promise<number> {
-  const make = () => (builtIn ? buildEvaluator() : buildAdapterEvaluator());
+  const make = () => (builtIn ? buildEvaluator(makeBuiltinRegistry()) : buildAdapterEvaluator());
   for (let i = 0; i < warm; i++) await serialize(bridgeToAst(tree, SRC), { evaluator: make() });
   const times: number[] = [];
   for (let i = 0; i < n; i++) {
@@ -49,7 +50,7 @@ async function bench(builtIn: boolean, warm: number, n: number): Promise<number>
 describe('built-in value path — perf micro-bench', () => {
   it('built-in operate/emit is neutral-or-better than the adapter', async () => {
     // Sanity: identical bytes (perf only meaningful when correct).
-    const nCss = (await serialize(bridgeToAst(tree, SRC), { evaluator: buildEvaluator() })).css;
+    const nCss = (await serialize(bridgeToAst(tree, SRC), { evaluator: buildEvaluator(makeBuiltinRegistry()) })).css;
     const aCss = (await serialize(bridgeToAst(tree, SRC), { evaluator: buildAdapterEvaluator() })).css;
     expect(nCss).toBe(aCss);
 
