@@ -30,13 +30,13 @@ function calculate(a: number, op: string, b: number): number {
 /* ---------------------------------------------------------- color math */
 
 /** Color arithmetic: color ⊕ dimension (per-channel scalar) or color ⊕ color (per-channel + alpha compositing). */
-function colorOperate(a: Color, b: ValueObj, op: string, modes: EvalModes): Color {
+function colorOperate(a: Color, b: ValueObj, op: string): Color {
   const aRGB = colorRawRgb(a);
   let newAlpha = a.alpha;
   let out: [number, number, number];
   if (b.type === 'Dimension') {
-    const isStrictLike = modes.unitMode === 'strict' || modes.unitMode === 'preserve';
-    if (b.unit && isStrictLike) throw new TypeError(`Cannot convert "${b.bytes}" to a color`);
+    // less.js `Dimension.toColor` treats the magnitude as a per-channel scalar and
+    // IGNORES the unit (`#ff0000 + 10px` → `#ff0a0a`), so no unit clash here.
     out = [calculate(aRGB[0], op, b.number), calculate(aRGB[1], op, b.number), calculate(aRGB[2], op, b.number)];
   } else if (b.type === 'Color') {
     const bRGB = colorRawRgb(b);
@@ -146,12 +146,11 @@ function dimensionOperate(a: Dimension, b: Dimension, op: string, modes: EvalMod
   return makeCompoundDimension(value, unit, u.num, u.den, u.backup);
 }
 
-/** Dimension ⊕ Color: coerce the dimension to a color, then color-operate. */
-function dimensionAsColor(a: Dimension, b: Color, op: string, modes: EvalModes): Color {
-  const isStrictLike = modes.unitMode === 'strict' || modes.unitMode === 'preserve';
-  if (a.unit && isStrictLike) throw new TypeError(`Cannot convert "${a.bytes}" to a color`);
+/** Dimension ⊕ Color: coerce the dimension to a color (unit ignored, per less.js
+ * `Dimension.toColor`), then color-operate. `10px + #ff0000` → `#ff0a0a`. */
+function dimensionAsColor(a: Dimension, b: Color, op: string): Color {
   const thisColor = makeColorRgb([a.number, a.number, a.number], 1, b.format ?? 1 /* RGB */);
-  return colorOperate(thisColor, b, op, modes);
+  return colorOperate(thisColor, b, op);
 }
 
 /* -------------------------------------------------------- calc guards */
@@ -173,10 +172,48 @@ const CALC_WRAP_RE = /^calc\(([\s\S]*)\)$/;
  * expression keeps its paren (`calc((a - b))` -> `(a - b)`).
  *
  */
-const calcInner = (bytes: string): string | null => {
+export const calcInner = (bytes: string): string | null => {
   const m = CALC_WRAP_RE.exec(bytes.trim());
   return m ? m[1]! : null;
 };
+
+/**
+ * Whether `s` is a single fully-parenthesized group (`(a - b)`), so its leading
+ * `(` closes only at the final `)`. Used so a spliced calc operand keeps ONE
+ * paren layer (`calc((a - b)) + 1` → `(a - b)`) and is not re-wrapped.
+ */
+function isParenGroup(s: string): boolean {
+  if (s.length < 2 || s[0] !== '(' || s[s.length - 1] !== ')') return false;
+  let depth = 0;
+  for (let i = 0; i < s.length; i++) {
+    if (s[i] === '(') depth++;
+    else if (s[i] === ')' && --depth === 0) return i === s.length - 1;
+  }
+  return false;
+}
+
+/**
+ * A calc operand's inner expression, parenthesized when it is a bare composite
+ * (`2.25rem + 2px` → `(2.25rem + 2px)`) so precedence survives the splice into an
+ * outer operation; an already-parenthesized or single-term inner is spliced as-is.
+ * Preserved bytes always separate a top-level operator with surrounding spaces.
+ */
+function spliceInner(inner: string): string {
+  if (isParenGroup(inner)) return inner;
+  return / [-+*/%] /.test(inner) ? `(${inner})` : inner;
+}
+
+/**
+ * less.js calc math: inside `calc(…)` only a "safe" dimension op computes — a
+ * same-unit `+`/`-`, a `*` with a unitless side, or a `/` with a unitless RHS.
+ * A cross-unit op is preserved verbatim as a `calc(…)` sub-expression.
+ */
+function calcSafe(op: string, a: Dimension, b: Dimension): boolean {
+  if (op === '+' || op === '-') return a.unit === b.unit;
+  if (op === '*') return !a.unit || !b.unit;
+  if (op === '/') return !b.unit;
+  return true;
+}
 
 /**
  * Binary operation. Guard order (byte-faithful):
@@ -194,21 +231,29 @@ export function operate(op: string, left: ValueObj, right: ValueObj, modes: Eval
   const leftInner = left.type === 'Keyword' ? calcInner(left.bytes) : null;
   const rightInner = right.type === 'Keyword' ? calcInner(right.bytes) : null;
   if (leftInner !== null || rightInner !== null) {
-    return makeKeyword(`calc(${leftInner ?? left.bytes} ${op} ${rightInner ?? right.bytes})`);
+    const lb = leftInner !== null ? spliceInner(leftInner) : left.bytes;
+    const rb = rightInner !== null ? spliceInner(rightInner) : right.bytes;
+    return makeKeyword(`calc(${lb} ${op} ${rb})`);
   }
   // Guard 2: an un-operable keyword operand → preserve source.
   if (left.type === 'Keyword' || right.type === 'Keyword') {
     return makeKeyword(`${left.bytes} ${op} ${right.bytes}`);
+  }
+  // Guard 3: inside calc, a cross-unit dimension op does NOT collapse on raw
+  // magnitudes — it is preserved as a flat `calc(l op r)` sub-expression.
+  if (modes.inCalc && left.type === 'Dimension' && right.type === 'Dimension'
+    && !calcSafe(op, left, right)) {
+    return makeKeyword(`calc(${left.bytes} ${op} ${right.bytes})`);
   }
   try {
     if (left.type === 'Dimension' && right.type === 'Dimension') {
       return dimensionOperate(left, right, op, modes);
     }
     if (left.type === 'Dimension' && right.type === 'Color') {
-      return dimensionAsColor(left, right, op, modes);
+      return dimensionAsColor(left, right, op);
     }
     if (left.type === 'Color') {
-      return colorOperate(left, right, op, modes);
+      return colorOperate(left, right, op);
     }
     throw new TypeError(`Cannot operate on ${left.type}`);
   } catch (err) {

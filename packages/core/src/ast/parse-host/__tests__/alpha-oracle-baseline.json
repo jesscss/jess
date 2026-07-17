@@ -29,7 +29,7 @@
   },
   "calc/calc.less": {
     "status": "DIFF",
-    "bytes": 531
+    "bytes": 570
   },
   "charsets/charsets.less": {
     "status": "MATCH",
@@ -262,15 +262,15 @@
   },
   "nesting/nesting.less": {
     "status": "DIFF",
-    "bytes": 400
+    "bytes": 394
   },
   "no-output/no-output.less": {
     "status": "MATCH",
     "bytes": 0
   },
   "operations/operations-advanced.less": {
-    "status": "DIFF",
-    "bytes": 434
+    "status": "MATCH",
+    "bytes": 408
   },
   "operations/operations.less": {
     "status": "DIFF",

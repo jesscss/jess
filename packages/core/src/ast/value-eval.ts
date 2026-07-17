@@ -164,9 +164,14 @@ export const literal = (bytes: string): string => bytes;
 /**
  * The configured mode value evaluation honors, injected at the seam. `unitMode`
  * (the canonical {@link UnitMode}) governs the unit-clash → `calc()` fallback.
+ * `inCalc` is set while folding the argument of a `calc(…)`: inside calc only
+ * safe-unit dimension math computes (`10px * 2` → `20px`), while a cross-unit
+ * `+`/`-` (`100% - 30px`) is PRESERVED as a `calc(…)` sub-expression instead of
+ * collapsing on raw magnitudes.
  */
 export interface EvalModes {
   readonly unitMode: UnitMode;
+  readonly inCalc?: boolean;
 }
 
 export const DEFAULT_MODES: EvalModes = {

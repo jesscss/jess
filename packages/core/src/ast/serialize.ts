@@ -74,6 +74,8 @@ import {
 } from './value-eval.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { LiteralTag, type LitFields, tagForWord } from './literal-tag.js'; // [value-literal-tag]
+import { calcInner } from './value-operate.js'; // [calc]
+import { makeKeyword } from './value-factory.js'; // [calc]
 import { selectDefinitions, type Selection } from './mixin-dispatch.js'; // [guards]
 import type { ValueResolver, TypedResolver } from './guard.js'; // [guards]
 import { computeExtends, type ExtendResults } from './extend.js'; // [extend]
@@ -559,6 +561,9 @@ interface EvalCtx {
   // throwing (`isdefined` / opt-in callers). Default (unset) is STRICT: miss
   // throws `ReferenceError`.
   optional?: boolean;
+  // [calc] `calc(…)` nesting depth. While > 0, dimension math is gated to the
+  // safe-unit subset and cross-unit ops preserve as `calc(…)` sub-expressions.
+  calcDepth?: number;
 }
 
 /** Force a computed `Value` to a typed object. A computed STRING carries no parse
@@ -660,7 +665,9 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
       // Operands are materialized TYPED (tag sourced from the parse), not re-sniffed.
       const l = evalTyped(node.left, frame, e);
       const r = evalTyped(node.right, frame, e);
-      return combineAll([l, r], ([lv, rv]) => ev.operate(node.operator, lv, rv, e.modes));
+      // Inside `calc(…)`, flag the modes so cross-unit math preserves (guard 3).
+      const m: EvalModes = (e.calcDepth ?? 0) > 0 ? { unitMode: e.modes.unitMode, inCalc: true } : e.modes;
+      return combineAll([l, r], ([lv, rv]) => ev.operate(node.operator, lv, rv, m));
     }
     case 'FunctionCall':
       return evalCall(node, frame, e);
@@ -854,10 +861,28 @@ function isIntegerString(s: string): boolean {
   return true;
 }
 
+/**
+ * `calc(…)` fold: evaluate the single argument in calc mode, then decide the
+ * wrapper. A cross-unit sub-expression arrives already `calc(…)`-wrapped (kept
+ * as-is); a preserved non-calc keyword op (`100% - 3`) is wrapped; a fully
+ * computed value (`10px * 2` → `20px`) drops the wrapper (less.js `calc()`
+ * collapse to a bare Dimension).
+ */
+function evalCalc(node: FunctionCall, frame: Frame | null, e: EvalCtx): MaybePromise<Value> {
+  const ce: EvalCtx = { ...e, calcDepth: (e.calcDepth ?? 0) + 1 };
+  return mapMaybe(evalTyped(node.args[0]!, frame, ce), (v) => {
+    if (v.type === 'Keyword') return calcInner(v.bytes) !== null ? v : makeKeyword(`calc(${v.bytes})`);
+    return v;
+  });
+}
+
 /** Evaluate a function call: materialize the modeled arg list, then `ev.call`. */
 function evalCall(node: FunctionCall, frame: Frame | null, e: EvalCtx): MaybePromise<Value> {
   const intro = evalIntrospection(node, frame);
   if (intro !== undefined) return intro;
+  if (e.ev && node.args.length === 1 && node.name.toLowerCase() === 'calc') {
+    return evalCalc(node, frame, e);
+  }
   const sep = node.modern ? ' ' : ',';
   if (!e.ev) {
     const items = node.args.map((a) => evalValue(a, frame, e));
