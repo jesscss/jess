@@ -31,10 +31,13 @@ function bridgeDef(src: string): MixinDef {
   return def;
 }
 
-/** Serialize one value node in isolation (byte projection of a default/pattern). */
+/** Serialize one value node in isolation (byte projection of a default/pattern).
+ * OPTIONAL mode: a default/pattern may reference an as-yet-unbound param — this
+ * gate checks the value's byte SHAPE, not resolution, so an unbound ref passes
+ * through as its literal sigil instead of raising a strict eval error. */
 function valueCss(v: ValueNode | undefined): string {
   if (v === undefined) return '-';
-  return serialize(t2root([decl('_', v)])).css.trim();
+  return serialize(t2root([decl('_', v)]), { optional: true }).css.trim();
 }
 
 function paramSig(p: Param): string {
@@ -45,7 +48,10 @@ function paramSig(p: Param): string {
 
 /** Canonical signature: name | params | body-css (guard excluded — F10). */
 function sig(def: MixinDef): string {
-  const bodyCss = serialize(t2root(def.body)).css.trim();
+  // OPTIONAL mode: the body is serialized WITHOUT a call binding its params, so a
+  // param ref (`@a`) is intentionally unbound here — a structural gate, not a
+  // render; unbound refs pass through as their sigil rather than raising.
+  const bodyCss = serialize(t2root(def.body), { optional: true }).css.trim();
   return `${def.name} || ${def.params.map(paramSig).join(' ; ')} || ${bodyCss}`;
 }
 

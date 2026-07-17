@@ -64,8 +64,12 @@ const inputs: Array<[string, string]> = [
 describe('custom-props + merge host byte-identity vs bridge', () => {
   for (const [name, src] of inputs) {
     it(name, () => {
-      const direct = serialize(astDirect(src)).css;
-      const bridged = serialize(viaBridge(src)).css;
+      // OPTIONAL mode: interpolated custom-prop names/values (`--@{k}`, `@{base}px`)
+      // reference intentionally-unbound vars — this gate checks the Interp byte
+      // SHAPE is identical across paths, not resolution, so an unbound ref passes
+      // through instead of raising a strict eval error.
+      const direct = serialize(astDirect(src), { optional: true }).css;
+      const bridged = serialize(viaBridge(src), { optional: true }).css;
       if (direct !== bridged) {
         // eslint-disable-next-line no-console
         console.log(`\n--- ${name} ---\nSRC:    ${JSON.stringify(src)}\nDIRECT: ${JSON.stringify(direct)}\nBRIDGE: ${JSON.stringify(bridged)}`);

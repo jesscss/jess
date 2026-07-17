@@ -117,6 +117,15 @@ export interface SerializeOptions {
    * their inner rules nested. Same single walk, second emit form.
    */
   collapseNesting?: boolean;
+  /**
+   * [resolver] OPTIONAL resolution mode. Default (unset) is STRICT: a
+   * value-position variable/lookup that resolves to nothing is a hard eval error
+   * (`ReferenceError`). When `true`, a miss instead passes the sigil through as a
+   * literal sentinel (no throw) — for opt-in callers that inspect STRUCTURE with
+   * intentionally-unbound refs (e.g. serializing a mixin-def body or an interp
+   * shape in isolation), and the `isdefined` family.
+   */
+  optional?: boolean;
 }
 
 export interface SerializeResult {
@@ -146,7 +155,13 @@ export interface Frame {
   parent: Frame | null;
   // [guards] a name maps to ALL same-name defs (overloads), in definition order.
   mixins: Map<string, MixinDef[]> | null;
-  vars: Map<string, ValueNode> | null;
+  // [resolver] a name maps to its SOURCE-ORDERED stack of declared value nodes
+  // (last = most recent). A regular `@x`/`$x` read walks this stack BACKWARD,
+  // skipping any value node currently in the active exclusion set (see
+  // `resolveVarRef`), so `@a: @a + 1` falls back to an earlier same-name entry
+  // instead of self-referencing. The stack — not a collapsed last-wins map — is
+  // what makes per-declaration cycle exclusion expressible.
+  vars: Map<string, ValueNode[]> | null;
   // secondary scope consulted after the `parent` chain is exhausted (the
   // detached-ruleset definition closure — caller-first, definition-fallback).
   fallback?: Frame | null;
@@ -172,20 +187,37 @@ function collectMixins(statements: Statement[]): Map<string, MixinDef[]> | null 
 }
 
 /**
- * Collect variable declarations in a scope. Less variable semantics: LAST-wins
- * within a scope (a later `@x` overrides an earlier one) and LAZY (a reference
- * can resolve a variable declared textually later in the same scope). Building
- * the whole scope's var map up-front — before any value is emitted — gives both
- * for free: `set` overwrites (last-wins) and the map is complete before use.
+ * Collect variable declarations in a scope into a per-name SOURCE-ORDERED STACK
+ * of value nodes. Less variable semantics: LAST-wins within a scope (a later
+ * `@x` overrides an earlier one) and LAZY (a reference resolves a variable
+ * declared textually later in the same scope). Keeping the FULL ordered stack —
+ * not a collapsed last-wins map — is what lets a self-referential declaration
+ * (`@a: @a + 1`) fall back to an earlier same-name entry once its own node is
+ * excluded (see `resolveVarRef`). The whole scope's stacks are built up-front so
+ * a forward reference sees a complete index before any value is emitted.
  */
-function collectVars(statements: Statement[]): Map<string, ValueNode> | null {
-  let map: Map<string, ValueNode> | null = null;
+function collectVars(statements: Statement[]): Map<string, ValueNode[]> | null {
+  let map: Map<string, ValueNode[]> | null = null;
   for (const s of statements) {
     if (s.type === 'VarDeclaration') {
-      (map ??= new Map()).set(s.name, s.value);
+      const stack = (map ??= new Map()).get(s.name);
+      if (stack) stack.push(s.value);
+      else map.set(s.name, [s.value]);
     }
   }
   return map;
+}
+
+/** Wrap a single-value binding map (mixin/function PARAMS) as per-name stacks so
+ * it shares the STACK read path with regular declarations. A param is a 1-entry
+ * stack; a body decl of the same name (merged AFTER, see `mergeVars`) sits later
+ * in the stack and wins the backward walk — body-shadows-param falls out for
+ * free. */
+function asStacks(m: Map<string, ValueNode> | null): Map<string, ValueNode[]> | null {
+  if (!m) return null;
+  const out = new Map<string, ValueNode[]>();
+  for (const [k, v] of m) out.set(k, [v]);
+  return out;
 }
 
 // collect the rulesets defined directly in a scope, keyed by own-local
@@ -236,11 +268,19 @@ function lookupMixinCandidates(frame: Frame | null, name: string): MixinDef[] {
   return out ?? [];
 }
 
+/**
+ * The nearest last-wins binding for `name` (top of the nearest non-empty stack).
+ * Used by the detached-ruleset / namespace paths that need the CURRENT value node
+ * (e.g. to test `.type === 'DetachedRuleset'`); it does not honor exclusion
+ * because those callers resolve a name to a concrete ruleset binding, not a lazy
+ * self-referential value. The regular value read uses `resolveVarRef` instead.
+ */
 function lookupVar(frame: Frame | null, name: string): ValueNode | undefined {
   let fb: Frame | null | undefined;
   for (let f = frame; f; f = f.parent) {
-    const hit = f.vars?.get(name);
-    if (hit) {
+    const stack = f.vars?.get(name);
+    if (stack && stack.length > 0) {
+      const hit = stack[stack.length - 1]!;
       // capture a detached ruleset's definition (home) frame on first use.
       if (hit.type === 'DetachedRuleset' && hit.defFrame === null) hit.defFrame = f;
       return hit;
@@ -249,6 +289,59 @@ function lookupVar(frame: Frame | null, name: string): ValueNode | undefined {
   }
   if (fb) return lookupVar(fb, name);
   return undefined;
+}
+
+/**
+ * [resolver] Resolve a regular `@name`/`$name` read to its winning declaration
+ * value node PLUS the frame that owns it, honoring the active EXCLUSION set. The
+ * backward `for` walk over each frame's per-name stack `continue`s past any value
+ * node currently being evaluated (in `e.excluded`); the first survivor wins, else
+ * it ascends to `parent` (then the detached-ruleset `fallback` closure). This is
+ * the cycle guard: `@a: @a + 1` excludes its own node → skips it → falls back to
+ * an earlier `@a` (or misses); `@a: @b; @b: @a` accumulates both exclusions and
+ * terminates at any depth. There is NO depth cap. The value is returned with its
+ * OWNING frame so it evaluates in its declaration scope. */
+function resolveVarRef(frame: Frame | null, name: string, e: EvalCtx): { value: ValueNode; frame: Frame } | undefined {
+  let fb: Frame | null | undefined;
+  for (let f = frame; f; f = f.parent) {
+    const stack = f.vars?.get(name);
+    if (stack) {
+      for (let i = stack.length - 1; i >= 0; i--) {
+        const v = stack[i]!;
+        if (!e.excluded.has(v)) return { value: v, frame: f };
+      }
+    }
+    if (f.fallback && !fb) fb = f.fallback;
+  }
+  if (fb) return resolveVarRef(fb, name, e);
+  return undefined;
+}
+
+/**
+ * [resolver] Evaluate a resolved variable's value node while it is EXCLUDED for
+ * the sync span of the eval — added before the (possibly recursive) evaluation
+ * begins, removed the instant that call returns SYNCHRONOUSLY (the `finally` runs
+ * on the sync return, NOT on a later promise settle — so accumulation is correct
+ * down a sync descent, and two overlapping async reads of the same decl do not
+ * falsely block each other). `run` returns whatever the caller's fold produces. */
+function withExcluded<T>(e: EvalCtx, node: ValueNode, run: () => T): T {
+  e.excluded.add(node);
+  try {
+    return run();
+  } finally {
+    e.excluded.delete(node);
+  }
+}
+
+/**
+ * [resolver] An unresolved value-position reference. STRICT (default): a miss is
+ * a hard eval error (`ReferenceError`) — the single consolidated site for what
+ * were five hardcoded ``@${name}`` passthroughs. OPTIONAL (`e.optional`, set by
+ * `isdefined` / opt-in callers): a miss returns the literal sigil string as a
+ * sentinel, no throw. */
+function unresolvedRef(name: string, e: EvalCtx): Value {
+  if (!e.optional) throw new ReferenceError(`variable @${name} is undefined`);
+  return literal(`@${name}`);
 }
 
 /**
@@ -280,12 +373,18 @@ function makeTypedResolver(frame: Frame | null, e: EvalCtx): TypedResolver {
 
 /* ---------------------------------------------------- typed value eval */
 
-const MAX_VAR_DEPTH = 64;
-
 /** The evaluator + modes carried through the value lane (a slim view of Emit). */
 interface EvalCtx {
   ev: ValueEvaluator | null;
   modes: EvalModes;
+  // [resolver] value nodes currently being evaluated (per-declaration cycle
+  // guard). A backward stack walk `continue`s past any node in this set; it
+  // accumulates down a sync descent and releases on sync-phase completion.
+  excluded: Set<ValueNode>;
+  // [resolver] when true, a variable/lookup miss returns a sentinel instead of
+  // throwing (`isdefined` / opt-in callers). Default (unset) is STRICT: miss
+  // throws `ReferenceError`.
+  optional?: boolean;
 }
 
 /** Force a computed `Value` to a typed object. A computed STRING carries no parse
@@ -313,7 +412,7 @@ function forceLiteral(e: EvalCtx, bytes: string, tag: LiteralTag, lit?: LitField
  * `tag`) — never on the hot path for a parsed literal. Variable refs / parens are
  * transparent, threading the tag through.
  */
-function evalTyped(node: ValueNode, frame: Frame | null, e: EvalCtx, depth = 0): MaybePromise<ValueObj> {
+function evalTyped(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromise<ValueObj> {
   switch (node.type) {
     case 'Dimension':
       return { type: 'Dimension', number: node.value, unit: node.unit, bytes: `${node.value}${node.unit}` };
@@ -322,17 +421,17 @@ function evalTyped(node: ValueNode, frame: Frame | null, e: EvalCtx, depth = 0):
       // only for an untagged/synthetic Word.
       return forceLiteral(e, node.text, node.tag ?? tagForWord(node.text), node.lit);
     case 'VarRef': {
-      if (depth > MAX_VAR_DEPTH) return forceLiteral(e, `@${node.name}`, LiteralTag.Keyword);
-      const bound = lookupVar(frame, node.name);
-      return bound ? evalTyped(bound, frame, e, depth + 1) : forceLiteral(e, `@${node.name}`, LiteralTag.Keyword);
+      const hit = resolveVarRef(frame, node.name, e);
+      if (!hit) return force(e, unresolvedRef(node.name, e));
+      return withExcluded(e, hit.value, () => evalTyped(hit.value, hit.frame, e));
     }
     case 'Paren':
-      return evalTyped(node.inner, frame, e, depth);
+      return evalTyped(node.inner, frame, e);
     default:
       // Computed / joined shapes (Operation, FunctionCall, Concat, SpacedValue,
       // Interp, VarIndirect, MapAccessor, …): fold to a Value then force. A
       // computed string has no parse tag → the evaluator sniffs.
-      return mapMaybe(evalValue(node, frame, e, depth), (v) => force(e, v));
+      return mapMaybe(evalValue(node, frame, e), (v) => force(e, v));
   }
 }
 
@@ -342,56 +441,58 @@ function evalTyped(node: ValueNode, frame: Frame | null, e: EvalCtx, depth = 0):
  * operation/function). Lifts to `MaybePromise` only when a function call returns
  * a genuine thenable.
  */
-function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx, depth = 0): MaybePromise<Value> {
+function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromise<Value> {
   switch (node.type) {
     case 'Word':
       return literal(node.text);
     case 'Dimension':
       return literal(`${node.value}${node.unit}`);
     case 'VarRef': {
-      if (depth > MAX_VAR_DEPTH) return literal(`@${node.name}`); // cycle guard
-      const bound = lookupVar(frame, node.name);
-      return bound ? evalValue(bound, frame, e, depth + 1) : literal(`@${node.name}`);
+      const hit = resolveVarRef(frame, node.name, e);
+      if (!hit) return unresolvedRef(node.name, e);
+      return withExcluded(e, hit.value, () => evalValue(hit.value, hit.frame, e));
     }
     case 'Sequence':
-      return joinBytes(node.parts, '', frame, e, depth);
+      return joinBytes(node.parts, '', frame, e);
     case 'SpacedValue':
-      return joinBytes(node.parts, ' ', frame, e, depth);
+      return joinBytes(node.parts, ' ', frame, e);
     case 'Paren':
       // Transparent to computed bytes: a materialized (operated) inner strips the
       // paren (matching the legacy oracle); an un-forced literal keeps its parens.
-      return mapMaybe(evalValue(node.inner, frame, e, depth), (v) =>
+      return mapMaybe(evalValue(node.inner, frame, e), (v) =>
         isLiteral(v) ? literal(`(${v})`) : v,
       );
     case 'Operation': {
       if (!e.ev) {
         // Fallback: un-evaluated, variable-resolved source assembly (no math).
-        const l = evalValue(node.left, frame, e, depth);
-        const r = evalValue(node.right, frame, e, depth);
+        const l = evalValue(node.left, frame, e);
+        const r = evalValue(node.right, frame, e);
         return combineAll([l, r], ([lv, rv]) =>
           literal(`${emitValue(lv)} ${node.operator} ${emitValue(rv)}`),
         );
       }
       const ev = e.ev;
       // Operands are materialized TYPED (tag sourced from the parse), not re-sniffed.
-      const l = evalTyped(node.left, frame, e, depth);
-      const r = evalTyped(node.right, frame, e, depth);
+      const l = evalTyped(node.left, frame, e);
+      const r = evalTyped(node.right, frame, e);
       return combineAll([l, r], ([lv, rv]) => ev.operate(node.operator, lv, rv, e.modes));
     }
     case 'FunctionCall':
-      return evalCall(node, frame, e, depth);
+      return evalCall(node, frame, e);
     case 'Interp':
-      return evalInterp(node, frame, e, depth);
+      return evalInterp(node, frame, e);
     case 'VarIndirect': {
-      // Resolve the name expression to bytes (unquoted), then look up that variable.
-      return mapMaybe(evalBytes(node.nameRef, frame, e, depth), (raw) => {
+      // Resolve the name expression to bytes (unquoted), then read that variable
+      // through the normal exclusion-aware stack walk (`@@name` = two chained reads).
+      return mapMaybe(evalBytes(node.nameRef, frame, e), (raw) => {
         const nm = stripOuterQuotes(raw);
-        const bound = lookupVar(frame, nm);
-        return bound ? evalValue(bound, frame, e, depth + 1) : literal(`@${nm}`);
+        const hit = resolveVarRef(frame, nm, e);
+        if (!hit) return unresolvedRef(nm, e);
+        return withExcluded(e, hit.value, () => evalValue(hit.value, hit.frame, e));
       });
     }
     case 'MapAccessor':
-      return evalMapAccessor(node, frame, e, depth);
+      return evalMapAccessor(node, frame, e);
     case 'DetachedRuleset':
       // A detached ruleset is not byte-serializable in value position.
       throw new Error('detached ruleset used as a value (not called)');
@@ -399,12 +500,12 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx, depth = 0):
 }
 
 /** Resolve an interpolation template to bytes (literals + spliced refs). */
-function evalInterp(node: Interp, frame: Frame | null, e: EvalCtx, depth: number): MaybePromise<Value> {
+function evalInterp(node: Interp, frame: Frame | null, e: EvalCtx): MaybePromise<Value> {
   const pieces: Array<MaybePromise<string>> = [];
   for (const part of node.parts) {
     if ('lit' in part) pieces.push(part.lit);
     else {
-      const bytes = evalBytes(part.ref, frame, e, depth + 1);
+      const bytes = evalBytes(part.ref, frame, e);
       pieces.push(part.unquote ? mapMaybe(bytes, stripOuterQuotes) : bytes);
     }
   }
@@ -486,7 +587,7 @@ function resolveBaseDeclMap(
   return null;
 }
 
-function evalMapAccessor(node: MapAccessor, frame: Frame | null, e: EvalCtx, depth: number): MaybePromise<Value> {
+function evalMapAccessor(node: MapAccessor, frame: Frame | null, e: EvalCtx): MaybePromise<Value> {
   const map = resolveBaseDeclMap(node.base, frame, e);
   if (!map) throw new Error('map/namespace accessor: base not found');
   let matched: DeclEntry | undefined;
@@ -499,14 +600,14 @@ function evalMapAccessor(node: MapAccessor, frame: Frame | null, e: EvalCtx, dep
     matched = map.list[i];
   }
   if (!matched) throw new Error('map/namespace accessor: property not found');
-  return evalValue(matched.value, matched.frame, e, depth + 1);
+  return evalValue(matched.value, matched.frame, e);
 }
 
 /** Evaluate a function call: materialize the modeled arg list, then `ev.call`. */
-function evalCall(node: FunctionCall, frame: Frame | null, e: EvalCtx, depth: number): MaybePromise<Value> {
+function evalCall(node: FunctionCall, frame: Frame | null, e: EvalCtx): MaybePromise<Value> {
   const sep = node.modern ? ' ' : ',';
   if (!e.ev) {
-    const items = node.args.map((a) => evalValue(a, frame, e, depth));
+    const items = node.args.map((a) => evalValue(a, frame, e));
     return combineAll(items, (vals) => {
       const inner = vals.map(emitValue).join(sep === ' ' ? ' ' : ', ');
       return literal(`${node.name}(${inner})`);
@@ -514,7 +615,7 @@ function evalCall(node: FunctionCall, frame: Frame | null, e: EvalCtx, depth: nu
   }
   const ev = e.ev;
   // Args are materialized TYPED (each arg's tag sourced from its parse node).
-  const typed = node.args.map((a) => evalTyped(a, frame, e, depth));
+  const typed = node.args.map((a) => evalTyped(a, frame, e));
   return combineAll(typed, (vals) => {
     const list: ValueList = { type: 'List', items: vals, sep, bytes: '' };
     return ev.call(node.name, list, e.modes);
@@ -527,15 +628,14 @@ function joinBytes(
   sep: string,
   frame: Frame | null,
   e: EvalCtx,
-  depth: number,
 ): MaybePromise<Value> {
-  const items = parts.map((p) => evalValue(p, frame, e, depth));
+  const items = parts.map((p) => evalValue(p, frame, e));
   return combineAll(items, (vals) => literal(vals.map(emitValue).join(sep)));
 }
 
 /** Fold a value node and return its emitted bytes. */
-function evalBytes(node: ValueNode, frame: Frame | null, e: EvalCtx, depth = 0): MaybePromise<string> {
-  return mapMaybe(evalValue(node, frame, e, depth), emitValue);
+function evalBytes(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromise<string> {
+  return mapMaybe(evalValue(node, frame, e), emitValue);
 }
 
 /** Bytes for a synchronous position (at-rule prelude); async there is out of scope. */
@@ -710,6 +810,8 @@ export function serialize(root: Root, options?: SerializeOptions): SerializeRetu
     positions: options?.trackPositions ? [] : null,
     ev: options?.evaluator ?? null, // typed value evaluator
     modes: options?.modes ?? DEFAULT_MODES,
+    excluded: new Set(), // [resolver] per-declaration cycle guard
+    optional: options?.optional ?? false, // [resolver] strict (default) vs optional miss
     pending: [], // async patches
     depth: 0, // [atrule]
     collapse: options?.collapseNesting !== false, // [nested/R0] default = flatten
@@ -869,15 +971,25 @@ function walkBody(
   }
 }
 
-/** Merge param bindings and body-local vars into one frame map (params first). */
+/**
+ * Merge mixin/function PARAM bindings and body-local var stacks into one frame
+ * map. Params seed each name's stack; body decls are appended AFTER so a
+ * body-level `$a: …` sits later in the stack and shadows a same-named param on
+ * the backward walk (Defect C — BODY WINS). No shared stack is mutated: a merged
+ * name gets a fresh concatenated array. */
 function mergeVars(
-  a: Map<string, ValueNode> | null,
-  b: Map<string, ValueNode> | null,
-): Map<string, ValueNode> | null {
-  if (!a) return b;
-  if (!b) return a;
-  const out = new Map(a);
-  for (const [k, v] of b) out.set(k, v);
+  params: Map<string, ValueNode> | null,
+  body: Map<string, ValueNode[]> | null,
+): Map<string, ValueNode[]> | null {
+  if (!params) return body;
+  const out = asStacks(params)!;
+  if (body) {
+    for (const [k, stack] of body) {
+      const seed = out.get(k);
+      if (seed) out.set(k, [...seed, ...stack]);
+      else out.set(k, stack.slice());
+    }
+  }
   return out;
 }
 
@@ -1009,7 +1121,7 @@ function expandDetachedCall(
 function dispatch(candidates: MixinDef[], call: MixinCall, frame: Frame, e: EvalCtx): Selection[] {
   const resolveCaller = makeResolver(frame, e);
   const makeCalleeTyped = (bindings: Map<string, ValueNode> | null): TypedResolver =>
-    makeTypedResolver({ parent: frame, mixins: null, vars: bindings }, e);
+    makeTypedResolver({ parent: frame, mixins: null, vars: asStacks(bindings) }, e);
   // an arg that is a variable bound to a detached ruleset must bind BY
   // REFERENCE (its body/closure survives); substitute the resolved node so the
   // eager byte-resolver never tries to serialize a ruleset as a value.
@@ -1691,7 +1803,7 @@ export interface ComposeStats {
 export function composeStats(root: Root, evaluator?: ValueEvaluator, modes?: EvalModes): ComposeStats {
   const stats: ComposeStats = { composeOps: 0, selectorAllocs: 0, distinctSelectors: 0 };
   const seen = new Set<string>();
-  const ectx: EvalCtx = { ev: evaluator ?? null, modes: modes ?? DEFAULT_MODES };
+  const ectx: EvalCtx = { ev: evaluator ?? null, modes: modes ?? DEFAULT_MODES, excluded: new Set() };
 
   const composeCount = (parents: string[], child: SelectorList, frame: Frame): string[] => {
     if (parents.length > 1) stats.selectorAllocs++; // the :is(...) wrap
