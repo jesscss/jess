@@ -71,19 +71,19 @@ function paramName(sigiled: string): string {
  * shared `MixinArgs` action carries them per slot; the def family reads them as a
  * variadic / named `Param`, a call family as a spread / named call-arg.
  */
-interface RestMarker {
+export interface RestMarker {
   readonly __rest: true;
   readonly name?: string;
 }
-interface NamedMarker {
+export interface NamedMarker {
   readonly __named: true;
   readonly name: string;
   readonly value: t2.ValueNode;
 }
-function isRestMarker(x: unknown): x is RestMarker {
+export function isRestMarker(x: unknown): x is RestMarker {
   return !!x && typeof x === 'object' && (x as RestMarker).__rest === true;
 }
-function isNamedMarker(x: unknown): x is NamedMarker {
+export function isNamedMarker(x: unknown): x is NamedMarker {
   return !!x && typeof x === 'object' && (x as NamedMarker).__named === true;
 }
 
@@ -127,11 +127,11 @@ function namedArgValue(args: BuildArgs): t2.ValueNode {
  * slot's raw built child (`built`) so the def family can classify on structure
  * (`Rest` / `NamedArg` marker, `VarRef`, or a literal) rather than re-parsing text.
  */
-interface ArgSlot extends RawArg {
+export interface ArgSlot extends RawArg {
   readonly built: unknown;
 }
 
-function isArgSlotList(x: unknown): x is ArgSlot[] {
+export function isArgSlotList(x: unknown): x is ArgSlot[] {
   return Array.isArray(x) && (x.length === 0 || (!!x[0] && (x[0] as RawArg).__rawArg === true));
 }
 

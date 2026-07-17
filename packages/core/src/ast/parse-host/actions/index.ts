@@ -33,6 +33,7 @@ import { AT_RULES_ACTIONS } from './at-rules.js';
 import { VARIABLES_ACTIONS } from './variables.js';
 import { COMMENTS_ACTIONS } from './comments.js';
 import { MIXINS_DEF_ACTIONS } from './mixins-def.js';
+import { MIXIN_CALL_ACTIONS } from './mixin-call.js';
 import { CUSTOM_PROPS_ACTIONS } from './custom-props.js';
 import { EXTEND_ACTIONS } from './extend.js';
 import { VALUE_EXPR_ACTIONS } from './value-expr.js';
@@ -47,6 +48,7 @@ export const ACTION_LIST: readonly BuildAction[] = [
   ...VARIABLES_ACTIONS,
   ...COMMENTS_ACTIONS,
   ...MIXINS_DEF_ACTIONS,
+  ...MIXIN_CALL_ACTIONS,
   ...CUSTOM_PROPS_ACTIONS,
   ...EXTEND_ACTIONS,
   ...VALUE_EXPR_ACTIONS,

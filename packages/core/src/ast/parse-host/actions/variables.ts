@@ -24,7 +24,7 @@
  * throws) so parseman's speculative / backtracked branches are safe.
  */
 import * as t2 from '../../index.js';
-import { type BuildAction, declParts, placeholder } from '../host-context.js';
+import { type BuildAction, declParts, isStatement, placeholder } from '../host-context.js';
 import { isLeaf, wholeValueNode } from './interp.js';
 
 /**
@@ -41,9 +41,36 @@ const varDeclaration: BuildAction = {
   build: (args) => {
     const { name, value } = declParts(args.ctx.src, args.span.start, args.span.end);
     const bare = name.charCodeAt(0) === 0x40 /* @ */ ? name.slice(1) : name;
+    // A detached-ruleset value `@x: { … }` — the parser bounds the block with a
+    // `{`/`}` leaf pair and hands the block's built statements as children between
+    // them. Consume that structure into a `DetachedRuleset` value (callable via a
+    // `VarCall`); no re-parse of the value bytes (P0).
+    if (args.children.some((c) => isLeaf(c) && c.value === '{')) {
+      const body = args.children.filter(isStatement);
+      return t2.varDecl(bare, t2.detachedRuleset(body));
+    }
     const node = wholeValueNode(args, value);
     const valueNode: t2.ValueNode = node !== null ? (node as t2.ValueNode) : t2.word(value);
     return t2.varDecl(bare, valueNode);
+  },
+};
+
+/**
+ * A detached-ruleset CALL statement `@x();` → tree2 `DetachedCall`. The parser
+ * emits a `VarCall` rule whose first child is the bare `@name` variable leaf; the
+ * serializer (`serialize.ts:854`, `expandDetachedCall`) resolves it to the bound
+ * `DetachedRuleset` and splices its body. A detached call carries no args (Less
+ * detached rulesets are argument-less), so the trailing `MixinArgs` slot is not
+ * read. A non-variable head declines to an inert placeholder.
+ */
+const varCall: BuildAction = {
+  type: 'VarCall',
+  build: (args) => {
+    const first = args.children[0];
+    if (isLeaf(first) && first.value.charCodeAt(0) === 0x40 /* @ */) {
+      return t2.detachedCall(first.value.slice(1));
+    }
+    return placeholder(args.type);
   },
 };
 
@@ -65,4 +92,4 @@ const reference: BuildAction = {
   },
 };
 
-export const VARIABLES_ACTIONS: readonly BuildAction[] = [varDeclaration, reference];
+export const VARIABLES_ACTIONS: readonly BuildAction[] = [varDeclaration, reference, varCall];
