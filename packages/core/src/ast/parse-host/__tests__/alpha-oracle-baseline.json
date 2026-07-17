@@ -97,7 +97,7 @@
   },
   "detached-rulesets/detached-rulesets.less": {
     "status": "DIFF",
-    "bytes": 552
+    "bytes": 1232
   },
   "empty/empty.less": {
     "status": "MATCH",
@@ -137,17 +137,15 @@
   },
   "functions-each/functions-each.less": {
     "status": "DIFF",
-    "bytes": 34
+    "bytes": 998
   },
   "functions/functions.less": {
-    "status": "THREW",
-    "bytes": null,
-    "threw": "Error: detached ruleset used as a value (not called)"
+    "status": "DIFF",
+    "bytes": 5877
   },
   "functions/legacy/functions.less": {
-    "status": "THREW",
-    "bytes": null,
-    "threw": "Error: detached ruleset used as a value (not called)"
+    "status": "DIFF",
+    "bytes": 5875
   },
   "ie-filters-REMOVED/legacy/ie-filters.less": {
     "status": "DIFF",
@@ -163,7 +161,7 @@
   },
   "import/import-interpolation.less": {
     "status": "DIFF",
-    "bytes": 128
+    "bytes": 131
   },
   "import/import-module.less": {
     "status": "DIFF",
@@ -175,7 +173,7 @@
   },
   "import/import-reference-issues.less": {
     "status": "DIFF",
-    "bytes": 331
+    "bytes": 401
   },
   "import/import-reference.less": {
     "status": "DIFF",
@@ -188,7 +186,7 @@
   },
   "import/import.less": {
     "status": "DIFF",
-    "bytes": 709
+    "bytes": 713
   },
   "javascript-REMOVED/legacy/javascript.less": {
     "status": "DIFF",
@@ -196,7 +194,7 @@
   },
   "layer/layer.less": {
     "status": "DIFF",
-    "bytes": 2089
+    "bytes": 2094
   },
   "lazy-eval/lazy-eval.less": {
     "status": "MATCH",
@@ -215,8 +213,8 @@
     "bytes": 103
   },
   "mixins-closure/mixins-closure.less": {
-    "status": "DIFF",
-    "bytes": 90
+    "status": "MATCH",
+    "bytes": 89
   },
   "mixins-guards-default-func/mixins-guards-default-func.less": {
     "status": "DIFF",
@@ -304,7 +302,7 @@
   },
   "plugin-preeval/plugin-preeval.less": {
     "status": "DIFF",
-    "bytes": 39
+    "bytes": 88
   },
   "plugin/plugin.less": {
     "status": "DIFF",
@@ -336,11 +334,11 @@
   },
   "starting-style/starting-style.less": {
     "status": "DIFF",
-    "bytes": 921
+    "bytes": 1014
   },
   "strings/strings.less": {
     "status": "DIFF",
-    "bytes": 1156
+    "bytes": 1132
   },
   "tailwind/tailwind.less": {
     "status": "DIFF",
@@ -348,7 +346,7 @@
   },
   "urls/urls.less": {
     "status": "DIFF",
-    "bytes": 3040
+    "bytes": 3071
   },
   "variables-in-at-rules/variables-in-at-rules.less": {
     "status": "DIFF",
@@ -356,7 +354,7 @@
   },
   "variables/variable-advanced.less": {
     "status": "DIFF",
-    "bytes": 801
+    "bytes": 1090
   },
   "variables/variables.less": {
     "status": "DIFF",

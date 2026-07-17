@@ -357,25 +357,37 @@ function frameCandidatesInOrder(f: Frame, name: string): MixinDef[] {
  * concat, which dispatched every rule-mixin after every parametric def and so
  * mis-ordered overloaded output (`A B C border` instead of `A B border C`).
  */
-function lookupCandidates(frame: Frame | null, name: string): MixinDef[] {
+function lookupCandidates(
+  frame: Frame | null,
+  name: string,
+  homes?: Map<MixinDef, Frame>, // [closure] def → the frame it was DEFINED in
+): MixinDef[] {
   let out: MixinDef[] | null = null;
   let fb: Frame | null | undefined;
   for (let f = frame; f; f = f.parent) {
     const hit = frameCandidatesInOrder(f, name);
-    if (hit.length) { if (!out) out = hit; else out.push(...hit); }
+    if (hit.length) {
+      if (homes) for (const d of hit) if (!homes.has(d)) homes.set(d, f);
+      if (!out) out = hit.slice(); else out.push(...hit);
+    }
     if (f.fallback && !fb) fb = f.fallback;
   }
   if (fb) {
-    const more = lookupCandidates(fb, name);
-    if (more.length) { if (!out) out = more; else out.push(...more); }
+    // The [closure] fallback chain (caller scope) can rejoin the parent (definition)
+    // chain at a shared ancestor, so a def already collected must NOT be dispatched
+    // twice: merge the fallback candidates by identity, first occurrence wins.
+    const more = lookupCandidates(fb, name, homes);
+    for (const d of more) if (!out || !out.includes(d)) (out ??= []).push(d);
   }
   return out ?? [];
 }
 
 /** [guards] Own-scope (no parent walk) source-ordered candidates for a NAMESPACED
  * call, confined to the descended namespace body. */
-function ownCandidates(frame: Frame, name: string): MixinDef[] {
-  return frameCandidatesInOrder(frame, name);
+function ownCandidates(frame: Frame, name: string, homes?: Map<MixinDef, Frame>): MixinDef[] {
+  const hit = frameCandidatesInOrder(frame, name);
+  if (homes) for (const d of hit) if (!homes.has(d)) homes.set(d, frame);
+  return hit;
 }
 
 /**
@@ -621,8 +633,13 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
     case 'MapAccessor':
       return evalMapAccessor(node, frame, e);
     case 'DetachedRuleset':
-      // A detached ruleset is not byte-serializable in value position.
-      throw new Error('detached ruleset used as a value (not called)');
+      // A detached ruleset reaching a value/arg position is not byte-serializable:
+      // it can only be *called* (`@dr()`). less.js drops such an argument to an
+      // ordinary function (`fn({…})` → `fn()`), so it folds to empty bytes here
+      // rather than throwing. (Full `if()`/`isruleset()`/`isdefined()` DR handling —
+      // which evaluates and can RETURN a detached ruleset — is the deferred
+      // condition-grammar / FnCtx capability wave, not this path.)
+      return literal('');
   }
 }
 
@@ -730,8 +747,50 @@ function evalMapAccessor(node: MapAccessor, frame: Frame | null, e: EvalCtx): Ma
   return evalValue(matched.value, matched.frame, e);
 }
 
+/**
+ * Follow a `@var` → … → `@var` binding chain to the concrete value node it names
+ * (non-throwing; stops at the first non-`VarRef`). Returns `undefined` if any link
+ * is unbound. Used by the detached-ruleset introspection functions, which must
+ * inspect the BINDING (a `DetachedRuleset` node) rather than materialize it.
+ */
+function resolveBindingNode(node: ValueNode, frame: Frame | null): ValueNode | undefined {
+  let cur: ValueNode | undefined = node;
+  const seen = new Set<ValueNode>();
+  while (cur && cur.type === 'VarRef') {
+    if (seen.has(cur)) return undefined; // cyclic
+    seen.add(cur);
+    cur = lookupVar(frame, cur.name);
+  }
+  return cur;
+}
+
+/**
+ * `isdefined(@x)` / `isruleset(@x)`: detached-ruleset introspection that inspects
+ * the BINDING without byte-materializing it (a `DetachedRuleset` arg is not
+ * value-serializable, and `isdefined` must swallow an unbound reference rather
+ * than throw `@x is undefined`). Returns the `true`/`false` literal, or `undefined`
+ * when `node` is not one of these calls (fall through to normal dispatch).
+ */
+function evalIntrospection(node: FunctionCall, frame: Frame | null): Value | undefined {
+  if (node.args.length !== 1) return undefined;
+  const arg = node.args[0]!;
+  if (node.name === 'isdefined') {
+    // Defined iff the single argument resolves to a bound value. A non-`VarRef`
+    // argument (a literal / call) is inherently defined.
+    const bound = arg.type === 'VarRef' ? resolveBindingNode(arg, frame) : arg;
+    return literal(bound !== undefined ? 'true' : 'false');
+  }
+  if (node.name === 'isruleset') {
+    const bound = resolveBindingNode(arg, frame);
+    return literal(bound?.type === 'DetachedRuleset' ? 'true' : 'false');
+  }
+  return undefined;
+}
+
 /** Evaluate a function call: materialize the modeled arg list, then `ev.call`. */
 function evalCall(node: FunctionCall, frame: Frame | null, e: EvalCtx): MaybePromise<Value> {
+  const intro = evalIntrospection(node, frame);
+  if (intro !== undefined) return intro;
   const sep = node.modern ? ' ' : ',';
   if (!e.ev) {
     const items = node.args.map((a) => evalValue(a, frame, e));
@@ -1188,9 +1247,14 @@ function expandCall(
   // (`#ns > .m()`) resolves the name ONLY inside the descended namespace body — it
   // does NOT fall through to same-name defs in the enclosing/root scope — so it uses
   // an own-scope lookup rather than the chain walk a bare `.m()` call uses.
+  // [closure] track each candidate's DEFINITION frame: a mixin body resolves its
+  // free variables in the scope where the mixin was WRITTEN, not the call site
+  // (less@4 `MixinDefinition.frames`). A namespaced call already descends to the
+  // definition scope; a bare `.m()` may resolve a def in an ANCESTOR frame.
+  const homes = new Map<MixinDef, Frame>();
   const rawCandidates = namespaced
-    ? ownCandidates(dispatchFrame, call.name)
-    : lookupCandidates(dispatchFrame, call.name);
+    ? ownCandidates(dispatchFrame, call.name, homes)
+    : lookupCandidates(dispatchFrame, call.name, homes);
   // [recursion] A paren-less ruleset callable as a zero-arg mixin (`ruleMixin`)
   // must NOT expand itself while it is already on the active expansion stack —
   // `.recursion { .recursion(); }` terminates by re-binding to a same-name
@@ -1209,11 +1273,21 @@ function expandCall(
   const bodyImp = imp || call.important; // propagate call-level !important
   for (const { def, bindings } of selected) {
     captureArgDefFrames(bindings, frame); // detached-ruleset args: literal home
+    // [closure] free variables resolve in the mixin's DEFINITION scope FIRST, with
+    // the call-site scope as a fallback — less@4 evaluates a mixin body under
+    // `definitionFrames.concat(callerFrames)`. `parent` = the definition frame (so
+    // a `@var` written in the mixin's home scope wins over a same-name caller var,
+    // e.g. `mixins-closure`); `fallback` = the caller chain, which also keeps the
+    // DYNAMIC expansion stack reachable for the ruleset-mixin recursion guard
+    // (`bodyOnStack`) and lets the body see caller-published mixins. A namespaced
+    // call already descends to the definition scope, so home === dispatch there.
+    const homeFrame = homes.get(def) ?? dispatchFrame;
     const callFrame: Frame = {
-      parent: dispatchFrame,
+      parent: homeFrame,
       mixins: collectMixins(def.body),
       vars: mergeVars(bindings, collectVars(def.body)),
       statements: def.body,
+      ...(homeFrame === dispatchFrame ? {} : { fallback: dispatchFrame }),
     };
     // [dedup] a real parametric MixinDef produces RESTRICTED output (its overloaded
     // duplicates survive); a synthesized ruleset-mixin does not, unless it is already
