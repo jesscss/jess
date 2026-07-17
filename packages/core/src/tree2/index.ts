@@ -53,6 +53,6 @@ export {
 // gated byte-identical against it (see native-evaluator.ts).
 export { serializeValue, serializeColor, serializeDimension, serializeQuoted, OutputMode } from './serialize-value.js';
 export { buildNativeEvaluator } from './native-evaluator.js';
-export { dispatchNative, hasNativeFn, NATIVE_FNS } from './value-dispatch.js';
+export { dispatchNative, hasNativeFn } from './value-dispatch.js';
 // [value-literal-tag] the parser's LIT_* classification (VALUE-LITERAL-TAG-SPEC).
 export { LiteralTag, materializeLiteral, tagForWord, sniffLiteral } from './literal-tag.js';

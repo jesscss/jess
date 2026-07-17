@@ -17,11 +17,6 @@
  *     matched), supplied to `evalGuard` as a callback.
  * Only `cmp` (a comparison like `@a > 0`) and `call` (a boolean function like
  * `iscolor(@a)`) reach the service.
- *
- * Determinism note: `and`/`or` are evaluated WITHOUT short-circuit so that a
- * record pass visits every leaf (guards have no side effects, so this is
- * semantically identical to short-circuiting). This keeps the async
- * record/replay key set for the value service complete.
  */
 
 import type { ValueNode } from './nodes.js';
@@ -44,8 +39,6 @@ export type ValueResolver = (v: ValueNode) => string;
 export type TypedResolver = (v: ValueNode) => ValueObj;
 
 export interface GuardEvalDeps {
-  /** Byte resolver (truthiness). */
-  resolve: ValueResolver;
   /** [R2] Typed resolver (comparison / type-fn leaves compare typed values). */
   resolveTyped: TypedResolver;
   ev: ValueEvaluator | null;
@@ -76,7 +69,7 @@ export function evalGuard(node: GuardNode, deps: GuardEvalDeps): boolean {
       return !evalGuard(node.inner, deps);
     case 'truth':
       // Less: a bare-value guard is true only if it evaluates to `true`.
-      return deps.resolve(node.value).trim() === 'true';
+      return deps.resolveTyped(node.value).bytes.trim() === 'true';
     case 'cmp': {
       if (!deps.ev) return false;
       const left = deps.resolveTyped(node.left);
