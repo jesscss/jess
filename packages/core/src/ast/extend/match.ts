@@ -1,0 +1,240 @@
+/**
+ * Match / construct — applies one extend instruction to a selector list.
+ *
+ *   - whole-branch match (exact & all): append the extender branches (dedup).
+ *   - `all` sub-match: substitute the matched span in place with `:is(span, ext)`.
+ *   - recurse into `:is()` grafts (transitive chaining lives inside them).
+ */
+
+import {
+  branchText,
+  cloneBranch,
+  cloneSeg,
+  cloneSimple,
+  compoundText,
+  descendantBranch,
+  isSimple,
+  multisetSubset,
+  textSimples,
+} from './ir.js';
+import type { Branch, Compound, Seg, Simple } from './ir.js';
+
+/**
+ * Apply one instruction to a selector list (a rule's branches OR an `:is()`
+ * arg). Returns a new list when it changed, else null. `extenderKeys` are the
+ * extenders' texts (self-avoidance: never wrap a branch that IS an extender
+ * contribution).
+ */
+export function applyInstruction(
+  list: Branch[],
+  target: Branch,
+  extenders: Branch[],
+  partial: boolean,
+  extenderKeys: Set<string>,
+): Branch[] | null {
+  const targetKey = branchText(target);
+  const out: Branch[] = [];
+  const appends: Branch[] = [];
+  let changed = false;
+
+  for (const b of list) {
+    const bKey = branchText(b);
+    // Whole-branch match → append extenders as siblings. A multi-segment target
+    // also matches an `:is()`-grafted branch whose expansion equals the target
+    // (`.replace.replace .replace` vs `:is(.replace.replace, …) .replace`).
+    if (bKey === targetKey || (target.segs.length > 1 && branchExpansions(b).includes(targetKey))) {
+      out.push(b);
+      for (const e of extenders) appends.push(e);
+      continue;
+    }
+    if (partial && !extenderKeys.has(bKey)) {
+      const rewritten = rewriteBranchPartial(b, target, extenders, partial, extenderKeys);
+      if (rewritten) {
+        out.push(rewritten);
+        changed = true;
+        continue;
+      }
+    }
+    out.push(b);
+  }
+
+  if (appends.length > 0) {
+    const present = new Set(out.map(branchText));
+    for (const e of appends) {
+      const k = branchText(e);
+      if (!present.has(k)) {
+        out.push(e);
+        present.add(k);
+        changed = true;
+      }
+    }
+  }
+  return changed ? out : null;
+}
+
+/**
+ * Rewrite ONE branch for an `all` sub-match: substitute the matched span in
+ * place, and recurse into any `:is()` grafts. Returns a new branch if changed.
+ */
+function rewriteBranchPartial(
+  b: Branch,
+  target: Branch,
+  extenders: Branch[],
+  partial: boolean,
+  extenderKeys: Set<string>,
+): Branch | null {
+  const before = branchText(b);
+  let work = cloneBranch(b);
+
+  // (1) recurse into `:is()` grafts (transitive chaining lives inside them).
+  work = recurseIntoGrafts(work, target, extenders, partial, extenderKeys);
+
+  // (2) span substitution against the (possibly graft-updated) branch.
+  if (target.segs.length === 1) {
+    work = substituteSingleCompound(work, target.segs[0]!.compound, extenders);
+  } else {
+    work = substituteMultiCompound(work, target, extenders);
+  }
+
+  return branchText(work) !== before ? work : null;
+}
+
+/** Recurse an instruction into every `:is()` graft simple in the branch. */
+function recurseIntoGrafts(
+  b: Branch,
+  target: Branch,
+  extenders: Branch[],
+  partial: boolean,
+  extenderKeys: Set<string>,
+): Branch {
+  return {
+    segs: b.segs.map((seg) => ({
+      comb: seg.comb,
+      compound: {
+        simples: seg.compound.simples.map((s): Simple => {
+          if (s.t !== 'is') return s;
+          const inner = applyInstruction(s.branches, target, extenders, partial, extenderKeys);
+          return inner ? { t: 'is', branches: inner } : s;
+        }),
+      },
+    })),
+  };
+}
+
+/** Substitute a single-compound target inside every matching compound. */
+function substituteSingleCompound(b: Branch, targetCompound: Compound, extenders: Branch[]): Branch {
+  const need = textSimples(targetCompound);
+  const needSet = new Set(need);
+  const segs = b.segs.map((seg) => {
+    const have = textSimples(seg.compound);
+    if (!multisetSubset(need, have)) return seg;
+    if (need.length > 1) {
+      return { comb: seg.comb, compound: collapseMatchedAtoms(seg.compound, needSet, targetCompound, extenders) };
+    }
+    // single-simple target: wrap each matched slot individually.
+    return {
+      comb: seg.comb,
+      compound: {
+        simples: seg.compound.simples.map((s): Simple =>
+          s.t === 'text' && needSet.has(s.text)
+            ? isSimple([descendantBranch([cloneSimple(s)]), ...extenders])
+            : cloneSimple(s),
+        ),
+      },
+    };
+  });
+  return { segs };
+}
+
+/** Collapse contiguous matched atoms into one `:is(<matched>, ext)`, keep the rest. */
+function collapseMatchedAtoms(
+  compound: Compound,
+  needSet: Set<string>,
+  targetCompound: Compound,
+  extenders: Branch[],
+): Compound {
+  const matchedBranch = descendantBranch([{ t: 'text', text: compoundText(targetCompound) }]);
+  const out: Simple[] = [];
+  let placed = false;
+  for (const s of compound.simples) {
+    if (s.t === 'text' && needSet.has(s.text)) {
+      if (!placed) {
+        out.push(isSimple([matchedBranch, ...extenders]));
+        placed = true;
+      }
+      // subsequent matched atoms are subsumed by the :is()
+    } else {
+      out.push(cloneSimple(s));
+    }
+  }
+  return { simples: out };
+}
+
+/**
+ * Substitute a multi-compound (P>1) target span in place. Finds a contiguous
+ * segment run whose compounds each superset the target compounds and whose
+ * internal combinators align; collapses the span into one `:is(span, ext)`.
+ */
+function substituteMultiCompound(b: Branch, target: Branch, extenders: Branch[]): Branch {
+  const P = target.segs.length;
+  const segs = b.segs;
+  for (let start = 0; start + P <= segs.length; start++) {
+    let ok = true;
+    for (let k = 0; k < P; k++) {
+      const ts = target.segs[k]!;
+      const bs = segs[start + k]!;
+      if (!multisetSubset(textSimples(ts.compound), textSimples(bs.compound))) {
+        ok = false;
+        break;
+      }
+      if (k > 0 && ts.comb !== bs.comb) {
+        ok = false;
+        break;
+      }
+    }
+    if (!ok) continue;
+    // Build the matched span text (segments start..start+P-1, internal combinators).
+    const spanSegs: Seg[] = [];
+    for (let k = 0; k < P; k++) {
+      const bs = segs[start + k]!;
+      spanSegs.push({ comb: k === 0 ? ' ' : bs.comb, compound: { simples: bs.compound.simples.map(cloneSimple) } });
+    }
+    const isSeg: Seg = {
+      comb: start === 0 ? ' ' : segs[start]!.comb,
+      compound: { simples: [isSimple([{ segs: spanSegs }, ...extenders])] },
+    };
+    const outSegs: Seg[] = [];
+    for (let i = 0; i < segs.length; i++) {
+      if (i < start || i >= start + P) outSegs.push(cloneSeg(segs[i]!));
+      else if (i === start) outSegs.push(isSeg);
+    }
+    return { segs: outSegs };
+  }
+  return b;
+}
+
+/** Expand a branch's `:is()` grafts into the set of flat complex texts it denotes. */
+function branchExpansions(b: Branch): string[] {
+  let acc: Seg[][] = [[]];
+  for (const seg of b.segs) {
+    // A segment whose compound is a single `:is(...)` graft expands to its args.
+    const single = seg.compound.simples.length === 1 ? seg.compound.simples[0]! : null;
+    if (single && single.t === 'is') {
+      const next: Seg[][] = [];
+      for (const arg of single.branches) {
+        for (const pre of acc) {
+          // Graft the arg's segments in place (first arg-seg takes this seg's comb).
+          const grafted = arg.segs.map((as, i) => ({
+            comb: i === 0 ? seg.comb : as.comb,
+            compound: as.compound,
+          }));
+          next.push([...pre, ...grafted]);
+        }
+      }
+      acc = next;
+    } else {
+      acc = acc.map((pre) => [...pre, seg]);
+    }
+  }
+  return acc.map((segs) => branchText({ segs }));
+}
