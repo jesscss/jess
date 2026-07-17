@@ -90,6 +90,9 @@ const SELECTOR_PSEUDOS = new Set([
   'nth-of-type', 'nth-last-of-type'
 ]);
 
+// Logical combinators joining media/supports/container query conditions.
+const QUERY_COMBINATORS = new Set(['not', 'and', 'or']);
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -1121,7 +1124,7 @@ export class CssParser {
     // Url.value is a Node, so wrap a bare/quoted string leaf in the matching node
     // instead of storing a raw string (which never writes into the render buffer).
     const inner = ls
-      .filter(l => !/^url\($/i.test(l.value) && l.value !== ')')
+      .filter(l => !l.value.toLowerCase().startsWith('url(') && l.value !== ')')
       .map(l => l.value).join('').trim();
     const quote = inner[0];
     const innerValue = (quote === '"' || quote === '\'') && inner.at(-1) === quote
@@ -1379,7 +1382,7 @@ export class CssParser {
    */
   protected _buildQueryConditionRule(children: ReadonlyArray<Child>, loc: LocationInfo) {
     const opLeaves = children.filter(
-      (c): c is CSTLeaf => c._tag === 'leaf' && /^(?:not|and|or)$/i.test((c as CSTLeaf).value)
+      (c): c is CSTLeaf => c._tag === 'leaf' && QUERY_COMBINATORS.has((c as CSTLeaf).value.toLowerCase())
     );
     const nodes = nodeChildren(children);
     if (opLeaves[0]?.value.toLowerCase() === 'not') {
