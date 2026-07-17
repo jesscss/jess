@@ -47,6 +47,18 @@ export function applyInstruction(
       for (const e of extenders) appends.push(e);
       continue;
     }
+    // `all` whole-branch SUBSET match: a multi-segment target whose every segment
+    // compound-subsets the aligned branch segment across the WHOLE span (each
+    // pattern compound ⊆ its branch compound, combinators aligned — e.g.
+    // `.a > .c` vs `.a.b > .c.d`). The matched span is the entire selector, so it
+    // degenerates to a plain comma-append (`.a.b > .c.d, .x`), NOT an
+    // `:is()`-wrap of the whole branch — the sub-span `:is()` wrap is reserved for
+    // matches with surrounding combinator context (see `substituteMultiCompound`).
+    if (partial && !extenderKeys.has(bKey) && matchesWholeBranchSubset(b, target)) {
+      out.push(b);
+      for (const e of extenders) appends.push(e);
+      continue;
+    }
     if (partial && !extenderKeys.has(bKey)) {
       const rewritten = rewriteBranchPartial(b, target, extenders, partial, extenderKeys);
       if (rewritten) {
@@ -70,6 +82,26 @@ export function applyInstruction(
     }
   }
   return changed ? out : null;
+}
+
+/**
+ * True when a MULTI-segment target compound-subset-matches the ENTIRE branch:
+ * same segment count, each target compound ⊆ the aligned branch compound, and
+ * internal combinators aligned. A whole-span match consumes the whole selector,
+ * so the caller comma-appends the extenders rather than `:is()`-wrapping the
+ * branch. Single-compound (P===1) targets are excluded — their sub-compound
+ * matches carry in-compound context and are handled by `substituteSingleCompound`.
+ */
+function matchesWholeBranchSubset(b: Branch, target: Branch): boolean {
+  const P = target.segs.length;
+  if (P < 2 || P !== b.segs.length) return false;
+  for (let k = 0; k < P; k++) {
+    const ts = target.segs[k]!;
+    const bs = b.segs[k]!;
+    if (!multisetSubset(textSimples(ts.compound), textSimples(bs.compound))) return false;
+    if (k > 0 && ts.comb !== bs.comb) return false;
+  }
+  return true;
 }
 
 /**

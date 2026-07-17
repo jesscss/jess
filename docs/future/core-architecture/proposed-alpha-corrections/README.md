@@ -88,3 +88,69 @@ corpus `merge.less`/`merge.css` (READ-ONLY, owner-maintained) needs the upstream
 correction to LAST-occurrence captured by THIS `merge.css`; once synced, the
 baseline entry promotes to `MATCH`. Task #36 wrongly flipped ast/ to FIRST to
 chase the outlier golden; reverted on `fix/merge-anchor-revert-to-last`.
+
+
+## extend `all` sub-span `:is()` wrapping — NEW upstream fixture (task #30)
+
+`extend-subspan-all.less` / `extend-subspan-all.css` are a PROPOSED NEW `alpha`
+test-data fixture (not a correction of an existing golden). They demonstrate the
+v5 extend-`all` sub-span behavior the `ast/` engine now implements (owner-DECIDED
+design; supersedes 4.x's positional string-replace):
+
+> `:extend(TARGET all)` matches TARGET by COMPOUND-SUBSET against every existing
+> selector (each TARGET compound ⊆ the aligned selector compound, combinators
+> aligned — so `.a > .c` matches `.a.b > .c.d`) and unions the extending selector
+> with the matched span. A WHOLE-selector match degenerates to a plain
+> comma-append; a MID-complex sub-span is wrapped `:is(<matched-span>, <ext>)`
+> IN PLACE, with the surrounding combinator context preserved verbatim on BOTH
+> sides.
+
+The `.css` here is the `ast/` v5 render (the v5 oracle), captured via
+`bridgeToAst` + `serialize({ collapseNesting: true })` and locked in-repo by
+`packages/core/src/ast/parse-host/__tests__/extend-subspan-wrap.test.ts` (ast/)
+and `packages/jess/test/spine-production-ratchet.test.ts` (production spine,
+`SUB-SPAN #30` cases).
+
+**Divergence from current alpha** (verified by running `alpha`'s own `lessc` on
+`extend-subspan-all.less`): alpha only comma-appends the WHOLE-EXACT combinator
+match (case 3, `.m > .n, .z`); for the compound-SUBSET cases (1 and 2) it emits
+`WARNING: extend '<target>' has no matches` and leaves the selector UNCHANGED —
+4.x/alpha has no compound-subset complex-target matching. So alpha's current
+output for this fixture is:
+
+```css
+.a.b > .c.d {
+  color: red;
+}
+div + .e.f > .g.h ~ .child {
+  color: blue;
+}
+.m > .n,
+.z {
+  color: green;
+}
+```
+
+Adopting `extend-subspan-all.css` upstream requires implementing the compound-
+subset sub-span match + `:is()` wrap in less.js alpha (cases 1 and 2). Case 3 is
+already alpha-correct and is included so the file is a drop-in golden.
+
+### NOTE — the task-#30 design examples transpose `&`/argument in their prose
+
+The design spec (EXTEND-REDESIGN / the #30 brief) illustrates the feature with:
+
+```less
+.a.b > .c.d {}
+.a > .c { &:extend(.x all); }   /* prose: "&=pattern searched, .x=added" */
+```
+
+In standard Less/alpha semantics `&:extend(.x all)` searches for the ARGUMENT
+(`.x`) and adds the rule's own selector — i.e. the prose's role labels are
+transposed. Run literally, the input above produces NO match in alpha
+(`WARNING: extend ' .x' has no matches`) and no change — confirmed against
+`alpha` `lessc`. The intended END outputs quoted in the brief
+(`.a.b > .c.d, .x` and `div + :is(.a.b > .c.d, .x) ~ .child`) are reproduced
+EXACTLY by the only self-consistent direction — search the extend TARGET, union
+the extending selector — which is also the direction the `.zoo`/`.zap` corpus
+cases (kept green) require. The fixture here therefore uses that direction
+(`.x:extend(.a > .c all)`), producing the brief's exact expected CSS.

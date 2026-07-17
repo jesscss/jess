@@ -2025,6 +2025,41 @@ describe('spine PRODUCTION-path ratchet (P2 wire-in)', () => {
     expect(css).toBe('.foo :is(.bar, .ext3) {\n  display: none;\n}\n.ext3 {\n  x: 1;\n}\n');
   });
 
+  // v5 extend-`all` sub-span `:is()` wrapping (task #30). `:extend(TARGET all)`
+  // matches TARGET by COMPOUND-SUBSET against existing selectors (each TARGET
+  // compound ⊆ the aligned selector compound, combinators aligned) and unions the
+  // extending selector with the matched span: WHOLE-selector match → comma-append;
+  // MID-complex sub-span → `:is(<span>, <ext>)` in place, surrounding combinator
+  // context preserved verbatim on BOTH sides. Supersedes 4.x, which refuses a
+  // complex-selector subset match (`WARNING: extend '.a > .c' has no matches`).
+  // (Task prose writes `.a > .c { &:extend(.x all); }`; that transposes `&`/arg —
+  // in standard Less it searches `.x` and finds nothing. The coherent direction,
+  // required by `.zoo`/`.zap` too, searches TARGET and unions the extender.)
+  // These lock the rendered OUTPUT (behavior ratchet), not the internal path: a
+  // compound-SUBSET complex extend is conservatively routed to eval by the spine
+  // work-gate (byte-correct either way), so — unlike the whole-EXACT case below,
+  // which folds on the spine — they do not assert `rootRenders`.
+  it('SUB-SPAN #30: whole-selector compound-subset match comma-appends', async () => {
+    // `.a > .c` compound-subset-matches the ENTIRE `.a.b > .c.d` → plain sibling.
+    const css = await makeCompiler().renderString(`.a.b > .c.d {\n  color: red;\n}\n.x:extend(.a > .c all) {}`, { language: 'less' });
+    expect(css).toBe('.a.b > .c.d,\n.x {\n  color: red;\n}\n');
+  });
+
+  it('SUB-SPAN #30: mid-complex sub-span wraps `:is()` in place, BOTH-sides context preserved', async () => {
+    // Matched span `.a.b > .c.d` sits between `div +` and `~ .child`; only the span
+    // is replaced by `:is(span, .x)`, both sides verbatim.
+    const css = await makeCompiler().renderString(`div + .a.b > .c.d ~ .child {\n  color: red;\n}\n.x:extend(.a > .c all) {}`, { language: 'less' });
+    expect(css).toBe('div + :is(.a.b > .c.d, .x) ~ .child {\n  color: red;\n}\n');
+  });
+
+  it('SUB-SPAN #30: whole-selector EXACT combinator match comma-appends via the spine (no `:is()`)', async () => {
+    const compiler = makeCompiler();
+    const before = spineRenderCounter.rootRenders;
+    const css = await compiler.renderString(`.a > .c {\n  color: red;\n}\n.x:extend(.a > .c all) {}`, { language: 'less' });
+    expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+    expect(css).toBe('.a > .c,\n.x {\n  color: red;\n}\n');
+  });
+
   // M8 (interpolated-selector callable). An interpolated-SELECTOR ruleset
   // (`.@{name} {}`) used as a mixin CALL target (`.foo()`). Its callable identity
   // is resolved by an eval-pass side effect (`Ruleset.prepareRegistration` →
