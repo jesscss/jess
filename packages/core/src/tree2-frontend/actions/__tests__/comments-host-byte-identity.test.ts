@@ -35,6 +35,7 @@ const inputs: Array<[string, string]> = [
   ['root-between-rules', '.a { color: red }\n/* mid */\n.b { color: blue }\n'],
   ['root-trailing-eof', '.a { color: red }\n/* end */\n'],
   // standalone inside a rule body
+  ['selector-adjacent', '.a /* x */ {\n  color: red;\n}\n'],
   ['body-standalone', '.a {\n  /* standalone */\n  color: red;\n}\n'],
   ['body-leading', '.a { /* inline */ color: red }\n'],
   ['body-between-decls', '.a {\n  /* c1 */\n  color: red;\n  /* c2 */\n  width: 1px;\n}\n'],
@@ -50,6 +51,9 @@ const inputs: Array<[string, string]> = [
   ['line-after-rule', '.a { color: red } // line after\n'],
   ['line-only-root', '// only line\n.a { color: red }\n'],
   ['line-in-body', '.a { color: red; // trailing line\n}\n'],
+  // comment-only bodies (no statements to gap against)
+  ['body-only-comment', '.a { /* only */ }\n'],
+  ['root-only-comment', '/* only */\n'],
   // mixed with plain rules (no comments) — override must not regress
   ['no-comment', '.a { color: red; width: 10px }\n']
 ];

@@ -20,6 +20,80 @@ export interface Span {
   readonly end: number;
 }
 
+/* --------------------------------------------------------------- trivia log */
+
+/**
+ * Per-node trivia log layout. parseman hands each build action the trivia its
+ * rule consumed as a flat, source-ordered array of `[start, end, insertIdx, kind]`
+ * quadruples (`kind` is present because the tree2 driver parses with a KINDED
+ * trivia rule — the less grammar's `rw`, whose `triviaKindLabels` are
+ * `['whitespace','blockComment','lineComment']`). `insertIdx` is the rawChildren
+ * index before which the trivia sat. The parser is the SOLE source of this
+ * structure (P0): actions read it instead of re-scanning `ctx.src` for
+ * whitespace / comment tokens.
+ */
+const TRIVIA_STRIDE = 4;
+const TRIVIA_WHITESPACE = 0;
+const TRIVIA_BLOCK_COMMENT = 1;
+
+/**
+ * True when a WHITESPACE trivia run was consumed immediately before rawChildren
+ * index `rawIndex` — the descendant-combinator signal inside a compound selector
+ * (`.a .b`), distinct from a bare byte gap (`.a/* *​/.b` is one compound, its gap
+ * carries a COMMENT, not whitespace). Mirrors the css-parser CST builder's
+ * `hasWhitespaceTriviaAt`.
+ */
+export function hasWhitespaceTriviaBefore(triviaLog: readonly number[], rawIndex: number): boolean {
+  for (let i = 0; i + TRIVIA_STRIDE - 1 < triviaLog.length; i += TRIVIA_STRIDE) {
+    if (triviaLog[i + 2] === rawIndex && triviaLog[i + 3] === TRIVIA_WHITESPACE) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** A block comment's source `[start, end)` range, lifted from the trivia log. */
+export interface CommentRange {
+  readonly start: number;
+  readonly end: number;
+}
+
+/**
+ * The BLOCK comments (`/* … *​/`) the node's rule consumed, in source order —
+ * the standalone-comment candidates the comments family lifts into the body.
+ * Line comments (`// …`) are omitted: Less drops them, so they are never lifted
+ * (and, being source-ordered by START, dropping them shifts no other comment).
+ */
+export function blockCommentTrivia(triviaLog: readonly number[]): CommentRange[] {
+  const out: CommentRange[] = [];
+  for (let i = 0; i + TRIVIA_STRIDE - 1 < triviaLog.length; i += TRIVIA_STRIDE) {
+    if (triviaLog[i + 3] === TRIVIA_BLOCK_COMMENT) {
+      out.push({ start: triviaLog[i]!, end: triviaLog[i + 1]! });
+    }
+  }
+  return out;
+}
+
+/**
+ * The body window `[afterOpenBrace, beforeCloseBrace)` of a ruleset, read from
+ * the `{` / `}` literal leaves the parser delivers in `rawChildren` (the first
+ * `{` leaf and the last `}` leaf). This is the region standalone body comments
+ * live in — bounded by the real brace tokens so a `{` / `}` inside a selector or
+ * a trailing string can never mis-window it. Returns `undefined` when either
+ * brace leaf is absent (e.g. a selector-only build).
+ */
+export function rulesetBodyWindow(rawChildren: ReadonlyArray<unknown>): { start: number; end: number } | undefined {
+  let start: number | undefined;
+  let end: number | undefined;
+  for (const rc of rawChildren) {
+    const leaf = rc as { _tag?: string; value?: unknown; span?: Span } | undefined;
+    if (leaf?._tag !== 'leaf' || !leaf.span) continue;
+    if (leaf.value === '{' && start === undefined) start = leaf.span.end;
+    else if (leaf.value === '}') end = leaf.span.start;
+  }
+  return start !== undefined && end !== undefined ? { start, end } : undefined;
+}
+
 /**
  * Per-parse state threaded to every build action. Kept intentionally small (the
  * source string is all the current families need); grows additively as families

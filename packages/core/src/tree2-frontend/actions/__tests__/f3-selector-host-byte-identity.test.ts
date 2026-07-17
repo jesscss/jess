@@ -26,6 +26,10 @@ const heads = [
   '.a', '#main', '.a.b', 'div.a#b.c', 'h1', '*',
   '.a > .b', '.a>.b', '.a > .b > .c', '.a + .b', '.a~.b', '.a .b', '.a   .b', '.a.b .c',
   '* > .a', '.a > *',
+  // A comment between simples is NOT whitespace — the compound must NOT split
+  // (`.a/* c */.b` is `.a.b`, not `.a .b`). Regression for the byte-gap → trivia
+  // descendant-combinator fix.
+  '.a/* c */.b', '.a/* c */.b .c', '.a /* c */ .b',
   '.a:hover', '.a::before', '.a:hover::before', '.a:not(.b)', '.a:nth-child(2n+1)',
   '.a[data-x]', '.a[data-x="y"]', '.a[data-x~="y" i]', 'a[href^="http"]', 'input[type="text"]:focus',
   '.a, .b', '.a, .b, .c', '.a.b, .c > .d', '.a>.b, .c',
@@ -55,4 +59,14 @@ describe('[tree2-native] F3 selector host byte-identity vs bridge', () => {
       expect(d).toBe(b);
     });
   }
+
+  // A1.5: a comment between simples opens a byte gap with NO whitespace — the
+  // descendant combinator is inferred from WHITESPACE trivia, not a raw gap, so
+  // `.a/* c */.b` stays one compound. Pinned to the exact bytes `npx less@4.6.3`
+  // emits (`.a.b`), so the assertion anchors to Less semantics, not just the bridge.
+  it('A1.5: comment between simples stays compound (matches less@4.6.3)', () => {
+    expect(serialize(direct('.a/* c */.b { x: 1 }\n')).css).toBe('.a.b {\n  x: 1;\n}\n');
+    // A real whitespace gap remains a descendant combinator.
+    expect(serialize(direct('.a .b { x: 1 }\n')).css).toBe('.a .b {\n  x: 1;\n}\n');
+  });
 });
