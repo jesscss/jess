@@ -12,17 +12,18 @@ End state: package graph strictly **parser → core** (acyclic).
 The whole cleanup wave is gated behind a **byte-identical benchmark oracle** so every
 structural cut can prove it changed no output. Order:
 
-1. ✅ **Benchmark number measured** (`fe7c3a789`): ast/ v5 = 55.6 ms median (4.2× faster than legacy tree/ 231 ms; 1.66× the Less.js 4.x 33.5 ms reference). `%()`→`string-format` + `!important` + namespace zero-arg mixin dispatch landed byte-clean.
+1. ✅ **Benchmark number measured** (`fe7c3a789`): ast/ v5 = ~50 ms median — **owner: "AMAZING"; perf half of the bar is MET. PROTECT this floor, never regress it.** (4.2× faster than the legacy tree/ engine; strict Less.js-4.x parity was never the target.) `%()`→`string-format` + `!important` + namespace zero-arg mixin dispatch landed byte-clean.
+
+   > **⚠️ ORACLE REFRAME (owner, 2026-07-17):** the legacy `tree/` Compiler output is **NOT an oracle** and hasn't been for months — Jess was mid-transition, output shape never proven. Do NOT gate on "match the legacy output." The v5 output oracle is **less.js `alpha`** (`~/git/worktrees/less.js/`, READ-ONLY; :is() compaction etc.); ast/ self-consistency (before/after byte-identity) is the gate for pure refactors. See [[benchmark-oracle-buggy-ampersand-expansion]].
 2. 🔄 **Gap #3 dedup** (task #27, IN FLIGHT): reverse keep-last-by-(name+value) + overload carve-out (`isFromRestrictedMixinOutput`). Last real byte gap (~114 diff lines); collapses the residual to just the ~135 known-correct v5 divergences (trailing-comment indent, `:is()` compaction — DO NOT TOUCH) + ~68 declared-out-of-scope feature gaps (quoted-string interp loop, `+:` merge). Unblocks a stable oracle.
 3. 🔄 **Non-engine bloat** (task #25, IN FLIGHT, PARALLEL — outside ast/, no collision): jess-error 1000-line demolition + plugin.ts `any` swarm + context.ts/jess-index.ts god-objects.
 4. ⏳ **Tier-B grammar-structuring** (task #6, A0 below — decisions LOCKED: strict `lessInterp`, fix `@keyframes @{n}` inline). HARD PREREQUISITE for the reorg.
 5. ⏳ **`builders.ts` leaning** (§0.11) + **co-location reorg** (Phase A→B below): parse-host dissolves, parser imports leaf `@jesscss/core/ast`, families co-locate, monster files split.
 6. ⏳ **`t2`/`tree2` remnant elimination** (728 occurrences / 51 files) + `Word` interface resolution — folds into Phase B rewrites.
 
-### Post-stabilization fan-out (owner, 2026-07-17) — ONLY after §2–§6 land and ast/ is stabilized
-Once ast/ is clean, a small parallel fan-out is sanctioned:
-- **Invalid-test audit:** one agent audits tests that now assert *internal implementation* (shape/private API) rather than real output — CONVERT to output/contract assertions or DELETE. (Aligns with [[feedback-no-sacred-test-expectations]]: internal tests are freely changeable; only the less-compat bridge contract + intended output bytes are fixed.)
-- **Perf-opportunity profiling:** one agent profiles the stabilized ast/ (parse+build is ~64% of render, serialize+import ~32%) for further wins and DOCUMENTS them in a new `PERF_IDEAS.md` (Jess doc) — candidates only, each measured before any bet per [[feedback-predict-perf-before-building]].
+### Fan-out (owner, 2026-07-17)
+- **Perf-opportunity profiling — 🔄 IN FLIGHT NOW (owner: can run anytime, read-only + doc-only, no gating).** One agent profiles ast/ (parse+build ~64% of render, serialize+import ~32%) and DOCUMENTS ranked candidates in a new `PERF_IDEAS.md` — ideas only, each measured/predicted before any bet per [[feedback-predict-perf-before-building]]. Does NOT touch engine/parser source (no collision with Tier-B). Protect the ~50 ms floor.
+- **Invalid-test audit — ⏳ AFTER §2–§6 (needs stabilized ast/).** One agent audits tests that assert *internal implementation* (shape/private API) rather than real output — CONVERT to output/contract assertions or DELETE. (Per [[feedback-no-sacred-test-expectations]]: internal tests freely changeable; only the less-compat bridge contract + intended output bytes are fixed.)
 
 ## LAWS (enforce every step)
 
