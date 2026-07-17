@@ -71,6 +71,19 @@ function leafText(x: unknown): string {
 }
 
 /**
+ * A zero-content structural leaf: an empty-text child that carries no source bytes —
+ * either no span at all, or a zero-width span the grammar emits as an anchor between
+ * tokens (e.g. the epsilon right after a `(`). Skipped when assembling paren/call
+ * items so it never becomes a spurious empty `Word` operand (which would serialize as
+ * a leading space, e.g. `( #ffffff)`).
+ */
+function isEmptyStructuralLeaf(child: unknown, raw: unknown): boolean {
+  if (isValueNode(child) || leafText(child) !== '') return false;
+  const span = (raw as { span?: Span } | undefined)?.span;
+  return !span || span.start === span.end;
+}
+
+/**
  * A value operand from child slot `i`: a built value node as-is, else the child's
  * verbatim source bytes as a `Word` (a bare ident like `solid`, or an
  * unmodelled/placeholder shape — kept byte-faithful so the action stays total).
@@ -170,7 +183,7 @@ const paren: BuildAction = {
         hasComma = true;
         continue;
       }
-      if (v === '' && !(args.rawChildren[i] as { span?: Span })?.span) continue;
+      if (v === '' && isEmptyStructuralLeaf(c, args.rawChildren[i])) continue;
       items.push(operandAt(args, i));
     }
     if (hasComma && open >= 0 && close >= 0) {
@@ -226,7 +239,7 @@ function buildCall(args: BuildArgs): t2.ValueNode {
       }
       // A bare value leaf (ident like `solid`, or an unmodelled shape): keep its
       // verbatim bytes. Skip a zero-width structural leaf (a built node's wrapper).
-      if (v === '' && !(args.rawChildren[i] as { span?: Span })?.span) continue;
+      if (v === '' && isEmptyStructuralLeaf(c, args.rawChildren[i])) continue;
       segments[segments.length - 1]!.push(operandAt(args, i));
     }
     const argList: t2.ValueNode[] = [];
