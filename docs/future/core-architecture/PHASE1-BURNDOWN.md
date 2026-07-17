@@ -272,3 +272,32 @@ Phase-1 is complete when ALL hold:
 Clusters 4/5 (DRY/simplify) and 7 (Tier-0b) close incrementally under 1–3; the KEEP list is
 excluded by construction. Non-engine N-items and node-slim NS-items are explicitly OUT of the
 "builders + ast/" bar and tracked only so nothing is lost.
+
+---
+
+## Tier-B interpolation-structuring — deferred accommodations (retire at reorg A4 / query-prelude split)
+
+Byte re-tokenizers / dual-use accommodations that Tier-B (task #6, phase A0) shapes 1–2
+could NOT remove without regressing the less-compat bridge (the one external contract)
+or without landing a separate higher-risk shape. Each has a grep-able in-code marker
+reconciling 1:1 with the rows below:
+
+```
+grep -rn "TODO(tier-b/A4)\|TODO(tier-b/query-prelude)" packages/core/src/ast/parse-host packages/less-parser/src/grammar.ts
+```
+
+| # | Marker | File:line | WHAT is left | WHY (which path needs it) | RETIREMENT TRIGGER |
+|---|---|---|---|---|---|
+| TB-1 | `TODO(tier-b/A4)` | `less-parser/src/grammar.ts` (`customPropInterp`) | cp-NAME kept as ONE regex leaf (not leaf-split like the value) | Legacy BuilderHost (drives less-compat bridge) consumes the single-leaf shape; splitting into `@{…}` leaves regressed the bridge's name emission (`--@{k}` → `--`) — external-contract break | Split into `--`+ident-chunk+isolated `lessInterp` leaves at legacy-BuilderHost retirement (reorg A4) |
+| TB-2 | `TODO(tier-b/A4)` | `core/ast/parse-host/actions/custom-props.ts` (`interpFromString`/`declName`) | `@{…}` re-tokenizers for cp-NAME + the regular declaration's interpolated PROPERTY name | (a) cp-NAME: paired with TB-1 (bridge). (b) regular-decl name: `declPropName` is one opaque leaf (separate un-structured shape) | Split `customPropInterp` (TB-1) + `declPropName` + consume via `interpFromRegion`, at reorg A4 |
+| TB-3 | `TODO(tier-b/query-prelude)` | `core/ast/parse-host/actions/at-rules.ts` (`AT_KEYWORD`/`parsePreludeValue`/`interpFromString`) | byte re-tokenizers for the QUERY at-rule prelude | `@media`/`@supports`/`@container` deliver their prelude as one opaque `QueryCondition` node → a query's `@var`/`@{…}` is not consumable as leaves. NOT legacy-coupled — grammar-coverage gap | Split the QUERY grammar's prelude into leaves (separate Tier-B shape; §3.4 keeps it committed), then leaf-consume |
+| TB-4 | `TODO(tier-b/A4)` | `core/ast/parse-host/import.ts` (`directSpecifier`) | `.includes('@{')/'@@'` SUBSTRING check detecting an interpolated import specifier | Specifier `@{…}` is INSIDE a Quoted string → structuring = §3.3 (changes the SHARED flat `Quoted` the legacy BuilderHost re-tokenizes via `INTERPOLATION_REGEX`/`getInterpolatedNode`) → bridge break. (Substring test, not a regex; direct host defers interpolated imports regardless) | Land §3.3 Quoted structuring after legacy-BuilderHost retirement (reorg A4), then read the path's `Interpolated` node type |
+
+**Landed Tier-B shapes** (not deferred): shape 1 — generic at-rule prelude (regex-free +
+`@keyframes @{n}` early-termination bugfix, validated vs real less.js 4.x); shape 2 —
+custom-prop VALUE (`@{…}` isolated in grammar + leaf-consumed via `interpFromRegion`).
+
+**Pre-existing, NOT introduced by Tier-B interpolation work:**
+`core/ast/parse-host/actions/mixins-def.ts` `TODO(tier-b)` — a multi-token space-list mixin
+default (`thin dotted`) is not assembled into a `List` (the §3.5 list value-assembly shape,
+host value-assembly workstream). Not an interpolation shape, not a regex. Left as-is.

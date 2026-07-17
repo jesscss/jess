@@ -463,6 +463,18 @@ function directSpecifier(pathNode: t2.Word): { spec: string | null; interpolated
       ? lit.value
       : unwrapUrl(pathNode.text);
   if (raw === null) return { spec: null, interpolated: false };
+  // TODO(tier-b/A4): WHAT — this `.includes('@{')/'@@'` SUBSTRING check detects an
+  // interpolated import specifier (`@import "@{theme}.less"`) from the path bytes
+  // instead of reading a structured `Interpolated` node. WHY — the specifier's `@{…}`
+  // lives INSIDE a Quoted string, so structuring it is the §3.3 Quoted-string-
+  // interpolation shape: it would change the SHARED, flat `Quoted` rule (css-parser),
+  // which the legacy BuilderHost re-tokenizes via `INTERPOLATION_REGEX`/
+  // `getInterpolatedNode` to rebuild the bridge's `Interpolated` — changing it
+  // regresses the less-compat bridge (external contract). (The direct host DEFERS
+  // interpolated imports regardless, so this only detects; and `.includes` is a
+  // substring test, not a regex.) RETIREMENT TRIGGER — land §3.3 Quoted structuring
+  // after the legacy BuilderHost retires (reorg Phase A4), then read the path's
+  // `Interpolated`/`Quoted` node type here instead of a byte substring.
   const interpolated = raw.includes('@{') || raw.includes('@@');
   return { spec: interpolated ? null : raw, interpolated };
 }
