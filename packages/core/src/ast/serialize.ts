@@ -156,6 +156,13 @@ const INDENT = '  ';
  * at this level; `vars` holds param bindings for a mixin call. Frames chain to
  * their lexical parent for lookup.
  */
+/**
+ * A value bound to a `@name`. Usually a {@link ValueNode}; a `@p: .mk-map()`
+ * binding carries a {@link MixinCall} whose OUTPUT the name accesses (`@p[text]`),
+ * dispatched lazily on read (see {@link resolveBaseDeclMap}).
+ */
+type Binding = ValueNode | MixinCall;
+
 export interface Frame {
   parent: Frame | null;
   // [guards] a name maps to ALL same-name defs (overloads), in definition order.
@@ -166,7 +173,7 @@ export interface Frame {
   // `resolveVarRef`), so `@a: @a + 1` falls back to an earlier same-name entry
   // instead of self-referencing. The stack — not a collapsed last-wins map — is
   // what makes per-declaration cycle exclusion expressible.
-  vars: Map<string, ValueNode[]> | null;
+  vars: Map<string, Binding[]> | null;
   // [scope-leak] variables UNLOCKED into this frame by a mixin call in its body
   // (`leakBodyVars`). v5 "outer-binding-wins": the mixin-injected variable is NOT
   // hoisted into the ordinary `vars` scope — it is consulted ONLY after the whole
@@ -176,7 +183,7 @@ export interface Frame {
   // through to the leaked value (`.heightIsSet`'s `@height` → the leaked `1024px`).
   // This drops the 4.x mixin-injected-variable hoist (which put the leak in `vars`
   // and let it shadow the outer binding → `#989`). See DESIGN-DECISIONS R2.
-  leaked?: Map<string, ValueNode[]> | null;
+  leaked?: Map<string, Binding[]> | null;
   // secondary scope consulted after the `parent` chain is exhausted (the
   // detached-ruleset definition closure — caller-first, definition-fallback).
   fallback?: Frame | null;
@@ -216,8 +223,8 @@ function collectMixins(statements: Statement[]): Map<string, MixinDef[]> | null 
  * excluded (see `resolveVarRef`). The whole scope's stacks are built up-front so
  * a forward reference sees a complete index before any value is emitted.
  */
-function collectVars(statements: Statement[]): Map<string, ValueNode[]> | null {
-  let map: Map<string, ValueNode[]> | null = null;
+function collectVars(statements: Statement[]): Map<string, Binding[]> | null {
+  let map: Map<string, Binding[]> | null = null;
   for (const s of statements) {
     if (s.type === 'VarDeclaration') {
       const stack = (map ??= new Map()).get(s.name);
@@ -233,9 +240,9 @@ function collectVars(statements: Statement[]): Map<string, ValueNode[]> | null {
  * stack; a body decl of the same name (merged AFTER, see `mergeVars`) sits later
  * in the stack and wins the backward walk — body-shadows-param falls out for
  * free. */
-function asStacks(m: Map<string, ValueNode> | null): Map<string, ValueNode[]> | null {
+function asStacks(m: Map<string, ValueNode> | null): Map<string, Binding[]> | null {
   if (!m) return null;
-  const out = new Map<string, ValueNode[]>();
+  const out = new Map<string, Binding[]>();
   for (const [k, v] of m) out.set(k, [v]);
   return out;
 }
@@ -426,7 +433,7 @@ function bodyOnStack(frame: Frame | null, body: Statement[]): boolean {
  * because those callers resolve a name to a concrete ruleset binding, not a lazy
  * self-referential value. The regular value read uses `resolveVarRef` instead.
  */
-function lookupVarStack(frame: Frame | null, name: string, leaked: boolean): ValueNode | undefined {
+function lookupVarStack(frame: Frame | null, name: string, leaked: boolean): Binding | undefined {
   let fb: Frame | null | undefined;
   for (let f = frame; f; f = f.parent) {
     const stack = (leaked ? f.leaked : f.vars)?.get(name);
@@ -442,7 +449,7 @@ function lookupVarStack(frame: Frame | null, name: string, leaked: boolean): Val
   return undefined;
 }
 
-function lookupVar(frame: Frame | null, name: string): ValueNode | undefined {
+function lookupVar(frame: Frame | null, name: string): Binding | undefined {
   // [scope-leak] lexical `vars` first up the whole chain; the low-priority
   // mixin-leaked scope is consulted only when no lexical binding exists.
   return lookupVarStack(frame, name, false) ?? lookupVarStack(frame, name, true);
@@ -463,7 +470,7 @@ function resolveVarStack(
   name: string,
   e: EvalCtx,
   leaked: boolean,
-): { value: ValueNode; frame: Frame } | undefined {
+): { value: Binding; frame: Frame } | undefined {
   let fb: Frame | null | undefined;
   for (let f = frame; f; f = f.parent) {
     const stack = (leaked ? f.leaked : f.vars)?.get(name);
@@ -479,7 +486,7 @@ function resolveVarStack(
   return undefined;
 }
 
-function resolveVarRef(frame: Frame | null, name: string, e: EvalCtx): { value: ValueNode; frame: Frame } | undefined {
+function resolveVarRef(frame: Frame | null, name: string, e: EvalCtx): { value: Binding; frame: Frame } | undefined {
   // [scope-leak] v5 outer-binding-wins: resolve against the lexical `vars` scope
   // (own frame → every `parent` → `fallback`) FIRST; only when that whole chain
   // misses do we consult the low-priority mixin-leaked scope.
@@ -528,7 +535,7 @@ function resolvePropRef(
  * on the sync return, NOT on a later promise settle — so accumulation is correct
  * down a sync descent, and two overlapping async reads of the same decl do not
  * falsely block each other). `run` returns whatever the caller's fold produces. */
-function withExcluded<T>(e: EvalCtx, node: ValueNode, run: () => T): T {
+function withExcluded<T>(e: EvalCtx, node: Binding, run: () => T): T {
   e.excluded.add(node);
   try {
     return run();
@@ -543,6 +550,15 @@ function withExcluded<T>(e: EvalCtx, node: ValueNode, run: () => T): T {
  * were five hardcoded ``@${name}`` passthroughs. OPTIONAL (`e.optional`, set by
  * `isdefined` / opt-in callers): a miss returns the literal sigil string as a
  * sentinel, no throw. */
+/**
+ * Evaluate a variable BINDING in a value position. A `@p: .mk-map()` mixin-call
+ * binding is not byte-serializable there — it is only accessible/callable (`@p[k]`,
+ * `@p()`), so like a detached ruleset reaching a value position it folds to empty
+ * bytes; every other binding is an ordinary value node. */
+function evalBinding(b: Binding, frame: Frame | null, e: EvalCtx): MaybePromise<Value> {
+  return b.type === 'MixinCall' ? literal('') : evalValue(b, frame, e);
+}
+
 function unresolvedRef(name: string, e: EvalCtx): Value {
   if (!e.optional) throw new ReferenceError(`variable @${name} is undefined`);
   return literal(`@${name}`);
@@ -584,7 +600,7 @@ interface EvalCtx {
   // [resolver] value nodes currently being evaluated (per-declaration cycle
   // guard). A backward stack walk `continue`s past any node in this set; it
   // accumulates down a sync descent and releases on sync-phase completion.
-  excluded: Set<ValueNode>;
+  excluded: Set<Binding>;
   // [resolver] when true, a variable/lookup miss returns a sentinel instead of
   // throwing (`isdefined` / opt-in callers). Default (unset) is STRICT: miss
   // throws `ReferenceError`.
@@ -630,7 +646,12 @@ function evalTyped(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
     case 'VarRef': {
       const hit = resolveVarRef(frame, node.name, e);
       if (!hit) return force(e, unresolvedRef(node.name, e));
-      return withExcluded(e, hit.value, () => evalTyped(hit.value, hit.frame, e));
+      const bound = hit.value;
+      return withExcluded(e, bound, () =>
+        bound.type === 'MixinCall'
+          ? force(e, literal(''))
+          : evalTyped(bound, hit.frame, e),
+      );
     }
     case 'Paren':
       return evalTyped(node.inner, frame, e);
@@ -657,7 +678,7 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
     case 'VarRef': {
       const hit = resolveVarRef(frame, node.name, e);
       if (!hit) return unresolvedRef(node.name, e);
-      return withExcluded(e, hit.value, () => evalValue(hit.value, hit.frame, e));
+      return withExcluded(e, hit.value, () => evalBinding(hit.value, hit.frame, e));
     }
     case 'PropRef': {
       // A `$name` property accessor: resolve the winning `name` declaration in
@@ -708,7 +729,7 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
         const nm = stripOuterQuotes(raw);
         const hit = resolveVarRef(frame, nm, e);
         if (!hit) return unresolvedRef(nm, e);
-        return withExcluded(e, hit.value, () => evalValue(hit.value, hit.frame, e));
+        return withExcluded(e, hit.value, () => evalBinding(hit.value, hit.frame, e));
       });
     }
     case 'MapAccessor':
@@ -769,7 +790,7 @@ function resolveEmergentInterp(input: string, frame: Frame | null, e: EvalCtx): 
           const name = cur.slice(i + 2, j).trim();
           const hit = resolveVarRef(frame, name, e);
           if (hit) {
-            const val = withExcluded(e, hit.value, () => evalValue(hit.value, hit.frame, e));
+            const val = withExcluded(e, hit.value, () => evalBinding(hit.value, hit.frame, e));
             if (!isThenable(val)) {
               out += stripOuterQuotes(emitValue(val));
               i = j + 1;
@@ -814,10 +835,22 @@ function evalToDeclMap(statements: Statement[], frame: Frame | null, e: EvalCtx)
   const byName = new Map<string, DeclEntry>();
   const list: DeclEntry[] = [];
   for (const s of statements) {
+    // A map/namespace body member is either a CSS declaration (`text: white`,
+    // looked up by property name / `$prop`) or a variable declaration
+    // (`@color: blue`, looked up by variable name / `@var`). The accessor key
+    // model (`accessorKey`) collapses `$prop`/`@var`/bare into one name-keyed
+    // lookup, so both member kinds share the one `byName` map (source-order,
+    // last-wins), mirroring Less's per-name last-declaration-wins.
     if (s.type === 'Declaration') {
       const name = typeof s.name === 'string' ? s.name : evalBytesSync(s.name, frame, e);
       const entry: DeclEntry = { name, value: s.value, frame };
       byName.set(name, entry); // last-wins
+      list.push(entry);
+    } else if (s.type === 'VarDeclaration' && s.value.type !== 'MixinCall') {
+      // A `@var:` member (a mixin-CALL-bound member is not directly serializable as
+      // a map value — unreachable in the modelled fixtures — so it is skipped).
+      const entry: DeclEntry = { name: s.name, value: s.value, frame };
+      byName.set(s.name, entry); // last-wins
       list.push(entry);
     }
   }
@@ -846,21 +879,62 @@ function resolveBaseDeclMap(
     }
     return null;
   }
-  // A variable base bound to a detached ruleset → its body decls.
-  if (base.type === 'VarRef') {
+  // Any other base resolves to a ruleset body through the shared resolver: a
+  // direct `DetachedRuleset`, a `@var` bound to one (or, transitively, to another
+  // `@map[k]` accessor — the chained-accessor case `@scheme: @m[@k]; @scheme[@c]`),
+  // or a `@map[k]` accessor whose matched member is a detached ruleset. Its body
+  // decls (both `prop:` and `@var:` members, via `evalToDeclMap`) are the map.
+  const rs = resolveForRuleset(base, frame, e);
+  if (rs) {
+    const bodyFrame: Frame = {
+      parent: rs.frame,
+      mixins: collectMixins(rs.body),
+      vars: collectVars(rs.body),
+    };
+    return evalToDeclMap(rs.body, bodyFrame, e);
+  }
+  // A base `@var` bound to a mixin CALL (`@p: .mk-map(); @p[text]`): dispatch the
+  // call and treat its EMITTED declarations as the map (the same reconstruction the
+  // `each(.mixin(), …)` iterable uses — `forItemsFromMixinCall`).
+  if (base.type === 'VarRef' && frame) {
     const bound = lookupVar(frame, base.name);
-    if (bound && bound.type === 'DetachedRuleset') {
-      const def = (bound.defFrame as Frame | null) ?? frame;
-      const bodyFrame: Frame = {
-        parent: def,
-        mixins: collectMixins(bound.body),
-        vars: collectVars(bound.body),
-      };
-      return evalToDeclMap(bound.body, bodyFrame, e);
-    }
-    return null;
+    if (bound && bound.type === 'MixinCall') return declMapFromMixinCall(bound, frame, e);
   }
   return null;
+}
+
+/** Dispatch a mixin CALL and collect its emitted declarations as a member map
+ *  (`prop:` and `@var:` members), for a `@p: .mk-map()`-bound accessor base. Mirrors
+ *  {@link forItemsFromMixinCall}; nested rules are captured and discarded (a map is
+ *  its declarations). Needs a scratch {@link Emit} — the capture is thrown away. */
+function declMapFromMixinCall(
+  call: MixinCall,
+  frame: Frame,
+  e: EvalCtx,
+): { byName: Map<string, DeclEntry>; list: DeclEntry[] } {
+  const em = scratchEmit(e);
+  const collected: Leaf[] = [];
+  const noop = (): void => {};
+  const discard: Partition = { deferred: [], sawDecl: true };
+  expandCall(call, null, frame, collected, noop, discard, em);
+  const byName = new Map<string, DeclEntry>();
+  const list: DeclEntry[] = [];
+  for (const leaf of collected) {
+    const n = leaf.node;
+    let name: string;
+    if (n.type === 'Declaration') name = typeof n.name === 'string' ? n.name : evalBytesSync(n.name, leaf.frame, em);
+    else if (n.type === 'VarDeclaration') name = n.name;
+    else continue;
+    const value = n.value;
+    // A mixin body that itself binds a `@x: .other()` re-nests a mixin call; it is
+    // not directly value-serializable, so skip it as a map member (unreachable in
+    // the modelled fixtures — keeps the member map value-typed).
+    if (value.type === 'MixinCall') continue;
+    const entry: DeclEntry = { name, value, frame: leaf.frame };
+    byName.set(name, entry);
+    list.push(entry);
+  }
+  return { byName, list };
 }
 
 function evalMapAccessor(node: MapAccessor, frame: Frame | null, e: EvalCtx): MaybePromise<Value> {
@@ -895,9 +969,9 @@ function evalMapAccessor(node: MapAccessor, frame: Frame | null, e: EvalCtx): Ma
  * is unbound. Used by the detached-ruleset introspection functions, which must
  * inspect the BINDING (a `DetachedRuleset` node) rather than materialize it.
  */
-function resolveBindingNode(node: ValueNode, frame: Frame | null): ValueNode | undefined {
-  let cur: ValueNode | undefined = node;
-  const seen = new Set<ValueNode>();
+function resolveBindingNode(node: Binding, frame: Frame | null): Binding | undefined {
+  let cur: Binding | undefined = node;
+  const seen = new Set<Binding>();
   while (cur && cur.type === 'VarRef') {
     if (seen.has(cur)) return undefined; // cyclic
     seen.add(cur);
@@ -1102,6 +1176,30 @@ interface Emit extends EvalCtx {
   // block dedup). ONE preallocated record, mutated per block flush (no per-block
   // allocation); its seed `parentKey: null` matches nothing (merge needs pk !== null).
   lastBlock: { parentKey: object | null; header: string; depth: number; endChunks: number };
+}
+
+/**
+ * A throwaway {@link Emit} over an {@link EvalCtx}, for a capture-only expansion (a
+ * `@p: .mk-map()` binding read as an accessor base — {@link declMapFromMixinCall}).
+ * Its chunk/patch state is discarded; it shares the eval seam (`ev`/`modes`) and
+ * the `excluded` cycle-guard set with the live context. */
+function scratchEmit(e: EvalCtx): Emit {
+  return {
+    ev: e.ev,
+    modes: e.modes,
+    excluded: e.excluded,
+    optional: e.optional,
+    calcDepth: e.calcDepth,
+    chunks: [],
+    off: 0,
+    positions: null,
+    pending: [],
+    depth: 0,
+    collapse: true,
+    extends: null,
+    hoistMode: false,
+    lastBlock: { parentKey: null, header: '', depth: -1, endChunks: -1 }, // [adjacent-merge]
+  };
 }
 
 /**
@@ -1434,8 +1532,8 @@ function walkBody(
  * name gets a fresh concatenated array. */
 function mergeVars(
   params: Map<string, ValueNode> | null,
-  body: Map<string, ValueNode[]> | null,
-): Map<string, ValueNode[]> | null {
+  body: Map<string, Binding[]> | null,
+): Map<string, Binding[]> | null {
   if (!params) return body;
   const out = asStacks(params)!;
   if (body) {
@@ -1584,6 +1682,9 @@ function leakBodyVars(callerFrame: Frame, body: Statement[], callFrame: Frame, e
   for (const s of body) {
     if (s.type !== 'VarDeclaration') continue;
     const v = s.value;
+    // A mixin-CALL-bound var (`@p: .m()`) is not byte-snapshottable; leave it to
+    // resolve lazily at its call site rather than snapshotting a leaked copy.
+    if (v.type === 'MixinCall') continue;
     let snap: ValueNode;
     if (v.type === 'DetachedRuleset' || (v.type === 'Word' && v.tag !== undefined)) {
       snap = v;
@@ -1730,8 +1831,15 @@ function resolveForRuleset(
   }
   if (node.type === 'VarRef') {
     const bound = lookupVar(frame, node.name);
-    if (bound && bound.type === 'DetachedRuleset') {
+    if (!bound) return null;
+    if (bound.type === 'DetachedRuleset') {
       return { body: bound.body, frame: (bound.defFrame as Frame | null) ?? frame };
+    }
+    // The binding is itself an indirection to a ruleset — a `@var` alias chain or
+    // a `@map[k]` accessor (`@scheme: @color-schemes[@@name]; each(@scheme, …)` /
+    // `@scheme[@color]`). Follow it through the same resolver.
+    if (bound.type === 'VarRef' || bound.type === 'MapAccessor' || bound.type === 'Paren') {
+      return resolveForRuleset(bound, frame, e);
     }
     return null;
   }
@@ -1769,7 +1877,10 @@ function resolveForNode(
     if (cur.type === 'Paren') { cur = cur.inner; continue; }
     if (cur.type === 'VarRef') {
       const hit = resolveVarRef(f, cur.name, e);
-      if (!hit) return { node: cur, frame: f };
+      // A mixin-CALL binding is not a plain list/scalar iterable node; stop at the
+      // `VarRef` (the list-fallback then treats it as a single item — the mixin-call
+      // iterable proper is handled up front in `forItems`).
+      if (!hit || hit.value.type === 'MixinCall') return { node: cur, frame: f };
       cur = hit.value;
       f = hit.frame;
       continue;
@@ -1798,7 +1909,7 @@ function forItemsFromMixinCall(call: MixinCall, frame: Frame, e: Emit): ForItem[
     if (n.type === 'Declaration') {
       const name = typeof n.name === 'string' ? n.name : evalBytesSync(n.name, leaf.frame, e);
       items.push({ value: n.value, key: word(name) });
-    } else if (n.type === 'VarDeclaration') {
+    } else if (n.type === 'VarDeclaration' && n.value.type !== 'MixinCall') {
       items.push({ value: n.value, key: word(n.name) });
     }
   }
@@ -1818,7 +1929,7 @@ function forItems(node: ValueNode | MixinCall, frame: Frame | null, e: Emit): Fo
       if (s.type === 'Declaration') {
         const name = typeof s.name === 'string' ? s.name : evalBytesSync(s.name, map.frame, e);
         items.push({ value: s.value, key: word(name) });
-      } else if (s.type === 'VarDeclaration') {
+      } else if (s.type === 'VarDeclaration' && s.value.type !== 'MixinCall') {
         items.push({ value: s.value, key: word(s.name) });
       }
     }

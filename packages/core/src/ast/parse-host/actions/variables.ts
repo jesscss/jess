@@ -26,6 +26,7 @@
 import * as t2 from '../../index.js';
 import { type BuildAction, declParts, isStatement, placeholder, sliceSpan } from '../host-context.js';
 import { type Leaf, isLeaf, wholeValueNode } from './interp.js';
+import { tryMixinCallIterable } from './control-flow.js';
 
 /**
  * `@x: value;` — split the span into name + value bytes (drop a trailing `;`, split
@@ -48,6 +49,15 @@ const varDeclaration: BuildAction = {
     if (args.children.some((c) => isLeaf(c) && c.value === '{')) {
       const body = args.children.filter(isStatement);
       return t2.varDecl(bare, t2.detachedRuleset(body));
+    }
+    // A mixin-CALL value `@p: .mk-map();` — the parser hands the call as selector
+    // leaf(s) + a `Paren` arg group (identical to the `each(.mixin(), …)` iterable
+    // shape). Reconstruct the `MixinCall` STRUCTURALLY (no byte re-tokenizing, P0)
+    // so the binding is dispatched lazily when read (`@p[text]`, `@p()`).
+    const valLo = args.children.findIndex((c) => isLeaf(c) && c.value === ':') + 1;
+    if (valLo > 0) {
+      const mixinCall = tryMixinCallIterable(args.children, valLo, args.children.length);
+      if (mixinCall) return t2.varDecl(bare, mixinCall);
     }
     const node = wholeValueNode(args, value);
     const valueNode: t2.ValueNode = node !== null ? (node as t2.ValueNode) : t2.word(value);
@@ -93,13 +103,16 @@ function isIntLiteral(s: string): boolean {
  * BASE map by LITERAL name — it is NOT evaluated in the outer scope:
  *   • `@name` / `$name` / bare `name` → the literal member name `name` (a `Word`);
  *     resolved by NAME against the base's members (`keyIsProp`).
- *   • `@@name` → the name is INTERPOLATED from outer variable `@name` (`VarIndirect`
- *     resolves in the outer scope to the member name to look up).
+ *   • `@@name` → the member name is INTERPOLATED from outer variable `@name`: the
+ *     key is a bare `VarRef` to `@name`, which the accessor evaluates in the outer
+ *     scope to the member name to look up (a SINGLE indirection — `@name`'s value
+ *     IS the member name; wrapping it in `VarIndirect` would over-resolve to
+ *     `@@name`'s value).
  *   • an all-digit token → a 1-based numeric list index (not a name).
  */
 function accessorKey(keyStr: string): { key: t2.ValueNode | number; keyIsProp: boolean } {
   if (keyStr.charCodeAt(0) === 0x40 /* @ */) {
-    if (keyStr.charCodeAt(1) === 0x40) return { key: t2.varIndirect(t2.varRef(keyStr.slice(2))), keyIsProp: true };
+    if (keyStr.charCodeAt(1) === 0x40) return { key: t2.varRef(keyStr.slice(2)), keyIsProp: true };
     return { key: t2.word(keyStr.slice(1)), keyIsProp: true };
   }
   if (keyStr.charCodeAt(0) === 0x24 /* $ */) return { key: t2.word(keyStr.slice(1)), keyIsProp: true };

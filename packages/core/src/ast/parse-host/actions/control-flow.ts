@@ -167,8 +167,12 @@ function isCombinator(v: string): v is t2.Combinator {
  * (`.set-2`, `#ns > .m`) followed by a single `Paren` arg group — and build the
  * `MixinCall` node from those structured children. Returns `undefined` for any
  * other child shape (a real list/value iterable), which keeps the byte fallback.
+ *
+ * Exported so the same STRUCTURAL reconstruction serves a `@p: .mk-map()` variable
+ * binding (the `variables` family), whose value carries the identical selector-leaf
+ * + `Paren` child shape.
  */
-function tryMixinCallIterable(
+export function tryMixinCallIterable(
   children: readonly unknown[],
   lo: number,
   hi: number,

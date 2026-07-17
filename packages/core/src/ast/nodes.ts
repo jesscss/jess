@@ -360,11 +360,19 @@ export interface Declaration {
   readonly valueOnNewLine?: boolean;
 }
 
-/** A `@name: value;` variable declaration. Emits nothing; lives in scope. */
+/**
+ * A `@name: value;` variable declaration. Emits nothing; lives in scope.
+ *
+ * The value is usually a {@link ValueNode}, but a variable can also be bound to a
+ * mixin CALL (`@p: .mk-map();`) whose OUTPUT is what the binding names — a callable
+ * / accessible map (`@p[text]`, `@p()`). That shape carries a {@link MixinCall}
+ * (mirroring how {@link For.iterable} admits a `MixinCall`), dispatched lazily when
+ * the binding is read, so `value` is `ValueNode | MixinCall`.
+ */
 export interface VarDeclaration {
   readonly type: 'VarDeclaration';
   readonly name: string;
-  readonly value: ValueNode;
+  readonly value: ValueNode | MixinCall;
 }
 
 /** A comment carried structurally in source order (block or line text as-is). */
@@ -643,7 +651,7 @@ export const operation = (operator: string, left: ValueNode, right: ValueNode): 
 export const funcCall = (name: string, args: ValueNode[], modern = false): FunctionCall =>
   ({ type: 'FunctionCall', name, args, modern });
 export const paren = (inner: ValueNode): Paren => ({ type: 'Paren', inner });
-export const varDecl = (name: string, value: ValueNode): VarDeclaration =>
+export const varDecl = (name: string, value: ValueNode | MixinCall): VarDeclaration =>
   ({ type: 'VarDeclaration', name, value });
 export const mixinDef = (
   name: string,
