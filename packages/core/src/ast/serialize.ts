@@ -1089,6 +1089,19 @@ interface Emit extends EvalCtx {
   // [extend] set while emitting a hoisted (flattened) nested subtree via the flat
   // path, so headers use the compacted nested-hoist form. Never set in flat mode.
   hoistMode: boolean;
+  // [adjacent-merge] the most recently CLOSED rule block, or null. v5 merges
+  // consecutive same-selector SIBLING rulesets nested under a common parent into
+  // one block (e.g. `P { &-2 {a} &-2 {b} }` → `P-2 { a; b }`). The next block
+  // merges into this one when ALL hold: (1) same `parentKey` — the identical parent-
+  // expansion the two rulesets are children of (a fresh composed-selector array per
+  // parent expansion; `null` for top-level source rules, which NEVER merge even when
+  // adjacent+identical — cf. repeated top-level `.whitespace`); (2) byte-identical
+  // `header` at the same `depth`; (3) nothing emitted since it closed (`endChunks`
+  // still the chunk-stream tail — a strict-adjacency guard). On a match the prior
+  // block's `}` is rewound and this body appended inside it (source order, no cross-
+  // block dedup). ONE preallocated record, mutated per block flush (no per-block
+  // allocation); its seed `parentKey: null` matches nothing (merge needs pk !== null).
+  lastBlock: { parentKey: object | null; header: string; depth: number; endChunks: number };
 }
 
 /**
@@ -1190,6 +1203,7 @@ export function serialize(root: Root, options?: SerializeOptions): SerializeRetu
     collapse: options?.collapseNesting !== false, // [nested/R0] default = flatten
     extends: computeExtends(root), // [extend] null when no `:extend()` anywhere
     hoistMode: false, // [extend]
+    lastBlock: { parentKey: null, header: '', depth: -1, endChunks: -1 }, // [adjacent-merge]
   };
   const rootFrame: Frame = {
     parent: null,
@@ -1304,7 +1318,10 @@ function flatten(rule: Rule, parent: string[] | null, frame: Frame, e: Emit): vo
   const group: Leaf[] = [];
   const flush = (): void => {
     if (group.length) {
-      flushBlock(header, group, e, rule.selector);
+      // [adjacent-merge] `parent` (the parent expansion this rule was composed
+      // against) keys sibling merges: two nested rulesets with the same parent ref
+      // and header merge; top-level rules (`parent === null`) never do.
+      flushBlock(header, group, e, rule.selector, parent);
       group.length = 0;
     }
   };
@@ -1901,16 +1918,29 @@ function substituteDetachedVarArgs(call: MixinCall, frame: Frame): MixinCall {
   return changed ? { type: 'MixinCall', name: call.name, args, path: call.path, important: call.important } : call;
 }
 
-function flushBlock(sel: string[], group: Leaf[], e: Emit, selNode?: SelectorList): void {
+function flushBlock(sel: string[], group: Leaf[], e: Emit, selNode?: SelectorList, parentKey?: object | null): void {
   // [atrule] indent by the current block depth (0 at top level == prior behavior).
   const idt = e.depth > 0 ? INDENT.repeat(e.depth) : '';
-  if (idt) put(e, idt);
-  const selStart = e.off;
-  put(e, idt ? sel.join(',\n' + idt) : sel.join(',\n'));
-  if (e.positions && selNode) {
-    e.positions.push({ node: selNode, type: selNode.type, start: selStart, end: e.off });
+  const header = idt ? sel.join(',\n' + idt) : sel.join(',\n');
+  // [adjacent-merge] v5 merges consecutive same-selector SIBLING rulesets nested
+  // under a common parent (see `Emit.lastBlock`): a non-null parent-expansion key
+  // matching the prior block's, same header+depth, and strict adjacency (nothing
+  // emitted since it closed) reopen the prior block rather than starting a new one.
+  const pk = parentKey ?? null;
+  const lb = e.lastBlock;
+  const reopen = pk !== null && lb.parentKey === pk
+    && lb.depth === e.depth && lb.header === header && lb.endChunks === e.chunks.length;
+  if (reopen) {
+    popClose(e, idt); // remove the prior block's trailing `}` (and its indent)
+  } else {
+    if (idt) put(e, idt);
+    const selStart = e.off;
+    put(e, header);
+    if (e.positions && selNode) {
+      e.positions.push({ node: selNode, type: selNode.type, start: selStart, end: e.off });
+    }
+    put(e, ' {\n');
   }
-  put(e, ' {\n');
   // a leaf group with any `+`/`+_` merge folds; otherwise the byte-identical
   // per-leaf path (zero-cost gate), after collapsing duplicate declarations.
   if (groupHasMerge(group)) mergeFold(group, e, INDENT.repeat(e.depth + 1));
@@ -1920,6 +1950,24 @@ function flushBlock(sel: string[], group: Leaf[], e: Emit, selNode?: SelectorLis
   }
   if (idt) put(e, idt);
   put(e, '}\n');
+  // [adjacent-merge] update the single record in place (no per-block allocation).
+  lb.parentKey = pk;
+  lb.header = header;
+  lb.depth = e.depth;
+  lb.endChunks = e.chunks.length;
+}
+
+/** [adjacent-merge] Rewind the trailing block-close chunks emitted by `flushBlock`
+ * (`}\n`, preceded by the block's indent chunk when nested) so a following body can
+ * append inside the just-closed block. Only called when `lastBlock.endChunks`
+ * proves those chunks are the current tail. */
+function popClose(e: Emit, idt: string): void {
+  const close = e.chunks.pop()!; // '}\n'
+  if (e.positions) e.off -= close.length;
+  if (idt) {
+    const ind = e.chunks.pop()!; // the block-indent chunk
+    if (e.positions) e.off -= ind.length;
+  }
 }
 
 /**
