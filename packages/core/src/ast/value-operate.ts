@@ -1,15 +1,18 @@
 /**
- * SYNCHRONOUS value arithmetic for the value domain: dimension/color math (unit
- * conversion + rgb/hsl color math) and the binary `operate`, with its calc-splice
- * + unoperable-keyword-preserve + unit-clash → `calc()` guards. Guard comparison /
- * type-predicates live in `value-guards.ts`.
+ * SYNCHRONOUS value arithmetic for the value domain: dimension/color math and the
+ * binary `operate`. Dimension math is a faithful port of less.js `Dimension.operate`
+ * — cross-unit `*`/`/` compose + cancel the numerator/denominator multiset, `+`/`-`
+ * unify a compatible RHS (raw magnitudes otherwise), keeping the LHS unit; only
+ * `strict` throws. The `operate` seam adds the calc-splice + unoperable-keyword
+ * preserve guards, plus a preserve-mode `calc()` fallback for a color-op clash.
+ * Guard comparison / type-predicates live in `value-guards.ts`.
  *
  * HARD MODULE BOUNDARY: imports only the value domain, the factory, and the shared
  * units table.
  */
 import type { Color, Dimension, EvalModes, ValueObj } from './value-eval.js';
-import { colorRawRgb, makeColorRgb, makeDimension, makeKeyword } from './value-factory.js';
-import { groupOf, unitFactor } from './value-units.js';
+import { colorRawRgb, makeColorRgb, makeCompoundDimension, makeDimension, makeKeyword } from './value-factory.js';
+import { convertValue } from './value-units.js';
 
 /* --------------------------------------------------------- arithmetic */
 
@@ -45,50 +48,102 @@ function colorOperate(a: Color, b: ValueObj, op: string, modes: EvalModes): Colo
   return makeColorRgb(out, newAlpha, a.format, a.modernSyntax ? { modernSyntax: true } : undefined);
 }
 
-/** Unit-aware dimension arithmetic (dimension ⊕ dimension), reconciling or canceling units. */
+/* ------------------------------------------------------ unit multiset */
+
+/** A dimension's unit as a numerator/denominator multiset + `backupUnit` (less.js `Unit`). */
+interface UnitSet {
+  num: string[];
+  den: string[];
+  backup: string | undefined;
+}
+
+/** Read a dimension's unit multiset — the stored compound set, or `[unit]/[]` for a plain unit. */
+function unitsOf(d: Dimension): UnitSet {
+  if (d.numerator) return { num: d.numerator.slice(), den: (d.denominator ?? []).slice(), backup: d.backupUnit };
+  return { num: d.unit ? [d.unit] : [], den: [], backup: d.unit || undefined };
+}
+
+/** less.js `Unit.cancel`: remove numerator/denominator units that appear on both sides. */
+function cancel(u: UnitSet): void {
+  const counter = new Map<string, number>();
+  for (const n of u.num) counter.set(n, (counter.get(n) ?? 0) + 1);
+  for (const d of u.den) counter.set(d, (counter.get(d) ?? 0) - 1);
+  const num: string[] = [];
+  const den: string[] = [];
+  for (const [unit, count] of counter) {
+    for (let i = 0; i < count; i++) num.push(unit);
+    for (let i = 0; i < -count; i++) den.push(unit);
+  }
+  u.num = num.sort();
+  u.den = den.sort();
+}
+
+/**
+ * less.js `Unit.genCSS` display rule (loose): a singular numerator emits that unit;
+ * else the `backupUnit`; else the first denominator; else empty (a pure number).
+ * In `strict` a non-singular unit is an error.
+ */
+function displayUnit(u: UnitSet, isStrict: boolean): string {
+  // less.js `Unit.isSingular`: at most one numerator unit and no denominator.
+  if (isStrict && !(u.num.length <= 1 && u.den.length === 0)) {
+    throw new TypeError('Multiple units in dimension. Correct the units or use the unit function');
+  }
+  if (u.num.length === 1) return u.num[0]!;
+  if (u.backup) return u.backup;
+  if (u.den.length) return u.den[0]!;
+  return '';
+}
+
+/**
+ * Unit-aware dimension arithmetic (dimension ⊕ dimension) — a faithful port of
+ * less.js `Dimension.operate`: `+`/`-` unify the RHS to the LHS unit (raw magnitudes
+ * when non-convertible), `*`/`/` compose the numerator/denominator multiset and
+ * cancel. Only `strict` throws on a non-singular result; loose/preserve always
+ * compute, keeping the LHS unit (`4em / 2cm` → `2em`, `8cats * 9dogs / 4cats` → `18dogs`).
+ */
 function dimensionOperate(a: Dimension, b: Dimension, op: string, modes: EvalModes): Dimension {
-  const aVal = a.number;
-  let bVal = b.number;
-  const aUnit = a.unit;
-  const bUnit = b.unit;
   const isStrict = modes.unitMode === 'strict';
-  const isPreserve = modes.unitMode === 'preserve';
+  if (b.number === 0 && op === '/') throw new TypeError('Cannot divide by zero');
 
-  if (bVal === 0 && op === '/') throw new TypeError('Cannot divide by zero');
+  const u = unitsOf(a);
+  const bu = unitsOf(b);
+  let value = calculate(a.number, op, b.number);
 
-  if (!aUnit || !bUnit) {
-    const outUnit = aUnit || bUnit;
-    if ((isStrict || isPreserve) && bUnit && op === '/') {
-      throw new TypeError('Cannot divide a number by a unit');
+  if (op === '+' || op === '-') {
+    if (u.num.length === 0 && u.den.length === 0) {
+      // Unitless LHS: adopt the RHS unit (keeping the LHS backup if it had one).
+      u.num = bu.num;
+      u.den = bu.den;
+      u.backup = u.backup ?? bu.backup;
+    } else if (bu.num.length === 0 && u.den.length === 0) {
+      // Unitless RHS: keep the LHS unit; value already computed on raw magnitudes.
+    } else {
+      // Both carry units: convert the RHS toward the LHS unit before operating.
+      const target = u.num[0] ?? u.den[0] ?? '';
+      const from = bu.num[0] ?? bu.den[0] ?? '';
+      const bVal = convertValue(b.number, from, target);
+      if (isStrict && bVal === b.number && from !== target) {
+        throw new TypeError(
+          `Incompatible units. Change the units or use the unit function. Bad units: '${target}' and '${from}'.`,
+        );
+      }
+      value = calculate(a.number, op, bVal);
     }
-    return makeDimension(calculate(aVal, op, bVal), outUnit);
+  } else if (op === '*') {
+    u.num = u.num.concat(bu.num);
+    u.den = u.den.concat(bu.den);
+    cancel(u);
+  } else if (op === '/') {
+    u.num = u.num.concat(bu.den);
+    u.den = u.den.concat(bu.num);
+    cancel(u);
   }
 
-  if (aUnit === bUnit) {
-    if (op === '+' || op === '-') return makeDimension(calculate(aVal, op, bVal), aUnit);
-    if (isStrict || isPreserve) {
-      if (op === '*') throw new TypeError('Cannot multiply two units together');
-      return makeDimension(calculate(aVal, op, bVal), ''); // division cancels units
-    }
-    return makeDimension(calculate(aVal, op, bVal), aUnit);
-  }
-
-  const aGroup = groupOf(aUnit);
-  const bGroup = groupOf(bUnit);
-  if (aGroup === undefined || bGroup === undefined || aGroup !== bGroup) {
-    if (isStrict || isPreserve) throw new TypeError('Incompatible units. Change the units or use the unit function');
-    return makeDimension(calculate(aVal, op, bVal), aUnit);
-  }
-  const atomicUnit = unitFactor(aUnit);
-  const targetUnit = unitFactor(bUnit);
-  if (atomicUnit === undefined || targetUnit === undefined) {
-    throw new TypeError('Incompatible units. Change the units or use the unit function');
-  }
-  if ((isPreserve || isStrict) && (op === '*' || op === '/')) {
-    throw new TypeError('Cannot multiply or divide two units together');
-  }
-  bVal = bVal / (atomicUnit / targetUnit);
-  return makeDimension(calculate(aVal, op, bVal), aUnit);
+  const unit = displayUnit(u, isStrict);
+  // Persist the multiset only when it isn't a plain single numerator (so chained
+  // ops can still cancel); a singular/empty unit round-trips through `makeDimension`.
+  if (u.num.length === 1 && u.den.length === 0) return makeDimension(value, unit);
+  return makeCompoundDimension(value, unit, u.num, u.den, u.backup);
 }
 
 /** Dimension ⊕ Color: coerce the dimension to a color, then color-operate. */

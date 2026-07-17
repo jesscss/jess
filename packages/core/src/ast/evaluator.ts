@@ -44,7 +44,22 @@ export function buildEvaluator(registry: FnRegistry): ValueEvaluator {
     tag !== undefined ? materializeLiteral(bytes, tag, lit) : sniffLiteral(bytes);
 
   const call = (name: string, args: ValueList, modes: EvalModes): ValueObj => {
-    if (registry.has(name)) return registry.dispatch(name, args, { modes, stringify });
+    if (registry.has(name)) {
+      try {
+        return registry.dispatch(name, args, { modes, stringify });
+      } catch (err) {
+        // FunctionMode `preserve` (Less v5 default): a bare/global fn reference that
+        // resolves to a built-in but can't produce a value for these args — a modern
+        // color syntax (`hsl(198deg 28% 50%)`), a relative/`var()` color arg, or a
+        // non-color first arg to `contrast`/`lighten` (the CSS filter) — renders
+        // as-is, like an unknown CSS function, rather than throwing. This mirrors
+        // less.js, which keeps such calls verbatim. (Only fn-dispatch errors are
+        // caught here; variable-resolution / mixin-recursion errors are thrown
+        // outside `dispatch` and still propagate.)
+        if (err instanceof RangeError) throw err;
+        return makeKeyword(`${name}(${verbatimArgs(args)})`);
+      }
+    }
     // Unknown function: emit verbatim (byte-identical to the adapter).
     return makeKeyword(`${name}(${verbatimArgs(args)})`);
   };

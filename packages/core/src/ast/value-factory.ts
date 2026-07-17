@@ -58,6 +58,25 @@ export function makeDimension(number: number, unit = ''): Dimension {
   return n;
 }
 
+/**
+ * A dimension carrying an explicit compound-unit multiset (an arithmetic result).
+ * `unit` is the collapsed DISPLAY unit; `numerator`/`denominator`/`backupUnit`
+ * survive so a later chained op can cancel (`8cats * 9dogs / 4cats` → `18dogs`).
+ * Stored only when the multiset is non-trivial (not a single numerator).
+ */
+export function makeCompoundDimension(
+  number: number,
+  unit: string,
+  numerator: readonly string[],
+  denominator: readonly string[],
+  backupUnit: string | undefined,
+): Dimension {
+  const n: Mutable<Dimension> = { type: 'Dimension', number, unit, numerator, denominator, bytes: '' };
+  if (backupUnit !== undefined) n.backupUnit = backupUnit;
+  n.bytes = serializeDimension(n);
+  return n;
+}
+
 /** Build a color from an RGB source. `node` (verbatim spelling) is optional. */
 export function makeColorRgb(
   rgb: readonly [number, number, number],

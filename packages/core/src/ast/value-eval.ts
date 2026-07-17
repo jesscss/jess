@@ -38,7 +38,23 @@ import type { LiteralTag, LitFields } from './literal-tag.js';
 export interface Dimension {
   readonly type: 'Dimension';
   readonly number: number;
+  /**
+   * The DISPLAY unit (what {@link serializeDimension} emits), e.g. `px`, `%`, ``.
+   * For an arithmetic result it is derived from {@link numerator}/{@link denominator}
+   * per less.js `Unit.genCSS` (single numerator → that unit; else the {@link backupUnit};
+   * else the first denominator; else empty).
+   */
   readonly unit: string;
+  /**
+   * Compound-unit multiset carried across chained arithmetic (less.js `Unit`).
+   * Present only on an operation RESULT whose units don't collapse to a single
+   * `unit` (e.g. `cats*dogs`, `px/s`); absent on a plain authored dimension, where
+   * the unit multiset is simply `[unit]` (numerator) / `[]` (denominator).
+   */
+  readonly numerator?: readonly string[];
+  readonly denominator?: readonly string[];
+  /** less.js `Unit.backupUnit`: the authored unit, shown when the numerator isn't singular. */
+  readonly backupUnit?: string;
   /** Canonical emitted bytes (byte-faithful; produced by the free serializer). */
   readonly bytes: string;
 }

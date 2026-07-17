@@ -32,7 +32,8 @@ const FROZEN_ORACLE: Record<string, string> = JSON.parse(readFileSync(FIXTURE_PA
  * bytes MUST equal the frozen fixture.
  *
  * SCOPE (the foundation covers): arithmetic (dimension ⊕ dimension, unit
- * convert/cancel, unitless), the unit-clash / multiply-units → `calc()` fallback,
+ * convert/cancel, unitless), cross-unit / multiply-units arithmetic (computed per
+ * less.js: keep the LHS unit, `2px * 3px` → `6px`, `2px / 3s` → `0.66666667px`),
  * color hex literals + hex color ops, quoted strings, keywords + keyword-preserve
  * ops, lists, guards (comparison + kind type-predicates), and the 3 CONVERTED fns
  * (`lighten`/`percentage`/`e`) + genuinely-unknown fns (verbatim).
@@ -89,7 +90,7 @@ const CORPUS: Array<[string, string]> = [
   ['decimals', '.a { m: 0.1 + 0.2; }\n'],
   ['negatives', '.a { m: -3px + 1px; }\n'],
 
-  // --- calc fallback (unit clash / multiply units) ---
+  // --- cross-unit arithmetic (computed per less.js: keep the LHS unit) ---
   ['clash-pct-px', '.a { width: (100% - 10px); }\n'],
   ['mul-two-units', '.a { width: (2px * 3px); }\n'],
   ['div-two-diff', '.a { width: (2px / 3s); }\n'],

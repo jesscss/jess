@@ -29,7 +29,7 @@
   },
   "calc/calc.less": {
     "status": "DIFF",
-    "bytes": 654
+    "bytes": 531
   },
   "charsets/charsets.less": {
     "status": "MATCH",
@@ -52,23 +52,20 @@
     "bytes": 357
   },
   "color-functions/modern-syntax.less": {
-    "status": "THREW",
-    "bytes": null,
-    "threw": "Error: Invalid arguments for hsl function"
+    "status": "MATCH",
+    "bytes": 130
   },
   "color-functions/modern.less": {
-    "status": "THREW",
-    "bytes": null,
-    "threw": "Error: Invalid arguments for hsl function"
+    "status": "MATCH",
+    "bytes": 841
   },
   "color-functions/operations.less": {
     "status": "DIFF",
     "bytes": 196
   },
   "color-functions/rgba.less": {
-    "status": "THREW",
-    "bytes": null,
-    "threw": "Error: Invalid arguments for hsl function"
+    "status": "MATCH",
+    "bytes": 537
   },
   "comments/comments.less": {
     "status": "DIFF",
@@ -146,12 +143,12 @@
   "functions/functions.less": {
     "status": "THREW",
     "bytes": null,
-    "threw": "TypeError: contrast: arg 0 expected Color, got Dimension"
+    "threw": "Error: detached ruleset used as a value (not called)"
   },
   "functions/legacy/functions.less": {
     "status": "THREW",
     "bytes": null,
-    "threw": "TypeError: contrast: arg 0 expected Color, got Dimension"
+    "threw": "Error: detached ruleset used as a value (not called)"
   },
   "ie-filters-REMOVED/legacy/ie-filters.less": {
     "status": "DIFF",
@@ -279,7 +276,7 @@
   },
   "operations/operations-advanced.less": {
     "status": "DIFF",
-    "bytes": 446
+    "bytes": 434
   },
   "operations/operations.less": {
     "status": "DIFF",
@@ -319,9 +316,8 @@
     "bytes": 2435
   },
   "property-accessors/property-accessors.less": {
-    "status": "THREW",
-    "bytes": null,
-    "threw": "TypeError: lighten: arg 0 expected Color, got Keyword"
+    "status": "DIFF",
+    "bytes": 782
   },
   "property-name-interp/property-name-interp.less": {
     "status": "DIFF",
@@ -365,14 +361,12 @@
     "threw": "ReferenceError: variable @ns \"http://lesscss.org\" is undefined"
   },
   "variables/variable-advanced.less": {
-    "status": "THREW",
-    "bytes": null,
-    "threw": "TypeError: unit: arg 0 expected Dimension, got Keyword"
+    "status": "DIFF",
+    "bytes": 801
   },
   "variables/variables.less": {
-    "status": "THREW",
-    "bytes": null,
-    "threw": "TypeError: unit: arg 0 expected Dimension, got Keyword"
+    "status": "DIFF",
+    "bytes": 907
   },
   "whitespace/whitespace.less": {
     "status": "MATCH",

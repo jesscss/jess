@@ -45,3 +45,17 @@ export function unify(number: number, unit: string): { number: number; unit: str
   if (g === undefined) return { number, unit };
   return { number: number * (GROUP_FACTORS[g]![unit]! / GROUP_CANONICAL_FACTOR[g]!), unit: GROUP_CANONICAL[g] };
 }
+
+/**
+ * less.js `Dimension.convertTo`: rescale `number` from `fromUnit` to `toUnit` when
+ * both share a conversion group. A non-convertible or cross-group pair (e.g.
+ * `em`→`px`, `px`→`s`) is returned unchanged — matching less.js loose `+`/`-`, which
+ * then operates on the raw magnitudes (`1px + 1em` → `2px`).
+ */
+export function convertValue(number: number, fromUnit: string, toUnit: string): number {
+  if (fromUnit === toUnit) return number;
+  const fg = UNIT_TO_GROUP.get(fromUnit);
+  const tg = UNIT_TO_GROUP.get(toUnit);
+  if (fg === undefined || tg === undefined || fg !== tg) return number;
+  return number * (GROUP_FACTORS[fg]![fromUnit]! / GROUP_FACTORS[tg]![toUnit]!);
+}
