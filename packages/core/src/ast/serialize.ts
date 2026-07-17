@@ -410,18 +410,37 @@ function ownCandidates(frame: Frame, name: string, homes?: Map<MixinDef, Frame>)
 }
 
 /**
- * [recursion] Is `body` (a ruleset-mixin's source Rule body array) currently on
- * the active expansion stack? The frame chain (`parent`, then the detached-
- * ruleset `fallback` closure) reflects the dynamic nesting — a Rule placement
- * (`flatten`) and a mixin expansion (`expandCall`) both seed the child frame's
- * `statements` with the body being walked — so an identity hit means we are
- * inside that very ruleset. Mirrors less@4's `mixin === context.frames[f]`
- * recursion check, scoped to ruleset-mixins.
+ * [parent-exclusion] Is `body` (a ruleset-mixin's source Rule body array) held by
+ * an ENCLOSING frame on the active expansion stack — i.e. is this candidate the
+ * mixin/ruleset we are already inside?
+ *
+ * This is the mixin half of the ONE exclusion principle this file uses to break
+ * self-reference: a self-reference that cannot make PROGRESS is EXCLUDED from
+ * candidacy, so resolution falls through to a real (progressing) binding rather
+ * than re-entering itself.
+ *   - Variable half — `resolveVarStack` / `resolvePropRef` `continue` past any
+ *     value node in `e.excluded` (the declaration whose value is currently being
+ *     evaluated), so `@a: @a + 1` skips its own node and binds an earlier `@a`.
+ *   - Mixin half (here) — a NON-PARAMETRIC ruleset self-call excludes its own
+ *     enclosing frame from the candidate set, so `.recursion { .recursion(); }`
+ *     re-binds to a same-name parametric def (or no-ops) instead of re-entering
+ *     its own body. A non-parametric re-entry can carry no new args and so makes
+ *     no progress; skipping it is exactly right. This is NOT "recursion
+ *     detection" — it is the enclosing frame declining to be its own candidate.
+ *     Parametric recursion (`.loop(@n - 1)`) DOES progress (new args) and is
+ *     never excluded here; guards terminate it, and the depth backstop in
+ *     `expandCall` catches a non-terminating (bad-guard) runaway.
+ *
+ * The frame chain (`parent`, then the detached-ruleset `fallback` closure)
+ * reflects the dynamic nesting — a Rule placement (`flatten`) and a mixin
+ * expansion (`expandCall`) both seed the child frame's `statements` with the body
+ * being walked — so an identity hit means we are inside that very ruleset. Mirrors
+ * less@4's `mixin === context.frames[f]` check, scoped to ruleset-mixins.
  */
-function bodyOnStack(frame: Frame | null, body: Statement[]): boolean {
+function parentExcludes(frame: Frame | null, body: Statement[]): boolean {
   for (let f = frame; f; f = f.parent) {
     if (f.statements === body) return true;
-    if (f.fallback && bodyOnStack(f.fallback, body)) return true;
+    if (f.fallback && parentExcludes(f.fallback, body)) return true;
   }
   return false;
 }
@@ -1176,6 +1195,11 @@ interface Emit extends EvalCtx {
   // block dedup). ONE preallocated record, mutated per block flush (no per-block
   // allocation); its seed `parentKey: null` matches nothing (merge needs pk !== null).
   lastBlock: { parentKey: object | null; header: string; depth: number; endChunks: number };
+  // [recursion-backstop] current NESTED mixin-expansion depth (0 at the top of a
+  // document walk). `expandCall` bumps it around each expansion and raises a clean
+  // `RangeError` once it reaches `MAX_MIXIN_DEPTH` — catching a bad-guard runaway
+  // before a native stack overflow. Threaded through `scratchEmit`.
+  mixinDepth: number;
 }
 
 /**
@@ -1199,6 +1223,7 @@ function scratchEmit(e: EvalCtx): Emit {
     extends: null,
     hoistMode: false,
     lastBlock: { parentKey: null, header: '', depth: -1, endChunks: -1 }, // [adjacent-merge]
+    mixinDepth: 0, // [recursion-backstop] fresh scratch walk; own runaway backstop
   };
 }
 
@@ -1302,6 +1327,7 @@ export function serialize(root: Root, options?: SerializeOptions): SerializeRetu
     extends: computeExtends(root), // [extend] null when no `:extend()` anywhere
     hoistMode: false, // [extend]
     lastBlock: { parentKey: null, header: '', depth: -1, endChunks: -1 }, // [adjacent-merge]
+    mixinDepth: 0, // [recursion-backstop] runaway mixin-expansion depth guard
   };
   const rootFrame: Frame = {
     parent: null,
@@ -1547,6 +1573,21 @@ function mergeVars(
 }
 
 /**
+ * [recursion-backstop] Maximum depth of NESTED mixin expansions. Parametric
+ * self-recursion is meant to be terminated by its guard; a bad guard produces a
+ * runaway that would blow the JS call stack. This high backstop turns that into a
+ * clean, catchable `RangeError` far above any legitimate guarded recursion depth
+ * (real Less recurses a handful to low-hundreds of levels) yet with comfortable
+ * headroom below the native stack ceiling. Each expansion level costs many JS
+ * frames (`expandCall` → `walkBody` → nested `expandCall`), so the measured native
+ * ceiling is ~1000 levels and varies with the caller's starting stack depth; 500
+ * leaves ~2× margin so the clean error ALWAYS fires before a native overflow,
+ * regardless of context. It is a runaway BACKSTOP, not a recursion cap — see
+ * `expandCall`.
+ */
+const MAX_MIXIN_DEPTH = 500;
+
+/**
  * Expand a mixin call: [guards] resolve the overloaded definitions that match
  * (arity + literal pattern + named/default params + guards), then WALK each
  * matching shared def body in place under the current composed selector. No
@@ -1581,48 +1622,67 @@ function expandCall(
   const rawCandidates = namespaced
     ? ownCandidates(dispatchFrame, call.name, homes)
     : lookupCandidates(dispatchFrame, call.name, homes);
-  // [recursion] A paren-less ruleset callable as a zero-arg mixin (`ruleMixin`)
-  // must NOT expand itself while it is already on the active expansion stack —
-  // `.recursion { .recursion(); }` terminates by re-binding to a same-name
-  // parametric def, not by re-entering its own body forever (less@4
-  // mixin-call.js `isRecursive`: a candidate that is NOT a parametric
-  // MixinDefinition and equals a ruleset currently in `context.frames` is
-  // skipped). A ruleMixin's synthesized `body` IS the source Rule's own body
-  // array, and the frame built to expand that Rule carries the SAME array as
-  // `statements`, so identity on the array is the rule identity. Parametric
-  // mixin recursion is guard-controlled and is left untouched.
+  // [parent-exclusion] A paren-less ruleset callable as a zero-arg mixin
+  // (`ruleMixin`) is EXCLUDED from its own candidate set while its body is on the
+  // active expansion stack — the enclosing frame declines to be its own candidate.
+  // `.recursion { .recursion(); }` re-binds to a same-name parametric def (or
+  // no-ops) instead of re-entering its own body forever: a non-parametric re-entry
+  // carries no new args and makes no progress. This is the mixin half of the file's
+  // one exclusion principle (the variable half lives in `resolveVarStack` /
+  // `e.excluded`); see `parentExcludes`. It mirrors less@4 mixin-call.js
+  // `isRecursive` (a candidate that is NOT a parametric MixinDefinition and equals a
+  // ruleset currently in `context.frames` is skipped). A ruleMixin's synthesized
+  // `body` IS the source Rule's own body array, and the frame built to expand that
+  // Rule carries the SAME array as `statements`, so identity on the array is the
+  // rule identity. Parametric recursion DOES progress (new args) and is never
+  // excluded here — guards terminate it, and the depth backstop below is the sole
+  // error path for a non-terminating (bad-guard) runaway.
   const candidates = rawCandidates.some((d) => d.ruleMixin === true)
-    ? rawCandidates.filter((d) => d.ruleMixin !== true || !bodyOnStack(frame, d.body))
+    ? rawCandidates.filter((d) => d.ruleMixin !== true || !parentExcludes(frame, d.body))
     : rawCandidates;
   if (candidates.length === 0) return; // unknown mixin: minimal scope emits nothing
   const selected = dispatch(candidates, call, frame, e);
   const bodyImp = imp || call.important; // propagate call-level !important
-  for (const { def, bindings } of selected) {
-    captureArgDefFrames(bindings, frame); // detached-ruleset args: literal home
-    // [closure] free variables resolve in the mixin's DEFINITION scope FIRST, with
-    // the call-site scope as a fallback — less@4 evaluates a mixin body under
-    // `definitionFrames.concat(callerFrames)`. `parent` = the definition frame (so
-    // a `@var` written in the mixin's home scope wins over a same-name caller var,
-    // e.g. `mixins-closure`); `fallback` = the caller chain, which also keeps the
-    // DYNAMIC expansion stack reachable for the ruleset-mixin recursion guard
-    // (`bodyOnStack`) and lets the body see caller-published mixins. A namespaced
-    // call already descends to the definition scope, so home === dispatch there.
-    const homeFrame = homes.get(def) ?? dispatchFrame;
-    const callFrame: Frame = {
-      parent: homeFrame,
-      mixins: collectMixins(def.body),
-      vars: mergeVars(bindings, collectVars(def.body)),
-      statements: def.body,
-      ...(homeFrame === dispatchFrame ? {} : { fallback: dispatchFrame }),
-    };
-    // [dedup] a real parametric MixinDef produces RESTRICTED output (its overloaded
-    // duplicates survive); a synthesized ruleset-mixin does not, unless it is already
-    // nested inside restricted output (chain-sticky, matching isFromRestrictedMixinOutput).
-    const bodyProtected = protectedDup || def.ruleMixin !== true;
-    walkBody(def.body, composed, callFrame, group, flush, partition, e, bodyImp, bodyProtected);
-    // [scope-leak] after expansion the mixin's own `@x:` declarations unlock into
-    // the caller scope (visible to later siblings), matching less@4.
-    leakBodyVars(frame, def.body, callFrame, e);
+  // [recursion-backstop] Parametric self-recursion (`.loop(@n - 1)`) is terminated
+  // by its guard; a MALFORMED guard (`.loop(@n) { .loop(@n + 1) }`) never stops and
+  // would otherwise blow the JS stack. Each nested expansion adds one level here; a
+  // high backstop (`MAX_MIXIN_DEPTH`) raises a clean, catchable error well before a
+  // native stack overflow. This is NOT the parent-exclusion skip above and NOT a low
+  // cap — legit deep guarded recursion runs unaffected far below the limit.
+  if (e.mixinDepth >= MAX_MIXIN_DEPTH) {
+    throw new RangeError('maximum mixin recursion depth exceeded');
+  }
+  e.mixinDepth++;
+  try {
+    for (const { def, bindings } of selected) {
+      captureArgDefFrames(bindings, frame); // detached-ruleset args: literal home
+      // [closure] free variables resolve in the mixin's DEFINITION scope FIRST, with
+      // the call-site scope as a fallback — less@4 evaluates a mixin body under
+      // `definitionFrames.concat(callerFrames)`. `parent` = the definition frame (so
+      // a `@var` written in the mixin's home scope wins over a same-name caller var,
+      // e.g. `mixins-closure`); `fallback` = the caller chain, which also keeps the
+      // DYNAMIC expansion stack reachable for the ruleset-mixin parent-exclusion
+      // check (`parentExcludes`) and lets the body see caller-published mixins. A
+      // namespaced call already descends to the definition scope, so home === dispatch.
+      const homeFrame = homes.get(def) ?? dispatchFrame;
+      const callFrame: Frame = {
+        parent: homeFrame,
+        mixins: collectMixins(def.body),
+        vars: mergeVars(bindings, collectVars(def.body)),
+        statements: def.body,
+        ...(homeFrame === dispatchFrame ? {} : { fallback: dispatchFrame }),
+      };
+      // [dedup] a real parametric MixinDef produces RESTRICTED output (its overloaded
+      // duplicates survive); a synthesized ruleset-mixin does not, unless it is already
+      // nested inside restricted output (chain-sticky, matching isFromRestrictedMixinOutput).
+      const bodyProtected = protectedDup || def.ruleMixin !== true;
+      walkBody(def.body, composed, callFrame, group, flush, partition, e, bodyImp, bodyProtected);
+      // [scope-leak] after expansion the mixin's own `@x:` declarations unlock into
+      // the caller scope (visible to later siblings), matching less@4.
+      leakBodyVars(frame, def.body, callFrame, e);
+    }
+  } finally {
+    e.mixinDepth--;
   }
 }
 

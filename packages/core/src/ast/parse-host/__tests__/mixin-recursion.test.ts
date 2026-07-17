@@ -27,6 +27,10 @@ function render(src: string): string {
   return res.css ?? '';
 }
 
+function renderResult(src: string) {
+  return renderAstDoc(src, { evaluator: buildEvaluator(makeBuiltinRegistry()) });
+}
+
 describe('guarded self-recursive mixin expansion (direct host)', () => {
   it('recursion unrolls and terminates on guard-false (no stack overflow)', () => {
     const src =
@@ -131,5 +135,51 @@ describe('guard-based variant selection (direct host)', () => {
       '.recursion() {\n  color: black;\n}\n' +
       '.test-rule-rec {\n  .recursion {\n    .recursion();\n  }\n}';
     expect(render(src)).toBe('.test-rule-rec .recursion {\n  color: black;\n}\n');
+  });
+});
+
+// The settled mixin-recursion model (task #40): self-reference is handled by
+// PARENT-EXCLUSION (the enclosing frame is excluded from candidacy), not by
+// "recursion detection". The discriminator is PROGRESS.
+//   1. A NON-PARAMETRIC ruleset self-reference cannot progress (no new args), so
+//      it is SKIPPED — the enclosing frame declines to be its own candidate. It
+//      NEVER errors and renders once.
+//   2. A PARAMETRIC self-call with DIFFERENT args DOES progress and recurses; its
+//      guard is the termination mechanism (not part of the skip decision).
+//   3. A genuine RUNAWAY — parametric recursion whose guard never terminates —
+//      is the ONLY error case: a HIGH depth backstop raises a clean
+//      "maximum mixin recursion depth exceeded" (not a native stack overflow).
+describe('mixin recursion: parent-exclusion + runaway backstop (settled model)', () => {
+  it('non-parametric ruleset self-reference renders once and never errors', () => {
+    // `.a` calls `.a()` inside its own body. Parent-exclusion skips the enclosing
+    // frame as a candidate, so the body renders exactly once with no recursion.
+    const src = '.a {\n  color: red;\n  .a();\n}';
+    expect(render(src)).toBe('.a {\n  color: red;\n}\n');
+  });
+
+  it('parametric guarded recursion progresses on new args and terminates', () => {
+    const src =
+      '.count(@n) when (@n > 0) {\n' +
+      '  .n-@{n} { v: @n; }\n' +
+      '  .count(@n - 1);\n' +
+      '}\n' +
+      '.count(3);';
+    expect(render(src)).toBe(
+      '.n-3 {\n  v: 3;\n}\n' + '.n-2 {\n  v: 2;\n}\n' + '.n-1 {\n  v: 1;\n}\n',
+    );
+    // Deep but well below the backstop: still terminates cleanly, unaffected.
+    const deep = '.d(@n) when (@n > 0) { .d(@n - 1); }\n.d(400);';
+    const res = renderResult(deep);
+    expect(res.threw, res.threw?.message).toBeNull();
+  });
+
+  it('a runaway (never-terminating guard) raises the clean backstop error', () => {
+    // Ascending counter with a guard that is always true → parametric recursion
+    // that keeps producing distinct frames and never terminates.
+    const src = '.loop(@n) when (@n > 0) {\n  w: @n;\n  .loop(@n + 1);\n}\n.loop(1);';
+    const res = renderResult(src);
+    expect(res.threw).not.toBeNull();
+    expect(res.threw).toBeInstanceOf(RangeError);
+    expect(res.threw?.message).toBe('maximum mixin recursion depth exceeded');
   });
 });

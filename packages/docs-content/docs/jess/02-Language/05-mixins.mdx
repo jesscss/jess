@@ -386,6 +386,29 @@ div-2 {
 }
 ```
 
+### Recursive mixins
+
+A parametric mixin may call itself with **different** arguments to build a loop. A guard is the termination condition — the recursion stops when the guard no longer matches:
+
+```less
+.loop($n) when ($n > 0) {
+  .item-$[n] { width: $n; }
+  .loop($n - 1); // recurse with a smaller value
+}
+.loop(3);
+```
+→
+```css
+.item-3 { width: 3; }
+.item-2 { width: 2; }
+.item-1 { width: 1; }
+```
+
+Two behaviors are worth calling out:
+
+- **A plain (non-parametric) ruleset that references its own name is _not_ recursive.** Because it takes no arguments, re-entering it could not make any progress, so Jess skips the self-reference and the ruleset renders exactly once — it never loops and never errors. (The enclosing definition is simply excluded from the set of candidates for that call. This is the same "a self-reference that can't progress is skipped" principle that lets `$a: $a + 1` read the previous `$a` instead of looping.)
+- **A recursive mixin with a broken guard is caught.** If a parametric mixin recurses without ever terminating (for example `.loop($n) when ($n > 0) { .loop($n + 1); }`), Jess stops it at a high recursion-depth limit and raises a clean error, `maximum mixin recursion depth exceeded`, rather than crashing with a stack overflow. Legitimate guarded recursion runs far below this limit and is unaffected.
+
 ## Selectors as Mixins
 
 Jess lets you "apply" or call rulesets as mixins with the `$apply` keyword.
