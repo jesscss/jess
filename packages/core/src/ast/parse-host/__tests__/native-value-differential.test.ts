@@ -40,9 +40,9 @@ import { buildAdapterEvaluator } from '../value-eval.js';
  * `isruleset`/`isdefined`/`iif`.
  */
 
-async function render(src: string, built-in: boolean): Promise<string> {
+async function render(src: string, builtIn: boolean): Promise<string> {
   const tree = parseLessFn(src).tree;
-  const evaluator = built-in ? buildEvaluator() : buildAdapterEvaluator();
+  const evaluator = builtIn ? buildEvaluator() : buildAdapterEvaluator();
   const out = await serialize(bridgeToAst(tree, src), { evaluator });
   return out.css;
 }

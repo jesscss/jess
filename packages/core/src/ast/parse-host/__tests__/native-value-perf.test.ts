@@ -34,8 +34,8 @@ function median(xs: number[]): number {
   return s[s.length >> 1]!;
 }
 
-async function bench(built-in: boolean, warm: number, n: number): Promise<number> {
-  const make = () => (built-in ? buildEvaluator() : buildAdapterEvaluator());
+async function bench(builtIn: boolean, warm: number, n: number): Promise<number> {
+  const make = () => (builtIn ? buildEvaluator() : buildAdapterEvaluator());
   for (let i = 0; i < warm; i++) await serialize(bridgeToAst(tree, SRC), { evaluator: make() });
   const times: number[] = [];
   for (let i = 0; i < n; i++) {
