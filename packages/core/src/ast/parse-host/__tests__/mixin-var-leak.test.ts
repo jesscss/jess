@@ -38,17 +38,21 @@ describe('mixin-call variable unlocking (direct host)', () => {
     expect(render(src)).toBe('.out {\n  z: 7;\n}\n');
   });
 
-  it('the leak is scoped to the calling block and does not escape to a sibling', () => {
+  it('an outer binding wins over the mixin-unlocked value (v5 outer-binding-wins)', () => {
     const src =
       '@mix: none;\n' +
       '.mixin {\n  @mix: #989;\n}\n' +
       '@mix: blue;\n' +
       '.tiny-scope {\n  color: @mix;\n  .mixin();\n}\n' +
       '.after-scope {\n  color: @mix;\n}';
-    // less@4: the unlocked `@mix` wins inside `.tiny-scope`, but `.after-scope`
-    // (a separate sibling frame) still resolves the root `@mix: blue`.
+    // v5 (owner corpus `a0e4e494` "Fix scope value in v5", `scope/scope.css`):
+    // the mixin-unlocked `@mix: #989` is a LOW-PRIORITY leak — it no longer hoists
+    // over the enclosing `@mix: blue`, so `.tiny-scope` resolves the root binding
+    // (`blue`), not the injected `#989`. 4.x (`scope/legacy/scope.css`) emitted
+    // `#989` here; that is the dying shape. `.after-scope` (a separate sibling
+    // frame) resolves the root `@mix: blue` in both.
     expect(render(src)).toBe(
-      '.tiny-scope {\n  color: #989;\n}\n' + '.after-scope {\n  color: blue;\n}\n',
+      '.tiny-scope {\n  color: blue;\n}\n' + '.after-scope {\n  color: blue;\n}\n',
     );
   });
 });

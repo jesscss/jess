@@ -167,6 +167,16 @@ export interface Frame {
   // instead of self-referencing. The stack — not a collapsed last-wins map — is
   // what makes per-declaration cycle exclusion expressible.
   vars: Map<string, ValueNode[]> | null;
+  // [scope-leak] variables UNLOCKED into this frame by a mixin call in its body
+  // (`leakBodyVars`). v5 "outer-binding-wins": the mixin-injected variable is NOT
+  // hoisted into the ordinary `vars` scope — it is consulted ONLY after the whole
+  // lexical chain (`vars` up every `parent`, plus `fallback`) misses. So a name
+  // that ANY enclosing scope already binds resolves to that lexical binding
+  // (`.tiny-scope`'s `@mix` → root `blue`), while a name bound NOWHERE else falls
+  // through to the leaked value (`.heightIsSet`'s `@height` → the leaked `1024px`).
+  // This drops the 4.x mixin-injected-variable hoist (which put the leak in `vars`
+  // and let it shadow the outer binding → `#989`). See DESIGN-DECISIONS R2.
+  leaked?: Map<string, ValueNode[]> | null;
   // secondary scope consulted after the `parent` chain is exhausted (the
   // detached-ruleset definition closure — caller-first, definition-fallback).
   fallback?: Frame | null;
@@ -416,10 +426,10 @@ function bodyOnStack(frame: Frame | null, body: Statement[]): boolean {
  * because those callers resolve a name to a concrete ruleset binding, not a lazy
  * self-referential value. The regular value read uses `resolveVarRef` instead.
  */
-function lookupVar(frame: Frame | null, name: string): ValueNode | undefined {
+function lookupVarStack(frame: Frame | null, name: string, leaked: boolean): ValueNode | undefined {
   let fb: Frame | null | undefined;
   for (let f = frame; f; f = f.parent) {
-    const stack = f.vars?.get(name);
+    const stack = (leaked ? f.leaked : f.vars)?.get(name);
     if (stack && stack.length > 0) {
       const hit = stack[stack.length - 1]!;
       // capture a detached ruleset's definition (home) frame on first use.
@@ -428,8 +438,14 @@ function lookupVar(frame: Frame | null, name: string): ValueNode | undefined {
     }
     if (f.fallback && !fb) fb = f.fallback;
   }
-  if (fb) return lookupVar(fb, name);
+  if (fb) return lookupVarStack(fb, name, leaked);
   return undefined;
+}
+
+function lookupVar(frame: Frame | null, name: string): ValueNode | undefined {
+  // [scope-leak] lexical `vars` first up the whole chain; the low-priority
+  // mixin-leaked scope is consulted only when no lexical binding exists.
+  return lookupVarStack(frame, name, false) ?? lookupVarStack(frame, name, true);
 }
 
 /**
@@ -442,10 +458,15 @@ function lookupVar(frame: Frame | null, name: string): ValueNode | undefined {
  * an earlier `@a` (or misses); `@a: @b; @b: @a` accumulates both exclusions and
  * terminates at any depth. There is NO depth cap. The value is returned with its
  * OWNING frame so it evaluates in its declaration scope. */
-function resolveVarRef(frame: Frame | null, name: string, e: EvalCtx): { value: ValueNode; frame: Frame } | undefined {
+function resolveVarStack(
+  frame: Frame | null,
+  name: string,
+  e: EvalCtx,
+  leaked: boolean,
+): { value: ValueNode; frame: Frame } | undefined {
   let fb: Frame | null | undefined;
   for (let f = frame; f; f = f.parent) {
-    const stack = f.vars?.get(name);
+    const stack = (leaked ? f.leaked : f.vars)?.get(name);
     if (stack) {
       for (let i = stack.length - 1; i >= 0; i--) {
         const v = stack[i]!;
@@ -454,8 +475,15 @@ function resolveVarRef(frame: Frame | null, name: string, e: EvalCtx): { value: 
     }
     if (f.fallback && !fb) fb = f.fallback;
   }
-  if (fb) return resolveVarRef(fb, name, e);
+  if (fb) return resolveVarStack(fb, name, e, leaked);
   return undefined;
+}
+
+function resolveVarRef(frame: Frame | null, name: string, e: EvalCtx): { value: ValueNode; frame: Frame } | undefined {
+  // [scope-leak] v5 outer-binding-wins: resolve against the lexical `vars` scope
+  // (own frame → every `parent` → `fallback`) FIRST; only when that whole chain
+  // misses do we consult the low-priority mixin-leaked scope.
+  return resolveVarStack(frame, name, e, false) ?? resolveVarStack(frame, name, e, true);
 }
 
 /**
@@ -1521,15 +1549,19 @@ function captureArgDefFrames(bindings: Map<string, ValueNode> | null, callerFram
 
 /**
  * [scope-leak] Less mixin-call variable unlocking: a `@x:` declared in a called
- * mixin body becomes visible in the CALLER scope for statements AFTER the call
- * (less@4 evaluates the body and splices its evaluated declarations as siblings
- * of the call, so `.heightIsSet { height: @height }` after `.setHeight(...)` sees
- * the `@height` the mixin defined). The value is snapshotted in the CALLEE frame
- * (params bound) and appended to the caller's per-name stack, so a later sibling
- * read wins the backward walk. A detached ruleset / tagged literal Word binds by
- * reference (closure/tag must survive); everything else byte-flattens exactly as a
- * crossed mixin arg does. An async leak (a color/IO fn in the value) is exotic in
- * a leaked position and is left un-snapshotted rather than forcing the walk async.
+ * mixin body becomes visible in the CALLER scope (less@4 evaluates the body and
+ * splices its evaluated declarations as siblings of the call, so
+ * `.heightIsSet { height: @height }` after `.setHeight(...)` sees the `@height`
+ * the mixin defined). The value is snapshotted in the CALLEE frame (params bound)
+ * and pushed onto the caller frame's LEAKED per-name stack — a scope of LOWER
+ * priority than the ordinary lexical `vars` chain. v5 "outer-binding-wins": the
+ * unlocked value only wins where no enclosing scope already binds the name; a name
+ * an outer scope already declares keeps that lexical binding (v5 drops the 4.x
+ * hoist that let `@mix: #989` shadow the root `@mix: blue` — see `resolveVarRef`).
+ * A detached ruleset / tagged literal Word binds by reference (closure/tag must
+ * survive); everything else byte-flattens exactly as a crossed mixin arg does. An
+ * async leak (a color/IO fn in the value) is exotic in a leaked position and is
+ * left un-snapshotted rather than forcing the walk async.
  */
 function leakBodyVars(callerFrame: Frame, body: Statement[], callFrame: Frame, e: EvalCtx): void {
   for (const s of body) {
@@ -1543,7 +1575,7 @@ function leakBodyVars(callerFrame: Frame, body: Statement[], callFrame: Frame, e
       if (isThenable(b)) continue;
       snap = word(b);
     }
-    const map = (callerFrame.vars ??= new Map());
+    const map = (callerFrame.leaked ??= new Map());
     const stack = map.get(s.name);
     if (stack) stack.push(snap);
     else map.set(s.name, [snap]);
