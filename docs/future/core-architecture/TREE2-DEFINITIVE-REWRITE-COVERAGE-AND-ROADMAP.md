@@ -132,7 +132,17 @@ render.
 | `@use`/`@-use`/`@compose`/`@-import` semantics | NEEDS-DESIGN | @import handled; module semantics not | `@compose`/`@use` = module; `@-import`/`@import` = leaky fold + warn. |
 | Backtick removal | BYCON | n/a | Nothing to build. |
 | Permissive custom-prop `--*` + unknown at-rule preludes | NOTYET | at-rule prelude kept literal bytes; custom-prop not special-cased | Base CSS permissiveness; bridge opaque-bytes, likely fine but unverified. |
+| **Bare `@var` in at-rule prelude → hard error; `@{var}` is the migration target** | **PARSER-LANDED · tree2-INCORP · legacy-GAP** | parser: `less-parser` `AtRuleMalformed` + `preludeTokenTop` (rejects top-level bare `@var`/`@@var`, keeps decl-value `@var` inside `(…)`); tree2: `parse-host/actions/at-rules.ts` `parsePreludeValue`+`blockBraceIndex` resolve `@{var}` (`atrule-interp-prelude.test.ts`, 5 green — `@media @{q}`→`@media screen`) | **Owner rule: a plain `@var` ANYWHERE in an at-rule prelude errors in v5 (deprecated-but-works in 4.x), EXCEPT a `@var` inside a declaration value (`@media (min-width:@v)`, `@foo (x:@v)`). Parser change LANDED on `origin/dev`. `@{var}` resolution is DONE in tree2 but MISSING in the legacy production render (Compiler+plugin-less emits `@{var}` verbatim, 0 errors — VERIFIED 2026-07-17). So v5 has no working var-in-prelude on the legacy path; closes on the front-end flip to tree2. See sequencing note below.** |
 | calc simplification | NOTYET | none | |
+
+**Sequencing — at-rule bare-`@var` (opened 2026-07-17):**
+- **Jess parser**: hard-error landed on `origin/dev` (`63663e900`/`db02867dd`/`91f0690b2`); native error + interp tests green.
+- **tree2 render**: resolves `@{var}` preludes (test-only host today). **Blocker to finishing the fixture migration is purely the legacy→tree2 front-end flip** — no new resolution work needed; it already works in tree2.
+- **less.js fixtures (unpushed branches, awaiting owner push):**
+  - 4.x `feat/deprecate-non-value-variable-refs` fork → branch **`fix/at-rule-var-migrate-stragglers`** (`31ee756a`): migrated the two stragglers `4427aa19` missed (`layer.less:21`, `import-reference.less:76/80`) to `@{var}`; byte-identical render, dedicated deprecation fixture still warns. Full grunt suite green.
+  - alpha (v5 oracle) → branch **`fix/atrule-var-migrate-v5`** (`31bbe396`): migrated ALL bare-`@var` at-rule preludes to `@{var}` across media/container/layer/import-reference/at-rules-compressed/variables-in-at-rules/permissive-parse + the undefined-var error test. `.css` goldens UNCHANGED (output-neutral once tree2 resolves).
+- **Jess markers (staged, NOT removed)**: `media`/`layer`/`container` `expectedFailureFixtures` + `at-rules-compressed-evaluation` `invalidLess` must stay until the migrated alpha fixtures are what Jess reads AND the render path resolves interp preludes (i.e. post-flip). Removing them now → red (legacy emits verbatim).
+- **Alpha renderer caveat (non-blocking, per owner "we'll get there")**: less.js `alpha` lacks `4427aa19`, so its OWN renderer may not accept `@{var}` at-rule preludes. Not exercised here; Jess (tree2) is the authoritative v5 renderer. Flagged for the tree2/front-end-flip workstream.
 
 ### Sass+ dialect
 
