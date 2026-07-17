@@ -126,6 +126,7 @@ describe('css syntax errors (parseCssFn)', () => {
     expect(parseCssFn('.a { x: url() }').errors).toHaveLength(0);      // empty
     expect(parseCssFn('.a { x: url("a b") }').errors).toHaveLength(0); // quoted function form (ws ok)
     expect(parseCssFn('.a { x: url(a\\ b) }').errors).toHaveLength(0);  // escaped space = one url code point
+    expect(parseCssFn('.a { x: url(a\\41 b) }').errors).toHaveLength(0); // hex escape `\41` + trailing-space terminator → one token
   });
 
   // Counter-cases for the `calc(...)` boundary: only the value-less bodies are

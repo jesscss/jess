@@ -33,12 +33,16 @@ const rw = trivia(oneOrMore(choice(label('whitespace', ws), label('blockComment'
 /**
  * CSS identifier. Starts with an ident-start code point (letter, non-ASCII, `_`),
  * optionally preceded by `-`; subsequent chars add digits and `-`.
- * Includes CSS escapes (\\hex / \\char).
+ * Includes CSS escapes (\\hex / \\char). The escape tail is `[^\n\r\f]` (not
+ * `[^\n]`): per §4.3.7 a `\` followed by a newline is NOT a valid escape, and a
+ * newline is any of LF / CR / FF — so `\<CR>` and `\<FF>` are excluded too, same
+ * as `\<LF>`. Shared verbatim by `basicSel` and `propName` below.
  * @see https://www.w3.org/TR/css-syntax-3/#ident-start-code-point
  * @see https://www.w3.org/TR/css-syntax-3/#ident-code-point
+ * @see https://www.w3.org/TR/css-syntax-3/#consume-escaped-code-point
  */
-const ident = regex(/-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n]))*/);
-const basicSel = regex(/(?:[.#]?-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n]))*|\d+(?:\.\d+)?%|\*)/);
+const ident = regex(/-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/);
+const basicSel = regex(/(?:[.#]?-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*|\d+(?:\.\d+)?%|\*)/);
 const combinator = choice(literal('||'), literal('>'), literal('+'), literal('~'), literal('|'));
 const pseudoColon = regex(/::?/);
 const attrOp = regex(/[*~|^$]?=/);
@@ -63,13 +67,18 @@ const urlOpen = regex(/url\(/i);
  * consume-a-url-token. A url code point is any code point EXCEPT `"` `'` `(` `)`,
  * whitespace (tab U+0009, newline U+000A, form-feed U+000C, CR U+000D, space
  * U+0020), a non-printable (U+0000–08, U+000B, U+000E–1F, U+007F), and `\`; a `\`
- * begins an escape and is valid only when NOT followed by a newline (`\[^\n\r\f]`).
+ * begins an escaped code point (§4.3.7): `\` + 1–6 hex digits with one optional
+ * trailing whitespace terminator (`\41 ` → `A`), OR `\` + any single non-newline
+ * code point. The hex form's trailing-whitespace terminator is consumed as part
+ * of the escape, so `url(a\41 b)` stays ONE token (the space after `\41` is the
+ * escape terminator, not a token break) — the same escape idiom `ident` uses.
  * Note this deliberately EXCLUDES `(` (a `(` inside the body is a bad-url-token)
  * and non-printables, while INCLUDING Unicode spaces such as U+00A0 (which are
  * valid url code points — `\s` would wrongly strip them).
  * @see https://www.w3.org/TR/css-syntax-3/#consume-url-token
+ * @see https://www.w3.org/TR/css-syntax-3/#consume-escaped-code-point
  */
-const urlInner = regex(/(?:[^"'()\\ \t\n\f\r\x00-\x08\x0B\x0E-\x1F\x7F]|\\[^\n\r\f])+/);
+const urlInner = regex(/(?:[^"'()\\ \t\n\f\r\x00-\x08\x0B\x0E-\x1F\x7F]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+/);
 const anyValueTok = regex(/[+\-*/=<>|~^]+|[^\s;{}\[\]()'",!]+/);
 
 // ---------------------------------------------------------------------------
@@ -217,7 +226,7 @@ export const cssGrammar = rules({ trivia: rw }, (g: any) => {
    * @see https://www.w3.org/TR/css-syntax-3/#would-start-an-identifier
    * @see https://www.w3.org/TR/css-syntax-3/#ident-start-code-point
    */
-  const propName = regex(/\*?-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n]))*/);
+  const propName = regex(/\*?-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/);
   const Declaration = node(
     // A value immediately followed by `{` is not a declaration but a nested
     // ruleset whose selector looks declaration-like (`a:hover { … }`) — CSS
