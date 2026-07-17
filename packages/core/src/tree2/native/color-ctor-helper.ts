@@ -37,7 +37,7 @@ export function normalizeHue(d: Dimension): number {
 
 /** `alphaToNumber()`: a `%` dimension → `number / 100`; unitless passes; clamp 0-1. */
 export function alphaToNumber(d: Dimension): number {
-  const raw = d.unit === '%' ? d.number / 100 : d.unit === '' ? d.number : d.number;
+  const raw = d.unit === '%' ? d.number / 100 : d.number;
   return Math.max(0, Math.min(1, raw));
 }
 

@@ -152,21 +152,15 @@ export const literal = (bytes: string): string => bytes;
 /* --------------------------------------------------------------- modes */
 
 /**
- * The three configured modes value evaluation honors, injected at the seam (NOT
- * the whole legacy `Context`). `mathMode` governs `shouldOperate`; `unitMode`
- * governs the unit-clash → `calc()` fallback; `functionMode` governs whether an
- * unknown function is evaluated or emitted verbatim.
+ * The configured mode value evaluation honors, injected at the seam (NOT the
+ * whole legacy `Context`). `unitMode` governs the unit-clash → `calc()` fallback.
  */
 export interface EvalModes {
-  readonly mathMode: 'always' | 'parens-division' | 'parens';
   readonly unitMode: 'preserve' | 'canonicalize' | 'strict';
-  readonly functionMode: 'preserve' | 'evaluate';
 }
 
 export const DEFAULT_MODES: EvalModes = {
-  mathMode: 'parens-division',
   unitMode: 'preserve',
-  functionMode: 'preserve',
 };
 
 /* --------------------------------------------------------------- seam */

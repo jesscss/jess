@@ -50,6 +50,3 @@ export function dispatchNative(name: string, list: List, ctx: NativeCtx): ValueO
   if (spec.variadic) return spec.body(list, ctx);
   return spec.body(...bind(name, spec, list.items));
 }
-
-/** The set of natively-converted fn names. */
-export const NATIVE_FNS: ReadonlySet<string> = new Set(TABLE.keys());

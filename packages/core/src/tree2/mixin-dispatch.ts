@@ -171,7 +171,6 @@ export function selectDefinitions(
   const guardDeps = (bindings: Map<string, ValueNode> | null, isDefault: () => boolean) => {
     const typed = makeCalleeTyped(bindings);
     return {
-      resolve: (v: ValueNode) => typed(v).bytes,
       resolveTyped: typed,
       ev,
       modes,
