@@ -120,15 +120,85 @@ describe('strict @supports prelude (v5)', () => {
   });
 });
 
+// The `@supports` strict-prelude ruling (above) is generalized to EVERY at-rule
+// prelude/name/identifier position: a TOP-LEVEL (paren-depth 0) bare `@var` is a
+// HARD parse error, while `@{interp}` is accepted, a bare ident/name stays valid,
+// and a `@var` INSIDE parens (a declaration value) stays valid + resolving — even
+// inside an unknown/custom at-rule. v5 is stricter than 4.x (which only warned).
+describe('strict at-rule prelude — all positions (v5)', () => {
+  const err = (src: string, col?: number) => {
+    const { errors } = parse(src, 'Stylesheet');
+    expect(errors.length).toBe(1);
+    expect(String((errors[0] as any).message)).toContain('at-rule block or ;');
+    if (col !== undefined) expect((errors[0] as any).column).toBe(col);
+  };
+  const ok = (src: string) => {
+    const { errors } = parse(src, 'Stylesheet');
+    expect(errors.length).toBe(0);
+  };
+
+  it('@container: bare @var errors, @{var} + bare name ok', () => {
+    err('@container @v { }', 12);
+    ok('@container @{v} { }');
+    ok('@container name (width > 0) { }');
+  });
+
+  it('@namespace: bare @var + @@var-var error, @{var} + prefix + bare-string ok', () => {
+    err('@namespace @v "u";', 12);
+    err('@namespace @@v "u";', 12); // variable-variable form (less.js 8e3504d5) — invalid
+    ok('@namespace @{v} "u";');
+    ok('@namespace pre "u";');
+    ok('@namespace "u";');
+  });
+
+  it('@charset: bare @var errors, bare string ok', () => {
+    err('@charset @v;', 10);
+    ok('@charset "utf-8";');
+  });
+
+  it('@document + unknown + custom at-rules: bare @var errors, @{var} ok', () => {
+    err('@document @v { }', 11);
+    err('@foo @v { }', 6);
+    err('@-blah @v { }', 8);
+    ok('@foo @{v} { }');
+  });
+
+  // The owner's explicit carve-out: a `@var` inside `(...)` is a DECLARATION VALUE
+  // and stays valid + resolving, EVEN inside an unknown/custom at-rule.
+  it('unknown at-rule with a paren-wrapped declaration value stays valid (@foo (x: @v))', () => {
+    ok('@foo (x: @v) { a { color: red } }');
+  });
+});
+
 describe('layerName', () => {
   it('should parse @layer with name', () => {
     const { errors } = parse('@layer theme { }', 'Stylesheet');
     expect(errors.length).toBe(0);
   });
 
-  it('should parse @layer with variable in name', () => {
+  // v5: a top-level bare `@var` in a `@layer` name is a HARD parse error (4.x only
+  // warned). The migration target is `@{var}` interpolation.
+  it('rejects a bare @var layer name (@layer @var)', () => {
     const { errors } = parse('@layer @var { }', 'Stylesheet');
+    expect(errors.length).toBe(1);
+    expect(String((errors[0] as any).message)).toContain('at-rule block or ;');
+    expect((errors[0] as any).column).toBe(8);
+  });
+
+  it('accepts a @{var} interpolated layer name (@layer @{var})', () => {
+    const { errors } = parse('@layer @{var} { }', 'Stylesheet');
     expect(errors.length).toBe(0);
+  });
+
+  it('accepts a @layer name list (@layer a, b;)', () => {
+    const { errors } = parse('@layer a, b;', 'Stylesheet');
+    expect(errors.length).toBe(0);
+  });
+
+  // A bare `@var` anywhere top-level in a dotted layer path is rejected.
+  it('rejects a bare @var inside a dotted layer path (@layer a.@v.c;)', () => {
+    const { errors } = parse('@layer a.@v.c;', 'Stylesheet');
+    expect(errors.length).toBe(1);
   });
 });
 
@@ -138,8 +208,27 @@ describe('keyframesName', () => {
     expect(errors.length).toBe(0);
   });
 
-  it('should parse @keyframes with variable in name', () => {
+  // v5: a top-level bare `@var` keyframes name is a HARD parse error; `@{var}` is
+  // the interpolation migration target.
+  it('rejects a bare @var keyframes name (@keyframes @var)', () => {
     const { errors } = parse('@keyframes @var { }', 'Stylesheet');
+    expect(errors.length).toBe(1);
+    expect(String((errors[0] as any).message)).toContain('at-rule block or ;');
+    expect((errors[0] as any).column).toBe(12);
+  });
+
+  it('accepts a @{var} interpolated keyframes name (@keyframes @{var})', () => {
+    const { errors } = parse('@keyframes @{var} { }', 'Stylesheet');
+    expect(errors.length).toBe(0);
+  });
+
+  it('rejects a bare @var @counter-style name (@counter-style @var)', () => {
+    const { errors } = parse('@counter-style @var { }', 'Stylesheet');
+    expect(errors.length).toBe(1);
+  });
+
+  it('accepts a @{var} interpolated @counter-style name', () => {
+    const { errors } = parse('@counter-style @{var} { }', 'Stylesheet');
     expect(errors.length).toBe(0);
   });
 });
@@ -188,19 +277,18 @@ describe('mediaInParens', () => {
     expect(String(evald)).toContain('@media screen and (min-width: 400px) {');
   });
 
-  it('should parse variable media query at top level', () => {
-    const { errors, tree } = parse('@media @breakpoint, print { }', 'Stylesheet');
+  // v5: a top-level bare `@var` media query is a HARD parse error (4.x accepted it
+  // as an indexed reference / variable media query). `@{var}` interpolation and a
+  // paren-wrapped `@var` (a declaration value) stay valid — see the tests below.
+  it('rejects a bare @var media query at top level (@media @breakpoint, print)', () => {
+    const { errors } = parse('@media @breakpoint, print { }', 'Stylesheet');
+    expect(errors.length).toBe(1);
+    expect(String((errors[0] as any).message)).toContain('at-rule block or ;');
+  });
+
+  it('accepts a @{var} interpolated media query (@media @{q})', () => {
+    const { errors } = parse('@media @{q} { }', 'Stylesheet');
     expect(errors.length).toBe(0);
-    const out = serializeTypes(tree, { showOptions: true });
-    expect(out).toContainString('(AtRule\n          nestable: true');
-    expect(out).toContainString('\'@media\'');
-    expect(out).toContainString('\'@media\'');
-    expect(out).toContainString('(List\n            value:');
-    expect(out).toContainString('(Reference [role=ident]');
-    expect(out).toContainString('type: \'index\'');
-    expect(out).toContainString('role: \'ident\'');
-    expect(out).toContainString('key: \'breakpoint\'');
-    expect(out).toContainString('(QueryCondition');
   });
 
   it('should parse namespaced reference media query at top level', () => {
@@ -218,17 +306,11 @@ describe('mediaInParens', () => {
     expect(atRulePrelude(tree.rules[0])?.value?.target?.name?.rawKey?.toString()).toBe('#ns.breakpoint');
   });
 
-  it('should parse simple bare variable media query at top level as indexed reference', () => {
-    const { errors, tree } = parse('@media @breakpoint { }', 'Stylesheet');
-    expect(errors.length).toBe(0);
-    const out = serializeTypes(tree, { showOptions: true });
-    expect(out).toContainString('(AtRule');
-    expect(out).toContainString('nestable: true');
-    expect(out).toContainString('\'@media\'');
-    expect(out).toContainString('\'@media\'');
-    expect(out).toContainString('(Reference [role=ident]');
-    expect(out).toContainString('type: \'index\'');
-    expect(out).toContainString('key: \'breakpoint\'');
+  it('rejects a simple bare @var media query at top level (@media @breakpoint)', () => {
+    const { errors } = parse('@media @breakpoint { }', 'Stylesheet');
+    expect(errors.length).toBe(1);
+    expect(String((errors[0] as any).message)).toContain('at-rule block or ;');
+    expect((errors[0] as any).column).toBe(8);
   });
 });
 
@@ -278,15 +360,16 @@ describe('mfValue', () => {
     expect(String(evald)).not.toContain('~"2/1"');
   });
 
-  it('unwraps a bare `@var` referencing an escaped string in a media prelude', async () => {
-    const { errors, tree } = parse(
+  // v5: bare `@var` media-query terms are a HARD parse error (4.x unwrapped an
+  // escaped-string @var into the query). The paren-wrapped feature-value form
+  // (`@media (min-width: @size)`) stays valid — covered by the tests above.
+  it('rejects bare `@var` media-query terms (@media @all and @tv)', () => {
+    const { errors } = parse(
       '@all: ~"all";\n@tv: ~"(tv)";\n@media @all and @tv { a { color: red; } }',
       'Stylesheet'
     );
-    expect(errors.length).toBe(0);
-    const evald = await tree!.eval(new Context());
-    expect(String(evald)).toContain('@media all and (tv) {');
-    expect(String(evald)).not.toContain('"all"');
+    expect(errors.length).toBe(1);
+    expect(String((errors[0] as any).message)).toContain('at-rule block or ;');
   });
 });
 

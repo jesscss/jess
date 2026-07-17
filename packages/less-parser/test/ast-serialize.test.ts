@@ -441,36 +441,27 @@ describe('serializeTypes coverage', () => {
     expect(serializeTypes(tree)).toContainString('(InterpolatedSelector');
   });
 
-  test('at-rule bare variables normalize to indexed references outside declaration values', () => {
-    const { errors, tree } = parser.parse('@media @mode { .foo { color: red; } }');
-    expect(errors.length).toBe(0);
-    expect(tree.toString()).toContain('@media $[mode]');
+  // v5: a TOP-LEVEL bare `@var` at-rule prelude is a HARD parse error (it is no
+  // longer normalized to an indexed reference). A `@var` inside a paren-wrapped
+  // declaration value stays valid (next test).
+  test('at-rule bare variables are a hard parse error outside declaration values', () => {
+    const { errors } = parser.parse('@media @mode { .foo { color: red; } }');
+    expect(errors.length).toBe(1);
+    expect(String((errors[0] as any).message)).toContain('at-rule block or ;');
   });
 
-  test('media feature bare variables normalize to indexed references outside declaration values', () => {
+  test('media feature bare variables normalize to indexed references inside declaration values', () => {
     const { errors, tree } = parser.parse('@media (min-width: @size) { .foo { color: red; } }');
     expect(errors.length).toBe(0);
     expect(tree.toString()).toContain('@media (min-width: $[size])');
   });
 
-  test('at-rule prelude accessor references are wrapped as Expression nodes', () => {
-    const { errors, tree } = parser.parse('@media @breakpoints[mobile] { .foo { color: red; } }');
-    expect(errors.length).toBe(0);
-    expect(serializeTypes(tree)).toContainString(`
-      prelude:
-        (Expression
-          value:
-            (Reference
-              target:
-                (Reference
-                  key: 'breakpoints'
-                )
-              key:
-                (Quoted
-                  value: 'mobile'
-                )
-        )
-    `);
+  // A top-level `@var[key]` accessor prelude is likewise a hard error; the accessor
+  // form is only valid as a paren-wrapped declaration value (covered above).
+  test('at-rule prelude bare accessor references are a hard parse error', () => {
+    const { errors } = parser.parse('@media @breakpoints[mobile] { .foo { color: red; } }');
+    expect(errors.length).toBe(1);
+    expect(String((errors[0] as any).message)).toContain('at-rule block or ;');
   });
 });
 

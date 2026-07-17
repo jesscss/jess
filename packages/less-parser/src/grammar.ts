@@ -107,7 +107,7 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   // statements ahead of it — `many(choice(g.ScssIf, …, g.stylesheetItem))` —
   // without re-listing the whole set. Keeps the extension seam in one place.
   const stylesheetItem = choice(
-    g.VarDeclaration, g.VarCall, g.QueryAtRuleBlock, g.SupportsAtRuleBlock, g.AtRuleBlock, g.ImportAtRuleStatement, g.AtRuleStatement, g.ExtendStatement, g.Ruleset, g.MixinOrQualifiedRule, g.EachFor,
+    g.VarDeclaration, g.VarCall, g.QueryAtRuleBlock, g.SupportsAtRuleBlock, g.AtRuleBlock, g.ImportAtRuleStatement, g.AtRuleStatement, g.AtRuleMalformed, g.ExtendStatement, g.Ruleset, g.MixinOrQualifiedRule, g.EachFor,
     sequence(g.Call, optional(literal(';'))), literal(';')
   );
   const Stylesheet = node(
@@ -417,7 +417,7 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   // block statements ahead of it — `many(choice(g.ScssIf, …, g.blockItem))`.
   // `NestedMixinDefinition` stays a local const referenced here (Less-only).
   const blockItem = choice(
-    g.VarDeclaration, g.VarCall, g.QueryAtRuleBlock, g.SupportsAtRuleBlock, g.AtRuleBlock, g.ImportAtRuleStatement, g.AtRuleStatement, g.ExtendStatement, g.Ruleset, NestedMixinDefinition, g.EachFor, g.MixinCall, g.Declaration, g.CustomDeclaration,
+    g.VarDeclaration, g.VarCall, g.QueryAtRuleBlock, g.SupportsAtRuleBlock, g.AtRuleBlock, g.ImportAtRuleStatement, g.AtRuleStatement, g.AtRuleMalformed, g.ExtendStatement, g.Ruleset, NestedMixinDefinition, g.EachFor, g.MixinCall, g.Declaration, g.CustomDeclaration,
     // A bare function-call statement in a body, e.g. `each(@list, { … });`. Needs
     // `ident(` so it never shadows a Declaration (which needs `:`).
     sequence(g.Call, optional(literal(';'))), literal(';')
@@ -884,8 +884,16 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   const preludeToken = choice(lessInterp, nestedRef, lessVar, preludeChunk, g.preludeParen, g.preludeSquare, singleStr, doubleStr);
   const preludeParen = sequence(literal('('), many(g.preludeToken), literal(')'));
   const preludeSquare = sequence(literal('['), many(g.preludeToken), literal(']'));
-  const atPrelude = optional(noTrivia(oneOrMore(g.preludeToken)));
-
+  // TOP-LEVEL token set: `preludeToken` MINUS the bare `@var` (`lessVar`) and
+  // `@@indirect`/multi-ref (`nestedRef`) forms, so a top-level bare variable stops
+  // the prelude → hard error. `@{…}` interpolation, chunks, balanced groups (whose
+  // inner `@var` stays valid), and strings remain. v5 STRICT: a top-level bare
+  // `@variable`/`@@indirect` is a HARD parse error (generalizes the @supports
+  // precedent b799d9a49; 4.x only warned) — the committed `AtRuleMalformed` fallback
+  // reports it. A `@var` INSIDE `(…)`/`[…]` stays a valid declaration value via the
+  // recursive `preludeToken` (even inside an unknown at-rule's `(x: @v)`).
+  const preludeTokenTop = choice(lessInterp, preludeChunk, g.preludeParen, g.preludeSquare, singleStr, doubleStr);
+  const atPrelude = optional(noTrivia(oneOrMore(preludeTokenTop)));
   // ── Structured, committed query block (@media / @container / @supports) ──────
   // The flat `atPrelude` above walks past ANY bracket content to the first
   // top-level `{`/`;`, so a stray/unbalanced bracket (`@media (extra: bracket))`)
@@ -979,7 +987,13 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   const SupportsAtRuleBlock = node('AtRuleBlock',
     sequence(supportsAtKeyword, reqSupportsPrelude, expect(literal('{'), '{'), g.atRuleBody, expect(literal('}'), '}')));
 
-  /** @todo(css-spec-parity): generic `AtRuleBlock` overrides the CSS base with a flat, permissive `atPrelude` — re-check against the css-parser `AtRuleBlock` after the @supports/query-prelude tightenings (726124397) so structured at-rules aren't silently accepted here that the base now rejects; see css-syntax-3 §5.4.2 (consume-an-at-rule). */
+  // Generic block at-rule. `atPrelude` (the strict atom sequence above) stops before
+  // a top-level bare `@var`, so `literal('{')` is reached only for a well-formed
+  // prelude (bare ident, `@{…}` interpolation, parenthesized/bracketed groups,
+  // strings). A prelude that stopped at a bare `@var` fails `literal('{')` here (and
+  // `literal(';')` in AtRuleStatement), and the committed `AtRuleMalformed` fallback
+  // reports it. `literal('{')` (not `expect`) stays non-committing so a statement-
+  // form at-rule (`@foo bar;`) can fall through to AtRuleStatement.
   const AtRuleBlock = node(
     sequence(atKeyword, atPrelude, literal('{'), g.atRuleBody, expect(literal('}'), '}')));
 
@@ -1004,6 +1018,31 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
 
   const AtRuleStatement = node(
     sequence(atKeyword, atPrelude, literal(';')));
+
+  // ── Strict generic at-rule fallback (v5 .less) ──────────────────────────────
+  // A generic at-rule whose strict `atPrelude` stopped BEFORE a top-level bare
+  // `@var` / `@@var` (or other junk) that neither the block `{` nor the statement
+  // `;` tail can consume — `@keyframes @v {}`, `@layer @v {}`, `@namespace @@v "u";`,
+  // `@charset @v;`, unknown `@foo @v {}`, custom `@-blah @v {}`, `@layer a.@v.c;`.
+  // Ordered AFTER AtRuleBlock / AtRuleStatement so it only ever catches the
+  // leftovers those well-formed tails could not. A zero-width lookahead asserts the
+  // required `{`/`;` tail; on a bare `@var` it fails, so the committed `expect`
+  // records ONE legible error AT that position (not the keyword) and recovers in
+  // place. The trailing `scanTo` then consumes the rest of the malformed prelude up
+  // to the real block/statement tail, and the tail itself, so `many` resumes cleanly
+  // (one error, no cascade) — the same recover-and-consume shape as
+  // `SupportsAtRuleBlock`. Built as `AtRuleBlock` (a doomed branch's emitted node is
+  // moot — the parse already carries the error). v5 makes the bare form a HARD parse
+  // error; 4.x only deprecated it with a warning.
+  const atTailAhead = regex(/(?=[{;])/);
+  const AtRuleMalformed = node('AtRuleBlock',
+    sequence(
+      atKeyword, atPrelude,
+      expect(atTailAhead, 'at-rule block or ;'),
+      scanTo(choice(literal('{'), literal(';')), { skip: [bParen, bSquare, bCurly, lessInterp, singleStr, doubleStr] }),
+      choice(sequence(literal('{'), g.atRuleBody, expect(literal('}'), '}')), literal(';'))
+    ));
+
   // An at-rule body (@media / @supports / @starting-style / …) holds the SAME
   // statements as a ruleset body — nested rules, mixin calls, each(), extends,
   // var calls — not just declarations. Mirror declarationList's choice set.
@@ -1023,7 +1062,7 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
     parenBody, permissiveParenBody, Paren, GluedParen, DetachedRuleset, functionCallArgs, squareParenBody, calcBody, Call, FormatCall, SquareParen, anyValue, EachFor,
     queryPrelude, QueryAtRuleBlock, SupportsAtRuleBlock, ImportAtRuleStatement,
     preludeToken, preludeParen, preludeSquare,
-    AtRuleBlock, AtRuleStatement, atRuleBody,
+    AtRuleBlock, AtRuleStatement, AtRuleMalformed, atRuleBody,
     // Exposed so composing dialects (SCSS) can re-derive `simpleSelector` with a
     // gated `&` arm without duplicating these token regexes. Non-behavioral.
     basicSel, extendAhead

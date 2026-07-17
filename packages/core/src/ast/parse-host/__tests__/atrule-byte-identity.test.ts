@@ -31,7 +31,6 @@ const inputs: Array<[string, string]> = [
   ['atrule-with-direct-and-nested', '@page { margin: 2cm; @top-left { content: "x"; } }\n'],
   ['namespace-statement', '@namespace svg "http://example.com/svg";\n'],
   ['empty-block-dropped', '@media screen { }\n'],
-  ['keyframes-var-prelude', '@name: slidein;\n@keyframes @name { from { top: 0; } }\n'],
   ['sibling-media-not-merged', '@media print { .a { color: red; } }\n@media print { .b { color: blue; } }\n'],
   // [charset] `@charset` is a document-prelude construct: the first is hoisted to
   // the top of the output and every other one is dropped (dedupe).
