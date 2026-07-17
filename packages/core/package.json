@@ -15,6 +15,12 @@
       "import": "./lib/index.js",
       "require": "./lib/index.cjs"
     },
+    "./value": {
+      "types": "./lib/value.d.ts",
+      "source": "./src/value.ts",
+      "import": "./lib/value.js",
+      "require": "./lib/value.cjs"
+    },
     "./package.json": "./package.json"
   },
   "files": [
