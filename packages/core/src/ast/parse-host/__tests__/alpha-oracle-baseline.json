@@ -207,7 +207,7 @@
   },
   "media/media.less": {
     "status": "DIFF",
-    "bytes": 4137
+    "bytes": 4169
   },
   "merge/merge.less": {
     "status": "DIFF",
@@ -258,9 +258,8 @@
     "bytes": 394
   },
   "mixins/mixins.less": {
-    "status": "THREW",
-    "bytes": null,
-    "threw": "RangeError: Maximum call stack size exceeded"
+    "status": "DIFF",
+    "bytes": 1663
   },
   "namespace-targeted/namespace-targeted.less": {
     "status": "DIFF",
@@ -296,7 +295,7 @@
   },
   "permissive-parse/permissive-parse.less": {
     "status": "DIFF",
-    "bytes": 227
+    "bytes": 244
   },
   "plugi/plugi.less": {
     "status": "MATCH",
@@ -332,9 +331,8 @@
     "bytes": 1004
   },
   "scope/scope.less": {
-    "status": "THREW",
-    "bytes": null,
-    "threw": "ReferenceError: variable @height is undefined"
+    "status": "DIFF",
+    "bytes": 395
   },
   "selectors/selectors.less": {
     "status": "DIFF",

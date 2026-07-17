@@ -111,4 +111,15 @@ describe('guard-based variant selection (direct host)', () => {
       '.o { .m(9); }';
     expect(render(src)).toBe('.z {\n  case: zero;\n}\n' + '.o {\n  case: other;\n}\n');
   });
+
+  // [recursion] A paren-less ruleset callable as a zero-arg mixin must NOT
+  // re-enter its own body forever when it calls its own name — it terminates by
+  // binding to a same-name parametric def, not via a depth cap (less@4
+  // mixin-call.js `isRecursive`). Overflowed the stack before the self-exclusion.
+  it('a ruleset-mixin self-call terminates by binding the same-name def (no overflow)', () => {
+    const src =
+      '.recursion() {\n  color: black;\n}\n' +
+      '.test-rule-rec {\n  .recursion {\n    .recursion();\n  }\n}';
+    expect(render(src)).toBe('.test-rule-rec .recursion {\n  color: black;\n}\n');
+  });
 });

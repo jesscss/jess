@@ -377,6 +377,23 @@ function ownCandidates(frame: Frame, name: string): MixinDef[] {
 }
 
 /**
+ * [recursion] Is `body` (a ruleset-mixin's source Rule body array) currently on
+ * the active expansion stack? The frame chain (`parent`, then the detached-
+ * ruleset `fallback` closure) reflects the dynamic nesting — a Rule placement
+ * (`flatten`) and a mixin expansion (`expandCall`) both seed the child frame's
+ * `statements` with the body being walked — so an identity hit means we are
+ * inside that very ruleset. Mirrors less@4's `mixin === context.frames[f]`
+ * recursion check, scoped to ruleset-mixins.
+ */
+function bodyOnStack(frame: Frame | null, body: Statement[]): boolean {
+  for (let f = frame; f; f = f.parent) {
+    if (f.statements === body) return true;
+    if (f.fallback && bodyOnStack(f.fallback, body)) return true;
+  }
+  return false;
+}
+
+/**
  * The nearest last-wins binding for `name` (top of the nearest non-empty stack).
  * Used by the detached-ruleset / namespace paths that need the CURRENT value node
  * (e.g. to test `.type === 'DetachedRuleset'`); it does not honor exclusion
@@ -1149,9 +1166,22 @@ function expandCall(
   // (`#ns > .m()`) resolves the name ONLY inside the descended namespace body — it
   // does NOT fall through to same-name defs in the enclosing/root scope — so it uses
   // an own-scope lookup rather than the chain walk a bare `.m()` call uses.
-  const candidates = namespaced
+  const rawCandidates = namespaced
     ? ownCandidates(dispatchFrame, call.name)
     : lookupCandidates(dispatchFrame, call.name);
+  // [recursion] A paren-less ruleset callable as a zero-arg mixin (`ruleMixin`)
+  // must NOT expand itself while it is already on the active expansion stack —
+  // `.recursion { .recursion(); }` terminates by re-binding to a same-name
+  // parametric def, not by re-entering its own body forever (less@4
+  // mixin-call.js `isRecursive`: a candidate that is NOT a parametric
+  // MixinDefinition and equals a ruleset currently in `context.frames` is
+  // skipped). A ruleMixin's synthesized `body` IS the source Rule's own body
+  // array, and the frame built to expand that Rule carries the SAME array as
+  // `statements`, so identity on the array is the rule identity. Parametric
+  // mixin recursion is guard-controlled and is left untouched.
+  const candidates = rawCandidates.some((d) => d.ruleMixin === true)
+    ? rawCandidates.filter((d) => d.ruleMixin !== true || !bodyOnStack(frame, d.body))
+    : rawCandidates;
   if (candidates.length === 0) return; // unknown mixin: minimal scope emits nothing
   const selected = dispatch(candidates, call, frame, e);
   const bodyImp = imp || call.important; // propagate call-level !important
@@ -1168,6 +1198,9 @@ function expandCall(
     // nested inside restricted output (chain-sticky, matching isFromRestrictedMixinOutput).
     const bodyProtected = protectedDup || def.ruleMixin !== true;
     walkBody(def.body, composed, callFrame, group, flush, e, bodyImp, bodyProtected);
+    // [scope-leak] after expansion the mixin's own `@x:` declarations unlock into
+    // the caller scope (visible to later siblings), matching less@4.
+    leakBodyVars(frame, def.body, callFrame, e);
   }
 }
 
@@ -1204,6 +1237,37 @@ function captureArgDefFrames(bindings: Map<string, ValueNode> | null, callerFram
   if (!bindings) return;
   for (const v of bindings.values()) {
     if (v.type === 'DetachedRuleset' && v.defFrame === null) v.defFrame = callerFrame;
+  }
+}
+
+/**
+ * [scope-leak] Less mixin-call variable unlocking: a `@x:` declared in a called
+ * mixin body becomes visible in the CALLER scope for statements AFTER the call
+ * (less@4 evaluates the body and splices its evaluated declarations as siblings
+ * of the call, so `.heightIsSet { height: @height }` after `.setHeight(...)` sees
+ * the `@height` the mixin defined). The value is snapshotted in the CALLEE frame
+ * (params bound) and appended to the caller's per-name stack, so a later sibling
+ * read wins the backward walk. A detached ruleset / tagged literal Word binds by
+ * reference (closure/tag must survive); everything else byte-flattens exactly as a
+ * crossed mixin arg does. An async leak (a color/IO fn in the value) is exotic in
+ * a leaked position and is left un-snapshotted rather than forcing the walk async.
+ */
+function leakBodyVars(callerFrame: Frame, body: Statement[], callFrame: Frame, e: EvalCtx): void {
+  for (const s of body) {
+    if (s.type !== 'VarDeclaration') continue;
+    const v = s.value;
+    let snap: ValueNode;
+    if (v.type === 'DetachedRuleset' || (v.type === 'Word' && v.tag !== undefined)) {
+      snap = v;
+    } else {
+      const b = evalBytes(v, callFrame, e);
+      if (isThenable(b)) continue;
+      snap = word(b);
+    }
+    const map = (callerFrame.vars ??= new Map());
+    const stack = map.get(s.name);
+    if (stack) stack.push(snap);
+    else map.set(s.name, [snap]);
   }
 }
 
