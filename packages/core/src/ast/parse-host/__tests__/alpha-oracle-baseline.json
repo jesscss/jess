@@ -97,7 +97,7 @@
   },
   "detached-rulesets/detached-rulesets.less": {
     "status": "DIFF",
-    "bytes": 1232
+    "bytes": 1213
   },
   "empty/empty.less": {
     "status": "MATCH",
@@ -137,7 +137,7 @@
   },
   "functions-each/functions-each.less": {
     "status": "DIFF",
-    "bytes": 941
+    "bytes": 961
   },
   "functions/functions.less": {
     "status": "DIFF",
@@ -214,7 +214,7 @@
   },
   "mixins-important/mixins-important.less": {
     "status": "DIFF",
-    "bytes": 932
+    "bytes": 855
   },
   "mixins-interpolated/mixins-interpolated.less": {
     "status": "DIFF",
@@ -262,7 +262,7 @@
   },
   "operations/operations.less": {
     "status": "DIFF",
-    "bytes": 821
+    "bytes": 805
   },
   "parse-interpolation/parse-interpolation.less": {
     "status": "DIFF",
@@ -298,7 +298,7 @@
   },
   "property-accessors/property-accessors.less": {
     "status": "DIFF",
-    "bytes": 728
+    "bytes": 676
   },
   "property-name-interp/property-name-interp.less": {
     "status": "DIFF",
