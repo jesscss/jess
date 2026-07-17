@@ -11,7 +11,7 @@ during the transition (`serialize(direct) === serialize(bridge)`).
 ## Layout
 
 - **`<family>.ts`** — one module per node family (e.g. `ruleset.ts`,
-  `declaration-static.ts`, `value.ts`, `selector.ts`), each exporting a
+  `value.ts`, `selector.ts`), each exporting a
   self-describing `<FAMILY>_ACTIONS: BuildAction[]` (one entry per grammar `type`
   it constructs). One module per family so parallel family agents never share a
   file — the only shared edit is one append line in `index.ts`.

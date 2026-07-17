@@ -78,7 +78,7 @@ export class ParseBuildHost implements FunctionalParseHost {
   ): unknown {
     const action = this._actions.get(type);
     if (action === undefined) return placeholder(type);
-    const out = action({ type, children, fields, span, rawChildren, triviaLog, ctx: this._ctx });
+    const out = action({ type, children, span, rawChildren, triviaLog, ctx: this._ctx });
     if (type === 'Stylesheet') this.root = out;
     return out;
   }

@@ -109,7 +109,6 @@ export interface BuildContext {
 export interface BuildArgs {
   readonly type: string;
   readonly children: ReadonlyArray<unknown>;
-  readonly fields: unknown;
   readonly span: Span;
   readonly rawChildren: ReadonlyArray<unknown>;
   readonly triviaLog: readonly number[];
