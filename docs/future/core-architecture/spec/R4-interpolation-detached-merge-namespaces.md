@@ -9,8 +9,13 @@
 >
 > Branch of record: `experiment/tree2-cleanroom-20260715`. Code citations are on
 > that branch. Oracle for shapes: less.js **`alpha`** branch fixtures
-> (`~/git/worktrees/less.js/**`, `tests-unit/*`), NOT Less 4.x; merge = OWNER
-> last-occurrence anchor (project memory `spine-merge-last-occurrence-anchor`).
+> (`~/git/worktrees/less.js/**`, `tests-unit/*`), NOT Less 4.x.
+>
+> ⚠️ SUPERSEDED (task #36): the merge sections below describe a v5 LAST-occurrence
+> anchor. The shipped `ast/` engine matches less.js's **FIRST**-occurrence anchor
+> exactly (byte-identical to alpha's `merge.css`); read every "LAST-occurrence /
+> the R4 target" claim in §R4.3 as the retired intent. See
+> `proposed-alpha-corrections/README.md` §Merge.
 
 ---
 
@@ -477,7 +482,7 @@ are detached rulesets bind by *reference*, not by resolved bytes (§R4.2.5).
 
 ---
 
-## R4.3 — Merge `+` / `+_` (v5 LAST-occurrence anchor)
+## R4.3 — Merge `+` / `+_` (⚠️ SUPERSEDED: shipped as FIRST-occurrence, task #36)
 
 ### R4.3.1 Problem statement
 

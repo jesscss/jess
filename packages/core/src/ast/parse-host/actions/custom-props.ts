@@ -295,11 +295,19 @@ const declaration: BuildAction = {
     const leadingWs = rawValue.length - rawValue.trimStart().length;
     const valStart = args.span.start + colon + 1 + leadingWs;
     const valueBytes = rawValue.trim();
+    // A merged decl re-emits `!important` once via the structured flag, so strip it
+    // from the value bytes FIRST — then the whole-value strategy can STRUCTURE the
+    // remainder (e.g. `scale(2,4)` → a FunctionCall that canonicalizes to
+    // `scale(2, 4)`) instead of freezing the whole run (incl. `!important`) as raw
+    // bytes. Only the merge path strips (non-merge value handling is unchanged).
+    const coreBytes = merge !== null && important
+      ? valueBytes.replace(/\s*!\s*important\s*$/iu, '')
+      : valueBytes;
     let value: t2.ValueNode =
-      consumableWholeValue(args, valueBytes)
-      ?? (merge === null ? assembleMultiPartValue(args, valStart, valueBytes) : t2.word(valueBytes));
-    // A merged decl carrying `!important` in its bytes strips it (the structured
-    // flag re-emits it once at the end of the combined line).
+      consumableWholeValue(args, coreBytes)
+      ?? (merge === null ? assembleMultiPartValue(args, valStart, coreBytes) : t2.word(coreBytes));
+    // Defensive: a raw-bytes merge value already had `!important` removed above; this
+    // also covers any Word that still trails one.
     if (merge !== null && important) value = stripImportantBytes(value);
     return t2.decl(name, value, merge, important);
   },

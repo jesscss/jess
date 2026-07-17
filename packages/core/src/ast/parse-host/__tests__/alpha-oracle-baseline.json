@@ -214,8 +214,8 @@
     "threw": "ReferenceError: variable @smartphone  is undefined"
   },
   "merge/merge.less": {
-    "status": "DIFF",
-    "bytes": 772
+    "status": "MATCH",
+    "bytes": 773
   },
   "mixin-noparens/mixin-noparens.less": {
     "status": "MATCH",
