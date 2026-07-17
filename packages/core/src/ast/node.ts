@@ -40,6 +40,7 @@ import type {
   MapAccessor,
   DetachedCall,
   RawInline,
+  StyleImport,
 } from './nodes.js';
 import type { AtRuleBlock, AtRuleStatement } from './at-rule.js';
 
@@ -50,7 +51,8 @@ export type NodeType =
   | 'SpacedValue' | 'VarRef' | 'MixinDef' | 'MixinCall' | 'VarDeclaration'
   | 'Sequence' | 'Operation' | 'FunctionCall' | 'Paren'
   | 'AtRuleBlock' | 'AtRuleStatement' | 'Interp' | 'VarIndirect'
-  | 'DetachedRuleset' | 'MapAccessor' | 'DetachedCall' | 'RawInline';
+  | 'DetachedRuleset' | 'MapAccessor' | 'DetachedCall' | 'RawInline'
+  | 'StyleImport';
 
 /** Combinator between two compounds in a complex selector. */
 export type Combinator = ' ' | '>' | '+' | '~';
@@ -70,10 +72,10 @@ export type Node =
   | Simple | Word | Dimension | SpacedValue | VarRef | MixinDef | MixinCall
   | VarDeclaration | Sequence | Operation | FunctionCall | Paren
   | AtRuleBlock | AtRuleStatement | Interp | VarIndirect | DetachedRuleset
-  | MapAccessor | DetachedCall | RawInline;
+  | MapAccessor | DetachedCall | RawInline | StyleImport;
 
 /**
- * The frozen set of the 27 structural `type` strings — the membership basis for
+ * The frozen set of the 28 structural `type` strings — the membership basis for
  * {@link isNode}. A bare `'type' in x` is NOT a sound node test: the value domain
  * (`ValueObj`) now also carries a PascalCase `type` (`'Dimension'`/`'Color'`/…),
  * so a property test would misclassify an eval RESULT as an AST node. Membership
@@ -89,6 +91,7 @@ export const AST_NODE_TYPES: ReadonlySet<string> = new Set<NodeType>([
   'Sequence', 'Operation', 'FunctionCall', 'Paren',
   'AtRuleBlock', 'AtRuleStatement', 'Interp', 'VarIndirect',
   'DetachedRuleset', 'MapAccessor', 'DetachedCall', 'RawInline',
+  'StyleImport',
 ]);
 
 /** Value predicate for a tree2 AST node (replaces the old `x instanceof Node`). */

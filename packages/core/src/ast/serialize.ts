@@ -51,6 +51,7 @@ import type {
   Rule,
   Simple,
   SelectorList,
+  StyleImport,
   Statement,
   ValueNode,
   VarIndirect,
@@ -877,6 +878,10 @@ export function serialize(root: Root, options?: SerializeOptions): SerializeRetu
       case 'RawInline':
         emitRawInline(child, e);
         break;
+      // [import] an unresolved import the resolution pass left in place.
+      case 'StyleImport':
+        emitStyleImport(child, e);
+        break;
     }
   }
   if (e.positions) e.positions.push({ node: root, type: root.type, start, end: e.off });
@@ -1306,6 +1311,18 @@ function emitRawInline(node: RawInline, e: Emit): void {
   const start = e.off;
   put(e, node.text);
   put(e, '\n');
+  if (e.positions) e.positions.push({ node, type: node.type, start, end: e.off });
+}
+
+/**
+ * [import] Emit an UNRESOLVED `@import` verbatim. The import-resolution pass
+ * normally replaces every `StyleImport` before serialize runs, so this reaches
+ * the emitter only for a CSS-passthrough / deferred import the pass left in
+ * place — where re-emitting the authored `@import …;` bytes is the correct output.
+ */
+function emitStyleImport(node: StyleImport, e: Emit): void {
+  const start = e.off;
+  put(e, node.raw);
   if (e.positions) e.positions.push({ node, type: node.type, start, end: e.off });
 }
 

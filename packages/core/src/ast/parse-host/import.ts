@@ -30,7 +30,8 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { parseLessFn } from '@jesscss/less-parser';
 import type * as t2 from '../index.js';
-import { rawInline as rawInlineStatement } from '../index.js';
+import { rawInline as rawInlineStatement, styleImport } from '../index.js';
+import type { BuildArgs, Span } from './host-context.js';
 
 /** Shared, mutable state threaded through a whole (recursive) bridge run. */
 export interface ImportState {
@@ -251,6 +252,8 @@ interface ImportFlags {
   multiple: boolean;
   inline: boolean;
   escaped: boolean;
+  /** Explicit `(css)` option — force CSS-passthrough regardless of extension. */
+  css?: boolean;
 }
 
 /**
@@ -288,6 +291,7 @@ function readFlags(node: AnyNode): ImportFlags {
  * test below. Only an explicit `(css)` option or a `.css`/remote target is CSS.
  */
 function isCssPassthrough(spec: string, flags: ImportFlags): boolean {
+  if (flags.css === true) return true;
   const lower = spec.toLowerCase();
   if (/\.css([?#].*)?$/.test(lower)) return true;
   return lower.startsWith('http://') || lower.startsWith('https://') || lower.startsWith('//');
@@ -342,16 +346,32 @@ export function resolveImportStatements(
 
   const flags = readFlags(node);
   if (flags.escaped) unsupported('import:escaped-path', spec);
+  if (flags.inline && hasPostlude(node)) unsupported('import:inline-media', spec);
 
   const fromDir = fromFilePath ? path.dirname(fromFilePath) : process.cwd();
+  return spliceImport(spec, flags, fromDir, state, bridgeBody, unsupported);
+}
 
+/**
+ * The shape-neutral import RESOLUTION tail, shared by the bridge (`StyleImport`
+ * legacy node) and the direct build host (`t2.StyleImport`): given the already-
+ * extracted specifier + option flags + importing directory, apply Less's
+ * inline / css-passthrough / once / multiple / cycle / reference semantics and
+ * return the statements to splice at the import site. `bridgeBody` parses +
+ * (recursively) resolves the imported file's source into tree2 statements.
+ */
+function spliceImport(
+  spec: string,
+  flags: ImportFlags,
+  fromDir: string,
+  state: ImportState,
+  bridgeBody: (source: string, filePath: string, state: ImportState) => t2.Statement[],
+  unsupported: (feature: string, detail: string) => never,
+): t2.Statement[] {
   // [import:inline] `@import (inline) "x"` splices the target file's RAW bytes
   // verbatim (unparsed, unreformatted) at the import site. A media-query postlude
-  // (`@import (inline) "x" (min-width:…)`) would wrap the raw bytes in an @media
-  // block — that shape needs the postlude query serialized as a prelude and is
-  // deferred, so only the plain top-level inline splice is produced here.
+  // wrap is deferred by the caller; only the plain inline splice is produced here.
   if (flags.inline) {
-    if (hasPostlude(node)) unsupported('import:inline-media', spec);
     const rawPath = resolveLessPath(spec, fromDir);
     if (rawPath === null) {
       if (flags.optional) return [];
@@ -393,7 +413,9 @@ export function resolveImportStatements(
 
   // `(reference)` suppresses OUTPUT (scope/extend still run in the full engine).
   // For the no-extend fixtures tree2 covers, that means: keep only definition
-  // statements (which emit nothing) so downstream references still resolve.
+  // statements (which emit nothing) so downstream references still resolve. A
+  // reference-imported rule pulled into visibility by `:extend` is a deferred
+  // trap (see import-modes-byte-identity); the census counts it, no mis-emit.
   if (flags.reference) return statements.filter(isDefinitionStatement);
 
   return statements;
@@ -402,4 +424,208 @@ export function resolveImportStatements(
 /** A statement that emits no bytes on its own (contributes only scope). */
 function isDefinitionStatement(s: t2.Statement): boolean {
   return s.type === 'VarDeclaration' || s.type === 'MixinDef';
+}
+
+/* ============================================================ DIRECT HOST ==
+ * The tree2 build host delivers `@import` as a STRUCTURED `AtRuleStatement`
+ * shape: the option keywords, the built path `Word`, and the media postlude
+ * arrive as separated children (P0 — the parser owns the structure). The build
+ * host turns that head into a `t2.StyleImport` node (`buildStyleImportNode`),
+ * which the post-parse pass (`resolveDirectImports`) resolves via the SAME
+ * `spliceImport` tail the bridge uses — one resolution semantics, two front ends.
+ */
+
+/** A parseman child leaf `{ _tag:'leaf', value, span }`. */
+interface ImportLeaf {
+  readonly _tag?: string;
+  readonly value?: unknown;
+  readonly span?: Span;
+}
+function importLeafValue(x: unknown): string | undefined {
+  const leaf = x as ImportLeaf | undefined;
+  return leaf?._tag === 'leaf' && typeof leaf.value === 'string' ? leaf.value : undefined;
+}
+
+/** The at-keyword that opens a Less import statement (`@import`/`@-import`/`@-export`). */
+const IMPORT_KEYWORD_RE = /^@(?:-import|-export|import)$/i;
+
+/**
+ * The specifier string a built path `Word` carries, plus whether it is variable-
+ * interpolated (`@{…}`) — which the direct host defers (emitting the import
+ * verbatim) rather than resolving. A `Quoted` word carries its inner text in
+ * `lit.value`; a `url(…)` word (untagged) carries `url(target)` in `text`, whose
+ * target is unwrapped here.
+ */
+function directSpecifier(pathNode: t2.Word): { spec: string | null; interpolated: boolean } {
+  const lit = pathNode.lit;
+  const raw =
+    lit && 'value' in lit
+      ? lit.value
+      : unwrapUrl(pathNode.text);
+  if (raw === null) return { spec: null, interpolated: false };
+  const interpolated = raw.includes('@{') || raw.includes('@@');
+  return { spec: interpolated ? null : raw, interpolated };
+}
+
+/** Unwrap a `url( … )` word to its inner target (quotes stripped), else null. */
+function unwrapUrl(text: string): string | null {
+  const m = /^url\(\s*(.*?)\s*\)$/is.exec(text);
+  if (m === null) return null;
+  const inner = m[1] ?? '';
+  const q = inner[0];
+  return (q === '"' || q === "'") && inner.endsWith(q) ? inner.slice(1, -1) : inner;
+}
+
+/** Parse the `(option, …)` keyword list into resolution flags. */
+function flagsFromOptions(options: string): ImportFlags {
+  const set = new Set(
+    options
+      .split(/[,\s]+/)
+      .map((s) => s.trim().toLowerCase())
+      .filter((s) => s.length > 0),
+  );
+  return {
+    reference: set.has('reference'),
+    optional: set.has('optional'),
+    // `once` is the default; `multiple` opts out of dedup.
+    multiple: set.has('multiple') && !set.has('once'),
+    inline: set.has('inline'),
+    escaped: false,
+    css: set.has('css') && !set.has('less'),
+  };
+}
+
+/**
+ * Build a `t2.StyleImport` from the direct host's structured import children, or
+ * return `null` when the shape is NOT an import (a generic `@charset`/`@namespace`
+ * statement) — the charset family then falls back to a generic `AtRuleStatement`.
+ * The import shape is recognised by the import keyword plus a built path `Word`
+ * child (a generic statement carries only leaves).
+ */
+export function buildStyleImportNode(args: BuildArgs): t2.StyleImport | null {
+  const children = args.children;
+  const name = importLeafValue(children[0]);
+  if (name === undefined || !IMPORT_KEYWORD_RE.test(name)) return null;
+
+  // Locate the built path Word (the sole non-leaf child) and the option leaf.
+  let pathNode: t2.Word | undefined;
+  let options = '';
+  let media: string | null = null;
+  let seenPath = false;
+  for (let i = 1; i < children.length; i++) {
+    const child = children[i];
+    const leaf = importLeafValue(child);
+    if (leaf !== undefined) {
+      if (leaf === '(' || leaf === ')') continue;
+      if (leaf === ';') continue;
+      // A leaf before the path is the `(options)` body; a leaf after it (that is
+      // not `;`) is the media postlude the grammar scanned to the terminator.
+      if (!seenPath) options = leaf;
+      else media = leaf.trim() || null;
+      continue;
+    }
+    // The first (and only) non-leaf child is the path Word.
+    if (!seenPath && isWordNode(child)) {
+      pathNode = child;
+      seenPath = true;
+    }
+  }
+  if (pathNode === undefined) return null;
+
+  const { spec } = directSpecifier(pathNode);
+  const flags = flagsFromOptions(options);
+  const raw = args.ctx.src.slice(args.span.start, args.span.end);
+  return styleImport({
+    raw,
+    spec,
+    reference: flags.reference,
+    optional: flags.optional,
+    multiple: flags.multiple,
+    inline: flags.inline,
+    css: flags.css === true,
+    escaped: false,
+    media,
+  });
+}
+
+function isWordNode(x: unknown): x is t2.Word {
+  return !!x && typeof x === 'object' && (x as { type?: unknown }).type === 'Word';
+}
+
+/** The resolution flags carried on a `t2.StyleImport`. */
+function directFlags(imp: t2.StyleImport): ImportFlags {
+  return {
+    reference: imp.reference,
+    optional: imp.optional,
+    multiple: imp.multiple,
+    inline: imp.inline,
+    escaped: imp.escaped,
+    css: imp.css,
+  };
+}
+
+/**
+ * Resolve every `@import` in a direct-host statement list, recursively: each
+ * `StyleImport` is replaced in place by the imported file's spliced statements
+ * (applying once / multiple / reference / optional / inline semantics via the
+ * shared `spliceImport`), and imports nested inside `Rule` / `AtRuleBlock` bodies
+ * resolve too. `parse` turns imported SOURCE into the direct host's top-level
+ * statements (injected to keep this module free of a hard cycle with the host).
+ *
+ * A deferred shape (interpolated / escaped path, or a CSS-passthrough import) —
+ * or a genuinely unresolvable non-optional target — leaves the `StyleImport` node
+ * in place, so the serializer emits the authored `@import …;` verbatim rather than
+ * mis-resolving or aborting the whole render. `onDefer` is notified with the
+ * feature tag for each such import (the driver surfaces it as a diagnostic).
+ */
+export function resolveDirectImports(
+  statements: readonly t2.Statement[],
+  fromFilePath: string | undefined,
+  state: ImportState,
+  parse: (source: string) => t2.Statement[],
+  onDefer?: (feature: string, detail: string) => void,
+): t2.Statement[] {
+  if (state.entry.file === undefined && fromFilePath !== undefined) state.entry.file = fromFilePath;
+  const raise = (feature: string, detail: string): never => {
+    throw new ImportDeferral(feature, detail);
+  };
+  const bridgeBody = (source: string, filePath: string, st: ImportState): t2.Statement[] =>
+    resolveDirectImports(parse(source), filePath, st, parse, onDefer);
+
+  const out: t2.Statement[] = [];
+  for (const s of statements) {
+    if (s.type === 'StyleImport') {
+      const spec = s.spec;
+      if (spec === null) {
+        // An interpolated / opaque path — the direct host defers it verbatim.
+        onDefer?.('import:specifier', 'interpolated/opaque path');
+        out.push(s);
+        continue;
+      }
+      try {
+        const fromDir = fromFilePath ? path.dirname(fromFilePath) : process.cwd();
+        const spliced = spliceImport(spec, directFlags(s), fromDir, state, bridgeBody, raise);
+        for (const r of spliced) out.push(r);
+      } catch (e) {
+        if (!(e instanceof ImportDeferral)) throw e;
+        onDefer?.(e.feature, e.detail);
+        out.push(s); // leave the import verbatim
+      }
+    } else if (s.type === 'Rule') {
+      out.push({ ...s, body: resolveDirectImports(s.body, fromFilePath, state, parse, onDefer) });
+    } else if (s.type === 'AtRuleBlock') {
+      out.push({ ...s, body: resolveDirectImports(s.body, fromFilePath, state, parse, onDefer) });
+    } else {
+      out.push(s);
+    }
+  }
+  return out;
+}
+
+/** A deferred / unresolvable import, caught per-import to fall back to verbatim. */
+class ImportDeferral extends Error {
+  constructor(readonly feature: string, readonly detail: string) {
+    super(`${feature}: ${detail}`);
+    this.name = 'ImportDeferral';
+  }
 }

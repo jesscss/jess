@@ -13,11 +13,11 @@
  *
  * The `@import` production shares this type but structures its prelude differently
  * (a `Quoted`/`Url` value node + optional `(options)` paren + media leaf, NOT a
- * single `atPrelude` leaf). A dedicated import family should consume those
- * structured children; until it exists (TODO(tier-b)), the import shape falls back
- * to recovering the prelude bytes between the keyword leaf and the `;` leaf — a
- * span the parser DID structure at both ends. import-bridge owns import RESOLUTION;
- * this node only carries the unresolved head.
+ * single `atPrelude` leaf). This action routes that shape to `buildStyleImportNode`
+ * (import.ts), which consumes the structured children into a `StyleImport` head;
+ * the post-parse `resolveDirectImports` pass then resolves + inlines it. A generic
+ * statement (`@charset`/`@namespace`/`@layer a, b;`) is not an import, so the
+ * import builder returns `null` and this action builds a plain `AtRuleStatement`.
  *
  * The v5 hoist-first / dedupe-rest `@charset` semantics live entirely in the
  * serializer (`emitHoistedCharset`); this family only BUILDS the node.
@@ -28,6 +28,7 @@
  */
 import * as t2 from '../../index.js';
 import { type BuildAction, type BuildArgs, type Placeholder, type Span, placeholder } from '../host-context.js';
+import { buildStyleImportNode } from '../import.js';
 
 interface Leaf {
   readonly _tag?: string;
@@ -51,14 +52,14 @@ function leafSpan(x: unknown): Span | undefined {
  * node, not a leaf — the prelude bytes are recovered from between the keyword and
  * the terminating `;` leaf.
  */
-function buildAtRuleStatement(args: BuildArgs): t2.AtRuleStatement | Placeholder {
+function buildAtRuleStatement(args: BuildArgs): t2.AtRuleStatement | t2.StyleImport | Placeholder {
   const name = leafValue(args.children[0]);
   if (name === undefined || name[0] !== '@') return placeholder(args.type);
 
   // Generic case: `sequence(atKeyword, atPrelude?, ';')` — always 2 or 3 children,
   // the prelude a single leaf. The `@import` production sharing this type always
   // has a NODE child (its `Quoted`/`Url` path) or MORE children (options paren /
-  // media), so it never matches this shape and takes the fallback below.
+  // media), so it never matches this shape and takes the import path below.
   const n = args.children.length;
   if (n <= 3) {
     const mid = n === 3 ? leafValue(args.children[1]) : undefined;
@@ -68,10 +69,16 @@ function buildAtRuleStatement(args: BuildArgs): t2.AtRuleStatement | Placeholder
     }
   }
 
-  // TODO(tier-b): PARSER GAP — the `@import` production shares this type but does
-  // not structure its prelude as a single leaf; recover the bytes between the
-  // keyword leaf and the terminating `;` leaf until an import family consumes the
-  // structured `Url`/`Quoted`/options children.
+  // The `@import` production shares this type but structures its prelude as a
+  // built path Word plus separated option / media leaves (P0). The import family
+  // consumes those structured children into a `StyleImport` head that the
+  // post-parse pass resolves. A non-import statement returns `null` here and
+  // falls through to the raw-head recovery below.
+  const imp = buildStyleImportNode(args);
+  if (imp !== null) return imp;
+
+  // A statement-form at-rule whose prelude the grammar did not split into a single
+  // leaf: recover the bytes between the keyword leaf and the terminating `;` leaf.
   const kwEnd = leafSpan(args.children[0])?.end ?? args.span.start;
   const semi = leafSpan(args.children[args.children.length - 1])?.start ?? args.span.end;
   const prelude = args.ctx.src.slice(kwEnd, semi).trim();

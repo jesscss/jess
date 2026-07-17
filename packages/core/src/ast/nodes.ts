@@ -358,6 +358,42 @@ export interface RawInline {
 }
 
 /**
+ * [import] An UNRESOLVED `@import` statement on the direct build host — the
+ * structural head the parser delivered, carried until the import-resolution pass
+ * (`resolveDirectImports`) replaces it with the imported file's spliced
+ * statements. The pass reads the STRUCTURE the parser already separated (the
+ * option keywords, the built path node, the media postlude) — never re-scanning
+ * bytes — mirroring the bridge's `StyleImport` handling but on the tree2 host.
+ *
+ * `spec` is the resolved specifier string (a plain-string / `url(...)` path), or
+ * `null` when the path is variable-interpolated (`@import "@{theme}.less"`) — a
+ * shape the direct host defers to verbatim emit rather than mis-resolving.
+ * `raw` is the verbatim `@import …;` source, emitted as-is if the pass leaves the
+ * node in place (a CSS-passthrough import, or an unresolved deferral).
+ */
+export interface StyleImport {
+  readonly type: 'StyleImport';
+  /** Verbatim `@import …;` source bytes (the fallback / passthrough emit). */
+  readonly raw: string;
+  /** Resolved specifier string, or `null` for an interpolated / opaque path. */
+  readonly spec: string | null;
+  /** `(reference)` — resolve + scope, suppress own output. */
+  readonly reference: boolean;
+  /** `(optional)` — a missing target is swallowed, not an error. */
+  readonly optional: boolean;
+  /** `(multiple)` / the non-default re-import-at-every-position mode. */
+  readonly multiple: boolean;
+  /** `(inline)` — splice the target's RAW bytes unparsed. */
+  readonly inline: boolean;
+  /** `(css)` explicit, or a `.css` / remote target — emit the `@import` verbatim. */
+  readonly css: boolean;
+  /** An escaped `~"…"` path (deferred; emitted verbatim). */
+  readonly escaped: boolean;
+  /** Media-query postlude bytes (`@import (inline) "x" (min-width:…)`), else `null`. */
+  readonly media: string | null;
+}
+
+/**
  * One `:extend()` instruction extracted from a ruleset body (or an attached
  * `.a:extend(...)`). The SUBJECT (the thing appended / substituted-in) is the
  * carrying Rule's own selector list; `target` is the FIND selector list;
@@ -462,7 +498,8 @@ export type Statement =
   | AtRuleBlock
   | AtRuleStatement
   | DetachedCall
-  | RawInline;
+  | RawInline
+  | StyleImport;
 
 /* ------------------------------------------------------------ constructors */
 
@@ -516,6 +553,9 @@ export const decl = (
 export const comment = (text: string): Comment => ({ type: 'Comment', text });
 /** [import:inline] A verbatim raw-bytes statement (`@import (inline)` splice). */
 export const rawInline = (text: string): RawInline => ({ type: 'RawInline', text });
+/** [import] An unresolved `@import` head (see {@link StyleImport}). */
+export const styleImport = (fields: Omit<StyleImport, 'type'>): StyleImport =>
+  ({ type: 'StyleImport', ...fields });
 export const varRef = (name: string): VarRef => ({ type: 'VarRef', name });
 export const sequence = (parts: ValueNode[]): Sequence => ({ type: 'Sequence', parts });
 /** @deprecated Renamed to {@link sequence}; kept one cycle for straddling callers. */

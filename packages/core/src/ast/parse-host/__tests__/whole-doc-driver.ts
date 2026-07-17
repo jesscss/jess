@@ -18,20 +18,23 @@
  * EVALUATOR is injected (mirroring `serialize`'s evaluator seam) so the fns
  * registry is the caller's choice.
  *
- * Import threading: `filePath` is carried so import resolution can resolve a
+ * Import threading: `filePath` is carried so import resolution resolves a
  * specifier against the file's own directory (`import.ts` otherwise falls back to
- * `process.cwd()`). The direct dispatch host does not yet WIRE import resolution
- * (resolution today lives only on the bridge path), so a `filePath` is accepted +
- * reported but only becomes load-bearing once an import action lands on the direct
- * host. See `BENCHMARK-AST-FAILURE-INVENTORY.md` (gap G5).
+ * `process.cwd()`). After the parse, `resolveDirectImports` walks the built root,
+ * resolving each `@import` by parsing the target through this SAME direct pipeline
+ * and splicing its statements at the import site (once / multiple / reference /
+ * optional / inline — gap G5). A deferred shape (interpolated / CSS-passthrough
+ * path) stays verbatim and is reported on `deferredImports`.
  */
 import * as fs from 'node:fs';
 import { isThenable } from '@jesscss/awaitable-pipe';
 import { lessGrammar } from '@jesscss/less-parser';
 import { serialize } from '../../index.js';
+import type { Root, Statement } from '../../index.js';
 import type { SerializeResult } from '../../serialize.js';
 import type { ValueEvaluator } from '../../value-eval.js';
 import { parseToAst } from '../dispatch-host.js';
+import { createImportState, resolveDirectImports } from '../import.js';
 
 const g = lessGrammar as Record<string, unknown>;
 
@@ -42,6 +45,8 @@ export interface AstRenderResult {
   parseErrors: Array<{ message: string; offset?: number }>;
   /** A throw captured during parse/serialize (e.g. `UnsupportedShape`), or `null`. */
   threw: Error | null;
+  /** `@import`s left verbatim (deferred shape / unresolved) with their feature tag. */
+  deferredImports: Array<{ feature: string; detail: string }>;
 }
 
 export interface AstRenderOptions {
@@ -71,6 +76,7 @@ function requireSync(r: ReturnType<typeof serialize>): SerializeResult {
  * Never throws: any parse/serialize throw is captured on `.threw`.
  */
 export function renderAstDoc(src: string, options: AstRenderOptions = {}): AstRenderResult {
+  const deferredImports: Array<{ feature: string; detail: string }> = [];
   try {
     const grammar = options.grammar ?? g['Stylesheet'];
     const trivia = options.trivia ?? g['rw'];
@@ -79,13 +85,30 @@ export function renderAstDoc(src: string, options: AstRenderOptions = {}): AstRe
       return {
         css: undefined,
         parseErrors: errors,
-        threw: new Error(`parseToAst produced no root (parse errors: ${JSON.stringify(errors)})`)
+        threw: new Error(`parseToAst produced no root (parse errors: ${JSON.stringify(errors)})`),
+        deferredImports,
       };
     }
-    const { css } = requireSync(serialize(root, { evaluator: options.evaluator }));
-    return { css, parseErrors: errors, threw: null };
+    // [import G5] Resolve + inline `@import`s on the direct host: parse each
+    // imported file through the SAME direct pipeline and splice its statements at
+    // the import site (once / multiple / reference / optional / inline semantics
+    // in `resolveDirectImports`). Deferred shapes stay verbatim (see driver doc).
+    const parse = (source: string): Statement[] => {
+      const res = parseToAst(source, grammar, undefined, { trivia });
+      return res.root ? res.root.children : [];
+    };
+    const resolved = resolveDirectImports(
+      root.children,
+      options.filePath,
+      createImportState(),
+      parse,
+      (feature, detail) => deferredImports.push({ feature, detail }),
+    );
+    const resolvedRoot: Root = { ...root, children: resolved };
+    const { css } = requireSync(serialize(resolvedRoot, { evaluator: options.evaluator }));
+    return { css, parseErrors: errors, threw: null, deferredImports };
   } catch (e) {
-    return { css: undefined, parseErrors: [], threw: e instanceof Error ? e : new Error(String(e)) };
+    return { css: undefined, parseErrors: [], threw: e instanceof Error ? e : new Error(String(e)), deferredImports };
   }
 }
 

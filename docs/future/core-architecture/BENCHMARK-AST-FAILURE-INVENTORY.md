@@ -164,19 +164,33 @@ driver AND confirmed against the parser's emitted node type.
   lookup. Map/accessor VALUE forms (`@map[@key]`) have engine support too
   (`serialize.ts:494` `MapAccessor`) and are not used by benchmark.less.
 
-### G5 — `@import` handling on the direct path
+### G5 — `@import` handling on the direct path — **RESOLVED (feat/import-reference)**
 - benchmark.less's two top-level `@import`s target **0-byte** files (a plain one +
   a `(reference)` one), so they contribute no output either way. But the direct host
-  has **no import action**: it emits the two `@import` lines **verbatim** (~102
-  bytes), whereas the oracle resolves+drops them. For a non-empty or `(reference)`
-  import with real content, the direct path would **not** resolve/inline it at all —
-  import RESOLUTION today lives only on the bridge (`import.ts` `resolveImportStatements`
-  is called solely from `__tests__/bridge.ts`), not on the dispatch host.
-- **`fromFilePath`/`fromDir` threading:** the driver already accepts + carries
-  `filePath`; the trivial `process.cwd()` fallback (`import.ts:346`) is a non-issue
-  once an import action is wired to the direct host and threaded the path. That
-  wiring (porting `resolveImportStatements` onto a dispatch-host action) is the real
-  T4 work; it is **S–M** and **independent of `serialize.ts`**.
+  had **no import action**: it emitted the two `@import` lines **verbatim** (~102
+  bytes), whereas the oracle resolves+drops them.
+- **Now wired.** The direct host builds a structured `t2.StyleImport` node
+  (`actions/charset.ts` → `import.ts` `buildStyleImportNode`, consuming the parser's
+  separated option / path-`Word` / media children — P0, no byte re-derivation), and
+  the whole-doc driver runs a post-parse `resolveDirectImports` pass that parses each
+  target through the SAME direct pipeline and splices its statements at the import
+  site. Resolution SEMANTICS (once / multiple / `(reference)` / optional / inline /
+  cycle) are shared verbatim with the bridge via a factored `spliceImport` tail —
+  one semantics, two front ends. `(reference)` keeps only definition statements
+  (var / mixin-def), suppressing the imported file's own top-level rules.
+- **Benchmark effect:** the two verbatim `@import` lines now resolve away (empty
+  targets → nothing); oracle diff **2788 → 2786 lines** (−2), css `102849 → 102747`
+  bytes. Modest because the targets are empty — the value is the correct RESOLUTION
+  machinery, verified byte-identically on the `plain-` / `once-` / `ref-direct-`
+  fixtures (`__tests__/import-direct-byte-identity.test.ts`).
+- **Known direct-path limits (flagged):** a variable-INTERPOLATED specifier
+  (`@import "@{theme}.less"`) and a CSS-passthrough (`(css)` / `.css` / remote)
+  import are DEFERRED verbatim (reported on `deferredImports`), not mis-resolved —
+  the bridge handles interpolated specifiers (tested), the direct host does not yet.
+  A `(reference)` import whose rule is pulled into visibility by `:extend` remains a
+  deferred trap (as on the bridge). The mixin-inclusive `ref-main.less` reference
+  case can't be E2E-verified on the direct path until mixin-CALL expansion (G2)
+  lands — its `.mixin()` call is a G2 gap, orthogonal to reference visibility.
 
 ### Not a gap (verified working — [CORRECTION] vs scout)
 - **Merge `+` / `+_`** — `box-shadow+:` / `transform+_:` / `transition+:` all fold.
