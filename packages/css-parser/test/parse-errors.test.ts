@@ -63,7 +63,11 @@ const DETECTED: Array<[string, string, number, number]> = [
   // percentage-token is valid there — but a bare dimension/number/other ident is not.
   ['keyframes-dimension-selector.css', '}', 1, 16], // `50px` is a dimension-token, not a <percentage>
   ['keyframes-number-selector.css', '}', 1, 16],    // bare `0` is a number-token, not a <percentage>
-  ['keyframes-bad-ident-selector.css', '}', 1, 16]  // `foo` is an ident but not `from`/`to`
+  ['keyframes-bad-ident-selector.css', '}', 1, 16], // `foo` is an ident but not `from`/`to`
+  // An unquoted `url(...)` body is a <url-token>, which may not contain interior
+  // whitespace (css-syntax-3 §4.3.6 — `url(foo bar)` is a <bad-url-token>). The
+  // `url(` open commits, so the trailing `)` is expected right after the body run.
+  ['url-interior-whitespace.css', ')', 1, 17]   // `url(foo bar)` — ws inside unquoted url
 ];
 
 describe('css syntax errors (parseCssFn)', () => {
@@ -99,5 +103,15 @@ describe('css syntax errors (parseCssFn)', () => {
     const src =
       '@keyframes x { 50% { opacity: 1 } from { opacity: 0 } to { opacity: 1 } 0%, 100% { opacity: 1 } }';
     expect(parseCssFn(src).errors).toHaveLength(0);
+  });
+
+  // Counter-cases for the `url(...)` boundary: only interior whitespace in an
+  // unquoted <url-token> is rejected. The plain, whitespace-trimmed, empty, and
+  // quoted-function forms all stay valid.
+  test('valid url() forms parse clean', () => {
+    expect(parseCssFn('.a { x: url(foo) }').errors).toHaveLength(0);   // plain unquoted
+    expect(parseCssFn('.a { x: url( foo ) }').errors).toHaveLength(0); // leading/trailing ws trimmed
+    expect(parseCssFn('.a { x: url() }').errors).toHaveLength(0);      // empty
+    expect(parseCssFn('.a { x: url("a b") }').errors).toHaveLength(0); // quoted function form (ws ok)
   });
 });

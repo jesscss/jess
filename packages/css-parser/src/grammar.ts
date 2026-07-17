@@ -282,10 +282,21 @@ export const cssGrammar = rules({ trivia: rw }, (g: any) => {
   const numeric = node('Numeric', noTrivia(sequence(numPart, optional(unitRegex))));
   /**
    * A `url()` value with an optional quoted or unquoted body.
+   *
+   * `url(` COMMITS: once the token opens, the closing `)` is `expect`ed rather
+   * than a plain `literal`, so the rule can no longer fail-and-backtrack into the
+   * generic `Call` arm. That matters for the unquoted (url-token) body: a
+   * `<url-token>` may not contain interior whitespace (css-syntax-3 §4.3.6 —
+   * `url(foo bar)` is a `<bad-url-token>`), so after the body run the next char
+   * must be `)`; `url(foo bar)` now reports a hard error at `bar` instead of the
+   * `Call` arm silently swallowing `foo bar`. The quoted body (`url("a b")`) is
+   * the function form, where the string may hold whitespace; leading/trailing
+   * whitespace (`url( foo )`) and the empty `url()` stay valid (ambient trivia).
+   * @see https://www.w3.org/TR/css-syntax-3/#consume-url-token
    * @see https://developer.mozilla.org/en-US/docs/Web/CSS/url_function
    */
   const Url = node(
-    sequence(urlOpen, optional(choice(singleStr, doubleStr, urlInner)), literal(')')));
+    sequence(urlOpen, optional(choice(singleStr, doubleStr, urlInner)), expect(literal(')'), ')')));
   /**
    * A function-call argument list — a PERMISSIVE value list (`rgb(255 0 0)`,
    * `min(1px, 2px)` are space / comma lists, not math expressions).
