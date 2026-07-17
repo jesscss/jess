@@ -49,7 +49,8 @@ const DETECTED: Array<[string, string, number, number]> = [
   ['media-no-selector.css', '}', 2, 3],        // bare decl in a TOP-LEVEL @media → strict body → expect('}')
   ['media-decl.css', 'query', 1, 8],           // empty @media query → required prelude missing
   ['media-empty.css', 'query', 1, 8],          // empty @media query + empty body
-  ['supports-no-condition.css', 'query', 1, 11], // empty @supports condition
+  ['supports-no-condition.css', 'supports condition', 1, 11], // empty @supports (no <supports-condition>)
+  ['supports-bare-ident.css', 'supports condition', 1, 11],   // `@supports color` — bare ident, not a condition
   ['import-empty.css', 'import path', 1, 9],     // @import with no path
   // Numeric / dimension tokens in ident-required grammar slots. Per CSS Syntax 3,
   // `1foo` and `.1foo` each tokenize as a single <dimension-token> (greedy numeric
@@ -128,5 +129,19 @@ describe('css syntax errors (parseCssFn)', () => {
     expect(parseCssFn('.a { x: calc(1) }').errors).toHaveLength(0);     // single value
     expect(parseCssFn('.a { x: calc(1 + 2) }').errors).toHaveLength(0); // sum expression
     expect(parseCssFn('.a { x: calc( 1 ) }').errors).toHaveLength(0);   // padded value
+  });
+
+  // Counter-cases for the `@supports` boundary: only `@supports` requires a
+  // `<supports-condition>` (parens / `not` / function). The `@media`/`@container`
+  // bare-query forms stay valid, and every parenthesized/not/function `@supports`
+  // condition — including the custom-property test `(--x: y)` that the structured
+  // path can't feature-parse — is accepted.
+  test('valid conditional-group preludes parse clean', () => {
+    expect(parseCssFn('@supports (color: red) { .a { x: 1 } }').errors).toHaveLength(0);
+    expect(parseCssFn('@supports not (x: y) { .a { x: 1 } }').errors).toHaveLength(0);
+    expect(parseCssFn('@supports (--custom: value) { .a { x: 1 } }').errors).toHaveLength(0);
+    expect(parseCssFn('@supports selector(a > b) { .a { x: 1 } }').errors).toHaveLength(0);
+    expect(parseCssFn('@media screen { .a { x: 1 } }').errors).toHaveLength(0);       // bare media-type stays valid
+    expect(parseCssFn('@container name (width > 0) { .a { x: 1 } }').errors).toHaveLength(0);
   });
 });

@@ -405,6 +405,20 @@ export const cssGrammar = rules({ trivia: rw }, (g: any) => {
   const notDelim = not(choice(literal('{'), literal(';')));
   const reqQueryPrelude = expect(sequence(notDelim, atPreludeScan), 'query');
   const reqImportPrelude = expect(sequence(notDelim, atPreludeScan), 'import path');
+  // `@supports` is stricter than `@media`/`@container`: its prelude is a
+  // `<supports-condition>` (css-conditional-3 §2), which — unlike a media/container
+  // query — has NO bare form. It must OPEN with `(`, the `not` keyword, or a
+  // `<function-token>` (an ident glued to `(`, e.g. `selector(…)` /
+  // `<general-enclosed>`). A bare `@supports color { … }` is invalid. The
+  // well-formed parenthesized/not/function preludes are already taken by the
+  // structured `QueryAtRuleBlock`; this required-condition fallback exists so the
+  // leftovers that reach it (a bare ident, or an empty prelude) report the missing
+  // condition rather than being swallowed by the permissive query fallback (or the
+  // opaque UnknownAtRuleBlock). A zero-width lookahead asserts the opener without
+  // consuming, so the shared `atPreludeScan` still owns the scan to `{`; on failure
+  // `expect` recovers in place and the scan continues, so the block still parses.
+  const supportsCondAhead = regex(/(?=\(|not(?![-\w])|-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*\()/i);
+  const reqSupportsPrelude = sequence(expect(supportsCondAhead, 'supports condition'), atPreludeScan);
   // Known block at-rules are dispatched to a SHAPE-appropriate body per spec
   // (rather than one grab-bag): conditional-group + `@layer` + `@starting-style`
   // are transparent (ambient frame); the descriptor family is declarations-only;
@@ -418,7 +432,10 @@ export const cssGrammar = rules({ trivia: rw }, (g: any) => {
   // rather than the structured QueryAtRuleBlock. These still REQUIRE a query — an
   // empty query (`@media {}`) is a real error — so they take a `reqQueryPrelude`
   // arm. Their body is the ambient frame (transparent), like QueryAtRuleBlock.
-  const queryFallbackAtKeyword = regex(/@(?:media|container|supports)(?![-\w])/i);
+  // `@supports` is EXCLUDED here (it has no bare query form) and dispatched via
+  // its own `supportsFallbackAtKeyword`/`reqSupportsPrelude` arm below.
+  const queryFallbackAtKeyword = regex(/@(?:media|container)(?![-\w])/i);
+  const supportsFallbackAtKeyword = regex(/@supports(?![-\w])/i);
   // `@starting-style` is transparent (no prelude), like the conditional group.
   const startingStyleAtKeyword = regex(/@starting-style(?![-\w])/i);
   // `@layer <name> { }` block form (the `@layer a, b;` statement form is an
@@ -554,6 +571,7 @@ export const cssGrammar = rules({ trivia: rw }, (g: any) => {
    */
   const AtRuleBlock = node(choice(
     sequence(queryFallbackAtKeyword, reqQueryPrelude, literal('{'), g.declarationList, expect(literal('}'), '}')),
+    sequence(supportsFallbackAtKeyword, reqSupportsPrelude, literal('{'), g.declarationList, expect(literal('}'), '}')),
     sequence(startingStyleAtKeyword, atPrelude, literal('{'), g.declarationList, expect(literal('}'), '}')),
     sequence(layerAtKeyword, atPrelude, literal('{'), g.declarationList, expect(literal('}'), '}')),
     sharedKnownArms));
@@ -566,6 +584,7 @@ export const cssGrammar = rules({ trivia: rw }, (g: any) => {
    */
   const AtRuleBlockTop = node('AtRuleBlock', choice(
     sequence(queryFallbackAtKeyword, reqQueryPrelude, literal('{'), g.stylesheetBody, expect(literal('}'), '}')),
+    sequence(supportsFallbackAtKeyword, reqSupportsPrelude, literal('{'), g.stylesheetBody, expect(literal('}'), '}')),
     sequence(startingStyleAtKeyword, atPrelude, literal('{'), g.stylesheetBody, expect(literal('}'), '}')),
     sequence(layerAtKeyword, atPrelude, literal('{'), g.stylesheetBody, expect(literal('}'), '}')),
     sharedKnownArms));
