@@ -38,6 +38,17 @@ export interface Selection {
 }
 
 /**
+ * Resolve a DEFAULT param value to bytes. Unlike a call arg (resolved in the
+ * caller frame), a default value is evaluated with the params bound SO FAR in
+ * scope (Less semantics: `@hover-background: darken(@background, 7.5%)` reads the
+ * `@background` param, not a caller variable). `boundSoFar` is the in-progress
+ * binding map (params in parameter order); the callee threads it to an overlay
+ * frame. Absent (dispatch without a frame context), defaults fall back to the
+ * caller resolver.
+ */
+export type DefaultResolver = (v: ValueNode, boundSoFar: Map<string, ValueNode>) => string;
+
+/**
  * Bind a call's args to a definition's params. Returns the binding map, or
  * `null` if the def cannot accept these args (arity / pattern mismatch).
  * Args are resolved EAGERLY to byte literals in the CALLER frame (Less
@@ -47,6 +58,7 @@ export function bindArgs(
   def: MixinDef,
   call: MixinCall,
   resolveCaller: ValueResolver,
+  resolveDefault?: DefaultResolver,
 ): Map<string, ValueNode> | null {
   const params = def.params;
   const positional: CallArg[] = [];
@@ -82,7 +94,9 @@ export function bindArgs(
     } else if (pi < positional.length) {
       argVal = resolveEager(positional[pi++]!.value, resolveCaller);
     } else if (p.default !== undefined) {
-      argVal = resolveEager(p.default, resolveCaller);
+      // A default value resolves with the params bound so far in scope (Less:
+      // it can reference an earlier param), not the caller frame.
+      argVal = resolveEagerDefault(p.default, bound, resolveCaller, resolveDefault);
     } else {
       return null; // required slot unfilled
     }
@@ -138,6 +152,21 @@ function resolveEager(v: ValueNode, resolveCaller: ValueResolver): ValueNode {
   return word(resolveCaller(v));
 }
 
+/** Eager-resolve a DEFAULT param value with the params-bound-so-far overlay
+ * (see `DefaultResolver`). By-reference cases (detached ruleset / tagged Word)
+ * survive exactly as a call arg does; everything else byte-flattens through the
+ * default resolver (falling back to the caller resolver when none is supplied). */
+function resolveEagerDefault(
+  v: ValueNode,
+  boundSoFar: Map<string, ValueNode>,
+  resolveCaller: ValueResolver,
+  resolveDefault?: DefaultResolver,
+): ValueNode {
+  if (v.type === 'DetachedRuleset') return v;
+  if (v.type === 'Word' && v.tag !== undefined) return v;
+  return word(resolveDefault ? resolveDefault(v, boundSoFar) : resolveCaller(v));
+}
+
 function valueBytes(v: ValueNode): string {
   // After eager resolution every arg is a Word carrying its bytes.
   return v.type === 'Word' ? v.text : '';
@@ -156,12 +185,13 @@ export function selectDefinitions(
   makeCalleeTyped: (bindings: Map<string, ValueNode> | null) => TypedResolver,
   ev: ValueEvaluator | null,
   modes: EvalModes,
+  resolveDefault?: DefaultResolver,
 ): Selection[] {
   // Arity + literal-pattern pre-filter (guard-independent).
   const viable: Array<{ def: MixinDef; bindings: Map<string, ValueNode> | null; order: number }> = [];
   for (let i = 0; i < candidates.length; i++) {
     const def = candidates[i]!;
-    const bindings = bindArgs(def, call, resolveCaller);
+    const bindings = bindArgs(def, call, resolveCaller, resolveDefault);
     if (bindings === null) continue;
     viable.push({ def, bindings, order: i });
   }

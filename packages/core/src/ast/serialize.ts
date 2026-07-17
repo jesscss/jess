@@ -76,7 +76,7 @@ import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { LiteralTag, type LitFields, tagForWord } from './literal-tag.js'; // [value-literal-tag]
 import { calcInner } from './value-operate.js'; // [calc]
 import { makeKeyword } from './value-factory.js'; // [calc]
-import { selectDefinitions, type Selection } from './mixin-dispatch.js'; // [guards]
+import { selectDefinitions, type Selection, type DefaultResolver } from './mixin-dispatch.js'; // [guards]
 import type { ValueResolver, TypedResolver } from './guard.js'; // [guards]
 import { computeExtends, type ExtendResults } from './extend.js'; // [extend]
 
@@ -1767,11 +1767,20 @@ function dispatch(candidates: MixinDef[], call: MixinCall, frame: Frame, e: Eval
   const resolveCaller = makeResolver(frame, e);
   const makeCalleeTyped = (bindings: Map<string, ValueNode> | null): TypedResolver =>
     makeTypedResolver({ parent: frame, mixins: null, vars: asStacks(bindings) }, e);
+  // A DEFAULT param value resolves with the params bound so far in scope (Less:
+  // `@hover-background: darken(@background, …)` reads the `@background` param).
+  // Overlay the params-so-far onto the caller frame and resolve there.
+  const resolveDefault: DefaultResolver = (v, boundSoFar) => {
+    const overlay: Frame = { parent: frame, mixins: null, vars: asStacks(boundSoFar) };
+    const b = evalBytes(v, overlay, e);
+    if (isThenable(b)) throw new Error('async value in a synchronous dispatch position');
+    return b;
+  };
   // an arg that is a variable bound to a detached ruleset must bind BY
   // REFERENCE (its body/closure survives); substitute the resolved node so the
   // eager byte-resolver never tries to serialize a ruleset as a value.
   const call2 = substituteDetachedVarArgs(call, frame);
-  return selectDefinitions(candidates, call2, resolveCaller, makeCalleeTyped, e.ev, e.modes);
+  return selectDefinitions(candidates, call2, resolveCaller, makeCalleeTyped, e.ev, e.modes, resolveDefault);
 }
 
 /** Replace `@rs` args (a VarRef bound to a detached ruleset) with the

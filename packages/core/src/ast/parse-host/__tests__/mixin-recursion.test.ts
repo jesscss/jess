@@ -63,6 +63,16 @@ describe('guarded self-recursive mixin expansion (direct host)', () => {
   it('guard-false single def emits nothing (guard gates, no fallback)', () => {
     expect(render('.m(@t) when (@t > 5) { a: 1; }\n.wrap { .m(3); }')).toBe('');
   });
+
+  it('a default param value resolves against an earlier param, not the caller', () => {
+    // less@4: `@b: @a + 1` in a default value reads the `@a` param bound from the
+    // call arg (not a caller `@a`). The bootstrap `#button-variant(@background,
+    // @border, @hover-background: darken(@background, 7.5%), …)` shape — where the
+    // default references the just-bound param — used to throw `@background is
+    // undefined` because defaults resolved in the caller frame.
+    const src = '.m(@a, @b: @a + 1) { x: @a; y: @b; }\n.wrap { .m(4); }';
+    expect(render(src)).toBe('.wrap {\n  x: 4;\n  y: 5;\n}\n');
+  });
 });
 
 describe('guard-based variant selection (direct host)', () => {
