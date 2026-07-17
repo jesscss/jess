@@ -31,6 +31,11 @@ and required docs.
 - **Patch-shape review:** use `AGGRESSIVE-CUTTING-REVIEW.md` before changing
   AST, eval/render, lookup, traversal, copying, inheritance, output writer,
   source/root metadata, or this router.
+- **ast/ v2 reorg + cleanup sequencing:** use `AST-REORG-EXECUTION.md` (lean live
+  tracker — current order, phase checklist, post-stabilization fan-out) with
+  `AST-COLOCATION-REORG-PLAN.md` for the rationale/proofs. This stream owns the
+  parse-host collapse, leaf `@jesscss/core/ast` export, family co-location,
+  `builders.ts` leaning, `t2`/`tree2` elimination, and the benchmark-oracle gate.
 
 ## Shared Direction
 

@@ -7,6 +7,23 @@ Two coupled reshapes, ONE principle — *grammar owns structure, builder is a th
 **(A) Keystone (§0):** `core/ast/parse-host/` collapses OUT of core; node CONSTRUCTION moves to the parser packages. Core exports a LEAF `@jesscss/core/ast` (node defs + factories, zero engine/value runtime); parsers import it and build v2 nodes as the grammar reduces. `FunctionalParseHost` callback + legacy `BuilderHost` (2 targets) die. Peer objective (§0.11): kill `less-parser/src/builders.ts` regex-recovery (~63 sites) — the maintained builder re-parses the grammar's structured output with regex. **(B) In-core family co-location (§1–§7)** of everything that STAYS: engine/value/expr/selector/rule/mixin/at-rule/extend.
 End state: package graph strictly **parser → core** (acyclic).
 
+## Sequencing (live state — update as items land)
+
+The whole cleanup wave is gated behind a **byte-identical benchmark oracle** so every
+structural cut can prove it changed no output. Order:
+
+1. ✅ **Benchmark number measured** (`fe7c3a789`): ast/ v5 = 55.6 ms median (4.2× faster than legacy tree/ 231 ms; 1.66× the Less.js 4.x 33.5 ms reference). `%()`→`string-format` + `!important` + namespace zero-arg mixin dispatch landed byte-clean.
+2. 🔄 **Gap #3 dedup** (task #27, IN FLIGHT): reverse keep-last-by-(name+value) + overload carve-out (`isFromRestrictedMixinOutput`). Last real byte gap (~114 diff lines); collapses the residual to just the ~135 known-correct v5 divergences (trailing-comment indent, `:is()` compaction — DO NOT TOUCH) + ~68 declared-out-of-scope feature gaps (quoted-string interp loop, `+:` merge). Unblocks a stable oracle.
+3. 🔄 **Non-engine bloat** (task #25, IN FLIGHT, PARALLEL — outside ast/, no collision): jess-error 1000-line demolition + plugin.ts `any` swarm + context.ts/jess-index.ts god-objects.
+4. ⏳ **Tier-B grammar-structuring** (task #6, A0 below — decisions LOCKED: strict `lessInterp`, fix `@keyframes @{n}` inline). HARD PREREQUISITE for the reorg.
+5. ⏳ **`builders.ts` leaning** (§0.11) + **co-location reorg** (Phase A→B below): parse-host dissolves, parser imports leaf `@jesscss/core/ast`, families co-locate, monster files split.
+6. ⏳ **`t2`/`tree2` remnant elimination** (728 occurrences / 51 files) + `Word` interface resolution — folds into Phase B rewrites.
+
+### Post-stabilization fan-out (owner, 2026-07-17) — ONLY after §2–§6 land and ast/ is stabilized
+Once ast/ is clean, a small parallel fan-out is sanctioned:
+- **Invalid-test audit:** one agent audits tests that now assert *internal implementation* (shape/private API) rather than real output — CONVERT to output/contract assertions or DELETE. (Aligns with [[feedback-no-sacred-test-expectations]]: internal tests are freely changeable; only the less-compat bridge contract + intended output bytes are fixed.)
+- **Perf-opportunity profiling:** one agent profiles the stabilized ast/ (parse+build is ~64% of render, serialize+import ~32%) for further wins and DOCUMENTS them in a new `PERF_IDEAS.md` (Jess doc) — candidates only, each measured before any bet per [[feedback-predict-perf-before-building]].
+
 ## LAWS (enforce every step)
 
 - **No regex outside Parseman's `regex()` combinator** (§0.10). Gate: NO ad-hoc `.test/.exec/.match/new RegExp//…/`-literal in builder/action/host/resolve code. `regex()` in `grammar*.ts` is the ONE sanctioned home (may run a real RegExp — fine). Grep MUST be empty per phase.
