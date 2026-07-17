@@ -240,15 +240,21 @@ function buildCall(args: BuildArgs): t2.ValueNode {
 const call: BuildAction = { type: 'Call', build: buildCall };
 
 /**
- * `%( template, args… )` — the deprecated Less `%()` string-format call. The
- * grammar tags it a distinct `FormatCall` (so the bare `%` mod operator is
- * unaffected), but its child run is a normal `name( args )` shape whose name leaf
- * is `%`. We build a PLAIN function call to the existing `%` format fn (registered
- * in `@jesscss/fns` under the name `%`) — no parse-time interpolation lowering; the
- * fn substitutes `%s`/`%d`/`%a` at eval and re-wraps/unwraps the quote exactly as
- * Less 4.x does, so the serialized bytes match the legacy oracle. (A later
- * output-neutral cleanup renames `%`→`str-format` at the parse boundary.)
+ * `%( template, args… )` — the Less `%()` string-format call. The grammar tags it a
+ * distinct `FormatCall` (so the bare `%` mod operator is unaffected), but its child
+ * run is a normal `name( args )` shape whose name leaf is `%`. We lower it to a
+ * PLAIN function call to the public `string-format` fn (`@jesscss/fns`; owner:
+ * whole-word name, not Sass's `str-` abbreviation) — no parse-time interpolation
+ * lowering; the fn substitutes `%s`/`%d`/`%a` at eval and re-wraps/unwraps the quote
+ * exactly as Less 4.x does, so the serialized bytes match the legacy oracle.
  */
-const formatCall: BuildAction = { type: 'FormatCall', build: buildCall };
+const formatCall: BuildAction = {
+  type: 'FormatCall',
+  build: (args) => {
+    const built = buildCall(args);
+    // The name leaf is `%`; lower to the whole-word public fn `string-format`.
+    return built.type === 'FunctionCall' ? t2.funcCall('string-format', built.args, built.modern) : built;
+  },
+};
 
 export const VALUE_EXPR_ACTIONS: readonly BuildAction[] = [operation, operationTop, paren, call, formatCall];

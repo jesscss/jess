@@ -102,7 +102,7 @@ import { argb } from './argb.js';
 import { color } from './color.js';
 // --- string producers (Tier-B — need the value→string serialize hook) ---
 import { replace } from './replace.js';
-import { format } from './format.js';
+import { format, formatPercent } from './format.js';
 import { escape } from './escape.js';
 // --- misc ---
 import { e } from './e.js';
@@ -122,7 +122,7 @@ export const builtinLessFns: readonly Fn[] = [
   contrast,
   multiply, screen, overlay, softlight, hardlight, difference, exclusion, average, negation,
   rgb, rgba, hsl, hsla, hsv, hsva, argb, color,
-  replace, format, escape,
+  replace, format, formatPercent, escape,
   e,
 ];
 
