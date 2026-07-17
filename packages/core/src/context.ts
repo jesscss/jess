@@ -239,9 +239,6 @@ export interface TreeContextOptions extends ContextOptions {
 
     /** Full file contents (recommended for code-frames) */
     source?: string;
-
-    /** Lazy cache of line-start offsets (built on demand) */
-    lines?: Uint32Array;
   };
 
   [k: string]: any;
