@@ -37,6 +37,156 @@ and required docs.
   parse-host collapse, leaf `@jesscss/core/ast` export, family co-location,
   `builders.ts` leaning, `t2`/`tree2` elimination, and the benchmark-oracle gate.
 
+## Settled Design Decisions
+
+Before re-litigating any semantic or design question, check
+**[`DESIGN-DECISIONS.md`](./DESIGN-DECISIONS.md)** — a flat, greppable log of
+SETTLED rulings (merge anchoring, extend folding, verbatim values, variable
+resolution, module/at-rule semantics, output defaults, the no-external-oracle
+epistemics) with a pointer to the detail doc/memory for each. If a decision is
+already there, follow it; only OPEN rows are up for discussion.
+
+## Document Index
+
+Complete map of `docs/future/core-architecture/` and
+`docs/future/parser-architecture/`. One line per doc. Keep this current when adding,
+removing, or retiring a doc. `⚠` flags a duplicate/stale/contradictory doc to merge
+or reconcile later (flagged, NOT deleted). See "Flagged for later merge" at the
+bottom for the consolidated list.
+
+### Entry points & cross-cutting references
+
+| Doc | Purpose |
+|-----|---------|
+| `HANDOFF.md` | THIS router — focus selection, gate rules, cutover state, this index. The entry point (per `CLAUDE.md`). |
+| `DESIGN-DECISIONS.md` | Flat greppable log of SETTLED semantic/design rulings + pointers. |
+| `ORACLE.md` | ⚠ How byte-identity checks fetch the alpha `.css`/`.less`; "oracle/golden" framing superseded by `DESIGN-DECISIONS.md` §0. |
+| `AGGRESSIVE-CUTTING-REVIEW.md` | Patch-shape refusal checklist; run before touching AST/eval/render/lookup/traversal/copy/output/metadata. |
+
+### Architecture & design specs
+
+| Doc | Purpose |
+|-----|---------|
+| `TREE2-CONSTITUTION.md` | The hard bar (P0–P6) for the demolition + rebuild; P0 = parser owns structure. |
+| `TREE2-DESIGN-SPEC.md` | ⚠ Subsystem-by-subsystem design spec for the tree2/ast rewrite. |
+| `TREE2-DEFINITIVE-REWRITE-COVERAGE-AND-ROADMAP.md` | ⚠ Owner-ratified coverage matrix + done-right roadmap (rungs R1–R7). |
+| `UNIFIED-EVAL-EMIT-DESIGN.md` | The settled single-pass eval-and-emit architecture the cutover boards point to. |
+| `UNIFIED-NODE-MODEL-SPEC.md` | ⚠ Owner-pinned unified plain-data node model target. |
+| `AST-V2-STRUCTURE-BLUEPRINT.md` | ⚠ Canonical `ast/` tree structure blueprint + key structural decisions. |
+| `AST-FROM-SCRATCH-DESIGN.md` | Greenfield packed-arena emit POC design (`tree2/`); points to the arena track. |
+| `AST-ARENA-EXPERIMENT-HANDOFF.md` | Standing arena experiment handoff — ELEVATED to THE definitive core rewrite. |
+| `RESOLVER-SHAPE-SPEC.md` | Variable lookup + binding data-shape (frames, DeclIndex, exclusion set) that implements the resolution semantics. |
+| `VALUE-LITERAL-TAG-SPEC.md` | Buildable spec for the value-literal type tag (NODE-SLIM-FOLLOWONS Q1). |
+| `TIER-B-INTERPOLATION-GRAMMAR-SPEC.md` | Design survey: interpolation/quoted/prelude/list structuring in the grammar. |
+| `EXTEND-REDESIGN.md` | `ast/` extend redesign — lazy fast-reject over a shared selector IR. |
+| `FNS-PACKAGE-MIGRATION-SPEC.md` | Design survey for the fns → `@jesscss/fns` package migration. |
+| `ASSIGNABLE-CONTROL-NODES-PLAN.md` | Queued future feature: mixins/`each`/`$for`/`$if` as value-returning nodes. |
+| `STRINGS-OVER-NODES.md` | Reference: how a bare string keeps span + trivia without a node. |
+| `NODE-SLIM-FOLLOWONS.md` | Two follow-on questions to STRINGS-OVER-NODES (literal tag; field slimming). |
+
+### Behavior / semantics references
+
+| Doc | Purpose |
+|-----|---------|
+| `EXTEND-SEMANTICS.md` | ⚠ Contributor-facing canonical extend behavior reference (worked examples); uses "oracle policy" framing. |
+| `VARIABLE-RESOLUTION-SEMANTICS.md` | Observable variable-resolution semantics (lazy, last-wins, exclusion, live bindings). |
+| `spec/R2-value-eval.md` | Rung R2 design spec: native synchronous value evaluator. |
+| `spec/R3-live-bindings.md` | Rung R3 design spec: live `BindingCell` model + control flow. |
+| `spec/R4-interpolation-detached-merge-namespaces.md` | Rung R4 design spec: interpolation, detached rulesets, merge, namespaces/maps. |
+| `spec/R5-sourcemaps-trivia.md` | Rung R5 design spec: sourcemaps + trivia + deprecation/warnings (NOT built). |
+| `spec/R6-plugins-compat-modules.md` | Rung R6 design spec: plugin/visitor hook, less-compat, module semantics. |
+| `spec/R7-dialects-endgame.md` | Rung R7 design spec: dialect front ends + endgame outputs. |
+| `spec/TREE2-EMITTING-GRAMMAR-PLAN.md` | Feasibility/POC/plan for a tree2-emitting Less parser. |
+| `../parser-architecture/DIALECT-ARCHITECTURE-AND-ERROR-COVERAGE.md` | Parser dialect architecture (shared macro-compiled base) + error-coverage program. |
+
+### Active trackers & execution plans
+
+| Doc | Purpose |
+|-----|---------|
+| `CORE-CLEANUP.md` | THE single live @jesscss/core cleanup tracker (binding/lookup, serialization, perf evidence). |
+| `CUTOVER-CHECKLIST.md` | Executable phased cutover plan (P0–P5) + the HARD RULES every cutover agent works under. |
+| `CUTOVER-STATUS.md` | Compact at-a-glance cutover board: landed / in-flight / gated on the spine. |
+| `AST-REORG-EXECUTION.md` | ⚠ Lean live tracker for the `ast/` reorg — current order + phase checklist. |
+| `AST-COLOCATION-REORG-PLAN.md` | ⚠ Rationale/proofs for the `ast/` family co-location + parse-host collapse. |
+| `AST-MIGRATION-MAP.md` | ⚠ Downstream migration map for the `ast/` reorg (task #12). |
+| `AST-QUALITY-AUDIT.md` | ⚠ Exhaustive per-file `ast/` quality audit + burn-down. |
+| `AST-REMAINING-DEBT-KILL-LIST.md` | ⚠ Ranked remaining-debt kill-list from a 17-agent adversarial review. |
+| `TREE2-KILL-LIST.md` | ⚠ Ranked tree2 demolition kill-list from a 12-module adversarial sweep. |
+| `PHASE1-BURNDOWN.md` | "Cleanup to ZERO" burn-down for builders + `ast/` cruft. |
+| `TYPECHECK-BURNDOWN.md` | Typecheck error burn-down inventory (task #28). |
+| `NON-ENGINE-BLOAT-INVENTORY.md` | Ranked non-engine bloat kill-list (largely resolved). |
+| `AST-FEATURE-COMPLETENESS-AND-ENGINE-CUTOVER.md` | Plan: feature-complete parse→eval inside `ast/` proven on benchmark + bootstrap. |
+| `AST-REORG-EXECUTION.md` (see above) | — |
+| `LESS-V5-CONTENT-PR-PLAN.md` | Integration plan for the less@5-alpha "Content PR" (`packages/less`). |
+| `_R1_IMPL_BRIEF.md` | ⚠ R1 extend implementation brief (tree2 rewrite); pairs with `R1-EXTEND-HANDOFF.md`. |
+| `R1-EXTEND-HANDOFF.md` | ⚠ R1 extend status + handoff (tree2 rewrite). |
+
+### Scorecards, evidence & perf surveys
+
+| Doc | Purpose |
+|-----|---------|
+| `GOAL1-SCORECARD.md` | ⚠ GOAL #1 completion scorecard via differential-vs-alpha reconciliation. |
+| `BENCHMARK-AST-FAILURE-INVENTORY.md` | Empirical failure inventory rendering benchmark.less through `ast/`. |
+| `BENCHMARK-EXTEND-GOLDEN-EVIDENCE.md` | ⚠ Evidence for benchmark extend-fold correctness vs real Less 4.x. |
+| `BENCHMARK-PERF-PATH.md` | Read-only survey: shortest path to a byte-identical benchmark.less perf number through AST-v2. |
+| `PERF_IDEAS.md` | Measured, ideas-only AST v5 render perf ideas. |
+| `PARSER-RECOGNIZER-GAP.md` | Parseman-vs-Less-parser gap attribution + rejected reorder proof. |
+
+### Corrections (proposed test-data fixes)
+
+| Doc | Purpose |
+|-----|---------|
+| `proposed-alpha-corrections/README.md` | ⚠ Proposed alpha `.css` corrections for the exact-extender-into-children bug; bottom merge section CONTRADICTS the LAST-occurrence ruling (see below). |
+| `proposed-alpha-corrections/extend.css` | Proposed corrected `extend.css` (drop-in). |
+| `proposed-alpha-corrections/extend-exact.css` | Proposed corrected `extend-exact.css` (drop-in). |
+
+### Archive (`archive/` — historical, superseded)
+
+| Doc | Purpose |
+|-----|---------|
+| `archive/README.md` | Explains the archive. |
+| `archive/FOCII.md` | ⚠ Old focus-goal prompts; trackers consolidated to `CORE-CLEANUP.md` — router still points here for the goal prompt. |
+| `archive/HANDOFF-history.md` | Archived pass-by-pass Aggressive-Cutting self-prosecution log. |
+| `archive/LESS-INTEGRATION.md` | Historical: driving Jess `.less` to green (incl. the parked `%()`→string-format design). |
+| `archive/BRANCH-WORKTREE-AUDIT.md` | Branch & worktree audit (2026-07-09). |
+| `archive/OVERNIGHT-READOUT.md` | Overnight readout (2026-07-08) triage snapshot. |
+| `archive/EXTEND-4A-DESIGN.md` | Historical extend #4a expanded-mode block-relocation design. |
+| `archive/EXTEND-GLOBAL-FLOW-DESIGN.md` | Historical clean-slate global extend-flow reasoning. |
+| `archive/EXTEND-INDEX-DESIGN.md` | Historical extend-as-term-rewriting-over-selector-IR design + build spec. |
+| `archive/APPEND-LAYER-SCOPE-FOLD-DESIGN.md` | Historical fold design for `@layer`/`@scope`/ampersand-append. |
+| `archive/P4-TERMINAL-SINK-DESIGN.md` | Historical P4 terminal/sink rework design. |
+| `archive/SPINE-CONDITIONAL-DECLS-DESIGN.md` | Historical spine conditional/scope-mutating declarations design. |
+
+### Flagged for later merge / reconciliation (owner review)
+
+- **`proposed-alpha-corrections/README.md` bottom section** claims `+`/`+_` merge
+  = **FIRST-occurrence** ("matches less.js `_mergeRules`", task #36). This
+  CONTRADICTS the settled **LAST-occurrence** ruling (`DESIGN-DECISIONS.md` M1,
+  `CUTOVER-STATUS.md:43`). A separate agent is reverting the code/test-data flip;
+  reconcile this README section back to LAST-occurrence.
+- **"oracle"/"golden" framing** in `ORACLE.md`, `EXTEND-SEMANTICS.md` (Oracle
+  policy), `GOAL1-SCORECARD.md`, and most `spec/R*` headers is superseded by the
+  no-external-oracle epistemics (`DESIGN-DECISIONS.md` §0). Content is still
+  useful as a consistency-check; the "authoritative" framing needs a language
+  pass.
+- **tree2 vs ast/ naming drift.** `TREE2-*` docs describe the same engine now
+  shipped as `ast/`. `TREE2-DESIGN-SPEC.md`, `TREE2-DEFINITIVE-REWRITE-*`,
+  `UNIFIED-NODE-MODEL-SPEC.md`, `AST-V2-STRUCTURE-BLUEPRINT.md`, and
+  `UNIFIED-EVAL-EMIT-DESIGN.md` overlap heavily as architecture specs — candidate
+  for consolidation once the rewrite stabilizes.
+- **Kill-list overlap.** `TREE2-KILL-LIST.md` (earlier 12-module sweep) and
+  `AST-REMAINING-DEBT-KILL-LIST.md` (later 17-agent pass) are explicit companions;
+  fold the still-open items into one live list.
+- **`ast/` reorg cluster.** `AST-REORG-EXECUTION.md`, `AST-COLOCATION-REORG-PLAN.md`,
+  and `AST-MIGRATION-MAP.md` cover one reorg from three angles (checklist /
+  rationale / migration) — keep the execution checklist live, archive the rest
+  when the reorg lands.
+- **R1 extend pair.** `_R1_IMPL_BRIEF.md` and `R1-EXTEND-HANDOFF.md` both cover the
+  landed R1 extend work; archive once R1 is closed.
+- **`archive/FOCII.md`** is superseded by `CORE-CLEANUP.md` but is still cited by
+  the Focus Router above for the goal prompt — either inline the goal prompt here
+  or refresh FOCII.
+
 ## Shared Direction
 
 The fastest credible runtime path remains:
