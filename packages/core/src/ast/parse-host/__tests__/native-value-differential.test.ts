@@ -416,6 +416,25 @@ describe('built-in list / variadic fns — vs Less 4.6.7 (adapter diverges)', ()
 });
 
 /**
+ * Tier-C conversion (fns-migration Stage F): `get-unit` — a pure value fn now
+ * authored in `@jesscss/fns/builtins`. Oracle = Less 4.6.7 (`get-unit` returns the
+ * dimension's unit string: `px`/`em`/`%`, empty for a unitless number).
+ */
+describe('built-in Tier-C fn (Stage F) — get-unit vs Less 4.6.7', () => {
+  const LESS4X: Array<[string, string, string]> = [
+    ['get-unit-px', '.a { m: get-unit(5px); }\n', 'm: px'],
+    ['get-unit-em', '.a { m: get-unit(2.5em); }\n', 'm: em'],
+    ['get-unit-pct', '.a { m: get-unit(10%); }\n', 'm: %'],
+  ];
+  for (const [name, src, want] of LESS4X) {
+    it(`built-in = Less 4.x: ${name}`, async () => {
+      const css = await render(src);
+      expect(css).toContain(want);
+    });
+  }
+});
+
+/**
  * STRING PRODUCERS + quoted `color()` (`replace`/`%`/`escape`/`color("…")`) — the
  * `@jesscss/fns` ADAPTER is PROVABLY WRONG here, so real Less 4.6.7 is the oracle.
  * The adapter reconstructs a legacy `Quoted` whose class identity differs across

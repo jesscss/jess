@@ -1,0 +1,13 @@
+import type { Dimension, Fn } from '@jesscss/core/value';
+import { makeKeyword } from '@jesscss/core/value';
+
+/**
+ * `get-unit(dimension)` — the dimension's unit as a keyword (empty for a unitless
+ * number). The value-domain inverse of `unit(d, u)`. Byte-faithful to legacy
+ * `get-unit` (`new Anonymous(n.unit.toString())`).
+ */
+export const getUnit: Fn = {
+  name: 'get-unit',
+  params: [{ kinds: ['Dimension'] }],
+  body: (d) => makeKeyword((d as Dimension).unit ?? ''),
+};

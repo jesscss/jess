@@ -32,6 +32,7 @@ import { mod } from './mod.js';
 import { pi } from './pi.js';
 import { percentage } from './percentage.js';
 import { unit } from './unit.js';
+import { getUnit } from './get-unit.js';
 import { convert } from './convert.js';
 // --- math: trigonometry (angle-normalized) ---
 import { sin } from './sin.js';
@@ -109,7 +110,7 @@ import { e } from './e.js';
 /** Every built-in Less fn, in registration order. Successor to core's `FN_LIST`. */
 export const builtinLessFns: readonly Fn[] = [
   round, ceil, floor, abs, sqrt, pow, mod,
-  pi, percentage, unit, convert,
+  pi, percentage, unit, getUnit, convert,
   sin, cos, tan, asin, acos, atan,
   range, length, extract, min, max,
   lighten, darken, saturate, desaturate, spin, greyscale,
