@@ -88,8 +88,8 @@
     "bytes": 578
   },
   "css-grid/css-grid.less": {
-    "status": "DIFF",
-    "bytes": 1329
+    "status": "MATCH",
+    "bytes": 1333
   },
   "css-guards/css-guards.less": {
     "status": "DIFF",

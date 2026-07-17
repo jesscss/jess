@@ -34,7 +34,7 @@ import {
   takeSelectorExtends,
 } from '../host-context.js';
 
-const COMBINATORS = new Set<string>(['>', '+', '~']);
+const COMBINATORS = new Set<string>(['>', '+', '~', '|', '||']);
 
 /** A `Complex` for one selector-list / complex segment: reuse a built selector
  *  node, else wrap the verbatim token text in a single-compound Complex. */

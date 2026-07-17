@@ -55,12 +55,15 @@ export type NodeType =
   | 'DetachedRuleset' | 'MapAccessor' | 'DetachedCall' | 'For' | 'RawInline'
   | 'StyleImport';
 
-/** Combinator between two compounds in a complex selector. */
-export type Combinator = ' ' | '>' | '+' | '~';
+/** Combinator between two compounds in a complex selector. `|` is the CSS
+ * namespace separator (tight, no spaces: `foo|h1`); `||` is the column
+ * combinator (spaced). */
+export type Combinator = ' ' | '>' | '+' | '~' | '|' | '||';
 
-/** Render a combinator: descendant is a single space; the rest are surrounded by spaces. */
+/** Render a combinator: descendant is a single space; the namespace pipe binds
+ * tightly with no surrounding spaces (`foo|h1`); the rest are surrounded by spaces. */
 export function renderCombinator(comb: Combinator): string {
-  return comb === ' ' ? ' ' : ` ${comb} `;
+  return comb === ' ' ? ' ' : comb === '|' ? '|' : ` ${comb} `;
 }
 
 /**

@@ -331,6 +331,10 @@ export interface Declaration {
   readonly value: ValueNode;
   readonly merge: null | ',' | ' ';
   readonly important: boolean;
+  /** The authored gap after the `:` contained a NEWLINE (a value written on its
+   * own line, e.g. a multi-line `grid-template-areas`). v5 preserves that layout:
+   * the value emits starting on the next indented line instead of after `: `. */
+  readonly valueOnNewLine?: boolean;
 }
 
 /** A `@name: value;` variable declaration. Emits nothing; lives in scope. */
@@ -593,7 +597,11 @@ export const decl = (
   value: ValueNode,
   merge: null | ',' | ' ' = null,
   important = false,
-): Declaration => ({ type: 'Declaration', name, value, merge, important });
+  valueOnNewLine = false,
+): Declaration =>
+  valueOnNewLine
+    ? { type: 'Declaration', name, value, merge, important, valueOnNewLine: true }
+    : { type: 'Declaration', name, value, merge, important };
 export const comment = (text: string): Comment => ({ type: 'Comment', text });
 /** [import:inline] A verbatim raw-bytes statement (`@import (inline)` splice). */
 export const rawInline = (text: string): RawInline => ({ type: 'RawInline', text });

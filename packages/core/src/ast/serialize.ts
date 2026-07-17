@@ -955,10 +955,14 @@ function normalizeImportant(bytes: string): string {
  * `emitImportant` normalizes/appends the declaration's `!important` onto the
  * resolved bytes (see {@link normalizeImportant}). Returns the emitted sync bytes,
  * or `null` when the value deferred to an async slot. */
-function putValue(e: Emit, node: ValueNode, frame: Frame | null, positionNode?: Node, contIndent?: string, emitImportant?: boolean): string | null {
+function putValue(e: Emit, node: ValueNode, frame: Frame | null, positionNode?: Node, contIndent?: string, emitImportant?: boolean, firstOnNewLine?: boolean): string | null {
   const b = evalBytes(node, frame, e);
   const finish = (s: string): string => {
-    const r = contIndent !== undefined ? reindentContinuations(s, contIndent) : s;
+    // [whitespace] `firstOnNewLine` folds the value's first line into a leading
+    // (indented) continuation, so a value authored on its own line after `:`
+    // re-emits with that layout (multi-line `grid-template-areas`).
+    const lead = firstOnNewLine ? `\n${s}` : s;
+    const r = contIndent !== undefined ? reindentContinuations(lead, contIndent) : lead;
     return emitImportant ? normalizeImportant(r) : r;
   };
   if (isThenable(b)) {
@@ -1790,9 +1794,10 @@ function emitLeaf(leaf: Leaf, e: Emit): void {
   if (node.type === 'Declaration') {
     put(e, idt);
     put(e, declName(node, frame, e)); // resolve interpolated property name
-    put(e, ': ');
+    const onNewLine = node.valueOnNewLine === true;
+    put(e, onNewLine ? ':' : ': ');
     const important = node.important === true || leaf.important === true;
-    putValue(e, node.value, frame, node.value, idt + INDENT, important); // [whitespace] continuation indent
+    putValue(e, node.value, frame, node.value, idt + INDENT, important, onNewLine); // [whitespace] continuation indent
     if (e.positions) e.positions.push({ node, type: node.type, start, end: e.off });
     put(e, ';\n');
   } else if (node.type === 'Comment') {
@@ -1893,10 +1898,13 @@ function emitRawInline(node: RawInline, e: Emit): void {
  * normally replaces every `StyleImport` before serialize runs, so this reaches
  * the emitter only for a CSS-passthrough / deferred import the pass left in
  * place — where re-emitting the authored `@import …;` bytes is the correct output.
+ * A trailing newline separates it from the next statement (the authored `raw`
+ * ends at the `;`), matching every other statement emitter.
  */
 function emitStyleImport(node: StyleImport, e: Emit): void {
   const start = e.off;
   put(e, node.raw);
+  put(e, '\n');
   if (e.positions) e.positions.push({ node, type: node.type, start, end: e.off });
 }
 

@@ -295,6 +295,13 @@ const declaration: BuildAction = {
     const leadingWs = rawValue.length - rawValue.trimStart().length;
     const valStart = args.span.start + colon + 1 + leadingWs;
     const valueBytes = rawValue.trim();
+    // [whitespace] A NEWLINE in the authored gap after `:`, PLUS a value that
+    // itself spans multiple lines, means the value was written on its own line
+    // (multi-line `grid-template-areas`). v5 preserves that layout — the value
+    // emits starting on the next line. A single-line value after a bare `:`
+    // newline (`color:\n  white`) still collapses onto `: `, matching Less.
+    const valueOnNewLine =
+      rawValue.slice(0, leadingWs).indexOf('\n') !== -1 && valueBytes.indexOf('\n') !== -1;
     // A merged decl re-emits `!important` once via the structured flag, so strip it
     // from the value bytes FIRST — then the whole-value strategy can STRUCTURE the
     // remainder (e.g. `scale(2,4)` → a FunctionCall that canonicalizes to
@@ -309,7 +316,7 @@ const declaration: BuildAction = {
     // Defensive: a raw-bytes merge value already had `!important` removed above; this
     // also covers any Word that still trails one.
     if (merge !== null && important) value = stripImportantBytes(value);
-    return t2.decl(name, value, merge, important);
+    return t2.decl(name, value, merge, important, valueOnNewLine);
   },
 };
 
