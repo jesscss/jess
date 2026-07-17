@@ -1157,10 +1157,12 @@ export class ScssGrammar extends LessGrammar {
     let cursor = preludeStart;
     const replacements: Node[] = [];
     for (const node of interpNodes) {
-      source += src.slice(cursor, node._spanStart);
+      const span = sourceSpanOf(node);
+      const nodeStart = span?.start ?? cursor;
+      source += src.slice(cursor, nodeStart);
       source += INTERPOLATION_PLACEHOLDER;
       replacements.push(...(isNode(node, N.Interpolated) ? (node as Interpolated).replacements : [node]));
-      cursor = node._spanEnd;
+      cursor = span?.end ?? nodeStart;
     }
     source += src.slice(cursor, preludeEnd);
     source = source.trim();
