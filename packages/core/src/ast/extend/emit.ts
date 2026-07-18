@@ -138,12 +138,22 @@ function dedupBranchTexts(list: Branch[]): string[] {
  * compound. Applied left-to-right, greedily, across the flat header branch list.
  * (`.button:hover, .submit:hover` → `:is(.button, .submit):hover`; not applied to
  * branches that share nothing.)
+ *
+ * `allowMultiSeg` gates cross-row factoring of MULTI-segment (descendant-complex)
+ * sibling rows. It is TRUE only when the rows carry a shared PARENT-composition
+ * prefix — a FLATTENED nested rule's hoisted header, where a child comma-list under
+ * one parent context legitimately compacts (extend-exact:
+ * `:is(<parent>) .replace` / `:is(<parent>) .c` → `:is(<parent>) :is(.replace, .c)`).
+ * It is FALSE for a TOP-LEVEL rule's own header: two authored/extend-expanded
+ * complex rows sharing all-but-one segment (`.foo .bar` / `.foo .baz`) are NEVER
+ * `:is()`-collapsed by alpha — they stay a comma list. Verified against less.js
+ * `alpha`; single-segment factoring is unaffected by the flag.
  */
-function siblingCompact(branches: Branch[]): Branch[] {
+function siblingCompact(branches: Branch[], allowMultiSeg: boolean): Branch[] {
   const out = branches.map(cloneBranch);
   for (let i = 0; i < out.length; i++) {
     for (let j = i + 1; j < out.length; j++) {
-      const merged = tryMergeSiblings(out[i]!, out[j]!);
+      const merged = tryMergeSiblings(out[i]!, out[j]!, allowMultiSeg);
       if (merged) {
         out[i] = merged;
         out.splice(j, 1);
@@ -156,9 +166,12 @@ function siblingCompact(branches: Branch[]): Branch[] {
 
 /** Merge two branches that differ in exactly one compound position into one whose
  * differing compound is a maximally-compacted `:is(...)`. Returns null if they
- * differ in structure or in more than one compound. */
-function tryMergeSiblings(a: Branch, b: Branch): Branch | null {
+ * differ in structure or in more than one compound. Multi-segment rows only merge
+ * when `allowMultiSeg` (see {@link siblingCompact}). */
+function tryMergeSiblings(a: Branch, b: Branch, allowMultiSeg: boolean): Branch | null {
   if (a.segs.length !== b.segs.length) return null;
+  const multiSeg = a.segs.length > 1;
+  if (multiSeg && !allowMultiSeg) return null;
   let diff = -1;
   for (let i = 0; i < a.segs.length; i++) {
     const as = a.segs[i]!;
@@ -173,7 +186,7 @@ function tryMergeSiblings(a: Branch, b: Branch): Branch | null {
   // Merge the differing compound into `:is()`. When the branch is a single segment
   // (no shared segment context), only merge if the compounds share a suffix — two
   // whole branches sharing NOTHING (`.ext8.ext9` / `.fuu`) stay a comma list.
-  const merged = mergeCompoundsToIs(a.segs[diff]!.compound, b.segs[diff]!.compound, a.segs.length > 1);
+  const merged = mergeCompoundsToIs(a.segs[diff]!.compound, b.segs[diff]!.compound, multiSeg);
   if (!merged) return null;
   const segs = a.segs.map((s, i) => (i === diff ? { comb: s.comb, compound: merged } : cloneSeg(s)));
   return { segs };
@@ -319,7 +332,10 @@ export function computeExtends(root: Root): ExtendResults | null {
     // A rule the extend engine actually changed emits its EXTENDED header with
     // sibling `:is()`-compaction (`.button:hover, .submit:hover` →
     // `:is(.button, .submit):hover`); an unchanged rule keeps its authored form.
-    if (changed) flatByRule.set(s.rule, siblingCompact(flat).map(branchText));
+    // Top-level own header: no multi-segment cross-row factoring (alpha keeps
+    // `.foo .bar` / `.foo .baz` a comma list). Consumed only by top-level rules —
+    // nested rules render through `nestedPlan`/`hoistHeader`.
+    if (changed) flatByRule.set(s.rule, siblingCompact(flat, false).map(branchText));
   }
 
   /** The `all`-extender folds that alias a parent's whole complex (deterministic —
@@ -400,7 +416,10 @@ export function computeExtends(root: Root): ExtendResults | null {
     if (flatten) {
       nestedPlan.set(s.rule, { flatten: true, header: [], splits: [] });
       // hoisted header = flat solve with sibling :is()-compaction.
-      hoistHeader.set(s.rule, siblingCompact(flatBySubject.get(s)!).map(branchText));
+      // Flattened nested rule: its hoisted header carries a shared parent-composition
+      // prefix, so a child comma-list under one parent DOES compact across segments
+      // (extend-exact `:is(<parent>) :is(.replace, .c)`).
+      hoistHeader.set(s.rule, siblingCompact(flatBySubject.get(s)!, true).map(branchText));
       continue;
     }
     // A collapsed `&&` child is keyed on its COMPOSED complex, so it takes the
