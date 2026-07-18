@@ -22,6 +22,13 @@ const unitConversions: Record<string, Record<string, number>> = {
   }
 };
 
+/**
+ * Less `convert()` — convert a `Dimension` to another unit within the same family
+ * (length, duration or angle). Incompatible or unknown units are returned unchanged.
+ * @param value the input `Dimension`
+ * @param unit the target unit keyword/string
+ * @returns the converted `Dimension`
+ */
 export default defineFunction(
   'convert',
   function(value: Dimension, unit: Any<'keyword'> | Quoted) {

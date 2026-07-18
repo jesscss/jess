@@ -36,6 +36,15 @@ function toCanonical(node: Dimension, forcedUnit?: string) {
   return { number, unit };
 }
 
+/**
+ * CSS `min()` — the smallest of the given values. `Dimension`s sharing a comparable
+ * unit group (length/time/angle) are reduced; anything not statically comparable
+ * (or mixing incomparable units in `strict` unit mode) is preserved verbatim as a
+ * serialized `min(…)` call for the browser to resolve.
+ * @param values one or more `Dimension`s (lists are flattened)
+ * @returns the minimum `Dimension`, or an `Any` wrapping a literal `min(…)`
+ * @see https://developer.mozilla.org/docs/Web/CSS/min
+ */
 export default defineFunction(
   'min',
   async function(this: any, ...input: Node[]) {

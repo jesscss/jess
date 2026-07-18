@@ -1,5 +1,11 @@
 import { defineFunction, Color } from '@jesscss/core';
 
+/**
+ * Less `argb()` — format a color as `#AARRGGBB` with the alpha channel first, as
+ * used by legacy IE `filter` gradients.
+ * @param color the input `Color`
+ * @returns a `Color` whose serialized form is the `#AARRGGBB` string
+ */
 export default defineFunction(
   'argb',
   function(color: Color) {

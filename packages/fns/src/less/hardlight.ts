@@ -6,6 +6,13 @@ export function hardLightBase(cb: number, cs: number) {
   return overlayBase(cs, cb);
 }
 
+/**
+ * Less `hardlight()` — hard-light blend, equivalent to `overlay` with the two
+ * colors swapped.
+ * @param color1 backdrop `Color`
+ * @param color2 source `Color`
+ * @returns the blended `Color`
+ */
 const hardlight = defineFunction(
   'hardlight',
   function(color1: Color, color2: Color) {

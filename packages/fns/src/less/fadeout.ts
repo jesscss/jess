@@ -8,6 +8,14 @@ import {
   ColorFormat
 } from '@jesscss/core';
 
+/**
+ * Less `fadeout()` — decrease a color's opacity by `amount` (a percentage). With
+ * `method: relative`, the decrease is relative to the current alpha.
+ * @param color the input `Color`
+ * @param amount opacity decrease as a `Dimension` percentage
+ * @param method optional `relative` keyword
+ * @returns the more-transparent `Color`
+ */
 const fadeout = defineFunction(
   'fadeout',
   function(this: Context, color: Color, amount: Dimension, method?: Any<'keyword'> | Quoted) {

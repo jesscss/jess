@@ -9,6 +9,11 @@ async function readSize(context: any, filePathNode: Node) {
   return getImageDimensions(contents);
 }
 
+/**
+ * Less `image-size()` — the intrinsic size of an image file as `width height`.
+ * @param filePathNode path to the image
+ * @returns a `Sequence` of two `px` `Dimension`s (width, height)
+ */
 const imageSize = defineFunction(
   'image-size',
   async function(this: any, filePathNode: Node) {

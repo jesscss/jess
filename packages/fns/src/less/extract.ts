@@ -1,5 +1,13 @@
 import { defineFunction, Node, List, Dimension, toNumber, coerceListItems } from '@jesscss/core';
 
+/**
+ * Less `extract()` — the item at a 1-based `index` in a list. Returns a
+ * caller-owned copy so mutating the result never aliases the source list.
+ * @param value a list or single value
+ * @param index 1-based position
+ * @returns the extracted item
+ * @throws `RangeError` if `index` is out of range
+ */
 const extract = defineFunction(
   'extract',
   function(this: { rawArgs?: List } | undefined, value: Node, index: number): Node {

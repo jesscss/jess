@@ -1,5 +1,14 @@
 import { defineFunction, Dimension, Sequence } from '@jesscss/core';
 
+/**
+ * Less `range()` — build a numeric list. With one argument, `1…start`; with two,
+ * `start…end`; an optional `step` sets the increment.
+ * @param start range end (one-arg form) or start (multi-arg form)
+ * @param end optional inclusive end
+ * @param step optional increment (default `1`, may not be `0`)
+ * @returns a `Sequence` of `Dimension`s carrying the end value's unit
+ * @throws `RangeError` if `step` is `0`
+ */
 const range = defineFunction(
   'range',
   function(start: Dimension, end?: Dimension, step?: Dimension): Sequence {

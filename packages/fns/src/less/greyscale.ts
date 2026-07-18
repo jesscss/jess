@@ -4,6 +4,11 @@ import {
   defineFunction
 } from '@jesscss/core';
 
+/**
+ * Less `greyscale()` — remove all saturation from a color (HSL saturation set to 0).
+ * @param color the input `Color`
+ * @returns the desaturated (grey) `Color`
+ */
 const greyscale = defineFunction(
   'greyscale',
   function(this: Context, color: Color) {

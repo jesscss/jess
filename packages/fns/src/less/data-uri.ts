@@ -7,6 +7,15 @@ async function toFallbackUrl(node: Node, context: any): Promise<Url> {
   return new Url(new Quoted(raw, { quote: '"' }));
 }
 
+/**
+ * Less `data-uri()` — inline a file as a `data:` URL. The MIME type may be given
+ * explicitly or guessed from the extension; text is percent-encoded and binary is
+ * base64-encoded. If the file cannot be read, falls back to a plain `url()` of the
+ * path (any `#fragment` is preserved).
+ * @param mimetype MIME type, or the file path when called with a single argument
+ * @param filePath optional file path (when `mimetype` is given)
+ * @returns a `Url` node
+ */
 const dataUri = defineFunction(
   'data-uri',
   async function(this: any, mimetypeNode: Node, filePathNode?: Node) {

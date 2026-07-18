@@ -1,3 +1,9 @@
 import { defineUnaryMathFunction } from './math-factory.js';
 
+/**
+ * Less `tan()` — tangent of an angle. Angle units (`deg`/`grad`/`turn`) are
+ * normalized to radians first; a unitless input is treated as radians.
+ * @param value angle as a `Dimension` (or unitless number, in radians)
+ * @returns the unitless tangent
+ */
 export default defineUnaryMathFunction('tan', 'tan', '');

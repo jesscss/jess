@@ -8,6 +8,14 @@ import {
   ColorFormat
 } from '@jesscss/core';
 
+/**
+ * Less `saturate()` — increase a color's HSL saturation by `amount` (a percentage).
+ * With `method: relative`, the increase is relative to the current saturation.
+ * @param color the input `Color`
+ * @param amount saturation increase as a `Dimension` percentage
+ * @param method optional `relative` keyword
+ * @returns the more-saturated `Color`
+ */
 export default defineFunction(
   'saturate',
   function(this: Context, color: Color, amount: Dimension, method?: Any<'keyword'> | Quoted) {

@@ -1,6 +1,15 @@
 import { defineFunction, Dimension, Color, ColorFormat } from '@jesscss/core';
 import { normalizeHue, percentOf, alphaToNumber, toNumber, splitSequence } from '@jesscss/core';
 
+/**
+ * Less `hsva()` — construct a `Color` from hue, saturation, value and alpha,
+ * converting HSV to RGB internally.
+ * @param h hue in degrees
+ * @param s saturation (`0–100%`)
+ * @param v value/brightness (`0–100%`)
+ * @param a alpha (`0–1` or a percentage)
+ * @returns the resulting `Color`
+ */
 const hsva = defineFunction(
   'hsva',
   function(this: any, h: number, s: number, v: number, a: number) {

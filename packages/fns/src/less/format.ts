@@ -9,6 +9,19 @@ async function applyToken(token: string, value: Node, context: any): Promise<str
   return /[A-Z]$/.test(token) ? encodeURIComponent(rawValue) : rawValue;
 }
 
+/**
+ * The `%()` string-format function (registered as `%`; public alias
+ * `string-format`). Substitutes `%s`/`%d`/`%a` tokens in `template` with the
+ * following arguments — uppercase (`%S`/`%D`/`%A`) URL-encodes the value, and `%%`
+ * emits a literal `%`. A quoted template keeps its quote; otherwise an unquoted
+ * keyword is returned.
+ * @param template the format string
+ * @param arg1 substituted for the first token
+ * @param arg2 substituted for the second token
+ * @param arg3 substituted for the third token
+ * @param arg4 substituted for the fourth token
+ * @returns the formatted string
+ */
 const format = defineFunction(
   '%',
   async function(this: any, template: Node, arg1?: Node, arg2?: Node, arg3?: Node, arg4?: Node) {

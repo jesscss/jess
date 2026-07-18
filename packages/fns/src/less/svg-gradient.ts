@@ -100,6 +100,16 @@ const DIRECTION_TO_SVG = new Map<string, { type: 'linear' | 'radial'; direction:
   }]
 ]);
 
+/**
+ * Less `svg-gradient()` — build an inline SVG gradient `data:` URL from a direction
+ * and two or more color stops. `direction` is one of `to bottom`, `to right`,
+ * `to bottom right`, `to top right`, `ellipse` or `ellipse at center`; each stop is
+ * a `Color` with an optional position.
+ * @param direction the gradient direction keyword
+ * @param stops the color stops (`Color [position]`, …)
+ * @returns a `Url` node wrapping the SVG `data:` URI
+ * @throws if the direction is unrecognized or fewer than two stops are given
+ */
 const svgGradient = defineFunction(
   'svg-gradient',
   async function(this: any, direction: Node, ...rest: Node[]) {

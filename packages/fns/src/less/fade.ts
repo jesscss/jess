@@ -6,6 +6,13 @@ import {
   ColorFormat
 } from '@jesscss/core';
 
+/**
+ * Less `fade()` — set a color's alpha to `amount` (a percentage), replacing any
+ * existing transparency.
+ * @param color the input `Color`
+ * @param amount target opacity as a `Dimension` percentage
+ * @returns the `Color` with the new alpha
+ */
 const fade = defineFunction(
   'fade',
   function(this: Context, color: Color, amount: Dimension) {

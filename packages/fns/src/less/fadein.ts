@@ -8,6 +8,14 @@ import {
   ColorFormat
 } from '@jesscss/core';
 
+/**
+ * Less `fadein()` — increase a color's opacity by `amount` (a percentage). With
+ * `method: relative`, the increase is relative to the current alpha.
+ * @param color the input `Color`
+ * @param amount opacity increase as a `Dimension` percentage
+ * @param method optional `relative` keyword
+ * @returns the more-opaque `Color`
+ */
 const fadein = defineFunction(
   'fadein',
   function(this: Context, color: Color, amount: Dimension, method?: Any<'keyword'> | Quoted) {

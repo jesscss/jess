@@ -8,6 +8,14 @@ import {
   ColorFormat
 } from '@jesscss/core';
 
+/**
+ * Less `darken()` — decrease a color's HSL lightness by `amount` (a percentage).
+ * With `method: relative`, the decrease is relative to the current lightness.
+ * @param color the input `Color`
+ * @param amount lightness decrease as a `Dimension` percentage
+ * @param method optional `relative` keyword
+ * @returns the darkened `Color`, preserving the input's output format
+ */
 export default defineFunction(
   'darken',
   function(this: Context, color: Color, amount: Dimension, method?: Any<'keyword'> | Quoted) {

@@ -8,6 +8,15 @@ import {
   ColorFormat
 } from '@jesscss/core';
 
+/**
+ * Less `desaturate()` — decrease a color's HSL saturation by `amount` (a
+ * percentage). With `method: relative`, the decrease is relative to the current
+ * saturation.
+ * @param color the input `Color`
+ * @param amount saturation decrease as a `Dimension` percentage
+ * @param method optional `relative` keyword
+ * @returns the less-saturated `Color`
+ */
 export default defineFunction(
   'desaturate',
   function(this: Context, color: Color, amount: Dimension, method?: Any<'keyword'> | Quoted) {

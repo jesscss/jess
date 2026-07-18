@@ -10,6 +10,14 @@ import { toHSL } from '../util/to-hsl.js';
 // Copyright (c) 2006-2009 Hampton Catlin, Natalie Weizenbaum, and Chris Eppstein
 // http://sass-lang.com
 //
+/**
+ * Less `mix()` — blend two colors by `weight` (default `50%`), following the
+ * Sass/less.js weighting that also accounts for the colors' alpha channels.
+ * @param color1 the first `Color` (weighted by `weight`)
+ * @param color2 the second `Color`
+ * @param weight optional mix weight as a `Dimension` percentage (default `50%`)
+ * @returns the mixed `Color`
+ */
 const mix = defineFunction(
   'mix',
   function(color1: Color, color2: Color, weight?: Dimension) {
