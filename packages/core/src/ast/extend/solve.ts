@@ -56,9 +56,20 @@ export function buildContribs(instructions: PlanInstruction[]): ContribMap {
   const contribs: ContribMap = new Map();
   for (const inst of instructions) {
     const extenders = composePath(inst.extenderPath);
+    // [import:reference] tag each composed extender as an extend PRODUCT (`ext`) and
+    // stamp its extender rule's visibility, in the SAME pass that keys them (no extra
+    // iteration). `ext` lets the matcher tell a chained extend off a hidden extender
+    // (→ hidden) from an extend off an original hidden seed; `hidden` keeps a branch
+    // pulled from a hidden `(reference)` rule invisible.
+    const keys = new Set<string>();
+    for (const e of extenders) {
+      e.ext = true;
+      if (inst.extenderHidden) e.hidden = true;
+      keys.add(branchText(e));
+    }
     const targetAtoms = new Set<string>();
     collectBranchAtoms(inst.target, targetAtoms);
-    contribs.set(inst, { extenders, keys: new Set(extenders.map(branchText)), targetAtoms });
+    contribs.set(inst, { extenders, keys, targetAtoms });
   }
   return contribs;
 }
@@ -131,7 +142,15 @@ export function runFixpoint(seed: Branch[], reachable: PlanInstruction[], contri
       if (fired.has(key)) continue;
       const c = contribs.get(inst)!;
       if (c.extenders.length === 0 && !inst.partial) continue;
-      const next = applyInstruction(list, inst.target, c.extenders, inst.partial, c.keys, c.targetAtoms);
+      const next = applyInstruction(
+        list,
+        inst.target,
+        c.extenders,
+        inst.partial,
+        c.keys,
+        c.targetAtoms,
+        inst.extenderHidden,
+      );
       if (next) {
         list = next;
         fired.add(key);

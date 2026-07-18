@@ -28,9 +28,24 @@ export interface Seg {
   compound: Compound;
 }
 
-/** A complex selector branch: an ordered list of segments. */
+/** A complex selector branch: an ordered list of segments.
+ *
+ * [import:reference] `hidden` is the branch's VISIBILITY provenance: true when the
+ * branch originates from a `(reference)`-imported (hidden) rule — its own seed, or
+ * an extender folded in from a hidden rule. Absent/false ⇒ visible. It is ORTHOGONAL
+ * to the selector text (every text/serialize op ignores it; clone preserves it), so
+ * a document with no reference imports carries it false everywhere and the extend
+ * engine is byte-identical. The serializer drops all-hidden rules and the hidden
+ * branches of a mixed rule. */
 export interface Branch {
   segs: Seg[];
+  hidden?: boolean;
+  /** [import:reference] true when this branch was PRODUCED by an extend (a folded-in
+   * extender), false/absent for an original seed branch. Chaining an extend off a
+   * HIDDEN extender branch yields a hidden result (matching less.js's per-chain
+   * `visibilityInfo`), whereas an extend off an original hidden seed keeps the
+   * extender's own visibility — so the two must be told apart. */
+  ext?: boolean;
 }
 
 /** A selector list level (a rule's own-local alternatives / an `:is()` arg). */
@@ -86,7 +101,12 @@ export function cloneSeg(seg: Seg): Seg {
 }
 
 export function cloneBranch(b: Branch): Branch {
-  return { segs: b.segs.map(cloneSeg) };
+  // [import:reference] `hidden`/`ext` are provenance, not text — preserve them across
+  // every clone so a branch's visibility survives compose/solve/compaction unchanged.
+  const out: Branch = { segs: b.segs.map(cloneSeg) };
+  if (b.hidden) out.hidden = true;
+  if (b.ext) out.ext = true;
+  return out;
 }
 
 /* ------------------------------------------------------------------ from AST */

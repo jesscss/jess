@@ -1655,6 +1655,30 @@ function isSelfComposed(rule: Rule, parent: string[], frame: Frame, e: Emit): bo
   return true;
 }
 
+/**
+ * [import:reference] Filter a rule's composed header down to its VISIBLE branches.
+ * Returns `null` when the rule emits nothing (every branch hidden) — the caller then
+ * skips the block entirely. A rule with no hidden branch (the overwhelming common
+ * case: any document with no `(reference)` import) returns `header` unchanged, so the
+ * serializer stays byte-identical.
+ *
+ *  - extend folded a per-branch mask (`hiddenByRule`, aligned 1:1 with the FLAT
+ *    header): keep the branches whose mask bit is false. This also handles a VISIBLE
+ *    rule that received a hidden extender branch (drop just that branch).
+ *  - no mask, but the rule itself is `reference` and extend never changed it: all its
+ *    (seed-only) branches are hidden → drop the whole rule.
+ */
+function visibleHeader(rule: Rule, header: string[], e: Emit): string[] | null {
+  const ext = e.extends;
+  const mask = ext?.hiddenByRule.get(rule);
+  if (mask && mask.length === header.length) {
+    const vis = header.filter((_, i) => mask[i] !== true);
+    return vis.length > 0 ? vis : null;
+  }
+  if (rule.reference === true && ext?.flatByRule.has(rule) !== true) return null;
+  return header;
+}
+
 function flatten(rule: Rule, parent: string[] | null, frame: Frame, e: Emit, imp = false): void {
   // [guards] a guarded ruleset emits its block only when the guard is true.
   if (!ruleGuardPasses(rule, frame, e)) return;
@@ -1672,9 +1696,14 @@ function flatten(rule: Rule, parent: string[] | null, frame: Frame, e: Emit, imp
   // children still compose against the RAW composed selector and extend
   // independently (the composed model needs no parent-child override). Absent an
   // extend override the header is byte-identical to the no-extend serializer.
-  const header = e.hoistMode
+  const header0 = e.hoistMode
     ? e.extends?.hoistHeader.get(rule) ?? e.extends?.flatByRule.get(rule) ?? headerComposed
     : e.extends?.flatByRule.get(rule) ?? headerComposed;
+  // [import:reference] drop the header branches that originate ONLY from hidden
+  // `(reference)` rules; a rule left with no visible branch emits nothing (its body
+  // still emits when the rule is pulled in as a mixin — a separate expansion path).
+  const header = visibleHeader(rule, header0, e);
+  if (header === null) return;
   const childFrame: Frame = {
     parent: frame,
     mixins: collectMixins(rule.body),

@@ -15,6 +15,9 @@ export interface PlanInstruction {
   extenderPath: Level[];
   scope: number[];
   order: number;
+  /** [import:reference] The extender rule came from a `(reference)` import — its
+   * folded-in branches are HIDDEN. False for the ordinary (visible) extend. */
+  extenderHidden: boolean;
 }
 
 export interface PlanSubject {
@@ -25,6 +28,9 @@ export interface PlanSubject {
   ownLocal: Level;
   /** The enclosing authored subject rule, or null at the top level. */
   parent: PlanSubject | null;
+  /** [import:reference] The subject rule came from a `(reference)` import — its own
+   * seed branches are HIDDEN (emit nothing unless a visible extender folds in). */
+  hidden: boolean;
   /**
    * FAST-REJECT: true when some level on this subject's ancestor path (own-local ∪
    * ancestors) contains an atom that is also an instruction-target atom. Computed
@@ -71,7 +77,15 @@ export function collectPlan(root: Root): Plan {
         const rule = st;
         const own = levelFromSelectorList(rule.selector);
         const rulePath = [...path, own];
-        const subject: PlanSubject = { rule, path: rulePath, scope, ownLocal: own, parent, mayMatch: false };
+        const subject: PlanSubject = {
+          rule,
+          path: rulePath,
+          scope,
+          ownLocal: own,
+          parent,
+          mayMatch: false,
+          hidden: rule.reference === true,
+        };
         subjects.push(subject);
         if (rule.extendInstructions) {
           for (const inst of rule.extendInstructions) {
@@ -82,6 +96,7 @@ export function collectPlan(root: Root): Plan {
                 extenderPath: rulePath,
                 scope,
                 order: order++,
+                extenderHidden: rule.reference === true,
               });
               collectBranchAtoms(targetBranch, targetAtoms);
             }

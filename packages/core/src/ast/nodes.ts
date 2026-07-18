@@ -512,6 +512,15 @@ export interface Rule {
    * common unguarded rule (the serializer's zero-cost gate holds).
    */
   readonly guard?: GuardNode;
+  /**
+   * [import:reference] This rule came from an `@import (reference)` file, so it is
+   * HIDDEN: it emits nothing on its OWN (the serializer drops a rule whose visible
+   * branches are empty), but it stays in the tree — indexed for mixin dispatch and
+   * available for `:extend` to fold a VISIBLE extender branch into. When an extend
+   * pulls it into visibility, only the visible extender branch survives (see the
+   * extend engine's per-branch `hidden` provenance + the serializer's drop filter).
+   */
+  readonly reference?: boolean;
 }
 
 /**

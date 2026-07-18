@@ -33,6 +33,7 @@ export function applyInstruction(
   partial: boolean,
   extenderKeys: Set<string>,
   targetAtoms: Set<string>,
+  extenderHidden = false,
 ): Branch[] | null {
   const targetKey = branchText(target);
   const out: Branch[] = [];
@@ -41,12 +42,19 @@ export function applyInstruction(
 
   for (const b of list) {
     const bKey = branchText(b);
+    // [import:reference] chaining an extend off a branch that was itself an extend
+    // PRODUCT from a hidden rule (`b.ext && b.hidden`) yields a hidden result — the
+    // less.js per-chain `visibilityInfo`. An extend off an ORIGINAL hidden seed
+    // (`!b.ext`) keeps the extender's own visibility, so the seed's `hidden` does
+    // NOT force the append hidden. `effHidden` folds both into one decision.
+    const chainHidden = b.hidden === true && b.ext === true;
+    const effHidden = extenderHidden || chainHidden;
     // Whole-branch match → append extenders as siblings. A multi-segment target
     // also matches an `:is()`-grafted branch whose expansion equals the target
     // (`.replace.replace .replace` vs `:is(.replace.replace, …) .replace`).
     if (bKey === targetKey || (target.segs.length > 1 && branchExpansions(b).includes(targetKey))) {
       out.push(b);
-      for (const e of extenders) appends.push(e);
+      for (const e of extenders) pushExtender(appends, e, chainHidden);
       continue;
     }
     // ATOM FAST-REJECT: every remaining (`all`) match — whole-branch subset,
@@ -67,14 +75,22 @@ export function applyInstruction(
       // matches with surrounding combinator context (see `substituteMultiCompound`).
       if (matchesWholeBranchSubset(b, target)) {
         out.push(b);
-        for (const e of extenders) appends.push(e);
+        for (const e of extenders) pushExtender(appends, e, chainHidden);
         continue;
       }
-      const rewritten = rewriteBranchPartial(b, target, extenders, partial, extenderKeys, targetAtoms);
-      if (rewritten) {
-        out.push(rewritten);
-        changed = true;
-        continue;
+      // [import:reference] a HIDDEN sub-part `all` match adds only invisible copies
+      // (less.js comma-expands the extender with the extender's hidden visibility),
+      // which the serializer drops — so the VISIBLE base branch must be left EXACTLY
+      // as authored (never rewritten into `:is(span, hidden-ext)`, which would leak
+      // the hidden extender's text). Skip the in-place substitution for this branch;
+      // the net visible effect of a hidden extender's sub-match is nothing.
+      if (!effHidden) {
+        const rewritten = rewriteBranchPartial(b, target, extenders, partial, extenderKeys, targetAtoms);
+        if (rewritten) {
+          out.push(rewritten);
+          changed = true;
+          continue;
+        }
       }
     }
     out.push(b);
@@ -92,6 +108,22 @@ export function applyInstruction(
     }
   }
   return changed ? out : null;
+}
+
+/**
+ * [import:reference] Queue an extender branch for appending. `forceHidden` (a chain
+ * off a hidden extend product) overrides an otherwise-visible extender to hidden via
+ * a clone (the shared contrib branch is never mutated); a branch already carrying its
+ * extender rule's hidden bit is queued as-is (no allocation on the common path).
+ */
+function pushExtender(appends: Branch[], e: Branch, forceHidden: boolean): void {
+  if (forceHidden && e.hidden !== true) {
+    const c = cloneBranch(e);
+    c.hidden = true;
+    appends.push(c);
+  } else {
+    appends.push(e);
+  }
 }
 
 /**

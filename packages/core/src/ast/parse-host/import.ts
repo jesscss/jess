@@ -448,19 +448,40 @@ function spliceImport(
   }
   if (!flags.multiple) state.seen.add(resolved);
 
-  // `(reference)` suppresses OUTPUT (scope/extend still run in the full engine).
-  // For the no-extend fixtures tree2 covers, that means: keep only definition
-  // statements (which emit nothing) so downstream references still resolve. A
-  // reference-imported rule pulled into visibility by `:extend` is a deferred
-  // trap (see import-modes-byte-identity); the census counts it, no mis-emit.
-  if (flags.reference) return statements.filter(isDefinitionStatement);
+  // `(reference)` HIDES the imported content: it emits nothing on its own, but
+  // stays available for `:extend`/mixin to pull into visibility. We keep the
+  // DEFINITIONS (var/mixin — invisible anyway; a mixin called at a visible site
+  // emits normally) and every RULESET, tagged `reference:true` so the serializer
+  // (a) drops it from direct output and (b) can fold a VISIBLE extender branch
+  // into it. Rulesets are ALSO the ambient mixins Less resolves (`.mixin()`,
+  // `#Namespace > .mixin()`), so keeping them indexed is required for #1896/#1851.
+  // Loose declarations / comments / at-rule blocks from a referenced file are NOT
+  // individually pullable, so they are dropped (fixes #2991 empty-@media leak).
+  if (flags.reference) return hideReferenced(statements);
 
   return statements;
 }
 
-/** A statement that emits no bytes on its own (contributes only scope). */
-function isDefinitionStatement(s: t2.Statement): boolean {
-  return s.type === 'VarDeclaration' || s.type === 'MixinDef';
+/**
+ * Apply `(reference)` visibility to an imported file's TOP-LEVEL statements — a flat
+ * O(top-level) pass, NO recursive descendant walk (the byte-tuned engine is perf-
+ * sensitive). Keep every top-level ruleset (flagged `reference:true` — a single
+ * boundary flag the serializer skips by default, overridden per-branch when extend
+ * pulls it in) and every definition (var/mixin, which emit nothing on their own but
+ * expand normally when called from a visible site). Drop all other top-level content
+ * (loose declarations, comments, at-rule blocks/statements, raw inline) — none is
+ * individually pullable, so leaving it in would leak invisible output (fixes #2991).
+ * A rule's own body/descendants are NOT marked: a hidden rule is skipped whole, so
+ * its descendants are never reached; only the boundary flag is needed.
+ */
+function hideReferenced(statements: t2.Statement[]): t2.Statement[] {
+  const out: t2.Statement[] = [];
+  for (const s of statements) {
+    if (s.type === 'Rule') out.push({ ...s, reference: true });
+    else if (s.type === 'VarDeclaration' || s.type === 'MixinDef') out.push(s);
+    // else: not individually pullable — dropped.
+  }
+  return out;
 }
 
 /* ============================================================ DIRECT HOST ==

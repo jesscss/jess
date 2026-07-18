@@ -73,6 +73,13 @@ export interface ExtendResults {
    * child-parent propagation).
    */
   flatByRule: Map<Rule, string[]>;
+  /**
+   * [import:reference] Per-rule visibility mask aligned 1:1 with `flatByRule`'s
+   * header entries: `true` marks a header branch that originates ONLY from hidden
+   * `(reference)` rules, which the serializer drops. Absent for a rule with no
+   * hidden branch (the common case). A rule whose mask is all-`true` emits nothing.
+   */
+  hiddenByRule: Map<Rule, boolean[]>;
   /** NESTED mode: per-rule projection (flatten / rewritten header / splits). */
   nestedPlan: Map<Rule, NestedRulePlan>;
   /**
@@ -189,7 +196,9 @@ function tryMergeSiblings(a: Branch, b: Branch, allowMultiSeg: boolean): Branch 
   const merged = mergeCompoundsToIs(a.segs[diff]!.compound, b.segs[diff]!.compound, multiSeg);
   if (!merged) return null;
   const segs = a.segs.map((s, i) => (i === diff ? { comb: s.comb, compound: merged } : cloneSeg(s)));
-  return { segs };
+  // [import:reference] the merged branch is visible if EITHER source is visible (an
+  // `:is(a, b)` emits its whole group). Only two hidden branches merge to hidden.
+  return a.hidden && b.hidden ? { segs, hidden: true } : { segs };
 }
 
 /**
@@ -238,6 +247,7 @@ export function computeExtends(root: Root): ExtendResults | null {
   if (plan.instructions.length === 0) return null;
 
   const flatByRule = new Map<Rule, string[]>();
+  const hiddenByRule = new Map<Rule, boolean[]>();
   const nestedPlan = new Map<Rule, NestedRulePlan>();
   const hoistHeader = new Map<Rule, string[]>();
 
@@ -251,6 +261,10 @@ export function computeExtends(root: Root): ExtendResults | null {
     let r = rawCache.get(s);
     if (r === undefined) {
       r = composePath(s.path);
+      // [import:reference] a hidden subject's own seed branches are hidden; a visible
+      // extender folded in later carries its own (visible) provenance, so only the
+      // all-hidden case drops the whole rule.
+      if (s.hidden) for (const b of r) b.hidden = true;
       rawCache.set(s, r);
     }
     return r;
@@ -335,7 +349,13 @@ export function computeExtends(root: Root): ExtendResults | null {
     // Top-level own header: no multi-segment cross-row factoring (alpha keeps
     // `.foo .bar` / `.foo .baz` a comma list). Consumed only by top-level rules —
     // nested rules render through `nestedPlan`/`hoistHeader`.
-    if (changed) flatByRule.set(s.rule, siblingCompact(flat, false).map(branchText));
+    if (changed) {
+      const compacted = siblingCompact(flat, false);
+      flatByRule.set(s.rule, compacted.map(branchText));
+      // [import:reference] carry the per-branch visibility mask only when some branch
+      // is hidden — a document with no reference imports never allocates it.
+      if (compacted.some((b) => b.hidden)) hiddenByRule.set(s.rule, compacted.map((b) => b.hidden === true));
+    }
   }
 
   /** The `all`-extender folds that alias a parent's whole complex (deterministic —
@@ -466,5 +486,5 @@ export function computeExtends(root: Root): ExtendResults | null {
     });
   }
 
-  return { flatByRule, nestedPlan, hoistHeader };
+  return { flatByRule, hiddenByRule, nestedPlan, hoistHeader };
 }
