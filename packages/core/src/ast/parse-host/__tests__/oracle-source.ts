@@ -232,15 +232,47 @@ export function fixtureLess(fixture: string): string {
   return gitShow(`packages/test-data/tests-unit/${fixture}/${fixture}.less`);
 }
 
-/** Extract `output.collapseNesting` from raw `styles.config.ts` source, or `null`
- * if the file declares none. Handles both `alpha` shapes:
- *   - `output: { collapseNesting: false }`                        (object)
- *   - `output: [{ file: '{name}.css', collapseNesting: false }]`  (array)
- * Each extend fixture declares a SINGLE top-level `{name}.css` target, so the
- * first `collapseNesting` governs `expectedCss`. */
-function parseCollapseNesting(configSrc: string): boolean | null {
-  const m = /collapseNesting\s*:\s*(true|false)/.exec(configSrc);
-  return m === null ? null : m[1] === 'true';
+/**
+ * Extract the `output.collapseNesting` that governs a SPECIFIC golden file from
+ * raw `styles.config.ts` source, or `null` if the config declares none for that
+ * golden (so the caller falls through to a parent/dir config). Handles both
+ * `alpha` shapes:
+ *   - `output: { collapseNesting: false }`                          (object — governs every golden)
+ *   - `output: [{ file: '{name}.css', collapseNesting: true },
+ *               { file: '{name}-uncollapsed.css', collapseNesting: false }]`  (array — per-file)
+ *
+ * For the array form each entry's `file` (with `{name}` expanded to `fixtureName`)
+ * is matched against `goldenBase`; the matching entry's `collapseNesting` wins.
+ * This makes the multi-golden case (`nesting` ships both `nesting.css` collapse:true
+ * AND `nesting-uncollapsed.css` collapse:false) resolve each golden to its own mode
+ * rather than always taking the first declaration.
+ *
+ * Shared by `resolveCollapseNesting` (git-ref oracle reads, below) and the
+ * on-disk differential harness so the config-shape parsing lives in ONE place.
+ */
+export function collapseNestingForGolden(
+  configSrc: string,
+  fixtureName: string,
+  goldenBase: string,
+): boolean | null {
+  // Array form first: a `file:`-keyed entry governs only its own golden. `[^}]*?`
+  // never crosses an object-literal boundary, so each `file`↔`collapseNesting`
+  // pairing stays within one entry.
+  const entryRe = /file\s*:\s*['"]([^'"]+)['"][^}]*?collapseNesting\s*:\s*(true|false)/g;
+  let sawFileEntry = false;
+  let m: RegExpExecArray | null;
+  while ((m = entryRe.exec(configSrc)) !== null) {
+    sawFileEntry = true;
+    if (m[1].replace(/\{name\}/g, fixtureName) === goldenBase) {
+      return m[2] === 'true';
+    }
+  }
+  // A file-keyed array was present but none matched this golden → this config does
+  // not govern it; let the caller fall through to a parent config.
+  if (sawFileEntry) return null;
+  // Object form: a single `collapseNesting` governs every golden from this config.
+  const obj = /collapseNesting\s*:\s*(true|false)/.exec(configSrc);
+  return obj === null ? null : obj[1] === 'true';
 }
 
 /**
@@ -262,17 +294,19 @@ function parseCollapseNesting(configSrc: string): boolean | null {
  */
 export function resolveCollapseNesting(fixture: string): boolean {
   assertPlainFixture(fixture);
+  // The fixture's own top-level golden is `{name}.css`.
+  const goldenBase = `${fixture}.css`;
   // nearest first: the fixture's own config, then the tests-unit directory config.
   const own = gitShowOptional(`packages/test-data/tests-unit/${fixture}/styles.config.ts`);
   if (own !== null) {
-    const v = parseCollapseNesting(own);
+    const v = collapseNestingForGolden(own, fixture, goldenBase);
     if (v !== null) {
       return v;
     }
   }
   const dir = gitShowOptional('packages/test-data/tests-unit/styles.config.ts');
   if (dir !== null) {
-    const v = parseCollapseNesting(dir);
+    const v = collapseNestingForGolden(dir, fixture, goldenBase);
     if (v !== null) {
       return v;
     }

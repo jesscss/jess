@@ -61,6 +61,12 @@ export interface AstRenderOptions {
   grammar?: unknown;
   /** Override the trivia parser entry. Defaults to `lessGrammar.rw`. */
   trivia?: unknown;
+  /**
+   * Output mode threaded to `serialize`. `false` = NESTED (Less v5 default),
+   * `true`/omitted = FLAT (composed selectors). A fixture's `styles.config.ts`
+   * (`output.collapseNesting`) governs this; the harness resolves it per fixture.
+   */
+  collapseNesting?: boolean;
 }
 
 /**
@@ -125,7 +131,9 @@ export function renderAstDoc(src: string, options: AstRenderOptions = {}): AstRe
       (feature, detail) => deferredImports.push({ feature, detail }),
     );
     const resolvedRoot: Root = { ...root, children: resolved };
-    const { css } = requireSync(serialize(resolvedRoot, { evaluator: options.evaluator }));
+    const { css } = requireSync(
+      serialize(resolvedRoot, { evaluator: options.evaluator, collapseNesting: options.collapseNesting }),
+    );
     return { css, parseErrors: errors, threw: null, deferredImports };
   } catch (e) {
     return { css: undefined, parseErrors: [], threw: e instanceof Error ? e : new Error(String(e)), deferredImports };

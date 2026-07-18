@@ -36,6 +36,7 @@ import { fileURLToPath } from 'node:url';
 import { renderAstFile } from './whole-doc-driver.js';
 import { buildEvaluator } from '../../evaluator.js';
 import { makeBuiltinRegistry } from './make-builtin-registry.js';
+import { collapseNestingForGolden } from './oracle-source.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(HERE, '../../../../../..');
@@ -95,10 +96,42 @@ function pairedFixtures(root: string): string[] {
   return out.sort();
 }
 
-function evaluate(lessPath: string): FixtureResult {
+/**
+ * Resolve the output mode for `lessPath`'s golden from `styles.config.ts`, using
+ * the SAME nearest-config-wins cascade the product compiler applies: walk UP from
+ * the fixture dir to the corpus root, and the first config that declares a
+ * `collapseNesting` governing this golden (`{name}.css`) wins. No config in the
+ * chain → the empirical default (FLAT/true), sourced from the `tests-unit`
+ * directory config's `collapseNesting: true`. Config is read from the SAME on-disk
+ * corpus tree as the golden, so mode and golden are never drawn from divergent
+ * sources. The config-shape parsing is shared with the git-ref oracle helper via
+ * `collapseNestingForGolden`.
+ */
+function resolveCollapse(lessPath: string, corpusRoot: string): boolean {
+  const fixtureName = path.basename(lessPath, '.less');
+  const goldenBase = `${fixtureName}.css`;
+  let dir = path.dirname(lessPath);
+  for (;;) {
+    const cfg = path.join(dir, 'styles.config.ts');
+    if (fs.existsSync(cfg)) {
+      const v = collapseNestingForGolden(fs.readFileSync(cfg, 'utf8'), fixtureName, goldenBase);
+      if (v !== null) return v;
+    }
+    if (dir === corpusRoot) break;
+    const parent = path.dirname(dir);
+    if (parent === dir) break; // filesystem root reached (corpus outside tree)
+    dir = parent;
+  }
+  return true;
+}
+
+function evaluate(lessPath: string, corpusRoot: string): FixtureResult {
   let res;
   try {
-    res = renderAstFile(lessPath, { evaluator: buildEvaluator(makeBuiltinRegistry()) });
+    res = renderAstFile(lessPath, {
+      evaluator: buildEvaluator(makeBuiltinRegistry()),
+      collapseNesting: resolveCollapse(lessPath, corpusRoot),
+    });
   } catch (e) {
     return { status: 'THREW', bytes: null, threw: `outer: ${(e as Error).message}` };
   }
@@ -119,7 +152,7 @@ describe.skipIf(!ROOT)('ast/ vs less.js alpha differential oracle (baseline-diff
     const fixtures = pairedFixtures(root);
     const report: Record<string, FixtureResult> = {};
     for (const f of fixtures) {
-      report[path.relative(root, f)] = evaluate(f);
+      report[path.relative(root, f)] = evaluate(f, root);
     }
 
     const tally = { MATCH: 0, MATCH_NORM: 0, DIFF: 0, THREW: 0 };
