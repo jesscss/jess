@@ -8,7 +8,7 @@
  * self-wrapped.
  */
 
-import { branchSharesAtom, branchText, cloneBranch } from './ir.js';
+import { branchSharesAtom, branchText, cloneBranch, collectBranchAtoms } from './ir.js';
 import type { Branch } from './ir.js';
 import { composePath } from './compose.js';
 import { applyInstruction } from './match.js';
@@ -19,6 +19,11 @@ import type { Plan, PlanInstruction, PlanSubject } from './plan.js';
 export interface Contrib {
   extenders: Branch[];
   keys: Set<string>;
+  /** The graft-recursive union of the TARGET's individual simple atoms. A branch
+   * disjoint from this set provably cannot whole-subset-match, sub-substitute, or
+   * chain against the target (every such event needs a shared atom), so the
+   * per-branch `all`-rewrite is skipped — the fixpoint's dominant fast-reject. */
+  targetAtoms: Set<string>;
 }
 export type ContribMap = Map<PlanInstruction, Contrib>;
 
@@ -51,7 +56,9 @@ export function buildContribs(instructions: PlanInstruction[]): ContribMap {
   const contribs: ContribMap = new Map();
   for (const inst of instructions) {
     const extenders = composePath(inst.extenderPath);
-    contribs.set(inst, { extenders, keys: new Set(extenders.map(branchText)) });
+    const targetAtoms = new Set<string>();
+    collectBranchAtoms(inst.target, targetAtoms);
+    contribs.set(inst, { extenders, keys: new Set(extenders.map(branchText)), targetAtoms });
   }
   return contribs;
 }
@@ -124,7 +131,7 @@ export function runFixpoint(seed: Branch[], reachable: PlanInstruction[], contri
       if (fired.has(key)) continue;
       const c = contribs.get(inst)!;
       if (c.extenders.length === 0 && !inst.partial) continue;
-      const next = applyInstruction(list, inst.target, c.extenders, inst.partial, c.keys);
+      const next = applyInstruction(list, inst.target, c.extenders, inst.partial, c.keys, c.targetAtoms);
       if (next) {
         list = next;
         fired.add(key);
