@@ -51,6 +51,45 @@ describe('public API contract', () => {
     }
   });
 
+  it('honors explicit collapseNesting without an outputFile across config shapes', async () => {
+    const source = '.a {\n  .b {\n    color: red;\n    .c { color: blue; }\n  }\n}';
+    const testFile = path.join(tempDir, 'collapse.less');
+    fs.writeFileSync(testFile, source);
+
+    const isFlat = (css: string) => css.includes('.a .b') && css.includes('.a .b .c');
+    const isNested = (css: string) => /\.a \{[\s\S]*\.b \{/.test(css) && !css.includes('.a .b');
+
+    // Object output, no outputFile: explicit flag must be honored (not silently nested).
+    expect(isFlat(await new Compiler({ output: { collapseNesting: true } }).render(testFile)))
+      .toBe(true);
+    expect(isNested(await new Compiler({ output: { collapseNesting: false } }).render(testFile)))
+      .toBe(true);
+
+    // Array output with a file-bearing entry, no outputFile: the entry's flag is
+    // honored even though no path selects it.
+    expect(isFlat(await new Compiler({
+      output: [{ file: '{name}.css', collapseNesting: true }]
+    }).render(testFile))).toBe(true);
+    expect(isNested(await new Compiler({
+      output: [{ file: '{name}.css', collapseNesting: false }]
+    }).render(testFile))).toBe(true);
+
+    // A file-less defaults entry outranks an untargeted per-file entry.
+    expect(isFlat(await new Compiler({
+      output: [{ collapseNesting: true }, { file: '{name}.css', collapseNesting: false }]
+    }).render(testFile))).toBe(true);
+
+    // Ambiguous: multiple file entries disagree with no target → language default (nested).
+    expect(isNested(await new Compiler({
+      output: [{ file: 'a.css', collapseNesting: true }, { file: 'b.css', collapseNesting: false }]
+    }).render(testFile))).toBe(true);
+
+    // An explicit outputFile still selects the matching entry (matched path unchanged).
+    expect(isFlat(await new Compiler({
+      output: [{ file: '{name}.css', collapseNesting: true }, { file: 'other.css', collapseNesting: false }]
+    }).render(testFile, { outputFile: path.join(tempDir, 'collapse.css') }))).toBe(true);
+  });
+
   it('keeps renderToResult non-throwing for render diagnostics', async () => {
     const source = '.a { color: @missing; }';
     const testFile = path.join(tempDir, 'diagnostic-result.less');

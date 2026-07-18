@@ -636,6 +636,34 @@ export class Compiler {
       return undefined;
     };
 
+    // Array output, no target path resolved (no `outputFile` and no file-less
+    // defaults entry to key on): `resolveMatchedOutputCollapseNesting` can't
+    // pick an entry, and `activeOptions` only absorbs file-less defaults
+    // entries (getMatchingOptions skips `file`-bearing entries when no output
+    // path matches). Honor an explicit `collapseNesting` off a lone
+    // `file`-bearing entry so the flag isn't silently dropped on the
+    // no-outputFile path. Stays out of it when multiple entries disagree
+    // (ambiguous target → fall through to the language default).
+    const resolveArrayCollapseNestingWithoutTarget = (): boolean | undefined => {
+      if (!Array.isArray(effectiveConfig.output) || resolvedOutputFilePath) {
+        return undefined;
+      }
+      const outputEntries = effectiveConfig.output as OutputOptions[];
+      // A file-less defaults entry states a broad intent — prefer it over any
+      // untargeted per-file entry.
+      const defaults = outputEntries.find(
+        entry => !!entry && typeof entry === 'object' && !('file' in entry) && 'collapseNesting' in entry
+      );
+      if (defaults) {
+        return defaults.collapseNesting;
+      }
+      const flagged = outputEntries.filter(
+        (entry): entry is OutputOptions =>
+          !!entry && typeof entry === 'object' && 'file' in entry && 'collapseNesting' in entry
+      );
+      return flagged.length === 1 ? flagged[0]!.collapseNesting : undefined;
+    };
+
     const matchedOutputCollapseNesting = resolveMatchedOutputCollapseNesting();
     const explicitOutputCollapseNesting: boolean | undefined =
       !Array.isArray(effectiveConfig.output)
@@ -644,6 +672,7 @@ export class Compiler {
     const printOptions = {
       collapseNesting: explicitOutputCollapseNesting
         ?? matchedOutputCollapseNesting
+        ?? resolveArrayCollapseNestingWithoutTarget()
         ?? activeOptions.collapseNesting
     };
 
