@@ -2379,12 +2379,42 @@ function emitAtRuleStatementRaw(node: AtRuleStatement, e: Emit): void {
  * exact text, unparsed and unindented, followed by a single newline separating it
  * from the next statement (mirrors Less's inline splice — an `Anonymous` value
  * printed as-is with a trailing rule separator).
+ *
+ * [import:inline-media] With a media postlude, the splice is wrapped in an
+ * `@media <media> { … }` block: Less wraps the inline `Anonymous` in a media
+ * ruleset, so the raw first line is indented one level and the block closes with a
+ * `\n}` — reproducing the media-feature colon spacing (`(min-width:…)` →
+ * `(min-width: …)`) Less's media parser reprints.
  */
 function emitRawInline(node: RawInline, e: Emit): void {
   const start = e.off;
-  put(e, node.text);
-  put(e, '\n');
+  if (node.media != null) {
+    const idt = e.depth > 0 ? INDENT.repeat(e.depth) : '';
+    put(e, idt);
+    put(e, '@media ');
+    put(e, normalizeMediaFeatures(node.media));
+    put(e, ' {\n');
+    put(e, INDENT.repeat(e.depth + 1));
+    put(e, node.text);
+    put(e, '\n');
+    put(e, idt);
+    put(e, '}\n');
+  } else {
+    put(e, node.text);
+    put(e, '\n');
+  }
   if (e.positions) e.positions.push({ node, type: node.type, start, end: e.off });
+}
+
+/**
+ * [import:inline-media] Reprint a media-query prelude's feature colons with
+ * Less's `name: value` spacing (`(min-width:600px)` → `(min-width: 600px)`),
+ * matching Less's media parser which re-emits each feature with a space after the
+ * colon. Only the feature colon immediately inside a paren is touched; other text
+ * (media types, `and`/`or`, values) is preserved verbatim.
+ */
+function normalizeMediaFeatures(prelude: string): string {
+  return prelude.replace(/\(\s*([-\w]+)\s*:\s*/gu, '($1: ');
 }
 
 /**

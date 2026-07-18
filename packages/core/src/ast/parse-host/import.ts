@@ -254,6 +254,8 @@ interface ImportFlags {
   escaped: boolean;
   /** Explicit `(css)` option — force CSS-passthrough regardless of extension. */
   css?: boolean;
+  /** Explicit `(less)` option — force Less parsing/inlining even for a `.css` target. */
+  less?: boolean;
 }
 
 /**
@@ -275,6 +277,7 @@ function readFlags(node: AnyNode): ImportFlags {
     multiple: io?.once === false,
     inline: io?.inline === true,
     escaped: p?.escaped === true,
+    less: io?.less === true,
   };
 }
 
@@ -289,8 +292,13 @@ function readFlags(node: AnyNode): ImportFlags {
  * extension/options alone, so `@import url(foo.less)` is a LESS import that inlines
  * (verified against Less 4.x), while `@import url(foo.css)` is caught by the `.css`
  * test below. Only an explicit `(css)` option or a `.css`/remote target is CSS.
+ *
+ * An explicit `(less)` option forces LESS parsing regardless of extension, so
+ * `@import (less) "x.css"` inlines the target as Less (verified against Less 4.x —
+ * `(less)` overrides the `.css` heuristic). It wins over the extension test below.
  */
 function isCssPassthrough(spec: string, flags: ImportFlags): boolean {
+  if (flags.less === true) return false;
   if (flags.css === true) return true;
   const lower = spec.toLowerCase();
   if (/\.css([?#].*)?$/.test(lower)) return true;
@@ -367,17 +375,19 @@ function spliceImport(
   state: ImportState,
   bridgeBody: (source: string, filePath: string, state: ImportState) => t2.Statement[],
   unsupported: (feature: string, detail: string) => never,
+  media: string | null = null,
 ): t2.Statement[] {
   // [import:inline] `@import (inline) "x"` splices the target file's RAW bytes
   // verbatim (unparsed, unreformatted) at the import site. A media-query postlude
-  // wrap is deferred by the caller; only the plain inline splice is produced here.
+  // (`@import (inline) "x" (min-width:…)`) is carried on the `RawInline` node so
+  // the serializer wraps the splice in an `@media <media> { … }` block.
   if (flags.inline) {
     const rawPath = resolveLessPath(spec, fromDir);
     if (rawPath === null) {
       if (flags.optional) return [];
       unsupported('import:unresolved', spec);
     }
-    return [rawInlineStatement(fs.readFileSync(rawPath, 'utf8'))];
+    return [rawInlineStatement(fs.readFileSync(rawPath, 'utf8'), media)];
   }
 
   if (isCssPassthrough(spec, flags)) unsupported('import:css-passthrough', spec);
@@ -503,6 +513,7 @@ function flagsFromOptions(options: string): ImportFlags {
     inline: set.has('inline'),
     escaped: false,
     css: set.has('css') && !set.has('less'),
+    less: set.has('less'),
   };
 }
 
@@ -558,6 +569,7 @@ export function buildStyleImportNode(args: BuildArgs): t2.StyleImport | null {
     multiple: flags.multiple,
     inline: flags.inline,
     css: flags.css === true,
+    less: flags.less === true,
     escaped: false,
     media,
   });
@@ -581,6 +593,7 @@ function directFlags(imp: t2.StyleImport): ImportFlags {
     inline: imp.inline,
     escaped: imp.escaped,
     css: imp.css,
+    less: imp.less,
   };
 }
 
@@ -635,7 +648,7 @@ export function resolveDirectImports(
       }
       try {
         const fromDir = fromFilePath ? path.dirname(fromFilePath) : process.cwd();
-        const spliced = spliceImport(spec, flags, fromDir, state, bridgeBody, raise);
+        const spliced = spliceImport(spec, flags, fromDir, state, bridgeBody, raise, s.media);
         for (const r of spliced) out.push(r);
       } catch (e) {
         if (!(e instanceof ImportDeferral)) throw e;

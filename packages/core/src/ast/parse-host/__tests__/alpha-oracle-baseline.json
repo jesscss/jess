@@ -24,7 +24,7 @@
     "bytes": 641
   },
   "at-rules/at-rules.less": {
-    "status": "DIFF",
+    "status": "MATCH",
     "bytes": 1677
   },
   "calc/calc.less": {
@@ -77,7 +77,7 @@
   },
   "container/container.less": {
     "status": "DIFF",
-    "bytes": 5203
+    "bytes": 5199
   },
   "css-3/css-3.less": {
     "status": "MATCH",
@@ -93,7 +93,7 @@
   },
   "css-guards/css-guards.less": {
     "status": "DIFF",
-    "bytes": 865
+    "bytes": 843
   },
   "detached-rulesets/detached-rulesets.less": {
     "status": "DIFF",
@@ -137,7 +137,7 @@
   },
   "functions-each/functions-each.less": {
     "status": "DIFF",
-    "bytes": 961
+    "bytes": 985
   },
   "functions/functions.less": {
     "status": "DIFF",
@@ -148,8 +148,8 @@
     "bytes": 48
   },
   "import/import-inline.less": {
-    "status": "DIFF",
-    "bytes": 78
+    "status": "MATCH",
+    "bytes": 110
   },
   "import/import-interpolation.less": {
     "status": "DIFF",
@@ -165,11 +165,11 @@
   },
   "import/import-reference-issues.less": {
     "status": "DIFF",
-    "bytes": 401
+    "bytes": 331
   },
   "import/import-reference.less": {
     "status": "DIFF",
-    "bytes": 411
+    "bytes": 403
   },
   "import/import-remote.less": {
     "status": "THREW",
@@ -178,11 +178,11 @@
   },
   "import/import.less": {
     "status": "DIFF",
-    "bytes": 713
+    "bytes": 594
   },
   "layer/layer.less": {
-    "status": "DIFF",
-    "bytes": 2094
+    "status": "MATCH",
+    "bytes": 2091
   },
   "lazy-eval/lazy-eval.less": {
     "status": "MATCH",
@@ -190,7 +190,7 @@
   },
   "media/media.less": {
     "status": "DIFF",
-    "bytes": 4137
+    "bytes": 4160
   },
   "merge/merge.less": {
     "status": "DIFF",
@@ -206,7 +206,7 @@
   },
   "mixins-guards-default-func/mixins-guards-default-func.less": {
     "status": "DIFF",
-    "bytes": 1836
+    "bytes": 1799
   },
   "mixins-guards/mixins-guards.less": {
     "status": "DIFF",
@@ -214,7 +214,7 @@
   },
   "mixins-important/mixins-important.less": {
     "status": "DIFF",
-    "bytes": 855
+    "bytes": 747
   },
   "mixins-interpolated/mixins-interpolated.less": {
     "status": "DIFF",
@@ -233,8 +233,8 @@
     "bytes": 583
   },
   "mixins/maps.less": {
-    "status": "DIFF",
-    "bytes": 60
+    "status": "MATCH",
+    "bytes": 57
   },
   "mixins/mixins-advanced.less": {
     "status": "DIFF",
@@ -249,8 +249,8 @@
     "bytes": 143
   },
   "nesting/nesting.less": {
-    "status": "DIFF",
-    "bytes": 394
+    "status": "MATCH",
+    "bytes": 391
   },
   "no-output/no-output.less": {
     "status": "MATCH",
@@ -318,7 +318,7 @@
   },
   "selectors/selectors.less": {
     "status": "DIFF",
-    "bytes": 3409
+    "bytes": 3393
   },
   "starting-style/starting-style.less": {
     "status": "DIFF",
@@ -334,11 +334,11 @@
   },
   "urls/urls.less": {
     "status": "DIFF",
-    "bytes": 3071
+    "bytes": 3042
   },
   "variables-in-at-rules/variables-in-at-rules.less": {
     "status": "DIFF",
-    "bytes": 207
+    "bytes": 251
   },
   "variables/variable-advanced.less": {
     "status": "DIFF",

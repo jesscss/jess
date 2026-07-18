@@ -416,10 +416,17 @@ export interface Comment {
  * file's bytes are spliced UNPARSED at the import site; the serializer emits
  * `text` exactly (a single trailing newline separates it from the next
  * statement, matching Less's inline splice). Carries no scope and no structure.
+ *
+ * [import:inline-media] When the import carried a media-query postlude
+ * (`@import (inline) "x" (min-width:…)`), `media` holds that prelude and the
+ * serializer wraps the raw bytes in an `@media <media> { … }` block (matching
+ * Less, which wraps the inline `Anonymous` in a media ruleset). `null`/absent =
+ * a bare inline splice.
  */
 export interface RawInline {
   readonly type: 'RawInline';
   readonly text: string;
+  readonly media?: string | null;
 }
 
 /**
@@ -452,6 +459,8 @@ export interface StyleImport {
   readonly inline: boolean;
   /** `(css)` explicit, or a `.css` / remote target — emit the `@import` verbatim. */
   readonly css: boolean;
+  /** `(less)` explicit — force Less parsing/inlining even for a `.css` target. */
+  readonly less: boolean;
   /** An escaped `~"…"` path (deferred; emitted verbatim). */
   readonly escaped: boolean;
   /** Media-query postlude bytes (`@import (inline) "x" (min-width:…)`), else `null`. */
@@ -678,8 +687,10 @@ export const decl = (
     ? { type: 'Declaration', name, value, merge, important, valueOnNewLine: true }
     : { type: 'Declaration', name, value, merge, important };
 export const comment = (text: string): Comment => ({ type: 'Comment', text });
-/** [import:inline] A verbatim raw-bytes statement (`@import (inline)` splice). */
-export const rawInline = (text: string): RawInline => ({ type: 'RawInline', text });
+/** [import:inline] A verbatim raw-bytes statement (`@import (inline)` splice).
+ * `media` (optional) wraps the splice in an `@media <media> { … }` block. */
+export const rawInline = (text: string, media?: string | null): RawInline =>
+  media != null ? { type: 'RawInline', text, media } : { type: 'RawInline', text };
 /** [import] An unresolved `@import` head (see {@link StyleImport}). */
 export const styleImport = (fields: Omit<StyleImport, 'type'>): StyleImport =>
   ({ type: 'StyleImport', ...fields });
