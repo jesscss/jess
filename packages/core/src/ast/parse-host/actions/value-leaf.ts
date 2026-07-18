@@ -20,7 +20,7 @@
  */
 import * as t2 from '../../index.js';
 import { type BuildAction, type BuildArgs, sliceSpan } from '../host-context.js';
-import { interpFromLeaves, isLeaf } from './interp.js';
+import { interpFromChildren } from './interp.js';
 
 /** Verbatim source bytes of the leaf's own span. */
 function leafBytes(args: BuildArgs): string {
@@ -69,15 +69,15 @@ function numericLeaf(args: BuildArgs): t2.ValueNode {
  *
  * A string carrying `@{name}` interpolation becomes an `Interp` template (the
  * literal parts keep the quote chars, including the surrounding quotes) so the
- * reference resolves. The Less `Quoted` grammar rule (§3.3) already SPLIT the
- * string into leaves — quote/literal chunks + isolated `@{name}` leaves — so this
- * CONSUMES those leaves via the shared `interpFromLeaves` seam (P0: no byte
- * re-scan). A plain string with no `@{…}` is one flat leaf → `interpFromLeaves`
- * finds no ref and returns `null`, so it stays the byte-identical `Quoted` node.
+ * reference resolves. The Less `Quoted` grammar rule (§3.3) already SPLIT the string
+ * into ordered children — quote/literal chunks + built `LessInterp` ref nodes
+ * (`@{name}` → `VarRef`, `@{m[k]}` → `MapAccessor`) — so this CONSUMES those children
+ * via the shared `interpFromChildren` seam (P0: no byte re-scan). A plain string with
+ * no `@{…}` is one flat leaf → `interpFromChildren` finds no ref and returns `null`,
+ * so it stays the byte-identical `Quoted` node.
  */
 function quotedLeaf(args: BuildArgs): t2.ValueNode {
-  const leaves = args.children.filter(isLeaf);
-  const interp = interpFromLeaves(leaves, true);
+  const interp = interpFromChildren(args.children, true);
   if (interp !== null) return interp;
   const bytes = leafBytes(args);
   return t2.quoted(bytes, bytes.slice(1, -1), bytes[0]!, false);
@@ -144,7 +144,7 @@ function escapedLeaf(args: BuildArgs): t2.ValueNode {
  *   • `url("…@{x}…")` — the §3.3 `Quoted` grammar structured the string into an
  *     `Interp` (quote chars ride in the literal parts). Wrap those parts in
  *     `url(` … `)` so the reference resolves (`url("@{b}/x") → url("/img/x")`),
- *     reusing the shared `interpFromLeaves` seam (P0 — no byte re-scan here).
+ *     reusing the shared `interpFromChildren` seam (P0 — no byte re-scan here).
  *   • `url(@var)` — a bare variable `Reference` body: splice the variable's value
  *     WITHOUT unquoting (`@a: 'x'` → `url('x')`), matching Less.
  * A plain `url("/p.svg")` (flat `Quoted`) or unquoted `url(image.png)` (`urlInner`

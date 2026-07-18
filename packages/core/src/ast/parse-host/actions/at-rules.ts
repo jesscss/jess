@@ -37,6 +37,7 @@ import {
   isStatement,
   sliceSpan,
 } from '../host-context.js';
+import { isInterpRefNode } from './interp.js';
 
 /** The string value of a parseman leaf child, or `undefined` for a non-leaf. */
 function leafValue(x: unknown): string | undefined {
@@ -91,10 +92,12 @@ function isCleanRefToken(v: string): boolean {
   return true;
 }
 
-/** A Less value token the grammar isolated in the prelude, keyed by its span. */
+/** A Less value token the grammar isolated in the prelude, keyed by its span. An
+ *  `interp` token carries the BUILT ref node (`ref`); `var`/`indirect` carry a name. */
 interface PreludeTok {
   readonly kind: 'var' | 'interp' | 'indirect';
   readonly name: string;
+  readonly ref?: t2.ValueNode;
   readonly start: number;
   readonly end: number;
 }
@@ -120,18 +123,36 @@ function buildGenericBlock(args: BuildArgs): t2.AtRuleBlock {
   const name = leafValue(children[0]) ?? '@';
   const body = children.filter(isStatement) as t2.Statement[];
 
-  // Prelude region: from the keyword leaf end to the first block `{` leaf start.
+  // Prelude region: from the keyword leaf end to the first block `{` leaf start. The
+  // prelude tokens come from `rawChildren` (leaves + the structured `LessInterp` node),
+  // which — unlike the built `children` — carry a span on every entry. A top-level
+  // `@{…}` is now a single `LessInterp` node (its inner `@{`/`}` are its OWN children,
+  // never top-level leaves), so the first top-level `{` leaf is the real block brace.
   const src = args.ctx.src;
-  let ps = leafSpan(children[0])?.end ?? args.span.start;
+  const raw = args.rawChildren;
+  const built = args.children;
+  let ps = leafSpan(raw[0])?.end ?? args.span.start;
   let braceStart = args.span.end;
   const toks: PreludeTok[] = [];
-  for (let i = 1; i < children.length; i++) {
-    const v = leafValue(children[i]);
+  for (let i = 1; i < raw.length; i++) {
+    const rc = raw[i] as { _tag?: string; span?: Span; value?: unknown } | undefined;
+    // A structured `@{name}` / `@{map[key]}` interpolation: the grammar built it into
+    // a ref value node (`VarRef` / `MapAccessor`) in `children`, index-aligned with the
+    // span-carrying `rawChildren` placeholder. Splice that BUILT ref so a prelude
+    // `@{name}` resolves the variable AND `@{map[key]}` resolves the accessor through
+    // the same `evalMapAccessor` seam (its verbatim `@{…}` bytes are the graceful
+    // fallback when a lookup fails) — no re-scan of the `@{…}` body here.
+    const bi = built[i];
+    if (isInterpRefNode(bi) && rc?.span) {
+      toks.push({ kind: 'interp', name: '', ref: bi, start: rc.span.start, end: rc.span.end });
+      continue;
+    }
+    const v = leafValue(rc);
     if (v === '{') {
-      braceStart = leafSpan(children[i])?.start ?? braceStart;
+      braceStart = leafSpan(rc)?.start ?? braceStart;
       break;
     }
-    const span = leafSpan(children[i]);
+    const span = leafSpan(rc);
     if (v === undefined || span === undefined) continue;
     const c0 = v.charCodeAt(0);
     if (c0 !== 0x40 /* @ */) continue;
@@ -140,8 +161,7 @@ function buildGenericBlock(args: BuildArgs): t2.AtRuleBlock {
     // (rendered verbatim) rather than synthesizing a throwing `VarRef` from it.
     if (!isCleanRefToken(v)) continue;
     const c1 = v.charCodeAt(1);
-    if (c1 === 0x7b /* { */) toks.push({ kind: 'interp', name: v.slice(2, -1).trim(), start: span.start, end: span.end });
-    else if (c1 === 0x40 /* @ */) toks.push({ kind: 'indirect', name: v.slice(2), start: span.start, end: span.end });
+    if (c1 === 0x40 /* @ */) toks.push({ kind: 'indirect', name: v.slice(2), start: span.start, end: span.end });
     else toks.push({ kind: 'var', name: v.slice(1), start: span.start, end: span.end });
   }
   let pe = braceStart;
@@ -166,9 +186,9 @@ function buildGenericBlock(args: BuildArgs): t2.AtRuleBlock {
     const parts: t2.InterpPart[] = [];
     let cursor = ps;
     for (const t of toks) {
-      if (t.kind !== 'interp') continue;
+      if (t.kind !== 'interp' || t.ref === undefined) continue;
       if (t.start > cursor) parts.push({ lit: src.slice(cursor, t.start) });
-      parts.push({ ref: t2.varRef(t.name), unquote: true });
+      parts.push({ ref: t.ref, unquote: true });
       cursor = t.end;
     }
     if (cursor < pe) parts.push({ lit: src.slice(cursor, pe) });

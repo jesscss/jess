@@ -412,6 +412,7 @@ export class LessGrammar extends CssParser {
       case 'UnicodeRange':        return this._lessKeyword(this._source.slice(span.start, span.end), loc) as unknown as JessNode;
       case 'PseudoSelector':      return this._buildLessPseudo(type, span, children, _state, raw, fields, triviaLog, loc);
       case 'InterpolatedSelector': return this._buildInterpolatedSelector(children, loc);
+      case 'LessInterp':          return this._buildLessInterpLeaf(span) as unknown as JessNode;
       case 'VarCall':             return this._buildVarCall(children, raw, loc);
       case 'MixinCall':           return this._buildMixinCall(children, raw, loc);
       case 'Rest':                return this._buildRest(children, loc);
@@ -1049,6 +1050,21 @@ export class LessGrammar extends CssParser {
       source += ch;
     }
     return { source, replacements };
+  }
+
+  /**
+   * `LessInterp` (`@{name}` / `@{map[key]}`) — the grammar now STRUCTURES the
+   * interpolation body into a `LessInterp` node (head + `[key]` accessor leaves) so
+   * the ast/ host can resolve `@{map[key]}`. The legacy BuilderHost has no accessor
+   * resolution (that closes on the front-end flip), so it re-collapses the node into
+   * the single flat `@{…}` leaf every existing interp consumer here already expects
+   * (`_buildInterpolatedSelector`, `getInterpolatedOrString`/`getInterpolatedNode`
+   * over the value/name bytes). Emitting the verbatim token keeps this path
+   * byte-identical for `@{name}`; `@{map[key]}` stays a flat (unresolved) interp,
+   * exactly as before.
+   */
+  private _buildLessInterpLeaf(span: Span): CSTLeaf {
+    return { _tag: 'leaf', value: this._source.slice(span.start, span.end), span };
   }
 
   private _buildInterpolatedSelector(children: ReadonlyArray<Child>, loc: LocationInfo) {

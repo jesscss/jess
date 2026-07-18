@@ -6,10 +6,11 @@
  * or regex-hunt for `@{…}` boundaries to REBUILD structure. Two consumers, reused
  * across the selector / declaration / variable families (P4 DRY):
  *
- *   • `interpFromLeaves` — the grammar splits an interpolated SELECTOR into
- *     index-aligned leaves (`.a-@{n}` → `.`, `a-`, `@{n}`); a leaf whose bytes are
- *     the `@{name}` token the parser isolated becomes an interpolation ref, every
- *     other leaf is a literal chunk. No scan of the surrounding source.
+ *   • `interpFromChildren` — the grammar splits an interpolation-bearing position
+ *     (selector / string) into ordered children: literal-chunk leaves interspersed
+ *     with the built `LessInterp` ref nodes (`.a-@{n}` → leaf `.`, leaf `a-`, the
+ *     built `@{n}` ref). Each ref node becomes an interpolation part, every leaf is a
+ *     literal chunk. No scan of the surrounding source, no re-scan of the `@{…}` body.
  *   • `wholeValueNode` — a declaration / variable value that is EXACTLY one built
  *     node (the parser bounded it: a single `Reference`, value leaf, paren, or
  *     call spanning the whole value) is consumed directly; a multi-token value has
@@ -30,45 +31,32 @@ export function isLeaf(x: unknown): x is Leaf {
     && typeof (x as { value?: unknown }).value === 'string';
 }
 
-/** A Less interpolation-name byte (`lessInterp` class: `-_A-Za-z0-9` + non-ASCII). */
-function isInterpNameByte(c: number): boolean {
-  return c === 0x2d /* - */ || c === 0x5f /* _ */
-    || (c >= 0x30 && c <= 0x39) /* 0-9 */
-    || (c >= 0x41 && c <= 0x5a) /* A-Z */
-    || (c >= 0x61 && c <= 0x7a) /* a-z */
-    || c >= 0x80;
+/** A structured interpolation reference the `LessInterp` action built (`@{name}` →
+ *  `VarRef`, `@{map[key]}` → `MapAccessor`). The grammar STRUCTURES the `@{…}` body
+ *  into a `LessInterp` node whose action returns one of these value nodes, so this is
+ *  the built ref child that sits among a selector / string's literal-chunk leaves. */
+export function isInterpRefNode(x: unknown): x is t2.ValueNode {
+  if (!t2.isNode(x)) return false;
+  const t = x.type;
+  return t === 'VarRef' || t === 'PropRef' || t === 'VarIndirect' || t === 'MapAccessor';
 }
 
 /**
- * The variable name of a `@{name}` interpolation leaf (the parser's `lessInterp`
- * token), or `null` for any other leaf. This CLASSIFIES a leaf the grammar already
- * bounded (it does not re-scan source): it FULLY validates the strict `@{name}`
- * shape (`@{` + optional `-` + a non-empty name run + `}`) because a quoted-string
- * chunk leaf may legitimately START with `@{` — a NON-interpolation false-start the
- * `Quoted` grammar absorbs into a literal chunk (`@{box-` in `"@{box-@{suffix}}"`,
- * or `@{ x }` / `@{a.b}` / `@{}`). Such a chunk fails the full shape (no closing `}`
- * before the run ends, or an invalid interior), so it stays literal — matching the
- * strict §4.1 (owner-LOCKED) rule and real Less 4.x. A selector / custom-prop chunk
- * never starts with `@{`, so this is a no-op tightening for those callers.
+ * Build an `Interp` from the ORDERED children the grammar produced for an
+ * interpolation-bearing position — literal-chunk leaves interspersed with the built
+ * `LessInterp` ref nodes (`.a-@{n}` → leaf `.`, leaf `a-`, `LessInterp(@{n})`; a
+ * quoted string → quote/chunk leaves + `LessInterp` nodes). Returns `null` when no
+ * `@{…}` ref is present (a plain string / selector with no interpolation), so the
+ * caller keeps its byte-identical flat shape. Adjacent literal leaves coalesce into
+ * one part. `unquote` rides on each spliced ref (selector context passes `false`).
+ *
+ * P0 (parser is the sole source of structure): the ref parts come from the grammar's
+ * `LessInterp` children — this NEVER re-scans the `@{…}` body bytes to rebuild the
+ * head/accessor split. A chunk leaf that merely STARTS with `@{` (a false-start the
+ * `Quoted` grammar kept literal, e.g. `@{box-` in `"@{box-@{suffix}}"`) is a plain
+ * leaf, never a `LessInterp` node, so it stays literal — matching strict §4.1.
  */
-function interpName(value: string): string | null {
-  const n = value.length;
-  if (n < 4 || value.charCodeAt(0) !== 0x40 /* @ */ || value.charCodeAt(1) !== 0x7b /* { */
-    || value.charCodeAt(n - 1) !== 0x7d /* } */) return null;
-  let i = 2;
-  if (value.charCodeAt(i) === 0x2d /* - */) i++;
-  const nameStart = i;
-  while (i < n - 1 && isInterpNameByte(value.charCodeAt(i))) i++;
-  return i === n - 1 && i > nameStart ? value.slice(2, n - 1).trim() : null;
-}
-
-/**
- * Build an `Interp` from a selector's already-split leaves, or `null` when no
- * `@{…}` leaf is present. Adjacent literal leaves coalesce into one part (so the
- * part sequence matches the bridge's `interpFromString`). `unquote` rides on each
- * spliced ref (selector context passes `false`).
- */
-export function interpFromLeaves(leaves: readonly { value: string }[], unquote: boolean): t2.Interp | null {
+export function interpFromChildren(children: readonly unknown[], unquote: boolean): t2.Interp | null {
   const parts: t2.InterpPart[] = [];
   let lit = '';
   let sawRef = false;
@@ -78,14 +66,13 @@ export function interpFromLeaves(leaves: readonly { value: string }[], unquote: 
       lit = '';
     }
   };
-  for (const { value } of leaves) {
-    const name = interpName(value);
-    if (name !== null) {
+  for (const c of children) {
+    if (isInterpRefNode(c)) {
       flush();
-      parts.push({ ref: t2.varRef(name), unquote });
+      parts.push({ ref: c, unquote });
       sawRef = true;
-    } else {
-      lit += value;
+    } else if (isLeaf(c)) {
+      lit += c.value;
     }
   }
   flush();

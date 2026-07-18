@@ -83,16 +83,26 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   // `@` + one or more name chars (dash included), so a dash-only name like `@-` is
   // valid (Less accepts it). Digits are allowed anywhere (`@3` \u2014 flagged, not rejected).
   const lessVar = regex(/@[-_a-zA-Z0-9\u0080-\uffff]+/);
-  // \u00a74.1 amendment (owner-approved 2026-07-18): the interpolation BODY is widened
-  // from a single variable ident to a READ-ONLY value REFERENCE \u2014 a name/var head
-  // followed by zero or more `[key]` accessors (`@{theme[variant]}`, `@{map[@key]}`).
-  // The zero-accessor case `@{name}` stays byte-identical (the `(?:\u2026)*` matches
-  // empty). Accessor keys admit ident / `@var` / `$prop` / numeric tokens; a `.`-call
+  // \u00a74.1 amendment (owner-approved 2026-07-18): the interpolation BODY is a
+  // READ-ONLY value REFERENCE \u2014 a bare-name/var head followed by zero or more
+  // `[key]` accessors (`@{theme[variant]}`, `@{map[@key]}`). The body is STRUCTURED
+  // by the grammar (P0 KEYSTONE: parser is the sole source of structure) \u2014 a
+  // `LessInterp` node whose children are the `@{` / `}` delimiter leaves, the head
+  // leaf, and each `[` / key / `]` accessor leaf \u2014 so a host consumes those child
+  // tokens directly and NEVER re-scans the `@{\u2026}` body bytes to rebuild the split.
+  // The zero-accessor case `@{name}` builds a plain variable ref (byte-identical).
+  // Accessor keys admit ident / `@var` / `$prop` / numeric tokens; a `.`-call
   // (`@{head.call()}`) is intentionally NOT accepted (read-only). The `@{`\u2026`}`
-  // delimiters are owner-LOCKED and unchanged. This single production is the shared
-  // interp-body seam \u2014 every `@{\u2026}` position (Quoted, selector, custom-prop, prelude,
-  // value) references `lessInterp` (or the parallel `interpKey`) so they all agree.
-  const lessInterp = regex(/@\{-?[_a-zA-Z0-9\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*(?:\[[-_a-zA-Z0-9@$\u0080-\uffff]+\])*\}/);
+  // delimiters are owner-LOCKED. This single production is the shared interp-body
+  // seam \u2014 every `@{\u2026}` position (Quoted, selector, custom-prop, prelude, value)
+  // references `lessInterp` (or the parallel `interpKey`) so they all agree.
+  // `noTrivia` keeps the whole token contiguous (matching the former single regex):
+  // a spaced `@{ x }` / `@{a.b}` / `@{}` false-start does NOT match and stays literal.
+  const interpHead = regex(/-?[_a-zA-Z0-9\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
+  const interpAccessorKey = regex(/[-_a-zA-Z0-9@$\u0080-\uffff]+/);
+  const interpAccessor = sequence(literal('['), interpAccessorKey, literal(']'));
+  const lessInterp = node('LessInterp',
+    noTrivia(sequence(literal('@{'), interpHead, many(interpAccessor), literal('}'))));
   // Interpolated custom-property name (`--@{key}`, `--foo-@{key}-bar`).
   // TODO(tier-b/A4): WHAT \u2014 kept as ONE token (NOT leaf-split like the value below).
   // WHY \u2014 the legacy BuilderHost that drives the less-compat bridge consumes this

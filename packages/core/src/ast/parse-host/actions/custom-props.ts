@@ -34,7 +34,7 @@ import * as t2 from '../../index.js';
 // (index.ts re-exports value-eval's `List` explicitly), so import it DIRECTLY.
 import type { List as ListNode } from '../../nodes.js';
 import { type BuildAction, type BuildArgs, type Span, sliceSpan } from '../host-context.js';
-import { type InterpSpan, interpFromRegion, wholeValueNode } from './interp.js';
+import { isInterpRefNode, wholeValueNode } from './interp.js';
 
 /* ------------------------------------------------ source-bytes value helpers */
 
@@ -86,15 +86,6 @@ function leafValue(x: unknown): string | undefined {
 function leafSpan(x: unknown): Span | undefined {
   return (x as { span?: Span } | undefined)?.span;
 }
-/** A leaf's `@{name}` interpolation span, or `null` for any other leaf. */
-function interpSpanOf(x: unknown): InterpSpan | null {
-  const v = leafValue(x);
-  const s = leafSpan(x);
-  if (v === undefined || s === undefined) return null;
-  if (v.charCodeAt(0) !== 0x40 /* @ */ || v.charCodeAt(1) !== 0x7b /* { */) return null;
-  return { start: s.start, end: s.end, name: v.slice(2, -1).trim() };
-}
-
 /**
  * TODO(tier-b/A4): WHAT — `interpFromString` + `declName` (this file's only remaining
  * `@{…}` regex re-tokenizers) tokenize the CUSTOM-prop interpolated NAME (`--@{k}`)
@@ -363,12 +354,30 @@ const customDeclaration: BuildAction = {
     const vStart = colonSpan.end;
     if (src.slice(vStart, ve).trim() === '') return t2.decl(name, t2.any(''), null, false);
     const vs = src[vStart] === ' ' || src[vStart] === '\t' ? vStart + 1 : vStart;
-    const valueSpans: InterpSpan[] = [];
-    for (let i = colonIdx + 1; i < children.length; i++) {
-      const s = interpSpanOf(children[i]);
-      if (s !== null && s.start >= vs && s.end <= ve) valueSpans.push(s);
+    // `@{…}` value tokens are now structured `LessInterp` nodes the grammar built into
+    // ref value nodes (`VarRef` / `MapAccessor`) in `children`, index-aligned with the
+    // span-carrying `rawChildren` placeholders. Splice each BUILT ref inside the value
+    // region (`@{name}` resolves the variable, `@{map[key]}` the accessor) with the
+    // gaps between them carried VERBATIM (bare `@var` / comments / spacing stay
+    // literal). No `@{…}` ref → the whole value is one verbatim `Any` (byte-identical).
+    const interpToks: Array<{ ref: t2.ValueNode; start: number; end: number }> = [];
+    for (let i = 0; i < args.children.length; i++) {
+      const b = args.children[i];
+      const rc = args.rawChildren[i] as { span?: Span } | undefined;
+      if (isInterpRefNode(b) && rc?.span && rc.span.start >= vs && rc.span.end <= ve) {
+        interpToks.push({ ref: b, start: rc.span.start, end: rc.span.end });
+      }
     }
-    return t2.decl(name, interpFromRegion(src, vs, ve, valueSpans, true), null, false);
+    if (interpToks.length === 0) return t2.decl(name, t2.any(src.slice(vs, ve)), null, false);
+    const parts: t2.InterpPart[] = [];
+    let cursor = vs;
+    for (const t of interpToks) {
+      if (t.start > cursor) parts.push({ lit: src.slice(cursor, t.start) });
+      parts.push({ ref: t.ref, unquote: true });
+      cursor = t.end;
+    }
+    if (cursor < ve) parts.push({ lit: src.slice(cursor, ve) });
+    return t2.decl(name, t2.interp(parts), null, false);
   },
 };
 

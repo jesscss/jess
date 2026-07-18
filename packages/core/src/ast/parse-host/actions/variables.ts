@@ -308,4 +308,35 @@ const nsAccessor: BuildAction = {
   },
 };
 
-export const VARIABLES_ACTIONS: readonly BuildAction[] = [varDeclaration, reference, varCall, nsAccessor];
+/**
+ * `LessInterp` (`@{name}` / `@{map[key]}`) — the grammar STRUCTURES the
+ * interpolation body into a `LessInterp` node whose children are the `@{` / `}`
+ * delimiter leaves, the bare-name head leaf, and each `[` / key / `]` accessor leaf.
+ * This builds the SAME structured value-reference the value-position `@map[key]`
+ * path produces (`reference` above): a `VarRef` for the head, then a `MapAccessor`
+ * folded per `[key]` accessor. Consuming the grammar's child leaves directly (P0 —
+ * no re-scan of the `@{…}` body bytes) makes `@{map[key]}` RESOLVE through the same
+ * `evalMapAccessor` seam value-position accessors use; `@{name}` (zero accessors) is
+ * a plain `VarRef`, byte-identical to the former flat-leaf interpolation. The head
+ * is a BARE name (the `@{` opener is the sigil), so unlike `reference` there is no
+ * `@`/`$` head leaf to strip.
+ */
+const lessInterp: BuildAction = {
+  type: 'LessInterp',
+  build: (args) => {
+    // children: `@{` leaf, head leaf, ( `[` leaf, key leaf, `]` leaf )*, `}` leaf.
+    const leaves: Leaf[] = args.children.filter(isLeaf);
+    const head = leaves[1];
+    if (!head) return placeholder(args.type);
+    let acc: t2.ValueNode = t2.varRef(head.value);
+    const bytes = sliceSpan(args.ctx, args.span);
+    // Fold `[key]` accessors, skipping the leading `@{`/head (0,1) and trailing `}`.
+    for (let i = 2; i + 2 < leaves.length && leaves[i]!.value === '['; i += 3) {
+      const { key, keyIsProp } = accessorKey(leaves[i + 1]!.value);
+      acc = t2.mapAccessor(acc, key, keyIsProp, bytes);
+    }
+    return acc;
+  },
+};
+
+export const VARIABLES_ACTIONS: readonly BuildAction[] = [varDeclaration, reference, varCall, nsAccessor, lessInterp];

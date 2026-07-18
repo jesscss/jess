@@ -2,9 +2,10 @@
  * Selector interpolation family: structured `@{…}` in a
  * selector position (`.@{n}`, `#@{id}`, `@{parent}`, `foo-@{x}-bar`, `&.@{mod}`).
  *
- * P0 — the grammar already SPLITS an interpolated selector into index-aligned
- * leaves (`.a-@{n}` → `.`, `a-`, `@{n}`), so this family CONSUMES those leaf
- * children (via the shared `interpFromLeaves`) to build the `Interp`; it never
+ * P0 — the grammar already SPLITS an interpolated selector into ordered children —
+ * literal-chunk leaves (`.a-@{n}` → `.`, `a-`) interspersed with the built `LessInterp`
+ * ref nodes (`@{n}` → `VarRef`, `@{m[k]}` → `MapAccessor`) — so this family CONSUMES
+ * those children (via the shared `interpFromChildren`) to build the `Interp`; it never
  * re-scans the source for `@{…}` boundaries. The serializer then RESOLVES the
  * variable at ruleset-enter (`.@{n}` with `@n: a` → `.a`), exactly as the bridge does.
  *
@@ -17,18 +18,20 @@
  * no `@{…}` fall back to a plain concatenated `Simple`.
  */
 import * as t2 from '../../index.js';
-import { type BuildAction, type BuildArgs, placeholder, type Placeholder } from '../host-context.js';
-import { interpFromLeaves, isLeaf } from './interp.js';
+import { type BuildAction, type BuildArgs, placeholder, type Placeholder, sliceSpan } from '../host-context.js';
+import { interpFromChildren } from './interp.js';
 
 /**
  * `InterpolatedSelector`: a whole simple selector that is interpolation. Built from
- * its split leaf children and wrapped in a single-simple `Compound` so every
+ * its ORDERED children — literal-chunk leaves interspersed with the built
+ * `LessInterp` ref nodes — and wrapped in a single-simple `Compound` so every
  * consuming position (ruleset head, complex segment, list member) accepts it.
+ * The grammar guarantees at least one `@{…}`, so `interpFromChildren` finds a ref;
+ * the no-ref fallback (verbatim span) is a defensive no-op.
  */
 function buildInterpolatedSelector(args: BuildArgs): t2.Compound {
-  const leaves = args.children.filter(isLeaf);
-  const interp = interpFromLeaves(leaves, false);
-  const simple = interp !== null ? t2.simpleInterp(interp) : t2.simple(leaves.map((l) => l.value).join(''));
+  const interp = interpFromChildren(args.children, false);
+  const simple = interp !== null ? t2.simpleInterp(interp) : t2.simple(sliceSpan(args.ctx, args.span));
   return t2.compoundOf([simple]);
 }
 
