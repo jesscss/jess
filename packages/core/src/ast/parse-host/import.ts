@@ -144,6 +144,33 @@ function fillInterpTemplate(tpl: AnyNode, vars: ReadonlyMap<string, string>): st
   return out;
 }
 
+/**
+ * [import:specifier] Fill a direct-host `Interp` path template (`@import
+ * "@{theme}.less"`) from `vars`: literal parts pass through; each `@{name}` ref
+ * is replaced by the name's literal value. Returns null if any ref is not a plain
+ * `VarRef` or resolves to no known literal (→ the caller defers the import
+ * verbatim). Mirrors the bridge's `fillInterpTemplate` on the ast `Interp` shape.
+ */
+function fillAstInterp(tpl: t2.Interp, vars: ReadonlyMap<string, string>): string | null {
+  let out = '';
+  for (const part of tpl.parts) {
+    if ('lit' in part) {
+      out += part.lit;
+      continue;
+    }
+    const ref = part.ref;
+    if (ref.type !== 'VarRef') return null;
+    const v = vars.get(ref.name);
+    if (v === undefined) return null;
+    out += v;
+  }
+  // The template's literal chunks retain the specifier's own surrounding quotes
+  // (`"import/…"`); the resolved PATH is the unquoted inner text.
+  const q = out[0];
+  if ((q === '"' || q === "'") && out.endsWith(q)) return out.slice(1, -1);
+  return out;
+}
+
 /** The literal string a simple `VarDeclaration` value carries, else null. */
 function literalVarValue(value: unknown): string | null {
   if (typeof value === 'string') return value;
@@ -471,21 +498,21 @@ function isImportKeyword(name: string): boolean {
  * `value`; a `url(…)` leaf (opaque `Any`) carries `url(target)` in `src`, whose
  * target is unwrapped here.
  */
-function directSpecifier(pathNode: t2.ValueNode): { spec: string | null; interpolated: boolean } {
+function directSpecifier(pathNode: t2.ValueNode): { spec: string | null; interp: t2.Interp | null } {
   // A variable-interpolated path (`@import "@{theme}.less"`) is an `Interp`: the
   // §3.3 Less `Quoted` grammar SPLIT the `@{name}` out of the string, so the
   // interpolated-vs-plain decision reads the built node's STRUCTURE (P0 KEYSTONE),
-  // not a byte substring. The direct host DEFERS interpolated imports (emitting the
-  // `@import` verbatim), so this only needs to detect them.
-  if (pathNode.type === 'Interp') return { spec: null, interpolated: true };
+  // not a byte substring. The template is carried on the built `StyleImport` so the
+  // resolution pass can fill it from the file's literal-variable scope.
+  if (pathNode.type === 'Interp') return { spec: null, interp: pathNode };
   const raw =
     pathNode.type === 'Quoted'
       ? pathNode.value
       : pathNode.type === 'Any'
         ? unwrapUrl(pathNode.src)
         : null;
-  if (raw === null) return { spec: null, interpolated: false };
-  return { spec: raw, interpolated: false };
+  if (raw === null) return { spec: null, interp: null };
+  return { spec: raw, interp: null };
 }
 
 /** Unwrap a `url( … )` word to its inner target (quotes stripped), else null. */
@@ -558,12 +585,13 @@ export function buildStyleImportNode(args: BuildArgs): t2.StyleImport | null {
   }
   if (pathNode === undefined) return null;
 
-  const { spec } = directSpecifier(pathNode);
+  const { spec, interp } = directSpecifier(pathNode);
   const flags = flagsFromOptions(options);
   const raw = args.ctx.src.slice(args.span.start, args.span.end);
   return styleImport({
     raw,
     spec,
+    ...(interp !== null ? { interp } : {}),
     reference: flags.reference,
     optional: flags.optional,
     multiple: flags.multiple,
@@ -628,7 +656,14 @@ export function resolveDirectImports(
   const out: t2.Statement[] = [];
   for (const s of statements) {
     if (s.type === 'StyleImport') {
-      const spec = s.spec;
+      let spec = s.spec;
+      if (spec === null && s.interp !== undefined) {
+        // [import:specifier] A variable-interpolated path (`@import "@{theme}.less"`):
+        // fill the template from the literal-variable scope reachable at this import
+        // site (own + ancestor files, Less-lazy). Unresolvable → fall through to the
+        // verbatim defer below (a referenced variable is not a known literal).
+        spec = fillAstInterp(s.interp, importScopeVars(fromFilePath, state));
+      }
       if (spec === null) {
         // An interpolated / opaque path — the direct host defers it verbatim.
         onDefer?.('import:specifier', 'interpolated/opaque path');

@@ -152,8 +152,8 @@
     "bytes": 110
   },
   "import/import-interpolation.less": {
-    "status": "DIFF",
-    "bytes": 131
+    "status": "MATCH",
+    "bytes": 162
   },
   "import/import-module.less": {
     "status": "DIFF",

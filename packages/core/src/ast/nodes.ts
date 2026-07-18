@@ -449,6 +449,13 @@ export interface StyleImport {
   readonly raw: string;
   /** Resolved specifier string, or `null` for an interpolated / opaque path. */
   readonly spec: string | null;
+  /**
+   * [import:specifier] The path's interpolation template (`@import "@{theme}.less"`)
+   * when `spec` is `null` because the specifier is variable-interpolated. The
+   * resolution pass fills it from the file's literal-variable scope; a plain /
+   * opaque (`url(@{x})`) path leaves this undefined and stays a verbatim defer.
+   */
+  readonly interp?: Interp;
   /** `(reference)` — resolve + scope, suppress own output. */
   readonly reference: boolean;
   /** `(optional)` — a missing target is swallowed, not an error. */
