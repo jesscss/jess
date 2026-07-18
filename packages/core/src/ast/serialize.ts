@@ -1867,7 +1867,7 @@ function flatten(rule: Rule, parent: string[] | null, ancestor: string | null, f
     if (leaves.length) flushBlock(header, leaves, e, rule.selector, parent);
   };
   const partition: Partition = { encounteredContainer: false, trailing: [], pending: [], emitBlock };
-  walkBody(rule.body, rawComposed, childAncestor, childFrame, group, flush, partition, e, imp);
+  walkBody(rule.body, rawComposed, childAncestor, childFrame, group, flush, partition, e, imp, false, false, true);
   flush();
   flushPending(partition);
   for (const emit of partition.trailing) emit();
@@ -1930,14 +1930,29 @@ function walkBody(
   imp = false, // call-level !important override
   protectedDup = false, // [dedup] emitting inside restricted mixin output
   forceLeading = false, // [partition] hoist this body's decls into the leading block
+  ownBody = false, // [coalesce] this is the ruleset's OWN directly-authored body
 ): void {
   for (const node of statements) {
     switch (node.type) {
       case 'Declaration':
-      case 'Comment':
-        // [partition] Before the first nested rule (or hoisted from a parametric
-        // mixin) → the leading block; after it → buffer for a trailing block.
-        if (partition && partition.encounteredContainer && !forceLeading) {
+        // [coalesce] A ruleset's OWN directly-authored declarations that follow a
+        // nested child rule merge back INTO the ruleset's leading block instead of
+        // opening a second same-selector block — BUT only when that leading block
+        // exists (there were own decls before the first nested rule). So:
+        //   - `#operations{ a; b; .spacing{} c; d }` (own decls both sides of the
+        //     nested rule) → one `#operations{a;b;c;d}` then `#operations .spacing{}`.
+        //   - `#first > .one{ >#second{…} font-size; … }` (own decls ONLY after the
+        //     nested rule, no leading block) → the decls stay a TRAILING block at their
+        //     source position (`rulesets`).
+        // A declaration produced by a MIXIN expansion (`!ownBody`) is NOT coalesced
+        // this way: it emits at its spliced position, so `.extended{ .a(); .amp() /*
+        // nests*/; .b() /*decl*/ }` keeps `.b`'s decl as a trailing `.extended` block
+        // after the nested output (`mixins`). Parametric-mixin bodies (`forceLeading`)
+        // already hoist and are unaffected.
+        if (
+          partition && partition.encounteredContainer && !forceLeading
+          && (group.length === 0 || !ownBody)
+        ) {
           partition.pending.push({
             node,
             frame,
@@ -1952,6 +1967,16 @@ function walkBody(
             ...(protectedDup ? { protectedDup: true } : {}),
           });
         }
+        break;
+      case 'Comment':
+        // [partition] A comment keeps its authored position relative to nested
+        // rules: before the first → leading block; after → its own trailing run.
+        addLeaf(group, partition, {
+          node,
+          frame,
+          ...(imp ? { important: true } : {}),
+          ...(protectedDup ? { protectedDup: true } : {}),
+        }, forceLeading);
         break;
       case 'Rule': {
         // a null `composed` (top-level mixin/detached call) keeps nested
@@ -1974,7 +1999,7 @@ function walkBody(
               vars: collectVars(rule.body),
               statements: rule.body,
             };
-            walkBody(rule.body, composed, ancestor, selfFrame, group, flush, partition, e, imp, protectedDup, forceLeading);
+            walkBody(rule.body, composed, ancestor, selfFrame, group, flush, partition, e, imp, protectedDup, forceLeading, ownBody);
           }
           break;
         }
