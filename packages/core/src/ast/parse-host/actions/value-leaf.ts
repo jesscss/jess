@@ -139,6 +139,32 @@ function escapedLeaf(args: BuildArgs): t2.ValueNode {
   return t2.any(leafBytes(args));
 }
 
+/**
+ * `url(...)` — opaque bytes VERBATIM, except a body that carries Less resolution:
+ *   • `url("…@{x}…")` — the §3.3 `Quoted` grammar structured the string into an
+ *     `Interp` (quote chars ride in the literal parts). Wrap those parts in
+ *     `url(` … `)` so the reference resolves (`url("@{b}/x") → url("/img/x")`),
+ *     reusing the shared `interpFromLeaves` seam (P0 — no byte re-scan here).
+ *   • `url(@var)` — a bare variable `Reference` body: splice the variable's value
+ *     WITHOUT unquoting (`@a: 'x'` → `url('x')`), matching Less.
+ * A plain `url("/p.svg")` (flat `Quoted`) or unquoted `url(image.png)` (`urlInner`
+ * leaf) has no reference, so it stays the byte-identical verbatim `Any`.
+ */
+function urlLeaf(args: BuildArgs): t2.ValueNode {
+  const bytes = leafBytes(args);
+  // Exactly one body node exists (the grammar's `url(` / `)` / url-token are leaves).
+  const body = args.children.find(t2.isNode);
+  if (body === undefined) return t2.any(bytes); // unquoted / empty url() → verbatim
+  if (body.type === 'Interp') {
+    return t2.interp([{ lit: 'url(' }, ...body.parts, { lit: ')' }]);
+  }
+  if (body.type === 'VarRef' || body.type === 'PropRef'
+    || body.type === 'VarIndirect' || body.type === 'MapAccessor') {
+    return t2.interp([{ lit: 'url(' }, { ref: body, unquote: false }, { lit: ')' }]);
+  }
+  return t2.any(bytes); // flat Quoted / placeholder → verbatim
+}
+
 export const VALUE_LEAF_ACTIONS: readonly BuildAction[] = [
   { type: 'Numeric', build: numericLeaf },
   // `#fff` / `#AABBCC` — hex color (materialize distinguishes hex via `src[0]==='#'`).
@@ -151,6 +177,6 @@ export const VALUE_LEAF_ACTIONS: readonly BuildAction[] = [
   { type: 'Quoted', build: quotedLeaf },
   // `~"…"` / `~'…'` — escaped (unquoted-output) string with interpolation.
   { type: 'EscapedValue', build: escapedLeaf },
-  // `url(...)` — opaque bytes, verbatim, no coercion.
-  leaf('Url', t2.any),
+  // `url(...)` — verbatim, except an interpolated / variable body (see `urlLeaf`).
+  { type: 'Url', build: urlLeaf },
 ];

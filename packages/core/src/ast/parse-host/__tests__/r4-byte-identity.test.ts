@@ -74,6 +74,29 @@ describe('R4 — feature snippets', () => {
     expect(await render(src, true)).toBe(`a {\n  ufo-width: 50%;\n}\n`);
   });
 
+  it('R4.1 url() interpolation — quoted `@{}` resolves, bare `url(@var)` splices, plain url verbatim', async () => {
+    // Matches Less 4.x: `@{}` inside a `url("…")` string resolves (quote-strip on
+    // the ref, outer quotes kept); a bare `url(@a)` splices the variable value
+    // WITHOUT unquoting; a `url()` with no reference is untouched.
+    const src = `@base-url: "/assets/images";
+@icon-prefix: "icon";
+.x { background-image: url("@{base-url}/@{icon-prefix}-1.svg"); }
+.v { @a: 'Trebuchet'; url: url(@a); }
+.p { background: url("/plain.svg"); }`;
+    expect(await render(src, true)).toBe(
+      `.x {
+  background-image: url("/assets/images/icon-1.svg");
+}
+.v {
+  url: url('Trebuchet');
+}
+.p {
+  background: url("/plain.svg");
+}
+`,
+    );
+  });
+
   it('R4.1 selector interpolation resolves at ruleset-enter', async () => {
     const src = `@type: 5_large;\n.icon-@{type} { background: red; }`;
     expect(await render(src, true)).toBe(`.icon-5_large {\n  background: red;\n}\n`);

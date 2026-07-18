@@ -679,7 +679,13 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   // `Num` and `Color` now come from the shared `numericRules` fragment, spread into
   // the return object below (identical to the CSS grammar's definitions).
   /** @todo(css-spec-parity): closing `)` is `literal(')')`, so an unquoted url with interior whitespace backtracks instead of committing to a <bad-url-token> error — port the `expect(literal(')'))` commit from css-parser c5ff7836e; see css-syntax-3 §4.3.6 (consume-a-url-token / bad-url). */
-  const Url = node(parser({ trivia: urlWs }, sequence(urlOpen, optional(choice(singleStr, doubleStr, urlInner)), literal(')'))));
+  // The quoted body routes through `g.Quoted` (not a flat `singleStr`/`doubleStr`)
+  // so a `url("…@{x}…")` string carries the §3.3 interpolation structure the value
+  // host resolves — a plain string still falls to Quoted's flat leaf (byte-identical).
+  // A bare `url(@var)` body is a value `Reference`, spliced by the host without
+  // unquoting (`url(@a)` with `@a: 'x'` → `url('x')`); the unquoted url-token body
+  // (`urlInner`) is the last arm, so a plain `url(image.png)` is unchanged.
+  const Url = node(parser({ trivia: urlWs }, sequence(urlOpen, optional(choice(g.Quoted, g.Reference, urlInner)), literal(')'))));
   // A bare paren holds ONE expression per comma-segment (a Sum), NOT a
   // space-separated value sequence — `(12 13)` / `(12 (13))` are incoherent (two
   // operands, no operator) and error, matching Less 4.x. `;`-separated segments
