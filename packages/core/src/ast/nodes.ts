@@ -676,7 +676,11 @@ export type Statement =
   | DetachedCall
   | For
   | RawInline
-  | StyleImport;
+  | StyleImport
+  // A bare value-position call in statement position (`e('/* … */');`): Less
+  // evaluates it and emits its result bytes as a standalone line (unquote/escape
+  // at document scope), so it is a legitimate statement, not just a value node.
+  | FunctionCall;
 
 /* ------------------------------------------------------------ constructors */
 

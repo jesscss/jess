@@ -1731,6 +1731,10 @@ export function serialize(root: Root, options?: SerializeOptions): SerializeRetu
       case 'StyleImport':
         if (!child.hoist) emitStyleImport(child, e);
         break;
+      // a bare value-position call statement (`e('/* … */');`): evaluate + emit.
+      case 'FunctionCall':
+        emitCallStatement(child, rootFrame, e);
+        break;
     }
   }
   if (e.positions) e.positions.push({ node: root, type: root.type, start, end: e.off });
@@ -2073,6 +2077,20 @@ function walkBody(
         } else {
           flush();
           emitRawInline(node, e);
+        }
+        break;
+      }
+      // a bare value-position call statement (`e('/* … */');`): flush the pending
+      // decl group first so it emits at its authored position, then the line.
+      case 'FunctionCall': {
+        const fcNode = node;
+        if (partition) {
+          flushPending(partition);
+          partition.encounteredContainer = true;
+          partition.trailing.push(() => emitCallStatement(fcNode, frame, e));
+        } else {
+          flush();
+          emitCallStatement(fcNode, frame, e);
         }
         break;
       }
@@ -3029,6 +3047,22 @@ function emitStyleImport(node: StyleImport, e: Emit): void {
 }
 
 /**
+ * A bare value-position call in statement position (e.g. `e('…');`): Less
+ * evaluates it and prints the result bytes as a standalone line (an `Anonymous`
+ * at document scope — no trailing `;`), so an `e(...)` unquote emits its inner
+ * text. Emitted at the current indent; an empty result contributes nothing.
+ */
+function emitCallStatement(node: FunctionCall, frame: Frame, e: Emit): void {
+  const start = e.off;
+  const bytes = evalBytesSync(node, frame, e);
+  if (bytes.length === 0) return;
+  if (e.depth > 0) put(e, INDENT.repeat(e.depth));
+  put(e, bytes);
+  put(e, '\n');
+  if (e.positions) e.positions.push({ node, type: node.type, start, end: e.off });
+}
+
+/**
  * [atrule-bubbling] Conditional-group at-rules whose bodies participate in
  * selector nesting: when such an at-rule is bubbled OUT of a ruleset, the
  * enclosing composed selector PROPAGATES inside — direct declarations wrap in a
@@ -3443,6 +3477,11 @@ function emitNestedBody(
       case 'RawInline':
         flushBuf();
         emitRawInline(node, e);
+        break;
+      // a bare value-position call statement (`e('/* … */');`): evaluate + emit.
+      case 'FunctionCall':
+        flushBuf();
+        emitCallStatement(node, frame, e);
         break;
       case 'MixinDef':
       case 'VarDeclaration':
