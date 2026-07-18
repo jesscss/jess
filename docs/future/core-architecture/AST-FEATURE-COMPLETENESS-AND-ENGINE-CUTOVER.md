@@ -46,14 +46,14 @@ Two cross-edges worth noting for the deletion step:
 
 Measured empirically on `2026-07-17` origin/dev + this branch's build, driving the real
 files through `renderAstFile`/`renderAstDoc` and diffing against the **less.js 4.6.7**
-independent oracle (`~/git/worktrees/less.js/less-4x`, READ-ONLY `less-node.cjs`) and the
-less.js `alpha` v5 goldens. The test evaluator uses the **production** `@jesscss/fns`
+independent reference (`~/git/worktrees/less.js/less-4x`, READ-ONLY `less-node.cjs`) and the
+less.js `alpha` v5 expected `.css`. The test evaluator uses the **production** `@jesscss/fns`
 `builtinLessFns` (`make-builtin-registry.ts`), so eval throws are real engine gaps, not
 harness-fidelity artifacts.
 
 **Headline: the two target fixtures fail in DIFFERENT gap classes.**
 - **`benchmark.less` renders end-to-end** — no throw, 0 parse errors, 0 deferred imports,
-  **131,713 bytes** (vs the old legacy oracle's 131,578). Its residual is **PARSE-side
+  **131,713 bytes** (vs the old legacy reference's 131,578). Its residual is **PARSE-side
   interpolation** producing *wrong bytes*, not crashes.
 - **`bootstrap.less` (bootstrap-less-port 2.5.1) parses + resolves all `@import`s cleanly**
   (0 parse errors, 0 deferred) **but throws in EVAL**. Its blockers are **eval-engine**
@@ -64,7 +64,7 @@ an **eval-engine** job. They are largely independent workstreams.
 
 ### 1a. PARSE / interpolation gaps (Tier-B / Task #6) — surface on `benchmark.less`
 
-| # | Gap | ast/ today | less.js oracle | Severity |
+| # | Gap | ast/ today | less.js reference | Severity |
 |---|---|---|---|---|
 | **P1** | Quoted-string interpolation in **value** position: `content:"@{n}-bar"`, `url("@{b}/x.svg")` | emits the string **literally** (`"@{n}-bar"`) — `@{…}` not resolved | `content:"foo-bar"`, `url("/img/x.svg")` | **BLOCKER** (wrong bytes). benchmark's `.generate-icons` uses `url("@{base}/@{i}.svg")`. |
 | **P2** | At-rule **prelude** interpolation: `@media @{q}`, `@keyframes @{name}` | **drops the whole block** → empty output | `@media screen {…}` | **BLOCKER (severe)** — output loss, not just wrong bytes. |
@@ -83,11 +83,11 @@ Tier-B **A0** work already named a hard prerequisite in the reorg; it retires th
 > landed** as `actions/*.ts` and are **no longer blockers** (verified: benchmark renders with
 > 0 deferred imports). `+:`/`+_:` merge **works** (last-occurrence anchor, intended v5). Do
 > not reopen them. The stale doc's 325/2,463-line residual figures are obsolete; the
-> differential oracle (§4) is now the live residual source.
+> differential reference (§4) is now the live residual source.
 
 ### 1b. EVAL-engine gaps — surface on `bootstrap.less` + the alpha corpus
 
-| # | Gap | Repro | ast/ today | less.js oracle | Severity |
+| # | Gap | Repro | ast/ today | less.js reference | Severity |
 |---|---|---|---|---|---|
 | **E1** | **`each()` iteration** over list/map with a ruleset body does not expand | `each(@m,{c+:@value})`; `each(range(3),{.col-@{value}{…}})` | emits **empty** | `c:1,2,3`; `.col-1{…}.col-2{…}.col-3{…}` | **BLOCKER** — bootstrap-less-port 2.5.1 (BS5) drives grid/utilities through `each` loops. |
 | **E2** | **Cross-unit arithmetic** in parens (`4em / 2cm`, incompatible units) | `unit((@a / 2cm))`, `@a:4em` | yields `calc(4em / 2cm)` / a Keyword → downstream `unit()` throws `expected Dimension, got Keyword` | computes `2em` → `unit()` → `2` | **BLOCKER** for bootstrap; also alpha `variables.less`, `variable-advanced.less`. Owner: is `calc()`-preservation intended v5? If so, `unit()` must not *throw* + the fixture is a declared divergence. |
@@ -96,12 +96,12 @@ Tier-B **A0** work already named a hard prerequisite in the reorg; it retires th
 | **E5** | **Scope / lazy resolution** — a variable resolves undefined that should bind | alpha `scope.less` (`@height`), `import-remote.less` (`@var`) | throws `variable @x is undefined` | resolves | **BLOCKER (corpus)** for `scope.less`; `import-remote` is a *network* import (out of scope — exclude). |
 
 E1/E2 are the concrete **Bootstrap** blockers. E3/E4/E5 are the additional eval gaps the
-differential oracle surfaces across the corpus (11 THREW fixtures; §4). Cross-checked: each
+differential reference surfaces across the corpus (11 THREW fixtures; §4). Cross-checked: each
 THREW is a value-eval/dispatch/scope path, none is a parse gap.
 
 ### 1c. DECLARED v5 divergences — NOT gaps, exclude from the completeness gate
 
-Intended v5 behavior (matches less.js `alpha` goldens, diverges from 4.x); never count these
+Intended v5 behavior (matches less.js `alpha` expected output, diverges from 4.x); never count these
 as blockers: `:is()` selector compaction; nested output (default `collapseNesting:false`, not
 4.x flatten); no `@media` merge; trailing-comment indentation; **verbatim un-operated values**
 (`1.0px`→`1.0px`, computed-only canonicalization); **CSS-superset pass-through** (`rgb(50%,0,0)`
@@ -120,7 +120,7 @@ Cutover is three ordered flips plus a deletion. The completeness gaps in §1 gat
 (the `whole-doc-driver` pipeline, promoted out of `__tests__` into a production module).
 Import resolution moves onto the ast/ host (`resolveDirectImports`; the `collectFileVars`
 legacy `parseLessFn` edge in `import.ts` is re-pointed at the ast/ parse). **Gate:** the
-differential oracle (§4) shows no regression, and `benchmark.less` + `bootstrap.less` render
+differential reference (§4) shows no regression, and `benchmark.less` + `bootstrap.less` render
 correctly (i.e. §1 gaps closed). Nothing else can precede this — it is the load-bearing flip.
 
 **C2 — Single-target the grammar (retire the legacy `BuilderHost`).** With no consumer of
@@ -177,11 +177,11 @@ allowed to hold up C1/C2.
 
 ---
 
-## 4. Differential correctness oracle (task #32) — LANDED here
+## 4. Differential correctness reference (task #32) — LANDED here
 
 **Location:** `packages/core/src/ast/parse-host/__tests__/alpha-oracle-differential.test.ts`
 (+ committed baseline `alpha-oracle-baseline.json`). It **replaces the buggy
-`oracle-run.mjs`**, whose "oracle" was the legacy `tree/` Compiler (real `&`-expansion bugs on
+`oracle-run.mjs`**, whose reference was the legacy `tree/` Compiler (real `&`-expansion bugs on
 benchmark.less → it flagged correct ast/ output as wrong).
 
 **Design.** For each `*.less` with a sibling `*.css` in the owner-maintained less.js `alpha`
@@ -190,7 +190,7 @@ env `LESSJS_ALPHA_TESTDATA`; absent → suite skips), render through `ast/` and 
 `MATCH` / `MATCH_NORM` / `DIFF` / `THREW`. **The gate is baseline-diff, not `diff==0`:** a
 fixture may not regress below its recorded baseline status; new `MATCH`es are welcome, and as
 §1 gaps close the baseline entries are promoted (statuses only improve). Using the committed
-`.css` goldens (not a live re-render) avoids circularity — less.js `alpha` itself wraps Jess.
+`.css` test-data (not a live re-render) avoids circularity — less.js `alpha` itself wraps Jess.
 The baseline IS the intended-divergence allowlist; the categorized rationale is §1c above.
 
 **First diff result (91 paired fixtures):** `MATCH 25 · MATCH_NORM 1 · DIFF 54 · THREW 11`.
@@ -200,10 +200,10 @@ E5 scope/import ×2, hsl-args ×1). The DIFF bucket is dominated by declared div
 `property-name-interp`, `import-interpolation`), removed-feature fixtures
 (`javascript-REMOVED`, `ie-filters-REMOVED`), and plugin fixtures (`plugin*`, `tailwind`).
 
-> Harness follow-up (not blocking): the oracle currently classifies whole-file status; a
+> Harness follow-up (not blocking): the reference currently classifies whole-file status; a
 > per-line categorizer (declared-divergence vs P1/P2 vs new) would let DIFF fixtures be
-> promoted incrementally. `benchmark.less` has no committed alpha golden, so it stays on the
-> `bmark-ast-driver` self-consistency check; add a golden if the owner blesses one.
+> promoted incrementally. `benchmark.less` has no committed alpha expected output, so it stays on the
+> `bmark-ast-driver` self-consistency check; add an expected `.css` if the owner blesses one.
 
 ---
 
@@ -238,15 +238,15 @@ That program restructures the **same builder-dispatch layer** this cutover retir
 1. **W1** name-keyed legacy builder map lands (parser owner; byte-identical de-risk).
 2. **Tier-B A0** grammar leaf-splitting for interpolation → closes **P1, P2** (and the
    `TODO(tier-b/A4)` cp-name/import-spec deferrals); §2b coalescing shim keeps the live legacy
-   render stable across the window. Gate: P1/P2 fixtures resolve; differential-oracle no
+   render stable across the window. Gate: P1/P2 fixtures resolve; differential-reference no
    regression.
 3. **Eval-gap wave** → close **E1 (`each` expansion), E2 (cross-unit arithmetic), E3 (color-fn
    arg coercion), E4 (recursion), E5 (scope)**. Gate: `bootstrap.less` renders without throwing
-   and matches the less.js oracle; corpus THREW count → 0 (minus out-of-scope network imports).
+   and matches the less.js reference; corpus THREW count → 0 (minus out-of-scope network imports).
 4. **Completeness checkpoint:** `benchmark.less` byte-correct (P1 resolved) AND `bootstrap.less`
    renders correctly. This is the owner's "feature-complete parse→eval" bar.
 5. **C1** flip `Compiler.render` to the ast/ pipeline (promote `whole-doc-driver` to production;
-   re-point the `import.ts` legacy edge). Gate: differential oracle + both fixtures green as the
+   re-point the `import.ts` legacy edge). Gate: differential reference + both fixtures green as the
    *production* renderer.
 6. **C2** delete legacy `BuilderHost` + `parse-host/` + legacy-`tree` construction (REORG A1–A4
    deletion, atomic hazards per §2). Grammar single-target; `§0.10 no-regex` grep empty on the

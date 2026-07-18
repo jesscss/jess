@@ -1,9 +1,9 @@
-# Benchmark extend-fold "correct golden" — evidence vs real Less 4.x
+# Benchmark extend-fold "correct expected output" — evidence vs real Less 4.x
 
 **Question under test (from a prior agent, previously UNVERIFIED):**
 > "For benchmark's extend shapes, jess-eval is buggy and jess-spine is correct."
 
-This document adjudicates that claim against the **parity oracle: real Less 4.x**,
+This document adjudicates that claim against the **parity reference: real Less 4.x**,
 per case, with reproducible inputs. It does **not** change any ratchet or gate.
 
 ## Method / provenance (so every line is checkable)
@@ -26,10 +26,10 @@ per case, with reproducible inputs. It does **not** change any ratchet or gate.
   simplified (the original uses cross-file mixins/vars) but every `.panel`-containing
   **selector** is preserved verbatim — only selector shape drives extend matching.
 
-**Note on the benchmark's own golden:** `packages/jess/benchmark/benchmark.css` is a
-2-line stub (no committed extend golden), and the two `@import` targets
+**Note on the benchmark's own expected `.css`:** `packages/jess/benchmark/benchmark.css` is a
+2-line stub (no committed extend expected output), and the two `@import` targets
 (`benchmark-import-reference-target.less`, `benchmark-import-target.less`) are **empty
-files** on `origin/dev`. So there is no pre-existing golden to defend — the corrected
+files** on `origin/dev`. So there is no pre-existing expected output to defend — the corrected
 output below is derived fresh from Less 4.x.
 
 ---
@@ -222,7 +222,7 @@ correct one**. So "spine correct / eval buggy" is FALSE for this case as stated.
 
 ### Actionable flags for the owner
 1. **Case 1** validates the spine extend-fold and the eval bare-fragment bug — production
-   is already on the correct (spine) path. If any golden is written for this section, use
+   is already on the correct (spine) path. If any expected output is written for this section, use
    the Less-4.x form below.
 2. **Case 3** is an **un-fixed bug in BOTH paths**: nested `el:extend(el) {}` contributes
    nothing; Less 4.x adds `.prose h1`/`.prose h2`. Independent of the cutover.
@@ -232,9 +232,9 @@ correct one**. So "spine correct / eval buggy" is FALSE for this case as stated.
    rendered flat, this is a live spine regression vs both Less 4.x and jess-eval.
 4. **`:is()` vs expansion** (case 5, eval + nested-spine) is an **owner call**: jess emits
    `:is(.panel, .card, .widget)`; Less 4.x expands. They are semantically equivalent here
-   (same-specificity class args). Decide whether the v5 golden standardizes on `:is()`.
+   (same-specificity class args). Decide whether the v5 expected output standardizes on `:is()`.
 
-### Proposed corrected golden (derived from Less 4.6.7), where Less 4.x confirms jess
+### Proposed corrected expected output (derived from Less 4.6.7), where Less 4.x confirms jess
 
 **Case 1** (Less 4.x, flat — spine already matches this):
 ```css
@@ -248,7 +248,7 @@ correct one**. So "spine correct / eval buggy" is FALSE for this case as stated.
 }
 ```
 
-**Case 5** (Less 4.6.7 flat = the parity golden; jess-eval reproduces it semantically via
+**Case 5** (Less 4.6.7 flat = the parity expected output; jess-eval reproduces it semantically via
 `:is()`, and nested-spine reproduces it in v5-default form):
 ```css
 .panel, .card, .widget { border: 1px solid #ddd; border-radius: 4px; }
@@ -271,7 +271,7 @@ div.widget.collapsed div.content,div.widget.collapsed div.footer { display: none
 .widget { margin-bottom: 20px; }
 ```
 
-**No corrected golden emitted for case 3** — Less 4.x sides with neither jess path, so
-the fix is a code fix (make nested `el:extend(el)` contribute), not a golden edit. For
+**No corrected expected output emitted for case 3** — Less 4.x sides with neither jess path, so
+the fix is a code fix (make nested `el:extend(el)` contribute), not an expected-output edit. For
 reference, the Less-4.x-correct case-3 output adds `.prose h1`/`.prose h2` to every
 `h1`/`h2` group (shown in the case-3 table).

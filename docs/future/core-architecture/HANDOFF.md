@@ -35,14 +35,14 @@ and required docs.
   tracker — current order, phase checklist, post-stabilization fan-out) with
   `AST-COLOCATION-REORG-PLAN.md` for the rationale/proofs. This stream owns the
   parse-host collapse, leaf `@jesscss/core/ast` export, family co-location,
-  `builders.ts` leaning, `t2`/`tree2` elimination, and the benchmark-oracle gate.
+  `builders.ts` leaning, `t2`/`tree2` elimination, and the benchmark-reference gate.
 
 ## Settled Design Decisions
 
 Before re-litigating any semantic or design question, check
 **[`DESIGN-DECISIONS.md`](./DESIGN-DECISIONS.md)** — a flat, greppable log of
 SETTLED rulings (merge anchoring, extend folding, verbatim values, variable
-resolution, module/at-rule semantics, output defaults, the no-external-oracle
+resolution, module/at-rule semantics, output defaults, the no-external-reference
 epistemics) with a pointer to the detail doc/memory for each. If a decision is
 already there, follow it; only OPEN rows are up for discussion.
 
@@ -60,7 +60,7 @@ bottom for the consolidated list.
 |-----|---------|
 | `HANDOFF.md` | THIS router — focus selection, gate rules, cutover state, this index. The entry point (per `CLAUDE.md`). |
 | `DESIGN-DECISIONS.md` | Flat greppable log of SETTLED semantic/design rulings + pointers. |
-| `ORACLE.md` | ⚠ How byte-identity checks fetch the alpha `.css`/`.less`; "oracle/golden" framing superseded by `DESIGN-DECISIONS.md` §0. |
+| `REFERENCE.md` | ⚠ How byte-identity checks fetch the alpha `.css`/`.less`; "reference/expected-output" framing superseded by `DESIGN-DECISIONS.md` §0. |
 | `AGGRESSIVE-CUTTING-REVIEW.md` | Patch-shape refusal checklist; run before touching AST/eval/render/lookup/traversal/copy/output/metadata. |
 
 ### Architecture & design specs
@@ -92,7 +92,7 @@ bottom for the consolidated list.
 
 | Doc | Purpose |
 |-----|---------|
-| `EXTEND-SEMANTICS.md` | ⚠ Contributor-facing canonical extend behavior reference (worked examples); uses "oracle policy" framing. |
+| `EXTEND-SEMANTICS.md` | ⚠ Contributor-facing canonical extend behavior reference (worked examples); uses "reference policy" framing. |
 | `VARIABLE-RESOLUTION-SEMANTICS.md` | Observable variable-resolution semantics (lazy, last-wins, exclusion, live bindings). |
 | `spec/R2-value-eval.md` | Rung R2 design spec: native synchronous value evaluator. |
 | `spec/R3-live-bindings.md` | Rung R3 design spec: live `BindingCell` model + control flow. |
@@ -131,7 +131,7 @@ bottom for the consolidated list.
 |-----|---------|
 | `GOAL1-SCORECARD.md` | ⚠ GOAL #1 completion scorecard via differential-vs-alpha reconciliation. |
 | `BENCHMARK-AST-FAILURE-INVENTORY.md` | Empirical failure inventory rendering benchmark.less through `ast/`. |
-| `BENCHMARK-EXTEND-GOLDEN-EVIDENCE.md` | ⚠ Evidence for benchmark extend-fold correctness vs real Less 4.x. |
+| `BENCHMARK-EXTEND-EVIDENCE.md` | ⚠ Evidence for benchmark extend-fold correctness vs real Less 4.x. |
 | `BENCHMARK-PERF-PATH.md` | Read-only survey: shortest path to a byte-identical benchmark.less perf number through AST-v2. |
 | `PERF_IDEAS.md` | Measured, ideas-only AST v5 render perf ideas. |
 | `PARSER-RECOGNIZER-GAP.md` | Parseman-vs-Less-parser gap attribution + rejected reorder proof. |
@@ -168,9 +168,9 @@ bottom for the consolidated list.
   CONTRADICTS the settled **LAST-occurrence** ruling (`DESIGN-DECISIONS.md` M1,
   `CUTOVER-STATUS.md:43`). A separate agent is reverting the code/test-data flip;
   reconcile this README section back to LAST-occurrence.
-- **"oracle"/"golden" framing** in `ORACLE.md`, `EXTEND-SEMANTICS.md` (Oracle
+- **"reference"/"expected-output" framing** in `REFERENCE.md`, `EXTEND-SEMANTICS.md` (reference
   policy), `GOAL1-SCORECARD.md`, and most `spec/R*` headers is superseded by the
-  no-external-oracle epistemics (`DESIGN-DECISIONS.md` §0). Content is still
+  no-external-reference epistemics (`DESIGN-DECISIONS.md` §0). Content is still
   useful as a consistency-check; the "authoritative" framing needs a language
   pass.
 - **tree2 vs ast/ naming drift.** `TREE2-*` docs describe the same engine now
@@ -311,7 +311,7 @@ Other active docs in this dir:
 - **`CORE-CLEANUP.md`** — the single live @jesscss/core cleanup queue (binding/lookup,
   serialization, node field budgets, perf evidence). Focus router above points here.
 - **`AST-FROM-SCRATCH-DESIGN.md`** — isolated greenfield fast-AST experiment:
-  non-1:1 semantic shapes are allowed, CSS output is the acceptance oracle,
+  non-1:1 semantic shapes are allowed, CSS output is the acceptance reference,
   dynamic behavior has explicit legacy escapes, and debug projection remains
   cold. The experiment is not production-wired until its stage-separated
   comparisons prove a useful end-to-end path.
@@ -1569,7 +1569,7 @@ left unmerged; only the evidence record was retained in commit `3056554`.
 - Cumulative node weight: no Node, Rules, Ruleset, or placement field was added. One boolean is added to the existing `OutputWriter` runtime state, shared by the current render buffer and cleared at the consuming boundary.
 - New traversal: none. The direct-child inline-import scan and its branch are deleted; the existing wire/import retry walk and emit traversal are unchanged.
 - New node/materialization: none. No nodes, arrays, maps, sets, output trees, or routine failure objects are created by the fix; the writer flag is scalar state.
-- Render path: the deferred case-B inline body now emits through the spine and inserts the same blank line before the following non-inline block that eval emits. The focused oracle is byte-identical and `deriveCalls` remains zero.
+- Render path: the deferred case-B inline body now emits through the spine and inserts the same blank line before the following non-inline block that eval emits. The focused reference is byte-identical and `deriveCalls` remains zero.
 - Helper/API surface: one internal `OutputWriter` state property is added; no package export or public node method changes. The removed marker helper and inline-body detector shrink the internal surface.
 - Metadata mutations: none. The change writes only the existing writer's transient emission state; it does not assign parent, source-root, placement, span, or node metadata.
 - Review-flagged diff tokens: [field] the boolean belongs to transient `OutputWriter` state, not a Node/Rules shape; [routine exception] the deferred-only marker Error path is deleted while genuine path-resolution errors remain exceptional; [loop/traversal] the old direct-child scan is deleted and no replacement traversal is added; [materialized array/object] no new materialized structure is introduced.
@@ -1599,7 +1599,7 @@ left unmerged; only the evidence record was retained in commit `3056554`.
 - Helper/API surface: (1) `round.ts` exports `round` (named + default) — one new internal helper, one fewer external dep. (2) `walk`/`nodes` change return type from `Generator<Node>` to `Node[]` (both iterable — no call-site churn); `_walkFromValue` (private) is deleted; `_walkInto` (+ module-private `collectFieldInto`/`pushNodeInto`) added; net public method count unchanged. (3) `ensureCallableIndex` is a new PRIVATE method; `addCallable*`/`collectCallablesFor` are private and drop a param each. Net exported-symbol delta on the package surface = 0 (all additions are internal).
 - Metadata mutations: none. No `.parent`/`sourceNode`/`sourceRoot`/`location`/`index`-field assignment in any of the three. `round` is pure over numbers. `_walkInto` only `out.push`es references. `ensureCallableIndex` writes only the memo field `_lookup.callableFullIndex` (a lookup cache, not node metadata) and the invalidation site nulls it.
 - Review-flagged diff tokens: [loop/traversal] all new `for` loops are `collectFieldInto`/`pushNodeInto`'s field-child iteration (the deleted generator's own loops, same order, now array-filling) + `ensureCallableIndex`'s single memoized `rules` pass (replaces per-key re-scan) — zero hot-path/per-leaf traversal added, total visits reduced (accounted above). [generator] the two `[generator]` matches are the WORDS "per-yield / per-`yield*`-frame cost" and "`for…of` / `yield*` consumers are unchanged" in the new JSDoc — this change DELETES every generator (`function*`/`yield`) from the walk path; no generator is added. [node construction] the one `[node construction]` match is `index = new Map()` in `ensureCallableIndex` — a memoized per-scope lookup Map (NOT a Node construction; `Map` merely matches the `new Uppercase(` pattern), built once and reused, invalidated with `callableLookupCache`. [side map/set] every `Map` match is that same callable-index memo — the `callableFullIndex: Map<…>` field declaration, the `index: Map<…>` params threaded through `addCallable*`/`collectCallablesFor`, the `ensureCallableIndex(): Map<…>` return type, and the one `new Map()`; it holds already-reachable references, is a scope-scoped cache (sibling of the pre-existing `callableLookupCache`), and is nulled on callable-set change — zero added long-lived side state, and it REPLACES a repeated O(rules) per-key re-scan. [materialized array/object] the `Node[]` matches (`out: Node[]`, `const out: Node[] = [this]`, `const out: Node[] = []`, the `walk(): Node[]`/`nodes(): Node[]` signatures) are the shared per-walk output array that REPLACES per-yield generator-frame allocation — a net allocation REDUCTION; the `= {`-adjacent matches are type views, not output materialization. [parent/source mutation] the only `sourceNode`/`sourceRoot`/`.parent` matches are the WORDS in this prose (the Metadata line naming what is NOT written); the code performs zero `.parent`/`sourceNode`/`sourceRoot`/`location`/`index`-field assignment — `round` is pure over numbers, `_walkInto` only `out.push`es references, and `ensureCallableIndex` writes only the memo field.
-- Evidence: all-less byte-identical 106/106 (the primary byte-for-byte oracle — exercises Dimension/Color number formatting, mixin/namespace callable lookup, and the child-walk on every fixture); core 3300/0; less-parser 516/0; all-less-error 92/0; `spine-production-ratchet` 130/0; fns 522/4 (the 4 reds are the pre-existing SCSS `is-bracketed()` set, untouched by these files). Combined `benchmark.less` A/B (same-worktree `git stash` toggle of the three applied changes, warmup + N≥15 median, output verified byte-identical) reported below in the integration deliverable. All three verified byte-identical individually by their originating agents and re-verified combined here.
+- Evidence: all-less byte-identical 106/106 (the primary byte-for-byte reference — exercises Dimension/Color number formatting, mixin/namespace callable lookup, and the child-walk on every fixture); core 3300/0; less-parser 516/0; all-less-error 92/0; `spine-production-ratchet` 130/0; fns 522/4 (the 4 reds are the pre-existing SCSS `is-bracketed()` set, untouched by these files). Combined `benchmark.less` A/B (same-worktree `git stash` toggle of the three applied changes, warmup + N≥15 median, output verified byte-identical) reported below in the integration deliverable. All three verified byte-identical individually by their originating agents and re-verified combined here.
 - Verdict: accepted — three internal perf wins (drop a dep for an inlined pure helper; generator→shared-array walk; memoized full callable index replacing per-key re-scan), no new Node field, no tree mutation, no output tree, byte-identical output across the full gate.
 
 --- prior pass ---
@@ -1720,7 +1720,7 @@ left unmerged; only the evidence record was retained in commit `3056554`.
   `adfd26732125a33fc1e264aca7d7ecde8c7c1da43f968e3106bd387a1f78e840` before and after
   (proven by a same-worktree origin/dev source-toggle rebuild + re-render producing
   the identical sha/bytes). Full css-parser suite green (264 passed, 17 skipped);
-  css-parser byte-oracle files green (less-output, css-files, ast-serialize,
+  css-parser byte-reference files green (less-output, css-files, ast-serialize,
   cst-public, parse-errors, frame-corpus); core suite green.
 - Helper/API surface: none exported. `atTokenStream`/`atToken`/`atRunStop` are grammar
   productions local to `cssGrammar` (`atTokenStream` is also placed on the returned
@@ -1740,12 +1740,12 @@ left unmerged; only the evidence record was retained in commit `3056554`.
   no unknown at-rules). The sequence.ts guard adds NO danger token (one type check plus
   an allocation-free `valueOf()` compare).
 - Evidence: byte-identity is the acceptance basis for this neutral structural refactor,
-  not a speedup. The current benchmark oracle is 133983 bytes / sha
+  not a speedup. The current benchmark reference is 133983 bytes / sha
   `adfd26732125a33fc1e264aca7d7ecde8c7c1da43f968e3106bd387a1f78e840`
   (`collapseNesting:true`); a same-worktree A/B — swapping the three source files to
   their origin/dev versions, rebuilding core + css-parser + less-parser, and
   re-rendering benchmark.less — produced the IDENTICAL sha/bytes, proving the change is
-  byte-identical to origin/dev. (NOTE: the prior HANDOFF/registry oracle
+  byte-identical to origin/dev. (NOTE: the prior HANDOFF/registry reference
   `98a0536086c7e555…` / 131578 bytes has DRIFTED on dev and no longer matches a fresh
   render; this pass uses the freshly-computed 133983/`adfd2673…` everywhere.) The
   changed builder path is OFF the benchmark (no unknown at-rules), so it adds zero
@@ -1759,8 +1759,8 @@ left unmerged; only the evidence record was retained in commit `3056554`.
     "id": "atrule-prelude-unknown-tokenstream-builders",
     "kind": "neutral-or-negative",
     "costDelta": "neutral",
-    "why": "Byte-identical structural refactor — the unknown at-rule prelude is now built by the grammar as a token stream of spanned Any nodes instead of a whitespace-split byte blob. _buildUnknownAtRuleBlock collects the already-built Any nodes between the name and `{` and wraps 2+ of them in a Sequence, replacing the prior .split/.map/.join/preludeSource.includes/new Any/new List byte re-derivation. benchmark.less has no unknown at-rules, so the changed builder path is never reached and render output is byte-identical (oracle sha/bytes unchanged).",
-    "dangerTokensJustification": "The [array helper] children.slice, [node construction] new Sequence, and the [materialized array/object] nodeChildren array all live in _buildUnknownAtRuleBlock, a parse-time builder whose job is constructing prelude nodes; they REPLACE the removed .split/.map/.join/new List/new Any of the prior byte-blob prelude, so net allocation is equal-or-less. This path is off the benchmark render oracle (benchmark.less has no unknown at-rules), so it adds zero measured render cost; output is byte-identical.",
+    "why": "Byte-identical structural refactor — the unknown at-rule prelude is now built by the grammar as a token stream of spanned Any nodes instead of a whitespace-split byte blob. _buildUnknownAtRuleBlock collects the already-built Any nodes between the name and `{` and wraps 2+ of them in a Sequence, replacing the prior .split/.map/.join/preludeSource.includes/new Any/new List byte re-derivation. benchmark.less has no unknown at-rules, so the changed builder path is never reached and render output is byte-identical (reference sha/bytes unchanged).",
+    "dangerTokensJustification": "The [array helper] children.slice, [node construction] new Sequence, and the [materialized array/object] nodeChildren array all live in _buildUnknownAtRuleBlock, a parse-time builder whose job is constructing prelude nodes; they REPLACE the removed .split/.map/.join/new List/new Any of the prior byte-blob prelude, so net allocation is equal-or-less. This path is off the benchmark render reference (benchmark.less has no unknown at-rules), so it adds zero measured render cost; output is byte-identical.",
     "byteIdentity": {
       "fixture": "benchmark.less",
       "collapseNesting": true,
@@ -1773,8 +1773,8 @@ left unmerged; only the evidence record was retained in commit `3056554`.
     "id": "atrule-prelude-unknown-tokenstream-grammar",
     "kind": "neutral-or-negative",
     "costDelta": "neutral",
-    "why": "Byte-identical structural refactor — UnknownAtRuleBlock now consumes its prelude via atTokenStream (a `many` of verbatim per-token node('Any', scanTo(...)) runs plus comma tokens) instead of one opaque atPrelude scanTo leaf, so the grammar OWNS prelude structure as spanned Any nodes rather than the core re-deriving it from bytes. The scan reuses the same balanced()/string skip machinery the old atPreludeScan used. benchmark.less has no unknown at-rules, so the changed alternative is never entered and render output is byte-identical (oracle sha/bytes unchanged).",
-    "dangerTokensJustification": "grammar.ts adds no runtime danger token: the only scan hit on this file is a false-positive on a COMMENT line mentioning balanced ()/[]. The real flagged tokens ([array helper] children.slice, [node construction] new Sequence, [materialized array/object] nodeChildren) live in the sibling builders.ts _buildUnknownAtRuleBlock and REPLACE the removed .split/.map/.join/new List/new Any of the prior byte-blob prelude, so net allocation is equal-or-less. This path is off the benchmark render oracle (benchmark.less has no unknown at-rules); output is byte-identical.",
+    "why": "Byte-identical structural refactor — UnknownAtRuleBlock now consumes its prelude via atTokenStream (a `many` of verbatim per-token node('Any', scanTo(...)) runs plus comma tokens) instead of one opaque atPrelude scanTo leaf, so the grammar OWNS prelude structure as spanned Any nodes rather than the core re-deriving it from bytes. The scan reuses the same balanced()/string skip machinery the old atPreludeScan used. benchmark.less has no unknown at-rules, so the changed alternative is never entered and render output is byte-identical (reference sha/bytes unchanged).",
+    "dangerTokensJustification": "grammar.ts adds no runtime danger token: the only scan hit on this file is a false-positive on a COMMENT line mentioning balanced ()/[]. The real flagged tokens ([array helper] children.slice, [node construction] new Sequence, [materialized array/object] nodeChildren) live in the sibling builders.ts _buildUnknownAtRuleBlock and REPLACE the removed .split/.map/.join/new List/new Any of the prior byte-blob prelude, so net allocation is equal-or-less. This path is off the benchmark render reference (benchmark.less has no unknown at-rules); output is byte-identical.",
     "byteIdentity": {
       "fixture": "benchmark.less",
       "collapseNesting": true,
@@ -1787,7 +1787,7 @@ left unmerged; only the evidence record was retained in commit `3056554`.
     "id": "atrule-prelude-unknown-tokenstream-sequence",
     "kind": "neutral-or-negative",
     "costDelta": "neutral",
-    "why": "Byte-identical structural refactor — emitDirectSeparator adds one allocation-free branch (isLeadingCommaToken: a type check plus a valueOf compare) so a comma token carried as its own Sequence member does not get a spurious leading space, matching List.emitListSeparator canonical `foo, bar`. The guard only fires for a bare comma Any member, produced solely by the new unknown-at-rule prelude token stream; benchmark.less Sequences carry no comma-Any members, so the branch is always false there and render output is byte-identical (oracle sha/bytes unchanged).",
+    "why": "Byte-identical structural refactor — emitDirectSeparator adds one allocation-free branch (isLeadingCommaToken: a type check plus a valueOf compare) so a comma token carried as its own Sequence member does not get a spurious leading space, matching List.emitListSeparator canonical `foo, bar`. The guard only fires for a bare comma Any member, produced solely by the new unknown-at-rule prelude token stream; benchmark.less Sequences carry no comma-Any members, so the branch is always false there and render output is byte-identical (reference sha/bytes unchanged).",
     "dangerTokensJustification": "sequence.ts introduces NO danger token — isLeadingCommaToken is a single allocation-free branch (node.type check plus node.valueOf() compare), and the scan reports zero findings on this file. The pass-level flagged tokens ([array helper], [node construction], [materialized array/object]) all live in the parse-time builders.ts _buildUnknownAtRuleBlock and REPLACE removed byte-blob work; this render-path guard only suppresses a spurious space for comma-Any members, which benchmark.less never carries, so output is byte-identical.",
     "byteIdentity": {
       "fixture": "benchmark.less",
@@ -1826,7 +1826,7 @@ left unmerged; only the evidence record was retained in commit `3056554`.
 - New node/materialization: none. A single `visited` Set bounds the walk against cycles;
   no output or source node is materialized.
 - Render path: byte-identical — benchmark.less 131578 / `98a0536086c7e555` (profiler
-  early-admit assert green with the patch); callable-fallback fixture oracle
+  early-admit assert green with the patch); callable-fallback fixture reference
   `ff73511c0756ecb6`; all-less / extend / core / spine-production-ratchet re-verified by
   the landing gates.
 - Helper/API surface: `lookupScopeFrameCallable` gains an optional `prepareFrame` hook
@@ -1865,7 +1865,7 @@ left unmerged; only the evidence record was retained in commit `3056554`.
     "callsBefore": 6,
     "callsAfter": 0,
     "boundedTraversal": "walkFallbackCallable is a single acyclic walk over the frame's fallbackFrame (import) chain, visited-guarded against cycles, entered only on a child-surface/reference-import uncovered frame with a fallbackFrame. Bounded by import-chain depth (typically 1), NOT a whole-tree or per-node scan, and it replaces the heavier findMixinsFastForUncoveredCallable descent it retires.",
-    "commonCaseProof": "callable-fallback fixture counter test: findMixinsFastForUncoveredCallable total 6 -> 0, byte-identical (fixture oracle sha ff73511c0756ecb6); benchmark.less canonical output byte-identical and non-regressing.",
+    "commonCaseProof": "callable-fallback fixture counter test: findMixinsFastForUncoveredCallable total 6 -> 0, byte-identical (fixture reference sha ff73511c0756ecb6); benchmark.less canonical output byte-identical and non-regressing.",
     "benchmark": {
       "fixture": "benchmark.less",
       "warmup": 20,
@@ -1935,7 +1935,7 @@ left unmerged; only the evidence record was retained in commit `3056554`.
   is a boolean `const`, an `if` route branch returning the existing call, and
   comments.
 - Evidence: byte-identity is the acceptance basis for this auto-pass, not a speedup —
-  a cost-neutral route split. The benchmark oracle sha
+  a cost-neutral route split. The benchmark reference sha
   `98a0536086c7e555b1a98e2372ad4000d51e25f1418c6345b6b8a9a97d80972f` / 131578 bytes
   is unchanged (re-verified by the landing's benchmark + all-less byte-identity
   gates); the danger-token scan reports zero findings on the diff; costDelta is
@@ -2003,7 +2003,7 @@ left unmerged; only the evidence record was retained in commit `3056554`.
   call eliminated per render at the import root (callsBefore 1 → callsAfter 0);
   `earlyAdmit.strictTopologyCalls = 0` (benchmark.less's one extend root is an
   import root). The `--assert-early-admit-contract` evidence command asserts both
-  the elimination fired and the oracle sha.
+  the elimination fired and the reference sha.
 - Verdict: accepted.
 - Hot-path cost contracts:
 ```json
@@ -2305,13 +2305,13 @@ were zero. The forced-eval synthetic route is diagnostic only: its output hash
 
 This closes the measurement handoff, not the optimization. Repeated
 classification is a real hotspot, but a safe cut still requires a semantic
-matrix and Less oracle. The bounded candidate seam is the first-pass loop at
+matrix and Less reference. The bounded candidate seam is the first-pass loop at
 `packages/core/src/tree/util/extend-roots.ts:795-803`, where a root-local cheap
 admission/candidate selection could precede `classifyInstructionMatch`.
 Required coverage includes exact/partial/`all`, lists/`:is()`, combinators,
 nested ampersand/recheck, self/circular/chained extends, explicit overrides,
 reference/protected roots, imports/layers/namespaces, source order, and the
-Less oracle. `recheckProbes=0` is a coverage gap. Do not duplicate the dirty
+Less reference. `recheckProbes=0` is a coverage gap. Do not duplicate the dirty
 `extend.ts` or `spine-extend.ts` owner lanes.
 
 The first fallback-topology run used the wrong internal Jess fixture and is
@@ -2389,8 +2389,8 @@ the semantic proof failed first.
 - Q-40 direct declaration-writer proof (2026-07-15, rejected): the existing `serialize-helper.ts` lane was completed and reverted. Canonical activation was `0` for the direct writer; preview/fallback counters stayed `4,098/4,085`, aggregate admission stayed `10,777` with `15` admitted and `10,762` misses. The candidate's apparent A/B movement (`242.995→240.819 ms` parse+render and `204.148→202.161 ms` render-only, 28/45 and 27/45 wins) is non-causal because the path never ran. Synthetic live probes also emitted unresolved `$tone` and malformed caller-buffer spacing. Focused `229` tests, core `3,334`, build, and clean review passed, but candidate review rejected the missing hot-path cost contract. Worktree is clean at current `dev`; no source or test change was retained.
 - Q-40 `isNode` call-site audit (2026-07-15, rejected): the existing hot-path lane measured `129.19 ms` sampled self-time across `childRulesOf`, `walk`, selector collection/matching, scope preparation, reference-key evaluation, and serializer/callable paths. A bounded `extend.ts` candidate cached one discriminator and five local masks, but it had no canonical allocation reduction, failed the registered cost-contract review, and showed no stable speed movement: parse+render `234.925→235.869 ms` and render-only `198.100→197.816 ms`, with balanced wins. Semantic coverage was `34/34`, focused `isNode` `9/9`, core `3,332`, spine `137/137`, all-less `106/106`, and output was byte-identical on that snapshot. The candidate was reverted. Future work must remove call sites or carry construction-time facts; do not open another generic `isNode` micro-optimization.
 - Q-40 trivia bulk audit (2026-07-15, evidence-only): on a 156,056-byte representative slice, CSS materialized `15,812` trivia runs and Less `15,187`, while each found only one comment-bearing run. Less parse-only versus parse-plus-trivia-map was `32.861→35.798 ms` in a local warmed microbench; this is directional, not a canonical speed claim. Parseman still creates a global trivia log and the Less Ruleset builder drops `triviaLog` when delegating to the CSS builder, so the next bounded worker is a Less-host comment-only/trivia-threading proof. Do not suppress global whitespace or change Parseman policy until newline, descendant-selector, standalone-comment, and `url(//host)` parity are proven.
-- Q-40 registration-prep allocation audit (2026-07-15, rejected): the existing registration-prep lane measured `3,062` prep states, `2,594` empty/no-work states, `1,094` ordered deferred nodes, and `468` ordered lanes (`936` lane arrays). A lazy-state prototype was semantically valid on synthetic declaration-retry and ordered-identity cases, but the canonical attempt failed with `ReferenceError: No matching mixins found for '#container'`; the candidate and temporary instrumentation were removed with no source commit. Its diagnostic output was `131,578` bytes with hash `98a0536086c7e555b1a98e2372ad4000d51e25f1418c6345b6b8a9a97d80972f`, which does not match the current `135,794`-byte canonical oracle, so it is not valid A/B evidence. Do not reopen generic prep-state laziness; the remaining owner question is the `Rules._prepareRegistrationOnce` / `_scanRegistrationNodes` `#container` semantics path.
-- Q-40 fresh current-dev no-op control (2026-07-15): with the agreed Less fixture, Node v25.9.0 arm64, 20 warmups, and 45 alternating pairs, parse+render was `221.471→221.611 ms` (`25/45` wins, paired median delta `-0.341 ms`, `t=-0.96`) and render-only was `187.961→187.167 ms` (`22/45` wins, paired median delta `+0.066 ms`, `t=0.40`). Both remain noise-floor controls; the output oracle was unchanged.
+- Q-40 registration-prep allocation audit (2026-07-15, rejected): the existing registration-prep lane measured `3,062` prep states, `2,594` empty/no-work states, `1,094` ordered deferred nodes, and `468` ordered lanes (`936` lane arrays). A lazy-state prototype was semantically valid on synthetic declaration-retry and ordered-identity cases, but the canonical attempt failed with `ReferenceError: No matching mixins found for '#container'`; the candidate and temporary instrumentation were removed with no source commit. Its diagnostic output was `131,578` bytes with hash `98a0536086c7e555b1a98e2372ad4000d51e25f1418c6345b6b8a9a97d80972f`, which does not match the current `135,794`-byte canonical reference, so it is not valid A/B evidence. Do not reopen generic prep-state laziness; the remaining owner question is the `Rules._prepareRegistrationOnce` / `_scanRegistrationNodes` `#container` semantics path.
+- Q-40 fresh current-dev no-op control (2026-07-15): with the agreed Less fixture, Node v25.9.0 arm64, 20 warmups, and 45 alternating pairs, parse+render was `221.471→221.611 ms` (`25/45` wins, paired median delta `-0.341 ms`, `t=-0.96`) and render-only was `187.961→187.167 ms` (`22/45` wins, paired median delta `+0.066 ms`, `t=0.40`). Both remain noise-floor controls; the output reference was unchanged.
 
 ## History
 

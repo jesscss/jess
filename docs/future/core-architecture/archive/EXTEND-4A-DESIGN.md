@@ -94,7 +94,7 @@ Eval's `processExtends` path DOES fire the crossing extend but composes the exte
 as the bare `.footer-nav` (missing the `.footer` prefix) — the same nested-extender bug EMIT was
 built to fix (documented in `emit-render-probe.test.ts`). Under expanded mode eval also does NOT
 relocate: forced-eval renders `.header .header-nav, .footer-nav` at root with `:is(...):before`.
-So eval is NOT a correct oracle here; the ratified `.css` (owner-owned) is. The spine's EMIT
+So eval is NOT a correct reference here; the ratified `.css` (owner-owned) is. The spine's EMIT
 pipeline already computes the CORRECT composed crossing branch — `wireSpineExtends` returns header
 `.header .header-nav, .footer .footer-nav` with `hoisted=true` (verified via probe) — it is just
 not INVOKED for the expanded nested subject, and the verbatim-hoist emit is gated to collapse.
@@ -148,7 +148,7 @@ bounded by the crossing-target count — matching the spec in `P4-TERMINAL-SINK-
 Every sub-shape is foldable. C1/C3/`.replace`/attributes already fold (gate admission only);
 C2 folds via the composed-hoist diversion + verbatim-emit + block-relocation above, reusing the
 existing collapse-mode machinery with its collapse-only guards relaxed to the (already-strict)
-`spineExtendHoisted` crossing subset. The eval path is not a correctness oracle here (it produces
+`spineExtendHoisted` crossing subset. The eval path is not a correctness reference here (it produces
 the bare-`.footer-nav` bug); the owner-owned `.css` is.
 
 ## OWNER-REVIEW FLAG

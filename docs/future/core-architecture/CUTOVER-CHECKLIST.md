@@ -20,7 +20,7 @@ old structure instead of building the target*. Guardrails, binding on every cuto
    the old code" from a red all-less mid-cutover.
 4. **Touch base often:** update this checklist (check items, add findings) and report progress + blockers
    each work session, so the orchestrator catches backpedaling early.
-5. Work on the **cutover branch**, never dev. `.css`/warning expectations are the working oracle but not
+5. Work on the **cutover branch**, never dev. `.css`/warning expectations are the working reference but not
    gospel — reason to the intended v5 shape (see the "no sacred expectations" rule).
 6. **NO PERMANENT EVAL FALLBACK — 100% spine coverage is the P4 precondition.** The eval path
    (two-walk + output tree + clone families + `propagateFlagsFrom` + the flags + `treeContext`) is

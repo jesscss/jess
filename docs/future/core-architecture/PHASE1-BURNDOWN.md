@@ -11,7 +11,7 @@
 > (375 findings, 36 per-file + 5 coherence), `NON-ENGINE-BLOAT-INVENTORY.md` (6 ranks),
 > `AST-REORG-EXECUTION.md` + `AST-COLOCATION-REORG-PLAN.md` (the reorg), `NODE-SLIM-FOLLOWONS.md`.
 >
-> **Oracle:** `TREE2-CONSTITUTION.md` P0–P6. Byte-identity floor (P6) gates every cut.
+> **Reference:** `TREE2-CONSTITUTION.md` P0–P6. Byte-identity floor (P6) gates every cut.
 
 ## In-flight ownership (DO NOT double-count / DO NOT touch)
 
@@ -116,7 +116,7 @@ Current `ast/` LOC (non-test):
 | `mixin-dispatch.ts` | 200 | AUDIT #14 | standalone | → `mixin/dispatch.ts` |
 | `value-operate.ts` | 165 | AUDIT #8 | [SERIALIZE] | → `value/operate.ts`, move `typeCheck` out |
 
-**Test-only monster:** `parse-host/__tests__/bridge.ts` (**1262 LOC**) — the bridge oracle harness. Reorg-neutral; retire with the bridge test dependency (KILL-LIST 1.7/2 `Num` alias).
+**Test-only monster:** `parse-host/__tests__/bridge.ts` (**1262 LOC**) — the bridge reference harness. Reorg-neutral; retire with the bridge test dependency (KILL-LIST 1.7/2 `Num` alias).
 
 - [ ] **1.a [SERIALIZE]** — `serialize.ts` 7-way split (REORG B9). HARD GATE: only after all benchmark/value-path edits land. DONE-criterion: no single `ast/` engine file > ~600 LOC except by owner exception; `composeStats` moved to `__tests__/` (see 3.f).
 - [ ] **1.b [GRAMMAR]** — `import.ts` + `host-context.ts` + all `parse-host/actions/*` relocate/dissolve (REORG A2–A4). DONE-criterion: `packages/core/src/ast/parse-host/` deleted; `git grep 'parseman|css-parser|less-parser' packages/core/src` empty.
@@ -267,7 +267,7 @@ Phase-1 is complete when ALL hold:
 4. No single `ast/` engine file > ~600 LOC without recorded owner exception; `value/`/`engine/`/`expr/`/`selector/`/`rule/`/`mixin/`/`at-rule/` subfolders exist per REORG move-map. **(Cluster 1)**
 5. Every Cluster 3 symbol has zero non-test references or is deleted. **(Cluster 3)**
 6. `Word` interface: owner keep/slim/eliminate decision recorded. **(Cluster 6)**
-7. Byte-identity holds at every step (P6) vs the less.js-`alpha` oracle + ast/ self-consistency baseline.
+7. Byte-identity holds at every step (P6) vs the less.js-`alpha` reference + ast/ self-consistency baseline.
 
 Clusters 4/5 (DRY/simplify) and 7 (Tier-0b) close incrementally under 1–3; the KEEP list is
 excluded by construction. Non-engine N-items and node-slim NS-items are explicitly OUT of the
@@ -292,7 +292,7 @@ grep -rn "TODO(tier-b/A4)\|TODO(tier-b/query-prelude)" packages/core/src/ast/par
 | TB-2 | `TODO(tier-b/A4)` | `core/ast/parse-host/actions/custom-props.ts` (`interpFromString`/`declName`) | `@{…}` re-tokenizers for cp-NAME + the regular declaration's interpolated PROPERTY name | (a) cp-NAME: paired with TB-1 (bridge). (b) regular-decl name: `declPropName` is one opaque leaf (separate un-structured shape) | Split `customPropInterp` (TB-1) + `declPropName` + consume via `interpFromRegion`, at reorg A4 |
 | TB-3 | `TODO(tier-b/query-prelude)` | `core/ast/parse-host/actions/at-rules.ts` (`AT_KEYWORD`/`parsePreludeValue`/`interpFromString`) | byte re-tokenizers for the QUERY at-rule prelude | `@media`/`@supports`/`@container` deliver their prelude as one opaque `QueryCondition` node → a query's `@var`/`@{…}` is not consumable as leaves. NOT legacy-coupled — grammar-coverage gap | Split the QUERY grammar's prelude into leaves (separate Tier-B shape; §3.4 keeps it committed), then leaf-consume |
 | TB-4 | `TODO(tier-b/A4)` | `core/ast/parse-host/import.ts` (`directSpecifier`) | `.includes('@{')/'@@'` SUBSTRING check detecting an interpolated import specifier | Specifier `@{…}` is INSIDE a Quoted string → structuring = §3.3 (changes the SHARED flat `Quoted` the legacy BuilderHost re-tokenizes via `INTERPOLATION_REGEX`/`getInterpolatedNode`) → bridge break. (Substring test, not a regex; direct host defers interpolated imports regardless) | Land §3.3 Quoted structuring after legacy-BuilderHost retirement (reorg A4), then read the path's `Interpolated` node type |
-| TB-5 | `TODO(tier-b/A4)` | `core/ast/parse-host/actions/value-leaf.ts` (`quotedInterp`/`quotedLeaf`) | host-side `@{name}` re-tokenizer for interpolation INSIDE a quoted-STRING VALUE (`url: "http://x@{var}/y"`) — builds an `Interp` template (P1). Regex-free (char-scan), STRICT `@{ident}` (nested `@{a-@{b}}` stays partial/literal) | The maintained grammar emits `"…@{…}…"` as ONE opaque `singleStr`/`doubleStr` leaf; the §3.3 `Quoted` grammar split touches the SHARED css `Quoted` the legacy BuilderHost re-tokenizes via `INTERPOLATION_REGEX`/`_buildStringInterpolation` → bridge break, so structuring at the grammar is deferred. Done at the DIRECT host instead (does NOT touch grammar or bridge → bridge byte-identity unaffected by construction; the direct-host oracle now resolves flat string interp) | Same §3.3 `Quoted` grammar split as TB-4 (reorg A4); then consume the structured `Interp` child instead of re-scanning the leaf bytes |
+| TB-5 | `TODO(tier-b/A4)` | `core/ast/parse-host/actions/value-leaf.ts` (`quotedInterp`/`quotedLeaf`) | host-side `@{name}` re-tokenizer for interpolation INSIDE a quoted-STRING VALUE (`url: "http://x@{var}/y"`) — builds an `Interp` template (P1). Regex-free (char-scan), STRICT `@{ident}` (nested `@{a-@{b}}` stays partial/literal) | The maintained grammar emits `"…@{…}…"` as ONE opaque `singleStr`/`doubleStr` leaf; the §3.3 `Quoted` grammar split touches the SHARED css `Quoted` the legacy BuilderHost re-tokenizes via `INTERPOLATION_REGEX`/`_buildStringInterpolation` → bridge break, so structuring at the grammar is deferred. Done at the DIRECT host instead (does NOT touch grammar or bridge → bridge byte-identity unaffected by construction; the direct-host reference now resolves flat string interp) | Same §3.3 `Quoted` grammar split as TB-4 (reorg A4); then consume the structured `Interp` child instead of re-scanning the leaf bytes |
 
 **Landed Tier-B shapes** (not deferred): shape 1 — generic at-rule prelude (regex-free +
 `@keyframes @{n}` early-termination bugfix, validated vs real less.js 4.x); shape 2 —
@@ -300,10 +300,10 @@ custom-prop VALUE (`@{…}` isolated in grammar + leaf-consumed via `interpFromR
 shape 3 — bare-`@var` at-rule prelude GRACEFUL RECOVERY (`buildGenericBlock`
 `isCleanRefToken`): a top-level bare `@var` prelude is a v5 HARD parse error (commit
 63663e900), but the malformed-prelude recovery used to synthesize a `VarRef` from the
-whole opaque scan region → `variable @… is undefined` at eval (6 differential-oracle
+whole opaque scan region → `variable @… is undefined` at eval (6 differential-reference
 THREW: `container`, `import-reference`, `layer`, `media`, `variables-in-at-rules`,
 `permissive-parse`). It now emits the malformed region VERBATIM (parse error already
-recorded), so those render (THREW→DIFF) — the DIFF from the 4.x-style golden is the
+recorded), so those render (THREW→DIFF) — the DIFF from the 4.x-style expected `.css` is the
 intended v5 divergence (bare `@var` in a prelude does not resolve; migrate to `@{var}`).
 
 **Pre-existing, NOT introduced by Tier-B interpolation work:**

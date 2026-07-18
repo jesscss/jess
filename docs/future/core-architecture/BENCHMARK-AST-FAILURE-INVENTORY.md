@@ -36,7 +36,7 @@
 
 ## 1. Render-or-throw result
 
-| Metric | AST-v2 direct (`parseToAst`→`serialize`) | Legacy production oracle |
+| Metric | AST-v2 direct (`parseToAst`→`serialize`) | Legacy production reference |
 |---|---|---|
 | Throws? | **No** | No |
 | Parse errors | **0** | 0 |
@@ -58,9 +58,9 @@ driver imports zero fns and is reusable as the T8 harness.
 path). Named `bmark-*` because vitest's `**/*bench*` exclude would otherwise skip
 a `benchmark-*` file.
 
-### On the oracle (a real obstacle, documented for the next agent)
+### On the reference (a real obstacle, documented for the next agent)
 
-Producing a trustworthy legacy oracle for THIS file was non-trivial — three paths
+Producing a trustworthy legacy reference for THIS file was non-trivial — three paths
 fail, and the working one needs a full build:
 
 - **`renderRealOracle` (source, bare Context, `collapseNesting:true`)** — THROWS
@@ -69,14 +69,14 @@ fail, and the working one needs a full build:
   **spine-eligible** (`isSpineEligibleRoot` — the code even comments "benchmark.less
   … folds"), so it takes the interim **spine-extend** path, which has a real bug on
   this file's extend section. This is the known "eval-baseline buggy for extend"
-  problem — the legacy spine is NOT a usable oracle for benchmark's extends.
+  problem — the legacy spine is NOT a usable reference for benchmark's extends.
 - **`renderImportOracle` / any `Compiler` render under vitest** — THROWS
   `TypeError: Cannot read properties of undefined (reading 'tag')` in
   `less-parser/lib/grammar2.js` `unwrapTrivia`. The BUILT less-parser lib's parseman
   node shape collides with the SOURCE parseman under vitest's SSR transform. **This
   also fells the pre-existing `import-byte-identity.test.ts` in a fresh worktree** —
   it is an environment/stale-built-lib issue, not caused by this work.
-- **Working oracle** — the **production `Compiler` in a plain node process against
+- **Working reference** — the **production `Compiler` in a plain node process against
   the BUILT packages**: `oracle-run.mjs` at the repo root. Imports stay present →
   the root is **not** spine-eligible → the legacy **full-eval** path runs (what
   production uses for benchmark.less), dodging the spine bug. Requires a full
@@ -88,7 +88,7 @@ fail, and the working one needs a full build:
 ## 2. Divergence inventory (construct → feature → evidence)
 
 Diff of `ast.css` vs `oracle.css`: **325 AST-side lines differ** (literal/wrong),
-**2,463 oracle-side lines** have no AST counterpart (dropped expansions).
+**2,463 reference-side lines** have no AST counterpart (dropped expansions).
 
 Each construct below was **isolated with a minimal probe** through the direct
 driver AND confirmed against the parser's emitted node type.
@@ -96,12 +96,12 @@ driver AND confirmed against the parser's emitted node type.
 ### G1 — Multi-part / operated declaration-value assembly  ⟵ LARGEST, was under-predicted
 - **Symptom:** an `@var` (or some sub-expression) embedded in a space/comma value
   is left literal.
-  - `background: @bg url('…') …`  →  oracle `background: #f01 url('…') …`
-  - `border-bottom: 1px solid (@bg * 0.66 + @black * 0.33)`  →  oracle `… solid(#a8000b)`
-  - `border-top: 5px solid @black`  →  oracle `… solid #000`
-  - `color: @white * 0.75 + @accent_colour * 0.25`  →  oracle `#bfbfbf`
+  - `background: @bg url('…') …`  →  expected `background: #f01 url('…') …`
+  - `border-bottom: 1px solid (@bg * 0.66 + @black * 0.33)`  →  expected `… solid(#a8000b)`
+  - `border-top: 5px solid @black`  →  expected `… solid #000`
+  - `color: @white * 0.75 + @accent_colour * 0.25`  →  expected `#bfbfbf`
 - **Probe (isolated):** `@a: red; .x { border: 1px solid @a; }` → AST `border: 1px solid @a;`
-  (literal), oracle `border: 1px solid red;`. But `color: @a` (whole value) → `red`
+  (literal), expected `border: 1px solid red;`. But `color: @a` (whole value) → `red`
   ✓ and `c: (@a * 0.66)` → `#a8000b` ✓. So the gap is specifically **multi-part
   assembly**, not single-value refs or paren math.
 - **Parser structure present?** YES — parser emits a `Reference` node for the
@@ -121,10 +121,10 @@ driver AND confirmed against the parser's emitted node type.
 
 ### G2 — Mixin calls `.mixin()`  (plain AND namespace `#ns > .mixin()`)
 - **Symptom:** every mixin call emits nothing. `#container { color: black; .mixin();
-  .mixout(); #theme > .mixin(); }` → AST `#container { color: black; }` only; oracle
-  expands to ~10 declarations. ~12 `#theme > .mixin()` / `#ns > .borders()` /
+  .mixout(); #theme > .mixin(); }` → AST `#container { color: black; }` only; expected
+  output expands to ~10 declarations. ~12 `#theme > .mixin()` / `#ns > .borders()` /
   `#util > .clearfix()` accessor calls plus many plain `.mixin()` calls.
-- **Probe:** `.m() { p: 1; } .x { .m(); }` → AST `.x {}` (empty); oracle `.x { p: 1; }`.
+- **Probe:** `.m() { p: 1; } .x { .m(); }` → AST `.x {}` (empty); expected `.x { p: 1; }`.
 - **Parser structure present?** YES — parser emits a **`MixinCall`** node (namespace
   form: `MixinCall` + `ComplexSelector` for the `#ns > .m` path).
 - **Partial impl?** ENGINE YES / ACTION NO. `serialize.ts:844` already has a
@@ -141,9 +141,9 @@ driver AND confirmed against the parser's emitted node type.
 
 ### G3 — Detached rulesets (define `@x: { … }` + call `@x()`)
 - **Symptom:** `.mobile-component { @media-mobile(); border: 1px solid #ccc; }` →
-  AST keeps only `border`; oracle also emits the 3 detached-ruleset props. 4 defs
+  AST keeps only `border`; expected output also emits the 3 detached-ruleset props. 4 defs
   (`@media-mobile`/`@media-desktop`/`@theme-light`/`@theme-dark`), 5 calls.
-- **Probe:** `@d: { p: 2; } .x { @d(); }` → AST `.x {}`; oracle `.x { p: 2; }`.
+- **Probe:** `@d: { p: 2; } .x { @d(); }` → AST `.x {}`; expected `.x { p: 2; }`.
 - **Parser structure present?** YES — the def parses as a **`VarDeclaration`** whose
   value is a block; the call parses as a **`VarCall`**.
 - **Partial impl?** ENGINE YES / ACTION NO. `nodes.ts` has `DetachedRuleset`
@@ -168,7 +168,7 @@ driver AND confirmed against the parser's emitted node type.
 - benchmark.less's two top-level `@import`s target **0-byte** files (a plain one +
   a `(reference)` one), so they contribute no output either way. But the direct host
   had **no import action**: it emitted the two `@import` lines **verbatim** (~102
-  bytes), whereas the oracle resolves+drops them.
+  bytes), whereas the reference resolves+drops them.
 - **Now wired.** The direct host builds a structured `t2.StyleImport` node
   (`actions/charset.ts` → `import.ts` `buildStyleImportNode`, consuming the parser's
   separated option / path-`Word` / media children — P0, no byte re-derivation), and
@@ -179,7 +179,7 @@ driver AND confirmed against the parser's emitted node type.
   one semantics, two front ends. `(reference)` keeps only definition statements
   (var / mixin-def), suppressing the imported file's own top-level rules.
 - **Benchmark effect:** the two verbatim `@import` lines now resolve away (empty
-  targets → nothing); oracle diff **2788 → 2786 lines** (−2), css `102849 → 102747`
+  targets → nothing); reference diff **2788 → 2786 lines** (−2), css `102849 → 102747`
   bytes. Modest because the targets are empty — the value is the correct RESOLUTION
   machinery, verified byte-identically on the `plain-` / `once-` / `ref-direct-`
   fixtures (`__tests__/import-direct-byte-identity.test.ts`).
@@ -223,7 +223,7 @@ byte-identity.
 ## 4. Preliminary perf ballpark — DIRECTIONAL ONLY, NOT the number
 
 **These are NOT byte-identical renders and NOT the perf number.** AST-v2 emits
-~28 KB LESS than the oracle (all the un-expanded work above), so its time is an
+~28 KB LESS than the reference (all the un-expanded work above), so its time is an
 **under-count**; and the two paths are measured in different environments. This is
 a smoke signal that the engine is in the right order of magnitude, nothing more.
 
@@ -247,5 +247,5 @@ already done.
 
 - `packages/core/src/ast/parse-host/__tests__/whole-doc-driver.ts` — the reusable driver (T1 / seed of T8; test-space harness, not a production render path).
 - `packages/core/src/ast/parse-host/__tests__/bmark-ast-driver.test.ts` — diagnostic runner.
-- `oracle-run.mjs` (repo root) — node-process legacy oracle producer + timing.
+- `oracle-run.mjs` (repo root) — node-process legacy reference producer + timing.
 - `packages/core/.bmark-ast/{ast.css,oracle.css}` — generated renders for offline diff (git-ignored).

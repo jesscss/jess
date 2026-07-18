@@ -84,15 +84,15 @@ minimum) detached rulesets + namespace/accessor dispatch + `@import (reference)`
 merge, *plus* a whole-document driver (below). It is **not** an empty-import or
 harness fix.
 
-## 3. Is the BRIDGE (double-build) in the render hot path, or only the oracle?
+## 3. Is the BRIDGE (double-build) in the render hot path, or only the reference?
 
-**Only the test oracle.** There are two ways into `ast/`, and the double-build one
+**Only the test reference.** There are two ways into `ast/`, and the double-build one
 is already quarantined:
 
 - `ast/parse-host/__tests__/bridge.ts` — `parse → legacy Rules tree → rebuild as
   ast nodes`. This is the double-build "disease" named by the constitution, and it
   already lives **under `__tests__/`** (P1 "delete the bridge / survive only as a
-  quarantined test-time oracle" is effectively done as isolation). It is used only
+  quarantined test-time reference" is effectively done as isolation). It is used only
   by the census + byte-identity suites.
 - `ast/parse-host/dispatch-host.ts:103` `parseToAst(input, entry, host)` — the
   **P0/P1-clean** path: parser output → `ast/` nodes **directly** via the
@@ -105,9 +105,9 @@ Neither is wired into `Compiler`/`jess-plugin-less`, so **the production
 `ast/` is not built at all.** Therefore bridge deletion is **orthogonal** to
 getting a realistic number — a realistic `ast/` number must be taken through
 `parseToAst` (the direct build host), not the bridge. The bridge is a
-correctness-oracle concern, not a perf-path prerequisite.
+correctness-reference concern, not a perf-path prerequisite.
 
-## 4. The trusted byte-identity ORACLE
+## 4. The trusted byte-identity reference
 
 The `ast/` engine is gated byte-identical against the **legacy `tree/` render with
 the real Less fns registry**, via `ast/parse-host/__tests__/oracle.ts`
@@ -115,15 +115,15 @@ the real Less fns registry**, via `ast/parse-host/__tests__/oracle.ts`
 root exactly as the less plugin does (`root.setFunctionBinding(name, new
 JsFunction(...))`), then `renderNodeToString(root, ctx, {collapseNesting:true})`.
 
-Oracle policy (owner, `…ROADMAP.md:` "Oracle policy" section): the *ultimate*
-oracle is **intended Jess v5 output** — the owner-maintained top-level `.css`
-goldens and less.js `alpha`-branch output (NOT Less 4.x; 4.x/Sass are behavior
+Reference policy (owner, the `…ROADMAP.md` reference-policy section): the *ultimate*
+reference is **intended Jess v5 output** — the owner-maintained top-level `.css`
+expected output and less.js `alpha`-branch output (NOT Less 4.x; 4.x/Sass are behavior
 references only). The legacy `tree/` render is a **valid proxy** for intended-v5
-**only where it agrees** with those goldens. For a *perf* number the pragmatic gate
+**only where it agrees** with that expected output. For a *perf* number the pragmatic gate
 is: `serialize(parseToAst(benchmark.less))` **byte-identical to
 `renderRealOracle(parseLessFn(benchmark.less).tree)`**, and separately confirm that
-legacy render byte-matches the owner `.css`/alpha golden for this file. There is no
-committed `benchmark.css` v5 golden for the full file today (the
+legacy render byte-matches the owner `.css`/alpha expected output for this file. There is no
+committed `benchmark.css` v5 expected output for the full file today (the
 `packages/jess/benchmark/benchmark.css` present is 123 bytes — a stale/partial
 stub, not the full output).
 
@@ -148,7 +148,7 @@ stub, not the full output).
 `benchmark.less`'s features (§2); (b) a whole-document `parseToAst` driver +
 `serialize`/`evaluator` wire-up that emits full CSS for the file; (c) a harness
 that times *that* against Less 4.x on the same fixture, same worktree, warmup +
-N-median, with a byte-identity gate to `renderRealOracle` (and to the v5 golden).
+N-median, with a byte-identity gate to `renderRealOracle` (and to the v5 expected `.css`).
 
 ## 6. Concrete ordered task list (origin/dev → realistic byte-identical number)
 
@@ -158,18 +158,18 @@ Gate = what proves it.
 | # | Task | Unblocks | Type | Size | Gate |
 |---|------|----------|------|------|------|
 | T1 | **Whole-document `parseToAst` driver** for a full `.less` stylesheet (today only per-family fragments + the bridge exercise the engine end-to-end). Confirm `serialize` + `buildEvaluator(makeBuiltinRegistry())` emit full-file CSS. | Any real-file `ast/` render at all | **HARD** | S–M | `serialize(parseToAst(f))` byte == `renderRealOracle` on the covered corpus |
-| T2 | **Detached rulesets** in `ast/` (define + call). | benchmark.less (`@media-mobile()` etc.) | **HARD** | M | byte-identity vs oracle on detached-ruleset fixtures |
+| T2 | **Detached rulesets** in `ast/` (define + call). | benchmark.less (`@media-mobile()` etc.) | **HARD** | M | byte-identity vs reference on detached-ruleset fixtures |
 | T3 | **Namespace / accessor dispatch** (`#theme > .mixin()`), beyond flat-name. | benchmark.less (10 calls) | **HARD** | M | byte-identity on namespace fixtures |
 | T4 | **`@import (reference)`** (+ thread real `fromFilePath`; the plain `import:unresolved` throw dies with the path fix). | benchmark.less import line; kills the observed throw | **HARD** | S–M | byte-identity on import-reference fixtures |
 | T5 | **Merge `+`/`+_`** (v5 last-occurrence anchor). | benchmark.less merges | **HARD (for THIS file)** | M | byte-identity vs owner v5 intent |
 | T6 | **Confirm remaining benchmark.less feature coverage** — run `parseToAst`+`serialize` over the (import-trimmed) file, enumerate every residual `UnsupportedShape`, close each. Guards/mixins/value-ops/functions/at-rules are already BUILT (rungs 5,7,8,9). | the actual gap set, empirically | **HARD** | zero `UnsupportedShape` on benchmark.less |
 | T7 | **fns Stage F (in-flight)** — convert the last ~11 Less fns to AST‑v2 value shape in `@jesscss/fns` (`FNS-PACKAGE-MIGRATION-SPEC §S6`; HEAD `53e9db8dd` = "get-unit … partial"). Only matters if benchmark.less calls an unconverted fn; core→fns wiring (`makeBuiltinRegistry`→`builtinLessFns`) already landed (Stage D/E). | correct fn eval for any unconverted fn used | **PAR** (HARD only if benchmark.less hits one) | S each | per-fn differential + byte-identity |
-| T8 | **Real-fixture `ast/` perf harness** — extend the `race.test.ts` methodology (warmup + N-median + same-worktree toggle + heap) to time `serialize(parseToAst(benchmark.less))` vs Less 4.x (`less@^4.6.3`) on the same file, with a **byte-identity gate to `renderRealOracle`** (and to the committed v5 golden) as a hard precondition to reporting. | **the number** | **HARD** (last) | byte-gate green → emit ms |
-| T9 | **Commit a full-file v5 `benchmark.css` golden** (current 123-byte file is a stub). Produce from legacy render, owner-reviewed against less.js `alpha`. | trustworthy correctness anchor | **PAR** (needed before the number is "trusted") | S | owner review vs alpha |
+| T8 | **Real-fixture `ast/` perf harness** — extend the `race.test.ts` methodology (warmup + N-median + same-worktree toggle + heap) to time `serialize(parseToAst(benchmark.less))` vs Less 4.x (`less@^4.6.3`) on the same file, with a **byte-identity gate to `renderRealOracle`** (and to the committed v5 expected `.css`) as a hard precondition to reporting. | **the number** | **HARD** (last) | byte-gate green → emit ms |
+| T9 | **Commit a full-file v5 `benchmark.css` expected output** (current 123-byte file is a stub). Produce from legacy render, owner-reviewed against less.js `alpha`. | trustworthy correctness anchor | **PAR** (needed before the number is "trusted") | S | owner review vs alpha |
 
 **Not needed for the number (do not over-build):**
 - **P1 bridge deletion** (`__tests__/bridge.ts`) — orthogonal; it's the test
-  oracle, not the perf path. The perf number is taken through `parseToAst`, which
+  reference, not the perf path. The perf number is taken through `parseToAst`, which
   never touches the bridge. (Still worth doing for the constitution, just not a
   blocker here.)
 - **`collapseNesting:false` nested-emit** (`…ROADMAP.md:130`) — the 4.x-comparable

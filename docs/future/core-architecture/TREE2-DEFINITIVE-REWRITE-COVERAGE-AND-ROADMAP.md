@@ -10,7 +10,7 @@
 >    PLAN/SOLVE/EMIT pipeline, live-binding / `BindingCell` semantics, the projection
 >    visitor contract, the sourcemap/trivia divergence guards, and the governance
 >    ratchets. Reaching parity, **flip the FRONT END to tree2** (a front-end swap, not a
->    monolithic in-place delete), gated on byte-identity vs the **intended-v5 goldens**.
+>    monolithic in-place delete), gated on byte-identity vs the **intended-v5 expected `.css`**.
 > 2. **R0-FIRST:** build `collapseNesting:false` **nested-output** mode **BEFORE** extend.
 >
 > This doc is the governing coverage + roadmap plan for the tree2 core rewrite. The
@@ -52,9 +52,9 @@ NOT the clean-room tree2 on this branch. Do not conflate them; that doc's "three
 design target" section is a useful north star, but its "implemented" section is not this
 code.
 
-## Oracle policy governing this whole document (owner)
+## Reference policy governing this whole document (owner)
 
-1. **Oracle = intended Jess v5 output.** The owner-maintained `.css` goldens are the v5
+1. **Intended design = intended Jess v5 output.** The owner-maintained `.css` test-data are the v5
    expected outputs.
 2. Where a feature mirrors less.js, the shape reference is the **less.js `alpha` branch
    output** (owner's `~/git/worktrees/less.js/` checkout) — **NOT** Less 4.x. Jess v5
@@ -67,8 +67,8 @@ code.
    (e.g. an eval-vs-spine inconsistency), judged against Jess intent.
 
 Consequence for tree2: its tests currently use the **legacy `tree` render as the
-byte-identity oracle** (`oracle.ts`, `import-oracle.ts`). That is a valid *proxy for
-intended-v5* only where the legacy render agrees with the owner `.css` goldens / less.js
+byte-identity reference** (`oracle.ts`, `import-oracle.ts`). That is a valid *proxy for
+intended-v5* only where the legacy render agrees with the owner `.css` expected output / less.js
 alpha. §4 flags exactly where that proxy is unsafe.
 
 ---
@@ -140,7 +140,7 @@ render.
 - **tree2 render**: resolves `@{var}` preludes (test-only host today). **Blocker to finishing the fixture migration is purely the legacy→tree2 front-end flip** — no new resolution work needed; it already works in tree2.
 - **less.js fixtures (unpushed branches, awaiting owner push):**
   - 4.x `feat/deprecate-non-value-variable-refs` fork → branch **`fix/at-rule-var-migrate-stragglers`** (`31ee756a`): migrated the two stragglers `4427aa19` missed (`layer.less:21`, `import-reference.less:76/80`) to `@{var}`; byte-identical render, dedicated deprecation fixture still warns. Full grunt suite green.
-  - alpha (v5 oracle) → branch **`fix/atrule-var-migrate-v5`** (`31bbe396`): migrated ALL bare-`@var` at-rule preludes to `@{var}` across media/container/layer/import-reference/at-rules-compressed/variables-in-at-rules/permissive-parse + the undefined-var error test. `.css` goldens UNCHANGED (output-neutral once tree2 resolves).
+  - alpha (v5 reference) → branch **`fix/atrule-var-migrate-v5`** (`31bbe396`): migrated ALL bare-`@var` at-rule preludes to `@{var}` across media/container/layer/import-reference/at-rules-compressed/variables-in-at-rules/permissive-parse + the undefined-var error test. `.css` expected output UNCHANGED (output-neutral once tree2 resolves).
 - **Jess markers (staged, NOT removed)**: `media`/`layer`/`container` `expectedFailureFixtures` + `at-rules-compressed-evaluation` `invalidLess` must stay until the migrated alpha fixtures are what Jess reads AND the render path resolves interp preludes (i.e. post-flip). Removing them now → red (legacy emits verbatim).
 - **Alpha renderer caveat (non-blocking, per owner "we'll get there")**: less.js `alpha` lacks `4427aa19`, so its OWN renderer may not accept `@{var}` at-rule preludes. Not exercised here; Jess (tree2) is the authoritative v5 renderer. Flagged for the tree2/front-end-flip workstream.
 - **Legacy `_firstTopLevelBareAtVar` (builders.ts) — dies with BuilderHost retirement, don't "clean up" the `()`-only scan**: `builders.ts` carries `_firstTopLevelBareAtVar` (`03f91d487`, the 4.x deprecation-WARNING sync), a hand-rolled `()`-only paren-depth scan mirroring less.js `hasTopLevelBareVariable`. Superseded for production by the v5 grammar hard-error (`63663e900`): `plugin-less` → Parseman `Parser` hard-errors bare `@var` structurally via `preludeTokenTop`/`preludeParen`/`preludeSquare`; `_firstTopLevelBareAtVar` runs only on the dying legacy `LessGrammar` BuilderHost + `deprecation-warnings.test.ts`. Action: delete it with the BuilderHost at reorg A4 (unless a 4.x-compat warn mode is kept). **KEY SEMANTIC (learned 2026-07-18): the `()`-only depth is CORRECT and load-bearing, NOT a bug.** A bare `@var` inside `[…]` in an unknown at-rule prelude RESOLVES structurally (`@foo bar[@v]` → `@foo bar[x]`; `@foo [@v]` alone is invalid), so it SHOULD warn — only a declaration-value `(…)` is exempt. A scanner that counts `[]`/`{}` as nesting (like a naive `$parseUntil` reuse) would wrongly exempt it. First attempt to delete less.js `hasTopLevelBareVariable` by leaning on the entity loop alone REGRESSED this (reverted). The correct DRY landed in PR #4469 (`ad26c944`): fold the detection into `$parseUntil`'s existing single pass with a SEPARATE paren-only depth (`[]`/`{}` don't shield), exposed as `.bareVarIndex` — reuses its string/comment/escape handling, deletes the second scan, behaviour identical (regression-guarded by a new less.js warnings-assertion harness — the repo's first). If/when `_firstTopLevelBareAtVar` is ever kept rather than retired, mirror THAT shape (paren-only depth, single pass), not a full-bracket scanner.
@@ -220,7 +220,7 @@ allocation** (`AST-ARENA-EXPERIMENT-HANDOFF.md`; `AST-FROM-SCRATCH-DESIGN.md` §
 | Plugin/visitor = projection read model, `(node)=>Node\|void`, node in output form; exit optional; whole-tree machinery deleted; whole-tree mutate-observe unserved (F1–F5, G2) | ALIGNED-BYCON (unwired) | tree2 per-emit-position node = the settled contract | Wire a hook edge, don't build a walk framework. |
 | Pre-eval visitors kept as separate gated pre-walk (F6/G1) | CARRY | — | Cannot fold into the single pass. |
 | Sourcemap attribution to SOURCE node; shared leaf must not re-emit authored trivia; warnings v5-native (I.1–I.3) | NEEDS-DESIGN | coarse `Position` lane | Divergence risks; each slice needs a sourcemap-identity check, not just CSS-identity. |
-| Governance: drive to target not match old code; no permanent eval fallback; ratchet; oracle = intended v5 (H1–H8) | CARRY | tree2 harness ratchets byte-identity + boundary-guard + `composeStats` op-counts | Keep ratchets; add a nested-output ratchet and a sourcemap-identity ratchet. |
+| Governance: drive to target not match old code; no permanent eval fallback; ratchet; reference = intended v5 (H1–H8) | CARRY | tree2 harness ratchets byte-identity + boundary-guard + `composeStats` op-counts | Keep ratchets; add a nested-output ratchet and a sourcemap-identity ratchet. |
 
 ---
 
@@ -250,7 +250,7 @@ its **validated design source and interim shipping path** — not a parallel des
   4. The **frame-threading correctness rules** (value-frame = lexical call-site chain;
      closures; lazy shadowing; guard-selected bindings) and the **sourcemap/trivia
      divergence guards** (arch I).
-  5. The **governance/ratchets and oracle stance** (H1–H8).
+  5. The **governance/ratchets and intended-design stance** (H1–H8).
 
 - **What the existing core does that tree2's model genuinely cannot (yet), with limits:**
   - **Whole-tree mutate-then-observe plugins (arch G2).** The projection model deliberately
@@ -269,7 +269,7 @@ its **validated design source and interim shipping path** — not a parallel des
   (112/112 all-less spine-clean per `CUTOVER-STATUS.md`; only `benchmark.less` throws on two
   foldable shapes). **NO second parallel cutover** on the old tree. Land extend +
   collapseNesting-nested + value-native + compat in tree2 behind the bridge, ratchet
-  byte-identity vs the intended-v5 goldens across the full corpus, then **flip the FRONT END
+  byte-identity vs the intended-v5 expected `.css` across the full corpus, then **flip the FRONT END
   to tree2** — a front-end swap, not a monolithic in-place delete. This preserves "no
   permanent eval fallback" (H2): tree2 either handles a shape or raises `UnsupportedShape`
   (fail-loud), and the interim spine covers production until parity.
@@ -319,8 +319,8 @@ Each rung: what it adds · matrix rows closed · where the current tree2 design 
   per-subject buffer, only the rule header defers until SOLVE settles; add the zero-cost
   gate (no `:extend` → pure streaming). (3) reference-mode needs visibility/suppression
   state that is NOT recoverable from the output string (§4 R-ref) — carry it structurally.
-- Oracle: **source the concrete extend output shape from the less.js `alpha` branch output**
-  reconciled with the owner `.css` goldens — NOT Less 4.x, NOT the legacy eval render. Do
+- Reference: **source the concrete extend output shape from the less.js `alpha` branch output**
+  reconciled with the owner `.css` expected output — NOT Less 4.x, NOT the legacy eval render. Do
   not assert `:is()`-compacted vs expanded; reproduce what alpha emits. Judge internal
   eval-vs-spine disagreements against Jess intent only.
 
@@ -390,42 +390,42 @@ record pre-pass (R2); (6) coarse rule-granularity positions (R5).
 
 ---
 
-# 4. ORACLE POLICY + RISKS
+# 4. REFERENCE POLICY + RISKS
 
-## Where "legacy `tree` render == oracle" is INVALID
+## Where "legacy `tree` render == reference" is INVALID
 
-tree2's tests use the legacy render as the byte-identity oracle. That is a valid *proxy for
-intended-v5* only where the legacy render agrees with the owner `.css` v5 goldens and the
-less.js **alpha** output. It is unsafe — the oracle must instead be the intended-v5 goldens /
+tree2's tests use the legacy render as the byte-identity reference. That is a valid *proxy for
+intended-v5* only where the legacy render agrees with the owner `.css` v5 expected output and the
+less.js **alpha** output. It is unsafe — the reference must instead be the intended-v5 expected `.css` /
 alpha output — in these places:
 
 - **R-extend (extend, all forms).** The legacy render has **internal eval-vs-spine
   disagreements** (e.g. a nested extender where eval emits a bare fragment and spine emits
   the composed selector; a nested element-name self-extend both paths drop). These are NOT
   judged against Less 4.6.7; they are internal-regression signals resolved against **Jess
-  intent = less.js alpha output + owner goldens**. Reproduce Jess's intended extend shape
+  intent = less.js alpha output + owner expected `.css`**. Reproduce Jess's intended extend shape
   (source the concrete `:is()`-compacted-vs-expanded form from alpha — do NOT assert it).
   **Do not gate R1 on the legacy eval render.**
 - **R-merge (`+`/`+_`).** v5 uses **last-occurrence anchoring** (owner, intended v5 — a
-  deliberate divergence from Less). A golden or legacy render anchoring first-occurrence is
+  deliberate divergence from Less). An expected `.css` or legacy render anchoring first-occurrence is
   wrong for Jess; build to Jess intent.
 - **R-nested (collapseNesting:false).** Every tree2 rung so far was benched under
-  `collapseNesting:true`, so the legacy-render oracle only ever validated the *flattened*
-  form. The v5 **default nested** output is unproven against any oracle in tree2 — R0 must
-  add nested-output byte-identity against the v5 goldens/alpha.
+  `collapseNesting:true`, so the legacy-render reference only ever validated the *flattened*
+  form. The v5 **default nested** output is unproven against any reference in tree2 — R0 must
+  add nested-output byte-identity against the v5 expected `.css`/alpha.
 - **R-media.** v5 does **not** merge sibling `@media` blocks; a 4.x-style merging
-  render/golden encodes 4.x behavior. (`.css` goldens should already be un-merged — verify.)
+  render/expected `.css` encodes 4.x behavior. (`.css` expected output should already be un-merged — verify.)
 - **R-ref (reference/import-mode extend).** Reference-mode suppression (which original
-  selectors are hidden) is **not recoverable from the output string** — a byte-oracle over a
+  selectors are hidden) is **not recoverable from the output string** — a byte-reference over a
   naive string render silently breaks reference mode. Carry visibility state structurally;
-  oracle against the goldens, not a string round-trip.
+  reference against the expected `.css`, not a string round-trip.
 - **R-important (custom-prop `!important`).** A direct-`writeSyntax` path drops `!important`
   on custom properties. tree2 carries `!important` in value bytes; verify custom-prop
-  `!important` survives, and don't adopt any oracle that routes through that legacy writer.
+  `!important` survives, and don't adopt any reference that routes through that legacy writer.
 
 Everywhere else (static rules, variables, plain values/functions, plain at-rules, plain
 `@import`) the legacy render has already been shown byte-identical to the real evaluating
-oracle **and** matches the goldens — so it remains a safe proxy there. When unsure whether a
+reference **and** matches the expected `.css` — so it remains a safe proxy there. When unsure whether a
 Jess divergence from Less/Sass is intended, mark it **"needs owner confirmation of intended
 v5 shape"** — do not call it a bug.
 

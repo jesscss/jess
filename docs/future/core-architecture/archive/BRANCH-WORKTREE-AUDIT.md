@@ -135,7 +135,7 @@ Recover any with `git branch <name> <hash>`.
 | `perf/w1-single-writer` | `64ad43933` | perf(serialize): reuse shared writer via mark/getSince/restore for convertible fragment sites |
 | `perf/w2-refresh` | `b629d5af4` | perf(print): make OutputWriter.refreshPositions incremental |
 | `slim-rules-lookup-a94fa075` | `458e7dae2` | perf(core): remove dead Ruleset.frames field (~12k instances) |
-| `work/amp-seam` | `e6aa4482b` | feat(core): parallel index-driven extend DISCOVERY prototype + differential oracle |
+| `work/amp-seam` | `e6aa4482b` | feat(core): parallel index-driven extend DISCOVERY prototype + differential reference |
 | `work/cutover-p1` | `3b75c4dbf` | docs(cutover): M8 interpolated-name fold ✅ (V4/R2 verified non-features); tip 5869859ad |
 | `work/dupfull` | `9405044f1` | perf(core): Phase D slice 1 — delete AtRule.frames, walk supplies hoist ancestry |
 | `work/extend-corpus` | `02bc409a7` | docs(core): WITHDRAW extend gate 1 — invalid-input artifact, not a real rule |

@@ -5,7 +5,7 @@ module maps one node **family**'s grammar `type`s to tree2 node constructors,
 driving the SAME parseman grammar as the legacy parser through a different
 `build(type, …)` host (`../dispatch-host.ts`). No legacy `../tree` AST is built
 and no bridge walk runs — the host constructs tree2 nodes directly during the
-parse. Each family is gated **byte-identical** against the bridge (the oracle)
+parse. Each family is gated **byte-identical** against the bridge (the reference)
 during the transition (`serialize(direct) === serialize(bridge)`).
 
 ## Layout
@@ -30,7 +30,7 @@ during the transition (`serialize(direct) === serialize(bridge)`).
 
 Then add `actions/__tests__/<family>-host-byte-identity.test.ts` gating
 `serialize(direct) === serialize(bridge)` for the family's shapes (extend the POC
-differential — reuse `parseToAst` + the bridge oracle). `ACTION_LIST` is
+differential — reuse `parseToAst` + the bridge reference). `ACTION_LIST` is
 append-only, so the additions git-auto-merge and no agent touches another's
 module.
 

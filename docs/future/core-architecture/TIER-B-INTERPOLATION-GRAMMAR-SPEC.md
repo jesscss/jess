@@ -268,7 +268,7 @@ kind → `Interp` / `VarIndirect` / `VarRef` / `Word`. This ALSO fixes the **ear
 bug (§1.4): today `@keyframes @{n} {` cuts the prelude at the `{` of `@{n}` (dead `bCurly` skip),
 whereas a token run consumes `@{n}` as a `lessInterp` leaf and runs on to the real block `{`. That
 is a *correction*, not a byte-identity pass — a prelude that previously misparsed now parses — so
-it is a **gated golden change** flagged for owner review (suspect-golden rule). `@media` &co are
+it is a **gated expected-output change** flagged for owner review (suspect-expected-output rule). `@media` &co are
 unaffected (structured `QueryAtRuleBlock`, `grammar.ts:872`); the change is scoped to generic
 block/statement at-rules.
 
@@ -285,30 +285,30 @@ No `grammar.ts` edit. A host action folds `valueSequence`/`valueList` children i
 |---|---|---|---|
 | §3.1 cp-name split | `declName` interp branch | `custom-props.ts:76-82` | **Low** — leaves cover the same bytes; `interpFromLeaves` already matches `interpFromString`'s part coalescing (see `interp.ts:41-45` JSDoc). |
 | §3.2 cp-value split | `interpFromString` (custom-props copy) | `custom-props.ts:46-61` | **Medium** — content-regex boundary at `@{` (break-mode 3); `unquote:true` must be preserved on spliced refs. |
-| §3.4 prelude split | `parsePreludeValue` 3 regexes + `interpFromString` (at-rules copy) | `at-rules.ts:72-87,95-112` | **Medium** — `@@name` / `@name` / `@{…}` ordering + the curly mis-bound golden change (§3.4). |
+| §3.4 prelude split | `parsePreludeValue` 3 regexes + `interpFromString` (at-rules copy) | `at-rules.ts:72-87,95-112` | **Medium** — `@@name` / `@name` / `@{…}` ordering + the curly mis-bound expected-output change (§3.4). |
 | §3.3 quoted split | `_buildStringInterpolation` (bridge), `QUOTE_RE` *stays* (synthetic) | `builders.ts:1367`; `literal-tag.ts:117-125` **KEEP** | **High** — escapes, empty strings, `@{` inside `\…`, trivia inside string. Break-mode 1. |
 | §3.5 list assembly (host) | `topLevelSplit`, `hasTopLevelComma`, `coerceListItems` split branch, `betweenBytes` comma fallback | `list-helper.ts:45-90,98-108`; `value-expr.ts:103-110,152-154` | **Medium** — split-vs-node ordering of comma-looser-than-space (`list-helper.ts:103`) must be reproduced by the assembly action. |
 | (already done by literal-tag P0) | `QUOTE_RE` for PARSED strings | `literal-tag.ts` — parsed path reads `LitFields` (L159-163) | n/a — do NOT re-plan; the synthetic `isQuotedBytes` default stays. |
 
-### 4.1 SUSPECT-GOLDEN OWNER DECISION — `lessInterp` is stricter than the oracle regexes
+### 4.1 SUSPECT-EXPECTED-OUTPUT OWNER DECISION — `lessInterp` is stricter than the reference regexes
 
 A systematic byte-identity divergence cuts across §3.2 (cp-value) and §3.4 (at-prelude): the
 grammar's `lessInterp` token (`grammar.ts:85`, `/@\{-?[_a-zA-Z0-9-￿][…]*\}/` — a bare
-name, no interior whitespace, no dot) is **STRICTER** than the oracle re-tokenizers it would
+name, no interior whitespace, no dot) is **STRICTER** than the reference re-tokenizers it would
 replace. Both `INTERPOLATION_REGEX` (`utils.ts:13`, `/([$@])\{([^}]+)\}/g`) and the host
 `interpFromString` (`/@\{\s*([^}]+?)\s*\}/g`) accept `[^}]+` — so `@{ base }` (interior
-whitespace) and `@{a.b}` (dot) **match the oracle but NOT `lessInterp`**. Under a leaf-split those
+whitespace) and `@{a.b}` (dot) **match the reference but NOT `lessInterp`**. Under a leaf-split those
 forms fall to the literal content run → they stay verbatim `Word` bytes instead of becoming an
 `Interp` → **byte drift** wherever the current opaque run is re-tokenized by the permissive host
 regex (cp-VALUE §3.2, at-PRELUDE §3.4).
 
 This is **NOT** true of cp-NAME (§3.1): `customPropInterp` (`grammar.ts:72`) is ALREADY the strict
-regex, so there is no permissive oracle to diverge from — its "Low" rating stands.
+regex, so there is no permissive reference to diverge from — its "Low" rating stands.
 
 **✅ OWNER DECISION (2026-07-17): ADOPT STRICT.** `lessInterp` stays `@{name}`-only; `@{ base }`
 (interior whitespace) and `@{a.b}` (dot) are NOT interpolation — matches the real Less 4.x
-reference lexer. Any golden that leaned on the permissive-but-buggy behavior is a jess-only
-artifact and gets corrected (validate against real 4.x per the suspect-golden rule before landing).
+reference lexer. Any expected output that leaned on the permissive-but-buggy behavior is a jess-only
+artifact and gets corrected (validate against real 4.x per the suspect-expected-output rule before landing).
 Rationale (owner): the permissive regex swallows `a.b` as a single flat variable name `"a.b"` —
 that is a *misread*, not module access. If Less v5 `@use` later grows `@{module.member}`
 interpolation, it will be a **deliberate structured grammar extension** (member-access nodes, gated
@@ -372,12 +372,12 @@ interpolation-grammar items (§3.1-3.4) do **not** touch fns.
    shared leading char (`"`/`@`).
 2. **Host byte-identity**: the existing `*-host-byte-identity.test.ts` suites
    (`custom-props`, `at-rules`, `charset`, `value-expr`, `selector-interp`) are the gate — each
-   asserts the tree2 host output is byte-identical to the bridge oracle. A split that changes a
+   asserts the tree2 host output is byte-identical to the bridge reference. A split that changes a
    byte fails here.
-3. **Golden exceptions** (§3.4 curly mis-bound, and any `@media @{q}` that previously
+3. **Expected-output exceptions** (§3.4 curly mis-bound, and any `@media @{q}` that previously
    misparsed): these are NOT byte-identity passes — they are *corrections*. Isolate them, prove
-   against real Less 4.x + the alpha `.css` oracle, and get owner review before landing (suspect-
-   golden rule). Do not let a correction ride silently through the byte-identity gate.
+   against real Less 4.x + the alpha `.css` reference, and get owner review before landing (suspect-
+   expected-output rule). Do not let a correction ride silently through the byte-identity gate.
 4. **Full workspace build** before the fail-count is trusted (`pnpm -r build` incl. plugins/fns —
    partial build inflates fails; memory `all-less needs FULL workspace built`).
 
@@ -402,7 +402,7 @@ kept behind the plain-string fast arm.
 **Break-mode 2 — At-rule prelude: strict-`lessInterp` divergence + trivia re-join (`§3.4`).** The
 current behavior is now VERIFIED (not "unverified"): the opaque `scanTo` terminates at the first
 `{` (dead `bCurly`, §1.4), so `@keyframes @{n} {` misparses today and the split *corrects* it
-(gated golden, §3.4). Two remaining hazards: (1) **the strict/permissive divergence** (§4.1) —
+(gated expected output, §3.4). Two remaining hazards: (1) **the strict/permissive divergence** (§4.1) —
 `@keyframes @{ x }` / `@media @{a.b}` (generic path) match the host regex but not `lessInterp`, so
 a leaf-split silently keeps them literal = byte drift; this is the owner decision, not a bug to
 fix in passing. (2) **trivia re-join** — `scanTo` swallows internal whitespace into the one leaf,
@@ -449,12 +449,12 @@ name-only so the nested case is structurally impossible to over-match.
      value-node type NOW (not `VarRef`), even though Less only ever puts a `VarRef` there, so the
      later widen to a general expression node needs no serializer/resolver fan-out — the
      serialize/resolve sites already accept the wide type.
-2. **§3.4 golden change — ✅ OWNER DECISION (2026-07-17): FIX IT INLINE.** The early-termination
+2. **§3.4 expected-output change — ✅ OWNER DECISION (2026-07-17): FIX IT INLINE.** The early-termination
    bug is VERIFIED (dead `bCurly`, §1.4): `@keyframes @{n} {` misparses today. Owner: "if it's
    buggy, fix it — we have to parse things in the correct way." The grammar split ships the
    correction in-scope; do NOT byte-preserve the buggy behavior. The ONE discipline: the corrected
    `@keyframes @{n} {` output is validated against **real Less 4.x** (not jess's own output) before
-   landing — suspect-golden check, not a reason to preserve the bug.
+   landing — suspect-expected-output check, not a reason to preserve the bug.
 3. **Bridge lifetime.** §4's follow-on deletions (`utils.ts` regexes) depend on P1 bridge
    deletion. Confirm the ordering: grammar split → tree2 deletions → bridge deletion → bridge-
-   regex deletion, so the byte-identity oracle survives until the tree2 side is proven.
+   regex deletion, so the byte-identity reference survives until the tree2 side is proven.

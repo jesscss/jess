@@ -4,7 +4,7 @@ Synthesis of 36 per-file reviews (one reviewer per file) plus 5 cross-file coher
 
 - **Total findings: 375** (327 per-file + 48 coherence).
 - Scope: `packages/core/src/ast/**` (35 real files + 1 non-existent path) plus one out-of-tree layering finding in `packages/core/src/jess-error.ts`.
-- Oracle framing per `TREE2-CONSTITUTION.md`: **P0** parser-owns-structure (core never re-derives structure from bytes), **P1** delete-bridge, **P2** no-verbatim-port, **P3** real-names (kill `tree2`), **P4** DRY, **P5** complexity-gate, **P6** byte-identity floor.
+- Intended-design framing per `TREE2-CONSTITUTION.md`: **P0** parser-owns-structure (core never re-derives structure from bytes), **P1** delete-bridge, **P2** no-verbatim-port, **P3** real-names (kill `tree2`), **P4** DRY, **P5** complexity-gate, **P6** byte-identity floor.
 
 **Collision warning:** `serialize.ts`, the value engine (`value-*.ts`, `evaluator.ts`, `serialize-value.ts`, `literal-tag.ts`), and `parse-host/**` are under active benchmark/value-path work. Every item touching those MUST sequence *after* the in-flight edits land. Docs/rename-only edits are safe anytime. Marked per-item below.
 

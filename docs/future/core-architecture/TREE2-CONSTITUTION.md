@@ -54,12 +54,12 @@ string form looking for sigils.
 
 The double-build (`tree2-frontend/bridge.ts`) is the source of the disease. The build-host
 consumes the parser output DIRECTLY. The bridge may survive ONLY as a quarantined test-time
-oracle (clearly isolated, never imported by shipping code, never "mirrored"). Its
+reference (clearly isolated, never imported by shipping code, never "mirrored"). Its
 byte-re-derivation is not a pattern to copy — it is the thing we are deleting.
 
 ## P2 — No verbatim ports. The legacy `tree/` engine is what we are DELETING.
 
-Legacy `tree/` is ~68k lines of the smell we are replacing. It is a byte-identity ORACLE
+Legacy `tree/` is ~68k lines of the smell we are replacing. It is a byte-identity reference
 for OUTPUT, never a source to copy IMPLEMENTATION from. Every `// mirrors the bridge` /
 `// ported from legacy` / `// port of Operation.*` marker is a debt to erase by making it
 untrue. Re-derive the lean tree2 form from the parser's structure; do not lift.

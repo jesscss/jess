@@ -279,7 +279,7 @@ still produces it), so the two coexist during the transition.
 
 Invariant every stage: legacy `less-parser` untouched, current engine green, the
 bridge stays until its last shape is covered. Each stage adds tree2-host coverage
-for a shape family and flips that family's byte-identity oracle from bridge to
+for a shape family and flips that family's byte-identity reference from bridge to
 direct.
 
 **Stage 0 — POC (done).** Ruleset + static declaration, host-over-shared-grammar,
@@ -300,14 +300,14 @@ rules + tree2 host. Legacy grammar keeps running unchanged in parallel.
 construction: **dense value structs parsed eagerly** (`Dimension{value,unit,
 rawBytes}`, `Color{…,rawBytes}`, …) plus the structured computed shapes tree2
 already supports (rungs 1–5 + R4: refs, interp, operations, calls, quoted, url).
-Emit uses `rawBytes` when un-operated, canonical when operated. Oracle: the
+Emit uses `rawBytes` when un-operated, canonical when operated. Reference: the
 existing `value-byte-identity` suite, flipped to the direct path. **Retire the R2
 lazy value leaf** (`ValueLiteral` + `materialize` + the operate-on-Anonymous
 fallback) at the end of this stage — once the direct parser is the value source,
 nothing builds a lazy leaf.
 
 **Stage 4 — Selectors, nesting, `&`.** Compound/complex/combinator/`&`/interp
-selector actions. Oracle: `nested-byte-identity`.
+selector actions. Reference: `nested-byte-identity`.
 
 **Stage 5 — Mixins, guards, extend, at-rules, imports.** One shape family per
 step, each mirroring the corresponding bridge section and its byte-identity suite
@@ -315,7 +315,7 @@ step, each mirroring the corresponding bridge section and its byte-identity suit
 
 **Stage 6 — Retire the bridge incrementally.** As each family's direct path goes
 byte-identical, switch its call sites (`bridgeToTree2` consumers, the census, the
-oracle harness) to the direct parser. The bridge shrinks to the not-yet-covered
+reference harness) to the direct parser. The bridge shrinks to the not-yet-covered
 tail. When empty, delete `bridge.ts` + `import-bridge.ts`.
 
 **Stage 7 — Delete-and-rename.** When the legacy engine is deleted, remove
@@ -328,7 +328,7 @@ tail. When empty, delete `bridge.ts` + `import-bridge.ts`.
   invariant.
 - Every stage's gate is a byte-identity suite that already exists for the bridge
   — reuse it, pointed at the direct path, so the direct parser is ratcheted
-  against the *same* oracle the bridge was.
+  against the *same* reference the bridge was.
 - Keep a `direct-vs-bridge` differential test (like the POC) per shape family so a
   divergence is caught the moment a family is added, before its bridge call site
   is retired.

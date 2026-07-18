@@ -1,6 +1,6 @@
 ---
 name: fixture-driven-dev
-description: Use when working with fixture-based or golden-file tests (especially Less test-data). Helps isolate one fixture, reproduce deterministically, update expectations safely, and avoid cross-package build pitfalls.
+description: Use when working with fixture-based or expected-output tests (especially Less test-data). Helps isolate one fixture, reproduce deterministically, update expectations safely, and avoid cross-package build pitfalls.
 ---
 
 # Fixture-driven development
@@ -10,7 +10,7 @@ Use this skill when a bug is reported via a fixture suite (e.g. `@less/test-data
 ## When to use
 
 - You are touching `packages/jess/test/less/**` or running the Less test-data harness.
-- A failure is “golden output differs” (snapshot/string output mismatch).
+- A failure is “expected output differs” (snapshot/string output mismatch).
 - You need to add a new regression fixture.
 
 ## Workflow

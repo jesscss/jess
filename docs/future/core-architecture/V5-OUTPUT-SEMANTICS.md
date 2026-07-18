@@ -135,14 +135,14 @@ cascade.
 
 ### A8 · collapseNesting + adjacent-sibling merge
 **Rule.** Nesting collapse is **per-fixture** (`styles.config`): the less.js
-`.css` goldens default **FLAT**; the Jess CLI defaults **NESTED**
+`.css` expected output defaults **FLAT**; the Jess CLI defaults **NESTED**
 (`collapseNesting:false`). Adjacent same-selector sibling merge is **NARROW** —
 same parent-key **AND** byte-identical header **AND** strict adjacency. Merge
 (`+:` / `+_:`) anchors at the **LAST** occurrence.
 
 ```
 Jess CLI default:      .a { .b {…} }     stays nested
-less.js goldens:       flattened
+less.js expected `.css`: flattened
 merge chain a; …; a:   emits at LAST a's position
 ```
 **Why.** v5's default is authored-structure-preserving; 4.x flatten is an opt-in

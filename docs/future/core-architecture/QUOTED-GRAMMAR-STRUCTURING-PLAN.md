@@ -139,8 +139,8 @@ const Quoted = node('Quoted', choice(QuotedInterp, singleStr, doubleStr));
 - **§4.1 strictness (owner decision, LOCKED):** `lessInterp` is `@{name}`-only; `"@{ x }"`
   (interior whitespace) and `"@{a.b}"` (dot) are NOT interpolation — they stay literal chunks.
   This diverges from the bridge's permissive `_buildStringInterpolation`/`INTERPOLATION_REGEX`
-  (`/([$@])\{([^}]+)\}/g`); that divergence is **intended** (matches real Less 4.x), and any golden
-  leaning on the permissive misread is corrected (suspect-golden rule, validate vs real 4.x).
+  (`/([$@])\{([^}]+)\}/g`); that divergence is **intended** (matches real Less 4.x), and any expected output
+  leaning on the permissive misread is corrected (suspect-expected-output rule, validate vs real 4.x).
 
 ### 2.3 Host consumers, post-grammar
 
@@ -204,13 +204,13 @@ subset.
 |---|---|---|
 | S6.0 | **Parser tests FIRST (spec §6 break-mode 2).** Pin byte-exact preludes for the byte-preserving cases `@media  screen` (double space), `@page :first`, `@supports (a:b)`, AND the correction cases `@media @{q}`, `@media @{a.b}` (generic path, §4.1 stay-literal). | CST byte-snapshots pass |
 | S6.1 | **Grammar (TB-3):** split the query prelude (`QueryCondition`/`QueryInParens`/`QueryFeature`) into structured leaves — literal runs, `lessInterp`, `lessVar`, `@@name`, comparison-op terminal (reuse `compareOp` `grammar.ts:235`), number+unit `Dimension` child, ratio child — so the media/supports/container prelude is no longer one opaque region. **Trivia re-join hazard:** ambient `rw` must reproduce `@media  screen`'s internal spacing byte-exactly. | `less-parser` CST tests; over-structuring check (pure CSS `@media screen and (min-width:600px)` gains NO interp structure) |
-| S6.2 | **parse-host PH1:** `at-rules.ts` query path consumes the structured leaves (leaf walk → `Interp`/`VarIndirect`/`VarRef`/`Word`), replacing `AT_KEYWORD`/`parsePreludeValue`'s regexes (`:203/:209/:235`). | `at-rules-host-byte-identity` + `charset-host-byte-identity`; ast/ differential (with the `@media @{q}` **golden correction** isolated + owner-reviewed) |
+| S6.2 | **parse-host PH1:** `at-rules.ts` query path consumes the structured leaves (leaf walk → `Interp`/`VarIndirect`/`VarRef`/`Word`), replacing `AT_KEYWORD`/`parsePreludeValue`'s regexes (`:203/:209/:235`). | `at-rules-host-byte-identity` + `charset-host-byte-identity`; ast/ differential (with the `@media @{q}` **expected-output correction** isolated + owner-reviewed) |
 | S6.3 | **builders `_buildAtRulePrelude` rewrite:** consume the grammar query-prelude leaves; **delete** the L5 hand-tokenizer regexes + the 4 prelude-embedded L4 sites. Coordinate with S5's in-method value sites per correction #1 (either fold S5 in, or land S6 first and re-express). | ast/ differential green; `@media @{q}` correction owner-reviewed |
 
-> **Golden-correction discipline (spec §6.2, owner decision 2026-07-17 "fix it inline"):** the
+> **Expected-output-correction discipline (spec §6.2, owner decision 2026-07-17 "fix it inline"):** the
 > generic-prelude early-termination bug is already fixed (`f0cb4896c`); the query path's
 > `@media @{q}` misparse is corrected by S6.2, NOT byte-preserved. Isolate the correction, prove
-> against real Less 4.x + the alpha `.css`, get owner review before landing (suspect-golden rule) —
+> against real Less 4.x + the alpha `.css`, get owner review before landing (suspect-expected-output rule) —
 > do not let it ride silently through the byte-identity gate.
 
 ### Cross-track ordering
@@ -292,7 +292,7 @@ sufficient step toward that DONE-criterion.
   `alpha-oracle-baseline.json`) staying green, plus the relevant `*-host-byte-identity` suite.
 - **Parser CST byte-snapshots FIRST** for each split (Q0, S6.0), including a shared-prefix/backtrack
   regression check (§3.3/TB-3 add ordered `choice` arms sharing a leading char).
-- **Golden corrections** (`@media @{q}` query misparse) are isolated, proven vs real Less 4.x + the
+- **Expected-output corrections** (`@media @{q}` query misparse) are isolated, proven vs real Less 4.x + the
   alpha `.css`, and owner-reviewed — never ridden silently through byte-identity.
 - **Bridge byte-identity is NON-SACRED** and repaired at the less-compat re-point.
 - **Full workspace build** before any fail-count is trusted (`all-less needs FULL workspace built`).

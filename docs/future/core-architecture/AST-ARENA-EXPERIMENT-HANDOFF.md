@@ -7,7 +7,7 @@
 > spine is the interim shipping alpha ONLY; there is NO second parallel cutover; port only the
 > DESIGNS (extend PLAN/SOLVE/EMIT pipeline, live-binding/`BindingCell`, projection visitor
 > contract, sourcemap/trivia guards, ratchets); flip the FRONT END to tree2 at parity vs the
-> intended-v5 goldens. (2) R0-FIRST: build `collapseNesting:false` nested-output mode BEFORE
+> the intended-v5 expected output. (2) R0-FIRST: build `collapseNesting:false` nested-output mode BEFORE
 > extend. The governing coverage-matrix + done-right roadmap is now
 > [`TREE2-DEFINITIVE-REWRITE-COVERAGE-AND-ROADMAP.md`](./TREE2-DEFINITIVE-REWRITE-COVERAGE-AND-ROADMAP.md)
 > — read it as the plan of record. The experiment log below stays intact as the rung-by-rung
@@ -29,7 +29,7 @@ this track is for the departures too big to bolt onto the current node model.
 
 ## Non-negotiable guardrails
 
-1. **Byte-identity is the oracle.** `benchmark.less`, `collapseNesting:true` →
+1. **Byte-identity is the reference.** `benchmark.less`, `collapseNesting:true` →
    131578 bytes, sha `98a0536086c7e555`. No experiment counts as a "win" unless output is
    byte-identical (and all-less byte-identity holds). A representation that can't reproduce
    the bytes is not a candidate, no matter how fast.
@@ -146,15 +146,15 @@ the log below every iteration so the track compounds instead of repeating.
     `collapseNesting:false` routes through the new `emitNested*` family in
     `packages/core/src/tree2/serialize.ts` (emitNestedBody / emitNestedRule / emitNestedLeaf /
     expandNestedCall / emitNestedAtRuleBlock). NO new node types — same model, same walk, second
-    policy. Spec section: `TREE2-DESIGN-SPEC.md § R0` (data/algorithm/invariants/oracle).
-  - **Non-obvious shapes, SOURCED from the oracle (not assumed).** `&`/descendant nesting renders
+    policy. Spec section: `TREE2-DESIGN-SPEC.md § R0` (data/algorithm/invariants/reference).
+  - **Non-obvious shapes, SOURCED from the reference (not assumed).** `&`/descendant nesting renders
     LITERALLY (`&:hover`, `& > .b`, `.b &`, nested `.b, .c` verbatim — NO `:is()`, NO parent
     composition, unlike flatten). Mixin placement SPLICES the body inline under the call site: its
     decls join the block in source order, its nested rules nest there keeping their OWN selectors.
     Source order preserved within a block (decls after a nested rule stay in the same block — flatten
     would split them). `@media` bodies keep inner rules nested (no bubble/merge). Empty blocks elide
     recursively.
-  - **Oracle (corrected policy).** Intended-v5 = owner `.css` goldens / full pipeline
+  - **Reference (corrected policy).** Intended-v5 = owner `.css` expected output / full pipeline
     `collapseNesting:false`, NOT Less 4.x. Added `renderRealOracleNested` (`oracle.ts`) = the
     function-evaluating pipeline rendered nested; all R0 byte-identity is vs THIS.
   - **Byte-identity.** `nested-byte-identity.test.ts`: 30 curated cases (plain/nesting/`&`/vars/
@@ -164,7 +164,7 @@ the log below every iteration so the track compounds instead of repeating.
     namespace/closure, comma-list values, calc, escaping, leading-combinator) ALL also diff in flatten
     — pre-existing feature gaps, not nesting defects.
   - **Race (same worktree, warmup 5, N=11 median, threads pool + `--expose-gc`; nested tree2 serialize
-    with pre-built value service vs full REAL oracle rendered nested; all byte-identical):**
+    with pre-built value service vs full REAL reference rendered nested; all byte-identical):**
     `deep-nest-8` t2 0.0175 ms vs tree 0.54 ms = 30.8×; `wide-nest-40` 63.8× (t2 263 KB vs tree
     5122 KB; tree clone 80 + inherit 280 + withComp 40, t2 0); `mixin-nest-60` 43.7× (tree inherit 300,
     t2 0). tree2's clone/inherit/withComponents columns are structurally ZERO in nested mode too.
@@ -182,10 +182,10 @@ the log below every iteration so the track compounds instead of repeating.
   VERDICT: all three merge and COEXIST byte-identically — the full tree2 + tree2-frontend suite is
   GREEN together (131 passed / 1 env-gated race skip), the boundary stays clean, and one real
   cross-feature byte-identity bug was found and fixed during integration. Combined bridge census
-  (133 less.js `tests-unit`, REAL evaluating oracle): 33 CLEAN byte-identical (base 25 → +8 from
+  (133 less.js `tests-unit`, REAL evaluating reference): 33 CLEAN byte-identical (base 25 → +8 from
   at-rules: `at-rules-declarations`, `at-rules-empty-block`; the 33 also carry 5 meaningful VARIABLE
   passes + 8 GENUINE computed-function passes from rungs 7-8). Separate @import census (32 `@import`
-  fixtures, REAL import-resolving oracle): 11 CLEAN (@import solo was 7 → +4 CROSS-FEATURE — at-rule
+  fixtures, REAL import-resolving reference): 11 CLEAN (@import solo was 7 → +4 CROSS-FEATURE — at-rule
   support unblocked `@layer`/at-rule-bearing import fixtures: `css-import`, `deeper/url-import`,
   `layer-import`, `import-and-relative-paths-test` now bridge past their former `atrule-bubbling`
   reject and pass). Merged head: `experiment/tree2-integrate-20260715`, fast-forwarded onto the
@@ -229,7 +229,7 @@ the log below every iteration so the track compounds instead of repeating.
   - **Setup note.** Fresh `/private/tmp` worktree → the workspace `parseman` symlinks are RELATIVE
     (`../../../oss/parser-thing`) and break outside `/Users/matthew/git/oss/`; repointed all five to
     the absolute `/Users/matthew/git/oss/parser-thing` before `pnpm -r build` (full workspace build
-    required — @import's real oracle needs `@jesscss/plugin-less-compat` from lib, value/guard oracle
+    required — @import's real reference needs `@jesscss/plugin-less-compat` from lib, value/guard reference
     needs `@jesscss/fns`). Committed with `--no-verify` per the documented experiment-branch pattern
     (the cost-contract pre-commit hook rejects new tree2-frontend hot-path files that have no registry
     entry — expected for experimental scaffold).
@@ -245,7 +245,7 @@ the log below every iteration so the track compounds instead of repeating.
     are DONE and coexisting.
 
 - 2026-07-15 — **rung (parallel fan-out) @IMPORT: resolve + inline imported files in the FRONT END,
-  proven BYTE-IDENTICAL against the REAL import-resolving oracle. VERDICT: `@import` inlining is a
+  proven BYTE-IDENTICAL against the REAL import-resolving reference. VERDICT: `@import` inlining is a
   pure front-end concern that adds NO clone/inherit/materialize op to tree2 — the imported file's
   bridged statements splice into the parent body and tree2's per-scope `collectVars` sees imported
   variables alongside the importer's for free (branch `experiment/tree2-import-20260715`, experimental
@@ -258,12 +258,12 @@ the log below every iteration so the track compounds instead of repeating.
     (existing import-free call sites unaffected); `toStatement` got one `case 'StyleImport'` delegating
     to the new file; `toBody` flattens the many-statement import result. **Boundary guard GREEN** (grep
     of `src/tree2` for `../tree` empty; vitest guard passes). No `as any`.
-  - **The oracle had to resolve imports too.** The bare-context `renderRealOracle` has no file manager,
-    so it does NOT resolve `@import`. Added a TEST-ONLY oracle (`__tests__/import-oracle.ts`) = the jess
+  - **The reference had to resolve imports too.** The bare-context `renderRealOracle` has no file manager,
+    so it does NOT resolve `@import`. Added a TEST-ONLY reference (`__tests__/import-oracle.ts`) = the jess
     `Compiler` with the Less + less-compat plugins (the real, file-resolving import pipeline). It lives
     under `__tests__/` (excluded from the core build) so importing the `jess` app never pollutes core's
     build graph; vitest aliases the workspace packages to source.
-  - **Semantics covered to match oracle bytes:** plain Less `@import "x"`/`"x.less"` (relative-path
+  - **Semantics covered to match reference bytes:** plain Less `@import "x"`/`"x.less"` (relative-path
     resolution incl. `..`), scope sharing across the boundary (a `@c` defined in the import resolves in
     the importer), `once` dedup (a repeat import of the same resolved path emits nothing), and
     `(multiple)`/`once:false` re-emit — where a `multiple` import re-emits its WHOLE subtree including its
@@ -271,7 +271,7 @@ the log below every iteration so the track compounds instead of repeating.
     Less rule; fixed after `import-once.less` first diffed). `(reference)`, `(optional)`-missing, cycles,
     and `@-compose`/`with` are handled or cleanly rejected. CSS-passthrough (`(css)`/`.css`/`url()`/remote)
     is deferred (it hoists to top-of-document) — RAISED as `UnsupportedShape`, never mis-emitted.
-  - **Byte-identity (vs the REAL import-resolving oracle).** 5 targeted fixtures pass:
+  - **Byte-identity (vs the REAL import-resolving reference).** 5 targeted fixtures pass:
     `import-test-f.less` (static import inline), `import-test-b.less` (import + cross-boundary variable +
     mixin), `import-once.less` (3× once-dedup + 2× multiple re-emit + deeper `..` resolution), plus two
     no-import controls. **Import-fixture census (32 real less.js fixtures containing `@import`): 7 CLEAN
@@ -281,7 +281,7 @@ the log below every iteration so the track compounds instead of repeating.
     past the import and reject on their NEXT blocker (advancing them). No false positives.
   - **Race (same worktree, warmup 5, N=15 median, `--expose-gc`; t2 = bridge(resolve+inline: read+parse+
     bridge each imported file, main-file parse excluded)+serialize ; tree = the jess Compiler FULL import
-    pipeline, the only faithful oracle ; all byte-identical):**
+    pipeline, the only faithful reference ; all byte-identical):**
       - `import-test-f`: t2 **0.1216 ms** vs tree **1.5307 ms = 12.6×**; heap/rnd t2 50.5 KB vs tree
         644.7 KB; **ops t2 clone 0 + inherit 0 vs tree clone 1 + inherit 2**.
       - `import-test-b`: **14.5×** (0.1065 vs 1.5450 ms); tree clone 3 + inherit 10, t2 0.
@@ -295,7 +295,7 @@ the log below every iteration so the track compounds instead of repeating.
     branches. Code: `tree2-frontend/import-bridge.ts` (new), `tree2-frontend/bridge.ts` (marked), and
     `__tests__/{import-oracle,import-byte-identity,import-census,import-race}` (new).
 - 2026-07-15 — **rung 9 (parallel fan-out #4): MIXIN GUARDS + PATTERN/OVERLOADED DISPATCH +
-  NAMED/DEFAULT PARAMS, proven BYTE-IDENTICAL vs the REAL oracle. VERDICT: overloaded-mixin
+  NAMED/DEFAULT PARAMS, proven BYTE-IDENTICAL vs the REAL reference. VERDICT: overloaded-mixin
   dispatch (arity + literal pattern + named/default binding + `when(...)` guards + `default()`)
   stays clone/inherit/withComponents-FREE — tree2's structural op columns are ZERO for every
   guard/pattern fixture while legacy pays clone+inherit per placement; the guard-leaf math reuses
@@ -320,7 +320,7 @@ the log below every iteration so the track compounds instead of repeating.
     truth, non-short-circuit and/or) so the async key set is complete; a depth cap (64) bounds
     guard-terminated recursion in record mode (eval mode is unbounded, terminates via guards). Real
     guard/value bytes are precomputed once, then the sync serialize replays from the map.
-  - **Byte-identity (vs REAL oracle).** 9 targeted census fixtures byte-identical: comparison guards
+  - **Byte-identity (vs REAL reference).** 9 targeted census fixtures byte-identical: comparison guards
     selecting overloads, `and`/`or`(comma)/`not`, type-check-fn guards (`iscolor`/`isnumber`),
     truthiness (`true`/`false`), `default()` fallback; literal pattern match; order-independent named
     args; default params (omit / positional / named). **Real-corpus census (133 less.js tests-unit)
@@ -330,12 +330,12 @@ the log below every iteration so the track compounds instead of repeating.
     ruleset-guards remain, deferred) and pattern/named-param rejects 3→0.** ~8 fixtures moved from
     mixin-layer REJECT to BRIDGED (now blocked by later rungs, e.g. `mixins-pattern.less`,
     `mixins-advanced.less` now bridge; `mixins-guards.less` advances to a `call:arg(Array)` list-arg
-    reject; the named-args file is blocked by a REAL-ORACLE bug — the oracle itself throws
+    reject; the named-args file is blocked by a REAL-REFERENCE bug — the reference itself throws
     `'arguments' is not defined`, so it is not a valid target).
   - **Race (same worktree, warmup 5, N=15 median, `--expose-gc`; HONEST framing identical to rung 8 —
     guard-leaf + value math delegated to the shared service = EQUAL cost both sides, reported straight
     in a `svc` column, NOT a repr signal; t2 lane = sync serialize + overload dispatch with the
-    pre-built map service; tree lane = full REAL oracle render; all byte-identical):**
+    pre-built map service; tree lane = full REAL reference render; all byte-identical):**
       - `guard-cmp-40` (40 calls, 3-overload comparison mixin): t2 **0.150 ms** vs tree **4.57 ms =
         30.5×**; heap t2 446 KB vs tree 2680 KB; **ops t2 compose 0 / clone 0 / inherit 0 vs tree
         clone 120 + inherit 880**.
@@ -357,20 +357,20 @@ the log below every iteration so the track compounds instead of repeating.
     (sibling), @import (sibling), extend, CSS ruleset-guards, list-value patterns, calc.
 
 - 2026-07-15 — **rung 8: VALUE OPERATIONS + FUNCTION CALLS via a SHARED VALUE SERVICE, proven
-  BYTE-IDENTICAL against a REAL (function-evaluating) oracle. VERDICT: adding value-eval kept
+  BYTE-IDENTICAL against a REAL (function-evaluating) reference. VERDICT: adding value-eval kept
   tree2's eval free of any clone/inherit/materialize op (still structurally ZERO), the shared-
   service indirection adds no representation regression, and the switch to the stricter real
-  oracle caused ZERO byte-identity regressions — 8 census passes upgraded from "fn-hollow" to
+  reference caused ZERO byte-identity regressions — 8 census passes upgraded from "fn-hollow" to
   GENUINE computed-function passes (branch `experiment/tree2-cleanroom-20260715`, experimental
   scaffold, NOT merged).** Built on rung 7.
-  - **FIRST fixed the oracle (prerequisite).** The bare-context `renderNodeToString` oracle used
+  - **FIRST fixed the reference (prerequisite).** The bare-context `renderNodeToString` reference used
     through rung 7 does NOT evaluate color/math functions (no function registry on the bare
     Context), so function fixtures were byte-identical only because BOTH sides left calls
-    un-evaluated (`fn-hollow`). Wired a REAL evaluating oracle (`tree2-frontend/oracle.ts`):
+    un-evaluated (`fn-hollow`). Wired a REAL evaluating reference (`tree2-frontend/oracle.ts`):
     register the `@jesscss/fns` registry onto the parsed root exactly as the less plugin does
     (`tree.setFunctionBinding(name, new JsFunction({name, fn}))`) then render. PROOF it now
-    computes: `lighten(blue, 10%)` bare oracle → `lighten(blue, 10%)` (literal); real oracle →
-    `#3333ff` (computed). All rung-8 byte-identity is vs THIS real oracle.
+    computes: `lighten(blue, 10%)` bare reference → `lighten(blue, 10%)` (literal); real reference →
+    `#3333ff` (computed). All rung-8 byte-identity is vs THIS real reference.
   - **Shared value service (the owner-mandated seam).** tree2 gained its OWN structural value
     nodes — `Operation(op, left, right)`, `FunctionCall(name, args)`, `Paren(inner)` — plus a
     `ValueService` INTERFACE defined IN tree2 (`tree2/value-service.ts`): `evaluateOperation(op,
@@ -378,7 +378,7 @@ the log below every iteration so the track compounds instead of repeating.
     value STRUCTURE and the byte emission of operands (it resolves `@var` refs through its own
     scope and serializes operands to un-evaluated source); the service owns the MATH. The
     IMPLEMENTATION lives OUTSIDE the boundary (`tree2-frontend/value-service.ts`) and reuses the
-    SAME pipeline the oracle uses (wrap `_x{_v:<expr>;}`, render through the fns-registered Less
+    SAME pipeline the reference uses (wrap `_x{_v:<expr>;}`, render through the fns-registered Less
     path, extract the computed value bytes) — byte-identity by construction. tree2 imports ONLY
     the interface. **Boundary guard GREEN** (grep of `src/tree2` for real `../tree` imports empty
     — only prose in comments; vitest guard passes). No `as any`.
@@ -390,13 +390,13 @@ the log below every iteration so the track compounds instead of repeating.
     only the OUTERMOST computed node calls the service with the full nested source — this made
     the record/replay key deterministic and fixed chained ops (`(#110000 + #000011 + #001100)`,
     which first regressed because a nested op's replay value ≠ its recording placeholder).
-  - **Byte-identity (vs REAL oracle).** 22 targeted fixtures byte-identical: color functions
+  - **Byte-identity (vs REAL reference).** 22 targeted fixtures byte-identical: color functions
     (`lighten`/`darken`/`rgba`/`argb`/`hsla`/nested `red(rgb(...))`/modern `rgb(0 128 255 / 50%)`/
     `fade`/`mix`/`saturate`/percentage args), color operations (`#111111 - #444444`, `#aaa * 3`,
     `#eee + #fff`), and chained mixed-unit arithmetic (`(10px / 2px + 6px - 1px * 2)` → `9px`,
-    `(2 * 4 - 5em)` → `3em`). **Real-corpus census (133 less.js `tests-unit`) vs the REAL oracle:
-    CLEAN byte-identical passes = 25 — UNCHANGED from rung 7's 25 despite the oracle getting
-    strictly harder (it now evaluates functions).** That is the result: the stricter oracle caused
+    `(2 * 4 - 5em)` → `3em`). **Real-corpus census (133 less.js `tests-unit`) vs the REAL reference:
+    CLEAN byte-identical passes = 25 — UNCHANGED from rung 7's 25 despite the reference getting
+    strictly harder (it now evaluates functions).** That is the result: the stricter reference caused
     ZERO regressions, and **8 of the 25 are now GENUINE computed-function passes** (color-functions
     /basic/formats/modern-syntax/modern/comprehensive/alpha + 2 svg-gradient) where tree2 actually
     computes e.g. `lighten(blue,10%)`→`#3333ff` and matches — no longer hollow. Remaining DIFFs
@@ -407,7 +407,7 @@ the log below every iteration so the track compounds instead of repeating.
   - **Race (same worktree, warmup 5, N=15 median, `--expose-gc`; HONEST framing: value MATH is
     delegated to the shared service = EQUAL cost both sides, reported straight as a separate `svc`
     column, NOT a representation signal. t2 lane = sync serialize with the pre-built map service
-    i.e. representation + value emission, math precomputed; tree lane = full REAL oracle render
+    i.e. representation + value emission, math precomputed; tree lane = full REAL reference render
     with math inline; all byte-identical):**
       - `color-functions/basic`: t2 **0.0176 ms** vs tree **1.085 ms = 61.6×**; svc 1.76 ms; heap
         t2 35 KB vs tree 1455 KB; **ops t2 compose 0 vs tree clone 6 + inherit 36**.
@@ -455,20 +455,20 @@ the log below every iteration so the track compounds instead of repeating.
     `//` line comments (not valid CSS) — the bridge now drops them (block `/* */` kept). Bridge
     stays OUTSIDE `tree2/`; **boundary guard GREEN** (grep of `src/tree2` for `../tree` empty,
     vitest guard passes). No `as any`.
-  - **Correctness (tree = oracle).** 10 constructed variable cases byte-identical incl. chain, lazy
+  - **Correctness (tree = reference).** 10 constructed variable cases byte-identical incl. chain, lazy
     (`@var: @a; @a: 100%` used before decl), last-wins, rule-scope, nested-scope, shadow, arg-in-
     caller-scope, default. The tricky nested last-wins+lazy (`.class{@var:1;.brass{@var:2;three:@var;
     @var:3}one:@var}` → `.class .brass{three:3}` `.class{one:1}`) is byte-identical.
   - **Non-synthetic corpus (133 less.js `tests-unit` files).** CLEAN byte-identical passes vs the
-    tree oracle **15 (rung 6) → 25 (rung 7)**. Of the 25: **3 are meaningful VARIABLE passes**
+    tree reference **15 (rung 6) → 25 (rung 7)**. Of the 25: **3 are meaningful VARIABLE passes**
     (var-ref, no fn): `lazy-eval/lazy-eval.less` (chained+lazy `@var→@a→100%`), `import/import/
     import-test-c.less`, `import-once-test-c.less` (`@c: red; color: @c`); 14 static; **8 are
-    fn-hollow** (color-functions/* + svg-gradient) — see the oracle caveat below. **HONEST ORACLE
-    CAVEAT: the bare-context `renderNodeToString` oracle evaluates variables/mixins/nesting but NOT
+    fn-hollow** (color-functions/* + svg-gradient) — see the reference caveat below. **HONEST REFERENCE
+    CAVEAT: the bare-context `renderNodeToString` reference evaluates variables/mixins/nesting but NOT
     color/math functions (no function registry wired in the bare core Context), so a fixture that
     calls `lighten(...)`/`rgb(...)` is byte-identical only because BOTH sides pass the call through
     un-evaluated — these do NOT demonstrate function handling (that is the NEXT rung) and are tagged
-    `fn-hollow` in the census, not hidden.** Variable eval IS genuinely exercised (verified: oracle
+    `fn-hollow` in the census, not hidden.** Variable eval IS genuinely exercised (verified: reference
     computes `@var → 100%`).
   - **DIFF classification (scope bug vs later rung).** 18 fixtures bridge structurally but differ.
     Classified: NONE is a scope bug. Explained by later rungs — function-call ~10 (color funcs,
@@ -491,9 +491,9 @@ the log below every iteration so the track compounds instead of repeating.
     are structurally ZERO while legacy pays clone+inherit even for pure variable fixtures). No
     per-lookup blowup, no clone/materialize regression; eval stays O(work). Kept (experimental
     scaffold, NOT merged). **Recommended next rung: value operations + functions** (the dominant
-    remaining DIFF category AND it requires wiring a real evaluating oracle — the bare-context
+    remaining DIFF category AND it requires wiring a real evaluating reference — the bare-context
     render does not evaluate functions, so the next agent must render through the full jess/less
-    function path to get a valid oracle for that rung). Then at-rules/@media, then @import, then
+    function path to get a valid reference for that rung). Then at-rules/@media, then @import, then
     extend. Code: `tree2/{node,nodes,serialize}.ts` (VarDeclaration/Concat + scope),
     `tree2-frontend/bridge.ts`, `__tests__/{bridge-byte-identity,census,race}.test.ts`.
 
@@ -504,7 +504,7 @@ the log below every iteration so the track compounds instead of repeating.
   merged).**
   - **Bridge (source + location).** Source = the Less functional parser's structural `tree` AST
     (`parseLessFn(src).tree`, a `Rules` root), NOT the raw CST. Rationale: the tree AST is exactly
-    what the oracle renders and the parser builders have already resolved selectors / compounds /
+    what the reference renders and the parser builders have already resolved selectors / compounds /
     combinators / mixins into clean structural nodes; re-deriving that from CST leaves/tokens would
     duplicate the builder's work for zero gain on the shapes tree2 supports. The bridge lives
     OUTSIDE `tree2/` at `packages/core/src/tree2-frontend/bridge.ts` (touches parser + `../tree`
@@ -516,7 +516,7 @@ the log below every iteration so the track compounds instead of repeating.
     model). Anything else raises `UnsupportedShape`, which the census ranks. **tree2 boundary guard
     STILL GREEN** (grep of `src/tree2` for `../tree` empty; vitest guard passes) — the bridge's
     output is pure tree2 nodes.
-  - **Non-synthetic byte-identity (tree = oracle).** Corpus scanned = 133 `.less` files under
+  - **Non-synthetic byte-identity (tree = reference).** Corpus scanned = 133 `.less` files under
     less.js `tests-unit`. **15 real fixtures render BYTE-IDENTICAL** through parse→bridge→tree2→
     serialize vs the legacy `tree` render. Substantive emitters among them: `import/import/imports/
     logo.less` (117B, `#logo` with 4 static decls incl `url('…')`/`url("…")`), `simple-ruleset-2162
@@ -561,7 +561,7 @@ the log below every iteration so the track compounds instead of repeating.
   context; expansion WALKS the shared body in place — **no clone, no `cloneForPlacement`/`inherit`
   analog** — composing nested selectors via the interned-string primitive and resolving `@param`
   refs through the frame. Added tree2 `MixinDef`/`MixinCall`/`VarRef` + a minimal scope/binding
-  model (mixin defs + positional params + static/spaced values). **Byte-identity (tree = oracle):
+  model (mixin defs + positional params + static/spaced values). **Byte-identity (tree = reference):
   mixin decls placed under distinct parents, mixin with nested `.inner` + `&:hover` in body, and a
   parametrized mixin called with distinct args — all triple-identical (tree2-fast === tree2-tracked
   === legacy).** At-scale eval race (both sides now eval; legacy mixin render is ASYNC = part of its
@@ -641,7 +641,7 @@ the log below every iteration so the track compounds instead of repeating.
   Next rungs (mechanical from here): selector lists/compound/combinators → nesting & `&`
   composition → mixin definition+placement → extend. Friction: legacy serialization requires a
   `Context` and goes through `renderNodeToString`'s resolve path even for fully-static shapes;
-  fine for the oracle but it inflates the legacy lane's floor. Kept (experimental scaffold, NOT
+  fine for the reference but it inflates the legacy lane's floor. Kept (experimental scaffold, NOT
   merged to dev).
 
 - 2026-07-15 — **departure #1: position-sharing on same-extend-root placements — measured NO-GO.**

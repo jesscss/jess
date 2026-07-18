@@ -308,7 +308,7 @@ export const isTypedLiteral = (n: ValueNode): boolean => isLiteralNode(n) && n.t
 
 The only external contract is the less-compat bridge / fns via `@jesscss/core/value`.
 Fns consume **value-domain `ValueObj`** (`materialize` OUTPUT), never AST literal
-nodes, so their signatures are unaffected. The differential-oracle bridge test
+nodes, so their signatures are unaffected. The differential-reference bridge test
 (`parse-host/__tests__/bridge.ts`) references `LiteralTag`/`'Dimension'`/`'Num'`;
 it is a TEST (internal), freely updated to the node set
 (`memory:no-sacred-test-expectations`). The `bridge.ts` `'Num'` alias dies with the

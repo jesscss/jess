@@ -83,7 +83,7 @@ The smell is real (the banned regex class ships), but the structured field does 
 | 3.5 | `@`-sigil re-emission | `serialize.ts:316,318,343,345,381` all hardcode `` `@${name}` `` in a nominally dialect-agnostic evaluator (VarRef stores bare name; sigil dropped at parse) | Collapse to one `unresolvedRef(name)→Value` helper. **Separate owner question:** silent `@name` re-emit on resolve-miss may mask a should-throw unresolved-var error — flag, don't decide. (Now settled by `v5-resolve-failure-is-eval-error-unless-optional`: strict miss → throw; delete the re-emit.) |
 | 3.6 | `rawSpan` + local `interface Span` | `selector.ts:44` ≡ `extend.ts:48` (each shadows exported `host-context` `Span`, mutable-vs-readonly drift) | Import shared `Span` + one `rawSpan` helper |
 | 3.7 | contribs-map construction | `extend.ts:627-630` ≡ `extend.ts:1057-1061` (verbatim) | Extract `buildContribs(instructions)` |
-| 3.8 | `AnyNode`/`isNode`/`nodeType` reflection helpers | `import.ts:64-70` ≡ `__tests__/bridge.ts:52-63` (`nodeType`≡`typeOf`) | Hoist to one location (note: `import.ts` is currently consumed ONLY by the bridge oracle) |
+| 3.8 | `AnyNode`/`isNode`/`nodeType` reflection helpers | `import.ts:64-70` ≡ `__tests__/bridge.ts:52-63` (`nodeType`≡`typeOf`) | Hoist to one location (note: `import.ts` is currently consumed ONLY by the bridge reference) |
 
 Risk across Tier 3: Low, behavior-preserving. Byte-identity gate covers all.
 

@@ -11,11 +11,11 @@ The single largest lever runs through everything: **the parser trivia log + stru
 ## TIER 0 — Enabling deletions that unlock the rest (do FIRST)
 
 ### A0.1 — Retire the transitional value adapter (`tree2-frontend/value-eval.ts`)
-- **Action:** Quarantine `buildEvaluator` as oracle-only (move under `__tests__/`, never imported by shipping), then delete once native fn coverage completes. Shipping seam is `buildNativeEvaluator` (`native-evaluator.ts`), already wired via `tree2/index.ts`.
+- **Action:** Quarantine `buildEvaluator` as reference-only (move under `__tests__/`, never imported by shipping), then delete once native fn coverage completes. Shipping seam is `buildNativeEvaluator` (`native-evaluator.ts`), already wired via `tree2/index.ts`.
 - **Serves:** P1 (kill bridge), P2, P4. Owner memo `retire-legacy-value-adapter` (2026-07-16).
 - **Collapses these findings on deletion:** value-eval.ts calc unwrap (60/70), sniff re-classification (187–214), toLegacy/fromLegacy list asymmetry (135), buildFnTable dup (78), separator glue (274), TypeError control-path (256), dimensionFromString intra-file dup (174), `_rgbChannels` private poke (207), guardCmp byte-compare (300), materialize dup (147 pair), EvaluatorOptions.modes/`_options` dead (91), mathMode/functionMode dead fields (160).
 - **Size:** large (removes most of a ~350-line file eventually).
-- **Risk:** MEDIUM — it still oracles the ~50 unconverted native fns (`native-evaluator.ts:9-13`). **Do not delete outright today** — quarantine now, delete when native fn coverage lands.
+- **Risk:** MEDIUM — it is still the reference for the ~50 unconverted native fns (`native-evaluator.ts:9-13`). **Do not delete outright today** — quarantine now, delete when native fn coverage lands.
 - **Ordering:** Blocks nothing but many dedup actions below simplify to "the surviving native copy is canonical" once this is out of the shipping surface. **The surviving copy must be the CORRECTED one (see A2.x correctness fixes).**
 
 ### A0.2 — Wire actions to consume `triviaLog` / structured children (parse-host)
@@ -217,7 +217,7 @@ value-eval.ts:71, serialize-value.ts:16-18 (loose consts), value-operate.ts:136 
 | `native/rgba.ts:6`, `hsla.ts` | Cleanly delegate to `makeRgb`/`makeHsl`; shared spec literal is leanest form |
 | `serialize-value.ts:168` (hue-wrap) | No reachable divergence (all producers pre-wrap 0-360); suggested fix is a **circular import** |
 | `serialize-value.ts:171` (clamp dedup) | Proposed owner `colorHslClamped` would **invert dependency into a cycle** |
-| `value-eval.ts:64` (oracle port markers) | Markers sit in the ORACLE whose job IS to delegate to legacy — not shipping-core P2 debt |
+| `value-eval.ts:64` (reference port markers) | Markers sit in the reference whose job IS to delegate to legacy — not shipping-core P2 debt |
 | `mixin-dispatch.ts:92` (matchArgs) | Byte-compare IS less@4.6.3's algorithm; no reachable disagreement |
 | `mixin-dispatch.ts:129` (value-literal-tag seam) | Accepted lossless value-flatten seam, byte-faithful |
 | `mixin-dispatch.ts:82` (evalParams) | **Finding premise factually wrong** — traced Less, tree2 matches (no slot filled twice) |

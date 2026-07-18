@@ -3,7 +3,7 @@
 > **Status:** scoping only. This is a **read-only map + plan**. No page, sidebar,
 > or config has been changed. The reviewed content rewrite is the follow-up.
 >
-> **Oracle for messaging:** root `README.md` + `docs/README-POSITIONING.md` on
+> **Reference for messaging:** root `README.md` + `docs/README-POSITIONING.md` on
 > `origin/dev` (the locked "What Jess unifies" convergence, honest tiering,
 > ordered roadmap Less.js → Sass+ → `.jess` → minimal browser build, PostCSS-*like*,
 > no premature API, perf-as-WIP). The current docs-site content predates that lock

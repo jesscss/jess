@@ -6,7 +6,7 @@ but updated for the new goal: **ship a Jess-first LSP + VS Code/Cursor extension
 ### Phase 0 — Repo scaffolding
 - [x] Create `packages/language-service/` (engine + thin LSP wrapper).
 - [x] Create `packages/extension/` (VS Code/Cursor client).
-- [ ] Create `packages/language-service-tests/` (engine golden tests).
+- [ ] Create `packages/language-service-tests/` (engine expected-output tests).
 
 ### Phase 1 — Engine primitives (CSS first)
 - [x] Document store: open/change/close + versioning.
@@ -40,7 +40,7 @@ but updated for the new goal: **ship a Jess-first LSP + VS Code/Cursor extension
 - [x] Dynamic diagnostic severity: undefined variables are errors when `@use` (SCSS) or `@from`/`@compose` (Less) present, warnings otherwise.
 
 ### Phase 5 — Test harness (guiding star: `vscode-css-languageservice`)
-- [ ] Port/adapt a minimal subset of completion/hover/diagnostics tests as golden cases.
+- [ ] Port/adapt a minimal subset of completion/hover/diagnostics tests as expected-output cases.
 - [ ] Expand to cover Less/SCSS parity suites.
 - [ ] Add “does not crash” suites for malformed input (editor-realistic).
 

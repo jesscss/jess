@@ -4,9 +4,9 @@ This is the contributor-facing behavior reference for Jess's `extend` feature �
 the sibling of `VARIABLE-RESOLUTION-SEMANTICS.md`. It documents the INTENDED v5
 behavior with a worked example for every rule, each lifted from a test fixture.
 
-## Oracle policy (read first)
+## Reference policy (read first)
 
-The behavior below is anchored on two oracles, NOT on the current engine:
+The behavior below is anchored on two references, NOT on the current engine:
 
 1. **The extend fixtures** in less.js `alpha`
    (`packages/test-data/tests-unit/<fixture>/{<fixture>.less,<fixture>.css}`),
@@ -16,14 +16,14 @@ The behavior below is anchored on two oracles, NOT on the current engine:
    output.
 2. **Owner-confirmed corrections** in
    `docs/future/core-architecture/proposed-alpha-corrections/` for the two
-   places where alpha's hand-converted NESTED golden carries a known bug
+   places where alpha's hand-converted NESTED expected output carries a known bug
    (`extend.css`, `extend-exact.css`; see the corrections `README.md`).
 
 Do NOT treat the legacy `tree/extend/**` renderer (`renderRealOracle`) as a
-correctness oracle — it has known nested-extender bugs. The clean-room engine is
+correctness reference — it has known nested-extender bugs. The clean-room engine is
 `packages/core/src/ast/extend.ts` (PLAN / SOLVE / EMIT); read it for the feature
 surface, not the correctness answer. Corpus/differential coverage lives in
-`packages/core/src/tree/extend/__tests__/` and the cross-`@import` output oracle
+`packages/core/src/tree/extend/__tests__/` and the cross-`@import` output reference
 in `packages/jess/test/less/extend-cross-import.test.ts`.
 
 Every fixture snippet below is `<fixture>.less` → `<fixture>.css` from `alpha`
@@ -128,7 +128,7 @@ compound position.
 
 `extend-clearfix` again: 4.x `legacy` emits `.clearfix:after, .foo:after,
 .bar:after`; v5 emits `:is(.clearfix, .foo, .bar):after`. This is why
-`legacy/*.css` is NOT a v5 oracle (see `oracle-source.ts`).
+`legacy/*.css` is NOT a v5 reference (see `oracle-source.ts`).
 
 Two compaction behaviors:
 
@@ -208,7 +208,7 @@ halts even on circular references:
 ```
 
 Cross-`@import` closure resolves through the import boundary
-(`extend-cross-import.test.ts`, oracle = real less@4): `.a:extend(.b)` in main +
+(`extend-cross-import.test.ts`, reference = real less@4): `.a:extend(.b)` in main +
 `.b:extend(.c)` in the imported sheet yields `.c, .b, .a { color: red; }`.
 
 ## 7. Nested / ruleset-scoped extends
@@ -314,7 +314,7 @@ adjacent/child targets each match their respective combinator form.
 `@import (reference)` hides the imported sheet's own rules from output. An extend
 that matches a referenced target pulls the matched declarations into the
 EXTENDER's selector only — the referenced target header never surfaces on its own
-(`extend-cross-import.test.ts`, oracle = less@4):
+(`extend-cross-import.test.ts`, reference = less@4):
 
 ```
 // ref-main.less extends a target in a (reference)-imported sheet
@@ -327,11 +327,11 @@ EXTENDER's selector only — the referenced target header never surfaces on its 
 
 ## 12. OPEN / needs owner confirmation
 
-Points that are unsettled, engine-diverges-from-oracle, or not directly gated by
+Points that are unsettled, engine-diverges-from-reference, or not directly gated by
 a fixture. These are the owner questions:
 
-1. **Exact-extender-into-children (alpha golden bug).** When an EXACT extender
-   targets a rule that HAS nested children, alpha's hand-converted NESTED golden
+1. **Exact-extender-into-children (alpha expected-output bug).** When an EXACT extender
+   targets a rule that HAS nested children, alpha's hand-converted NESTED expected output
    folds the extender into the block header, wrongly leaking it into the children
    (`.aa, .cc { .dd … }` → `.cc .dd`). The owner-confirmed rule
    (`proposed-alpha-corrections/README.md`): an exact extender folds into a block
@@ -366,7 +366,7 @@ a fixture. These are the owner questions:
 5. **Cross-`@import` extend is EVAL-routed, not spine-folded.** The transitive
    closure through an import boundary currently routes to the legacy eval path
    (per `extend-cross-import.test.ts`), a separate WIP from the spine fold. The
-   OUTPUT oracle holds regardless of routing, but the intended final routing for
+   OUTPUT reference holds regardless of routing, but the intended final routing for
    cross-import extend is unsettled.
 
 6. **`div.ext5` / duplicated-extender dedup.** `extend.md` "Duplication
@@ -377,8 +377,8 @@ a fixture. These are the owner questions:
 ## Cross-links
 
 - Engine: `packages/core/src/ast/extend.ts` (clean-room PLAN/SOLVE/EMIT).
-- Legacy (dying, NOT an oracle): `packages/core/src/tree/extend/{plan,solve,emit,pipeline,extend-index}.ts`.
-- Oracle plumbing: `packages/core/src/ast/parse-host/__tests__/oracle-source.ts`, `docs/future/core-architecture/ORACLE.md`.
+- Legacy (dying, NOT a reference): `packages/core/src/tree/extend/{plan,solve,emit,pipeline,extend-index}.ts`.
+- Reference plumbing: `packages/core/src/ast/parse-host/__tests__/oracle-source.ts`, `docs/future/core-architecture/REFERENCE.md`.
 - Byte-identity gate: `packages/core/src/ast/parse-host/__tests__/extend-byte-identity.test.ts`.
 - Corrections: `docs/future/core-architecture/proposed-alpha-corrections/{README.md,extend.css,extend-exact.css}`.
 - Handoff / status: `docs/future/core-architecture/R1-EXTEND-HANDOFF.md`.

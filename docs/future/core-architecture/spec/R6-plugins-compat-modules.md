@@ -4,7 +4,7 @@
 > ([`TREE2-DEFINITIVE-REWRITE-COVERAGE-AND-ROADMAP.md` §3 R6](../TREE2-DEFINITIVE-REWRITE-COVERAGE-AND-ROADMAP.md), arch F/G in
 > [`UNIFIED-EVAL-EMIT-DESIGN.md` §6–§7](../UNIFIED-EVAL-EMIT-DESIGN.md)). Same
 > shape as [`TREE2-DESIGN-SPEC.md` §R0](../TREE2-DESIGN-SPEC.md): **data model ·
-> algorithm · invariants · oracle · owner-confirm**. This is a DESIGN doc — no
+> algorithm · invariants · reference · owner-confirm**. This is a DESIGN doc — no
 > tree2 code is built by it.
 >
 > Branch of record: `experiment/tree2-cleanroom-20260715`. Code citations are on
@@ -576,7 +576,7 @@ interpolation must yield a string, and `ns.mixin()` yields a ruleset body). See
 
 ---
 
-## Oracle
+## Reference
 
 - **Plugin/visitor + less-compat.** The external contract is the
   `@jesscss/plugin-less-compat` bridge behavior over the two proof plugins:
@@ -587,17 +587,17 @@ interpolation must yield a string, and `ns.mixin()` yields a ruleset body). See
   the existing legacy-tree bridge on the same inputs. Custom-fn correctness:
   `less.functions`-registered fns produce identical values through the
   `ValueService` seam as through the current `wrapWithLessNodeArgs` path.
-- **Module semantics.** Oracle = the owner import/at-rule decision
+- **Module semantics.** Reference = the owner import/at-rule decision
   (`import-atrule-semantics-less-vs-jess`) reconciled with intended-v5 `.css`
-  goldens and less.js `alpha` for the `@import` heuristic. Less 4.x is a
+  expected outputs and less.js `alpha` for the `@import` heuristic. Less 4.x is a
   behavior-parity reference for the `@import` heuristic ONLY, never a shape
   authority for the module forms (which are v5-new). The fold→`@compose` warning
   text is owner-defined (docs at
   `docs-content/docs/shared/02-Language/14-modules-and-imports.mdx`).
-- **Proxy caution.** The legacy-tree bridge is a valid byte-oracle for the
-  visitor/compat path (it IS the external contract). It is NOT an oracle for module
+- **Proxy caution.** The legacy-tree bridge is a valid byte-reference for the
+  visitor/compat path (it IS the external contract). It is NOT a reference for module
   scope (the legacy engine's `@import`-fold-everything behavior predates the
-  module/fold split) — module semantics oracle against owner decisions + goldens.
+  module/fold split) — module semantics reference against owner decisions + expected outputs.
 
 ---
 

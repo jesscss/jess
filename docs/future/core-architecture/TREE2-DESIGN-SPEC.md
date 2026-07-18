@@ -3,7 +3,7 @@
 > The subsystem-by-subsystem specification for the tree2 core rewrite. Each rung
 > in the done-right roadmap
 > ([`TREE2-DEFINITIVE-REWRITE-COVERAGE-AND-ROADMAP.md`](./TREE2-DEFINITIVE-REWRITE-COVERAGE-AND-ROADMAP.md))
-> adds one section here: **data model · algorithm · invariants · oracle**. Keep it
+> adds one section here: **data model · algorithm · invariants · reference**. Keep it
 > a real spec (what the code guarantees), not a status log — the living
 > experiment log stays in `AST-ARENA-EXPERIMENT-HANDOFF.md`.
 
@@ -94,7 +94,7 @@ op-counts stay structurally ZERO.
 flattened). Same empty-block elision as rules. v5 does not merge sibling `@media`
 blocks and does not bubble — each at-rule stays its own block where authored.
 
-### The non-obvious shapes (SOURCED from the oracle, not assumed)
+### The non-obvious shapes (SOURCED from the reference, not assumed)
 
 Sourced from the REAL pipeline rendered `collapseNesting:false` (the v5 proxy),
 verified byte-identical in `nested-byte-identity.test.ts`:
@@ -161,20 +161,20 @@ verified byte-identical in `nested-byte-identity.test.ts`:
    emits nothing (header + braces rewound).
 5. **Boundary held.** No `tree2/` file imports `../tree`; no `as any`.
 
-### Oracle (corrected policy)
+### Reference (corrected policy)
 
-The oracle is **intended Jess v5 output**, NOT Less 4.x. For nested output the v5
-reference is the owner-maintained top-level `.css` goldens (v5 nested) and,
+The reference is **intended Jess v5 output**, NOT Less 4.x. For nested output the v5
+reference is the owner-maintained top-level `.css` expected outputs (v5 nested) and,
 equivalently, the **full jess pipeline rendered `collapseNesting:false`** (the
 plugin's v5 default). The legacy `tree` render is a valid proxy for intended-v5
-only where it agrees with those goldens — used here via
+only where it agrees with those expected outputs — used here via
 `renderRealOracleNested` (`oracle.ts`), the function-evaluating pipeline rendered
 `{ collapseNesting: false }`.
 
 **Proof (this rung).** `nested-byte-identity.test.ts` — 30 curated cases across
 plain rules, nesting/`&`, declarations/values/variables, mixin placement,
 at-rules/`@media`, guards, and empty-block elision, all byte-identical to the
-nested oracle. `nested-census.test.ts` — over the 133 less.js `tests-unit`
+nested reference. `nested-census.test.ts` — over the 133 less.js `tests-unit`
 fixtures, **33 pass byte-identical in the nested (v5-default) form — the SAME 33
 that pass in the flattened form (0 nested-only, 0 flat-only)**, i.e. R0 introduced
 zero regressions and the nested shape is as correct as the flattened one on the
@@ -187,7 +187,7 @@ the nested lane byte-identical with tree2 clone/inherit/withComponents ZERO.
 ### Flagged for owner confirmation of intended v5 nested shape
 
 - **Leading-combinator child selectors.** A nested child authored with a leading
-  combinator (`.a { > .b { … } }` / `#ns { > .mixin }`) renders in the v5 oracle
+  combinator (`.a { > .b { … } }` / `#ns { > .mixin }`) renders in the v5 reference
   as `> .b` verbatim inside the parent, but tree2's selector MODEL (`Complex` =
   head compound + combinator-joined tail) has no slot for a leading combinator, so
   the bridge drops it (pre-existing gap noted since rung 7; it surfaces directly in

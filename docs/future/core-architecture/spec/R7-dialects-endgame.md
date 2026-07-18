@@ -4,7 +4,7 @@
 > ([roadmap](../TREE2-DEFINITIVE-REWRITE-COVERAGE-AND-ROADMAP.md#r7--dialect-front-ends--endgame-outputs);
 > [R0 spec depth reference](../TREE2-DESIGN-SPEC.md#r0--collapsenestingfalse-nested-output-mode-the-less-v5-default)).
 > Same discipline as every rung: per target — **data/model · bridge or emit
-> algorithm · invariants · oracle · sequencing · open owner-confirm items**.
+> algorithm · invariants · reference · sequencing · open owner-confirm items**.
 >
 > Branch of record: `experiment/tree2-cleanroom-20260715`. Code citations are on
 > that branch. This is a SPEC (what the code must guarantee), not a build log or
@@ -90,7 +90,7 @@ NOT where those features get built.
    (`$`-sigil `VarDeclaration`, `@mixin`/`@include`/`@content`, `@if`/`@each`/…,
    `@extend`, `@function`/`@return`, map literals, `#{}` interpolation, `%`
    placeholders) to the tree2 targets in the table above.
-3. **Reject where Sass+ rejects.** Any shape that is invalid CSS (see oracle) —
+3. **Reject where Sass+ rejects.** Any shape that is invalid CSS (see reference) —
    and any construct whose tree2 target rung is not yet closed — raises
    `UnsupportedShape(feature, detail)`, collected + ranked by an SCSS census
    (mirror `tree2-frontend/__tests__` census over an SCSS fixture corpus). Same
@@ -109,7 +109,7 @@ NOT where those features get built.
 4. **Reject-invalid is structural, not a warning.** Invalid-CSS shapes are a
    parse error / `UnsupportedShape`, never a tolerated-with-deprecation pass.
 
-### Oracle — Sass+ = valid CSS, NOT dart-sass parity
+### Reference — Sass+ = valid CSS, NOT dart-sass parity
 
 Per [[sass-plus-dialect-reject-invalid-css]]: **where Sass tolerates invalid CSS,
 Sass+ REJECTS it.** dart-sass / sass-spec output is a coverage/behavior reference
@@ -124,8 +124,8 @@ ONLY — never a shape authority. Concretely:
 - Already-settled Sass+ rejections (do not relax): bogus combinators (leading /
   trailing / doubled), escaped at-rule keywords (`@\69 f`). These are enforced at
   PARSE time in css/less/scss-parser and the bridge inherits them.
-- Where SCSS emits **valid** CSS, the oracle is intended Jess v5 output (owner
-  `.css` goldens where they exist), NOT dart-sass byte output. A divergence from
+- Where SCSS emits **valid** CSS, the reference is intended Jess v5 output (owner
+  `.css` expected outputs where they exist), NOT dart-sass byte output. A divergence from
   dart-sass on valid input is intended Sass+ unless the owner says otherwise — mark
   such cases **"needs owner confirmation of intended v5 shape."**
 
@@ -216,14 +216,14 @@ Fail-loud `UnsupportedShape` for anything whose core rung is not yet closed.
    bindings, `$extend`/`$apply` sugar, `$( )`/`$[ ]`/`$*[ ]` triad) map onto the
    SAME core rungs (R1/R3/R4) — the bridge does not get a private core.
 
-### Oracle
+### Reference
 
 `.jess` = the **owner's settled syntax** ([[jess-parser-build]]), with the
 canonical spec at `packages/docs-content/docs/jess/02-Language/**` (authoritative;
 `packages/docs/docs/**` is a stale mirror — ignore on conflict). AST ground-truth
 = how core `../tree` nodes serialize + the `serializeTypes` corpus. For rendered
-CSS, the oracle is intended Jess v5 output. Where a `.jess`-only feature has no
-prior-art oracle, mark **"needs owner confirmation of intended v5 shape."**
+CSS, the reference is intended Jess v5 output. Where a `.jess`-only feature has no
+prior-art reference, mark **"needs owner confirmation of intended v5 shape."**
 
 ### Open owner-confirm items (R7.2)
 
@@ -290,11 +290,11 @@ nodes.
 3. The inline-vs-expose decision is derived from the reachability graph, never
    hand-flagged per variable.
 
-### Oracle
+### Reference
 
 Alpha-exit bar = a **defensible, demonstrated** successor story (working feature +
 docs + examples) — not byte-parity with the `css-loader` / `postcss-modules`
-ecosystem. The oracle is: (a) the scoped class-name map correctly renames all and
+ecosystem. The reference is: (a) the scoped class-name map correctly renames all and
 only the intended selectors; (b) the emitted custom-property set is exactly the
 reachable-across-boundary ∪ exported set (minimum exposure), with all other
 variables inlined and byte-correct. Divergence from JS-ecosystem CSS-Modules output
@@ -411,13 +411,13 @@ measured.
    (a pure refactor gated on byte-identity), in BOTH collapse modes (R0), before
    any JS-module target is layered on.
 
-### Oracle
+### Reference
 
 The refactor itself: **byte-identity vs the current `serialize()`** across the full
 corpus, both collapse modes — a mechanical-equivalence gate. The JS-module /
 patchable output target: the runtime-re-serialized CSS must be byte-identical to
 the build-time CSS for the static case, and correct-by-construction for patched
-dynamic slots (owner-confirmed contract, below). No external tool is the oracle;
+dynamic slots (owner-confirmed contract, below). No external tool is the reference;
 tree2's own build-time output is.
 
 ### Sequencing

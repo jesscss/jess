@@ -3,12 +3,12 @@
 > Rung R4 of the tree2 definitive rewrite
 > ([`TREE2-DEFINITIVE-REWRITE-COVERAGE-AND-ROADMAP.md`](../TREE2-DEFINITIVE-REWRITE-COVERAGE-AND-ROADMAP.md) §3 R4).
 > Same contract as [`TREE2-DESIGN-SPEC.md` § R0](../TREE2-DESIGN-SPEC.md): each
-> feature is specified as **data model · algorithm · invariants · oracle ·
+> feature is specified as **data model · algorithm · invariants · reference ·
 > both-emit-mode · where current tree2 must change · open owner-confirm items.**
 > This is DESIGN/SPEC ONLY — no tree2 code is built by this document.
 >
 > Branch of record: `experiment/tree2-cleanroom-20260715`. Code citations are on
-> that branch. Oracle for shapes: less.js **`alpha`** branch fixtures
+> that branch. Reference for shapes: less.js **`alpha`** branch fixtures
 > (`~/git/worktrees/less.js/**`, `tests-unit/*`), NOT Less 4.x; merge = OWNER
 > last-occurrence anchor (project memory `spine-merge-last-occurrence-anchor`).
 
@@ -50,14 +50,14 @@ into a surrounding literal context. Three positions, one resolver:
 
 - **value**: `url: "http://lesscss.org@{var}/image.jpg"` with `@var: '/dev'` →
   `url: "http://lesscss.org/dev/image.jpg"` (quotes on `@var`'s value stripped;
-  surrounding string quotes kept). Oracle: `tests-unit/strings/strings.css`
+  surrounding string quotes kept). Reference: `tests-unit/strings/strings.css`
   `#interpolation`.
 - **property name**: `@{prefix}width: 50%` with `@prefix: ufo-` →
   `ufo-width: 50%`; `@{a}-@{bb}-@{c_c}-@{d-d4}: 2em` → `border-top-left-radius: 2em`.
-  Oracle: `tests-unit/property-name-interp/property-name-interp.css`.
+  Reference: `tests-unit/property-name-interp/property-name-interp.css`.
 - **selector**: `.icon-@{type}` with `@type: 5_large` → `.icon-5_large`;
   `@{a2}` with `@a2: ~".foo"` → `.foo` (a whole selector from one variable);
-  `#@{c1}-foo > .@{c2} { .@{c3} { … } }` → `#foo-foo > .bar .baz`. Oracle:
+  `#@{c1}-foo > .@{c2} { .@{c3} { … } }` → `#foo-foo > .bar .baz`. Reference:
   `tests-unit/mixins-interpolated/mixins-interpolated.css`,
   `tests-unit/variables/variables.css` (`.icon-5_large`).
 
@@ -250,7 +250,7 @@ same fork R0 already draws for static selectors.
 concrete strings **early**, so `@{}` interpolation in selectors … must resolve at
 ruleset-enter (arch D2/OQ-A) — this pulls interpolation forward as a dependency."
 
-Oracle proof (`tests-unit/extend-selector/extend-selector.less` + `.css`):
+Reference proof (`tests-unit/extend-selector/extend-selector.less` + `.css`):
 
 ```less
 @attr-data: "test3";
@@ -309,10 +309,10 @@ SOLVE can be built.** (R1 was sequenced after R4-interpolation for this reason.)
 
 A detached ruleset is a block of statements bound to a variable, passed as an
 argument, and *called* to splice its body at the call site — with a specific
-scope-unlock rule. Oracle: `tests-unit/detached-rulesets/detached-rulesets.less`
+scope-unlock rule. Reference: `tests-unit/detached-rulesets/detached-rulesets.less`
 + `.css`.
 
-Core behaviors from the oracle:
+Core behaviors from the reference:
 
 - **assign + call**: `@ruleset: { color: black; background: white; }` then
   `@ruleset();` splices the two declarations.
@@ -484,12 +484,12 @@ are detached rulesets bind by *reference*, not by resolved bytes (§R4.2.5).
 `prop+: v` and `prop+_: v` accumulate multiple declarations of the same property
 into one combined value: `+` joins members with `, ` (comma), `+_` joins with
 ` ` (space). Only `+`/`+_` declarations merge; a plain `prop:` does not merge with
-them (CSS back-compat). Oracle: `tests-unit/merge/merge.{less,css}` — **but the
-committed `merge.css` golden encodes Less's FIRST-occurrence anchor; Jess v5 uses
-LAST-occurrence (owner)**, so the golden's *emit order* is a candidate for owner
+them (CSS back-compat). Reference: `tests-unit/merge/merge.{less,css}` — **but the
+committed `merge.css` expected output encodes Less's FIRST-occurrence anchor; Jess v5 uses
+LAST-occurrence (owner)**, so the expected `.css`'s *emit order* is a candidate for owner
 update, NOT the tree2 target (see §R4.3.4).
 
-Less-alpha golden (first-occurrence) for the interleaved case:
+Less-alpha expected `.css` (first-occurrence) for the interleaved case:
 
 ```less
 .test-rule-interleaved {
@@ -525,7 +525,7 @@ The `background: b1 b2, b3` spaced/comma mixing in `test-rule-spaced` /
 its own joiner, so `t1s`(`+_`) `t2`(`+`) `t3s`(`+_`) → `t1s, t2 t3s` (a `+_`
 member glues to the previous with a space, a `+` member starts a new comma
 group). This joiner-interleave semantics is **independent of the anchor** and
-matches the golden's *content* (only line order differs under last-occurrence).
+matches the expected `.css`'s *content* (only line order differs under last-occurrence).
 
 `!important` correctness case: `test-rule7` has three `.second-transform()` calls,
 the middle one `!important`; output `transform: scale(2,4), scale(2,4), scale(2,4) !important;`
@@ -635,12 +635,12 @@ special handling: merge folds the *expanded* leaf stream.
 
 ### R4.3.7 Open owner-confirm items (merge)
 
-- **`merge.css` golden update.** The committed golden is first-occurrence
+- **`merge.css` expected-output update.** The committed expected `.css` is first-occurrence
   (Less). Under v5 last-occurrence the *line order* differs for
   `test-rule-interleaved` / `test-rule-spaced` / `test-rule-interleaved-with-spaced`.
-  **The golden is an owner-update candidate** (memory: flag, don't edit). R4's
-  byte-oracle for these three cases must be the intended last-occurrence output,
-  NOT the current golden. *needs owner confirmation of the exact v5 line order*
+  **The expected `.css` is an owner-update candidate** (memory: flag, don't edit). R4's
+  byte-reference for these three cases must be the intended last-occurrence output,
+  NOT the current expected `.css`. *needs owner confirmation of the exact v5 line order*
   for the interleaved-with-spaced case.
 - **Whether `important` becomes a structured field for ALL declarations or only
   merged ones** (§R4.3.2). *owner-visible model choice.*
@@ -657,19 +657,19 @@ Two related lookups beyond flat mixin names:
 
 - **Namespaced mixin call**: `#namespace .borders()`, `#theme > .mixin()`,
   `#namespace .biohazard .man()`, chained `#foo-foo > .bar.baz()`. The call
-  descends a *path* of selectors into nested rulesets to find the mixin. Oracle:
+  descends a *path* of selectors into nested rulesets to find the mixin. Reference:
   `tests-unit/mixins/mixins.{less,css}`.
 - **Map / property accessor**: `@p[text]` (index a ruleset-valued/`.mixin()`
   variable by a property name → that declaration's value), `#namespace[$@prop-name]`
   (index a namespace ruleset by an interpolated property name),
-  `@color-schemes[@@color-name]`, `@scheme[@color]`. Oracle:
+  `@color-schemes[@@color-name]`, `@scheme[@color]`. Reference:
   `tests-unit/mixins/maps.{less,css}`, `tests-unit/namespace-targeted/*`,
   `tests-unit/functions-each/functions-each.less`.
 
-Oracle shapes:
+Reference shapes:
 
 ```less
-// mixins.less (namespaced call, flattened golden)
+// mixins.less (namespaced call, flattened expected `.css`)
 #namespace { .borders { border-style: dotted; } }
 #theme { > .mixin { background-color: grey; } }
 #container { .mixin(); #theme > .mixin(); }
@@ -869,7 +869,7 @@ instead of emitted. Design: a `evalToDeclMap(body, frame)` that runs the walk in
 canonical strings **at ruleset-enter**, so an interpolated target
 (`[data=@{attr-data}]` → `[data="test3"]`) is a concrete string BEFORE R1's SOLVE
 builds its target index. Landing this signature change + enter-time resolution is
-a **prerequisite for R1 SOLVE**. (§R4.1.7 has the oracle proof.)
+a **prerequisite for R1 SOLVE**. (§R4.1.7 has the reference proof.)
 
 ### R4.5.3 Shared machinery R4 introduces that later rungs reuse
 
@@ -887,7 +887,7 @@ a **prerequisite for R1 SOLVE**. (§R4.1.7 has the oracle proof.)
 2. `@@name` indirect-variable inclusion in the R4 slice vs deferral (§R4.1.6/9).
 3. Detached ruleset as a pattern/`@arguments` arg (§R4.2.7).
 4. `important` structured field for ALL declarations vs merged-only (§R4.3.2/7).
-5. **`merge.css` golden update** to v5 last-occurrence line order for the
+5. **`merge.css` expected-output update** to v5 last-occurrence line order for the
    interleaved cases — owner-update candidate, and the exact
    interleaved-with-spaced order needs confirmation (§R4.3.7).
 6. Numeric/negative map index semantics — no fixture, sourced from grammar, needs
@@ -895,12 +895,12 @@ a **prerequisite for R1 SOLVE**. (§R4.1.7 has the oracle proof.)
 7. Namespaced-mixin closure parent (namespace vs call-site) — verify vs
    `mixins-closure.css` (§R4.4.7).
 
-### R4.5.5 Oracle policy note
+### R4.5.5 Reference policy note
 
 All four features' shapes are sourced from less.js **alpha** `tests-unit`
 fixtures (`~/git/worktrees/less.js/**`), reconciled with the owner `.css`
-goldens — NOT Less 4.x, NOT the legacy tree render. The single deliberate
-divergence is **merge = last-occurrence** (owner), where the alpha golden's line
+expected outputs — NOT Less 4.x, NOT the legacy tree render. The single deliberate
+divergence is **merge = last-occurrence** (owner), where the alpha expected `.css`'s line
 order is a candidate for owner update rather than the tree2 target. Where a Jess
 behavior may diverge from Less/Sass and no owner ruling exists, items are marked
 *needs owner confirmation of intended v5 shape* above — none is asserted as a bug.

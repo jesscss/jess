@@ -19,7 +19,7 @@ status elsewhere.
 
 2. **"Green" has been hiding wrong-accepts.** SCSS passed its suite while silently
    accepting Less-isms and with unreachable rules. Each parser has the same class
-   of holes. Reference implementations are the oracle: dart-sass (sass-spec) for
+   of holes. Reference implementations are authoritative: dart-sass (sass-spec) for
    SCSS, less.js for Less.
 
 ## Target architecture (owner: shared macro-compiled base, NO sibling inheritance)
@@ -56,11 +56,11 @@ Priority order; [dep] = sequencing dependency.
   sessions — their `_buildLessQueryAtRuleBlock`/`_buildQueryAtRuleBlock` workaround
   may become unnecessary once the map lands.
 
-### Phase 1 — SCSS correctness (highest-value; oracle-invisible)
+### Phase 1 — SCSS correctness (highest-value; reference-invisible)
 - **W2 SCSS Less-construct leak (6 items).** SCSS wrongly accepts every non-`@` Less
   construct — reject: `.mixin()` calls, `when()` guards, detached rulesets `@dr:{}`,
   `+:` merge, `#ns[]` namespace lookup, and numeric-ident selectors (`1a{}`). These
-  are INVISIBLE to the dart-sass oracle (sass-spec has no Less fixtures) → need
+  are INVISIBLE to the dart-sass reference (sass-spec has no Less fixtures) → need
   dedicated reject tests. Structurally killed by the re-base (W5), but can/should be
   gated sooner. [note: `@`-form Less-isms leaking is BY DESIGN per the permissive
   unknown-at-rule owner decision — not a bug.]
@@ -112,7 +112,7 @@ Priority order; [dep] = sequencing dependency.
 
 ### Cross-cutting test infrastructure
 - **W12 Cross-dialect leakage suite.** Add per-parser reject tests (the leakage
-  matrix: scss rejects Less-isms, less rejects Scss-isms, etc.). No bundled oracle
+  matrix: scss rejects Less-isms, less rejects Scss-isms, etc.). No bundled reference
   covers this — it's the exact gap that let W2 hide behind green tests.
 - **W13 sass-spec-errors harness on mainline.** The `sass-spec-errors.test.ts`
   harness (187 `XFAIL_PARSE_MISSES`, symmetric-diff regression guard) is the biggest
@@ -120,13 +120,13 @@ Priority order; [dep] = sequencing dependency.
   the audit's "off-branch" note was branch skew from running on
   `feat/mixin-recursion`) and drive `XFAIL_PARSE_MISSES` toward zero as W4/W8 land.
 
-## Oracles (reuse, don't hand-roll)
+## References (reuse, don't hand-roll)
 - **dart-sass** — `sass-spec` dep; harness `packages/scss-parser/test/sass-spec-errors.test.ts`;
   187 parse-time misses categorized ~98 CSS-level + ~89 SassScript-specific.
 - **less.js** — `packages/less-parser/test/error-parsing.test.ts` globs
   `/Users/matthew/git/worktrees/less.js/less-4x/packages/test-data/tests-error/parse/`
   (29 parse fixtures, 21 enforced, 4 genuine wrong-accepts skipped). READ-ONLY.
-- CSS/JESS — spec-driven (css-syntax-3 etc.); no bundled oracle.
+- CSS/JESS — spec-driven (css-syntax-3 etc.); no bundled reference.
 
 ## Sequencing / conflict map
 - **W1** now (independent). **W2/W3** can proceed in parallel with prelude work
@@ -154,4 +154,4 @@ Priority order; [dep] = sequencing dependency.
 The cross-parser audit built from `feat/mixin-recursion`, which is BEHIND `origin/dev`.
 Its CSS accept/reject rows (bad-url, calc, @supports) predate this session's origin/dev
 fixes — re-verify any CSS-specific claim against `origin/dev` before acting. The
-qualitative findings (scss Less-leak, the 187 categorization, less.js oracle) hold.
+qualitative findings (scss Less-leak, the 187 categorization, less.js reference) hold.

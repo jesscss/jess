@@ -5,7 +5,7 @@ variable resolution in Jess. For the resolver/lookup **data-shape** that impleme
 rules (frames, `DeclIndex`, `cells`, the backward walk, the exclusion `Set`), see the
 companion [`RESOLVER-SHAPE-SPEC.md`](./RESOLVER-SHAPE-SPEC.md).
 
-Behavioral oracle: `packages/core/src/ast/parse-host/__tests__/var-exclusion.test.ts`
+Behavioral reference: `packages/core/src/ast/parse-host/__tests__/var-exclusion.test.ts`
 (branch `fix/var-exclusion`). Every worked example below is taken from that suite; the
 suite is `describe.skip` until the reviewed resolver lands, at which point it flips to
 `describe`. Legacy reference implementation of the same rules: the `searchScope` recursion
@@ -43,14 +43,14 @@ source order:
 // → color: red      (forward reference; order-independent, scope-upward)
 ```
 
-> Oracle: *"forward reference: order-independent, scope-upward"*.
+> Reference: *"forward reference: order-independent, scope-upward"*.
 
 ```less
 @a: 5; .x { @a: @a + 1; v: @a; }
 // → v: 6            (inner @a reads the outer binding — see §3 — then §2 last-wins gives 6)
 ```
 
-> Oracle: *"inner declaration reads the outer binding, not itself"*.
+> Reference: *"inner declaration reads the outer binding, not itself"*.
 
 ## 3. Per-declaration EXCLUSION
 
@@ -66,7 +66,7 @@ right resolves to a *prior/outer* `--a`, not to the declaration being defined.
 // first `@a: 1` in the same scope → 1 + 1 = 2.
 ```
 
-> Oracle: *"same-list redefinition sees the earlier declaration, not itself"*. This is the
+> Reference: *"same-list redefinition sees the earlier declaration, not itself"*. This is the
 > decisive case separating per-declaration exclusion from a plain "resolve to the outer
 > scope" rule — there is no outer scope here; the fallback is the *earlier same-scope*
 > declaration.
@@ -90,7 +90,7 @@ reports them specially) and **never** an infinite loop.
 // → ReferenceError   (direct self reference: @a excludes @a, no fallback → undefined)
 ```
 
-> Oracle: *"direct self reference resolves to undefined (eval error)"*.
+> Reference: *"direct self reference resolves to undefined (eval error)"*.
 
 ```less
 @a: @b; @b: @a; .x { v: @a; }
@@ -99,7 +99,7 @@ reports them specially) and **never** an infinite loop.
 // @a is ALREADY in the accumulated exclusion set → undefined. Terminates at any depth.
 ```
 
-> Oracle: *"mutual reference resolves to undefined (eval error)"*.
+> Reference: *"mutual reference resolves to undefined (eval error)"*.
 
 ```less
 @a: @a + 1; .x { v: @a; }
@@ -108,7 +108,7 @@ reports them specially) and **never** an infinite loop.
 // its own resolution. Owner-settled: this is a plain undefined error, NOT a cyclic error.
 ```
 
-> Oracle: *"self reference with no outer binding errors"* (owner-flagged in the oracle,
+> Reference: *"self reference with no outer binding errors"* (owner-flagged in the reference,
 > now settled — see `RESOLVER-SHAPE-SPEC.md` "OPEN" note, resolved).
 
 Because cycles cannot occur, there is **no depth cap** (`MAX_VAR_DEPTH` is deleted). The
@@ -129,7 +129,7 @@ Resolution has an orthogonal strict/optional flag:
 // → ReferenceError   (an unknown variable is an eval error)
 ```
 
-> Oracle: *"an unknown variable is an eval error"*.
+> Reference: *"an unknown variable is an eval error"*.
 
 The optional path depends on the strict path throwing `ReferenceError` specifically:
 `fns/less/isdefined.ts` catches `ReferenceError` to implement the existence test. Any

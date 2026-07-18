@@ -2,11 +2,11 @@
 
 > **Status: DESIGN ONLY — NOT BUILT.** This is the spec section for roadmap rung
 > **R5** (`TREE2-DEFINITIVE-REWRITE-COVERAGE-AND-ROADMAP.md` §R5 + arch I.1–I.3).
-> It is the **#1 divergence-risk rung**: unlike every rung before it, R5's oracle
+> It is the **#1 divergence-risk rung**: unlike every rung before it, R5's reference
 > (a source-map) is **not observable in the emitted CSS bytes**, so the CSS
 > byte-identity ratchet that has guarded rungs R0–R4 **silently passes while the
 > feature is wrong**. The spec's whole job is to name those traps and specify a
-> second, independent oracle.
+> second, independent reference.
 >
 > Branch of record: `experiment/tree2-cleanroom-20260715`. Companion R0 section:
 > [`TREE2-DESIGN-SPEC.md` §R0](../TREE2-DESIGN-SPEC.md). Governing plan:
@@ -299,7 +299,7 @@ only for the comment-bearing sparse case.
 ### 3.3 The three-way fork (decide by same-worktree A/B MEASUREMENT)
 
 If §3.2 confirms inter-member comment fidelity is required, the backend is an
-**OPEN owner fork** (perf #9; `CORE-CLEANUP.md` Q-32). **Perf is the oracle — the
+**OPEN owner fork** (perf #9; `CORE-CLEANUP.md` Q-32). **Perf is the reference — the
 "never a WeakMap" standing rule does NOT decide this** (it was validated on
 hot/universal provenance; this data is sparse/cold). The three candidates,
 translated to tree2:
@@ -433,14 +433,14 @@ map:
 So R5 introduces a **sourcemap-identity ratchet** that runs independently of and
 alongside the CSS-identity ratchet, on the same corpus.
 
-### 5.2 Oracle
+### 5.2 Reference
 
 **The intended v5 sourcemap.** The proxy (as with CSS) is the REAL evaluating
 pipeline rendered **with source maps on** (`oracle.ts` gains a
 `renderRealOracleMap` that returns `{ css, map }` from the function-evaluating
 pipeline with `trackPositions`/sourcemap enabled, mirroring `renderRealOracle`).
 The legacy render is a valid proxy for intended-v5 **only where it agrees with the
-owner goldens** — and for maps this proxy is **weaker** than for CSS, because the
+owner expected outputs** — and for maps this proxy is **weaker** than for CSS, because the
 legacy map itself is not owner-audited. Therefore:
 
 - **primary ratchet:** decoded-mapping equality between tree2's map and the
@@ -485,7 +485,7 @@ legacy map itself is not owner-audited. Therefore:
 | T9 | Sourcemap lane adds cost when maps are OFF (regresses the R0–R4 perf thesis) | N/A (perf) | Invariant §2.6.3; race op-counts unchanged |
 
 The load-bearing observation: **six of nine traps are invisible to the CSS
-byte-oracle.** That is the entire justification for R5 being its own rung with its
+byte-reference.** That is the entire justification for R5 being its own rung with its
 own ratchet, sequenced late (after the CSS-shaping rungs R0–R4 are stable) but
 never skipped.
 
@@ -508,7 +508,7 @@ never skipped.
 - **`packages/core/src/tree2-frontend/import-bridge.ts`** — carry per-file source
   identity through inline so imported nodes attribute to their own file + content.
 - **`packages/core/src/tree2-frontend/oracle.ts`** — add `renderRealOracleMap`
-  (`{ css, map }`, maps on) as the sourcemap-identity proxy oracle.
+  (`{ css, map }`, maps on) as the sourcemap-identity proxy reference.
 - **New `packages/core/src/tree2/sourcemap.ts`** (or reuse the frontend) — a
   boundary-clean segment→map builder, OR feed segments to the existing
   `tree/util/sourcemap.ts` `buildSourceMap` from the **frontend** (keeping
@@ -548,21 +548,21 @@ never skipped.
 
 ---
 
-## 9. Oracle policy (R5)
+## 9. Reference policy (R5)
 
 - **CSS-identity is necessary but NOT sufficient.** It gates the *bytes*; it is
   blind to the map. R5 is complete only when **both** the CSS-identity ratchet
   and the **sourcemap-identity ratchet** (§5) are green across the corpus.
-- **Sourcemap oracle = intended v5 map.** Proxy = the real evaluating pipeline
+- **Sourcemap reference = intended v5 map.** Proxy = the real evaluating pipeline
   with maps on, valid only where it agrees with owner-audited anchor fixtures.
   The proxy is *weaker* for maps than for CSS (the legacy map is not owner-audited)
   — hence the explicit trap-encoding node-level assertions (§5.3) that hold
   regardless of the proxy.
-- **Trivia oracle = the `comments`/`comments2` fixtures** (their tree2 analog),
+- **Trivia reference = the `comments`/`comments2` fixtures** (their tree2 analog),
   plus byte-identity on the full corpus; perf decides the backend, correctness
   (comment fidelity) is a hard gate that outranks the slim/perf win (memory
   `span-array-drop-reverted`).
-- **Warnings oracle = intended v5 `result.warnings`** — the owner-confirmed set
+- **Warnings reference = intended v5 `result.warnings`** — the owner-confirmed set
   of firing deprecations, shape per the existing processor.
 - When a tree2 map/warning diverges from Less/Sass, mark it **"needs owner
-  confirmation of intended v5"** — not a bug (roadmap §4 oracle stance).
+  confirmation of intended v5"** — not a bug (roadmap §4 reference stance).

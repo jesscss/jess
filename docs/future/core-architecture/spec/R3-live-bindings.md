@@ -18,7 +18,7 @@
 ## R3 — `BindingCell` live cells + control flow
 
 **Status:** DESIGN ONLY (not built). This section specifies what the code must
-guarantee. Oracle = **owner-defined Jess semantics** (this is NOT a less.js-alpha
+guarantee. Reference = **owner-defined Jess semantics** (this is NOT a less.js-alpha
 feature); ambiguous points are flagged "needs owner confirmation" rather than
 invented.
 
@@ -288,7 +288,7 @@ cells> }` walked over the **shared** def body (no clone). R3 keeps this:
 ### The non-obvious shapes (owner-sourced, to be pinned by fixtures)
 
 Sourced from owner docs/memory — to be locked with tree2 fixtures when R3 builds
-(no legacy-render oracle for the `.jess`-only forms; see Oracle):
+(no legacy-render reference for the `.jess`-only forms; see Reference):
 
 - **Jess `$foo` is a point-in-time snapshot, NOT Less lazy last-wins.** In
   `.btn { $color: red; color: $color; $color: blue; }` the emitted `color` is
@@ -330,10 +330,10 @@ Sourced from owner docs/memory — to be locked with tree2 fixtures when R3 buil
    flow condition truth and any value math delegate through the injected
    `ValueService` seam (the R2-native evaluator), never into `../tree`.
 
-### Oracle (owner-defined semantics — NOT less.js alpha)
+### Reference (owner-defined semantics — NOT less.js alpha)
 
 R3 is **not** a less.js-alpha feature, so the R0/R1 "less.js alpha output" shape
-authority does not apply. The oracle is **owner-defined Jess semantics** as
+authority does not apply. The reference is **owner-defined Jess semantics** as
 recorded in:
 
 - `docs-content/docs/jess/02-Language/02-variables.mdx` (assignment operators,
@@ -347,14 +347,14 @@ recorded in:
 - `MEMORY sass-plus-dialect-reject-invalid-css` (Sass+ rejects where Sass
   tolerates invalid CSS — governs error posture).
 
-The legacy `tree` render is **not** a safe byte-oracle here: `nearestOuter` has
+The legacy `tree` render is **not** a safe byte-reference here: `nearestOuter` has
 **no legacy eval implementation** (it only ever *printed* `:=` —
 `MEMORY nearest-outer-assign-semantic`), and the `.jess` snapshot/live/control-
 flow forms are new. R3 fixtures assert against the owner-specified intended output
 directly (constructed tree2 inputs + expected CSS), not a legacy round-trip. Where
 SCSS `!global`/`!default` DO have a legacy eval impl (`setDefined`), that impl is
 a valid proxy **only** for the `lazy`-read subset that already agrees with the v5
-goldens.
+expected `.css`.
 
 ### Where the current tree2 (immutable var-Map) must change
 

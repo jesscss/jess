@@ -15,7 +15,7 @@ Rules of the road:
   `memory:` (a note in the owner's project memory,
   `.claude/projects/-Users-matthew-git-oss-jess/memory/<name>.md`).
 
-## 0. The epistemics — there is NO external oracle (read first)
+## 0. The epistemics — there is NO external authority (read first)
 
 Correctness is **the documented intended v5 design**, nothing else. The less.js
 `alpha` top-level `.css` test-data AND the Jess tests are *imperfect encodings*
@@ -24,27 +24,27 @@ When the engine disagrees with a `.css` file, the question is "which matches the
 intended design?" — then reconcile the loser TO the design. Do not treat any
 file as an authority to blindly match.
 
-Owner also **banned the words "oracle" and "golden"** — say "the intended
+Owner also **banned the authoritative-reference framing words** — say "the intended
 design" / "the expected `.css` output" / "reconcile the test-data to the design."
-Several existing docs (`ORACLE.md`, `EXTEND-SEMANTICS.md` "Oracle policy",
+Several existing docs (`REFERENCE.md`, `EXTEND-SEMANTICS.md`,
 `GOAL1-SCORECARD.md`, and many spec headers) still use the banned framing; treat
-their *content* as valid consistency-check guidance, but their *"oracle/golden =
-authoritative"* framing is superseded by this row. Source:
-`memory:no-oracle-intended-design-is-truth` (owner 2026-07-17).
+their *content* as valid consistency-check guidance, but their *"authoritative
+reference"* framing is superseded by this row. Source:
+`memory:intended-design-is-truth` (owner 2026-07-17).
 
 | # | Ruling | Status | Source / detail |
 |---|--------|--------|-----------------|
-| E1 | No external oracle: correct = documented intended v5 design; alpha `.css` + Jess tests are imperfect encodings reconciled TO the design (test-data wrong as often as engine). | SETTLED | `memory:no-oracle-intended-design-is-truth` |
-| E2 | Ban the words "oracle"/"golden"; the differential-vs-alpha comparison is a consistency check, not a verdict. | SETTLED | `memory:no-oracle-intended-design-is-truth` |
-| E3 | Legacy `tree/` eval + `tree/scope-frame.ts` / `reference.ts` are NOT correctness references (known bugs) — mechanism ideas only. | SETTLED | `memory:no-oracle-intended-design-is-truth`, `RESOLVER-SHAPE-SPEC.md` |
-| E4 | `graduate-v5`, `upstream/alpha`, `legacy/*.css`, and `renderRealOracle`/`renderRealOracleNested` are NOT the intended-design reference. | SETTLED | `ORACLE.md` (pitfalls) |
-| E5 | Real Less 4.x is NOT the target — v5 diverges intentionally; 4.x is at most a cross-check for non-diverging behaviors. | SETTLED | `memory:no-oracle-intended-design-is-truth` |
+| E1 | No external authority: correct = documented intended v5 design; alpha `.css` + Jess tests are imperfect encodings reconciled TO the design (test-data wrong as often as engine). | SETTLED | `memory:intended-design-is-truth` |
+| E2 | Ban the authoritative-reference framing words; the differential-vs-alpha comparison is a consistency check, not a verdict. | SETTLED | `memory:intended-design-is-truth` |
+| E3 | Legacy `tree/` eval + `tree/scope-frame.ts` / `reference.ts` are NOT correctness references (known bugs) — mechanism ideas only. | SETTLED | `memory:intended-design-is-truth`, `RESOLVER-SHAPE-SPEC.md` |
+| E4 | `graduate-v5`, `upstream/alpha`, `legacy/*.css`, and `renderRealOracle`/`renderRealOracleNested` are NOT the intended-design reference. | SETTLED | `REFERENCE.md` (pitfalls) |
+| E5 | Real Less 4.x is NOT the target — v5 diverges intentionally; 4.x is at most a cross-check for non-diverging behaviors. | SETTLED | `memory:intended-design-is-truth` |
 
 ## 1. Merge operators (`+:` / `+_:`)
 
 | # | Ruling | Status | Source / detail |
 |---|--------|--------|-----------------|
-| M1 | Merge ANCHOR = **LAST-occurrence** (jess v5), NOT less@4 first-occurrence anchor. Emit-order divergence on `merge.less` is intended, not a bug. | **SETTLED** | `CUTOVER-STATUS.md:44` ("LAST-occurrence anchoring kept, no less@4 first-anchor golden adopted"); `memory:spine-merge-last-occurrence-anchor` |
+| M1 | Merge ANCHOR = **LAST-occurrence** (jess v5), NOT less@4 first-occurrence anchor. Emit-order divergence on `merge.less` is intended, not a bug. | **SETTLED** | `CUTOVER-STATUS.md:44` ("LAST-occurrence anchoring kept, no less@4 first-anchor expected output adopted"); `memory:spine-merge-last-occurrence-anchor` |
 | M2 | `+:` = comma-merge, `+_:` = space-merge. Both LOWER (parse/build-time) to a self-ref declaration `prop: $['prop']?<sep>v` (`?` = optional self-lookup, empty if unbound, no error). Normal eval + resolver do the rest — no special merge pass. | SETTLED | `memory:less-merge-plus-lowering-self-ref` (owner 2026-07-17) |
 | M3 | Flatten is associative ONLY when both operands materialize to same-kind List/Sequence nodes (→ one flat list); otherwise it is a serialize-time concat `<self><sep><value>`. | SETTLED | `memory:less-merge-plus-lowering-self-ref` |
 | M4 | Flatten is a serialize-time PROJECTION — do NOT eagerly clone a merged node; materialize only if a visitor needs to traverse it. | SETTLED | `memory:less-merge-plus-lowering-self-ref`, `memory:spine-is-projection-not-mutation` |
@@ -56,9 +56,9 @@ authoritative"* framing is superseded by this row. Source:
 > contradicting the LAST-occurrence ruling (M1). REVERTED on
 > `fix/merge-anchor-revert-to-last`: `serialize.ts` `mergeFold` anchors at
 > `indices[indices.length - 1]` again; `proposed-alpha-corrections/merge.css` (LAST-order
-> golden) restored; the R4 spec / feature-completeness / corrections README all read
+> expected output) restored; the R4 spec / feature-completeness / corrections README all read
 > LAST; `alpha-oracle-baseline.json` records `merge/merge.less` as an expected `DIFF`
-> (ast/ correct per design, alpha golden is the outlier awaiting upstream correction to
+> (ast/ correct per design, the alpha expected output is the outlier awaiting upstream correction to
 > LAST). The task-#36 `!important`-strip / value-canonicalization fix in `custom-props.ts`
 > was KEPT (correct, unrelated). Legacy `tree/util/spine-merge.ts` was always LAST.
 
@@ -89,7 +89,7 @@ authoritative"* framing is superseded by this row. Source:
 | # | Ruling | Status | Source / detail |
 |---|--------|--------|-----------------|
 | O1 | v5 default output = NESTED (`collapseNesting:false`), NOT 4.x flatten. 4.x flatten = explicit opt-in flag. Default owned by `jess-plugin-less`; consumers import it. | SETTLED | `memory:less-v5-default-collapsenesting-false` |
-| O2 | v5 does NOT merge `@media`; extend cascades are `:is()`-compacted. `legacy/*.css` (expanded, no `:is()`) is the 4.x shape, not v5. | SETTLED | `ORACLE.md`, `memory:fixture-v5-vs-4x-legacy-convention` |
+| O2 | v5 does NOT merge `@media`; extend cascades are `:is()`-compacted. `legacy/*.css` (expanded, no `:is()`) is the 4.x shape, not v5. | SETTLED | `REFERENCE.md`, `memory:fixture-v5-vs-4x-legacy-convention` |
 | O3 | Compressed output target = dart-sass `compressed` parity via differential comparison. | DEFERRED | `memory:compress-already-minimal-bit` |
 
 ### 4a. Output formatting — serialization detail

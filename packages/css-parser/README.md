@@ -51,7 +51,7 @@ What makes it fast, and what Jess builds on:
   grammars are written as combinators, not hand-rolled state machines.
 - **In-repo, spec-aligned grammars.** The CSS grammar's rules cite
   [CSS Syntax Level 3](https://www.w3.org/TR/css-syntax-3/) anchors; the spec
-  algorithms are the oracle.
+  algorithms are the reference.
 - **Dual-use grammars.** The *same* grammar runs strict (single-error, for the
   compiler) or tolerant with error recovery (for tooling/editors).
 - **Incremental reparse.** `.edit()` re-parses only the region that changed.

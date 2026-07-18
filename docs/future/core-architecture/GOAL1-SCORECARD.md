@@ -1,11 +1,11 @@
-# GOAL #1 Completion Scorecard — differential-oracle reconciliation
+# GOAL #1 Completion Scorecard — differential-reference reconciliation
 
 > **Authoritative as of 2026-07-17, origin/dev + this branch's full workspace build.**
-> Produced by reconciling the differential oracle
+> Produced by reconciling the differential reference
 > (`packages/core/src/ast/parse-host/__tests__/alpha-oracle-differential.test.ts`
 > + `alpha-oracle-baseline.json`, 88 paired fixtures — the `legacy/` 4.x fixtures are
 > excluded) three ways: **ast/ render** vs the **committed less.js `alpha` (v5)
-> golden** vs **real less.js 4.6.7** (`~/git/worktrees/less.js/less-4x`, READ-ONLY
+> expected output** vs **real less.js 4.6.7** (`~/git/worktrees/less.js/less-4x`, READ-ONLY
 > `bin/lessc`). This is the exact remaining GOAL #1 (feature-complete parse→eval in
 > `ast/`) work list.
 
@@ -35,13 +35,13 @@ remained and no fixture regressed:
 > **`merge/merge.less` is a DIFF by design, not a gap.** ast/ correctly emits the v5
 > LAST-occurrence merge anchor (`CUTOVER-STATUS.md:44`; memory
 > `spine-merge-last-occurrence-anchor`), so it diverges from alpha's FIRST-occurrence
-> `merge.css` golden — the golden is the outlier awaiting an upstream correction to
+> `merge.css` expected output — the expected `.css` is the outlier awaiting an upstream correction to
 > LAST (hand-off in `proposed-alpha-corrections/README.md §Merge`). Task #36 briefly
 > flipped ast/ to FIRST (making it a MATCH); that was reverted on
 > `fix/merge-anchor-revert-to-last`, restoring the intended DIFF.
 
 Full core suite green with this build: **242 files pass / 3 skip; 4102 tests pass /
-17 skip / 2 todo** (the differential-oracle test included, no regression vs baseline).
+17 skip / 2 todo** (the differential-reference test included, no regression vs baseline).
 
 > **Note on the doc's older THREW breakdown.** `AST-FEATURE-COMPLETENESS…md` §4 recorded
 > `MATCH 25 · MATCH_NORM 1 · DIFF 54 · THREW 11` with the 11 THREW mapping onto E2 (cross-unit
@@ -51,22 +51,22 @@ Full core suite green with this build: **242 files pass / 3 skip; 4102 tests pas
 > one THREW now remains:** `import/import-remote.less` (a network `@import`, out of GOAL-#1
 > scope). See §4.
 
-## 2. Wrong-golden claims — re-adjudicated (see `WRONG-TESTDATA-AUDIT.md`)
+## 2. Wrong-expected-output claims — re-adjudicated (see `WRONG-TESTDATA-AUDIT.md`)
 
-**No fixture in the corpus is a confirmed wrong golden.** An earlier revision of this
-scorecard flagged `scope/scope.less` `.tiny-scope` `#989` as a wrong golden on the
+**No fixture in the corpus is confirmed wrong expected output.** An earlier revision of this
+scorecard flagged `scope/scope.less` `.tiny-scope` `#989` as wrong expected output on the
 inference "ast/ and real less.js 4.6.7 both emit `#989`, so `blue` is wrong." The
 re-audit (`WRONG-TESTDATA-AUDIT.md` §1) established that this inference is exactly
-backwards for the alpha corpus and that **scope `#989` is a JESS BUG, not a wrong
-golden**:
+backwards for the alpha corpus and that **scope `#989` is a JESS BUG, not wrong
+expected output**:
 
-| Fixture | Line | ast/ (today) | real 4.6.7 | v5 golden | Verdict |
+| Fixture | Line | ast/ (today) | real 4.6.7 | v5 expected `.css` | Verdict |
 |---|---|---|---|---|---|
-| `scope/scope.less` | `.tiny-scope` | `color: #989` | `color: #989` | `color: blue` | **jess bug (golden correct)** |
+| `scope/scope.less` | `.tiny-scope` | `color: #989` | `color: #989` | `color: blue` | **jess bug (expected `.css` correct)** |
 
-- The top-level `.css` is the **v5** golden and *intentionally diverges from 4.x*; the
+- The top-level `.css` is the **v5** expected output and *intentionally diverges from 4.x*; the
   `legacy/*.css` is the 4.x reference. "ast/ agrees with 4.x" is evidence that **ast/
-  has not yet reached v5**, not that the golden is wrong.
+  has not yet reached v5**, not that the expected `.css` is wrong.
 - Decisive owner commits: less.js alpha `a0e4e494` *"Fix scope value in v5"* set
   `scope/scope.css` (v5) = `color: blue` and `scope/legacy/scope.css` (4.x) = `#989`;
   re-affirmed by `02f4b326`. So v5 **intentionally** resolves `@mix` to the outer last
@@ -76,33 +76,33 @@ golden**:
   `mixin-var-leak.test.ts:51` encodes `#989` anchored to the **dying 4.x** shape and must
   be updated to `blue` when ast/ reaches v5 scoping (internal test, freely changeable).
 
-The other named "wrong golden" flags (`merge`, `css-3` rotate/`@supports`,
+The other named "wrong expected output" flags (`merge`, `css-3` rotate/`@supports`,
 `mixins-guards-default-func`) are likewise re-adjudicated in `WRONG-TESTDATA-AUDIT.md`:
 only `merge` is a genuine graduation candidate (v5 LAST-occurrence anchor, DESIGN-DECISIONS
 M1) awaiting an upstream corpus correction; the rest are misattributed jess bugs where ast/
-matches 4.x while the v5 golden intentionally diverges. Every DIFF fixture's baseline status
-is unaffected — the reclassification is of *rationale* (real ast/ gap, not wrong golden).
+matches 4.x while the v5 expected output intentionally diverges. Every DIFF fixture's baseline status
+is unaffected — the reclassification is of *rationale* (real ast/ gap, not wrong expected output).
 
 ## 3. Categorized DIFF residual (50)
 
-The oracle's **`alpha-oracle-baseline.json` already IS the intended-divergence allowlist**
+The reference's **`alpha-oracle-baseline.json` already IS the intended-divergence allowlist**
 (the gate is baseline-diff, not `diff==0`; a recorded DIFF/THREW is an *accepted* gap). No
-oracle code change is needed to "silence" intended divergences — they are already non-failures.
+reference code change is needed to "silence" intended divergences — they are already non-failures.
 This section is the categorized rationale.
 
 **Key reconciliation finding:** at today's maturity, of the 50 DIFF fixtures, **49 are genuine
-ast/ gaps** (ast/ matches the v5 golden in ZERO of them; a subset *also* sits on an intended-v5
-divergence axis — that is *why* their golden differs from 4.x — but ast/ has not reached even the
+ast/ gaps** (ast/ matches the v5 expected output in ZERO of them; a subset *also* sits on an intended-v5
+divergence axis — that is *why* their expected `.css` differs from 4.x — but ast/ has not reached even the
 v5 target on any of them). The **one exception is `merge/merge.less`**: ast/ already emits the
-correct v5 output (LAST-occurrence anchor) and DIFFs *only* because the alpha golden encodes the
-FIRST-occurrence order — an outlier golden awaiting upstream correction, NOT an ast/ gap. So the
-practically-actionable split is **1 outlier-golden v5 divergence (`merge`) + 49 real gaps**
-(`scope` among them — a jess bug, not a wrong golden; see §2), with the intended-v5 rules noted
-where they explain the golden's shape.
+correct v5 output (LAST-occurrence anchor) and DIFFs *only* because the alpha expected output encodes the
+FIRST-occurrence order — an outlier expected output awaiting upstream correction, NOT an ast/ gap. So the
+practically-actionable split is **1 outlier-expected-output v5 divergence (`merge`) + 49 real gaps**
+(`scope` among them — a jess bug, not wrong expected output; see §2), with the intended-v5 rules noted
+where they explain the expected output's shape.
 
-### 3a. Intended-v5 divergence is the *reason the golden ≠ 4.x* (cited)
+### 3a. Intended-v5 divergence is the *reason the expected output ≠ 4.x* (cited)
 
-These fixtures' goldens legitimately diverge from real 4.x for a declared v5 rule; ast/ still
+These fixtures' expected outputs legitimately diverge from real 4.x for a declared v5 rule; ast/ still
 has its own gap on top (so they remain DIFF, correctly accepted in the baseline):
 
 | Rule (cite) | Fixtures |
@@ -155,7 +155,7 @@ Clustered by the failing feature (fixture counts are where the cluster is the do
     instead of emitting raw `` `…` ``; the whole-doc driver reuses `less-parser`'s exported
     `firstInlineJsBacktick` + `INLINE_JS_UNSUPPORTED_MESSAGE`, mirroring `LessParser.parse`'s
     wrapper guard), `ie-filters-REMOVED/legacy/ie-filters.less`.
-    Low priority; the golden reflects removal, ast/ should error/normalize. (These live under
+    Low priority; the expected output reflects removal, ast/ should error/normalize. (These live under
     `legacy/` and are now excluded from the gated corpus.)
 11. **At-rule prelude interpolation (P2)** — `container`, `layer`, `media`,
     `variables-in-at-rules`, `permissive-parse`. These previously THREW ("variable @… is
@@ -185,7 +185,7 @@ mixin-call-as-iterable → `functions-each`; `@x[@y]` map-accessor iterables →
 
 ## 5. Bottom line — the exact remaining GOAL #1 work
 
-1. **No wrong goldens.** The previously-claimed `scope/scope.less` `#989` wrong golden was
+1. **No wrong expected output.** The previously-claimed `scope/scope.less` `#989` wrong expected output was
    **re-adjudicated as a JESS BUG** (v5 target = `blue`; owner commit `a0e4e494`); ast/ still
    emits the 4.x `#989` and must reach v5 outer-binding-wins scoping (§2, and cluster 2/scope
    in §3b).
@@ -199,6 +199,6 @@ mixin-call-as-iterable → `functions-each`; `@x[@y]` map-accessor iterables →
 5. Lower priority / separate workstreams: `@import` ordering, plugin system, removed-feature
    fixtures, network `@import` (`import-remote`, the lone remaining THREW, out of scope).
 
-The intended-v5 allowlist requires **no oracle code change** — `alpha-oracle-baseline.json`'s
+The intended-v5 allowlist requires **no reference code change** — `alpha-oracle-baseline.json`'s
 recorded DIFF/THREW statuses already serve as the allowlist (baseline-diff gate). Statuses only
 ever improve as these gaps close.

@@ -304,7 +304,7 @@ command, and no source-guard surface. It is admitted when, and only when, all
 three of these hold — each machine-checked:
 
 - **Byte-identical.** The `neutralRefactor.byteIdentity` block restates the
-  benchmark oracle (`fixture: "benchmark.less"`, `collapseNesting: true`,
+  benchmark reference (`fixture: "benchmark.less"`, `collapseNesting: true`,
   `outputSha256`, `outputBytes`); the audit record must restate the same sha/bytes,
   and the landing's benchmark + all-less byte-identity gates re-verify the output
   did not change. An output-changing edit fails these gates.
@@ -325,7 +325,7 @@ three of these hold — each machine-checked:
 real cost cannot honestly take the auto-pass: (a) if it allocates, loops, builds a
 map/set, clones, constructs a node, or adds error control, the danger-token scan
 fires and the auto-pass is refused; (b) if it changes output, the byte-identity
-oracle (and the landing's benchmark + all-less gates) reject it; (c) if it admits
+reference (and the landing's benchmark + all-less gates) reject it; (c) if it admits
 more cost, it must declare `costDelta: "increase"`, which the auto-pass forbids —
 sending it to the precise / conservative-filter kinds. The residual dimension the
 scan cannot see — a token-free *added function call* that is byte-identical yet
@@ -359,7 +359,7 @@ tokens — but those tokens *replace* the `.split`/`.map`/`.join`/`new List`/`ne
 Any` work they retire, so net cost is equal-or-less. A neutral-or-negative
 contract may set `neutralRefactor.allowsProsecutedDangerTokens: true` to admit
 those tokens through the auto-pass. This relaxes **nothing** about safety: (a)
-byte-identity is still machine-checked against the benchmark oracle; (b) the
+byte-identity is still machine-checked against the benchmark reference; (b) the
 pass-level per-label prosecution (`- Review-flagged diff tokens:`) still forces
 every danger category to be named in `[brackets]`; (c) the audit record must
 restate a `dangerTokensJustification` (≥40 chars) explaining why each flagged
@@ -397,7 +397,7 @@ to four non-negotiable requirements — schema in `validateOffBenchmarkCallReduc
   invocations are eliminated.
 - **`offBenchmarkCallReduction.measuredOn`** — the named representative fixture the
   reduction is measured on. It **must NOT be benchmark.less** (that is the wall-clock
-  oracle; this kind exists precisely because the benefit is off it). The reduction is
+  reference; this kind exists precisely because the benefit is off it). The reduction is
   bound by the declared relation `callsAfter < callsBefore` and re-checked in the
   record.
 - **`offBenchmarkCallReduction.boundedTraversal`** — a self-prosecution paragraph
@@ -732,7 +732,7 @@ no imported guarded mixins (no speedup to show), but on
     "files": ["packages/core/src/tree/reference.ts"],
     "neutralRefactor": {
       "costDelta": "neutral",
-      "why": "Pure route split: performVariableRulesLookup now branches on isOrdinaryVariableRead (plain string key, no namespace target, no interpolation) to send ordinary `@var` reads down the covered-frame probe + declaration-crawl route and member-descent reads (namespace target / interpolated @@name / indexed key) down the shared member route. The per-route options passed to findVariableDeclarationOccurrence are identical to the pre-split single call and depend only on env.readMode, so exactly one call runs per invocation with the same arguments as before — no new allocation, traversal, map/set, or node construction. Output is byte-identical (benchmark oracle sha unchanged).",
+      "why": "Pure route split: performVariableRulesLookup now branches on isOrdinaryVariableRead (plain string key, no namespace target, no interpolation) to send ordinary `@var` reads down the covered-frame probe + declaration-crawl route and member-descent reads (namespace target / interpolated @@name / indexed key) down the shared member route. The per-route options passed to findVariableDeclarationOccurrence are identical to the pre-split single call and depend only on env.readMode, so exactly one call runs per invocation with the same arguments as before — no new allocation, traversal, map/set, or node construction. Output is byte-identical (benchmark reference sha unchanged).",
       "byteIdentity": {
         "fixture": "benchmark.less",
         "collapseNesting": true,
@@ -762,7 +762,7 @@ no imported guarded mixins (no speedup to show), but on
       "benchmarkNonRegression": { "phase": "render", "maxPercentSlower": 3 }
     },
     "counters": ["callsBefore", "callsAfter"],
-    "commonCaseProof": "callable-fallback fixture counter test: findMixinsFastForUncoveredCallable total 6 -> 0 (.configured-guarded 2 -> 0, .sized-guarded 2 -> 0, .plain-surface 2 -> 0) on packages/jess/benchmark/callable-fallback/main.less, byte-identical (fixture oracle sha ff73511c0756ecb6). benchmark.less canonical output stays byte-identical (98a0536086c7e555) and non-regressing.",
+    "commonCaseProof": "callable-fallback fixture counter test: findMixinsFastForUncoveredCallable total 6 -> 0 (.configured-guarded 2 -> 0, .sized-guarded 2 -> 0, .plain-surface 2 -> 0) on packages/jess/benchmark/callable-fallback/main.less, byte-identical (fixture reference sha ff73511c0756ecb6). benchmark.less canonical output stays byte-identical (98a0536086c7e555) and non-regressing.",
     "benchmark": {
       "fixture": "benchmark.less",
       "phases": ["parse-render", "render"],
@@ -790,7 +790,7 @@ no imported guarded mixins (no speedup to show), but on
     "neutralRefactor": {
       "costDelta": "neutral",
       "allowsProsecutedDangerTokens": true,
-      "why": "Byte-identical structural refactor — the unknown at-rule prelude is now built by the grammar as a token stream of spanned Any nodes instead of a whitespace-split byte blob. _buildUnknownAtRuleBlock collects the already-built Any nodes between the name and `{` and wraps 2+ of them in a Sequence, REPLACING the prior `.split`/`.map`/`.join`/`preludeSource.includes`/`new Any`/`new List` byte re-derivation, so net allocation is equal-or-less. benchmark.less has no unknown at-rules, so this builder path is never reached and render output is byte-identical (oracle sha/bytes unchanged).",
+      "why": "Byte-identical structural refactor — the unknown at-rule prelude is now built by the grammar as a token stream of spanned Any nodes instead of a whitespace-split byte blob. _buildUnknownAtRuleBlock collects the already-built Any nodes between the name and `{` and wraps 2+ of them in a Sequence, REPLACING the prior `.split`/`.map`/`.join`/`preludeSource.includes`/`new Any`/`new List` byte re-derivation, so net allocation is equal-or-less. benchmark.less has no unknown at-rules, so this builder path is never reached and render output is byte-identical (reference sha/bytes unchanged).",
       "byteIdentity": {
         "fixture": "benchmark.less",
         "collapseNesting": true,
@@ -807,7 +807,7 @@ no imported guarded mixins (no speedup to show), but on
     "neutralRefactor": {
       "costDelta": "neutral",
       "allowsProsecutedDangerTokens": true,
-      "why": "Byte-identical structural refactor — UnknownAtRuleBlock now consumes its prelude via atTokenStream (a `many` of verbatim per-token `node('Any', scanTo(...))` runs plus comma tokens) instead of one opaque atPrelude scanTo leaf, so the grammar OWNS the prelude structure as spanned Any nodes rather than the core re-deriving it from bytes. The scan uses the same balanced()/string skip machinery the old atPreludeScan used. benchmark.less has no unknown at-rules, so the changed alternative is never entered and render output is byte-identical (oracle sha/bytes unchanged).",
+      "why": "Byte-identical structural refactor — UnknownAtRuleBlock now consumes its prelude via atTokenStream (a `many` of verbatim per-token `node('Any', scanTo(...))` runs plus comma tokens) instead of one opaque atPrelude scanTo leaf, so the grammar OWNS the prelude structure as spanned Any nodes rather than the core re-deriving it from bytes. The scan uses the same balanced()/string skip machinery the old atPreludeScan used. benchmark.less has no unknown at-rules, so the changed alternative is never entered and render output is byte-identical (reference sha/bytes unchanged).",
       "byteIdentity": {
         "fixture": "benchmark.less",
         "collapseNesting": true,
@@ -824,7 +824,7 @@ no imported guarded mixins (no speedup to show), but on
     "neutralRefactor": {
       "costDelta": "neutral",
       "allowsProsecutedDangerTokens": true,
-      "why": "Byte-identical structural refactor — emitDirectSeparator adds one allocation-free branch (isLeadingCommaToken: a type check plus a valueOf compare) so a comma token carried as its own Sequence member does not get a spurious leading space, matching List's emitListSeparator canonical `foo, bar`. The guard only fires for a bare comma Any member, which is produced solely by the new unknown-at-rule prelude token stream; benchmark.less Sequences carry no comma-Any members, so the branch is always false there and render output is byte-identical (oracle sha/bytes unchanged).",
+      "why": "Byte-identical structural refactor — emitDirectSeparator adds one allocation-free branch (isLeadingCommaToken: a type check plus a valueOf compare) so a comma token carried as its own Sequence member does not get a spurious leading space, matching List's emitListSeparator canonical `foo, bar`. The guard only fires for a bare comma Any member, which is produced solely by the new unknown-at-rule prelude token stream; benchmark.less Sequences carry no comma-Any members, so the branch is always false there and render output is byte-identical (reference sha/bytes unchanged).",
       "byteIdentity": {
         "fixture": "benchmark.less",
         "collapseNesting": true,

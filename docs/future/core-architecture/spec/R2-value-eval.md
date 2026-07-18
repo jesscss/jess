@@ -6,7 +6,7 @@
 > `tree2-frontend/value-service.ts` async-record → sync-replay scaffold that
 > re-enters the legacy fns-registered render. It matches the depth/style of
 > [`TREE2-DESIGN-SPEC.md` § R0](../TREE2-DESIGN-SPEC.md#r0--collapsenestingfalse-nested-output-mode-the-less-v5-default)
-> — **data model · algorithm · invariants · oracle · both-emit-mode
+> — **data model · algorithm · invariants · reference · both-emit-mode
 > interaction · deferred sub-cases · owner-confirm items**.
 >
 > Branch of record: `experiment/tree2-cleanroom-20260715`. Roadmap row:
@@ -368,8 +368,8 @@ name table to accept externally-registered callables from the start.
    longer flattened at the seam.
 5. **Byte-identity preserved.** The migration is byte-identical vs the current
    scaffold on the supported corpus — the scaffold is byte-identical to the
-   real oracle *by construction*, so R2 must remain byte-identical to the real
-   oracle. Add a value-lane ratchet (see §7).
+   real reference *by construction*, so R2 must remain byte-identical to the real
+   reference. Add a value-lane ratchet (see §7).
 6. **Modes honored.** `shouldOperate`/unit-clash-`calc`-fallback/function-mode
    decisions match the configured `mathMode`/`unitMode`/`functionMode`; the
    evaluator reads them from an injected `EvalModes`, not the legacy `Context`.
@@ -383,25 +383,25 @@ name table to accept externally-registered callables from the start.
 
 ---
 
-## 7. Oracle
+## 7. Reference
 
-Per the governing oracle policy (roadmap §Oracle policy, memory
+Per the governing reference policy (roadmap §Reference policy, memory
 `no-sacred-test-expectations`):
 
-- **Intended Jess v5 value/function output** is the oracle. For less-function
+- **Intended Jess v5 value/function output** is the reference. For less-function
   *behavior*, the shape reference is the **less.js `alpha` branch**
   (`~/git/worktrees/less.js/graduate-v5` and siblings; verified branch =
   `alpha`, version `5.0.0-alpha.2` — **NOT** Less 4.x). Confirm against the
-  owner-maintained top-level `.css` goldens.
+  owner-maintained top-level `.css` expected outputs.
 - **`@jesscss/fns` is the impl source of truth** for the ~120 built-ins (color
   models, rounding, unit conversion). Where fns and less.js alpha agree, that's
   the target; where they diverge, flag for owner (do not assume).
-- The current scaffold's "legacy render == oracle" is a **valid proxy** for the
+- The current scaffold's "legacy render == reference" is a **valid proxy** for the
   plain value/function surface (roadmap §4 lists value/functions among the
   byte-identical-already surfaces) — so R2 can gate byte-identity against the
   existing scaffold output on the supported corpus, THEN re-anchor the
   divergence-prone cases (calc simplification, escaping, unit-clash) to alpha +
-  goldens rather than to the scaffold.
+  expected `.css` rather than to the scaffold.
 - **Ratchet:** add a value-lane byte-identity ratchet over the fns/operation
   fixtures in both emit modes (§4), plus retain the `composeStats` clone/inherit-
   ZERO op-count ratchet (invariant 7). Guard truth ratcheted via the mixin-

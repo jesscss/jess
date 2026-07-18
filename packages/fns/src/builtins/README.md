@@ -3,7 +3,7 @@
 Boundary-clean Tier-A functions rewritten on the **tree2 value domain** (no legacy
 `../tree` node, no re-parse, no `render()` walk). They replace `@jesscss/fns`'s
 `instanceof`-coercion path for the values they cover, and are gated byte-identical
-against that adapter (the oracle) in
+against that adapter (the reference) in
 `tree2-frontend/__tests__/native-value-differential.test.ts`.
 
 ## Layout
@@ -35,8 +35,8 @@ against that adapter (the oracle) in
 2. `import { <fn> } from './<fn>.js';` in `index.ts`.
 3. Add `<fn>` to `FN_LIST`.
 
-Then add a case per fn to the differential test (adapter = oracle). Validate the
-output against real Less 4.x semantics; if a golden looks stale, flag it — don't
+Then add a case per fn to the differential test (adapter = reference). Validate the
+output against real Less 4.x semantics; if the expected output looks stale, flag it — don't
 match it.
 
 ## The ponytail ladder

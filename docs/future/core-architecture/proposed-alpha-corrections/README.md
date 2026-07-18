@@ -2,7 +2,7 @@
 
 These files are PROPOSED replacements for the corresponding
 `less.js` `alpha:packages/test-data/tests-unit/<fixture>/<fixture>.css`
-goldens. They are NOT applied here — the tree2 R1 work does not edit any
+expected outputs. They are NOT applied here — the tree2 R1 work does not edit any
 less.js file. The owner applies them on alpha after review.
 
 ## Why
@@ -33,7 +33,7 @@ output and is byte-identical to alpha OUTSIDE the buggy region.
 
   The rest of `extend.css` (`.error`/`.badError`, `.ext*`, `.buu`/`.fuu`
   hoists, etc.) is byte-identical to alpha and is included so the file is a
-  drop-in golden.
+  drop-in expected `.css`.
 
 - `extend-exact.css` — corrects three exact-into-children instances:
   - block 3 `.a { prop:is_effected; .b {…} .b.c {…} }` — `.effected:extend(.a)`
@@ -51,7 +51,7 @@ output and is byte-identical to alpha OUTSIDE the buggy region.
 
   The rest of `extend-exact.css` (block 1's `.rep_ace` multi-segment +
   `:is(.replace, .c)` compaction) is byte-identical to alpha and is included so
-  the file is a drop-in golden.
+  the file is a drop-in expected `.css`.
 
 
 ## Merge (`+` / `+_`) — v5 LAST-occurrence anchor (R4)
@@ -62,7 +62,7 @@ NOT a bug fix but an intended **v5 semantic divergence**. Alpha's committed
 groups; Jess v5 anchors each combined `+`/`+_` line at the property's **LAST**
 occurrence (owner decision, project memory `spine-merge-last-occurrence-anchor`).
 
-Only two blocks differ from alpha's golden (member content is identical; only the
+Only two blocks differ from alpha's expected `.css` (member content is identical; only the
 combined LINE position moves):
 
 - `.test-rule-interleaved` — `transform`'s last member (`t3`) follows
@@ -75,25 +75,25 @@ combined LINE position moves):
 `.test-rule-interleaved-with-spaced` is byte-identical to alpha (there
 `transform`'s last member already precedes `background`'s, so first- and
 last-occurrence agree). Every other block matches alpha, so `merge.css` is a
-drop-in v5 golden. tree2's R4 merge fold is gated against THIS file
-(`r4-byte-identity.test.ts`), never against alpha's first-occurrence golden.
+drop-in v5 expected `.css`. tree2's R4 merge fold is gated against THIS file
+(`r4-byte-identity.test.ts`), never against alpha's first-occurrence expected `.css`.
 
-**Differential-oracle hand-off (like `scope.less` #989, GOAL1-SCORECARD §2):**
+**Differential-reference hand-off (like `scope.less` #989, GOAL1-SCORECARD §2):**
 because the ast/ engine correctly emits the v5 LAST-occurrence order (matching
 `CUTOVER-STATUS.md:44` "LAST-occurrence anchoring kept" and the legacy `tree/`
 spine/eval path), it DIFFs from alpha's committed first-occurrence `merge.css`.
 That divergence is recorded in `alpha-oracle-baseline.json` as an **expected
-`DIFF`** for `merge/merge.less` — the golden is the outlier, not ast/. The alpha
+`DIFF`** for `merge/merge.less` — the expected `.css` is the outlier, not ast/. The alpha
 corpus `merge.less`/`merge.css` (READ-ONLY, owner-maintained) needs the upstream
 correction to LAST-occurrence captured by THIS `merge.css`; once synced, the
 baseline entry promotes to `MATCH`. Task #36 wrongly flipped ast/ to FIRST to
-chase the outlier golden; reverted on `fix/merge-anchor-revert-to-last`.
+chase the outlier expected `.css`; reverted on `fix/merge-anchor-revert-to-last`.
 
 
 ## extend `all` sub-span `:is()` wrapping — NEW upstream fixture (task #30)
 
 `extend-subspan-all.less` / `extend-subspan-all.css` are a PROPOSED NEW `alpha`
-test-data fixture (not a correction of an existing golden). They demonstrate the
+test-data fixture (not a correction of an existing expected `.css`). They demonstrate the
 v5 extend-`all` sub-span behavior the `ast/` engine now implements (owner-DECIDED
 design; supersedes 4.x's positional string-replace):
 
@@ -105,7 +105,7 @@ design; supersedes 4.x's positional string-replace):
 > IN PLACE, with the surrounding combinator context preserved verbatim on BOTH
 > sides.
 
-The `.css` here is the `ast/` v5 render (the v5 oracle), captured via
+The `.css` here is the `ast/` v5 render (the v5 reference), captured via
 `bridgeToAst` + `serialize({ collapseNesting: true })` and locked in-repo by
 `packages/core/src/ast/parse-host/__tests__/extend-subspan-wrap.test.ts` (ast/)
 and `packages/jess/test/spine-production-ratchet.test.ts` (production spine,
@@ -133,7 +133,7 @@ div + .e.f > .g.h ~ .child {
 
 Adopting `extend-subspan-all.css` upstream requires implementing the compound-
 subset sub-span match + `:is()` wrap in less.js alpha (cases 1 and 2). Case 3 is
-already alpha-correct and is included so the file is a drop-in golden.
+already alpha-correct and is included so the file is a drop-in expected `.css`.
 
 ### NOTE — the task-#30 design examples transpose `&`/argument in their prose
 

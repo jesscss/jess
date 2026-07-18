@@ -12,7 +12,7 @@ End state: package graph strictly **parser → core** (acyclic).
 > **A4 IS THE ACTIVE NEXT ARC (owner, 2026-07-17), gated ONLY on the ast/ feature-gap
 > list.** A4 (retire the legacy `BuilderHost`, single-target the grammar) is no longer a
 > deferral — it is the arc that makes `ast/` the engine. Its execution plan, the empirical
-> feature-gap inventory it gates on, the render-flip design, and the differential oracle are
+> feature-gap inventory it gates on, the render-flip design, and the differential reference are
 > in **`AST-FEATURE-COMPLETENESS-AND-ENGINE-CUTOVER.md`**. Key reframe carried from there:
 > A4's *deletion* of the legacy `BuilderHost` cannot precede the **C1 render flip**
 > (`Compiler.render` still consumes legacy `tree/` nodes; the `less-compat` visitor wraps
@@ -20,13 +20,13 @@ End state: package graph strictly **parser → core** (acyclic).
 > flip render → then A4 deletion*, not delete-then-fix. The completeness bar is
 > `benchmark.less` byte-correct AND `bootstrap.less` rendering correctly.
 
-The whole cleanup wave is gated behind a **byte-identical benchmark oracle** so every
+The whole cleanup wave is gated behind a **byte-identical benchmark reference** so every
 structural cut can prove it changed no output. Order:
 
 1. ✅ **Benchmark number measured** (`fe7c3a789`): ast/ v5 = ~50 ms median — **owner: "AMAZING"; perf half of the bar is MET. PROTECT this floor, never regress it.** (4.2× faster than the legacy tree/ engine; strict Less.js-4.x parity was never the target.) `%()`→`string-format` + `!important` + namespace zero-arg mixin dispatch landed byte-clean.
 
-   > **⚠️ ORACLE REFRAME (owner, 2026-07-17):** the legacy `tree/` Compiler output is **NOT an oracle** and hasn't been for months — Jess was mid-transition, output shape never proven. Do NOT gate on "match the legacy output." The v5 output oracle is **less.js `alpha`** (`~/git/worktrees/less.js/`, READ-ONLY; :is() compaction etc.); ast/ self-consistency (before/after byte-identity) is the gate for pure refactors. See [[benchmark-oracle-buggy-ampersand-expansion]].
-2. 🔄 **Gap #3 dedup** (task #27, IN FLIGHT): reverse keep-last-by-(name+value) + overload carve-out (`isFromRestrictedMixinOutput`). Last real byte gap (~114 diff lines); collapses the residual to just the ~135 known-correct v5 divergences (trailing-comment indent, `:is()` compaction — DO NOT TOUCH) + ~68 declared-out-of-scope feature gaps (quoted-string interp loop, `+:` merge). Unblocks a stable oracle.
+   > **⚠️ REFERENCE REFRAME (owner, 2026-07-17):** the legacy `tree/` Compiler output is **NOT a reference** and hasn't been for months — Jess was mid-transition, output shape never proven. Do NOT gate on "match the legacy output." The v5 output reference is **less.js `alpha`** (`~/git/worktrees/less.js/`, READ-ONLY; :is() compaction etc.); ast/ self-consistency (before/after byte-identity) is the gate for pure refactors. See [[benchmark-reference-buggy-ampersand-expansion]].
+2. 🔄 **Gap #3 dedup** (task #27, IN FLIGHT): reverse keep-last-by-(name+value) + overload carve-out (`isFromRestrictedMixinOutput`). Last real byte gap (~114 diff lines); collapses the residual to just the ~135 known-correct v5 divergences (trailing-comment indent, `:is()` compaction — DO NOT TOUCH) + ~68 declared-out-of-scope feature gaps (quoted-string interp loop, `+:` merge). Unblocks a stable reference.
 3. 🔄 **Non-engine bloat** (task #25, IN FLIGHT, PARALLEL — outside ast/, no collision): jess-error 1000-line demolition + plugin.ts `any` swarm + context.ts/jess-index.ts god-objects.
 4. ⏳ **Tier-B grammar-structuring** (task #6, A0 below — decisions LOCKED: strict `lessInterp`, fix `@keyframes @{n}` inline). HARD PREREQUISITE for the reorg.
 5. ⏳ **`builders.ts` leaning** (§0.11) + **co-location reorg** (Phase A→B below): parse-host dissolves, parser imports leaf `@jesscss/core/ast`, families co-locate, monster files split.
@@ -40,8 +40,8 @@ structural cut can prove it changed no output. Order:
 
 - **No regex outside Parseman's `regex()` combinator** (§0.10). Gate: NO ad-hoc `.test/.exec/.match/new RegExp//…/`-literal in builder/action/host/resolve code. `regex()` in `grammar*.ts` is the ONE sanctioned home (may run a real RegExp — fine). Grep MUST be empty per phase.
 - **Builders are LEAN** — thin node-assembly over the grammar's already-structured children. Yardstick: if a builder tokenizes/splits/classifies-by-pattern, the grammar UNDER-structured — push work into the grammar, not the builder.
-- **Chevrotain (`less-parser/src/productions/*.ts`, `@ts-nocheck`) = COVERAGE + SEMANTICS oracle, NOT a 1:1 structural template.** It confirms which cases must work + what they mean; structure them in Parseman's cleanest CONTEXTUAL idiom (scannerless → finer than Chevrotain's lexer-forced coarseness). Don't copy its node shape; don't under-structure.
-- **Byte-identity gate every step** — parse→serialize output byte-for-byte vs bridge oracle across corpus (bridge/census/nested-census/atrule/extend/guard/import/value + whole-doc driver). Any non-identical byte = botched step; fix before advancing. **CAVEAT:** the whole-doc legacy oracle (`oracle-run.mjs`) is NOT ground truth — it has real `&`-expansion bugs on benchmark.less (doubles segments, drops ancestors; ast/ is correct — see the known-262 baseline residual). Gate = **no NEW diff beyond the categorized baseline** (intended-v5 divergences + declared-deferred features + legacy-oracle-bug lines where ast/ already wins), and validate contested selector lines against real Less 4.x (`~/git/worktrees/less.js/`, READ-ONLY), NOT `diff==0`. **The buggy `oracle-run.mjs` is superseded by the differential oracle `packages/core/src/ast/parse-host/__tests__/alpha-oracle-differential.test.ts` (ast/ vs less.js `alpha` v5 goldens, baseline-diff gate) — see `AST-FEATURE-COMPLETENESS-AND-ENGINE-CUTOVER.md` §4.**
+- **Chevrotain (`less-parser/src/productions/*.ts`, `@ts-nocheck`) = COVERAGE + SEMANTICS reference, NOT a 1:1 structural template.** It confirms which cases must work + what they mean; structure them in Parseman's cleanest CONTEXTUAL idiom (scannerless → finer than Chevrotain's lexer-forced coarseness). Don't copy its node shape; don't under-structure.
+- **Byte-identity gate every step** — parse→serialize output byte-for-byte vs bridge reference across corpus (bridge/census/nested-census/atrule/extend/guard/import/value + whole-doc driver). Any non-identical byte = botched step; fix before advancing. **CAVEAT:** the whole-doc legacy reference (`oracle-run.mjs`) is NOT ground truth — it has real `&`-expansion bugs on benchmark.less (doubles segments, drops ancestors; ast/ is correct — see the known-262 baseline residual). Gate = **no NEW diff beyond the categorized baseline** (intended-v5 divergences + declared-deferred features + legacy-reference-bug lines where ast/ already wins), and validate contested selector lines against real Less 4.x (`~/git/worktrees/less.js/`, READ-ONLY), NOT `diff==0`. **The buggy `oracle-run.mjs` is superseded by the differential reference `packages/core/src/ast/parse-host/__tests__/alpha-oracle-differential.test.ts` (ast/ vs less.js `alpha` v5 expected `.css`, baseline-diff gate) — see `AST-FEATURE-COMPLETENESS-AND-ENGINE-CUTOVER.md` §4.**
 - **No `as any`.** Proper guards/types.
 
 ## Phases (checklist)
@@ -84,7 +84,7 @@ Deletion below is the C2 half and cannot land before C1.
 - [ ] Delete `core/ast/parse-host/` entirely (dispatch-host, host-context, actions, import).
 - [ ] Retire legacy `BuilderHost`/`FunctionalParseHost` two-target seam; delete legacy-TREE construction in `builders.ts`.
 - [ ] Re-verify `git grep "parseman|css-parser|less-parser"` over `packages/core/src` → EMPTY.
-- **GATE:** differential oracle (`alpha-oracle-differential.test.ts`) no-regression + both
+- **GATE:** differential reference (`alpha-oracle-differential.test.ts`) no-regression + both
   target fixtures green as the PRODUCTION renderer; package graph acyclic (`parser → core`).
 - **Note:** A4 removes only legacy-tree portion; MAINTAINED `builders.ts` re-parse regexes (§0.11) survive and retire shape-by-shape via A0-family grammar-structuring — §0.10 exclusion lifts per shape, reaching empty at last offender.
 - **Coordination:** land dialect-re-base **W1** (name-keyed builder map, key≡rule-name) FIRST; the ast/ `ACTION_LIST` already honors that invariant. C1/C2 touch the build-host target, not `grammar.ts` rule composition, so they run parallel to W5–W7 provided C2 consumes the re-base's final grammar shape.
@@ -152,7 +152,7 @@ Deletion below is the C2 half and cannot land before C1.
 
 ## builders.ts leaning (§0.11) — worst offenders
 
-| Offender | Mode | Grammar change (Chevrotain `productions/` = case oracle → Parseman contextual `node()`) |
+| Offender | Mode | Grammar change (Chevrotain `productions/` = case reference → Parseman contextual `node()`) |
 |---|---|---|
 | Ns-accessor head re-split + path bifurcation (`400` `_buildNsAccessor`; `nsHead` regex vs `GluedParen`/`_tryParseNamespaceRef`) | 1 · bifurcation | ONE recursive `node()` for whole accessor (segments + call-args + `[index]` + `(lookup)`); drop regex head; unify the two paths; node is atomic folding-operand |
 | Dimension re-split ×2 (`943`, `2653` `/^(\d+)([a-zA-Z]+|%)?$/`) | 2 · under-structure | grammar emits `Dimension{value,unit}` (number child + unit child) |

@@ -66,7 +66,7 @@ change.
 > its source bytes; only computed values re-serialize) and INTENTIONALLY diverges
 > from the legacy engine, which canonicalizes un-operated dimensions via
 > `Dimension.serializeSyntax`. Where a legacy/adapter render or an alpha `.css`
-> golden encodes the canonicalized form for a non-canonical source, that is stale
+> file encodes the canonicalized form for a non-canonical source, that is stale
 > 4.x behavior — flag for owner review, do not match it.
 >
 > **tree2 native value path (foundation, this branch) already conforms.** tree2's
@@ -159,7 +159,7 @@ A `switch (tag)` — no regex: `LIT_DIMENSION`→parse→`new Dimension`; `LIT_N
   a scalar, call `materializeLiteral(value, this.valueTag)`; per-segment,
   `materializeLiteral(item, this.valueTypes?.[i])`. **Strict upgrade** — today those paths
   produce `Keyword` even for `1px`, so a tagged `LIT_DIMENSION` now correctly yields a
-  Dimension for var-binding/iteration (latent-bug fix; validate vs goldens).
+  Dimension for var-binding/iteration (latent-bug fix; validate vs the expected `.css`).
 
 **Projection-not-mutation (must hold):** `materializeLiteral` returns a **fresh** node to
 the operated/compared slot; the result is **never stored back** into
@@ -230,7 +230,7 @@ verbatim string (simpler, still node-free until operated).
   **coincide → byte-identical**. The **operated** path is unchanged.
 - **EMPIRICAL (full all-less sweep, 2026-07-12):** the tested corpus is remarkably clean.
   **Exactly ONE** unambiguous un-operated *declaration-value* divergence:
-  `at-rules/at-rules.less:29` `1.0`→golden `1`. **Zero** divergences in the uppercase-unit,
+  `at-rules/at-rules.less:29` `1.0`→expected `1`. **Zero** divergences in the uppercase-unit,
   sci-notation, `+`-signed, `05`, or `5.` classes anywhere. Two harder cases sit in
   **non-declaration-value contexts** — a mixin-arg list member (`.3s`) and a `rotate()` Call
   arg (`-0.0000000001deg`→`0deg`, the lone value-changing one) — and BOTH are **out of scope
@@ -245,7 +245,7 @@ verbatim string (simpler, still node-free until operated).
 2. **Dimension first** (+ Num, it's a `Dimension`). Producer emits `(image,
    LIT_DIMENSION)`; Declaration gains `valueTag`/`valueTypes`; coercion sites materialize.
    Gate on all-less byte-identity — **expect only the narrow §6 divergences; each is an
-   owner adjudication** (verbatim is design intent, but a golden may encode today's
+   owner adjudication** (verbatim is design intent, but an expected `.css` may encode today's
    canonicalization).
 3. **Color** — byte-identical, **no expected divergences** (already verbatim). Lowest-risk
    despite being second.
@@ -261,7 +261,7 @@ Each step is its own same-worktree git-toggle A/B (no cross-worktree bench bias)
 ## 8. Test plan
 
 - **Byte-identical on all-less:** full-workspace build (`pnpm -r build` — partial build =
-  bogus counts), run all-less per step, triage step-2 goldens into
+  bogus counts), run all-less per step, triage step-2 expected `.css` into
   {coincidence-confirmed, verbatim-is-correct, owner-call}.
 - **Value-heavy fixture:** literal-dense, arithmetic-light (the re-profile workload —
   `benchmark.less` is extend-dominated and won't surface value-node cost). Assert
@@ -285,9 +285,9 @@ Each step is its own same-worktree git-toggle A/B (no cross-worktree bench bias)
    (matches v5 source-preservation). Full all-less sweep (2026-07-12) found the owner-decision
    surface on the tested corpus is **a single cosmetic case** — `at-rules.less:29` `1.0`→`1`
    — provided §2's Declaration-deferred-only scope holds (which pushes the mixin-arg and
-   `rotate()` round-to-8 cases out of scope). Confirm that one golden, and confirm §2's scope
+   `rotate()` round-to-8 cases out of scope). Confirm that one expected `.css`, and confirm §2's scope
    restriction is honored so the value-changing `round(,8)` collapse never rides the verbatim
-   path. (`.css` are v5 goldens; don't anchor to the dying eager-node behavior.)
+   path. (`.css` are v5 expected output; don't anchor to the dying eager-node behavior.)
 3. **(Follow-on)** Extend `valueTypes` to mixed `(Node|string)[]` arrays — low value,
    pure-literal decls dominate; defer unless re-profile shows mixed-array sniff hot.
 4. **(Build detail)** Confirm the tag enum crosses core→parser without `const enum`

@@ -1,7 +1,7 @@
-# THE ORACLE (fixed, non-negotiable)
+# The Reference (fixed, non-negotiable)
 
 The expected output for every tree2 byte-identity check is the **less.js `alpha`
-branch, TOP-LEVEL `.css` golden**, read READ-ONLY via `git show`:
+branch, TOP-LEVEL expected `.css`**, read READ-ONLY via `git show`:
 
 ```
 git -C ~/git/oss/less.js show alpha:packages/test-data/tests-unit/<fixture>/<fixture>.css
@@ -29,13 +29,13 @@ Both take a **bare fixture name** and REFUSE any path containing `legacy/`,
 
 ## Pitfalls that repeatedly misled agents (do NOT do these)
 
-1. **`legacy/*.css` is NOT the oracle.** Those are the Less-4.x EXPANDED outputs
+1. **`legacy/*.css` is NOT the reference.** Those are the Less-4.x EXPANDED outputs
    (e.g. `.error, .badError` comma lists instead of `:is(.error, .badError)`).
    The helper throws if it sees a `legacy/` path.
 2. **`graduate-v5`, `alpha-release-port`, or any OTHER less.js worktree/branch is
-   NOT the oracle.** Only `alpha` in `~/git/oss/less.js`.
-3. **`upstream/alpha` is NOT the oracle.** less.js's own upstream ships EXPANDED
-   (non-`:is()`) extend goldens; Jess v5 `:is()`-compacts. Use the local `alpha`.
+   NOT the reference.** Only `alpha` in `~/git/oss/less.js`.
+3. **`upstream/alpha` is NOT the reference.** less.js's own upstream ships EXPANDED
+   (non-`:is()`) extend expected `.css`; Jess v5 `:is()`-compacts. Use the local `alpha`.
 4. **`renderRealOracle` / `renderRealOracleNested` are NOT a source of expected
    `.css`.** The legacy Jess-v5 engine has KNOWN extend bugs (nested-extender bare
    fragment; exact-extend leaking into nested children). It may still be used as a

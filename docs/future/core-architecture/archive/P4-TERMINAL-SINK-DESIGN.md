@@ -13,7 +13,7 @@ body reuse). Companion to `CUTOVER-CHECKLIST.md` P3-precursor (MIXINS) + P3 (EXT
 - **all-less corpus:** `packages/jess` → `TEST=true npx vitest run test/less/all-less.test.ts` →
   **91 passed / 2 failed (93)**. The 2 failures are PRE-EXISTING, unrelated to this rework:
   `extend-selector` (a `:is(...)` whitespace/formatting quirk — string-equal-but-`Object.is`-false) and
-  `import-remote` (network fetch, empty output offline). This is the byte-identity oracle; equal-or-better
+  `import-remote` (network fetch, empty output offline). This is the byte-identity reference; equal-or-better
   after every fold.
 
 ## 1. Why these three converge on ONE thing — the CALLABLE TERMINAL

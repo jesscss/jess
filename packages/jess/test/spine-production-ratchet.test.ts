@@ -3223,7 +3223,7 @@ describe('spine PRODUCTION-path ratchet (P2 wire-in)', () => {
     // (`.prose p` bare `p`, case 1; the `.prose h1`/`.prose h2` self-extend drop, case 3). The
     // Less-4.x-CORRECT golden for benchmark's extend shapes — which the spine now produces once it
     // FOLDS — is asserted spine-only in the `BENCHMARK EXTEND GOLDEN` block below. See
-    // docs/future/core-architecture/BENCHMARK-EXTEND-GOLDEN-EVIDENCE.md.
+    // docs/future/core-architecture/BENCHMARK-EXTEND-EVIDENCE.md.
     expect(spineCss).toBe(evalCss);
     // 4) The hoisted charset survived (the charset-on-abort regression guard).
     expect(spineCss.startsWith('@charset "utf-8";\n')).toBe(true);
@@ -3238,7 +3238,7 @@ describe('spine PRODUCTION-path ratchet (P2 wire-in)', () => {
  * files, so there is no committed golden to defend, and the full benchmark aborts to eval (see the
  * abort-lock test above). These tests re-anchor the benchmark's extend contract to the CORRECT
  * output derived from real Less 4.6.7 (adjudicated in
- * docs/future/core-architecture/BENCHMARK-EXTEND-GOLDEN-EVIDENCE.md), rendered SPINE-ONLY
+ * docs/future/core-architecture/BENCHMARK-EXTEND-EVIDENCE.md), rendered SPINE-ONLY
  * (production path, no eval two-walk — `Rules.derive` UNCALLED). The inputs are the report's
  * faithful reductions of benchmark.less's extend sections (~4045-4069, ~4369-4388): they FOLD on
  * the spine and the spine now produces the Less-4.x-correct result. This replaces defending the

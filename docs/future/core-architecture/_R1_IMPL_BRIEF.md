@@ -18,21 +18,21 @@ is GREEN at baseline (163 passed).
   (`extendByIndexOwn` and friends) — read them as a SPEC, write tree2-native code, do NOT import them.
 - clone/inherit/withComponents op-counts must stay structurally ZERO (tree2 never clones nodes).
 
-## THE ORACLE (decided — do not re-litigate; flag divergences for owner)
+## THE REFERENCE (decided — do not re-litigate; flag divergences for owner)
 Every prior tree2 rung gates byte-identity against `renderRealOracle` /
 `renderRealOracleNested` (`tree2-frontend/oracle.ts`) — the Jess v5 legacy engine rendered on the
-SAME `.less` tree2 bridges. USE THAT as the R1 byte-identity oracle too (flatten = renderRealOracle,
+SAME `.less` tree2 bridges. USE THAT as the R1 byte-identity reference too (flatten = renderRealOracle,
 nested = renderRealOracleNested). It is self-consistent and equals the owner-maintained graduate-v5
-`.css` goldens for matching inputs.
+`.css` expected output for matching inputs.
 
-The Jess v5 engine uses `:is()`-COMPACTED extend cascades (NOT expansion). Concrete captured oracle
+The Jess v5 engine uses `:is()`-COMPACTED extend cascades (NOT expansion). Concrete captured reference
 outputs for all 7 fixtures live in
 `packages/core/src/tree2-frontend/__tests__/_r1_oracle/*.{flat,nested}.css` (rendered via
 renderRealOracle/Nested from the alpha-release-port `.less` inputs). These are your concrete targets.
 
-KNOWN oracle caveats — FLAG for owner, do NOT silently match if it forces ugly hacks:
+KNOWN reference caveats — FLAG for owner, do NOT silently match if it forces ugly hacks:
 1. less.js `upstream/alpha` (checkout `/Users/matthew/git/worktrees/less.js/alpha-release-port`,
-   verified `[upstream/alpha]`) ships EXPANDED extend goldens (no `:is()`), e.g.
+   verified `[upstream/alpha]`) ships EXPANDED extend expected output (no `:is()`), e.g.
    `.error.intrusion, .badError.intrusion`. The Jess v5 engine `:is()`-compacts
    (`:is(.error, .badError).intrusion`). This is an intended-v5-vs-less.js divergence — owner item.
 2. renderRealOracle has KNOWN legacy extend bugs (roadmap §4 R-extend): a nested extender can render
@@ -40,14 +40,14 @@ KNOWN oracle caveats — FLAG for owner, do NOT silently match if it forces ugly
    renders `.footer-nav` (bare) not `.footer .footer-nav`. Where tree2 hits such a case, matching the
    bug byte-for-byte is acceptable for the ratchet BUT must be listed as a divergence-from-intent.
 
-## Concrete extend SEMANTICS (from the captured oracle — study `_r1_oracle/*.css`)
+## Concrete extend SEMANTICS (from the captured reference — study `_r1_oracle/*.css`)
 Parser representation (verified): a `:extend()` (attached `.a:extend(...)` OR body `&:extend(...)`)
 appears as an `Extend` node that is `ruleset.rules[0]` of the SUBJECT ruleset. Fields:
 - `.target` — the FIND selector. A string (`".error"`) or a SelectorList node for `:extend(.aa,.bb)`.
 - `.flag` — `0` ⟺ `all` (partial=true); `1` ⟺ exact (partial=false). (Verified by probe.)
 The SUBJECT (the thing appended / substituted-in) is the ruleset's OWN selector list.
 
-Output shapes (byte-exact, from oracle):
+Output shapes (byte-exact, from the reference):
 - EXACT (flag=1): the extender selector is APPENDED as a whole new comma-branch to every rule whose
   full composed complex EQUALS the target. `.a`→`.a, .effected`. Chaining `.b:extend(.a)`,
   `.c:extend(.b)` → `.a, .b, .c`. Multi-target `:extend(.aa,.bb)` (non-partial) fans per branch.
@@ -106,14 +106,14 @@ Output shapes (byte-exact, from oracle):
   the previously-passing 33 fixtures must STAY passing in both modes; boundary guard green; op-counts
   clone/inherit ZERO on an extend-heavy fixture (extend-nest).
 - Delete the `_r1_oracle/` helper dir before final commit (it was only a reference capture) UNLESS
-  you wire the tests to read it; prefer computing the oracle live via renderRealOracle.
+  you wire the tests to read it; prefer computing the reference live via renderRealOracle.
 
 ## Files to read first
 - `packages/core/src/tree2/serialize.ts` (compose/parentToken/flatten + emitNested* + composeStats)
 - `packages/core/src/tree2/nodes.ts` (Complex/Compound/Simple/canonical; add fields here)
 - `packages/core/src/tree2-frontend/bridge.ts` (toRuleset/toSelectorList; add extend extraction)
 - `packages/core/src/tree/extend/{extend-index.ts,solve.ts,plan.ts,emit.ts,pipeline.ts}` (SPEC only)
-- oracle captures: `packages/core/src/tree2-frontend/__tests__/_r1_oracle/*.css`
+- reference captures: `packages/core/src/tree2-frontend/__tests__/_r1_oracle/*.css`
 
 ## Report back
 Per-fixture byte-identity (flat + nested) vs renderRealOracle; the concrete `:is()` shapes handled;
@@ -122,12 +122,12 @@ divergences above (alpha-expand vs `:is()`; legacy nested-extender bare-fragment
 finish, commit progress and state EXACTLY where you are.
 
 # ============================================================
-# FINALIZATION — OWNER-SETTLED ORACLE (supersedes any earlier oracle wording)
+# FINALIZATION — OWNER-SETTLED REFERENCE (supersedes any earlier reference wording)
 # ============================================================
 
-The owner has SETTLED the extend oracle definitively and LIFTED the hold. Finalize to this:
+The owner has SETTLED the extend reference definitively and LIFTED the hold. Finalize to this:
 
-## Compaction rule (DERIVED from goldens — document precisely in the R1 spec)
+## Compaction rule (DERIVED from the expected `.css` — document precisely in the R1 spec)
 - Extend ALWAYS conceptually produces `:is(<original matched span>, <extender composed forms…>)`
   at the matched location. COMPACT `:is()` MAXIMALLY — even multi-compound / descendant extenders
   go INSIDE the `:is()` (e.g. `:is(.foo, .ext1 .ext2, .ext3, .ext4) .bar`; chaining nests:
@@ -143,9 +143,9 @@ The owner has SETTLED the extend oracle definitively and LIFTED the hold. Finali
   .badError).intrusion`, `.intrusion :is(.error, .badError)`, child-vs-extended-parent
   `:is(.aa, .cc) .dd`.
 
-## FIX goldens, don't just flag (owner PRE-AUTHORIZED editing JESS goldens; NOT less.js alpha's)
+## FIX the expected `.css`, don't just flag (owner PRE-AUTHORIZED editing JESS expected output; NOT less.js alpha's)
 Two renderRealOracle BUGS the intended v5 output must NOT reproduce — tree2 produces CORRECT output,
-and any Jess `.css` golden that encodes the bug (or an expanded-where-compactable shape) gets UPDATED
+and any Jess `.css` expected output that encodes the bug (or an expanded-where-compactable shape) gets UPDATED
 to tree2's correct+compact bytes:
   BUG 1 — EXACT extend leaking into nested children. renderRealOracle emits `:is(.aa, .cc) .dd` for
     `.cc:extend(.aa)` (EXACT, flag=1) with `.aa { .dd {} }`. WRONG: exact matches ONLY the whole
@@ -153,22 +153,22 @@ to tree2's correct+compact bytes:
   BUG 2 — nested-extender BARE FRAGMENT. renderRealOracle emits bare `.footer-nav` for
     `.footer .footer-nav:extend(.header .header-nav all)`. WRONG: contribute the extender's COMPOSED
     form `.footer .footer-nav` (whole-branch → `.header .header-nav, .footer .footer-nav`).
-Also: graduate-v5's "nested" extend `.css` goldens are actually FLATTENED `:is()` (NOT truly nested,
+Also: graduate-v5's "nested" extend `.css` expected output are actually FLATTENED `:is()` (NOT truly nested,
 e.g. `:is(.sidebar,…) .box` instead of a nested `.box` block) — regenerate them to the correct
 nested-mode output. Report a DIFF SUMMARY (which `.css` changed, what, and the derivation
 justification) — no per-file approval needed.
-JESS goldens live in the graduate-v5 less.js worktree
+JESS expected `.css` live in the graduate-v5 less.js worktree
 (`/Users/matthew/git/worktrees/less.js/graduate-v5/packages/test-data/tests-unit/extend*`): top-level
 `.css` = v5 (correct+compact, nested for nested mode), `legacy/*.css` = the flattened form. Do NOT
-edit `alpha-release-port` / `upstream/alpha` goldens (less.js's own expanded behavior).
+edit `alpha-release-port` / `upstream/alpha` expected output (less.js's own expanded behavior).
 
 ## Deferred (UnsupportedShape, fail-loud): interpolated-target extend (`[data=@{x}]`), reference extend.
 
 ## Land steps (hold lifted): once tree2 is CORRECT+COMPACT green in BOTH modes, disagreeing Jess
-goldens fixed, full tree2 suite + boundary guard green, clone/inherit/withComponents ZERO:
+expected output fixed, full tree2 suite + boundary guard green, clone/inherit/withComponents ZERO:
   1. Write the R1 spec section in `TREE2-DESIGN-SPEC.md` (PLAN/SOLVE/EMIT algorithm, the concrete
      `:is()` shapes, the derived compaction/expand-exception rule, both-collapse-mode projection,
-     the leading-combinator model change, the golden-fix list, the deferred cases).
+     the leading-combinator model change, the expected-output-fix list, the deferred cases).
   2. Append a handoff experiment-log entry in `AST-ARENA-EXPERIMENT-HANDOFF.md`.
   3. Delete this brief file and the `_r1_oracle/` capture dir.
   4. Commit to `experiment/tree2-r1-extend-20260715`, push, then FAST-FORWARD
@@ -176,4 +176,4 @@ goldens fixed, full tree2 suite + boundary guard green, clone/inherit/withCompon
      experiment/tree2-r1-extend-20260715:experiment/tree2-cleanroom-20260715 --no-verify` or local FF
      + push). Do NOT merge to dev.
   5. Report: new head sha, per-fixture byte-identity (both modes), the derived compaction rule, the
-     golden DIFF SUMMARY, race/op-counts.
+     expected-output DIFF SUMMARY, race/op-counts.

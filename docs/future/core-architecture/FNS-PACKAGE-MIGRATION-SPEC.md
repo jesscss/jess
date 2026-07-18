@@ -29,7 +29,7 @@ the migration plan keys on it. Verified file-by-file (paths absolute in the repo
 | Fn bodies | Live in **`core/src/ast/functions/**`** (the `native/`→`functions/` rename has landed; `core/src/ast/native/` no longer exists). **68 fn modules** (+ 4 private helpers, `index.ts`, `types.ts`, `README.md`). |
 | Registration seam | **`FnRegistry` + `createFnRegistry` exist** in `core/src/ast/value-dispatch.ts`. The seam is **caller-populated** (`registry.registerAll(FN_LIST)`) — no module-load static `Map`. The built-in list is **`FN_LIST`** in `core/src/ast/functions/index.ts` (68 entries). Note: `evaluator.ts` currently hard-imports `FN_LIST` and self-registers (the "in-core shim" of §4 S1 already exists); a later stage moves that registration to the consumer. |
 | AST-v2 evaluator | **`buildEvaluator()`** in `core/src/ast/evaluator.ts` (there is **no** `native-evaluator.ts` / `buildNativeEvaluator`). It is dependency-**injected** into the render path (`serialize.ts` / `composeStats` take an optional `evaluator?: ValueEvaluator`), not hard-wired. |
-| Adapter | **`buildAdapterEvaluator`** in `core/src/ast/parse-host/value-eval.ts` (transitional differential oracle; still holds the only runtime core→fns import). |
+| Adapter | **`buildAdapterEvaluator`** in `core/src/ast/parse-host/value-eval.ts` (transitional differential reference; still holds the only runtime core→fns import). |
 | Fn types | `Fn`, `FnSpec`, `ParamSpec`, `FnCtx`, `Kind` in `core/src/ast/functions/types.ts` (there is **no** `NativeFn` / `NativeCtx`). |
 | Less remaining | Only **11** Less fns are unconverted (see §1). The "~50" figure counts the unconverted **Sass** set, a **non-goal** (memory `perf-gap-is-parser-and-allocation`: "SCSS = NON-GOAL"). |
 
@@ -46,10 +46,10 @@ landed base):
 2. **Core has an undeclared reverse edge into fns.** `core/src/ast/parse-host/value-eval.ts`
    (line 28) does `import * as lessFunctions from '@jesscss/fns'` — but
    `packages/core/package.json` does **not** list `@jesscss/fns` as a dependency (only
-   a test oracle, `parse-host/__tests__/oracle.ts`, shares that import). This is a
+   a test reference, `parse-host/__tests__/oracle.ts`, shares that import). This is a
    phantom/undeclared dependency that only works because pnpm hoists the workspace. It
    creates a **latent core ⇄ fns cycle today**, tolerated only because that file (the
-   adapter / differential oracle) is transitional and slated for deletion
+   adapter / differential reference) is transitional and slated for deletion
    (retire-legacy-value-adapter, task #10). **Verified**: it is the *only* non-comment,
    non-test `@jesscss/fns` import anywhere under `core/src`.
 
@@ -330,9 +330,9 @@ once, already in final shape. So:
 | **S1** | ✅ **Already landed.** `FnRegistry` + `createFnRegistry` exist in `ast/value-dispatch.ts`; `buildEvaluator()` in `ast/evaluator.ts` builds a registry and `registerAll(FN_LIST)`. What remains for the move: change `buildEvaluator()` → `buildEvaluator(registry)` so the registration is injected rather than self-imported. **Pure seam refactor, fns still in core.** | `native-value-differential.test.ts` byte-identical (native ≡ adapter); all `*-byte-identity.test.ts` green |
 | **S2** | Add `@jesscss/core/value` export sub-path (the narrow substrate surface from §3b). No behaviour change. | typecheck; substrate is `import type` where possible |
 | **S3** | **Relocate** the 68 bodies + their private helpers (`color-helper`, `math-helper`, `list-helper`, `color-ctor-helper`) from `core/ast/functions/` into `packages/fns/src/less/` (replacing the legacy twins), rewriting their imports to `@jesscss/core/value`. Export `builtinLessFns` (successor to `FN_LIST`) from `@jesscss/fns`. | `native-value-differential.test.ts` **moves to fns or imports the moved set**, still byte-identical; per-fn tests in `fns/src/less/__tests__` green |
-| **S4** | Switch the consumer: `jess-plugin-less` `_registerFunctions` builds a `createFnRegistry().registerAll(builtinLessFns)` and threads the registry into the AST-v2 render path (replacing legacy `setFunctionBinding` for the fns the AST path now owns). | plugin + `jess/test/less/**` byte-identical to goldens |
+| **S4** | Switch the consumer: `jess-plugin-less` `_registerFunctions` builds a `createFnRegistry().registerAll(builtinLessFns)` and threads the registry into the AST-v2 render path (replacing legacy `setFunctionBinding` for the fns the AST path now owns). | plugin + `jess/test/less/**` byte-identical to expected output |
 | **S5** | Delete the in-core `FN_LIST` hard-import (S1), the `functions/index.ts` list, and — jointly with task #10 — the adapter `parse-host/value-eval.ts` (`buildAdapterEvaluator`), removing the phantom core → fns import. | full workspace build (`pnpm -r build`); all-less suite non-regressing |
-| **S6** | Convert the **11** remaining Less fns (`data-uri`, `iif`, `each`, `isdefined`, `isruleset`, `logical`, `get-unit`, `image-*`, `svg-gradient`) **in `packages/fns` directly**, extending `FnCtx` with the Tier-C IO/ruleset capabilities as each wave needs (per `functions/types.ts` deferral note). | new differential cases per fn; adapter-if-still-present or Less-4.x oracle |
+| **S6** | Convert the **11** remaining Less fns (`data-uri`, `iif`, `each`, `isdefined`, `isruleset`, `logical`, `get-unit`, `image-*`, `svg-gradient`) **in `packages/fns` directly**, extending `FnCtx` with the Tier-C IO/ruleset capabilities as each wave needs (per `functions/types.ts` deferral note). | new differential cases per fn; adapter-if-still-present or Less-4.x reference |
 
 Each step is independently landable and byte-identity-gated; no step requires two
 packages to change in the same commit except S4 (consumer switch), which is the
@@ -364,7 +364,7 @@ Importers that break or must change, grouped by edge:
   test helper (`makeBuiltinRegistry()`) absorbs the churn.
 
 **C. The adapter edge (deleted with task #10):**
-- `core/src/ast/parse-host/value-eval.ts` — the phantom `import * as lessFunctions from '@jesscss/fns'` (line 28) feeding `buildAdapterEvaluator`; plus its glue. Deleting this removes the only core → fns runtime import. (The test oracle `parse-host/__tests__/oracle.ts` shares that import and goes with the differential suite.)
+- `core/src/ast/parse-host/value-eval.ts` — the phantom `import * as lessFunctions from '@jesscss/fns'` (line 28) feeding `buildAdapterEvaluator`; plus its glue. Deleting this removes the only core → fns runtime import. (The test reference `parse-host/__tests__/oracle.ts` shares that import and goes with the differential suite.)
 
 **D. Consumer registration:**
 - `jess-plugin-less/src/index.ts` `_registerFunctions` — switches from legacy `setFunctionBinding(new JsFunction(...))` to `createFnRegistry().registerAll(builtinLessFns)` for the AST-v2 path.
@@ -430,17 +430,17 @@ Importers that break or must change, grouped by edge:
 1. **A body's private helper is subtly different after the move** (e.g. rounding
    epsilon in `math-helper`, hsl-carry in `color-helper`). **Avoided:** helpers
    **move verbatim** with the bodies (relocation, not reimplementation); the
-   `native-value-differential.test.ts` corpus (adapter = oracle) gates every step,
+   `native-value-differential.test.ts` corpus (adapter = reference) gates every step,
    and per-fn `fns/src/less/__tests__` gate the fn semantics.
 2. **The node-model flip (`kind`→`type`) is applied to the moved copy but not the
-   oracle, or vice versa.** Divergent discriminants → silent kind-mismatch → wrong
+   reference, or vice versa.** Divergent discriminants → silent kind-mismatch → wrong
    branch → wrong bytes. **Avoided by §4 ordering:** the flip lands in **core, before
    the move (S0)**, so there is exactly one copy to flip; the move (S3) carries the
    already-flipped bodies.
 3. **The consumer registers a *different* set than the differential test asserts**
    (plugin registers legacy `setFunctionBinding` fns for names the AST path also
    claims, so a name resolves to the wrong impl). **Avoided:** S4 switches the
-   plugin's AST-v2 path to the registry as a unit; `jess/test/less/**` goldens are
+   plugin's AST-v2 path to the registry as a unit; `jess/test/less/**` expected output is
    the backstop, and the transition keeps `builtinLessFns` additive so no name is
    served by two impls at once. If a name is genuinely ambiguous (a converted fn vs
    a still-legacy Tier-C fn), the registry wins for converted names and falls
@@ -466,7 +466,7 @@ Importers that break or must change, grouped by edge:
 ## 8. Execution Plan (Wave 2 — re-surveyed against `origin/dev` @ `2a898e9db`)
 
 Concrete, staged, byte-identity-gated. Written so an executor cannot improvise the
-oracle handling. **Read §8.0 first — three landed facts change the sequence vs §4.**
+reference handling. **Read §8.0 first — three landed facts change the sequence vs §4.**
 
 ### 8.0 Landed-state deltas since §0/§4 (verified on `2a898e9db`)
 
@@ -500,12 +500,12 @@ oracle handling. **Read §8.0 first — three landed facts change the sequence v
    export instead would drag the entire `ast/` engine onto `@jesscss/core`'s public
    surface — rejected.)
 
-### 8.1 The oracle knot, resolved (the crux — do not improvise)
+### 8.1 The reference knot, resolved (the crux — do not improvise)
 
 `native-value-differential.test.ts` runs the corpus **twice** — once with
 `buildEvaluator()` (built-in) and once with `buildAdapterEvaluator()` (adapter) — and
 asserts `builtinCss === adapterCss` (test lines 45–46, 301). **The adapter IS the
-oracle.** Deleting it (task #10) with no successor leaves the built-in fn results
+reference.** Deleting it (task #10) with no successor leaves the built-in fn results
 ungated. Successor = a **frozen static fixture of the differential outputs captured
 while the adapter still exists**. Hard rule: **the fixture-freeze stage (B) MUST land,
 and gate the built-in path, before the adapter-deletion stage (E) is even eligible.**
@@ -516,16 +516,16 @@ No stage deletes `buildAdapterEvaluator` until Stage B's fixture is the active g
 | Stage | What | Destructive? | Gate | Rollback |
 | --- | --- | --- | --- | --- |
 | **A. Registry injection** | Change `buildEvaluator()` → `buildEvaluator(registry: FnRegistry)`; drop the `FN_LIST` + `createFnRegistry` self-import from `evaluator.ts`. Add `makeBuiltinRegistry()` (co-located, e.g. `functions/index.ts`) = `createFnRegistry().registerAll(FN_LIST)`. Update the **18** `buildEvaluator()` call sites → `buildEvaluator(makeBuiltinRegistry())` (list in §8.5). **In-core, fns still in core.** | No | Full `*-byte-identity` + `census` + `native-value-differential` (built-in vs adapter, unchanged) green | Revert one commit (`evaluator.ts` + 18 sites) |
-| **B. Freeze the oracle** 🔒 | While `buildAdapterEvaluator` still exists and differential is green, capture a static fixture `parse-host/__tests__/__fixtures__/native-value-differential.snap.json` = every corpus case → its emitted bytes. Convert the differential test to assert **built-in bytes === frozen fixture** (keep the adapter arm as a *third* triple-check for this one commit, then it's redundant). | No | Fixture matches **both** built-in and adapter today (triple-checked in the freezing commit) | Delete fixture + revert test file |
+| **B. Freeze the reference** 🔒 | While `buildAdapterEvaluator` still exists and differential is green, capture a static fixture `parse-host/__tests__/__fixtures__/native-value-differential.snap.json` = every corpus case → its emitted bytes. Convert the differential test to assert **built-in bytes === frozen fixture** (keep the adapter arm as a *third* triple-check for this one commit, then it's redundant). | No | Fixture matches **both** built-in and adapter today (triple-checked in the freezing commit) | Delete fixture + revert test file |
 | **C. `@jesscss/core/value` subpath** 🔴 **CHECKPOINT** | Add the narrow build entry (exact diff in §8.3). Additive: `.` export unchanged. New `src/value.ts` barrel; second tsdown entry; new `./value` exports block. No behaviour change. | 🔴 build-config | `pnpm --filter @jesscss/core build` emits `lib/value.js`/`.cjs`/`.d.ts`; typecheck; grep-gate: nothing reachable from `src/value.ts` imports `@jesscss/fns` | Revert config + delete `src/value.ts` |
-| **D. Relocate the 68 + helpers** 🔴 | Move the 68 bodies + 4 private helpers (`color-helper`, `color-ctor-helper`, `math-helper`, `list-helper`) from `core/ast/functions/` to `packages/fns/src/less/` (replacing legacy twins); rewrite their core imports to `@jesscss/core/value`. Export `builtinLessFns` (successor to `FN_LIST`) from `@jesscss/fns`. Point `makeBuiltinRegistry()` / test helper at `builtinLessFns`. Delete `core/ast/functions/*` bodies + `functions/index.ts`. | 🔴 deletes core fn bodies (git-reversible; **oracle = Stage B fixture**) | Stage B fixture green (built-in path now sourced from fns) + per-fn `fns/src/less/__tests__` + all `*-byte-identity` | Revert relocation commit (bodies restored in `functions/`) |
-| **E. Delete the adapter** 🔴 **CHECKPOINT** | Delete `parse-host/value-eval.ts` (`buildAdapterEvaluator`) + `parse-host/__tests__/oracle.ts`; re-anchor/delete the **7** adapter-oracle tests (§8.5). Removes the phantom `core → @jesscss/fns` import. | 🔴 removes the oracle (Stage B fixture is now sole gate) | Stage B fixture green; **grep-gate: zero `@jesscss/fns` in `core/src`**; `pnpm -r build`; all-less non-regressing | Revert deletion commit |
-| **F. Convert the 11 Tier-C fns** | In `packages/fns` directly: `data-uri`, `each`, `get-unit`, `iif`, `image-height/size/width`, `isdefined`, `isruleset`, `logical`, `svg-gradient`. Extend `FnCtx` with IO/ruleset capability per wave (per `functions/types.ts` deferral note). | No | New differential/golden case per fn; Less-4.x oracle | Per-fn revert |
+| **D. Relocate the 68 + helpers** 🔴 | Move the 68 bodies + 4 private helpers (`color-helper`, `color-ctor-helper`, `math-helper`, `list-helper`) from `core/ast/functions/` to `packages/fns/src/less/` (replacing legacy twins); rewrite their core imports to `@jesscss/core/value`. Export `builtinLessFns` (successor to `FN_LIST`) from `@jesscss/fns`. Point `makeBuiltinRegistry()` / test helper at `builtinLessFns`. Delete `core/ast/functions/*` bodies + `functions/index.ts`. | 🔴 deletes core fn bodies (git-reversible; **reference = Stage B fixture**) | Stage B fixture green (built-in path now sourced from fns) + per-fn `fns/src/less/__tests__` + all `*-byte-identity` | Revert relocation commit (bodies restored in `functions/`) |
+| **E. Delete the adapter** 🔴 **CHECKPOINT** | Delete `parse-host/value-eval.ts` (`buildAdapterEvaluator`) + `parse-host/__tests__/oracle.ts`; re-anchor/delete the **7** adapter-reference tests (§8.5). Removes the phantom `core → @jesscss/fns` import. | 🔴 removes the reference (Stage B fixture is now sole gate) | Stage B fixture green; **grep-gate: zero `@jesscss/fns` in `core/src`**; `pnpm -r build`; all-less non-regressing | Revert deletion commit |
+| **F. Convert the 11 Tier-C fns** | In `packages/fns` directly: `data-uri`, `each`, `get-unit`, `iif`, `image-height/size/width`, `isdefined`, `isruleset`, `logical`, `svg-gradient`. Extend `FnCtx` with IO/ruleset capability per wave (per `functions/types.ts` deferral note). | No | New differential/expected-output case per fn; Less-4.x reference | Per-fn revert |
 
 **Checkpoint-before-destructive falls at the boundary before Stage C and before
 Stage E.** A→B are non-destructive and land freely. **C is the first checkpoint**
 (build-config; additive/reversible but touches the build). **E is the second, harder
-checkpoint** (irreversible-in-spirit oracle removal — only eligible once B's fixture
+checkpoint** (irreversible-in-spirit reference removal — only eligible once B's fixture
 gates the built-in path and D has made the built-in path the sole fn path). D deletes
 core bodies but is git-reversible and fixture-gated, so it rides between the two
 checkpoints rather than needing its own.

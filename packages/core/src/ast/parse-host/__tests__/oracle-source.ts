@@ -19,7 +19,7 @@
  * The less.js worktree is treated as READ-ONLY: this helper never checks out,
  * switches, or modifies it — `git show <ref>:<path>` reads without touching HEAD.
  *
- * See `docs/future/core-architecture/ORACLE.md` for the full rationale.
+ * See `docs/future/core-architecture/REFERENCE.md` for the full rationale.
  */
 import { execFileSync } from 'child_process';
 import * as path from 'path';
