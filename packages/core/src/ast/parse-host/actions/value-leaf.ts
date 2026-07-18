@@ -112,10 +112,17 @@ function unquoteInterp(interp: t2.Interp): t2.Interp {
  * string's bytes WITHOUT the surrounding quotes. Interpolation inside the string
  * resolves exactly as in a plain quoted string, but the literal parts carry the
  * INNER bytes only (no quote chars) — so `~"@{a}"` emits the resolved value bare
- * (`blue`), not `"blue"`. A `~"…"` with no `@{ident}` token becomes a plain `Any`
- * of the unquoted inner bytes (`~"@{box"` → the literal `@{box`), which the
- * declaration / variable whole-value path consumes byte-for-byte. The unquoted
- * inner is opaque (`Any`): escaping already stripped its type.
+ * (`blue`), not `"blue"`. A `~"…"` with no `@{ident}` token becomes an ESCAPED
+ * `Quoted` whose `src` is the unquoted inner bytes (`~"3"` → `3`, `~"@{box"` → the
+ * literal `@{box`), so the declaration / variable whole-value path emits it
+ * byte-for-byte (inert emit is `node.src`, unchanged from the prior `Any`).
+ *
+ * The escaped `Quoted` is OPAQUE, NOT numeric: unlike a plain `Any` it does NOT
+ * sniff its bytes to a value type, so `~"4"` stays an escaped string (materialize
+ * → `Quoted{escaped:true}`) and is NOT coerced to `Dimension(4)`. Guard comparison
+ * (`value-guards.ts`) then treats a number-vs-escaped `<`/`>` as not-comparable and
+ * `=` as a `toCSS` string equality — matching less.js (`3 = ~"3"` true, no spurious
+ * `5 > ~"4"`). Escaping stripped the type: the value is a bare string, not a number.
  *
  * Consumes the inner `Quoted`/`Interp` the §3.3 grammar built (P0: no byte
  * re-scan). An escaped PAREN `~( … )` is a raw-list shape this leaf does not model;
@@ -125,7 +132,9 @@ function escapedLeaf(args: BuildArgs): t2.ValueNode {
   const inner = escapedInner(args);
   if (inner !== null) {
     if (inner.type === 'Interp') return unquoteInterp(inner);
-    if (inner.type === 'Quoted') return t2.any(inner.value);
+    // `src` = the bare inner bytes (byte-identical inert emit); `escaped: true`
+    // marks it opaque so materialize builds a `Quoted{escaped}`, never a sniff.
+    if (inner.type === 'Quoted') return t2.quoted(inner.value, inner.value, inner.quote, true);
   }
   return t2.any(leafBytes(args));
 }

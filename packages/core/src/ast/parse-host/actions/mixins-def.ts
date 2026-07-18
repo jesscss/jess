@@ -139,14 +139,101 @@ export function isArgSlotList(x: unknown): x is ArgSlot[] {
  * `MixinArgs` → interpretation-neutral `ArgSlot[]`. Skips the wrapping parens and
  * `;`/`,` separators; each remaining slot is one arg (verbatim bytes + built child).
  */
+/** One value token in an arg group: its built child + verbatim bytes/span, plus
+ *  whether an explicit `,` preceded it (vs a bare space) INSIDE the group. */
+interface GroupTok {
+  readonly built: unknown;
+  readonly text: string;
+  readonly span: Span;
+  readonly comma: boolean;
+}
+
+/** A raw value token as a `ValueNode` — its built node, else opaque bytes. */
+function tokenToNode(t: GroupTok): t2.ValueNode {
+  return t2.isNode(t.built) ? (t.built as t2.ValueNode) : t2.any(t.text);
+}
+
+/**
+ * Assemble a MULTI-token arg group into ONE value node so a space/comma list arg
+ * binds as a SINGLE parameter (Less: only `,`/`;` separate args; adjacent tokens
+ * form a space-list, and `,` inside a `;`-separated group forms a comma-list).
+ * A pure space run → `SpacedValue`; a run carrying inner commas → a `Sequence`
+ * interleaving the literal separators so it emits verbatim and its parts still
+ * resolve (variables inside the group are evaluated, not frozen as bytes).
+ */
+function buildGroupNode(g: readonly GroupTok[]): t2.ValueNode {
+  const spaceOnly = g.every((t, i) => i === 0 || !t.comma);
+  if (spaceOnly) return t2.spaced(g.map(tokenToNode));
+  const parts: t2.ValueNode[] = [];
+  for (let i = 0; i < g.length; i++) {
+    if (i > 0) parts.push(t2.any(g[i]!.comma ? ', ' : ' '));
+    parts.push(tokenToNode(g[i]!));
+  }
+  return t2.sequence(parts);
+}
+
+/**
+ * `MixinArgs` → interpretation-neutral `ArgSlot[]`, ONE slot per real argument.
+ * Args are split on the top-level separator — `;` when any is present, else `,`
+ * (Less' semicolon-promotes-to-arg-separator rule); a multi-token run between
+ * separators is grouped into a single space/comma list value ({@link buildGroupNode})
+ * so `.m(1 2, 3)` binds two args (`1 2`, `3`), not three. A single-token group keeps
+ * its built child verbatim (preserving `Rest`/`NamedArg`/`VarRef`/typed-literal shape
+ * the def family classifies on). No slot is re-tokenized from bytes (P0).
+ */
 function buildMixinArgs(args: BuildArgs): ArgSlot[] {
-  const out: ArgSlot[] = [];
+  // 1. Linearize: value tokens (with their built child + span) and `,`/`;` seps.
+  type Item = GroupTok | { readonly sep: ',' | ';' };
+  const seq: Item[] = [];
   for (let i = 0; i < args.rawChildren.length; i++) {
-    const text = rawText(args, args.rawChildren[i]);
-    if (text === undefined) continue;
-    if (text === '(' || text === ')' || text === ';' || text === ',') continue;
-    const built = args.children[i];
-    out.push({ __rawArg: true, text, value: t2.isNode(built) ? built : undefined, built });
+    const rc = args.rawChildren[i];
+    const text = rawText(args, rc);
+    if (text === undefined || text === '(' || text === ')') continue;
+    if (text === ',' || text === ';') {
+      seq.push({ sep: text });
+      continue;
+    }
+    const span = (rc as { span?: Span } | undefined)?.span;
+    if (span === undefined) continue;
+    seq.push({ built: args.children[i], text, span, comma: false });
+  }
+
+  // 2. Top-level arg separator: `;` promotes to the separator when present.
+  const argSep: ',' | ';' = seq.some((s) => 'sep' in s && s.sep === ';') ? ';' : ',';
+
+  // 3. Split into groups on the arg separator; a non-arg-sep `,` marks the next
+  //    token as comma-preceded (inner comma-list) rather than a bare space run.
+  const groups: GroupTok[][] = [];
+  let cur: GroupTok[] = [];
+  let pendingComma = false;
+  for (const s of seq) {
+    if ('sep' in s) {
+      if (s.sep === argSep) {
+        groups.push(cur);
+        cur = [];
+        pendingComma = false;
+      } else {
+        pendingComma = true;
+      }
+      continue;
+    }
+    cur.push({ ...s, comma: pendingComma });
+    pendingComma = false;
+  }
+  groups.push(cur);
+
+  // 4. One slot per non-empty group.
+  const out: ArgSlot[] = [];
+  for (const g of groups) {
+    if (g.length === 0) continue;
+    if (g.length === 1) {
+      const t = g[0]!;
+      out.push({ __rawArg: true, text: t.text, value: t2.isNode(t.built) ? t.built : undefined, built: t.built });
+      continue;
+    }
+    const node = buildGroupNode(g);
+    const text = args.ctx.src.slice(g[0]!.span.start, g[g.length - 1]!.span.end);
+    out.push({ __rawArg: true, text, value: node, built: node });
   }
   return out;
 }
