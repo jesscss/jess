@@ -304,6 +304,10 @@ and what's in flight):
 
 Other active docs in this dir:
 
+- **`V5-OUTPUT-SEMANTICS.md`** — STEP-0 cheat sheet for every render/DIFF/eval agent:
+  the consolidated v5 output-formatting (serialization) + evaluation-semantics rules,
+  each with an INPUT→OUTPUT example and a `DESIGN-DECISIONS.md` cross-ref. Read this
+  before debugging any output/eval mismatch so these rules stop being re-derived.
 - **`CORE-CLEANUP.md`** — the single live @jesscss/core cleanup queue (binding/lookup,
   serialization, node field budgets, perf evidence). Focus router above points here.
 - **`AST-FROM-SCRATCH-DESIGN.md`** — isolated greenfield fast-AST experiment:

@@ -29,6 +29,16 @@ flagged for the feature agents to fill; this docs task only fills location 3.
 | Verbatim / lazy-print of un-operated values | ~ (partial: `declaration.ts` mentions verbatim; no explicit rule on Dimension/Color serialize) | ✓ DD `V1`,`V2` (cites `VALUE-LITERAL-TAG-SPEC.md` †) | ✓ `advanced/verbatim-values` (new) | ✓ `06-Advanced/02-verbatim-values` (new) |
 | `%()` → string-format lowering | ✓ `less-parser/src/builders.ts` (`%()` lowered at build time) | ✓ DD `A5` (name OPEN) | ✓ `advanced/string-format` (new) | ✓ `06-Advanced/03-string-formatting` (new) |
 | Backtick inline JS removed → `@use`/`@-use` | ~ (`import-js.ts` documents `@use` round-trip; no explicit "backtick removed" marker) | ✓ DD `A3` | ✓ `advanced/inline-javascript` (new) + `usage/migrating-to-v5` | ✓ `02-Language/04-atrules` (@use) + `06-Advanced/06-plugins` |
+| Consolidated output-format + eval cheat sheet (STEP-0 for agents) | n/a | ✓ `V5-OUTPUT-SEMANTICS.md` + DD `F1`–`F5`,`V3`,`R9`,`P7`,`P8`,`A7` | ✓ `advanced/output-and-eval-cheatsheet` (new) | ✓ `06-Advanced/07-output-and-eval-cheatsheet` (new) |
+| Operators/separators spaced (`12px/16px`→`12px / 16px`) | ~ | ✓ DD `F1` | ~ (in cheat sheet only) | ~ (in cheat sheet only) |
+| `:nth-*()` `An+B` unspaced exception | ~ | ✓ DD `F2` | ~ (cheat sheet) | ~ (cheat sheet) |
+| Function-shape verbatim vs grouping-paren dissolve | ~ | ✓ DD `F3`,`F4` | ~ (cheat sheet) | ~ (cheat sheet) |
+| Un-operated `rgb`/`hsl` = bare verbatim Call | ~ | ✓ DD `F5`,`V2` | ~ (cheat sheet + verbatim-values) | ~ (cheat sheet + verbatim-values) |
+| Escaped `~"..."` opaque comparison | ~ | ✓ DD `V3` | ~ (cheat sheet) | ~ (cheat sheet) |
+| Mixin var-unlock low-priority leak | ~ | ✓ DD `R9` | ✗ | ~ (cheat sheet) |
+| Bare `@var` in at-rule prelude = error | ~ | ✓ DD `P7` | ~ (cheat sheet) | ~ (cheat sheet) |
+| `if()`/`boolean()` branch-laziness | ~ | ✓ DD `P8` | ~ (cheat sheet) | ~ (cheat sheet) |
+| `@import (reference)` per-branch visibility | ~ | ✓ DD `A7` | ~ (cheat sheet) | ~ (cheat sheet) |
 
 † The DESIGN-DECISIONS rows cite detail docs (`EXTEND-SEMANTICS.md`,
 `VALUE-LITERAL-TAG-SPEC.md`, `VARIABLE-RESOLUTION-SEMANTICS.md`,
@@ -95,6 +105,7 @@ Rows above marked ✗/~ roll up into this backlog. "Owner" = who should close it
 | G6 | **`%()` runtime function public NAME unresolved** (DD `A5`: not `format`, not `sprintf`; `str-format` proposed). | L1/L3 | owner decision | The new Less/Jess string-format pages document the syntax but cannot name the function; finalize then update both pages. |
 | G7 | **Less-site coverage thin for newer language constructs**: interpolation, iteration, values-and-types, namespaces, custom-prop/unknown-at-rule permissiveness, the `@-` at-rule family. Strong on the Jess site, scattered/absent on Less. | L3 Less | docs | Candidate follow-up Advanced/Language pages on the Less site. |
 | G8 | **Mixin internals (parametric/guards/loops/aliasing/as-functions) lack an internal design doc** — only user docs + code. | L2 | core agent | Fine for now; note if mixin semantics get re-specified for v5. |
+| G9 | **No dedicated Sass+ docs surface for a dialect cheat sheet.** The output/eval cheat sheet ships on the Less site (`advanced/output-and-eval-cheatsheet`) and the Jess site (`06-Advanced/07-output-and-eval-cheatsheet`). Sass+ has only the shared `04-guides/02-coming-from-sass/*` pages (incl. `03-stricter-than-sass.mdx`), no per-dialect Advanced cheat sheet. The Jess cheat sheet notes the Sass+ `#{}` interp + reject-invalid-CSS rules inline as a stopgap. | L3 Sass+ | docs | If/when a Sass+ dialect docs surface exists, add a mirror page; until then the shared guide + Jess-page note cover it. |
 
 ## Maintenance
 

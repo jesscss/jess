@@ -75,7 +75,8 @@ export default {
         'advanced/merge-anchoring',
         'advanced/verbatim-values',
         'advanced/string-format',
-        'advanced/inline-javascript'
+        'advanced/inline-javascript',
+        'advanced/output-and-eval-cheatsheet'
       ]
     },
     {
