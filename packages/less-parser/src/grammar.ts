@@ -778,11 +778,31 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   // (`not(2 < 1)`, `true and isnumber(6)`) falls out of the grammar's own recursion —
   // the value-Paren parses its inner comparison; `and`/`or` split terms. Built as a
   // `CondArgOr` (shared fold): a leading op-bearing and-group, or a bare-headed `or`.
+  // Fast pre-gate for the (speculative, build-heavy) ArgCondition attempt. Without
+  // it, every plain value / space-list arg pays a full speculative ArgCondition
+  // parse — `condOperand` builds a whole `topSum` node tree — only to fail at the
+  // missing operator and re-parse as `valueSequence` (a double parse of every call
+  // arg; ~25% of parse self-time on real fixtures). The gate is a NON-CONSUMING,
+  // depth-aware lookahead: scan (skipping balanced brackets + strings, so a nested
+  // `(@a > 5)` / `"a,b"` is opaque) to the FIRST depth-0 condition operator OR arg
+  // terminator (`,` `;` `)`), then require an operator THERE. It succeeds iff a
+  // top-level condition operator precedes the arg's end — exactly when ArgCondition
+  // could match — so it never skips a real condition (no false negative); a stray
+  // operator (e.g. inside an un-parenthesised value) only costs a harmless extra
+  // attempt that falls through to `valueSequence`, byte-identically. `not(not(…))`
+  // is a positive lookahead: it rolls back all scan side effects, consumes zero and —
+  // unlike a bare `regex()` lookahead — pushes NO CST child, so placed as the first
+  // element of the node's sequence it leaves `CondArgOr`'s built children unchanged.
+  const condOpAhead = regex(/>=|<=|=>|=<|=~|[<>=]|(?<![-\w])(?:and|or|not)(?![-\w])/i);
+  const condOrArgEnd = choice(condOpAhead, regex(/[,;)]/));
+  const argHasCondAhead = not(not(sequence(
+    scanTo(condOrArgEnd, { skip: [bParen, bSquare, bCurly, singleStr, doubleStr] }),
+    condOpAhead)));
   const ArgCondition = node('CondArgOr',
-    choice(
+    sequence(argHasCondAhead, choice(
       sequence(g.CondArgAndOp, many(sequence(orKw, g.CondArgAnd))),
       sequence(g.CondArgAnd, oneOrMore(sequence(orKw, g.CondArgAnd)))
-    ));
+    )));
   const callArgSeq = choice(argRest, argNamedSeq, g.AnonymousMixinDefinition, DetachedRuleset, ArgCondition, g.valueSequence);
   // Function-call args and mixin-call args are now IDENTICAL — one `argsInner`. After
   // a semicolon, commas keep splitting args (`sepBy(callArgSeq, ',')`), so both `.m(…)`
