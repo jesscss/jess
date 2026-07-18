@@ -82,6 +82,7 @@ authoritative"* framing is superseded by this row. Source:
 |---|--------|--------|-----------------|
 | V1 | UN-OPERATED value literals (dimension AND color) = SOURCE-VERBATIM / lazy-print (`1.0px`→`1.0px`, `2PX`→`2PX`, `1e3px`→`1e3px`, `#989`→`#989`); only COMPUTED (operated) values canonicalize. Diverges from 4.x, which canonicalizes un-operated dimensions. | SETTLED | `memory:v5-preserve-unoperated-values-verbatim`, `VALUE-LITERAL-TAG-SPEC.md` §0 |
 | V2 | CSS-superset verbatim pass-through: valid-CSS constructs (e.g. un-operated `rgb(50%,0,0)`) emit source verbatim; run the Less fn ONLY when the value is operated OR args are Less-non-CSS (contain a Less var/expr or a historical-Less form). | SETTLED | `memory:css-superset-verbatim-passthrough` |
+| V3 | Escaped `~"..."` = opaque Anonymous, never numeric-sniffed: `=` cross-compares by CONTENT (`3 = ~"3"` → true), `<`/`>` vs a number = not-comparable (guard does NOT fire). | SETTLED | `V5-OUTPUT-SEMANTICS.md` §B1 |
 
 ## 4. Output defaults & shape
 
@@ -90,6 +91,16 @@ authoritative"* framing is superseded by this row. Source:
 | O1 | v5 default output = NESTED (`collapseNesting:false`), NOT 4.x flatten. 4.x flatten = explicit opt-in flag. Default owned by `jess-plugin-less`; consumers import it. | SETTLED | `memory:less-v5-default-collapsenesting-false` |
 | O2 | v5 does NOT merge `@media`; extend cascades are `:is()`-compacted. `legacy/*.css` (expanded, no `:is()`) is the 4.x shape, not v5. | SETTLED | `ORACLE.md`, `memory:fixture-v5-vs-4x-legacy-convention` |
 | O3 | Compressed output target = dart-sass `compressed` parity via differential comparison. | DEFERRED | `memory:compress-already-minimal-bit` |
+
+### 4a. Output formatting — serialization detail
+
+| # | Ruling | Status | Source / detail |
+|---|--------|--------|-----------------|
+| F1 | OPERATORS / SEPARATORS = SPACED: `/`, `+`, `-`, `*` and list commas emit WITH surrounding spaces regardless of source (`12px/16px`→`12px / 16px`, `grid-area:1/2/3/4`→`grid-area: 1 / 2 / 3 / 4`). They are separators, NOT values — the verbatim-value rule (V1) does NOT govern them. 4.x's tight `12px/16px` is the OLD convention, not the v5 target. | SETTLED | `V5-OUTPUT-SEMANTICS.md` §A2 |
+| F2 | EXCEPTION to F1: the `An+B` microsyntax in `:nth-child()`/`:nth-*()` (`2n+1`, `-n+3`) is SELECTOR syntax — stays unspaced, never evaluated, never routed through the value/operator path. | SETTLED | `V5-OUTPUT-SEMANTICS.md` §A3 |
+| F3 | CSS-function-SHAPE (`name(...)` with NO space before `(`) passes through VERBATIM even when `name` is not a real CSS function (`solid(#a8000b)`→`solid(#a8000b)`). | SETTLED | `V5-OUTPUT-SEMANTICS.md` §A4, `memory:css-superset-verbatim-passthrough` |
+| F4 | Grouping-parens dissolve after evaluation: `keyword (expr)` — a SPACE then parens — is MATH GROUPING; once computed, the parens do NOT survive to output (`solid (@a*.66 + @b*.33)`→`solid #a8000b`, like `(2px+3px)`→`5px` never `(5px)`). Corollary: `ast/` must NOT collapse the space into the F3 function shape (`solid (x)` ≠ `solid(x)`). Distinct from F3. | SETTLED (owner-confirmed 2026-07-18; demonstrated by operation tests + `.less` fixtures) | `V5-OUTPUT-SEMANTICS.md` §A5 |
+| F5 | CSS value-functions un-operated = bare verbatim Call: `rgb`/`rgba`/`hsl`/`hsla` with literal args + no enclosing operation emit VERBATIM (a color-tagged `Call`, NOT an eager-invoked native fn — invoking round-trips through rgb and mangles precision/spelling). Invoke ONLY when operated (`lighten(hsl(...))`, arithmetic) or given Less/variable args (`hsl(@h,...)`). | SETTLED | `V5-OUTPUT-SEMANTICS.md` §A6, `memory:css-superset-verbatim-passthrough` |
 
 ## 5. Variables & resolution
 
@@ -102,6 +113,7 @@ authoritative"* framing is superseded by this row. Source:
 | R5 | Two variable models by `!`: `$foo`/`@foo` = Less-style stack (lazy, order-independent, last-wins); `$!foo` = Sass-style live cell (sequential, mutable, read-current-then-write). No "snapshot" mode; the `@`-vs-`$` position gate is deleted (identical). | SETTLED | `memory:v5-resolve-failure-is-eval-error-unless-optional`, `VARIABLE-RESOLUTION-SEMANTICS.md` |
 | R6 | `:=` = reassign the NEAREST existing binding INCLUDING current scope ("drop the `let`", don't shadow); unbound anywhere → `ReferenceError`. `!global` just translates to `:=`. Distinct from `setDefined`. | SETTLED | `memory:nearest-outer-assign-semantic`, `memory:v5-resolve-failure-is-eval-error-unless-optional` |
 | R7 | Member access `$.foo` / `$ns.foo` resolves against BOTH the var stack and same-named CSS property decls; both present → `ReferenceError` (ambiguous); neither → `ReferenceError`. Tracked via a LAZY per-name property cache, never an eager property index. | SETTLED | `memory:v5-resolve-failure-is-eval-error-unless-optional` |
+| R9 | Mixin var-unlock = LOW-PRIORITY leak: a variable unlocked by a mixin call is a low-priority binding — a LEXICAL binding always wins; the leaked var is used ONLY where nothing lexical binds. | SETTLED | `V5-OUTPUT-SEMANTICS.md` §B3 |
 | R8 | Mixin self-reference = PARENT-EXCLUSION, the SAME exclusion principle as R4 (a self-reference that cannot make PROGRESS is excluded from candidacy), NOT "recursion detection". (a) A NON-PARAMETRIC ruleset self-call (`.a { .a(); }`, no new args) makes no progress → the enclosing frame is EXCLUDED from its own candidate set → renders once, NEVER errors. (b) A PARAMETRIC self-call with DIFFERENT args progresses and recurses; its guard is the termination mechanism (not part of the skip decision). (c) A genuine RUNAWAY (bad guard, e.g. `.loop($n) { .loop($n + 1) }`) is the ONLY error case: a HIGH depth backstop (`MAX_MIXIN_DEPTH`, `ast/serialize.ts`) raises a clean `RangeError('maximum mixin recursion depth exceeded')` — NOT a native stack overflow, NOT a low cap. | SETTLED (task #40) | `ast/serialize.ts` `parentExcludes` / `expandCall` / `MAX_MIXIN_DEPTH`; tests `ast/parse-host/__tests__/mixin-recursion.test.ts` |
 
 ## 6. Parsing & grammar
@@ -114,6 +126,8 @@ authoritative"* framing is superseded by this row. Source:
 | P4 | "Sass+" dialect REJECTS invalid CSS where Sass tolerates it (escaped at-rule keywords, bogus combinators). Valid CSS = correctness; Sass-parity is NOT the target. | SETTLED | `memory:sass-plus-dialect-reject-invalid-css` |
 | P5 | SCSS should compose on the CSS base (sibling to Less), NOT on Less — via a dialect-neutral `preprocessorBase`. No dialect composes on another. | DIRECTIONAL (step 1 landable now; 2–4 gated on in-flight grammar edits) | `memory:scss-should-compose-on-css-not-less` |
 | P6 | LAW: no regex outside Parseman's `regex()` combinator on the maintained path (legacy `BuilderHost` regexes die with legacy retirement). | SETTLED | `memory:parseman-functional-grammars`, `.cursor/rules` |
+| P7 | Bare `@var` in an at-rule PRELUDE = HARD ERROR in v5 (stricter than 4.x's warning; e.g. `@supports (@cond)`), EXCEPT inside a declaration-value paren. `@{var}` interpolation is the migration target. | SETTLED | `V5-OUTPUT-SEMANTICS.md` §B4, `memory:less-supports-variable-prelude-strict` |
+| P8 | `if()`/`boolean()`/`not()` conditions are BRANCH-LAZY: the untaken branch is NOT evaluated (`if(false, 1/0, 7)`→`7`). (Structuring/first-class-ness = P3.) | SETTLED | `V5-OUTPUT-SEMANTICS.md` §B5 |
 
 ## 7. Modules, at-rules, JS
 
@@ -124,6 +138,7 @@ authoritative"* framing is superseded by this row. Source:
 | A3 | Inline backtick JavaScript (`` `expr` ``) is REMOVED entirely in v5 (not opt-in) → use `@use`/`@-use` script modules. Both parse paths ERROR: `LessParser.parse` guards before `parseLessFn`, and the ast/ whole-doc render driver guards before `parseToAst` — both reuse `less-parser`'s exported `firstInlineJsBacktick` + `INLINE_JS_UNSUPPORTED_MESSAGE` (the Parseman grammar has no backtick token, so an unguarded ast/ render would emit `` `…` `` verbatim). | SETTLED | `memory:backtick-js-removed-v5` |
 | A4 | `@-export` (repurposed `@forward`) first concrete role = expose ROOT/entry-level VARIABLES as an external JS API (variables-only initially); DISTINCT from module-member re-export, and distinct from R3 live-binding. | OPEN thread | `memory:forward-as-export-design-thread` |
 | A5 | `%()` string-format parses as a PLAIN call to the public `string-format` fn (canonical string-format = interpolation; `%()` is a compat alias). Name is `string-format` (whole-word) — NOT `format` (CSS `format()` collision), NOT `sprintf` (owner-rejected). | SETTLED | `memory:percent-format-to-sprintf-design` |
+| A7 | `@import (reference)` = HIDDEN rules, visible ONLY where pulled in via `:extend`/mixin (per-branch visibility). Implemented as a cheap FLAG, not by marking nodes. | SETTLED | `V5-OUTPUT-SEMANTICS.md` §B6 |
 | A6 | Deprecation infrastructure EXISTS but is NOT wired in v5 — only `selector/parentless-ampersand` + extend-roots diagnostics fire today; deprecation emission is unstarted feature work. | SETTLED (state of the world) | `memory:deprecation-emission-not-wired-v5` |
 
 ## 8. Core architecture
