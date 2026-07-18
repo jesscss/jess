@@ -59,8 +59,13 @@ const doubleStr = regex(/"(?:[^"\\]|\\[\s\S])*"/);
 const customProp = regex(/--[-_a-zA-Z0-9\u0080-\uffff]*/);
 const atKeyword = regex(/@-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
 const numPart = regex(/[+-]?(?:\d*\.\d+(?:[eE][+-]?\d+)?|\d+(?:[eE][+-]?\d+)?|\d+)/);
-// A dimension unit or `%`, collapsed to one regex (read as a single leaf).
-const unitRegex = regex(/-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*|%/);
+// A dimension unit or `%`, collapsed to one regex (read as a single leaf). A `-`
+// inside the unit must NOT be followed by a digit: `17px-1px` is `17px` minus
+// `1px` (arithmetic), NOT a `17` with unit `px-1px`. Without the `-(?![0-9])`
+// guard the unit ident greedily swallows `-1px`, hiding the subtraction (Less
+// 4.x tokenizes the `-` as an operator here -> `16px`). A `-` before a LETTER
+// stays in the unit.
+const unitRegex = regex(/-?[_a-zA-Z-￿](?:[_a-zA-Z0-9-￿]|-(?![0-9]))*|%/);
 const urlOpen = regex(/url\(/i);
 /**
  * The unquoted `<url-token>` body — `( url-code-point | escape )+` per
