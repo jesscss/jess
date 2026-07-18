@@ -1625,12 +1625,21 @@ function walkBody(
       // wraps the ruleset's selector inside. The decl group flushes first so the
       // at-rule sits after the ruleset's own block, matching Less's bubbling order.
       case 'AtRuleBlock':
-        flush();
-        emitAtRuleBlock(node, frame, e, composed);
+        // [atrule-nested] `@starting-style` / unknown at-rules stay INSIDE this
+        // block (no bubble): buffer with the decl group so they emit in source
+        // order within the parent ruleset. Everything else bubbles out.
+        if (staysNested(node.name)) group.push({ node, frame });
+        else {
+          flush();
+          emitAtRuleBlock(node, frame, e, composed);
+        }
         break;
       case 'AtRuleStatement':
-        flush();
-        emitAtRuleStatement(node, e);
+        if (staysNested(node.name)) group.push({ node, frame });
+        else {
+          flush();
+          emitAtRuleStatement(node, e);
+        }
         break;
       // [import:inline] raw verbatim bytes spliced by `@import (inline)`.
       case 'RawInline':
@@ -2290,7 +2299,7 @@ function dedupGroup(group: Leaf[], e: Emit): Leaf[] {
     if ((nameCounts.get(nm) ?? 0) < 2) continue; // unique name → nothing to collapse
     const val = evalBytesSync(n.value, leaf.frame, e);
     const important = n.important || leaf.important === true;
-    const key = `${nm} ${val} ${important ? '!' : ''}`;
+    const key = `${nm}\x00${val}\x00${important ? '!' : ''}`;
     if (seen.has(key) && leaf.protectedDup !== true) {
       (suppressed ??= new Set<number>()).add(i);
     } else {
@@ -2388,6 +2397,16 @@ function emitLeaf(leaf: Leaf, e: Emit): void {
     put(e, node.text);
     put(e, '\n');
     if (e.positions) e.positions.push({ node, type: node.type, start, end: e.off });
+  } else if (node.type === 'AtRuleBlock') {
+    // [atrule-nested] a stay-nested at-rule buffered into a decl group: emit one
+    // block level deeper than the containing declarations.
+    e.depth++;
+    emitAtRuleBlock(node, frame, e);
+    e.depth--;
+  } else if (node.type === 'AtRuleStatement') {
+    e.depth++;
+    emitAtRuleStatement(node, e);
+    e.depth--;
   }
 }
 
@@ -2539,10 +2558,47 @@ const BUBBLEABLE_ATRULES: ReadonlySet<string> = new Set([
   '@container',
   '@layer',
   '@scope',
-  '@starting-style',
 ]);
 function isBubbleable(name: string): boolean {
   return BUBBLEABLE_ATRULES.has(name.toLowerCase());
+}
+
+/**
+ * [atrule-nested] Directive at-rules that BUBBLE out of a ruleset to the same
+ * level WITHOUT taking a selector context (their declarations / keyframe
+ * selectors stay bare). Distinct from the conditional-group family
+ * ({@link BUBBLEABLE_ATRULES}) which projects the enclosing selector inside.
+ */
+const DIRECTIVE_ATRULES: ReadonlySet<string> = new Set([
+  '@font-face',
+  '@keyframes',
+  '@-webkit-keyframes',
+  '@-moz-keyframes',
+  '@-o-keyframes',
+  '@page',
+  '@viewport',
+  '@-ms-viewport',
+  '@counter-style',
+  '@property',
+  '@font-feature-values',
+  '@host',
+  '@-x-document',
+  '@namespace',
+]);
+
+/**
+ * [atrule-nested] An at-rule that STAYS NESTED inside its parent ruleset (v5,
+ * `collapseNesting:false` for this shape): `@starting-style` — whose direct
+ * declarations belong to the enclosing selector's starting state and so cannot
+ * hoist to root — and any UNKNOWN at-rule (e.g. `@apply`), which the serializer
+ * cannot bubble without knowing its semantics. Every recognized conditional-group
+ * ({@link BUBBLEABLE_ATRULES}) or directive ({@link DIRECTIVE_ATRULES}) at-rule
+ * bubbles as before; this predicate only diverts the remaining names.
+ */
+function staysNested(name: string): boolean {
+  const n = name.toLowerCase();
+  if (n === '@starting-style') return true;
+  return !BUBBLEABLE_ATRULES.has(n) && !DIRECTIVE_ATRULES.has(n);
 }
 
 /**
