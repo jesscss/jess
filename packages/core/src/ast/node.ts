@@ -46,6 +46,7 @@ import type {
   For,
   RawInline,
   StyleImport,
+  Condition,
 } from './nodes.js';
 import type { AtRuleBlock, AtRuleStatement } from './at-rule.js';
 
@@ -54,7 +55,7 @@ export type NodeType =
   | 'Root' | 'Rule' | 'Declaration' | 'Comment' | 'SelectorList'
   | 'Complex' | 'Compound' | 'Simple' | 'Keyword' | 'Color' | 'Quoted' | 'Any' | 'Dimension'
   | 'SpacedValue' | 'VarRef' | 'MixinDef' | 'MixinCall' | 'VarDeclaration'
-  | 'Sequence' | 'Operation' | 'FunctionCall' | 'Paren'
+  | 'Sequence' | 'Operation' | 'FunctionCall' | 'Paren' | 'Condition'
   | 'AtRuleBlock' | 'AtRuleStatement' | 'Interp' | 'VarIndirect'
   | 'DetachedRuleset' | 'MapAccessor' | 'PropRef' | 'DetachedCall' | 'For' | 'RawInline'
   | 'StyleImport';
@@ -78,7 +79,7 @@ export function renderCombinator(comb: Combinator): string {
 export type Node =
   | Root | Rule | Declaration | Comment | SelectorList | Complex | Compound
   | Simple | Keyword | Color | Quoted | Any | Dimension | SpacedValue | VarRef | MixinDef | MixinCall
-  | VarDeclaration | Sequence | Operation | FunctionCall | Paren
+  | VarDeclaration | Sequence | Operation | FunctionCall | Paren | Condition
   | AtRuleBlock | AtRuleStatement | Interp | VarIndirect | DetachedRuleset
   | MapAccessor | PropRef | DetachedCall | For | RawInline | StyleImport;
 
@@ -100,7 +101,7 @@ export const AST_NODE_TYPES: ReadonlySet<string> = new Set<NodeType>([
   'Root', 'Rule', 'Declaration', 'Comment', 'SelectorList',
   'Complex', 'Compound', 'Simple', 'Keyword', 'Color', 'Quoted', 'Any', 'Dimension',
   'SpacedValue', 'VarRef', 'MixinDef', 'MixinCall', 'VarDeclaration',
-  'Sequence', 'Operation', 'FunctionCall', 'Paren',
+  'Sequence', 'Operation', 'FunctionCall', 'Paren', 'Condition',
   'AtRuleBlock', 'AtRuleStatement', 'Interp', 'VarIndirect',
   'DetachedRuleset', 'MapAccessor', 'PropRef', 'DetachedCall', 'For', 'RawInline',
   'StyleImport',

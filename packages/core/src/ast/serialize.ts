@@ -82,9 +82,9 @@ import {
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { colorFromSrc, dimensionFromFields, quotedFromFields, materializeAny } from './literal-tag.js'; // [value node model]
 import { calcInner } from './value-operate.js'; // [calc]
-import { makeKeyword } from './value-factory.js'; // [calc]
+import { makeKeyword, makeBool } from './value-factory.js'; // [calc]
 import { selectDefinitions, type Selection, type DefaultResolver, type CallArg } from './mixin-dispatch.js'; // [guards]
-import { evalGuard, type ValueResolver, type TypedResolver } from './guard.js'; // [guards]
+import { evalGuard, type GuardNode, type ValueResolver, type TypedResolver } from './guard.js'; // [guards]
 import { computeExtends, type ExtendResults } from './extend.js'; // [extend]
 
 /* ---------------------------------------------------- MaybePromise glue */
@@ -870,6 +870,13 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
       return mapMaybe(evalValue(node.inner, frame, e), (v) =>
         isLiteral(v) ? literal(`(${v})`) : v,
       );
+    case 'Condition':
+      // [condition-grammar] The logical fns (`if`/`boolean`/…) read a condition's
+      // `guard` DIRECTLY (see `evalLogical`), so a `Condition` reaching this value
+      // lane is an UN-consumed condition — an ordinary/unknown call's arg that merely
+      // happened to carry a top-level operator (e.g. a mis-parsed `url(…charset=utf-8…)`).
+      // Emit it VERBATIM, exactly as it was spelled, rather than collapsing it to a bool.
+      return literal(node.src);
     case 'Operation': {
       if (!e.ev) {
         // Fallback: un-evaluated, variable-resolved source assembly (no math).
@@ -1202,6 +1209,43 @@ function evalCalc(node: FunctionCall, frame: Frame | null, e: EvalCtx): MaybePro
 }
 
 /** Evaluate a function call: materialize the modeled arg list, then `ev.call`. */
+/** Guard-eval deps sourced from an evaluation context (a value-position condition,
+ *  like a CSS ruleset guard, never depends on a mixin `default()` decision). */
+function guardDeps(frame: Frame | null, e: EvalCtx): {
+  resolveTyped: TypedResolver; ev: ValueEvaluator | null; modes: EvalModes; isDefault: () => boolean;
+} {
+  return { resolveTyped: makeTypedResolver(frame, e), ev: e.ev, modes: e.modes, isDefault: () => false };
+}
+
+/** The `GuardNode` an argument of a logical fn contributes: a structured
+ *  `Condition` carries its own guard tree; any other value is a bare TRUTH test
+ *  (`if((iscolor(@x)), …)`, `if(true, …)`) — the same rule a bare guard value uses. */
+function condGuard(node: ValueNode): GuardNode {
+  return node.type === 'Condition' ? node.guard : { g: 'truth', value: node };
+}
+
+/** The Less logical / conditional fns whose argument is a boolean CONDITION (a
+ *  guard tree), not an ordinary value — dispatched here (not via `ev.call`) so the
+ *  condition evaluates through the guard evaluator and `if` stays branch-lazy. */
+const LOGICAL_FNS = new Set(['if', 'boolean', 'not', 'and', 'or']);
+
+/** Evaluate a logical / conditional fn (`if`/`boolean`/`not`/`and`/`or`). `if` is
+ *  LAZY — only the taken branch folds; an absent else is empty bytes. */
+function evalLogical(name: string, node: FunctionCall, frame: Frame | null, e: EvalCtx): MaybePromise<Value> {
+  const deps = guardDeps(frame, e);
+  const truthOf = (a: ValueNode | undefined): boolean => a !== undefined && evalGuard(condGuard(a), deps);
+  switch (name) {
+    case 'if': {
+      const branch = truthOf(node.args[0]) ? node.args[1] : node.args[2];
+      return branch === undefined ? literal('') : evalValue(branch, frame, e);
+    }
+    case 'not': return makeBool(!truthOf(node.args[0]));
+    case 'and': return makeBool(node.args.every((a) => evalGuard(condGuard(a), deps)));
+    case 'or': return makeBool(node.args.some((a) => evalGuard(condGuard(a), deps)));
+    default: return makeBool(truthOf(node.args[0])); // boolean
+  }
+}
+
 function evalCall(node: FunctionCall, frame: Frame | null, e: EvalCtx): MaybePromise<Value> {
   const intro = evalIntrospection(node, frame);
   if (intro !== undefined) return intro;
@@ -1216,6 +1260,8 @@ function evalCall(node: FunctionCall, frame: Frame | null, e: EvalCtx): MaybePro
       return literal(`${node.name}(${inner})`);
     });
   }
+  const lname = node.name.toLowerCase();
+  if (LOGICAL_FNS.has(lname)) return evalLogical(lname, node, frame, e);
   const ev = e.ev;
   // Args are materialized TYPED (each arg's tag sourced from its parse node).
   const typed = node.args.map((a) => evalTyped(a, frame, e));

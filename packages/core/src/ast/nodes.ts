@@ -161,6 +161,20 @@ export interface Paren {
   readonly inner: ValueNode;
 }
 
+/**
+ * A structured boolean CONDITION reaching a value position — the argument of the
+ * logical fns `if()` / `boolean()` / `not()` / `and()` / `or()`. It carries the
+ * SAME `GuardNode` tree a `when (…)` guard builds (comparison / `and` / `or` /
+ * `not` / parens / type-predicate call), so the value engine evaluates it through
+ * the one guard evaluator — a `foo(@a > 0)` arg is byte-identical to the guard
+ * `@a > 0`. `src` is the verbatim spelling, emitted when no evaluator is injected.
+ */
+export interface Condition {
+  readonly type: 'Condition';
+  readonly guard: GuardNode;
+  readonly src: string;
+}
+
 /* -------------------------------------------------------------- value */
 
 /**
@@ -237,6 +251,7 @@ export type ValueNode =
   | Operation
   | FunctionCall
   | Paren
+  | Condition
   | Interp
   | VarIndirect
   | DetachedRuleset
@@ -726,6 +741,7 @@ export const operation = (operator: string, left: ValueNode, right: ValueNode): 
 export const funcCall = (name: string, args: ValueNode[], modern = false): FunctionCall =>
   ({ type: 'FunctionCall', name, args, modern });
 export const paren = (inner: ValueNode): Paren => ({ type: 'Paren', inner });
+export const condition = (guard: GuardNode, src: string): Condition => ({ type: 'Condition', guard, src });
 export const varDecl = (name: string, value: ValueNode | MixinCall): VarDeclaration =>
   ({ type: 'VarDeclaration', name, value });
 export const mixinDef = (

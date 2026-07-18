@@ -68,6 +68,12 @@ function isValueNode(x: unknown): x is t2.ValueNode {
   return t2.isNode(x);
 }
 
+/** A built `GuardNode` child (`{ g: … }`) — the structured condition a `CondArg…`
+ *  grammar arm folds to. It is NOT a value node, so `buildCall` wraps it. */
+function isGuardNode(x: unknown): x is t2.GuardNode {
+  return !!x && typeof x === 'object' && !t2.isNode(x) && 'g' in (x as object);
+}
+
 /** Raw leaf text of a child (operator / separator / bare ident). */
 function leafText(x: unknown): string {
   return isLeaf(x) ? x.value : '';
@@ -286,6 +292,16 @@ function buildCall(args: BuildArgs): t2.ValueNode {
       const c = children[i];
       if (isValueNode(c)) {
         segments[segments.length - 1]!.push(c);
+        continue;
+      }
+      // [condition-grammar] A structured condition arg (`if(@a > 0, …)`) folds to a
+      // `GuardNode`; wrap it in a `Condition` value node carrying its verbatim src so
+      // it lives in `FunctionCall.args` like any other arg (the logical fns read its
+      // `guard`; a non-eval pass emits the `src`).
+      if (isGuardNode(c)) {
+        const raw = args.rawChildren[i] as { span?: Span } | undefined;
+        const src = raw?.span ? sliceSpan(args.ctx, raw.span).trim() : '';
+        segments[segments.length - 1]!.push(t2.condition(c, src));
         continue;
       }
       const v = leafText(c);
