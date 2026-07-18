@@ -76,7 +76,8 @@ bottom for the consolidated list.
 | `AST-FROM-SCRATCH-DESIGN.md` | Greenfield packed-arena emit POC design (`tree2/`); points to the arena track. |
 | `AST-ARENA-EXPERIMENT-HANDOFF.md` | Standing arena experiment handoff — ELEVATED to THE definitive core rewrite. |
 | `RESOLVER-SHAPE-SPEC.md` | Variable lookup + binding data-shape (frames, DeclIndex, exclusion set) that implements the resolution semantics. |
-| `VALUE-LITERAL-TAG-SPEC.md` | Buildable spec for the value-literal type tag (NODE-SLIM-FOLLOWONS Q1). |
+| `VALUE-LITERAL-TAG-SPEC.md` | Buildable spec for the value-literal type tag (NODE-SLIM-FOLLOWONS Q1). RETIRED by `VALUE-NODE-MODEL-DESIGN.md` (tag → node `type`). |
+| `VALUE-NODE-MODEL-DESIGN.md` | DECIDED #44 design: eliminate `Word` → honest typed literals (`Keyword`/`Color`/`Dimension`/`Quoted`/`Bool`/`Any`); measured LAZY-materialize verdict; producer-flip + migration site map. |
 | `TIER-B-INTERPOLATION-GRAMMAR-SPEC.md` | Design survey: interpolation/quoted/prelude/list structuring in the grammar. |
 | `GRAMMAR-RELOCATION-DESIGN.md` | reorg-A4 §0.11 map: every builders/parse-host regex site → grammar relocation target, bridge-gate-release + #44 coordination + sequenced execution plan. |
 | `EXTEND-REDESIGN.md` | `ast/` extend redesign — lazy fast-reject over a shared selector IR. |
