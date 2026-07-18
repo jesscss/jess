@@ -93,7 +93,9 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   // `InterpolatedSelector`) when the legacy BuilderHost is retired (reorg Phase A4);
   // the tree2 host's `declName` re-tokenizer retires with it. (The VALUE below IS
   // split \u2014 the legacy builder tolerates that.)
-  const customPropInterp = regex(/--(?:-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*|-)?@\{-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*\}(?:@\{-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*\}|[-_a-zA-Z0-9\u0080-\uffff])*/);
+  // Both `@{var}` and `${prop}` interpolation sigils are accepted (`--z-${prop}`);
+  // the host `declName` structures each (`@`\u2192VarRef, `$`\u2192PropRef).
+  const customPropInterp = regex(/--(?:-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*|-)?[@$]\{-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*\}(?:[@$]\{-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*\}|[-_a-zA-Z0-9\u0080-\uffff])*/);
 
   // \u2500\u2500 Quoted (Less \u00a73.3: structure `@{name}` interpolation inside a string) \u2500\u2500\u2500\u2500
   // The shared css `Quoted` is one flat `singleStr`/`doubleStr` leaf that swallows
@@ -201,8 +203,12 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   // (whitespace/comments) between the head and '[' / '(', keeping the chain
   // contiguous (production's noSep()). The builder types `$`-headed refs as
   // `property` and `@`-headed as `variable` (see _buildReference).
+  // `nestedRef` (tried first) admits the indirect head `@@name` (a variable whose
+  // NAME is another variable's value) as a value reference; `lessVar` cannot match
+  // the doubled `@@`. A single `@x` / `$x` needs only one sigil group, so it falls
+  // through to `lessVar` / `propRef` (nestedRef requires `{2,}`).
   const Reference = node(
-    noTrivia(sequence(choice(lessVar, propRef), many(choice(refIndex, refCall)))));
+    noTrivia(sequence(choice(nestedRef, lessVar, propRef), many(choice(refIndex, refCall)))));
 
   // ── Detached-ruleset variable call ─────────────────────────────────────────
   // `@name(...)` (no `:`) is a variable CALL of a detached ruleset, not a var

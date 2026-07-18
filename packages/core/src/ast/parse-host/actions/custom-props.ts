@@ -106,14 +106,19 @@ function interpSpanOf(x: unknown): InterpSpan | null {
  * already leaf-consumed (grammar-structured, legacy-tolerant).
  */
 function interpFromString(text: string, unquote: boolean): t2.ValueNode {
-  const re = /@\{\s*([^}]+?)\s*\}/g;
+  // A NAME position resolves BOTH `@{var}` (variable interpolation → `VarRef`) and
+  // `${prop}` (property interpolation → `PropRef`, i.e. the VALUE of property `prop`
+  // becomes part of the name — `${prop-name}: red` where `prop-name: color` yields
+  // `color: red`). The sigil selects the ref kind; `evalInterp` resolves each.
+  const re = /([@$])\{\s*([^}]+?)\s*\}/g;
   const parts: t2.InterpPart[] = [];
   let last = 0;
   let m: RegExpExecArray | null;
   let sawRef = false;
   while ((m = re.exec(text)) !== null) {
     if (m.index > last) parts.push({ lit: text.slice(last, m.index) });
-    parts.push({ ref: t2.varRef(m[1]!), unquote });
+    const name = m[2]!;
+    parts.push({ ref: m[1] === '$' ? t2.propRef(name) : t2.varRef(name), unquote });
     sawRef = true;
     last = m.index + m[0].length;
   }
@@ -131,9 +136,10 @@ function stripImportantBytes(v: t2.ValueNode): t2.ValueNode {
   return v;
 }
 
-/** A REGULAR declaration name (see the TODO above): bare string, or `@{…}` template. */
+/** A REGULAR declaration name (see the TODO above): bare string, or a `@{var}` /
+ *  `${prop}` interpolation template. */
 function declName(nameBytes: string): string | t2.Interp {
-  if (!nameBytes.includes('@{')) return nameBytes;
+  if (!nameBytes.includes('@{') && !nameBytes.includes('${')) return nameBytes;
   const interp = interpFromString(nameBytes, false);
   return interp.type === 'Interp' ? (interp as t2.Interp) : nameBytes;
 }

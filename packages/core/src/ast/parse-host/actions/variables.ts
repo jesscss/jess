@@ -115,7 +115,12 @@ function accessorKey(keyStr: string): { key: t2.ValueNode | number; keyIsProp: b
     if (keyStr.charCodeAt(1) === 0x40) return { key: t2.varRef(keyStr.slice(2)), keyIsProp: true };
     return { key: t2.any(keyStr.slice(1)), keyIsProp: true };
   }
-  if (keyStr.charCodeAt(0) === 0x24 /* $ */) return { key: t2.any(keyStr.slice(1)), keyIsProp: true };
+  if (keyStr.charCodeAt(0) === 0x24 /* $ */) {
+    // `$@name` — property key INTERPOLATED from outer variable `@name`: look up the
+    // member whose PROPERTY name is `@name`'s resolved value (`#ns[$@prop-name]`).
+    if (keyStr.charCodeAt(1) === 0x40) return { key: t2.varRef(keyStr.slice(2)), keyIsProp: true };
+    return { key: t2.any(keyStr.slice(1)), keyIsProp: true };
+  }
   if (isIntLiteral(keyStr)) return { key: parseInt(keyStr, 10), keyIsProp: false };
   return { key: t2.any(keyStr), keyIsProp: true };
 }
@@ -138,29 +143,65 @@ const reference: BuildAction = {
     if (!head) return placeholder(args.type);
     const sigil = head.value.charCodeAt(0);
     let base: t2.ValueNode;
-    if (sigil === 0x40 /* @ */) base = t2.varRef(head.value.slice(1));
-    else if (sigil === 0x24 /* $ */) base = t2.propRef(head.value.slice(1), head.value);
-    else return placeholder(args.type);
+    if (sigil === 0x40 /* @ */) {
+      // `@@name` — indirect variable: read `@name`, then read the variable it NAMES.
+      base = head.value.charCodeAt(1) === 0x40
+        ? t2.varIndirect(t2.varRef(head.value.slice(2)))
+        : t2.varRef(head.value.slice(1));
+    } else if (sigil === 0x24 /* $ */) {
+      base = t2.propRef(head.value.slice(1), head.value);
+    } else return placeholder(args.type);
 
     const bytes = sliceSpan(args.ctx, args.span);
-    // Walk the `[key]` accessor chain. A `(call)` accessor is out of this family's
-    // scope — decline the whole reference so its bytes stay verbatim (prior behavior).
-    let i = 1;
-    while (i < leaves.length) {
-      const tok = leaves[i]!.value;
-      if (tok !== '[') return placeholder(args.type);
-      if (leaves[i + 1]?.value === ']') {
-        // Empty `@x[]` → last element (index -1), per lookupOrCall's else-branch.
-        base = t2.mapAccessor(base, -1, false, bytes);
-        i += 2;
-      } else {
-        const { key, keyIsProp } = accessorKey(leaves[i + 1]!.value);
-        base = t2.mapAccessor(base, key, keyIsProp, bytes);
-        i += 3; // '[', key, ']'
-      }
-    }
-    return base;
+    return walkAccessorChain(base, leaves, 1, bytes) ?? placeholder(args.type);
   },
 };
 
-export const VARIABLES_ACTIONS: readonly BuildAction[] = [varDeclaration, reference, varCall];
+/**
+ * Fold a `[key]` accessor chain onto `base` (a `MapAccessor` per key), starting at
+ * leaf index `from`. Returns `null` when a non-`[` accessor (a `(call)`) appears —
+ * that shape is out of this family's scope, so the caller keeps the verbatim bytes.
+ */
+function walkAccessorChain(
+  base: t2.ValueNode,
+  leaves: readonly Leaf[],
+  from: number,
+  bytes: string,
+): t2.ValueNode | null {
+  let acc = base;
+  let i = from;
+  while (i < leaves.length) {
+    if (leaves[i]!.value !== '[') return null;
+    if (leaves[i + 1]?.value === ']') {
+      // Empty `@x[]` → last element (index -1), per lookupOrCall's else-branch.
+      acc = t2.mapAccessor(acc, -1, false, bytes);
+      i += 2;
+    } else {
+      const { key, keyIsProp } = accessorKey(leaves[i + 1]!.value);
+      acc = t2.mapAccessor(acc, key, keyIsProp, bytes);
+      i += 3; // '[', key, ']'
+    }
+  }
+  return acc;
+}
+
+/**
+ * A namespace-value accessor `#ns[key]` / `.map[key]` (grammar `NsAccessor`): a
+ * SELECTOR head (`#ns` / `.map`, not a `@var`) glued to a `[key]` accessor chain.
+ * The base is the literal selector fragment (an `Any` the serializer resolves to the
+ * union of matching rulesets' declarations); each key folds into a `MapAccessor`
+ * exactly like the `@map[key]` reference. A `(call)`-bearing form (`#ns.m()[k]`) is
+ * out of scope — declined so the bytes stay verbatim.
+ */
+const nsAccessor: BuildAction = {
+  type: 'NsAccessor',
+  build: (args) => {
+    const leaves: Leaf[] = args.children.filter(isLeaf);
+    const head = leaves[0];
+    if (!head) return placeholder(args.type);
+    const bytes = sliceSpan(args.ctx, args.span);
+    return walkAccessorChain(t2.any(head.value), leaves, 1, bytes) ?? placeholder(args.type);
+  },
+};
+
+export const VARIABLES_ACTIONS: readonly BuildAction[] = [varDeclaration, reference, varCall, nsAccessor];

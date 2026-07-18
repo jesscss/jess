@@ -545,7 +545,18 @@ function resolvePropRef(
         const s = st[i]!;
         if (s.type !== 'Declaration') continue;
         if (e.excluded.has(s.value)) continue;
-        if (declName(s, f, e) === name) return { value: s.value, frame: f };
+        let nm: string;
+        if (typeof s.name === 'string') {
+          nm = s.name;
+        } else {
+          // A declaration with an INTERPOLATED name — guard against re-entering it
+          // while resolving the very property its own name interpolates (`${prop-name}`).
+          if (e.propNames.has(s)) continue;
+          e.propNames.add(s);
+          nm = declName(s, f, e);
+          e.propNames.delete(s);
+        }
+        if (nm === name) return { value: s.value, frame: f };
       }
     }
     if (f.fallback && !fb) fb = f.fallback;
@@ -634,6 +645,11 @@ interface EvalCtx {
   // [calc] `calc(…)` nesting depth. While > 0, dimension math is gated to the
   // safe-unit subset and cross-unit ops preserve as `calc(…)` sub-expressions.
   calcDepth?: number;
+  // [property-interp] declarations whose INTERPOLATED name (`${prop}: …` /
+  // `@{v}: …`) is being resolved up-stack. `resolvePropRef` skips a candidate whose
+  // name is already in flight, breaking the self-reference `${prop-name}: red` where
+  // `prop-name`'s own accessor would otherwise re-enter this decl's name forever.
+  propNames: Set<Declaration>;
 }
 
 /** Force a computed `Value` to a typed object. A computed STRING carries no parse
@@ -1234,6 +1250,7 @@ function scratchEmit(e: EvalCtx): Emit {
     ev: e.ev,
     modes: e.modes,
     excluded: e.excluded,
+    propNames: e.propNames,
     optional: e.optional,
     calcDepth: e.calcDepth,
     chunks: [],
@@ -1342,6 +1359,7 @@ export function serialize(root: Root, options?: SerializeOptions): SerializeRetu
     ev: options?.evaluator ?? null, // typed value evaluator
     modes: options?.modes ?? DEFAULT_MODES,
     excluded: new Set(), // [resolver] per-declaration cycle guard
+    propNames: new Set(), // [property-interp] interpolated-name re-entrancy guard
     optional: options?.optional ?? false, // [resolver] strict (default) vs optional miss
     pending: [], // async patches
     depth: 0, // [atrule]
@@ -2974,7 +2992,7 @@ export interface ComposeStats {
 export function composeStats(root: Root, evaluator?: ValueEvaluator, modes?: EvalModes): ComposeStats {
   const stats: ComposeStats = { composeOps: 0, selectorAllocs: 0, distinctSelectors: 0 };
   const seen = new Set<string>();
-  const ectx: EvalCtx = { ev: evaluator ?? null, modes: modes ?? DEFAULT_MODES, excluded: new Set() };
+  const ectx: EvalCtx = { ev: evaluator ?? null, modes: modes ?? DEFAULT_MODES, excluded: new Set(), propNames: new Set() };
 
   const composeCount = (parents: string[], child: SelectorList, frame: Frame): string[] => {
     if (parents.length > 1) stats.selectorAllocs++; // the :is(...) wrap

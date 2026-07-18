@@ -141,7 +141,7 @@
   },
   "functions/functions.less": {
     "status": "DIFF",
-    "bytes": 5795
+    "bytes": 5475
   },
   "impor/impor.less": {
     "status": "MATCH",
@@ -245,8 +245,8 @@
     "bytes": 1663
   },
   "namespace-targeted/namespace-targeted.less": {
-    "status": "DIFF",
-    "bytes": 143
+    "status": "MATCH",
+    "bytes": 130
   },
   "nesting/nesting.less": {
     "status": "MATCH",
@@ -269,8 +269,8 @@
     "bytes": 815
   },
   "parser-property-interp/parser-property-interp.less": {
-    "status": "DIFF",
-    "bytes": 119
+    "status": "MATCH",
+    "bytes": 168
   },
   "parser-slashed-combinator/parser-slashed-combinator.less": {
     "status": "MATCH_NORM",
@@ -298,11 +298,11 @@
   },
   "property-accessors/property-accessors.less": {
     "status": "DIFF",
-    "bytes": 676
+    "bytes": 673
   },
   "property-name-interp/property-name-interp.less": {
     "status": "DIFF",
-    "bytes": 515
+    "bytes": 517
   },
   "property-targeted/property-targeted.less": {
     "status": "MATCH",
@@ -334,7 +334,7 @@
   },
   "urls/urls.less": {
     "status": "DIFF",
-    "bytes": 3042
+    "bytes": 5941
   },
   "variables-in-at-rules/variables-in-at-rules.less": {
     "status": "DIFF",
@@ -346,7 +346,7 @@
   },
   "variables/variables.less": {
     "status": "DIFF",
-    "bytes": 904
+    "bytes": 907
   },
   "whitespace/whitespace.less": {
     "status": "MATCH",
