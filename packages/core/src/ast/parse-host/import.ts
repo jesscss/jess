@@ -462,6 +462,12 @@ function isImportKeyword(name: string): boolean {
  * target is unwrapped here.
  */
 function directSpecifier(pathNode: t2.ValueNode): { spec: string | null; interpolated: boolean } {
+  // A variable-interpolated path (`@import "@{theme}.less"`) is an `Interp`: the
+  // §3.3 Less `Quoted` grammar SPLIT the `@{name}` out of the string, so the
+  // interpolated-vs-plain decision reads the built node's STRUCTURE (P0 KEYSTONE),
+  // not a byte substring. The direct host DEFERS interpolated imports (emitting the
+  // `@import` verbatim), so this only needs to detect them.
+  if (pathNode.type === 'Interp') return { spec: null, interpolated: true };
   const raw =
     pathNode.type === 'Quoted'
       ? pathNode.value
@@ -469,20 +475,7 @@ function directSpecifier(pathNode: t2.ValueNode): { spec: string | null; interpo
         ? unwrapUrl(pathNode.src)
         : null;
   if (raw === null) return { spec: null, interpolated: false };
-  // TODO(tier-b/A4): WHAT — this `.includes('@{')/'@@'` SUBSTRING check detects an
-  // interpolated import specifier (`@import "@{theme}.less"`) from the path bytes
-  // instead of reading a structured `Interpolated` node. WHY — the specifier's `@{…}`
-  // lives INSIDE a Quoted string, so structuring it is the §3.3 Quoted-string-
-  // interpolation shape: it would change the SHARED, flat `Quoted` rule (css-parser),
-  // which the legacy BuilderHost re-tokenizes via `INTERPOLATION_REGEX`/
-  // `getInterpolatedNode` to rebuild the bridge's `Interpolated` — changing it
-  // regresses the less-compat bridge (external contract). (The direct host DEFERS
-  // interpolated imports regardless, so this only detects; and `.includes` is a
-  // substring test, not a regex.) RETIREMENT TRIGGER — land §3.3 Quoted structuring
-  // after the legacy BuilderHost retires (reorg Phase A4), then read the path's
-  // `Interpolated`/`Quoted` node type here instead of a byte substring.
-  const interpolated = raw.includes('@{') || raw.includes('@@');
-  return { spec: interpolated ? null : raw, interpolated };
+  return { spec: raw, interpolated: false };
 }
 
 /** Unwrap a `url( … )` word to its inner target (quotes stripped), else null. */
@@ -517,10 +510,12 @@ function flagsFromOptions(options: string): ImportFlags {
  * Build a `t2.StyleImport` from the direct host's structured import children, or
  * return `null` when the shape is NOT an import (a generic `@charset`/`@namespace`
  * statement) — the charset family then falls back to a generic `AtRuleStatement`.
- * The import shape is recognised by the import keyword plus a built path leaf
- * child (a `Quoted` string or a `url(…)` `Any`; a generic statement carries only
- * leaves, and an interpolated `@{…}` path builds an `Interp` — neither matches, so
- * those defer to a generic statement / verbatim emit).
+ * The import shape is recognised by the import keyword plus a built path node
+ * child (a `Quoted` string, a `url(…)` `Any`, or a §3.3 `Interp` for an
+ * interpolated path `@import "@{theme}.less"`; a generic statement carries only
+ * leaves, so it does not match and defers to a generic statement / verbatim emit).
+ * An interpolated path is recognised here but its spec is `null`, so the resolver
+ * defers it verbatim.
  */
 export function buildStyleImportNode(args: BuildArgs): t2.StyleImport | null {
   const children = args.children;
@@ -571,7 +566,10 @@ export function buildStyleImportNode(args: BuildArgs): t2.StyleImport | null {
 function isPathNode(x: unknown): x is t2.ValueNode {
   if (!x || typeof x !== 'object') return false;
   const t = (x as { type?: unknown }).type;
-  return t === 'Quoted' || t === 'Any';
+  // `Quoted` / url `Any` are plain paths; `Interp` is a §3.3-structured
+  // interpolated path (`@import "@{theme}.less"`) — all three are import paths the
+  // direct host recognises (the interpolated one is then deferred verbatim).
+  return t === 'Quoted' || t === 'Any' || t === 'Interp';
 }
 
 /** The resolution flags carried on a `t2.StyleImport`. */

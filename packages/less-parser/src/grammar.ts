@@ -95,6 +95,44 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   // split \u2014 the legacy builder tolerates that.)
   const customPropInterp = regex(/--(?:-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*|-)?@\{-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*\}(?:@\{-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*\}|[-_a-zA-Z0-9\u0080-\uffff])*/);
 
+  // \u2500\u2500 Quoted (Less \u00a73.3: structure `@{name}` interpolation inside a string) \u2500\u2500\u2500\u2500
+  // The shared css `Quoted` is one flat `singleStr`/`doubleStr` leaf that swallows
+  // any interior `@{\u2026}`. Less OVERRIDES it so the PARSER is the sole source of the
+  // interpolation structure (P0 KEYSTONE): a string carrying a strict `@{name}`
+  // token is emitted as interleaved leaves \u2014 quote/literal chunks + isolated
+  // `lessInterp` leaves \u2014 that the value / import host consume with the SAME
+  // `interpFromLeaves` seam the selector / custom-prop paths use, never a byte
+  // re-scan. A plain string with no `@{\u2026}` backtracks to the flat leaf and is
+  // BYTE-IDENTICAL to the css base (fast path: no children array is materialized).
+  //
+  // A chunk is any run up to a `"`/`'` or the next VALID `@{name}`; the `@(?!\u2026)`
+  // negative-lookahead is the exact complement of `lessInterp`, so a `@` only ends
+  // a chunk when it opens a strict `@{name}` \u2014 a bare `@name`, an escaped `\@{x}`
+  // (`\\[\s\S]`), and a NON-interpolation false-start (`@{box-\u2026`, `@{ x }`, `@{a.b}`,
+  // `@{}`) all stay INSIDE the chunk as literal text. This matches real Less 4.x /
+  // the strict \u00a74.1 (owner-LOCKED) rule and finds a valid `@{name}` even after a
+  // false-start (`"@{box-@{suffix}}"` \u2192 literal `@{box-`, ref `@{suffix}`, literal
+  // `}`). Less has no nested interpolation, so `@{@{x}}` falls to the chunk verbatim.
+  // The interpolated arm REQUIRES at least one `lessInterp`, so a string with none
+  // fails it and falls to the flat `singleStr`/`doubleStr` leaf (byte-identical).
+  const dqChunk = regex(/(?:[^"\\@]|\\[\s\S]|@(?!\{-?[_a-zA-Z0-9\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*\}))+/);
+  const sqChunk = regex(/(?:[^'\\@]|\\[\s\S]|@(?!\{-?[_a-zA-Z0-9\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*\}))+/);
+  // The interp-BODY seam (dialect-varying, owner note). In LESS the body is a
+  // single VARIABLE identifier opened by `@{` \u2014 `strInterp` IS `lessInterp`
+  // (`@{name}`). Kept as its own const so a dialect that composes a DIFFERENT
+  // string-interp body plugs it here WITHOUT rewriting the content-gobble loop
+  // below: SCSS/.jess use `#{ <expression> }` (a full expression, opened by `#{`),
+  // and Less may later add `${name}` property-interp / a `@{var[prop]}` accessor.
+  // This override is LESS-SCOPED (the delta's `Quoted` wins by name); SCSS composes
+  // on the CSS base, NOT on Less, so it never inherits this single-identifier body.
+  const strInterp = lessInterp;
+  const Quoted = node('Quoted', choice(
+    sequence(literal('"'), many(dqChunk), strInterp, many(choice(strInterp, dqChunk)), literal('"')),
+    sequence(literal('\''), many(sqChunk), strInterp, many(choice(strInterp, sqChunk)), literal('\'')),
+    singleStr,
+    doubleStr,
+  ));
+
   // ---------------------------------------------------------------------------
   // Grammar — CSS base rules + Less overrides/additions (mirrors LessGrammar).
   // ---------------------------------------------------------------------------
@@ -1057,7 +1095,7 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
     LessAmpersand, InterpolatedSelector, interpOrBasic, ExtendStatement, ExtendPseudo, ExtendTarget, extendCompound, extendComplex, simpleSelector,
     CompoundSelector, ComplexSelector, SelectorList, AttributeSelector, PseudoSelector, pseudoArg, pseudoSelectorParens,
     Ruleset, declarationList, Declaration, customValue, customCurlyBlock, cpInner, cpParen, cpSquare, cpCurly, cpValue, CustomDeclaration, declaration,
-    valueList, valueSequence, value, UnicodeRange, Negative, mathProduct, mathSum, topProduct, topSum, parenExprList, InterpValue, NsAccessor, EscapedValue, NamedColor, Url,
+    valueList, valueSequence, value, UnicodeRange, Negative, mathProduct, mathSum, topProduct, topSum, parenExprList, InterpValue, NsAccessor, EscapedValue, NamedColor, Url, Quoted,
     parenBody, permissiveParenBody, Paren, GluedParen, DetachedRuleset, functionCallArgs, squareParenBody, calcBody, Call, FormatCall, SquareParen, anyValue, EachFor,
     queryPrelude, QueryAtRuleBlock, SupportsAtRuleBlock, ImportAtRuleStatement,
     preludeToken, preludeParen, preludeSquare,

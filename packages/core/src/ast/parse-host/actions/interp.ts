@@ -30,12 +30,36 @@ export function isLeaf(x: unknown): x is Leaf {
     && typeof (x as { value?: unknown }).value === 'string';
 }
 
-/** An isolated `@{name}` interpolation leaf (the parser's `lessInterp` token). A
- *  literal-run leaf can never start with `@{`, so the first two bytes classify it. */
+/** A Less interpolation-name byte (`lessInterp` class: `-_A-Za-z0-9` + non-ASCII). */
+function isInterpNameByte(c: number): boolean {
+  return c === 0x2d /* - */ || c === 0x5f /* _ */
+    || (c >= 0x30 && c <= 0x39) /* 0-9 */
+    || (c >= 0x41 && c <= 0x5a) /* A-Z */
+    || (c >= 0x61 && c <= 0x7a) /* a-z */
+    || c >= 0x80;
+}
+
+/**
+ * The variable name of a `@{name}` interpolation leaf (the parser's `lessInterp`
+ * token), or `null` for any other leaf. This CLASSIFIES a leaf the grammar already
+ * bounded (it does not re-scan source): it FULLY validates the strict `@{name}`
+ * shape (`@{` + optional `-` + a non-empty name run + `}`) because a quoted-string
+ * chunk leaf may legitimately START with `@{` — a NON-interpolation false-start the
+ * `Quoted` grammar absorbs into a literal chunk (`@{box-` in `"@{box-@{suffix}}"`,
+ * or `@{ x }` / `@{a.b}` / `@{}`). Such a chunk fails the full shape (no closing `}`
+ * before the run ends, or an invalid interior), so it stays literal — matching the
+ * strict §4.1 (owner-LOCKED) rule and real Less 4.x. A selector / custom-prop chunk
+ * never starts with `@{`, so this is a no-op tightening for those callers.
+ */
 function interpName(value: string): string | null {
-  return value.length >= 3 && value.charCodeAt(0) === 0x40 /* @ */ && value.charCodeAt(1) === 0x7b /* { */
-    ? value.slice(2, -1).trim()
-    : null;
+  const n = value.length;
+  if (n < 4 || value.charCodeAt(0) !== 0x40 /* @ */ || value.charCodeAt(1) !== 0x7b /* { */
+    || value.charCodeAt(n - 1) !== 0x7d /* } */) return null;
+  let i = 2;
+  if (value.charCodeAt(i) === 0x2d /* - */) i++;
+  const nameStart = i;
+  while (i < n - 1 && isInterpNameByte(value.charCodeAt(i))) i++;
+  return i === n - 1 && i > nameStart ? value.slice(2, n - 1).trim() : null;
 }
 
 /**
