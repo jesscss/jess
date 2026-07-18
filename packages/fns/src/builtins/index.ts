@@ -104,6 +104,12 @@ import { color } from './color.js';
 import { replace } from './replace.js';
 import { format, formatPercent } from './format.js';
 import { escape } from './escape.js';
+// --- type-introspection predicates (is*) ---
+import {
+  iscolor, isnumber, isstring, iskeyword, isunit, ispixel, ispercentage, isem,
+} from './type-predicates.js';
+// --- url producers (Tier-C — self-contained; no file IO) ---
+import { svgGradient } from './svg-gradient.js';
 // --- misc ---
 import { e } from './e.js';
 
@@ -123,6 +129,8 @@ export const builtinLessFns: readonly Fn[] = [
   multiply, screen, overlay, softlight, hardlight, difference, exclusion, average, negation,
   rgb, rgba, hsl, hsla, hsv, hsva, argb, color,
   replace, format, formatPercent, escape,
+  iscolor, isnumber, isstring, iskeyword, isunit, ispixel, ispercentage, isem,
+  svgGradient,
   e,
 ];
 

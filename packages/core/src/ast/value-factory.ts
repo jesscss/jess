@@ -6,7 +6,7 @@
  *
  * HARD MODULE BOUNDARY: imports only the value domain + the free serializer.
  */
-import type { Color, Dimension, Keyword, Quoted, List, ValueObj } from './value-eval.js';
+import type { Bool, Color, Dimension, Keyword, Quoted, List, ValueObj } from './value-eval.js';
 import { colorRgb, colorSourceRgb, rgbToHsl, serializeColor } from './color.js';
 import { serializeDimension, serializeQuoted, serializeValue } from './serialize-value.js';
 
@@ -116,6 +116,9 @@ export function makeQuoted(value: string, quote: string, escaped: boolean): Quot
 }
 
 export const makeKeyword = (text: string): Keyword => ({ type: 'Keyword', text, bytes: text });
+
+/** A boolean value result (`true`/`false` — the shape guards and `is*` predicates emit). */
+export const makeBool = (value: boolean): Bool => ({ type: 'Bool', value, bytes: value ? 'true' : 'false' });
 
 export function makeList(items: readonly ValueObj[], sep: ',' | ' ' | '/'): List {
   const l: Mutable<List> = { type: 'List', items, sep, bytes: '' };

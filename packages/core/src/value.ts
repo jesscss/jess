@@ -26,6 +26,7 @@ export {
   makeColorHsl,
   makeQuoted,
   makeKeyword,
+  makeBool,
   makeList,
   numOf,
   textOf,
