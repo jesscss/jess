@@ -192,7 +192,11 @@ export function selectDefinitions(
   candidates: MixinDef[],
   call: MixinCall,
   resolveCaller: ValueResolver,
-  makeCalleeTyped: (def: MixinDef, bindings: Map<string, ValueNode> | null) => TypedResolver,
+  makeCalleeTyped: (
+    def: MixinDef,
+    bindings: Map<string, ValueNode> | null,
+    isDefault: () => boolean,
+  ) => TypedResolver,
   ev: ValueEvaluator | null,
   modes: EvalModes,
   resolveDefault?: DefaultResolver,
@@ -209,7 +213,9 @@ export function selectDefinitions(
   const guardDeps = (def: MixinDef, bindings: Map<string, ValueNode> | null, isDefault: () => boolean) => {
     // A guard resolves its free variables in the mixin's DEFINITION scope (closure),
     // so `makeCalleeTyped` keys the typed resolver off the def (see serialize `dispatch`).
-    const typed = makeCalleeTyped(def, bindings);
+    // `isDefault` also threads to the resolver so a `default()` OPERAND (`@x =
+    // default()`) folds to the decision, not just a bare `default()` guard term.
+    const typed = makeCalleeTyped(def, bindings, isDefault);
     return {
       resolveTyped: typed,
       ev,

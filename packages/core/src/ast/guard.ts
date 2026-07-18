@@ -86,7 +86,32 @@ export function evalGuard(node: GuardNode, deps: GuardEvalDeps): boolean {
   }
 }
 
-/** Whether a guard tree references `default()` anywhere (a default candidate). */
+/** Whether a VALUE node references `default()` — a `default()` call anywhere in the
+ *  operand expression (`@x = default()` compares `@x` against the dispatch decision).
+ *  Recurses the structural value shapes an operand can take so a nested/parenthesized
+ *  `default()` is still detected. */
+function valueUsesDefault(v: ValueNode): boolean {
+  switch (v.type) {
+    case 'FunctionCall':
+      return v.name.toLowerCase() === 'default' || v.args.some(valueUsesDefault);
+    case 'Paren':
+      return valueUsesDefault(v.inner);
+    case 'Operation':
+      return valueUsesDefault(v.left) || valueUsesDefault(v.right);
+    case 'Sequence':
+    case 'SpacedValue':
+      return v.parts.some(valueUsesDefault);
+    case 'List':
+      return v.items.some(valueUsesDefault);
+    default:
+      return false;
+  }
+}
+
+/** Whether a guard tree references `default()` anywhere (a default candidate) —
+ *  either as a bare `default()` guard term OR inside a comparison / type-predicate
+ *  OPERAND (`when (@x = default())`), so such a def is dispatched in the second
+ *  (default-deciding) pass with `default()` bound to the real decision. */
 export function guardUsesDefault(node: GuardNode | undefined): boolean {
   if (!node) return false;
   switch (node.g) {
@@ -97,6 +122,10 @@ export function guardUsesDefault(node: GuardNode | undefined): boolean {
       return guardUsesDefault(node.left) || guardUsesDefault(node.right);
     case 'not':
       return guardUsesDefault(node.inner);
+    case 'cmp':
+      return valueUsesDefault(node.left) || valueUsesDefault(node.right);
+    case 'call':
+      return node.args.some(valueUsesDefault);
     default:
       return false;
   }

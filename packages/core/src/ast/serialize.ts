@@ -779,6 +779,11 @@ interface EvalCtx {
   // declaration by `putValue`; absent elsewhere (importance is meaningless outside
   // a declaration value, e.g. an at-rule prelude / interpolated name).
   importantSink?: { hit: boolean };
+  // [default-fn] The `default()` value inside a guard OPERAND (`when (@x =
+  // default())`): the mixin-dispatch decision (true iff no non-default def matched).
+  // Set only on the ctx of a guard-operand typed resolver; absent everywhere else,
+  // where `default()` emits verbatim (`case: default()` outside a guard).
+  defaultFn?: () => boolean;
 }
 
 /** Force a computed `Value` to a typed object. A computed STRING carries no parse
@@ -1310,6 +1315,12 @@ function evalLogical(name: string, node: FunctionCall, frame: Frame | null, e: E
 }
 
 function evalCall(node: FunctionCall, frame: Frame | null, e: EvalCtx): MaybePromise<Value> {
+  // [default-fn] `default()` inside a guard operand (`when (@x = default())`) folds to
+  // the dispatch decision. Only when a `defaultFn` is in scope (a guard-operand typed
+  // resolver); elsewhere `default()` is meaningless and falls through to emit verbatim.
+  if (e.defaultFn && node.args.length === 0 && node.name.toLowerCase() === 'default') {
+    return makeBool(e.defaultFn());
+  }
   const intro = evalIntrospection(node, frame);
   if (intro !== undefined) return intro;
   if (e.ev && node.args.length === 1 && node.name.toLowerCase() === 'calc') {
@@ -2664,13 +2675,21 @@ function dispatch(
   // the params overlaid and the call site as a fallback — the same frame layering
   // `expandCall` builds for the body. Absent a home (composeStats / detached call)
   // it falls back to the caller frame (`parent: frame`).
-  const makeCalleeTyped = (def: MixinDef, bindings: Map<string, ValueNode> | null): TypedResolver => {
+  const makeCalleeTyped = (
+    def: MixinDef,
+    bindings: Map<string, ValueNode> | null,
+    isDefault: () => boolean,
+  ): TypedResolver => {
     const home = homes?.get(def);
+    // [default-fn] thread the dispatch decision into the operand-resolution ctx so a
+    // `default()` inside a comparison (`when (@x = default())`) folds to it. Guard
+    // operands resolve SYNC (`makeTypedResolver` throws on async), so the spread ctx
+    // never drives the async Emit machinery.
     return makeTypedResolver(
       home && home !== frame
         ? { parent: home, mixins: null, vars: asStacks(bindings), fallback: frame }
         : { parent: frame, mixins: null, vars: asStacks(bindings) },
-      e,
+      { ...e, defaultFn: isDefault },
     );
   };
   // A DEFAULT param value resolves with the params bound so far in scope (Less:
