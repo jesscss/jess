@@ -1139,8 +1139,29 @@ function evalBytesSync(node: ValueNode, frame: Frame | null, e: EvalCtx): string
 
 /* ---------------------------------------------------- selector composition */
 
-function parentToken(parents: string[]): string {
-  return parents.length === 1 ? parents[0]! : `:is(${parents.join(', ')})`;
+/**
+ * [nesting] Cartesian-expand every `&` in `canon` independently over the FULL
+ * `parents` array — plain parent×child nesting expands, it does NOT compact to
+ * `:is(a, b, …)`. Each `&` is its own odometer digit with the LEFTMOST `&`
+ * most-significant, so `& > &` over parents `[p0,p1]` emits
+ * `p0>p0, p0>p1, p1>p0, p1>p1` (see the 16-row `& > &` golden in selectors.less).
+ */
+function joinAmpersand(canon: string, parents: string[]): string[] {
+  const segs = canon.split('&');
+  const holes = segs.length - 1; // number of `&` occurrences (>= 1 here)
+  const n = parents.length;
+  if (n === 1) return [segs.join(parents[0]!)];
+  const total = n ** holes;
+  const out: string[] = new Array(total);
+  for (let i = 0; i < total; i++) {
+    let s = segs[0]!;
+    for (let h = 0; h < holes; h++) {
+      const digit = Math.floor(i / n ** (holes - 1 - h)) % n;
+      s += parents[digit]! + segs[h + 1]!;
+    }
+    out[i] = s;
+  }
+  return out;
 }
 
 /** Resolve one interpolated simple token's text in `frame`. */
@@ -1170,16 +1191,42 @@ function resolveComplex(c: Complex, frame: Frame | null, e: EvalCtx): string {
   return s;
 }
 
-function composeOne(parent: string, child: Complex, frame: Frame | null, e: EvalCtx): string {
+/** Compose ONE child complex over ALL `parents`, cartesian-expanded (child-major,
+ * parent-minor). `&`-bearing children expand each `&` over every parent; `&`-less
+ * children take an implicit descendant prefix, one branch per parent. */
+function composeOne(parents: string[], child: Complex, frame: Frame | null, e: EvalCtx): string[] {
   const canon = resolveComplex(child, frame, e);
-  if (complexHasAmpersand(child)) return canon.split('&').join(parent);
-  return parent + ' ' + canon;
+  if (complexHasAmpersand(child)) return joinAmpersand(canon, parents);
+  return parents.map((p) => p + ' ' + canon);
 }
 
 function compose(parents: string[], child: SelectorList, frame: Frame | null, e: EvalCtx): string[] {
-  const token = parentToken(parents);
   const out: string[] = [];
-  for (const c of child.selectors) out.push(composeOne(token, c, frame, e));
+  for (const c of child.selectors) {
+    for (const s of composeOne(parents, c, frame, e)) out.push(s);
+  }
+  return out;
+}
+
+/**
+ * [nesting] The EMITTED-header branches for `child` under `parents`. Identical to
+ * `compose` EXCEPT an `&`-less child under MULTIPLE parents compacts to a single
+ * `:is(p0, p1, …) child` prefix (alpha v5 header form), instead of one cartesian
+ * branch per parent. `compose` (the parent-list carried into further `&` nesting)
+ * stays fully cartesian — the two forms diverge only for `&`-less multi-parent.
+ * Only called with `parents.length >= 2` (callers use `compose` for the rest).
+ */
+function composeHeader(parents: string[], child: SelectorList, frame: Frame | null, e: EvalCtx): string[] {
+  const out: string[] = [];
+  const isPrefix = `:is(${parents.join(', ')}) `;
+  for (const c of child.selectors) {
+    const canon = resolveComplex(c, frame, e);
+    if (complexHasAmpersand(c)) {
+      for (const s of joinAmpersand(canon, parents)) out.push(s);
+    } else {
+      out.push(isPrefix + canon);
+    }
+  }
   return out;
 }
 
@@ -1502,13 +1549,21 @@ function flatten(rule: Rule, parent: string[] | null, frame: Frame, e: Emit): vo
   if (!ruleGuardPasses(rule, frame, e)) return;
   const rawComposed =
     parent === null ? rootStrings(rule.selector, frame, e) : compose(parent, rule.selector, frame, e);
+  // [nesting] `rawComposed` is the fully-cartesian parent-list carried into nested
+  // `&` composition. The EMITTED header additionally compacts an `&`-less child
+  // under MULTIPLE parents to a `:is(...)` prefix (alpha v5); with 0/1 parent the
+  // two forms are identical, so reuse `rawComposed` and skip the recompute.
+  const headerComposed =
+    parent === null || parent.length < 2
+      ? rawComposed
+      : composeHeader(parent, rule.selector, frame, e);
   // [extend] the rule's HEADER uses its fully-extended composed branches;
   // children still compose against the RAW composed selector and extend
   // independently (the composed model needs no parent-child override). Absent an
   // extend override the header is byte-identical to the no-extend serializer.
   const header = e.hoistMode
-    ? e.extends?.hoistHeader.get(rule) ?? e.extends?.flatByRule.get(rule) ?? rawComposed
-    : e.extends?.flatByRule.get(rule) ?? rawComposed;
+    ? e.extends?.hoistHeader.get(rule) ?? e.extends?.flatByRule.get(rule) ?? headerComposed
+    : e.extends?.flatByRule.get(rule) ?? headerComposed;
   const childFrame: Frame = {
     parent: frame,
     mixins: collectMixins(rule.body),
@@ -3124,15 +3179,14 @@ export function composeStats(root: Root, evaluator?: ValueEvaluator, modes?: Eva
   const ectx: EvalCtx = { ev: evaluator ?? null, modes: modes ?? DEFAULT_MODES, excluded: new Set(), propNames: new Set() };
 
   const composeCount = (parents: string[], child: SelectorList, frame: Frame): string[] => {
-    if (parents.length > 1) stats.selectorAllocs++; // the :is(...) wrap
-    const token = parentToken(parents);
     const res: string[] = [];
     for (const c of child.selectors) {
       stats.composeOps++;
-      stats.selectorAllocs++;
-      const s = composeOne(token, c, frame, ectx);
-      res.push(s);
-      seen.add(s);
+      for (const s of composeOne(parents, c, frame, ectx)) {
+        stats.selectorAllocs++;
+        res.push(s);
+        seen.add(s);
+      }
     }
     return res;
   };
