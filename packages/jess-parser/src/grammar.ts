@@ -141,6 +141,36 @@ export const jessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   const Expression = node(
     sequence(literal('$('), g.exprCompare, expect(literal(')'), ')')));
 
+  // ── Quoted with `$[…]` / `$(…)` interpolation (mirrors Less §3.3) ─────────────
+  // Jess is the sole source of string-interpolation STRUCTURE: the shared CSS
+  // `Quoted` is one flat `singleStr`/`doubleStr` leaf that swallows any interior
+  // `$[…]`/`$(…)`; this override structures both interpolation forms as isolated
+  // child nodes interleaved with literal string-content leaves (the builder folds
+  // them into an `Interpolated` value — never a byte re-scan).
+  //
+  // `dqContents`/`sqContents` = the "string contents" primitive: a run up to the
+  // closing quote, an escape, or the next interp opener. The `\$(?![\[(])`
+  // negative-lookahead is the EXACT complement of the two interp openers (`$[`,
+  // `$(`), so a `$` only ends a chunk when it opens interpolation — a lone `$` or
+  // a `$x` (property-ish false start) stays INSIDE the chunk as literal text.
+  const dqContents = regex(/(?:[^"\\$]|\\[\s\S]|\$(?![\[(]))+/);
+  const sqContents = regex(/(?:[^'\\$]|\\[\s\S]|\$(?![\[(]))+/);
+  // The two `.jess` interpolation forms (owner-confirmed):
+  //   `$[key]` = KEY interpolation (DollarInterp; body stays a lookup key)
+  //   `$(expr)` = FULL-EXPRESSION interpolation (the `$(…)` Expression form)
+  // Interp tried FIRST in the arm so a `$[`/`$(` opener wins over a contents chunk.
+  const strInterpJess = choice(g.DollarInterp, g.Expression);
+  // `noTrivia` on each arm: string spaces are literal content, NOT trivia — the
+  // ambient `rw` must not skip them between the quote / contents / interp elements.
+  // A referenced interp node (`g.Expression`) re-establishes the ambient trivia
+  // inside its own scope, so spaced operators in `$(1 + 2)` still parse.
+  // A string with NO interpolation matches only contents/quote leaves (no child
+  // node); the builder reconstructs it BYTE-IDENTICALLY via the flat CSS builder.
+  const Quoted = node('Quoted', choice(
+    noTrivia(sequence(literal('"'), many(choice(strInterpJess, dqContents)), literal('"'))),
+    noTrivia(sequence(literal('\''), many(choice(strInterpJess, sqContents)), literal('\'')))
+  ));
+
   // ── Unwrapped leading-`$var` arithmetic (value position) ─────────────────────
   // A targeted relaxation of the double-`$` rule: in value position, arithmetic
   // that LEADS with a `$var` may be written WITHOUT the `$(…)` wrapper — `$w + 1`
@@ -508,6 +538,7 @@ export const jessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
     rw,
     Reference, DollarInterp, VarDeclaration, value,
     InterpolatedSelector, simpleSelector,
+    Quoted,
     Expression, exprProduct, exprSum, exprCompare, JessKeyword,
     unwrapProductLead, unwrapProductRest, UnwrapArith,
     CollectionEntry, JessCollection,

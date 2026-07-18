@@ -168,6 +168,38 @@ export class JessGrammar extends CssParser {
     return new Reference(key, { type: 'variable', role: 'ident' }, location) as unknown as Node;
   }
 
+  // ── Quoted with `$[…]` / `$(…)` interpolation ────────────────────────────────
+  // The grammar `Quoted` override structures interior interpolation as isolated
+  // child NODES (`$[key]` → a role:'ident' Reference via `_buildJessInterp`;
+  // `$(expr)` → an Expression) interleaved with literal string-content leaves and
+  // the two quote leaves. Fold that interleaving into an `Interpolated` value —
+  // the SAME shape the selector / property-name interpolation paths build — with
+  // one `INTERPOLATION_PLACEHOLDER` per interp node. A string with NO interpolation
+  // carries only leaves (no child node) and falls through to the flat CSS builder,
+  // reconstructing a BYTE-IDENTICAL bare-string `Quoted` (no `Interpolated` wrap).
+  protected override _buildQuoted(children: ReadonlyArray<Node | CSTLike>, location: LocationInfo) {
+    const nodes = children.filter((c): c is Node => !isLeaf(c));
+    if (nodes.length === 0) {
+      return super._buildQuoted(children as never, location);
+    }
+    // The opening quote is the first leaf; skip both outer quote leaves. Interior
+    // leaves are literal content; interior nodes are the interpolation slots.
+    const quote = (children.find(isLeaf)?.value ?? '"') as '"' | '\'';
+    const replacements: Node[] = [];
+    let source = '';
+    for (let i = 1; i < children.length - 1; i += 1) {
+      const c = children[i]!;
+      if (isLeaf(c)) {
+        source += c.value;
+      } else {
+        source += INTERPOLATION_PLACEHOLDER;
+        replacements.push(c as Node);
+      }
+    }
+    const interp = new Interpolated({ source, replacements }, { role: 'ident' }, location);
+    return new Quoted(interp, { quote }, location) as unknown as Node;
+  }
+
   // ── Interpolation in SELECTORS ───────────────────────────────────────────────
   // `.widget-$[side]` → InterpolatedSelector wrapping an Interpolated (source with
   // `%%` placeholders + Reference replacements, role 'ident'). Leaves arrive as a
