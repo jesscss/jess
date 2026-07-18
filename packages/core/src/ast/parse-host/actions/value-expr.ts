@@ -137,6 +137,41 @@ function foldOperationTop(args: BuildArgs): t2.ValueNode {
 const operation: BuildAction = { type: 'Operation', build: foldOperation };
 const operationTop: BuildAction = { type: 'OperationTop', build: foldOperationTop };
 
+/* --------------------------------------------------------------- Negative */
+
+/**
+ * Value node types a unary minus can negate arithmetically. A `Keyword`/`Any`
+ * operand (a bare ident such as `-webkit-box`, or an unmodelled shape) is NOT a
+ * number, so it is kept verbatim rather than folded into an arithmetic negation.
+ */
+const NEGATABLE = new Set([
+  'Dimension', 'Color', 'VarRef', 'PropRef', 'Paren', 'Operation',
+  'FunctionCall', 'VarIndirect', 'MapAccessor', 'SpacedValue',
+]);
+
+/**
+ * Leading unary minus (`-@var`, `-(@a + @b)`, `-fn()`). The grammar isolates it as a
+ * `Negative` node — a `-` leaf followed by one value operand. Per less.js, a unary
+ * minus lowers to `Operation('*', [Dimension(-1), operand])`, so it reuses the
+ * ordinary math path: `-@var` = `-1 * @var` = `0 - @var` for a single-unit operand
+ * (`@var: 4px` → `-4px`), and it composes through products/sums (`-(2 + 2) * -@var`
+ * → `16px`). An operand that is not numerically negatable (a bare ident) keeps its
+ * verbatim source bytes so `-webkit-box` and friends are untouched.
+ */
+function buildNegative(args: BuildArgs): t2.ValueNode {
+  let operand: t2.ValueNode | null = null;
+  for (let i = 0; i < args.children.length; i++) {
+    const c = args.children[i];
+    if (isValueNode(c)) { operand = c; break; }
+  }
+  if (operand === null || !NEGATABLE.has(operand.type)) {
+    return t2.any(sliceSpan(args.ctx, args.span).trim());
+  }
+  return t2.operation('*', t2.dimension(-1), operand);
+}
+
+const negative: BuildAction = { type: 'Negative', build: buildNegative };
+
 /* ------------------------------------------------------------------ Paren */
 
 /** Source bytes strictly between the outer `(` … `)` of a paren/call child run. */
@@ -300,4 +335,4 @@ const formatCall: BuildAction = {
   },
 };
 
-export const VALUE_EXPR_ACTIONS: readonly BuildAction[] = [operation, operationTop, paren, call, formatCall];
+export const VALUE_EXPR_ACTIONS: readonly BuildAction[] = [operation, operationTop, paren, call, formatCall, negative];
