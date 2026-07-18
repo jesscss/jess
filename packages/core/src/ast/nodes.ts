@@ -153,6 +153,20 @@ export interface Sequence {
 }
 
 /**
+ * A value carrying Less `!important` importance (`@v: @c !important`). The
+ * importance is a FLAG on the value, NOT part of the emitted bytes: `inner`
+ * evaluates without any inline `!important`, and the importance propagates to the
+ * enclosing declaration (Less `importantScope`) so the declaration prints exactly
+ * ONE trailing `!important`. A variable whose value ends in `!important` binds an
+ * `Important` wrapper, so referencing it (`same: @v` / `multi: @v @v`) resolves the
+ * inner value and hoists importance once — never doubling or emitting it inline.
+ */
+export interface Important {
+  readonly type: 'Important';
+  readonly inner: ValueNode;
+}
+
+/**
  * A binary value operation, e.g. `#aaa * 3` or `@a + @b`. tree2 owns the
  * STRUCTURE (operator + operand value nodes); the MATH is delegated to the
  * injected value service. Operands are themselves value nodes so nested
@@ -275,6 +289,7 @@ export type ValueNode =
   | VarRef
   | PropRef
   | Sequence
+  | Important
   | Operation
   | FunctionCall
   | Paren
@@ -767,6 +782,7 @@ export const styleImport = (fields: Omit<StyleImport, 'type'>): StyleImport =>
   ({ type: 'StyleImport', ...fields });
 export const varRef = (name: string): VarRef => ({ type: 'VarRef', name });
 export const sequence = (parts: ValueNode[]): Sequence => ({ type: 'Sequence', parts });
+export const important = (inner: ValueNode): Important => ({ type: 'Important', inner });
 /** @deprecated Renamed to {@link sequence}; kept one cycle for straddling callers. */
 export const concat = sequence;
 export const operation = (operator: string, left: ValueNode, right: ValueNode): Operation =>

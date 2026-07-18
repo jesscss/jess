@@ -135,10 +135,19 @@ const varDeclaration: BuildAction = {
       const mixinCall = tryMixinCallIterable(args.children, valLo, args.children.length);
       if (mixinCall) return t2.varDecl(bare, mixinCall);
     }
-    const node = wholeValueNode(args, value);
+    // A trailing `!important` on a variable value is IMPORTANCE, not value bytes
+    // (Less `importantScope`): strip it, structure the inner value so its refs
+    // resolve, and wrap in an `Important` node so referencing the variable hoists a
+    // single `!important` onto the enclosing declaration. `!`/`important` are LEAF
+    // children (never value nodes), so the inner value structures exactly as if the
+    // `!important` were absent — a single-ref inner (`@c`) still whole-value-matches.
+    const impMatch = /\s*!\s*important$/iu.exec(value);
+    const innerValue = impMatch ? value.slice(0, impMatch.index) : value;
+    const wrapImportant = (v: t2.ValueNode): t2.ValueNode => impMatch ? t2.important(v) : v;
+    const node = wholeValueNode(args, innerValue);
     let valueNode: t2.ValueNode;
     if (node !== null) {
-      valueNode = node as t2.ValueNode;
+      valueNode = wrapImportant(node as t2.ValueNode);
     } else {
       // Verbatim value bytes — but a boundary comment binds to the source, not the
       // value, so peel leading/trailing comment trivia (`@c: yes /* c */` → `yes`).
@@ -147,6 +156,16 @@ const varDeclaration: BuildAction = {
       const colonRel = declText.indexOf(':');
       let valEndAbs = args.span.end;
       while (valEndAbs > args.span.start && /[;\s]/.test(src[valEndAbs - 1]!)) valEndAbs--;
+      // Exclude a trailing `!important` from the verbatim value range too (its
+      // importance rides on the `Important` wrapper, never the emitted bytes).
+      if (impMatch) {
+        const inRange = src.slice(args.span.start, valEndAbs);
+        const m = /\s*!\s*important$/iu.exec(inRange);
+        if (m) {
+          valEndAbs = args.span.start + m.index;
+          while (valEndAbs > args.span.start && /\s/u.test(src[valEndAbs - 1]!)) valEndAbs--;
+        }
+      }
       const valStartAbs = args.span.start + colonRel + 1;
       // A top-level comma list binds STRUCTURED (P0 — the parser owns the comma
       // boundaries), so `@v: @a, @b, @c` / `@cols: 1, 2` keep indexable items instead
@@ -159,10 +178,10 @@ const varDeclaration: BuildAction = {
         ? buildValueList(args, valStartAbs, src.slice(valStartAbs, valEndAbs))
         : null;
       if (list !== null) {
-        valueNode = list;
+        valueNode = wrapImportant(list);
       } else {
-        const stripped = colonRel >= 0 ? stripValueComments(args, valStartAbs, valEndAbs) : value;
-        valueNode = t2.any(stripped);
+        const stripped = colonRel >= 0 ? stripValueComments(args, valStartAbs, valEndAbs) : innerValue;
+        valueNode = wrapImportant(t2.any(stripped));
       }
     }
     return t2.varDecl(bare, valueNode);

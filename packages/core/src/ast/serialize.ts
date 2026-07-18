@@ -773,6 +773,12 @@ interface EvalCtx {
   // name is already in flight, breaking the self-reference `${prop-name}: red` where
   // `prop-name`'s own accessor would otherwise re-enter this decl's name forever.
   propNames: Set<Declaration>;
+  // [important] Less `importantScope`: while resolving one declaration's value, an
+  // `Important`-wrapped variable reference (`@v: @c !important`) sets `hit`, so the
+  // enclosing declaration hoists a SINGLE trailing `!important`. Installed per
+  // declaration by `putValue`; absent elsewhere (importance is meaningless outside
+  // a declaration value, e.g. an at-rule prelude / interpolated name).
+  importantSink?: { hit: boolean };
 }
 
 /** Force a computed `Value` to a typed object. A computed STRING carries no parse
@@ -895,6 +901,14 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
     }
     case 'Sequence':
       return joinBytes(node.parts, '', frame, e);
+    case 'Important':
+      // [important] Less `importantScope`: the importance rides on this wrapper, NOT
+      // the emitted bytes — signal the enclosing declaration (via the sink) and emit
+      // the inner value with no inline `!important` (`@v: @c !important` → `#888`, the
+      // declaration adds one `!important`). Absent a sink (importance-irrelevant
+      // position), the inner value emits unchanged.
+      if (e.importantSink) e.importantSink.hit = true;
+      return evalValue(node.inner, frame, e);
     case 'SpacedValue':
       return joinBytes(node.parts, ' ', frame, e);
     case 'List': {
@@ -1584,14 +1598,21 @@ function normalizeImportant(bytes: string): string {
  * resolved bytes (see {@link normalizeImportant}). Returns the emitted sync bytes,
  * or `null` when the value deferred to an async slot. */
 function putValue(e: Emit, node: ValueNode, frame: Frame | null, positionNode?: Node, contIndent?: string, emitImportant?: boolean, firstOnNewLine?: boolean): string | null {
+  // [important] Install a per-declaration importance sink (Less `importantScope`):
+  // an `Important`-wrapped variable reference resolved while folding this value sets
+  // `hit`, so the declaration hoists a single `!important` even without its own.
+  const sink = { hit: false };
+  const prevSink = e.importantSink;
+  e.importantSink = sink;
   const b = evalBytes(node, frame, e);
+  e.importantSink = prevSink;
   const finish = (s: string): string => {
     // [whitespace] `firstOnNewLine` folds the value's first line into a leading
     // (indented) continuation, so a value authored on its own line after `:`
     // re-emits with that layout (multi-line `grid-template-areas`).
     const lead = firstOnNewLine ? `\n${s}` : s;
     const r = contIndent !== undefined ? reindentContinuations(lead, contIndent) : lead;
-    return emitImportant ? normalizeImportant(r) : r;
+    return emitImportant || sink.hit ? normalizeImportant(r) : r;
   };
   if (isThenable(b)) {
     const i = e.chunks.length;
