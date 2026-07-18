@@ -78,6 +78,7 @@ bottom for the consolidated list.
 | `RESOLVER-SHAPE-SPEC.md` | Variable lookup + binding data-shape (frames, DeclIndex, exclusion set) that implements the resolution semantics. |
 | `VALUE-LITERAL-TAG-SPEC.md` | Buildable spec for the value-literal type tag (NODE-SLIM-FOLLOWONS Q1). |
 | `TIER-B-INTERPOLATION-GRAMMAR-SPEC.md` | Design survey: interpolation/quoted/prelude/list structuring in the grammar. |
+| `GRAMMAR-RELOCATION-DESIGN.md` | reorg-A4 §0.11 map: every builders/parse-host regex site → grammar relocation target, bridge-gate-release + #44 coordination + sequenced execution plan. |
 | `EXTEND-REDESIGN.md` | `ast/` extend redesign — lazy fast-reject over a shared selector IR. |
 | `FNS-PACKAGE-MIGRATION-SPEC.md` | Design survey for the fns → `@jesscss/fns` package migration. |
 | `ASSIGNABLE-CONTROL-NODES-PLAN.md` | Queued future feature: mixins/`each`/`$for`/`$if` as value-returning nodes. |
