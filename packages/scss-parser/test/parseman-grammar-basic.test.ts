@@ -220,6 +220,41 @@ describe('ScssParser — interpolation (#{…})', () => {
     }
   });
 
+  it('structures a #{…} string body as a real expression (not opaque text)', () => {
+    const { tree } = parseOk('.a { content: "a #{$x + $y} b"; }');
+    const ruleset = tree.rules[0]!;
+    expect(isNode(ruleset, N.Ruleset)).toBe(true);
+    if (isNode(ruleset, N.Ruleset)) {
+      const decl = ruleset.rules[0]!;
+      expect(isNode(decl, N.Declaration)).toBe(true);
+      if (isNode(decl, N.Declaration) && isNode(decl.value, N.Quoted)) {
+        const interp = decl.value.value;
+        expect(typeof interp).not.toBe('string');
+        if (typeof interp !== 'string') {
+          expect(interp.type).toBe('Interpolated');
+          // Literal chunks stay literal; only the `#{…}` becomes a placeholder slot.
+          expect(interp.source).toBe('a %%b');
+          // The interp body is a real binary Operation expression node — not text.
+          expect(interp.replacements).toHaveLength(1);
+          expect(isNode(interp.replacements[0]!, N.Operation)).toBe(true);
+        }
+      }
+    }
+  });
+
+  it('keeps an interp-free string a flat single leaf (byte-identical fast path)', () => {
+    const { tree } = parseOk('.a { content: "plain"; }');
+    const ruleset = tree.rules[0]!;
+    if (isNode(ruleset, N.Ruleset)) {
+      const decl = ruleset.rules[0]!;
+      if (isNode(decl, N.Declaration) && isNode(decl.value, N.Quoted)) {
+        // No `Interpolated` wrapper — the value is the plain string leaf.
+        expect(typeof decl.value.value).toBe('string');
+        expect(decl.value.value).toBe('plain');
+      }
+    }
+  });
+
   it('parses interpolation inside selectors', () => {
     const { tree } = parseOk('.foo-#{$bar} { color: red; }');
     const ruleset = tree.rules[0]!;

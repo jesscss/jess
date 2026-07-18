@@ -77,6 +77,31 @@ export const scssGrammar = compose([lessGrammar, rules({ trivia: rw }, (g: any) 
   const ScssInterpBare = node(
     sequence(literal('#'), literal('{'), g.valueSequence, expect(literal('}'), '}')));
 
+  // ── Quoted (structure `#{…}` interpolation inside a string via combinators) ──
+  // The shared css `Quoted` is one flat `singleStr`/`doubleStr` leaf that swallows
+  // any interior `#{…}`. SCSS OVERRIDES it so the PARSER is the sole source of the
+  // interpolation structure (P0 KEYSTONE): a string is one `many(choice(…))` whose
+  // arms are the `#{ <expression> }` interp atom (`ScssInterpBare`, a FULL SCSS
+  // expression — unlike Less's single-ident `@{name}`) and the STRING-CONTENTS
+  // combinator primitive. The interp atom is tried FIRST so a `#{` opens
+  // interpolation before the contents run can gobble it. The value/name hosts
+  // consume the interleaved leaves + `ScssInterpBare` children with the SAME seam
+  // the bare-`#{…}` / name / selector paths use — never a byte re-scan.
+  //
+  // A contents chunk is any run up to a `"`/`'`, an escape, or a `#{` interp
+  // opener; the `#(?!\{)` negative-lookahead is the exact complement of the
+  // interp opener, so a `#` only ends a chunk when it opens `#{` — a hex color
+  // (`#fff`) or id (`#foo`) stays INSIDE the chunk as literal text. A string that
+  // carries no `#{…}` yields only content/quote leaves (no `ScssInterpBare`
+  // child); the builder then falls back to the flat css `Quoted` leaf value
+  // (byte-identical fast path, no `Interpolated` wrapper materialized).
+  const dqContents = regex(/(?:[^"\\#]|\\[\s\S]|#(?!\{))+/);
+  const sqContents = regex(/(?:[^'\\#]|\\[\s\S]|#(?!\{))+/);
+  const Quoted = node('Quoted', choice(
+    sequence(literal('"'), many(choice(ScssInterpBare, dqContents)), literal('"')),
+    sequence(literal('\''), many(choice(ScssInterpBare, sqContents)), literal('\''))
+  ));
+
   const InterpValue = node(
     scssInterpKey);
 
@@ -751,7 +776,7 @@ export const scssGrammar = compose([lessGrammar, rules({ trivia: rw }, (g: any) 
 
   return {
     VarDeclaration, Reference, NsVarDeclaration, AtRuleStatement,
-    ScssInterpBare, InterpValue, value, valueList, functionCallArgs, Call,
+    ScssInterpBare, Quoted, InterpValue, value, valueList, functionCallArgs, Call,
     ScssMapLiteral, ScssIdentValue,
     ScssInterpolatedName, InterpolatedSelector,
     Declaration, CustomDeclaration,

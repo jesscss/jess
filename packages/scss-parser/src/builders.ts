@@ -792,15 +792,32 @@ export class ScssGrammar extends LessGrammar {
   }
 
   protected override _buildQuoted(children: ReadonlyArray<Child>, loc: LocationInfo) {
-    const ls = children.filter((c): c is CSTLeaf => c._tag === 'leaf');
-    const text = ls.map(l => l.value).join('');
-    const inner = text.slice(1, -1);
-    const quote = text[0] as '"' | '\'';
-    if (inner.includes('#{')) {
-      const value = buildScssInterpolatedFromString(inner, loc, 'any');
-      return new Quoted(value, { quote }, loc) as unknown as JessNode;
+    // The SCSS grammar structures `#{…}` interpolation into `ScssInterpBare`
+    // children (each built to an `Interpolated`) interleaved with content leaves.
+    // A string with no interpolation carries no `Interpolated` child → fall back
+    // to the flat css `Quoted` leaf value (byte-identical fast path). Otherwise
+    // fold the interleaved leaves/children into one `Interpolated` value, the same
+    // seam `_buildScssInterpolatedName` uses — no byte re-scan.
+    const hasInterp = children.some(
+      c => c._tag === 'node' && isNode(c as JessNode, N.Interpolated)
+    );
+    if (!hasInterp) {
+      return super._buildQuoted(children, loc);
     }
-    return super._buildQuoted(children, loc);
+    const quote = (children[0] as CSTLeaf).value as '"' | '\'';
+    let source = '';
+    const replacements: Node[] = [];
+    for (let i = 1; i < children.length - 1; i++) {
+      const c = children[i]!;
+      if (c._tag === 'leaf') {
+        source += (c as CSTLeaf).value;
+      } else if (c._tag === 'node' && isNode(c as JessNode, N.Interpolated)) {
+        source += INTERPOLATION_PLACEHOLDER;
+        replacements.push(...(c as unknown as Interpolated).replacements);
+      }
+    }
+    const value = new Interpolated({ source, replacements }, { role: 'any' }, loc);
+    return new Quoted(value, { quote }, loc) as unknown as JessNode;
   }
 
   /** `("k": v, …)` pair inside a map literal. */
