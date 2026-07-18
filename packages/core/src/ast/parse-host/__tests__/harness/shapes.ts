@@ -49,6 +49,15 @@ export interface Shape {
   buildNew: () => Root;
   /** Returns a freshly-constructed legacy root each call (build cost included). */
   buildOld: () => unknown;
+  /**
+   * When true, the legacy `tree/` engine INTENTIONALLY diverges from the v5 ast/
+   * output for this shape (legacy is a KNOWN-WRONG oracle here), so the harness
+   * skips the `legacy === expected` and `tree2 === legacy` assertions and only
+   * gates the ast/ paths against `expected`. Used for the `:is()`-compaction
+   * nesting-collapse rule, which supersedes legacy's cartesian list×list
+   * expansion (owner ruling 2026-07-18).
+   */
+  divergesFromLegacy?: boolean;
 }
 
 /**
@@ -288,10 +297,12 @@ const rung4Deep: Shape = {
     ]),
 };
 
-// .a, .b { .c, .d { } } -> :is(.a, .b) .c, :is(.a, .b) .d  (multiplicative)
+// .a, .b { .c, .d { } } -> :is(.a, .b) :is(.c, .d)  (v5 compact prefix-factored;
+// supersedes legacy's cartesian `:is(.a, .b) .c, :is(.a, .b) .d` — owner 2026-07-18)
 const rung4ListNest: Shape = {
   name: 'rung4: list x list nesting (.a,.b{.c,.d})',
-  expected: ':is(.a, .b) .c,\n:is(.a, .b) .d {\n  color: red;\n}\n',
+  expected: ':is(.a, .b) :is(.c, .d) {\n  color: red;\n}\n',
+  divergesFromLegacy: true,
   buildNew: () =>
     t2.root([
       t2.rule(t2.selist(t2.sel('.a'), t2.sel('.b')), [

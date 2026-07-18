@@ -19,7 +19,10 @@ import {
 describe('tree2 vs tree — byte identity', () => {
   for (const shape of shapes) {
     describe(shape.name, () => {
-      it('tree (legacy) === expected literal', async () => {
+      // Shapes flagged `divergesFromLegacy` intentionally supersede the legacy
+      // `tree/` engine (e.g. the v5 `:is()`-compaction nesting rule): legacy is a
+      // KNOWN-WRONG oracle there, so only the ast/ paths are gated against `expected`.
+      it.skipIf(shape.divergesFromLegacy)('tree (legacy) === expected literal', async () => {
         expect(await renderOld(shape.buildOld())).toBe(shape.expected);
       });
       it('tree2 fast path === expected literal', () => {
@@ -28,7 +31,7 @@ describe('tree2 vs tree — byte identity', () => {
       it('tree2 tracked path === expected literal', () => {
         expect(renderNewTracked(shape.buildNew())).toBe(shape.expected);
       });
-      it('tree2 fast === tree2 tracked === tree', async () => {
+      it.skipIf(shape.divergesFromLegacy)('tree2 fast === tree2 tracked === tree', async () => {
         const tree = await renderOld(shape.buildOld());
         const fast = renderNewFast(shape.buildNew());
         const tracked = renderNewTracked(shape.buildNew());

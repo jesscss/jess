@@ -1125,7 +1125,7 @@ function declMapFromMixinCall(
   // Collect EVERY declaration (`forceLeading` → all decls to `collected`), discard
   // nested rules (they defer to `trailing`, which is never drained here).
   const discard: Partition = { encounteredContainer: false, trailing: [], pending: [], emitBlock: noop };
-  expandCall(call, null, frame, collected, noop, discard, em, false, false, true);
+  expandCall(call, null, null, frame, collected, noop, discard, em, false, false, true);
   const byName = new Map<string, DeclEntry>();
   const list: DeclEntry[] = [];
   for (const leaf of collected) {
@@ -1417,6 +1417,31 @@ function composeHeader(parents: string[], child: SelectorList, frame: Frame | nu
   return out;
 }
 
+/** True if ANY branch of the list references `&` (routes the rule to the cartesian
+ * `&`-substitution header instead of the compact `&`-less join). */
+function selectorListHasAmpersand(list: SelectorList): boolean {
+  for (const c of list.selectors) if (complexHasAmpersand(c)) return true;
+  return false;
+}
+
+/** [nesting] Compact a branch list into ONE opaque selector unit: a single branch
+ * stays bare, a multi-branch comma list wraps in `:is(a, b, …)`. This is the
+ * accumulated-ancestor form carried into deeper `&`-less nesting. */
+function wrapIsList(branches: string[]): string {
+  return branches.length === 1 ? branches[0]! : `:is(${branches.join(', ')})`;
+}
+
+/** [nesting] Join opaque ancestor `A` with an all-`&`-less child list, prefix
+ * factored: `A` is emitted ONCE and the multi-branch child list wraps in a single
+ * `:is(...)` (never cartesian-distributed, never repeated inside the `:is()`).
+ * `#…#deux` + `#fourth,#five,#six` → `#…#deux :is(#fourth, #five, #six)`; a single
+ * child joins plainly (`A child`, honouring its leading combinator). */
+function opaqueJoin(a: string, child: SelectorList, frame: Frame | null, e: EvalCtx): string {
+  const canons = child.selectors.map((c) => resolveComplex(c, frame, e));
+  if (canons.length === 1) return a + ' ' + canons[0]!;
+  return a + ' :is(' + canons.join(', ') + ')';
+}
+
 function ownStrings(list: SelectorList, frame: Frame | null, e: EvalCtx): string[] {
   const out: string[] = [];
   for (const c of list.selectors) out.push(resolveComplex(c, frame, e));
@@ -1630,7 +1655,7 @@ export function serialize(root: Root, options?: SerializeOptions): SerializeRetu
   for (const child of root.children) {
     switch (child.type) {
       case 'Rule':
-        flatten(child, null, rootFrame, e);
+        flatten(child, null, null, rootFrame, e);
         break;
       case 'MixinDef':
       case 'VarDeclaration':
@@ -1641,7 +1666,7 @@ export function serialize(root: Root, options?: SerializeOptions): SerializeRetu
           if (group.length) flushBlock([], group, e);
           group.length = 0;
         };
-        expandCall(child, null, rootFrame, group, flush, null, e);
+        expandCall(child, null, null, rootFrame, group, flush, null, e);
         flush();
         break;
       }
@@ -1652,7 +1677,7 @@ export function serialize(root: Root, options?: SerializeOptions): SerializeRetu
           if (group.length) flushBlock([], group, e);
           group.length = 0;
         };
-        expandDetachedCall(child, null, rootFrame, group, flush, null, e);
+        expandDetachedCall(child, null, null, rootFrame, group, flush, null, e);
         flush();
         break;
       }
@@ -1663,7 +1688,7 @@ export function serialize(root: Root, options?: SerializeOptions): SerializeRetu
           if (group.length) flushBlock([], group, e);
           group.length = 0;
         };
-        expandFor(child, null, rootFrame, group, flush, null, e);
+        expandFor(child, null, null, rootFrame, group, flush, null, e);
         flush();
         break;
       }
@@ -1755,19 +1780,35 @@ function visibleHeader(rule: Rule, header: string[], e: Emit): string[] | null {
   return header;
 }
 
-function flatten(rule: Rule, parent: string[] | null, frame: Frame, e: Emit, imp = false): void {
+function flatten(rule: Rule, parent: string[] | null, ancestor: string | null, frame: Frame, e: Emit, imp = false): void {
   // [guards] a guarded ruleset emits its block only when the guard is true.
   if (!ruleGuardPasses(rule, frame, e)) return;
   const rawComposed =
     parent === null ? rootStrings(rule.selector, frame, e) : compose(parent, rule.selector, frame, e);
   // [nesting] `rawComposed` is the fully-cartesian parent-list carried into nested
-  // `&` composition. The EMITTED header additionally compacts an `&`-less child
-  // under MULTIPLE parents to a `:is(...)` prefix (alpha v5); with 0/1 parent the
-  // two forms are identical, so reuse `rawComposed` and skip the recompute.
-  const headerComposed =
-    parent === null || parent.length < 2
-      ? rawComposed
-      : composeHeader(parent, rule.selector, frame, e);
+  // `&` composition (each `&` substitutes over every parent branch). The EMITTED
+  // header + the OPAQUE ancestor carried into `&`-less children diverge from it:
+  //   - top level (no parent): header is the own selector list.
+  //   - a rule with ANY `&` branch keeps the cartesian `&`-substitution header
+  //     (the `selectors`-fixture cartesian form) — unchanged.
+  //   - an all-`&`-less nested rule COMPACT-joins: the accumulated ancestor `A` is
+  //     emitted ONCE and its multi-branch child list wraps in a single `:is(...)`
+  //     (`#…#deux :is(#fourth, #five, #six)`), never cartesian-distributed.
+  // `childAncestor` is the single opaque unit deeper `&`-less levels concatenate
+  // onto (a multi-branch header collapses to `:is(...)`).
+  let headerComposed: string[];
+  let childAncestor: string;
+  if (parent === null) {
+    headerComposed = rawComposed;
+    childAncestor = wrapIsList(rawComposed);
+  } else if (selectorListHasAmpersand(rule.selector)) {
+    headerComposed = parent.length < 2 ? rawComposed : composeHeader(parent, rule.selector, frame, e);
+    childAncestor = wrapIsList(headerComposed);
+  } else {
+    const joined = opaqueJoin(ancestor ?? wrapIsList(parent), rule.selector, frame, e);
+    headerComposed = [joined];
+    childAncestor = joined;
+  }
   // [extend] the rule's HEADER uses its fully-extended composed branches;
   // children still compose against the RAW composed selector and extend
   // independently (the composed model needs no parent-child override). Absent an
@@ -1807,7 +1848,7 @@ function flatten(rule: Rule, parent: string[] | null, frame: Frame, e: Emit, imp
     if (leaves.length) flushBlock(header, leaves, e, rule.selector, parent);
   };
   const partition: Partition = { encounteredContainer: false, trailing: [], pending: [], emitBlock };
-  walkBody(rule.body, rawComposed, childFrame, group, flush, partition, e, imp);
+  walkBody(rule.body, rawComposed, childAncestor, childFrame, group, flush, partition, e, imp);
   flush();
   flushPending(partition);
   for (const emit of partition.trailing) emit();
@@ -1861,6 +1902,7 @@ interface Partition {
 function walkBody(
   statements: Statement[],
   composed: string[] | null,
+  ancestor: string | null, // [nesting] opaque accumulated ancestor for `&`-less child joins
   frame: Frame,
   group: Leaf[],
   flush: () => void,
@@ -1898,6 +1940,7 @@ function walkBody(
         const rule = node;
         const rFrame = frame;
         const rComposed = composed;
+        const rAncestor = ancestor;
         // [guards/&-merge] A nested rule whose selector composes to EXACTLY the
         // enclosing block's selector (a bare `&`, e.g. `& when (@c) { … }`) is not
         // a separate rule: its (guard-passing) body flows into THIS block, in place,
@@ -1912,7 +1955,7 @@ function walkBody(
               vars: collectVars(rule.body),
               statements: rule.body,
             };
-            walkBody(rule.body, composed, selfFrame, group, flush, partition, e, imp, protectedDup, forceLeading);
+            walkBody(rule.body, composed, ancestor, selfFrame, group, flush, partition, e, imp, protectedDup, forceLeading);
           }
           break;
         }
@@ -1924,21 +1967,21 @@ function walkBody(
         if (partition) {
           flushPending(partition);
           partition.encounteredContainer = true;
-          partition.trailing.push(() => flatten(rule, rComposed, rFrame, e, imp));
+          partition.trailing.push(() => flatten(rule, rComposed, rAncestor, rFrame, e, imp));
         } else {
           flush();
-          flatten(rule, rComposed, rFrame, e, imp);
+          flatten(rule, rComposed, rAncestor, rFrame, e, imp);
         }
         break;
       }
       case 'MixinCall':
-        expandCall(node, composed, frame, group, flush, partition, e, imp, protectedDup, forceLeading);
+        expandCall(node, composed, ancestor, frame, group, flush, partition, e, imp, protectedDup, forceLeading);
         break;
       case 'DetachedCall':
-        expandDetachedCall(node, composed, frame, group, flush, partition, e, protectedDup, forceLeading);
+        expandDetachedCall(node, composed, ancestor, frame, group, flush, partition, e, protectedDup, forceLeading);
         break;
       case 'For':
-        expandFor(node, composed, frame, group, flush, partition, e, imp, protectedDup, forceLeading);
+        expandFor(node, composed, ancestor, frame, group, flush, partition, e, imp, protectedDup, forceLeading);
         break;
       // [atrule-bubbling] an at-rule nested inside a ruleset body PROJECTS to this
       // block level (flat mode already emits everything at `e.depth`), carrying the
@@ -2042,6 +2085,7 @@ const MAX_MIXIN_DEPTH = 500;
 function expandCall(
   call: MixinCall,
   composed: string[] | null,
+  ancestor: string | null,
   frame: Frame,
   group: Leaf[],
   flush: () => void,
@@ -2137,7 +2181,7 @@ function expandCall(
       // `mixins-important`), while two nested siblings within ONE expansion still
       // share it and merge.
       const bodyComposed = composed === null ? null : composed.slice();
-      walkBody(def.body, bodyComposed, callFrame, group, flush, partition, e, bodyImp, bodyProtected, bodyForceLeading);
+      walkBody(def.body, bodyComposed, ancestor, callFrame, group, flush, partition, e, bodyImp, bodyProtected, bodyForceLeading);
       // [scope-leak] after expansion the mixin's own `@x:` declarations unlock into
       // the caller scope (visible to later siblings), matching less@4.
       leakBodyVars(frame, def.body, callFrame, e);
@@ -2269,6 +2313,7 @@ function detachedCallFrame(varName: string, frame: Frame): { dr: DetachedRuleset
 function expandDetachedCall(
   call: DetachedCall,
   composed: string[] | null,
+  ancestor: string | null,
   frame: Frame,
   group: Leaf[],
   flush: () => void,
@@ -2279,7 +2324,7 @@ function expandDetachedCall(
 ): void {
   const r = detachedCallFrame(call.varName, frame);
   if (!r) return;
-  walkBody(r.dr.body, composed, r.callFrame, group, flush, partition, e, false, protectedDup, forceLeading);
+  walkBody(r.dr.body, composed, ancestor, r.callFrame, group, flush, partition, e, false, protectedDup, forceLeading);
 }
 
 /* --------------------------------------------------------------- [each/For] */
@@ -2432,7 +2477,7 @@ function forItemsFromMixinCall(call: MixinCall, frame: Frame, e: Emit): ForItem[
   // Collect EVERY declaration (`forceLeading` → all decls to `collected`), discard
   // nested rules (they defer to `trailing`, which is never drained here).
   const discard: Partition = { encounteredContainer: false, trailing: [], pending: [], emitBlock: noop };
-  expandCall(call, null, frame, collected, noop, discard, e, false, false, true);
+  expandCall(call, null, null, frame, collected, noop, discard, e, false, false, true);
   const items: ForItem[] = [];
   for (const leaf of collected) {
     const n = leaf.node;
@@ -2491,6 +2536,7 @@ function forItems(node: ValueNode | MixinCall, frame: Frame | null, e: Emit): Fo
 function expandFor(
   node: For,
   composed: string[] | null,
+  ancestor: string | null,
   frame: Frame,
   group: Leaf[],
   flush: () => void,
@@ -2514,7 +2560,7 @@ function expandFor(
       vars: mergeVars(bindings, collectVars(node.rules)),
       statements: node.rules,
     };
-    walkBody(node.rules, composed, loopFrame, group, flush, partition, e, imp, protectedDup, forceLeading);
+    walkBody(node.rules, composed, ancestor, loopFrame, group, flush, partition, e, imp, protectedDup, forceLeading);
   }
 }
 
@@ -3090,7 +3136,7 @@ function emitAtRuleBody(statements: Statement[], frame: Frame, e: Emit): void {
       case 'Rule':
         flushDirect();
         e.depth++;
-        flatten(node, null, frame, e);
+        flatten(node, null, null, frame, e);
         e.depth--;
         break;
       case 'AtRuleBlock':
@@ -3107,13 +3153,13 @@ function emitAtRuleBody(statements: Statement[], frame: Frame, e: Emit): void {
         break;
       case 'MixinCall':
         // Best-effort: expand into the direct-declaration group.
-        expandCall(node, null, frame, group, flushDirect, null, e);
+        expandCall(node, null, null, frame, group, flushDirect, null, e);
         break;
       case 'DetachedCall':
-        expandDetachedCall(node, null, frame, group, flushDirect, null, e);
+        expandDetachedCall(node, null, null, frame, group, flushDirect, null, e);
         break;
       case 'For':
-        expandFor(node, null, frame, group, flushDirect, null, e);
+        expandFor(node, null, null, frame, group, flushDirect, null, e);
         break;
       // [import:inline] raw verbatim bytes spliced by `@import (inline)`.
       case 'RawInline':
@@ -3144,6 +3190,8 @@ function emitAtRuleBody(statements: Statement[], frame: Frame, e: Emit): void {
  * directly inside this body inherits `ctx` unchanged.
  */
 function emitBubbleBody(statements: Statement[], ctx: string[] | null, frame: Frame, e: Emit): void {
+  // [nesting] opaque ancestor for `&`-less rules composed inside the bubbled context.
+  const ctxAncestor = ctx === null ? null : wrapIsList(ctx);
   const group: Leaf[] = [];
   const flushDirect = (): void => {
     if (group.length === 0) return;
@@ -3168,7 +3216,7 @@ function emitBubbleBody(statements: Statement[], ctx: string[] | null, frame: Fr
       case 'Rule':
         flushDirect();
         e.depth++;
-        flatten(node, ctx, frame, e);
+        flatten(node, ctx, ctxAncestor, frame, e);
         e.depth--;
         break;
       case 'AtRuleBlock':
@@ -3184,13 +3232,13 @@ function emitBubbleBody(statements: Statement[], ctx: string[] | null, frame: Fr
         e.depth--;
         break;
       case 'MixinCall':
-        expandCall(node, ctx, frame, group, flushDirect, null, e);
+        expandCall(node, ctx, ctxAncestor, frame, group, flushDirect, null, e);
         break;
       case 'DetachedCall':
-        expandDetachedCall(node, ctx, frame, group, flushDirect, null, e);
+        expandDetachedCall(node, ctx, ctxAncestor, frame, group, flushDirect, null, e);
         break;
       case 'For':
-        expandFor(node, ctx, frame, group, flushDirect, null, e);
+        expandFor(node, ctx, ctxAncestor, frame, group, flushDirect, null, e);
         break;
       case 'MixinDef':
       case 'VarDeclaration':
@@ -3395,7 +3443,7 @@ function emitNestedRule(rule: Rule, frame: Frame, e: Emit): void {
 function emitHoisted(rule: Rule, frame: Frame, e: Emit): void {
   const prev = e.hoistMode;
   e.hoistMode = true;
-  flatten(rule, null, frame, e);
+  flatten(rule, null, null, frame, e);
   e.hoistMode = prev;
 }
 

@@ -115,23 +115,43 @@ hsl(@h, 50%, 40%)         → #.. (computed)          (Less arg → invoke)
 spelling (A1 for functions). Only a real Less operation forces the compute.
 **Ref.** DD `F5`, `V2` · `memory:css-superset-verbatim-passthrough`
 
-### A7 · `:is()` compaction
-**Rule.** Collapse a multi-branch group into `:is(...)` **only** when the group
-is a proper **sub-part** of a bigger selector.
-- `&`-based nesting **CARTESIAN-expands** (no `:is()`).
-- an `&`-less child under **>1 parents** keeps a `:is(parents) child` header.
-- a rule's **own** header stays a plain comma list.
-- The extend engine's own `:is()` grafting (DD `X3`) is a **separate**, correct
-  path — don't conflate it with header compaction.
+### A7 · `:is()` compaction — compact PREFIX-FACTORED nesting join
+**Rule.** Collapsing a nested `&`-less descendant `B` onto its accumulated
+ancestor `A` emits `<A> <combinator> render(B)`, where **each side** wraps in a
+single `:is(...)` **iff it is a multi-branch comma list** (a single selector joins
+plainly). `A` is emitted **ONCE**, as **one opaque unit** (it may already carry an
+`:is()` from a shallower level) — it is **never** repeated inside the child's
+`:is()` and **never** cartesian-distributed.
 
 ```
-.a, .b { .c {…} }   →  :is(.a, .b) .c {…}     (&-less child, >1 parent)
-.a, .b { & .c {…} } →  .a .c, .b .c {…}       (& nesting → cartesian)
-.a, .b {…}          →  .a, .b {…}             (own header stays a list)
+render(side) = side.isMultiBranchList ? `:is(${branches.join(', ')})` : side
+```
+
+- **`&`-based** child is a **different** path: each `&` substitutes over the full
+  cartesian ancestor array (no `:is()`) — the `selectors`-fixture cartesian form.
+- a rule's **own top-level** header (no ancestor) stays a plain comma list.
+- The extend engine's own `:is()` grafting (DD `X3`) is a **separate**, correct
+  path — don't conflate it with this nesting compaction.
+
+```
+.a, .b { .c {…} }      →  :is(.a, .b) .c {…}           (multi × single)
+.a { .c, .d {…} }      →  .a :is(.c, .d) {…}           (single × multi)
+.a, .b { .c, .d {…} }  →  :is(.a, .b) :is(.c, .d) {…}  (multi × multi, ONE row)
+.a, .b { & .c {…} }    →  .a .c, .b .c {…}              (& nesting → cartesian)
+.a, .b {…}             →  .a, .b {…}                    (own header stays a list)
+
+#…#deux { #fourth,#five,#six { .seven,.eight>#nine {…} #ten {…} } }
+   → #…#deux :is(#fourth, #five, #six) :is(.seven, .eight > #nine) {…}
+   → #…#deux :is(#fourth, #five, #six) #ten {…}
 ```
 **Why.** v5 keeps output nested + compact instead of 4.x's fully-expanded
-cascade.
-**Ref.** DD `O2`, `X3` · `EXTEND-SEMANTICS.md` §3/§5
+cartesian cascade; the prefix is factored so a deep multi-selector block stays one
+row per rule instead of a combinatorial explosion. **Supersedes** the earlier
+verbose form that repeated the full ancestor prefix inside the `:is()`
+(`:is(A x, A y) …`) and cartesian-expanded a rule's own multi-branch header —
+owner ruling 2026-07-18; the corpus `rulesets` golden was reconciled to this form.
+**Ref.** DD `O2`, `X3` · `EXTEND-SEMANTICS.md` §3/§5 ·
+`memory:v5-is-compaction-rule` · `serialize.ts` `opaqueJoin`/`wrapIsList`/`flatten`
 
 ### A8 · collapseNesting + adjacent-sibling merge
 **Rule.** Nesting collapse is **per-fixture** (`styles.config`): the less.js
