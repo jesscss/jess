@@ -101,10 +101,12 @@ export interface SpacedValue {
  * a cheap `Any`, a referenced one a `VarRef` / space-run `SpacedValue`, all
  * materialized LAZILY (only when the list is indexed / operated). `separators`
  * carries the verbatim source bytes BETWEEN items (`,` + the authored whitespace —
- * e.g. `, ` or a multi-line `,\n    `), one per gap, so an un-operated list
- * round-trips BYTE-IDENTICAL (the v5 goldens preserve authored inter-item spacing,
- * e.g. a multi-line `box-shadow`); a resolved item just re-emits verbatim between
- * the same separators. Materializes to the value-domain `List` so `extract` /
+ * e.g. `, ` or a multi-line `,\n    `), one per gap. Serialization NORMALIZES each
+ * separator per the v5 convention (`normalizeListSep`): an inline comma collapses
+ * to `, ` regardless of authored spacing, while a separator carrying a NEWLINE keeps
+ * the authored multi-line layout (so a wrapped `box-shadow` stays wrapped). The raw
+ * bytes are retained because that newline + indentation must survive; only the
+ * inline spacing is canonicalized. Materializes to the value-domain `List` so `extract` /
  * `length` / list-equality index the structure directly (never a byte re-parse).
  */
 export interface List {

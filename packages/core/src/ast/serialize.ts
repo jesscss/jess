@@ -845,6 +845,21 @@ function evalTyped(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
 }
 
 /**
+ * v5 comma value-list separator normalization. `raw` is the verbatim source
+ * between two trimmed items (may include spacing before the comma, the comma,
+ * and spacing after). An inline separator — any authored spacing, incl. none —
+ * collapses to the canonical `, `. A separator whose trailing run carries a
+ * NEWLINE keeps the authored multi-line layout (the newline + following
+ * indentation) so a wrapped list stays wrapped. This governs SEPARATORS only;
+ * each list item's own value token is still emitted source-verbatim.
+ */
+function normalizeListSep(raw: string): string {
+  const after = raw.slice(raw.indexOf(',') + 1);
+  const nl = after.indexOf('\n');
+  return nl === -1 ? ', ' : `,${after.slice(nl)}`;
+}
+
+/**
  * Fold a value AST node bottom-up to a typed `Value` (a bare-string literal
  * for the static ~98% case, or a materialized `ValueObj` for a computed
  * operation/function). Lifts to `MaybePromise` only when a function call returns
@@ -883,14 +898,18 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
     case 'SpacedValue':
       return joinBytes(node.parts, ' ', frame, e);
     case 'List': {
-      // Emit each item's bytes interleaved with the VERBATIM source separators the
-      // parser captured (`,` + authored whitespace). An un-operated list round-trips
-      // byte-identical (the goldens preserve authored inter-item spacing, incl.
-      // multi-line lists); a resolved item just re-emits between the same separators.
+      // Emit each item's bytes joined by the v5-NORMALIZED comma separator. Authored
+      // inline spacing around a comma is NOT preserved — it collapses to `, ` (the
+      // `.css` acceptance goldens pin this: css-escapes turns a source `'a','b', c`
+      // into `'a', 'b', c`). A separator that carries a NEWLINE keeps the authored
+      // multi-line layout (newline + indentation), so a wrapped comma list such as a
+      // multi-line `box-shadow` stays wrapped (see css-3.css). Each ITEM's own token
+      // still emits verbatim; only the inter-item separator is normalized.
       const items = node.items.map((it) => evalValue(it, frame, e));
       return combineAll(items, (vals) => {
         let out = emitValue(vals[0]!);
-        for (let i = 1; i < vals.length; i++) out += node.separators[i - 1]! + emitValue(vals[i]!);
+        for (let i = 1; i < vals.length; i++)
+          out += normalizeListSep(node.separators[i - 1]!) + emitValue(vals[i]!);
         return literal(out);
       });
     }
