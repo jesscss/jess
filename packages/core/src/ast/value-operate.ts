@@ -11,6 +11,7 @@
  * units table.
  */
 import type { Color, Dimension, EvalModes, ValueObj } from './value-eval.js';
+import { HEX } from './color.js';
 import { colorRawRgb, makeColorRgb, makeCompoundDimension, makeDimension, makeKeyword } from './value-factory.js';
 import { convertValue } from './value-units.js';
 
@@ -45,7 +46,11 @@ function colorOperate(a: Color, b: ValueObj, op: string): Color {
   } else {
     throw new TypeError(`Cannot operate on ${b.type}`);
   }
-  return makeColorRgb(out, newAlpha, a.format, a.modernSyntax ? { modernSyntax: true } : undefined);
+  // An OPERATED color is a fresh canonical result: less.js `Color.operate` yields a
+  // bare rgb color with no source spelling, so it emits as HEX regardless of the
+  // operands' authored `rgb()`/`hsl()` format (the verbatim rule preserves only
+  // UN-operated literals). Drop `format`/`modernSyntax` → canonical `#rrggbb`.
+  return makeColorRgb(out, newAlpha, HEX);
 }
 
 /* ------------------------------------------------------ unit multiset */
@@ -149,7 +154,9 @@ function dimensionOperate(a: Dimension, b: Dimension, op: string, modes: EvalMod
 /** Dimension ⊕ Color: coerce the dimension to a color (unit ignored, per less.js
  * `Dimension.toColor`), then color-operate. `10px + #ff0000` → `#ff0a0a`. */
 function dimensionAsColor(a: Dimension, b: Color, op: string): Color {
-  const thisColor = makeColorRgb([a.number, a.number, a.number], 1, b.format ?? 1 /* RGB */);
+  // `thisColor.format` is inert (colorOperate reads only its channels and always
+  // returns a canonical HEX result), so build it as a plain HEX color.
+  const thisColor = makeColorRgb([a.number, a.number, a.number], 1, HEX);
   return colorOperate(thisColor, b, op);
 }
 
