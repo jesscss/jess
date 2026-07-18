@@ -22,7 +22,7 @@
 import * as t2 from '../../index.js';
 import { type BuildAction, type BuildArgs, placeholder } from '../host-context.js';
 import { isLeaf } from './interp.js';
-import { type ArgSlot, isArgSlotList, isNamedMarker } from './mixins-def.js';
+import { type ArgSlot, isArgSlotList, isNamedMarker, isRestMarker } from './mixins-def.js';
 
 /** One namespace-path / name segment: a selector token plus the combinator that
  *  preceded it (` ` descendant default, `>`/`+`/`~` explicit). */
@@ -36,10 +36,15 @@ function isCombinator(v: string): v is t2.Combinator {
 }
 
 /** Map one neutral arg slot to a `CallArg`: a named slot (`@a: v`) → named arg,
- *  a built value node → positional value, an unbuilt slot → its verbatim bytes. */
+ *  a spread slot (`@args...`) → a spread arg whose value is the list VarRef, a
+ *  built value node → positional value, an unbuilt slot → its verbatim bytes. */
 function slotToCallArg(slot: ArgSlot): t2.CallArg {
   const built = slot.built;
   if (isNamedMarker(built)) return { name: built.name, value: built.value };
+  // [spread] `@args...` forwards a list variable as positional args at dispatch.
+  if (isRestMarker(built) && built.name !== undefined) {
+    return { value: t2.varRef(built.name), spread: true };
+  }
   if (t2.isNode(built)) return { value: built as t2.ValueNode };
   return { value: t2.any(slot.text.trim()) };
 }

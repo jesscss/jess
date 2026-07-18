@@ -29,6 +29,9 @@ import { evalGuard, guardUsesDefault, type TypedResolver, type ValueResolver } f
 export interface CallArg {
   value: ValueNode;
   name?: string;
+  /** [spread] `@args...` — `value` is a list variable to SPLAT into positional
+   *  args at the call site before binding (Less variadic-forwarding). */
+  spread?: boolean;
 }
 
 /** A selected definition plus the variable bindings its body reads. */

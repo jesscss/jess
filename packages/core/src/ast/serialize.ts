@@ -83,7 +83,7 @@ import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { colorFromSrc, dimensionFromFields, quotedFromFields, materializeAny } from './literal-tag.js'; // [value node model]
 import { calcInner } from './value-operate.js'; // [calc]
 import { makeKeyword } from './value-factory.js'; // [calc]
-import { selectDefinitions, type Selection, type DefaultResolver } from './mixin-dispatch.js'; // [guards]
+import { selectDefinitions, type Selection, type DefaultResolver, type CallArg } from './mixin-dispatch.js'; // [guards]
 import { evalGuard, type ValueResolver, type TypedResolver } from './guard.js'; // [guards]
 import { computeExtends, type ExtendResults } from './extend.js'; // [extend]
 
@@ -412,12 +412,121 @@ function lookupCandidates(
   return out ?? [];
 }
 
-/** [guards] Own-scope (no parent walk) source-ordered candidates for a NAMESPACED
- * call, confined to the descended namespace body. */
-function ownCandidates(frame: Frame, name: string, homes?: Map<MixinDef, Frame>): MixinDef[] {
-  const hit = frameCandidatesInOrder(frame, name);
-  if (homes) for (const d of hit) if (!homes.has(d)) homes.set(d, frame);
-  return hit;
+/**
+ * [mixin-match] Split a selector-token string into mixin-match ATOMS (`.foo` /
+ * `#bar`), dropping combinators and the parent-ref `&` — Less resolves a mixin
+ * call/definition on element VALUES only (`Selector.mixinElements`), so
+ * combinator (` ` vs `>` vs compound-`.`) is irrelevant to the match and `&`
+ * contributes nothing. `&.support` → [`.support`]; `.a.b` and `.a .b` both →
+ * [`.a`, `.b`]. */
+function selectorAtoms(text: string): string[] {
+  const m = text.match(/[#.][\w-]+|&[\w-]*|[\w-]+/gu);
+  if (!m) return [];
+  const out: string[] = [];
+  for (const a of m) {
+    if (a === '&') continue;
+    out.push(a.charAt(0) === '&' ? a.slice(1) : a);
+  }
+  return out;
+}
+
+/** [mixin-match] The element-value atom list of a `Complex` selector (head +
+ * each tail compound), used to match a namespaced/compound mixin call. */
+function complexAtoms(c: Complex): string[] {
+  const out: string[] = [];
+  for (const a of selectorAtoms(compoundCanonical(c.head))) out.push(a);
+  for (const seg of c.tail) for (const a of selectorAtoms(compoundCanonical(seg.compound))) out.push(a);
+  return out;
+}
+
+/** [mixin-match] The flat element-value atom list of a namespaced/compound mixin
+ * CALL (`.a.b.c()` / `#ns > .m()` / `.do.re.mi()`), path segments then name. */
+function callAtoms(call: MixinCall): string[] {
+  const out: string[] = [];
+  for (const p of call.path) for (const a of selectorAtoms(p.sel)) out.push(a);
+  for (const a of selectorAtoms(call.name)) out.push(a);
+  return out;
+}
+
+/** True iff `pref` is a prefix of `full` (element-value equality). */
+function atomsArePrefix(pref: string[], full: string[]): boolean {
+  if (pref.length > full.length) return false;
+  for (let i = 0; i < pref.length; i++) if (pref[i] !== full[i]) return false;
+  return true;
+}
+
+/**
+ * [mixin-match] Recursively collect the mixin candidates a namespaced/compound
+ * call resolves to WITHIN one scope's own rulesets (Less `Ruleset.find`): a
+ * ruleset whose element atoms are a prefix of `remaining` either terminates the
+ * match (its whole element run is consumed → its body is a zero-arg mixin) or
+ * descends (a proper prefix → recurse into its body with the tail). A parametric
+ * `MixinDef` terminates when its name atoms equal `remaining` exactly. Each
+ * pushed candidate records its DEFINITION scope in `homes` (closure/guard scope).
+ */
+function findPathInScope(
+  scope: Frame,
+  remaining: string[],
+  homes: Map<MixinDef, Frame>,
+  out: MixinDef[],
+): void {
+  const st = scope.statements;
+  if (!st) return;
+  for (const s of st) {
+    if (s.type === 'MixinDef') {
+      const nEl = selectorAtoms(s.name);
+      if (nEl.length === remaining.length && atomsArePrefix(nEl, remaining)) {
+        out.push(s);
+        if (!homes.has(s)) homes.set(s, scope);
+      }
+    } else if (s.type === 'Rule') {
+      for (const c of s.selector.selectors) {
+        const el = complexAtoms(c);
+        if (el.length === 0 || !atomsArePrefix(el, remaining)) continue;
+        if (el.length === remaining.length) {
+          const rm: MixinDef = {
+            type: 'MixinDef', name: complexCanonical(c), params: [], body: s.body, ruleMixin: true,
+            ...(s.guard !== undefined ? { guard: s.guard } : {}),
+          };
+          out.push(rm);
+          homes.set(rm, scope);
+        } else {
+          const child: Frame = {
+            parent: scope,
+            mixins: collectMixins(s.body),
+            vars: collectVars(s.body),
+            statements: s.body,
+          };
+          findPathInScope(child, remaining.slice(el.length), homes, out);
+        }
+        break; // one selector of a rule matches the prefix at most once
+      }
+    }
+  }
+}
+
+/**
+ * [mixin-match] Source-ordered candidates for a namespaced/compound call, found
+ * by element-value descent. Walk the scope chain from the call site; the FIRST
+ * frame whose own rulesets yield a match wins (Less iterates `context.frames`
+ * and uses the first that `find`s the selector). Supersedes the old
+ * one-key-per-segment `descendNamespacePath` + `ownCandidates`, which could not
+ * match a compound def (`.jo.ki()`), an `&`-nested step (`.amp.support()`), or a
+ * call whose compound run spans a descendant-nested definition
+ * (`.do.re.mi.fa.sol.la.si()`). */
+function findPathCandidates(frame: Frame, call: MixinCall, homes: Map<MixinDef, Frame>): MixinDef[] {
+  const elements = callAtoms(call);
+  if (elements.length === 0) return [];
+  for (let f: Frame | null = frame; f; f = f.parent) {
+    const out: MixinDef[] = [];
+    findPathInScope(f, elements, homes, out);
+    if (out.length) return out;
+    if (f.fallback) {
+      findPathInScope(f.fallback, elements, homes, out);
+      if (out.length) return out;
+    }
+  }
+  return [];
 }
 
 /**
@@ -976,8 +1085,10 @@ function declMapFromMixinCall(
   const em = scratchEmit(e);
   const collected: Leaf[] = [];
   const noop = (): void => {};
-  const discard: Partition = { deferred: [], sawDecl: true };
-  expandCall(call, null, frame, collected, noop, discard, em);
+  // Collect EVERY declaration (`forceLeading` → all decls to `collected`), discard
+  // nested rules (they defer to `trailing`, which is never drained here).
+  const discard: Partition = { encounteredContainer: false, trailing: [], pending: [], emitBlock: noop };
+  expandCall(call, null, frame, collected, noop, discard, em, false, false, true);
   const byName = new Map<string, DeclEntry>();
   const list: DeclEntry[] = [];
   for (const leaf of collected) {
@@ -1544,7 +1655,7 @@ function isSelfComposed(rule: Rule, parent: string[], frame: Frame, e: Emit): bo
   return true;
 }
 
-function flatten(rule: Rule, parent: string[] | null, frame: Frame, e: Emit): void {
+function flatten(rule: Rule, parent: string[] | null, frame: Frame, e: Emit, imp = false): void {
   // [guards] a guarded ruleset emits its block only when the guard is true.
   if (!ruleGuardPasses(rule, frame, e)) return;
   const rawComposed =
@@ -1580,34 +1691,68 @@ function flatten(rule: Rule, parent: string[] | null, frame: Frame, e: Emit): vo
       group.length = 0;
     }
   };
-  // [partition] Collect nested rulesets that follow the block's FIRST declaration
-  // and emit them AFTER the block's own declarations flush; rulesets that PRECEDE
-  // the first declaration stay inline (see `Partition`). This reproduces the alpha
-  // v5 order: a ruleset's declaration block sits at the position of its first
-  // declaration, with nested rulesets before/after it in source order.
-  const partition: Partition = { deferred: [], sawDecl: false };
-  walkBody(rule.body, rawComposed, childFrame, group, flush, partition, e);
+  // [partition] Reproduce the alpha v5 flattened order (legacy
+  // `flattenVisibleRulesForRender`): a ruleset's LEADING declarations — those
+  // before the FIRST nested rule, plus any hoisted from a parametric-mixin body
+  // (`forceLeading`) — form the block emitted at the header; nested rules and any
+  // declarations that FOLLOW them emit AFTER, in source order, each trailing run of
+  // declarations opening a FRESH same-selector block. `emitBlock` reuses the header
+  // + adjacent-merge key for those trailing blocks.
+  const emitBlock = (leaves: Leaf[]): void => {
+    if (leaves.length) flushBlock(header, leaves, e, rule.selector, parent);
+  };
+  const partition: Partition = { encounteredContainer: false, trailing: [], pending: [], emitBlock };
+  walkBody(rule.body, rawComposed, childFrame, group, flush, partition, e, imp);
   flush();
-  for (const emit of partition.deferred) emit();
+  flushPending(partition);
+  for (const emit of partition.trailing) emit();
+}
+
+/** [partition] Move any buffered trailing-leaf run into `trailing` as one block. */
+function flushPending(p: Partition): void {
+  if (p.pending.length) {
+    const batch = p.pending;
+    p.pending = [];
+    p.trailing.push(() => p.emitBlock(batch));
+  }
+}
+
+/** [partition] Buffer a leaf into the leading `group` or the trailing `pending`
+ * run, per the same leading/trailing rule declarations follow. */
+function addLeaf(group: Leaf[], partition: Partition | null, leaf: Leaf, forceLeading: boolean): void {
+  if (partition && partition.encounteredContainer && !forceLeading) partition.pending.push(leaf);
+  else group.push(leaf);
 }
 
 /**
- * [partition] Nested-ruleset emission sink for a ruleset body. A ruleset's own
- * declarations form ONE block, emitted at the position of its FIRST declaration
- * (`sawDecl` flips once any declaration is collected — persistently, even across a
- * mid-body flush). A nested `Rule` encountered BEFORE the first declaration emits
- * inline (in source order, ahead of the block); one encountered AT/AFTER it defers
- * into `deferred`, drained after the block flushes. This matches the alpha v5
- * order (declaration block anchored at its first declaration), which diverges from
- * less.js 4.x's always-declarations-first `Ruleset.genCSS`. Passing `null` (top
- * level, at-rule bodies) keeps every rule inline in source order.
+ * [partition] The alpha v5 leading/trailing split (legacy
+ * `flattenVisibleRulesForRender`). A ruleset's LEADING declarations — those before
+ * the first nested rule, plus declarations hoisted out of a parametric-mixin body
+ * (`forceLeading`) — go straight to the header `group`. Once a nested rule
+ * (`encounteredContainer`) is seen, later declarations buffer in `pending` and,
+ * interleaved with the nested rules in source order, are drained from `trailing`
+ * after the leading block flushes — each `pending` run becoming its own trailing
+ * same-selector block via `emitBlock`. Passing `null` (top level, at-rule bodies)
+ * keeps every rule inline in source order (no split).
  */
 interface Partition {
-  deferred: Array<() => void>;
-  sawDecl: boolean;
+  encounteredContainer: boolean;
+  /** Ordered emitters after the first nested rule: rule flattens + trailing-leaf blocks. */
+  trailing: Array<() => void>;
+  /** Buffered trailing declarations awaiting the next boundary (a run → one block). */
+  pending: Leaf[];
+  /** Emit a run of leaves as ONE block reusing this ruleset's header + merge key. */
+  emitBlock: (leaves: Leaf[]) => void;
 }
 
-/** Walk a body, expanding mixin calls inline against the shared canonical body. */
+/**
+ * Walk a body, expanding mixin calls inline against the shared canonical body.
+ * `forceLeading` HOISTS this body's declarations into the leading block even past a
+ * nested rule — set when expanding a PARAMETRIC mixin (its body is a bare-`&`
+ * transparent wrapper in less@4, whose leaves force-lead; a plain ruleset-mixin
+ * does NOT hoist, so its declarations split at container boundaries like authored
+ * ones).
+ */
 function walkBody(
   statements: Statement[],
   composed: string[] | null,
@@ -1618,18 +1763,29 @@ function walkBody(
   e: Emit,
   imp = false, // call-level !important override
   protectedDup = false, // [dedup] emitting inside restricted mixin output
+  forceLeading = false, // [partition] hoist this body's decls into the leading block
 ): void {
   for (const node of statements) {
     switch (node.type) {
       case 'Declaration':
       case 'Comment':
-        if (partition) partition.sawDecl = true;
-        group.push({
-          node,
-          frame,
-          ...(imp ? { important: true } : {}),
-          ...(protectedDup ? { protectedDup: true } : {}),
-        });
+        // [partition] Before the first nested rule (or hoisted from a parametric
+        // mixin) → the leading block; after it → buffer for a trailing block.
+        if (partition && partition.encounteredContainer && !forceLeading) {
+          partition.pending.push({
+            node,
+            frame,
+            ...(imp ? { important: true } : {}),
+            ...(protectedDup ? { protectedDup: true } : {}),
+          });
+        } else {
+          group.push({
+            node,
+            frame,
+            ...(imp ? { important: true } : {}),
+            ...(protectedDup ? { protectedDup: true } : {}),
+          });
+        }
         break;
       case 'Rule': {
         // a null `composed` (top-level mixin/detached call) keeps nested
@@ -1651,56 +1807,83 @@ function walkBody(
               vars: collectVars(rule.body),
               statements: rule.body,
             };
-            walkBody(rule.body, composed, selfFrame, group, flush, partition, e, imp, protectedDup);
+            walkBody(rule.body, composed, selfFrame, group, flush, partition, e, imp, protectedDup, forceLeading);
           }
           break;
         }
-        if (partition && partition.sawDecl) {
-          // [partition] after the block's first declaration → defer past its flush.
-          partition.deferred.push(() => flatten(rule, rComposed, rFrame, e));
+        // [partition] A nested rule is a BOUNDARY: with a partition it defers to
+        // `trailing` (after the leading block + any prior trailing run), so later
+        // declarations open a FRESH same-selector block (v5 order
+        // `.x{a} .x .y{} .x{b}` for `.x{ a; .y{} b }`). Without a partition (top
+        // level / at-rule body) it flushes and emits inline, in source order.
+        if (partition) {
+          flushPending(partition);
+          partition.encounteredContainer = true;
+          partition.trailing.push(() => flatten(rule, rComposed, rFrame, e, imp));
         } else {
-          // before any declaration (or unpartitioned) → emit inline, in place.
           flush();
-          flatten(rule, rComposed, rFrame, e);
+          flatten(rule, rComposed, rFrame, e, imp);
         }
         break;
       }
       case 'MixinCall':
-        expandCall(node, composed, frame, group, flush, partition, e, imp, protectedDup);
+        expandCall(node, composed, frame, group, flush, partition, e, imp, protectedDup, forceLeading);
         break;
       case 'DetachedCall':
-        expandDetachedCall(node, composed, frame, group, flush, partition, e, protectedDup);
+        expandDetachedCall(node, composed, frame, group, flush, partition, e, protectedDup, forceLeading);
         break;
       case 'For':
-        expandFor(node, composed, frame, group, flush, partition, e, imp, protectedDup);
+        expandFor(node, composed, frame, group, flush, partition, e, imp, protectedDup, forceLeading);
         break;
       // [atrule-bubbling] an at-rule nested inside a ruleset body PROJECTS to this
       // block level (flat mode already emits everything at `e.depth`), carrying the
       // enclosing composed selector as its body context so a bubbleable at-rule
       // wraps the ruleset's selector inside. The decl group flushes first so the
       // at-rule sits after the ruleset's own block, matching Less's bubbling order.
-      case 'AtRuleBlock':
+      case 'AtRuleBlock': {
         // [atrule-nested] `@starting-style` / unknown at-rules stay INSIDE this
         // block (no bubble): buffer with the decl group so they emit in source
-        // order within the parent ruleset. Everything else bubbles out.
-        if (staysNested(node.name)) group.push({ node, frame });
-        else {
+        // order within the parent ruleset. Everything else bubbles out — a bubbling
+        // at-rule is a container, so (partitioned) it defers to `trailing` after the
+        // leading block, matching the legacy flatten order.
+        if (staysNested(node.name)) { addLeaf(group, partition, { node, frame }, forceLeading); break; }
+        const atNode = node, atFrame = frame, atComposed = composed;
+        if (partition) {
+          flushPending(partition);
+          partition.encounteredContainer = true;
+          partition.trailing.push(() => emitAtRuleBlock(atNode, atFrame, e, atComposed));
+        } else {
           flush();
           emitAtRuleBlock(node, frame, e, composed);
         }
         break;
-      case 'AtRuleStatement':
-        if (staysNested(node.name)) group.push({ node, frame });
-        else {
+      }
+      case 'AtRuleStatement': {
+        if (staysNested(node.name)) { addLeaf(group, partition, { node, frame }, forceLeading); break; }
+        const atNode = node;
+        if (partition) {
+          flushPending(partition);
+          partition.encounteredContainer = true;
+          partition.trailing.push(() => emitAtRuleStatement(atNode, e));
+        } else {
           flush();
           emitAtRuleStatement(node, e);
         }
         break;
+      }
       // [import:inline] raw verbatim bytes spliced by `@import (inline)`.
-      case 'RawInline':
-        flush();
-        emitRawInline(node, e);
+      case 'RawInline': {
+        const riNode = node;
+        if (partition) {
+          flushPending(partition);
+          partition.encounteredContainer = true;
+          partition.trailing.push(() => emitRawInline(riNode, e));
+        } else {
+          flush();
+          emitRawInline(node, e);
+        }
         break;
+      }
       case 'MixinDef':
       case 'VarDeclaration':
         break;
@@ -1761,25 +1944,26 @@ function expandCall(
   e: Emit,
   imp = false,
   protectedDup = false, // [dedup] already inside restricted mixin output
+  forceLeading = false, // [partition] inherited leading-hoist context
 ): void {
-  // a namespaced call (`#ns .a .b()`) descends a ruleset path first.
-  const namespaced = call.path.length > 0;
-  const dispatchFrame = namespaced ? descendNamespacePath(call.path, frame) : frame;
-  if (dispatchFrame === null) return; // unknown namespace → nothing
+  // A namespaced/compound call (`#ns .a .b()`, `.jo.ki()`, `.amp.support()`)
+  // resolves by ELEMENT-VALUE descent through the scope's own rulesets (Less
+  // `Ruleset.find` / `Selector.mixinElements`): combinators and `&` are ignored,
+  // a compound run can span a descendant-nested definition, and the name resolves
+  // ONLY inside the matched namespace body — it does NOT fall through to same-name
+  // defs in the enclosing/root scope. A bare `.m()` still walks the scope chain
+  // accumulating same-name overloads.
   // Explicit `MixinDef`s AND paren-less/plain rulesets callable as zero-arg mixins
-  // (Less: `.foo {}` is a mixin). Rule candidates are ADDITIVE — appended after the
-  // parametric defs so both dispatch, in definition order. A NAMESPACED call
-  // (`#ns > .m()`) resolves the name ONLY inside the descended namespace body — it
-  // does NOT fall through to same-name defs in the enclosing/root scope — so it uses
-  // an own-scope lookup rather than the chain walk a bare `.m()` call uses.
+  // (Less: `.foo {}` is a mixin) are both candidates, in definition order.
   // [closure] track each candidate's DEFINITION frame: a mixin body resolves its
   // free variables in the scope where the mixin was WRITTEN, not the call site
-  // (less@4 `MixinDefinition.frames`). A namespaced call already descends to the
+  // (less@4 `MixinDefinition.frames`). The path finder records the descended
   // definition scope; a bare `.m()` may resolve a def in an ANCESTOR frame.
+  const namespaced = call.path.length > 0;
   const homes = new Map<MixinDef, Frame>();
   const rawCandidates = namespaced
-    ? ownCandidates(dispatchFrame, call.name, homes)
-    : lookupCandidates(dispatchFrame, call.name, homes);
+    ? findPathCandidates(frame, call, homes)
+    : lookupCandidates(frame, call.name, homes);
   // [parent-exclusion] A paren-less ruleset callable as a zero-arg mixin
   // (`ruleMixin`) is EXCLUDED from its own candidate set while its body is on the
   // active expansion stack — the enclosing frame declines to be its own candidate.
@@ -1821,20 +2005,34 @@ function expandCall(
       // e.g. `mixins-closure`); `fallback` = the caller chain, which also keeps the
       // DYNAMIC expansion stack reachable for the ruleset-mixin parent-exclusion
       // check (`parentExcludes`) and lets the body see caller-published mixins. A
-      // namespaced call already descends to the definition scope, so home === dispatch.
-      const homeFrame = homes.get(def) ?? dispatchFrame;
+      // namespaced call already descends to the definition scope (home is confined
+      // to the namespace), so it takes no caller fallback.
+      const homeFrame = homes.get(def) ?? frame;
       const callFrame: Frame = {
         parent: homeFrame,
         mixins: collectMixins(def.body),
         vars: mergeVars(bindings, collectVars(def.body)),
         statements: def.body,
-        ...(homeFrame === dispatchFrame ? {} : { fallback: dispatchFrame }),
+        ...(namespaced || homeFrame === frame ? {} : { fallback: frame }),
       };
       // [dedup] a real parametric MixinDef produces RESTRICTED output (its overloaded
       // duplicates survive); a synthesized ruleset-mixin does not, unless it is already
       // nested inside restricted output (chain-sticky, matching isFromRestrictedMixinOutput).
       const bodyProtected = protectedDup || def.ruleMixin !== true;
-      walkBody(def.body, composed, callFrame, group, flush, partition, e, bodyImp, bodyProtected);
+      // [partition] A PARAMETRIC mixin body is a bare-`&` transparent wrapper in
+      // less@4, so its declarations force-lead into the caller's leading block even
+      // past nested rules (`mixins-important`). A ruleset-mixin body is a plain
+      // splice — it inherits the caller's context so its declarations split at
+      // container boundaries like authored ones (`mixins`).
+      const bodyForceLeading = forceLeading || def.ruleMixin !== true;
+      // [adjacent-merge] each mixin expansion is a DISTINCT parent expansion: give
+      // its body a FRESH composed-array identity (same values → byte-identical
+      // composition) so nested rulesets from two separate calls of the same body do
+      // NOT reopen-merge (`.class .inner {} .class .inner {}` stay two blocks —
+      // `mixins-important`), while two nested siblings within ONE expansion still
+      // share it and merge.
+      const bodyComposed = composed === null ? null : composed.slice();
+      walkBody(def.body, bodyComposed, callFrame, group, flush, partition, e, bodyImp, bodyProtected, bodyForceLeading);
       // [scope-leak] after expansion the mixin's own `@x:` declarations unlock into
       // the caller scope (visible to later siblings), matching less@4.
       leakBodyVars(frame, def.body, callFrame, e);
@@ -1964,10 +2162,11 @@ function expandDetachedCall(
   partition: Partition | null, // [partition] nested-ruleset sink (see walkBody)
   e: Emit,
   protectedDup = false, // [dedup] inherit restriction from the enclosing context
+  forceLeading = false, // [partition] inherited leading-hoist context
 ): void {
   const r = detachedCallFrame(call.varName, frame);
   if (!r) return;
-  walkBody(r.dr.body, composed, r.callFrame, group, flush, partition, e, false, protectedDup);
+  walkBody(r.dr.body, composed, r.callFrame, group, flush, partition, e, false, protectedDup, forceLeading);
 }
 
 /* --------------------------------------------------------------- [each/For] */
@@ -2117,10 +2316,10 @@ function resolveForNode(
 function forItemsFromMixinCall(call: MixinCall, frame: Frame, e: Emit): ForItem[] {
   const collected: Leaf[] = [];
   const noop = (): void => {};
-  // Capture (never emit) any nested rules: `sawDecl:true` forces every rule into
-  // the discarded `deferred` list rather than emitting it inline to the output.
-  const discard: Partition = { deferred: [], sawDecl: true };
-  expandCall(call, null, frame, collected, noop, discard, e);
+  // Collect EVERY declaration (`forceLeading` → all decls to `collected`), discard
+  // nested rules (they defer to `trailing`, which is never drained here).
+  const discard: Partition = { encounteredContainer: false, trailing: [], pending: [], emitBlock: noop };
+  expandCall(call, null, frame, collected, noop, discard, e, false, false, true);
   const items: ForItem[] = [];
   for (const leaf of collected) {
     const n = leaf.node;
@@ -2186,6 +2385,7 @@ function expandFor(
   e: Emit,
   imp = false,
   protectedDup = false,
+  forceLeading = false, // [partition] inherited leading-hoist context
 ): void {
   const items = forItems(node.iterable, frame, e);
   for (let i = 0; i < items.length; i++) {
@@ -2201,7 +2401,7 @@ function expandFor(
       vars: mergeVars(bindings, collectVars(node.rules)),
       statements: node.rules,
     };
-    walkBody(node.rules, composed, loopFrame, group, flush, partition, e, imp, protectedDup);
+    walkBody(node.rules, composed, loopFrame, group, flush, partition, e, imp, protectedDup, forceLeading);
   }
 }
 
@@ -2240,11 +2440,31 @@ function dispatch(
     if (isThenable(b)) throw new Error('async value in a synchronous dispatch position');
     return b;
   };
+  // [spread] `.mixin(@args...)` splats a list variable into positional args at the
+  // call site (Less variadic forwarding) BEFORE binding, so overloads select on the
+  // splatted arity.
+  const call1 = expandSpreadArgs(call, resolveCaller);
   // an arg that is a variable bound to a detached ruleset must bind BY
   // REFERENCE (its body/closure survives); substitute the resolved node so the
   // eager byte-resolver never tries to serialize a ruleset as a value.
-  const call2 = substituteDetachedVarArgs(call, frame);
+  const call2 = substituteDetachedVarArgs(call1, frame);
   return selectDefinitions(candidates, call2, resolveCaller, makeCalleeTyped, e.ev, e.modes, resolveDefault);
+}
+
+/** [spread] Replace each `@args...` spread arg with the POSITIONAL args it splats
+ * to: resolve the list variable's bytes in the caller frame and split it on the
+ * top-level list separator (comma, else whitespace). A spread of an empty/missing
+ * value contributes no args. Non-spread args pass through unchanged. */
+function expandSpreadArgs(call: MixinCall, resolveCaller: ValueResolver): MixinCall {
+  if (!call.args.some((a) => a.spread)) return call;
+  const args: CallArg[] = [];
+  for (const a of call.args) {
+    if (!a.spread) { args.push(a); continue; }
+    const bytes = resolveCaller(a.value).trim();
+    if (bytes === '') continue;
+    for (const piece of splitListBytes(bytes)) args.push({ value: any(piece) });
+  }
+  return { type: 'MixinCall', name: call.name, args, path: call.path, important: call.important };
 }
 
 /** Replace `@rs` args (a VarRef bound to a detached ruleset) with the
