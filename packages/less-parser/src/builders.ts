@@ -58,14 +58,283 @@ type Child = JessNode | CSTLeaf | CSTError;
 // Helpers
 // ---------------------------------------------------------------------------
 
-// Mirrors grammar.ts's `knownAtVar` regex (isVariableLike in the reference): a
+// Mirrors grammar.ts's `knownAtVar` terminal (isVariableLike in the reference): a
 // known at-rule name (incl. vendor-prefixed document/keyframes/viewport) used
 // as a variable call (`@media()`) is only legal with empty parens, and is
-// itself a deprecated form.
-const KNOWN_AT_RULE_VAR_NAME_RE = /^(?:(?:-moz-)?document|(?:-[a-z]+-)?keyframes|(?:-ms-)?viewport|import|media|supports|layer|container|scope|page|font-face|starting-style|property|counter-style|color-profile|font-palette-values|namespace)$/i;
+// itself a deprecated form. Kept as a non-regex classifier (LAW: no regex outside
+// Parseman `regex()`): the grammar's `nonKnownAtVar` choice-ordering routes
+// `@-<vendor>-keyframes()` to the args branch, so this set is NOT redundant with
+// the matched terminal — it preserves the `at-rule-variable` deprecation warning
+// for vendor-prefixed keyframes.
+const KNOWN_AT_RULE_VAR_NAMES = new Set([
+  'document', '-moz-document', 'keyframes', 'viewport', '-ms-viewport',
+  'import', 'media', 'supports', 'layer', 'container', 'scope', 'page',
+  'font-face', 'starting-style', 'property', 'counter-style', 'color-profile',
+  'font-palette-values', 'namespace'
+]);
+function isKnownAtRuleVarName(name: string): boolean {
+  const n = name.toLowerCase();
+  if (KNOWN_AT_RULE_VAR_NAMES.has(n)) {
+    return true;
+  }
+  // `-<vendor>-keyframes` — vendor prefix of the form `-[a-z]+-`.
+  if (n.startsWith('-') && n.endsWith('-keyframes')) {
+    const vendor = n.slice(1, -'-keyframes'.length);
+    return vendor.length > 0 && [...vendor].every(c => c >= 'a' && c <= 'z');
+  }
+  return false;
+}
 
 function spanToLocation(span: Span): LocationInfo {
   return { start: span.start, end: span.end };
+}
+
+/** ASCII letter (`[a-zA-Z]`). */
+function isAsciiLetter(c: string): boolean {
+  return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
+}
+
+/** A `[\w-]` character: ASCII word char (`[A-Za-z0-9_]`) or hyphen. */
+function isWordOrDash(c: string): boolean {
+  return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
+    || (c >= '0' && c <= '9') || c === '_' || c === '-';
+}
+
+/** The first `<sigil><letter><[\w-]*>` run in `value` (e.g. `@foo`, `$bar`), or null.
+ * Non-regex equivalent of the first (non-global) match of sigil + letter + word/dash. */
+function firstSigilIdent(value: string, sigil: string): string | null {
+  for (let i = 0; i < value.length; i++) {
+    if (value[i] !== sigil) {
+      continue;
+    }
+    const lead = value[i + 1];
+    if (lead === undefined || !isAsciiLetter(lead)) {
+      continue;
+    }
+    let j = i + 2;
+    while (j < value.length && isWordOrDash(value[j]!)) {
+      j++;
+    }
+    return value.slice(i, j);
+  }
+  return null;
+}
+
+/** Lead char of an ns-name after `#`/`.`: `_`, an ASCII letter, or U+0080-U+FFFF
+ * (the `[_a-zA-Z\x80-\uffff]` class). */
+function isNsNameLead(ch: string): boolean {
+  const cc = ch.charCodeAt(0);
+  return ch === '_' || isAsciiLetter(ch) || (cc >= 0x80 && cc <= 0xffff);
+}
+
+/** `/^[#.]-?<lead>/`: `#`/`.`, then an optional `-`, then a lead char accepted by
+ * `isLead`. Non-regex core shared by the ns-name classifiers. */
+function startsWithHashDotLead(s: string, isLead: (c: string) => boolean): boolean {
+  const c0 = s[0];
+  if (c0 !== '#' && c0 !== '.') {
+    return false;
+  }
+  let p = 1;
+  if (s[p] === '-') {
+    p++;
+  }
+  const lead = s[p];
+  return lead !== undefined && isLead(lead);
+}
+
+/** Global match of the `[#.][^#.]*` pattern: segments each starting with `#`/`.` and
+ * running until the next `#`/`.`. Empty when none match. Non-regex. */
+function splitHashDotSegments(s: string): string[] {
+  const segs: string[] = [];
+  let k = 0;
+  while (k < s.length) {
+    if (s[k] === '#' || s[k] === '.') {
+      let e = k + 1;
+      while (e < s.length && s[e] !== '#' && s[e] !== '.') {
+        e++;
+      }
+      segs.push(s.slice(k, e));
+      k = e;
+    } else {
+      k++;
+    }
+  }
+  return segs;
+}
+
+/** Global match of the `[#.][^#.>+~\s]*` pattern: like {@link splitHashDotSegments} but a
+ * segment also ends at a combinator (`>`,`+`,`~`) or whitespace. Non-regex. */
+function splitSelectorHeadSegments(s: string): string[] {
+  const segs: string[] = [];
+  let k = 0;
+  while (k < s.length) {
+    if (s[k] === '#' || s[k] === '.') {
+      let e = k + 1;
+      while (e < s.length) {
+        const c = s[e]!;
+        if (c === '#' || c === '.' || c === '>' || c === '+' || c === '~' || c.trim() === '') {
+          break;
+        }
+        e++;
+      }
+      segs.push(s.slice(k, e));
+      k = e;
+    } else {
+      k++;
+    }
+  }
+  return segs;
+}
+
+/** `/(?:^|[\s,])\.-?[_a-zA-Z]/`: a `.` at string start or after whitespace/comma, then
+ * an optional `-`, then `[_a-zA-Z]` — an unquoted class-selector capture. Non-regex. */
+function hasUnquotedClassSelector(text: string): boolean {
+  for (let k = 0; k < text.length; k++) {
+    if (text[k] !== '.') {
+      continue;
+    }
+    if (k > 0) {
+      const prev = text[k - 1]!;
+      if (prev.trim() !== '' && prev !== ',') {
+        continue;
+      }
+    }
+    let p = k + 1;
+    if (text[p] === '-') {
+      p++;
+    }
+    const ch = text[p];
+    if (ch !== undefined && (ch === '_' || isAsciiLetter(ch))) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** `/^\[([^\]]*)\]/`: leading `[`, zero+ non-`]` chars, `]`. Returns the inner text and the
+ * full match length, or null. Non-regex. */
+function leadingBracket(s: string): { inner: string; length: number } | null {
+  if (s[0] !== '[') {
+    return null;
+  }
+  let e = 1;
+  while (e < s.length && s[e] !== ']') {
+    e++;
+  }
+  if (e >= s.length || s[e] !== ']') {
+    return null;
+  }
+  return { inner: s.slice(1, e), length: e + 1 };
+}
+
+/** `/^([.#][^\[\]()\s]+)(\[([^\]]*)\])?$/`: a `.`/`#` selector token (no brackets, parens,
+ * or whitespace), optionally followed by a `[...]` accessor, spanning the whole string.
+ * Returns the selector and the bracket inner (undefined when no bracket), or null. */
+function parseSelBracketRef(s: string): { sel: string; bracket: string | undefined } | null {
+  const c0 = s[0];
+  if (c0 !== '.' && c0 !== '#') {
+    return null;
+  }
+  let i = 1;
+  while (i < s.length) {
+    const c = s[i]!;
+    if (c === '[' || c === ']' || c === '(' || c === ')' || c.trim() === '') {
+      break;
+    }
+    i++;
+  }
+  if (i === 1) {
+    return null;
+  }
+  const sel = s.slice(0, i);
+  if (i === s.length) {
+    return { sel, bracket: undefined };
+  }
+  if (s[i] !== '[') {
+    return null;
+  }
+  let e = i + 1;
+  while (e < s.length && s[e] !== ']') {
+    e++;
+  }
+  if (e === s.length || s[e] !== ']' || e + 1 !== s.length) {
+    return null;
+  }
+  return { sel, bracket: s.slice(i + 1, e) };
+}
+
+/** `/^\s*\[([^\]]+)\]/`: leading optional-ws `[`, ≥1 non-`]` chars, `]`. Returns the inner
+ * text and the full match length (incl. leading ws), or null. Non-regex. */
+function leadingBracketGroup(s: string): { inner: string; length: number } | null {
+  let i = 0;
+  while (i < s.length && s[i]!.trim() === '') {
+    i++;
+  }
+  if (s[i] !== '[') {
+    return null;
+  }
+  let e = i + 1;
+  while (e < s.length && s[e] !== ']') {
+    e++;
+  }
+  if (e === i + 1 || s[e] !== ']') {
+    return null;
+  }
+  return { inner: s.slice(i + 1, e), length: e + 1 };
+}
+
+/** `/^\(\s*\)/`: `(`, optional-ws, `)` at the very start. Non-regex. */
+function startsWithEmptyParens(s: string): boolean {
+  if (s[0] !== '(') {
+    return false;
+  }
+  let i = 1;
+  while (i < s.length && s[i]!.trim() === '') {
+    i++;
+  }
+  return s[i] === ')';
+}
+
+/** `/^\s*\(\s*\)/`: leading optional-ws `(`, optional-ws, `)`. Non-regex. */
+function startsWithWsEmptyParens(s: string): boolean {
+  let i = 0;
+  while (i < s.length && s[i]!.trim() === '') {
+    i++;
+  }
+  return startsWithEmptyParens(s.slice(i));
+}
+
+/** `/^\S+\s+\(/`: a leading non-whitespace run, then whitespace, then `(` (a mixin
+ * name separated from its parens by whitespace). Non-regex; `.trim()` on a single char
+ * matches JS `\s` exactly. */
+function hasWhitespaceBeforeParen(src: string): boolean {
+  let i = 0;
+  while (i < src.length && src[i]!.trim() !== '') {
+    i++;
+  }
+  if (i === 0) {
+    return false;
+  }
+  let j = i;
+  while (j < src.length && src[j]!.trim() === '') {
+    j++;
+  }
+  return j > i && src[j] === '(';
+}
+
+/** Non-empty and made up entirely of CSS trivia whitespace (` \t\n\r\f`).
+ * Non-regex equivalent of `/^[ \t\n\r\f]+$/u`. */
+function isTriviaWhitespace(s: string): boolean {
+  if (s.length === 0) {
+    return false;
+  }
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i]!;
+    if (c !== ' ' && c !== '\t' && c !== '\n' && c !== '\r' && c !== '\f') {
+      return false;
+    }
+  }
+  return true;
 }
 
 function nodeChildren(children: ReadonlyArray<Child>): JessNode[] {
@@ -190,7 +459,9 @@ export class LessGrammar extends CssParser {
     const name = rawName.startsWith('@') ? rawName.slice(1) : rawName;
     // Less.js still accepts a digit-leading variable name (`@3`) — its name regex
     // is `[\w-]+` — but it's a footgun (collides with numeric tokens), so flag it.
-    if (/^-?\d/.test(name)) {
+    // `/^-?\d/`: the first char after an optional leading `-` is a digit.
+    const firstDigitCh = name[0] === '-' ? name[1] : name[0];
+    if (firstDigitCh !== undefined && firstDigitCh >= '0' && firstDigitCh <= '9') {
       this._warn(
         `Variable name "@${name}" starts with a digit; digit-leading variable names are deprecated.`,
         'digit-leading-variable'
@@ -254,7 +525,7 @@ export class LessGrammar extends CssParser {
     }
     if (valItems.length) {
       const vText = this._source.slice(valItems[0]!.span.start, valItems[valItems.length - 1]!.span.end);
-      if (/(?:^|[\s,])\.-?[_a-zA-Z]/.test(vText)) {
+      if (hasUnquotedClassSelector(vText)) {
         this._warn(
           `Unquoted selector capture in variable "@${name}" is deprecated; wrap the value in quotes or ~"...".`,
           'unquoted-selector-capture'
@@ -278,9 +549,9 @@ export class LessGrammar extends CssParser {
         || (rvKey && typeof rvKey === 'object' && rvKey.type === 'Quoted' && (rvKey.value === '' || rvKey.valueOf?.() === ''));
       const grammarPartialAccessor =
         rv && rv.type === 'Reference' && rv.target !== undefined && isEmptyKey;
-      const accMatch = /^\s*\[([^\]]+)\]/.exec(afterVal);
+      const accMatch = leadingBracketGroup(afterVal);
       if (accMatch) {
-        const accText = accMatch[1]!.trim();
+        const accText = accMatch.inner.trim();
         const accessorKey = this._decodeAccessorKey(accText, loc);
         // A numeric accessor key (`foo[2]` / `foo[]` → last, key -1) is an INDEX
         // lookup; a variable dispatch would fail with `'-1' is not defined`.
@@ -302,8 +573,8 @@ export class LessGrammar extends CssParser {
             loc
           ) as unknown as JessNode;
         }
-        const afterAcc = afterVal.slice(accMatch[0].length);
-        if (/^\s*\(\s*\)/.test(afterAcc)) {
+        const afterAcc = afterVal.slice(accMatch.length);
+        if (startsWithWsEmptyParens(afterAcc)) {
           rawValue = new Call({ name: rawValue as any } as any, undefined, loc) as unknown as JessNode;
         }
       }
@@ -404,7 +675,8 @@ export class LessGrammar extends CssParser {
     const headText = (ls[0]?.value ?? '').trim();
     // Split the selector path into segments: `#ns.options` → ['#ns', '.options'];
     // combinators (`#ns > .a`) are dropped, each `.`/`#` name is one segment.
-    const pathSegs = headText.match(/[#.][^#.>+~\s]*/g) ?? [headText];
+    const headSegs = splitSelectorHeadSegments(headText);
+    const pathSegs = headSegs.length > 0 ? headSegs : [headText];
     const nameKey: string | string[] = pathSegs.length === 1 ? pathSegs[0]! : pathSegs;
     const rawKey = pathSegs.length > 1 ? pathSegs.join('') : undefined;
     let base: JessNode = new Reference(
@@ -503,9 +775,12 @@ export class LessGrammar extends CssParser {
     }
   }
 
-  /** A guard comparison operator leaf (`=`, `<`, `>=`, `=<`, `=~`, …). */
+  /** A guard comparison operator leaf (`=`, `<`, `>=`, `=<`, `=~`, …). Mirrors the
+   * grammar's `compareOp` terminal without a regex: every operator token contains a
+   * `<`, `>`, or `=` (and a lone `~` is not an operator), so a char-membership test is
+   * exactly equivalent to `/>=|<=|=>|=<|=~|[<>=]/`. */
   private _isCompareOpLeaf(text: string): boolean {
-    return />=|<=|=>|=<|=~|[<>=]/.test(text);
+    return text.includes('<') || text.includes('>') || text.includes('=');
   }
 
   /**
@@ -926,7 +1201,7 @@ export class LessGrammar extends CssParser {
     // only those whitespace leaves before recognizing the intentionally exact
     // `name : scalar [;]` shape.
     const significant = items.filter(item => (
-      typeof item.comp !== 'string' || !/^[ \t\n\r\f]+$/u.test(item.comp)
+      typeof item.comp !== 'string' || !isTriviaWhitespace(item.comp)
     ));
     if (
       (significant.length !== 3 && significant.length !== 4)
@@ -1012,9 +1287,14 @@ export class LessGrammar extends CssParser {
     }
     const content = ls.find(l => l.value !== '&' && l.value !== '(' && l.value !== ')')?.value ?? '';
     const trimmed = content.trim();
+    // Strip a matched outer quote pair (`'x'`/`"x"`) without a regex: same open/close
+    // quote char and length ≥ 2. Non-regex form of `.replace(/^(['"])([\s\S]*)\1$/, '$2')`.
+    const q0 = trimmed[0];
     const appendValue = trimmed === 'nil'
       ? ''
-      : trimmed.replace(/^(['"])([\s\S]*)\1$/, '$2');
+      : (trimmed.length >= 2 && (q0 === '"' || q0 === '\'') && trimmed[trimmed.length - 1] === q0
+          ? trimmed.slice(1, -1)
+          : trimmed);
     return new Ampersand(appendValue, undefined, loc) as unknown as JessNode;
   }
 
@@ -1036,7 +1316,7 @@ export class LessGrammar extends CssParser {
     // trailing `all` / `!all` flag leaf. The complexSelector builder collapses a
     // lone `.x` to a bare string, so accept either form here.
     const comps = spannedComponents(raw);
-    const isFlag = (c: unknown): c is string => typeof c === 'string' && /^!?all$/.test(c);
+    const isFlag = (c: unknown): c is string => c === 'all' || c === '!all';
     const hasFlag = comps.some(c => isFlag(c.comp));
     const flag = hasFlag ? ExtendFlag.All : ExtendFlag.Exact;
     const targetComp = comps.find(c => !isFlag(c.comp))?.comp;
@@ -1159,20 +1439,22 @@ export class LessGrammar extends CssParser {
     }
     // `$name` (property reference) or bare `name` (index) → Quoted(name); the `$`
     // property marker is dropped.
-    return new Quoted(rawText.replace(/^\$/, ''), undefined, loc) as unknown as JessNode;
+    return new Quoted(rawText.startsWith('$') ? rawText.slice(1) : rawText, undefined, loc) as unknown as JessNode;
   }
 
   protected override _assembleSegment(seg: Spanned[], loc: LocationInfo): Component {
     const result = super._assembleSegment(seg, loc);
     const isNsNameEarly = (c: unknown): c is string =>
-      typeof c === 'string' && /^[#.]-?[_a-zA-Z]/.test(c.trim());
+      typeof c === 'string' && startsWithHashDotLead(c.trim(), ch => ch === '_' || isAsciiLetter(ch));
     if (!Array.isArray(result)) {
       // A lone `#ns.mixin` / `.mixin` string in declaration-value position is a
       // mixin-ruleset name Reference — not a raw string. Faithful to the reference
       // `mixinReference`→`mixinName` (asReference:true). (The var-decl namespace path
       // does this too via _tryParseNamespaceRef.)
       if (isNsNameEarly(result)) {
-        const segs = (result as string).trim().match(/[#.][^#.]*/g) ?? [(result as string).trim()];
+        const segTrimmed = (result as string).trim();
+        const segArr = splitHashDotSegments(segTrimmed);
+        const segs = segArr.length > 0 ? segArr : [segTrimmed];
         const nameKey: string | string[] = segs.length === 1 ? segs[0]! : segs;
         const rawKey = segs.length > 1 ? segs.join('') : undefined;
         return new Reference(
@@ -1187,7 +1469,7 @@ export class LessGrammar extends CssParser {
     }
     const comps = result as Component[];
     const isNsName = (c: unknown): c is string =>
-      typeof c === 'string' && /^[#.]-?[_a-zA-Z-￿]/.test(c.trim());
+      typeof c === 'string' && startsWithHashDotLead(c.trim(), isNsNameLead);
     const isSquareParen = (c: unknown): c is JessNode =>
       !!c && typeof c === 'object' && (c as any).type === 'Paren'
       && (c as any)._options?.delimiter === 'square';
@@ -1199,7 +1481,10 @@ export class LessGrammar extends CssParser {
     }
     // Consume all leading #/.-prefixed strings as namespace path segments.
     // A single token like '#ns.breakpoint' also gets split into sub-segments.
-    const splitNsToken = (s: string): string[] => s.match(/[#.][^#.]*/g) ?? [s];
+    const splitNsToken = (s: string): string[] => {
+      const arr = splitHashDotSegments(s);
+      return arr.length > 0 ? arr : [s];
+    };
     let i = 0;
     const pathSegs: string[] = [];
     while (i < comps.length && isNsName(comps[i])) {
@@ -1461,7 +1746,7 @@ export class LessGrammar extends CssParser {
     // starts, so re-introduce the canonical single space the golden renders
     // (`--this: () => …`). Right-trim trailing whitespace before the terminating
     // `;`/`}` so semicolon insertion stays inline.
-    const rawText = ls.slice(2).filter(l => l.value !== ';').map(l => l.value).join('').replace(/\s+$/, '');
+    const rawText = ls.slice(2).filter(l => l.value !== ';').map(l => l.value).join('').trimEnd();
     const valueText = rawText === '' ? '' : ' ' + rawText;
     const value = valueText.includes('@{')
       ? getInterpolatedNode(valueText, loc)
@@ -1494,17 +1779,17 @@ export class LessGrammar extends CssParser {
     const text = this._source.slice(span.start, span.end);
     const colon = text.indexOf(':');
     const value = colon >= 0 ? text.slice(colon + 1) : text;
-    const at = value.match(/@[a-zA-Z][\w-]*/);
-    if (at && !value.includes('@{')) {
+    const at = firstSigilIdent(value, '@');
+    if (at !== null && !value.includes('@{')) {
       this._warn(
-        `"${at[0]}" in custom property values is treated as literal text. Use @{${at[0].slice(1)}} for interpolation.`,
+        `"${at}" in custom property values is treated as literal text. Use @{${at.slice(1)}} for interpolation.`,
         'variable-in-unknown-value'
       );
     }
-    const dollar = value.match(/\$[a-zA-Z][\w-]*/);
-    if (dollar && !value.includes('${')) {
+    const dollar = firstSigilIdent(value, '$');
+    if (dollar !== null && !value.includes('${')) {
       this._warn(
-        `"${dollar[0]}" in custom property values is treated as literal text. Use \${${dollar[0].slice(1)}} for interpolation.`,
+        `"${dollar}" in custom property values is treated as literal text. Use \${${dollar.slice(1)}} for interpolation.`,
         'property-in-unknown-value'
       );
     }
@@ -1535,8 +1820,22 @@ export class LessGrammar extends CssParser {
    */
   private _firstTopLevelBareAtVar(text: string): string | null {
     let depth = 0;
-    // Skip the leading at-rule name (`@media`, `@-moz-document`, …).
-    let i = /^\s*@-?[\w-]+/.exec(text)?.[0].length ?? 0;
+    // Skip the leading at-rule name (`@media`, `@-moz-document`, …). Non-regex form of
+    // `/^\s*@-?[\w-]+/` (the `-?` is redundant: a dash is already in `[\w-]`).
+    let i = 0;
+    let ws = 0;
+    while (ws < text.length && text[ws]!.trim() === '') {
+      ws++;
+    }
+    if (text[ws] === '@') {
+      let end = ws + 1;
+      while (end < text.length && isWordOrDash(text[end]!)) {
+        end++;
+      }
+      if (end > ws + 1) {
+        i = end;
+      }
+    }
     for (; i < text.length; i++) {
       const c = text[i]!;
       if (c === '"' || c === '\'') {
@@ -1558,9 +1857,19 @@ export class LessGrammar extends CssParser {
           continue;
         }
         if (depth === 0) {
-          const m = /^@(-?[a-zA-Z\x80-￿][\w-]*)/.exec(text.slice(i));
-          if (m) {
-            return m[1]!;
+          // `@(-?[a-zA-Z\x80-\uffff][\w-]*)` - capture the bare-var name (sans `@`).
+          let p = i + 1;
+          if (text[p] === '-') {
+            p++;
+          }
+          const lead = text[p];
+          const leadCode = lead === undefined ? -1 : lead.charCodeAt(0);
+          if (lead !== undefined && (isAsciiLetter(lead) || (leadCode >= 0x80 && leadCode <= 0xffff))) {
+            let q = p + 1;
+            while (q < text.length && isWordOrDash(text[q]!)) {
+              q++;
+            }
+            return text.slice(i + 1, q);
           }
         }
         continue;
@@ -1602,7 +1911,7 @@ export class LessGrammar extends CssParser {
       this._warn('Calling a mixin without parentheses is deprecated', 'mixin-call-no-parens');
     } else {
       const src = this._source.slice(loc.start, loc.end);
-      if (/^\S+\s+\(/.test(src)) {
+      if (hasWhitespaceBeforeParen(src)) {
         this._warn('Whitespace between a mixin name and parentheses is deprecated', 'mixin-call-whitespace');
       }
     }
@@ -1648,7 +1957,7 @@ export class LessGrammar extends CssParser {
     const hasArgs = argsList && (argsList as unknown as { value?: unknown[] }).value?.length;
     // `@media()` etc — a known at-rule name used as a variable call, allowed only
     // with empty parens (port of isVariableLike's 'at-rule-variable' warning).
-    if (!hasArgs && KNOWN_AT_RULE_VAR_NAME_RE.test(name)) {
+    if (!hasArgs && isKnownAtRuleVarName(name)) {
       this._warn('Using known at-rule names as variables is deprecated', 'at-rule-variable');
     }
     const callArgs = hasArgs ? this._convertArgsForCall(argsList as unknown as JessNode, loc) : undefined;
@@ -2012,7 +2321,7 @@ export class LessGrammar extends CssParser {
       this._warn('Calling a mixin without parentheses is deprecated', 'mixin-call-no-parens');
     } else if (hasSemi && hasExplicitParens) {
       const src = this._source.slice(loc.start, loc.end);
-      if (/^\S+\s+\(/.test(src)) {
+      if (hasWhitespaceBeforeParen(src)) {
         this._warn('Whitespace between a mixin name and parentheses is deprecated', 'mixin-call-whitespace');
       }
     }
@@ -3040,9 +3349,15 @@ export class LessGrammar extends CssParser {
     // Check if this looks like a namespace selector reference/call
     // Pattern: #id or .class, optionally followed by > .mixin, [accessor], ()
     const isSel = (s: unknown): s is string =>
-      typeof s === 'string' && /^[#.]-?[_a-zA-Z\u0080-\uffff]/.test(s.trim());
-    const isCombinator = (s: unknown): s is string =>
-      typeof s === 'string' && /^[>+~|]$|^\|\|$/.test(String(s).trim());
+      typeof s === 'string' && startsWithHashDotLead(s.trim(), isNsNameLead);
+    const isCombinator = (s: unknown): s is string => {
+      if (typeof s !== 'string') {
+        return false;
+      }
+      // `/^[>+~|]$|^\|\|$/`: exactly one of `>` `+` `~` `|`, or `||`.
+      const t = s.trim();
+      return t === '>' || t === '+' || t === '~' || t === '|' || t === '||';
+    };
     const isJessNodeVal = (x: unknown): x is JessNode =>
       !!x && typeof x === 'object' && 'type' in x;
 
@@ -3109,7 +3424,8 @@ export class LessGrammar extends CssParser {
       } else if (isSel(c)) {
         // Split compound selectors like '#ns.breakpoint' → ['#ns', '.breakpoint']
         const seg = (c as string).trim();
-        const splitSeg = seg.match(/[#.][^#.]*/g) ?? [seg];
+        const splitSegArr = splitHashDotSegments(seg);
+        const splitSeg = splitSegArr.length > 0 ? splitSegArr : [seg];
         for (const s of splitSeg) {
           pendingSegments.push(s);
         }
@@ -3186,15 +3502,15 @@ export class LessGrammar extends CssParser {
           let argsNode: JessNode | null = null;
           if (callInner) {
             // Check for .selector[accessor] pattern in call args
-            const argRefMatch = /^([.#][^\[\]()\s]+)(\[([^\]]*)\])?$/.exec(callInner);
+            const argRefMatch = parseSelBracketRef(callInner);
             if (argRefMatch) {
-              const argSel = argRefMatch[1]!;
-              const argAccContent = argRefMatch[3]; // may be undefined or empty string
+              const argSel = argRefMatch.sel;
+              const argAccContent = argRefMatch.bracket; // may be undefined or empty string
               let argBase: JessNode = new Reference(
                 { key: argSel } as unknown as ReferenceValue,
                 { role: 'name' } as any, loc
               ) as unknown as JessNode;
-              if (argRefMatch[2] !== undefined) {
+              if (argRefMatch.bracket !== undefined) {
                 const argAccKey: string | number = argAccContent === undefined || argAccContent === ''
                   ? -1
                   : (argAccContent.startsWith('@') ? argAccContent.slice(1) : argAccContent);
@@ -3215,9 +3531,9 @@ export class LessGrammar extends CssParser {
       }
 
       // Step 2: Check for [accessor] suffix
-      const accMatch = /^\[([^\]]*)\]/.exec(afterVal);
+      const accMatch = leadingBracket(afterVal);
       if (accMatch) {
-        const accText = accMatch[1]!.trim();
+        const accText = accMatch.inner.trim();
         let accessorKey: JessNode | string | number;
         if (accText === '') {
           accessorKey = -1;
@@ -3230,14 +3546,13 @@ export class LessGrammar extends CssParser {
           { target: base as any, key: accessorKey as any } as unknown as ReferenceValue,
           undefined, loc
         ) as unknown as JessNode;
-        const afterAcc = afterVal.slice(accMatch[0].length).trimStart();
-        if (/^\(\s*\)/.test(afterAcc)) {
+        const afterAcc = afterVal.slice(accMatch.length).trimStart();
+        if (startsWithEmptyParens(afterAcc)) {
           base = new Call({ name: base as any } as any, undefined, loc) as unknown as JessNode;
         }
       } else if (!hasMidCall) {
         // Step 3: Check for trailing () (simple empty call)
-        const callMatch = /^\(\s*\)/.exec(afterVal);
-        if (callMatch) {
+        if (startsWithEmptyParens(afterVal)) {
           base = new Call({ name: base as any } as any, undefined, loc) as unknown as JessNode;
         }
       }

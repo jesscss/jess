@@ -446,8 +446,13 @@ function importLeafValue(x: unknown): string | undefined {
   return leaf?._tag === 'leaf' && typeof leaf.value === 'string' ? leaf.value : undefined;
 }
 
-/** The at-keyword that opens a Less import statement (`@import`/`@-import`/`@-export`). */
-const IMPORT_KEYWORD_RE = /^@(?:-import|-export|import)$/i;
+/** The at-keyword that opens a Less import statement (`@import`/`@-import`/`@-export`).
+ * The grammar already lexes the head as an `atKeyword` leaf; this narrows that leaf to
+ * the import family without a regex (LAW: no regex outside Parseman `regex()`). */
+const IMPORT_KEYWORDS = new Set(['@import', '@-import', '@-export']);
+function isImportKeyword(name: string): boolean {
+  return IMPORT_KEYWORDS.has(name.toLowerCase());
+}
 
 /**
  * The specifier string a built path `Word` carries, plus whether it is variable-
@@ -517,7 +522,7 @@ function flagsFromOptions(options: string): ImportFlags {
 export function buildStyleImportNode(args: BuildArgs): t2.StyleImport | null {
   const children = args.children;
   const name = importLeafValue(children[0]);
-  if (name === undefined || !IMPORT_KEYWORD_RE.test(name)) return null;
+  if (name === undefined || !isImportKeyword(name)) return null;
 
   // Locate the built path Word (the sole non-leaf child) and the option leaf.
   let pathNode: t2.Word | undefined;
