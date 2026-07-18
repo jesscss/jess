@@ -29,17 +29,78 @@ function dimensionCompare(a: Dimension, b: Dimension): -1 | 0 | 1 | undefined {
   return numericCompare(au.number, bu.number);
 }
 
+/** 3-way compare over primitives (`<`/`>` are lexical on strings); `!=` → undefined. */
+const primCompare = (a: string | number, b: string | number): -1 | 0 | 1 | undefined =>
+  a < b ? -1 : a === b ? 0 : a > b ? 1 : undefined;
+
+/** `toCSS`-equivalent of a value operand (the byte form less.js compares by).
+ *  An ESCAPED quoted string emits its raw contents (`~"x"` → `x`); a plain quoted
+ *  string keeps its quotes; every other operand serializes to its own `bytes`. */
+function toCssStr(v: ValueObj): string {
+  if (v.type === 'Quoted') return v.escaped ? v.value : `${v.quote}${v.value}${v.quote}`;
+  return v.bytes;
+}
+
+/** Whether an operand carries a dedicated `.compare` (less.js: Dimension/Color/Quoted). */
+function hasCompare(v: ValueObj): boolean {
+  return v.type === 'Dimension' || v.type === 'Color' || v.type === 'Quoted';
+}
+
+/** A single operand's OWN `.compare(other)` (less.js per-type methods). */
+function selfCompare(a: ValueObj, b: ValueObj): -1 | 0 | 1 | undefined {
+  switch (a.type) {
+    case 'Dimension':
+      return b.type === 'Dimension' ? dimensionCompare(a, b) : undefined;
+    case 'Color':
+      // rgb + alpha equality only (no ordering).
+      return b.type === 'Color'
+        && b.rgb[0] === a.rgb[0] && b.rgb[1] === a.rgb[1] && b.rgb[2] === a.rgb[2]
+        && b.alpha === a.alpha
+        ? 0 : undefined;
+    case 'Quoted':
+      // Two unescaped quoted strings compare LEXICALLY by contents (quote char
+      // ignored); otherwise fall back to a symmetric `toCSS` equality.
+      return b.type === 'Quoted' && !a.escaped && !b.escaped
+        ? primCompare(a.value, b.value)
+        : toCssStr(a) === toCssStr(b) ? 0 : undefined;
+    default:
+      return undefined;
+  }
+}
+
+const negate = (c: -1 | 0 | 1 | undefined): -1 | 0 | 1 | undefined =>
+  c === undefined ? undefined : (-c as -1 | 0 | 1);
+
 /**
- * Guard comparison (`@a > 0`) on typed operands. Dimensions reconcile units; any
- * other operand pair is equal iff its canonical bytes match, else INCOMPARABLE —
- * ordered `<`/`>`/`>=`/`<=` never fall back to a lexical byte compare (less@4.6.3
- * returns `undefined` for e.g. `foo < bar`, `#f00 > #0f0`, `"a" > "b"`).
+ * Faithful port of less.js `Node.compare(a, b)` over materialized operands:
+ *  - a typed operand's own `.compare` wins UNLESS the other side is a quoted
+ *    string (then a symmetric `toCSS` comparison is forced for stable results),
+ *  - differing structural types are INCOMPARABLE (`undefined`),
+ *  - same-type scalars are equal iff their values match; lists compare
+ *    element-wise (same separator, length, and recursively-equal items).
+ */
+function compareNodes(a: ValueObj, b: ValueObj): -1 | 0 | 1 | undefined {
+  if (hasCompare(a) && b.type !== 'Quoted') return selfCompare(a, b);
+  if (hasCompare(b)) return negate(selfCompare(b, a));
+  if (a.type !== b.type) return undefined;
+  if (a.type === 'List' && b.type === 'List') {
+    if (a.sep !== b.sep || a.items.length !== b.items.length) return undefined;
+    for (let i = 0; i < a.items.length; i++) {
+      if (compareNodes(a.items[i]!, b.items[i]!) !== 0) return undefined;
+    }
+    return 0;
+  }
+  return a.bytes === b.bytes ? 0 : undefined;
+}
+
+/**
+ * Guard comparison (`@a > 0`) on typed operands, faithful to less.js `Node.compare`
+ * (see {@link compareNodes}): dimensions reconcile units, quoted strings compare
+ * lexically, colors/keywords/lists by structural equality. An INCOMPARABLE pair
+ * (`undefined`) is false for every operator.
  */
 export function compare(op: string, left: ValueObj, right: ValueObj): boolean {
-  const c: -1 | 0 | 1 | undefined =
-    left.type === 'Dimension' && right.type === 'Dimension'
-      ? dimensionCompare(left, right)
-      : left.bytes === right.bytes ? 0 : undefined;
+  const c = compareNodes(left, right);
   switch (op) {
     case '=': return c === 0;
     case '>': return c === 1;

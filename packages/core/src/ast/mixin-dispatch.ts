@@ -182,7 +182,7 @@ export function selectDefinitions(
   candidates: MixinDef[],
   call: MixinCall,
   resolveCaller: ValueResolver,
-  makeCalleeTyped: (bindings: Map<string, ValueNode> | null) => TypedResolver,
+  makeCalleeTyped: (def: MixinDef, bindings: Map<string, ValueNode> | null) => TypedResolver,
   ev: ValueEvaluator | null,
   modes: EvalModes,
   resolveDefault?: DefaultResolver,
@@ -196,8 +196,10 @@ export function selectDefinitions(
     viable.push({ def, bindings, order: i });
   }
 
-  const guardDeps = (bindings: Map<string, ValueNode> | null, isDefault: () => boolean) => {
-    const typed = makeCalleeTyped(bindings);
+  const guardDeps = (def: MixinDef, bindings: Map<string, ValueNode> | null, isDefault: () => boolean) => {
+    // A guard resolves its free variables in the mixin's DEFINITION scope (closure),
+    // so `makeCalleeTyped` keys the typed resolver off the def (see serialize `dispatch`).
+    const typed = makeCalleeTyped(def, bindings);
     return {
       resolveTyped: typed,
       ev,
@@ -214,14 +216,14 @@ export function selectDefinitions(
       defaultCandidates.push(v);
       continue;
     }
-    const ok = !v.def.guard || evalGuard(v.def.guard, guardDeps(v.bindings, () => false));
+    const ok = !v.def.guard || evalGuard(v.def.guard, guardDeps(v.def, v.bindings, () => false));
     if (ok) matched.push(v);
   }
 
   // Second pass: `default()` candidates fire iff no non-default match.
   const noNonDefaultMatch = matched.length === 0;
   for (const v of defaultCandidates) {
-    const ok = evalGuard(v.def.guard!, guardDeps(v.bindings, () => noNonDefaultMatch));
+    const ok = evalGuard(v.def.guard!, guardDeps(v.def, v.bindings, () => noNonDefaultMatch));
     if (ok) matched.push(v);
   }
 

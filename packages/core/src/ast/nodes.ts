@@ -498,6 +498,13 @@ export interface Rule {
   readonly selector: SelectorList;
   readonly body: Statement[];
   readonly extendInstructions?: ExtendInstruction[];
+  /**
+   * [guards] An optional `when (...)` guard authored on the selector
+   * (`.sel when (cond) { … }`). The rule's block emits only when the guard
+   * evaluates true in the scope where the rule is defined; absent for the
+   * common unguarded rule (the serializer's zero-cost gate holds).
+   */
+  readonly guard?: GuardNode;
 }
 
 /**
@@ -729,6 +736,7 @@ export const rule = (
   selector: string | Complex | SelectorList,
   body: Statement[],
   extendInstructions?: ExtendInstruction[],
+  guard?: GuardNode,
 ): Rule => {
   const list =
     typeof selector === 'string'
@@ -736,6 +744,12 @@ export const rule = (
       : selector.type === 'SelectorList'
         ? selector
         : selist(selector);
-  return { type: 'Rule', selector: list, body, ...(extendInstructions !== undefined ? { extendInstructions } : {}) };
+  return {
+    type: 'Rule',
+    selector: list,
+    body,
+    ...(extendInstructions !== undefined ? { extendInstructions } : {}),
+    ...(guard !== undefined ? { guard } : {}),
+  };
 };
 export const root = (children: Statement[]): Root => ({ type: 'Root', children });

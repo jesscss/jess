@@ -92,8 +92,8 @@
     "bytes": 1333
   },
   "css-guards/css-guards.less": {
-    "status": "DIFF",
-    "bytes": 843
+    "status": "MATCH",
+    "bytes": 446
   },
   "detached-rulesets/detached-rulesets.less": {
     "status": "DIFF",

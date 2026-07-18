@@ -84,7 +84,7 @@ import { colorFromSrc, dimensionFromFields, quotedFromFields, materializeAny } f
 import { calcInner } from './value-operate.js'; // [calc]
 import { makeKeyword } from './value-factory.js'; // [calc]
 import { selectDefinitions, type Selection, type DefaultResolver } from './mixin-dispatch.js'; // [guards]
-import type { ValueResolver, TypedResolver } from './guard.js'; // [guards]
+import { evalGuard, type ValueResolver, type TypedResolver } from './guard.js'; // [guards]
 import { computeExtends, type ExtendResults } from './extend.js'; // [extend]
 
 /* ---------------------------------------------------- MaybePromise glue */
@@ -350,7 +350,11 @@ function frameOrderedMixins(f: Frame): Map<string, MixinDef[]> | null {
       }
       if (keys) for (const key of keys) {
         // one synthesized candidate per name, interleaved at the rule's source position.
-        const rm: MixinDef = { type: 'MixinDef', name: key, params: [], body: s.body, ruleMixin: true };
+        // [guards] a guarded ruleset called as a zero-arg mixin filters on its guard.
+        const rm: MixinDef = {
+          type: 'MixinDef', name: key, params: [], body: s.body, ruleMixin: true,
+          ...(s.guard !== undefined ? { guard: s.guard } : {}),
+        };
         const list = (map ??= new Map()).get(key);
         if (list) list.push(rm); else map.set(key, [rm]);
       }
@@ -1463,7 +1467,39 @@ export function serialize(root: Root, options?: SerializeOptions): SerializeRetu
   return finalize();
 }
 
+/**
+ * [guards] Whether a rule's `when (...)` guard passes in the scope where the rule
+ * is defined (`frame`). An unguarded rule always emits; a CSS ruleset guard never
+ * uses `default()` (that is a mixin-dispatch decision), so `isDefault` is `false`.
+ */
+function ruleGuardPasses(rule: Rule, frame: Frame, e: Emit): boolean {
+  if (!rule.guard) return true;
+  return evalGuard(rule.guard, {
+    resolveTyped: makeTypedResolver(frame, e),
+    ev: e.ev,
+    modes: e.modes,
+    isDefault: () => false,
+  });
+}
+
+/**
+ * [guards/&-merge] Whether `rule`'s selector composes to EXACTLY the enclosing
+ * block's composed selector (`parent`) — a bare `&` that reproduces the parent
+ * (`& { … }` / `& when (…) { … }`). Such a rule is a same-block continuation, not
+ * a new rule. A rule carrying `:extend()` is never treated this way (it needs its
+ * own header for the extend override). Position tracking is off (a projection).
+ */
+function isSelfComposed(rule: Rule, parent: string[], frame: Frame, e: Emit): boolean {
+  if (rule.extendInstructions !== undefined) return false;
+  const composed = compose(parent, rule.selector, frame, e);
+  if (composed.length !== parent.length) return false;
+  for (let i = 0; i < composed.length; i++) if (composed[i] !== parent[i]) return false;
+  return true;
+}
+
 function flatten(rule: Rule, parent: string[] | null, frame: Frame, e: Emit): void {
+  // [guards] a guarded ruleset emits its block only when the guard is true.
+  if (!ruleGuardPasses(rule, frame, e)) return;
   const rawComposed =
     parent === null ? rootStrings(rule.selector, frame, e) : compose(parent, rule.selector, frame, e);
   // [extend] the rule's HEADER uses its fully-extended composed branches;
@@ -1546,6 +1582,24 @@ function walkBody(
         const rule = node;
         const rFrame = frame;
         const rComposed = composed;
+        // [guards/&-merge] A nested rule whose selector composes to EXACTLY the
+        // enclosing block's selector (a bare `&`, e.g. `& when (@c) { … }`) is not
+        // a separate rule: its (guard-passing) body flows into THIS block, in place,
+        // rather than opening a duplicate same-selector block. This yields the v5
+        // single-block output (`.x { width; color; height }`) for `.x { width; &
+        // when(c){color} & when(c){height} }`.
+        if (composed !== null && isSelfComposed(rule, composed, frame, e)) {
+          if (ruleGuardPasses(rule, frame, e)) {
+            const selfFrame: Frame = {
+              parent: frame,
+              mixins: collectMixins(rule.body),
+              vars: collectVars(rule.body),
+              statements: rule.body,
+            };
+            walkBody(rule.body, composed, selfFrame, group, flush, partition, e, imp, protectedDup);
+          }
+          break;
+        }
         if (partition && partition.sawDecl) {
           // [partition] after the block's first declaration → defer past its flush.
           partition.deferred.push(() => flatten(rule, rComposed, rFrame, e));
@@ -1681,7 +1735,7 @@ function expandCall(
     ? rawCandidates.filter((d) => d.ruleMixin !== true || !parentExcludes(frame, d.body))
     : rawCandidates;
   if (candidates.length === 0) return; // unknown mixin: minimal scope emits nothing
-  const selected = dispatch(candidates, call, frame, e);
+  const selected = dispatch(candidates, call, frame, e, homes);
   const bodyImp = imp || call.important; // propagate call-level !important
   // [recursion-backstop] Parametric self-recursion (`.loop(@n - 1)`) is terminated
   // by its guard; a MALFORMED guard (`.loop(@n) { .loop(@n + 1) }`) never stops and
@@ -2092,10 +2146,27 @@ function expandFor(
  * BYTES in the caller frame (pattern-match); guard leaves compare TYPED values
  * in the callee frame through the injected `ValueEvaluator`.
  */
-function dispatch(candidates: MixinDef[], call: MixinCall, frame: Frame, e: EvalCtx): Selection[] {
+function dispatch(
+  candidates: MixinDef[],
+  call: MixinCall,
+  frame: Frame,
+  e: EvalCtx,
+  homes?: Map<MixinDef, Frame>, // [closure] def → its DEFINITION frame (guard scope)
+): Selection[] {
   const resolveCaller = makeResolver(frame, e);
-  const makeCalleeTyped = (bindings: Map<string, ValueNode> | null): TypedResolver =>
-    makeTypedResolver({ parent: frame, mixins: null, vars: asStacks(bindings) }, e);
+  // [closure] a guard resolves free variables in the mixin's DEFINITION scope, with
+  // the params overlaid and the call site as a fallback — the same frame layering
+  // `expandCall` builds for the body. Absent a home (composeStats / detached call)
+  // it falls back to the caller frame (`parent: frame`).
+  const makeCalleeTyped = (def: MixinDef, bindings: Map<string, ValueNode> | null): TypedResolver => {
+    const home = homes?.get(def);
+    return makeTypedResolver(
+      home && home !== frame
+        ? { parent: home, mixins: null, vars: asStacks(bindings), fallback: frame }
+        : { parent: frame, mixins: null, vars: asStacks(bindings) },
+      e,
+    );
+  };
   // A DEFAULT param value resolves with the params bound so far in scope (Less:
   // `@hover-background: darken(@background, …)` reads the `@background` param).
   // Overlay the params-so-far onto the caller frame and resolve there.

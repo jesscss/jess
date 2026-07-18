@@ -204,7 +204,7 @@ const ruleset: BuildAction = {
       window.end,
       false
     );
-    return t2.rule(base.selector, body, base.extendInstructions);
+    return t2.rule(base.selector, body, base.extendInstructions, base.guard);
   }
 };
 

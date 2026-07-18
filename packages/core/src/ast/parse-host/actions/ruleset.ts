@@ -54,12 +54,23 @@ function ruleExtends(
   return instructions.length > 0 ? instructions : undefined;
 }
 
+/** [guards] The `when (...)` guard authored on this rule's selector, if any: the
+ *  built `GuardNode` child the guard family produced (`{ g: … }`, not a t2 Node). */
+function ruleGuard(args: BuildArgs): t2.GuardNode | undefined {
+  for (const child of args.children) {
+    if (!!child && typeof child === 'object' && !t2.isNode(child) && 'g' in (child as object)) {
+      return child as t2.GuardNode;
+    }
+  }
+  return undefined;
+}
+
 const ruleset: BuildAction = {
   type: 'Ruleset',
   build: (args) => {
     const selector = ruleSelector(args);
     const body = args.children.filter(isStatement) as t2.Statement[];
-    return t2.rule(selector, body, ruleExtends(args, selector));
+    return t2.rule(selector, body, ruleExtends(args, selector), ruleGuard(args));
   },
 };
 
