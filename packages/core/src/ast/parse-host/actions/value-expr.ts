@@ -146,13 +146,18 @@ const operationTop: BuildAction = { type: 'OperationTop', build: foldOperationTo
 /* --------------------------------------------------------------- Negative */
 
 /**
- * Value node types a unary minus can negate arithmetically. A `Keyword`/`Any`
- * operand (a bare ident such as `-webkit-box`, or an unmodelled shape) is NOT a
- * number, so it is kept verbatim rather than folded into an arithmetic negation.
+ * Value node types a unary minus can negate arithmetically. Per Less 4.x a leading
+ * `-` is unary negation ONLY for a number/dimension, a parenthesized expression, or
+ * a variable (and the numeric `Operation` those compose into). It is NOT negation
+ * when the operand STARTS WITH AN IDENTIFIER — a `FunctionCall` like
+ * `-webkit-gradient(…)` / `-moz-…` keeps its verbatim `-` prefix (4.x renders
+ * `-webkit-gradient(…)`, not `-1 * webkit-gradient(…)`) — nor for a `Color`
+ * (`-#111` → `- #111`, not a negated color). A `Keyword`/`Any` bare ident is
+ * likewise kept verbatim rather than folded into an arithmetic negation.
  */
 const NEGATABLE = new Set([
-  'Dimension', 'Color', 'VarRef', 'PropRef', 'Paren', 'Operation',
-  'FunctionCall', 'VarIndirect', 'MapAccessor', 'SpacedValue',
+  'Dimension', 'VarRef', 'PropRef', 'Paren', 'Operation',
+  'VarIndirect', 'MapAccessor',
 ]);
 
 /**
