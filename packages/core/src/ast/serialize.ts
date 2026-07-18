@@ -82,7 +82,7 @@ import {
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { colorFromSrc, dimensionFromFields, quotedFromFields, materializeAny } from './literal-tag.js'; // [value node model]
 import { calcInner } from './value-operate.js'; // [calc]
-import { makeKeyword, makeBool } from './value-factory.js'; // [calc]
+import { makeKeyword, makeBool, makeList } from './value-factory.js'; // [calc]
 import { selectDefinitions, type Selection, type DefaultResolver, type CallArg } from './mixin-dispatch.js'; // [guards]
 import { evalGuard, type GuardNode, type ValueResolver, type TypedResolver } from './guard.js'; // [guards]
 import { computeExtends, type ExtendResults } from './extend.js'; // [extend]
@@ -828,6 +828,14 @@ function evalTyped(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
     }
     case 'Paren':
       return evalTyped(node.inner, frame, e);
+    case 'List': {
+      // A comma-list materializes to the value-domain `List`, its items materialized
+      // LAZILY here (only now that the list is actually consumed typed — indexed by
+      // `extract`, counted by `length`, or compared). The structure the parser owns
+      // is handed to the value layer directly — no re-splitting a joined string.
+      const typed = node.items.map((it) => evalTyped(it, frame, e));
+      return combineAll(typed, (vals) => makeList(vals, node.sep));
+    }
     default:
       // Computed / joined shapes (Operation, FunctionCall, Concat, SpacedValue,
       // Interp, VarIndirect, MapAccessor, …): fold to a Value then force. A
@@ -874,6 +882,18 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
       return joinBytes(node.parts, '', frame, e);
     case 'SpacedValue':
       return joinBytes(node.parts, ' ', frame, e);
+    case 'List': {
+      // Emit each item's bytes interleaved with the VERBATIM source separators the
+      // parser captured (`,` + authored whitespace). An un-operated list round-trips
+      // byte-identical (the goldens preserve authored inter-item spacing, incl.
+      // multi-line lists); a resolved item just re-emits between the same separators.
+      const items = node.items.map((it) => evalValue(it, frame, e));
+      return combineAll(items, (vals) => {
+        let out = emitValue(vals[0]!);
+        for (let i = 1; i < vals.length; i++) out += node.separators[i - 1]! + emitValue(vals[i]!);
+        return literal(out);
+      });
+    }
     case 'Paren':
       // Transparent to computed bytes: a materialized (operated) inner strips the
       // paren (matching the legacy oracle); an un-forced literal keeps its parens.

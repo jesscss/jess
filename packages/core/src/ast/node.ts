@@ -29,6 +29,7 @@ import type {
   Any,
   Dimension,
   SpacedValue,
+  List,
   VarRef,
   MixinDef,
   MixinCall,
@@ -54,7 +55,7 @@ import type { AtRuleBlock, AtRuleStatement } from './at-rule.js';
 export type NodeType =
   | 'Root' | 'Rule' | 'Declaration' | 'Comment' | 'SelectorList'
   | 'Complex' | 'Compound' | 'Simple' | 'Keyword' | 'Color' | 'Quoted' | 'Any' | 'Dimension'
-  | 'SpacedValue' | 'VarRef' | 'MixinDef' | 'MixinCall' | 'VarDeclaration'
+  | 'SpacedValue' | 'List' | 'VarRef' | 'MixinDef' | 'MixinCall' | 'VarDeclaration'
   | 'Sequence' | 'Operation' | 'FunctionCall' | 'Paren' | 'Condition'
   | 'AtRuleBlock' | 'AtRuleStatement' | 'Interp' | 'VarIndirect'
   | 'DetachedRuleset' | 'MapAccessor' | 'PropRef' | 'DetachedCall' | 'For' | 'RawInline'
@@ -78,7 +79,7 @@ export function renderCombinator(comb: Combinator): string {
  */
 export type Node =
   | Root | Rule | Declaration | Comment | SelectorList | Complex | Compound
-  | Simple | Keyword | Color | Quoted | Any | Dimension | SpacedValue | VarRef | MixinDef | MixinCall
+  | Simple | Keyword | Color | Quoted | Any | Dimension | SpacedValue | List | VarRef | MixinDef | MixinCall
   | VarDeclaration | Sequence | Operation | FunctionCall | Paren | Condition
   | AtRuleBlock | AtRuleStatement | Interp | VarIndirect | DetachedRuleset
   | MapAccessor | PropRef | DetachedCall | For | RawInline | StyleImport;
@@ -89,9 +90,10 @@ export type Node =
  * (`ValueObj`) also carries a PascalCase `type`, and after the #44 literal reshape
  * the AST literal leaves REUSE the value-domain names — `'Dimension'`, `'Color'`,
  * `'Quoted'`, `'Keyword'` are ALL shared between an AST leaf node and a `ValueObj`
- * (`'Bool'` is value-domain ONLY — no AST `Bool` node exists, §CORR-4). Membership
- * in this AST set neutralizes every non-shared collision; the four shared strings
- * are neutralized by the lane invariant (a value-domain `ValueObj` never enters the
+ * (`'Bool'` is value-domain ONLY — no AST `Bool` node exists, §CORR-4). `'List'` is
+ * likewise shared — an AST comma-list node vs the materialized value-domain `List`.
+ * Membership in this AST set neutralizes every non-shared collision; the shared
+ * strings are neutralized by the lane invariant (a value-domain `ValueObj` never enters the
  * AST-build lane; never form a `Node | ValueObj` union). The cheap structural
  * disambiguator, if ever needed, is the verbatim-field split: an AST literal names
  * it `src`, a `ValueObj` names it `bytes` — so `'bytes' in v` uniquely identifies a
@@ -100,7 +102,7 @@ export type Node =
 export const AST_NODE_TYPES: ReadonlySet<string> = new Set<NodeType>([
   'Root', 'Rule', 'Declaration', 'Comment', 'SelectorList',
   'Complex', 'Compound', 'Simple', 'Keyword', 'Color', 'Quoted', 'Any', 'Dimension',
-  'SpacedValue', 'VarRef', 'MixinDef', 'MixinCall', 'VarDeclaration',
+  'SpacedValue', 'List', 'VarRef', 'MixinDef', 'MixinCall', 'VarDeclaration',
   'Sequence', 'Operation', 'FunctionCall', 'Paren', 'Condition',
   'AtRuleBlock', 'AtRuleStatement', 'Interp', 'VarIndirect',
   'DetachedRuleset', 'MapAccessor', 'PropRef', 'DetachedCall', 'For', 'RawInline',

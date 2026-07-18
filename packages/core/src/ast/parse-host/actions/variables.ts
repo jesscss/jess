@@ -36,6 +36,7 @@ import {
   sliceSpan,
 } from '../host-context.js';
 import { type Leaf, isLeaf, wholeValueNode } from './interp.js';
+import { buildValueList } from './custom-props.js';
 import { tryMixinCallIterable } from './control-flow.js';
 
 /**
@@ -147,8 +148,22 @@ const varDeclaration: BuildAction = {
       let valEndAbs = args.span.end;
       while (valEndAbs > args.span.start && /[;\s]/.test(src[valEndAbs - 1]!)) valEndAbs--;
       const valStartAbs = args.span.start + colonRel + 1;
-      const stripped = colonRel >= 0 ? stripValueComments(args, valStartAbs, valEndAbs) : value;
-      valueNode = t2.any(stripped);
+      // A top-level comma list binds STRUCTURED (P0 — the parser owns the comma
+      // boundaries), so `@v: @a, @b, @c` / `@cols: 1, 2` keep indexable items instead
+      // of collapsing to an opaque `Any` the value layer would re-split (`buildValueList`
+      // trims each segment itself, so the raw colon+1 start is fine). Only when the
+      // value has no comment trivia in-range (a boundary comment needs the peel below).
+      const commentFree = !hasCommentTrivia(args.triviaLog)
+        || allCommentTrivia(args.triviaLog).every((c) => c.end <= valStartAbs || c.start >= valEndAbs);
+      const list = colonRel >= 0 && commentFree
+        ? buildValueList(args, valStartAbs, src.slice(valStartAbs, valEndAbs))
+        : null;
+      if (list !== null) {
+        valueNode = list;
+      } else {
+        const stripped = colonRel >= 0 ? stripValueComments(args, valStartAbs, valEndAbs) : value;
+        valueNode = t2.any(stripped);
+      }
     }
     return t2.varDecl(bare, valueNode);
   },

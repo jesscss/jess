@@ -30,6 +30,9 @@
  * that a discarded branch (or a parent re-deriving from source) drops.
  */
 import * as t2 from '../../index.js';
+// The parse-node `List` type is shadowed on the barrel by the value-domain `List`
+// (index.ts re-exports value-eval's `List` explicitly), so import it DIRECTLY.
+import type { List as ListNode } from '../../nodes.js';
 import { type BuildAction, type BuildArgs, type Span, sliceSpan } from '../host-context.js';
 import { type InterpSpan, interpFromRegion, wholeValueNode } from './interp.js';
 
@@ -196,6 +199,43 @@ function resolvesDifferently(node: t2.ValueNode): boolean {
   return !t2.isLiteralNode(node);
 }
 
+/** Every built value node the parser bounded within `[start, end)`, as source-ordered
+ *  {@link Hole}s (each carrying its verbatim byte span). */
+function collectHoles(args: BuildArgs, start: number, end: number): Hole[] {
+  const holes: Hole[] = [];
+  for (let i = 0; i < args.children.length; i++) {
+    const node = asValueNode(args.children[i]);
+    if (node === null) continue;
+    const raw = args.rawChildren[i] as { span?: Span } | undefined;
+    if (!raw?.span || raw.span.start < start || raw.span.end > end) continue;
+    holes.push({ node, start: raw.span.start, end: raw.span.end });
+  }
+  holes.sort((a, b) => a.start - b.start);
+  return holes;
+}
+
+/**
+ * Assemble ONE contiguous value region `[start, end)` (already trimmed) from the
+ * `holes` that fall in it. A region with no differently-resolving hole is a single
+ * cheap verbatim `Any` (byte-identical + cheapest). Otherwise each built node is
+ * interleaved with the verbatim source bytes between the nodes, so inert idents /
+ * separators / exact spacing survive as literal `Any` gaps and refs / operations
+ * resolve at serialize.
+ */
+function assembleRegion(src: string, holes: readonly Hole[], start: number, end: number): t2.ValueNode {
+  const inRange = holes.filter((h) => h.start >= start && h.end <= end);
+  if (!inRange.some((h) => resolvesDifferently(h.node))) return t2.any(src.slice(start, end));
+  const parts: t2.ValueNode[] = [];
+  let cursor = start;
+  for (const h of inRange) {
+    if (h.start > cursor) parts.push(t2.any(src.slice(cursor, h.start)));
+    parts.push(h.node);
+    cursor = h.end;
+  }
+  if (cursor < end) parts.push(t2.any(src.slice(cursor, end)));
+  return parts.length === 1 ? parts[0]! : t2.sequence(parts);
+}
+
 /**
  * A multi-part / operated declaration value (`1px solid @a`, `@bg url(...) …`,
  * `1px solid (@bg * 0.66)`). The parser already isolated each operable component as
@@ -219,32 +259,59 @@ function assembleMultiPartValue(args: BuildArgs, valStart: number, valueBytes: s
   // The value region must line up with the source bytes exactly (a re-derived
   // offset guards against any trailing-`!important` / trimming skew).
   if (src.slice(valStart, vEnd) !== valueBytes) return t2.any(valueBytes);
+  return assembleRegion(src, collectHoles(args, valStart, vEnd), valStart, vEnd);
+}
 
-  const holes: Hole[] = [];
-  let anyResolves = false;
-  for (let i = 0; i < args.children.length; i++) {
-    const node = asValueNode(args.children[i]);
-    if (node === null) continue;
-    const raw = args.rawChildren[i] as { span?: Span } | undefined;
-    if (!raw?.span || raw.span.start < valStart || raw.span.end > vEnd) continue;
-    holes.push({ node, start: raw.span.start, end: raw.span.end });
-    if (resolvesDifferently(node)) anyResolves = true;
+/**
+ * Build a STRUCTURED comma-`List` from the value region `[valStart, valStart +
+ * valueBytes.length)` when the parser bounded a top-level comma list there, else
+ * `null`. The top-level `,` boundaries come from the grammar's `valueList`
+ * separator LEAVES (P0 — the parser owns the structure; this consumes its comma
+ * leaves, never a byte re-scan for a top-level comma). Each comma segment assembles
+ * (via {@link assembleRegion}) to one lightweight lazy item — a cheap verbatim `Any`
+ * for a static segment, or an interleaved ref/operation `Sequence` — so the list
+ * stays STRUCTURED (indexable by `extract` / `length` / list-equality without a byte
+ * re-parse) yet un-canonicalized. A dangling trailing `,` (Less tolerates `a, b,`)
+ * yields an empty final segment that is dropped; a lone segment (`a,`) is not a list
+ * (returns `null` so the single-value path builds it).
+ */
+export function buildValueList(args: BuildArgs, valStart: number, valueBytes: string): ListNode | null {
+  const src = args.ctx.src;
+  const vEnd = valStart + valueBytes.length;
+  if (src.slice(valStart, vEnd) !== valueBytes) return null;
+  // Top-level `,` separator leaves within the value region (comma leaves nested in a
+  // paren/call are consumed inside that built child, never a top-level child here).
+  const commas: Array<{ start: number; end: number }> = [];
+  for (const c of args.children) {
+    if (leafValue(c) !== ',') continue;
+    const s = leafSpan(c);
+    if (s && s.start >= valStart && s.end <= vEnd) commas.push(s);
   }
-  // No operable component → the raw bytes are already byte-identical (and cheaper).
-  if (!anyResolves) return t2.any(valueBytes);
-  holes.sort((a, b) => a.start - b.start);
-
-  // Interleave each built node with the verbatim source bytes between the nodes,
-  // so inert idents / separators / exact spacing survive as literal `Any` gaps.
-  const parts: t2.ValueNode[] = [];
-  let cursor = valStart;
-  for (const h of holes) {
-    if (h.start > cursor) parts.push(t2.any(src.slice(cursor, h.start)));
-    parts.push(h.node);
-    cursor = h.end;
+  if (commas.length === 0) return null;
+  commas.sort((a, b) => a.start - b.start);
+  const holes = collectHoles(args, valStart, vEnd);
+  // Split the value into trimmed segments at the comma boundaries. Each kept
+  // segment records its own [ts, te) so the verbatim source BETWEEN consecutive
+  // segments (the comma + authored whitespace) becomes the emitted separator.
+  const segs: Array<{ node: t2.ValueNode; ts: number; te: number }> = [];
+  const pushSeg = (s: number, e: number): void => {
+    let ts = s;
+    let te = e;
+    while (ts < te && isWs(src[ts]!)) ts++;
+    while (te > ts && isWs(src[te - 1]!)) te--;
+    if (ts < te) segs.push({ node: assembleRegion(src, holes, ts, te), ts, te });
+  };
+  let segStart = valStart;
+  for (const comma of commas) {
+    pushSeg(segStart, comma.start);
+    segStart = comma.end;
   }
-  if (cursor < vEnd) parts.push(t2.any(src.slice(cursor, vEnd)));
-  return parts.length === 1 ? parts[0]! : t2.sequence(parts);
+  pushSeg(segStart, vEnd);
+  // A single non-empty segment (a dangling `a,`) is one value, not a list.
+  if (segs.length < 2) return null;
+  const separators: string[] = [];
+  for (let i = 1; i < segs.length; i++) separators.push(src.slice(segs[i - 1]!.te, segs[i]!.ts));
+  return t2.list(segs.map((s) => s.node), separators);
 }
 
 /* --------------------------------------------------------------- actions */
@@ -357,7 +424,9 @@ const declaration: BuildAction = {
       : valueBytes;
     let value: t2.ValueNode =
       consumableWholeValue(args, coreBytes)
-      ?? (merge === null ? assembleMultiPartValue(args, valStart, coreBytes) : t2.any(coreBytes));
+      ?? (merge === null
+        ? (buildValueList(args, valStart, coreBytes) ?? assembleMultiPartValue(args, valStart, coreBytes))
+        : t2.any(coreBytes));
     // Defensive: a raw-bytes merge value already had `!important` removed above; this
     // also covers any literal that still trails one.
     if (merge !== null && important) value = stripImportantBytes(value);

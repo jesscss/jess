@@ -91,6 +91,30 @@ export interface SpacedValue {
   readonly parts: ValueNode[];
 }
 
+/**
+ * A COMMA-separated value list, e.g. `Arial, sans-serif` or `@a, @b, @c`. The
+ * parser owns the top-level comma boundaries (grammar `valueList`), so the
+ * segments are kept STRUCTURED as lightweight lazy `items` instead of being
+ * re-concatenated into one opaque `Any` (which the value layer would then have to
+ * re-split for top-level commas — the byte re-derivation the keystone forbids).
+ * Each item is an ordinary value leaf carrying its own bytes: a static segment is
+ * a cheap `Any`, a referenced one a `VarRef` / space-run `SpacedValue`, all
+ * materialized LAZILY (only when the list is indexed / operated). `separators`
+ * carries the verbatim source bytes BETWEEN items (`,` + the authored whitespace —
+ * e.g. `, ` or a multi-line `,\n    `), one per gap, so an un-operated list
+ * round-trips BYTE-IDENTICAL (the v5 goldens preserve authored inter-item spacing,
+ * e.g. a multi-line `box-shadow`); a resolved item just re-emits verbatim between
+ * the same separators. Materializes to the value-domain `List` so `extract` /
+ * `length` / list-equality index the structure directly (never a byte re-parse).
+ */
+export interface List {
+  readonly type: 'List';
+  readonly items: ValueNode[];
+  readonly sep: ',';
+  /** Verbatim source between items (`items.length - 1` entries). */
+  readonly separators: readonly string[];
+}
+
 /** A reference to a mixin parameter / bound variable, e.g. `@c`. */
 export interface VarRef {
   readonly type: 'VarRef';
@@ -245,6 +269,7 @@ export type ValueNode =
   | Any
   | Dimension
   | SpacedValue
+  | List
   | VarRef
   | PropRef
   | Sequence
@@ -672,6 +697,8 @@ export const isLiteralNode = (n: ValueNode): n is Keyword | Color | Dimension | 
 export const isTypedLiteral = (n: ValueNode): boolean => isLiteralNode(n) && n.type !== 'Any';
 
 export const spaced = (parts: ValueNode[]): SpacedValue => ({ type: 'SpacedValue', parts });
+export const list = (items: ValueNode[], separators: readonly string[]): List =>
+  ({ type: 'List', items, sep: ',', separators });
 
 export const simple = (text: string): Simple => ({ type: 'Simple', text, interp: null });
 /** An interpolated simple token, e.g. `.icon-@{type}`. */
