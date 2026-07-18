@@ -80,6 +80,7 @@ bottom for the consolidated list.
 | `VALUE-NODE-MODEL-DESIGN.md` | DECIDED #44 design: eliminate `Word` → honest typed literals (`Keyword`/`Color`/`Dimension`/`Quoted`/`Bool`/`Any`); measured LAZY-materialize verdict; producer-flip + migration site map. |
 | `TIER-B-INTERPOLATION-GRAMMAR-SPEC.md` | Design survey: interpolation/quoted/prelude/list structuring in the grammar. |
 | `GRAMMAR-RELOCATION-DESIGN.md` | reorg-A4 §0.11 map: every builders/parse-host regex site → grammar relocation target, bridge-gate-release + #44 coordination + sequenced execution plan. |
+| `QUOTED-GRAMMAR-STRUCTURING-PLAN.md` | Resolves task-#6-done vs §3.3-unbuilt: what interp the grammar structures TODAY vs missing; §3.3 `Quoted` grammar design + sequenced S6/TB-4/TB-5 execution (Track Q / Track S6) + residual-regex estimate. |
 | `EXTEND-REDESIGN.md` | `ast/` extend redesign — lazy fast-reject over a shared selector IR. |
 | `FNS-PACKAGE-MIGRATION-SPEC.md` | Design survey for the fns → `@jesscss/fns` package migration. |
 | `ASSIGNABLE-CONTROL-NODES-PLAN.md` | Queued future feature: mixins/`each`/`$for`/`$if` as value-returning nodes. |
