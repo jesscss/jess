@@ -861,9 +861,18 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   // any other ident takes the generic call-args tail. Built identically to the old
   // inherited `CalcCall` / `Call` (same `Call` node type + children per arm). The
   // plain value-position `Paren` still comes from the shared fragment (g.parenBody).
+  // A function call requires the `(` GLUED to the name — no trivia between. The SPACE
+  // before `(` is the discriminator (Less 4.x): `name(expr)` (no space) is a CSS
+  // function SHAPE, kept verbatim (`solid(#a8000b)` → `solid(#a8000b)`); `name (expr)`
+  // (space) is a keyword followed by a GROUPED math expression whose grouping parens
+  // dissolve on evaluation (`1px solid (@bg*.66 + @black*.33)` → `1px solid #a8000b`,
+  // like `(2px + 3px)` → `5px`). The `calc` arm's `(?=\()` lookahead already asserts
+  // this glue; the generic arm wraps `ident '('` in `noTrivia` so the `(` must sit
+  // immediately after the name (args after the `(` keep normal trivia via
+  // `functionCallArgs`), so `name (…)` falls through to the value `Paren` instead.
   const Call = node(choice(
     sequence(regex(/calc(?=\()/i), literal('('), g.calcBody),
-    sequence(ident, literal('('), functionCallArgs)
+    sequence(noTrivia(sequence(ident, literal('('))), functionCallArgs)
   ));
   // A bare value paren `( … )`. Defined locally (not inherited from CSS) so the `(`→body
   // trivia uses Less `rw`, which skips `//` line comments — CSS `rw` does not, so a `//`
