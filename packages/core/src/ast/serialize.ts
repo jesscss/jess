@@ -28,8 +28,10 @@
 import { renderCombinator } from './node.js';
 import type { Node, NodeType } from './node.js';
 import {
-  word,
-  dim,
+  any,
+  dimension,
+  isLiteralNode,
+  isTypedLiteral,
   compoundCanonical,
   compoundHasInterp,
   complexCanonical,
@@ -37,17 +39,22 @@ import {
   complexHasAmpersand,
 } from './nodes.js';
 import type {
+  Any,
+  Color,
   Complex,
   Compound,
   Declaration,
   DetachedCall,
   DetachedRuleset,
+  Dimension,
   For,
   FunctionCall,
   Interp,
+  Keyword,
   MapAccessor,
   MixinCall,
   MixinDef,
+  Quoted,
   RawInline,
   Root,
   Rule,
@@ -73,7 +80,7 @@ import {
   type ValueObj,
 } from './value-eval.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
-import { LiteralTag, type LitFields, tagForWord } from './literal-tag.js'; // [value-literal-tag]
+import { colorFromSrc, dimensionFromFields, quotedFromFields, materializeAny } from './literal-tag.js'; // [value node model]
 import { calcInner } from './value-operate.js'; // [calc]
 import { makeKeyword } from './value-factory.js'; // [calc]
 import { selectDefinitions, type Selection, type DefaultResolver } from './mixin-dispatch.js'; // [guards]
@@ -637,31 +644,39 @@ function force(e: EvalCtx, v: Value): ValueObj {
   return e.ev.materialize(v);
 }
 
-/** Materialize a leaf literal with its parse tag + optional pre-split fields
- *  (VALUE-LITERAL-TAG-SPEC). */
-function forceLiteral(e: EvalCtx, bytes: string, tag: LiteralTag, lit?: LitFields): ValueObj {
-  return e.ev ? e.ev.materialize(bytes, tag, lit) : { type: 'Keyword', text: bytes, bytes };
+/**
+ * Materialize a value-literal LEAF node to a typed `ValueObj`, driven by the node
+ * `type` (task #44 — no side-car tag). Each typed leaf builds from its own fields
+ * (`Color`/`Dimension`/`Quoted`), never re-classifying `src`; the opaque `Any` leaf
+ * (alone) sniffs its bytes. When no evaluator is injected every leaf degrades to a
+ * bare keyword of its `src` (the former `forceLiteral` no-`ev` behavior).
+ */
+function materializeNode(node: Keyword | Color | Dimension | Quoted | Any, e: EvalCtx): ValueObj {
+  if (!e.ev) return { type: 'Keyword', text: node.src, bytes: node.src };
+  switch (node.type) {
+    case 'Keyword': return { type: 'Keyword', text: node.src, bytes: node.src };
+    case 'Color': return colorFromSrc(node.src);
+    case 'Dimension': return dimensionFromFields(node.number, node.unit, node.src);
+    case 'Quoted': return quotedFromFields(node.value, node.quote, node.escaped, node.src);
+    case 'Any': return materializeAny(node.src);
+  }
 }
 
 /**
  * TYPED fold: materialize a value node to a typed `ValueObj` for an OPERATED
  * / compared / typed-param position — sourcing the literal's TYPE from the parse
- * (the packed node's `Kind` / stamped `tag`), NOT by re-classifying bytes. A
- * `'Dimension'` node carries the parser's payload (`value`/`unit`) → built
- * directly, no re-parse. A `'Word'` leaf carries verbatim bytes PLUS the
- * producer's stamped `LIT_*` `tag` (spec §5): `materialize` reads it as a FIELD.
- * `tagForWord` is only a fallback for a genuinely-synthetic / untagged Word (no
- * `tag`) — never on the hot path for a parsed literal. Variable refs / parens are
- * transparent, threading the tag through.
+ * (the node's own `type`), NOT by re-classifying bytes. A typed leaf
+ * (`Keyword`/`Color`/`Dimension`/`Quoted`) builds directly from its fields; the
+ * opaque `Any` leaf sniffs. Variable refs / parens are transparent.
  */
 function evalTyped(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromise<ValueObj> {
   switch (node.type) {
+    case 'Keyword':
+    case 'Color':
     case 'Dimension':
-      return { type: 'Dimension', number: node.value, unit: node.unit, bytes: `${node.value}${node.unit}` };
-    case 'Word':
-      // The producer stamps `tag` (+ pre-split `lit`); fall back to a byte sniff
-      // only for an untagged/synthetic Word.
-      return forceLiteral(e, node.text, node.tag ?? tagForWord(node.text), node.lit);
+    case 'Quoted':
+    case 'Any':
+      return materializeNode(node, e);
     case 'VarRef': {
       const hit = resolveVarRef(frame, node.name, e);
       if (!hit) return force(e, unresolvedRef(node.name, e));
@@ -690,10 +705,16 @@ function evalTyped(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
  */
 function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromise<Value> {
   switch (node.type) {
-    case 'Word':
-      return literal(node.text);
+    // Every value LITERAL is inert here: emit its verbatim `src` as a bare string.
+    // CORRECTION 5 — return `literal(node.src)` (a BARE STRING), never the node
+    // object: an AST literal node must not leak into the `Value = ValueObj | string`
+    // lane (a downstream `v.type==='Color'` would misread it as a value object).
+    case 'Keyword':
+    case 'Color':
     case 'Dimension':
-      return literal(`${node.value}${node.unit}`);
+    case 'Quoted':
+    case 'Any':
+      return literal(node.src);
     case 'VarRef': {
       const hit = resolveVarRef(frame, node.name, e);
       if (!hit) return unresolvedRef(node.name, e);
@@ -883,8 +904,9 @@ function resolveBaseDeclMap(
   e: EvalCtx,
 ): { byName: Map<string, DeclEntry>; list: DeclEntry[] } | null {
   // A `#namespace` / `.map` selector base → the union of matching rulesets' decls.
-  if (base.type === 'Word') {
-    const sel = base.text;
+  // The base is an opaque selector fragment (`Any`) or a bare ident (`Keyword`).
+  if (base.type === 'Any' || base.type === 'Keyword') {
+    const sel = base.src;
     for (let f = frame; f; f = f.parent) {
       const rules = f.rulesets !== undefined || f.statements ? frameRulesets(f)?.get(sel) : undefined;
       if (rules && rules.length) {
@@ -1733,7 +1755,7 @@ function captureArgDefFrames(bindings: Map<string, ValueNode> | null, callerFram
  * unlocked value only wins where no enclosing scope already binds the name; a name
  * an outer scope already declares keeps that lexical binding (v5 drops the 4.x
  * hoist that let `@mix: #989` shadow the root `@mix: blue` — see `resolveVarRef`).
- * A detached ruleset / tagged literal Word binds by reference (closure/tag must
+ * A detached ruleset / typed literal binds by reference (closure / value type must
  * survive); everything else byte-flattens exactly as a crossed mixin arg does. An
  * async leak (a color/IO fn in the value) is exotic in a leaked position and is
  * left un-snapshotted rather than forcing the walk async.
@@ -1746,12 +1768,12 @@ function leakBodyVars(callerFrame: Frame, body: Statement[], callFrame: Frame, e
     // resolve lazily at its call site rather than snapshotting a leaked copy.
     if (v.type === 'MixinCall') continue;
     let snap: ValueNode;
-    if (v.type === 'DetachedRuleset' || (v.type === 'Word' && v.tag !== undefined)) {
+    if (v.type === 'DetachedRuleset' || isTypedLiteral(v)) {
       snap = v;
     } else {
       const b = evalBytes(v, callFrame, e);
       if (isThenable(b)) continue;
-      snap = word(b);
+      snap = any(b);
     }
     const map = (callerFrame.leaked ??= new Map());
     const stack = map.get(s.name);
@@ -1925,7 +1947,7 @@ function resolveForRuleset(
 
 /** Follow a `VarRef` / `Paren` chain to the underlying value node + its owning
  *  frame, so an `each()` iterable's list-vs-scalar shape reads off the DECLARED
- *  node (a literal `Word` list) rather than its flattened bytes. */
+ *  node (a literal `Any` list) rather than its flattened bytes. */
 function resolveForNode(
   node: ValueNode,
   frame: Frame | null,
@@ -1968,9 +1990,9 @@ function forItemsFromMixinCall(call: MixinCall, frame: Frame, e: Emit): ForItem[
     const n = leaf.node;
     if (n.type === 'Declaration') {
       const name = typeof n.name === 'string' ? n.name : evalBytesSync(n.name, leaf.frame, e);
-      items.push({ value: n.value, key: word(name) });
+      items.push({ value: n.value, key: any(name) });
     } else if (n.type === 'VarDeclaration' && n.value.type !== 'MixinCall') {
-      items.push({ value: n.value, key: word(n.name) });
+      items.push({ value: n.value, key: any(n.name) });
     }
   }
   return items;
@@ -1988,9 +2010,9 @@ function forItems(node: ValueNode | MixinCall, frame: Frame | null, e: Emit): Fo
     for (const s of map.body) {
       if (s.type === 'Declaration') {
         const name = typeof s.name === 'string' ? s.name : evalBytesSync(s.name, map.frame, e);
-        items.push({ value: s.value, key: word(name) });
+        items.push({ value: s.value, key: any(name) });
       } else if (s.type === 'VarDeclaration' && s.value.type !== 'MixinCall') {
-        items.push({ value: s.value, key: word(s.name) });
+        items.push({ value: s.value, key: any(s.name) });
       }
     }
     return items;
@@ -2002,13 +2024,13 @@ function forItems(node: ValueNode | MixinCall, frame: Frame | null, e: Emit): Fo
   // items; any other single value (an escaped `e("…")`, a scalar) is ONE item — it
   // is not a list, so it is never split.
   const { node: base, frame: baseFrame } = resolveForNode(node, frame, e);
-  if (base.type === 'Word') {
-    return splitListBytes(base.text).map((b) => ({ value: word(b), key: null }));
+  if (base.type === 'Any' || base.type === 'Keyword') {
+    return splitListBytes(base.src).map((b) => ({ value: any(b), key: null }));
   }
   const v = evalTyped(base, baseFrame, e);
   if (isThenable(v)) throw new Error('async value in an each() iterable is unsupported');
-  if (v.type === 'List') return v.items.map((it) => ({ value: word(it.bytes), key: null }));
-  return [{ value: word(v.bytes), key: null }];
+  if (v.type === 'List') return v.items.map((it) => ({ value: any(it.bytes), key: null }));
+  return [{ value: any(v.bytes), key: null }];
 }
 
 /**
@@ -2032,7 +2054,7 @@ function expandFor(
   const items = forItems(node.iterable, frame, e);
   for (let i = 0; i < items.length; i++) {
     const { value, key } = items[i]!;
-    const index = dim(i + 1);
+    const index = dimension(i + 1);
     const bindings = new Map<string, ValueNode>();
     if (node.valueName) bindings.set(node.valueName, value);
     if (node.keyName) bindings.set(node.keyName, key ?? index);
@@ -2255,7 +2277,7 @@ function emitMergedLine(e: Emit, name: string, combined: string, important: bool
   put(e, combined);
   if (important) put(e, ' !important');
   put(e, ';\n');
-  if (e.positions) e.positions.push({ node: word(combined), type: 'Word', start, end: e.off });
+  if (e.positions) e.positions.push({ node: any(combined), type: 'Any', start, end: e.off });
 }
 
 function emitLeaf(leaf: Leaf, e: Emit): void {
@@ -2843,7 +2865,7 @@ function expandNestedFor(node: For, frame: Frame, e: Emit): void {
   const items = forItems(node.iterable, frame, e);
   for (let i = 0; i < items.length; i++) {
     const { value, key } = items[i]!;
-    const index = dim(i + 1);
+    const index = dimension(i + 1);
     const bindings = new Map<string, ValueNode>();
     if (node.valueName) bindings.set(node.valueName, value);
     if (node.keyName) bindings.set(node.keyName, key ?? index);

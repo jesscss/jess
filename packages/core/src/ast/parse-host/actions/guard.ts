@@ -63,7 +63,7 @@ function buildGuardInParens(args: BuildArgs): t2.GuardNode | undefined {
  * `Color`, `Call`, `Reference`, …) OR — for a bare keyword operand routed through
  * the grammar's `anyValue` fallback (`@t = success`) — as a raw literal leaf,
  * which is lifted to a `Word` so it materializes exactly like the same keyword
- * would as a call argument (both byte-flatten through `word(bytes)`).
+ * would as a call argument (both byte-flatten through `any(bytes)`).
  */
 function buildGuardTerm(args: BuildArgs): t2.GuardNode | undefined {
   let negate = false;
@@ -84,7 +84,7 @@ function buildGuardTerm(args: BuildArgs): t2.GuardNode | undefined {
     if (lv === undefined) continue;
     if (lv === 'not') negate = true;
     else if (op === undefined && CMP_OPS.has(lv)) op = lv;
-    else operands.push(t2.word(lv));
+    else operands.push(t2.any(lv));
   }
 
   // Parenthesized / default sub-guard already built into a GuardNode.

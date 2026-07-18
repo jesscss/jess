@@ -23,7 +23,10 @@ import type {
   Complex,
   Compound,
   Simple,
-  Word,
+  Keyword,
+  Color,
+  Quoted,
+  Any,
   Dimension,
   SpacedValue,
   VarRef,
@@ -49,7 +52,7 @@ import type { AtRuleBlock, AtRuleStatement } from './at-rule.js';
 /** Every tree2 node's PascalCase `type` discriminant (Less-matching). */
 export type NodeType =
   | 'Root' | 'Rule' | 'Declaration' | 'Comment' | 'SelectorList'
-  | 'Complex' | 'Compound' | 'Simple' | 'Word' | 'Dimension'
+  | 'Complex' | 'Compound' | 'Simple' | 'Keyword' | 'Color' | 'Quoted' | 'Any' | 'Dimension'
   | 'SpacedValue' | 'VarRef' | 'MixinDef' | 'MixinCall' | 'VarDeclaration'
   | 'Sequence' | 'Operation' | 'FunctionCall' | 'Paren'
   | 'AtRuleBlock' | 'AtRuleStatement' | 'Interp' | 'VarIndirect'
@@ -74,7 +77,7 @@ export function renderCombinator(comb: Combinator): string {
  */
 export type Node =
   | Root | Rule | Declaration | Comment | SelectorList | Complex | Compound
-  | Simple | Word | Dimension | SpacedValue | VarRef | MixinDef | MixinCall
+  | Simple | Keyword | Color | Quoted | Any | Dimension | SpacedValue | VarRef | MixinDef | MixinCall
   | VarDeclaration | Sequence | Operation | FunctionCall | Paren
   | AtRuleBlock | AtRuleStatement | Interp | VarIndirect | DetachedRuleset
   | MapAccessor | PropRef | DetachedCall | For | RawInline | StyleImport;
@@ -82,16 +85,20 @@ export type Node =
 /**
  * The frozen set of the structural `type` strings — the membership basis for
  * {@link isNode}. A bare `'type' in x` is NOT a sound node test: the value domain
- * (`ValueObj`) now also carries a PascalCase `type` (`'Dimension'`/`'Color'`/…),
- * so a property test would misclassify an eval RESULT as an AST node. Membership
- * in this AST set neutralizes every collision except the shared `Dimension`
- * string, which is neutralized in turn by the lane invariant (a value-domain
- * `ValueObj` never enters the AST-build lane; never form a `Node | ValueObj`
- * union — disambiguate on a structural field like `'bytes' in v` if ever needed).
+ * (`ValueObj`) also carries a PascalCase `type`, and after the #44 literal reshape
+ * the AST literal leaves REUSE the value-domain names — `'Dimension'`, `'Color'`,
+ * `'Quoted'`, `'Keyword'` are ALL shared between an AST leaf node and a `ValueObj`
+ * (`'Bool'` is value-domain ONLY — no AST `Bool` node exists, §CORR-4). Membership
+ * in this AST set neutralizes every non-shared collision; the four shared strings
+ * are neutralized by the lane invariant (a value-domain `ValueObj` never enters the
+ * AST-build lane; never form a `Node | ValueObj` union). The cheap structural
+ * disambiguator, if ever needed, is the verbatim-field split: an AST literal names
+ * it `src`, a `ValueObj` names it `bytes` — so `'bytes' in v` uniquely identifies a
+ * value object and `'src' in v` an AST literal.
  */
 export const AST_NODE_TYPES: ReadonlySet<string> = new Set<NodeType>([
   'Root', 'Rule', 'Declaration', 'Comment', 'SelectorList',
-  'Complex', 'Compound', 'Simple', 'Word', 'Dimension',
+  'Complex', 'Compound', 'Simple', 'Keyword', 'Color', 'Quoted', 'Any', 'Dimension',
   'SpacedValue', 'VarRef', 'MixinDef', 'MixinCall', 'VarDeclaration',
   'Sequence', 'Operation', 'FunctionCall', 'Paren',
   'AtRuleBlock', 'AtRuleStatement', 'Interp', 'VarIndirect',

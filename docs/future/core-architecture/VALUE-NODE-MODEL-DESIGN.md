@@ -11,6 +11,52 @@ becomes the node `type`).
 Goes straight to adversarial review then implementation. Corners left genuinely
 open are marked **OPEN(owner)**; everything else is decided.
 
+## 0a. Review corrections — AS SHIPPED (these OVERRIDE the body below)
+
+Adversarial review corrected five points; the implementation (task #44, `ast/`
+only) shipped per these, which supersede any conflicting statement in §1–§6:
+
+1. **CORR-1 — builders.ts DECOUPLED (scope).** §3.2 is NOT part of #44.
+   `less-parser/src/builders.ts` holds legacy `tree/` node classes, decoupled from
+   this `ast/` reshape; they belong to separate bridge-gated BuilderHost-retirement
+   work (reorg A4). #44 touches `ast/` ONLY. The `ast/` differential (`renderAstFile`,
+   NOT the bridge) is the gate: **MATCH 39 / MATCH_NORM 1 / DIFF 47 / THREW 1**,
+   byte-identical before and after.
+2. **CORR-2 — barrel collision (`ast/index.ts`).** `export * from './nodes.js'` now
+   re-exports the AST literal interfaces `Keyword`/`Color`/`Quoted`, which share
+   names with the value-domain re-exports from `./value-eval.js`. Resolution: an
+   EXPLICIT re-export wins over a star re-export in ES/TS, so the value-domain types
+   are what the public barrel surfaces under those names; the AST literal node
+   interfaces stay OFF the public value barrel. Internal `ast/` code that needs an
+   AST literal node type imports it DIRECTLY from `./nodes.js` (or narrows a
+   `ValueNode`), never via the barrel — never via an ambiguous `t2.Quoted`. The
+   lowercase CONSTRUCTORS (`keyword`/`color`/`quoted`/`any`/`dimension`) don't
+   collide and remain surfaced. Documented in a comment at the star-export.
+3. **CORR-3 — 6 ADDED migration sites** beyond §4's 23: `serialize.ts` map/each
+   keys (`word(name)`/`word(n.name)` → `any(name)`, 4 sites) and `mixin-dispatch.ts`
+   `@rest`/`@arguments` joined fragments (`word(...)` → `any(...)`, 2 sites). Plus
+   `guard.ts` `word(lv)` → `any(lv)`.
+4. **CORR-4 — NO ast `Bool` node.** DROP the §1 `Bool` row: there is no AST `Bool`
+   node, no `bool()` constructor, and `'Bool'` is NOT in the `ValueNode` union /
+   `AST_NODE_TYPES`. `true`/`false` build a `Keyword` leaf; guard-context booleanness
+   is recovered downstream via the value-domain `Bool` produced by the materialize
+   SNIFF (the guard-truthiness test reads `.bytes === 'true'`, identical for a
+   `Keyword` or a value-domain `Bool`). Value-domain `Bool` (an eval RESULT) stays.
+5. **CORR-5 — inert lane invariant.** The inert `evalValue` / materialize arms MUST
+   return `literal(node.src)` — a BARE STRING — never the node object. An AST literal
+   node must not leak into the `Value = ValueObj | string` lane, else a downstream
+   `v.type === 'Color'` would misread it as a value-domain object missing its rgb
+   fields. Enforced explicitly in the inert arms.
+
+**Node set as shipped:** `Keyword{src}` · `Color{src}` (hex vs named via
+`src[0]==='#'`) · `Quoted{src,value,quote,escaped}` · `Dimension{number,unit,src}` ·
+`Any{src}` (the only sniffing leaf, only when operated). `RawInline` stays a distinct
+`Statement` (its `.text` was left as-is — the optional `src` rename skipped). The
+materialize per-type build bodies (`colorFromSrc` / `dimensionFromFields` /
+`quotedFromFields`) live in `literal-tag.ts`; `materializeAny` (no-trim) + `sniffLiteral`
+(trim) are the sole sniff paths; the `LiteralTag` enum / `LitFields` / packed-tag
+contract / `materializeLiteral(str,tag,lit)` signature are DELETED.
+
 ## 0. The problem in one sentence
 
 A single `Word` node carries a *value literal of any type* (`10px`, `#fff`, `red`,

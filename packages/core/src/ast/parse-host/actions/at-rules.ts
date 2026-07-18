@@ -107,13 +107,13 @@ interface PreludeTok {
  * (P0: the token boundaries come from the parser's leaf spans, never a re-scan; the
  * gaps carry comments and exact spacing unchanged). Mirrors the classification the
  * old prelude regexes produced:
- *   • no `@` token          → a single literal `Word` (comments preserved)
+ *   • no `@` token          → a single literal `Any` (comments preserved)
  *   • exactly `@@name`      → `VarIndirect`
  *   • any top-level `@{…}`  → `Interp` (bare `@var` stays literal, as the old
  *                             `@{`-only split left it; `@{…}` inside a string/paren-
  *                             string is not a top-level leaf, so it stays literal —
  *                             string interpolation is a separate Tier-B shape)
- *   • otherwise `@var` runs → `VarRef`s interleaved with literal `Word` gaps
+ *   • otherwise `@var` runs → `VarRef`s interleaved with literal `Any` gaps
  */
 function buildGenericBlock(args: BuildArgs): t2.AtRuleBlock {
   const { children } = args;
@@ -152,7 +152,7 @@ function buildGenericBlock(args: BuildArgs): t2.AtRuleBlock {
   if (ps >= pe) return t2.atRuleBlock(name, null, body);
 
   // No Less value token → the region is a single verbatim literal.
-  if (toks.length === 0) return t2.atRuleBlock(name, t2.word(src.slice(ps, pe)), body);
+  if (toks.length === 0) return t2.atRuleBlock(name, t2.any(src.slice(ps, pe)), body);
 
   // Exactly `@@name` spanning the whole (trimmed) region → indirect reference.
   if (toks.length === 1 && toks[0]!.kind === 'indirect' && toks[0]!.start === ps && toks[0]!.end === pe) {
@@ -175,15 +175,15 @@ function buildGenericBlock(args: BuildArgs): t2.AtRuleBlock {
     return t2.atRuleBlock(name, t2.interp(parts), body);
   }
 
-  // `@var` (and lone `@@name`) split: each token → a reference, gaps → verbatim `Word`.
+  // `@var` (and lone `@@name`) split: each token → a reference, gaps → verbatim `Any`.
   const parts: t2.ValueNode[] = [];
   let cursor = ps;
   for (const t of toks) {
-    if (t.start > cursor) parts.push(t2.word(src.slice(cursor, t.start)));
+    if (t.start > cursor) parts.push(t2.any(src.slice(cursor, t.start)));
     parts.push(t.kind === 'indirect' ? t2.varIndirect(t2.varRef(t.name)) : t2.varRef(t.name));
     cursor = t.end;
   }
-  if (cursor < pe) parts.push(t2.word(src.slice(cursor, pe)));
+  if (cursor < pe) parts.push(t2.any(src.slice(cursor, pe)));
   const prelude = parts.length === 1 ? parts[0]! : t2.concat(parts);
   return t2.atRuleBlock(name, prelude, body);
 }
@@ -217,7 +217,7 @@ function interpFromString(text: string, unquote: boolean): t2.ValueNode {
     sawRef = true;
     last = m.index + m[0].length;
   }
-  if (!sawRef) return t2.word(text);
+  if (!sawRef) return t2.any(text);
   if (last < text.length) parts.push({ lit: text.slice(last) });
   return t2.interp(parts);
 }
@@ -225,10 +225,10 @@ function interpFromString(text: string, unquote: boolean): t2.ValueNode {
 /**
  * Tokenize a query at-rule's prelude bytes into a value, turning `@name` into
  * `VarRef`, `@{name}` into `Interp`, and `@@name` into `VarIndirect`, leaving
- * everything else literal. A static prelude collapses to a single `Word`.
+ * everything else literal. A static prelude collapses to a single `Any`.
  */
 function parsePreludeValue(text: string): t2.ValueNode {
-  if (text.indexOf('@') < 0) return t2.word(text);
+  if (text.indexOf('@') < 0) return t2.any(text);
   const indirect = /^@@([A-Za-z_][\w-]*)$/u.exec(text.trim());
   if (indirect) return t2.varIndirect(t2.varRef(indirect[1]!));
   if (text.includes('@{')) return interpFromString(text, true);
@@ -237,12 +237,12 @@ function parsePreludeValue(text: string): t2.ValueNode {
   let last = 0;
   let m: RegExpExecArray | null;
   while ((m = re.exec(text)) !== null) {
-    if (m.index > last) parts.push(t2.word(text.slice(last, m.index)));
+    if (m.index > last) parts.push(t2.any(text.slice(last, m.index)));
     parts.push(t2.varRef(m[1]!));
     last = m.index + m[0].length;
   }
-  if (parts.length === 0) return t2.word(text);
-  if (last < text.length) parts.push(t2.word(text.slice(last)));
+  if (parts.length === 0) return t2.any(text);
+  if (last < text.length) parts.push(t2.any(text.slice(last)));
   return parts.length === 1 ? parts[0]! : t2.concat(parts);
 }
 

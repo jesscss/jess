@@ -16,7 +16,7 @@ import { describe, it, expect } from 'vitest';
 import { serialize } from '../../index.js';
 import { buildEvaluator } from '../../evaluator.js';
 import { makeBuiltinRegistry } from './make-builtin-registry.js';
-import { root, rule, decl, word, complex, compound } from '../../nodes.js';
+import { root, rule, decl, any, complex, compound } from '../../nodes.js';
 import { atRuleBlock } from '../../at-rule.js';
 
 const ev = buildEvaluator(makeBuiltinRegistry());
@@ -30,9 +30,9 @@ describe('WS1 bubbling (constructed nodes)', () => {
     // .parent { color: green; @document url-prefix() { .child { color: red; } } }
     const tree = root([
       rule('.parent', [
-        decl('color', word('green')),
-        atRuleBlock('@document', word('url-prefix()'), [
-          rule('.child', [decl('color', word('red'))]),
+        decl('color', any('green')),
+        atRuleBlock('@document', any('url-prefix()'), [
+          rule('.child', [decl('color', any('red'))]),
         ]),
       ]),
     ]);
@@ -45,8 +45,8 @@ describe('WS1 bubbling (constructed nodes)', () => {
     // .top { @supports (sandwitch: butter) { .inside & { property: value; } } }
     const tree = root([
       rule('.top', [
-        atRuleBlock('@supports', word('(sandwitch: butter)'), [
-          rule(insideAmp, [decl('property', word('value'))]),
+        atRuleBlock('@supports', any('(sandwitch: butter)'), [
+          rule(insideAmp, [decl('property', any('value'))]),
         ]),
       ]),
     ]);
@@ -60,8 +60,8 @@ describe('WS1 bubbling (constructed nodes)', () => {
     const tree = root([
       rule('.onTop', [
         atRuleBlock('@font-face', null, [
-          decl('font-family', word('something')),
-          decl('src', word('made-up-url')),
+          decl('font-family', any('something')),
+          decl('src', any('made-up-url')),
         ]),
       ]),
     ]);
@@ -73,12 +73,12 @@ describe('WS1 bubbling (constructed nodes)', () => {
   it('direct declarations in a bubbleable body wrap in the context', async () => {
     // @media print { html { in-html: visible; @supports (upper: test) { in-supports: first; div { in-div: visible; } } } }
     const tree = root([
-      atRuleBlock('@media', word('print'), [
+      atRuleBlock('@media', any('print'), [
         rule('html', [
-          decl('in-html', word('visible')),
-          atRuleBlock('@supports', word('(upper: test)'), [
-            decl('in-supports', word('first')),
-            rule('div', [decl('in-div', word('visible'))]),
+          decl('in-html', any('visible')),
+          atRuleBlock('@supports', any('(upper: test)'), [
+            decl('in-supports', any('first')),
+            rule('div', [decl('in-div', any('visible'))]),
           ]),
         ]),
       ]),
@@ -92,9 +92,9 @@ describe('WS1 bubbling (constructed nodes)', () => {
     // .outOfMedia { @media (max-size: 2px) { @supports (whatever: something) { property: value; } } }
     const tree = root([
       rule('.outOfMedia', [
-        atRuleBlock('@media', word('(max-size: 2px)'), [
-          atRuleBlock('@supports', word('(whatever: something)'), [
-            decl('property', word('value')),
+        atRuleBlock('@media', any('(max-size: 2px)'), [
+          atRuleBlock('@supports', any('(whatever: something)'), [
+            decl('property', any('value')),
           ]),
         ]),
       ]),

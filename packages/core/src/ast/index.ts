@@ -6,6 +6,15 @@
  */
 
 export { type Node, type NodeType, type Combinator, isNode, AST_NODE_TYPES } from './node.js';
+// [barrel collision — task #44 §CORR-2] `nodes.js` now exports AST literal node
+// interfaces (`Keyword`/`Color`/`Quoted`) that SHARE names with the value-domain
+// re-exports below (`./value-eval.js`). An explicit re-export wins over a star
+// re-export in ES/TS, so the value-domain types are what the public barrel surfaces
+// under those names — the AST literal node interfaces stay OFF the public value
+// barrel by design. Internal ast/ code that needs an AST literal node type imports it
+// DIRECTLY from `./nodes.js` (or narrows a `ValueNode`), never via this barrel. The
+// literal CONSTRUCTORS (`keyword`/`color`/`quoted`/`any`/`dimension`, all lowercase)
+// do not collide and remain surfaced here.
 export * from './nodes.js';
 // [atrule] at-rule node types + constructors
 export * from './at-rule.js';
@@ -55,6 +64,3 @@ export { serializeValue, serializeDimension, serializeQuoted } from './serialize
 export { serializeColor } from './color.js';
 export { buildEvaluator } from './evaluator.js';
 export { createFnRegistry, type FnRegistry } from './value-dispatch.js';
-// [value-literal-tag] the parser's LIT_* classification (VALUE-LITERAL-TAG-SPEC).
-export { LiteralTag, materializeLiteral, tagForWord, sniffLiteral } from './literal-tag.js';
-export type { LitFields } from './literal-tag.js';

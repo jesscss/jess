@@ -116,7 +116,7 @@ function namedArgValue(args: BuildArgs): t2.ValueNode {
   // documented fallback for a shape the parser leaves unstructured.
   const colon = args.children[1] as { span?: Span } | undefined;
   const from = colon?.span ? colon.span.end : args.span.start;
-  return t2.word(args.ctx.src.slice(from, args.span.end).trim());
+  return t2.any(args.ctx.src.slice(from, args.span.end).trim());
 }
 
 /* ---------------------------------------------------------------- mixin args */
@@ -157,14 +157,14 @@ function buildMixinArgs(args: BuildArgs): ArgSlot[] {
  *   - `NamedArg` marker→ default binding `{ name, default }`
  *   - `VarRef`         → positional binding `{ name }`
  *   - anything else    → literal PATTERN `{ pattern }` (the built value node, or a
- *                        `Word` of the verbatim slot bytes for an unbuilt literal).
+ *                        `Any` of the verbatim slot bytes for an unbuilt literal).
  */
 function classifyParam(arg: ArgSlot): t2.Param {
   const built = arg.built;
   if (isRestMarker(built)) return built.name !== undefined ? { rest: true, name: built.name } : { rest: true };
   if (isNamedMarker(built)) return { name: built.name, default: built.value };
   if (t2.isNode(built) && built.type === 'VarRef') return { name: built.name };
-  return { pattern: t2.isNode(built) ? (built as t2.ValueNode) : t2.word(arg.text) };
+  return { pattern: t2.isNode(built) ? (built as t2.ValueNode) : t2.any(arg.text) };
 }
 
 /** `MixinOrQualifiedRule` → `MixinDef` (block form) or `MixinCall` (statement

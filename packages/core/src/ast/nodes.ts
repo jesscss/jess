@@ -24,38 +24,65 @@
 import { Combinator, renderCombinator } from './node.js';
 import type { GuardNode } from './guard.js'; // [guards]
 import type { CallArg } from './mixin-dispatch.js'; // [guards]
-import type { LiteralTag, LitFields } from './literal-tag.js'; // [value-literal-tag]
 
 /* ------------------------------------------------------------------ values */
 
-/**
- * A bare literal leaf, e.g. `red`, `solid`, `10px`, `#fff`.
+/*
+ * VALUE LITERAL LEAVES (task #44 — honest typed leaves).
  *
- * [value-literal-tag] `tag` carries the PRODUCER's `LIT_*` classification of the
- * literal (VALUE-LITERAL-TAG-SPEC §5). When a leaf is forced onto the typed path
- * (operated / compared / typed param) `materialize` reads this stamped FIELD
- * instead of re-classifying the bytes. It is `undefined` only for a genuinely
- * synthetic / untagged Word (e.g. a joined computed fragment), where the typed
- * path falls back to a byte sniff. The bridge stamps it today; the future
- * tree2-emitting parser-host stamps it at parse (same principle, no reshape).
+ * A value leaf now carries its value TYPE honestly in the `type` discriminant
+ * (no side-car `tag`): the parser's leaf classification IS the node. Every leaf
+ * carries its verbatim source spelling in `src` (distinct from the value-domain
+ * objects' canonical emitted `bytes` — `1.0px` src vs `1px` canonical). Only the
+ * opaque `Any` leaf sniffs its bytes, and only when it is forced onto the typed
+ * (operated) path — its value type is honestly unknown. `true`/`false` are NOT a
+ * node type: they emit as `Keyword`; guard-context booleanness is recovered by the
+ * value-domain `Bool` via the materialize sniff (VALUE-NODE-MODEL-DESIGN §CORR-4).
  *
- * [value-literal-tag] `lit` is the parser's pre-split classification of the
- * literal (numeric `number`+`unit`, or quoted `value`+`quote`+`escaped`). When
- * present, `materialize` reads it instead of re-splitting `text` with a regex;
- * absent only for a synthetic / untagged Word.
+ * The literal `type` strings REUSE the value-domain names (`Keyword`/`Color`/
+ * `Dimension`/`Quoted`); the collision with `ValueObj` is neutralized by the lane
+ * invariant (a value object never enters the AST-build lane) plus the `src` vs
+ * `bytes` structural split (`node.ts` `AST_NODE_TYPES` doc).
  */
-export interface Word {
-  readonly type: 'Word';
-  readonly text: string;
-  readonly tag?: LiteralTag;
-  readonly lit?: LitFields;
+
+/** An identifier / keyword leaf, e.g. `solid`, `auto`, `true`. */
+export interface Keyword {
+  readonly type: 'Keyword';
+  readonly src: string;
 }
 
-/** A numeric dimension leaf, e.g. `0px`, `10px`. */
+/** A color literal leaf, hex or named, e.g. `#fff`, `red`, `transparent`.
+ *  Hex vs named is `src[0] === '#'` (read only on the cold operated path). */
+export interface Color {
+  readonly type: 'Color';
+  readonly src: string;
+}
+
+/** A quoted string literal leaf, e.g. `"x"`, `'y'`. Pre-split fields ride so a
+ *  forced literal materializes by reading them, never re-scanning `src`. */
+export interface Quoted {
+  readonly type: 'Quoted';
+  readonly src: string;
+  readonly value: string;
+  readonly quote: string;
+  readonly escaped: boolean;
+}
+
+/** Arbitrary / opaque value bytes (raw prelude fragment, computed/joined
+ *  fragment, `url(...)`, list piece, mixin-arg bytes). The ONLY leaf that sniffs
+ *  its `src` to a typed value, and only when forced (operated). */
+export interface Any {
+  readonly type: 'Any';
+  readonly src: string;
+}
+
+/** A numeric dimension leaf, e.g. `0px`, `10px`, `1.0px`, `50%`. Carries the
+ *  parser's `number`+`unit` split plus the verbatim `src` spelling. */
 export interface Dimension {
   readonly type: 'Dimension';
-  readonly value: number;
+  readonly number: number;
   readonly unit: string;
+  readonly src: string;
 }
 
 /** A space-separated list of value parts, e.g. `1px solid black`. */
@@ -91,7 +118,7 @@ export interface PropRef {
  * A value template: literal text and `@var` references concatenated with NO
  * separator (the literal parts already carry their own spacing). This is how a
  * static value that embeds variable references is represented — e.g.
- * `1px solid @c` => Sequence[Word('1px solid '), VarRef('c')]. Reference
+ * `1px solid @c` => Sequence[Any('1px solid '), VarRef('c')]. Reference
  * substitution only (this rung): no arithmetic, no function evaluation.
  */
 export interface Sequence {
@@ -198,7 +225,10 @@ export interface MapAccessor {
 }
 
 export type ValueNode =
-  | Word
+  | Keyword
+  | Color
+  | Quoted
+  | Any
   | Dimension
   | SpacedValue
   | VarRef
@@ -576,13 +606,24 @@ export type Statement =
 
 /* ------------------------------------------------------------ constructors */
 
-export const word = (text: string, tag?: LiteralTag, lit?: LitFields): Word => ({
-  type: 'Word',
-  text,
-  ...(tag !== undefined ? { tag } : {}),
-  ...(lit !== undefined ? { lit } : {}),
-});
-export const dim = (value: number, unit = ''): Dimension => ({ type: 'Dimension', value, unit });
+export const keyword = (src: string): Keyword => ({ type: 'Keyword', src });
+export const any = (src: string): Any => ({ type: 'Any', src });
+export const color = (src: string): Color => ({ type: 'Color', src });
+export const quoted = (src: string, value: string, quote: string, escaped: boolean): Quoted =>
+  ({ type: 'Quoted', src, value, quote, escaped });
+export const dimension = (number: number, unit = '', src = `${number}${unit}`): Dimension =>
+  ({ type: 'Dimension', number, unit, src });
+
+/** A value literal that emits its `src` verbatim when inert (all five literal
+ *  types). Narrows a `ValueNode` to the leaf union. */
+export const isLiteralNode = (n: ValueNode): n is Keyword | Color | Dimension | Quoted | Any =>
+  n.type === 'Keyword' || n.type === 'Color' || n.type === 'Dimension'
+  || n.type === 'Quoted' || n.type === 'Any';
+
+/** A literal whose VALUE TYPE the parser knows (every literal except opaque `Any`).
+ *  Such a literal binds BY REFERENCE across a mixin boundary (its type survives). */
+export const isTypedLiteral = (n: ValueNode): boolean => isLiteralNode(n) && n.type !== 'Any';
+
 export const spaced = (parts: ValueNode[]): SpacedValue => ({ type: 'SpacedValue', parts });
 
 export const simple = (text: string): Simple => ({ type: 'Simple', text, interp: null });

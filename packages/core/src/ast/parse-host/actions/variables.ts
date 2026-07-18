@@ -60,7 +60,7 @@ const varDeclaration: BuildAction = {
       if (mixinCall) return t2.varDecl(bare, mixinCall);
     }
     const node = wholeValueNode(args, value);
-    const valueNode: t2.ValueNode = node !== null ? (node as t2.ValueNode) : t2.word(value);
+    const valueNode: t2.ValueNode = node !== null ? (node as t2.ValueNode) : t2.any(value);
     return t2.varDecl(bare, valueNode);
   },
 };
@@ -101,7 +101,7 @@ function isIntLiteral(s: string): boolean {
  * One `[key]` accessor key → `{ node, keyIsProp }` (mirrors the legacy
  * `_applyReferenceAccessor` key typing). A Less lookup key names a member of the
  * BASE map by LITERAL name — it is NOT evaluated in the outer scope:
- *   • `@name` / `$name` / bare `name` → the literal member name `name` (a `Word`);
+ *   • `@name` / `$name` / bare `name` → the literal member name `name` (an `Any`);
  *     resolved by NAME against the base's members (`keyIsProp`).
  *   • `@@name` → the member name is INTERPOLATED from outer variable `@name`: the
  *     key is a bare `VarRef` to `@name`, which the accessor evaluates in the outer
@@ -113,11 +113,11 @@ function isIntLiteral(s: string): boolean {
 function accessorKey(keyStr: string): { key: t2.ValueNode | number; keyIsProp: boolean } {
   if (keyStr.charCodeAt(0) === 0x40 /* @ */) {
     if (keyStr.charCodeAt(1) === 0x40) return { key: t2.varRef(keyStr.slice(2)), keyIsProp: true };
-    return { key: t2.word(keyStr.slice(1)), keyIsProp: true };
+    return { key: t2.any(keyStr.slice(1)), keyIsProp: true };
   }
-  if (keyStr.charCodeAt(0) === 0x24 /* $ */) return { key: t2.word(keyStr.slice(1)), keyIsProp: true };
+  if (keyStr.charCodeAt(0) === 0x24 /* $ */) return { key: t2.any(keyStr.slice(1)), keyIsProp: true };
   if (isIntLiteral(keyStr)) return { key: parseInt(keyStr, 10), keyIsProp: false };
-  return { key: t2.word(keyStr), keyIsProp: true };
+  return { key: t2.any(keyStr), keyIsProp: true };
 }
 
 /**

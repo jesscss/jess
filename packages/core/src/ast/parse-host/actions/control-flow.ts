@@ -117,7 +117,7 @@ function buildFor(args: BuildArgs): t2.For {
  * `#ns > .m()` — selector leaf(s) + a `Paren` arg group) rebuilds as a
  * `MixinCall` so the serializer dispatches it and iterates its OUTPUT; anything
  * else (a literal list `1 2 3`, `a, b`, `10px 15px, 20px 25px`) keeps its verbatim
- * source bytes as a `Word` — the serializer byte-splits it into items (top-level
+ * source bytes as an `Any` — the serializer byte-splits it into items (top-level
  * comma, else space).
  */
 function buildIterable(args: BuildArgs, open: number, cbIdx: number): t2.ValueNode | t2.MixinCall {
@@ -154,7 +154,7 @@ function buildIterable(args: BuildArgs, open: number, cbIdx: number): t2.ValueNo
   // serializer byte-splits this into list items (top-level comma, else space).
   const from = firstSpan?.start ?? args.span.start;
   const to = lastSpan?.end ?? args.span.end;
-  return t2.word(args.ctx.src.slice(from, to).trim());
+  return t2.any(args.ctx.src.slice(from, to).trim());
 }
 
 /** Combinator leaves that separate namespace-path segments in a mixin call. */
@@ -204,7 +204,7 @@ export function tryMixinCallIterable(
   // argument (the common each-over-mixin-output shape passes no or one argument).
   const inner = paren.inner;
   const callArgs: t2.CallArg[] =
-    inner.type === 'Word' && inner.text === '' ? [] : [{ value: inner }];
+    t2.isLiteralNode(inner) && inner.src === '' ? [] : [{ value: inner }];
   return { type: 'MixinCall', name, args: callArgs, path, important: false };
 }
 

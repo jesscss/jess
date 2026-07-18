@@ -117,7 +117,7 @@ function interpFromString(text: string, unquote: boolean): t2.ValueNode {
     sawRef = true;
     last = m.index + m[0].length;
   }
-  if (!sawRef) return t2.word(text);
+  if (!sawRef) return t2.any(text);
   if (last < text.length) parts.push({ lit: text.slice(last) });
   return t2.interp(parts);
 }
@@ -125,8 +125,8 @@ function interpFromString(text: string, unquote: boolean): t2.ValueNode {
 /** Strip a trailing `!important` from a value node's bytes (merged decls
  *  re-emit it once via the structured flag) — mirror of the bridge helper. */
 function stripImportantBytes(v: t2.ValueNode): t2.ValueNode {
-  if (v.type === 'Word') {
-    return t2.word(stripImportant((v as t2.Word).text));
+  if (t2.isLiteralNode(v)) {
+    return t2.any(stripImportant(v.src));
   }
   return v;
 }
@@ -155,10 +155,13 @@ function declBody(args: BuildArgs): string {
 function consumableWholeValue(args: BuildArgs, valueBytes: string): t2.ValueNode | null {
   const node = wholeValueNode(args, valueBytes);
   if (node === null) return null;
-  const k = node.type;
-  return k === 'Word' || k === 'VarRef' || k === 'Paren' || k === 'FunctionCall'
+  // `wholeValueNode` is typed to the broad `Node` union; a value-position build only
+  // yields value nodes, so narrow to `ValueNode` (as the return cast below already does).
+  const vn = node as t2.ValueNode;
+  const k = vn.type;
+  return t2.isLiteralNode(vn) || k === 'VarRef' || k === 'Paren' || k === 'FunctionCall'
     || k === 'MapAccessor' || k === 'PropRef'
-    ? (node as t2.ValueNode)
+    ? vn
     : null;
 }
 
@@ -178,13 +181,13 @@ function asValueNode(x: unknown): t2.ValueNode | null {
 
 /**
  * A hole that emits DIFFERENTLY from its verbatim source bytes — a `VarRef`,
- * `Operation`, `FunctionCall`, `Paren`, or interpolation. A plain `Word` /
+ * `Operation`, `FunctionCall`, `Paren`, or interpolation. A plain literal leaf /
  * `Dimension` leaf emits its bytes verbatim, so a value whose only built nodes are
  * those needs no assembly (the raw-bytes fallback is already byte-identical, and
  * cheaper). This is the gate that keeps every value that ALREADY worked untouched.
  */
 function resolvesDifferently(node: t2.ValueNode): boolean {
-  return node.type !== 'Word' && node.type !== 'Dimension';
+  return !t2.isLiteralNode(node);
 }
 
 /**
@@ -195,12 +198,12 @@ function resolvesDifferently(node: t2.ValueNode): boolean {
  * exact whitespace) between them. This CONSUMES those built children (P0 — no
  * re-tokenizing of `ctx.src`): it interleaves each built node with the verbatim
  * source bytes that sit between the nodes, producing a `Sequence` (the shape
- * `nodes.ts` documents: `1px solid @c` → `Sequence[Word('1px solid '), VarRef]`).
+ * `nodes.ts` documents: `1px solid @c` → `Sequence[Any(...), VarRef]`).
  * At serialize time the `Sequence` resolves each ref / runs each operation and
  * emits the literal gaps verbatim, so un-operated components stay SOURCE-VERBATIM
  * (v5 rule) while operated / referenced ones canonicalize.
  *
- * Falls back to the verbatim-bytes `Word` (byte-identical to the prior behavior)
+ * Falls back to the verbatim-bytes `Any` (byte-identical to the prior behavior)
  * when nothing needs resolving, or when the reconstructed region does not match the
  * value bytes exactly (e.g. a trailing `!important` outside the built-node span).
  */
@@ -209,7 +212,7 @@ function assembleMultiPartValue(args: BuildArgs, valStart: number, valueBytes: s
   const vEnd = valStart + valueBytes.length;
   // The value region must line up with the source bytes exactly (a re-derived
   // offset guards against any trailing-`!important` / trimming skew).
-  if (src.slice(valStart, vEnd) !== valueBytes) return t2.word(valueBytes);
+  if (src.slice(valStart, vEnd) !== valueBytes) return t2.any(valueBytes);
 
   const holes: Hole[] = [];
   let anyResolves = false;
@@ -222,19 +225,19 @@ function assembleMultiPartValue(args: BuildArgs, valStart: number, valueBytes: s
     if (resolvesDifferently(node)) anyResolves = true;
   }
   // No operable component → the raw bytes are already byte-identical (and cheaper).
-  if (!anyResolves) return t2.word(valueBytes);
+  if (!anyResolves) return t2.any(valueBytes);
   holes.sort((a, b) => a.start - b.start);
 
   // Interleave each built node with the verbatim source bytes between the nodes,
-  // so inert idents / separators / exact spacing survive as literal `Word` gaps.
+  // so inert idents / separators / exact spacing survive as literal `Any` gaps.
   const parts: t2.ValueNode[] = [];
   let cursor = valStart;
   for (const h of holes) {
-    if (h.start > cursor) parts.push(t2.word(src.slice(cursor, h.start)));
+    if (h.start > cursor) parts.push(t2.any(src.slice(cursor, h.start)));
     parts.push(h.node);
     cursor = h.end;
   }
-  if (cursor < vEnd) parts.push(t2.word(src.slice(cursor, vEnd)));
+  if (cursor < vEnd) parts.push(t2.any(src.slice(cursor, vEnd)));
   return parts.length === 1 ? parts[0]! : t2.sequence(parts);
 }
 
@@ -264,7 +267,7 @@ const customDeclaration: BuildAction = {
       }
     }
     // TOTAL: a colon-less doomed branch degrades to an inert declaration.
-    if (colonIdx < 0) return t2.decl(stripTrailingSemi(sliceSpan(args.ctx, args.span)).trim(), t2.word(''), null, false);
+    if (colonIdx < 0) return t2.decl(stripTrailingSemi(sliceSpan(args.ctx, args.span)).trim(), t2.any(''), null, false);
 
     const colonSpan = leafSpan(children[colonIdx])!;
     // NAME: from the first child leaf to the colon, outer-trimmed. The interpolated
@@ -285,7 +288,7 @@ const customDeclaration: BuildAction = {
     const lastLeaf = children[children.length - 1];
     if (leafValue(lastLeaf) === ';') ve = leafSpan(lastLeaf)?.start ?? ve;
     const vStart = colonSpan.end;
-    if (src.slice(vStart, ve).trim() === '') return t2.decl(name, t2.word(''), null, false);
+    if (src.slice(vStart, ve).trim() === '') return t2.decl(name, t2.any(''), null, false);
     const vs = src[vStart] === ' ' || src[vStart] === '\t' ? vStart + 1 : vStart;
     const valueSpans: InterpSpan[] = [];
     for (let i = colonIdx + 1; i < children.length; i++) {
@@ -307,7 +310,7 @@ const declaration: BuildAction = {
     const body = declBody(args);
     const colon = body.indexOf(':');
     // TOTAL: a colon-less span is a doomed/backtracked branch — inert node.
-    if (colon < 0) return t2.decl(body.trim(), t2.word(''), null, false);
+    if (colon < 0) return t2.decl(body.trim(), t2.any(''), null, false);
 
     const namePart = body.slice(0, colon).trimEnd();
     let merge: null | ',' | ' ' = null;
@@ -348,9 +351,9 @@ const declaration: BuildAction = {
       : valueBytes;
     let value: t2.ValueNode =
       consumableWholeValue(args, coreBytes)
-      ?? (merge === null ? assembleMultiPartValue(args, valStart, coreBytes) : t2.word(coreBytes));
+      ?? (merge === null ? assembleMultiPartValue(args, valStart, coreBytes) : t2.any(coreBytes));
     // Defensive: a raw-bytes merge value already had `!important` removed above; this
-    // also covers any Word that still trails one.
+    // also covers any literal that still trails one.
     if (merge !== null && important) value = stripImportantBytes(value);
     return t2.decl(name, value, merge, important, valueOnNewLine);
   },

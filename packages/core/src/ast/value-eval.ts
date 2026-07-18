@@ -27,7 +27,6 @@
 
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
 import type { UnitMode } from '../types/modes.js';
-import type { LiteralTag, LitFields } from './literal-tag.js';
 
 /* --------------------------------------------------------- value domain */
 
@@ -187,14 +186,13 @@ export const DEFAULT_MODES: EvalModes = {
  */
 export interface ValueEvaluator {
   /**
-   * Materialize a literal (its verbatim bytes) into a typed value. When `tag` is
-   * supplied (the parser's `LIT_*` classification, sourced from the packed node),
-   * materialization is a `switch` on the tag — no byte re-classification. When
-   * absent (a synthetic / computed string with no parse tag), the evaluator falls
-   * back to a sniff. Only OPERATED literals are materialized; the ~98% inert
-   * literals emit their verbatim bytes and never reach here.
+   * Materialize a SYNTHETIC / COMPUTED string (a joined `Sequence`/`Interp` result,
+   * or an opaque fragment) into a typed value by sniffing its bytes. A PARSED typed
+   * literal never reaches here — the serializer builds its value from the node's own
+   * fields (`evalTyped`). Only OPERATED literals are materialized at all; the inert
+   * majority emit their verbatim bytes and never touch this seam.
    */
-  materialize(bytes: string, tag?: LiteralTag, lit?: LitFields): ValueObj;
+  materialize(bytes: string): ValueObj;
   /** Binary operation on two materialized operands (direct / delegated math). */
   operate(op: string, left: ValueObj, right: ValueObj, modes: EvalModes): ValueObj;
   /** Named-function call on a materialized arg list. Sync unless a genuinely

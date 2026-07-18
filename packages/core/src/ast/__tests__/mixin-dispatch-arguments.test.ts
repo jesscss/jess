@@ -16,8 +16,8 @@ import {
   bindArgs,
   mixinDef,
   mixinCall,
-  word,
-  type Word,
+  any,
+  isLiteralNode,
   type MixinCall,
   type MixinDef,
   type Param,
@@ -25,52 +25,52 @@ import {
 } from '../index.js';
 
 // Caller-frame resolver for byte-literal args: our test args/defaults are plain
-// `Word`s, so their bytes are their text (mirrors the pipeline's eval-to-bytes).
-const resolve = (v: ValueNode): string => (v.type === 'Word' ? v.text : '');
+// `Any` leaves, so their bytes are their `src` (mirrors the pipeline's eval-to-bytes).
+const resolve = (v: ValueNode): string => (isLiteralNode(v) ? v.src : '');
 
 const argumentsOf = (def: MixinDef, call: MixinCall): string => {
   const bound = bindArgs(def, call, resolve);
   expect(bound).not.toBeNull();
   const a = bound!.get('arguments');
-  expect(a?.type).toBe('Word');
-  return (a as Word).text;
+  expect(a?.type).toBe('Any');
+  return isLiteralNode(a!) ? a!.src : '';
 };
 
 describe('mixin @arguments (vs less@4.6.3)', () => {
   const params: Param[] = [
     { name: 'a' },
-    { name: 'b', default: word('20px') },
-    { name: 'c', default: word('30px') },
+    { name: 'b', default: any('20px') },
+    { name: 'c', default: any('30px') },
   ];
   const def = mixinDef('.mixin', params, []);
 
   it('(a) named-only call fills every slot in PARAM order, not call order', () => {
     const call = mixinCall('.mixin', [
-      { value: word('2px'), name: 'b' },
-      { value: word('1px'), name: 'a' },
+      { value: any('2px'), name: 'b' },
+      { value: any('1px'), name: 'a' },
     ]);
     expect(argumentsOf(def, call)).toBe('1px 2px 30px');
   });
 
   it('(b) call omitting a defaulted param includes the default-filled slot', () => {
-    const call = mixinCall('.mixin', [word('1px'), word('2px')]);
+    const call = mixinCall('.mixin', [any('1px'), any('2px')]);
     expect(argumentsOf(def, call)).toBe('1px 2px 30px');
   });
 
   it('(c) mixed positional + named emits param order with defaults filled', () => {
-    const call = mixinCall('.mixin', [word('1px'), { value: word('9px'), name: 'c' }]);
+    const call = mixinCall('.mixin', [any('1px'), { value: any('9px'), name: 'c' }]);
     expect(argumentsOf(def, call)).toBe('1px 20px 9px');
   });
 
   it('(d) all-positional call is unchanged (byte-identical regression guard)', () => {
-    const call = mixinCall('.mixin', [word('1px'), word('2px'), word('3px')]);
+    const call = mixinCall('.mixin', [any('1px'), any('2px'), any('3px')]);
     expect(argumentsOf(def, call)).toBe('1px 2px 3px');
   });
 
   it('pattern-literal slots bind no variable and are excluded', () => {
     // .mixin(red, @a) called as .mixin(red, 5px) => "5px" (less@4.6.3)
-    const patDef = mixinDef('.mixin', [{ pattern: word('red') }, { name: 'a' }], []);
-    const call = mixinCall('.mixin', [word('red'), word('5px')]);
+    const patDef = mixinDef('.mixin', [{ pattern: any('red') }, { name: 'a' }], []);
+    const call = mixinCall('.mixin', [any('red'), any('5px')]);
     expect(argumentsOf(patDef, call)).toBe('5px');
   });
 
@@ -78,14 +78,14 @@ describe('mixin @arguments (vs less@4.6.3)', () => {
     const restDef = mixinDef('.mixin', [{ name: 'a' }, { name: 'rest', rest: true }], []);
     // .mixin(1px, 2px, 3px, 4px) => "1px 2px 3px 4px"
     expect(
-      argumentsOf(restDef, mixinCall('.mixin', [word('1px'), word('2px'), word('3px'), word('4px')])),
+      argumentsOf(restDef, mixinCall('.mixin', [any('1px'), any('2px'), any('3px'), any('4px')])),
     ).toBe('1px 2px 3px 4px');
     // .mixin(1px) => "1px" (no trailing space from the empty rest slot)
-    expect(argumentsOf(restDef, mixinCall('.mixin', [word('1px')]))).toBe('1px');
+    expect(argumentsOf(restDef, mixinCall('.mixin', [any('1px')]))).toBe('1px');
   });
 
   it('an all-pattern mixin yields an empty @arguments', () => {
-    const patOnly = mixinDef('.mixin', [{ pattern: word('red') }], []);
-    expect(argumentsOf(patOnly, mixinCall('.mixin', [word('red')]))).toBe('');
+    const patOnly = mixinDef('.mixin', [{ pattern: any('red') }], []);
+    expect(argumentsOf(patOnly, mixinCall('.mixin', [any('red')]))).toBe('');
   });
 });

@@ -1,16 +1,19 @@
 /**
- * VALUE-LITERAL TYPE TAG (per docs/future/core-architecture/VALUE-LITERAL-TAG-SPEC.md).
+ * LITERAL MATERIALIZATION — build a typed value-domain `ValueObj` from an AST
+ * value-literal leaf (VALUE-NODE-MODEL-DESIGN, task #44).
  *
- * A small numeric tag that rides on a packed literal value, carrying the PARSER's
- * classification so a forced (operated / compared / typed-param) literal
- * materializes to a typed `ValueObj` via a `switch` on the tag — NOT by
- * re-classifying the bytes with a regex/charCode heuristic. This is the spec's
- * `LIT_*` enum + `materializeLiteral` table. These constants are the shared
- * core↔parser contract (the parser stamps the tag; core reads it).
+ * Post-reshape, every parsed leaf carries its value TYPE in the node `type`
+ * (`Keyword`/`Color`/`Dimension`/`Quoted`) plus its verbatim `src`, so a forced
+ * (operated / compared / typed-param) literal materializes by reading FIELDS —
+ * NOT by re-classifying `src` with a regex (constitution P0). The per-type build
+ * bodies (`colorFromSrc`, `dimensionFromFields`, `quotedFromFields`) live here; the
+ * serializer's `evalTyped` switch calls them by node type.
  *
- * A real (non-`const`) enum on purpose: the tag crosses the core↔parser package
- * boundary, where a `const enum` under `isolatedModules` won't inline reliably
- * (mirrors `ColorFormat`).
+ * The ONLY node that sniffs is the opaque `Any` leaf (and a genuinely-synthetic /
+ * computed string with no parse origin): its value type is honestly unknown, so
+ * `materializeAny` / `sniffLiteral` classify the bytes. A PARSED typed literal never
+ * touches the sniff. The former `LiteralTag` enum / `LitFields` / packed-tag
+ * contract are gone — the node type IS the classification.
  */
 import type { ValueObj } from './value-eval.js';
 import { HEX } from './color.js';
@@ -18,69 +21,10 @@ import { makeColorRgb, makeKeyword } from './value-factory.js';
 import { namedColor } from './color-names.js';
 import { round } from './round.js';
 
-export enum LiteralTag {
-  /** ident/keyword (`solid`,`auto`) — default + safe fallback for untagged strings. */
-  Keyword = 0,
-  /**
-   * Any numeric literal → value `Dimension` (unit may be `''`). ONE tag for the
-   * whole numeric family: the grammar rule (`Numeric`) is authoritative that the
-   * leaf is a number, and `materialize` treats united and unitless numbers
-   * identically (`dimensionFromString`), so there is no Dimension-vs-Num split to
-   * re-decide from the bytes.
-   */
-  Dimension = 1,
-  /**
-   * @deprecated Alias of `Dimension` (SAME value → one numeric tag), retained only
-   * for the differential-oracle test (`parse-host/__tests__/bridge.ts`). New code
-   * uses `Dimension`.
-   */
-  Num = 1,
-  /** `T.Color` (`#…`) → `Color` (verbatim node). */
-  ColorHex = 3,
-  /** color-table ident / `transparent` → named `Color`. */
-  ColorNamed = 4,
-  /** `true`/`false` (less) → `Bool`. */
-  Bool = 5,
-  /** verbatim fallback / role-typed `Any` → keyword, no coercion. */
-  Any = 6,
-  /**
-   * A quoted string (`"…"` / `'…'`) → value `Quoted`. The parser tokenizes a
-   * string leaf DISTINCT from an ident, so the class rides on this tag rather than
-   * a `QUOTE_RE` re-scan at materialize; the inner value + quote char + real
-   * escaped flag ride in `LitFields`. Fits the 3-bit kind space (`LIT_TAG_MASK`),
-   * below the reserved `LIT_ALREADY_MINIMAL` bit.
-   */
-  Quoted = 7,
-}
-
-/**
- * The pre-classified leaf payload the PARSER already resolved, carried on the
- * value leaf so `materializeLiteral` READS it instead of re-splitting the bytes
- * with a regex (constitution P0 — core never re-derives what the parser knows).
- * A numeric leaf carries `number`+`unit` (the grammar split them at
- * tokenization); a quoted leaf carries the inner `value`, the `quote` char, and
- * the real `escaped` flag. The tag discriminates which shape is present;
- * consumers narrow with an `in` guard (no cast).
- */
-export type LitFields =
-  | { readonly number: number; readonly unit: string }
-  | { readonly value: string; readonly quote: string; readonly escaped: boolean };
-
-/**
- * The kind occupies the low 3 bits (values 0-7). Bit 3 is RESERVED for compressed
- * mode (not used yet): `LIT_ALREADY_MINIMAL` marks a verbatim value that is
- * already minimal (dart-sass `compressed` would leave it unchanged), so the
- * future minifier can skip it. Reserving the bit now is free; adding it to the
- * packed struct later is a reshape. Consumers mask with `LIT_TAG_MASK`.
- */
-export const LIT_TAG_MASK = 0b111;
-export const LIT_ALREADY_MINIMAL = 1 << 3; // 8 — reserved, unused
-
-// SYNTHETIC-ONLY classifiers. A PARSED literal reaches materialize already
-// classified (its `LitFields` / `tag`), so it never touches these. They fire only
-// for a genuinely-synthetic string with no parse origin — a computed / joined
-// fragment or a re-split list piece (`tagForWord` / `sniffLiteral`) — which the
-// parser never saw, so classifying it here is not re-deriving parser output.
+// SYNTHETIC-ONLY classifiers, used solely by the `Any` / computed-string sniff. A
+// PARSED literal reaches materialize already typed (its node), so it never touches
+// these; classifying a genuinely-synthetic string here is not re-deriving parser
+// output (the parser never saw it).
 const NUM_RE = /^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?([a-zA-Z%]*)$/;
 const HEX_RE = /^#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/;
 
@@ -104,7 +48,7 @@ export function parseHex(hex: string): { rgb: [number, number, number]; alpha: n
   return { rgb: [r, g, b], alpha: a };
 }
 
-/** Synthetic-only numeric split (no `LitFields`): a computed numeric string. */
+/** Synthetic-only numeric split (no pre-parsed fields): a computed numeric string. */
 function dimensionFromString(str: string): ValueObj {
   const m = NUM_RE.exec(str);
   const unit = m?.[1] ?? '';
@@ -122,93 +66,87 @@ function quotedFromBytes(str: string): ValueObj {
   return { type: 'Quoted', value: str.slice(1, -1), quote: str[0]!, escaped: false, bytes: str };
 }
 
+/* --------------------------------------------------- typed-leaf materializers */
+
 /**
- * Materialize a literal (its verbatim bytes) to a typed `ValueObj`, driven by the
- * TAG + the parser's `LitFields` — a `switch`, no regex sniff. When the parser
- * carried the split (`lit`) the numeric / quoted fields are read directly; only a
- * genuinely-synthetic string (no `lit`) falls back to a byte split. The result is
- * a FRESH object handed to the operated/compared slot; it is never stored back
- * (projection-not-mutation).
- *
- * A `LIT_COLOR_NAMED` word resolves to a `Color` through the shared color-name
- * table (`color-names.ts`), so operated/compared named colors (`lighten(red,…)`,
- * `iscolor(blue)`) behave like the legacy `Color`. The verbatim spelling rides in
- * `node` for byte-faithful emit; a name absent from the table falls through to a
- * plain keyword.
+ * A parsed `Color` leaf → value `Color`. Hex (`#…`) parses its channels; a named
+ * color resolves through the shared table (`lighten(red,…)` / `iscolor(blue)`), and
+ * the verbatim spelling rides in `node` for byte-faithful emit; a name absent from
+ * the table falls through to a plain keyword. The grammar is authoritative that the
+ * leaf IS a color, so this reads one byte (`#`) rather than re-classifying.
  */
-export function materializeLiteral(str: string, tag: LiteralTag, lit?: LitFields): ValueObj {
-  switch (tag & LIT_TAG_MASK) {
-    // One numeric tag (`Num` is a same-value alias of `Dimension`).
-    case LiteralTag.Dimension:
-      // Parser carried the number/unit split → read it; else split a synthetic.
-      if (lit && 'number' in lit) {
-        // Un-operated dimensions preserve their SOURCE spelling verbatim
-        // (`1.0px`→`1.0px`, `2PX`→`2PX`, `1e3px`→`1e3px`). The ONE exception is
-        // sub-precision float noise: a source whose value cannot be represented at
-        // the 8-dp canonical floor (`-0.0000000001` rounds to `0`) is DENOISED to
-        // the canonical rounded form (`0deg`), matching the v5 golden. A value that
-        // round-trips unchanged at 8 dp keeps its exact source spelling.
-        const r = round(lit.number, 8);
-        if (Number.isFinite(lit.number) && r !== lit.number) {
-          return { type: 'Dimension', number: r, unit: lit.unit, bytes: `${r}${lit.unit}` };
-        }
-        return { type: 'Dimension', number: lit.number, unit: lit.unit, bytes: str };
-      }
-      return dimensionFromString(str);
-    case LiteralTag.ColorHex: {
-      const { rgb, alpha } = parseHex(str);
-      return makeColorRgb(rgb, alpha, HEX, { node: str });
-    }
-    case LiteralTag.ColorNamed: {
-      const named = namedColor(str);
-      if (named) return makeColorRgb(named.rgb, named.alpha, HEX, { node: str });
-      return makeKeyword(str);
-    }
-    case LiteralTag.Bool:
-      return { type: 'Bool', value: str === 'true', bytes: str };
-    case LiteralTag.Quoted:
-      // Parser classified the string leaf → read its quote/value/escaped fields;
-      // a synthetic quoted (no `lit`) recovers them from the bytes (no regex).
-      if (lit && 'value' in lit) return { type: 'Quoted', value: lit.value, quote: lit.quote, escaped: lit.escaped, bytes: str };
-      return quotedFromBytes(str);
-    case LiteralTag.Any:
-    case LiteralTag.Keyword:
-    default:
-      // Untagged / verbatim-`Any` leaf: a quoted-looking string still materializes
-      // as a quoted value (byte-identical to the former `QUOTE_RE`), else keyword.
-      return isQuotedBytes(str) ? quotedFromBytes(str) : makeKeyword(str);
+export function colorFromSrc(src: string): ValueObj {
+  if (src.charCodeAt(0) === 35 /* # */) {
+    const { rgb, alpha } = parseHex(src);
+    return makeColorRgb(rgb, alpha, HEX, { node: src });
   }
+  const named = namedColor(src);
+  if (named) return makeColorRgb(named.rgb, named.alpha, HEX, { node: src });
+  return makeKeyword(src);
 }
 
 /**
- * SYNTHETIC-only classifier for a `Word` with no producer-stamped `tag` — a
- * computed / joined fragment forced onto the typed path. The parser never saw
- * this string, so classifying its bytes here is NOT re-deriving parser output
- * (constitution P0): a PARSED literal always arrives tagged (+ `LitFields`) and
- * bypasses this entirely. A quoted-looking synthetic string is left `Keyword`;
- * `materializeLiteral`'s default recovers its quotedness from the bytes.
+ * A parsed `Dimension` leaf → value `Dimension`, reading the pre-split
+ * `number`/`unit` (never re-splitting `src`). Un-operated dimensions preserve their
+ * SOURCE spelling verbatim (`1.0px`→`1.0px`, `2PX`→`2PX`). The ONE exception is
+ * sub-precision float noise: a source whose value cannot be represented at the 8-dp
+ * canonical floor (`-0.0000000001` rounds to `0`) is DENOISED to the canonical
+ * rounded form; a value that round-trips unchanged at 8 dp keeps its exact `src`.
  */
-export function tagForWord(text: string): LiteralTag {
+export function dimensionFromFields(number: number, unit: string, src: string): ValueObj {
+  const r = round(number, 8);
+  if (Number.isFinite(number) && r !== number) {
+    return { type: 'Dimension', number: r, unit, bytes: `${r}${unit}` };
+  }
+  return { type: 'Dimension', number, unit, bytes: src };
+}
+
+/** A parsed `Quoted` leaf → value `Quoted`, reading its pre-split fields. */
+export function quotedFromFields(value: string, quote: string, escaped: boolean, src: string): ValueObj {
+  return { type: 'Quoted', value, quote, escaped, bytes: src };
+}
+
+/* --------------------------------------------------------------- sniff path */
+
+/**
+ * Classify + build a SYNTHETIC / opaque string (the `Any` leaf, or a computed /
+ * joined fragment forced onto the typed path) by sniffing its bytes. A quoted-
+ * looking string materializes as a quoted value; `true`/`false` as a value-domain
+ * `Bool` (guard booleanness — no AST `Bool` node exists); a numeric / hex / named-
+ * color shape as its typed value; else a keyword. This is the ONLY byte sniff.
+ */
+function sniffBuild(text: string): ValueObj {
   const c0 = text.charCodeAt(0);
-  if (c0 === 35 /* # */ && HEX_RE.test(text)) return LiteralTag.ColorHex;
-  // Numeric: ONE tag for the whole family (united or unitless — no split).
-  if ((c0 >= 48 && c0 <= 57) || c0 === 43 || c0 === 45 || c0 === 46) {
-    if (NUM_RE.test(text)) return LiteralTag.Dimension;
+  if (c0 === 35 /* # */ && HEX_RE.test(text)) {
+    const { rgb, alpha } = parseHex(text);
+    return makeColorRgb(rgb, alpha, HEX, { node: text });
   }
-  if (text === 'true' || text === 'false') return LiteralTag.Bool;
-  // A bare identifier that names a CSS color materializes as a Color — named
-  // colors resolve before falling through to a plain keyword.
-  if (/^[a-zA-Z][a-zA-Z0-9]*$/.test(text) && namedColor(text)) return LiteralTag.ColorNamed;
-  return LiteralTag.Keyword;
+  // Numeric: ONE family (united or unitless — no split).
+  if ((c0 >= 48 && c0 <= 57) || c0 === 43 || c0 === 45 || c0 === 46) {
+    if (NUM_RE.test(text)) return dimensionFromString(text);
+  }
+  if (text === 'true' || text === 'false') return { type: 'Bool', value: text === 'true', bytes: text };
+  // A bare identifier that names a CSS color materializes as a Color.
+  if (/^[a-zA-Z][a-zA-Z0-9]*$/.test(text)) {
+    const named = namedColor(text);
+    if (named) return makeColorRgb(named.rgb, named.alpha, HEX, { node: text });
+  }
+  return isQuotedBytes(text) ? quotedFromBytes(text) : makeKeyword(text);
 }
 
 /**
- * Untagged fallback (spec §3 `sniffStringTerminal`): classify a SYNTHETIC / COMPUTED
- * string that carries no parse tag (e.g. a joined `Concat`/`Interp` result forced
- * in a typed position). Delegates to `tagForWord` + `materializeLiteral` so there is
- * one classification path.
+ * Materialize an opaque `Any` leaf: sniff its verbatim `src` with NO trim (byte-
+ * identical to the former untagged-literal typed path).
+ */
+export function materializeAny(src: string): ValueObj {
+  return sniffBuild(src);
+}
+
+/**
+ * Materialize a SYNTHETIC / COMPUTED string that carries no node type (a joined
+ * `Sequence`/`Interp` result forced in a typed position): trim, then sniff. This is
+ * the `ValueEvaluator.materialize` seam body.
  */
 export function sniffLiteral(str: string): ValueObj {
-  const b = str.trim();
-  return materializeLiteral(b, tagForWord(b));
+  return sniffBuild(str.trim());
 }

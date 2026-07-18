@@ -70,7 +70,7 @@ function buildAtRuleStatement(args: BuildArgs): t2.AtRuleStatement | t2.StyleImp
   }
 
   // The `@import` production shares this type but structures its prelude as a
-  // built path Word plus separated option / media leaves (P0). The import family
+  // built path leaf plus separated option / media leaves (P0). The import family
   // consumes those structured children into a `StyleImport` head that the
   // post-parse pass resolves. A non-import statement returns `null` here and
   // falls through to the raw-head recovery below.

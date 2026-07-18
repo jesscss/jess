@@ -25,7 +25,7 @@
 
 import { parseLessFn } from '@jesscss/less-parser';
 import * as t2 from '../../index.js';
-import { LiteralTag, type Combinator } from '../../index.js';
+import { type Combinator } from '../../index.js';
 import { sourceSpanOf } from '../../../tree/util/provenance.js';
 // [import] resolution/inlining lives in a sibling front-end file (kept out of
 // this shared dispatch file to minimize churn); wired in via `toStatement`.
@@ -245,10 +245,10 @@ function customDeclValue(ctx: BridgeCtx, node: AnyNode): t2.ValueNode {
   const colon = body.indexOf(':');
   if (colon < 0) throw new UnsupportedShape('custom-decl:no-colon', String(node.name));
   let raw = body.slice(colon + 1);
-  if (raw.trim() === '') return t2.word('');
+  if (raw.trim() === '') return t2.any('');
   if (raw[0] === ' ' || raw[0] === '\t') raw = raw.slice(1);
   // interpFromString resolves `@{…}` (value context, unquote) and returns a
-  // verbatim Word when no interpolation is present (bare `@var`/fns literal).
+  // verbatim `Any` when no interpolation is present (bare `@var`/fns literal).
   return interpFromString(raw, true);
 }
 
@@ -260,7 +260,7 @@ function customDeclValue(ctx: BridgeCtx, node: AnyNode): t2.ValueNode {
  * `@name` still yields `Concat`/`VarRef` (byte-unchanged).
  */
 function parseValue(text: string): t2.ValueNode {
-  if (text.indexOf('@') < 0) return t2.word(text);
+  if (text.indexOf('@') < 0) return t2.any(text);
   // `@@name` indirect variable (standalone).
   const indirect = /^@@([A-Za-z_][\w-]*)$/.exec(text.trim());
   if (indirect) return t2.varIndirect(t2.varRef(indirect[1]!));
@@ -272,12 +272,12 @@ function parseValue(text: string): t2.ValueNode {
   let last = 0;
   let m: RegExpExecArray | null;
   while ((m = re.exec(text)) !== null) {
-    if (m.index > last) parts.push(t2.word(text.slice(last, m.index)));
+    if (m.index > last) parts.push(t2.any(text.slice(last, m.index)));
     parts.push(t2.varRef(m[1]!));
     last = m.index + m[0].length;
   }
-  if (parts.length === 0) return t2.word(text);
-  if (last < text.length) parts.push(t2.word(text.slice(last)));
+  if (parts.length === 0) return t2.any(text);
+  if (last < text.length) parts.push(t2.any(text.slice(last)));
   return parts.length === 1 ? parts[0]! : t2.concat(parts);
 }
 
@@ -301,7 +301,7 @@ function interpFromString(text: string, unquote: boolean): t2.ValueNode {
     sawRef = true;
     last = m.index + m[0].length;
   }
-  if (!sawRef) return t2.word(text);
+  if (!sawRef) return t2.any(text);
   if (last < text.length) parts.push({ lit: text.slice(last) });
   return t2.interp(parts);
 }
@@ -330,9 +330,9 @@ function replacementToValue(ctx: BridgeCtx, repl: unknown): t2.ValueNode {
     return t2.varRef(referenceKeyName(ctx, key));
   }
   // Fallback: a literal replacement.
-  if (typeof repl === 'string') return t2.word(repl);
+  if (typeof repl === 'string') return t2.any(repl);
   const raw = isNode(repl) ? slice(ctx, repl) : undefined;
-  return t2.word(raw ?? '');
+  return t2.any(raw ?? '');
 }
 
 /**
@@ -356,7 +356,7 @@ function interpFromInterpolated(ctx: BridgeCtx, node: AnyNode, unquote: boolean)
  * (`~"…"`) drops them. Refs splice unquoted (value/string context). */
 function interpFromQuoted(ctx: BridgeCtx, node: AnyNode): t2.ValueNode {
   const inner = node.value;
-  if (!isNode(inner) || typeOf(inner) !== 'Interpolated') return t2.word(slice(ctx, node) ?? '');
+  if (!isNode(inner) || typeOf(inner) !== 'Interpolated') return t2.any(slice(ctx, node) ?? '');
   const escaped = node.escaped === true;
   const quote = escaped ? '' : typeof node.quote === 'string' ? node.quote : '"';
   const interp = interpFromInterpolated(ctx, inner as AnyNode, true);
@@ -465,7 +465,7 @@ function toComputedValue(ctx: BridgeCtx, node: unknown): t2.ValueNode | null {
       const q = node as AnyNode;
       const inner = q.value;
       if (isNode(inner) && typeOf(inner) === 'Interpolated') return interpFromQuoted(ctx, q);
-      if (q.escaped === true && typeof inner === 'string') return t2.word(inner); // `~'x'` → x
+      if (q.escaped === true && typeof inner === 'string') return t2.any(inner); // `~'x'` → x
       return null; // plain quoted string → byte-identical raw-bytes fallback
     }
     // a bare interpolation value (unquoted context).
@@ -497,7 +497,7 @@ function buildMapAccessor(ctx: BridgeCtx, ref: AnyNode): t2.ValueNode {
   if (!isNode(target)) throw new UnsupportedShape('map:target', typeOf(target));
   const baseName = referenceKeyName(ctx, (target as AnyNode).key);
   const base: t2.ValueNode =
-    baseName.startsWith('#') || baseName.startsWith('.') ? t2.word(baseName) : t2.varRef(baseName);
+    baseName.startsWith('#') || baseName.startsWith('.') ? t2.any(baseName) : t2.varRef(baseName);
   const key = ref.key;
   const bytes = slice(ctx, ref) ?? '';
   // Numeric index (`[1]` / `[-1]`).
@@ -509,7 +509,7 @@ function buildMapAccessor(ctx: BridgeCtx, ref: AnyNode): t2.ValueNode {
       if (isNode(v) && typeOf(v) === 'Interpolated') {
         return t2.mapAccessor(base, interpFromInterpolated(ctx, v as AnyNode, false), true, bytes);
       }
-      if (typeof v === 'string') return t2.mapAccessor(base, t2.word(v), true, bytes);
+      if (typeof v === 'string') return t2.mapAccessor(base, t2.any(v), true, bytes);
     }
     if (t === 'Interpolated') {
       return t2.mapAccessor(base, interpFromInterpolated(ctx, key as AnyNode, false), true, bytes);
@@ -520,9 +520,9 @@ function buildMapAccessor(ctx: BridgeCtx, ref: AnyNode): t2.ValueNode {
       if (Number.isFinite(n)) return t2.mapAccessor(base, n, false, bytes);
     }
     const raw = slice(ctx, key);
-    if (raw !== undefined) return t2.mapAccessor(base, t2.word(raw), true, bytes);
+    if (raw !== undefined) return t2.mapAccessor(base, t2.any(raw), true, bytes);
   }
-  if (typeof key === 'string') return t2.mapAccessor(base, t2.word(key), true, bytes);
+  if (typeof key === 'string') return t2.mapAccessor(base, t2.any(key), true, bytes);
   throw new UnsupportedShape('map:key', typeOf(key));
 }
 
@@ -591,65 +591,79 @@ function arrayValue(ctx: BridgeCtx, arr: readonly unknown[]): t2.ValueNode | nul
 }
 
 /**
- * [value-literal-tag] Map a typed legacy value LEAF to its parser `LIT_*` tag,
- * so the produced tree2 `Word` carries the classification the parser already knew
- * (VALUE-LITERAL-TAG-SPEC §5) — `materialize` reads it as a FIELD instead of
- * re-sniffing the bytes. Returns `undefined` for a non-leaf / unclassified node,
- * where the typed path's byte-sniff fallback still holds.
+ * [value node model] The value CLASS of a typed legacy value LEAF, so the bridge
+ * builds the honest tree2 leaf node (`Dimension`/`Color`/`Quoted`/`Keyword`/`Any`)
+ * whose `type` carries that class (task #44 — no side-car tag). Returns `undefined`
+ * for a non-leaf / unclassified node, where the produced `Any` leaf's byte sniff
+ * fallback still holds.
  */
-function leafTagOf(node: AnyNode): LiteralTag | undefined {
+type LeafKind = 'dim' | 'color' | 'bool' | 'keyword' | 'quoted' | 'any';
+type NumFields = { number: number; unit: string };
+type QuotedFields = { value: string; quote: string; escaped: boolean };
+type LeafFields = NumFields | QuotedFields;
+
+function leafKindOf(node: AnyNode): LeafKind | undefined {
   switch (typeOf(node)) {
     case 'Dimension':
-      return LiteralTag.Dimension;
     case 'Num':
-      return LiteralTag.Num;
+      return 'dim';
     case 'Color':
-      // Hex literal (`#fff`) vs. a named color / `transparent`. The Color node's
-      // own literal spelling (`.node`) is the parser's authoritative field.
-      return typeof node.node === 'string' && node.node.charCodeAt(0) === 35 /* # */
-        ? LiteralTag.ColorHex
-        : LiteralTag.ColorNamed;
+      // Hex vs named is recovered at materialize from `src[0] === '#'`, so one kind.
+      return 'color';
+    // [§CORR-4] `true`/`false` build a `Keyword` leaf (no AST `Bool` node); guard
+    // booleanness is recovered downstream via the value-domain `Bool` sniff.
     case 'Bool':
-      return LiteralTag.Bool;
+      return 'bool';
     case 'Keyword':
-      return LiteralTag.Keyword;
-    // A quoted-string leaf is DISTINCT (`Quoted` tag + its quote/value fields); a
-    // role-typed / verbatim `Anonymous` rides as `LIT_ANY` (un-coerced keyword).
+      return 'keyword';
     case 'Quoted':
-      return LiteralTag.Quoted;
+      return 'quoted';
     case 'Anonymous':
-      return LiteralTag.Any;
+      return 'any';
     default:
       return undefined;
   }
 }
 
 /**
- * [value-literal-tag] The parser's pre-split fields for a numeric / quoted leaf,
- * so `materialize` reads them instead of re-splitting the bytes. The legacy node
+ * [value node model] The parser's pre-split fields for a numeric / quoted leaf, so
+ * the built node carries them (no byte re-split at materialize). The legacy node
  * carries `number`/`unit` (Dimension / Num) or the inner `value` + `quote` +
  * `escaped` (a plain, non-escaped Quoted — escaped `~"…"` is lowered upstream to a
  * bare word before reaching here). Any other leaf carries no fields.
  */
-function litOf(node: AnyNode, tag: LiteralTag | undefined): t2.LitFields | undefined {
-  if (tag === LiteralTag.Dimension || tag === LiteralTag.Num) {
+function fieldsOf(node: AnyNode, kind: LeafKind | undefined): LeafFields | undefined {
+  if (kind === 'dim') {
     return { number: node.number as number, unit: (node.unit as string | undefined) ?? '' };
   }
-  if (tag === LiteralTag.Quoted && typeof node.value === 'string') {
+  if (kind === 'quoted' && typeof node.value === 'string') {
     return { value: node.value, quote: typeof node.quote === 'string' ? node.quote : '"', escaped: node.escaped === true };
   }
   return undefined;
 }
 
 /**
- * [value-literal-tag] Stamp a producer tag (+ pre-split `lit` fields) onto a
- * freshly-parsed leaf. A typed legacy leaf's bytes carry no `@`, so `parseValue`
- * returns a bare `Word` — the tag rides on it. A multi-part value
- * (`Concat`/`VarRef`/…) is not a single literal and is returned unchanged.
+ * [value node model] Build the honest typed leaf node from a freshly-parsed opaque
+ * leaf. A typed legacy leaf's bytes carry no `@`, so `parseValue` returns a bare
+ * `Any` — its verbatim `src` + the leaf's class build the typed node. A multi-part
+ * value (`Concat`/`VarRef`/…) is not a single literal and is returned unchanged.
  */
-function stampLeaf(v: t2.ValueNode, tag: LiteralTag | undefined, lit?: t2.LitFields): t2.ValueNode {
-  if (tag === undefined || v.type !== 'Word') return v;
-  return t2.word(v.text, tag, lit);
+function stampLeaf(v: t2.ValueNode, kind: LeafKind | undefined, fields?: LeafFields): t2.ValueNode {
+  if (kind === undefined || v.type !== 'Any') return v;
+  const src = v.src;
+  switch (kind) {
+    case 'dim':
+      return fields && 'number' in fields ? t2.dimension(fields.number, fields.unit, src) : t2.any(src);
+    case 'color':
+      return t2.color(src);
+    case 'bool':
+    case 'keyword':
+      return t2.keyword(src);
+    case 'quoted':
+      return fields && 'value' in fields ? t2.quoted(src, fields.value, fields.quote, fields.escaped) : t2.any(src);
+    default:
+      return t2.any(src);
+  }
 }
 
 /** An operand of an operation / guard / mixin arg: computed expr or raw leaf. */
@@ -660,15 +674,15 @@ function toOperand(ctx: BridgeCtx, node: unknown): t2.ValueNode | null {
   // [E3] a space-separated list arg (`.m(a b c)`) arrives as a bare Array.
   if (Array.isArray(node)) return arrayValue(ctx, node);
   if (isNode(node)) {
-    const tag = leafTagOf(node); // [value-literal-tag] stamp at production
-    const lit = litOf(node, tag); // pre-split number/unit or quote/value/escaped
+    const kind = leafKindOf(node); // [value node model] classify at production
+    const fields = fieldsOf(node, kind); // pre-split number/unit or quote/value/escaped
     // [guards] A `Keyword` node's source span can include a wrapping `(...)`
     // (parser quirk for single mixin args); its `.value` is the clean text.
     if (typeOf(node) === 'Keyword' && typeof (node as AnyNode).value === 'string') {
-      return stampLeaf(parseValue((node as AnyNode).value as string), tag, lit);
+      return stampLeaf(parseValue((node as AnyNode).value as string), kind, fields);
     }
     const raw = slice(ctx, node);
-    if (raw !== undefined) return stampLeaf(parseValue(raw), tag, lit);
+    if (raw !== undefined) return stampLeaf(parseValue(raw), kind, fields);
   }
   return null;
 }
@@ -1212,8 +1226,8 @@ function detectMergeImportant(ctx: BridgeCtx, node: AnyNode): { merge: null | ',
 /** Strip a trailing `!important` from a value node's bytes (merged decls
  * re-emit it once via the structured flag). */
 function stripImportantBytes(v: t2.ValueNode): t2.ValueNode {
-  if (v.type === 'Word') {
-    return t2.word(v.text.replace(/\s*!\s*important\s*$/iu, ''));
+  if (t2.isLiteralNode(v)) {
+    return t2.any(v.src.replace(/\s*!\s*important\s*$/iu, ''));
   }
   return v;
 }

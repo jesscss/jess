@@ -37,7 +37,7 @@
  * these built `Operation` / slash-list / call nodes with the verbatim bytes between
  * them. A top-level operation therefore STRUCTURES and evaluates at serialize
  * (`@a * .5 + @b * .5` → a color; `12px/16px` → a `12px / 16px` slash list), unlike
- * the bridge, which defers it as a raw declaration `Word` for a later eval pass.
+ * the bridge, which defers it as a raw declaration `Any` for a later eval pass.
  *
  * TOTALITY: parseman builds backtracked branches, so every action returns a valid
  * node (never throws) even on a doomed shape.
@@ -74,7 +74,7 @@ function leafText(x: unknown): string {
  * A zero-content structural leaf: an empty-text child that carries no source bytes —
  * either no span at all, or a zero-width span the grammar emits as an anchor between
  * tokens (e.g. the epsilon right after a `(`). Skipped when assembling paren/call
- * items so it never becomes a spurious empty `Word` operand (which would serialize as
+ * items so it never becomes a spurious empty `Any` operand (which would serialize as
  * a leading space, e.g. `( #ffffff)`).
  */
 function isEmptyStructuralLeaf(child: unknown, raw: unknown): boolean {
@@ -85,7 +85,7 @@ function isEmptyStructuralLeaf(child: unknown, raw: unknown): boolean {
 
 /**
  * A value operand from child slot `i`: a built value node as-is, else the child's
- * verbatim source bytes as a `Word` (a bare ident like `solid`, or an
+ * verbatim source bytes as an `Any` (a bare ident like `solid`, or an
  * unmodelled/placeholder shape — kept byte-faithful so the action stays total).
  */
 function operandAt(args: BuildArgs, i: number): t2.ValueNode {
@@ -93,7 +93,7 @@ function operandAt(args: BuildArgs, i: number): t2.ValueNode {
   if (isValueNode(c)) return c;
   const raw = args.rawChildren[i] as { span?: Span } | undefined;
   const text = raw?.span ? sliceSpan(args.ctx, raw.span) : leafText(c);
-  return t2.word(text.trim());
+  return t2.any(text.trim());
 }
 
 /**
@@ -126,7 +126,7 @@ function foldOperationTop(args: BuildArgs): t2.ValueNode {
   for (let i = 1; i + 1 < n; i += 2) {
     const op = leafText(args.children[i]).trim();
     const right = operandAt(args, i + 1);
-    left = op === '/' ? t2.spaced([left, t2.word('/'), right]) : t2.operation(op, left, right);
+    left = op === '/' ? t2.spaced([left, t2.any('/'), right]) : t2.operation(op, left, right);
   }
   return left;
 }
@@ -187,9 +187,9 @@ const paren: BuildAction = {
       items.push(operandAt(args, i));
     }
     if (hasComma && open >= 0 && close >= 0) {
-      return t2.paren(t2.word(betweenBytes(args, open, close)));
+      return t2.paren(t2.any(betweenBytes(args, open, close)));
     }
-    if (items.length === 0) return t2.paren(t2.word(''));
+    if (items.length === 0) return t2.paren(t2.any(''));
     const inner = items.length === 1 ? items[0]! : t2.spaced(items);
     return t2.paren(inner);
   },
@@ -222,7 +222,7 @@ function buildCall(args: BuildArgs): t2.ValueNode {
     const { open, close } = parenBounds(children);
     if (open < 0) {
       // No `(` — a bare keyword collapsed here; keep it byte-faithful.
-      return t2.word(sliceSpan(args.ctx, args.span).trim());
+      return t2.any(sliceSpan(args.ctx, args.span).trim());
     }
     const hi = close < 0 ? children.length : close;
     const segments: t2.ValueNode[][] = [[]];

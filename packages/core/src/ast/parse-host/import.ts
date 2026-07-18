@@ -455,18 +455,19 @@ function isImportKeyword(name: string): boolean {
 }
 
 /**
- * The specifier string a built path `Word` carries, plus whether it is variable-
+ * The specifier string a built path leaf carries, plus whether it is variable-
  * interpolated (`@{…}`) — which the direct host defers (emitting the import
- * verbatim) rather than resolving. A `Quoted` word carries its inner text in
- * `lit.value`; a `url(…)` word (untagged) carries `url(target)` in `text`, whose
+ * verbatim) rather than resolving. A `Quoted` leaf carries its inner text in
+ * `value`; a `url(…)` leaf (opaque `Any`) carries `url(target)` in `src`, whose
  * target is unwrapped here.
  */
-function directSpecifier(pathNode: t2.Word): { spec: string | null; interpolated: boolean } {
-  const lit = pathNode.lit;
+function directSpecifier(pathNode: t2.ValueNode): { spec: string | null; interpolated: boolean } {
   const raw =
-    lit && 'value' in lit
-      ? lit.value
-      : unwrapUrl(pathNode.text);
+    pathNode.type === 'Quoted'
+      ? pathNode.value
+      : pathNode.type === 'Any'
+        ? unwrapUrl(pathNode.src)
+        : null;
   if (raw === null) return { spec: null, interpolated: false };
   // TODO(tier-b/A4): WHAT — this `.includes('@{')/'@@'` SUBSTRING check detects an
   // interpolated import specifier (`@import "@{theme}.less"`) from the path bytes
@@ -516,16 +517,18 @@ function flagsFromOptions(options: string): ImportFlags {
  * Build a `t2.StyleImport` from the direct host's structured import children, or
  * return `null` when the shape is NOT an import (a generic `@charset`/`@namespace`
  * statement) — the charset family then falls back to a generic `AtRuleStatement`.
- * The import shape is recognised by the import keyword plus a built path `Word`
- * child (a generic statement carries only leaves).
+ * The import shape is recognised by the import keyword plus a built path leaf
+ * child (a `Quoted` string or a `url(…)` `Any`; a generic statement carries only
+ * leaves, and an interpolated `@{…}` path builds an `Interp` — neither matches, so
+ * those defer to a generic statement / verbatim emit).
  */
 export function buildStyleImportNode(args: BuildArgs): t2.StyleImport | null {
   const children = args.children;
   const name = importLeafValue(children[0]);
   if (name === undefined || !isImportKeyword(name)) return null;
 
-  // Locate the built path Word (the sole non-leaf child) and the option leaf.
-  let pathNode: t2.Word | undefined;
+  // Locate the built path leaf (the sole non-leaf value child) and the option leaf.
+  let pathNode: t2.ValueNode | undefined;
   let options = '';
   let media: string | null = null;
   let seenPath = false;
@@ -541,8 +544,8 @@ export function buildStyleImportNode(args: BuildArgs): t2.StyleImport | null {
       else media = leaf.trim() || null;
       continue;
     }
-    // The first (and only) non-leaf child is the path Word.
-    if (!seenPath && isWordNode(child)) {
+    // The first (and only) non-leaf child is the path leaf (`Quoted` / url `Any`).
+    if (!seenPath && isPathNode(child)) {
       pathNode = child;
       seenPath = true;
     }
@@ -565,8 +568,10 @@ export function buildStyleImportNode(args: BuildArgs): t2.StyleImport | null {
   });
 }
 
-function isWordNode(x: unknown): x is t2.Word {
-  return !!x && typeof x === 'object' && (x as { type?: unknown }).type === 'Word';
+function isPathNode(x: unknown): x is t2.ValueNode {
+  if (!x || typeof x !== 'object') return false;
+  const t = (x as { type?: unknown }).type;
+  return t === 'Quoted' || t === 'Any';
 }
 
 /** The resolution flags carried on a `t2.StyleImport`. */

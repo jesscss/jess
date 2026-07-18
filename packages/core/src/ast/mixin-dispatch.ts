@@ -21,7 +21,7 @@
  */
 
 import type { MixinCall, MixinDef, Param, ValueNode } from './nodes.js';
-import { word } from './nodes.js';
+import { any, isLiteralNode, isTypedLiteral } from './nodes.js';
 import type { EvalModes, ValueEvaluator } from './value-eval.js';
 import { evalGuard, guardUsesDefault, type TypedResolver, type ValueResolver } from './guard.js';
 
@@ -118,7 +118,7 @@ export function bindArgs(
     const restParam = params[restIndex]!;
     const restBytes = leftover.map((a) => valueBytes(resolveEager(a.value, resolveCaller)));
     if (restParam.name !== undefined) {
-      bound.set(restParam.name, word(restBytes.join(' ')));
+      bound.set(restParam.name, any(restBytes.join(' ')));
     }
   }
 
@@ -135,7 +135,7 @@ export function bindArgs(
     const bytes = valueBytes(val);
     if (bytes !== '') argWords.push(bytes);
   }
-  bound.set('arguments', word(argWords.join(' ')));
+  bound.set('arguments', any(argWords.join(' ')));
 
   return bound;
 }
@@ -144,16 +144,16 @@ function resolveEager(v: ValueNode, resolveCaller: ValueResolver): ValueNode {
   // a detached-ruleset arg binds BY REFERENCE (never byte-flattened) so its
   // body + closure survive to the call site.
   if (v.type === 'DetachedRuleset') return v;
-  // [value-literal-tag] a pure literal `Word` carries the producer's `LIT_*` tag
-  // and has no caller-frame refs to flatten — bind it BY REFERENCE so the tag
-  // survives to the callee side (a guard/typed-param materialize reads the stamped
-  // field instead of re-sniffing the bytes). Everything else flattens to bytes.
-  if (v.type === 'Word' && v.tag !== undefined) return v;
-  return word(resolveCaller(v));
+  // A TYPED literal (`Keyword`/`Color`/`Dimension`/`Quoted`) carries its value type
+  // in its node and has no caller-frame refs to flatten — bind it BY REFERENCE so the
+  // type survives to the callee side (a guard/typed-param materialize reads the node's
+  // fields, no byte sniff). Everything else (incl. opaque `Any`) flattens to bytes.
+  if (isTypedLiteral(v)) return v;
+  return any(resolveCaller(v));
 }
 
 /** Eager-resolve a DEFAULT param value with the params-bound-so-far overlay
- * (see `DefaultResolver`). By-reference cases (detached ruleset / tagged Word)
+ * (see `DefaultResolver`). By-reference cases (detached ruleset / typed literal)
  * survive exactly as a call arg does; everything else byte-flattens through the
  * default resolver (falling back to the caller resolver when none is supplied). */
 function resolveEagerDefault(
@@ -163,13 +163,13 @@ function resolveEagerDefault(
   resolveDefault?: DefaultResolver,
 ): ValueNode {
   if (v.type === 'DetachedRuleset') return v;
-  if (v.type === 'Word' && v.tag !== undefined) return v;
-  return word(resolveDefault ? resolveDefault(v, boundSoFar) : resolveCaller(v));
+  if (isTypedLiteral(v)) return v;
+  return any(resolveDefault ? resolveDefault(v, boundSoFar) : resolveCaller(v));
 }
 
 function valueBytes(v: ValueNode): string {
-  // After eager resolution every arg is a Word carrying its bytes.
-  return v.type === 'Word' ? v.text : '';
+  // After eager resolution every arg is a literal leaf carrying its bytes in `src`.
+  return isLiteralNode(v) ? v.src : '';
 }
 
 /**

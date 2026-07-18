@@ -15,7 +15,7 @@ import type { EvalModes, List as ValueList, ValueEvaluator, ValueObj } from './v
 import { sepGlue } from './value-eval.js';
 import { operate } from './value-operate.js';
 import { compare as compareValues, typeCheck as typeCheckValues } from './value-guards.js';
-import { LiteralTag, type LitFields, materializeLiteral, sniffLiteral } from './literal-tag.js';
+import { sniffLiteral } from './literal-tag.js';
 import type { FnRegistry } from './value-dispatch.js';
 import { makeKeyword } from './value-factory.js';
 
@@ -40,8 +40,7 @@ const stringify = (v: ValueObj): string => (v.type === 'Quoted' ? v.value : v.by
  * Core imports no fn bodies here.
  */
 export function buildEvaluator(registry: FnRegistry): ValueEvaluator {
-  const materialize = (bytes: string, tag?: LiteralTag, lit?: LitFields): ValueObj =>
-    tag !== undefined ? materializeLiteral(bytes, tag, lit) : sniffLiteral(bytes);
+  const materialize = (bytes: string): ValueObj => sniffLiteral(bytes);
 
   const call = (name: string, args: ValueList, modes: EvalModes): ValueObj => {
     if (registry.has(name)) {

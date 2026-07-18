@@ -41,7 +41,7 @@ function slotToCallArg(slot: ArgSlot): t2.CallArg {
   const built = slot.built;
   if (isNamedMarker(built)) return { name: built.name, value: built.value };
   if (t2.isNode(built)) return { value: built as t2.ValueNode };
-  return { value: t2.word(slot.text.trim()) };
+  return { value: t2.any(slot.text.trim()) };
 }
 
 /**

@@ -38,8 +38,8 @@ import type { Root as T2Root, Statement as T2Statement } from '../../../index.js
 
 /* ------------------------------------------------------------- tree2 side */
 
-const kw = (name: string, k: string) => t2.decl(name, t2.word(k));
-const px = (name: string, n: number) => t2.decl(name, t2.dim(n, 'px'));
+const kw = (name: string, k: string) => t2.decl(name, t2.any(k));
+const px = (name: string, n: number) => t2.decl(name, t2.dimension(n, 'px'));
 const ampCompound = (...rest: string[]) => t2.complex([{ compound: t2.compound('&', ...rest) }]);
 
 export function buildFlatNew(n: number): T2Root {
@@ -118,7 +118,7 @@ const COLORS = ['red', 'blue', 'green'];
 export function buildMixinNew(calls: number): T2Root {
   const def = t2.mixinDef(
     '.card',
-    [{ name: 'c', default: t2.word('red') }],
+    [{ name: 'c', default: t2.any('red') }],
     [
       t2.decl('color', t2.varRef('c')),
       t2.rule('.inner', [px('width', 10)]),
@@ -127,7 +127,7 @@ export function buildMixinNew(calls: number): T2Root {
   );
   const children: T2Statement[] = [def];
   for (let i = 0; i < calls; i++) {
-    children.push(t2.rule(`.item${i}`, [t2.mixinCall('.card', [t2.word(COLORS[i % COLORS.length]!)])]));
+    children.push(t2.rule(`.item${i}`, [t2.mixinCall('.card', [t2.any(COLORS[i % COLORS.length]!)])]));
   }
   return t2.root(children);
 }

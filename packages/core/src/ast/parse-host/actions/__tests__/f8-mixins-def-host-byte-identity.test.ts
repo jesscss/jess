@@ -12,7 +12,7 @@ import { parseToAst } from '../../dispatch-host.js';
  * A `MixinDef` serializes to nothing on its own (output comes only when a call
  * expands it — the call family is F9), so the gate is a canonical SIGNATURE of the
  * produced def, byte-compared against the bridge. Param default / pattern values
- * are compared via SERIALIZE (structurally a Word vs the bridge's VarRef may
+ * are compared via SERIALIZE (structurally an `Any` vs the bridge's VarRef may
  * differ while emitting identical bytes — bytes are the contract). The guard is
  * F10's family and excluded on both sides (it never affects a def's emit).
  */

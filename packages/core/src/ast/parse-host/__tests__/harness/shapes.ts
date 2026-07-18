@@ -149,7 +149,7 @@ export function tree2Ops(shape: Shape): t2.ComposeStats {
 /* --------------------------------------------------------------- rungs 1-2 */
 
 const RED_OLD = () => tDecl({ name: 'color', value: tSpaced([el('red')]) });
-const RED_NEW = () => t2.decl('color', t2.word('red'));
+const RED_NEW = () => t2.decl('color', t2.any('red'));
 
 const rung1: Shape = {
   name: 'rung1: one rule / one decl / keyword value',
@@ -165,8 +165,8 @@ const rung2: Shape = {
     t2.root([
       t2.rule('.box', [
         t2.comment('/* hi */'),
-        t2.decl('margin', t2.dim(0, 'px')),
-        t2.decl('padding', t2.dim(10, 'px')),
+        t2.decl('margin', t2.dimension(0, 'px')),
+        t2.decl('padding', t2.dimension(10, 'px')),
         RED_NEW(),
       ]),
     ]),
@@ -326,7 +326,7 @@ const rung5Decls: Shape = {
     '.a {\n  color: red;\n  width: 10px;\n}\n' + '.b {\n  color: red;\n  width: 10px;\n}\n',
   buildNew: () =>
     t2.root([
-      t2.mixinDef('.mix', [], [RED_NEW(), t2.decl('width', t2.dim(10, 'px'))]),
+      t2.mixinDef('.mix', [], [RED_NEW(), t2.decl('width', t2.dimension(10, 'px'))]),
       t2.rule('.a', [t2.mixinCall('.mix')]),
       t2.rule('.b', [t2.mixinCall('.mix')]),
     ]),
@@ -350,8 +350,8 @@ const rung5Nested: Shape = {
       [],
       [
         RED_NEW(),
-        t2.rule('.inner', [t2.decl('width', t2.dim(1, 'px'))]),
-        t2.rule(t2.complex([{ compound: t2.compound('&', ':hover') }]), [t2.decl('color', t2.word('blue'))]),
+        t2.rule('.inner', [t2.decl('width', t2.dimension(1, 'px'))]),
+        t2.rule(t2.complex([{ compound: t2.compound('&', ':hover') }]), [t2.decl('color', t2.any('blue'))]),
       ],
     );
     return t2.root([box, t2.rule('.a', [t2.mixinCall('.box')]), t2.rule('.b', [t2.mixinCall('.box')])]);
@@ -379,9 +379,9 @@ const rung5Param: Shape = {
   expected: '.a {\n  color: blue;\n}\n.b {\n  color: green;\n}\n',
   buildNew: () =>
     t2.root([
-      t2.mixinDef('.paint', [{ name: 'c', default: t2.word('red') }], [t2.decl('color', t2.varRef('c'))]),
-      t2.rule('.a', [t2.mixinCall('.paint', [t2.word('blue')])]),
-      t2.rule('.b', [t2.mixinCall('.paint', [t2.word('green')])]),
+      t2.mixinDef('.paint', [{ name: 'c', default: t2.any('red') }], [t2.decl('color', t2.varRef('c'))]),
+      t2.rule('.a', [t2.mixinCall('.paint', [t2.any('blue')])]),
+      t2.rule('.b', [t2.mixinCall('.paint', [t2.any('green')])]),
     ]),
   buildOld: () =>
     rules([

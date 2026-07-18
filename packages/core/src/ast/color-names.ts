@@ -4,7 +4,7 @@
  * `cornflowerblue`, …) plus `transparent` to `[r, g, b]` + `alpha`, so a
  * `LIT_COLOR_NAMED` literal can MATERIALIZE to a `Color` value when it is
  * operated on (`lighten(red, 10%)`, `iscolor(blue)`, …). Un-operated named
- * literals never reach here — they emit their verbatim `Word` bytes.
+ * literals never reach here — they emit their verbatim `src` bytes.
  *
  * The 148 named colors come from the `color-name` data package (also used by the
  * legacy table + `@jesscss/fns`), so the data is not duplicated. Case-insensitive.

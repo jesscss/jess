@@ -70,7 +70,7 @@ async function render(src: string): Promise<string> {
 const CORPUS: Array<[string, string]> = [
   // --- un-operated dimensions: SOURCE-VERBATIM (owner 2026-07-16, spec §0
   //     RESOLVED). Non-canonical source stays verbatim; both built-in and adapter
-  //     emit the Word verbatim (never materialized), so they agree. ---
+  //     emit the literal verbatim (never materialized), so they agree. ---
   ['verbatim-trailing-zero', '.a { width: 1.0px; }\n'],
   ['verbatim-upper-unit', '.a { width: 2PX; }\n'],
   ['verbatim-sci', '.a { width: 1e3px; }\n'],
@@ -371,7 +371,7 @@ describe('built-in value path — differential byte-identity vs frozen oracle', 
 /**
  * LIST / VARIADIC fns (`length`/`extract`/`min`/`max`) — the adapter is PROVABLY
  * WRONG here, so real Less 4.6.7 is the oracle (not the adapter). The value layer
- * flattens a list literal to bare `Word` bytes before a fn arg materializes, so
+ * flattens a list literal to bare literal bytes before a fn arg materializes, so
  * the adapter's `coerceListItems` sees a single node (`length(@l)` = 1, not 3) or
  * the legacy fn rejects the arity; the built-in path recovers the list structure at
  * consumption time (`functions/list-helper.ts`) and matches Less 4.x. Each case below
@@ -380,7 +380,7 @@ describe('built-in value path — differential byte-identity vs frozen oracle', 
 describe('built-in list / variadic fns — vs Less 4.6.7 (adapter diverges)', () => {
   // want = the exact Less 4.6.7 output (verified against a local less-node build).
   const LESS4X: Array<[string, string, string]> = [
-    // length — adapter returns 1 for every variable-held list (flattened to a Word)
+    // length — adapter returns 1 for every variable-held list (flattened to a literal)
     // and THROWS on a multi-arg call ("No matching function signature for 3 args").
     ['length-space-literal', '.a { m: length(a b c); }\n', 'm: 3'], // adapter: THROWS
     // NOTE (FLAG): Less 4.x `length(a, b, c)` = 1 — commas are ARGUMENT delimiters,

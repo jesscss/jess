@@ -81,7 +81,7 @@ export interface InterpSpan {
  * the parser's leaf spans (never a re-scan); the gaps between them are carried
  * VERBATIM from source, so bare `@var` bytes, comments, and exact spacing survive
  * as literal parts (owner rule: a custom-prop / prelude value resolves ONLY `@{…}`).
- * With no interpolation leaf the whole region is one verbatim `Word`.
+ * With no interpolation leaf the whole region is one verbatim `Any`.
  */
 export function interpFromRegion(
   src: string,
@@ -90,7 +90,7 @@ export function interpFromRegion(
   spans: readonly InterpSpan[],
   unquote: boolean,
 ): t2.ValueNode {
-  if (spans.length === 0) return t2.word(src.slice(start, end));
+  if (spans.length === 0) return t2.any(src.slice(start, end));
   const parts: t2.InterpPart[] = [];
   let cursor = start;
   for (const s of spans) {
