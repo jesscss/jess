@@ -83,7 +83,16 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   // `@` + one or more name chars (dash included), so a dash-only name like `@-` is
   // valid (Less accepts it). Digits are allowed anywhere (`@3` \u2014 flagged, not rejected).
   const lessVar = regex(/@[-_a-zA-Z0-9\u0080-\uffff]+/);
-  const lessInterp = regex(/@\{-?[_a-zA-Z0-9\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*\}/);
+  // \u00a74.1 amendment (owner-approved 2026-07-18): the interpolation BODY is widened
+  // from a single variable ident to a READ-ONLY value REFERENCE \u2014 a name/var head
+  // followed by zero or more `[key]` accessors (`@{theme[variant]}`, `@{map[@key]}`).
+  // The zero-accessor case `@{name}` stays byte-identical (the `(?:\u2026)*` matches
+  // empty). Accessor keys admit ident / `@var` / `$prop` / numeric tokens; a `.`-call
+  // (`@{head.call()}`) is intentionally NOT accepted (read-only). The `@{`\u2026`}`
+  // delimiters are owner-LOCKED and unchanged. This single production is the shared
+  // interp-body seam \u2014 every `@{\u2026}` position (Quoted, selector, custom-prop, prelude,
+  // value) references `lessInterp` (or the parallel `interpKey`) so they all agree.
+  const lessInterp = regex(/@\{-?[_a-zA-Z0-9\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*(?:\[[-_a-zA-Z0-9@$\u0080-\uffff]+\])*\}/);
   // Interpolated custom-property name (`--@{key}`, `--foo-@{key}-bar`).
   // TODO(tier-b/A4): WHAT \u2014 kept as ONE token (NOT leaf-split like the value below).
   // WHY \u2014 the legacy BuilderHost that drives the less-compat bridge consumes this
@@ -95,7 +104,7 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   // split \u2014 the legacy builder tolerates that.)
   // Both `@{var}` and `${prop}` interpolation sigils are accepted (`--z-${prop}`);
   // the host `declName` structures each (`@`\u2192VarRef, `$`\u2192PropRef).
-  const customPropInterp = regex(/--(?:-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*|-)?[@$]\{-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*\}(?:[@$]\{-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*\}|[-_a-zA-Z0-9\u0080-\uffff])*/);
+  const customPropInterp = regex(/--(?:-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*|-)?[@$]\{-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*(?:\[[-_a-zA-Z0-9@$\u0080-\uffff]+\])*\}(?:[@$]\{-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*(?:\[[-_a-zA-Z0-9@$\u0080-\uffff]+\])*\}|[-_a-zA-Z0-9\u0080-\uffff])*/);
 
   // \u2500\u2500 Quoted (Less \u00a73.3: structure `@{name}` interpolation inside a string) \u2500\u2500\u2500\u2500
   // The shared css `Quoted` is one flat `singleStr`/`doubleStr` leaf that swallows
@@ -117,16 +126,31 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   // `}`). Less has no nested interpolation, so `@{@{x}}` falls to the chunk verbatim.
   // The interpolated arm REQUIRES at least one `lessInterp`, so a string with none
   // fails it and falls to the flat `singleStr`/`doubleStr` leaf (byte-identical).
-  const dqChunk = regex(/(?:[^"\\@]|\\[\s\S]|@(?!\{-?[_a-zA-Z0-9\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*\}))+/);
-  const sqChunk = regex(/(?:[^'\\@]|\\[\s\S]|@(?!\{-?[_a-zA-Z0-9\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*\}))+/);
+  const dqChunk = regex(/(?:[^"\\@]|\\[\s\S]|@(?!\{-?[_a-zA-Z0-9\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*(?:\[[-_a-zA-Z0-9@$\u0080-\uffff]+\])*\}))+/);
+  const sqChunk = regex(/(?:[^'\\@]|\\[\s\S]|@(?!\{-?[_a-zA-Z0-9\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*(?:\[[-_a-zA-Z0-9@$\u0080-\uffff]+\])*\}))+/);
   // The interp-BODY seam (dialect-varying, owner note). In LESS the body is a
-  // single VARIABLE identifier opened by `@{` \u2014 `strInterp` IS `lessInterp`
-  // (`@{name}`). Kept as its own const so a dialect that composes a DIFFERENT
-  // string-interp body plugs it here WITHOUT rewriting the content-gobble loop
-  // below: SCSS/.jess use `#{ <expression> }` (a full expression, opened by `#{`),
-  // and Less may later add `${name}` property-interp / a `@{var[prop]}` accessor.
-  // This override is LESS-SCOPED (the delta's `Quoted` wins by name); SCSS composes
-  // on the CSS base, NOT on Less, so it never inherits this single-identifier body.
+  // READ-ONLY value REFERENCE opened by `@{` \u2014 a name/var head + zero or more
+  // `[key]` accessors (\u00a74.1 amendment; see `lessInterp`). `strInterp` IS
+  // `lessInterp`, so the string-interp body agrees with every other `@{\u2026}` site.
+  // Kept as its own const so a dialect that composes a DIFFERENT string-interp
+  // body plugs it here WITHOUT rewriting the content-gobble loop below: SCSS/.jess
+  // use `#{ <expression> }` (a full expression, opened by `#{`), and Less may later
+  // add `${name}` property-interp. This override is LESS-SCOPED (the delta's
+  // `Quoted` wins by name); SCSS composes on the CSS base, NOT on Less, so it never
+  // inherits this Less body.
+  //
+  // TODO(\u00a74.1/interp-body-accessor-resolution): the GRAMMAR structures the widened
+  // `@{head[key]}` body at every `@{\u2026}` site (byte-identical for `@{name}`), but the
+  // legacy BuilderHost interp-reference builder (`createInterpolatedReference` /
+  // `getInterpolatedOrString` in ./utils.ts) still captures the whole body as a FLAT
+  // `Reference{ key: "head[key]" }` (a bogus variable NAME), so `@{head[key]}` does
+  // not yet RESOLVE (it evaluates to an "undefined variable @head[key]" error, the
+  // same as any unresolvable interp \u2014 no silent corruption). To resolve, that builder
+  // must emit the SAME structured accessor `Reference{ key, target, options:index }`
+  // the value-position `@head[key]` path (`_buildReference` + `refIndex`) already
+  // builds, AND the ast/ bridge `replacementToValue` (packages/core/.../__tests__/
+  // bridge.ts) must route an accessor `Reference` to `buildMapAccessor` (today it
+  // only maps a flat `varRef`). Both live on the load-bearing legacy eval path.
   const strInterp = lessInterp;
   const Quoted = node('Quoted', choice(
     sequence(literal('"'), many(dqChunk), strInterp, many(choice(strInterp, dqChunk)), literal('"')),
@@ -188,7 +212,7 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   // The builder applies the index/variable typing + Quoted-wrap (see _buildReference).
   const nestedRef = regex(/(?:[@$]+(?:-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*)?){2,}/);
   const propRef = regex(/\$-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*/);
-  const interpKey = regex(/(?:-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*|-)?[@$]\{-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*\}(?:[@$]\{-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*\}|[-_a-zA-Z0-9-￿])*/);
+  const interpKey = regex(/(?:-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*|-)?[@$]\{-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*(?:\[[-_a-zA-Z0-9@$-￿]+\])*\}(?:[@$]\{-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*(?:\[[-_a-zA-Z0-9@$-￿]+\])*\}|[-_a-zA-Z0-9-￿])*/);
   // A purely-numeric name (`100:`) is a Less detached-ruleset map key, e.g.
   // `@grays: { 100: @gray-100; }` (Bootstrap). Not valid CSS, but Less accepts it
   // and `@grays[100]` reads it back; the whole-number alternative is tried first.
