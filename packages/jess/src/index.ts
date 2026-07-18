@@ -606,74 +606,47 @@ export class Compiler {
       output: resolvedOutputFilePath
     });
 
-    const resolveMatchedOutputCollapseNesting = (): boolean | undefined => {
-      if (!Array.isArray(effectiveConfig.output) || !resolvedOutputFilePath) {
-        return undefined;
+    // The output `collapseNesting`, honored whether or not an `outputFile`
+    // selects a specific array entry. Returns undefined when nothing sets it —
+    // the caller falls back to the language default.
+    const collapseFromOutput = (): boolean | undefined => {
+      const output = effectiveConfig.output;
+      if (!Array.isArray(output)) {
+        return output?.collapseNesting;
       }
-      const outputEntries = effectiveConfig.output as OutputOptions[];
-      let defaults: OutputOptions = {};
-      if (outputEntries[0] && typeof outputEntries[0] === 'object' && !('file' in outputEntries[0])) {
-        defaults = outputEntries[0]!;
-      }
-      const dir = filePath ? path.dirname(filePath) : '.';
-      const name = filePath ? path.basename(filePath, path.extname(filePath)) : 'output';
-      for (const entry of outputEntries) {
-        if (!entry || typeof entry !== 'object' || !('file' in entry)) {
-          continue;
-        }
-        const filePattern = String(entry.file ?? '{name}.css');
-        const expandedPath = path.join(dir, filePattern.replace('{name}', name));
-        if (expandedPath === resolvedOutputFilePath) {
-          if ('collapseNesting' in entry) {
-            return entry.collapseNesting;
-          }
-          if ('collapseNesting' in defaults) {
-            return defaults.collapseNesting;
-          }
-          return undefined;
-        }
-      }
-      return undefined;
-    };
+      const isObj = (e: OutputOptions | undefined): e is OutputOptions =>
+        !!e && typeof e === 'object';
+      const defaults = output.find(e => isObj(e) && !('file' in e));
 
-    // Array output, no target path resolved (no `outputFile` and no file-less
-    // defaults entry to key on): `resolveMatchedOutputCollapseNesting` can't
-    // pick an entry, and `activeOptions` only absorbs file-less defaults
-    // entries (getMatchingOptions skips `file`-bearing entries when no output
-    // path matches). Honor an explicit `collapseNesting` off a lone
-    // `file`-bearing entry so the flag isn't silently dropped on the
-    // no-outputFile path. Stays out of it when multiple entries disagree
-    // (ambiguous target → fall through to the language default).
-    const resolveArrayCollapseNestingWithoutTarget = (): boolean | undefined => {
-      if (!Array.isArray(effectiveConfig.output) || resolvedOutputFilePath) {
+      if (resolvedOutputFilePath) {
+        const dir = filePath ? path.dirname(filePath) : '.';
+        const name = filePath ? path.basename(filePath, path.extname(filePath)) : 'output';
+        for (const entry of output) {
+          if (!isObj(entry) || !('file' in entry)) {
+            continue;
+          }
+          const pattern = String(entry.file ?? '{name}.css');
+          if (path.join(dir, pattern.replace('{name}', name)) === resolvedOutputFilePath) {
+            if ('collapseNesting' in entry) return entry.collapseNesting;
+            return defaults?.collapseNesting;
+          }
+        }
         return undefined;
       }
-      const outputEntries = effectiveConfig.output as OutputOptions[];
-      // A file-less defaults entry states a broad intent — prefer it over any
-      // untargeted per-file entry.
-      const defaults = outputEntries.find(
-        entry => !!entry && typeof entry === 'object' && !('file' in entry) && 'collapseNesting' in entry
-      );
-      if (defaults) {
+
+      // No target selects an entry. `activeOptions` already absorbs file-less
+      // defaults entries (via getMatchingOptions), but not `file`-bearing ones —
+      // so honor a file-less default here, else a lone file entry's flag. Stay
+      // out of it when several file entries disagree (fall to the default).
+      if (defaults && 'collapseNesting' in defaults) {
         return defaults.collapseNesting;
       }
-      const flagged = outputEntries.filter(
-        (entry): entry is OutputOptions =>
-          !!entry && typeof entry === 'object' && 'file' in entry && 'collapseNesting' in entry
-      );
+      const flagged = output.filter(e => isObj(e) && 'file' in e && 'collapseNesting' in e);
       return flagged.length === 1 ? flagged[0]!.collapseNesting : undefined;
     };
 
-    const matchedOutputCollapseNesting = resolveMatchedOutputCollapseNesting();
-    const explicitOutputCollapseNesting: boolean | undefined =
-      !Array.isArray(effectiveConfig.output)
-        ? effectiveConfig.output?.collapseNesting
-        : undefined;
     const printOptions = {
-      collapseNesting: explicitOutputCollapseNesting
-        ?? matchedOutputCollapseNesting
-        ?? resolveArrayCollapseNestingWithoutTarget()
-        ?? activeOptions.collapseNesting
+      collapseNesting: collapseFromOutput() ?? activeOptions.collapseNesting
     };
 
     return {
