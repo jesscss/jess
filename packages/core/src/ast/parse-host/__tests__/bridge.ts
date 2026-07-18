@@ -876,7 +876,7 @@ function toAtRuleStatement(ctx: BridgeCtx, node: AnyNode): t2.AtRuleStatement {
   const name = node.name;
   if (typeof name !== 'string') throw new UnsupportedShape('atrule-statement:name', typeOf(name));
   const preludeText = atRuleHeaderPrelude(ctx, node, name, false);
-  return t2.atRuleStatement(name, preludeText ?? null);
+  return t2.atRuleStatement(name, preludeText === undefined ? null : t2.any(preludeText));
 }
 
 /**
@@ -888,7 +888,7 @@ function charsetStatement(text: string): t2.AtRuleStatement {
   const m = /^\s*(@[^\s;]*)\s*([^;]*?)\s*;?\s*$/u.exec(text);
   const name = m?.[1] ?? '@charset';
   const prelude = m?.[2] ?? '';
-  return t2.atRuleStatement(name, prelude.length > 0 ? prelude : null);
+  return t2.atRuleStatement(name, prelude.length > 0 ? t2.any(prelude) : null);
 }
 
 function toStatement(

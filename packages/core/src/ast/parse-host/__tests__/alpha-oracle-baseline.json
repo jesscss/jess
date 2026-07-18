@@ -112,8 +112,8 @@
     "bytes": 183
   },
   "extend-exact/extend-exact.less": {
-    "status": "DIFF",
-    "bytes": 418
+    "status": "MATCH",
+    "bytes": 457
   },
   "extend-media/extend-media.less": {
     "status": "MATCH",
@@ -125,11 +125,11 @@
   },
   "extend-selector/extend-selector.less": {
     "status": "DIFF",
-    "bytes": 1003
+    "bytes": 962
   },
   "extend/extend.less": {
-    "status": "DIFF",
-    "bytes": 806
+    "status": "MATCH",
+    "bytes": 894
   },
   "extract-and-length/extract-and-length.less": {
     "status": "DIFF",
@@ -193,7 +193,7 @@
     "bytes": 4160
   },
   "merge/merge.less": {
-    "status": "DIFF",
+    "status": "MATCH",
     "bytes": 773
   },
   "mixin-noparens/mixin-noparens.less": {
@@ -262,11 +262,11 @@
   },
   "operations/operations.less": {
     "status": "DIFF",
-    "bytes": 790
+    "bytes": 736
   },
   "parse-interpolation/parse-interpolation.less": {
     "status": "DIFF",
-    "bytes": 815
+    "bytes": 948
   },
   "parser-property-interp/parser-property-interp.less": {
     "status": "MATCH",
@@ -318,7 +318,7 @@
   },
   "selectors/selectors.less": {
     "status": "DIFF",
-    "bytes": 3618
+    "bytes": 3551
   },
   "starting-style/starting-style.less": {
     "status": "MATCH",
@@ -337,8 +337,8 @@
     "bytes": 5941
   },
   "variables-in-at-rules/variables-in-at-rules.less": {
-    "status": "DIFF",
-    "bytes": 251
+    "status": "MATCH",
+    "bytes": 243
   },
   "variables/variable-advanced.less": {
     "status": "MATCH",

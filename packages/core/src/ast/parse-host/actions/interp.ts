@@ -127,6 +127,37 @@ export function interpFromRegion(
 }
 
 /**
+ * Build a value from a prelude / name-position byte string, resolving ONLY `@{…}`
+ * interpolation (`@charset "UTF-@{Eight}"`, `@namespace @{ns} "…"`): a bare `@var`
+ * stays literal, matching Less's statement-prelude rule. With no `@{…}` the whole
+ * string is one verbatim `Any`, so the common case round-trips byte-for-byte.
+ *
+ * TODO(tier-b/A4): this `@{…}` byte re-tokenizer is the SAME accepted interim shape
+ * the query-prelude (`at-rules.ts`) / custom-prop-name (`custom-props.ts`) positions
+ * use — a statement at-rule delivers its prelude as recovered bytes / one `atPrelude`
+ * leaf, NOT split `@{…}` leaves. RETIREMENT TRIGGER — split the statement prelude
+ * grammar into leaves + consume via `interpFromRegion` when the legacy BuilderHost is
+ * retired (reorg Phase A4).
+ */
+export function interpFromBytes(text: string, unquote: boolean): t2.ValueNode {
+  if (text.indexOf('@{') < 0) return t2.any(text);
+  const re = /@\{\s*([^}]+?)\s*\}/g;
+  const parts: t2.InterpPart[] = [];
+  let last = 0;
+  let m: RegExpExecArray | null;
+  let sawRef = false;
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > last) parts.push({ lit: text.slice(last, m.index) });
+    parts.push({ ref: t2.varRef(m[1]!), unquote });
+    sawRef = true;
+    last = m.index + m[0].length;
+  }
+  if (!sawRef) return t2.any(text);
+  if (last < text.length) parts.push({ lit: text.slice(last) });
+  return t2.interp(parts);
+}
+
+/**
  * The single built value node that spans the WHOLE value, or `null` when the value
  * is multi-token (more than one built node, or a built node that does not cover the
  * value bytes). The span-equality check is a whole-value GUARD (not structure

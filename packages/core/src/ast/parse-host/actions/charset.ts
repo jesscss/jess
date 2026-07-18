@@ -29,6 +29,7 @@
 import * as t2 from '../../index.js';
 import { type BuildAction, type BuildArgs, type Placeholder, type Span, placeholder } from '../host-context.js';
 import { buildStyleImportNode } from '../import.js';
+import { interpFromBytes } from './interp.js';
 
 interface Leaf {
   readonly _tag?: string;
@@ -65,7 +66,7 @@ function buildAtRuleStatement(args: BuildArgs): t2.AtRuleStatement | t2.StyleImp
     const mid = n === 3 ? leafValue(args.children[1]) : undefined;
     if (n === 2 || mid !== undefined) {
       const prelude = mid !== undefined ? mid.trim() : '';
-      return t2.atRuleStatement(name, prelude.length > 0 ? prelude : null);
+      return t2.atRuleStatement(name, prelude.length > 0 ? interpFromBytes(prelude, true) : null);
     }
   }
 
@@ -82,7 +83,7 @@ function buildAtRuleStatement(args: BuildArgs): t2.AtRuleStatement | t2.StyleImp
   const kwEnd = leafSpan(args.children[0])?.end ?? args.span.start;
   const semi = leafSpan(args.children[args.children.length - 1])?.start ?? args.span.end;
   const prelude = args.ctx.src.slice(kwEnd, semi).trim();
-  return t2.atRuleStatement(name, prelude.length > 0 ? prelude : null);
+  return t2.atRuleStatement(name, prelude.length > 0 ? interpFromBytes(prelude, true) : null);
 }
 
 const atRuleStatement: BuildAction = {

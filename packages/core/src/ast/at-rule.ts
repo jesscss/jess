@@ -35,11 +35,18 @@ export interface AtRuleBlock {
   readonly body: Statement[];
 }
 
-/** A statement-form at-rule: `@name prelude;` (prelude bytes kept literal). */
+/**
+ * A statement-form at-rule: `@name prelude;`. The prelude is a value node so a
+ * `@{…}` interpolation resolves through scope (`@charset "UTF-@{Eight}"` →
+ * `@charset "UTF-8"`, `@namespace @{ns} "…"` → `@namespace less "…"`, matching Less
+ * 4.x). A prelude with NO interpolation is a single verbatim `Any` — a bare `@var`
+ * stays literal (Less resolves only `@{…}` in a statement prelude), so the common
+ * case round-trips byte-for-byte.
+ */
 export interface AtRuleStatement {
   readonly type: 'AtRuleStatement';
   readonly name: string;
-  readonly prelude: string | null;
+  readonly prelude: ValueNode | null;
 }
 
 export const atRuleBlock = (
@@ -48,5 +55,5 @@ export const atRuleBlock = (
   body: Statement[],
 ): AtRuleBlock => ({ type: 'AtRuleBlock', name, prelude, body });
 
-export const atRuleStatement = (name: string, prelude: string | null): AtRuleStatement =>
+export const atRuleStatement = (name: string, prelude: ValueNode | null): AtRuleStatement =>
   ({ type: 'AtRuleStatement', name, prelude });

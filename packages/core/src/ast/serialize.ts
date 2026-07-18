@@ -1540,7 +1540,7 @@ export function serialize(root: Root, options?: SerializeOptions): SerializeRetu
   const start = e.off;
   // [charset] Hoist the first document-level `@charset` ahead of all body
   // content; inline occurrences are dropped during the walk (dedupe).
-  emitHoistedCharset(root.children, e);
+  emitHoistedCharset(root.children, rootFrame, e);
   // [import:hoist] Plain-CSS `@import`s are not inlined; Less hoists them to the
   // document top (after `@charset`) in source-encounter order and emits them as
   // literal `@import …;`. The resolution pass marked each with `hoist`; emit them
@@ -1600,7 +1600,7 @@ export function serialize(root: Root, options?: SerializeOptions): SerializeRetu
         emitAtRuleBlock(child, rootFrame, e);
         break;
       case 'AtRuleStatement':
-        emitAtRuleStatement(child, e);
+        emitAtRuleStatement(child, rootFrame, e);
         break;
       // [import:inline] raw verbatim bytes spliced by `@import (inline)`.
       case 'RawInline':
@@ -1864,10 +1864,10 @@ function walkBody(
         if (partition) {
           flushPending(partition);
           partition.encounteredContainer = true;
-          partition.trailing.push(() => emitAtRuleStatement(atNode, e));
+          partition.trailing.push(() => emitAtRuleStatement(atNode, frame, e));
         } else {
           flush();
-          emitAtRuleStatement(node, e);
+          emitAtRuleStatement(node, frame, e);
         }
         break;
       }
@@ -2682,7 +2682,7 @@ function emitLeaf(leaf: Leaf, e: Emit, atRoot = false): void {
     e.depth--;
   } else if (node.type === 'AtRuleStatement') {
     e.depth++;
-    emitAtRuleStatement(node, e);
+    emitAtRuleStatement(node, frame, e);
     e.depth--;
   }
 }
@@ -2701,10 +2701,10 @@ function isCharset(node: AtRuleStatement): boolean {
  * `emitAtRuleStatement`, so the single hoisted copy is the whole output — the
  * dedupe. Mirrors legacy jess / Less 4.x: first charset wins, rest dropped.
  */
-function emitHoistedCharset(children: Statement[], e: Emit): void {
+function emitHoistedCharset(children: Statement[], frame: Frame, e: Emit): void {
   for (const c of children) {
     if (c.type === 'AtRuleStatement' && isCharset(c as AtRuleStatement)) {
-      emitAtRuleStatementRaw(c as AtRuleStatement, e);
+      emitAtRuleStatementRaw(c as AtRuleStatement, frame, e);
       return;
     }
   }
@@ -2737,19 +2737,21 @@ function collectHoistedImports(statements: Statement[], out: StyleImport[]): voi
   }
 }
 
-function emitAtRuleStatement(node: AtRuleStatement, e: Emit): void {
+function emitAtRuleStatement(node: AtRuleStatement, frame: Frame, e: Emit): void {
   // [charset] Inline `@charset` occurrences are dropped; `serialize` hoists the
   // first to the document top (dedupe).
   if (isCharset(node)) return;
-  emitAtRuleStatementRaw(node, e);
+  emitAtRuleStatementRaw(node, frame, e);
 }
 
-function emitAtRuleStatementRaw(node: AtRuleStatement, e: Emit): void {
+function emitAtRuleStatementRaw(node: AtRuleStatement, frame: Frame, e: Emit): void {
   const start = e.off;
   if (e.depth > 0) put(e, INDENT.repeat(e.depth));
   put(e, node.name);
   if (node.prelude !== null) {
-    const p = node.prelude.replace(/^\s+/u, '');
+    // A statement prelude resolves only `@{…}` interpolation (`@charset
+    // "UTF-@{Eight}"`); a bare-`@var` / static prelude is a verbatim `Any`.
+    const p = evalBytesSync(node.prelude, frame, e).replace(/^\s+/u, '');
     if (p.length > 0) {
       put(e, ' ');
       put(e, p);
@@ -2981,7 +2983,7 @@ function emitAtRuleBody(statements: Statement[], frame: Frame, e: Emit): void {
       case 'AtRuleStatement':
         flushDirect();
         e.depth++;
-        emitAtRuleStatement(node, e);
+        emitAtRuleStatement(node, frame, e);
         e.depth--;
         break;
       case 'MixinCall':
@@ -3059,7 +3061,7 @@ function emitBubbleBody(statements: Statement[], ctx: string[] | null, frame: Fr
       case 'AtRuleStatement':
         flushDirect();
         e.depth++;
-        emitAtRuleStatement(node, e);
+        emitAtRuleStatement(node, frame, e);
         e.depth--;
         break;
       case 'MixinCall':
@@ -3147,7 +3149,7 @@ function emitNestedBody(
         break;
       case 'AtRuleStatement':
         flushBuf();
-        emitAtRuleStatement(node, e);
+        emitAtRuleStatement(node, frame, e);
         break;
       // [import:inline] raw verbatim bytes spliced by `@import (inline)`.
       case 'RawInline':
