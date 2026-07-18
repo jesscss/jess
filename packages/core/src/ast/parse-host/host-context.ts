@@ -41,6 +41,7 @@ export function rawSpan(rc: unknown): Span | undefined {
 const TRIVIA_STRIDE = 4;
 const TRIVIA_WHITESPACE = 0;
 const TRIVIA_BLOCK_COMMENT = 1;
+const TRIVIA_LINE_COMMENT = 2;
 
 /**
  * True when a WHITESPACE trivia run was consumed immediately before rawChildren
@@ -75,6 +76,42 @@ export function blockCommentTrivia(triviaLog: readonly number[]): CommentRange[]
   for (let i = 0; i + TRIVIA_STRIDE - 1 < triviaLog.length; i += TRIVIA_STRIDE) {
     if (triviaLog[i + 3] === TRIVIA_BLOCK_COMMENT) {
       out.push({ start: triviaLog[i]!, end: triviaLog[i + 1]! });
+    }
+  }
+  return out;
+}
+
+/**
+ * Cheap allocation-free probe: does the trivia log hold ANY comment (block or
+ * line)? The common selector/value has only whitespace trivia, so this gates the
+ * comment-lift array builds — a comment-free node does zero extra work.
+ */
+export function hasCommentTrivia(triviaLog: readonly number[]): boolean {
+  for (let i = 0; i + TRIVIA_STRIDE - 1 < triviaLog.length; i += TRIVIA_STRIDE) {
+    const kind = triviaLog[i + 3];
+    if (kind === TRIVIA_BLOCK_COMMENT || kind === TRIVIA_LINE_COMMENT) return true;
+  }
+  return false;
+}
+
+/** A comment trivia range tagged with whether it is a `// …` LINE comment. */
+export interface KindedCommentRange extends CommentRange {
+  readonly line: boolean;
+}
+
+/**
+ * ALL comment trivia (`/* … *​/` block AND `// …` line), in source order, each
+ * tagged `line`. Used where the two kinds are handled DIFFERENTLY (a Less variable
+ * value: every LINE comment is lexed away, but only BOUNDARY block comments detach —
+ * an interior block comment stays part of the value). Distinct from
+ * `blockCommentTrivia` (standalone-lift candidates), which omits line comments.
+ */
+export function allCommentTrivia(triviaLog: readonly number[]): KindedCommentRange[] {
+  const out: KindedCommentRange[] = [];
+  for (let i = 0; i + TRIVIA_STRIDE - 1 < triviaLog.length; i += TRIVIA_STRIDE) {
+    const kind = triviaLog[i + 3];
+    if (kind === TRIVIA_BLOCK_COMMENT || kind === TRIVIA_LINE_COMMENT) {
+      out.push({ start: triviaLog[i]!, end: triviaLog[i + 1]!, line: kind === TRIVIA_LINE_COMMENT });
     }
   }
   return out;

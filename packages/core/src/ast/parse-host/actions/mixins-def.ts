@@ -38,9 +38,9 @@ import {
   type BuildArgs,
   type RawArg,
   type Span,
-  isStatement,
 } from '../host-context.js';
 import { buildMixinCall } from './mixin-call.js';
+import { bodyStatementsWithComments } from './comments.js';
 
 /** A GuardNode is a plain discriminated object (`{ g: … }`), not a tree2 Node. */
 function isGuardNode(x: unknown): x is t2.GuardNode {
@@ -273,7 +273,7 @@ function buildMixinDef(args: BuildArgs): unknown {
   const slots = args.children.find(isArgSlotList) ?? [];
   const params = slots.map(classifyParam);
   const guard = args.children.find(isGuardNode);
-  const body = args.children.filter(isStatement) as t2.Statement[];
+  const body = bodyStatementsWithComments(args);
   return t2.mixinDef(name.trim(), params, body, guard);
 }
 

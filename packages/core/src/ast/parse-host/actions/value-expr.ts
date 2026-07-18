@@ -46,7 +46,10 @@ import * as t2 from '../../index.js';
 import {
   type BuildAction,
   type BuildArgs,
+  type CommentRange,
   type Span,
+  blockCommentTrivia,
+  hasCommentTrivia,
   sliceSpan,
 } from '../host-context.js';
 
@@ -216,6 +219,11 @@ function assembleSegment(items: t2.ValueNode[]): t2.ValueNode | null {
  * `modern` stays false: the space/slash structure is preserved in the arg nodes
  * themselves, so the serializer needs no modern flag to reproduce the spelling.
  */
+function commentInRange(comments: readonly CommentRange[], start: number, end: number): boolean {
+  for (const c of comments) if (c.start >= start && c.end <= end) return true;
+  return false;
+}
+
 function buildCall(args: BuildArgs): t2.ValueNode {
     const children = args.children;
     const name = leafText(children[0]).trim() || sliceSpan(args.ctx, { start: args.span.start, end: args.span.start });
@@ -225,7 +233,20 @@ function buildCall(args: BuildArgs): t2.ValueNode {
       return t2.any(sliceSpan(args.ctx, args.span).trim());
     }
     const hi = close < 0 ? children.length : close;
+    // [comment] An arg carrying a block comment (`#333 /*{c}*/`) prints its source
+    // bytes verbatim: comments are parser trivia (never a value token), so the
+    // structured assembly drops them; a comment-bearing segment keeps its raw bytes.
+    // A comment-free call (the common case) tracks NO byte bounds — zero extra work.
+    const comments = hasCommentTrivia(args.triviaLog) ? blockCommentTrivia(args.triviaLog) : null;
+    const openSpan = (args.rawChildren[open] as { span?: Span } | undefined)?.span;
+    const closeSpan = close >= 0 ? (args.rawChildren[close] as { span?: Span } | undefined)?.span : undefined;
     const segments: t2.ValueNode[][] = [[]];
+    // Byte start of the current segment (after the `(` or the last `,`/`;`).
+    let segByteStart = openSpan ? openSpan.end : args.span.start;
+    const segBounds: Array<{ start: number; end: number }> | null = comments ? [] : null;
+    const closeSegment = (endByte: number): void => {
+      if (segBounds) segBounds.push({ start: segByteStart, end: endByte });
+    };
     for (let i = open + 1; i < hi; i++) {
       const c = children[i];
       if (isValueNode(c)) {
@@ -234,6 +255,9 @@ function buildCall(args: BuildArgs): t2.ValueNode {
       }
       const v = leafText(c);
       if (v === ',' || v === ';') {
+        const sep = (args.rawChildren[i] as { span?: Span } | undefined)?.span;
+        closeSegment(sep ? sep.start : segByteStart);
+        segByteStart = sep ? sep.end : segByteStart;
         segments.push([]);
         continue;
       }
@@ -242,9 +266,15 @@ function buildCall(args: BuildArgs): t2.ValueNode {
       if (v === '' && isEmptyStructuralLeaf(c, args.rawChildren[i])) continue;
       segments[segments.length - 1]!.push(operandAt(args, i));
     }
+    closeSegment(closeSpan ? closeSpan.start : args.span.end);
     const argList: t2.ValueNode[] = [];
-    for (const seg of segments) {
-      const a = assembleSegment(seg);
+    for (let s = 0; s < segments.length; s++) {
+      const bounds = segBounds?.[s];
+      if (bounds && comments && comments.length > 0 && commentInRange(comments, bounds.start, bounds.end)) {
+        argList.push(t2.any(args.ctx.src.slice(bounds.start, bounds.end).trim()));
+        continue;
+      }
+      const a = assembleSegment(segments[s]!);
       if (a !== null) argList.push(a);
     }
     return t2.funcCall(name, argList, false);

@@ -68,12 +68,12 @@
     "bytes": 537
   },
   "comments/comments.less": {
-    "status": "DIFF",
-    "bytes": 1294
+    "status": "MATCH",
+    "bytes": 1311
   },
   "comments/comments2.less": {
-    "status": "DIFF",
-    "bytes": 252
+    "status": "MATCH",
+    "bytes": 283
   },
   "container/container.less": {
     "status": "DIFF",
@@ -85,7 +85,7 @@
   },
   "css-escapes/css-escapes.less": {
     "status": "DIFF",
-    "bytes": 578
+    "bytes": 576
   },
   "css-grid/css-grid.less": {
     "status": "MATCH",
@@ -141,7 +141,7 @@
   },
   "functions/functions.less": {
     "status": "DIFF",
-    "bytes": 5475
+    "bytes": 5404
   },
   "impor/impor.less": {
     "status": "MATCH",
@@ -178,7 +178,7 @@
   },
   "import/import.less": {
     "status": "DIFF",
-    "bytes": 594
+    "bytes": 592
   },
   "layer/layer.less": {
     "status": "MATCH",
@@ -210,7 +210,7 @@
   },
   "mixins-guards/mixins-guards.less": {
     "status": "DIFF",
-    "bytes": 3926
+    "bytes": 4090
   },
   "mixins-important/mixins-important.less": {
     "status": "DIFF",
@@ -278,7 +278,7 @@
   },
   "permissive-parse/permissive-parse.less": {
     "status": "DIFF",
-    "bytes": 252
+    "bytes": 248
   },
   "plugi/plugi.less": {
     "status": "MATCH",
@@ -294,7 +294,7 @@
   },
   "plugin/plugin.less": {
     "status": "DIFF",
-    "bytes": 2435
+    "bytes": 2439
   },
   "property-accessors/property-accessors.less": {
     "status": "DIFF",
@@ -302,7 +302,7 @@
   },
   "property-name-interp/property-name-interp.less": {
     "status": "DIFF",
-    "bytes": 517
+    "bytes": 497
   },
   "property-targeted/property-targeted.less": {
     "status": "MATCH",
@@ -318,19 +318,19 @@
   },
   "selectors/selectors.less": {
     "status": "DIFF",
-    "bytes": 3393
+    "bytes": 3389
   },
   "starting-style/starting-style.less": {
-    "status": "DIFF",
-    "bytes": 1014
+    "status": "MATCH",
+    "bytes": 902
   },
   "strings/strings.less": {
     "status": "MATCH",
     "bytes": 1045
   },
   "tailwind/tailwind.less": {
-    "status": "DIFF",
-    "bytes": 18
+    "status": "MATCH",
+    "bytes": 29
   },
   "urls/urls.less": {
     "status": "DIFF",
@@ -341,8 +341,8 @@
     "bytes": 251
   },
   "variables/variable-advanced.less": {
-    "status": "DIFF",
-    "bytes": 1083
+    "status": "MATCH",
+    "bytes": 1048
   },
   "variables/variables.less": {
     "status": "DIFF",

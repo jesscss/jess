@@ -185,6 +185,25 @@ const stylesheet: BuildAction = {
   }
 };
 
+/**
+ * Rebuild a block body's statement list with standalone block comments interleaved
+ * in source order — the shared derivation for ruleset AND mixin-definition bodies
+ * (a mixin body `{/* *​/}` carries a standalone comment the parser logs as trivia,
+ * lost by a plain `children.filter(isStatement)`). Body window is the brace-literal
+ * span; comments outside it (selector/param head trivia) never leak in.
+ */
+export function bodyStatementsWithComments(args: BuildArgs): t2.Statement[] {
+  const window = rulesetBodyWindow(args.rawChildren) ?? { start: args.span.start, end: args.span.end };
+  return liftComments(
+    args.ctx.src,
+    spannedStatements(args),
+    blockCommentTrivia(args.triviaLog),
+    window.start,
+    window.end,
+    false
+  );
+}
+
 const ruleset: BuildAction = {
   type: 'Ruleset',
   build: (args) => {
@@ -194,17 +213,7 @@ const ruleset: BuildAction = {
     if (!(t2.isNode(base) && base.type === 'Rule')) {
       return base;
     }
-    // Body window: [after `{` … before `}`], from the brace literal leaves.
-    const window = rulesetBodyWindow(args.rawChildren) ?? { start: args.span.start, end: args.span.end };
-    const body = liftComments(
-      args.ctx.src,
-      spannedStatements(args),
-      blockCommentTrivia(args.triviaLog),
-      window.start,
-      window.end,
-      false
-    );
-    return t2.rule(base.selector, body, base.extendInstructions, base.guard);
+    return t2.rule(base.selector, bodyStatementsWithComments(args), base.extendInstructions, base.guard);
   }
 };
 

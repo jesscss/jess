@@ -24,9 +24,84 @@
  * throws) so parseman's speculative / backtracked branches are safe.
  */
 import * as t2 from '../../index.js';
-import { type BuildAction, declParts, isStatement, placeholder, sliceSpan } from '../host-context.js';
+import {
+  type BuildAction,
+  type BuildArgs,
+  type KindedCommentRange,
+  allCommentTrivia,
+  declParts,
+  hasCommentTrivia,
+  isStatement,
+  placeholder,
+  sliceSpan,
+} from '../host-context.js';
 import { type Leaf, isLeaf, wholeValueNode } from './interp.js';
 import { tryMixinCallIterable } from './control-flow.js';
+
+/**
+ * Strip the comment trivia a Less variable value discards. Two distinct rules,
+ * both verified against less.js `alpha`:
+ *   - EVERY `// …` LINE comment is removed (interior included) — Less lexes line
+ *     comments out entirely, so `@items: // Fruit\n apple, …` binds the bare list.
+ *   - Only LEADING / TRAILING block comments detach (`@c: yes /* c *​/` → `yes`,
+ *     `@e: /* c *​/ blue` → `blue`); an INTERIOR block comment stays part of the
+ *     value (`@f: red /* a *​/ green /* t *​/` → `red /* a *​/ green`).
+ * Comment ranges come from the parser trivia log (P0 — not a byte re-scan), so a
+ * `*​/` inside a string is never mistaken for a comment. `[valueStart, valueEnd)` is
+ * the value's byte range in source coordinates.
+ */
+function stripValueComments(args: BuildArgs, valueStart: number, valueEnd: number): string {
+  const src = args.ctx.src;
+  if (!hasCommentTrivia(args.triviaLog)) return src.slice(valueStart, valueEnd).trim();
+  const comments: KindedCommentRange[] = allCommentTrivia(args.triviaLog)
+    .filter((c) => c.start >= valueStart && c.end <= valueEnd)
+    .sort((a, b) => a.start - b.start);
+  if (comments.length === 0) return src.slice(valueStart, valueEnd).trim();
+  const isWs = (i: number): boolean => {
+    const c = src.charCodeAt(i);
+    return c === 32 || c === 9 || c === 10 || c === 13;
+  };
+  // Ranges to excise: every line comment, plus each boundary block comment
+  // (separated from the value edge by only whitespace and already-excised ranges).
+  const drop = new Set<KindedCommentRange>(comments.filter((c) => c.line));
+  // Peel leading comments: walk left→right while the gap to the next comment is
+  // only whitespace / already-dropped bytes (a boundary run); stop at real content.
+  let lo = valueStart;
+  for (const c of comments) {
+    let p = lo;
+    while (p < c.start && (isWs(p) || inDropped(p, drop))) p++;
+    if (p !== c.start) break; // real content precedes → not leading trivia
+    drop.add(c);
+    lo = c.end;
+  }
+  // Peel trailing comments: walk right→left symmetrically.
+  let hi = valueEnd;
+  for (let i = comments.length - 1; i >= 0; i--) {
+    const c = comments[i]!;
+    if (c.start >= hi) continue; // already inside the peeled trailing run
+    let p = hi;
+    while (p > c.end && (isWs(p - 1) || inDropped(p - 1, drop))) p--;
+    if (p !== c.end) break; // real content follows → not trailing trivia
+    drop.add(c);
+    hi = c.start;
+  }
+  // Rebuild the value with every dropped range excised, in source order.
+  const kept = [...drop].sort((a, b) => a.start - b.start);
+  let out = '';
+  let cursor = valueStart;
+  for (const d of kept) {
+    if (d.start > cursor) out += src.slice(cursor, d.start);
+    cursor = Math.max(cursor, d.end);
+  }
+  out += src.slice(cursor, valueEnd);
+  return out.trim();
+}
+
+/** Whether byte offset `i` lies inside any already-dropped comment range. */
+function inDropped(i: number, drop: ReadonlySet<KindedCommentRange>): boolean {
+  for (const d of drop) if (i >= d.start && i < d.end) return true;
+  return false;
+}
 
 /**
  * `@x: value;` — split the span into name + value bytes (drop a trailing `;`, split
@@ -60,7 +135,21 @@ const varDeclaration: BuildAction = {
       if (mixinCall) return t2.varDecl(bare, mixinCall);
     }
     const node = wholeValueNode(args, value);
-    const valueNode: t2.ValueNode = node !== null ? (node as t2.ValueNode) : t2.any(value);
+    let valueNode: t2.ValueNode;
+    if (node !== null) {
+      valueNode = node as t2.ValueNode;
+    } else {
+      // Verbatim value bytes — but a boundary comment binds to the source, not the
+      // value, so peel leading/trailing comment trivia (`@c: yes /* c */` → `yes`).
+      const src = args.ctx.src;
+      const declText = src.slice(args.span.start, args.span.end);
+      const colonRel = declText.indexOf(':');
+      let valEndAbs = args.span.end;
+      while (valEndAbs > args.span.start && /[;\s]/.test(src[valEndAbs - 1]!)) valEndAbs--;
+      const valStartAbs = args.span.start + colonRel + 1;
+      const stripped = colonRel >= 0 ? stripValueComments(args, valStartAbs, valEndAbs) : value;
+      valueNode = t2.any(stripped);
+    }
     return t2.varDecl(bare, valueNode);
   },
 };

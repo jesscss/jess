@@ -1435,7 +1435,7 @@ export function serialize(root: Root, options?: SerializeOptions): SerializeRetu
       }
       case 'Declaration':
       case 'Comment':
-        emitLeaf({ node: child, frame: rootFrame }, e);
+        emitLeaf({ node: child, frame: rootFrame }, e, true);
         break;
       // [atrule] top-level at-rules
       case 'AtRuleBlock':
@@ -2378,11 +2378,13 @@ function emitMergedLine(e: Emit, name: string, combined: string, important: bool
   if (e.positions) e.positions.push({ node: any(combined), type: 'Any', start, end: e.off });
 }
 
-function emitLeaf(leaf: Leaf, e: Emit): void {
+function emitLeaf(leaf: Leaf, e: Emit, atRoot = false): void {
   const { node, frame } = leaf;
   const start = e.off;
   // [atrule] a declaration/comment sits one level in from its container's depth.
-  const idt = e.depth > 0 ? INDENT.repeat(e.depth + 1) : INDENT;
+  // A leaf emitted directly at the document root (not inside any block) sits flush
+  // left at depth 0 rather than one level in.
+  const idt = atRoot ? INDENT.repeat(e.depth) : e.depth > 0 ? INDENT.repeat(e.depth + 1) : INDENT;
   if (node.type === 'Declaration') {
     put(e, idt);
     put(e, declName(node, frame, e)); // resolve interpolated property name

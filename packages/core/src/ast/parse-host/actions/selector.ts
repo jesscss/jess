@@ -27,7 +27,10 @@ import type { Combinator } from '../../index.js';
 import {
   type BuildAction,
   type BuildArgs,
+  type CommentRange,
   attachSelectorExtends,
+  blockCommentTrivia,
+  hasCommentTrivia,
   hasWhitespaceTriviaBefore,
   isExtendMarker,
   rawSpan,
@@ -136,15 +139,56 @@ function buildComplex(args: BuildArgs): t2.Complex {
   return out;
 }
 
+/** Whether any block comment falls inside the byte range `[start, end)`. */
+function commentInRange(comments: readonly CommentRange[], start: number, end: number): boolean {
+  for (const c of comments) if (c.start >= start && c.end <= end) return true;
+  return false;
+}
+
+/**
+ * A verbatim `Complex` wrapping the selector segment's raw bytes as a single
+ * `Simple` — the byte-faithful path for a comma segment that CARRIES A COMMENT
+ * (`#a /* c *​/`, `/* c *​/ .b`). Less keeps selector comments in the element stream;
+ * the structured build drops them (comments are parser trivia, never a selector
+ * token), so a comment-bearing segment prints its source range verbatim instead.
+ */
+function verbatimComplex(text: string): t2.Complex {
+  return t2.complex([{ compound: t2.compoundOf([t2.simple(text)]) }]);
+}
+
 /** `SelectorList`: comma-separated complexes → a tree2 `SelectorList`. */
 function buildSelectorList(args: BuildArgs): t2.SelectorList | t2.Complex {
   const src = args.ctx.src;
+  // A comment-free list (the overwhelming common case) does zero extra work — no
+  // comment array, no byte-range lookahead; only a comment-bearing list pays for the
+  // verbatim-segment path that preserves in-selector comments.
+  const comments = hasCommentTrivia(args.triviaLog) ? blockCommentTrivia(args.triviaLog) : null;
   const complexes: t2.Complex[] = [];
+  // Segment byte range spans from the previous comma end (or list start) to the
+  // next comma start (or list end) — a range that INCLUDES the segment's comment
+  // trivia (which sits between the complex token and the following comma, so it is
+  // never inside the complex's own span).
+  let segStart = args.span.start;
   for (let i = 0; i < args.rawChildren.length; i++) {
     const span = rawSpan(args.rawChildren[i]);
     if (!span) continue;
     const text = src.slice(span.start, span.end);
-    if (text === ',') continue;
+    if (text === ',') {
+      segStart = span.end;
+      continue;
+    }
+    if (comments !== null && comments.length > 0) {
+      // Look ahead to the next top-level comma to bound this segment's byte range.
+      let segEnd = args.span.end;
+      for (let j = i + 1; j < args.rawChildren.length; j++) {
+        const nspan = rawSpan(args.rawChildren[j]);
+        if (nspan && src.slice(nspan.start, nspan.end) === ',') { segEnd = nspan.start; break; }
+      }
+      if (commentInRange(comments, segStart, segEnd)) {
+        complexes.push(verbatimComplex(src.slice(segStart, segEnd).trim()));
+        continue;
+      }
+    }
     complexes.push(segmentToComplex(args.children[i], text));
   }
   if (complexes.length === 1) return complexes[0]!;
