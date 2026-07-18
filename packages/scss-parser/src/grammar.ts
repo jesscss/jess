@@ -97,7 +97,19 @@ export const scssGrammar = compose([lessGrammar, rules({ trivia: rw }, (g: any) 
   // (byte-identical fast path, no `Interpolated` wrapper materialized).
   const dqContents = regex(/(?:[^"\\#]|\\[\s\S]|#(?!\{))+/);
   const sqContents = regex(/(?:[^'\\#]|\\[\s\S]|#(?!\{))+/);
+  // FAST PATH: a COMPLETE quoted string (quotes included) that carries no `#{`
+  // interp opener matches as a SINGLE flat leaf in one regex — the common case
+  // (plain strings dominate real CSS) skips CST-array allocation + builder
+  // dispatch entirely. The `#(?!\{)` complement is IDENTICAL to `dqContents`, so
+  // the flat arm fails precisely when an opener is present and backtracks to the
+  // interp `sequence` arm (a `#{` can't be consumed → single failed regex). The
+  // flat arm builds a single-leaf `Quoted` (no `ScssInterpBare` child) → the
+  // builder's existing no-interp fallback yields the byte-identical flat value.
+  const dqFlat = regex(/"(?:[^"\\#]|\\[\s\S]|#(?!\{))*"/);
+  const sqFlat = regex(/'(?:[^'\\#]|\\[\s\S]|#(?!\{))*'/);
   const Quoted = node('Quoted', choice(
+    dqFlat,
+    sqFlat,
     sequence(literal('"'), many(choice(ScssInterpBare, dqContents)), literal('"')),
     sequence(literal('\''), many(choice(ScssInterpBare, sqContents)), literal('\''))
   ));

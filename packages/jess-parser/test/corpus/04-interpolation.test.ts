@@ -164,6 +164,30 @@ describe('corpus/interpolation', () => {
       )`);
   });
 
+  it('flat-first arm keeps a `$` false-start flat but still routes `$[`/`$(` to interp', () => {
+    // A `$` that does NOT open `$[`/`$(` matches the flat no-interp arm →
+    // single-leaf flat `Quoted` (no `Interpolated`).
+    expectAstContains('.a { content: "cost is $5"; }', `
+      (Quoted
+        value: 'cost is $5'
+      )`);
+    // A real `$[` opener fails the flat arm and backtracks to the interp
+    // sequence → structured `Interpolated`.
+    expectAstContains('.a { content: "$[foo]"; }', `
+      (Quoted
+        value:
+          (Interpolated [role=ident]
+            source: '%%'
+            replacements:
+              [
+                (Reference [role=ident]
+                  key: 'foo'
+                )
+              ]
+          )
+      )`);
+  });
+
   it('string interpolation round-trips verbatim', () => {
     expectRoundTrip('.a { content: "a $[foo] b"; }', '"a $[foo] b"');
     expectRoundTrip('.a { content: "a $(1 + 2) b"; }', '"a $(1 + 2) b"');

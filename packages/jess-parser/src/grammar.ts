@@ -155,6 +155,16 @@ export const jessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   // a `$x` (property-ish false start) stays INSIDE the chunk as literal text.
   const dqContents = regex(/(?:[^"\\$]|\\[\s\S]|\$(?![\[(]))+/);
   const sqContents = regex(/(?:[^'\\$]|\\[\s\S]|\$(?![\[(]))+/);
+  // FAST PATH: a COMPLETE quoted string (quotes included) with no `$[`/`$(` interp
+  // opener matches as a SINGLE flat leaf in one regex — plain strings dominate, so
+  // the common case skips CST-array allocation + builder dispatch. The
+  // `\$(?![\[(])` complement is IDENTICAL to `dqContents`, so the flat arm fails
+  // precisely when an opener is present and backtracks to the interp `sequence`
+  // arm (a single failed regex). The flat arm yields a single-leaf `Quoted` (no
+  // interp child) → the builder's no-interp fallback reconstructs the byte-
+  // identical bare-string value (`${…}` Less-style handling stays in that fallback).
+  const dqFlat = regex(/"(?:[^"\\$]|\\[\s\S]|\$(?![\[(]))*"/);
+  const sqFlat = regex(/'(?:[^'\\$]|\\[\s\S]|\$(?![\[(]))*'/);
   // The two `.jess` interpolation forms (owner-confirmed):
   //   `$[key]` = KEY interpolation (DollarInterp; body stays a lookup key)
   //   `$(expr)` = FULL-EXPRESSION interpolation (the `$(…)` Expression form)
@@ -167,6 +177,8 @@ export const jessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   // A string with NO interpolation matches only contents/quote leaves (no child
   // node); the builder reconstructs it BYTE-IDENTICALLY via the flat CSS builder.
   const Quoted = node('Quoted', choice(
+    noTrivia(dqFlat),
+    noTrivia(sqFlat),
     noTrivia(sequence(literal('"'), many(choice(strInterpJess, dqContents)), literal('"'))),
     noTrivia(sequence(literal('\''), many(choice(strInterpJess, sqContents)), literal('\'')))
   ));

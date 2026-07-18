@@ -255,6 +255,34 @@ describe('ScssParser — interpolation (#{…})', () => {
     }
   });
 
+  it('flat fast-path arm keeps a bare `#` (hex) flat but still routes `#{` to interp', () => {
+    // A `#` that does NOT open `#{` (hex color) must match the flat no-interp arm
+    // → single-leaf flat `Quoted`, no `Interpolated`.
+    {
+      const { tree } = parseOk('.a { color: "#fff"; }');
+      const ruleset = tree.rules[0]!;
+      if (isNode(ruleset, N.Ruleset)) {
+        const decl = ruleset.rules[0]!;
+        if (isNode(decl, N.Declaration) && isNode(decl.value, N.Quoted)) {
+          expect(typeof decl.value.value).toBe('string');
+          expect(decl.value.value).toBe('#fff');
+        }
+      }
+    }
+    // A real `#{…}` opener fails the flat arm and backtracks to the interp
+    // sequence → structured `Interpolated`.
+    {
+      const { tree } = parseOk('.a { color: "#{$x}"; }');
+      const ruleset = tree.rules[0]!;
+      if (isNode(ruleset, N.Ruleset)) {
+        const decl = ruleset.rules[0]!;
+        if (isNode(decl, N.Declaration) && isNode(decl.value, N.Quoted)) {
+          expect(isNode(decl.value.value, N.Interpolated)).toBe(true);
+        }
+      }
+    }
+  });
+
   it('parses interpolation inside selectors', () => {
     const { tree } = parseOk('.foo-#{$bar} { color: red; }');
     const ruleset = tree.rules[0]!;
