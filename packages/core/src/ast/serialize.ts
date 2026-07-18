@@ -3105,6 +3105,81 @@ function normalizeSupportsPrelude(p: string): string {
 }
 
 /**
+ * [atrule-prelude] v5 normalizes a `@media` / `@container` query prelude's
+ * SPACING (a serialization concern — evaluating a `@var` / operation / escaped
+ * string in a prelude is a SEPARATE, not-yet-wired capability, so those pass
+ * through as-is). On the PLAIN (non-opaque) runs:
+ *   - a feature colon gets `name: value` spacing (`(orientation:portrait)` →
+ *     `(orientation: portrait)`);
+ *   - a `<` / `>` / `<=` / `>=` range comparison and a `/` ratio operator get
+ *     single surrounding spaces (`(width<500px)` → `(width < 500px)`,
+ *     `(aspect-ratio: 3/2)` → `(aspect-ratio: 3 / 2)`) — v5 operators/separators
+ *     emit spaced;
+ *   - padding immediately inside a condition paren is stripped (`( width< 500px )`
+ *     → `(width < 500px)`);
+ *   - a logical `and` / `or` / `not` keeps a space before its `(` (`and(…)` →
+ *     `and (…)`).
+ * Quoted runs (`"…"`, `'…'`, `~"…"`, `~'…'`) and `/* … *\/` comments are OPAQUE:
+ * their bytes pass through untouched, so an escaped `~"2/1"` is never mistaken for
+ * a ratio operator and a `/* … *\/` keyword comment survives verbatim. Every
+ * transform is idempotent on an already-canonical prelude (`(min-width: 1024px)`,
+ * `screen, print, handheld`, `(a) or (b)`), so already-matching goldens are
+ * unaffected.
+ */
+function normalizeQueryPrelude(p: string): string {
+  let out = '';
+  let i = 0;
+  const n = p.length;
+  while (i < n) {
+    const c = p[i]!;
+    // OPAQUE — a `/* … */` comment: copy through verbatim.
+    if (c === '/' && p[i + 1] === '*') {
+      const end = p.indexOf('*/', i + 2);
+      const stop = end === -1 ? n : end + 2;
+      out += p.slice(i, stop);
+      i = stop;
+      continue;
+    }
+    // OPAQUE — a quoted string, optionally escaped (`~"…"` / `~'…'`).
+    const esc = c === '~' && (p[i + 1] === '"' || p[i + 1] === "'");
+    if (c === '"' || c === "'" || esc) {
+      const q = esc ? p[i + 1]! : c;
+      let j = esc ? i + 2 : i + 1;
+      while (j < n && p[j] !== q) j++;
+      const stop = j < n ? j + 1 : n;
+      out += p.slice(i, stop);
+      i = stop;
+      continue;
+    }
+    // PLAIN run — up to the next opaque start; normalize its spacing.
+    let j = i;
+    while (j < n) {
+      const d = p[j]!;
+      if (d === '"' || d === "'") break;
+      if (d === '~' && (p[j + 1] === '"' || p[j + 1] === "'")) break;
+      if (d === '/' && p[j + 1] === '*') break;
+      j++;
+    }
+    out += normalizeQueryPlainRun(p.slice(i, j));
+    i = j;
+  }
+  return out;
+}
+
+/** [atrule-prelude] Spacing normalization of ONE plain (non-quote/comment) run of
+ * a query prelude. See {@link normalizeQueryPrelude} for the rules; each `replace`
+ * is idempotent on canonical input. */
+function normalizeQueryPlainRun(s: string): string {
+  return s
+    .replace(/\(\s+/gu, '(') // strip padding right after `(`
+    .replace(/\s+\)/gu, ')') // strip padding right before `)`
+    .replace(/\s*:\s*/gu, ': ') // feature colon → `name: value`
+    .replace(/\s*\/\s*/gu, ' / ') // ratio `/` → spaced (v5 operators spaced)
+    .replace(/\s*(<=|>=|<|>)\s*/gu, ' $1 ') // range comparison → spaced
+    .replace(/\b(and|or|not)\s*\(/gu, '$1 ('); // `and(` → `and (`
+}
+
+/**
  * A block at-rule: `@name prelude { …body }`, emitted at the current block depth.
  *
  * [atrule-bubbling] `ctx` is the enclosing composed selector context this at-rule
@@ -3124,7 +3199,9 @@ function emitAtRuleBlock(node: AtRuleBlock, frame: Frame, e: Emit, ctx: string[]
   put(e, node.name);
   if (node.prelude !== null) {
     let p = evalBytesSync(node.prelude, frame, e);
-    if (node.name.toLowerCase() === '@supports') p = normalizeSupportsPrelude(p);
+    const lname = node.name.toLowerCase();
+    if (lname === '@supports') p = normalizeSupportsPrelude(p);
+    else if (lname === '@media' || lname === '@container') p = normalizeQueryPrelude(p);
     if (p.length > 0) {
       put(e, ' ');
       put(e, p);
@@ -3561,7 +3638,9 @@ function emitNestedAtRuleBlock(node: AtRuleBlock, frame: Frame, e: Emit): void {
   put(e, node.name);
   if (node.prelude !== null) {
     let p = evalBytesSync(node.prelude, frame, e);
-    if (node.name.toLowerCase() === '@supports') p = normalizeSupportsPrelude(p);
+    const lname = node.name.toLowerCase();
+    if (lname === '@supports') p = normalizeSupportsPrelude(p);
+    else if (lname === '@media' || lname === '@container') p = normalizeQueryPrelude(p);
     if (p.length > 0) {
       put(e, ' ');
       put(e, p);
