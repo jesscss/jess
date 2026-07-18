@@ -16,6 +16,60 @@
 > `alpha-oracle-baseline.json` — staying green. Bridge byte-identity tests may go red and
 > are repaired later at the less-compat re-point.
 
+## Adversarial-review corrections (2026-07-18)
+
+The first-pass §6 sequencing broke on review — 4 of its 5 cluster claims were wrong. The
+corrections below are **authoritative**; the inline §3/§6 text has been reconciled to match.
+A future execution round must plan from this list, not the original §6 wording.
+
+1. **S5 and S6 are NOT parallel/independent coupled tracks.** Both edit the **same method**
+   `_buildAtRulePrelude` (`builders.ts` ~2524–2898). S5's prelude-embedded value construction
+   and S6's query-prelude re-tokenize live in the same method body, so they MUST be **one
+   coordinated method-rewrite** — or S6 (the TB-3 query-prelude grammar split) lands first and
+   re-expresses S5's in-method prelude value sites. They cannot be scheduled as disjoint
+   parallel commits. **The four prelude-embedded L4 sites** (`builders.ts:2789` `nsMediaRe`,
+   `:2824`, `:2830`, `:2842`) that §3/L4 first placed in S3 **move INTO this coordinated
+   S6/TB-3 method-rewrite** (they are inside `_buildAtRulePrelude`), and are therefore NOT
+   part of the independent S3 subset.
+
+2. **S4 `customPropInterp` (`grammar.ts:96`) is NOT "land now, ast/-differential-gated."**
+   The single-leaf custom-prop **NAME** shape protects the legacy/maintained **BuilderHost**
+   output too — not only the less-compat bridge. The grammar's own retirement note at that
+   line gives the trigger: *"when the legacy BuilderHost is retired, reorg A4."* So it is
+   re-gated to the **Jess ratchet / legacy-BuilderHost retirement (A4)**, NOT the ast/
+   differential alone, and it carries an **unscoped legacy-builder custom-prop-NAME edit**.
+   It moves OUT of the independent-S4 set into the **A4-coupled set** (with PH2
+   `custom-props.ts`).
+
+3. **S4 TB-4/TB-5 are blocked on unbuilt §3.3 `Quoted` grammar structuring** — a prerequisite
+   that does **not exist on `origin/dev`**. `import.ts` ~`:466`/`:478` (`.includes('@{')`) and
+   `value-leaf.ts` ~`:87` (char-scan) cannot "land independently now"; they need the §3.3
+   `Quoted` `Interp` child first. The **only** possible clean independent S4 candidate is
+   `at-rules.ts` ~`:232` `@@name`→`VarIndirect` — and **only if the grammar already emits an
+   indirect-var child** (verify the terminal exists first).
+
+4. **S3 is only PARTIALLY independent.** Its accessor-**KEY** sites build `Quoted` value
+   literals (`builders.ts:349`, `:3227` `new Quoted(...)`) → those constructions are
+   **#44-coupled** and deferred to #44's producer flip (edit only the segment/bracket regex
+   there, not the `new Quoted`). The **non-prelude** L4 sites ARE independent. The four
+   prelude L4 sites move to S6 (correction #1).
+
+5. **The "~14 PENDING-#44" tally is a FLOOR, not exact.** Value constructions NOT enumerated
+   in L1/L2/L3 also flip with #44's producer: `builders.ts` `new Color` @`:486`; `new Quoted`
+   @`:219`, `:457`, `:724`, `:1270`, `:1327`, `:1343`. The true #44-producer-flip footprint is
+   **larger** than the S5 list.
+
+6. **"Bridge-release unblocks 7" over-claims.** 2 of the 7 — `escapedStrRe` @`builders.ts:2533`
+   and the L3 quoted-path re-tokenize — construct `Quoted` and are correctly parked in **S5**
+   (PENDING #44), so only **~5** are landable under the bridge ruling alone.
+
+7. **Currently-executing cleared subset:** **S1 + S2 + non-prelude-S3** (with the
+   `:349`/`:3227` `new Quoted` carve-outs) is being landed now by agent
+   `work/regex-kill-s1-s2-s3clean`, gated on **ast/ differential + Jess ratchet + core suite**.
+
+The §2 inventory table `file:line` numbers are **current and verified correct** — only the
+burndown's line numbers were stale.
+
 ## 0. Governing law and node-set target
 
 - **LAW (P6, `DESIGN-DECISIONS.md`):** no regex outside Parseman's `regex()` combinator on
@@ -97,7 +151,8 @@ The import/use builders re-parse the opaque prelude string for quotes, options, 
 and js-file class. Grammar should deliver typed prelude leaves (path `Quoted`, option
 keywords, `as <ident>` alias). Moves with the import subsystem (REORG §0.8a); pairs with
 parse-host `import.ts` (Cluster PH3). The interpolated-specifier detection (TB-4) is
-**[BRIDGE-RELEASED]**.
+**BLOCKED on the unbuilt §3.3 `Quoted` grammar** (corrected 2026-07-18 — not independently
+landable now).
 
 | file:line | regex | classifies | target |
 |---|---|---|---|
@@ -114,18 +169,26 @@ plus accessor-bracket and empty-call detection. The grammar already lexes `basic
 `mixinCallBasicSel` / interpolation parts; the builder should recurse over typed segment
 children (one recursive `node()`), not re-split a joined string.
 
+**Independence (corrected 2026-07-18):** only the **non-prelude** L4 sites are S3-independent.
+Two carve-outs: (i) the accessor-**KEY** sites that build `Quoted` value literals
+(`builders.ts:349`, `:3227` `new Quoted(...)`) are **#44-coupled** — edit only the
+segment/bracket regex, defer the `new Quoted` to #44's producer flip (S5); (ii) the four
+prelude-embedded sites (`:2789/:2824/:2830/:2842`, all inside `_buildAtRulePrelude`) move to
+**S6** (the coordinated query-prelude method-rewrite), NOT S3.
+
 | file:line | regex | classifies |
 |---|---|---|
 | `builders.ts:257` `/(?:^|[\s,])\.-?[_a-zA-Z]/` | class-selector-in-value detect (`_buildVarDeclaration`) |
 | `builders.ts:281` `/^\s*\[([^\]]+)\]/` + `:306` `/^\s*\(\s*\)/` | accessor bracket / empty-call after value |
 | `builders.ts:407` `/[#.][^#.>+~\s]*/g` | ns-accessor head segment split (`_buildNsAccessor`) |
 | `builders.ts:1168,:1175,:1190,:1202` `/[#.][^#.]*/g` etc. | segment split in `_assembleSegment` / accessor decode |
-| `builders.ts:2789` def `nsMediaRe` + `:2824` use; `:2830` `/[#.][^#.]*/g` | ns-media path split |
-| `builders.ts:2842,:3189` `/^([.#][^\[\]()\s]+)(\[([^\]]*)\])?$/` | arg-ref `.mixin[key]` split |
+| `builders.ts:2789` def `nsMediaRe` + `:2824` use; `:2830` `/[#.][^#.]*/g` | ns-media path split → **S6** (inside `_buildAtRulePrelude`) |
+| `builders.ts:2842,:3189` `/^([.#][^\[\]()\s]+)(\[([^\]]*)\])?$/` | arg-ref `.mixin[key]` split (`:2842` prelude-embedded → **S6**; `:3189` → S3) |
 | `builders.ts:3043` `/^[#.]-?[_a-zA-Z…]/`, `:3045` `/^[>+~|]$|^\|\|$/` | selector-head vs combinator classify |
 | `builders.ts:3112` `/[#.][^#.]*/g` | segment split (namespace ref) |
 | `builders.ts:3218` `/^\[([^\]]*)\]/` + `:3234,:3239` `/^\(\s*\)/` | accessor bracket / empty-call (2nd site) |
 | `builders.ts:1039` `/^!?all$/` | extend `!all` flag (`_buildExtendTarget`) → (b) grammar `optional(flag)` child (pairs w/ PH `extend.ts` ALL_FLAG) |
+| `builders.ts:349`, `:3227` accessor-KEY `new Quoted(...)` | accessor-key `Quoted` literal → **#44-coupled (S5)**; edit only the segment/bracket regex here, defer the `new Quoted` |
 
 ### Cluster L5 — media/supports query prelude classify  → (b), **[PRELUDE-SPLIT]**
 
@@ -198,14 +261,22 @@ either (i) retires with the directory once the grammar emits the structured chil
 |---|---|---|---|
 | `at-rules.ts:203` def `AT_KEYWORD` + `:252` use | `@name` head of prelude | wrong output today | needs grammar query-prelude leaves (TB-3) |
 | `at-rules.ts:209` `/@\{\s*([^}]+?)\s*\}/gu` + `:214` use | `@{…}` interp in prelude | `@media @{q}` misparse | route through structured `Interp` leaf |
-| `at-rules.ts:232` `/^@@([A-Za-z_][\w-]*)$/u` | `@@name` indirect var | | (b) grammar indirect-var child · **[BRIDGE-RELEASED]** (generic at-rule, not query) |
+| `at-rules.ts:232` `/^@@([A-Za-z_][\w-]*)$/u` | `@@name` indirect var → `VarIndirect` | | (b) grammar indirect-var child · **only possible clean independent S4 candidate — verify the grammar already emits an indirect-var terminal FIRST** (generic at-rule, not query) |
 | `at-rules.ts:235` `/@([A-Za-z_][\w-]*)/gu` + `:239` use | `@name` refs in prelude | | (b) prelude var leaves |
 
-### Cluster PH2 — custom-props.ts interp-name re-tokenize  → (b), **[BRIDGE-RELEASED]**
+### Cluster PH2 — custom-props.ts interp-name re-tokenize  → (b), **A4-COUPLED** (corrected 2026-07-18)
+
+**Correction (2026-07-18):** the single-leaf custom-prop **NAME** shape (`grammar.ts:96`
+`customPropInterp`) protects the **legacy/maintained BuilderHost** output too — not only the
+less-compat bridge. The grammar's own retirement note at that line gives the trigger: *"when
+the legacy BuilderHost is retired, reorg A4."* So this cluster (PH2 **and** the `grammar.ts:96`
+`customPropInterp` split) is re-gated to the **Jess ratchet / legacy-BuilderHost retirement
+(A4)**, NOT the ast/ differential alone, and it carries an **unscoped legacy-builder
+custom-prop-NAME edit**. It is therefore **NOT** part of the independent-S4 set.
 
 | file:line | regex | classifies | note |
 |---|---|---|---|
-| `custom-props.ts:109` `/@\{\s*([^}]+?)\s*\}/g` + `:114` use | `@{…}` in custom-prop NAME | TB-1/TB-2 | **[BRIDGE-RELEASED]** — split `grammar.ts:96` `customPropInterp` into `--`+ident+`lessInterp` leaves, consume via `interpFromRegion`; the `--@{k}`→`--` regression that froze it is now an acceptable bridge red |
+| `custom-props.ts:109` `/@\{\s*([^}]+?)\s*\}/g` + `:114` use | `@{…}` in custom-prop NAME | TB-1/TB-2 | **A4-COUPLED** — split `grammar.ts:96` `customPropInterp` into `--`+ident+`lessInterp` leaves, consume via `interpFromRegion`. Gated on Jess ratchet / legacy-BuilderHost retirement (A4), not ast/ differential alone; carries an unscoped legacy-builder custom-prop-NAME edit |
 
 ### Cluster PH3 — import.ts specifier / keyword / url re-derive  → (b), import subsystem + **[BRIDGE-RELEASED]**
 
@@ -214,13 +285,13 @@ either (i) retires with the directory once the grammar emits the structured chil
 | `import.ts:296` `/\.css([?#].*)?$/` | `.css` extension test | | (c)/(b) — resolution domain, moves w/ import subsystem |
 | `import.ts:450` def `IMPORT_KEYWORD_RE` + `:520` use | `@import`/`@-import`/`@-export` name | | (a) grammar already lexes `atKeyword`; consume typed keyword |
 | `import.ts:484` `/^url\(\s*(.*?)\s*\)$/is` | `url(...)` unwrap | | (b) typed `url()` child |
-| `import.ts:466` `.includes('@{')/'@@'` (TB-4, substring not regex) | interpolated-specifier detect inside `Quoted` | | **[BRIDGE-RELEASED]** — land §3.3 `Quoted` grammar structuring, read the `Interpolated` child |
+| `import.ts:466`/`:478` `.includes('@{')/'@@'` (TB-4, substring not regex) | interpolated-specifier detect inside `Quoted` | | **BLOCKED on §3.3 `Quoted` grammar structuring** (prerequisite does NOT exist on `origin/dev`) — cannot land independently now; needs the `Quoted` `Interp` child built first |
 
 ### Related deferred host sites (not regex, tracked in burndown TB-4/TB-5, **[BRIDGE-RELEASED]**)
 
 | file:line | what | note |
 |---|---|---|
-| `value-leaf.ts:87` `quotedInterp`/`quotedLeaf` (TB-5, char-scan) | `@{…}` inside quoted-string VALUE | consume §3.3 `Quoted` `Interp` child instead of re-scanning the leaf |
+| `value-leaf.ts:87` `quotedInterp`/`quotedLeaf` (TB-5, char-scan) | `@{…}` inside quoted-string VALUE | **BLOCKED on §3.3 `Quoted` grammar structuring** (does NOT exist on `origin/dev`) — consume the `Quoted` `Interp` child once built; NOT independently landable now |
 | `mixins-def.ts:112` (TB, not interp, not regex) | multi-token space-list default (`thin dotted`) not assembled into `List` | §3.5 list value-assembly; left as-is, out of this program's regex scope |
 
 ---
@@ -254,9 +325,9 @@ are `preprocessorBase`-shareable with Less clusters.
 
 | Bucket | count | which |
 |---|---|---|
-| **[BRIDGE-RELEASED]** (unblocked purely by the 2026-07-18 ruling) | **7** | PH2 `custom-props.ts` @{} (TB-1/TB-2, 1 site); PH3 `import.ts:466` TB-4; `value-leaf.ts` TB-5; PH1 `at-rules.ts:232` `@@name`; grammar-side `customPropInterp` split (`grammar.ts:96`); L2 `escapedStrRe` shared with bridge; L3 quoted-path shared re-tokenize |
+| **[BRIDGE-RELEASED]** (landable under the 2026-07-18 bridge ruling ALONE) | **~5** (corrected from 7) | PH1 `at-rules.ts:232` `@@name`→`VarIndirect` (verify terminal first); plus the bridge-only interp sites. **NOT** in this set: PH2 `custom-props.ts` @{} + `grammar.ts:96` `customPropInterp` (→ **A4-coupled**, protects legacy BuilderHost); `import.ts:466` TB-4 + `value-leaf.ts` TB-5 (→ **blocked on unbuilt §3.3 `Quoted` grammar**); L2 `escapedStrRe` @`:2533` + L3 quoted-path (→ construct `Quoted`, **parked in S5 / PENDING #44**) |
 | **[PRELUDE-SPLIT]** (need a real grammar query-prelude split — coverage gap, never bridge-coupled) | **~11** | L5 whole `_buildAtRulePrelude` cluster (6) + PH1 `at-rules.ts` query sites (`:203/:209/:235`, ~5). **TB-3.** Highest blast radius. |
-| **PENDING #44** (node-construction shape depends on #44's final literal fields) | **~14** | all of L1 (4, Dimension/ratio) + L2 Quoted-constructing sites (5) + L3 path-`Quoted` (2) + L2 paren/operand (3). Cannot rewrite the builder's `new Dimension(...)`/`new Quoted(...)` until #44 fixes `type`+verbatim-image fields. |
+| **PENDING #44** (node-construction shape depends on #44's final literal fields) | **≥14 (FLOOR, not exact)** | all of L1 (4, Dimension/ratio) + L2 Quoted-constructing sites (5) + L3 path-`Quoted` (2) + L2 paren/operand (3). **PLUS un-enumerated value constructions that flip with the same #44 producer:** `builders.ts` `new Color` @`:486`; `new Quoted` @`:219`, `:457`, `:724`, `:1270`, `:1327`, `:1343`; accessor-KEY `new Quoted` @`:349`, `:3227`. Cannot rewrite the builder's `new Dimension(...)`/`new Quoted(...)`/`new Color(...)` until #44 fixes `type`+verbatim-image fields. The true producer-flip footprint is **larger than the S5 list**. |
 | **grammar-terminal-ready now (a)** | ~6 | L9 known-at-rule (already lexed), L6 compare-op (already `compareOp`), PH3 `IMPORT_KEYWORD_RE` (already `atKeyword`), L7 format chars |
 | **trivial (c), no grammar change, shed regex form** | ~15 | L8 (4), L7 niche (3), L5 warnings (4), scattered `.trim`/`.slice`/`.includes` |
 
@@ -275,33 +346,63 @@ that can land independently from the **coupled set** that must land *in the same
 |---|---|---|---|
 | **S1** | L9 known-at-rule + L6 compare-op + PH3 `IMPORT_KEYWORD_RE` | (a) consume already-existing `regex()` terminals; delete builder copies | **LOW** — terminals already exist; pure builder deletion. No node-shape change. |
 | **S2** | L8 + L7-trivial + L5-warnings + scss:216/jess trivial | (c) de-regex trivial string ops | **LOW** — behavior-identical string ops; grep-gate only. |
-| **S3** | L4 selector/ns-accessor/mixin-head re-split | (b) recurse over typed segment children | **MEDIUM** — many sites, but selector nodes are NOT in #44's value-literal set (structural `Complex`/`Compound`/`Simple`), so no #44 coupling. Guard with mixin/ns-accessor differential fixtures. |
-| **S4** | PH2 + grammar `customPropInterp` split + PH1 `@@name` + PH3 TB-4 + `value-leaf.ts` TB-5 | (b) [BRIDGE-RELEASED] grammar interp-leaf split | **MEDIUM** — bridge byte-identity WILL go red (accepted); gate is ast/ differential (`--@{k}:…`, `@import "@{theme}.less"` must parse structurally). Independent of #44 (Interp is structural, not a value literal). |
+| **S3** (partial — see corrections #1/#4) | **non-prelude** L4 selector/ns-accessor/mixin-head re-split | (b) recurse over typed segment children | **MEDIUM** — selector nodes are NOT in #44's value-literal set (structural `Complex`/`Compound`/`Simple`), so no #44 coupling. **Carve-outs:** accessor-KEY `new Quoted` (`:349`, `:3227`) → S5 (#44-coupled); the four prelude-embedded sites (`:2789/:2824/:2830/:2842`) → S6. Guard with mixin/ns-accessor differential fixtures. |
+| **S4** (shrunk — see corrections #2/#3) | **only** PH1 `at-rules.ts:232` `@@name`→`VarIndirect` — **and only if the grammar already emits an indirect-var terminal (verify first)** | (b) grammar indirect-var child | **MEDIUM** — the rest of the original S4 has left this set: PH2 `custom-props.ts` + `grammar.ts:96` `customPropInterp` are **A4-coupled** (protect legacy BuilderHost); `import.ts:466` TB-4 and `value-leaf.ts` TB-5 are **blocked on the unbuilt §3.3 `Quoted` grammar**. Gate is ast/ differential. |
 
 ### Coupled cluster (MUST land WITH #44)
 
 | # | cluster | why coupled | risk |
 |---|---|---|---|
-| **S5** | L1 (Dimension/number/ratio) + L2 (var/escaped-str/quoted/paren/operand) + L3 quoted-path | Every site **constructs a value literal** (`Dimension`/`Quoted`) whose `type`+field shape is exactly what #44 redefines (verbatim image, PascalCase `type`, `Word` elimination). Relocating the grammar to emit `Dimension{value,unit}` / `Quoted` children AND rewiring the builder to map them is the same edit as #44's producer flip. Doing it twice = the double-rewrite the owner forbids. | **HIGH** — value path is the hot differential surface; verbatim-vs-canonicalized Dimension output (`1.0px`→`1.0px`) is a #44 semantic. Land `grammar.ts` value-terminal reshape + `builders.ts` L1/L2/L3 rewrite + `nodes.ts` literal reshape as ONE commit gated on the ast/ differential. |
+| **S5** | L1 (Dimension/number/ratio) + L2 (var/escaped-str/quoted/paren/operand) + L3 quoted-path + accessor-KEY `new Quoted` (`:349`, `:3227`) + the un-enumerated `new Color`/`new Quoted` FLOOR sites (see §5, correction #5) | Every site **constructs a value literal** (`Dimension`/`Quoted`/`Color`) whose `type`+field shape is exactly what #44 redefines (verbatim image, PascalCase `type`, `Word` elimination). Relocating the grammar to emit `Dimension{value,unit}` / `Quoted` children AND rewiring the builder to map them is the same edit as #44's producer flip. Doing it twice = the double-rewrite the owner forbids. | **HIGH** — value path is the hot differential surface; verbatim-vs-canonicalized Dimension output (`1.0px`→`1.0px`) is a #44 semantic. Land `grammar.ts` value-terminal reshape + `builders.ts` L1/L2/L3 rewrite + `nodes.ts` literal reshape as ONE commit gated on the ast/ differential. |
 
 ### Coupled cluster (MUST land WITH the query-prelude grammar split — TB-3)
 
 | # | cluster | why coupled | risk |
 |---|---|---|---|
-| **S6** | L5 `_buildAtRulePrelude` + PH1 query sites (`:203/:209/:235`) | Both are the builder/host twins of the SAME missing structured child: the media/supports/container prelude arrives as one opaque region. Neither can drop its regex until the grammar emits query-prelude leaves. Land the grammar prelude-split, then delete BOTH re-tokenizers in the same landing. | **HIGH** — ships wrong output today (`@media @{q}`); the fix changes real fixtures. Independent of #44 (prelude condition nodes are not value literals), so S6 and S5 are parallel coupled tracks, not nested. |
+| **S6** | L5 `_buildAtRulePrelude` + the four prelude-embedded L4 sites (`:2789/:2824/:2830/:2842`) + PH1 query sites (`:203/:209/:235`) | Both are the builder/host twins of the SAME missing structured child: the media/supports/container prelude arrives as one opaque region. Neither can drop its regex until the grammar emits query-prelude leaves. Land the grammar prelude-split, then delete BOTH re-tokenizers in the same landing. | **HIGH** — ships wrong output today (`@media @{q}`); the fix changes real fixtures. |
 
-### Recommended order
+> **Correction #1 (2026-07-18): S5 and S6 are NOT parallel independent coupled tracks.** S5's
+> in-method prelude value construction and S6's query-prelude re-tokenize live in the **same
+> method** `_buildAtRulePrelude` (`builders.ts` ~2524–2898). They MUST be **one coordinated
+> method-rewrite**, OR S6 (the TB-3 query-prelude grammar split) lands first and re-expresses
+> S5's in-method prelude value sites. They cannot be scheduled as disjoint parallel commits.
+> The four prelude-embedded L4 sites (`:2789/:2824/:2830/:2842`) that §2/L4 first placed in S3
+> move INTO this coordinated S6/TB-3 method-rewrite.
 
-1. **S1, S2** first (low-risk, immediate grep-gate progress, no coupling).
-2. **S3, S4** next, in parallel (both MEDIUM, disjoint files — S3 selector/ns, S4 interp/
-   custom-prop/import-specifier). S4 accepts bridge red.
-3. **S5 lands as part of #44's node-model migration commit** (the value-literal producer
-   flip). Do not start S5 standalone.
-4. **S6 lands as part of the TB-3 query-prelude grammar split** (its own higher-risk shape,
-   already committed in `TIER-B-INTERPOLATION-GRAMMAR-SPEC` §3.4).
-5. Directory deletion: once S4+S5+S6 consume structured children, `parse-host/**` has no
-   remaining re-derivation and is deleted at reorg A4 (closes burndown 0.a, 1.b, 2.b,
-   3.f/g/j/k, Cluster 7).
+### A4-coupled cluster (MUST land WITH the legacy-BuilderHost retirement, reorg A4)
+
+| # | cluster | why coupled | risk |
+|---|---|---|---|
+| **S-A4** | PH2 `custom-props.ts` @{}-in-NAME + `grammar.ts:96` `customPropInterp` single-leaf split | The single-leaf custom-prop NAME shape protects the **legacy/maintained BuilderHost** output, not only the less-compat bridge (grammar retirement note: *"when the legacy BuilderHost is retired, reorg A4"*). Splitting it carries an **unscoped legacy-builder custom-prop-NAME edit**. Gate is the **Jess ratchet / legacy-BuilderHost retirement (A4)**, not the ast/ differential alone. | **MEDIUM** — regate, not independent. |
+
+### Blocked cluster (prerequisite grammar does NOT exist on `origin/dev`)
+
+| # | cluster | blocker | risk |
+|---|---|---|---|
+| **S-Q3.3** | PH3 `import.ts:466`/`:478` TB-4 (`.includes('@{')`) + `value-leaf.ts:87` TB-5 (char-scan) | Both need the **§3.3 `Quoted` grammar structuring** (`Quoted` with an `Interp` child) — a prerequisite that is **unbuilt on `origin/dev`**. Cannot land independently now; land §3.3 first, then consume the `Interp` child. | **BLOCKED** — no-op until §3.3 exists. |
+
+### Recommended order (corrected 2026-07-18)
+
+1. **S1, S2, and the non-prelude subset of S3** first — low-risk, immediate grep-gate
+   progress, no coupling. **This is the cleared subset now executing** (correction #7):
+   agent `work/regex-kill-s1-s2-s3clean` is landing **S1 + S2 + non-prelude-S3** (with the
+   `:349`/`:3227` `new Quoted` carve-outs deferred to S5), gated on **ast/ differential +
+   Jess ratchet + core suite**.
+2. **S4** shrinks to **only** `at-rules.ts:232` `@@name`→`VarIndirect`, and only after
+   verifying the grammar already emits an indirect-var terminal. (PH2 + `customPropInterp` →
+   S-A4; TB-4/TB-5 → S-Q3.3; neither is independent.)
+3. **S-A4** (PH2 + `grammar.ts:96` split) lands **with the legacy-BuilderHost retirement at
+   reorg A4** — it protects legacy BuilderHost output, so it is A4-gated, not ast/-gated.
+4. **S-Q3.3** (`import.ts` TB-4 + `value-leaf.ts` TB-5) lands **after §3.3 `Quoted` grammar
+   structuring is built** — blocked until then.
+5. **S5 lands as part of #44's node-model migration commit** (the value-literal producer
+   flip, footprint ≥ the enumerated list — see §5 FLOOR note). Do not start S5 standalone.
+6. **S6 lands as part of the TB-3 query-prelude grammar split** (one coordinated
+   `_buildAtRulePrelude` method-rewrite — see correction #1; higher-risk shape already
+   committed in `TIER-B-INTERPOLATION-GRAMMAR-SPEC` §3.4).
+7. Directory deletion: once S-A4 + S-Q3.3 + S5 + S6 consume structured children,
+   `parse-host/**` has no remaining re-derivation and is deleted at reorg A4 (closes burndown
+   0.a, 1.b, 2.b, 3.f/g/j/k, Cluster 7).
 
 **Gate for every landing:** the ast/ differential
 (`alpha-oracle-differential.test.ts` vs `alpha-oracle-baseline.json`) stays green.
