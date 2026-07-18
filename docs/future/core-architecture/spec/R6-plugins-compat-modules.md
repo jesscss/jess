@@ -413,6 +413,137 @@ build `@-export` semantics** beyond parsing/accepting the node; flag as owner-op
 
 ---
 
+## Part D — PROPOSED: `@use`/`@compose` namespace-access syntax
+
+> **STATUS: PROPOSED — pending owner sign-off (ruled 2026-07-18, not yet landed).**
+> Source of truth is owner memory `namespace-access-use-compose-model` (owner-
+> decided 2026-07-18, verbatim). This part specifies HOW a namespaced module's
+> members are *accessed* once §C's module scope exists (`@compose` isolated scope,
+> `@use` JS import). It ties directly into R4.4's namespace/accessor resolution
+> engine — the interpolation-body half of the model lives in
+> `R4-interpolation-detached-merge-namespaces.md` §R4.6 (cross-linked below).
+> Nothing here is built until the owner signs off.
+
+### D.1 No new operator — reuse the existing `@var` head + `[]` + `.name()` grammar
+
+The access syntax introduces **no new operator and no new head sigil**. It REUSES
+Less's already-parsed shapes:
+
+- the `@var` (Less) / `$var` (Jess) **variable head**,
+- the `[key]` **map-lookup** accessor (R4.4's `MapAccessor`,
+  `R4-…-namespaces.md:741-751`),
+- the `.name(args)` **call** grammar (R4.4's `MixinCall.path`,
+  `:727-739`, which already reuses `MixinCall.path`).
+
+The module KIND (`@compose` vs `@use`, §C.1) decides what each shape *resolves to*
+— NOT the grammar. Parser grammar unchanged from
+`packages/less-parser/src/grammar.ts:184-260,566-720` (map-lookup + mixin-call
+path productions).
+
+### D.2 Sigil'd head — this OVERTURNS the earlier "bare head" idea
+
+**The namespace head is SIGIL'd (`@`/`$`), NOT bare.** This explicitly overturns
+the earlier "bare `theme` head" + "disambiguation fork" sketch — the sigil'd head
+IS the design, deliberately grammatically identical to a variable-map-lookup:
+
+| dialect | value read | call |
+|---|---|---|
+| **Less** | `@theme[@primary]` | `@theme.elevate()`, `@my-functions.func()` |
+| **Jess** | `$theme[primary]` | `$theme.elevate()`, `$my-functions.func()` |
+
+The `as`-bound (or filename-derived, §D.5) name simply **binds an ordinary
+`@var`/`$var`** to a namespace/map-like value; RESOLUTION discovers that the bound
+value is a namespace. Consequences:
+
+- **NO parse-time binding table** — the parser does not need to know which names
+  are namespaces.
+- **NO new head sigil** — `@theme[…]` parses as an ordinary `@var` map-lookup
+  (`grammar.ts:184-260`); the namespace-ness is a *resolve-time* property of the
+  bound value.
+
+### D.3 Two operators — `[key]` reads, `.name()` calls
+
+**`[key]` = value READ.**
+
+- **Jess:** a *bare* key is a **variable member** (`$theme[primary]`); a *quoted*
+  key is a **property member** (`$theme['prop']`).
+- **Less:** a sigil'd key, Less convention (`@theme[@primary]`).
+
+**`.name(args)` = CALL**, and the member KIND is decided by the module type:
+
+- for **`@compose`** → a **mixin** call (statement position);
+- for **`@use`** → a **function** call (value position, JS-exported).
+
+**No member functions in Less `@compose`.** `@theme.scale(4)` on a `@compose`
+namespace is an **ERROR** — per owner, "there is no such thing as an exposed
+function in Less." `@use` is the one module kind that brings callable functions.
+
+**Member kind by module type** (from memory, verbatim):
+
+| module | `head[key]` | `head.name(...)` |
+|---|---|---|
+| `@compose` | variable / custom-prop read | **mixin** call (stmt) |
+| `@use` | (JS values, if exported) | **function** call (value) |
+
+This routes onto R4.4's engine: `head[key]` → `MapAccessor`
+(`R4-…-namespaces.md:741-751`), `head.name(args)` → `MixinCall` with a namespace
+`path` (`:727-739`). The module-kind gate (mixin-vs-function, and the Less-compose
+"no member function" error) is applied where the module scope is resolved
+(`import-bridge.ts`, §C.2 / [R6.C1]).
+
+### D.4 Jess `$.foo` shorthand — variable-or-property, ambiguous-error on both
+
+**`$.foo`** = look up `foo` as **variable OR property**, whichever exists. If BOTH
+a variable and a property named `foo` exist, it is an **ambiguous-reference
+ERROR**. It is the "don't-care-which" lookup that only fails on a genuine name
+collision. (Jess-only shorthand; no Less equivalent.)
+
+### D.5 `@use` namespace binding — dialect-split
+
+The namespace name a module binds to differs by facing:
+
+- **Less** — no `as` at all. `@use "./my-functions.js";` derives the namespace
+  from the filename basename → `@my-functions`.
+- **Jess / Sass** — `as` is OPTIONAL; the full Sass-shaped triple:
+  - `@use "./mod";` → filename-derived default namespace;
+  - `@use "./mod" as ns;` → explicit namespace `ns`;
+  - `@use "./mod" as *;` → NO namespace — members exposed unqualified.
+
+(`@compose` binding follows §C's module-scope rules; the `as`-triple detail above
+is specified for `@use`.)
+
+### D.6 Separator = `.` (owner-confirmed)
+
+The call separator is **`.`** (`@theme.elevate()`), owner-confirmed — it reuses
+R4.4's `MixinCall.path` segment model (`R4-…-namespaces.md:727-739`) directly. No
+`>`-style descend token is introduced for module member calls.
+
+### D.7 Cross-link — interpolation body widening
+
+Namespaced value reads inside `@{…}` interpolation are specified in
+`R4-interpolation-detached-merge-namespaces.md` **§R4.6** (the `@{}` interp-body
+widening, an amendment to the owner-LOCKED §4.1 `@{`…`}` delimiters, owner-approved
+2026-07-18). Summary: `@{theme[variant]}` is legal (READ only, never `.`-call —
+interpolation must yield a string, and `ns.mixin()` yields a ruleset body). See
+§R4.6 for the full rule.
+
+### D.8 Open questions (owner to rule)
+
+- **[R6.D-a] Module-kind gate placement.** The mixin-vs-function decision and the
+  Less-`@compose`-member-function ERROR must be applied at the resolve site
+  (`import-bridge.ts` / R4.4 dispatch). Confirm this rides the §C.2 / [R6.C1]
+  module-scope resolution rather than a parse-time reject (the head is
+  grammatically a plain var map-lookup until resolved).
+- **[R6.D-b] `$.foo` ambiguity surface.** Confirm the ambiguous-both error is a
+  resolve-time diagnostic (not parse-time), consistent with the resolve-time
+  namespace discovery of §D.2.
+- **[R6.D-c] `as *` unqualified exposure vs flat fold.** Confirm `@use … as *`
+  (unqualified members) is distinct from the leaky `@import`/`@-import` fold (§C.1)
+  — same *reachability*, different *provenance/isolation* rules — or whether it is
+  intentionally the same splice.
+
+---
+
 ## Invariants
 
 1. **Boundary held.** No `tree2/` file imports `../tree` or anything Less-branded.

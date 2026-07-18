@@ -904,3 +904,73 @@ divergence is **merge = last-occurrence** (owner), where the alpha golden's line
 order is a candidate for owner update rather than the tree2 target. Where a Jess
 behavior may diverge from Less/Sass and no owner ruling exists, items are marked
 *needs owner confirmation of intended v5 shape* above — none is asserted as a bug.
+
+---
+
+## R4.6 — PROPOSED: `@{}` interpolation-body widening for namespaced refs
+
+> **STATUS: PROPOSED — pending owner sign-off (ruled 2026-07-18, not yet landed).**
+> Source of truth is owner memory `namespace-access-use-compose-model` (owner-
+> decided 2026-07-18, verbatim). This section is the **interpolation half** of the
+> `@use`/`@compose` namespace-access model; the module-access syntax/semantics
+> half lives in `R6-plugins-compat-modules.md` **Part D** (cross-linked). It is an
+> amendment to the owner-LOCKED §4.1 `@{`…`}` delimiter grammar and therefore
+> **requires explicit owner sign-off before landing** — the owner approved the
+> amendment 2026-07-18; this records it as PROPOSED until it lands.
+
+### R4.6.1 What widens (and what does NOT)
+
+The owner-LOCKED §4.1 grammar fixes the interpolation **delimiters** `@{` … `}`
+(the seam at `packages/less-parser/src/grammar.ts:120-128`). That delimiter pair
+is **NOT** touched. What widens is the interpolation **BODY** — the token(s)
+*between* the braces — from a single ident to the R4.4 value-reference production:
+
+```
+@{ head[key]... }        // widened body: a value-reference read
+```
+
+- `@{theme[variant]}` — the `@` is supplied by the `@{` delimiter, so the BODY is
+  `theme[key]` (**no doubled sigil** — it is not `@{@theme[…]}`).
+- **Bare `@{name}` stays valid** (the degenerate case — a single-ident body is the
+  trivial value-reference), so no existing interpolation breaks.
+
+This reuses the R4.4 `MapAccessor` resolution (§R4.4.2–.3,
+`nodes.ts` `MapAccessor` at `:741-751`) as the interpolation body's value
+resolver, exactly as map keys already reuse R4.1's `valueText` (§R4.4.3).
+
+### R4.6.2 READ-only — never a `.`-call inside interpolation
+
+Inside `@{…}` the widened body admits the **`[]` READ accessor only**, NEVER the
+`.name()` CALL form:
+
+- interpolation MUST yield a **string** (it splices resolved bytes into a literal
+  context, §R4.1.1);
+- a namespace member call `ns.mixin()` yields a **ruleset body**, not a string —
+  so `.`-call is disallowed in interpolation position.
+
+`@{theme[variant]}` (read) is legal; `@{theme.elevate()}` (call) is an ERROR. The
+call form is only legal in the R6 Part D statement/value positions, not here.
+
+### R4.6.3 Relationship to the LOCKED §4.1 delimiters
+
+This is recorded as **the LOCKED-§4.1 amendment the owner approved on
+2026-07-18**: the `@{`…`}` delimiters remain locked and unchanged; only the body
+grammar between them widens to the value-reference read. The doubled-sigil
+question is resolved: the body carries **no** leading `@`/`$` (the delimiter
+supplies it), so `@{theme[variant]}` — not `@{@theme[variant]}`.
+
+### R4.6.4 Cross-link
+
+The module-access syntax (sigil'd head, `[key]` read vs `.name()` call, member
+kind by module type, `@use` `as`-triple, `$.foo` shorthand, `.` separator) is in
+`R6-plugins-compat-modules.md` **Part D**. This section (R4.6) governs ONLY the
+interpolation-body widening.
+
+### R4.6.5 Open questions (owner to rule)
+
+- **[R4.6-a] Body-widen now vs defer.** Land the `@{ head[key] }` body widening
+  in the R4 slice, or defer it behind R4.4's map-accessor landing? (Memory flags
+  this as an open sequencing choice.)
+- **[R4.6-b] Nested/chained reads in the body.** Confirm whether a chained
+  `@{ a[b][c] }` (multi-segment read) is in scope for the interpolation body or
+  only a single `head[key]` read is admitted at first landing.
