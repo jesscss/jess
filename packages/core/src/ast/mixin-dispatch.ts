@@ -49,7 +49,11 @@ export interface Selection {
  * frame. Absent (dispatch without a frame context), defaults fall back to the
  * caller resolver.
  */
-export type DefaultResolver = (v: ValueNode, boundSoFar: Map<string, ValueNode>) => string;
+export type DefaultResolver = (
+  v: ValueNode,
+  boundSoFar: Map<string, ValueNode>,
+  def: MixinDef,
+) => string;
 
 /**
  * Bind a call's args to a definition's params. Returns the binding map, or
@@ -98,8 +102,10 @@ export function bindArgs(
       argVal = resolveEager(positional[pi++]!.value, resolveCaller);
     } else if (p.default !== undefined) {
       // A default value resolves with the params bound so far in scope (Less:
-      // it can reference an earlier param), not the caller frame.
-      argVal = resolveEagerDefault(p.default, bound, resolveCaller, resolveDefault);
+      // it can reference an earlier param), overlaid on the mixin's DEFINITION
+      // scope (`@parameter: @parameterDefault` reads the def-scope `@parameterDefault`,
+      // not a same-name caller var) — not the caller frame.
+      argVal = resolveEagerDefault(p.default, bound, def, resolveCaller, resolveDefault);
     } else {
       return null; // required slot unfilled
     }
@@ -162,12 +168,13 @@ function resolveEager(v: ValueNode, resolveCaller: ValueResolver): ValueNode {
 function resolveEagerDefault(
   v: ValueNode,
   boundSoFar: Map<string, ValueNode>,
+  def: MixinDef,
   resolveCaller: ValueResolver,
   resolveDefault?: DefaultResolver,
 ): ValueNode {
   if (v.type === 'DetachedRuleset') return v;
   if (isTypedLiteral(v)) return v;
-  return any(resolveDefault ? resolveDefault(v, boundSoFar) : resolveCaller(v));
+  return any(resolveDefault ? resolveDefault(v, boundSoFar, def) : resolveCaller(v));
 }
 
 function valueBytes(v: ValueNode): string {

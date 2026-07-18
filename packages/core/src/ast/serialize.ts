@@ -326,7 +326,7 @@ function lookupMixinCandidates(frame: Frame | null, name: string): MixinDef[] {
  * {@link collectMixins} / {@link collectRulesets} — so per-call lookup stays O(1)
  * (a map `get`), not a per-call statement walk.
  */
-function frameOrderedMixins(f: Frame): Map<string, MixinDef[]> | null {
+function frameOrderedMixins(f: Frame, e: EvalCtx): Map<string, MixinDef[]> | null {
   if (f.orderedMixins !== undefined) return f.orderedMixins;
   const st = f.statements;
   if (!st) return (f.orderedMixins = null);
@@ -341,9 +341,12 @@ function frameOrderedMixins(f: Frame): Map<string, MixinDef[]> | null {
       // canonical form plus its leading-combinator-stripped form (mirrors the keys
       // `collectRulesets` builds). Collect UNIQUE keys first so a rule with two
       // selectors that canonicalize alike adds ONE candidate, not two.
+      // [mixin-interp] an INTERPOLATED selector (`.@{name}`) keys under its RESOLVED
+      // name in this frame (`.@{a1}` with `@a1: foo` answers to `.foo()`), so a call
+      // dispatches on the concrete name the parser could not know statically.
       let keys: Set<string> | null = null;
       for (const c of s.selector.selectors) {
-        const key = complexCanonical(c);
+        const key = complexHasInterp(c) ? resolveComplex(c, f, e) : complexCanonical(c);
         (keys ??= new Set<string>()).add(key);
         const stripped = key.replace(/^[>+~]\s*/u, '');
         if (stripped !== key) keys.add(stripped);
@@ -369,10 +372,10 @@ function frameOrderedMixins(f: Frame): Map<string, MixinDef[]> | null {
  * defs (detached-ruleset scope unlocking via `@rs()`, which pushes into `mixins`
  * without touching `statements`) appended.
  */
-function frameCandidatesInOrder(f: Frame, name: string): MixinDef[] {
+function frameCandidatesInOrder(f: Frame, name: string, e: EvalCtx): MixinDef[] {
   const mapDefs = f.mixins?.get(name);
   if (!f.statements) return mapDefs?.slice() ?? [];
-  const base = frameOrderedMixins(f)?.get(name);
+  const base = frameOrderedMixins(f, e)?.get(name);
   if (!mapDefs) return base ? base.slice() : [];
   const out = base ? base.slice() : [];
   // Append published defs (in `mixins` but not authored in `statements`).
@@ -390,12 +393,13 @@ function frameCandidatesInOrder(f: Frame, name: string): MixinDef[] {
 function lookupCandidates(
   frame: Frame | null,
   name: string,
+  e: EvalCtx,
   homes?: Map<MixinDef, Frame>, // [closure] def → the frame it was DEFINED in
 ): MixinDef[] {
   let out: MixinDef[] | null = null;
   let fb: Frame | null | undefined;
   for (let f = frame; f; f = f.parent) {
-    const hit = frameCandidatesInOrder(f, name);
+    const hit = frameCandidatesInOrder(f, name, e);
     if (hit.length) {
       if (homes) for (const d of hit) if (!homes.has(d)) homes.set(d, f);
       if (!out) out = hit.slice(); else out.push(...hit);
@@ -406,7 +410,7 @@ function lookupCandidates(
     // The [closure] fallback chain (caller scope) can rejoin the parent (definition)
     // chain at a shared ancestor, so a def already collected must NOT be dispatched
     // twice: merge the fallback candidates by identity, first occurrence wins.
-    const more = lookupCandidates(fb, name, homes);
+    const more = lookupCandidates(fb, name, e, homes);
     for (const d of more) if (!out || !out.includes(d)) (out ??= []).push(d);
   }
   return out ?? [];
@@ -469,6 +473,7 @@ function findPathInScope(
   remaining: string[],
   homes: Map<MixinDef, Frame>,
   out: MixinDef[],
+  e: EvalCtx,
 ): void {
   const st = scope.statements;
   if (!st) return;
@@ -481,11 +486,16 @@ function findPathInScope(
       }
     } else if (s.type === 'Rule') {
       for (const c of s.selector.selectors) {
-        const el = complexAtoms(c);
+        // [mixin-interp] an interpolated selector resolves in THIS scope before its
+        // element atoms are taken, so a compound/namespaced call matches on the
+        // concrete name (`#@{c1}-foo > .@{c2}()` answers `#foo-foo > .bar()`).
+        const el = complexHasInterp(c) ? selectorAtoms(resolveComplex(c, scope, e)) : complexAtoms(c);
         if (el.length === 0 || !atomsArePrefix(el, remaining)) continue;
         if (el.length === remaining.length) {
           const rm: MixinDef = {
-            type: 'MixinDef', name: complexCanonical(c), params: [], body: s.body, ruleMixin: true,
+            type: 'MixinDef',
+            name: complexHasInterp(c) ? resolveComplex(c, scope, e) : complexCanonical(c),
+            params: [], body: s.body, ruleMixin: true,
             ...(s.guard !== undefined ? { guard: s.guard } : {}),
           };
           out.push(rm);
@@ -497,7 +507,7 @@ function findPathInScope(
             vars: collectVars(s.body),
             statements: s.body,
           };
-          findPathInScope(child, remaining.slice(el.length), homes, out);
+          findPathInScope(child, remaining.slice(el.length), homes, out, e);
         }
         break; // one selector of a rule matches the prefix at most once
       }
@@ -514,15 +524,15 @@ function findPathInScope(
  * match a compound def (`.jo.ki()`), an `&`-nested step (`.amp.support()`), or a
  * call whose compound run spans a descendant-nested definition
  * (`.do.re.mi.fa.sol.la.si()`). */
-function findPathCandidates(frame: Frame, call: MixinCall, homes: Map<MixinDef, Frame>): MixinDef[] {
+function findPathCandidates(frame: Frame, call: MixinCall, e: EvalCtx, homes: Map<MixinDef, Frame>): MixinDef[] {
   const elements = callAtoms(call);
   if (elements.length === 0) return [];
   for (let f: Frame | null = frame; f; f = f.parent) {
     const out: MixinDef[] = [];
-    findPathInScope(f, elements, homes, out);
+    findPathInScope(f, elements, homes, out, e);
     if (out.length) return out;
     if (f.fallback) {
-      findPathInScope(f.fallback, elements, homes, out);
+      findPathInScope(f.fallback, elements, homes, out, e);
       if (out.length) return out;
     }
   }
@@ -2037,8 +2047,8 @@ function expandCall(
   const namespaced = call.path.length > 0;
   const homes = new Map<MixinDef, Frame>();
   const rawCandidates = namespaced
-    ? findPathCandidates(frame, call, homes)
-    : lookupCandidates(frame, call.name, homes);
+    ? findPathCandidates(frame, call, e, homes)
+    : lookupCandidates(frame, call.name, e, homes);
   // [parent-exclusion] A paren-less ruleset callable as a zero-arg mixin
   // (`ruleMixin`) is EXCLUDED from its own candidate set while its body is on the
   // active expansion stack — the enclosing frame declines to be its own candidate.
@@ -2111,6 +2121,14 @@ function expandCall(
       // [scope-leak] after expansion the mixin's own `@x:` declarations unlock into
       // the caller scope (visible to later siblings), matching less@4.
       leakBodyVars(frame, def.body, callFrame, e);
+      // [ruleset-unlock] a ruleset (or nested mixin def) declared inside the called
+      // body ALSO unlocks into the caller scope, so a later sibling can call it as a
+      // mixin (less@4 splices the body's evaluated rules as siblings of the call, and
+      // `Ruleset.find` then resolves against them). `.importRuleset()` defining
+      // `.imported` makes `.imported()` callable afterward (`scope` fixture). Reuse
+      // the callee frame's already-synthesized def+ruleMixin map (explicit MixinDefs
+      // and paren-less rulesets, interleaved) rather than re-scanning the body.
+      publishMixins(frame, frameOrderedMixins(callFrame, e));
     }
   } finally {
     e.mixinDepth--;
@@ -2507,10 +2525,16 @@ function dispatch(
     );
   };
   // A DEFAULT param value resolves with the params bound so far in scope (Less:
-  // `@hover-background: darken(@background, …)` reads the `@background` param).
-  // Overlay the params-so-far onto the caller frame and resolve there.
-  const resolveDefault: DefaultResolver = (v, boundSoFar) => {
-    const overlay: Frame = { parent: frame, mixins: null, vars: asStacks(boundSoFar) };
+  // `@hover-background: darken(@background, …)` reads the `@background` param)
+  // overlaid on the mixin's DEFINITION scope, with the call site as a fallback —
+  // the same frame layering `makeCalleeTyped` builds for guards. So a default like
+  // `@parameter: @parameterDefault` reads the def-scope `@parameterDefault`, not a
+  // same-name variable redeclared in the caller (`scope` fixture #allAreUsedHere).
+  const resolveDefault: DefaultResolver = (v, boundSoFar, def) => {
+    const home = homes?.get(def);
+    const overlay: Frame = home && home !== frame
+      ? { parent: home, mixins: null, vars: asStacks(boundSoFar), fallback: frame }
+      : { parent: frame, mixins: null, vars: asStacks(boundSoFar) };
     const b = evalBytes(v, overlay, e);
     if (isThenable(b)) throw new Error('async value in a synchronous dispatch position');
     return b;
