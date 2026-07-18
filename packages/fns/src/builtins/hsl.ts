@@ -1,20 +1,21 @@
 import type { Color, Dimension, List } from '@jesscss/core/value';
-import { colorHsl, colorRgbRounded, makeColorHsl, makeColorRgb } from '@jesscss/core/value';
+import { colorHsl, makeColorHsl } from '@jesscss/core/value';
 import { HSL } from '@jesscss/core/value';
 import { clamp01, isColor, isModern, normalizeHue, percentOf } from './color-ctor-helper.js';
 import type { Fn } from '@jesscss/core/value';
 
 /**
  * `hsl` / `hsla` (alias) — CONSTRUCT an HSL-format color, or REFORMAT a color to
- * hsl. Byte-faithful to `less/hsl`: hue via `normalizeHue` (wrapped 0-360), s/l via
- * `percentOf(1)` clamped 0-1, optional alpha via `percentOf(1)`.
+ * hsl. hue via `normalizeHue` (wrapped 0-360), s/l via `percentOf(1)` clamped 0-1,
+ * optional alpha via `percentOf(1)`.
  *
- * The GREY canonical branch (`s === 0 || l === 0 || l === 1`) mirrors the legacy
- * impl: it rebuilds from the ROUNDED rgb (format still HSL), so the serialized hue
- * collapses to `0` and s/l reflect the rounded channel — e.g. `hsl(120, 0%, 50%)`
- * emits `hsl(0, 0%, 50.19607843%)` (the rounded 128/255). This DIVERGES from Less
- * 4.x (which emits `hsl(0, 0%, 50%)`); it is the jess-fns v5 adapter's behavior and
- * the differential holds built-in ≡ adapter here (flagged in-test).
+ * VERBATIM rule (A6 `V5-OUTPUT-SEMANTICS.md`, `memory:css-superset-verbatim-passthrough`):
+ * an un-operated `hsl()`/`hsla()` with literal args is a BARE value — it keeps its
+ * authored h/s/l EXACTLY (the twin of `rgb`'s `rgbPct` source preservation), so
+ * `hsl(50, 0%, 50%)` emits `hsl(50, 0%, 50%)`. It does NOT round-trip through the
+ * rounded rgb (which collapsed the hue to `0` and mangled precision, e.g. the old
+ * grey-canonical `hsl(0, 0%, 50.19607843%)`). A real Less operation
+ * (`lighten(hsl(...))`, arithmetic) still rebuilds the color and recomputes.
  */
 export function makeHsl(list: List): Color {
   const items = list.items;
@@ -31,11 +32,7 @@ export function makeHsl(list: List): Color {
     const alphaD = items[3] as Dimension | undefined;
     const alphaPct = alphaD !== undefined && alphaD.unit === '%' ? alphaD.number : undefined;
     const fmtOpts = { ...(hueUnit ? { hueUnit } : {}), ...(alphaPct !== undefined ? { alphaPct } : {}) };
-    const hueColor = makeColorHsl([h, s, l], a, HSL, modernSyntax, fmtOpts);
-    if (s === 0 || l === 0 || l === 1) {
-      return makeColorRgb(colorRgbRounded(hueColor), a, HSL, { modernSyntax, ...(alphaPct !== undefined ? { alphaPct } : {}) });
-    }
-    return hueColor;
+    return makeColorHsl([h, s, l], a, HSL, modernSyntax, fmtOpts);
   }
   if (isColor(first)) {
     const c = first as Color;

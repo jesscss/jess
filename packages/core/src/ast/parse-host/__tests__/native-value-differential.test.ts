@@ -285,9 +285,11 @@ const CORPUS: Array<[string, string]> = [
   ['fn-rgba-from-color-alpha', '.a { color: rgba(#123456, 0.4); }\n'],
   ['fn-hsl', '.a { color: hsl(120, 50%, 50%); }\n'],
   ['fn-hsla', '.a { color: hsla(120, 50%, 50%, 0.5); }\n'],
-  // FLAG: the GREY canonical branch — built-in ≡ adapter emit `hsl(0, 0%, 50.19607843%)`
-  // (rounds 127.5→128 then recomputes hsl). Less 4.x emits `hsl(0, 0%, 50%)`; the
-  // built-in path matches the v5 adapter (owner may want to reconcile the fns impl).
+  // A6 VERBATIM (V5-OUTPUT-SEMANTICS): an un-operated grey `hsl()` keeps its
+  // authored h/s/l EXACTLY — `hsl(120, 0%, 50%)` stays `hsl(120, 0%, 50%)`, no
+  // rgb round-trip. (The old grey-canonical branch rounded 127.5→128 then
+  // recomputed, mangling the hue to `0` and the lightness to `50.19607843%`;
+  // that bug is fixed in `@jesscss/fns` `builtins/hsl`.)
   ['fn-hsl-grey-canonical', '.a { color: hsl(120, 0%, 50%); }\n'],
   ['fn-hsl-from-color', '.a { color: hsl(#80a0c0); }\n'],
   ['fn-hsla-from-color-alpha', '.a { color: hsla(#80a0c0, 0.5); }\n'],

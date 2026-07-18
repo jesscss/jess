@@ -157,7 +157,7 @@
   "fn-rgba-from-color-alpha": ".a {\n  color: rgba(18, 52, 86, 0.4);\n}\n",
   "fn-hsl": ".a {\n  color: hsl(120, 50%, 50%);\n}\n",
   "fn-hsla": ".a {\n  color: hsla(120, 50%, 50%, 0.5);\n}\n",
-  "fn-hsl-grey-canonical": ".a {\n  color: hsl(0, 0%, 50.19607843%);\n}\n",
+  "fn-hsl-grey-canonical": ".a {\n  color: hsl(120, 0%, 50%);\n}\n",
   "fn-hsl-from-color": ".a {\n  color: hsl(210, 33.68421053%, 62.74509804%);\n}\n",
   "fn-hsla-from-color-alpha": ".a {\n  color: hsla(210, 33.68421053%, 62.74509804%, 0.5);\n}\n",
   "fn-hsv-hex": ".a {\n  color: #408000;\n}\n",
