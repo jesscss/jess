@@ -124,8 +124,8 @@
     "bytes": 784
   },
   "extend-selector/extend-selector.less": {
-    "status": "DIFF",
-    "bytes": 962
+    "status": "MATCH",
+    "bytes": 939
   },
   "extend/extend.less": {
     "status": "MATCH",
