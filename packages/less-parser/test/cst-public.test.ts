@@ -75,6 +75,10 @@ function findNode(node: LessCstChild, grammarType: string): Extract<LessCstChild
   return undefined;
 }
 
+function hasNode(node: LessCstChild, grammarType: string): boolean {
+  return findNode(node, grammarType) !== undefined;
+}
+
 function leafValues(node: LessCstChild): string[] {
   if (node._tag === 'leaf') {
     return [node.value];
@@ -176,6 +180,37 @@ describe('Less quoted and URL interpolation CST facts', () => {
     const result = parseLessCst('.a { a: "\\@{literal}"; b: "@{ spaced }"; }');
     expect(result.errors).toHaveLength(0);
     expect(findNode(result.tree, 'LessInterp')).toBeUndefined();
+  });
+});
+
+describe('Less direct-AST closure CST contract', () => {
+  // This is intentionally CST-only. It proves the grammar already owns each
+  // valid statement boundary that a future single direct reducer must map in
+  // one atomic pass; it must not introduce a partial AST-producing grammar.
+  const cases: readonly [label: string, source: string, grammarType: string][] = [
+    ['top-level variable declaration', '@color: red;', 'VarDeclaration'],
+    ['top-level detached-ruleset call', '@rules();', 'VarCall'],
+    ['query at-rule block', '@media (min-width: 1px) { .a { color: red; } }', 'QueryAtRuleBlock'],
+    ['generic at-rule block', '@font-face { font-family: x; }', 'AtRuleBlock'],
+    ['typed import fact', '@import (less) "theme.less" screen;', 'ImportAtRule'],
+    ['at-rule statement', '@charset "utf-8";', 'AtRuleStatement'],
+    ['ruleset', '.a { color: red; }', 'Ruleset'],
+    ['top-level mixin definition', '.m(@x) { color: @x; }', 'MixinOrQualifiedRule'],
+    ['each control statement', 'each(1, { color: red; });', 'For'],
+    ['bare function-call statement', 'e("x");', 'Call'],
+    ['nested mixin definition', '.a { .m(@x) { color: @x; } }', 'MixinOrQualifiedRule'],
+    ['nested mixin call', '.a { .m(1); }', 'MixinCall'],
+    ['nested extend instruction', '.a { &:extend(.b); }', 'ExtendStatement'],
+    ['ordinary declaration', '.a { color: red; }', 'Declaration'],
+    ['custom-property declaration', '.a { --theme: pre-@{name}; }', 'CustomDeclaration']
+  ];
+
+  it.each(cases)('keeps the %s boundary in the parser-owned CST', (_label, source, grammarType) => {
+    const result = parseLessCst(source);
+
+    expect(result.errors, source).toHaveLength(0);
+    expect(result.unconsumedFrom, source).toBeNull();
+    expect(hasNode(result.tree, grammarType), source).toBe(true);
   });
 });
 
