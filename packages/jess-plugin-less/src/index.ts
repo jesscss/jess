@@ -328,6 +328,17 @@ export class LessPlugin extends AbstractPlugin {
 
 export type { LessOptions } from 'styles-config';
 
+// Production ast/ `.less` render path (engine cutover). ADDITIVE — the legacy
+// `safeParse` → `Compiler.renderTree` tree/ path stays the default; this exposes
+// the AST-v2 engine as an invocable production entry (`Compiler.renderAstLess`
+// routes here behind an explicit call, never the default render).
+export {
+  renderLessViaAst,
+  renderLessFileViaAst,
+  type RenderLessViaAstOptions,
+  type AstRenderResult
+} from './ast-render.js';
+
 const lessPlugin = ((opts?: LessPluginOptions) => {
   return new LessPlugin(opts);
 }) satisfies Plugin;

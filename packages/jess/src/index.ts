@@ -33,7 +33,7 @@ import {
   type OutputOptions
 } from 'styles-config';
 import type { PluginInterface } from '@jesscss/core';
-import lessPlugin from '@jesscss/plugin-less';
+import lessPlugin, { renderLessFileViaAst } from '@jesscss/plugin-less';
 import scssPlugin from '@jesscss/plugin-scss';
 import { outputDiagnostics } from './diagnostics.js';
 
@@ -1440,6 +1440,57 @@ export class Compiler {
       }
       finalizeRenderProfile(profile, {
         method: 'render',
+        filePath,
+        errors: context.errors.length,
+        warnings: context.warnings.length,
+        failed: true,
+        errorMessage: err instanceof Error ? err.message : String(err)
+      });
+      throw err;
+    }
+  }
+
+  /**
+   * @internal EXPERIMENTAL — render a `.less` file end-to-end through the AST-v2
+   * engine instead of the legacy `tree/` `eval`/`render` path.
+   *
+   * This is the PRODUCTION invocation of the ast/ render path (engine-cutover
+   * step: "stand up a production ast/ render path"). It is ADDITIVE and NOT the
+   * default: `render()`/`renderString()` still route through {@link renderTree}
+   * (legacy `tree.eval`/`render`), untouched. The eventual cutover flips `.less`
+   * onto this path AT the `renderTree` call sites (routing `.less` roots here when
+   * ast/ reaches parity); until then this method is the only entry that exercises
+   * the ast/ engine in production space.
+   *
+   * Delegates to `@jesscss/plugin-less`'s `renderLessFileViaAst` (the Less binding
+   * over core's parser-agnostic `@jesscss/core/ast-render` pipeline), reusing the
+   * SAME config cascade (`prepareRender`) so `output.collapseNesting` matches the
+   * default render path. Rejects with the captured throw on parse/serialize failure.
+   */
+  async renderAstLess(filePath: string, options?: Partial<ConfigOptions>): Promise<string> {
+    const { resolved, context, profile } = await this.prepareRender(filePath, options);
+    try {
+      const collapseNesting = resolved.printOptions.collapseNesting ?? false;
+      const result = renderLessFileViaAst(filePath, { collapseNesting });
+      if (result.threw) {
+        throw result.threw;
+      }
+      if (result.css === undefined) {
+        throw new Error(`ast/ render produced no CSS for ${filePath}`);
+      }
+      finalizeRenderProfile(profile, {
+        method: 'renderAstLess',
+        filePath,
+        errors: context.errors.length,
+        warnings: context.warnings.length
+      });
+      return result.css;
+    } catch (err: unknown) {
+      if (!(err && typeof err === 'object' && 'code' in err)) {
+        logger.error(String(err));
+      }
+      finalizeRenderProfile(profile, {
+        method: 'renderAstLess',
         filePath,
         errors: context.errors.length,
         warnings: context.warnings.length,

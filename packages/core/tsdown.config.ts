@@ -7,7 +7,8 @@ import { defineConfig } from 'tsdown';
 export default defineConfig({
   entry: {
     index: './src/index.ts',
-    value: './src/value.ts'
+    value: './src/value.ts',
+    'ast-render': './src/ast-render.ts'
   },
   format: ['esm', 'cjs'],
   dts: true,

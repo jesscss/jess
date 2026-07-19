@@ -28,10 +28,20 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { parseLessFn } from '@jesscss/less-parser';
 import type * as t2 from '../index.js';
 import { rawInline as rawInlineStatement, styleImport } from '../index.js';
 import type { BuildArgs, Span } from './host-context.js';
+
+/**
+ * INJECTED legacy Less parse used ONLY to sniff a file's literal `@var` scope for
+ * interpolated import PATHS (`@import "@{theme}.less"`) — see `collectFileVars`.
+ * Core imports no parser; the caller (the Less render binding in `@jesscss/plugin-less`
+ * / the test harness) supplies `@jesscss/less-parser`'s `parseLessFn`. When absent
+ * (a dialect that never needs cross-file literal-var lookup, or a caller that opts
+ * out), interpolated paths needing cross-file vars simply stay deferred — identical
+ * to the behaviour when the legacy parse fails to read/parse a file.
+ */
+export type FileVarParse = (source: string) => { errors: readonly unknown[]; tree: unknown };
 
 /** Shared, mutable state threaded through a whole (recursive) bridge run. */
 export interface ImportState {
@@ -55,10 +65,17 @@ export interface ImportState {
    * (Less hoists the root's variables into every descendant scope).
    */
   readonly entry: { file: string | undefined };
+  /**
+   * [import:specifier] Injected legacy Less parse (see {@link FileVarParse}). Kept
+   * on the state so it threads through the whole recursive bridge run without
+   * widening `resolveDirectImports`' signature. Absent → `collectFileVars` yields
+   * no cross-file scope (graceful; interpolated paths needing it stay deferred).
+   */
+  readonly parseFileVars?: FileVarParse;
 }
 
-export function createImportState(): ImportState {
-  return { seen: new Set(), stack: [], varScopeCache: new Map(), entry: { file: undefined } };
+export function createImportState(parseFileVars?: FileVarParse): ImportState {
+  return { seen: new Set(), stack: [], varScopeCache: new Map(), entry: { file: undefined }, parseFileVars };
 }
 
 /** A node read structurally by the import + bridge front ends. */
@@ -205,13 +222,16 @@ function collectFileVars(
 
   const vars = new Map<string, string>();
   let rules: unknown[] = [];
-  try {
-    const parsed = parseLessFn(fs.readFileSync(filePath, 'utf8'));
-    if (parsed.errors.length === 0 && isNode(parsed.tree) && Array.isArray((parsed.tree as AnyNode).rules)) {
-      rules = (parsed.tree as AnyNode).rules as unknown[];
+  const parseFileVars = state.parseFileVars;
+  if (parseFileVars !== undefined) {
+    try {
+      const parsed = parseFileVars(fs.readFileSync(filePath, 'utf8'));
+      if (parsed.errors.length === 0 && isNode(parsed.tree) && Array.isArray((parsed.tree as AnyNode).rules)) {
+        rules = (parsed.tree as AnyNode).rules as unknown[];
+      }
+    } catch {
+      /* unreadable/unparsable file contributes no scope */
     }
-  } catch {
-    /* unreadable/unparsable file contributes no scope */
   }
 
   // Walk the rules in SOURCE ORDER, folding both own `@var` decls and the vars

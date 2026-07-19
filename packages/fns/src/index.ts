@@ -6,4 +6,9 @@ export * from './less/index.js';
 // set until Sass converts.
 export { builtinLessFns } from './builtins/index.js';
 
+// The built-in fn set packaged as a ready-to-use dispatch registry (the single
+// production assembly point; the ast/ render path builds its value evaluator from
+// this). See `builtins/registry.ts`.
+export { makeBuiltinRegistry } from './builtins/registry.js';
+
 // export * from './math'

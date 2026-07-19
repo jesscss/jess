@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { lessGrammar } from '@jesscss/less-parser';
+import { lessGrammar, parseLessFn } from '@jesscss/less-parser';
 import { serialize } from '../../index.js';
 import type { Root, Statement } from '../../index.js';
 import { buildEvaluator } from '../../evaluator.js';
@@ -41,7 +41,7 @@ function resolveRoot(src: string, filePath: string): Root {
   const resolved = resolveDirectImports(
     root.children,
     filePath,
-    createImportState(),
+    createImportState(parseLessFn),
     parse,
     () => {},
   );

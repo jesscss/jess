@@ -1249,7 +1249,7 @@ export function bridgeToAst(
   filePath?: string,
   importState?: ImportState,
 ): t2.Root {
-  const ctx: BridgeCtx = { source, filePath, importState: importState ?? createImportState() };
+  const ctx: BridgeCtx = { source, filePath, importState: importState ?? createImportState(parseLessFn) };
   if (!isNode(root)) throw new UnsupportedShape('root', typeOf(root));
   const rules = (root as AnyNode).rules;
   if (!Array.isArray(rules)) throw new UnsupportedShape('root:rules', typeOf(rules));

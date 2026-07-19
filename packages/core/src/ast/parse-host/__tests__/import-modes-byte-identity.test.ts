@@ -22,7 +22,7 @@ const DIR = `${__dirname}/fixtures/import`;
 async function renderAstFile(file: string): Promise<string> {
   const src = fs.readFileSync(file, 'utf8');
   const parsed = parseLessFn(src);
-  const bridged = bridgeToAst(parsed.tree, src, file, createImportState());
+  const bridged = bridgeToAst(parsed.tree, src, file, createImportState(parseLessFn));
   const evaluator = buildEvaluator(makeBuiltinRegistry());
   return (await serialize(bridged, { evaluator })).css;
 }

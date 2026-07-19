@@ -59,7 +59,7 @@ describe('tree2 @import — import-fixture census', () => {
       }
       let t2css: string;
       try {
-        const bridged = bridgeToAst(parsed.tree, src, file, createImportState());
+        const bridged = bridgeToAst(parsed.tree, src, file, createImportState(parseLessFn));
         const evaluator = buildEvaluator(makeBuiltinRegistry());
         t2css = (await serialize(bridged, { evaluator })).css;
       } catch (e) {

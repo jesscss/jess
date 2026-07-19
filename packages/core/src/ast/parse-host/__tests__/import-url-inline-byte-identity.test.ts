@@ -46,7 +46,7 @@ body {
 
 async function renderAst(file: string): Promise<string> {
   const src = fs.readFileSync(file, 'utf8');
-  const bridged = bridgeToAst(parseLessFn(src).tree, src, file, createImportState());
+  const bridged = bridgeToAst(parseLessFn(src).tree, src, file, createImportState(parseLessFn));
   return (await serialize(bridged, { evaluator: buildEvaluator(makeBuiltinRegistry()) })).css;
 }
 
