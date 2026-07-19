@@ -71,7 +71,7 @@ import type {
   VarIndirect,
 } from './nodes.js';
 // [atrule] block + statement at-rule node types
-import type { AtRuleBlock, AtRuleStatement, OpaqueAtRuleBlock } from './at-rule.js';
+import type { AtRuleBlock, AtRuleStatement, ImportAtRule, OpaqueAtRuleBlock } from './at-rule.js';
 // typed synchronous value evaluator seam + boundary-clean value domain.
 import {
   DEFAULT_MODES,
@@ -2235,6 +2235,9 @@ export function serialize(root: Root, options?: SerializeOptions): SerializeRetu
       case 'AtRuleStatement':
         emitAtRuleStatement(child, rootFrame, e);
         break;
+      case 'ImportAtRule':
+        emitImportAtRule(child, rootFrame, e);
+        break;
       case 'OpaqueAtRuleBlock':
         emitOpaqueAtRuleBlock(child, e);
         break;
@@ -2581,6 +2584,12 @@ function walkBody(
           flush();
           emitAtRuleStatement(node, frame, e);
         }
+        break;
+      }
+      case 'ImportAtRule': {
+        const importNode = node;
+        if (partition) { flushPending(partition); partition.encounteredContainer = true; partition.trailing.push(() => emitImportAtRule(importNode, frame, e)); }
+        else { flush(); emitImportAtRule(node, frame, e); }
         break;
       }
       case 'OpaqueAtRuleBlock': {
@@ -3652,6 +3661,20 @@ function emitAtRuleStatementRaw(node: AtRuleStatement, frame: Frame, e: Emit): v
   if (e.positions) e.positions.push({ node, type: node.type, start, end: e.off });
 }
 
+/** Emit a parser-owned typed import without resolution, reparse, or hoisting. */
+function emitImportAtRule(node: ImportAtRule, frame: Frame, e: Emit): void {
+  const start = e.off;
+  if (e.depth > 0) put(e, INDENT.repeat(e.depth));
+  put(e, '@import ');
+  put(e, evalBytesSync(node.target, frame, e));
+  if (node.tail !== null) {
+    const tail = evalBytesSync(node.tail, frame, e);
+    if (tail.length > 0) put(e, ` ${tail}`);
+  }
+  put(e, ';\n');
+  if (e.positions) e.positions.push({ node, type: node.type, start, end: e.off });
+}
+
 /** Write a grammar-owned opaque at-rule body without evaluating or walking it. */
 function emitOpaqueAtRuleBlock(node: OpaqueAtRuleBlock, e: Emit): void {
   const start = e.off;
@@ -3990,6 +4013,12 @@ function emitAtRuleBody(statements: Statement[], frame: Frame, e: Emit): void {
         emitAtRuleStatement(node, frame, e);
         e.depth--;
         break;
+      case 'ImportAtRule':
+        flushDirect();
+        e.depth++;
+        emitImportAtRule(node, frame, e);
+        e.depth--;
+        break;
       case 'OpaqueAtRuleBlock':
         flushDirect();
         e.depth++;
@@ -4074,6 +4103,12 @@ function emitBubbleBody(statements: Statement[], ctx: string[] | null, frame: Fr
         flushDirect();
         e.depth++;
         emitAtRuleStatement(node, frame, e);
+        e.depth--;
+        break;
+      case 'ImportAtRule':
+        flushDirect();
+        e.depth++;
+        emitImportAtRule(node, frame, e);
         e.depth--;
         break;
       case 'OpaqueAtRuleBlock':
@@ -4169,6 +4204,10 @@ function emitNestedBody(
       case 'AtRuleStatement':
         flushBuf();
         emitAtRuleStatement(node, frame, e);
+        break;
+      case 'ImportAtRule':
+        flushBuf();
+        emitImportAtRule(node, frame, e);
         break;
       case 'OpaqueAtRuleBlock':
         flushBuf();

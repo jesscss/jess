@@ -850,6 +850,34 @@ no imported guarded mixins (no speedup to show), but on
     }
   },
   {
+    "id": "import-atrule-vocabulary",
+    "kind": "neutral-or-negative",
+    "surface": "ImportAtRule typed terminal vocabulary (at-rule.ts)",
+    "files": ["packages/core/src/ast/at-rule.ts"],
+    "neutralRefactor": {"costDelta":"neutral","why":"Cold parser-produced data shape; parser resolution remains outside core and ordinary documents do not create it.","byteIdentity":{"fixture":"benchmark.less","collapseNesting":true,"outputSha256":"adfd26732125a33fc1e264aca7d7ecde8c7c1da43f968e3106bd387a1f78e840","outputBytes":133983}}
+  },
+  {
+    "id": "import-atrule-node-union",
+    "kind": "neutral-or-negative",
+    "surface": "ImportAtRule discriminant membership (node.ts)",
+    "files": ["packages/core/src/ast/node.ts"],
+    "neutralRefactor": {"costDelta":"neutral","why":"Static vocabulary membership only; no normal benchmark tree carries this type.","byteIdentity":{"fixture":"benchmark.less","collapseNesting":true,"outputSha256":"adfd26732125a33fc1e264aca7d7ecde8c7c1da43f968e3106bd387a1f78e840","outputBytes":133983}}
+  },
+  {
+    "id": "import-atrule-statement-union",
+    "kind": "neutral-or-negative",
+    "surface": "ImportAtRule statement-union membership (nodes.ts)",
+    "files": ["packages/core/src/ast/nodes.ts"],
+    "neutralRefactor": {"costDelta":"neutral","why":"Type-only statement admission; no traversal or allocation added.","byteIdentity":{"fixture":"benchmark.less","collapseNesting":true,"outputSha256":"adfd26732125a33fc1e264aca7d7ecde8c7c1da43f968e3106bd387a1f78e840","outputBytes":133983}}
+  },
+  {
+    "id": "import-atrule-terminal-emit",
+    "kind": "neutral-or-negative",
+    "surface": "ImportAtRule direct terminal serializer write (serialize.ts)",
+    "files": ["packages/core/src/ast/serialize.ts"],
+    "neutralRefactor": {"costDelta":"neutral","why":"Cold type branches directly write target and tail; no resolution, reparse, collection, or child walk occurs.","byteIdentity":{"fixture":"benchmark.less","collapseNesting":true,"outputSha256":"adfd26732125a33fc1e264aca7d7ecde8c7c1da43f968e3106bd387a1f78e840","outputBytes":133983}}
+  },
+  {
     "id": "opaque-atrule-block-vocabulary",
     "kind": "neutral-or-negative",
     "surface": "OpaqueAtRuleBlock terminal AST vocabulary (at-rule.ts)",

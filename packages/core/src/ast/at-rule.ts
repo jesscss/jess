@@ -29,7 +29,7 @@
  * modules (`node`, `nodes`) — never the legacy tree.
  */
 
-import type { Statement, ValueNode } from './nodes.js';
+import type { Any, Quoted, Statement, ValueNode } from './nodes.js';
 
 /** A block-bearing at-rule: `@name prelude { …body }`. */
 export interface AtRuleBlock {
@@ -67,6 +67,15 @@ export interface OpaqueAtRuleBlock {
   readonly rawBody: string;
 }
 
+/** A terminal CSS import; resolution remains parser-owned. */
+export interface ImportAtRule {
+  readonly type: 'ImportAtRule';
+  /** Quoted path or the canonical opaque URL value (`Any` until URL gets a node). */
+  readonly target: Quoted | Any;
+  /** Grammar-owned media/layer/supports tail, if present. */
+  readonly tail: ValueNode | null;
+}
+
 export const atRuleBlock = (
   name: string,
   prelude: ValueNode | null,
@@ -81,3 +90,6 @@ export const opaqueAtRuleBlock = (
   prelude: string | null,
   rawBody: string,
 ): OpaqueAtRuleBlock => ({ type: 'OpaqueAtRuleBlock', name, prelude, rawBody });
+
+export const importAtRule = (target: Quoted | Any, tail: ValueNode | null = null): ImportAtRule =>
+  ({ type: 'ImportAtRule', target, tail });
