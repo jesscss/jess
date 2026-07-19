@@ -86,6 +86,40 @@ active architecture queue.
         "outputBytes": 133983
       }
     }
+  },
+  {
+    "id": "ast-property-accessor-importance-signal",
+    "kind": "neutral-or-negative",
+    "surface": "PropRef declaration-importance propagation",
+    "files": ["packages/core/src/ast/serialize.ts"],
+    "neutralRefactor": {
+      "costDelta": "neutral",
+      "why": "The existing property-declaration lookup carries the source flag into the pre-existing ordinary/merge importance state. It adds no traversal, node, helper, map, or alternate value path and makes no speed claim.",
+      "byteIdentity": {
+        "fixture": "benchmark.less",
+        "collapseNesting": true,
+        "outputSha256": "adfd26732125a33fc1e264aca7d7ecde8c7c1da43f968e3106bd387a1f78e840",
+        "outputBytes": 133983
+      }
+    }
+  },
+  {
+    "id": "ast-dead-style-import-deletion",
+    "kind": "neutral-or-negative",
+    "surface": "unreachable AST-v2 StyleImport node and serializer branch",
+    "files": ["packages/core/src/ast/node.ts"],
+    "coverage": "owner-plus-named-carry-forward-support",
+    "supportFiles": ["packages/core/src/ast/nodes.ts", "packages/core/src/ast/serialize.ts"],
+    "neutralRefactor": {
+      "costDelta": "decrease",
+      "why": "No parser, test, public entry, or production caller constructs AST-v2 StyleImport. Removing its union members, root hoist prewalk, root branch, and emit helpers leaves the live typed ImportAtRule path intact while deleting an unreachable node vocabulary and serializer work.",
+      "byteIdentity": {
+        "fixture": "benchmark.less",
+        "collapseNesting": true,
+        "outputSha256": "adfd26732125a33fc1e264aca7d7ecde8c7c1da43f968e3106bd387a1f78e840",
+        "outputBytes": 133983
+      }
+    }
   }
 ]
 ```

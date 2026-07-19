@@ -40,7 +40,24 @@ Less corpus.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: private CSS direct-AST value, typed `@import`, non-import statement, `@layer`, and structured `@keyframes` block at-rule families; plus private Less direct-AST keyword and `VarRef` values for top-level and ruleset-local variable declarations and ordinary declarations.
+- Latest pass: delete unreachable AST-v2 `StyleImport` machinery and propagate direct `PropRef` importance through ordinary and merged declarations.
+- Architecture surface: `ImportAtRule` remains the parser-owned typed import fact. No parser, test, public entry, or production caller constructs AST-v2 `StyleImport`; it existed only in its own union/factory/registry and serializer branches. `PropRef` retains the existing property lookup and declaration emit paths.
+- Separation/duplication: deletes the duplicate AST import representation only; legacy `tree/StyleImport`, `Context`, `Rules`, plugin resolution, and import realization remain for the later direct dialect-Root plus plugin-owned IO cutover. The property accessor carries the source declaration's existing boolean through the existing ordinary sink or merged scalar; it adds neither inline bytes nor a second evaluator route.
+- Cumulative node weight: decreases by one unreachable discriminant/factory and its serializer-only branches. The property lookup's already-existing result object receives one primitive boolean.
+- New traversal: none; deletion removes the root-level import-hoist recursive walk. Property lookup keeps its existing reverse frame scan.
+- New node/materialization: none.
+- Render path: only the live typed `ImportAtRule` path remains. Ordinary declarations retain their existing importance sink; merged declarations save, clear, read, and restore the existing `mergeImportant` scalar for each member.
+- Helper/API surface: decreases: `styleImport`, `emitHoistedImports`, `collectHoistedImports`, and `emitStyleImport` are deleted.
+- Metadata mutations: none.
+- Review-flagged diff tokens: none; the combined slice adds no allocation, traversal, map, clone, or error-control path.
+- Hot-path cost contracts:
+  ```json
+  [{"id":"ast-merge-importance-signal","verdict":"accepted","costDelta":"neutral","why":"The already-admitted declaration-merge loop carries one importance bit on its existing emit context instead of allocating a per-member sink. It repairs the ordinary declaration contract for Important values reached through a variable; it makes no speed claim.","byteIdentity":{"fixture":"benchmark.less","collapseNesting":true,"outputSha256":"adfd26732125a33fc1e264aca7d7ecde8c7c1da43f968e3106bd387a1f78e840","outputBytes":133983}},{"id":"ast-dead-style-import-deletion","verdict":"accepted","costDelta":"decrease","why":"No parser, test, public entry, or production caller constructs AST-v2 StyleImport. Removing its union members, root hoist prewalk, root branch, and emit helpers leaves the live typed ImportAtRule path intact while deleting an unreachable node vocabulary and serializer work.","byteIdentity":{"fixture":"benchmark.less","collapseNesting":true,"outputSha256":"adfd26732125a33fc1e264aca7d7ecde8c7c1da43f968e3106bd387a1f78e840","outputBytes":133983}},{"id":"ast-property-accessor-importance-signal","verdict":"accepted","costDelta":"neutral","why":"The existing property-declaration lookup carries the source flag into the pre-existing ordinary/merge importance state. It adds no traversal, node, helper, map, or alternate value path and makes no speed claim.","byteIdentity":{"fixture":"benchmark.less","collapseNesting":true,"outputSha256":"adfd26732125a33fc1e264aca7d7ecde8c7c1da43f968e3106bd387a1f78e840","outputBytes":133983}}]
+  ```
+- Evidence: static AST-v2 call-site search, direct AST tests for `ImportAtRule`, property-accessor ordinary and merged output, the core AST suite, and core build.
+- Verdict: accepted deletion plus correctness repair; import realization remains a plugin-owned cutover.
+
+- Earlier pass: private CSS direct-AST value, typed `@import`, non-import statement, `@layer`, and structured `@keyframes` block at-rule families; plus private Less direct-AST keyword and `VarRef` values for top-level and ruleset-local variable declarations and ordinary declarations.
 - Architecture surface: `packages/css-parser/src/ast/grammar.ts` remains private: `packages/css-parser/src/index.ts`, `cst-css.ts`, and `grammar.ts` neither import nor export `cssAstGrammar`; `package.json` has no subpath targeting it and `tsdown.config.ts` has no entry for it. The sole current importer is `packages/css-parser/test/ast-grammar.test.ts`. No existing parse, eval, or render route reaches it.
 - Less architecture surface: `packages/less-parser/src/ast/grammar.ts` is likewise private: no Less public entry, CST grammar, package subpath, or tsdown entry imports or exports `lessAstGrammar`; the focused AST test runs it directly. Its former `src/ast/parse.ts` test bridge is deleted.
 - Separation/duplication: this extends parser-local Parseman construction with quoted, `url(...)`, generic function-call, typed `@import`, non-import statement at-rule, structured `@layer`, and structured `@keyframes` reductions using core node constructors only. CSS `@import` accepts grammar-built static quoted/`url(...)` targets and balanced CSS tail segments into `ImportAtRule`; it performs no resolution, source reparse, or fallback lowering. `@keyframes` has an explicit keyframe-selector grammar (`from`, `to`, or percent) and declaration-only rule bodies; it does not reuse a general CSS selector/ruleset path. `@layer` and keyframe block bodies admit comments and their valid child rule shape only; nested at-rules are deliberately outside this slice. It creates no host, action registry, bridge, conversion pass, public pilot, or fallback.
@@ -79,7 +96,7 @@ Less corpus.
 
 ### Declaration-merge importance propagation
 
-- Latest pass: declaration-merge importance propagation.
+- Prior pass: declaration-merge importance propagation.
 - Architecture surface: `mergeFold` carries an importance signal through the existing AST evaluator; no parser, host, bridge, or compatibility surface changed.
 - Separation/duplication: the merge path reuses the ordinary declaration importance contract rather than introducing a second value evaluator or render route.
 - Cumulative node weight: none; the signal is one boolean on the existing emit context.

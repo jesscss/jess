@@ -64,7 +64,6 @@ import type {
   SpacedValue,
   Simple,
   SelectorList,
-  StyleImport,
   Statement,
   ValueNode,
   VarIndirect,
@@ -790,8 +789,9 @@ function resolveVarRef(frame: Frame | null, name: string, e: EvalCtx): { value: 
  * declaration of CSS property `name` in scope. Less "property accessors" read the
  * LAST declaration of the property in the enclosing ruleset (last-wins, lazy) and
  * cascade up the ruleset chain (`$color` in a nested rule reads the parent
- * ruleset's final `color`). The source declaration's `!important` rides along in
- * the returned value node's own bytes (a non-merge declaration keeps it verbatim).
+ * ruleset's final `color`). The lookup carries the source declaration's
+ * `!important` flag to the caller's existing declaration/merge importance sink;
+ * it never encodes importance into value bytes.
  * Only DIRECT declarations a frame carries in `statements` are considered — the
  * backward stack walk skips any declaration whose value is currently on the
  * exclusion set, which breaks the self-reference `color: $color` (its own value
@@ -802,7 +802,7 @@ function resolvePropRef(
   frame: Frame | null,
   name: string,
   e: EvalCtx,
-): { value: ValueNode; frame: Frame } | undefined {
+): { value: ValueNode; frame: Frame; important: boolean } | undefined {
   let fb: Frame | null | undefined;
   for (let f = frame; f; f = f.parent) {
     const st = f.statements;
@@ -822,7 +822,9 @@ function resolvePropRef(
           nm = declName(s, f, e);
           e.propNames.delete(s);
         }
-        if (nm === name) return { value: s.value, frame: f };
+        if (nm === name) {
+          return { value: s.value, frame: f, important: s.important === true };
+        }
       }
     }
     if (f.fallback && !fb) fb = f.fallback;
@@ -1123,14 +1125,21 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
       return withExcluded(e, hit.value, () => evalBinding(hit.value, hit.frame, e));
     }
     case 'PropRef': {
-      // A `$name` property accessor: resolve the winning `name` declaration in
-      // scope and fold its value. The resolved value node carries any `!important`
-      // verbatim in its own bytes (a non-merge declaration keeps it), so the flag
-      // rides along for free — `$color` of `color: red !important` → `red !important`.
+      // A `$name` property accessor resolves the winning declaration and folds
+      // its value. Its declaration-level `!important` is carried through the
+      // caller's existing importance sink, so `$color` of `color: red !important`
+      // yields `red !important` only at a declaration emission site.
       // An unresolvable property (only reachable after a not-yet-modelled expansion)
       // keeps the verbatim `$name` bytes rather than throwing (no regression).
       const hit = resolvePropRef(frame, node.name, e);
       if (!hit) return literal(node.bytes);
+      if (hit.important) {
+        if (e.importantSink) {
+          e.importantSink.hit = true;
+        } else if (e.mergeImportant !== undefined) {
+          e.mergeImportant = true;
+        }
+      }
       return withExcluded(e, hit.value, () => evalValue(hit.value, hit.frame, e));
     }
     case 'Sequence':
@@ -2185,11 +2194,6 @@ export function serialize(root: Root, options?: SerializeOptions): SerializeRetu
   // [charset] Hoist the first document-level `@charset` ahead of all body
   // content; inline occurrences are dropped during the walk (dedupe).
   emitHoistedCharset(root.children, rootFrame, e);
-  // [import:hoist] Plain-CSS `@import`s are not inlined; Less hoists them to the
-  // document top (after `@charset`) in source-encounter order and emits them as
-  // literal `@import …;`. The resolution pass marked each with `hoist`; emit them
-  // here and skip them at their in-place position below.
-  emitHoistedImports(root.children, e);
   if (!e.collapse) {
     // [nested/R0] Less v5 default: preserve authored block structure. The root's
     // children are the top-level content level (indent 0).
@@ -2255,11 +2259,6 @@ export function serialize(root: Root, options?: SerializeOptions): SerializeRetu
       // [import:inline] raw verbatim bytes spliced by `@import (inline)`.
       case 'RawInline':
         emitRawInline(child, e);
-        break;
-      // [import] an unresolved import the resolution pass left in place. A
-      // css-passthrough import (`hoist`) was already emitted at the document top.
-      case 'StyleImport':
-        if (!child.hoist) emitStyleImport(child, e);
         break;
       // a bare value-position call statement (`e('/* … */');`): evaluate + emit.
       case 'FunctionCall':
@@ -3618,33 +3617,6 @@ function emitHoistedCharset(children: Statement[], frame: Frame, e: Emit): void 
   }
 }
 
-/**
- * [import:hoist] Emit every css-passthrough `@import` (marked `hoist` by the
- * resolution pass) at the document top, in source-encounter order, as literal
- * `@import …;` bytes. Recurses into nested ruleset / at-rule bodies so an import
- * that resolved inside a nested block still hoists to the top (matching Less).
- */
-function emitHoistedImports(children: Statement[], e: Emit): void {
-  const imports: StyleImport[] = [];
-  collectHoistedImports(children, imports);
-  for (const imp of imports) {
-    const start = e.off;
-    put(e, imp.raw);
-    put(e, '\n');
-    if (e.positions) e.positions.push({ node: imp, type: imp.type, start, end: e.off });
-  }
-}
-
-function collectHoistedImports(statements: Statement[], out: StyleImport[]): void {
-  for (const s of statements) {
-    if (s.type === 'StyleImport') {
-      if (s.hoist) out.push(s);
-    } else if (s.type === 'Rule' || s.type === 'AtRuleBlock') {
-      collectHoistedImports(s.body, out);
-    }
-  }
-}
-
 function emitAtRuleStatement(node: AtRuleStatement, frame: Frame, e: Emit): void {
   // [charset] Inline `@charset` occurrences are dropped; `serialize` hoists the
   // first to the document top (dedupe).
@@ -3757,20 +3729,6 @@ function emitRawInline(node: RawInline, e: Emit): void {
  */
 function normalizeMediaFeatures(prelude: string): string {
   return prelude.replace(/\(\s*([-\w]+)\s*:\s*/gu, '($1: ');
-}
-
-/**
- * [import] Emit an unresolved `@import` verbatim. Dialect/plugin-owned resolution
- * may replace a `StyleImport` beforehand; otherwise re-emitting the authored
- * `@import …;` bytes is the correct core output.
- * A trailing newline separates it from the next statement (the authored `raw`
- * ends at the `;`), matching every other statement emitter.
- */
-function emitStyleImport(node: StyleImport, e: Emit): void {
-  const start = e.off;
-  put(e, node.raw);
-  put(e, '\n');
-  if (e.positions) e.positions.push({ node, type: node.type, start, end: e.off });
 }
 
 /**

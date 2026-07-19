@@ -48,4 +48,49 @@ describe('direct canonical value access', () => {
       + '}\n'
     );
   });
+
+  it('propagates importance through a direct property accessor exactly once', () => {
+    const document = root([
+      rule('.card', [
+        decl('color', keyword('red'), null, true),
+        decl('background', propRef('color'))
+      ])
+    ]);
+
+    expect(render(document)).toBe('.card {\n  color: red !important;\n  background: red !important;\n}\n');
+  });
+
+  it('carries a property accessor importance signal through a declaration merge', () => {
+    const document = root([
+      rule('.card', [
+        decl('tone', keyword('navy'), null, true),
+        decl('shadow', propRef('tone'), ','),
+        decl('shadow', keyword('black'), ',')
+      ])
+    ]);
+
+    expect(render(document)).toBe('.card {\n  tone: navy !important;\n  shadow: navy, black !important;\n}\n');
+  });
+
+  it('resets a property-accessor importance signal before a later merge group and plain declaration', () => {
+    const document = root([
+      rule('.card', [
+        decl('tone', keyword('navy'), null, true),
+        decl('shadow', propRef('tone'), ','),
+        decl('shadow', keyword('black'), ','),
+        decl('outline', keyword('solid'), ','),
+        decl('outline', keyword('transparent'), ','),
+        decl('background', keyword('white'))
+      ])
+    ]);
+
+    expect(render(document)).toBe(
+      '.card {\n'
+      + '  tone: navy !important;\n'
+      + '  shadow: navy, black !important;\n'
+      + '  outline: solid, transparent;\n'
+      + '  background: white;\n'
+      + '}\n'
+    );
+  });
 });

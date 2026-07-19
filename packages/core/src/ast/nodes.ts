@@ -526,53 +526,6 @@ export interface RawInline {
 }
 
 /**
- * [import] An unresolved `@import` statement. A dialect plugin may replace it
- * with resolved statements using parser-produced import facts; core stores the
- * canonical node and otherwise serializes its authored bytes unchanged.
- *
- * `spec` is the resolved specifier string (a plain-string / `url(...)` path), or
- * `null` when the path is variable-interpolated (`@import "@{theme}.less"`).
- * `raw` is the verbatim `@import …;` source, emitted as-is while the node remains.
- */
-export interface StyleImport {
-  readonly type: 'StyleImport';
-  /** Verbatim `@import …;` source bytes (the fallback / passthrough emit). */
-  readonly raw: string;
-  /** Resolved specifier string, or `null` for an interpolated / opaque path. */
-  readonly spec: string | null;
-  /**
-   * [import:specifier] The path's interpolation template (`@import "@{theme}.less"`)
-   * when `spec` is `null` because the specifier is variable-interpolated. The
-   * resolution pass fills it from the file's literal-variable scope; a plain /
-   * opaque (`url(@{x})`) path leaves this undefined and stays a verbatim defer.
-   */
-  readonly interp?: Interp;
-  /** `(reference)` — resolve + scope, suppress own output. */
-  readonly reference: boolean;
-  /** `(optional)` — a missing target is swallowed, not an error. */
-  readonly optional: boolean;
-  /** `(multiple)` / the non-default re-import-at-every-position mode. */
-  readonly multiple: boolean;
-  /** `(inline)` — splice the target's RAW bytes unparsed. */
-  readonly inline: boolean;
-  /** `(css)` explicit, or a `.css` / remote target — emit the `@import` verbatim. */
-  readonly css: boolean;
-  /** `(less)` explicit — force Less parsing/inlining even for a `.css` target. */
-  readonly less: boolean;
-  /** An escaped `~"…"` path (deferred; emitted verbatim). */
-  readonly escaped: boolean;
-  /** Media-query postlude bytes (`@import (inline) "x" (min-width:…)`), else `null`. */
-  readonly media: string | null;
-  /**
-   * [import:hoist] Set by the resolution pass when this is a plain-CSS `@import`
-   * (`(css)` / `.css` / remote) — NOT inlined. Less keeps it as a literal
-   * `@import` and hoists it to the top of the output document; the serializer's
-   * hoist pass emits it there (in source-encounter order) and skips it in place.
-   */
-  readonly hoist?: boolean;
-}
-
-/**
  * One `:extend()` instruction extracted from a ruleset body (or an attached
  * `.a:extend(...)`). The SUBJECT (the thing appended / substituted-in) is the
  * carrying Rule's own selector list; `target` is the FIND selector list;
@@ -735,7 +688,6 @@ export type Statement =
   | DetachedCall
   | For
   | RawInline
-  | StyleImport
   // A bare value-position call in statement position (`e('/* … */');`): Less
   // evaluates it and emits its result bytes as a standalone line (unquote/escape
   // at document scope), so it is a legitimate statement, not just a value node.
@@ -824,9 +776,6 @@ export const comment = (text: string): Comment => ({ type: 'Comment', text });
  * `media` (optional) wraps the splice in an `@media <media> { … }` block. */
 export const rawInline = (text: string, media?: string | null): RawInline =>
   media != null ? { type: 'RawInline', text, media } : { type: 'RawInline', text };
-/** [import] An unresolved `@import` head (see {@link StyleImport}). */
-export const styleImport = (fields: Omit<StyleImport, 'type'>): StyleImport =>
-  ({ type: 'StyleImport', ...fields });
 export const varRef = (name: string): VarRef => ({ type: 'VarRef', name });
 export const sequence = (parts: ValueNode[]): Sequence => ({ type: 'Sequence', parts });
 export const important = (inner: ValueNode): Important => ({ type: 'Important', inner });

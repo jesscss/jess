@@ -48,7 +48,6 @@ import type {
   DetachedCall,
   For,
   RawInline,
-  StyleImport,
   Condition,
 } from './nodes.js';
 import type { AtRuleBlock, AtRuleStatement, ImportAtRule, OpaqueAtRuleBlock } from './at-rule.js';
@@ -60,8 +59,7 @@ export type NodeType =
   | 'SpacedValue' | 'List' | 'VarRef' | 'MixinDef' | 'MixinCall' | 'VarDeclaration'
   | 'Sequence' | 'Operation' | 'FunctionCall' | 'Paren' | 'Condition'
   | 'AtRuleBlock' | 'AtRuleStatement' | 'ImportAtRule' | 'OpaqueAtRuleBlock' | 'Interp' | 'VarIndirect'
-  | 'DetachedRuleset' | 'MapAccessor' | 'PropRef' | 'DetachedCall' | 'For' | 'RawInline'
-  | 'StyleImport';
+  | 'DetachedRuleset' | 'MapAccessor' | 'PropRef' | 'DetachedCall' | 'For' | 'RawInline';
 
 /** Combinator between two compounds in a complex selector. `|` is the CSS
  * namespace separator (tight, no spaces: `foo|h1`); `||` is the column
@@ -84,7 +82,7 @@ export type Node =
   | Simple | SelectorCapture | Keyword | Color | Quoted | Any | Url | Dimension | SpacedValue | List | VarRef | MixinDef | MixinCall
   | VarDeclaration | Sequence | Operation | FunctionCall | Paren | Condition
   | AtRuleBlock | AtRuleStatement | ImportAtRule | OpaqueAtRuleBlock | Interp | VarIndirect | DetachedRuleset
-  | MapAccessor | PropRef | DetachedCall | For | RawInline | StyleImport;
+  | MapAccessor | PropRef | DetachedCall | For | RawInline;
 
 /**
  * The frozen set of the structural `type` strings — the membership basis for
@@ -108,7 +106,6 @@ export const AST_NODE_TYPES: ReadonlySet<string> = new Set<NodeType>([
   'Sequence', 'Operation', 'FunctionCall', 'Paren', 'Condition',
   'AtRuleBlock', 'AtRuleStatement', 'ImportAtRule', 'OpaqueAtRuleBlock', 'Interp', 'VarIndirect',
   'DetachedRuleset', 'MapAccessor', 'PropRef', 'DetachedCall', 'For', 'RawInline',
-  'StyleImport',
 ]);
 
 /** Value predicate for a tree2 AST node (replaces the old `x instanceof Node`). */
