@@ -127,6 +127,25 @@ function pushExtender(appends: Branch[], e: Branch, forceHidden: boolean): void 
 }
 
 /**
+ * True when `target` matches the WHOLE of `b` — the append condition
+ * `applyInstruction` uses for a whole-branch (exact/all) hit: an identical key,
+ * a multi-segment target equal to one of `b`'s `:is()`-graft expansions, or (for
+ * an `all` match) a multi-segment compound-subset of the entire branch. This is
+ * the "the extender becomes a SIBLING of the whole complex" signal the nested
+ * re-projection reads to decide a cross-`&` flatten (a foreign whole-complex
+ * sibling cannot be expressed as a local own-local rewrite). A single-compound
+ * `all` sub-match (which rewrites a compound IN PLACE, never appends a whole
+ * sibling) is deliberately NOT a whole match.
+ */
+export function branchWholeMatches(b: Branch, target: Branch, partial: boolean): boolean {
+  const targetKey = branchText(target);
+  if (branchText(b) === targetKey) return true;
+  if (target.segs.length > 1 && branchExpansions(b).includes(targetKey)) return true;
+  if (partial && matchesWholeBranchSubset(b, target)) return true;
+  return false;
+}
+
+/**
  * True when a MULTI-segment target compound-subset-matches the ENTIRE branch:
  * same segment count, each target compound ⊆ the aligned branch compound, and
  * internal combinators aligned. A whole-span match consumes the whole selector,

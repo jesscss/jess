@@ -44,6 +44,7 @@ import {
 } from './ir.js';
 import type { Branch, Compound, Level, Simple } from './ir.js';
 import { composePath } from './compose.js';
+import { branchWholeMatches } from './match.js';
 import { collectPlan, documentHasExtend, reaches } from './plan.js';
 import type { PlanInstruction, PlanSubject } from './plan.js';
 import { buildContribs, isExtendPrefilterEnabled, runFixpoint, solveComposed } from './solve.js';
@@ -57,6 +58,15 @@ export interface NestedRulePlan {
   /** Sibling rules (target's direct decls only) to emit after this rule's block —
    * split-out exact extenders that cannot carry the rule's nested children. */
   splits: string[][];
+  /**
+   * A cross-`&` flatten whose subject STILL HAS surviving nested children: instead
+   * of collapsing (`flatten`, which composes children flat), the subtree is
+   * RE-NESTED at the hoist position — its `header` carries the composed cross-`&`
+   * sibling list (the flat solve with `:is()`-compaction) and its children stay
+   * literal-nested. `flatten` is also set so the enclosing block defers it to the
+   * hoist queue; the serializer picks the nested emission when this is true.
+   */
+  hoistNested?: boolean;
   /**
    * A decl-less parent whose single child is a pure-`&` self-compound (`.e { &&
    * {…} }`) is TRANSPARENT: it emits no wrapper of its own; the child is emitted
@@ -233,6 +243,33 @@ function mergeCompoundsToIs(a: Compound, b: Compound, allowNoSuffix: boolean): C
   return { simples: [isGroup, ...suffixSimples] };
 }
 
+/* ------------------------------------------------- relative extender folding */
+
+/** Number of leading ancestor levels two paths share BY REFERENCE (the plan walk
+ * threads the SAME `Level` object into every descendant path, so identity encodes
+ * a shared ancestor). */
+function sharedPrefixLen(a: Level[], b: Level[]): number {
+  const n = Math.min(a.length, b.length);
+  let i = 0;
+  while (i < n && a[i] === b[i]) i++;
+  return i;
+}
+
+/**
+ * Re-express an instruction's extender path RELATIVE to a nested subject's parent
+ * context so a folded-in extender contributes its OWN-LOCAL remainder, not its
+ * double-prefixed full composed path. An extender that shares the subject's parent
+ * ancestor (`.attributes .attribute-test` folded into `.attributes [data="test"]`)
+ * drops the shared levels → the sibling `.attribute-test`. A top-level extender
+ * (`.rep_ace`, no shared ancestor) is unchanged. The strip is capped at the parent
+ * context depth so a self-extend never slices the path empty.
+ */
+function relativizeExtender(inst: PlanInstruction, subject: PlanSubject): PlanInstruction {
+  const drop = Math.min(sharedPrefixLen(subject.path, inst.extenderPath), subject.path.length - 1);
+  if (drop === 0) return inst;
+  return { ...inst, extenderPath: inst.extenderPath.slice(drop) };
+}
+
 /* ---------------------------------------------------------------- top level */
 
 /**
@@ -358,60 +395,83 @@ export function computeExtends(root: Root): ExtendResults | null {
     }
   }
 
-  /** The `all`-extender folds that alias a parent's whole complex (deterministic —
-   * independent of the split/children decisions), plus the raw parent branches.
-   * This is the set a nested child may descend from without crossing the `&`. */
-  const parentHeaderSet = (p: PlanSubject): Branch[] => {
-    const raw = rawOf(p);
-    const keys = new Set(raw.map(branchText));
-    const out = raw.slice();
+  const hasChildSubjects = (s: PlanSubject): boolean => (childrenOf.get(s) ?? []).length > 0;
+
+  /** The parent header branch texts a nested child may descend from WITHOUT crossing
+   * the `&`: the parent's EXTENDED header (its flat solve when the extend rewrote the
+   * parent compound in place — `.replace.replace` → `:is(.replace, .rep_ace)…`, so a
+   * child that still textually descends from the rewritten parent is not a cross-`&`),
+   * falling back to raw, plus the `all`-extender folds that alias the parent whole
+   * complex. Comparing against the EXTENDED (not raw) header is what stops a
+   * sub-substitution of the parent compound from being mistaken for a `&`-crossing. */
+  const extendedParentHeader = (p: PlanSubject): string[] => {
+    const base = flatBySubject.get(p) ?? rawOf(p);
+    const out = base.map(branchText);
+    const rawKeys = new Set(rawOf(p).map(branchText));
     for (const inst of reachingOf(p)) {
-      if (inst.partial && keys.has(branchText(inst.target))) out.push(...composePath(inst.extenderPath));
+      if (inst.partial && rawKeys.has(branchText(inst.target))) {
+        for (const e of composePath(inst.extenderPath)) out.push(branchText(e));
+      }
     }
     return out;
   };
 
-  // ---- flatten decision (top-down; cascades to descendants) ----
-  const flattenOf = new Map<PlanSubject, boolean>();
-  const ownFlatten = (s: PlanSubject): boolean => {
-    if (s.parent === null) return false;
-    // trigger B: a nested rule that itself carries an extend crosses the `&`.
-    if (s.rule.extendInstructions && s.rule.extendInstructions.length > 0) return true;
-    const parentRaw = rawOf(s.parent);
-    const parentKeys = new Set(parentRaw.map(branchText));
+  // ---- flatten decision (top-down; a COLLAPSE cascades to descendants) ----
+  // 'collapse' — the flattened subtree is emitted FLAT (children composed); it
+  //   cascades flatten downward (a collapsed leaf's descendants collapse too).
+  // 'renest'  — the flattened subject STILL HAS nested children: it is RE-NESTED at
+  //   the hoist position (composed cross-`&` header, children stay literal-nested),
+  //   so it does NOT cascade (its children emit nested under the new header).
+  const flattenModeOf = new Map<PlanSubject, 'collapse' | 'renest'>();
+  const ownMode = (s: PlanSubject): 'none' | 'collapse' | 'renest' => {
+    if (s.parent === null) return 'none';
+    const cross = (): 'collapse' | 'renest' => (hasChildSubjects(s) ? 'renest' : 'collapse');
+    const parentKeys = new Set(rawOf(s.parent).map(branchText));
     // trigger P: an `all`-extender aliasing the parent whole complex whose target
     // does NOT also hit the child's own local compound (foreign parent-context
     // alias — the parent context changed under the child, so it cannot stay local).
     for (const inst of reachingOf(s)) {
       const single = branchSingleCompound(inst.target);
-      if (inst.partial && single && parentKeys.has(branchText(inst.target))) {
-        if (!compoundHitsLevel(single, s.ownLocal)) return true;
+      if (inst.partial && single && parentKeys.has(branchText(inst.target)) && !compoundHitsLevel(single, s.ownLocal)) {
+        return cross();
       }
     }
-    // trigger X: a STRUCTURAL LEAF whose flat solve gained a whole-complex sibling
-    // that does not descend from the parent header (a hoisted sibling branch, e.g.
-    // `.ext8 .ext9, .buu`). A rule WITH surviving children instead SPLITS the
-    // extender and stays nested, so X is gated on being a leaf.
-    if ((childrenOf.get(s) ?? []).length === 0) {
-      const headerSet = parentHeaderSet(s.parent).map(branchText);
-      for (const b of flatBySubject.get(s)!) {
-        if (!descendsFrom(branchText(b), headerSet)) return true;
+    // trigger X: a WHOLE-COMPLEX (exact/all-whole) match appends a FOREIGN sibling
+    // (the whole extender complex) that does not descend from the parent's extended
+    // header — the join is above the `&`, so the subtree flattens. A single-compound
+    // sub-match (rewrites a compound IN PLACE, never appends a whole sibling) is not
+    // a whole match and does not fire this — so a parent-compound sub-substitution
+    // (`.replace` → `:is(.replace, .rep_ace)`) keeps the rule nested.
+    const raw = rawOf(s);
+    const phSet = extendedParentHeader(s.parent);
+    for (const inst of reachingOf(s)) {
+      if (!raw.some((b) => branchWholeMatches(b, inst.target, inst.partial))) continue;
+      // An EXACT (`!partial`) whole-match into a rule with nested children does NOT
+      // flatten — the exact extender cannot carry the children, so it SPLITS to a
+      // sibling rule (the target's direct decls only) while this rule stays put. Only
+      // an `all` whole-match (which propagates into children) or an exact match into
+      // a LEAF crosses the `&`.
+      if (!inst.partial && hasChildSubjects(s)) continue;
+      for (const e of composePath(inst.extenderPath)) {
+        if (!descendsFrom(branchText(e), phSet)) return cross();
       }
     }
-    return false;
+    return 'none';
   };
   for (const s of plan.subjects) {
     // Only candidates can flatten (a non-candidate has no seed on its path, so
-    // ownFlatten is false and no ancestor flattened); leave them out of the map so
-    // they take the cheap default. Document order guarantees the parent's flatten is
-    // decided first for the cascade read.
+    // ownMode is 'none' and no ancestor collapsed); leave them out of the map so they
+    // take the cheap default. Document order guarantees the parent's mode is decided
+    // first for the cascade read.
     if (!candidate.has(s)) continue;
-    const f = ownFlatten(s) || (s.parent !== null && flattenOf.get(s.parent) === true);
-    flattenOf.set(s, f);
+    const own = ownMode(s);
+    if (own !== 'none') flattenModeOf.set(s, own);
+    else if (s.parent !== null && flattenModeOf.get(s.parent) === 'collapse') flattenModeOf.set(s, 'collapse');
   }
 
+  const isFlattened = (s: PlanSubject): boolean => flattenModeOf.has(s);
   const hasSurvivingChild = (s: PlanSubject): boolean =>
-    (childrenOf.get(s) ?? []).some((c) => flattenOf.get(c) !== true);
+    (childrenOf.get(s) ?? []).some((c) => !isFlattened(c));
 
   // ---- per-subject nested header + splits ----
   for (const s of plan.subjects) {
@@ -432,14 +492,22 @@ export function computeExtends(root: Root): ExtendResults | null {
       }
       continue;
     }
-    const flatten = flattenOf.get(s) === true;
-    if (flatten) {
-      nestedPlan.set(s.rule, { flatten: true, header: [], splits: [] });
+    const mode = flattenModeOf.get(s);
+    if (mode !== undefined) {
       // hoisted header = flat solve with sibling :is()-compaction.
       // Flattened nested rule: its hoisted header carries a shared parent-composition
       // prefix, so a child comma-list under one parent DOES compact across segments
       // (extend-exact `:is(<parent>) :is(.replace, .c)`).
-      hoistHeader.set(s.rule, siblingCompact(flatBySubject.get(s)!, true).map(branchText));
+      const hoisted = siblingCompact(flatBySubject.get(s)!, true).map(branchText);
+      hoistHeader.set(s.rule, hoisted);
+      if (mode === 'renest') {
+        // RE-NEST: emit the subtree at the hoist position with the composed cross-`&`
+        // header, children stay literal-nested. `flatten` still defers it to the
+        // enclosing block's hoist queue; `hoistNested` picks the nested emission.
+        nestedPlan.set(s.rule, { flatten: true, hoistNested: true, header: hoisted, splits: [] });
+      } else {
+        nestedPlan.set(s.rule, { flatten: true, header: [], splits: [] });
+      }
       continue;
     }
     // A collapsed `&&` child is keyed on its COMPOSED complex, so it takes the
@@ -472,10 +540,15 @@ export function computeExtends(root: Root): ExtendResults | null {
       // A surviving nested rule: rewrite ONLY the own-local selector with the
       // child-side `all`-matches (whole-segment → comma; sub-compound → `:is()`);
       // parent-context and exact matches are handled by the parent / flatten.
-      const applied = reaching.filter((inst) => {
-        const single = branchSingleCompound(inst.target);
-        return inst.partial && single !== null && compoundHitsLevel(single, s.ownLocal);
-      });
+      const applied = reaching
+        .filter((inst) => {
+          const single = branchSingleCompound(inst.target);
+          return inst.partial && single !== null && compoundHitsLevel(single, s.ownLocal);
+        })
+        // [fold] re-express each extender RELATIVE to this subject's parent context —
+        // a sibling under a shared ancestor folds as its own-local remainder
+        // (`.attribute-test`), not the double-prefixed full path.
+        .map((inst) => relativizeExtender(inst, s));
       header = runFixpoint(s.ownLocal.map(cloneBranch), applied, buildContribs(applied)).list;
     }
     nestedPlan.set(s.rule, {

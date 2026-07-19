@@ -3727,12 +3727,15 @@ function emitNestedRule(rule: Rule, frame: Frame, e: Emit): void {
     emitNestedBody(rule.body, childFrame, e);
     return;
   }
-  if (plan?.flatten) {
+  if (plan?.flatten && !plan.hoistNested) {
     // Fallback (a top-level rule never flattens; a body-nested one is deferred by
     // emitNestedBody's hoist queue). Emit via the flat path with compaction.
     emitHoisted(rule, frame, e);
     return;
   }
+  // A `hoistNested` rule falls through: it is emitted NESTED here (at the hoist
+  // position), its `plan.header` already carrying the composed cross-`&` sibling
+  // list; children stay literal-nested.
   const markChunks = e.chunks.length;
   const markOff = e.off;
   const markPos = e.positions ? e.positions.length : 0;
@@ -3784,8 +3787,13 @@ function emitNestedRule(rule: Rule, frame: Frame, e: Emit): void {
       for (const header of plan.splits) flushBlock(header, direct, e);
     }
   }
-  // [extend] hoisted (flattened) children, emitted flat at this rule's depth.
-  for (const h of hoist) emitHoisted(h.rule, h.frame, e);
+  // [extend] hoisted (flattened) children at this rule's depth: a `renest` child
+  // emits NESTED (composed cross-`&` header, children literal); a `collapse` child
+  // emits FLAT.
+  for (const h of hoist) {
+    if (e.extends?.nestedPlan.get(h.rule)?.hoistNested) emitNestedRule(h.rule, h.frame, e);
+    else emitHoisted(h.rule, h.frame, e);
+  }
 }
 
 /** Emit a flattened rule (and its descendants) via the flat path at `e.depth`,
