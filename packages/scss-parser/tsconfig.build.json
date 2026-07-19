@@ -10,6 +10,6 @@
       "@jesscss/parser": ["./node_modules/@jesscss/parser/lib/index.d.ts"]
     }
   },
-  "include": ["src/grammar.ts", "src/index.ts", "src/cst.ts"],
+  "include": ["src/grammar.ts", "src/index.ts", "src/cst.ts", "src/ast/grammar.ts"],
   "exclude": []
 }

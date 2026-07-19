@@ -55,6 +55,77 @@ Core never receives a resolver callback or owns module/filesystem policy.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: add a source-private Jess direct-AST construction starter for
+  closed `$` variable declaration/reference facts.
+- Architecture surface: focused tests macro-transform this source directly;
+  it is excluded from Jess build entries and package exports. Reductions call
+  canonical AST constructors with no CST reuse, bridge, host, resolver, loader,
+  or runtime scanner.
+- Separation/duplication: Jess owns its unescaped `$` name terminal. The closed
+  starter deliberately rejects quoted backslashes and `$!name`, instead of
+  constructing false escaped/semantic facts. Shared CSS keyword recognition is
+  input-only and never overridden by the local reduction map.
+- Cumulative node weight: zero production importers; source nodes exist only in
+  focused direct-grammar proof.
+- New traversal: [loop/traversal] the grammar-local Root-body pass walks only
+  already-recognized declaration children in the cold test seam.
+- New node/materialization: [node construction] reductions construct only the
+  exact Root, VarDeclaration, VarRef, Keyword, and Quoted facts. [materialized
+  array/object] is the required cold Root child list.
+- Render path: unchanged and unreachable from this source-private grammar.
+- Helper/API surface: no public helper, build entry, or operation is added.
+- Metadata mutations: none.
+- Review-flagged diff tokens: [loop/traversal], [node construction], and
+  [materialized array/object] are cold parser-local construction. [routine
+  error control] rejects impossible completed reductions only. [array helper]
+  and [array spread/materialization] are not added.
+- Hot-path cost contracts:
+  ```json
+  [{"id":"jess-private-direct-ast-family","verdict":"accepted","privateReachability":{"productionImporters":0,"publicExports":0,"buildEntries":0,"coldConstructionOnly":true},"why":"The Jess AST starter is source-private: it is absent from build entries and package exports and runs only in focused macro/AST tests."}]
+  ```
+- Evidence: focused direct AST/macro tests, explicit type check, clean package
+  build with no `lib/ast` artifact, parser-boundary verifier, and adversarial
+  review.
+- Verdict: accepted private construction proof; no production behavior or
+  performance claim.
+
+- Latest pass: add a private, macro-compiled SCSS direct-AST construction
+  starter for closed `$` variable declaration and reference facts.
+- Architecture surface: the grammar directly calls canonical AST constructors
+  and is emitted only as a non-exported private artifact for build proof. It
+  has no public parser route, CST reuse, bridge, host, resolver, or loader.
+- Separation/duplication: SCSS `$` names are parser-local exact unescaped
+  grammar facts; shared CSS keyword values retain their existing escape syntax.
+  Quoted chunks are parser-local so `#{…}` is rejected until typed interpolation
+  segments exist. No source scanning, text reparse, or post-parse interpolation
+  detection occurs.
+- Cumulative node weight: source nodes exist only in focused direct-grammar
+  tests; zero public parser/eval/render importers reach this grammar.
+- New traversal: [loop/traversal] the existing grammar-local child pass builds
+  one Root body from already-recognized variable declarations; it is cold and
+  does not walk source or runtime state.
+- New node/materialization: [node construction] reductions construct only
+  Root, VarDeclaration, VarRef, Keyword, and Quoted nodes required by the
+  recognized fact. [materialized array/object] is the required Root child list,
+  cold behind the private test seam.
+- Render path: unchanged and unreachable from this private grammar.
+- Helper/API surface: no public helper or operation; direct reductions only.
+- Metadata mutations: none.
+- Review-flagged diff tokens: [loop/traversal], [node construction], and
+  [materialized array/object] are limited to the cold parser-local reductions.
+  [routine error control] only rejects impossible completed reduction children;
+  it is not ordinary parse control flow. [array helper] and [array
+  spread/materialization] are not added.
+- Hot-path cost contracts:
+  ```json
+  [{"id":"scss-private-direct-ast-family","verdict":"accepted","privateReachability":{"productionImporters":0,"publicExports":0,"buildEntries":0,"coldConstructionOnly":true},"why":"The SCSS AST grammar is macro-compiled for build proof but is absent from exports and every public parser/eval/render entry. Its direct reductions run only in focused tests."}]
+  ```
+- Evidence: direct AST acceptance/rejection cases including unescaped `$` names,
+  quoted interpolation rejection, macro-output proof, no-emit type check,
+  package build, parser-boundary verifier, and two adversarial reviews.
+- Verdict: accepted private construction proof; no production behavior or
+  performance claim.
+
 - Latest pass: move the private CSS direct-AST basic-selector terminal into
   the private shared recognition artifact and remove the stale external
   support-file reference from the private-grammar cost registry.

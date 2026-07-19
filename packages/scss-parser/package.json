@@ -36,7 +36,7 @@
     "postinstall": "node ./scripts/materialize-sass-spec-cache.cjs",
     "ci": "pnpm build && pnpm test",
     "prepublishOnly": "pnpm build",
-    "build": "pnpm compile",
+    "build": "pnpm --filter @jesscss/internal-css-recognition build && pnpm compile",
     "compile": "tsdown --tsconfig tsconfig.build.json --no-dts && ../../node_modules/.bin/tsc -p tsconfig.build.json --emitDeclarationOnly --noCheck",
     "dev": "tsdown --tsconfig tsconfig.build.json --no-dts --watch",
     "sass-spec:cache": "node ./scripts/materialize-sass-spec-cache.cjs",
@@ -46,6 +46,7 @@
   },
   "dependencies": {
     "@jesscss/css-parser": "workspace:*",
+    "@jesscss/internal-css-recognition": "workspace:*",
     "@jesscss/less-parser": "workspace:*"
   },
   "peerDependencies": {

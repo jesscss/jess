@@ -58,6 +58,7 @@
   },
   "devDependencies": {
     "@jesscss/core": "workspace:*",
+    "@jesscss/internal-css-recognition": "workspace:*",
     "@types/color-name": "^1.1.1",
     "parseman": "link:/Users/matthew/git/oss/parser-thing"
   },

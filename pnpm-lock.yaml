@@ -450,6 +450,9 @@ importers:
       '@jesscss/core':
         specifier: workspace:*
         version: link:../core
+      '@jesscss/internal-css-recognition':
+        specifier: workspace:*
+        version: link:../internal-css-recognition
       '@types/color-name':
         specifier: ^1.1.1
         version: 1.1.5
@@ -659,6 +662,9 @@ importers:
       '@jesscss/css-parser':
         specifier: workspace:*
         version: link:../css-parser
+      '@jesscss/internal-css-recognition':
+        specifier: workspace:*
+        version: link:../internal-css-recognition
       '@jesscss/less-parser':
         specifier: workspace:*
         version: link:../less-parser
