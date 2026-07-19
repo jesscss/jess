@@ -10,7 +10,7 @@ import type { ILexingResult } from 'chevrotain';
 import { runFunctionalParse, type FunctionalParseHost } from '@jesscss/css-parser/jess';
 import { scssGrammar } from './grammar.js';
 import { ScssGrammar } from './builders.js';
-import { setParseScssFnForInterp } from './interp.js';
+import { setParseScssFnForSelectorValidate } from './scss-selector-validate.js';
 
 /** Config accepted for API compatibility; the functional driver ignores it. */
 export type ScssParserConfig = {
@@ -94,7 +94,7 @@ export function parseScssFn(
   return runFunctionalParse(input, g[rule], host, { trivia: g.rw });
 }
 
-setParseScssFnForInterp(parseScssFn);
+setParseScssFnForSelectorValidate(parseScssFn);
 
 const EMPTY_LEXER_RESULT: ILexingResult = { tokens: [], errors: [], groups: {} };
 

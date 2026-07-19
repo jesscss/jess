@@ -68,10 +68,11 @@ export const scssGrammar = compose([lessGrammar, rules({ trivia: rw }, (g: any) 
   // ── Interpolation (#{…}) ───────────────────────────────────────────────────
   // SCSS uses `#{expr}` (not Less `@{var}`). Override the Less interpolation
   // hooks: bare `#{…}` values, interpolated idents in names/selectors/strings.
-  const scssInterpKey = regex(/(?:-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*|-)?#\{-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*\}(?:#\{-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*\}|[-_a-zA-Z0-9\u0080-\uffff])*/);
-  const scssCustomPropInterp = regex(/--(?:[-_a-zA-Z0-9\u0080-\uffff]|#\{[^}]*\})+/);
   const customProp = regex(/--[-_a-zA-Z0-9\u0080-\uffff]*/);
-  const scssDeclPropName = regex(/\*?-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f])|#\{[^}]*\})(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f])|#\{[^}]*\})*/);
+  // Declaration property name \u2014 WITHOUT the `#\{\u2026\}` alternative. A name that
+  // carries interpolation is structured by `ScssInterpDeclName` (below), which the
+  // Declaration rules try FIRST; this flat token owns only interpolation-free names.
+  const scssDeclPropName = regex(/\*?-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/);
   const important = sequence(literal('!'), literal('important'));
 
   const ScssInterpBare = node(
@@ -114,8 +115,45 @@ export const scssGrammar = compose([lessGrammar, rules({ trivia: rw }, (g: any) 
     sequence(literal('\''), many(choice(ScssInterpBare, sqContents)), literal('\''))
   ));
 
-  const InterpValue = node(
-    scssInterpKey);
+  // ── Welded-ident interpolation (value + name positions) ────────────────────
+  // Each production below interleaves literal chunk leaves with `#{ … }` interp
+  // atoms (`ScssInterpBare`, a FULL SCSS expression) and REQUIRES at least one
+  // atom, so an interpolation-free run never matches here and flows through the
+  // plain token path (byte-identical). The builders fold the leaves + atoms into
+  // one `Interpolated` with the SAME seam the selector/name paths use — never a
+  // byte re-scan (this is what let interp.ts's nested-parser bootstrap be deleted).
+  //
+  // Value position (`foo-#{$bar}-baz`). The leading chunk must start like an ident
+  // (letter or `-`) so a digit-led value (`123#{…}`) still routes through
+  // Dimension/Num, matching the old flat token which required an ident start.
+  const interpValueLead = regex(/-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*|-/);
+  const interpValueChunk = regex(/[-_a-zA-Z0-9-￿]+/);
+  const InterpValue = node(sequence(
+    optional(interpValueLead),
+    ScssInterpBare,
+    many(choice(interpValueChunk, ScssInterpBare))
+  ));
+
+  // Interpolated declaration NAME (`#{$p}-x`, `margin-#{$side}`). `*` covers the
+  // IE star-hack prefix; the chunk char class matches `scssDeclPropName` (escapes
+  // included) minus the interp opener.
+  const declNameChunk = regex(/(?:[-_a-zA-Z0-9-￿]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+/);
+  const ScssInterpDeclName = node(sequence(
+    optional(literal('*')),
+    many(declNameChunk),
+    ScssInterpBare,
+    many(choice(declNameChunk, ScssInterpBare))
+  ));
+
+  // Interpolated custom-property NAME (`--x-#{$y}`). The `--` prefix + chunk leaves
+  // fold into the same `Interpolated` (role property) as the declaration name.
+  const customPropChunk = regex(/[-_a-zA-Z0-9-￿]+/);
+  const ScssInterpCustomProp = node(sequence(
+    literal('--'),
+    many(customPropChunk),
+    ScssInterpBare,
+    many(choice(customPropChunk, ScssInterpBare))
+  ));
 
   // ── Sass map literals + module-qualified idents ────────────────────────────
   const dotName = regex(/\.-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
@@ -196,7 +234,7 @@ export const scssGrammar = compose([lessGrammar, rules({ trivia: rw }, (g: any) 
 
   const CustomDeclaration = node(
     sequence(
-      choice(scssCustomPropInterp, customProp),
+      choice(ScssInterpCustomProp, customProp),
       literal(':'),
       choice(g.customCurlyBlock, g.customValue, g.cpValue),
       optional(literal(';'))
@@ -207,7 +245,7 @@ export const scssGrammar = compose([lessGrammar, rules({ trivia: rw }, (g: any) 
   // Declaration nodes. The rule's own name stays local (`many(ScssNestedDecl)`).
   const ScssNestedDecl = node('Declaration',
     sequence(
-      scssDeclPropName,
+      choice(ScssInterpDeclName, scssDeclPropName),
       literal(':'),
       g.valueList,
       optional(literal(';'))
@@ -230,7 +268,7 @@ export const scssGrammar = compose([lessGrammar, rules({ trivia: rw }, (g: any) 
 
   const Declaration = node(
     sequence(
-      scssDeclPropName,
+      choice(ScssInterpDeclName, scssDeclPropName),
       optional(choice(literal('+_'), literal('+'))),
       literal(':'),
       choice(
@@ -788,7 +826,8 @@ export const scssGrammar = compose([lessGrammar, rules({ trivia: rw }, (g: any) 
 
   return {
     VarDeclaration, Reference, NsVarDeclaration, AtRuleStatement,
-    ScssInterpBare, Quoted, InterpValue, value, valueList, functionCallArgs, Call,
+    ScssInterpBare, Quoted, InterpValue, ScssInterpDeclName, ScssInterpCustomProp,
+    value, valueList, functionCallArgs, Call,
     ScssMapLiteral, ScssIdentValue,
     ScssInterpolatedName, InterpolatedSelector,
     Declaration, CustomDeclaration,

@@ -4,12 +4,43 @@
  */
 import {
   Call,
+  Expression,
   Reference,
   isNode,
   N,
   type LocationInfo,
   type Node
 } from '@jesscss/core';
+
+/** A bare single `$var` reference used as an interpolation body. */
+function unwrapSingleReference(n: Node): Reference | undefined {
+  if (
+    isNode(n, N.Reference)
+    && n.options?.type === 'variable'
+    && !n.target
+    && typeof n.key === 'string'
+  ) {
+    return n;
+  }
+  return undefined;
+}
+
+/**
+ * Turn a parsed `#{ … }` body expression into an interpolation replacement
+ * (name/ident slots): a bare `$var` becomes an ident-role variable Reference; a
+ * richer Reference stays Expression-wrapped so it renders as one slot; anything
+ * else passes through.
+ */
+export function toInterpReplacement(expr: Node, loc: LocationInfo): Node {
+  const ref = unwrapSingleReference(expr);
+  if (ref && typeof ref.key === 'string') {
+    return new Reference({ key: ref.key }, { type: 'variable', role: 'ident' }, loc);
+  }
+  if (isNode(expr, N.Reference)) {
+    return new Expression(expr, undefined, loc);
+  }
+  return expr;
+}
 
 export function unwrapSingleSequence(n: Node): Node {
   if (isNode(n, N.Sequence) && n.value.length === 1) {

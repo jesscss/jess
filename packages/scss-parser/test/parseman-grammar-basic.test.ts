@@ -345,6 +345,65 @@ describe('ScssParser — interpolation (#{…})', () => {
       }
     }
   });
+
+  it('structures a welded-ident value (foo-#{$bar}-baz) with literal chunks kept literal', () => {
+    const { tree } = parseOk('.a { grid-area: foo-#{$bar}-baz; }');
+    const ruleset = tree.rules[0]!;
+    expect(isNode(ruleset, N.Ruleset)).toBe(true);
+    if (isNode(ruleset, N.Ruleset)) {
+      const decl = ruleset.rules[0]!;
+      expect(isNode(decl, N.Declaration)).toBe(true);
+      if (isNode(decl, N.Declaration) && isNode(decl.value, N.Interpolated)) {
+        // Only the `#{…}` becomes a placeholder slot; the ident chunks stay literal.
+        expect(decl.value.source).toBe('foo-%%-baz');
+        expect(decl.value.replacements).toHaveLength(1);
+        expect(isNode(decl.value.replacements[0]!, N.Reference)).toBe(true);
+      }
+    }
+  });
+
+  it('structures a welded value interp body as a real expression (#{$x + $y})', () => {
+    const { tree } = parseOk('.a { grid-area: a-#{$x + $y}; }');
+    const ruleset = tree.rules[0]!;
+    if (isNode(ruleset, N.Ruleset)) {
+      const decl = ruleset.rules[0]!;
+      if (isNode(decl, N.Declaration) && isNode(decl.value, N.Interpolated)) {
+        expect(decl.value.source).toBe('a-%%');
+        expect(decl.value.replacements).toHaveLength(1);
+        // A full binary expression, not opaque text — proves the grammar (not a
+        // char-scan) structured the body.
+        expect(isNode(decl.value.replacements[0]!, N.Operation)).toBe(true);
+      }
+    }
+  });
+
+  it('structures an interpolated declaration name (#{$p}-x: 1)', () => {
+    const { tree } = parseOk('.a { #{$p}-x: 1; }');
+    const ruleset = tree.rules[0]!;
+    if (isNode(ruleset, N.Ruleset)) {
+      const decl = ruleset.rules[0]!;
+      expect(isNode(decl, N.Declaration)).toBe(true);
+      if (isNode(decl, N.Declaration) && isNode(decl.name, N.Interpolated)) {
+        expect(decl.name.source).toBe('%%-x');
+        expect(decl.name.replacements).toHaveLength(1);
+        expect(isNode(decl.name.replacements[0]!, N.Reference)).toBe(true);
+      }
+    }
+  });
+
+  it('structures an interpolated custom-property name (--#{$n}: 1)', () => {
+    const { tree } = parseOk('.a { --#{$n}: 1; }');
+    const ruleset = tree.rules[0]!;
+    if (isNode(ruleset, N.Ruleset)) {
+      const decl = ruleset.rules[0]!;
+      expect(isNode(decl, N.CustomDeclaration)).toBe(true);
+      if (isNode(decl, N.CustomDeclaration) && isNode(decl.name, N.Interpolated)) {
+        expect(decl.name.source).toBe('--%%');
+        expect(decl.name.replacements).toHaveLength(1);
+        expect(isNode(decl.name.replacements[0]!, N.Reference)).toBe(true);
+      }
+    }
+  });
 });
 
 describe('ScssParser — maps / lists / module refs', () => {

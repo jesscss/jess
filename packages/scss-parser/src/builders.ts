@@ -74,11 +74,7 @@ import {
   sourceSpanOf,
   type Selector
 } from '@jesscss/core';
-import {
-  buildScssInterpolatedFromString,
-  isValidScssSelectorList,
-  toInterpReplacement
-} from './interp.js';
+import { isValidScssSelectorList } from './scss-selector-validate.js';
 import {
   quotedLike,
   isPlainCssImportPrelude,
@@ -97,7 +93,8 @@ import {
   desugarMapLookup,
   desugarNamespacedCall,
   makeNamespacedReference,
-  toDeclKey
+  toDeclKey,
+  toInterpReplacement
 } from './scss-value-helpers.js';
 
 // ---------------------------------------------------------------------------
@@ -192,7 +189,9 @@ export class ScssGrammar extends LessGrammar {
       case 'ScssReturn':        return this._buildScssReturn(children, _rawChildren, loc);
       case 'ScssInterpBare':    return this._buildScssInterpBare(children, loc);
       case 'ScssInterpolatedName': return this._buildScssInterpolatedName(children, loc);
-      case 'InterpValue':       return this._buildScssInterpValue(_rawChildren, loc);
+      case 'InterpValue':       return this._foldScssInterp(children, 'ident', loc);
+      case 'ScssInterpDeclName': return this._foldScssInterp(children, 'property', loc);
+      case 'ScssInterpCustomProp': return this._foldScssInterp(children, 'property', loc);
       case 'InterpolatedSelector': return this._buildScssInterpolatedSelector(children, loc);
       case 'Declaration':       return this._buildScssDeclaration(children, loc, () =>
         super.buildNode(type, span, children, _state, _rawChildren, fields, triviaLog));
@@ -716,11 +715,32 @@ export class ScssGrammar extends LessGrammar {
     return new Interpolated({ source, replacements }, { role: 'name' }, loc) as unknown as JessNode;
   }
 
-  private _buildScssInterpValue(raw: ReadonlyArray<{ _tag: string }>, loc: LocationInfo) {
-    const items = spannedComponents(raw);
-    const image = items.map(i => (typeof i.comp === 'string' ? i.comp : '')).join('');
-    const result = buildScssInterpolatedFromString(image, loc, 'ident');
-    return result as unknown as JessNode;
+  /**
+   * Fold interleaved literal chunk leaves + `ScssInterpBare`-derived `Interpolated`
+   * children (welded-ident value / declaration-name / custom-prop-name paths) into
+   * one `Interpolated{source, replacements}` — the same seam the selector/name
+   * builders use, NO byte re-scan. The grammar requires at least one interp atom, so
+   * `replacements` is non-empty; the `Any` arm is a defensive fallback.
+   */
+  private _foldScssInterp(
+    children: ReadonlyArray<Child>,
+    role: 'ident' | 'property',
+    loc: LocationInfo
+  ): JessNode {
+    let source = '';
+    const replacements: Node[] = [];
+    for (const c of children) {
+      if (c._tag === 'leaf') {
+        source += (c as CSTLeaf).value;
+      } else if (c._tag === 'node' && isNode(c as JessNode, N.Interpolated)) {
+        source += INTERPOLATION_PLACEHOLDER;
+        replacements.push(...(c as unknown as Interpolated).replacements);
+      }
+    }
+    if (replacements.length === 0) {
+      return new Any(source, { role }, loc) as unknown as JessNode;
+    }
+    return new Interpolated({ source, replacements }, { role }, loc) as unknown as JessNode;
   }
 
   private _buildScssInterpolatedSelector(children: ReadonlyArray<Child>, loc: LocationInfo) {
@@ -742,14 +762,19 @@ export class ScssGrammar extends LessGrammar {
     return new InterpolatedSelector(interp as any, {}, loc) as unknown as JessNode;
   }
 
-  private _scssInterpDeclName(name: unknown, loc: LocationInfo): unknown {
-    if (typeof name !== 'string') {
-      return name;
-    }
-    if (name.includes('#{')) {
-      return buildScssInterpolatedFromString(name, loc, 'property');
-    }
-    return name;
+  /**
+   * A grammar-structured interpolated declaration/custom-prop name arrives as an
+   * `Interpolated` NODE child before the `:` leaf (the colon-based Less name builder
+   * left `name` empty). Returns it so the caller can install the real name — no byte
+   * re-scan of a flat string.
+   */
+  private _structuredInterpName(children: ReadonlyArray<Child>): Interpolated<'property'> | undefined {
+    const colonIdx = children.findIndex(c => c._tag === 'leaf' && (c as CSTLeaf).value === ':');
+    const before = colonIdx >= 0 ? children.slice(0, colonIdx) : children;
+    const nameNode = before.find(
+      (c): c is JessNode => c._tag === 'node' && isNode(c as JessNode, N.Interpolated)
+    );
+    return nameNode as unknown as Interpolated<'property'> | undefined;
   }
 
   private _buildScssDeclaration(
@@ -759,8 +784,9 @@ export class ScssGrammar extends LessGrammar {
   ) {
     const decl = buildLess() as Declaration;
     const d = decl as { name?: unknown; value?: unknown };
-    if (d.name !== undefined) {
-      d.name = this._scssInterpDeclName(d.name, loc);
+    const interpName = this._structuredInterpName(children);
+    if (interpName) {
+      d.name = interpName;
     }
     const valueNodes = nodeChildren(children).filter(n =>
       isNode(n, N.Collection) || isNode(n, N.Sequence) || isNode(n, N.Keyword)
@@ -783,12 +809,33 @@ export class ScssGrammar extends LessGrammar {
     loc: LocationInfo,
     buildLess: () => JessNode
   ) {
-    const decl = buildLess() as CustomDeclaration;
-    const d = decl as { name?: unknown };
-    if (d.name !== undefined) {
-      d.name = this._scssInterpDeclName(d.name, loc);
+    // A plain (interp-free) custom-prop name is a single leaf → defer entirely to
+    // the inherited Less builder (curly-block / cpValue value handling intact).
+    const interpName = this._structuredInterpName(children);
+    if (!interpName) {
+      return buildLess();
     }
-    return decl as unknown as JessNode;
+    // Interpolated name (`--x-#{$y}`): the name is a structured `Interpolated` NODE,
+    // so the leaf-indexed Less builder can't run. Assemble the value from the
+    // children AFTER the `:` (the name node excluded), mirroring the Less custom-prop
+    // value rule: structured value nodes when present, else verbatim raw text.
+    const colonIdx = children.findIndex(c => c._tag === 'leaf' && (c as CSTLeaf).value === ':');
+    const valueChildren = colonIdx >= 0 ? children.slice(colonIdx + 1) : [];
+    const valueNodes = nodeChildren(valueChildren);
+    let value: Node | Node[];
+    if (valueNodes.length > 0) {
+      value = valueNodes.length === 1 ? valueNodes[0]! : (valueNodes as Node[]);
+    } else {
+      const rawText = valueChildren
+        .filter((c): c is CSTLeaf => c._tag === 'leaf' && (c as CSTLeaf).value !== ';')
+        .map(l => l.value).join('').trimEnd();
+      value = new Any(rawText === '' ? '' : ' ' + rawText, undefined, loc) as unknown as Node;
+    }
+    return new CustomDeclaration(
+      { name: interpName, value },
+      undefined,
+      loc
+    ) as unknown as JessNode;
   }
 
   protected override _buildQuoted(children: ReadonlyArray<Child>, loc: LocationInfo) {
