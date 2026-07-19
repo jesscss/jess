@@ -75,6 +75,16 @@ function leafValues(node: LessCstChild): string[] {
   return node.children.flatMap(leafValues);
 }
 
+function findNodes(node: LessCstChild, grammarType: string): Extract<LessCstChild, { _tag: 'node' }>[] {
+  if (node._tag !== 'node') {
+    return [];
+  }
+  return [
+    ...(node.grammarType === grammarType ? [node] : []),
+    ...node.children.flatMap(child => findNodes(child, grammarType))
+  ];
+}
+
 describe('Less import CST facts', () => {
   it('keeps quoted interpolation segments, typed options, and a typed media postlude', () => {
     const result = parseLessCst('@import (less, multiple) "theme-@{name}.css" screen and (min-width: 600px);');
@@ -98,6 +108,35 @@ describe('Less import CST facts', () => {
     expect(findNode(imp!, 'ImportTarget')).toBeDefined();
     expect(findNode(imp!, 'Url')).toBeDefined();
     expect(findNode(imp!, 'ImportMedia')).toBeDefined();
+  });
+});
+
+describe('Less custom-property interpolation CST facts', () => {
+  it('keeps valid interpolation typed instead of swallowing it in opaque custom-property chunks', () => {
+    const input = '.x { --theme: pre-@{name}-post (@{map[key]}) [@{index}] { @{nested} }; }';
+    const result = parseLessCst(input);
+
+    expect(result.errors).toHaveLength(0);
+    expect(findNodes(result.tree, 'LessInterp').map(leafValues)).toEqual([
+      ['@{', 'name', '}'],
+      ['@{', 'map', '[', 'key', ']', '}'],
+      ['@{', 'index', '}'],
+      ['@{', 'nested', '}']
+    ]);
+  });
+
+  it('retains invalid or escaped interpolation starts as literal custom-property content', () => {
+    for (const [input, literal] of [
+      ['.x { --theme: pre-@{ spaced }-post; }', 'pre-@{ spaced }-post'],
+      ['.x { --theme: pre-@{map.key}-post; }', 'pre-@{map.key}-post'],
+      ['.x { --theme: pre-@{}-post; }', 'pre-@{}-post'],
+      ['.x { --theme: pre-\\@{name}-post; }', 'pre-\\@{name}-post']
+    ]) {
+      const result = parseLessCst(input);
+      expect(result.errors, input).toHaveLength(0);
+      expect(findNodes(result.tree, 'LessInterp'), input).toHaveLength(0);
+      expect(leafValues(result.tree).join(''), input).toContain(literal);
+    }
   });
 });
 
