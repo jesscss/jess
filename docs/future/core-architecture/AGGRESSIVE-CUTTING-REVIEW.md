@@ -817,6 +817,22 @@ no imported guarded mixins (no speedup to show), but on
     }
   },
   {
+    "id": "css-atrule-prelude-lossless-segments",
+    "kind": "neutral-or-negative",
+    "surface": "AtRulePreludeSegments direct-only lossless header grammar (grammar.ts)",
+    "files": ["packages/css-parser/src/grammar.ts"],
+    "neutralRefactor": {
+      "costDelta": "neutral",
+      "why": "The new header-segment rule is exported for a future direct AST reduction but is unattached from Stylesheet, AtRuleBlock, and the legacy builder path. Normal CSS parsing therefore does not enter it or allocate segment nodes. Its only work is on the explicit direct-CST entry, where it replaces any future source split with typed whitespace, comment, comma, group, quoted, and text segments.",
+      "byteIdentity": {
+        "fixture": "benchmark.less",
+        "collapseNesting": true,
+        "outputSha256": "adfd26732125a33fc1e264aca7d7ecde8c7c1da43f968e3106bd387a1f78e840",
+        "outputBytes": 133983
+      }
+    }
+  },
+  {
     "id": "atrule-prelude-unknown-tokenstream-sequence",
     "kind": "neutral-or-negative",
     "surface": "emitDirectSeparator leading-comma-token space suppression (sequence.ts)",

@@ -423,6 +423,40 @@ export const cssGrammar = rules({ trivia: rw }, (g: any) => {
     scanTo(atPreludeStop, { skip: [balanced('(', ')'), balanced('[', ']'), singleStr, doubleStr] })
   ));
   const atPreludeTokens = many(choice(node('AtPreludeToken', literal(',')), atPreludeToken));
+
+  /**
+   * Lossless at-rule-prelude segments for the direct AST reduction.  This is a
+   * deliberately separate seam from `atPreludeTokens`: the latter still feeds
+   * the legacy builder, whose public tree shape must not change during this
+   * grammar-only slice.  A later direct reduction can consume these segments
+   * without scanning or splitting source text again.
+   *
+   * The outer `noTrivia` is essential.  Header whitespace and comments are
+   * syntax here, not ambient filler, so every byte before `{`/`;` has exactly
+   * one segment owner.  Balanced groups and quoted strings stay atomic; an
+   * escaped delimiter stays in a text segment rather than opening a new one.
+   * This is static CSS structure only: Less/SCSS interpolation must supply its
+   * own typed alternatives before any text/group arm and must not attach this
+   * primitive as a generic dialect prelude transport.
+   */
+  const AtPreludeWhitespace = node('AtPreludeWhitespace', noTrivia(ws));
+  const AtPreludeComment = node('AtPreludeComment', noTrivia(comment));
+  const AtPreludeComma = node('AtPreludeComma', noTrivia(literal(',')));
+  const AtPreludeGroup = node('AtPreludeGroup', noTrivia(choice(
+    balanced('(', ')', { skip: [singleStr, doubleStr, comment] }),
+    balanced('[', ']', { skip: [singleStr, doubleStr, comment] })
+  )));
+  const AtPreludeQuoted = node('AtPreludeQuoted', noTrivia(choice(singleStr, doubleStr)));
+  const atPreludeText = regex(/(?:\\[\s\S]|\/(?!\*)|[^\\/ \t\n\r\f,;{}()[\]"'])+/);
+  const AtPreludeText = node('AtPreludeText', noTrivia(atPreludeText));
+  const AtRulePreludeSegments = node('AtRulePreludeSegments', noTrivia(many(choice(
+    AtPreludeWhitespace,
+    AtPreludeComment,
+    AtPreludeComma,
+    AtPreludeGroup,
+    AtPreludeQuoted,
+    AtPreludeText
+  ))));
   // Statement at-rules retain their compact string-backed contract for now. They
   // do not split that scan in a builder; block at-rules below use the structured
   // token stream because their former builder did exactly that. Keep this seam
@@ -755,7 +789,8 @@ export const cssGrammar = rules({ trivia: rw }, (g: any) => {
     valueList, valueSequence, value, parenBody, mathProduct, mathSum, calcBody,
     Dimension, numeric, Url, Call, anyValue,
     AtRuleBlock, AtRuleBlockTop, AtRuleStatement, ImportStatement,
-    QueryAtRuleBlock, QueryAtRuleBlockTop, UnknownAtRuleBlock, atTokenStream
+    QueryAtRuleBlock, QueryAtRuleBlockTop, UnknownAtRuleBlock, atTokenStream,
+    AtRulePreludeSegments
   };
 });
 
@@ -764,5 +799,6 @@ export const cssGrammar = rules({ trivia: rw }, (g: any) => {
 export const {
   Stylesheet, Ruleset, SelectorList, ComplexSelector, CompoundSelector,
   BasicSelector, AttributeSelector, PseudoSelector, Declaration, CustomDeclaration,
-  Dimension, Num, Color, Url, Call, Paren, Quoted, AtRuleBlock, AtRuleStatement
+  Dimension, Num, Color, Url, Call, Paren, Quoted, AtRuleBlock, AtRuleStatement,
+  AtRulePreludeSegments
 } = cssGrammar;

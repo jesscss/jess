@@ -86,15 +86,15 @@ See [`archive/README.md`](./archive/README.md) for the archive index.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Architecture surface: one canonical terminal AST vocabulary, `OpaqueAtRuleBlock`; no parse-host, import, parser grammar, or legacy bridge surface changed.
+- Architecture surface: `OpaqueAtRuleBlock` remains terminal; CSS adds an exported-but-unattached `AtRulePreludeSegments` grammar entry for a later direct reduction. No parse-host, import, builder, parser callback, or legacy bridge surface changed.
 - Separation/duplication: `rawBody: string` makes the invalid child-body relationship impossible instead of relocating it behind a helper or host.
 - Cumulative node weight: one cold plain-data node shape; parser reductions may construct its literal directly, while `opaqueAtRuleBlock` is only a programmatic convenience.
-- New traversal: none. The serializer writes `rawBody` directly and neither evaluates nor inspects it.
+- New traversal: none on the normal parser or render path. The serializer writes `rawBody` directly; the new direct-only prelude entry owns raw header segments without a later source scan.
 - New node/materialization: public AST materialization only; no eval-to-string node, copied child array, wrapper, side map, or metadata mutation exists.
 - Render path: one terminal type branch writes name, optional prelude, braces, and raw bytes; normal documents do not take it.
-- Helper/API surface: `emitOpaqueAtRuleBlock` is the sole helper and replaces no general dispatch layer; it is necessary to keep every serializer mode terminal and direct.
+- Helper/API surface: `emitOpaqueAtRuleBlock` remains the sole runtime helper. The grammar entry has no callback or host and is not attached to any existing production.
 - Metadata mutations: none.
 - Review-flagged diff tokens: none; no new loop, map/set, scanner, reparse, clone, or evaluator call was added.
-- Hot-path cost contracts: ledger IDs: `opaque-atrule-block-vocabulary`, `opaque-atrule-block-node-union`, `opaque-atrule-block-statement-union`, `opaque-atrule-block-terminal-emit`; their benchmark oracle and detailed justification live only in [`AGGRESSIVE-CUTTING-REVIEW.md`](./AGGRESSIVE-CUTTING-REVIEW.md).
-- Evidence: focused opaque-at-rule serialization tests cover root order, evaluator isolation, and nested collapse modes; `git diff --check` passes. Full benchmark and integration gates belong to the final consolidated branch.
+- Hot-path cost contracts: ledger IDs: `opaque-atrule-block-vocabulary`, `opaque-atrule-block-node-union`, `opaque-atrule-block-statement-union`, `opaque-atrule-block-terminal-emit`, `atrule-prelude-unknown-tokenstream-grammar`, `css-atrule-prelude-lossless-segments`; their benchmark oracle and detailed justification live only in [`AGGRESSIVE-CUTTING-REVIEW.md`](./AGGRESSIVE-CUTTING-REVIEW.md).
+- Evidence: focused opaque-at-rule serialization and CSS direct-CST/macro-path tests pass; `git diff --check` passes. Full benchmark and integration gates belong to the final consolidated branch.
 - Verdict: accepted.
