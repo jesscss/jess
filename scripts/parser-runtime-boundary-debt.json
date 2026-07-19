@@ -591,6 +591,20 @@
       "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
     },
     {
+      "file": "packages/jess-parser/src/functional-parser.ts",
+      "kind": "reparse-entrypoint",
+      "fingerprint": "d924e6c078b30973",
+      "count": 1,
+      "retirement": "Delete this transitional parser delegation with the AST v2 parser cutover; parsing must remain one-pass."
+    },
+    {
+      "file": "packages/jess-parser/src/parser.ts",
+      "kind": "reparse-entrypoint",
+      "fingerprint": "d924e6c078b30973",
+      "count": 1,
+      "retirement": "Delete this transitional parser delegation with the AST v2 parser cutover; parsing must remain one-pass."
+    },
+    {
       "file": "packages/less-parser/src/builders.ts",
       "kind": "regex-literal",
       "fingerprint": "004ccef23a169faf",
@@ -1193,6 +1207,13 @@
       "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
     },
     {
+      "file": "packages/less-parser/src/functional-parser.ts",
+      "kind": "reparse-entrypoint",
+      "fingerprint": "411137fb386e4ec7",
+      "count": 1,
+      "retirement": "Delete this transitional parser delegation with the AST v2 parser cutover; parsing must remain one-pass."
+    },
+    {
       "file": "packages/less-parser/src/lessRecursiveParser.ts",
       "kind": "regex-literal",
       "fingerprint": "63641b2ff64a3775",
@@ -1569,6 +1590,13 @@
       "fingerprint": "fa9c373549a33d79",
       "count": 1,
       "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/scss-parser/src/functional-parser.ts",
+      "kind": "reparse-entrypoint",
+      "fingerprint": "ed203f46053b0f48",
+      "count": 1,
+      "retirement": "Delete this transitional parser delegation with the AST v2 parser cutover; parsing must remain one-pass."
     },
     {
       "file": "packages/scss-parser/src/scss-atrule-helpers.ts",

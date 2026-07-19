@@ -56,9 +56,12 @@ describe('parser runtime boundary', () => {
     ]);
   });
 
-  it('detects parser entrypoints used outside the one-pass parser driver', () => {
+  it('detects every parser entrypoint call, including calls in a parser driver', () => {
     const findings = scanParserSource('/tmp/scss-selector-validate.ts', 'parseScssFn(text, "SelectorList");');
     expect(findings.map(finding => finding.kind)).toEqual(['reparse-entrypoint']);
+
+    const driverFindings = scanParserSource('/tmp/functional-parser.ts', 'parseCssFn(text);');
+    expect(driverFindings.map(finding => finding.kind)).toEqual(['reparse-entrypoint']);
   });
 
   it('makes every existing exception exact and rejects an added recognizer', () => {

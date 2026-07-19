@@ -23,7 +23,7 @@ const require = createRequire(import.meta.url);
 // `typescript` package, whose package export intentionally has no CommonJS main.
 const ts = require('@typescript/typescript6/lib/typescript.js');
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const inventoryPath = resolve(root, 'docs/future/core-architecture/PARSER-RUNTIME-BOUNDARY-DEBT.json');
+const inventoryPath = resolve(root, 'scripts/parser-runtime-boundary-debt.json');
 const parserRoots = [
   'packages/css-parser/src',
   'packages/less-parser/src',
@@ -75,11 +75,6 @@ function propertyName(expression) {
   return null;
 }
 
-function isFunctionalEntryFile(file) {
-  const rel = relative(root, file).replaceAll('\\', '/');
-  return rel.endsWith('/functional-parser.ts') || rel.endsWith('/parser.ts');
-}
-
 function fingerprint(text) {
   return createHash('sha256').update(text).digest('hex').slice(0, 16);
 }
@@ -119,7 +114,6 @@ export function scanParserSource(file, text) {
       if (
         ts.isIdentifier(node.expression)
         && reparseEntrypoints.test(node.expression.text)
-        && !isFunctionalEntryFile(file)
       ) {
         add(node, 'reparse-entrypoint');
       }
@@ -136,16 +130,18 @@ export function scanParserSources({ base = root } = {}) {
   ));
 }
 
-function ledgerEntries(findings) {
+function ledgerEntries(findings, priorDebt = []) {
+  const prior = new Map(priorDebt.map(entry => [inventoryKey(entry), entry]));
   const grouped = new Map();
   for (const finding of findings) {
     const key = `${finding.file}\u0000${finding.kind}\u0000${finding.fingerprint}`;
+    const priorEntry = prior.get(key);
     const group = grouped.get(key) ?? {
       file: finding.file,
       kind: finding.kind,
       fingerprint: finding.fingerprint,
       count: 0,
-      retirement: 'Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover.'
+      retirement: priorEntry?.retirement ?? 'Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover.'
     };
     group.count += 1;
     grouped.set(key, group);
@@ -191,9 +187,10 @@ export function validateInventory(inventory, findings) {
 }
 
 function writeInventory(findings) {
-  const debt = ledgerEntries(findings);
-  if (existsSync(inventoryPath)) {
-    const prior = readInventory().debt;
+  const hasPrior = existsSync(inventoryPath);
+  const prior = hasPrior ? readInventory().debt : [];
+  const debt = ledgerEntries(findings, prior);
+  if (hasPrior) {
     const priorCount = prior.reduce((sum, entry) => sum + entry.count, 0);
     const nextCount = debt.reduce((sum, entry) => sum + entry.count, 0);
     if (nextCount > priorCount) {
