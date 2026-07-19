@@ -328,6 +328,46 @@ describe('private Less AST grammar facts', () => {
     });
   });
 
+  it('constructs production-parity static ampersand parent selectors directly', () => {
+    const source = '&, &-active, &1 { color: red; }';
+    const legacy = parseLessCst(source);
+    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+
+    // `ampToken` is a production terminal, not an AST recovery shortcut.  Its
+    // static form maps exactly to Simple.text, which is the existing canonical
+    // representation core uses to recognize parent selectors.
+    expect(legacy.errors).toHaveLength(0);
+    expect(legacy.unconsumedFrom).toBeNull();
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(isRoot(result.value)).toBe(true);
+    expect(result.value.children[0]).toEqual({
+      type: 'Rule',
+      selector: {
+        type: 'SelectorList',
+        selectors: ['&', '&-active', '&1'].map(text => ({
+          type: 'Complex',
+          head: { type: 'Compound', simples: [{ type: 'Simple', text, interp: null }] },
+          tail: []
+        }))
+      },
+      body: [{
+        type: 'Declaration', name: 'color', value: { type: 'Keyword', src: 'red' }, merge: null, important: false
+      }]
+    });
+
+    // The direct slice must not flatten a grammar-bearing ampersand form into
+    // misleading static text.  Production accepts these through distinct
+    // structured paths; their direct AST reductions have not landed yet.
+    for (const unsupported of ['&(1) { color: red; }', '&@{suffix} { color: red; }']) {
+      const production = parseLessCst(unsupported);
+      const direct = run(lessAstGrammar.LessAstDocument, unsupported, { trivia: lessAstGrammar.whitespace });
+      expect(production.errors).toHaveLength(0);
+      expect(production.unconsumedFrom).toBeNull();
+      expect(direct.ok && direct.unconsumedFrom === null && isRoot(direct.value)).toBe(false);
+    }
+  });
+
   it('rejects rulesets outside the directly structured selector/body subset', () => {
     const result = run(lessAstGrammar.LessAstDocument, '.a + .b { color: red; }', { trivia: lessAstGrammar.whitespace });
 

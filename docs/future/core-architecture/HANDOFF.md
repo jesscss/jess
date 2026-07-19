@@ -102,6 +102,36 @@ closure is still in progress.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: extend the private Less direct-AST selector grammar with static
+  parent-selector tokens `&`, `&-active`, and `&1`.
+- Architecture surface: a parser-local recognition terminal feeds canonical
+  `Simple.text` construction. Core's existing compound ampersand composition
+  consumes that text. No CST reuse, host, bridge, Context/plugin work, scanner,
+  or reparse is added.
+- Separation/duplication: the terminal is semantically equivalent to the
+  production `ampToken`. Parenthesized/interpolated ampersands remain rejected
+  until grammar reductions can carry their typed semantics.
+- Cumulative node weight: cold source-private selector nodes only.
+- New traversal: none.
+- New node/materialization: [node construction] one parser-local `Simple` in
+  the already-existing cold compound reduction. [materialized array/object]
+  none beyond existing selector construction.
+- Render path: unchanged and unreachable from production.
+- Helper/API surface: no public helper or parser API added.
+- Metadata mutations: none.
+- Review-flagged diff tokens: [node construction] is cold parser construction;
+  [loop/traversal], [array helper], [array spread/materialization], [routine
+  error control], and [materialized array/object] are not added.
+- Hot-path cost contracts:
+  ```json
+  [{"id":"less-private-direct-ast-family","verdict":"accepted","privateReachability":{"productionImporters":0,"publicExports":0,"buildEntries":0,"coldConstructionOnly":true},"why":"Static parent-selector construction is macro-fused into the source-private Less grammar and runs only in focused tests."}]
+  ```
+- Evidence: production/direct acceptance comparison; parenthesized/interpolated
+  rejection; focused AST/macro tests; strict type check; Less build;
+  parser-boundary verifier; adversarial review.
+- Verdict: accepted cold direct construction; typed dynamic ampersand forms are
+  explicitly deferred rather than recovered as text.
+
 - Latest pass: extend the private Less direct-AST value family with static
   dimensions, colors, URLs, simple calls, spaced values, and comma lists.
 - Architecture surface: parser-local reductions call canonical AST constructors

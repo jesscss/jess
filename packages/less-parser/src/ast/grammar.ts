@@ -295,6 +295,12 @@ const whitespace = trivia(regex(/[ \t\n\r\f]+/));
 const importKeyword = regex(/@(?:-import|-export|import)(?![-\w])/i);
 const blockComment = regex(/\/\*(?:[^*]|\*(?!\/))*\*\//);
 const simpleSelector = regex(/(?:[.#]?-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*|\*)/);
+// Semantically identical to the production Less `ampToken` terminal. A static ampersand
+// is already the canonical AST representation: `Simple.text` retains `&` and
+// core's selector path identifies parent references from that text.  The
+// parenthesized and interpolation forms stay outside this direct static slice
+// until their typed semantic payloads are constructed by grammar reductions.
+const staticAmpersand = regex(/&[-_a-zA-Z0-9\u0080-\uffff]*/);
 // The production Less `urlInner` terminal, narrowed only at a dynamic Less
 // opener. A leading `@name` / `@{…}` belongs to the unimplemented Reference /
 // interpolation path, so this direct static slice rejects it instead of
@@ -470,7 +476,7 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
   );
   const DirectLessCompound = node<Compound>(
     'DirectLessCompound',
-    simpleSelector,
+    choice(simpleSelector, staticAmpersand),
     (children) => {
       const text = requireToken(children[0]).value;
       return compoundOf([simple(text)]);
