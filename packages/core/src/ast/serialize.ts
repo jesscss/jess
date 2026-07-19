@@ -150,8 +150,8 @@ export interface SerializeOptions {
   /**
    * [io] OPTIONAL per-render file-read capability handed to the IO built-ins
    * (`data-uri`/`image-size`/`image-width`/`image-height`) via {@link FnCtx.io}.
-   * The host (render-doc) binds it to the source file's directory. Absent → those
-   * fns degrade gracefully (a `url()` / verbatim fallback), never throw.
+   * Callers bind it to the relevant source-file directory. Absent → those fns
+   * degrade gracefully (a `url()` / verbatim fallback), never throw.
    */
   io?: FnIo;
   /**
