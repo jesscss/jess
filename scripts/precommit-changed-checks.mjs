@@ -3,6 +3,7 @@ import { execSync, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { shouldRunFullBaselineForFiles } from './shared-baseline-paths.mjs';
+import { stagedAddedLines, stagedLintMessages } from './staged-lint.mjs';
 
 const ROOT = process.cwd();
 const MODE = process.argv.includes('--mode=upstream') ? 'upstream' : 'staged';
@@ -231,6 +232,56 @@ function runLintForFiles(packageDir, files) {
   run('pnpm', ['exec', 'eslint', ...files], packageDir);
 }
 
+function stagedHunkLines(file) {
+  return stagedAddedLines(execSync(`git diff --cached --unified=0 -- ${JSON.stringify(file)}`, {
+    cwd: ROOT,
+    encoding: 'utf8'
+  }));
+}
+
+function runStagedLintForFiles(packageDir, files) {
+  if (files.length === 0) {
+    console.log(`- skip lint for ${packageDir} (no staged JS/TS files)`);
+    return;
+  }
+  const rendered = `pnpm exec eslint --format json ${files.join(' ')}`;
+  console.log(`\n$ ${rendered}`);
+  const result = spawnSync('pnpm', ['exec', 'eslint', '--format', 'json', ...files], {
+    cwd: ROOT,
+    encoding: 'utf8'
+  });
+  const stdout = result.stdout ?? '';
+  const stderr = result.stderr ?? '';
+  if (result.status === 0) {
+    return;
+  }
+  let reports;
+  try {
+    reports = JSON.parse(stdout);
+  } catch {
+    // A broken ESLint invocation/config must still block; only normal JSON
+    // diagnostics are eligible for staged-line filtering.
+    failures.push({ packageDir, command: rendered, status: result.status ?? 1, output: [stdout, stderr].filter(Boolean).join('\n').trim() });
+    process.exit(result.status ?? 1);
+  }
+  const actionable = reports.flatMap(report => {
+    const relative = path.relative(ROOT, report.filePath).split(path.sep).join('/');
+    return stagedLintMessages(report.messages ?? [], stagedHunkLines(relative)).map(message => ({
+      filePath: relative,
+      ...message
+    }));
+  });
+  if (actionable.length === 0) {
+    console.log('- no lint violations on staged added/modified lines');
+    return;
+  }
+  for (const message of actionable) {
+    console.error(`${message.filePath}:${message.line}:${message.column} ${message.message}${message.ruleId ? ` (${message.ruleId})` : ''}`);
+  }
+  failures.push({ packageDir, command: rendered, status: result.status ?? 1, output: JSON.stringify(actionable) });
+  process.exit(result.status ?? 1);
+}
+
 function runRequiredTestsForPackage(packageDir, scripts, files, baselineAlreadyRun) {
   if (packageDir !== 'packages/core') {
     return;
@@ -321,12 +372,7 @@ for (const packageDir of changedPackages) {
     runBuildForPackage(packageDir, scripts);
     runLintForFiles(packageDir, lintableFiles);
   } else {
-    const filesForPackage = stagedLintableFiles(files, packageDir);
-    if (filesForPackage.length === 0) {
-      console.log(`- skip lint for ${packageDir} (no staged JS/TS files)`);
-      continue;
-    }
-    run('pnpm', ['exec', 'eslint', ...filesForPackage], packageDir);
+    runStagedLintForFiles(packageDir, stagedLintableFiles(files, packageDir));
   }
 }
 
