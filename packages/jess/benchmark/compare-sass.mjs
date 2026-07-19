@@ -1,7 +1,13 @@
-// Head-to-head: dart-sass vs Jess (dev AST v2) compile→eval→serialize time on a
-// matched, generated workload. Same warmup + N-median methodology as
+// Head-to-head: dart-sass vs Jess compile→eval→serialize time on a matched,
+// generated workload. Same warmup + N-median methodology as
 // core/perf/bench-extend.mjs. Both engines read their source from disk and
 // produce a CSS string, so the paths are symmetric (parse + eval + serialize).
+//
+// NOTE: Compiler.render() drives the LEGACY tree/ eval path (src/index.ts:1360),
+// NOT the ast/ v2 evaluator — ast/ render is still test-only during cutover. So
+// this measures Jess's *current production* path (legacy eval + Less plugins +
+// Less dialect) vs dart-sass. Treat the ratio as an UPPER BOUND on the true
+// engine gap; repoint at ast/ + split parse/eval/serialize to isolate it.
 //
 //   node compare-sass.mjs                 # default scale
 //   COMPONENTS=400 VARIANTS=8 node compare-sass.mjs
@@ -82,7 +88,7 @@ console.log(
 );
 
 // interleave-agnostic: run each engine's full suite; order fixed for determinism
-const jess = await bench('Jess (dev AST v2)', runJess);
+const jess = await bench('Jess (legacy render)', runJess);
 const dsass = await bench('dart-sass', runSass);
 
 const row = r =>
