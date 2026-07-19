@@ -37,7 +37,7 @@ export {
 } from './ast/value-factory.js';
 
 // --- value serializer ---
-export { HEX, RGB, HSL, serializeColor } from './ast/color.js';
+export { HEX, RGB, HSL, serializeColor, hslToRgb } from './ast/color.js';
 export { round } from './ast/round.js';
 
 // --- unit table / conversion ---

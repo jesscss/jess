@@ -1,5 +1,5 @@
 import type { Color, Dimension, List } from '@jesscss/core/value';
-import { colorHsl, makeColorHsl } from '@jesscss/core/value';
+import { colorHsl, makeColorHsl, makeColorRgb, hslToRgb } from '@jesscss/core/value';
 import { HSL } from '@jesscss/core/value';
 import { clamp01, isColor, isModern, normalizeHue, percentOf } from './color-ctor-helper.js';
 import type { Fn } from '@jesscss/core/value';
@@ -26,11 +26,23 @@ export function makeHsl(list: List): Color {
     const s = clamp01(percentOf(items[1] as Dimension, 1));
     const l = clamp01(percentOf(items[2] as Dimension, 1));
     const a = items[3] !== undefined ? percentOf(items[3] as Dimension, 1) : 1;
+    const alphaD = items[3] as Dimension | undefined;
+    const alphaPct = alphaD !== undefined && alphaD.unit === '%' ? alphaD.number : undefined;
+    // ACHROMATIC canonicalization (Less 4.x/v5 parity): a grey/black/white result
+    // (`s === 0 || l === 0 || l === 1`) carries no meaningful hue/saturation, so it
+    // round-trips through rgb — hue + saturation collapse to `0` and the authored
+    // unit is dropped (`hsl(380deg, 150%, 150%)` → `hsl(0, 0%, 100%)`). The rgb is
+    // kept UNROUNDED so the derived lightness is lossless (`hsl(50, 0%, 33%)` →
+    // `hsl(0, 0%, 33%)`, not `33.…%`).
+    if (s === 0 || l === 0 || l === 1) {
+      return makeColorRgb(hslToRgb(h, s, l), a, HSL, {
+        modernSyntax,
+        ...(alphaPct !== undefined ? { alphaPct } : {}),
+      });
+    }
     // SOURCE-FORMAT preservation (verbatim rule): keep the authored hue unit
     // (`0deg` → `deg`) + a `%` alpha spelling; an operated result drops them.
     const hueUnit = (items[0] as Dimension).unit || undefined;
-    const alphaD = items[3] as Dimension | undefined;
-    const alphaPct = alphaD !== undefined && alphaD.unit === '%' ? alphaD.number : undefined;
     const fmtOpts = { ...(hueUnit ? { hueUnit } : {}), ...(alphaPct !== undefined ? { alphaPct } : {}) };
     return makeColorHsl([h, s, l], a, HSL, modernSyntax, fmtOpts);
   }
