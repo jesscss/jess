@@ -66,6 +66,12 @@ export interface RenderLessViaAstOptions {
    * selectors — the legacy 4.x behaviour, now opt-in). Defaults to `false`.
    */
   collapseNesting?: boolean;
+  /**
+   * [import:paths] Configured include-path search directories (Less's `paths`
+   * option), forwarded to core for `@import` + IO-fn (`data-uri`/`image-*`) asset
+   * resolution. Relative entries resolve against the importing/source file dir.
+   */
+  searchDirs?: readonly string[];
 }
 
 /**
@@ -84,6 +90,7 @@ export function renderLessViaAst(
     guardSource: guardInlineJs,
     parseFileVars: parseLessFn,
     resolveModule: moduleResolver(),
+    searchDirs: options.searchDirs,
     collapseNesting: options.collapseNesting ?? false,
   });
 }
@@ -100,6 +107,7 @@ export function renderLessFileViaAst(filePath: string, options: RenderLessViaAst
     guardSource: guardInlineJs,
     parseFileVars: parseLessFn,
     resolveModule: moduleResolver(),
+    searchDirs: options.searchDirs,
     collapseNesting: options.collapseNesting ?? false,
   });
 }

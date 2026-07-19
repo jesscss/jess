@@ -1368,6 +1368,13 @@ export class Compiler {
     profile?: RenderProfile
   ): Promise<string> {
     const collapseNesting = resolved.printOptions.collapseNesting ?? false;
+    // [import:paths] Include-path search dirs (Less's `paths` option). Threaded
+    // into the ast/ engine for `@import` + IO-fn (`data-uri`/`image-*`) asset
+    // resolution. `createContextFromResolved` already normalised `paths` /
+    // `searchPaths` onto `context.opts.searchPaths`.
+    const searchDirs = Array.isArray(context.opts.searchPaths)
+      ? context.opts.searchPaths
+      : undefined;
     const rootLessSourceOptions: RootLessSourceOptions = {
       banner: typeof resolved.activeOptions.banner === 'string'
         ? resolved.activeOptions.banner
@@ -1382,7 +1389,7 @@ export class Compiler {
         const preparedSource = shouldPrepareRootLessSource
           ? prepareRootLessSource(input.source, rootLessSourceOptions)
           : input.source;
-        return renderLessViaAst(preparedSource, { collapseNesting, filePath: input.filePath });
+        return renderLessViaAst(preparedSource, { collapseNesting, filePath: input.filePath, searchDirs });
       }
       const filePath = input.filePath!;
       if (shouldPrepareRootLessSource) {
@@ -1393,9 +1400,9 @@ export class Compiler {
         }
         const rootSource = await sourceGetter.getSource(resolvedPath);
         const preparedSource = prepareRootLessSource(rootSource, rootLessSourceOptions);
-        return renderLessViaAst(preparedSource, { collapseNesting, filePath: resolvedPath });
+        return renderLessViaAst(preparedSource, { collapseNesting, filePath: resolvedPath, searchDirs });
       }
-      return renderLessFileViaAst(filePath, { collapseNesting });
+      return renderLessFileViaAst(filePath, { collapseNesting, searchDirs });
     });
 
     if (result.threw) {

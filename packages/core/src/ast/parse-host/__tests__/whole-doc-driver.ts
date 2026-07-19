@@ -47,6 +47,12 @@ export interface AstRenderOptions {
    * `@jesscss/plugin-node-modules`-backed resolver so `@import "@less/…"` inlines.
    */
   resolveModule?: ModuleResolver;
+  /**
+   * [import:paths] Include-path search dirs (Less's `paths` option), threaded into
+   * `@import` resolution + IO-fn asset resolution. Relative entries resolve against
+   * the source file's directory.
+   */
+  searchDirs?: readonly string[];
 }
 
 /**
@@ -74,6 +80,7 @@ export function renderAstDoc(src: string, options: AstRenderOptions = {}): AstRe
     guardSource: guardInlineJs,
     parseFileVars: parseLessFn,
     resolveModule: options.resolveModule,
+    searchDirs: options.searchDirs,
     collapseNesting: options.collapseNesting,
   });
 }
@@ -87,6 +94,7 @@ export function renderAstFile(filePath: string, options: Omit<AstRenderOptions, 
     guardSource: guardInlineJs,
     parseFileVars: parseLessFn,
     resolveModule: options.resolveModule,
+    searchDirs: options.searchDirs,
     collapseNesting: options.collapseNesting,
   });
 }

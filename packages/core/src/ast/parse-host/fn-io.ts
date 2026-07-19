@@ -18,15 +18,23 @@ import type { FnIo } from '../functions/types.js';
 
 /**
  * Build an `FnIo` that resolves specifiers relative to `filePath`'s directory (the
- * render's source file), falling back to the process cwd. `readFile` returns the
- * file's raw bytes, or `null` when the specifier resolves to nothing readable — the
- * signal an IO fn uses to degrade gracefully (a `url()` / verbatim fallback).
+ * render's source file), then against each configured include-path search dir
+ * (Less's `paths` option — `data-uri`/`image-*` honour `paths` exactly like
+ * `@import`), falling back to the process cwd. A relative search dir is resolved
+ * against the source file's directory, matching import resolution + the legacy
+ * resolver. `readFile` returns the file's raw bytes, or `null` when the specifier
+ * resolves to nothing readable — the signal an IO fn uses to degrade gracefully
+ * (a `url()` / verbatim fallback).
  */
-export function createFsFnIo(filePath?: string): FnIo {
+export function createFsFnIo(filePath?: string, searchDirs?: readonly string[]): FnIo {
   const baseDir = filePath ? path.dirname(filePath) : process.cwd();
+  const searchBases = (searchDirs ?? []).map(dir =>
+    path.isAbsolute(dir) ? dir : path.resolve(baseDir, dir),
+  );
   return {
     readFile(specifier: string): Uint8Array | null {
-      const bases = baseDir === process.cwd() ? [baseDir] : [baseDir, process.cwd()];
+      // Source-file dir FIRST, then each `paths` entry, then cwd (deduped).
+      const bases = [...new Set([baseDir, ...searchBases, process.cwd()])];
       const candidates = path.isAbsolute(specifier)
         ? [specifier]
         : bases.map((b) => path.resolve(b, specifier));

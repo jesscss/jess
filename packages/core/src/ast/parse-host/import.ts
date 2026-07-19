@@ -94,10 +94,32 @@ export interface ImportState {
    * bare specifiers stay unresolved (deferred verbatim).
    */
   readonly resolveModule?: ModuleResolver;
+  /**
+   * [import:paths] The configured include-path search directories (Less's `paths`
+   * option). When a specifier does not resolve relative to the importing file's
+   * own directory, each search dir is probed in order (Less's `paths` resolution:
+   * relative-to-importing-file FIRST, then each `paths` entry). A relative search
+   * dir is resolved against the importing file's directory, matching the legacy
+   * resolver (`plugin.ts` `BasePlugin.resolve`). Absent/empty → only the importing
+   * directory (and module resolution) is tried, unchanged from before.
+   */
+  readonly searchDirs?: readonly string[];
 }
 
-export function createImportState(parseFileVars?: FileVarParse, resolveModule?: ModuleResolver): ImportState {
-  return { seen: new Set(), stack: [], varScopeCache: new Map(), entry: { file: undefined }, parseFileVars, resolveModule };
+export function createImportState(
+  parseFileVars?: FileVarParse,
+  resolveModule?: ModuleResolver,
+  searchDirs?: readonly string[],
+): ImportState {
+  return {
+    seen: new Set(),
+    stack: [],
+    varScopeCache: new Map(),
+    entry: { file: undefined },
+    parseFileVars,
+    resolveModule,
+    searchDirs,
+  };
 }
 
 /** A node read structurally by the import + bridge front ends. */
@@ -277,7 +299,7 @@ function collectFileVars(
       if (spec === null) continue;
       const flags = readFlags(r as AnyNode);
       if (flags.inline || isCssPassthrough(spec, flags)) continue;
-      const child = resolveLessPath(spec, fromDir, state.resolveModule);
+      const child = resolveLessPath(spec, fromDir, state.resolveModule, state.searchDirs);
       if (child === null) continue;
       for (const [k, v] of collectFileVars(child, state, visiting)) vars.set(k, v);
     }
@@ -386,19 +408,37 @@ function isBareSpecifier(spec: string): boolean {
 
 /**
  * Resolve a Less import specifier against the importing file's directory, then —
+ * [import:paths] against each configured include-path search dir (Less's `paths`
+ * option; relative-to-importing-file FIRST, then each entry in order) — then —
  * for a bare package specifier and when a {@link ModuleResolver} is injected —
  * via node_modules resolution ([import:module]). The extensionless `.less`
  * candidate is tried for BOTH paths (`@import "pkg/one/2"` → `.../2.less`),
  * mirroring Less's own extension probing.
  */
-function resolveLessPath(spec: string, fromDir: string, resolveModule?: ModuleResolver): string | null {
-  const joined = path.resolve(fromDir, spec);
-  const candidates = path.extname(joined) ? [joined] : [`${joined}.less`, joined];
-  for (const candidate of candidates) {
-    try {
-      if (fs.statSync(candidate).isFile()) return candidate;
-    } catch {
-      /* not found; try next */
+function resolveLessPath(
+  spec: string,
+  fromDir: string,
+  resolveModule?: ModuleResolver,
+  searchDirs?: readonly string[],
+): string | null {
+  // Relative-to-importing-file FIRST, then each configured `paths` search dir.
+  // A relative search dir resolves against the importing file's directory,
+  // matching the legacy resolver (`plugin.ts` `BasePlugin.resolve`).
+  const baseDirs = [fromDir];
+  if (searchDirs) {
+    for (const dir of searchDirs) {
+      baseDirs.push(path.isAbsolute(dir) ? dir : path.resolve(fromDir, dir));
+    }
+  }
+  for (const baseDir of baseDirs) {
+    const joined = path.resolve(baseDir, spec);
+    const candidates = path.extname(joined) ? [joined] : [`${joined}.less`, joined];
+    for (const candidate of candidates) {
+      try {
+        if (fs.statSync(candidate).isFile()) return candidate;
+      } catch {
+        /* not found; try next */
+      }
     }
   }
   // [import:module] Fall back to node_modules resolution for a bare specifier.
@@ -480,7 +520,7 @@ function spliceImport(
   // (`@import (inline) "x" (min-width:…)`) is carried on the `RawInline` node so
   // the serializer wraps the splice in an `@media <media> { … }` block.
   if (flags.inline) {
-    const rawPath = resolveLessPath(spec, fromDir, state.resolveModule);
+    const rawPath = resolveLessPath(spec, fromDir, state.resolveModule, state.searchDirs);
     if (rawPath === null) {
       if (flags.optional) return [];
       unsupported('import:unresolved', spec);
@@ -490,7 +530,7 @@ function spliceImport(
 
   if (isCssPassthrough(spec, flags)) unsupported('import:css-passthrough', spec);
 
-  const resolved = resolveLessPath(spec, fromDir, state.resolveModule);
+  const resolved = resolveLessPath(spec, fromDir, state.resolveModule, state.searchDirs);
   if (resolved === null) {
     if (flags.optional) return [];
     unsupported('import:unresolved', spec);
@@ -513,6 +553,7 @@ function spliceImport(
         entry: state.entry,
         parseFileVars: state.parseFileVars,
         resolveModule: state.resolveModule,
+        searchDirs: state.searchDirs,
       }
     : state;
 

@@ -84,6 +84,15 @@ export interface AstRenderOptions {
    */
   resolveModule?: ModuleResolver;
   /**
+   * [import:paths] Configured include-path search directories (Less's `paths`
+   * option). Threaded into BOTH `@import` resolution (probed after the importing
+   * file's own directory) and the IO built-ins (`data-uri`/`image-*`, which
+   * resolve asset paths through `paths` exactly as Less does). A relative entry is
+   * resolved against the importing/source file's directory. Omitted → only the
+   * source directory is searched, unchanged from before.
+   */
+  searchDirs?: readonly string[];
+  /**
    * Output mode threaded to `serialize`. `false` = NESTED (Less v5 default),
    * `true`/omitted = FLAT (composed selectors). A fixture's `styles.config.ts`
    * (`output.collapseNesting`) governs this; the caller resolves it per file.
@@ -129,7 +138,7 @@ export function renderAstDoc(src: string, options: AstRenderOptions): AstRenderR
     const resolved = resolveDirectImports(
       root.children,
       options.filePath,
-      createImportState(options.parseFileVars, options.resolveModule),
+      createImportState(options.parseFileVars, options.resolveModule, options.searchDirs),
       parse,
       (feature, detail) => deferredImports.push({ feature, detail }),
     );
@@ -141,7 +150,7 @@ export function renderAstDoc(src: string, options: AstRenderOptions): AstRenderR
         // [io] file-read capability for the IO built-ins (`data-uri`/`image-*`),
         // bound to the source file's directory. Resolves relative asset paths the
         // way Less resolves them against the entry file's location.
-        io: createFsFnIo(options.filePath),
+        io: createFsFnIo(options.filePath, options.searchDirs),
       }),
     );
     return { css, parseErrors: errors, threw: null, deferredImports };
