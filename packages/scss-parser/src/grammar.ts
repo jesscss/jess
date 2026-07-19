@@ -1,10 +1,5 @@
 /**
- * Functional SCSS grammar — the macro-compiled counterpart to the class-based
- * ScssGrammar. This file is JUST the grammar: `scssGrammar = compose([lessGrammar,
- * <SCSS delta>])`. Most returned rules are structural `node(parser)` entries that build via
- * the injected `ctx.build` host. The host + parse entry (`parseScssFn`,
- * `ScssParser`) live in ./functional-parser.ts; the shared driver in
- * @jesscss/css-parser.
+ * SCSS grammar: `scssGrammar = compose([lessGrammar, <SCSS delta>])`.
  */
 import {
   rules, compose,

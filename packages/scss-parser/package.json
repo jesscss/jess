@@ -26,12 +26,6 @@
       "import": "./lib/grammar.js",
       "require": "./lib/grammar.cjs"
     },
-    "./jess": {
-      "types": "./lib/jess.d.ts",
-      "source": "./src/jess.ts",
-      "import": "./lib/jess.js",
-      "require": "./lib/jess.cjs"
-    },
     "./package.json": "./package.json"
   },
   "files": [
@@ -47,14 +41,12 @@
     "dev": "tsdown --tsconfig tsconfig.build.json --no-dts --watch",
     "sass-spec:cache": "node ./scripts/materialize-sass-spec-cache.cjs",
     "test": "vitest --run --passWithNoTests",
-    "test:parse": "vitest --run --passWithNoTests test/parse-only.test.ts test/sass-spec.smoke.test.ts",
     "lint:fix": "eslint --fix '**/*.{js,ts}'",
     "lint": "eslint '**/*.{js,ts}'"
   },
   "dependencies": {
     "@jesscss/css-parser": "workspace:*",
-    "@jesscss/less-parser": "workspace:*",
-    "chevrotain": "^12.0.0"
+    "@jesscss/less-parser": "workspace:*"
   },
   "peerDependencies": {
     "@jesscss/core": "workspace:*"

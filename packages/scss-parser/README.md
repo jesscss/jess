@@ -69,8 +69,7 @@ Pass a different `startRule` (any capitalized grammar rule) to parse a fragment.
 | `@jesscss/scss-parser/cst` | `parseScssCst` | Core-free parse of an SCSS string to a CST. |
 | `@jesscss/scss-parser/cst` | `ScssCstNode`, `ScssCstLeaf`, `ScssCstError`, `ScssCstChild`, `ScssCstParseResult`, `ScssCstType` (types) | CST type definitions (aliases of the shared `@jesscss/css-parser/cst` types). |
 | `@jesscss/scss-parser/grammar` | `scssGrammar` | The compiled SCSS grammar (a rule map). Extend it with `compose()` or drive it directly with parseman's `run`. |
-| `@jesscss/scss-parser` (`.`) | `ScssParser` (also `Parser`), `parseScssFn`, `scssGrammar`, tokens, … | The Jess-internal barrel. **Core-coupled** (the functional parser builds the core AST). Prefer `./cst` if you don't need `@jesscss/core`. |
-| `@jesscss/scss-parser/jess` | `ScssParser`, `ScssGrammar`, `parseScssFn`, … | Internal Jess-facing surface. |
+| `@jesscss/scss-parser` (`.`) | `scssGrammar`, `parseScssCst`, `parseScssDoc`, … | Public grammar and CST surface. |
 
 ## Default CST shape
 

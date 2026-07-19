@@ -1,8 +1,6 @@
-import { Parser as ScssParser } from '@jesscss/scss-parser/jess';
 import { parseCssDoc, type CssCstNode, type ParseDoc } from '@jesscss/css-parser';
 import { parseLessDoc } from '@jesscss/less-parser';
 import { parseScssDoc } from '@jesscss/scss-parser';
-import { parseJessFn } from '@jesscss/jess-parser/jess';
 import { parseJessDoc } from '@jesscss/jess-parser';
 import type { IParseResult, Rules, Node } from '@jesscss/core';
 import { isNode, sourceSpanOf } from '@jesscss/core';
@@ -142,9 +140,6 @@ function buildJessIndex(root: Node): JessIndex {
   };
 }
 
-// SCSS is the sole remaining legacy AST parser instance.
-const scssParser = new ScssParser({ recoveryEnabled: true });
-
 function getJessLangFromLanguageId(languageId: string): JessLang {
   switch (languageId) {
     case 'less':
@@ -162,13 +157,8 @@ function parseWithJess(text: string, lang: JessLang): IParseResult<Rules> | null
   if (lang === 'less') {
     throw new Error('Less AST parsing is unavailable: the legacy parser entry was deleted.');
   }
-  if (lang === 'scss') {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-    return scssParser.parse(text) as unknown as IParseResult<Rules>;
-  }
-  if (lang === 'jess') {
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-    return parseJessFn(text) as unknown as IParseResult<Rules>;
+  if (lang === 'scss' || lang === 'jess') {
+    return null;
   }
   // CSS has no legacy AST parser entry. Its existing CST path remains available
   // through parseDocFor; semantic AST features stay intentionally unavailable.

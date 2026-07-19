@@ -15,8 +15,7 @@
  * (Composed CSS rules keep their own baked CSS `rw`, so a `//` inside a construct
  * that stays entirely in a CSS rule is still not skipped — unchanged by this.)
  *
- * The build host + parse entry live in ./functional-parser.ts; the shared driver
- * in @jesscss/css-parser.
+ * This module owns recognition only; consumers use the public CST helpers.
  */
 import {
   rules, compose,

@@ -47,7 +47,6 @@ Pass a different `startRule` (any capitalized grammar rule) to parse a fragment.
 | `@jesscss/jess-parser` (`.`) | `JessCstNode`, `JessCstLeaf`, `JessCstError`, `JessCstChild`, `JessCstParseResult`, `JessCstType` (types) | CST type definitions (aliases of the shared `@jesscss/css-parser/cst` types). |
 | `@jesscss/jess-parser/cst` | `parseJessCst`, CST types | Same core-free CST parser (explicit subpath). |
 | `@jesscss/jess-parser/grammar` | `jessGrammar` | The compiled Jess grammar (a rule map). Extend it with `compose()` or drive it directly with parseman's `run`. |
-| `@jesscss/jess-parser/jess` | `JessParser`, `JessParserFn`, `parseJessFn`, `JessGrammar`, … | Internal Jess-facing surface (the class-parser wrapper and functional parser). |
 
 ## Default CST shape
 
