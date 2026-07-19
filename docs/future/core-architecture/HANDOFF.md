@@ -102,7 +102,33 @@ closure is still in progress.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: extend the private Less direct-AST selector grammar so adjacent
+- Latest pass: extend the private CSS direct-AST selector grammar with closed
+  static pseudo classes/elements (`:hover`, `::before`).
+- Architecture surface: a shared Parseman recognition terminal, copied from the
+  production CSS grammar, macro-fuses into a parser-local reduction that emits
+  canonical `Simple` nodes. Pseudo arguments remain rejected; no Context/plugin
+  / CST bridge, host, scanner in a parser package, or source reparse is added.
+- Cumulative node weight: cold private CSS direct-AST construction only; no
+  public parser/eval/render path reaches this grammar.
+- New traversal: none.
+- New node/materialization: one parser-owned canonical `Simple` per typed
+  pseudo; no eval/render materialization is added.
+- Render path: unchanged and unreachable from production.
+- Helper/API surface: one internal recognition terminal, no public parser or
+  plugin API.
+- Metadata mutations: none.
+- Review-flagged diff tokens: [node construction] is cold grammar-owned
+  construction; `TypeError` rejects an impossible completed reduction shape.
+- Hot-path cost contracts:
+  ```json
+  [{"id":"css-private-direct-ast-family","verdict":"accepted","privateReachability":{"productionImporters":0,"publicExports":0,"buildEntries":0,"coldConstructionOnly":true},"why":"The current CSS direct-AST grammar is not a public parse, eval, or render path; static pseudo construction is exercised by focused development tests."}]
+  ```
+- Evidence: focused CSS AST test, CSS and recognition builds,
+  parser-runtime-boundary verifier, staged aggressive-cutting review.
+- Verdict: accepted cold parser construction; pseudo arguments and richer
+  selector families remain explicit typed parser work.
+
+- Earlier pass: extend the private Less direct-AST selector grammar so adjacent
   static tokens become separate canonical `Compound.simples` children.
 - Architecture surface: one direct grammar reduction maps Parseman-captured
   simple tokens into the compound; whitespace descendants stay rejected until

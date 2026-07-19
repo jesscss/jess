@@ -26,9 +26,35 @@ describe('private CSS canonical-AST grammar', () => {
     for (const input of ['* { color: red; }', '.c\\6f lor { color: red; }', '#hero { color: red; }']) {
       expect(parseAst(input).children[0]).toMatchObject({ type: 'Rule' });
     }
-    for (const input of ['@name { color: red; }', ':hover { color: red; }', '[role=button] { color: red; }']) {
+    for (const input of ['@name { color: red; }', '[role=button] { color: red; }']) {
       expect(() => parseAst(input)).toThrow();
     }
+  });
+
+  it('constructs static pseudo classes and elements as direct canonical Simple nodes', () => {
+    const document = parseAst('.card:hover::before { color: red; }');
+
+    expect(document.children[0]).toMatchObject({
+      type: 'Rule',
+      selector: {
+        type: 'SelectorList',
+        selectors: [{
+          type: 'Complex',
+          head: {
+            type: 'Compound',
+            simples: [
+              { type: 'Simple', text: '.card' },
+              { type: 'Simple', text: ':hover' },
+              { type: 'Simple', text: '::before' }
+            ]
+          }
+        }]
+      }
+    });
+    expect(serialize(document)).toEqual({
+      css: '.card:hover::before {\n  color: red;\n}\n'
+    });
+    expect(() => parseAst('.card:nth-child(2) { color: red; }')).toThrow();
   });
 
   it('constructs CSS nesting selectors as direct canonical Simple nodes', () => {

@@ -63,6 +63,7 @@ type CssAstLocalRules = {
   CssAstComplex: Combinator<Complex>;
   CssAstCompound: Combinator<Compound>;
   CssAstSimple: Combinator<Simple>;
+  CssAstPseudo: Combinator<Simple>;
   CssAstNestingSelector: Combinator<Simple>;
   CssAstProperty: Combinator<string>;
   CssAstCustomProperty: Combinator<string>;
@@ -320,11 +321,21 @@ const importTailSquareGroup = sequence(
 export const cssAstGrammar = composeLeaf([cssAstSyntax, rules<CssAstLocalRules>({ trivia: whitespace }, (g) => {
   const CssAstComment = node('CssAstComment', blockComment, children => comment(tokenText(children[0])));
   const CssAstSimple = node('CssAstSimple', g.CssAstSyntaxSimple, children => simple(tokenText(children[0])));
+  const CssAstPseudo = node(
+    'CssAstPseudo',
+    sequence(g.CssAstSyntaxPseudoColon, g.CssAstSyntaxKeyword),
+    (children) => {
+      if (children.length !== 2) {
+        throw new TypeError('CssAstPseudo requires a colon and a pseudo name.');
+      }
+      return simple(`${tokenText(children[0])}${tokenText(children[1])}`);
+    }
+  );
   // `&` is a semantic selector token, not a post-parse text substitution. The
   // core selector model represents it as the canonical Simple text expected by
   // nested-rule serialization.
   const CssAstNestingSelector = node('CssAstNestingSelector', literal('&'), () => simple('&'));
-  const CssAstCompound = node('CssAstCompound', noTrivia(oneOrMore(choice(g.CssAstNestingSelector, g.CssAstSimple))), (children) => {
+  const CssAstCompound = node('CssAstCompound', noTrivia(oneOrMore(choice(g.CssAstNestingSelector, g.CssAstPseudo, g.CssAstSimple))), (children) => {
     const simples: Simple[] = [];
     for (const child of children) {
       if (!isSimple(child)) {
@@ -570,6 +581,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, rules<CssAstLocalRules>(
     CssAstComplex,
     CssAstCompound,
     CssAstSimple,
+    CssAstPseudo,
     CssAstNestingSelector,
     CssAstProperty,
     CssAstCustomProperty,

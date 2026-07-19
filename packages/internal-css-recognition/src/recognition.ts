@@ -13,6 +13,7 @@ const singleQuotedText = regex(/(?:[^'\\]|\\[\s\S])*/);
 const urlOpen = regex(/url\(/i);
 const urlInner = regex(/(?:[^"'()\\ \t\n\f\r\x00-\x08\x0B\x0E-\x1F\x7F]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+/);
 const simpleSelector = regex(/(?:[.#]?-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*|\*)/);
+const pseudoColon = regex(/::?/);
 // These are byte-for-byte the CSS grammar's numeric terminals.  Consumers own
 // their direct Dimension reductions; this artifact only recognizes the split
 // number/unit facts, preserving the `-(?![0-9])` boundary for `17px-1px`.
@@ -34,6 +35,7 @@ export const cssAstSyntax = rules(_g => ({
   CssAstSyntaxUrlOpen: urlOpen,
   CssAstSyntaxUrlInner: urlInner,
   CssAstSyntaxSimple: simpleSelector,
+  CssAstSyntaxPseudoColon: pseudoColon,
   CssAstSyntaxNumber: number,
   CssAstSyntaxDimensionUnit: dimensionUnit
 }));
