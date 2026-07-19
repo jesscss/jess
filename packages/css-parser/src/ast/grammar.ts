@@ -6,7 +6,7 @@
  * core AST constructors directly, while the public CSS grammar continues to
  * produce the independent CST.
  */
-import { choice, expect, literal, many, noTrivia, node, oneOrMore, optional, regex, rules, sequence, trivia } from 'parseman' with { type: 'macro' };
+import { balanced, choice, expect, literal, many, noTrivia, node, oneOrMore, optional, regex, rules, scanTo, sequence, trivia } from 'parseman' with { type: 'macro' };
 import type { Combinator } from 'parseman';
 import {
   any,
@@ -57,6 +57,8 @@ type CssAstRules = {
   CssAstCompound: Combinator<Compound>;
   CssAstSimple: Combinator<Simple>;
   CssAstProperty: Combinator<string>;
+  CssAstCustomProperty: Combinator<string>;
+  CssAstCustomValue: Combinator<ValueNode>;
   CssAstKeyword: Combinator<Keyword>;
   CssAstColor: Combinator<Color>;
   CssAstDimension: Combinator<Dimension>;
@@ -126,7 +128,7 @@ function isValue(value: unknown): value is ValueNode {
     && 'type' in value
     && (value.type === 'Keyword' || value.type === 'Color' || value.type === 'Dimension'
       || value.type === 'Quoted' || value.type === 'Url' || value.type === 'FunctionCall'
-      || value.type === 'SpacedValue' || value.type === 'List');
+      || value.type === 'SpacedValue' || value.type === 'List' || value.type === 'Any');
 }
 
 function isRulesetStatement(value: unknown): value is Comment | Declaration | Rule {
@@ -202,6 +204,7 @@ const whitespace = trivia(regex(/[ \t\n\r\f]+/));
 const blockComment = regex(/\/\*(?:[^*]|\*(?!\/))*\*\//);
 const simpleSelector = regex(/(?:[.#]?-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*|\*)/);
 const propertyName = regex(/\*?-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/);
+const customPropertyName = regex(/--(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/);
 const keywordValue = regex(/-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/);
 const hexColor = regex(/#[0-9a-fA-F]{3,8}\b/);
 const dimensionNumber = regex(/[+-]?(?:[0-9]+(?:\.[0-9]+)?|\.[0-9]+)/);
@@ -219,6 +222,24 @@ const keyframeEndpoint = regex(/(?:from|to)(?![-_a-zA-Z0-9\u0080-\uffff])/i);
 const combinator = choice(literal('||'), literal('>'), literal('+'), literal('~'), literal('|'));
 const doubleQuotedText = regex(/(?:[^"\\]|\\[\s\S])*/);
 const singleQuotedText = regex(/(?:[^'\\]|\\[\s\S])*/);
+const customEscape = regex(/\\[^\n\r\f]/);
+const customDoubleQuoted = sequence(literal('"'), doubleQuotedText, literal('"'));
+const customSingleQuoted = sequence(literal('\''), singleQuotedText, literal('\''));
+// A custom property is a CSS `<declaration-value>`: its opaque bytes must be
+// captured as one value while its balanced groups, quoted strings, and comments
+// cannot terminate the declaration. This is a Parseman grammar combinator, not
+// a secondary scanner or a post-parse source slice.
+const customValue = scanTo(choice(literal(';'), literal('}')), {
+  skip: [
+    blockComment,
+    customEscape,
+    customDoubleQuoted,
+    customSingleQuoted,
+    balanced('(', ')', { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted] }),
+    balanced('[', ']', { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted] }),
+    balanced('{', '}', { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted] })
+  ]
+});
 const urlOpen = regex(/url\(/i);
 const urlInner = regex(/(?:[^"'()\\ \t\n\f\r\x00-\x08\x0B\x0E-\x1F\x7F]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+/);
 
@@ -243,6 +264,12 @@ export const cssAstGrammar = rules<CssAstRules>({ trivia: whitespace }, (g) => {
     children => selist(...selectorComplexes(children))
   );
   const CssAstProperty = node('CssAstProperty', propertyName, children => tokenText(children[0]));
+  const CssAstCustomProperty = node('CssAstCustomProperty', customPropertyName, children => tokenText(children[0]));
+  const CssAstCustomValue = node(
+    'CssAstCustomValue',
+    customValue,
+    children => any(children.length === 0 ? '' : tokenText(children[0]))
+  );
   const CssAstKeyword = node('CssAstKeyword', keywordValue, children => keyword(tokenText(children[0])));
   const CssAstColor = node('CssAstColor', hexColor, children => color(tokenText(children[0])));
   const CssAstDimension = node(
@@ -302,9 +329,19 @@ export const cssAstGrammar = rules<CssAstRules>({ trivia: whitespace }, (g) => {
   const CssAstImportant = node('CssAstImportant', literal('!important'), () => true);
   const CssAstDeclaration = node(
     'CssAstDeclaration',
-    sequence(g.CssAstProperty, literal(':'), g.CssAstValue, optional(g.CssAstImportant), optional(literal(';'))),
+    choice(
+      sequence(g.CssAstCustomProperty, literal(':'), g.CssAstCustomValue, optional(literal(';'))),
+      sequence(g.CssAstProperty, literal(':'), g.CssAstValue, optional(g.CssAstImportant), optional(literal(';')))
+    ),
     (children) => {
       const name = tokenText(children[0]);
+      if (name.startsWith('--')) {
+        const value = children.find((child): child is ValueNode => isNodeType(child, 'Any'));
+        if (value === undefined) {
+          throw new Error('CssAstDeclaration requires a captured custom-property value');
+        }
+        return decl(name, value);
+      }
       const value = children.find(isValue);
       if (value === undefined) {
         throw new Error('CssAstDeclaration requires a structured value');
@@ -394,6 +431,8 @@ export const cssAstGrammar = rules<CssAstRules>({ trivia: whitespace }, (g) => {
     CssAstCompound,
     CssAstSimple,
     CssAstProperty,
+    CssAstCustomProperty,
+    CssAstCustomValue,
     CssAstKeyword,
     CssAstColor,
     CssAstDimension,

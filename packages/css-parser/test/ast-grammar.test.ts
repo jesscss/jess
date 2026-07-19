@@ -192,6 +192,61 @@ describe('private CSS canonical-AST grammar', () => {
     });
   });
 
+  it('captures custom declarations as one grammar-owned opaque value through balanced groups and quoted terminators', () => {
+    const document = parseAst('.theme { --palette: { primary: rgb(1; 2); nested: ["}"; /* ; } */]; }; color: red; }');
+
+    expect(document.children[0]).toMatchObject({
+      type: 'Rule',
+      body: [
+        {
+          type: 'Declaration',
+          name: '--palette',
+          value: { type: 'Any', src: '{ primary: rgb(1; 2); nested: ["}"; /* ; } */]; }' },
+          important: false
+        },
+        { type: 'Declaration', name: 'color', value: { type: 'Keyword', src: 'red' } }
+      ]
+    });
+    expect(serialize(document)).toEqual({
+      css: '.theme {\n  --palette: { primary: rgb(1; 2); nested: ["}"; /* ; } */]; };\n  color: red;\n}\n'
+    });
+  });
+
+  it('does not classify an ordinary declaration or a malformed custom-property boundary as a custom declaration', () => {
+    expect(parseAst('.theme { color: red; }').children[0]).toMatchObject({
+      type: 'Rule',
+      body: [{ type: 'Declaration', name: 'color', value: { type: 'Keyword', src: 'red' } }]
+    });
+    expect(() => parseAst('.theme { --palette: { primary: red; }')).toThrow('CSS AST grammar did not consume the document');
+    expect(() => parseAst('.theme { --: red; }')).toThrow('CSS AST grammar did not consume the document');
+  });
+
+  it('keeps escaped declaration terminators and an empty custom value inside the custom-property grammar', () => {
+    const document = parseAst('.theme { --escaped: before\\;after\\}still-value; --empty: ; color: red; }');
+
+    expect(document.children[0]).toMatchObject({
+      type: 'Rule',
+      body: [
+        { type: 'Declaration', name: '--escaped', value: { type: 'Any', src: 'before\\;after\\}still-value' } },
+        { type: 'Declaration', name: '--empty', value: { type: 'Any', src: '' } },
+        { type: 'Declaration', name: 'color', value: { type: 'Keyword', src: 'red' } }
+      ]
+    });
+    expect(serialize(document)).toEqual({
+      css: '.theme {\n  --escaped: before\\;after\\}still-value;\n  --empty: ;\n  color: red;\n}\n'
+    });
+  });
+
+  it('accepts an escaped identifier start after the custom-property prefix', () => {
+    const document = parseAst('.theme { --\\31 accent: red; }');
+
+    expect(document.children[0]).toMatchObject({
+      type: 'Rule',
+      body: [{ type: 'Declaration', name: '--\\31 accent', value: { type: 'Any', src: 'red' } }]
+    });
+    expect(serialize(document)).toEqual({ css: '.theme {\n  --\\31 accent: red;\n}\n' });
+  });
+
   it('commits url() after its opener instead of falling back to a generic call', () => {
     const result = run(cssAstGrammar.CssAstDocument, '.a { background: url(foo bar); }', { trivia: cssAstGrammar.whitespace });
 
