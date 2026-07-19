@@ -129,7 +129,6 @@ stub, not the full output).
 
 ## 5. Existing perf harness
 
-- **Legacy-vs-4.x, real `benchmark.less`, exists:** `scripts/profile-less-benchmark.mjs`
   drives `new Compiler({plugins:[lessPlugin(), lessCompatPlugin()]}).render(benchmarkFile)`
   (`:232/:238`) — i.e. the **legacy** path. Sibling scripts:
   `measure-less-hotpath.mjs`, `compare-less-parse-render-env.mjs`,

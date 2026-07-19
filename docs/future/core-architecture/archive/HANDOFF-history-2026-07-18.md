@@ -1020,7 +1020,7 @@ left unmerged; only the evidence record was retained in commit `3056554`.
   measure the admission itself, not only the expensive operation that follows.
 - Architecture surface: `packages/core/src/tree/rules.ts` now exposes
   profile-only counters for merge admission calls, visited admission items,
-  admitted calls, and actual coalescer calls; `scripts/profile-less-benchmark.mjs`
+  admitted calls, and actual coalescer calls; the retired diagnostic harness
   reports those counters and has a blocking `--assert-merge-contract` mode.
   `scripts/verify-aggressive-cutting-review.mjs` requires every registered
   contract to name its admission/work counters and a bounded work budget.
@@ -1441,7 +1441,7 @@ left unmerged; only the evidence record was retained in commit `3056554`.
 - Verdict: accepted as a bounded resident/transient allocation cut. Keep the normal/inverted fallback split; do not turn it into a selector index or a profiling hook on the production hot path.
 
 - Latest pass: Q-40 BENCHMARK CONTRACT + POST-EXPANSION DUPLICATE-STATE GATE — the benchmark scripts now run the real Less plugin/import path and profile that same public compiler path; serialization allocates duplicate-output maps/sets and performs the reverse duplicate-key pass only when the final, post-expansion declaration sequence actually repeats a property.
-- Architecture surface: `serialize-helper.ts` retains the existing per-container declaration count map because expansion can splice imports, loops, and mixin bodies. Its new repeated-property flag is recomputed after every existing splice; unique final sequences never allocate the skip/key maps and never enter `runDedupPass`. `compare-less-parse-render-env.mjs` and `profile-less-benchmark.mjs` are diagnostic harnesses only, not runtime API or output paths.
+- Architecture surface: `serialize-helper.ts` retains the existing per-container declaration count map because expansion can splice imports, loops, and mixin bodies. Its new repeated-property flag is recomputed after every existing splice; unique final sequences never allocate the skip/key maps and never enter `runDedupPass`. The parse-render comparison and retired diagnostic harness are not runtime API or output paths.
 - Separation/duplication: this does not restore the removed cached declaration-output representation and does not add a second serializer. Duplicate declarations still use the existing key comparison and normal final emission when repeats exist; unique declarations already bypass key rendering by contract.
 - Cumulative node weight: no AST node field, placement, scope, source/trivia/provenance field, or runtime node cache was added. The two existing container-local duplicate maps are now absent for unique containers.
 - New traversal: none. The existing count pass remains necessary to see post-expansion declarations; the reverse duplicate pass is skipped when that count proves no repeated property can affect output.
@@ -2155,7 +2155,7 @@ left unmerged; only the evidence record was retained in commit `3056554`.
   [materialized array/object] the `_chain = { ... }` memo object and tuple
   arrays are the deferred machinery itself, allocated at most once per changed
   invocation.
-- Evidence: focused counter test (`scripts/profile-less-benchmark.mjs
+- Evidence: focused counter test (retired diagnostic harness
   --assert-extend-filter-contract` / `--assert-extend-defer-contract`) green.
   Filter counters: 37,973 admission checks, 86 admitted, 44 feature-bearing
   (superset), 39,557 no-feature bitset allocations, 37,887 no-feature misses.

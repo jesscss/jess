@@ -24,7 +24,7 @@ nearly free and the tooling gets more robust either way:
 
 - `scripts/*.mjs` — dozens of literal `packages/<pkg>` strings
   (`verify-baseline`, `bench-compare-ref`, `verify-binding-lookup-hot-paths`,
-  `test-core-debug`, `profile-less-benchmark`, `verify-node-copy-frontier`, …).
+  `test-core-debug`, `verify-node-copy-frontier`, …).
   Resolve package roots via `pnpm ls -r --json` / `require.resolve` instead.
 - `vitest.config.ts` — `resolve(root, 'packages/<pkg>/...')` literals
   (css-parser jess entry, perf-test excludes).
