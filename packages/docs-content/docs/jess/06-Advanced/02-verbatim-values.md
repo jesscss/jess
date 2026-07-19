@@ -43,6 +43,32 @@ Valid-CSS constructs that resemble functions (for example an un-operated
 `rgb(50%, 0, 0)`) also pass through verbatim; the corresponding function only runs
 when the value is operated on or its arguments are non-CSS forms.
 
+## Function shape vs. grouping parens
+
+Whether parentheses are a **function call** or **math grouping** comes down to a
+single space before the `(`:
+
+- **No space** — `name(...)` — is a function shape: passes through verbatim, even for
+  a name that is not a real CSS function.
+- **A space** — `keyword (expr)` — is math grouping: once the expression computes,
+  the grouping parens **dissolve** and do not survive to output.
+
+```jess
+$a: #a80000;
+$b: #00000b;
+.a {
+  border-a: 1px solid(#a8000b);             // no space -> verbatim
+  border-b: 1px solid ($a * .66 + $b * .33); // space -> grouping, dissolves
+}
+```
+
+```css
+.a {
+  border-a: 1px solid(#a8000b);
+  border-b: 1px solid #a8000b;
+}
+```
+
 For the full rule set and more examples, see the Less
 [Verbatim Values](https://lesscss.org/docs/advanced/verbatim-values) page — the same
 value engine underlies both.

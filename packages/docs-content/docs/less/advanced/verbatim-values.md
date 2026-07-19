@@ -93,4 +93,54 @@ runs when the value is operated on, or when its arguments are non-CSS Less forms
 }
 ```
 
-See also: [Operations](../features/strictmath.md) · [Color functions](../functions/color-definition.md).
+This applies to every un-operated CSS value-function — `rgb`/`rgba`/`hsl`/`hsla`
+and any unknown function name alike. The Less function runs **only** when the value
+is operated on (`lighten(hsl(...), 10%)`) or given Less/variable arguments
+(`hsl(@h, 50%, 40%)`):
+
+```less
+.e {
+  a: hsl(200, 50%, 40%);              // verbatim
+  b: lighten(hsl(200, 50%, 40%), 10%); // computed -> invoked
+}
+```
+
+```css
+.e {
+  a: hsl(200, 50%, 40%);
+  b: #4d9fd9;
+}
+```
+
+## Function shape vs. grouping parens
+
+Whether parentheses are a **function call** or **math grouping** comes down to a
+single space before the `(`:
+
+- **No space** — `name(...)` — is a function shape. It passes through **verbatim**,
+  even for a name that is not a real CSS function.
+- **A space** — `keyword (expr)` — is math grouping. Once the expression computes,
+  the grouping parens **dissolve** and do not survive to output.
+
+```less
+@a: #a80000;
+@b: #00000b;
+.f {
+  border-a: 1px solid(#a8000b);            // no space -> function shape, verbatim
+  border-b: 1px solid (@a * .66 + @b * .33); // space -> grouping, dissolves
+}
+```
+
+```css
+.f {
+  border-a: 1px solid(#a8000b);
+  border-b: 1px solid #a8000b;
+}
+```
+
+The grouping parens exist only to control evaluation order; they are not part of the
+computed result's spelling, so `(2px + 3px)` emits `5px`, never `(5px)`.
+
+See also: [Value & Separator Formatting](./value-formatting.md) ·
+[Color Output](./color-output.md) · [Operations](../features/strictmath.md) ·
+[Color functions](../functions/color-definition.md).

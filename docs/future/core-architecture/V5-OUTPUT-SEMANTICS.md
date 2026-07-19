@@ -274,15 +274,27 @@ depth-cap in `ast/` is a load-bearing STOPGAP until exclusion fully lands.
 
 These feed the existing 3-location docs task ([`DOC-COVERAGE.md`](./DOC-COVERAGE.md)),
 not this doc. Rules with solid L3 coverage already: A1 (`verbatim-values`), A7 /
-A8 (`output-model`), B7 (`variables` / guards). Still thin or absent on the
-user-facing sites:
+A8 (`output-model` + `selector-compaction`), B7 (`variables` / guards).
 
-- **A2 operators/separators spaced** — no page states the v5 spaced-separator
-  convention (vs 4.x tight `12px/16px`).
-- **A3 `:nth-*()` An+B exception** — undocumented.
-- **A4 / A5 function-shape vs grouping-paren dissolve** — undocumented.
-- **A6 bare `rgb`/`hsl` verbatim Call** — folded into `verbatim-values` at best;
-  no explicit note that un-operated color-fns don't invoke.
+The output-formatting gaps below are now **CLOSED** — each has a dedicated Advanced
+page on both the Less and Jess sites (docs-only landing, 2026-07-18):
+
+- ~~**A2 operators/separators spaced + comma value-list normalization**~~ →
+  `advanced/value-formatting` (Less) · `06-Advanced/08-value-formatting` (Jess).
+- ~~**A3 `:nth-*()` An+B exception**~~ → same value-formatting pages.
+- ~~**A4 / A5 function-shape vs grouping-paren dissolve**~~ → `verbatim-values`
+  (§ added, both sites).
+- ~~**A6 bare `rgb`/`hsl` verbatim Call**~~ → `verbatim-values` (§ added) +
+  `color-output` (both sites).
+- ~~**A7 compact `:is()` nesting-collapse**~~ → `advanced/selector-compaction`
+  (Less) · `06-Advanced/09-selector-compaction` (Jess).
+- ~~**Number precision (8dp values; full-precision interpolation)**~~ →
+  `advanced/number-precision` · `06-Advanced/10-number-precision`.
+- ~~**Alpha colors → `rgba`; alpha-hex preserved; gamut clamp**~~ →
+  `advanced/color-output` · `06-Advanced/11-color-output`.
+
+Still thin or absent on the user-facing sites (evaluation-semantics gaps):
+
 - **B1 escaped `~"..."` comparison semantics** — undocumented.
 - **B3 mixin var-unlock leak priority** — undocumented.
 - **B4 bare-`@var`-in-prelude hard error** — undocumented (migration-relevant;

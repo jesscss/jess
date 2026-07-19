@@ -71,9 +71,13 @@ export default {
       items: [
         'advanced/overview',
         'advanced/output-model',
+        'advanced/selector-compaction',
         'advanced/extend-is-wrapping',
         'advanced/merge-anchoring',
         'advanced/verbatim-values',
+        'advanced/value-formatting',
+        'advanced/number-precision',
+        'advanced/color-output',
         'advanced/string-format',
         'advanced/inline-javascript',
         'advanced/output-and-eval-cheatsheet'

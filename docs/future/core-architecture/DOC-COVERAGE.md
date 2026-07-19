@@ -30,10 +30,14 @@ flagged for the feature agents to fill; this docs task only fills location 3.
 | `%()` → string-format lowering | ✓ `less-parser/src/builders.ts` (`%()` lowered at build time) | ✓ DD `A5` (name OPEN) | ✓ `advanced/string-format` (new) | ✓ `06-Advanced/03-string-formatting` (new) |
 | Backtick inline JS removed → `@use`/`@-use` | ~ (`import-js.ts` documents `@use` round-trip; no explicit "backtick removed" marker) | ✓ DD `A3` | ✓ `advanced/inline-javascript` (new) + `usage/migrating-to-v5` | ✓ `02-Language/04-atrules` (@use) + `06-Advanced/06-plugins` |
 | Consolidated output-format + eval cheat sheet (STEP-0 for agents) | n/a | ✓ `V5-OUTPUT-SEMANTICS.md` + DD `F1`–`F5`,`V3`,`R9`,`P7`,`P8`,`A7` | ✓ `advanced/output-and-eval-cheatsheet` (new) | ✓ `06-Advanced/07-output-and-eval-cheatsheet` (new) |
-| Operators/separators spaced (`12px/16px`→`12px / 16px`) | ~ | ✓ DD `F1` | ~ (in cheat sheet only) | ~ (in cheat sheet only) |
-| `:nth-*()` `An+B` unspaced exception | ~ | ✓ DD `F2` | ~ (cheat sheet) | ~ (cheat sheet) |
-| Function-shape verbatim vs grouping-paren dissolve | ~ | ✓ DD `F3`,`F4` | ~ (cheat sheet) | ~ (cheat sheet) |
-| Un-operated `rgb`/`hsl` = bare verbatim Call | ~ | ✓ DD `F5`,`V2` | ~ (cheat sheet + verbatim-values) | ~ (cheat sheet + verbatim-values) |
+| Operators/separators spaced (`12px/16px`→`12px / 16px`) | ✓ `ast/value-eval.ts` (`sepGlue`) + `ast/serialize.ts` `Operation` fallback | ✓ DD `F1` | ✓ `advanced/value-formatting` (new) | ✓ `06-Advanced/08-value-formatting` (new) |
+| Comma value-list normalization (`, `; newlines preserved) | ✓ `ast/value-eval.ts` (`sepGlue`) | ✓ DD `F1` · `V5-OUTPUT-SEMANTICS.md` A2 | ✓ `advanced/value-formatting` (new) | ✓ `06-Advanced/08-value-formatting` (new) |
+| `:nth-*()` `An+B` unspaced exception | ~ | ✓ DD `F2` | ✓ `advanced/value-formatting` (new) | ✓ `06-Advanced/08-value-formatting` (new) |
+| Function-shape verbatim vs grouping-paren dissolve | ~ | ✓ DD `F3`,`F4` | ✓ `advanced/verbatim-values` (§ added) + cheat sheet | ✓ `06-Advanced/02-verbatim-values` (§ added) + cheat sheet |
+| Un-operated `rgb`/`hsl` = bare verbatim Call | ✓ `ast/color.ts` (`serializeColor` `c.node` wins) | ✓ DD `F5`,`V2` | ✓ `advanced/verbatim-values` (§ added) + cheat sheet | ✓ `06-Advanced/02-verbatim-values` (§ added) + cheat sheet |
+| Compact `:is()` nesting-collapse (prefix-factored) | ✓ `ast/serialize.ts` (`wrapIsList`/`isPrefix`) | ✓ DD `O2`,`X3` · `V5-OUTPUT-SEMANTICS.md` A7 | ✓ `advanced/selector-compaction` (new) | ✓ `06-Advanced/09-selector-compaction` (new) |
+| Number precision (8dp values; full-precision interp) | ✓ `ast/serialize-value.ts` (`serializeDimension`/`emitValueInterp`) + `ast/literal-tag.ts` | ✓ `V5-OUTPUT-SEMANTICS.md` A1 | ✓ `advanced/number-precision` (new) | ✓ `06-Advanced/10-number-precision` (new) |
+| Alpha colors → `rgba`; alpha-hex preserved; gamut clamp | ✓ `ast/color.ts` (`serializeColor`/`toHex`/`clamp`) | ✓ DD `V2` · `V5-OUTPUT-SEMANTICS.md` A6 | ✓ `advanced/color-output` (new) | ✓ `06-Advanced/11-color-output` (new) |
 | Escaped `~"..."` opaque comparison | ~ | ✓ DD `V3` | ~ (cheat sheet) | ~ (cheat sheet) |
 | Mixin var-unlock low-priority leak | ~ | ✓ DD `R9` | ✗ | ~ (cheat sheet) |
 | Bare `@var` in at-rule prelude = error | ~ | ✓ DD `P7` | ~ (cheat sheet) | ~ (cheat sheet) |
