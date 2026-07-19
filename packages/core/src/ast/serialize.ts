@@ -2230,13 +2230,19 @@ function walkBody(
       // decl group first so it emits at its authored position, then the line.
       case 'FunctionCall': {
         const fcNode = node;
+        // A VOID call statement (`if((false), {…})` — a conditional whose taken
+        // branch is absent) emits nothing and is NOT a container boundary: skip it
+        // so following declarations stay in this block rather than opening a fresh
+        // partition (v5 golden keeps `#if` a single block around the void `if`).
+        const bytes = evalBytesSync(fcNode, frame, e);
+        if (bytes.length === 0) break;
         if (partition) {
           flushPending(partition);
           partition.encounteredContainer = true;
-          partition.trailing.push(() => emitCallStatement(fcNode, frame, e));
+          partition.trailing.push(() => emitCallStatement(fcNode, frame, e, bytes));
         } else {
           flush();
-          emitCallStatement(fcNode, frame, e);
+          emitCallStatement(fcNode, frame, e, bytes);
         }
         break;
       }
@@ -2495,14 +2501,44 @@ function publishMixins(frame: Frame, extra: Map<string, MixinDef[]> | null): voi
   }
 }
 
+/** The taken branch value of an `if(cond, then, else)` call — its condition
+ *  evaluated through the guard evaluator (same rule `evalLogical` applies). The
+ *  `else` branch may be absent, so the result can be `undefined`. */
+function pickIfBranch(node: FunctionCall, frame: Frame | null, e: EvalCtx): ValueNode | undefined {
+  const cond = node.args[0];
+  const taken = cond !== undefined && evalGuard(condGuard(cond), guardDeps(frame, e));
+  return taken ? node.args[1] : node.args[2];
+}
+
+/**
+ * Resolve a binding node to the {@link DetachedRuleset} it names or produces:
+ * follow `@var` → `@var` chains AND evaluate a conditional `if(cond, A, B)` whose
+ * taken branch is (transitively) a detached ruleset — so `@x: if(cond, {…}, {…});
+ * @x();` splices the chosen branch's declarations. Returns `undefined` when the
+ * chain terminates in anything that is not a detached ruleset.
+ */
+function resolveDetachedRuleset(node: Binding, frame: Frame | null, e: EvalCtx): DetachedRuleset | undefined {
+  const seen = new Set<Binding>();
+  let cur: Binding | undefined = node;
+  while (cur && !seen.has(cur)) {
+    seen.add(cur);
+    if (cur.type === 'DetachedRuleset') return cur;
+    if (cur.type === 'VarRef') { cur = lookupVar(frame, cur.name); continue; }
+    if (cur.type === 'FunctionCall' && cur.name.toLowerCase() === 'if') { cur = pickIfBranch(cur, frame, e); continue; }
+    return undefined;
+  }
+  return undefined;
+}
+
 /** Build the overlay frame for a detached-ruleset call (definition scope has
  * priority; caller scope is the fallback). Publishes the ruleset's mixin defs
  * into the CALLER frame (Less scope unlocking). Returns null if the variable is
- * not bound to a detached ruleset. */
-function detachedCallFrame(varName: string, frame: Frame): { dr: DetachedRuleset; callFrame: Frame } | null {
+ * not bound to (or does not conditionally produce) a detached ruleset. */
+function detachedCallFrame(varName: string, frame: Frame, e: EvalCtx): { dr: DetachedRuleset; callFrame: Frame } | null {
   const bound = lookupVar(frame, varName);
-  if (!bound || bound.type !== 'DetachedRuleset') return null;
-  const dr = bound;
+  if (!bound) return null;
+  const dr = resolveDetachedRuleset(bound, frame, e);
+  if (!dr) return null;
   const def = (dr.defFrame as Frame | null) ?? frame;
   const own = collectMixins(dr.body);
   const callFrame: Frame = {
@@ -2530,7 +2566,7 @@ function expandDetachedCall(
   protectedDup = false, // [dedup] inherit restriction from the enclosing context
   forceLeading = false, // [partition] inherited leading-hoist context
 ): void {
-  const r = detachedCallFrame(call.varName, frame);
+  const r = detachedCallFrame(call.varName, frame, e);
   if (!r) return;
   walkBody(r.dr.body, composed, ancestor, r.callFrame, group, flush, partition, e, false, protectedDup, forceLeading);
 }
@@ -3206,9 +3242,9 @@ function emitStyleImport(node: StyleImport, e: Emit): void {
  * at document scope — no trailing `;`), so an `e(...)` unquote emits its inner
  * text. Emitted at the current indent; an empty result contributes nothing.
  */
-function emitCallStatement(node: FunctionCall, frame: Frame, e: Emit): void {
+function emitCallStatement(node: FunctionCall, frame: Frame, e: Emit, precomputed?: string): void {
   const start = e.off;
-  const bytes = evalBytesSync(node, frame, e);
+  const bytes = precomputed ?? evalBytesSync(node, frame, e);
   if (bytes.length === 0) return;
   if (e.depth > 0) put(e, INDENT.repeat(e.depth));
   put(e, bytes);
@@ -3788,7 +3824,7 @@ function expandNestedCall(call: MixinCall, frame: Frame, e: Emit): void {
 
 /** Expand a detached-ruleset call in nested mode. */
 function expandNestedDetachedCall(call: DetachedCall, frame: Frame, e: Emit): void {
-  const r = detachedCallFrame(call.varName, frame);
+  const r = detachedCallFrame(call.varName, frame, e);
   if (!r) return;
   emitNestedBody(r.dr.body, r.callFrame, e);
 }

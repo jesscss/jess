@@ -140,8 +140,8 @@
     "bytes": 995
   },
   "functions/functions.less": {
-    "status": "DIFF",
-    "bytes": 5149
+    "status": "MATCH",
+    "bytes": 5186
   },
   "impor/impor.less": {
     "status": "MATCH",
