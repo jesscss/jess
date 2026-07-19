@@ -568,8 +568,14 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   // escaped code point (§4.3.7), so an escaped quote/bracket/semicolon is literal
   // content, NOT a string/bracket/terminator. A lone `/` (division) is content;
   // `/*` is left for the comment alt.
-  const cpInnerContent = regex(/(?:\\[^\n]|[^(){}[\]'"\/\\])+|\/(?!\*)/);
-  const cpOuterContent = regex(/(?:\\[^\n]|[^(){}[\];'"\/\\])+|\/(?!\*)/);
+  // Do not let an opaque run swallow a complete Less interpolation opener.  The
+  // negative lookahead is deliberately the same strict, contiguous shape as
+  // `lessInterp` above: a malformed/escaped/extended false start remains
+  // verbatim custom-property content, while a valid `@{name[key]}` is left at
+  // the cursor for the typed `LessInterp` alternative.  This is grammar
+  // recognition (and macro-compiled), not a post-parse source scan.
+  const cpInnerContent = regex(/(?:\\[^\n]|(?!@\{-?[_a-zA-Z0-9\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*(?:\[[-_a-zA-Z0-9@$\u0080-\uffff]+\])*\})[^(){}[\]'"\/\\])+|\/(?!\*)/);
+  const cpOuterContent = regex(/(?:\\[^\n]|(?!@\{-?[_a-zA-Z0-9\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*(?:\[[-_a-zA-Z0-9@$\u0080-\uffff]+\])*\})[^(){}[\];'"\/\\])+|\/(?!\*)/);
   // Tier-B: `lessInterp` is tried FIRST so a strict `@{name}` is isolated as its own
   // leaf the host consumes (owner rule: a custom-prop value resolves ONLY `@{…}`).
   // A bare `@var` or a non-strict `@{ base }`/`@{a.b}` falls through to the content
