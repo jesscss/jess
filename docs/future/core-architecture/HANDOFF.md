@@ -89,12 +89,12 @@ See [`archive/README.md`](./archive/README.md) for the archive index.
 - Architecture surface: `@jesscss/css-parser/ast` is a closed opt-in direct AST-v2 pilot. Its Parseman reductions create plain `Root`, `Rule`, selector, and `Comment` literals directly; it imports neither a parse host nor any legacy builder or bridge.
 - Separation/duplication: the pilot is deliberately outside `cssGrammar` and all dialect composition. It proves the direct construction contract without preserving a callback ABI or changing the existing functional path.
 - Cumulative node weight: the new path creates only canonical child arrays required by its selected subset; it adds no side map, wrapper, legacy node, or metadata mutation.
-- New traversal: none. The result shaper validates the direct root once; rendering uses the existing AST serializer with no bridge conversion.
+- New traversal: none. The typed grammar reduction is the Root contract; parse failure returns `document: null` and a diagnostic, while successful rendering uses the AST serializer with no bridge conversion.
 - New node/materialization: cold, opt-in parser output only. Existing benchmark/render paths do not instantiate the pilot grammar.
 - Render path: no existing render branch changed; the focused test renders the direct root through the AST serializer.
-- Helper/API surface: one public subpath operation, `parseCssToAst`; no `parseCssFn` alias, `FunctionalParseHost`, `BuilderHost`, action map, or compatibility facade is retained.
+- Helper/API surface: one public subpath operation, `parse`; no migration-named alias, `parseCssFn` alias, `FunctionalParseHost`, `BuilderHost`, action map, or compatibility facade is retained.
 - Metadata mutations: none.
-- Review-flagged diff tokens: `[array helper]` `filter` creates only the direct root/body child arrays of the caller-selected pilot; `[materialized array/object]` canonical literal/result objects are cold opt-in parse output and failure diagnostics; `[node construction]` and `[routine error control]` are one impossible-after-grammar invariant throw when a required selector is absent, never routine recovery. No existing benchmark path gains either allocation or branch.
+- Review-flagged diff tokens: `[array helper]` slices only the grammar-fixed comment slots between the ruleset delimiters; `[materialized array/object]` canonical literal/result objects are cold opt-in parse output and failure diagnostics. There is no post-reduction structural probe, fallback AST, or routine error throw. No existing benchmark path gains either allocation or branch.
 - Hot-path cost contracts:
 ```json
 [
