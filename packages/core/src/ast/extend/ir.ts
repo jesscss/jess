@@ -90,6 +90,31 @@ export function isSimple(branches: Branch[]): Simple {
   return { t: 'is', branches: branches.map(cloneBranch) };
 }
 
+/**
+ * The substitution simples for an `all` sub-match: DEDUP identical branches, and
+ * when a single unique single-segment branch survives, INLINE its compound simples
+ * instead of an `:is(...)` wrap. A self-extend (`.class:extend(.class all)`) or any
+ * extender equal to the matched span would otherwise emit `:is(x, x)`; since
+ * `:is(x, x)` and `:is(x)` are both semantically `x`, this is a byte-transparent
+ * collapse that never alters a group of genuinely-distinct branches. Returns the
+ * simple(s) to splice in place of the matched slot.
+ */
+export function isOrPlainSimples(branches: Branch[]): Simple[] {
+  const seen = new Set<string>();
+  const uniq: Branch[] = [];
+  for (const b of branches) {
+    const k = branchText(b);
+    if (!seen.has(k)) {
+      seen.add(k);
+      uniq.push(b);
+    }
+  }
+  if (uniq.length === 1 && uniq[0]!.segs.length === 1) {
+    return uniq[0]!.segs[0]!.compound.simples.map(cloneSimple);
+  }
+  return [isSimple(uniq)];
+}
+
 /* --------------------------------------------------------------------- clone */
 
 export function cloneSimple(s: Simple): Simple {

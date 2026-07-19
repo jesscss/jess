@@ -14,7 +14,7 @@ import {
   cloneSimple,
   compoundText,
   descendantBranch,
-  isSimple,
+  isOrPlainSimples,
   multisetSubset,
   textSimples,
 } from './ir.js';
@@ -207,14 +207,15 @@ function substituteSingleCompound(b: Branch, targetCompound: Compound, extenders
     if (need.length > 1) {
       return { comb: seg.comb, compound: collapseMatchedAtoms(seg.compound, needSet, targetCompound, extenders) };
     }
-    // single-simple target: wrap each matched slot individually.
+    // single-simple target: wrap each matched slot individually (deduping a
+    // self-extend's `:is(x, x)` down to `x`).
     return {
       comb: seg.comb,
       compound: {
-        simples: seg.compound.simples.map((s): Simple =>
+        simples: seg.compound.simples.flatMap((s): Simple[] =>
           s.t === 'text' && needSet.has(s.text)
-            ? isSimple([descendantBranch([cloneSimple(s)]), ...extenders])
-            : cloneSimple(s),
+            ? isOrPlainSimples([descendantBranch([cloneSimple(s)]), ...extenders])
+            : [cloneSimple(s)],
         ),
       },
     };
@@ -235,7 +236,7 @@ function collapseMatchedAtoms(
   for (const s of compound.simples) {
     if (s.t === 'text' && needSet.has(s.text)) {
       if (!placed) {
-        out.push(isSimple([matchedBranch, ...extenders]));
+        out.push(...isOrPlainSimples([matchedBranch, ...extenders]));
         placed = true;
       }
       // subsequent matched atoms are subsumed by the :is()
@@ -277,7 +278,7 @@ function substituteMultiCompound(b: Branch, target: Branch, extenders: Branch[])
     }
     const isSeg: Seg = {
       comb: start === 0 ? ' ' : segs[start]!.comb,
-      compound: { simples: [isSimple([{ segs: spanSegs }, ...extenders])] },
+      compound: { simples: isOrPlainSimples([{ segs: spanSegs }, ...extenders]) },
     };
     const outSegs: Seg[] = [];
     for (let i = 0; i < segs.length; i++) {
