@@ -923,17 +923,35 @@ function validateRegisteredSourceMetadata(registry) {
   return errors;
 }
 
-function extractCostAuditRecords(latestPass) {
+function extractCostAuditRecords(latestPass, registry = []) {
   const match = latestPass.match(/- Hot-path cost contracts:\s*```json\s*([\s\S]*?)\s*```/);
-  if (!match) {
+  if (match) {
+    try {
+      const records = JSON.parse(match[1]);
+      return Array.isArray(records) ? records : null;
+    } catch {
+      return null;
+    }
+  }
+  const ledger = latestPass.match(/- Hot-path cost contracts:\s*ledger IDs:\s*([^\n]+)/);
+  if (!ledger) {
     return null;
   }
-  try {
-    const records = JSON.parse(match[1]);
-    return Array.isArray(records) ? records : null;
-  } catch {
-    return null;
-  }
+  const ids = [...ledger[1].split(';', 1)[0].matchAll(/`([^`]+)`/g)].map(([, id]) => id);
+  if (ids.length === 0) return null;
+  return ids.map((id) => {
+    const contract = registry.find(candidate => candidate.id === id);
+    if (contract?.kind !== 'neutral-or-negative' || !contract.neutralRefactor) {
+      return { id };
+    }
+    return {
+      id,
+      verdict: 'accepted',
+      costDelta: contract.neutralRefactor.costDelta,
+      why: contract.neutralRefactor.why,
+      byteIdentity: contract.neutralRefactor.byteIdentity,
+    };
+  });
 }
 
 function numberCounter(record, names) {
@@ -998,7 +1016,7 @@ function contractsForChangedSurface(registry, path, diff) {
 function validateCostAuditRecords(records, registry, changedPaths, diff, hasDangerTokens = false) {
   const errors = [];
   if (!records) {
-    return ['Latest self-prosecution block is missing a valid Hot-path cost contracts JSON record.'];
+    return ['Latest self-prosecution block is missing a valid Hot-path cost contracts JSON record or ledger-ID pointer.'];
   }
   const registryIds = new Set(registry.map(contract => contract.id));
   const byId = new Map();
@@ -1512,7 +1530,7 @@ function runVerifier() {
   const productionHotPathChanged = changedPaths.some(isProductionHotPathFile);
   const requiresCostAudit = hotPathChanged || findings.length > 0;
   if (requiresCostAudit && registryErrors.length === 0) {
-    const auditRecords = extractCostAuditRecords(latestPass);
+    const auditRecords = extractCostAuditRecords(latestPass, registry);
     const auditErrors = validateCostAuditRecords(auditRecords, registry, changedPaths, diff, findings.length > 0);
     const sourceCheckErrors = validateSourceChecks(registry, changedPaths);
     const changedSurfaceErrors = validateChangedContractSurface(registry, changedPaths, diff);
@@ -1559,4 +1577,9 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   runVerifier();
 }
 
-export { evaluateCounterRelation, validateCostAuditRecords, validateCostContractRegistry };
+export {
+  evaluateCounterRelation,
+  extractCostAuditRecords,
+  validateCostAuditRecords,
+  validateCostContractRegistry,
+};

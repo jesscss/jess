@@ -86,14 +86,15 @@ See [`archive/README.md`](./archive/README.md) for the archive index.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Architecture surface: documentation routing only: `HANDOFF.md`, `CORE-CLEANUP.md`, and `archive/README.md`.
-- Separation/duplication: deleted duplicate active cutover boards and moved their full snapshots to `archive/`.
-- Cumulative node weight: none; no runtime source changed.
-- New traversal: none.
-- New node/materialization: none.
-- Render path: none.
-- Helper/API surface: none.
+- Architecture surface: one canonical terminal AST vocabulary, `OpaqueAtRuleBlock`; no parse-host, import, parser grammar, or legacy bridge surface changed.
+- Separation/duplication: `rawBody: string` makes the invalid child-body relationship impossible instead of relocating it behind a helper or host.
+- Cumulative node weight: one cold plain-data node shape; parser reductions may construct its literal directly, while `opaqueAtRuleBlock` is only a programmatic convenience.
+- New traversal: none. The serializer writes `rawBody` directly and neither evaluates nor inspects it.
+- New node/materialization: public AST materialization only; no eval-to-string node, copied child array, wrapper, side map, or metadata mutation exists.
+- Render path: one terminal type branch writes name, optional prelude, braces, and raw bytes; normal documents do not take it.
+- Helper/API surface: `emitOpaqueAtRuleBlock` is the sole helper and replaces no general dispatch layer; it is necessary to keep every serializer mode terminal and direct.
 - Metadata mutations: none.
-- Review-flagged diff tokens: none in runtime source; historical references point to renamed archive files.
-- Evidence: `docs:content:validate`, active relative-link scan, and `git diff --check` pass.
+- Review-flagged diff tokens: none; no new loop, map/set, scanner, reparse, clone, or evaluator call was added.
+- Hot-path cost contracts: ledger IDs: `opaque-atrule-block-vocabulary`, `opaque-atrule-block-node-union`, `opaque-atrule-block-statement-union`, `opaque-atrule-block-terminal-emit`; their benchmark oracle and detailed justification live only in [`AGGRESSIVE-CUTTING-REVIEW.md`](./AGGRESSIVE-CUTTING-REVIEW.md).
+- Evidence: focused opaque-at-rule serialization tests cover root order, evaluator isolation, and nested collapse modes; `git diff --check` passes. Full benchmark and integration gates belong to the final consolidated branch.
 - Verdict: accepted.

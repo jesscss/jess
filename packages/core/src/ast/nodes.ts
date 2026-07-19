@@ -711,7 +711,7 @@ export interface Root {
 
 // [atrule] at-rule nodes are valid body/root statements; type-only import keeps
 // nodes.ts free of a runtime dependency on the sibling at-rule module.
-import type { AtRuleBlock, AtRuleStatement } from './at-rule.js';
+import type { AtRuleBlock, AtRuleStatement, OpaqueAtRuleBlock } from './at-rule.js';
 
 export type Statement =
   | Rule
@@ -722,6 +722,7 @@ export type Statement =
   | VarDeclaration
   | AtRuleBlock
   | AtRuleStatement
+  | OpaqueAtRuleBlock
   | DetachedCall
   | For
   | RawInline

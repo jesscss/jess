@@ -832,6 +832,70 @@ no imported guarded mixins (no speedup to show), but on
         "outputBytes": 133983
       }
     }
+  },
+  {
+    "id": "opaque-atrule-block-vocabulary",
+    "kind": "neutral-or-negative",
+    "surface": "OpaqueAtRuleBlock terminal AST vocabulary (at-rule.ts)",
+    "files": ["packages/core/src/ast/at-rule.ts"],
+    "neutralRefactor": {
+      "costDelta": "neutral",
+      "why": "OpaqueAtRuleBlock is a cold parser-produced vocabulary shape. Its rawBody is a scalar string, not a statement array, so construction adds no traversal or runtime state and ordinary benchmark documents do not create it. The dedicated factory is a public construction convenience only; parser reductions continue to emit literals directly.",
+      "byteIdentity": {
+        "fixture": "benchmark.less",
+        "collapseNesting": true,
+        "outputSha256": "adfd26732125a33fc1e264aca7d7ecde8c7c1da43f968e3106bd387a1f78e840",
+        "outputBytes": 133983
+      }
+    }
+  },
+  {
+    "id": "opaque-atrule-block-node-union",
+    "kind": "neutral-or-negative",
+    "surface": "OpaqueAtRuleBlock discriminant membership (node.ts)",
+    "files": ["packages/core/src/ast/node.ts"],
+    "neutralRefactor": {
+      "costDelta": "neutral",
+      "why": "The new discriminant extends static AST typing and the existing membership set only. isNode still makes one Set membership check per call, and ordinary benchmark documents never carry the new type, so no added traversal, allocation, or serializer work occurs on the normal render path.",
+      "byteIdentity": {
+        "fixture": "benchmark.less",
+        "collapseNesting": true,
+        "outputSha256": "adfd26732125a33fc1e264aca7d7ecde8c7c1da43f968e3106bd387a1f78e840",
+        "outputBytes": 133983
+      }
+    }
+  },
+  {
+    "id": "opaque-atrule-block-statement-union",
+    "kind": "neutral-or-negative",
+    "surface": "OpaqueAtRuleBlock statement-union membership (nodes.ts)",
+    "files": ["packages/core/src/ast/nodes.ts"],
+    "neutralRefactor": {
+      "costDelta": "neutral",
+      "why": "This is a type-only extension of the canonical Statement union. It emits no JavaScript branch, allocation, lookup, or traversal, and it gives parsers a structurally explicit terminal statement instead of a false child-body relationship.",
+      "byteIdentity": {
+        "fixture": "benchmark.less",
+        "collapseNesting": true,
+        "outputSha256": "adfd26732125a33fc1e264aca7d7ecde8c7c1da43f968e3106bd387a1f78e840",
+        "outputBytes": 133983
+      }
+    }
+  },
+  {
+    "id": "opaque-atrule-block-terminal-emit",
+    "kind": "neutral-or-negative",
+    "surface": "emitOpaqueAtRuleBlock terminal serializer write (serialize.ts)",
+    "files": ["packages/core/src/ast/serialize.ts"],
+    "neutralRefactor": {
+      "costDelta": "neutral",
+      "why": "The serializer adds a single type-dispatch branch reached only for OpaqueAtRuleBlock. Its writer appends name, optional prelude, rawBody, and braces directly; it allocates no child collection and never calls evaluation or recursively walks rawBody. Ordinary benchmark documents contain no such node, leaving their route unchanged.",
+      "byteIdentity": {
+        "fixture": "benchmark.less",
+        "collapseNesting": true,
+        "outputSha256": "adfd26732125a33fc1e264aca7d7ecde8c7c1da43f968e3106bd387a1f78e840",
+        "outputBytes": 133983
+      }
+    }
   }
 ]
 ```

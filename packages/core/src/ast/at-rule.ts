@@ -1,7 +1,7 @@
 /**
  * Clean-room tree2 at-rule nodes.
  *
- * Two shapes, matching the parser's split:
+ * Three shapes, matching the parser's split:
  *
  *   - `AtRuleBlock`  — a block-bearing at-rule (`@media`, `@font-face`,
  *     `@keyframes`, `@page`, `@supports`, `@counter-style`, unknown block
@@ -16,6 +16,10 @@
  *     "utf-8";`, `@namespace svg "…";`). Carries a `name` and optional raw
  *     `prelude` BYTES (never variable-resolved — Less emits statement preludes
  *     literally, e.g. `@namespace @ns "…"` stays `@ns`).
+ *
+ *   - `OpaqueAtRuleBlock` — a block whose header and contents must remain
+ *     verbatim. Its `rawBody` is bytes, not child statements: serialization is a
+ *     terminal write and never evaluates or walks it.
  *
  * The prelude of a block at-rule is a value node so `@keyframes @name` resolves
  * `@name` through scope; a statement prelude is opaque bytes for byte-faithful
@@ -49,6 +53,20 @@ export interface AtRuleStatement {
   readonly prelude: ValueNode | null;
 }
 
+/**
+ * A terminal, byte-preserving block at-rule: `@name prelude {rawBody}`.
+ *
+ * This deliberately has no child-node body. It represents syntax that the
+ * producing grammar keeps opaque; the core serializer must not try to evaluate,
+ * inspect, or recursively render those bytes.
+ */
+export interface OpaqueAtRuleBlock {
+  readonly type: 'OpaqueAtRuleBlock';
+  readonly name: string;
+  readonly prelude: string | null;
+  readonly rawBody: string;
+}
+
 export const atRuleBlock = (
   name: string,
   prelude: ValueNode | null,
@@ -57,3 +75,9 @@ export const atRuleBlock = (
 
 export const atRuleStatement = (name: string, prelude: ValueNode | null): AtRuleStatement =>
   ({ type: 'AtRuleStatement', name, prelude });
+
+export const opaqueAtRuleBlock = (
+  name: string,
+  prelude: string | null,
+  rawBody: string,
+): OpaqueAtRuleBlock => ({ type: 'OpaqueAtRuleBlock', name, prelude, rawBody });

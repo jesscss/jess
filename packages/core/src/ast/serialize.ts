@@ -71,7 +71,7 @@ import type {
   VarIndirect,
 } from './nodes.js';
 // [atrule] block + statement at-rule node types
-import type { AtRuleBlock, AtRuleStatement } from './at-rule.js';
+import type { AtRuleBlock, AtRuleStatement, OpaqueAtRuleBlock } from './at-rule.js';
 // typed synchronous value evaluator seam + boundary-clean value domain.
 import {
   DEFAULT_MODES,
@@ -2235,6 +2235,9 @@ export function serialize(root: Root, options?: SerializeOptions): SerializeRetu
       case 'AtRuleStatement':
         emitAtRuleStatement(child, rootFrame, e);
         break;
+      case 'OpaqueAtRuleBlock':
+        emitOpaqueAtRuleBlock(child, e);
+        break;
       // [import:inline] raw verbatim bytes spliced by `@import (inline)`.
       case 'RawInline':
         emitRawInline(child, e);
@@ -2577,6 +2580,18 @@ function walkBody(
         } else {
           flush();
           emitAtRuleStatement(node, frame, e);
+        }
+        break;
+      }
+      case 'OpaqueAtRuleBlock': {
+        const opaqueNode = node;
+        if (partition) {
+          flushPending(partition);
+          partition.encounteredContainer = true;
+          partition.trailing.push(() => emitOpaqueAtRuleBlock(opaqueNode, e));
+        } else {
+          flush();
+          emitOpaqueAtRuleBlock(node, e);
         }
         break;
       }
@@ -3546,6 +3561,10 @@ function emitLeaf(leaf: Leaf, e: Emit, atRoot = false): void {
     e.depth++;
     emitAtRuleStatement(node, frame, e);
     e.depth--;
+  } else if (node.type === 'OpaqueAtRuleBlock') {
+    e.depth++;
+    emitOpaqueAtRuleBlock(node, e);
+    e.depth--;
   }
 }
 
@@ -3630,6 +3649,21 @@ function emitAtRuleStatementRaw(node: AtRuleStatement, frame: Frame, e: Emit): v
     }
   }
   put(e, ';\n');
+  if (e.positions) e.positions.push({ node, type: node.type, start, end: e.off });
+}
+
+/** Write a grammar-owned opaque at-rule body without evaluating or walking it. */
+function emitOpaqueAtRuleBlock(node: OpaqueAtRuleBlock, e: Emit): void {
+  const start = e.off;
+  if (e.depth > 0) put(e, INDENT.repeat(e.depth));
+  put(e, node.name);
+  if (node.prelude !== null && node.prelude.length > 0) {
+    put(e, ' ');
+    put(e, node.prelude);
+  }
+  put(e, ' {');
+  put(e, node.rawBody);
+  put(e, '}\n');
   if (e.positions) e.positions.push({ node, type: node.type, start, end: e.off });
 }
 
@@ -3956,6 +3990,12 @@ function emitAtRuleBody(statements: Statement[], frame: Frame, e: Emit): void {
         emitAtRuleStatement(node, frame, e);
         e.depth--;
         break;
+      case 'OpaqueAtRuleBlock':
+        flushDirect();
+        e.depth++;
+        emitOpaqueAtRuleBlock(node, e);
+        e.depth--;
+        break;
       case 'MixinCall':
         // Best-effort: expand into the direct-declaration group.
         expandCall(node, null, null, frame, group, flushDirect, null, e);
@@ -4034,6 +4074,12 @@ function emitBubbleBody(statements: Statement[], ctx: string[] | null, frame: Fr
         flushDirect();
         e.depth++;
         emitAtRuleStatement(node, frame, e);
+        e.depth--;
+        break;
+      case 'OpaqueAtRuleBlock':
+        flushDirect();
+        e.depth++;
+        emitOpaqueAtRuleBlock(node, e);
         e.depth--;
         break;
       case 'MixinCall':
@@ -4123,6 +4169,10 @@ function emitNestedBody(
       case 'AtRuleStatement':
         flushBuf();
         emitAtRuleStatement(node, frame, e);
+        break;
+      case 'OpaqueAtRuleBlock':
+        flushBuf();
+        emitOpaqueAtRuleBlock(node, e);
         break;
       // [import:inline] raw verbatim bytes spliced by `@import (inline)`.
       case 'RawInline':

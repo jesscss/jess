@@ -49,7 +49,7 @@ import type {
   StyleImport,
   Condition,
 } from './nodes.js';
-import type { AtRuleBlock, AtRuleStatement } from './at-rule.js';
+import type { AtRuleBlock, AtRuleStatement, OpaqueAtRuleBlock } from './at-rule.js';
 
 /** Every tree2 node's PascalCase `type` discriminant (Less-matching). */
 export type NodeType =
@@ -57,7 +57,7 @@ export type NodeType =
   | 'Complex' | 'Compound' | 'Simple' | 'Keyword' | 'Color' | 'Quoted' | 'Any' | 'SelectorCapture' | 'Dimension'
   | 'SpacedValue' | 'List' | 'VarRef' | 'MixinDef' | 'MixinCall' | 'VarDeclaration'
   | 'Sequence' | 'Operation' | 'FunctionCall' | 'Paren' | 'Condition'
-  | 'AtRuleBlock' | 'AtRuleStatement' | 'Interp' | 'VarIndirect'
+  | 'AtRuleBlock' | 'AtRuleStatement' | 'OpaqueAtRuleBlock' | 'Interp' | 'VarIndirect'
   | 'DetachedRuleset' | 'MapAccessor' | 'PropRef' | 'DetachedCall' | 'For' | 'RawInline'
   | 'StyleImport';
 
@@ -81,7 +81,7 @@ export type Node =
   | Root | Rule | Declaration | Comment | SelectorList | Complex | Compound
   | Simple | Keyword | Color | Quoted | Any | Dimension | SpacedValue | List | VarRef | MixinDef | MixinCall
   | VarDeclaration | Sequence | Operation | FunctionCall | Paren | Condition
-  | AtRuleBlock | AtRuleStatement | Interp | VarIndirect | DetachedRuleset
+  | AtRuleBlock | AtRuleStatement | OpaqueAtRuleBlock | Interp | VarIndirect | DetachedRuleset
   | MapAccessor | PropRef | DetachedCall | For | RawInline | StyleImport;
 
 /**
@@ -104,7 +104,7 @@ export const AST_NODE_TYPES: ReadonlySet<string> = new Set<NodeType>([
   'Complex', 'Compound', 'Simple', 'Keyword', 'Color', 'Quoted', 'Any', 'SelectorCapture', 'Dimension',
   'SpacedValue', 'List', 'VarRef', 'MixinDef', 'MixinCall', 'VarDeclaration',
   'Sequence', 'Operation', 'FunctionCall', 'Paren', 'Condition',
-  'AtRuleBlock', 'AtRuleStatement', 'Interp', 'VarIndirect',
+  'AtRuleBlock', 'AtRuleStatement', 'OpaqueAtRuleBlock', 'Interp', 'VarIndirect',
   'DetachedRuleset', 'MapAccessor', 'PropRef', 'DetachedCall', 'For', 'RawInline',
   'StyleImport',
 ]);

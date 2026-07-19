@@ -1,8 +1,52 @@
 import { describe, expect, it } from 'vitest';
 import {
+  extractCostAuditRecords,
   validateCostAuditRecords,
   validateCostContractRegistry
 } from '../verify-aggressive-cutting-review.mjs';
+
+describe('concise handoff cost-contract ledger pointers', () => {
+  const ledger = [{
+    id: 'cold-terminal-surface',
+    kind: 'neutral-or-negative',
+    surface: 'cold terminal surface',
+    files: ['packages/core/src/ast/serialize.ts'],
+    neutralRefactor: {
+      costDelta: 'neutral',
+      why: 'The terminal branch is cold and writes its scalar bytes directly, with no normal-path traversal or allocation.',
+      byteIdentity: {
+        fixture: 'benchmark.less',
+        collapseNesting: true,
+        outputSha256: 'b'.repeat(64),
+        outputBytes: 1,
+      },
+    },
+  }];
+
+  it('resolves a concise ledger pointer into its authoritative neutral audit record', () => {
+    expect(extractCostAuditRecords(
+      '- Hot-path cost contracts: ledger IDs: `cold-terminal-surface`; see the review ledger.',
+      ledger,
+    )).toEqual([{
+      id: 'cold-terminal-surface',
+      verdict: 'accepted',
+      costDelta: 'neutral',
+      why: ledger[0].neutralRefactor.why,
+      byteIdentity: ledger[0].neutralRefactor.byteIdentity,
+    }]);
+  });
+
+  it('keeps an unknown ledger id visible so the contract validator rejects it', () => {
+    const records = extractCostAuditRecords(
+      '- Hot-path cost contracts: ledger IDs: `missing-terminal-surface`.',
+      ledger,
+    );
+
+    expect(validateCostAuditRecords(records, ledger, [], '')).toContain(
+      'Hot-path cost audit record missing-terminal-surface is not declared in the machine-readable cost-contract registry.'
+    );
+  });
+});
 
 const sourceFile = 'packages/core/src/tree/rules.ts';
 const registry = [{
