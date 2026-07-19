@@ -1,6 +1,6 @@
 /** Closed direct AST-v2 grammar for the simplest Less import fact. */
 import { choice, literal, many, node, regex, rules, sequence, trivia } from 'parseman' with { type: 'macro' };
-import type { AstQuoted, ImportAtRule, Root } from '@jesscss/core/ast';
+import type { AstQuoted, ImportAtRule, Root, Statement, VarDeclaration } from '@jesscss/core/ast';
 
 type Token = { readonly value: string };
 
@@ -47,19 +47,31 @@ function isImportAtRule(value: unknown): value is ImportAtRule {
     && 'tail' in value;
 }
 
-function requireImportAtRules(children: readonly unknown[]): ImportAtRule[] {
-  const imports: ImportAtRule[] = [];
+function isVarDeclaration(value: unknown): value is VarDeclaration {
+  return typeof value === 'object'
+    && value !== null
+    && 'type' in value
+    && value.type === 'VarDeclaration'
+    && 'name' in value
+    && typeof value.name === 'string'
+    && 'value' in value
+    && isAstQuoted(value.value);
+}
+
+function requireStatements(children: readonly unknown[]): Statement[] {
+  const statements: Statement[] = [];
   for (const child of children) {
-    if (!isImportAtRule(child)) {
-      throw new TypeError('Direct Less AST grammar produced a non-import statement.');
+    if (!isImportAtRule(child) && !isVarDeclaration(child)) {
+      throw new TypeError('Direct Less AST grammar produced a non-statement child.');
     }
-    imports.push(child);
+    statements.push(child);
   }
-  return imports;
+  return statements;
 }
 
 const whitespace = trivia(regex(/[ \t\n\r\f]+/));
 const importKeyword = regex(/@(?:-import|-export|import)(?![-\w])/i);
+const variableName = regex(/-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
 const doubleQuotedText = regex(/[^"\\]*/);
 const singleQuotedText = regex(/[^'\\]*/);
 
@@ -96,11 +108,22 @@ export const directLessAstGrammar = rules({ trivia: whitespace }, (g: any) => {
       };
     }
   );
+  const DirectLessVarDeclaration = node<VarDeclaration>(
+    'DirectLessVarDeclaration',
+    sequence(literal('@'), variableName, literal(':'), g.DirectLessQuoted, literal(';')),
+    (children) => {
+      // The sigil and name are distinct grammar children, so AST `name` is not
+      // recovered from authored text or sliced from a source span.
+      const name = requireToken(children[1]);
+      const value = requireAstQuoted(children[3]);
+      return { type: 'VarDeclaration', name: name.value, value };
+    }
+  );
   const DirectLessDocument = node<Root>(
     'DirectLessDocument',
-    many(g.DirectLessImport),
-    children => ({ type: 'Root', children: requireImportAtRules(children) })
+    many(choice(g.DirectLessImport, g.DirectLessVarDeclaration)),
+    children => ({ type: 'Root', children: requireStatements(children) })
   );
 
-  return { DirectLessDocument, DirectLessImport, DirectLessQuoted, whitespace };
+  return { DirectLessDocument, DirectLessImport, DirectLessVarDeclaration, DirectLessQuoted, whitespace };
 });
