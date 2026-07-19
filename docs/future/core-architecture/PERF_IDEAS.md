@@ -240,3 +240,196 @@ re-measure before investing here.
 touches (#1 + #2, ~8–12 ms)** — this is core-owned and does not require touching
 the parser grammar. The next tier (#3, #4) lives in the parser and must be
 handed to the parser owner and re-measured against the built bundle.
+
+---
+
+## dart-sass competitiveness — comparative audit (2026-07-18)
+
+Fresh-dev `e7ee8cc57` (ast/ production cutover on `d67e7f581`). Same methodology
+as above (worktree source-transform harness, warmup ≥25, N=60 median; V8 sampling
+CPU profile at 50 µs, 200/300 iterations after 30-iter warmup). This section adds
+the **dart-sass comparative lens** to the internal breakdown above; it does not
+restate or contradict the ideas already ranked. Every number below is either a
+`benchmark.less` internal stage measurement or the synthetic 3-way cross-engine
+measurement — each claim states which.
+
+### 1. Cross-engine baseline (measured)
+
+`packages/jess/benchmark/compare-sass.mjs`, the 3-way matched-workload harness
+(220 components × 6 variants; **synthetic** — dart-sass cannot read `.less`, so
+both dialects are generated from one spec; 275 KB Less / 288 KB SCSS in →
+~368 KB CSS out), `WARMUP=15 N=31`, two independent runs:
+
+| Engine | median | vs dart-sass |
+|--------|--------|--------------|
+| dart-sass (`sass` npm, dart2js) | 71.8 / 73.1 ms | 1.00× |
+| **Jess ast/ v2** (`renderAstLess`) | 90.2 / 91.2 ms | **1.25–1.26× slower** |
+| Jess legacy (`render`, tree/ eval) | 259.6 / 268.9 ms | 3.62–3.68× slower |
+
+The two Jess rows are **byte-identical** (sha `23f86af75557`); dart-sass differs
+by 218 bytes (formatting, expected). **This 1.25× is the only cross-engine number
+here** and it rides the synthetic workload. All *stage* attribution below rides
+`benchmark.less` (4446 lines, 129,317-byte CSS) — the two workloads are not
+interchangeable, so the per-stage split of the 1.25× gap is *inferred* from
+`benchmark.less`'s stage profile, not measured on the synthetic sheet.
+
+### 2. Stage-by-stage: where the ~1.25× gap lives
+
+`benchmark.less` internal phase medians on fresh dev (N=60):
+
+| Phase | Median | Share |
+|-------|--------|-------|
+| parse + build (`parseToAst`) | 29.77 ms | **63.8%** |
+| serialize (fused eval + emit + extend) | 16.02 ms | **34.3%** |
+| **total** | **46.63 ms** (min 42.19) | 100% |
+
+The **~50 ms floor holds** (46.6 ms median here; the 51.9 ms in the header is an
+earlier run — same order, ordinary machine variance). CSS is 129,317 bytes vs the
+header's 131,713 — a small render-shape drift landed since; not a regression.
+
+**The gap to dart-sass lives in PARSE.** Parse is 63.8% of our render, and the
+parse-only profile puts **`grammar.ts` at 72.4% of parse self-time ≈ 21.6 ms
+(~46% of the whole render)**. dart-sass's parser (`lib/src/parse/parser.dart`,
+verified) is a hand-written single-pass `SpanScanner` over code units with **no
+token stream, no CST capture, and no per-node trivia frame** — whitespace is
+consumed inline (`whitespace()`), and backtracking is bounded explicit
+`scanner.state` save/restore (`tryUrl`, `scanIdentifier`). Jess's parseman
+combinator grammar is structurally heavier *by design*: the trivia frame `_tf0`
+alone is **5.2% of parse (~1.6 ms)** and it fires on every node, while capture
+frames + speculative ordered-choice descent account for the rest. Neither eval nor
+serialize is where we trail: our **fused eval+serialize walk** (single pass,
+`serialize.ts`) and **lazy value model** (single-unit fast path, un-materialized
+bare strings — see memory) are competitive with or ahead of dart-sass's separate
+`CssStylesheet` + `_SerializeVisitor`. Value-eval is ~1 ms on this fixture.
+
+### 3. BuilderHost weight + retirement win (measured)
+
+The task flags two "BuilderHost" surfaces; they are **not the same code and only
+one is on the ast/ render path**:
+
+- **Parser-side `BuilderHost`** (`less-parser/src/functional-parser.ts` →
+  `builders.ts::buildNode`): the **legacy tree/ producer**, driven by
+  `parseLessFn`/`LessParser.parse`. **It does not appear anywhere in the ast/
+  render CPU profile.** `parseToAst` passes *core's* dispatch host as the grammar
+  `build` callback, so grammar rules build ast nodes directly and never touch
+  `buildNode`. **Predicted free render win when it retires with legacy tree/: ≈ 0
+  ms on the ast/ path.** Its payoff (the ~34 `builders.ts` regex vanishing) is
+  code-hygiene / two-producer removal, *not* ast/ throughput — do not budget a
+  render speedup for it.
+- **Core-side dispatch/build host** (`ast/parse-host/dispatch-host.ts` +
+  `actions/*.ts` + node constructors in `nodes.ts`/`node.ts`/`index.ts`): this IS
+  on the path and is the **keeper**, not a deletion target. Measured share of
+  parse self-time: `dispatch-host` 2.7% + `custom-props` 3.4% + `comments` 1.9% +
+  `selector` 1.1% + `host-context` 0.7% + `value-leaf` 0.6% + smaller actions
+  ≈ **12.5%**, plus node construction ~2.7% → **~15% of parse ≈ 4.5 ms**. That is
+  irreducible node-building work, not overhead to be deleted.
+
+**Net:** the "BuilderHost is slated for deletion" note is about the *legacy*
+producer, whose deletion buys a cleaner parser and zero ast/ render time. There is
+no free render win hiding behind BuilderHost retirement.
+
+### 4. Ranked dart-sass learnings (skipping already-listed / already-landed)
+
+Cross-checked against `git log --oneline -40`: `#{}` in-grammar (interp char-scan
+deletion) already landed `9e2810a73`; structured comma-list value node
+`33a545633`; value-materialization memoization design `106bfd482`. None of those
+is proposed here. The value-math speculative descent (#3) and generic
+capture/trivia frame (#4) above are *not* re-listed — item D below **sharpens #4**
+with a dart-sass-grounded mechanism rather than duplicating it.
+
+**A. Selector interp speculative-descent — skip `InterpolatedSelector` when no
+`@{` follows.** *dart-sass technique:* `lookingAtIdentifier()` peeks before
+committing to a selector arm; no wasted descent on the common case. *Our cost:*
+`interpOrBasic = choice(InterpolatedSelector, basicSel)`
+(`less-parser/src/grammar.ts:403`) tries `InterpolatedSelector`
+(`grammar.ts:372`) **first** on every `.`/`#`/ident-leading simple selector; for a
+plain `.btn` it matches `[.#]` + ident, then fails `lessInterp` (no `@{`) and
+backtracks into `basicSel`. `_r_InterpolatedSelector` is **3.5% of parse ≈ 2.1 ms**,
+almost all of it wasted on non-interpolated selectors (the large majority).
+Selectors are the biggest grammar cluster overall — `_r_ComplexSelector` 6.4% +
+`CompoundSelector` 4.2% + `SelectorList` 3.9% + `InterpolatedSelector` 3.5% +
+`PseudoSelector` 3.1% + `simpleSelector` 2.0% + `LessAmpersand` 1.5% ≈ **24.6% of
+parse ≈ 7.3 ms**, bigger than the value-math pair (#3, 8.6%). *Transfers?* Yes
+within the LAW: a parseman `peek`/`ahead` for `@{` before the interp arm stays in
+the combinator model (this is the `parser-shared-prefix-backtrack-class` lever
+applied to selectors — a **distinct rule** from #3's value ladder). *Win:* **M
+(2–3 ms)**; *effort* Medium; *break-even:* the `@{` peek must be cheaper than the
+current `lessInterp`-fail rollback — trivially true (one char-class test).
+**Parser-owned; re-measure vs built `lib/`.**
+
+**B. Variable-lookup last-hit + name→depth index cache.** *dart-sass technique:*
+`Environment` keeps `_variableIndices` (name → scope index, filled lazily) plus
+`_lastVariableName`/`_lastVariableIndex` for an O(1) repeat-hit short-circuit, so
+`getVariable` rarely rescans the scope list. *Our cost:* `resolveVarStack`
+(`serialize.ts:637`, via `resolveVarRef:690`) walks own frame → every `parent` →
+`fallback`, doing `Map.get(name)` at each frame — O(scope-depth) per read, **no
+last-hit or name→depth cache**. *But:* value-eval is **~1 ms on `benchmark.less`**
+(`value-operate` 1.4% of serialize), so this is **LOW win on the current corpus**.
+*Transfers?* Cleanly (a `Map` index + two scalar fields; no LAW impact). *Win:* **L
+here**, potentially M on variable-dense real sheets; *effort* Low. Log it as cheap
+insurance, not a `benchmark.less` lever — do not invest until a variable-heavy
+fixture shows lookup in the profile.
+
+**C. Interned/empty-scope fast exit on the parent walk.** *dart-sass technique:*
+lookups fall straight through to the global module map when local frames are
+empty, never allocating per-frame structures for scopes that declare nothing.
+*Our cost:* every `Frame` carries `vars`/`mixins`/`rulesets` maps (many `null`
+until needed — already lazy), but the resolve walk still visits each frame. On
+`benchmark.less` this is sub-millisecond (folded into the ~1 ms eval). *Win:* **L**;
+*effort* Low. Listed only for completeness — **refuted as a `benchmark.less`
+lever**; the lazy-map design already captures most of the benefit.
+
+**D. Gate the trivia frame to the nodes that consume trivia (sharpens #4).**
+*dart-sass grounding:* no per-node trivia frame exists at all — whitespace is
+scanned inline. *Our specific finding:* `captureTriviaForNode` returns `true`
+**only for `CompoundSelector`** (`functional-parser.ts` / core host), yet the
+`_tf0` trivia frame is **5.2% of parse ≈ 1.6 ms** and fires on **every** built
+node; the captured trivia is discarded for every type except `CompoundSelector`.
+So most trivia-frame allocation is pure waste. This is a **concrete mechanism** for
+the generic #4 ("capture/trivia-frame overhead"): gate the frame off wherever
+`captureTriviaForNode` is false rather than allocating-then-discarding. *Win:*
+raises #4's ceiling toward **~1.5–2 ms**; *effort* Medium; *break-even:* the gate
+test must be cheaper than the frame it elides — it is (a `type ===` check).
+**Parser-owned; folds into #4, re-measure vs built `lib/`.**
+
+### 5. What NOT to copy from dart-sass
+
+- **A hand-coded imperative scanner replacing the combinator grammar.** dart-sass
+  buys its parse speed partly by hand-writing `parser.dart` with ad-hoc character
+  logic. That directly violates Jess's committed LAW (no regex/char-scan outside
+  parseman `regex()`; parser owns structure via the combinator model). The
+  transferable part is **peek-gating inside** the grammar (A, D), not abandoning it.
+- **A separate `CssStylesheet` AST + `_SerializeVisitor`.** dart-sass evaluates
+  into a full CSS tree, then serializes it in a second pass. Jess deliberately
+  **fuses eval + serialize** in one walk (`serialize.ts`), skipping an entire
+  intermediate tree and its allocation. Copying dart-sass here would *add* GC
+  pressure — keep the fused walk.
+- **Blanket value interning / immutable value objects with structural sharing.**
+  dart-sass leans on Dart's cheap small-object allocation and its own GC. On V8,
+  Jess's **lazy materialization** (single-unit number fast path, lazy HSL,
+  un-materialized bare strings — see memory) already wins on memory; forcing
+  eager immutable value wrappers to mirror `SassNumber`/`SassString` would regress
+  both allocation and the lazy fast paths. Do not.
+- **Dart AOT / dart2js numeric assumptions.** N/A on V8.
+
+### Priority summary — folding in the dart-sass findings
+
+| # | Idea | Predicted win | Effort | Owner | Byte-risk |
+|---|------|---------------|--------|-------|-----------|
+| 1 | Extend: prune per-subject work to affected rules | 6–10 ms | Medium | core | gated (cascade correctness) |
+| 2 | Extend: `changed` flag, drop double `listKey` | 2–4 ms | Low | core | none |
+| A | **Parser: peek `@{` before `InterpolatedSelector` arm** | **2–3 ms** | Medium | **parser** | re-measure vs lib |
+| 3 | Parser: skip value math speculative descent | 2–3 ms | High | parser | re-measure vs lib |
+| 4+D | Parser: gate trivia frame to `CompoundSelector`-only consumers | 1.5–2 ms | Medium | parser | re-measure vs lib |
+| 5 | Extend IR: memoize branchText / trim clones | 1–2 ms (mostly in #1) | Low–Med | core | none |
+| B | Var-lookup last-hit + index cache | L now / M on var-dense sheets | Low | core | none |
+
+**dart-sass headline:** we are **1.25× off dart-sass** on the synthetic 3-way, and
+the gap is **PARSE**, not eval or serialize — our fused eval+serialize and lazy
+value model already hold their own. The largest *new* parser lever is **selector
+interp speculative-descent (A, ~2–3 ms)**, since selectors are 24.6% of parse (the
+biggest grammar cluster) and `InterpolatedSelector` is tried-first-then-rolled-back
+on the non-interpolated majority. **BuilderHost retirement is a code-hygiene win
+with ≈ 0 ms of ast/ render behind it** — do not budget parse time for it. Every
+parser lever (A, 3, 4+D) stays inside the parseman combinator LAW as peek-gates and
+must be re-measured against the built `lib/` before landing.
