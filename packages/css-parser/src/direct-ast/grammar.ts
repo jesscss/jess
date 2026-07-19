@@ -4,6 +4,7 @@ import type { Combinator } from 'parseman';
 import type { AtRuleBlock, AtRuleStatement, Comment, Declaration, Root, Rule, SelectorList, Statement, ValueNode } from '@jesscss/core/ast';
 
 type DirectKeyword = Extract<ValueNode, { readonly type: 'Keyword' }>;
+type DirectDimension = Extract<ValueNode, { readonly type: 'Dimension' }>;
 type DirectQuoted = Extract<ValueNode, { readonly type: 'Quoted' }>;
 type DirectCssRules = {
   DirectCssDocument: Combinator<Root>;
@@ -11,6 +12,7 @@ type DirectCssRules = {
   DirectCssSelector: Combinator<SelectorList>;
   DirectCssProperty: Combinator<string>;
   DirectCssKeyword: Combinator<DirectKeyword>;
+  DirectCssDimension: Combinator<DirectDimension>;
   DirectCssDeclaration: Combinator<Declaration>;
   DirectCssCharset: Combinator<AtRuleStatement>;
   DirectCssRuleset: Combinator<Rule>;
@@ -31,6 +33,20 @@ function isDirectKeyword(value: unknown): value is DirectKeyword {
     && value !== null
     && 'type' in value
     && value.type === 'Keyword'
+    && 'src' in value
+    && typeof value.src === 'string';
+}
+
+function isDirectDimension(value: unknown): value is DirectDimension {
+  return typeof value === 'object'
+    && value !== null
+    && 'type' in value
+    && value.type === 'Dimension'
+    && 'number' in value
+    && typeof value.number === 'number'
+    && Number.isFinite(value.number)
+    && 'unit' in value
+    && typeof value.unit === 'string'
     && 'src' in value
     && typeof value.src === 'string';
 }
@@ -76,11 +92,15 @@ function isDeclaration(value: unknown): value is Declaration {
     && 'name' in value
     && typeof value.name === 'string'
     && 'value' in value
-    && isDirectKeyword(value.value)
+    && isDirectValue(value.value)
     && 'merge' in value
     && value.merge === null
     && 'important' in value
     && value.important === false;
+}
+
+function isDirectValue(value: unknown): value is DirectKeyword | DirectDimension {
+  return isDirectKeyword(value) || isDirectDimension(value);
 }
 
 function isRule(value: unknown): value is Rule {
@@ -172,6 +192,8 @@ const blockComment = regex(/\/\*(?:[^*]|\*(?!\/))*\*\//);
 const simpleSelector = regex(/(?:[.#]?-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*|\*)/);
 const propertyName = regex(/\*?-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/);
 const keywordValue = regex(/-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/);
+const dimensionNumber = regex(/-?(?:[0-9]+(?:\.[0-9]+)?|\.[0-9]+)/);
+const dimensionUnit = regex(/[A-Za-z%]+/);
 const charsetEncoding = regex(/[A-Za-z0-9._-]+/);
 
 export const directCssAstGrammar = rules<DirectCssRules>({ trivia: whitespace }, (g) => {
@@ -195,13 +217,22 @@ export const directCssAstGrammar = rules<DirectCssRules>({ trivia: whitespace },
     const value: DirectKeyword = { type: 'Keyword', src: tokenText(children, 0) };
     return value;
   });
+  const DirectCssDimension = node(
+    'DirectCssDimension',
+    sequence(dimensionNumber, dimensionUnit),
+    (children): DirectDimension => {
+      const srcNumber = tokenText(children, 0);
+      const unit = tokenText(children, 1);
+      return { type: 'Dimension', number: Number(srcNumber), unit, src: `${srcNumber}${unit}` };
+    }
+  );
   const DirectCssDeclaration = node(
     'DirectCssDeclaration',
-    sequence(g.DirectCssProperty, literal(':'), g.DirectCssKeyword, optional(literal(';'))),
+    sequence(g.DirectCssProperty, literal(':'), choice(g.DirectCssDimension, g.DirectCssKeyword), optional(literal(';'))),
     (children): Declaration => {
       const value = children[2];
-      if (typeof children[0] !== 'string' || !isDirectKeyword(value)) {
-        throw new Error('DirectCssDeclaration requires structured property and keyword children');
+      if (typeof children[0] !== 'string' || !isDirectValue(value)) {
+        throw new Error('DirectCssDeclaration requires structured property and value children');
       }
       return { type: 'Declaration', name: children[0], value, merge: null, important: false };
     }
@@ -253,6 +284,7 @@ export const directCssAstGrammar = rules<DirectCssRules>({ trivia: whitespace },
     DirectCssSelector,
     DirectCssProperty,
     DirectCssKeyword,
+    DirectCssDimension,
     DirectCssDeclaration,
     DirectCssCharset,
     DirectCssRuleset,

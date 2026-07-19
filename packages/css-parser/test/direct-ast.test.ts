@@ -71,6 +71,35 @@ describe('parse', () => {
     expect(rendered.css).toContain('@charset "UTF-8";');
   });
 
+  it('constructs a typed dimension from grammar-owned number and unit terms', () => {
+    const parsed = parse('.scale { width: -.5rem; height: 12px }');
+
+    expect(parsed.errors).toEqual([]);
+    expect(parsed.document?.children[0]).toEqual({
+      type: 'Rule',
+      selector: {
+        type: 'SelectorList',
+        selectors: [{
+          type: 'Complex',
+          head: { type: 'Compound', simples: [{ type: 'Simple', text: '.scale', interp: null }] },
+          tail: []
+        }]
+      },
+      body: [
+        { type: 'Declaration', name: 'width', value: { type: 'Dimension', number: -0.5, unit: 'rem', src: '-.5rem' }, merge: null, important: false },
+        { type: 'Declaration', name: 'height', value: { type: 'Dimension', number: 12, unit: 'px', src: '12px' }, merge: null, important: false }
+      ]
+    });
+
+    const rendered = serialize(parsed.document!);
+    expect(rendered).not.toBeInstanceOf(Promise);
+    if (rendered instanceof Promise) {
+      throw new Error('direct CSS rendering must be synchronous');
+    }
+    expect(rendered.css).toContain('width: -.5rem;');
+    expect(rendered.css).toContain('height: 12px;');
+  });
+
   it('constructs a typed simple @media block without an opaque body or prelude', () => {
     const parsed = parse('@media screen { /* inner */ .card { display: grid } }');
 
@@ -113,7 +142,7 @@ describe('parse', () => {
   });
 
   it('reports input outside the closed pilot grammar', () => {
-    const parsed = parse('.a { color: 1px; }');
+    const parsed = parse('.a { color: 1px solid }');
     expect(parsed.document).toBeNull();
     expect(parsed.errors).toHaveLength(1);
 
@@ -124,5 +153,9 @@ describe('parse', () => {
     const unsupportedMedia = parse('@media screen and (color) { .a { color: red } }');
     expect(unsupportedMedia.document).toBeNull();
     expect(unsupportedMedia.errors).toHaveLength(1);
+
+    const unsupportedBareNumber = parse('.a { width: 12 }');
+    expect(unsupportedBareNumber.document).toBeNull();
+    expect(unsupportedBareNumber.errors).toHaveLength(1);
   });
 });
