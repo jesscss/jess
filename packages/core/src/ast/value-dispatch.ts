@@ -32,6 +32,18 @@ function bind(name: string, spec: FnSpec, args: readonly ValueObj[]): ValueObj[]
 }
 
 /**
+ * Dispatch a single resolved {@link Fn} spec over the typed arg `List` — the shared
+ * primitive behind both the registry's by-name dispatch and the scope-frame path
+ * (`ast/` `@plugin`/`@use` fns arrive as a `Fn` object, not a registry key). A
+ * variadic fn receives the whole `List` + {@link FnCtx}; a positional fn binds
+ * `list.items` by kind and is spread.
+ */
+export function dispatchFn(fn: Fn, list: List, ctx: FnCtx): ValueObj {
+  if (fn.variadic) return fn.body(list, ctx);
+  return fn.body(...bind(fn.name, fn, list.items));
+}
+
+/**
  * A caller-populated table of built-in fns plus the dispatch over it. Fn `name`s
  * are lower-case; lookups fold case.
  */

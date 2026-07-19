@@ -75,11 +75,13 @@ import {
   isLiteral,
   literal,
   type EvalModes,
+  type FnScope,
   type List as ValueList,
   type Value,
   type ValueEvaluator,
   type ValueObj,
 } from './value-eval.js';
+import type { Fn } from './functions/types.js'; // [plugin/P1] scoped-fn registry
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { colorFromSrc, dimensionFromFields, quotedFromFields, materializeAny } from './literal-tag.js'; // [value node model]
 import { calcInner } from './value-operate.js'; // [calc]
@@ -207,6 +209,54 @@ export interface Frame {
   orderedMixins?: Map<string, MixinDef[]> | null;
   // the statements this frame was built from (for lazy rulesets / decl-map).
   statements?: Statement[] | null;
+  // [plugin/P1] functions registered by a `@plugin` (or, later, `@use`) directive
+  // textually inside THIS frame's block, keyed lower-case like the global registry.
+  // `null`/absent on EVERY frame unless this exact block loaded a scoped function
+  // (P2 wires loading; today `collectScopedFns` always returns null, so this stays
+  // null and the frame walk is gated OFF via `EvalCtx.anyScopedFns`). Resolution
+  // walks `fns` up the `parent` chain (nearest-first), so a scoped fn is visible in
+  // its subtree and shadows a same-name built-in; the chain IS the `parent` chain —
+  // no parallel scope structure.
+  fns?: Map<string, Fn> | null;
+}
+
+/**
+ * [plugin/P1] Pre-scan a scope's statements for functions to register into this
+ * frame's `fns` map — the peer of {@link collectMixins}/{@link collectVars} and the
+ * single registration entry point for scoped functions (`@plugin`, later `@use` and
+ * scoped `.jess` functions).
+ *
+ * This is the SEAM only: no directive registers a scoped function yet (P2 wires
+ * `@plugin` module loading), so it always returns `null` today. Because it returns
+ * null everywhere, `Frame.fns` stays null on every frame, `anyScopedFns` stays
+ * false, and the evaluator never builds an `FnScope` — the idle path is
+ * byte-identical to before this change. Wiring it here (rather than inlining the
+ * scan at frame construction later) gives the registration path one home to grow
+ * into.
+ */
+function collectScopedFns(_statements: Statement[]): Map<string, Fn> | null {
+  return null;
+}
+
+/**
+ * [plugin/P1] Build the {@link FnScope} a named call consults: a thin view that
+ * walks `frame.fns` up the `parent` chain nearest-first, returning the first
+ * registration for `name` (lower-cased, like the global registry), or `undefined`
+ * so the evaluator falls back to the global built-in registry. Callers gate
+ * construction on {@link EvalCtx.anyScopedFns}, so this is never even reached on the
+ * idle path (no scoped fn anywhere ⇒ no `FnScope` allocated, no walk).
+ */
+export function makeFnScope(frame: Frame | null): FnScope {
+  return {
+    lookup(name: string): Fn | undefined {
+      const lname = name.toLowerCase();
+      for (let f = frame; f; f = f.parent) {
+        const hit = f.fns?.get(lname);
+        if (hit) return hit;
+      }
+      return undefined;
+    },
+  };
 }
 
 // [guards] collect ALL definitions per name (overloaded dispatch), not last-wins.
@@ -786,6 +836,13 @@ interface EvalCtx {
   // Set only on the ctx of a guard-operand typed resolver; absent everywhere else,
   // where `default()` emits verbatim (`case: default()` outside a guard).
   defaultFn?: () => boolean;
+  // [plugin/P1] document-level flag: true iff SOME frame registered a scoped
+  // function (`collectScopedFns` ran non-empty anywhere). When false — every real
+  // document today, since nothing registers yet — `evalCall` passes `scope = null`
+  // to `ev.call` and the frame walk is skipped entirely, keeping the fn-dispatch
+  // hot path byte- and cost-identical to before P1. Set once at top-level
+  // `serialize`; threaded through the shared `EvalCtx`.
+  anyScopedFns?: boolean;
 }
 
 /** Force a computed `Value` to a typed object. A computed STRING carries no parse
@@ -1366,11 +1423,15 @@ function evalCall(node: FunctionCall, frame: Frame | null, e: EvalCtx): MaybePro
   const lname = node.name.toLowerCase();
   if (LOGICAL_FNS.has(lname)) return evalLogical(lname, node, frame, e);
   const ev = e.ev;
+  // [plugin/P1] Build a scope-frame fn view ONLY when the document registered a
+  // scoped fn somewhere; otherwise pass null so `ev.call` takes its pre-P1 global
+  // path unchanged. `anyScopedFns` is false for every real document today.
+  const scope = e.anyScopedFns ? makeFnScope(frame) : null;
   // Args are materialized TYPED (each arg's tag sourced from its parse node).
   const typed = node.args.map((a) => evalTyped(a, frame, e));
   return combineAll(typed, (vals) => {
     const list: ValueList = { type: 'List', items: vals, sep, bytes: '' };
-    return ev.call(node.name, list, e.modes);
+    return ev.call(node.name, list, e.modes, scope);
   });
 }
 
@@ -1605,6 +1666,7 @@ function scratchEmit(e: EvalCtx): Emit {
     propNames: e.propNames,
     optional: e.optional,
     calcDepth: e.calcDepth,
+    anyScopedFns: e.anyScopedFns, // [plugin/P1] preserve the scoped-fn gate
     chunks: [],
     off: 0,
     positions: null,
@@ -1711,6 +1773,11 @@ function declName(node: Declaration, frame: Frame | null, e: EvalCtx): string {
 }
 
 export function serialize(root: Root, options?: SerializeOptions): SerializeReturn {
+  // [plugin/P1] Scoped-fn registration seam. `collectScopedFns` returns null today
+  // (nothing registers until P2 wires `@plugin`/`@use` loading), so `rootFns` is
+  // null, `anyScopedFns` is false, and the fn-dispatch path stays byte-identical.
+  const rootFns = collectScopedFns(root.children);
+  const anyScopedFns = rootFns !== null;
   const e: Emit = {
     chunks: [],
     off: 0,
@@ -1727,12 +1794,14 @@ export function serialize(root: Root, options?: SerializeOptions): SerializeRetu
     hoistMode: false, // [extend]
     lastBlock: { parentKey: null, header: '', depth: -1, endChunks: -1 }, // [adjacent-merge]
     mixinDepth: 0, // [recursion-backstop] runaway mixin-expansion depth guard
+    anyScopedFns, // [plugin/P1] gate: false today ⇒ fn-dispatch walk skipped
   };
   const rootFrame: Frame = {
     parent: null,
     mixins: collectMixins(root.children),
     vars: collectVars(root.children),
     statements: root.children,
+    fns: rootFns, // [plugin/P1] root-global scoped fns (null today)
   };
   const start = e.off;
   // [charset] Hoist the first document-level `@charset` ahead of all body

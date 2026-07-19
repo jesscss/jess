@@ -11,12 +11,13 @@
  *
  * HARD MODULE BOUNDARY: imports only the engine value modules.
  */
-import type { EvalModes, List as ValueList, ValueEvaluator, ValueObj } from './value-eval.js';
+import type { EvalModes, FnScope, List as ValueList, ValueEvaluator, ValueObj } from './value-eval.js';
 import { sepGlue } from './value-eval.js';
 import { operate } from './value-operate.js';
 import { compare as compareValues, typeCheck as typeCheckValues } from './value-guards.js';
 import { sniffLiteral } from './literal-tag.js';
 import type { FnRegistry } from './value-dispatch.js';
+import { dispatchFn } from './value-dispatch.js';
 import { makeKeyword } from './value-factory.js';
 
 /** Join an unknown-fn's arg bytes verbatim (per separator). */
@@ -42,7 +43,23 @@ const stringify = (v: ValueObj): string => (v.type === 'Quoted' ? v.value : v.by
 export function buildEvaluator(registry: FnRegistry): ValueEvaluator {
   const materialize = (bytes: string): ValueObj => sniffLiteral(bytes);
 
-  const call = (name: string, args: ValueList, modes: EvalModes): ValueObj => {
+  const call = (name: string, args: ValueList, modes: EvalModes, scope?: FnScope | null): ValueObj => {
+    // [plugin/P1] Scoped `@plugin`/`@use` fns shadow built-ins and are consulted
+    // FIRST — but ONLY when `scope` is non-null, which the caller passes solely
+    // when the document registered a scoped fn somewhere (`e.anyScopedFns`). On the
+    // idle path `scope` is omitted/null and this whole branch is skipped, so the
+    // built-in dispatch below is reached on the identical path it took before.
+    if (scope) {
+      const scoped = scope.lookup(name);
+      if (scoped) {
+        try {
+          return dispatchFn(scoped, args, { modes, stringify });
+        } catch (err) {
+          if (err instanceof RangeError) throw err;
+          return makeKeyword(`${name}(${verbatimArgs(args)})`);
+        }
+      }
+    }
     if (registry.has(name)) {
       try {
         return registry.dispatch(name, args, { modes, stringify });

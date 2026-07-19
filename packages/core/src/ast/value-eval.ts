@@ -27,6 +27,7 @@
 
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
 import type { UnitMode } from '../types/modes.js';
+import type { Fn } from './functions/types.js';
 
 /* --------------------------------------------------------- value domain */
 
@@ -184,6 +185,17 @@ export const DEFAULT_MODES: EvalModes = {
  * results are TYPED `ValueObj`s, not bytes — pattern-match-by-typed-value,
  * type-fns, and calc/escaping become possible because types survive the seam.
  */
+/**
+ * [plugin/P1] A scope-frame function view passed alongside a named call: walks the
+ * `Frame.fns` chain nearest-first and returns a native {@link Fn} when the name is
+ * registered by a `@plugin`/`@use` (or scoped `.jess`) directive in scope. `null`
+ * (and an omitted `scope` arg) mean "no scoped functions anywhere" — the idle path,
+ * where the evaluator consults only the flat global registry, exactly as before.
+ */
+export interface FnScope {
+  lookup(name: string): Fn | undefined;
+}
+
 export interface ValueEvaluator {
   /**
    * Materialize a SYNTHETIC / COMPUTED string (a joined `Sequence`/`Interp` result,
@@ -196,8 +208,10 @@ export interface ValueEvaluator {
   /** Binary operation on two materialized operands (direct / delegated math). */
   operate(op: string, left: ValueObj, right: ValueObj, modes: EvalModes): ValueObj;
   /** Named-function call on a materialized arg list. Sync unless a genuinely
-   * async built-in forces a thenable (scoped to the forcing leaf). */
-  call(name: string, args: List, modes: EvalModes): MaybePromise<ValueObj>;
+   * async built-in forces a thenable (scoped to the forcing leaf). `scope`, when
+   * supplied non-null, is consulted FIRST (scoped `@plugin`/`@use` fns shadow
+   * built-ins); omitted/`null` is the idle path — flat global registry only. */
+  call(name: string, args: List, modes: EvalModes, scope?: FnScope | null): MaybePromise<ValueObj>;
   /** Guard comparison leaf (`@a > 0`) on typed operands -> boolean. */
   compare(op: string, left: ValueObj, right: ValueObj, modes: EvalModes): boolean;
   /** Guard type-function leaf (`iscolor(@a)`) on typed args -> boolean. */
