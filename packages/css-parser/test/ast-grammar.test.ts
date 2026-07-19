@@ -31,6 +31,30 @@ describe('private CSS canonical-AST grammar', () => {
     }
   });
 
+  it('constructs CSS nesting selectors as direct canonical Simple nodes', () => {
+    const document = parseAst('.card { &.featured { color: red; } }');
+
+    expect(document.children[0]).toMatchObject({
+      type: 'Rule',
+      body: [{
+        type: 'Rule',
+        selector: {
+          type: 'SelectorList',
+          selectors: [{
+            type: 'Complex',
+            head: {
+              type: 'Compound',
+              simples: [{ type: 'Simple', text: '&' }, { type: 'Simple', text: '.featured' }]
+            }
+          }]
+        }
+      }]
+    });
+    expect(serialize(document)).toEqual({
+      css: '.card.featured {\n  color: red;\n}\n'
+    });
+  });
+
   it('constructs selector lists, compounds, declarations, and value lists directly from grammar reductions', () => {
     const document = parseAst('/* top */ .card.featured > #hero, main .card { color: red; margin: 12px 0; font-family: system-ui, sans-serif !important; }');
 

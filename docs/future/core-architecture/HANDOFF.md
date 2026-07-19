@@ -102,7 +102,36 @@ closure is still in progress.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: extend the private SCSS direct-AST value grammar with static
+- Latest pass: extend the private CSS direct-AST selector grammar with a
+  grammar-owned nesting selector `&`, then validate every completed compound
+  child instead of filtering unexpected values away.
+- Architecture surface: `&` reduces directly to canonical `Simple('&')`; the
+  compound reducer performs one bounded pass over Parseman-captured selector
+  children. No CST bridge, host, Context/plugin change, scanner, or source
+  reparse is added.
+- Cumulative node weight: cold private CSS direct-AST construction only; no
+  public parser/eval/render path reaches this grammar.
+- New traversal: one bounded completed-child validation loop per direct
+  compound reduction; it cannot walk source or runtime state.
+- New node/materialization: a parser-owned `Simple` and `Compound` child array
+  represent the selector exactly; no runtime materialization is added.
+- Render path: unchanged and unreachable from production.
+- Helper/API surface: no exported helper, parser operation, or plugin surface.
+- Metadata mutations: none.
+- Review-flagged diff tokens: [loop/traversal], [node construction], and
+  [materialized array/object] are cold, grammar-owned construction checks;
+  `TypeError` rejects impossible completed reduction shapes, not parse control
+  flow.
+- Hot-path cost contracts:
+  ```json
+  [{"id":"css-private-direct-ast-family","verdict":"accepted","privateReachability":{"productionImporters":0,"publicExports":0,"buildEntries":0,"coldConstructionOnly":true},"why":"The current CSS direct-AST grammar is not a public parse, eval, or render path; the bounded construction reduction is exercised by focused development tests."}]
+  ```
+- Evidence: focused CSS AST test, CSS package build, parser-runtime-boundary
+  verifier, staged aggressive-cutting review.
+- Verdict: accepted cold parser construction; richer selector families remain
+  explicit parser work.
+
+- Earlier pass: extend the private SCSS direct-AST value grammar with static
   URLs, recursive calls, space sequences, and comma lists.
 - Architecture surface: parser-local reductions construct canonical Url,
   FunctionCall, SpacedValue, and List facts. No CST reuse, host, bridge,
@@ -111,7 +140,9 @@ closure is still in progress.
   interpolation. List separator fields preserve exact comma-following whitespace
   bytes. Value/call/rule reducers validate every expected child and never filter
   unexpected constructed values away.
-- Cumulative node weight: cold source-private AST values only.
+- Cumulative node weight: cold direct-AST development values only. The module is
+  emitted as an internal package artifact, but no public parser operation or
+  exported subpath reaches it.
 - New traversal: [loop/traversal] completed-child validation over one cold
   reduction; it does not walk source/runtime state.
 - New node/materialization: [node construction] exact static value facts.
@@ -123,10 +154,6 @@ closure is still in progress.
   [materialized array/object] are cold parser construction. [array helper]
   collects already-recognized child facts. [array spread/materialization] and
   [routine error control] are not added.
-- Hot-path cost contracts:
-  ```json
-  [{"id":"scss-private-direct-ast-family","verdict":"accepted","privateReachability":{"productionImporters":0,"publicExports":0,"buildEntries":0,"coldConstructionOnly":true},"why":"Static SCSS values are reachable only from focused source-private grammar tests."}]
-  ```
 - Evidence: focused AST/macro tests; full SCSS package tests; package build;
   separator newline assertion; parser-boundary verifier; adversarial review and
   re-review.
@@ -143,8 +170,9 @@ closure is still in progress.
   (`.card`, `#id`, `button`, `*`). Pseudo, attribute, percentage, compound,
   combinator, `$[]`, and nested parent-selector forms are proven production
   forms but explicitly rejected until their typed reductions exist.
-- Cumulative node weight: cold source-private Rule/Declaration construction
-  only; no public parser/eval/render importer reaches it.
+- Cumulative node weight: cold direct-AST Rule/Declaration construction only.
+  The module is emitted internally, but no public parser/eval/render operation
+  or exported subpath reaches it.
 - New traversal: none beyond exact completed-child validation.
 - New node/materialization: [node construction] exact Rule/Declaration facts;
   [materialized array/object] only the cold constructor body list.
@@ -237,8 +265,9 @@ closure is still in progress.
   recognition artifact; the color terminal exactly admits only 3/4/6/8 hex
   digits with a negative hex lookahead. Interpolation, nested rules, compound
   values, `!default`, and importance remain rejected rather than flattened.
-- Cumulative node weight: zero production importers; all construction is in
-  focused source-private SCSS grammar tests.
+- Cumulative node weight: no public parser/eval/render consumer; construction
+  is exercised by focused direct-AST SCSS grammar tests. The grammar is also
+  emitted as an internal build artifact, so it is not described as source-private.
 - New traversal: [loop/traversal] only the cold parser-local completed-child
   pass needed to make the Root/Rule body; it does not walk runtime/source state.
 - New node/materialization: [node construction] exact AST facts for recognized
@@ -251,10 +280,6 @@ closure is still in progress.
   [materialized array/object] are cold parser construction. [routine error
   control] rejects impossible completed reductions only. [array helper] and
   [array spread/materialization] are not added.
-- Hot-path cost contracts:
-  ```json
-  [{"id":"scss-private-direct-ast-family","verdict":"accepted","privateReachability":{"productionImporters":0,"publicExports":0,"buildEntries":0,"coldConstructionOnly":true},"why":"The static SCSS rule/declaration family is source-private and has no public parser/eval/render importer."}]
-  ```
 - Evidence: exact 3/4/6/8-digit color matrix including 5/7-digit rejection;
   focused AST/macro tests; package build; parser-boundary verifier; adversarial
   review and re-review.
@@ -393,10 +418,6 @@ closure is still in progress.
   [routine error control] only rejects impossible completed reduction children;
   it is not ordinary parse control flow. [array helper] and [array
   spread/materialization] are not added.
-- Hot-path cost contracts:
-  ```json
-  [{"id":"scss-private-direct-ast-family","verdict":"accepted","privateReachability":{"productionImporters":0,"publicExports":0,"buildEntries":0,"coldConstructionOnly":true},"why":"The SCSS AST grammar is macro-compiled for build proof but is absent from exports and every public parser/eval/render entry. Its direct reductions run only in focused tests."}]
-  ```
 - Evidence: direct AST acceptance/rejection cases including unescaped `$` names,
   quoted interpolation rejection, macro-output proof, no-emit type check,
   package build, parser-boundary verifier, and two adversarial reviews.
@@ -557,7 +578,7 @@ closure is still in progress.
 - New traversal: [loop/traversal] `complexSegments` and the keyframe selector-list reduction make one bounded pass over already-captured children of one grammar reduction. The value family uses only Parseman's already-captured child arrays. Neither path walks a source tree or runs in any live parse/render route.
 - New node/materialization: [node construction] reductions call existing core constructors for the exact AST nodes they own. [materialized array/object] and [array spread/materialization] are the parser-owned child arrays and constructor argument list required to represent selector/value structure, reachable only from the private test seam. Quoted bodies are grammar segments, and URL/function arguments are passed through as constructed child values; no source text is split or reparsed.
 - Render path: unchanged. `serialize` appears only in the focused proof; public render does not import this grammar.
-- Helper/API surface: [array helper] filters are reduction-local type selection over Parseman's captured children. There is no exported helper or runtime callback surface.
+- Helper/API surface: direct reductions validate each Parseman-captured child before constructing the canonical selector. There is no exported helper or runtime callback surface.
 - Metadata mutations: none.
 - Review-flagged diff tokens: [loop/traversal], [array helper], [array spread/materialization], [node construction], [routine error control], and [materialized array/object] are all private grammar construction checks. The `Error` branches reject impossible malformed reduction children and are not routine parse control flow; recognition itself remains Parseman combinators.
 - Hot-path cost contracts:
