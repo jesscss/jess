@@ -30,6 +30,8 @@ import type { Node, NodeType } from './node.js';
 import {
   any,
   dimension,
+  operation,
+  spaced,
   isLiteralNode,
   isTypedLiteral,
   compoundCanonical,
@@ -55,6 +57,7 @@ import type {
   MapAccessor,
   MixinCall,
   MixinDef,
+  Operation,
   Quoted,
   RawInline,
   Root,
@@ -1034,6 +1037,38 @@ function isSlashGroup(node: SpacedValue): boolean {
   return node.parts.some((p) => p.type === 'Any' && p.src.trim() === '/');
 }
 
+/**
+ * [calc] Reinterpret a preserved-division slash group (`[left, '/', right]`, and
+ * left-associative chains `a / b / c`) as a left-nested division `Operation` so it
+ * COMPUTES in a `calc(…)` math context. Returns `null` for a shape that is not a
+ * clean `operand ('/' operand)+` chain (e.g. an interleaved space list carrying a
+ * `/`), leaving it to fold verbatim. Each operand is a single part, or the run of
+ * parts between two slashes wrapped back into a `SpacedValue`.
+ */
+function slashGroupToOperation(node: SpacedValue): Operation | null {
+  const operands: ValueNode[] = [];
+  let run: ValueNode[] = [];
+  let sawSlash = false;
+  const flush = (): boolean => {
+    if (run.length === 0) return false;
+    operands.push(run.length === 1 ? run[0]! : spaced(run));
+    run = [];
+    return true;
+  };
+  for (const p of node.parts) {
+    if (p.type === 'Any' && p.src.trim() === '/') {
+      if (!flush()) return null; // leading / empty operand
+      sawSlash = true;
+    } else {
+      run.push(p);
+    }
+  }
+  if (!flush() || !sawSlash || operands.length < 2) return null;
+  let op = operation('/', operands[0]!, operands[1]!);
+  for (let i = 2; i < operands.length; i++) op = operation('/', op, operands[i]!);
+  return op;
+}
+
 function normalizeListSep(raw: string): string {
   const after = raw.slice(raw.indexOf(',') + 1);
   const nl = after.indexOf('\n');
@@ -1087,8 +1122,17 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
       // position), the inner value emits unchanged.
       if (e.importantSink) e.importantSink.hit = true;
       return evalValue(node.inner, frame, e);
-    case 'SpacedValue':
+    case 'SpacedValue': {
+      // Inside `calc(…)`, `/` is DIVISION (math), not a preserved slash separator:
+      // a variable holding a preserved-division slash group (`@var: 50vh/2`) spliced
+      // into calc must COMPUTE (`50vh / 2` → `25vh`) so an outer calc op keeps its
+      // parens around the simplified operand (`calc(50% + (25vh - 20px))`). An inline
+      // `50vh/2` written directly in calc already parses as an `Operation`; this makes
+      // the variable-reference form fold identically.
+      const div = (e.calcDepth ?? 0) > 0 ? slashGroupToOperation(node) : null;
+      if (div) return evalValue(div, frame, e);
       return joinBytes(node.parts, ' ', frame, e);
+    }
     case 'List': {
       // Emit each item's bytes joined by the v5-NORMALIZED comma separator. Authored
       // inline spacing around a comma is NOT preserved — it collapses to `, ` (the

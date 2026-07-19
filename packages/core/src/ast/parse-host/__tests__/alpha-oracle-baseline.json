@@ -28,8 +28,8 @@
     "bytes": 1677
   },
   "calc/calc.less": {
-    "status": "DIFF",
-    "bytes": 567
+    "status": "MATCH",
+    "bytes": 563
   },
   "charsets/charsets.less": {
     "status": "MATCH",
@@ -84,8 +84,8 @@
     "bytes": 2267
   },
   "css-escapes/css-escapes.less": {
-    "status": "DIFF",
-    "bytes": 576
+    "status": "MATCH",
+    "bytes": 604
   },
   "css-grid/css-grid.less": {
     "status": "MATCH",
