@@ -30,8 +30,8 @@
     "./ast": {
       "types": "./lib/direct-ast.d.ts",
       "source": "./src/direct-ast.ts",
-      "import": "./lib/direct-ast.js",
-      "require": "./lib/direct-ast.cjs"
+      "import": "./lib/ast.js",
+      "require": "./lib/ast.cjs"
     },
     "./jess": {
       "types": "./lib/jess.d.ts",
@@ -46,6 +46,7 @@
     "src"
   ],
   "scripts": {
+    "verify:ast-export": "pnpm build && node test/ast-export-smoke.mjs",
     "ci": "pnpm build && pnpm test",
     "prepublishOnly": "pnpm build",
     "build": "pnpm compile",
