@@ -22,6 +22,15 @@ function parseAst(input: string): Root {
 }
 
 describe('private CSS canonical-AST grammar', () => {
+  it('uses the shared basic-selector terminal without widening its closed CSS shape', () => {
+    for (const input of ['* { color: red; }', '.c\\6f lor { color: red; }', '#hero { color: red; }']) {
+      expect(parseAst(input).children[0]).toMatchObject({ type: 'Rule' });
+    }
+    for (const input of ['@name { color: red; }', ':hover { color: red; }', '[role=button] { color: red; }']) {
+      expect(() => parseAst(input)).toThrow();
+    }
+  });
+
   it('constructs selector lists, compounds, declarations, and value lists directly from grammar reductions', () => {
     const document = parseAst('/* top */ .card.featured > #hero, main .card { color: red; margin: 12px 0; font-family: system-ui, sans-serif !important; }');
 

@@ -55,6 +55,44 @@ Core never receives a resolver callback or owns module/filesystem policy.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: move the private CSS direct-AST basic-selector terminal into
+  the private shared recognition artifact and remove the stale external
+  support-file reference from the private-grammar cost registry.
+- Architecture surface: `CssAstSyntaxSimple` is a macro-static recognizer.
+  `CssAstSimple` remains a parser-local direct constructor reduction. The
+  fused grammar has no runtime artifact import or `composeLeaf` call. Typed
+  import facts remain parser output; plugin code owns their resolution, loading,
+  and caching when a production root exists.
+- Separation/duplication: removes the byte-identical local CSS simple-selector
+  regex. The artifact has no builders, callbacks, AST/CST values, resolver, or
+  public export. It changes neither selector vocabulary nor plugin behavior.
+- Cumulative node weight: none; the existing private reduction constructs the
+  same `Simple` node from the same terminal value.
+- New traversal: none.
+- New node/materialization: none beyond the existing parser-local `Simple`
+  construction in the cold direct-AST test seam.
+- Render path: unchanged and unreachable from public CSS parse/render entries.
+- Helper/API surface: decreases by one local recognizer; no public helper or
+  bridge is added.
+- Metadata mutations: none.
+- Review-flagged diff tokens: [loop/traversal], [array helper], [array
+  spread/materialization], [node construction], [routine error control], and
+  [materialized array/object] are existing private direct-AST reduction code
+  re-read because the grammar file changed; this slice adds none. Existing
+  loops and allocations remain cold Parseman-child reduction work, and existing
+  `Error` guards reject impossible completed reductions rather than control
+  normal parsing. The local rules type now describes only local reductions,
+  not imported terminals.
+- Hot-path cost contracts:
+  ```json
+  [{"id":"css-private-direct-ast-family","verdict":"accepted","privateReachability":{"productionImporters":0,"publicExports":0,"buildEntries":0,"coldConstructionOnly":true},"why":"The selector terminal is macro-fused into the existing private CSS AST grammar. No public parser, evaluator, or renderer imports that grammar; no runtime composition or artifact import remains."}]
+  ```
+- Evidence: byte-identical terminal transfer; selector acceptance/rejection
+  cases; macro-output proof; CSS type check, build, focused AST/CST tests,
+  parser-boundary verifier; adversarial review.
+- Verdict: accepted cold recognition de-duplication and registry cleanup; no
+  performance claim.
+
 - Latest pass: move the private Less direct-AST grammar's existing restricted
   identifier and quoted leaves to the private shared recognition artifact.
 - Architecture surface: `lessAstGrammar` remains terminal/private/test-only;

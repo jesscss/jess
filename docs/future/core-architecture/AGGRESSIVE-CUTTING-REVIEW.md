@@ -38,8 +38,6 @@ active architecture queue.
     "kind": "private-unreachable",
     "surface": "private CSS AST grammar development family",
     "files": ["packages/css-parser/src/ast/grammar.ts"],
-    "coverage": "owner-plus-named-carry-forward-support",
-    "supportFiles": ["packages/css-parser/src/ast/syntax.grammar.ts"],
     "privateGrammar": {
       "entry": "packages/css-parser/src/ast/grammar.ts",
       "coldConstructionOnly": true,

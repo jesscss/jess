@@ -55,7 +55,8 @@ import type {
   ValueNode
 } from '@jesscss/core/ast';
 
-type CssAstRules = {
+/** Rules constructed in this local direct-AST reduction map. Shared syntax is fused separately. */
+type CssAstLocalRules = {
   CssAstDocument: Combinator<Root>;
   CssAstComment: Combinator<Comment>;
   CssAstSelector: Combinator<SelectorList>;
@@ -92,12 +93,6 @@ type CssAstRules = {
   CssAstKeyframes: Combinator<AtRuleBlock>;
   CssAstRuleset: Combinator<Rule>;
   CssAstMedia: Combinator<AtRuleBlock>;
-  CssAstSyntaxProperty: Combinator<string>;
-  CssAstSyntaxKeyword: Combinator<string>;
-  CssAstSyntaxDoubleQuotedText: Combinator<string>;
-  CssAstSyntaxSingleQuotedText: Combinator<string>;
-  CssAstSyntaxUrlOpen: Combinator<string>;
-  CssAstSyntaxUrlInner: Combinator<string>;
   whitespace: Combinator<unknown>;
 };
 
@@ -256,7 +251,6 @@ function keyframeSelectorList(children: readonly unknown[]): SelectorList {
 
 const whitespace = trivia(regex(/[ \t\n\r\f]+/));
 const blockComment = regex(/\/\*(?:[^*]|\*(?!\/))*\*\//);
-const simpleSelector = regex(/(?:[.#]?-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*|\*)/);
 const customPropertyName = regex(/--(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/);
 const hexColor = regex(/#[0-9a-fA-F]{3,8}\b/);
 const dimensionNumber = regex(/[+-]?(?:[0-9]+(?:\.[0-9]+)?|\.[0-9]+)/);
@@ -322,9 +316,9 @@ const importTailSquareGroup = sequence(
   }),
   expect(literal(']'), ']')
 );
-export const cssAstGrammar = composeLeaf([cssAstSyntax, rules<CssAstRules>({ trivia: whitespace }, (g) => {
+export const cssAstGrammar = composeLeaf([cssAstSyntax, rules<CssAstLocalRules>({ trivia: whitespace }, (g) => {
   const CssAstComment = node('CssAstComment', blockComment, children => comment(tokenText(children[0])));
-  const CssAstSimple = node('CssAstSimple', simpleSelector, children => simple(tokenText(children[0])));
+  const CssAstSimple = node('CssAstSimple', g.CssAstSyntaxSimple, children => simple(tokenText(children[0])));
   const CssAstCompound = node('CssAstCompound', noTrivia(oneOrMore(g.CssAstSimple)), (children) => {
     const simples = children.filter(isSimple);
     if (simples.length === 0) {
