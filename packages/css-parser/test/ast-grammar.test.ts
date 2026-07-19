@@ -170,10 +170,64 @@ describe('private CSS canonical-AST grammar', () => {
     }
   });
 
-  it('leaves @import outside the generic statement family for its typed plugin-owned grammar', () => {
+  it('constructs static CSS import targets and lossless grammar-owned tail facts without resolution', () => {
+    const document = parseAst('@IMPORT "theme.css" layer(theme) /* keep */ supports(display: grid) screen and (min-width: 40rem); @import url(icons.css) print; @import url("quoted.css"); @import url();');
+
+    expect(document.children).toMatchObject([
+      {
+        type: 'ImportAtRule',
+        name: '@IMPORT',
+        options: null,
+        target: { type: 'Quoted', src: '"theme.css"', value: 'theme.css' },
+        alias: null,
+        tail: { type: 'Any', src: 'layer(theme) /* keep */ supports(display: grid) screen and (min-width: 40rem)' }
+      },
+      {
+        type: 'ImportAtRule',
+        name: '@import',
+        target: { type: 'Url', value: { type: 'Any', src: 'icons.css' } },
+        tail: { type: 'Any', src: 'print' }
+      },
+      {
+        type: 'ImportAtRule',
+        target: { type: 'Url', value: { type: 'Quoted', src: '"quoted.css"', value: 'quoted.css' } },
+        tail: null
+      },
+      {
+        type: 'ImportAtRule',
+        target: { type: 'Url', value: { type: 'Any', src: '' } },
+        tail: null
+      }
+    ]);
+    expect(serialize(document)).toEqual({
+      css: '@IMPORT "theme.css" layer(theme) /* keep */ supports(display: grid) screen and (min-width: 40rem);\n@import url(icons.css) print;\n@import url("quoted.css");\n@import url();\n'
+    });
+  });
+
+  it('preserves whitespace and comments outside CSS import tail groups', () => {
+    const document = parseAst('@import "x.css" /* comment */  screen and ( color : red );');
+
+    expect(document.children[0]).toMatchObject({
+      type: 'ImportAtRule',
+      tail: { type: 'Any', src: '/* comment */  screen and ( color : red )' }
+    });
+    expect(serialize(document)).toEqual({
+      css: '@import "x.css" /* comment */  screen and ( color : red );\n'
+    });
+  });
+
+  it('keeps @import outside the generic statement family and rejects malformed typed boundaries', () => {
     const result = run(cssAstGrammar.CssAstAtRuleStatement, '@import "theme.css";', { trivia: cssAstGrammar.whitespace });
 
     expect(result.ok).toBe(false);
+    for (const input of [
+      '@import;',
+      '@import "theme.css" supports(display: grid;',
+      '@import url(foo bar);'
+    ]) {
+      expect(() => parseAst(input)).toThrow();
+    }
+    expect(run(cssAstGrammar.CssAstImport, '@imported "theme.css";', { trivia: cssAstGrammar.whitespace }).ok).toBe(false);
   });
 
   it('constructs quoted, url, and function values without a value re-parser', () => {
@@ -252,6 +306,16 @@ describe('private CSS canonical-AST grammar', () => {
 
     expect(result.errors).toHaveLength(1);
     expect(result.errors[0]).toMatchObject({ expected: [')'] });
+  });
+
+  it('keeps unquoted url payload bytes when building ordinary declarations', () => {
+    const document = parseAst('.asset { background: url(icon.svg); }');
+
+    expect(document.children[0]).toMatchObject({
+      type: 'Rule',
+      body: [{ type: 'Declaration', name: 'background', value: { type: 'Url', value: { type: 'Any', src: 'icon.svg' } } }]
+    });
+    expect(serialize(document)).toEqual({ css: '.asset {\n  background: url(icon.svg);\n}\n' });
   });
 
   it('constructs an empty generic function call without inventing an argument', () => {

@@ -19,6 +19,7 @@ import {
   decl,
   dimension,
   funcCall,
+  importAtRule,
   keyword,
   list,
   root,
@@ -39,6 +40,7 @@ import type {
   Declaration,
   Dimension,
   FunctionCall,
+  ImportAtRule,
   Keyword,
   Quoted,
   Root,
@@ -70,6 +72,10 @@ type CssAstRules = {
   CssAstImportant: Combinator<boolean>;
   CssAstDeclaration: Combinator<Declaration>;
   CssAstCharset: Combinator<AtRuleStatement>;
+  CssAstImport: Combinator<ImportAtRule>;
+  CssAstImportTailRaw: Combinator<ValueNode>;
+  CssAstImportTailBody: Combinator<ValueNode>;
+  CssAstImportTail: Combinator<ValueNode>;
   CssAstAtRuleStatement: Combinator<AtRuleStatement>;
   CssAstLayerBlock: Combinator<AtRuleBlock>;
   CssAstKeyframeSelector: Combinator<Simple>;
@@ -88,6 +94,13 @@ function tokenText(child: unknown): string {
     return child.value;
   }
   throw new Error('CSS AST grammar lost a required token');
+}
+
+function sourceText(child: unknown): string {
+  if (typeof child === 'object' && child !== null && 'src' in child && typeof child.src === 'string') {
+    return child.src;
+  }
+  return tokenText(child);
 }
 
 function isNodeType<T extends string>(value: unknown, type: T): value is { readonly type: T } {
@@ -131,12 +144,20 @@ function isValue(value: unknown): value is ValueNode {
       || value.type === 'SpacedValue' || value.type === 'List' || value.type === 'Any');
 }
 
+function isImportTarget(value: unknown): value is Quoted | { readonly type: 'Url'; readonly value: ValueNode } {
+  return isNodeType(value, 'Quoted') || isNodeType(value, 'Url');
+}
+
 function isRulesetStatement(value: unknown): value is Comment | Declaration | Rule {
   return isComment(value) || isDeclaration(value) || isRule(value);
 }
 
 function isDocumentStatement(value: unknown): value is Statement {
-  return isComment(value) || isRule(value) || isNodeType(value, 'AtRuleStatement') || isNodeType(value, 'AtRuleBlock');
+  return isComment(value)
+    || isRule(value)
+    || isNodeType(value, 'AtRuleStatement')
+    || isNodeType(value, 'AtRuleBlock')
+    || isNodeType(value, 'ImportAtRule');
 }
 
 function selectorComplexes(children: readonly unknown[]): Complex[] {
@@ -211,9 +232,15 @@ const dimensionNumber = regex(/[+-]?(?:[0-9]+(?:\.[0-9]+)?|\.[0-9]+)/);
 const dimensionUnit = regex(/[A-Za-z%]+/);
 const charsetEncoding = regex(/[A-Za-z0-9._-]+/);
 // `@import` has a plugin-owned typed fact and must not be silently lowered to
-// a generic statement while that grammar is built. `@charset` has its own
-// grammar because its quoted encoding has narrower syntax than a CSS value.
+// a generic statement.  Its tail deliberately stays grammar-owned opaque CSS
+// bytes: resolution belongs to a later dialect plugin, while balanced groups,
+// quoted strings, and comments are still recognized here exactly once.
+// `@charset` has its own grammar because its quoted encoding has narrower
+// syntax than a CSS value.
 const genericAtRuleName = regex(/@(?!(?:charset|import)(?=[^-_a-zA-Z0-9\u0080-\uffff]|$))-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/i);
+const importAtKeyword = regex(/@import(?![-_a-zA-Z0-9\u0080-\uffff\\])/i);
+const importTailWhitespace = regex(/[ \t\n\r\f]+/);
+const importTailText = regex(/[^()[\]"'\/; \t\n\r\f]+/);
 const atLayer = regex(/@layer(?![-_a-zA-Z0-9\u0080-\uffff\\])/i);
 const layerName = regex(/-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*(?:\.-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*)*/);
 const atKeyframes = regex(/@(?:-[a-z]+-)?keyframes(?![-_a-zA-Z0-9\u0080-\uffff\\])/i);
@@ -240,6 +267,26 @@ const customValue = scanTo(choice(literal(';'), literal('}')), {
     balanced('{', '}', { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted] })
   ]
 });
+const nestedImportTailGroup = balanced('(', ')', {
+  skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted]
+});
+const nestedImportTailSquare = balanced('[', ']', {
+  skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted]
+});
+const importTailGroup = sequence(
+  literal('('),
+  scanTo(literal(')'), {
+    skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted, nestedImportTailGroup]
+  }),
+  expect(literal(')'), ')')
+);
+const importTailSquareGroup = sequence(
+  literal('['),
+  scanTo(literal(']'), {
+    skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted, nestedImportTailSquare]
+  }),
+  expect(literal(']'), ']')
+);
 const urlOpen = regex(/url\(/i);
 const urlInner = regex(/(?:[^"'()\\ \t\n\f\r\x00-\x08\x0B\x0E-\x1F\x7F]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+/);
 
@@ -298,7 +345,7 @@ export const cssAstGrammar = rules<CssAstRules>({ trivia: whitespace }, (g) => {
     sequence(urlOpen, optional(choice(g.CssAstQuoted, urlInner)), expect(literal(')'), ')')),
     (children) => {
       const body = children.find(isValue);
-      return url(body ?? any(''));
+      return url(body ?? any(children.length > 2 ? tokenText(children[1]) : ''));
     }
   );
   const CssAstCall = node(
@@ -353,6 +400,38 @@ export const cssAstGrammar = rules<CssAstRules>({ trivia: whitespace }, (g) => {
     'CssAstCharset',
     sequence(literal('@charset'), literal('"'), charsetEncoding, literal('"'), literal(';')),
     children => atRuleStatement('@charset', quoted(tokenText(children[2]), tokenText(children[2]), '"', false))
+  );
+  const CssAstImportTailRaw = node(
+    'CssAstImportTailRaw',
+    choice(importTailGroup, importTailSquareGroup, customDoubleQuoted, customSingleQuoted, blockComment, importTailText, literal('/')),
+    children => any(children.map(tokenText).join(''))
+  );
+  const CssAstImportTailBody = node(
+    'CssAstImportTailBody',
+    sequence(g.CssAstImportTailRaw, many(choice(g.CssAstImportTailRaw, importTailWhitespace))),
+    children => any(children.map(sourceText).join(''))
+  );
+  const CssAstImportTail = node(
+    'CssAstImportTail',
+    noTrivia(sequence(many(importTailWhitespace), g.CssAstImportTailBody)),
+    children => any(sourceText(children[children.length - 1]!))
+  );
+  const CssAstImport = node(
+    'CssAstImport',
+    sequence(importAtKeyword, choice(g.CssAstQuoted, g.CssAstUrl), optional(g.CssAstImportTail), literal(';')),
+    (children) => {
+      const target = children.find(isImportTarget);
+      if (target === undefined) {
+        throw new Error('CssAstImport requires a static quoted or url target');
+      }
+      return importAtRule(
+        tokenText(children[0]),
+        target,
+        null,
+        null,
+        children.find((child): child is ValueNode => isNodeType(child, 'Any')) ?? null
+      );
+    }
   );
   const CssAstAtRuleStatement = node(
     'CssAstAtRuleStatement',
@@ -419,7 +498,7 @@ export const cssAstGrammar = rules<CssAstRules>({ trivia: whitespace }, (g) => {
   );
   const CssAstDocument = node(
     'CssAstDocument',
-    many(choice(g.CssAstComment, g.CssAstCharset, g.CssAstMedia, g.CssAstLayerBlock, g.CssAstKeyframes, g.CssAstAtRuleStatement, g.CssAstRuleset)),
+    many(choice(g.CssAstComment, g.CssAstCharset, g.CssAstImport, g.CssAstMedia, g.CssAstLayerBlock, g.CssAstKeyframes, g.CssAstAtRuleStatement, g.CssAstRuleset)),
     children => root(documentStatements(children)),
     { trailingTrivia: true }
   );
@@ -444,6 +523,10 @@ export const cssAstGrammar = rules<CssAstRules>({ trivia: whitespace }, (g) => {
     CssAstImportant,
     CssAstDeclaration,
     CssAstCharset,
+    CssAstImport,
+    CssAstImportTailRaw,
+    CssAstImportTailBody,
+    CssAstImportTail,
     CssAstAtRuleStatement,
     CssAstLayerBlock,
     CssAstKeyframeSelector,
