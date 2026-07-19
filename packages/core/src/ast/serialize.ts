@@ -37,6 +37,7 @@ import {
   complexCanonical,
   complexHasInterp,
   complexHasAmpersand,
+  simple,
 } from './nodes.js';
 import type {
   Any,
@@ -90,6 +91,7 @@ import { makeKeyword, makeBool, makeList } from './value-factory.js'; // [calc]
 import { selectDefinitions, type Selection, type DefaultResolver, type CallArg } from './mixin-dispatch.js'; // [guards]
 import { evalGuard, type GuardNode, type ValueResolver, type TypedResolver } from './guard.js'; // [guards]
 import { computeExtends, type ExtendResults } from './extend.js'; // [extend]
+import { documentHasExtend } from './extend/plan.js'; // [extend/selector-interp]
 
 /* ---------------------------------------------------- MaybePromise glue */
 
@@ -1772,6 +1774,68 @@ function declName(node: Declaration, frame: Frame | null, e: EvalCtx): string {
   return typeof node.name === 'string' ? node.name : evalBytesSync(node.name, frame, e);
 }
 
+/**
+ * [extend/selector-interp] Resolve a compound's interpolated simples in place, in
+ * `frame`, replacing each `@{…}` token with the static resolved text — the SAME
+ * per-simple resolution {@link resolveCompound} performs at emit, so the mutated
+ * compound serializes byte-identically. Static (`&`, `.a`) simples are untouched.
+ * The lazy `_hasInterp` / `_canon` memos are cleared so the fast static path recomputes.
+ */
+function resolveCompoundInterpInPlace(comp: Compound, frame: Frame | null, e: EvalCtx): void {
+  if (!compoundHasInterp(comp)) return;
+  for (let i = 0; i < comp.simples.length; i++) {
+    const sim = comp.simples[i]!;
+    if (sim.interp !== null) comp.simples[i] = simple(resolveSimpleText(sim, frame, e));
+  }
+  comp._hasInterp = false;
+  comp._canon = undefined;
+}
+
+/**
+ * [extend/selector-interp] The extend engine ({@link computeExtends}) reads each rule
+ * selector's IR BEFORE the frame walk, so a `@{…}` token (`[data=@{attr-data}]`,
+ * `.@{n}`) is unresolved (`text: null` → `''`) at match/emit time — the interp rule
+ * neither matches an `:extend()` target nor emits its concrete header. This pre-pass
+ * resolves each interp selector to its static text in the SAME lexical frame emit
+ * would use (a rule's own selector resolves in its PARENT frame), so both the matcher
+ * and the nested-plan header see the concrete selector. It mirrors the extend planner's
+ * walk EXACTLY (Rule + AtRuleBlock only; never a MixinDef body — those resolve per call
+ * frame, not lexically, and the planner skips them too), so no rule is resolved that the
+ * planner would not also see. A resolution throw (an unresolvable interp on a guarded /
+ * never-emitted rule) leaves the selector untouched — identical to the pre-pass being
+ * absent, never worse than baseline.
+ */
+function resolveSelectorInterpForExtend(statements: Statement[], frame: Frame, e: EvalCtx): void {
+  for (const st of statements) {
+    if (st.type === 'Rule') {
+      const list = st.selector;
+      for (const c of list.selectors) {
+        if (!complexHasInterp(c)) continue;
+        try {
+          resolveCompoundInterpInPlace(c.head, frame, e);
+          for (const seg of c.tail) resolveCompoundInterpInPlace(seg.compound, frame, e);
+          c._hasInterp = false;
+          c._canon = undefined;
+        } catch {
+          // Unresolvable interp (e.g. a guarded rule never emitted): leave verbatim —
+          // the extend engine falls back to the baseline (no match), never regresses.
+        }
+      }
+      const childFrame: Frame = {
+        parent: frame,
+        mixins: collectMixins(st.body),
+        vars: collectVars(st.body),
+        statements: st.body,
+      };
+      resolveSelectorInterpForExtend(st.body, childFrame, e);
+    } else if (st.type === 'AtRuleBlock') {
+      // Mirror the planner: an at-rule block does not open a new subject scope for
+      // the selector run — recurse with the same frame.
+      resolveSelectorInterpForExtend(st.body, frame, e);
+    }
+  }
+}
+
 export function serialize(root: Root, options?: SerializeOptions): SerializeReturn {
   // [plugin/P1] Scoped-fn registration seam. `collectScopedFns` returns null today
   // (nothing registers until P2 wires `@plugin`/`@use` loading), so `rootFns` is
@@ -1790,7 +1854,7 @@ export function serialize(root: Root, options?: SerializeOptions): SerializeRetu
     pending: [], // async patches
     depth: 0, // [atrule]
     collapse: options?.collapseNesting !== false, // [nested/R0] default = flatten
-    extends: computeExtends(root), // [extend] null when no `:extend()` anywhere
+    extends: null, // [extend] computed below (after selector-interp pre-pass)
     hoistMode: false, // [extend]
     lastBlock: { parentKey: null, header: '', depth: -1, endChunks: -1 }, // [adjacent-merge]
     mixinDepth: 0, // [recursion-backstop] runaway mixin-expansion depth guard
@@ -1803,6 +1867,11 @@ export function serialize(root: Root, options?: SerializeOptions): SerializeRetu
     statements: root.children,
     fns: rootFns, // [plugin/P1] root-global scoped fns (null today)
   };
+  // [extend/selector-interp] Resolve interpolated selectors to static text BEFORE the
+  // extend planner reads their IR — only when the document actually has an `:extend()`
+  // (the planner's own gate), so a non-extend document is byte- and cost-identical.
+  if (documentHasExtend(root)) resolveSelectorInterpForExtend(root.children, rootFrame, e);
+  e.extends = computeExtends(root); // [extend] null when no `:extend()` anywhere
   const start = e.off;
   // [charset] Hoist the first document-level `@charset` ahead of all body
   // content; inline occurrences are dropped during the walk (dedupe).
