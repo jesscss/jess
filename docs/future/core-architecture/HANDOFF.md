@@ -86,15 +86,21 @@ See [`archive/README.md`](./archive/README.md) for the archive index.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Architecture surface: canonical `ImportAtRule { target, tail }` is a terminal core vocabulary shape; no parser, resolver, parse-host, StyleImport, builder, or legacy tree surface changed.
-- Separation/duplication: `rawBody: string` makes the invalid child-body relationship impossible instead of relocating it behind a helper or host.
-- Cumulative node weight: one cold plain-data node shape; parser reductions may construct its literal directly, while `opaqueAtRuleBlock` is only a programmatic convenience.
-- New traversal: none. Import serialization writes its two typed fields directly and never resolves or reparses them.
-- New node/materialization: public AST materialization only; no eval-to-string node, copied child array, wrapper, side map, or metadata mutation exists.
-- Render path: one terminal type branch writes name, optional prelude, braces, and raw bytes; normal documents do not take it.
-- Helper/API surface: `emitImportAtRule` is a direct terminal writer, not a resolver or dispatch layer.
+- Architecture surface: `@jesscss/css-parser/ast` is a closed opt-in direct AST-v2 pilot. Its Parseman reductions create plain `Root`, `Rule`, selector, and `Comment` literals directly; it imports neither a parse host nor any legacy builder or bridge.
+- Separation/duplication: the pilot is deliberately outside `cssGrammar` and all dialect composition. It proves the direct construction contract without preserving a callback ABI or changing the existing functional path.
+- Cumulative node weight: the new path creates only canonical child arrays required by its selected subset; it adds no side map, wrapper, legacy node, or metadata mutation.
+- New traversal: none. The result shaper validates the direct root once; rendering uses the existing AST serializer with no bridge conversion.
+- New node/materialization: cold, opt-in parser output only. Existing benchmark/render paths do not instantiate the pilot grammar.
+- Render path: no existing render branch changed; the focused test renders the direct root through the AST serializer.
+- Helper/API surface: one public subpath operation, `parseCssToAst`; no `parseCssFn` alias, `FunctionalParseHost`, `BuilderHost`, action map, or compatibility facade is retained.
 - Metadata mutations: none.
-- Review-flagged diff tokens: none; no new loop, map/set, scanner, reparse, clone, or evaluator call was added.
-- Hot-path cost contracts: ledger IDs: `opaque-atrule-block-vocabulary`, `opaque-atrule-block-node-union`, `opaque-atrule-block-statement-union`, `opaque-atrule-block-terminal-emit`, `atrule-prelude-unknown-tokenstream-grammar`, `css-atrule-prelude-lossless-segments`, `import-atrule-vocabulary`, `import-atrule-node-union`, `import-atrule-statement-union`, `import-atrule-terminal-emit`; their benchmark oracle and detailed justification live only in [`AGGRESSIVE-CUTTING-REVIEW.md`](./AGGRESSIVE-CUTTING-REVIEW.md).
-- Evidence: focused opaque-at-rule serialization and CSS direct-CST/macro-path tests pass; `git diff --check` passes. Full benchmark and integration gates belong to the final consolidated branch.
+- Review-flagged diff tokens: `[array helper]` `filter` creates only the direct root/body child arrays of the caller-selected pilot; `[materialized array/object]` canonical literal/result objects are cold opt-in parse output and failure diagnostics; `[node construction]` and `[routine error control]` are one impossible-after-grammar invariant throw when a required selector is absent, never routine recovery. No existing benchmark path gains either allocation or branch.
+- Hot-path cost contracts:
+```json
+[
+  {"id":"css-direct-ast-public-entry","verdict":"accepted","costDelta":"neutral","why":"The public result shaper is opt-in and not on the benchmark render route.","dangerTokensJustification":"The failure array is cold diagnostic data; the success result is the public API shape, and neither changes the existing parser or renderer.","byteIdentity":{"fixture":"benchmark.less","collapseNesting":true,"outputSha256":"adfd26732125a33fc1e264aca7d7ecde8c7c1da43f968e3106bd387a1f78e840","outputBytes":133983}},
+  {"id":"css-direct-ast-closed-grammar","verdict":"accepted","costDelta":"neutral","why":"The selected grammar is isolated from cssGrammar and all dialect composition.","dangerTokensJustification":"The filtered arrays are the canonical Root and Rule children only for explicit pilot callers; benchmark parsing does not enter this grammar.","byteIdentity":{"fixture":"benchmark.less","collapseNesting":true,"outputSha256":"adfd26732125a33fc1e264aca7d7ecde8c7c1da43f968e3106bd387a1f78e840","outputBytes":133983}}
+]
+```
+- Evidence: direct construction + render test, full CSS parser suite, CSS build, parser-boundary verification, package-export verification, and `git diff --check` pass. Full cross-dialect macro gate remains baseline-red in Less/SCSS/Jess because their pre-existing compose inputs are not build-resolvable.
 - Verdict: accepted.

@@ -27,6 +27,12 @@
       "import": "./lib/grammar.js",
       "require": "./lib/grammar.cjs"
     },
+    "./ast": {
+      "types": "./lib/direct-ast.d.ts",
+      "source": "./src/direct-ast.ts",
+      "import": "./lib/direct-ast.js",
+      "require": "./lib/direct-ast.cjs"
+    },
     "./jess": {
       "types": "./lib/jess.d.ts",
       "source": "./src/jess.ts",

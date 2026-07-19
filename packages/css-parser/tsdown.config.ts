@@ -7,6 +7,7 @@ export default defineConfig({
   entry: {
     index: './src/index.ts',
     cst: './src/cst-css.ts',
+    ast: './src/direct-ast.ts',
     grammar: './src/grammar.ts',
     jess: './src/jess.ts'
   },
