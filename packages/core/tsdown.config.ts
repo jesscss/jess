@@ -7,8 +7,7 @@ export default defineConfig({
   entry: {
     index: './src/index.ts',
     value: './src/value.ts',
-    ast: './src/ast.ts',
-    'ast-render': './src/ast-render.ts'
+    ast: './src/ast.ts'
   },
   format: ['esm', 'cjs'],
   dts: true,

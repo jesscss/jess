@@ -526,18 +526,13 @@ export interface RawInline {
 }
 
 /**
- * [import] An UNRESOLVED `@import` statement on the direct build host — the
- * structural head the parser delivered, carried until the import-resolution pass
- * (`resolveDirectImports`) replaces it with the imported file's spliced
- * statements. The pass reads the STRUCTURE the parser already separated (the
- * option keywords, the built path node, the media postlude) — never re-scanning
- * bytes — mirroring the bridge's `StyleImport` handling but on the tree2 host.
+ * [import] An unresolved `@import` statement. A dialect plugin may replace it
+ * with resolved statements using parser-produced import facts; core stores the
+ * canonical node and otherwise serializes its authored bytes unchanged.
  *
  * `spec` is the resolved specifier string (a plain-string / `url(...)` path), or
- * `null` when the path is variable-interpolated (`@import "@{theme}.less"`) — a
- * shape the direct host defers to verbatim emit rather than mis-resolving.
- * `raw` is the verbatim `@import …;` source, emitted as-is if the pass leaves the
- * node in place (a CSS-passthrough import, or an unresolved deferral).
+ * `null` when the path is variable-interpolated (`@import "@{theme}.less"`).
+ * `raw` is the verbatim `@import …;` source, emitted as-is while the node remains.
  */
 export interface StyleImport {
   readonly type: 'StyleImport';

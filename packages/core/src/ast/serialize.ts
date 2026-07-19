@@ -3745,10 +3745,9 @@ function normalizeMediaFeatures(prelude: string): string {
 }
 
 /**
- * [import] Emit an UNRESOLVED `@import` verbatim. The import-resolution pass
- * normally replaces every `StyleImport` before serialize runs, so this reaches
- * the emitter only for a CSS-passthrough / deferred import the pass left in
- * place — where re-emitting the authored `@import …;` bytes is the correct output.
+ * [import] Emit an unresolved `@import` verbatim. Dialect/plugin-owned resolution
+ * may replace a `StyleImport` beforehand; otherwise re-emitting the authored
+ * `@import …;` bytes is the correct core output.
  * A trailing newline separates it from the next statement (the authored `raw`
  * ends at the `;`), matching every other statement emitter.
  */
