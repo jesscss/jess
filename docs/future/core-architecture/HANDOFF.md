@@ -40,8 +40,9 @@ Less corpus.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: private CSS direct-AST value, non-import statement, `@layer`, and structured `@keyframes` block at-rule families.
+- Latest pass: private CSS direct-AST value, non-import statement, `@layer`, and structured `@keyframes` block at-rule families; plus private Less direct-AST keyword and `VarRef` values for top-level and ruleset-local variable declarations and ordinary declarations.
 - Architecture surface: `packages/css-parser/src/ast/grammar.ts` remains private: `packages/css-parser/src/index.ts`, `cst-css.ts`, and `grammar.ts` neither import nor export `cssAstGrammar`; `package.json` has no subpath targeting it and `tsdown.config.ts` has no entry for it. The sole current importer is `packages/css-parser/test/ast-grammar.test.ts`. No existing parse, eval, or render route reaches it.
+- Less architecture surface: `packages/less-parser/src/ast/grammar.ts` is likewise private: no Less public entry, CST grammar, package subpath, or tsdown entry imports or exports `lessAstGrammar`; the focused AST test runs it directly. Its former `src/ast/parse.ts` test bridge is deleted.
 - Separation/duplication: this extends parser-local Parseman construction with quoted, `url(...)`, generic function-call, non-import statement at-rule, structured `@layer`, and structured `@keyframes` reductions using core node constructors only. `@keyframes` has an explicit keyframe-selector grammar (`from`, `to`, or percent) and declaration-only rule bodies; it does not reuse a general CSS selector/ruleset path. `@layer` and keyframe block bodies admit comments and their valid child rule shape only; nested at-rules are deliberately outside this slice. `@import` remains excluded until its plugin-owned typed import facts are constructed by grammar. It creates no host, action registry, bridge, conversion pass, public pilot, or fallback.
 - Cumulative node weight: source AST nodes exist only for an explicit run of this development grammar; the current public CSS CST path creates none of them.
 - New traversal: [loop/traversal] `complexSegments` and the keyframe selector-list reduction make one bounded pass over already-captured children of one grammar reduction. The value family uses only Parseman's already-captured child arrays. Neither path walks a source tree or runs in any live parse/render route.
@@ -52,10 +53,29 @@ Less corpus.
 - Review-flagged diff tokens: [loop/traversal], [array helper], [array spread/materialization], [node construction], [routine error control], and [materialized array/object] are all private grammar construction checks. The `Error` branches reject impossible malformed reduction children and are not routine parse control flow; recognition itself remains Parseman combinators.
 - Hot-path cost contracts:
   ```json
-  [{"id":"css-private-direct-ast-family","verdict":"accepted","privateReachability":{"productionImporters":0,"publicExports":0,"buildEntries":0,"coldConstructionOnly":true},"why":"Current static reachability is zero from CSS production source and artifacts: no public parse/CST/eval/render entry imports or exports cssAstGrammar, package.json has no subpath targeting it, and tsdown has no build entry. Its bounded child scans and allocations occur only when the focused development test directly runs CssAstDocument; no benchmark or runtime-speed claim is made."}]
+  [{"id":"css-private-direct-ast-family","verdict":"accepted","privateReachability":{"productionImporters":0,"publicExports":0,"buildEntries":0,"coldConstructionOnly":true},"why":"Current static reachability is zero from CSS production source and artifacts: no public parse/CST/eval/render entry imports or exports cssAstGrammar, package.json has no subpath targeting it, and tsdown has no build entry. Its bounded child scans and allocations occur only when the focused development test directly runs CssAstDocument; no benchmark or runtime-speed claim is made."},{"id":"less-private-direct-ast-family","verdict":"accepted","privateReachability":{"productionImporters":0,"publicExports":0,"buildEntries":0,"coldConstructionOnly":true},"why":"Current static reachability is zero from Less production source and artifacts: no public parse/CST/eval/render entry imports or exports lessAstGrammar, package.json has no subpath targeting it, and tsdown has no build entry. Its bounded reductions and allocations occur only when the focused development test directly runs LessAstDocument; no benchmark or runtime-speed claim is made."}]
   ```
-- Evidence: focused source-to-AST-to-serialize tests, CSS package build/tests, parser runtime boundary verification, and the private-reachability registry check.
+- Evidence: focused source-to-AST-to-serialize tests, CSS and Less package builds/tests, parser runtime boundary verification, and the private-reachability registry check.
 - Verdict: accepted as an unreachable development construction slice; wiring a public parser root requires a new reachability and runtime cost review.
+
+### Less direct variable facts
+
+- Pass detail: private Less direct-AST keyword and `VarRef` values for top-level and ruleset-local variable declarations and ordinary declarations.
+- Architecture surface: `packages/less-parser/src/ast/grammar.ts` remains private: `packages/less-parser/src/index.ts`, `cst.ts`, and `grammar.ts` neither import nor export `lessAstGrammar`; `package.json` has no subpath targeting it and `tsdown.config.ts` has no entry for it. The focused AST test is the only current importer.
+- Separation/duplication: the Parseman reductions construct `Keyword`, `VarRef`, `VarDeclaration`, `Declaration`, and `Quoted` through core constructors. They do not introduce a host, action registry, bridge, compatibility parser, resolver, or source reparse. The existing closed `@import` fact subset remains private and unchanged; it is not a public import path and does no resolution.
+- Cumulative node weight: source AST nodes exist only for an explicit test run of this development grammar; public Less CST parsing creates none of them.
+- New traversal: the existing bounded ruleset-body child pass now admits already-constructed variable declaration children. It does not walk a source tree or run in a live parse/render route.
+- New node/materialization: [node construction] parser reductions call core constructors for the exact AST values they own. [materialized array/object] is the existing parser-owned body list needed to represent a rule, reachable only from the private test seam.
+- Render path: unchanged; the test calls the canonical AST serializer only after the private grammar has made the Root. No public renderer imports this grammar.
+- Helper/API surface: `isValueNode` and `requireValueNode` are private reduction guards; no helper is exported and no callback surface is added.
+- Metadata mutations: none.
+- Review-flagged diff tokens: [node construction], [materialized array/object], and the `TypeError` branch reject impossible malformed reduction children rather than implementing ordinary parser control flow. Recognition remains Parseman combinators.
+- Hot-path cost contracts:
+  ```json
+  [{"id":"less-private-direct-ast-family","verdict":"accepted","privateReachability":{"productionImporters":0,"publicExports":0,"buildEntries":0,"coldConstructionOnly":true},"why":"Static reachability is zero from Less production source and artifacts: no public parse/CST/eval/render entry imports or exports lessAstGrammar, package.json has no subpath targeting it, and tsdown has no build entry. Its bounded reductions and allocations occur only when the focused development test directly runs LessAstDocument; no benchmark or runtime-speed claim is made."}]
+  ```
+- Evidence: focused parse-to-AST-to-canonical-serialize test, Less package build, parser runtime boundary verification, and the private-reachability registry check.
+- Verdict: accepted as an unreachable development construction slice; a public Less parser root needs a new reachability and runtime cost review.
 
 ### Declaration-merge importance propagation
 

@@ -1,6 +1,7 @@
 /** Private AST grammar development slice for canonical Less facts. */
 import { choice, literal, many, node, regex, rules, sequence, trivia } from 'parseman' with { type: 'macro' };
-import type { Comment, Complex, Compound, Declaration, ImportAtRule, Quoted, Root, Rule, SelectorList, Statement, VarDeclaration } from '@jesscss/core/ast';
+import { comment, complex, compoundOf, decl, importAtRule, keyword, quoted, root, rule, selist, simple, varDecl, varRef } from '@jesscss/core/ast';
+import type { Comment, Complex, Compound, Declaration, ImportAtRule, Quoted, Root, Rule, SelectorList, Statement, ValueNode, VarDeclaration, VarRef } from '@jesscss/core/ast';
 
 type Token = { readonly value: string };
 
@@ -55,7 +56,34 @@ function isVarDeclaration(value: unknown): value is VarDeclaration {
     && 'name' in value
     && typeof value.name === 'string'
     && 'value' in value
-    && isQuoted(value.value);
+    && isValueNode(value.value);
+}
+
+function isVarRef(value: unknown): value is VarRef {
+  return typeof value === 'object'
+    && value !== null
+    && 'type' in value
+    && value.type === 'VarRef'
+    && 'name' in value
+    && typeof value.name === 'string';
+}
+
+function isValueNode(value: unknown): value is ValueNode {
+  return isQuoted(value)
+    || isVarRef(value)
+    || (typeof value === 'object'
+      && value !== null
+      && 'type' in value
+      && value.type === 'Keyword'
+      && 'src' in value
+      && typeof value.src === 'string');
+}
+
+function requireValueNode(value: unknown): ValueNode {
+  if (!isValueNode(value)) {
+    throw new TypeError('Direct Less AST grammar produced a non-value child.');
+  }
+  return value;
 }
 
 function isDeclaration(value: unknown): value is Declaration {
@@ -66,12 +94,8 @@ function isDeclaration(value: unknown): value is Declaration {
     && 'name' in value
     && typeof value.name === 'string'
     && 'value' in value
-    && typeof value.value === 'object'
-    && value.value !== null
-    && 'type' in value.value
-    && value.value.type === 'Keyword'
-    && 'src' in value.value
-    && typeof value.value.src === 'string'
+    && 'value' in value
+    && isValueNode(value.value)
     && 'merge' in value
     && value.merge === null
     && 'important' in value
@@ -155,10 +179,10 @@ function isRule(value: unknown): value is Rule {
     && Array.isArray(value.body);
 }
 
-function requireRulesetBody(children: readonly unknown[]): (Declaration | Comment)[] {
-  const body: (Declaration | Comment)[] = [];
+function requireRulesetBody(children: readonly unknown[]): (VarDeclaration | Declaration | Comment)[] {
+  const body: (VarDeclaration | Declaration | Comment)[] = [];
   for (const child of children) {
-    if (!isDeclaration(child) && !isComment(child)) {
+    if (!isVarDeclaration(child) && !isDeclaration(child) && !isComment(child)) {
       throw new TypeError('Direct Less AST grammar produced a non-ruleset-body child.');
     }
     body.push(child);
@@ -200,7 +224,7 @@ export const lessAstGrammar = rules({ trivia: whitespace }, (g: any) => {
       const content = requireToken(children[1]);
       const quote = open.value;
       const value = content.value;
-      return { type: 'Quoted', src: `${quote}${value}${quote}`, value, quote, escaped: false };
+      return quoted(`${quote}${value}${quote}`, value, quote, false);
     }
   );
   const DirectLessImport = node<ImportAtRule>(
@@ -210,73 +234,69 @@ export const lessAstGrammar = rules({ trivia: whitespace }, (g: any) => {
       // The direct quoted reduction above is the fixed second child here.
       const keyword = requireToken(children[0]);
       const target = requireQuoted(children[1]);
-      return {
-        type: 'ImportAtRule',
-        name: keyword.value,
-        options: null,
-        target,
-        alias: null,
-        tail: null
-      };
+      return importAtRule(keyword.value, target);
     }
   );
   const DirectLessVarDeclaration = node<VarDeclaration>(
     'DirectLessVarDeclaration',
-    sequence(literal('@'), variableName, literal(':'), g.DirectLessQuoted, literal(';')),
+    sequence(literal('@'), variableName, literal(':'), g.DirectLessValue, literal(';')),
     (children) => {
       // The sigil and name are distinct grammar children, so AST `name` is not
       // recovered from authored text or sliced from a source span.
       const name = requireToken(children[1]);
-      const value = requireQuoted(children[3]);
-      return { type: 'VarDeclaration', name: name.value, value };
+      return varDecl(name.value, requireValueNode(children[3]));
     }
+  );
+  const DirectLessVarReference = node<VarRef>(
+    'DirectLessVarReference',
+    sequence(literal('@'), variableName),
+    children => varRef(requireToken(children[1]).value)
+  );
+  const DirectLessKeyword = node<ValueNode>(
+    'DirectLessKeyword',
+    keywordValue,
+    children => keyword(requireToken(children[0]).value)
+  );
+  const DirectLessValue = node<ValueNode>(
+    'DirectLessValue',
+    choice(g.DirectLessQuoted, g.DirectLessVarReference, g.DirectLessKeyword),
+    children => requireValueNode(children[0])
   );
   const DirectLessDeclaration = node<Declaration>(
     'DirectLessDeclaration',
-    sequence(propertyName, literal(':'), keywordValue, literal(';')),
+    sequence(propertyName, literal(':'), g.DirectLessValue, literal(';')),
     (children) => {
       // Property, delimiter, and value are independently recognized grammar
       // children; AST construction does not split or reclassify authored text.
       const name = requireToken(children[0]);
-      const value = requireToken(children[2]);
-      return {
-        type: 'Declaration',
-        name: name.value,
-        value: { type: 'Keyword', src: value.value },
-        merge: null,
-        important: false
-      };
+      return decl(name.value, requireValueNode(children[2]));
     }
   );
   const DirectLessComment = node<Comment>(
     'DirectLessComment',
     blockComment,
-    children => ({ type: 'Comment', text: requireToken(children[0]).value })
+    children => comment(requireToken(children[0]).value)
   );
   const DirectLessCompound = node<Compound>(
     'DirectLessCompound',
     simpleSelector,
     (children) => {
       const text = requireToken(children[0]).value;
-      return {
-        type: 'Compound',
-        simples: [{ type: 'Simple', text, interp: null }]
-      };
+      return compoundOf([simple(text)]);
     }
   );
   const DirectLessChildComplex = node<Complex>(
     'DirectLessChildComplex',
     sequence(g.DirectLessCompound, literal('>'), g.DirectLessCompound),
-    children => ({
-      type: 'Complex',
-      head: requireCompound(children[0]),
-      tail: [{ comb: '>', compound: requireCompound(children[2]) }]
-    })
+    children => complex([
+      { compound: requireCompound(children[0]) },
+      { comb: '>', compound: requireCompound(children[2]) }
+    ])
   );
   const DirectLessSimpleComplex = node<Complex>(
     'DirectLessSimpleComplex',
     g.DirectLessCompound,
-    children => ({ type: 'Complex', head: requireCompound(children[0]), tail: [] })
+    children => complex([{ compound: requireCompound(children[0]) }])
   );
   const DirectLessComplex = node<Complex>(
     'DirectLessComplex',
@@ -291,29 +311,31 @@ export const lessAstGrammar = rules({ trivia: whitespace }, (g: any) => {
   const DirectLessSelector = node<SelectorList>(
     'DirectLessSelector',
     sequence(g.DirectLessComplex, many(g.DirectLessSelectorTail)),
-    children => ({ type: 'SelectorList', selectors: requireComplexes(children) })
+    children => selist(...requireComplexes(children))
   );
   const DirectLessRuleset = node<Rule>(
     'DirectLessRuleset',
-    sequence(g.DirectLessSelector, literal('{'), many(choice(g.DirectLessDeclaration, g.DirectLessComment)), literal('}')),
-    children => ({
-      type: 'Rule',
-      selector: requireSelectorList(children[0]),
+    sequence(g.DirectLessSelector, literal('{'), many(choice(g.DirectLessVarDeclaration, g.DirectLessDeclaration, g.DirectLessComment)), literal('}')),
+    children => rule(
+      requireSelectorList(children[0]),
       // The fixed sequence places only direct declaration/comment facts between
       // the braces. This validates that fact list; it never reparses body text.
-      body: requireRulesetBody(children.slice(2, -1))
-    })
+      requireRulesetBody(children.slice(2, -1))
+    )
   );
   const LessAstDocument = node<Root>(
     'LessAstDocument',
     many(choice(g.DirectLessImport, g.DirectLessVarDeclaration, g.DirectLessRuleset, g.DirectLessDeclaration)),
-    children => ({ type: 'Root', children: requireStatements(children) })
+    children => root(requireStatements(children))
   );
 
   return {
     LessAstDocument,
     DirectLessImport,
     DirectLessVarDeclaration,
+    DirectLessVarReference,
+    DirectLessKeyword,
+    DirectLessValue,
     DirectLessDeclaration,
     DirectLessComment,
     DirectLessCompound,

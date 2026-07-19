@@ -45,6 +45,17 @@ active architecture queue.
     }
   },
   {
+    "id": "less-private-direct-ast-family",
+    "kind": "private-unreachable",
+    "surface": "private Less AST grammar development family",
+    "files": ["packages/less-parser/src/ast/grammar.ts"],
+    "privateGrammar": {
+      "entry": "packages/less-parser/src/ast/grammar.ts",
+      "coldConstructionOnly": true,
+      "why": "The module is intentionally absent from every Less public entry and from the CST grammar. Its only importers are focused construction tests, so Parseman reductions and their temporary arrays run only when those tests or a future explicit direct-AST root invokes this private rule."
+    }
+  },
+  {
     "id": "ast-merge-importance-signal",
     "kind": "neutral-or-negative",
     "surface": "mergeFold importance propagation",

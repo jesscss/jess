@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
   extractCostAuditRecords,
+  grammarSourceReferences,
   isProductionHotPathFile,
   isExactParserRuntimeDebtDeletion,
   publicArtifactReferences,
@@ -73,6 +74,39 @@ describe('private grammar artifact reachability', () => {
     expect(publicArtifactReferences(entry, JSON.stringify({ exports: {} }), `
       export default defineConfig({ entry: { ast: './src/ast/grammar.ts' } });
     `)).toEqual({ publicExports: 0, buildEntries: 1 });
+  });
+
+  it('uses the owning package path when checking a non-CSS private grammar', () => {
+    const lessEntry = 'packages/less-parser/src/ast/grammar.ts';
+    const exports: Record<string, unknown> = {};
+    exports['./ast'] = { source: './src/ast/grammar.ts' };
+    expect(publicArtifactReferences(lessEntry, JSON.stringify({
+      exports
+    }), 'export default defineConfig({ entry: {} });')).toEqual({ publicExports: 1, buildEntries: 0 });
+  });
+
+  it('detects named, default, and namespace imports by their resolved grammar module', () => {
+    const lessEntry = 'packages/less-parser/src/ast/grammar.ts';
+    const sourcePath = 'packages/less-parser/src/index.ts';
+    expect(grammarSourceReferences(sourcePath, 'import { anything } from \'./ast/grammar.js\';', lessEntry)).toBe(true);
+    expect(grammarSourceReferences(sourcePath, 'import grammar from \'./ast/grammar.js\';', lessEntry)).toBe(true);
+    expect(grammarSourceReferences(sourcePath, 'import * as grammar from \'./ast/grammar.js\';', lessEntry)).toBe(true);
+  });
+
+  it('detects side-effect imports and re-exports even without a grammar symbol', () => {
+    const lessEntry = 'packages/less-parser/src/ast/grammar.ts';
+    const sourcePath = 'packages/less-parser/src/index.ts';
+    expect(grammarSourceReferences(sourcePath, 'import \'./ast/grammar.js\';', lessEntry)).toBe(true);
+    expect(grammarSourceReferences(sourcePath, 'export * from \'./ast/grammar.js\';', lessEntry)).toBe(true);
+    expect(grammarSourceReferences(sourcePath, 'export { default as direct } from \'./ast/grammar.js\';', lessEntry)).toBe(true);
+    expect(grammarSourceReferences(sourcePath, 'import \'./ast/other.js\';', lessEntry)).toBe(false);
+  });
+
+  it('detects dynamic ESM imports by their resolved grammar module', () => {
+    const lessEntry = 'packages/less-parser/src/ast/grammar.ts';
+    const sourcePath = 'packages/less-parser/src/index.ts';
+    expect(grammarSourceReferences(sourcePath, 'await import(\'./ast/grammar.js\');', lessEntry)).toBe(true);
+    expect(grammarSourceReferences(sourcePath, 'import(\'./ast/other.js\');', lessEntry)).toBe(false);
   });
 });
 
@@ -152,22 +186,43 @@ describe('exact parser-runtime debt deletion', () => {
     try {
       execFileSync('git', ['clone', '--quiet', '--no-hardlinks', repo, sandbox]);
       symlinkSync(resolve(repo, 'node_modules'), resolve(sandbox, 'node_modules'));
-      for (const path of [
-        'packages/css-parser/src/cst.ts',
-        'scripts/parser-runtime-boundary-debt.json',
-        'scripts/verify-aggressive-cutting-review.mjs',
-        'scripts/verify-parser-runtime-boundary.mjs'
-      ]) {
+      for (const path of ['scripts/verify-aggressive-cutting-review.mjs', 'scripts/verify-parser-runtime-boundary.mjs']) {
         const staged = execFileSync('git', ['show', `:${path}`], { cwd: repo, encoding: 'utf8' });
         const target = resolve(sandbox, path);
         writeFileSync(target, staged);
       }
-      execFileSync('git', ['add',
-        'packages/css-parser/src/cst.ts',
-        'scripts/parser-runtime-boundary-debt.json',
-        'scripts/verify-aggressive-cutting-review.mjs',
-        'scripts/verify-parser-runtime-boundary.mjs'
-      ], { cwd: sandbox });
+      const parserPath = 'packages/css-parser/src/cst.ts';
+      const ledgerPath = 'scripts/parser-runtime-boundary-debt.json';
+      const source = execFileSync('git', ['show', `:${parserPath}`], { cwd: repo, encoding: 'utf8' });
+      const snippet = '/stagedOnlyDebt/';
+      const sourceWithDebt = `${source}\nconst stagedOnlyDebt = ${snippet};\n`;
+      const start = sourceWithDebt.indexOf(snippet);
+      const debt = {
+        file: parserPath,
+        line: sourceWithDebt.slice(0, start).split('\n').length,
+        column: 25,
+        start,
+        end: start + snippet.length,
+        kind: 'regex-literal',
+        fingerprint: createHash('sha256').update(`regex-literal:${snippet}`).digest('hex').slice(0, 16),
+        snippet,
+        retirement: 'Delete this staged-only test recognizer during the test.'
+      };
+      writeFileSync(resolve(sandbox, parserPath), sourceWithDebt);
+      writeFileSync(resolve(sandbox, ledgerPath), `${JSON.stringify({
+        version: 2,
+        policy: 'Every handwritten runtime recognizer is temporary debt. The final gate has debt: [].',
+        debt: [debt]
+      }, null, 2)}\n`);
+      execFileSync('git', ['add', parserPath, ledgerPath, 'scripts/verify-aggressive-cutting-review.mjs', 'scripts/verify-parser-runtime-boundary.mjs'], { cwd: sandbox });
+      execFileSync('git', ['-c', 'user.name=Jess Test', '-c', 'user.email=jess-test@example.invalid', 'commit', '--quiet', '-m', 'test baseline debt'], { cwd: sandbox });
+      writeFileSync(resolve(sandbox, parserPath), source);
+      writeFileSync(resolve(sandbox, ledgerPath), `${JSON.stringify({
+        version: 2,
+        policy: 'Every handwritten runtime recognizer is temporary debt. The final gate has debt: [].',
+        debt: []
+      }, null, 2)}\n`);
+      execFileSync('git', ['add', parserPath, ledgerPath], { cwd: sandbox });
       writeFileSync(resolve(sandbox, 'scripts/verify-parser-runtime-boundary.mjs'), 'process.exit(0);\n');
       let output = '';
       let status = 0;
@@ -178,9 +233,12 @@ describe('exact parser-runtime debt deletion', () => {
           '--skip-executable-evidence'
         ], { cwd: sandbox, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
       } catch (error: unknown) {
-        const failure = error as { status?: number; stdout?: string | Buffer; stderr?: string | Buffer };
-        status = failure.status ?? 1;
-        output = `${failure.stdout?.toString() ?? ''}${failure.stderr?.toString() ?? ''}`;
+        const failure = typeof error === 'object' && error !== null ? error : {};
+        const failureStatus = 'status' in failure && typeof failure.status === 'number' ? failure.status : undefined;
+        const failureStdout = 'stdout' in failure && (typeof failure.stdout === 'string' || Buffer.isBuffer(failure.stdout)) ? failure.stdout.toString() : '';
+        const failureStderr = 'stderr' in failure && (typeof failure.stderr === 'string' || Buffer.isBuffer(failure.stderr)) ? failure.stderr.toString() : '';
+        status = failureStatus ?? 1;
+        output = `${failureStdout}${failureStderr}`;
       }
       expect(status).not.toBe(0);
       expect(output).not.toContain('Exact parser-runtime debt deletion: cost-contract review not required.');

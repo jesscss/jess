@@ -1,11 +1,25 @@
-import { parse } from '../src/ast/parse.js';
+import { run } from 'parseman';
+import type { Root } from '@jesscss/core/ast';
+import { serialize } from '../../core/src/ast/serialize.js';
+import { lessAstGrammar } from '../src/ast/grammar.js';
+
+function isRoot(value: unknown): value is Root {
+  return typeof value === 'object'
+    && value !== null
+    && 'type' in value
+    && value.type === 'Root'
+    && 'children' in value
+    && Array.isArray(value.children);
+}
 
 describe('private Less AST grammar facts', () => {
   it('constructs canonical import, variable, declaration, and ruleset facts directly', () => {
-    const parsed = parse('@theme: "dark";\n.a { /* note */ color: red; }\n@import "theme.less";\n@-export \'tokens.less\';');
+    const result = run(lessAstGrammar.LessAstDocument, '@theme: "dark";\n.a { /* note */ color: red; }\n@import "theme.less";\n@-export \'tokens.less\';', { trivia: lessAstGrammar.whitespace });
 
-    expect(parsed.errors).toEqual([]);
-    expect(parsed.document).toEqual({
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(isRoot(result.value)).toBe(true);
+    expect(result.value).toEqual({
       type: 'Root',
       children: [
         {
@@ -55,31 +69,65 @@ describe('private Less AST grammar facts', () => {
   });
 
   it('rejects import forms outside the closed fact-only subset', () => {
-    const parsed = parse('@import (reference) "theme.less";');
+    const result = run(lessAstGrammar.LessAstDocument, '@import (reference) "theme.less";', { trivia: lessAstGrammar.whitespace });
 
-    expect(parsed.document).toBeNull();
-    expect(parsed.errors).toHaveLength(1);
+    expect(result.ok && result.unconsumedFrom === null && isRoot(result.value)).toBe(false);
+    expect(result.ok ? result.unconsumedFrom : result.errors).not.toBeNull();
   });
 
-  it('rejects variable values outside the directly structured subset', () => {
-    const parsed = parse('@theme: dark;');
+  it('constructs keyword and variable-reference values without recovering value text', () => {
+    const result = run(lessAstGrammar.LessAstDocument, '@base: red;\n@theme: @base;\n.a { color: @theme; background: red; }', { trivia: lessAstGrammar.whitespace });
 
-    expect(parsed.document).toBeNull();
-    expect(parsed.errors).toHaveLength(1);
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(isRoot(result.value)).toBe(true);
+    expect(result.value).toEqual({
+      type: 'Root',
+      children: [
+        { type: 'VarDeclaration', name: 'base', value: { type: 'Keyword', src: 'red' } },
+        { type: 'VarDeclaration', name: 'theme', value: { type: 'VarRef', name: 'base' } },
+        {
+          type: 'Rule',
+          selector: {
+            type: 'SelectorList',
+            selectors: [{
+              type: 'Complex',
+              head: { type: 'Compound', simples: [{ type: 'Simple', text: '.a', interp: null }] },
+              tail: []
+            }]
+          },
+          body: [
+            { type: 'Declaration', name: 'color', value: { type: 'VarRef', name: 'theme' }, merge: null, important: false },
+            { type: 'Declaration', name: 'background', value: { type: 'Keyword', src: 'red' }, merge: null, important: false }
+          ]
+        }
+      ]
+    });
+  });
+
+  it('feeds top-level and ruleset-local variable facts straight into the canonical serializer', () => {
+    const result = run(lessAstGrammar.LessAstDocument, '@base: red;\n.a { @tone: @base; color: @tone; }', { trivia: lessAstGrammar.whitespace });
+
+    if (!result.ok || result.unconsumedFrom !== null || !isRoot(result.value)) {
+      throw new Error('Direct Less AST grammar did not make a Root.');
+    }
+    expect(serialize(result.value).css).toBe('.a {\n  color: red;\n}\n');
   });
 
   it('rejects declaration forms outside the directly structured subset', () => {
-    const parsed = parse('color: #f00;');
+    const result = run(lessAstGrammar.LessAstDocument, 'color: #f00;', { trivia: lessAstGrammar.whitespace });
 
-    expect(parsed.document).toBeNull();
-    expect(parsed.errors).toHaveLength(1);
+    expect(result.ok && result.unconsumedFrom === null && isRoot(result.value)).toBe(false);
+    expect(result.ok ? result.unconsumedFrom : result.errors).not.toBeNull();
   });
 
   it('constructs child-combinator and comma-list selectors structurally', () => {
-    const parsed = parse('.a > .b, #c { color: red; }');
+    const result = run(lessAstGrammar.LessAstDocument, '.a > .b, #c { color: red; }', { trivia: lessAstGrammar.whitespace });
 
-    expect(parsed.errors).toEqual([]);
-    expect(parsed.document).toEqual({
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(isRoot(result.value)).toBe(true);
+    expect(result.value).toEqual({
       type: 'Root',
       children: [{
         type: 'Rule',
@@ -110,9 +158,9 @@ describe('private Less AST grammar facts', () => {
   });
 
   it('rejects rulesets outside the directly structured selector/body subset', () => {
-    const parsed = parse('.a + .b { color: red; }');
+    const result = run(lessAstGrammar.LessAstDocument, '.a + .b { color: red; }', { trivia: lessAstGrammar.whitespace });
 
-    expect(parsed.document).toBeNull();
-    expect(parsed.errors).toHaveLength(1);
+    expect(result.ok && result.unconsumedFrom === null && isRoot(result.value)).toBe(false);
+    expect(result.ok ? result.unconsumedFrom : result.errors).not.toBeNull();
   });
 });

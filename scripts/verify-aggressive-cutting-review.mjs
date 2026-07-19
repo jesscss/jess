@@ -2,7 +2,7 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { readFileSync, readdirSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { dirname, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = resolve(new URL('..', import.meta.url).pathname);
@@ -34,7 +34,8 @@ function sourceFiles(rootPath) {
 }
 
 function publicArtifactReferences(entry, packageManifest, buildConfig) {
-  const fragment = entry.replace(/^packages\/css-parser\//, '');
+  const packageRoot = entry.split('/').slice(0, 2).join('/');
+  const fragment = entry.slice(packageRoot.length + 1);
   const strings = [];
   const collectStrings = (value) => {
     if (typeof value === 'string') {
@@ -52,22 +53,56 @@ function publicArtifactReferences(entry, packageManifest, buildConfig) {
   };
 }
 
+function modulePathWithoutExtension(path) {
+  return path.replace(/\\/g, '/').replace(/\.(?:[cm]?[jt]sx?)$/, '');
+}
+
+function sourceModuleReferences(sourcePath, source, entry) {
+  const entryPath = modulePathWithoutExtension(entry);
+  const withoutComments = source
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/\/\/[^\n]*/g, '');
+  const references = [];
+  const patterns = [
+    { kind: 'import', expression: /\bimport\s+(?:type\s+)?(?:[\w\s*$,{}]+?\s+from\s+)?(['"])([^'"\n]+)\1/g },
+    { kind: 'import', expression: /\bimport\s*\(\s*(['"])([^'"\n]+)\1\s*\)/g },
+    { kind: 're-export', expression: /\bexport\s+(?:type\s+)?(?:[\w\s*$,{}]+?\s+from\s+)(['"])([^'"\n]+)\1/g }
+  ];
+  for (const { kind, expression } of patterns) {
+    for (const match of withoutComments.matchAll(expression)) {
+      const specifier = match[2];
+      if (!specifier.startsWith('.')) continue;
+      const resolved = modulePathWithoutExtension(
+        relative(root, resolve(dirname(resolve(root, sourcePath)), specifier))
+      );
+      if (resolved === entryPath) references.push(kind);
+    }
+  }
+  return references;
+}
+
+function grammarSourceReferences(sourcePath, source, entry) {
+  return sourceModuleReferences(sourcePath, source, entry).length > 0;
+}
+
 function privateGrammarReachability(entry) {
-  const sources = sourceFiles('packages/css-parser/src');
+  const packageRoot = entry.split('/').slice(0, 2).join('/');
+  const sources = sourceFiles(`${packageRoot}/src`);
   let productionImporters = 0;
   let publicExports = 0;
   for (const path of sources) {
     if (path === entry) continue;
     const source = readFileSync(resolve(root, path), 'utf8');
-    if (source.includes("./ast/grammar.js") || source.includes("./ast/grammar.ts") || source.includes("cssAstGrammar")) {
+    const references = sourceModuleReferences(path, source, entry);
+    if (references.length > 0) {
       productionImporters += 1;
     }
-    if (source.includes('cssAstGrammar')) publicExports += 1;
+    if (references.includes('re-export')) publicExports += 1;
   }
   const artifacts = publicArtifactReferences(
     entry,
-    readFileSync(resolve(root, 'packages/css-parser/package.json'), 'utf8'),
-    readFileSync(resolve(root, 'packages/css-parser/tsdown.config.ts'), 'utf8'),
+    readFileSync(resolve(root, `${packageRoot}/package.json`), 'utf8'),
+    readFileSync(resolve(root, `${packageRoot}/tsdown.config.ts`), 'utf8'),
   );
   publicExports += artifacts.publicExports;
   return { productionImporters, publicExports, buildEntries: artifacts.buildEntries };
@@ -1807,10 +1842,12 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
 export {
   evaluateCounterRelation,
   extractCostAuditRecords,
+  grammarSourceReferences,
   isProductionHotPathFile,
   productionChangedPaths,
   isExactParserRuntimeDebtDeletion,
   publicArtifactReferences,
+  privateGrammarReachability,
   scopedChangedPaths,
   validateCostAuditRecords,
   validateCostContractRegistry,
