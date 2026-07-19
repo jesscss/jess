@@ -1,6 +1,6 @@
 /** Closed direct AST-v2 grammar for the simplest Less import fact. */
 import { choice, literal, many, node, regex, rules, sequence, trivia } from 'parseman' with { type: 'macro' };
-import type { Comment, Declaration, ImportAtRule, Quoted, Root, Rule, SelectorList, Statement, VarDeclaration } from '@jesscss/core/ast';
+import type { Comment, Complex, Compound, Declaration, ImportAtRule, Quoted, Root, Rule, SelectorList, Statement, VarDeclaration } from '@jesscss/core/ast';
 
 type Token = { readonly value: string };
 
@@ -99,6 +99,47 @@ function isSelectorList(value: unknown): value is SelectorList {
 function requireSelectorList(value: unknown): SelectorList {
   if (!isSelectorList(value)) {
     throw new TypeError('Direct Less AST grammar produced a non-selector child.');
+  }
+  return value;
+}
+
+function isComplex(value: unknown): value is Complex {
+  return typeof value === 'object'
+    && value !== null
+    && 'type' in value
+    && value.type === 'Complex'
+    && 'head' in value
+    && 'tail' in value
+    && Array.isArray(value.tail);
+}
+
+function requireComplex(value: unknown): Complex {
+  if (!isComplex(value)) {
+    throw new TypeError('Direct Less AST grammar produced a non-complex selector child.');
+  }
+  return value;
+}
+
+function requireComplexes(children: readonly unknown[]): Complex[] {
+  const selectors: Complex[] = [];
+  for (const child of children) {
+    selectors.push(requireComplex(child));
+  }
+  return selectors;
+}
+
+function isCompound(value: unknown): value is Compound {
+  return typeof value === 'object'
+    && value !== null
+    && 'type' in value
+    && value.type === 'Compound'
+    && 'simples' in value
+    && Array.isArray(value.simples);
+}
+
+function requireCompound(value: unknown): Compound {
+  if (!isCompound(value)) {
+    throw new TypeError('Direct Less AST grammar produced a non-compound selector child.');
   }
   return value;
 }
@@ -212,20 +253,45 @@ export const directLessAstGrammar = rules({ trivia: whitespace }, (g: any) => {
     blockComment,
     children => ({ type: 'Comment', text: requireToken(children[0]).value })
   );
-  const DirectLessSelector = node<SelectorList>(
-    'DirectLessSelector',
+  const DirectLessCompound = node<Compound>(
+    'DirectLessCompound',
     simpleSelector,
     (children) => {
       const text = requireToken(children[0]).value;
       return {
-        type: 'SelectorList',
-        selectors: [{
-          type: 'Complex',
-          head: { type: 'Compound', simples: [{ type: 'Simple', text, interp: null }] },
-          tail: []
-        }]
+        type: 'Compound',
+        simples: [{ type: 'Simple', text, interp: null }]
       };
     }
+  );
+  const DirectLessChildComplex = node<Complex>(
+    'DirectLessChildComplex',
+    sequence(g.DirectLessCompound, literal('>'), g.DirectLessCompound),
+    children => ({
+      type: 'Complex',
+      head: requireCompound(children[0]),
+      tail: [{ comb: '>', compound: requireCompound(children[2]) }]
+    })
+  );
+  const DirectLessSimpleComplex = node<Complex>(
+    'DirectLessSimpleComplex',
+    g.DirectLessCompound,
+    children => ({ type: 'Complex', head: requireCompound(children[0]), tail: [] })
+  );
+  const DirectLessComplex = node<Complex>(
+    'DirectLessComplex',
+    choice(g.DirectLessChildComplex, g.DirectLessSimpleComplex),
+    children => requireComplex(children[0])
+  );
+  const DirectLessSelectorTail = node<Complex>(
+    'DirectLessSelectorTail',
+    sequence(literal(','), g.DirectLessComplex),
+    children => requireComplex(children[1])
+  );
+  const DirectLessSelector = node<SelectorList>(
+    'DirectLessSelector',
+    sequence(g.DirectLessComplex, many(g.DirectLessSelectorTail)),
+    children => ({ type: 'SelectorList', selectors: requireComplexes(children) })
   );
   const DirectLessRuleset = node<Rule>(
     'DirectLessRuleset',
@@ -250,6 +316,11 @@ export const directLessAstGrammar = rules({ trivia: whitespace }, (g: any) => {
     DirectLessVarDeclaration,
     DirectLessDeclaration,
     DirectLessComment,
+    DirectLessCompound,
+    DirectLessChildComplex,
+    DirectLessSimpleComplex,
+    DirectLessComplex,
+    DirectLessSelectorTail,
     DirectLessSelector,
     DirectLessRuleset,
     DirectLessQuoted,

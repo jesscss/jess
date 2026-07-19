@@ -75,8 +75,42 @@ describe('direct Less AST-v2 facts', () => {
     expect(parsed.errors).toHaveLength(1);
   });
 
+  it('constructs child-combinator and comma-list selectors structurally', () => {
+    const parsed = parse('.a > .b, #c { color: red; }');
+
+    expect(parsed.errors).toEqual([]);
+    expect(parsed.document).toEqual({
+      type: 'Root',
+      children: [{
+        type: 'Rule',
+        selector: {
+          type: 'SelectorList',
+          selectors: [
+            {
+              type: 'Complex',
+              head: { type: 'Compound', simples: [{ type: 'Simple', text: '.a', interp: null }] },
+              tail: [{ comb: '>', compound: { type: 'Compound', simples: [{ type: 'Simple', text: '.b', interp: null }] } }]
+            },
+            {
+              type: 'Complex',
+              head: { type: 'Compound', simples: [{ type: 'Simple', text: '#c', interp: null }] },
+              tail: []
+            }
+          ]
+        },
+        body: [{
+          type: 'Declaration',
+          name: 'color',
+          value: { type: 'Keyword', src: 'red' },
+          merge: null,
+          important: false
+        }]
+      }]
+    });
+  });
+
   it('rejects rulesets outside the directly structured selector/body subset', () => {
-    const parsed = parse('.a, .b { color: red; }');
+    const parsed = parse('.a + .b { color: red; }');
 
     expect(parsed.document).toBeNull();
     expect(parsed.errors).toHaveLength(1);
