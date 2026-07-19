@@ -107,6 +107,35 @@ export class NodeModulesPlugin extends AbstractPlugin {
   }
 
   /**
+   * Context resolution hook for bare package specifiers. Core owns only the
+   * resolver-plugin pipeline; this plugin owns Node's module-resolution policy.
+   */
+  override resolve(filePath: string | string[], currentDir: string, searchPaths: string[]): string[] {
+    const paths = Array.isArray(filePath) ? filePath : [filePath];
+    const bases = [currentDir, ...searchPaths];
+    const resolved: string[] = [];
+
+    for (const candidate of paths) {
+      if (!isBareModuleSpecifier(candidate)) {
+        resolved.push(candidate);
+        continue;
+      }
+
+      let modulePath: string | null = null;
+      for (const base of bases) {
+        modulePath = this.resolvePackage(candidate, base) ?? this.resolvePackage(`${candidate}.less`, base);
+        if (modulePath) {
+          break;
+        }
+      }
+      modulePath ??= this.resolvePackage(candidate) ?? this.resolvePackage(`${candidate}.less`);
+      resolved.push(modulePath ?? candidate);
+    }
+
+    return resolved;
+  }
+
+  /**
    * Load an npm package module.
    *
    * @param packageName - The npm package name (e.g., "less-plugin-clean-css")
@@ -174,6 +203,14 @@ export class NodeModulesPlugin extends AbstractPlugin {
     // For non-node_modules paths, throw to let other plugins handle it
     throw new Error(`Plugin "${this.name}" cannot import "${absoluteFilePath}" (not a node_modules path)`);
   }
+}
+
+function isBareModuleSpecifier(candidate: string): boolean {
+  return !path.isAbsolute(candidate)
+    && !candidate.startsWith('./')
+    && !candidate.startsWith('../')
+    && !candidate.startsWith('/')
+    && !/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(candidate);
 }
 
 const nodeModulesPlugin = ((opts?: NodeModulesPluginOptions) => {
