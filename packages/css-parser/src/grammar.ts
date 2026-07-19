@@ -406,16 +406,28 @@ export const cssGrammar = rules({ trivia: rw }, (g: any) => {
 
   // ── At-rules ───────────────────────────────────────────────────────────────
   /**
-   * An at-rule is `@name <prelude>` ended by either a `{}` block or a `;`. The
-   * prelude is scanned up to the `{`/`;`, skipping balanced ()/[] and strings.
+   * A generic at-rule prelude is a grammar-owned token stream, never a later
+   * whitespace split of one opaque scan. A token is a maximal top-level run;
+   * balanced groups and strings remain one segment, while top-level commas stay
+   * explicit. This keeps every segment spanned and lets the AST retain quoted,
+   * nested, and future interpolation-bearing syntax without recognizing it again
+   * in a builder.
+   *
+   * The `comment` stop makes a trailing comment ambient trivia rather than a
+   * prelude byte. Parseman records it against the adjacent typed segment.
    * @see https://www.w3.org/TR/css-syntax-3/#consume-at-rule
    */
-  // Stop the scan at the START of any trailing trivia run before the `{`/`;`,
-  // not at the delimiter itself — otherwise a trailing comment (`… hover /* x */
-  // {`) is swallowed into the prelude leaf instead of staying trivia. The
-  // grammar's ambient trivia then consumes that run for real and logs
-  // it, so `prelude.valueOf()` is the bare prelude and the comment is recoverable
-  // via the trivia map (matches the reference's token-based prelude).
+  const atPreludeStop = choice(ws, comment, literal(','), literal('{'), literal(';'));
+  const atPreludeToken = node('AtPreludeToken', sequence(
+    not(atPreludeStop),
+    scanTo(atPreludeStop, { skip: [balanced('(', ')'), balanced('[', ']'), singleStr, doubleStr] })
+  ));
+  const atPreludeTokens = many(choice(node('AtPreludeToken', literal(',')), atPreludeToken));
+  // Statement at-rules retain their compact string-backed contract for now. They
+  // do not split that scan in a builder; block at-rules below use the structured
+  // token stream because their former builder did exactly that. Keep this seam
+  // explicit so the remaining statement representation can be migrated without
+  // silently changing its public AST shape.
   const atTailTrivia = many(choice(ws, comment));
   const atPreludeScan = scanTo(sequence(atTailTrivia, choice(literal('{'), literal(';'))), {
     skip: [balanced('(', ')'), balanced('[', ']'), singleStr, doubleStr]
@@ -428,7 +440,7 @@ export const cssGrammar = rules({ trivia: rw }, (g: any) => {
   // rather than the rule failing and the at-rule falling through to the opaque
   // UnknownAtRuleBlock (which would silently accept the empty prelude).
   const notDelim = not(choice(literal('{'), literal(';')));
-  const reqQueryPrelude = expect(sequence(notDelim, atPreludeScan), 'query');
+  const reqQueryPrelude = expect(sequence(notDelim, atPreludeTokens), 'query');
   const reqImportPrelude = expect(sequence(notDelim, atPreludeScan), 'import path');
   // `@supports` is stricter than `@media`/`@container`: its prelude is a
   // `<supports-condition>` (css-conditional-3 §2), which — unlike a media/container
@@ -440,10 +452,10 @@ export const cssGrammar = rules({ trivia: rw }, (g: any) => {
   // leftovers that reach it (a bare ident, or an empty prelude) report the missing
   // condition rather than being swallowed by the permissive query fallback (or the
   // opaque UnknownAtRuleBlock). A zero-width lookahead asserts the opener without
-  // consuming, so the shared `atPreludeScan` still owns the scan to `{`; on failure
-  // `expect` recovers in place and the scan continues, so the block still parses.
+  // consuming, so the shared token stream still owns the prelude; on failure
+  // `expect` recovers in place and the block still parses.
   const supportsCondAhead = regex(/(?=\(|not(?![-\w])|-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*\()/i);
-  const reqSupportsPrelude = sequence(expect(supportsCondAhead, 'supports condition'), atPreludeScan);
+  const reqSupportsPrelude = sequence(expect(supportsCondAhead, 'supports condition'), atPreludeTokens);
   // An UNKNOWN at-rule prelude as a REAL token stream — distinct, properly-spanned
   // VERBATIM tokens, NOT one opaque leaf. Typed/semantic value nodes are reserved
   // for KNOWN at-rules (later increments); here every top-level token is kept
@@ -593,16 +605,16 @@ export const cssGrammar = rules({ trivia: rw }, (g: any) => {
   const documentAtKeyword = regex(/@(?:-moz-)?document(?![-\w])/i);
 
   // Shared known-block arms whose body is frame-INDEPENDENT (same nested vs top).
-  const descriptorBlock = sequence(descriptorAtKeyword, atPrelude, literal('{'), g.descriptorBody, expect(literal('}'), '}'));
-  const scopeBlock = sequence(scopeAtKeyword, atPrelude, literal('{'), g.declarationList, expect(literal('}'), '}'));
+  const descriptorBlock = sequence(descriptorAtKeyword, atPreludeTokens, literal('{'), g.descriptorBody, expect(literal('}'), '}'));
+  const scopeBlock = sequence(scopeAtKeyword, atPreludeTokens, literal('{'), g.declarationList, expect(literal('}'), '}'));
   // Spec-specific bodies (Phase 2). Each is frame-INDEPENDENT (its own fixed
   // content model, identical top-level or nested): keyframe blocks / page +
   // margin at-rules / feature-value blocks / (for `@document`) a frame-1
   // stylesheet body.
-  const keyframesBlock = sequence(keyframesAtKeyword, atPrelude, literal('{'), g.keyframesBody, expect(literal('}'), '}'));
-  const pageBlock = sequence(pageAtKeyword, atPrelude, literal('{'), g.pageBody, expect(literal('}'), '}'));
-  const fontFeatureValuesBlock = sequence(fontFeatureValuesAtKeyword, atPrelude, literal('{'), g.fontFeatureValuesBody, expect(literal('}'), '}'));
-  const documentBlock = sequence(documentAtKeyword, atPrelude, literal('{'), g.stylesheetBody, expect(literal('}'), '}'));
+  const keyframesBlock = sequence(keyframesAtKeyword, atPreludeTokens, literal('{'), g.keyframesBody, expect(literal('}'), '}'));
+  const pageBlock = sequence(pageAtKeyword, atPreludeTokens, literal('{'), g.pageBody, expect(literal('}'), '}'));
+  const fontFeatureValuesBlock = sequence(fontFeatureValuesAtKeyword, atPreludeTokens, literal('{'), g.fontFeatureValuesBody, expect(literal('}'), '}'));
+  const documentBlock = sequence(documentAtKeyword, atPreludeTokens, literal('{'), g.stylesheetBody, expect(literal('}'), '}'));
   const sharedKnownArms = choice(descriptorBlock, scopeBlock, keyframesBlock, pageBlock, fontFeatureValuesBlock, documentBlock);
 
   /**
@@ -615,8 +627,8 @@ export const cssGrammar = rules({ trivia: rw }, (g: any) => {
   const AtRuleBlock = node(choice(
     sequence(queryFallbackAtKeyword, reqQueryPrelude, literal('{'), g.declarationList, expect(literal('}'), '}')),
     sequence(supportsFallbackAtKeyword, reqSupportsPrelude, literal('{'), g.declarationList, expect(literal('}'), '}')),
-    sequence(startingStyleAtKeyword, atPrelude, literal('{'), g.declarationList, expect(literal('}'), '}')),
-    sequence(layerAtKeyword, atPrelude, literal('{'), g.declarationList, expect(literal('}'), '}')),
+    sequence(startingStyleAtKeyword, atPreludeTokens, literal('{'), g.declarationList, expect(literal('}'), '}')),
+    sequence(layerAtKeyword, atPreludeTokens, literal('{'), g.declarationList, expect(literal('}'), '}')),
     sharedKnownArms));
   /**
    * A known block at-rule reached from frame 1 (top level). Identical to
@@ -628,8 +640,8 @@ export const cssGrammar = rules({ trivia: rw }, (g: any) => {
   const AtRuleBlockTop = node('AtRuleBlock', choice(
     sequence(queryFallbackAtKeyword, reqQueryPrelude, literal('{'), g.stylesheetBody, expect(literal('}'), '}')),
     sequence(supportsFallbackAtKeyword, reqSupportsPrelude, literal('{'), g.stylesheetBody, expect(literal('}'), '}')),
-    sequence(startingStyleAtKeyword, atPrelude, literal('{'), g.stylesheetBody, expect(literal('}'), '}')),
-    sequence(layerAtKeyword, atPrelude, literal('{'), g.stylesheetBody, expect(literal('}'), '}')),
+    sequence(startingStyleAtKeyword, atPreludeTokens, literal('{'), g.stylesheetBody, expect(literal('}'), '}')),
+    sequence(layerAtKeyword, atPreludeTokens, literal('{'), g.stylesheetBody, expect(literal('}'), '}')),
     sharedKnownArms));
   /**
    * An UNKNOWN at-rule block — one of only two lenient/opaque spots: the UA owns

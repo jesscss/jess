@@ -299,19 +299,22 @@ custom-prop-NAME edit**. It is therefore **NOT** part of the independent-S4 set.
 ## 4. Inventory — sibling parsers (cross-check; Less is the focus)
 
 Flagged so a shared `preprocessorBase` relocation (task #34, `DESIGN-DECISIONS.md` P5) fixes
-shared shapes once. **css-parser is already clean (0 sites)** — the CSS base carries no regex
-debt, confirming the anti-pattern is dialect-builder-local.
+shared shapes once. **Correction (2026-07-18): CSS is not clean.** Its legacy builder still
+rescans source with `charCodeAt` for comment/body gaps and splits raw at-rule preludes by
+regex. Those are direct-fusion blockers, not exceptions: grammar trivia and typed at-rule
+prelude facts replace them.
 
 | package | sites | lines | shared-shape note |
 |---|---|---|---|
-| `css-parser/src/builders.ts` | **0** | — | clean; the relocation target substrate |
-| `scss-parser/src/builders.ts` | 7 | `:312` compare-op leaf, `:345` `not`, `:428` `@each`, `:1089` import path quote, `:1312` `@extend %` placeholder | `:312`/`:1089` mirror Less L6/L3 → **preprocessorBase-shareable**; `:428`/`:1312` are SCSS-specific |
-| `jess-parser/src/builders.ts` | 1 | `:216` `/^[+-]?\d/` numeric-value first-char | mirrors Less L8:193 → shareable trivial (c) |
+| `css-parser/src/builders.ts` | 4 clusters | `:273–291` field/value comment scan; `:629–655`, `:696–706` body-gap comment/newline recovery; `:1299` raw-prelude whitespace regex split | grammar `trivia(...)`/typed trivia log and structured `AtPrelude`; direct CSS fusion blockers |
+| `scss-parser/src/builders.ts` | 6 clusters | compare-op leaf, `not`, `@each`, import path/options, `@extend` placeholder | trivia and `$var` recognition already moved into grammar; remaining forms need typed grammar facts, not leaf classifiers |
+| `jess-parser/src/builders.ts` | 2 clusters | numeric bracket key; sigil stripping | numeric alternative belongs in grammar; sigil should be excluded by the typed leaf, not stripped by a builder |
 
-**Shared-shape wins (relocate once in `preprocessorBase`):** compare-op leaf (L6 / scss:312),
-import-path quoted leaf (L3 / scss:1089), numeric-first-char (L8 / jess:216). The remaining
-Less sites are Less-dialect-specific (var/interp/ns-accessor/mixin) and relocate into the
-Less grammar directly.
+**Shared-shape wins:** compare-op leaf, import-path quoted leaf, and numeric-first-char may
+share explicit grammar combinators where their syntax is genuinely shared. Do not create a
+runtime parser base, host, or scanner to carry them. The remaining Less sites are
+Less-dialect-specific (var/interp/ns-accessor/mixin) and relocate into the Less grammar
+directly.
 
 ---
 

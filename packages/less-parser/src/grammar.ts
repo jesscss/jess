@@ -614,15 +614,21 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   // stranding `.colors[primary]` as a separate single-segment accessor that loses
   // the `#DEF` namespace hop. NsAccessor requires a glued `[` (refIndex first), so a
   // plain color `#DEF` — no bracket — still falls through to Color unchanged.
-  // Requiring the FIRST segment be
-  // a `[` (not a `(`) keeps every call-headed form — `.mixin()`, `.mixin()[k]`,
-  // `#ns.x(.a[])[k]`, chained `.a() > .b()` — on the existing GluedParen /
-  // _tryParseNamespaceRef reassembly paths, which structure call args richly.
-  // The builder (_buildNsAccessor) reuses the same mixin-ruleset assembly as the
-  // declaration-value _assembleSegment path.
-  const nsHead = regex(/(?<![>+~|][ \t]?)[.#]-?(?:[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*)(?:[.#]-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*)*/);
+  // The head is STRUCTURED into per-segment leaves (`#ns`, `.options`) so the host
+  // reads the namespace path directly (no byte re-split), with an optional glued
+  // `(args)` call on the last segment (`#library.add-one(1px)[@return]`) captured as
+  // a structured `MixinArgs` group (outside `noTrivia`, mirroring `VarCall`). A
+  // zero-width `(?=[([])` after the head keeps the whole form glued and lets a plain
+  // color `#DEF` (no bracket) fall through to `Color` unchanged. The builder
+  // (`nsAccessor`) assembles a `MixinCall` base + the `[key]` accessor chain. An
+  // inner `[…]` chain call (`#ns.x()[k](y)`) stays out of scope.
+  const nsHeadSeg = regex(/(?<![>+~|][ \t]?)[.#]-?(?:[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*)/);
+  const nsTailSeg = regex(/[.#]-?(?:[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*)/);
   const NsAccessor = node(
-    noTrivia(sequence(nsHead, refIndex, many(choice(refIndex, refCall)))));
+    sequence(
+      noTrivia(sequence(nsHeadSeg, many(nsTailSeg), regex(/(?=[([])/))),
+      optional(g.MixinArgs),
+      noTrivia(sequence(refIndex, many(choice(refIndex, refCall))))));
   // A CSS `unicode-range` token (`U+A5`, `U+0-7F`, `U+0???`, `U+??????`). Ordered
   // before Dimension/Num/anyValue so the whole `U+…` run is one verbatim value — a
   // bare `ident` would stop at the `+` and leave `+0???`/`0-7F` to be mis-folded as
@@ -1063,6 +1069,9 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
     mediaType,
     many(sequence(regex(/and(?![-\w])/i), g.QueryInParens)));
   const mediaQueryItem = choice(g.QueryCondition, mediaTypeQuery);
+  // Import postludes use the same media-query item grammar, but may be a bare
+  // media type (`screen`), so they cannot reuse `queryPrelude` directly.
+  const ImportMedia = node('ImportMedia', sepBy(mediaQueryItem, literal(',')));
   const queryPrelude = sequence(
     optional(containerName), g.QueryCondition, many(sequence(literal(','), mediaQueryItem)));
   // `@supports` stays in the STRUCTURED query block for well-formed parenthesized /
@@ -1125,16 +1134,18 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   // `url(...)` as the path — committed via `expect`. For `@import malformed "…"`,
   // the token after the keyword is the bare ident `malformed` (neither `(` nor
   // Quoted/Url), so the committed `expect(choice(Quoted, Url))` fails → 1 error.
-  // Ordered before the generic AtRuleStatement; the existing
-  // `_buildImportAtRuleFromPrelude` builder reconstructs the AST from source.
+  // Ordered before the generic AtRuleStatement. Every semantic part stays a
+  // grammar child: no builder re-scans an opaque prelude.
   const importKeyword = regex(/@(?:-import|-export|import)(?![-\w])/i);
-  const importOptionsParen = sequence(literal('('), scanTo(literal(')'), { skip: [bParen, bSquare, bCurly, singleStr, doubleStr] }), literal(')'));
-  const importMedia = scanTo(literal(';'), { skip: [bParen, bSquare, bCurly, singleStr, doubleStr] });
-  const ImportAtRuleStatement = node('AtRuleStatement',
+  const ImportOption = node('ImportOption', regex(/(?:reference|optional|once|multiple|inline|css|less)(?![-\w])/i));
+  const ImportOptions = node('ImportOptions',
+    sequence(literal('('), sepBy(g.ImportOption, literal(',')), literal(')')));
+  const ImportTarget = node('ImportTarget', choice(g.Url, g.Quoted));
+  const ImportAtRuleStatement = node('ImportAtRule',
     sequence(
-      importKeyword, optional(importOptionsParen),
-      expect(choice(g.Url, g.Quoted), 'import path'),
-      optional(importMedia), expect(literal(';'))
+      importKeyword, optional(g.ImportOptions),
+      expect(g.ImportTarget, 'import path'),
+      optional(g.ImportMedia), expect(literal(';'))
     ));
 
   const AtRuleStatement = node(
@@ -1181,7 +1192,7 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
     Ruleset, declarationList, Declaration, customValue, customCurlyBlock, cpInner, cpParen, cpSquare, cpCurly, cpValue, CustomDeclaration, declaration,
     valueList, valueSequence, value, UnicodeRange, Negative, mathProduct, mathSum, topProduct, topSum, parenExprList, InterpValue, NsAccessor, EscapedValue, NamedColor, Url, Quoted,
     parenBody, permissiveParenBody, Paren, GluedParen, DetachedRuleset, functionCallArgs, squareParenBody, calcBody, Call, FormatCall, SquareParen, SelectorCapture, anyValue, EachFor,
-    queryPrelude, QueryAtRuleBlock, SupportsAtRuleBlock, ImportAtRuleStatement,
+    queryPrelude, QueryAtRuleBlock, SupportsAtRuleBlock, ImportAtRuleStatement, ImportOption, ImportOptions, ImportTarget, ImportMedia,
     preludeToken, preludeParen, preludeSquare,
     AtRuleBlock, AtRuleStatement, AtRuleMalformed, atRuleBody,
     // Exposed so composing dialects (SCSS) can re-derive `simpleSelector` with a

@@ -31,14 +31,14 @@ interface Seg {
   readonly sel: string;
 }
 
-function isCombinator(v: string): v is t2.Combinator {
+export function isCombinator(v: string): v is t2.Combinator {
   return v === '>' || v === '+' || v === '~';
 }
 
 /** Map one neutral arg slot to a `CallArg`: a named slot (`@a: v`) → named arg,
  *  a spread slot (`@args...`) → a spread arg whose value is the list VarRef, a
  *  built value node → positional value, an unbuilt slot → its verbatim bytes. */
-function slotToCallArg(slot: ArgSlot): t2.CallArg {
+export function slotToCallArg(slot: ArgSlot): t2.CallArg {
   const built = slot.built;
   if (isNamedMarker(built)) return { name: built.name, value: built.value };
   // [spread] `@args...` forwards a list variable as positional args at dispatch.

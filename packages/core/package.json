@@ -21,6 +21,12 @@
       "import": "./lib/value.js",
       "require": "./lib/value.cjs"
     },
+    "./ast": {
+      "types": "./lib/ast.d.ts",
+      "source": "./src/ast.ts",
+      "import": "./lib/ast.js",
+      "require": "./lib/ast.cjs"
+    },
     "./ast-render": {
       "types": "./lib/ast-render.d.ts",
       "source": "./src/ast-render.ts",
