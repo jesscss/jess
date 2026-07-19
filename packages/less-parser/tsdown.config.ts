@@ -4,6 +4,7 @@ import parseman from 'parseman/plugin';
 export default defineConfig({
   entry: {
     index: './src/index.ts',
+    ast: './src/direct-ast.ts',
     cst: './src/cst.ts',
     grammar: './src/grammar.ts',
     jess: './src/jess.ts'

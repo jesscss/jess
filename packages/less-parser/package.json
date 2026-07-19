@@ -15,6 +15,12 @@
       "import": "./lib/index.js",
       "require": "./lib/index.cjs"
     },
+    "./ast": {
+      "types": "./lib/direct-ast.d.ts",
+      "source": "./src/direct-ast.ts",
+      "import": "./lib/ast.js",
+      "require": "./lib/ast.cjs"
+    },
     "./cst": {
       "types": "./lib/cst.d.ts",
       "source": "./src/cst.ts",
@@ -40,6 +46,7 @@
     "src"
   ],
   "scripts": {
+    "verify:ast-export": "pnpm build && node test/ast-export-smoke.mjs",
     "ci": "pnpm build && pnpm test",
     "prepublishOnly": "pnpm build",
     "build": "pnpm compile",

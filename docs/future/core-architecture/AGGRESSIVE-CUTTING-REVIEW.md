@@ -1028,6 +1028,54 @@ no imported guarded mixins (no speedup to show), but on
       "why": "bindArgs already owns the named-argument Map. The deleted filledByName Set and preparatory fixed-parameter loop only duplicated named.has(p.name), so each bind now avoids that Set allocation and scan while preserving the same named/default/positional/rest selection branch.",
       "byteIdentity": {"fixture":"benchmark.less","collapseNesting":true,"outputSha256":"adfd26732125a33fc1e264aca7d7ecde8c7c1da43f968e3106bd387a1f78e840","outputBytes":133983}
     }
+  },
+  {
+    "id": "less-direct-import-ast-entry",
+    "kind": "neutral-or-negative",
+    "surface": "Closed opt-in Less direct ImportAtRule result shaping (direct-ast.ts)",
+    "files": ["packages/less-parser/src/direct-ast.ts"],
+    "sourceCheck": {
+      "file": "packages/less-parser/src/direct-ast.ts",
+      "caller": "export function parse",
+      "call": "return { document: result.value, errors: [] }",
+      "guard": "result.ok && result.unconsumedFrom === null"
+    },
+    "evidence": {"command":["pnpm","exec","vitest","--run","packages/less-parser/test/direct-ast.test.ts"]},
+    "neutralRefactor": {
+      "costDelta": "neutral",
+      "allowsProsecutedDangerTokens": true,
+      "why": "This is an isolated opt-in fact-only pilot, outside lessGrammar and LessParser. It constructs only canonical Root and ImportAtRule data for the caller-selected plain quoted-import subset. It performs no import resolution, file loading, source reparse, StyleImport construction, bridge conversion, or evaluator work, and the existing Less benchmark path does not instantiate it.",
+      "dangerTokensJustification": "The public result and diagnostic arrays are cold pilot API data. The Root child array is the canonical direct parser output for explicit callers only; no existing parser or renderer path gains an allocation or traversal.",
+      "byteIdentity": {"fixture":"benchmark.less","collapseNesting":true,"outputSha256":"adfd26732125a33fc1e264aca7d7ecde8c7c1da43f968e3106bd387a1f78e840","outputBytes":133983}
+    }
+  },
+  {
+    "id": "less-direct-import-ast-grammar",
+    "kind": "neutral-or-negative",
+    "surface": "Closed Less direct plain-import AST reductions (direct-ast/grammar.ts)",
+    "files": ["packages/less-parser/src/direct-ast/grammar.ts"],
+    "evidence": {"command":["pnpm","exec","vitest","--run","packages/less-parser/test/direct-ast.test.ts"]},
+    "neutralRefactor": {
+      "costDelta": "neutral",
+      "allowsProsecutedDangerTokens": true,
+      "why": "The grammar is an isolated opt-in pilot and is not composed into lessGrammar or any dialect grammar. Its reductions construct a quoted target and ImportAtRule directly from grammar-fixed child positions. It adds no build host, action map, legacy node, bridge, resolver, source reparse, or work to the existing Less parser route.",
+      "dangerTokensJustification": "The literal AST objects and Root child array are the canonical output of the explicit closed subset. They are not allocated by the existing parser or renderer and do not add a post-parse scan, fallback, or compatibility path.",
+      "byteIdentity": {"fixture":"benchmark.less","collapseNesting":true,"outputSha256":"adfd26732125a33fc1e264aca7d7ecde8c7c1da43f968e3106bd387a1f78e840","outputBytes":133983}
+    }
+  },
+  {
+    "id": "ast-quoted-literal-type-export",
+    "kind": "neutral-or-negative",
+    "surface": "Explicit canonical AST Quoted type export (ast.ts)",
+    "files": ["packages/core/src/ast.ts"],
+    "evidence": {"command":["pnpm","--filter","@jesscss/core","build"]},
+    "neutralRefactor": {
+      "costDelta": "neutral",
+      "allowsProsecutedDangerTokens": true,
+      "why": "AstQuoted is a type-only alias for the parser-produced literal node, disambiguating it from the evaluator-result Quoted value type. It produces no JavaScript export, parser branch, allocation, traversal, resolver, or renderer work.",
+      "dangerTokensJustification": "The flagged Root/result literals and child-array copy belong solely to the separate direct Less parser pilot. AstQuoted itself is erased type metadata and does not add or admit runtime work in core.",
+      "byteIdentity": {"fixture":"benchmark.less","collapseNesting":true,"outputSha256":"adfd26732125a33fc1e264aca7d7ecde8c7c1da43f968e3106bd387a1f78e840","outputBytes":133983}
+    }
   }
 ]
 ```
