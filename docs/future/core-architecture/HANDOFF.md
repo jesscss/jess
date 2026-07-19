@@ -1,3 +1,38 @@
+<!-- ============================================================ -->
+<!-- ⏸ SESSION RESUME — 2026-07-18 (halted: monthly spend limit)   -->
+<!-- ============================================================ -->
+
+## ⏸ RESUME HERE (2026-07-18 — spend-limit halt)
+
+**Current `origin/dev` = `839c27cd6`** (main checkout clean on it). **Differential MATCH 68/88** (was 60 at session start), **all-less ~11 failures** (95/106).
+
+### What LANDED this session (on dev)
+- **ENGINE CUTOVER crossed its watershed:** the `.less` render **flip** landed (`23722c69f`) — legacy `tree/` eval is OUT of the `.less` path (`.less`→`renderAstDoc`; `.scss`/`.jess` still on legacy, their only renderer). **R0** (`e4446a92c`) repointed the ast/ import var-sniff off `parseLessFn`→`parseToAst` — **the ast/ `.less` path is now BuilderHost-free.** Production ast/ Less path stood up (`d67e7f581`, `Compiler.renderAstLess`).
+- **scss-parser P1** (`725163652`): builder dispatch flipped to a name-keyed MAP (byte-identical).
+- **Plugins native P1** (scope-frame fn registry) + **P2** (`fcd100bae`, native `@plugin` global fns, ZERO less-compat dep, `functions-harness` PASS).
+- Differential closes: `operations`, `functions`, `extend-selector`, `calc`, `import-module`, `include-path`, `media`/`container` prelude-eval, mixin cluster (noparens/closure/advanced), selector-capture `*[…]`, `css-escapes`, `default()` guard, `variables !important`, url/data-uri builtins (+ FnCtx IO capability), number-precision, color `rgba`/clamp, comma-list normalize, compact `:is()` nesting.
+- **Infra:** parseman `link:` symlink fixed (`7b50d5dec`, postinstall auto-heal — kills the recurring env-red); worktree cleanup 290→73; terminology scrub (no "oracle"/"golden" in prose); docs #41 + #16; jess-parser build (0 tsc errors).
+
+### THE priority (owner's push): kill the build stage / `parse-host`
+Grammar→AST-v2 **fusion** = each grammar rule builds AST-v2 directly; `dispatch-host`+`actions/*` DELETED (~26% of parse + intermediate CST). Predicted **~4-7ms** off render. **Gate = delete `builders.ts`/BuilderHost**, which needs: scss-parser off `LessGrammar` (rebase **P2/P3**) — R0 already cleared the `.less` edge; the less-compat bridge is OFF the gate (proven — it tails legacy tree/ *node classes* for `.scss`/`.jess` only). Sequence: **scss P2/P3 → `rm builders.ts`+BuilderHost → extract `@jesscss/ast-nodes` → fuse.** Designs: `GRAMMAR-AST-FUSION-DESIGN.md` (on branch `design/grammar-ast-fusion`), `SCSS-PARSER-REBASE-DESIGN.md` (`design/scss-parser-rebase`), `LESS-COMPAT-REPOINT-DESIGN.md` (`design/less-compat-repoint`), `AST-NATIVE-PLUGINS-DESIGN.md` (`design/ast-native-plugins`).
+
+### In-flight agents halted mid-work — branches PRESERVED on origin (resume in priority order)
+1. **`feat/namespace-accessor`** (agent a534, +1 commit, was validating) — **HIGHEST-value quick win.** Namespace/property-accessor eval (`#ns.options[val1]`, `.alias[@a]`) → closes all-less `namespacing-1..7` + `property-accessors`. **Resume:** `git checkout feat/namespace-accessor`, build core, run `alpha-oracle-differential` + all-less namespacing + 4.x-verify, then FF to dev. It was mid-validation; just confirm no regression and land.
+2. **`cutover/nuke-builderhost`** (agent ac7d, WIP commit) — **THE cutover thread.** Was analyzing scss's Less-builder deps (found: valid SCSS needs exactly ~4 neutral Less builders; `MixinCall` is an error-case that severing correctly rejects). **Resume:** finish scss P2 (factor `preprocessorBase`) → P3 (scss off `LessGrammar`, standalone; flip `QueryAtRuleBlock` + update 3 prelude tests) → delete `builders.ts`+BuilderHost. Keep `grammar.ts`'s `lessGrammar` intact. Guard: ast/ differential 68 held.
+3. **`feat/plugin-p3-preeval`** (agent a0bb, WIP commit, 5 files) — plugin pre-eval visitor phase (`plugin-preeval`), reuses `plugin-runtime.ts`. **Resume:** finish the pre-eval seam in `render-doc.ts` + the shim's `visitors`/`manager` mock; idle byte-identical.
+4. **`fix/nested-media-detached`** (agent a7a5, NO commit — barely started) — nested `@media` from a called ruleset (`detached-rulesets` + `media` residual). RISKY (11 MATCH `@media` fixtures). **Resume fresh**; STOP-if-regresses guard.
+5. **`@jesscss/ast-nodes` extraction** (agent a679, worktree gone, nothing saved) — fusion prereq (dependency-free node-factory package the grammar imports). **Resume fresh**; ADDITIVE (move value/factory module + re-export from `@jesscss/core/value`).
+
+### OPEN owner decisions (non-blocking)
+- **less-compat fate:** keep 4.x plugin/visitor compat on ast/ (Option A: schedule bridge repoint) vs let it lapse for `@use`/`@compose` (Option B: delete less-compat with legacy tree/). Coordinator lean: **B**.
+- **`parse-interpolation.css`** (hand-authored spec): `foo: baz`→`bar` typo; comma-space vs comma-newline (ast/ emits newline, matching how it formats all nested headers). Owner to pick; then update the alpha `.css` or the engine.
+- **Materialization #37:** simple in-place leaf→node upgrade — implement or leave.
+
+### Remaining differential (~18 DIFF) / all-less (~11)
+Covered-by-branch: namespacing (a534), plugin-preeval (a0bb), nested-@media/detached (a7a5). Still open: `mixins-guards`/`mixins-interpolated` residuals (serialize: `.3s`→`0.3s` leading-zero [triage vs verbatim], `.foo`/`#foo` adjacent-merge, `&`-N de-nesting), `permissive-parse`, `plugin`/`plugin-module`/`plugin-preeval` (P3/P4-scoped/P5+clean-css devDep), `import-remote` (network), `urls` non-IO facets (url-token parse, 2-line value whitespace, interpolated `@import`), `media` prelude-arithmetic residual (needs Tier-B query-prelude value structuring). Pre-existing legacy red: `tree/extend/pipeline-capstone` (5, NOT ast/ — ignore).
+
+<!-- ============================================================ -->
+
 > ⚠️ **The active cleanup queue is now [`CORE-CLEANUP.md`](./CORE-CLEANUP.md).** The
 > per-focus trackers this doc references (SINGLE_FRAME_PLAN, NODE-REWRITE-TRACKER,
 > PERFORMANCE-HANDOFF, BINDING-LOOKUP-REMAINING) were consolidated there; their history
