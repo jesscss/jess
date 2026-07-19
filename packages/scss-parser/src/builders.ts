@@ -1,21 +1,13 @@
 /**
- * ScssGrammar — Parséman-based SCSS parser, extending LessGrammar.
+ * ScssGrammar — Parséman-based SCSS parser, extending the CSS builder base.
  *
- * Adds SCSS-specific grammar on top of Less (which in turn extends CSS):
+ * Builds SCSS-specific grammar nodes:
  *   - Variable declarations: $var: value [!default|!global];  →  VarDeclaration
  *   - Variable references:   $var                             →  Reference
  *   - Line comments:         // ...  (added to rw trivia)
  *
- * Inherits from LessGrammar:
- *   - Nested rulesets, & ampersand, relative selectors
- *   - anyDeclaration entry point
- *   - atRuleBody, declarationList, Stylesheet overrides
- *   - Less merge operators on Declaration (harmless for SCSS)
- *
- * Chevrotain note: in the Chevrotain architecture, ScssRecursiveParser
- * extends CssRecursiveParser independently of LessRecursiveParser.
- * Here we take the Parséman inheritance chain
- * CssParser → LessGrammar → ScssGrammar to maximise code reuse.
+ * SCSS and Less are sibling dialects. This host inherits CSS-only builders;
+ * SCSS-specific construction lives below and must not acquire Less fallbacks.
  */
 
 import {
@@ -26,8 +18,7 @@ import {
   literal
 } from 'parseman';
 import type { CSTLeaf, CSTError } from 'parseman';
-import { LessGrammar } from '@jesscss/less-parser/jess';
-import { spannedComponents, type BuilderFn } from '@jesscss/css-parser/jess';
+import { CssParser, spannedComponents, type BuilderFn } from '@jesscss/css-parser/jess';
 
 import {
   type Node,
@@ -115,7 +106,7 @@ function nodeChildren(children: ReadonlyArray<Child>): JessNode[] {
 // ScssGrammar
 // ---------------------------------------------------------------------------
 
-export class ScssGrammar extends LessGrammar {
+export class ScssGrammar extends CssParser {
   // ── Override rw to include // line comments ───────────────────────────────
   // Must be declared BEFORE _trivia so the field initializer captures this rw.
   rw = regex(/(?:[ \t\n\r\f]+|\/\/[^\n\r]*|\/\*(?:[^*]|\*(?!\/))*\*\/)+/);
@@ -130,7 +121,7 @@ export class ScssGrammar extends LessGrammar {
   scssVar = regex(/\$-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*/);
 
   // ── VarDeclaration: $color: value [!default|!global]; ────────────────────
-  // Overrides LessGrammar.VarDeclaration (which uses g.lessVar).
+  // SCSS uses `$` declarations rather than the Less `@` form.
   VarDeclaration = (g: any) => sequence(
     g.scssVar,
     literal(':'),
@@ -140,16 +131,14 @@ export class ScssGrammar extends LessGrammar {
   );
 
   // ── Reference: $var in value positions ───────────────────────────────────
-  // Overrides LessGrammar.Reference (which used g.lessVar + optional accessor).
+  // SCSS references are deliberately not Less accessor chains.
   Reference = (g: any) => g.scssVar;
 
   // ── builder map ───────────────────────────────────────────────────────────
 
   protected override _builderEntries(): Record<string, BuilderFn> {
-    // `base` = css ⊕ less (last-wins). SCSS overrides win over both by name, so
-    // there is no dead-override trap. Declaration/CustomDeclaration delegate to
-    // the base (Less) builder via the merged map, matching the former
-    // `super.buildNode` fallback exactly.
+    // `base` is CSS only. SCSS overrides win by rule name; no Less builder is
+    // reachable through this host.
     const base = super._builderEntries();
     return { ...base, ...this._scssBuilderEntries(base) };
   }
@@ -212,6 +201,11 @@ export class ScssGrammar extends LessGrammar {
       ScssScopeBlock: a => this._buildScssPermissiveAtRule(a.children, a.loc),
       ScssQueryInterpBlock: a => this._buildScssQueryInterpBlock(a.children, a.loc),
       ScssLayerBlock: a => this._buildScssLayerBlock(a.children, a.loc),
+      // These grammar rules are shared preprocessor structure, not Less
+      // semantics. They are explicit here so a CSS-base host never falls back
+      // to Less's query builder or loses top-level arithmetic construction.
+      QueryAtRuleBlock: a => this._buildScssQueryAtRuleBlock(a.rawChildren, a.children, a.loc),
+      OperationTop: a => this._buildOperation(a.children, a.loc, true) as JessNode,
       Call: a => this._buildCall(a.rawChildren, a.loc),
       SquareParen: a => this._buildSquareParen(a.rawChildren, a.loc),
       Paren: a => this._buildScssParen(a.rawChildren, a.loc)
@@ -773,6 +767,9 @@ export class ScssGrammar extends LessGrammar {
   ) {
     const decl = buildLess() as Declaration;
     const d = decl as { name?: unknown; value?: unknown };
+    if (isNode(d.value as Node, N.Operation)) {
+      d.value = new Expression(d.value as Node, undefined, loc);
+    }
     const interpName = this._structuredInterpName(children);
     if (interpName) {
       d.name = interpName;
@@ -1263,13 +1260,28 @@ export class ScssGrammar extends LessGrammar {
     ) as unknown as JessNode;
   }
 
-  protected override _buildQueryAtRuleBlock(children: ReadonlyArray<Child>, loc: LocationInfo) {
+  /**
+   * Query rules retain their source prelude as an AST leaf. The structured
+   * grammar remains the validator; reading the already-consumed span here
+   * avoids importing Less's source-rebuilding builder solely to render a
+   * dialect-neutral prelude.
+   */
+  private _buildScssQueryAtRuleBlock(
+    rawChildren: ReadonlyArray<{ _tag: string }>,
+    children: ReadonlyArray<Child>,
+    loc: LocationInfo
+  ) {
     const ls = children.filter((c): c is CSTLeaf => c?._tag === 'leaf');
     const name = ls[0]?.value ?? '';
+    const parts = spannedComponents(rawChildren);
+    const keywordEnd = parts[0]?.span.end ?? loc.start;
+    const braceStart = parts.find(part => part.comp === '{')?.span.start ?? loc.end;
     const braceIdx = children.findIndex(c => c._tag === 'leaf' && (c as CSTLeaf).value === '{');
-    const preludeChildren = braceIdx >= 0 ? children.slice(1, braceIdx) : children.slice(1);
     const bodyChildren = braceIdx >= 0 ? children.slice(braceIdx + 1) : [];
-    const prelude = new Sequence(nodeChildren(preludeChildren) as Node[], undefined, loc);
+    const preludeText = this._source.slice(keywordEnd, braceStart).trim();
+    const prelude = preludeText === ''
+      ? undefined
+      : new Any(preludeText, { role: 'ident' }, { start: keywordEnd, end: braceStart });
     return new AtRule(
       { name, prelude, rules: nodeChildren(bodyChildren) },
       undefined,
