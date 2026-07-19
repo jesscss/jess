@@ -7,11 +7,12 @@ state and rejected experiments are preserved in
 
 ## Current target
 
-Make AST v2 the one canonical core representation. Parser grammars construct it
-directly through parser-local factories backed by `@jesscss/core/ast`; the
-transitional `parse-host`, `BuilderHost`, bridge builders, and legacy runtime
-recognizers are deleted rather than relocated. Internal consumers that still
-expect old shapes may go red during this cutover and are then repaired or
+Make AST v2 the one canonical core representation. Parser grammar reductions
+emit its exact plain discriminated data directly (with optional type-only
+contracts from `@jesscss/core/ast`); they do not call a runtime factory layer.
+The transitional `parse-host`, `BuilderHost`, bridge builders, and legacy
+runtime recognizers are deleted rather than relocated. Internal consumers that
+still expect old shapes may go red during this cutover and are then repaired or
 removed.
 
 ## Router
@@ -28,9 +29,11 @@ removed.
 
 ## Non-negotiable architecture rules
 
-- The grammar reduction in each dialect parser owns AST construction. It calls
-  parser-local factories directly; do not add a replacement `BuilderHost`,
-  `ParseHost`, generic action registry, dispatch host, or compatibility shim.
+- The grammar reduction in each dialect parser owns AST construction. It emits
+  exact local AST literals; do not add a runtime factory module, `BuilderHost`,
+  `ParseHost`, generic action registry, dispatch host, artifact callback ABI,
+  or compatibility shim. Core constructors are optional programmatic
+  conveniences, never the parser construction contract.
 - `packages/css-parser`, `packages/less-parser`, `packages/scss-parser`, and
   `packages/jess-parser` may recognize syntax only through Parseman grammar
   combinators and macro-compiled output. Handwritten runtime regexes, scanners,
