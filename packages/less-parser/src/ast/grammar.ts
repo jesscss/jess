@@ -1,4 +1,4 @@
-/** Closed direct AST-v2 grammar for the simplest Less import fact. */
+/** Private AST grammar development slice for canonical Less facts. */
 import { choice, literal, many, node, regex, rules, sequence, trivia } from 'parseman' with { type: 'macro' };
 import type { Comment, Complex, Compound, Declaration, ImportAtRule, Quoted, Root, Rule, SelectorList, Statement, VarDeclaration } from '@jesscss/core/ast';
 
@@ -187,7 +187,7 @@ const simpleSelector = regex(/(?:[.#]?-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-
 const doubleQuotedText = regex(/[^"\\]*/);
 const singleQuotedText = regex(/[^'\\]*/);
 
-export const directLessAstGrammar = rules({ trivia: whitespace }, (g: any) => {
+export const lessAstGrammar = rules({ trivia: whitespace }, (g: any) => {
   const DirectLessQuoted = node<Quoted>(
     'DirectLessQuoted',
     choice(
@@ -304,14 +304,14 @@ export const directLessAstGrammar = rules({ trivia: whitespace }, (g: any) => {
       body: requireRulesetBody(children.slice(2, -1))
     })
   );
-  const DirectLessDocument = node<Root>(
-    'DirectLessDocument',
+  const LessAstDocument = node<Root>(
+    'LessAstDocument',
     many(choice(g.DirectLessImport, g.DirectLessVarDeclaration, g.DirectLessRuleset, g.DirectLessDeclaration)),
     children => ({ type: 'Root', children: requireStatements(children) })
   );
 
   return {
-    DirectLessDocument,
+    LessAstDocument,
     DirectLessImport,
     DirectLessVarDeclaration,
     DirectLessDeclaration,

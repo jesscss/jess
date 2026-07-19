@@ -6,8 +6,7 @@ export default defineConfig({
     index: './src/index.ts',
     ast: './src/direct-ast.ts',
     cst: './src/cst.ts',
-    grammar: './src/grammar.ts',
-    jess: './src/jess.ts'
+    grammar: './src/grammar.ts'
   },
   format: ['esm', 'cjs'],
   dts: true,

@@ -33,12 +33,6 @@
       "import": "./lib/grammar.js",
       "require": "./lib/grammar.cjs"
     },
-    "./jess": {
-      "types": "./lib/jess.d.ts",
-      "source": "./src/jess.ts",
-      "import": "./lib/jess.js",
-      "require": "./lib/jess.cjs"
-    },
     "./package.json": "./package.json"
   },
   "files": [

@@ -1,7 +1,7 @@
-import { parse } from '../src/direct-ast.js';
+import { parse } from '../src/ast/parse.js';
 
-describe('direct Less AST-v2 facts', () => {
-  it('constructs canonical import, variable, declaration, and ruleset facts without a host or bridge', () => {
+describe('private Less AST grammar facts', () => {
+  it('constructs canonical import, variable, declaration, and ruleset facts directly', () => {
     const parsed = parse('@theme: "dark";\n.a { /* note */ color: red; }\n@import "theme.less";\n@-export \'tokens.less\';');
 
     expect(parsed.errors).toEqual([]);

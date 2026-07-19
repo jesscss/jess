@@ -8,7 +8,7 @@
  */
 import { run } from 'parseman';
 import type { Root } from '@jesscss/core/ast';
-import { directLessAstGrammar } from './direct-ast/grammar.js';
+import { lessAstGrammar } from './grammar.js';
 
 export type LessAstParseError = { message: string; offset: number };
 
@@ -28,7 +28,7 @@ function isRoot(value: unknown): value is Root {
 
 /** Parse the closed import/variable/declaration/ruleset subset into canonical AST-v2 data. */
 export function parse(input: string): LessAstParseResult {
-  const result = run(directLessAstGrammar.DirectLessDocument, input, { trivia: directLessAstGrammar.whitespace });
+  const result = run(lessAstGrammar.LessAstDocument, input, { trivia: lessAstGrammar.whitespace });
   if (result.ok && result.unconsumedFrom === null && isRoot(result.value)) {
     // Parseman's public runner exposes `unknown`; accept only the grammar's
     // canonical Root result rather than asserting a value across that boundary.

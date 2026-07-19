@@ -1,9 +1,8 @@
 # @jesscss/less-parser
 
-The Less grammar, layered on the CSS base parser — the parser behind the language Jess ships today.
+The Less grammar, layered on the CSS base parser, with core-free CST entry points.
 
-> **Status: alpha.** Part of [Jess](https://github.com/jesscss/jess). Parsing
-> and compiling `.less` is the main shipping surface today; the broader
+> **Status: alpha.** Part of [Jess](https://github.com/jesscss/jess). The broader
 > language/tooling picture is still early. Expect gaps and
 > [report bugs](https://github.com/jesscss/jess/issues). Docs live at
 > [jesscss.github.io](https://jesscss.github.io/).
@@ -21,10 +20,8 @@ general-purpose JavaScript parser** in its
 Jess uses when it compiles `.less` — the "Now" tier of the language roadmap, and
 the one dialect shipping in the alpha.
 
-Two ways to use it:
-
-- **As part of Jess** — the default `.` entry is wired into `@jesscss/core` and produces the core AST the Jess compiler evaluates (this is what runs when Jess compiles Less). This is the internal, core-coupled path.
-- **As a standalone CST parser** — the `./cst` entry has **no dependency on `@jesscss/core`**. Install just this package and parse Less source text into a concrete syntax tree (CST). You can also plug your own builders onto the grammar to produce your own AST instead of the default CST.
+Use it as a standalone CST parser or consume the compiled grammar from a parser-owned
+reduction. The package has no core-owned parser driver or AST construction host.
 
 ## Install
 
@@ -32,7 +29,8 @@ Two ways to use it:
 npm install @jesscss/less-parser
 ```
 
-`@jesscss/core` is an **optional** peer dependency — needed only for the core-coupled `.` entry, not for `./cst` or `./grammar`.
+`@jesscss/core` is an optional peer for consumers that use its node definitions; this
+package itself exposes only CST and grammar surfaces.
 
 ## Standalone usage (core-free)
 
@@ -62,8 +60,7 @@ Pass a different `startRule` (any capitalized grammar rule, e.g. `'SelectorList'
 | `@jesscss/less-parser/cst` | `parseLessCst` | Core-free parse of a Less string to a CST. |
 | `@jesscss/less-parser/cst` | `LessCstNode`, `LessCstLeaf`, `LessCstError`, `LessCstChild`, `LessCstParseResult`, `LessCstType` (types) | CST type definitions (aliases of the shared `@jesscss/css-parser/cst` types). |
 | `@jesscss/less-parser/grammar` | `lessGrammar` | The compiled Less grammar (a rule map). Extend it with `compose()` or drive it directly with parseman's `run`. |
-| `@jesscss/less-parser` (`.`) | `LessParser` (also `Parser`), `parseLessFn`, `lessGrammar`, tokens, … | The Jess-internal barrel. **Core-coupled** (the functional parser builds the core AST). Prefer `./cst` if you don't need `@jesscss/core`. |
-| `@jesscss/less-parser/jess` | `LessParser`, `LessGrammar`, `parseLessFn`, … | Internal Jess-facing surface. |
+| `@jesscss/less-parser` (`.`) | `lessGrammar`, `parseLessCst`, `parseLessDoc` | Convenience barrel for the grammar and core-free CST surface. |
 
 ## Default CST shape
 

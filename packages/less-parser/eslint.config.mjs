@@ -21,13 +21,5 @@ export default tseslint.config([
       'no-return-assign': 'off',
       '@typescript-eslint/no-unsafe-type-assertion': 'error'
     }
-  },
-  {
-    files: [
-      'src/lessTokens.ts'
-    ],
-    rules: {
-      '@typescript-eslint/no-unsafe-type-assertion': 'off'
-    }
   }
 ]);

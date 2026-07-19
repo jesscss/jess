@@ -1,10 +1,8 @@
 /**
- * Functional Less grammar — the macro-compiled counterpart to the class-based
- * LessGrammar. This file is JUST the grammar: `lessGrammar = compose([cssGrammar,
- * <Less delta>])`. Most returned rules are structural `node(parser)` entries that build via
- * the injected `ctx.build` host. The host + parse entry (`parseLessFn`,
- * `LessParser`) live in ./functional-parser.ts; the shared driver in
- * @jesscss/css-parser.
+ * Functional Less grammar: `lessGrammar = compose([cssGrammar, <Less delta>])`.
+ * Its structural `node(parser)` entries are consumed by the CST runner or by
+ * parser-local direct AST reductions; core supplies neither a parse host nor a
+ * parse entry.
  */
 import {
   rules, compose,
@@ -104,16 +102,8 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   const lessInterp = node('LessInterp',
     noTrivia(sequence(literal('@{'), interpHead, many(interpAccessor), literal('}'))));
   // Interpolated custom-property name (`--@{key}`, `--foo-@{key}-bar`).
-  // TODO(tier-b/A4): WHAT \u2014 kept as ONE token (NOT leaf-split like the value below).
-  // WHY \u2014 the legacy BuilderHost that drives the less-compat bridge consumes this
-  // single-leaf shape; splitting it into `@{\u2026}` leaves regressed the bridge's
-  // custom-prop name emission (`--@{k}` \u2192 `--`), an external-contract break. RETIREMENT
-  // TRIGGER \u2014 split into `--` + ident-chunk + isolated `lessInterp` leaves (mirroring
-  // `InterpolatedSelector`) when the legacy BuilderHost is retired (reorg Phase A4);
-  // the tree2 host's `declName` re-tokenizer retires with it. (The VALUE below IS
-  // split \u2014 the legacy builder tolerates that.)
-  // Both `@{var}` and `${prop}` interpolation sigils are accepted (`--z-${prop}`);
-  // the host `declName` structures each (`@`\u2192VarRef, `$`\u2192PropRef).
+  // It remains one token until a parser-local direct-AST reduction owns the
+  // segmented representation. Both `@{var}` and `${prop}` sigils are accepted.
   const customPropInterp = regex(/--(?:-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*|-)?[@$]\{-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*(?:\[[-_a-zA-Z0-9@$\u0080-\uffff]+\])*\}(?:[@$]\{-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*(?:\[[-_a-zA-Z0-9@$\u0080-\uffff]+\])*\}|[-_a-zA-Z0-9\u0080-\uffff])*/);
 
   // \u2500\u2500 Quoted (Less \u00a73.3: structure `@{name}` interpolation inside a string) \u2500\u2500\u2500\u2500
@@ -149,18 +139,8 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   // `Quoted` wins by name); SCSS composes on the CSS base, NOT on Less, so it never
   // inherits this Less body.
   //
-  // TODO(\u00a74.1/interp-body-accessor-resolution): the GRAMMAR structures the widened
-  // `@{head[key]}` body at every `@{\u2026}` site (byte-identical for `@{name}`), but the
-  // legacy BuilderHost interp-reference builder (`createInterpolatedReference` /
-  // `getInterpolatedOrString` in ./utils.ts) still captures the whole body as a FLAT
-  // `Reference{ key: "head[key]" }` (a bogus variable NAME), so `@{head[key]}` does
-  // not yet RESOLVE (it evaluates to an "undefined variable @head[key]" error, the
-  // same as any unresolvable interp \u2014 no silent corruption). To resolve, that builder
-  // must emit the SAME structured accessor `Reference{ key, target, options:index }`
-  // the value-position `@head[key]` path (`_buildReference` + `refIndex`) already
-  // builds, AND the ast/ bridge `replacementToValue` (packages/core/.../__tests__/
-  // bridge.ts) must route an accessor `Reference` to `buildMapAccessor` (today it
-  // only maps a flat `varRef`). Both live on the load-bearing legacy eval path.
+  // The grammar structures `@{head[key]}` at every interpolation site. A future
+  // parser-local direct-AST reduction owns any accessor-evaluation semantics.
   const strInterp = lessInterp;
   const Quoted = node('Quoted', choice(
     sequence(literal('"'), many(dqChunk), strInterp, many(choice(strInterp, dqChunk)), literal('"')),
@@ -170,12 +150,12 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   ));
 
   // ---------------------------------------------------------------------------
-  // Grammar — CSS base rules + Less overrides/additions (mirrors LessGrammar).
+  // Grammar — CSS base rules + Less overrides/additions.
   // ---------------------------------------------------------------------------
 
   // ── Root (Less: + VarDeclaration, MixinCall, detached Call) ─────────────────
   // No catch-all: unmatched input stops `many`; the driver reports the unconsumed
-  // offset as one syntax error (parseLessFn). Bare `;` is an empty statement.
+  // offset as one syntax error. Bare `;` is an empty statement.
   // The per-statement choice used by the root `many(...)`. Exposed as a named
   // rule so grammars that EXTEND Less (e.g. SCSS) can inject their own
   // statements ahead of it — `many(choice(g.ScssIf, …, g.stylesheetItem))` —
