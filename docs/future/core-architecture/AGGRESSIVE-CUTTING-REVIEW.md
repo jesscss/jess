@@ -1030,6 +1030,18 @@ no imported guarded mixins (no speedup to show), but on
     }
   },
   {
+    "id": "core-parser-leaf-type-alias-deletion",
+    "kind": "neutral-or-negative",
+    "surface": "Core AST leaf export cleanup (ast.ts)",
+    "files": ["packages/core/src/ast.ts"],
+    "evidence": {"command":["pnpm","--filter","@jesscss/core","build"]},
+    "neutralRefactor": {
+      "costDelta": "neutral",
+      "why": "The deleted redundant type-only alias had no emitted JavaScript and the parser leaf already exports the canonical node type directly. Removing it shrinks the public type surface without adding runtime work, parser branch, allocation, traversal, resolver, or renderer behavior.",
+      "byteIdentity": {"fixture":"benchmark.less","collapseNesting":true,"outputSha256":"adfd26732125a33fc1e264aca7d7ecde8c7c1da43f968e3106bd387a1f78e840","outputBytes":133983}
+    }
+  },
+  {
     "id": "less-direct-import-ast-entry",
     "kind": "neutral-or-negative",
     "surface": "Closed opt-in Less direct ImportAtRule result shaping (direct-ast.ts)",
@@ -1060,20 +1072,6 @@ no imported guarded mixins (no speedup to show), but on
       "allowsProsecutedDangerTokens": true,
       "why": "The grammar is an isolated opt-in pilot and is not composed into lessGrammar or any dialect grammar. Its reductions construct a quoted target and ImportAtRule directly from grammar-fixed child positions. It adds no build host, action map, legacy node, bridge, resolver, source reparse, or work to the existing Less parser route.",
       "dangerTokensJustification": "The literal AST objects and Root child array are the canonical output of the explicit closed subset. They are not allocated by the existing parser or renderer and do not add a post-parse scan, fallback, or compatibility path.",
-      "byteIdentity": {"fixture":"benchmark.less","collapseNesting":true,"outputSha256":"adfd26732125a33fc1e264aca7d7ecde8c7c1da43f968e3106bd387a1f78e840","outputBytes":133983}
-    }
-  },
-  {
-    "id": "ast-quoted-literal-type-export",
-    "kind": "neutral-or-negative",
-    "surface": "Explicit canonical AST Quoted type export (ast.ts)",
-    "files": ["packages/core/src/ast.ts"],
-    "evidence": {"command":["pnpm","--filter","@jesscss/core","build"]},
-    "neutralRefactor": {
-      "costDelta": "neutral",
-      "allowsProsecutedDangerTokens": true,
-      "why": "AstQuoted is a type-only alias for the parser-produced literal node, disambiguating it from the evaluator-result Quoted value type. It produces no JavaScript export, parser branch, allocation, traversal, resolver, or renderer work.",
-      "dangerTokensJustification": "The flagged Root/result literals and child-array copy belong solely to the separate direct Less parser pilot. AstQuoted itself is erased type metadata and does not add or admit runtime work in core.",
       "byteIdentity": {"fixture":"benchmark.less","collapseNesting":true,"outputSha256":"adfd26732125a33fc1e264aca7d7ecde8c7c1da43f968e3106bd387a1f78e840","outputBytes":133983}
     }
   }

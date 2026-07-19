@@ -1,6 +1,6 @@
 /** Closed direct AST-v2 grammar for the simplest Less import fact. */
 import { choice, literal, many, node, regex, rules, sequence, trivia } from 'parseman' with { type: 'macro' };
-import type { AstQuoted, Declaration, ImportAtRule, Root, Statement, VarDeclaration } from '@jesscss/core/ast';
+import type { Declaration, ImportAtRule, Quoted, Root, Statement, VarDeclaration } from '@jesscss/core/ast';
 
 type Token = { readonly value: string };
 
@@ -11,7 +11,7 @@ function requireToken(value: unknown): Token {
   return value;
 }
 
-function isAstQuoted(value: unknown): value is AstQuoted {
+function isQuoted(value: unknown): value is Quoted {
   return typeof value === 'object'
     && value !== null
     && 'type' in value
@@ -26,8 +26,8 @@ function isAstQuoted(value: unknown): value is AstQuoted {
     && typeof value.escaped === 'boolean';
 }
 
-function requireAstQuoted(value: unknown): AstQuoted {
-  if (!isAstQuoted(value)) {
+function requireQuoted(value: unknown): Quoted {
+  if (!isQuoted(value)) {
     throw new TypeError('Direct Less AST grammar produced a non-quoted target.');
   }
   return value;
@@ -41,7 +41,7 @@ function isImportAtRule(value: unknown): value is ImportAtRule {
     && 'name' in value
     && typeof value.name === 'string'
     && 'target' in value
-    && isAstQuoted(value.target)
+    && isQuoted(value.target)
     && 'options' in value
     && 'alias' in value
     && 'tail' in value;
@@ -55,7 +55,7 @@ function isVarDeclaration(value: unknown): value is VarDeclaration {
     && 'name' in value
     && typeof value.name === 'string'
     && 'value' in value
-    && isAstQuoted(value.value);
+    && isQuoted(value.value);
 }
 
 function isDeclaration(value: unknown): value is Declaration {
@@ -98,7 +98,7 @@ const doubleQuotedText = regex(/[^"\\]*/);
 const singleQuotedText = regex(/[^'\\]*/);
 
 export const directLessAstGrammar = rules({ trivia: whitespace }, (g: any) => {
-  const DirectLessQuoted = node<AstQuoted>(
+  const DirectLessQuoted = node<Quoted>(
     'DirectLessQuoted',
     choice(
       sequence(literal('"'), doubleQuotedText, literal('"')),
@@ -119,7 +119,7 @@ export const directLessAstGrammar = rules({ trivia: whitespace }, (g: any) => {
     (children) => {
       // The direct quoted reduction above is the fixed second child here.
       const keyword = requireToken(children[0]);
-      const target = requireAstQuoted(children[1]);
+      const target = requireQuoted(children[1]);
       return {
         type: 'ImportAtRule',
         name: keyword.value,
@@ -137,7 +137,7 @@ export const directLessAstGrammar = rules({ trivia: whitespace }, (g: any) => {
       // The sigil and name are distinct grammar children, so AST `name` is not
       // recovered from authored text or sliced from a source span.
       const name = requireToken(children[1]);
-      const value = requireAstQuoted(children[3]);
+      const value = requireQuoted(children[3]);
       return { type: 'VarDeclaration', name: name.value, value };
     }
   );
