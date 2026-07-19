@@ -3,13 +3,17 @@
 ## Completed cuts
 
 The core parser-construction host, action-list machinery, bridge renderer, and
-duplicate import/filesystem resolver are gone. Parser-side legacy builder
-entries and functional parser compatibility routes are also deleted. These are
-not pending cleanup items and must not be reintroduced to repair a caller.
+parser-side legacy builder entries are gone. Functional parser compatibility
+routes are also deleted. These are not pending cleanup items and must not be
+reintroduced to repair a caller.
 
-Core now has one job at this boundary: own canonical AST data, constructors,
-evaluation, and serialization. Dialects own grammar recognition and direct AST
-construction. Plugins/Context own import and filesystem capabilities.
+Core's AST package owns canonical AST data, constructors, evaluation, and
+serialization. Dialects own grammar recognition and direct AST construction.
+`Context` remains the core coordination/state boundary: it dispatches import
+expansion, resolution, location, source loading, parsing, and module import to
+plugins. The AST cutover updates that path from legacy `Rules` results to
+canonical AST documents; it does not delete or replace Context dispatch. Only
+a call path proven to bypass or duplicate that chain is a removal candidate.
 
 ## Remaining closure work
 

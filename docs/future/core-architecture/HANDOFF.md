@@ -38,6 +38,42 @@ when recognition changes. For eval/render/lookup/traversal/copying changes, run
 requires fresh builds, core tests, the Jess production spine ratchet, and the
 Less corpus.
 
+## Context and plugin dispatch invariant
+
+`Context` remains the canonical per-render coordination and state object. It
+keeps options, diagnostics, caches, per-file state, eval/render frames, and the
+installed plugin chain. Its import and parse methods are not duplicate
+resolvers: `_getPath` dispatches active-plugin `expandImport`/`resolve`, then
+resolver and locator plugins; `getTree` dispatches plugin `getSource` and
+`safeParse`; `parseString` dispatches the selected parser plugin; `getModule`
+dispatches the selected/lazily loaded module plugin.
+
+AST cutover changes the document type carried through those same calls from
+legacy `Rules` to canonical AST `Root` (or an explicit canonical document
+result). It preserves Context diagnostics, cache, session, plugin ordering, and
+visitor/lifecycle coordination. It does not introduce a separate loader,
+resolver callback, or replacement dispatch topology.
+
+Normalize the retained parser-plugin contract while doing so: today
+`findParserPlugin` accepts either `parse` or `safeParse`, while `getTree`
+requires `safeParse` and `parseString` requires `parse`. The AST result contract
+must make that distinction explicit or adapt one form to the other through the
+same Context dispatcher; it must not add a second parse path.
+
+Candidates for removal are only:
+
+- `Rules`-specific result types, caches, root assignment, and legacy-tree
+  adaptation inside the retained Context methods;
+- `StyleImport`/legacy `Rules` placement and evaluation behavior after a
+  canonical AST consumer preserves its tested semantics through Context;
+- a path proven to bypass the Context-to-plugin chain, such as the independent
+  filesystem fallback in `packages/fns/src/util/file-resolution.ts`.
+
+`Context.readBinary` and JSON decoding in `getModule` are current explicit
+core byte/module capabilities after plugin resolution, not evidence that
+`_getPath`, `getTree`, `resolveImportPath`, `parseString`, or `getModule` should
+be deleted. Decide their long-term capability ownership deliberately.
+
 ## Direct-root cutover order
 
 The parser work has one real composition gate: a leaf dialect grammar must be
@@ -48,12 +84,56 @@ That leaf-only fusion now proves the first private CSS extraction: imported
 recognition-only property/keyword terminals fuse into local direct AST
 reductions with their token values intact. Continue in this order: complete
 direct CSS families; build Less/SCSS/Jess dialect reductions over shared syntax;
-add a plugin-owned Less document loader over typed `ImportAtRule` facts; then replace
-the Jess legacy root and atomically delete legacy `StyleImport`, `Context`
-resolver/getTree methods, and generic core plugin filesystem/parser hooks.
-Core never receives a resolver callback or owns module/filesystem policy.
+update the existing Context-to-plugin dispatch path so it carries typed
+`ImportAtRule` facts and canonical AST documents; then replace the Jess legacy
+root and delete only legacy tree-specific import realization such as
+`StyleImport` and any proven duplicate filesystem/module implementation.
+`Context._getPath`, `getTree`, `resolveImportPath`, `parseString`, and module
+loading are coordination seams that already call plugins: retain and migrate
+them to canonical AST results rather than replacing them with a new loader or
+deleting them wholesale. Do not duplicate their plugin dispatch in core.
 
 ## Aggressive Cutting Self-Prosecution
+
+- Latest pass: extend the private Less direct-AST import fact with typed static
+  options, quoted/static `url(...)` targets, and a grammar-proven static tail.
+- Architecture surface: parser-local reductions construct `ImportAtRule`,
+  `List`, `Url`, `Quoted`, and `Any` directly. The tail is assembled only from
+  successful recursive grammar captures; there is no source slicing, reparse,
+  resolver, loader, host, or bridge. `Context` remains the canonical
+  eval/render and plugin-coordination state; this private parser does not
+  alter that existing dispatch path.
+- Separation/duplication: options and targets are explicit grammar facts.
+  Recursive static tail structure rejects interpolation, malformed or mismatched
+  delimiters, unclosed quotes, and extra closers before an `Any` is constructed.
+  `noTrivia` preserves bytes inside a quoted tail fragment without changing
+  whitespace ownership between import terms.
+- Cumulative node weight: cold private AST nodes only; no public Less parse,
+  eval, or render importer reaches this grammar.
+- New traversal: [loop/traversal] recursive grammar recognition and the local
+  child pass operate only on the completed reduction in focused tests; neither
+  walks source/tree/runtime state.
+- New node/materialization: [node construction] constructs exact typed import
+  facts. [materialized array/object] is the parser-owned option/tail child
+  collection required by those facts, cold behind the private test seam.
+- Render path: unchanged and unreachable from production.
+- Helper/API surface: no exported helper, plugin callback, or resolver added.
+- Metadata mutations: none.
+- Review-flagged diff tokens: [loop/traversal], [node construction], and
+  [materialized array/object] are limited to cold parser-local construction.
+  [array helper] maps grammar-produced static fragments/options into the exact
+  `Any`/`List` constructor payloads and joins them once; it runs only in the
+  private parse reduction. [routine error control] rejects impossible completed
+  children only. [array spread/materialization] is not added.
+- Hot-path cost contracts:
+  ```json
+  [{"id":"less-private-direct-ast-family","verdict":"accepted","privateReachability":{"productionImporters":0,"publicExports":0,"buildEntries":0,"coldConstructionOnly":true},"why":"The typed static import facts are macro-fused into the existing source-private Less grammar; only focused tests import it, so recursive tail construction has no production parser/eval/render reachability."}]
+  ```
+- Evidence: strict Less type check; focused AST/macro tests; package build;
+  parser-boundary verifier; broad static-tail rejection matrix; two adversarial
+  reviews plus the quoted-tail preservation re-review.
+- Verdict: accepted cold typed-import construction; migrating the existing
+  Context/plugin path to canonical AST results remains separate work.
 
 - Latest pass: add a source-private Jess direct-AST construction starter for
   closed `$` variable declaration/reference facts.
@@ -257,7 +337,7 @@ Core never receives a resolver callback or owns module/filesystem policy.
 
 - Prior pass: delete unreachable AST-v2 `StyleImport` machinery and propagate direct `PropRef` importance through ordinary and merged declarations.
 - Architecture surface: `ImportAtRule` remains the parser-owned typed import fact. No parser, test, public entry, or production caller constructs AST-v2 `StyleImport`; it existed only in its own union/factory/registry and serializer branches. `PropRef` retains the existing property lookup and declaration emit paths.
-- Separation/duplication: deletes the duplicate AST import representation only; legacy `tree/StyleImport`, `Context`, `Rules`, plugin resolution, and import realization remain for the later direct dialect-Root plus plugin-owned IO cutover. The property accessor carries the source declaration's existing boolean through the existing ordinary sink or merged scalar; it adds neither inline bytes nor a second evaluator route.
+- Separation/duplication: deletes the duplicate AST import representation only; legacy `tree/StyleImport`, `Context`, `Rules`, plugin resolution, and import realization remain for the later direct dialect-Root plus Context-to-plugin canonical-AST cutover. The Context dispatcher and valid plugin hooks are retained and migrated; only proven duplicate core I/O or legacy-tree result adaptation is removed. The property accessor carries the source declaration's existing boolean through the existing ordinary sink or merged scalar; it adds neither inline bytes nor a second evaluator route.
 - Cumulative node weight: decreases by one unreachable discriminant/factory and its serializer-only branches. The property lookup's already-existing result object receives one primitive boolean.
 - New traversal: none; deletion removes the root-level import-hoist recursive walk. Property lookup keeps its existing reverse frame scan.
 - New node/materialization: none.

@@ -6,7 +6,10 @@ Audit the current `packages/core/src/ast` implementation, not deleted host or
 bridge paths. The canonical AST must remain a parser-independent leaf package:
 it may define node data, constructors, evaluation, serialization, and shared
 value/selector algorithms; it must not own dialect parsing, grammar dispatch,
-import resolution, filesystem access, or compatibility rendering.
+filesystem access, or compatibility rendering. This package-level boundary does
+not prohibit core `Context` (outside `src/ast`) from coordinating installed
+plugins for import expansion, resolution, source loading, parsing, and module
+import.
 
 ## Review criteria
 
@@ -21,8 +24,9 @@ import resolution, filesystem access, or compatibility rendering.
   strings. Shallow placement state is preferred where semantics require it.
 - Value, selector, extend, mixin, and at-rule representations have one owner;
   duplicated conversion or byte-recovery logic is an audit finding.
-- Core stays free of parser/package/plugin imports and all import resolution
-  remains outside core.
+- `packages/core/src/ast` stays free of parser/package/plugin imports and I/O.
+  `Context` retains the existing plugin dispatch topology; audit its explicit
+  byte/module capabilities separately from AST-package purity.
 
 ## Audit method
 

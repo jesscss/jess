@@ -1,13 +1,14 @@
 /** Private AST grammar development slice for canonical Less facts. */
-import { choice, composeLeaf, literal, many, node, regex, rules, sequence, trivia } from 'parseman' with { type: 'macro' };
-import type { Combinator } from 'parseman';
+import { choice, composeLeaf, field, literal, many, noTrivia, node, oneOrMore, optional, regex, rules, sequence, trivia } from 'parseman' with { type: 'macro' };
+import type { Combinator, FieldCapture, FieldMap } from 'parseman';
 import { lessAstSyntax } from '@jesscss/internal-css-recognition/recognition';
-import { comment, complex, compoundOf, decl, importAtRule, keyword, quoted, root, rule, selist, simple, varDecl, varRef } from '@jesscss/core/ast';
-import type { Comment, Complex, Compound, Declaration, ImportAtRule, Quoted, Root, Rule, SelectorList, Statement, ValueNode, VarDeclaration, VarRef } from '@jesscss/core/ast';
+import { any, comment, complex, compoundOf, decl, importAtRule, keyword, list, quoted, root, rule, selist, simple, url, varDecl, varRef } from '@jesscss/core/ast';
+import type { Any, Comment, Complex, Compound, Declaration, ImportAtRule, List, Quoted, Root, Rule, SelectorList, Statement, Url, ValueNode, VarDeclaration, VarRef } from '@jesscss/core/ast';
 
 type Token = { readonly value: string };
 
-type LessAstRules = {
+/** Rules this file defines; macro-fused recognition inputs are not local output. */
+type LessAstLocalRules = {
   LessAstDocument: Combinator<Root>;
   DirectLessImport: Combinator<ImportAtRule>;
   DirectLessVarDeclaration: Combinator<VarDeclaration>;
@@ -24,19 +25,53 @@ type LessAstRules = {
   DirectLessSelector: Combinator<SelectorList>;
   DirectLessRuleset: Combinator<Rule>;
   DirectLessQuoted: Combinator<Quoted>;
-  LessAstSyntaxIdentifier: Combinator<string>;
-  LessAstSyntaxProperty: Combinator<string>;
-  LessAstSyntaxKeyword: Combinator<string>;
-  LessAstSyntaxDoubleQuotedText: Combinator<string>;
-  LessAstSyntaxSingleQuotedText: Combinator<string>;
+  DirectLessStaticUrl: Combinator<Url>;
+  DirectLessImportOption: Combinator<Any>;
+  DirectLessImportOptions: Combinator<List>;
+  DirectLessStaticTail: Combinator<unknown>;
+  DirectLessStaticTailGroup: Combinator<unknown>;
+  DirectLessStaticTailParen: Combinator<unknown>;
   whitespace: Combinator<unknown>;
 };
+
+/** Macro-fused shared recognition plus this file's recursively defined outputs. */
+type LessAstInputRules = LessAstLocalRules & typeof lessAstSyntax;
 
 function requireToken(value: unknown): Token {
   if (typeof value !== 'object' || value === null || !('value' in value) || typeof value.value !== 'string') {
     throw new TypeError('Direct Less AST grammar produced a non-token child.');
   }
-  return value;
+  return { value: value.value };
+}
+
+function requireField(fields: FieldMap | undefined, name: string): FieldCapture {
+  const field = fields?.[name];
+  if (field === undefined || Array.isArray(field)) {
+    throw new TypeError(`Direct Less AST grammar lost required ${name} field.`);
+  }
+  return field;
+}
+
+function requireFields(fields: FieldMap | undefined, name: string): readonly FieldCapture[] {
+  const field = fields?.[name];
+  if (field === undefined) {
+    throw new TypeError(`Direct Less AST grammar lost required ${name} field.`);
+  }
+  return Array.isArray(field) ? field : [field];
+}
+
+/** Reassemble only grammar-produced terminal values; never slice or rescan input. */
+function staticText(value: unknown): string {
+  if (typeof value === 'string') {
+    return value;
+  }
+  if (isQuoted(value)) {
+    return value.src;
+  }
+  if (Array.isArray(value)) {
+    return value.map(staticText).join('');
+  }
+  throw new TypeError('Direct Less AST grammar produced a non-static import fragment.');
 }
 
 function isQuoted(value: unknown): value is Quoted {
@@ -54,11 +89,21 @@ function isQuoted(value: unknown): value is Quoted {
     && typeof value.escaped === 'boolean';
 }
 
-function requireQuoted(value: unknown): Quoted {
-  if (!isQuoted(value)) {
-    throw new TypeError('Direct Less AST grammar produced a non-quoted target.');
-  }
-  return value;
+function isUrl(value: unknown): value is Url {
+  return typeof value === 'object'
+    && value !== null
+    && 'type' in value
+    && value.type === 'Url'
+    && 'value' in value;
+}
+
+function isAny(value: unknown): value is Any {
+  return typeof value === 'object'
+    && value !== null
+    && 'type' in value
+    && value.type === 'Any'
+    && 'src' in value
+    && typeof value.src === 'string';
 }
 
 function isImportAtRule(value: unknown): value is ImportAtRule {
@@ -69,7 +114,7 @@ function isImportAtRule(value: unknown): value is ImportAtRule {
     && 'name' in value
     && typeof value.name === 'string'
     && 'target' in value
-    && isQuoted(value.target)
+    && (isQuoted(value.target) || isUrl(value.target))
     && 'options' in value
     && 'alias' in value
     && 'tail' in value;
@@ -232,13 +277,16 @@ const whitespace = trivia(regex(/[ \t\n\r\f]+/));
 const importKeyword = regex(/@(?:-import|-export|import)(?![-\w])/i);
 const blockComment = regex(/\/\*(?:[^*]|\*(?!\/))*\*\//);
 const simpleSelector = regex(/(?:[.#]?-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*|\*)/);
+const staticUrlText = regex(/[^\s()'";@{}]+/);
+const staticTailText = regex(/[^()\[\]{};@'"]+/);
+const importOption = regex(/(?:reference|optional|once|multiple|inline|css|less)(?![-\w])/i);
 
-export const lessAstGrammar = composeLeaf([lessAstSyntax, rules<LessAstRules>({ trivia: whitespace }, (g) => {
+export const lessAstGrammar = composeLeaf([lessAstSyntax, rules<LessAstLocalRules>({ trivia: whitespace }, (g: LessAstInputRules) => {
   const DirectLessQuoted = node<Quoted>(
     'DirectLessQuoted',
     choice(
-      sequence(literal('"'), g.LessAstSyntaxDoubleQuotedText, literal('"')),
-      sequence(literal('\''), g.LessAstSyntaxSingleQuotedText, literal('\''))
+      noTrivia(sequence(literal('"'), g.LessAstSyntaxDoubleQuotedText, literal('"'))),
+      noTrivia(sequence(literal('\''), g.LessAstSyntaxSingleQuotedText, literal('\'')))
     ),
     (children) => {
       // The enclosing alternatives both fix these three grammar child slots.
@@ -249,14 +297,60 @@ export const lessAstGrammar = composeLeaf([lessAstSyntax, rules<LessAstRules>({ 
       return quoted(`${quote}${value}${quote}`, value, quote, false);
     }
   );
+  const DirectLessStaticUrl = node<Url>(
+    'DirectLessStaticUrl',
+    noTrivia(sequence(regex(/url(?=\()/i), literal('('), choice(g.DirectLessQuoted, staticUrlText), literal(')'))),
+    (children) => {
+      const body = children[2];
+      return url(isQuoted(body) ? body : any(requireToken(body).value));
+    }
+  );
+  const DirectLessImportOption = node<Any>(
+    'DirectLessImportOption',
+    importOption,
+    children => any(requireToken(children[0]).value)
+  );
+  const DirectLessImportOptions = node<List>(
+    'DirectLessImportOptions',
+    sequence(literal('('), field('option', g.DirectLessImportOption), many(sequence(literal(','), field('option', g.DirectLessImportOption))), literal(')')),
+    (_children, fields) => {
+      const options = requireFields(fields, 'option').map((option) => {
+        const value = option.value;
+        if (!isAny(value)) {
+          throw new TypeError('Direct Less AST grammar produced a non-static import option.');
+        }
+        return value;
+      });
+      return list(options, Array(options.length - 1).fill(', '));
+    }
+  );
+  const DirectLessStaticTailParen = noTrivia(sequence(
+    literal('('),
+    many(choice(staticTailText, g.DirectLessQuoted, g.DirectLessStaticTailGroup)),
+    literal(')')
+  ));
+  const DirectLessStaticTailGroup = g.DirectLessStaticTailParen;
+  const DirectLessStaticTail = noTrivia(oneOrMore(choice(
+    staticTailText,
+    g.DirectLessQuoted,
+    g.DirectLessStaticTailGroup
+  )));
   const DirectLessImport = node<ImportAtRule>(
     'DirectLessImport',
-    sequence(importKeyword, g.DirectLessQuoted, literal(';')),
-    (children) => {
-      // The direct quoted reduction above is the fixed second child here.
+    sequence(importKeyword, optional(g.DirectLessImportOptions), choice(g.DirectLessQuoted, g.DirectLessStaticUrl), optional(field('tail', g.DirectLessStaticTail)), literal(';')),
+    (children, fields) => {
+      // Every accepted import fact is a grammar child or a field capture. In
+      // particular, the opaque tail is reconstructed from terminal values only
+      // after the recursive grammar has closed every delimiter.
       const keyword = requireToken(children[0]);
-      const target = requireQuoted(children[1]);
-      return importAtRule(keyword.value, target);
+      const options = children.find((child): child is List => typeof child === 'object' && child !== null && 'type' in child && child.type === 'List') ?? null;
+      const target = children.find((child): child is Quoted | Url => isQuoted(child) || (typeof child === 'object' && child !== null && 'type' in child && child.type === 'Url'));
+      if (target === undefined) {
+        throw new TypeError('Direct Less AST grammar produced no static import target.');
+      }
+      const tailField = fields?.tail;
+      const tail = tailField === undefined ? null : any(staticText(requireField(fields, 'tail').value));
+      return importAtRule(keyword.value, target, options, null, tail);
     }
   );
   const DirectLessVarDeclaration = node<VarDeclaration>(
@@ -368,6 +462,12 @@ export const lessAstGrammar = composeLeaf([lessAstSyntax, rules<LessAstRules>({ 
     DirectLessSelector,
     DirectLessRuleset,
     DirectLessQuoted,
+    DirectLessStaticUrl,
+    DirectLessImportOption,
+    DirectLessImportOptions,
+    DirectLessStaticTail,
+    DirectLessStaticTailGroup,
+    DirectLessStaticTailParen,
     whitespace
   };
 })]);

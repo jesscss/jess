@@ -68,11 +68,56 @@ describe('private Less AST grammar facts', () => {
     });
   });
 
-  it('rejects import forms outside the closed fact-only subset', () => {
-    const result = run(lessAstGrammar.LessAstDocument, '@import (reference) "theme.less";', { trivia: lessAstGrammar.whitespace });
+  it('constructs static import options, url targets, and recursively balanced tails directly', () => {
+    const result = run(
+      lessAstGrammar.LessAstDocument,
+      '@import (less, multiple) url(theme.css) screen and (min-width: 600px) supports(label: "wide mode");',
+      { trivia: lessAstGrammar.whitespace }
+    );
 
-    expect(result.ok && result.unconsumedFrom === null && isRoot(result.value)).toBe(false);
-    expect(result.ok ? result.unconsumedFrom : result.errors).not.toBeNull();
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(isRoot(result.value)).toBe(true);
+    expect(result.value).toEqual({
+      type: 'Root',
+      children: [{
+        type: 'ImportAtRule',
+        name: '@import',
+        options: {
+          type: 'List',
+          items: [{ type: 'Any', src: 'less' }, { type: 'Any', src: 'multiple' }],
+          sep: ',',
+          separators: [', ']
+        },
+        target: { type: 'Url', value: { type: 'Any', src: 'theme.css' } },
+        alias: null,
+        tail: { type: 'Any', src: 'screen and (min-width: 600px) supports(label: "wide mode")' }
+      }]
+    });
+  });
+
+  it('rejects non-static or unbalanced import facts instead of creating opaque fallbacks', () => {
+    for (const source of [
+      '@import (reference) "theme.less" @{media};',
+      '@import url(@{theme}.css);',
+      '@import "theme.less" @media;',
+      '@import "theme.less" @@media;',
+      '@import "theme.less" @ {media};',
+      '@import "theme.less" screen and (min-width: 600px;',
+      '@import "theme.less" screen and [min-width: 600px);',
+      '@import "theme.less" screen and [min-width: 600px];',
+      '@import "theme.less" screen and {min-width: 600px};',
+      '@import "theme.less" screen and (min-width: {600px});',
+      '@import "theme.less" screen and "unterminated;',
+      '@import \'theme.less\' screen and \'unterminated;',
+      '@import "theme.less" screen and (min-width: 600px));',
+      '@import "theme.less" screen and (min-width: 600px)};',
+      '@import (unknown) "theme.less";'
+    ]) {
+      const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+      expect(result.ok && result.unconsumedFrom === null && isRoot(result.value)).toBe(false);
+      expect(result.ok ? result.unconsumedFrom : result.errors).not.toBeNull();
+    }
   });
 
   it('constructs keyword and variable-reference values without recovering value text', () => {
