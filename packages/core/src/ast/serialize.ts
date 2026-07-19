@@ -216,6 +216,14 @@ export interface Frame {
   // which groups all parametric defs). Lazily built once from `statements` and
   // cached; published (unlocked) defs are merged in at lookup from `mixins`.
   orderedMixins?: Map<string, MixinDef[]> | null;
+  // [closure/publish] a mixin def UNLOCKED into this frame by a body expansion
+  // (`publishMixins`) carries its CLOSURE — the callee frame it was authored in,
+  // where its params/locals are bound. A later call to that def resolves its free
+  // variables + guard in this home, not the frame it was published into
+  // (`.lock-mixin(1)` publishes `.inner-locked-mixin` whose `when (@a = 1)` reads
+  // the `@a` bound during that expansion). Absent an entry a def's home is the
+  // frame it is found in (the ordinary lexical case).
+  mixinHomes?: Map<MixinDef, Frame> | null;
   // the statements this frame was built from (for lazy rulesets / decl-map).
   statements?: Statement[] | null;
   // [plugin/P1] functions registered by a `@plugin` (or, later, `@use`) directive
@@ -462,7 +470,9 @@ function lookupCandidates(
   for (let f = frame; f; f = f.parent) {
     const hit = frameCandidatesInOrder(f, name, e);
     if (hit.length) {
-      if (homes) for (const d of hit) if (!homes.has(d)) homes.set(d, f);
+      // [closure/publish] a def UNLOCKED into `f` keeps its authored closure home
+      // (`f.mixinHomes`); an ordinarily-declared def is homed at `f`.
+      if (homes) for (const d of hit) if (!homes.has(d)) homes.set(d, f.mixinHomes?.get(d) ?? f);
       if (!out) out = hit.slice(); else out.push(...hit);
     }
     if (f.fallback && !fb) fb = f.fallback;
@@ -2489,7 +2499,7 @@ function expandCall(
       // `.imported` makes `.imported()` callable afterward (`scope` fixture). Reuse
       // the callee frame's already-synthesized def+ruleMixin map (explicit MixinDefs
       // and paren-less rulesets, interleaved) rather than re-scanning the body.
-      publishMixins(frame, frameOrderedMixins(callFrame, e));
+      publishMixins(frame, frameOrderedMixins(callFrame, e), callFrame);
     }
   } finally {
     e.mixinDepth--;
@@ -2571,8 +2581,16 @@ function leakBodyVars(callerFrame: Frame, body: Statement[], callFrame: Frame, e
 }
 
 /** Merge extra mixin defs into a frame's map in place (scope unlocking). */
-function publishMixins(frame: Frame, extra: Map<string, MixinDef[]> | null): void {
+function publishMixins(frame: Frame, extra: Map<string, MixinDef[]> | null, home?: Frame): void {
   if (!extra) return;
+  // [closure/publish] record each unlocked def's closure home so a later call
+  // resolves its free vars/guard there (see `Frame.mixinHomes`). Only when a home
+  // frame is supplied AND it differs from the destination (a def published into
+  // its own frame keeps the ordinary lexical home).
+  if (home && home !== frame) {
+    const map = (frame.mixinHomes ??= new Map());
+    for (const defs of extra.values()) for (const d of defs) if (!map.has(d)) map.set(d, home);
+  }
   if (!frame.mixins) {
     frame.mixins = new Map(extra);
     return;
@@ -3702,6 +3720,7 @@ function emitNestedBody(
   frame: Frame,
   e: Emit,
   hoist?: { rule: Rule; frame: Frame }[],
+  imp = false, // [important] call-level `!important` forced onto this body's decls
 ): void {
   // buffer consecutive DIRECT leaves so a `+`/`+_` merge group can fold at
   // last-occurrence; flush when an interrupting nested rule/at-rule appears (a
@@ -3718,7 +3737,7 @@ function emitNestedBody(
     switch (node.type) {
       case 'Declaration':
       case 'Comment':
-        buf.push({ node, frame });
+        buf.push({ node, frame, ...(imp ? { important: true } : {}) });
         break;
       case 'Rule': {
         flushBuf();
@@ -3728,20 +3747,20 @@ function emitNestedBody(
           hoist.push({ rule: node, frame });
           break;
         }
-        emitNestedRule(node, frame, e);
+        emitNestedRule(node, frame, e, imp);
         break;
       }
       case 'MixinCall':
         flushBuf();
-        expandNestedCall(node, frame, e);
+        expandNestedCall(node, frame, e, imp);
         break;
       case 'DetachedCall':
         flushBuf();
-        expandNestedDetachedCall(node, frame, e);
+        expandNestedDetachedCall(node, frame, e, imp);
         break;
       case 'For':
         flushBuf();
-        expandNestedFor(node, frame, e);
+        expandNestedFor(node, frame, e, imp);
         break;
       case 'AtRuleBlock':
         flushBuf();
@@ -3801,7 +3820,7 @@ function emitNestedLeaf(leaf: Leaf, e: Emit): void {
  * only-nested-rules-that-themselves-drop) is dropped entirely — header and
  * braces rewound — matching v5.
  */
-function emitNestedRule(rule: Rule, frame: Frame, e: Emit): void {
+function emitNestedRule(rule: Rule, frame: Frame, e: Emit, imp = false): void {
   const plan = e.extends?.nestedPlan.get(rule);
   if (plan?.collapseTransparent) {
     // [extend] decl-less `&&` self-collapse: emit the body (the pure-`&` child,
@@ -3812,7 +3831,7 @@ function emitNestedRule(rule: Rule, frame: Frame, e: Emit): void {
       mixins: collectMixins(rule.body),
       vars: collectVars(rule.body),
     };
-    emitNestedBody(rule.body, childFrame, e);
+    emitNestedBody(rule.body, childFrame, e, undefined, imp);
     return;
   }
   if (plan?.flatten && !plan.hoistNested) {
@@ -3850,7 +3869,7 @@ function emitNestedRule(rule: Rule, frame: Frame, e: Emit): void {
   // rule's depth; collect them and emit flat after the block closes.
   const hoist: { rule: Rule; frame: Frame }[] = [];
   e.depth++;
-  emitNestedBody(rule.body, childFrame, e, hoist);
+  emitNestedBody(rule.body, childFrame, e, hoist, imp);
   e.depth--;
   if (e.chunks.length === afterHeader) {
     // Nothing emitted in the block: drop the header/braces (rewind).
@@ -3879,7 +3898,7 @@ function emitNestedRule(rule: Rule, frame: Frame, e: Emit): void {
   // emits NESTED (composed cross-`&` header, children literal); a `collapse` child
   // emits FLAT.
   for (const h of hoist) {
-    if (e.extends?.nestedPlan.get(h.rule)?.hoistNested) emitNestedRule(h.rule, h.frame, e);
+    if (e.extends?.nestedPlan.get(h.rule)?.hoistNested) emitNestedRule(h.rule, h.frame, e, imp);
     else emitHoisted(h.rule, h.frame, e);
   }
 }
@@ -3899,36 +3918,68 @@ function emitHoisted(rule: Rule, frame: Frame, e: Emit): void {
  * body's declarations join the call-site block and its nested rules nest under
  * the call site (own selectors). No clone, no per-placement node build.
  */
-function expandNestedCall(call: MixinCall, frame: Frame, e: Emit): void {
-  // namespaced call descends a ruleset path first.
-  const dispatchFrame = call.path.length > 0 ? descendNamespacePath(call.path, frame) : frame;
-  if (dispatchFrame === null) return;
-  const candidates = lookupMixinCandidates(dispatchFrame, call.name);
+function expandNestedCall(call: MixinCall, frame: Frame, e: Emit, imp = false): void {
+  // Candidate resolution mirrors the flat-path {@link expandCall}: a bare `.m()`
+  // walks the scope chain accumulating same-name overloads (explicit `MixinDef`s
+  // AND paren-less rulesets callable as zero-arg mixins), a namespaced/compound
+  // call descends by element value; both record each candidate's DEFINITION frame
+  // in `homes` so the body + guards resolve free variables in the mixin's CLOSURE
+  // scope, not the call site (`mixins-closure`).
+  const namespaced = call.path.length > 0;
+  const homes = new Map<MixinDef, Frame>();
+  const rawCandidates = namespaced
+    ? findPathCandidates(frame, call, e, homes)
+    : lookupCandidates(frame, call.name, e, homes);
+  // [parent-exclusion] a paren-less ruleset-mixin does not re-enter its own body
+  // while it is on the active expansion stack (see `expandCall`).
+  const candidates = rawCandidates.some((d) => d.ruleMixin === true)
+    ? rawCandidates.filter((d) => d.ruleMixin !== true || !parentExcludes(frame, d.body))
+    : rawCandidates;
   if (candidates.length === 0) return;
-  const selected = dispatch(candidates, call, frame, e);
-  for (const { def, bindings } of selected) {
-    captureArgDefFrames(bindings, frame);
-    const callFrame: Frame = {
-      parent: dispatchFrame,
-      mixins: collectMixins(def.body),
-      vars: mergeVars(bindings, collectVars(def.body)),
-      statements: def.body,
-    };
-    emitNestedBody(def.body, callFrame, e);
+  const selected = dispatch(candidates, call, frame, e, homes);
+  const bodyImp = imp || call.important; // [important] propagate call-level `!important`
+  if (e.mixinDepth >= MAX_MIXIN_DEPTH) {
+    throw new RangeError('maximum mixin recursion depth exceeded');
+  }
+  e.mixinDepth++;
+  try {
+    for (const { def, bindings } of selected) {
+      captureArgDefFrames(bindings, frame);
+      // [closure] free variables resolve in the mixin's DEFINITION scope first, with
+      // the call-site scope as a fallback (a namespaced call is confined to the
+      // namespace, so it takes no caller fallback) — the same layering `expandCall`
+      // builds for the flat path.
+      const homeFrame = homes.get(def) ?? frame;
+      const callFrame: Frame = {
+        parent: homeFrame,
+        mixins: collectMixins(def.body),
+        vars: mergeVars(bindings, collectVars(def.body)),
+        statements: def.body,
+        ...(namespaced || homeFrame === frame ? {} : { fallback: frame }),
+      };
+      emitNestedBody(def.body, callFrame, e, undefined, bodyImp);
+      // [scope-leak] the mixin's own `@x:` declarations and nested rulesets unlock
+      // into the caller scope for later siblings (less@4 splices evaluated rules as
+      // siblings of the call), matching the flat path.
+      leakBodyVars(frame, def.body, callFrame, e);
+      publishMixins(frame, frameOrderedMixins(callFrame, e), callFrame);
+    }
+  } finally {
+    e.mixinDepth--;
   }
 }
 
 /** Expand a detached-ruleset call in nested mode. */
-function expandNestedDetachedCall(call: DetachedCall, frame: Frame, e: Emit): void {
+function expandNestedDetachedCall(call: DetachedCall, frame: Frame, e: Emit, imp = false): void {
   const r = detachedCallFrame(call.varName, frame, e);
   if (!r) return;
-  emitNestedBody(r.dr.body, r.callFrame, e);
+  emitNestedBody(r.dr.body, r.callFrame, e, undefined, imp);
 }
 
 /** Expand an `each()` loop in nested mode: splice the callback body once per item
  *  with that iteration's loop-variable bindings. (A cross-iteration `+`/`+_` merge
  *  does not fold across the per-iteration bodies in nested mode — flat mode does.) */
-function expandNestedFor(node: For, frame: Frame, e: Emit): void {
+function expandNestedFor(node: For, frame: Frame, e: Emit, imp = false): void {
   const items = forItems(node.iterable, frame, e);
   for (let i = 0; i < items.length; i++) {
     const { value, key } = items[i]!;
@@ -3943,7 +3994,7 @@ function expandNestedFor(node: For, frame: Frame, e: Emit): void {
       vars: mergeVars(bindings, collectVars(node.rules)),
       statements: node.rules,
     };
-    emitNestedBody(node.rules, loopFrame, e);
+    emitNestedBody(node.rules, loopFrame, e, undefined, imp);
   }
 }
 
