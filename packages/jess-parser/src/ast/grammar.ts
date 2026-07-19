@@ -4,11 +4,11 @@
  * This deliberately does not compose the public CST grammar or expose a parser
  * entrypoint.  Parseman reductions construct the canonical core facts directly.
  */
-import { choice, composeLeaf, literal, many, node, regex, rules, sequence, trivia } from 'parseman' with { type: 'macro' };
+import { choice, composeLeaf, literal, many, noTrivia, node, optional, regex, rules, sequence, trivia } from 'parseman' with { type: 'macro' };
 import type { Combinator } from 'parseman';
 import { cssAstSyntax } from '@jesscss/internal-css-recognition/recognition';
-import { keyword, quoted, root, varDecl, varRef } from '@jesscss/core/ast';
-import type { Keyword, Quoted, Root, Statement, ValueNode, VarDeclaration, VarRef } from '@jesscss/core/ast';
+import { dimension, keyword, quoted, root, varDecl, varRef } from '@jesscss/core/ast';
+import type { Dimension, Keyword, Quoted, Root, Statement, ValueNode, VarDeclaration, VarRef } from '@jesscss/core/ast';
 
 type Token = { readonly value: string };
 
@@ -18,12 +18,15 @@ type JessAstRules = {
   DirectJessVarReference: Combinator<VarRef>;
   DirectJessKeyword: Combinator<Keyword>;
   DirectJessQuoted: Combinator<Quoted>;
+  DirectJessDimension: Combinator<Dimension>;
   DirectJessValue: Combinator<ValueNode>;
   whitespace: Combinator<unknown>;
 };
 
 type SharedCssAstSyntax = {
   CssAstSyntaxKeyword: Combinator<string>;
+  CssAstSyntaxNumber: Combinator<string>;
+  CssAstSyntaxDimensionUnit: Combinator<string>;
 };
 
 function requireToken(value: unknown): Token {
@@ -41,7 +44,7 @@ function isValueNode(value: unknown): value is ValueNode {
   return typeof value === 'object'
     && value !== null
     && 'type' in value
-    && (value.type === 'Keyword' || value.type === 'Quoted' || value.type === 'VarRef');
+    && (value.type === 'Keyword' || value.type === 'Quoted' || value.type === 'VarRef' || value.type === 'Dimension');
 }
 
 function requireValueNode(value: unknown): ValueNode {
@@ -106,9 +109,18 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, rules<JessAstRules>({ t
     g.CssAstSyntaxKeyword,
     children => keyword(requireToken(children[0]).value)
   );
+  const DirectJessDimension = node<Dimension>(
+    'DirectJessDimension',
+    noTrivia(sequence(g.CssAstSyntaxNumber, optional(g.CssAstSyntaxDimensionUnit))),
+    (children) => {
+      const numberText = requireToken(children[0]).value;
+      const unit = children.length > 1 ? requireToken(children[1]).value : '';
+      return dimension(Number(numberText), unit, `${numberText}${unit}`);
+    }
+  );
   const DirectJessValue = node<ValueNode>(
     'DirectJessValue',
-    choice(g.DirectJessVarReference, g.DirectJessQuoted, g.DirectJessKeyword),
+    choice(g.DirectJessVarReference, g.DirectJessQuoted, g.DirectJessDimension, g.DirectJessKeyword),
     children => requireValueNode(children[0])
   );
   const DirectJessVarDeclaration = node<VarDeclaration>(
@@ -128,6 +140,7 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, rules<JessAstRules>({ t
     DirectJessVarReference,
     DirectJessKeyword,
     DirectJessQuoted,
+    DirectJessDimension,
     DirectJessValue,
     whitespace
   };
