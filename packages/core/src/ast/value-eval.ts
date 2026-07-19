@@ -28,6 +28,7 @@
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
 import type { UnitMode } from '../types/modes.js';
 import type { Fn, FnIo } from './functions/types.js';
+import type { ValueNode } from './nodes.js';
 
 /* --------------------------------------------------------- value domain */
 
@@ -197,6 +198,18 @@ export interface FnScope {
 }
 
 /**
+ * [plugin/P3] A pre-eval visitor edge. Given a VALUE node in the pre-serialize AST,
+ * it returns a REPLACEMENT node, or `undefined`/`void` to leave the node unchanged.
+ * The consumer shim (`@jesscss/plugin-less`) builds these from a Less plugin's
+ * `install`-registered pre-eval visitors (`isPreEvalVisitor` / `isReplacing`),
+ * dispatching to the plugin's `visitVariable`/… handlers and converting nodes to/from
+ * the Less tree view at the boundary. Core fires ONE generic edge per value node in
+ * the driver pre-walk (`preWalkStatements`) — the per-type switch lives entirely in
+ * the consumer. Absent/empty ⇒ no pre-walk (idle path, byte- and cost-identical).
+ */
+export type PreEvalVisitor = (node: ValueNode) => ValueNode | undefined | void;
+
+/**
  * [plugin/P2] The driver-injected plugin runtime — core's ONLY coupling to the
  * Less/`@use` plugin world. Core knows the AST shape of a `@plugin` directive and
  * the `Fn` contract; it knows NOTHING about module resolution, the `less`/`tree`
@@ -223,6 +236,16 @@ export interface PluginHost {
    * functions (e.g. a pure visitor/post-processor plugin — Lanes 3/4).
    */
   loadPlugin?(specifier: string): readonly Fn[];
+  /**
+   * [plugin/P3] Pre-eval REPLACING visitors collected from document-level `@plugin`
+   * directives (and config-injected `install` plugins) that registered a pre-eval
+   * visitor via `install`/`addVisitor`. The driver (`render-doc`) runs a GATED
+   * pre-walk over the AST value nodes BEFORE serialize, feeding each node through
+   * these in order. The host builds this eagerly (a document-level `@plugin`
+   * pre-scan) so the visitors are known before the pre-walk. Empty/absent ⇒ the
+   * pre-walk never runs (idle path, byte- and cost-identical).
+   */
+  preEvalVisitors?: readonly PreEvalVisitor[];
 }
 
 export interface ValueEvaluator {

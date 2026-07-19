@@ -26,8 +26,12 @@ import {
   makeQuoted,
   makeKeyword,
   makeList,
+  quoted,
+  any,
+  keywordNode,
+  dimensionNode,
 } from '@jesscss/core/ast-render';
-import type { Fn, FnCtx, ValueObj, List } from '@jesscss/core/ast-render';
+import type { Fn, FnCtx, ValueObj, List, ValueNode, PreEvalVisitor } from '@jesscss/core/ast-render';
 import { NodeModulesPlugin } from '@jesscss/plugin-node-modules';
 
 /** A raw Less plugin function: takes evaluated Less-view args, returns a Less-ish value. */
@@ -200,6 +204,177 @@ function wrapLessFn(name: string, fn: LessFn): Fn {
 }
 
 export { VerbatimReturn };
+
+/* --------------------------------------------------- pre-eval visitor (Lane 3) */
+
+/**
+ * The structural view of a Less plugin's pre-eval visitor object, as passed to
+ * `manager.addVisitor(...)`. A REPLACING pre-eval visitor (`isPreEvalVisitor` +
+ * `isReplacing`) exposes per-type `visitXxx(node)` handlers; the only one any
+ * published plugin uses is `visitVariable` (`plugin-preeval`). Others are accepted
+ * but not wired (no fixture needs them) — the compat surface is bounded/terminal.
+ */
+interface PluginVisitor {
+  isPreEvalVisitor?: boolean;
+  isReplacing?: boolean;
+  visitVariable?: (node: LessVariableView) => unknown;
+}
+
+/** The Less-tree view of a variable reference a plugin's `visitVariable` reads. */
+interface LessVariableView {
+  type: 'Variable';
+  name: string;
+}
+
+function isPluginVisitor(v: unknown): v is PluginVisitor {
+  return typeof v === 'object' && v !== null;
+}
+
+/** The emitted TEXT of a Less-tree node a `visitVariable` returned (for a splice). */
+function lessNodeText(ret: unknown): string {
+  if (ret === null || ret === undefined) return '';
+  if (typeof ret === 'string') return ret;
+  if (typeof ret === 'number' || typeof ret === 'boolean') return String(ret);
+  if (typeof ret === 'object') {
+    const node = ret as Record<string, unknown>;
+    if (node.type === 'Quoted') {
+      const value = String(node.value ?? '');
+      if (node.escaped) return value;
+      const quote = node.quote === "'" || node.quote === '"' ? (node.quote as string) : '"';
+      return `${quote}${value}${quote}`;
+    }
+    if (node.type === 'Dimension') return `${String(node.value ?? '')}${unitToString(node.unit)}`;
+    if (typeof node.value === 'string') return node.value;
+    if (typeof node.toCSS === 'function') {
+      const css = (node.toCSS as () => unknown)();
+      return typeof css === 'string' ? css : String(css);
+    }
+  }
+  return String(ret);
+}
+
+/**
+ * Convert a Less-tree node a `visitVariable` returned into an `ast/` value NODE
+ * (a pre-eval replacement is a node substitution in the tree, which then evaluates
+ * normally — an escaped `'bar'` emits its inner text `bar`). Distinct from the
+ * value-call path's `toValueObjReturn`, which produces a `ValueObj`.
+ */
+function lessNodeToAstValue(ret: unknown): ValueNode {
+  if (typeof ret === 'object' && ret !== null) {
+    const node = ret as Record<string, unknown>;
+    if (node.type === 'Quoted') {
+      const value = String(node.value ?? '');
+      const quote = node.quote === "'" || node.quote === '"' ? (node.quote as string) : '"';
+      const escaped = Boolean(node.escaped);
+      // src emits verbatim on the inert path: escaped ⇒ inner text, else the quoted form.
+      const src = escaped ? value : `${quote}${value}${quote}`;
+      return quoted(src, value, quote, escaped);
+    }
+    if (node.type === 'Dimension') {
+      return dimensionNode(Number(node.value ?? 0), unitToString(node.unit));
+    }
+    if (node.type === 'Keyword') return keywordNode(String(node.value ?? ''));
+  }
+  return any(lessNodeText(ret));
+}
+
+/** `@`-prefixed variable-reference token inside an opaque `Any` value's bytes. */
+const AT_VAR_TOKEN = /@[A-Za-z_][\w-]*/g;
+
+/**
+ * Build the native {@link PreEvalVisitor} edge core fires per value node from a Less
+ * plugin's REPLACING pre-eval visitor. It dispatches `visitVariable` on two node
+ * shapes: a structured `VarRef` (a normal `foo: @x` value) is presented directly and
+ * replaced with the returned node; an opaque `Any` (a custom-property value like
+ * `--foo: @replace !important`, kept verbatim by the permissive custom-prop model)
+ * has its `@ident` tokens presented one at a time and the returned node's bytes
+ * spliced back. `void` / an unchanged return leaves the node.
+ */
+function makePreEvalEdge(visitor: PluginVisitor): PreEvalVisitor {
+  const visitVariable = visitor.visitVariable;
+  const replacing = visitor.isReplacing !== false;
+  if (typeof visitVariable !== 'function' || !replacing) return () => undefined;
+  const visit = visitVariable.bind(visitor);
+  return (node: ValueNode): ValueNode | undefined => {
+    if (node.type === 'VarRef') {
+      const view: LessVariableView = { type: 'Variable', name: `@${node.name}` };
+      const ret = visit(view);
+      return ret && ret !== view ? lessNodeToAstValue(ret) : undefined;
+    }
+    if (node.type === 'Any') {
+      let changed = false;
+      const out = node.src.replace(AT_VAR_TOKEN, (m) => {
+        const view: LessVariableView = { type: 'Variable', name: m };
+        const ret = visit(view);
+        if (ret && ret !== view) {
+          changed = true;
+          return lessNodeText(ret);
+        }
+        return m;
+      });
+      return changed ? any(out) : undefined;
+    }
+    return undefined;
+  };
+}
+
+/**
+ * The minimal `visitors.Visitor` a Less plugin constructs (`new visitors.Visitor(this)`).
+ * In Less the wrapper OWNS the tree walk; here CORE owns it (the driver pre-walk fires
+ * a generic edge per node), so this wrapper only holds the impl and its `visit` is an
+ * inert passthrough — never invoked by the native pre-walk.
+ */
+class ShimVisitorWrapper {
+  constructor(_impl: unknown) {
+    // The impl (the plugin's visitor) is dispatched by the native pre-walk, not by
+    // this wrapper; the ctor arg exists only to match `new visitors.Visitor(this)`.
+  }
+
+  visit(root: unknown): unknown {
+    return root;
+  }
+}
+
+/**
+ * A plugin's `manager` (`install(less, manager, functions)`): collects registered
+ * visitors and post-processors. Only `addVisitor` (Lane 3) is consumed here;
+ * `addPostProcessor` (Lane 4 / clean-css) is collected but not yet applied (P5).
+ */
+interface PluginManager {
+  addVisitor(v: unknown): void;
+  addPostProcessor(p: unknown): void;
+  addFileManager(): void;
+}
+
+function createManager(): { manager: PluginManager; visitors: unknown[]; postProcessors: unknown[] } {
+  const visitors: unknown[] = [];
+  const postProcessors: unknown[] = [];
+  const manager: PluginManager = {
+    addVisitor(v: unknown): void {
+      visitors.push(v);
+    },
+    addPostProcessor(p: unknown): void {
+      postProcessors.push(p);
+    },
+    addFileManager(): void {},
+  };
+  return { manager, visitors, postProcessors };
+}
+
+/** Collect the pre-eval REPLACING visitor edges from a manager's registered visitors. */
+function collectPreEvalEdges(visitors: readonly unknown[]): PreEvalVisitor[] {
+  const edges: PreEvalVisitor[] = [];
+  for (const v of visitors) {
+    if (isPluginVisitor(v) && v.isPreEvalVisitor) edges.push(makePreEvalEdge(v));
+  }
+  return edges;
+}
+
+/** The contributions a single loaded/installed plugin routes to the native sinks. */
+interface PluginContribution {
+  fns: Fn[];
+  preEvalVisitors: PreEvalVisitor[];
+}
 
 /* --------------------------------------------------------- the `less` mock */
 

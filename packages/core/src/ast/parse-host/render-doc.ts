@@ -33,6 +33,7 @@ import { serialize } from '../index.js';
 import type { Root, Statement } from '../index.js';
 import type { SerializeResult } from '../serialize.js';
 import type { PluginHost, ValueEvaluator } from '../value-eval.js';
+import { preWalkStatements } from '../pre-eval.js';
 import { parseToAst } from './dispatch-host.js';
 import { createImportState, resolveDirectImports, type ModuleResolver } from './import.js';
 import { createFsFnIo } from './fn-io.js';
@@ -152,7 +153,16 @@ export function renderAstDoc(src: string, options: AstRenderOptions): AstRenderR
       parse,
       (feature, detail) => deferredImports.push({ feature, detail }),
     );
-    const resolvedRoot: Root = { ...root, children: resolved };
+    // [plugin/P3] Gated pre-eval visitor pre-walk. When the injected host carries
+    // document-level pre-eval REPLACING visitors (from a `@plugin` that registered
+    // one via `install`/`addVisitor`), rewrite the AST value nodes BEFORE serialize
+    // so replacements (`@replace` → a literal) are in place when the single pass
+    // evaluates. No visitors (every real document) ⇒ zero pre-walk, byte-identical.
+    const preEvalVisitors = options.pluginHost?.preEvalVisitors;
+    const preWalked = preEvalVisitors && preEvalVisitors.length > 0
+      ? preWalkStatements(resolved, preEvalVisitors)
+      : resolved;
+    const resolvedRoot: Root = { ...root, children: preWalked };
     const { css } = requireSync(
       serialize(resolvedRoot, {
         evaluator: options.evaluator,

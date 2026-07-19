@@ -17,7 +17,13 @@ export type { ModuleResolver } from './ast/parse-host/import.js';
 
 // --- value evaluator builder + injected-evaluator type ---
 export { buildEvaluator } from './ast/evaluator.js';
-export type { ValueEvaluator, PluginHost } from './ast/value-eval.js';
+export type { ValueEvaluator, PluginHost, PreEvalVisitor } from './ast/value-eval.js';
+
+// --- pre-eval visitor authoring surface (Lane 3): the `ast/` node view + the leaf
+// factories a shim builds pre-eval REPLACEMENT nodes with (a Less `tree.Quoted` maps
+// to an `ast/` Quoted node here, unlike the value-call path which returns a ValueObj).
+export type { ValueNode, Quoted as QuotedNode } from './ast/nodes.js';
+export { quoted, any, keyword as keywordNode, dimension as dimensionNode } from './ast/nodes.js';
 
 // --- plugin runtime authoring surface (the `Fn` contract a shim adapts to) ---
 export type { Fn, FnCtx } from './ast/functions/types.js';
