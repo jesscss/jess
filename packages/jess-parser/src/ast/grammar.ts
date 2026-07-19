@@ -7,8 +7,8 @@
 import { choice, composeLeaf, literal, many, noTrivia, node, optional, regex, rules, sequence, trivia } from 'parseman' with { type: 'macro' };
 import type { Combinator } from 'parseman';
 import { cssAstSyntax } from '@jesscss/internal-css-recognition/recognition';
-import { dimension, keyword, quoted, root, varDecl, varRef } from '@jesscss/core/ast';
-import type { Dimension, Keyword, Quoted, Root, Statement, ValueNode, VarDeclaration, VarRef } from '@jesscss/core/ast';
+import { decl, dimension, keyword, quoted, root, rule, varDecl, varRef } from '@jesscss/core/ast';
+import type { Declaration, Dimension, Keyword, Quoted, Root, Rule, Statement, ValueNode, VarDeclaration, VarRef } from '@jesscss/core/ast';
 
 type Token = { readonly value: string };
 
@@ -20,6 +20,8 @@ type JessAstRules = {
   DirectJessQuoted: Combinator<Quoted>;
   DirectJessDimension: Combinator<Dimension>;
   DirectJessValue: Combinator<ValueNode>;
+  DirectJessDeclaration: Combinator<Declaration>;
+  DirectJessRule: Combinator<Rule>;
   whitespace: Combinator<unknown>;
 };
 
@@ -57,12 +59,44 @@ function requireValueNode(value: unknown): ValueNode {
 function requireStatements(children: readonly unknown[]): Statement[] {
   const statements: Statement[] = [];
   for (const child of children) {
-    if (!isVarDeclaration(child)) {
+    if (!isVarDeclaration(child) && !isRule(child)) {
       throw new TypeError('Direct Jess AST grammar produced a non-statement child.');
     }
     statements.push(child);
   }
   return statements;
+}
+
+function isDeclaration(value: unknown): value is Declaration {
+  return typeof value === 'object'
+    && value !== null
+    && 'type' in value
+    && value.type === 'Declaration'
+    && 'name' in value
+    && typeof value.name === 'string'
+    && 'value' in value
+    && isValueNode(value.value);
+}
+
+function isRule(value: unknown): value is Rule {
+  return typeof value === 'object' && value !== null && 'type' in value && value.type === 'Rule';
+}
+
+function requireDeclarations(children: readonly unknown[]): Declaration[] {
+  const declarations: Declaration[] = [];
+  for (const child of children) {
+    if (!isDeclaration(child)) {
+      throw new TypeError('Direct Jess AST grammar produced a non-declaration rule child.');
+    }
+    declarations.push(child);
+  }
+  return declarations;
+}
+
+function requireExactToken(value: unknown, expected: string): void {
+  if (requireToken(value).value !== expected) {
+    throw new TypeError(`Direct Jess AST grammar produced ${requireToken(value).value} where ${expected} was required.`);
+  }
 }
 
 function isVarDeclaration(value: unknown): value is VarDeclaration {
@@ -128,9 +162,28 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, rules<JessAstRules>({ t
     sequence(literal('$'), jessDollarName, literal(':'), g.DirectJessValue, literal(';')),
     children => varDecl(requireToken(children[1]).value, requireValueNode(children[3]))
   );
+  // This is a deliberately named subset, not a general static-selector route:
+  // one shared CSS basic selector token (`.card`, `#id`, `button`, `*`) followed
+  // by static properties and the already-typed closed value subset. Pseudos,
+  // attributes, ampersands, percentage selectors, compound/combinator selectors,
+  // and Jess `$[...]` interpolation each need their own typed reductions.
+  const DirectJessDeclaration = node<Declaration>(
+    'DirectJessDeclaration',
+    sequence(g.CssAstSyntaxProperty, literal(':'), g.DirectJessValue, literal(';')),
+    children => decl(requireToken(children[0]).value, requireValueNode(children[2]))
+  );
+  const DirectJessRule = node<Rule>(
+    'DirectJessRule',
+    sequence(g.CssAstSyntaxSimple, literal('{'), many(g.DirectJessDeclaration), literal('}')),
+    (children) => {
+      requireExactToken(children[1], '{');
+      requireExactToken(children.at(-1), '}');
+      return rule(requireToken(children[0]).value, requireDeclarations(children.slice(2, -1)));
+    }
+  );
   const JessAstDocument = node<Root>(
     'JessAstDocument',
-    many(g.DirectJessVarDeclaration),
+    many(choice(g.DirectJessVarDeclaration, g.DirectJessRule)),
     children => root(requireStatements(children))
   );
 
@@ -142,6 +195,8 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, rules<JessAstRules>({ t
     DirectJessQuoted,
     DirectJessDimension,
     DirectJessValue,
+    DirectJessDeclaration,
+    DirectJessRule,
     whitespace
   };
 })]);

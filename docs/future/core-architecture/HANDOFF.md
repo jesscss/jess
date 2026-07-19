@@ -102,6 +102,37 @@ closure is still in progress.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: extend the private Jess direct-AST grammar with a static
+  declaration/rule slice over one shared basic-selector token.
+- Architecture surface: parser-local reductions directly construct Declaration
+  and Rule nodes. Tests use the public CST parser only as a parity oracle; the
+  production direct grammar neither imports nor converts CST. No bridge, host,
+  Context/plugin work, scanner, or reparse is added.
+- Separation/duplication: the slice is intentionally one selector token only
+  (`.card`, `#id`, `button`, `*`). Pseudo, attribute, percentage, compound,
+  combinator, `$[]`, and nested parent-selector forms are proven production
+  forms but explicitly rejected until their typed reductions exist.
+- Cumulative node weight: cold source-private Rule/Declaration construction
+  only; no public parser/eval/render importer reaches it.
+- New traversal: none beyond exact completed-child validation.
+- New node/materialization: [node construction] exact Rule/Declaration facts;
+  [materialized array/object] only the cold constructor body list.
+- Render path: unchanged and unreachable from production.
+- Helper/API surface: no public parser operation or plugin API added.
+- Metadata mutations: none.
+- Review-flagged diff tokens: [node construction] and [materialized array/object]
+  are cold parser construction. [loop/traversal], [array helper], [array
+  spread/materialization], and [routine error control] are not added.
+- Hot-path cost contracts:
+  ```json
+  [{"id":"jess-private-direct-ast-family","verdict":"accepted","privateReachability":{"productionImporters":0,"publicExports":0,"buildEntries":0,"coldConstructionOnly":true},"why":"The Jess rule/declaration slice is source-private and only focused tests import it."}]
+  ```
+- Evidence: paired public-CST/direct-AST acceptance proof; deliberate production
+  boundary rejections; focused AST/macro tests; strict type check; build;
+  parser-boundary verifier; adversarial review plus test-only re-review.
+- Verdict: accepted cold direct construction; omitted selector semantics remain
+  explicit parser work.
+
 - Latest pass: extend the private Less direct-AST selector grammar with static
   parent-selector tokens `&`, `&-active`, and `&1`.
 - Architecture surface: a parser-local recognition terminal feeds canonical
