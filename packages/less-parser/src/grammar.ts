@@ -258,8 +258,7 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   const mixinCallPath = sequence(g.mixinCallBasicSel, many(sequence(optional(combinator), basicSel)));
   const MixinCall = node(
     sequence(g.mixinCallPath, optional(g.MixinArgs), optional(important), optional(literal(';'))));
-  // Anonymous mixin callback: `.(…){…}` OR `#(…){…}` — the Chevrotain
-  // AnonMixinStart token is `/[.#]\(/`, so both prefixes are valid.
+  // Anonymous mixin callbacks accept either prefix: `.(…){…}` or `#(…){…}`.
   const AnonymousMixinDefinition = node(
     sequence(regex(/[.#]/), g.MixinArgs, literal('{'), g.declarationList, literal('}')));
   // A bare name with nothing after it is NOT a statement — require args (a mixin
@@ -280,7 +279,7 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
     ));
 
   // ── Guards / comparisons ───────────────────────────────────────────────────
-  // Faithful port of the Chevrotain guard productions (src/productions/guards.ts):
+  // Guard grammar:
   //   guard → 'when' guardOr
   //   guardOr  → guardAnd ( ('or' | ',') guardAnd )*        (left-assoc, 'or')
   //   guardAnd → guardTerm ( 'and' guardTerm )*             (left-assoc, 'and')
@@ -389,7 +388,7 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   const CompoundSelector = node(
     sequence(g.simpleSelector, many(sequence(not(selectorBoundary), g.simpleSelector))), undefined, { unwrap: true });
   // A complex selector, optionally terminated by a single `:extend(...)` pseudo.
-  // Mirrors Chevrotain's `complexSelector`, which consumes extend (OPTION3) AFTER
+  // A complex selector consumes extend only AFTER
   // the whole compound/combinator run — so extend is the LAST thing in the
   // selector, and `.a:extend(.b).c` leaves `.c` unconsumed → parse error
   // (extend-must-be-last). The compound run also stops at `:extend(` (extendAhead).
@@ -424,15 +423,13 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   const PseudoSelector = node(
     sequence(pseudoColon, not(extendTailAhead), choice(interpKey, ident), optional(g.pseudoSelectorParens)));
 
-  // ── Extend grammar (faithful port of selectors.ts `extend`/`ampersandExtend`)
-  // Chevrotain models extend as: `:extend(` selectorList[inExtend] `)` where each
-  // complexSelector inside consumes an optional trailing `all` flag (OPTION2 on
-  // T.All / T.AllFlag). The statement form `&:extend(...)` ends with `;`. Here
+  // ── Extend grammar
+  // `:extend(` selectorList `)` allows each complexSelector to carry an optional
+  // trailing `all` flag. The statement form `&:extend(...)` ends with `;`. Here
   // each piece is real grammar (comma list + per-target flag) rather than
   // re-parsing the source text.
   //
-  // A per-target `all` / `!all` flag (Chevrotain's T.All / T.AllFlag); both
-  // collapse to ExtendFlag.All in the builder.
+  // A per-target `all` / `!all` flag; both collapse to ExtendFlag.All.
   const extendFlag = regex(/!?all(?![-\w])/);
   // Lookahead used to stop the target's compound/complex run before the flag, so
   // `all` is consumed as the flag — not swallowed as a trailing ident selector.
@@ -481,11 +478,9 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
     sequence(g.Call, optional(literal(';'))), literal(';')
   );
   const declarationList = many(g.blockItem);
-  // Property name may itself be interpolated (`@{prop}: …`, `pre-@{x}-post: …`).
-  // Chevrotain lexes the name as a single Ident/InterpolatedIdent token whose image
-  // carries the `@{…}` runs; `declaration` then routes an image containing `@`/`$`
-  // through getInterpolatedNode. We mirror that: try the interpolated-ident regex
-  // first (it requires at least one `@{…}`), else a plain ident.
+  // Property names may themselves be interpolated (`@{prop}: …`, `pre-@{x}-post: …`).
+  // Try the interpolation-bearing form first (it requires at least one `@{…}`),
+  // then a plain identifier.
   //
   // Narrow deferred-value POC: an ordinary, plain-name declaration with exactly
   // one unsigned integer/dimension/percent token can retain that authored token
@@ -583,10 +578,9 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   // non-operator items stay a list (`1px 2px 3px`). topSum collapses to the bare
   // operand when there is no operator, so a plain list is byte-identical to before.
   const valueSequence = oneOrMore(g.topSum);
-  // Interpolated value token (`@{colorVar}`, `pre-@{x}`). Chevrotain lexes this as
-  // InterpolatedIdent and `processValueToken` runs it through getInterpolatedOrString
-  // → Interpolated (role=ident). Ordered before Reference: `@{` cannot match lessVar,
-  // and anyValueTok excludes `{`, so this is the only rule that accepts it.
+  // Interpolated value token (`@{colorVar}`, `pre-@{x}`), ordered before Reference:
+  // `@{` cannot match lessVar, and anyValueTok excludes `{`, so this is the only
+  // rule that accepts it.
   const InterpValue = node(
     interpKey);
   // A namespace INDEXED-accessor reference in value position: a `.`/`#` compound
@@ -722,8 +716,7 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   const permissiveParenBody = sequence(optional(sequence(g.valueList, many(sequence(literal(';'), optional(g.valueList))))), expect(literal(')')));
   // A bare detached ruleset `{ … }` in value / function-argument position → a Mixin.
   const DetachedRuleset = node(sequence(literal('{'), g.declarationList, literal('}')));
-  // Function-call arguments are their OWN production (parity with the Chevrotain
-  // functionCallArgs/callArgument rules), NOT `parenBody`: unlike a parenthesized
+  // Function-call arguments are their OWN production, NOT `parenBody`: unlike a parenthesized
   // value, a function argument may be an anonymous mixin `.(…){…}` or a bare
   // detached ruleset `{…}` — e.g. `each(@list, { … })`, `func({a:1}, {b:2})`. The
   // comma phase takes value SEQUENCES (comma is the arg separator); after a `;` the
@@ -850,8 +843,8 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   const functionCallArgs = sequence(argsInner, literal(')'));
   const MixinArgs = node(sequence(literal('('), argsInner, literal(')')));
   // `calc(…)` follows the CSS math grammar, whose only operators are `+ - * /` — a
-  // bare `%` operand (e.g. `calc(1 %)`) is a syntax error (Chevrotain: mathProduct
-  // has no `%` alt, so the trailing `%` fails the closing `)`). We model calc as a
+  // bare `%` operand (e.g. `calc(1 %)`) is a syntax error: the trailing `%` fails
+  // the closing `)`. We model calc as a
   // Call whose body excludes a standalone `%` token, so `1 %` leaves the `%`
   // unconsumed and the `)` fails → one parse error. A percentage glued to a number
   // (`100%`) is a Dimension and unaffected.

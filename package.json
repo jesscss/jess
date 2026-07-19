@@ -78,7 +78,6 @@
     "audit:parser-runtime-boundary": "node scripts/verify-parser-runtime-boundary.mjs --report",
     "test:parser-runtime-boundary": "node --test scripts/__tests__/verify-parser-runtime-boundary.test.mjs",
     "bench:css:ref": "node scripts/bench-compare-ref.mjs --package @jesscss/css-parser",
-    "bench:less:ref": "node scripts/bench-compare-ref.mjs --package @jesscss/less-parser",
     "compare:less:builds": "node scripts/compare-less-builds.mjs",
     "prove:less:benchmark:no-deno": "node scripts/prove-less-benchmark-no-deno.mjs",
     "verify:node-copy-frontier": "node scripts/verify-node-copy-frontier.mjs",
