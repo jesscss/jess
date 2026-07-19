@@ -76,6 +76,22 @@ export interface Any {
   readonly src: string;
 }
 
+/**
+ * A Less selector-list CAPTURE value `*[…]` — a STRUCTURED list of selector
+ * branches captured for interpolation into a selector position. The parser owns
+ * the branch split (grammar `SelectorList`); `branches` holds the canonical text
+ * of each captured complex selector, so the serializer never re-scans bytes for
+ * top-level commas. Interpolated into a selector, the branches expand structurally:
+ * a WHOLE-selector position emits them as comma-separated header branches, a
+ * COMPOUND position compacts them into a single `:is(…)` group. As a plain value
+ * (never the intended use) it emits its verbatim `src`.
+ */
+export interface SelectorCapture {
+  readonly type: 'SelectorCapture';
+  readonly branches: readonly string[];
+  readonly src: string;
+}
+
 /** A numeric dimension leaf, e.g. `0px`, `10px`, `1.0px`, `50%`. Carries the
  *  parser's `number`+`unit` split plus the verbatim `src` spelling. */
 export interface Dimension {
@@ -283,6 +299,7 @@ export type ValueNode =
   | Color
   | Quoted
   | Any
+  | SelectorCapture
   | Dimension
   | SpacedValue
   | List
@@ -709,6 +726,8 @@ export type Statement =
 
 export const keyword = (src: string): Keyword => ({ type: 'Keyword', src });
 export const any = (src: string): Any => ({ type: 'Any', src });
+export const selectorCapture = (branches: readonly string[], src: string): SelectorCapture =>
+  ({ type: 'SelectorCapture', branches, src });
 export const color = (src: string): Color => ({ type: 'Color', src });
 export const quoted = (src: string, value: string, quote: string, escaped: boolean): Quoted =>
   ({ type: 'Quoted', src, value, quote, escaped });

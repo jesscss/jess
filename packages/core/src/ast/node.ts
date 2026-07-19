@@ -54,7 +54,7 @@ import type { AtRuleBlock, AtRuleStatement } from './at-rule.js';
 /** Every tree2 node's PascalCase `type` discriminant (Less-matching). */
 export type NodeType =
   | 'Root' | 'Rule' | 'Declaration' | 'Comment' | 'SelectorList'
-  | 'Complex' | 'Compound' | 'Simple' | 'Keyword' | 'Color' | 'Quoted' | 'Any' | 'Dimension'
+  | 'Complex' | 'Compound' | 'Simple' | 'Keyword' | 'Color' | 'Quoted' | 'Any' | 'SelectorCapture' | 'Dimension'
   | 'SpacedValue' | 'List' | 'VarRef' | 'MixinDef' | 'MixinCall' | 'VarDeclaration'
   | 'Sequence' | 'Operation' | 'FunctionCall' | 'Paren' | 'Condition'
   | 'AtRuleBlock' | 'AtRuleStatement' | 'Interp' | 'VarIndirect'
@@ -101,7 +101,7 @@ export type Node =
  */
 export const AST_NODE_TYPES: ReadonlySet<string> = new Set<NodeType>([
   'Root', 'Rule', 'Declaration', 'Comment', 'SelectorList',
-  'Complex', 'Compound', 'Simple', 'Keyword', 'Color', 'Quoted', 'Any', 'Dimension',
+  'Complex', 'Compound', 'Simple', 'Keyword', 'Color', 'Quoted', 'Any', 'SelectorCapture', 'Dimension',
   'SpacedValue', 'List', 'VarRef', 'MixinDef', 'MixinCall', 'VarDeclaration',
   'Sequence', 'Operation', 'FunctionCall', 'Paren', 'Condition',
   'AtRuleBlock', 'AtRuleStatement', 'Interp', 'VarIndirect',

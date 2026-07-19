@@ -629,7 +629,7 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   // arithmetic. @see https://drafts.csswg.org/css-syntax/#urange-syntax
   const UnicodeRange = node(
     regex(/[Uu]\+[0-9A-Fa-f?]{1,6}(?:-[0-9A-Fa-f]{1,6})?/));
-  const value = choice(g.InterpValue, g.Reference, g.UnicodeRange, g.numeric, g.NsAccessor, g.Color, g.NamedColor, g.Url, g.FormatCall, g.Call, g.EscapedValue, g.GluedParen, g.Paren, g.SquareParen, g.Quoted, g.anyValue);
+  const value = choice(g.InterpValue, g.Reference, g.UnicodeRange, g.numeric, g.NsAccessor, g.Color, g.NamedColor, g.Url, g.FormatCall, g.Call, g.EscapedValue, g.SelectorCapture, g.GluedParen, g.Paren, g.SquareParen, g.Quoted, g.anyValue);
   // ── Math expressions — precedence in the grammar (port of expressionSum /
   // expressionProduct). `* / %` bind tighter than `+ -`; left-associative. The
   // `collapse` option makes a single-operand level pass its operand straight
@@ -928,6 +928,15 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   const GluedParen = node('Paren', sequence(regex('(?<=[)\\]\\w.#\\u0080-\\uffff]|[\\w.#\\u0080-\\uffff]-)\\('), g.permissiveParenBody));
   const squareParenBody = sequence(optional(g.valueList), literal(']'));
   const SquareParen = node(sequence(literal('['), g.squareParenBody));
+  // Selector-list CAPTURE `*[ <selector-list> ]` — a Less value that captures a
+  // comma-separated selector list for later interpolation into a selector
+  // (`@classes: *[.a, .b, .c]; @{classes} { … }`). The `*[` sigil is GLUED
+  // (noTrivia) so a bare universal `*` (multiply / selector) and a plain
+  // `[attr]`-shaped SquareParen value stay on their existing paths; only the
+  // contiguous `*[` opens a capture. The body reuses the selector-grammar
+  // `SelectorList` so the branch split is parser-owned (never a byte re-scan).
+  const SelectorCapture = node(
+    sequence(regex(/\*\[/), g.SelectorList, expect(literal(']'), ']')));
   const anyValue = choice(ident, anyValueTok);
 
   // `each(<iterable>, { … })` (or `.(@p) { … }`) is a $for control form, not a
@@ -1171,7 +1180,7 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
     CompoundSelector, ComplexSelector, SelectorList, AttributeSelector, PseudoSelector, pseudoArg, pseudoSelectorParens,
     Ruleset, declarationList, Declaration, customValue, customCurlyBlock, cpInner, cpParen, cpSquare, cpCurly, cpValue, CustomDeclaration, declaration,
     valueList, valueSequence, value, UnicodeRange, Negative, mathProduct, mathSum, topProduct, topSum, parenExprList, InterpValue, NsAccessor, EscapedValue, NamedColor, Url, Quoted,
-    parenBody, permissiveParenBody, Paren, GluedParen, DetachedRuleset, functionCallArgs, squareParenBody, calcBody, Call, FormatCall, SquareParen, anyValue, EachFor,
+    parenBody, permissiveParenBody, Paren, GluedParen, DetachedRuleset, functionCallArgs, squareParenBody, calcBody, Call, FormatCall, SquareParen, SelectorCapture, anyValue, EachFor,
     queryPrelude, QueryAtRuleBlock, SupportsAtRuleBlock, ImportAtRuleStatement,
     preludeToken, preludeParen, preludeSquare,
     AtRuleBlock, AtRuleStatement, AtRuleMalformed, atRuleBody,

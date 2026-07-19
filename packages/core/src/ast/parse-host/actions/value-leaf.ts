@@ -172,7 +172,33 @@ function urlLeaf(args: BuildArgs): t2.ValueNode {
   return t2.any(bytes); // flat Quoted / placeholder → verbatim
 }
 
+/**
+ * A selector-list CAPTURE `*[ <selector-list> ]` — the grammar built its body via
+ * the shared `SelectorList` rule, so the branch split is parser-owned (a single
+ * complex arrives as a `Complex`, a comma list as a `SelectorList`). Each captured
+ * branch rides as its canonical selector text; the serializer expands them at the
+ * interpolation site (whole-selector → comma branches; compound → `:is(…)`). The
+ * verbatim `*[…]` bytes ride in `src` for the inert (plain-value) emit.
+ */
+function selectorCaptureLeaf(args: BuildArgs): t2.ValueNode {
+  const src = leafBytes(args);
+  const list = args.children.find(
+    (c): c is t2.SelectorList | t2.Complex =>
+      t2.isNode(c) && (c.type === 'SelectorList' || c.type === 'Complex'),
+  );
+  if (list !== undefined) {
+    const branches = list.type === 'SelectorList'
+      ? list.selectors.map((c) => t2.complexCanonical(c))
+      : [t2.complexCanonical(list)];
+    return t2.selectorCapture(branches, src);
+  }
+  // Fallback (the grammar always delivers a structured body, so unreached): the
+  // inner bytes as one opaque branch, keeping byte-faithful emit.
+  return t2.selectorCapture([src.slice(2, -1).trim()], src);
+}
+
 export const VALUE_LEAF_ACTIONS: readonly BuildAction[] = [
+  { type: 'SelectorCapture', build: selectorCaptureLeaf },
   { type: 'Numeric', build: numericLeaf },
   // `#fff` / `#AABBCC` — hex color (materialize distinguishes hex via `src[0]==='#'`).
   leaf('Color', t2.color),

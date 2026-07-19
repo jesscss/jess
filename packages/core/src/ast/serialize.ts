@@ -997,6 +997,9 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
     case 'Dimension':
     case 'Quoted':
     case 'Any':
+    // A selector CAPTURE `*[…]` reaching a plain VALUE position (never its intended
+    // use — it belongs in a selector interpolation) emits its verbatim `src`.
+    case 'SelectorCapture':
       return literal(node.src);
     case 'VarRef': {
       const hit = resolveVarRef(frame, node.name, e);
@@ -1525,10 +1528,95 @@ function joinAmpersand(canon: string, parents: string[]): string[] {
   return out;
 }
 
-/** Resolve one interpolated simple token's text in `frame`. */
+/**
+ * [selector-capture] A GROUP interpolation: a lone bare `@{name}` in a selector
+ * whose variable resolves to a `*[…]` selector-list CAPTURE, or to an escaped
+ * `~'…'` selector string carrying a top-level comma. Both interpolate a multi-
+ * branch selector group, routed through the SAME expansion — a comma-separated
+ * branch list at whole-selector position, a `:is(…)` compaction in compound
+ * position. `capture` marks a `*[…]` (its branches are parser-owned and expand at
+ * whole-selector position); a quoted string's commas are opaque bytes that stay a
+ * single verbatim branch there. Returns null for any non-group interpolation
+ * (`.a-@{n}`, `@{n}` bound to a plain value) — the byte-splice path is unchanged.
+ */
+interface GroupInterp { branches: string[]; multi: boolean; capture: boolean; }
+
+/** [selector-capture] The group a single interpolation REF resolves to: a `*[…]`
+ *  selector CAPTURE, or an escaped `~'…'` selector string with a top-level comma.
+ *  Any other ref (a plain value, a comma-less string) is null. */
+function refGroupInterp(ref: ValueNode, frame: Frame | null, e: EvalCtx): GroupInterp | null {
+  if (ref.type !== 'VarRef') return null;
+  const hit = resolveVarRef(frame, ref.name, e);
+  if (hit === undefined) return null;
+  const bound = hit.value;
+  if (bound.type === 'SelectorCapture') {
+    const branches = bound.branches.slice();
+    return { branches, multi: branches.length > 1, capture: true };
+  }
+  if (bound.type === 'Quoted' && bound.escaped && hasTopLevelComma(bound.value)) {
+    return { branches: [bound.value], multi: true, capture: false };
+  }
+  return null;
+}
+
+/** [selector-capture] The group a lone bare `@{name}` simple resolves to (a
+ *  single-part interp whose sole part is a group ref) — else null. */
+function simpleGroupInterp(sim: Simple, frame: Frame | null, e: EvalCtx): GroupInterp | null {
+  const interp = sim.interp;
+  if (interp === null || interp.parts.length !== 1) return null;
+  const part = interp.parts[0]!;
+  return 'ref' in part ? refGroupInterp(part.ref, frame, e) : null;
+}
+
+/** [selector-capture] `simpleGroupInterp` for the sole simple of a LONE complex —
+ *  a `@{name}` that is the ENTIRE selector (no leading combinator, no tail, a
+ *  single-simple head). This is the whole-selector position, where a capture
+ *  expands to header branches rather than compacting to `:is(…)`. */
+function loneGroupInterp(c: Complex, frame: Frame | null, e: EvalCtx): GroupInterp | null {
+  if (c.leadingComb !== undefined && c.leadingComb !== ' ') return null;
+  if (c.tail.length > 0) return null;
+  if (c.head.simples.length !== 1) return null;
+  return simpleGroupInterp(c.head.simples[0]!, frame, e);
+}
+
+/** Bytes for one non-group interpolation ref part (matches `evalInterp`: fold the
+ *  ref, honour its `unquote`). Async there is out of scope for a selector token. */
+function resolveRefBytes(part: { ref: ValueNode; unquote: boolean }, frame: Frame | null, e: EvalCtx): string {
+  const bytes = evalBytesInterp(part.ref, frame, e);
+  if (isThenable(bytes)) throw new Error('async value in a selector interpolation is unsupported');
+  return part.unquote ? stripOuterQuotes(bytes) : bytes;
+}
+
+/** [selector-capture] The header/parent branch strings one complex contributes.
+ *  A lone whole-selector `*[…]` capture EXPANDS to one branch per captured
+ *  selector; a lone quoted group stays a single verbatim branch. Every other
+ *  complex resolves to exactly one string (a compound-embedded group compacts to
+ *  `:is(…)` inside `resolveComplex`). */
+function expandComplex(c: Complex, frame: Frame | null, e: EvalCtx): string[] {
+  const g = loneGroupInterp(c, frame, e);
+  if (g !== null) return g.capture ? g.branches : [g.branches.join(', ')];
+  return [resolveComplex(c, frame, e)];
+}
+
+/** Resolve one interpolated simple token's text in `frame`. Each interpolation ref
+ *  part folds to its bytes, EXCEPT a group ref (a `*[…]` capture or `~'…'` comma
+ *  string) embedded in a compound (`.d@{cap}&:hover`, `@{c}@{d}`) compacts to a
+ *  single `:is(…)` group; a single-branch capture splices its lone branch bare. */
 function resolveSimpleText(sim: Simple, frame: Frame | null, e: EvalCtx): string {
-  if (sim.interp !== null) return evalBytesInterpSync(sim.interp, frame, e);
-  return sim.text ?? '';
+  const interp = sim.interp;
+  if (interp === null) return sim.text ?? '';
+  let s = '';
+  for (const part of interp.parts) {
+    if ('lit' in part) { s += part.lit; continue; }
+    const g = refGroupInterp(part.ref, frame, e);
+    if (g !== null) {
+      const joined = g.branches.join(', ');
+      s += g.multi ? `:is(${joined})` : joined;
+    } else {
+      s += resolveRefBytes(part, frame, e);
+    }
+  }
+  return resolveEmergentInterp(s, frame, e);
 }
 
 function resolveCompound(c: Compound, frame: Frame | null, e: EvalCtx): string {
@@ -1618,7 +1706,7 @@ function opaqueJoin(a: string, child: SelectorList, frame: Frame | null, e: Eval
 
 function ownStrings(list: SelectorList, frame: Frame | null, e: EvalCtx): string[] {
   const out: string[] = [];
-  for (const c of list.selectors) out.push(resolveComplex(c, frame, e));
+  for (const c of list.selectors) out.push(...expandComplex(c, frame, e));
   return out;
 }
 
@@ -1629,6 +1717,12 @@ function ownStrings(list: SelectorList, frame: Frame | null, e: EvalCtx): string
 function rootStrings(list: SelectorList, frame: Frame | null, e: EvalCtx): string[] {
   const out: string[] = [];
   for (const c of list.selectors) {
+    const g = loneGroupInterp(c, frame, e);
+    if (g !== null) {
+      if (g.capture) out.push(...g.branches);
+      else out.push(g.branches.join(', '));
+      continue;
+    }
     if (complexHasAmpersand(c)) out.push(resolveComplex(c, frame, e).split('&').join('').trim());
     else out.push(resolveComplex(c, frame, e));
   }
