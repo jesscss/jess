@@ -23,6 +23,7 @@ import type {
   Complex,
   Compound,
   Simple,
+  SelectorCapture,
   Keyword,
   Color,
   Quoted,
@@ -79,7 +80,7 @@ export function renderCombinator(comb: Combinator): string {
  */
 export type Node =
   | Root | Rule | Declaration | Comment | SelectorList | Complex | Compound
-  | Simple | Keyword | Color | Quoted | Any | Dimension | SpacedValue | List | VarRef | MixinDef | MixinCall
+  | Simple | SelectorCapture | Keyword | Color | Quoted | Any | Dimension | SpacedValue | List | VarRef | MixinDef | MixinCall
   | VarDeclaration | Sequence | Operation | FunctionCall | Paren | Condition
   | AtRuleBlock | AtRuleStatement | ImportAtRule | OpaqueAtRuleBlock | Interp | VarIndirect | DetachedRuleset
   | MapAccessor | PropRef | DetachedCall | For | RawInline | StyleImport;

@@ -5,8 +5,10 @@
  * emits for each shape — NOT to mirror the legacy serialization *method*.
  *
  * Every node is a PLAIN-DATA object with a PascalCase `type` discriminant. There
- * is no base class and no `new`: the free-function factories below are the only
- * construction path. Narrow a node with `node.type === '…'` (or `isNode`).
+ * is no base class and no `new`. Grammar reductions construct exact object
+ * literals; the free-function helpers below are optional programmatic
+ * conveniences, not a construction boundary. Narrow a node with
+ * `node.type === '…'` (or `isNode`).
  *
  * Selector model: a selector is a `SelectorList` of `Complex`
  * selectors; a `Complex` is a head `Compound` plus `(combinator, compound)`
