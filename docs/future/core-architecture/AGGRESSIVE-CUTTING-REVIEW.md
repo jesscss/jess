@@ -32,6 +32,17 @@ active architecture queue.
     "relations": ["calls <= admittedCalls", "admittedCalls <= admissionCalls", "admittedCalls <= featureBearingContainers", "featureBearingContainers < containers", "noFeatureAllocations === 0"],
     "evidence": {"command":["node","scripts/profile-less-benchmark.mjs","--assert-merge-contract","--assert-live-merge-contract"]},
     "sourceCheck": {"file":"packages/core/src/tree/rules.ts","caller":"_finishSourceOrderEvaluation","call":"_coalesceMergedDeclarations","guard":"hasMergeOutputSurface","profile":["MERGE_PROFILE_COUNTERS_KEY","recordMergeProfile"]}
+  },
+  {
+    "id": "css-private-direct-ast-family",
+    "kind": "private-unreachable",
+    "surface": "private CSS AST grammar development family",
+    "files": ["packages/css-parser/src/ast/grammar.ts"],
+    "privateGrammar": {
+      "entry": "packages/css-parser/src/ast/grammar.ts",
+      "coldConstructionOnly": true,
+      "why": "The module is intentionally absent from every CSS public entry and from the CST grammar. Its only importer is the focused construction test, so Parseman reductions and their temporary arrays run only when that test or a future explicit direct-AST root invokes this private rule."
+    }
   }
 ]
 ```

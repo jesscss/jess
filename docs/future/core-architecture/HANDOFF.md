@@ -40,15 +40,19 @@ Less corpus.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: documentation control-surface correction.
-- Architecture surface: live routing and review controls only; no runtime machinery changed.
-- Separation/duplication: historical bridge detail is retained in lane documents, not duplicated in live controls.
-- Cumulative node weight: none.
-- New traversal: none.
-- New node/materialization: none.
-- Render path: none.
-- Helper/API surface: none.
+- Latest pass: private CSS direct-AST grammar family.
+- Architecture surface: `packages/css-parser/src/ast/grammar.ts` remains private: `packages/css-parser/src/index.ts`, `cst-css.ts`, and `grammar.ts` neither import nor export `cssAstGrammar`; `package.json` has no subpath targeting it and `tsdown.config.ts` has no entry for it. The sole current importer is `packages/css-parser/test/ast-grammar.test.ts`. No existing parse, eval, or render route reaches it.
+- Separation/duplication: this is parser-local Parseman construction using core node constructors only. It creates no host, action registry, bridge, conversion pass, public pilot, or fallback.
+- Cumulative node weight: source AST nodes exist only for an explicit run of this development grammar; the current public CSS CST path creates none of them.
+- New traversal: [loop/traversal] `complexSegments` makes one bounded pass over the already-captured children of one selector reduction. It does not walk a source tree or run in any live parse/render route.
+- New node/materialization: [node construction] reductions call existing core constructors for the exact AST nodes they own. [materialized array/object] and [array spread/materialization] are the parser-owned child arrays and constructor argument list required to represent selector/value structure, reachable only from the private test seam.
+- Render path: unchanged. `serialize` appears only in the focused proof; public render does not import this grammar.
+- Helper/API surface: [array helper] filters are reduction-local type selection over Parseman's captured children. There is no exported helper or runtime callback surface.
 - Metadata mutations: none.
-- Review-flagged diff tokens: none.
-- Evidence: documentation diff review and `git diff --check`.
-- Verdict: accepted.
+- Review-flagged diff tokens: [loop/traversal], [array helper], [array spread/materialization], [node construction], [routine error control], and [materialized array/object] are all private grammar construction checks. The `Error` branches reject impossible malformed reduction children and are not routine parse control flow; recognition itself remains Parseman combinators.
+- Hot-path cost contracts:
+  ```json
+  [{"id":"css-private-direct-ast-family","verdict":"accepted","privateReachability":{"productionImporters":0,"publicExports":0,"buildEntries":0,"coldConstructionOnly":true},"why":"Current static reachability is zero from CSS production source and artifacts: no public parse/CST/eval/render entry imports or exports cssAstGrammar, package.json has no subpath targeting it, and tsdown has no build entry. Its bounded child scans and allocations occur only when the focused development test directly runs CssAstDocument; no benchmark or runtime-speed claim is made."}]
+  ```
+- Evidence: focused source-to-AST-to-serialize tests, CSS package build/tests, parser runtime boundary verification, and the private-reachability registry check.
+- Verdict: accepted as an unreachable development construction slice; wiring a public parser root requires a new reachability and runtime cost review.

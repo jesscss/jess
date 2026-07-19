@@ -9,6 +9,7 @@ import {
   extractCostAuditRecords,
   isProductionHotPathFile,
   isExactParserRuntimeDebtDeletion,
+  publicArtifactReferences,
   productionChangedPaths,
   scopedChangedPaths,
   validateCostAuditRecords,
@@ -54,6 +55,24 @@ describe('aggressive-cutting review scope', () => {
       'packages/core/src/ast/serialize.ts',
       'packages/css-parser/src/fixtures/recovery.test.ts'
     ])).toEqual(['packages/core/src/ast/serialize.ts']);
+  });
+});
+
+describe('private grammar artifact reachability', () => {
+  const entry = 'packages/css-parser/src/ast/grammar.ts';
+
+  it('finds a package source export targeting an otherwise unimported private grammar', () => {
+    const exports: Record<string, unknown> = {};
+    exports['./ast'] = { source: './src/ast/grammar.ts' };
+    expect(publicArtifactReferences(entry, JSON.stringify({
+      exports
+    }), 'export default defineConfig({ entry: {} });')).toEqual({ publicExports: 1, buildEntries: 0 });
+  });
+
+  it('finds a tsdown entry targeting an otherwise unexported private grammar', () => {
+    expect(publicArtifactReferences(entry, JSON.stringify({ exports: {} }), `
+      export default defineConfig({ entry: { ast: './src/ast/grammar.ts' } });
+    `)).toEqual({ publicExports: 0, buildEntries: 1 });
   });
 });
 
@@ -105,10 +124,10 @@ describe('exact parser-runtime debt deletion', () => {
 
   it('rejects a production change outside the removed ledger file or any danger token', () => {
     expect(isExactParserRuntimeDebtDeletion(candidate({
-      changedPaths: [sourcePath, 'packages/core/src/ast/serialize.ts', ledgerPath],
+      changedPaths: [sourcePath, 'packages/core/src/ast/serialize.ts', ledgerPath]
     }))).toBe(false);
     expect(isExactParserRuntimeDebtDeletion(candidate({
-      findings: [{ label: 'allocation' }],
+      findings: [{ label: 'allocation' }]
     }))).toBe(false);
     expect(isExactParserRuntimeDebtDeletion(candidate({
       boundaryClean: false
@@ -184,28 +203,28 @@ describe('concise handoff cost-contract ledger pointers', () => {
         fixture: 'benchmark.less',
         collapseNesting: true,
         outputSha256: 'b'.repeat(64),
-        outputBytes: 1,
-      },
-    },
+        outputBytes: 1
+      }
+    }
   }];
 
   it('resolves a concise ledger pointer into its authoritative neutral audit record', () => {
     expect(extractCostAuditRecords(
       '- Hot-path cost contracts: ledger IDs: `cold-terminal-surface`; see the review ledger.',
-      ledger,
+      ledger
     )).toEqual([{
       id: 'cold-terminal-surface',
       verdict: 'accepted',
       costDelta: 'neutral',
       why: ledger[0].neutralRefactor.why,
-      byteIdentity: ledger[0].neutralRefactor.byteIdentity,
+      byteIdentity: ledger[0].neutralRefactor.byteIdentity
     }]);
   });
 
   it('keeps an unknown ledger id visible so the contract validator rejects it', () => {
     const records = extractCostAuditRecords(
       '- Hot-path cost contracts: ledger IDs: `missing-terminal-surface`.',
-      ledger,
+      ledger
     );
 
     expect(validateCostAuditRecords(records, ledger, [], '')).toContain(
@@ -749,7 +768,7 @@ const offBenchContract = {
     file: scopeFile,
     caller: 'export function lookupScopeFrameCallable',
     call: 'walkFallbackCallable',
-    guard: "result.reason === 'child-surface'"
+    guard: 'result.reason === \'child-surface\''
   }
 };
 const offBenchRegistry = [offBenchContract];

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -22,6 +22,56 @@ const reviewedSourceRoots = [
 ];
 const hotPathRoots = reviewedSourceRoots.map(rootPath => `${rootPath}/`);
 const parserRuntimeDebtPath = 'scripts/parser-runtime-boundary-debt.json';
+
+function sourceFiles(rootPath) {
+  const found = [];
+  for (const entry of readdirSync(resolve(root, rootPath), { withFileTypes: true })) {
+    const path = `${rootPath}/${entry.name}`;
+    if (entry.isDirectory()) found.push(...sourceFiles(path));
+    else if (entry.isFile() && entry.name.endsWith('.ts')) found.push(path);
+  }
+  return found;
+}
+
+function publicArtifactReferences(entry, packageManifest, buildConfig) {
+  const fragment = entry.replace(/^packages\/css-parser\//, '');
+  const strings = [];
+  const collectStrings = (value) => {
+    if (typeof value === 'string') {
+      strings.push(value);
+    } else if (Array.isArray(value)) {
+      for (const child of value) collectStrings(child);
+    } else if (value !== null && typeof value === 'object') {
+      for (const child of Object.values(value)) collectStrings(child);
+    }
+  };
+  collectStrings(JSON.parse(packageManifest).exports);
+  return {
+    publicExports: strings.filter(value => value.includes(fragment)).length,
+    buildEntries: buildConfig.split(fragment).length - 1,
+  };
+}
+
+function privateGrammarReachability(entry) {
+  const sources = sourceFiles('packages/css-parser/src');
+  let productionImporters = 0;
+  let publicExports = 0;
+  for (const path of sources) {
+    if (path === entry) continue;
+    const source = readFileSync(resolve(root, path), 'utf8');
+    if (source.includes("./ast/grammar.js") || source.includes("./ast/grammar.ts") || source.includes("cssAstGrammar")) {
+      productionImporters += 1;
+    }
+    if (source.includes('cssAstGrammar')) publicExports += 1;
+  }
+  const artifacts = publicArtifactReferences(
+    entry,
+    readFileSync(resolve(root, 'packages/css-parser/package.json'), 'utf8'),
+    readFileSync(resolve(root, 'packages/css-parser/tsdown.config.ts'), 'utf8'),
+  );
+  publicExports += artifacts.publicExports;
+  return { productionImporters, publicExports, buildEntries: artifacts.buildEntries };
+}
 
 function escapeRegExp(value) {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -473,6 +523,30 @@ function validateNeutralRefactorMetadata(contract) {
   return errors;
 }
 
+function validatePrivateUnreachableMetadata(contract) {
+  const errors = [];
+  const privateGrammar = contract.privateGrammar;
+  if (!privateGrammar || typeof privateGrammar !== 'object') {
+    return [`Private-unreachable cost contract ${contract.id} must include a privateGrammar block.`];
+  }
+  if (privateGrammar.entry !== contract.files[0]) {
+    errors.push(`Private-unreachable cost contract ${contract.id} privateGrammar.entry must equal its sole owned file.`);
+  }
+  if (typeof privateGrammar.why !== 'string' || privateGrammar.why.trim().length < 80) {
+    errors.push(`Private-unreachable cost contract ${contract.id} must explain why construction is cold and unreachable from production entries.`);
+  }
+  if (privateGrammar.coldConstructionOnly !== true) {
+    errors.push(`Private-unreachable cost contract ${contract.id} must state coldConstructionOnly: true.`);
+  }
+  const reachability = privateGrammar.entry === contract.files[0]
+    ? privateGrammarReachability(privateGrammar.entry)
+    : null;
+  if (!reachability || reachability.productionImporters !== 0 || reachability.publicExports !== 0 || reachability.buildEntries !== 0) {
+    errors.push(`Private-unreachable cost contract ${contract.id} has a production importer, package export, or build entry for ${privateGrammar.entry}.`);
+  }
+  return errors;
+}
+
 /**
  * Byte-identity + danger-token-free + cost-non-increasing gate for a neutral-or-
  * negative auto-pass audit record. None of the three can be honestly produced by a
@@ -710,6 +784,10 @@ function validateCostContractRegistry(registry) {
       errors.push(...validateNeutralRefactorMetadata(contract));
       continue;
     }
+    if (contract.kind === 'private-unreachable') {
+      errors.push(...validatePrivateUnreachableMetadata(contract));
+      continue;
+    }
     errors.push(...validateNecessityMetadata(contract.necessity, `Cost contract ${contract.id}`));
     // A redundant-call-elimination contract models a pure work-REMOVAL, not a
     // per-container admission FILTER, so it carries no admission block and no
@@ -802,8 +880,8 @@ function validateCostContractRegistry(registry) {
         `Cost contract ${contract.id} must require the canonical benchmark.less parse-render/render A/B with 20 warmups and 45 alternating pairs.`
       );
     }
-    if (!['precise', 'conservative-filter', 'redundant-call-elimination', 'neutral-or-negative', 'off-benchmark-call-reduction'].includes(kind)) {
-      errors.push(`Cost contract ${contract.id} kind must be "precise", "conservative-filter", "redundant-call-elimination", "neutral-or-negative", or "off-benchmark-call-reduction".`);
+    if (!['precise', 'conservative-filter', 'redundant-call-elimination', 'neutral-or-negative', 'private-unreachable', 'off-benchmark-call-reduction'].includes(kind)) {
+      errors.push(`Cost contract ${contract.id} kind must be "precise", "conservative-filter", "redundant-call-elimination", "neutral-or-negative", "private-unreachable", or "off-benchmark-call-reduction".`);
     }
     if (!Array.isArray(contract.relations) || contract.relations.length === 0) {
       errors.push(`Cost contract ${contract.id} must state at least one counter relation.`);
@@ -1069,6 +1147,20 @@ function validateCostAuditRecords(records, registry, changedPaths, diff, hasDang
       }
       continue;
     }
+    if (kind === 'private-unreachable') {
+      if (record.verdict !== 'accepted') {
+        errors.push(`Private-unreachable record ${record.id} must be accepted only after current reachability is checked.`);
+      }
+      const current = contract?.privateGrammar ? privateGrammarReachability(contract.privateGrammar.entry) : null;
+      const claimed = record.privateReachability;
+      if (!claimed || claimed.productionImporters !== current?.productionImporters || claimed.publicExports !== current?.publicExports || claimed.buildEntries !== current?.buildEntries || claimed.coldConstructionOnly !== true) {
+        errors.push(`Private-unreachable record ${record.id} must restate current { productionImporters: 0, publicExports: 0, buildEntries: 0, coldConstructionOnly: true } evidence.`);
+      }
+      if (typeof record.why !== 'string' || record.why.trim().length < 80) {
+        errors.push(`Private-unreachable record ${record.id} must explain why no production parse/render route invokes the private grammar.`);
+      }
+      continue;
+    }
     errors.push(...validateNecessityMetadata(record.necessity, `Hot-path cost audit record ${record.id}`));
     if (contract?.necessity?.status === 'audit-required' && changedPaths.includes(contract.files?.[0])) {
       errors.push(`Hot-path cost audit record ${record.id} cannot change its owner while necessity.status is audit-required; prove the fact flow or remove the action first.`);
@@ -1197,7 +1289,7 @@ function validateCostAuditRecords(records, registry, changedPaths, diff, hasDang
     // A neutral-or-negative contract has no source-guard surface to match, so it owns a
     // changed file by plain file membership. It still requires an accepted neutral record
     // (checkNeutralRefactor already ran in the per-record loop); it declares no relations.
-    if ((contract.kind ?? 'precise') === 'neutral-or-negative') {
+    if ((contract.kind ?? 'precise') === 'neutral-or-negative' || contract.kind === 'private-unreachable') {
       if (!contract.files.some(file => changedPaths.includes(file))) {
         continue;
       }
@@ -1490,7 +1582,7 @@ function validateChangedContractSurface(registry, changedPaths, diff) {
     // Neutral-or-negative owners carry no source-guard surface anchors, so their hunks
     // cannot (and need not) match a registered source surface — the byte-identity +
     // danger-token + costDelta attestation covers them instead.
-    if (owners.length > 0 && owners.every(owner => (owner.kind ?? 'precise') === 'neutral-or-negative')) {
+    if (owners.length > 0 && owners.every(owner => (owner.kind ?? 'precise') === 'neutral-or-negative' || owner.kind === 'private-unreachable')) {
       continue;
     }
     if (owners.length === 1 && owners[0].coverage === 'owner-plus-named-carry-forward-support') {
@@ -1718,6 +1810,7 @@ export {
   isProductionHotPathFile,
   productionChangedPaths,
   isExactParserRuntimeDebtDeletion,
+  publicArtifactReferences,
   scopedChangedPaths,
   validateCostAuditRecords,
   validateCostContractRegistry,
