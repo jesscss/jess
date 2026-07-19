@@ -57,6 +57,7 @@
     "test:core:debug": "cross-env TEST=true node scripts/test-core-debug.mjs",
     "test:coverage": "vitest --coverage",
     "preinstall": "npx only-allow pnpm",
+    "postinstall": "node scripts/repoint-parseman.mjs",
     "test:less": "node scripts/test-less.js",
     "test:less:colors": "node scripts/test-less.js colors",
     "test:less:nesting": "node scripts/test-less.js nesting",
