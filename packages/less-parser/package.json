@@ -46,13 +46,7 @@
     "build": "pnpm compile",
     "compile": "tsdown --tsconfig tsconfig.build.json --no-dts && tsc -p tsconfig.build.json --emitDeclarationOnly --noCheck",
     "dev": "tsdown --tsconfig tsconfig.build.json --watch",
-    "bench": "node --import ../../scripts/parseman-macro-register.mjs --import tsx test/bench.ts",
-    "bench:save": "node --import ../../scripts/parseman-macro-register.mjs --import tsx test/bench.ts --save",
-    "bench:memory": "node --expose-gc --import ../../scripts/parseman-macro-register.mjs --import tsx test/bench.ts --memory",
-    "bench:heap": "node --expose-gc --import ../../scripts/parseman-macro-register.mjs --import tsx test/bench.ts --heap-snapshot",
     "test": "cross-env TEST=true vitest --watch=false",
-    "test:debug": "cross-env TEST=true TEST_DEBUG=true vitest --watch=false test/debug-self-analysis.test.ts test/debug-subset-self-analysis.test.ts",
-    "test:perf": "cross-env TEST=true TEST_PERF=true vitest --watch=false test/perf.test.ts",
     "test:coverage": "cross-env TEST=true vitest --coverage",
     "lint:fix": "eslint --fix '**/*.{js,ts}'",
     "lint": "eslint '**/*.{js,ts}'"
