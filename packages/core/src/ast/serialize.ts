@@ -83,6 +83,7 @@ import {
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { colorFromSrc, dimensionFromFields, quotedFromFields, materializeAny } from './literal-tag.js'; // [value node model]
 import { calcInner } from './value-operate.js'; // [calc]
+import { emitValueInterp } from './serialize-value.js'; // [interp-precision]
 import { makeKeyword, makeBool, makeList } from './value-factory.js'; // [calc]
 import { selectDefinitions, type Selection, type DefaultResolver, type CallArg } from './mixin-dispatch.js'; // [guards]
 import { evalGuard, type GuardNode, type ValueResolver, type TypedResolver } from './guard.js'; // [guards]
@@ -1023,7 +1024,7 @@ function evalInterp(node: Interp, frame: Frame | null, e: EvalCtx): MaybePromise
   for (const part of node.parts) {
     if ('lit' in part) pieces.push(part.lit);
     else {
-      const bytes = evalBytes(part.ref, frame, e);
+      const bytes = evalBytesInterp(part.ref, frame, e);
       pieces.push(part.unquote ? mapMaybe(bytes, stripOuterQuotes) : bytes);
     }
   }
@@ -1064,7 +1065,7 @@ function resolveEmergentInterp(input: string, frame: Frame | null, e: EvalCtx): 
           if (hit) {
             const val = withExcluded(e, hit.value, () => evalBinding(hit.value, hit.frame, e));
             if (!isThenable(val)) {
-              out += stripOuterQuotes(emitValue(val));
+              out += stripOuterQuotes(emitValueInterp(val));
               i = j + 1;
               changed = true;
               continue;
@@ -1389,6 +1390,22 @@ function evalBytes(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
   return mapMaybe(evalValue(node, frame, e), emitValue);
 }
 
+/**
+ * Fold a value node to bytes for an INTERPOLATION splice — same as {@link evalBytes}
+ * but emits a COMPUTED dimension at full precision ({@link emitValueInterp}), matching
+ * less.js eval-time interpolation (`@{x}` where `@x: pi()` → `3.141592653589793`).
+ */
+function evalBytesInterp(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromise<string> {
+  return mapMaybe(evalValue(node, frame, e), emitValueInterp);
+}
+
+/** Interp bytes for a synchronous position (selector token); async there is out of scope. */
+function evalBytesInterpSync(node: ValueNode, frame: Frame | null, e: EvalCtx): string {
+  const b = evalBytesInterp(node, frame, e);
+  if (isThenable(b)) throw new Error('async value in a selector interpolation is unsupported');
+  return b;
+}
+
 /** Bytes for a synchronous position (at-rule prelude); async there is out of scope. */
 function evalBytesSync(node: ValueNode, frame: Frame | null, e: EvalCtx): string {
   const b = evalBytes(node, frame, e);
@@ -1425,7 +1442,7 @@ function joinAmpersand(canon: string, parents: string[]): string[] {
 
 /** Resolve one interpolated simple token's text in `frame`. */
 function resolveSimpleText(sim: Simple, frame: Frame | null, e: EvalCtx): string {
-  if (sim.interp !== null) return evalBytesSync(sim.interp, frame, e);
+  if (sim.interp !== null) return evalBytesInterpSync(sim.interp, frame, e);
   return sim.text ?? '';
 }
 
