@@ -33,7 +33,9 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { NodeModulesPlugin } from '@jesscss/plugin-node-modules';
 import { renderAstFile } from './whole-doc-driver.js';
+import type { ModuleResolver } from '../import.js';
 import { buildEvaluator } from '../../evaluator.js';
 import { makeBuiltinRegistry } from './make-builtin-registry.js';
 import { collapseNestingForGolden } from './oracle-source.js';
@@ -51,6 +53,24 @@ function corpusRoot(): string | undefined {
     'git/worktrees/less.js/content-alpha3/packages/test-data/tests-unit',
   );
   return fs.existsSync(def) ? def : undefined;
+}
+
+/**
+ * [import:module] Build the node_modules / package-specifier resolver for the
+ * corpus, backed by `@jesscss/plugin-node-modules` (the same machinery the
+ * production Less binding uses). The less.js alpha corpus keeps its package
+ * fixtures under the sibling `packages/less/node_modules` (where
+ * `@less/test-import-module` is symlinked) — the SAME anchor Less's own test run
+ * uses (its cwd is `packages/less`). Mirror that: resolve packages relative to
+ * that dir, with the importing file's directory tried first (standard Node
+ * per-file resolution). Returns undefined (→ bare specifiers stay deferred, no
+ * regression) if the layout has no such node_modules.
+ */
+function moduleResolver(corpusRoot: string): ModuleResolver | undefined {
+  const lessPkg = path.resolve(corpusRoot, '../../less');
+  if (!fs.existsSync(path.join(lessPkg, 'node_modules'))) return undefined;
+  const plugin = new NodeModulesPlugin({ basePath: lessPkg });
+  return (spec, fromDir) => plugin.resolvePackage(spec, fromDir) ?? plugin.resolvePackage(spec);
 }
 
 /** Status ranking — higher is better; the gate forbids dropping below baseline. */
@@ -125,12 +145,13 @@ function resolveCollapse(lessPath: string, corpusRoot: string): boolean {
   return true;
 }
 
-function evaluate(lessPath: string, corpusRoot: string): FixtureResult {
+function evaluate(lessPath: string, corpusRoot: string, resolveModule?: ModuleResolver): FixtureResult {
   let res;
   try {
     res = renderAstFile(lessPath, {
       evaluator: buildEvaluator(makeBuiltinRegistry()),
       collapseNesting: resolveCollapse(lessPath, corpusRoot),
+      resolveModule,
     });
   } catch (e) {
     return { status: 'THREW', bytes: null, threw: `outer: ${(e as Error).message}` };
@@ -149,10 +170,11 @@ const ROOT = corpusRoot();
 describe.skipIf(!ROOT)('ast/ vs less.js alpha differential oracle (baseline-diff gate)', () => {
   it('no fixture regresses below its recorded baseline status', () => {
     const root = ROOT!;
+    const resolveModule = moduleResolver(root);
     const fixtures = pairedFixtures(root);
     const report: Record<string, FixtureResult> = {};
     for (const f of fixtures) {
-      report[path.relative(root, f)] = evaluate(f, root);
+      report[path.relative(root, f)] = evaluate(f, root, resolveModule);
     }
 
     const tally = { MATCH: 0, MATCH_NORM: 0, DIFF: 0, THREW: 0 };

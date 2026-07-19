@@ -12,6 +12,9 @@
 export { renderAstDoc, renderAstFile } from './ast/parse-host/render-doc.js';
 export type { AstRenderResult, AstRenderOptions } from './ast/parse-host/render-doc.js';
 
+// --- injected node_modules / package-specifier `@import` resolver type ---
+export type { ModuleResolver } from './ast/parse-host/import.js';
+
 // --- value evaluator builder + injected-evaluator type ---
 export { buildEvaluator } from './ast/evaluator.js';
 export type { ValueEvaluator } from './ast/value-eval.js';

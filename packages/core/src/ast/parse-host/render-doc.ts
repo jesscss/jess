@@ -34,7 +34,7 @@ import type { Root, Statement } from '../index.js';
 import type { SerializeResult } from '../serialize.js';
 import type { ValueEvaluator } from '../value-eval.js';
 import { parseToAst } from './dispatch-host.js';
-import { createImportState, resolveDirectImports, type FileVarParse } from './import.js';
+import { createImportState, resolveDirectImports, type FileVarParse, type ModuleResolver } from './import.js';
 import { createFsFnIo } from './fn-io.js';
 
 export interface AstRenderResult {
@@ -75,6 +75,14 @@ export interface AstRenderOptions {
    * cross-file literal vars stay deferred (graceful; unchanged from a parse miss).
    */
   parseFileVars?: FileVarParse;
+  /**
+   * Injected node_modules / package-specifier resolver for bare `@import`
+   * specifiers (`@import "@less/pkg/x.less"`) — see {@link ModuleResolver}. Core
+   * touches no package layout, so the Less binding supplies one backed by
+   * `@jesscss/plugin-node-modules`. Omitted → bare specifiers stay deferred
+   * verbatim (unchanged from a relative miss).
+   */
+  resolveModule?: ModuleResolver;
   /**
    * Output mode threaded to `serialize`. `false` = NESTED (Less v5 default),
    * `true`/omitted = FLAT (composed selectors). A fixture's `styles.config.ts`
@@ -121,7 +129,7 @@ export function renderAstDoc(src: string, options: AstRenderOptions): AstRenderR
     const resolved = resolveDirectImports(
       root.children,
       options.filePath,
-      createImportState(options.parseFileVars),
+      createImportState(options.parseFileVars, options.resolveModule),
       parse,
       (feature, detail) => deferredImports.push({ feature, detail }),
     );

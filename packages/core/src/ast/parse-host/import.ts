@@ -43,6 +43,21 @@ import type { BuildArgs, Span } from './host-context.js';
  */
 export type FileVarParse = (source: string) => { errors: readonly unknown[]; tree: unknown };
 
+/**
+ * [import:module] INJECTED node_modules / package-specifier resolver. A bare Less
+ * import specifier (`@import "@less/pkg/one/1.less"`, `@import "pkg/theme"`) is NOT
+ * a relative path — it names a package to be located via Node's module-resolution
+ * algorithm (walking `node_modules`). Core imports no resolver and touches no
+ * package layout, so the caller (the Less render binding in `@jesscss/plugin-less`
+ * / the test harness) supplies one — backed by `@jesscss/plugin-node-modules`,
+ * exactly like `parseFileVars` is supplied by `@jesscss/less-parser`. Given a
+ * resolvable specifier and the importing file's directory it returns the target's
+ * absolute path (already `.less`-suffixed by the caller-tried candidate); a
+ * non-package or unresolvable specifier returns `null`. Absent → package
+ * specifiers stay unresolved (deferred verbatim), identical to a relative miss.
+ */
+export type ModuleResolver = (spec: string, fromDir: string) => string | null;
+
 /** Shared, mutable state threaded through a whole (recursive) bridge run. */
 export interface ImportState {
   /** Resolved absolute paths already emitted (the `once` dedup set). */
@@ -72,10 +87,17 @@ export interface ImportState {
    * no cross-file scope (graceful; interpolated paths needing it stay deferred).
    */
   readonly parseFileVars?: FileVarParse;
+  /**
+   * [import:module] Injected node_modules / package-specifier resolver (see
+   * {@link ModuleResolver}). Threaded on the state so it reaches every recursive
+   * bridge step (a package-imported file may itself import a package). Absent →
+   * bare specifiers stay unresolved (deferred verbatim).
+   */
+  readonly resolveModule?: ModuleResolver;
 }
 
-export function createImportState(parseFileVars?: FileVarParse): ImportState {
-  return { seen: new Set(), stack: [], varScopeCache: new Map(), entry: { file: undefined }, parseFileVars };
+export function createImportState(parseFileVars?: FileVarParse, resolveModule?: ModuleResolver): ImportState {
+  return { seen: new Set(), stack: [], varScopeCache: new Map(), entry: { file: undefined }, parseFileVars, resolveModule };
 }
 
 /** A node read structurally by the import + bridge front ends. */
@@ -255,7 +277,7 @@ function collectFileVars(
       if (spec === null) continue;
       const flags = readFlags(r as AnyNode);
       if (flags.inline || isCssPassthrough(spec, flags)) continue;
-      const child = resolveLessPath(spec, fromDir);
+      const child = resolveLessPath(spec, fromDir, state.resolveModule);
       if (child === null) continue;
       for (const [k, v] of collectFileVars(child, state, visiting)) vars.set(k, v);
     }
@@ -352,8 +374,24 @@ function isCssPassthrough(spec: string, flags: ImportFlags): boolean {
   return lower.startsWith('http://') || lower.startsWith('https://') || lower.startsWith('//');
 }
 
-/** Resolve a Less import specifier against the importing file's directory. */
-function resolveLessPath(spec: string, fromDir: string): string | null {
+/**
+ * [import:module] A bare package specifier is one that is neither relative
+ * (`./`, `../`) nor absolute — it names a `node_modules` package to resolve
+ * (`@less/pkg/x.less`, `pkg/theme`). Relative/absolute specifiers resolve against
+ * the importing directory and never touch the module resolver.
+ */
+function isBareSpecifier(spec: string): boolean {
+  return !spec.startsWith('.') && !spec.startsWith('/') && !path.isAbsolute(spec);
+}
+
+/**
+ * Resolve a Less import specifier against the importing file's directory, then —
+ * for a bare package specifier and when a {@link ModuleResolver} is injected —
+ * via node_modules resolution ([import:module]). The extensionless `.less`
+ * candidate is tried for BOTH paths (`@import "pkg/one/2"` → `.../2.less`),
+ * mirroring Less's own extension probing.
+ */
+function resolveLessPath(spec: string, fromDir: string, resolveModule?: ModuleResolver): string | null {
   const joined = path.resolve(fromDir, spec);
   const candidates = path.extname(joined) ? [joined] : [`${joined}.less`, joined];
   for (const candidate of candidates) {
@@ -361,6 +399,19 @@ function resolveLessPath(spec: string, fromDir: string): string | null {
       if (fs.statSync(candidate).isFile()) return candidate;
     } catch {
       /* not found; try next */
+    }
+  }
+  // [import:module] Fall back to node_modules resolution for a bare specifier.
+  if (resolveModule !== undefined && isBareSpecifier(spec)) {
+    const specs = path.extname(spec) ? [spec] : [`${spec}.less`, spec];
+    for (const candidate of specs) {
+      const resolved = resolveModule(candidate, fromDir);
+      if (resolved === null) continue;
+      try {
+        if (fs.statSync(resolved).isFile()) return resolved;
+      } catch {
+        /* resolver returned a non-file; try next candidate */
+      }
     }
   }
   return null;
@@ -429,7 +480,7 @@ function spliceImport(
   // (`@import (inline) "x" (min-width:…)`) is carried on the `RawInline` node so
   // the serializer wraps the splice in an `@media <media> { … }` block.
   if (flags.inline) {
-    const rawPath = resolveLessPath(spec, fromDir);
+    const rawPath = resolveLessPath(spec, fromDir, state.resolveModule);
     if (rawPath === null) {
       if (flags.optional) return [];
       unsupported('import:unresolved', spec);
@@ -439,7 +490,7 @@ function spliceImport(
 
   if (isCssPassthrough(spec, flags)) unsupported('import:css-passthrough', spec);
 
-  const resolved = resolveLessPath(spec, fromDir);
+  const resolved = resolveLessPath(spec, fromDir, state.resolveModule);
   if (resolved === null) {
     if (flags.optional) return [];
     unsupported('import:unresolved', spec);
@@ -455,7 +506,14 @@ function spliceImport(
   // re-emit) that shares the cycle stack; it never registers in the parent's
   // once-set (a multiple import is, by definition, never deduped).
   const recurseState: ImportState = flags.multiple
-    ? { seen: new Set(), stack: state.stack, varScopeCache: state.varScopeCache, entry: state.entry }
+    ? {
+        seen: new Set(),
+        stack: state.stack,
+        varScopeCache: state.varScopeCache,
+        entry: state.entry,
+        parseFileVars: state.parseFileVars,
+        resolveModule: state.resolveModule,
+      }
     : state;
 
   const source = fs.readFileSync(resolved, 'utf8');

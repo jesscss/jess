@@ -18,9 +18,10 @@
  * default; nothing here is on the default render path yet.
  */
 import { buildEvaluator, renderAstDoc, renderAstFile } from '@jesscss/core/ast-render';
-import type { AstRenderResult, ValueEvaluator } from '@jesscss/core/ast-render';
+import type { AstRenderResult, ModuleResolver, ValueEvaluator } from '@jesscss/core/ast-render';
 import { makeBuiltinRegistry } from '@jesscss/fns';
 import { lessGrammar, firstInlineJsBacktick, INLINE_JS_UNSUPPORTED_MESSAGE, parseLessFn } from '@jesscss/less-parser';
+import { NodeModulesPlugin } from '@jesscss/plugin-node-modules';
 
 export type { AstRenderResult } from '@jesscss/core/ast-render';
 
@@ -41,6 +42,21 @@ function guardInlineJs(src: string): void {
 let sharedEvaluator: ValueEvaluator | undefined;
 function builtinEvaluator(): ValueEvaluator {
   return (sharedEvaluator ??= buildEvaluator(makeBuiltinRegistry()));
+}
+
+/**
+ * [import:module] The node_modules / package-specifier `@import` resolver, backed
+ * by `@jesscss/plugin-node-modules` (Node's module-resolution algorithm). A bare
+ * specifier (`@import "@scope/pkg/x.less"`) resolves relative to the importing
+ * file's directory (`fromDir`), so a package installed alongside the importing
+ * `.less` is found. The `.less` extension probing is applied by core's
+ * `resolveLessPath` — this only maps a resolvable specifier to its absolute path.
+ * Built once (stateless) and reused across renders.
+ */
+let sharedNodeModules: NodeModulesPlugin | undefined;
+function moduleResolver(): ModuleResolver {
+  const plugin = (sharedNodeModules ??= new NodeModulesPlugin());
+  return (spec, fromDir) => plugin.resolvePackage(spec, fromDir);
 }
 
 /** Options for the production ast/ `.less` render. */
@@ -67,6 +83,7 @@ export function renderLessViaAst(
     evaluator: builtinEvaluator(),
     guardSource: guardInlineJs,
     parseFileVars: parseLessFn,
+    resolveModule: moduleResolver(),
     collapseNesting: options.collapseNesting ?? false,
   });
 }
@@ -82,6 +99,7 @@ export function renderLessFileViaAst(filePath: string, options: RenderLessViaAst
     evaluator: builtinEvaluator(),
     guardSource: guardInlineJs,
     parseFileVars: parseLessFn,
+    resolveModule: moduleResolver(),
     collapseNesting: options.collapseNesting ?? false,
   });
 }

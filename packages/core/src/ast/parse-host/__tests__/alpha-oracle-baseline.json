@@ -156,8 +156,8 @@
     "bytes": 162
   },
   "import/import-module.less": {
-    "status": "DIFF",
-    "bytes": 150
+    "status": "MATCH",
+    "bytes": 74
   },
   "import/import-once.less": {
     "status": "MATCH",

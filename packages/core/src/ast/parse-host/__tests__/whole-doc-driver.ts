@@ -15,6 +15,7 @@
  */
 import { lessGrammar, firstInlineJsBacktick, INLINE_JS_UNSUPPORTED_MESSAGE, parseLessFn } from '@jesscss/less-parser';
 import type { ValueEvaluator } from '../../value-eval.js';
+import type { ModuleResolver } from '../import.js';
 import {
   renderAstDoc as renderAstDocCore,
   renderAstFile as renderAstFileCore,
@@ -39,6 +40,13 @@ export interface AstRenderOptions {
    * `true`/omitted = FLAT (composed selectors).
    */
   collapseNesting?: boolean;
+  /**
+   * Injected node_modules / package-specifier resolver for bare `@import`
+   * specifiers (see core `ModuleResolver`). The harness leaves this undefined by
+   * default (core import tests are hermetic); the differential oracle supplies a
+   * `@jesscss/plugin-node-modules`-backed resolver so `@import "@less/…"` inlines.
+   */
+  resolveModule?: ModuleResolver;
 }
 
 /**
@@ -65,6 +73,7 @@ export function renderAstDoc(src: string, options: AstRenderOptions = {}): AstRe
     evaluator: options.evaluator,
     guardSource: guardInlineJs,
     parseFileVars: parseLessFn,
+    resolveModule: options.resolveModule,
     collapseNesting: options.collapseNesting,
   });
 }
@@ -77,6 +86,7 @@ export function renderAstFile(filePath: string, options: Omit<AstRenderOptions, 
     evaluator: options.evaluator,
     guardSource: guardInlineJs,
     parseFileVars: parseLessFn,
+    resolveModule: options.resolveModule,
     collapseNesting: options.collapseNesting,
   });
 }
