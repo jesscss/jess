@@ -20,7 +20,7 @@
 import { buildEvaluator, renderAstDoc, renderAstFile } from '@jesscss/core/ast-render';
 import type { AstRenderResult, ModuleResolver, ValueEvaluator } from '@jesscss/core/ast-render';
 import { makeBuiltinRegistry } from '@jesscss/fns';
-import { lessGrammar, firstInlineJsBacktick, INLINE_JS_UNSUPPORTED_MESSAGE, parseLessFn } from '@jesscss/less-parser';
+import { lessGrammar, firstInlineJsBacktick, INLINE_JS_UNSUPPORTED_MESSAGE } from '@jesscss/less-parser';
 import { NodeModulesPlugin } from '@jesscss/plugin-node-modules';
 
 export type { AstRenderResult } from '@jesscss/core/ast-render';
@@ -88,7 +88,6 @@ export function renderLessViaAst(
     filePath: options.filePath,
     evaluator: builtinEvaluator(),
     guardSource: guardInlineJs,
-    parseFileVars: parseLessFn,
     resolveModule: moduleResolver(),
     searchDirs: options.searchDirs,
     collapseNesting: options.collapseNesting ?? false,
@@ -105,7 +104,6 @@ export function renderLessFileViaAst(filePath: string, options: RenderLessViaAst
     trivia: grammar['rw'],
     evaluator: builtinEvaluator(),
     guardSource: guardInlineJs,
-    parseFileVars: parseLessFn,
     resolveModule: moduleResolver(),
     searchDirs: options.searchDirs,
     collapseNesting: options.collapseNesting ?? false,

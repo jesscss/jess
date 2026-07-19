@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import * as fs from 'fs';
 import { parseLessFn } from '@jesscss/less-parser';
 import { serialize } from '../../index.js';
-import { bridgeToAst } from './bridge.js';
+import { bridgeToAst, sniffFileVarsViaAst } from './bridge.js';
 import { createImportState } from '../import.js';
 import { buildEvaluator } from '../../evaluator.js';
 import { makeBuiltinRegistry } from './make-builtin-registry.js';
@@ -22,7 +22,7 @@ const DIR = `${__dirname}/fixtures/import`;
 async function renderAstFile(file: string): Promise<string> {
   const src = fs.readFileSync(file, 'utf8');
   const parsed = parseLessFn(src);
-  const bridged = bridgeToAst(parsed.tree, src, file, createImportState(parseLessFn));
+  const bridged = bridgeToAst(parsed.tree, src, file, createImportState(sniffFileVarsViaAst));
   const evaluator = buildEvaluator(makeBuiltinRegistry());
   return (await serialize(bridged, { evaluator })).css;
 }

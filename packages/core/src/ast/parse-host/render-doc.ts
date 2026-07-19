@@ -34,7 +34,7 @@ import type { Root, Statement } from '../index.js';
 import type { SerializeResult } from '../serialize.js';
 import type { ValueEvaluator } from '../value-eval.js';
 import { parseToAst } from './dispatch-host.js';
-import { createImportState, resolveDirectImports, type FileVarParse, type ModuleResolver } from './import.js';
+import { createImportState, resolveDirectImports, type ModuleResolver } from './import.js';
 import { createFsFnIo } from './fn-io.js';
 
 export interface AstRenderResult {
@@ -68,13 +68,6 @@ export interface AstRenderOptions {
    * to `LessParser.parse`. The throw is captured on {@link AstRenderResult.threw}.
    */
   guardSource?: (src: string) => void;
-  /**
-   * Injected legacy Less parse for interpolated `@import` PATH variable sniffing
-   * (see {@link FileVarParse}). Core imports no parser, so the Less binding supplies
-   * `@jesscss/less-parser`'s `parseLessFn`. Omitted → interpolated paths needing
-   * cross-file literal vars stay deferred (graceful; unchanged from a parse miss).
-   */
-  parseFileVars?: FileVarParse;
   /**
    * Injected node_modules / package-specifier resolver for bare `@import`
    * specifiers (`@import "@less/pkg/x.less"`) — see {@link ModuleResolver}. Core
@@ -135,10 +128,20 @@ export function renderAstDoc(src: string, options: AstRenderOptions): AstRenderR
       const res = parseToAst(source, grammar, undefined, { trivia });
       return res.root ? res.root.children : [];
     };
+    // Interpolated-import PATH var sniff (`@import "@{theme}.less"`): parse the
+    // target through the SAME ast/ dispatch host and read its top-level `@var`
+    // decls — BuilderHost-free, no legacy `tree/`. Distinct from `parse` in that it
+    // does NOT run `guardSource` (a var sniff must not reject a file for a construct
+    // unrelated to its literal-variable scope; an unparsable file just contributes
+    // none), mirroring the prior sniffer's parse-only-then-read behaviour.
+    const sniffFileVars = (source: string): Statement[] => {
+      const res = parseToAst(source, grammar, undefined, { trivia });
+      return res.root ? res.root.children : [];
+    };
     const resolved = resolveDirectImports(
       root.children,
       options.filePath,
-      createImportState(options.parseFileVars, options.resolveModule, options.searchDirs),
+      createImportState(sniffFileVars, options.resolveModule, options.searchDirs),
       parse,
       (feature, detail) => deferredImports.push({ feature, detail }),
     );

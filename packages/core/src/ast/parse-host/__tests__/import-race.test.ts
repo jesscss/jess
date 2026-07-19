@@ -3,7 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { parseLessFn } from '@jesscss/less-parser';
 import { serialize, composeStats } from '../../index.js';
-import { bridgeToAst } from './bridge.js';
+import { bridgeToAst, sniffFileVarsViaAst } from './bridge.js';
 import { createImportState } from '../import.js';
 import { withLegacyOpCounters } from './harness/shapes.js';
 import { renderImportOracle } from './import-oracle.js';
@@ -32,20 +32,20 @@ async function race(rel: string): Promise<void> {
   const src = fs.readFileSync(file, 'utf8');
   const mainTree = parseLessFn(src).tree;
 
-  const t2css = serialize(bridgeToAst(mainTree, src, file, createImportState(parseLessFn))).css;
+  const t2css = serialize(bridgeToAst(mainTree, src, file, createImportState(sniffFileVarsViaAst))).css;
   const oracle = await renderImportOracle(file);
   expect(t2css).toBe(oracle);
 
   const WARM = 5;
   const N = 15;
 
-  for (let i = 0; i < WARM; i++) serialize(bridgeToAst(mainTree, src, file, createImportState(parseLessFn)));
+  for (let i = 0; i < WARM; i++) serialize(bridgeToAst(mainTree, src, file, createImportState(sniffFileVarsViaAst)));
   gc?.();
   const m0 = process.memoryUsage().heapUsed;
   const t2times: number[] = [];
   for (let i = 0; i < N; i++) {
     const a = performance.now();
-    serialize(bridgeToAst(mainTree, src, file, createImportState(parseLessFn)));
+    serialize(bridgeToAst(mainTree, src, file, createImportState(sniffFileVarsViaAst)));
     t2times.push(performance.now() - a);
   }
   const t2heap = (process.memoryUsage().heapUsed - m0) / N;
@@ -61,7 +61,7 @@ async function race(rel: string): Promise<void> {
   }
   const legheap = (process.memoryUsage().heapUsed - l0) / N;
 
-  const t2ops = composeStats(bridgeToAst(mainTree, src, file, createImportState(parseLessFn)));
+  const t2ops = composeStats(bridgeToAst(mainTree, src, file, createImportState(sniffFileVarsViaAst)));
   const legops = await withLegacyOpCounters(async () => {
     await renderImportOracle(file);
   });

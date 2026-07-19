@@ -3,7 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { parseLessFn } from '@jesscss/less-parser';
 import { serialize } from '../../index.js';
-import { bridgeToAst, UnsupportedShape } from './bridge.js';
+import { bridgeToAst, UnsupportedShape, sniffFileVarsViaAst } from './bridge.js';
 import { createImportState } from '../import.js';
 import { buildEvaluator } from '../../evaluator.js';
 import { makeBuiltinRegistry } from './make-builtin-registry.js';
@@ -59,7 +59,7 @@ describe('tree2 @import — import-fixture census', () => {
       }
       let t2css: string;
       try {
-        const bridged = bridgeToAst(parsed.tree, src, file, createImportState(parseLessFn));
+        const bridged = bridgeToAst(parsed.tree, src, file, createImportState(sniffFileVarsViaAst));
         const evaluator = buildEvaluator(makeBuiltinRegistry());
         t2css = (await serialize(bridged, { evaluator })).css;
       } catch (e) {

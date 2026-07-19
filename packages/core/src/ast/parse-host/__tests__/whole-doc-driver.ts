@@ -13,7 +13,7 @@
  * which does the identical binding on the consumer side. Both share this one core
  * pipeline (no duplicated engine logic).
  */
-import { lessGrammar, firstInlineJsBacktick, INLINE_JS_UNSUPPORTED_MESSAGE, parseLessFn } from '@jesscss/less-parser';
+import { lessGrammar, firstInlineJsBacktick, INLINE_JS_UNSUPPORTED_MESSAGE } from '@jesscss/less-parser';
 import type { ValueEvaluator } from '../../value-eval.js';
 import type { ModuleResolver } from '../import.js';
 import {
@@ -78,7 +78,6 @@ export function renderAstDoc(src: string, options: AstRenderOptions = {}): AstRe
     filePath: options.filePath,
     evaluator: options.evaluator,
     guardSource: guardInlineJs,
-    parseFileVars: parseLessFn,
     resolveModule: options.resolveModule,
     searchDirs: options.searchDirs,
     collapseNesting: options.collapseNesting,
@@ -92,7 +91,6 @@ export function renderAstFile(filePath: string, options: Omit<AstRenderOptions, 
     trivia: options.trivia ?? g['rw'],
     evaluator: options.evaluator,
     guardSource: guardInlineJs,
-    parseFileVars: parseLessFn,
     resolveModule: options.resolveModule,
     searchDirs: options.searchDirs,
     collapseNesting: options.collapseNesting,

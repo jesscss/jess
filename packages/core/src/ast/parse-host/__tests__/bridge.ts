@@ -23,9 +23,10 @@
  * else raises `UnsupportedShape`, which the census collects and ranks.
  */
 
-import { parseLessFn } from '@jesscss/less-parser';
+import { parseLessFn, lessGrammar } from '@jesscss/less-parser';
 import * as t2 from '../../index.js';
 import { type Combinator } from '../../index.js';
+import { parseToAst } from '../dispatch-host.js';
 import { sourceSpanOf } from '../../../tree/util/provenance.js';
 // [import] resolution/inlining lives in a sibling front-end file (kept out of
 // this shared dispatch file to minimize churn); wired in via `toStatement`.
@@ -1243,13 +1244,28 @@ function stripImportantBytes(v: t2.ValueNode): t2.ValueNode {
  * across the whole recursive run. Both are optional so existing call sites
  * (import-free fixtures) are unaffected.
  */
+const lessG = lessGrammar as Record<string, unknown>;
+
+/**
+ * [import:specifier] Interpolated-import PATH var sniffer for the bridge test path:
+ * parses a file's SOURCE through the ast/ dispatch host (`parseToAst`) and returns
+ * its top-level statements, exactly the shape `collectFileVars` reads. Supplied to
+ * `createImportState` so the bridge's cross-file literal-variable lookup is
+ * BuilderHost-free (the bridge's MAIN parse still uses `parseLessFn` — that is the
+ * legacy tree→tree2 bridge under test — but the var sniff no longer does).
+ */
+export function sniffFileVarsViaAst(source: string): t2.Statement[] {
+  const res = parseToAst(source, lessG['Stylesheet'], undefined, { trivia: lessG['rw'] });
+  return res.root ? res.root.children : [];
+}
+
 export function bridgeToAst(
   root: unknown,
   source: string,
   filePath?: string,
   importState?: ImportState,
 ): t2.Root {
-  const ctx: BridgeCtx = { source, filePath, importState: importState ?? createImportState(parseLessFn) };
+  const ctx: BridgeCtx = { source, filePath, importState: importState ?? createImportState(sniffFileVarsViaAst) };
   if (!isNode(root)) throw new UnsupportedShape('root', typeOf(root));
   const rules = (root as AnyNode).rules;
   if (!Array.isArray(rules)) throw new UnsupportedShape('root:rules', typeOf(rules));

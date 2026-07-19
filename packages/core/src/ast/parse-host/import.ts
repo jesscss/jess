@@ -33,15 +33,18 @@ import { rawInline as rawInlineStatement, styleImport } from '../index.js';
 import type { BuildArgs, Span } from './host-context.js';
 
 /**
- * INJECTED legacy Less parse used ONLY to sniff a file's literal `@var` scope for
+ * INJECTED ast/ parse used ONLY to sniff a file's literal `@var` scope for
  * interpolated import PATHS (`@import "@{theme}.less"`) — see `collectFileVars`.
- * Core imports no parser; the caller (the Less render binding in `@jesscss/plugin-less`
- * / the test harness) supplies `@jesscss/less-parser`'s `parseLessFn`. When absent
- * (a dialect that never needs cross-file literal-var lookup, or a caller that opts
- * out), interpolated paths needing cross-file vars simply stay deferred — identical
- * to the behaviour when the legacy parse fails to read/parse a file.
+ * It parses a source string through the SAME ast/ dispatch host the render path
+ * uses (`parseToAst`) and returns the built `Root`'s top-level statements; core
+ * imports no parser, so the caller (the render driver `render-doc.ts`, which
+ * already holds the injected grammar) supplies a `parseToAst`-backed sniffer. This
+ * is BuilderHost-free — no legacy `tree/` node is produced on the ast/ import path.
+ * When absent (a dialect that never needs cross-file literal-var lookup, or a
+ * caller that opts out), interpolated paths needing cross-file vars simply stay
+ * deferred — identical to the behaviour when the parse fails to read/parse a file.
  */
-export type FileVarParse = (source: string) => { errors: readonly unknown[]; tree: unknown };
+export type FileVarParse = (source: string) => readonly t2.Statement[];
 
 /**
  * [import:module] INJECTED node_modules / package-specifier resolver. A bare Less
@@ -50,7 +53,7 @@ export type FileVarParse = (source: string) => { errors: readonly unknown[]; tre
  * algorithm (walking `node_modules`). Core imports no resolver and touches no
  * package layout, so the caller (the Less render binding in `@jesscss/plugin-less`
  * / the test harness) supplies one — backed by `@jesscss/plugin-node-modules`,
- * exactly like `parseFileVars` is supplied by `@jesscss/less-parser`. Given a
+ * exactly like `parseFileVars` is supplied by the render driver. Given a
  * resolvable specifier and the importing file's directory it returns the target's
  * absolute path (already `.less`-suffixed by the caller-tried candidate); a
  * non-package or unresolvable specifier returns `null`. Absent → package
@@ -81,7 +84,7 @@ export interface ImportState {
    */
   readonly entry: { file: string | undefined };
   /**
-   * [import:specifier] Injected legacy Less parse (see {@link FileVarParse}). Kept
+   * [import:specifier] Injected ast/ var-sniff parse (see {@link FileVarParse}). Kept
    * on the state so it threads through the whole recursive bridge run without
    * widening `resolveDirectImports`' signature. Absent → `collectFileVars` yields
    * no cross-file scope (graceful; interpolated paths needing it stay deferred).
@@ -232,17 +235,17 @@ function fillAstInterp(tpl: t2.Interp, vars: ReadonlyMap<string, string>): strin
   return out;
 }
 
-/** The literal string a simple `VarDeclaration` value carries, else null. */
-function literalVarValue(value: unknown): string | null {
-  if (typeof value === 'string') return value;
-  if (!isNode(value)) return null;
-  const v = value as AnyNode;
-  const t = nodeType(v);
+/**
+ * The literal string a simple ast `VarDeclaration` value carries, else null.
+ * Mirrors the exact set the legacy sniff accepted — a `Quoted` literal and a
+ * unitless numeric literal — so interpolated-import path resolution is unchanged.
+ */
+function literalVarValue(value: t2.ValueNode | t2.MixinCall): string | null {
   // A `Quoted` literal (`@x: "s"`) contributes its unquoted text (Less strips the
   // quotes when a variable is interpolated into a path).
-  if (t === 'Quoted' && typeof v.value === 'string') return v.value;
+  if (value.type === 'Quoted') return value.value;
   // A numeric literal (`@x: 3`) with no unit interpolates as its bare number.
-  if (t === 'Num' && typeof v.number === 'number' && v.unit == null) return String(v.number);
+  if (value.type === 'Dimension' && value.unit === '') return String(value.number);
   return null;
 }
 
@@ -265,39 +268,38 @@ function collectFileVars(
   visiting.add(filePath);
 
   const vars = new Map<string, string>();
-  let rules: unknown[] = [];
+  let statements: readonly t2.Statement[] = [];
   const parseFileVars = state.parseFileVars;
   if (parseFileVars !== undefined) {
     try {
-      const parsed = parseFileVars(fs.readFileSync(filePath, 'utf8'));
-      if (parsed.errors.length === 0 && isNode(parsed.tree) && Array.isArray((parsed.tree as AnyNode).rules)) {
-        rules = (parsed.tree as AnyNode).rules as unknown[];
-      }
+      statements = parseFileVars(fs.readFileSync(filePath, 'utf8'));
     } catch {
       /* unreadable/unparsable file contributes no scope */
     }
   }
 
-  // Walk the rules in SOURCE ORDER, folding both own `@var` decls and the vars
-  // of each plainly-imported file at the position the `@import` appears. Less is
-  // last-declaration-wins BY POSITION — an imported file's bindings are spliced
-  // at its import site, so a later own decl overrides an earlier import and a
-  // later import overrides an earlier own decl (both verified against Less 4.x).
-  // Assigning unconditionally in source order realises exactly that ordering.
+  // Walk the top-level statements in SOURCE ORDER, folding both own `@var` decls
+  // and the vars of each plainly-imported file at the position the `@import`
+  // appears. Less is last-declaration-wins BY POSITION — an imported file's
+  // bindings are spliced at its import site, so a later own decl overrides an
+  // earlier import and a later import overrides an earlier own decl (both verified
+  // against Less 4.x). Assigning unconditionally in source order realises exactly
+  // that ordering. The statements are ast/ nodes (`parseToAst`), so a variable
+  // declaration is a `VarDeclaration` and an unresolved import a `StyleImport`
+  // carrying its already-structured specifier + option flags — no legacy `tree/`.
   const fromDir = path.dirname(filePath);
-  for (const r of rules) {
-    if (!isNode(r)) continue;
-    const t = nodeType(r);
-    if (t === 'VarDeclaration' && typeof (r as AnyNode).name === 'string') {
-      const lit = literalVarValue((r as AnyNode).value);
-      if (lit !== null) vars.set((r as AnyNode).name as string, lit);
-    } else if (t === 'StyleImport') {
+  for (const r of statements) {
+    if (r.type === 'VarDeclaration') {
+      const lit = literalVarValue(r.value);
+      if (lit !== null) vars.set(r.name, lit);
+    } else if (r.type === 'StyleImport') {
       // Only descend into PLAIN, statically-resolvable imports for scope; an
-      // interpolated child import can't be followed without a value it may not
-      // yet have, and CSS-passthrough imports contribute no Less variables.
-      const spec = specifierOf(r as AnyNode);
+      // interpolated (`spec === null`) child import can't be followed without a
+      // value it may not yet have, and CSS-passthrough imports contribute no Less
+      // variables.
+      const spec = r.spec;
       if (spec === null) continue;
-      const flags = readFlags(r as AnyNode);
+      const flags = directFlags(r);
       if (flags.inline || isCssPassthrough(spec, flags)) continue;
       const child = resolveLessPath(spec, fromDir, state.resolveModule, state.searchDirs);
       if (child === null) continue;

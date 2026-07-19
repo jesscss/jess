@@ -17,7 +17,7 @@ import { describe, it, expect } from 'vitest';
 import * as fs from 'fs';
 import { parseLessFn } from '@jesscss/less-parser';
 import { serialize } from '../../index.js';
-import { bridgeToAst } from './bridge.js';
+import { bridgeToAst, sniffFileVarsViaAst } from './bridge.js';
 import { createImportState } from '../import.js';
 import { buildEvaluator } from '../../evaluator.js';
 import { makeBuiltinRegistry } from './make-builtin-registry.js';
@@ -46,7 +46,7 @@ body {
 
 async function renderAst(file: string): Promise<string> {
   const src = fs.readFileSync(file, 'utf8');
-  const bridged = bridgeToAst(parseLessFn(src).tree, src, file, createImportState(parseLessFn));
+  const bridged = bridgeToAst(parseLessFn(src).tree, src, file, createImportState(sniffFileVarsViaAst));
   return (await serialize(bridged, { evaluator: buildEvaluator(makeBuiltinRegistry()) })).css;
 }
 
