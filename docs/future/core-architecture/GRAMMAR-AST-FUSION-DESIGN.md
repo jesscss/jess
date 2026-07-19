@@ -2,12 +2,12 @@
 
 DESIGN/SCOUT. Base: `origin/dev`. Owner's top-priority endgame: **"get rid of build,
 grammar makes AST v2 ASAP."** This doc maps the current grammar↔host seam precisely,
-specifies the fused single-producer architecture, states the hard gate (BuilderHost
-must be gone), identifies the incremental win that can land BEFORE full BuilderHost
-deletion, and predicts the perf.
+specifies the fused single-producer architecture, identifies the necessary atomic cut
+(direct factories replace both hosts), and predicts the perf.
 
 Companion specs (referenced, not duplicated):
-- `BUILDERHOST-RETIREMENT-DESIGN.md` — the collapse-to-one-producer + R0–R4 critical path.
+- `BUILDERHOST-RETIREMENT-DESIGN.md` — historical host-retirement analysis; its
+  feature-first sequencing is superseded by this document's canonicalization cut.
 - `GRAMMAR-RELOCATION-DESIGN.md` — the site-by-site regex relocation map.
 - `VALUE-NODE-MODEL-DESIGN.md` — the landed `ast/` node set + factories the builds bind to.
 - `TIER-B-INTERPOLATION-GRAMMAR-SPEC.md` / `QUOTED-GRAMMAR-STRUCTURING-PLAN.md` — prelude/§3.3 structuring.
@@ -36,11 +36,11 @@ Companion specs (referenced, not duplicated):
    family needs, so EVERY node pays the full capture. Per-rule builds make the majority
    of nodes (value leaves) cheap.
 
-3. **Hard gate:** fusing bakes the `ast/` factories into the grammar's `node()` builds,
-   making the grammar **ast-v2-specific**. It can then no longer feed the legacy
-   `BuilderHost` (tree/ nodes). So **BuilderHost must be retired first** — its critical
-   path is owned by `BUILDERHOST-RETIREMENT-DESIGN.md` (R0–R4; the true blocker is the
-   production-render cutover to the `ast/` spine).
+3. **Atomic canonicalization cut:** fusing bakes the `ast/` factories into the grammar's
+   `node()` builds, making the grammar **ast-v2-specific**. It can no longer feed the
+   legacy `BuilderHost` (tree/ nodes), so fusion deletes that producer rather than waiting
+   for its internal consumers. Those callers may intentionally go red and are repaired or
+   deleted from the canonical AST model afterwards; they are migration work, not a gate.
 
 4. **Incremental win available NOW (no grammar fork, byte-identity-provable):** implement
    `_parsemanTriviaKinds(type)` on the `ast/` dispatch-host so the highest-frequency node
@@ -230,52 +230,43 @@ If CSS-base rules carry ast-v2 builds, and Less/SCSS/Jess deltas override by nam
   constructs (Less `@{}` interp, SCSS `#{}`, Jess `$[…]`). This is exactly the seam that
   `interpolation-body-varies-by-dialect` already contemplates — the interp body combinator
   is overridable per dialect; its BUILD becomes overridable per dialect too.
-- **This is why fusion must follow, not precede, the multi-dialect BuilderHost/host cleanup.**
-  Today the dialect-specific ACTIONS live in one shared `actions/*` set keyed by `type`
-  string — a Jess `$[…]` accessor and a Less `@{…}` ref map to different `type`s and
-  different actions. Fusing distributes those into each dialect's grammar delta. The
-  `compose()` name-wins semantics already give the delta its own rule; the delta simply
-  carries its own build. No shared mutable dispatch map — additive, collision-free (the
-  same property `actions/index.ts` has today, now expressed structurally in the grammar).
-- **SCSS/Jess prerequisite:** `scss-parser`/`jess-parser` must be OFF the shared
-  `LessGrammar`/BuilderHost first (the SCSS-parser rebase work), else fusing the Less
-  grammar strands them. This is part of the gate (§4).
+- **Fusion deletes, rather than preserves, the multi-dialect BuilderHost/host seam.**
+  The dialect-specific ACTIONS currently live in one shared `actions/*` set keyed by
+  `type`; fusing distributes that behavior into each dialect's grammar delta. The
+  `compose()` name-wins semantics give a delta its own direct build. No shared mutable
+  dispatch map survives. A dialect still on the legacy path is deliberately red until its
+  direct reduction lands; it is not a reason to retain the host.
 
 ---
 
-## 4. The hard gate + BuilderHost-deletion critical path
+## 4. Atomic fusion and BuilderHost deletion
 
-Fusion **cannot land on the shared grammar while `BuilderHost` still consumes it**: an
-ast-v2-specific `node()` build cannot also produce legacy `tree/` nodes. So the critical
-path IS `BUILDERHOST-RETIREMENT-DESIGN.md`'s. Restated as the fusion's blockers:
+Fusion and deletion are one canonicalization cut: an ast-v2-specific `node()` build cannot
+also produce a legacy `tree/` node. Do not preserve or adapt `BuilderHost` to bridge that
+incompatibility. The only prerequisites are grammar facts required to construct valid AST
+nodes and a static, non-duplicating composition path for the four dialect grammars.
 
 | Blocker | Nature | Clears when | Parallelizable? |
 |---|---|---|---|
-| **Production render still on tree/ eval** (consumes `parseLessFn().tree`) | The true gate (`memory:eval-load-bearing-post-flip`) | object-reduction spine becomes production render (the CUTOVER) | serial — the spine cutover is the long pole |
-| **ast/ import sub-parse** reads legacy `.tree` (`import.ts:182`) | temporary piggyback | re-point `import.ts` to the dispatch-host (retirement **R0**) | YES — independent, do first |
-| **less-compat bridge** maps tree/ nodes | external contract, **non-sacred** (owner-released) | bridge re-point to ast/ fields at **R4** | YES — bridge package lane |
-| **scss-parser / jess-parser on LessGrammar+BuilderHost** | strands dialects if Less grammar fuses first | SCSS-parser rebase (off `LessGrammar`) | YES — separate parser lane, in flight per memory |
-| **prelude / §S-A4 / §3.3 grammar structuring** (`R1`/`R2`/`R3`) | grammar must emit structured leaves the fused builds read | TB-3 / S-A4 / §3.3 land | YES — grammar lanes, gate on ast/ differential |
+| **Static dialect composition duplicates grammar payload** | macro/compiler issue | shared compiled grammar is resolved and reused without runtime `compose()` or output bloat | YES — Parseman/compiler lane |
+| **A grammar family lacks typed facts** | direct construction would need byte recovery | add Parseman structure for that family | YES — family grammar lanes |
+| **Legacy tree renderer / less-compat / bridge callers** | obsolete consumer | repair or delete after the host is gone | post-cutover migration, not a prerequisite |
 
-**Ordered critical path to fusion:**
+**Execution order:**
 
-1. **R0** (parallel-now): re-point `import.ts` off `parseLessFn` onto the dispatch-host.
-   Removes the ast/-front-end's last coupling to BuilderHost.
-2. **R1–R3** (parallel grammar lanes): land prelude query-split (TB-3), custom-prop-name
-   split (S-A4), §3.3 Quoted structuring — each gated on the ast/ differential. These make
-   the grammar emit fully-structured leaves so no fused build needs a byte re-scan.
-3. **SCSS/Jess rebase** (parallel parser lane): get scss-parser/jess-parser off
-   `LessGrammar`/BuilderHost so the Less grammar can become ast-v2-specific without
-   stranding them.
-4. **Spine cutover** (serial long pole): object-reduction spine becomes production render.
-5. **R4**: delete `builders.ts` + `BuilderHost`; re-point the less-compat bridge to ast/
-   nodes. **BuilderHost is now gone — the grammar has exactly one consumer.**
-6. **FUSION** (this doc): distribute the `actions/*` logic into per-rule `node(type, parser,
-   build)` callbacks across the CSS-base + dialect grammars; delete `dispatch-host.ts`'s
-   `Map`/`BuildArgs` dispatch and the `actions/index.ts` registry; add the parseman
-   `buildReadsRawChildren` gate. Gate on the ast/ differential + byte-identity.
+1. **Composition proof:** resolve and share built grammar artifacts across CSS, Less,
+   SCSS, and Jess without a runtime `compose()` fallback or output bloat.
+2. **Direct family reductions:** in parallel where grammar ownership is independent,
+   make CSS-base and dialect family rules construct AST-v2 nodes from typed facts. No
+   host, dispatch registry, or byte recovery is permitted.
+3. **Atomic deletion:** remove `parse-host`, `BuilderHost`, `FunctionalParseHost`,
+   `ctx.build`, `builders.ts`, and their bridge tests once direct grammar reductions cover
+   their families. Legacy consumers may fail at this boundary.
+4. **Consumer repair:** replace surviving render/plugin/dialect callers with the uniform
+   parser `parse` and core document `render` operations, then close eval/corpus gates.
 
-Steps 1–3 and the SCSS lane parallelize; 4 is the long pole; 5 then 6 are serial tail.
+Steps 1 and independent grammar-family work parallelize. Direct reductions integrate in
+composition order; deletion follows the last legacy grammar consumer, not old render health.
 
 ---
 
