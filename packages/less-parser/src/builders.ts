@@ -7,11 +7,11 @@
  * Extends CssParser to inherit the shared CSS builder methods.
  */
 
-import type { FieldMap, Span } from 'parseman';
-import type { CSTLeaf, CSTError } from 'parseman';
+import type { FieldMap, Span, CSTLeaf, CSTError } from 'parseman';
 import {
   CssParser,
-  spannedComponents, setFieldSpan, fieldIndexOf, type Spanned, type Component
+  spannedComponents, setFieldSpan, fieldIndexOf, type Spanned, type Component,
+  type BuilderFn
 } from '@jesscss/css-parser/jess';
 import { getInterpolatedOrString, getInterpolatedNode, createInterpolatedReference } from './utils.js';
 
@@ -367,73 +367,70 @@ export class LessGrammar extends CssParser {
   // -- buildNode -------------------------------------------------------------
   /* eslint-disable @typescript-eslint/no-unsafe-type-assertion, @typescript-eslint/naming-convention */
 
-  protected override buildNode(
-    type: string,
-    span: Span,
-    children: ReadonlyArray<JessNode | CSTLeaf | CSTError>,
-    _state: unknown,
-    _rawChildren: ReadonlyArray<{ _tag: string }>,
-    fields?: FieldMap,
-    triviaLog: readonly number[] = []
-  ): JessNode {
-    const loc = spanToLocation(span);
-    const raw = _rawChildren;
-    switch (type) {
-      case 'VarDeclaration':      return this._buildVarDeclaration(children, raw, loc);
-      case 'Reference':           return this._buildReference(children, loc);
-      case 'LessAmpersand':       return this._buildAmpersand(children, loc);
-      case 'ComplexSelector': return this._buildComplexSelector(raw, loc);
-      case 'SelectorList':    return this._buildSelectorList(raw, loc);
-      case 'Ruleset':             return this._buildRuleset(children, raw, loc) as unknown as JessNode;
-      case 'Declaration':
-        this._warnDeprecatedValue(span);
-        return this._buildLessDeclaration(raw, loc);
-      case 'CustomDeclaration':
-        this._warnCustomPropVars(span);
-        return this._buildLessCustomDecl(children, loc);
-      case 'Block':               return this._buildLessCustomBlock(children, loc);
-      case 'AtRuleBlock':
-        this._warnAtRulePreludeVars(span);
-        return this._buildAtRuleBlock(children, loc) as unknown as JessNode;
-      case 'QueryAtRuleBlock':
-        this._warnAtRulePreludeVars(span);
-        return this._buildLessQueryAtRuleBlock(children, raw, loc);
-      case 'NamedColor':          return this._buildNamedColor(children, loc);
-      case 'Comparison':          return this._buildComparison(raw, loc);
-      case 'GuardDefault':        return new DefaultGuard('default()', undefined, loc) as unknown as JessNode;
-      case 'GuardInParens':       return this._buildGuardInParens(children, loc);
-      case 'GuardTerm':           return this._buildGuardTerm(raw, loc);
-      case 'GuardAnd':            return this._buildGuardJoin(children, loc, 'and');
-      case 'GuardOr':             return this._buildGuardJoin(children, loc, 'or');
-      case 'Guard':               return this._buildGuard(children, loc);
-      case 'CondArgTerm':         return this._buildCondArgTerm(raw, loc);
-      case 'CondArgAnd':          return this._buildCondArgJoin(children, loc, 'and');
-      case 'CondArgOr':           return this._buildCondArgJoin(children, loc, 'or');
-      case 'UnicodeRange':        return this._lessKeyword(this._source.slice(span.start, span.end), loc) as unknown as JessNode;
-      case 'PseudoSelector':      return this._buildLessPseudo(type, span, children, _state, raw, fields, triviaLog, loc);
-      case 'InterpolatedSelector': return this._buildInterpolatedSelector(children, loc);
-      case 'LessInterp':          return this._buildLessInterpLeaf(span) as unknown as JessNode;
-      case 'VarCall':             return this._buildVarCall(children, raw, loc);
-      case 'MixinCall':           return this._buildMixinCall(children, raw, loc);
-      case 'Rest':                return this._buildRest(children, loc);
-      case 'NamedArg':            return this._buildNamedArg(raw, loc);
-      case 'MixinArgs':           return this._buildMixinArgs(raw, loc);
-      case 'AnonymousMixinDefinition': return this._buildAnonMixin(children, loc) as unknown as JessNode;
-      case 'DetachedRuleset':     return this._buildDetachedRuleset(children, loc) as unknown as JessNode;
-      case 'For':                 return this._buildEachFor(children, loc) as unknown as JessNode;
-      case 'FormatCall':          return this._buildFormatCall(raw, loc);
-      case 'MixinOrQualifiedRule': return this._buildMixinOrQualified(children, loc);
-      case 'Negative':            return new Negative(this._negativeOperand(children), undefined, loc) as unknown as JessNode;
-      case 'OperationTop':        return this._buildOperation(children, loc, this.mathMode === 'always') as unknown as JessNode;
-      case 'EscapedValue':        return this._buildEscapedValue(children, loc);
-      case 'InterpValue':         return this._buildInterpValue(raw, loc);
-      case 'NsAccessor':          return this._buildNsAccessor(children, loc);
-      case 'AtRuleStatement':     return this._buildAtRuleStatement(children, loc);
-      case 'ExtendTarget':        return this._buildExtendTarget(children, raw, loc);
-      case 'ExtendPseudo':        return this._buildExtendPseudo(children, loc);
-      case 'ExtendStatement':     return this._buildExtendStatement(children, raw, loc);
-      default:                    return super.buildNode(type, span, children, _state, raw, fields, triviaLog) as unknown as JessNode;
-    }
+  protected override _builderEntries(): Record<string, BuilderFn> {
+    return { ...super._builderEntries(), ...this._lessBuilderEntries() };
+  }
+
+  private _lessBuilderEntries(): Record<string, BuilderFn> {
+    return {
+      VarDeclaration: a => this._buildVarDeclaration(a.children, a.rawChildren, a.loc),
+      Reference: a => this._buildReference(a.children, a.loc),
+      LessAmpersand: a => this._buildAmpersand(a.children, a.loc),
+      ComplexSelector: a => this._buildComplexSelector(a.rawChildren, a.loc),
+      SelectorList: a => this._buildSelectorList(a.rawChildren, a.loc),
+      Ruleset: a => this._buildRuleset(a.children, a.rawChildren, a.loc) as unknown as JessNode,
+      Declaration: (a) => {
+        this._warnDeprecatedValue(a.span);
+        return this._buildLessDeclaration(a.rawChildren, a.loc);
+      },
+      CustomDeclaration: (a) => {
+        this._warnCustomPropVars(a.span);
+        return this._buildLessCustomDecl(a.children, a.loc);
+      },
+      Block: a => this._buildLessCustomBlock(a.children, a.loc),
+      AtRuleBlock: (a) => {
+        this._warnAtRulePreludeVars(a.span);
+        return this._buildAtRuleBlock(a.children, a.loc) as unknown as JessNode;
+      },
+      QueryAtRuleBlock: (a) => {
+        this._warnAtRulePreludeVars(a.span);
+        return this._buildLessQueryAtRuleBlock(a.children, a.rawChildren, a.loc);
+      },
+      NamedColor: a => this._buildNamedColor(a.children, a.loc),
+      Comparison: a => this._buildComparison(a.rawChildren, a.loc),
+      GuardDefault: a => new DefaultGuard('default()', undefined, a.loc) as unknown as JessNode,
+      GuardInParens: a => this._buildGuardInParens(a.children, a.loc),
+      GuardTerm: a => this._buildGuardTerm(a.rawChildren, a.loc),
+      GuardAnd: a => this._buildGuardJoin(a.children, a.loc, 'and'),
+      GuardOr: a => this._buildGuardJoin(a.children, a.loc, 'or'),
+      Guard: a => this._buildGuard(a.children, a.loc),
+      CondArgTerm: a => this._buildCondArgTerm(a.rawChildren, a.loc),
+      CondArgAnd: a => this._buildCondArgJoin(a.children, a.loc, 'and'),
+      CondArgOr: a => this._buildCondArgJoin(a.children, a.loc, 'or'),
+      UnicodeRange: a => this._lessKeyword(this._source.slice(a.span.start, a.span.end), a.loc) as unknown as JessNode,
+      PseudoSelector: a => this._buildLessPseudo(a.type, a.span, a.children, a.state, a.rawChildren, a.fields, a.triviaLog, a.loc),
+      InterpolatedSelector: a => this._buildInterpolatedSelector(a.children, a.loc),
+      LessInterp: a => this._buildLessInterpLeaf(a.span) as unknown as JessNode,
+      VarCall: a => this._buildVarCall(a.children, a.rawChildren, a.loc),
+      MixinCall: a => this._buildMixinCall(a.children, a.rawChildren, a.loc),
+      Rest: a => this._buildRest(a.children, a.loc),
+      NamedArg: a => this._buildNamedArg(a.rawChildren, a.loc),
+      MixinArgs: a => this._buildMixinArgs(a.rawChildren, a.loc),
+      AnonymousMixinDefinition: a => this._buildAnonMixin(a.children, a.loc) as unknown as JessNode,
+      DetachedRuleset: a => this._buildDetachedRuleset(a.children, a.loc) as unknown as JessNode,
+      For: a => this._buildEachFor(a.children, a.loc) as unknown as JessNode,
+      FormatCall: a => this._buildFormatCall(a.rawChildren, a.loc),
+      MixinOrQualifiedRule: a => this._buildMixinOrQualified(a.children, a.loc),
+      Negative: a => new Negative(this._negativeOperand(a.children), undefined, a.loc) as unknown as JessNode,
+      OperationTop: a => this._buildOperation(a.children, a.loc, this.mathMode === 'always') as unknown as JessNode,
+      EscapedValue: a => this._buildEscapedValue(a.children, a.loc),
+      InterpValue: a => this._buildInterpValue(a.rawChildren, a.loc),
+      NsAccessor: a => this._buildNsAccessor(a.children, a.loc),
+      AtRuleStatement: a => this._buildAtRuleStatement(a.children, a.loc),
+      ExtendTarget: a => this._buildExtendTarget(a.children, a.rawChildren, a.loc),
+      ExtendPseudo: a => this._buildExtendPseudo(a.children, a.loc),
+      ExtendStatement: a => this._buildExtendStatement(a.children, a.rawChildren, a.loc)
+    };
   }
 
   // -- Private Less AST builders ---------------------------------------------
@@ -549,7 +546,7 @@ export class LessGrammar extends CssParser {
       const isEmptyKey = rvKey === '' || rvKey === undefined
         || (rvKey && typeof rvKey === 'object' && rvKey.type === 'Quoted' && (rvKey.value === '' || rvKey.valueOf?.() === ''));
       const grammarPartialAccessor =
-        rv && rv.type === 'Reference' && rv.target !== undefined && isEmptyKey;
+        rv?.type === 'Reference' && rv.target !== undefined && isEmptyKey;
       const accMatch = leadingBracketGroup(afterVal);
       if (accMatch) {
         const accText = accMatch.inner.trim();
@@ -1091,8 +1088,10 @@ export class LessGrammar extends CssParser {
   ): JessNode {
     // `:extend(...)` is parsed by the dedicated ExtendPseudo grammar rule, never
     // here — generic PseudoSelector is guarded against it (extendAhead). So this
-    // builder only ever sees real CSS pseudo-classes/elements.
-    const pseudo = super.buildNode(type, span, children, state, raw, fields, triviaLog) as JessNode;
+    // builder only ever sees real CSS pseudo-classes/elements. Call the CSS
+    // PseudoSelector builder directly (name-keyed dispatch would re-enter this
+    // Less override); Less does not override `_buildPseudoSelector`.
+    const pseudo = this._buildPseudoSelector(children, loc) as JessNode;
     // `readPseudoArg` (css builder) only recognizes node/array args. Under the Less
     // grammar an `nth` arg (`4n+1`) arrives as a leaf string and a single-member
     // selector list collapses to a bare string — both of which it skips, leaving
@@ -2076,7 +2075,7 @@ export class LessGrammar extends CssParser {
    */
   private _lowerSemiArgs(args: JessNode | undefined, loc: LocationInfo): JessNode | undefined {
     const list = args as unknown as { type?: string; options?: { sep?: string }; value?: JessNode[] } | undefined;
-    if (!list || list.type !== 'List' || list.options?.sep !== ';' || !Array.isArray(list.value)) {
+    if (list?.type !== 'List' || list.options?.sep !== ';' || !Array.isArray(list.value)) {
       return args;
     }
     const lowered = list.value.map((el) => {
@@ -2097,7 +2096,7 @@ export class LessGrammar extends CssParser {
    * def/call split must not mutate a shared node).
    */
   private _convertArgsForDefinition(argsList: JessNode | undefined, loc: LocationInfo): JessNode | undefined {
-    if (!argsList || argsList.type !== 'List') {
+    if (argsList?.type !== 'List') {
       return argsList;
     }
     const list = argsList as unknown as List<Node>;
@@ -2137,7 +2136,7 @@ export class LessGrammar extends CssParser {
    * Returns a NEW List (the def/call split must not mutate a shared node).
    */
   private _convertArgsForCall(argsList: JessNode | undefined, loc: LocationInfo): JessNode | undefined {
-    if (!argsList || argsList.type !== 'List') {
+    if (argsList?.type !== 'List') {
       return argsList;
     }
     const list = argsList as unknown as List<Node>;

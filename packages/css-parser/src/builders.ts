@@ -8,8 +8,7 @@
  */
 /* eslint-disable @typescript-eslint/no-unsafe-type-assertion */
 
-import { triviaEntries, type FieldMap, type Span } from 'parseman';
-import type { CSTLeaf, CSTError } from 'parseman';
+import { triviaEntries, type FieldMap, type Span, CSTLeaf, CSTError } from 'parseman';
 import {
   fieldSpansOf,
   setFieldSpans as setNodeFieldSpans,
@@ -18,15 +17,7 @@ import {
   sourceSpanOf,
   setSourceSpan,
   spanStartOf,
-  type SourceSpan
-} from '@jesscss/core';
-
-/** Source span of a rawChild: a jess node's provenance span, else a CST item's own `.span`. */
-function rawChildSpan(rc: unknown): Span | undefined {
-  return sourceSpanOf(rc as object) ?? (rc as { span?: Span }).span;
-}
-
-import {
+  type SourceSpan,
   Node,
   type LocationInfo,
   type TriviaMap,
@@ -48,6 +39,11 @@ import {
   AttributeSelector, type AttributeSelectorValue,
   PseudoSelector
 } from '@jesscss/core';
+
+/** Source span of a rawChild: a jess node's provenance span, else a CST item's own `.span`. */
+function rawChildSpan(rc: unknown): Span | undefined {
+  return sourceSpanOf(rc as object) ?? (rc as { span?: Span }).span;
+}
 
 // ---------------------------------------------------------------------------
 // Recognized CSS color keywords (full match, case-insensitive). Exported so the
@@ -101,6 +97,31 @@ type JessNode = Node<any, any>;
 type Child = JessNode | CSTLeaf | CSTError;
 type FieldValue = string | undefined;
 const TRIVIA_WHITESPACE_KIND = 0;
+
+// ---------------------------------------------------------------------------
+// Builder dispatch — a name-keyed builder MAP replaces the `super`-chained
+// `buildNode` switch. Each dialect contributes a `Record<rule-name, BuilderFn>`;
+// the maps are merged `css ⊕ preproc ⊕ dialect` (last-wins, key ≡ rule name 1:1),
+// so override-by-name is total (no dead-override trap from a renamed private
+// builder shadowed behind a `default: super.buildNode`).
+// ---------------------------------------------------------------------------
+
+export interface BuildArgs {
+  type: string;
+  span: Span;
+  children: ReadonlyArray<Child>;
+  rawChildren: ReadonlyArray<{ _tag: string }>;
+  fields: FieldMap | undefined;
+  triviaLog: readonly number[];
+  state: unknown;
+  loc: LocationInfo;
+}
+
+// A builder may legitimately return a bare string or a selector array (collapsed
+// single-member selector lists / basic selectors), matching the pre-map switch's
+// inferred union — these flow into the CST build sink as node children.
+export type BuilderResult = JessNode | string | ReadonlyArray<string | JessNode>;
+export type BuilderFn = (a: BuildArgs) => BuilderResult;
 
 // ---------------------------------------------------------------------------
 // AST helpers
@@ -447,54 +468,62 @@ export class CssParser {
     rawChildren: ReadonlyArray<{ _tag: string }>,
     fields?: FieldMap,
     triviaLog: readonly number[] = []
-  ) {
-    return this._dispatchBuild(type, span, children, rawChildren, fields, triviaLog);
+  ): JessNode | string | ReadonlyArray<string | JessNode> {
+    const loc = spanToLocation(span);
+    const fn = this._getBuilderMap()[type];
+    if (fn) {
+      return fn({ type, span, children, rawChildren, fields, triviaLog, state, loc });
+    }
+    return new Any(leafText(children) || type, undefined, loc);
   }
 
-  protected _dispatchBuild(
-    type: string,
-    span: Span,
-    children: ReadonlyArray<JessNode | CSTLeaf | CSTError>,
-    rawChildren: ReadonlyArray<{ _tag: string }>,
-    fields?: FieldMap,
-    triviaLog: readonly number[] = []
-  ) {
-    const loc = spanToLocation(span);
-    switch (type) {
-      case 'Stylesheet':        return this._buildStylesheet(children, loc, triviaLog);
-      case 'Ruleset':           return this._buildRuleset(children, rawChildren, loc, triviaLog) as unknown as JessNode;
-      case 'SelectorList':      return this._buildSelectorList(rawChildren, loc);
-      case 'ComplexSelector':   return this._buildComplexSelector(rawChildren, loc);
-      case 'CompoundSelector':  return this._buildCompoundSelector(rawChildren, span, triviaLog);
-      case 'BasicSelector':     return this._makeBasicSelector(leafText(children), loc);
-      case 'AttributeSelector': return this._buildAttributeSelector(children, loc, fields);
-      case 'PseudoSelector':    return this._buildPseudoSelector(children, loc);
-      case 'Declaration':       return this._buildDeclaration(rawChildren, loc);
-      case 'CustomDeclaration': return this._buildCustomDeclaration(children, loc);
-      case 'Dimension':         return this._buildDimension(children, loc);
-      case 'Num':               return new Num(parseFloat(leafText(children)), undefined, loc);
+  private _builderMapCache?: Record<string, BuilderFn>;
+
+  /** Lazily merge the per-dialect contributor maps once per instance. */
+  protected _getBuilderMap(): Record<string, BuilderFn> {
+    return this._builderMapCache ??= this._builderEntries();
+  }
+
+  /**
+   * CSS builder contributions, keyed 1:1 by grammar rule name. Dialects override
+   * `_builderEntries` to spread `super._builderEntries()` and add their own.
+   */
+
+  protected _builderEntries(): Record<string, BuilderFn> {
+    return {
+      Stylesheet: a => this._buildStylesheet(a.children, a.loc, a.triviaLog),
+      Ruleset: a => this._buildRuleset(a.children, a.rawChildren, a.loc, a.triviaLog) as unknown as JessNode,
+      SelectorList: a => this._buildSelectorList(a.rawChildren, a.loc),
+      ComplexSelector: a => this._buildComplexSelector(a.rawChildren, a.loc),
+      CompoundSelector: a => this._buildCompoundSelector(a.rawChildren, a.span, a.triviaLog),
+      BasicSelector: a => this._makeBasicSelector(leafText(a.children), a.loc),
+      AttributeSelector: a => this._buildAttributeSelector(a.children, a.loc, a.fields),
+      PseudoSelector: a => this._buildPseudoSelector(a.children, a.loc),
+      Declaration: a => this._buildDeclaration(a.rawChildren, a.loc),
+      CustomDeclaration: a => this._buildCustomDeclaration(a.children, a.loc),
+      Dimension: a => this._buildDimension(a.children, a.loc),
+      Num: a => new Num(parseFloat(leafText(a.children)), undefined, a.loc),
       // Unified numeric leaf. `numeric` is noTrivia(numPart, optional(unit)) with no
       // sub-nodes, so children are exactly the captured leaves: two → Dimension (the
       // same node the split `Dimension` rule built), one → Num (same as split `Num`).
-      case 'Numeric':           return children.length > 1
-        ? this._buildDimension(children, loc)
-        : new Num(parseFloat(leafText(children)), undefined, loc);
-      case 'Color':             return this._buildColor(leafText(children), loc);
-      case 'Url':               return this._buildUrl(children, loc);
-      case 'Call':              return this._buildCall(rawChildren, loc);
-      case 'Operation':         return this._buildOperation(children, loc, true) as unknown as JessNode;
-      case 'Paren':             return this._buildParen(rawChildren, loc);
-      case 'SquareParen':       return this._buildSquareParen(rawChildren, loc);
-      case 'Quoted':            return this._buildQuoted(children, loc);
-      case 'AtRuleBlock':       return this._buildAtRuleBlock(children, loc) as unknown as JessNode;
-      case 'AtRuleStatement':   return this._buildAtRuleStatement(children, loc);
-      case 'UnknownAtRuleBlock': return this._buildUnknownAtRuleBlock(children, loc) as unknown as JessNode;
-      case 'QueryAtRuleBlock':  return this._buildQueryAtRuleBlock(children, loc) as unknown as JessNode;
-      case 'QueryCondition':    return this._buildQueryConditionRule(children, loc) as unknown as JessNode;
-      case 'QueryInParens':     return this._buildQueryInParens(children, loc) as unknown as JessNode;
-      case 'QueryFeature':      return this._buildQueryFeature(children, loc) as unknown as JessNode;
-      default:                  return new Any(leafText(children) || type, undefined, loc);
-    }
+      Numeric: a => a.children.length > 1
+        ? this._buildDimension(a.children, a.loc)
+        : new Num(parseFloat(leafText(a.children)), undefined, a.loc),
+      Color: a => this._buildColor(leafText(a.children), a.loc),
+      Url: a => this._buildUrl(a.children, a.loc),
+      Call: a => this._buildCall(a.rawChildren, a.loc),
+      Operation: a => this._buildOperation(a.children, a.loc, true) as unknown as JessNode,
+      Paren: a => this._buildParen(a.rawChildren, a.loc),
+      SquareParen: a => this._buildSquareParen(a.rawChildren, a.loc),
+      Quoted: a => this._buildQuoted(a.children, a.loc),
+      AtRuleBlock: a => this._buildAtRuleBlock(a.children, a.loc) as unknown as JessNode,
+      AtRuleStatement: a => this._buildAtRuleStatement(a.children, a.loc),
+      UnknownAtRuleBlock: a => this._buildUnknownAtRuleBlock(a.children, a.loc) as unknown as JessNode,
+      QueryAtRuleBlock: a => this._buildQueryAtRuleBlock(a.children, a.loc) as unknown as JessNode,
+      QueryCondition: a => this._buildQueryConditionRule(a.children, a.loc) as unknown as JessNode,
+      QueryInParens: a => this._buildQueryInParens(a.children, a.loc) as unknown as JessNode,
+      QueryFeature: a => this._buildQueryFeature(a.children, a.loc) as unknown as JessNode
+    };
   }
 
   /**
@@ -717,7 +746,7 @@ export class CssParser {
     }
     if (Array.isArray(selector)) {
       const memberSpans = selectorListSpans.get(selector) ?? selectorListMemberSpans(rawChildren);
-      if (memberSpans && memberSpans.length === selector.length) {
+      if (memberSpans?.length === selector.length) {
         setValueSpans(node as unknown as JessNode, memberSpans, this._source);
       }
     }
@@ -1061,7 +1090,7 @@ export class CssParser {
       const right = asOperand(children[i + 1]);
       if (op === '/' && !(slashEnabled && this._isDivisionLike(left) && this._isDivisionLike(right))) {
         const leftList = left as { type?: string; value?: unknown[]; options?: { sep?: string } };
-        left = leftList && leftList.type === 'List' && leftList.options?.sep === '/'
+        left = leftList?.type === 'List' && leftList.options?.sep === '/'
           ? new List([...leftList.value!, right] as unknown as Node[], { sep: '/' }, loc) as unknown as JessNode
           : new List([left, right] as unknown as Node[], { sep: '/' }, loc) as unknown as JessNode;
       } else {

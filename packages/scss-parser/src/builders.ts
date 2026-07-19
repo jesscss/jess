@@ -25,10 +25,9 @@ import {
   regex,
   literal
 } from 'parseman';
-import type { FieldMap, Span } from 'parseman';
 import type { CSTLeaf, CSTError } from 'parseman';
 import { LessGrammar } from '@jesscss/less-parser/jess';
-import { spannedComponents } from '@jesscss/css-parser/jess';
+import { spannedComponents, type BuilderFn } from '@jesscss/css-parser/jess';
 
 import {
   type Node,
@@ -108,12 +107,8 @@ type Child = JessNode | CSTLeaf | CSTError;
 // Helpers
 // ---------------------------------------------------------------------------
 
-function spanToLocation(span: Span): LocationInfo {
-  return { start: span.start, end: span.end };
-}
-
 function nodeChildren(children: ReadonlyArray<Child>): JessNode[] {
-  return children.filter((c): c is JessNode => c != null && c._tag === 'node') as JessNode[];
+  return children.filter((c): c is JessNode => c?._tag === 'node') as JessNode[];
 }
 
 // ---------------------------------------------------------------------------
@@ -148,86 +143,80 @@ export class ScssGrammar extends LessGrammar {
   // Overrides LessGrammar.Reference (which used g.lessVar + optional accessor).
   Reference = (g: any) => g.scssVar;
 
-  // ── buildNode ─────────────────────────────────────────────────────────────
-  /* eslint-disable @typescript-eslint/naming-convention */
+  // ── builder map ───────────────────────────────────────────────────────────
 
-  protected override buildNode(
-    type: string,
-    span: Span,
-    children: ReadonlyArray<JessNode | CSTLeaf | CSTError>,
-    _state: unknown,
-    _rawChildren: ReadonlyArray<{ _tag: string }>,
-    fields?: FieldMap,
-    triviaLog: readonly number[] = []
-  ): JessNode {
-    const loc = spanToLocation(span);
-    switch (type) {
-      case 'VarDeclaration':    return this._buildScssVarDeclaration(_rawChildren, loc);
-      case 'NsVarDeclaration':  return this._buildScssNsVarDeclaration(_rawChildren, loc);
-      case 'Reference':         return this._buildScssReference(children, loc);
-      case 'ScssComparison':    return this._buildScssComparison(children, loc);
-      case 'ScssCondInParens':  return this._buildScssCondInParens(children, loc);
-      case 'ScssCondTerm':      return this._buildScssCondTerm(children, loc);
-      case 'ScssCondAnd':       return this._buildScssCondJoin(children, loc, 'and');
-      case 'ScssCondOr':        return this._buildScssCondJoin(children, loc, 'or');
-      case 'ScssRules':         return this._buildScssRules(children, loc);
-      case 'ScssIf':            return this._buildScssIf(children, loc);
-      case 'ScssEach':          return this._buildScssEach(children, loc);
-      case 'ScssFor':           return this._buildScssFor(children, loc);
-      case 'ScssWhile':         return this._buildScssWhile(children, loc);
-      case 'ScssCallArg':       return this._buildScssCallArg(children, loc);
-      case 'ScssCallArgsInner': return this._buildScssCallArgsInner(children, loc);
-      case 'ScssMixinParam':    return this._buildScssMixinParam(children, loc);
-      case 'ScssMixinParams':   return this._buildScssMixinParams(children, loc);
-      case 'ScssMixinName':     return this._buildScssMixinName(children, loc);
-      case 'ScssDeclBody':      return this._buildScssRules(children, loc);
-      case 'ScssMixin':         return this._buildScssMixin(children, loc);
-      case 'ScssIncludeUsing':  return this._buildScssIncludeUsing(children, loc);
-      case 'ScssInclude':       return this._buildScssInclude(children, loc);
-      case 'ScssContent':       return this._buildScssContent(children, loc);
-      case 'ScssFunction':      return this._buildScssFunction(children, loc);
-      case 'ScssReturn':        return this._buildScssReturn(children, _rawChildren, loc);
-      case 'ScssInterpBare':    return this._buildScssInterpBare(children, loc);
-      case 'ScssInterpolatedName': return this._buildScssInterpolatedName(children, loc);
-      case 'InterpValue':       return this._foldScssInterp(children, 'ident', loc);
-      case 'ScssInterpDeclName': return this._foldScssInterp(children, 'property', loc);
-      case 'ScssInterpCustomProp': return this._foldScssInterp(children, 'property', loc);
-      case 'InterpolatedSelector': return this._buildScssInterpolatedSelector(children, loc);
-      case 'Declaration':       return this._buildScssDeclaration(children, loc, () =>
-        super.buildNode(type, span, children, _state, _rawChildren, fields, triviaLog));
-      case 'CustomDeclaration': return this._buildScssCustomDeclaration(children, loc, () =>
-        super.buildNode(type, span, children, _state, _rawChildren, fields, triviaLog));
-      case 'Quoted':            return this._buildQuoted(children, loc);
-      case 'ScssMapPair':       return this._buildScssMapPair(children, loc);
-      case 'ScssMapLiteral':    return this._buildScssMapLiteral(children, loc);
-      case 'ScssIdentValue':    return this._buildScssIdentValue(children, _rawChildren, loc);
-      case 'ScssWithConfigEntry': return this._buildScssWithConfigEntry(_rawChildren, loc);
-      case 'ScssWithConfig':    return this._buildScssWithConfig(children, loc);
-      case 'ScssUseAs':         return this._buildScssUseAs(children, loc);
-      case 'ScssUse':           return this._buildScssUse(children, loc);
-      case 'ScssForward':       return this._buildScssForward(children, _rawChildren, loc);
-      case 'ScssPlaceholderSelector': return this._buildScssPlaceholderSelector(children, loc);
-      case 'ScssPlaceholderRuleset': return this._buildRuleset(children, _rawChildren, loc);
-      case 'ScssExtendTarget':  return this._buildScssExtendTarget(children, _rawChildren, loc);
-      case 'ScssExtend':        return this._buildScssExtend(children, _rawChildren, loc);
-      case 'ScssImportItem':    return this._buildScssImportItem(children, _rawChildren, loc);
-      case 'ScssImportAtRule':  return this._buildScssImportAtRule(children, loc);
-      case 'ScssNestedProps':   return this._buildScssNestedProps(children, loc);
-      case 'ScssDiagnostic':    return this._buildScssDiagnostic(children, loc);
-      case 'ScssAtRootFilter':  return this._buildScssAtRootFilter(children, loc);
-      case 'ScssAtRootSelector': return this._buildScssAtRootSelector(children, loc);
-      case 'ScssAtRootPlain':   return this._buildScssAtRootPlain(children, loc);
-      case 'ScssScopeBlock':    return this._buildScssPermissiveAtRule(children, loc);
-      case 'ScssQueryInterpBlock': return this._buildScssQueryInterpBlock(children, loc);
-      case 'ScssLayerBlock':    return this._buildScssLayerBlock(children, loc);
-      case 'Call':              return this._buildCall(_rawChildren, loc);
-      case 'SquareParen':       return this._buildSquareParen(_rawChildren, loc);
-      case 'Paren':             return this._buildScssParen(_rawChildren, loc);
-      default:                  return super.buildNode(type, span, children, _state, _rawChildren, fields, triviaLog);
-    }
+  protected override _builderEntries(): Record<string, BuilderFn> {
+    // `base` = css ⊕ less (last-wins). SCSS overrides win over both by name, so
+    // there is no dead-override trap. Declaration/CustomDeclaration delegate to
+    // the base (Less) builder via the merged map, matching the former
+    // `super.buildNode` fallback exactly.
+    const base = super._builderEntries();
+    return { ...base, ...this._scssBuilderEntries(base) };
   }
 
-  /* eslint-enable @typescript-eslint/naming-convention */
+  private _scssBuilderEntries(base: Record<string, BuilderFn>): Record<string, BuilderFn> {
+    return {
+      VarDeclaration: a => this._buildScssVarDeclaration(a.rawChildren, a.loc),
+      NsVarDeclaration: a => this._buildScssNsVarDeclaration(a.rawChildren, a.loc),
+      Reference: a => this._buildScssReference(a.children, a.loc),
+      ScssComparison: a => this._buildScssComparison(a.children, a.loc),
+      ScssCondInParens: a => this._buildScssCondInParens(a.children, a.loc),
+      ScssCondTerm: a => this._buildScssCondTerm(a.children, a.loc),
+      ScssCondAnd: a => this._buildScssCondJoin(a.children, a.loc, 'and'),
+      ScssCondOr: a => this._buildScssCondJoin(a.children, a.loc, 'or'),
+      ScssRules: a => this._buildScssRules(a.children, a.loc),
+      ScssIf: a => this._buildScssIf(a.children, a.loc),
+      ScssEach: a => this._buildScssEach(a.children, a.loc),
+      ScssFor: a => this._buildScssFor(a.children, a.loc),
+      ScssWhile: a => this._buildScssWhile(a.children, a.loc),
+      ScssCallArg: a => this._buildScssCallArg(a.children, a.loc),
+      ScssCallArgsInner: a => this._buildScssCallArgsInner(a.children, a.loc),
+      ScssMixinParam: a => this._buildScssMixinParam(a.children, a.loc),
+      ScssMixinParams: a => this._buildScssMixinParams(a.children, a.loc),
+      ScssMixinName: a => this._buildScssMixinName(a.children, a.loc),
+      ScssDeclBody: a => this._buildScssRules(a.children, a.loc),
+      ScssMixin: a => this._buildScssMixin(a.children, a.loc),
+      ScssIncludeUsing: a => this._buildScssIncludeUsing(a.children, a.loc),
+      ScssInclude: a => this._buildScssInclude(a.children, a.loc),
+      ScssContent: a => this._buildScssContent(a.children, a.loc),
+      ScssFunction: a => this._buildScssFunction(a.children, a.loc),
+      ScssReturn: a => this._buildScssReturn(a.children, a.rawChildren, a.loc),
+      ScssInterpBare: a => this._buildScssInterpBare(a.children, a.loc),
+      ScssInterpolatedName: a => this._buildScssInterpolatedName(a.children, a.loc),
+      InterpValue: a => this._foldScssInterp(a.children, 'ident', a.loc),
+      ScssInterpDeclName: a => this._foldScssInterp(a.children, 'property', a.loc),
+      ScssInterpCustomProp: a => this._foldScssInterp(a.children, 'property', a.loc),
+      InterpolatedSelector: a => this._buildScssInterpolatedSelector(a.children, a.loc),
+      Declaration: a => this._buildScssDeclaration(a.children, a.loc, () => base.Declaration!(a)),
+      CustomDeclaration: a => this._buildScssCustomDeclaration(a.children, a.loc, () => base.CustomDeclaration!(a)),
+      Quoted: a => this._buildQuoted(a.children, a.loc),
+      ScssMapPair: a => this._buildScssMapPair(a.children, a.loc),
+      ScssMapLiteral: a => this._buildScssMapLiteral(a.children, a.loc),
+      ScssIdentValue: a => this._buildScssIdentValue(a.children, a.rawChildren, a.loc),
+      ScssWithConfigEntry: a => this._buildScssWithConfigEntry(a.rawChildren, a.loc),
+      ScssWithConfig: a => this._buildScssWithConfig(a.children, a.loc),
+      ScssUseAs: a => this._buildScssUseAs(a.children, a.loc),
+      ScssUse: a => this._buildScssUse(a.children, a.loc),
+      ScssForward: a => this._buildScssForward(a.children, a.rawChildren, a.loc),
+      ScssPlaceholderSelector: a => this._buildScssPlaceholderSelector(a.children, a.loc),
+      ScssPlaceholderRuleset: a => this._buildRuleset(a.children, a.rawChildren, a.loc),
+      ScssExtendTarget: a => this._buildScssExtendTarget(a.children, a.rawChildren, a.loc),
+      ScssExtend: a => this._buildScssExtend(a.children, a.rawChildren, a.loc),
+      ScssImportItem: a => this._buildScssImportItem(a.children, a.rawChildren, a.loc),
+      ScssImportAtRule: a => this._buildScssImportAtRule(a.children, a.loc),
+      ScssNestedProps: a => this._buildScssNestedProps(a.children, a.loc),
+      ScssDiagnostic: a => this._buildScssDiagnostic(a.children, a.loc),
+      ScssAtRootFilter: a => this._buildScssAtRootFilter(a.children, a.loc),
+      ScssAtRootSelector: a => this._buildScssAtRootSelector(a.children, a.loc),
+      ScssAtRootPlain: a => this._buildScssAtRootPlain(a.children, a.loc),
+      ScssScopeBlock: a => this._buildScssPermissiveAtRule(a.children, a.loc),
+      ScssQueryInterpBlock: a => this._buildScssQueryInterpBlock(a.children, a.loc),
+      ScssLayerBlock: a => this._buildScssLayerBlock(a.children, a.loc),
+      Call: a => this._buildCall(a.rawChildren, a.loc),
+      SquareParen: a => this._buildSquareParen(a.rawChildren, a.loc),
+      Paren: a => this._buildScssParen(a.rawChildren, a.loc)
+    };
+  }
 
   // ── Private SCSS AST builders ─────────────────────────────────────────────
   /* eslint-disable @typescript-eslint/no-unsafe-type-assertion */
