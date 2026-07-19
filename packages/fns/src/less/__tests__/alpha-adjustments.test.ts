@@ -6,8 +6,16 @@ import fadeout from '../fadeout.js';
 import greyscale from '../greyscale.js';
 
 describe('less alpha and grayscale adjustments', () => {
-  it('fade() sets alpha and preserves hex format when input is hex', () => {
+  it('fade() sets alpha; an OPAQUE hex turns translucent as rgba (not hex)', () => {
     const color = new Color('#ff0000');
+    const result = fade(color, new Dimension({ number: 25, unit: '%' }));
+    expect(result.alpha).toBe(0.25);
+    // #ff0000 carried no alpha channel → becomes RGB once translucent (4.x/v5 parity)
+    expect(result.options.format).toBe(ColorFormat.RGB);
+  });
+
+  it('fade() preserves hex format when the input hex encoded an alpha channel', () => {
+    const color = new Color('#ff000080'); // 8-digit hex → alpha already present
     const result = fade(color, new Dimension({ number: 25, unit: '%' }));
     expect(result.alpha).toBe(0.25);
     expect(result.options.format).toBe(ColorFormat.HEX);

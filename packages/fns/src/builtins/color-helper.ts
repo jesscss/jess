@@ -28,11 +28,15 @@ export const snapAlpha = (a: number): number => (Math.abs(a - 1) < 1e-12 ? 1 : a
  * The one alpha-adjust kernel for `fade`/`fadein`/`fadeout`: rebuild `color` at
  * `newAlpha`, rounded to Less's 8-decimal numeric precision (Less `fround`) so
  * float drift emits `0.7`, not `0.7000000000000001`. A `#`-hex input keeps HEX
- * format; anything else becomes RGB.
+ * format ONLY when the literal already encoded an alpha channel (`#rgba` /
+ * `#rrggbbaa`); an opaque hex (`#rgb` / `#rrggbb`) turns to `rgba(…)` the moment
+ * it becomes translucent (Less 4.x/v5 parity — e.g. `fadeout(#ff0, 50%)` →
+ * `rgba(255, 255, 0, 0.5)`, but `fade(#5F59, 10%)` → `#55ff551a`).
  */
 export function withAlpha(color: Color, newAlpha: number): Color {
   const node = color.node;
-  const preserveHex = color.format === HEX && typeof node === 'string' && node.startsWith('#');
+  const hexDigits = typeof node === 'string' && node.startsWith('#') ? node.length - 1 : 0;
+  const preserveHex = color.format === HEX && (hexDigits === 4 || hexDigits === 8);
   return makeColorRgb(colorRawRgb(color), round(newAlpha, 8), preserveHex ? HEX : RGB, { modernSyntax: color.modernSyntax === true });
 }
 

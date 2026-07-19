@@ -5,6 +5,7 @@ import {
   defineFunction,
   ColorFormat
 } from '@jesscss/core';
+import { preserveHexUnderAlpha } from '../util/preserve-hex.js';
 
 /**
  * Less `fade()` — set a color's alpha to `amount` (a percentage), replacing any
@@ -18,10 +19,7 @@ const fade = defineFunction(
   function(this: Context, color: Color, amount: Dimension) {
     const newAlpha = amount.number / 100;
     const inputNode = typeof color.node === 'string' ? color.node : undefined;
-    const preserveHexFormat = color.options.format === ColorFormat.HEX
-      && !!inputNode
-      && inputNode.startsWith('#');
-    const outputFormat = preserveHexFormat ? ColorFormat.HEX : ColorFormat.RGB;
+    const outputFormat = preserveHexUnderAlpha(color, inputNode) ? ColorFormat.HEX : ColorFormat.RGB;
 
     // Create new color with adjusted alpha, preserving original format
     return new Color({
