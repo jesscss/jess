@@ -12,22 +12,21 @@ import { directCssAstGrammar } from './direct-ast/grammar.js';
 export type CssAstParseError = { message: string; offset: number };
 
 export type CssAstParseResult = {
-  tree: Root;
+  document: Root | null;
   errors: CssAstParseError[];
 };
 
 /** Parse the closed direct-AST CSS subset into canonical AST-v2 data. */
-export function parseCssToAst(input: string): CssAstParseResult {
+export function parse(input: string): CssAstParseResult {
   const result = run(directCssAstGrammar.DirectCssDocument, input, { trivia: directCssAstGrammar.whitespace });
-  if (result.ok && result.unconsumedFrom === null && isRoot(result.value)) {
-    return { tree: result.value, errors: [] };
+  if (result.ok && result.unconsumedFrom === null) {
+    // Parseman's public run() result is untyped even when its entry is a typed
+    // combinator. This is the grammar-owned Root contract, not a recovery path.
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    return { document: result.value as Root, errors: [] };
   }
   return {
-    tree: { type: 'Root', children: [] },
+    document: null,
     errors: [{ message: result.ok ? 'Unexpected input' : result.expected.join(', ') || 'Parse error', offset: result.ok ? result.unconsumedFrom ?? 0 : result.span.start }]
   };
-}
-
-function isRoot(value: unknown): value is Root {
-  return typeof value === 'object' && value !== null && (value as { type?: unknown }).type === 'Root';
 }

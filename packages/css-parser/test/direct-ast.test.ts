@@ -1,12 +1,12 @@
 import { serialize } from '../../core/src/ast/index.js';
-import { parseCssToAst } from '../src/direct-ast.js';
+import { parse } from '../src/direct-ast.js';
 
-describe('parseCssToAst', () => {
+describe('parse', () => {
   it('constructs canonical AST-v2 literals without a build host and renders them', () => {
-    const parsed = parseCssToAst('/* top */\n.a { /* inside */ }');
+    const parsed = parse('/* top */\n.a { /* inside */ }');
 
     expect(parsed.errors).toEqual([]);
-    expect(parsed.tree).toEqual({
+    expect(parsed.document).toEqual({
       type: 'Root',
       children: [
         { type: 'Comment', text: '/* top */' },
@@ -25,7 +25,7 @@ describe('parseCssToAst', () => {
       ]
     });
 
-    const rendered = serialize(parsed.tree);
+    const rendered = serialize(parsed.document!);
     expect(rendered).not.toBeInstanceOf(Promise);
     if (rendered instanceof Promise) {
       throw new Error('direct CSS rendering must be synchronous');
@@ -36,6 +36,8 @@ describe('parseCssToAst', () => {
   });
 
   it('reports input outside the closed pilot grammar', () => {
-    expect(parseCssToAst('.a { color: red; }').errors).toHaveLength(1);
+    const parsed = parse('.a { color: red; }');
+    expect(parsed.document).toBeNull();
+    expect(parsed.errors).toHaveLength(1);
   });
 });

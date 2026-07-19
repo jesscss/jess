@@ -948,15 +948,15 @@ no imported guarded mixins (no speedup to show), but on
     "files": ["packages/css-parser/src/direct-ast.ts"],
     "sourceCheck": {
       "file": "packages/css-parser/src/direct-ast.ts",
-      "caller": "export function parseCssToAst",
-      "call": "return { tree: result.value, errors: [] }",
+      "caller": "export function parse",
+      "call": "return { document: result.value as Root, errors: [] }",
       "guard": "result.ok && result.unconsumedFrom === null"
     },
     "evidence": {"command":["pnpm","--filter","@jesscss/css-parser","test","--","--run","test/direct-ast.test.ts"]},
     "neutralRefactor": {
       "costDelta": "neutral",
       "allowsProsecutedDangerTokens": true,
-      "why": "This is a new opt-in closed pilot entry, not a replacement for the existing CSS, Less, or render pipeline. Its result and diagnostic arrays exist only when a caller explicitly selects the experimental subpath; benchmark.less continues through the unchanged production parser and renderer. The result shaping performs no source recognition, bridge conversion, or evaluator call.",
+      "why": "This is a new opt-in closed pilot entry, not a replacement for the existing CSS, Less, or render pipeline. Its result and diagnostic arrays exist only when a caller explicitly selects the experimental subpath; benchmark.less continues through the unchanged production parser and renderer. The grammar reduction is the Root contract: parse failure returns document: null and a diagnostic, never a manufactured empty AST. The result shaping performs no source recognition, bridge conversion, or evaluator call.",
       "dangerTokensJustification": "The error array is cold parse-failure data. It is not built on successful parses; the empty success array is the public result contract. No changed existing hot path gains these allocations.",
       "byteIdentity": {
         "fixture": "benchmark.less",
@@ -971,17 +971,11 @@ no imported guarded mixins (no speedup to show), but on
     "kind": "neutral-or-negative",
     "surface": "Closed CSS direct AST grammar reductions (direct-ast/grammar.ts)",
     "files": ["packages/css-parser/src/direct-ast/grammar.ts"],
-    "sourceCheck": {
-      "file": "packages/css-parser/src/direct-ast/grammar.ts",
-      "caller": "export const directCssAstGrammar",
-      "call": "throw new Error('DirectCssRuleset requires a selector')",
-      "guard": "SelectorList"
-    },
     "evidence": {"command":["pnpm","--filter","@jesscss/css-parser","test","--","--run","test/direct-ast.test.ts"]},
     "neutralRefactor": {
       "costDelta": "neutral",
       "allowsProsecutedDangerTokens": true,
-      "why": "The grammar is an isolated opt-in pilot and is not composed into cssGrammar or any dialect grammar. Direct reductions create only the canonical Root, Rule, selector, and Comment literals for the caller-selected closed subset. It adds no host callback ABI, dispatch map, legacy bridge, source reparse, or work to benchmark.less's existing route.",
+      "why": "The grammar is an isolated opt-in pilot and is not composed into cssGrammar or any dialect grammar. Direct reductions create only the canonical Root, Rule, selector, and Comment literals for the caller-selected closed subset. The reduction child positions are guaranteed by their closed Parseman sequence; no post-reduction probes, fallback strings, or invented AST children remain. It adds no host callback ABI, dispatch map, legacy bridge, source reparse, or work to benchmark.less's existing route.",
       "dangerTokensJustification": "The filtered body and root arrays are the canonical AST child arrays required by the selected pilot grammar. They replace neither a live production collection nor a render-path traversal, and the normal parser route does not instantiate this grammar.",
       "byteIdentity": {
         "fixture": "benchmark.less",
