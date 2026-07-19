@@ -1,4 +1,3 @@
-import { Parser as LessParser } from '@jesscss/less-parser/jess';
 import { Parser as ScssParser } from '@jesscss/scss-parser/jess';
 import { parseCssDoc, type CssCstNode, type ParseDoc } from '@jesscss/css-parser';
 import { parseLessDoc } from '@jesscss/less-parser';
@@ -143,8 +142,7 @@ function buildJessIndex(root: Node): JessIndex {
   };
 }
 
-// Parsers are expensive to construct: reuse the remaining dialect instances.
-const lessParser = new LessParser({ recoveryEnabled: true });
+// SCSS is the sole remaining legacy AST parser instance.
 const scssParser = new ScssParser({ recoveryEnabled: true });
 
 function getJessLangFromLanguageId(languageId: string): JessLang {
@@ -162,8 +160,7 @@ function getJessLangFromLanguageId(languageId: string): JessLang {
 
 function parseWithJess(text: string, lang: JessLang): IParseResult<Rules> | null {
   if (lang === 'less') {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-    return lessParser.parse(text) as unknown as IParseResult<Rules>;
+    throw new Error('Less AST parsing is unavailable: the legacy parser entry was deleted.');
   }
   if (lang === 'scss') {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion

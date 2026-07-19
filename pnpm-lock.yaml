@@ -604,9 +604,6 @@ importers:
       '@jesscss/css-parser':
         specifier: workspace:*
         version: link:../css-parser
-      chevrotain:
-        specifier: ^12.0.0
-        version: 12.0.0
       known-css-properties:
         specifier: ~0.37.0
         version: 0.37.0

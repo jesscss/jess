@@ -98,48 +98,9 @@ export class MyPlugin extends AbstractPlugin {
 
 The Less and SCSS plugins are the full-featured examples. Each one:
 
-**Brings its own parser** and threads a per-file `TreeContext` through it. The
-context carries the compiler options the parser and evaluator need (math mode, unit
-mode, equality mode, `collapseNesting`, and so on):
-
-```ts
-import { AbstractPlugin, TreeContext, type Rules } from '@jesscss/core';
-import { Parser } from '@jesscss/less-parser/jess';
-
-export class LessPlugin extends AbstractPlugin {
-  name = 'less';
-  supportedExtensions = ['.less'];
-  parser = new Parser();
-
-  safeParse(filePath, source) {
-    const context = new TreeContext({
-      file: { /* name, path, fullPath, source */ },
-      mathMode: this.mathMode,
-      unitMode: this.unitMode,
-      collapseNesting: this.collapseNesting
-      // ...other options
-    });
-    const { tree, errors, warnings } = this.parser.parse(source, 'Stylesheet', { context });
-    // register functions on the tree, then:
-    return { tree, errors, warnings };
-  }
-}
-```
-
-**Registers built-in functions** onto the parsed tree with
-`tree.setFunctionBinding(name, fn)`. The Less plugin, for instance, walks the
-`@jesscss/fns` exports and binds each one so `.less` sources can call them:
-
-```ts
-import * as lessFunctions from '@jesscss/fns';
-import { JsFunction } from '@jesscss/core';
-
-for (const [key, value] of Object.entries(lessFunctions)) {
-  if (typeof value !== 'function') continue;
-  const name = value.name || key;
-  tree.setFunctionBinding(name, new JsFunction({ name, fn: value }));
-}
-```
+The legacy Less tree parser has been removed. The Less package currently exposes
+only grammar and CST APIs; a parser-local direct AST entry is required before a
+Less plugin can provide tree parsing again.
 
 **Customizes import resolution.** `expandImport` turns a bare specifier into the
 candidate filenames to try (e.g. `foo` → `./foo.less`), and `resolve` maps
