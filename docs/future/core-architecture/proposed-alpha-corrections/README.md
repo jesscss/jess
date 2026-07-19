@@ -80,7 +80,7 @@ drop-in v5 expected `.css`. tree2's R4 merge fold is gated against THIS file
 
 **Differential-reference hand-off (like `scope.less` #989, GOAL1-SCORECARD §2):**
 because the ast/ engine correctly emits the v5 LAST-occurrence order (matching
-`CUTOVER-STATUS.md:44` "LAST-occurrence anchoring kept" and the legacy `tree/`
+`../archive/CUTOVER-STATUS-2026-07-18.md:44` (historical status snapshot) and the legacy `tree/`
 spine/eval path), it DIFFs from alpha's committed first-occurrence `merge.css`.
 That divergence is recorded in `alpha-oracle-baseline.json` as an **expected
 `DIFF`** for `merge/merge.less` — the expected `.css` is the outlier, not ast/. The alpha

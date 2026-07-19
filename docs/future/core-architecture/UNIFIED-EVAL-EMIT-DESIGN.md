@@ -1123,7 +1123,7 @@ warnings and compat (3,4) are places the EXPECTATION itself is most likely the s
   — accept the graceful degradation to baseline, or add a spill-to-writer cap? (Deferred; not blocking.)
 
 - **OQ-C — RESOLVED (owner 2026-07-08): COORDINATED CUTOVER, not incremental.** Power the full target
-  architecture out on a dedicated branch (`CUTOVER-CHECKLIST.md` is the tracked plan). **Explicit reason
+  architecture out on a dedicated branch (`archive/CUTOVER-CHECKLIST-2026-07-18.md` is the historical tracked plan). **Explicit reason
   for cutover over incremental:** incremental attempts made agents BACKPEDAL — they start, read the
   existing eval→output-tree→visitor→serialize structure, and match it instead of driving to the target,
   poisoning the goal. The cutover is guardrailed against that: the design docs are the SPEC, the existing

@@ -44,7 +44,7 @@ reference"* framing is superseded by this row. Source:
 
 | # | Ruling | Status | Source / detail |
 |---|--------|--------|-----------------|
-| M1 | Merge ANCHOR = **LAST-occurrence** (jess v5), NOT less@4 first-occurrence anchor. Emit-order divergence on `merge.less` is intended, not a bug. | **SETTLED** | `CUTOVER-STATUS.md:44` ("LAST-occurrence anchoring kept, no less@4 first-anchor expected output adopted"); `memory:spine-merge-last-occurrence-anchor` |
+| M1 | Merge ANCHOR = **LAST-occurrence** (jess v5), NOT less@4 first-occurrence anchor. Emit-order divergence on `merge.less` is intended, not a bug. | **SETTLED** | `archive/CUTOVER-STATUS-2026-07-18.md:44` (historical status snapshot); `memory:spine-merge-last-occurrence-anchor` |
 | M2 | `+:` = comma-merge, `+_:` = space-merge. Both LOWER (parse/build-time) to a self-ref declaration `prop: $['prop']?<sep>v` (`?` = optional self-lookup, empty if unbound, no error). Normal eval + resolver do the rest — no special merge pass. | SETTLED | `memory:less-merge-plus-lowering-self-ref` (owner 2026-07-17) |
 | M3 | Flatten is associative ONLY when both operands materialize to same-kind List/Sequence nodes (→ one flat list); otherwise it is a serialize-time concat `<self><sep><value>`. | SETTLED | `memory:less-merge-plus-lowering-self-ref` |
 | M4 | Flatten is a serialize-time PROJECTION — do NOT eagerly clone a merged node; materialize only if a visitor needs to traverse it. | SETTLED | `memory:less-merge-plus-lowering-self-ref`, `memory:spine-is-projection-not-mutation` |
@@ -150,7 +150,7 @@ reference"* framing is superseded by this row. Source:
 | C2 | P0 KEYSTONE: the parser is the SOLE source of structure; core NEVER re-derives structure from bytes. | SETTLED | `TREE2-CONSTITUTION.md` P0, `memory:parser-owns-structure-no-byte-rederivation` |
 | C3 | Unified node model: ONE plain-data representation; discriminant `type:'Dimension'` (PascalCase = Less `.type`); numeric `Kind`/lowercase `kind` are dead. Serialize + value-eval = free functions on nodes (tree-shakeable), nodes stay pure minimal data. | SETTLED | `UNIFIED-NODE-MODEL-SPEC.md`, `memory:ast-v2-unified-node-model`, `memory:arena-serialize-external-treeshake` |
 | C4 | Committed render architecture = node-reuse + live-binding spine; folds are serialize-time PROJECTION, not tree mutation. | SETTLED | `memory:committed-architecture-object-reduction`, `memory:spine-is-projection-not-mutation` |
-| C5 | Cutover goes to 100% — a shape may be DEFERRED but never permanently eval-fallback-abandoned (HARD RULE #6). | SETTLED | `CUTOVER-CHECKLIST.md`, `memory:feedback-no-permanent-eval-fallback` |
+| C5 | Cutover goes to 100% — a shape may be DEFERRED but never permanently eval-fallback-abandoned (HARD RULE #6). | SETTLED | `archive/CUTOVER-CHECKLIST-2026-07-18.md`, `memory:feedback-no-permanent-eval-fallback` |
 
 ## 9. Positioning (context, not a code rule)
 
