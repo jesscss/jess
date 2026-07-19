@@ -613,6 +613,9 @@ importers:
       '@jesscss/css-parser':
         specifier: workspace:*
         version: link:../css-parser
+      '@jesscss/internal-css-recognition':
+        specifier: workspace:*
+        version: link:../internal-css-recognition
       known-css-properties:
         specifier: ~0.37.0
         version: 0.37.0

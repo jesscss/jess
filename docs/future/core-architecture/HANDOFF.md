@@ -55,6 +55,34 @@ Core never receives a resolver callback or owns module/filesystem policy.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: move the private Less direct-AST grammar's existing restricted
+  identifier and quoted leaves to the private shared recognition artifact.
+- Architecture surface: `lessAstGrammar` remains terminal/private/test-only;
+  its direct constructors remain local. The shared artifact contains only
+  macro-static terminals, no builder, callback, AST/CST, resolver, or export
+  from a public package.
+- Separation/duplication: removes four local Less lexical regex leaves without
+  inheriting broader CSS terminals. `lessBareIdentifier` and unescaped quoted
+  bodies are byte-for-byte the previous closed subset and are selected explicitly.
+- Cumulative node weight: none; parser-local reductions construct the same
+  canonical nodes from the same terminal values.
+- New traversal: none.
+- New node/materialization: none beyond existing parser reductions. The added
+  `LessAstRules` type is compile-time only.
+- Render path: unchanged and unreachable from production parse/render entries.
+- Helper/API surface: no public helper; one private artifact subpath only.
+- Metadata mutations: none.
+- Review-flagged diff tokens: [materialized array/object] the type declaration
+  is erased at build time; no runtime object, loop, map, clone, or error path
+  is added.
+- Hot-path cost contracts:
+  ```json
+  [{"id":"less-private-direct-ast-family","verdict":"accepted","privateReachability":{"productionImporters":0,"publicExports":0,"buildEntries":0,"coldConstructionOnly":true},"why":"The shared terminal artifact and the Less leaf grammar are macro-fused only in focused private AST tests; no public parser/eval/render entry reaches either direct AST reduction."}]
+  ```
+- Evidence: exact terminal acceptance/rejection matrix, Less AST/macro tests,
+  internal artifact and Less builds, parser-boundary verifier, adversarial review.
+- Verdict: accepted cold recognition de-duplication; no performance claim.
+
 - Latest pass: extend the private CSS direct-AST value family with calc-only
   arithmetic, calc parentheses, and grammar-owned importance.
 - Architecture surface: `cssAstGrammar` remains test-only; public CSS parsing

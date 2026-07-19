@@ -121,6 +121,21 @@ describe('private Less AST grammar facts', () => {
     expect(result.ok ? result.unconsumedFrom : result.errors).not.toBeNull();
   });
 
+  it('keeps the prior closed identifier and quoted-content subset while macro-fusing recognition', () => {
+    const accepts = run(lessAstGrammar.LessAstDocument, '@base: red; -theme: blue; @import "plain.less";', { trivia: lessAstGrammar.whitespace });
+    expect(accepts.ok && accepts.unconsumedFrom === null && isRoot(accepts.value)).toBe(true);
+
+    for (const source of [
+      '*color: red;',
+      '\\63 olor: red;',
+      'color: r\\65 d;',
+      '@import "a\\"b";'
+    ]) {
+      const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+      expect(result.ok && result.unconsumedFrom === null && isRoot(result.value)).toBe(false);
+    }
+  });
+
   it('constructs child-combinator and comma-list selectors structurally', () => {
     const result = run(lessAstGrammar.LessAstDocument, '.a > .b, #c { color: red; }', { trivia: lessAstGrammar.whitespace });
 

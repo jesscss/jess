@@ -1,9 +1,36 @@
 /** Private AST grammar development slice for canonical Less facts. */
-import { choice, literal, many, node, regex, rules, sequence, trivia } from 'parseman' with { type: 'macro' };
+import { choice, composeLeaf, literal, many, node, regex, rules, sequence, trivia } from 'parseman' with { type: 'macro' };
+import type { Combinator } from 'parseman';
+import { lessAstSyntax } from '@jesscss/internal-css-recognition/recognition';
 import { comment, complex, compoundOf, decl, importAtRule, keyword, quoted, root, rule, selist, simple, varDecl, varRef } from '@jesscss/core/ast';
 import type { Comment, Complex, Compound, Declaration, ImportAtRule, Quoted, Root, Rule, SelectorList, Statement, ValueNode, VarDeclaration, VarRef } from '@jesscss/core/ast';
 
 type Token = { readonly value: string };
+
+type LessAstRules = {
+  LessAstDocument: Combinator<Root>;
+  DirectLessImport: Combinator<ImportAtRule>;
+  DirectLessVarDeclaration: Combinator<VarDeclaration>;
+  DirectLessVarReference: Combinator<VarRef>;
+  DirectLessKeyword: Combinator<ValueNode>;
+  DirectLessValue: Combinator<ValueNode>;
+  DirectLessDeclaration: Combinator<Declaration>;
+  DirectLessComment: Combinator<Comment>;
+  DirectLessCompound: Combinator<Compound>;
+  DirectLessChildComplex: Combinator<Complex>;
+  DirectLessSimpleComplex: Combinator<Complex>;
+  DirectLessComplex: Combinator<Complex>;
+  DirectLessSelectorTail: Combinator<Complex>;
+  DirectLessSelector: Combinator<SelectorList>;
+  DirectLessRuleset: Combinator<Rule>;
+  DirectLessQuoted: Combinator<Quoted>;
+  LessAstSyntaxIdentifier: Combinator<string>;
+  LessAstSyntaxProperty: Combinator<string>;
+  LessAstSyntaxKeyword: Combinator<string>;
+  LessAstSyntaxDoubleQuotedText: Combinator<string>;
+  LessAstSyntaxSingleQuotedText: Combinator<string>;
+  whitespace: Combinator<unknown>;
+};
 
 function requireToken(value: unknown): Token {
   if (typeof value !== 'object' || value === null || !('value' in value) || typeof value.value !== 'string') {
@@ -203,20 +230,15 @@ function requireStatements(children: readonly unknown[]): Statement[] {
 
 const whitespace = trivia(regex(/[ \t\n\r\f]+/));
 const importKeyword = regex(/@(?:-import|-export|import)(?![-\w])/i);
-const variableName = regex(/-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
-const propertyName = regex(/-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
-const keywordValue = regex(/-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
 const blockComment = regex(/\/\*(?:[^*]|\*(?!\/))*\*\//);
 const simpleSelector = regex(/(?:[.#]?-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*|\*)/);
-const doubleQuotedText = regex(/[^"\\]*/);
-const singleQuotedText = regex(/[^'\\]*/);
 
-export const lessAstGrammar = rules({ trivia: whitespace }, (g: any) => {
+export const lessAstGrammar = composeLeaf([lessAstSyntax, rules<LessAstRules>({ trivia: whitespace }, (g) => {
   const DirectLessQuoted = node<Quoted>(
     'DirectLessQuoted',
     choice(
-      sequence(literal('"'), doubleQuotedText, literal('"')),
-      sequence(literal('\''), singleQuotedText, literal('\''))
+      sequence(literal('"'), g.LessAstSyntaxDoubleQuotedText, literal('"')),
+      sequence(literal('\''), g.LessAstSyntaxSingleQuotedText, literal('\''))
     ),
     (children) => {
       // The enclosing alternatives both fix these three grammar child slots.
@@ -239,7 +261,7 @@ export const lessAstGrammar = rules({ trivia: whitespace }, (g: any) => {
   );
   const DirectLessVarDeclaration = node<VarDeclaration>(
     'DirectLessVarDeclaration',
-    sequence(literal('@'), variableName, literal(':'), g.DirectLessValue, literal(';')),
+    sequence(literal('@'), g.LessAstSyntaxIdentifier, literal(':'), g.DirectLessValue, literal(';')),
     (children) => {
       // The sigil and name are distinct grammar children, so AST `name` is not
       // recovered from authored text or sliced from a source span.
@@ -249,12 +271,12 @@ export const lessAstGrammar = rules({ trivia: whitespace }, (g: any) => {
   );
   const DirectLessVarReference = node<VarRef>(
     'DirectLessVarReference',
-    sequence(literal('@'), variableName),
+    sequence(literal('@'), g.LessAstSyntaxIdentifier),
     children => varRef(requireToken(children[1]).value)
   );
   const DirectLessKeyword = node<ValueNode>(
     'DirectLessKeyword',
-    keywordValue,
+    g.LessAstSyntaxKeyword,
     children => keyword(requireToken(children[0]).value)
   );
   const DirectLessValue = node<ValueNode>(
@@ -264,7 +286,7 @@ export const lessAstGrammar = rules({ trivia: whitespace }, (g: any) => {
   );
   const DirectLessDeclaration = node<Declaration>(
     'DirectLessDeclaration',
-    sequence(propertyName, literal(':'), g.DirectLessValue, literal(';')),
+    sequence(g.LessAstSyntaxProperty, literal(':'), g.DirectLessValue, literal(';')),
     (children) => {
       // Property, delimiter, and value are independently recognized grammar
       // children; AST construction does not split or reclassify authored text.
@@ -348,4 +370,4 @@ export const lessAstGrammar = rules({ trivia: whitespace }, (g: any) => {
     DirectLessQuoted,
     whitespace
   };
-});
+})]);
