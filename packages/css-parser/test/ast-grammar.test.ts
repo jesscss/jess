@@ -318,6 +318,19 @@ describe('private CSS canonical-AST grammar', () => {
     expect(serialize(document)).toEqual({ css: '.asset {\n  background: url(icon.svg);\n}\n' });
   });
 
+  it('recognizes escaped url-token payloads through the fused private syntax leaves', () => {
+    const document = parseAst('.asset { background: url(icon\\41 svg); content: \'it\\\\\\\'s\'; }');
+
+    expect(document.children[0]).toMatchObject({
+      type: 'Rule',
+      body: [
+        { type: 'Declaration', name: 'background', value: { type: 'Url', value: { type: 'Any', src: 'icon\\41 svg' } } },
+        { type: 'Declaration', name: 'content', value: { type: 'Quoted', src: '\'it\\\\\\\'s\'', value: 'it\\\\\\\'s', quote: '\'' } }
+      ]
+    });
+    expect(serialize(document)).toEqual({ css: '.asset {\n  background: url(icon\\41 svg);\n  content: \'it\\\\\\\'s\';\n}\n' });
+  });
+
   it('constructs an empty generic function call without inventing an argument', () => {
     const document = parseAst('.a { transform: translate(); }');
 

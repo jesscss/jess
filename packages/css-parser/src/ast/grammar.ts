@@ -94,6 +94,10 @@ type CssAstRules = {
   CssAstMedia: Combinator<AtRuleBlock>;
   CssAstSyntaxProperty: Combinator<string>;
   CssAstSyntaxKeyword: Combinator<string>;
+  CssAstSyntaxDoubleQuotedText: Combinator<string>;
+  CssAstSyntaxSingleQuotedText: Combinator<string>;
+  CssAstSyntaxUrlOpen: Combinator<string>;
+  CssAstSyntaxUrlInner: Combinator<string>;
   whitespace: Combinator<unknown>;
 };
 
@@ -278,11 +282,11 @@ const atKeyframes = regex(/@(?:-[a-z]+-)?keyframes(?![-_a-zA-Z0-9\u0080-\uffff\\
 const keyframePercent = regex(/[+-]?(?:[0-9]+(?:\.[0-9]+)?|\.[0-9]+)%/);
 const keyframeEndpoint = regex(/(?:from|to)(?![-_a-zA-Z0-9\u0080-\uffff])/i);
 const combinator = choice(literal('||'), literal('>'), literal('+'), literal('~'), literal('|'));
-const doubleQuotedText = regex(/(?:[^"\\]|\\[\s\S])*/);
-const singleQuotedText = regex(/(?:[^'\\]|\\[\s\S])*/);
+const customDoubleQuotedText = regex(/(?:[^"\\]|\\[\s\S])*/);
+const customSingleQuotedText = regex(/(?:[^'\\]|\\[\s\S])*/);
 const customEscape = regex(/\\[^\n\r\f]/);
-const customDoubleQuoted = sequence(literal('"'), doubleQuotedText, literal('"'));
-const customSingleQuoted = sequence(literal('\''), singleQuotedText, literal('\''));
+const customDoubleQuoted = sequence(literal('"'), customDoubleQuotedText, literal('"'));
+const customSingleQuoted = sequence(literal('\''), customSingleQuotedText, literal('\''));
 // A custom property is a CSS `<declaration-value>`: its opaque bytes must be
 // captured as one value while its balanced groups, quoted strings, and comments
 // cannot terminate the declaration. This is a Parseman grammar combinator, not
@@ -318,9 +322,6 @@ const importTailSquareGroup = sequence(
   }),
   expect(literal(']'), ']')
 );
-const urlOpen = regex(/url\(/i);
-const urlInner = regex(/(?:[^"'()\\ \t\n\f\r\x00-\x08\x0B\x0E-\x1F\x7F]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+/);
-
 export const cssAstGrammar = composeLeaf([cssAstSyntax, rules<CssAstRules>({ trivia: whitespace }, (g) => {
   const CssAstComment = node('CssAstComment', blockComment, children => comment(tokenText(children[0])));
   const CssAstSimple = node('CssAstSimple', simpleSelector, children => simple(tokenText(children[0])));
@@ -362,8 +363,8 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, rules<CssAstRules>({ tri
   const CssAstQuoted = node(
     'CssAstQuoted',
     choice(
-      noTrivia(sequence(literal('"'), doubleQuotedText, literal('"'))),
-      noTrivia(sequence(literal('\''), singleQuotedText, literal('\'')))
+      noTrivia(sequence(literal('"'), g.CssAstSyntaxDoubleQuotedText, literal('"'))),
+      noTrivia(sequence(literal('\''), g.CssAstSyntaxSingleQuotedText, literal('\'')))
     ),
     (children) => {
       const quote = tokenText(children[0]);
@@ -373,7 +374,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, rules<CssAstRules>({ tri
   );
   const CssAstUrl = node(
     'CssAstUrl',
-    sequence(urlOpen, optional(choice(g.CssAstQuoted, urlInner)), expect(literal(')'), ')')),
+    sequence(g.CssAstSyntaxUrlOpen, optional(choice(g.CssAstQuoted, g.CssAstSyntaxUrlInner)), expect(literal(')'), ')')),
     (children) => {
       const body = children.find(isValue);
       return url(body ?? any(children.length > 2 ? tokenText(children[1]) : ''));
