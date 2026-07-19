@@ -10,13 +10,6 @@
  * SCSS-specific construction lives below and must not acquire Less fallbacks.
  */
 
-import {
-  sequence,
-  choice,
-  optional,
-  regex,
-  literal
-} from 'parseman';
 import type { CSTLeaf, CSTError } from 'parseman';
 import { CssParser, spannedComponents, type BuilderFn } from '@jesscss/css-parser/jess';
 
@@ -107,32 +100,11 @@ function nodeChildren(children: ReadonlyArray<Child>): JessNode[] {
 // ---------------------------------------------------------------------------
 
 export class ScssGrammar extends CssParser {
-  // ── Override rw to include // line comments ───────────────────────────────
-  // Must be declared BEFORE _trivia so the field initializer captures this rw.
-  rw = regex(/(?:[ \t\n\r\f]+|\/\/[^\n\r]*|\/\*(?:[^*]|\*(?!\/))*\*\/)+/);
-  protected _trivia = this.rw;
   protected _parseContext?: TreeContext;
 
   setContext(context?: TreeContext) {
     this._parseContext = context;
   }
-
-  // ── SCSS $variable token ──────────────────────────────────────────────────
-  scssVar = regex(/\$-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*/);
-
-  // ── VarDeclaration: $color: value [!default|!global]; ────────────────────
-  // SCSS uses `$` declarations rather than the Less `@` form.
-  VarDeclaration = (g: any) => sequence(
-    g.scssVar,
-    literal(':'),
-    g.valueList,
-    optional(choice(literal('!default'), literal('!global'))),
-    optional(literal(';'))
-  );
-
-  // ── Reference: $var in value positions ───────────────────────────────────
-  // SCSS references are deliberately not Less accessor chains.
-  Reference = (g: any) => g.scssVar;
 
   // ── builder map ───────────────────────────────────────────────────────────
 
