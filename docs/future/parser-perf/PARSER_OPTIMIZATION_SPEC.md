@@ -1,5 +1,18 @@
 # Parser Optimization Spec — css / less / scss / jess
 
+> **WIP — reconcile with the reorg-A4 plan before acting.** `ast/parse-host/` is COLLAPSING
+> (reorg-A4; see `HANDOFF.md`). The canonical inventory + sequencing for relocating every
+> parse-host/`builders.ts` regex site into the grammar already lives in
+> **`../core-architecture/GRAMMAR-RELOCATION-DESIGN.md`** (clusters PH1–PH3, S4/S-A4/S-Q3.3,
+> A4-coupling, bridge rulings) and **`BUILDERHOST-RETIREMENT-DESIGN.md`**. That doc is the source
+> of truth for the scanner-elimination mechanics — §3 here duplicates it less precisely and should
+> be read as a cross-reference, not an independent authority. Corrections it supplies: SCAN-A3/PH2
+> protects the **legacy/maintained BuilderHost output, not only the less-compat bridge**; the
+> `import.ts` interp-specifier scanners are **blocked on §3.3 `Quoted` grammar structuring** (not
+> yet on `origin/dev`). **The genuinely-new, non-duplicative value of THIS doc** is the perf lens
+> the reorg docs don't cover: Parséman macro-compiler dispatch leverage (first-set / `FusedRule` /
+> `GatedArm`), `choice`/shared-prefix restructuring, and dart-sass single-pass elision.
+
 **Status:** research + authoring only. **Nothing here is implemented; do not edit
 `grammar*.ts` / `builders.ts` / `actions/*.ts` on the strength of this doc alone.** Every
 item is a candidate for a *separate*, measured landing gated on ON==OFF byte-identity. An
