@@ -60,18 +60,28 @@ describe('@jesscss/less-parser/cst', () => {
 });
 
 function findNode(node: LessCstChild, grammarType: string): Extract<LessCstChild, { _tag: 'node' }> | undefined {
-  if (node._tag !== 'node') return undefined;
-  if (node.grammarType === grammarType) return node;
+  if (node._tag !== 'node') {
+    return undefined;
+  }
+  if (node.grammarType === grammarType) {
+    return node;
+  }
   for (const child of node.children) {
     const found = findNode(child, grammarType);
-    if (found) return found;
+    if (found) {
+      return found;
+    }
   }
   return undefined;
 }
 
 function leafValues(node: LessCstChild): string[] {
-  if (node._tag === 'leaf') return [node.value];
-  if (node._tag !== 'node') return [];
+  if (node._tag === 'leaf') {
+    return [node.value];
+  }
+  if (node._tag !== 'node') {
+    return [];
+  }
   return node.children.flatMap(leafValues);
 }
 
@@ -137,6 +147,35 @@ describe('Less custom-property interpolation CST facts', () => {
       expect(findNodes(result.tree, 'LessInterp'), input).toHaveLength(0);
       expect(leafValues(result.tree).join(''), input).toContain(literal);
     }
+  });
+});
+
+describe('Less quoted and URL interpolation CST facts', () => {
+  it('keeps quoted-string literal chunks and the typed interpolation body in source order', () => {
+    const result = parseLessCst('.a { content: "pre-@{theme[variant]}-post"; }');
+    expect(result.errors).toHaveLength(0);
+
+    const quoted = findNode(result.tree, 'Quoted');
+    expect(quoted).toBeDefined();
+    expect(leafValues(quoted!)).toEqual(['"', 'pre-', '@{', 'theme', '[', 'variant', ']', '}', '-post', '"']);
+    expect(leafValues(findNode(quoted!, 'LessInterp')!)).toEqual(['@{', 'theme', '[', 'variant', ']', '}']);
+  });
+
+  it('uses that same quoted target structure inside url()', () => {
+    const result = parseLessCst('.a { background: url("@{base}/icon.svg"); }');
+    expect(result.errors).toHaveLength(0);
+
+    const url = findNode(result.tree, 'Url');
+    expect(url).toBeDefined();
+    expect(leafValues(url!)).toEqual(['url(', '"', '@{', 'base', '}', '/icon.svg', '"', ')']);
+    expect(findNode(url!, 'Quoted')).toBeDefined();
+    expect(leafValues(findNode(url!, 'LessInterp')!)).toEqual(['@{', 'base', '}']);
+  });
+
+  it('does not invent interpolation structure for escaped or non-Less-shaped text', () => {
+    const result = parseLessCst('.a { a: "\\@{literal}"; b: "@{ spaced }"; }');
+    expect(result.errors).toHaveLength(0);
+    expect(findNode(result.tree, 'LessInterp')).toBeUndefined();
   });
 });
 
