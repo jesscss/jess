@@ -40,7 +40,7 @@ Less corpus.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: private CSS direct-AST value family.
+- Prior pass: private CSS direct-AST grammar/value family.
 - Architecture surface: `packages/css-parser/src/ast/grammar.ts` remains private: `packages/css-parser/src/index.ts`, `cst-css.ts`, and `grammar.ts` neither import nor export `cssAstGrammar`; `package.json` has no subpath targeting it and `tsdown.config.ts` has no entry for it. The sole current importer is `packages/css-parser/test/ast-grammar.test.ts`. No existing parse, eval, or render route reaches it.
 - Separation/duplication: this extends parser-local Parseman construction with quoted, `url(...)`, and generic function-call reductions using core node constructors only. It creates no host, action registry, bridge, conversion pass, public pilot, or fallback.
 - Cumulative node weight: source AST nodes exist only for an explicit run of this development grammar; the current public CSS CST path creates none of them.
@@ -56,3 +56,22 @@ Less corpus.
   ```
 - Evidence: focused source-to-AST-to-serialize tests, CSS package build/tests, parser runtime boundary verification, and the private-reachability registry check.
 - Verdict: accepted as an unreachable development construction slice; wiring a public parser root requires a new reachability and runtime cost review.
+
+### Declaration-merge importance propagation
+
+- Latest pass: declaration-merge importance propagation.
+- Architecture surface: `mergeFold` carries an importance signal through the existing AST evaluator; no parser, host, bridge, or compatibility surface changed.
+- Separation/duplication: the merge path reuses the ordinary declaration importance contract rather than introducing a second value evaluator or render route.
+- Cumulative node weight: none; the signal is one boolean on the existing emit context.
+- New traversal: none.
+- New node/materialization: none; the merge-only signal is one boolean on the existing emit context, preserving the ordinary declaration contract when a value reaches `Important` through a variable.
+- Render path: merged declaration output remains direct string emission; the change only records the existing value-evaluation signal before writing the one merged line.
+- Helper/API surface: none.
+- Metadata mutations: none.
+- Review-flagged diff tokens: none; the repair adds no allocation, traversal, map, clone, or error-control path.
+- Hot-path cost contracts:
+  ```json
+  [{"id":"ast-merge-importance-signal","verdict":"accepted","costDelta":"neutral","why":"The already-admitted declaration-merge loop carries one importance bit on its existing emit context instead of allocating a per-member sink. It repairs the ordinary declaration contract for Important values reached through a variable; it makes no speed claim.","byteIdentity":{"fixture":"benchmark.less","collapseNesting":true,"outputSha256":"adfd26732125a33fc1e264aca7d7ecde8c7c1da43f968e3106bd387a1f78e840","outputBytes":133983}}]
+  ```
+- Evidence: `packages/core/src/ast/__tests__/declaration-merge-direct-acceptance.test.ts` (including reset across a later merge group and ordinary declaration), the direct core AST suite, and the benchmark output oracle recorded above.
+- Verdict: accepted correctness repair; no performance claim.

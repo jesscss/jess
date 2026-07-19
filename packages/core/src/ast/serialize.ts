@@ -922,6 +922,10 @@ interface EvalCtx {
   // declaration by `putValue`; absent elsewhere (importance is meaningless outside
   // a declaration value, e.g. an at-rule prelude / interpolated name).
   importantSink?: { hit: boolean };
+  // [important] Scalar equivalent of `importantSink` for a merged declaration
+  // member. The merge path already owns one combined output line, so it carries
+  // the signal on the existing emit state instead of allocating a sink per member.
+  mergeImportant?: boolean;
   // [default-fn] The `default()` value inside a guard OPERAND (`when (@x =
   // default())`): the mixin-dispatch decision (true iff no non-default def matched).
   // Set only on the ctx of a guard-operand typed resolver; absent everywhere else,
@@ -1137,7 +1141,11 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
       // the inner value with no inline `!important` (`@v: @c !important` → `#888`, the
       // declaration adds one `!important`). Absent a sink (importance-irrelevant
       // position), the inner value emits unchanged.
-      if (e.importantSink) e.importantSink.hit = true;
+      if (e.importantSink) {
+        e.importantSink.hit = true;
+      } else if (e.mergeImportant !== undefined) {
+        e.mergeImportant = true;
+      }
       return evalValue(node.inner, frame, e);
     case 'SpacedValue': {
       // Inside `calc(…)`, `/` is DIVISION (math), not a preserved slash separator:
@@ -3518,8 +3526,15 @@ function mergeFold(group: Leaf[], e: Emit, idt: string, emitOne: (l: Leaf, e: Em
       for (let k = 0; k < indices.length; k++) {
         const idx = indices[k]!;
         const dn = group[idx]!.node as Declaration;
+        // Match ordinary declaration emission: an Important wrapper may sit
+        // behind a variable reference, and promotes this whole merged line.
+        // Keep that one-bit signal on the existing emit context: merged output
+        // already takes this path only after `groupHasMerge` admitted the group.
+        const previousImportant = e.mergeImportant;
+        e.mergeImportant = false;
         const bytes = evalBytesSync(dn.value, group[idx]!.frame, e);
-        important ||= dn.important || group[idx]!.important === true;
+        important ||= dn.important || group[idx]!.important === true || e.mergeImportant;
+        e.mergeImportant = previousImportant;
         if (k === 0) combined = bytes;
         else combined += (dn.merge === ',' ? ', ' : ' ') + bytes;
       }

@@ -43,6 +43,22 @@ active architecture queue.
       "coldConstructionOnly": true,
       "why": "The module is intentionally absent from every CSS public entry and from the CST grammar. Its only importer is the focused construction test, so Parseman reductions and their temporary arrays run only when that test or a future explicit direct-AST root invokes this private rule."
     }
+  },
+  {
+    "id": "ast-merge-importance-signal",
+    "kind": "neutral-or-negative",
+    "surface": "mergeFold importance propagation",
+    "files": ["packages/core/src/ast/serialize.ts"],
+    "neutralRefactor": {
+      "costDelta": "neutral",
+      "why": "The already-admitted declaration-merge loop carries one importance bit on its existing emit context instead of allocating a per-member sink. It repairs the ordinary declaration contract for Important values reached through a variable; it makes no speed claim.",
+      "byteIdentity": {
+        "fixture": "benchmark.less",
+        "collapseNesting": true,
+        "outputSha256": "adfd26732125a33fc1e264aca7d7ecde8c7c1da43f968e3106bd387a1f78e840",
+        "outputBytes": 133983
+      }
+    }
   }
 ]
 ```
