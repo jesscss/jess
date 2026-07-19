@@ -89,11 +89,18 @@ export function collectPlan(root: Root): Plan {
         subjects.push(subject);
         if (rule.extendInstructions) {
           for (const inst of rule.extendInstructions) {
+            // [extend] An INLINE extend binds to its own complex (`inst.subject`), not
+            // the whole rule selector — its extender path narrows the own-local level to
+            // that one branch so a comma-sibling is never folded into the target. A
+            // body-form `&:extend` (no subject) keeps the whole rule selector.
+            const extenderPath = inst.subject
+              ? [...path, levelFromSelectorList(inst.subject)]
+              : rulePath;
             for (const targetBranch of instructionTargets(inst)) {
               instructions.push({
                 target: targetBranch,
                 partial: inst.partial,
-                extenderPath: rulePath,
+                extenderPath,
                 scope,
                 order: order++,
                 extenderHidden: rule.reference === true,

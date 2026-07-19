@@ -549,6 +549,14 @@ export interface StyleImport {
 export interface ExtendInstruction {
   target: SelectorList;
   partial: boolean;
+  /**
+   * The EXTENDER subject: the specific selector this extend contributes. An INLINE
+   * extend (`.a:extend(.b), .c { … }`) attaches to a single complex (`.a`), so its
+   * subject is that one complex — NOT the whole rule selector list (`.c` must not be
+   * folded into `.b`). A BODY-form extend (`&:extend(.b);`) has no subject here and
+   * applies to the whole carrying rule's selector list. Absent ⇒ whole-rule subject.
+   */
+  subject?: SelectorList;
 }
 
 /**

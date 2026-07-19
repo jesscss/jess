@@ -135,6 +135,14 @@ function buildComplex(args: BuildArgs): t2.Complex {
     segments.length === 0
       ? t2.complex([{ compound: t2.compoundOf([]) }])
       : t2.complex(segments, leadingComb);
+  // [extend] an INLINE `.a:extend(.b)` pseudo binds to THIS complex only — stamp each
+  // hoisted instruction's subject so a comma-sibling (`.a:extend(.b), .c`) is never
+  // folded into the target. Body-form `&:extend` (drained by the Ruleset) carries no
+  // subject and applies to the whole rule selector.
+  if (extendInstructions.length > 0) {
+    const subject = t2.selist(out);
+    for (const inst of extendInstructions) if (inst.subject === undefined) inst.subject = subject;
+  }
   attachSelectorExtends(args.ctx, out, extendInstructions);
   return out;
 }
