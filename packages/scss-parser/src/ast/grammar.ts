@@ -158,10 +158,10 @@ function isVarDeclaration(value: unknown): value is VarDeclaration {
     && isValue(value.value);
 }
 
-function statements(children: readonly unknown[]): Statement[] {
+function statements(children: readonly unknown[], allowDeclarations = false): Statement[] {
   const result: Statement[] = [];
   for (const child of children) {
-    if (!isVarDeclaration(child) && !isRule(child)) {
+    if (!isVarDeclaration(child) && !isRule(child) && !(allowDeclarations && isDeclaration(child))) {
       throw new TypeError('Direct SCSS AST grammar produced a non-statement child.');
     }
     result.push(child);
@@ -350,20 +350,17 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
   );
   const DirectScssRule = node<Rule>(
     'DirectScssRule',
-    sequence(g.CssAstSyntaxSimple, literal('{'), many(g.DirectScssDeclaration), literal('}')),
+    sequence(
+      g.CssAstSyntaxSimple,
+      literal('{'),
+      many(choice(g.DirectScssVarDeclaration, g.DirectScssDeclaration, g.DirectScssRule)),
+      literal('}')
+    ),
     (children) => {
       if (children.length < 3 || requireToken(children[1]).value !== '{' || requireToken(children[children.length - 1]).value !== '}') {
         throw new TypeError('DirectScssRule produced unexpected children.');
       }
-      const body: Declaration[] = [];
-      for (let index = 2; index < children.length - 1; index += 1) {
-        const declaration = children[index];
-        if (!isDeclaration(declaration)) {
-          throw new TypeError('DirectScssRule produced a non-declaration child.');
-        }
-        body.push(declaration);
-      }
-      return rule(requireToken(children[0]).value, body);
+      return rule(requireToken(children[0]).value, statements(children.slice(2, -1), true));
     }
   );
   const ScssAstDocument = node<Root>(

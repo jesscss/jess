@@ -81,4 +81,37 @@ describe('private SCSS AST grammar facts', () => {
       expect(result.ok && result.unconsumedFrom === null && isRoot(result.value), source).toBe(false);
     }
   });
+
+  it('constructs nested SCSS rules and scoped variables directly', () => {
+    const result = run(
+      scssAstGrammar.ScssAstDocument,
+      '.card { $accent: #00f; color: $accent; .title { color: blue; } }',
+      { trivia: scssAstGrammar.whitespace }
+    );
+
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(result.value).toEqual({
+      type: 'Root',
+      children: [{
+        type: 'Rule',
+        selector: {
+          type: 'SelectorList',
+          selectors: [{ type: 'Complex', head: { type: 'Compound', simples: [{ type: 'Simple', text: '.card', interp: null }] }, tail: [] }]
+        },
+        body: [
+          { type: 'VarDeclaration', name: 'accent', value: { type: 'Color', src: '#00f' } },
+          { type: 'Declaration', name: 'color', value: { type: 'VarRef', name: 'accent' }, merge: null, important: false },
+          {
+            type: 'Rule',
+            selector: {
+              type: 'SelectorList',
+              selectors: [{ type: 'Complex', head: { type: 'Compound', simples: [{ type: 'Simple', text: '.title', interp: null }] }, tail: [] }]
+            },
+            body: [{ type: 'Declaration', name: 'color', value: { type: 'Keyword', src: 'blue' }, merge: null, important: false }]
+          }
+        ]
+      }]
+    });
+  });
 });
