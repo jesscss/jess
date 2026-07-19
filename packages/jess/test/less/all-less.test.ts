@@ -140,9 +140,7 @@ const expectedFailureFixtures = new Map<string, string>([
   // match the Less golden .css under the harness config.
   ['tests-unit/import/import-reference.less', 'reference import filtering leaves extra at-rules'],
   ['tests-unit/import/import.less', '@jesscss/plugin-js now auto-wires and the @plugin pi() script executes; renders but still diverges from Less on @import media-query handling and @media query merging (non-plugin render gaps)'],
-  ['tests-unit/operations/operations-advanced.less', 'advanced math/color operation behavior differs from Less'],
   ['tests-unit/property-accessors/property-accessors.less', 'property accessor precedence differs from Less'],
-  ['tests-unit/scope/scope.less', 'parent selector scope output differs from Less'],
   ['tests-config/namespacing/namespacing-5.less', 'nested namespace callable lookup does not match Less'],
   ['tests-config/namespacing/namespacing-8.less', 'each() custom-property value lookup inside detached map differs from Less'],
   ['tests-config/namespacing/namespacing-functions.less', 'detached ruleset callable lookup result differs from Less'],
@@ -162,16 +160,11 @@ const expectedFailureFixtures = new Map<string, string>([
 
   // Former async-deadlock / infinite-loop skips: no longer hang, now render but
   // still mismatch Less. Graduated from skip → expected-failure so they run.
-  ['tests-unit/variables/variable-advanced.less', 'now parses (trailing-comma value list fixed); still diverges on eval-layer output (unit math emits calc(), nesting not collapsed, custom-prop spacing)'],
-  ['tests-unit/merge/merge.less', 'renders but +/+_ merge output differs from Less'],
   ['tests-unit/selectors/selectors.less', 'renders but throws mid-eval (currentArg.eval is not a function)'],
   ['tests-unit/detached-rulesets/detached-rulesets.less', 'renders but a detached-ruleset mixin call is not found (.wrap-mixin)'],
   ['tests-unit/functions-each/functions-each.less', 'renders but each() output differs from Less'],
   ['tests-unit/mixins/mixins.less', 'group-selector member call (.bar) now resolves; remaining blocker is same-named nested ruleset calling an outer mixin (.recursion) — nearest-scope-frame lookup does not continue past the self-excluded enclosing ruleset'],
-  ['tests-unit/extend-exact/extend-exact.less', 'renders but exact-match :extend output differs from Less'],
-  ['tests-unit/mixins-important/mixins-important.less', 'renders but mixin !important propagation differs from Less'],
   ['tests-unit/property-name-interp/property-name-interp.less', 'renders but interpolated property-name output differs from Less'],
-  ['tests-unit/strings/strings.less', 'renders but string/escaping output differs from Less'],
   ['tests-unit/variables/variables.less', 'renders but variable output differs from Less'],
   ['tests-unit/variables-in-at-rules/variables-in-at-rules.less', 'renders but variables-in-at-rules output differs from Less'],
   ['tests-unit/plugin/plugin.less', '@jesscss/plugin-js now auto-wires and the @plugin scripts execute; renders but Jess nests @media (no query merging) where the expected CSS merges queries (non-plugin render gap)'],
@@ -181,12 +174,13 @@ const expectedFailureFixtures = new Map<string, string>([
 
   // v5 STRICT at-rule preludes: a top-level bare `@variable` in a non-value at-rule
   // prelude/name/identifier is a HARD parse error (4.x only warned). These upstream
-  // 4.x fixtures use the bare form (`@media @smartphone`, `@layer @layer-name`,
-  // `@container @varfoo (…)`); the migration target is `@{…}` interpolation, and a
-  // `@var` inside `(...)` stays valid. Kept running (asserted to fail) so a change to
-  // the ruling trips the marker; goldens are the external less.js 4.x oracle, unedited.
+  // 4.x fixtures use the bare form (`@media @smartphone`, `@container @varfoo (…)`);
+  // the migration target is `@{…}` interpolation, and a `@var` inside `(...)` stays
+  // valid. Kept running (asserted to fail) so a change to the ruling trips the marker;
+  // goldens are the external less.js 4.x oracle, unedited.
+  // (layer.less GRADUATED — it uses the `@{layer-name}` interpolation form, not the
+  //  bare `@var` prelude, so v5 renders it byte-identical to the maintained `.css`.)
   ['tests-unit/media/media.less', 'v5 rejects a top-level bare @var at-rule prelude (@media @smartphone / @media @all and @tv)'],
-  ['tests-unit/layer/layer.less', 'v5 rejects a top-level bare @var at-rule prelude (@layer @layer-name)'],
   ['tests-unit/container/container.less', 'v5 rejects a top-level bare @var at-rule prelude (@container @varfoo (…))'],
 
   // Previously-uncategorized hard failures — render but mismatch Less.
