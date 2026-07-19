@@ -10,15 +10,21 @@ reintroduced to repair a caller.
 Core's AST package owns canonical AST data, constructors, evaluation, and
 serialization. Dialects own grammar recognition and direct AST construction.
 `Context` remains the core coordination/state boundary: it dispatches import
-expansion, resolution, location, source loading, parsing, and module import to
-plugins. The AST cutover updates that path from legacy `Rules` results to
-canonical AST documents; it does not delete or replace Context dispatch. Only
-a call path proven to bypass or duplicate that chain is a removal candidate.
+expansion, resolution, location, source loading, parsing, and plugin module
+import to plugins. It also currently provides explicit core raw-byte and JSON
+utilities after plugin path resolution; their capability ownership is a
+separate decision. The AST cutover updates the parser/document path from legacy
+`Rules` results to canonical AST documents; it does not delete or replace
+Context dispatch. Only a call path proven to bypass or duplicate that chain is
+a removal candidate.
 
 ## Remaining closure work
 
-- Give each dialect a complete direct canonical-AST `parse` root. A private
-  grammar experiment is not an API or a completion claim.
+- Give all four dialects complete direct canonical-AST `Root` parsers. A
+  private grammar experiment is not an API or a completion claim.
+- Only after parser closure, migrate each plugin to consume its parser's Root
+  through the retained Context/plugin dispatch path. Only after plugin closure,
+  migrate the Jess package integration/render route.
 - Close AST node-family gaps from grammar facts, then prove core evaluation on
   that AST. Do not substitute an old tree, bridge, or text conversion.
 - Remove remaining handwritten parser runtime recognition after the direct

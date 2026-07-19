@@ -82,18 +82,90 @@ own local direct-constructor reductions. It must not serialize local builders,
 relax direct-builder capture validation, or create a reusable builder artifact.
 That leaf-only fusion now proves the first private CSS extraction: imported
 recognition-only property/keyword terminals fuse into local direct AST
-reductions with their token values intact. Continue in this order: complete
-direct CSS families; build Less/SCSS/Jess dialect reductions over shared syntax;
-update the existing Context-to-plugin dispatch path so it carries typed
-`ImportAtRule` facts and canonical AST documents; then replace the Jess legacy
-root and delete only legacy tree-specific import realization such as
-`StyleImport` and any proven duplicate filesystem/module implementation.
+reductions with their token values intact. Continue in this dependency order:
+
+1. Complete all four parser families (CSS, Less, SCSS, Jess) as direct AST v2
+   `Root` parsers.
+2. Update each plugin to consume its parser's `Root` while preserving the
+   existing Context-to-plugin dispatch topology and plugin-specific semantics.
+3. Update the Jess package integration/render route to use those AST-consuming
+   plugins, then delete only legacy tree-specific realization such as
+   `StyleImport` and any proven duplicate filesystem/module implementation.
+
 `Context._getPath`, `getTree`, `resolveImportPath`, `parseString`, and module
-loading are coordination seams that already call plugins: retain and migrate
-them to canonical AST results rather than replacing them with a new loader or
-deleting them wholesale. Do not duplicate their plugin dispatch in core.
+loading are retained coordination/capability seams. In step 2, migrate only the
+parser/document result path (`getTree`, `parseString`, plugin parse contracts,
+and document caches) from legacy `Rules` to AST `Root`. Retain resolution and
+raw-byte/JSON/module capabilities unchanged unless a later dedicated audit
+decides their ownership; do not replace or delete the dispatch path while parser
+closure is still in progress.
 
 ## Aggressive Cutting Self-Prosecution
+
+- Latest pass: extend the private SCSS direct-AST grammar with static simple
+  rules, declarations, dimensions, and exact CSS color literals.
+- Architecture surface: parser-local reductions construct canonical Rule,
+  Declaration, Dimension, and Color facts from shared recognition-only numeric
+  leaves and local SCSS/CSS lexical terminals. No CST reuse, host, bridge,
+  resolver, loader, Context/plugin integration, scanner, or reparse is added.
+- Separation/duplication: numeric terminals come from the shared production CSS
+  recognition artifact; the color terminal exactly admits only 3/4/6/8 hex
+  digits with a negative hex lookahead. Interpolation, nested rules, compound
+  values, `!default`, and importance remain rejected rather than flattened.
+- Cumulative node weight: zero production importers; all construction is in
+  focused source-private SCSS grammar tests.
+- New traversal: [loop/traversal] only the cold parser-local completed-child
+  pass needed to make the Root/Rule body; it does not walk runtime/source state.
+- New node/materialization: [node construction] exact AST facts for recognized
+  literals/rules only. [materialized array/object] is the required cold body
+  list supplied to Root/Rule constructors.
+- Render path: unchanged and unreachable from this private grammar.
+- Helper/API surface: no public parser operation or plugin API added.
+- Metadata mutations: none.
+- Review-flagged diff tokens: [loop/traversal], [node construction], and
+  [materialized array/object] are cold parser construction. [routine error
+  control] rejects impossible completed reductions only. [array helper] and
+  [array spread/materialization] are not added.
+- Hot-path cost contracts:
+  ```json
+  [{"id":"scss-private-direct-ast-family","verdict":"accepted","privateReachability":{"productionImporters":0,"publicExports":0,"buildEntries":0,"coldConstructionOnly":true},"why":"The static SCSS rule/declaration family is source-private and has no public parser/eval/render importer."}]
+  ```
+- Evidence: exact 3/4/6/8-digit color matrix including 5/7-digit rejection;
+  focused AST/macro tests; package build; parser-boundary verifier; adversarial
+  review and re-review.
+- Verdict: accepted cold direct construction; no production or speed claim.
+
+- Latest pass: add shared CSS-production numeric/dimension recognition and use
+  it in the source-private Jess direct-AST grammar.
+- Architecture surface: the internal artifact carries macro-static number and
+  unit terminals only. Jess directly constructs canonical `Dimension` facts;
+  there is no CST reuse, host, bridge, resolver, loader, or Context/plugin
+  integration.
+- Separation/duplication: the terminals are byte-for-byte existing production
+  CSS grammar facts, not a new CSS AST subset. Jess uses `noTrivia` around the
+  number/unit pair, so units remain glued to their number and whitespace cannot
+  be silently accepted.
+- Cumulative node weight: zero production importers; `Dimension` construction
+  occurs only in focused source-private Jess grammar tests.
+- New traversal: none.
+- New node/materialization: [node construction] one exact parser-local
+  `Dimension` per successfully recognized literal. [materialized array/object]
+  none beyond existing macro grammar structure.
+- Render path: unchanged and unreachable from this private grammar.
+- Helper/API surface: no exported parser operation or artifact API is added.
+- Metadata mutations: none.
+- Review-flagged diff tokens: [node construction] is cold parser-local AST
+  construction. [loop/traversal], [array helper], [array
+  spread/materialization], and [routine error control] are not added.
+- Hot-path cost contracts:
+  ```json
+  [{"id":"jess-private-direct-ast-family","verdict":"accepted","privateReachability":{"productionImporters":0,"publicExports":0,"buildEntries":0,"coldConstructionOnly":true},"why":"The shared numeric terminal macro-fuses into the source-private Jess grammar; no public parser, evaluator, or renderer imports it."}]
+  ```
+- Evidence: byte-for-byte terminal comparison against production CSS grammar;
+  exponent/bare/percent acceptance and whitespace/adjacent-expression rejection;
+  macro-output proof, build, parser-boundary verifier, adversarial review.
+- Verdict: accepted cold recognition de-duplication; no production or speed
+  claim.
 
 - Latest pass: extend the private Less direct-AST import fact with typed static
   options, quoted/static `url(...)` targets, and a grammar-proven static tail.
