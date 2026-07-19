@@ -71,6 +71,47 @@ describe('parse', () => {
     expect(rendered.css).toContain('@charset "UTF-8";');
   });
 
+  it('constructs a typed simple @media block without an opaque body or prelude', () => {
+    const parsed = parse('@media screen { /* inner */ .card { display: grid } }');
+
+    expect(parsed.errors).toEqual([]);
+    expect(parsed.document?.children[0]).toEqual({
+      type: 'AtRuleBlock',
+      name: '@media',
+      prelude: { type: 'Keyword', src: 'screen' },
+      body: [
+        { type: 'Comment', text: '/* inner */' },
+        {
+          type: 'Rule',
+          selector: {
+            type: 'SelectorList',
+            selectors: [{
+              type: 'Complex',
+              head: { type: 'Compound', simples: [{ type: 'Simple', text: '.card', interp: null }] },
+              tail: []
+            }]
+          },
+          body: [{
+            type: 'Declaration',
+            name: 'display',
+            value: { type: 'Keyword', src: 'grid' },
+            merge: null,
+            important: false
+          }]
+        }
+      ]
+    });
+
+    const rendered = serialize(parsed.document!);
+    expect(rendered).not.toBeInstanceOf(Promise);
+    if (rendered instanceof Promise) {
+      throw new Error('direct CSS rendering must be synchronous');
+    }
+    expect(rendered.css).toContain('@media screen {');
+    expect(rendered.css).toContain('.card {');
+    expect(rendered.css).toContain('display: grid;');
+  });
+
   it('reports input outside the closed pilot grammar', () => {
     const parsed = parse('.a { color: 1px; }');
     expect(parsed.document).toBeNull();
@@ -79,5 +120,9 @@ describe('parse', () => {
     const unsupportedCharset = parse('@charset UTF-8;');
     expect(unsupportedCharset.document).toBeNull();
     expect(unsupportedCharset.errors).toHaveLength(1);
+
+    const unsupportedMedia = parse('@media screen and (color) { .a { color: red } }');
+    expect(unsupportedMedia.document).toBeNull();
+    expect(unsupportedMedia.errors).toHaveLength(1);
   });
 });

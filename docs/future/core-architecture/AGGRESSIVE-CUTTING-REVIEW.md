@@ -982,14 +982,14 @@ no imported guarded mixins (no speedup to show), but on
     "sourceCheck": {
       "file": "packages/css-parser/src/direct-ast.ts",
       "caller": "export function parse",
-      "call": "return { document: result.value as Root, errors: [] }",
-      "guard": "result.ok && result.unconsumedFrom === null"
+      "call": "return { document: result.value, errors: [] }",
+      "guard": "result.ok"
     },
     "evidence": {"command":["pnpm","--filter","@jesscss/css-parser","test","--","--run","test/direct-ast.test.ts"]},
     "neutralRefactor": {
       "costDelta": "neutral",
       "allowsProsecutedDangerTokens": true,
-      "why": "This is a new opt-in closed pilot entry, not a replacement for the existing CSS, Less, or render pipeline. Its result and diagnostic arrays exist only when a caller explicitly selects the experimental subpath; benchmark.less continues through the unchanged production parser and renderer. The grammar reduction is the Root contract: parse failure returns document: null and a diagnostic, never a manufactured empty AST. The result shaping performs no source recognition, bridge conversion, or evaluator call.",
+      "why": "This is a new opt-in closed pilot entry, not a replacement for the existing CSS, Less, or render pipeline. Its result and diagnostic arrays exist only when a caller explicitly selects the experimental subpath; benchmark.less continues through the unchanged production parser and renderer. The grammar reduction is the Root contract and the entry fails closed unless Parseman's untyped result passes the structural Root guard; parse failure returns document: null and a diagnostic, never a manufactured empty AST. The result shaping performs no source recognition, bridge conversion, or evaluator call.",
       "dangerTokensJustification": "The error array is cold parse-failure data. It is not built on successful parses; the empty success array is the public result contract. No changed existing hot path gains these allocations.",
       "byteIdentity": {
         "fixture": "benchmark.less",
@@ -1008,8 +1008,8 @@ no imported guarded mixins (no speedup to show), but on
     "neutralRefactor": {
       "costDelta": "neutral",
       "allowsProsecutedDangerTokens": true,
-      "why": "The grammar is an isolated opt-in pilot and is not composed into cssGrammar or any dialect grammar. Direct reductions create only the canonical Root, Rule, selector, Comment, Declaration, AST-ValueNode Keyword, and lowercase @charset AtRuleStatement with an AST-ValueNode Quoted prelude for the caller-selected closed subset. The charset grammar owns its fixed double-quote delimiters and `[A-Za-z0-9._-]+` content; it rejects generic/raw, interpolated, escaped, single-quoted, mixed-case, and block at-rules rather than recovering prelude bytes. Local type guards validate Parseman's untyped child boundary; checked body/root conversion throws if the grammar/compiler violates its own closed sequence instead of silently dropping a child. This is not recovery, source recognition, or fallback parsing. It adds no host callback ABI, dispatch map, legacy bridge, source reparse, or work to benchmark.less's existing route.",
-      "dangerTokensJustification": "The body and root arrays are canonical AST child arrays required by the selected pilot grammar, built only after every grammar-fixed child validates. The direct Quoted and AtRuleStatement are the selected semantic ownership nodes, not raw-prelude materialization. The five throws defend impossible direct-grammar/capture corruption and cannot run as ordinary parse control flow. These constructs replace neither a live production collection nor a render-path traversal, and the normal parser route does not instantiate this grammar.",
+      "why": "The grammar is an isolated opt-in pilot and is not composed into cssGrammar or any dialect grammar. Direct reductions create only the canonical Root, Rule, selector, Comment, Declaration, AST-ValueNode Keyword, lowercase @charset AtRuleStatement with an AST-ValueNode Quoted prelude, and lowercase @media AtRuleBlock with one AST-ValueNode Keyword prelude and direct comment/rule body for the caller-selected closed subset. The charset grammar owns its fixed double-quote delimiters and `[A-Za-z0-9._-]+` content. The media grammar owns one keyword prelude and structured body children. They reject generic/raw, interpolated, escaped, single-quoted, mixed-case, query, nested at-rule, declaration-only, unknown, and opaque block forms rather than recovering prelude/body bytes. Local type guards validate Parseman's untyped child boundary; checked body/root conversion throws if the grammar/compiler violates its own closed sequence instead of silently dropping a child. The public entry fails closed unless Parseman returns a structural Root. This is not recovery, source recognition, or fallback parsing. It adds no host callback ABI, dispatch map, legacy bridge, source reparse, or work to benchmark.less's existing route.",
+      "dangerTokensJustification": "The ruleset, media-body, and root arrays are canonical AST child arrays required by the selected pilot grammar, built only after every grammar-fixed child validates. The direct Quoted/AtRuleStatement and Keyword/AtRuleBlock are selected semantic ownership nodes, not raw-prelude/body materialization. The six throws defend impossible direct-grammar/capture corruption and cannot run as ordinary parse control flow. These constructs replace neither a live production collection nor a render-path traversal, and the normal parser route does not instantiate this grammar.",
       "byteIdentity": {
         "fixture": "benchmark.less",
         "collapseNesting": true,
@@ -1037,7 +1037,9 @@ no imported guarded mixins (no speedup to show), but on
     "evidence": {"command":["pnpm","--filter","@jesscss/core","build"]},
     "neutralRefactor": {
       "costDelta": "neutral",
+      "allowsProsecutedDangerTokens": true,
       "why": "The deleted redundant type-only alias had no emitted JavaScript and the parser leaf already exports the canonical node type directly. Removing it shrinks the public type surface without adding runtime work, parser branch, allocation, traversal, resolver, or renderer behavior.",
+      "dangerTokensJustification": "The detected direct-parser validation and result tokens belong to the separate opt-in CSS grammar slice. This erased core type deletion adds no runtime token, branch, allocation, or traversal.",
       "byteIdentity": {"fixture":"benchmark.less","collapseNesting":true,"outputSha256":"adfd26732125a33fc1e264aca7d7ecde8c7c1da43f968e3106bd387a1f78e840","outputBytes":133983}
     }
   },

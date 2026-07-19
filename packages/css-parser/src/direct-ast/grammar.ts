@@ -1,9 +1,22 @@
 /** Closed direct AST-v2 Parseman grammar pilot. */
 import { choice, literal, many, node, optional, regex, rules, sequence, trivia } from 'parseman' with { type: 'macro' };
-import type { AtRuleStatement, Comment, Declaration, Rule, SelectorList, Statement, ValueNode } from '@jesscss/core/ast';
+import type { Combinator } from 'parseman';
+import type { AtRuleBlock, AtRuleStatement, Comment, Declaration, Root, Rule, SelectorList, Statement, ValueNode } from '@jesscss/core/ast';
 
 type DirectKeyword = Extract<ValueNode, { readonly type: 'Keyword' }>;
 type DirectQuoted = Extract<ValueNode, { readonly type: 'Quoted' }>;
+type DirectCssRules = {
+  DirectCssDocument: Combinator<Root>;
+  DirectCssComment: Combinator<Comment>;
+  DirectCssSelector: Combinator<SelectorList>;
+  DirectCssProperty: Combinator<string>;
+  DirectCssKeyword: Combinator<DirectKeyword>;
+  DirectCssDeclaration: Combinator<Declaration>;
+  DirectCssCharset: Combinator<AtRuleStatement>;
+  DirectCssRuleset: Combinator<Rule>;
+  DirectCssMedia: Combinator<AtRuleBlock>;
+  whitespace: Combinator<unknown>;
+};
 
 function tokenText(children: readonly unknown[], index: number): string {
   const child = children[index];
@@ -97,8 +110,26 @@ function isCharsetStatement(value: unknown): value is AtRuleStatement {
     && isDirectQuoted(value.prelude);
 }
 
+function isMediaBodyStatement(value: unknown): value is Comment | Rule {
+  return isComment(value) || isRule(value);
+}
+
+function isMediaBlock(value: unknown): value is AtRuleBlock {
+  return typeof value === 'object'
+    && value !== null
+    && 'type' in value
+    && value.type === 'AtRuleBlock'
+    && 'name' in value
+    && value.name === '@media'
+    && 'prelude' in value
+    && isDirectKeyword(value.prelude)
+    && 'body' in value
+    && Array.isArray(value.body)
+    && value.body.every(isMediaBodyStatement);
+}
+
 function isDocumentStatement(value: unknown): value is Statement {
-  return isComment(value) || isRule(value) || isCharsetStatement(value);
+  return isComment(value) || isRule(value) || isCharsetStatement(value) || isMediaBlock(value);
 }
 
 function rulesetStatements(children: readonly unknown[]): (Comment | Declaration)[] {
@@ -124,6 +155,18 @@ function documentStatements(children: readonly unknown[]): Statement[] {
   return statements;
 }
 
+function mediaStatements(children: readonly unknown[]): (Comment | Rule)[] {
+  const statements: (Comment | Rule)[] = [];
+  for (let index = 3; index < children.length - 1; index += 1) {
+    const child = children[index];
+    if (!isMediaBodyStatement(child)) {
+      throw new Error('DirectCssMedia has an unexpected body child');
+    }
+    statements.push(child);
+  }
+  return statements;
+}
+
 const whitespace = trivia(regex(/[ \t\n\r\f]+/));
 const blockComment = regex(/\/\*(?:[^*]|\*(?!\/))*\*\//);
 const simpleSelector = regex(/(?:[.#]?-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*|\*)/);
@@ -131,7 +174,7 @@ const propertyName = regex(/\*?-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}
 const keywordValue = regex(/-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/);
 const charsetEncoding = regex(/[A-Za-z0-9._-]+/);
 
-export const directCssAstGrammar = rules({ trivia: whitespace }, (g: any) => {
+export const directCssAstGrammar = rules<DirectCssRules>({ trivia: whitespace }, (g) => {
   const DirectCssComment = node('DirectCssComment', blockComment, children => ({
     type: 'Comment' as const,
     text: tokenText(children, 0)
@@ -187,9 +230,20 @@ export const directCssAstGrammar = rules({ trivia: whitespace }, (g: any) => {
       };
     }
   );
+  const DirectCssMedia = node(
+    'DirectCssMedia',
+    sequence(literal('@media'), g.DirectCssKeyword, literal('{'), many(choice(g.DirectCssComment, g.DirectCssRuleset)), literal('}')),
+    (children): AtRuleBlock => {
+      const prelude = children[1];
+      if (!isDirectKeyword(prelude)) {
+        throw new Error('DirectCssMedia requires a keyword prelude');
+      }
+      return { type: 'AtRuleBlock', name: '@media', prelude, body: mediaStatements(children) };
+    }
+  );
   const DirectCssDocument = node(
     'DirectCssDocument',
-    many(choice(g.DirectCssComment, g.DirectCssCharset, g.DirectCssRuleset)),
+    many(choice(g.DirectCssComment, g.DirectCssCharset, g.DirectCssMedia, g.DirectCssRuleset)),
     children => ({ type: 'Root' as const, children: documentStatements(children) }),
     { trailingTrivia: true }
   );
@@ -202,6 +256,7 @@ export const directCssAstGrammar = rules({ trivia: whitespace }, (g: any) => {
     DirectCssDeclaration,
     DirectCssCharset,
     DirectCssRuleset,
+    DirectCssMedia,
     whitespace
   };
 });
