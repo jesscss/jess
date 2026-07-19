@@ -26,6 +26,11 @@ describe('ScssParser — baseline', () => {
     expect(tree.rules[0]!.type).toBe('VarDeclaration');
   });
 
+  it('recognizes SCSS variables and line-comment trivia in the functional grammar', () => {
+    const { tree } = parseOk('// theme\n$-accent: $color;');
+    expect(tree.rules.map(rule => rule.type)).toEqual(['Comment', 'VarDeclaration']);
+  });
+
   it('parses a ruleset with a $var reference', () => {
     const { tree } = parseOk('a { color: $color; }');
     expect(tree.rules[0]!.type).toBe('Ruleset');
