@@ -987,6 +987,8 @@ function evalTyped(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
     case 'Quoted':
     case 'Any':
       return materializeNode(node, e);
+    case 'Url':
+      return mapMaybe(evalValue(node, frame, e), v => force(e, v));
     case 'VarRef': {
       const hit = resolveVarRef(frame, node.name, e);
       if (!hit) return force(e, unresolvedRef(node.name, e));
@@ -1110,6 +1112,8 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
     // use — it belongs in a selector interpolation) emits its verbatim `src`.
     case 'SelectorCapture':
       return literal(node.src);
+    case 'Url':
+      return mapMaybe(evalValue(node.value, frame, e), value => literal(`url(${emitValue(value)})`));
     case 'VarRef': {
       const hit = resolveVarRef(frame, node.name, e);
       if (!hit) return unresolvedRef(node.name, e);
@@ -3665,8 +3669,16 @@ function emitAtRuleStatementRaw(node: AtRuleStatement, frame: Frame, e: Emit): v
 function emitImportAtRule(node: ImportAtRule, frame: Frame, e: Emit): void {
   const start = e.off;
   if (e.depth > 0) put(e, INDENT.repeat(e.depth));
-  put(e, '@import ');
+  put(e, node.name);
+  if (node.options !== null) {
+    put(e, ` (${evalBytesSync(node.options, frame, e)})`);
+  }
+  put(e, ' ');
   put(e, evalBytesSync(node.target, frame, e));
+  if (node.alias !== null) {
+    put(e, ' as ');
+    put(e, evalBytesSync(node.alias, frame, e));
+  }
   if (node.tail !== null) {
     const tail = evalBytesSync(node.tail, frame, e);
     if (tail.length > 0) put(e, ` ${tail}`);

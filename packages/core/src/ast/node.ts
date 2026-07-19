@@ -28,6 +28,7 @@ import type {
   Color,
   Quoted,
   Any,
+  Url,
   Dimension,
   SpacedValue,
   List,
@@ -55,7 +56,7 @@ import type { AtRuleBlock, AtRuleStatement, ImportAtRule, OpaqueAtRuleBlock } fr
 /** Every tree2 node's PascalCase `type` discriminant (Less-matching). */
 export type NodeType =
   | 'Root' | 'Rule' | 'Declaration' | 'Comment' | 'SelectorList'
-  | 'Complex' | 'Compound' | 'Simple' | 'Keyword' | 'Color' | 'Quoted' | 'Any' | 'SelectorCapture' | 'Dimension'
+  | 'Complex' | 'Compound' | 'Simple' | 'Keyword' | 'Color' | 'Quoted' | 'Any' | 'Url' | 'SelectorCapture' | 'Dimension'
   | 'SpacedValue' | 'List' | 'VarRef' | 'MixinDef' | 'MixinCall' | 'VarDeclaration'
   | 'Sequence' | 'Operation' | 'FunctionCall' | 'Paren' | 'Condition'
   | 'AtRuleBlock' | 'AtRuleStatement' | 'ImportAtRule' | 'OpaqueAtRuleBlock' | 'Interp' | 'VarIndirect'
@@ -80,7 +81,7 @@ export function renderCombinator(comb: Combinator): string {
  */
 export type Node =
   | Root | Rule | Declaration | Comment | SelectorList | Complex | Compound
-  | Simple | SelectorCapture | Keyword | Color | Quoted | Any | Dimension | SpacedValue | List | VarRef | MixinDef | MixinCall
+  | Simple | SelectorCapture | Keyword | Color | Quoted | Any | Url | Dimension | SpacedValue | List | VarRef | MixinDef | MixinCall
   | VarDeclaration | Sequence | Operation | FunctionCall | Paren | Condition
   | AtRuleBlock | AtRuleStatement | ImportAtRule | OpaqueAtRuleBlock | Interp | VarIndirect | DetachedRuleset
   | MapAccessor | PropRef | DetachedCall | For | RawInline | StyleImport;
@@ -102,7 +103,7 @@ export type Node =
  */
 export const AST_NODE_TYPES: ReadonlySet<string> = new Set<NodeType>([
   'Root', 'Rule', 'Declaration', 'Comment', 'SelectorList',
-  'Complex', 'Compound', 'Simple', 'Keyword', 'Color', 'Quoted', 'Any', 'SelectorCapture', 'Dimension',
+  'Complex', 'Compound', 'Simple', 'Keyword', 'Color', 'Quoted', 'Any', 'Url', 'SelectorCapture', 'Dimension',
   'SpacedValue', 'List', 'VarRef', 'MixinDef', 'MixinCall', 'VarDeclaration',
   'Sequence', 'Operation', 'FunctionCall', 'Paren', 'Condition',
   'AtRuleBlock', 'AtRuleStatement', 'ImportAtRule', 'OpaqueAtRuleBlock', 'Interp', 'VarIndirect',

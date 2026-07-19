@@ -29,7 +29,7 @@
  * modules (`node`, `nodes`) — never the legacy tree.
  */
 
-import type { Any, Quoted, Statement, ValueNode } from './nodes.js';
+import type { Interp, List, Quoted, Statement, Url, ValueNode } from './nodes.js';
 
 /** A block-bearing at-rule: `@name prelude { …body }`. */
 export interface AtRuleBlock {
@@ -67,11 +67,16 @@ export interface OpaqueAtRuleBlock {
   readonly rawBody: string;
 }
 
-/** A terminal CSS import; resolution remains parser-owned. */
+/** A terminal import statement. Resolution remains parser-owned. */
 export interface ImportAtRule {
   readonly type: 'ImportAtRule';
-  /** Quoted path or the canonical opaque URL value (`Any` until URL gets a node). */
-  readonly target: Quoted | Any;
+  readonly name: string;
+  /** Grammar-owned comma list inside the parenthesized option clause. */
+  readonly options: List | null;
+  /** A quoted path, `url(…)`, or interpolated quoted template. */
+  readonly target: Quoted | Url | Interp;
+  /** Grammar-owned `as …` clause, if the dialect admits one. */
+  readonly alias: ValueNode | null;
   /** Grammar-owned media/layer/supports tail, if present. */
   readonly tail: ValueNode | null;
 }
@@ -88,8 +93,13 @@ export const atRuleStatement = (name: string, prelude: ValueNode | null): AtRule
 export const opaqueAtRuleBlock = (
   name: string,
   prelude: string | null,
-  rawBody: string,
+  rawBody: string
 ): OpaqueAtRuleBlock => ({ type: 'OpaqueAtRuleBlock', name, prelude, rawBody });
 
-export const importAtRule = (target: Quoted | Any, tail: ValueNode | null = null): ImportAtRule =>
-  ({ type: 'ImportAtRule', target, tail });
+export const importAtRule = (
+  name: string,
+  target: Quoted | Url | Interp,
+  options: List | null = null,
+  alias: ValueNode | null = null,
+  tail: ValueNode | null = null
+): ImportAtRule => ({ type: 'ImportAtRule', name, options, target, alias, tail });

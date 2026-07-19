@@ -79,6 +79,16 @@ export interface Any {
 }
 
 /**
+ * A CSS `url(…)` value. The wrapper is syntax, while the content remains an
+ * ordinary structured value: a quoted literal, an interpolation template, or
+ * an opaque unquoted URL token. This avoids a dialect-specific path model.
+ */
+export interface Url {
+  readonly type: 'Url';
+  readonly value: ValueNode;
+}
+
+/**
  * A Less selector-list CAPTURE value `*[…]` — a STRUCTURED list of selector
  * branches captured for interpolation into a selector position. The parser owns
  * the branch split (grammar `SelectorList`); `branches` holds the canonical text
@@ -310,6 +320,7 @@ export type ValueNode =
   | Color
   | Quoted
   | Any
+  | Url
   | SelectorCapture
   | Dimension
   | SpacedValue
@@ -739,6 +750,7 @@ export type Statement =
 
 export const keyword = (src: string): Keyword => ({ type: 'Keyword', src });
 export const any = (src: string): Any => ({ type: 'Any', src });
+export const url = (value: ValueNode): Url => ({ type: 'Url', value });
 export const selectorCapture = (branches: readonly string[], src: string): SelectorCapture =>
   ({ type: 'SelectorCapture', branches, src });
 export const color = (src: string): Color => ({ type: 'Color', src });
