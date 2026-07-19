@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -20,6 +21,7 @@ const reviewedSourceRoots = [
   'packages/css-parser/src'
 ];
 const hotPathRoots = reviewedSourceRoots.map(rootPath => `${rootPath}/`);
+const parserRuntimeDebtPath = 'scripts/parser-runtime-boundary-debt.json';
 
 function escapeRegExp(value) {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -1243,6 +1245,110 @@ function productionChangedPaths(paths) {
   return paths.filter(isProductionHotPathFile);
 }
 
+function exactLedgerEntry(entry) {
+  return JSON.stringify(entry);
+}
+
+/**
+ * A parser-runtime debt entry is an exact, shrinking inventory of handwritten
+ * recognizers. Removing one is a deletion pass, not a new hot-path design that
+ * needs a fabricated cost contract. Keep this exception deliberately narrow:
+ * the inventory may only shrink, every changed production file must be one of
+ * the removed entries, and the source diff must remove each recorded snippet.
+ * The parser-boundary verifier still proves that no recognizer survives.
+ */
+function debtFingerprint(kind, snippet) {
+  return createHash('sha256').update(`${kind}:${snippet}`).digest('hex').slice(0, 16);
+}
+
+function debtSourceWasActuallyDeleted(entry, diff, previousSources, nextSources) {
+  const previous = previousSources[entry.file];
+  const next = nextSources[entry.file];
+  if (typeof previous !== 'string' || typeof next !== 'string') {
+    return false;
+  }
+  const source = previous.slice(entry.start, entry.end);
+  const snippet = source.replace(/\s+/g, ' ').slice(0, 160);
+  const lineStart = previous.lastIndexOf('\n', entry.start - 1) + 1;
+  const lineEnd = previous.indexOf('\n', entry.end);
+  const oldLine = previous.slice(lineStart, lineEnd === -1 ? undefined : lineEnd);
+  return snippet === entry.snippet
+    && debtFingerprint(entry.kind, snippet) === entry.fingerprint
+    && !next.includes(source)
+    && changedHunks(diff)
+      .filter(hunk => hunk.file === entry.file)
+      .some(hunk => hunk.text.split('\n').includes(`-${oldLine}`));
+}
+
+function isExactParserRuntimeDebtDeletion({ mode, changedPaths, diff, findings, previousDebt, currentDebt, previousSources, nextSources, boundaryClean }) {
+  if (mode !== 'staged' || findings.length > 0 || previousDebt.length === 0 || boundaryClean !== true) {
+    return false;
+  }
+  const prior = new Set(previousDebt.map(exactLedgerEntry));
+  const current = new Set(currentDebt.map(exactLedgerEntry));
+  if ([...current].some(entry => !prior.has(entry))) {
+    return false;
+  }
+  const removed = previousDebt.filter(entry => !current.has(exactLedgerEntry(entry)));
+  if (removed.length === 0 || !changedPaths.includes(parserRuntimeDebtPath)) {
+    return false;
+  }
+  const productionPaths = productionChangedPaths(changedPaths);
+  const removedFiles = new Set(removed.map(entry => entry.file));
+  if (
+    productionPaths.length === 0
+    || productionPaths.some(path => !removedFiles.has(path))
+    || [...removedFiles].some(path => !productionPaths.includes(path))
+  ) {
+    return false;
+  }
+  return removed.every(entry => debtSourceWasActuallyDeleted(entry, diff, previousSources, nextSources));
+}
+
+function parserRuntimeDebtDeletionForCurrentDiff(mode, changedPaths, diff, findings) {
+  if (mode !== 'staged') {
+    return false;
+  }
+  // The staged verifier is a script, not an imported library. Never execute a
+  // worktree-modified copy and pretend its answer proves the index: an
+  // unstaged edit could simply exit zero. The candidate may stage a verifier
+  // update, but its working bytes must still exactly equal the index.
+  try {
+    git(['diff', '--quiet', '--', 'scripts/verify-parser-runtime-boundary.mjs']);
+  } catch {
+    return false;
+  }
+  let previousDebt;
+  let currentDebt;
+  const previousSources = {};
+  const nextSources = {};
+  try {
+    previousDebt = JSON.parse(git(['show', `HEAD:${parserRuntimeDebtPath}`])).debt;
+    currentDebt = JSON.parse(git(['show', `:${parserRuntimeDebtPath}`])).debt;
+    for (const entry of previousDebt) {
+      previousSources[entry.file] ??= git(['show', `HEAD:${entry.file}`]);
+      nextSources[entry.file] ??= git(['show', `:${entry.file}`]);
+    }
+  } catch {
+    return false;
+  }
+  if (!Array.isArray(previousDebt) || !Array.isArray(currentDebt)) {
+    return false;
+  }
+  let boundaryClean = false;
+  try {
+    execFileSync(process.execPath, ['scripts/verify-parser-runtime-boundary.mjs', '--staged'], {
+      cwd: root,
+      stdio: 'ignore'
+    });
+    boundaryClean = true;
+  } catch {
+    // A debt cleanup never receives the exemption unless the independent
+    // boundary verifier accepts the post-change parser sources.
+  }
+  return isExactParserRuntimeDebtDeletion({ mode, changedPaths, diff, findings, previousDebt, currentDebt, previousSources, nextSources, boundaryClean });
+}
+
 function validateProductionHotPathCoverage(registry, changedPaths) {
   return changedPaths
     .filter(isProductionHotPathFile)
@@ -1551,9 +1657,10 @@ function runVerifier() {
     }
   }
 
+  const parserRuntimeDebtDeletion = parserRuntimeDebtDeletionForCurrentDiff(reviewMode, changedPaths, diff, findings);
   const hotPathChanged = changedPaths.some(isProductionHotPathFile);
   const productionHotPathChanged = changedPaths.some(isProductionHotPathFile);
-  const requiresCostAudit = hotPathChanged || findings.length > 0;
+  const requiresCostAudit = (hotPathChanged || findings.length > 0) && !parserRuntimeDebtDeletion;
   if (requiresCostAudit && registryErrors.length === 0) {
     const auditRecords = extractCostAuditRecords(latestPass, registry);
     const auditErrors = validateCostAuditRecords(auditRecords, registry, changedPaths, diff, findings.length > 0);
@@ -1595,6 +1702,9 @@ function runVerifier() {
     } else {
       console.log('Danger tokens accounted for in the handoff self-prosecution block.');
     }
+    if (parserRuntimeDebtDeletion) {
+      console.log('Exact parser-runtime debt deletion: cost-contract review not required.');
+    }
   }
 }
 
@@ -1607,6 +1717,7 @@ export {
   extractCostAuditRecords,
   isProductionHotPathFile,
   productionChangedPaths,
+  isExactParserRuntimeDebtDeletion,
   scopedChangedPaths,
   validateCostAuditRecords,
   validateCostContractRegistry,

@@ -1,7 +1,14 @@
+import { createHash } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
   extractCostAuditRecords,
   isProductionHotPathFile,
+  isExactParserRuntimeDebtDeletion,
   productionChangedPaths,
   scopedChangedPaths,
   validateCostAuditRecords,
@@ -47,6 +54,120 @@ describe('aggressive-cutting review scope', () => {
       'packages/core/src/ast/serialize.ts',
       'packages/css-parser/src/fixtures/recovery.test.ts'
     ])).toEqual(['packages/core/src/ast/serialize.ts']);
+  });
+});
+
+describe('exact parser-runtime debt deletion', () => {
+  const ledgerPath = 'scripts/parser-runtime-boundary-debt.json';
+  const sourcePath = 'packages/css-parser/src/cst.ts';
+  const snippet = '/(^|[^a-zA-Z0-9]+)([a-zA-Z0-9])/g';
+  const oldLine = `    .replace(${snippet}, (_, _sep, char) => char.toUpperCase())`;
+  const previousSource = `${oldLine}\n`;
+  const removed = {
+    file: sourcePath,
+    line: 81,
+    column: 14,
+    start: oldLine.indexOf(snippet),
+    end: oldLine.indexOf(snippet) + snippet.length,
+    kind: 'regex-literal',
+    fingerprint: createHash('sha256').update(`regex-literal:${snippet}`).digest('hex').slice(0, 16),
+    snippet,
+    retirement: 'Delete with the parser-runtime boundary cleanup.'
+  };
+  const diff = [
+    `diff --git a/${sourcePath} b/${sourcePath}`,
+    `+++ b/${sourcePath}`,
+    '@@ -81 +81 @@',
+    `-${oldLine}`
+  ].join('\n');
+  const candidate = (overrides: Record<string, unknown> = {}) => ({
+    mode: 'staged',
+    changedPaths: [sourcePath, ledgerPath],
+    diff,
+    findings: [],
+    previousDebt: [removed],
+    currentDebt: [],
+    previousSources: { [sourcePath]: previousSource },
+    nextSources: { [sourcePath]: '' },
+    boundaryClean: true,
+    ...overrides
+  });
+
+  it('exempts only an exact tracked recognizer deletion with no danger additions', () => {
+    expect(isExactParserRuntimeDebtDeletion(candidate())).toBe(true);
+  });
+
+  it('rejects a ledger edit that adds or keeps untracked debt', () => {
+    expect(isExactParserRuntimeDebtDeletion(candidate({
+      currentDebt: [{ ...removed, fingerprint: 'new-debt' }]
+    }))).toBe(false);
+  });
+
+  it('rejects a production change outside the removed ledger file or any danger token', () => {
+    expect(isExactParserRuntimeDebtDeletion(candidate({
+      changedPaths: [sourcePath, 'packages/core/src/ast/serialize.ts', ledgerPath],
+    }))).toBe(false);
+    expect(isExactParserRuntimeDebtDeletion(candidate({
+      findings: [{ label: 'allocation' }],
+    }))).toBe(false);
+    expect(isExactParserRuntimeDebtDeletion(candidate({
+      boundaryClean: false
+    }))).toBe(false);
+  });
+
+  it('rejects a staged-vs-unstaged conflict instead of borrowing worktree proof', () => {
+    expect(isExactParserRuntimeDebtDeletion(candidate({ mode: 'working' }))).toBe(false);
+  });
+
+  it('rejects a spoofed comment deletion when the recorded old parser line remains', () => {
+    const spoofedDiff = diff.replace(`-${oldLine}`, `-// ${snippet}`);
+    expect(isExactParserRuntimeDebtDeletion(candidate({
+      diff: spoofedDiff,
+      nextSources: { [sourcePath]: previousSource }
+    }))).toBe(false);
+  });
+
+  it('rejects a staged deletion when an unstaged boundary verifier is replaced with exit 0', () => {
+    const repo = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
+    const sandbox = mkdtempSync(resolve(tmpdir(), 'jess-staged-debt-spoof-'));
+    try {
+      execFileSync('git', ['clone', '--quiet', '--no-hardlinks', repo, sandbox]);
+      symlinkSync(resolve(repo, 'node_modules'), resolve(sandbox, 'node_modules'));
+      for (const path of [
+        'packages/css-parser/src/cst.ts',
+        'scripts/parser-runtime-boundary-debt.json',
+        'scripts/verify-aggressive-cutting-review.mjs',
+        'scripts/verify-parser-runtime-boundary.mjs'
+      ]) {
+        const staged = execFileSync('git', ['show', `:${path}`], { cwd: repo, encoding: 'utf8' });
+        const target = resolve(sandbox, path);
+        writeFileSync(target, staged);
+      }
+      execFileSync('git', ['add',
+        'packages/css-parser/src/cst.ts',
+        'scripts/parser-runtime-boundary-debt.json',
+        'scripts/verify-aggressive-cutting-review.mjs',
+        'scripts/verify-parser-runtime-boundary.mjs'
+      ], { cwd: sandbox });
+      writeFileSync(resolve(sandbox, 'scripts/verify-parser-runtime-boundary.mjs'), 'process.exit(0);\n');
+      let output = '';
+      let status = 0;
+      try {
+        execFileSync(process.execPath, [
+          'scripts/verify-aggressive-cutting-review.mjs',
+          '--mode=staged',
+          '--skip-executable-evidence'
+        ], { cwd: sandbox, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+      } catch (error: unknown) {
+        const failure = error as { status?: number; stdout?: string | Buffer; stderr?: string | Buffer };
+        status = failure.status ?? 1;
+        output = `${failure.stdout?.toString() ?? ''}${failure.stderr?.toString() ?? ''}`;
+      }
+      expect(status).not.toBe(0);
+      expect(output).not.toContain('Exact parser-runtime debt deletion: cost-contract review not required.');
+    } finally {
+      rmSync(sandbox, { recursive: true, force: true });
+    }
   });
 });
 

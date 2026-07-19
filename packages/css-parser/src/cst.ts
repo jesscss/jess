@@ -76,14 +76,11 @@ const COLLAPSIBLE_GRAMMAR_TYPES = new Set([
   'InterpolatedSelector'
 ]);
 
-function pascalCaseRuleName(type: string): string {
-  return type
-    .replace(/(^|[^a-zA-Z0-9]+)([a-zA-Z0-9])/g, (_, _sep: string, char: string) => char.toUpperCase())
-    .replace(/[^a-zA-Z0-9]/g, '');
-}
-
 function publicTypeName(grammarType: string): CssCstType {
-  return TYPE_NAMES[grammarType] ?? pascalCaseRuleName(grammarType);
+  // Grammar node names are already public PascalCase identifiers. Exceptional
+  // names live in the explicit contract table above; do not run a second
+  // handwritten recognizer over a grammar name at CST construction time.
+  return TYPE_NAMES[grammarType] ?? grammarType;
 }
 
 function isRunnable(value: unknown): value is Runnable {

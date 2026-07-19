@@ -1,28 +1,5 @@
 {
   "version": 2,
   "policy": "Every handwritten runtime recognizer is temporary debt. The final gate has debt: [].",
-  "debt": [
-    {
-      "file": "packages/css-parser/src/cst.ts",
-      "line": 81,
-      "column": 14,
-      "start": 2045,
-      "end": 2078,
-      "kind": "regex-literal",
-      "fingerprint": "b0c2ded5882e5562",
-      "snippet": "/(^|[^a-zA-Z0-9]+)([a-zA-Z0-9])/g",
-      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
-    },
-    {
-      "file": "packages/css-parser/src/cst.ts",
-      "line": 82,
-      "column": 14,
-      "start": 2148,
-      "end": 2163,
-      "kind": "regex-literal",
-      "fingerprint": "9196eba22a3a91a0",
-      "snippet": "/[^a-zA-Z0-9]/g",
-      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
-    }
-  ]
+  "debt": []
 }

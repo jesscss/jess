@@ -13,10 +13,12 @@
  * ledger edit, and the normal verifier rejects it until that edit lands.
  */
 import { createHash } from 'node:crypto';
-import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, extname, relative, resolve } from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
+import { execFileSync } from 'node:child_process';
+import { tmpdir } from 'node:os';
 
 const require = createRequire(import.meta.url);
 // The workspace pins the compiler API package separately from the experimental
@@ -431,6 +433,34 @@ function readInventory() {
   return JSON.parse(readFileSync(inventoryPath, 'utf8'));
 }
 
+function stagedFile(path) {
+  return execFileSync('git', ['show', `:${path}`], {
+    cwd: root,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe']
+  });
+}
+
+/** Validate the index without reading a conflicting worktree file. */
+function validateStagedSnapshot() {
+  const snapshot = mkdtempSync(resolve(tmpdir(), 'jess-parser-boundary-'));
+  try {
+    for (const sourceRoot of parserRoots) {
+      for (const file of sourceFiles(resolve(root, sourceRoot))) {
+        const relativePath = relative(root, file);
+        const target = resolve(snapshot, relativePath);
+        mkdirSync(dirname(target), { recursive: true });
+        writeFileSync(target, stagedFile(relativePath));
+      }
+    }
+    const inventory = JSON.parse(stagedFile('scripts/parser-runtime-boundary-debt.json'));
+    const findings = scanParserSources({ base: snapshot });
+    return validateInventory(inventory, findings, { base: snapshot });
+  } finally {
+    rmSync(snapshot, { recursive: true, force: true });
+  }
+}
+
 function inventoryKey(entry) {
   return `${entry.file}\u0000${entry.kind}\u0000${entry.start}\u0000${entry.end}\u0000${entry.fingerprint}`;
 }
@@ -551,6 +581,19 @@ export function writeInventory(findings, { path = inventoryPath, base = root } =
 }
 
 function main() {
+  if (process.argv.includes('--staged')) {
+    if (process.argv.includes('--write-inventory')) {
+      throw new Error('--write-inventory cannot target the staged snapshot.');
+    }
+    const errors = validateStagedSnapshot();
+    if (errors.length > 0) {
+      console.error('Parser runtime boundary failed for staged snapshot:\n' + errors.map(error => `- ${error}`).join('\n'));
+      process.exitCode = 1;
+      return;
+    }
+    console.log('Parser runtime boundary: staged snapshot is clean.');
+    return;
+  }
   const findings = scanParserSources();
   if (process.argv.includes('--write-inventory')) {
     const inventory = writeInventory(findings);
