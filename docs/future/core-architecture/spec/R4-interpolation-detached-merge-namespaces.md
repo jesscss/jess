@@ -917,6 +917,11 @@ behavior may diverge from Less/Sass and no owner ruling exists, items are marked
 > amendment to the owner-LOCKED §4.1 `@{`…`}` delimiter grammar and therefore
 > **requires explicit owner sign-off before landing** — the owner approved the
 > amendment 2026-07-18; this records it as PROPOSED until it lands.
+>
+> **See [`REFERENCE-CALL-PLAN.md`](../REFERENCE-CALL-PLAN.md)** — the chained-READ
+> half of the body widening ([R4.6-b] `@{ a[b][c] }`) reuses the same chained
+> accessor node that plan introduces (READ dimension only inside interpolation;
+> `.`-call stays an ERROR, §R4.6.2).
 
 ### R4.6.1 What widens (and what does NOT)
 

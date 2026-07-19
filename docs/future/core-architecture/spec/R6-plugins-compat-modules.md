@@ -423,6 +423,13 @@ build `@-export` semantics** beyond parsing/accepting the node; flag as owner-op
 > engine — the interpolation-body half of the model lives in
 > `R4-interpolation-detached-merge-namespaces.md` §R4.6 (cross-linked below).
 > Nothing here is built until the owner signs off.
+>
+> **Blocked on / see [`REFERENCE-CALL-PLAN.md`](../REFERENCE-CALL-PLAN.md)** — the
+> core Reference-call machinery (grammar member-call chain + node + eval dispatch
+> + chain/call round-trip render) is the buildable prerequisite this module
+> member-access rides on; the module-kind gate below (`.name()` mixin-vs-function,
+> the Less-`@compose` member-function ERROR) is the resolve-time policy layered on
+> that machinery. The open questions D.8 [R6.D-a/b/c] intersect that plan.
 
 ### D.1 No new operator — reuse the existing `@var` head + `[]` + `.name()` grammar
 

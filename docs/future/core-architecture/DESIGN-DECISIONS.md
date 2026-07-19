@@ -140,6 +140,7 @@ reference"* framing is superseded by this row. Source:
 | A5 | `%()` string-format parses as a PLAIN call to the public `string-format` fn (canonical string-format = interpolation; `%()` is a compat alias). Name is `string-format` (whole-word) — NOT `format` (CSS `format()` collision), NOT `sprintf` (owner-rejected). | SETTLED | `memory:percent-format-to-sprintf-design` |
 | A7 | `@import (reference)` = HIDDEN rules, visible ONLY where pulled in via `:extend`/mixin (per-branch visibility). Implemented as a cheap FLAG, not by marking nodes. | SETTLED | `V5-OUTPUT-SEMANTICS.md` §B6 |
 | A6 | Deprecation infrastructure EXISTS but is NOT wired in v5 — only `selector/parentless-ampersand` + extend-roots diagnostics fire today; deprecation emission is unstarted feature work. | SETTLED (state of the world) | `memory:deprecation-emission-not-wired-v5` |
+| A8 | `@use`/`@compose` **member access** — sigil'd `@var`/`$var` head + `[key]` READ + `.name(args)` CALL; module KIND decides member kind (`@compose`→mixin, `@use`→function), no member functions in Less `@compose`. The core Reference-call machinery (grammar chain + node + eval + chain/call render) is the buildable prerequisite; module semantics PROPOSED, pending owner sign-off. | OPEN (PROPOSED) | `REFERENCE-CALL-PLAN.md`, R6 Part D (`spec/R6-plugins-compat-modules.md:416-543`), R4 §R4.6, `memory:namespace-access-use-compose-model` |
 
 ## 8. Core architecture
 

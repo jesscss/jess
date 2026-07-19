@@ -104,8 +104,8 @@ free/cleanly · **NOTYET** = deferred but straightforward on current design · *
 | Extend (`:extend`, `&:extend`, `all`, selector-attached) | INCORP | `tree2/extend.ts` (`computeExtends`); wired into `serialize.ts` (zero-cost when no `:extend()`) | Ported from `tree/extend/{plan,solve,emit,pipeline}.ts`. |
 | Detached rulesets | NEEDS-DESIGN | none | Ruleset-as-value; tree2 value model has no ruleset value. |
 | Merge `+` / `+_` | NEEDS-DESIGN | none | v5 last-occurrence anchor (owner) — build to Jess intent, not Less. |
-| Namespaces / accessors `#ns.mixin()`, chained lookups | NEEDS-DESIGN | none; dispatch is flat-name only (`lookupMixinCandidates`) | Needs namespace-path resolution. |
-| Maps `#map[key]`, ruleset/collection indexing | NEEDS-DESIGN | none | |
+| Namespaces / accessors `#ns.mixin()`, chained lookups | NEEDS-DESIGN | none; dispatch is flat-name only (`lookupMixinCandidates`) | Needs namespace-path resolution. Reference-CALL/member-call machinery scoped in `REFERENCE-CALL-PLAN.md` (unblocks `@use`/`@compose` `.name()` member access; module semantics gated on R6 Part D). |
+| Maps `#map[key]`, ruleset/collection indexing | READ LANDED (`MapAccessor`); chained/member-CALL NEEDS-DESIGN | `MapAccessor` read (`nodes.ts`, `evalMapAccessor`); no `.name(args)` member-call node | Chained accessor + member-call scoped in `REFERENCE-CALL-PLAN.md`. |
 | Interpolation `@{var}` (selector/value/property) | INCORP | bridge builds `Interp` value nodes (`parseValue`/`interpFromString`); `serialize.ts` `evalInterp` resolves + renders them | Landed (selector/value/property-name interpolation render). |
 | Escaping `~"..."`, string interpolation, `e()`/`%()` | NEEDS-DESIGN | none (escape via fns service partial) | |
 | `@plugin` | NEEDS-DESIGN | none | v5-deprecated but must parse/gate. |

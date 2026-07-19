@@ -85,6 +85,7 @@ bottom for the consolidated list.
 | `EXTEND-REDESIGN.md` | `ast/` extend redesign — lazy fast-reject over a shared selector IR. |
 | `FNS-PACKAGE-MIGRATION-SPEC.md` | Design survey for the fns → `@jesscss/fns` package migration. |
 | `ASSIGNABLE-CONTROL-NODES-PLAN.md` | Queued future feature: mixins/`each`/`$for`/`$if` as value-returning nodes. |
+| `REFERENCE-CALL-PLAN.md` | Queued future feature: a callable/chained `Reference` (member `.name(args)` call + multi-segment accessor chain); unblocks `$[…]` call-chain interp + `@use`/`@compose` member access. Module semantics gated on R6 Part D. |
 | `STRINGS-OVER-NODES.md` | Reference: how a bare string keeps span + trivia without a node. |
 | `NODE-SLIM-FOLLOWONS.md` | Two follow-on questions to STRINGS-OVER-NODES (literal tag; field slimming). |
 
