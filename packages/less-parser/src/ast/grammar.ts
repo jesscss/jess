@@ -23,8 +23,6 @@ type LessAstLocalRules = {
   DirectLessDeclaration: Combinator<Declaration>;
   DirectLessComment: Combinator<Comment>;
   DirectLessCompound: Combinator<Compound>;
-  DirectLessChildComplex: Combinator<Complex>;
-  DirectLessSimpleComplex: Combinator<Complex>;
   DirectLessComplex: Combinator<Complex>;
   DirectLessSelectorTail: Combinator<Complex>;
   DirectLessSelector: Combinator<SelectorList>;
@@ -301,6 +299,10 @@ const simpleSelector = regex(/(?:[.#]?-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-
 // parenthesized and interpolation forms stay outside this direct static slice
 // until their typed semantic payloads are constructed by grammar reductions.
 const staticAmpersand = regex(/&[-_a-zA-Z0-9\u0080-\uffff]*/);
+// Ordered longest-first, identical to the production Less `combinator`
+// terminal.  Whitespace is trivia in this direct slice, so only authored
+// combinator tokens carry a `ComplexSegment.comb` fact here.
+const staticCombinator = choice(literal('||'), literal('>'), literal('+'), literal('~'), literal('|'));
 // The production Less `urlInner` terminal, narrowed only at a dynamic Less
 // opener. A leading `@name` / `@{…}` belongs to the unimplemented Reference /
 // interpolation path, so this direct static slice rejects it instead of
@@ -482,23 +484,32 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
       return compoundOf([simple(text)]);
     }
   );
-  const DirectLessChildComplex = node<Complex>(
-    'DirectLessChildComplex',
-    sequence(g.DirectLessCompound, literal('>'), g.DirectLessCompound),
-    children => complex([
-      { compound: requireCompound(children[0]) },
-      { comb: '>', compound: requireCompound(children[2]) }
-    ])
-  );
-  const DirectLessSimpleComplex = node<Complex>(
-    'DirectLessSimpleComplex',
-    g.DirectLessCompound,
-    children => complex([{ compound: requireCompound(children[0]) }])
-  );
   const DirectLessComplex = node<Complex>(
     'DirectLessComplex',
-    choice(g.DirectLessChildComplex, g.DirectLessSimpleComplex),
-    children => requireComplex(children[0])
+    sequence(
+      g.DirectLessCompound,
+      many(sequence(field('combinator', staticCombinator), field('compound', g.DirectLessCompound)))
+    ),
+    (children, fields) => {
+      const combinators = fields?.combinator === undefined
+        ? []
+        : requireFields(fields, 'combinator').map(combinator => requireTerminalText(combinator.value));
+      const compounds = fields?.compound === undefined
+        ? []
+        : requireFields(fields, 'compound').map(compound => requireCompound(compound.value));
+      if (combinators.length !== compounds.length) {
+        throw new TypeError('Direct Less AST grammar produced an unpaired selector combinator.');
+      }
+      const segments: { comb: '>' | '+' | '~' | '|' | '||'; compound: Compound }[] = [];
+      for (let index = 0; index < combinators.length; index += 1) {
+        const comb = combinators[index];
+        if (comb !== '>' && comb !== '+' && comb !== '~' && comb !== '|' && comb !== '||') {
+          throw new TypeError('Direct Less AST grammar produced an invalid selector combinator.');
+        }
+        segments.push({ comb, compound: compounds[index]! });
+      }
+      return complex([{ compound: requireCompound(children[0]) }, ...segments]);
+    }
   );
   const DirectLessSelectorTail = node<Complex>(
     'DirectLessSelectorTail',
@@ -541,8 +552,6 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
     DirectLessDeclaration,
     DirectLessComment,
     DirectLessCompound,
-    DirectLessChildComplex,
-    DirectLessSimpleComplex,
     DirectLessComplex,
     DirectLessSelectorTail,
     DirectLessSelector,

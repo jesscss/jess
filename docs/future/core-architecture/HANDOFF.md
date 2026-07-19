@@ -102,7 +102,36 @@ closure is still in progress.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: extend the private CSS direct-AST selector grammar with a
+- Latest pass: extend the private Less direct-AST complex-selector grammar with
+  explicit static combinators `>`, `+`, `~`, `|`, and `||`.
+- Architecture surface: one parser-local reduction pairs Parseman-captured
+  combinator and compound facts into canonical `Complex.tail` segments. It
+  deletes the former two-case complex builders; no Context/plugin/CST bridge,
+  host, scanner, or source reparse is added.
+- Cumulative node weight: cold private Less direct-AST construction only; no
+  public parser/eval/render path reaches this grammar.
+- New traversal: one bounded pass over paired completed selector facts; it
+  cannot walk source or runtime state.
+- New node/materialization: parser-owned arrays represent the exact complex
+  selector segments; no eval/render materialization is added.
+- Render path: unchanged and unreachable from production.
+- Helper/API surface: deletion of two specialized grammar rules; no exported
+  parser operation or plugin surface.
+- Metadata mutations: none.
+- Review-flagged diff tokens: [loop/traversal], [node construction],
+  [materialized array/object], [array helper], and [array spread/materialization]
+  are cold grammar-owned reduction construction; `TypeError` rejects impossible
+  completed shapes, not parse control flow.
+- Hot-path cost contracts:
+  ```json
+  [{"id":"less-private-direct-ast-family","verdict":"accepted","privateReachability":{"productionImporters":0,"publicExports":0,"buildEntries":0,"coldConstructionOnly":true},"why":"The current Less direct-AST grammar is not a public parse, eval, or render path; its bounded selector reduction is exercised by focused development tests."}]
+  ```
+- Evidence: focused Less AST test, Less package build, parser-runtime-boundary
+  verifier, staged aggressive-cutting review.
+- Verdict: accepted cold parser construction; descendant whitespace and richer
+  selector forms remain explicit typed parser work.
+
+- Earlier pass: extend the private CSS direct-AST selector grammar with a
   grammar-owned nesting selector `&`, then validate every completed compound
   child instead of filtering unexpected values away.
 - Architecture surface: `&` reduces directly to canonical `Simple('&')`; the
