@@ -5,6 +5,8 @@
  */
 import { describe, it, expect } from 'vitest';
 import { parseScssFn } from '../src/jess.js';
+import { ScssGrammar } from '../src/builders.js';
+import { CssParser } from '@jesscss/css-parser/jess';
 import { isNode, N, Condition, serializeTypes, TreeContext } from '@jesscss/core';
 
 function parseOk(src: string) {
@@ -15,6 +17,10 @@ function parseOk(src: string) {
 }
 
 describe('ScssParser — baseline', () => {
+  it('uses the CSS builder base directly', () => {
+    expect(Object.getPrototypeOf(ScssGrammar.prototype)).toBe(CssParser.prototype);
+  });
+
   it('parses a $var declaration', () => {
     const { tree } = parseOk('$color: red;');
     expect(tree.rules[0]!.type).toBe('VarDeclaration');
