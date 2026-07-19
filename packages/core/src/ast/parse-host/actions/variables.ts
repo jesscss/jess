@@ -38,6 +38,8 @@ import {
 import { type Leaf, isLeaf, wholeValueNode } from './interp.js';
 import { buildValueList } from './custom-props.js';
 import { tryMixinCallIterable } from './control-flow.js';
+import { isCombinator, slotToCallArg } from './mixin-call.js';
+import { type ArgSlot, isArgSlotList } from './mixins-def.js';
 
 /**
  * Strip the comment trivia a Less variable value discards. Two distinct rules,
@@ -277,19 +279,23 @@ function isIntLiteral(s: string): boolean {
  *     `@@name`'s value).
  *   • an all-digit token → a 1-based numeric list index (not a name).
  */
-function accessorKey(keyStr: string): { key: t2.ValueNode | number; keyIsProp: boolean } {
+export function accessorKey(keyStr: string): { key: t2.ValueNode | number; keyKind: 'var' | 'prop' | 'index' } {
   if (keyStr.charCodeAt(0) === 0x40 /* @ */) {
-    if (keyStr.charCodeAt(1) === 0x40) return { key: t2.varRef(keyStr.slice(2)), keyIsProp: true };
-    return { key: t2.any(keyStr.slice(1)), keyIsProp: true };
+    // `@name` reads a VARIABLE member; `@@name` interpolates the member name from
+    // outer variable `@name` (still a variable-namespace lookup).
+    if (keyStr.charCodeAt(1) === 0x40) return { key: t2.varRef(keyStr.slice(2)), keyKind: 'var' };
+    return { key: t2.any(keyStr.slice(1)), keyKind: 'var' };
   }
   if (keyStr.charCodeAt(0) === 0x24 /* $ */) {
-    // `$@name` — property key INTERPOLATED from outer variable `@name`: look up the
-    // member whose PROPERTY name is `@name`'s resolved value (`#ns[$@prop-name]`).
-    if (keyStr.charCodeAt(1) === 0x40) return { key: t2.varRef(keyStr.slice(2)), keyIsProp: true };
-    return { key: t2.any(keyStr.slice(1)), keyIsProp: true };
+    // `$name` reads a PROPERTY member; `$@name` — property key INTERPOLATED from
+    // outer variable `@name`: look up the member whose PROPERTY name is `@name`'s
+    // resolved value (`#ns[$@prop-name]`).
+    if (keyStr.charCodeAt(1) === 0x40) return { key: t2.varRef(keyStr.slice(2)), keyKind: 'prop' };
+    return { key: t2.any(keyStr.slice(1)), keyKind: 'prop' };
   }
-  if (isIntLiteral(keyStr)) return { key: parseInt(keyStr, 10), keyIsProp: false };
-  return { key: t2.any(keyStr), keyIsProp: true };
+  if (isIntLiteral(keyStr)) return { key: parseInt(keyStr, 10), keyKind: 'index' };
+  // A bare key (`[foo]`) reads a PROPERTY member (Less: bare == `$`-headed).
+  return { key: t2.any(keyStr), keyKind: 'prop' };
 }
 
 /**
@@ -330,44 +336,71 @@ const reference: BuildAction = {
  * that shape is out of this family's scope, so the caller keeps the verbatim bytes.
  */
 function walkAccessorChain(
-  base: t2.ValueNode,
+  base: t2.ValueNode | t2.MixinCall,
   leaves: readonly Leaf[],
   from: number,
   bytes: string,
 ): t2.ValueNode | null {
-  let acc = base;
+  let acc: t2.ValueNode | t2.MixinCall = base;
   let i = from;
   while (i < leaves.length) {
     if (leaves[i]!.value !== '[') return null;
     if (leaves[i + 1]?.value === ']') {
       // Empty `@x[]` → last element (index -1), per lookupOrCall's else-branch.
-      acc = t2.mapAccessor(acc, -1, false, bytes);
+      acc = t2.mapAccessor(acc, -1, 'index', bytes);
       i += 2;
     } else {
-      const { key, keyIsProp } = accessorKey(leaves[i + 1]!.value);
-      acc = t2.mapAccessor(acc, key, keyIsProp, bytes);
+      const { key, keyKind } = accessorKey(leaves[i + 1]!.value);
+      acc = t2.mapAccessor(acc, key, keyKind, bytes);
       i += 3; // '[', key, ']'
     }
   }
+  // A bare `MixinCall` base with no folded accessor is not a value node — decline
+  // (the grammar always glues at least one `[key]`, so this is defensive).
+  if (acc.type === 'MixinCall') return null;
   return acc;
 }
 
 /**
- * A namespace-value accessor `#ns[key]` / `.map[key]` (grammar `NsAccessor`): a
- * SELECTOR head (`#ns` / `.map`, not a `@var`) glued to a `[key]` accessor chain.
- * The base is the literal selector fragment (an `Any` the serializer resolves to the
- * union of matching rulesets' declarations); each key folds into a `MapAccessor`
- * exactly like the `@map[key]` reference. A `(call)`-bearing form (`#ns.m()[k]`) is
+ * A namespace-value accessor `#ns.options[key]` / `.map[key]` /
+ * `#library.add-one(1px)[@return]` (grammar `NsAccessor`): a mixin-call PATH head
+ * (`#ns.options`, `.alias`, `#library.add-one` + optional `(args)`) glued to a
+ * `[key]` accessor chain. The base is built as a {@link t2.MixinCall} — the same
+ * node a statement mixin call produces — so `resolveBaseDeclMap` dispatches it and
+ * reads its emitted members. Each key then folds into a `MapAccessor` exactly like
+ * the `@map[key]` reference. A `(call)` inside the `[…]` chain (`#ns.m()[k](x)`) is
  * out of scope — declined so the bytes stay verbatim.
  */
 const nsAccessor: BuildAction = {
   type: 'NsAccessor',
   build: (args) => {
-    const leaves: Leaf[] = args.children.filter(isLeaf);
-    const head = leaves[0];
-    if (!head) return placeholder(args.type);
     const bytes = sliceSpan(args.ctx, args.span);
-    return walkAccessorChain(t2.any(head.value), leaves, 1, bytes) ?? placeholder(args.type);
+    const segs: Array<{ comb: t2.Combinator; sel: string }> = [];
+    let pendingComb: t2.Combinator = ' ';
+    let slots: readonly ArgSlot[] = [];
+    const chain: Leaf[] = [];
+    let chainStarted = false;
+    for (const c of args.children) {
+      if (chainStarted) {
+        if (isLeaf(c)) chain.push(c);
+        continue;
+      }
+      if (isArgSlotList(c)) { slots = c; continue; }
+      if (!isLeaf(c)) continue;
+      const v = c.value;
+      if (v === '') continue;
+      if (v === '[') { chainStarted = true; chain.push(c); continue; }
+      if (isCombinator(v)) { pendingComb = v; continue; }
+      segs.push({ comb: pendingComb, sel: v });
+      pendingComb = ' ';
+    }
+    if (segs.length === 0 || chain.length === 0) return placeholder(args.type);
+    const name = segs[segs.length - 1]!.sel;
+    const path: t2.PathSeg[] = segs.slice(0, -1).map((s) => ({ comb: s.comb, sel: s.sel }));
+    const base: t2.MixinCall = {
+      type: 'MixinCall', name, args: slots.map(slotToCallArg), path, important: false,
+    };
+    return walkAccessorChain(base, chain, 0, bytes) ?? placeholder(args.type);
   },
 };
 
@@ -395,8 +428,8 @@ const lessInterp: BuildAction = {
     const bytes = sliceSpan(args.ctx, args.span);
     // Fold `[key]` accessors, skipping the leading `@{`/head (0,1) and trailing `}`.
     for (let i = 2; i + 2 < leaves.length && leaves[i]!.value === '['; i += 3) {
-      const { key, keyIsProp } = accessorKey(leaves[i + 1]!.value);
-      acc = t2.mapAccessor(acc, key, keyIsProp, bytes);
+      const { key, keyKind } = accessorKey(leaves[i + 1]!.value);
+      acc = t2.mapAccessor(acc, key, keyKind, bytes);
     }
     return acc;
   },

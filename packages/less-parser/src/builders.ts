@@ -669,10 +669,20 @@ export class LessGrammar extends CssParser {
    * Leaves: [ headText, '[', key?, ']', '(', content?, ')' … ].
    */
   private _buildNsAccessor(children: ReadonlyArray<Child>, loc: LocationInfo): JessNode {
+    // The grammar STRUCTURES the head into per-segment leaves (`#ns`, `.options`)
+    // with an optional glued `(args)` call on the last segment captured as a
+    // structured `MixinArgs` (a `List` node). Collect the segment leaves before the
+    // first `[`/`(` accessor, join them into the selector path, and — when a base
+    // `MixinArgs` call is present — wrap the name Reference in a `Call`.
     const ls = children.filter((c): c is CSTLeaf => c._tag === 'leaf');
-    const headText = (ls[0]?.value ?? '').trim();
-    // Split the selector path into segments: `#ns.options` → ['#ns', '.options'];
-    // combinators (`#ns > .a`) are dropped, each `.`/`#` name is one segment.
+    const segParts: string[] = [];
+    let ci = 0;
+    for (; ci < ls.length; ci++) {
+      const v = ls[ci]!.value;
+      if (v === '[' || v === '(') break;
+      if (v.startsWith('.') || v.startsWith('#')) segParts.push(v);
+    }
+    const headText = segParts.join('');
     const headSegs = splitSelectorHeadSegments(headText);
     const pathSegs = headSegs.length > 0 ? headSegs : [headText];
     const nameKey: string | string[] = pathSegs.length === 1 ? pathSegs[0]! : pathSegs;
@@ -681,7 +691,15 @@ export class LessGrammar extends CssParser {
       { key: nameKey, ...(rawKey ? { rawKey } : {}) } as unknown as ReferenceValue,
       { type: 'mixin-ruleset', role: 'name' } as any, loc
     ) as unknown as JessNode;
-    let i = 1;
+    // A base `(args)` call (`#library.add-one(1px)[@return]`): the structured
+    // `MixinArgs` `List` node → a `Call` around the name Reference.
+    const argsList = nodeChildren(children).find(n => n.type === 'List');
+    if (argsList !== undefined) {
+      const hasArgs = (argsList as unknown as { value?: unknown[] }).value?.length;
+      const callArgs = hasArgs ? this._convertArgsForCall(argsList as unknown as JessNode, loc) : undefined;
+      base = new Call({ name: base as any, args: callArgs as any }, undefined, loc) as unknown as JessNode;
+    }
+    let i = ci;
     while (i < ls.length) {
       const tok = ls[i]!.value;
       if (tok === '[') {

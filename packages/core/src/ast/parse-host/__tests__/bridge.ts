@@ -501,29 +501,31 @@ function buildMapAccessor(ctx: BridgeCtx, ref: AnyNode): t2.ValueNode {
     baseName.startsWith('#') || baseName.startsWith('.') ? t2.any(baseName) : t2.varRef(baseName);
   const key = ref.key;
   const bytes = slice(ctx, ref) ?? '';
+  // `@name` key → variable namespace; bare / `$name` → property namespace.
+  const kindOf = (s: string): 'var' | 'prop' => (s.charCodeAt(0) === 0x40 ? 'var' : 'prop');
   // Numeric index (`[1]` / `[-1]`).
-  if (typeof key === 'number') return t2.mapAccessor(base, key, false, bytes);
+  if (typeof key === 'number') return t2.mapAccessor(base, key, 'index', bytes);
   if (isNode(key)) {
     const t = typeOf(key);
     if (t === 'Quoted') {
       const v = (key as AnyNode).value;
       if (isNode(v) && typeOf(v) === 'Interpolated') {
-        return t2.mapAccessor(base, interpFromInterpolated(ctx, v as AnyNode, false), true, bytes);
+        return t2.mapAccessor(base, interpFromInterpolated(ctx, v as AnyNode, false), 'prop', bytes);
       }
-      if (typeof v === 'string') return t2.mapAccessor(base, t2.any(v), true, bytes);
+      if (typeof v === 'string') return t2.mapAccessor(base, t2.any(v), 'prop', bytes);
     }
     if (t === 'Interpolated') {
-      return t2.mapAccessor(base, interpFromInterpolated(ctx, key as AnyNode, false), true, bytes);
+      return t2.mapAccessor(base, interpFromInterpolated(ctx, key as AnyNode, false), 'prop', bytes);
     }
     // A dimension / number key node → numeric index.
     if (t === 'Dimension' || t === 'Num') {
       const n = Number((key as AnyNode).value ?? (key as AnyNode).number);
-      if (Number.isFinite(n)) return t2.mapAccessor(base, n, false, bytes);
+      if (Number.isFinite(n)) return t2.mapAccessor(base, n, 'index', bytes);
     }
     const raw = slice(ctx, key);
-    if (raw !== undefined) return t2.mapAccessor(base, t2.any(raw), true, bytes);
+    if (raw !== undefined) return t2.mapAccessor(base, t2.any(raw.replace(/^[@$]/, '')), kindOf(raw), bytes);
   }
-  if (typeof key === 'string') return t2.mapAccessor(base, t2.any(key), true, bytes);
+  if (typeof key === 'string') return t2.mapAccessor(base, t2.any(key.replace(/^[@$]/, '')), kindOf(key), bytes);
   throw new UnsupportedShape('map:key', typeOf(key));
 }
 

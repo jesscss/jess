@@ -429,11 +429,11 @@ function lookupMixinCandidates(frame: Frame | null, name: string): MixinDef[] {
     if (f.fallback && !fb) fb = f.fallback;
   }
   if (fb) {
+    // The fallback (caller) chain can rejoin the parent (definition) chain at a
+    // shared ancestor, so a def already collected must NOT be dispatched twice —
+    // merge by identity, first occurrence wins (mirrors `lookupCandidates`).
     const more = lookupMixinCandidates(fb, name);
-    if (more.length) {
-      if (!out) out = more;
-      else out.push(...more);
-    }
+    for (const d of more) if (!out || !out.includes(d)) (out ??= []).push(d);
   }
   return out ?? [];
 }
@@ -610,9 +610,23 @@ function findPathInScope(
   for (const s of st) {
     if (s.type === 'MixinDef') {
       const nEl = selectorAtoms(s.name);
-      if (nEl.length === remaining.length && atomsArePrefix(nEl, remaining)) {
+      if (nEl.length === 0 || !atomsArePrefix(nEl, remaining)) continue;
+      if (nEl.length === remaining.length) {
         out.push(s);
         if (!homes.has(s)) homes.set(s, scope);
+      } else {
+        // [namespace-descent] A parametric namespace segment (`#DEF() { .colors() {…} }`,
+        // `#library.core()`) whose name is a PROPER prefix: descend into its body with
+        // the tail. Intermediate segments take no args (Less: only the terminal segment
+        // is called with arguments), so bind none — a body with required params would
+        // not match, but namespace containers are argument-less in practice.
+        const child: Frame = {
+          parent: scope,
+          mixins: collectMixins(s.body),
+          vars: collectVars(s.body),
+          statements: s.body,
+        };
+        findPathInScope(child, remaining.slice(nEl.length), homes, out, e);
       }
     } else if (s.type === 'Rule') {
       for (const c of s.selector.selectors) {
@@ -1288,42 +1302,86 @@ interface DeclEntry {
   frame: Frame | null;
 }
 
-/** Collect a body's declarations into a name→value map (+ ordered list). */
-function evalToDeclMap(statements: Statement[], frame: Frame | null, e: EvalCtx): {
-  byName: Map<string, DeclEntry>;
+/**
+ * A resolved map/namespace body: its members split into Less's two DISJOINT
+ * lookup namespaces — `byProp` (CSS declarations, read by a bare / `$name` key)
+ * and `byVar` (`@var:` declarations, read by an `@name` key) — plus the ordered
+ * member list for numeric-index access. The two maps never fall back to each other
+ * (Less 4.x: `#ns[a]` errors when only `@a` exists).
+ */
+interface DeclMap {
+  byVar: Map<string, DeclEntry>;
+  byProp: Map<string, DeclEntry>;
   list: DeclEntry[];
-} {
-  const byName = new Map<string, DeclEntry>();
+  /**
+   * [namespace-accessor] For a mixin-DISPATCH base (`#ns.m[@x]`), the callee's
+   * evaluated scope frame(s) — a `@var` member is read lazily via `lookupVar` here,
+   * because a mixin's local variables (and nested-call leaked vars) are NOT part of
+   * its emitted-declaration output (`byVar` stays empty for this base kind). Frames
+   * are in candidate/source order; last match wins (Less per-name last-declaration).
+   */
+  varFrames?: Frame[];
+}
+
+/** Pick the member map an accessor key targets (`var` vs `prop`), per its kind. */
+function mapForKind(map: DeclMap, kind: 'var' | 'prop'): Map<string, DeclEntry> {
+  return kind === 'var' ? map.byVar : map.byProp;
+}
+
+/** [namespace-accessor] Read a `@name` member from a mixin-dispatch base's callee
+ *  scope frame(s) — the mixin's local / nested-leaked variables, which are not part
+ *  of its emitted-declaration output. Last matching frame wins (source order). */
+function lookupVarMember(map: DeclMap, name: string): DeclEntry | undefined {
+  const frames = map.varFrames;
+  if (!frames) return undefined;
+  let hit: DeclEntry | undefined;
+  for (const f of frames) {
+    const bound = lookupVar(f, name);
+    // A mixin-CALL-bound member (`@x: .m()`) is not directly value-serializable.
+    if (bound && bound.type !== 'MixinCall') hit = { name, value: bound, frame: f };
+  }
+  return hit;
+}
+
+/** Collect a body's declarations into name→value maps (+ ordered list). */
+function evalToDeclMap(statements: Statement[], frame: Frame | null, e: EvalCtx): DeclMap {
+  const byVar = new Map<string, DeclEntry>();
+  const byProp = new Map<string, DeclEntry>();
   const list: DeclEntry[] = [];
   for (const s of statements) {
     // A map/namespace body member is either a CSS declaration (`text: white`,
-    // looked up by property name / `$prop`) or a variable declaration
-    // (`@color: blue`, looked up by variable name / `@var`). The accessor key
-    // model (`accessorKey`) collapses `$prop`/`@var`/bare into one name-keyed
-    // lookup, so both member kinds share the one `byName` map (source-order,
-    // last-wins), mirroring Less's per-name last-declaration-wins.
+    // read by property name / `$prop`, keyed in `byProp`) or a variable declaration
+    // (`@color: blue`, read by `@var`, keyed in `byVar`). Each namespace is
+    // source-order last-wins, mirroring Less's per-name last-declaration-wins.
     if (s.type === 'Declaration') {
       const name = typeof s.name === 'string' ? s.name : evalBytesSync(s.name, frame, e);
       const entry: DeclEntry = { name, value: s.value, frame };
-      byName.set(name, entry); // last-wins
+      byProp.set(name, entry); // last-wins
       list.push(entry);
     } else if (s.type === 'VarDeclaration' && s.value.type !== 'MixinCall') {
       // A `@var:` member (a mixin-CALL-bound member is not directly serializable as
       // a map value — unreachable in the modelled fixtures — so it is skipped).
       const entry: DeclEntry = { name: s.name, value: s.value, frame };
-      byName.set(s.name, entry); // last-wins
+      byVar.set(s.name, entry); // last-wins
       list.push(entry);
     }
   }
-  return { byName, list };
+  return { byVar, byProp, list };
 }
 
 /** Resolve a map/namespace accessor's base to a declaration map + its frame. */
 function resolveBaseDeclMap(
-  base: ValueNode,
+  base: ValueNode | MixinCall,
   frame: Frame | null,
   e: EvalCtx,
-): { byName: Map<string, DeclEntry>; list: DeclEntry[] } | null {
+): DeclMap | null {
+  // A namespace / mixin-path base (`#ns.options`, `.alias`, `#library.add-one(1px)`)
+  // is a `MixinCall`: dispatch it and treat its EMITTED members as the map. A plain
+  // ruleset (`#ns1 {}`) dispatches as a zero-arg rule-mixin, so this one path serves
+  // both namespace descents and single-segment ruleset/mixin bases.
+  if (base.type === 'MixinCall') {
+    return frame ? declMapFromMixinCall(base, frame, e) : null;
+  }
   // A `#namespace` / `.map` selector base → the union of matching rulesets' decls.
   // The base is an opaque selector fragment (`Any`) or a bare ident (`Keyword`).
   if (base.type === 'Any' || base.type === 'Keyword') {
@@ -1366,39 +1424,47 @@ function resolveBaseDeclMap(
 }
 
 /** Dispatch a mixin CALL and collect its emitted declarations as a member map
- *  (`prop:` and `@var:` members), for a `@p: .mk-map()`-bound accessor base. Mirrors
- *  {@link forItemsFromMixinCall}; nested rules are captured and discarded (a map is
- *  its declarations). Needs a scratch {@link Emit} — the capture is thrown away. */
+ *  (`prop:` and `@var:` members split into `byProp` / `byVar`), for a namespace /
+ *  mixin-path accessor base (`#ns.options[k]`) or a `@p: .mk-map()`-bound base.
+ *  Mirrors {@link forItemsFromMixinCall}; nested rules are captured and discarded
+ *  (a map is its declarations). Needs a scratch {@link Emit} — capture is thrown away. */
 function declMapFromMixinCall(
   call: MixinCall,
   frame: Frame,
   e: EvalCtx,
-): { byName: Map<string, DeclEntry>; list: DeclEntry[] } {
+): DeclMap {
   const em = scratchEmit(e);
   const collected: Leaf[] = [];
   const noop = (): void => {};
   // Collect EVERY declaration (`forceLeading` → all decls to `collected`), discard
   // nested rules (they defer to `trailing`, which is never drained here).
   const discard: Partition = { encounteredContainer: false, trailing: [], pending: [], emitBlock: noop };
-  expandCall(call, null, null, frame, collected, noop, discard, em, false, false, true);
-  const byName = new Map<string, DeclEntry>();
+  const varFrames: Frame[] = [];
+  expandCall(call, null, null, frame, collected, noop, discard, em, false, false, true, varFrames);
+  const byVar = new Map<string, DeclEntry>();
+  const byProp = new Map<string, DeclEntry>();
   const list: DeclEntry[] = [];
   for (const leaf of collected) {
     const n = leaf.node;
     let name: string;
-    if (n.type === 'Declaration') name = typeof n.name === 'string' ? n.name : evalBytesSync(n.name, leaf.frame, em);
-    else if (n.type === 'VarDeclaration') name = n.name;
-    else continue;
+    let into: Map<string, DeclEntry>;
+    if (n.type === 'Declaration') {
+      name = typeof n.name === 'string' ? n.name : evalBytesSync(n.name, leaf.frame, em);
+      into = byProp;
+    } else if (n.type === 'VarDeclaration') {
+      name = n.name;
+      into = byVar;
+    } else continue;
     const value = n.value;
     // A mixin body that itself binds a `@x: .other()` re-nests a mixin call; it is
     // not directly value-serializable, so skip it as a map member (unreachable in
     // the modelled fixtures — keeps the member map value-typed).
     if (value.type === 'MixinCall') continue;
     const entry: DeclEntry = { name, value, frame: leaf.frame };
-    byName.set(name, entry);
+    into.set(name, entry);
     list.push(entry);
   }
-  return { byName, list };
+  return { byVar, byProp, list, varFrames };
 }
 
 function evalMapAccessor(node: MapAccessor, frame: Frame | null, e: EvalCtx): MaybePromise<Value> {
@@ -1409,11 +1475,16 @@ function evalMapAccessor(node: MapAccessor, frame: Frame | null, e: EvalCtx): Ma
   // once the base binding is modelled).
   if (!map) return literal(node.bytes);
   let matched: DeclEntry | undefined;
-  if (node.keyIsProp) {
-    const key = typeof node.key === 'number' ? String(node.key) : evalBytesSync(node.key, frame, e);
-    matched = map.byName.get(key);
-    // A property-style key whose resolved value is a bare integer is a 1-based list
-    // index (`@list[@i]` where `@i` is numeric), not a property name.
+  if (node.keyKind !== 'index') {
+    const key = evalBytesSync(node.key as ValueNode, frame, e);
+    // `@name` → variable namespace; bare / `$name` → property namespace. The two are
+    // disjoint (Less: no fall-through between them).
+    matched = mapForKind(map, node.keyKind).get(key);
+    // A `@var` member of a mixin-DISPATCH base is not in `byVar` (a mixin's local
+    // vars are not emitted output) — read it from the callee scope frame(s).
+    if (!matched && node.keyKind === 'var') matched = lookupVarMember(map, key);
+    // A key whose resolved value is a bare integer is a 1-based list index
+    // (`@list[@i]` where `@i` resolves to a number), not a member name.
     if (!matched && isIntegerString(key)) {
       const i = parseInt(key, 10);
       matched = map.list[i < 0 ? map.list.length + i : i - 1];
@@ -2604,6 +2675,7 @@ function expandCall(
   imp = false,
   protectedDup = false, // [dedup] already inside restricted mixin output
   forceLeading = false, // [partition] inherited leading-hoist context
+  captureFrames?: Frame[], // [namespace-accessor] collect each callee's callFrame
 ): void {
   // A namespaced/compound call (`#ns .a .b()`, `.jo.ki()`, `.amp.support()`)
   // resolves by ELEMENT-VALUE descent through the scope's own rulesets (Less
@@ -2674,6 +2746,10 @@ function expandCall(
         statements: def.body,
         ...(namespaced || homeFrame === frame ? {} : { fallback: frame }),
       };
+      // [namespace-accessor] expose the callee's evaluated scope so a `#ns.m[@var]`
+      // accessor can read its VARIABLE members (local `@x:` decls + nested-call
+      // leaked vars), which never appear in the emitted-declaration output.
+      captureFrames?.push(callFrame);
       // [dedup] a real parametric MixinDef produces RESTRICTED output (its overloaded
       // duplicates survive); a synthesized ruleset-mixin does not, unless it is already
       // nested inside restricted output (chain-sticky, matching isFromRestrictedMixinOutput).
@@ -2821,6 +2897,21 @@ function pickIfBranch(node: FunctionCall, frame: Frame | null, e: EvalCtx): Valu
  * @x();` splices the chosen branch's declarations. Returns `undefined` when the
  * chain terminates in anything that is not a detached ruleset.
  */
+/** Follow a `@var` alias chain to a MIXIN-CALL binding (`@alias: .something(foo)`),
+ *  so `@alias()` / a `@another-mixin()` parameter dispatches that call. Returns
+ *  undefined when the chain does not end at a `MixinCall` (e.g. a detached ruleset). */
+function resolveToMixinCall(node: Binding | undefined, frame: Frame | null): MixinCall | undefined {
+  const seen = new Set<Binding>();
+  let cur: Binding | undefined = node;
+  while (cur && !seen.has(cur)) {
+    seen.add(cur);
+    if (cur.type === 'MixinCall') return cur;
+    if (cur.type === 'VarRef') { cur = lookupVar(frame, cur.name); continue; }
+    return undefined;
+  }
+  return undefined;
+}
+
 function resolveDetachedRuleset(node: Binding, frame: Frame | null, e: EvalCtx): DetachedRuleset | undefined {
   const seen = new Set<Binding>();
   let cur: Binding | undefined = node;
@@ -2870,6 +2961,15 @@ function expandDetachedCall(
   protectedDup = false, // [dedup] inherit restriction from the enclosing context
   forceLeading = false, // [partition] inherited leading-hoist context
 ): void {
+  // `@alias: .something(foo); @alias();` — a variable bound to a MIXIN CALL is
+  // dispatched as that call (Less: a mixin-call-valued var is callable), not spliced
+  // as a detached ruleset. Also covers a mixin PARAMETER carrying a passed call value
+  // (`.wrapper(@another-mixin) { @another-mixin(); }`).
+  const mc = resolveToMixinCall(lookupVar(frame, call.varName), frame);
+  if (mc) {
+    expandCall(mc, composed, ancestor, frame, group, flush, partition, e, false, protectedDup, forceLeading);
+    return;
+  }
   const r = detachedCallFrame(call.varName, frame, e);
   if (!r) return;
   walkBody(r.dr.body, composed, ancestor, r.callFrame, group, flush, partition, e, false, protectedDup, forceLeading);
@@ -2969,8 +3069,9 @@ function resolveForRuleset(
   if (node.type === 'MapAccessor') {
     const map = resolveBaseDeclMap(node.base, frame, e);
     if (!map) return null;
-    const key = typeof node.key === 'number' ? undefined : evalBytesSync(node.key, frame, e);
-    const matched = key !== undefined ? map.byName.get(key) : undefined;
+    const kind = node.keyKind;
+    const key = kind === 'index' ? undefined : evalBytesSync(node.key as ValueNode, frame, e);
+    const matched = kind !== 'index' && key !== undefined ? mapForKind(map, kind).get(key) : undefined;
     if (matched && matched.value.type === 'DetachedRuleset') {
       return { body: matched.value.body, frame: (matched.value.defFrame as Frame | null) ?? matched.frame };
     }
@@ -3190,14 +3291,54 @@ function expandSpreadArgs(call: MixinCall, resolveCaller: ValueResolver): MixinC
 
 /** Replace `@rs` args (a VarRef bound to a detached ruleset) with the
  * resolved `DetachedRuleset` node so it binds by reference. */
+/**
+ * Recognize a mixin-call-shaped VALUE — a `SpacedValue` of a `.`/`#` selector head
+ * (`Any`) glued to a `Paren` arg group (`.something(foo)`, `#library.core.colors()`)
+ * — and build the `MixinCall` it denotes, so a mixin call passed as an arg value
+ * (`.wrapper(.something(foo))`) binds as a callable. Returns `undefined` for any
+ * other value shape. Mirrors {@link tryMixinCallIterable}, on the serializer's value
+ * model rather than raw parser children.
+ */
+function spacedMixinCall(v: ValueNode): MixinCall | undefined {
+  if (v.type !== 'SpacedValue' || v.parts.length !== 2) return undefined;
+  const [head, paren] = v.parts;
+  if (!head || head.type !== 'Any' || !paren || paren.type !== 'Paren') return undefined;
+  const src = head.src;
+  if (src.charCodeAt(0) !== 0x2e /* . */ && src.charCodeAt(0) !== 0x23 /* # */) return undefined;
+  const segs = src.match(/[.#][^.#]+/gu);
+  if (!segs || segs.length === 0) return undefined;
+  const name = segs[segs.length - 1]!;
+  const path: MixinCall['path'] = segs.slice(0, -1).map((s) => ({ comb: ' ', sel: s }));
+  const inner = paren.inner;
+  const callArgs: CallArg[] = isLiteralNode(inner) && inner.src === '' ? [] : [{ value: inner }];
+  return { type: 'MixinCall', name, args: callArgs, path, important: false };
+}
+
 function substituteDetachedVarArgs(call: MixinCall, frame: Frame): MixinCall {
   let changed = false;
   const args = call.args.map((a) => {
+    // A mixin call passed directly as an arg value (`.wrapper(.something(foo))`):
+    // wrap it as a detached ruleset whose body is that call, so `@another-mixin()`
+    // dispatches it (its args resolve in the caller frame — its `defFrame`).
+    const direct = spacedMixinCall(a.value);
+    if (direct) {
+      changed = true;
+      return { ...a, value: { type: 'DetachedRuleset', body: [direct], defFrame: frame } as DetachedRuleset };
+    }
     if (a.value.type === 'VarRef') {
       const bound = lookupVar(frame, a.value.name);
       if (bound && bound.type === 'DetachedRuleset') {
         changed = true;
         return { ...a, value: bound };
+      }
+      // `@alias: .something(foo); .wrapper(@alias);` — a mixin-call-valued var passed
+      // as an arg binds BY REFERENCE, wrapped as a detached ruleset whose body is that
+      // call (so `@another-mixin()` in the callee dispatches it). The wrapper's home is
+      // the caller frame, where the call's own selector/args resolve.
+      if (bound && bound.type === 'MixinCall') {
+        changed = true;
+        const dr: DetachedRuleset = { type: 'DetachedRuleset', body: [bound], defFrame: frame };
+        return { ...a, value: dr };
       }
     }
     return a;
@@ -4034,6 +4175,9 @@ function emitNestedLeaf(leaf: Leaf, e: Emit): void {
  * braces rewound — matching v5.
  */
 function emitNestedRule(rule: Rule, frame: Frame, e: Emit, imp = false): void {
+  // [guards] a guarded ruleset emits its block only when the guard is true (the
+  // flattened path applies the same gate in `flatten`).
+  if (!ruleGuardPasses(rule, frame, e)) return;
   const plan = e.extends?.nestedPlan.get(rule);
   if (plan?.collapseTransparent) {
     // [extend] decl-less `&&` self-collapse: emit the body (the pure-`&` child,
@@ -4184,6 +4328,10 @@ function expandNestedCall(call: MixinCall, frame: Frame, e: Emit, imp = false): 
 
 /** Expand a detached-ruleset call in nested mode. */
 function expandNestedDetachedCall(call: DetachedCall, frame: Frame, e: Emit, imp = false): void {
+  // A variable bound to a MIXIN CALL (`@alias: .something(foo); @alias();`) is
+  // dispatched as that call, not spliced as a detached ruleset.
+  const mc = resolveToMixinCall(lookupVar(frame, call.varName), frame);
+  if (mc) { expandNestedCall(mc, frame, e, imp); return; }
   const r = detachedCallFrame(call.varName, frame, e);
   if (!r) return;
   emitNestedBody(r.dr.body, r.callFrame, e, undefined, imp);
