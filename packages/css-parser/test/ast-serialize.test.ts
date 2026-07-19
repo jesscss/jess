@@ -240,6 +240,38 @@ describe('serializeTypes coverage', () => {
     `);
   });
 
+  test('known block preludes retain grammar segments across quoted, nested, and commented forms', () => {
+    // The prelude must arrive as grammar-produced segments: a quoted family is
+    // one segment, a nested `var(...)` (the CSS runtime-value analogue of an
+    // interpolated segment) is one segment despite its inner comma/space, and
+    // the trailing comment is trivia rather than text later split by a builder.
+    const source = '@font-feature-values "Acme Variable", var(--family, "fallback family") /* tail */ { @styleset { nice: 1 } }';
+    const { errors, tree, trivia } = cssParser.parse(source);
+    expect(errors).toHaveLength(0);
+    const rule = tree.rules[0];
+    expect(isNode(rule, N.AtRule)).toBe(true);
+    if (!isNode(rule, N.AtRule) || !isNode(rule.prelude, N.Sequence)) {
+      throw new Error('Expected a known at-rule Sequence prelude');
+    }
+    const items = rule.prelude.value as Array<{ valueOf(): unknown }>;
+    expect(items.map(item => String(item.valueOf()))).toEqual([
+      '"Acme Variable"', ',', 'var(--family, "fallback family")'
+    ]);
+    expect(items.every(item => item instanceof Any)).toBe(true);
+    // This rejects the former opaque-leaf-plus-split implementation: every
+    // grammar segment carries its own source span instead of inheriting the
+    // same whole-prelude span.
+    expect(items.map(item => sourceSpanOf(item as object))).toEqual([
+      { start: source.indexOf('"Acme Variable"'), end: source.indexOf('"Acme Variable"') + '"Acme Variable"'.length },
+      { start: source.indexOf(','), end: source.indexOf(',') + 1 },
+      {
+        start: source.indexOf('var(--family'),
+        end: source.indexOf('var(--family') + 'var(--family, "fallback family")'.length
+      }
+    ]);
+    expect(triviaText(trivia.lookup(sourceSpanOf(rule.prelude)?.end, 'after'))).toBe(' /* tail */ ');
+  });
+
   test('pseudo with arguments', () => {
     const { tree } = cssParser.parse('a:is(b, c) { d: e }');
     const out = serializeTypes(tree);
