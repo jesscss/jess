@@ -27,25 +27,6 @@ export interface Contrib {
 }
 export type ContribMap = Map<PlanInstruction, Contrib>;
 
-/**
- * The target-atom solve prefilter is ON in production — it is a provably byte-
- * identical optimization (a skipped subject cannot match/chain). Tests flip it OFF
- * via {@link setExtendPrefilterEnabled} to assert ON == OFF byte-identity across
- * adversarial shapes; never disable it outside tests.
- */
-let prefilterEnabled = true;
-
-/** TEST-ONLY toggle for the target-atom solve prefilter (see {@link prefilterEnabled}). */
-export function setExtendPrefilterEnabled(on: boolean): void {
-  prefilterEnabled = on;
-}
-
-/** Whether the target-atom prefilter (and, in `emit.ts`, the candidate prune it
- * authorizes) is ON. OFF ⇒ full-scan reference path for the differential gate. */
-export function isExtendPrefilterEnabled(): boolean {
-  return prefilterEnabled;
-}
-
 function instKey(inst: PlanInstruction): string {
   return `${inst.partial ? 1 : 0}|${branchText(inst.target)}|${inst.order}`;
 }
@@ -105,7 +86,7 @@ export function solveComposed(seed: Branch[], subject: PlanSubject, plan: Plan):
   // extracted graft-recursively at the same per-simple granularity/normalization)
   // provably never matches nor chains, so skip solve and keep the RAW seed. This
   // prunes the ~92% of subjects that no target touches without running the fixpoint.
-  if (prefilterEnabled && !seed.some((b) => branchSharesAtom(b, plan.targetAtoms))) {
+  if (!seed.some(b => branchSharesAtom(b, plan.targetAtoms))) {
     return { list: seed, changed: false };
   }
   const reachable = plan.instructions.filter((i) => reaches(i.scope, subject.scope));

@@ -120,6 +120,46 @@ active architecture queue.
         "outputBytes": 133983
       }
     }
+  },
+  {
+    "id": "ast-extend-prefilter-toggle-deletion",
+    "kind": "neutral-or-negative",
+    "surface": "canonical AST extend candidate admission",
+    "files": ["packages/core/src/ast/extend/solve.ts"],
+    "coverage": "owner-plus-named-carry-forward-support",
+    "supportFiles": ["packages/core/src/ast/extend.ts", "packages/core/src/ast/extend/emit.ts", "packages/core/src/ast/__tests__/extend-direct-acceptance.test.ts"],
+    "neutralRefactor": {
+      "costDelta": "decrease",
+      "why": "The deleted mutable test toggle and alternate full-scan branch had no callers. The production candidate prefilter and prune were already permanently enabled; direct AST cases cover partial graft, nested own-extend descendant closure, media reachability, and structured interpolation without restoring a host or second runtime path. No speed claim is made.",
+      "byteIdentity": {
+        "fixture": "benchmark.less",
+        "collapseNesting": true,
+        "outputSha256": "adfd26732125a33fc1e264aca7d7ecde8c7c1da43f968e3106bd387a1f78e840",
+        "outputBytes": 133983
+      }
+    }
+  },
+  {
+    "id": "ast-evaluator-stale-adapter-comment-deletion",
+    "kind": "neutral-or-negative",
+    "surface": "AST evaluator comments",
+    "files": ["packages/core/src/ast/evaluator.ts"],
+    "neutralRefactor": {
+      "costDelta": "neutral",
+      "why": "Deletes stale adapter terminology from comments only; emitted JavaScript and evaluator control flow are unchanged.",
+      "byteIdentity": {"fixture":"benchmark.less","collapseNesting":true,"outputSha256":"adfd26732125a33fc1e264aca7d7ecde8c7c1da43f968e3106bd387a1f78e840","outputBytes":133983}
+    }
+  },
+  {
+    "id": "ast-extend-public-toggle-export-deletion",
+    "kind": "neutral-or-negative",
+    "surface": "AST extend module export surface",
+    "files": ["packages/core/src/ast/extend.ts"],
+    "neutralRefactor": {
+      "costDelta": "decrease",
+      "why": "Deletes the uncalled test-only toggle export. The remaining module exports its live compute operation unchanged.",
+      "byteIdentity": {"fixture":"benchmark.less","collapseNesting":true,"outputSha256":"adfd26732125a33fc1e264aca7d7ecde8c7c1da43f968e3106bd387a1f78e840","outputBytes":133983}
+    }
   }
 ]
 ```

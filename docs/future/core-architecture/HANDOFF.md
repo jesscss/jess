@@ -40,7 +40,41 @@ Less corpus.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: delete unreachable AST-v2 `StyleImport` machinery and propagate direct `PropRef` importance through ordinary and merged declarations.
+- Latest pass: delete the dead extend-prefilter runtime toggle and private AST
+  barrel, while replacing the lost host-era prefilter proof with direct AST cases.
+- Architecture surface: no public/runtime toggle, host, bridge, or full-scan
+  reference path remains. The always-on candidate prefilter and prune are the
+  sole extend implementation. AST tests import their owning leaf modules; the
+  public construction surface remains `@jesscss/core/ast`.
+- Separation/duplication: deletes an alternate test-only control path instead
+  of retaining it as a compatibility seam. The direct AST test cases exercise
+  canonical constructors and serializer output only.
+- Cumulative node weight: decreases by the private barrel; runtime AST node
+  vocabulary is unchanged.
+- New traversal: none. The deletion removes the mutable branch around the
+  existing prefilter and candidate-set admission; direct tests only construct
+  small canonical roots.
+- New node/materialization: none in production. Test roots/selectors are direct
+  constructor input only.
+- Render path: unchanged except that it no longer reads a mutable global to
+  choose an unreachable full-scan branch.
+- Helper/API surface: decreases: `setExtendPrefilterEnabled`,
+  `isExtendPrefilterEnabled`, their global flag, and the private AST barrel are
+  deleted. No replacement helper is introduced.
+- Metadata mutations: none.
+- Review-flagged diff tokens: candidate-set and branch scans already existed;
+  this pass deletes their mutable gate and adds no runtime loop, allocation,
+  map, clone, or error-control path.
+- Hot-path cost contracts:
+  ```json
+  [{"id":"ast-extend-prefilter-toggle-deletion","verdict":"accepted","costDelta":"decrease","why":"Deletes an uncalled mutable toggle, its alternate full-scan gate, and the private barrel while retaining the existing production candidate admission. Direct AST regressions cover its former risk shapes; no speed claim is made.","byteIdentity":{"fixture":"benchmark.less","collapseNesting":true,"outputSha256":"adfd26732125a33fc1e264aca7d7ecde8c7c1da43f968e3106bd387a1f78e840","outputBytes":133983}},{"id":"ast-evaluator-stale-adapter-comment-deletion","verdict":"accepted","costDelta":"neutral","why":"Comment-only removal of stale adapter terminology; no evaluator code path changes.","byteIdentity":{"fixture":"benchmark.less","collapseNesting":true,"outputSha256":"adfd26732125a33fc1e264aca7d7ecde8c7c1da43f968e3106bd387a1f78e840","outputBytes":133983}},{"id":"ast-extend-public-toggle-export-deletion","verdict":"accepted","costDelta":"decrease","why":"Deletes the uncalled toggle export; live compute operation remains unchanged.","byteIdentity":{"fixture":"benchmark.less","collapseNesting":true,"outputSha256":"adfd26732125a33fc1e264aca7d7ecde8c7c1da43f968e3106bd387a1f78e840","outputBytes":133983}}]
+  ```
+- Evidence: direct AST extend cases cover partial graft, nested own-extend plus
+  descendant candidate closure, media reachability, and structured interpolation;
+  full AST tests, core build, and package-export verification pass.
+- Verdict: accepted deletion; the old host-era differential suite is not restored.
+
+- Prior pass: delete unreachable AST-v2 `StyleImport` machinery and propagate direct `PropRef` importance through ordinary and merged declarations.
 - Architecture surface: `ImportAtRule` remains the parser-owned typed import fact. No parser, test, public entry, or production caller constructs AST-v2 `StyleImport`; it existed only in its own union/factory/registry and serializer branches. `PropRef` retains the existing property lookup and declaration emit paths.
 - Separation/duplication: deletes the duplicate AST import representation only; legacy `tree/StyleImport`, `Context`, `Rules`, plugin resolution, and import realization remain for the later direct dialect-Root plus plugin-owned IO cutover. The property accessor carries the source declaration's existing boolean through the existing ordinary sink or merged scalar; it adds neither inline bytes nor a second evaluator route.
 - Cumulative node weight: decreases by one unreachable discriminant/factory and its serializer-only branches. The property lookup's already-existing result object receives one primitive boolean.

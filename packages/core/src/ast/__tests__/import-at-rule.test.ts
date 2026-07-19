@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { any, importAtRule, interp, keyword, list, quoted, root, serialize, url, varDecl, varRef } from '../index.js';
+import { importAtRule } from '../at-rule.js';
+import { any, interp, keyword, list, quoted, root, url, varDecl, varRef } from '../nodes.js';
+import { serialize } from '../serialize.js';
 
 describe('ImportAtRule', () => {
   it('writes a typed target and optional typed tail as one terminal statement', () => {

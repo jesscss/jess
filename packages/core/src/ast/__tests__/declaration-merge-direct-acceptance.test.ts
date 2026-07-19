@@ -1,17 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { makeBuiltinRegistry } from '@jesscss/fns';
-import {
-  buildEvaluator,
-  decl,
-  important,
-  keyword,
-  root,
-  rule,
-  serialize,
-  varDecl,
-  varRef,
-  type Root
-} from '../index.js';
+import { buildEvaluator } from '../evaluator.js';
+import { decl, important, keyword, root, rule, varDecl, varRef, type Root } from '../nodes.js';
+import { serialize } from '../serialize.js';
 
 const evaluator = buildEvaluator(makeBuiltinRegistry());
 const render = (document: Root): string | undefined => serialize(document, { evaluator }).css;

@@ -1,20 +1,10 @@
 import { describe, expect, it } from 'vitest';
+import { atRuleBlock, atRuleStatement } from '../at-rule.js';
+import { buildEvaluator } from '../evaluator.js';
 import {
-  atRuleBlock,
-  atRuleStatement,
-  buildEvaluator,
-  decl,
-  dimension,
-  interp,
-  keyword,
-  root,
-  rule,
-  sel,
-  serialize,
-  varDecl,
-  varRef,
-  type Root
-} from '../index.js';
+  decl, dimension, interp, keyword, root, rule, sel, varDecl, varRef, type Root
+} from '../nodes.js';
+import { serialize } from '../serialize.js';
 import { makeBuiltinRegistry } from '@jesscss/fns';
 
 const evaluator = buildEvaluator(makeBuiltinRegistry());

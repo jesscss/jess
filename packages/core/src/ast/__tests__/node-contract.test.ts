@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { isNode, selectorCapture, type Node } from '../index.js';
+import { isNode, type Node } from '../node.js';
+import { selectorCapture } from '../nodes.js';
 
 describe('AST node contract', () => {
   it('admits SelectorCapture through the exported Node union', () => {

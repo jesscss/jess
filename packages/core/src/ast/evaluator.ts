@@ -5,8 +5,7 @@
  * record/replay.
  *
  * Named calls dispatch through a caller-populated {@link FnRegistry}; every other
- * named call is treated as an unknown function emitted verbatim (byte-identical to
- * the former adapter's unknown-fn path).
+ * named call is treated as an unknown function emitted verbatim.
  *
  * HARD MODULE BOUNDARY: imports only the engine value modules.
  */
@@ -26,8 +25,8 @@ function verbatimArgs(args: ValueList): string {
 }
 
 /**
- * The value→string host hook supplied to Tier-B fns — the twin of legacy
- * `serializeNodeValue`: a Quoted's INNER text (unquoted; escaped `~"…"` already
+ * The value→string hook supplied to Tier-B fns: a Quoted's INNER text (unquoted;
+ * escaped `~"…"` already
  * arrives as a `Keyword` whose bytes ARE the inner text), any other value its
  * canonical emitted bytes. Boundary-clean (operates on the value domain only).
  */
@@ -76,7 +75,7 @@ export function buildEvaluator(registry: FnRegistry): ValueEvaluator {
         return makeKeyword(`${name}(${verbatimArgs(args)})`);
       }
     }
-    // Unknown function: emit verbatim (byte-identical to the adapter).
+    // Unknown function: emit verbatim.
     return makeKeyword(`${name}(${verbatimArgs(args)})`);
   };
 

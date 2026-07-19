@@ -1,12 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import {
-  opaqueAtRuleBlock,
-  comment,
-  rule,
-  root,
-  serialize,
-  type ValueEvaluator,
-} from '../index.js';
+import { opaqueAtRuleBlock } from '../at-rule.js';
+import { comment, rule, root } from '../nodes.js';
+import { serialize } from '../serialize.js';
+import type { ValueEvaluator } from '../value-eval.js';
 
 describe('OpaqueAtRuleBlock', () => {
   it('writes its header, prelude, and raw body verbatim', () => {

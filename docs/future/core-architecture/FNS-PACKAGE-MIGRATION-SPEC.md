@@ -156,7 +156,8 @@ converted-in-core-then-moved).
 
 ### 2a. Core's seam surface
 
-Core exposes (from `ast/index.ts`, re-exported at the package root):
+Core exposes these seams from their owning modules. The public construction
+surface is `@jesscss/core/ast`; the value substrate is `@jesscss/core/value`.
 
 - `interface FnRegistry` — the runtime table: `register(fn: Fn)`,
   `registerAll(fns: readonly Fn[])`, `has(name): boolean`,
@@ -350,7 +351,9 @@ Importers that break or must change, grouped by edge:
 - `core/src/ast/functions/index.ts` — deleted (its `FN_LIST` becomes `builtinLessFns` in fns).
 - `core/src/ast/functions/*.ts` (68 bodies + 4 helpers) — relocate to `packages/fns`.
 - `core/src/ast/evaluator.ts` — `buildEvaluator` gains the `registry` param; drops the `FN_LIST` (and `createFnRegistry`) self-registration.
-- `core/src/ast/index.ts` — already exports `createFnRegistry`/`FnRegistry` and `buildEvaluator`; adds the `/value` substrate surface.
+- Do not revive the removed private `core/src/ast/index.ts` barrel. Internal
+  consumers import their owning AST leaf directly; the public construction surface
+  remains `core/src/ast.ts` (`@jesscss/core/ast`).
 
 **B. Every test that constructs an evaluator** (must pass a populated registry):
 - `native-value-differential.test.ts`, `native-value-perf.test.ts`,
@@ -358,7 +361,7 @@ Importers that break or must change, grouped by edge:
   `guard-byte-identity.test.ts`, `nested-byte-identity.test.ts`,
   `nested-census.test.ts`, `import-*-byte-identity.test.ts`,
   `atrule-*-byte-identity.test.ts`, `extend-byte-identity.test.ts`,
-  `extend-prefilter-soundness.test.ts`, `selector-interp-host-byte-identity.test.ts`,
+  `selector-interp-host-byte-identity.test.ts`,
   and the `*-race.test.ts` perf tests. All currently call `buildEvaluator()`
   with no args — they become `buildEvaluator(registryWithBuiltins)`. A tiny
   test helper (`makeBuiltinRegistry()`) absorbs the churn.
@@ -490,15 +493,11 @@ reference handling. **Read §8.0 first — three landed facts change the sequenc
    lands behind the **test-exercised** evaluator + a `makeBuiltinRegistry()` helper;
    the plugin adopts `builtinLessFns` when it adopts the AST-v2 render path (§8.6).
 
-3. **There is NO public import path from `@jesscss/core` to the value substrate.**
-   Core's root `src/index.ts` does **not** re-export `./ast`; `ast/index.ts` surfaces
-   `serialize`/`buildEvaluator`/`createFnRegistry`/serializer/`literal-tag` but **not**
-   `value-factory` (`makeDimension`/`makeColor*` are exported nowhere). So relocated
-   bodies calling `make*` have **no import target today**. **This makes the
-   `@jesscss/core/value` subpath a hard PREREQUISITE of relocation, not optional
-   hardening** — it cannot come "last"; it must precede Stage D. (Widening the root
-   export instead would drag the entire `ast/` engine onto `@jesscss/core`'s public
-   surface — rejected.)
+3. **The value substrate has a narrow public import path:** `@jesscss/core/value`.
+   It is the only supported target for relocated function bodies that need value
+   constructors or value-domain types. Do not widen the package root or revive the
+   deleted private `ast/index.ts` barrel to obtain those symbols; that would expose
+   the full AST engine instead of the intentionally narrow substrate.
 
 ### 8.1 The reference knot, resolved (the crux — do not improvise)
 
@@ -621,14 +620,14 @@ value-factory, value-units}`, `functions/types → value-eval` — **none reach 
 
 ### 8.5 Downstream blast radius (concrete file lists)
 
-**18 `buildEvaluator()` call sites (Stage A → `buildEvaluator(makeBuiltinRegistry())`):**
+**Historical `buildEvaluator()` call-site inventory (Stage A migration record):**
 `atrule-bubbling-projection`, `atrule-byte-identity`, `census`, `extend-byte-identity`,
-`extend-prefilter-soundness`, `guard-byte-identity`, `import-byte-identity`,
+`guard-byte-identity`, `import-byte-identity`,
 `import-census`, `import-modes-byte-identity`, `import-url-inline-byte-identity`,
 `native-value-differential`, `native-value-perf`, `nested-byte-identity`,
-`nested-census`, `r4-byte-identity`, `value-byte-identity`, `var-exclusion` (all
-`parse-host/__tests__/`), and `actions/__tests__/selector-interp-host-byte-identity`.
-A single `makeBuiltinRegistry()` helper absorbs the churn.
+`nested-census`, `r4-byte-identity`, `value-byte-identity`, `var-exclusion`
+(the former host-era paths are deleted). Direct AST tests use their owning leaf
+modules and `makeBuiltinRegistry()` absorbs registry setup.
 
 **7 `buildAdapterEvaluator()` call sites (Stage E — re-anchor to the Stage B fixture or
 delete):** `atrule-race`, `guard-race`, `nested-race`, `value-race`, `poc-dense-value`,

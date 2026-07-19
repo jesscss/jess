@@ -471,8 +471,8 @@ export interface SelectorList {
 /**
  * A `name: value;` declaration. `name` may be an `Interp` template
  * (`@{prefix}width`). `merge` is `','` for `+`, `' '` for `+_`, else `null`.
- * `important` is the structured `!important` flag (parsed off the value bytes at
- * bridge time), promoted so merge can OR it across members and emit it once.
+ * `important` is the structured `!important` flag parsed directly with the value,
+ * promoted so merge can OR it across members and emit it once.
  */
 export interface Declaration {
   readonly type: 'Declaration';
@@ -548,8 +548,8 @@ export interface ExtendInstruction {
 
 /**
  * A `selector { ...body }` rule; body may nest further rules.
- * `extendInstructions` carries the `:extend()` instructions the bridge extracted
- * from the body (the `Extend` body statements are removed and hoisted here);
+ * `extendInstructions` carries the `:extend()` instructions parsed from the body
+ * (the `Extend` body statements are removed and hoisted here);
  * absent for the common no-extend rule so the serializer's zero-cost gate holds.
  */
 export interface Rule {

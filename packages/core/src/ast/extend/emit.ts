@@ -47,7 +47,7 @@ import { composePath } from './compose.js';
 import { branchWholeMatches } from './match.js';
 import { collectPlan, documentHasExtend, reaches } from './plan.js';
 import type { PlanInstruction, PlanSubject } from './plan.js';
-import { buildContribs, isExtendPrefilterEnabled, runFixpoint, solveComposed } from './solve.js';
+import { buildContribs, runFixpoint, solveComposed } from './solve.js';
 import type { Root, Rule, Statement } from '../nodes.js';
 
 export interface NestedRulePlan {
@@ -359,9 +359,6 @@ export function computeExtends(root: Root): ExtendResults | null {
   // pair. C is the DOWNWARD closure of the seeds (flatten cascades to descendants):
   // a subject is a candidate iff it or any ancestor is a seed. Everything else gets
   // the cheap default and is proven (EXTEND-REDESIGN.md §2) to need nothing more.
-  // The prune is gated by the same flag as the solve prefilter so the OFF path is a
-  // full scan (every subject a candidate) — the differential-soundness reference.
-  const pruneOn = isExtendPrefilterEnabled();
   const isSeed = (s: PlanSubject): boolean =>
     s.mayMatch ||
     (s.parent !== null && s.rule.extendInstructions !== undefined && s.rule.extendInstructions.length > 0) ||
@@ -371,7 +368,9 @@ export function computeExtends(root: Root): ExtendResults | null {
   for (const s of plan.subjects) {
     // document (pre-)order ⇒ parent precedes child, so the ancestor's membership is
     // already decided when the closure test reads it.
-    if (!pruneOn || isSeed(s) || (s.parent !== null && candidate.has(s.parent))) candidate.add(s);
+    if (isSeed(s) || (s.parent !== null && candidate.has(s.parent))) {
+      candidate.add(s);
+    }
   }
 
   // ---- FLAT solve, candidates ONLY ----

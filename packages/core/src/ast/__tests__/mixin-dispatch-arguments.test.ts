@@ -12,17 +12,11 @@
  * Each expectation below was captured from `npx less@4.6.3`.
  */
 import { describe, it, expect } from 'vitest';
+import { bindArgs } from '../mixin-dispatch.js';
 import {
-  bindArgs,
-  mixinDef,
-  mixinCall,
-  any,
-  isLiteralNode,
-  type MixinCall,
-  type MixinDef,
-  type Param,
-  type ValueNode,
-} from '../index.js';
+  mixinDef, mixinCall, any, isLiteralNode,
+  type MixinCall, type MixinDef, type Param, type ValueNode
+} from '../nodes.js';
 
 // Caller-frame resolver for byte-literal args: our test args/defaults are plain
 // `Any` leaves, so their bytes are their `src` (mirrors the pipeline's eval-to-bytes).

@@ -1,20 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { makeBuiltinRegistry } from '@jesscss/fns';
+import { buildEvaluator } from '../evaluator.js';
 import {
-  buildEvaluator,
-  decl,
-  dimension,
-  operation,
-  root,
-  rule,
-  serialize,
-  varDecl,
-  varRef,
-  type MixinCall,
-  type MixinDef,
-  type Root,
-  type Statement
-} from '../index.js';
+  decl, dimension, operation, root, rule, varDecl, varRef,
+  type MixinCall, type MixinDef, type Root, type Statement
+} from '../nodes.js';
+import { serialize } from '../serialize.js';
 
 const evaluator = buildEvaluator(makeBuiltinRegistry());
 const render = (document: Root, collapseNesting = true): string | undefined =>

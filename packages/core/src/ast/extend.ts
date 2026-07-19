@@ -12,4 +12,3 @@
 
 export { computeExtends } from './extend/emit.js';
 export type { ExtendResults, NestedRulePlan } from './extend/emit.js';
-export { setExtendPrefilterEnabled } from './extend/solve.js';

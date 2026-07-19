@@ -1,21 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { makeBuiltinRegistry } from '@jesscss/fns';
+import { buildEvaluator } from '../evaluator.js';
 import {
-  buildEvaluator,
-  decl,
-  detachedRuleset,
-  dimension,
-  keyword,
-  mapAccessor,
-  propRef,
-  root,
-  rule,
-  serialize,
-  varDecl,
-  varIndirect,
-  varRef,
-  type Root
-} from '../index.js';
+  decl, detachedRuleset, dimension, keyword, mapAccessor, propRef, root, rule,
+  varDecl, varIndirect, varRef, type Root
+} from '../nodes.js';
+import { serialize } from '../serialize.js';
 
 const evaluator = buildEvaluator(makeBuiltinRegistry());
 const render = (document: Root): string | undefined => serialize(document, { evaluator }).css;
