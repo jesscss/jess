@@ -1,6 +1,6 @@
 /**
  * Closed direct AST-v2 Less parser pilot for plain quoted `@import` and
- * variable-declaration facts.
+ * variable-declaration, and plain declaration facts.
  *
  * It proves that the Less grammar can construct the canonical ImportAtRule
  * directly. It deliberately performs no loading, resolution, source reparse,
@@ -26,7 +26,7 @@ function isRoot(value: unknown): value is Root {
     && Array.isArray(value.children);
 }
 
-/** Parse the closed import/variable subset into canonical AST-v2 data. */
+/** Parse the closed import/variable/declaration subset into canonical AST-v2 data. */
 export function parse(input: string): LessAstParseResult {
   const result = run(directLessAstGrammar.DirectLessDocument, input, { trivia: directLessAstGrammar.whitespace });
   if (result.ok && result.unconsumedFrom === null && isRoot(result.value)) {

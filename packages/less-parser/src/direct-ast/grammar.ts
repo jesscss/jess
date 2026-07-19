@@ -1,6 +1,6 @@
 /** Closed direct AST-v2 grammar for the simplest Less import fact. */
 import { choice, literal, many, node, regex, rules, sequence, trivia } from 'parseman' with { type: 'macro' };
-import type { AstQuoted, ImportAtRule, Root, Statement, VarDeclaration } from '@jesscss/core/ast';
+import type { AstQuoted, Declaration, ImportAtRule, Root, Statement, VarDeclaration } from '@jesscss/core/ast';
 
 type Token = { readonly value: string };
 
@@ -58,10 +58,30 @@ function isVarDeclaration(value: unknown): value is VarDeclaration {
     && isAstQuoted(value.value);
 }
 
+function isDeclaration(value: unknown): value is Declaration {
+  return typeof value === 'object'
+    && value !== null
+    && 'type' in value
+    && value.type === 'Declaration'
+    && 'name' in value
+    && typeof value.name === 'string'
+    && 'value' in value
+    && typeof value.value === 'object'
+    && value.value !== null
+    && 'type' in value.value
+    && value.value.type === 'Keyword'
+    && 'src' in value.value
+    && typeof value.value.src === 'string'
+    && 'merge' in value
+    && value.merge === null
+    && 'important' in value
+    && value.important === false;
+}
+
 function requireStatements(children: readonly unknown[]): Statement[] {
   const statements: Statement[] = [];
   for (const child of children) {
-    if (!isImportAtRule(child) && !isVarDeclaration(child)) {
+    if (!isImportAtRule(child) && !isVarDeclaration(child) && !isDeclaration(child)) {
       throw new TypeError('Direct Less AST grammar produced a non-statement child.');
     }
     statements.push(child);
@@ -72,6 +92,8 @@ function requireStatements(children: readonly unknown[]): Statement[] {
 const whitespace = trivia(regex(/[ \t\n\r\f]+/));
 const importKeyword = regex(/@(?:-import|-export|import)(?![-\w])/i);
 const variableName = regex(/-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
+const propertyName = regex(/-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
+const keywordValue = regex(/-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
 const doubleQuotedText = regex(/[^"\\]*/);
 const singleQuotedText = regex(/[^'\\]*/);
 
@@ -119,11 +141,35 @@ export const directLessAstGrammar = rules({ trivia: whitespace }, (g: any) => {
       return { type: 'VarDeclaration', name: name.value, value };
     }
   );
+  const DirectLessDeclaration = node<Declaration>(
+    'DirectLessDeclaration',
+    sequence(propertyName, literal(':'), keywordValue, literal(';')),
+    (children) => {
+      // Property, delimiter, and value are independently recognized grammar
+      // children; AST construction does not split or reclassify authored text.
+      const name = requireToken(children[0]);
+      const value = requireToken(children[2]);
+      return {
+        type: 'Declaration',
+        name: name.value,
+        value: { type: 'Keyword', src: value.value },
+        merge: null,
+        important: false
+      };
+    }
+  );
   const DirectLessDocument = node<Root>(
     'DirectLessDocument',
-    many(choice(g.DirectLessImport, g.DirectLessVarDeclaration)),
+    many(choice(g.DirectLessImport, g.DirectLessVarDeclaration, g.DirectLessDeclaration)),
     children => ({ type: 'Root', children: requireStatements(children) })
   );
 
-  return { DirectLessDocument, DirectLessImport, DirectLessVarDeclaration, DirectLessQuoted, whitespace };
+  return {
+    DirectLessDocument,
+    DirectLessImport,
+    DirectLessVarDeclaration,
+    DirectLessDeclaration,
+    DirectLessQuoted,
+    whitespace
+  };
 });
