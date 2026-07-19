@@ -33,14 +33,34 @@ export interface ParamSpec {
  *    legacy `serializeNodeValue` does — a Quoted's INNER text (unquoted), any
  *    other value its canonical emitted bytes. Supplied by the host so a fn body
  *    never imports the serializer directly (keeps the seam injected + lean).
- *
- * The IO / file-info bit that the Tier-C fns (`data-uri`/`image-size`/
- * `svg-gradient`) would need is intentionally ABSENT: no Tier-B fn requires it, so
- * it is not plumbed yet (add it with the Tier-C wave, not speculatively).
+ *  - `io`: the OPTIONAL file-read capability the IO Tier-C fns (`data-uri`/
+ *    `image-size`/`image-width`/`image-height`) need. Injected per-render by the
+ *    host (bound to the source file's directory + search paths) — NOT a global,
+ *    NOT the whole legacy `Context`. Absent on the idle path (a render with no IO
+ *    host wired); an IO fn that finds it absent degrades gracefully (verbatim /
+ *    `url()` fallback) rather than throwing.
  */
 export interface FnCtx {
   readonly modes: EvalModes;
   readonly stringify: (v: ValueObj) => string;
+  readonly io?: FnIo;
+}
+
+/**
+ * The per-render file-read capability handed to the IO built-ins. The host owns
+ * path-resolution POLICY (base directory of the current file, configured search
+ * paths); a fn body only supplies a specifier and gets back the raw bytes, or
+ * `null` when nothing resolves/reads. Deliberately minimal — the mime/charset
+ * decision, encoding, size handling and image-header parsing all live in the fn
+ * bodies (pure), so this capability stays a single narrow read seam.
+ */
+export interface FnIo {
+  /**
+   * Resolve `specifier` against the render's base directory (+ search paths) and
+   * return the referenced file's raw bytes, or `null` if it cannot be read. The
+   * specifier is already stripped of any `#fragment` by the caller.
+   */
+  readFile(specifier: string): Uint8Array | null;
 }
 
 interface BaseSpec {

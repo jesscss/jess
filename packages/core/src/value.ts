@@ -50,7 +50,7 @@ export { parseHex, sniffLiteral } from './ast/literal-tag.js';
 export { namedColor } from './ast/color-names.js';
 
 // --- fn-authoring types ---
-export type { Fn, FnSpec, ParamSpec, FnCtx, Kind } from './ast/functions/types.js';
+export type { Fn, FnSpec, ParamSpec, FnCtx, FnIo, Kind } from './ast/functions/types.js';
 
 // --- registry seam ---
 export { createFnRegistry } from './ast/value-dispatch.js';

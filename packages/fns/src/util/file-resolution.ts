@@ -1,22 +1,9 @@
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import type { Context } from '@jesscss/core';
+import { lookupMime } from './mime.js';
 
-const MIME_BY_EXT = new Map<string, { type: string; ascii: boolean }>([
-  ['.css', { type: 'text/css', ascii: true }],
-  ['.gif', { type: 'image/gif', ascii: false }],
-  ['.htm', { type: 'text/html', ascii: true }],
-  ['.html', { type: 'text/html', ascii: true }],
-  ['.jpg', { type: 'image/jpeg', ascii: false }],
-  ['.jpeg', { type: 'image/jpeg', ascii: false }],
-  ['.js', { type: 'application/javascript', ascii: true }],
-  ['.json', { type: 'application/json', ascii: true }],
-  ['.png', { type: 'image/png', ascii: false }],
-  ['.svg', { type: 'image/svg+xml', ascii: true }],
-  ['.txt', { type: 'text/plain', ascii: true }],
-  ['.webp', { type: 'image/webp', ascii: false }],
-  ['.xml', { type: 'application/xml', ascii: true }]
-]);
+export { lookupMime } from './mime.js';
 
 export function resolveAssetPath(context: Context, rawPath: string): string | undefined {
   const currentDir = context.treeContext?.file?.path ?? process.cwd();
@@ -59,9 +46,4 @@ export async function readAsset(context: Context, rawPath: string): Promise<{ co
     }
     return { contents: readFileSync(resolvedPath) };
   }
-}
-
-export function lookupMime(filePath: string): { type: string; ascii: boolean } {
-  const ext = path.extname(filePath).toLowerCase();
-  return MIME_BY_EXT.get(ext) ?? { type: 'application/octet-stream', ascii: false };
 }

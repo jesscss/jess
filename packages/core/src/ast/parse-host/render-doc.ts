@@ -35,6 +35,7 @@ import type { SerializeResult } from '../serialize.js';
 import type { ValueEvaluator } from '../value-eval.js';
 import { parseToAst } from './dispatch-host.js';
 import { createImportState, resolveDirectImports, type FileVarParse } from './import.js';
+import { createFsFnIo } from './fn-io.js';
 
 export interface AstRenderResult {
   /** Serialized CSS bytes, or `undefined` if the render threw before producing any. */
@@ -126,7 +127,14 @@ export function renderAstDoc(src: string, options: AstRenderOptions): AstRenderR
     );
     const resolvedRoot: Root = { ...root, children: resolved };
     const { css } = requireSync(
-      serialize(resolvedRoot, { evaluator: options.evaluator, collapseNesting: options.collapseNesting }),
+      serialize(resolvedRoot, {
+        evaluator: options.evaluator,
+        collapseNesting: options.collapseNesting,
+        // [io] file-read capability for the IO built-ins (`data-uri`/`image-*`),
+        // bound to the source file's directory. Resolves relative asset paths the
+        // way Less resolves them against the entry file's location.
+        io: createFsFnIo(options.filePath),
+      }),
     );
     return { css, parseErrors: errors, threw: null, deferredImports };
   } catch (e) {

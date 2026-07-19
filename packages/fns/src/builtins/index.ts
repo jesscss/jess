@@ -110,6 +110,11 @@ import {
 } from './type-predicates.js';
 // --- url producers (Tier-C — self-contained; no file IO) ---
 import { svgGradient } from './svg-gradient.js';
+// --- IO producers (Tier-C — read a referenced file via the injected `FnCtx.io`) ---
+import { dataUri } from './data-uri.js';
+import { imageSize } from './image-size.js';
+import { imageWidth } from './image-width.js';
+import { imageHeight } from './image-height.js';
 // --- misc ---
 import { e } from './e.js';
 
@@ -131,6 +136,7 @@ export const builtinLessFns: readonly Fn[] = [
   replace, format, formatPercent, escape,
   iscolor, isnumber, isstring, iskeyword, isunit, ispixel, ispercentage, isem,
   svgGradient,
+  dataUri, imageSize, imageWidth, imageHeight,
   e,
 ];
 

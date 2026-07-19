@@ -82,7 +82,7 @@ import {
   type ValueEvaluator,
   type ValueObj,
 } from './value-eval.js';
-import type { Fn } from './functions/types.js'; // [plugin/P1] scoped-fn registry
+import type { Fn, FnIo } from './functions/types.js'; // [plugin/P1] scoped-fn registry; [io] file-read seam
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { colorFromSrc, dimensionFromFields, quotedFromFields, materializeAny } from './literal-tag.js'; // [value node model]
 import { calcInner } from './value-operate.js'; // [calc]
@@ -144,6 +144,13 @@ export interface SerializeOptions {
    * shape in isolation), and the `isdefined` family.
    */
   optional?: boolean;
+  /**
+   * [io] OPTIONAL per-render file-read capability handed to the IO built-ins
+   * (`data-uri`/`image-size`/`image-width`/`image-height`) via {@link FnCtx.io}.
+   * The host (render-doc) binds it to the source file's directory. Absent → those
+   * fns degrade gracefully (a `url()` / verbatim fallback), never throw.
+   */
+  io?: FnIo;
 }
 
 export interface SerializeResult {
@@ -845,6 +852,11 @@ interface EvalCtx {
   // hot path byte- and cost-identical to before P1. Set once at top-level
   // `serialize`; threaded through the shared `EvalCtx`.
   anyScopedFns?: boolean;
+  // [io] per-render file-read capability for the IO built-ins (`data-uri`/
+  // `image-*`), forwarded to `ev.call` and thence to `FnCtx.io`. Set once at
+  // top-level `serialize` from `SerializeOptions.io`; absent on renders with no
+  // IO host wired (every value fn but the IO Tier-C set ignores it).
+  io?: FnIo;
 }
 
 /** Force a computed `Value` to a typed object. A computed STRING carries no parse
@@ -1433,7 +1445,7 @@ function evalCall(node: FunctionCall, frame: Frame | null, e: EvalCtx): MaybePro
   const typed = node.args.map((a) => evalTyped(a, frame, e));
   return combineAll(typed, (vals) => {
     const list: ValueList = { type: 'List', items: vals, sep, bytes: '' };
-    return ev.call(node.name, list, e.modes, scope);
+    return ev.call(node.name, list, e.modes, scope, e.io);
   });
 }
 
@@ -1669,6 +1681,7 @@ function scratchEmit(e: EvalCtx): Emit {
     optional: e.optional,
     calcDepth: e.calcDepth,
     anyScopedFns: e.anyScopedFns, // [plugin/P1] preserve the scoped-fn gate
+    io: e.io, // [io] preserve the file-read capability
     chunks: [],
     off: 0,
     positions: null,
@@ -1859,6 +1872,7 @@ export function serialize(root: Root, options?: SerializeOptions): SerializeRetu
     lastBlock: { parentKey: null, header: '', depth: -1, endChunks: -1 }, // [adjacent-merge]
     mixinDepth: 0, // [recursion-backstop] runaway mixin-expansion depth guard
     anyScopedFns, // [plugin/P1] gate: false today ⇒ fn-dispatch walk skipped
+    io: options?.io, // [io] per-render file-read capability for the IO built-ins
   };
   const rootFrame: Frame = {
     parent: null,

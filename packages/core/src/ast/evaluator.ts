@@ -12,6 +12,7 @@
  * HARD MODULE BOUNDARY: imports only the engine value modules.
  */
 import type { EvalModes, FnScope, List as ValueList, ValueEvaluator, ValueObj } from './value-eval.js';
+import type { FnIo } from './functions/types.js';
 import { sepGlue } from './value-eval.js';
 import { operate } from './value-operate.js';
 import { compare as compareValues, typeCheck as typeCheckValues } from './value-guards.js';
@@ -43,7 +44,7 @@ const stringify = (v: ValueObj): string => (v.type === 'Quoted' ? v.value : v.by
 export function buildEvaluator(registry: FnRegistry): ValueEvaluator {
   const materialize = (bytes: string): ValueObj => sniffLiteral(bytes);
 
-  const call = (name: string, args: ValueList, modes: EvalModes, scope?: FnScope | null): ValueObj => {
+  const call = (name: string, args: ValueList, modes: EvalModes, scope?: FnScope | null, io?: FnIo): ValueObj => {
     // [plugin/P1] Scoped `@plugin`/`@use` fns shadow built-ins and are consulted
     // FIRST — but ONLY when `scope` is non-null, which the caller passes solely
     // when the document registered a scoped fn somewhere (`e.anyScopedFns`). On the
@@ -53,7 +54,7 @@ export function buildEvaluator(registry: FnRegistry): ValueEvaluator {
       const scoped = scope.lookup(name);
       if (scoped) {
         try {
-          return dispatchFn(scoped, args, { modes, stringify });
+          return dispatchFn(scoped, args, { modes, stringify, io });
         } catch (err) {
           if (err instanceof RangeError) throw err;
           return makeKeyword(`${name}(${verbatimArgs(args)})`);
@@ -62,7 +63,7 @@ export function buildEvaluator(registry: FnRegistry): ValueEvaluator {
     }
     if (registry.has(name)) {
       try {
-        return registry.dispatch(name, args, { modes, stringify });
+        return registry.dispatch(name, args, { modes, stringify, io });
       } catch (err) {
         // FunctionMode `preserve` (Less v5 default): a bare/global fn reference that
         // resolves to a built-in but can't produce a value for these args — a modern

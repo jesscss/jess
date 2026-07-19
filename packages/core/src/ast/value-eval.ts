@@ -27,7 +27,7 @@
 
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
 import type { UnitMode } from '../types/modes.js';
-import type { Fn } from './functions/types.js';
+import type { Fn, FnIo } from './functions/types.js';
 
 /* --------------------------------------------------------- value domain */
 
@@ -210,8 +210,11 @@ export interface ValueEvaluator {
   /** Named-function call on a materialized arg list. Sync unless a genuinely
    * async built-in forces a thenable (scoped to the forcing leaf). `scope`, when
    * supplied non-null, is consulted FIRST (scoped `@plugin`/`@use` fns shadow
-   * built-ins); omitted/`null` is the idle path — flat global registry only. */
-  call(name: string, args: List, modes: EvalModes, scope?: FnScope | null): MaybePromise<ValueObj>;
+   * built-ins); omitted/`null` is the idle path — flat global registry only.
+   * `io`, when supplied, is the per-render file-read capability an IO built-in
+   * (`data-uri`/`image-*`) reaches through {@link FnCtx.io}; absent on renders
+   * with no IO host wired. */
+  call(name: string, args: List, modes: EvalModes, scope?: FnScope | null, io?: FnIo): MaybePromise<ValueObj>;
   /** Guard comparison leaf (`@a > 0`) on typed operands -> boolean. */
   compare(op: string, left: ValueObj, right: ValueObj, modes: EvalModes): boolean;
   /** Guard type-function leaf (`iscolor(@a)`) on typed args -> boolean. */
