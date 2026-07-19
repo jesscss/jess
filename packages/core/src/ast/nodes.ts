@@ -278,9 +278,18 @@ export interface DetachedRuleset {
 }
 
 /**
- * A map / namespace accessor value `@p[text]` / `#ns[$@prop]` / `@list[1]`.
- * `base` resolves to a ruleset-like scope; `key` is a property-name value (may be
- * an `Interp`) when `keyIsProp`, else a numeric index (negative counts from end).
+ * A map / namespace accessor value `@p[text]` / `#ns[$@prop]` / `@list[1]` /
+ * `#ns.options[val1]`.
+ * `base` resolves to a ruleset-like scope — a value node (a `@var` bound to a
+ * detached ruleset / another accessor, or a `#ns` selector fragment) OR a
+ * {@link MixinCall} (`#ns.options` / `.alias` / `#library.add-one(1px)`), whose
+ * DISPATCHED body members form the map.
+ * `key` is a member-name value (may be an `Interp`) when `keyKind` is `var`/`prop`,
+ * else a numeric index (negative counts from end) when `index`. `keyKind`
+ * distinguishes Less's two disjoint member namespaces: `@name` reads a VARIABLE
+ * member (`var`), a bare / `$name` key reads a PROPERTY member (`prop`); the two
+ * never fall back to each other (per Less 4.x — `#ns[a]` errors if only `@a`
+ * exists).
  * `bytes` is the verbatim source of the whole accessor, emitted as a literal
  * fallback when the base does not resolve to a map/ruleset in the current ast/
  * scope (e.g. the base is bound by a not-yet-modelled mixin-call / `each` result),
@@ -288,9 +297,9 @@ export interface DetachedRuleset {
  */
 export interface MapAccessor {
   readonly type: 'MapAccessor';
-  readonly base: ValueNode;
+  readonly base: ValueNode | MixinCall;
   readonly key: ValueNode | number;
-  readonly keyIsProp: boolean;
+  readonly keyKind: 'var' | 'prop' | 'index';
   readonly bytes: string;
 }
 
@@ -763,11 +772,11 @@ export const forNode = (
   indexName: string | null,
 ): For => ({ type: 'For', iterable, rules, valueName, keyName, indexName });
 export const mapAccessor = (
-  base: ValueNode,
+  base: ValueNode | MixinCall,
   key: ValueNode | number,
-  keyIsProp: boolean,
+  keyKind: 'var' | 'prop' | 'index',
   bytes: string,
-): MapAccessor => ({ type: 'MapAccessor', base, key, keyIsProp, bytes });
+): MapAccessor => ({ type: 'MapAccessor', base, key, keyKind, bytes });
 export const propRef = (name: string, bytes: string = `$${name}`): PropRef => ({ type: 'PropRef', name, bytes });
 /** A compound from an already-built list of simple tokens. */
 export const compoundOf = (simples: Simple[]): Compound => ({ type: 'Compound', simples });

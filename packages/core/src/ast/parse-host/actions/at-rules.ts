@@ -38,6 +38,7 @@ import {
   sliceSpan,
 } from '../host-context.js';
 import { isInterpRefNode } from './interp.js';
+import { accessorKey } from './variables.js';
 
 /** The string value of a parseman leaf child, or `undefined` for a non-leaf. */
 function leafValue(x: unknown): string | undefined {
@@ -289,8 +290,32 @@ function parsePreludeValue(text: string): t2.ValueNode {
   let m: RegExpExecArray | null;
   while ((m = re.exec(text)) !== null) {
     if (m.index > last) parts.push(t2.any(text.slice(last, m.index)));
-    parts.push(t2.varRef(m[1]!));
-    last = m.index + m[0].length;
+    let ref: t2.ValueNode = t2.varRef(m[1]!);
+    // A `@var` glued to a `[key]` accessor chain (`@breakpoints[mobile]`) is a map
+    // accessor — fold each `[key]` onto the base so the query prelude resolves the
+    // member (this deferred regex prelude path structures the accessor the same way
+    // the value-position `reference` action does).
+    let after = m.index + m[0].length;
+    let ai: RegExpExecArray | null;
+    const acc = /^\[([^\]]*)\]/u;
+    let chainBytesEnd = after;
+    while ((ai = acc.exec(text.slice(after))) !== null) {
+      const keyStr = ai[1]!.trim();
+      if (keyStr === '') ref = t2.mapAccessor(ref, -1, 'index', '');
+      else {
+        const { key, keyKind } = accessorKey(keyStr);
+        ref = t2.mapAccessor(ref, key, keyKind, '');
+      }
+      after += ai[0].length;
+      chainBytesEnd = after;
+    }
+    if (ref.type === 'MapAccessor') {
+      // Rebuild the verbatim bytes for the unresolved fallback.
+      ref = { ...ref, bytes: text.slice(m.index, chainBytesEnd) };
+      re.lastIndex = chainBytesEnd;
+    }
+    parts.push(ref);
+    last = ref.type === 'MapAccessor' ? chainBytesEnd : m.index + m[0].length;
   }
   if (parts.length === 0) return t2.any(text);
   if (last < text.length) parts.push(t2.any(text.slice(last)));
