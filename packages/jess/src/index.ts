@@ -34,7 +34,7 @@ import {
 } from 'styles-config';
 import type { PluginInterface } from '@jesscss/core';
 import lessPlugin, { renderLessFileViaAst, renderLessViaAst } from '@jesscss/plugin-less';
-import type { AstRenderResult } from '@jesscss/plugin-less';
+import type { AstRenderResult, InstallablePlugin } from '@jesscss/plugin-less';
 import scssPlugin from '@jesscss/plugin-scss';
 import { outputDiagnostics } from './diagnostics.js';
 
@@ -217,6 +217,24 @@ function hasRootLessSourceOptions(options: RootLessSourceOptions): boolean {
     options.banner
     || (options.globalVars && Object.keys(options.globalVars).length > 0)
     || (options.modifyVars && Object.keys(options.modifyVars).length > 0)
+  );
+}
+
+/**
+ * [plugin/P2] Collect config-injected `install`-style Less function plugins from
+ * the active Less plugin's `plugins` option, for the native ast/ render path. Only
+ * plugin OBJECTS with an `install` hook are returned (string specifiers and
+ * visitor-only plugins are ignored — Lane 1 is functions). Returns `[]` when the
+ * Less plugin is absent or configures no such plugins (the common case → no cost).
+ */
+function collectAstConfigPlugins(context: Context): InstallablePlugin[] {
+  const lessPluginInstance = context.plugins.find(plugin => plugin.name === 'less');
+  const opts = (lessPluginInstance as { opts?: { plugins?: unknown } } | undefined)?.opts;
+  const raw = opts?.plugins;
+  if (!Array.isArray(raw)) return [];
+  return raw.filter(
+    (p): p is InstallablePlugin =>
+      !!p && typeof p === 'object' && typeof (p as { install?: unknown }).install === 'function',
   );
 }
 
@@ -1383,13 +1401,17 @@ export class Compiler {
       modifyVars: getLessVariableOverrides(resolved.activeOptions.modifyVars)
     };
     const shouldPrepareRootLessSource = hasRootLessSourceOptions(rootLessSourceOptions);
+    // [plugin/P2] Config-injected `install`-style Less function plugins registered
+    // via the Less plugin's `plugins` option → native GLOBAL fns (root frame),
+    // threaded through the ast/ render (no `@jesscss/plugin-less-compat`).
+    const plugins = collectAstConfigPlugins(context);
 
     const result = await measureProfileAsync(profile, 'render', async (): Promise<AstRenderResult> => {
       if (input.source != null) {
         const preparedSource = shouldPrepareRootLessSource
           ? prepareRootLessSource(input.source, rootLessSourceOptions)
           : input.source;
-        return renderLessViaAst(preparedSource, { collapseNesting, filePath: input.filePath, searchDirs });
+        return renderLessViaAst(preparedSource, { collapseNesting, filePath: input.filePath, searchDirs, plugins });
       }
       const filePath = input.filePath!;
       if (shouldPrepareRootLessSource) {
@@ -1400,9 +1422,9 @@ export class Compiler {
         }
         const rootSource = await sourceGetter.getSource(resolvedPath);
         const preparedSource = prepareRootLessSource(rootSource, rootLessSourceOptions);
-        return renderLessViaAst(preparedSource, { collapseNesting, filePath: resolvedPath, searchDirs });
+        return renderLessViaAst(preparedSource, { collapseNesting, filePath: resolvedPath, searchDirs, plugins });
       }
-      return renderLessFileViaAst(filePath, { collapseNesting, searchDirs });
+      return renderLessFileViaAst(filePath, { collapseNesting, searchDirs, plugins });
     });
 
     if (result.threw) {

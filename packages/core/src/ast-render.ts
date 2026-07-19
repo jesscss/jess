@@ -17,4 +17,22 @@ export type { ModuleResolver } from './ast/parse-host/import.js';
 
 // --- value evaluator builder + injected-evaluator type ---
 export { buildEvaluator } from './ast/evaluator.js';
-export type { ValueEvaluator } from './ast/value-eval.js';
+export type { ValueEvaluator, PluginHost } from './ast/value-eval.js';
+
+// --- plugin runtime authoring surface (the `Fn` contract a shim adapts to) ---
+export type { Fn, FnCtx } from './ast/functions/types.js';
+export {
+  makeDimension,
+  makeColorRgb,
+  makeQuoted,
+  makeKeyword,
+  makeList,
+} from './ast/value-factory.js';
+export type {
+  ValueObj,
+  Dimension,
+  Color,
+  Quoted,
+  Keyword,
+  List,
+} from './ast/value-eval.js';

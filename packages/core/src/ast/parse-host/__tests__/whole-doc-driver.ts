@@ -13,7 +13,11 @@
  * which does the identical binding on the consumer side. Both share this one core
  * pipeline (no duplicated engine logic).
  */
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import { lessGrammar, firstInlineJsBacktick, INLINE_JS_UNSUPPORTED_MESSAGE } from '@jesscss/less-parser';
+import { createPluginHost } from '@jesscss/plugin-less';
+import type { PluginHost } from '../../value-eval.js';
 import type { ValueEvaluator } from '../../value-eval.js';
 import type { ModuleResolver } from '../import.js';
 import {
@@ -25,6 +29,19 @@ import {
 export type { AstRenderResult } from '../render-doc.js';
 
 const g = lessGrammar as Record<string, unknown>;
+
+/**
+ * [plugin/P2] Mirror the production `@jesscss/plugin-less` binding: build a plugin
+ * host when the source has a `@plugin` directive, rooting module resolution at the
+ * source file's directory. Keeps this harness byte-for-byte equivalent to the
+ * production `renderLessFileViaAst` path (the parity gate) and lets the differential
+ * oracle exercise real `@plugin` loading. No `@plugin` ⇒ `undefined` (idle path).
+ */
+function buildPluginHost(src: string, filePath: string | undefined): PluginHost | undefined {
+  if (!src.includes('@plugin')) return undefined;
+  const baseDir = filePath ? path.dirname(filePath) : process.cwd();
+  return createPluginHost({ baseDir });
+}
 
 export interface AstRenderOptions {
   /** Absolute path of the source file (threads import base dir). */
@@ -81,11 +98,21 @@ export function renderAstDoc(src: string, options: AstRenderOptions = {}): AstRe
     resolveModule: options.resolveModule,
     searchDirs: options.searchDirs,
     collapseNesting: options.collapseNesting,
+    pluginHost: buildPluginHost(src, options.filePath),
   });
 }
 
 /** Render a `.less` FILE through the whole-document AST-v2 pipeline. */
 export function renderAstFile(filePath: string, options: Omit<AstRenderOptions, 'filePath'> = {}): AstRenderResult {
+  // Peek the source to build the plugin host (idle files skip it) — mirrors the
+  // production `renderLessFileViaAst`. A read error falls through to core, which
+  // reports it on `.threw`.
+  let pluginHost: PluginHost | undefined;
+  try {
+    pluginHost = buildPluginHost(fs.readFileSync(filePath, 'utf8'), filePath);
+  } catch {
+    pluginHost = undefined;
+  }
   return renderAstFileCore(filePath, {
     grammar: options.grammar ?? g['Stylesheet'],
     trivia: options.trivia ?? g['rw'],
@@ -94,5 +121,6 @@ export function renderAstFile(filePath: string, options: Omit<AstRenderOptions, 
     resolveModule: options.resolveModule,
     searchDirs: options.searchDirs,
     collapseNesting: options.collapseNesting,
+    pluginHost,
   });
 }

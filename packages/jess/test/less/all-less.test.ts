@@ -7,7 +7,6 @@ import { Compiler } from '../../src/index.js';
 import { outputDiagnostics } from '../../src/diagnostics.js';
 import { getTestCases, resolveLessTestDataRoot } from '../test-utils.js';
 import lessPlugin from '@jesscss/plugin-less';
-import { lessCompatPlugin } from '@jesscss/plugin-less-compat';
 
 const readNumericFunctionArg = (value: any): number => {
   if (typeof value?.value === 'number') {
@@ -60,10 +59,10 @@ const baseCompiler = new Compiler({
     // (trusted) harness jsReadRoot to the test-data root so plugin-js can read them.
     jsReadRoot: testData,
     plugins: [
-      lessPlugin(),
-      lessCompatPlugin({
-        plugins: [lessHarnessFunctionsPlugin]
-      })
+      // [plugin/P2] The harness function plugin is registered through the NATIVE
+      // Less plugin's `plugins` option — its `install`-registered functions become
+      // ast/ GLOBAL fns (root-frame registry), no `@jesscss/plugin-less-compat`.
+      lessPlugin({ plugins: [lessHarnessFunctionsPlugin] })
     ]
   }
 });

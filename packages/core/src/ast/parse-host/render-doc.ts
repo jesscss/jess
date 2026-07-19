@@ -32,7 +32,7 @@ import { isThenable } from '@jesscss/awaitable-pipe';
 import { serialize } from '../index.js';
 import type { Root, Statement } from '../index.js';
 import type { SerializeResult } from '../serialize.js';
-import type { ValueEvaluator } from '../value-eval.js';
+import type { PluginHost, ValueEvaluator } from '../value-eval.js';
 import { parseToAst } from './dispatch-host.js';
 import { createImportState, resolveDirectImports, type ModuleResolver } from './import.js';
 import { createFsFnIo } from './fn-io.js';
@@ -91,6 +91,13 @@ export interface AstRenderOptions {
    * (`output.collapseNesting`) governs this; the caller resolves it per file.
    */
   collapseNesting?: boolean;
+  /**
+   * [plugin/P2] OPTIONAL driver-injected plugin runtime, forwarded to `serialize`.
+   * The Less consumer layer (`@jesscss/plugin-less`) builds it from the source's
+   * `@plugin` directives + config-injected plugins; core stays plugin-agnostic.
+   * Absent → no plugins (idle path, byte-identical).
+   */
+  pluginHost?: PluginHost;
 }
 
 /** The synchronous driver requires a synchronous evaluator; a Promise is a bug. */
@@ -150,6 +157,8 @@ export function renderAstDoc(src: string, options: AstRenderOptions): AstRenderR
       serialize(resolvedRoot, {
         evaluator: options.evaluator,
         collapseNesting: options.collapseNesting,
+        pluginHost: options.pluginHost, // [plugin/P2] `@plugin` + config-plugin fns
+
         // [io] file-read capability for the IO built-ins (`data-uri`/`image-*`),
         // bound to the source file's directory. Resolves relative asset paths the
         // way Less resolves them against the entry file's location.

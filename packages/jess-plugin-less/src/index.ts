@@ -339,6 +339,13 @@ export {
   type AstRenderResult
 } from './ast-render.js';
 
+export {
+  createPluginHost,
+  installPluginFns,
+  type InstallablePlugin,
+  type CreatePluginHostOptions
+} from './plugin-runtime.js';
+
 const lessPlugin = ((opts?: LessPluginOptions) => {
   return new LessPlugin(opts);
 }) satisfies Plugin;

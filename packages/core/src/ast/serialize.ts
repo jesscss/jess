@@ -77,6 +77,7 @@ import {
   literal,
   type EvalModes,
   type FnScope,
+  type PluginHost,
   type List as ValueList,
   type Value,
   type ValueEvaluator,
@@ -151,6 +152,14 @@ export interface SerializeOptions {
    * fns degrade gracefully (a `url()` / verbatim fallback), never throw.
    */
   io?: FnIo;
+  /**
+   * [plugin/P2] OPTIONAL driver-injected plugin runtime. When present, a
+   * `@plugin "specifier"` directive registers the module's functions into its
+   * enclosing block's frame, and `host.globalFns` seeds the root frame with
+   * config-injected `install`-plugin functions. Absent (the idle path) ⇒ no
+   * scoped functions anywhere ⇒ byte- and cost-identical to a plain render.
+   */
+  pluginHost?: PluginHost;
 }
 
 export interface SerializeResult {
@@ -238,21 +247,68 @@ export interface Frame {
 }
 
 /**
- * [plugin/P1] Pre-scan a scope's statements for functions to register into this
+ * [plugin/P2] Extract the module specifier from a `@plugin` directive's prelude.
+ * The prelude is an opaque value node whose `src` bytes are either a bare quoted
+ * string (`"./plugin"`) or a leading options group then the string
+ * (`(option) "./plugin"`, `(test=test) "./x"`). Strip the options group and unwrap
+ * the quotes; return the inner specifier, or `null` when the prelude is not a
+ * recognizable `@plugin` string (leave such a directive as-is).
+ */
+function pluginSpecifier(prelude: ValueNodeLike | null): string | null {
+  if (!prelude || typeof prelude !== 'object' || !('src' in prelude)) return null;
+  const src = (prelude as { src?: unknown }).src;
+  if (typeof src !== 'string') return null;
+  const afterOptions = src.replace(/^\s*\([^)]*\)\s*/u, '').trim();
+  const quoted = afterOptions.match(/^(['"])([\s\S]*?)\1/u);
+  if (quoted) return quoted[2] ?? null;
+  return afterOptions.length > 0 ? afterOptions : null;
+}
+
+/** Minimal structural view of a value node carrying opaque `src` bytes. */
+type ValueNodeLike = { readonly src?: unknown } | Record<string, unknown>;
+
+/**
+ * [plugin/P2] Pre-scan a scope's statements for functions to register into this
  * frame's `fns` map — the peer of {@link collectMixins}/{@link collectVars} and the
  * single registration entry point for scoped functions (`@plugin`, later `@use` and
  * scoped `.jess` functions).
  *
- * This is the SEAM only: no directive registers a scoped function yet (P2 wires
- * `@plugin` module loading), so it always returns `null` today. Because it returns
- * null everywhere, `Frame.fns` stays null on every frame, `anyScopedFns` stays
- * false, and the evaluator never builds an `FnScope` — the idle path is
- * byte-identical to before this change. Wiring it here (rather than inlining the
- * scan at frame construction later) gives the registration path one home to grow
- * into.
+ * Registration is driven by the injected {@link PluginHost} (built by the consumer
+ * driver; core owns no module loading). For each `@plugin "specifier"` directive in
+ * `statements`, the host loads the module and returns its native `Fn`s, keyed
+ * lower-case into this frame's map (nearest-first shadowing falls out of the
+ * `parent` chain). At the ROOT frame (`includeGlobals`), config-injected global
+ * `install` plugins (`host.globalFns`) are merged in too.
+ *
+ * IDLE PATH: with no host (every render that configures no plugins and the
+ * differential harness), this returns `null` immediately — `Frame.fns` stays null
+ * everywhere, `anyScopedFns` stays false, and the fn-dispatch path is byte- and
+ * cost-identical to before P2. The `@plugin` scan itself only runs when a host is
+ * present, so a plain render never pays for it.
  */
-function collectScopedFns(_statements: Statement[]): Map<string, Fn> | null {
-  return null;
+function collectScopedFns(
+  statements: Statement[],
+  host: PluginHost | undefined,
+  includeGlobals: boolean,
+): Map<string, Fn> | null {
+  if (!host) return null;
+  let map: Map<string, Fn> | null = null;
+  const add = (fns: readonly Fn[]): void => {
+    if (fns.length === 0) return;
+    map ??= new Map();
+    for (const f of fns) map.set(f.name.toLowerCase(), f);
+  };
+  if (includeGlobals && host.globalFns && host.globalFns.length > 0) add(host.globalFns);
+  const load = host.loadPlugin;
+  if (load) {
+    for (const s of statements) {
+      if (s.type === 'AtRuleStatement' && s.name.toLowerCase() === '@plugin') {
+        const spec = pluginSpecifier(s.prelude);
+        if (spec) add(load(spec));
+      }
+    }
+  }
+  return map;
 }
 
 /**
@@ -867,6 +923,10 @@ interface EvalCtx {
   // top-level `serialize` from `SerializeOptions.io`; absent on renders with no
   // IO host wired (every value fn but the IO Tier-C set ignores it).
   io?: FnIo;
+  // [plugin/P2] driver-injected plugin runtime, threaded so nested frame
+  // construction can register a scope-local `@plugin`'s functions. Absent on the
+  // idle path (no plugins), where `collectScopedFns` short-circuits to null.
+  pluginHost?: PluginHost;
 }
 
 /** Force a computed `Value` to a typed object. A computed STRING carries no parse
@@ -1785,6 +1845,7 @@ function scratchEmit(e: EvalCtx): Emit {
     optional: e.optional,
     calcDepth: e.calcDepth,
     anyScopedFns: e.anyScopedFns, // [plugin/P1] preserve the scoped-fn gate
+    pluginHost: e.pluginHost, // [plugin/P2] preserve the injected plugin runtime
     io: e.io, // [io] preserve the file-read capability
     chunks: [],
     off: 0,
@@ -1954,10 +2015,13 @@ function resolveSelectorInterpForExtend(statements: Statement[], frame: Frame, e
 }
 
 export function serialize(root: Root, options?: SerializeOptions): SerializeReturn {
-  // [plugin/P1] Scoped-fn registration seam. `collectScopedFns` returns null today
-  // (nothing registers until P2 wires `@plugin`/`@use` loading), so `rootFns` is
-  // null, `anyScopedFns` is false, and the fn-dispatch path stays byte-identical.
-  const rootFns = collectScopedFns(root.children);
+  // [plugin/P2] Scoped-fn registration seam. With a `pluginHost` injected by the
+  // driver, root-level `@plugin` directives + config-injected `install` plugins
+  // (`host.globalFns`) register into the root frame; without one (the idle path,
+  // and the differential harness), `collectScopedFns` returns null, `anyScopedFns`
+  // is false, and the fn-dispatch path is byte-identical to a plain render.
+  const pluginHost = options?.pluginHost;
+  const rootFns = collectScopedFns(root.children, pluginHost, true);
   const anyScopedFns = rootFns !== null;
   const e: Emit = {
     chunks: [],
@@ -1975,7 +2039,8 @@ export function serialize(root: Root, options?: SerializeOptions): SerializeRetu
     hoistMode: false, // [extend]
     lastBlock: { parentKey: null, header: '', depth: -1, endChunks: -1 }, // [adjacent-merge]
     mixinDepth: 0, // [recursion-backstop] runaway mixin-expansion depth guard
-    anyScopedFns, // [plugin/P1] gate: false today ⇒ fn-dispatch walk skipped
+    anyScopedFns, // [plugin/P1] gate: false idle ⇒ fn-dispatch walk skipped
+    pluginHost, // [plugin/P2] injected plugin runtime for scope-local `@plugin`
     io: options?.io, // [io] per-render file-read capability for the IO built-ins
   };
   const rootFrame: Frame = {
@@ -3353,7 +3418,17 @@ function emitAtRuleStatement(node: AtRuleStatement, frame: Frame, e: Emit): void
   // [charset] Inline `@charset` occurrences are dropped; `serialize` hoists the
   // first to the document top (dedupe).
   if (isCharset(node)) return;
+  // [plugin/P2] `@plugin "…";` is a scope-contributing directive (its functions
+  // were registered into the frame by `collectScopedFns`), not output — drop it,
+  // like a `MixinDef`/`VarDeclaration`. Matches Less, which processes `@plugin` in
+  // a pre-eval pass and never emits it.
+  if (isPluginDirective(node)) return;
   emitAtRuleStatementRaw(node, frame, e);
+}
+
+/** [plugin/P2] Is this at-rule a `@plugin "…";` directive? */
+function isPluginDirective(node: AtRuleStatement): boolean {
+  return node.name.toLowerCase() === '@plugin';
 }
 
 function emitAtRuleStatementRaw(node: AtRuleStatement, frame: Frame, e: Emit): void {

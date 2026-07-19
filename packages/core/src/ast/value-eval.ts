@@ -196,6 +196,35 @@ export interface FnScope {
   lookup(name: string): Fn | undefined;
 }
 
+/**
+ * [plugin/P2] The driver-injected plugin runtime — core's ONLY coupling to the
+ * Less/`@use` plugin world. Core knows the AST shape of a `@plugin` directive and
+ * the `Fn` contract; it knows NOTHING about module resolution, the `less`/`tree`
+ * shim, or CJS sandboxing — those live entirely in the consumer package
+ * (`@jesscss/plugin-less`), which builds this host and passes it in. Core scans a
+ * block's statements for `@plugin` directives, extracts each specifier, and asks
+ * the host to turn it into native `Fn`s for the block's frame (Lane 1). Absent
+ * (the idle path: no plugins) means no scoped functions anywhere — byte- and
+ * cost-identical to a plain render.
+ */
+export interface PluginHost {
+  /**
+   * GLOBAL functions contributed by config-injected `install`-style Less plugins
+   * (not `@plugin` directives) — registered into the ROOT frame so they are
+   * visible document-wide. Empty/absent on renders with no configured plugins.
+   */
+  globalFns?: readonly Fn[];
+  /**
+   * Resolve + load a `@plugin "specifier"` module and return the native `Fn`s it
+   * registered (via `functions.add`/`addMultiple`). The host owns resolution
+   * (local path + `node_modules`) and the shim (the `less`/`tree` surface the
+   * plugin codes against) and converts plugin fn inputs/outputs to/from `ValueObj`
+   * at the call boundary. Returns an empty array when the module registers no
+   * functions (e.g. a pure visitor/post-processor plugin — Lanes 3/4).
+   */
+  loadPlugin?(specifier: string): readonly Fn[];
+}
+
 export interface ValueEvaluator {
   /**
    * Materialize a SYNTHETIC / COMPUTED string (a joined `Sequence`/`Interp` result,

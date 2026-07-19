@@ -17,11 +17,14 @@
  * path (`LessPlugin.safeParse` → `Compiler.renderTree`) is untouched and remains the
  * default; nothing here is on the default render path yet.
  */
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import { buildEvaluator, renderAstDoc, renderAstFile } from '@jesscss/core/ast-render';
-import type { AstRenderResult, ModuleResolver, ValueEvaluator } from '@jesscss/core/ast-render';
+import type { AstRenderResult, ModuleResolver, PluginHost, ValueEvaluator } from '@jesscss/core/ast-render';
 import { makeBuiltinRegistry } from '@jesscss/fns';
 import { lessGrammar, firstInlineJsBacktick, INLINE_JS_UNSUPPORTED_MESSAGE } from '@jesscss/less-parser';
 import { NodeModulesPlugin } from '@jesscss/plugin-node-modules';
+import { createPluginHost, type InstallablePlugin } from './plugin-runtime.js';
 
 export type { AstRenderResult } from '@jesscss/core/ast-render';
 
@@ -72,6 +75,32 @@ export interface RenderLessViaAstOptions {
    * resolution. Relative entries resolve against the importing/source file dir.
    */
   searchDirs?: readonly string[];
+  /**
+   * [plugin/P2] Config-injected `install`-style Less plugins whose functions are
+   * registered GLOBALLY (root frame) for this render — the native path for
+   * `less.functions.functionRegistry.add(...)`-style plugins passed via compiler
+   * config (e.g. the `functions-harness` fixture). `@plugin "specifier"`
+   * directives IN the source are loaded automatically (no config needed).
+   */
+  plugins?: readonly InstallablePlugin[];
+}
+
+/**
+ * [plugin/P2] Build the {@link PluginHost} for a render, or `undefined` when there
+ * is no plugin work to do (no config plugins AND no `@plugin` directive in the
+ * source) — the idle path, where core skips the whole scoped-fn machinery and the
+ * render is byte-identical. `baseDir` roots `@plugin` module resolution at the
+ * source file's directory (falls back to cwd for in-memory source).
+ */
+function buildPluginHost(
+  source: string,
+  filePath: string | undefined,
+  plugins: readonly InstallablePlugin[] | undefined,
+): PluginHost | undefined {
+  const hasDirective = source.includes('@plugin');
+  if (!hasDirective && !(plugins && plugins.length > 0)) return undefined;
+  const baseDir = filePath ? path.dirname(filePath) : process.cwd();
+  return createPluginHost({ baseDir, configPlugins: plugins });
 }
 
 /**
@@ -91,6 +120,7 @@ export function renderLessViaAst(
     resolveModule: moduleResolver(),
     searchDirs: options.searchDirs,
     collapseNesting: options.collapseNesting ?? false,
+    pluginHost: buildPluginHost(src, options.filePath, options.plugins),
   });
 }
 
@@ -99,6 +129,18 @@ export function renderLessViaAst(
  * Never throws: any parse/serialize throw is captured on `.threw`.
  */
 export function renderLessFileViaAst(filePath: string, options: RenderLessViaAstOptions = {}): AstRenderResult {
+  // Peek the source to decide whether a plugin host is needed (idle renders skip
+  // it entirely). Any read error falls through to `renderAstFile`, which reports
+  // the failure on `.threw`.
+  let host: PluginHost | undefined;
+  try {
+    const src = fs.readFileSync(filePath, 'utf8');
+    host = buildPluginHost(src, filePath, options.plugins);
+  } catch {
+    host = options.plugins && options.plugins.length > 0
+      ? createPluginHost({ baseDir: path.dirname(filePath), configPlugins: options.plugins })
+      : undefined;
+  }
   return renderAstFile(filePath, {
     grammar: grammar['Stylesheet'],
     trivia: grammar['rw'],
@@ -107,5 +149,6 @@ export function renderLessFileViaAst(filePath: string, options: RenderLessViaAst
     resolveModule: moduleResolver(),
     searchDirs: options.searchDirs,
     collapseNesting: options.collapseNesting ?? false,
+    pluginHost: host,
   });
 }
