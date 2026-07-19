@@ -32,8 +32,6 @@ export class Compiler {
     opts: ConfigOptions;
     // (undocumented)
     render(filePath: string, options?: Partial<ConfigOptions>): Promise<string>;
-    // @internal
-    renderAstLess(filePath: string, options?: Partial<ConfigOptions>): Promise<string>;
     // (undocumented)
     renderString(content: string, options?: {
         filePath?: string;
