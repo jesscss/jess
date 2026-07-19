@@ -4,13 +4,6 @@
   "debt": [
     {
       "file": "packages/css-parser/src/builders.ts",
-      "kind": "regex-literal",
-      "fingerprint": "45869941002515e8",
-      "count": 1,
-      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
-    },
-    {
-      "file": "packages/css-parser/src/builders.ts",
       "kind": "runtime-charCodeAt",
       "fingerprint": "2776ec88968c3e57",
       "count": 3,
@@ -1524,21 +1517,7 @@
     {
       "file": "packages/scss-parser/src/builders.ts",
       "kind": "regex-literal",
-      "fingerprint": "695b0ec80973c5eb",
-      "count": 1,
-      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
-    },
-    {
-      "file": "packages/scss-parser/src/builders.ts",
-      "kind": "regex-literal",
       "fingerprint": "7929672d46d582f8",
-      "count": 1,
-      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
-    },
-    {
-      "file": "packages/scss-parser/src/builders.ts",
-      "kind": "regex-literal",
-      "fingerprint": "889f4fc9c881900c",
       "count": 1,
       "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
     },
