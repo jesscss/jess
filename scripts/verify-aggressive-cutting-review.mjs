@@ -8,6 +8,11 @@ const root = resolve(new URL('..', import.meta.url).pathname);
 const handoffPath = resolve(root, 'docs/future/core-architecture/HANDOFF.md');
 const cuttingReviewPath = resolve(root, 'docs/future/core-architecture/AGGRESSIVE-CUTTING-REVIEW.md');
 const skipExecutableEvidence = process.argv.includes('--skip-executable-evidence');
+const reviewMode = process.argv.includes('--mode=staged')
+  ? 'staged'
+  : process.argv.includes('--mode=upstream')
+    ? 'upstream'
+    : 'working';
 const reviewedSourceRoots = [
   'packages/core/src',
   'packages/jess/src',
@@ -48,37 +53,53 @@ function reviewBase() {
   return null;
 }
 
-function collectDiff() {
-  return [
-    git(['diff', '--unified=0', '--', ...reviewedSourceRoots]),
-    git(['diff', '--cached', '--unified=0', '--', ...reviewedSourceRoots])
-  ].join('\n');
+function scopedChangedPaths(mode, snapshots) {
+  if (mode === 'staged') {
+    return [...new Set(snapshots.staged)];
+  }
+  if (mode === 'upstream') {
+    return [...new Set(snapshots.branch)];
+  }
+  return [...new Set([
+    ...snapshots.branch,
+    ...snapshots.unstaged,
+    ...snapshots.staged,
+    ...snapshots.untracked
+  ])];
 }
 
-function collectBranchDiff() {
+function changedPathSnapshots() {
   const base = reviewBase();
-  if (!base) {
+  return {
+    branch: base
+      ? git(['diff', '--name-only', '--diff-filter=ACMR', `${base}..HEAD`, '--']).split('\n').filter(Boolean)
+      : [],
+    unstaged: git(['diff', '--name-only', '--diff-filter=ACMR', '--']).split('\n').filter(Boolean),
+    staged: git(['diff', '--cached', '--name-only', '--diff-filter=ACMR', '--']).split('\n').filter(Boolean),
+    untracked: git(['ls-files', '--others', '--exclude-standard']).split('\n').filter(Boolean)
+  };
+}
+
+function collectScopedDiff(mode, changedPaths) {
+  const productionPaths = productionChangedPaths(changedPaths);
+  if (productionPaths.length === 0) {
     return '';
   }
-  return git([
-    'diff',
-    '--unified=0',
-    `${base}..HEAD`,
-    '--',
-    ...reviewedSourceRoots
-  ]);
-}
-
-function collectChangedPaths() {
+  if (mode === 'staged') {
+    return git(['diff', '--cached', '--unified=0', '--', ...productionPaths]);
+  }
   const base = reviewBase();
-  return [...new Set([
-    ...(base
-      ? git(['diff', '--name-only', '--diff-filter=ACMR', `${base}..HEAD`, '--']).split('\n')
-      : []),
-    ...git(['diff', '--name-only']).split('\n'),
-    ...git(['diff', '--cached', '--name-only']).split('\n'),
-    ...git(['ls-files', '--others', '--exclude-standard']).split('\n')
-  ].filter(Boolean))];
+  const branchDiff = base
+    ? git(['diff', '--unified=0', `${base}..HEAD`, '--', ...productionPaths])
+    : '';
+  if (mode === 'upstream') {
+    return branchDiff;
+  }
+  return [
+    branchDiff,
+    git(['diff', '--unified=0', '--', ...productionPaths]),
+    git(['diff', '--cached', '--unified=0', '--', ...productionPaths])
+  ].join('\n');
 }
 
 function readCostContractRegistry(review) {
@@ -1218,6 +1239,10 @@ function isProductionHotPathFile(path) {
   return !isTestOnlyPath(path) && hotPathRoots.some(rootPath => path.startsWith(rootPath));
 }
 
+function productionChangedPaths(paths) {
+  return paths.filter(isProductionHotPathFile);
+}
+
 function validateProductionHotPathCoverage(registry, changedPaths) {
   return changedPaths
     .filter(isProductionHotPathFile)
@@ -1436,8 +1461,8 @@ function runVerifier() {
     ['materialized array/object', /\+\s*.*(new Array<|new Array\(|\[\]|=\s*\{)/]
   ];
 
-  const diff = [collectBranchDiff(), collectDiff()].join('\n');
-  const changedPaths = collectChangedPaths();
+  const changedPaths = scopedChangedPaths(reviewMode, changedPathSnapshots());
+  const diff = collectScopedDiff(reviewMode, changedPaths);
   const additions = diff.split('\n').filter(line => line.startsWith('+') && !line.startsWith('+++'));
   const findings = [];
 
@@ -1526,7 +1551,7 @@ function runVerifier() {
     }
   }
 
-  const hotPathChanged = changedPaths.some(path => hotPathRoots.some(rootPath => path.startsWith(rootPath)));
+  const hotPathChanged = changedPaths.some(isProductionHotPathFile);
   const productionHotPathChanged = changedPaths.some(isProductionHotPathFile);
   const requiresCostAudit = hotPathChanged || findings.length > 0;
   if (requiresCostAudit && registryErrors.length === 0) {
@@ -1580,6 +1605,9 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
 export {
   evaluateCounterRelation,
   extractCostAuditRecords,
+  isProductionHotPathFile,
+  productionChangedPaths,
+  scopedChangedPaths,
   validateCostAuditRecords,
   validateCostContractRegistry,
 };

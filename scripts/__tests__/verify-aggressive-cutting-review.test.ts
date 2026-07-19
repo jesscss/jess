@@ -1,9 +1,54 @@
 import { describe, expect, it } from 'vitest';
 import {
   extractCostAuditRecords,
+  isProductionHotPathFile,
+  productionChangedPaths,
+  scopedChangedPaths,
   validateCostAuditRecords,
   validateCostContractRegistry
 } from '../verify-aggressive-cutting-review.mjs';
+
+describe('aggressive-cutting review scope', () => {
+  const snapshots = {
+    branch: ['packages/less-parser/src/grammar.ts'],
+    unstaged: ['packages/core/src/tree/rules.ts'],
+    staged: ['scripts/__tests__/verify-aggressive-cutting-review.test.ts'],
+    untracked: ['packages/core/src/ast/__tests__/scratch.test.ts']
+  };
+
+  it('reviews only the staged file set for a pre-commit invocation', () => {
+    expect(scopedChangedPaths('staged', snapshots)).toEqual([
+      'scripts/__tests__/verify-aggressive-cutting-review.test.ts'
+    ]);
+  });
+
+  it('keeps branch review for upstream mode and the full local picture for manual review', () => {
+    expect(scopedChangedPaths('upstream', snapshots)).toEqual([
+      'packages/less-parser/src/grammar.ts'
+    ]);
+    expect(scopedChangedPaths('working', snapshots)).toEqual([
+      'packages/less-parser/src/grammar.ts',
+      'packages/core/src/tree/rules.ts',
+      'scripts/__tests__/verify-aggressive-cutting-review.test.ts',
+      'packages/core/src/ast/__tests__/scratch.test.ts'
+    ]);
+  });
+
+  it('does not classify test fixtures as production hot-path files', () => {
+    expect(isProductionHotPathFile('packages/core/src/ast/__tests__/factory.test.ts')).toBe(false);
+    expect(isProductionHotPathFile('packages/core/src/ast/fixtures/large.less')).toBe(false);
+    expect(isProductionHotPathFile('packages/core/src/ast/serialize.ts')).toBe(true);
+    expect(isProductionHotPathFile('packages/less-parser/src/grammar.ts')).toBe(true);
+  });
+
+  it('keeps test-only object-literal diffs out of the danger-token scan input', () => {
+    expect(productionChangedPaths([
+      'packages/core/src/ast/__tests__/factory-shapes.test.ts',
+      'packages/core/src/ast/serialize.ts',
+      'packages/css-parser/src/fixtures/recovery.test.ts'
+    ])).toEqual(['packages/core/src/ast/serialize.ts']);
+  });
+});
 
 describe('concise handoff cost-contract ledger pointers', () => {
   const ledger = [{

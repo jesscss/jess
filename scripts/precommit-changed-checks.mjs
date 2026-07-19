@@ -255,11 +255,11 @@ function runVerifyBaseline() {
   run('pnpm', ['run', 'verify:baseline'], undefined, { required: true });
 }
 
-function runAggressiveCuttingReview({ skipExecutableEvidence = false } = {}) {
+function runAggressiveCuttingReview({ mode, skipExecutableEvidence = false } = {}) {
   console.log('\n==> Running verify:aggressive-cutting-review (hot-path cost/admission contracts)');
-  const args = ['run', 'verify:aggressive-cutting-review'];
+  const args = ['run', 'verify:aggressive-cutting-review', '--', `--mode=${mode}`];
   if (skipExecutableEvidence) {
-    args.push('--', '--skip-executable-evidence');
+    args.push('--skip-executable-evidence');
   }
   run('pnpm', args, undefined, { required: true });
 }
@@ -288,7 +288,7 @@ if (MODE === 'upstream') {
 // generated package output may still belong to the previous source revision.
 // The upstream/pre-push path runs the baseline build above before collecting
 // executable evidence.
-runAggressiveCuttingReview({ skipExecutableEvidence: MODE !== 'upstream' });
+runAggressiveCuttingReview({ mode: MODE, skipExecutableEvidence: MODE !== 'upstream' });
 
 if (changedPackages.length === 0) {
   console.log(MODE === 'upstream'
