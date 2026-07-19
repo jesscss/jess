@@ -70,6 +70,9 @@ type CssAstRules = {
   CssAstCharset: Combinator<AtRuleStatement>;
   CssAstAtRuleStatement: Combinator<AtRuleStatement>;
   CssAstLayerBlock: Combinator<AtRuleBlock>;
+  CssAstKeyframeSelector: Combinator<Simple>;
+  CssAstKeyframeBlock: Combinator<Rule>;
+  CssAstKeyframes: Combinator<AtRuleBlock>;
   CssAstRuleset: Combinator<Rule>;
   CssAstMedia: Combinator<AtRuleBlock>;
   whitespace: Combinator<unknown>;
@@ -187,6 +190,14 @@ function mediaStatements(children: readonly unknown[]): Array<Comment | Rule> {
   return children.filter((value): value is Comment | Rule => isComment(value) || isRule(value));
 }
 
+function keyframeSelectorList(children: readonly unknown[]): SelectorList {
+  const selectors = children.filter(isSimple).map(selector => complex([{ compound: compoundOf([selector]) }]));
+  if (selectors.length === 0) {
+    throw new Error('CssAstKeyframeBlock requires a keyframe selector');
+  }
+  return selist(...selectors);
+}
+
 const whitespace = trivia(regex(/[ \t\n\r\f]+/));
 const blockComment = regex(/\/\*(?:[^*]|\*(?!\/))*\*\//);
 const simpleSelector = regex(/(?:[.#]?-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*|\*)/);
@@ -202,6 +213,9 @@ const charsetEncoding = regex(/[A-Za-z0-9._-]+/);
 const genericAtRuleName = regex(/@(?!(?:charset|import)(?=[^-_a-zA-Z0-9\u0080-\uffff]|$))-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/i);
 const atLayer = regex(/@layer(?![-_a-zA-Z0-9\u0080-\uffff\\])/i);
 const layerName = regex(/-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*(?:\.-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*)*/);
+const atKeyframes = regex(/@(?:-[a-z]+-)?keyframes(?![-_a-zA-Z0-9\u0080-\uffff\\])/i);
+const keyframePercent = regex(/[+-]?(?:[0-9]+(?:\.[0-9]+)?|\.[0-9]+)%/);
+const keyframeEndpoint = regex(/(?:from|to)(?![-_a-zA-Z0-9\u0080-\uffff])/i);
 const combinator = choice(literal('||'), literal('>'), literal('+'), literal('~'), literal('|'));
 const doubleQuotedText = regex(/(?:[^"\\]|\\[\s\S])*/);
 const singleQuotedText = regex(/(?:[^'\\]|\\[\s\S])*/);
@@ -317,6 +331,33 @@ export const cssAstGrammar = rules<CssAstRules>({ trivia: whitespace }, (g) => {
     sequence(atLayer, optional(CssAstLayerName), literal('{'), many(choice(g.CssAstComment, g.CssAstRuleset)), literal('}')),
     children => atRuleBlock('@layer', children.find(isValue) ?? null, mediaStatements(children))
   );
+  const CssAstKeyframeSelector = node(
+    'CssAstKeyframeSelector',
+    choice(keyframeEndpoint, keyframePercent),
+    children => simple(tokenText(children[0]))
+  );
+  const CssAstKeyframeBlock = node(
+    'CssAstKeyframeBlock',
+    sequence(
+      g.CssAstKeyframeSelector,
+      many(sequence(literal(','), g.CssAstKeyframeSelector)),
+      literal('{'),
+      many(choice(g.CssAstComment, g.CssAstDeclaration)),
+      literal('}')
+    ),
+    children => rule(keyframeSelectorList(children), children.filter((value): value is Comment | Declaration => isComment(value) || isDeclaration(value)))
+  );
+  const CssAstKeyframes = node(
+    'CssAstKeyframes',
+    sequence(atKeyframes, g.CssAstKeyword, literal('{'), many(choice(g.CssAstComment, g.CssAstKeyframeBlock)), literal('}')),
+    (children) => {
+      const prelude = children.find((value): value is Keyword => isNodeType(value, 'Keyword'));
+      if (prelude === undefined) {
+        throw new Error('CssAstKeyframes requires a name');
+      }
+      return atRuleBlock(tokenText(children[0]), prelude, mediaStatements(children));
+    }
+  );
   const CssAstRuleset = node(
     'CssAstRuleset',
     sequence(g.CssAstSelector, literal('{'), many(choice(g.CssAstComment, g.CssAstDeclaration, g.CssAstRuleset)), literal('}')),
@@ -341,7 +382,7 @@ export const cssAstGrammar = rules<CssAstRules>({ trivia: whitespace }, (g) => {
   );
   const CssAstDocument = node(
     'CssAstDocument',
-    many(choice(g.CssAstComment, g.CssAstCharset, g.CssAstMedia, g.CssAstLayerBlock, g.CssAstAtRuleStatement, g.CssAstRuleset)),
+    many(choice(g.CssAstComment, g.CssAstCharset, g.CssAstMedia, g.CssAstLayerBlock, g.CssAstKeyframes, g.CssAstAtRuleStatement, g.CssAstRuleset)),
     children => root(documentStatements(children)),
     { trailingTrivia: true }
   );
@@ -366,6 +407,9 @@ export const cssAstGrammar = rules<CssAstRules>({ trivia: whitespace }, (g) => {
     CssAstCharset,
     CssAstAtRuleStatement,
     CssAstLayerBlock,
+    CssAstKeyframeSelector,
+    CssAstKeyframeBlock,
+    CssAstKeyframes,
     CssAstRuleset,
     CssAstMedia,
     whitespace

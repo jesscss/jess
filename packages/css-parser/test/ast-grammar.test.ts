@@ -119,6 +119,51 @@ describe('private CSS canonical-AST grammar', () => {
     });
   });
 
+  it('constructs keyframe selector blocks directly instead of treating keyframes as ordinary rulesets', () => {
+    const document = parseAst('@KEYFRAMES fade { /* half-way */ from, 50% { opacity: 0; } to { opacity: 1; } } @-MOZ-KEYFRAMES zoom { from { opacity: 0; } }');
+
+    expect(document.children).toMatchObject([
+      {
+        type: 'AtRuleBlock',
+        name: '@KEYFRAMES',
+        prelude: { type: 'Keyword', src: 'fade' },
+        body: [
+          { type: 'Comment', text: '/* half-way */' },
+          {
+            type: 'Rule',
+            selector: {
+              type: 'SelectorList',
+              selectors: [
+                { type: 'Complex', head: { simples: [{ type: 'Simple', text: 'from' }] } },
+                { type: 'Complex', head: { simples: [{ type: 'Simple', text: '50%' }] } }
+              ]
+            },
+            body: [{ type: 'Declaration', name: 'opacity' }]
+          },
+          {
+            type: 'Rule',
+            selector: { type: 'SelectorList', selectors: [{ type: 'Complex', head: { simples: [{ type: 'Simple', text: 'to' }] } }] }
+          }
+        ]
+      },
+      {
+        type: 'AtRuleBlock',
+        name: '@-MOZ-KEYFRAMES',
+        prelude: { type: 'Keyword', src: 'zoom' },
+        body: [{ type: 'Rule', selector: { type: 'SelectorList' } }]
+      }
+    ]);
+    expect(serialize(document)).toEqual({
+      css: '@KEYFRAMES fade {\n  /* half-way */\n  from,\n  50% {\n    opacity: 0;\n  }\n  to {\n    opacity: 1;\n  }\n}\n@-MOZ-KEYFRAMES zoom {\n  from {\n    opacity: 0;\n  }\n}\n'
+    });
+  });
+
+  it('rejects non-keyframe selectors and bare declarations in a keyframes body', () => {
+    for (const input of ['@keyframes fade { .card { opacity: 0; } }', '@keyframes fade { opacity: 0; }', '@keyframes fade { 50px { opacity: 0; } }']) {
+      expect(() => parseAst(input)).toThrow('CSS AST grammar did not consume the document');
+    }
+  });
+
   it('rejects non-boundary @layer prefixes and comma-separated block names', () => {
     for (const input of ['@layered { .card { color: red; } }', '@layer-foo { .card { color: red; } }', '@layer utilities, components { .card { color: red; } }']) {
       expect(() => parseAst(input)).toThrow('CSS AST grammar did not consume the document');
