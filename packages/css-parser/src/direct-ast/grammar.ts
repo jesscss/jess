@@ -1,20 +1,115 @@
 /** Closed direct AST-v2 Parseman grammar pilot. */
-import { choice, literal, many, node, regex, rules, sequence, trivia } from 'parseman' with { type: 'macro' };
-import type { Comment, SelectorList, Statement } from '@jesscss/core/ast';
+import { choice, literal, many, node, optional, regex, rules, sequence, trivia } from 'parseman' with { type: 'macro' };
+import type { Comment, Declaration, Rule, SelectorList, Statement, ValueNode } from '@jesscss/core/ast';
 
-type Token = { readonly value: string };
+type DirectKeyword = Extract<ValueNode, { readonly type: 'Keyword' }>;
+
+function tokenText(children: readonly unknown[], index: number): string {
+  const child = children[index];
+  if (typeof child === 'object' && child !== null && 'value' in child && typeof child.value === 'string') {
+    return child.value;
+  }
+  throw new Error('Direct CSS grammar lost a required token');
+}
+
+function isDirectKeyword(value: unknown): value is DirectKeyword {
+  return typeof value === 'object'
+    && value !== null
+    && 'type' in value
+    && value.type === 'Keyword'
+    && 'src' in value
+    && typeof value.src === 'string';
+}
+
+function isSelectorList(value: unknown): value is SelectorList {
+  return typeof value === 'object'
+    && value !== null
+    && 'type' in value
+    && value.type === 'SelectorList'
+    && 'selectors' in value
+    && Array.isArray(value.selectors);
+}
+
+function isComment(value: unknown): value is Comment {
+  return typeof value === 'object'
+    && value !== null
+    && 'type' in value
+    && value.type === 'Comment'
+    && 'text' in value
+    && typeof value.text === 'string';
+}
+
+function isDeclaration(value: unknown): value is Declaration {
+  return typeof value === 'object'
+    && value !== null
+    && 'type' in value
+    && value.type === 'Declaration'
+    && 'name' in value
+    && typeof value.name === 'string'
+    && 'value' in value
+    && isDirectKeyword(value.value)
+    && 'merge' in value
+    && value.merge === null
+    && 'important' in value
+    && value.important === false;
+}
+
+function isRule(value: unknown): value is Rule {
+  return typeof value === 'object'
+    && value !== null
+    && 'type' in value
+    && value.type === 'Rule'
+    && 'selector' in value
+    && isSelectorList(value.selector)
+    && 'body' in value
+    && Array.isArray(value.body)
+    && value.body.every(isRulesetStatement);
+}
+
+function isRulesetStatement(value: unknown): value is Comment | Declaration {
+  return isComment(value) || isDeclaration(value);
+}
+
+function isDocumentStatement(value: unknown): value is Statement {
+  return isComment(value) || isRule(value);
+}
+
+function rulesetStatements(children: readonly unknown[]): (Comment | Declaration)[] {
+  const statements: (Comment | Declaration)[] = [];
+  for (let index = 2; index < children.length - 1; index += 1) {
+    const child = children[index];
+    if (!isRulesetStatement(child)) {
+      throw new Error('DirectCssRuleset has an unexpected body child');
+    }
+    statements.push(child);
+  }
+  return statements;
+}
+
+function documentStatements(children: readonly unknown[]): Statement[] {
+  const statements: Statement[] = [];
+  for (const child of children) {
+    if (!isDocumentStatement(child)) {
+      throw new Error('DirectCssDocument has an unexpected child');
+    }
+    statements.push(child);
+  }
+  return statements;
+}
 
 const whitespace = trivia(regex(/[ \t\n\r\f]+/));
 const blockComment = regex(/\/\*(?:[^*]|\*(?!\/))*\*\//);
 const simpleSelector = regex(/(?:[.#]?-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*|\*)/);
+const propertyName = regex(/\*?-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/);
+const keywordValue = regex(/-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/);
 
 export const directCssAstGrammar = rules({ trivia: whitespace }, (g: any) => {
-  const DirectCssComment = node('DirectCssComment', blockComment, (children: readonly Token[]) => ({
+  const DirectCssComment = node('DirectCssComment', blockComment, children => ({
     type: 'Comment' as const,
-    text: children[0]!.value
+    text: tokenText(children, 0)
   }));
-  const DirectCssSelector = node('DirectCssSelector', simpleSelector, (children: readonly Token[]) => {
-    const text = children[0]!.value;
+  const DirectCssSelector = node('DirectCssSelector', simpleSelector, (children) => {
+    const text = tokenText(children, 0);
     return {
       type: 'SelectorList' as const,
       selectors: [{
@@ -24,29 +119,51 @@ export const directCssAstGrammar = rules({ trivia: whitespace }, (g: any) => {
       }]
     };
   });
+  const DirectCssProperty = node('DirectCssProperty', propertyName, children => tokenText(children, 0));
+  const DirectCssKeyword = node('DirectCssKeyword', keywordValue, (children) => {
+    const value: DirectKeyword = { type: 'Keyword', src: tokenText(children, 0) };
+    return value;
+  });
+  const DirectCssDeclaration = node(
+    'DirectCssDeclaration',
+    sequence(g.DirectCssProperty, literal(':'), g.DirectCssKeyword, optional(literal(';'))),
+    (children): Declaration => {
+      const value = children[2];
+      if (typeof children[0] !== 'string' || !isDirectKeyword(value)) {
+        throw new Error('DirectCssDeclaration requires structured property and keyword children');
+      }
+      return { type: 'Declaration', name: children[0], value, merge: null, important: false };
+    }
+  );
   const DirectCssRuleset = node(
     'DirectCssRuleset',
-    sequence(g.DirectCssSelector, literal('{'), many(g.DirectCssComment), literal('}')),
-    (children: readonly [SelectorList, Token, ...(Comment | Token)[]]) => {
+    sequence(g.DirectCssSelector, literal('{'), many(choice(g.DirectCssComment, g.DirectCssDeclaration)), literal('}')),
+    (children) => {
       const selector = children[0];
+      if (!isSelectorList(selector)) {
+        throw new Error('DirectCssRuleset requires a selector');
+      }
       return {
         type: 'Rule' as const,
         selector,
-        // The enclosing closed sequence fixes these slots to comments between
-        // `{` and `}`; Parseman exposes the literal delimiters in children too.
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-        body: children.slice(2, -1) as Comment[]
+        body: rulesetStatements(children)
       };
     }
   );
   const DirectCssDocument = node(
     'DirectCssDocument',
     many(choice(g.DirectCssComment, g.DirectCssRuleset)),
-    (children: readonly Statement[]) => ({
-      type: 'Root' as const,
-      children
-    }),
+    children => ({ type: 'Root' as const, children: documentStatements(children) }),
     { trailingTrivia: true }
   );
-  return { DirectCssDocument, DirectCssComment, DirectCssSelector, DirectCssRuleset, whitespace };
+  return {
+    DirectCssDocument,
+    DirectCssComment,
+    DirectCssSelector,
+    DirectCssProperty,
+    DirectCssKeyword,
+    DirectCssDeclaration,
+    DirectCssRuleset,
+    whitespace
+  };
 });

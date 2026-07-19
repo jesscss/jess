@@ -1008,8 +1008,8 @@ no imported guarded mixins (no speedup to show), but on
     "neutralRefactor": {
       "costDelta": "neutral",
       "allowsProsecutedDangerTokens": true,
-      "why": "The grammar is an isolated opt-in pilot and is not composed into cssGrammar or any dialect grammar. Direct reductions create only the canonical Root, Rule, selector, and Comment literals for the caller-selected closed subset. The reduction child positions are guaranteed by their closed Parseman sequence; no post-reduction probes, fallback strings, or invented AST children remain. It adds no host callback ABI, dispatch map, legacy bridge, source reparse, or work to benchmark.less's existing route.",
-      "dangerTokensJustification": "The filtered body and root arrays are the canonical AST child arrays required by the selected pilot grammar. They replace neither a live production collection nor a render-path traversal, and the normal parser route does not instantiate this grammar.",
+      "why": "The grammar is an isolated opt-in pilot and is not composed into cssGrammar or any dialect grammar. Direct reductions create only the canonical Root, Rule, selector, Comment, Declaration, and AST-ValueNode Keyword literals for the caller-selected closed subset. Local type guards validate Parseman's untyped child boundary; checked body/root conversion throws if the grammar/compiler violates its own closed sequence instead of silently dropping a child. This is not recovery, source recognition, or fallback parsing. It adds no host callback ABI, dispatch map, legacy bridge, source reparse, or work to benchmark.less's existing route.",
+      "dangerTokensJustification": "The body and root arrays are canonical AST child arrays required by the selected pilot grammar, built only after every grammar-fixed child validates. The five throws defend impossible direct-grammar/capture corruption and cannot run as ordinary parse control flow. These constructs replace neither a live production collection nor a render-path traversal, and the normal parser route does not instantiate this grammar.",
       "byteIdentity": {
         "fixture": "benchmark.less",
         "collapseNesting": true,

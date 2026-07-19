@@ -3,7 +3,7 @@ import { parse } from '../src/direct-ast.js';
 
 describe('parse', () => {
   it('constructs canonical AST-v2 literals without a build host and renders them', () => {
-    const parsed = parse('/* top */\n.a { /* inside */ }');
+    const parsed = parse('/* top */\n.a { color: red; /* inside */ display: block }');
 
     expect(parsed.errors).toEqual([]);
     expect(parsed.document).toEqual({
@@ -20,7 +20,23 @@ describe('parse', () => {
               tail: []
             }]
           },
-          body: [{ type: 'Comment', text: '/* inside */' }]
+          body: [
+            {
+              type: 'Declaration',
+              name: 'color',
+              value: { type: 'Keyword', src: 'red' },
+              merge: null,
+              important: false
+            },
+            { type: 'Comment', text: '/* inside */' },
+            {
+              type: 'Declaration',
+              name: 'display',
+              value: { type: 'Keyword', src: 'block' },
+              merge: null,
+              important: false
+            }
+          ]
         }
       ]
     });
@@ -32,11 +48,13 @@ describe('parse', () => {
     }
     expect(rendered.css).toContain('/* top */');
     expect(rendered.css).toContain('.a {');
+    expect(rendered.css).toContain('color: red;');
+    expect(rendered.css).toContain('display: block;');
     expect(rendered.css).toContain('/* inside */');
   });
 
   it('reports input outside the closed pilot grammar', () => {
-    const parsed = parse('.a { color: red; }');
+    const parsed = parse('.a { color: 1px; }');
     expect(parsed.document).toBeNull();
     expect(parsed.errors).toHaveLength(1);
   });

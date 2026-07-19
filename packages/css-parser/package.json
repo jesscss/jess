@@ -46,7 +46,8 @@
     "src"
   ],
   "scripts": {
-    "verify:ast-export": "pnpm build && node test/ast-export-smoke.mjs",
+    "verify:ast-types": "tsc -p tsconfig.build.json --noEmit --skipLibCheck",
+    "verify:ast-export": "pnpm verify:ast-types && pnpm build && node test/ast-export-smoke.mjs",
     "ci": "pnpm build && pnpm test",
     "prepublishOnly": "pnpm build",
     "build": "pnpm compile",
