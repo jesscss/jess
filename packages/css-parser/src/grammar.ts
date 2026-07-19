@@ -1,15 +1,13 @@
 /**
- * Functional CSS grammar — the macro-compiled counterpart to the class-based
- * CssParser. Combinators are imported `with { type: 'macro' }`, so the parseman
+ * CSS grammar. Combinators are imported `with { type: 'macro' }`, so the parseman
  * plugin compiles the whole grammar (CST capture + node construction) to flat JS
  * at build time; without the plugin the interpreter runs the identical tree.
  *
  * This file is JUST the grammar — terminals + the `cssGrammar` rule map. Every
- * capital rule is a structural `node(parser)`: parseman infers the rule key, then captures the rule's
- * terminals + trivia and builds the AST via the injected `ctx.build` host. The
- * host, the parse driver, and `parseCssFn` live in ./functional-parser.ts and
- * ./functional-driver.ts. Less/Scss extend this grammar via `compose([cssGrammar,
- * …])` — no source needed (the pieces travel on the value).
+ * capital rule is a structural `node(parser)`: parseman infers the rule key and
+ * captures its terminals plus trivia. CSS exposes this grammar and its CST entry
+ * only; dialect parsers compose it through their own direct construction paths
+ * via `compose([cssGrammar, …])`.
  */
 import {
   node, regex, literal, sequence, choice, many, oneOrMore, optional,
@@ -87,7 +85,7 @@ const urlInner = regex(/(?:[^"'()\\ \t\n\f\r\x00-\x08\x0B\x0E-\x1F\x7F]|\\(?:[0-
 const anyValueTok = regex(/[+\-*/=<>|~^]+|[^\s;{}\[\]()'",!]+/);
 
 // ---------------------------------------------------------------------------
-// Grammar — mirrors the class CssParser rules (node() → AST node, plain
+// Grammar — direct Parseman rules (node() → AST node, plain
 // combinator → its terminals bubble into the nearest enclosing node()).
 // ---------------------------------------------------------------------------
 

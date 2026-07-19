@@ -27,18 +27,6 @@
       "import": "./lib/grammar.js",
       "require": "./lib/grammar.cjs"
     },
-    "./ast": {
-      "types": "./lib/direct-ast.d.ts",
-      "source": "./src/direct-ast.ts",
-      "import": "./lib/ast.js",
-      "require": "./lib/ast.cjs"
-    },
-    "./jess": {
-      "types": "./lib/jess.d.ts",
-      "source": "./src/jess.ts",
-      "import": "./lib/jess.js",
-      "require": "./lib/jess.cjs"
-    },
     "./package.json": "./package.json"
   },
   "files": [
@@ -46,26 +34,18 @@
     "src"
   ],
   "scripts": {
-    "verify:ast-types": "tsc -p tsconfig.build.json --noEmit --skipLibCheck",
-    "verify:ast-export": "pnpm verify:ast-types && pnpm build && node test/ast-export-smoke.mjs",
+    "verify:types": "tsc -p tsconfig.build.json --noEmit --skipLibCheck",
     "ci": "pnpm build && pnpm test",
     "prepublishOnly": "pnpm build",
     "build": "pnpm compile",
     "compile": "tsdown --tsconfig tsconfig.build.json --no-dts && tsc -p tsconfig.build.json --emitDeclarationOnly --noCheck",
     "dev": "tsdown --tsconfig tsconfig.build.json --no-dts --watch",
-    "bench": "node --import ../../scripts/parseman-macro-register.mjs --import tsx test/bench.ts",
-    "bench:save": "node --import ../../scripts/parseman-macro-register.mjs --import tsx test/bench.ts --save",
     "test": "cross-env TEST=true vitest --watch=false",
     "test:coverage": "cross-env TEST=true vitest --coverage",
     "lint:fix": "eslint --fix '**/*.{js,ts}'",
     "lint": "eslint '**/*.{js,ts}'"
   },
-  "dependencies": {
-    "chevrotain": "^12.0.0",
-    "color-name": "~2.0.0",
-    "lodash-es": "~4.17.21",
-    "xregexp": "^5.1.1"
-  },
+  "dependencies": {},
   "peerDependencies": {
     "@jesscss/core": "workspace:*"
   },
@@ -77,9 +57,6 @@
   "devDependencies": {
     "@jesscss/core": "workspace:*",
     "@jesscss/shared": "workspace:*",
-    "@types/color-name": "^1.1.1",
-    "@types/lodash-es": "~4.17.8",
-    "@types/xregexp": "^4.4.0",
     "parseman": "link:/Users/matthew/git/oss/parser-thing",
     "tsx": "~4.21.0"
   },
