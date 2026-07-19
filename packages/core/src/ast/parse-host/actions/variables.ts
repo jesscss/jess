@@ -113,6 +113,39 @@ function inDropped(i: number, drop: ReadonlySet<KindedCommentRange>): boolean {
  * shape, not F1's — and a `VarDeclaration` emits nothing, so it is unobservable
  * until referenced).
  */
+/**
+ * Structure a top-level SPACE-separated variable value (`@v: a b c`, `@v: @a @b @c`,
+ * `@v: 1px solid @c`) into a `SpacedValue` whose parts are the per-item value nodes.
+ * The parser hands each top-level space item as ONE child (a built value node — a
+ * pre-folded `Operation` / slash `SpacedValue` / `Paren` / `VarRef` — or a bare
+ * ident leaf), so this CONSUMES those children (no `ctx.src` re-tokenizing, P0):
+ * every non-separator child after the `:` is one item. Returns `null` (leave the
+ * caller's verbatim-`Any` fallback in place) when the value is a single item — that
+ * whole-value case is already handled — or when a top-level `,` appears (a comma
+ * list is `buildValueList`'s shape). A trailing `!important` (`!` / `important`
+ * leaves) is importance, not a value item, so it terminates the item run.
+ */
+function buildSpaceList(args: BuildArgs): t2.ValueNode | null {
+  const colonIdx = args.children.findIndex((c) => isLeaf(c) && c.value === ':');
+  if (colonIdx < 0) return null;
+  const items: t2.ValueNode[] = [];
+  for (let i = colonIdx + 1; i < args.children.length; i++) {
+    const c = args.children[i];
+    if (t2.isNode(c)) {
+      items.push(c as t2.ValueNode);
+      continue;
+    }
+    if (!isLeaf(c)) continue;
+    const v = c.value;
+    if (v === ';') break;
+    if (v === '!' || v.toLowerCase() === 'important') break;
+    if (v === ',') return null; // a comma list is buildValueList's shape
+    if (v === '') continue; // zero-width structural leaf
+    items.push(t2.any(v));
+  }
+  return items.length >= 2 ? t2.spaced(items) : null;
+}
+
 const varDeclaration: BuildAction = {
   type: 'VarDeclaration',
   build: (args) => {
@@ -177,8 +210,19 @@ const varDeclaration: BuildAction = {
       const list = colonRel >= 0 && commentFree
         ? buildValueList(args, valStartAbs, src.slice(valStartAbs, valEndAbs))
         : null;
+      // A top-level SPACE list binds STRUCTURED too (`@v: a b c` / `@v: @a @b @c` /
+      // `@v: 1px solid @c`). The grammar pre-folds each top-level space item into a
+      // single value child (operations / slash groups / parens are already one node),
+      // so each non-separator child IS one list item — no byte re-scan (P0). This
+      // keeps the value indexable by `extract` / `length`, resolves item refs, and
+      // normalizes the inter-item spacing (double space → single) on emit.
+      const spaceList = list === null && colonRel >= 0 && commentFree
+        ? buildSpaceList(args)
+        : null;
       if (list !== null) {
         valueNode = wrapImportant(list);
+      } else if (spaceList !== null) {
+        valueNode = wrapImportant(spaceList);
       } else {
         const stripped = colonRel >= 0 ? stripValueComments(args, valStartAbs, valEndAbs) : innerValue;
         valueNode = wrapImportant(t2.any(stripped));

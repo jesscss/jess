@@ -58,6 +58,7 @@ import type {
   RawInline,
   Root,
   Rule,
+  SpacedValue,
   Simple,
   SelectorList,
   StyleImport,
@@ -847,6 +848,22 @@ function evalTyped(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
       const typed = node.items.map((it) => evalTyped(it, frame, e));
       return combineAll(typed, (vals) => makeList(vals, node.sep));
     }
+    case 'SpacedValue': {
+      // A structured SPACE-list (`@v: a b c` / `1px solid @c`) materializes to the
+      // value-domain `List` with a space separator, so `extract` / `length` index
+      // its structure directly (each part resolved) instead of re-splitting a joined
+      // string. Typed consumption only — the emit path (`evalValue`) still joins the
+      // parts to bytes, so an un-consumed space value serializes exactly as before.
+      // EXCEPT a preserved-division slash group (`10px / 2`, built as a `SpacedValue`
+      // `[left, '/', right]` by value-expr) is NOT a list — it is one arithmetic
+      // value that must fold to bytes so an outer operation keeps it verbatim (guard
+      // 3). Fall through to the joined-bytes path for it.
+      if (!isSlashGroup(node)) {
+        const parts = node.parts.map((p) => evalTyped(p, frame, e));
+        return combineAll(parts, (vals) => makeList(vals, ' '));
+      }
+      return mapMaybe(evalValue(node, frame, e), (v) => force(e, v));
+    }
     default:
       // Computed / joined shapes (Operation, FunctionCall, Concat, SpacedValue,
       // Interp, VarIndirect, MapAccessor, …): fold to a Value then force. A
@@ -864,6 +881,17 @@ function evalTyped(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
  * indentation) so a wrapped list stays wrapped. This governs SEPARATORS only;
  * each list item's own value token is still emitted source-verbatim.
  */
+/**
+ * A preserved-division slash group — the `SpacedValue` `[left, '/', right]` that
+ * value-expr builds for `a / b` when the division is kept verbatim (parens-division
+ * math mode). It is ONE arithmetic value, not a space list, so it must NOT
+ * materialize to a value-domain `List` (that would break an outer operation and
+ * misreport `length`/`extract`). Detected by a top-level `/` literal part.
+ */
+function isSlashGroup(node: SpacedValue): boolean {
+  return node.parts.some((p) => p.type === 'Any' && p.src.trim() === '/');
+}
+
 function normalizeListSep(raw: string): string {
   const after = raw.slice(raw.indexOf(',') + 1);
   const nl = after.indexOf('\n');
