@@ -54,6 +54,7 @@ export class JessGrammar extends CssParser {
       case 'Reference':      return this._buildJessReference(children, loc(span));
       case 'DollarInterp':   return this._buildJessInterp(children, loc(span));
       case 'InterpolatedSelector': return this._buildJessInterpolatedSelector(children, loc(span));
+      case 'Quoted':         return this._buildJessQuoted(children, loc(span));
       case 'VarDeclaration': return this._buildJessVarDeclaration(children, rawChildren, loc(span));
       case 'Collection':     return this._buildJessCollection(children, loc(span));
       case 'CollectionEntry': return this._buildJessCollectionEntry(children, rawChildren, loc(span));
@@ -177,10 +178,10 @@ export class JessGrammar extends CssParser {
   // one `INTERPOLATION_PLACEHOLDER` per interp node. A string with NO interpolation
   // carries only leaves (no child node) and falls through to the flat CSS builder,
   // reconstructing a BYTE-IDENTICAL bare-string `Quoted` (no `Interpolated` wrap).
-  protected override _buildQuoted(children: ReadonlyArray<Node | CSTLike>, location: LocationInfo) {
+  private _buildJessQuoted(children: ReadonlyArray<Node | CSTLike>, location: LocationInfo): Node {
     const nodes = children.filter((c): c is Node => !isLeaf(c));
     if (nodes.length === 0) {
-      return super._buildQuoted(children as never, location);
+      return super._buildQuoted(children as never, location) as unknown as Node;
     }
     // The opening quote is the first leaf; skip both outer quote leaves. Interior
     // leaves are literal content; interior nodes are the interpolation slots.
