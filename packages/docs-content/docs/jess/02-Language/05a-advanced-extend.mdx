@@ -265,6 +265,25 @@ media (or a nested one) — it won't reach the top level or a sibling media. A
 
 Nested `@media` blocks stay nested in Jess's output — they are not merged.
 
+## Reference-mode visibility
+
+A `@compose (reference)` / `@import (reference)` module hides its own rules from the
+output. If your extender targets a selector that lives in a referenced module, only
+*your* selector surfaces — carrying the referenced rule's declarations — while the
+referenced target header itself is never emitted. Extend is the sanctioned way to pull
+styles out of a reference-imported sheet.
+
+## What extend does *not* do
+
+- **It is selector-level, not property-level.** Extend shares a rule's *whole*
+  declaration block. It cannot cherry-pick a single property — reach for a mixin or a
+  variable for that.
+- **It does not match variable targets.** An interpolated selector used as a match
+  *target* matches nothing. (An interpolated selector as the *extender* is fine.)
+- **It does not normalize the target form.** Matching is exact: a leading star, the
+  order of pseudo-classes, and the `nth` form all matter. Only attribute-selector quote
+  type is normalized.
+
 ## When to reach for extend
 
 - **Avoid a base class.** Style `.bear` like `.animal` without adding

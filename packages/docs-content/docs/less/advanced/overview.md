@@ -17,6 +17,9 @@ need the exact rule behind a specific output difference.
   (`collapseNesting: false`), no `@media` merging, and `:is()` selector compaction.
 - **[Extend and `:is()` Wrapping](./extend-is-wrapping.md)** — how `:extend(... all)`
   grafts `:is(...)` into the matched compound instead of string-replacing selectors.
+- **[Extend Semantics](./extend-semantics.md)** — the full behavior: exact vs. `all`,
+  sibling compaction, nested re-nesting and its flatten triggers, the fixpoint,
+  `@media` scoping, `@import (reference)` visibility, and what extend does *not* do.
 - **[Merge Operators & Last-Occurrence Anchoring](./merge-anchoring.md)** — `+:` /
   `+_:` merge semantics and the deliberate last-occurrence render position.
 - **[Verbatim (Lazy-Print) Values](./verbatim-values.md)** — un-operated literals and

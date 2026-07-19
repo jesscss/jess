@@ -21,7 +21,8 @@ The behavior below is anchored on two references, NOT on the current engine:
 
 Do NOT treat the legacy `tree/extend/**` renderer (`renderRealOracle`) as a
 correctness reference — it has known nested-extender bugs. The clean-room engine is
-`packages/core/src/ast/extend.ts` (PLAN / SOLVE / EMIT); read it for the feature
+`packages/core/src/ast/extend/` (barrel: `packages/core/src/ast/extend.ts`), split
+into `ir` / `compose` / `match` / `plan` / `solve` / `emit`; read it for the feature
 surface, not the correctness answer. Corpus/differential coverage lives in
 `packages/core/src/tree/extend/__tests__/` and the cross-`@import` output reference
 in `packages/jess/test/less/extend-cross-import.test.ts`.
@@ -65,7 +66,7 @@ pre:hover:extend(div pre), .some-class:extend(div pre) {}
 Grammar: the Jess `$extend` statement is `packages/jess-parser/src/grammar.ts`
 (search `$extend`); the core node is `Extend { target, flag }` with the parsed
 `ExtendInstruction { partial }` surfaced in `packages/core/src/ast/nodes.ts` and
-consumed by `packages/core/src/ast/extend.ts`.
+consumed by the engine under `packages/core/src/ast/extend/`.
 
 ## 3. Exact match (default) vs `all` (partial)
 
@@ -234,6 +235,57 @@ The extenders' compiled complex selectors (`.type1 .sidebar3`,
 `.type2.sidebar4`) join both the header list and the nested `.box` rule's `:is()`
 graft.
 
+### 7a. NESTED-mode re-nesting, shared-prefix strip, flatten triggers (LANDED)
+
+NESTED mode does NOT re-derive extend semantics — it RE-NESTS the correct FLAT
+result (`emit.ts` module JSDoc is the canonical statement of these rules). A rule
+STAYS nested and its extend rewrites the local selector in place, with three refinements:
+
+- **Shared-prefix strip** (`relativizeExtender` / `sharedPrefixLen` in `emit.ts`). A
+  folded-in extender that shares an ancestor `Level` with its target (identity-shared
+  by the plan walk) drops the shared levels and contributes only its own-local
+  remainder — `.attributes .attribute-test` folded into `.attributes [data="test"]`
+  surfaces as the sibling `.attribute-test`. A top-level extender (no shared ancestor)
+  is unchanged; the strip is capped at parent depth so a self-extend never slices empty.
+- **Flatten triggers** — a rule (and its descendants) FLATTEN to a top-level block when
+  the match CROSSES the `&` (the parent-context ↔ child-appended-compound join), which
+  nested structure cannot express locally:
+  - **trigger B** — a NESTED rule that itself carries `:extend()` (its extender
+    contribution incorporates the parent context).
+  - **trigger P** — a NESTED rule whose PARENT is aliased by an `all`-extender whose
+    target does NOT also match the child's own local compound (foreign parent-context
+    alias, e.g. `.sidebar2:extend(.sidebar all)` reaching `.sidebar .box`). A UNIFORM
+    alias that also rewrites the child's own compound does NOT cross → stays nested.
+  - **trigger X** — a NESTED rule whose whole composed complex is matched EXACTLY by an
+    extender that does not descend from its parent (hoisted whole-complex sibling).
+  A flatten whose subject STILL HAS surviving nested children RE-NESTS the corrected
+  subtree under its hoisted header (`emit.ts` `'renest'` mode) rather than composing
+  the children flat (`'collapse'`, which cascades to descendants). Flatten only when
+  there is no shared prefix to strip and the match crosses; otherwise the local
+  rewrite / prefix strip keeps the rule nested.
+
+### 7b. Exact-extender-into-children SPLIT (LANDED)
+
+An EXACT extender folds into a target's block header ONLY if the block has no
+surviving nested children (exact never propagates into sub-parts). If it HAS children,
+the extender SPLITS to a SEPARATE sibling rule carrying only the target's DIRECT
+declarations (dropped if empty) — it does not leak into the children. `all`-extenders
+fold into the header and DO propagate to children. This is the corrected form gated
+against `proposed-alpha-corrections/{extend.css,extend-exact.css}`, superseding alpha's
+hand-converted leak (see §12.1).
+
+### 7c. Sibling `:is()` compaction, guarded (LANDED)
+
+`siblingCompact` / `tryMergeSiblings` / `mergeCompoundsToIs` (`emit.ts`) compact whole
+sibling branches differing in exactly ONE compound into `:is(...)` at that position
+(`.button:hover, .submit:hover` → `:is(.button, .submit):hover`), with two guards:
+
+- Single-compound rows merge only when they share a trailing suffix — two whole
+  branches sharing NOTHING (`.ext8.ext9` / `.fuu`) stay a comma list.
+- Multi-segment (descendant-complex) rows compact only under a shared parent-composition
+  prefix (`allowMultiSeg`, a flattened nested rule's hoisted header); a TOP-LEVEL rule's
+  own header keeps `.foo .bar, .foo .baz` as a comma list (never `:is()`-collapsed).
+
 ## 8. `@media` scoping — v5 does NOT merge media
 
 An extend inside `@media` only matches selectors in the SAME (or a descendant)
@@ -376,13 +428,13 @@ a fixture. These are the owner questions:
 
 ## Cross-links
 
-- Engine: `packages/core/src/ast/extend.ts` (clean-room PLAN/SOLVE/EMIT).
+- Engine: `packages/core/src/ast/extend/` (clean-room `ir`/`compose`/`match`/`plan`/`solve`/`emit`; barrel `packages/core/src/ast/extend.ts`).
 - Legacy (dying, NOT a reference): `packages/core/src/tree/extend/{plan,solve,emit,pipeline,extend-index}.ts`.
 - Reference plumbing: `packages/core/src/ast/parse-host/__tests__/oracle-source.ts`, `docs/future/core-architecture/REFERENCE.md`.
 - Byte-identity gate: `packages/core/src/ast/parse-host/__tests__/extend-byte-identity.test.ts`.
 - Corrections: `docs/future/core-architecture/proposed-alpha-corrections/{README.md,extend.css,extend-exact.css}`.
 - Handoff / status: `docs/future/core-architecture/R1-EXTEND-HANDOFF.md`.
 - Kill-list (extend cleanup): `docs/future/core-architecture/TREE2-KILL-LIST.md`.
-- User-facing page: `packages/docs-content/docs/jess/02-Language/05a-advanced-extend.mdx`.
-</content>
-</invoke>
+- User-facing pages (canonical source `packages/docs-content/`):
+  - Less: `docs/less/features/extend.md` (syntax), `docs/less/advanced/extend-is-wrapping.md` (`:is()` grafting), `docs/less/advanced/extend-semantics.md` (full behavior + nuances).
+  - Jess: `docs/jess/02-Language/05a-advanced-extend.mdx`, `docs/jess/06-Advanced/05-extend.md`.

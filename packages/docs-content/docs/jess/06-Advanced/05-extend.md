@@ -46,8 +46,15 @@ Use `!exact` to require a whole-selector match — the equivalent of Less's plai
   on source text.
 - An interpolated selector as a match *target* matches nothing; an interpolated
   *extender* works.
+- Extend is **selector-level** — it shares a rule's whole declaration block and cannot
+  pull in a single property.
+- Target matching is **exact** apart from attribute-quote normalization: a leading
+  star, pseudo-class order, and `nth` form all matter.
+- An extend targeting a `(reference)`-imported rule surfaces the declarations under
+  *your* selector only; the referenced target header is never emitted.
 
-This is the same extend engine documented for Less 5.x. For the full behavior of
-`:is()` grafting and multi-target `!all`, see the Less
+This is the same extend engine documented for Less 5.x. For the full behavior —
+`:is()` grafting, sibling compaction, nested re-nesting and its flatten triggers,
+`@media` scoping, and reference visibility — see the Less
 [Extend and `:is()` Wrapping](https://lesscss.org/docs/advanced/extend-is-wrapping)
-page.
+and [Extend Semantics](https://lesscss.org/docs/advanced/extend-semantics) pages.

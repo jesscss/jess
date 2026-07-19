@@ -73,6 +73,7 @@ export default {
         'advanced/output-model',
         'advanced/selector-compaction',
         'advanced/extend-is-wrapping',
+        'advanced/extend-semantics',
         'advanced/merge-anchoring',
         'advanced/verbatim-values',
         'advanced/value-formatting',
