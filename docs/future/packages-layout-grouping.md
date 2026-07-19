@@ -27,7 +27,7 @@ nearly free and the tooling gets more robust either way:
   `test-core-debug`, `profile-less-benchmark`, `verify-node-copy-frontier`, …).
   Resolve package roots via `pnpm ls -r --json` / `require.resolve` instead.
 - `vitest.config.ts` — `resolve(root, 'packages/<pkg>/...')` literals
-  (css-parser jess entry, core ast-render, perf-test excludes).
+  (css-parser jess entry, perf-test excludes).
 
 ## Recommended organization
 

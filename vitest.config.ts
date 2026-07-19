@@ -39,14 +39,6 @@ function workspaceSrcAliases() {
   if (existsSync(cssJess)) {
     alias.push({ find: /^@jesscss\/css-parser\/jess$/, replacement: cssJess });
   }
-  // The core `./ast-render` subpath (production ast/ whole-doc render surface)
-  // consumed by `@jesscss/plugin-less`. Same rationale as `css-parser/jess`: a
-  // subpath falls through to node resolution (built `lib`) without an explicit
-  // src alias, which would defeat the TS-aware source run.
-  const coreAstRender = resolve(root, 'packages/core/src/ast-render.ts');
-  if (existsSync(coreAstRender)) {
-    alias.push({ find: /^@jesscss\/core\/ast-render$/, replacement: coreAstRender });
-  }
   return alias;
 }
 
