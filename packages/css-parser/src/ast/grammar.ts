@@ -6,7 +6,7 @@
  * core AST constructors directly, while the public CSS grammar continues to
  * produce the independent CST.
  */
-import { balanced, choice, expect, literal, many, noTrivia, node, oneOrMore, optional, regex, rules, scanTo, sequence, trivia } from 'parseman' with { type: 'macro' };
+import { balanced, choice, expect, literal, many, noTrivia, node, oneOrMore, optional, parser, regex, rules, scanTo, sequence, trivia } from 'parseman' with { type: 'macro' };
 import type { Combinator } from 'parseman';
 import {
   any,
@@ -22,6 +22,8 @@ import {
   importAtRule,
   keyword,
   list,
+  operation,
+  paren,
   root,
   rule,
   selist,
@@ -42,6 +44,7 @@ import type {
   FunctionCall,
   ImportAtRule,
   Keyword,
+  Paren,
   Quoted,
   Root,
   Rule,
@@ -67,6 +70,11 @@ type CssAstRules = {
   CssAstQuoted: Combinator<Quoted>;
   CssAstUrl: Combinator<ValueNode>;
   CssAstCall: Combinator<FunctionCall>;
+  CssAstCalcCall: Combinator<FunctionCall>;
+  CssAstCalcParen: Combinator<Paren>;
+  CssAstCalcValue: Combinator<ValueNode>;
+  CssAstMathProduct: Combinator<ValueNode>;
+  CssAstMathSum: Combinator<ValueNode>;
   CssAstValueTerm: Combinator<ValueNode>;
   CssAstValue: Combinator<ValueNode>;
   CssAstImportant: Combinator<boolean>;
@@ -141,7 +149,8 @@ function isValue(value: unknown): value is ValueNode {
     && 'type' in value
     && (value.type === 'Keyword' || value.type === 'Color' || value.type === 'Dimension'
       || value.type === 'Quoted' || value.type === 'Url' || value.type === 'FunctionCall'
-      || value.type === 'SpacedValue' || value.type === 'List' || value.type === 'Any');
+      || value.type === 'Paren' || value.type === 'Operation' || value.type === 'SpacedValue'
+      || value.type === 'List' || value.type === 'Any');
 }
 
 function isImportTarget(value: unknown): value is Quoted | { readonly type: 'Url'; readonly value: ValueNode } {
@@ -197,6 +206,23 @@ function valueChildren(children: readonly unknown[]): ValueNode[] {
   return values;
 }
 
+function foldOperation(children: readonly unknown[]): ValueNode {
+  const first = children.find(isValue);
+  if (first === undefined) {
+    throw new Error('CSS AST math grammar requires an operand');
+  }
+  let result = first;
+  for (let index = children.indexOf(first) + 1; index < children.length; index += 2) {
+    const operatorToken = children[index];
+    const right = children[index + 1];
+    if (operatorToken === undefined || !isValue(right)) {
+      throw new Error('CSS AST math grammar lost an operator operand');
+    }
+    result = operation(tokenText(operatorToken).trim(), result, right);
+  }
+  return result;
+}
+
 function rulesetStatements(children: readonly unknown[]): Array<Comment | Declaration | Rule> {
   return children.filter(isRulesetStatement);
 }
@@ -230,6 +256,10 @@ const keywordValue = regex(/-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \
 const hexColor = regex(/#[0-9a-fA-F]{3,8}\b/);
 const dimensionNumber = regex(/[+-]?(?:[0-9]+(?:\.[0-9]+)?|\.[0-9]+)/);
 const dimensionUnit = regex(/[A-Za-z%]+/);
+const calcWhitespace = regex(/[ \t\n\r\f]+/);
+const calcProductOperator = regex(/[ \t\n\r\f]*[*/][ \t\n\r\f]*/);
+const calcSumOperator = regex(/[ \t\n\r\f]+[-+][ \t\n\r\f]+/);
+const genericFunctionName = regex(/(?!(?:calc)(?=\())-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/i);
 const charsetEncoding = regex(/[A-Za-z0-9._-]+/);
 // `@import` has a plugin-owned typed fact and must not be silently lowered to
 // a generic statement.  Its tail deliberately stays grammar-owned opaque CSS
@@ -350,15 +380,42 @@ export const cssAstGrammar = rules<CssAstRules>({ trivia: whitespace }, (g) => {
   );
   const CssAstCall = node(
     'CssAstCall',
-    sequence(g.CssAstProperty, literal('('), optional(sequence(g.CssAstValueTerm, many(sequence(literal(','), g.CssAstValueTerm)))), literal(')')),
+    sequence(genericFunctionName, literal('('), optional(sequence(g.CssAstValueTerm, many(sequence(literal(','), g.CssAstValueTerm)))), literal(')')),
     (children) => {
       const name = tokenText(children[0]);
       return funcCall(name, children.slice(1).filter(isValue));
     }
   );
+  // CSS arithmetic parentheses are structural only inside calc(), where they
+  // preserve math precedence in the AST.
+  const CssAstCalcParen = node(
+    'CssAstCalcParen',
+    noTrivia(sequence(literal('('), many(calcWhitespace), g.CssAstMathSum, many(calcWhitespace), literal(')'))),
+    children => paren(valueChildren(children)[0]!)
+  );
+  const CssAstCalcValue = node(
+    'CssAstCalcValue',
+    choice(g.CssAstDimension, g.CssAstColor, g.CssAstUrl, g.CssAstCalcCall, parser({ trivia: whitespace }, g.CssAstCall), g.CssAstCalcParen, g.CssAstQuoted, g.CssAstKeyword),
+    children => valueChildren(children)[0]!
+  );
+  const CssAstMathProduct = node(
+    'CssAstMathProduct',
+    noTrivia(sequence(g.CssAstCalcValue, many(sequence(calcProductOperator, g.CssAstCalcValue)))),
+    foldOperation
+  );
+  const CssAstMathSum = node(
+    'CssAstMathSum',
+    noTrivia(sequence(g.CssAstMathProduct, many(sequence(calcSumOperator, g.CssAstMathProduct)))),
+    foldOperation
+  );
+  const CssAstCalcCall = node(
+    'CssAstCalcCall',
+    noTrivia(sequence(regex(/calc(?=\()/i), literal('('), many(calcWhitespace), g.CssAstMathSum, many(calcWhitespace), literal(')'))),
+    children => funcCall(tokenText(children[0]), [valueChildren(children)[0]!])
+  );
   const CssAstValueAtom = node(
     'CssAstValueAtom',
-    choice(g.CssAstDimension, g.CssAstColor, g.CssAstUrl, g.CssAstCall, g.CssAstQuoted, g.CssAstKeyword),
+    choice(g.CssAstDimension, g.CssAstColor, g.CssAstUrl, g.CssAstCalcCall, g.CssAstCall, g.CssAstQuoted, g.CssAstKeyword),
     children => valueChildren(children)[0]!
   );
   const CssAstValueTerm = node('CssAstValueTerm', oneOrMore(CssAstValueAtom), (children) => {
@@ -373,7 +430,7 @@ export const cssAstGrammar = rules<CssAstRules>({ trivia: whitespace }, (g) => {
       return terms.length === 1 ? terms[0]! : list(terms, Array(terms.length - 1).fill(','));
     }
   );
-  const CssAstImportant = node('CssAstImportant', literal('!important'), () => true);
+  const CssAstImportant = node('CssAstImportant', sequence(literal('!'), regex(/important/i)), () => true);
   const CssAstDeclaration = node(
     'CssAstDeclaration',
     choice(
@@ -518,6 +575,11 @@ export const cssAstGrammar = rules<CssAstRules>({ trivia: whitespace }, (g) => {
     CssAstQuoted,
     CssAstUrl,
     CssAstCall,
+    CssAstCalcCall,
+    CssAstCalcParen,
+    CssAstCalcValue,
+    CssAstMathProduct,
+    CssAstMathSum,
     CssAstValueTerm,
     CssAstValue,
     CssAstImportant,

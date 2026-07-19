@@ -38,9 +38,51 @@ when recognition changes. For eval/render/lookup/traversal/copying changes, run
 requires fresh builds, core tests, the Jess production spine ratchet, and the
 Less corpus.
 
+## Direct-root cutover order
+
+The parser work has one real composition gate: a leaf dialect grammar must be
+able to macro-fuse imported, recognition-only shared syntax while retaining its
+own local direct-constructor reductions. It must not serialize local builders,
+relax direct-builder capture validation, or create a reusable builder artifact.
+Once that leaf-only fusion exists, move in this order: complete direct CSS
+families; build Less/SCSS/Jess dialect reductions over shared syntax; add a
+plugin-owned Less document loader over typed `ImportAtRule` facts; then replace
+the Jess legacy root and atomically delete legacy `StyleImport`, `Context`
+resolver/getTree methods, and generic core plugin filesystem/parser hooks.
+Core never receives a resolver callback or owns module/filesystem policy.
+
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: delete the dead extend-prefilter runtime toggle and private AST
+- Latest pass: extend the private CSS direct-AST value family with calc-only
+  arithmetic, calc parentheses, and grammar-owned importance.
+- Architecture surface: `cssAstGrammar` remains test-only; public CSS parsing
+  remains CST-only. Construction stays in parser-local reductions with core node
+  constructors, with no host, bridge, resolver, reparse, or public entry.
+- Separation/duplication: CSS arithmetic is structural only within `calc()`;
+  bare value parentheses, binary `%`, malformed calc, and unspaced sum operators
+  are rejected by grammar rather than recovered in a reducer.
+- Cumulative node weight: only exact direct-AST `Operation` and `Paren` facts
+  for the private test seam; no production parser route constructs them.
+- New traversal: `foldOperation` walks one already-captured alternating child
+  list to build left-associative calc operations. It does not walk source/tree
+  state and is cold because the grammar has zero production importers.
+- New node/materialization: parser reductions construct the exact operation and
+  parenthesis nodes required by the direct AST; no post-parse conversion exists.
+- Render path: unchanged; serializer is invoked only by focused proof.
+- Helper/API surface: one grammar-local `foldOperation`, unexported.
+- Metadata mutations: none.
+- Review-flagged diff tokens: the local bounded loop and impossible-child
+  `Error` guards run only after Parseman has structurally recognized a complete
+  calc reduction; malformed calc is rejected before any reducer runs.
+- Hot-path cost contracts:
+  ```json
+  [{"id":"css-private-direct-ast-family","verdict":"accepted","privateReachability":{"productionImporters":0,"publicExports":0,"buildEntries":0,"coldConstructionOnly":true},"why":"The calc reductions and their bounded child loop are reachable only from focused private CSS AST tests; no public parse/eval/render entry imports this grammar."}]
+  ```
+- Evidence: focused malformed/spacing/operator rejection and AST-shape tests,
+  CSS package tests/build, parser-runtime boundary verifier, and adversarial review.
+- Verdict: accepted cold direct-construction slice; no performance claim.
+
+- Prior pass: delete the dead extend-prefilter runtime toggle and private AST
   barrel, while replacing the lost host-era prefilter proof with direct AST cases.
 - Architecture surface: no public/runtime toggle, host, bridge, or full-scan
   reference path remains. The always-on candidate prefilter and prune are the

@@ -327,4 +327,67 @@ describe('private CSS canonical-AST grammar', () => {
     });
     expect(serialize(document)).toEqual({ css: '.a {\n  transform: translate();\n}\n' });
   });
+
+  it('builds calc arithmetic and parentheses directly as canonical value nodes', () => {
+    const document = parseAst('.a { width: calc(1px + 2px * (3 - 4)); }');
+
+    expect(document.children[0]).toMatchObject({
+      type: 'Rule',
+      body: [{
+        type: 'Declaration',
+        name: 'width',
+        value: {
+          type: 'FunctionCall',
+          name: 'calc',
+          args: [{
+            type: 'Operation',
+            operator: '+',
+            left: { type: 'Dimension', number: 1, unit: 'px' },
+            right: {
+              type: 'Operation',
+              operator: '*',
+              left: { type: 'Dimension', number: 2, unit: 'px' },
+              right: {
+                type: 'Paren',
+                inner: {
+                  type: 'Operation',
+                  operator: '-',
+                  left: { type: 'Dimension', number: 3, unit: '' },
+                  right: { type: 'Dimension', number: 4, unit: '' }
+                }
+              }
+            }
+          }]
+        }
+      }]
+    });
+    expect(serialize(document)).toEqual({ css: '.a {\n  width: calc(1px + 2px * (3 - 4));\n}\n' });
+  });
+
+  it('rejects malformed calc syntax at recognition without a reduction fallback', () => {
+    for (const input of [
+      '.a { width: calc(); }',
+      '.a { width: calc(+); }',
+      '.a { width: calc(1px +2px); }',
+      '.a { width: calc(1px+ 2px); }',
+      '.a { width: calc(1px -2px); }',
+      '.a { width: calc(5px % 2); }',
+      '.a { width: (1px); }'
+    ]) {
+      expect(() => {
+        const result = run(cssAstGrammar.CssAstDocument, input, { trivia: cssAstGrammar.whitespace });
+        expect(result.ok && result.unconsumedFrom === null).toBe(false);
+      }).not.toThrow();
+    }
+  });
+
+  it('recognizes CSS importance as a declaration flag with case and trivia permitted by grammar', () => {
+    const document = parseAst('.a { color: red ! IMPORTANT; }');
+
+    expect(document.children[0]).toMatchObject({
+      type: 'Rule',
+      body: [{ type: 'Declaration', name: 'color', important: true, value: { type: 'Keyword', src: 'red' } }]
+    });
+    expect(serialize(document)).toEqual({ css: '.a {\n  color: red !important;\n}\n' });
+  });
 });
