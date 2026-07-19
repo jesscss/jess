@@ -102,7 +102,36 @@ closure is still in progress.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: extend the private Less direct-AST complex-selector grammar with
+- Latest pass: extend the private Jess direct-AST value grammar with recursive
+  static function calls and comma-delimited typed arguments.
+- Architecture surface: parser-local reductions construct canonical
+  `FunctionCall` nodes directly from Parseman-recognized arguments. Dynamic
+  interpolation, arithmetic, named arguments, and space lists remain rejected
+  until they have typed reductions; no Context/plugin/CST bridge, host,
+  scanner, or source reparse is added.
+- Cumulative node weight: cold private Jess direct-AST construction only; no
+  public parser/eval/render path reaches this grammar.
+- New traversal: one bounded argument collection loop over the completed call
+  reduction; it cannot walk source or runtime state.
+- New node/materialization: a parser-owned argument array is the exact
+  `FunctionCall.args` payload; no eval/render materialization is added.
+- Render path: unchanged and unreachable from production.
+- Helper/API surface: no exported parser operation or plugin surface.
+- Metadata mutations: none.
+- Review-flagged diff tokens: [loop/traversal], [node construction], and
+  [materialized array/object] are cold grammar-owned construction checks;
+  `TypeError` rejects impossible completed shapes, not parse control flow.
+- Hot-path cost contracts:
+  ```json
+  [{"id":"jess-private-direct-ast-family","verdict":"accepted","privateReachability":{"productionImporters":0,"publicExports":0,"buildEntries":0,"coldConstructionOnly":true},"why":"The current Jess direct-AST grammar is not a public parse, eval, or render path; its bounded call reduction is exercised by focused development tests."}]
+  ```
+- Evidence: focused Jess AST and macro-fusion tests, Jess parser build,
+  parser-runtime-boundary verifier, targeted ESLint, staged aggressive-cutting
+  review.
+- Verdict: accepted cold parser construction; structured lists, selectors, and
+  dynamic expressions remain explicit typed parser work.
+
+- Earlier pass: extend the private Less direct-AST complex-selector grammar with
   explicit static combinators `>`, `+`, `~`, `|`, and `||`.
 - Architecture surface: one parser-local reduction pairs Parseman-captured
   combinator and compound facts into canonical `Complex.tail` segments. It

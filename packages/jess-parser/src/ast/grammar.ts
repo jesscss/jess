@@ -7,8 +7,8 @@
 import { choice, composeLeaf, literal, many, noTrivia, node, optional, regex, rules, sequence, trivia } from 'parseman' with { type: 'macro' };
 import type { Combinator } from 'parseman';
 import { cssAstSyntax } from '@jesscss/internal-css-recognition/recognition';
-import { decl, dimension, keyword, quoted, root, rule, varDecl, varRef } from '@jesscss/core/ast';
-import type { Declaration, Dimension, Keyword, Quoted, Root, Rule, Statement, ValueNode, VarDeclaration, VarRef } from '@jesscss/core/ast';
+import { decl, dimension, funcCall, keyword, quoted, root, rule, varDecl, varRef } from '@jesscss/core/ast';
+import type { Declaration, Dimension, FunctionCall, Keyword, Quoted, Root, Rule, Statement, ValueNode, VarDeclaration, VarRef } from '@jesscss/core/ast';
 
 type Token = { readonly value: string };
 
@@ -19,6 +19,8 @@ type JessAstRules = {
   DirectJessKeyword: Combinator<Keyword>;
   DirectJessQuoted: Combinator<Quoted>;
   DirectJessDimension: Combinator<Dimension>;
+  DirectJessCallArgument: Combinator<ValueNode>;
+  DirectJessCall: Combinator<FunctionCall>;
   DirectJessValue: Combinator<ValueNode>;
   DirectJessDeclaration: Combinator<Declaration>;
   DirectJessRule: Combinator<Rule>;
@@ -46,7 +48,7 @@ function isValueNode(value: unknown): value is ValueNode {
   return typeof value === 'object'
     && value !== null
     && 'type' in value
-    && (value.type === 'Keyword' || value.type === 'Quoted' || value.type === 'VarRef' || value.type === 'Dimension');
+    && (value.type === 'Keyword' || value.type === 'Quoted' || value.type === 'VarRef' || value.type === 'Dimension' || value.type === 'FunctionCall');
 }
 
 function requireValueNode(value: unknown): ValueNode {
@@ -152,9 +154,41 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, rules<JessAstRules>({ t
       return dimension(Number(numberText), unit, `${numberText}${unit}`);
     }
   );
+  const DirectJessCallArgument = node<ValueNode>(
+    'DirectJessCallArgument',
+    sequence(literal(','), g.DirectJessValue),
+    (children) => {
+      if (children.length !== 2 || requireToken(children[0]).value !== ',') {
+        throw new TypeError('Direct Jess AST call argument produced unexpected children.');
+      }
+      return requireValueNode(children[1]);
+    }
+  );
+  // A direct static call owns its argument boundaries and recursive call shape.
+  // Dynamic Jess `$[...]` interpolation, arithmetic expressions, and named
+  // arguments remain outside this closed slice until they have typed reductions.
+  const DirectJessCall = node<FunctionCall>(
+    'DirectJessCall',
+    sequence(
+      g.CssAstSyntaxKeyword,
+      literal('('),
+      optional(sequence(g.DirectJessValue, many(g.DirectJessCallArgument))),
+      literal(')')
+    ),
+    (children) => {
+      if (children.length < 3 || requireToken(children[1]).value !== '(' || requireToken(children.at(-1)).value !== ')') {
+        throw new TypeError('Direct Jess AST call produced unexpected children.');
+      }
+      const args: ValueNode[] = [];
+      for (let index = 2; index < children.length - 1; index += 1) {
+        args.push(requireValueNode(children[index]));
+      }
+      return funcCall(requireToken(children[0]).value, args);
+    }
+  );
   const DirectJessValue = node<ValueNode>(
     'DirectJessValue',
-    choice(g.DirectJessVarReference, g.DirectJessQuoted, g.DirectJessDimension, g.DirectJessKeyword),
+    choice(g.DirectJessCall, g.DirectJessVarReference, g.DirectJessQuoted, g.DirectJessDimension, g.DirectJessKeyword),
     children => requireValueNode(children[0])
   );
   const DirectJessVarDeclaration = node<VarDeclaration>(
@@ -194,6 +228,8 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, rules<JessAstRules>({ t
     DirectJessKeyword,
     DirectJessQuoted,
     DirectJessDimension,
+    DirectJessCallArgument,
+    DirectJessCall,
     DirectJessValue,
     DirectJessDeclaration,
     DirectJessRule,

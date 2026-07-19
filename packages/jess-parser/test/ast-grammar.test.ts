@@ -13,8 +13,8 @@ function isRoot(value: unknown): value is Root {
 }
 
 describe('private Jess AST grammar facts', () => {
-  it('constructs declarations, static rules, quoted, keyword, numeric, and variable-reference facts directly', () => {
-    const source = '$base: "dark";\n$tone: $base;\n$accent: blue;\n$gap: -1.5e2rem;\n$ratio: .5;\n$percent: 50%;\n.card { color: $tone; margin: 1rem; }';
+  it('constructs declarations, static rules, quoted, keyword, numeric, call, and variable-reference facts directly', () => {
+    const source = '$base: "dark";\n$tone: $base;\n$accent: blue;\n$gap: -1.5e2rem;\n$ratio: .5;\n$percent: 50%;\n$shade: rgb(0, 10%, mix(blue, $percent));\n.card { color: $tone; margin: 1rem; filter: blur(2px); }';
     const legacy = parseJessCst(source);
     const result = run(
       jessAstGrammar.JessAstDocument,
@@ -37,6 +37,28 @@ describe('private Jess AST grammar facts', () => {
         { type: 'VarDeclaration', name: 'ratio', value: { type: 'Dimension', number: 0.5, unit: '', src: '.5' } },
         { type: 'VarDeclaration', name: 'percent', value: { type: 'Dimension', number: 50, unit: '%', src: '50%' } },
         {
+          type: 'VarDeclaration',
+          name: 'shade',
+          value: {
+            type: 'FunctionCall',
+            name: 'rgb',
+            args: [
+              { type: 'Dimension', number: 0, unit: '', src: '0' },
+              { type: 'Dimension', number: 10, unit: '%', src: '10%' },
+              {
+                type: 'FunctionCall',
+                name: 'mix',
+                args: [
+                  { type: 'Keyword', src: 'blue' },
+                  { type: 'VarRef', name: 'percent' }
+                ],
+                modern: false
+              }
+            ],
+            modern: false
+          }
+        },
+        {
           type: 'Rule',
           selector: {
             type: 'SelectorList',
@@ -44,7 +66,8 @@ describe('private Jess AST grammar facts', () => {
           },
           body: [
             { type: 'Declaration', name: 'color', value: { type: 'VarRef', name: 'tone' }, merge: null, important: false },
-            { type: 'Declaration', name: 'margin', value: { type: 'Dimension', number: 1, unit: 'rem', src: '1rem' }, merge: null, important: false }
+            { type: 'Declaration', name: 'margin', value: { type: 'Dimension', number: 1, unit: 'rem', src: '1rem' }, merge: null, important: false },
+            { type: 'Declaration', name: 'filter', value: { type: 'FunctionCall', name: 'blur', args: [{ type: 'Dimension', number: 2, unit: 'px', src: '2px' }], modern: false }, merge: null, important: false }
           ]
         }
       ]
@@ -87,6 +110,10 @@ describe('private Jess AST grammar facts', () => {
       '$\\66 oo: blue;',
       '$tone: "a\\"b";',
       '$tone: \'a\\\'b\';',
+      '$tone: rgb(1 2 3);',
+      '$tone: rgb(1,);',
+      '$tone: rgb($[tone]);',
+      '$tone: $(1 + 2);',
       '.card { color: blue }',
       '.card { color: blue red; }',
       '.card { $[property]: blue; }'
