@@ -878,6 +878,17 @@ no imported guarded mixins (no speedup to show), but on
     "neutralRefactor": {"costDelta":"neutral","why":"Cold type branches directly write target and tail; no resolution, reparse, collection, or child walk occurs.","byteIdentity":{"fixture":"benchmark.less","collapseNesting":true,"outputSha256":"adfd26732125a33fc1e264aca7d7ecde8c7c1da43f968e3106bd387a1f78e840","outputBytes":133983}}
   },
   {
+    "id": "context-plugin-only-module-resolution",
+    "kind": "neutral-or-negative",
+    "surface": "Context import path resolution delegates bare package resolution exclusively to installed resolver plugins (context.ts)",
+    "files": ["packages/core/src/context.ts"],
+    "neutralRefactor": {
+      "costDelta": "decrease",
+      "why": "Context no longer creates a Node require function, probes candidate module paths, or repeats extension fallback after plugins decline to locate an import. Resolver and locator plugins remain the sole capability path, so ordinary file imports retain their existing plugin calls while the no-plugin miss exits earlier with less allocation and filesystem/module-resolution work.",
+      "byteIdentity": {"fixture":"benchmark.less","collapseNesting":true,"outputSha256":"adfd26732125a33fc1e264aca7d7ecde8c7c1da43f968e3106bd387a1f78e840","outputBytes":133983}
+    }
+  },
+  {
     "id": "opaque-atrule-block-vocabulary",
     "kind": "neutral-or-negative",
     "surface": "OpaqueAtRuleBlock terminal AST vocabulary (at-rule.ts)",

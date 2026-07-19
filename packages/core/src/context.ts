@@ -36,7 +36,6 @@ import {
 } from './warnings.js';
 import type { Call } from './tree/call.js';
 import { CallMap } from './tree/util/recursion-helper.js';
-import { createRequire } from 'node:module';
 import { BitSetLibrary } from './tree/util/bitset.js';
 import { selectorAnalysisFor, type SelectorAnalysis } from './tree/util/selector-analysis.js';
 import type { PrintOptions } from './tree/util/print.js';
@@ -920,41 +919,6 @@ export class Context {
       if (result) {
         finalPath = result;
         break;
-      }
-    }
-
-    if (!finalPath) {
-      // Fallback for bare module specifiers (e.g. "@scope/pkg/path").
-      const looksBareSpecifier = (p: string) =>
-        !path.isAbsolute(p)
-        && !p.startsWith('./')
-        && !p.startsWith('../')
-        && !p.startsWith('/')
-        && !/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(p);
-      const tryResolveModule = (request: string, basedir: string): string | undefined => {
-        try {
-          const req = createRequire(path.join(basedir, '__jess_resolve__.js'));
-          return req.resolve(request);
-        } catch {
-          return undefined;
-        }
-      };
-      const moduleBaseDirs = [currentDirectory, ...searchPaths, process.cwd()];
-      for (const candidate of paths) {
-        if (!looksBareSpecifier(candidate)) {
-          continue;
-        }
-        for (const baseDir of moduleBaseDirs) {
-          const base = path.isAbsolute(baseDir) ? baseDir : path.resolve(currentDirectory, baseDir);
-          const resolved = tryResolveModule(candidate, base) ?? tryResolveModule(`${candidate}.less`, base);
-          if (resolved) {
-            finalPath = resolved;
-            break;
-          }
-        }
-        if (finalPath) {
-          break;
-        }
       }
     }
 
