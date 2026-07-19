@@ -33,7 +33,8 @@ import {
   type OutputOptions
 } from 'styles-config';
 import type { PluginInterface } from '@jesscss/core';
-import lessPlugin, { renderLessFileViaAst } from '@jesscss/plugin-less';
+import lessPlugin, { renderLessFileViaAst, renderLessViaAst } from '@jesscss/plugin-less';
+import type { AstRenderResult } from '@jesscss/plugin-less';
 import scssPlugin from '@jesscss/plugin-scss';
 import { outputDiagnostics } from './diagnostics.js';
 
@@ -1320,6 +1321,92 @@ export class Compiler {
     );
   }
 
+  /**
+   * Dialect fork for the render entry points (engine cutover): is the ROOT being
+   * rendered a `.less` document? Less roots render through the ast/ v2 engine
+   * ({@link renderLessRootViaAst}); `.scss`/`.jess` roots stay on the legacy
+   * `tree.eval`/`render` path ({@link renderTree}) — they have no ast/ renderer
+   * yet, so this is their ONLY renderer, not a fallback.
+   *
+   * The decision mirrors core's parser-plugin selection
+   * (`Context.findParserPlugin`): an explicit `language`/`type` names a plugin by
+   * name; otherwise the file/virtual extension selects a parsing plugin. Less iff
+   * the selected plugin is the Less plugin (`name === 'less'`).
+   */
+  private isLessRoot(
+    context: Context,
+    input: { filePath?: string; language?: string; extension?: string }
+  ): boolean {
+    const { filePath, language, extension } = input;
+    if (language) {
+      return context.plugins.find(plugin => plugin.name === language)?.name === 'less';
+    }
+    const ext = extension
+      ? (extension.startsWith('.') ? extension : `.${extension}`)
+      : (filePath ? path.extname(filePath) : undefined);
+    if (!ext) {
+      return false;
+    }
+    const plugin = context.plugins.find(
+      plugin => plugin.supportedExtensions?.includes(ext) && (plugin.parse || plugin.safeParse)
+    );
+    return plugin?.name === 'less';
+  }
+
+  /**
+   * Render a `.less` ROOT end-to-end through the AST-v2 engine (the production
+   * cutover path), reusing the SAME options cascade as the legacy path: the
+   * resolved `collapseNesting` and the root `@globalVars`/`@modifyVars`/banner
+   * source prep. Delegates to `@jesscss/plugin-less`'s ast/ binding
+   * (`renderLessViaAst` for in-memory source / prepped roots, `renderLessFileViaAst`
+   * for a bare file). Throws the captured parse/serialize error on failure.
+   */
+  private async renderLessRootViaAst(
+    context: Context,
+    resolved: ResolvedRenderConfig,
+    input: { filePath?: string; source?: string; language?: string; extension?: string },
+    profile?: RenderProfile
+  ): Promise<string> {
+    const collapseNesting = resolved.printOptions.collapseNesting ?? false;
+    const rootLessSourceOptions: RootLessSourceOptions = {
+      banner: typeof resolved.activeOptions.banner === 'string'
+        ? resolved.activeOptions.banner
+        : undefined,
+      globalVars: getLessVariableOverrides(resolved.activeOptions.globalVars),
+      modifyVars: getLessVariableOverrides(resolved.activeOptions.modifyVars)
+    };
+    const shouldPrepareRootLessSource = hasRootLessSourceOptions(rootLessSourceOptions);
+
+    const result = await measureProfileAsync(profile, 'render', async (): Promise<AstRenderResult> => {
+      if (input.source != null) {
+        const preparedSource = shouldPrepareRootLessSource
+          ? prepareRootLessSource(input.source, rootLessSourceOptions)
+          : input.source;
+        return renderLessViaAst(preparedSource, { collapseNesting, filePath: input.filePath });
+      }
+      const filePath = input.filePath!;
+      if (shouldPrepareRootLessSource) {
+        const { resolvedPath } = await context.resolveImportPath(filePath);
+        const sourceGetter = context.plugins.find(plugin => plugin.getSource);
+        if (!sourceGetter?.getSource) {
+          throw new Error('No source getter found');
+        }
+        const rootSource = await sourceGetter.getSource(resolvedPath);
+        const preparedSource = prepareRootLessSource(rootSource, rootLessSourceOptions);
+        return renderLessViaAst(preparedSource, { collapseNesting, filePath: resolvedPath });
+      }
+      return renderLessFileViaAst(filePath, { collapseNesting });
+    });
+
+    if (result.threw) {
+      throw result.threw;
+    }
+    if (result.css === undefined) {
+      throw new Error(`ast/ render produced no CSS for ${input.filePath ?? '<input>'}`);
+    }
+    return result.css;
+  }
+
   private async renderTree(tree: Rules, context: Context, profile?: RenderProfile): Promise<string> {
     // P2 gate refinement (§4.0 extend-work gate / §6.9 gated pre-eval): the
     // single-pass spine (`renderRootViaSpine`) engages only when
@@ -1425,8 +1512,16 @@ export class Compiler {
   async render(filePath: string, options?: Partial<ConfigOptions>) {
     const { resolved, context, profile } = await this.prepareRender(filePath, options);
     try {
-      const tree = await this.prepareInputTree(context, resolved, { filePath }, profile);
-      const css = await this.renderTree(tree, context, profile);
+      const input = { filePath };
+      // Dialect fork: `.less` routes through the ast/ v2 engine; `.scss`/`.jess`
+      // stay on the legacy `tree.eval`/`render` path (their only renderer).
+      const css = this.isLessRoot(context, input)
+        ? await this.renderLessRootViaAst(context, resolved, input, profile)
+        : await this.renderTree(
+          await this.prepareInputTree(context, resolved, input, profile),
+          context,
+          profile
+        );
       finalizeRenderProfile(profile, {
         method: 'render',
         filePath,
@@ -1454,13 +1549,13 @@ export class Compiler {
    * @internal EXPERIMENTAL — render a `.less` file end-to-end through the AST-v2
    * engine instead of the legacy `tree/` `eval`/`render` path.
    *
-   * This is the PRODUCTION invocation of the ast/ render path (engine-cutover
-   * step: "stand up a production ast/ render path"). It is ADDITIVE and NOT the
-   * default: `render()`/`renderString()` still route through {@link renderTree}
-   * (legacy `tree.eval`/`render`), untouched. The eventual cutover flips `.less`
-   * onto this path AT the `renderTree` call sites (routing `.less` roots here when
-   * ast/ reaches parity); until then this method is the only entry that exercises
-   * the ast/ engine in production space.
+   * This is a PUBLIC single-file entry onto the ast/ render path. Since the engine
+   * cutover, the DEFAULT render entries (`render`/`renderString`/`renderToResult`/
+   * `safeRender`) already route `.less` roots through the ast/ engine via the
+   * dialect fork ({@link isLessRoot} → {@link renderLessRootViaAst}); only
+   * `.scss`/`.jess` stay on legacy `tree.eval`/`render`. This method remains a
+   * convenience wrapper for callers that want to force the ast/ `.less` file path
+   * explicitly (e.g. the alpha differential).
    *
    * Delegates to `@jesscss/plugin-less`'s `renderLessFileViaAst` (the Less binding
    * over core's parser-agnostic `@jesscss/core/ast-render` pipeline), reusing the
@@ -1511,8 +1606,16 @@ export class Compiler {
     const { resolved, context, profile } = await this.prepareRender(filePath, renderOptions, { language, extension });
 
     try {
-      const tree = await this.prepareInputTree(context, resolved, { filePath, source: content, language, extension }, profile);
-      const css = await this.renderTree(tree, context, profile);
+      const input = { filePath, source: content, language, extension };
+      // Dialect fork: `.less` routes through the ast/ v2 engine; `.scss`/`.jess`
+      // stay on the legacy `tree.eval`/`render` path (their only renderer).
+      const css = this.isLessRoot(context, input)
+        ? await this.renderLessRootViaAst(context, resolved, input, profile)
+        : await this.renderTree(
+          await this.prepareInputTree(context, resolved, input, profile),
+          context,
+          profile
+        );
       finalizeRenderProfile(profile, {
         method: 'renderString',
         filePath,
@@ -1556,13 +1659,16 @@ export class Compiler {
     const { resolved, context, profile } = await this.prepareRender(filePath, renderOptions, { language, extension });
 
     try {
-      const tree = await this.prepareInputTree(context, resolved, {
-        filePath,
-        source,
-        language,
-        extension
-      }, profile);
-      const css = await this.renderTree(tree, context, profile);
+      const input = { filePath, source, language, extension };
+      // Dialect fork: `.less` routes through the ast/ v2 engine; `.scss`/`.jess`
+      // stay on the legacy `tree.eval`/`render` path (their only renderer).
+      const css = this.isLessRoot(context, input)
+        ? await this.renderLessRootViaAst(context, resolved, input, profile)
+        : await this.renderTree(
+          await this.prepareInputTree(context, resolved, input, profile),
+          context,
+          profile
+        );
 
       context.finalizeWarnings();
 
@@ -1705,8 +1811,16 @@ export class Compiler {
     });
 
     try {
-      const tree = await this.evaluateInput(context, resolved, { filePath }, profile);
-      const css = await this.renderTree(tree, context, profile);
+      const input = { filePath };
+      // Dialect fork: `.less` routes through the ast/ v2 engine; `.scss`/`.jess`
+      // stay on the legacy eval/render path (their only renderer).
+      const css = this.isLessRoot(context, input)
+        ? await this.renderLessRootViaAst(context, resolved, input, profile)
+        : await this.renderTree(
+          await this.evaluateInput(context, resolved, input, profile),
+          context,
+          profile
+        );
 
       finalizeRenderProfile(profile, {
         method: 'safeRender',
