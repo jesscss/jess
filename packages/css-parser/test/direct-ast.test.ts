@@ -53,9 +53,31 @@ describe('parse', () => {
     expect(rendered.css).toContain('/* inside */');
   });
 
+  it('constructs a typed @charset statement without raw-prelude recovery', () => {
+    const parsed = parse('@charset "UTF-8";\n.a { color: red }');
+
+    expect(parsed.errors).toEqual([]);
+    expect(parsed.document?.children[0]).toEqual({
+      type: 'AtRuleStatement',
+      name: '@charset',
+      prelude: { type: 'Quoted', src: '"UTF-8"', value: 'UTF-8', quote: '"', escaped: false }
+    });
+
+    const rendered = serialize(parsed.document!);
+    expect(rendered).not.toBeInstanceOf(Promise);
+    if (rendered instanceof Promise) {
+      throw new Error('direct CSS rendering must be synchronous');
+    }
+    expect(rendered.css).toContain('@charset "UTF-8";');
+  });
+
   it('reports input outside the closed pilot grammar', () => {
     const parsed = parse('.a { color: 1px; }');
     expect(parsed.document).toBeNull();
     expect(parsed.errors).toHaveLength(1);
+
+    const unsupportedCharset = parse('@charset UTF-8;');
+    expect(unsupportedCharset.document).toBeNull();
+    expect(unsupportedCharset.errors).toHaveLength(1);
   });
 });

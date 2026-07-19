@@ -1,8 +1,9 @@
 /** Closed direct AST-v2 Parseman grammar pilot. */
 import { choice, literal, many, node, optional, regex, rules, sequence, trivia } from 'parseman' with { type: 'macro' };
-import type { Comment, Declaration, Rule, SelectorList, Statement, ValueNode } from '@jesscss/core/ast';
+import type { AtRuleStatement, Comment, Declaration, Rule, SelectorList, Statement, ValueNode } from '@jesscss/core/ast';
 
 type DirectKeyword = Extract<ValueNode, { readonly type: 'Keyword' }>;
+type DirectQuoted = Extract<ValueNode, { readonly type: 'Quoted' }>;
 
 function tokenText(children: readonly unknown[], index: number): string {
   const child = children[index];
@@ -19,6 +20,21 @@ function isDirectKeyword(value: unknown): value is DirectKeyword {
     && value.type === 'Keyword'
     && 'src' in value
     && typeof value.src === 'string';
+}
+
+function isDirectQuoted(value: unknown): value is DirectQuoted {
+  return typeof value === 'object'
+    && value !== null
+    && 'type' in value
+    && value.type === 'Quoted'
+    && 'src' in value
+    && typeof value.src === 'string'
+    && 'value' in value
+    && typeof value.value === 'string'
+    && 'quote' in value
+    && value.quote === '"'
+    && 'escaped' in value
+    && value.escaped === false;
 }
 
 function isSelectorList(value: unknown): value is SelectorList {
@@ -70,8 +86,19 @@ function isRulesetStatement(value: unknown): value is Comment | Declaration {
   return isComment(value) || isDeclaration(value);
 }
 
+function isCharsetStatement(value: unknown): value is AtRuleStatement {
+  return typeof value === 'object'
+    && value !== null
+    && 'type' in value
+    && value.type === 'AtRuleStatement'
+    && 'name' in value
+    && value.name === '@charset'
+    && 'prelude' in value
+    && isDirectQuoted(value.prelude);
+}
+
 function isDocumentStatement(value: unknown): value is Statement {
-  return isComment(value) || isRule(value);
+  return isComment(value) || isRule(value) || isCharsetStatement(value);
 }
 
 function rulesetStatements(children: readonly unknown[]): (Comment | Declaration)[] {
@@ -102,6 +129,7 @@ const blockComment = regex(/\/\*(?:[^*]|\*(?!\/))*\*\//);
 const simpleSelector = regex(/(?:[.#]?-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*|\*)/);
 const propertyName = regex(/\*?-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/);
 const keywordValue = regex(/-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/);
+const charsetEncoding = regex(/[A-Za-z0-9._-]+/);
 
 export const directCssAstGrammar = rules({ trivia: whitespace }, (g: any) => {
   const DirectCssComment = node('DirectCssComment', blockComment, children => ({
@@ -135,6 +163,15 @@ export const directCssAstGrammar = rules({ trivia: whitespace }, (g: any) => {
       return { type: 'Declaration', name: children[0], value, merge: null, important: false };
     }
   );
+  const DirectCssCharset = node(
+    'DirectCssCharset',
+    sequence(literal('@charset'), literal('"'), charsetEncoding, literal('"'), literal(';')),
+    (children): AtRuleStatement => {
+      const value = tokenText(children, 2);
+      const prelude: DirectQuoted = { type: 'Quoted', src: `"${value}"`, value, quote: '"', escaped: false };
+      return { type: 'AtRuleStatement', name: '@charset', prelude };
+    }
+  );
   const DirectCssRuleset = node(
     'DirectCssRuleset',
     sequence(g.DirectCssSelector, literal('{'), many(choice(g.DirectCssComment, g.DirectCssDeclaration)), literal('}')),
@@ -152,7 +189,7 @@ export const directCssAstGrammar = rules({ trivia: whitespace }, (g: any) => {
   );
   const DirectCssDocument = node(
     'DirectCssDocument',
-    many(choice(g.DirectCssComment, g.DirectCssRuleset)),
+    many(choice(g.DirectCssComment, g.DirectCssCharset, g.DirectCssRuleset)),
     children => ({ type: 'Root' as const, children: documentStatements(children) }),
     { trailingTrivia: true }
   );
@@ -163,6 +200,7 @@ export const directCssAstGrammar = rules({ trivia: whitespace }, (g: any) => {
     DirectCssProperty,
     DirectCssKeyword,
     DirectCssDeclaration,
+    DirectCssCharset,
     DirectCssRuleset,
     whitespace
   };
