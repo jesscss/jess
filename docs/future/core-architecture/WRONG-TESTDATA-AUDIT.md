@@ -71,7 +71,7 @@ trailing v5 while matching 4.x (→ MISATTRIBUTED jess bug / real gap)?
   `.test-rule-spaced` emit `background:` before `transform:`.
 - v5 LAST-occurrence anchor is **owner-SETTLED**: DESIGN-DECISIONS **M1**
   ("Merge ANCHOR = LAST-occurrence (jess v5) … intended, not a bug"), memory
-  `spine-merge-last-occurrence-anchor`, `CUTOVER-STATUS.md:44`. Task #36 flipped
+  `spine-merge-last-occurrence-anchor`, `archive/CUTOVER-STATUS-2026-07-18.md:44`. Task #36 flipped
   ast/ to FIRST to chase the expected output and was reverted on
   `fix/merge-anchor-revert-to-last`.
 - The expected `.css` is the un-graduated outlier (no `legacy/` subfolder; last touched by
@@ -137,7 +137,7 @@ trailing v5 while matching 4.x (→ MISATTRIBUTED jess bug / real gap)?
   matching **4.x**, not v5 → jess bug.
 - ast/ additionally drops whole `default()`-overload blocks (`guard-default-scopes-1/3`,
   `default: false`) — a separate real gap (the leaky-in-container `default()` dynamic
-  registration feature, `CUTOVER-STATUS.md:49`). The expected `.css` stands.
+  registration feature, `archive/CUTOVER-STATUS-2026-07-18.md:49`). The expected `.css` stands.
 
 ## Summary
 

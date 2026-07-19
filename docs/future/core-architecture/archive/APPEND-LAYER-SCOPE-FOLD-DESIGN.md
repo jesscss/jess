@@ -1,6 +1,6 @@
 # Fold design: `@layer`, `@scope`, ampersand-append
 
-**Governing spec:** `UNIFIED-EVAL-EMIT-DESIGN.md` §2/§4/§7 · `@see CUTOVER-CHECKLIST.md` P1/P2 "Next push".
+**Governing spec:** `UNIFIED-EVAL-EMIT-DESIGN.md` §2/§4/§7 · `@see CUTOVER-CHECKLIST-2026-07-18.md` P1/P2 "Next push".
 **Branch:** `work/atrule-layer-scope` (base `cb19de6bc`).
 
 This is the design pass for the three shapes the checklist grouped as the #1-recommended

@@ -266,7 +266,7 @@ its **validated design source and interim shipping path** — not a parallel des
     compat bridge needs an adapter layer *outside* the boundary.
 
 - **Sequencing (ratified).** Keep the origin/dev spine as the **interim shipping alpha**
-  (112/112 all-less spine-clean per `CUTOVER-STATUS.md`; only `benchmark.less` throws on two
+  (112/112 all-less spine-clean per `archive/CUTOVER-STATUS-2026-07-18.md`; only `benchmark.less` throws on two
   foldable shapes). **NO second parallel cutover** on the old tree. Land extend +
   collapseNesting-nested + value-native + compat in tree2 behind the bridge, ratchet
   byte-identity vs the intended-v5 expected `.css` across the full corpus, then **flip the FRONT END

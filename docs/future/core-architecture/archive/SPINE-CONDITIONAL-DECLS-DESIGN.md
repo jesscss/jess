@@ -181,7 +181,7 @@ native shapes (`?:` / `:=` are near-zero in the Less corpus). Even gated, it is 
 machinery than (A′)+(B), and it models a WRITE (`setDefined`) as a read overlay — an
 impedance mismatch that would drift from eval semantics. The prior speculative attempt
 (carry the CondAssign fallback-ref's `index` into a shared-eval read gate) was tried and
-REVERTED (`CUTOVER-CHECKLIST.md:142`); the binding cell resolves too late in that shape.
+REVERTED (`CUTOVER-CHECKLIST-2026-07-18.md:142`); the binding cell resolves too late in that shape.
 (A′) sidesteps that by building the reference in the BODY PLAN with the correct `index`
 already set, exactly as `_normalizeAssignmentValue` does — not by mutating shared eval.
 

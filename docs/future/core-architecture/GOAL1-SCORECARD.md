@@ -33,7 +33,7 @@ remained and no fixture regressed:
 > committed `alpha-oracle-baseline.json` is now current with HEAD.
 
 > **`merge/merge.less` is a DIFF by design, not a gap.** ast/ correctly emits the v5
-> LAST-occurrence merge anchor (`CUTOVER-STATUS.md:44`; memory
+> LAST-occurrence merge anchor (`archive/CUTOVER-STATUS-2026-07-18.md:44`; memory
 > `spine-merge-last-occurrence-anchor`), so it diverges from alpha's FIRST-occurrence
 > `merge.css` expected output — the expected `.css` is the outlier awaiting an upstream correction to
 > LAST (hand-off in `proposed-alpha-corrections/README.md §Merge`). Task #36 briefly
