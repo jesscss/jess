@@ -39,8 +39,11 @@ flags for Parséman itself (§7).
     grammar emit the structure** (split the selector/name/prelude positions into interpolation
     leaves; consume the `Url` inner / option-list / `!important` leaves instead of re-scanning).
     This is the keystone violation. **One exception — SCAN-A3 (custom-prop `--@{k}` name) is
-    BuilderHost-coupled** (a less-compat bridge contract), retires with the legacy producer, and
-    needs owner sign-off — NOT a standalone win.
+    BLOCKED behind BuilderHost retirement.** Its regex is live on the ast/ path (costs render now),
+    but it is NOT removable today: the grammar must emit the single flat name leaf so the legacy
+    BuilderHost bridge emits the correct name (splitting early regresses `--@{k}`→`--`). BuilderHost
+    death does not delete it for free — it UNBLOCKS the fix. At A4, once the bridge consumer is gone:
+    split the grammar production + delete `interpFromString`. Do NOT attempt before A4.
   - **CLASS C — legacy `builders.ts` producers** (scss ~8 sites incl. the worst offenders
     at `311/344/427/1153/1376`; less ~74 incl. `1201/1234/1263`). **Confirmed OFF the
     `ast/` path** — core drives the grammar `build` callback through `dispatch-host.ts`,
@@ -194,10 +197,12 @@ against the in-source `RETIREMENT TRIGGER` at `custom-props.ts:94–99`: `custom
 **deliberately kept as ONE leaf because the legacy BuilderHost that drives the less-compat bridge
 consumes that single-leaf shape.** A prior attempt to split it into `@{…}` leaves **regressed the
 bridge's name emission (`--@{k}` → `--`) — an external less-compat BRIDGE-CONTRACT break.** So
-SCAN-A3 is **CLASS-C-like**: it dies with the legacy BuilderHost (reorg Phase A4), not on its own.
-It is **excluded from the standalone ranked backlog** (§6). Anyone implementing it **must obtain
-explicit owner sign-off on the bridge-contract change first** — it is not a free win and not a
-mechanical leaf-split.
+SCAN-A3 is a **live ast/-path scanner BLOCKED behind BuilderHost retirement** — distinct from
+CLASS C (which is off-path and dies for free). The regex costs render time today, but cannot be
+removed until Phase A4: BuilderHost death does not delete it, it UNBLOCKS the grammar split (emit
+`--` literal + interp leaves) that lets it be deleted. It is **excluded from the standalone ranked
+backlog** (§6): do NOT attempt before A4 — splitting the leaf early regresses the bridge
+(`--@{k}`→`--`). At A4 it becomes a mechanical leaf-split + regex deletion.
 
 - **Evidence.** These interpolation re-tokenizers carry the shared `/@\{…\}/g` scanner + a `RETIREMENT
   TRIGGER` doc-comment stating the grammar currently hands one opaque leaf. `_r_ExtendPseudo`
@@ -682,7 +687,7 @@ right profiling pass. HYPOTHESIS items require a representative-fixture profile 
 | 16 | **SCSS-5** | Balanced-`:` gate on `ScssMapLiteral` | grammar | M / Med | Low | **HYPOTHESIS** — short-paren break-even |
 | 17 | **CSS-2** | Selector-vs-declaration head disambiguation (nested-rule double-parse) | grammar | M / Med–High | Med | **HYPOTHESIS** — needs a which-terminator scan (§7) |
 | 18 | **LESS-6 / JESS-4 / SCSS-8 / JESS-5** | Micro: two-sigil `nestedRef`, `NsAccessor` `[`-gate, unified `$(…)` numeric, `condOperand`/condition-primary-once | grammar | L / Low–Med | Low | **HYPOTHESIS** — low profile share |
-| — | **SCAN-A3** (`custom-props.ts:102`) | Custom-prop/decl NAME interp split — **EXCLUDED from standalone landing**; less-compat BRIDGE-CONTRACT change (`--@{k}`→`--`), retires with BuilderHost, **owner sign-off required** (§3.1) | §3 BuilderHost-coupled | — | **High (bridge)** | do NOT land standalone |
+| — | **SCAN-A3** (`custom-props.ts:102`) | Custom-prop/decl NAME interp split — live ast/-path scanner **BLOCKED behind BuilderHost retirement** (splitting early regresses the less-compat bridge `--@{k}`→`--`). Not deleted for free by BuilderHost death — UNBLOCKED by it; mechanical leaf-split at A4 (§3.1) | §3 BuilderHost-blocked | — | **High if early** | do NOT attempt before A4 |
 | — | **CLASS C** (scss `builders.ts:311/344/427/1153/1376` + helpers; less `:1201/1234/1263`; css/jess) | Legacy `_build*` regex — dies **free** on legacy tree/ + BuilderHost retirement (~0 ms ast/) | §3 legacy | code-hygiene / — | none (off-path) | do NOT grind standalone; retire with the producer |
 
 **Cross-cutting:** ranks 1, 2, 14 consume the §4.2 keyword-classifier — build it once. Rank 2's
@@ -696,8 +701,9 @@ live-scanner removal + legacy-scanner pre-retirement).**
   without ON==OFF proof.
 - **SCAN-A3 (custom-prop/decl name)** — **excluded from standalone landing** (§3.1, §6): the
   single-leaf shape is a less-compat BRIDGE CONTRACT (a prior split regressed `--@{k}`→`--`,
-  documented at `custom-props.ts:94–99`). It retires WITH the legacy BuilderHost and requires
-  explicit owner sign-off on the bridge change before anyone implements it — not a free win.
+  documented at `custom-props.ts:94–99`). Its regex is live on the ast/ path but not removable
+  until BuilderHost retires (Phase A4) — BuilderHost death UNBLOCKS the grammar split, it does not
+  delete the scanner for free. Do NOT attempt before A4.
 - **LESS-3 (drop a grammar arm)** — moves structure to the builder path; prove the builder yields
   the identical node before dropping, else keep + gate.
 - **CSS-2 (bounded which-terminator lookahead)** — needs a scan primitive Parséman may not expose
