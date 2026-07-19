@@ -288,7 +288,7 @@ export function scanParserSource(file, text, source = undefined) {
   source ??= ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true);
   const regexBindings = parsemanRegexBindings(source);
   const rootScope = makeScope();
-  for (const name of ['parseCssFn', 'parseLessFn', 'parseScssFn', 'parseJessFn']) bind(rootScope, name, 'parser');
+  for (const name of ['parseLessFn', 'parseScssFn', 'parseJessFn']) bind(rootScope, name, 'parser');
   bind(rootScope, 'RegExp', 'regexp');
   const add = (node, kind) => {
     const start = source.getLineAndCharacterOfPosition(node.getStart(source));

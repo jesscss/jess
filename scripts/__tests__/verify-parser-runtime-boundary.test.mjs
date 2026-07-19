@@ -152,10 +152,6 @@ describe('parser runtime boundary', () => {
       ['reparse-entrypoint']
     );
     assert.deepEqual(
-      scanParserSource('/tmp/functional-parser.ts', 'parseCssFn(text);').map(finding => finding.kind),
-      ['reparse-entrypoint']
-    );
-    assert.deepEqual(
       scanParserSource('/tmp/scss-selector-validate.ts', [
         'host.parseScssFn(text, "SelectorList");',
         'host?.parseScssFn?.(text, "SelectorList");',

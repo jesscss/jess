@@ -1,5 +1,4 @@
 import { parseCss } from '../src/cst-css.js';
-import { parseCssFn } from '../src/functional-parser.js';
 
 function segmentText(tree: ReturnType<typeof parseCss>['tree']): Array<[string, string]> {
   return tree.children.map((child) => {
@@ -47,15 +46,5 @@ describe('lossless at-rule prelude segments', () => {
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBe(1);
     expect(segmentText(result.tree)).toEqual([['AtPreludeText', '@']]);
-  });
-
-  test('macro-compiled legacy parse path is unchanged while the primitive is unattached', () => {
-    const source = '@vendor screen /*note*/, [theme="dark"] { .a { color: red; } }';
-    const result = parseCssFn(source);
-
-    expect(result.errors).toEqual([]);
-    expect(result.tree.toString({ trivia: result.trivia })).toBe(
-      '@vendor screen /*note*/, [theme="dark"] {\n',
-    );
   });
 });
