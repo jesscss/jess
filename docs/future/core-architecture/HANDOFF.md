@@ -44,9 +44,11 @@ The parser work has one real composition gate: a leaf dialect grammar must be
 able to macro-fuse imported, recognition-only shared syntax while retaining its
 own local direct-constructor reductions. It must not serialize local builders,
 relax direct-builder capture validation, or create a reusable builder artifact.
-Once that leaf-only fusion exists, move in this order: complete direct CSS
-families; build Less/SCSS/Jess dialect reductions over shared syntax; add a
-plugin-owned Less document loader over typed `ImportAtRule` facts; then replace
+That leaf-only fusion now proves the first private CSS extraction: imported
+recognition-only property/keyword terminals fuse into local direct AST
+reductions with their token values intact. Continue in this order: complete
+direct CSS families; build Less/SCSS/Jess dialect reductions over shared syntax;
+add a plugin-owned Less document loader over typed `ImportAtRule` facts; then replace
 the Jess legacy root and atomically delete legacy `StyleImport`, `Context`
 resolver/getTree methods, and generic core plugin filesystem/parser hooks.
 Core never receives a resolver callback or owns module/filesystem policy.

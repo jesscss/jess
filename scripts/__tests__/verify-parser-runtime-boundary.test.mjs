@@ -22,9 +22,13 @@ function inventoryFor(findings) {
 }
 
 describe('parser runtime boundary', () => {
-  it('allows only Parseman-imported regex() grammar declarations', () => {
-    assert.deepEqual(scanParserSource('/tmp/grammar.ts', 'import { regex } from \'parseman\'; const word = regex(/[a-z]+/);'), []);
-    assert.deepEqual(scanParserSource('/tmp/grammar.ts', 'import { regex as pmRegex } from \'parseman\'; const word = pmRegex(/[a-z]+/);'), []);
+  it('allows only macro-attributed Parseman regex() grammar declarations', () => {
+    assert.deepEqual(scanParserSource('/tmp/grammar.ts', 'import { regex } from \'parseman\' with { type: \'macro\' }; const word = regex(/[a-z]+/);'), []);
+    assert.deepEqual(scanParserSource('/tmp/grammar.ts', 'import { regex as pmRegex } from \'parseman\' with { type: \'macro\' }; const word = pmRegex(/[a-z]+/);'), []);
+    assert.deepEqual(
+      scanParserSource('/tmp/builders.ts', 'import { regex } from \'parseman\'; const word = regex(/[a-z]+/);').map(finding => finding.kind),
+      ['regex-literal']
+    );
     assert.deepEqual(
       scanParserSource('/tmp/grammar.ts', 'function regex(x) { return x; } const word = regex(/[a-z]+/);').map(finding => finding.kind),
       ['regex-literal']

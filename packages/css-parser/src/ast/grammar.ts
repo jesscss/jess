@@ -6,8 +6,9 @@
  * core AST constructors directly, while the public CSS grammar continues to
  * produce the independent CST.
  */
-import { balanced, choice, expect, literal, many, noTrivia, node, oneOrMore, optional, parser, regex, rules, scanTo, sequence, trivia } from 'parseman' with { type: 'macro' };
+import { balanced, choice, composeLeaf, expect, literal, many, noTrivia, node, oneOrMore, optional, parser, regex, rules, scanTo, sequence, trivia } from 'parseman' with { type: 'macro' };
 import type { Combinator } from 'parseman';
+import { cssAstSyntax } from './syntax.grammar.ts';
 import {
   any,
   atRuleBlock,
@@ -91,6 +92,8 @@ type CssAstRules = {
   CssAstKeyframes: Combinator<AtRuleBlock>;
   CssAstRuleset: Combinator<Rule>;
   CssAstMedia: Combinator<AtRuleBlock>;
+  CssAstSyntaxProperty: Combinator<string>;
+  CssAstSyntaxKeyword: Combinator<string>;
   whitespace: Combinator<unknown>;
 };
 
@@ -250,9 +253,7 @@ function keyframeSelectorList(children: readonly unknown[]): SelectorList {
 const whitespace = trivia(regex(/[ \t\n\r\f]+/));
 const blockComment = regex(/\/\*(?:[^*]|\*(?!\/))*\*\//);
 const simpleSelector = regex(/(?:[.#]?-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*|\*)/);
-const propertyName = regex(/\*?-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/);
 const customPropertyName = regex(/--(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/);
-const keywordValue = regex(/-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/);
 const hexColor = regex(/#[0-9a-fA-F]{3,8}\b/);
 const dimensionNumber = regex(/[+-]?(?:[0-9]+(?:\.[0-9]+)?|\.[0-9]+)/);
 const dimensionUnit = regex(/[A-Za-z%]+/);
@@ -320,7 +321,7 @@ const importTailSquareGroup = sequence(
 const urlOpen = regex(/url\(/i);
 const urlInner = regex(/(?:[^"'()\\ \t\n\f\r\x00-\x08\x0B\x0E-\x1F\x7F]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+/);
 
-export const cssAstGrammar = rules<CssAstRules>({ trivia: whitespace }, (g) => {
+export const cssAstGrammar = composeLeaf([cssAstSyntax, rules<CssAstRules>({ trivia: whitespace }, (g) => {
   const CssAstComment = node('CssAstComment', blockComment, children => comment(tokenText(children[0])));
   const CssAstSimple = node('CssAstSimple', simpleSelector, children => simple(tokenText(children[0])));
   const CssAstCompound = node('CssAstCompound', noTrivia(oneOrMore(g.CssAstSimple)), (children) => {
@@ -340,14 +341,14 @@ export const cssAstGrammar = rules<CssAstRules>({ trivia: whitespace }, (g) => {
     sequence(g.CssAstComplex, many(sequence(literal(','), g.CssAstComplex))),
     children => selist(...selectorComplexes(children))
   );
-  const CssAstProperty = node('CssAstProperty', propertyName, children => tokenText(children[0]));
+  const CssAstProperty = node('CssAstProperty', g.CssAstSyntaxProperty, children => tokenText(children[0]));
   const CssAstCustomProperty = node('CssAstCustomProperty', customPropertyName, children => tokenText(children[0]));
   const CssAstCustomValue = node(
     'CssAstCustomValue',
     customValue,
     children => any(children.length === 0 ? '' : tokenText(children[0]))
   );
-  const CssAstKeyword = node('CssAstKeyword', keywordValue, children => keyword(tokenText(children[0])));
+  const CssAstKeyword = node('CssAstKeyword', g.CssAstSyntaxKeyword, children => keyword(tokenText(children[0])));
   const CssAstColor = node('CssAstColor', hexColor, children => color(tokenText(children[0])));
   const CssAstDimension = node(
     'CssAstDimension',
@@ -598,4 +599,4 @@ export const cssAstGrammar = rules<CssAstRules>({ trivia: whitespace }, (g) => {
     CssAstMedia,
     whitespace
   };
-});
+})]);

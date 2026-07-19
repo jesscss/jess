@@ -64,6 +64,13 @@ function parsemanRegexBindings(source) {
     if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier) || statement.moduleSpecifier.text !== 'parseman') {
       continue;
     }
+    const isMacroImport = statement.attributes?.elements.some(attribute => {
+      const key = attribute.name.kind === ts.SyntaxKind.Identifier
+        ? attribute.name.text
+        : String(attribute.name.text);
+      return key === 'type' && attribute.value.text === 'macro';
+    }) ?? false;
+    if (!isMacroImport) continue;
     const named = statement.importClause?.namedBindings;
     if (!named || !ts.isNamedImports(named)) {
       continue;
@@ -108,8 +115,11 @@ function scopeShadowsName(node, name) {
 
 function isGrammarRegex(node, file, regexBindings) {
   const parent = node.parent;
-  return relative(root, file).endsWith('/grammar.ts')
-    && ts.isCallExpression(parent)
+  // Parseman `regex(...)` is declarative grammar input and macro-compiles into
+  // the parser artifact. Recognition-only source modules may intentionally be
+  // named something other than a bare `grammar.ts`; the imported macro binding,
+  // rather than the filename, is the actual runtime-boundary proof.
+  return ts.isCallExpression(parent)
     && parent.arguments.includes(node)
     && ts.isIdentifier(parent.expression)
     && regexBindings.has(parent.expression.text)
