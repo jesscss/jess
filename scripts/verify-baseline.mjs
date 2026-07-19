@@ -54,6 +54,10 @@ function runFrontierChecks() {
   run('pnpm', ['run', 'verify:materialization-frontier']);
 }
 
+function runParserRuntimeBoundary() {
+  run('pnpm', ['run', 'verify:parser-runtime-boundary']);
+}
+
 function getWorkspaceDeps(manifest) {
   const deps = new Set();
   for (const field of ['dependencies', 'optionalDependencies', 'peerDependencies']) {
@@ -220,9 +224,10 @@ if (CHANGED_ONLY) {
     packagesToCheck = getPackagesToCheck(changedDirs, revDeps, nameToDir);
   }
   if (packagesToCheck.length === 0) {
-    console.log('Verify baseline (--changed): no baseline packages changed or affected. Running frontier checks only.');
+    console.log('Verify baseline (--changed): no baseline packages changed or affected. Running boundary and frontier checks.');
+    runParserRuntimeBoundary();
     runFrontierChecks();
-    console.log('\n>>> Verify baseline passed (frontier checks only).');
+    console.log('\n>>> Verify baseline passed (parser boundary + frontier checks only).');
     process.exit(0);
   }
   console.log(
@@ -273,6 +278,7 @@ if (runLessCompat) {
   run('pnpm', ['--filter', './packages/jess-plugin-less-compat', 'test']);
 }
 
+runParserRuntimeBoundary();
 runFrontierChecks();
 run('pnpm', ['run', 'verify:package-exports']);
 run('pnpm', ['run', 'verify:node-constructor-metadata']);

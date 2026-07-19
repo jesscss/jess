@@ -1,0 +1,1728 @@
+{
+  "version": 1,
+  "policy": "Every handwritten runtime recognizer is temporary debt. The final gate has debt: [].",
+  "debt": [
+    {
+      "file": "packages/css-parser/src/builders.ts",
+      "kind": "runtime-charCodeAt",
+      "fingerprint": "2776ec88968c3e57",
+      "count": 3,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/css-parser/src/builders.ts",
+      "kind": "runtime-charCodeAt",
+      "fingerprint": "6d5ff7e24302b256",
+      "count": 3,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/css-parser/src/builders.ts",
+      "kind": "runtime-charCodeAt",
+      "fingerprint": "8bfd299c072b371f",
+      "count": 3,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/css-parser/src/builders.ts",
+      "kind": "runtime-charCodeAt",
+      "fingerprint": "9df11d6550e6669c",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/css-parser/src/cssTokens.ts",
+      "kind": "regex-literal",
+      "fingerprint": "01a10e4910bb3984",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/css-parser/src/cssTokens.ts",
+      "kind": "regex-literal",
+      "fingerprint": "07149e20ea25a688",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/css-parser/src/cssTokens.ts",
+      "kind": "regex-literal",
+      "fingerprint": "07156d59460c9112",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/css-parser/src/cssTokens.ts",
+      "kind": "regex-literal",
+      "fingerprint": "079b50722ae83da3",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/css-parser/src/cssTokens.ts",
+      "kind": "regex-literal",
+      "fingerprint": "0a4132465261b39a",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/css-parser/src/cssTokens.ts",
+      "kind": "regex-literal",
+      "fingerprint": "0d8b3b993acfd798",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/css-parser/src/cssTokens.ts",
+      "kind": "regex-literal",
+      "fingerprint": "11bbf0142f594c6f",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/css-parser/src/cssTokens.ts",
+      "kind": "regex-literal",
+      "fingerprint": "161be3e626b3f6e8",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/css-parser/src/cssTokens.ts",
+      "kind": "regex-literal",
+      "fingerprint": "1bbef2238114bb36",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/css-parser/src/cssTokens.ts",
+      "kind": "regex-literal",
+      "fingerprint": "220206bdb3b293e4",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/css-parser/src/cssTokens.ts",
+      "kind": "regex-literal",
+      "fingerprint": "23efdf68bddb2683",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/css-parser/src/cssTokens.ts",
+      "kind": "regex-literal",
+      "fingerprint": "25195aab7a4936a8",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/css-parser/src/cssTokens.ts",
+      "kind": "regex-literal",
+      "fingerprint": "278d24ed0407303c",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/css-parser/src/cssTokens.ts",
+      "kind": "regex-literal",
+      "fingerprint": "2fce99f312034754",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/css-parser/src/cssTokens.ts",
+      "kind": "regex-literal",
+      "fingerprint": "336f514dea8d87b3",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/css-parser/src/cssTokens.ts",
+      "kind": "regex-literal",
+      "fingerprint": "3549f03c6083ccd2",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/css-parser/src/cssTokens.ts",
+      "kind": "regex-literal",
+      "fingerprint": "3ac20b15f4e147cd",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/css-parser/src/cssTokens.ts",
+      "kind": "regex-literal",
+      "fingerprint": "3ff709a9aae5d1d4",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/css-parser/src/cssTokens.ts",
+      "kind": "regex-literal",
+      "fingerprint": "41f272034e9c2078",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/css-parser/src/cssTokens.ts",
+      "kind": "regex-literal",
+      "fingerprint": "42c0532ac0c2d20a",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/css-parser/src/cssTokens.ts",
+      "kind": "regex-literal",
+      "fingerprint": "47ef09947bd87452",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/css-parser/src/cssTokens.ts",
+      "kind": "regex-literal",
+      "fingerprint": "48f86028c2d5877e",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/css-parser/src/cssTokens.ts",
+      "kind": "regex-literal",
+      "fingerprint": "4aa5b30f457233ed",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/css-parser/src/cssTokens.ts",
+      "kind": "regex-literal",
+      "fingerprint": "4f4b050afe5560f0",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/css-parser/src/cssTokens.ts",
+      "kind": "regex-literal",
+      "fingerprint": "5439f7b382abdf78",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/css-parser/src/cssTokens.ts",
+      "kind": "regex-literal",
+      "fingerprint": "5b5c07844b81f327",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/css-parser/src/cssTokens.ts",
+      "kind": "regex-literal",
+      "fingerprint": "61a44d7b80839cac",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/css-parser/src/cssTokens.ts",
+      "kind": "regex-literal",
+      "fingerprint": "6436d071333529f8",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/css-parser/src/cssTokens.ts",
+      "kind": "regex-literal",
+      "fingerprint": "6732bad0c34b17a9",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/css-parser/src/cssTokens.ts",
+      "kind": "regex-literal",
+      "fingerprint": "6c9bb6587523c580",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/css-parser/src/cssTokens.ts",
+      "kind": "regex-literal",
+      "fingerprint": "6f8459a2589f74d1",
+      "count": 2,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/css-parser/src/cssTokens.ts",
+      "kind": "regex-literal",
+      "fingerprint": "74de870149bc1624",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/css-parser/src/cssTokens.ts",
+      "kind": "regex-literal",
+      "fingerprint": "7577cc33db596800",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/css-parser/src/cssTokens.ts",
+      "kind": "regex-literal",
+      "fingerprint": "776a6c68c9f46e4b",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/css-parser/src/cssTokens.ts",
+      "kind": "regex-literal",
+      "fingerprint": "7c4dcce9ead0f8e0",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/css-parser/src/cssTokens.ts",
+      "kind": "regex-literal",
+      "fingerprint": "81b09a572a0cdc79",
+      "count": 2,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/css-parser/src/cssTokens.ts",
+      "kind": "regex-literal",
+      "fingerprint": "8755d06dc9d0947f",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/css-parser/src/cssTokens.ts",
+      "kind": "regex-literal",
+      "fingerprint": "8c9ee64a96453d2e",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/css-parser/src/cssTokens.ts",
+      "kind": "regex-literal",
+      "fingerprint": "8f3e28d6763e771c",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/css-parser/src/cssTokens.ts",
+      "kind": "regex-literal",
+      "fingerprint": "90e68c8b6141bb6b",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/css-parser/src/cssTokens.ts",
+      "kind": "regex-literal",
+      "fingerprint": "92936695fff91205",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/css-parser/src/cssTokens.ts",
+      "kind": "regex-literal",
+      "fingerprint": "93420be7a1af47ee",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/css-parser/src/cssTokens.ts",
+      "kind": "regex-literal",
+      "fingerprint": "93657b1e0aeff31f",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/css-parser/src/cssTokens.ts",
+      "kind": "regex-literal",
+      "fingerprint": "93d8c407bf5f77aa",
+      "count": 2,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/css-parser/src/cssTokens.ts",
+      "kind": "regex-literal",
+      "fingerprint": "996f23a926e87cbe",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/css-parser/src/cssTokens.ts",
+      "kind": "regex-literal",
+      "fingerprint": "9b92d20f1e5eaa46",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/css-parser/src/cssTokens.ts",
+      "kind": "regex-literal",
+      "fingerprint": "a3027b4b01af7155",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/css-parser/src/cssTokens.ts",
+      "kind": "regex-literal",
+      "fingerprint": "a9aab63c88458165",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/css-parser/src/cssTokens.ts",
+      "kind": "regex-literal",
+      "fingerprint": "ad192e9b5b9bc4c0",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/css-parser/src/cssTokens.ts",
+      "kind": "regex-literal",
+      "fingerprint": "af37d49c66ade63b",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/css-parser/src/cssTokens.ts",
+      "kind": "regex-literal",
+      "fingerprint": "b23dd5d319c01b67",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/css-parser/src/cssTokens.ts",
+      "kind": "regex-literal",
+      "fingerprint": "bb437c6653d12cc4",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/css-parser/src/cssTokens.ts",
+      "kind": "regex-literal",
+      "fingerprint": "bc776d912a0c8f72",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/css-parser/src/cssTokens.ts",
+      "kind": "regex-literal",
+      "fingerprint": "c10096edbb87fdb7",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/css-parser/src/cssTokens.ts",
+      "kind": "regex-literal",
+      "fingerprint": "c31e3600befa5274",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/css-parser/src/cssTokens.ts",
+      "kind": "regex-literal",
+      "fingerprint": "c36c2aaf3fdd5f24",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/css-parser/src/cssTokens.ts",
+      "kind": "regex-literal",
+      "fingerprint": "c42b84b3d540b108",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/css-parser/src/cssTokens.ts",
+      "kind": "regex-literal",
+      "fingerprint": "c47fbad3084f2794",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/css-parser/src/cssTokens.ts",
+      "kind": "regex-literal",
+      "fingerprint": "cf042560c9e81297",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/css-parser/src/cssTokens.ts",
+      "kind": "regex-literal",
+      "fingerprint": "cf422d9a306e2d60",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/css-parser/src/cssTokens.ts",
+      "kind": "regex-literal",
+      "fingerprint": "dea3baa0cebf38b0",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/css-parser/src/cssTokens.ts",
+      "kind": "regex-literal",
+      "fingerprint": "df2c4acc5751e3af",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/css-parser/src/cssTokens.ts",
+      "kind": "regex-literal",
+      "fingerprint": "df3f4f1097d2e5ab",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/css-parser/src/cssTokens.ts",
+      "kind": "regex-literal",
+      "fingerprint": "dfc1ef76dfbb4a4f",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/css-parser/src/cssTokens.ts",
+      "kind": "regex-literal",
+      "fingerprint": "e506dd98bc4d078f",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/css-parser/src/cssTokens.ts",
+      "kind": "regex-literal",
+      "fingerprint": "e723cb69715e2a06",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/css-parser/src/cssTokens.ts",
+      "kind": "regex-literal",
+      "fingerprint": "eba5d7283e1c2e8f",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/css-parser/src/cssTokens.ts",
+      "kind": "regex-literal",
+      "fingerprint": "f43014eacf7c8369",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/css-parser/src/cssTokens.ts",
+      "kind": "regex-literal",
+      "fingerprint": "f55c7f8a3ad18707",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/css-parser/src/cssTokens.ts",
+      "kind": "regex-literal",
+      "fingerprint": "f622675d51f9ccc6",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/css-parser/src/cssTokens.ts",
+      "kind": "regex-literal",
+      "fingerprint": "f64d70d2b5b06cfe",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/css-parser/src/cssTokens.ts",
+      "kind": "regex-literal",
+      "fingerprint": "fa9da5a421844f34",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/css-parser/src/cssTokens.ts",
+      "kind": "runtime-exec",
+      "fingerprint": "07c963f7ebe635d8",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/css-parser/src/cst.ts",
+      "kind": "regex-literal",
+      "fingerprint": "9196eba22a3a91a0",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/css-parser/src/cst.ts",
+      "kind": "regex-literal",
+      "fingerprint": "b0c2ded5882e5562",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/css-parser/src/productions/values.ts",
+      "kind": "regex-literal",
+      "fingerprint": "8e84120f4626cf1f",
+      "count": 2,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/css-parser/src/productions/values.ts",
+      "kind": "regex-literal",
+      "fingerprint": "994b9abb022b0c81",
+      "count": 2,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/jess-parser/src/builders.ts",
+      "kind": "regex-literal",
+      "fingerprint": "135a203053234fa4",
+      "count": 2,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/jess-parser/src/builders.ts",
+      "kind": "regex-literal",
+      "fingerprint": "411cb7f063843d55",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/jess-parser/src/builders.ts",
+      "kind": "runtime-test",
+      "fingerprint": "c4a3f323e914db0b",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/jess-parser/src/functional-parser.ts",
+      "kind": "reparse-entrypoint",
+      "fingerprint": "d924e6c078b30973",
+      "count": 1,
+      "retirement": "Delete this transitional parser delegation with the AST v2 parser cutover; parsing must remain one-pass."
+    },
+    {
+      "file": "packages/jess-parser/src/parser.ts",
+      "kind": "reparse-entrypoint",
+      "fingerprint": "d924e6c078b30973",
+      "count": 1,
+      "retirement": "Delete this transitional parser delegation with the AST v2 parser cutover; parsing must remain one-pass."
+    },
+    {
+      "file": "packages/less-parser/src/builders.ts",
+      "kind": "regex-literal",
+      "fingerprint": "004ccef23a169faf",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/builders.ts",
+      "kind": "regex-literal",
+      "fingerprint": "009893e29ea76e5f",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/builders.ts",
+      "kind": "regex-literal",
+      "fingerprint": "08c952688d95b09a",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/builders.ts",
+      "kind": "regex-literal",
+      "fingerprint": "0a52c0d1dc0f8f1b",
+      "count": 2,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/builders.ts",
+      "kind": "regex-literal",
+      "fingerprint": "0da8c5692a279107",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/builders.ts",
+      "kind": "regex-literal",
+      "fingerprint": "11187f6845b5fa4a",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/builders.ts",
+      "kind": "regex-literal",
+      "fingerprint": "13998782be56707a",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/builders.ts",
+      "kind": "regex-literal",
+      "fingerprint": "1b8b1a09eb93fc8e",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/builders.ts",
+      "kind": "regex-literal",
+      "fingerprint": "1c6e5dd99b32db72",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/builders.ts",
+      "kind": "regex-literal",
+      "fingerprint": "265315d1e931f26d",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/builders.ts",
+      "kind": "regex-literal",
+      "fingerprint": "31ab8e6f0b92a9ee",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/builders.ts",
+      "kind": "regex-literal",
+      "fingerprint": "377176ac55f7b8c0",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/builders.ts",
+      "kind": "regex-literal",
+      "fingerprint": "38bd2d6eb925ade3",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/builders.ts",
+      "kind": "regex-literal",
+      "fingerprint": "416d3f0f30969de6",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/builders.ts",
+      "kind": "regex-literal",
+      "fingerprint": "47eb4b7fb40a8ff7",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/builders.ts",
+      "kind": "regex-literal",
+      "fingerprint": "4c98ff48178062b9",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/builders.ts",
+      "kind": "regex-literal",
+      "fingerprint": "593b2a7830c3cfa2",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/builders.ts",
+      "kind": "regex-literal",
+      "fingerprint": "6971fec2b0bd7d11",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/builders.ts",
+      "kind": "regex-literal",
+      "fingerprint": "7530d2fddb881b32",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/builders.ts",
+      "kind": "regex-literal",
+      "fingerprint": "7929672d46d582f8",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/builders.ts",
+      "kind": "regex-literal",
+      "fingerprint": "7e013db27996147d",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/builders.ts",
+      "kind": "regex-literal",
+      "fingerprint": "80b97a648bd054e2",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/builders.ts",
+      "kind": "regex-literal",
+      "fingerprint": "810025bb82e3c123",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/builders.ts",
+      "kind": "regex-literal",
+      "fingerprint": "8362c6b853e1860a",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/builders.ts",
+      "kind": "regex-literal",
+      "fingerprint": "90f6c7a3f0268a68",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/builders.ts",
+      "kind": "regex-literal",
+      "fingerprint": "91c5818f217acd32",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/builders.ts",
+      "kind": "regex-literal",
+      "fingerprint": "95ca1aa1501b4fc6",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/builders.ts",
+      "kind": "regex-literal",
+      "fingerprint": "986a18b200b40647",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/builders.ts",
+      "kind": "regex-literal",
+      "fingerprint": "99349da4f9d1ca53",
+      "count": 2,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/builders.ts",
+      "kind": "regex-literal",
+      "fingerprint": "a3f2e7814e96fe0e",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/builders.ts",
+      "kind": "regex-literal",
+      "fingerprint": "a4d21242e269a5b0",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/builders.ts",
+      "kind": "regex-literal",
+      "fingerprint": "a624993796aeb504",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/builders.ts",
+      "kind": "regex-literal",
+      "fingerprint": "a7a464f3c7a04d69",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/builders.ts",
+      "kind": "regex-literal",
+      "fingerprint": "b42855d46ee437c4",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/builders.ts",
+      "kind": "regex-literal",
+      "fingerprint": "b538c87975584b3f",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/builders.ts",
+      "kind": "regex-literal",
+      "fingerprint": "bdfc33402191e752",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/builders.ts",
+      "kind": "regex-literal",
+      "fingerprint": "beccd9e2f575e051",
+      "count": 3,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/builders.ts",
+      "kind": "regex-literal",
+      "fingerprint": "c04627f72e2973ee",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/builders.ts",
+      "kind": "regex-literal",
+      "fingerprint": "c7bfff759cc22fbb",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/builders.ts",
+      "kind": "regex-literal",
+      "fingerprint": "ca74f379d943547a",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/builders.ts",
+      "kind": "regex-literal",
+      "fingerprint": "cb6215c3f342e643",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/builders.ts",
+      "kind": "regex-literal",
+      "fingerprint": "ceadcf3117818c2b",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/builders.ts",
+      "kind": "regex-literal",
+      "fingerprint": "def410930eba9b8b",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/builders.ts",
+      "kind": "regex-literal",
+      "fingerprint": "e548064b7a3638ab",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/builders.ts",
+      "kind": "regex-literal",
+      "fingerprint": "f92618ef22af5ef8",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/builders.ts",
+      "kind": "regex-literal",
+      "fingerprint": "fa900740f1434bc3",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/builders.ts",
+      "kind": "runtime-charCodeAt",
+      "fingerprint": "8253f86c47ba62f5",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/builders.ts",
+      "kind": "runtime-charCodeAt",
+      "fingerprint": "948d22a9302e2454",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/builders.ts",
+      "kind": "runtime-exec",
+      "fingerprint": "08207e6a7c114b92",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/builders.ts",
+      "kind": "runtime-exec",
+      "fingerprint": "0b522f66aba45baa",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/builders.ts",
+      "kind": "runtime-exec",
+      "fingerprint": "128f339e0ca5785d",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/builders.ts",
+      "kind": "runtime-exec",
+      "fingerprint": "1c2b30535bbf1fce",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/builders.ts",
+      "kind": "runtime-exec",
+      "fingerprint": "1e7e97006e659600",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/builders.ts",
+      "kind": "runtime-exec",
+      "fingerprint": "3f4a3964da570e45",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/builders.ts",
+      "kind": "runtime-exec",
+      "fingerprint": "44b65805109720e0",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/builders.ts",
+      "kind": "runtime-exec",
+      "fingerprint": "56b271c534a92f30",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/builders.ts",
+      "kind": "runtime-exec",
+      "fingerprint": "7d4883f3b53dede6",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/builders.ts",
+      "kind": "runtime-exec",
+      "fingerprint": "8168529ea4c2fbaf",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/builders.ts",
+      "kind": "runtime-exec",
+      "fingerprint": "84b644f144cd216d",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/builders.ts",
+      "kind": "runtime-exec",
+      "fingerprint": "9617d79e4ab3c0fd",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/builders.ts",
+      "kind": "runtime-exec",
+      "fingerprint": "9c2a663432dc6f00",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/builders.ts",
+      "kind": "runtime-exec",
+      "fingerprint": "a0ec88297a674667",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/builders.ts",
+      "kind": "runtime-exec",
+      "fingerprint": "c79eebdf8ef3638d",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/builders.ts",
+      "kind": "runtime-exec",
+      "fingerprint": "d2910e16b7d517dc",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/builders.ts",
+      "kind": "runtime-exec",
+      "fingerprint": "daa610b420764abd",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/builders.ts",
+      "kind": "runtime-exec",
+      "fingerprint": "e9e54ee54866c5e1",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/builders.ts",
+      "kind": "runtime-exec",
+      "fingerprint": "efa8ea5b8f9d3946",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/builders.ts",
+      "kind": "runtime-exec",
+      "fingerprint": "f04db6620d243cac",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/builders.ts",
+      "kind": "runtime-exec",
+      "fingerprint": "f6298b8c38da1686",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/builders.ts",
+      "kind": "runtime-match",
+      "fingerprint": "5057740ea8b4e5d9",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/builders.ts",
+      "kind": "runtime-match",
+      "fingerprint": "ba5d5b789ac12241",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/builders.ts",
+      "kind": "runtime-match",
+      "fingerprint": "d4c93ddeae136aed",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/builders.ts",
+      "kind": "runtime-test",
+      "fingerprint": "0ddbc28d0ac68e05",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/builders.ts",
+      "kind": "runtime-test",
+      "fingerprint": "1ddfd41cfe0ddafc",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/builders.ts",
+      "kind": "runtime-test",
+      "fingerprint": "392c1fcaacd83df7",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/builders.ts",
+      "kind": "runtime-test",
+      "fingerprint": "6b2cbd2c5a179fc7",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/builders.ts",
+      "kind": "runtime-test",
+      "fingerprint": "7919b7c2a5e3aa93",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/builders.ts",
+      "kind": "runtime-test",
+      "fingerprint": "893a33698a9772bc",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/builders.ts",
+      "kind": "runtime-test",
+      "fingerprint": "8a6ae6e1793da456",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/builders.ts",
+      "kind": "runtime-test",
+      "fingerprint": "991087d549dec321",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/builders.ts",
+      "kind": "runtime-test",
+      "fingerprint": "b08435f3a42e9e37",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/builders.ts",
+      "kind": "runtime-test",
+      "fingerprint": "b79d1c28fd0dfb0d",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/builders.ts",
+      "kind": "runtime-test",
+      "fingerprint": "c8ea41cc3c72375d",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/builders.ts",
+      "kind": "runtime-test",
+      "fingerprint": "ce42caf6c028db4f",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/builders.ts",
+      "kind": "runtime-test",
+      "fingerprint": "d59e5728f801ac5e",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/builders.ts",
+      "kind": "runtime-test",
+      "fingerprint": "edca4312b3f57906",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/functional-parser.ts",
+      "kind": "reparse-entrypoint",
+      "fingerprint": "411137fb386e4ec7",
+      "count": 1,
+      "retirement": "Delete this transitional parser delegation with the AST v2 parser cutover; parsing must remain one-pass."
+    },
+    {
+      "file": "packages/less-parser/src/lessRecursiveParser.ts",
+      "kind": "regex-literal",
+      "fingerprint": "63641b2ff64a3775",
+      "count": 2,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/lessRecursiveParser.ts",
+      "kind": "regex-literal",
+      "fingerprint": "6971fec2b0bd7d11",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/lessRecursiveParser.ts",
+      "kind": "regex-literal",
+      "fingerprint": "a4d21242e269a5b0",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/lessRecursiveParser.ts",
+      "kind": "regex-literal",
+      "fingerprint": "cb6215c3f342e643",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/lessRecursiveParser.ts",
+      "kind": "runtime-match",
+      "fingerprint": "ba5d5b789ac12241",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/lessRecursiveParser.ts",
+      "kind": "runtime-test",
+      "fingerprint": "c8ea41cc3c72375d",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/lessTokens.ts",
+      "kind": "regex-literal",
+      "fingerprint": "07505a12c678d2c3",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/lessTokens.ts",
+      "kind": "regex-literal",
+      "fingerprint": "39c4cf8c0370e7b7",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/lessTokens.ts",
+      "kind": "regex-literal",
+      "fingerprint": "4f3e1e26aafb7007",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/lessTokens.ts",
+      "kind": "regex-literal",
+      "fingerprint": "5047976c45df1e8f",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/lessTokens.ts",
+      "kind": "regex-literal",
+      "fingerprint": "79416d99e552ea1b",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/lessTokens.ts",
+      "kind": "regex-literal",
+      "fingerprint": "7df091ef7f944574",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/lessTokens.ts",
+      "kind": "regex-literal",
+      "fingerprint": "80fd25f62e7d81fa",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/lessTokens.ts",
+      "kind": "regex-literal",
+      "fingerprint": "81b09a572a0cdc79",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/lessTokens.ts",
+      "kind": "regex-literal",
+      "fingerprint": "8fab090187769c30",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/lessTokens.ts",
+      "kind": "regex-literal",
+      "fingerprint": "941da193ebbf80ce",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/lessTokens.ts",
+      "kind": "regex-literal",
+      "fingerprint": "94a2127d82b8455e",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/lessTokens.ts",
+      "kind": "regex-literal",
+      "fingerprint": "af0f1f42a48ee30a",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/lessTokens.ts",
+      "kind": "regex-literal",
+      "fingerprint": "bd8f647ad6a297fc",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/lessTokens.ts",
+      "kind": "regex-literal",
+      "fingerprint": "bda7ae7f12a5c0bc",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/lessTokens.ts",
+      "kind": "regex-literal",
+      "fingerprint": "d2b51b9a670d7c0a",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/lessTokens.ts",
+      "kind": "regex-literal",
+      "fingerprint": "d40c0805f61b3efd",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/lessTokens.ts",
+      "kind": "regex-literal",
+      "fingerprint": "e1931910cdc978bd",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/lessTokens.ts",
+      "kind": "regex-literal",
+      "fingerprint": "ecf4399e6fcb2eb1",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/lessTokens.ts",
+      "kind": "regex-literal",
+      "fingerprint": "f099bc1e924f2f7e",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/lessTokens.ts",
+      "kind": "regex-literal",
+      "fingerprint": "f294c9b7d0d37ce8",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/productions/guards.ts",
+      "kind": "regex-literal",
+      "fingerprint": "120515ae6f3af323",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/productions/guards.ts",
+      "kind": "regex-literal",
+      "fingerprint": "15d2a0c4716edbcf",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/productions/guards.ts",
+      "kind": "regex-literal",
+      "fingerprint": "79da6328e004ad77",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/productions/guards.ts",
+      "kind": "runtime-test",
+      "fingerprint": "b4cd8856dc54d168",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/productions/selectors.ts",
+      "kind": "regex-literal",
+      "fingerprint": "74901a9d1a1d3e84",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/productions/selectors.ts",
+      "kind": "regex-literal",
+      "fingerprint": "8aa707e389af9c19",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/productions/selectors.ts",
+      "kind": "regex-literal",
+      "fingerprint": "db39b0f80c704793",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/productions/selectors.ts",
+      "kind": "runtime-exec",
+      "fingerprint": "937cf5b5b5a3d75b",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/productions/selectors.ts",
+      "kind": "runtime-test",
+      "fingerprint": "13364cf123e96779",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/productions/selectors.ts",
+      "kind": "runtime-test",
+      "fingerprint": "7fdc2a15d3c4e504",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/productions/values.ts",
+      "kind": "regex-literal",
+      "fingerprint": "994b9abb022b0c81",
+      "count": 2,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/utils.ts",
+      "kind": "regex-literal",
+      "fingerprint": "3626a4275b742403",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/less-parser/src/utils.ts",
+      "kind": "runtime-exec",
+      "fingerprint": "b1b46834c98decb5",
+      "count": 2,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/scss-parser/src/builders.ts",
+      "kind": "regex-literal",
+      "fingerprint": "0864cc0e06647aa6",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/scss-parser/src/builders.ts",
+      "kind": "regex-literal",
+      "fingerprint": "0a52c0d1dc0f8f1b",
+      "count": 2,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/scss-parser/src/builders.ts",
+      "kind": "regex-literal",
+      "fingerprint": "0ae54120c132a129",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/scss-parser/src/builders.ts",
+      "kind": "regex-literal",
+      "fingerprint": "2187625264518896",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/scss-parser/src/builders.ts",
+      "kind": "regex-literal",
+      "fingerprint": "4cfbb4599ce96433",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/scss-parser/src/builders.ts",
+      "kind": "regex-literal",
+      "fingerprint": "5f5bdd6511164ff6",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/scss-parser/src/builders.ts",
+      "kind": "regex-literal",
+      "fingerprint": "60cab2c392a481d2",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/scss-parser/src/builders.ts",
+      "kind": "regex-literal",
+      "fingerprint": "7929672d46d582f8",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/scss-parser/src/builders.ts",
+      "kind": "regex-literal",
+      "fingerprint": "a6c19338d69b98d9",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/scss-parser/src/builders.ts",
+      "kind": "regex-literal",
+      "fingerprint": "edbeb34f2d0f8e94",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/scss-parser/src/builders.ts",
+      "kind": "runtime-exec",
+      "fingerprint": "eae362d144d07335",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/scss-parser/src/builders.ts",
+      "kind": "runtime-test",
+      "fingerprint": "3103be600482b05c",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/scss-parser/src/builders.ts",
+      "kind": "runtime-test",
+      "fingerprint": "43cd49f5008a9baf",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/scss-parser/src/builders.ts",
+      "kind": "runtime-test",
+      "fingerprint": "f01e948cbd3df6e9",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/scss-parser/src/builders.ts",
+      "kind": "runtime-test",
+      "fingerprint": "fa9c373549a33d79",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/scss-parser/src/functional-parser.ts",
+      "kind": "reparse-entrypoint",
+      "fingerprint": "ed203f46053b0f48",
+      "count": 1,
+      "retirement": "Delete this transitional parser delegation with the AST v2 parser cutover; parsing must remain one-pass."
+    },
+    {
+      "file": "packages/scss-parser/src/scss-atrule-helpers.ts",
+      "kind": "regex-literal",
+      "fingerprint": "0980663d68d3de65",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/scss-parser/src/scss-atrule-helpers.ts",
+      "kind": "regex-literal",
+      "fingerprint": "5def27f27933941d",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/scss-parser/src/scss-atrule-helpers.ts",
+      "kind": "regex-literal",
+      "fingerprint": "6cd6718ff1ebbd6e",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/scss-parser/src/scss-atrule-helpers.ts",
+      "kind": "regex-literal",
+      "fingerprint": "79bf77bfd51d5be5",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/scss-parser/src/scss-atrule-helpers.ts",
+      "kind": "regex-literal",
+      "fingerprint": "7c04200b8b997e89",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/scss-parser/src/scss-atrule-helpers.ts",
+      "kind": "regex-literal",
+      "fingerprint": "a0dbfc7debeec555",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/scss-parser/src/scss-atrule-helpers.ts",
+      "kind": "regex-literal",
+      "fingerprint": "a71fe4765dd233bb",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/scss-parser/src/scss-atrule-helpers.ts",
+      "kind": "regex-literal",
+      "fingerprint": "bb95d0920509bfb2",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/scss-parser/src/scss-atrule-helpers.ts",
+      "kind": "regex-literal",
+      "fingerprint": "da6b8274a3ba901e",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/scss-parser/src/scss-atrule-helpers.ts",
+      "kind": "regex-literal",
+      "fingerprint": "ebf7279ec043587a",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/scss-parser/src/scss-atrule-helpers.ts",
+      "kind": "runtime-test",
+      "fingerprint": "0614f59851f37bbd",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/scss-parser/src/scss-atrule-helpers.ts",
+      "kind": "runtime-test",
+      "fingerprint": "153e00650d214b38",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/scss-parser/src/scss-atrule-helpers.ts",
+      "kind": "runtime-test",
+      "fingerprint": "8dcfeeb927cf1852",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/scss-parser/src/scss-atrule-helpers.ts",
+      "kind": "runtime-test",
+      "fingerprint": "98cc8046382096c7",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/scss-parser/src/scss-atrule-helpers.ts",
+      "kind": "runtime-test",
+      "fingerprint": "9a450b8409656789",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/scss-parser/src/scss-atrule-helpers.ts",
+      "kind": "runtime-test",
+      "fingerprint": "e2fd43c4d2e44055",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/scss-parser/src/scss-value-helpers.ts",
+      "kind": "regex-literal",
+      "fingerprint": "33dfa64223e24cc5",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    },
+    {
+      "file": "packages/scss-parser/src/scss-value-helpers.ts",
+      "kind": "runtime-test",
+      "fingerprint": "4083044649c81038",
+      "count": 1,
+      "retirement": "Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover."
+    }
+  ]
+}
