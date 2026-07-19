@@ -40,12 +40,12 @@ Less corpus.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: private CSS direct-AST grammar family.
+- Latest pass: private CSS direct-AST value family.
 - Architecture surface: `packages/css-parser/src/ast/grammar.ts` remains private: `packages/css-parser/src/index.ts`, `cst-css.ts`, and `grammar.ts` neither import nor export `cssAstGrammar`; `package.json` has no subpath targeting it and `tsdown.config.ts` has no entry for it. The sole current importer is `packages/css-parser/test/ast-grammar.test.ts`. No existing parse, eval, or render route reaches it.
-- Separation/duplication: this is parser-local Parseman construction using core node constructors only. It creates no host, action registry, bridge, conversion pass, public pilot, or fallback.
+- Separation/duplication: this extends parser-local Parseman construction with quoted, `url(...)`, and generic function-call reductions using core node constructors only. It creates no host, action registry, bridge, conversion pass, public pilot, or fallback.
 - Cumulative node weight: source AST nodes exist only for an explicit run of this development grammar; the current public CSS CST path creates none of them.
-- New traversal: [loop/traversal] `complexSegments` makes one bounded pass over the already-captured children of one selector reduction. It does not walk a source tree or run in any live parse/render route.
-- New node/materialization: [node construction] reductions call existing core constructors for the exact AST nodes they own. [materialized array/object] and [array spread/materialization] are the parser-owned child arrays and constructor argument list required to represent selector/value structure, reachable only from the private test seam.
+- New traversal: [loop/traversal] `complexSegments` makes one bounded pass over the already-captured children of one selector reduction. The value family uses only Parseman's already-captured child arrays. Neither path walks a source tree or runs in any live parse/render route.
+- New node/materialization: [node construction] reductions call existing core constructors for the exact AST nodes they own. [materialized array/object] and [array spread/materialization] are the parser-owned child arrays and constructor argument list required to represent selector/value structure, reachable only from the private test seam. Quoted bodies are grammar segments, and URL/function arguments are passed through as constructed child values; no source text is split or reparsed.
 - Render path: unchanged. `serialize` appears only in the focused proof; public render does not import this grammar.
 - Helper/API surface: [array helper] filters are reduction-local type selection over Parseman's captured children. There is no exported helper or runtime callback surface.
 - Metadata mutations: none.

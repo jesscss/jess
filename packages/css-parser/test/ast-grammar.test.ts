@@ -72,4 +72,37 @@ describe('private CSS canonical-AST grammar', () => {
       css: '@media screen {\n  .card {\n    color: #abc;\n  }\n  .card .title {\n    width: 100%;\n  }\n}\n'
     });
   });
+
+  it('constructs quoted, url, and function values without a value re-parser', () => {
+    const document = parseAst('.asset { content: "hello\\\"world"; background: url("icons\\\"logo.svg"); color: rgb(255, 0, 128); }');
+
+    expect(document.children[0]).toMatchObject({
+      type: 'Rule',
+      body: [
+        { type: 'Declaration', name: 'content', value: { type: 'Quoted', src: '"hello\\\"world"', value: 'hello\\\"world', quote: '"', escaped: false } },
+        { type: 'Declaration', name: 'background', value: { type: 'Url', value: { type: 'Quoted', value: 'icons\\\"logo.svg' } } },
+        { type: 'Declaration', name: 'color', value: { type: 'FunctionCall', name: 'rgb', args: [{ type: 'Dimension', number: 255 }, { type: 'Dimension', number: 0 }, { type: 'Dimension', number: 128 }] } }
+      ]
+    });
+    expect(serialize(document)).toEqual({
+      css: '.asset {\n  content: "hello\\\"world";\n  background: url("icons\\\"logo.svg");\n  color: rgb(255, 0, 128);\n}\n'
+    });
+  });
+
+  it('commits url() after its opener instead of falling back to a generic call', () => {
+    const result = run(cssAstGrammar.CssAstDocument, '.a { background: url(foo bar); }', { trivia: cssAstGrammar.whitespace });
+
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]).toMatchObject({ expected: [')'] });
+  });
+
+  it('constructs an empty generic function call without inventing an argument', () => {
+    const document = parseAst('.a { transform: translate(); }');
+
+    expect(document.children[0]).toMatchObject({
+      type: 'Rule',
+      body: [{ type: 'Declaration', name: 'transform', value: { type: 'FunctionCall', name: 'translate', args: [] } }]
+    });
+    expect(serialize(document)).toEqual({ css: '.a {\n  transform: translate();\n}\n' });
+  });
 });

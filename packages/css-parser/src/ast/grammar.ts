@@ -6,9 +6,10 @@
  * core AST constructors directly, while the public CSS grammar continues to
  * produce the independent CST.
  */
-import { choice, literal, many, noTrivia, node, oneOrMore, optional, regex, rules, sequence, trivia } from 'parseman' with { type: 'macro' };
+import { choice, expect, literal, many, noTrivia, node, oneOrMore, optional, regex, rules, sequence, trivia } from 'parseman' with { type: 'macro' };
 import type { Combinator } from 'parseman';
 import {
+  any,
   atRuleBlock,
   atRuleStatement,
   color,
@@ -17,6 +18,7 @@ import {
   compoundOf,
   decl,
   dimension,
+  funcCall,
   keyword,
   list,
   root,
@@ -24,6 +26,7 @@ import {
   selist,
   simple,
   spaced,
+  url,
   quoted
 } from '@jesscss/core/ast';
 import type {
@@ -35,7 +38,9 @@ import type {
   Compound,
   Declaration,
   Dimension,
+  FunctionCall,
   Keyword,
+  Quoted,
   Root,
   Rule,
   SelectorList,
@@ -55,6 +60,9 @@ type CssAstRules = {
   CssAstKeyword: Combinator<Keyword>;
   CssAstColor: Combinator<Color>;
   CssAstDimension: Combinator<Dimension>;
+  CssAstQuoted: Combinator<Quoted>;
+  CssAstUrl: Combinator<ValueNode>;
+  CssAstCall: Combinator<FunctionCall>;
   CssAstValueTerm: Combinator<ValueNode>;
   CssAstValue: Combinator<ValueNode>;
   CssAstImportant: Combinator<boolean>;
@@ -112,6 +120,7 @@ function isValue(value: unknown): value is ValueNode {
     && value !== null
     && 'type' in value
     && (value.type === 'Keyword' || value.type === 'Color' || value.type === 'Dimension'
+      || value.type === 'Quoted' || value.type === 'Url' || value.type === 'FunctionCall'
       || value.type === 'SpacedValue' || value.type === 'List');
 }
 
@@ -186,6 +195,10 @@ const dimensionNumber = regex(/[+-]?(?:[0-9]+(?:\.[0-9]+)?|\.[0-9]+)/);
 const dimensionUnit = regex(/[A-Za-z%]+/);
 const charsetEncoding = regex(/[A-Za-z0-9._-]+/);
 const combinator = choice(literal('||'), literal('>'), literal('+'), literal('~'), literal('|'));
+const doubleQuotedText = regex(/(?:[^"\\]|\\[\s\S])*/);
+const singleQuotedText = regex(/(?:[^'\\]|\\[\s\S])*/);
+const urlOpen = regex(/url\(/i);
+const urlInner = regex(/(?:[^"'()\\ \t\n\f\r\x00-\x08\x0B\x0E-\x1F\x7F]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+/);
 
 export const cssAstGrammar = rules<CssAstRules>({ trivia: whitespace }, (g) => {
   const CssAstComment = node('CssAstComment', blockComment, children => comment(tokenText(children[0])));
@@ -219,9 +232,37 @@ export const cssAstGrammar = rules<CssAstRules>({ trivia: whitespace }, (g) => {
       return dimension(Number(numberText), unit, `${numberText}${unit}`);
     }
   );
+  const CssAstQuoted = node(
+    'CssAstQuoted',
+    choice(
+      noTrivia(sequence(literal('"'), doubleQuotedText, literal('"'))),
+      noTrivia(sequence(literal('\''), singleQuotedText, literal('\'')))
+    ),
+    (children) => {
+      const quote = tokenText(children[0]);
+      const value = tokenText(children[1]);
+      return quoted(`${quote}${value}${quote}`, value, quote, false);
+    }
+  );
+  const CssAstUrl = node(
+    'CssAstUrl',
+    sequence(urlOpen, optional(choice(g.CssAstQuoted, urlInner)), expect(literal(')'), ')')),
+    (children) => {
+      const body = children.find(isValue);
+      return url(body ?? any(''));
+    }
+  );
+  const CssAstCall = node(
+    'CssAstCall',
+    sequence(g.CssAstProperty, literal('('), optional(sequence(g.CssAstValueTerm, many(sequence(literal(','), g.CssAstValueTerm)))), literal(')')),
+    (children) => {
+      const name = tokenText(children[0]);
+      return funcCall(name, children.slice(1).filter(isValue));
+    }
+  );
   const CssAstValueAtom = node(
     'CssAstValueAtom',
-    choice(g.CssAstDimension, g.CssAstColor, g.CssAstKeyword),
+    choice(g.CssAstDimension, g.CssAstColor, g.CssAstUrl, g.CssAstCall, g.CssAstQuoted, g.CssAstKeyword),
     children => valueChildren(children)[0]!
   );
   const CssAstValueTerm = node('CssAstValueTerm', oneOrMore(CssAstValueAtom), (children) => {
@@ -293,6 +334,9 @@ export const cssAstGrammar = rules<CssAstRules>({ trivia: whitespace }, (g) => {
     CssAstKeyword,
     CssAstColor,
     CssAstDimension,
+    CssAstQuoted,
+    CssAstUrl,
+    CssAstCall,
     CssAstValueTerm,
     CssAstValue,
     CssAstImportant,
