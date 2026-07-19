@@ -1,13 +1,13 @@
 import { defineConfig } from 'tsdown';
 
-// Two entries: the package root (`.`) and the narrow value-substrate surface
-// (`./value`) consumed by `@jesscss/fns`. Code splitting is left ON (unlike the
-// shared single-entry helper) so the value substrate lands in a shared chunk —
-// one runtime instance, no byte duplication across `index` and `value`.
+// Public entries include the root, the narrow value substrate (`./value`), and
+// the dependency-free AST-v2 construction surface (`./ast`). Code splitting is
+// left ON so shared runtime code is emitted once.
 export default defineConfig({
   entry: {
     index: './src/index.ts',
     value: './src/value.ts',
+    ast: './src/ast.ts',
     'ast-render': './src/ast-render.ts'
   },
   format: ['esm', 'cjs'],
