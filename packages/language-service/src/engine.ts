@@ -1,4 +1,3 @@
-import { parseCssFn } from '@jesscss/css-parser/jess';
 import { Parser as LessParser } from '@jesscss/less-parser/jess';
 import { Parser as ScssParser } from '@jesscss/scss-parser/jess';
 import { parseCssDoc, type CssCstNode, type ParseDoc } from '@jesscss/css-parser';
@@ -144,8 +143,7 @@ function buildJessIndex(root: Node): JessIndex {
   };
 }
 
-// Parsers are expensive to construct: reuse instances. CSS uses the functional
-// `parseCssFn` entry (no stateful class), so only Less/SCSS keep instances.
+// Parsers are expensive to construct: reuse the remaining dialect instances.
 const lessParser = new LessParser({ recoveryEnabled: true });
 const scssParser = new ScssParser({ recoveryEnabled: true });
 
@@ -162,7 +160,7 @@ function getJessLangFromLanguageId(languageId: string): JessLang {
   }
 }
 
-function parseWithJess(text: string, lang: JessLang): IParseResult<Rules> {
+function parseWithJess(text: string, lang: JessLang): IParseResult<Rules> | null {
   if (lang === 'less') {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     return lessParser.parse(text) as unknown as IParseResult<Rules>;
@@ -175,9 +173,9 @@ function parseWithJess(text: string, lang: JessLang): IParseResult<Rules> {
   // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     return parseJessFn(text) as unknown as IParseResult<Rules>;
   }
-  // Plain CSS.
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-  return parseCssFn(text) as unknown as IParseResult<Rules>;
+  // CSS has no legacy AST parser entry. Its existing CST path remains available
+  // through parseDocFor; semantic AST features stay intentionally unavailable.
+  return null;
 }
 
 // Build the incremental CST document for a dialect. `.jess` has no dedicated

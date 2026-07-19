@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { SymbolKind } from 'vscode-languageserver-types';
 import { parseCssDoc } from '@jesscss/css-parser';
-import { parseCssFn } from '@jesscss/css-parser/jess';
 import { parseLessDoc } from '@jesscss/less-parser';
 import { parseScssDoc } from '@jesscss/scss-parser';
 import { cstDocumentSymbols, buildCstIndex } from '../cst-analysis.js';
@@ -63,13 +62,8 @@ describe('CST-grounded document symbols (Option B slice)', () => {
     ]);
   });
 
-  // The headline win: the AST path dies on half-typed input; the CST path keeps
-  // producing the outline, which is exactly when an editor most needs it.
-  it('STILL yields symbols on invalid / half-typed input where the eval AST fails', () => {
+  it('yields symbols on invalid / half-typed CSS', () => {
     const broken = '.foo { color: '; // unclosed declaration + block
-    const ast = parseCssFn(broken);
-    expect(!ast.ok || (ast.errors?.length ?? 0) > 0).toBe(true);
-
     const syms = symbolsOf(broken);
     expect(flat(syms)).toContain('Class .foo');
   });

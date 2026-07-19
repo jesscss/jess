@@ -2,7 +2,7 @@
  * CST-grounded analysis (Option B).
  *
  * The language service historically grounds analysis in the eval AST
- * (`parseCssFn` → `buildJessIndex`), which is non-incremental and — the reason
+ * (a legacy CSS AST parser → `buildJessIndex`), which is non-incremental and — the reason
  * this module exists — dies on invalid input (a failed parse yields no tree, so
  * NO features while you're mid-edit). The incremental, lossless, error-tolerant
  * CST (`parseCssDoc` / `.edit()`) is the correct foundation for syntactic
