@@ -1,0 +1,22 @@
+{
+  "name": "@jesscss/internal-css-recognition",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "exports": {
+    "./recognition": {
+      "types": "./lib/recognition.d.ts",
+      "import": "./lib/recognition.js",
+      "require": "./lib/recognition.cjs"
+    }
+  },
+  "files": ["lib"],
+  "scripts": {
+    "build": "pnpm compile",
+    "compile": "tsdown --tsconfig tsconfig.build.json --no-dts && tsc -p tsconfig.build.json --emitDeclarationOnly --noCheck"
+  },
+  "devDependencies": {
+    "parseman": "link:/Users/matthew/git/oss/parser-thing",
+    "tsdown": "~0.21.7"
+  }
+}

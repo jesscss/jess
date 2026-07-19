@@ -8,7 +8,7 @@
  */
 import { balanced, choice, composeLeaf, expect, literal, many, noTrivia, node, oneOrMore, optional, parser, regex, rules, scanTo, sequence, trivia } from 'parseman' with { type: 'macro' };
 import type { Combinator } from 'parseman';
-import { cssAstSyntax } from './syntax.grammar.ts';
+import { cssAstSyntax } from '@jesscss/internal-css-recognition/recognition';
 import {
   any,
   atRuleBlock,

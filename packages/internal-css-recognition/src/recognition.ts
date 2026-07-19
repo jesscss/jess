@@ -1,17 +1,13 @@
 /**
- * Source-private, recognition-only terminals used by the direct CSS AST grammar.
+ * Source-private CSS recognition terminals for direct AST grammars.
  *
- * This is deliberately neither a public grammar export nor a construction
- * layer. `composeLeaf()` macro-fuses these terminals into the AST grammar; its
- * reductions remain local and call core constructors directly.
+ * Consumers macro-fuse this compiled artifact with their local reductions. It
+ * contains recognition only: no AST construction or runtime composition seam.
  */
 import { regex, rules } from 'parseman' with { type: 'macro' };
 
 const propertyName = regex(/\*?-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/);
 const keywordValue = regex(/-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/);
-// These are terminals, deliberately split from their delimiters so the direct
-// reduction can retain the quote character and construct the canonical node.
-// The public CST grammar recognizes the same CSS string and url-token forms.
 const doubleQuotedText = regex(/(?:[^"\\]|\\[\s\S])*/);
 const singleQuotedText = regex(/(?:[^'\\]|\\[\s\S])*/);
 const urlOpen = regex(/url\(/i);

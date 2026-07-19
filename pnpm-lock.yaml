@@ -243,6 +243,9 @@ importers:
       '@jesscss/core':
         specifier: workspace:*
         version: link:../core
+      '@jesscss/internal-css-recognition':
+        specifier: workspace:*
+        version: link:../internal-css-recognition
       '@jesscss/shared':
         specifier: workspace:*
         version: link:../_shared
@@ -375,6 +378,15 @@ importers:
       '@types/lodash-es':
         specifier: ^4.17.8
         version: 4.17.12
+
+  packages/internal-css-recognition:
+    devDependencies:
+      parseman:
+        specifier: link:/Users/matthew/git/oss/parser-thing
+        version: link:../../../parser-thing
+      tsdown:
+        specifier: ~0.21.7
+        version: 0.21.7(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.1)(typescript@7.0.1-rc)
 
   packages/jess:
     dependencies:
