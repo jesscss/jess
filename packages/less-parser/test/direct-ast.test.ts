@@ -1,8 +1,8 @@
 import { parse } from '../src/direct-ast.js';
 
 describe('direct Less AST-v2 facts', () => {
-  it('constructs canonical import, variable, and declaration facts without a host or bridge', () => {
-    const parsed = parse('@theme: "dark";\ncolor: red;\n@import "theme.less";\n@-export \'tokens.less\';');
+  it('constructs canonical import, variable, declaration, and ruleset facts without a host or bridge', () => {
+    const parsed = parse('@theme: "dark";\n.a { /* note */ color: red; }\n@import "theme.less";\n@-export \'tokens.less\';');
 
     expect(parsed.errors).toEqual([]);
     expect(parsed.document).toEqual({
@@ -14,11 +14,25 @@ describe('direct Less AST-v2 facts', () => {
           value: { type: 'Quoted', src: '"dark"', value: 'dark', quote: '"', escaped: false }
         },
         {
-          type: 'Declaration',
-          name: 'color',
-          value: { type: 'Keyword', src: 'red' },
-          merge: null,
-          important: false
+          type: 'Rule',
+          selector: {
+            type: 'SelectorList',
+            selectors: [{
+              type: 'Complex',
+              head: { type: 'Compound', simples: [{ type: 'Simple', text: '.a', interp: null }] },
+              tail: []
+            }]
+          },
+          body: [
+            { type: 'Comment', text: '/* note */' },
+            {
+              type: 'Declaration',
+              name: 'color',
+              value: { type: 'Keyword', src: 'red' },
+              merge: null,
+              important: false
+            }
+          ]
         },
         {
           type: 'ImportAtRule',
@@ -56,6 +70,13 @@ describe('direct Less AST-v2 facts', () => {
 
   it('rejects declaration forms outside the directly structured subset', () => {
     const parsed = parse('color: #f00;');
+
+    expect(parsed.document).toBeNull();
+    expect(parsed.errors).toHaveLength(1);
+  });
+
+  it('rejects rulesets outside the directly structured selector/body subset', () => {
+    const parsed = parse('.a, .b { color: red; }');
 
     expect(parsed.document).toBeNull();
     expect(parsed.errors).toHaveLength(1);

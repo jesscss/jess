@@ -1,6 +1,6 @@
 /** Closed direct AST-v2 grammar for the simplest Less import fact. */
 import { choice, literal, many, node, regex, rules, sequence, trivia } from 'parseman' with { type: 'macro' };
-import type { Declaration, ImportAtRule, Quoted, Root, Statement, VarDeclaration } from '@jesscss/core/ast';
+import type { Comment, Declaration, ImportAtRule, Quoted, Root, Rule, SelectorList, Statement, VarDeclaration } from '@jesscss/core/ast';
 
 type Token = { readonly value: string };
 
@@ -78,10 +78,57 @@ function isDeclaration(value: unknown): value is Declaration {
     && value.important === false;
 }
 
+function isComment(value: unknown): value is Comment {
+  return typeof value === 'object'
+    && value !== null
+    && 'type' in value
+    && value.type === 'Comment'
+    && 'text' in value
+    && typeof value.text === 'string';
+}
+
+function isSelectorList(value: unknown): value is SelectorList {
+  return typeof value === 'object'
+    && value !== null
+    && 'type' in value
+    && value.type === 'SelectorList'
+    && 'selectors' in value
+    && Array.isArray(value.selectors);
+}
+
+function requireSelectorList(value: unknown): SelectorList {
+  if (!isSelectorList(value)) {
+    throw new TypeError('Direct Less AST grammar produced a non-selector child.');
+  }
+  return value;
+}
+
+function isRule(value: unknown): value is Rule {
+  return typeof value === 'object'
+    && value !== null
+    && 'type' in value
+    && value.type === 'Rule'
+    && 'selector' in value
+    && isSelectorList(value.selector)
+    && 'body' in value
+    && Array.isArray(value.body);
+}
+
+function requireRulesetBody(children: readonly unknown[]): (Declaration | Comment)[] {
+  const body: (Declaration | Comment)[] = [];
+  for (const child of children) {
+    if (!isDeclaration(child) && !isComment(child)) {
+      throw new TypeError('Direct Less AST grammar produced a non-ruleset-body child.');
+    }
+    body.push(child);
+  }
+  return body;
+}
+
 function requireStatements(children: readonly unknown[]): Statement[] {
   const statements: Statement[] = [];
   for (const child of children) {
-    if (!isImportAtRule(child) && !isVarDeclaration(child) && !isDeclaration(child)) {
+    if (!isImportAtRule(child) && !isVarDeclaration(child) && !isDeclaration(child) && !isRule(child)) {
       throw new TypeError('Direct Less AST grammar produced a non-statement child.');
     }
     statements.push(child);
@@ -94,6 +141,8 @@ const importKeyword = regex(/@(?:-import|-export|import)(?![-\w])/i);
 const variableName = regex(/-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
 const propertyName = regex(/-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
 const keywordValue = regex(/-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
+const blockComment = regex(/\/\*(?:[^*]|\*(?!\/))*\*\//);
+const simpleSelector = regex(/(?:[.#]?-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*|\*)/);
 const doubleQuotedText = regex(/[^"\\]*/);
 const singleQuotedText = regex(/[^'\\]*/);
 
@@ -158,9 +207,40 @@ export const directLessAstGrammar = rules({ trivia: whitespace }, (g: any) => {
       };
     }
   );
+  const DirectLessComment = node<Comment>(
+    'DirectLessComment',
+    blockComment,
+    children => ({ type: 'Comment', text: requireToken(children[0]).value })
+  );
+  const DirectLessSelector = node<SelectorList>(
+    'DirectLessSelector',
+    simpleSelector,
+    (children) => {
+      const text = requireToken(children[0]).value;
+      return {
+        type: 'SelectorList',
+        selectors: [{
+          type: 'Complex',
+          head: { type: 'Compound', simples: [{ type: 'Simple', text, interp: null }] },
+          tail: []
+        }]
+      };
+    }
+  );
+  const DirectLessRuleset = node<Rule>(
+    'DirectLessRuleset',
+    sequence(g.DirectLessSelector, literal('{'), many(choice(g.DirectLessDeclaration, g.DirectLessComment)), literal('}')),
+    children => ({
+      type: 'Rule',
+      selector: requireSelectorList(children[0]),
+      // The fixed sequence places only direct declaration/comment facts between
+      // the braces. This validates that fact list; it never reparses body text.
+      body: requireRulesetBody(children.slice(2, -1))
+    })
+  );
   const DirectLessDocument = node<Root>(
     'DirectLessDocument',
-    many(choice(g.DirectLessImport, g.DirectLessVarDeclaration, g.DirectLessDeclaration)),
+    many(choice(g.DirectLessImport, g.DirectLessVarDeclaration, g.DirectLessRuleset, g.DirectLessDeclaration)),
     children => ({ type: 'Root', children: requireStatements(children) })
   );
 
@@ -169,6 +249,9 @@ export const directLessAstGrammar = rules({ trivia: whitespace }, (g: any) => {
     DirectLessImport,
     DirectLessVarDeclaration,
     DirectLessDeclaration,
+    DirectLessComment,
+    DirectLessSelector,
+    DirectLessRuleset,
     DirectLessQuoted,
     whitespace
   };
