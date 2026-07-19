@@ -516,6 +516,10 @@ export class CssParser {
       Paren: a => this._buildParen(a.rawChildren, a.loc),
       SquareParen: a => this._buildSquareParen(a.rawChildren, a.loc),
       Quoted: a => this._buildQuoted(a.children, a.loc),
+      // Generic known at-rule preludes are emitted by the grammar as distinct
+      // top-level segments. Keep the historical `Any [role=ident]` leaf contract,
+      // but never reconstruct segments by splitting an opaque source leaf.
+      AtPreludeToken: a => new Any(leafText(a.children), { role: 'ident' }, a.loc),
       AtRuleBlock: a => this._buildAtRuleBlock(a.children, a.loc) as unknown as JessNode,
       AtRuleStatement: a => this._buildAtRuleStatement(a.children, a.loc),
       UnknownAtRuleBlock: a => this._buildUnknownAtRuleBlock(a.children, a.loc) as unknown as JessNode,
@@ -1287,21 +1291,27 @@ export class CssParser {
   protected _buildAtRuleBlock(children: ReadonlyArray<Child>, loc: LocationInfo): JessNode | string {
     const ls = children.filter((c): c is CSTLeaf => c._tag === 'leaf');
     const name = ls[0]?.value ?? '';
-    // The prelude is the single scanTo leaf between the at-keyword and `{`.
-    const preludeLeaf = ls[1] && ls[1].value !== '{' && ls[1].value !== '}' ? ls[1] : undefined;
-    const preludeText = preludeLeaf?.value.trim();
-    // Give the prelude its own span (not the whole at-rule's loc) so before/after
-    // trivia lookups anchor to the prelude edges. Trailing trivia is already
-    // excluded from the leaf by the atPrelude sentinel.
-    const preludeLoc = preludeLeaf?.span ? spanToLocation(preludeLeaf.span) : loc;
-    const preludeNode = preludeText
-      ? new List(
-        preludeText.split(/[ \t\n\r\f]+/).map(tok => new Any(tok, { role: 'ident' }, preludeLoc)),
-        undefined, preludeLoc
-      )
-      : undefined;
+    // The grammar delivers every top-level prelude segment as an `AtPreludeToken`
+    // node. Select exactly the nodes before `{`; body nodes follow it. This is an
+    // assembly step only: no source scanning, regex splitting, or re-parsing.
+    const braceIdx = children.findIndex(c => c._tag === 'leaf' && (c as CSTLeaf).value === '{');
+    const preludeItems = nodeChildren(braceIdx >= 0 ? children.slice(1, braceIdx) : children.slice(1));
+    const first = preludeItems[0] && rawChildSpan(preludeItems[0]);
+    const last = preludeItems.at(-1) && rawChildSpan(preludeItems.at(-1)!);
+    const preludeLoc = first && last
+      ? spanToLocation({ start: first.start, end: last.end })
+      : loc;
+    // A List supplies punctuation between members; these are already literal
+    // grammar segments (including commas), so a multi-segment prelude must be a
+    // Sequence. Preserve the historical one-token List shape for existing AST
+    // consumers while keeping its single child exactly as grammar produced it.
+    const preludeNode = preludeItems.length === 1
+      ? new List(preludeItems, undefined, preludeLoc)
+      : preludeItems.length > 1
+        ? new Sequence(preludeItems, undefined, preludeLoc)
+        : undefined;
     const node = new AtRule(
-      { name, prelude: preludeNode, rules: nodeChildren(children) },
+      { name, prelude: preludeNode, rules: braceIdx >= 0 ? nodeChildren(children.slice(braceIdx + 1)) : [] },
       undefined, loc
     );
     // A string at-rule name has no span of its own; record it in fieldSpans (name
