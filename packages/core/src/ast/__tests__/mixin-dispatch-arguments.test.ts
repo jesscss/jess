@@ -62,6 +62,22 @@ describe('mixin @arguments (vs less@4.6.3)', () => {
     expect(argumentsOf(def, call)).toBe('1px 20px 9px');
   });
 
+  it('keeps the final duplicate named value while positional/rest args fill their remaining slots', () => {
+    const restDef = mixinDef('.mixin', [
+      { name: 'a' },
+      { name: 'b', default: any('20px') },
+      { name: 'rest', rest: true }
+    ], []);
+    const call = mixinCall('.mixin', [
+      any('1px'),
+      { value: any('2px'), name: 'b' },
+      { value: any('3px'), name: 'b' },
+      any('4px')
+    ]);
+
+    expect(argumentsOf(restDef, call)).toBe('1px 3px 4px');
+  });
+
   it('(d) all-positional call is unchanged (byte-identical regression guard)', () => {
     const call = mixinCall('.mixin', [any('1px'), any('2px'), any('3px')]);
     expect(argumentsOf(def, call)).toBe('1px 2px 3px');

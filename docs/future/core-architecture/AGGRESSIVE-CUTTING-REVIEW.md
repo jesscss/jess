@@ -1017,6 +1017,17 @@ no imported guarded mixins (no speedup to show), but on
         "outputBytes": 133983
       }
     }
+  },
+  {
+    "id": "mixin-bindargs-redundant-named-set-deletion",
+    "kind": "neutral-or-negative",
+    "surface": "bindArgs named-parameter slot selection (mixin-dispatch.ts)",
+    "files": ["packages/core/src/ast/mixin-dispatch.ts"],
+    "neutralRefactor": {
+      "costDelta": "decrease",
+      "why": "bindArgs already owns the named-argument Map. The deleted filledByName Set and preparatory fixed-parameter loop only duplicated named.has(p.name), so each bind now avoids that Set allocation and scan while preserving the same named/default/positional/rest selection branch.",
+      "byteIdentity": {"fixture":"benchmark.less","collapseNesting":true,"outputSha256":"adfd26732125a33fc1e264aca7d7ecde8c7c1da43f968e3106bd387a1f78e840","outputBytes":133983}
+    }
   }
 ]
 ```

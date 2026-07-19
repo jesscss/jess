@@ -85,10 +85,6 @@ export function bindArgs(
   }
 
   const bound = new Map<string, ValueNode>();
-  const filledByName = new Set<string>();
-  for (const p of fixedParams) {
-    if (p.name !== undefined && named.has(p.name)) filledByName.add(p.name);
-  }
 
   // Positional args fill the fixed param slots left-to-right, skipping any slot
   // already filled by a named arg.
@@ -96,7 +92,7 @@ export function bindArgs(
   for (let k = 0; k < fixedParams.length; k++) {
     const p = fixedParams[k]!;
     let argVal: ValueNode | undefined;
-    if (p.name !== undefined && filledByName.has(p.name)) {
+    if (p.name !== undefined && named.has(p.name)) {
       argVal = resolveEager(named.get(p.name)!.value, resolveCaller);
     } else if (pi < positional.length) {
       argVal = resolveEager(positional[pi++]!.value, resolveCaller);
