@@ -73,6 +73,36 @@ describe('private CSS canonical-AST grammar', () => {
     });
   });
 
+  it('constructs non-import statement at-rule preludes directly from value reductions', () => {
+    const document = parseAst('@namespace svg url("https://example.test/ns"); @layer utilities; @layer; .card { color: red; }');
+
+    expect(document.children).toMatchObject([
+      {
+        type: 'AtRuleStatement',
+        name: '@namespace',
+        prelude: {
+          type: 'SpacedValue',
+          parts: [
+            { type: 'Keyword', src: 'svg' },
+            { type: 'Url', value: { type: 'Quoted', value: 'https://example.test/ns' } }
+          ]
+        }
+      },
+      { type: 'AtRuleStatement', name: '@layer', prelude: { type: 'Keyword', src: 'utilities' } },
+      { type: 'AtRuleStatement', name: '@layer', prelude: null },
+      { type: 'Rule' }
+    ]);
+    expect(serialize(document)).toEqual({
+      css: '@namespace svg url("https://example.test/ns");\n@layer utilities;\n@layer;\n.card {\n  color: red;\n}\n'
+    });
+  });
+
+  it('leaves @import outside the generic statement family for its typed plugin-owned grammar', () => {
+    const result = run(cssAstGrammar.CssAstAtRuleStatement, '@import "theme.css";', { trivia: cssAstGrammar.whitespace });
+
+    expect(result.ok).toBe(false);
+  });
+
   it('constructs quoted, url, and function values without a value re-parser', () => {
     const document = parseAst('.asset { content: "hello\\\"world"; background: url("icons\\\"logo.svg"); color: rgb(255, 0, 128); }');
 

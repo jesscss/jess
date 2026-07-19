@@ -40,9 +40,9 @@ Less corpus.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Prior pass: private CSS direct-AST grammar/value family.
+- Latest pass: private CSS direct-AST value and non-import statement at-rule families.
 - Architecture surface: `packages/css-parser/src/ast/grammar.ts` remains private: `packages/css-parser/src/index.ts`, `cst-css.ts`, and `grammar.ts` neither import nor export `cssAstGrammar`; `package.json` has no subpath targeting it and `tsdown.config.ts` has no entry for it. The sole current importer is `packages/css-parser/test/ast-grammar.test.ts`. No existing parse, eval, or render route reaches it.
-- Separation/duplication: this extends parser-local Parseman construction with quoted, `url(...)`, and generic function-call reductions using core node constructors only. It creates no host, action registry, bridge, conversion pass, public pilot, or fallback.
+- Separation/duplication: this extends parser-local Parseman construction with quoted, `url(...)`, generic function-call, and non-import statement at-rule reductions using core node constructors only. `@import` remains excluded until its plugin-owned typed import facts are constructed by grammar. It creates no host, action registry, bridge, conversion pass, public pilot, or fallback.
 - Cumulative node weight: source AST nodes exist only for an explicit run of this development grammar; the current public CSS CST path creates none of them.
 - New traversal: [loop/traversal] `complexSegments` makes one bounded pass over the already-captured children of one selector reduction. The value family uses only Parseman's already-captured child arrays. Neither path walks a source tree or runs in any live parse/render route.
 - New node/materialization: [node construction] reductions call existing core constructors for the exact AST nodes they own. [materialized array/object] and [array spread/materialization] are the parser-owned child arrays and constructor argument list required to represent selector/value structure, reachable only from the private test seam. Quoted bodies are grammar segments, and URL/function arguments are passed through as constructed child values; no source text is split or reparsed.

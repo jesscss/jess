@@ -68,6 +68,7 @@ type CssAstRules = {
   CssAstImportant: Combinator<boolean>;
   CssAstDeclaration: Combinator<Declaration>;
   CssAstCharset: Combinator<AtRuleStatement>;
+  CssAstAtRuleStatement: Combinator<AtRuleStatement>;
   CssAstRuleset: Combinator<Rule>;
   CssAstMedia: Combinator<AtRuleBlock>;
   whitespace: Combinator<unknown>;
@@ -194,6 +195,10 @@ const hexColor = regex(/#[0-9a-fA-F]{3,8}\b/);
 const dimensionNumber = regex(/[+-]?(?:[0-9]+(?:\.[0-9]+)?|\.[0-9]+)/);
 const dimensionUnit = regex(/[A-Za-z%]+/);
 const charsetEncoding = regex(/[A-Za-z0-9._-]+/);
+// `@import` has a plugin-owned typed fact and must not be silently lowered to
+// a generic statement while that grammar is built. `@charset` has its own
+// grammar because its quoted encoding has narrower syntax than a CSS value.
+const genericAtRuleName = regex(/@(?!(?:charset|import)(?=[^-_a-zA-Z0-9\u0080-\uffff]|$))-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/i);
 const combinator = choice(literal('||'), literal('>'), literal('+'), literal('~'), literal('|'));
 const doubleQuotedText = regex(/(?:[^"\\]|\\[\s\S])*/);
 const singleQuotedText = regex(/(?:[^'\\]|\\[\s\S])*/);
@@ -295,6 +300,14 @@ export const cssAstGrammar = rules<CssAstRules>({ trivia: whitespace }, (g) => {
     sequence(literal('@charset'), literal('"'), charsetEncoding, literal('"'), literal(';')),
     children => atRuleStatement('@charset', quoted(tokenText(children[2]), tokenText(children[2]), '"', false))
   );
+  const CssAstAtRuleStatement = node(
+    'CssAstAtRuleStatement',
+    sequence(genericAtRuleName, optional(g.CssAstValue), literal(';')),
+    (children) => {
+      const name = tokenText(children[0]);
+      return atRuleStatement(name, children.find(isValue) ?? null);
+    }
+  );
   const CssAstRuleset = node(
     'CssAstRuleset',
     sequence(g.CssAstSelector, literal('{'), many(choice(g.CssAstComment, g.CssAstDeclaration, g.CssAstRuleset)), literal('}')),
@@ -319,7 +332,7 @@ export const cssAstGrammar = rules<CssAstRules>({ trivia: whitespace }, (g) => {
   );
   const CssAstDocument = node(
     'CssAstDocument',
-    many(choice(g.CssAstComment, g.CssAstCharset, g.CssAstMedia, g.CssAstRuleset)),
+    many(choice(g.CssAstComment, g.CssAstCharset, g.CssAstAtRuleStatement, g.CssAstMedia, g.CssAstRuleset)),
     children => root(documentStatements(children)),
     { trailingTrivia: true }
   );
@@ -342,6 +355,7 @@ export const cssAstGrammar = rules<CssAstRules>({ trivia: whitespace }, (g) => {
     CssAstImportant,
     CssAstDeclaration,
     CssAstCharset,
+    CssAstAtRuleStatement,
     CssAstRuleset,
     CssAstMedia,
     whitespace
