@@ -1,22 +1,22 @@
-/** Closed direct AST-v2 Parseman grammar pilot. */
+/** Private canonical-AST grammar development seam. */
 import { choice, literal, many, node, optional, regex, rules, sequence, trivia } from 'parseman' with { type: 'macro' };
 import type { Combinator } from 'parseman';
 import type { AtRuleBlock, AtRuleStatement, Comment, Declaration, Root, Rule, SelectorList, Statement, ValueNode } from '@jesscss/core/ast';
 
-type DirectKeyword = Extract<ValueNode, { readonly type: 'Keyword' }>;
-type DirectDimension = Extract<ValueNode, { readonly type: 'Dimension' }>;
-type DirectQuoted = Extract<ValueNode, { readonly type: 'Quoted' }>;
-type DirectCssRules = {
-  DirectCssDocument: Combinator<Root>;
-  DirectCssComment: Combinator<Comment>;
-  DirectCssSelector: Combinator<SelectorList>;
-  DirectCssProperty: Combinator<string>;
-  DirectCssKeyword: Combinator<DirectKeyword>;
-  DirectCssDimension: Combinator<DirectDimension>;
-  DirectCssDeclaration: Combinator<Declaration>;
-  DirectCssCharset: Combinator<AtRuleStatement>;
-  DirectCssRuleset: Combinator<Rule>;
-  DirectCssMedia: Combinator<AtRuleBlock>;
+type CssAstKeyword = Extract<ValueNode, { readonly type: 'Keyword' }>;
+type CssAstDimension = Extract<ValueNode, { readonly type: 'Dimension' }>;
+type CssAstQuoted = Extract<ValueNode, { readonly type: 'Quoted' }>;
+type CssAstRules = {
+  CssAstDocument: Combinator<Root>;
+  CssAstComment: Combinator<Comment>;
+  CssAstSelector: Combinator<SelectorList>;
+  CssAstProperty: Combinator<string>;
+  CssAstKeyword: Combinator<CssAstKeyword>;
+  CssAstDimension: Combinator<CssAstDimension>;
+  CssAstDeclaration: Combinator<Declaration>;
+  CssAstCharset: Combinator<AtRuleStatement>;
+  CssAstRuleset: Combinator<Rule>;
+  CssAstMedia: Combinator<AtRuleBlock>;
   whitespace: Combinator<unknown>;
 };
 
@@ -25,10 +25,10 @@ function tokenText(children: readonly unknown[], index: number): string {
   if (typeof child === 'object' && child !== null && 'value' in child && typeof child.value === 'string') {
     return child.value;
   }
-  throw new Error('Direct CSS grammar lost a required token');
+  throw new Error('CSS AST grammar lost a required token');
 }
 
-function isDirectKeyword(value: unknown): value is DirectKeyword {
+function isCssAstKeyword(value: unknown): value is CssAstKeyword {
   return typeof value === 'object'
     && value !== null
     && 'type' in value
@@ -37,7 +37,7 @@ function isDirectKeyword(value: unknown): value is DirectKeyword {
     && typeof value.src === 'string';
 }
 
-function isDirectDimension(value: unknown): value is DirectDimension {
+function isCssAstDimension(value: unknown): value is CssAstDimension {
   return typeof value === 'object'
     && value !== null
     && 'type' in value
@@ -51,7 +51,7 @@ function isDirectDimension(value: unknown): value is DirectDimension {
     && typeof value.src === 'string';
 }
 
-function isDirectQuoted(value: unknown): value is DirectQuoted {
+function isCssAstQuoted(value: unknown): value is CssAstQuoted {
   return typeof value === 'object'
     && value !== null
     && 'type' in value
@@ -92,15 +92,15 @@ function isDeclaration(value: unknown): value is Declaration {
     && 'name' in value
     && typeof value.name === 'string'
     && 'value' in value
-    && isDirectValue(value.value)
+    && isCssAstValue(value.value)
     && 'merge' in value
     && value.merge === null
     && 'important' in value
     && value.important === false;
 }
 
-function isDirectValue(value: unknown): value is DirectKeyword | DirectDimension {
-  return isDirectKeyword(value) || isDirectDimension(value);
+function isCssAstValue(value: unknown): value is CssAstKeyword | CssAstDimension {
+  return isCssAstKeyword(value) || isCssAstDimension(value);
 }
 
 function isRule(value: unknown): value is Rule {
@@ -127,7 +127,7 @@ function isCharsetStatement(value: unknown): value is AtRuleStatement {
     && 'name' in value
     && value.name === '@charset'
     && 'prelude' in value
-    && isDirectQuoted(value.prelude);
+    && isCssAstQuoted(value.prelude);
 }
 
 function isMediaBodyStatement(value: unknown): value is Comment | Rule {
@@ -142,7 +142,7 @@ function isMediaBlock(value: unknown): value is AtRuleBlock {
     && 'name' in value
     && value.name === '@media'
     && 'prelude' in value
-    && isDirectKeyword(value.prelude)
+    && isCssAstKeyword(value.prelude)
     && 'body' in value
     && Array.isArray(value.body)
     && value.body.every(isMediaBodyStatement);
@@ -157,7 +157,7 @@ function rulesetStatements(children: readonly unknown[]): (Comment | Declaration
   for (let index = 2; index < children.length - 1; index += 1) {
     const child = children[index];
     if (!isRulesetStatement(child)) {
-      throw new Error('DirectCssRuleset has an unexpected body child');
+      throw new Error('CssAstRuleset has an unexpected body child');
     }
     statements.push(child);
   }
@@ -168,7 +168,7 @@ function documentStatements(children: readonly unknown[]): Statement[] {
   const statements: Statement[] = [];
   for (const child of children) {
     if (!isDocumentStatement(child)) {
-      throw new Error('DirectCssDocument has an unexpected child');
+      throw new Error('CssAstDocument has an unexpected child');
     }
     statements.push(child);
   }
@@ -180,7 +180,7 @@ function mediaStatements(children: readonly unknown[]): (Comment | Rule)[] {
   for (let index = 3; index < children.length - 1; index += 1) {
     const child = children[index];
     if (!isMediaBodyStatement(child)) {
-      throw new Error('DirectCssMedia has an unexpected body child');
+      throw new Error('CssAstMedia has an unexpected body child');
     }
     statements.push(child);
   }
@@ -196,12 +196,12 @@ const dimensionNumber = regex(/-?(?:[0-9]+(?:\.[0-9]+)?|\.[0-9]+)/);
 const dimensionUnit = regex(/[A-Za-z%]+/);
 const charsetEncoding = regex(/[A-Za-z0-9._-]+/);
 
-export const directCssAstGrammar = rules<DirectCssRules>({ trivia: whitespace }, (g) => {
-  const DirectCssComment = node('DirectCssComment', blockComment, children => ({
+export const cssAstGrammar = rules<CssAstRules>({ trivia: whitespace }, (g) => {
+  const CssAstComment = node('CssAstComment', blockComment, children => ({
     type: 'Comment' as const,
     text: tokenText(children, 0)
   }));
-  const DirectCssSelector = node('DirectCssSelector', simpleSelector, (children) => {
+  const CssAstSelector = node('CssAstSelector', simpleSelector, (children) => {
     const text = tokenText(children, 0);
     return {
       type: 'SelectorList' as const,
@@ -212,47 +212,47 @@ export const directCssAstGrammar = rules<DirectCssRules>({ trivia: whitespace },
       }]
     };
   });
-  const DirectCssProperty = node('DirectCssProperty', propertyName, children => tokenText(children, 0));
-  const DirectCssKeyword = node('DirectCssKeyword', keywordValue, (children) => {
-    const value: DirectKeyword = { type: 'Keyword', src: tokenText(children, 0) };
+  const CssAstProperty = node('CssAstProperty', propertyName, children => tokenText(children, 0));
+  const CssAstKeyword = node('CssAstKeyword', keywordValue, (children) => {
+    const value: CssAstKeyword = { type: 'Keyword', src: tokenText(children, 0) };
     return value;
   });
-  const DirectCssDimension = node(
-    'DirectCssDimension',
+  const CssAstDimension = node(
+    'CssAstDimension',
     sequence(dimensionNumber, dimensionUnit),
-    (children): DirectDimension => {
+    (children): CssAstDimension => {
       const srcNumber = tokenText(children, 0);
       const unit = tokenText(children, 1);
       return { type: 'Dimension', number: Number(srcNumber), unit, src: `${srcNumber}${unit}` };
     }
   );
-  const DirectCssDeclaration = node(
-    'DirectCssDeclaration',
-    sequence(g.DirectCssProperty, literal(':'), choice(g.DirectCssDimension, g.DirectCssKeyword), optional(literal(';'))),
+  const CssAstDeclaration = node(
+    'CssAstDeclaration',
+    sequence(g.CssAstProperty, literal(':'), choice(g.CssAstDimension, g.CssAstKeyword), optional(literal(';'))),
     (children): Declaration => {
       const value = children[2];
-      if (typeof children[0] !== 'string' || !isDirectValue(value)) {
-        throw new Error('DirectCssDeclaration requires structured property and value children');
+      if (typeof children[0] !== 'string' || !isCssAstValue(value)) {
+        throw new Error('CssAstDeclaration requires structured property and value children');
       }
       return { type: 'Declaration', name: children[0], value, merge: null, important: false };
     }
   );
-  const DirectCssCharset = node(
-    'DirectCssCharset',
+  const CssAstCharset = node(
+    'CssAstCharset',
     sequence(literal('@charset'), literal('"'), charsetEncoding, literal('"'), literal(';')),
     (children): AtRuleStatement => {
       const value = tokenText(children, 2);
-      const prelude: DirectQuoted = { type: 'Quoted', src: `"${value}"`, value, quote: '"', escaped: false };
+      const prelude: CssAstQuoted = { type: 'Quoted', src: `"${value}"`, value, quote: '"', escaped: false };
       return { type: 'AtRuleStatement', name: '@charset', prelude };
     }
   );
-  const DirectCssRuleset = node(
-    'DirectCssRuleset',
-    sequence(g.DirectCssSelector, literal('{'), many(choice(g.DirectCssComment, g.DirectCssDeclaration)), literal('}')),
+  const CssAstRuleset = node(
+    'CssAstRuleset',
+    sequence(g.CssAstSelector, literal('{'), many(choice(g.CssAstComment, g.CssAstDeclaration)), literal('}')),
     (children) => {
       const selector = children[0];
       if (!isSelectorList(selector)) {
-        throw new Error('DirectCssRuleset requires a selector');
+        throw new Error('CssAstRuleset requires a selector');
       }
       return {
         type: 'Rule' as const,
@@ -261,34 +261,34 @@ export const directCssAstGrammar = rules<DirectCssRules>({ trivia: whitespace },
       };
     }
   );
-  const DirectCssMedia = node(
-    'DirectCssMedia',
-    sequence(literal('@media'), g.DirectCssKeyword, literal('{'), many(choice(g.DirectCssComment, g.DirectCssRuleset)), literal('}')),
+  const CssAstMedia = node(
+    'CssAstMedia',
+    sequence(literal('@media'), g.CssAstKeyword, literal('{'), many(choice(g.CssAstComment, g.CssAstRuleset)), literal('}')),
     (children): AtRuleBlock => {
       const prelude = children[1];
-      if (!isDirectKeyword(prelude)) {
-        throw new Error('DirectCssMedia requires a keyword prelude');
+      if (!isCssAstKeyword(prelude)) {
+        throw new Error('CssAstMedia requires a keyword prelude');
       }
       return { type: 'AtRuleBlock', name: '@media', prelude, body: mediaStatements(children) };
     }
   );
-  const DirectCssDocument = node(
-    'DirectCssDocument',
-    many(choice(g.DirectCssComment, g.DirectCssCharset, g.DirectCssMedia, g.DirectCssRuleset)),
+  const CssAstDocument = node(
+    'CssAstDocument',
+    many(choice(g.CssAstComment, g.CssAstCharset, g.CssAstMedia, g.CssAstRuleset)),
     children => ({ type: 'Root' as const, children: documentStatements(children) }),
     { trailingTrivia: true }
   );
   return {
-    DirectCssDocument,
-    DirectCssComment,
-    DirectCssSelector,
-    DirectCssProperty,
-    DirectCssKeyword,
-    DirectCssDimension,
-    DirectCssDeclaration,
-    DirectCssCharset,
-    DirectCssRuleset,
-    DirectCssMedia,
+    CssAstDocument,
+    CssAstComment,
+    CssAstSelector,
+    CssAstProperty,
+    CssAstKeyword,
+    CssAstDimension,
+    CssAstDeclaration,
+    CssAstCharset,
+    CssAstRuleset,
+    CssAstMedia,
     whitespace
   };
 });
