@@ -102,7 +102,33 @@ closure is still in progress.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: extend the private Jess direct-AST value grammar with recursive
+- Latest pass: extend the private Less direct-AST selector grammar so adjacent
+  static tokens become separate canonical `Compound.simples` children.
+- Architecture surface: one direct grammar reduction maps Parseman-captured
+  simple tokens into the compound; whitespace descendants stay rejected until
+  their relation is grammar-owned. No Context/plugin/CST bridge, host, scanner,
+  or source reparse is added.
+- Cumulative node weight: cold private Less direct-AST construction only; no
+  public parser/eval/render path reaches this grammar.
+- New traversal: one bounded map over completed simple-selector tokens only.
+- New node/materialization: the parser-owned `Compound.simples` array is the
+  exact selector payload; no eval/render materialization is added.
+- Render path: unchanged and unreachable from production.
+- Helper/API surface: no exported parser operation or plugin surface.
+- Metadata mutations: none.
+- Review-flagged diff tokens: [array helper] and [materialized array/object]
+  are cold grammar-owned compound construction; no runtime control flow is
+  added.
+- Hot-path cost contracts:
+  ```json
+  [{"id":"less-private-direct-ast-family","verdict":"accepted","privateReachability":{"productionImporters":0,"publicExports":0,"buildEntries":0,"coldConstructionOnly":true},"why":"The current Less direct-AST grammar is not a public parse, eval, or render path; its bounded compound construction is exercised by focused development tests."}]
+  ```
+- Evidence: focused Less AST test, Less package build, parser-runtime-boundary
+  verifier, staged aggressive-cutting review.
+- Verdict: accepted cold parser construction; whitespace descendants, pseudos,
+  attributes, and interpolation remain explicit typed parser work.
+
+- Earlier pass: extend the private Jess direct-AST value grammar with recursive
   static function calls and comma-delimited typed arguments.
 - Architecture surface: parser-local reductions construct canonical
   `FunctionCall` nodes directly from Parseman-recognized arguments. Dynamic

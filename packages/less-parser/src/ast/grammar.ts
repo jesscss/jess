@@ -478,10 +478,15 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
   );
   const DirectLessCompound = node<Compound>(
     'DirectLessCompound',
-    choice(simpleSelector, staticAmpersand),
+    // Production's CompoundSelector is a run of adjacent simple selectors.
+    // Keep that same structural distinction here: `.a#id` is one Compound with
+    // two Simple children, not a recovered selector string. Pseudos,
+    // attributes, and interpolation stay outside this static slice until their
+    // own typed payloads have direct reductions.
+    noTrivia(oneOrMore(choice(simpleSelector, staticAmpersand))),
     (children) => {
-      const text = requireToken(children[0]).value;
-      return compoundOf([simple(text)]);
+      const simples = children.map(child => simple(requireToken(child).value));
+      return compoundOf(simples);
     }
   );
   const DirectLessComplex = node<Complex>(

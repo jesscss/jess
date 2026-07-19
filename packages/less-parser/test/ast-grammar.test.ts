@@ -359,6 +359,52 @@ describe('private Less AST grammar facts', () => {
     });
   });
 
+  it('constructs adjacent static simple selectors as one canonical compound', () => {
+    const source = 'button.primary#submit, &.is-open { color: red; }';
+    const legacy = parseLessCst(source);
+    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+
+    expect(legacy.errors).toHaveLength(0);
+    expect(legacy.unconsumedFrom).toBeNull();
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(isRoot(result.value)).toBe(true);
+    expect(result.value.children[0]).toEqual({
+      type: 'Rule',
+      selector: {
+        type: 'SelectorList',
+        selectors: [
+          {
+            type: 'Complex',
+            head: {
+              type: 'Compound',
+              simples: [
+                { type: 'Simple', text: 'button', interp: null },
+                { type: 'Simple', text: '.primary', interp: null },
+                { type: 'Simple', text: '#submit', interp: null }
+              ]
+            },
+            tail: []
+          },
+          {
+            type: 'Complex',
+            head: {
+              type: 'Compound',
+              simples: [
+                { type: 'Simple', text: '&', interp: null },
+                { type: 'Simple', text: '.is-open', interp: null }
+              ]
+            },
+            tail: []
+          }
+        ]
+      },
+      body: [{
+        type: 'Declaration', name: 'color', value: { type: 'Keyword', src: 'red' }, merge: null, important: false
+      }]
+    });
+  });
+
   it('constructs production-parity static ampersand parent selectors directly', () => {
     const source = '&, &-active, &1 { color: red; }';
     const legacy = parseLessCst(source);
@@ -399,10 +445,7 @@ describe('private Less AST grammar facts', () => {
     }
   });
 
-  it('rejects rulesets outside the directly structured selector/body subset', () => {
-    // A descendant relation is authored only as skipped trivia. It needs a
-    // grammar-owned separator fact before it can become a canonical `' '` AST
-    // combinator, so this static explicit-token slice must reject it for now.
+  it('rejects a descendant selector until whitespace has a grammar-owned relation fact', () => {
     const result = run(lessAstGrammar.LessAstDocument, '.a .b { color: red; }', { trivia: lessAstGrammar.whitespace });
 
     expect(result.ok && result.unconsumedFrom === null && isRoot(result.value)).toBe(false);
