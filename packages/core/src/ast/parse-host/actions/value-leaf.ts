@@ -136,6 +136,13 @@ function escapedLeaf(args: BuildArgs): t2.ValueNode {
     // marks it opaque so materialize builds a `Quoted{escaped}`, never a sniff.
     if (inner.type === 'Quoted') return t2.quoted(inner.value, inner.value, inner.quote, true);
   }
+  // An escaped PAREN `~( … )` UNWRAPS to its (now structured) inner value — the raw
+  // evaluable list Less produces: `~(1, 2, 3)` → the comma `List`, `~(1 2 3)` → the
+  // space `SpacedValue`, emitted WITHOUT the parens or the `~`. The paren action
+  // owns the inner structure (comma → `List`, space → `SpacedValue`), so this just
+  // drops the wrapper — no byte re-scan of the list body.
+  const paren = args.children.find((c): c is t2.ValueNode => t2.isNode(c) && c.type === 'Paren');
+  if (paren !== undefined && paren.type === 'Paren') return paren.inner;
   return t2.any(leafBytes(args));
 }
 

@@ -209,9 +209,12 @@ function parenBounds(children: ReadonlyArray<unknown>): { open: number; close: n
 
 /**
  * `( expr )` — a transparent wrapper around ONE inner value. A single inner value
- * node wraps directly; a space list wraps as a `SpacedValue`; a comma list (rare
- * in value position) keeps its inner source bytes verbatim (the fallback for a
- * non-computable paren body).
+ * node wraps directly; a space list wraps as a `SpacedValue`; a top-level COMMA
+ * list structures into a `List` of per-comma-segment items (each a space run) so it
+ * stays indexable (`extract`/`length`/`each` on `~(a, b, c)`) rather than flattening
+ * to an opaque `Any` — the parser owns the comma boundaries (its `,` leaves), so
+ * this consumes them, never a byte re-scan. A SEMICOLON-separated paren body (never
+ * an explicitly supported list syntax) keeps its verbatim inner bytes.
  */
 const paren: BuildAction = {
   type: 'Paren',
@@ -220,26 +223,65 @@ const paren: BuildAction = {
     const lo = open < 0 ? 0 : open + 1;
     const hi = close < 0 ? args.children.length : close;
     let hasComma = false;
-    const items: t2.ValueNode[] = [];
+    let hasSemi = false;
+    // Comma segments: each holds its item value nodes plus the source span covering
+    // them, so the verbatim inter-item separator (comma + spacing) can be recovered.
+    const segs: t2.ValueNode[][] = [[]];
+    const segSpans: Array<{ start: number; end: number }> = [{ start: -1, end: -1 }];
+    const flatItems: t2.ValueNode[] = [];
+    const noteSpan = (i: number): void => {
+      const raw = args.rawChildren[i] as { span?: Span } | undefined;
+      if (!raw?.span) return;
+      const s = segSpans[segSpans.length - 1]!;
+      if (s.start < 0) s.start = raw.span.start;
+      s.end = raw.span.end;
+    };
+    const pushItem = (i: number, node: t2.ValueNode): void => {
+      segs[segs.length - 1]!.push(node);
+      flatItems.push(node);
+      noteSpan(i);
+    };
     for (let i = lo; i < hi; i++) {
       const c = args.children[i];
       if (isValueNode(c)) {
-        items.push(c);
+        pushItem(i, c);
         continue;
       }
       const v = leafText(c);
       if (v === ',' || v === ';') {
-        hasComma = true;
+        if (v === ';') hasSemi = true;
+        else hasComma = true;
+        segs.push([]);
+        segSpans.push({ start: -1, end: -1 });
         continue;
       }
       if (v === '' && isEmptyStructuralLeaf(c, args.rawChildren[i])) continue;
-      items.push(operandAt(args, i));
+      pushItem(i, operandAt(args, i));
     }
-    if (hasComma && open >= 0 && close >= 0) {
+    // A comma list structures; a semicolon list stays verbatim (the historical shape).
+    if (hasComma && !hasSemi && open >= 0 && close >= 0) {
+      const itemNodes: t2.ValueNode[] = [];
+      const spans: Array<{ start: number; end: number }> = [];
+      for (let k = 0; k < segs.length; k++) {
+        const seg = assembleSegment(segs[k]!);
+        if (seg !== null) {
+          itemNodes.push(seg);
+          spans.push(segSpans[k]!);
+        }
+      }
+      if (itemNodes.length >= 2 && spans.every((s) => s.start >= 0)) {
+        const separators: string[] = [];
+        for (let k = 1; k < itemNodes.length; k++) {
+          separators.push(args.ctx.src.slice(spans[k - 1]!.end, spans[k]!.start));
+        }
+        return t2.paren(t2.list(itemNodes, separators));
+      }
+    }
+    if (hasComma || hasSemi) {
       return t2.paren(t2.any(betweenBytes(args, open, close)));
     }
-    if (items.length === 0) return t2.paren(t2.any(''));
-    const inner = items.length === 1 ? items[0]! : t2.spaced(items);
+    if (flatItems.length === 0) return t2.paren(t2.any(''));
+    const inner = flatItems.length === 1 ? flatItems[0]! : t2.spaced(flatItems);
     return t2.paren(inner);
   },
 };
