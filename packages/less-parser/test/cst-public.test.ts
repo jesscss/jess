@@ -59,6 +59,48 @@ describe('@jesscss/less-parser/cst', () => {
   });
 });
 
+function findNode(node: LessCstChild, grammarType: string): Extract<LessCstChild, { _tag: 'node' }> | undefined {
+  if (node._tag !== 'node') return undefined;
+  if (node.grammarType === grammarType) return node;
+  for (const child of node.children) {
+    const found = findNode(child, grammarType);
+    if (found) return found;
+  }
+  return undefined;
+}
+
+function leafValues(node: LessCstChild): string[] {
+  if (node._tag === 'leaf') return [node.value];
+  if (node._tag !== 'node') return [];
+  return node.children.flatMap(leafValues);
+}
+
+describe('Less import CST facts', () => {
+  it('keeps quoted interpolation segments, typed options, and a typed media postlude', () => {
+    const result = parseLessCst('@import (less, multiple) "theme-@{name}.css" screen and (min-width: 600px);');
+    expect(result.errors).toHaveLength(0);
+    const imp = findNode(result.tree, 'ImportAtRule');
+    expect(imp).toBeDefined();
+    expect(leafValues(findNode(imp!, 'ImportOptions')!)).toEqual(['(', 'less', ',', 'multiple', ')']);
+    expect(findNode(imp!, 'ImportTarget')).toBeDefined();
+    expect(findNode(imp!, 'Quoted')).toBeDefined();
+    expect(leafValues(findNode(imp!, 'LessInterp')!)).toEqual(['@{', 'name', '}']);
+    expect(leafValues(findNode(imp!, 'ImportMedia')!)).toContain('screen');
+  });
+
+  it('keeps a url target and the @-export keyword', () => {
+    const result = parseLessCst('@-export (reference) url("theme.less") print;');
+    expect(result.errors).toHaveLength(0);
+    const imp = findNode(result.tree, 'ImportAtRule');
+    expect(imp).toBeDefined();
+    expect(leafValues(imp!)).toContain('@-export');
+    expect(findNode(imp!, 'ImportOptions')).toBeDefined();
+    expect(findNode(imp!, 'ImportTarget')).toBeDefined();
+    expect(findNode(imp!, 'Url')).toBeDefined();
+    expect(findNode(imp!, 'ImportMedia')).toBeDefined();
+  });
+});
+
 const LESS_DOC_CORPUS: string[] = [
   '@color: red; .x { color: @color; }',
   '.mixin(@a) { padding: @a; }\n.y { .mixin(4px); }',
