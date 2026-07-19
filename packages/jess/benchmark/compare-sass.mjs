@@ -1,13 +1,18 @@
-// Head-to-head: dart-sass vs Jess compile→eval→serialize time on a matched,
-// generated workload. Same warmup + N-median methodology as
-// core/perf/bench-extend.mjs. Both engines read their source from disk and
+// Head-to-head: dart-sass vs Jess (legacy tree/ eval) vs Jess (ast/ v2) on a
+// matched, generated workload. Same warmup + N-median methodology as
+// core/perf/bench-extend.mjs. All engines read their source from disk and
 // produce a CSS string, so the paths are symmetric (parse + eval + serialize).
 //
-// NOTE: Compiler.render() drives the LEGACY tree/ eval path (src/index.ts:1360),
-// NOT the ast/ v2 evaluator — ast/ render is still test-only during cutover. So
-// this measures Jess's *current production* path (legacy eval + Less plugins +
-// Less dialect) vs dart-sass. Treat the ratio as an UPPER BOUND on the true
-// engine gap; repoint at ast/ + split parse/eval/serialize to isolate it.
+// Two Jess rows:
+//   • Jess (legacy render)  — Compiler.render(): the LEGACY tree/ eval path
+//     (Less plugins + legacy tree.eval/render). Still the production default.
+//   • Jess (ast/ v2)        — Compiler.renderAstLess(): the engine-cutover ast/
+//     path. Routes the SAME .less through @jesscss/plugin-less's
+//     renderLessFileViaAst, over core's public @jesscss/core/ast-render pipeline
+//     (parseToAst → serialize; grammar + inline-JS guard + builtin fn evaluator
+//     injected on the consumer side, so core imports no parser and no fns).
+// Both Jess rows use the SAME config cascade (prepareRender) so collapseNesting
+// matches; the shas are directly comparable (same source, two engines).
 //
 //   node compare-sass.mjs                 # default scale
 //   COMPONENTS=400 VARIANTS=8 node compare-sass.mjs
@@ -57,6 +62,13 @@ const runJess = async () => {
   });
   return c.render(lessFile);
 };
+const runJessAst = async () => {
+  const c = new Compiler({
+    output: { collapseNesting: true },
+    compile: { plugins: [lessPlugin(), lessCompatPlugin()] }
+  });
+  return c.renderAstLess(lessFile);
+};
 const runSass = async () =>
   sass.compile(scssFile, { style: 'expanded', logger: sassLogger }).css;
 
@@ -89,6 +101,7 @@ console.log(
 
 // interleave-agnostic: run each engine's full suite; order fixed for determinism
 const jess = await bench('Jess (legacy render)', runJess);
+const jessAst = await bench('Jess (ast/ v2)', runJessAst);
 const dsass = await bench('dart-sass', runSass);
 
 const row = r =>
@@ -96,10 +109,24 @@ const row = r =>
   + `(min ${r.min.toFixed(1)}, max ${r.max.toFixed(1)})  `
   + `out ${r.bytes}B sha=${r.sha}`;
 console.log(row(jess));
+console.log(row(jessAst));
 console.log(row(dsass));
 
-const ratio = jess.med / dsass.med;
+const rel = (a, b) => a >= b
+  ? (a / b).toFixed(2) + '× slower'
+  : (b / a).toFixed(2) + '× faster';
 console.log(
-  `\nJess is ${ratio >= 1 ? ratio.toFixed(2) + '× slower' : (1 / ratio).toFixed(2) + '× faster'} `
-  + `than dart-sass on this workload (median/median).`
+  `\nJess legacy is ${rel(jess.med, dsass.med)} than dart-sass (median/median).`
+);
+console.log(
+  `Jess ast/ v2 is ${rel(jessAst.med, dsass.med)} than dart-sass (median/median).`
+);
+console.log(
+  `Jess ast/ v2 is ${rel(jessAst.med, jess.med)} than Jess legacy (median/median).`
+);
+console.log(
+  jessAst.sha === jess.sha
+    ? `ast/ output is BYTE-IDENTICAL to legacy (sha=${jessAst.sha}).`
+    : `ast/ output DIFFERS from legacy (ast ${jessAst.bytes}B sha=${jessAst.sha} vs `
+      + `legacy ${jess.bytes}B sha=${jess.sha}) — same source, two engines; a real diff.`
 );
