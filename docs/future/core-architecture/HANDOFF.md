@@ -102,6 +102,37 @@ closure is still in progress.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: extend the private SCSS direct-AST value grammar with static
+  URLs, recursive calls, space sequences, and comma lists.
+- Architecture surface: parser-local reductions construct canonical Url,
+  FunctionCall, SpacedValue, and List facts. No CST reuse, host, bridge,
+  Context/plugin work, scanner, or source reparse is added.
+- Separation/duplication: URL/call grammar rejects `#{…}` rather than flattening
+  interpolation. List separator fields preserve exact comma-following whitespace
+  bytes. Value/call/rule reducers validate every expected child and never filter
+  unexpected constructed values away.
+- Cumulative node weight: cold source-private AST values only.
+- New traversal: [loop/traversal] completed-child validation over one cold
+  reduction; it does not walk source/runtime state.
+- New node/materialization: [node construction] exact static value facts.
+  [materialized array/object] is the parser-owned call/list/sequence child data.
+- Render path: unchanged and unreachable from production.
+- Helper/API surface: no public parser or plugin API added.
+- Metadata mutations: none.
+- Review-flagged diff tokens: [loop/traversal], [node construction], and
+  [materialized array/object] are cold parser construction. [array helper]
+  collects already-recognized child facts. [array spread/materialization] and
+  [routine error control] are not added.
+- Hot-path cost contracts:
+  ```json
+  [{"id":"scss-private-direct-ast-family","verdict":"accepted","privateReachability":{"productionImporters":0,"publicExports":0,"buildEntries":0,"coldConstructionOnly":true},"why":"Static SCSS values are reachable only from focused source-private grammar tests."}]
+  ```
+- Evidence: focused AST/macro tests; full SCSS package tests; package build;
+  separator newline assertion; parser-boundary verifier; adversarial review and
+  re-review.
+- Verdict: accepted cold direct construction; typed dynamic/interpolation values
+  remain explicit parser work.
+
 - Latest pass: extend the private Jess direct-AST grammar with a static
   declaration/rule slice over one shared basic-selector token.
 - Architecture surface: parser-local reductions directly construct Declaration
