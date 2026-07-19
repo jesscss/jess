@@ -40,6 +40,20 @@ Less corpus.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: removal of the commented-out legacy `FileManager` sketch from `packages/core/src/plugin.ts`.
+- Architecture surface: this deletes only the historical, fully commented `FileManager`/`resolvePath` draft after the `Plugin` type. Live `PluginInterface` and `AbstractPlugin` APIs, including their current plugin-owned `resolve`, `locate`, and `getSource` methods, are unchanged.
+- Separation/duplication: no parser, resolver, host, bridge, fallback, or compatibility path was introduced or retained. This removes the stale duplicate resolver idea without touching the live plugin resolver API.
+- Cumulative node weight: none.
+- New traversal: none.
+- New node/materialization: none.
+- Render path: unchanged; comments do not emit JavaScript or run in the parse/eval/render path.
+- Helper/API surface: one obsolete commented API sketch removed; no live helper or method changed.
+- Metadata mutations: none.
+- Review-flagged diff tokens: none.
+- Hot-path cost contracts: ledger IDs: `plugin-comment-only-filemanager-deletion`; the recorded benchmark oracle is unchanged because this pass removes comments only.
+- Evidence: repository search found no live `FileManager`, `PathOptions`, `getPathsToTry`, or `resolvePath` symbol; focused plugin/import tests and the core build pass.
+- Verdict: accepted as a zero-runtime legacy deletion; no performance claim beyond removing source-only dead text.
+
 - Latest pass: private CSS direct-AST value and non-import statement at-rule families.
 - Architecture surface: `packages/css-parser/src/ast/grammar.ts` remains private: `packages/css-parser/src/index.ts`, `cst-css.ts`, and `grammar.ts` neither import nor export `cssAstGrammar`; `package.json` has no subpath targeting it and `tsdown.config.ts` has no entry for it. The sole current importer is `packages/css-parser/test/ast-grammar.test.ts`. No existing parse, eval, or render route reaches it.
 - Separation/duplication: this extends parser-local Parseman construction with quoted, `url(...)`, generic function-call, and non-import statement at-rule reductions using core node constructors only. `@import` remains excluded until its plugin-owned typed import facts are constructed by grammar. It creates no host, action registry, bridge, conversion pass, public pilot, or fallback.

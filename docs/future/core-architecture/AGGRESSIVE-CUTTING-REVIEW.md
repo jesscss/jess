@@ -59,6 +59,22 @@ active architecture queue.
         "outputBytes": 133983
       }
     }
+  },
+  {
+    "id": "plugin-comment-only-filemanager-deletion",
+    "kind": "neutral-or-negative",
+    "surface": "removal of commented-out FileManager sketch",
+    "files": ["packages/core/src/plugin.ts"],
+    "neutralRefactor": {
+      "costDelta": "neutral",
+      "why": "This deletes 107 lines that were entirely line comments: no emitted JavaScript, declarations, exports, imports, or runtime branches change. The retained PluginInterface and AbstractPlugin resolver methods are untouched.",
+      "byteIdentity": {
+        "fixture": "benchmark.less",
+        "collapseNesting": true,
+        "outputSha256": "adfd26732125a33fc1e264aca7d7ecde8c7c1da43f968e3106bd387a1f78e840",
+        "outputBytes": 133983
+      }
+    }
   }
 ]
 ```
