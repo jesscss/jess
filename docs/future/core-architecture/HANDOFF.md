@@ -40,33 +40,19 @@ Less corpus.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: removal of the commented-out legacy `FileManager` sketch from `packages/core/src/plugin.ts`.
-- Architecture surface: this deletes only the historical, fully commented `FileManager`/`resolvePath` draft after the `Plugin` type. Live `PluginInterface` and `AbstractPlugin` APIs, including their current plugin-owned `resolve`, `locate`, and `getSource` methods, are unchanged.
-- Separation/duplication: no parser, resolver, host, bridge, fallback, or compatibility path was introduced or retained. This removes the stale duplicate resolver idea without touching the live plugin resolver API.
-- Cumulative node weight: none.
-- New traversal: none.
-- New node/materialization: none.
-- Render path: unchanged; comments do not emit JavaScript or run in the parse/eval/render path.
-- Helper/API surface: one obsolete commented API sketch removed; no live helper or method changed.
-- Metadata mutations: none.
-- Review-flagged diff tokens: none.
-- Hot-path cost contracts: ledger IDs: `plugin-comment-only-filemanager-deletion`; the recorded benchmark oracle is unchanged because this pass removes comments only.
-- Evidence: repository search found no live `FileManager`, `PathOptions`, `getPathsToTry`, or `resolvePath` symbol; focused plugin/import tests and the core build pass.
-- Verdict: accepted as a zero-runtime legacy deletion; no performance claim beyond removing source-only dead text.
-
-- Latest pass: private CSS direct-AST value and non-import statement at-rule families.
+- Latest pass: private CSS direct-AST value, non-import statement, and `@layer` block at-rule families; removal of the commented-out legacy `FileManager` sketch from `packages/core/src/plugin.ts`.
 - Architecture surface: `packages/css-parser/src/ast/grammar.ts` remains private: `packages/css-parser/src/index.ts`, `cst-css.ts`, and `grammar.ts` neither import nor export `cssAstGrammar`; `package.json` has no subpath targeting it and `tsdown.config.ts` has no entry for it. The sole current importer is `packages/css-parser/test/ast-grammar.test.ts`. No existing parse, eval, or render route reaches it.
-- Separation/duplication: this extends parser-local Parseman construction with quoted, `url(...)`, generic function-call, and non-import statement at-rule reductions using core node constructors only. `@import` remains excluded until its plugin-owned typed import facts are constructed by grammar. It creates no host, action registry, bridge, conversion pass, public pilot, or fallback.
-- Cumulative node weight: source AST nodes exist only for an explicit run of this development grammar; the current public CSS CST path creates none of them.
+- Separation/duplication: this extends parser-local Parseman construction with quoted, `url(...)`, generic function-call, non-import statement at-rule, and structured `@layer` block reductions using core node constructors only. The current `@layer` block body admits comments and rules only; nested at-rules are deliberately outside this slice. `@import` remains excluded until its plugin-owned typed import facts are constructed by grammar. It creates no host, action registry, bridge, conversion pass, public pilot, or fallback.
+- Cumulative node weight: source AST nodes exist only for an explicit run of this development grammar; the current public CSS CST path creates none of them. The 107 removed `FileManager` lines were comments only and changed no emitted node or runtime state.
 - New traversal: [loop/traversal] `complexSegments` makes one bounded pass over the already-captured children of one selector reduction. The value family uses only Parseman's already-captured child arrays. Neither path walks a source tree or runs in any live parse/render route.
 - New node/materialization: [node construction] reductions call existing core constructors for the exact AST nodes they own. [materialized array/object] and [array spread/materialization] are the parser-owned child arrays and constructor argument list required to represent selector/value structure, reachable only from the private test seam. Quoted bodies are grammar segments, and URL/function arguments are passed through as constructed child values; no source text is split or reparsed.
-- Render path: unchanged. `serialize` appears only in the focused proof; public render does not import this grammar.
-- Helper/API surface: [array helper] filters are reduction-local type selection over Parseman's captured children. There is no exported helper or runtime callback surface.
+- Render path: unchanged. `serialize` appears only in the focused proof; public render does not import this grammar. The removed comment sketch did not emit JavaScript or run in the parse/eval/render path.
+- Helper/API surface: [array helper] filters are reduction-local type selection over Parseman's captured children. There is no exported helper or runtime callback surface. Live `PluginInterface` and `AbstractPlugin` resolver methods are unchanged; only an obsolete commented API sketch was removed.
 - Metadata mutations: none.
 - Review-flagged diff tokens: [loop/traversal], [array helper], [array spread/materialization], [node construction], [routine error control], and [materialized array/object] are all private grammar construction checks. The `Error` branches reject impossible malformed reduction children and are not routine parse control flow; recognition itself remains Parseman combinators.
 - Hot-path cost contracts:
   ```json
-  [{"id":"css-private-direct-ast-family","verdict":"accepted","privateReachability":{"productionImporters":0,"publicExports":0,"buildEntries":0,"coldConstructionOnly":true},"why":"Current static reachability is zero from CSS production source and artifacts: no public parse/CST/eval/render entry imports or exports cssAstGrammar, package.json has no subpath targeting it, and tsdown has no build entry. Its bounded child scans and allocations occur only when the focused development test directly runs CssAstDocument; no benchmark or runtime-speed claim is made."}]
+  [{"id":"css-private-direct-ast-family","verdict":"accepted","privateReachability":{"productionImporters":0,"publicExports":0,"buildEntries":0,"coldConstructionOnly":true},"why":"Current static reachability is zero from CSS production source and artifacts: no public parse/CST/eval/render entry imports or exports cssAstGrammar, package.json has no subpath targeting it, and tsdown has no build entry. Its bounded child scans and allocations occur only when the focused development test directly runs CssAstDocument; no benchmark or runtime-speed claim is made."},{"id":"plugin-comment-only-filemanager-deletion","verdict":"accepted","costDelta":"neutral","why":"This deletes 107 lines that were entirely line comments: no emitted JavaScript, declarations, exports, imports, or runtime branches change. The retained PluginInterface and AbstractPlugin resolver methods are untouched.","byteIdentity":{"fixture":"benchmark.less","collapseNesting":true,"outputSha256":"adfd26732125a33fc1e264aca7d7ecde8c7c1da43f968e3106bd387a1f78e840","outputBytes":133983}}]
   ```
 - Evidence: focused source-to-AST-to-serialize tests, CSS package build/tests, parser runtime boundary verification, and the private-reachability registry check.
 - Verdict: accepted as an unreachable development construction slice; wiring a public parser root requires a new reachability and runtime cost review.

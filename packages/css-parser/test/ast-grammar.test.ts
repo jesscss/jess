@@ -97,6 +97,34 @@ describe('private CSS canonical-AST grammar', () => {
     });
   });
 
+  it('constructs case-insensitive named and anonymous @layer blocks as structured AST subtrees', () => {
+    const document = parseAst('@LAYER utilities.components { .card { color: red; } } @layer { .reset { margin: 0; } }');
+
+    expect(document.children).toMatchObject([
+      {
+        type: 'AtRuleBlock',
+        name: '@layer',
+        prelude: { type: 'Keyword', src: 'utilities.components' },
+        body: [{ type: 'Rule', selector: { type: 'SelectorList' } }]
+      },
+      {
+        type: 'AtRuleBlock',
+        name: '@layer',
+        prelude: null,
+        body: [{ type: 'Rule', selector: { type: 'SelectorList' } }]
+      }
+    ]);
+    expect(serialize(document)).toEqual({
+      css: '@layer utilities.components {\n  .card {\n    color: red;\n  }\n}\n@layer {\n  .reset {\n    margin: 0;\n  }\n}\n'
+    });
+  });
+
+  it('rejects non-boundary @layer prefixes and comma-separated block names', () => {
+    for (const input of ['@layered { .card { color: red; } }', '@layer-foo { .card { color: red; } }', '@layer utilities, components { .card { color: red; } }']) {
+      expect(() => parseAst(input)).toThrow('CSS AST grammar did not consume the document');
+    }
+  });
+
   it('leaves @import outside the generic statement family for its typed plugin-owned grammar', () => {
     const result = run(cssAstGrammar.CssAstAtRuleStatement, '@import "theme.css";', { trivia: cssAstGrammar.whitespace });
 
