@@ -24,7 +24,6 @@ import {
   compound as tCompound,
   amp,
   co,
-  Node,
   mixin,
   call,
   ref,
@@ -32,8 +31,6 @@ import {
   vardecl,
   any,
 } from '../../../../tree/index.js';
-import { ComplexSelector } from '../../../../tree/selector-complex.js';
-import { CompoundSelector } from '../../../../tree/selector-compound.js';
 import { Context } from '../../../../context.js';
 import { renderNodeToString } from '../../../../tree/util/render-buffer.js';
 
@@ -85,74 +82,6 @@ export function renderNewFast(node: Root): string {
 /** Serialize a tree2 root WITH sourcemap position tracking. */
 export function renderNewTracked(node: Root): string {
   return t2.serialize(node, { trackPositions: true }).css;
-}
-
-/* ------------------------------ legacy composition-op instrumentation ------ */
-
-export interface LegacyOps {
-  cloneForPlacement: number;
-  inherit: number;
-  withComponents: number;
-}
-
-type AnyFn = (this: unknown, ...args: unknown[]) => unknown;
-type Patchable = Record<string, AnyFn>;
-const asPatchable = (proto: object): Patchable => proto as unknown as Patchable;
-
-/**
- * Count the legacy per-placement composition ops for ONE render of a shape:
- * `cloneForPlacement` + `inherit` (both on Node) and `withComponents` (on
- * Complex/CompoundSelector). Patches prototypes, runs one render, restores.
- */
-export async function withLegacyOpCounters(run: () => Promise<void>): Promise<LegacyOps> {
-  const counts: LegacyOps = { cloneForPlacement: 0, inherit: 0, withComponents: 0 };
-  const np = asPatchable(Node.prototype);
-  const cxp = asPatchable(ComplexSelector.prototype);
-  const cmp = asPatchable(CompoundSelector.prototype);
-
-  const origClone = np.cloneForPlacement!;
-  const origInherit = np.inherit!;
-  const origCxWith = cxp.withComponents!;
-  const origCmWith = cmp.withComponents!;
-
-  np.cloneForPlacement = function (this: unknown, ...args: unknown[]): unknown {
-    counts.cloneForPlacement++;
-    return origClone.apply(this, args);
-  };
-  np.inherit = function (this: unknown, ...args: unknown[]): unknown {
-    counts.inherit++;
-    return origInherit.apply(this, args);
-  };
-  cxp.withComponents = function (this: unknown, ...args: unknown[]): unknown {
-    counts.withComponents++;
-    return origCxWith.apply(this, args);
-  };
-  cmp.withComponents = function (this: unknown, ...args: unknown[]): unknown {
-    counts.withComponents++;
-    return origCmWith.apply(this, args);
-  };
-
-  try {
-    await run();
-  } finally {
-    np.cloneForPlacement = origClone;
-    np.inherit = origInherit;
-    cxp.withComponents = origCxWith;
-    cmp.withComponents = origCmWith;
-  }
-  return counts;
-}
-
-/** Legacy composition-op counts for one render of a shape. */
-export function countLegacyOps(shape: Shape): Promise<LegacyOps> {
-  return withLegacyOpCounters(async () => {
-    await renderOld(shape.buildOld());
-  });
-}
-
-/** tree2's composition-op counts for one render of a shape. */
-export function tree2Ops(shape: Shape): t2.ComposeStats {
-  return t2.composeStats(shape.buildNew());
 }
 
 /* --------------------------------------------------------------- rungs 1-2 */

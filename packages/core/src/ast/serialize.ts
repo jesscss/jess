@@ -22,7 +22,6 @@
  * Entry points:
  *   - `serialize(root)`                     — fast path, no position tracking.
  *   - `serialize(root, { trackPositions })` — + node->offset sourcemap map.
- *   - `composeStats(root)`                  — untimed op-count instrumentation.
  */
 
 import { renderCombinator } from './node.js';
@@ -3256,7 +3255,7 @@ function dispatch(
   const resolveCaller = makeResolver(frame, e);
   // [closure] a guard resolves free variables in the mixin's DEFINITION scope, with
   // the params overlaid and the call site as a fallback — the same frame layering
-  // `expandCall` builds for the body. Absent a home (composeStats / detached call)
+  // `expandCall` builds for the body. Absent a home (detached call)
   // it falls back to the caller frame (`parent: frame`).
   const makeCalleeTyped = (
     def: MixinDef,
@@ -4504,101 +4503,4 @@ function emitNestedAtRuleBlock(node: AtRuleBlock, frame: Frame, e: Emit): void {
   if (idt) put(e, idt);
   put(e, '}\n');
   if (e.positions) e.positions.push({ node, type: node.type, start, end: e.off });
-}
-
-/* ---------------------------------------------- composition-op instrumentation */
-
-export interface ComposeStats {
-  /** (parent x child) selector compositions performed during eval+emit. */
-  composeOps: number;
-  /** Selector strings allocated by composition. */
-  selectorAllocs: number;
-  /** Distinct composed selector strings produced (interning ceiling). */
-  distinctSelectors: number;
-}
-
-/**
- * Untimed instrumentation: replays the eval+emit walk (including mixin
- * placement) and counts the selector compositions tree2 performs — the leading
- * indicator to compare against legacy `withComponents`/`cloneForPlacement`/
- * `inherit` counts. Kept OUT of the timed path.
- */
-export function composeStats(root: Root, evaluator?: ValueEvaluator, modes?: EvalModes): ComposeStats {
-  const stats: ComposeStats = { composeOps: 0, selectorAllocs: 0, distinctSelectors: 0 };
-  const seen = new Set<string>();
-  const ectx: EvalCtx = { ev: evaluator ?? null, modes: modes ?? DEFAULT_MODES, excluded: new Set(), propNames: new Set() };
-
-  const composeCount = (parents: string[], child: SelectorList, frame: Frame): string[] => {
-    const res: string[] = [];
-    for (const c of child.selectors) {
-      stats.composeOps++;
-      for (const s of composeOne(parents, c, frame, ectx)) {
-        stats.selectorAllocs++;
-        res.push(s);
-        seen.add(s);
-      }
-    }
-    return res;
-  };
-
-  const walk = (statements: Statement[], composed: string[], frame: Frame): void => {
-    for (const node of statements) {
-      if (node.type === 'Rule') {
-        walkRule(node, composed, frame);
-      } else if (node.type === 'MixinCall') {
-        // [guards] mirror the real overloaded dispatch so guarded/pattern
-        // fixtures count the compositions they actually produce.
-        const candidates = lookupMixinCandidates(frame, node.name);
-        if (candidates.length === 0) continue;
-        for (const { def, bindings } of dispatch(candidates, node, frame, ectx)) {
-          const callFrame: Frame = {
-            parent: frame,
-            mixins: collectMixins(def.body),
-            vars: mergeVars(bindings, collectVars(def.body)),
-          };
-          walk(def.body, composed, callFrame);
-        }
-      } else if (node.type === 'AtRuleBlock') {
-        // [atrule] an at-rule body is a fresh nesting context (see enterAtRule).
-        enterAtRule(node, frame);
-      }
-    }
-  };
-  const walkRule = (rule: Rule, parent: string[] | null, frame: Frame): void => {
-    const composed =
-      parent === null ? ownStrings(rule.selector, frame, ectx) : composeCount(parent, rule.selector, frame);
-    const childFrame: Frame = {
-      parent: frame,
-      mixins: collectMixins(rule.body),
-      vars: collectVars(rule.body),
-    };
-    walk(rule.body, composed, childFrame);
-  };
-
-  // [atrule] enter at-rule bodies from the root too (top-level `@media {…}`),
-  // so nested-ruleset compositions inside a block are counted, not skipped.
-  const enterAtRule = (node: AtRuleBlock, frame: Frame): void => {
-    const bodyFrame: Frame = {
-      parent: frame,
-      mixins: collectMixins(node.body),
-      vars: collectVars(node.body),
-    };
-    for (const child of node.body) {
-      if (child.type === 'Rule') walkRule(child, null, bodyFrame);
-      else if (child.type === 'MixinCall') walk([child], [], bodyFrame);
-      else if (child.type === 'AtRuleBlock') enterAtRule(child, bodyFrame);
-    }
-  };
-
-  const rootFrame: Frame = {
-    parent: null,
-    mixins: collectMixins(root.children),
-    vars: collectVars(root.children),
-  };
-  for (const child of root.children) {
-    if (child.type === 'Rule') walkRule(child, null, rootFrame);
-    else if (child.type === 'AtRuleBlock') enterAtRule(child, rootFrame);
-  }
-  stats.distinctSelectors = seen.size;
-  return stats;
 }

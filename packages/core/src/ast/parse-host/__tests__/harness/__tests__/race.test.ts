@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { renderOld, renderNewFast, renderNewTracked, withLegacyOpCounters } from '../shapes.js';
+import { renderOld, renderNewFast, renderNewTracked } from '../shapes.js';
 import {
   buildFlatNew,
   buildFlatOld,
@@ -23,8 +23,7 @@ import * as t2 from '../../../../index.js';
  * cost), so legacy totals are measured async; tree2 is sync.
  *
  * Lanes: tree2 no-tracking, tree2 with-tracking, tree(legacy). Reports total
- * build->CSS ms, creation ms, peak-ish heap MB, and composition-op counts
- * (tree2 compositions vs legacy clone/inherit/withComponents).
+ * build->CSS ms, creation ms, and peak-ish heap MB.
  *
  * STILL SYNTHETIC — real benchmark.less is a later gate. Gated behind
  * TREE2_RACE=1; run with `--expose-gc` for memory.
@@ -88,13 +87,12 @@ interface Variant {
   name: string;
   buildNew: () => t2.Root;
   buildOld: () => unknown;
-  ops: boolean;
 }
 
 const variants: Variant[] = [
-  { name: `flat (${FLAT_RULES} rules)`, buildNew: () => buildFlatNew(FLAT_RULES), buildOld: () => buildFlatOld(FLAT_RULES), ops: false },
-  { name: `composition (${COMP_BLOCKS} blocks)`, buildNew: () => buildCompNew(COMP_BLOCKS), buildOld: () => buildCompOld(COMP_BLOCKS), ops: true },
-  { name: `mixin-heavy (${MIXIN_CALLS} calls)`, buildNew: () => buildMixinNew(MIXIN_CALLS), buildOld: () => buildMixinOld(MIXIN_CALLS), ops: true },
+  { name: `flat (${FLAT_RULES} rules)`, buildNew: () => buildFlatNew(FLAT_RULES), buildOld: () => buildFlatOld(FLAT_RULES) },
+  { name: `composition (${COMP_BLOCKS} blocks)`, buildNew: () => buildCompNew(COMP_BLOCKS), buildOld: () => buildCompOld(COMP_BLOCKS) },
+  { name: `mixin-heavy (${MIXIN_CALLS} calls)`, buildNew: () => buildMixinNew(MIXIN_CALLS), buildOld: () => buildMixinOld(MIXIN_CALLS) }
 ];
 
 describe('tree2 vs tree — at-scale eval race', () => {
@@ -140,21 +138,6 @@ describe('tree2 vs tree — at-scale eval race', () => {
       out.push(`  total(b+e+s)   ${ms(t2Total).padStart(9)}    ${ms(t2TotalTrack).padStart(9)}    ${ms(lgTotal).padStart(9)}  |  ser/total ${t2SerMB.toFixed(2)} / ${lgTotalMB.toFixed(2)}`);
       out.push(`                 => legacy/tree2 total = ${(lgTotal / t2Total).toFixed(1)}x`);
 
-      // --- composition-op counts (scale indicator) -------------------------
-      if (v.ops) {
-        const t2c = t2.composeStats(v.buildNew());
-        const lg = await withLegacyOpCounters(async () => {
-          await renderOld(v.buildOld());
-        });
-        const lgOps = lg.cloneForPlacement + lg.inherit + lg.withComponents;
-        out.push(
-          `  ops/render     tree2 compose/alloc/distinct = ${t2c.composeOps}/${t2c.selectorAllocs}/${t2c.distinctSelectors}` +
-            `   |  legacy clone/inherit/withComponents = ${lg.cloneForPlacement}/${lg.inherit}/${lg.withComponents}`,
-        );
-        out.push(
-          `                 => per composition: tree2 ~1 string op; legacy ~${(lgOps / Math.max(1, t2c.composeOps)).toFixed(1)} node ops`,
-        );
-      }
     }
 
     // eslint-disable-next-line no-console

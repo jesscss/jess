@@ -2,10 +2,9 @@ import { describe, it, expect } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
 import { parseLessFn } from '@jesscss/less-parser';
-import { serialize, composeStats } from '../../index.js';
+import { serialize } from '../../index.js';
 import { bridgeToAst, sniffFileVarsViaAst } from './bridge.js';
 import { createImportState } from '../import.js';
-import { withLegacyOpCounters } from './harness/shapes.js';
 import { renderImportOracle } from './import-oracle.js';
 
 const ROOT = '/Users/matthew/git/worktrees/less.js/packages/test-data/tests-unit';
@@ -61,19 +60,12 @@ async function race(rel: string): Promise<void> {
   }
   const legheap = (process.memoryUsage().heapUsed - l0) / N;
 
-  const t2ops = composeStats(bridgeToAst(mainTree, src, file, createImportState(sniffFileVarsViaAst)));
-  const legops = await withLegacyOpCounters(async () => {
-    await renderImportOracle(file);
-  });
-
   const t2m = median(t2times);
   const legm = median(legtimes);
   console.log(
     `  ${rel.replace('import/import/', '').replace('import/', '').padEnd(20)} ` +
       `t2 ${t2m.toFixed(4)}ms tree ${legm.toFixed(4)}ms (${(legm / t2m).toFixed(1)}x)  ` +
-      `heap/rnd t2 ${(t2heap / 1024).toFixed(1)}KB tree ${(legheap / 1024).toFixed(1)}KB  ` +
-      `ops t2[compose ${t2ops.composeOps}, clone 0, inherit 0] ` +
-      `tree[clone ${legops.cloneForPlacement}+inherit ${legops.inherit}+withComp ${legops.withComponents}]`,
+      `heap/rnd t2 ${(t2heap / 1024).toFixed(1)}KB tree ${(legheap / 1024).toFixed(1)}KB`
   );
 }
 

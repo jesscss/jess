@@ -51,8 +51,6 @@ export {
 } from './mixin-dispatch.js';
 export {
   serialize,
-  composeStats,
-  type ComposeStats,
   type SerializeOptions,
   type SerializeResult,
   type SerializeReturn,

@@ -1,11 +1,10 @@
 import { describe, it } from 'vitest';
 import * as fs from 'fs';
 import { parseLessFn } from '@jesscss/less-parser';
-import { serialize, composeStats } from '../../index.js';
+import { serialize } from '../../index.js';
 import { bridgeToAst } from './bridge.js';
 import { Context } from '../../../context.js';
 import { renderNodeToString } from '../../../tree/util/render-buffer.js';
-import { withLegacyOpCounters } from './harness/shapes.js';
 
 const CN = { collapseNesting: true } as const;
 
@@ -71,20 +70,12 @@ async function race(name: string, src: string): Promise<void> {
   }
   const legheap = (process.memoryUsage().heapUsed - l0) / N;
 
-  // Op-counts: tree2 compositions vs legacy clone/inherit/withComponents.
-  const t2ops = composeStats(bridgeToAst(tree, src));
-  const legops = await withLegacyOpCounters(async () => {
-    await renderLegacy(tree);
-  });
-
   const t2m = median(t2times);
   const legm = median(legtimes);
   console.log(
     `  ${name.padEnd(22)} id=${identical ? 'Y' : 'N'} ` +
       `t2 ${t2m.toFixed(4)}ms tree ${legm.toFixed(4)}ms (${(legm / t2m).toFixed(1)}x)  ` +
-      `heap/rnd t2 ${(t2heap / 1024).toFixed(1)}KB tree ${(legheap / 1024).toFixed(1)}KB  ` +
-      `ops t2[compose ${t2ops.composeOps}] ` +
-      `tree[clone ${legops.cloneForPlacement}+inherit ${legops.inherit}+withComp ${legops.withComponents}]`,
+      `heap/rnd t2 ${(t2heap / 1024).toFixed(1)}KB tree ${(legheap / 1024).toFixed(1)}KB`
   );
 }
 

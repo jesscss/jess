@@ -3,10 +3,8 @@ import { readFileSync } from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
 import { parseLessFn } from '@jesscss/less-parser';
-import { serialize, composeStats } from '../../index.js';
+import { serialize } from '../../index.js';
 import { bridgeToAst, UnsupportedShape } from './bridge.js';
-import { buildEvaluator } from '../../evaluator.js';
-import { makeBuiltinRegistry } from './make-builtin-registry.js';
 import { expectedCss, fixtureLess, legacyCss, resolveCollapseNesting } from './oracle-source.js';
 
 /**
@@ -162,18 +160,4 @@ describe('R1 extend — byte-identity vs less.js alpha, per-fixture config mode'
     });
   }
 
-  it('extend-nest builds with ZERO node cloning (composeStats has no clone op)', async () => {
-    const src = fixtureLess('extend-nest');
-    const root = bridgeToAst(parseLessFn(src).tree, src);
-    const stats = composeStats(root, buildEvaluator(makeBuiltinRegistry()));
-    // tree2 never clones/inherits/withComponents by construction; composeStats
-    // only counts string compositions. Assert the structural invariant holds
-    // (the stats object exposes no clone/inherit/withComponents counter).
-    expect(Object.keys(stats).sort()).toEqual([
-      'composeOps',
-      'distinctSelectors',
-      'selectorAllocs',
-    ]);
-    expect(stats.composeOps).toBeGreaterThanOrEqual(0);
-  });
 });

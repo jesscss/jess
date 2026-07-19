@@ -942,6 +942,28 @@ no imported guarded mixins (no speedup to show), but on
     }
   },
   {
+    "id": "ast-compose-stats-shadow-walker-deletion",
+    "kind": "neutral-or-negative",
+    "surface": "Removed composeStats shadow eval/emit walk (serialize.ts)",
+    "files": ["packages/core/src/ast/serialize.ts"],
+    "neutralRefactor": {
+      "costDelta": "decrease",
+      "why": "composeStats was an exported test-only shadow traversal that rebuilt frames, dispatched mixins, and recomposed selectors outside the real serializer. Removing it deletes that duplicate evaluator surface and does not alter serialize(root), whose implementation and call path remain unchanged.",
+      "byteIdentity": {"fixture":"benchmark.less","collapseNesting":true,"outputSha256":"adfd26732125a33fc1e264aca7d7ecde8c7c1da43f968e3106bd387a1f78e840","outputBytes":133983}
+    }
+  },
+  {
+    "id": "ast-compose-stats-public-export-deletion",
+    "kind": "neutral-or-negative",
+    "surface": "Removed test-only composeStats public barrel export (ast/index.ts)",
+    "files": ["packages/core/src/ast/index.ts"],
+    "neutralRefactor": {
+      "costDelta": "decrease",
+      "why": "The barrel no longer exposes the deleted bridge-only instrumentation. This is static module surface removal: it creates no runtime branch, allocation, lookup, traversal, or replacement API.",
+      "byteIdentity": {"fixture":"benchmark.less","collapseNesting":true,"outputSha256":"adfd26732125a33fc1e264aca7d7ecde8c7c1da43f968e3106bd387a1f78e840","outputBytes":133983}
+    }
+  },
+  {
     "id": "css-direct-ast-public-entry",
     "kind": "neutral-or-negative",
     "surface": "Closed opt-in CSS direct AST parse result shaping (direct-ast.ts)",
