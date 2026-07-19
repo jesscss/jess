@@ -1,6 +1,7 @@
 import { run } from 'parseman';
 import type { Root } from '@jesscss/core/ast';
 import { serialize } from '../../core/src/ast/serialize.js';
+import { parseLessCst } from '../src/cst.js';
 import { lessAstGrammar } from '../src/ast/grammar.js';
 
 function isRoot(value: unknown): value is Root {
@@ -159,11 +160,121 @@ describe('private Less AST grammar facts', () => {
     expect(serialize(result.value).css).toBe('.a {\n  color: red;\n}\n');
   });
 
-  it('rejects declaration forms outside the directly structured subset', () => {
-    const result = run(lessAstGrammar.LessAstDocument, 'color: #f00;', { trivia: lessAstGrammar.whitespace });
+  it('constructs static dimensions, colors, URLs, calls, and comma/space lists directly', () => {
+    const source = '.a { margin: +1.5e2rem 0 -2%; color: #ff00aa; background: url(icons/a.svg); empty: url(); escaped: url(foo\\ bar); shadow: rgb(255, 0, 128),\n inset 0 1px #000; }';
+    const legacy = parseLessCst(source);
+    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
 
-    expect(result.ok && result.unconsumedFrom === null && isRoot(result.value)).toBe(false);
-    expect(result.ok ? result.unconsumedFrom : result.errors).not.toBeNull();
+    // This is the same static lexical subset the existing Less grammar accepts;
+    // the direct grammar receives each piece as a Parseman child and never
+    // reclassifies a captured declaration string.
+    expect(legacy.errors).toHaveLength(0);
+    expect(legacy.unconsumedFrom).toBeNull();
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(isRoot(result.value)).toBe(true);
+    expect(result.value).toEqual({
+      type: 'Root',
+      children: [{
+        type: 'Rule',
+        selector: {
+          type: 'SelectorList',
+          selectors: [{
+            type: 'Complex',
+            head: { type: 'Compound', simples: [{ type: 'Simple', text: '.a', interp: null }] },
+            tail: []
+          }]
+        },
+        body: [
+          {
+            type: 'Declaration', name: 'margin', merge: null, important: false,
+            value: {
+              type: 'SpacedValue',
+              parts: [
+                { type: 'Dimension', number: 150, unit: 'rem', src: '+1.5e2rem' },
+                { type: 'Dimension', number: 0, unit: '', src: '0' },
+                { type: 'Dimension', number: -2, unit: '%', src: '-2%' }
+              ]
+            }
+          },
+          { type: 'Declaration', name: 'color', value: { type: 'Color', src: '#ff00aa' }, merge: null, important: false },
+          {
+            type: 'Declaration', name: 'background', merge: null, important: false,
+            value: { type: 'Url', value: { type: 'Any', src: 'icons/a.svg' } }
+          },
+          {
+            type: 'Declaration', name: 'empty', merge: null, important: false,
+            value: { type: 'Url', value: { type: 'Any', src: '' } }
+          },
+          {
+            type: 'Declaration', name: 'escaped', merge: null, important: false,
+            value: { type: 'Url', value: { type: 'Any', src: 'foo\\ bar' } }
+          },
+          {
+            type: 'Declaration', name: 'shadow', merge: null, important: false,
+            value: {
+              type: 'List', sep: ',', separators: [',\n '],
+              items: [
+                {
+                  type: 'FunctionCall', name: 'rgb', modern: false,
+                  args: [
+                    { type: 'Dimension', number: 255, unit: '', src: '255' },
+                    { type: 'Dimension', number: 0, unit: '', src: '0' },
+                    { type: 'Dimension', number: 128, unit: '', src: '128' }
+                  ]
+                },
+                {
+                  type: 'SpacedValue',
+                  parts: [
+                    { type: 'Keyword', src: 'inset' },
+                    { type: 'Dimension', number: 0, unit: '', src: '0' },
+                    { type: 'Dimension', number: 1, unit: 'px', src: '1px' },
+                    { type: 'Color', src: '#000' }
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      }]
+    });
+  });
+
+  it('does not lower dynamic URL or interpolation syntax into an incorrect static value node', () => {
+    for (const source of [
+      'color: @{theme};',
+      'background: url(@asset);',
+      'background: url(@{asset}.svg);',
+      'background: url("a\\"b");',
+      'background: url(foo\u0007bar);'
+    ]) {
+      const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+
+      expect(result.ok && result.unconsumedFrom === null && isRoot(result.value)).toBe(false);
+      expect(result.ok ? result.unconsumedFrom : result.errors).not.toBeNull();
+    }
+  });
+
+  it('retains outer list separators and rejects function separators the AST cannot represent', () => {
+    const directList = run(lessAstGrammar.LessAstDocument, 'shadow: 0,\n  1px;', { trivia: lessAstGrammar.whitespace });
+    expect(directList.ok).toBe(true);
+    expect(directList.unconsumedFrom).toBeNull();
+    expect(isRoot(directList.value)).toBe(true);
+    expect(directList.value.children[0]).toEqual({
+      type: 'Declaration', name: 'shadow', merge: null, important: false,
+      value: {
+        type: 'List', sep: ',', separators: [',\n  '],
+        items: [
+          { type: 'Dimension', number: 0, unit: '', src: '0' },
+          { type: 'Dimension', number: 1, unit: 'px', src: '1px' }
+        ]
+      }
+    });
+
+    for (const source of ['shadow: rgb(1,\n2);', 'shadow: rgb(1, /* note */ 2);']) {
+      const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+      expect(result.ok && result.unconsumedFrom === null && isRoot(result.value)).toBe(false);
+    }
   });
 
   it('keeps the prior closed identifier and quoted-content subset while macro-fusing recognition', () => {

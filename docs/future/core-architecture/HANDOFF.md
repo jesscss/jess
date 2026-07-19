@@ -102,6 +102,39 @@ closure is still in progress.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: extend the private Less direct-AST value family with static
+  dimensions, colors, URLs, simple calls, spaced values, and comma lists.
+- Architecture surface: parser-local reductions call canonical AST constructors
+  directly. Shared numeric terminals are macro-fused recognition only. There is
+  no CST conversion, bridge, host, Context/plugin change, runtime scanner, or
+  source reparse.
+- Separation/duplication: numbers/units are shared byte-for-byte production CSS
+  terminals and `noTrivia` preserves glued-unit semantics. Outer list separators
+  capture authored comma/whitespace bytes. Calls reject separators the current
+  AST cannot represent; static URLs use the production URL body grammar while
+  explicitly rejecting direct-unimplemented dynamic `@` forms.
+- Cumulative node weight: cold private AST values only; no public Less parser,
+  evaluator, or renderer reaches this grammar.
+- New traversal: none beyond completed-child reduction handling.
+- New node/materialization: [node construction] creates exact Dimension, Color,
+  Url, FunctionCall, SpacedValue, and List facts. [materialized array/object]
+  is the parser-owned child/separator collection required by those facts.
+- Render path: unchanged and unreachable from production.
+- Helper/API surface: no public helper or parser operation added.
+- Metadata mutations: none.
+- Review-flagged diff tokens: [node construction] and [materialized array/object]
+  are cold parser construction; [array helper] maps already-recognized fields to
+  one AST value/list. [loop/traversal], [array spread/materialization], and
+  [routine error control] are not added.
+- Hot-path cost contracts:
+  ```json
+  [{"id":"less-private-direct-ast-family","verdict":"accepted","privateReachability":{"productionImporters":0,"publicExports":0,"buildEntries":0,"coldConstructionOnly":true},"why":"The static value family is macro-fused into the source-private Less grammar and is reachable only from focused tests."}]
+  ```
+- Evidence: production-terminal parity checks; focused AST/macro tests; strict
+  type check; Less build; parser-boundary verifier; adversarial review.
+- Verdict: accepted cold direct construction; dynamic/interpolation forms remain
+  explicit parser work rather than fallback lowering.
+
 - Latest pass: extend the private SCSS direct-AST grammar with static simple
   rules, declarations, dimensions, and exact CSS color literals.
 - Architecture surface: parser-local reductions construct canonical Rule,
