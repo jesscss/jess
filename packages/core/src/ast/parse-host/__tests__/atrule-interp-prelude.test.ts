@@ -49,4 +49,32 @@ describe('at-rule prelude interpolation resolves (direct ast/ host)', () => {
     expect(render('@w: 10px;\n@foo (x: @w) { a { color: red; } }\n'))
       .toContain('@foo (x: 10px) {');
   });
+
+  // ── @media / @container query-prelude EVALUATION ────────────────────────────
+  // A query prelude routes its `@{…}` interpolation, bare `@var` references, and
+  // escaped strings through the value evaluator (the same eval as a declaration
+  // value), instead of emitting verbatim. Mirrors the `media` / `container` alpha
+  // fixtures; verified against Less 4.x.
+
+  it('@media resolves a bare @var alongside a @{…} container-name interp', () => {
+    // The interp made the whole prelude an `Interp`; a bare `@var` sitting in a
+    // literal gap must still resolve (valid inside a query prelude, unlike a
+    // statement prelude) — regression pin for `@container @{name} (min-width: @bp)`.
+    expect(render('@varfoo: foo;\n@threshold: 400px;\n@container @{varfoo} (min-width: @threshold) { a { x: 1; } }\n'))
+      .toContain('@container foo (min-width: 400px) {');
+  });
+
+  it('@media evaluates @{…} interpolation inside an escaped query string', () => {
+    // `~'@{a} / @{b}'` → interp resolved AND the `~'…'` wrapper unquoted; the source
+    // spacing (` / `) is preserved verbatim (an escaped string is opaque to ratio
+    // spacing).
+    expect(render('@ratio_large: 16;\n@ratio_small: 9;\n@media all and (device-aspect-ratio: ~\'@{ratio_large} / @{ratio_small}\') { a { x: 1; } }\n'))
+      .toContain('@media all and (device-aspect-ratio: 16 / 9) {');
+  });
+
+  it('@media unquotes an escaped query string, keeping its bytes opaque (no ratio spacing)', () => {
+    // `~"2/1"` → `2/1` tight — the unquoted escaped bytes are NOT `/`-spaced.
+    expect(render('@media (-o-min-device-pixel-ratio: ~"2/1") { a { x: 1; } }\n'))
+      .toContain('(-o-min-device-pixel-ratio: 2/1)');
+  });
 });

@@ -3454,7 +3454,12 @@ function normalizeQueryPrelude(p: string): string {
       let j = esc ? i + 2 : i + 1;
       while (j < n && p[j] !== q) j++;
       const stop = j < n ? j + 1 : n;
-      out += p.slice(i, stop);
+      // Less UNQUOTES an escaped string `~"…"` / `~'…'`: emit its inner bytes VERBATIM
+      // (its `@{…}` interpolation is already resolved upstream at eval), dropping the
+      // `~` + quotes. The inner run stays OPAQUE to the plain-run spacing rules, so a
+      // ratio like `~"2/1"` prints tight (`2/1`), NOT ` / `-spaced. A plain (un-escaped)
+      // quoted string keeps its quotes and passes through verbatim.
+      out += esc ? p.slice(i + 2, j) : p.slice(i, stop);
       i = stop;
       continue;
     }

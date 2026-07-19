@@ -92,6 +92,19 @@ function isCleanRefToken(v: string): boolean {
   return true;
 }
 
+/** Every `@{name}` interpolation inside one quoted-string leaf, as name + the
+ *  `[start, end)` offset of the whole `@{…}` within the string. Uses the SAME
+ *  `@{…}` byte pattern as the generic prelude / custom-prop interim scanners
+ *  (shared Tier-B shape — string interpolation is not yet split into leaves). */
+function scanStringInterp(v: string): Array<{ name: string; start: number; end: number }> {
+  if (v.indexOf('@{') < 0) return [];
+  const re = /@\{\s*([^}]+?)\s*\}/gu;
+  const out: Array<{ name: string; start: number; end: number }> = [];
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(v)) !== null) out.push({ name: m[1]!, start: m.index, end: m.index + m[0].length });
+  return out;
+}
+
 /** A Less value token the grammar isolated in the prelude, keyed by its span. An
  *  `interp` token carries the BUILT ref node (`ref`); `var`/`indirect` carry a name. */
 interface PreludeTok {
@@ -155,6 +168,18 @@ function buildGenericBlock(args: BuildArgs): t2.AtRuleBlock {
     const span = leafSpan(rc);
     if (v === undefined || span === undefined) continue;
     const c0 = v.charCodeAt(0);
+    // A quoted-string leaf carrying `@{…}` interpolation (`~'@{a} / @{b}'`, `"@{x}"`):
+    // the top-level leaf split keeps a string OPAQUE (string interpolation is a
+    // separate Tier-B shape), so a `@{…}` inside it is not an isolated leaf. Resolve
+    // each `@{name}` in place as an interp token; the surrounding quotes / `~` stay in
+    // the verbatim literal gaps, so a media/container feature value Less interpolates
+    // (and, for an escaped `~'…'`, unquotes at serialize) is no longer emitted raw.
+    if (c0 === 0x22 /* " */ || c0 === 0x27 /* ' */) {
+      for (const s of scanStringInterp(v)) {
+        toks.push({ kind: 'interp', name: '', ref: t2.varRef(s.name), start: span.start + s.start, end: span.start + s.end });
+      }
+      continue;
+    }
     if (c0 !== 0x40 /* @ */) continue;
     // A malformed bare-`@var` prelude arrives as one opaque `scanTo` leaf (interior
     // spaces/parens); it is NOT a clean ref token, so leave it in the literal gap
@@ -179,16 +204,22 @@ function buildGenericBlock(args: BuildArgs): t2.AtRuleBlock {
     return t2.atRuleBlock(name, t2.varIndirect(t2.varRef(toks[0]!.name)), body);
   }
 
-  // Any top-level `@{…}` → an `Interp`; interp tokens become refs, every other byte
-  // (literal gaps AND bare `@var` bytes) is a verbatim literal part.
+  // Any top-level `@{…}` (or a `@{…}` inside a query string) → an `Interp`. EVERY
+  // Less value token — `@{…}` interp, bare `@var`, `@@indirect` — becomes a resolved
+  // ref; only the inter-token bytes stay verbatim literal. A bare `@var` alongside an
+  // interp is VALID inside a query prelude (`@container @{name} (min-width: @bp)`),
+  // where Less resolves it — unlike a statement prelude, so it is no longer left raw.
   const hasInterp = toks.some((t) => t.kind === 'interp');
   if (hasInterp) {
     const parts: t2.InterpPart[] = [];
     let cursor = ps;
     for (const t of toks) {
-      if (t.kind !== 'interp' || t.ref === undefined) continue;
+      const ref = t.kind === 'interp' ? t.ref
+        : t.kind === 'indirect' ? t2.varIndirect(t2.varRef(t.name))
+          : t2.varRef(t.name);
+      if (ref === undefined) continue;
       if (t.start > cursor) parts.push({ lit: src.slice(cursor, t.start) });
-      parts.push({ ref: t.ref, unquote: true });
+      parts.push({ ref, unquote: true });
       cursor = t.end;
     }
     if (cursor < pe) parts.push({ lit: src.slice(cursor, pe) });
