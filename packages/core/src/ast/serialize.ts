@@ -3167,7 +3167,13 @@ function planImportedExtends(
       for (const child of loaded.document.children) {
         if (child.type === 'MixinDef') publishImportedMixinDefinition(scope, child);
         if (child.type === 'VariableDeclaration') publishImportedVariableDeclaration(scope, child);
-        if (child.type === 'Rule') publishImportedRuleset(scope, child);
+        if (child.type === 'Rule') {
+          publishImportedRuleset(scope, child);
+          // A plain imported ruleset is also a zero-argument Less mixin. Its
+          // canonical Rule remains the namespace fact; publish only its
+          // synthesized callable fact for bare `.name()` lookup.
+          publishOrderedMixins(scope, orderedMixinsForStatements([child], scope, e), scope);
+        }
       }
       const childFrame: Frame = { parent: scope, mixins: collectMixins(loaded.document.children), declIndex: collectDeclIndex(loaded.document.children), cells: null, reassign: null, statements: loaded.document.children };
       // Ordinary imports must not pay selector-IR/planning cost. The typed body
@@ -5351,7 +5357,13 @@ function emitImportAtRule(
         for (const child of loaded.document?.children ?? []) {
           if (child.type === 'MixinDef') publishImportedMixinDefinition(frame, child);
           if (child.type === 'VariableDeclaration') publishImportedVariableDeclaration(frame, child);
-          if (child.type === 'Rule') publishImportedRuleset(frame, child);
+          if (child.type === 'Rule') {
+            publishImportedRuleset(frame, child);
+            // Keep bare ruleset-mixin lookup aligned with namespace lookup for
+            // an executed lexical import. This is a render-frame callable fact,
+            // not an AST copy or an alternate import path.
+            publishOrderedMixins(frame, orderedMixinsForStatements([child], frame, e), frame);
+          }
         }
         if (loaded.document === null) return;
         rememberImportedCallableBodies(loaded.document, loaded.document.children, e.context);
