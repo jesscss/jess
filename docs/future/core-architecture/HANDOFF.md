@@ -1438,8 +1438,26 @@ protocol, and byte identity before it may claim neutral/decrease.
     "dangerTokensJustification":"The synchronous success path now creates neither a fallback closure nor a recovery closure. The fallback value is materialized only for an optional miss or a selected-callable failure; Promise.catch allocates only after a genuinely async callable result. This is a semantic policy correction with a structural hot-path deletion, not an A/B speed claim.",
     "cases":["unresolved-optional-function-call","registered-sync-call-failure","registered-async-call-failure"],
     "baseline":{"fixture":"benchmark.less","phase":"render","currentMedianMs":78.4,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}
+  },
+  {
+    "id":"ast-value-guard-equality-modes",
+    "verdict":"accepted",
+    "performanceClaim":"none",
+    "why":"Equality mode belongs to typed guard comparison. Less accepts a unitless number against an equal unit magnitude, Sass accepts equal quoted and keyword text while retaining unit distinction, and exact preserves the structural distinction. These choices are compatibility semantics, not parser or function-resolution behavior.",
+    "dangerTokensJustification":"The comparison stays one typed value operation with no traversal, collector, AST node, side table, or fallback construction. It may recurse only through an already-materialized List when both operands are Lists; that pre-existing structural comparison is not changed by mode selection. The baseline is output identity only, not a speed claim.",
+    "cases":["less-unitless-dimension","sass-quoted-keyword","exact-structural-distinction"],
+    "baseline":{"fixture":"benchmark.less","phase":"render","currentMedianMs":78.4,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}
+  },
+  {
+    "id":"ast-value-operate-preserve-calc",
+    "verdict":"accepted",
+    "performanceClaim":"none",
+    "why":"Preserve-mode percentage multiplication must remain a calc result instead of inventing a scalar percentage. A later explicit calc or arithmetic operation must compose that result as one valid calc expression; loose mode keeps its Less numeric result. This is arithmetic result policy, not a second evaluator or an import/parser fallback.",
+    "dangerTokensJustification":"The percent branch allocates only its required Keyword result. Calc byte inspection and parenthesis handling are an acknowledged transitional value-structure gap: authored calc has typed parser facts upstream, while a computed preserve result currently carries only bytes. This record makes no neutrality claim and does not conceal that remaining re-derivation debt.",
+    "cases":["preserve-percentage-product","loose-percentage-product","explicit-calc-composition"],
+    "baseline":{"fixture":"benchmark.less","phase":"render","currentMedianMs":78.4,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}
   }]
   ```
-- **Verdict:** accepted semantic-preflight and evaluator semantic-boundary
+- **Verdict:** accepted semantic-preflight plus evaluator/value semantic-boundary
   contracts: behavior is proved; benchmark data is an output-identity baseline
   only and makes no performance claim.

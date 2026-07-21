@@ -105,6 +105,44 @@ active architecture queue.
       "call": "recoverAsyncCall("
     },
     "evidence": {"command": ["pnpm", "vitest", "run", "packages/core/src/ast/__tests__/evaluator-call-boundary.test.ts"]}
+  },
+  {
+    "id": "ast-value-guard-equality-modes",
+    "kind": "semantic-boundary",
+    "surface": "typed guard equality compatibility modes",
+    "files": ["packages/core/src/ast/value-guards.ts"],
+    "semanticBoundary": {
+      "trigger": "a typed guard comparison receives Less, Sass, or exact equalityMode",
+      "scope": "Only typed guard comparison owns mode-specific equality: Less permits unitless numeric coercion and emitted escaped-word equality, Sass keeps unit distinctions while comparing quoted and keyword text, and exact retains the structural distinction. Function dispatch, variable resolution, and declaration rendering do not enter this branch.",
+      "cases": ["less-unitless-dimension", "sass-quoted-keyword", "exact-structural-distinction"],
+      "baseline": {"fixture": "benchmark.less", "phase": "render"}
+    },
+    "sourceCheck": {
+      "file": "packages/core/src/ast/value-guards.ts",
+      "caller": "function compareNodes(",
+      "guard": "if (equalityMode === 'sass')",
+      "call": "selfCompare(a, b, equalityMode)"
+    },
+    "evidence": {"command": ["pnpm", "vitest", "run", "packages/core/src/ast/__tests__/value-operate-compare.test.ts", "packages/jess/test/less/equality-mode.test.ts"]}
+  },
+  {
+    "id": "ast-value-operate-preserve-calc",
+    "kind": "semantic-boundary",
+    "surface": "typed arithmetic preserve-mode calc result policy",
+    "files": ["packages/core/src/ast/value-operate.ts"],
+    "semanticBoundary": {
+      "trigger": "a typed arithmetic operation sees a preserved calc operand or a percentage product in preserve mode",
+      "scope": "Only arithmetic result construction owns this boundary. It preserves percentage-by-percentage as calc in preserve mode and composes an already-preserved calc result without collapsing its operator; loose arithmetic keeps Less numeric output. The remaining calc byte inspection is tracked as parser-structure debt and is not presented as a permanent architecture or performance result.",
+      "cases": ["preserve-percentage-product", "loose-percentage-product", "explicit-calc-composition"],
+      "baseline": {"fixture": "benchmark.less", "phase": "render"}
+    },
+    "sourceCheck": {
+      "file": "packages/core/src/ast/value-operate.ts",
+      "caller": "export function operate(",
+      "guard": "modes.unitMode === 'preserve'",
+      "call": "makeKeyword(`calc("
+    },
+    "evidence": {"command": ["pnpm", "vitest", "run", "packages/core/src/ast/__tests__/value-operate-units.test.ts", "packages/jess/test/less/calc-explicit-compose.test.ts"]}
   }
 ]
 ```
