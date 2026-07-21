@@ -1666,8 +1666,14 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
         // structurally while giving the owning plugin only the target bytes.
         if (node.value.type === 'Quoted') {
           const target = e.context?.transformUrl(node.value.value, true) ?? node.value.value;
-          const escaped = node.value.escaped ? '~' : '';
-          return literal(`url(${escaped}${node.value.quote}${target}${node.value.quote})`);
+          // Less `~"…"` / `~'…'` is an escaped string value: inside a URL it
+          // deliberately strips both the escape marker and its quote wrapper.
+          // Keep that distinction on the existing typed Quoted node rather
+          // than reconstructing or classifying its source bytes.
+          if (node.value.escaped) {
+            return literal(`url(${target})`);
+          }
+          return literal(`url(${node.value.quote}${target}${node.value.quote})`);
         }
         if (node.value.type === 'Any') {
           const target = e.context?.transformUrl(node.value.src, false) ?? node.value.src;
