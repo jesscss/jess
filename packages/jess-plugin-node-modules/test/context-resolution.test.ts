@@ -60,4 +60,28 @@ describe('NodeModulesPlugin Context resolver protocol', () => {
     });
     expect(less.parsedPaths).toEqual([realpathSync(themePath)]);
   });
+
+  it('resolves an installed bare module through Context without a core fallback', async () => {
+    const context = new Context({}, [new NodeModulesPlugin({ basePath: process.cwd() })]);
+
+    await expect(context.resolveImportPath('lodash-es')).resolves.toMatchObject({
+      resolvedPath: expect.stringContaining('lodash-es')
+    });
+  });
+
+  it('resolves a mapped remote package URL through the resolver-plugin pipeline', async () => {
+    const context = new Context({}, [{
+      name: 'remote-map',
+      resolve(paths: string | string[]) {
+        return (Array.isArray(paths) ? paths : [paths]).map((candidate) => {
+          const match = candidate.match(/^https?:\/\/cdn\.jsdelivr\.net\/npm\/([^?#]+)(?:[?#].*)?$/i);
+          return match?.[1] ?? candidate;
+        });
+      }
+    }, new NodeModulesPlugin({ basePath: process.cwd() })]);
+
+    await expect(context.resolveImportPath('https://cdn.jsdelivr.net/npm/lodash-es/lodash.js')).resolves.toMatchObject({
+      resolvedPath: expect.stringContaining('lodash-es')
+    });
+  });
 });

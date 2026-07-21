@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { parse, parseScssCst, parseScssDoc } from '@jesscss/scss-parser';
+import { parse } from '@jesscss/scss-parser';
+import { parseScssCst, parseScssDoc } from '@jesscss/scss-parser/cst';
 import { makeBuiltinRegistry } from '@jesscss/fns';
 import { buildEvaluator } from '../../core/src/ast/evaluator.js';
 import { serialize } from '../../core/src/ast/serialize.js';

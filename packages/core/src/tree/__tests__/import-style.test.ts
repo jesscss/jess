@@ -2746,16 +2746,6 @@ describe('Style import', () => {
       expect(css.indexOf('@import "file.css";')).toBeLessThan(css.indexOf('.after {'));
     });
 
-    it('import-module: context can resolve bare module-like specifiers', async () => {
-      const moduleContext = new Context();
-      moduleContext.treeContext = {
-        file: { name: 'entry.less', path: process.cwd(), fullPath: resolve(process.cwd(), 'entry.less') }
-      } as any;
-      const result = await (moduleContext as any)._getPath('lodash-es');
-      expect(typeof result.resolvedPath).toBe('string');
-      expect(result.resolvedPath.length).toBeGreaterThan(0);
-    });
-
     it('import-once: default once semantics de-dupe repeated imports', async () => {
       const oncePath = resolve(process.cwd(), 'once.jess');
       context.sourceTrees.set(oncePath, rules([
@@ -4043,32 +4033,6 @@ describe('Style import', () => {
       } finally {
         RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
       }
-    });
-
-    it('import-remote: mapped remote package paths can be resolved as module-like imports', async () => {
-      const remoteContext = new Context({}, [{
-        name: 'remote-map',
-        supportedExtensions: ['.less'],
-        resolve(filePath: string | string[], currentDir: string, searchPaths: string[]) {
-          const paths = Array.isArray(filePath) ? filePath : [filePath];
-          const mapped = paths.map((candidate) => {
-            const m = candidate.match(/^https?:\/\/cdn\.jsdelivr\.net\/npm\/([^?#]+)(?:[?#].*)?$/i);
-            return m?.[1] ?? candidate;
-          });
-          void currentDir;
-          void searchPaths;
-          return mapped;
-        },
-        locate() {
-          return null;
-        }
-      }]);
-      remoteContext.treeContext = {
-        file: { name: 'entry.less', path: process.cwd(), fullPath: resolve(process.cwd(), 'entry.less') }
-      } as any;
-      const result = await (remoteContext as any)._getPath('https://cdn.jsdelivr.net/npm/lodash-es/lodash.js');
-      expect(typeof result.resolvedPath).toBe('string');
-      expect(result.resolvedPath.length).toBeGreaterThan(0);
     });
 
     it('import-remote: reference remote imports remain engine imports instead of becoming literal CSS imports', async () => {

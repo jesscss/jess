@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { Position } from 'vscode-languageserver-types';
-import { parseLessDoc } from '@jesscss/less-parser';
-import { parseScssDoc } from '@jesscss/scss-parser';
+import { parseLessDoc } from '@jesscss/less-parser/cst';
+import { parseScssDoc } from '@jesscss/scss-parser/cst';
 import { createEngine } from '../engine.js';
 import { cstSemanticTokens, cstVariableNames, cstDeclaredSymbols } from '../cst-syntactic.js';
 

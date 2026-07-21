@@ -1,6 +1,8 @@
 import { parseCssDoc, type CssCstNode, type ParseDoc } from '@jesscss/css-parser';
-import { parseLessDoc } from '@jesscss/less-parser';
-import { parseScssDoc } from '@jesscss/scss-parser';
+// CST parsing is a language-service capability. Compiler/plugin imports use the
+// root parser entrypoints, which construct canonical AST v2 Stylesheets directly.
+import { parseLessDoc } from '@jesscss/less-parser/cst';
+import { parseScssDoc } from '@jesscss/scss-parser/cst';
 import { parseJessDoc } from '@jesscss/jess-parser';
 import type { IParseResult, Rules, Node } from '@jesscss/core';
 import { isNode, sourceSpanOf } from '@jesscss/core';
@@ -12,7 +14,7 @@ import { extractImports, resolveImport } from '@jesscss/style-resolver';
 import * as colorUtils from './color-utils.js';
 import { cstDocumentSymbols, cstFoldingRanges, cstSelectionRanges } from './cst-analysis.js';
 import { cstSymbolAtOffset, cstFindDefinitionInDoc, cstCollectReferencesInDoc, type CstSymbol } from './cst-symbols.js';
-import { cstVariableNames, cstDeclaredSymbols } from './cst-syntactic.js';
+import { cstSemanticTokens, cstVariableNames, cstDeclaredSymbols } from './cst-syntactic.js';
 import { cstLintDiagnostics, LINT_CODES } from './cst-lint.js';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import {
@@ -2511,6 +2513,13 @@ export function createEngine(): JessLanguageServiceEngine {
     getSemanticTokens(uri) {
       const tracked = ensure(uri);
       const doc = tracked.document;
+      const cstTree = tracked.cstDoc?.tree;
+      // Semantic tokens are a syntactic/editor feature.  They deliberately read
+      // the tolerant CST, so they continue to work while the canonical AST is
+      // unavailable for an incomplete document.
+      if (cstTree) {
+        return { data: cstSemanticTokens(cstTree, doc, tracked.lang) };
+      }
       const parse = tracked.parse;
       const index = tracked.index;
       const data: number[] = [];

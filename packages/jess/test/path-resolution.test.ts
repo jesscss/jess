@@ -59,6 +59,14 @@ describe('Less path resolution', () => {
     expect(css).toContain('color: blue');
   });
 
+  it('registers Node package resolution through the normal Context resolver pipeline', async () => {
+    const context = new Compiler().createContext();
+
+    await expect(context.resolveImportPath('lodash-es')).resolves.toMatchObject({
+      resolvedPath: expect.stringContaining('lodash-es')
+    });
+  });
+
   it('uses renderString filePath as the import base directory', async () => {
     fs.writeFileSync(path.join(includeDir, 'tokens.less'), '@tone: blue;');
     const virtualFile = path.join(projectDir, 'virtual.less');

@@ -44,6 +44,8 @@ npm install @jesscss/scss-parser
 
 `@jesscss/core` is an **optional** peer dependency — needed for the default
 AST v2 `parse()` entry, not for `./cst` or `./grammar`.
+Those explicit entries expose Parseman types and grammar values, so consumers
+of them must also provide the package's `parseman` peer.
 
 ## Canonical AST parsing
 
@@ -83,8 +85,7 @@ Pass a different `startRule` (any capitalized grammar rule) to parse a fragment.
 | `@jesscss/scss-parser/cst` | `parseScssCst` | Core-free parse of an SCSS string to a CST. |
 | `@jesscss/scss-parser/cst` | `ScssCstNode`, `ScssCstLeaf`, `ScssCstError`, `ScssCstChild`, `ScssCstParseResult`, `ScssCstType` (types) | CST type definitions (aliases of the shared `@jesscss/css-parser/cst` types). |
 | `@jesscss/scss-parser/grammar` | `scssGrammar` | The compiled SCSS grammar (a rule map). Extend it with `compose()` or drive it directly with parseman's `run`. |
-| `@jesscss/scss-parser` (`.`) | `parse` | Parse SCSS directly to canonical AST v2 `Stylesheet`. |
-| `@jesscss/scss-parser` (`.`) | `scssGrammar`, `parseScssCst`, `parseScssDoc`, … | Convenience grammar and explicit CST surface. |
+| `@jesscss/scss-parser` (`.`) | `parse` | Parse SCSS directly to canonical AST v2 `Stylesheet`. It does not load the CST grammar. |
 
 ## Default CST shape
 

@@ -29,15 +29,15 @@ describe('ImportAtRule', () => {
     })).resolves.toEqual({ css: '.target,\n.from-one,\n.from-two {\n  color: red;\n}\n' });
   });
 
-  it('loads a stylesheet import with a media tail into one typed wrapper', () => {
+  it('loads a stylesheet import with a media tail into one typed wrapper', async () => {
     const imported = stylesheet([rule('body', [decl('width', keyword('100%'))])]);
     const document = stylesheet([
       importAtRule('@import', quoted('"imported.less"', 'imported.less', '"', false), any('multiple'), null, any('screen and (max-width: 600px)')),
     ]);
 
-    expect(serialize(document, {
+    await expect(Promise.resolve(serialize(document, {
       importDocument: ({ specifier }) => specifier === 'imported.less' ? { document: imported } : undefined,
-    })).toEqual({ css: '@media screen and (max-width: 600px) {\n  body {\n    width: 100%;\n  }\n}\n' });
+    }))).resolves.toEqual({ css: '@media screen and (max-width: 600px) {\n  body {\n    width: 100%;\n  }\n}\n' });
   });
 
   it('keeps an async duplicate import inside nested @media ahead of a later sibling', async () => {
@@ -363,7 +363,7 @@ describe('ImportAtRule', () => {
     expect(calls).toEqual(['providers.less', 'target-ready.less']);
   });
 
-  it('reports a structured unresolved-target diagnostic after its one retry without loading it', () => {
+  it('reports a structured unresolved-target diagnostic after its one retry without loading it', async () => {
     const document = stylesheet([
       importAtRule('@import', interpolation([
         { lit: '"target-' },
@@ -373,15 +373,9 @@ describe('ImportAtRule', () => {
     ]);
     let loads = 0;
 
-    let error: unknown;
-    try {
-      serialize(document, {
-        importDocument: () => { loads++; return { document: null }; },
-      });
-    } catch (caught) {
-      error = caught;
-    }
-    expect(error).toMatchObject({
+    await expect(Promise.resolve(serialize(document, {
+      importDocument: () => { loads++; return { document: null }; },
+    }))).rejects.toMatchObject({
       code: 'resolve/name-not-found',
       reason: 'Symbol "@never" is undefined in this scope.',
     });

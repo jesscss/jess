@@ -14,3 +14,18 @@ test('canonical Less AST grammar macro-fuses recognition leaves with no runtime 
     await server.close();
   }
 });
+
+test('compiler-facing Less entrypoint does not load the CST grammar', async () => {
+  const server = await createServer({
+    root: new URL('..', import.meta.url).pathname,
+    configFile: new URL('../vitest.config.ts', import.meta.url).pathname,
+    server: { middlewareMode: true }
+  });
+  try {
+    const transformed = await server.transformRequest('/src/index.ts');
+    expect(transformed?.code).not.toContain("./cst.js");
+    expect(transformed?.code).not.toContain("./grammar.js");
+  } finally {
+    await server.close();
+  }
+});

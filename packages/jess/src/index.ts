@@ -30,6 +30,7 @@ import {
 import type { PluginInterface } from '@jesscss/core';
 import jessPlugin from '@jesscss/plugin-jess';
 import lessPlugin from '@jesscss/plugin-less';
+import nodeModulesPlugin from '@jesscss/plugin-node-modules';
 import scssPlugin from '@jesscss/plugin-scss';
 import { makeBuiltinRegistry } from '@jesscss/fns';
 import { outputDiagnostics } from './diagnostics.js';
@@ -819,13 +820,17 @@ export class Compiler {
 
   private buildPlugins(resolved: ResolvedRenderConfig): PluginInterface[] {
     const pluginMap = new Map<string, PluginInterface>();
+    const resolutionBaseDir = getConsumerResolutionBaseDir(resolved.filePath, resolved.configFilePath);
+    // Node package lookup is a resolver-plugin capability. It must run before
+    // generic filesystem resolvers turn a bare specifier into an absolute
+    // candidate, while Context continues to own the resolve → locate sequence.
+    pluginMap.set('node-modules', nodeModulesPlugin({ basePath: resolutionBaseDir }));
     const coreJessPlugin = this.getOrCreateJessPlugin();
     pluginMap.set(coreJessPlugin.name, coreJessPlugin);
     const coreLessPlugin = this.getOrCreateLessPlugin(resolved.lessOptions);
     pluginMap.set(coreLessPlugin.name, coreLessPlugin);
     const coreScssPlugin = this.getOrCreateScssPlugin();
     pluginMap.set(coreScssPlugin.name, coreScssPlugin);
-    const resolutionBaseDir = getConsumerResolutionBaseDir(resolved.filePath, resolved.configFilePath);
 
     const configuredPlugins = resolved.effectiveConfig.compile?.plugins;
     if (configuredPlugins) {

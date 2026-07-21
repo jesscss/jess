@@ -89,7 +89,12 @@ function assertPackedManifest(pkg, tarball, expectedVersion) {
   assert(manifest.version === expectedVersion,
     `${pkg.name}: packed ${manifest.version ?? '(missing version)'}, expected ${expectedVersion}`);
 
-  for (const sectionName of ['dependencies', 'optionalDependencies', 'peerDependencies']) {
+  // npm does not install devDependencies for a normal consumer, but it does
+  // publish their metadata. A local path here is still a broken release
+  // artifact: it leaks a workstation path to every registry consumer and makes
+  // `npm install --include=dev` impossible outside this checkout. Check every
+  // dependency section, not just the runtime installation graph.
+  for (const sectionName of ['dependencies', 'optionalDependencies', 'peerDependencies', 'devDependencies']) {
     const section = manifest[sectionName];
     if (!section || typeof section !== 'object') {
       continue;
@@ -100,6 +105,17 @@ function assertPackedManifest(pkg, tarball, expectedVersion) {
       assert(!String(specifier).startsWith('link:'),
         `${pkg.name}: packed ${sectionName}.${name} still uses ${specifier}`);
     }
+  }
+
+  // This private workspace package supplies Parseman macro inputs while the
+  // parser package is built. Macro expansion leaves no runtime import of it,
+  // so it must never become a consumer dependency. It can remain a development
+  // dependency: pnpm rewrites its workspace specifier in packed metadata, and
+  // consumers do not install it.
+  for (const sectionName of ['dependencies', 'optionalDependencies', 'peerDependencies']) {
+    const section = manifest[sectionName];
+    assert(!section?.['@jesscss/internal-css-recognition'],
+      `${pkg.name}: private macro input leaked into packed ${sectionName}`);
   }
 }
 

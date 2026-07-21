@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { makeBuiltinRegistry } from '@jesscss/fns';
 import { buildEvaluator } from '../../core/src/ast/evaluator.js';
 import { serialize } from '../../core/src/ast/serialize.js';
-import { parse, parseLessCst, parseLessDoc } from '@jesscss/less-parser';
+import { parse } from '@jesscss/less-parser';
+import { parseLessCst, parseLessDoc } from '@jesscss/less-parser/cst';
 
 describe('public Less parse()', () => {
   it('constructs boundary-complete CSS named colors as Color values', () => {

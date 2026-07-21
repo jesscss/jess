@@ -21,7 +21,7 @@
     "compile": "tsdown --tsconfig tsconfig.build.json --no-dts && tsc -p tsconfig.build.json --emitDeclarationOnly --noCheck"
   },
   "devDependencies": {
-    "parseman": "link:/Users/matthew/git/oss/parser-thing",
+    "parseman": "0.28.0",
     "tsdown": "~0.21.7"
   }
 }

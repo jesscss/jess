@@ -62,6 +62,7 @@ const NUMBER_TYPES = new Set(['Num', 'Dimension', 'Color']);
 const NAMESPACE_KEYWORD_TYPES = new Set([
   'AtRuleBlock',
   'AtRuleStatement',
+  'ImportAtRule',
   'UnknownAtRuleBlock',
   'QueryAtRuleBlock',
   'ScssUse',
