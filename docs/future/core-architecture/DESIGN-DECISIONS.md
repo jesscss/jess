@@ -177,6 +177,7 @@ reference"* framing is superseded by this row. Source:
 | C3 | Unified node model: ONE plain-data representation; discriminant `type:'Dimension'` (PascalCase = Less `.type`); numeric `Kind`/lowercase `kind` are dead. Serialize + value-eval = free functions on nodes (tree-shakeable), nodes stay pure minimal data. | SETTLED | `UNIFIED-NODE-MODEL-SPEC.md`, `memory:ast-v2-unified-node-model`, `memory:arena-serialize-external-treeshake` |
 | C4 | Committed render architecture = node-reuse + live-binding spine; folds are serialize-time PROJECTION, not tree mutation. | SETTLED | `memory:committed-architecture-object-reduction`, `memory:spine-is-projection-not-mutation` |
 | C5 | Cutover goes to 100% — a shape may be DEFERRED but never permanently eval-fallback-abandoned (HARD RULE #6). | SETTLED | `archive/CUTOVER-CHECKLIST-2026-07-18.md`, `memory:feedback-no-permanent-eval-fallback` |
+| C6 | Every public Less/Sass function must become a behavior-complete AST-v2 implementation in its existing dialect-owned file. The 72 `less/` ↔ `builtins/` overlaps are different implementations; freeze `builtins/` as parity evidence, port one function in place with old+direct-AST proof, then delete its duplicate only when behavior is identical. Legacy-node wrappers are not a final architecture. | SETTLED | Owner correction, 2026-07-21; `HANDOFF.md` |
 
 ## 9. Positioning (context, not a code rule)
 

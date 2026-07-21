@@ -1626,3 +1626,20 @@ must share the same parser-authored table.
 - **Cost/gate status:** no speed or neutrality claim. The existing `WeakMap`
   write is semantic parser work for diagnostics, and its lookup is cold error
   handling; this entry does not assert a global aggressive-cutting gate pass.
+
+### Active correction: dialect function conversion (proof before deletion)
+
+Retract any claim that the function library is fully converted or that
+legacy-node wrappers are an acceptable final state. The July 21 audit found 72
+same-named files in `packages/fns/src/less/` and `src/builtins/`; these are
+different implementations, not interchangeable copies. `builtins/` is frozen
+as comparison evidence, not a destination architecture.
+
+The active queue is behavior-complete conversion in the existing dialect-owned
+files (`shared/`, `less/`, and `sass/`): first capture the legacy suite baseline,
+then port one small function in place to an AST-v2 `Fn`, prove old and direct-AST
+parity, and only then delete the duplicate implementation when it is identical.
+No wrapper, alias, reduced behavior, or permanent legacy holdout is permitted.
+Relative color is a separate first semantic batch: direct AST retains its
+structured clause, but full `calc(r + 40)` needs a typed call-level channel
+evaluation design before a behavior-preserving port.
