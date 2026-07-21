@@ -8,6 +8,7 @@ import type { LessVisitor } from './types.js';
 import { filterPlugins } from './plugin-utils.js';
 import { LessVisitor as LessVisitorClass, LessPluginManager, LessTreeConstructors, createLessMock } from './less-compat-structures.js';
 import { NodeModulesPlugin } from '@jesscss/plugin-node-modules';
+import { makeDimension, makeKeyword, makeQuoted, type Fn, type ValueObj } from '@jesscss/core/value';
 import { parsePluginPrelude, treeContainsPluginDirective } from './plugin-directive.js';
 import {
   type FunctionBindingScope,
@@ -130,6 +131,54 @@ function addRootFunctionToJessRegistry(jessRegistry: JessFunctionSink | undefine
   jessRegistry.add(name, wrapped);
 }
 
+function toCompatNativeValue(value: ValueObj): unknown {
+  switch (value.type) {
+    case 'Dimension': return { type: 'Dimension', value: value.number, unit: value.unit };
+    case 'Quoted': return { type: 'Quoted', value: value.value, quote: value.quote, escaped: value.escaped };
+    case 'Keyword': return { type: 'Keyword', value: value.text };
+    default: return value;
+  }
+}
+
+function fromCompatNativeValue(value: unknown): ValueObj {
+  if (typeof value === 'number') {
+    return makeDimension(value);
+  }
+  if (typeof value === 'string') {
+    return makeKeyword(value);
+  }
+  if (value && typeof value === 'object') {
+    const candidate = value as { type?: unknown; value?: unknown; unit?: unknown; quote?: unknown; escaped?: unknown; valueOf?: () => unknown };
+    if ((candidate.type === 'Dimension' || candidate.type === 'Num') && typeof candidate.value === 'number') {
+      return makeDimension(candidate.value, typeof candidate.unit === 'string' ? candidate.unit : '');
+    }
+    if (candidate.type === 'Quoted' && typeof candidate.value === 'string') {
+      return makeQuoted(candidate.value, candidate.quote === '\'' ? '\'' : '"', candidate.escaped === true);
+    }
+    if (typeof candidate.value === 'string') {
+      return makeKeyword(candidate.value);
+    }
+    if (typeof candidate.valueOf === 'function') {
+      return makeKeyword(String(candidate.valueOf()));
+    }
+  }
+  return makeKeyword(value == null ? '' : String(value));
+}
+
+function compatNativeFn(name: string, func: LessFunction): Fn {
+  return {
+    name: name.toLowerCase(),
+    variadic: true,
+    params: [],
+    body: (list) => {
+      const result = func(...list.items.map(toCompatNativeValue));
+      return isThenable(result)
+        ? Promise.resolve(result).then(fromCompatNativeValue)
+        : fromCompatNativeValue(result);
+    }
+  };
+}
+
 export interface LessCompatPluginOptions {
   /**
    * Less 4.x custom functions registered through the root
@@ -188,6 +237,8 @@ export class LessCompatPlugin extends AbstractPlugin {
   private _cachedVisitor: PluginVisitor | PluginVisitor[] | undefined;
   private _lessPluginManager?: LessPluginManager;
   private _currentFilePath?: string;
+  // Retained for legacy tree visitors and scoped `@plugin` directives. AST-v2
+  // configured installs use Context.pluginHost in setContext instead.
   private _jessFunctionRegistry?: JessBindingRegistry;
   private _context?: CompatContext;
   /** Trees whose root scope already received the configured root functions. */
@@ -241,13 +292,35 @@ export class LessCompatPlugin extends AbstractPlugin {
 
   setContext(context: Context): void {
     this._context = context;
-    try {
-      const root = getProp(context, 'root');
-      if (hasMethod(root, 'setFunctionBinding') && hasMethod(root, 'findFunction')) {
-        this._jessFunctionRegistry = this.createJessFunctionBindingRegistry(root);
+    const fns: Fn[] = [];
+    const registry: LessFunctionRegistry = {
+      _data: {}, _base: null,
+      add: (name, fn) => {
+        fns.push(compatNativeFn(name, fn));
+      },
+      addMultiple: (functions) => {
+        for (const [name, fn] of Object.entries(functions)) {
+          registry.add(name, fn);
+        }
+      },
+      get: () => undefined,
+      getLocalFunctions: () => ({}),
+      inherit: () => registry,
+      create: () => registry
+    };
+    const mockLess = createLessMock(registry);
+    const manager = new LessPluginManager(mockLess, true);
+    for (const plugin of filterPlugins(this.opts.plugins ?? []).lessPlugins) {
+      if (hasMethod(plugin, 'install')) {
+        plugin.install(mockLess, manager, registry);
       }
-    } catch {
-      // ignore
+    }
+    if (fns.length > 0) {
+      const host = context.pluginHost;
+      context.pluginHost = {
+        ...host,
+        globalFns: [...(host?.globalFns ?? []), ...fns]
+      };
     }
   }
 
@@ -449,7 +522,7 @@ export class LessCompatPlugin extends AbstractPlugin {
           args: args.slice(1) || [],
           index: 0,
           fileInfo: {},
-          accept: function(visitor: { visit: (node: unknown) => unknown }) {
+          accept(visitor: { visit: (node: unknown) => unknown }) {
             return visitor.visit(this);
           }
         };
@@ -954,7 +1027,7 @@ export class LessCompatPlugin extends AbstractPlugin {
                   // Try to load plugin from registry (for testing and explicit registration)
                   let pluginInstance: unknown = null;
 
-                  if (this.opts.pluginRegistry && this.opts.pluginRegistry[pluginPath]) {
+                  if (this.opts.pluginRegistry?.[pluginPath]) {
                     const pluginFactory = this.opts.pluginRegistry[pluginPath];
                     pluginInstance = isCallable(pluginFactory) ? pluginFactory() : pluginFactory;
                   } else if (isLocalPath && resolvedLocalPluginFile) {
