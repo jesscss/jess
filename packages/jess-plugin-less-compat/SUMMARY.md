@@ -1,5 +1,10 @@
 # Less.js Compatibility Plugin - Implementation Summary
 
+> **Historical summary / AST-v2 status:** This describes the former legacy-tree
+> visitor design. Core no longer exposes a visitor plugin ABI and the public
+> AST-v2 compiler route does not execute it. The conversion ideas remain useful
+> for a future explicit adapter, but are not current supported behavior.
+
 ## Overview
 
 This package provides a **bidirectional transformation layer** between Jess AST nodes and Less.js AST nodes, enabling Less.js plugins and visitors to work seamlessly with Jess-compiled stylesheets.

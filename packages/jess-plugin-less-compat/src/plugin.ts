@@ -1,10 +1,10 @@
 import * as fs from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
-import { AbstractPlugin, type Context, type ContextOptions, Deprecation, JsFunction, Node, type PluginInterface, type PluginVisitor, type Rules, F_VISIBLE, REMOVE, WARN, toDiagnostic } from '@jesscss/core';
+import { AbstractPlugin, type Context, type ContextOptions, Deprecation, JsFunction, Node, type Rules, F_VISIBLE, REMOVE, WARN, toDiagnostic } from '@jesscss/core';
 import { toLessNode, fromLessNode, fromLessPluginReturnValue } from './transform/index.js';
 import { LessAdapterBase } from './transform/less-adapter.js';
-import type { LessVisitor } from './types.js';
+import type { LessCompatVisitorHook, LessVisitor } from './types.js';
 import { filterPlugins } from './plugin-utils.js';
 import { LessVisitor as LessVisitorClass, LessPluginManager, LessTreeConstructors, createLessMock } from './less-compat-structures.js';
 import { NodeModulesPlugin } from '@jesscss/plugin-node-modules';
@@ -234,7 +234,7 @@ export class LessCompatPlugin extends AbstractPlugin {
 
   // Cache the visitor instance so it's reused across multiple calls
   // This ensures that visitors added via @plugin are available for subsequent nodes
-  private _cachedVisitor: PluginVisitor | PluginVisitor[] | undefined;
+  private _cachedVisitor: LessCompatVisitorHook | undefined;
   private _lessPluginManager?: LessPluginManager;
   private _currentFilePath?: string;
   // Retained for legacy tree visitors and scoped `@plugin` directives. AST-v2
@@ -258,7 +258,7 @@ export class LessCompatPlugin extends AbstractPlugin {
    * - addPreProcessor() - these run early
    * - addPostProcessor() - these run on serialized CSS after render
    */
-  get beforeEvalVisitor(): PluginInterface['beforeEvalVisitor'] {
+  get beforeEvalVisitor(): LessCompatVisitorHook | undefined {
     // Cache the visitor instance so it's reused across multiple calls
     // This ensures that visitors added via @plugin are available for subsequent nodes
     if (!this._cachedVisitor) {
@@ -270,7 +270,7 @@ export class LessCompatPlugin extends AbstractPlugin {
   /**
    * Less post-processors operate on final CSS, not on the preRenderVisitor tree hook.
    */
-  get postEvalVisitor(): PluginInterface['postEvalVisitor'] {
+  get postEvalVisitor(): undefined {
     // Not used yet - post processors run via runPostProcessors()
     return undefined;
   }
@@ -445,7 +445,7 @@ export class LessCompatPlugin extends AbstractPlugin {
     return isThenable(load) ? Promise.resolve(load).then(finish) : finish(load);
   }
 
-  beforeEvalVisitorForTree(tree: Rules): PluginInterface['beforeEvalVisitor'] {
+  beforeEvalVisitorForTree(tree: Rules): LessCompatVisitorHook | undefined {
     // Bind root-registered Less 4.x custom functions onto this tree's root scope.
     // This runs regardless of whether any visitor work is configured, so plain
     // sources that only use custom functions still get them.
@@ -497,7 +497,7 @@ export class LessCompatPlugin extends AbstractPlugin {
    * This visitor intercepts each node, converts it to Less format,
    * runs the Less visitors, and converts back if modified.
    */
-  get visitor(): PluginVisitor | PluginVisitor[] | undefined {
+  get visitor(): LessCompatVisitorHook | undefined {
     const cache = this.opts.cache !== false;
     const cacheMap: WeakMap<Node, Node> | undefined = cache ? new WeakMap() : undefined;
 

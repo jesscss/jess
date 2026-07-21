@@ -22,7 +22,18 @@ import type {
   Url,
   VarDeclaration
 } from '@jesscss/core';
+import type { Visitor } from '@jesscss/core';
 import type { LessAdapterBase } from './transform/less-adapter.js';
+
+/**
+ * Legacy Less tree-visitor shape, intentionally owned by the Less compatibility
+ * package. It is not part of core's plugin contract or the AST-v2 extension API.
+ */
+export type LessCompatVisitor = Partial<Omit<Visitor, 'visit'>> & {
+  visit?: (node: Node) => unknown;
+};
+
+export type LessCompatVisitorHook = LessCompatVisitor | LessCompatVisitor[];
 
 export interface LessAdapterNode<TJess extends Node = Node> extends LessAdapterBase<TJess> {
   type: string;

@@ -1,6 +1,13 @@
 # Less compat plugin (design + status)
 
-This package provides a **Less.js compatibility layer** for Jess by converting between **Jess AST** and **Less AST**, so Less plugins/visitors can run against Jess trees.
+> **AST-v2 cutover status:** This document preserves future adapter ideas for the
+> legacy tree model. Core no longer exposes a visitor field on `PluginInterface`,
+> and the public AST-v2 compiler does not run this package's visitor adapter.
+> Do not use the visitor sections below as a current execution contract.
+
+This package retains Less compatibility conversion work for an explicitly
+designed future adapter; active compiler integration is limited to its supported
+plugin-loading, function, and post-processing capabilities.
 
 ## Canonical docs
 

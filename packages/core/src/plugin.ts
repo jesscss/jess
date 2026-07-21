@@ -1,4 +1,3 @@
-import type { Rules } from './tree/rules.js';
 import type { Stylesheet } from './ast/nodes.js';
 import type { ImportOptions } from './import-options.js';
 export type { ImportOptions } from './import-options.js';
@@ -6,14 +5,8 @@ import type { Context, ContextOptions } from './context.js';
 import { join, isAbsolute, resolve } from 'node:path';
 import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
-import type { Visitor } from './visitor/index.js';
-import type { Node } from './tree/node.js';
 import { type ErrorDiagnostic, type WarningDiagnostic } from './jess-error.js';
 import type { ExtendSelectorKind } from './types/config.js';
-
-export type PluginVisitor = Partial<Omit<Visitor, 'visit'>> & {
-  visit?: (node: Node) => unknown;
-};
 
 export type ISafeParseResult = {
   /** Canonical parser document on successful parsing. */
@@ -142,25 +135,6 @@ export interface PluginInterface {
    * runtime may require a constrained execution environment.
    */
   importPlugin?(absoluteFilePath: string, options?: string | null): Promise<unknown>;
-
-  /** Post-parse or post-eval visitor(s) */
-  visitor?: PluginVisitor | PluginVisitor[];
-  /** Early visitor(s), called before eval for compatibility with Less-style plugins. */
-  beforeEvalVisitor?: PluginVisitor | PluginVisitor[];
-  /**
-   * Optional tree-aware early visitor hook. Use this when a compatibility layer
-   * can cheaply prove that a parsed tree needs no early traversal.
-   */
-  beforeEvalVisitorForTree?(tree: Rules, filePath?: string): PluginVisitor | PluginVisitor[] | undefined;
-  /**
-   * Visitors that run after eval and immediately before render serialization.
-   */
-  preRenderVisitor?: PluginVisitor | PluginVisitor[];
-  /**
-   * Compatibility hook name for visitors that run after eval and immediately
-   * before render serialization.
-   */
-  postEvalVisitor?: PluginVisitor | PluginVisitor[];
 
   /** Optional lifecycle hooks used by lazy plugin loading. */
   prewarm?(): void | Promise<void>;

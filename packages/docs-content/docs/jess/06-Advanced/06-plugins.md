@@ -16,11 +16,11 @@ the same style. Two capabilities are covered:
    customize how imports are found.
 
 :::note Scope
-This page intentionally covers only the language + parser/resolution surface. The
-`visitor` / `beforeEvalVisitor` / `postEvalVisitor` hooks on the plugin interface
-exist to support the internal Less 4.x compatibility layer
-(`@jesscss/plugin-less-compat`) and are **not** a stable, supported public API — do
-not build against them.
+This page intentionally covers the public language, parser, resolution, and
+lifecycle surface. Core has no generic legacy-tree visitor hook. The deprecated
+Less 4.x visitor ABI, where needed, is owned exclusively by
+`@jesscss/plugin-less-compat`; it is not a Jess plugin interface or AST-v2
+extension API.
 :::
 
 ## The shape of a plugin
