@@ -11,9 +11,8 @@ const cuttingReviewPath = resolve(root, 'docs/future/core-architecture/AGGRESSIV
 const skipExecutableEvidence = process.argv.includes('--skip-executable-evidence');
 const reviewMode = process.argv.includes('--mode=staged')
   ? 'staged'
-  : process.argv.includes('--mode=upstream')
-    ? 'upstream'
-    : 'working';
+  : 'working';
+const unsupportedAggregateMode = process.argv.includes('--mode=upstream');
 const reviewedSourceRoots = [
   'packages/core/src',
   'packages/jess/src',
@@ -144,11 +143,7 @@ function scopedChangedPaths(mode, snapshots) {
   if (mode === 'staged') {
     return [...new Set(snapshots.staged)];
   }
-  if (mode === 'upstream') {
-    return [...new Set(snapshots.branch)];
-  }
   return [...new Set([
-    ...snapshots.branch,
     ...snapshots.unstaged,
     ...snapshots.staged,
     ...snapshots.untracked
@@ -175,15 +170,7 @@ function collectScopedDiff(mode, changedPaths) {
   if (mode === 'staged') {
     return git(['diff', '--cached', '--unified=0', '--', ...productionPaths]);
   }
-  const base = reviewBase();
-  const branchDiff = base
-    ? git(['diff', '--unified=0', `${base}..HEAD`, '--', ...productionPaths])
-    : '';
-  if (mode === 'upstream') {
-    return branchDiff;
-  }
   return [
-    branchDiff,
     git(['diff', '--unified=0', '--', ...productionPaths]),
     git(['diff', '--cached', '--unified=0', '--', ...productionPaths])
   ].join('\n');
@@ -1955,9 +1942,6 @@ function validateChangedContractSurface(registry, changedPaths, diff) {
     if (owners.length > 0 && owners.every(owner => (owner.kind ?? 'precise') === 'neutral-or-negative' || owner.kind === 'private-unreachable')) {
       continue;
     }
-    if (owners.length === 1 && owners[0].coverage === 'owner-plus-named-carry-forward-support') {
-      continue;
-    }
     const hunks = changedHunks(diff).filter(hunk => hunk.file === path);
     if (owners.length === 0 || hunks.length === 0) {
       continue;
@@ -2032,6 +2016,11 @@ function diffForPaths(diff, predicate) {
 }
 
 function runVerifier() {
+  if (unsupportedAggregateMode) {
+    console.error('The aggregate --mode=upstream scan was removed: it had no bounded owner, remediation, or release decision. Use the default working patch scope or --mode=staged.');
+    process.exitCode = 2;
+    return;
+  }
   const requiredLabels = [
     '- Architecture surface:',
     '- Separation/duplication:',
@@ -2161,6 +2150,10 @@ function runVerifier() {
   }
 
   const parserRuntimeDebtDeletion = parserRuntimeDebtDeletionForCurrentDiff(reviewMode, changedPaths, diff, findings);
+  if (reviewMode === 'staged' && changedPaths.includes(parserRuntimeDebtPath) && !parserRuntimeDebtDeletion) {
+    failed = true;
+    console.error('\nParser-runtime debt changes must keep the staged boundary verifier clean and satisfy the exact deletion proof.');
+  }
   const hotPathChanged = changedPaths.some(isStrictRuntimeSurface);
   const productionHotPathChanged = changedPaths.some(isStrictRuntimeSurface);
   const requiresCostAudit = (hotPathChanged || runtimeFindings.length > 0) && !parserRuntimeDebtDeletion;
@@ -2232,4 +2225,5 @@ export {
   validateCostAuditRecords,
   validateBoundaryEvidence,
   validateCostContractRegistry,
+  validateChangedContractSurface,
 };

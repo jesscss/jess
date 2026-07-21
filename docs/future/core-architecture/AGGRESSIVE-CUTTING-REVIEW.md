@@ -14,6 +14,16 @@ Before a queue pass, update the self-prosecution block in `HANDOFF.md` and run:
 pnpm run verify:aggressive-cutting-review
 ```
 
+Release enforcement is patch-scoped: `--mode=staged` (pre-commit) and the
+default working scope must prove only the changed patch. The former aggregate
+`--mode=upstream` scan was deleted: it could not name a bounded owner,
+remediation, or release decision, and therefore created migration noise. A
+cost-cutting patch needs an exact owner hunk contract plus measured evidence;
+a semantic output change needs focused behavior, build, and boundary evidence
+and must not invent a performance or byte-identity claim. Parser/frontend and
+public-boundary changes use their dedicated boundary evidence. A broad
+`owner-plus-named-carry-forward-support` record never proves unrelated hunks.
+
 `semantic-preflight` is intentionally narrower than an optimization contract.
 Use it only where a semantic source-order inspection must occur before the
 engine can know whether planner work is needed. It must prove an exercised

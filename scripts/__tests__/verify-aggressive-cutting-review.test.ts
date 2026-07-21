@@ -19,7 +19,8 @@ import {
   scopedChangedPaths,
   validateCostAuditRecords,
   validateBoundaryEvidence,
-  validateCostContractRegistry
+  validateCostContractRegistry,
+  validateChangedContractSurface
 } from '../verify-aggressive-cutting-review.mjs';
 
 describe('aggressive-cutting review scope', () => {
@@ -36,12 +37,8 @@ describe('aggressive-cutting review scope', () => {
     ]);
   });
 
-  it('keeps branch review for upstream mode and the full local picture for manual review', () => {
-    expect(scopedChangedPaths('upstream', snapshots)).toEqual([
-      'packages/less-parser/src/grammar.ts'
-    ]);
+  it('keeps working review patch-local and excludes committed branch inventory', () => {
     expect(scopedChangedPaths('working', snapshots)).toEqual([
-      'packages/less-parser/src/grammar.ts',
       'packages/core/src/tree/rules.ts',
       'scripts/__tests__/verify-aggressive-cutting-review.test.ts',
       'packages/core/src/ast/__tests__/scratch.test.ts'
@@ -88,6 +85,20 @@ describe('aggressive-cutting review scope', () => {
     const paths = ['packages/css-parser/src/ast/grammar.ts'];
     expect(validateBoundaryEvidence('- Behavior evidence: focused grammar fixture parse proves typed AST construction.\n- Build evidence: parser package build completed successfully.\n- Boundary evidence: public parse() route and parser-runtime-boundary verifier both passed.', paths)).toEqual([]);
     expect(validateBoundaryEvidence('- Behavior evidence: yes', paths)).toHaveLength(3);
+  });
+
+  it('does not let owner-plus-carry-forward coverage accept an unrelated hot-path hunk', () => {
+    const registry = [{
+      id: 'named-owner',
+      files: ['packages/core/src/ast/serialize.ts'],
+      coverage: 'owner-plus-named-carry-forward-support',
+      sourceCheck: { caller: 'function owned(', call: 'ownedCall(', guard: 'enabled' }
+    }];
+    const diff = 'diff --git a/packages/core/src/ast/serialize.ts b/packages/core/src/ast/serialize.ts\n'
+      + '+++ b/packages/core/src/ast/serialize.ts\n@@ -1 +1 @@\n+function unrelated() { return added(); }\n';
+    expect(validateChangedContractSurface(registry, ['packages/core/src/ast/serialize.ts'], diff)).toContain(
+      'Changed production hot-path surface packages/core/src/ast/serialize.ts has 1/1 unmatched hunks; add/update exact runtime contracts rather than hiding the aggregate branch inventory.'
+    );
   });
 });
 

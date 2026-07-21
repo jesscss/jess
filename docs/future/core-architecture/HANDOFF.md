@@ -600,6 +600,14 @@ or a legacy-tree port.
 
 ## Aggressive Cutting Self-Prosecution
 
+### Gate policy
+
+Alpha readiness uses the staged patch gate and its focused evidence, not the
+historical `origin/dev..HEAD` inventory; the aggregate mode was deleted because
+it had no bounded owner or remediation. Runtime cost cuts require exact
+owner contracts and measurements; semantic/parser/frontend/public changes
+require behavior/build/boundary evidence without fabricated performance claims.
+
 ### Current pass: typed interpolated Less extend targets
 
 - **New traversal / materialization:** none. The existing cold extend-selector
