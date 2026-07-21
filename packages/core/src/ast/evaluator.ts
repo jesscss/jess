@@ -26,6 +26,40 @@ function verbatimArgs(args: ValueList): string {
   return args.items.map((a) => a.bytes).join(sepGlue(args.sep));
 }
 
+/** Preserve an optional CSS call after name resolution or invocation failed. */
+function fallbackCall(name: string, args: ValueList): ValueObj {
+  return makeKeyword(`${name}(${verbatimArgs(args)})`);
+}
+
+/**
+ * A registered callable has already been selected. Its failure is therefore an
+ * invocation result, not a name-resolution miss: preserve it only in the
+ * caller-selected lenient mode, otherwise propagate the original failure.
+ */
+function recoverCallFailure(
+  error: unknown,
+  name: string,
+  args: ValueList,
+  modes: EvalModes,
+  onUnresolved: ((error: unknown) => void) | undefined,
+): ValueObj {
+  if (modes.functionMode === 'error') throw error;
+  onUnresolved?.(error);
+  return fallbackCall(name, args);
+}
+
+/** Keep the ordinary synchronous path allocation-free; attach recovery only to an async result. */
+function recoverAsyncCall(
+  result: MaybePromise<ValueObj>,
+  name: string,
+  args: ValueList,
+  modes: EvalModes,
+  onUnresolved: ((error: unknown) => void) | undefined,
+): MaybePromise<ValueObj> {
+  if (!isThenable(result)) return result;
+  return result.catch(error => recoverCallFailure(error, name, args, modes, onUnresolved));
+}
+
 /**
  * The value→string hook supplied to Tier-B fns: a Quoted's INNER text (unquoted;
  * escaped `~"…"` already
@@ -52,15 +86,6 @@ export function buildEvaluator(registry: FnRegistry): ValueEvaluator {
     io?: FnIo,
     onUnresolved?: (error: unknown) => void,
   ): MaybePromise<ValueObj> => {
-    const fallback = () => makeKeyword(`${name}(${verbatimArgs(args)})`);
-    const recover = (result: MaybePromise<ValueObj>): MaybePromise<ValueObj> => {
-      if (!isThenable(result)) return result;
-      return result.catch(err => {
-        if (err instanceof RangeError || modes.functionMode === 'error') throw err;
-        onUnresolved?.(err);
-        return fallback();
-      });
-    };
     // [plugin/P1] Scoped `@plugin`/`@use` fns shadow built-ins and are consulted
     // FIRST — but ONLY when `scope` is non-null, which the caller passes solely
     // when the document registered a scoped fn somewhere (`e.anyScopedFns`). On the
@@ -70,17 +95,15 @@ export function buildEvaluator(registry: FnRegistry): ValueEvaluator {
       const scoped = scope.lookup(name);
       if (scoped) {
         try {
-          return recover(dispatchFn(scoped, args, { modes, stringify, io }));
+          return recoverAsyncCall(dispatchFn(scoped, args, { modes, stringify, io }), name, args, modes, onUnresolved);
         } catch (err) {
-          if (err instanceof RangeError || modes.functionMode === 'error') throw err;
-          onUnresolved?.(err);
-          return fallback();
+          return recoverCallFailure(err, name, args, modes, onUnresolved);
         }
       }
     }
     if (registry.has(name)) {
       try {
-        return recover(registry.dispatch(name, args, { modes, stringify, io }));
+        return recoverAsyncCall(registry.dispatch(name, args, { modes, stringify, io }), name, args, modes, onUnresolved);
       } catch (err) {
         // FunctionMode `preserve` (Less v5 default): a bare/global fn reference that
         // resolves to a built-in but can't produce a value for these args — a modern
@@ -90,13 +113,11 @@ export function buildEvaluator(registry: FnRegistry): ValueEvaluator {
         // less.js, which keeps such calls verbatim. (Only fn-dispatch errors are
         // caught here; variable-resolution / mixin-recursion errors are thrown
         // outside `dispatch` and still propagate.)
-        if (err instanceof RangeError || modes.functionMode === 'error') throw err;
-        onUnresolved?.(err);
-        return fallback();
+        return recoverCallFailure(err, name, args, modes, onUnresolved);
       }
     }
     // Unknown function: emit verbatim.
-    return fallback();
+    return fallbackCall(name, args);
   };
 
   const compare = (op: string, left: ValueObj, right: ValueObj, modes: EvalModes): boolean =>

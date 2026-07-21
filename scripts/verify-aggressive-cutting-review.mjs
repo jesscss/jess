@@ -849,6 +849,64 @@ function checkSemanticPreflight(record, meta, errors) {
   return ok;
 }
 
+/** Metadata for a call/result policy boundary: no traversal or admission is implied. */
+function validateSemanticBoundaryMetadata(contract) {
+  const errors = [];
+  const boundary = contract.semanticBoundary;
+  if (!boundary || typeof boundary !== 'object') {
+    return [`Semantic-boundary cost contract ${contract.id} must include a semanticBoundary block.`];
+  }
+  if (typeof boundary.trigger !== 'string' || boundary.trigger.trim().length < 12) {
+    errors.push(`Semantic-boundary cost contract ${contract.id} must name its dispatch/result trigger.`);
+  }
+  if (typeof boundary.scope !== 'string' || boundary.scope.trim().length < 80) {
+    errors.push(`Semantic-boundary cost contract ${contract.id} must explain its exact policy boundary and excluded resolver paths.`);
+  }
+  if (!Array.isArray(boundary.cases) || boundary.cases.length < 3 || boundary.cases.some(value => typeof value !== 'string' || value.length < 8)) {
+    errors.push(`Semantic-boundary cost contract ${contract.id} must name at least three separately tested call-result cases.`);
+  }
+  const baseline = boundary.baseline;
+  if (!baseline || baseline.fixture !== 'benchmark.less' || !['parse-render', 'render'].includes(baseline.phase)) {
+    errors.push(`Semantic-boundary cost contract ${contract.id} must name a current benchmark.less parse-render or render baseline.`);
+  }
+  const command = contract.evidence?.command;
+  if (!Array.isArray(command) || command.length === 0 || command.some(part => typeof part !== 'string' || part.length === 0)) {
+    errors.push(`Semantic-boundary cost contract ${contract.id} must name focused executable behavior evidence.`);
+  }
+  return errors;
+}
+
+function checkSemanticBoundary(record, meta, errors) {
+  let ok = true;
+  if (record.performanceClaim !== 'none') {
+    errors.push(`Semantic-boundary record ${record.id} must declare performanceClaim: "none"; its benchmark is an output baseline, not a speed claim.`);
+    ok = false;
+  }
+  if (typeof record.why !== 'string' || record.why.trim().length < 80) {
+    errors.push(`Semantic-boundary record ${record.id} must explain the resolver/call policy split.`);
+    ok = false;
+  }
+  if (typeof record.dangerTokensJustification !== 'string' || record.dangerTokensJustification.trim().length < 80) {
+    errors.push(`Semantic-boundary record ${record.id} must account for call-path allocation and async recovery without claiming neutrality.`);
+    ok = false;
+  }
+  if (!Array.isArray(record.cases) || record.cases.length !== meta.cases.length || record.cases.some((value, index) => value !== meta.cases[index])) {
+    errors.push(`Semantic-boundary record ${record.id} must restate the exact tested call-result cases.`);
+    ok = false;
+  }
+  const baseline = record.baseline;
+  if (
+    !baseline || baseline.fixture !== meta.baseline?.fixture || baseline.phase !== meta.baseline?.phase
+    || !Number.isFinite(baseline.currentMedianMs) || baseline.currentMedianMs <= 0
+    || typeof baseline.outputSha256 !== 'string' || !/^[a-f0-9]{64}$/.test(baseline.outputSha256)
+    || !Number.isInteger(baseline.outputBytes) || baseline.outputBytes <= 0
+  ) {
+    errors.push(`Semantic-boundary record ${record.id} must record { fixture, phase, currentMedianMs, outputSha256, outputBytes } without a before/after claim.`);
+    ok = false;
+  }
+  return ok;
+}
+
 /**
  * Byte-identity + benchmark-non-regression + net-removal gate for an off-benchmark
  * call-reduction audit record. All are non-negotiable, and none can be honestly
@@ -968,6 +1026,15 @@ function validateCostContractRegistry(registry) {
       }
       continue;
     }
+    if (contract.kind === 'semantic-boundary') {
+      errors.push(...validateSemanticBoundaryMetadata(contract));
+      const sourceCheck = contract.sourceCheck;
+      if (!sourceCheck || typeof sourceCheck !== 'object' || sourceCheck.file !== contract.files[0]
+        || typeof sourceCheck.caller !== 'string' || typeof sourceCheck.call !== 'string' || typeof sourceCheck.guard !== 'string') {
+        errors.push(`Semantic-boundary cost contract ${contract.id} must include a complete owner sourceCheck.`);
+      }
+      continue;
+    }
     errors.push(...validateNecessityMetadata(contract.necessity, `Cost contract ${contract.id}`));
     // A redundant-call-elimination contract models a pure work-REMOVAL, not a
     // per-container admission FILTER, so it carries no admission block and no
@@ -1060,8 +1127,8 @@ function validateCostContractRegistry(registry) {
         `Cost contract ${contract.id} must require the canonical benchmark.less parse-render/render A/B with 20 warmups and 45 alternating pairs.`
       );
     }
-    if (!['precise', 'conservative-filter', 'redundant-call-elimination', 'neutral-or-negative', 'private-unreachable', 'off-benchmark-call-reduction', 'semantic-preflight'].includes(kind)) {
-      errors.push(`Cost contract ${contract.id} kind must be "precise", "conservative-filter", "redundant-call-elimination", "neutral-or-negative", "private-unreachable", "off-benchmark-call-reduction", or "semantic-preflight".`);
+    if (!['precise', 'conservative-filter', 'redundant-call-elimination', 'neutral-or-negative', 'private-unreachable', 'off-benchmark-call-reduction', 'semantic-preflight', 'semantic-boundary'].includes(kind)) {
+      errors.push(`Cost contract ${contract.id} kind must be "precise", "conservative-filter", "redundant-call-elimination", "neutral-or-negative", "private-unreachable", "off-benchmark-call-reduction", "semantic-preflight", or "semantic-boundary".`);
     }
     if (!Array.isArray(contract.relations) || contract.relations.length === 0) {
       errors.push(`Cost contract ${contract.id} must state at least one counter relation.`);
@@ -1349,6 +1416,14 @@ function validateCostAuditRecords(records, registry, changedPaths, diff, hasDang
       }
       continue;
     }
+    if (kind === 'semantic-boundary') {
+      if (record.verdict !== 'accepted') {
+        errors.push(`Semantic-boundary record ${record.id} must be accepted only after its named call-result cases are tested.`);
+      } else if (contract?.semanticBoundary) {
+        checkSemanticBoundary(record, contract.semanticBoundary, errors);
+      }
+      continue;
+    }
     errors.push(...validateNecessityMetadata(record.necessity, `Hot-path cost audit record ${record.id}`));
     if (contract?.necessity?.status === 'audit-required' && changedPaths.includes(contract.files?.[0])) {
       errors.push(`Hot-path cost audit record ${record.id} cannot change its owner while necessity.status is audit-required; prove the fact flow or remove the action first.`);
@@ -1492,7 +1567,7 @@ function validateCostAuditRecords(records, registry, changedPaths, diff, hasDang
     // Semantic preflights deliberately have no arithmetic counter relations:
     // their false/feature-path counters are checked by checkSemanticPreflight.
     // Do not fall through to the ordinary admission/relation loop below.
-    if (contract.kind === 'semantic-preflight') {
+    if (contract.kind === 'semantic-preflight' || contract.kind === 'semantic-boundary') {
       const ownsChangedFile = contract.files.some(file =>
         changedPaths.includes(file) && contractsForChangedSurface(registry, file, diff).includes(contract)
       );
@@ -1757,6 +1832,12 @@ function validateSourceChecks(registry, changedPaths) {
       ? ''
       : source.slice(callerStart, nextMethod < 0 ? undefined : nextMethod);
     const callOffset = callIndex - callerStart;
+    if (contract.kind === 'semantic-boundary') {
+      // This kind owns a typed dispatch/result policy, not an expensive admission.
+      // Its exact source anchors and executable branch tests are checked elsewhere;
+      // requiring a fabricated `if (guard) { call }` enclosure would misdescribe it.
+      continue;
+    }
     if ((contract.kind ?? 'precise') === 'off-benchmark-call-reduction') {
       // The bounded fallback walk is entered under a multiline guard condition
       // (`if ( ... <guard> ... ) { ... <call> ... }`), so the single-line guarded-call

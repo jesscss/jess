@@ -23,6 +23,13 @@ output/time as a baseline. It must declare `performanceClaim: "none"`; it is
 never a way to describe a semantic addition as neutral, faster, or bounded by
 the ordinary per-container admission cap.
 
+`semantic-boundary` is for a named dispatch/result policy that has no traversal
+or admission surface: for example, an optional FunctionCall name miss versus a
+failure from a callable that was actually selected. It must test each named
+branch, account for its call-path allocation shape, and record a current output
+baseline with `performanceClaim: "none"`. It must not use counters or an A/B to
+pretend that a semantic policy correction is an optimization.
+
 The registry stays intentionally minimal. It retains one valid contract solely
 because the verifier currently requires a non-empty registry; it is not a new
 active architecture queue.
@@ -79,6 +86,25 @@ active architecture queue.
       "profile": "recordAstExtendProfile"
     },
     "evidence": {"command":["pnpm","--filter","@jesscss/core","test","--","--run","src/ast/__tests__/extend-preflight-contract.test.ts"]}
+  },
+  {
+    "id": "ast-evaluator-function-call-boundary",
+    "kind": "semantic-boundary",
+    "surface": "ValueEvaluator optional FunctionCall and selected-callable failure policy",
+    "files": ["packages/core/src/ast/evaluator.ts"],
+    "semanticBoundary": {
+      "trigger": "a typed FunctionCall reaches evaluator dispatch with a registry miss or a selected callable result",
+      "scope": "Only the value evaluator owns this boundary. An unregistered plain FunctionCall is an optional CSS call and returns authored call bytes; a selected scoped or global callable either returns its typed result or sends its synchronous/asynchronous rejection through functionMode. MixinCall lookup, variable/property resolution, and mixin recursion are outside this seam.",
+      "cases": ["unresolved-optional-function-call", "registered-sync-call-failure", "registered-async-call-failure"],
+      "baseline": {"fixture": "benchmark.less", "phase": "render"}
+    },
+    "sourceCheck": {
+      "file": "packages/core/src/ast/evaluator.ts",
+      "caller": "const call = (",
+      "guard": "if (registry.has(name))",
+      "call": "recoverAsyncCall("
+    },
+    "evidence": {"command": ["pnpm", "vitest", "run", "packages/core/src/ast/__tests__/evaluator-call-boundary.test.ts"]}
   }
 ]
 ```

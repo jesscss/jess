@@ -1429,8 +1429,17 @@ protocol, and byte identity before it may claim neutral/decrease.
     "falsePath":{"fixture":"extend-preflight-contract:no-extend","counters":{"calls":1,"collectorCalls":0,"overlaySubjects":0,"overlayInstructions":0,"loopPlacements":0}},
     "featurePath":{"fixture":"extend-preflight-contract:imported-loop","counters":{"importsVisited":1,"loopPlacements":2,"overlaySubjects":2}},
     "baseline":{"fixture":"benchmark.less","phase":"parse-render","currentMedianMs":81,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}
+  },
+  {
+    "id":"ast-evaluator-function-call-boundary",
+    "verdict":"accepted",
+    "performanceClaim":"none",
+    "why":"A FunctionCall that has no registered callable is an optional CSS function and must preserve authored call bytes without a diagnostic. Once a scoped or global callable has been selected, its synchronous or asynchronous rejection is an invocation result, so functionMode—not name resolution—decides preserve-and-warn versus propagation. MixinCall resolution never reaches this boundary.",
+    "dangerTokensJustification":"The synchronous success path now creates neither a fallback closure nor a recovery closure. The fallback value is materialized only for an optional miss or a selected-callable failure; Promise.catch allocates only after a genuinely async callable result. This is a semantic policy correction with a structural hot-path deletion, not an A/B speed claim.",
+    "cases":["unresolved-optional-function-call","registered-sync-call-failure","registered-async-call-failure"],
+    "baseline":{"fixture":"benchmark.less","phase":"render","currentMedianMs":78.4,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}
   }]
   ```
-- **Verdict:** accepted semantic-preflight contract: behavior and allocation
-  admission are proved; benchmark data is an output-identity baseline only and
-  makes no performance claim.
+- **Verdict:** accepted semantic-preflight and evaluator semantic-boundary
+  contracts: behavior is proved; benchmark data is an output-identity baseline
+  only and makes no performance claim.

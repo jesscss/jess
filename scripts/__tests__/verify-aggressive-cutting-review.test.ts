@@ -1085,3 +1085,53 @@ describe('semantic-preflight cost-contract kind', () => {
     );
   });
 });
+
+const semanticBoundaryFile = 'packages/core/src/ast/evaluator.ts';
+const semanticBoundaryContract = {
+  id: 'test-semantic-boundary',
+  kind: 'semantic-boundary',
+  surface: 'optional function-call versus selected-callable failure policy',
+  files: [semanticBoundaryFile],
+  semanticBoundary: {
+    trigger: 'a typed function call has an optional miss or selected callable result',
+    scope: 'Only the evaluator decides whether an optional CSS function name preserves or a selected callable rejection follows functionMode; mixin and variable resolution are explicitly outside this result-policy seam.',
+    cases: ['unresolved-optional-function-call', 'registered-sync-call-failure', 'registered-async-call-failure'],
+    baseline: { fixture: 'benchmark.less', phase: 'render' }
+  },
+  sourceCheck: {
+    file: semanticBoundaryFile,
+    caller: 'const call = (',
+    guard: 'if (registry.has(name))',
+    call: 'recoverAsyncCall('
+  },
+  evidence: { command: ['node', '--check', 'scripts/verify-aggressive-cutting-review.mjs'] }
+};
+
+function makeSemanticBoundaryRecord(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'test-semantic-boundary',
+    verdict: 'accepted',
+    performanceClaim: 'none',
+    why: 'An unregistered CSS function is optional and preserves verbatim bytes, but a callable selected from the scope or registry has already resolved. Its failure is therefore governed by functionMode instead of being misreported as a name-resolution miss.',
+    dangerTokensJustification: 'This is a result-policy boundary, not a traversal or admission filter. The ordinary synchronous branch does not construct fallback or recovery closures; async recovery is attached only to an actual thenable result. The benchmark is an output anchor, not an A/B claim.',
+    cases: semanticBoundaryContract.semanticBoundary.cases,
+    baseline: { fixture: 'benchmark.less', phase: 'render', currentMedianMs: 80, outputSha256: 'd'.repeat(64), outputBytes: 100 },
+    ...overrides
+  };
+}
+
+describe('semantic-boundary cost-contract kind', () => {
+  it('accepts a result-policy boundary without inventing admission counters or a speed claim', () => {
+    expect(validateCostContractRegistry([semanticBoundaryContract])).toEqual([]);
+    expect(validateCostAuditRecords([makeSemanticBoundaryRecord()], [semanticBoundaryContract], [], '')).toEqual([]);
+  });
+
+  it('rejects a fabricated performance claim or incomplete branch coverage', () => {
+    const errors = validateCostAuditRecords([makeSemanticBoundaryRecord({
+      performanceClaim: 'faster',
+      cases: ['unresolved-optional-function-call']
+    })], [semanticBoundaryContract], [], '');
+    expect(errors).toContain('Semantic-boundary record test-semantic-boundary must declare performanceClaim: "none"; its benchmark is an output baseline, not a speed claim.');
+    expect(errors).toContain('Semantic-boundary record test-semantic-boundary must restate the exact tested call-result cases.');
+  });
+});
