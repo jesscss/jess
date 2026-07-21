@@ -1159,3 +1159,85 @@ or a legacy-tree port.
   cost-contract acceptance remains deliberately unclaimed until each changed
   production surface has a compatible measured or exact structural contract. Do not
   invent a benchmark-byte-identity result for feature-changing parser/evaluator work.
+
+## Parser/codegen evidence audit (2026-07-21; no performance acceptance)
+
+This is a machine-readable evidence record, **not** an aggressive-cutting cost
+contract and not a claim that the public parser cutover is performance-neutral.
+It exists to prevent three different facts from being conflated: direct AST
+construction, disabled runtime coverage/trace, and emitted parser code size or
+allocation cost.
+
+```json
+{
+  "schema": "jess-parser-codegen-audit/v1",
+  "status": "semantic-cutover-measured-performance-pending",
+  "parseman": "0.28.0",
+  "publicRoots": {
+    "css": "packages/css-parser/src/index.ts: parse() calls run(CssAstDocument, input, { trivia })",
+    "less": "packages/less-parser/src/index.ts: parse() calls run(LessAstDocument, input, { trivia })",
+    "scss": "packages/scss-parser/src/index.ts: parse() calls run(ScssAstDocument, input, { trivia })",
+    "jess": "packages/jess-parser/src/index.ts: parse() calls run(JessAstDocument, input, { trivia })"
+  },
+  "normalInstrumentation": {
+    "coverage": "off: no public root supplies RunOptions.instrumentation",
+    "trace": "off: no public root supplies RunOptions.instrumentation",
+    "profile": "off: no public root supplies RunOptions.profile",
+    "testOnlyCoverage": "packages/css-parser/test/macro-compiled.test.ts creates a separate Vite transform with grammarCoverage: true and explicitly passes instrumentation"
+  },
+  "boundaryEvidence": {
+    "command": "pnpm run verify:parser-runtime-boundary",
+    "result": "0 tracked temporary sites (0 exact ledger sites)"
+  },
+  "directRouteEvidence": {
+    "commands": [
+      "pnpm --filter @jesscss/css-parser test -- --run test/public-parse.test.ts test/macro-compiled.test.ts",
+      "pnpm --filter @jesscss/less-parser test -- --run test/public-parse.test.ts test/macro-compiled.test.ts",
+      "pnpm --filter @jesscss/scss-parser test -- --run test/public-parse.test.ts test/parse-only.test.ts test/ast-macro-compiled.test.ts",
+      "pnpm --filter @jesscss/jess-parser test -- --run test/parse-only.test.ts test/macro-compiled-ast.test.ts"
+    ],
+    "result": "CSS 23 focused tests; Less 67 public-route tests; SCSS and Jess focused macro/direct suites passed in the same audit run"
+  },
+  "generatedArtifactEvidence": {
+    "method": "sha256 and literal-count inspection of current built artifacts",
+    "coverageHooks": 0,
+    "traceHooks": 0,
+    "macroCompositionCalls": 0,
+    "internalRecognitionImports": 0,
+    "residual": "The generated artifacts still contain optional Parseman profile and CST-host branches. This is not active during ordinary parse(), but it is emitted code and cannot be described as AST-only collector elision or as a neutral performance change."
+  },
+  "requiredBeforeAcceptance": [
+    "Capture an exact generated-artifact baseline after the published Parseman version is rebuilt into all four parser packages.",
+    "Measure parse-only and end-to-end compiler phases under one repeatable protocol with identical semantic fixture coverage.",
+    "Determine whether profile/CST-host code emission is intentionally retained by Parseman 0.28 or should be removed in a separately reviewed codegen change.",
+    "Do not add an aggressive-cutting cost-contract record until the changed owner surface, output identity scope, and measurement are known."
+  ]
+}
+```
+
+### Release-gate attribution (2026-07-21)
+
+`verify:aggressive-cutting-review` compares the working `dev` tip with
+`origin/dev`; this is a 96-commit, 237-file integration delta (+12,490/-40,189
+lines), not a small release patch. `6734da512` alone changes 34 production
+surfaces. Therefore an accepted whole-snapshot record would be false: direct
+grammar reductions, evaluator/serializer semantics, Context document dispatch,
+provenance, and extend placement all introduce or replace real runtime work.
+
+The audit must stay split by ownership; changing the verifier base, running only
+staged mode, or assigning blanket `neutral-or-negative` contracts would hide the
+unreviewed cutover and is rejected.
+
+| Audit family | Current files | Existing behavior evidence | Required acceptance evidence |
+| --- | --- | --- | --- |
+| Cold exports, diagnostics, and CST-only API cleanup | `ast.ts`, `index.ts`, `value.ts`, `error/{codes,diagnostics}.ts`, CSS README/CST surfaces | package/API tests and public CST tests | Exact cold-path reachability plus a current package/API run; these are the only candidates for narrow neutral contracts. |
+| Direct Parseman frontends | CSS/Less `ast/grammar.ts`, parser public entries, shared grammar files | parser AST/public/macro suites; parser-runtime boundary proof | generated-artifact parse-only baseline, rule coverage, and per-family allocation/choice evidence. No legacy-parser timing is a substitute. |
+| Canonical engine | `ast/{at-rule,evaluator,mixin-dispatch,value-*.ts,nodes.ts,serialize.ts}`, `context.ts`, `plugin.ts` | direct acceptance, import, mixin, value, Plugin, and public Compiler suites | individual fact-flow/admission contracts for each added state/traversal plus matched parse-render and render measurements where work is hot. |
+| Extend/provenance placement | `ast/extend/{ir,plan,emit,solve}.ts`, `ast/provenance.ts` | direct extend cases, imported-loop fixture, Bootstrap completion | admission counters for the imported-extend preflight, projection/overlay allocation proof, and Bootstrap plus benchmark non-regression. |
+
+Current compiler-oracle capture, not an A/B claim: public built-artifact
+`benchmark.less`, `collapseNesting: true`, produced 122,390 bytes with SHA-256
+`ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6` in both
+parse-render and render runs (20 warmups, 45 alternating pairs). It is useful as
+the current output anchor only; it does not prove the semantic cutover is
+performance-neutral.
