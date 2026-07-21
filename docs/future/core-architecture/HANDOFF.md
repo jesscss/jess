@@ -16,6 +16,17 @@ create exact `Stylesheet` data directly through each dialect's public `parse()`
 operation; core has no parser construction host, action registry, bridge,
 source reparse, or compatibility path.
 
+### Aggressive-cutting note — typed Less import query tail
+
+`@import url("…") (min-width: @var)` now carries the existing typed
+`Paren(Operation(':', …))` tail from the Less grammar. The serializer reuses
+its existing query-prelude byte emitter at the three import-tail boundaries
+(planner request, loader request, and CSS-terminal output), so it preserves
+query delimiters while evaluating the variable. No node, array, traversal,
+resolver, Context capability, or public API is added; ordinary opaque/import
+interpolation tails retain their existing byte path. This is behavior evidence,
+not a performance claim; parser/public-render tests cover the new fact.
+
 ### Active delivery order
 
 The immediate delivery target is a feature-complete **Less alpha** on that

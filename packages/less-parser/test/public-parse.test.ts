@@ -391,6 +391,22 @@ describe('public Less parse()', () => {
     ]) expect(() => parse(invalid), invalid).toThrow(SyntaxError);
   });
 
+  it('returns and evaluates a variable-bearing import query tail directly', () => {
+    const document = parse('@var: 100px; @import url("//ha.com/file.css") (min-width:@var);');
+
+    expect(document).toMatchObject({
+      children: [
+        { type: 'VariableDeclaration', name: 'var' },
+        {
+          type: 'ImportAtRule',
+          target: { type: 'Url', value: { type: 'Quoted', value: '//ha.com/file.css' } },
+          tail: { type: 'Paren', inner: { type: 'Operation', operator: ':' } }
+        }
+      ]
+    });
+    expect(serialize(document, { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css).toBe('@import url("//ha.com/file.css") (min-width: 100px);\n');
+  });
+
   it('renders public typed interpolation in dynamic URL, import, and block-header positions', () => {
     const source = '@asset: icons; @theme: theme; @query: screen; @condition: "(display: grid)"; @animation: fade; .asset { image: url(@asset/path.svg); template: url(@{theme}/icon.svg); } @import url(@{theme}.css); @media @{query} { .media { color: red; } } @supports @{condition} { .supports { display: grid; } } @keyframes @{animation} { from { opacity: 0; } }';
     const document = parse(source);

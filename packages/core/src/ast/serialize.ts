@@ -3167,7 +3167,7 @@ function planImportedExtends(
       recordAstExtendProfile?.('astExtend.preflight.importsLoadable');
       const request: ImportDocumentRequest = {
         node: st, specifier, options,
-        tail: st.tail === null ? null : evalBytesSync(st.tail, scope, e),
+        tail: st.tail === null ? null : evalQueryPreludeSync(st.tail, scope, e)
       };
       const loaded = await importDocument(request);
       e.plannedImportDocuments?.set(st, { request, loaded });
@@ -5367,7 +5367,7 @@ function emitImportAtRule(
       node,
       specifier: importSpecifier(node, frame, e),
       options: node.options === null ? null : evalBytesSync(node.options, frame, e),
-      tail: node.tail === null ? null : evalBytesSync(node.tail, frame, e),
+      tail: node.tail === null ? null : evalQueryPreludeSync(node.tail, frame, e)
     };
     const loadedRequest = plannedImport ? plannedImport.loaded : importDocument(request);
     return mapMaybe(loadedRequest, (loaded) => {
@@ -5494,7 +5494,7 @@ function emitCssImportAtRule(node: ImportAtRule, frame: Frame, e: Emit): void {
     put(e, evalBytesSync(node.alias, frame, e));
   }
   if (node.tail !== null) {
-    const tail = evalBytesSync(node.tail, frame, e);
+    const tail = evalQueryPreludeSync(node.tail, frame, e);
     if (tail.length > 0) put(e, ` ${tail}`);
   }
   put(e, ';\n');

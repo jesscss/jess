@@ -1319,9 +1319,18 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
     g.DirectLessQuoted,
     g.DirectLessStaticTailGroup
   )));
+  // An import postlude's variable-bearing media feature has an exact typed
+  // shape. Keep this small prelude production here because the generic query
+  // family is defined after `DirectLessImport`; no forward grammar reference
+  // may poison the document's direct start rule.
+  const DirectLessImportQueryTail = node<ValueNode>(
+    'DirectLessImportQueryTail',
+    sequence(literal('('), g.CssAstSyntaxProperty, regex(/:[ \t\n\r\f]*/), g.DirectLessVarReference, literal(')')),
+    children => paren(operation(':', keyword(requireToken(children[1]).value), requireValueNode(children[3])))
+  );
   const DirectLessImport = node<ImportAtRule>(
     'DirectLessImport',
-    sequence(importKeyword, optional(g.DirectLessImportOptions), choice(g.DirectLessEscapedQuoted, g.DirectLessQuoted, g.DirectLessDynamicUrl, g.DirectLessStaticUrl), optional(field('tail', choice(g.DirectLessAtRuleInterpolation, g.DirectLessStaticTail))), literal(';')),
+    sequence(importKeyword, optional(g.DirectLessImportOptions), choice(g.DirectLessEscapedQuoted, g.DirectLessQuoted, g.DirectLessDynamicUrl, g.DirectLessStaticUrl), optional(field('tail', choice(DirectLessImportQueryTail, g.DirectLessAtRuleInterpolation, g.DirectLessStaticTail))), literal(';')),
     (children, fields) => {
       // Every accepted import fact is a grammar child or a field capture. In
       // particular, the opaque tail is reconstructed from terminal values only
@@ -1333,11 +1342,12 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
         throw new TypeError('Direct Less AST grammar produced no import target.');
       }
       const tailField = fields?.tail;
-      // A complete `@{…}` tail is one structural value. Mixed text and
-      // interpolation stays rejected until ImportAtRule has a typed segment
-      // model; do not flatten it back into opaque source bytes.
+      // The variable-bearing query feature and a complete `@{…}` tail are
+      // structural values. Mixed text and interpolation stays rejected until
+      // ImportAtRule has a typed segment model; do not flatten it back into
+      // opaque source bytes.
       const tailValue = tailField === undefined ? undefined : requireField(fields, 'tail').value;
-      const tail = tailValue === undefined ? null : isInterp(tailValue) ? tailValue : any(staticText(tailValue));
+      const tail = tailValue === undefined ? null : isValueNode(tailValue) ? tailValue : any(staticText(tailValue));
       return importAtRule(keyword.value, target, options, null, tail);
     }
   );

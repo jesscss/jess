@@ -984,6 +984,35 @@ describe('Less AST grammar facts', () => {
     });
   });
 
+  it('constructs a variable-bearing import query tail without an opaque tail fallback', () => {
+    const result = run(
+      lessAstGrammar.LessAstDocument,
+      '@var: 100px; @import url("//ha.com/file.css") (min-width:@var);',
+      { trivia: lessAstGrammar.whitespace }
+    );
+
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(result.value).toMatchObject({
+      type: 'Stylesheet',
+      children: [
+        { type: 'VariableDeclaration', name: 'var' },
+        {
+          type: 'ImportAtRule',
+          target: { type: 'Url', value: { type: 'Quoted', value: '//ha.com/file.css' } },
+          tail: {
+            type: 'Paren',
+            inner: {
+              type: 'Operation', operator: ':',
+              left: { type: 'Keyword', src: 'min-width' },
+              right: { type: 'VariableReference', name: 'var', lookup: 'scoped' }
+            }
+          }
+        }
+      ]
+    });
+  });
+
   it('constructs quoted Less import interpolation as a structural target fact', () => {
     const result = run(
       lessAstGrammar.LessAstDocument,
