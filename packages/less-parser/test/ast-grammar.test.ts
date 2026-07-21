@@ -277,6 +277,20 @@ describe('Less AST grammar facts', () => {
     });
   });
 
+  it('accepts semicolon-separated anonymous each() callback bindings', () => {
+    const source = '.entry { each(a b, .(@value; @index) { item-@{index}: @value; }); }';
+    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(result.value).toMatchObject({
+      children: [{ body: [{
+        type: 'For',
+        binding: { kind: 'comma', names: ['value', 'index', undefined] },
+      }]}]
+    });
+  });
+
   it('lowers a flat static mixin call iterable into the existing For iterable fact', () => {
     const source = '.values() { first: red; second: blue; } each(.values(), .(@value, @key) { .item { value: @value; key: @key; } });';
     const cst = parseLessCst(source);

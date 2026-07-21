@@ -2514,7 +2514,7 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
         // Less anonymous mixin callbacks accept either `.(...) { ... }` or
         // `#(...) { ... }`; both lower to the same canonical For binding.
         choice(literal('.'), literal('#')), literal('('), g.DirectLessEachName,
-        optional(sequence(literal(','), g.DirectLessEachName, optional(sequence(literal(','), g.DirectLessEachName)))),
+        optional(sequence(choice(literal(','), literal(';')), g.DirectLessEachName, optional(sequence(choice(literal(','), literal(';')), g.DirectLessEachName)))),
         literal(')'), literal('{'),
         many(g.DirectLessBodyStatement),
         optional(g.DirectLessFunction),
