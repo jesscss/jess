@@ -18,7 +18,19 @@ import lessPlugin from './packages/jess-plugin-less/lib/index.js';
 import * as fs from 'node:fs';
 
 const f = new URL('./packages/jess/benchmark/benchmark.less', import.meta.url).pathname;
-const mk = () => new Compiler({ output: { collapseNesting: true }, compile: { plugins: [lessPlugin()] } });
+const benchmarkConfig = {
+  output: { collapseNesting: true },
+  compile: { plugins: [lessPlugin()] }
+};
+
+// This is the canonical flat-CSS benchmark.  Do not silently fall back to the
+// nested renderer: recursive generator mixins then exercise a different,
+// dramatically larger workload.
+if (benchmarkConfig.output.collapseNesting !== true) {
+  throw new Error('benchmark.less oracle requires output.collapseNesting === true');
+}
+
+const mk = () => new Compiler(benchmarkConfig);
 
 let css;
 try {

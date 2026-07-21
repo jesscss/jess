@@ -123,9 +123,48 @@ describe('Less import CST facts', () => {
     expect(findNode(imp!, 'Url')).toBeDefined();
     expect(findNode(imp!, 'ImportMedia')).toBeDefined();
   });
+
+  it('rejects an unterminated quoted interpolation import target', () => {
+    const result = parseLessCst('@import "theme-@{name}.css;');
+    expect(result.errors).not.toHaveLength(0);
+  });
+});
+
+describe('Less statement-container CST facts', () => {
+  it('keeps nested rules, at-rules, mixins, and each bodies in detached and callback containers', () => {
+    const source = '@theme: { .nested { color: red; } @media screen { .media { color: blue; } } .tone() { color: green; } each(1, { .item { order: @value; } }); }; each(1, .(@entry) { .entry { order: @entry; } @media print { .print { color: black; } } });';
+    const result = parseLessCst(source);
+
+    expect(result.errors).toHaveLength(0);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(findNodes(result.tree, 'Ruleset')).toHaveLength(5);
+    expect(findNodes(result.tree, 'For')).toHaveLength(2);
+    expect(findNodes(result.tree, 'MixinOrQualifiedRule')).toHaveLength(1);
+  });
 });
 
 describe('Less custom-property interpolation CST facts', () => {
+  it('segments custom and ordinary interpolated property names around the shared LessInterp fact', () => {
+    const result = parseLessCst('.x { --theme-@{name[key]}-${tone}: red; pre-@{name[key]}-${tone}-post: blue; }');
+
+    expect(result.errors).toHaveLength(0);
+    expect(result.unconsumedFrom).toBeNull();
+    const custom = findNode(result.tree, 'CustomDeclaration');
+    const declaration = findNode(result.tree, 'Declaration');
+    expect(custom).toBeDefined();
+    expect(declaration).toBeDefined();
+    expect(leafValues(custom!)).toEqual(['--', 'theme-', '@{', 'name', '[', 'key', ']', '}', '-', '${', 'tone', '}', ':', 'red', ';']);
+    expect(leafValues(declaration!)).toEqual(['pre-', '@{', 'name', '[', 'key', ']', '}', '-', '${', 'tone', '}', '-post', ':', 'blue', ';']);
+    expect(findNodes(result.tree, 'LessInterp').map(leafValues)).toEqual([
+      ['@{', 'name', '[', 'key', ']', '}'],
+      ['@{', 'name', '[', 'key', ']', '}']
+    ]);
+    expect(findNodes(result.tree, 'LessPropertyInterp').map(leafValues)).toEqual([
+      ['${', 'tone', '}'],
+      ['${', 'tone', '}']
+    ]);
+  });
+
   it('keeps valid interpolation typed instead of swallowing it in opaque custom-property chunks', () => {
     const input = '.x { --theme: pre-@{name}-post (@{map[key]}) [@{index}] { @{nested} }; }';
     const result = parseLessCst(input);
@@ -150,6 +189,19 @@ describe('Less custom-property interpolation CST facts', () => {
       expect(result.errors, input).toHaveLength(0);
       expect(findNodes(result.tree, 'LessInterp'), input).toHaveLength(0);
       expect(leafValues(result.tree).join(''), input).toContain(literal);
+    }
+  });
+
+  it('rejects malformed interpolation-shaped property names instead of treating them as property text', () => {
+    for (const input of [
+      '.x { pre-@{ spaced }-post: red; }',
+      '.x { pre-@{}-post: red; }',
+      '.x { --theme-@{map.key}: red; }',
+      '.x { --theme-${}: red; }',
+      '.x { --theme-${ spaced }: red; }'
+    ]) {
+      const result = parseLessCst(input);
+      expect(result.errors.length + Number(result.unconsumedFrom !== null), input).toBeGreaterThan(0);
     }
   });
 });
@@ -183,25 +235,56 @@ describe('Less quoted and URL interpolation CST facts', () => {
   });
 });
 
+describe('Less selector interpolation CST facts', () => {
+  it('keeps selector-token interpolation structural rather than absorbing it into selector text', () => {
+    const result = parseLessCst('.@{name}-item, #tone-@{state} { color: red; }');
+
+    expect(result.errors).toHaveLength(0);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(findNodes(result.tree, 'LessInterp').map(leafValues)).toEqual([
+      ['@{', 'name', '}'],
+      ['@{', 'state', '}']
+    ]);
+  });
+});
+
 describe('Less direct-AST closure CST contract', () => {
   // This is intentionally CST-only. It proves the grammar already owns each
   // valid statement boundary that a future single direct reducer must map in
   // one atomic pass; it must not introduce a partial AST-producing grammar.
   const cases: readonly [label: string, source: string, grammarType: string][] = [
     ['top-level variable declaration', '@color: red;', 'VarDeclaration'],
+    ['detached-ruleset binding', '@theme: { color: red; };', 'VarDeclaration'],
     ['top-level detached-ruleset call', '@rules();', 'VarCall'],
+    ['nested detached-ruleset call', '.a { @rules(); }', 'VarCall'],
     ['query at-rule block', '@media (min-width: 1px) { .a { color: red; } }', 'QueryAtRuleBlock'],
     ['generic at-rule block', '@font-face { font-family: x; }', 'AtRuleBlock'],
+    ['nested generic at-rule block', '.a { @layer utilities { color: red; } }', 'AtRuleBlock'],
+    ['empty statement in generic at-rule block', '@foo { ; color: red; }', 'AtRuleBlock'],
     ['typed import fact', '@import (less) "theme.less" screen;', 'ImportAtRule'],
     ['at-rule statement', '@charset "utf-8";', 'AtRuleStatement'],
     ['ruleset', '.a { color: red; }', 'Ruleset'],
     ['top-level mixin definition', '.m(@x) { color: @x; }', 'MixinOrQualifiedRule'],
+    ['static mixin call', '.a { .m(1px, red); }', 'MixinCall'],
+    ['important mixin call', '.a { .m(1px) !important; }', 'MixinCall'],
+    ['namespaced mixin call', '.a { .library > .colors .tone(red); }', 'MixinCall'],
+    ['named namespaced mixin call', '.a { .library > .colors .tone(@shade: red, @gap: 2px); }', 'MixinCall'],
+    ['pattern and variadic mixin definition', '.m(red, @gap, @rest...) { color: @gap; }', 'MixinOrQualifiedRule'],
+    ['static mixin guard', '.m(@width) when (@width >= 20px) { width: @width; }', 'MixinOrQualifiedRule'],
+    ['logical mixin guard', '.m(@value) when (not (@value < 2) and iscolor(red), default()) { color: red; }', 'MixinOrQualifiedRule'],
     ['each control statement', 'each(1, { color: red; });', 'For'],
+    ['namespaced mixin-call each iterable', 'each(.library > .values(), { color: red; });', 'For'],
     ['bare function-call statement', 'e("x");', 'Call'],
     ['nested mixin definition', '.a { .m(@x) { color: @x; } }', 'MixinOrQualifiedRule'],
     ['nested mixin call', '.a { .m(1); }', 'MixinCall'],
     ['nested extend instruction', '.a { &:extend(.b); }', 'ExtendStatement'],
+    ['static pseudo selector', '.a:hover, .b::before { color: red; }', 'Ruleset'],
+    ['static An+B pseudo selector', '.a:nth-child(odd), .b:nth-last-child(2n + 1) { color: red; }', 'Ruleset'],
+    ['static attribute selector', '.a[data-state][role=button][title="Save" i] { color: red; }', 'Ruleset'],
+    ['static namespace attribute selector', '.a[svg|role=button][*|data-state][|title="Save" i] { color: red; }', 'Ruleset'],
+    ['static namespace type selector', 'svg|a, *|a, |a, svg|* { color: red; }', 'Ruleset'],
     ['ordinary declaration', '.a { color: red; }', 'Declaration'],
+    ['merge and important declaration', '.a { box-shadow+: red !important; }', 'Declaration'],
     ['custom-property declaration', '.a { --theme: pre-@{name}; }', 'CustomDeclaration']
   ];
 
@@ -211,6 +294,14 @@ describe('Less direct-AST closure CST contract', () => {
     expect(result.errors, source).toHaveLength(0);
     expect(result.unconsumedFrom, source).toBeNull();
     expect(hasNode(result.tree, grammarType), source).toBe(true);
+  });
+
+  it('accepts a final custom-property declaration without a semicolon', () => {
+    const result = parseLessCst('.a { --theme: pre-@{name} }');
+
+    expect(result.errors).toHaveLength(0);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(hasNode(result.tree, 'CustomDeclaration')).toBe(true);
   });
 });
 

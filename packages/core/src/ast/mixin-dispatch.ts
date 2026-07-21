@@ -27,17 +27,28 @@ import { evalGuard, guardUsesDefault, type TypedResolver, type ValueResolver } f
 
 /** One resolved call argument: positional (no name) or named. */
 export interface CallArg {
-  value: ValueNode;
+  value: CallValue;
   name?: string;
   /** [spread] `@args...` — `value` is a list variable to SPLAT into positional
    *  args at the call site before binding (Less variadic-forwarding). */
   spread?: boolean;
 }
 
+/** A mixin-call argument is normally a value, but Less also permits a deferred
+ * typed mixin invocation passed to another mixin. */
+export type CallValue = ValueNode | MixinCall;
+
 /** A selected definition plus the variable bindings its body reads. */
 export interface Selection {
   def: MixinDef;
-  bindings: Map<string, ValueNode> | null;
+  bindings: Map<string, CallValue> | null;
+}
+
+/** The two legal default() decision passes select incompatible definitions. */
+export class DefaultGuardAmbiguityError extends Error {
+  constructor() {
+    super('Ambiguous use of default() in mixin guard dispatch.');
+  }
 }
 
 /**
@@ -51,7 +62,7 @@ export interface Selection {
  */
 export type DefaultResolver = (
   v: ValueNode,
-  boundSoFar: Map<string, ValueNode>,
+  boundSoFar: Map<string, CallValue>,
   def: MixinDef,
 ) => string;
 
@@ -66,7 +77,7 @@ export function bindArgs(
   call: MixinCall,
   resolveCaller: ValueResolver,
   resolveDefault?: DefaultResolver,
-): Map<string, ValueNode> | null {
+): Map<string, CallValue> | null {
   const params = def.params;
   const positional: CallArg[] = [];
   const named = new Map<string, CallArg>();
@@ -84,14 +95,14 @@ export function bindArgs(
     if (!fixedParams.some((p) => p.name === key)) return null;
   }
 
-  const bound = new Map<string, ValueNode>();
+  const bound = new Map<string, CallValue>();
 
   // Positional args fill the fixed param slots left-to-right, skipping any slot
   // already filled by a named arg.
   let pi = 0;
   for (let k = 0; k < fixedParams.length; k++) {
     const p = fixedParams[k]!;
-    let argVal: ValueNode | undefined;
+    let argVal: CallValue | undefined;
     if (p.name !== undefined && named.has(p.name)) {
       argVal = resolveEager(named.get(p.name)!.value, resolveCaller);
     } else if (pi < positional.length) {
@@ -145,16 +156,22 @@ export function bindArgs(
   return bound;
 }
 
-function resolveEager(v: ValueNode, resolveCaller: ValueResolver): ValueNode {
+function resolveEager(v: CallValue, resolveCaller: ValueResolver): CallValue {
   // a detached-ruleset arg binds BY REFERENCE (never byte-flattened) so its
   // body + closure survive to the call site.
-  if (v.type === 'DetachedRuleset') return v;
-  // A TYPED literal (`Keyword`/`Color`/`Dimension`/`Quoted`) carries its value type
-  // in its node and has no caller-frame refs to flatten — bind it BY REFERENCE so the
-  // type survives to the callee side (a guard/typed-param materialize reads the node's
-  // fields, no byte sniff). Everything else (incl. opaque `Any`) flattens to bytes.
-  if (isTypedLiteral(v)) return v;
+  if (v.type === 'DetachedRuleset' || v.type === 'MixinCall') return v;
+  // A fully typed list carries comparison-relevant item tags (notably compatible
+  // units) and no caller-frame reads. Preserve it by reference just like one typed
+  // literal; any structure containing a reference or computed value still resolves
+  // eagerly in the caller frame below.
+  if (isTypedGuardValue(v)) return v;
   return any(resolveCaller(v));
+}
+
+function isTypedGuardValue(v: CallValue): v is ValueNode {
+  if (isTypedLiteral(v)) return true;
+  if (v.type === 'List') return v.items.every(isTypedGuardValue);
+  return v.type === 'SpacedValue' && v.parts.every(isTypedGuardValue);
 }
 
 /** Eager-resolve a DEFAULT param value with the params-bound-so-far overlay
@@ -163,17 +180,17 @@ function resolveEager(v: ValueNode, resolveCaller: ValueResolver): ValueNode {
  * default resolver (falling back to the caller resolver when none is supplied). */
 function resolveEagerDefault(
   v: ValueNode,
-  boundSoFar: Map<string, ValueNode>,
+  boundSoFar: Map<string, CallValue>,
   def: MixinDef,
   resolveCaller: ValueResolver,
   resolveDefault?: DefaultResolver,
-): ValueNode {
+): CallValue {
   if (v.type === 'DetachedRuleset') return v;
   if (isTypedLiteral(v)) return v;
   return any(resolveDefault ? resolveDefault(v, boundSoFar, def) : resolveCaller(v));
 }
 
-function valueBytes(v: ValueNode): string {
+function valueBytes(v: CallValue): string {
   // After eager resolution every arg is a literal leaf carrying its bytes in `src`.
   return isLiteralNode(v) ? v.src : '';
 }
@@ -190,7 +207,7 @@ export function selectDefinitions(
   resolveCaller: ValueResolver,
   makeCalleeTyped: (
     def: MixinDef,
-    bindings: Map<string, ValueNode> | null,
+    bindings: Map<string, CallValue> | null,
     isDefault: () => boolean,
   ) => TypedResolver,
   ev: ValueEvaluator | null,
@@ -198,7 +215,7 @@ export function selectDefinitions(
   resolveDefault?: DefaultResolver,
 ): Selection[] {
   // Arity + literal-pattern pre-filter (guard-independent).
-  const viable: Array<{ def: MixinDef; bindings: Map<string, ValueNode> | null; order: number }> = [];
+  const viable: Array<{ def: MixinDef; bindings: Map<string, CallValue> | null; order: number }> = [];
   for (let i = 0; i < candidates.length; i++) {
     const def = candidates[i]!;
     const bindings = bindArgs(def, call, resolveCaller, resolveDefault);
@@ -206,7 +223,7 @@ export function selectDefinitions(
     viable.push({ def, bindings, order: i });
   }
 
-  const guardDeps = (def: MixinDef, bindings: Map<string, ValueNode> | null, isDefault: () => boolean) => {
+  const guardDeps = (def: MixinDef, bindings: Map<string, CallValue> | null, isDefault: () => boolean) => {
     // A guard resolves its free variables in the mixin's DEFINITION scope (closure),
     // so `makeCalleeTyped` keys the typed resolver off the def (see serialize `dispatch`).
     // `isDefault` also threads to the resolver so a `default()` OPERAND (`@x =
@@ -234,9 +251,30 @@ export function selectDefinitions(
 
   // Second pass: `default()` candidates fire iff no non-default match.
   const noNonDefaultMatch = matched.length === 0;
-  for (const v of defaultCandidates) {
-    const ok = evalGuard(v.def.guard!, guardDeps(v.def, v.bindings, () => noNonDefaultMatch));
-    if (ok) matched.push(v);
+  if (noNonDefaultMatch && defaultCandidates.length > 0) {
+    const selectedWhenDefault = defaultCandidates.filter(v =>
+      evalGuard(v.def.guard!, guardDeps(v.def, v.bindings, () => true)),
+    );
+    const selectedWhenNotDefault = defaultCandidates.filter(v =>
+      evalGuard(v.def.guard!, guardDeps(v.def, v.bindings, () => false)),
+    );
+    const conflictingSingleSelections = selectedWhenDefault.length === 1
+      && selectedWhenNotDefault.length === 1
+      && selectedWhenDefault[0]!.def !== selectedWhenNotDefault[0]!.def;
+    if (selectedWhenDefault.length > 1 || selectedWhenNotDefault.length > 1 || conflictingSingleSelections) {
+      throw new DefaultGuardAmbiguityError();
+    }
+    // No ordinary candidate matched, so Less resolves `default()` to true.
+    // `not(default())` is therefore false and cannot manufacture a fallback
+    // body. The false pass is nevertheless part of ambiguity detection: a
+    // different definition (or several definitions) that would win there makes
+    // the overload set intrinsically ambiguous, even though it is not emitted.
+    matched.push(...selectedWhenDefault);
+  } else {
+    for (const v of defaultCandidates) {
+      const ok = evalGuard(v.def.guard!, guardDeps(v.def, v.bindings, () => false));
+      if (ok) matched.push(v);
+    }
   }
 
   matched.sort((a, b) => a.order - b.order);

@@ -624,7 +624,7 @@ the log below every iteration so the track compounds instead of repeating.
   `experiment/tree2-cleanroom-20260715`).** Pivot from departure #1 (below): grow a
   from-scratch `tree2` bottom-up via a per-shape `tree2`-vs-`tree` serialization head-to-head.
   Delivered: clean-room `packages/core/src/tree2/` (`node.ts` own base `Tree2Node`;
-  `nodes.ts` Root/Rule/Selector/Declaration/Comment + Word/Dimension/SpacedValue value nodes;
+  `nodes.ts` Stylesheet/Rule/Selector/Declaration/Comment + Word/Dimension/SpacedValue value nodes;
   `serialize.ts` a from-scratch byte-faithful serializer with a FAST path and an OPTIONAL
   position-tracking path), and a harness in `tree2-harness/` (byte-identity, boundary-guard,
   race — all outside `tree2/` so the OLD side's `../tree` imports never pollute the boundary).

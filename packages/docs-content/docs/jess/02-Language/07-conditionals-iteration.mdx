@@ -81,14 +81,18 @@ Unlike rulesets and at-rules, conditionals and iteration blocks do not create a 
 
 ## $for
 
-The `$for` syntax in Jess should also be familiar to developers.
+`$for` is Jess's source-dependent iteration protocol, in the spirit of JavaScript
+`for…of`: the source determines the entry shape, and the header says which parts
+of that entry the loop names. Lists and ranges supply values in source order;
+collections can supply key/value entries. This is Jess syntax, not a spelling of
+Less `each()`.
 
 ```less
 $sections: header, sidebar, footer;
 
 $for ($section, $i of $sections) {
-  .box-$(section) {
-    padding-left: $(i * 20px);
+  .box-$[section] {
+    padding-left: $($i * 20px);
   }
 }
 ```
@@ -96,7 +100,7 @@ $for ($section, $i of $sections) {
 You can also iterate over a range of numbers:
 ```less
 $for ($i of 1 to 3) {
-  .box-$(i) {
+  .box-$[i] {
     value: $i;
   }
 }
@@ -105,18 +109,20 @@ $for ($i of 1 to 3) {
 A range is inclusive of the start and end values. To exclude the end value, you can use this familiar syntax from other programming languages:
 ```less
 $for ($i of 1 to <3) {
-  .box-$(i) {
+  .box-$[i] {
     value: $i;
   }
 }
 ```
 
 
-You can also destructure values from a list:
+You can also destructure a collection entry:
 
 ```less
-$for ([$key, $value] of $list) {
-  .box-$(key) {
+$collection: { header: red; footer: blue; };
+
+$for ([$key, $value] of $collection) {
+  .box-$[key] {
     value: $value;
   }
 }
@@ -124,10 +130,16 @@ $for ([$key, $value] of $list) {
 
 :::info
 
-In the above example, `i` is the key of `sections`. Because `sections` is assigned a list, the key is it's offset from the start.
+In the first example, `i` is the key of `sections`. Because `sections` is a
+list, that key is its 1-based source-order position.
 
-The syntax is `$for ({$item} [, {$key} [, {$counter}]?]?) of $var {...}`. In this case, both `key` and `counter` would have the same value. However, with something like a Jess collection, the `key` would be assigned the declaration name. We'll explore collections in the "Values" section.
+The single-name form names the entry value. The comma form may also name the
+source key and loop counter. For a list, the key and counter have the same
+source-order position; for a Jess collection, the key is the declaration name.
+Bracket binding is key/value destructuring for collection entries, so
+`[$key, $value]` names the collection key first and its value second. The
+canonical header shapes are `$for ($item of …)`,
+`$for ($item, $key, $counter of …)`, and
+`$for ([$key, $value] of …)`.
 
 :::
-
-

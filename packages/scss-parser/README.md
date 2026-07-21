@@ -28,10 +28,13 @@ trails it), and the seed for the roadmap "Sass+" dialect rather than a shipped
 Sass replacement. The language roadmap is ordered: **Now Less.js → Next Sass+ →
 Final `.jess`.**
 
-Two ways to use it:
+Two parser representations are available:
 
-- **As part of Jess** — the default `.` entry is wired into `@jesscss/core` and produces the core AST the Jess compiler evaluates. This is the internal, core-coupled path.
-- **As a standalone CST parser** — the `./cst` entry has **no dependency on `@jesscss/core`**. Install just this package and parse SCSS source text into a concrete syntax tree (CST). You can also plug your own builders onto the grammar to produce your own AST instead of the default CST.
+- **Canonical AST v2** — the default `parse()` entry constructs a `Stylesheet`
+  directly through parser-local Parseman reductions.
+- **Explicit CST** — the `./cst` entry has **no dependency on
+  `@jesscss/core`** and parses SCSS source text into a concrete syntax tree for
+  language-service/document consumers.
 
 ## Install
 
@@ -39,7 +42,18 @@ Two ways to use it:
 npm install @jesscss/scss-parser
 ```
 
-`@jesscss/core` is an **optional** peer dependency — needed only for the core-coupled `.` entry, not for `./cst` or `./grammar`.
+`@jesscss/core` is an **optional** peer dependency — needed for the default
+AST v2 `parse()` entry, not for `./cst` or `./grammar`.
+
+## Canonical AST parsing
+
+```js
+import { parse } from '@jesscss/scss-parser'
+
+const stylesheet = parse('$c: red;\n.foo { color: $c; }')
+
+stylesheet.type // 'Stylesheet'
+```
 
 ## Standalone usage (core-free)
 
@@ -69,7 +83,8 @@ Pass a different `startRule` (any capitalized grammar rule) to parse a fragment.
 | `@jesscss/scss-parser/cst` | `parseScssCst` | Core-free parse of an SCSS string to a CST. |
 | `@jesscss/scss-parser/cst` | `ScssCstNode`, `ScssCstLeaf`, `ScssCstError`, `ScssCstChild`, `ScssCstParseResult`, `ScssCstType` (types) | CST type definitions (aliases of the shared `@jesscss/css-parser/cst` types). |
 | `@jesscss/scss-parser/grammar` | `scssGrammar` | The compiled SCSS grammar (a rule map). Extend it with `compose()` or drive it directly with parseman's `run`. |
-| `@jesscss/scss-parser` (`.`) | `scssGrammar`, `parseScssCst`, `parseScssDoc`, … | Public grammar and CST surface. |
+| `@jesscss/scss-parser` (`.`) | `parse` | Parse SCSS directly to canonical AST v2 `Stylesheet`. |
+| `@jesscss/scss-parser` (`.`) | `scssGrammar`, `parseScssCst`, `parseScssDoc`, … | Convenience grammar and explicit CST surface. |
 
 ## Default CST shape
 

@@ -7,6 +7,7 @@
  */
 import type { Dimension, ValueObj } from './value-eval.js';
 import { unify } from './value-units.js';
+import type { EqualityMode } from '../types/modes.js';
 
 /** `Node.numericCompare`: EPSILON-fuzzed 3-way compare (float-precision tolerant). */
 const numericCompare = (a: number, b: number): -1 | 0 | 1 =>
@@ -21,8 +22,14 @@ const numericCompare = (a: number, b: number): -1 | 0 | 1 =>
  * `%` is a REGULAR unit (NOT normalized to /100 — less@4.6.3: `50% = 0.5` is false,
  * `50% = 50` is true).
  */
-function dimensionCompare(a: Dimension, b: Dimension): -1 | 0 | 1 | undefined {
-  if (!a.unit || !b.unit) return numericCompare(a.number, b.number);
+function dimensionCompare(a: Dimension, b: Dimension, equalityMode: EqualityMode): -1 | 0 | 1 | undefined {
+  // Less alone treats a unitless number as equivalent to the same magnitude
+  // with a unit. Sass and exact retain the unit distinction while still
+  // reconciling two compatible explicit units (1in = 96px).
+  if (!a.unit || !b.unit) {
+    if (equalityMode !== 'less' && a.unit !== b.unit) return undefined;
+    return numericCompare(a.number, b.number);
+  }
   const au = unify(a.number, a.unit);
   const bu = unify(b.number, b.unit);
   if (au.unit !== bu.unit) return undefined;
@@ -47,10 +54,10 @@ function hasCompare(v: ValueObj): boolean {
 }
 
 /** A single operand's OWN `.compare(other)` (less.js per-type methods). */
-function selfCompare(a: ValueObj, b: ValueObj): -1 | 0 | 1 | undefined {
+function selfCompare(a: ValueObj, b: ValueObj, equalityMode: EqualityMode): -1 | 0 | 1 | undefined {
   switch (a.type) {
     case 'Dimension':
-      return b.type === 'Dimension' ? dimensionCompare(a, b) : undefined;
+      return b.type === 'Dimension' ? dimensionCompare(a, b, equalityMode) : undefined;
     case 'Color':
       // rgb + alpha equality only (no ordering).
       return b.type === 'Color'
@@ -79,14 +86,28 @@ const negate = (c: -1 | 0 | 1 | undefined): -1 | 0 | 1 | undefined =>
  *  - same-type scalars are equal iff their values match; lists compare
  *    element-wise (same separator, length, and recursively-equal items).
  */
-function compareNodes(a: ValueObj, b: ValueObj): -1 | 0 | 1 | undefined {
-  if (hasCompare(a) && b.type !== 'Quoted') return selfCompare(a, b);
-  if (hasCompare(b)) return negate(selfCompare(b, a));
+function compareNodes(a: ValueObj, b: ValueObj, equalityMode: EqualityMode): -1 | 0 | 1 | undefined {
+  // Less compares an escaped quote (and e("…"), both materialized as a
+  // Keyword) against a typed comparable by its emitted CSS bytes. Thus
+  // `3 = ~"3"` is true even though the operands have different value kinds.
+  // Keep this narrow to Keyword cross-kind equality; ordinary quoted strings
+  // retain their quote bytes and therefore remain unequal.
+  if (equalityMode === 'sass') {
+    const quoted = a.type === 'Quoted' ? a : b.type === 'Quoted' ? b : null;
+    const keyword = a.type === 'Keyword' ? a : b.type === 'Keyword' ? b : null;
+    if (quoted && keyword && quoted.value === keyword.text) return 0;
+  }
+  if (equalityMode === 'less'
+    && (hasCompare(a) || hasCompare(b))
+    && (a.type === 'Keyword' || b.type === 'Keyword')
+    && toCssStr(a) === toCssStr(b)) return 0;
+  if (hasCompare(a) && b.type !== 'Quoted') return selfCompare(a, b, equalityMode);
+  if (hasCompare(b)) return negate(selfCompare(b, a, equalityMode));
   if (a.type !== b.type) return undefined;
   if (a.type === 'List' && b.type === 'List') {
     if (a.sep !== b.sep || a.items.length !== b.items.length) return undefined;
     for (let i = 0; i < a.items.length; i++) {
-      if (compareNodes(a.items[i]!, b.items[i]!) !== 0) return undefined;
+      if (compareNodes(a.items[i]!, b.items[i]!, equalityMode) !== 0) return undefined;
     }
     return 0;
   }
@@ -99,14 +120,15 @@ function compareNodes(a: ValueObj, b: ValueObj): -1 | 0 | 1 | undefined {
  * lexically, colors/keywords/lists by structural equality. An INCOMPARABLE pair
  * (`undefined`) is false for every operator.
  */
-export function compare(op: string, left: ValueObj, right: ValueObj): boolean {
-  const c = compareNodes(left, right);
+export function compare(op: string, left: ValueObj, right: ValueObj, equalityMode: EqualityMode = 'less'): boolean {
+  const c = compareNodes(left, right, equalityMode);
   switch (op) {
     case '=': return c === 0;
     case '>': return c === 1;
     case '<': return c === -1;
     case '>=': return c === 0 || c === 1;
-    case '<=': return c === 0 || c === -1;
+    case '<=':
+    case '=<': return c === 0 || c === -1;
   }
   return false;
 }

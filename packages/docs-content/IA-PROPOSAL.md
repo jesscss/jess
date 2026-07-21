@@ -22,7 +22,7 @@ The three audiences share **concepts** but diverge on **surface syntax**:
 | Concept | Less | Sass (SCSS) | Jess |
 | --- | --- | --- | --- |
 | Variable | `@color: #06c;` | `$color: #06c;` | `$color: #06c;` |
-| Reference | `@color` | `$color` (live) | `$color` / `$!color` (live) |
+| Reference | `@color` | `$color` (live/current) | `$color` (live/current) / `$$color` (scoped/final) |
 | Mixin def / call | `.box() {}` / `.box();` | `@mixin box {}` / `@include box;` | `box() {}` / `$ > box();` |
 | Module import | `@import "x";` | `@use "x";` | `@-compose "./x";` |
 | Interpolation | `@{v}` / `~"…"` | `#{…}` | `$(…)` / `$[…]` |
@@ -144,7 +144,7 @@ facings.
   overview                     A:[jess,less,sass]  "valid CSS is valid X"; nesting teaser. gate: sigil line.
   variables                    A:[jess,less,sass]  Concept + gated syntax card + basic examples.
                                gate: declaration/reference syntax; assignment operators.
-  variables-advanced           A:[jess]            live binding $!, :=, readonly !$, private _, scoping model.
+  variables-advanced           A:[jess]            live `$`, scoped/final `$$`, assignment lookup modes, scoping model.
                                (No Less/Sass analog at this depth → jess-only, not a gate.)
   nesting                      A:[jess,less,sass]  &, parent templates &()/&(''), at-rule bubbling,
                                collapseNesting. gate: parent-suffix (&-1) is Less/Jess; :is() collapse notes.

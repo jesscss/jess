@@ -8,6 +8,11 @@
       "types": "./lib/recognition.d.ts",
       "import": "./lib/recognition.js",
       "require": "./lib/recognition.cjs"
+    },
+    "./opaque-at-rule": {
+      "types": "./lib/opaque-at-rule.d.ts",
+      "import": "./lib/opaque-at-rule.js",
+      "require": "./lib/opaque-at-rule.cjs"
     }
   },
   "files": ["lib"],

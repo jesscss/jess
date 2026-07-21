@@ -29,7 +29,7 @@
  * modules (`node`, `nodes`) — never the legacy tree.
  */
 
-import type { Interp, List, Quoted, Statement, Url, ValueNode } from './nodes.js';
+import type { Interpolation, List, Quoted, Statement, Url, ValueNode } from './nodes.js';
 
 /** A block-bearing at-rule: `@name prelude { …body }`. */
 export interface AtRuleBlock {
@@ -67,18 +67,35 @@ export interface OpaqueAtRuleBlock {
   readonly rawBody: string;
 }
 
-/** A terminal import statement. Resolution remains parser-owned. */
+/** A typed import statement. Context/plugin document loading owns resolution. */
 export interface ImportAtRule {
   readonly type: 'ImportAtRule';
   readonly name: string;
   /** Grammar-owned comma list inside the parenthesized option clause. */
   readonly options: List | null;
   /** A quoted path, `url(…)`, or interpolated quoted template. */
-  readonly target: Quoted | Url | Interp;
+  readonly target: Quoted | Url | Interpolation;
   /** Grammar-owned `as …` clause, if the dialect admits one. */
   readonly alias: ValueNode | null;
   /** Grammar-owned media/layer/supports tail, if present. */
   readonly tail: ValueNode | null;
+}
+
+/**
+ * A compile-time Plugin statement. Unlike a CSS at-rule statement it has no
+ * CSS output: its grammar-owned target/options are handed to the Context
+ * injected plugin capability when its lexical body is prepared.
+ *
+ * The node is deliberately dialect-neutral. A dialect may spell this as
+ * `@plugin`, but core owns only the structural Plugin fact and its lexical
+ * scope semantics; it owns neither module resolution nor a dialect runtime.
+ */
+export interface Plugin {
+  readonly type: 'Plugin';
+  /** Quoted/URL/template target, matching the typed import-target family. */
+  readonly target: Quoted | Url | Interpolation;
+  /** Inner text of the parenthesized option clause, retained as structured segments. */
+  readonly options: Interpolation | null;
 }
 
 export const atRuleBlock = (
@@ -98,8 +115,13 @@ export const opaqueAtRuleBlock = (
 
 export const importAtRule = (
   name: string,
-  target: Quoted | Url | Interp,
+  target: Quoted | Url | Interpolation,
   options: List | null = null,
   alias: ValueNode | null = null,
   tail: ValueNode | null = null
 ): ImportAtRule => ({ type: 'ImportAtRule', name, options, target, alias, tail });
+
+export const plugin = (
+  target: Quoted | Url | Interpolation,
+  options: Interpolation | null = null,
+): Plugin => ({ type: 'Plugin', target, options });

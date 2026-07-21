@@ -12,6 +12,7 @@
  *
  * HARD MODULE BOUNDARY: value domain only — no `../tree`, no legacy nodes.
  */
+import type { MaybePromise } from '@jesscss/awaitable-pipe';
 import type { EvalModes, List, ValueObj } from '../value-eval.js';
 
 export type Kind = ValueObj['type'];
@@ -60,7 +61,7 @@ export interface FnIo {
    * return the referenced file's raw bytes, or `null` if it cannot be read. The
    * specifier is already stripped of any `#fragment` by the caller.
    */
-  readFile(specifier: string): Uint8Array | null;
+  readFile(specifier: string): MaybePromise<Uint8Array | null>;
 }
 
 interface BaseSpec {
@@ -70,7 +71,7 @@ interface BaseSpec {
 /** A POSITIONAL fn: the dispatcher binds args by kind and spreads them. No ctx. */
 export interface PositionalSpec extends BaseSpec {
   readonly variadic?: false;
-  readonly body: (...args: ValueObj[]) => ValueObj;
+  readonly body: (...args: ValueObj[]) => MaybePromise<ValueObj>;
 }
 
 /**
@@ -83,7 +84,7 @@ export interface PositionalSpec extends BaseSpec {
  */
 export interface VariadicSpec extends BaseSpec {
   readonly variadic: true;
-  readonly body: (list: List, ctx: FnCtx) => ValueObj;
+  readonly body: (list: List, ctx: FnCtx) => MaybePromise<ValueObj>;
 }
 
 export type FnSpec = PositionalSpec | VariadicSpec;

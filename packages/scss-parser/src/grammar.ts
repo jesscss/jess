@@ -7,6 +7,7 @@ import {
   many, expect, sepBy, oneOrMore, scanTo, balanced, label, not, withCtx
 } from 'parseman' with { type: 'macro' };
 import { lessGrammar } from '@jesscss/less-parser/grammar';
+import { cssAstSyntax } from '@jesscss/internal-css-recognition/recognition';
 
 // ---------------------------------------------------------------------------
 // Grammar — SCSS = Less + the SCSS delta. `compose` fuses the imported compiled
@@ -26,7 +27,7 @@ const comment = regex(/\/\*(?:[^*]|\*(?!\/))*\*\//);
 const lineComment = regex(/\/\/[^\n\r]*/);
 const rw = trivia(oneOrMore(choice(label('whitespace', ws), label('blockComment', comment), label('lineComment', lineComment))));
 
-export const scssGrammar = compose([lessGrammar, rules({ trivia: rw }, (g: any) => {
+export const scssGrammar = compose([lessGrammar, cssAstSyntax, rules({ trivia: rw }, (g: any) => {
   // SCSS `$variable` token — first char may be a letter or `-` after `$`.
   const scssVar = regex(/\$-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
   const plainIdent = regex(/-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
@@ -68,7 +69,7 @@ export const scssGrammar = compose([lessGrammar, rules({ trivia: rw }, (g: any) 
   // carries interpolation is structured by `ScssInterpDeclName` (below), which the
   // Declaration rules try FIRST; this flat token owns only interpolation-free names.
   const scssDeclPropName = regex(/\*?-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/);
-  const important = sequence(literal('!'), literal('important'));
+  const important = sequence(literal('!'), g.CssAstSyntaxImportant);
 
   const ScssInterpBare = node(
     sequence(literal('#'), literal('{'), g.valueSequence, expect(literal('}'), '}')));
@@ -564,11 +565,11 @@ export const scssGrammar = compose([lessGrammar, rules({ trivia: rw }, (g: any) 
   // positive lookahead. The modifier scan skips balanced groups, strings, and
   // comments, and terminates at `;`, `}`, EOF, or such a new-import comma.
   const importPathStart = choice(g.Url, g.Quoted);
-  // `#{ … }` interpolation hole (handles `#{$a}` and `#{"(a: b)"}` with a string
-  // that may itself carry braces). Kept ahead of the generic brace skip so the
-  // leading `#` is consumed together with the group.
-  const scssInterpHole = regex(/#\{(?:[^{}'"]|'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*")*\}/);
-  const importSkip = [scssInterpHole, bParen, bSquare, bCurly, singleStr, doubleStr, comment, lineComment];
+  // Import modifiers skip interpolation as the same structural `#{ expression }`
+  // production used everywhere else in SCSS. Keeping it ahead of the generic
+  // brace skip means the opener is consumed as interpolation, never mistaken for
+  // an at-rule block; there is no opaque interpolation-shaped scanner token.
+  const importSkip = [ScssInterpBare, bParen, bSquare, bCurly, singleStr, doubleStr, comment, lineComment];
   const newImportComma = sequence(literal(','), not(not(importPathStart)));
   const importModifier = scanTo(
     choice(literal(';'), literal('}'), newImportComma),

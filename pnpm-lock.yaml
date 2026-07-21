@@ -99,7 +99,7 @@ importers:
         version: 2.6.1
       parseman:
         specifier: link:/Users/matthew/git/oss/parser-thing
-        version: link:../../../../parser-thing
+        version: link:../parser-thing
       puppeteer:
         specifier: ^19.10.1
         version: 19.11.1(typescript@7.0.1-rc)
@@ -196,9 +196,6 @@ importers:
       data-structure-typed:
         specifier: ~2.0.0
         version: 2.0.5
-      enhanced-resolve:
-        specifier: ~5.18.3
-        version: 5.18.4
       lodash-es:
         specifier: ^4.17.21
         version: 4.17.23
@@ -226,19 +223,6 @@ importers:
         version: 0.23.1(rollup@3.29.5)(vite@6.4.1)
 
   packages/css-parser:
-    dependencies:
-      chevrotain:
-        specifier: ^12.0.0
-        version: 12.0.0
-      color-name:
-        specifier: ~2.0.0
-        version: 2.0.2
-      lodash-es:
-        specifier: ~4.17.21
-        version: 4.17.23
-      xregexp:
-        specifier: ^5.1.1
-        version: 5.1.2
     devDependencies:
       '@jesscss/core':
         specifier: workspace:*
@@ -249,18 +233,9 @@ importers:
       '@jesscss/shared':
         specifier: workspace:*
         version: link:../_shared
-      '@types/color-name':
-        specifier: ^1.1.1
-        version: 1.1.5
-      '@types/lodash-es':
-        specifier: ~4.17.8
-        version: 4.17.12
-      '@types/xregexp':
-        specifier: ^4.4.0
-        version: 4.4.0
       parseman:
         specifier: link:/Users/matthew/git/oss/parser-thing
-        version: link:../../../../../../parser-thing
+        version: link:../../../parser-thing
       tsx:
         specifier: ~4.21.0
         version: 4.21.0
@@ -393,9 +368,18 @@ importers:
       '@jesscss/core':
         specifier: workspace:*
         version: link:../core
+      '@jesscss/fns':
+        specifier: workspace:*
+        version: link:../fns
       '@jesscss/patch-css':
         specifier: workspace:*
         version: link:../patch-css
+      '@jesscss/plugin-css':
+        specifier: workspace:*
+        version: link:../jess-plugin-css
+      '@jesscss/plugin-jess':
+        specifier: workspace:*
+        version: link:../jess-plugin-jess
       '@jesscss/plugin-less':
         specifier: workspace:*
         version: link:../jess-plugin-less
@@ -458,7 +442,7 @@ importers:
         version: 1.1.5
       parseman:
         specifier: link:/Users/matthew/git/oss/parser-thing
-        version: link:../../../../../../parser-thing
+        version: link:../../../parser-thing
 
   packages/jess-plugin:
     dependencies:
@@ -468,6 +452,24 @@ importers:
       chevrotain:
         specifier: ^12.0.0
         version: 12.0.0
+
+  packages/jess-plugin-css:
+    dependencies:
+      '@jesscss/core':
+        specifier: workspace:*
+        version: link:../core
+      '@jesscss/css-parser':
+        specifier: workspace:*
+        version: link:../css-parser
+
+  packages/jess-plugin-jess:
+    dependencies:
+      '@jesscss/core':
+        specifier: workspace:*
+        version: link:../core
+      '@jesscss/jess-parser':
+        specifier: workspace:*
+        version: link:../jess-parser
 
   packages/jess-plugin-js:
     dependencies:
@@ -637,7 +639,7 @@ importers:
         version: 4.6.3
       parseman:
         specifier: link:/Users/matthew/git/oss/parser-thing
-        version: link:../../../../../../parser-thing
+        version: link:../../../parser-thing
       tsx:
         specifier: ~4.21.0
         version: 4.21.0
@@ -674,7 +676,7 @@ importers:
         version: link:../core
       parseman:
         specifier: link:/Users/matthew/git/oss/parser-thing
-        version: link:../../../../../../parser-thing
+        version: link:../../../parser-thing
       sass-spec:
         specifier: github:sass/sass-spec
         version: github.com/sass/sass-spec/f282e3844db9889a0747b810898f67571272e8e5(@babel/core@7.28.6)
@@ -6645,13 +6647,6 @@ packages:
     resolution: {integrity: sha512-ThVF6DCVhA8kUGy+aazFQ4kXQ7E1Ty7A3ypFOe0IcJV8O/M511G99AW24irKrW56Wt44yG9+ij8FaqoBGkuBXg==}
     dependencies:
       '@types/node': 18.19.130
-
-  /@types/xregexp@4.4.0:
-    resolution: {integrity: sha512-RJJHNci1sRRq8nZjWxzCbQdLhJVq+JcDHpsdzoTtFAR9qdsMhAWqKQ1NHsNcenKDtLsOwCBe/kfSKM82yXtocg==}
-    deprecated: This is a stub types definition. xregexp provides its own type definitions, so you do not need this installed.
-    dependencies:
-      xregexp: 5.1.2
-    dev: true
 
   /@types/yargs-parser@21.0.3:
     resolution: {integrity: sha512-I4q9QU9MQv4oEOz4tAHJtNz1cwuLxn2F3xcc2iV5WdqLPpUnj30aUuxt1mAxYTG+oe8CZMV/+6rU4S4gRDzqtQ==}
@@ -22044,11 +22039,6 @@ packages:
     resolution: {integrity: sha512-TEU+nJVUUnA4CYJFLvK5X9AOeH4KvDvhIfm0vV1GaQRtchnG0hgK5p8hw/xjv8cunWYCsiPCSDzObPyhEwq3KQ==}
     engines: {node: '>=0.4.0'}
     dev: true
-
-  /xregexp@5.1.2:
-    resolution: {integrity: sha512-6hGgEMCGhqCTFEJbqmWrNIPqfpdirdGWkqshu7fFZddmTSfgv5Sn9D2SaKloR79s5VUiUlpwzg3CM3G6D3VIlw==}
-    dependencies:
-      '@babel/runtime-corejs3': 7.28.6
 
   /xtend@4.0.2:
     resolution: {integrity: sha512-LKYU1iAXJXUgAXn9URjiu+MWhyUXHsvfp7mcuYm9dSUKK0/CjtrUwFAxD82/mCWbtLsGjFIad0wIsod4zrTAEQ==}

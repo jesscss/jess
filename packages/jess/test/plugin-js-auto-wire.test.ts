@@ -37,6 +37,12 @@ const makeCompiler = (): Compiler =>
     }
   });
 
+const makeDirectCompiler = (): Compiler =>
+  new Compiler({
+    output: { collapseNesting: true },
+    compile: { plugins: [lessPlugin()] }
+  });
+
 describe('@jesscss/plugin-js optional auto-wiring', () => {
   afterEach(() => {
     for (const dir of tempDirs.splice(0)) {
@@ -77,5 +83,104 @@ describe('@jesscss/plugin-js optional auto-wiring', () => {
     // Absent => no plugin returned; core then emits the "Install @jesscss/plugin-js"
     // gate at the point a script actually needs to execute (no hard crash here).
     expect(await loader?.('.js')).toBeUndefined();
+  });
+
+  it('loads a typed Plugin through Context and applies its grammar-owned options', async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-direct-plugin-'));
+    tempDirs.push(directory);
+    const entry = path.join(directory, 'main.less');
+    const module = path.join(directory, 'option-plugin.js');
+    fs.writeFileSync(module, [
+      'registerPlugin({',
+      '  setOptions: function(value) { this.value = value; },',
+      '  install: function(_less, _manager, functions) {',
+      '    var self = this;',
+      '    functions.add("from-plugin", function() { return self.value; });',
+      '  }',
+      '});'
+    ].join('\n'));
+    fs.writeFileSync(entry, [
+      '@plugin (chosen=@{value}) "./option-plugin.js";',
+      '@value: yes;',
+      '.entry { value: from-plugin(); }'
+    ].join('\n'));
+
+    await expect(makeDirectCompiler().render(entry)).resolves.toBe('.entry {\n  value: chosen=yes;\n}\n');
+  });
+
+  it('hoists Plugin functions over a lexical body without leaking its nested shadow', async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-direct-plugin-scope-'));
+    tempDirs.push(directory);
+    const entry = path.join(directory, 'main.less');
+    const module = path.join(directory, 'scope-plugin.js');
+    fs.writeFileSync(module, [
+      'registerPlugin({',
+      '  setOptions: function(value) { this.value = value; },',
+      '  install: function(_less, _manager, functions) {',
+      '    var self = this;',
+      '    functions.add("scope-plugin", function() { return self.value; });',
+      '  }',
+      '});'
+    ].join('\n'));
+    fs.writeFileSync(entry, [
+      '@plugin (root) "./scope-plugin.js";',
+      '.local { value: scope-plugin(); @plugin (local) "./scope-plugin.js"; after: scope-plugin(); }',
+      '.sibling { value: scope-plugin(); }'
+    ].join('\n'));
+
+    await expect(makeDirectCompiler().render(entry)).resolves.toBe([
+      '.local {',
+      '  value: local;',
+      '  after: local;',
+      '}',
+      '.sibling {',
+      '  value: root;',
+      '}',
+      ''
+    ].join('\n'));
+  });
+
+  it('propagates an async Plugin load failure through the direct compiler route', async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-direct-plugin-error-'));
+    tempDirs.push(directory);
+    const entry = path.join(directory, 'main.less');
+    const module = path.join(directory, 'broken-plugin.js');
+    fs.writeFileSync(module, 'registerPlugin({ install: function() { throw new Error("plugin install exploded"); } });');
+    fs.writeFileSync(entry, '@plugin "./broken-plugin.js"; .entry { value: ok; }');
+
+    await expect(makeDirectCompiler().render(entry)).rejects.toThrow('plugin install exploded');
+  });
+
+  it('hoists and isolates typed Plugins in root, mixin, and detached lexical bodies', async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-direct-plugin-bodies-'));
+    tempDirs.push(directory);
+    const entry = path.join(directory, 'main.less');
+    const module = path.join(directory, 'body-plugin.js');
+    fs.writeFileSync(module, [
+      'registerPlugin({',
+      '  setOptions: function(value) { this.value = value; },',
+      '  install: function(_less, _manager, functions) {',
+      '    var self = this;',
+      '    functions.add("body-plugin", function() { return self.value; });',
+      '  }',
+      '});'
+    ].join('\n'));
+    fs.writeFileSync(entry, [
+      '@plugin (root) "./body-plugin.js";',
+      '.mixin() { before: body-plugin(); @plugin (mixin) "./body-plugin.js"; after: body-plugin(); }',
+      '@detached: { before: body-plugin(); @plugin (detached) "./body-plugin.js"; after: body-plugin(); };',
+      '.entry { .mixin(); @detached(); outside: body-plugin(); }'
+    ].join('\n'));
+
+    await expect(makeDirectCompiler().render(entry)).resolves.toBe([
+      '.entry {',
+      '  before: mixin;',
+      '  after: mixin;',
+      '  before: detached;',
+      '  after: detached;',
+      '  outside: root;',
+      '}',
+      ''
+    ].join('\n'));
   });
 });

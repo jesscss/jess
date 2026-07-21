@@ -1,5 +1,6 @@
 import { makeKeyword } from '@jesscss/core/value';
 import type { Fn, List, ValueObj } from '@jesscss/core/value';
+import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import { lookupMime } from '../util/mime.js';
 
 /**
@@ -22,7 +23,7 @@ export const dataUri: Fn = {
   name: 'data-uri',
   params: [{ kinds: 'any' }, { kinds: 'any', optional: true }],
   variadic: true,
-  body: (list, ctx): ValueObj => {
+  body: (list, ctx): MaybePromise<ValueObj> => {
     const items = list.items;
     if (items.length === 0) return verbatim(list);
     const hasMime = items.length >= 2;
@@ -48,11 +49,14 @@ export const dataUri: Fn = {
       useBase64 = /;base64$/i.test(mimetype);
     }
 
+    const finish = (bytes: Uint8Array | null): ValueObj => {
+      if (!bytes) return fallbackUrl(rawPath);
+      const buf = Buffer.from(bytes);
+      const encoded = useBase64 ? buf.toString('base64') : encodeURIComponent(buf.toString());
+      return makeKeyword(`url("data:${mimetype},${encoded}${fragment}")`);
+    };
     const bytes = ctx.io?.readFile(filePath);
-    if (!bytes) return fallbackUrl(rawPath);
-    const buf = Buffer.from(bytes);
-    const encoded = useBase64 ? buf.toString('base64') : encodeURIComponent(buf.toString());
-    return makeKeyword(`url("data:${mimetype},${encoded}${fragment}")`);
+    return bytes && isThenable(bytes) ? bytes.then(finish) : finish(bytes ?? null);
   },
 };
 

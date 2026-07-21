@@ -1,5 +1,10 @@
 # Tree2-Emitting Less Parser — Feasibility, POC, Perf, and Plan
 
+> **Historical POC — superseded.** This records a bridge/tree2 experiment, not
+> the public parser architecture. Do not revive its bridge, host, or separate
+> parser route. The approved direction is direct dialect `parse() ->
+> Stylesheet` construction with no CST-to-AST conversion.
+
 Status: POC landed on `experiment/tree2-emitting-grammar-poc-20260716` (off
 `experiment/tree2-cleanroom-20260715`). This is a design + proof-of-concept, not
 a production parser. The legacy `less-parser` is **untouched**; the bridge is

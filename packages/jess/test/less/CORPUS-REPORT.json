@@ -13,7 +13,7 @@
     {
       "file": "tests-unit/variables/variables.less",
       "kind": "render",
-      "outcome": "mismatch"
+      "outcome": "pass"
     },
     {
       "file": "tests-unit/urls/urls.less",
@@ -28,7 +28,7 @@
     {
       "file": "tests-unit/strings/strings.less",
       "kind": "render",
-      "outcome": "mismatch"
+      "outcome": "pass"
     },
     {
       "file": "tests-unit/starting-style/starting-style.less",
@@ -38,7 +38,7 @@
     {
       "file": "tests-unit/scope/scope.less",
       "kind": "render",
-      "outcome": "mismatch"
+      "outcome": "pass"
     },
     {
       "file": "tests-unit/rulesets/rulesets.less",
@@ -58,7 +58,7 @@
     {
       "file": "tests-unit/property-accessors/property-accessors.less",
       "kind": "render",
-      "outcome": "mismatch"
+      "outcome": "pass"
     },
     {
       "file": "tests-unit/plugin-preeval/plugin-preeval.less",
@@ -93,7 +93,7 @@
     {
       "file": "tests-unit/parser-property-interp/parser-property-interp.less",
       "kind": "render",
-      "outcome": "mismatch"
+      "outcome": "pass"
     },
     {
       "file": "tests-unit/parse-interpolation/parse-interpolation.less",
@@ -108,7 +108,7 @@
     {
       "file": "tests-unit/operations/operations-advanced.less",
       "kind": "render",
-      "outcome": "mismatch"
+      "outcome": "pass"
     },
     {
       "file": "tests-unit/no-output/no-output.less",
@@ -128,7 +128,7 @@
     {
       "file": "tests-unit/namespace-targeted/namespace-targeted.less",
       "kind": "render",
-      "outcome": "pass"
+      "outcome": "mismatch"
     },
     {
       "file": "tests-unit/mixins-pattern/mixins-pattern.less",
@@ -148,12 +148,12 @@
     {
       "file": "tests-unit/mixins-interpolated/mixins-interpolated.less",
       "kind": "render",
-      "outcome": "pass"
+      "outcome": "mismatch"
     },
     {
       "file": "tests-unit/mixins-important/mixins-important.less",
       "kind": "render",
-      "outcome": "mismatch"
+      "outcome": "pass"
     },
     {
       "file": "tests-unit/mixins-guards-default-func/mixins-guards-default-func.less",
@@ -163,7 +163,7 @@
     {
       "file": "tests-unit/mixins-guards/mixins-guards.less",
       "kind": "render",
-      "outcome": "mismatch"
+      "outcome": "pass"
     },
     {
       "file": "tests-unit/mixins-closure/mixins-closure.less",
@@ -193,7 +193,7 @@
     {
       "file": "tests-unit/media/media.less",
       "kind": "render",
-      "outcome": "pass"
+      "outcome": "mismatch"
     },
     {
       "file": "tests-unit/lazy-eval/lazy-eval.less",
@@ -203,7 +203,7 @@
     {
       "file": "tests-unit/layer/layer.less",
       "kind": "render",
-      "outcome": "pass"
+      "outcome": "mismatch"
     },
     {
       "file": "tests-unit/javascript-REMOVED/legacy/javascript.less",
@@ -228,12 +228,12 @@
     {
       "file": "tests-unit/import/import-reference-issues.less",
       "kind": "render",
-      "outcome": "pass"
+      "outcome": "mismatch"
     },
     {
       "file": "tests-unit/import/import-once.less",
       "kind": "render",
-      "outcome": "pass"
+      "outcome": "mismatch"
     },
     {
       "file": "tests-unit/import/import-module.less",
@@ -243,12 +243,12 @@
     {
       "file": "tests-unit/import/import-interpolation.less",
       "kind": "render",
-      "outcome": "pass"
+      "outcome": "mismatch"
     },
     {
       "file": "tests-unit/import/import-inline.less",
       "kind": "render",
-      "outcome": "pass"
+      "outcome": "mismatch"
     },
     {
       "file": "tests-unit/impor/impor.less",
@@ -258,7 +258,7 @@
     {
       "file": "tests-unit/ie-filters-REMOVED/legacy/ie-filters.less",
       "kind": "render",
-      "outcome": "pass"
+      "outcome": "mismatch"
     },
     {
       "file": "tests-unit/functions-each/functions-each.less",
@@ -268,7 +268,7 @@
     {
       "file": "tests-unit/functions/functions.less",
       "kind": "render",
-      "outcome": "pass"
+      "outcome": "mismatch"
     },
     {
       "file": "tests-unit/functions/legacy/functions.less",
@@ -288,7 +288,7 @@
     {
       "file": "tests-unit/extend-nest/extend-nest.less",
       "kind": "render",
-      "outcome": "mismatch"
+      "outcome": "pass"
     },
     {
       "file": "tests-unit/extend-media/extend-media.less",
@@ -308,7 +308,7 @@
     {
       "file": "tests-unit/extend/extend.less",
       "kind": "render",
-      "outcome": "mismatch"
+      "outcome": "pass"
     },
     {
       "file": "tests-unit/empty/empty.less",
@@ -323,7 +323,7 @@
     {
       "file": "tests-unit/css-guards/css-guards.less",
       "kind": "render",
-      "outcome": "mismatch"
+      "outcome": "pass"
     },
     {
       "file": "tests-unit/css-grid/css-grid.less",
@@ -333,7 +333,7 @@
     {
       "file": "tests-unit/css-escapes/css-escapes.less",
       "kind": "render",
-      "outcome": "pass"
+      "outcome": "mismatch"
     },
     {
       "file": "tests-unit/css-3/css-3.less",
@@ -348,12 +348,12 @@
     {
       "file": "tests-unit/comments/comments2.less",
       "kind": "render",
-      "outcome": "pass"
+      "outcome": "mismatch"
     },
     {
       "file": "tests-unit/comments/comments.less",
       "kind": "render",
-      "outcome": "pass"
+      "outcome": "mismatch"
     },
     {
       "file": "tests-unit/color-functions/rgba.less",
@@ -403,7 +403,7 @@
     {
       "file": "tests-unit/calc/calc.less",
       "kind": "render",
-      "outcome": "pass"
+      "outcome": "mismatch"
     },
     {
       "file": "tests-unit/at-rules-targeted/at-rules-targeted.less",
@@ -463,7 +463,7 @@
     {
       "file": "tests-config/strict-imports/strict-imports.less",
       "kind": "render",
-      "outcome": "pass"
+      "outcome": "mismatch"
     },
     {
       "file": "tests-config/static-urls/urls.less",
@@ -583,7 +583,7 @@
     {
       "file": "tests-config/namespacing/namespacing-1.less",
       "kind": "render",
-      "outcome": "mismatch"
+      "outcome": "pass"
     },
     {
       "file": "tests-config/modifyVars/extended.less",
@@ -613,7 +613,7 @@
     {
       "file": "tests-config/functions-harness/functions-harness.less",
       "kind": "render",
-      "outcome": "pass"
+      "outcome": "mismatch"
     },
     {
       "file": "tests-config/filemanagerPlugin/filemanager.less",
@@ -661,79 +661,79 @@
       "file": "tests-error/parse/single-character.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Unexpected token"
+      "detail": "Less parse did not produce a complete Stylesheet document at offset 0."
     },
     {
       "file": "tests-error/parse/property-asterisk-only-name.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Unexpected token"
+      "detail": "Less parse did not produce a complete Stylesheet document at offset 0."
     },
     {
       "file": "tests-error/parse/percentage-missing-space.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Unexpected token"
+      "detail": "Less parse did not produce a complete Stylesheet document at offset 0."
     },
     {
       "file": "tests-error/parse/parse-error-with-import.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Unexpected token"
+      "detail": "Less parse did not produce a complete Stylesheet document at offset 82."
     },
     {
       "file": "tests-error/parse/parse-error-missing-parens.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Unexpected token"
+      "detail": "Less parse did not produce a complete Stylesheet document at offset 0."
     },
     {
       "file": "tests-error/parse/parse-error-missing-bracket.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Unexpected token"
+      "detail": "Less parse did not produce a complete Stylesheet document at offset 0."
     },
     {
       "file": "tests-error/parse/parse-error-media-no-block-3.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Unexpected token"
+      "detail": "Less parse did not produce a complete Stylesheet document at offset 0."
     },
     {
       "file": "tests-error/parse/parse-error-media-no-block-2.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Unexpected token"
+      "detail": "Less parse did not produce a complete Stylesheet document at offset 0."
     },
     {
       "file": "tests-error/parse/parse-error-media-no-block-1.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Unexpected token"
+      "detail": "Less parse did not produce a complete Stylesheet document at offset 0."
     },
     {
       "file": "tests-error/parse/parse-error-curly-bracket.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Unexpected token"
+      "detail": "Less parse did not produce a complete Stylesheet document at offset 39."
     },
     {
       "file": "tests-error/parse/parens-error-3.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Unexpected token"
+      "detail": "Less parse did not produce a complete Stylesheet document at offset 0."
     },
     {
       "file": "tests-error/parse/parens-error-2.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Unexpected token"
+      "detail": "Less parse did not produce a complete Stylesheet document at offset 0."
     },
     {
       "file": "tests-error/parse/parens-error-1.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Unexpected token"
+      "detail": "Less parse did not produce a complete Stylesheet document at offset 0."
     },
     {
       "file": "tests-error/parse/mixins-guards-cond-expected.less",
@@ -743,91 +743,91 @@
     {
       "file": "tests-error/parse/mixed-mixin-definition-args-2.less",
       "kind": "error",
-      "outcome": "errored",
-      "detail": "Unexpected token"
+      "outcome": "accepted"
     },
     {
       "file": "tests-error/parse/mixed-mixin-definition-args-1.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Unexpected token"
+      "detail": "Less parse did not produce a complete Stylesheet document at offset 50."
     },
     {
       "file": "tests-error/parse/invalid-color-with-comment.less",
       "kind": "error",
-      "outcome": "accepted"
+      "outcome": "errored",
+      "detail": "Less parse did not produce a complete Stylesheet document at offset 0."
     },
     {
       "file": "tests-error/parse/import-subfolder2.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Unexpected token"
+      "detail": "Less parse did not produce a complete Stylesheet document at offset 39."
     },
     {
       "file": "tests-error/parse/import-no-semi.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Unexpected token"
+      "detail": "Less parse did not produce a complete Stylesheet document at offset 0."
     },
     {
       "file": "tests-error/parse/import-malformed.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Unexpected token"
+      "detail": "Less parse did not produce a complete Stylesheet document at offset 0."
     },
     {
       "file": "tests-error/parse/extend-not-at-end.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Unexpected token"
+      "detail": "Less parse did not produce a complete Stylesheet document at offset 0."
     },
     {
       "file": "tests-error/parse/detached-ruleset-6.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Unexpected token"
+      "detail": "Less parse did not produce a complete Stylesheet document at offset 0."
     },
     {
       "file": "tests-error/parse/custom-property-unmatched-block-3.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Unexpected token"
+      "detail": "Less parse did not produce a complete Stylesheet document at offset 0."
     },
     {
       "file": "tests-error/parse/custom-property-unmatched-block-2.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Unexpected token"
+      "detail": "Less parse did not produce a complete Stylesheet document at offset 0."
     },
     {
       "file": "tests-error/parse/custom-property-unmatched-block-1.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Unexpected token"
+      "detail": "Less parse did not produce a complete Stylesheet document at offset 0."
     },
     {
       "file": "tests-error/parse/bad-variable-declaration1.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Unexpected token"
+      "detail": "Less parse did not produce a complete Stylesheet document at offset 0."
     },
     {
       "file": "tests-error/parse/at-rules-unmatching-block.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Unexpected token"
+      "detail": "Less parse did not produce a complete Stylesheet document at offset 1."
     },
     {
       "file": "tests-error/parse/imports/import-subfolder2.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Unexpected token"
+      "detail": "Less parse did not produce a complete Stylesheet document at offset 39."
     },
     {
       "file": "tests-error/parse/imports/subfolder/parse-error-curly-bracket.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Unexpected token"
+      "detail": "Less parse did not produce a complete Stylesheet document at offset 39."
     },
     {
       "file": "tests-error/eval/unit-function.less",
@@ -867,8 +867,7 @@
     {
       "file": "tests-error/eval/root-func-undefined-2.less",
       "kind": "error",
-      "outcome": "errored",
-      "detail": "Feature not supported. Install @jesscss/plugin-js to enable Less @plugin script execution."
+      "outcome": "accepted"
     },
     {
       "file": "tests-error/eval/root-func-undefined-1.less",
@@ -883,25 +882,23 @@
     {
       "file": "tests-error/eval/recursive-property.less",
       "kind": "error",
-      "outcome": "crash",
-      "detail": "child died here (OOM/hang)"
+      "outcome": "accepted"
     },
     {
       "file": "tests-error/eval/property-undefined.less",
       "kind": "error",
-      "outcome": "errored",
-      "detail": "'undefined-prop' is not defined"
+      "outcome": "accepted"
     },
     {
       "file": "tests-error/eval/property-interp-not-defined.less",
       "kind": "error",
-      "outcome": "accepted"
+      "outcome": "errored",
+      "detail": "variable @color is undefined"
     },
     {
       "file": "tests-error/eval/property-in-root3.less",
       "kind": "error",
-      "outcome": "errored",
-      "detail": "Unexpected token"
+      "outcome": "accepted"
     },
     {
       "file": "tests-error/eval/property-in-root2.less",
@@ -916,20 +913,17 @@
     {
       "file": "tests-error/eval/plugin-3.less",
       "kind": "error",
-      "outcome": "errored",
-      "detail": "Feature not supported. Install @jesscss/plugin-js to enable Less @plugin script execution."
+      "outcome": "accepted"
     },
     {
       "file": "tests-error/eval/plugin-2.less",
       "kind": "error",
-      "outcome": "errored",
-      "detail": "Feature not supported. Install @jesscss/plugin-js to enable Less @plugin script execution."
+      "outcome": "accepted"
     },
     {
       "file": "tests-error/eval/plugin-1.less",
       "kind": "error",
-      "outcome": "errored",
-      "detail": "Feature not supported. Install @jesscss/plugin-js to enable Less @plugin script execution."
+      "outcome": "accepted"
     },
     {
       "file": "tests-error/eval/percentage-non-number-argument.less",
@@ -939,32 +933,28 @@
     {
       "file": "tests-error/eval/namespacing-4.less",
       "kind": "error",
-      "outcome": "errored",
-      "detail": "'not-found' is not defined"
+      "outcome": "accepted"
     },
     {
       "file": "tests-error/eval/namespacing-3.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "No matching mixins found for ''"
+      "detail": "Less parse did not produce a complete Stylesheet document at offset 26."
     },
     {
       "file": "tests-error/eval/namespacing-2.less",
       "kind": "error",
-      "outcome": "errored",
-      "detail": "'not-found' is not defined"
+      "outcome": "accepted"
     },
     {
       "file": "tests-error/eval/namespace-variable-not-found.less",
       "kind": "error",
-      "outcome": "errored",
-      "detail": "'nonexistent-var' is not defined"
+      "outcome": "accepted"
     },
     {
       "file": "tests-error/eval/namespace-property-not-found.less",
       "kind": "error",
-      "outcome": "errored",
-      "detail": "'nonexistent-prop' is not defined"
+      "outcome": "accepted"
     },
     {
       "file": "tests-error/eval/multiply-mixed-units.less",
@@ -979,25 +969,23 @@
     {
       "file": "tests-error/eval/multiple-guards-on-css-selectors.less",
       "kind": "error",
-      "outcome": "accepted"
+      "outcome": "errored",
+      "detail": "Less parse did not produce a complete Stylesheet document at offset 12."
     },
     {
       "file": "tests-error/eval/mixins-guards-default-func-3.less",
       "kind": "error",
-      "outcome": "errored",
-      "detail": "Ambiguous use of default() while matching mixins."
+      "outcome": "accepted"
     },
     {
       "file": "tests-error/eval/mixins-guards-default-func-2.less",
       "kind": "error",
-      "outcome": "errored",
-      "detail": "Ambiguous use of default() while matching mixins."
+      "outcome": "accepted"
     },
     {
       "file": "tests-error/eval/mixins-guards-default-func-1.less",
       "kind": "error",
-      "outcome": "errored",
-      "detail": "Ambiguous use of default() while matching mixins."
+      "outcome": "accepted"
     },
     {
       "file": "tests-error/eval/mixin-not-visible-in-scope-1.less",
@@ -1007,38 +995,34 @@
     {
       "file": "tests-error/eval/mixin-not-matched2.less",
       "kind": "error",
-      "outcome": "errored",
-      "detail": "No matching mixins found for '.mixin'"
+      "outcome": "accepted"
     },
     {
       "file": "tests-error/eval/mixin-not-matched.less",
       "kind": "error",
-      "outcome": "errored",
-      "detail": "No matching mixins found for '.mixin'"
+      "outcome": "accepted"
     },
     {
       "file": "tests-error/eval/mixin-not-defined.less",
       "kind": "error",
-      "outcome": "errored",
-      "detail": "No matching mixins found for '.mixin-not-defined'"
+      "outcome": "accepted"
     },
     {
       "file": "tests-error/eval/mixin-not-defined-2.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "param.compare is not a function"
+      "detail": "Less parse did not produce a complete Stylesheet document at offset 27."
     },
     {
       "file": "tests-error/eval/javascript-undefined-var.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Unexpected token"
+      "detail": "Less parse did not produce a complete Stylesheet document at offset 0."
     },
     {
       "file": "tests-error/eval/import-subfolder1.less",
       "kind": "error",
-      "outcome": "errored",
-      "detail": "No matching mixins found for '.mixin-not-defined'"
+      "outcome": "accepted"
     },
     {
       "file": "tests-error/eval/import-missing.less",
@@ -1049,98 +1033,83 @@
     {
       "file": "tests-error/eval/functions-9-expression.less",
       "kind": "error",
-      "outcome": "errored",
-      "detail": "Feature not supported. Install @jesscss/plugin-js to enable Less @plugin script execution."
+      "outcome": "accepted"
     },
     {
       "file": "tests-error/eval/functions-8-element.less",
       "kind": "error",
-      "outcome": "errored",
-      "detail": "Feature not supported. Install @jesscss/plugin-js to enable Less @plugin script execution."
+      "outcome": "accepted"
     },
     {
       "file": "tests-error/eval/functions-7-dimension.less",
       "kind": "error",
-      "outcome": "errored",
-      "detail": "Feature not supported. Install @jesscss/plugin-js to enable Less @plugin script execution."
+      "outcome": "accepted"
     },
     {
       "file": "tests-error/eval/functions-6-condition.less",
       "kind": "error",
-      "outcome": "errored",
-      "detail": "Feature not supported. Install @jesscss/plugin-js to enable Less @plugin script execution."
+      "outcome": "accepted"
     },
     {
       "file": "tests-error/eval/functions-5-color.less",
       "kind": "error",
-      "outcome": "errored",
-      "detail": "Feature not supported. Install @jesscss/plugin-js to enable Less @plugin script execution."
+      "outcome": "accepted"
     },
     {
       "file": "tests-error/eval/functions-5-color-2.less",
       "kind": "error",
-      "outcome": "errored",
-      "detail": "Value node is not valid as a statement"
+      "outcome": "accepted"
     },
     {
       "file": "tests-error/eval/functions-4-call.less",
       "kind": "error",
-      "outcome": "errored",
-      "detail": "Feature not supported. Install @jesscss/plugin-js to enable Less @plugin script execution."
+      "outcome": "accepted"
     },
     {
       "file": "tests-error/eval/functions-3-assignment.less",
       "kind": "error",
-      "outcome": "errored",
-      "detail": "Feature not supported. Install @jesscss/plugin-js to enable Less @plugin script execution."
+      "outcome": "accepted"
     },
     {
       "file": "tests-error/eval/functions-15-value.less",
       "kind": "error",
-      "outcome": "errored",
-      "detail": "Feature not supported. Install @jesscss/plugin-js to enable Less @plugin script execution."
+      "outcome": "accepted"
     },
     {
       "file": "tests-error/eval/functions-14-url.less",
       "kind": "error",
-      "outcome": "errored",
-      "detail": "Feature not supported. Install @jesscss/plugin-js to enable Less @plugin script execution."
+      "outcome": "accepted"
     },
     {
       "file": "tests-error/eval/functions-13-selector.less",
       "kind": "error",
-      "outcome": "errored",
-      "detail": "Feature not supported. Install @jesscss/plugin-js to enable Less @plugin script execution."
+      "outcome": "accepted"
     },
     {
       "file": "tests-error/eval/functions-12-quoted.less",
       "kind": "error",
-      "outcome": "errored",
-      "detail": "Feature not supported. Install @jesscss/plugin-js to enable Less @plugin script execution."
+      "outcome": "accepted"
     },
     {
       "file": "tests-error/eval/functions-11-operation.less",
       "kind": "error",
-      "outcome": "errored",
-      "detail": "Feature not supported. Install @jesscss/plugin-js to enable Less @plugin script execution."
+      "outcome": "accepted"
     },
     {
       "file": "tests-error/eval/functions-10-keyword.less",
       "kind": "error",
-      "outcome": "errored",
-      "detail": "Feature not supported. Install @jesscss/plugin-js to enable Less @plugin script execution."
+      "outcome": "accepted"
     },
     {
       "file": "tests-error/eval/functions-1.less",
       "kind": "error",
-      "outcome": "errored",
-      "detail": "Feature not supported. Install @jesscss/plugin-js to enable Less @plugin script execution."
+      "outcome": "accepted"
     },
     {
       "file": "tests-error/eval/extend-no-selector.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Unexpected token"
+      "detail": "Less parse did not produce a complete Stylesheet document at offset 0."
     },
     {
       "file": "tests-error/eval/divide-mixed-units.less",
@@ -1150,8 +1119,7 @@
     {
       "file": "tests-error/eval/detached-ruleset-5.less",
       "kind": "error",
-      "outcome": "errored",
-      "detail": "'a' is not defined"
+      "outcome": "accepted"
     },
     {
       "file": "tests-error/eval/detached-ruleset-3.less",
@@ -1161,7 +1129,8 @@
     {
       "file": "tests-error/eval/detached-ruleset-2.less",
       "kind": "error",
-      "outcome": "accepted"
+      "outcome": "errored",
+      "detail": "Less parse did not produce a complete Stylesheet document at offset 17."
     },
     {
       "file": "tests-error/eval/detached-ruleset-1.less",
@@ -1187,7 +1156,7 @@
       "file": "tests-error/eval/at-rules-undefined-var.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "'name' is not defined"
+      "detail": "variable @name is undefined"
     },
     {
       "file": "tests-error/eval/ampersand-merge-template-invalid.less",
@@ -1212,14 +1181,12 @@
     {
       "file": "tests-error/eval/imports/import-subfolder1.less",
       "kind": "error",
-      "outcome": "errored",
-      "detail": "No matching mixins found for '.mixin-not-defined'"
+      "outcome": "accepted"
     },
     {
       "file": "tests-error/eval/imports/subfolder/mixin-not-defined.less",
       "kind": "error",
-      "outcome": "errored",
-      "detail": "No matching mixins found for '.mixin-not-defined'"
+      "outcome": "accepted"
     }
   ]
 }

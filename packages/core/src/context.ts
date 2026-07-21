@@ -11,10 +11,12 @@ import type {
 } from './tree/index.js';
 import { ExtendRootRegistry } from './tree/util/extend-roots.js';
 import { type Operator } from './tree/util/calculate.js';
-import type { PluginInterface } from './plugin.js';
+import type { ISafeParseResult, ParsedDocument, PluginInterface } from './plugin.js';
+import type { Stylesheet } from './ast/nodes.js';
 import type { StylesConfig } from './types.js';
 import type { TriviaMap } from './types/index.js';
 import type { ExtendSelectorKind } from './types/config.js';
+import type { PluginHost, ValueEvaluator } from './ast/value-eval.js';
 import { EqualityMode, FunctionMode, MathMode, UnitMode } from './types/modes.js';
 import * as path from 'node:path';
 import { readFile } from 'node:fs/promises';
@@ -371,16 +373,26 @@ export class Context {
   options: ResolvedOptions;
 
   /**
+   * Canonical AST-v2 value evaluator for this render session. Its concrete
+   * registry is assembled by the application layer (`@jesscss/fns`), while
+   * Context owns the per-render execution state and lifetime.
+   */
+  valueEvaluator?: ValueEvaluator;
+
+  /** Dialect-owned function capability for canonical AST rendering. */
+  pluginHost?: PluginHost;
+
+  /**
    * The active file's tree context. Assigning it (at import entry/exit and
    * ruleset scope changes) recomputes `options` once and shares the resulting
    * object with the tree context, so the fast-path reads that follow are plain
    * field accesses.
    */
-  get treeContext(): TreeContext {
+  get treeContext(): TreeContext | undefined {
     return this._treeContext;
   }
 
-  set treeContext(tc: TreeContext) {
+  set treeContext(tc: TreeContext | undefined) {
     this._treeContext = tc;
     // Fold the compile-level options over the tree's own, once, and SHARE the
     // result: `context.options` and `tc.options` become the same object, so eval
@@ -563,6 +575,22 @@ export class Context {
   rulesContext?: Rules;
   /** Entire context root (ultimate root) */
   root!: Rules;
+  /** Canonical parsed document for the AST-v2 execution route. */
+  document?: Stylesheet;
+  /**
+   * Per-session source identity for canonical AST documents. AST nodes stay
+   * plain source facts; the render session carries the file/plugin context
+   * required by the retained Context resolver when an import enters a child
+   * document.
+   */
+  private readonly documentContexts = new WeakMap<Stylesheet, TreeContext>();
+  /**
+   * Deferred executable bodies retain the source document that introduced
+   * them into this session. This is session provenance, not AST metadata: the
+   * same canonical body can be placed in more than one render frame without a
+   * node mutation, parser walk, or secondary source tree.
+   */
+  private readonly documentBodyContexts = new WeakMap<object, TreeContext>();
   /** Set so that we can do ruleset selector lookup for extend */
   treeRoot!: Rules;
   allRoots: Rules[] = [];
@@ -866,9 +894,113 @@ export class Context {
     }
   }
 
-  /** Full resolved path -> tree */
-  sourceTrees = new Map<string, Rules>();
+  /** Full resolved path -> canonical parsed document (legacy Rules during migration or AST v2 Stylesheet). */
+  sourceTrees = new Map<string, ParsedDocument>();
   evaldTrees = new Map<string, Rules>();
+
+  /** Record the parser/source identity once, when an AST document enters this session. */
+  private rememberDocumentContext(
+    document: Stylesheet,
+    filePath: string,
+    source: string | undefined,
+    plugin: PluginInterface,
+  ): void {
+    this.documentContexts.set(document, new TreeContext({
+      file: {
+        name: path.basename(filePath),
+        path: path.dirname(filePath),
+        fullPath: filePath,
+        ...(source === undefined ? {} : { source }),
+      },
+      plugin,
+    }));
+  }
+
+  /**
+   * Run work with the source identity of a canonical AST document active.
+   * This is the AST-v2 equivalent of entering a legacy tree's TreeContext:
+   * the Context resolver, option cache, diagnostics and plugin priority all
+   * remain one session-owned path.
+   */
+  withDocument<T>(document: Stylesheet, run: () => T | Promise<T>): T | Promise<T> {
+    const next = this.documentContexts.get(document);
+    if (!next) return run();
+    const previous = this._treeContext;
+    this.treeContext = next;
+    try {
+      const result = run();
+      if (result && typeof (result as Promise<T>).then === 'function') {
+        return (result as Promise<T>).finally(() => { this.treeContext = previous; });
+      }
+      this.treeContext = previous;
+      return result;
+    } catch (error) {
+      this.treeContext = previous;
+      throw error;
+    }
+  }
+
+  /**
+   * Associate one deferred callable body with an already-known document.
+   * Import execution supplies the document identity explicitly because the
+   * lexical splice publishes its callable facts before entering that document's
+   * active Context scope.
+   */
+  rememberDocumentBody(document: Stylesheet, body: object): void {
+    const owner = this.documentContexts.get(document);
+    if (owner) this.documentBodyContexts.set(body, owner);
+  }
+
+  /**
+   * Execute a deferred callable body in the source scope that introduced it.
+   * The promise branch deliberately retains the scope until that body has
+   * completed its own async imports or IO, then restores the caller scope.
+   */
+  withDocumentBody<T>(body: object, run: () => T | Promise<T>): T | Promise<T> {
+    const next = this.documentBodyContexts.get(body);
+    if (!next) return run();
+    const previous = this._treeContext;
+    this.treeContext = next;
+    try {
+      const result = run();
+      if (result && typeof (result as Promise<T>).then === 'function') {
+        return (result as Promise<T>).finally(() => { this.treeContext = previous; });
+      }
+      this.treeContext = previous;
+      return result;
+    } catch (error) {
+      this.treeContext = previous;
+      throw error;
+    }
+  }
+
+  /** Opaque source identity carried by render-local frames/bindings. */
+  currentSourceOwner(): object | null {
+    return this._treeContext ?? null;
+  }
+
+  /** Run a deferred render activation in its recorded source identity. */
+  withSourceOwner<T>(owner: object | null | undefined, run: () => T | Promise<T>): T | Promise<T> {
+    if (!owner) return run();
+    const previous = this._treeContext;
+    this.treeContext = owner as TreeContext;
+    try {
+      const result = run();
+      if (result && typeof (result as Promise<T>).then === 'function') {
+        return (result as Promise<T>).finally(() => { this.treeContext = previous; });
+      }
+      this.treeContext = previous;
+      return result;
+    } catch (error) {
+      this.treeContext = previous;
+      throw error;
+    }
+  }
+
+  /** The source owner that authored a callable body, if one is known. */
+  sourceOwnerForBody(body: object): object | null {
+    return this.documentBodyContexts.get(body) ?? this._treeContext ?? null;
+  }
 
   /**
    * @param importPath - The bare import path e.g. `@import "foo";` in a .less file.
@@ -953,14 +1085,14 @@ export class Context {
       if (!plugin) {
         throw new Error(`Plugin "${type}" not found`);
       }
-      if (!plugin.parse) {
+      if (!plugin.safeParse) {
         throw new Error(`Plugin "${type}" does not support parsing`);
       }
       return plugin;
     }
 
     if (extension) {
-      const plugin = plugins.find(plugin => plugin.supportedExtensions?.includes(extension) && (plugin.parse || plugin.safeParse));
+      const plugin = plugins.find(plugin => plugin.supportedExtensions?.includes(extension) && plugin.safeParse);
       if (!plugin) {
         throw new Error(`No plugin found for extension "${extension}"`);
       }
@@ -968,6 +1100,21 @@ export class Context {
     }
 
     throw new Error('No plugin type or extension specified');
+  }
+
+  /**
+   * Normalize parser plugins through the retained Context dispatcher. A plugin
+   * returns one canonical Stylesheet result; callers never select a second
+   * parser/load route themselves.
+   */
+  private parseSource(
+    plugin: PluginInterface,
+    filePath: string,
+    source: string,
+    options?: Parameters<NonNullable<PluginInterface['safeParse']>>[2],
+  ): ISafeParseResult {
+    if (!plugin.safeParse) throw new Error(`Plugin "${plugin.name}" does not support parsing`);
+    return plugin.safeParse(filePath, source, options);
   }
 
   async getTree(importPath: string, importOptions: ImportOptions = {}) {
@@ -995,7 +1142,7 @@ export class Context {
     const ext = path.extname(resolvedPath);
     const plugin = this.findParserPlugin(type, ext);
     const source = await sourceGetter.getSource!(resolvedPath);
-    const parseResult = plugin.safeParse!(resolvedPath, source, {
+    const parseResult = this.parseSource(plugin, resolvedPath, source, {
       importOptions,
       compilerOptions: this.opts
     });
@@ -1011,16 +1158,14 @@ export class Context {
       throw makeJessErrorFromDiagnostic(firstError);
     }
 
-    if (parseResult.tree) {
-      // Set context.root so early visitors can check if this is the root.
-      // parseResult.tree should be a Rules node (the root of the parsed tree)
-      if (!this.root && isNode(parseResult.tree, N.Rules)) {
-        this.root = parseResult.tree;
-      }
+    const document = parseResult.document;
+    if (document) {
+      if (!this.document) this.document = document;
+      this.rememberDocumentContext(document, resolvedPath, source, plugin);
 
-      this.sourceTrees.set(resolvedPath, parseResult.tree);
+      this.sourceTrees.set(resolvedPath, document);
       return {
-        node: parseResult.tree,
+        node: document,
         triedPaths,
         resolvedPath
       };
@@ -1084,14 +1229,23 @@ export class Context {
     const ext = extension || path.extname(virtualPath);
 
     const plugin = this.findParserPlugin(type, ext);
-    const tree = await plugin.parse!(virtualPath, content);
-
-    if (!tree) {
+    const result = this.parseSource(plugin, virtualPath, content, {
+      compilerOptions: this.opts
+    });
+    this.errors.push(...result.errors);
+    this.warnings.push(...result.warnings);
+    if (result.errors.length > 0 && this.opts.breakOnError !== false) {
+      throw makeJessErrorFromDiagnostic(result.errors[0]!);
+    }
+    const document = result.document;
+    if (!document) {
       throw new Error('Failed to parse content');
     }
+    if (!this.document) this.document = document;
+    this.rememberDocumentContext(document, virtualPath, content, plugin);
 
     return {
-      node: tree,
+      node: document,
       resolvedPath: virtualPath
     };
   }
@@ -1160,6 +1314,33 @@ export class Context {
 
     return {
       module,
+      triedPaths,
+      resolvedPath
+    };
+  }
+
+  /**
+   * Load an executable Plugin module through the same Context-owned path and
+   * extension dispatch used by ordinary modules. The active dialect adapter
+   * interprets the returned module; Context does not know a dialect ABI.
+   */
+  async getPluginModule(importPath: string, options: string | null = null) {
+    const { resolvedPath, triedPaths, friendlyPath } = await this._getPath(importPath);
+    const ext = path.extname(resolvedPath);
+    let plugin = this.plugins.find(candidate =>
+      candidate.supportedExtensions?.includes(ext) && candidate.importPlugin);
+    if (!plugin) {
+      plugin = await this.opts.loadPluginForExtension?.(ext);
+      if (plugin && !this.plugins.includes(plugin)) this.plugins.push(plugin);
+      if (plugin && (!plugin.supportedExtensions?.includes(ext) || !plugin.importPlugin)) {
+        plugin = undefined;
+      }
+    }
+    if (!plugin?.importPlugin) {
+      throw new Error(`File "${friendlyPath}" is not supported as an executable plugin module.`);
+    }
+    return {
+      module: await plugin.importPlugin(resolvedPath, options),
       triedPaths,
       resolvedPath
     };

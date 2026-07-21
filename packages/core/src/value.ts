@@ -16,7 +16,8 @@ export type {
   Bool,
   Nil,
   List,
-  EvalModes
+  EvalModes,
+  PluginHost
 } from './ast/value-eval.js';
 
 // --- value constructors + accessors ---

@@ -1,5 +1,6 @@
 /**
- * The `ValueEvaluator` seam implementation — boundary-clean, fully synchronous,
+ * The `ValueEvaluator` seam implementation — boundary-clean, synchronous on the
+ * ordinary path and awaitable only when an injected fn capability needs it,
  * built entirely on the value domain (materialize + operate + kind-dispatch + free
  * serializer): no legacy `../tree` node, no reparse, no `render()` walk, no async
  * record/replay.
@@ -9,6 +10,7 @@
  *
  * HARD MODULE BOUNDARY: imports only the engine value modules.
  */
+import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import type { EvalModes, FnScope, List as ValueList, ValueEvaluator, ValueObj } from './value-eval.js';
 import type { FnIo } from './functions/types.js';
 import { sepGlue } from './value-eval.js';
@@ -33,7 +35,7 @@ function verbatimArgs(args: ValueList): string {
 const stringify = (v: ValueObj): string => (v.type === 'Quoted' ? v.value : v.bytes);
 
 /**
- * Build the synchronous typed `ValueEvaluator`. No pre-pass: values are computed
+ * Build the typed `ValueEvaluator`. No pre-pass: values are computed
  * on demand during the single serialize walk. The fn set is CALLER-INJECTED via
  * `registry` (populate it with `makeBuiltinRegistry()` for the built-in set), so a
  * later stage can register fns from `@jesscss/fns` without touching this module.
@@ -42,7 +44,23 @@ const stringify = (v: ValueObj): string => (v.type === 'Quoted' ? v.value : v.by
 export function buildEvaluator(registry: FnRegistry): ValueEvaluator {
   const materialize = (bytes: string): ValueObj => sniffLiteral(bytes);
 
-  const call = (name: string, args: ValueList, modes: EvalModes, scope?: FnScope | null, io?: FnIo): ValueObj => {
+  const call = (
+    name: string,
+    args: ValueList,
+    modes: EvalModes,
+    scope?: FnScope | null,
+    io?: FnIo,
+    onUnresolved?: (error: unknown) => void,
+  ): MaybePromise<ValueObj> => {
+    const fallback = () => makeKeyword(`${name}(${verbatimArgs(args)})`);
+    const recover = (result: MaybePromise<ValueObj>): MaybePromise<ValueObj> => {
+      if (!isThenable(result)) return result;
+      return result.catch(err => {
+        if (err instanceof RangeError || modes.functionMode === 'error') throw err;
+        onUnresolved?.(err);
+        return fallback();
+      });
+    };
     // [plugin/P1] Scoped `@plugin`/`@use` fns shadow built-ins and are consulted
     // FIRST — but ONLY when `scope` is non-null, which the caller passes solely
     // when the document registered a scoped fn somewhere (`e.anyScopedFns`). On the
@@ -52,16 +70,17 @@ export function buildEvaluator(registry: FnRegistry): ValueEvaluator {
       const scoped = scope.lookup(name);
       if (scoped) {
         try {
-          return dispatchFn(scoped, args, { modes, stringify, io });
+          return recover(dispatchFn(scoped, args, { modes, stringify, io }));
         } catch (err) {
-          if (err instanceof RangeError) throw err;
-          return makeKeyword(`${name}(${verbatimArgs(args)})`);
+          if (err instanceof RangeError || modes.functionMode === 'error') throw err;
+          onUnresolved?.(err);
+          return fallback();
         }
       }
     }
     if (registry.has(name)) {
       try {
-        return registry.dispatch(name, args, { modes, stringify, io });
+        return recover(registry.dispatch(name, args, { modes, stringify, io }));
       } catch (err) {
         // FunctionMode `preserve` (Less v5 default): a bare/global fn reference that
         // resolves to a built-in but can't produce a value for these args — a modern
@@ -71,16 +90,17 @@ export function buildEvaluator(registry: FnRegistry): ValueEvaluator {
         // less.js, which keeps such calls verbatim. (Only fn-dispatch errors are
         // caught here; variable-resolution / mixin-recursion errors are thrown
         // outside `dispatch` and still propagate.)
-        if (err instanceof RangeError) throw err;
-        return makeKeyword(`${name}(${verbatimArgs(args)})`);
+        if (err instanceof RangeError || modes.functionMode === 'error') throw err;
+        onUnresolved?.(err);
+        return fallback();
       }
     }
     // Unknown function: emit verbatim.
-    return makeKeyword(`${name}(${verbatimArgs(args)})`);
+    return fallback();
   };
 
-  const compare = (op: string, left: ValueObj, right: ValueObj, _modes: EvalModes): boolean =>
-    compareValues(op, left, right);
+  const compare = (op: string, left: ValueObj, right: ValueObj, modes: EvalModes): boolean =>
+    compareValues(op, left, right, modes.equalityMode ?? 'less');
 
   const typeCheck = (name: string, args: ValueList, _modes: EvalModes): boolean =>
     typeCheckValues(name, args.items);

@@ -31,6 +31,11 @@ describe('cross-unit arithmetic — vs less@4.6.7 (parens-division)', () => {
     expect(bytesOf('*', dim(2, 'px'), dim(3, 'px'))).toBe('6px');
   });
 
+  it('preserves percentage products as a calc value in preserve mode', () => {
+    expect(bytesOf('*', dim(100, '%'), dim(100, '%'))).toBe('calc(100% * 100%)');
+    expect(bytesOf('*', dim(100, '%'), dim(100, '%'), LOOSE)).toBe('10000%');
+  });
+
   it('same-unit division retains the unit via backupUnit', () => {
     expect(bytesOf('/', dim(8, 'px'), dim(2, 'px'))).toBe('4px');
     expect(bytesOf('/', dim(4, 'em'), dim(2, 'em'))).toBe('2em');

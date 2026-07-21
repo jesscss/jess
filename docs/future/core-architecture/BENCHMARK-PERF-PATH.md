@@ -1,5 +1,11 @@
 # Shortest path to a realistic byte-identical `benchmark.less` → CSS perf number through AST‑v2 (`ast/`)
 
+> **STRUCK AS AN EXECUTION PLAN.** This document describes a bridge/driver-era
+> architecture that is not valid. Do not use its `ast/` backdoor, legacy tree,
+> parse-host, or benchmark commands. The only valid benchmark is the public
+> pipeline: dialect `parse() -> Stylesheet` → plugin → retained Context dispatcher →
+> Jess AST evaluation/render, with byte identity before timing. See `HANDOFF.md`.
+
 > READ-ONLY survey, base `origin/dev` (@ `53e9db8dd`, advancing under an in-flight
 > fns Stage F). All file:line citations are on `origin/dev`. No source edited.
 > **Bottom line up front:** the shortest path is **NOT "just add a harness."**
@@ -13,7 +19,7 @@
 
 ## 1. What renders `benchmark.less` → CSS today?
 
-**The legacy `tree/` engine — `ast/` is not in any production path.**
+**Historical legacy route only — not a valid AST-v2 benchmark path.**
 
 Call chain (production `.less` render):
 - `Compiler.render(filePath)` → `prepareInputTree` (parse to a legacy `Rules` tree

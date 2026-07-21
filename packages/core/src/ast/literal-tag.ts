@@ -95,7 +95,12 @@ export function colorFromSrc(src: string): ValueObj {
  */
 export function dimensionFromFields(number: number, unit: string, src: string): ValueObj {
   const r = round(number, 8);
-  if (Number.isFinite(number) && r !== number) {
+  // Less serializes a leading-decimal dimension canonically (`.3s` → `0.3s`,
+  // `-.3s` → `-0.3s`) even when it has not participated in arithmetic. This is
+  // still a typed numeric decision from the parsed fields, not a rendered-CSS
+  // rewrite; retain other source spelling policy below.
+  const numericStart = src.charCodeAt(0) === 0x2d /* - */ ? 1 : 0;
+  if (Number.isFinite(number) && (r !== number || src.charCodeAt(numericStart) === 0x2e /* . */)) {
     return { type: 'Dimension', number: r, unit, bytes: `${r}${unit}` };
   }
   return { type: 'Dimension', number, unit, bytes: src };
@@ -144,7 +149,7 @@ export function materializeAny(src: string): ValueObj {
 
 /**
  * Materialize a SYNTHETIC / COMPUTED string that carries no node type (a joined
- * `Sequence`/`Interp` result forced in a typed position): trim, then sniff. This is
+ * `Sequence`/`Interpolation` result forced in a typed position): trim, then sniff. This is
  * the `ValueEvaluator.materialize` seam body.
  */
 export function sniffLiteral(str: string): ValueObj {

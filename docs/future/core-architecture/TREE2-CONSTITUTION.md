@@ -1,5 +1,10 @@
 # tree2 Constitution — the hard bar for the demolition + rebuild
 
+> **Historical architectural evidence.** Its diagnosis of byte re-derivation is
+> useful, but tree2, its bridge, and build-host terminology are not current
+> architecture. The current public target is direct Parseman reduction to AST
+> v2 `Stylesheet` in each dialect parser, without a host or bridge.
+
 Owner mandate (2026-07-16): the engine is "50% horseshit despite speed gains." Get it
 in control: massive deletion of shit code, refactor to quality, kill garbage names
 (`runFunctionalParseT2`), kill arbitrary "bridges". This document is the binding

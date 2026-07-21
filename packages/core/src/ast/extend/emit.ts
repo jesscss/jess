@@ -46,9 +46,9 @@ import type { Branch, Compound, Level, Simple } from './ir.js';
 import { composePath } from './compose.js';
 import { branchWholeMatches } from './match.js';
 import { collectPlan, documentHasExtend, reaches } from './plan.js';
-import type { PlanInstruction, PlanSubject } from './plan.js';
+import type { PlanInstruction, PlanOverlay, PlanSubject } from './plan.js';
 import { buildContribs, runFixpoint, solveComposed } from './solve.js';
-import type { Root, Rule, Statement } from '../nodes.js';
+import type { Stylesheet, Rule, Statement } from '../nodes.js';
 
 export interface NestedRulePlan {
   /** Emit this rule (and its descendants) via the flat path at top level. */
@@ -75,6 +75,18 @@ export interface NestedRulePlan {
   collapseTransparent?: boolean;
 }
 
+/**
+ * Extend projections for one concrete render placement. A `$for` body is one
+ * canonical AST body but may run several times under different bindings; its
+ * projections therefore belong to the iteration token, not to the shared Rule.
+ */
+export interface ExtendPlacementResults {
+  flatByRule: Map<Rule, string[]>;
+  hiddenByRule: Map<Rule, boolean[]>;
+  nestedPlan: Map<Rule, NestedRulePlan>;
+  hoistHeader: Map<Rule, string[]>;
+}
+
 export interface ExtendResults {
   /**
    * FLAT mode: per-rule EXTENDED, fully-composed header branch strings. The
@@ -97,6 +109,11 @@ export interface ExtendResults {
    * top level — the flat composition with sibling `:is()`-compaction applied.
    */
   hoistHeader: Map<Rule, string[]>;
+  /**
+   * Render-local projections for dynamically placed canonical rules. The weak
+   * token is issued by the serializer's preflight and is never attached to AST.
+   */
+  byPlacement: WeakMap<object, ExtendPlacementResults> | null;
 }
 
 /* ------------------------------------------------------ sibling compaction */
@@ -276,17 +293,36 @@ function relativizeExtender(inst: PlanInstruction, subject: PlanSubject): PlanIn
  * Compute extend results for a parsed AST root. Returns `null` when the
  * document has NO `:extend()` at all (the serializer's zero-cost gate).
  */
-export function computeExtends(root: Root): ExtendResults | null {
+export function computeExtends(
+  root: Stylesheet,
+  hiddenRules?: ReadonlySet<Rule>,
+  referenceBoundaries?: ReadonlyMap<Rule, object>,
+  overlay?: PlanOverlay,
+): ExtendResults | null {
   // Zero-cost gate: an allocation-free pre-scan short-circuits the common case (no
   // `:extend()` anywhere) before any subject/instruction plan is built.
-  if (!documentHasExtend(root)) return null;
-  const plan = collectPlan(root);
+  if (!documentHasExtend(root) && (!overlay || overlay.instructions.length === 0)) return null;
+  const plan = collectPlan(root, hiddenRules, referenceBoundaries, overlay);
   if (plan.instructions.length === 0) return null;
 
   const flatByRule = new Map<Rule, string[]>();
   const hiddenByRule = new Map<Rule, boolean[]>();
   const nestedPlan = new Map<Rule, NestedRulePlan>();
   const hoistHeader = new Map<Rule, string[]>();
+  const staticProjection: ExtendPlacementResults = { flatByRule, hiddenByRule, nestedPlan, hoistHeader };
+  let byPlacement: WeakMap<object, ExtendPlacementResults> | null = null;
+  const projectionFor = (subject: PlanSubject): ExtendPlacementResults => {
+    if (!subject.placement) return staticProjection;
+    const all = byPlacement ??= new WeakMap<object, ExtendPlacementResults>();
+    let projection = all.get(subject.placement);
+    if (!projection) {
+      projection = {
+        flatByRule: new Map(), hiddenByRule: new Map(), nestedPlan: new Map(), hoistHeader: new Map(),
+      };
+      all.set(subject.placement, projection);
+    }
+    return projection;
+  };
 
   // LAZY + MEMOIZED composePath. `composePath(s.path)` (full ancestor fold + Branch-
   // IR allocation) is THE expensive primitive; it is computed at most once per
@@ -308,7 +344,10 @@ export function computeExtends(root: Root): ExtendResults | null {
   };
 
   const reachingOf = (s: PlanSubject): PlanInstruction[] =>
-    plan.instructions.filter((i) => reaches(i.scope, s.scope));
+    plan.instructions.filter((i) =>
+      (i.referenceBoundary === null || i.referenceBoundary === s.referenceBoundary)
+        && reaches(i.scope, s.scope)
+    );
 
   const childrenOf = new Map<PlanSubject, PlanSubject[]>();
   for (const s of plan.subjects) {
@@ -335,7 +374,7 @@ export function computeExtends(root: Root): ExtendResults | null {
     let onlyRule: Statement | null = null;
     let bail = false;
     for (const st of p.rule.body) {
-      if (st.type === 'MixinDef' || st.type === 'VarDeclaration') continue;
+      if (st.type === 'MixinDef' || st.type === 'VariableDeclaration') continue;
       if (st.type === 'Rule' && onlyRule === null) {
         onlyRule = st;
         continue;
@@ -387,10 +426,10 @@ export function computeExtends(root: Root): ExtendResults | null {
     // nested rules render through `nestedPlan`/`hoistHeader`.
     if (changed) {
       const compacted = siblingCompact(flat, false);
-      flatByRule.set(s.rule, compacted.map(branchText));
+      projectionFor(s).flatByRule.set(s.rule, compacted.map(branchText));
       // [import:reference] carry the per-branch visibility mask only when some branch
       // is hidden — a document with no reference imports never allocates it.
-      if (compacted.some((b) => b.hidden)) hiddenByRule.set(s.rule, compacted.map((b) => b.hidden === true));
+      if (compacted.some((b) => b.hidden)) projectionFor(s).hiddenByRule.set(s.rule, compacted.map((b) => b.hidden === true));
     }
   }
 
@@ -483,7 +522,7 @@ export function computeExtends(root: Root): ExtendResults | null {
       // native `ownStrings`; we keep the IR header to match the affected path
       // exactly.)
       if (s.parent !== null) {
-        nestedPlan.set(s.rule, {
+        projectionFor(s).nestedPlan.set(s.rule, {
           flatten: false,
           header: s.ownLocal.map(branchText),
           splits: [],
@@ -498,14 +537,14 @@ export function computeExtends(root: Root): ExtendResults | null {
       // prefix, so a child comma-list under one parent DOES compact across segments
       // (extend-exact `:is(<parent>) :is(.replace, .c)`).
       const hoisted = siblingCompact(flatBySubject.get(s)!, true).map(branchText);
-      hoistHeader.set(s.rule, hoisted);
+      projectionFor(s).hoistHeader.set(s.rule, hoisted);
       if (mode === 'renest') {
         // RE-NEST: emit the subtree at the hoist position with the composed cross-`&`
         // header, children stay literal-nested. `flatten` still defers it to the
         // enclosing block's hoist queue; `hoistNested` picks the nested emission.
-        nestedPlan.set(s.rule, { flatten: true, hoistNested: true, header: hoisted, splits: [] });
+        projectionFor(s).nestedPlan.set(s.rule, { flatten: true, hoistNested: true, header: hoisted, splits: [] });
       } else {
-        nestedPlan.set(s.rule, { flatten: true, header: [], splits: [] });
+        projectionFor(s).nestedPlan.set(s.rule, { flatten: true, header: [], splits: [] });
       }
       continue;
     }
@@ -550,7 +589,7 @@ export function computeExtends(root: Root): ExtendResults | null {
         .map((inst) => relativizeExtender(inst, s));
       header = runFixpoint(s.ownLocal.map(cloneBranch), applied, buildContribs(applied)).list;
     }
-    nestedPlan.set(s.rule, {
+    projectionFor(s).nestedPlan.set(s.rule, {
       flatten: false,
       header: header.map(branchText),
       splits: dedupBranchTexts(splits).map((t) => [t]),
@@ -558,5 +597,5 @@ export function computeExtends(root: Root): ExtendResults | null {
     });
   }
 
-  return { flatByRule, hiddenByRule, nestedPlan, hoistHeader };
+  return { flatByRule, hiddenByRule, nestedPlan, hoistHeader, byPlacement };
 }

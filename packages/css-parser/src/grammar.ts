@@ -90,7 +90,7 @@ const anyValueTok = regex(/[+\-*/=<>|~^]+|[^\s;{}\[\]()'",!]+/);
 // ---------------------------------------------------------------------------
 
 export const cssGrammar = rules({ trivia: rw }, (g: any) => {
-  // ── Root ──────────────────────────────────────────────────────────────────
+  // ── Stylesheet ────────────────────────────────────────────────────────────
   // Two structural FRAMES model the CSS "two starting points" (CSS Syntax):
   //   • Frame 1 — `stylesheetBody`: a run of qualified rules + at-rules, NO bare
   //     declarations. Used by the root Stylesheet, `@layer`, and the
@@ -423,11 +423,9 @@ export const cssGrammar = rules({ trivia: rw }, (g: any) => {
   const atPreludeTokens = many(choice(node('AtPreludeToken', literal(',')), atPreludeToken));
 
   /**
-   * Lossless at-rule-prelude segments for the direct AST reduction.  This is a
-   * deliberately separate seam from `atPreludeTokens`: the latter still feeds
-   * the legacy builder, whose public tree shape must not change during this
-   * grammar-only slice.  A later direct reduction can consume these segments
-   * without scanning or splitting source text again.
+   * Lossless at-rule-prelude segments for canonical AST reduction. `atPreludeTokens`
+   * remains the CST production; the public AST parser must use these segments
+   * directly rather than scan or split source text again.
    *
    * The outer `noTrivia` is essential.  Header whitespace and comments are
    * syntax here, not ambient filler, so every byte before `{`/`;` has exactly

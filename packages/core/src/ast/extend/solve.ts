@@ -89,7 +89,13 @@ export function solveComposed(seed: Branch[], subject: PlanSubject, plan: Plan):
   if (!seed.some(b => branchSharesAtom(b, plan.targetAtoms))) {
     return { list: seed, changed: false };
   }
-  const reachable = plan.instructions.filter((i) => reaches(i.scope, subject.scope));
+  const reachable = plan.instructions.filter((i) =>
+    // A visible instruction may pull a reference subject into output. A hidden
+    // instruction is confined to the reference document that defined it, so it
+    // never aliases authored siblings outside that import boundary.
+    (i.referenceBoundary === null || i.referenceBoundary === subject.referenceBoundary)
+      && reaches(i.scope, subject.scope)
+  );
   if (reachable.length === 0) return { list: seed, changed: false };
   return runFixpoint(seed.map(cloneBranch), reachable, buildContribs(reachable));
 }

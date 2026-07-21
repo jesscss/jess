@@ -26,7 +26,10 @@
   },
   "dependencies": {
     "@jesscss/core": "workspace:*",
+    "@jesscss/plugin-css": "workspace:*",
+    "@jesscss/fns": "workspace:*",
     "@jesscss/patch-css": "workspace:*",
+    "@jesscss/plugin-jess": "workspace:*",
     "@jesscss/plugin-less": "workspace:*",
     "@jesscss/plugin-node-modules": "workspace:*",
     "@jesscss/plugin-scss": "workspace:*",

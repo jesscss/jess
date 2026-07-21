@@ -19,8 +19,9 @@ Date: 2026-07-12. Author: research agent.
   **Verdict: ship Node/CLI-only first; browser bundle is a follow-up.** It requires removing the
   `browser` field (or pointing it at a stub that throws) so we don't publish a broken `browser`
   entry.
-- **Versioning: target `less@5.0.0-alpha.3`** (both root and `packages/less` are already at
-  `5.0.0-alpha.2` on `alpha`; the "4.5.0 / 5.0.0-alpha.1" figures in the task brief are stale).
+- **Versioning: the first external Less v5 prerelease is exactly `less@5.0.0-alpha.1`.** Root,
+  `packages/less`, and the published test-data package must stay in lockstep. Earlier references
+  to `.2`/`.3` were incorrect local WIP metadata, not a published Less v5 release history.
   Pin the three `@jesscss` deps to the **published `2.0.0-alpha.7`** (they are currently local
   `link:` paths — that is the single biggest blocker to an actual publish).
 
@@ -54,7 +55,7 @@ cbbe1321 Prepare Less alpha publish gate and sync test-data
 `package.json` (on `alpha`) already reflects (a):
 
 ```jsonc
-"version": "5.0.0-alpha.2",
+"version": "5.0.0-alpha.1",
 "type": "module",
 "main": "./dist/less-node.cjs",
 "exports": {
@@ -225,17 +226,18 @@ first alpha.
 
 ## 7. Versioning
 
-Observed (not the brief's stale figures):
-- less.js `alpha`: **root `@less/root` and `packages/less` are both `5.0.0-alpha.2`.** (History
-  shows a `Restore 4.5.0 version number` blip then a bump to `5.0.0-alpha.2`.)
+Release decision:
+- The first external Less v5 publication is **`less@5.0.0-alpha.1`**. Root `@less/root`,
+  `packages/less`, and `@less/test-data` are pinned to that number. The previous `.2` workspace
+  values were not a published Less v5 release and must not be treated as a sequence to continue.
 - Published Jess: `jess`, `@jesscss/core`, `@jesscss/plugin-less-compat` all at **`2.0.0-alpha.7`**
   (workspace source is `2.0.0-alpha.5` — the repo is behind the published tag).
 - npm `less` dist-tags: `latest 4.6.7`, **`alpha 3.13.0-alpha.3`** (stale), `beta 4.6.3-beta.0`,
   `canary 3.13.1-next.1`.
 
 Recommendation:
-1. **Publish `less@5.0.0-alpha.3`** (bump from the current `5.0.0-alpha.2` since that has been
-   touched; keep root and `packages/less` in lockstep). Continue `-alpha.N` from there.
+1. **Publish `less@5.0.0-alpha.1`** as the first Less v5 prerelease. Keep root,
+   `packages/less`, and `@less/test-data` in lockstep.
 2. Publish under the **`alpha` dist-tag** — this *advances* the stale `alpha` tag (currently
    `3.13.0-alpha.3`) to the v5 line. Do **not** touch `latest` (stays 4.6.7). Confirm with the
    owner that moving `alpha` forward past a 3.x is intended (it is, per the branded-`less@5-alpha`
@@ -243,8 +245,8 @@ Recommendation:
 3. **Pin the `@jesscss/*` + `jess` deps to `2.0.0-alpha.7`** (replace the `link:` paths). Use exact
    or `~2.0.0-alpha.7` so an alpha bump on the Jess side doesn't silently change `less`'s behavior.
    This is the single required change to make the package publishable.
-4. Bump the Jess workspace source `2.0.0-alpha.5 → alpha.7` (or re-publish `.8`) so the pinned
-   version and the source of truth agree before the `less@5` publish.
+4. Publish the next Jess alpha separately, then pin Less to that published Jess version before the
+   `less@5.0.0-alpha.1` publication. Jess and Less prerelease sequences are independent.
 
 ---
 
@@ -260,7 +262,7 @@ Recommendation:
 5. Decide CLI scope (which 4.x flags alpha honors) and align `printUsage`.
 6. Point `prepublishOnly`/gate at a Node-only test set; wire the less.js test-data suite against the
    Jess-backed `render`.
-7. Bump to `5.0.0-alpha.3`, publish under `alpha` tag.
+7. Publish `5.0.0-alpha.1` under the `alpha` tag.
 
 ---
 
@@ -277,10 +279,10 @@ Recommendation:
 - **`parse()` + source maps** are genuinely absent, not just unsurfaced. Any downstream tool relying
   on `less.parse` or `sourceMap` output breaks. Needs an explicit "unsupported in alpha" stance or
   new Jess work.
-- **Version skew.** Workspace Jess (`alpha.5`) trails published (`alpha.7`); the `less` package must
-  pin to whatever is actually published, and the two must be reconciled before publish.
+- **Version skew.** Less must pin its Jess dependencies to the Jess alpha that is actually published
+  immediately before the Less alpha. That dependency version does not choose the Less version.
 - **Error-shape fidelity.** `toLessError` approximates the 4.x error object; consumers doing
   `instanceof less.LessError` or reading `.line/.column/.extract` precisely may see differences.
-- **`alpha` dist-tag semantics.** Moving npm's `alpha` tag from `3.13.0-alpha.3` to `5.0.0-alpha.3`
+- **`alpha` dist-tag semantics.** Moving npm's `alpha` tag from `3.13.0-alpha.3` to `5.0.0-alpha.1`
   is a forward jump across a major line — intended per the branding goal, but worth an explicit
   owner ack so no one is surprised that `npm i less@alpha` changes lineage.

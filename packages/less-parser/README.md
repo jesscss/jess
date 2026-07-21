@@ -20,8 +20,10 @@ general-purpose JavaScript parser** in its
 Jess uses when it compiles `.less` — the "Now" tier of the language roadmap, and
 the one dialect shipping in the alpha.
 
-Use it as a standalone CST parser or consume the compiled grammar from a parser-owned
-reduction. The package has no core-owned parser driver or AST construction host.
+The default `parse()` operation constructs canonical AST v2 `Stylesheet` directly
+through parser-local Parseman reductions. Use the explicit `./cst` entry when a
+language-service or document consumer needs a CST. The package has no
+core-owned parser driver or AST construction host.
 
 ## Install
 
@@ -29,8 +31,18 @@ reduction. The package has no core-owned parser driver or AST construction host.
 npm install @jesscss/less-parser
 ```
 
-`@jesscss/core` is an optional peer for consumers that use its node definitions; this
-package itself exposes only CST and grammar surfaces.
+`@jesscss/core` is an optional peer for consumers using the default AST v2
+`parse()` result. The explicit CST and grammar subpaths remain core-free.
+
+## Canonical AST parsing
+
+```js
+import { parse } from '@jesscss/less-parser'
+
+const stylesheet = parse('@c: red;\n.foo { color: @c; }')
+
+stylesheet.type // 'Stylesheet'
+```
 
 ## Standalone usage (core-free)
 
@@ -60,7 +72,8 @@ Pass a different `startRule` (any capitalized grammar rule, e.g. `'SelectorList'
 | `@jesscss/less-parser/cst` | `parseLessCst` | Core-free parse of a Less string to a CST. |
 | `@jesscss/less-parser/cst` | `LessCstNode`, `LessCstLeaf`, `LessCstError`, `LessCstChild`, `LessCstParseResult`, `LessCstType` (types) | CST type definitions (aliases of the shared `@jesscss/css-parser/cst` types). |
 | `@jesscss/less-parser/grammar` | `lessGrammar` | The compiled Less grammar (a rule map). Extend it with `compose()` or drive it directly with parseman's `run`. |
-| `@jesscss/less-parser` (`.`) | `lessGrammar`, `parseLessCst`, `parseLessDoc` | Convenience barrel for the grammar and core-free CST surface. |
+| `@jesscss/less-parser` (`.`) | `parse` | Parse Less directly to canonical AST v2 `Stylesheet`. |
+| `@jesscss/less-parser` (`.`) | `lessGrammar`, `parseLessCst`, `parseLessDoc` | Convenience exports for the grammar and explicit core-free CST surface. |
 
 ## Default CST shape
 

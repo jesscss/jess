@@ -1,5 +1,6 @@
 import { makeDimension, makeList } from '@jesscss/core/value';
 import type { Fn, ValueObj } from '@jesscss/core/value';
+import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import { readImageDimensions } from './image-helper.js';
 
 /**
@@ -11,8 +12,10 @@ export const imageSize: Fn = {
   name: 'image-size',
   params: [{ kinds: 'any' }],
   variadic: true,
-  body: (list, ctx): ValueObj => {
-    const { width, height } = readImageDimensions(list, ctx);
-    return makeList([makeDimension(width, 'px'), makeDimension(height, 'px')], ' ');
+  body: (list, ctx): MaybePromise<ValueObj> => {
+    const dimensions = readImageDimensions(list, ctx);
+    const finish = ({ width, height }: { width: number; height: number }): ValueObj =>
+      makeList([makeDimension(width, 'px'), makeDimension(height, 'px')], ' ');
+    return isThenable(dimensions) ? dimensions.then(finish) : finish(dimensions);
   },
 };

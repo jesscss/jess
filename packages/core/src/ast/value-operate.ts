@@ -207,7 +207,14 @@ function isParenGroup(s: string): boolean {
  */
 function spliceInner(inner: string): string {
   if (isParenGroup(inner)) return inner;
-  return / [-+*/%] /.test(inner) ? `(${inner})` : inner;
+  const hasAdditive = / [-+] /.test(inner);
+  // Keep an additive nested calc as one authored computation when it is spliced
+  // into another operation. CSS can flatten the wrapper, but Less retains this
+  // grouping (`calc(2.25rem + 2px) - 2px` → `(2.25rem + 2px) - 2px`).
+  if (hasAdditive) {
+    return `(${inner})`;
+  }
+  return inner;
 }
 
 /**
@@ -250,6 +257,14 @@ export function operate(op: string, left: ValueObj, right: ValueObj, modes: Eval
   // magnitudes — it is preserved as a flat `calc(l op r)` sub-expression.
   if (modes.inCalc && left.type === 'Dimension' && right.type === 'Dimension'
     && !calcSafe(op, left, right)) {
+    return makeKeyword(`calc(${left.bytes} ${op} ${right.bytes})`);
+  }
+  // A percentage product has no standalone CSS dimensional value. Preserve it
+  // as calc in the dialect's preserve mode even before an explicit calc wrapper;
+  // otherwise a lazy variable binding such as `@x: 100% * 100%` collapses to the
+  // invented scalar `10000%` and later composition cannot recover its semantics.
+  if (modes.unitMode === 'preserve' && op === '*' && left.type === 'Dimension' && right.type === 'Dimension'
+    && left.unit === '%' && right.unit === '%') {
     return makeKeyword(`calc(${left.bytes} ${op} ${right.bytes})`);
   }
   try {

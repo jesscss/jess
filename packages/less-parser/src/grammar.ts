@@ -101,10 +101,22 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   const interpAccessor = sequence(literal('['), interpAccessorKey, literal(']'));
   const lessInterp = node('LessInterp',
     noTrivia(sequence(literal('@{'), interpHead, many(interpAccessor), literal('}'))));
-  // Interpolated custom-property name (`--@{key}`, `--foo-@{key}-bar`).
-  // It remains one token until a parser-local direct-AST reduction owns the
-  // segmented representation. Both `@{var}` and `${prop}` sigils are accepted.
-  const customPropInterp = regex(/--(?:-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*|-)?[@$]\{-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*(?:\[[-_a-zA-Z0-9@$\u0080-\uffff]+\])*\}(?:[@$]\{-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*(?:\[[-_a-zA-Z0-9@$\u0080-\uffff]+\])*\}|[-_a-zA-Z0-9\u0080-\uffff])*/);
+  // `${property}` is the sibling Less interpolation form for property lookup.
+  // Keep it equally structural: the CST carries its distinct delimiters and the
+  // same read-only head/accessor body without a second interpolation-shaped leaf.
+  const lessPropertyInterp = node('LessPropertyInterp',
+    noTrivia(sequence(literal('${'), interpHead, many(interpAccessor), literal('}'))));
+  const lessInterpolation = choice(lessInterp, lessPropertyInterp);
+  // Interpolated custom-property names are segmented grammar, not a second
+  // interpolation-shaped token. `lessInterpolation` supplies the authoritative
+  // `@{…}` / `${…}` structures, while the surrounding runs remain leaves so the
+  // CustomDeclaration CST still retains its exact authored property bytes.
+  const customPropStart = choice(regex(/-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/), literal('-'));
+  const customPropTail = regex(/[-_a-zA-Z0-9\u0080-\uffff]+/);
+  const customPropInterp = noTrivia(sequence(
+    literal('--'), optional(customPropStart), lessInterpolation,
+    many(choice(lessInterpolation, customPropTail))
+  ));
 
   // \u2500\u2500 Quoted (Less \u00a73.3: structure `@{name}` interpolation inside a string) \u2500\u2500\u2500\u2500
   // The shared css `Quoted` is one flat `singleStr`/`doubleStr` leaf that swallows
@@ -153,7 +165,7 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   // Grammar — CSS base rules + Less overrides/additions.
   // ---------------------------------------------------------------------------
 
-  // ── Root (Less: + VarDeclaration, MixinCall, detached Call) ─────────────────
+  // ── Stylesheet (Less: + VarDeclaration, MixinCall, detached Call) ──────────
   // No catch-all: unmatched input stops `many`; the driver reports the unconsumed
   // offset as one syntax error. Bare `;` is an empty statement.
   // The per-statement choice used by the root `many(...)`. Exposed as a named
@@ -202,11 +214,27 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   // The builder applies the index/variable typing + Quoted-wrap (see _buildReference).
   const nestedRef = regex(/(?:[@$]+(?:-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*)?){2,}/);
   const propRef = regex(/\$-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*/);
-  const interpKey = regex(/(?:-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*|-)?[@$]\{-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*(?:\[[-_a-zA-Z0-9@$-￿]+\])*\}(?:[@$]\{-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*(?:\[[-_a-zA-Z0-9@$-￿]+\])*\}|[-_a-zA-Z0-9-￿])*/);
+  // An interpolation-bearing lookup key is likewise structural. This retains
+  // each typed interpolation in selectors, accessors, pseudo names, and values
+  // rather than accepting a parallel `@{…}`/`${…}` text shape.
+  const interpKeyStart = choice(regex(/-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*/), literal('-'));
+  const interpKeyTail = regex(/[-_a-zA-Z0-9-￿]+/);
+  const interpKey = noTrivia(sequence(
+    optional(interpKeyStart), lessInterpolation,
+    many(choice(lessInterpolation, interpKeyTail))
+  ));
   // A purely-numeric name (`100:`) is a Less detached-ruleset map key, e.g.
   // `@grays: { 100: @gray-100; }` (Bootstrap). Not valid CSS, but Less accepts it
   // and `@grays[100]` reads it back; the whole-number alternative is tried first.
-  const declPropName = regex(/[0-9]+|\*?-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f])|[@$]\{[^}]*\})(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f])|[@$]\{[^}]*\})*/);
+  // Declaration property names keep the historical CSS-name leaves, but every
+  // Less interpolation is the shared typed production. Invalid `@{…}` shapes
+  // cannot be swallowed by a permissive property-name regex.
+  const declPropStart = regex(/(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/);
+  const declPropTail = regex(/(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+/);
+  const declPropName = choice(
+    regex(/[0-9]+/),
+    noTrivia(sequence(optional(literal('*')), optional(literal('-')), choice(declPropStart, lessInterpolation), many(choice(declPropTail, lessInterpolation))))
+  );
   const refKey = choice(nestedRef, lessVar, propRef, interpKey, ident);
   // One accessor: glued '[' / '(', trivia re-enabled inside the brackets/parens.
   const refIndex = sequence(literal('['), optional(refKey), literal(']'));

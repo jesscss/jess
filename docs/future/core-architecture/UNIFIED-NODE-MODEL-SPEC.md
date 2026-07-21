@@ -43,7 +43,7 @@ discriminant styles for one conceptual model.
 
 | `Kind` | Class | Key fields | Target `type` |
 |---|---|---|---|
-| 0 Root | `Root` | `children: Statement[]` | `'Root'` |
+| 0 Stylesheet | `Stylesheet` | `children: Statement[]` | `'Stylesheet'` |
 | 1 Rule | `Rule` | `selector`, `body`, `extendInstructions?` | `'Rule'` |
 | 2 Declaration | `Declaration` | `name: string \| Interp`, `value`, `merge`, `important` | `'Declaration'` |
 | 3 Comment | `Comment` | `text` | `'Comment'` |
@@ -138,7 +138,7 @@ on a structural field (`'bytes' in v`), never on `type`.
 ```ts
 // node.ts — no enum, no abstract class. Just the union + shared vocab.
 export type NodeType =
-  | 'Root' | 'Rule' | 'Declaration' | 'Comment' | 'SelectorList'
+  | 'Stylesheet' | 'Rule' | 'Declaration' | 'Comment' | 'SelectorList'
   | 'Complex' | 'Compound' | 'Simple' | 'Word' | 'Dimension'
   | 'SpacedValue' | 'VarRef' | 'MixinDef' | 'MixinCall' | 'VarDeclaration'
   | 'Sequence' | 'Operation' | 'FunctionCall' | 'Paren'
@@ -152,7 +152,7 @@ export function renderCombinator(comb: Combinator): string {
 
 // `Node` = the exported NAME, now a discriminated union of the plain-data members.
 export type Node =
-  | Root | Rule | Declaration | Comment | SelectorList | Complex | Compound
+  | Stylesheet | Rule | Declaration | Comment | SelectorList | Complex | Compound
   | Simple | Word | Dimension | SpacedValue | VarRef | MixinDef | MixinCall
   | VarDeclaration | Sequence | Operation | FunctionCall | Paren
   | AtRuleBlock | AtRuleStatement | Interp | VarIndirect | DetachedRuleset
@@ -545,7 +545,7 @@ type + `isNode` + switch are co-dependent for the build to pass).
   `extend.ts` (:57,:58,:59), `ruleset.ts` (:23,:24), `comments.ts` (:113,:194),
   `host-context.ts:193` (`isStatement` → `isNode`), `interp.ts:83`
   (→ `isNode(c)`), `value-expr.ts:61` (`isValueNode` → `isNode`),
-  `dispatch-host.ts:141` (`instanceof t2.Root` → `.type === 'Root'`).
+  `dispatch-host.ts:141` (`instanceof t2.Stylesheet` → `.type === 'Stylesheet'`).
 - *Bare `instanceof Word`/`Node`*: `mixin-dispatch.ts:139,145` → `v.type ===
   'Word'`; `nodes.ts:577` → `isNode(a)`.
 - *`new t2.X(` → factory* (~23 sites): `selector.ts` (:54,:55,:62,:63,:90,:91,

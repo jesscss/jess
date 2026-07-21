@@ -10,7 +10,7 @@ preserved in
 | Priority | Outcome | Owner boundary | Acceptance evidence |
 | --- | --- | --- | --- |
 | 1 | AST v2 is the only canonical core tree | `AST-REORG-EXECUTION.md` owns the parser/front-end cutover | each dialect builds AST directly; no parse/build host remains |
-| 2 | Delete `packages/core/src/ast/parse-host` and its test-only bridge seams | core AST + migrated tests | no production/test import retains `parseToAst`, `bridgeToAst`, `parseLessFn`, or a compatibility replacement |
+| 2 | Audit actual remaining legacy `Rules`/tree adaptations after plugin and Jess migration | core AST + migrated tests | no proven-unreachable legacy adaptation remains; do not invent a parse-host/bridge deletion task because those surfaces are already absent |
 | 3 | Preserve and close core eval/render semantics on canonical AST | core eval/render lane | focused tests, full core suite, no baseline weakening |
 | 4 | Eliminate handwritten parser recognition debt | dialect parser lanes | parser-runtime boundary verifier reaches zero source violations |
 | 5 | Prove Jess Less behavior after dependencies are rebuilt | integration lane | production spine ratchet and byte-identical Less corpus |

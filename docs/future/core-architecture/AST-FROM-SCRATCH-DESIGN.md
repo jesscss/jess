@@ -33,7 +33,7 @@ is a separate, from-scratch representation:
   pool. Declaration records pack `name value` into one interned string
   (`render.ts` `declarationText`).
 - **Tag-dispatched emit** (`render.ts`). Five tags
-  (`Root`, `Ruleset`, `Declaration`, `LegacySubtree`, `WholeDocumentEscape`;
+  (`Stylesheet`, `Ruleset`, `Declaration`, `LegacySubtree`, `WholeDocumentEscape`;
   `types.ts:10`) drive a switch that writes native rulesets straight to a render
   buffer and delegates everything else.
 

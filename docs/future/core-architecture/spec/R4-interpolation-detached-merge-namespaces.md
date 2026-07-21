@@ -701,8 +701,11 @@ Reference shapes:
 
 Indexing supports **property name** (`[text]`, `[$prop]`), **interpolated name**
 (`[$@var]`, `[@@name]`), and (Less v5) **numeric + negative index**
-(`[1]`, `[-1]`) over a ruleset/list's declarations. (No numeric-index fixture in
-tests-unit; sourced from the v5 map grammar — **flag as source-not-assert**.)
+(`[1]`, `[-1]`) over a ruleset/list's declarations. Empty `[]` is the existing
+final-index spelling and lowers to `BracketLookup { keyKind: 'index', key: -1 }`
+after an implicit zero-argument mixin call; it is not an `UnnamedLookup` node.
+(No numeric-index fixture in tests-unit; sourced from the v5 map grammar —
+**flag as source-not-assert**.)
 
 ### R4.4.2 Data model
 

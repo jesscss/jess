@@ -1,7 +1,7 @@
 /**
  * Selector IR for the extend engine.
  *
- * A small self-contained selector model built from `Complex`/`Compound` tokens
+ * A small self-contained selector model built from `ComplexSelector`/`CompoundSelector` tokens
  * with no node cloning. Every downstream phase (PLAN / SOLVE / EMIT) operates on
  * this IR and serializes it back to selector text. This module owns the data
  * shapes plus the text, clone, from-AST, and atom primitives they all share.
@@ -9,7 +9,7 @@
 
 import { renderCombinator } from '../node.js';
 import type { Combinator } from '../node.js';
-import type { Complex, SelectorList } from '../nodes.js';
+import type { ComplexSelector, SelectorList } from '../nodes.js';
 
 /* --------------------------------------------------------------------- types */
 
@@ -140,7 +140,7 @@ function compoundFromSimples(texts: string[]): Compound {
   return { simples: texts.map((text) => ({ t: 'text', text })) };
 }
 
-export function branchFromComplex(c: Complex): Branch {
+export function branchFromComplex(c: ComplexSelector): Branch {
   const segs: Seg[] = [];
   // A selector token carrying `@{…}` interpolation has `text: null` (its concrete
   // text is only known once resolved in an entering frame, which the extend

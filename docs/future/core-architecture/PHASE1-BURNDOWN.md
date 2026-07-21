@@ -20,9 +20,10 @@ a removal candidate.
 
 ## Remaining closure work
 
-- Give all four dialects complete direct canonical-AST `Root` parsers. A
-  private grammar experiment is not an API or a completion claim.
-- Only after parser closure, migrate each plugin to consume its parser's Root
+- Give all four dialects complete direct canonical-AST `Stylesheet` parsers through
+  their public package `parse()` APIs. Earlier unexported grammar work is
+  incomplete implementation, not a valid architecture or completion claim.
+- Only after parser closure, migrate each plugin to consume its parser's Stylesheet
   through the retained Context/plugin dispatch path. Only after plugin closure,
   migrate the Jess package integration/render route.
 - Close AST node-family gaps from grammar facts, then prove core evaluation on

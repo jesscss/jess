@@ -5,6 +5,62 @@ machinery** (grammar + node + eval + render) is the buildable prerequisite; the
 **module member-access semantics** it enables are PROPOSED and gated on owner
 sign-off of R6 Part D / R4 §R4.6.
 
+## Parseman routing requirement (observed during direct Less implementation)
+
+The typed `Reference` shape can represent a namespace/mixin base followed by
+ordered bracket, dot, and call steps.  A declarative direct Less grammar can
+also factor a bare namespace base from a called namespace base.  It cannot yet
+be routed through the shared value position safely: Parseman's current ordered
+choice commits after consuming a shared `.mixin`/`#namespace` prefix, even when
+that arm later fails its required Reference continuation.  The normal
+`MixinCall` arm then never receives `.foo()` / `#foo()`.
+
+The required Parseman follow-on is a macro-fused transactional ordered-choice
+primitive (or equivalent declarative `try`) which restores the position when a
+candidate fails before producing a complete fact.  It must remain grammar
+runtime behavior, not a parser callback, lookahead scanner, or Jess-specific
+fallback.  Until that primitive exists, do not route namespace/mixin Reference
+chains into `ValueAtom`; preserving normal mixin syntax takes priority.
+
+## Owner correction: one recursive lookup/call chain
+
+Do not model Less namespace indexing as a special recursive `MapAccessor`
+subsystem, nor model dot access as a separate chain. A reference has one
+left-associated sequence of typed steps:
+
+- a lookup step, whose authored spelling is dot or bracket and whose lookup
+  kind is retained structurally; or
+- a call step, which retains typed arguments.
+
+Either step may follow either prior shape. That includes a lookup after a call,
+a call after a lookup, dot lookup after bracket lookup, and all longer mixed
+chains. Examples: `#library.add(1)[result](2)[name]`, `@theme[key].next()`,
+and the corresponding Jess member forms.
+
+The canonical public node is `Reference`. This settles the data-model topology
+without preserving a premature `MapAccessor`-shaped API. Existing `MapAccessor`
+is a temporary read-only implementation detail and must not constrain the parser
+architecture.
+
+### Less-only namespace/map surface
+
+Less namespace/map access (for example `#ns1[foo]`) has no existing native
+`.jess` spelling. Keep the static Less namespace base typed as `MixinCall.path`
+when it enters a `Reference`; do not claim or introduce a Jess-language mapping
+as part of this parser/evaluator cutover. Native Jess syntax is a separate
+language-design decision.
+
+An empty Less bracket accessor is not a distinct lookup node: `#ns.answer[]`
+lowers to the existing `BracketLookup { keyKind: 'index', key: -1 }` after the
+implicit zero-argument `MixinCall` base. The negative index is the established
+final-member rule; no `UnnamedLookup` API exists or is planned.
+
+Owner-provided future Jess conversion direction (unimplemented): Less
+`#ns1.vars[$sub]` uses the existing bracket lookup form, e.g.
+`$ > *#ns1 > *.vars[sub]`. This is not a current parser contract or a mapping
+to implement as part of Less input work; do not infer additional syntax or
+semantics from it.
+
 ## Why this exists — one missing feature, three deferred capabilities
 
 Three independently-deferred items all converge on ONE gap: a `Reference` that is
@@ -33,8 +89,7 @@ dispatch + chain render + module member-call resolution**.
 - **Grammar**: fold a chained member-CALL (`.name(args)`) into the accessor chain
   of the `Reference` production in BOTH dialects, so `$foo.bar(1,2,3)` (jess) and
   `@theme.elevate()` (less) parse as a single left-associative chained reference.
-- **ast/ node model + eval**: a call/member-call dimension on the accessor value
-  node (extend `MapAccessor`, or a sibling call node), and an evaluator that
+- **ast/ node model + eval**: ordered lookup/call steps on `Reference`, and an evaluator that
   dispatches the member call into the existing mixin-call / function-call
   machinery once the base resolves to a namespace/map/ruleset scope.
 - **Render / round-trip**: emit `$[foo.bar(1,2,3)]`, `@theme.elevate()`, and a
@@ -78,7 +133,7 @@ and do not chain.
   `base` (ValueNode), `key` (ValueNode | number), `keyIsProp`, `bytes`
   (verbatim fallback). `evalMapAccessor` (`serialize.ts:1187-1211`) resolves the
   base to a decl map (`resolveBaseDeclMap`) and reads a member by name/index;
-  when the base does not resolve it returns `literal(node.bytes)` (never
+  when the base does not resolve it returns `literal(node.raw)` (never
   regresses below verbatim). This is the proven read path.
 - **`MixinCall`** (`nodes.ts:630-636`): call node with a namespace descent
   `path: PathSeg[]` (`#ns .a .b()`) — but its `path` segments are
@@ -123,7 +178,7 @@ a scope; the member-call dispatch attaches there.
 |---|---|---|
 | grammar (jess) | `packages/jess-parser/src/grammar.ts:55,65-68` | add `refCall` to the `Reference` accessor chain |
 | grammar (less) | `packages/less-parser/src/grammar.ts:230-244` | add `refDot` member segment (so `.name`/`.name(args)` chains off a `@var` head) |
-| ast/ node model | `packages/core/src/ast/nodes.ts:191-196,273-279,630-636` | add a member-call dimension (extend `MapAccessor` or a sibling call node) |
+| ast/ node model | `packages/core/src/ast/nodes.ts` | replace `MapAccessor`/variable-call special cases with `Reference { base, steps }` |
 | ast/ eval | `packages/core/src/ast/serialize.ts:1187-1211` + `mixin-dispatch.ts`/`value-dispatch.ts` | dispatch the member call into mixin/function machinery once base resolves |
 | render / round-trip | `packages/core/src/tree/reference.ts:3768-3834` + ast/ serializer | chained-accessor + `(args)` call emit form |
 | resolve-time module gate | `packages/core/src/ast/import-bridge.ts` (module scope) | mixin-vs-function kind + Less-`@compose` member-function error (PROPOSED, R6 Part D) |

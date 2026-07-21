@@ -1,6 +1,23 @@
-# GOAL #1 Completion Scorecard — differential-reference reconciliation
+# GOAL #1 Completion Scorecard — retired differential-reference reconciliation
 
-> **Authoritative as of 2026-07-17, origin/dev + this branch's full workspace build.**
+> **Superseded for the public AST-v2 architecture (2026-07-20).** This document
+> records a retired `ast/` differential experiment, not the current Less-alpha
+> gate. Its cited `ast/parse-host` test and baseline no longer exist. Do not use
+> its counts, residual list, or claims of current rendering as evidence of Less
+> compatibility.
+>
+> The current first gate is the public `Compiler.renderToResult(...)` route:
+> `pnpm run verify:less-alpha`, with the non-expected-failure fixture smoke
+> `JESS_LESS_FIXTURE='tests-unit/charsets/' pnpm run test:less:test-data`.
+> At the time of supersession the gate fails before evaluation because
+> `jess-plugin-less` still reports `parse/unavailable` instead of carrying the
+> direct parser's canonical `Stylesheet` through Context and Jess. Repair that
+> retained plugin/Context dispatch route—never a tree bridge—before assessing
+> individual Less feature gaps.
+
+## Retired historical record
+
+> **Historical as of 2026-07-17, origin/dev + that branch's full workspace build.**
 > Produced by reconciling the differential reference
 > (`packages/core/src/ast/parse-host/__tests__/alpha-oracle-differential.test.ts`
 > + `alpha-oracle-baseline.json`, 88 paired fixtures — the `legacy/` 4.x fixtures are

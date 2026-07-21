@@ -142,29 +142,15 @@ Implementation:
   `assignOp` grammar is `/\?:|:=|:/` (no `+:`); the builder's `AssignmentType.Add`
   branch for VarDeclaration is gone. (`AssignmentType.Add` still exists in core for
   the Less PROPERTY `+:` merge — a separate feature, see the deferred design below.)
-- **`$foo := bar` = NEAREST-OUTER non-shadowing assign — distinct `nearestOuter`
-  marker (NOT `setDefined`).** User-settled semantics: reassign the *nearest
-  enclosing scope that already defines `$foo`* (JS-block style), NOT the global/top
-  binding. Sass `!global` = `setDefined` = global/top — a GENUINELY DIFFERENT
-  semantics (verified: setDefined evals `!global`-ish), so `:=` MUST NOT share it.
-  - New `nearestOuter?: boolean` option on `DeclarationOptions` (distinct from
-    `setDefined`). Jess builder sets `nearestOuter: true` for `:=` (the earlier
-    `setDefined`-reuse is reverted; `SetGlobal` enum stays deleted).
-  - Serialization: `:=` now renders for `setDefined || nearestOuter` (same surface,
-    distinct flags) — both `declaration.ts` sites. Round-trips SPACED `$foo := bar`.
-  - **Eval DEFERRED** — nearest-outer scope-walk + reassignment is NOT implemented.
-    `nearestOuter` is read by NO eval code, so `:=` currently has NO eval effect
-    (verified: `.box` reads the ORIGINAL value, not the `:=` write). This is
-    preferable to wrong `!global` eval. `setDefined`/`!global` eval is UNCHANGED
-    (verified: still reassigns). TODO below.
-  - Grammar `assignOp` has `:=` BEFORE `:` so it wins over `:` + a `=`-led value.
-- **`$!foo: bar` live-binding ASSIGNMENT — parse-with-warning.** The `$!` sigil
-  right after `$` (mirrors the `$!foo` read form). Grammar `dollarDeclName` allows
-  an optional `!` (`/\$!?-?…/`); the builder strips the `!`, records
-  `liveBinding: true` on the VarDeclaration (new option), and emits a parser
-  warning (`result.warnings`, `deprecation: 'live-binding-assignment'`:
-  "…parsed but not yet evaluated (not implemented)"). Renders back `$!name`.
-  **Eval DEFERRED** — "assign through the live binding" not implemented (TODO).
+- **Variable lookup and assignment source contract.** `$foo` is the live/current
+  read and `$$foo` is the scoped/final read. Both `$foo: value` and `$$foo: value`
+  create or update both bindings; the declaration sigil does not select a binding
+  kind. `$foo?:` tests the live map and `$$foo?:` tests the scoped/final map, with
+  either form creating/updating both bindings only on a miss. `$foo :=` updates the
+  live/current binding; `$$foo :=` updates the scoped/final binding. `$!` is
+  retired and must not be documented as an accepted or compatibility spelling.
+  AST representation and parser/evaluator migration are deliberately not specified
+  by this note; see the active resolver shape specification for the target rules.
 
 ## setDefined / `!global` ↔ `:=` split — blast radius (investigated)
 - `setDefined: true` is SET by: scss-parser (3 sites, `sawGlobal` = Sass `!global`)
@@ -192,9 +178,13 @@ eval is already deferred-eval territory). This is the PROPERTY `+:` (plain
   - **Defaults: `.less` → `legacyMerge: true`; `.jess` → `legacyMerge: false`.**
   - Granularity: compilation-level, defaulted by the entry file's extension.
 
-## Mixin / function CALL argument model — SETTLED (not yet built)
+## Mixin / function CALL argument model — SETTLED (partially implemented)
 Supersedes the old deferred "advanced mixin args (`;`-separated)" item.
 - **Comma-separated ONLY** in `.jess`. `;` is NOT a Jess argument separator.
+- Direct AST parsing now accepts named *mixin* arguments as
+  `$ > mixin($parameter: value)`, reducing them to the shared canonical
+  `CallArg { name, value }` fact. Positional arguments and defaults use the
+  existing core binder; this is not a new Jess-only call model.
 - A **space-separated** list is a single bare arg: `mixin(1px 2px, red)` = 2 args
   (first a space-list) — exactly like `margin: 1px 2px`.
 - A **comma-list as a single arg** uses the paren-escape wrapper **`~(1, 2, 3)`**:
@@ -227,23 +217,21 @@ Dependents of `;`-separated `List` found (would need review before dropping):
   Note: this is `List`-level; the `{ … }` Collection `;`-entry separator is separate
   and stays.
 
-## Deferred eval TODOs (parse + serialize done; NO eval effect yet)
-- **`$foo := bar` nearest-outer reassignment eval** — walk to the nearest enclosing
-  scope defining `$foo` and reassign THAT binding (JS-block style), NOT the global
-  one. Real scope-walking work; deferred. Until built, `:=` has no eval effect (an
-  inert marker, like `$!foo:`). Must NOT be routed through `setDefined`'s `!global`
-  eval. (`nearestOuter` option; see the assignment-operators section.)
-- **`$!foo: bar` live-binding assignment eval** — "assign through the live binding".
-  Not implemented; the parser accepts `$!foo:` and WARNS. (`liveBinding` option.)
+## Deferred eval TODOs
+
+Variable parser/evaluator migration must implement the settled source contract:
+`$foo` reads live/current, `$$foo` reads scoped/final, and `$!` is retired.
+`$foo :=` updates the live/current binding while `$$foo :=` updates the
+scoped/final binding. Do not preserve old `nearestOuter`, `liveBinding`, or
+`setDefined` machinery as compatibility semantics.
 
 FOLLOW-UPS (out of the adjudicated scope; not yet built):
-- `$!foo: bar;` live-binding assignment parse + eval (see flag above).
 - `@-compose` option modifiers `(reference)` / `(export)` +
   `set`/`with` config blocks (StyleImport importOptions.reference/mutable/... + the
   StyleImportValue.with node).
-- Mixin/function call args (comma-only + `~(…)` list-wrapper) — SETTLED, see the
-  "CALL argument model" section above (+ deferred tasks 1 & 2). Rest params
-  `...$x` and `$content()` callbacks still deferred (docs document them).
+- Function-call named arguments and the `~(…)` list-wrapper remain deferred;
+  named mixin arguments are implemented as above. Rest params `...$x` and
+  `$content()` callbacks still defer their own AST/evaluator models.
 - `$theme["$[foo]"]` dynamic-property key (rides on the capture machinery).
 
 ---
@@ -261,8 +249,7 @@ FOLLOW-UPS (out of the adjudicated scope; not yet built):
   variables keep their `$`.** `$(width + 1)` does NOT reference `$width`; the correct
   form is `$($width + 1)` (per the migrating doc's own "$($var) for a reference
   inside an expression" rule). Docs fixed: `06-migrating.mdx` Expressions section
-  (both dirs) — `$(width + 1)`→`$($width + 1)`, `$(^width…)`→`$($!width…)` (`$^`
-  retired for `$!`); + `03-expressions.mdx` "Use with Jess variables" example
+  (both dirs) — `$(width + 1)`→`$($width + 1)`; + `03-expressions.mdx` "Use with Jess variables" example
   (`$(width + 10px)`→`$($width + 10px)`, both dirs).
 - **⚠️ MORE occurrences of the same bare-ident bug remain (NOT fixed here — flagged
   for a follow-up sweep, out of this task's 2-file scope):**
@@ -282,8 +269,9 @@ FOLLOW-UPS (out of the adjudicated scope; not yet built):
 
 - **Base:** compose over `cssGrammar` (cleanest shapes), not Less/SCSS. Author
   only the Jess delta + `//` comments. Selectors stay clean unless interpolated.
-- **Variables:** `$name: value;` (name has no `$`); assign ops `:` `+:` `?:`.
-  Live binding `$!foo` (renders `$!foo`; Reference `readMode: 'snapshot'`).
+- **Variables:** `$name: value;` and `$$name: value;` both create or update both
+  bindings. `$name` reads live/current and `$$name` reads scoped/final. `?:` and
+  `:=` use their target lookup mode. `$!` is retired.
 - **Accessor model** (`$theme.$key` is INVALID — removed from `reference.ts`):
   | Syntax | `type` | Semantics |
   | --- | --- | --- |

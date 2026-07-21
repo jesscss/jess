@@ -12,6 +12,21 @@ functions and is the shape jess's own docs describe. Today these constructs EMIT
 `Rules` body as a side effect; the goal is that they can also PRODUCE A VALUE (which
 can be assigned to a `$var`, collected, cast, etc.).
 
+## Canonical loop contract and legacy repair
+
+This plan's historic `For` field names and Less lowering notes below are not the
+public AST-v2 loop vocabulary. Jess `$for` is the canonical source-dependent
+iteration protocol: its header carries Jess bindings, and the source kind
+determines the entry shape. In particular, the public bracket form
+`[$key, $value]` is key/value in that order. Less `each()` is a compatibility
+input lowering and does not define core fields.
+
+The old tree implementation has a repair target: it currently fills both
+comma and bracket tuple slots positionally as value, key, counter. That
+reverses the documented bracket key/value order. Carry this as an explicit
+compatibility/implementation test when generalizing `For`; do not reproduce it
+in an AST-v2 parser or call it an unresolved public contract.
+
 ## The immediate motivating case (jess PR #88)
 
 A comma-list VALUE interpolated into a selector position now errors

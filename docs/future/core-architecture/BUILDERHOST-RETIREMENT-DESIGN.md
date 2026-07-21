@@ -1,5 +1,11 @@
 # BuilderHost Retirement — reorg-A4 endgame (SPEC, no code this pass)
 
+> **Historical design, superseded as an execution plan.** The BuilderHost,
+> parse-host, and bridge premises recorded below are absent from the current
+> tree. Preserve this survey as evidence of the rejected route; do not revive
+> its dual-host or legacy-tree architecture. The live parser cutover is public
+> Parseman reductions directly to AST v2 `Stylesheet`, as defined in `HANDOFF.md`.
+
 DESIGN/SCOUT spec. Base: `origin/dev`. Scope: retire the legacy Less **`BuilderHost`**
 (`packages/less-parser/src/builders.ts`, `class LessGrammar` + the `BuilderHost`
 subclass in `functional-parser.ts`) so the ~34 remaining `builders.ts` regex that the

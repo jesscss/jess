@@ -189,7 +189,7 @@ pre-scan** `collectPluginFns(statements, loadCtx)`:
 **Scope boundary semantics (the fixture's core requirement).** The frame that a
 `@plugin` registers into is the frame of its **lexically enclosing block**:
 
-- Root-level `@plugin` (including one reached transitively through an
+- Stylesheet-level `@plugin` (including one reached transitively through an
   `@import`ed file that is spliced at root — `plugin-transitive`) registers into
   the **root frame** → global visibility. The import splice puts the imported
   `@plugin` statement into the root children before frame construction, so
@@ -228,7 +228,7 @@ it('resolves a function only within the frame that registers it', () => {
     body: () => makeKeyword('scoped') };
   // Inject via a test hook that seeds a named block's Frame.fns
   // (e.g. an options.seedFrameFns: Record<selectorKey, Fn[]> on renderAstDoc,
-  //  test-only, OR a direct serialize() call with a hand-built Root+Frame).
+  //  test-only, OR a direct serialize() call with a hand-built Stylesheet+Frame).
   const src = `
     .outer { a: scoped(); }
     .inner { .mid { a: scoped(); } }

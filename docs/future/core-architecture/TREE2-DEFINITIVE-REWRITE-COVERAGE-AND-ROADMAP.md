@@ -1,5 +1,11 @@
 # tree2 — Definitive-Rewrite Coverage Matrix & Done-Right Roadmap
 
+> **Historical roadmap — superseded as a destination architecture.** Tree2,
+> its front-end flip, and any bridge-based staging described below are not
+> current work. The public target is now direct Parseman grammar reduction to
+> canonical AST v2 `Stylesheet` through each dialect's `parse()` operation;
+> Context keeps plugin dispatch and no AST bridge is permitted.
+
 > **RATIFIED 2026-07-15 (owner).**
 >
 > 1. **tree2 IS THE DESTINATION representation.** The `origin/dev` spine / eval-cutover
@@ -24,7 +30,7 @@ branch unless marked `origin/dev`.
 
 - **`packages/core/src/tree2/`** — clean-room data model. Base `Node` = a single `kind`
   tag (`node.ts`); concrete nodes in `nodes.ts`
-  (Root/Rule/SelectorList/Complex/Compound/Simple/Declaration/VarDeclaration/Comment/Word/
+  (Stylesheet/Rule/SelectorList/Complex/Compound/Simple/Declaration/VarDeclaration/Comment/Word/
   Dimension/SpacedValue/VarRef/Concat/Operation/FunctionCall/Paren/MixinDef/MixinCall/Param),
   `at-rule.ts` (AtRuleBlock/AtRuleStatement), `guard.ts` (GuardNode tree + `evalGuard`),
   `mixin-dispatch.ts` (arity / pattern / named / default / `@arguments` / rest selection).
@@ -156,7 +162,7 @@ render.
 
 | Feature | Tag | Evidence | Note |
 |---|---|---|---|
-| `$var`, `$foo:`/`$foo?:`/`$foo :=`, live `$!foo`, readonly `!$`, private `_name` | NEEDS-DESIGN | none | Needs live-binding cells (arch A5/B4), not just a var Map. |
+| `$var` live read, `$$var` scoped/final read, `$foo:`/`$$foo:` create or update both bindings; `$foo?:` tests live and `$$foo?:` tests scoped/final; `$foo :=` updates live and `$$foo :=` updates scoped/final; readonly `!$`, private `_name` | NEEDS-DESIGN | none | Needs live-binding cells and a scoped declaration index (arch A5/B4), not just a var Map. `$!` is retired. |
 | `$ > mixin()` / `$apply` / chained namespaced apply | NEEDS-DESIGN | none | |
 | `$extend`, `*.name`, anonymous mixins, `$content()` | NEEDS-DESIGN | none | |
 | Interpolation `$(...)`/`$[key]`, selector capture `*[...]` | NEEDS-DESIGN | none | |
@@ -210,7 +216,7 @@ allocation** (`AST-ARENA-EXPERIMENT-HANDOFF.md`; `AST-FROM-SCRATCH-DESIGN.md` §
 | One downward resolve-and-emit pass, no second output tree (A1) | **EMBODIED** | `serialize.ts` single walk | |
 | Frame-threading spine is monolithic; value-frame lives the whole pass (A2/A3) | EMBODIED (partial) | `Frame` chain threaded through walk | Threads a scope frame; but read-substitution only, lacks live-cell mutation. |
 | Value-frame uses call-site lexical chain, not `.parent` (A4) | EMBODIED | mixin call frame `parent: frame` = lexical chain | Args eager-resolved in caller frame (Less semantics). |
-| **Live cells mutate in place (`$while` counter, `!global`, `:=`) (A5/B4)** | **MISSING — NEEDS-DESIGN** | tree2 `vars: Map<string,ValueNode>` immutable per frame | No `BindingCell`. Required for Sass+ `:=`/`!global`, `.jess` live `$!`, `$for`/`$while`. |
+| **Live cells mutate in place (`$while` counter, `!global`, `:=`) (A5/B4)** | **MISSING — NEEDS-DESIGN** | tree2 `vars: Map<string,ValueNode>` immutable per frame | No `BindingCell`. Required for Sass+ `:=`/`!global`, `.jess` live `$`, `$for`/`$while`; `$$` remains the scoped lookup. |
 | Canonical nodes immutable templates; placements thin surfaces; no deep clone (B1) | **EMBODIED** | overlay frame; body stored once | tree2's foundational win. |
 | Loosened invariant: output-invisible in-place mutation permitted (B2) | AVAILABLE-BYCON | cached `_canon`/`_hasAmp` on Complex/Compound | tree2 already memoizes canonical strings on the node — the permitted output-invisible cache. |
 | Never reparent (`adopt`/`setParent` dissolved) (B3/B5) | BYCON | tree2 nodes have no `.parent`/`adopt`/`frozen` | The reparenting problem is designed out. |
@@ -338,7 +344,7 @@ Each rung: what it adds · matrix rows closed · where the current tree2 design 
 
 **R3 — Live bindings + control flow.**
 - Adds: `BindingCell` live cells; Sass+ `:=` nearestOuter, `!global`/`setDefined`,
-  `!default`; `.jess` `$!` live read/assign, readonly `!$`; `$if/$else`, `$for/$while`,
+  `!default`; `.jess` live `$` and scoped/final `$$` reads/assignments, readonly `!$`; `$if/$else`, `$for/$while`,
   ranges, destructuring.
 - Closes: Sass+ scope rows; .jess control-flow rows; arch A5/B4.
 - Design change: tree2's immutable `vars` Map becomes a frame of mutable `BindingCell`s

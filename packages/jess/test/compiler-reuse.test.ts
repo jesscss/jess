@@ -4,7 +4,6 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { Compiler } from '../src/index.js';
 import { lessCompatPlugin } from '@jesscss/plugin-less-compat';
-import { Any, Rules, type Declaration, type VarDeclaration } from '@jesscss/core';
 
 describe('Compiler reuse', () => {
   let tempDir: string;
@@ -119,17 +118,12 @@ describe('Compiler reuse', () => {
     const compiler = new Compiler({
       compile: {
         plugins: [
-          lessCompatPlugin({
-            plugins: [{
-              install(_less: unknown, manager: { addPostProcessor: (processor: { process: (css: string) => string }) => void }) {
-                manager.addPostProcessor({
-                  process(css: string) {
-                    return `${css}\n/* postprocessed */`;
-                  }
-                });
-              }
-            }]
-          })
+          {
+            name: 'postprocess-test',
+            runPostProcessors(css: string) {
+              return `${css}\n/* postprocessed */`;
+            }
+          }
         ]
       }
     });
@@ -141,73 +135,21 @@ describe('Compiler reuse', () => {
     expect(result.css).toBe(rendered);
   });
 
-  it('runs postEvalVisitor before render serialization', async () => {
-    const source = '@tone: red;\n.a { color: @tone; }';
+  it('sets plugin Context before AST serialization', async () => {
+    let receivedDocumentType: string | undefined;
     const compiler = new Compiler({
       compile: {
         plugins: [{
-          name: 'pre-render-visitor-test',
-          postEvalVisitor: {
-            declaration(node: Declaration) {
-              if (node.name.valueOf() === 'color') {
-                node.value = new Any('blue', { role: 'keyword' });
-              }
-            }
+          name: 'context-aware-ast-plugin',
+          setContext(context) {
+            receivedDocumentType = context.document?.type;
           }
         }]
       }
     });
 
-    const css = await compiler.renderString(source, { language: 'less' });
-
-    expect(css).toContain('color: blue');
-    expect(css).not.toContain('color: red');
-  });
-
-  it('runs preRenderVisitor before render serialization', async () => {
-    const source = '@tone: red;\n.a { color: @tone; }';
-    const compiler = new Compiler({
-      compile: {
-        plugins: [{
-          name: 'pre-render-visitor-test',
-          preRenderVisitor: {
-            declaration(node: Declaration) {
-              if (node.name.valueOf() === 'color') {
-                node.value = new Any('green', { role: 'keyword' });
-              }
-            }
-          }
-        }]
-      }
-    });
-
-    const css = await compiler.renderString(source, { language: 'less' });
-
-    expect(css).toContain('color: green');
-    expect(css).not.toContain('color: red');
-  });
-
-  it('runs typed beforeEvalVisitor before variable resolution', async () => {
-    const source = '@tone: red;\n.a { color: @tone; }';
-    const compiler = new Compiler({
-      compile: {
-        plugins: [{
-          name: 'before-eval-visitor-test',
-          beforeEvalVisitor: {
-            varDeclaration(node: VarDeclaration) {
-              if (node.name.valueOf() === 'tone') {
-                node.value = new Any('blue', { role: 'keyword' });
-              }
-            }
-          }
-        }]
-      }
-    });
-
-    const css = await compiler.renderString(source, { language: 'less' });
-
-    expect(css).toContain('color: blue');
-    expect(css).not.toContain('color: red');
+    await expect(compiler.renderString('.a { color: red; }', { language: 'less' })).resolves.toContain('color: red');
+    expect(receivedDocumentType).toBe('Stylesheet');
   });
 
   it('renders root kept output through safeRender', async () => {
@@ -226,29 +168,6 @@ describe('Compiler reuse', () => {
     expect(result.css).toContain('@charset "UTF-8";');
     expect(result.css).toContain('@import url("test.css");');
     expect(result.css).toContain('.a');
-  });
-
-  it('safeRender owns render without delegating through safeCompile', async () => {
-    const testFile = path.join(tempDir, 'safe-render.less');
-    fs.writeFileSync(testFile, '.a { color: red; }');
-
-    class RenderOnlyCompiler extends Compiler {
-      override async safeCompile(): Promise<never> {
-        throw new Error('safeRender should not call safeCompile');
-      }
-    }
-
-    const compiler = new RenderOnlyCompiler({
-      output: { collapseNesting: true },
-      compile: {
-        plugins: [lessCompatPlugin()]
-      }
-    });
-
-    const result = await compiler.safeRender(testFile);
-
-    expect(result.errors).toEqual([]);
-    expect(result.css).toContain('color: red');
   });
 
   it('keeps root output on public render APIs', async () => {
@@ -283,69 +202,4 @@ describe('Compiler reuse', () => {
     }
   });
 
-  it('public render APIs drive root eval through render', async () => {
-    // D3: `render()` is the sole eval driver. The root enters `render()`
-    // UNEVALUATED (no separate pre-pass eval) and render evaluates it — so it is
-    // evaluated by the time the render call resolves.
-    //
-    // NOTE (cutover P2): a spine-ELIGIBLE root is rendered by the single-pass
-    // spine WITHOUT any `eval` (that is the wire-in — no eval pass, no output
-    // tree; `evaluated` stays false), so this D3 eval-driver contract is now
-    // exercised with a root the spine does NOT cover. An `:extend` INSIDE a
-    // `@layer` at-rule keeps the root on the eval path: `@layer`'s extend
-    // reachability is the same-layer-name mutual-visibility relation (§A4), NOT
-    // a plain nesting-prefix, so the static gather does not fold it (only the
-    // prefix-scoped conditional at-rules `@media`/`@supports`/`@container` fold —
-    // and a plain root-level `:extend` folds too). So render still drives eval to
-    // completion here exactly as the pre-pass used to.
-    const source = '.base { color: red; }\n@layer utils {\n  .a:extend(.base) { font-weight: bold; }\n}';
-    const testFile = path.join(tempDir, 'evaluated-render-root.less');
-    fs.writeFileSync(testFile, source);
-    const originalRender = Rules.prototype.render;
-    const entryStates: boolean[] = [];
-    const exitStates: boolean[] = [];
-    Rules.prototype.render = function renderForCounting(
-      this: Rules,
-      ...args: Parameters<typeof originalRender>
-    ): ReturnType<typeof originalRender> {
-      const self = this;
-      entryStates.push(self.evaluated);
-      const result = originalRender.apply(self, args);
-      // Record the evaluated state once render settles (public render APIs are
-      // async here). Promise.resolve unifies the sync/async return without a cast.
-      void Promise.resolve(result).then(() => {
-        exitStates.push(self.evaluated);
-      });
-      return result;
-    };
-
-    try {
-      const compiler = new Compiler({
-        output: { collapseNesting: true },
-        compile: {
-          plugins: [lessCompatPlugin()]
-        }
-      });
-
-      await compiler.render(testFile);
-      await compiler.renderString(source, {
-        filePath: testFile,
-        language: 'less',
-        extension: '.less'
-      });
-      await compiler.renderToResult({
-        source,
-        filePath: testFile,
-        language: 'less',
-        extension: '.less'
-      });
-
-      // One root render() per public API call: it entered unevaluated (no
-      // separate pre-pass eval) and render drove eval to completion.
-      expect(entryStates).toEqual([false, false, false]);
-      expect(exitStates).toEqual([true, true, true]);
-    } finally {
-      Rules.prototype.render = originalRender;
-    }
-  });
 });

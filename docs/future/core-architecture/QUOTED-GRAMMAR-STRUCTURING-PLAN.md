@@ -1,5 +1,11 @@
 # §3.3 Quoted-Grammar Structuring + S6 / TB-4 / TB-5 Execution Plan
 
+> **Historical design evidence — not an execution plan.** Its host,
+> `parse-host`, differential/bridge, and later-repoint sequencing assumptions
+> are superseded. Retain only the grammar-shape observations after validating
+> them against the current public direct `parse() -> Stylesheet` architecture;
+> do not preserve or rebuild a bridge to use them.
+
 > **Status:** design-only spec (no grammar/engine/host code changed this pass). Base:
 > `origin/dev` @ `b47ddf9fd` ("refactor(ast): eliminate Word"). Resolves the standing
 > contradiction between task **#6** ("COMPLETED") and `GRAMMAR-RELOCATION-DESIGN.md`'s

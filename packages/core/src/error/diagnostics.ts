@@ -136,6 +136,21 @@ export const ERR = {
   typeMismatch(args: Common & { meta: { callee: string; expected: string; got: string } }) {
     return makeJessError({ code: 'eval/type-mismatch', phase: 'eval', ...args });
   },
+  invalidFunction(args: Common & { meta: { name: string; reason: string } }) {
+    return makeJessError({ code: 'eval/invalid-function', phase: 'eval', ...args });
+  },
+  invalidStatement(args: Common & { meta: { what: string } }) {
+    return makeJessError({ code: 'eval/invalid-statement', phase: 'eval', ...args });
+  },
+  ambiguousDefault(args: Common & { meta: { callee: string } }) {
+    return makeJessError({ code: 'eval/ambiguous-default', phase: 'eval', ...args });
+  },
+  propertyInRoot(args: Common & { meta: { what: string } }) {
+    return makeJessError({ code: 'eval/property-in-root', phase: 'eval', ...args });
+  },
+  rulesetOnProperty(args: Common & { meta: { what: string } }) {
+    return makeJessError({ code: 'eval/ruleset-on-property', phase: 'eval', ...args });
+  },
 
   // Extend
   extendBoundary(args: Common & { meta: { target: string } }) {

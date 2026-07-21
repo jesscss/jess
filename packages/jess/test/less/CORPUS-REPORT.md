@@ -9,20 +9,20 @@ Reporting-only — outcomes measured, not gated. Each slice ran in an isolated, 
 
 | group | cases | pass | mismatch | error | timeout | crash |
 |---|--:|--:|--:|--:|--:|--:|
-| tests-unit | 88 | 56 | 32 | 0 | 0 | 0 |
-| tests-config | 43 | 13 | 30 | 0 | 0 | 0 |
-| **total** | **131** | **69** | **62** | **0** | **0** | **0** |
+| tests-unit | 88 | 53 | 35 | 0 | 0 | 0 |
+| tests-config | 43 | 12 | 31 | 0 | 0 | 0 |
+| **total** | **131** | **65** | **66** | **0** | **0** | **0** |
 
 ## Error corpus (`tests-error` — classify only)
 
-- errored (matches Less): **68** / 99
-- **accepted — DIVERGENCE, needs review: 30**  _(Jess accepts what Less rejects: intentional repair or real gap)_
-- timeout: 0, crash: 1
+- errored (matches Less): **36** / 99
+- **accepted — DIVERGENCE, needs review: 63**  _(Jess accepts what Less rejects: intentional repair or real gap)_
+- timeout: 0, crash: 0
 
 ### Divergences to review (accepted where Less errors)
 
 - `tests-error/parse/mixins-guards-cond-expected.less` (NEW)
-- `tests-error/parse/invalid-color-with-comment.less` (NEW)
+- `tests-error/parse/mixed-mixin-definition-args-2.less` (NEW)
 - `tests-error/eval/unit-function.less` (NEW)
 - `tests-error/eval/svg-gradient6.less` (NEW)
 - `tests-error/eval/svg-gradient5.less` (NEW)
@@ -30,19 +30,50 @@ Reporting-only — outcomes measured, not gated. Each slice ran in an isolated, 
 - `tests-error/eval/svg-gradient3.less` (NEW)
 - `tests-error/eval/svg-gradient2.less` (NEW)
 - `tests-error/eval/svg-gradient1.less` (NEW)
+- `tests-error/eval/root-func-undefined-2.less` (NEW)
 - `tests-error/eval/root-func-undefined-1.less` (NEW)
 - `tests-error/eval/recursive-variable.less` (NEW)
-- `tests-error/eval/property-interp-not-defined.less` (NEW)
+- `tests-error/eval/recursive-property.less` (NEW)
+- `tests-error/eval/property-undefined.less` (NEW)
+- `tests-error/eval/property-in-root3.less` (NEW)
 - `tests-error/eval/property-in-root2.less` (NEW)
 - `tests-error/eval/property-in-root.less` (NEW)
+- `tests-error/eval/plugin-3.less` (NEW)
+- `tests-error/eval/plugin-2.less` (NEW)
+- `tests-error/eval/plugin-1.less` (NEW)
 - `tests-error/eval/percentage-non-number-argument.less` (NEW)
+- `tests-error/eval/namespacing-4.less` (NEW)
+- `tests-error/eval/namespacing-2.less` (NEW)
+- `tests-error/eval/namespace-variable-not-found.less` (NEW)
+- `tests-error/eval/namespace-property-not-found.less` (NEW)
 - `tests-error/eval/multiply-mixed-units.less` (NEW)
 - `tests-error/eval/multiple-guards-on-css-selectors2.less` (NEW)
-- `tests-error/eval/multiple-guards-on-css-selectors.less` (NEW)
+- `tests-error/eval/mixins-guards-default-func-3.less` (NEW)
+- `tests-error/eval/mixins-guards-default-func-2.less` (NEW)
+- `tests-error/eval/mixins-guards-default-func-1.less` (NEW)
 - `tests-error/eval/mixin-not-visible-in-scope-1.less` (NEW)
+- `tests-error/eval/mixin-not-matched2.less` (NEW)
+- `tests-error/eval/mixin-not-matched.less` (NEW)
+- `tests-error/eval/mixin-not-defined.less` (NEW)
+- `tests-error/eval/import-subfolder1.less` (NEW)
+- `tests-error/eval/functions-9-expression.less` (NEW)
+- `tests-error/eval/functions-8-element.less` (NEW)
+- `tests-error/eval/functions-7-dimension.less` (NEW)
+- `tests-error/eval/functions-6-condition.less` (NEW)
+- `tests-error/eval/functions-5-color.less` (NEW)
+- `tests-error/eval/functions-5-color-2.less` (NEW)
+- `tests-error/eval/functions-4-call.less` (NEW)
+- `tests-error/eval/functions-3-assignment.less` (NEW)
+- `tests-error/eval/functions-15-value.less` (NEW)
+- `tests-error/eval/functions-14-url.less` (NEW)
+- `tests-error/eval/functions-13-selector.less` (NEW)
+- `tests-error/eval/functions-12-quoted.less` (NEW)
+- `tests-error/eval/functions-11-operation.less` (NEW)
+- `tests-error/eval/functions-10-keyword.less` (NEW)
+- `tests-error/eval/functions-1.less` (NEW)
 - `tests-error/eval/divide-mixed-units.less` (NEW)
+- `tests-error/eval/detached-ruleset-5.less` (NEW)
 - `tests-error/eval/detached-ruleset-3.less` (NEW)
-- `tests-error/eval/detached-ruleset-2.less` (NEW)
 - `tests-error/eval/detached-ruleset-1.less` (NEW)
 - `tests-error/eval/css-guard-default-func.less` (NEW)
 - `tests-error/eval/color-func-invalid-color.less` (NEW)
@@ -51,30 +82,40 @@ Reporting-only — outcomes measured, not gated. Each slice ran in an isolated, 
 - `tests-error/eval/add-mixed-units2.less` (NEW)
 - `tests-error/eval/add-mixed-units.less` (NEW)
 - `tests-error/eval/imports/import-test.less` (NEW)
+- `tests-error/eval/imports/import-subfolder1.less` (NEW)
+- `tests-error/eval/imports/subfolder/mixin-not-defined.less` (NEW)
 
 ## Render non-passes
 
-62 total — 42 already known to the gate (skipped/expected-failure), **20 NEW**.
+66 total — 38 already known to the gate (skipped/expected-failure), **28 NEW**.
 
 ### NEW (not skipped/expected-failure in the gate)
 
 - [mismatch] `tests-unit/plugin-preeval/plugin-preeval.less`
 - [mismatch] `tests-unit/plugin-module/plugin-module.less`
-- [mismatch] `tests-unit/parser-property-interp/parser-property-interp.less`
 - [mismatch] `tests-unit/operations/operations.less`
-- [mismatch] `tests-unit/mixins-guards/mixins-guards.less`
+- [mismatch] `tests-unit/namespace-targeted/namespace-targeted.less`
+- [mismatch] `tests-unit/mixins-interpolated/mixins-interpolated.less`
+- [mismatch] `tests-unit/layer/layer.less`
 - [mismatch] `tests-unit/javascript-REMOVED/legacy/javascript.less`
-- [mismatch] `tests-unit/import/import-remote.less`
+- [mismatch] `tests-unit/import/import-reference-issues.less`
+- [mismatch] `tests-unit/import/import-once.less`
+- [mismatch] `tests-unit/import/import-interpolation.less`
+- [mismatch] `tests-unit/import/import-inline.less`
+- [mismatch] `tests-unit/ie-filters-REMOVED/legacy/ie-filters.less`
+- [mismatch] `tests-unit/functions/functions.less`
 - [mismatch] `tests-unit/functions/legacy/functions.less`
 - [mismatch] `tests-unit/extract-and-length/extract-and-length.less`
 - [mismatch] `tests-unit/extend-selector/extend-selector.less`
-- [mismatch] `tests-unit/extend-nest/extend-nest.less`
-- [mismatch] `tests-unit/extend/extend.less`
-- [mismatch] `tests-unit/css-guards/css-guards.less`
-- [mismatch] `tests-unit/container/container.less`
+- [mismatch] `tests-unit/css-escapes/css-escapes.less`
+- [mismatch] `tests-unit/comments/comments2.less`
+- [mismatch] `tests-unit/comments/comments.less`
+- [mismatch] `tests-unit/calc/calc.less`
 - [mismatch] `tests-config/units/strict/strict-units.less`
 - [mismatch] `tests-config/units/no-strict/no-strict.less`
+- [mismatch] `tests-config/strict-imports/strict-imports.less`
 - [mismatch] `tests-config/sourcemaps/comprehensive/comprehensive.less`
+- [mismatch] `tests-config/functions-harness/functions-harness.less`
 - [mismatch] `tests-config/debug/mediaquery/linenumbers-mediaquery.less`
 - [mismatch] `tests-config/debug/comments/linenumbers-comments.less`
 - [mismatch] `tests-config/debug/all/linenumbers-all.less`
@@ -82,23 +123,20 @@ Reporting-only — outcomes measured, not gated. Each slice ran in an isolated, 
 ### Known (gate already skips / expects-failure)
 
 - [mismatch] `tests-unit/variables-in-at-rules/variables-in-at-rules.less`
-- [mismatch] `tests-unit/variables/variables.less`
 - [mismatch] `tests-unit/urls/urls.less`
-- [mismatch] `tests-unit/strings/strings.less`
-- [mismatch] `tests-unit/scope/scope.less`
 - [mismatch] `tests-unit/property-name-interp/property-name-interp.less`
-- [mismatch] `tests-unit/property-accessors/property-accessors.less`
 - [mismatch] `tests-unit/plugin/plugin.less`
 - [mismatch] `tests-unit/permissive-parse/permissive-parse.less`
 - [mismatch] `tests-unit/parser-slashed-combinator/parser-slashed-combinator.less`
 - [mismatch] `tests-unit/parse-interpolation/parse-interpolation.less`
-- [mismatch] `tests-unit/operations/operations-advanced.less`
-- [mismatch] `tests-unit/mixins-important/mixins-important.less`
 - [mismatch] `tests-unit/mixins/mixins.less`
+- [mismatch] `tests-unit/media/media.less`
 - [mismatch] `tests-unit/import/import.less`
+- [mismatch] `tests-unit/import/import-remote.less`
 - [mismatch] `tests-unit/import/import-reference.less`
 - [mismatch] `tests-unit/functions-each/functions-each.less`
 - [mismatch] `tests-unit/detached-rulesets/detached-rulesets.less`
+- [mismatch] `tests-unit/container/container.less`
 - [mismatch] `tests-config/visitorPlugin/visitor.less`
 - [mismatch] `tests-config/url-args/urls.less`
 - [mismatch] `tests-config/static-urls/urls.less`
@@ -117,7 +155,6 @@ Reporting-only — outcomes measured, not gated. Each slice ran in an isolated, 
 - [mismatch] `tests-config/namespacing/namespacing-functions.less`
 - [mismatch] `tests-config/namespacing/namespacing-8.less`
 - [mismatch] `tests-config/namespacing/namespacing-5.less`
-- [mismatch] `tests-config/namespacing/namespacing-1.less`
 - [mismatch] `tests-config/filemanagerPlugin/filemanager.less`
 - [mismatch] `tests-config/compression/compression.less`
 - [mismatch] `tests-config/at-rules-compressed-evaluation/at-rules-compressed-evaluation.less`

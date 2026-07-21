@@ -1,4 +1,5 @@
 import type { FnCtx, List } from '@jesscss/core/value';
+import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import { getImageDimensions } from '../util/image-dimensions.js';
 
 export interface ImageSize {
@@ -14,9 +15,12 @@ export interface ImageSize {
  * Throws when IO is absent, the file is unreadable, or the format is unsupported —
  * the evaluator catches that and emits the call verbatim (graceful, never a crash).
  */
-export function readImageDimensions(list: List, ctx: FnCtx): ImageSize {
+export function readImageDimensions(list: List, ctx: FnCtx): MaybePromise<ImageSize> {
   const filePath = ctx.stringify(list.items[0]!).split('#')[0]!;
   const bytes = ctx.io?.readFile(filePath);
-  if (!bytes) throw new Error(`image file not found: ${filePath}`);
-  return getImageDimensions(Buffer.from(bytes));
+  const finish = (value: Uint8Array | null): ImageSize => {
+    if (!value) throw new Error(`image file not found: ${filePath}`);
+    return getImageDimensions(Buffer.from(value));
+  };
+  return bytes && isThenable(bytes) ? bytes.then(finish) : finish(bytes ?? null);
 }

@@ -1,5 +1,10 @@
 # Fns → `@jesscss/fns` Package Migration Spec
 
+> **Historical/superseded as a parser-cutover authority.** Any text here that
+> treats `core/src/ast/parse-host`, adapters, or a private AST-v2 route as a
+> valid interim architecture is wrong. The live parser architecture is the
+> public direct `parse() -> Stylesheet` route defined by `HANDOFF.md`.
+
 > Status: DESIGN SURVEY (read-only). No code moved. This spec precedes an
 > adversarial review; nothing here is committed engineering until that review.
 >

@@ -104,7 +104,7 @@ optional position).
 ```css
 @-from '@jesscss/fns' import (svgGradient);
 .box {
-  @-let stops: red, green 30%, blue;
+  $stops: red, green 30%, blue;
   background-image: svgGradient(to right, $stops);
 }
 ```

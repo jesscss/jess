@@ -32,26 +32,15 @@ const acceptedDivergences = new Map<string, string>([
   // each asserts KEEP-accepting, so a fix that closes it trips the test.
   // (property-in-root / property-in-root2 / detached-ruleset-3 GRADUATED — they
   //  now error via checkValidNodes' root property-in-root check.)
-  ['tests-error/eval/property-interp-not-defined.less', 'GAP: undefined @var in a property-name interpolation should error'],
   // detached-ruleset-1/-2 GRADUATED — a detached ruleset (Mixin/Rules) used as a
   // property value now throws eval/ruleset-on-property (declaration.ts).
-  ['tests-error/eval/css-guard-default-func.less', 'GAP: default() in a non-mixin CSS guard should error'],
-  ['tests-error/eval/multiple-guards-on-css-selectors.less', 'GAP: a guard on a multi-selector rule should error'],
   ['tests-error/eval/multiple-guards-on-css-selectors2.less', 'GAP: a guard on a multi-selector rule should error'],
   ['tests-error/eval/root-func-undefined-1.less', 'GAP: a root-level call returning no root node should error (root-call-without-root)'],
   // ampersand-merge-template-invalid GRADUATED — its parent `@{list-quoted}` is a
   // comma-list value in selector position, so it now throws selector/comma-list-interpolation
   // (interpolated.ts). `.foo-&` itself is a plain compound; the old merge-template throw
   // (assertNotCommaMergeTemplate) was removed with the merge surface.
-  ['tests-error/eval/mixin-not-visible-in-scope-1.less', 'GAP: mixin not visible across sibling & scopes should error'],
-  // With the optional @jesscss/plugin-js now auto-wiring, these @plugin scripts
-  // load and run instead of hitting the "Install plugin-js" gate; a throw inside
-  // the plugin's Less-lifecycle hook (use()/eval()) is not yet propagated as a
-  // compile error, so Jess accepts where Less rejects.
-  ['tests-error/eval/plugin-2.less', 'GAP: a throw in a @plugin use() lifecycle hook should surface as a compile error'],
-  ['tests-error/eval/plugin-3.less', 'GAP: a throw in a @plugin eval() lifecycle hook should surface as a compile error'],
   // invalid-color-with-comment GRADUATED — colorHex now only matches 3/4/6/8-digit hex.
-  ['tests-error/parse/mixins-guards-cond-expected.less', 'GAP: guard without a parenthesized condition should be a parse error']
 ]);
 
 /**
@@ -70,6 +59,10 @@ function makeCompiler() {
   return new Compiler({
     output: { collapseNesting: true },
     compile: {
+      // Upstream plugin fixtures resolve scripts from the test-data root rather
+      // than their `tests-error/eval` directory.  Exercise the actual plugin
+      // lifecycle failure here, not an incidental missing-file diagnostic.
+      jsReadRoot: TD,
       plugins: [lessPlugin(), lessCompatPlugin({ plugins: [lessHarnessFunctionsPlugin] })],
       // Less 4.x-parity error surfacing: this corpus asks "does Jess error where
       // Less 4.x errors". Under the v5-lenient defaults (functionMode/unitMode
@@ -83,12 +76,13 @@ function makeCompiler() {
   });
 }
 
-async function rendersWithError(lessPath: string): Promise<boolean> {
+async function renderErrors(lessPath: string): Promise<Array<{ code?: string; phase?: string }>> {
   try {
     const r = await makeCompiler().renderToResult(lessPath, { breakOnError: false } as any);
-    return (r.errors?.length ?? 0) > 0;
-  } catch {
-    return true; // a throw is also "errored"
+    return r.errors ?? [];
+  } catch (error) {
+    // A thrown JessError is also a structured error result for this corpus.
+    return [error as { code?: string; phase?: string }];
   }
 }
 
@@ -108,7 +102,13 @@ describe('Less error corpus (Jess must error where Less errors)', () => {
     }
     const divergence = acceptedDivergences.get(file);
     it(`${file}${divergence ? ` (accepts — divergence: ${divergence})` : ''}`, async () => {
-      const errored = await rendersWithError(path.join(TD, file));
+      const errors = await renderErrors(path.join(TD, file));
+      const errored = errors.length > 0;
+      if (file === 'tests-error/eval/plugin-2.less' || file === 'tests-error/eval/plugin-3.less') {
+        expect(errors, `${file} should surface a structured eval error`).toEqual(expect.arrayContaining([
+          expect.objectContaining({ phase: 'eval', code: expect.any(String) }),
+        ]));
+      }
       if (divergence) {
         expect(errored, `${file} now errors — remove from acceptedDivergences`).toBe(false);
       } else {

@@ -10,6 +10,7 @@
  *
  * HARD MODULE BOUNDARY: value domain + built-in fns only.
  */
+import type { MaybePromise } from '@jesscss/awaitable-pipe';
 import type { List, ValueObj } from './value-eval.js';
 import type { Fn, FnSpec, FnCtx } from './functions/types.js';
 
@@ -38,7 +39,7 @@ function bind(name: string, spec: FnSpec, args: readonly ValueObj[]): ValueObj[]
  * variadic fn receives the whole `List` + {@link FnCtx}; a positional fn binds
  * `list.items` by kind and is spread.
  */
-export function dispatchFn(fn: Fn, list: List, ctx: FnCtx): ValueObj {
+export function dispatchFn(fn: Fn, list: List, ctx: FnCtx): MaybePromise<ValueObj> {
   if (fn.variadic) return fn.body(list, ctx);
   return fn.body(...bind(fn.name, fn, list.items));
 }
@@ -61,7 +62,7 @@ export interface FnRegistry {
    * context-sensitive Tier-B fn can serialize / read the separator; a positional fn
    * binds `list.items` by kind and needs no context.
    */
-  dispatch(name: string, list: List, ctx: FnCtx): ValueObj;
+  dispatch(name: string, list: List, ctx: FnCtx): MaybePromise<ValueObj>;
 }
 
 /** Create an empty {@link FnRegistry}; the caller populates it via `registerAll`. */

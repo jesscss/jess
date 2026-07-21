@@ -53,7 +53,7 @@ flagged for the feature agents to fill; this docs task only fills location 3.
 
 | Feature | L1 JSDoc | L2 internal | L3 Less | L3 Jess |
 |---|---|---|---|---|
-| Variables (lazy, scope, `:=`, `$!`, member access) | ~ | ✓ DD `R1`–`R7` | ✓ `features/variables` | ✓ `02-Language/02-variables` |
+| Variables (live `$`, scoped/final `$$`, `:=`, member access) | ~ | ✓ DD `R1`–`R7` | ✓ `features/variables` | ✓ `02-Language/02-variables` |
 | Mixins (parametric, guards, loops, aliasing, as-functions) | ~ | ~ | ✓ `features/mixins*` (7 pages) | ✓ `02-Language/05-mixins`, `03-Features/05-mixins` |
 | Nesting / parent selectors (`&`, `&-1`, `&()`) | ~ | ✓ DD `O1` | ✓ `features/nested`, `features/parent-selectors` | ✓ `03-Features/02-nesting` |
 | Selector capture | ~ | n/a | ✓ `features/selector-capture` (shared) | ✓ shared `15-selector-capture` |

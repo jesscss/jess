@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { opaqueAtRuleBlock } from '../at-rule.js';
-import { comment, rule, root } from '../nodes.js';
+import { comment, rule, stylesheet } from '../nodes.js';
 import { serialize } from '../serialize.js';
 import type { ValueEvaluator } from '../value-eval.js';
 
 describe('OpaqueAtRuleBlock', () => {
   it('writes its header, prelude, and raw body verbatim', () => {
-    const document = root([
+    const document = stylesheet([
       opaqueAtRuleBlock('@unknown', 'screen and (color)', '\n  $unparsed: @{still-raw};\n'),
       comment('/* following statement stays after the opaque block */'),
     ]);
@@ -29,7 +29,7 @@ describe('OpaqueAtRuleBlock', () => {
       compare: rejectCall,
       typeCheck: rejectCall,
     }) as ValueEvaluator;
-    const document = root([
+    const document = stylesheet([
       opaqueAtRuleBlock('@vendor-rule', null, '@nested { value: fn(@not-a-variable); }'),
     ]);
 
@@ -43,7 +43,7 @@ describe('OpaqueAtRuleBlock', () => {
     [true, '.host {\n  /* before */\n}\n@vendor nested {raw { bytes }}\n.host {\n  /* after */\n}\n'],
     [false, '.host {\n  /* before */\n  @vendor nested {raw { bytes }}\n  /* after */\n}\n'],
   ])('keeps a nested opaque block terminal and in source order (collapseNesting: %s)', (collapseNesting, css) => {
-    const document = root([
+    const document = stylesheet([
       rule('.host', [
         comment('/* before */'),
         opaqueAtRuleBlock('@vendor', 'nested', 'raw { bytes }'),

@@ -11,4 +11,4 @@
  */
 
 export { computeExtends } from './extend/emit.js';
-export type { ExtendResults, NestedRulePlan } from './extend/emit.js';
+export type { ExtendPlacementResults, ExtendResults, NestedRulePlan } from './extend/emit.js';

@@ -80,10 +80,9 @@ export const jessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   // in selectors. Tried before `basicSel` so a run containing `$[…]` is claimed
   // whole; a plain selector (no `$[…]`) fails this and falls back to `basicSel`.
   const basicSel = regex(/(?:[.#]?-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n]))*|\d+(?:\.\d+)?%|\*)/);
-  const dollarInterpTok = regex(/\$\[[^\]]*\]/);
   const selTextRun = regex(/[-_a-zA-Z0-9\u0080-\uffff]+/);
   const InterpolatedSelector = node(
-    noTrivia(sequence(optional(regex(/[.#]/)), many(selTextRun), dollarInterpTok, many(choice(dollarInterpTok, selTextRun)))));
+    noTrivia(sequence(optional(regex(/[.#]/)), many(selTextRun), g.DollarInterp, many(choice(g.DollarInterp, selTextRun)))));
   const simpleSelector = choice(g.AttributeSelector, g.PseudoSelector, { gate: (s: any) => !!(s && s.inner), combinator: literal('&') }, g.InterpolatedSelector, basicSel);
 
   // ── Variable declarations ───────────────────────────────────────────────────
@@ -527,7 +526,7 @@ export const jessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
     g.Dimension, g.Num, g.Color, g.Url, g.CalcCall, g.Call, g.Paren, g.Quoted, g.anyValue
   );
 
-  // ── Root + rule bodies (re-declared so Jess `rw`/`//` + `$` items apply) ─────
+  // ── Stylesheet + rule bodies (re-declared so Jess `rw`/`//` + `$` items apply) ─
   const Stylesheet = node(
     many(choice(
       g.ComposeAtRule, g.ExportAtRule, g.ImportAtRule, g.UseAtRule, g.FromAtRule,

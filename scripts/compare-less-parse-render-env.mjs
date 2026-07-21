@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 import { performance } from 'node:perf_hooks';
+import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { Context, createRenderBuffer, finalizeFlatRenderBuffer } from '../packages/core/lib/index.js';
-import lessPlugin from '../packages/jess-plugin-less/lib/index.js';
-import { lessCompatPlugin } from '../packages/jess-plugin-less-compat/lib/index.js';
+import { serialize } from '../packages/core/lib/index.js';
+import { Compiler } from '../packages/jess/lib/index.js';
 
 function parseArgs(argv) {
   const options = {
@@ -114,34 +114,27 @@ function percentile(sorted, p) {
   return sorted[lower] * (1 - weight) + sorted[upper] * weight;
 }
 
-function createContext() {
-  return new Context({
-    output: { collapseNesting: true }
-  }, [lessPlugin(), lessCompatPlugin()]);
-}
-
-async function parseFixture(file, context) {
-  const parsed = await context.getTree(file);
-  if (!parsed.node) {
-    throw new Error(`Parse failed: ${file}`);
-  }
-  context.root = parsed.node;
-  return parsed.node;
-}
-
 async function parseAndRender(file, envName, envValue, phase) {
   process.env[envName] = envValue;
-  const context = createContext();
-  let start = performance.now();
-  const tree = await parseFixture(file, context);
-  if (phase === 'render') {
-    start = performance.now();
+  const compiler = new Compiler({ output: { collapseNesting: true } });
+  if (phase === 'parse-render') {
+    const start = performance.now();
+    const css = await compiler.render(file);
+    return { elapsed: performance.now() - start, css };
   }
-  const buffer = createRenderBuffer('flat');
-  buffer.shareWriter = true;
-  await tree.render(context, buffer, { context, collapseNesting: true });
-  finalizeFlatRenderBuffer(buffer);
-  return performance.now() - start;
+
+  // `Compiler.compile()` is the public plugin-selected AST-v2 parse route.
+  // Rendering the returned Stylesheet with the public AST serializer measures
+  // the same render phase without resurrecting the retired tree.render API.
+  const { document, context } = await compiler.compile(file);
+  const start = performance.now();
+  const result = await context.withDocument(document, () => serialize(document, {
+    collapseNesting: true,
+    context,
+    pluginHost: context.pluginHost,
+    io: { readFile: specifier => context.readBinary(specifier).catch(() => null) }
+  }));
+  return { elapsed: performance.now() - start, css: result.css };
 }
 
 const options = parseArgs(process.argv.slice(2));
@@ -152,24 +145,29 @@ for (let i = 0; i < options.warmup; i++) {
 }
 
 const pairs = [];
+let output;
 for (let i = 0; i < options.pairs; i++) {
   const candidateFirst = i % 2 === 1;
-  let baselineMs;
-  let candidateMs;
+  let baseline;
+  let candidate;
   if (candidateFirst) {
-    candidateMs = await parseAndRender(file, options.env, options.candidate, options.phase);
-    baselineMs = await parseAndRender(file, options.env, options.baseline, options.phase);
+    candidate = await parseAndRender(file, options.env, options.candidate, options.phase);
+    baseline = await parseAndRender(file, options.env, options.baseline, options.phase);
   } else {
-    baselineMs = await parseAndRender(file, options.env, options.baseline, options.phase);
-    candidateMs = await parseAndRender(file, options.env, options.candidate, options.phase);
+    baseline = await parseAndRender(file, options.env, options.baseline, options.phase);
+    candidate = await parseAndRender(file, options.env, options.candidate, options.phase);
   }
+  if (baseline.css !== candidate.css) {
+    throw new Error(`Benchmark output differs between ${options.env}=${options.baseline} and ${options.env}=${options.candidate}`);
+  }
+  output ??= baseline.css;
   pairs.push({
     index: i + 1,
     order: candidateFirst ? 'candidate-baseline' : 'baseline-candidate',
-    baselineMs,
-    candidateMs,
-    deltaMs: candidateMs - baselineMs,
-    ratio: baselineMs === 0 ? 0 : (candidateMs - baselineMs) / baselineMs
+    baselineMs: baseline.elapsed,
+    candidateMs: candidate.elapsed,
+    deltaMs: candidate.elapsed - baseline.elapsed,
+    ratio: baseline.elapsed === 0 ? 0 : (candidate.elapsed - baseline.elapsed) / baseline.elapsed
   });
 }
 
@@ -197,6 +195,8 @@ const result = {
   losses: pairs.length - wins,
   standardErrorMs: standardError,
   tStatistic: standardError === 0 ? 0 : deltas.mean / standardError,
+  outputBytes: Buffer.byteLength(output),
+  outputSha256: createHash('sha256').update(output).digest('hex'),
   samples: pairs
 };
 
@@ -209,4 +209,5 @@ if (options.json) {
   console.log(`candidate median=${candidate.median.toFixed(2)}ms mean=${candidate.mean.toFixed(2)}ms`);
   console.log(`delta median=${deltas.median.toFixed(2)}ms mean=${deltas.mean.toFixed(2)}ms t=${result.tStatistic.toFixed(2)}`);
   console.log(`ratio median=${result.medianRatioPercent.toFixed(2)}% mean=${result.meanRatioPercent.toFixed(2)}% wins=${wins}/${pairs.length}`);
+  console.log(`output bytes=${result.outputBytes} sha256=${result.outputSha256}`);
 }

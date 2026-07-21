@@ -1,5 +1,12 @@
 # Jess AST v2 — Canonical Structure Blueprint
 
+> **Historical proposal — superseded as an execution plan.** This document
+> records an earlier host/bridge-era design. Do not implement its `parse-host`,
+> parser build-host, injected construction seam, or “pre-cutover” staging
+> claims. The approved public architecture is dialect-owned Parseman grammar
+> reductions calling canonical AST constructors directly through each dialect's
+> `parse()` operation, producing `Stylesheet`; Context retains plugin dispatch.
+
 Status: PROPOSED (author agent a5f7844) → under adversarial vet → owner ratification of the open decisions → then executed as the Tier-6 atomic reorg (after content demolition). Full author output archived in the session task log.
 
 The engine is a **projection serializer over a pure-data AST**: the parser build-host constructs immutable nodes; free functions walk them once and emit CSS bytes, forcing value evaluation lazily through an injected seam. Nothing in shipping `src/` imports it yet (pre-cutover, gated only by the byte-identity harness) — so the reorg can move freely.

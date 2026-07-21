@@ -8,7 +8,7 @@ origin: jess
 ---
 This doc explains how Jess parses and compiles **SCSS** (Sass’s CSS-like syntax), and how Sass-only constructs are mapped into Jess’s AST and (when possible) into Jess-native semantics.
 
-Jess’s goal is to make **Sass input parseable**, while preferring **Jess-native output semantics** where they’re strictly better (for example, maps).
+Jess’s goal is to make **Sass input parseable**, while preferring **Jess-native output semantics** where they’re strictly better (for example, maps). In native Jess, `$name` is a live/current reference and `$$name` is the scoped/final lookup; `$!` is retired.
 
 ## What SCSS adds beyond CSS
 
@@ -154,7 +154,7 @@ In value/string contexts, SCSS interpolation may map to:
 - `$[ident]` for simple identifier interpolation
 - `$(...)` for expression interpolation
 
-For example, `#{$color}` can become `$($color)` when expression semantics are needed.
+For example, `#{$color}` can become `$($color)` when live-reference expression semantics are needed.
 
 ### Interpolation in mixin names
 
@@ -185,6 +185,6 @@ Sass’s module system allows extending placeholders across module boundaries, w
 
 Sass supports `!global` and `!default` on variable assignments ([variables](https://sass-lang.com/documentation/variables/)).
 
-Jess’s SCSS support intentionally does **not** implement Sass’s full `!global` shadowing model. Instead, SCSS `!global` will be treated as “set existing / do not shadow” (Jess’s `setDefined` behavior), which is equivalent to `!global` *unless the user has already shadowed the variable in a narrower scope*—in that case, the user must refactor the source for clarity.
+Jess’s SCSS support intentionally does **not** implement Sass’s full `!global` shadowing model. It lowers `!global` to the scoped/final set-existing/no-shadow operation (`$$name := value`). SCSS `!default` corresponds to the scoped/final conditional operation (`$$name?: value`). Both `$name:` and `$$name:` create or update both bindings in native Jess.
 
 `!default` exists in Sass primarily to support module configuration (`@use ... with (...)`). Jess will align with Sass’s `@use` configuration behavior by ensuring configurable variables are explicitly marked and handled accordingly.

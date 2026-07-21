@@ -47,6 +47,11 @@ describe('compare — dimension unit reconciliation (vs less@4.6.3)', () => {
     expect(compare('>', dim(3, 'px'), dim(2, 'px'))).toBe(true);
     expect(compare('>', dim(2), dim(1))).toBe(true);
     expect(compare('>=', dim(5, 'px'), dim(5, 'px'))).toBe(true);
+    // Less accepts the historical `=<` spelling as the same inclusive
+    // less-than comparison; the AST intentionally retains that authored token.
+    expect(compare('=<', dim(5, 'px'), dim(5, 'px'))).toBe(true);
+    expect(compare('=<', dim(4, 'px'), dim(5, 'px'))).toBe(true);
+    expect(compare('=<', dim(6, 'px'), dim(5, 'px'))).toBe(false);
     expect(compare('<', dim(2, 'px'), dim(0))).toBe(false);
   });
 
@@ -59,5 +64,11 @@ describe('compare — dimension unit reconciliation (vs less@4.6.3)', () => {
     expect(compare('=', makeKeyword('foo'), makeKeyword('bar'))).toBe(false);
     expect(compare('>=', makeKeyword('foo'), makeKeyword('foo'))).toBe(true);
     expect(compare('>', makeKeyword('foo'), makeKeyword('foo'))).toBe(false);
+  });
+
+  it('matches a dimension to an escaped/e() CSS-word result by emitted bytes', () => {
+    expect(compare('=', dim(3), makeKeyword('3'))).toBe(true);
+    expect(compare('=', makeKeyword('3'), dim(3))).toBe(true);
+    expect(compare('=', dim(3), makeKeyword('4'))).toBe(false);
   });
 });

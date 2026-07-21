@@ -128,7 +128,7 @@ erroring.
 
 ```css
 @-from '@jesscss/fns' import (isdefined);
-@-let foo: 1;
+$foo: 1;
 .box {
   a: isdefined($foo); // true
   b: isdefined($bar); // false

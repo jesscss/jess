@@ -1,5 +1,11 @@
 # ast/ Reorg — Downstream Migration Map (task #12)
 
+> **Historical survey, not current architecture.** This snapshot predates the
+> public direct Parseman-to-AST-v2 parser cutover. Its statements that `ast/`
+> is test-only, that parsers do not import AST construction, or that a
+> parse-host migration remains are preserved for archaeology only. Current
+> architecture and work order are in `HANDOFF.md`.
+
 Blast-radius survey for the `ast/` co-location reorg (`AST-REORG-EXECUTION.md`,
 `AST-COLOCATION-REORG-PLAN.md`). READ-ONLY survey; no source edits.
 
@@ -113,7 +119,7 @@ so parsers can construct nodes. Split:
 **Must be in the leaf `src/ast.ts`** (node construction the parsers need):
 
 - From `node.ts`: `Node, NodeType, Combinator, isNode, AST_NODE_TYPES`
-- From `nodes.ts` (post-split, the per-family `node.ts`): all node interfaces + constructors — `Word/Dimension/Sequence/Operation/FunctionCall/Paren/Interp/VarRef/VarIndirect/DetachedRuleset/MapAccessor/DetachedCall` (→ `expr/node.ts`); `Simple/Compound/Complex/SelectorList` (→ `selector/node.ts`); `Declaration/VarDeclaration/Rule/Param/Root/Statement/Comment/RawInline` (→ `rule/node.ts`); `MixinDef/MixinCall/PathSeg` (→ `mixin/node.ts`); `ExtendInstruction` (→ `extend/node.ts`)
+- From `nodes.ts` (post-split, the per-family `node.ts`): all node interfaces + constructors — `Word/Dimension/Sequence/Operation/FunctionCall/Paren/Interp/VarRef/VarIndirect/DetachedRuleset/MapAccessor/DetachedCall` (→ `expr/node.ts`); `Simple/Compound/Complex/SelectorList` (→ `selector/node.ts`); `Declaration/VarDeclaration/Rule/Param/Stylesheet/Statement/Comment/RawInline` (→ `rule/node.ts`); `MixinDef/MixinCall/PathSeg` (→ `mixin/node.ts`); `ExtendInstruction` (→ `extend/node.ts`)
 - From `at-rule.ts`: at-rule node types + constructors, `StyleImport` (→ `at-rule/node.ts`)
 - Literal tagging the parser applies: `LiteralTag, materializeLiteral, tagForWord, sniffLiteral, LitFields` (from `literal-tag.ts` → `value/tag.ts`) — parser writes `LIT_*` classification as the grammar reduces.
 

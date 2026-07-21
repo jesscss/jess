@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { mkdtempSync, mkdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
-import { AbstractPlugin, Context, rules } from '@jesscss/core';
+import { AbstractPlugin, Context } from '@jesscss/core';
+import { stylesheet } from '@jesscss/core/ast';
 import { NodeModulesPlugin } from '../src/index.js';
 
 class LessParserPlugin extends AbstractPlugin {
@@ -12,7 +13,7 @@ class LessParserPlugin extends AbstractPlugin {
 
   safeParse(filePath: string) {
     this.parsedPaths.push(filePath);
-    return { tree: rules([]), errors: [], warnings: [] };
+    return { document: stylesheet([]), errors: [], warnings: [] };
   }
 }
 

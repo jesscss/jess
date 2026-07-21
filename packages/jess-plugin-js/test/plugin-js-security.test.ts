@@ -321,6 +321,31 @@ describe('@jesscss/plugin-js security', () => {
     await expect(loaded.functions.probeprocess()).resolves.toBe('DENIED');
   });
 
+  it('keeps executable Plugin options instance-local in the Deno runtime', async () => {
+    const root = makeTmpDir('jess-js-root-');
+    const modulePath = path.join(root, 'options-plugin.js');
+    fs.writeFileSync(
+      modulePath,
+      [
+        'registerPlugin({',
+        '  setOptions: function(value) { this.value = value; },',
+        '  install: function(_less, _manager, functions) {',
+        '    var self = this;',
+        '    functions.add("plugin-option", function() { return self.value || "none"; });',
+        '  }',
+        '});'
+      ].join('\n'),
+      'utf8'
+    );
+    const runtime = jsPlugin({ jsReadRoot: root, runtimeApi: 'less' }) as JsPlugin;
+    plugins.push(runtime);
+
+    const first = await runtime.importPlugin(modulePath, 'first=value');
+    const second = await runtime.importPlugin(modulePath, 'second=value');
+    await expect(first.functions['plugin-option']()).resolves.toBe('first=value');
+    await expect(second.functions['plugin-option']()).resolves.toBe('second=value');
+  });
+
   it('does not treat arbitrary "#less/#sass" filesystem paths as pass-through', async () => {
     const root = makeTmpDir('jess-js-root-');
     const lessAliasPath = path.join(root, '#less', 'math.js');

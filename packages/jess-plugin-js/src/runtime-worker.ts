@@ -319,7 +319,7 @@ const loadModule = async (modulePath) => {
 
 // Deprecated Less @plugin support only. Jess @-use is plain ESM and must not
 // pass through this injected-variable wrapper.
-const createLegacyLessPluginRuntime = (modulePath) => {
+const createLegacyLessPluginRuntime = (modulePath, options) => {
   const localFunctions = new Map();
   const functions = {
     add(name, fn) {
@@ -366,8 +366,14 @@ const createLegacyLessPluginRuntime = (modulePath) => {
           }
         })()
       : plugin;
+    if (candidate && options != null && typeof candidate.setOptions === 'function') {
+      candidate.setOptions(options);
+    }
     if (candidate && typeof candidate.install === 'function') {
       candidate.install(less, manager, functions);
+    }
+    if (candidate && options != null && typeof candidate.setOptions === 'function') {
+      candidate.setOptions(options);
     }
   };
   const require = (specifier) => {
@@ -387,13 +393,16 @@ const createLegacyLessPluginRuntime = (modulePath) => {
   };
 };
 
-const loadLessPlugin = async (modulePath) => {
-  let functions = lessPluginFunctionCache.get(modulePath);
+const lessPluginCacheKey = (modulePath, options) => `${modulePath}\u0000${options ?? ''}`;
+
+const loadLessPlugin = async (modulePath, options = null) => {
+  const cacheKey = lessPluginCacheKey(modulePath, options);
+  let functions = lessPluginFunctionCache.get(cacheKey);
   if (functions) {
     return Array.from(functions.keys());
   }
   const source = await Deno.readTextFile(modulePath);
-  const runtime = createLegacyLessPluginRuntime(modulePath);
+  const runtime = createLegacyLessPluginRuntime(modulePath, options);
   const module = { exports: runtime.exports };
   const loader = new Function(
     'module',
@@ -428,15 +437,16 @@ const loadLessPlugin = async (modulePath) => {
     runtime.registerPlugin(exported);
   }
   functions = runtime.localFunctions;
-  lessPluginFunctionCache.set(modulePath, functions);
+  lessPluginFunctionCache.set(cacheKey, functions);
   return Array.from(functions.keys());
 };
 
-const invokeLessPluginFunction = async (modulePath, functionName, args) => {
-  let functions = lessPluginFunctionCache.get(modulePath);
+const invokeLessPluginFunction = async (modulePath, functionName, args, options = null) => {
+  const cacheKey = lessPluginCacheKey(modulePath, options);
+  let functions = lessPluginFunctionCache.get(cacheKey);
   if (!functions) {
-    await loadLessPlugin(modulePath);
-    functions = lessPluginFunctionCache.get(modulePath);
+    await loadLessPlugin(modulePath, options);
+    functions = lessPluginFunctionCache.get(cacheKey);
   }
   const fn = functions?.get(String(functionName).toLowerCase());
   if (typeof fn !== 'function') {
@@ -479,12 +489,12 @@ const handleRequest = async (req) => {
       return;
     }
     if (req.type === 'loadLessPlugin') {
-      const functions = await loadLessPlugin(req.modulePath);
+      const functions = await loadLessPlugin(req.modulePath, req.options ?? null);
       send({ id: req.id, ok: true, functions });
       return;
     }
     if (req.type === 'invokeLessPluginFunction') {
-      const value = await invokeLessPluginFunction(req.modulePath, req.functionName, req.args ?? []);
+      const value = await invokeLessPluginFunction(req.modulePath, req.functionName, req.args ?? [], req.options ?? null);
       send({ id: req.id, ok: true, value });
       return;
     }

@@ -1,0 +1,81 @@
+import { describe, expect, it } from 'vitest';
+import { makeBuiltinRegistry } from '@jesscss/fns';
+import { buildEvaluator } from '../evaluator.js';
+import { decl, detachedRuleset, funcCall, mixinCall, mixinDef, quoted, reference, rule, stylesheet, variableDeclaration, variableReference } from '../nodes.js';
+import { plugin } from '../at-rule.js';
+import { serialize } from '../serialize.js';
+import type { PluginHost } from '../value-eval.js';
+import type { Fn } from '../functions/types.js';
+import { makeKeyword } from '../value-factory.js';
+
+const evaluator = buildEvaluator(makeBuiltinRegistry());
+
+const fn = (name: string, value: string): Fn => ({ name, params: [], body: () => makeKeyword(value) });
+const target = (specifier: string) => plugin(quoted(`'${specifier}'`, specifier, "'", false));
+
+describe('typed Plugin lexical body preparation', () => {
+  it('hoists direct typed Plugins over both earlier and later statements in one body', () => {
+    const seen: string[] = [];
+    const pluginHost: PluginHost = { loadPlugin: ({ specifier }) => { seen.push(specifier); return [fn('probe', 'root')]; } };
+    const document = stylesheet([
+      rule('.before', [decl('value', funcCall('probe', []))]),
+      target('root-plugin'),
+      rule('.after', [decl('value', funcCall('probe', []))]),
+    ]);
+
+    expect(serialize(document, { evaluator, pluginHost }).css).toBe('.before {\n  value: root;\n}\n.after {\n  value: root;\n}\n');
+    expect(seen).toEqual(['root-plugin']);
+  });
+
+  it('shadows only inside the nested body and does not leak into a sibling', () => {
+    const host: PluginHost = {
+      loadPlugin: ({ specifier }) => [fn('probe', specifier)],
+      globalFns: [fn('probe', 'global')],
+    };
+    const document = stylesheet([
+      rule('.outer', [target('inner'), decl('value', funcCall('probe', []))]),
+      rule('.sibling', [decl('value', funcCall('probe', []))]),
+    ]);
+
+    expect(serialize(document, { evaluator, pluginHost: host }).css).toBe('.outer {\n  value: inner;\n}\n.sibling {\n  value: global;\n}\n');
+  });
+
+  it('awaits a mixin-body Plugin before emitting earlier body leaves or later caller leaves', async () => {
+    const host: PluginHost = {
+      loadPlugin: async ({ specifier }) => [fn('probe', specifier)],
+    };
+    const document = stylesheet([
+      mixinDef('.from-plugin', [], [
+        decl('before', funcCall('probe', [])),
+        target('mixin'),
+        decl('after', funcCall('probe', [])),
+      ]),
+      rule('.entry', [mixinCall('.from-plugin'), decl('outside', funcCall('probe', []))]),
+    ]);
+
+    await expect(Promise.resolve(serialize(document, { evaluator, pluginHost: host }))).resolves.toEqual({
+      css: '.entry {\n  before: mixin;\n  after: mixin;\n  outside: probe();\n}\n'
+    });
+  });
+
+  it('awaits a detached-ruleset Plugin without leaking it into the caller frame', async () => {
+    const host: PluginHost = {
+      loadPlugin: async ({ specifier }) => [fn('probe', specifier)],
+    };
+    const document = stylesheet([
+      variableDeclaration('theme', detachedRuleset([
+        decl('before', funcCall('probe', [])),
+        target('detached'),
+        decl('after', funcCall('probe', [])),
+      ]), { mode: 'declare' }),
+      rule('.entry', [
+        reference(variableReference('theme', 'scoped'), [{ type: 'Call', args: [] }], '@theme()'),
+        decl('outside', funcCall('probe', [])),
+      ]),
+    ]);
+
+    await expect(Promise.resolve(serialize(document, { evaluator, pluginHost: host }))).resolves.toEqual({
+      css: '.entry {\n  before: detached;\n  after: detached;\n  outside: probe();\n}\n'
+    });
+  });
+});

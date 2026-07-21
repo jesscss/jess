@@ -26,7 +26,7 @@
  */
 
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
-import type { UnitMode } from '../types/modes.js';
+import type { EqualityMode, FunctionMode, MathMode, UnitMode } from '../types/modes.js';
 import type { Fn, FnIo } from './functions/types.js';
 
 /* --------------------------------------------------------- value domain */
@@ -46,7 +46,7 @@ export interface Dimension {
    */
   readonly unit: string;
   /**
-   * Compound-unit multiset carried across chained arithmetic (less.js `Unit`).
+   * CompoundSelector-unit multiset carried across chained arithmetic (less.js `Unit`).
    * Present only on an operation RESULT whose units don't collapse to a single
    * `unit` (e.g. `cats*dogs`, `px/s`); absent on a plain authored dimension, where
    * the unit multiset is simply `[unit]` (numerator) / `[]` (denominator).
@@ -171,11 +171,18 @@ export const literal = (bytes: string): string => bytes;
  */
 export interface EvalModes {
   readonly unitMode: UnitMode;
+  /** Less arithmetic policy; parentheses are tracked by the AST walker. */
+  readonly mathMode?: MathMode;
+  /** Registered-function failure policy supplied by the active dialect/context. */
+  readonly functionMode?: FunctionMode;
+  /** Guard-comparison dialect supplied by the active dialect/context. */
+  readonly equalityMode?: EqualityMode;
   readonly inCalc?: boolean;
 }
 
 export const DEFAULT_MODES: EvalModes = {
   unitMode: 'preserve',
+  mathMode: 'parens-division',
 };
 
 /* --------------------------------------------------------------- seam */
@@ -207,6 +214,12 @@ export interface FnScope {
  * (the idle path: no plugins) means no scoped functions anywhere — byte- and
  * cost-identical to a plain render.
  */
+/** Evaluated grammar facts handed to the Context-injected Plugin capability. */
+export interface PluginRequest {
+  readonly specifier: string;
+  readonly options: string | null;
+}
+
 export interface PluginHost {
   /**
    * GLOBAL functions contributed by config-injected `install`-style Less plugins
@@ -215,19 +228,17 @@ export interface PluginHost {
    */
   globalFns?: readonly Fn[];
   /**
-   * Resolve + load a `@plugin "specifier"` module and return the native `Fn`s it
-   * registered (via `functions.add`/`addMultiple`). The host owns resolution
-   * (local path + `node_modules`) and the shim (the `less`/`tree` surface the
-   * plugin codes against) and converts plugin fn inputs/outputs to/from `ValueObj`
-   * at the call boundary. Returns an empty array when the module registers no
-   * functions (e.g. a pure visitor/post-processor plugin — Lanes 3/4).
+   * Resolve and execute one grammar-owned Plugin fact. The caller supplies
+   * already-evaluated target/options; this capability never recovers syntax
+   * from source bytes. Context and its plugins own path/module dispatch, while
+   * the dialect adapter converts any legacy plugin ABI to native Fns here.
    */
-  loadPlugin?(specifier: string): readonly Fn[];
+  loadPlugin?(request: PluginRequest): MaybePromise<readonly Fn[]>;
 }
 
 export interface ValueEvaluator {
   /**
-   * Materialize a SYNTHETIC / COMPUTED string (a joined `Sequence`/`Interp` result,
+   * Materialize a SYNTHETIC / COMPUTED string (a joined `Sequence`/`Interpolation` result,
    * or an opaque fragment) into a typed value by sniffing its bytes. A PARSED typed
    * literal never reaches here — the serializer builds its value from the node's own
    * fields (`evalTyped`). Only OPERATED literals are materialized at all; the inert
@@ -243,7 +254,15 @@ export interface ValueEvaluator {
    * `io`, when supplied, is the per-render file-read capability an IO built-in
    * (`data-uri`/`image-*`) reaches through {@link FnCtx.io}; absent on renders
    * with no IO host wired. */
-  call(name: string, args: List, modes: EvalModes, scope?: FnScope | null, io?: FnIo): MaybePromise<ValueObj>;
+  call(
+    name: string,
+    args: List,
+    modes: EvalModes,
+    scope?: FnScope | null,
+    io?: FnIo,
+    /** Called only when a registered function is preserved after it rejects. */
+    onUnresolved?: (error: unknown) => void,
+  ): MaybePromise<ValueObj>;
   /** Guard comparison leaf (`@a > 0`) on typed operands -> boolean. */
   compare(op: string, left: ValueObj, right: ValueObj, modes: EvalModes): boolean;
   /** Guard type-function leaf (`iscolor(@a)`) on typed args -> boolean. */

@@ -1,4 +1,5 @@
 import type { Rules } from './tree/rules.js';
+import type { Stylesheet } from './ast/nodes.js';
 import type { ImportOptions } from './tree/import-style.js';
 import type { Context } from './context.js';
 import { join, isAbsolute, resolve } from 'node:path';
@@ -6,7 +7,7 @@ import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import type { Visitor } from './visitor/index.js';
 import type { Node } from './tree/node.js';
-import { type ErrorDiagnostic, type WarningDiagnostic, makeJessErrorFromDiagnostic } from './jess-error.js';
+import { type ErrorDiagnostic, type WarningDiagnostic } from './jess-error.js';
 import type { ContextOptions } from './context.js';
 import type { ExtendSelectorKind } from './types/config.js';
 
@@ -15,10 +16,8 @@ export type PluginVisitor = Partial<Omit<Visitor, 'visit'>> & {
 };
 
 export type ISafeParseResult = {
-  /**
-   * The parsed tree, if parsing succeeded
-   */
-  tree?: Rules;
+  /** Canonical parser document on successful parsing. */
+  document?: Stylesheet;
   /**
    * Normalized errors from parsing.
    * This should include ALL errors from lexing, parsing, and any plugin-level issues.
@@ -34,6 +33,9 @@ export type ISafeParseResult = {
    */
   warnings: WarningDiagnostic[];
 };
+
+/** The single parser-result contract carried by Context during the cutover. */
+export type ParsedDocument = Stylesheet;
 
 export type SafeParseOptions = {
   /**
@@ -95,17 +97,19 @@ export interface PluginInterface {
    */
   getSource?(absoluteFilePath: string): Promise<string>;
 
-  /**
-   * If we have the extension in `supportedExtensions`, and this method exists,
-   * then this plugin is assumed to be able to parse the file.
-   */
-  parse?(filePath: string, source: string): Rules;
-
-  /** No errors thrown; instead will return errors in the result */
+  /** No errors thrown; successful parser plugins return `document: Stylesheet`. */
   safeParse?(filePath: string, source: string, options?: SafeParseOptions): ISafeParseResult;
 
   /** If this method exists, then the plugin can return a JS module / object */
   import?(absoluteFilePath: string): Promise<Record<string, any>>;
+
+  /**
+   * Optional executable-plugin loader. Context selects this capability by file
+   * extension just like ordinary module import; the dialect adapter owns the
+   * returned module ABI. Kept distinct from `import()` because a legacy plugin
+   * runtime may require a constrained execution environment.
+   */
+  importPlugin?(absoluteFilePath: string, options?: string | null): Promise<unknown>;
 
   /** Post-parse or post-eval visitor(s) */
   visitor?: PluginVisitor | PluginVisitor[];
@@ -177,22 +181,6 @@ export abstract class AbstractPlugin implements PluginInterface {
       }
     }
     return null;
-  }
-
-  parse(filePath: string, source: string): Rules {
-    const safeParse = (this as PluginInterface).safeParse;
-    if (!safeParse) {
-      throw new Error(`Plugin "${this.name}" does not support parsing`);
-    }
-    const { tree, errors } = safeParse.call(this, filePath, source);
-    if (errors.length > 0) {
-      const firstError = errors[0]!;
-      throw makeJessErrorFromDiagnostic(firstError);
-    }
-    if (!tree) {
-      throw new Error(`Plugin "${this.name}" failed to parse "${filePath}"`);
-    }
-    return tree;
   }
 
   /** Implement using the JS plugin w/ Deno */

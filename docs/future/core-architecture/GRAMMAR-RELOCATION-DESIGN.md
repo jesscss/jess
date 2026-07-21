@@ -24,7 +24,7 @@ scan, or re-parse the same authored bytes.
 
 ## Direct-root work order
 
-1. Establish the actual dialect `parse` root and direct `Root` reduction.
+1. Establish the actual dialect `parse` root and direct `Stylesheet` reduction.
 2. Construct declarations, values, selectors, rules, variables, mixins,
    at-rules, and import facts with core constructors as their grammar families
    become complete.

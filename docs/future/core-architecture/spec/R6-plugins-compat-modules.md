@@ -498,12 +498,55 @@ This routes onto R4.4's engine: `head[key]` → `MapAccessor`
 "no member function" error) is applied where the module scope is resolved
 (`import-bridge.ts`, §C.2 / [R6.C1]).
 
-### D.4 Jess `$.foo` shorthand — variable-or-property, ambiguous-error on both
+### D.4 Jess `$.foo` / `.foo` shorthand — variable-or-property, ambiguous-error on both
 
 **`$.foo`** = look up `foo` as **variable OR property**, whichever exists. If BOTH
 a variable and a property named `foo` exist, it is an **ambiguous-reference
 ERROR**. It is the "don't-care-which" lookup that only fails on a genuine name
 collision. (Jess-only shorthand; no Less equivalent.)
+
+**`.foo` in a Jess value position** is exact shorthand for **`$.foo`**. It is
+allowed wherever a value atom is allowed: declaration values, value expressions,
+and function arguments. It is not selector syntax in that position. The spelling
+is unambiguous with a decimal literal because a decimal needs a digit after the
+dot (`.5`), while this form requires a Jess identifier start after it.
+
+This is a generic variable-or-property read, not a property-only AST `PropRef`.
+Its AST reduction must therefore preserve the same collision check as `$.foo`:
+variable-only and property-only names resolve; a name present in both namespaces
+throws the same ambiguous-reference error. Do not silently prefer either side.
+It is not raw selector, property-name, or at-rule-name syntax by itself, but it
+is valid inside an expression embedded in any of those positions—for example
+`--prop-$(.var): bar;`.
+
+Parser acceptance must be proved at the public Jess `parse(): Stylesheet` route with
+at least declaration, expression (`foo: $(.var + 1)`), function-argument,
+property-name expression (`--prop-$(.var): bar;`), decimal-boundary, raw
+selector-boundary, variable-only, property-only, and same-name-collision cases.
+The canonical AST node name is a separate public API decision; it must describe
+this generic lookup rather than reuse a misleading property-only name.
+
+### D.4a SCSS variable modifiers lower to Jess assignment operators
+
+SCSS modifiers are not a dialect-only semantic flag family. They map to the
+same source-level variable operations as native Jess:
+
+| SCSS | Jess canonical source | Required semantic result |
+|---|---|---|
+| `$foo: bar;` | `$foo: bar;` or `$$foo: bar;` | declaration creates or updates both bindings |
+| `$foo: bar !default;` | `$$foo?: bar;` | test the scoped/final map, then create/update both only on a miss |
+| `$foo: bar !global;` | `$$foo := bar;` | update the scoped/final binding |
+
+`$foo` is the live/current reference and `$$foo` is the scoped/final reference;
+`$!` is retired. Both `$foo:` and `$$foo:` create or update both bindings, so a
+declaration has no sigil-selected binding kind. `?:` and `:=` use the target
+reference's lookup mode. The evaluator semantics are the binding-system rules in
+`RESOLVER-SHAPE-SPEC.md`: scoped declarations use immutable lazy stacks plus a
+per-activation reassignment overlay, while live-reference assignments use
+mutable source-order cells; `?:` and `:=` act within the selected system. SCSS
+grammar must preserve that behavior when parser/evaluator migration begins. The
+AST-v2 representation is an implementation decision for that migration; this
+document does not prescribe a node shape or introduce Sass-shaped flags.
 
 ### D.5 `@use` namespace binding — dialect-split
 

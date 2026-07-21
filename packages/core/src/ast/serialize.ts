@@ -29,8 +29,10 @@ import type { Node, NodeType } from './node.js';
 import {
   any,
   dimension,
+  mixinCall,
   operation,
   spaced,
+  variableDeclaration,
   isLiteralNode,
   isTypedLiteral,
   compoundCanonical,
@@ -38,38 +40,44 @@ import {
   complexCanonical,
   complexHasInterp,
   complexHasAmpersand,
-  simple,
+  simpleSelector,
 } from './nodes.js';
 import type {
   Any,
   Color,
-  Complex,
-  Compound,
+  ComplexSelector,
+  CompoundSelector,
   Declaration,
-  DetachedCall,
   DetachedRuleset,
   Dimension,
   For,
+  If,
   FunctionCall,
-  Interp,
+  Interpolation,
+  GeneralEnclosed,
   Keyword,
-  MapAccessor,
+  Reference,
   MixinCall,
   MixinDef,
+  ModuleImport,
   Operation,
+  PropertyReference,
   Quoted,
   RawInline,
-  Root,
+  Range,
+  Stylesheet,
   Rule,
   SpacedValue,
-  Simple,
+  SimpleSelector,
   SelectorList,
   Statement,
+  StyleImport,
   ValueNode,
   VarIndirect,
+  VariableDeclaration,
 } from './nodes.js';
 // [atrule] block + statement at-rule node types
-import type { AtRuleBlock, AtRuleStatement, ImportAtRule, OpaqueAtRuleBlock } from './at-rule.js';
+import type { AtRuleBlock, AtRuleStatement, ImportAtRule, OpaqueAtRuleBlock, Plugin } from './at-rule.js';
 // typed synchronous value evaluator seam + boundary-clean value domain.
 import {
   DEFAULT_MODES,
@@ -90,10 +98,17 @@ import { colorFromSrc, dimensionFromFields, quotedFromFields, materializeAny } f
 import { calcInner } from './value-operate.js'; // [calc]
 import { emitValueInterp } from './serialize-value.js'; // [interp-precision]
 import { makeKeyword, makeBool, makeList } from './value-factory.js'; // [calc]
-import { selectDefinitions, type Selection, type DefaultResolver, type CallArg } from './mixin-dispatch.js'; // [guards]
-import { evalGuard, type GuardNode, type ValueResolver, type TypedResolver } from './guard.js'; // [guards]
-import { computeExtends, type ExtendResults } from './extend.js'; // [extend]
+import { DefaultGuardAmbiguityError, selectDefinitions, type Selection, type DefaultResolver, type CallArg, type CallValue } from './mixin-dispatch.js'; // [guards]
+import { evalGuard, guardUsesDefault, type GuardNode, type ValueResolver, type TypedResolver } from './guard.js'; // [guards]
+import { computeExtends, type ExtendPlacementResults, type ExtendResults } from './extend.js'; // [extend]
 import { documentHasExtend } from './extend/plan.js'; // [extend/selector-interp]
+import type { PlanInstruction, PlanOverlay, PlanSubject } from './extend/plan.js';
+import type { Branch, Level } from './extend/ir.js';
+import type { Context } from '../context.js';
+import { ERR, WARN } from '../error/diagnostics.js';
+import { JessError } from '../error/jess-error.js';
+import { lineColAt } from '../error/code-frame.js';
+import { sourceSpanOf } from './provenance.js';
 
 /* ---------------------------------------------------- MaybePromise glue */
 
@@ -125,7 +140,9 @@ export interface SerializeOptions {
    * only on the `ValueEvaluator` interface.
    */
   evaluator?: ValueEvaluator;
-  /** Configured math/unit/function modes (defaults to `DEFAULT_MODES`). */
+  /** Active canonical execution session. Public rendering uses this Context directly. */
+  context?: Context;
+  /** Explicit modes for context-free AST consumers (defaults to Context, then `DEFAULT_MODES`). */
   modes?: EvalModes;
   /**
    * [nested/R0] Selector collapse policy (arch E1). `true` (default, 4.x /
@@ -161,6 +178,91 @@ export interface SerializeOptions {
    * scoped functions anywhere ⇒ byte- and cost-identical to a plain render.
    */
   pluginHost?: PluginHost;
+  /**
+   * Optional document-loading capability supplied by the public driver. Core
+   * only evaluates the typed import fact and asks for a canonical document; it
+   * never resolves paths or selects a parser. `undefined` keeps the import as
+   * a CSS terminal, while `{ document: null }` is an intentionally empty
+   * import (for example an optional missing Less file).
+   */
+  importDocument?: (request: ImportDocumentRequest) => MaybePromise<ImportDocument | undefined>;
+}
+
+export interface ImportDocumentRequest {
+  node: ImportAtRule;
+  /** Evaluated, unquoted specifier supplied to the Context/plugin dispatcher. */
+  specifier: string;
+  /** Evaluated parenthesized option bytes, without the enclosing parentheses. */
+  options: string | null;
+  /** Evaluated import postlude; `(inline)` uses it as its media wrapper. */
+  tail: string | null;
+}
+
+export interface ImportDocumentTree {
+  document: Stylesheet | null;
+  /** Driver-owned canonical identity used only for Less's default import-once rule. */
+  key?: string;
+  /**
+   * Optional driver-owned source scope for a loaded document. Core invokes the
+   * child body inside it, so a recursive import resolves relative to that child
+   * without giving core a Context, resolver, or parser dependency.
+   */
+  withinDocument?: (emit: () => MaybePromise<void>) => MaybePromise<void>;
+}
+
+/** A Context-read `(inline)` import: raw source is deliberately never parsed. */
+export interface ImportDocumentInline {
+  readonly inline: string;
+  readonly media: string | null;
+}
+
+export type ImportDocument = ImportDocumentTree | ImportDocumentInline;
+
+interface PlannedImportDocument {
+  request: ImportDocumentRequest;
+  loaded: ImportDocument | undefined;
+}
+
+/**
+ * CSS-terminal imports are facts of the typed import node, not resolver work.
+ * Every other eligible target goes through Context's existing plugin dispatcher.
+ */
+function canLoadImport(node: ImportAtRule, specifier: string, options: string | null): boolean {
+  const optionWords = options === null ? [] : options.toLowerCase().split(',').map(word => word.trim());
+  return !optionWords.includes('inline')
+    && !optionWords.includes('css')
+    && node.alias === null
+    && !/^(?:[a-z][a-z0-9+.-]*:|\/\/)/iu.test(specifier)
+    && !(specifier.toLowerCase().endsWith('.css') && !optionWords.includes('less'));
+}
+
+function importHasOption(options: string | null, option: string): boolean {
+  return options !== null && options.toLowerCase().split(',').some(word => word.trim() === option);
+}
+
+/**
+ * The public path deliberately calls Context itself: there is no Jess-side
+ * resolver callback, secondary cache, or AST import bridge. The optional
+ * `importDocument` option remains a narrow context-free test seam.
+ */
+function importThroughContext(context: Context): NonNullable<SerializeOptions['importDocument']> {
+  return async ({ node, specifier, options, tail }) => {
+    if (importHasOption(options, 'inline')) {
+      const bytes = await context.readBinary(specifier);
+      return { inline: bytes.toString(), media: tail };
+    }
+    if (!canLoadImport(node, specifier, options)) return undefined;
+    // Parse-mode selection remains Context/plugin-owned. The typed Less `(less)`
+    // flag asks the existing dispatcher for its `less` plugin even when the path
+    // ends in `.css`; core never chooses or invokes a parser itself.
+    const loaded = await context.getTree(specifier, importHasOption(options, 'less') ? { type: 'less' } : {});
+    if (loaded.node?.type !== 'Stylesheet') return undefined;
+    return {
+      document: loaded.node,
+      key: loaded.resolvedPath,
+      withinDocument: emit => context.withDocument(loaded.node, emit),
+    };
+  };
 }
 
 export interface SerializeResult {
@@ -179,6 +281,10 @@ export type SerializeReturn = MaybePromise<SerializeResult>;
 
 const INDENT = '  ';
 
+
+
+
+
 /* ------------------------------------------------------------------- scope */
 
 /**
@@ -191,19 +297,109 @@ const INDENT = '  ';
  * binding carries a {@link MixinCall} whose OUTPUT the name accesses (`@p[text]`),
  * dispatched lazily on read (see {@link resolveBaseDeclMap}).
  */
-type Binding = ValueNode | MixinCall;
+type Binding = CallValue;
+
+type MixinRank = readonly number[];
+
+interface OrderedMixinCandidate {
+  readonly definition: MixinDef;
+  readonly rank: MixinRank;
+}
+
+interface OrderedMixinIndex {
+  readonly byName: Map<string, OrderedMixinCandidate[]>;
+}
+
+interface SelectedMixinPath {
+  readonly node: If;
+  readonly body: Statement[];
+}
+
+interface MixinDefinitionMeta {
+  readonly rank: MixinRank;
+  readonly selectedPath: readonly SelectedMixinPath[];
+}
+
+/** Shared, source-order declaration facts for one lexical body. Never mutated. */
+interface DeclIndex {
+  readonly byName: Map<string, VariableDeclaration[]>;
+}
+
+/** One activation's current binding for a name. */
+interface BindingCell {
+  declaration: VariableDeclaration;
+  value: Binding;
+}
+
+/** Render-local closure/source facts for one detached-ruleset binding. */
+interface DetachedBinding {
+  readonly lexicalFrame: Frame;
+  readonly sourceOwner: object | null;
+}
+
+/** A declaration as it actually became visible in one rendered ruleset scope.
+ * Unlike `statements`, this contains selected control bodies and mixin output in
+ * the order the evaluator spliced them. `frame` is deliberately retained: a
+ * declaration produced by a mixin evaluates its value in that call frame, while
+ * being visible to the caller's property-accessor scope. */
+interface PropertyDeclarationFact {
+  readonly node: Declaration;
+  readonly frame: Frame;
+}
+
+/**
+ * The authored selector path that led to one nested call site.  This is
+ * render-local placement data, not a rewritten selector or an AST overlay:
+ * each link keeps the selector node and the exact frame that resolves it.
+ */
+interface NestedHeaderSource {
+  readonly parent: NestedHeaderSource | null;
+  readonly selector: SelectorList;
+  readonly frame: Frame;
+}
+
+/**
+ * A selected paren-less ruleset mixin may project its first `&` header onto
+ * the call site's authored selector path.  Real mixin definitions never get
+ * this fact, so normal nested authored `&` remains literal.
+ */
+interface NestedRuleMixinPlacement {
+  readonly source: NestedHeaderSource;
+  readonly callFrame: Frame;
+}
+
+/** A canonical ruleset body placed by an already-executed explicit mixin call.
+ *
+ * This is deliberately a render-frame fact, rather than an AST copy or a
+ * `Rule` mutation: a later namespaced call must enter the activation that
+ * actually evaluated the rule (and therefore owns its live bindings/imports).
+ */
+interface PublishedRulesetPlacement {
+  readonly rule: Rule;
+  readonly frame: Frame;
+}
 
 export interface Frame {
   parent: Frame | null;
+  /**
+   * Identity of one executed `$for`/`each()` iteration when this frame descends
+   * from it. This is render-local placement state, never a property of the
+   * canonical `For` or `Rule` AST: the same rule body may execute repeatedly
+   * with distinct bindings and therefore needs distinct extend-plan facts.
+   */
+  extendPlacement?: object;
   // [guards] a name maps to ALL same-name defs (overloads), in definition order.
   mixins: Map<string, MixinDef[]> | null;
-  // [resolver] a name maps to its SOURCE-ORDERED stack of declared value nodes
-  // (last = most recent). A regular `@x`/`$x` read walks this stack BACKWARD,
-  // skipping any value node currently in the active exclusion set (see
-  // `resolveVarRef`), so `@a: @a + 1` falls back to an earlier same-name entry
-  // instead of self-referencing. The stack — not a collapsed last-wins map — is
-  // what makes per-declaration cycle exclusion expressible.
-  vars: Map<string, Binding[]> | null;
+  /** Immutable, shared declaration stacks. Scoped reads use this only. */
+  declIndex: DeclIndex | null;
+  /** Per-activation current values. Live reads use this only. */
+  cells: Map<string, BindingCell> | null;
+  /** Per-activation scoped writes (`:=` and activated scoped conditionals). */
+  reassign: Map<string, VariableDeclaration> | null;
+  /** Branches selected by this activation; absent until a Jess `$if` executes. */
+  selectedIfBodies?: Map<If, Statement[]>;
+  /** Source-ordered direct + selected-branch declaration index for this activation. */
+  selectedDeclIndex?: DeclIndex | null;
   // [scope-leak] variables UNLOCKED into this frame by a mixin call in its body
   // (`leakBodyVars`). v5 "outer-binding-wins": the mixin-injected variable is NOT
   // hoisted into the ordinary `vars` scope — it is consulted ONLY after the whole
@@ -221,11 +417,30 @@ export interface Frame {
   // string (namespace path descent). Lazily built only when a namespaced call or
   // map/namespace accessor needs it.
   rulesets?: Map<string, Rule[]> | null;
+  /** Root rulesets spliced by already-executed imports, in import/source order. */
+  importedRules?: Rule[] | null;
+  /**
+   * Source-ordered direct ruleset placements unlocked by executed explicit
+   * mixins. They are visible only to later lookup in this caller frame.
+   */
+  publishedRules?: PublishedRulesetPlacement[] | null;
+  /**
+   * Render-local placement frames for rules evaluated in this lexical frame.
+   * A nested import executes in the Rule's child frame; namespace descent must
+   * therefore retain that frame's imported prefix instead of reconstructing a
+   * scope from authored `Rule.body` alone. This belongs to the render frame,
+   * never to the immutable AST Rule.
+   */
+  rulePlacements?: Map<Rule, Frame>;
   // [dedup] source-ordered dispatch candidates keyed by name: parametric MixinDefs
   // AND paren-less ruleset-mixins INTERLEAVED in authored order (unlike `mixins`,
   // which groups all parametric defs). Lazily built once from `statements` and
   // cached; published (unlocked) defs are merged in at lookup from `mixins`.
-  orderedMixins?: Map<string, MixinDef[]> | null;
+  orderedMixins?: OrderedMixinIndex | null;
+  /** Lexical rank/path facts; indexing does not publish any selected-arm definition. */
+  mixinDefinitionMeta?: Map<MixinDef, MixinDefinitionMeta>;
+  /** Definitions reached while walking selected arms in this activation. */
+  selectedMixinEvents?: Map<string, OrderedMixinCandidate[]>;
   // [closure/publish] a mixin def UNLOCKED into this frame by a body expansion
   // (`publishMixins`) carries its CLOSURE — the callee frame it was authored in,
   // where its params/locals are bound. A later call to that def resolves its free
@@ -236,80 +451,86 @@ export interface Frame {
   mixinHomes?: Map<MixinDef, Frame> | null;
   // the statements this frame was built from (for lazy rulesets / decl-map).
   statements?: Statement[] | null;
+  /** Evaluated declaration visibility for Less `$property` accessors. */
+  propertyTimeline?: PropertyDeclarationFact[] | null;
   // [plugin/P1] functions registered by a `@plugin` (or, later, `@use`) directive
   // textually inside THIS frame's block, keyed lower-case like the global registry.
   // `null`/absent on EVERY frame unless this exact block loaded a scoped function
-  // (P2 wires loading; today `collectScopedFns` always returns null, so this stays
-  // null and the frame walk is gated OFF via `EvalCtx.anyScopedFns`). Resolution
+  // Resolution
   // walks `fns` up the `parent` chain (nearest-first), so a scoped fn is visible in
   // its subtree and shadows a same-name built-in; the chain IS the `parent` chain —
   // no parallel scope structure.
   fns?: Map<string, Fn> | null;
+  /** Detached-ruleset closure facts for this activation; never stored on AST nodes. */
+  detachedBindings?: Map<DetachedRuleset, DetachedBinding>;
+  /** Opaque Context source identity that authored this activation's body. */
+  sourceOwner?: object | null;
 }
 
-/**
- * [plugin/P2] Extract the module specifier from a `@plugin` directive's prelude.
- * The prelude is an opaque value node whose `src` bytes are either a bare quoted
- * string (`"./plugin"`) or a leading options group then the string
- * (`(option) "./plugin"`, `(test=test) "./x"`). Strip the options group and unwrap
- * the quotes; return the inner specifier, or `null` when the prelude is not a
- * recognizable `@plugin` string (leave such a directive as-is).
- */
-function pluginSpecifier(prelude: ValueNodeLike | null): string | null {
-  if (!prelude || typeof prelude !== 'object' || !('src' in prelude)) return null;
-  const src = (prelude as { src?: unknown }).src;
-  if (typeof src !== 'string') return null;
-  const afterOptions = src.replace(/^\s*\([^)]*\)\s*/u, '').trim();
-  const quoted = afterOptions.match(/^(['"])([\s\S]*?)\1/u);
-  if (quoted) return quoted[2] ?? null;
-  return afterOptions.length > 0 ? afterOptions : null;
+function sourceOwnerForBody(body: object, frame: Frame, e: EvalCtx): object | null {
+  return e.context?.sourceOwnerForBody?.(body) ?? frame.sourceOwner ?? null;
 }
 
-/** Minimal structural view of a value node carrying opaque `src` bytes. */
-type ValueNodeLike = { readonly src?: unknown } | Record<string, unknown>;
+function withSourceOwner<T>(e: EvalCtx, owner: object | null | undefined, run: () => T | Promise<T>, legacyBody?: object): T | Promise<T> {
+  if (e.context?.withSourceOwner) return e.context.withSourceOwner(owner, run);
+  return legacyBody && e.context?.withDocumentBody ? e.context.withDocumentBody(legacyBody, run) : run();
+}
 
-/**
- * [plugin/P2] Pre-scan a scope's statements for functions to register into this
- * frame's `fns` map — the peer of {@link collectMixins}/{@link collectVars} and the
- * single registration entry point for scoped functions (`@plugin`, later `@use` and
- * scoped `.jess` functions).
- *
- * Registration is driven by the injected {@link PluginHost} (built by the consumer
- * driver; core owns no module loading). For each `@plugin "specifier"` directive in
- * `statements`, the host loads the module and returns its native `Fn`s, keyed
- * lower-case into this frame's map (nearest-first shadowing falls out of the
- * `parent` chain). At the ROOT frame (`includeGlobals`), config-injected global
- * `install` plugins (`host.globalFns`) are merged in too.
- *
- * IDLE PATH: with no host (every render that configures no plugins and the
- * differential harness), this returns `null` immediately — `Frame.fns` stays null
- * everywhere, `anyScopedFns` stays false, and the fn-dispatch path is byte- and
- * cost-identical to before P2. The `@plugin` scan itself only runs when a host is
- * present, so a plain render never pays for it.
- */
-function collectScopedFns(
-  statements: Statement[],
-  host: PluginHost | undefined,
-  includeGlobals: boolean,
-): Map<string, Fn> | null {
-  if (!host) return null;
-  let map: Map<string, Fn> | null = null;
-  const add = (fns: readonly Fn[]): void => {
-    if (fns.length === 0) return;
-    map ??= new Map();
-    for (const f of fns) map.set(f.name.toLowerCase(), f);
-  };
-  if (includeGlobals && host.globalFns && host.globalFns.length > 0) add(host.globalFns);
-  const load = host.loadPlugin;
-  if (load) {
-    for (const s of statements) {
-      if (s.type === 'AtRuleStatement' && s.name.toLowerCase() === '@plugin') {
-        const spec = pluginSpecifier(s.prelude);
-        if (spec) add(load(spec));
-      }
-    }
+function bindDetached(frame: Frame, value: Binding, lexicalFrame: Frame, sourceOwner: object | null): void {
+  if (value.type !== 'DetachedRuleset') return;
+  (frame.detachedBindings ??= new Map()).set(value, { lexicalFrame, sourceOwner });
+}
+
+function detachedBinding(frame: Frame | null, value: Binding): DetachedBinding | undefined {
+  let fallback: Frame | null | undefined;
+  for (let current = frame; current; current = current.parent) {
+    const hit = current.detachedBindings?.get(value as DetachedRuleset);
+    if (hit) return hit;
+    if (current.fallback && !fallback) fallback = current.fallback;
   }
-  return map;
+  return fallback ? detachedBinding(fallback, value) : undefined;
+}
+
+/** Add already-resolved functions to one lexical frame. */
+function addScopedFns(frame: Frame, fns: readonly Fn[], e: EvalCtx): void {
+  if (fns.length === 0) return;
+  const map = frame.fns ??= new Map();
+  for (const fn of fns) map.set(fn.name.toLowerCase(), fn);
+  e.anyScopedFns = true;
+}
+
+/** Root-only configured functions; typed `Plugin` facts are prepared per body below. */
+function globalScopedFns(host: PluginHost | undefined): Map<string, Fn> | null {
+  if (!host?.globalFns?.length) return null;
+  const fns = new Map<string, Fn>();
+  for (const fn of host.globalFns) fns.set(fn.name.toLowerCase(), fn);
+  return fns;
+}
+
+/**
+ * Prepare exactly one lexical body before evaluating it. This deliberately scans
+ * only its direct statements (historic Less evaluates imports/plugins before the
+ * rest of that same Ruleset), never descends, and never recovers source syntax.
+ */
+function prepareBodyPlugins(statements: readonly Statement[], frame: Frame, e: EvalCtx): MaybePromise<void> {
+  const load = e.pluginHost?.loadPlugin;
+  if (!load) return;
+  const run = (start: number): MaybePromise<void> => {
+    for (let index = start; index < statements.length; index++) {
+      const statement = statements[index]!;
+      if (statement.type !== 'Plugin') continue;
+      const specifier = statement.target.type === 'Quoted'
+        ? statement.target.value
+        : statement.target.type === 'Url' && statement.target.value.type === 'Quoted'
+          ? statement.target.value.value
+          : evalBytesSync(statement.target, frame, e);
+      const options = statement.options === null ? null : evalBytesSync(statement.options, frame, e);
+      const loaded = load({ specifier, options });
+      if (isThenable(loaded)) return loaded.then(fns => { addScopedFns(frame, fns, e); return run(index + 1); });
+      addScopedFns(frame, loaded, e);
+    }
+  };
+  return run(0);
 }
 
 /**
@@ -347,37 +568,68 @@ function collectMixins(statements: Statement[]): Map<string, MixinDef[]> | null 
 }
 
 /**
- * Collect variable declarations in a scope into a per-name SOURCE-ORDERED STACK
- * of value nodes. Less variable semantics: LAST-wins within a scope (a later
- * `@x` overrides an earlier one) and LAZY (a reference resolves a variable
- * declared textually later in the same scope). Keeping the FULL ordered stack —
- * not a collapsed last-wins map — is what lets a self-referential declaration
- * (`@a: @a + 1`) fall back to an earlier same-name entry once its own node is
- * excluded (see `resolveVarRef`). The whole scope's stacks are built up-front so
- * a forward reference sees a complete index before any value is emitted.
+ * Collect immutable, source-ordered declaration facts. Scoped reads walk the
+ * resulting stacks lazily and backward; live reads never consult this index.
  */
-function collectVars(statements: Statement[]): Map<string, Binding[]> | null {
-  let map: Map<string, Binding[]> | null = null;
-  for (const s of statements) {
-    if (s.type === 'VarDeclaration') {
-      const stack = (map ??= new Map()).get(s.name);
-      if (stack) stack.push(s.value);
-      else map.set(s.name, [s.value]);
-    }
+function collectDeclIndex(
+  statements: Statement[],
+  params: Map<string, Binding> | null = null,
+): DeclIndex | null {
+  const byName = new Map<string, VariableDeclaration[]>();
+  if (params) for (const [name, value] of params) {
+    const stack = byName.get(name);
+    const declaration = variableDeclaration(name, value, { mode: 'declare' });
+    if (stack) stack.push(declaration); else byName.set(name, [declaration]);
   }
-  return map;
+  for (const s of statements) if (s.type === 'VariableDeclaration') {
+    const stack = byName.get(s.name);
+    if (stack) stack.push(s); else byName.set(s.name, [s]);
+  }
+  return byName.size === 0 ? null : { byName };
 }
 
-/** Wrap a single-value binding map (mixin/function PARAMS) as per-name stacks so
- * it shares the STACK read path with regular declarations. A param is a 1-entry
- * stack; a body decl of the same name (merged AFTER, see `mergeVars`) sits later
- * in the stack and wins the backward walk — body-shadows-param falls out for
- * free. */
-function asStacks(m: Map<string, ValueNode> | null): Map<string, Binding[]> | null {
-  if (!m) return null;
-  const out = new Map<string, Binding[]>();
-  for (const [k, v] of m) out.set(k, [v]);
-  return out;
+/**
+ * Augment this frame's ordinary declaration index with branches selected by this
+ * activation. The ordinary index can contain parameter bindings that do not
+ * occur in `statements`; retain those as a prefix while rebuilding authored body
+ * declarations around the selected control-flow paths.
+ */
+function collectSelectedDeclIndex(
+  statements: Statement[],
+  selected: ReadonlyMap<If, Statement[]>,
+  ordinary: DeclIndex | null,
+): DeclIndex | null {
+  const byName = new Map<string, VariableDeclaration[]>();
+  const direct = new Set<VariableDeclaration>();
+  for (const statement of statements) if (statement.type === 'VariableDeclaration') direct.add(statement);
+  if (ordinary) for (const [name, stack] of ordinary.byName) {
+    const prefix = stack.filter(declaration => !direct.has(declaration));
+    if (prefix.length > 0) byName.set(name, prefix);
+  }
+  const visit = (body: Statement[]): void => {
+    for (const statement of body) {
+      if (statement.type === 'VariableDeclaration') {
+        const stack = byName.get(statement.name);
+        if (stack) stack.push(statement); else byName.set(statement.name, [statement]);
+      } else if (statement.type === 'If') {
+        const branch = selected.get(statement);
+        if (branch) visit(branch);
+      }
+    }
+  };
+  visit(statements);
+  return byName.size === 0 ? null : { byName };
+}
+
+/** Seed one activation's live cells from mixin/function parameters. */
+function cellsForParams(params: Map<string, Binding> | null): Map<string, BindingCell> | null {
+  if (!params) return null;
+  const cells = new Map<string, BindingCell>();
+  for (const [name, value] of params) {
+    const declaration = variableDeclaration(name, value, { mode: 'declare' });
+    cells.set(name, { declaration, value });
+  }
+  return cells;
 }
 
 // collect the rulesets defined directly in a scope, keyed by own-local
@@ -407,7 +659,7 @@ function collectRulesets(statements: Statement[]): Map<string, Rule[]> | null {
 
 function frameRulesets(frame: Frame): Map<string, Rule[]> | null {
   if (frame.rulesets !== undefined) return frame.rulesets;
-  const built = frame.statements ? collectRulesets(frame.statements) : null;
+  const built = collectRulesets([...(frame.importedRules ?? []), ...(frame.statements ?? [])]);
   frame.rulesets = built;
   return built;
 }
@@ -452,16 +704,17 @@ function lookupMixinCandidates(frame: Frame | null, name: string): MixinDef[] {
  * {@link collectMixins} / {@link collectRulesets} — so per-call lookup stays O(1)
  * (a map `get`), not a per-call statement walk.
  */
-function frameOrderedMixins(f: Frame, e: EvalCtx): Map<string, MixinDef[]> | null {
-  if (f.orderedMixins !== undefined) return f.orderedMixins;
-  const st = f.statements;
-  if (!st) return (f.orderedMixins = null);
-  let map: Map<string, MixinDef[]> | null = null;
-  for (const s of st) {
+function orderedMixinsForStatements(statements: Statement[], f: Frame, e: EvalCtx): OrderedMixinIndex | null {
+  const byName = new Map<string, OrderedMixinCandidate[]>();
+  const add = (name: string, definition: MixinDef, rank: MixinRank): void => {
+    const list = byName.get(name);
+    const candidate = { definition, rank };
+    if (list) list.push(candidate); else byName.set(name, [candidate]);
+  };
+  for (let index = 0; index < statements.length; index++) {
+    const s = statements[index]!;
     if (s.type === 'MixinDef') {
-      const list = (map ??= new Map()).get(s.name);
-      if (list) list.push(s);
-      else map.set(s.name, [s]);
+      add(s.name, s, [index]);
     } else if (s.type === 'Rule') {
       // The names this rule answers to as a zero-arg mixin: each selector's
       // canonical form plus its leading-combinator-stripped form (mirrors the keys
@@ -472,7 +725,7 @@ function frameOrderedMixins(f: Frame, e: EvalCtx): Map<string, MixinDef[]> | nul
       // dispatches on the concrete name the parser could not know statically.
       let keys: Set<string> | null = null;
       for (const c of s.selector.selectors) {
-        const key = complexHasInterp(c) ? resolveComplex(c, f, e) : complexCanonical(c);
+        const key = complexHasInterp(c) ? resolveComplexSync(c, f, e) : complexCanonical(c);
         (keys ??= new Set<string>()).add(key);
         const stripped = key.replace(/^[>+~]\s*/u, '');
         if (stripped !== key) keys.add(stripped);
@@ -484,12 +737,113 @@ function frameOrderedMixins(f: Frame, e: EvalCtx): Map<string, MixinDef[]> | nul
           type: 'MixinDef', name: key, params: [], body: s.body, ruleMixin: true,
           ...(s.guard !== undefined ? { guard: s.guard } : {}),
         };
-        const list = (map ??= new Map()).get(key);
-        if (list) list.push(rm); else map.set(key, [rm]);
+        add(key, rm, [index]);
       }
     }
   }
-  return (f.orderedMixins = map);
+  return byName.size === 0 ? null : { byName };
+}
+
+function frameOrderedMixins(f: Frame, e: EvalCtx): OrderedMixinIndex | null {
+  if (f.orderedMixins !== undefined) return f.orderedMixins;
+  const st = f.statements;
+  return (f.orderedMixins = st ? orderedMixinsForStatements(st, f, e) : null);
+}
+
+function compareMixinRanks(a: MixinRank, b: MixinRank): number {
+  const length = Math.min(a.length, b.length);
+  for (let i = 0; i < length; i++) if (a[i] !== b[i]) return a[i]! - b[i]!;
+  return a.length - b.length;
+}
+
+function frameMixinDefinitionMeta(frame: Frame): Map<MixinDef, MixinDefinitionMeta> {
+  if (frame.mixinDefinitionMeta) return frame.mixinDefinitionMeta;
+  const meta = new Map<MixinDef, MixinDefinitionMeta>();
+  const visit = (body: Statement[], rank: MixinRank, selectedPath: readonly SelectedMixinPath[]): void => {
+    for (let index = 0; index < body.length; index++) {
+      const statement = body[index]!;
+      const at = [...rank, index];
+      if (statement.type === 'MixinDef') {
+        meta.set(statement, { rank: at, selectedPath });
+      } else if (statement.type === 'If') {
+        for (const branch of statement.branches) {
+          visit(branch.body, at, [...selectedPath, { node: statement, body: branch.body }]);
+        }
+      }
+    }
+  };
+  if (frame.statements) visit(frame.statements, [], []);
+  frame.mixinDefinitionMeta = meta;
+  return meta;
+}
+
+/** Publish one definition only when execution reaches it through an active `$if` arm. */
+function publishSelectedMixinDefinition(frame: Frame, definition: MixinDef): void {
+  const meta = frameMixinDefinitionMeta(frame).get(definition);
+  if (!meta || meta.selectedPath.length === 0) return;
+  const selected = frame.selectedIfBodies;
+  if (!selected || !meta.selectedPath.every(path => selected.get(path.node) === path.body)) return;
+  const events = frame.selectedMixinEvents ??= new Map();
+  const list = events.get(definition.name);
+  if (list?.some(candidate => candidate.definition === definition)) return;
+  const candidate = { definition, rank: meta.rank };
+  if (!list) {
+    events.set(definition.name, [candidate]);
+    return;
+  }
+  let index = list.length;
+  while (index > 0 && compareMixinRanks(candidate.rank, list[index - 1]!.rank) < 0) index--;
+  list.splice(index, 0, candidate);
+}
+
+/**
+ * An imported document is a lexical splice, not a new evaluator root. Its
+ * definitions become visible only after the import has executed; keep that
+ * fact on the existing frame map rather than creating a wrapper document or a
+ * second lookup path.
+ */
+function publishImportedMixinDefinition(frame: Frame, definition: MixinDef): void {
+  const mixins = frame.mixins ??= new Map();
+  const candidates = mixins.get(definition.name);
+  if (candidates) candidates.push(definition);
+  else mixins.set(definition.name, [definition]);
+}
+
+/** Publish an imported declaration into the current frame's existing scoped index. */
+function publishImportedVariableDeclaration(frame: Frame, declaration: VariableDeclaration): void {
+  const index = frame.declIndex ??= { byName: new Map() };
+  const declarations = index.byName.get(declaration.name);
+  if (declarations) declarations.push(declaration);
+  else index.byName.set(declaration.name, [declaration]);
+}
+
+/** Publish an imported root ruleset for namespace-path descent. Import rules are
+ * ordered before the importing document's own source facts, matching lexical
+ * splice order for an import that has executed at this point. */
+function publishImportedRuleset(frame: Frame, rule: Rule): void {
+  (frame.importedRules ??= []).push(rule);
+  // It may have been materialized before this import; rebuild lazily with the
+  // newly published import prefix on the next namespace lookup.
+  frame.rulesets = undefined;
+}
+
+/**
+ * Imported callables execute later in their importer frame, but any nested
+ * import in their shared body remains relative to the source document that
+ * authored it. Record that source scope on Context's session-owned provenance
+ * table; AST facts stay plain and no render-local ownership map is needed.
+ */
+function rememberImportedCallableBodies(
+  document: Stylesheet,
+  children: readonly Statement[],
+  context: Context | undefined,
+): void {
+  if (!context) return;
+  for (const child of children) {
+    if (child.type === 'MixinDef' || child.type === 'Rule') {
+      context.rememberDocumentBody(document, child.body);
+    }
+  }
 }
 
 /**
@@ -501,9 +855,23 @@ function frameOrderedMixins(f: Frame, e: EvalCtx): Map<string, MixinDef[]> | nul
 function frameCandidatesInOrder(f: Frame, name: string, e: EvalCtx): MixinDef[] {
   const mapDefs = f.mixins?.get(name);
   if (!f.statements) return mapDefs?.slice() ?? [];
-  const base = frameOrderedMixins(f, e)?.get(name);
-  if (!mapDefs) return base ? base.slice() : [];
-  const out = base ? base.slice() : [];
+  const base = frameOrderedMixins(f, e)?.byName.get(name) ?? [];
+  const events = f.selectedMixinEvents?.get(name) ?? [];
+  const out: MixinDef[] = [];
+  let baseIndex = 0;
+  let eventIndex = 0;
+  while (baseIndex < base.length || eventIndex < events.length) {
+    const direct = base[baseIndex];
+    const selected = events[eventIndex];
+    if (!selected || (direct !== undefined && compareMixinRanks(direct.rank, selected.rank) <= 0)) {
+      out.push(direct!.definition);
+      baseIndex++;
+    } else {
+      out.push(selected.definition);
+      eventIndex++;
+    }
+  }
+  if (!mapDefs) return out;
   // Append published defs (in `mixins` but not authored in `statements`).
   for (const d of mapDefs) if (!out.includes(d)) out.push(d);
   return out;
@@ -562,9 +930,9 @@ function selectorAtoms(text: string): string[] {
   return out;
 }
 
-/** [mixin-match] The element-value atom list of a `Complex` selector (head +
+/** [mixin-match] The element-value atom list of a `ComplexSelector` selector (head +
  * each tail compound), used to match a namespaced/compound mixin call. */
-function complexAtoms(c: Complex): string[] {
+function complexAtoms(c: ComplexSelector): string[] {
   const out: string[] = [];
   for (const a of selectorAtoms(compoundCanonical(c.head))) out.push(a);
   for (const seg of c.tail) for (const a of selectorAtoms(compoundCanonical(seg.compound))) out.push(a);
@@ -604,24 +972,23 @@ function findPathInScope(
   e: EvalCtx,
 ): void {
   const st = scope.statements;
-  if (!st) return;
-  for (const s of st) {
+  const visit = (s: Statement, placement?: Frame): void => {
     if (s.type === 'MixinDef') {
       const nEl = selectorAtoms(s.name);
-      if (nEl.length === 0 || !atomsArePrefix(nEl, remaining)) continue;
+      if (nEl.length === 0 || !atomsArePrefix(nEl, remaining)) return;
       if (nEl.length === remaining.length) {
         out.push(s);
         if (!homes.has(s)) homes.set(s, scope);
       } else {
-        // [namespace-descent] A parametric namespace segment (`#DEF() { .colors() {…} }`,
-        // `#library.core()`) whose name is a PROPER prefix: descend into its body with
-        // the tail. Intermediate segments take no args (Less: only the terminal segment
-        // is called with arguments), so bind none — a body with required params would
-        // not match, but namespace containers are argument-less in practice.
+        // [namespace-descent] An intermediate mixin namespace receives the implicit
+        // zero-argument call.  Reuse normal dispatch so required parameters and guards
+        // participate before entering its body; only the terminal segment receives the
+        // authored arguments.
+        if (dispatch([s], mixinCall(s.name), scope, e).length === 0) return;
         const child: Frame = {
           parent: scope,
           mixins: collectMixins(s.body),
-          vars: collectVars(s.body),
+          declIndex: collectDeclIndex(s.body), cells: null, reassign: null,
           statements: s.body,
         };
         findPathInScope(child, remaining.slice(nEl.length), homes, out, e);
@@ -631,30 +998,54 @@ function findPathInScope(
         // [mixin-interp] an interpolated selector resolves in THIS scope before its
         // element atoms are taken, so a compound/namespaced call matches on the
         // concrete name (`#@{c1}-foo > .@{c2}()` answers `#foo-foo > .bar()`).
-        const el = complexHasInterp(c) ? selectorAtoms(resolveComplex(c, scope, e)) : complexAtoms(c);
+        // A published rule retains its evaluated child placement; selector
+        // interpolation itself resolves one frame outside that child, in the
+        // explicit mixin activation which supplied its parameters.
+        const selectorFrame = placement?.parent ?? scope;
+        const el = complexHasInterp(c) ? selectorAtoms(resolveComplexSync(c, selectorFrame, e)) : complexAtoms(c);
         if (el.length === 0 || !atomsArePrefix(el, remaining)) continue;
         if (el.length === remaining.length) {
           const rm: MixinDef = {
             type: 'MixinDef',
-            name: complexHasInterp(c) ? resolveComplex(c, scope, e) : complexCanonical(c),
+            name: complexHasInterp(c) ? resolveComplexSync(c, selectorFrame, e) : complexCanonical(c),
             params: [], body: s.body, ruleMixin: true,
             ...(s.guard !== undefined ? { guard: s.guard } : {}),
           };
           out.push(rm);
-          homes.set(rm, scope);
+          homes.set(rm, placement ?? scope);
         } else {
-          const child: Frame = {
+          // Rulesets are namespace containers too, so a false Less `when` guard
+          // prevents descent just as it prevents ordinary rule emission.
+          if (!ruleGuardPasses(s, scope, e)) continue;
+          // This Rule may have executed imports in its render-local placement.
+          // Preserve that imported prefix for recursive namespace descent rather
+          // than rebuilding a scope from the authored body alone.
+          const activePlacement = placement ?? scope.rulePlacements?.get(s);
+          const body = activePlacement
+            ? null
+            : [...(scope.rulePlacements?.get(s)?.importedRules ?? []), ...s.body];
+          const child: Frame = activePlacement ?? {
             parent: scope,
-            mixins: collectMixins(s.body),
-            vars: collectVars(s.body),
-            statements: s.body,
+            mixins: collectMixins(body!),
+            declIndex: collectDeclIndex(body!), cells: null, reassign: null,
+            statements: body!,
           };
           findPathInScope(child, remaining.slice(el.length), homes, out, e);
         }
         break; // one selector of a rule matches the prefix at most once
       }
     }
-  }
+  };
+  // Imported root rules are lexical splices in this scope. They must take part
+  // in element-value namespace descent just like authored rules, and are kept
+  // ahead of the importing document's source facts in import execution order.
+  for (const s of scope.importedRules ?? []) visit(s);
+  for (const s of st ?? []) visit(s);
+  // Explicit mixin expansion can publish canonical rulesets at the call site.
+  // Keep each activation frame beside its source Rule: a shared Rule node can
+  // be placed more than once with different live values, so `Map<Rule, Frame>`
+  // alone is not a truthful representation here.
+  for (const published of scope.publishedRules ?? []) visit(published.rule, published.frame);
 }
 
 /**
@@ -724,26 +1115,57 @@ function parentExcludes(frame: Frame | null, body: Statement[]): boolean {
  * because those callers resolve a name to a concrete ruleset binding, not a lazy
  * self-referential value. The regular value read uses `resolveVarRef` instead.
  */
-function lookupVarStack(frame: Frame | null, name: string, leaked: boolean): Binding | undefined {
+function lookupLiveCell(frame: Frame | null, name: string): { value: Binding; frame: Frame } | undefined {
   let fb: Frame | null | undefined;
   for (let f = frame; f; f = f.parent) {
-    const stack = (leaked ? f.leaked : f.vars)?.get(name);
-    if (stack && stack.length > 0) {
-      const hit = stack[stack.length - 1]!;
-      // capture a detached ruleset's definition (home) frame on first use.
-      if (hit.type === 'DetachedRuleset' && hit.defFrame === null) hit.defFrame = f;
-      return hit;
+    const hit = f.cells?.get(name);
+    if (hit) {
+      return { value: hit.value, frame: f };
     }
     if (f.fallback && !fb) fb = f.fallback;
   }
-  if (fb) return lookupVarStack(fb, name, leaked);
+  if (fb) return lookupLiveCell(fb, name);
+  return undefined;
+}
+
+function lookupLeakedBinding(frame: Frame | null, name: string, e?: EvalCtx): { value: Binding; frame: Frame } | undefined {
+  let fb: Frame | null | undefined;
+  for (let f = frame; f; f = f.parent) {
+    const stack = f.leaked?.get(name);
+    if (stack) for (let i = stack.length - 1; i >= 0; i--) {
+      const value = stack[i]!;
+      if (!e || !e.excluded.has(value)) return { value, frame: f };
+    }
+    if (f.fallback && !fb) fb = f.fallback;
+  }
+  if (fb) return lookupLeakedBinding(fb, name, e);
+  return undefined;
+}
+
+function lookupScopedBinding(frame: Frame | null, name: string, e?: EvalCtx): { value: Binding; frame: Frame } | undefined {
+  let fb: Frame | null | undefined;
+  for (let f = frame; f; f = f.parent) {
+    const replacement = f.reassign?.get(name);
+    if (replacement && (!e || !e.excluded.has(replacement.value))) return { value: replacement.value, frame: f };
+    const stack = (f.selectedDeclIndex ?? f.declIndex)?.byName.get(name);
+    if (stack) for (let i = stack.length - 1; i >= 0; i--) {
+      const declaration = stack[i]!;
+      // Non-declare writes live only in the activation overlay. Their source
+      // facts stay indexed for provenance, but must not become final bindings
+      // before the source-order write executes.
+      if (declaration.write.mode !== 'declare') continue;
+      if (!e || !e.excluded.has(declaration.value)) return { value: declaration.value, frame: f };
+    }
+    if (f.fallback && !fb) fb = f.fallback;
+  }
+  if (fb) return lookupScopedBinding(fb, name, e);
   return undefined;
 }
 
 function lookupVar(frame: Frame | null, name: string): Binding | undefined {
-  // [scope-leak] lexical `vars` first up the whole chain; the low-priority
-  // mixin-leaked scope is consulted only when no lexical binding exists.
-  return lookupVarStack(frame, name, false) ?? lookupVarStack(frame, name, true);
+  return lookupScopedBinding(frame, name)?.value
+    ?? lookupLiveCell(frame, name)?.value
+    ?? lookupLeakedBinding(frame, name)?.value;
 }
 
 /**
@@ -756,32 +1178,36 @@ function lookupVar(frame: Frame | null, name: string): Binding | undefined {
  * an earlier `@a` (or misses); `@a: @b; @b: @a` accumulates both exclusions and
  * terminates at any depth. There is NO depth cap. The value is returned with its
  * OWNING frame so it evaluates in its declaration scope. */
-function resolveVarStack(
-  frame: Frame | null,
-  name: string,
-  e: EvalCtx,
-  leaked: boolean,
-): { value: Binding; frame: Frame } | undefined {
-  let fb: Frame | null | undefined;
-  for (let f = frame; f; f = f.parent) {
-    const stack = (leaked ? f.leaked : f.vars)?.get(name);
-    if (stack) {
-      for (let i = stack.length - 1; i >= 0; i--) {
-        const v = stack[i]!;
-        if (!e.excluded.has(v)) return { value: v, frame: f };
-      }
-    }
-    if (f.fallback && !fb) fb = f.fallback;
-  }
-  if (fb) return resolveVarStack(fb, name, e, leaked);
-  return undefined;
+function resolveVarRef(frame: Frame | null, name: string, lookup: 'live' | 'scoped', e: EvalCtx): { value: Binding; frame: Frame } | undefined {
+  return lookup === 'live'
+    ? lookupLiveCell(frame, name)
+    : lookupScopedBinding(frame, name, e) ?? lookupLeakedBinding(frame, name, e);
 }
 
-function resolveVarRef(frame: Frame | null, name: string, e: EvalCtx): { value: Binding; frame: Frame } | undefined {
-  // [scope-leak] v5 outer-binding-wins: resolve against the lexical `vars` scope
-  // (own frame → every `parent` → `fallback`) FIRST; only when that whole chain
-  // misses do we consult the low-priority mixin-leaked scope.
-  return resolveVarStack(frame, name, e, false) ?? resolveVarStack(frame, name, e, true);
+function activateVariableDeclaration(node: VariableDeclaration, frame: Frame, e: EvalCtx): void {
+  bindDetached(frame, node.value, frame, sourceOwnerForBody(node.value.type === 'DetachedRuleset' ? node.value.body : node, frame, e));
+  if (node.write.mode === 'if-absent') {
+    const found = node.write.lookup === 'live'
+      ? lookupLiveCell(frame, node.name)
+      : lookupScopedBinding(frame, node.name, e);
+    if (found) return;
+    (frame.cells ??= new Map()).set(node.name, { declaration: node, value: node.value });
+    (frame.reassign ??= new Map()).set(node.name, node);
+    return;
+  }
+  if (node.write.mode === 'reassign') {
+    if (node.write.lookup === 'live') {
+      const found = lookupLiveCell(frame, node.name);
+      if (!found) throw new ReferenceError(`live variable $${node.name} is undefined`);
+      found.frame.cells!.set(node.name, { declaration: node, value: node.value });
+      return;
+    }
+    const found = lookupScopedBinding(frame, node.name, e);
+    if (!found) throw new ReferenceError(`scoped variable $$${node.name} is undefined`);
+    (found.frame.reassign ??= new Map()).set(node.name, node);
+    return;
+  }
+  (frame.cells ??= new Map()).set(node.name, { declaration: node, value: node.value });
 }
 
 /**
@@ -792,24 +1218,31 @@ function resolveVarRef(frame: Frame | null, name: string, e: EvalCtx): { value: 
  * ruleset's final `color`). The lookup carries the source declaration's
  * `!important` flag to the caller's existing declaration/merge importance sink;
  * it never encodes importance into value bytes.
- * Only DIRECT declarations a frame carries in `statements` are considered — the
- * backward stack walk skips any declaration whose value is currently on the
- * exclusion set, which breaks the self-reference `color: $color` (its own value
- * node is excluded during evaluation, so the accessor falls back to an earlier /
- * ancestor `color`). Returns the value node and its owning frame; `undefined` when
- * no such property is in scope. */
+ * The lookup reads the frame's evaluated declaration timeline, rather than its
+ * authored `statements`: a mixin call and a selected control arm make their
+ * declarations visible only once their body is actually spliced, and those
+ * declarations evaluate in their call frame. The backward walk skips any
+ * declaration whose value is currently on the exclusion set, which breaks the
+ * self-reference `color: $color` (its own value node is excluded during
+ * evaluation, so the accessor falls back to an earlier / ancestor `color`). */
+function recordPropertyDeclaration(scope: Frame, node: Declaration, frame: Frame): PropertyDeclarationFact {
+  const timeline = scope.propertyTimeline ??= [];
+  const fact = { node, frame };
+  timeline.push(fact);
+  return fact;
+}
+
 function resolvePropRef(
   frame: Frame | null,
   name: string,
   e: EvalCtx,
-): { value: ValueNode; frame: Frame; important: boolean } | undefined {
+): { value: ValueNode; frame: Frame; important: boolean; merged?: readonly PropertyDeclarationFact[] } | undefined {
   let fb: Frame | null | undefined;
   for (let f = frame; f; f = f.parent) {
-    const st = f.statements;
-    if (st) {
-      for (let i = st.length - 1; i >= 0; i--) {
-        const s = st[i]!;
-        if (s.type !== 'Declaration') continue;
+    const timeline = f.propertyTimeline;
+    if (timeline) {
+      for (let i = timeline.length - 1; i >= 0; i--) {
+        const { node: s, frame: valueFrame } = timeline[i]!;
         if (e.excluded.has(s.value)) continue;
         let nm: string;
         if (typeof s.name === 'string') {
@@ -819,11 +1252,40 @@ function resolvePropRef(
           // while resolving the very property its own name interpolates (`${prop-name}`).
           if (e.propNames.has(s)) continue;
           e.propNames.add(s);
-          nm = declName(s, f, e);
+          nm = declName(s, valueFrame, e);
           e.propNames.delete(s);
         }
         if (nm === name) {
-          return { value: s.value, frame: f, important: s.important === true };
+          if (s.merge !== null) {
+            const merged: PropertyDeclarationFact[] = [];
+            // The ordered timeline is also the merge-input order. A merge run
+            // ends at the nearest non-merge / differently named declaration;
+            // never reconstruct source text or create a synthetic value node.
+            for (let j = i; j >= 0; j--) {
+              const member = timeline[j]!;
+              if (member.node.merge === null || e.excluded.has(member.node.value)) break;
+              let memberName: string;
+              if (typeof member.node.name === 'string') memberName = member.node.name;
+              else {
+                if (e.propNames.has(member.node)) break;
+                e.propNames.add(member.node);
+                memberName = declName(member.node, member.frame, e);
+                e.propNames.delete(member.node);
+              }
+              if (memberName !== name) break;
+              merged.push(member);
+            }
+            merged.reverse();
+            if (merged.length > 0) {
+              return {
+                value: s.value,
+                frame: valueFrame,
+                important: merged.some((member) => member.node.important === true),
+                merged,
+              };
+            }
+          }
+          return { value: s.value, frame: valueFrame, important: s.important === true };
         }
       }
     }
@@ -864,9 +1326,51 @@ function evalBinding(b: Binding, frame: Frame | null, e: EvalCtx): MaybePromise<
   return b.type === 'MixinCall' ? literal('') : evalValue(b, frame, e);
 }
 
-function unresolvedRef(name: string, e: EvalCtx): Value {
-  if (!e.optional) throw new ReferenceError(`variable @${name} is undefined`);
+function unresolvedSymbol(node: object, symbol: string, e: EvalCtx): never {
+  const file = e.context?.treeContext?.file;
+  const source = file?.source;
+  const span = source === undefined ? undefined : sourceSpanOf(node);
+  const location = span === undefined ? undefined : lineColAt(source, span.start);
+  throw ERR.nameNotFound({
+    node,
+    filePath: file?.fullPath,
+    source,
+    line: location?.line,
+    column: location?.column,
+    meta: { symbol },
+  });
+}
+
+function unresolvedRef(node: VariableReference | VarIndirect, name: string, e: EvalCtx): Value {
+  if (!e.optional) unresolvedSymbol(node, `@${name}`, e);
   return literal(`@${name}`);
+}
+
+/**
+ * Less's error corpus treats unresolved callable/member syntax as a resolution
+ * failure. Jess deliberately keeps its ordinary statement-call no-op and optional
+ * member-to-Nil behavior, so this policy is selected by the active Less plugin's
+ * explicit error mode—not by the shared AST node shape.
+ */
+function throwsLessResolutionMiss(e: EvalCtx): boolean {
+  return e.context?.treeContext?.plugin?.name === 'less'
+    && e.context.options.functionMode === 'error';
+}
+
+function unresolvedCallable(call: MixinCall, e: EvalCtx): void {
+  if (!throwsLessResolutionMiss(e)) return;
+  const path = call.path.map(segment => segment.sel).join(' ');
+  unresolvedSymbol(call, `${path ? `${path} ` : ''}${call.name}()`, e);
+}
+
+function unresolvedReference(node: Reference, e: EvalCtx): void {
+  if (!throwsLessResolutionMiss(e) || e.optional) return;
+  unresolvedSymbol(node, node.raw, e);
+}
+
+function unresolvedPropertyReference(node: PropertyReference, e: EvalCtx): void {
+  if (!throwsLessResolutionMiss(e) || e.optional) return;
+  unresolvedSymbol(node, node.raw, e);
 }
 
 /**
@@ -902,6 +1406,8 @@ function makeTypedResolver(frame: Frame | null, e: EvalCtx): TypedResolver {
 interface EvalCtx {
   ev: ValueEvaluator | null;
   modes: EvalModes;
+  /** Context supplies document source only on cold diagnostic paths. */
+  context?: Context;
   // [resolver] value nodes currently being evaluated (per-declaration cycle
   // guard). A backward stack walk `continue`s past any node in this set; it
   // accumulates down a sync descent and releases on sync-phase completion.
@@ -913,6 +1419,8 @@ interface EvalCtx {
   // [calc] `calc(…)` nesting depth. While > 0, dimension math is gated to the
   // safe-unit subset and cross-unit ops preserve as `calc(…)` sub-expressions.
   calcDepth?: number;
+  /** Parenthesized AST value nesting enables Less arithmetic in paren modes. */
+  parenDepth?: number;
   // [property-interp] declarations whose INTERPOLATED name (`${prop}: …` /
   // `@{v}: …`) is being resolved up-stack. `resolvePropRef` skips a candidate whose
   // name is already in flight, breaking the self-reference `${prop-name}: red` where
@@ -934,7 +1442,7 @@ interface EvalCtx {
   // where `default()` emits verbatim (`case: default()` outside a guard).
   defaultFn?: () => boolean;
   // [plugin/P1] document-level flag: true iff SOME frame registered a scoped
-  // function (`collectScopedFns` ran non-empty anywhere). When false — every real
+  // function. When false — every real
   // document today, since nothing registers yet — `evalCall` passes `scope = null`
   // to `ev.call` and the frame walk is skipped entirely, keeping the fn-dispatch
   // hot path byte- and cost-identical to before P1. Set once at top-level
@@ -947,8 +1455,10 @@ interface EvalCtx {
   io?: FnIo;
   // [plugin/P2] driver-injected plugin runtime, threaded so nested frame
   // construction can register a scope-local `@plugin`'s functions. Absent on the
-  // idle path (no plugins), where `collectScopedFns` short-circuits to null.
+  // idle path (no plugins).
   pluginHost?: PluginHost;
+  /** Runtime-only lexical homes for mixin calls carried through an argument. */
+  mixinCallHomes?: WeakMap<MixinCall, Frame>;
 }
 
 /** Force a computed `Value` to a typed object. A computed STRING carries no parse
@@ -966,14 +1476,16 @@ function force(e: EvalCtx, v: Value): ValueObj {
  * (alone) sniffs its bytes. When no evaluator is injected every leaf degrades to a
  * bare keyword of its `src` (the former `forceLiteral` no-`ev` behavior).
  */
-function materializeNode(node: Keyword | Color | Dimension | Quoted | Any, e: EvalCtx): ValueObj {
-  if (!e.ev) return { type: 'Keyword', text: node.src, bytes: node.src };
+function materializeNode(node: Keyword | Color | Dimension | Quoted | Any | Comment, e: EvalCtx): ValueObj {
+  const src = node.type === 'Comment' ? node.text : node.src;
+  if (!e.ev) return { type: 'Keyword', text: src, bytes: src };
   switch (node.type) {
     case 'Keyword': return { type: 'Keyword', text: node.src, bytes: node.src };
     case 'Color': return colorFromSrc(node.src);
     case 'Dimension': return dimensionFromFields(node.number, node.unit, node.src);
     case 'Quoted': return quotedFromFields(node.value, node.quote, node.escaped, node.src);
     case 'Any': return materializeAny(node.src);
+    case 'Comment': return { type: 'Keyword', text: node.text, bytes: node.text };
   }
 }
 
@@ -989,14 +1501,18 @@ function evalTyped(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
     case 'Keyword':
     case 'Color':
     case 'Dimension':
-    case 'Quoted':
     case 'Any':
+    case 'Comment':
       return materializeNode(node, e);
+    case 'Quoted':
+      // `~'…'` / `~"…"` are Less escaped strings: typed arithmetic must see
+      // their unquoted bytes just as ordinary value emission does.
+      return node.escaped ? makeKeyword(node.value) : materializeNode(node, e);
     case 'Url':
       return mapMaybe(evalValue(node, frame, e), v => force(e, v));
-    case 'VarRef': {
-      const hit = resolveVarRef(frame, node.name, e);
-      if (!hit) return force(e, unresolvedRef(node.name, e));
+    case 'VariableReference': {
+      const hit = resolveVarRef(frame, node.name, node.lookup, e);
+      if (!hit) return force(e, unresolvedRef(node, node.name, e));
       const bound = hit.value;
       return withExcluded(e, bound, () =>
         bound.type === 'MixinCall'
@@ -1004,8 +1520,31 @@ function evalTyped(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
           : evalTyped(bound, hit.frame, e),
       );
     }
+    case 'Reference': {
+      // A typed guard comparison must retain the matched member's AST tag.
+      // Falling through `evalValue` turns a typed `Keyword('true')` into an
+      // untagged computed string before the value evaluator compares it.
+      const resolved = resolveReferenceResult(node, frame, e);
+      if (resolved === null) {
+        unresolvedReference(node, e);
+        return force(e, literal(node.raw));
+      }
+      return resolved.value.type === 'MixinCall'
+        ? force(e, literal(node.raw))
+        : evalTyped(resolved.value, resolved.frame, e);
+    }
     case 'Paren':
-      return evalTyped(node.inner, frame, e);
+      // A typed function argument still needs the surrounding-parenthesis math
+      // context.  `round((@r / 3))` and `unit((4px * 4em / 2cm))` consume the
+      // inner value through this path; dropping `parenDepth` made their
+      // operations look like top-level parens-division math and left the whole
+      // registered function call verbatim after its typed signature rejected it.
+      return mapMaybe(
+        evalTyped(node.inner, frame, { ...e, parenDepth: (e.parenDepth ?? 0) + 1 }),
+        value => value.type === 'Keyword' && calcInner(value.bytes) !== null
+          ? makeKeyword(`(${calcInner(value.bytes)})`)
+          : value,
+      );
     case 'List': {
       // A comma-list materializes to the value-domain `List`, its items materialized
       // LAZILY here (only now that the list is actually consumed typed — indexed by
@@ -1030,9 +1569,13 @@ function evalTyped(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
       }
       return mapMaybe(evalValue(node, frame, e), (v) => force(e, v));
     }
+    case 'Range':
+      // Ranges are consumed structurally by `forItems`; a value-position use
+      // retains authored range syntax rather than inventing a flattened list.
+      return mapMaybe(evalValue(node, frame, e), (v) => force(e, v));
     default:
       // Computed / joined shapes (Operation, FunctionCall, Concat, SpacedValue,
-      // Interp, VarIndirect, MapAccessor, …): fold to a Value then force. A
+      // Interpolation, VarIndirect, Reference, …): fold to a Value then force. A
       // computed string has no parse tag → the evaluator sniffs.
       return mapMaybe(evalValue(node, frame, e), (v) => force(e, v));
   }
@@ -1055,7 +1598,10 @@ function evalTyped(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
  * misreport `length`/`extract`). Detected by a top-level `/` literal part.
  */
 function isSlashGroup(node: SpacedValue): boolean {
-  return node.parts.some((p) => p.type === 'Any' && p.src.trim() === '/');
+  // The direct Less grammar owns separator tokens as `Keyword` leaves; older
+  // hand-built AST tests may still use opaque `Any`. Both are the same typed
+  // slash fact here—never rediscover it from joined source bytes.
+  return node.parts.some((p) => (p.type === 'Any' || p.type === 'Keyword') && p.src.trim() === '/');
 }
 
 /**
@@ -1077,7 +1623,7 @@ function slashGroupToOperation(node: SpacedValue): Operation | null {
     return true;
   };
   for (const p of node.parts) {
-    if (p.type === 'Any' && p.src.trim() === '/') {
+    if ((p.type === 'Any' || p.type === 'Keyword') && p.src.trim() === '/') {
       if (!flush()) return null; // leading / empty operand
       sawSlash = true;
     } else {
@@ -1104,41 +1650,64 @@ function normalizeListSep(raw: string): string {
  */
 function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromise<Value> {
   switch (node.type) {
-    // Every value LITERAL is inert here: emit its verbatim `src` as a bare string.
+    // Every value LITERAL is inert here: emit its verbatim `src` as a bare string,
+    // except an escaped Less quote, whose value semantics intentionally unquote it.
     // CORRECTION 5 — return `literal(node.src)` (a BARE STRING), never the node
     // object: an AST literal node must not leak into the `Value = ValueObj | string`
     // lane (a downstream `v.type==='Color'` would misread it as a value object).
     case 'Keyword':
     case 'Color':
-    case 'Dimension':
-    case 'Quoted':
     case 'Any':
+    case 'Comment':
     // A selector CAPTURE `*[…]` reaching a plain VALUE position (never its intended
     // use — it belongs in a selector interpolation) emits its verbatim `src`.
     case 'SelectorCapture':
-      return literal(node.src);
+      return literal(node.type === 'Comment' ? node.text : node.src);
+    case 'Dimension':
+      // Typed materialization owns Less's numeric spelling canonicalization
+      // (`.3s` → `0.3s`) without a post-render CSS rewrite.
+      return e.ev ? dimensionFromFields(node.number, node.unit, node.src) : literal(node.src);
+    case 'Quoted':
+      return literal(node.escaped ? node.value : node.src);
     case 'Url':
       return mapMaybe(evalValue(node.value, frame, e), value => literal(`url(${emitValue(value)})`));
-    case 'VarRef': {
-      const hit = resolveVarRef(frame, node.name, e);
-      if (!hit) return unresolvedRef(node.name, e);
+    case 'VariableReference': {
+      const hit = resolveVarRef(frame, node.name, node.lookup, e);
+      if (!hit) return unresolvedRef(node, node.name, e);
       return withExcluded(e, hit.value, () => evalBinding(hit.value, hit.frame, e));
     }
-    case 'PropRef': {
+    case 'PropertyReference': {
       // A `$name` property accessor resolves the winning declaration and folds
       // its value. Its declaration-level `!important` is carried through the
       // caller's existing importance sink, so `$color` of `color: red !important`
       // yields `red !important` only at a declaration emission site.
-      // An unresolvable property (only reachable after a not-yet-modelled expansion)
-      // keeps the verbatim `$name` bytes rather than throwing (no regression).
+      // A non-Less / non-error-mode miss keeps its authored bytes. Less error
+      // mode instead reports the same structured resolution failure as a missing
+      // mixin or reference member.
       const hit = resolvePropRef(frame, node.name, e);
-      if (!hit) return literal(node.bytes);
+      if (!hit) {
+        unresolvedPropertyReference(node, e);
+        return literal(node.raw);
+      }
       if (hit.important) {
         if (e.importantSink) {
           e.importantSink.hit = true;
         } else if (e.mergeImportant !== undefined) {
           e.mergeImportant = true;
         }
+      }
+      if (hit.merged) {
+        const values = hit.merged.map((member) =>
+          withExcluded(e, member.node.value, () => evalValue(member.node.value, member.frame, e)),
+        );
+        return combineAll(values, (resolved) => {
+          let bytes = emitValue(resolved[0]!);
+          for (let i = 1; i < resolved.length; i++) {
+            const separator = hit.merged![i]!.node.merge === ',' ? ', ' : ' ';
+            bytes += separator + emitValue(resolved[i]!);
+          }
+          return literal(bytes);
+        });
       }
       return withExcluded(e, hit.value, () => evalValue(hit.value, hit.frame, e));
     }
@@ -1165,7 +1734,7 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
       // the variable-reference form fold identically.
       const div = (e.calcDepth ?? 0) > 0 ? slashGroupToOperation(node) : null;
       if (div) return evalValue(div, frame, e);
-      return joinBytes(node.parts, ' ', frame, e);
+      return joinSpacedBytes(node, frame, e);
     }
     case 'List': {
       // Emit each item's bytes joined by the v5-NORMALIZED comma separator. Authored
@@ -1184,9 +1753,12 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
       });
     }
     case 'Paren':
+      // Less `~(...)` retains its typed inner value for list operations but
+      // escapes the delimiters at emission time.
+      if (node.escaped) return evalValue(node.inner, frame, e);
       // Transparent to computed bytes: a materialized (operated) inner strips the
       // paren (matching the legacy oracle); an un-forced literal keeps its parens.
-      return mapMaybe(evalValue(node.inner, frame, e), (v) =>
+      return mapMaybe(evalValue(node.inner, frame, { ...e, parenDepth: (e.parenDepth ?? 0) + 1 }), (v) =>
         isLiteral(v) ? literal(`(${v})`) : v,
       );
     case 'Condition':
@@ -1205,30 +1777,51 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
           literal(`${emitValue(lv)} ${node.operator} ${emitValue(rv)}`),
         );
       }
+      const mathMode = e.modes.mathMode ?? 'parens-division';
+      const shouldOperate = (e.calcDepth ?? 0) > 0
+        || mathMode === 'always'
+        || (e.parenDepth ?? 0) > 0
+        || (mathMode === 'parens-division' && node.operator !== '/');
+      if (!shouldOperate) {
+        const l = evalValue(node.left, frame, e);
+        const r = evalValue(node.right, frame, e);
+        return combineAll([l, r], ([lv, rv]) => literal(`${emitValue(lv)} ${node.operator} ${emitValue(rv)}`));
+      }
       const ev = e.ev;
       // Operands are materialized TYPED (tag sourced from the parse), not re-sniffed.
       const l = evalTyped(node.left, frame, e);
       const r = evalTyped(node.right, frame, e);
       // Inside `calc(…)`, flag the modes so cross-unit math preserves (guard 3).
-      const m: EvalModes = (e.calcDepth ?? 0) > 0 ? { unitMode: e.modes.unitMode, inCalc: true } : e.modes;
+      const m: EvalModes = (e.calcDepth ?? 0) > 0 ? { ...e.modes, inCalc: true } : e.modes;
       return combineAll([l, r], ([lv, rv]) => ev.operate(node.operator, lv, rv, m));
     }
     case 'FunctionCall':
       return evalCall(node, frame, e);
-    case 'Interp':
+    case 'Interpolation':
       return evalInterp(node, frame, e);
+    case 'GeneralEnclosed':
+      return mapMaybe(evalInterp(node.content, frame, e), value =>
+        literal(generalEnclosedBytes(node, emitValue(value))),
+      );
     case 'VarIndirect': {
       // Resolve the name expression to bytes (unquoted), then read that variable
       // through the normal exclusion-aware stack walk (`@@name` = two chained reads).
       return mapMaybe(evalBytes(node.nameRef, frame, e), (raw) => {
         const nm = stripOuterQuotes(raw);
-        const hit = resolveVarRef(frame, nm, e);
-        if (!hit) return unresolvedRef(nm, e);
+        const hit = resolveVarRef(frame, nm, node.lookup, e);
+        if (!hit) return unresolvedRef(node, nm, e);
         return withExcluded(e, hit.value, () => evalBinding(hit.value, hit.frame, e));
       });
     }
-    case 'MapAccessor':
-      return evalMapAccessor(node, frame, e);
+    case 'Reference':
+      return evalReference(node, frame, e);
+    case 'Range': {
+      const values = [evalValue(node.start, frame, e), evalValue(node.end, frame, e)];
+      if (node.step !== null) values.push(evalValue(node.step, frame, e));
+      return combineAll(values, (resolved) => literal(
+        `${emitValue(resolved[0]!)}${node.includeStart ? '' : '>'} to ${node.includeEnd ? '' : '<'}${emitValue(resolved[1]!)}${node.step === null ? '' : ` step ${emitValue(resolved[2]!)}`}`
+      ));
+    }
     case 'DetachedRuleset':
       // A detached ruleset reaching a value/arg position is not byte-serializable:
       // it can only be *called* (`@dr()`). less.js drops such an argument to an
@@ -1241,7 +1834,7 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
 }
 
 /** Resolve an interpolation template to bytes (literals + spliced refs). */
-function evalInterp(node: Interp, frame: Frame | null, e: EvalCtx): MaybePromise<Value> {
+function evalInterp(node: Interpolation, frame: Frame | null, e: EvalCtx): MaybePromise<Value> {
   const pieces: Array<MaybePromise<string>> = [];
   for (const part of node.parts) {
     if ('lit' in part) pieces.push(part.lit);
@@ -1283,7 +1876,7 @@ function resolveEmergentInterp(input: string, frame: Frame | null, e: EvalCtx): 
         while (j < n && isInterpNameByte(cur.charCodeAt(j))) j++;
         if (j > nameStart && j < n && cur.charCodeAt(j) === 0x7d /* } */) {
           const name = cur.slice(i + 2, j).trim();
-          const hit = resolveVarRef(frame, name, e);
+          const hit = resolveVarRef(frame, name, 'scoped', e);
           if (hit) {
             const val = withExcluded(e, hit.value, () => evalBinding(hit.value, hit.frame, e));
             if (!isThenable(val)) {
@@ -1304,11 +1897,13 @@ function resolveEmergentInterp(input: string, frame: Frame | null, e: EvalCtx): 
   return cur;
 }
 
-/** Strip ONE matching layer of surrounding `'…'` / `"…"` quotes. */
+/** Strip ONE matching layer of surrounding `'…'` / `"…"` quotes, including
+ * Less's escaped `~"…"` / `~'…'` spelling. */
 function stripOuterQuotes(s: string): string {
-  if (s.length >= 2) {
-    const a = s[0];
-    if ((a === '"' || a === "'") && s[s.length - 1] === a) return s.slice(1, -1);
+  const offset = s[0] === '~' ? 1 : 0;
+  if (s.length >= offset + 2) {
+    const a = s[offset];
+    if ((a === '"' || a === "'") && s[s.length - 1] === a) return s.slice(offset + 1, -1);
   }
   return s;
 }
@@ -1320,6 +1915,7 @@ interface DeclEntry {
   name: string;
   value: ValueNode;
   frame: Frame | null;
+  important: boolean;
 }
 
 /**
@@ -1351,14 +1947,34 @@ function mapForKind(map: DeclMap, kind: 'var' | 'prop'): Map<string, DeclEntry> 
 /** [namespace-accessor] Read a `@name` member from a mixin-dispatch base's callee
  *  scope frame(s) — the mixin's local / nested-leaked variables, which are not part
  *  of its emitted-declaration output. Last matching frame wins (source order). */
-function lookupVarMember(map: DeclMap, name: string): DeclEntry | undefined {
+function lookupVarMember(map: DeclMap, name: string, e: EvalCtx): DeclEntry | undefined {
   const frames = map.varFrames;
   if (!frames) return undefined;
   let hit: DeclEntry | undefined;
   for (const f of frames) {
-    const bound = lookupVar(f, name);
-    // A mixin-CALL-bound member (`@x: .m()`) is not directly value-serializable.
-    if (bound && bound.type !== 'MixinCall') hit = { name, value: bound, frame: f };
+    const resolved = resolveVarRef(f, name, 'scoped', e);
+    const bound = resolved?.value;
+    // Retain callable bindings as typed members so a later Reference Call step
+    // can dispatch them; serialization still decides whether the final result
+    // is renderable.
+    if (bound) hit = { name, value: bound, frame: resolved.frame, important: false };
+  }
+  return hit;
+}
+
+/** The final local variable member emitted by a mixin-call result.  Less `[]`
+ * selects that final result member when the call has no CSS declaration output
+ * (the conventional `@return` shape).  The callee frames already carry ordered
+ * declaration facts, so this reads them directly without source recovery. */
+function lastVarMember(map: DeclMap, e: EvalCtx): DeclEntry | undefined {
+  const frames = map.varFrames;
+  if (!frames) return undefined;
+  let hit: DeclEntry | undefined;
+  for (const frame of frames) {
+    for (const name of frame.declIndex?.byName.keys() ?? []) {
+      const resolved = resolveVarRef(frame, name, 'scoped', e);
+      if (resolved) hit = { name, value: resolved.value, frame: resolved.frame, important: false };
+    }
   }
   return hit;
 }
@@ -1375,13 +1991,11 @@ function evalToDeclMap(statements: Statement[], frame: Frame | null, e: EvalCtx)
     // source-order last-wins, mirroring Less's per-name last-declaration-wins.
     if (s.type === 'Declaration') {
       const name = typeof s.name === 'string' ? s.name : evalBytesSync(s.name, frame, e);
-      const entry: DeclEntry = { name, value: s.value, frame };
+      const entry: DeclEntry = { name, value: s.value, frame, important: s.important };
       byProp.set(name, entry); // last-wins
       list.push(entry);
-    } else if (s.type === 'VarDeclaration' && s.value.type !== 'MixinCall') {
-      // A `@var:` member (a mixin-CALL-bound member is not directly serializable as
-      // a map value — unreachable in the modelled fixtures — so it is skipped).
-      const entry: DeclEntry = { name: s.name, value: s.value, frame };
+    } else if (s.type === 'VariableDeclaration') {
+      const entry: DeclEntry = { name: s.name, value: s.value, frame, important: false };
       byVar.set(s.name, entry); // last-wins
       list.push(entry);
     }
@@ -1395,6 +2009,10 @@ function resolveBaseDeclMap(
   frame: Frame | null,
   e: EvalCtx,
 ): DeclMap | null {
+  if (base.type === 'Reference') {
+    const resolved = resolveReferenceResult(base, frame, e);
+    return resolved === null ? null : resolveBaseDeclMap(resolved.value, resolved.frame, e);
+  }
   // A namespace / mixin-path base (`#ns.options`, `.alias`, `#library.add-one(1px)`)
   // is a `MixinCall`: dispatch it and treat its EMITTED members as the map. A plain
   // ruleset (`#ns1 {}`) dispatches as a zero-arg rule-mixin, so this one path serves
@@ -1412,7 +2030,7 @@ function resolveBaseDeclMap(
         const bodyFrame: Frame = {
           parent: f,
           mixins: null,
-          vars: collectVars(rules.flatMap((r) => r.body)),
+          declIndex: collectDeclIndex(rules.flatMap((r) => r.body)), cells: null, reassign: null,
         };
         return evalToDeclMap(rules.flatMap((r) => r.body), bodyFrame, e);
       }
@@ -1429,14 +2047,14 @@ function resolveBaseDeclMap(
     const bodyFrame: Frame = {
       parent: rs.frame,
       mixins: collectMixins(rs.body),
-      vars: collectVars(rs.body),
+      declIndex: collectDeclIndex(rs.body), cells: null, reassign: null,
     };
     return evalToDeclMap(rs.body, bodyFrame, e);
   }
   // A base `@var` bound to a mixin CALL (`@p: .mk-map(); @p[text]`): dispatch the
   // call and treat its EMITTED declarations as the map (the same reconstruction the
   // `each(.mixin(), …)` iterable uses — `forItemsFromMixinCall`).
-  if (base.type === 'VarRef' && frame) {
+  if (base.type === 'VariableReference' && frame) {
     const bound = lookupVar(frame, base.name);
     if (bound && bound.type === 'MixinCall') return declMapFromMixinCall(bound, frame, e);
   }
@@ -1460,7 +2078,7 @@ function declMapFromMixinCall(
   // nested rules (they defer to `trailing`, which is never drained here).
   const discard: Partition = { encounteredContainer: false, trailing: [], pending: [], emitBlock: noop };
   const varFrames: Frame[] = [];
-  expandCall(call, null, null, frame, collected, noop, discard, em, false, false, true, varFrames);
+  expandCall(call, null, null, frame, collected, noop, discard, em, false, true, varFrames);
   const byVar = new Map<string, DeclEntry>();
   const byProp = new Map<string, DeclEntry>();
   const list: DeclEntry[] = [];
@@ -1471,63 +2089,140 @@ function declMapFromMixinCall(
     if (n.type === 'Declaration') {
       name = typeof n.name === 'string' ? n.name : evalBytesSync(n.name, leaf.frame, em);
       into = byProp;
-    } else if (n.type === 'VarDeclaration') {
+    } else if (n.type === 'VariableDeclaration') {
       name = n.name;
       into = byVar;
     } else continue;
     const value = n.value;
-    // A mixin body that itself binds a `@x: .other()` re-nests a mixin call; it is
-    // not directly value-serializable, so skip it as a map member (unreachable in
-    // the modelled fixtures — keeps the member map value-typed).
-    if (value.type === 'MixinCall') continue;
-    const entry: DeclEntry = { name, value, frame: leaf.frame };
+    const entry: DeclEntry = {
+      name,
+      value,
+      frame: leaf.frame,
+      important: leaf.important === true || (n.type === 'Declaration' && n.important),
+    };
     into.set(name, entry);
     list.push(entry);
   }
   return { byVar, byProp, list, varFrames };
 }
 
-function evalMapAccessor(node: MapAccessor, frame: Frame | null, e: EvalCtx): MaybePromise<Value> {
-  const map = resolveBaseDeclMap(node.base, frame, e);
-  // The base does not resolve to a map/ruleset in the current ast/ scope (e.g. it
-  // is bound by a not-yet-modelled mixin-call / `each` result) — keep the verbatim
-  // accessor bytes rather than throwing, so the value never regresses (it resolves
-  // once the base binding is modelled).
-  if (!map) return literal(node.bytes);
-  let matched: DeclEntry | undefined;
-  if (node.keyKind !== 'index') {
-    const key = evalBytesSync(node.key as ValueNode, frame, e);
-    // `@name` → variable namespace; bare / `$name` → property namespace. The two are
-    // disjoint (Less: no fall-through between them).
-    matched = mapForKind(map, node.keyKind).get(key);
-    // A `@var` member of a mixin-DISPATCH base is not in `byVar` (a mixin's local
-    // vars are not emitted output) — read it from the callee scope frame(s).
-    if (!matched && node.keyKind === 'var') matched = lookupVarMember(map, key);
-    // A key whose resolved value is a bare integer is a 1-based list index
-    // (`@list[@i]` where `@i` resolves to a number), not a member name.
-    if (!matched && isIntegerString(key)) {
-      const i = parseInt(key, 10);
-      matched = map.list[i < 0 ? map.list.length + i : i - 1];
-    }
-  } else {
-    const idx = node.key as number;
-    const i = idx < 0 ? map.list.length + idx : idx - 1; // 1-based; negative from end
-    matched = map.list[i];
+function resolveReferenceResult(
+  node: Reference,
+  frame: Frame | null,
+  e: EvalCtx,
+): { value: ValueNode | MixinCall; frame: Frame | null; sourceOwner: object | null } | null {
+  let value: ValueNode | MixinCall = node.base;
+  let valueFrame = frame;
+  let sourceOwner = frame?.sourceOwner ?? null;
+  if (value.type === 'VariableReference') {
+    const resolved = resolveVarRef(valueFrame, value.name, value.lookup, e);
+    if (!resolved) return null;
+    value = resolved.value;
+    valueFrame = resolved.frame;
+    sourceOwner = detachedBinding(valueFrame, value)?.sourceOwner
+      ?? sourceOwnerForBody(value.type === 'DetachedRuleset' ? value.body : value, valueFrame, e);
   }
-  if (!matched) return literal(node.bytes);
-  return evalValue(matched.value, matched.frame, e);
+  for (const step of node.steps) {
+    if (step.type === 'Call') {
+      if (value.type === 'MixinCall') value = step.args.length === 0 ? value : { ...value, args: step.args };
+      continue;
+    }
+    if (step.type === 'BracketLookup' && step.keyKind === 'index'
+      && (value.type === 'List' || value.type === 'SpacedValue')) {
+      const items = value.type === 'List' ? value.items : value.parts;
+      const index = step.key < 0
+        ? items.length + step.key
+        : step.indexBase === 0 ? step.key : step.key - 1;
+      const item = items[index];
+      if (item === undefined) return null;
+      value = item;
+      continue;
+    }
+    const map = resolveBaseDeclMap(value, valueFrame, e);
+    if (!map) return null;
+    let matched: DeclEntry | undefined;
+    if (step.type === 'DotLookup') {
+      const prop = map.byProp.get(step.name);
+      const variable = map.byVar.get(step.name) ?? lookupVarMember(map, step.name, e);
+      if (prop && variable) throw new Error(`Ambiguous reference member: ${step.name}`);
+      matched = prop ?? variable;
+    } else if (step.keyKind !== 'index') {
+      // `[@name]` names a variable member of the evaluated map/call result.
+      // In particular, a mixin-call base must resolve `[@return]` from every
+      // selected callee frame, rather than evaluating `@return` in the caller.
+      // Other bracket keys remain dynamic value expressions in the current frame.
+      if (step.keyKind === 'var' && step.key.type === 'VariableReference' && (
+        value.type === 'MixinCall' || !resolveVarRef(valueFrame, step.key.name, step.key.lookup, e)
+      )) {
+        // A namespace/mixin-call accessor is a callee result: `#ns.m[@key]`
+        // names that result's `@key` member even if the caller has an `@key`.
+        // A detached map with no caller binding has the same member spelling;
+        // only a bound caller key is a dynamic detached-map lookup.
+        matched = map.byVar.get(step.key.name) ?? lookupVarMember(map, step.key.name, e);
+      } else if (step.keyKind === 'var' && step.key.type === 'VarIndirect') {
+        // `[@@name]` is a map-variable indirection: evaluate only its first
+        // lookup to obtain the member NAME, then read that named member from
+        // this map/call result. Evaluating the VarIndirect value wholesale
+        // would perform the second lookup in the caller and lose the map base.
+        const name = stripOuterQuotes(evalBytesSync(step.key.nameRef, valueFrame, e));
+        matched = map.byVar.get(name) ?? lookupVarMember(map, name, e);
+      } else if (step.keyKind === 'prop' && step.key.type === 'PropertyReference') {
+        // In a map bracket, `$name` selects the property member named `name`.
+        // It is not a `$name` read from the caller's declaration timeline.
+        matched = map.byProp.get(step.key.name);
+      } else {
+        const key = evalBytesSync(step.key as ValueNode, valueFrame, e);
+      if (step.keyKind === 'member') {
+        const prop = map.byProp.get(key);
+        const variable = map.byVar.get(key) ?? lookupVarMember(map, key, e);
+        if (prop && variable) throw new Error(`Ambiguous reference member: ${key}`);
+        matched = prop ?? variable;
+      } else {
+        matched = mapForKind(map, step.keyKind).get(key);
+        if (!matched && step.keyKind === 'var') matched = lookupVarMember(map, key, e);
+      }
+      if (!matched && isIntegerString(key)) {
+        const i = parseInt(key, 10);
+        matched = map.list[i < 0 ? map.list.length + i : i - 1];
+      }
+      }
+    } else {
+      const idx = step.key as number;
+      const i = idx < 0 ? map.list.length + idx : idx - 1;
+      matched = map.list[i] ?? (idx === -1 && map.list.length === 0 ? lastVarMember(map, e) : undefined);
+    }
+    if (!matched) return null;
+    if (matched.important) {
+      if (e.importantSink) e.importantSink.hit = true;
+      else if (e.mergeImportant !== undefined) e.mergeImportant = true;
+    }
+    value = matched.value;
+    valueFrame = matched.frame;
+  }
+  return { value, frame: valueFrame, sourceOwner };
+}
+
+function evalReference(node: Reference, frame: Frame | null, e: EvalCtx): MaybePromise<Value> {
+  const resolved = resolveReferenceResult(node, frame, e);
+  if (resolved === null) {
+    unresolvedReference(node, e);
+    return literal(node.raw);
+  }
+  return resolved.value.type === 'MixinCall'
+    ? literal(node.raw)
+    : evalValue(resolved.value, resolved.frame, e);
 }
 
 /**
  * Follow a `@var` → … → `@var` binding chain to the concrete value node it names
- * (non-throwing; stops at the first non-`VarRef`). Returns `undefined` if any link
+ * (non-throwing; stops at the first non-`VariableReference`). Returns `undefined` if any link
  * is unbound. Used by the detached-ruleset introspection functions, which must
  * inspect the BINDING (a `DetachedRuleset` node) rather than materialize it.
  */
 function resolveBindingNode(node: Binding, frame: Frame | null): Binding | undefined {
   let cur: Binding | undefined = node;
   const seen = new Set<Binding>();
-  while (cur && cur.type === 'VarRef') {
+  while (cur && cur.type === 'VariableReference') {
     if (seen.has(cur)) return undefined; // cyclic
     seen.add(cur);
     cur = lookupVar(frame, cur.name);
@@ -1546,9 +2241,9 @@ function evalIntrospection(node: FunctionCall, frame: Frame | null): Value | und
   if (node.args.length !== 1) return undefined;
   const arg = node.args[0]!;
   if (node.name === 'isdefined') {
-    // Defined iff the single argument resolves to a bound value. A non-`VarRef`
+    // Defined iff the single argument resolves to a bound value. A non-`VariableReference`
     // argument (a literal / call) is inherently defined.
-    const bound = arg.type === 'VarRef' ? resolveBindingNode(arg, frame) : arg;
+    const bound = arg.type === 'VariableReference' ? resolveBindingNode(arg, frame) : arg;
     return literal(bound !== undefined ? 'true' : 'false');
   }
   if (node.name === 'isruleset') {
@@ -1627,7 +2322,10 @@ function evalCall(node: FunctionCall, frame: Frame | null, e: EvalCtx): MaybePro
   // the dispatch decision. Only when a `defaultFn` is in scope (a guard-operand typed
   // resolver); elsewhere `default()` is meaningless and falls through to emit verbatim.
   if (e.defaultFn && node.args.length === 0 && node.name.toLowerCase() === 'default') {
-    return makeBool(e.defaultFn());
+    // This is a Less keyword value in a comparison, not the evaluator's internal
+    // Bool result shape. Keeping it a Keyword lets `@x: false` compare structurally
+    // with `default()` when a non-default candidate already matched.
+    return makeKeyword(e.defaultFn() ? 'true' : 'false');
   }
   const intro = evalIntrospection(node, frame);
   if (intro !== undefined) return intro;
@@ -1653,7 +2351,45 @@ function evalCall(node: FunctionCall, frame: Frame | null, e: EvalCtx): MaybePro
   const typed = node.args.map((a) => evalTyped(a, frame, e));
   return combineAll(typed, (vals) => {
     const list: ValueList = { type: 'List', items: vals, sep, bytes: '' };
-    return ev.call(node.name, list, e.modes, scope, e.io);
+    try {
+      const result = ev.call(node.name, list, e.modes, scope, e.io, error => {
+        const reason = error instanceof Error ? error.message : String(error);
+        const file = e.context?.treeContext?.file;
+        const source = file?.source;
+        const span = source === undefined ? undefined : sourceSpanOf(node);
+        const location = span === undefined ? undefined : lineColAt(source, span.start);
+        e.context?.warn(WARN.unresolvedFunction({
+          node,
+          filePath: file?.fullPath,
+          source,
+          line: location?.line,
+          column: location?.column,
+          meta: { name: node.name, reason },
+        }));
+      });
+      return isThenable(result)
+        ? result.catch(error => invalidFunctionCall(node, error, e))
+        : result;
+    } catch (error) {
+      return invalidFunctionCall(node, error, e);
+    }
+  });
+}
+
+function invalidFunctionCall(node: FunctionCall, error: unknown, e: EvalCtx): never {
+  if (error instanceof JessError) throw error;
+  const reason = error instanceof Error ? error.message : String(error);
+  const file = e.context?.treeContext?.file;
+  const source = file?.source;
+  const span = source === undefined ? undefined : sourceSpanOf(node);
+  const location = span === undefined ? undefined : lineColAt(source, span.start);
+  throw ERR.invalidFunction({
+    node,
+    filePath: file?.fullPath,
+    source,
+    line: location?.line,
+    column: location?.column,
+    meta: { name: node.name, reason },
   });
 }
 
@@ -1666,6 +2402,19 @@ function joinBytes(
 ): MaybePromise<Value> {
   const items = parts.map((p) => evalValue(p, frame, e));
   return combineAll(items, (vals) => literal(vals.map(emitValue).join(sep)));
+}
+
+/** Emit a parser-owned spaced value without rediscovering its authored layout. */
+function joinSpacedBytes(node: SpacedValue, frame: Frame | null, e: EvalCtx): MaybePromise<Value> {
+  const items = node.parts.map(part => evalValue(part, frame, e));
+  return combineAll(items, (values) => {
+    let out = emitValue(values[0]!);
+    for (let index = 1; index < values.length; index++) {
+      out += node.separators?.[index - 1] ?? ' ';
+      out += emitValue(values[index]!);
+    }
+    return literal(out);
+  });
 }
 
 /** Fold a value node and return its emitted bytes. */
@@ -1682,11 +2431,10 @@ function evalBytesInterp(node: ValueNode, frame: Frame | null, e: EvalCtx): Mayb
   return mapMaybe(evalValue(node, frame, e), emitValueInterp);
 }
 
-/** Interp bytes for a synchronous position (selector token); async there is out of scope. */
-function evalBytesInterpSync(node: ValueNode, frame: Frame | null, e: EvalCtx): string {
-  const b = evalBytesInterp(node, frame, e);
-  if (isThenable(b)) throw new Error('async value in a selector interpolation is unsupported');
-  return b;
+function generalEnclosedBytes(node: GeneralEnclosed, content: string): string {
+  return node.form === 'function'
+    ? `${node.name ?? ''}(${content})`
+    : `(${content})`;
 }
 
 /** Bytes for a synchronous position (at-rule prelude); async there is out of scope. */
@@ -1740,8 +2488,8 @@ interface GroupInterp { branches: string[]; multi: boolean; capture: boolean; }
  *  selector CAPTURE, or an escaped `~'…'` selector string with a top-level comma.
  *  Any other ref (a plain value, a comma-less string) is null. */
 function refGroupInterp(ref: ValueNode, frame: Frame | null, e: EvalCtx): GroupInterp | null {
-  if (ref.type !== 'VarRef') return null;
-  const hit = resolveVarRef(frame, ref.name, e);
+  if (ref.type !== 'VariableReference') return null;
+  const hit = resolveVarRef(frame, ref.name, ref.lookup, e);
   if (hit === undefined) return null;
   const bound = hit.value;
   if (bound.type === 'SelectorCapture') {
@@ -1756,7 +2504,7 @@ function refGroupInterp(ref: ValueNode, frame: Frame | null, e: EvalCtx): GroupI
 
 /** [selector-capture] The group a lone bare `@{name}` simple resolves to (a
  *  single-part interp whose sole part is a group ref) — else null. */
-function simpleGroupInterp(sim: Simple, frame: Frame | null, e: EvalCtx): GroupInterp | null {
+function simpleGroupInterp(sim: SimpleSelector, frame: Frame | null, e: EvalCtx): GroupInterp | null {
   const interp = sim.interp;
   if (interp === null || interp.parts.length !== 1) return null;
   const part = interp.parts[0]!;
@@ -1767,7 +2515,7 @@ function simpleGroupInterp(sim: Simple, frame: Frame | null, e: EvalCtx): GroupI
  *  a `@{name}` that is the ENTIRE selector (no leading combinator, no tail, a
  *  single-simple head). This is the whole-selector position, where a capture
  *  expands to header branches rather than compacting to `:is(…)`. */
-function loneGroupInterp(c: Complex, frame: Frame | null, e: EvalCtx): GroupInterp | null {
+function loneGroupInterp(c: ComplexSelector, frame: Frame | null, e: EvalCtx): GroupInterp | null {
   if (c.leadingComb !== undefined && c.leadingComb !== ' ') return null;
   if (c.tail.length > 0) return null;
   if (c.head.simples.length !== 1) return null;
@@ -1775,11 +2523,12 @@ function loneGroupInterp(c: Complex, frame: Frame | null, e: EvalCtx): GroupInte
 }
 
 /** Bytes for one non-group interpolation ref part (matches `evalInterp`: fold the
- *  ref, honour its `unquote`). Async there is out of scope for a selector token. */
-function resolveRefBytes(part: { ref: ValueNode; unquote: boolean }, frame: Frame | null, e: EvalCtx): string {
+ * ref, honour its `unquote`). The selector reducer preserves this MaybePromise so
+ * a public async plugin can resolve one slot before the next slot is evaluated in
+ * the SAME lexical frame. */
+function resolveRefBytes(part: { ref: ValueNode; unquote: boolean }, frame: Frame | null, e: EvalCtx): MaybePromise<string> {
   const bytes = evalBytesInterp(part.ref, frame, e);
-  if (isThenable(bytes)) throw new Error('async value in a selector interpolation is unsupported');
-  return part.unquote ? stripOuterQuotes(bytes) : bytes;
+  return mapMaybe(bytes, value => part.unquote ? stripOuterQuotes(value) : value);
 }
 
 /** [selector-capture] The header/parent branch strings one complex contributes.
@@ -1787,69 +2536,93 @@ function resolveRefBytes(part: { ref: ValueNode; unquote: boolean }, frame: Fram
  *  selector; a lone quoted group stays a single verbatim branch. Every other
  *  complex resolves to exactly one string (a compound-embedded group compacts to
  *  `:is(…)` inside `resolveComplex`). */
-function expandComplex(c: Complex, frame: Frame | null, e: EvalCtx): string[] {
+function expandComplex(c: ComplexSelector, frame: Frame | null, e: EvalCtx): MaybePromise<string[]> {
   const g = loneGroupInterp(c, frame, e);
   if (g !== null) return g.capture ? g.branches : [g.branches.join(', ')];
-  return [resolveComplex(c, frame, e)];
+  return mapMaybe(resolveComplex(c, frame, e), value => [value]);
 }
 
 /** Resolve one interpolated simple token's text in `frame`. Each interpolation ref
  *  part folds to its bytes, EXCEPT a group ref (a `*[…]` capture or `~'…'` comma
- *  string) embedded in a compound (`.d@{cap}&:hover`, `@{c}@{d}`) compacts to a
+ *  string) embedded in a compoundSelector (`.d@{cap}&:hover`, `@{c}@{d}`) compacts to a
  *  single `:is(…)` group; a single-branch capture splices its lone branch bare. */
-function resolveSimpleText(sim: Simple, frame: Frame | null, e: EvalCtx): string {
+function resolveSimpleText(sim: SimpleSelector, frame: Frame | null, e: EvalCtx): MaybePromise<string> {
   const interp = sim.interp;
   if (interp === null) return sim.text ?? '';
-  let s = '';
-  for (const part of interp.parts) {
-    if ('lit' in part) { s += part.lit; continue; }
-    const g = refGroupInterp(part.ref, frame, e);
-    if (g !== null) {
-      const joined = g.branches.join(', ');
-      s += g.multi ? `:is(${joined})` : joined;
-    } else {
-      s += resolveRefBytes(part, frame, e);
+  // Capture the entering frame once. A pending earlier slot must never cause a
+  // later slot to observe a different loop/mixin placement.
+  const entryFrame = frame;
+  const step = (index: number, out: string): MaybePromise<string> => {
+    for (let i = index; i < interp.parts.length; i++) {
+      const part = interp.parts[i]!;
+      if ('lit' in part) { out += part.lit; continue; }
+      const g = refGroupInterp(part.ref, entryFrame, e);
+      if (g !== null) {
+        const joined = g.branches.join(', ');
+        out += g.multi ? `:is(${joined})` : joined;
+        continue;
+      }
+      const bytes = resolveRefBytes(part, entryFrame, e);
+      if (isThenable(bytes)) return bytes.then(value => step(i + 1, out + value));
+      out += bytes;
     }
-  }
-  return resolveEmergentInterp(s, frame, e);
+    return resolveEmergentInterp(out, entryFrame, e);
+  };
+  return step(0, '');
 }
 
-function resolveCompound(c: Compound, frame: Frame | null, e: EvalCtx): string {
+function resolveCompound(c: CompoundSelector, frame: Frame | null, e: EvalCtx): MaybePromise<string> {
   if (!compoundHasInterp(c)) return compoundCanonical(c);
-  let s = '';
-  for (const sim of c.simples) s += resolveSimpleText(sim, frame, e);
-  return s;
+  const parts = c.simples.map(sim => resolveSimpleText(sim, frame, e));
+  return combineAll(parts, values => values.join(''));
 }
 
 /** The concrete canonical string of a (possibly interpolated) complex, in
  * the entering frame. Static selectors keep the cached `canonical()` fast path. */
-function resolveComplex(c: Complex, frame: Frame | null, e: EvalCtx): string {
+function resolveComplex(c: ComplexSelector, frame: Frame | null, e: EvalCtx): MaybePromise<string> {
   if (!complexHasInterp(c)) return complexCanonical(c);
-  let s = resolveCompound(c.head, frame, e);
-  if (c.leadingComb !== undefined && c.leadingComb !== ' ') {
-    s = renderCombinator(c.leadingComb).trimStart() + s;
-  }
-  for (const seg of c.tail) {
-    s += renderCombinator(seg.comb) + resolveCompound(seg.compound, frame, e);
-  }
-  return s;
+  const compounds = [resolveCompound(c.head, frame, e), ...c.tail.map(seg => resolveCompound(seg.compound, frame, e))];
+  return combineAll(compounds, values => {
+    let out = c.leadingComb !== undefined && c.leadingComb !== ' '
+      ? renderCombinator(c.leadingComb).trimStart() + values[0]!
+      : values[0]!;
+    for (let i = 0; i < c.tail.length; i++) out += renderCombinator(c.tail[i]!.comb) + values[i + 1]!;
+    return out;
+  });
+}
+
+/** Synchronous-only selector consumers (mixin-key indexing and nested-mode
+ * header probes) retain their existing contract. Public emitted selectors use
+ * the MaybePromise path above. */
+function resolveComplexSync(c: ComplexSelector, frame: Frame | null, e: EvalCtx): string {
+  const value = resolveComplex(c, frame, e);
+  if (isThenable(value)) throw new Error('async value in a synchronous selector lookup is unsupported');
+  return value;
 }
 
 /** Compose ONE child complex over ALL `parents`, cartesian-expanded (child-major,
  * parent-minor). `&`-bearing children expand each `&` over every parent; `&`-less
  * children take an implicit descendant prefix, one branch per parent. */
-function composeOne(parents: string[], child: Complex, frame: Frame | null, e: EvalCtx): string[] {
+function composeOne(parents: string[], child: ComplexSelector, frame: Frame | null, e: EvalCtx): MaybePromise<string[]> {
   const canon = resolveComplex(child, frame, e);
-  if (complexHasAmpersand(child)) return joinAmpersand(canon, parents);
-  return parents.map((p) => p + ' ' + canon);
+  return mapMaybe(canon, text => {
+  if (complexHasAmpersand(child)) {
+    // A quoted selector interpolation can preserve a comma list as one parent
+    // branch. It cannot be substituted into a non-leading `&` merge template
+    // such as `.fruit-&`: Less rejects that ambiguous template rather than
+    // treating its commas as a source-text selector list.
+    if (parents.some(hasTopLevelComma) && !text.startsWith('&')) {
+      throw ERR.commaListInterpolation({ node: child, meta: { selector: text } });
+    }
+    return joinAmpersand(text, parents);
+  }
+  return parents.map((p) => p + ' ' + text);
+  });
 }
 
-function compose(parents: string[], child: SelectorList, frame: Frame | null, e: EvalCtx): string[] {
-  const out: string[] = [];
-  for (const c of child.selectors) {
-    for (const s of composeOne(parents, c, frame, e)) out.push(s);
-  }
-  return out;
+function compose(parents: string[], child: SelectorList, frame: Frame | null, e: EvalCtx): MaybePromise<string[]> {
+  const parts = child.selectors.map(c => composeOne(parents, c, frame, e));
+  return combineAll(parts, values => values.flat());
 }
 
 /**
@@ -1860,18 +2633,18 @@ function compose(parents: string[], child: SelectorList, frame: Frame | null, e:
  * stays fully cartesian — the two forms diverge only for `&`-less multi-parent.
  * Only called with `parents.length >= 2` (callers use `compose` for the rest).
  */
-function composeHeader(parents: string[], child: SelectorList, frame: Frame | null, e: EvalCtx): string[] {
-  const out: string[] = [];
+function composeHeader(parents: string[], child: SelectorList, frame: Frame | null, e: EvalCtx): MaybePromise<string[]> {
   const isPrefix = `:is(${parents.join(', ')}) `;
-  for (const c of child.selectors) {
-    const canon = resolveComplex(c, frame, e);
+  const parts = child.selectors.map(c => mapMaybe(resolveComplex(c, frame, e), canon => {
     if (complexHasAmpersand(c)) {
-      for (const s of joinAmpersand(canon, parents)) out.push(s);
-    } else {
-      out.push(isPrefix + canon);
+      if (parents.some(hasTopLevelComma) && !canon.startsWith('&')) {
+        throw ERR.commaListInterpolation({ node: c, meta: { selector: canon } });
+      }
+      return joinAmpersand(canon, parents);
     }
-  }
-  return out;
+    return [isPrefix + canon];
+  }));
+  return combineAll(parts, values => values.flat());
 }
 
 /** True if ANY branch of the list references `&` (routes the rule to the cartesian
@@ -1893,35 +2666,30 @@ function wrapIsList(branches: string[]): string {
  * `:is(...)` (never cartesian-distributed, never repeated inside the `:is()`).
  * `#…#deux` + `#fourth,#five,#six` → `#…#deux :is(#fourth, #five, #six)`; a single
  * child joins plainly (`A child`, honouring its leading combinator). */
-function opaqueJoin(a: string, child: SelectorList, frame: Frame | null, e: EvalCtx): string {
+function opaqueJoin(a: string, child: SelectorList, frame: Frame | null, e: EvalCtx): MaybePromise<string> {
   const canons = child.selectors.map((c) => resolveComplex(c, frame, e));
-  if (canons.length === 1) return a + ' ' + canons[0]!;
-  return a + ' :is(' + canons.join(', ') + ')';
+  return combineAll(canons, values => values.length === 1 ? a + ' ' + values[0]! : a + ' :is(' + values.join(', ') + ')');
 }
 
-function ownStrings(list: SelectorList, frame: Frame | null, e: EvalCtx): string[] {
-  const out: string[] = [];
-  for (const c of list.selectors) out.push(...expandComplex(c, frame, e));
-  return out;
+function ownStrings(list: SelectorList, frame: Frame | null, e: EvalCtx): MaybePromise<string[]> {
+  return combineAll(list.selectors.map(c => expandComplex(c, frame, e)), values => values.flat());
 }
 
 /** [atrule-bubbling] Flat-mode own selectors at a ROOT context (no parent): like
  * `ownStrings`, but a `&` with no enclosing parent resolves to EMPTY (Less drops
  * a parentless ampersand), so `.outOfMedia &` at the top of a bubbled at-rule
  * becomes `.outOfMedia`. Non-ampersand selectors keep the fast canonical path. */
-function rootStrings(list: SelectorList, frame: Frame | null, e: EvalCtx): string[] {
-  const out: string[] = [];
+function rootStrings(list: SelectorList, frame: Frame | null, e: EvalCtx): MaybePromise<string[]> {
+  const parts: Array<MaybePromise<string[]>> = [];
   for (const c of list.selectors) {
     const g = loneGroupInterp(c, frame, e);
     if (g !== null) {
-      if (g.capture) out.push(...g.branches);
-      else out.push(g.branches.join(', '));
+      parts.push(g.capture ? g.branches : [g.branches.join(', ')]);
       continue;
     }
-    if (complexHasAmpersand(c)) out.push(resolveComplex(c, frame, e).split('&').join('').trim());
-    else out.push(resolveComplex(c, frame, e));
+    parts.push(mapMaybe(resolveComplex(c, frame, e), value => [complexHasAmpersand(c) ? value.split('&').join('').trim() : value]));
   }
-  return out;
+  return combineAll(parts, values => values.flat());
 }
 
 /* ------------------------------------------------------------- emit engine */
@@ -1964,6 +2732,23 @@ interface Emit extends EvalCtx {
   // `RangeError` once it reaches `MAX_MIXIN_DEPTH` — catching a bad-guard runaway
   // before a native stack overflow. Threaded through `scratchEmit`.
   mixinDepth: number;
+  loadedImports: Set<string> | null;
+  /** A `(multiple)` import makes its transitive imports multiple too. */
+  multipleImportDepth: number;
+  /** A `(reference)` import contributes facts but suppresses its direct output. */
+  referenceImportDepth: number;
+  /** The render-owned Context import capability, retained for nested placement. */
+  importDocument?: SerializeOptions['importDocument'];
+  /** Canonical documents already loaded by the extend planner, consumed once by emission. */
+  plannedImportDocuments: WeakMap<ImportAtRule, PlannedImportDocument> | null;
+  /**
+   * Planner-issued identity tokens for each concrete `$for`/`each()` iteration.
+   * The token is selected by the execution index and placed on that iteration's
+   * lexical frame; it is intentionally not stored on the immutable AST.
+   */
+  plannedForExtendPlacements: WeakMap<For, readonly object[]> | null;
+  /** Root CSS-terminal imports already written in the required document prelude. */
+  hoistedCssImports: Set<ImportAtRule> | null;
 }
 
 /**
@@ -1992,6 +2777,12 @@ function scratchEmit(e: EvalCtx): Emit {
     hoistMode: false,
     lastBlock: { parentKey: null, header: '', depth: -1, endChunks: -1 }, // [adjacent-merge]
     mixinDepth: 0, // [recursion-backstop] fresh scratch walk; own runaway backstop
+    loadedImports: null,
+    multipleImportDepth: 0,
+    referenceImportDepth: 0,
+    plannedImportDocuments: null,
+    plannedForExtendPlacements: null,
+    hoistedCssImports: null,
   };
 }
 
@@ -2076,10 +2867,6 @@ interface Leaf {
   node: Statement;
   frame: Frame | null;
   important?: boolean;
-  // [dedup] the leaf was emitted from RESTRICTED mixin output (a real parametric
-  // `MixinDef` expansion, or anything nested under one). Such duplicates are kept
-  // verbatim — only unrestricted (authored / ruleset-mixin) duplicates collapse.
-  protectedDup?: boolean;
 }
 
 /** The resolved property name of a declaration (interp names resolve sync). */
@@ -2094,14 +2881,24 @@ function declName(node: Declaration, frame: Frame | null, e: EvalCtx): string {
  * compound serializes byte-identically. Static (`&`, `.a`) simples are untouched.
  * The lazy `_hasInterp` / `_canon` memos are cleared so the fast static path recomputes.
  */
-function resolveCompoundInterpInPlace(comp: Compound, frame: Frame | null, e: EvalCtx): void {
+function resolveCompoundInterpInPlace(comp: CompoundSelector, frame: Frame | null, e: EvalCtx): void {
   if (!compoundHasInterp(comp)) return;
   for (let i = 0; i < comp.simples.length; i++) {
     const sim = comp.simples[i]!;
-    if (sim.interp !== null) comp.simples[i] = simple(resolveSimpleText(sim, frame, e));
+    if (sim.interp !== null) comp.simples[i] = simpleSelector(resolveSimpleText(sim, frame, e));
   }
   comp._hasInterp = false;
   comp._canon = undefined;
+}
+
+function resolveComplexInterpInPlace(c: ComplexSelector, frame: Frame | null, e: EvalCtx): void {
+  if (!complexHasInterp(c)) return;
+  const hasLiteralAmpersand = complexHasAmpersand(c);
+  resolveCompoundInterpInPlace(c.head, frame, e);
+  for (const seg of c.tail) resolveCompoundInterpInPlace(seg.compound, frame, e);
+  c._hasInterp = false;
+  c._hasAmp = hasLiteralAmpersand;
+  c._canon = undefined;
 }
 
 /**
@@ -2120,24 +2917,48 @@ function resolveCompoundInterpInPlace(comp: Compound, frame: Frame | null, e: Ev
  */
 function resolveSelectorInterpForExtend(statements: Statement[], frame: Frame, e: EvalCtx): void {
   for (const st of statements) {
-    if (st.type === 'Rule') {
+    // The extend planner reads selectors before the normal frame walk.  Replay
+    // declaration activation in this cold prepass so live references observe
+    // exactly the declarations that have appeared so far; do not substitute a
+    // scoped lookup when the live cell has not been activated.
+    if (st.type === 'VariableDeclaration') {
+      activateVariableDeclaration(st, frame, e);
+    } else if (st.type === 'Declaration') {
+      // Selector interpolation is planned before ordinary body emission. Keep a
+      // prepass-local property timeline so `$["name"]` observes declarations
+      // already encountered in its containing rule, just as normal rendering
+      // will, without a text reparse or CST dependency.
+      recordPropertyDeclaration(frame, st, frame);
+    } else if (st.type === 'Rule') {
       const list = st.selector;
       for (const c of list.selectors) {
         if (!complexHasInterp(c)) continue;
         try {
-          resolveCompoundInterpInPlace(c.head, frame, e);
-          for (const seg of c.tail) resolveCompoundInterpInPlace(seg.compound, frame, e);
-          c._hasInterp = false;
-          c._canon = undefined;
+          resolveComplexInterpInPlace(c, frame, e);
         } catch {
           // Unresolvable interp (e.g. a guarded rule never emitted): leave verbatim —
           // the extend engine falls back to the baseline (no match), never regresses.
         }
       }
+      // The same planner reads extend targets before matching. Resolve their
+      // typed selector interpolation in this existing cold pass and lexical
+      // frame, alongside rule selectors; no selector text recovery or second
+      // traversal is introduced.
+      for (const inst of st.extendInstructions ?? []) {
+        for (const c of inst.target.selectors) {
+          if (!complexHasInterp(c)) continue;
+          try {
+            resolveComplexInterpInPlace(c, frame, e);
+          } catch {
+            // Preserve the unresolved target when its branch cannot resolve;
+            // the planner then keeps the existing no-match behavior.
+          }
+        }
+      }
       const childFrame: Frame = {
         parent: frame,
         mixins: collectMixins(st.body),
-        vars: collectVars(st.body),
+        declIndex: collectDeclIndex(st.body), cells: null, reassign: null,
         statements: st.body,
       };
       resolveSelectorInterpForExtend(st.body, childFrame, e);
@@ -2149,21 +2970,253 @@ function resolveSelectorInterpForExtend(statements: Statement[], frame: Frame, e
   }
 }
 
-export function serialize(root: Root, options?: SerializeOptions): SerializeReturn {
-  // [plugin/P2] Scoped-fn registration seam. With a `pluginHost` injected by the
-  // driver, root-level `@plugin` directives + config-injected `install` plugins
-  // (`host.globalFns`) register into the root frame; without one (the idle path,
-  // and the differential harness), `collectScopedFns` returns null, `anyScopedFns`
-  // is false, and the fn-dispatch path is byte-identical to a plain render.
+/** Build extend IR from selector structure in the current render frame. Unlike the
+ * old static prepass this never rewrites selector nodes: loop bodies are shared
+ * canonical AST and can resolve differently on every iteration. */
+function resolvedExtendBranch(node: ComplexSelector, frame: Frame, e: EvalCtx): MaybePromise<Branch> {
+  const compound = (part: CompoundSelector): MaybePromise<{ simples: Branch['segs'][number]['compound']['simples'] }> =>
+    combineAll(part.simples.map(simple => resolveSimpleText(simple, frame, e)), texts => ({
+      simples: texts.map(text => ({ t: 'text' as const, text })),
+    }));
+  const parts = [compound(node.head), ...node.tail.map(part => compound(part.compound))];
+  return combineAll(parts, compounds => ({
+    segs: [
+      { comb: node.leadingComb ?? ' ', compound: compounds[0]! },
+      ...node.tail.map((part, index) => ({ comb: part.comb, compound: compounds[index + 1]! })),
+    ],
+  }));
+}
+
+function resolvedExtendLevel(node: SelectorList, frame: Frame, e: EvalCtx): MaybePromise<Level> {
+  return combineAll(node.selectors.map(selector => resolvedExtendBranch(selector, frame, e)), branches => branches);
+}
+
+function bodyMayPlanExtend(statements: readonly Statement[]): boolean {
+  // Imported component bodies can be deeply nested. This admission scan must be
+  // stack-safe and allocation-light: one explicit typed-statement cursor, no
+  // selector IR and no recursive descent.
+  const pending: Statement[] = [...statements];
+  while (pending.length) {
+    const statement = pending.pop()!;
+    if (statement.type === 'Rule') {
+      if (statement.extendInstructions?.length) return true;
+      for (const child of statement.body) pending.push(child);
+    } else if (statement.type === 'AtRuleBlock') {
+      for (const child of statement.body) pending.push(child);
+    } else if (statement.type === 'For') {
+      // `$for`/`each()` bodies are the one dynamic placement form that must
+      // admit imported extend planning even before their iterable is evaluated.
+      for (const child of statement.rules) pending.push(child);
+    }
+  }
+  return false;
+}
+
+/**
+ * Preflight concrete loop placements in source order. It evaluates only the
+ * same typed iterable/bindings as `expandFor`, emits no CSS, and records typed
+ * selector facts keyed by a fresh iteration token. The canonical body stays
+ * shared; no selector or statement is copied into a synthetic stylesheet.
+ */
+function collectPlacedExtendFacts(
+  statements: readonly Statement[],
+  frame: Frame,
+  e: Emit,
+  overlay: { subjects: PlanSubject[]; instructions: PlanInstruction[] },
+  path: Level[] = [],
+  scope: number[] = [],
+  parent: PlanSubject | null = null,
+  hidden = false,
+  referenceBoundary: object | null = null,
+): MaybePromise<void> {
+  const run = (start: number): MaybePromise<void> => {
+    for (let index = start; index < statements.length; index++) {
+      const statement = statements[index]!;
+      if (statement.type === 'VariableDeclaration') {
+        activateVariableDeclaration(statement, frame, e);
+        continue;
+      }
+      if (statement.type === 'Rule') {
+        const own = resolvedExtendLevel(statement.selector, frame, e);
+        const addRule = (ownLocal: Level): MaybePromise<void> => {
+          const rulePath = [...path, ownLocal];
+          const subject: PlanSubject = {
+            rule: statement, path: rulePath, scope, ownLocal, parent,
+            hidden: hidden || statement.reference === true, referenceBoundary,
+            mayMatch: false, placement: frame.extendPlacement,
+          };
+          overlay.subjects.push(subject);
+          const addInstructions = (instructionIndex: number): MaybePromise<void> => {
+            const instruction = statement.extendInstructions?.[instructionIndex];
+            if (!instruction) {
+              const childFrame: Frame = {
+                parent: frame, mixins: collectMixins(statement.body),
+                declIndex: collectDeclIndex(statement.body), cells: null, reassign: null,
+                statements: statement.body,
+                ...(frame.extendPlacement ? { extendPlacement: frame.extendPlacement } : {}),
+              };
+              const nested = collectPlacedExtendFacts(statement.body, childFrame, e, overlay, rulePath, scope, subject, hidden, referenceBoundary);
+              return isThenable(nested) ? nested.then(() => run(index + 1)) : run(index + 1);
+            }
+            const resolvedExtender = instruction.subject
+              ? resolvedExtendLevel(instruction.subject, frame, e)
+              : rulePath;
+            return mapMaybe(resolvedExtender, extenderPath => mapMaybe(
+              resolvedExtendLevel(instruction.target, frame, e), targets => {
+                for (const target of targets) overlay.instructions.push({
+                  target, partial: instruction.partial, extenderPath,
+                  scope, order: overlay.instructions.length, extenderHidden: hidden || statement.reference === true,
+                  referenceBoundary,
+                });
+                return addInstructions(instructionIndex + 1);
+              },
+            ));
+          };
+          return addInstructions(0);
+        };
+        const placed = mapMaybe(own, addRule);
+        if (isThenable(placed)) return placed;
+        continue;
+      }
+      if (statement.type === 'AtRuleBlock') {
+        const nested = collectPlacedExtendFacts(statement.body, frame, e, overlay, path, scope, parent, hidden, referenceBoundary);
+        if (isThenable(nested)) return nested.then(() => run(index + 1));
+        continue;
+      }
+      if (statement.type === 'For' && bodyMayPlanExtend(statement.rules)) {
+        const items = forItems(statement.iterable, frame, e);
+        const tokens = items.map(() => ({}));
+        (e.plannedForExtendPlacements ??= new WeakMap()).set(statement, tokens);
+        const iterations = (itemIndex: number): MaybePromise<void> => {
+          for (let i = itemIndex; i < items.length; i++) {
+            const item = items[i]!;
+            const bindings = bindForEntry(statement, item.value, item.key, dimension(i + 1));
+            const loopFrame: Frame = {
+              parent: frame, mixins: collectMixins(statement.rules),
+              declIndex: collectDeclIndex(statement.rules, bindings), cells: cellsForParams(bindings), reassign: null,
+              statements: statement.rules, extendPlacement: tokens[i]!,
+            };
+            const nested = collectPlacedExtendFacts(statement.rules, loopFrame, e, overlay, path, scope, parent, hidden, referenceBoundary);
+            if (isThenable(nested)) return nested.then(() => iterations(i + 1));
+          }
+          return run(index + 1);
+        };
+        return iterations(0);
+      }
+    }
+  };
+  return run(0);
+}
+
+/** Build an extend-only document view for `(reference)` imports.  This is
+ * deliberately separate from emission: it loads through the existing Context
+ * capability, keeps import-once identity locally, activates only variables in
+ * source order, and contributes the same parsed Rule identities solely to
+ * extend planning. The render walk still owns source-order emission; this is
+ * the one intentional pre-render planner view, never a reparse or tree bridge. */
+type ExtendPlannerInput = {
+  root: Stylesheet;
+  hiddenRules: ReadonlySet<Rule>;
+  referenceBoundaries: ReadonlyMap<Rule, object>;
+  overlay: PlanOverlay;
+};
+
+function planImportedExtends(
+  root: Stylesheet,
+  frame: Frame,
+  e: Emit,
+  importDocument: SerializeOptions['importDocument'] | undefined,
+): MaybePromise<ExtendPlannerInput> {
+  // A Context-owned import route is already MaybePromise at the document boundary,
+  // so it may discover an imported-only extend. Direct AST consumers preserve the
+  // historical synchronous no-extend import path.
+  // A Context alone must not promote a document with neither imports nor
+  // extends into the async planner path. The Context remains available to
+  // synchronous callable-body ownership, while actual import/extend facts opt
+  // into planning.
+  if (!importDocument || (!documentHasExtend(root) && !root.children.some(child => child.type === 'ImportAtRule'))) {
+    return { root, hiddenRules: new Set(), referenceBoundaries: new Map(), overlay: { subjects: [], instructions: [] } };
+  }
+  const seen = new Set<string>();
+  const overlay: { subjects: PlanSubject[]; instructions: PlanInstruction[] } = { subjects: [], instructions: [] };
+  const visit = async (statements: readonly Statement[], scope: Frame): Promise<void> => {
+    const deferred: ImportAtRule[] = [];
+    const visitImport = async (st: ImportAtRule): Promise<void> => {
+      const options = st.options === null ? null : evalBytesSync(st.options, scope, e);
+      const specifier = importSpecifier(st, scope, e);
+      if (!canLoadImport(st, specifier, options)) return;
+      const request: ImportDocumentRequest = {
+        node: st, specifier, options,
+        tail: st.tail === null ? null : evalBytesSync(st.tail, scope, e),
+      };
+      const loaded = await importDocument(request);
+      e.plannedImportDocuments?.set(st, { request, loaded });
+      if (loaded === undefined || 'inline' in loaded || loaded.document === null) return;
+      if (!importHasOption(options, 'multiple') && loaded.key !== undefined) {
+        if (seen.has(loaded.key)) return;
+        seen.add(loaded.key);
+      }
+      rememberImportedCallableBodies(loaded.document, loaded.document.children, e.context);
+      // Match the importer: a loaded document is a lexical splice and publishes
+      // its direct facts into the importing frame before its body is walked.
+      for (const child of loaded.document.children) {
+        if (child.type === 'MixinDef') publishImportedMixinDefinition(scope, child);
+        if (child.type === 'VariableDeclaration') publishImportedVariableDeclaration(scope, child);
+        if (child.type === 'Rule') publishImportedRuleset(scope, child);
+      }
+      const childFrame: Frame = { parent: scope, mixins: collectMixins(loaded.document.children), declIndex: collectDeclIndex(loaded.document.children), cells: null, reassign: null, statements: loaded.document.children };
+      // Ordinary imports must not pay selector-IR/planning cost. The typed body
+      // itself is the admission fact: it includes static Rule extends and the
+      // possible `$for`/`each()` loop bodies whose concrete placements the
+      // planner must still preflight.
+      if (bodyMayPlanExtend(loaded.document.children)) {
+        const referenceBoundary = importHasOption(options, 'reference') ? {} : null;
+        const placed = collectPlacedExtendFacts(loaded.document.children, childFrame, e, overlay, [], [], null, referenceBoundary !== null, referenceBoundary);
+        if (isThenable(placed)) await placed;
+      }
+      const collect = async (): Promise<void> => { await visit(loaded.document!.children, childFrame); };
+      if (loaded.withinDocument) await loaded.withinDocument(collect); else await collect();
+    };
+    for (const st of statements) {
+      if (st.type === 'VariableDeclaration') {
+        activateVariableDeclaration(st, scope, e);
+      } else if (st.type === 'ImportAtRule') {
+        try {
+          await visitImport(st);
+        } catch (error) {
+          if (!(error instanceof ImportPathNotReady)) throw error;
+          deferred.push(st);
+        }
+      } else if (st.type === 'AtRuleBlock') {
+        await visit(st.body, scope);
+      }
+    }
+    for (const pending of deferred) {
+      try {
+        await visitImport(pending);
+      } catch (error) {
+        if (error instanceof ImportPathNotReady) throw error.cause;
+        throw error;
+      }
+    }
+  };
+  return visit(root.children, frame).then(() => ({
+    root, hiddenRules: new Set(), referenceBoundaries: new Map(), overlay,
+  }));
+}
+
+export function serialize(root: Stylesheet, options?: SerializeOptions): SerializeReturn {
   const pluginHost = options?.pluginHost;
-  const rootFns = collectScopedFns(root.children, pluginHost, true);
+  const importDocument = options?.importDocument ?? (options?.context ? importThroughContext(options.context) : undefined);
+  const rootFns = globalScopedFns(pluginHost);
   const anyScopedFns = rootFns !== null;
   const e: Emit = {
     chunks: [],
     off: 0,
     positions: options?.trackPositions ? [] : null,
-    ev: options?.evaluator ?? null, // typed value evaluator
-    modes: options?.modes ?? DEFAULT_MODES,
+    ev: options?.evaluator ?? options?.context?.valueEvaluator ?? null, // typed value evaluator
+    modes: options?.modes ?? options?.context?.options ?? DEFAULT_MODES,
+    context: options?.context,
     excluded: new Set(), // [resolver] per-declaration cycle guard
     propNames: new Set(), // [property-interp] interpolated-name re-entrancy guard
     optional: options?.optional ?? false, // [resolver] strict (default) vs optional miss
@@ -2174,6 +3227,13 @@ export function serialize(root: Root, options?: SerializeOptions): SerializeRetu
     hoistMode: false, // [extend]
     lastBlock: { parentKey: null, header: '', depth: -1, endChunks: -1 }, // [adjacent-merge]
     mixinDepth: 0, // [recursion-backstop] runaway mixin-expansion depth guard
+    loadedImports: null,
+    multipleImportDepth: 0,
+    referenceImportDepth: 0,
+    importDocument,
+    plannedImportDocuments: importDocument ? new WeakMap() : null,
+    plannedForExtendPlacements: null,
+    hoistedCssImports: null,
     anyScopedFns, // [plugin/P1] gate: false idle ⇒ fn-dispatch walk skipped
     pluginHost, // [plugin/P2] injected plugin runtime for scope-local `@plugin`
     io: options?.io, // [io] per-render file-read capability for the IO built-ins
@@ -2181,52 +3241,160 @@ export function serialize(root: Root, options?: SerializeOptions): SerializeRetu
   const rootFrame: Frame = {
     parent: null,
     mixins: collectMixins(root.children),
-    vars: collectVars(root.children),
+    declIndex: collectDeclIndex(root.children), cells: null, reassign: null,
     statements: root.children,
     fns: rootFns, // [plugin/P1] root-global scoped fns (null today)
+    sourceOwner: e.context?.currentSourceOwner?.() ?? null,
   };
+  const continueRender = (planned: ExtendPlannerInput): SerializeReturn => {
+  const plannedRoot = planned.root;
   // [extend/selector-interp] Resolve interpolated selectors to static text BEFORE the
   // extend planner reads their IR — only when the document actually has an `:extend()`
   // (the planner's own gate), so a non-extend document is byte- and cost-identical.
-  if (documentHasExtend(root)) resolveSelectorInterpForExtend(root.children, rootFrame, e);
-  e.extends = computeExtends(root); // [extend] null when no `:extend()` anywhere
+  if (documentHasExtend(plannedRoot)) resolveSelectorInterpForExtend(plannedRoot.children, rootFrame, e);
+  e.extends = computeExtends(plannedRoot, planned.hiddenRules, planned.referenceBoundaries, planned.overlay); // [extend] null when no `:extend()` anywhere
   const start = e.off;
   // [charset] Hoist the first document-level `@charset` ahead of all body
   // content; inline occurrences are dropped during the walk (dedupe).
   emitHoistedCharset(root.children, rootFrame, e);
-  if (!e.collapse) {
-    // [nested/R0] Less v5 default: preserve authored block structure. The root's
-    // children are the top-level content level (indent 0).
-    emitNestedBody(root.children, rootFrame, e);
-  } else
-  for (const child of root.children) {
+  // A caller-provided import handler owns terminal-import decisions itself. The
+  // public Context route has no such driver callback, so it uses this direct
+  // root-output rule while retaining Context loading for non-terminal imports.
+  if (!options?.importDocument) emitHoistedCssImports(root.children, rootFrame, e);
+  const emitted = emitDocumentStatements(root.children, rootFrame, e, importDocument);
+  const finalize = (): SerializeResult =>
+    e.positions ? { css: e.chunks.join(''), positions: e.positions } : { css: e.chunks.join('') };
+  const finish = (): SerializeReturn => {
+    if (e.positions) e.positions.push({ node: root, type: root.type, start, end: e.off });
+    // lift to async ONLY if a genuinely-async built-in reserved a placeholder.
+    if (e.pending.length > 0) {
+      return Promise.all(
+        e.pending.map((x) => x.p.then((b) => { e.chunks[x.i] = b; })),
+      ).then(finalize);
+    }
+    return finalize();
+  };
+  return mapMaybe(emitted, finish);
+  };
+  // The reference-import planner owns an isolated lexical frame: planning must
+  // never publish variables/mixins/rules into the later render frame.
+  const plannerRootFrame: Frame = {
+    parent: null,
+    mixins: collectMixins(root.children),
+    declIndex: collectDeclIndex(root.children), cells: null, reassign: null,
+    statements: root.children,
+    fns: rootFns,
+  };
+  const prepare = prepareBodyPlugins(root.children, rootFrame, e);
+  const plan = (): SerializeReturn => {
+    const planned = planImportedExtends(root, plannerRootFrame, e, importDocument);
+    return isThenable(planned) ? planned.then(continueRender) : continueRender(planned);
+  };
+  return mapMaybe(prepare, plan);
+}
+
+/** Emit a source document at the current source-order position without creating a wrapper node. */
+function emitDocumentStatements(
+  children: readonly Statement[],
+  frame: Frame,
+  e: Emit,
+  importDocument?: SerializeOptions['importDocument'],
+  imported = false,
+): MaybePromise<void> {
+  // A referenced document is a fact-only placement: route it through the
+  // statement dispatcher so rules/at-rules can be suppressed while declarations,
+  // mixin definitions, and nested imports still establish lookup facts.
+  const hasDynamicImportTarget = children.some(child => child.type === 'ImportAtRule'
+    && child.target.type !== 'Quoted'
+    && !(child.target.type === 'Url' && child.target.value.type === 'Quoted'));
+  if (!e.collapse && e.referenceImportDepth === 0 && !hasDynamicImportTarget) {
+    // Keep the nested emitter's merge behavior for contiguous authored runs,
+    // but make a root import an ordered barrier between those runs. Nested
+    // import placement remains a separate parity slice; this is the public
+    // Less root-import seam.
+    let pending: Promise<void> | undefined;
+    let batch: Statement[] = [];
+    const flushBatch = (): void => {
+      if (!batch.length) return;
+      const current = batch;
+      batch = [];
+      if (pending) {
+        pending = pending.then(() => Promise.resolve(emitNestedBody(current, frame, e)));
+      } else {
+        const emitted = emitNestedBody(current, frame, e);
+        if (isThenable(emitted)) pending = Promise.resolve(emitted);
+      }
+    };
+    for (const child of children) {
+      if (e.hoistedCssImports?.has(child as ImportAtRule)) continue;
+      if (child.type !== 'ImportAtRule') {
+        batch.push(child);
+        continue;
+      }
+      flushBatch();
+      const emit = () => emitImportAtRule(child, frame, e, importDocument);
+      if (pending) pending = pending.then(() => Promise.resolve(emit()));
+      else {
+        const current = emit();
+        if (isThenable(current)) pending = Promise.resolve(current);
+      }
+    }
+    flushBatch();
+    return pending;
+  }
+  // Less permits an import path to depend on declarations introduced by a later
+  // sibling import. Keep the original typed import node pending, continue this
+  // lexical body, then make exactly one final attempt after those imports have
+  // published their facts. No path text is recovered or parsed again.
+  const deferredImports: ImportAtRule[] = [];
+  const delayedStatements: Statement[] = [];
+  const run = (child: Statement, allowDefer: boolean): MaybePromise<void> => {
+    try {
+      return emit(child);
+    } catch (error) {
+      if (allowDefer && error instanceof ImportPathNotReady) {
+        deferredImports.push(child as ImportAtRule);
+        return undefined;
+      }
+      if (error instanceof ImportPathNotReady) throw error.cause;
+      throw error;
+    }
+  };
+  let pending: Promise<void> | undefined;
+  const emit = (child: Statement): MaybePromise<void> => {
     switch (child.type) {
       case 'Rule':
-        flatten(child, null, null, rootFrame, e);
+        // A reference-imported rule is normally output-hidden, but an extend
+        // plan may contribute a visible branch from the importing document.
+        // Let the existing visibility projection decide that case; do not
+        // publish or otherwise render reference rules unconditionally.
+        if (e.referenceImportDepth === 0 || e.extends?.hiddenByRule.get(child)?.some(hidden => !hidden) === true) {
+          return flatten(child, null, null, frame, e);
+        }
         break;
       case 'MixinDef':
-      case 'VarDeclaration':
-        break; // definitions emit nothing
+        if (imported) publishImportedMixinDefinition(frame, child);
+        else publishSelectedMixinDefinition(frame, child);
+        break;
+      case 'VariableDeclaration':
+        activateVariableDeclaration(child, frame, e);
+        break;
       case 'MixinCall': {
         const group: Leaf[] = [];
         const flush = (): void => {
           if (group.length) flushBlock([], group, e);
           group.length = 0;
         };
-        expandCall(child, null, null, rootFrame, group, flush, null, e);
-        flush();
-        break;
+        return mapMaybe(expandCall(child, null, null, frame, group, flush, null, e), () => { flush(); });
       }
-      case 'DetachedCall': {
-        // a top-level detached-ruleset call (e.g. unlocking mixins).
+      case 'Reference': {
+        // A final call step can splice a detached ruleset at document level.
         const group: Leaf[] = [];
         const flush = (): void => {
           if (group.length) flushBlock([], group, e);
           group.length = 0;
         };
-        expandDetachedCall(child, null, null, rootFrame, group, flush, null, e);
-        flush();
-        break;
+        return mapMaybe(expandReferenceCall(child, null, null, frame, group, flush, null, e), () => { flush(); });
       }
       case 'For': {
         // a top-level `each(...)` loop — its body emits at the document level.
@@ -2235,23 +3403,43 @@ export function serialize(root: Root, options?: SerializeOptions): SerializeRetu
           if (group.length) flushBlock([], group, e);
           group.length = 0;
         };
-        expandFor(child, null, null, rootFrame, group, flush, null, e);
+        return mapMaybe(expandFor(child, null, null, frame, group, flush, null, e), () => { flush(); });
+      }
+      case 'If': {
+        const body = selectIfBodyForRender(child, frame, e);
+        if (!body) break;
+        const group: Leaf[] = [];
+        const flush = (): void => {
+          if (group.length) flushBlock([], group, e);
+          group.length = 0;
+        };
+        walkBody(body, null, null, frame, group, flush, null, e);
         flush();
         break;
       }
       case 'Declaration':
       case 'Comment':
-        emitLeaf({ node: child, frame: rootFrame }, e, true);
+        if (e.referenceImportDepth === 0) emitLeaf({ node: child, frame }, e, true);
         break;
       // [atrule] top-level at-rules
       case 'AtRuleBlock':
-        emitAtRuleBlock(child, rootFrame, e);
+        if (e.referenceImportDepth === 0) return emitAtRuleBlock(child, frame, e);
         break;
       case 'AtRuleStatement':
-        emitAtRuleStatement(child, rootFrame, e);
+        if (e.referenceImportDepth === 0) emitAtRuleStatement(child, frame, e);
+        break;
+      case 'Plugin':
+        // Plugin is a lexical, non-emitting statement. Frame preparation has
+        // already registered its functions before this dispatch.
         break;
       case 'ImportAtRule':
-        emitImportAtRule(child, rootFrame, e);
+        if (e.hoistedCssImports?.has(child)) break;
+        return emitImportAtRule(child, frame, e, importDocument);
+      case 'StyleImport':
+        emitStyleImport(child, frame, e);
+        break;
+      case 'ModuleImport':
+        emitModuleImport(child, frame, e);
         break;
       case 'OpaqueAtRuleBlock':
         emitOpaqueAtRuleBlock(child, e);
@@ -2262,20 +3450,52 @@ export function serialize(root: Root, options?: SerializeOptions): SerializeRetu
         break;
       // a bare value-position call statement (`e('/* … */');`): evaluate + emit.
       case 'FunctionCall':
-        emitCallStatement(child, rootFrame, e);
+        emitCallStatement(child, frame, e);
         break;
     }
+  };
+  for (const child of children) {
+    // Once an import target is waiting on a later provider, keep ordinary output
+    // behind the retry. Later imports (and live declaration activation) still
+    // run now, so they can satisfy that target in the same lexical frame.
+    if (deferredImports.length > 0 && child.type !== 'ImportAtRule' && child.type !== 'VariableDeclaration') {
+      delayedStatements.push(child);
+      continue;
+    }
+    if (pending) {
+      pending = pending.then(() => Promise.resolve(run(child, true)));
+      continue;
+    }
+    const current = run(child, true);
+    if (isThenable(current)) pending = Promise.resolve(current);
   }
-  if (e.positions) e.positions.push({ node: root, type: root.type, start, end: e.off });
-  const finalize = (): SerializeResult =>
-    e.positions ? { css: e.chunks.join(''), positions: e.positions } : { css: e.chunks.join('') };
-  // lift to async ONLY if a genuinely-async built-in reserved a placeholder.
-  if (e.pending.length > 0) {
-    return Promise.all(
-      e.pending.map((x) => x.p.then((b) => { e.chunks[x.i] = b; })),
-    ).then(finalize);
-  }
-  return finalize();
+  const retry = (): MaybePromise<void> => {
+    let retried: Promise<void> | undefined;
+    for (const child of deferredImports) {
+      if (retried) retried = retried.then(() => Promise.resolve(run(child, false)));
+      else {
+        const current = run(child, false);
+        if (isThenable(current)) retried = Promise.resolve(current);
+      }
+    }
+    return retried;
+  };
+  const emitDelayed = (): MaybePromise<void> => {
+    let delayed: Promise<void> | undefined;
+    for (const child of delayedStatements) {
+      if (delayed) delayed = delayed.then(() => Promise.resolve(run(child, false)));
+      else {
+        const current = run(child, false);
+        if (isThenable(current)) delayed = Promise.resolve(current);
+      }
+    }
+    return delayed;
+  };
+  const finish = (): MaybePromise<void> => {
+    const retried = retry();
+    return isThenable(retried) ? retried.then(emitDelayed) : emitDelayed();
+  };
+  return pending ? pending.then(finish) : finish();
 }
 
 /**
@@ -2285,6 +3505,15 @@ export function serialize(root: Root, options?: SerializeOptions): SerializeRetu
  */
 function ruleGuardPasses(rule: Rule, frame: Frame, e: Emit): boolean {
   if (!rule.guard) return true;
+  if (guardUsesDefault(rule.guard)) {
+    throw ERR.invalidFunction({
+      node: rule,
+      meta: {
+        name: 'default',
+        reason: 'default() is only allowed in parametric mixin guards',
+      },
+    });
+  }
   return evalGuard(rule.guard, {
     resolveTyped: makeTypedResolver(frame, e),
     ev: e.ev,
@@ -2292,6 +3521,32 @@ function ruleGuardPasses(rule: Rule, frame: Frame, e: Emit): boolean {
     isDefault: () => false,
   });
 }
+
+/**
+ * Select a Jess `$if` arm in authored order without activating it. Jess control
+ * flow shares its containing frame, but extend analysis may inspect a selected
+ * arm without publishing declaration state.
+ */
+function selectedIfBody(node: If, frame: Frame, e: Emit): Statement[] | null {
+  for (const branch of node.branches) {
+    if (branch.guard !== null && !evalGuard(branch.guard, guardDeps(frame, e))) continue;
+    return branch.body;
+  }
+  return null;
+}
+
+/** Select one `$if` branch and publish only that branch into this activation's scoped index. */
+function selectIfBodyForRender(node: If, frame: Frame, e: Emit): Statement[] | null {
+  const body = selectedIfBody(node, frame, e);
+  if (!body) return null;
+  const selected = frame.selectedIfBodies ??= new Map();
+  if (selected.get(node) !== body) {
+    selected.set(node, body);
+    frame.selectedDeclIndex = collectSelectedDeclIndex(frame.statements ?? [], selected, frame.declIndex);
+  }
+  return body;
+}
+
 
 /**
  * [guards/&-merge] Whether `rule`'s selector composes to EXACTLY the enclosing
@@ -2303,6 +3558,7 @@ function ruleGuardPasses(rule: Rule, frame: Frame, e: Emit): boolean {
 function isSelfComposed(rule: Rule, parent: string[], frame: Frame, e: Emit): boolean {
   if (rule.extendInstructions !== undefined) return false;
   const composed = compose(parent, rule.selector, frame, e);
+  if (isThenable(composed)) return false;
   if (composed.length !== parent.length) return false;
   for (let i = 0; i < composed.length; i++) if (composed[i] !== parent[i]) return false;
   return true;
@@ -2321,8 +3577,24 @@ function isSelfComposed(rule: Rule, parent: string[], frame: Frame, e: Emit): bo
  *  - no mask, but the rule itself is `reference` and extend never changed it: all its
  *    (seed-only) branches are hidden → drop the whole rule.
  */
-function visibleHeader(rule: Rule, header: string[], e: Emit): string[] | null {
+function extendProjection(frame: Frame | null, e: Emit): ExtendResults | ExtendPlacementResults | null {
   const ext = e.extends;
+  const placed = ext?.byPlacement;
+  if (!placed) return ext;
+  // Dynamic plan facts exist only for looped placements. The lexical walk is
+  // therefore off the ordinary static path and is bounded by the current nested
+  // render-frame chain—not a tree walk or a rediscovery of source nodes.
+  for (let cursor = frame; cursor; cursor = cursor.parent) {
+    const token = cursor.extendPlacement;
+    if (!token) continue;
+    const projection = placed.get(token);
+    if (projection) return projection;
+  }
+  return ext;
+}
+
+function visibleHeader(rule: Rule, header: string[], frame: Frame, e: Emit): string[] | null {
+  const ext = extendProjection(frame, e);
   const mask = ext?.hiddenByRule.get(rule);
   if (mask && mask.length === header.length) {
     const vis = header.filter((_, i) => mask[i] !== true);
@@ -2332,11 +3604,26 @@ function visibleHeader(rule: Rule, header: string[], e: Emit): string[] | null {
   return header;
 }
 
-function flatten(rule: Rule, parent: string[] | null, ancestor: string | null, frame: Frame, e: Emit, imp = false): void {
+function flatten(rule: Rule, parent: string[] | null, ancestor: string | null, frame: Frame, e: Emit, imp = false): MaybePromise<void> {
   // [guards] a guarded ruleset emits its block only when the guard is true.
   if (!ruleGuardPasses(rule, frame, e)) return;
   const rawComposed =
     parent === null ? rootStrings(rule.selector, frame, e) : compose(parent, rule.selector, frame, e);
+  return mapMaybe(rawComposed, rawComposed => flattenResolved(rule, parent, ancestor, frame, e, imp, rawComposed));
+}
+
+/** Continue a flatten after its selector interpolation has resolved. Keeping this
+ * separate preserves the static selector fast path: `mapMaybe` invokes it inline
+ * when the selector has no async slot. */
+function flattenResolved(
+  rule: Rule,
+  parent: string[] | null,
+  ancestor: string | null,
+  frame: Frame,
+  e: Emit,
+  imp: boolean,
+  rawComposed: string[],
+): MaybePromise<void> {
   // [nesting] `rawComposed` is the fully-cartesian parent-list carried into nested
   // `&` composition (each `&` substitutes over every parent branch). The EMITTED
   // header + the OPAQUE ancestor carried into `&`-less children diverge from it:
@@ -2348,37 +3635,62 @@ function flatten(rule: Rule, parent: string[] | null, ancestor: string | null, f
   //     (`#…#deux :is(#fourth, #five, #six)`), never cartesian-distributed.
   // `childAncestor` is the single opaque unit deeper `&`-less levels concatenate
   // onto (a multi-branch header collapses to `:is(...)`).
-  let headerComposed: string[];
+  let headerComposed: MaybePromise<string[]>;
   let childAncestor: string;
   if (parent === null) {
     headerComposed = rawComposed;
     childAncestor = wrapIsList(rawComposed);
   } else if (selectorListHasAmpersand(rule.selector)) {
     headerComposed = parent.length < 2 ? rawComposed : composeHeader(parent, rule.selector, frame, e);
-    childAncestor = wrapIsList(headerComposed);
+    // `headerComposed` can be pending only for an interpolated selector. The
+    // raw composed list is already the correct parent context for children.
+    childAncestor = wrapIsList(rawComposed);
   } else {
     const joined = opaqueJoin(ancestor ?? wrapIsList(parent), rule.selector, frame, e);
-    headerComposed = [joined];
-    childAncestor = joined;
+    headerComposed = mapMaybe(joined, value => [value]);
+    childAncestor = rawComposed[0] ?? '';
   }
+  return mapMaybe(headerComposed, headerComposed => flattenWithHeader(
+    rule, parent, frame, e, imp, rawComposed, headerComposed, childAncestor,
+  ));
+}
+
+function flattenWithHeader(
+  rule: Rule,
+  parent: string[] | null,
+  frame: Frame,
+  e: Emit,
+  imp: boolean,
+  rawComposed: string[],
+  headerComposed: string[],
+  childAncestor: string,
+): MaybePromise<void> {
   // [extend] the rule's HEADER uses its fully-extended composed branches;
   // children still compose against the RAW composed selector and extend
   // independently (the composed model needs no parent-child override). Absent an
   // extend override the header is byte-identical to the no-extend serializer.
+  const projection = extendProjection(frame, e);
   const header0 = e.hoistMode
-    ? e.extends?.hoistHeader.get(rule) ?? e.extends?.flatByRule.get(rule) ?? headerComposed
-    : e.extends?.flatByRule.get(rule) ?? headerComposed;
+    ? projection?.hoistHeader.get(rule) ?? projection?.flatByRule.get(rule) ?? headerComposed
+    : projection?.flatByRule.get(rule) ?? headerComposed;
   // [import:reference] drop the header branches that originate ONLY from hidden
   // `(reference)` rules; a rule left with no visible branch emits nothing (its body
   // still emits when the rule is pulled in as a mixin — a separate expansion path).
-  const header = visibleHeader(rule, header0, e);
+  const header = visibleHeader(rule, header0, frame, e);
   if (header === null) return;
-  const childFrame: Frame = {
-    parent: frame,
-    mixins: collectMixins(rule.body),
-    vars: collectVars(rule.body),
-    statements: rule.body,
-  };
+  const priorPlacement = frame.rulePlacements?.get(rule);
+  const childFrame: Frame = priorPlacement?.parent === frame
+    ? priorPlacement
+      : {
+        parent: frame,
+        mixins: collectMixins(rule.body),
+        declIndex: collectDeclIndex(rule.body), cells: null, reassign: null,
+        statements: rule.body,
+        sourceOwner: sourceOwnerForBody(rule.body, frame, e),
+      };
+  // Keep the exact render placement: imports within this Rule publish into its
+  // child frame and become visible to a later namespace descent through Rule.
+  (frame.rulePlacements ??= new Map()).set(rule, childFrame);
   const group: Leaf[] = [];
   const flush = (): void => {
     if (group.length) {
@@ -2400,10 +3712,26 @@ function flatten(rule: Rule, parent: string[] | null, ancestor: string | null, f
     if (leaves.length) flushBlock(header, leaves, e, rule.selector, parent);
   };
   const partition: Partition = { encounteredContainer: false, trailing: [], pending: [], emitBlock };
-  walkBody(rule.body, rawComposed, childAncestor, childFrame, group, flush, partition, e, imp, false, false, true);
-  flush();
-  flushPending(partition);
-  for (const emit of partition.trailing) emit();
+  const finish = (): MaybePromise<void> => {
+    flush();
+    flushPending(partition);
+    const runTrailing = (index: number): MaybePromise<void> => {
+      for (let i = index; i < partition.trailing.length; i++) {
+        const emitted = partition.trailing[i]!();
+        if (isThenable(emitted)) return emitted.then(() => runTrailing(i + 1));
+      }
+    };
+    return runTrailing(0);
+  };
+  const executeBody = () => mapMaybe(
+    prepareBodyPlugins(rule.body, childFrame, e),
+    () => walkBody(rule.body, rawComposed, childAncestor, childFrame, group, flush, partition, e, imp, false),
+  );
+  // A Rule can be rendered from an imported document before it is later called
+  // as a ruleset-mixin. Its canonical body owns the imported document's source
+  // identity in both placements, so nested `(inline)` imports resolve from that
+  // document rather than the caller/root document.
+  return mapMaybe(withSourceOwner(e, childFrame.sourceOwner, executeBody, rule.body), finish);
 }
 
 /** [partition] Move any buffered trailing-leaf run into `trailing` as one block. */
@@ -2436,7 +3764,7 @@ function addLeaf(group: Leaf[], partition: Partition | null, leaf: Leaf, forceLe
 interface Partition {
   encounteredContainer: boolean;
   /** Ordered emitters after the first nested rule: rule flattens + trailing-leaf blocks. */
-  trailing: Array<() => void>;
+  trailing: Array<() => MaybePromise<void>>;
   /** Buffered trailing declarations awaiting the next boundary (a run → one block). */
   pending: Leaf[];
   /** Emit a run of leaves as ONE block reusing this ruleset's header + merge key. */
@@ -2461,43 +3789,33 @@ function walkBody(
   partition: Partition | null,
   e: Emit,
   imp = false, // call-level !important override
-  protectedDup = false, // [dedup] emitting inside restricted mixin output
   forceLeading = false, // [partition] hoist this body's decls into the leading block
-  ownBody = false, // [coalesce] this is the ruleset's OWN directly-authored body
-): void {
-  for (const node of statements) {
+  propertyScope: Frame = frame, // Less `$property` visibility owner
+): MaybePromise<void> {
+  for (let index = 0; index < statements.length; index++) {
+    const node = statements[index]!;
     switch (node.type) {
       case 'Declaration':
-        // [coalesce] A ruleset's OWN directly-authored declarations that follow a
-        // nested child rule merge back INTO the ruleset's leading block instead of
-        // opening a second same-selector block — BUT only when that leading block
-        // exists (there were own decls before the first nested rule). So:
-        //   - `#operations{ a; b; .spacing{} c; d }` (own decls both sides of the
-        //     nested rule) → one `#operations{a;b;c;d}` then `#operations .spacing{}`.
-        //   - `#first > .one{ >#second{…} font-size; … }` (own decls ONLY after the
-        //     nested rule, no leading block) → the decls stay a TRAILING block at their
-        //     source position (`rulesets`).
-        // A declaration produced by a MIXIN expansion (`!ownBody`) is NOT coalesced
-        // this way: it emits at its spliced position, so `.extended{ .a(); .amp() /*
-        // nests*/; .b() /*decl*/ }` keeps `.b`'s decl as a trailing `.extended` block
-        // after the nested output (`mixins`). Parametric-mixin bodies (`forceLeading`)
-        // already hoist and are unaffected.
-        if (
-          partition && partition.encounteredContainer && !forceLeading
-          && (group.length === 0 || !ownBody)
-        ) {
+        // Property accessors see declarations in the order evaluation splices
+        // them into the enclosing ruleset. A mixin body retains its call frame for
+        // value evaluation but publishes this declaration into `propertyScope`.
+        recordPropertyDeclaration(propertyScope, node, frame);
+        // A nested rule, bubbling at-rule, or spliced nested mixin output is a
+        // source-order boundary. Later declarations therefore open a fresh
+        // same-selector block; folding direct authored declarations back into the
+        // leading block loses that ordering (`.a { x; .b {}; y }`). Parametric
+        // mixin bodies explicitly opt into Less's leading-hoist behavior.
+        if (partition && partition.encounteredContainer && !forceLeading) {
           partition.pending.push({
             node,
             frame,
             ...(imp ? { important: true } : {}),
-            ...(protectedDup ? { protectedDup: true } : {}),
           });
         } else {
           group.push({
             node,
             frame,
             ...(imp ? { important: true } : {}),
-            ...(protectedDup ? { protectedDup: true } : {}),
           });
         }
         break;
@@ -2508,7 +3826,6 @@ function walkBody(
           node,
           frame,
           ...(imp ? { important: true } : {}),
-          ...(protectedDup ? { protectedDup: true } : {}),
         }, forceLeading);
         break;
       case 'Rule': {
@@ -2529,10 +3846,10 @@ function walkBody(
             const selfFrame: Frame = {
               parent: frame,
               mixins: collectMixins(rule.body),
-              vars: collectVars(rule.body),
+              declIndex: collectDeclIndex(rule.body), cells: null, reassign: null,
               statements: rule.body,
             };
-            walkBody(rule.body, composed, ancestor, selfFrame, group, flush, partition, e, imp, protectedDup, forceLeading, ownBody);
+            walkBody(rule.body, composed, ancestor, selfFrame, group, flush, partition, e, imp, forceLeading, propertyScope);
           }
           break;
         }
@@ -2547,19 +3864,53 @@ function walkBody(
           partition.trailing.push(() => flatten(rule, rComposed, rAncestor, rFrame, e, imp));
         } else {
           flush();
-          flatten(rule, rComposed, rAncestor, rFrame, e, imp);
+          const emitted = flatten(rule, rComposed, rAncestor, rFrame, e, imp);
+          if (isThenable(emitted)) {
+            return emitted.then(() => walkBody(
+              statements.slice(index + 1), composed, ancestor, frame, group, flush,
+              partition, e, imp, forceLeading, propertyScope,
+            ));
+          }
         }
         break;
       }
       case 'MixinCall':
-        expandCall(node, composed, ancestor, frame, group, flush, partition, e, imp, protectedDup, forceLeading);
+        {
+          const expanded = expandCall(node, composed, ancestor, frame, group, flush, partition, e, imp, forceLeading, undefined, propertyScope);
+          if (isThenable(expanded)) {
+            return expanded.then(() => walkBody(
+              statements.slice(index + 1), composed, ancestor, frame, group, flush,
+              partition, e, imp, forceLeading, propertyScope,
+            ));
+          }
+        }
         break;
-      case 'DetachedCall':
-        expandDetachedCall(node, composed, ancestor, frame, group, flush, partition, e, protectedDup, forceLeading);
+      case 'Reference':
+        {
+          const expanded = expandReferenceCall(node, composed, ancestor, frame, group, flush, partition, e, forceLeading, propertyScope);
+          if (isThenable(expanded)) {
+            return expanded.then(() => walkBody(
+              statements.slice(index + 1), composed, ancestor, frame, group, flush,
+              partition, e, imp, forceLeading, propertyScope,
+            ));
+          }
+        }
         break;
-      case 'For':
-        expandFor(node, composed, ancestor, frame, group, flush, partition, e, imp, protectedDup, forceLeading);
+      case 'For': {
+        const expanded = expandFor(node, composed, ancestor, frame, group, flush, partition, e, imp, forceLeading, propertyScope);
+        if (isThenable(expanded)) {
+          return expanded.then(() => walkBody(
+            statements.slice(index + 1), composed, ancestor, frame, group, flush,
+            partition, e, imp, forceLeading, propertyScope,
+          ));
+        }
         break;
+      }
+      case 'If': {
+        const body = selectIfBodyForRender(node, frame, e);
+        if (body) walkBody(body, composed, ancestor, frame, group, flush, partition, e, imp, forceLeading, propertyScope);
+        break;
+      }
       // [atrule-bubbling] an at-rule nested inside a ruleset body PROJECTS to this
       // block level (flat mode already emits everything at `e.depth`), carrying the
       // enclosing composed selector as its body context so a bubbleable at-rule
@@ -2579,7 +3930,13 @@ function walkBody(
           partition.trailing.push(() => emitAtRuleBlock(atNode, atFrame, e, atComposed));
         } else {
           flush();
-          emitAtRuleBlock(node, frame, e, composed);
+          const emitted = emitAtRuleBlock(node, frame, e, composed);
+          if (isThenable(emitted)) {
+            return emitted.then(() => walkBody(
+              statements.slice(index + 1), composed, ancestor, frame, group, flush,
+              partition, e, imp, forceLeading, propertyScope,
+            ));
+          }
         }
         break;
       }
@@ -2596,10 +3953,56 @@ function walkBody(
         }
         break;
       }
+      case 'Plugin':
+        break;
       case 'ImportAtRule': {
+        // A CSS import recorded inside a canonical Rule is a rule-body
+        // statement, not a bubbling container. Keep it in the authored leaf
+        // group so it emits inside that rule (and inside any mixin/control-flow
+        // body expanded there). Root and at-rule-body imports retain their
+        // existing direct emission paths below.
+        const options = node.options === null ? null : evalBytesSync(node.options, frame, e);
+        const loadsDocument = e.importDocument !== undefined
+          && canLoadImport(node, importSpecifier(node, frame, e), options);
+        if (loadsDocument) {
+          // A Context-loaded import publishes lookup facts into this exact rule
+          // placement. Its continuation must complete before a later sibling
+          // statement dispatches (notably `#Namespace > .mixin()`); keeping it
+          // as a buffered leaf discarded that MaybePromise.
+          flush();
+          const imported = emitImportAtRule(node, frame, e, e.importDocument);
+          if (isThenable(imported)) {
+            return imported.then(() => walkBody(
+              statements.slice(index + 1), composed, ancestor, frame, group,
+              flush, partition, e, imp, forceLeading, propertyScope,
+            ));
+          }
+        } else if (partition !== null && composed !== null) addLeaf(group, partition, { node, frame }, forceLeading);
+        else {
+          flush();
+          // `(inline)` is intentionally not a document parse, but it is still
+          // asynchronous Context IO. Keep this body cursor alive so a deferred
+          // callable's document scope survives the raw-byte read.
+          const imported = emitImportAtRule(node, frame, e, e.importDocument);
+          if (isThenable(imported)) {
+            return imported.then(() => walkBody(
+              statements.slice(index + 1), composed, ancestor, frame, group,
+              flush, partition, e, imp, forceLeading, propertyScope,
+            ));
+          }
+        }
+        break;
+      }
+      case 'StyleImport': {
         const importNode = node;
-        if (partition) { flushPending(partition); partition.encounteredContainer = true; partition.trailing.push(() => emitImportAtRule(importNode, frame, e)); }
-        else { flush(); emitImportAtRule(node, frame, e); }
+        if (partition) { flushPending(partition); partition.encounteredContainer = true; partition.trailing.push(() => emitStyleImport(importNode, frame, e)); }
+        else { flush(); emitStyleImport(node, frame, e); }
+        break;
+      }
+      case 'ModuleImport': {
+        const importNode = node;
+        if (partition) { flushPending(partition); partition.encounteredContainer = true; partition.trailing.push(() => emitModuleImport(importNode, frame, e)); }
+        else { flush(); emitModuleImport(node, frame, e); }
         break;
       }
       case 'OpaqueAtRuleBlock': {
@@ -2630,50 +4033,17 @@ function walkBody(
       // a bare value-position call statement (`e('/* … */');`): flush the pending
       // decl group first so it emits at its authored position, then the line.
       case 'FunctionCall': {
-        const fcNode = node;
-        // A VOID call statement (`if((false), {…})` — a conditional whose taken
-        // branch is absent) emits nothing and is NOT a container boundary: skip it
-        // so following declarations stay in this block rather than opening a fresh
-        // partition (v5 golden keeps `#if` a single block around the void `if`).
-        const bytes = evalBytesSync(fcNode, frame, e);
-        if (bytes.length === 0) break;
-        if (partition) {
-          flushPending(partition);
-          partition.encounteredContainer = true;
-          partition.trailing.push(() => emitCallStatement(fcNode, frame, e, bytes));
-        } else {
-          flush();
-          emitCallStatement(fcNode, frame, e, bytes);
-        }
+        addLeaf(group, partition, { node, frame }, forceLeading);
         break;
       }
       case 'MixinDef':
-      case 'VarDeclaration':
+        publishSelectedMixinDefinition(frame, node);
+        break;
+      case 'VariableDeclaration':
+        activateVariableDeclaration(node, frame, e);
         break;
     }
   }
-}
-
-/**
- * Merge mixin/function PARAM bindings and body-local var stacks into one frame
- * map. Params seed each name's stack; body decls are appended AFTER so a
- * body-level `$a: …` sits later in the stack and shadows a same-named param on
- * the backward walk (Defect C — BODY WINS). No shared stack is mutated: a merged
- * name gets a fresh concatenated array. */
-function mergeVars(
-  params: Map<string, ValueNode> | null,
-  body: Map<string, Binding[]> | null,
-): Map<string, Binding[]> | null {
-  if (!params) return body;
-  const out = asStacks(params)!;
-  if (body) {
-    for (const [k, stack] of body) {
-      const seed = out.get(k);
-      if (seed) out.set(k, [...seed, ...stack]);
-      else out.set(k, stack.slice());
-    }
-  }
-  return out;
 }
 
 /**
@@ -2707,10 +4077,10 @@ function expandCall(
   partition: Partition | null, // [partition] nested-ruleset sink (see walkBody)
   e: Emit,
   imp = false,
-  protectedDup = false, // [dedup] already inside restricted mixin output
   forceLeading = false, // [partition] inherited leading-hoist context
   captureFrames?: Frame[], // [namespace-accessor] collect each callee's callFrame
-): void {
+  propertyScope: Frame = frame, // caller scope receiving spliced declarations
+): MaybePromise<void> {
   // A namespaced/compound call (`#ns .a .b()`, `.jo.ki()`, `.amp.support()`)
   // resolves by ELEMENT-VALUE descent through the scope's own rulesets (Less
   // `Ruleset.find` / `Selector.mixinElements`): combinators and `&` are ignored,
@@ -2747,8 +4117,19 @@ function expandCall(
   const candidates = rawCandidates.some((d) => d.ruleMixin === true)
     ? rawCandidates.filter((d) => d.ruleMixin !== true || !parentExcludes(frame, d.body))
     : rawCandidates;
-  if (candidates.length === 0) return; // unknown mixin: minimal scope emits nothing
+  // A callable becomes visible only when its defining statement has executed.
+  // A miss is therefore an empty statement: this matches the nested emitter and
+  // preserves source-order control-flow visibility without pre-publishing a
+  // later/unchosen definition.
+  if (candidates.length === 0) {
+    unresolvedCallable(call, e);
+    return;
+  }
   const selected = dispatch(candidates, call, frame, e, homes);
+  if (selected.length === 0) {
+    unresolvedCallable(call, e);
+    return;
+  }
   const bodyImp = imp || call.important; // propagate call-level !important
   // [recursion-backstop] Parametric self-recursion (`.loop(@n - 1)`) is terminated
   // by its guard; a MALFORMED guard (`.loop(@n) { .loop(@n + 1) }`) never stops and
@@ -2760,9 +4141,10 @@ function expandCall(
     throw new RangeError('maximum mixin recursion depth exceeded');
   }
   e.mixinDepth++;
-  try {
-    for (const { def, bindings } of selected) {
-      captureArgDefFrames(bindings, frame); // detached-ruleset args: literal home
+  const finish = (): void => { e.mixinDepth--; };
+  const expandSelected = (index: number): MaybePromise<void> => {
+    if (index >= selected.length) return;
+    const { def, bindings } = selected[index]!;
       // [closure] free variables resolve in the mixin's DEFINITION scope FIRST, with
       // the call-site scope as a fallback — less@4 evaluates a mixin body under
       // `definitionFrames.concat(callerFrames)`. `parent` = the definition frame (so
@@ -2772,38 +4154,42 @@ function expandCall(
       // check (`parentExcludes`) and lets the body see caller-published mixins. A
       // namespaced call already descends to the definition scope (home is confined
       // to the namespace), so it takes no caller fallback.
-      const homeFrame = homes.get(def) ?? frame;
-      const callFrame: Frame = {
+    const homeFrame = homes.get(def) ?? frame;
+    const callFrame: Frame = {
         parent: homeFrame,
         mixins: collectMixins(def.body),
-        vars: mergeVars(bindings, collectVars(def.body)),
+        declIndex: collectDeclIndex(def.body, bindings), cells: cellsForParams(bindings), reassign: null,
         statements: def.body,
+        sourceOwner: sourceOwnerForBody(def.body, frame, e),
         ...(namespaced || homeFrame === frame ? {} : { fallback: frame }),
-      };
+    };
+      captureArgDefFrames(bindings, frame, callFrame, e);
       // [namespace-accessor] expose the callee's evaluated scope so a `#ns.m[@var]`
       // accessor can read its VARIABLE members (local `@x:` decls + nested-call
       // leaked vars), which never appear in the emitted-declaration output.
-      captureFrames?.push(callFrame);
-      // [dedup] a real parametric MixinDef produces RESTRICTED output (its overloaded
-      // duplicates survive); a synthesized ruleset-mixin does not, unless it is already
-      // nested inside restricted output (chain-sticky, matching isFromRestrictedMixinOutput).
-      const bodyProtected = protectedDup || def.ruleMixin !== true;
-      // [partition] A PARAMETRIC mixin body is a bare-`&` transparent wrapper in
-      // less@4, so its declarations force-lead into the caller's leading block even
-      // past nested rules (`mixins-important`). A ruleset-mixin body is a plain
-      // splice — it inherits the caller's context so its declarations split at
-      // container boundaries like authored ones (`mixins`).
-      const bodyForceLeading = forceLeading || def.ruleMixin !== true;
+    captureFrames?.push(callFrame);
+      // Only an argument-bearing mixin is a transparent parametric wrapper for
+      // this output rule. A zero-parameter `MixinDef` splices at its call site;
+      // treating every AST MixinDef as force-leading moved `.mixin2()` output
+      // ahead of an intervening nested rule in the Less property-accessor corpus.
+    const bodyForceLeading = forceLeading || def.params.length !== 0;
       // [adjacent-merge] each mixin expansion is a DISTINCT parent expansion: give
       // its body a FRESH composed-array identity (same values → byte-identical
       // composition) so nested rulesets from two separate calls of the same body do
       // NOT reopen-merge (`.class .inner {} .class .inner {}` stay two blocks —
       // `mixins-important`), while two nested siblings within ONE expansion still
       // share it and merge.
-      const bodyComposed = composed === null ? null : composed.slice();
-      walkBody(def.body, bodyComposed, ancestor, callFrame, group, flush, partition, e, bodyImp, bodyProtected, bodyForceLeading);
+    const bodyComposed = composed === null ? null : composed.slice();
+    const executeBody = () => mapMaybe(
+      prepareBodyPlugins(def.body, callFrame, e),
+      () => walkBody(def.body, bodyComposed, ancestor, callFrame, group, flush, partition, e, bodyImp, bodyForceLeading, propertyScope),
+    );
+    const emitted = withSourceOwner(e, callFrame.sourceOwner, executeBody, def.body);
+    return mapMaybe(emitted, () => {
       // [scope-leak] after expansion the mixin's own `@x:` declarations unlock into
       // the caller scope (visible to later siblings), matching less@4.
+      // Keep this continuation outside Context's source scope: only the shared
+      // source body owns that scope; the lexical caller owns its published facts.
       leakBodyVars(frame, def.body, callFrame, e);
       // [ruleset-unlock] a ruleset (or nested mixin def) declared inside the called
       // body ALSO unlocks into the caller scope, so a later sibling can call it as a
@@ -2812,10 +4198,24 @@ function expandCall(
       // `.imported` makes `.imported()` callable afterward (`scope` fixture). Reuse
       // the callee frame's already-synthesized def+ruleMixin map (explicit MixinDefs
       // and paren-less rulesets, interleaved) rather than re-scanning the body.
-      publishMixins(frame, frameOrderedMixins(callFrame, e), callFrame);
+        publishOrderedMixins(frame, frameOrderedMixins(callFrame, e), callFrame);
+        if (def.ruleMixin !== true) publishExplicitRulesets(frame, def.body, callFrame);
+      return expandSelected(index + 1);
+    });
+  };
+  try {
+    const expanded = expandSelected(0);
+    if (isThenable(expanded)) {
+      return expanded.then(
+        () => { finish(); },
+        error => { finish(); throw error; },
+      );
     }
-  } finally {
-    e.mixinDepth--;
+    finish();
+    return;
+  } catch (error) {
+    finish();
+    throw error;
   }
 }
 
@@ -2828,30 +4228,39 @@ function descendNamespacePath(path: MixinCall['path'], frame: Frame): Frame | nu
   let scope: Frame | null = frame;
   for (const seg of path) {
     let rules: Rule[] | undefined;
+    let owner: Frame | null = null;
     for (let f: Frame | null = scope; f; f = f.parent) {
       const hit = f.rulesets !== undefined || f.statements ? frameRulesets(f)?.get(seg.sel) : undefined;
       if (hit && hit.length) {
         rules = hit;
+        owner = f;
         break;
       }
     }
     if (!rules) return null;
-    const bodies = rules.flatMap((r) => r.body);
+    // Imported facts execute in a particular render placement. A Rule found by
+    // namespace lookup contributes both that placement's already-published
+    // import prefix and its authored body, matching lexical import splice order.
+    const bodies = rules.flatMap((r) => [
+      ...(owner?.rulePlacements?.get(r)?.importedRules ?? []),
+      ...r.body,
+    ]);
     scope = {
       parent: scope,
       mixins: collectMixins(bodies),
-      vars: collectVars(bodies),
+      declIndex: collectDeclIndex(bodies), cells: null, reassign: null,
       statements: bodies,
     };
   }
   return scope;
 }
 
-/** Detached-ruleset args capture their literal home frame (the caller). */
-function captureArgDefFrames(bindings: Map<string, ValueNode> | null, callerFrame: Frame): void {
+/** Closure-bearing args capture their literal home frame in render-local state. */
+function captureArgDefFrames(bindings: Map<string, Binding> | null, callerFrame: Frame, callFrame: Frame, e: EvalCtx): void {
   if (!bindings) return;
   for (const v of bindings.values()) {
-    if (v.type === 'DetachedRuleset' && v.defFrame === null) v.defFrame = callerFrame;
+    if (v.type === 'DetachedRuleset') bindDetached(callFrame, v, callerFrame, callerFrame.sourceOwner ?? null);
+    else if (v.type === 'MixinCall') (e.mixinCallHomes ??= new WeakMap()).set(v, callerFrame);
   }
 }
 
@@ -2873,7 +4282,7 @@ function captureArgDefFrames(bindings: Map<string, ValueNode> | null, callerFram
  */
 function leakBodyVars(callerFrame: Frame, body: Statement[], callFrame: Frame, e: EvalCtx): void {
   for (const s of body) {
-    if (s.type !== 'VarDeclaration') continue;
+    if (s.type !== 'VariableDeclaration') continue;
     const v = s.value;
     // A mixin-CALL-bound var (`@p: .m()`) is not byte-snapshottable; leave it to
     // resolve lazily at its call site rather than snapshotting a leaked copy.
@@ -2915,6 +4324,39 @@ function publishMixins(frame: Frame, extra: Map<string, MixinDef[]> | null, home
   }
 }
 
+function publishOrderedMixins(frame: Frame, index: OrderedMixinIndex | null, home?: Frame): void {
+  if (!index) return;
+  const definitions = new Map<string, MixinDef[]>();
+  for (const [name, candidates] of index.byName) definitions.set(name, candidates.map(candidate => candidate.definition));
+  publishMixins(frame, definitions, home);
+}
+
+/** Publish direct canonical ruleset placements produced by one explicit mixin
+ * expansion. A later sibling namespace lookup enters the exact evaluated child
+ * frame, retaining its call bindings and any ordered imports. Ruleset-mixins do
+ * not use this path: they already participate in ordinary ruleset dispatch.
+ */
+function publishExplicitRulesets(frame: Frame, body: Statement[], callFrame: Frame): void {
+  for (const statement of body) {
+    if (statement.type !== 'Rule') continue;
+    // A following namespace call can run before this nested rule's deferred
+    // render closure. Establish its call-specific lexical placement now, using
+    // the existing source facts; `flatten` reuses this exact frame when it later
+    // emits the rule. This is not a copied Rule or a second walk.
+    let placement = callFrame.rulePlacements?.get(statement);
+    if (!placement || placement.parent !== callFrame) {
+      placement = {
+        parent: callFrame,
+        mixins: collectMixins(statement.body),
+        declIndex: collectDeclIndex(statement.body), cells: null, reassign: null,
+        statements: statement.body,
+      };
+      (callFrame.rulePlacements ??= new Map()).set(statement, placement);
+    }
+    (frame.publishedRules ??= []).push({ rule: statement, frame: placement });
+  }
+}
+
 /** The taken branch value of an `if(cond, then, else)` call — its condition
  *  evaluated through the guard evaluator (same rule `evalLogical` applies). The
  *  `else` branch may be absent, so the result can be `undefined`. */
@@ -2940,7 +4382,7 @@ function resolveToMixinCall(node: Binding | undefined, frame: Frame | null): Mix
   while (cur && !seen.has(cur)) {
     seen.add(cur);
     if (cur.type === 'MixinCall') return cur;
-    if (cur.type === 'VarRef') { cur = lookupVar(frame, cur.name); continue; }
+    if (cur.type === 'VariableReference') { cur = lookupVar(frame, cur.name); continue; }
     return undefined;
   }
   return undefined;
@@ -2952,30 +4394,46 @@ function resolveDetachedRuleset(node: Binding, frame: Frame | null, e: EvalCtx):
   while (cur && !seen.has(cur)) {
     seen.add(cur);
     if (cur.type === 'DetachedRuleset') return cur;
-    if (cur.type === 'VarRef') { cur = lookupVar(frame, cur.name); continue; }
+    if (cur.type === 'VariableReference') { cur = lookupVar(frame, cur.name); continue; }
+    if (cur.type === 'Reference') {
+      const resolved = resolveReferenceResult(cur, frame, e);
+      cur = resolved?.value;
+      continue;
+    }
     if (cur.type === 'FunctionCall' && cur.name.toLowerCase() === 'if') { cur = pickIfBranch(cur, frame, e); continue; }
     return undefined;
   }
   return undefined;
 }
 
+/** A detached ruleset is callable/map-like, never a CSS declaration value. */
+function assertDeclarationValueIsNotRuleset(node: Declaration, frame: Frame | null, e: EvalCtx): void {
+  if (!resolveDetachedRuleset(node.value, frame, e)) return;
+  throw ERR.rulesetOnProperty({ node, meta: { what: declName(node, frame, e) } });
+}
+
 /** Build the overlay frame for a detached-ruleset call (definition scope has
  * priority; caller scope is the fallback). Publishes the ruleset's mixin defs
  * into the CALLER frame (Less scope unlocking). Returns null if the variable is
  * not bound to (or does not conditionally produce) a detached ruleset. */
-function detachedCallFrame(varName: string, frame: Frame, e: EvalCtx): { dr: DetachedRuleset; callFrame: Frame } | null {
-  const bound = lookupVar(frame, varName);
-  if (!bound) return null;
-  const dr = resolveDetachedRuleset(bound, frame, e);
-  if (!dr) return null;
-  const def = (dr.defFrame as Frame | null) ?? frame;
+function referenceCallFrame(
+  dr: DetachedRuleset,
+  frame: Frame,
+  definitionFrame: Frame | null = frame,
+  sourceOwner: object | null = null,
+): { dr: DetachedRuleset; callFrame: Frame } {
+  // A detached-ruleset node is canonical and can be passed through several loop
+  // activations. Its lexical home is therefore the FRAME that resolved THIS call,
+  // never a mutable node-level first-use cache.
+  const def = definitionFrame ?? frame;
   const own = collectMixins(dr.body);
   const callFrame: Frame = {
     parent: def, // definition scope has priority
     mixins: own,
-    vars: collectVars(dr.body),
+    declIndex: collectDeclIndex(dr.body), cells: null, reassign: null,
     fallback: frame, // caller scope is the fallback
     statements: dr.body,
+    sourceOwner,
   };
   publishMixins(frame, own); // unlocking: caller sees the ruleset's mixins
   return { dr, callFrame };
@@ -2983,8 +4441,8 @@ function detachedCallFrame(varName: string, frame: Frame, e: EvalCtx): { dr: Det
 
 /** Expand a detached-ruleset call (`@ruleset();`) — splice its body through
  * the overlay frame, in the flattened walk. */
-function expandDetachedCall(
-  call: DetachedCall,
+function expandReferenceCall(
+  call: Reference,
   composed: string[] | null,
   ancestor: string | null,
   frame: Frame,
@@ -2992,21 +4450,35 @@ function expandDetachedCall(
   flush: () => void,
   partition: Partition | null, // [partition] nested-ruleset sink (see walkBody)
   e: Emit,
-  protectedDup = false, // [dedup] inherit restriction from the enclosing context
   forceLeading = false, // [partition] inherited leading-hoist context
-): void {
+  propertyScope: Frame = frame,
+): MaybePromise<void> {
   // `@alias: .something(foo); @alias();` — a variable bound to a MIXIN CALL is
   // dispatched as that call (Less: a mixin-call-valued var is callable), not spliced
   // as a detached ruleset. Also covers a mixin PARAMETER carrying a passed call value
   // (`.wrapper(@another-mixin) { @another-mixin(); }`).
-  const mc = resolveToMixinCall(lookupVar(frame, call.varName), frame);
-  if (mc) {
-    expandCall(mc, composed, ancestor, frame, group, flush, partition, e, false, protectedDup, forceLeading);
+  const step = call.steps.at(-1);
+  if (step?.type !== 'Call') return;
+  const resolved = resolveReferenceResult(call, frame, e);
+  if (!resolved) {
+    unresolvedReference(call, e);
     return;
   }
-  const r = detachedCallFrame(call.varName, frame, e);
-  if (!r) return;
-  walkBody(r.dr.body, composed, ancestor, r.callFrame, group, flush, partition, e, false, protectedDup, forceLeading);
+  if (resolved.value.type === 'MixinCall') {
+    const home = e.mixinCallHomes?.get(resolved.value) ?? resolved.frame ?? frame;
+    return expandCall(resolved.value, composed, ancestor, home, group, flush, partition, e, false, forceLeading, undefined, propertyScope);
+  }
+  if (step.args.length !== 0) {
+    throw new Error('Reference call arguments require a callable mixin target.');
+  }
+  const dr = resolveDetachedRuleset(resolved.value, resolved.frame, e);
+  if (!dr) return;
+  const r = referenceCallFrame(dr, frame, resolved.frame, resolved.sourceOwner);
+  const executeBody = () => mapMaybe(
+    prepareBodyPlugins(r.dr.body, r.callFrame, e),
+    () => walkBody(r.dr.body, composed, ancestor, r.callFrame, group, flush, partition, e, false, forceLeading, propertyScope),
+  );
+  return withSourceOwner(e, r.callFrame.sourceOwner, executeBody, r.dr.body);
 }
 
 /* --------------------------------------------------------------- [each/For] */
@@ -3016,6 +4488,7 @@ function expandDetachedCall(
 interface ForItem {
   value: ValueNode;
   key: ValueNode | null;
+  detached?: DetachedBinding;
 }
 
 /**
@@ -3075,53 +4548,41 @@ function hasTopLevelComma(text: string): boolean {
  * If the iterable resolves to a MAP (a detached ruleset — inline, a var bound to
  * one, or a `@map[key]` accessor selecting one), return its declaration body + the
  * frame those declarations belong to; else `null` (a list iterable). A map iterates
- * its Declaration / VarDeclaration entries: key = the entry name, value = its value
+ * its Declaration / VariableDeclaration entries: key = the entry name, value = its value
  * node. Comments are skipped.
  */
 function resolveForRuleset(
   node: ValueNode,
   frame: Frame | null,
   e: EvalCtx,
-): { body: Statement[]; frame: Frame | null } | null {
+): { body: Statement[]; frame: Frame | null; detached?: DetachedBinding } | null {
   if (node.type === 'DetachedRuleset') {
-    return { body: node.body, frame: (node.defFrame as Frame | null) ?? frame };
+    const binding = detachedBinding(frame, node);
+    return { body: node.body, frame: binding?.lexicalFrame ?? frame, detached: binding };
   }
-  if (node.type === 'VarRef') {
+  if (node.type === 'VariableReference') {
     const bound = lookupVar(frame, node.name);
     if (!bound) return null;
     if (bound.type === 'DetachedRuleset') {
-      return { body: bound.body, frame: (bound.defFrame as Frame | null) ?? frame };
+      const binding = detachedBinding(frame, bound);
+      return { body: bound.body, frame: binding?.lexicalFrame ?? frame, detached: binding };
     }
     // The binding is itself an indirection to a ruleset — a `@var` alias chain or
     // a `@map[k]` accessor (`@scheme: @color-schemes[@@name]; each(@scheme, …)` /
     // `@scheme[@color]`). Follow it through the same resolver.
-    if (bound.type === 'VarRef' || bound.type === 'MapAccessor' || bound.type === 'Paren') {
+    if (bound.type === 'VariableReference' || bound.type === 'Reference' || bound.type === 'Paren') {
       return resolveForRuleset(bound, frame, e);
     }
     return null;
   }
-  if (node.type === 'MapAccessor') {
-    const map = resolveBaseDeclMap(node.base, frame, e);
-    if (!map) return null;
-    const kind = node.keyKind;
-    const key = kind === 'index' ? undefined : evalBytesSync(node.key as ValueNode, frame, e);
-    const matched = kind !== 'index' && key !== undefined ? mapForKind(map, kind).get(key) : undefined;
-    if (matched && matched.value.type === 'DetachedRuleset') {
-      return { body: matched.value.body, frame: (matched.value.defFrame as Frame | null) ?? matched.frame };
-    }
-    // A var-valued map entry bound to a detached ruleset (`@map[k]` → `@x: { … }`).
-    if (matched && matched.value.type === 'VarRef') {
-      const bound = lookupVar(matched.frame, matched.value.name);
-      if (bound && bound.type === 'DetachedRuleset') {
-        return { body: bound.body, frame: (bound.defFrame as Frame | null) ?? matched.frame };
-      }
-    }
-    return null;
+  if (node.type === 'Reference') {
+    const resolved = resolveReferenceResult(node, frame, e);
+    return resolved === null ? null : resolveForRuleset(resolved.value, resolved.frame, e);
   }
   return null;
 }
 
-/** Follow a `VarRef` / `Paren` chain to the underlying value node + its owning
+/** Follow a `VariableReference` / `Paren` chain to the underlying value node + its owning
  *  frame, so an `each()` iterable's list-vs-scalar shape reads off the DECLARED
  *  node (a literal `Any` list) rather than its flattened bytes. */
 function resolveForNode(
@@ -3133,10 +4594,10 @@ function resolveForNode(
   let f = frame;
   for (;;) {
     if (cur.type === 'Paren') { cur = cur.inner; continue; }
-    if (cur.type === 'VarRef') {
-      const hit = resolveVarRef(f, cur.name, e);
+    if (cur.type === 'VariableReference') {
+      const hit = resolveVarRef(f, cur.name, cur.lookup, e);
       // A mixin-CALL binding is not a plain list/scalar iterable node; stop at the
-      // `VarRef` (the list-fallback then treats it as a single item — the mixin-call
+      // `VariableReference` (the list-fallback then treats it as a single item — the mixin-call
       // iterable proper is handled up front in `forItems`).
       if (!hit || hit.value.type === 'MixinCall') return { node: cur, frame: f };
       cur = hit.value;
@@ -3160,14 +4621,14 @@ function forItemsFromMixinCall(call: MixinCall, frame: Frame, e: Emit): ForItem[
   // Collect EVERY declaration (`forceLeading` → all decls to `collected`), discard
   // nested rules (they defer to `trailing`, which is never drained here).
   const discard: Partition = { encounteredContainer: false, trailing: [], pending: [], emitBlock: noop };
-  expandCall(call, null, null, frame, collected, noop, discard, e, false, false, true);
+  expandCall(call, null, null, frame, collected, noop, discard, e, false, true);
   const items: ForItem[] = [];
   for (const leaf of collected) {
     const n = leaf.node;
     if (n.type === 'Declaration') {
       const name = typeof n.name === 'string' ? n.name : evalBytesSync(n.name, leaf.frame, e);
       items.push({ value: n.value, key: any(name) });
-    } else if (n.type === 'VarDeclaration' && n.value.type !== 'MixinCall') {
+    } else if (n.type === 'VariableDeclaration' && n.value.type !== 'MixinCall') {
       items.push({ value: n.value, key: any(n.name) });
     }
   }
@@ -3180,14 +4641,15 @@ function forItems(node: ValueNode | MixinCall, frame: Frame | null, e: Emit): Fo
   if (node.type === 'MixinCall') {
     return frame === null ? [] : forItemsFromMixinCall(node, frame, e);
   }
+  if (node.type === 'Range') return forRangeItems(node, frame, e);
   const map = resolveForRuleset(node, frame, e);
   if (map) {
     const items: ForItem[] = [];
     for (const s of map.body) {
       if (s.type === 'Declaration') {
         const name = typeof s.name === 'string' ? s.name : evalBytesSync(s.name, map.frame, e);
-        items.push({ value: s.value, key: any(name) });
-      } else if (s.type === 'VarDeclaration' && s.value.type !== 'MixinCall') {
+        items.push({ value: s.value, key: any(name), ...(s.value.type === 'DetachedRuleset' && map.detached ? { detached: map.detached } : {}) });
+      } else if (s.type === 'VariableDeclaration' && s.value.type !== 'MixinCall') {
         items.push({ value: s.value, key: any(s.name) });
       }
     }
@@ -3200,6 +4662,9 @@ function forItems(node: ValueNode | MixinCall, frame: Frame | null, e: Emit): Fo
   // items; any other single value (an escaped `e("…")`, a scalar) is ONE item — it
   // is not a list, so it is never split.
   const { node: base, frame: baseFrame } = resolveForNode(node, frame, e);
+  if (base.type === 'Range') return forRangeItems(base, baseFrame, e);
+  if (base.type === 'List') return base.items.map(value => ({ value, key: null }));
+  if (base.type === 'SpacedValue') return base.parts.map(value => ({ value, key: null }));
   if (base.type === 'Any' || base.type === 'Keyword') {
     return splitListBytes(base.src).map((b) => ({ value: any(b), key: null }));
   }
@@ -3207,6 +4672,59 @@ function forItems(node: ValueNode | MixinCall, frame: Frame | null, e: Emit): Fo
   if (isThenable(v)) throw new Error('async value in an each() iterable is unsupported');
   if (v.type === 'List') return v.items.map((it) => ({ value: any(it.bytes), key: null }));
   return [{ value: any(v.bytes), key: null }];
+}
+
+function forRangeItems(node: Range, frame: Frame | null, e: Emit): ForItem[] {
+  const start = evalTyped(node.start, frame, e);
+  const end = evalTyped(node.end, frame, e);
+  const step = node.step === null ? null : evalTyped(node.step, frame, e);
+  if (isThenable(start) || isThenable(end) || isThenable(step)) {
+    throw new Error('async value in a $for range is unsupported');
+  }
+  if (start.type !== 'Dimension' || end.type !== 'Dimension' || (step !== null && step.type !== 'Dimension')) {
+    throw new Error('$for range bounds and step must be dimensions');
+  }
+  const delta = step?.number ?? (start.number <= end.number ? 1 : -1);
+  if (delta === 0) throw new RangeError('$for range step cannot be 0');
+  const first = start.number + (node.includeStart ? 0 : delta);
+  const items: ForItem[] = [];
+  for (let current = first; delta > 0
+    ? node.includeEnd ? current <= end.number : current < end.number
+    : node.includeEnd ? current >= end.number : current > end.number;
+    current += delta) {
+    items.push({ value: dimension(current, end.unit), key: null });
+  }
+  return items;
+}
+
+function bindForEntry(node: For, value: ValueNode, key: ValueNode | null, index: ValueNode): Map<string, ValueNode> {
+  const bindings = new Map<string, ValueNode>();
+  const binding = node.binding;
+  if (binding.kind === 'single') bindings.set(binding.name, value);
+  else if (binding.kind === 'comma') {
+    bindings.set(binding.names[0], value);
+    if (binding.names[1] !== undefined) bindings.set(binding.names[1], key ?? index);
+    if (binding.names[2] !== undefined) bindings.set(binding.names[2], index);
+  } else if (binding.kind === 'bracket') {
+    bindings.set(binding.names[0], key ?? index);
+    bindings.set(binding.names[1], value);
+  } else {
+    const values = value.type === 'SpacedValue' ? value.parts : value.type === 'List' ? value.items : [value];
+    for (let i = 0; i < binding.names.length && i < values.length; i++) {
+      bindings.set(binding.names[i]!, values[i]!);
+    }
+  }
+  return bindings;
+}
+
+/** Preserve one iterable detached-ruleset activation through loop parameters. */
+function bindForDetached(frame: Frame, bindings: Map<string, ValueNode>, item: ForItem): void {
+  if (!item.detached) return;
+  for (const value of bindings.values()) {
+    if (value === item.value && value.type === 'DetachedRuleset') {
+      bindDetached(frame, value, item.detached.lexicalFrame, item.detached.sourceOwner);
+    }
+  }
 }
 
 /**
@@ -3226,25 +4744,31 @@ function expandFor(
   partition: Partition | null, // [partition] nested-ruleset sink (see walkBody)
   e: Emit,
   imp = false,
-  protectedDup = false,
   forceLeading = false, // [partition] inherited leading-hoist context
-): void {
+  propertyScope: Frame = frame,
+): MaybePromise<void> {
   const items = forItems(node.iterable, frame, e);
-  for (let i = 0; i < items.length; i++) {
-    const { value, key } = items[i]!;
+  const run = (start: number): MaybePromise<void> => {
+  for (let i = start; i < items.length; i++) {
+    const item = items[i]!;
+    const { value, key } = item;
     const index = dimension(i + 1);
-    const bindings = new Map<string, ValueNode>();
-    if (node.valueName) bindings.set(node.valueName, value);
-    if (node.keyName) bindings.set(node.keyName, key ?? index);
-    if (node.indexName) bindings.set(node.indexName, index);
+    const bindings = bindForEntry(node, value, key, index);
+    const extendPlacement = e.plannedForExtendPlacements?.get(node)?.[i];
     const loopFrame: Frame = {
       parent: frame,
       mixins: collectMixins(node.rules),
-      vars: mergeVars(bindings, collectVars(node.rules)),
+      declIndex: collectDeclIndex(node.rules, bindings), cells: cellsForParams(bindings), reassign: null,
       statements: node.rules,
+      sourceOwner: frame.sourceOwner ?? null,
+      ...(extendPlacement ? { extendPlacement } : {}),
     };
-    walkBody(node.rules, composed, ancestor, loopFrame, group, flush, partition, e, imp, protectedDup, forceLeading);
+    bindForDetached(loopFrame, bindings, item);
+    const emitted = walkBody(node.rules, composed, ancestor, loopFrame, group, flush, partition, e, imp, forceLeading, propertyScope);
+    if (isThenable(emitted)) return emitted.then(() => run(i + 1));
   }
+  };
+  return run(0);
 }
 
 /**
@@ -3276,8 +4800,8 @@ function dispatch(
     // never drives the async Emit machinery.
     return makeTypedResolver(
       home && home !== frame
-        ? { parent: home, mixins: null, vars: asStacks(bindings), fallback: frame }
-        : { parent: frame, mixins: null, vars: asStacks(bindings) },
+        ? { parent: home, mixins: null, declIndex: collectDeclIndex([], bindings), cells: cellsForParams(bindings), reassign: null, fallback: frame }
+        : { parent: frame, mixins: null, declIndex: collectDeclIndex([], bindings), cells: cellsForParams(bindings), reassign: null },
       { ...e, defaultFn: isDefault },
     );
   };
@@ -3290,8 +4814,8 @@ function dispatch(
   const resolveDefault: DefaultResolver = (v, boundSoFar, def) => {
     const home = homes?.get(def);
     const overlay: Frame = home && home !== frame
-      ? { parent: home, mixins: null, vars: asStacks(boundSoFar), fallback: frame }
-      : { parent: frame, mixins: null, vars: asStacks(boundSoFar) };
+      ? { parent: home, mixins: null, declIndex: collectDeclIndex([], boundSoFar), cells: cellsForParams(boundSoFar), reassign: null, fallback: frame }
+      : { parent: frame, mixins: null, declIndex: collectDeclIndex([], boundSoFar), cells: cellsForParams(boundSoFar), reassign: null };
     const b = evalBytes(v, overlay, e);
     if (isThenable(b)) throw new Error('async value in a synchronous dispatch position');
     return b;
@@ -3303,8 +4827,15 @@ function dispatch(
   // an arg that is a variable bound to a detached ruleset must bind BY
   // REFERENCE (its body/closure survives); substitute the resolved node so the
   // eager byte-resolver never tries to serialize a ruleset as a value.
-  const call2 = substituteDetachedVarArgs(call1, frame);
-  return selectDefinitions(candidates, call2, resolveCaller, makeCalleeTyped, e.ev, e.modes, resolveDefault);
+  const call2 = substituteClosureVarArgs(call1, frame);
+  try {
+    return selectDefinitions(candidates, call2, resolveCaller, makeCalleeTyped, e.ev, e.modes, resolveDefault);
+  } catch (error) {
+    if (error instanceof DefaultGuardAmbiguityError) {
+      throw ERR.ambiguousDefault({ node: call, meta: { callee: `${call.name}()` } });
+    }
+    throw error;
+  }
 }
 
 /** [spread] Replace each `@args...` spread arg with the POSITIONAL args it splats
@@ -3316,6 +4847,7 @@ function expandSpreadArgs(call: MixinCall, resolveCaller: ValueResolver): MixinC
   const args: CallArg[] = [];
   for (const a of call.args) {
     if (!a.spread) { args.push(a); continue; }
+    if (a.value.type === 'MixinCall') throw new Error('A deferred mixin call cannot be used as a spread argument.');
     const bytes = resolveCaller(a.value).trim();
     if (bytes === '') continue;
     for (const piece of splitListBytes(bytes)) args.push({ value: any(piece) });
@@ -3323,7 +4855,7 @@ function expandSpreadArgs(call: MixinCall, resolveCaller: ValueResolver): MixinC
   return { type: 'MixinCall', name: call.name, args, path: call.path, important: call.important };
 }
 
-/** Replace `@rs` args (a VarRef bound to a detached ruleset) with the
+/** Replace `@rs` args (a VariableReference bound to a detached ruleset) with the
  * resolved `DetachedRuleset` node so it binds by reference. */
 /**
  * Recognize a mixin-call-shaped VALUE — a `SpacedValue` of a `.`/`#` selector head
@@ -3333,33 +4865,13 @@ function expandSpreadArgs(call: MixinCall, resolveCaller: ValueResolver): MixinC
  * other value shape. Mirrors {@link tryMixinCallIterable}, on the serializer's value
  * model rather than raw parser children.
  */
-function spacedMixinCall(v: ValueNode): MixinCall | undefined {
-  if (v.type !== 'SpacedValue' || v.parts.length !== 2) return undefined;
-  const [head, paren] = v.parts;
-  if (!head || head.type !== 'Any' || !paren || paren.type !== 'Paren') return undefined;
-  const src = head.src;
-  if (src.charCodeAt(0) !== 0x2e /* . */ && src.charCodeAt(0) !== 0x23 /* # */) return undefined;
-  const segs = src.match(/[.#][^.#]+/gu);
-  if (!segs || segs.length === 0) return undefined;
-  const name = segs[segs.length - 1]!;
-  const path: MixinCall['path'] = segs.slice(0, -1).map((s) => ({ comb: ' ', sel: s }));
-  const inner = paren.inner;
-  const callArgs: CallArg[] = isLiteralNode(inner) && inner.src === '' ? [] : [{ value: inner }];
-  return { type: 'MixinCall', name, args: callArgs, path, important: false };
-}
-
-function substituteDetachedVarArgs(call: MixinCall, frame: Frame): MixinCall {
+function substituteClosureVarArgs(call: MixinCall, frame: Frame): MixinCall {
   let changed = false;
   const args = call.args.map((a) => {
     // A mixin call passed directly as an arg value (`.wrapper(.something(foo))`):
     // wrap it as a detached ruleset whose body is that call, so `@another-mixin()`
-    // dispatches it (its args resolve in the caller frame — its `defFrame`).
-    const direct = spacedMixinCall(a.value);
-    if (direct) {
-      changed = true;
-      return { ...a, value: { type: 'DetachedRuleset', body: [direct], defFrame: frame } as DetachedRuleset };
-    }
-    if (a.value.type === 'VarRef') {
+    // dispatches it (its args resolve in the caller frame's runtime binding).
+    if (a.value.type === 'VariableReference') {
       const bound = lookupVar(frame, a.value.name);
       if (bound && bound.type === 'DetachedRuleset') {
         changed = true;
@@ -3371,8 +4883,7 @@ function substituteDetachedVarArgs(call: MixinCall, frame: Frame): MixinCall {
       // the caller frame, where the call's own selector/args resolve.
       if (bound && bound.type === 'MixinCall') {
         changed = true;
-        const dr: DetachedRuleset = { type: 'DetachedRuleset', body: [bound], defFrame: frame };
-        return { ...a, value: dr };
+        return { ...a, value: bound };
       }
     }
     return a;
@@ -3381,6 +4892,17 @@ function substituteDetachedVarArgs(call: MixinCall, frame: Frame): MixinCall {
 }
 
 function flushBlock(sel: string[], group: Leaf[], e: Emit, selNode?: SelectorList, parentKey?: object | null): void {
+  // A root-level mixin/detached-ruleset call has no selector header. Its ordinary
+  // declarations are invalid Less output; custom properties remain legal at root.
+  if (sel.length === 0) {
+    for (const leaf of group) {
+      if (leaf.node.type !== 'Declaration') continue;
+      const name = declName(leaf.node, leaf.frame, e);
+      if (!name.startsWith('--')) {
+        throw ERR.propertyInRoot({ node: leaf.node, meta: { what: name } });
+      }
+    }
+  }
   // [atrule] indent by the current block depth (0 at top level == prior behavior).
   const idt = e.depth > 0 ? INDENT.repeat(e.depth) : '';
   const header = idt ? sel.join(',\n' + idt) : sel.join(',\n');
@@ -3435,8 +4957,7 @@ function popClose(e: Emit, idt: string): void {
 /**
  * [dedup] Less duplicate-declaration handling: within one block, for each
  * (name, value, !important) key keep only the LAST occurrence and drop earlier
- * exact duplicates — EXCEPT leaves flagged `protectedDup` (restricted overloaded-
- * mixin output), which are always kept. A cheap gate counts resolved names first
+ * exact duplicates, including repeated or overloaded mixin output. A cheap gate counts resolved names first
  * and bails when no property repeats, so a block without duplicates resolves no
  * value bytes (perf-neutral common path). Merge (`+`/`+_`) groups take the fold
  * path and never reach here.
@@ -3459,7 +4980,7 @@ function dedupGroup(group: Leaf[], e: Emit): Leaf[] {
   }
   if (!repeats) return group;
   // Reverse keep-last: a key already recorded from a LATER position collapses this
-  // (earlier) occurrence, unless it is protected restricted-mixin output.
+  // (earlier) occurrence.
   const seen = new Set<string>();
   let suppressed: Set<number> | null = null;
   for (let i = group.length - 1; i >= 0; i--) {
@@ -3471,7 +4992,7 @@ function dedupGroup(group: Leaf[], e: Emit): Leaf[] {
     const val = evalBytesSync(n.value, leaf.frame, e);
     const important = n.important || leaf.important === true;
     const key = `${nm}\x00${val}\x00${important ? '!' : ''}`;
-    if (seen.has(key) && leaf.protectedDup !== true) {
+    if (seen.has(key)) {
       (suppressed ??= new Set<number>()).add(i);
     } else {
       seen.add(key);
@@ -3564,6 +5085,10 @@ function emitLeaf(leaf: Leaf, e: Emit, atRoot = false): void {
   // left at depth 0 rather than one level in.
   const idt = atRoot ? INDENT.repeat(e.depth) : e.depth > 0 ? INDENT.repeat(e.depth + 1) : INDENT;
   if (node.type === 'Declaration') {
+    assertDeclarationValueIsNotRuleset(node, frame, e);
+    if (atRoot && !declName(node, frame, e).startsWith('--')) {
+      throw ERR.propertyInRoot({ node, meta: { what: declName(node, frame, e) } });
+    }
     put(e, idt);
     put(e, declName(node, frame, e)); // resolve interpolated property name
     const onNewLine = node.valueOnNewLine === true;
@@ -3577,6 +5102,13 @@ function emitLeaf(leaf: Leaf, e: Emit, atRoot = false): void {
     put(e, node.text);
     put(e, '\n');
     if (e.positions) e.positions.push({ node, type: node.type, start, end: e.off });
+  } else if (node.type === 'FunctionCall') {
+    const bytes = evalBytesSync(node, frame, e);
+    if (bytes.length === 0) return;
+    put(e, idt);
+    put(e, bytes);
+    put(e, '\n');
+    if (e.positions) e.positions.push({ node, type: node.type, start, end: e.off });
   } else if (node.type === 'AtRuleBlock') {
     // [atrule-nested] a stay-nested at-rule buffered into a decl group: emit one
     // block level deeper than the containing declarations.
@@ -3586,6 +5118,10 @@ function emitLeaf(leaf: Leaf, e: Emit, atRoot = false): void {
   } else if (node.type === 'AtRuleStatement') {
     e.depth++;
     emitAtRuleStatement(node, frame, e);
+    e.depth--;
+  } else if (node.type === 'ImportAtRule') {
+    e.depth++;
+    emitImportAtRule(node, frame, e, e.importDocument);
     e.depth--;
   } else if (node.type === 'OpaqueAtRuleBlock') {
     e.depth++;
@@ -3617,21 +5153,52 @@ function emitHoistedCharset(children: Statement[], frame: Frame, e: Emit): void 
   }
 }
 
+/**
+ * Less emits root CSS-terminal imports before ordinary rules and retains only
+ * their first identical occurrence. This is a root-output rule, not import
+ * resolution: loaded stylesheet imports still execute exactly at their source
+ * position through Context. Keep this narrow until typed Less import options and
+ * media wrapping are represented rather than guessed from source text.
+ */
+function rootCssImportKey(node: ImportAtRule): string | null {
+  if (node.options !== null || node.alias !== null) return null;
+  const target = node.target;
+  const path = target.type === 'Quoted'
+    ? target.src
+    : target.type === 'Url' && target.value.type === 'Quoted'
+      ? `url(${target.value.src})`
+      : null;
+  if (path === null) return null;
+  const cssTarget = /\.css(?:[?#].*)?"?$/iu.test(path)
+    || /^(?:"|')?(?:[a-z][a-z0-9+.-]*:|\/\/)/iu.test(path);
+  // The current typed Less route already treats a media/layer tail as CSS
+  // terminal output. Preserve that established boundary while the later media
+  // wrapping import slice is still unimplemented.
+  if (!cssTarget && node.tail === null) return null;
+  if (node.tail !== null && node.tail.type !== 'Any') return null;
+  return `${node.name}\u0000${path}\u0000${node.tail?.src ?? ''}`;
+}
+
+function emitHoistedCssImports(children: Statement[], frame: Frame, e: Emit): void {
+  const seen = new Set<string>();
+  let hoisted: Set<ImportAtRule> | null = null;
+  for (const child of children) {
+    if (child.type !== 'ImportAtRule') continue;
+    const key = rootCssImportKey(child);
+    if (key === null) continue;
+    (hoisted ??= new Set()).add(child);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    emitCssImportAtRule(child, frame, e);
+  }
+  e.hoistedCssImports = hoisted;
+}
+
 function emitAtRuleStatement(node: AtRuleStatement, frame: Frame, e: Emit): void {
   // [charset] Inline `@charset` occurrences are dropped; `serialize` hoists the
   // first to the document top (dedupe).
   if (isCharset(node)) return;
-  // [plugin/P2] `@plugin "…";` is a scope-contributing directive (its functions
-  // were registered into the frame by `collectScopedFns`), not output — drop it,
-  // like a `MixinDef`/`VarDeclaration`. Matches Less, which processes `@plugin` in
-  // a pre-eval pass and never emits it.
-  if (isPluginDirective(node)) return;
   emitAtRuleStatementRaw(node, frame, e);
-}
-
-/** [plugin/P2] Is this at-rule a `@plugin "…";` directive? */
-function isPluginDirective(node: AtRuleStatement): boolean {
-  return node.name.toLowerCase() === '@plugin';
 }
 
 function emitAtRuleStatementRaw(node: AtRuleStatement, frame: Frame, e: Emit): void {
@@ -3651,8 +5218,140 @@ function emitAtRuleStatementRaw(node: AtRuleStatement, frame: Frame, e: Emit): v
   if (e.positions) e.positions.push({ node, type: node.type, start, end: e.off });
 }
 
-/** Emit a parser-owned typed import without resolution, reparse, or hoisting. */
-function emitImportAtRule(node: ImportAtRule, frame: Frame, e: Emit): void {
+/**
+ * Emit a typed import. With a driver-supplied document capability, a loaded
+ * canonical document executes at this exact source-order point in `frame`.
+ * Core deliberately knows neither paths nor parser plugins; a declined request
+ * remains a CSS import statement.
+ */
+function emitImportAtRule(
+  node: ImportAtRule,
+  frame: Frame,
+  e: Emit,
+  importDocument?: SerializeOptions['importDocument'],
+  emitLoaded?: (document: Stylesheet, frame: Frame) => MaybePromise<void>,
+): MaybePromise<void> {
+  if (importDocument) {
+    const planned = e.plannedImportDocuments;
+    const plannedImport = planned?.has(node)
+      ? (() => {
+          const loaded = planned.get(node)!;
+          planned.delete(node);
+          return loaded;
+        })()
+      : null;
+    const request = plannedImport?.request ?? {
+      node,
+      specifier: importSpecifier(node, frame, e),
+      options: node.options === null ? null : evalBytesSync(node.options, frame, e),
+      tail: node.tail === null ? null : evalBytesSync(node.tail, frame, e),
+    };
+    const loadedRequest = plannedImport ? plannedImport.loaded : importDocument(request);
+    return mapMaybe(loadedRequest, (loaded) => {
+      if (loaded !== undefined) {
+        if ('inline' in loaded) {
+          emitRawInline({ type: 'RawInline', text: loaded.inline, ...(loaded.media !== null ? { media: loaded.media } : {}) }, e);
+          return;
+        }
+        if (request.options === null && e.multipleImportDepth === 0 && loaded.key !== undefined) {
+          const seen = e.loadedImports ??= new Set();
+          if (seen.has(loaded.key)) return;
+          seen.add(loaded.key);
+        }
+        for (const child of loaded.document?.children ?? []) {
+          if (child.type === 'MixinDef') publishImportedMixinDefinition(frame, child);
+          if (child.type === 'VariableDeclaration') publishImportedVariableDeclaration(frame, child);
+          if (child.type === 'Rule') publishImportedRuleset(frame, child);
+        }
+        if (loaded.document === null) return;
+        rememberImportedCallableBodies(loaded.document, loaded.document.children, e.context);
+        const emitDocument = () => emitLoaded
+          ? emitLoaded(loaded.document!, frame)
+          : emitDocumentStatements(loaded.document!.children, frame, e, importDocument, true);
+        // A stylesheet import with a typed postlude is still a stylesheet
+        // import—not a CSS terminal.  Its loaded document executes once at this
+        // lexical position inside ONE media wrapper carrying the complete typed
+        // tail.  Do not split/query-reparse the tail: the parser already owns it.
+        const emit = (): MaybePromise<void> => {
+          if (request.tail === null) return emitDocument();
+          const indent = e.depth > 0 ? INDENT.repeat(e.depth) : '';
+          if (indent) put(e, indent);
+          put(e, '@media ');
+          put(e, request.tail);
+          put(e, ' {\n');
+          e.depth++;
+          const finish = (): void => {
+            e.depth--;
+            if (indent) put(e, indent);
+            put(e, '}\n');
+          };
+          try {
+            const emitted = emitDocument();
+            return isThenable(emitted)
+              ? emitted.then(() => { finish(); }, error => { e.depth--; throw error; })
+              : (finish(), emitted);
+          } catch (error) {
+            e.depth--;
+            throw error;
+          }
+        };
+        const multiple = importHasOption(request.options, 'multiple');
+        const reference = e.referenceImportDepth > 0 || importHasOption(request.options, 'reference');
+        if (multiple || reference) {
+          if (multiple) e.multipleImportDepth++;
+          if (reference) e.referenceImportDepth++;
+          let result: MaybePromise<void>;
+          try {
+            result = loaded.withinDocument ? loaded.withinDocument(emit) : emit();
+          } catch (error) {
+            if (reference) e.referenceImportDepth--;
+            if (multiple) e.multipleImportDepth--;
+            throw error;
+          }
+          return isThenable(result)
+            ? result.then(
+              () => { if (reference) e.referenceImportDepth--; if (multiple) e.multipleImportDepth--; },
+              error => { if (reference) e.referenceImportDepth--; if (multiple) e.multipleImportDepth--; throw error; },
+            )
+            : (reference && e.referenceImportDepth--, multiple && e.multipleImportDepth--, result);
+        }
+        return loaded.withinDocument ? loaded.withinDocument(emit) : emit();
+      }
+      emitCssImportAtRule(node, frame, e);
+    });
+  }
+  emitCssImportAtRule(node, frame, e);
+}
+
+/** A missing typed interpolation reference is retryable only at an import boundary. */
+class ImportPathNotReady extends Error {
+  constructor(readonly cause: Error) {
+    super(cause.message);
+  }
+}
+
+/** Extract the resolver-facing specifier without reproducing parser recognition. */
+function importSpecifier(node: ImportAtRule, frame: Frame, e: Emit): string {
+  try {
+    if (node.target.type === 'Quoted') return node.target.value;
+    if (node.target.type === 'Url' && node.target.value.type === 'Quoted') return node.target.value.value;
+    const bytes = evalBytesSync(node.target, frame, e);
+    if (bytes.startsWith('url(') && bytes.endsWith(')')) return bytes.slice(4, -1);
+    if (bytes.length >= 2 && (bytes[0] === '"' || bytes[0] === "'") && bytes.at(-1) === bytes[0]) {
+      return bytes.slice(1, -1);
+    }
+    return bytes;
+  } catch (error) {
+    if (
+      error instanceof ReferenceError
+      || (error instanceof JessError && error.code === 'resolve/name-not-found')
+    ) throw new ImportPathNotReady(error);
+    throw error;
+  }
+}
+
+/** Write the preserved CSS import syntax when no canonical document is loaded. */
+function emitCssImportAtRule(node: ImportAtRule, frame: Frame, e: Emit): void {
   const start = e.off;
   if (e.depth > 0) put(e, INDENT.repeat(e.depth));
   put(e, node.name);
@@ -3670,6 +5369,51 @@ function emitImportAtRule(node: ImportAtRule, frame: Frame, e: Emit): void {
     if (tail.length > 0) put(e, ` ${tail}`);
   }
   put(e, ';\n');
+  if (e.positions) e.positions.push({ node, type: node.type, start, end: e.off });
+}
+
+/** Write parser-owned Jess import facts. Loading/resolution stays out of core. */
+function emitStyleImport(node: StyleImport, frame: Frame, e: Emit): void {
+  const start = e.off;
+  if (e.depth > 0) put(e, INDENT.repeat(e.depth));
+  put(e, node.forward ? '@-export ' : node.mode === 'compose' ? '@-compose ' : '@-import ');
+  put(e, evalBytesSync(node.path, frame, e));
+  if (node.namespace !== null) put(e, ` as ${node.namespace}`);
+  put(e, ';\n');
+  if (e.positions) e.positions.push({ node, type: node.type, start, end: e.off });
+}
+
+function emitModuleImport(node: ModuleImport, frame: Frame, e: Emit): void {
+  const start = e.off;
+  if (e.depth > 0) put(e, INDENT.repeat(e.depth));
+  if (node.mode === 'use') {
+    put(e, '@-use ');
+    put(e, evalBytesSync(node.path, frame, e));
+    if (node.namespace !== null) put(e, ` as ${node.namespace}`);
+    put(e, ';\n');
+  } else {
+    put(e, '@-from ');
+    put(e, evalBytesSync(node.path, frame, e));
+    put(e, ' import ');
+    if (node.namespace !== null) {
+      if (node.defaultImport !== null || node.imports.length !== 0) throw new TypeError('ModuleImport namespace form cannot carry other bindings.');
+      put(e, `* as ${node.namespace}`);
+    } else {
+      if (node.defaultImport === null && node.imports.length === 0) throw new TypeError('ModuleImport @-from requires bindings.');
+      if (node.defaultImport !== null) put(e, node.defaultImport);
+      if (node.imports.length > 0) {
+        if (node.defaultImport !== null) put(e, ', ');
+        put(e, '(');
+        node.imports.forEach((specifier, index) => {
+          if (index > 0) put(e, ', ');
+          put(e, specifier.name);
+          if (specifier.alias !== null) put(e, ` as ${specifier.alias}`);
+        });
+        put(e, ')');
+      }
+    }
+    put(e, ';\n');
+  }
   if (e.positions) e.positions.push({ node, type: node.type, start, end: e.off });
 }
 
@@ -3739,6 +5483,16 @@ function normalizeMediaFeatures(prelude: string): string {
  */
 function emitCallStatement(node: FunctionCall, frame: Frame, e: Emit, precomputed?: string): void {
   const start = e.off;
+  // A typed color is a value, not a statement surface.  Keep the normal
+  // byte-only fast path for ordinary/unknown calls, but retain this one fact
+  // while evaluating a known call so `rgba(0,0,0,0);` fails like Less instead
+  // of leaking a color token into the root output.
+  if (precomputed === undefined && e.ev) {
+    const value = evalValue(node, frame, e);
+    if (!isThenable(value) && typeof value !== 'string' && value.type === 'Color') {
+      throw ERR.invalidStatement({ node, meta: { what: 'Color' } });
+    }
+  }
   const bytes = precomputed ?? evalBytesSync(node, frame, e);
   if (bytes.length === 0) return;
   if (e.depth > 0) put(e, INDENT.repeat(e.depth));
@@ -3819,8 +5573,121 @@ function staysNested(name: string): boolean {
  * `(` nor right before `)` stays). All other corpus `@supports` preludes are
  * already compact, so this is a no-op there.
  */
-function normalizeSupportsPrelude(p: string): string {
-  return p.replace(/\s+/gu, ' ').replace(/\(\s+/gu, '(').replace(/\s+\)/gu, ')');
+/** A prelude fragment whose grammar owns its bytes (not merely their values). */
+type SupportsPreludePart = { bytes: string; protected: boolean };
+
+function normalizeSupportsBytes(p: string): string {
+  let out = '';
+  let plainStart = 0;
+  const appendPlain = (end: number): void => {
+    out += p.slice(plainStart, end).replace(/\s+/gu, ' ').replace(/\(\s+/gu, '(').replace(/\s+\)/gu, ')');
+  };
+  for (let i = 0; i < p.length; i++) {
+    const c = p[i]!;
+    if (c === '"' || c === '\'') {
+      appendPlain(i);
+      const quote = c;
+      let end = i + 1;
+      for (; end < p.length; end++) {
+        if (p[end] === '\\') { end++; continue; }
+        if (p[end] === quote) { end++; break; }
+      }
+      out += p.slice(i, end);
+      plainStart = end;
+      i = end - 1;
+      continue;
+    }
+    if (c === '/' && p[i + 1] === '*') {
+      appendPlain(i);
+      const close = p.indexOf('*/', i + 2);
+      const end = close < 0 ? p.length : close + 2;
+      out += p.slice(i, end);
+      plainStart = end;
+      i = end - 1;
+    }
+  }
+  appendPlain(p.length);
+  return out;
+}
+
+function normalizeSupportsPrelude(parts: readonly SupportsPreludePart[]): string {
+  let out = '';
+  let plain = '';
+  const flushPlain = (): void => {
+    if (plain.length > 0) out += normalizeSupportsBytes(plain);
+    plain = '';
+  };
+  for (const part of parts) {
+    if (part.protected) {
+      flushPlain();
+      out += part.bytes;
+    } else {
+      plain += part.bytes;
+    }
+  }
+  flushPlain();
+  return out;
+}
+
+/**
+ * `Paren` is transparent when it encloses an evaluated ordinary value, but an
+ * `@supports` condition owns parentheses as syntax: dropping them changes the
+ * condition's grouping (and can make a feature cease to be a feature). Preserve
+ * that grammar-owned structure here while evaluating only leaf values. This is
+ * deliberately local to the supports prelude; ordinary declaration values keep
+ * their existing evaluation semantics.
+ */
+function evalSupportsPreludeSync(node: ValueNode, frame: Frame | null, e: EvalCtx): SupportsPreludePart[] {
+  const plain = (bytes: string): SupportsPreludePart[] => [{ bytes, protected: false }];
+  switch (node.type) {
+    case 'GeneralEnclosed':
+      // `<general-enclosed>` owns arbitrary CSS syntax. Its bytes must not pass
+      // through the supports-condition whitespace canonicalizer below.
+      return [{ bytes: generalEnclosedBytes(node, evalBytesSync(node.content, frame, e)), protected: true }];
+    case 'Paren':
+      return [...plain('('), ...evalSupportsPreludeSync(node.inner, frame, e), ...plain(')')];
+    case 'Operation': {
+      const left = evalSupportsPreludeSync(node.left, frame, e);
+      const right = evalSupportsPreludeSync(node.right, frame, e);
+      return [...left, ...plain(node.operator === ':' ? ': ' : ` ${node.operator} `), ...right];
+    }
+    case 'SpacedValue':
+      return node.parts.flatMap((part, index) => [
+        ...(index === 0 ? [] : plain(' ')),
+        ...evalSupportsPreludeSync(part, frame, e),
+      ]);
+    default:
+      return plain(evalBytesSync(node, frame, e));
+  }
+}
+
+/**
+ * Media and container queries also own `Paren` as grammar syntax.  Unlike an
+ * ordinary value position, evaluating a variable inside `(min-width: @size)`
+ * must not erase the feature delimiters.  Keep that structural spelling while
+ * delegating all leaf evaluation to the normal value path.
+ */
+function evalQueryPreludeSync(node: ValueNode, frame: Frame | null, e: EvalCtx): string {
+  switch (node.type) {
+    case 'Paren':
+      return `(${evalQueryPreludeSync(node.inner, frame, e)})`;
+    case 'Operation': {
+      const left = evalQueryPreludeSync(node.left, frame, e);
+      const right = evalQueryPreludeSync(node.right, frame, e);
+      return node.operator === ':'
+        ? `${left}: ${right}`
+        : `${left} ${node.operator} ${right}`;
+    }
+    case 'SpacedValue':
+      return node.parts.map(part => evalQueryPreludeSync(part, frame, e)).join(' ');
+    case 'List':
+      return node.items.map((item, index) => index === 0
+        ? evalQueryPreludeSync(item, frame, e)
+        : `${normalizeListSep(node.separators[index - 1]!)}${evalQueryPreludeSync(item, frame, e)}`
+      ).join('');
+    default:
+      return evalBytesSync(node, frame, e);
+  }
 }
 
 /**
@@ -3913,7 +5780,7 @@ function normalizeQueryPlainRun(s: string): string {
  * plain declaration/keyframe block (`emitAtRuleBody`) and `ctx` is ignored. An
  * at-rule whose body renders empty is dropped entirely (header + braces).
  */
-function emitAtRuleBlock(node: AtRuleBlock, frame: Frame, e: Emit, ctx: string[] | null = null): void {
+function emitAtRuleBlock(node: AtRuleBlock, frame: Frame, e: Emit, ctx: string[] | null = null): MaybePromise<void> {
   const markChunks = e.chunks.length;
   const markOff = e.off;
   const markPos = e.positions ? e.positions.length : 0;
@@ -3922,10 +5789,13 @@ function emitAtRuleBlock(node: AtRuleBlock, frame: Frame, e: Emit, ctx: string[]
   if (idt) put(e, idt);
   put(e, node.name);
   if (node.prelude !== null) {
-    let p = evalBytesSync(node.prelude, frame, e);
     const lname = node.name.toLowerCase();
-    if (lname === '@supports') p = normalizeSupportsPrelude(p);
-    else if (lname === '@media' || lname === '@container') p = normalizeQueryPrelude(p);
+    let p = lname === '@supports'
+      ? normalizeSupportsPrelude(evalSupportsPreludeSync(node.prelude, frame, e))
+      : lname === '@media' || lname === '@container'
+        ? evalQueryPreludeSync(node.prelude, frame, e)
+        : evalBytesSync(node.prelude, frame, e);
+    if (lname === '@media' || lname === '@container') p = normalizeQueryPrelude(p);
     if (p.length > 0) {
       put(e, ' ');
       put(e, p);
@@ -3936,17 +5806,11 @@ function emitAtRuleBlock(node: AtRuleBlock, frame: Frame, e: Emit, ctx: string[]
   const bodyFrame: Frame = {
     parent: frame,
     mixins: collectMixins(node.body),
-    vars: collectVars(node.body),
+    declIndex: collectDeclIndex(node.body), cells: null, reassign: null,
     statements: node.body,
   };
-  if (isBubbleable(node.name)) {
-    // A non-empty selector context propagates inside; null/empty keeps the
-    // top-level shape (bare direct decls) but still bubbles nested at-rules out
-    // of the body's rulesets.
-    emitBubbleBody(node.body, ctx && ctx.length > 0 ? ctx : null, bodyFrame, e);
-  } else {
-    emitAtRuleBody(node.body, bodyFrame, e);
-  }
+  const emitted = prepareBodyPlugins(node.body, bodyFrame, e);
+  const finish = (): MaybePromise<void> => {
   if (e.chunks.length === afterHeader) {
     // Nothing emitted: drop the whole at-rule (rewind chunks/offset/positions).
     e.chunks.length = markChunks;
@@ -3957,13 +5821,27 @@ function emitAtRuleBlock(node: AtRuleBlock, frame: Frame, e: Emit, ctx: string[]
   if (idt) put(e, idt);
   put(e, '}\n');
   if (e.positions) e.positions.push({ node, type: node.type, start, end: e.off });
+  };
+  return mapMaybe(emitted, () => {
+    const rendered = isBubbleable(node.name)
+      // A non-empty selector context propagates inside; null/empty keeps the
+      // top-level shape (bare direct decls) but still bubbles nested at-rules out
+      // of the body's rulesets.
+      ? emitBubbleBody(node.body, ctx && ctx.length > 0 ? ctx : null, bodyFrame, e)
+      : (emitAtRuleBody(node.body, bodyFrame, e), undefined);
+    return mapMaybe(rendered, finish);
+  });
 }
 
 /**
  * Emit an at-rule body. Consecutive declarations/comments group as DIRECT block
  * children (no selector wrapper). A nested ruleset / at-rule descends one level.
  */
-function emitAtRuleBody(statements: Statement[], frame: Frame, e: Emit): void {
+function emitAtRuleBody(
+  statements: Statement[],
+  frame: Frame,
+  e: Emit,
+): void {
   const group: Leaf[] = [];
   const flushDirect = (): void => {
     if (group.length > 0) {
@@ -3976,6 +5854,7 @@ function emitAtRuleBody(statements: Statement[], frame: Frame, e: Emit): void {
     switch (node.type) {
       case 'Declaration':
       case 'Comment':
+      case 'FunctionCall':
         group.push({ node, frame });
         break;
       case 'Rule':
@@ -3996,10 +5875,24 @@ function emitAtRuleBody(statements: Statement[], frame: Frame, e: Emit): void {
         emitAtRuleStatement(node, frame, e);
         e.depth--;
         break;
+      case 'Plugin':
+        break;
       case 'ImportAtRule':
         flushDirect();
         e.depth++;
-        emitImportAtRule(node, frame, e);
+        emitImportAtRule(node, frame, e, e.importDocument);
+        e.depth--;
+        break;
+      case 'StyleImport':
+        flushDirect();
+        e.depth++;
+        emitStyleImport(node, frame, e);
+        e.depth--;
+        break;
+      case 'ModuleImport':
+        flushDirect();
+        e.depth++;
+        emitModuleImport(node, frame, e);
         e.depth--;
         break;
       case 'OpaqueAtRuleBlock':
@@ -4012,19 +5905,27 @@ function emitAtRuleBody(statements: Statement[], frame: Frame, e: Emit): void {
         // Best-effort: expand into the direct-declaration group.
         expandCall(node, null, null, frame, group, flushDirect, null, e);
         break;
-      case 'DetachedCall':
-        expandDetachedCall(node, null, null, frame, group, flushDirect, null, e);
+      case 'Reference':
+        expandReferenceCall(node, null, null, frame, group, flushDirect, null, e);
         break;
       case 'For':
         expandFor(node, null, null, frame, group, flushDirect, null, e);
         break;
+      case 'If': {
+        const body = selectIfBodyForRender(node, frame, e);
+        if (body) emitAtRuleBody(body, frame, e);
+        break;
+      }
       // [import:inline] raw verbatim bytes spliced by `@import (inline)`.
       case 'RawInline':
         flushDirect();
         emitRawInline(node, e);
         break;
       case 'MixinDef':
-      case 'VarDeclaration':
+        publishSelectedMixinDefinition(frame, node);
+        break;
+      case 'VariableDeclaration':
+        activateVariableDeclaration(node, frame, e);
         break;
     }
   }
@@ -4046,7 +5947,12 @@ function emitAtRuleBody(statements: Statement[], frame: Frame, e: Emit): void {
  * carries that ruleset's composed selector as its context (via `walkBody`); one
  * directly inside this body inherits `ctx` unchanged.
  */
-function emitBubbleBody(statements: Statement[], ctx: string[] | null, frame: Frame, e: Emit): void {
+function emitBubbleBody(
+  statements: Statement[],
+  ctx: string[] | null,
+  frame: Frame,
+  e: Emit,
+): MaybePromise<void> {
   // [nesting] opaque ancestor for `&`-less rules composed inside the bubbled context.
   const ctxAncestor = ctx === null ? null : wrapIsList(ctx);
   const group: Leaf[] = [];
@@ -4064,22 +5970,43 @@ function emitBubbleBody(statements: Statement[], ctx: string[] | null, frame: Fr
     }
     group.length = 0;
   };
-  for (const node of statements) {
-    switch (node.type) {
+
+  // Keep one direct-leaf group and one cursor for the whole body.  In
+  // particular, an async import resumes this exact group/body placement rather
+  // than closing over a per-statement callback or re-walking a sliced tail.
+  const run = (start: number): MaybePromise<void> => {
+    for (let index = start; index < statements.length; index++) {
+      const node = statements[index]!;
+      switch (node.type) {
       case 'Declaration':
       case 'Comment':
+      case 'FunctionCall':
         group.push({ node, frame });
         break;
       case 'Rule':
         flushDirect();
         e.depth++;
-        flatten(node, ctx, ctxAncestor, frame, e);
+        {
+          const emitted = flatten(node, ctx, ctxAncestor, frame, e);
+          if (isThenable(emitted)) {
+            return emitted.then(
+              () => { e.depth--; return run(index + 1); },
+              error => { e.depth--; throw error; },
+            );
+          }
+        }
         e.depth--;
         break;
       case 'AtRuleBlock':
         flushDirect();
         e.depth++;
-        emitAtRuleBlock(node, frame, e, ctx); // directly-nested at-rule inherits ctx
+        const nested = emitAtRuleBlock(node, frame, e, ctx); // directly-nested at-rule inherits ctx
+        if (isThenable(nested)) {
+          return nested.then(
+            () => { e.depth--; return run(index + 1); },
+            error => { e.depth--; throw error; },
+          );
+        }
         e.depth--;
         break;
       case 'AtRuleStatement':
@@ -4091,7 +6018,50 @@ function emitBubbleBody(statements: Statement[], ctx: string[] | null, frame: Fr
       case 'ImportAtRule':
         flushDirect();
         e.depth++;
-        emitImportAtRule(node, frame, e);
+        const imported = emitImportAtRule(
+          node,
+          frame,
+          e,
+          e.importDocument,
+          (document, importFrame) => {
+            // The surrounding import owns the one statement indentation level.
+            // Its loaded body belongs to this bubble body's level instead, just
+            // like an authored sibling; restore the import level before the
+            // cursor resumes after an async load.
+            // `emitBubbleBody` increments before a Rule while the former
+            // document dispatcher emitted loaded root Rules directly.  Drop
+            // the import level and that one prospective Rule level so the
+            // canonical loaded document keeps its historical body placement.
+            e.depth -= 2;
+            const emitted = emitBubbleBody(document.children, ctx, importFrame, e);
+            if (isThenable(emitted)) {
+              return emitted.then(
+                () => { e.depth += 2; },
+                error => { e.depth += 2; throw error; },
+              );
+            }
+            e.depth += 2;
+            return emitted;
+          },
+        );
+        if (isThenable(imported)) {
+          return imported.then(
+            () => { e.depth--; return run(index + 1); },
+            error => { e.depth--; throw error; },
+          );
+        }
+        e.depth--;
+        break;
+      case 'StyleImport':
+        flushDirect();
+        e.depth++;
+        emitStyleImport(node, frame, e);
+        e.depth--;
+        break;
+      case 'ModuleImport':
+        flushDirect();
+        e.depth++;
+        emitModuleImport(node, frame, e);
         e.depth--;
         break;
       case 'OpaqueAtRuleBlock':
@@ -4101,20 +6071,41 @@ function emitBubbleBody(statements: Statement[], ctx: string[] | null, frame: Fr
         e.depth--;
         break;
       case 'MixinCall':
-        expandCall(node, ctx, ctxAncestor, frame, group, flushDirect, null, e);
+        {
+          const expanded = expandCall(node, ctx, ctxAncestor, frame, group, flushDirect, null, e);
+          if (isThenable(expanded)) return expanded.then(() => run(index + 1));
+        }
         break;
-      case 'DetachedCall':
-        expandDetachedCall(node, ctx, ctxAncestor, frame, group, flushDirect, null, e);
+      case 'Reference':
+        {
+          const expanded = expandReferenceCall(node, ctx, ctxAncestor, frame, group, flushDirect, null, e);
+          if (isThenable(expanded)) return expanded.then(() => run(index + 1));
+        }
         break;
-      case 'For':
-        expandFor(node, ctx, ctxAncestor, frame, group, flushDirect, null, e);
+      case 'For': {
+        const expanded = expandFor(node, ctx, ctxAncestor, frame, group, flushDirect, null, e);
+        if (isThenable(expanded)) return expanded.then(() => run(index + 1));
         break;
+      }
+      case 'If': {
+        const body = selectIfBodyForRender(node, frame, e);
+        if (body) {
+          const emitted = emitBubbleBody(body, ctx, frame, e);
+          if (isThenable(emitted)) return emitted.then(() => run(index + 1));
+        }
+        break;
+      }
       case 'MixinDef':
-      case 'VarDeclaration':
+        publishSelectedMixinDefinition(frame, node);
         break;
+      case 'VariableDeclaration':
+        activateVariableDeclaration(node, frame, e);
+        break;
+      }
     }
-  }
-  flushDirect();
+    flushDirect();
+  };
+  return run(0);
 }
 
 /* ------------------------------------------------------ [nested/R0] emit */
@@ -4133,56 +6124,101 @@ function emitBubbleBody(statements: Statement[], ctx: string[] | null, frame: Fr
  * statements inline at the call-site level (its own nested rules therefore nest
  * under the call site, keeping their own local selectors).
  */
+interface NestedLeafBuffer {
+  readonly leaves: Leaf[];
+  readonly flush: () => void;
+}
+
 function emitNestedBody(
   statements: Statement[],
   frame: Frame,
   e: Emit,
   hoist?: { rule: Rule; frame: Frame }[],
   imp = false, // [important] call-level `!important` forced onto this body's decls
-): void {
+  source: NestedHeaderSource | null = null,
+  placement: NestedRuleMixinPlacement | null = null,
+  sharedLeaves?: NestedLeafBuffer,
+): MaybePromise<void> {
   // buffer consecutive DIRECT leaves so a `+`/`+_` merge group can fold at
   // last-occurrence; flush when an interrupting nested rule/at-rule appears (a
   // merge group does not span an interrupting nested block). Absent any merge the
   // buffer flushes verbatim per-leaf (byte-identical to the prior stream).
-  const buf: Leaf[] = [];
-  const flushBuf = (): void => {
+  const buf = sharedLeaves?.leaves ?? [];
+  const flushBuf = sharedLeaves?.flush ?? (() => {
     if (buf.length === 0) return;
     if (groupHasMerge(buf)) mergeFold(buf, e, e.depth > 0 ? INDENT.repeat(e.depth) : '', emitNestedLeaf);
     else for (const leaf of buf) emitNestedLeaf(leaf, e);
     buf.length = 0;
-  };
-  for (const node of statements) {
+  });
+  const inlineLeaves: NestedLeafBuffer = sharedLeaves ?? { leaves: buf, flush: flushBuf };
+  const run = (start: number): MaybePromise<void> => {
+  for (let index = start; index < statements.length; index++) {
+    const node = statements[index]!;
+    // Root sibling grouping is source-adjacent only. Any non-Rule—including a
+    // silent declaration/definition—forms a hard boundary.
+    if (frame.parent === null && node.type !== 'Rule') e.lastBlock.parentKey = null;
     switch (node.type) {
       case 'Declaration':
       case 'Comment':
+        if (e.referenceImportDepth > 0) break;
         buf.push({ node, frame, ...(imp ? { important: true } : {}) });
         break;
       case 'Rule': {
+        if (e.referenceImportDepth > 0) break;
         flushBuf();
         // [extend] a rule whose extend match crosses the `&` FLATTENS: defer it to
         // the enclosing rule's hoist queue (emitted flat at that rule's depth).
-        if (hoist && e.extends?.nestedPlan.get(node)?.flatten) {
+        if (hoist && extendProjection(frame, e)?.nestedPlan.get(node)?.flatten) {
           hoist.push({ rule: node, frame });
           break;
         }
-        emitNestedRule(node, frame, e, imp);
+        // Only a selected synthesized ruleset mixin gets a placement fact.  It
+        // is consumed by the first `&`-bearing nested header; ordinary authored
+        // nesting has no fact and stays literal in collapse:false mode.
+        const appliesPlacement = placement !== null && selectorListHasAmpersand(node.selector);
+        const emitted = emitNestedRule(node, frame, e, imp, source, appliesPlacement ? placement : null);
+        if (isThenable(emitted)) {
+          return emitted.then(() => {
+            if (appliesPlacement) placement = null;
+            return run(index + 1);
+          });
+        }
+        if (appliesPlacement) placement = null;
         break;
       }
       case 'MixinCall':
-        flushBuf();
-        expandNestedCall(node, frame, e, imp);
+        {
+          const emitted = expandNestedCall(node, frame, e, imp, source, inlineLeaves);
+          if (isThenable(emitted)) return emitted.then(() => run(index + 1));
+        }
         break;
-      case 'DetachedCall':
-        flushBuf();
-        expandNestedDetachedCall(node, frame, e, imp);
+      case 'Reference':
+        {
+          const emitted = expandNestedReferenceCall(node, frame, e, imp, source, inlineLeaves);
+          if (isThenable(emitted)) return emitted.then(() => run(index + 1));
+        }
         break;
       case 'For':
-        flushBuf();
-        expandNestedFor(node, frame, e, imp);
+        {
+          const emitted = expandNestedFor(node, frame, e, imp, source, inlineLeaves);
+          if (isThenable(emitted)) return emitted.then(() => run(index + 1));
+        }
         break;
+      case 'If': {
+        flushBuf();
+        const body = selectIfBodyForRender(node, frame, e);
+        if (body) {
+          const emitted = emitNestedBody(body, frame, e, hoist, imp, source, placement);
+          if (isThenable(emitted)) return emitted.then(() => run(index + 1));
+        }
+        break;
+      }
       case 'AtRuleBlock':
         flushBuf();
-        emitNestedAtRuleBlock(node, frame, e);
+        {
+          const emitted = emitNestedAtRuleBlock(node, frame, e, source);
+          if (isThenable(emitted)) return emitted.then(() => run(index + 1));
+        }
         break;
       case 'AtRuleStatement':
         flushBuf();
@@ -4190,7 +6226,26 @@ function emitNestedBody(
         break;
       case 'ImportAtRule':
         flushBuf();
-        emitImportAtRule(node, frame, e);
+        {
+          const imported = emitImportAtRule(
+            node,
+            frame,
+            e,
+            e.importDocument,
+            (document, importFrame) => emitNestedBody(document.children, importFrame, e, hoist, imp),
+          );
+          if (isThenable(imported)) {
+            return imported.then(() => run(index + 1));
+          }
+        }
+        break;
+      case 'StyleImport':
+        flushBuf();
+        emitStyleImport(node, frame, e);
+        break;
+      case 'ModuleImport':
+        flushBuf();
+        emitModuleImport(node, frame, e);
         break;
       case 'OpaqueAtRuleBlock':
         flushBuf();
@@ -4207,11 +6262,16 @@ function emitNestedBody(
         emitCallStatement(node, frame, e);
         break;
       case 'MixinDef':
-      case 'VarDeclaration':
-        break; // definitions emit nothing
+        publishSelectedMixinDefinition(frame, node);
+        break;
+      case 'VariableDeclaration':
+        activateVariableDeclaration(node, frame, e);
+        break;
     }
   }
-  flushBuf();
+  if (!sharedLeaves) flushBuf();
+  };
+  return run(0);
 }
 
 /** A `name: value;` / comment leaf at exactly the current `e.depth` level. */
@@ -4220,12 +6280,14 @@ function emitNestedLeaf(leaf: Leaf, e: Emit): void {
   const start = e.off;
   const idt = e.depth > 0 ? INDENT.repeat(e.depth) : '';
   if (node.type === 'Declaration') {
+    assertDeclarationValueIsNotRuleset(node, frame, e);
     if (idt) put(e, idt);
     put(e, declName(node, frame, e)); // resolve interpolated property name
-    put(e, ': ');
+    const onNewLine = node.valueOnNewLine === true;
+    put(e, onNewLine ? ':' : ': ');
     const valStart = e.off;
     const important = node.important === true || leaf.important === true;
-    putValue(e, node.value, frame, node.value, idt + INDENT, important); // [whitespace] continuation indent
+    putValue(e, node.value, frame, node.value, idt + INDENT, important, onNewLine); // [whitespace] continuation indent
     if (e.positions) {
       e.positions.push({ node: node.value, type: node.value.type, start: valStart, end: e.off });
       e.positions.push({ node, type: node.type, start, end: e.off });
@@ -4246,11 +6308,124 @@ function emitNestedLeaf(leaf: Leaf, e: Emit): void {
  * only-nested-rules-that-themselves-drop) is dropped entirely — header and
  * braces rewound — matching v5.
  */
-function emitNestedRule(rule: Rule, frame: Frame, e: Emit, imp = false): void {
+function nestedSourceStrings(source: NestedHeaderSource, e: EvalCtx): string[] {
+  const parents = source.parent === null
+    ? ownStrings(source.selector, source.frame, e)
+    : compose(nestedSourceStrings(source.parent, e), source.selector, source.frame, e);
+  return parents;
+}
+
+interface TransparentShell {
+  readonly rule: Rule;
+  readonly call: MixinCall;
+  readonly def: MixinDef;
+  readonly bindings: Map<string, CallValue>;
+  readonly home: Frame;
+}
+
+/**
+ * A deliberately narrow Less compatibility projection.  It admits only the
+ * `mi-test-c` shape: a parent containing immediate `&` shells, each shell
+ * containing exactly one call whose sole selected target is a synthesized
+ * ruleset-mixin.  Anything less exact remains authored nested output.
+ */
+function transparentShells(rule: Rule, frame: Frame, e: Emit): TransparentShell[] | null {
+  if (rule.body.length === 0) return null;
+  const shells: TransparentShell[] = [];
+  for (const child of rule.body) {
+    if (child.type !== 'Rule' || !selectorListHasAmpersand(child.selector) || child.body.length !== 1) return null;
+    const call = child.body[0];
+    if (call?.type !== 'MixinCall') return null;
+    const shellFrame: Frame = {
+      parent: frame,
+      mixins: collectMixins(child.body),
+      declIndex: collectDeclIndex(child.body), cells: null, reassign: null,
+      statements: child.body,
+    };
+    const homes = new Map<MixinDef, Frame>();
+    const candidates = call.path.length > 0
+      ? findPathCandidates(shellFrame, call, e, homes)
+      : lookupCandidates(shellFrame, call.name, e, homes);
+    const selected = dispatch(candidates, call, shellFrame, e, homes);
+    if (selected.length !== 1 || selected[0]!.def.ruleMixin !== true) return null;
+    const selectedOne = selected[0]!;
+    shells.push({ rule: child, call, def: selectedOne.def, bindings: selectedOne.bindings, home: homes.get(selectedOne.def) ?? shellFrame });
+  }
+  return shells;
+}
+
+function emitTransparentShells(
+  shells: readonly TransparentShell[],
+  parentSource: NestedHeaderSource | null,
+  frame: Frame,
+  e: Emit,
+  imp: boolean,
+): MaybePromise<void> {
+  const run = (start: number): MaybePromise<void> => {
+    for (let index = start; index < shells.length; index++) {
+      const shell = shells[index]!;
+      const callFrame: Frame = {
+        parent: shell.home,
+        mixins: collectMixins(shell.def.body),
+        declIndex: collectDeclIndex(shell.def.body, shell.bindings), cells: cellsForParams(shell.bindings), reassign: null,
+        statements: shell.def.body,
+        sourceOwner: sourceOwnerForBody(shell.def.body, frame, e),
+      };
+      captureArgDefFrames(shell.bindings, frame, callFrame, e);
+      const source: NestedHeaderSource = { parent: parentSource, selector: shell.rule.selector, frame };
+      const header = nestedSourceStrings(source, e);
+      const markChunks = e.chunks.length;
+      const markOff = e.off;
+      const markPos = e.positions ? e.positions.length : 0;
+      const idt = e.depth > 0 ? INDENT.repeat(e.depth) : '';
+      if (idt) put(e, idt);
+      put(e, idt ? header.join(',\n' + idt) : header.join(',\n'));
+      put(e, ' {\n');
+      const afterHeader = e.chunks.length;
+      e.depth++;
+      const finish = (): void => {
+        e.depth--;
+        if (e.chunks.length === afterHeader) {
+          e.chunks.length = markChunks;
+          e.off = markOff;
+          if (e.positions) e.positions.length = markPos;
+        } else {
+          if (idt) put(e, idt);
+          put(e, '}\n');
+        }
+      };
+      const emitted = emitNestedBody(shell.def.body, callFrame, e, undefined, imp, source);
+      if (isThenable(emitted)) return emitted.then(() => { finish(); return run(index + 1); });
+      finish();
+    }
+  };
+  return run(0);
+}
+
+function emitNestedRule(
+  rule: Rule,
+  frame: Frame,
+  e: Emit,
+  imp = false,
+  source: NestedHeaderSource | null = null,
+  placement: NestedRuleMixinPlacement | null = null,
+): MaybePromise<void> {
   // [guards] a guarded ruleset emits its block only when the guard is true (the
   // flattened path applies the same gate in `flatten`).
   if (!ruleGuardPasses(rule, frame, e)) return;
-  const plan = e.extends?.nestedPlan.get(rule);
+  if (!e.collapse) {
+    const shells = transparentShells(rule, frame, e);
+    if (shells !== null) {
+      return emitTransparentShells(
+        shells,
+        { parent: source, selector: rule.selector, frame },
+        frame,
+        e,
+        imp,
+      );
+    }
+  }
+  const plan = extendProjection(frame, e)?.nestedPlan.get(rule);
   if (plan?.collapseTransparent) {
     // [extend] decl-less `&&` self-collapse: emit the body (the pure-`&` child,
     // which carries its composed header via its own plan) at THIS level, dropping
@@ -4258,16 +6433,14 @@ function emitNestedRule(rule: Rule, frame: Frame, e: Emit, imp = false): void {
     const childFrame: Frame = {
       parent: frame,
       mixins: collectMixins(rule.body),
-      vars: collectVars(rule.body),
+      declIndex: collectDeclIndex(rule.body), cells: null, reassign: null,
     };
-    emitNestedBody(rule.body, childFrame, e, undefined, imp);
-    return;
+    return emitNestedBody(rule.body, childFrame, e, undefined, imp, source, placement);
   }
   if (plan?.flatten && !plan.hoistNested) {
     // Fallback (a top-level rule never flattens; a body-nested one is deferred by
     // emitNestedBody's hoist queue). Emit via the flat path with compaction.
-    emitHoisted(rule, frame, e);
-    return;
+    return emitHoisted(rule, frame, e);
   }
   // A `hoistNested` rule falls through: it is emitted NESTED here (at the hoist
   // position), its `plan.header` already carrying the composed cross-`&` sibling
@@ -4277,28 +6450,51 @@ function emitNestedRule(rule: Rule, frame: Frame, e: Emit, imp = false): void {
   const markPos = e.positions ? e.positions.length : 0;
   const start = e.off;
   const idt = e.depth > 0 ? INDENT.repeat(e.depth) : '';
-  if (idt) put(e, idt);
   // [extend] nested header uses the projected own-local branch list; children
   // stay literal (nested mode composes nothing).
-  const own = plan ? plan.header : ownStrings(rule.selector, frame, e);
-  const selStart = e.off;
-  put(e, idt ? own.join(',\n' + idt) : own.join(',\n'));
-  if (e.positions) {
-    e.positions.push({ node: rule.selector, type: rule.selector.type, start: selStart, end: e.off });
+  // `placement` only originates at a selected synthesized ruleset mixin.  Its
+  // header is composed structurally from the original selector nodes and their
+  // render frames; it does not rewrite selector strings or re-render a body.
+  const own = plan
+    ? plan.header
+    : placement === null
+      ? ownStrings(rule.selector, frame, e)
+      : compose(nestedSourceStrings(placement.source, e), rule.selector, placement.callFrame, e);
+  const header = idt ? own.join(',\n' + idt) : own.join(',\n');
+  // Less only coalesces this nested-output root seam after an authored header
+  // has been evaluated. Static same-selector root rules remain distinct.
+  const rootSibling = frame.parent === null && e.depth === 0
+    && rule.selector.selectors.some(complexHasInterp);
+  const lb = e.lastBlock;
+  const reopen = rootSibling && lb.parentKey === frame && lb.depth === e.depth
+    && lb.header === header && lb.endChunks === e.chunks.length;
+  if (reopen) popClose(e, idt);
+  else {
+    if (idt) put(e, idt);
+    const selStart = e.off;
+    put(e, header);
+    if (e.positions) {
+      e.positions.push({ node: rule.selector, type: rule.selector.type, start: selStart, end: e.off });
+    }
+    put(e, ' {\n');
   }
-  put(e, ' {\n');
   const afterHeader = e.chunks.length;
   const childFrame: Frame = {
     parent: frame,
     mixins: collectMixins(rule.body),
-    vars: collectVars(rule.body),
+    declIndex: collectDeclIndex(rule.body), cells: null, reassign: null,
     statements: rule.body,
   };
+  const childSource: NestedHeaderSource = { parent: source, selector: rule.selector, frame };
+  // Nested output owns the same lexical placement facts as flattened output:
+  // a later namespace call must enter this exact child frame to see imports that
+  // executed inside the Rule.
+  (frame.rulePlacements ??= new Map()).set(rule, childFrame);
   // [extend] children that flatten (extend crossed the `&`) bubble out to this
   // rule's depth; collect them and emit flat after the block closes.
   const hoist: { rule: Rule; frame: Frame }[] = [];
   e.depth++;
-  emitNestedBody(rule.body, childFrame, e, hoist, imp);
+  const finish = (): MaybePromise<void> => {
   e.depth--;
   if (e.chunks.length === afterHeader) {
     // Nothing emitted in the block: drop the header/braces (rewind).
@@ -4309,6 +6505,12 @@ function emitNestedRule(rule: Rule, frame: Frame, e: Emit, imp = false): void {
     if (idt) put(e, idt);
     put(e, '}\n');
     if (e.positions) e.positions.push({ node: rule, type: rule.type, start, end: e.off });
+    if (rootSibling) {
+      lb.parentKey = frame;
+      lb.header = header;
+      lb.depth = e.depth;
+      lb.endChunks = e.chunks.length;
+    }
   }
   // [extend] split-out exact extenders (target has surviving nested children):
   // sibling rules carrying only the target's DIRECT declarations (empty → drop).
@@ -4326,19 +6528,34 @@ function emitNestedRule(rule: Rule, frame: Frame, e: Emit, imp = false): void {
   // [extend] hoisted (flattened) children at this rule's depth: a `renest` child
   // emits NESTED (composed cross-`&` header, children literal); a `collapse` child
   // emits FLAT.
-  for (const h of hoist) {
-    if (e.extends?.nestedPlan.get(h.rule)?.hoistNested) emitNestedRule(h.rule, h.frame, e, imp);
-    else emitHoisted(h.rule, h.frame, e);
-  }
+  const runHoist = (index: number): MaybePromise<void> => {
+    for (let hoistIndex = index; hoistIndex < hoist.length; hoistIndex++) {
+      const h = hoist[hoistIndex]!;
+      const emitted = extendProjection(h.frame, e)?.nestedPlan.get(h.rule)?.hoistNested
+        ? emitNestedRule(h.rule, h.frame, e, imp)
+        : emitHoisted(h.rule, h.frame, e);
+      if (isThenable(emitted)) return emitted.then(() => runHoist(hoistIndex + 1));
+    }
+  };
+  return runHoist(0);
+  };
+  return mapMaybe(emitNestedBody(rule.body, childFrame, e, hoist, imp, childSource), finish);
 }
 
 /** Emit a flattened rule (and its descendants) via the flat path at `e.depth`,
  * using the nested-mode hoist header (flat composition + `:is()`-compaction). */
-function emitHoisted(rule: Rule, frame: Frame, e: Emit): void {
+function emitHoisted(rule: Rule, frame: Frame, e: Emit): MaybePromise<void> {
   const prev = e.hoistMode;
   e.hoistMode = true;
-  flatten(rule, null, null, frame, e);
+  const emitted = flatten(rule, null, null, frame, e);
+  if (isThenable(emitted)) {
+    return emitted.then(
+      () => { e.hoistMode = prev; },
+      error => { e.hoistMode = prev; throw error; },
+    );
+  }
   e.hoistMode = prev;
+  return emitted;
 }
 
 /**
@@ -4347,7 +6564,14 @@ function emitHoisted(rule: Rule, frame: Frame, e: Emit): void {
  * body's declarations join the call-site block and its nested rules nest under
  * the call site (own selectors). No clone, no per-placement node build.
  */
-function expandNestedCall(call: MixinCall, frame: Frame, e: Emit, imp = false): void {
+function expandNestedCall(
+  call: MixinCall,
+  frame: Frame,
+  e: Emit,
+  imp = false,
+  source: NestedHeaderSource | null = null,
+  sharedLeaves?: NestedLeafBuffer,
+): MaybePromise<void> {
   // Candidate resolution mirrors the flat-path {@link expandCall}: a bare `.m()`
   // walks the scope chain accumulating same-name overloads (explicit `MixinDef`s
   // AND paren-less rulesets callable as zero-arg mixins), a namespaced/compound
@@ -4364,16 +6588,23 @@ function expandNestedCall(call: MixinCall, frame: Frame, e: Emit, imp = false): 
   const candidates = rawCandidates.some((d) => d.ruleMixin === true)
     ? rawCandidates.filter((d) => d.ruleMixin !== true || !parentExcludes(frame, d.body))
     : rawCandidates;
-  if (candidates.length === 0) return;
+  if (candidates.length === 0) {
+    unresolvedCallable(call, e);
+    return;
+  }
   const selected = dispatch(candidates, call, frame, e, homes);
+  if (selected.length === 0) {
+    unresolvedCallable(call, e);
+    return;
+  }
   const bodyImp = imp || call.important; // [important] propagate call-level `!important`
   if (e.mixinDepth >= MAX_MIXIN_DEPTH) {
     throw new RangeError('maximum mixin recursion depth exceeded');
   }
   e.mixinDepth++;
-  try {
-    for (const { def, bindings } of selected) {
-      captureArgDefFrames(bindings, frame);
+  const run = (start: number): MaybePromise<void> => {
+      for (let index = start; index < selected.length; index++) {
+        const { def, bindings } = selected[index]!;
       // [closure] free variables resolve in the mixin's DEFINITION scope first, with
       // the call-site scope as a fallback (a namespaced call is confined to the
       // namespace, so it takes no caller fallback) — the same layering `expandCall`
@@ -4382,53 +6613,119 @@ function expandNestedCall(call: MixinCall, frame: Frame, e: Emit, imp = false): 
       const callFrame: Frame = {
         parent: homeFrame,
         mixins: collectMixins(def.body),
-        vars: mergeVars(bindings, collectVars(def.body)),
+        declIndex: collectDeclIndex(def.body, bindings), cells: cellsForParams(bindings), reassign: null,
         statements: def.body,
+        sourceOwner: sourceOwnerForBody(def.body, frame, e),
         ...(namespaced || homeFrame === frame ? {} : { fallback: frame }),
       };
-      emitNestedBody(def.body, callFrame, e, undefined, bodyImp);
+      captureArgDefFrames(bindings, frame, callFrame, e);
+      const placement = def.ruleMixin === true && source !== null
+        ? { source, callFrame } satisfies NestedRuleMixinPlacement
+        : null;
+      const executeBody = () => mapMaybe(
+        prepareBodyPlugins(def.body, callFrame, e),
+        () => {
+          return emitNestedBody(def.body, callFrame, e, undefined, bodyImp, source, placement, sharedLeaves);
+        },
+      );
+      const emitted = withSourceOwner(e, callFrame.sourceOwner, executeBody, def.body);
+      if (isThenable(emitted)) {
+        return emitted.then(() => {
+          leakBodyVars(frame, def.body, callFrame, e);
+          publishOrderedMixins(frame, frameOrderedMixins(callFrame, e), callFrame);
+          if (def.ruleMixin !== true) publishExplicitRulesets(frame, def.body, callFrame);
+          return run(index + 1);
+        });
+      }
       // [scope-leak] the mixin's own `@x:` declarations and nested rulesets unlock
       // into the caller scope for later siblings (less@4 splices evaluated rules as
       // siblings of the call), matching the flat path.
       leakBodyVars(frame, def.body, callFrame, e);
-      publishMixins(frame, frameOrderedMixins(callFrame, e), callFrame);
-    }
-  } finally {
-    e.mixinDepth--;
+      publishOrderedMixins(frame, frameOrderedMixins(callFrame, e), callFrame);
+      if (def.ruleMixin !== true) publishExplicitRulesets(frame, def.body, callFrame);
+      }
+  };
+  const emitted = run(0);
+  if (isThenable(emitted)) {
+    return emitted.then(
+      () => { e.mixinDepth--; },
+      error => { e.mixinDepth--; throw error; },
+    );
   }
+  e.mixinDepth--;
+  return emitted;
 }
 
 /** Expand a detached-ruleset call in nested mode. */
-function expandNestedDetachedCall(call: DetachedCall, frame: Frame, e: Emit, imp = false): void {
+function expandNestedReferenceCall(
+  call: Reference,
+  frame: Frame,
+  e: Emit,
+  imp = false,
+  source: NestedHeaderSource | null = null,
+  sharedLeaves?: NestedLeafBuffer,
+): MaybePromise<void> {
   // A variable bound to a MIXIN CALL (`@alias: .something(foo); @alias();`) is
   // dispatched as that call, not spliced as a detached ruleset.
-  const mc = resolveToMixinCall(lookupVar(frame, call.varName), frame);
-  if (mc) { expandNestedCall(mc, frame, e, imp); return; }
-  const r = detachedCallFrame(call.varName, frame, e);
-  if (!r) return;
-  emitNestedBody(r.dr.body, r.callFrame, e, undefined, imp);
+  const step = call.steps.at(-1);
+  if (step?.type !== 'Call') return;
+  const resolved = resolveReferenceResult(call, frame, e);
+  if (!resolved) {
+    unresolvedReference(call, e);
+    return;
+  }
+  if (resolved.value.type === 'MixinCall') {
+    return expandNestedCall(resolved.value, frame, e, imp, source, sharedLeaves);
+  }
+  if (step.args.length !== 0) {
+    throw new Error('Reference call arguments require a callable mixin target.');
+  }
+  const dr = resolveDetachedRuleset(resolved.value, resolved.frame, e);
+  if (!dr) return;
+  const r = referenceCallFrame(dr, frame, resolved.frame, resolved.sourceOwner);
+  const executeBody = () => mapMaybe(
+    prepareBodyPlugins(r.dr.body, r.callFrame, e),
+    () => emitNestedBody(r.dr.body, r.callFrame, e, undefined, imp, source, null, sharedLeaves),
+  );
+  return withSourceOwner(e, r.callFrame.sourceOwner, executeBody, r.dr.body);
 }
 
 /** Expand an `each()` loop in nested mode: splice the callback body once per item
  *  with that iteration's loop-variable bindings. (A cross-iteration `+`/`+_` merge
  *  does not fold across the per-iteration bodies in nested mode — flat mode does.) */
-function expandNestedFor(node: For, frame: Frame, e: Emit, imp = false): void {
+function expandNestedFor(
+  node: For,
+  frame: Frame,
+  e: Emit,
+  imp = false,
+  source: NestedHeaderSource | null = null,
+  sharedLeaves?: NestedLeafBuffer,
+): MaybePromise<void> {
   const items = forItems(node.iterable, frame, e);
-  for (let i = 0; i < items.length; i++) {
-    const { value, key } = items[i]!;
+  const run = (start: number): MaybePromise<void> => {
+  for (let i = start; i < items.length; i++) {
+    const item = items[i]!;
+    const { value, key } = item;
     const index = dimension(i + 1);
-    const bindings = new Map<string, ValueNode>();
-    if (node.valueName) bindings.set(node.valueName, value);
-    if (node.keyName) bindings.set(node.keyName, key ?? index);
-    if (node.indexName) bindings.set(node.indexName, index);
+    const bindings = bindForEntry(node, value, key, index);
+    const extendPlacement = e.plannedForExtendPlacements?.get(node)?.[i];
     const loopFrame: Frame = {
       parent: frame,
       mixins: collectMixins(node.rules),
-      vars: mergeVars(bindings, collectVars(node.rules)),
+      declIndex: collectDeclIndex(node.rules, bindings), cells: cellsForParams(bindings), reassign: null,
       statements: node.rules,
+      sourceOwner: frame.sourceOwner ?? null,
+      ...(extendPlacement ? { extendPlacement } : {}),
     };
-    emitNestedBody(node.rules, loopFrame, e, undefined, imp);
+    bindForDetached(loopFrame, bindings, item);
+    const emitted = mapMaybe(
+      prepareBodyPlugins(node.rules, loopFrame, e),
+      () => emitNestedBody(node.rules, loopFrame, e, undefined, imp, source, null, sharedLeaves),
+    );
+    if (isThenable(emitted)) return emitted.then(() => run(i + 1));
   }
+  };
+  return run(0);
 }
 
 /**
@@ -4437,7 +6734,12 @@ function expandNestedFor(node: For, frame: Frame, e: Emit, imp = false): void {
  * nested rulesets STAY nested (they are not flattened). An at-rule whose body
  * renders empty is dropped entirely.
  */
-function emitNestedAtRuleBlock(node: AtRuleBlock, frame: Frame, e: Emit): void {
+function emitNestedAtRuleBlock(
+  node: AtRuleBlock,
+  frame: Frame,
+  e: Emit,
+  source: NestedHeaderSource | null = null,
+): MaybePromise<void> {
   const markChunks = e.chunks.length;
   const markOff = e.off;
   const markPos = e.positions ? e.positions.length : 0;
@@ -4446,10 +6748,13 @@ function emitNestedAtRuleBlock(node: AtRuleBlock, frame: Frame, e: Emit): void {
   if (idt) put(e, idt);
   put(e, node.name);
   if (node.prelude !== null) {
-    let p = evalBytesSync(node.prelude, frame, e);
     const lname = node.name.toLowerCase();
-    if (lname === '@supports') p = normalizeSupportsPrelude(p);
-    else if (lname === '@media' || lname === '@container') p = normalizeQueryPrelude(p);
+    let p = lname === '@supports'
+      ? normalizeSupportsPrelude(evalSupportsPreludeSync(node.prelude, frame, e))
+      : lname === '@media' || lname === '@container'
+        ? evalQueryPreludeSync(node.prelude, frame, e)
+        : evalBytesSync(node.prelude, frame, e);
+    if (lname === '@media' || lname === '@container') p = normalizeQueryPrelude(p);
     if (p.length > 0) {
       put(e, ' ');
       put(e, p);
@@ -4460,11 +6765,11 @@ function emitNestedAtRuleBlock(node: AtRuleBlock, frame: Frame, e: Emit): void {
   const bodyFrame: Frame = {
     parent: frame,
     mixins: collectMixins(node.body),
-    vars: collectVars(node.body),
+    declIndex: collectDeclIndex(node.body), cells: null, reassign: null,
     statements: node.body,
   };
   e.depth++;
-  emitNestedBody(node.body, bodyFrame, e);
+  const finish = (): void => {
   e.depth--;
   if (e.chunks.length === afterHeader) {
     e.chunks.length = markChunks;
@@ -4475,4 +6780,9 @@ function emitNestedAtRuleBlock(node: AtRuleBlock, frame: Frame, e: Emit): void {
   if (idt) put(e, idt);
   put(e, '}\n');
   if (e.positions) e.positions.push({ node, type: node.type, start, end: e.off });
+  };
+  return mapMaybe(
+    prepareBodyPlugins(node.body, bodyFrame, e),
+    () => mapMaybe(emitNestedBody(node.body, bodyFrame, e, undefined, false, source), finish),
+  );
 }

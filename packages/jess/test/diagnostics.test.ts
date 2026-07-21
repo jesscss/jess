@@ -1,4 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import { Compiler } from '../src/index.js';
 import { outputDiagnostics } from '../src/diagnostics.js';
 import type { ErrorDiagnostic, WarningDiagnostic } from '@jesscss/core';
@@ -20,31 +23,6 @@ describe('Diagnostic Output', () => {
     expect(stderrSpy).toHaveBeenCalled();
 
     stderrSpy.mockRestore();
-  });
-
-  it('should output warnings using CodeDebug', async () => {
-    const compiler = new Compiler({
-      suppressWarnings: false,
-      breakOnError: false
-    });
-    const stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
-
-    // Use safeCompile to collect warnings without throwing
-    const result = await compiler.safeCompile('test/fixtures/warning.less');
-
-    // Output diagnostics explicitly (safeCompile doesn't auto-output)
-    if (result.warnings.length > 0) {
-      outputDiagnostics(result.errors, result.warnings, {
-        suppressWarnings: false,
-        breakOnError: false
-      });
-      expect(stdoutSpy).toHaveBeenCalled();
-    } else {
-      // If no warnings, verify the test file actually produces warnings
-      expect(result.warnings.length).toBeGreaterThan(0);
-    }
-
-    stdoutSpy.mockRestore();
   });
 
   it('should format diagnostics correctly', () => {
@@ -104,7 +82,7 @@ describe('Eval error source location', () => {
 
     expect(result.errors).toHaveLength(1);
     const err = result.errors[0]!;
-    expect(err.phase).toBe('eval');
+    expect(err.phase).toBe('resolve');
     // The `.missing-mixin();` call is on line 4, column 1 — NOT the old `1:1`.
     expect(err.line).toBe(4);
     expect(err.column).toBe(1);
@@ -129,6 +107,24 @@ describe('Eval error source location', () => {
     expect(err.line).toBe(2);
     expect(err.column).toBe(10);
     expect(err.lines?.[2]).toContain('@nope');
+  });
+
+  it('keeps an undefined-variable diagnostic precise through the public file route', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-ast-diagnostic-'));
+    const filePath = path.join(dir, 'undef.less');
+    fs.writeFileSync(filePath, '.a {\n  width: @nope;\n}\n');
+    try {
+      const result = await evalCompiler().safeRender(filePath, { suppressWarnings: true });
+      expect(result.errors).toHaveLength(1);
+      const err = result.errors[0]!;
+      expect(err.phase).toBe('resolve');
+      expect(err.filePath).toBe(filePath);
+      expect(err.line).toBe(2);
+      expect(err.column).toBe(10);
+      expect(err.lines?.[2]).toContain('@nope');
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 

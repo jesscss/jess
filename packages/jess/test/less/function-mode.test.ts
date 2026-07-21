@@ -41,6 +41,8 @@ describe('functionMode', () => {
       // … and emits exactly the function/unresolved warning
       const warnCodes = (r.warnings ?? []).map((w: any) => w.code);
       expect(warnCodes, `${f} should warn`).toContain('function/unresolved');
+      expect(warnCodes.filter((code: string) => code === 'function/unresolved'), `${f} should emit one unresolved-function diagnostic`)
+        .toHaveLength(1);
     }
   }, 60000);
 

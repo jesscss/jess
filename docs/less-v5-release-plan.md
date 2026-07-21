@@ -33,6 +33,22 @@ provenance model** (see the M1 / emit-context provenance discussion in the
 core-architecture docs), so they can't be built until that mechanism is decided —
 hence Phase D, last.
 
+## Versioned language retirements
+
+The following Less 4 compatibility spellings remain accepted with a deprecation
+diagnostic. Less 5 rejects them at parse time; they must not become permanent
+canonical-AST capabilities.
+
+| Compatibility spelling | Less 4 behavior | Less 5 behavior |
+|---|---|---|
+| Numeric-leading variable name, such as `@1` or `@{1}` | Accept and warn | Reject |
+| Dash-only mixin name, `.-()` | Accept and warn | Reject |
+
+The parser must retain structured recognition long enough for Less 4 to report
+the right diagnostic. The warning is a plugin/context diagnostic, not a parser
+side effect; the Less 5 grammar simply excludes the spelling. The source forms
+were verified against Less 4.6.3 before this policy was recorded.
+
 ## Phase C — config-lane URL / import features
 
 | Fixture | Feature | Why deferred | Target |

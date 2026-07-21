@@ -47,7 +47,7 @@ The fields and methods the compiler looks for:
 | --- | --- |
 | `name` | Identifier for the plugin, e.g. `'less'`. |
 | `supportedExtensions` | Extensions this plugin can parse, e.g. `['.less']`. |
-| `safeParse(filePath, source, opts)` | Parse a file, returning `{ tree, errors, warnings }` (never throws). |
+| `safeParse(filePath, source, opts)` | Parse a file, returning a canonical document result plus diagnostics (never throws). |
 | `parse(filePath, source)` | Throwing variant, if you prefer it over `safeParse`. |
 | `expandImport(importPath, currentDir)` | Turn an import specifier into candidate paths. |
 | `resolve(path, currentDir, searchPaths)` | Map a specifier to absolute path(s). |
@@ -75,32 +75,40 @@ provides a `safeParse` method. The compiler selects a plugin for a file by match
 `supportedExtensions` against the file's extension:
 
 ```ts
-import { AbstractPlugin, type ISafeParseResult } from '@jesscss/core';
+import { AbstractPlugin } from '@jesscss/core';
 
 export class MyPlugin extends AbstractPlugin {
   name = 'my-lang';
   supportedExtensions = ['.mylang'];
 
-  safeParse(filePath: string, source: string): ISafeParseResult {
-    // ...parse, returning { tree, errors, warnings }
+  safeParse(filePath: string, source: string) {
+    // ...parse once through the dialect grammar, returning a Stylesheet and diagnostics
   }
 }
 ```
 
-`safeParse` returns a result object rather than throwing:
+`safeParse` returns a result object rather than throwing. Its document is the
+canonical AST v2 `Stylesheet` (omit it when parsing failed):
 
-- `tree` — the parsed `Rules` root (omit it when parsing failed).
+- `document` — the parsed `Stylesheet` root.
 - `errors` — an array of error diagnostics; a non-empty array aborts compilation of
   the file.
 - `warnings` — non-fatal diagnostics (for example deprecation notices).
+
+Older plugin examples used `{ tree: Rules, errors, warnings }`. That is legacy
+tree terminology, not the AST v2 contract, and must not be copied into a new
+plugin or adapter. `Context` remains the dispatcher that calls the installed
+plugin's parse and import-resolution methods; this change does not create a
+second loader or resolver path.
 
 ## 2. Extending parsing and resolution
 
 The Less and SCSS plugins are the full-featured examples. Each one:
 
-The legacy Less tree parser has been removed. The Less package currently exposes
-only grammar and CST APIs; a parser-local direct AST entry is required before a
-Less plugin can provide tree parsing again.
+The public direction for every dialect, including Less, is direct Parseman
+grammar reduction to `Stylesheet` through its package `parse()` operation. A
+CST may still be exposed for explicit language-service/document use, but it is
+not an AST bridge or a production parser route.
 
 **Customizes import resolution.** `expandImport` turns a bare specifier into the
 candidate filenames to try (e.g. `foo` → `./foo.less`), and `resolve` maps

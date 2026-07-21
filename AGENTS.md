@@ -15,6 +15,55 @@ Use guidance in this order:
 
 If a permanent rule and a transient note disagree, prefer the permanent rule unless the transient note clearly says it supersedes it for the active task.
 
+An explicit owner decision in the active task supersedes both prior plans and
+these default operating preferences. Treat design documents as evidence and
+plans to revise, not immutable law. In particular, an internal consumer,
+compatibility adapter, or old node shape must not block replacing it with the
+chosen canonical architecture; delete or intentionally break that internal
+surface in the cutover, then repair only the consumers still in scope.
+
+## Core Naming Boundaries
+
+Name public production operations for the stable concept (`parse`, `build`,
+`render`, `Document`, `RenderOptions`), not a temporary migration (`Ast`) or
+an input dialect (`Less`, `Scss`, `Jess`). The module/package path identifies
+the dialect; every dialect should expose the same operation vocabulary. Thus
+`parseLess`/`renderLess` are transitional names to remove, not an API pattern
+to spread. Test-only bridge labels may remain descriptive until that bridge is
+deleted. When replacing a transitional seam, remove its name rather than
+carrying it forward as an alias.
+
+For AST construction, do not introduce a replacement `BuilderHost`,
+`ParseHost`, generic action registry, or host-dispatch abstraction. The grammar
+reduction in each parser owns construction and calls parser-local AST factory
+functions directly. Move shared syntax only into explicit shared grammar
+combinators or core node factories; never into a new runtime construction host.
+
+## Parser Runtime Boundary
+
+In `packages/css-parser`, `packages/less-parser`, `packages/scss-parser`, and
+`packages/jess-parser`, runtime recognition belongs exclusively to Parseman
+grammar combinators and their macro-compiled output. No handwritten runtime
+`RegExp`, regex literal, `.exec`/`.test`/`.match`, `charCodeAt` scanner,
+character-by-character recognizer, or recovery re-parser may survive in parser
+package source. Move the recognition into Parseman grammar structure, or delete
+it. This does not prohibit generated macro output or Parseman internals; it
+prohibits handwritten runtime scanner/regex logic in the parser packages.
+
+Imports obey the same rule: Parseman parses each source file exactly once into
+typed import facts. Resolution may load an imported file and parse that new
+file once, but must never re-parse already-read source for variables, options,
+or splice boundaries. No import-specific parser, variable-sniff pass, or
+text-splice protocol is allowed.
+
+Interpolation is grammar structure, never a recognized string shape. For every
+interpolation-bearing context—quoted strings, import specifiers, at-rule
+preludes, selectors, property names, values, and paths—use Parseman
+combinators, normally `many(choice(literalChunk, interpolation))`, or a
+strictly better equivalent that retains the same typed segments. Do not scan,
+sniff, regex-match, split, or re-parse text to find `@{…}`, `${…}`, `#{…}`, or
+their exact-shape variants after grammar recognition.
+
 ## Keep Guidance Durable
 
 Permanent guidance should avoid information that goes stale quickly:

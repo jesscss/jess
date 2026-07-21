@@ -1,17 +1,91 @@
 import {
   type Plugin,
   AbstractPlugin,
+  type Context,
   extractRelevantLines,
   type ISafeParseResult,
   type SafeParseOptions,
   type ErrorDiagnostic
 } from '@jesscss/core';
+import { makeDimension, makeKeyword, makeQuoted, type Fn, type PluginHost, type ValueObj } from '@jesscss/core/value';
 import type { EqualityMode, MathMode, UnitMode, LessOptions } from 'styles-config';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { expandLessImportCandidates } from '@jesscss/style-resolver';
+import { parse as parseLess } from '@jesscss/less-parser';
 
 export type LessPluginOptions = LessOptions;
+
+type NativeLessFunction = (...args: unknown[]) => unknown;
+type NativeLessPlugin = { install?: (less: NativeLessApi, manager: undefined, functions: NativeLessFunctionRegistry) => void };
+type NativeLessFunctionRegistry = {
+  add(name: string, fn: NativeLessFunction): void;
+  addMultiple(functions: Record<string, NativeLessFunction>): void;
+};
+type NativeLessApi = {
+  functions: { functionRegistry: NativeLessFunctionRegistry };
+  /** Return-value constructors exposed by Less's public plugin API. These are
+   * plain structural values; core owns their conversion back to typed Values. */
+  tree: {
+    Dimension: new (value: number, unit?: string) => { type: 'Dimension'; value: number; unit: string };
+    Quoted: new (quote: string, value: string, escaped?: boolean) => { type: 'Quoted'; quote: string; value: string; escaped: boolean };
+  };
+};
+
+function toNativeLessValue(value: ValueObj): unknown {
+  switch (value.type) {
+    case 'Dimension': return { type: 'Dimension', value: value.number, unit: value.unit, valueOf: () => value.number };
+    case 'Quoted': return { type: 'Quoted', value: value.value, quote: value.quote, escaped: value.escaped, valueOf: () => value.bytes };
+    case 'Color': return { type: 'Color', rgb: value.rgb, alpha: value.alpha, valueOf: () => value.bytes };
+    case 'List': return { type: 'Expression', value: value.items.map(toNativeLessValue), valueOf: () => value.bytes };
+    default: return { type: 'Anonymous', value: value.bytes, valueOf: () => value.bytes };
+  }
+}
+
+function fromNativeLessValue(value: unknown): ValueObj {
+  if (typeof value === 'number') return makeDimension(value);
+  if (typeof value === 'string') return makeKeyword(value);
+  if (value && typeof value === 'object') {
+    const candidate = value as { type?: unknown; value?: unknown; unit?: unknown; quote?: unknown; escaped?: unknown; valueOf?: () => unknown };
+    if ((candidate.type === 'Dimension' || candidate.type === 'Num') && typeof candidate.value === 'number') {
+      return makeDimension(candidate.value, typeof candidate.unit === 'string' ? candidate.unit : '');
+    }
+    if (candidate.type === 'Quoted' && typeof candidate.value === 'string') {
+      return makeQuoted(candidate.value, candidate.quote === "'" ? "'" : '"', candidate.escaped === true);
+    }
+    if (typeof candidate.value === 'string') return makeKeyword(candidate.value);
+    if (typeof candidate.valueOf === 'function') return makeKeyword(String(candidate.valueOf()));
+  }
+  return makeKeyword(value == null ? '' : String(value));
+}
+
+function nativeLessFn(name: string, fn: NativeLessFunction): Fn {
+  return {
+    name: name.toLowerCase(),
+    variadic: true,
+    params: [],
+    body: list => {
+      const result = fn(...list.items.map(toNativeLessValue));
+      return result !== null && typeof result === 'object' && 'then' in result && typeof result.then === 'function'
+        ? Promise.resolve(result).then(fromNativeLessValue)
+        : fromNativeLessValue(result);
+    }
+  };
+}
+
+type LoadedPluginModule = {
+  readonly functions?: Record<string, NativeLessFunction>;
+};
+
+function parseErrorLocation(source: string, error: unknown): { line: number; column: number } {
+  const offset = typeof error === 'object' && error !== null && 'offset' in error && typeof error.offset === 'number'
+    ? Math.max(0, Math.min(source.length, error.offset))
+    : 0;
+  const before = source.slice(0, offset);
+  const line = before.split('\n').length;
+  const column = offset - (before.lastIndexOf('\n') + 1) + 1;
+  return { line, column };
+}
 
 /**
  * The Less plugin's default option values — the single source of truth for the
@@ -38,6 +112,7 @@ export class LessPlugin extends AbstractPlugin {
   leakyScope: boolean;
   bubbleRootAtRules: boolean;
   collapseNesting: boolean;
+  private readonly pluginHosts = new WeakMap<Context, PluginHost>();
 
   constructor(public opts: LessPluginOptions = {}) {
     super();
@@ -83,6 +158,46 @@ export class LessPlugin extends AbstractPlugin {
     void currentDir;
     // Keep import expansion in sync with the language service.
     return expandLessImportCandidates(importPath);
+  }
+
+  setContext(context: Context): void {
+    let host = this.pluginHosts.get(context);
+    if (!host) {
+      const fns: Fn[] = [];
+      const registry: NativeLessFunctionRegistry = {
+        add: (name, fn) => { fns.push(nativeLessFn(name, fn)); },
+        addMultiple: functions => { for (const [name, fn] of Object.entries(functions)) registry.add(name, fn); }
+      };
+      const less: NativeLessApi = {
+        functions: { functionRegistry: registry },
+        tree: {
+          Dimension: class {
+            type = 'Dimension' as const;
+            constructor(readonly value: number, readonly unit = '') {}
+          },
+          Quoted: class {
+            type = 'Quoted' as const;
+            constructor(readonly quote: string, readonly value: string, readonly escaped = false) {}
+          },
+        },
+      };
+      const configured = (this.opts as LessPluginOptions & { plugins?: NativeLessPlugin[] }).plugins ?? [];
+      for (const plugin of configured) plugin.install?.(less, undefined, registry);
+      host = {
+        ...(fns.length === 0 ? {} : { globalFns: fns }),
+        loadPlugin: async ({ specifier, options }) => {
+          const loaded = await context.getPluginModule(specifier, options);
+          const module = loaded.module as LoadedPluginModule;
+          const functions = module && typeof module === 'object' && module.functions && typeof module.functions === 'object'
+            ? module.functions
+            : undefined;
+          if (!functions) return [];
+          return Object.entries(functions).map(([name, fn]) => nativeLessFn(name, fn));
+        }
+      };
+      this.pluginHosts.set(context, host);
+    }
+    context.pluginHost = host;
   }
 
   override resolve(filePath: string | string[], currentDir: string, searchPaths: string[]) {
@@ -150,21 +265,26 @@ export class LessPlugin extends AbstractPlugin {
 
   safeParse(filePath: string, source: string, parseOptions?: SafeParseOptions): ISafeParseResult {
     void parseOptions;
-    const message = 'Less tree parsing is unavailable: the legacy parser entry was deleted.';
-    return {
-      errors: [{
-        code: 'parse/unavailable',
-        phase: 'parse',
-        message,
-        reason: message,
-        fix: 'Use the Less CST API until a parser-local direct AST entry exists.',
-        filePath,
-        line: 1,
-        column: 1,
-        lines: extractRelevantLines(source, 1)
-      } satisfies ErrorDiagnostic],
-      warnings: []
-    };
+    try {
+      return { document: parseLess(source), errors: [], warnings: [] };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const location = parseErrorLocation(source, error);
+      return {
+        errors: [{
+          code: 'parse/syntax-error',
+          phase: 'parse',
+          message,
+          reason: message,
+          fix: 'Check the Less source against the supported grammar.',
+          filePath,
+          line: location.line,
+          column: location.column,
+          lines: extractRelevantLines(source, location.line)
+        } satisfies ErrorDiagnostic],
+        warnings: []
+      };
+    }
   }
 }
 

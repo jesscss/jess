@@ -4,183 +4,54 @@ audiences:
   - jess
 origin: jess
 ---
-import Tabs from '@theme/Tabs';
-import TabItem from '@theme/TabItem';
 
-Jess supports both scoped (Less- and CSS-style) and linear (Sass-style) variables.
+Jess has two explicit variable-reference modes.
 
-## Syntax
+| Reference | Meaning |
+| --- | --- |
+| `$foo` | Live reference: read the value currently bound for `foo` at evaluation time. |
+| `$$foo` | Scoped/final lookup. |
 
-Jess uses Sass-style declarations and references of variables. The difference is that, in Jess, in the declaration `$color`, the name of the variable is `color`, not `$color`. In basic cases, this is not an important distinction, but it becomes important within expressions or in accessing namespaces.
+`$!` is retired. Do not use it in new Jess source and do not treat it as a
+compatibility spelling.
 
-### Examples
+## Choosing a reference
+
+Use `$foo` when the value should be live at the point the expression evaluates.
+Use `$$foo` when you need the scoped/final lookup behavior.
 
 ```scss
-$color: #06c; // normal declaration
-
-.box {
-  color: $color; // normal usage
-  color: $(color); // same as $color
+.card {
+  color: $theme;    // live reference
+  border: $$theme;  // scoped/final lookup
 }
 ```
 
-## Assignment operators
+## Declarations and assignments
 
-Jess variables support a few assignment operators, written glued to the variable
-name (except `:=`, which is spaced):
+Both `$foo: value` and `$$foo: value` create or update **both** the live and
+scoped bindings. The sigil changes lookup behavior, not the kind of binding
+created.
 
-| Operator | Name | Meaning |
-| --- | --- | --- |
-| `$foo: value` | assign | normal declaration (scoped) |
-| `$foo?: value` | default-assignment | assign only if `foo` is not already defined. This is Jess's equivalent of SCSS `!default` (which is not Jess). |
-| `$foo := value` | nearest-outer (non-shadowing) assign | reassign the *nearest enclosing scope* that already defines `foo` (JS-block style), rather than creating a new shadowing local. This is NOT `!global` — it targets the nearest binding, not the top one. |
-
-There is no variable compound-add operator — write it explicitly:
-
-```scss
-$foo?: 1;         // sets foo to 1 only if it wasn't already defined
-$n: $n + 1;       // compound-add is spelled out; `+` follows $n's type
-$foo := bar;      // reassign the nearest enclosing `foo`, do not shadow
-```
-
-:::info
-
-`$foo := bar` reassigns the nearest enclosing binding (not the global one — that
-distinguishes it from Sass `!global`). `$!foo: bar` (the `$!`
-[live-binding](#live-binding) form) is the related "assign the live binding"
-spelling.
-
-:::
-
-## Scoped variables
-
-Like CSS and Less, Jess variables have a value per scope. This is similar to how CSS custom properties work, but the scope is according to the stylesheet, instead of the DOM (as it is with CSS custom properties).
-
-<Tabs>
-  <TabItem value="jess" label="Jess">
-    ```scss
-    .btn {
-      // In Jess/Less this is fine
-      color: $color;
-      $color: #06c;
-      // In CSS this is also fine
-      background: var(--background);
-      --background: white;
-    }
-    ```
-  </TabItem>
-  <TabItem value="less" label="Less">
-    ```scss
-    .btn {
-      color: @color;
-      @color: #06c;
-      background: var(--background);
-      --background: white;
-    }
-    ```
-  </TabItem>
-  <TabItem value="sass" label="Sass (unsupported)">
-    ```scss
-    .btn {
-      color: $color; // Error
-      $color: #06c;
-      // ...
-    }
-    ```
-  </TabItem>
-</Tabs>
-
-## Live binding
-
-By default a `$var` reference reads the value the variable had *at that point* in
-the scope. Sometimes you want the **live** value — the latest value the variable
-holds, even if it is reassigned later in the same scope. Jess writes this with the
-`$!` sigil.
-
-Reading `$!foo` yields the live value:
-
-<Tabs>
-  <TabItem value="jess" label="Jess">
-    ```scss
-    .btn {
-      $color: red;
-      color: $!color; // live: reflects the latest value
-      $color: blue;   // color resolves to blue
-    }
-    ```
-  </TabItem>
-  <TabItem value="sass" label="Sass">
-    ```scss
-    .btn {
-      $color: red;
-      color: $color; // value is red (read at this point)
-      $color: blue;
-    }
-    ```
-  </TabItem>
-</Tabs>
-
-You can also **assign the live binding** — reassign an existing outer variable
-rather than shadowing it — with `$!foo: value`. This is the non-shadowing
-counterpart to the [`:=` operator](#assignment-operators):
-
-<Tabs>
-  <TabItem value="js" label="JavaScript">
-    ```js
-    let color = 'red';
-    {
-      color = 'blue'; // do not shadow, reassign
-    }
-    console.log(color); // blue
-    ```
-  </TabItem>
-  <TabItem value="jess" label="Jess">
-    ```scss
-    $color: red;
-    .btn {
-      $!color: blue; // reassign the existing `color`, do not shadow
-    }
-    .box {
-      color: $color; // blue
-    }
-    ```
-  </TabItem>
-  <TabItem value="sass" label="Sass">
-    ```scss
-    $color: red;
-    .btn {
-      $color: blue !global; // Sass's !global
-    }
-    .box {
-      color: $color; // blue
-    }
-    ```
-  </TabItem>
-</Tabs>
-
-## Readonly variables
-
-Jess supports readonly (`const`-style) variables with `!`.
-
-Prepend readonly variables (`const`-type vars) with `!`
+| Form | Lookup used by the operation |
+| --- | --- |
+| `$foo?: value` | Test the live map; create/update both bindings if absent. |
+| `$$foo?: value` | Test the scoped/final map; create/update both bindings if absent. |
+| `$foo := value` | Update the live/current binding. |
+| `$$foo := value` | Update the scoped/final binding. |
 
 ```scss
-!$color: red;
-$color: blue; // Error
-```
-
-## Private variables
-
-Variables are "public" on a namespace by default. To make a variable private, prepend the variable or key name with `_`.
-
-```scss
-$colors: {
-  _private: unknown;
-  primary: #06c;
-}
-
-.box {
-  color: $colors.primary;
-  color: $colors._private; // Error, '_private' not found
+$theme: blue;       // creates both bindings (`$$theme: blue` does too)
+.card {
+  color: $theme;    // live reference
+  border: $$theme;  // scoped/final lookup
 }
 ```
+
+SCSS retains its own `$name: value`, `!default`, and `!global` syntax at the
+input boundary; see [Sass (SCSS) compatibility](/docs/guides/coming-from-sass/scss-compatibility).
+
+## Private and readonly names
+
+The reference distinction stays the same for private and readonly bindings:
+`$name` is live and `$$name` is scoped/final.

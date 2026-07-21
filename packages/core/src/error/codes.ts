@@ -12,6 +12,8 @@ export type JessErrorCode =
   | 'import/circular-compose'
   | 'eval/bad-call-arity'
   | 'eval/type-mismatch'
+  | 'eval/invalid-function'
+  | 'eval/ambiguous-default'
   | 'eval/invalid-statement'
   | 'eval/property-in-root'
   | 'eval/ruleset-on-property'
@@ -78,6 +80,16 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
     summary: 'Type mismatch',
     reason: '${callee} expects ${expected}, got ${got}.',
     fix: 'Pass a ${expected}; convert or choose a compatible value.'
+  }],
+  ['eval/invalid-function', {
+    summary: 'Invalid function call',
+    reason: '"${name}" could not be evaluated: ${reason}',
+    fix: 'Pass arguments accepted by the function, or use functionMode: \'preserve\' to retain the CSS call.'
+  }],
+  ['eval/ambiguous-default', {
+    summary: 'Ambiguous default() mixin guard',
+    reason: 'More than one default() decision can match "${callee}".',
+    fix: 'Make the default() guard select exactly one mixin definition.'
   }],
   ['eval/invalid-statement', {
     summary: 'Value node is not valid as a statement',

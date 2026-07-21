@@ -1,5 +1,8 @@
 # Aggressive Cutting Review
 
+> This review applies to the public AST-v2 architecture. It does not authorize
+> a private AST grammar, CST-to-AST bridge, or later public wiring stage.
+
 Delete unnecessary machinery before adding code. A change may not introduce a
 parser host, action registry, bridge, compatibility alias, source reparse, or
 fallback path. New traversal, allocation, copying, metadata, helper/API
@@ -32,28 +35,6 @@ active architecture queue.
     "relations": ["calls <= admittedCalls", "admittedCalls <= admissionCalls", "admittedCalls <= featureBearingContainers", "featureBearingContainers < containers", "noFeatureAllocations === 0"],
     "evidence": {"command":["node","scripts/profile-less-benchmark.mjs","--assert-merge-contract","--assert-live-merge-contract"]},
     "sourceCheck": {"file":"packages/core/src/tree/rules.ts","caller":"_finishSourceOrderEvaluation","call":"_coalesceMergedDeclarations","guard":"hasMergeOutputSurface","profile":["MERGE_PROFILE_COUNTERS_KEY","recordMergeProfile"]}
-  },
-  {
-    "id": "css-private-direct-ast-family",
-    "kind": "private-unreachable",
-    "surface": "private CSS AST grammar development family",
-    "files": ["packages/css-parser/src/ast/grammar.ts"],
-    "privateGrammar": {
-      "entry": "packages/css-parser/src/ast/grammar.ts",
-      "coldConstructionOnly": true,
-      "why": "The module is intentionally absent from every CSS public entry and from the CST grammar. Its only importer is the focused construction test, so Parseman reductions and their temporary arrays run only when that test or a future explicit direct-AST root invokes this private rule."
-    }
-  },
-  {
-    "id": "less-private-direct-ast-family",
-    "kind": "private-unreachable",
-    "surface": "private Less AST grammar development family",
-    "files": ["packages/less-parser/src/ast/grammar.ts"],
-    "privateGrammar": {
-      "entry": "packages/less-parser/src/ast/grammar.ts",
-      "coldConstructionOnly": true,
-      "why": "The module is intentionally absent from every Less public entry and from the CST grammar. Its only importers are focused construction tests, so Parseman reductions and their temporary arrays run only when those tests or a future explicit direct-AST root invokes this private rule."
-    }
   },
   {
     "id": "ast-merge-importance-signal",

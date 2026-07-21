@@ -4,7 +4,6 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { Compiler } from '../../src/index.js';
 import lessPlugin from '@jesscss/plugin-less';
-import { lessCompatPlugin } from '@jesscss/plugin-less-compat';
 
 /**
  * Regression (bootstrap-wall8): a multi-slot interpolation like
@@ -20,7 +19,7 @@ import { lessCompatPlugin } from '@jesscss/plugin-less-compat';
  *
  * This mirrors Bootstrap's utilities/_display.less shape: an outer each drives a
  * `#(@content)` mixin whose body runs two sibling `& when` guards around an inner
- * each; the `@min`/`@infix` come from async compat-plugin calls.
+ * each; the selector's `@infix` comes from an async public Less-plugin call.
  */
 describe('wall8: multi-slot interpolation loop var after async plugin slot', () => {
   const dir = mkdtempSync(join(tmpdir(), 'wall8-repro-'));
@@ -37,8 +36,7 @@ describe('wall8: multi-slot interpolation loop var after async plugin slot', () 
           }
         }
       };
-      less.functions.functionRegistry.add('bpmin', async function (this: any, name: any, map: any) {
-        await Promise.resolve();
+      less.functions.functionRegistry.add('bpmin', function (this: any, name: any, map: any) {
         evalMap.call(this, map);
         return new less.tree.Dimension(100, 'px');
       });
@@ -53,7 +51,7 @@ describe('wall8: multi-slot interpolation loop var after async plugin slot', () 
 
   const compiler = new Compiler({
     output: { collapseNesting: true },
-    compile: { plugins: [lessPlugin(), lessCompatPlugin({ plugins: [bpPlugin] })] }
+    compile: { plugins: [lessPlugin({ plugins: [bpPlugin] })] }
   });
 
   const render = async (src: string) => {
@@ -62,6 +60,11 @@ describe('wall8: multi-slot interpolation loop var after async plugin slot', () 
     const out = await compiler.render(file, { suppressWarnings: true, breakOnError: false });
     return typeof out === 'string' ? out : (out as any).css ?? String(out);
   };
+
+  it('keeps a no-plugin selector on the synchronous selector fast path', async () => {
+    const css = await render('.plain-selector { color: red; }');
+    expect(css).toBe('.plain-selector {\n  color: red;\n}\n');
+  });
 
   it('resolves @value after an async-plugin @{infix} slot, per iteration', async () => {
     const css = await render(`

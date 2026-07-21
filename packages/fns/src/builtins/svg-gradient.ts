@@ -1,6 +1,6 @@
 import { colorRgbRounded, makeKeyword } from '@jesscss/core/value';
 import { coerceListItems } from './list-helper.js';
-import type { Color, Fn, List, ValueObj } from '@jesscss/core/value';
+import type { Color, Fn, ValueObj } from '@jesscss/core/value';
 
 /**
  * `svg-gradient(direction, stops…)` — build an inline `data:image/svg+xml,…` URL
@@ -23,7 +23,7 @@ export const svgGradient: Fn = {
   variadic: true,
   body: (list, ctx): ValueObj => {
     const items = list.items;
-    if (items.length < 2) return verbatim(list);
+    if (items.length < 2) throw new TypeError(STOPS_ERROR);
     const direction = ctx.stringify(items[0]!);
 
     // Stops: the multi-arg form spreads `color pos` groups after the direction;
@@ -31,7 +31,7 @@ export const svgGradient: Fn = {
     let stops: ValueObj[];
     if (items.length === 2) {
       stops = coerceListItems(items[1]);
-      if (stops.length < 2) return verbatim(list);
+      if (stops.length < 2) throw new TypeError(STOPS_ERROR);
     } else {
       stops = items.slice(1);
     }
@@ -50,7 +50,7 @@ export const svgGradient: Fn = {
         dirSvg = 'cx="50%" cy="50%" r="75%"';
         rectangleDimension = 'x="-50" y="-50" width="101" height="101"';
         break;
-      default: return verbatim(list);
+      default: throw new TypeError(DIRECTION_ERROR);
     }
 
     let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"><${gradientType}Gradient id="g" ${dirSvg}>`;
@@ -60,7 +60,7 @@ export const svgGradient: Fn = {
       const position = parts[1];
       const isEnd = i === 0 || i + 1 === stops.length;
       if (!color || color.type !== 'Color' || (!(isEnd && position === undefined) && (!position || position.type !== 'Dimension'))) {
-        return verbatim(list);
+        throw new TypeError(STOPS_ERROR);
       }
       const positionValue = position ? position.bytes : i === 0 ? '0%' : '100%';
       const alpha = (color as Color).alpha;
@@ -85,7 +85,5 @@ function hex2(v: number): string {
   return h.length === 1 ? `0${h}` : h;
 }
 
-function verbatim(list: List): ValueObj {
-  const glue = list.sep === ',' ? ', ' : list.sep === '/' ? ' / ' : ' ';
-  return makeKeyword(`svg-gradient(${list.items.map((i) => i.bytes).join(glue)})`);
-}
+const DIRECTION_ERROR = "svg-gradient direction must be 'to bottom', 'to right', 'to bottom right', 'to top right' or 'ellipse at center'";
+const STOPS_ERROR = 'svg-gradient expects direction, start_color [start_position], [color position,]..., end_color [end_position] or direction, color list';

@@ -17,7 +17,9 @@ import { imageHeight } from '../image-height.js';
 /** Invoke a variadic fn's body (narrows the `Fn` union so `body(list, ctx)` types). */
 function call(fn: Fn, list: List, c: FnCtx): ValueObj {
   if (fn.variadic !== true) throw new Error(`${fn.name} is not variadic`);
-  return fn.body(list, c);
+  // These unit stubs are deliberately synchronous; async capability coverage lives
+  // at the Compiler/Context boundary below the function package.
+  return fn.body(list, c) as ValueObj;
 }
 
 /** A 24-byte PNG header advertising `width × height` (parsed from bytes 16/20). */

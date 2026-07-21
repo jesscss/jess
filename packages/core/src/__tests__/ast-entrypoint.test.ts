@@ -1,12 +1,12 @@
-import { atRuleBlock, dimension, root } from '../ast.js';
+import { atRuleBlock, dimension, stylesheet } from '../ast.js';
 
 describe('@jesscss/core/ast', () => {
   it('constructs AST-v2 nodes without the engine surface', () => {
     const value = dimension(12, 'px');
-    const doc = root([atRuleBlock('@media', value, [])]);
+    const doc = stylesheet([atRuleBlock('@media', value, [])]);
 
     expect(doc).toEqual({
-      type: 'Root',
+      type: 'Stylesheet',
       children: [{ type: 'AtRuleBlock', name: '@media', prelude: value, body: [] }]
     });
   });

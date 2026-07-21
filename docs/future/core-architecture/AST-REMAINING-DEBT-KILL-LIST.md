@@ -1,5 +1,11 @@
 # tree2 Demolition — Ranked Remaining-Debt Kill-List
 
+> **Historical audit evidence — not a current work queue.** This sweep uses a
+> retired tree2/bridge framing. Its individual observations require fresh
+> validation before use; do not infer a host, bridge, or alternate parser path
+> from it. The current public architecture is direct dialect `parse() ->
+> Stylesheet` construction.
+
 > **Provenance.** Produced by a 17-agent adversarial review of the CURRENT `packages/core/src/ast/`
 > engine (2026-07-16): 8 read-only per-module museum-bar reviewers → 8 independent verifiers
 > (every finding re-checked against actual code + parser, SUSPECT-WRONG flips recorded) → 1 synthesis

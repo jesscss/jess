@@ -1,6 +1,6 @@
-import { parseCss } from '../src/cst-css.js';
+import { parseCssCst } from '../src/cst-css.js';
 
-function segmentText(tree: ReturnType<typeof parseCss>['tree']): Array<[string, string]> {
+function segmentText(tree: ReturnType<typeof parseCssCst>['tree']): Array<[string, string]> {
   return tree.children.map((child) => {
     if (child._tag !== 'node') {
       throw new Error('expected a prelude segment node');
@@ -17,7 +17,7 @@ function segmentText(tree: ReturnType<typeof parseCss>['tree']): Array<[string, 
 describe('lossless at-rule prelude segments', () => {
   test('direct CST grammar keeps every header byte in a typed segment', () => {
     const source = ' screen/*note*/, func(") /* ] */") "x y" [theme=") /* ] */"] foo\\ bar ';
-    const result = parseCss(source, 'AtRulePreludeSegments');
+    const result = parseCssCst(source, 'AtRulePreludeSegments');
 
     expect(result.ok).toBe(true);
     expect(result.errors).toEqual([]);
@@ -41,7 +41,7 @@ describe('lossless at-rule prelude segments', () => {
   });
 
   test('does not accept dialect interpolation as a static-CSS segment', () => {
-    const result = parseCss('@{theme}', 'AtRulePreludeSegments');
+    const result = parseCssCst('@{theme}', 'AtRulePreludeSegments');
 
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBe(1);

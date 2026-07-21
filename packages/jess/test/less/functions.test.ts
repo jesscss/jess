@@ -70,6 +70,27 @@ describe('Functions', () => {
   });
 
   describe('Built-in Color Functions', () => {
+    it('registers configured native Less plugin functions once per public AST render', async () => {
+      let installs = 0;
+      const nativePlugin = {
+        install(less: any) {
+          installs++;
+          lessHarnessFunctionsPlugin.install(less);
+        }
+      };
+      const compilerWithNativeFunctions = new Compiler({
+        compile: { plugins: [lessPlugin({ plugins: [nativePlugin] })] }
+      });
+      const root = makeTmpDir();
+      const lessPath = path.join(root, 'native-functions.less');
+      fs.writeFileSync(lessPath, '.first { width: increment(4px); } .second { color: _color("evil red"); width: add(2, 3); }', 'utf8');
+
+      expect(await compilerWithNativeFunctions.render(lessPath)).toBe(
+        '.first {\n  width: 5;\n}\n.second {\n  color: #660000;\n  width: 5;\n}\n'
+      );
+      expect(installs).toBe(1);
+    });
+
     it('should support Less harness custom functions through less-compat registry setup', async () => {
       const compilerWithCompatFunctions = new Compiler({
         compile: {

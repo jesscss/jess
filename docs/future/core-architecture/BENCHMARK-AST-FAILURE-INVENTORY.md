@@ -1,5 +1,11 @@
 # benchmark.less → `ast/` whole-document render: EMPIRICAL failure inventory
 
+> **STRUCK AS AN EXECUTION PLAN.** Its direct `parseToAst`/serializer driver is
+> a forbidden backdoor, not the public AST-v2 architecture. Retain this only as
+> historical failure evidence. New `benchmark.less` results must use public
+> dialect `parse() -> Stylesheet` through plugins, Context, and Jess, with a
+> byte-identical output oracle before measurement. See `HANDOFF.md`.
+
 > Measured on `perf/ast-driver` (base `origin/dev` @ `75e324105`). All numbers and
 > divergences below come from actually RENDERING `packages/jess/benchmark/benchmark.less`
 > through the `ast/` engine (`parseToAst` → `serialize`) and diffing against the

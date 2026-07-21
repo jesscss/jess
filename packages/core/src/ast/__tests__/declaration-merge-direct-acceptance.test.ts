@@ -1,18 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import { makeBuiltinRegistry } from '@jesscss/fns';
 import { buildEvaluator } from '../evaluator.js';
-import { decl, important, keyword, root, rule, varDecl, varRef, type Root } from '../nodes.js';
+import { decl, important, keyword, stylesheet, rule, variableDeclaration, variableReference, type Stylesheet } from '../nodes.js';
 import { serialize } from '../serialize.js';
 
 const evaluator = buildEvaluator(makeBuiltinRegistry());
-const render = (document: Root): string | undefined => serialize(document, { evaluator }).css;
+const render = (document: Stylesheet): string | undefined => serialize(document, { evaluator }).css;
 
 describe('direct canonical declaration merge', () => {
   it('promotes an important value from any comma-merge member exactly once', () => {
-    const document = root([
-      varDecl('accent', important(keyword('navy'))),
+    const document = stylesheet([
+      variableDeclaration('accent', important(keyword('navy')), { mode: 'declare' }),
       rule('.card', [
-        decl('box-shadow', varRef('accent'), ','),
+        decl('box-shadow', variableReference('accent', 'scoped'), ','),
         decl('box-shadow', keyword('white'), ',')
       ])
     ]);
@@ -25,10 +25,10 @@ describe('direct canonical declaration merge', () => {
   });
 
   it('resets an important merge member before later merge groups and plain declarations', () => {
-    const document = root([
-      varDecl('accent', important(keyword('navy'))),
+    const document = stylesheet([
+      variableDeclaration('accent', important(keyword('navy')), { mode: 'declare' }),
       rule('.card', [
-        decl('box-shadow', varRef('accent'), ','),
+        decl('box-shadow', variableReference('accent', 'scoped'), ','),
         decl('box-shadow', keyword('white'), ','),
         decl('background', keyword('black'), ','),
         decl('background', keyword('gray'), ','),

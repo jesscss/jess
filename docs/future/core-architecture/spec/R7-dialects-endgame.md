@@ -1,5 +1,12 @@
 # R7 — Dialect front ends + endgame outputs (tree2 DESIGN SPEC)
 
+> **Historical design — superseded.** This tree2/front-end-bridge plan does not
+> describe the public architecture. In particular, its `{ tree: Rules }`,
+> bridge, and separate output-route language is historical only. Current work
+> uses each dialect's public Parseman `parse()` to construct canonical AST v2
+> `Stylesheet` directly, followed by the retained Context/plugin dispatch and
+> Jess integration migration.
+
 > Design-spec section for **R7** of the tree2 definitive rewrite
 > ([roadmap](../TREE2-DEFINITIVE-REWRITE-COVERAGE-AND-ROADMAP.md#r7--dialect-front-ends--endgame-outputs);
 > [R0 spec depth reference](../TREE2-DESIGN-SPEC.md#r0--collapsenestingfalse-nested-output-mode-the-less-v5-default)).
@@ -184,8 +191,7 @@ again, **no new tree2 kinds**, every target already closed by an earlier rung:
 
 | `.jess` construct | tree2 target | Rung |
 |---|---|---|
-| `$foo` variable read; `$foo:` / `$foo?:` (fallback) / `$foo := ` (nearestOuter) | `VarRef` / `VarDeclaration`; `:=` reassign | R3 (nearestOuter / cells) |
-| `$!foo` **live binding** (`readMode:'snapshot'`) | `BindingCell` live read/assign | R3 (live cells) |
+| `$foo` live read; `$$foo` scoped/final read; `$foo:` / `$$foo:` create or update both bindings; `?:` / `:=` use their target lookup | `VarRef` / `VarDeclaration` / `VarAssignment` | R3 (scoped index + cells) |
 | readonly `!$foo`; private `_name` | binding flags on the cell | R3 |
 | `$base.name` STATIC member (literal keyword key → `.name`) | member/lookup value | R4 (namespaces/maps) |
 | `$base[0]` / `$base['k']` / `$base[$key]` (index / literal-prop / dynamic) | indexed lookup value | R4 (maps/indexing) |
@@ -212,7 +218,7 @@ Fail-loud `UnsupportedShape` for anything whose core rung is not yet closed.
    to R7.1.
 2. **Sequencing gate is an invariant**: the `.jess` bridge does not advance ahead
    of Less+SCSS maturity; pulling it forward is a process error, not progress.
-3. Native-only `.jess` features that neither Less nor SCSS express (live `$!`
+3. Native-only `.jess` features that neither Less nor SCSS express (live `$`
    bindings, `$extend`/`$apply` sugar, `$( )`/`$[ ]`/`$*[ ]` triad) map onto the
    SAME core rungs (R1/R3/R4) — the bridge does not get a private core.
 
@@ -233,9 +239,8 @@ prior-art reference, mark **"needs owner confirmation of intended v5 shape."**
 - **O-JESS-2** — `$apply .foo` desugaring to `$ > *[.foo]`: does the bridge desugar
   to the mixin-apply core path, or does tree2 want a distinct apply node? (Spec
   assumes desugar-in-bridge, zero new kind — confirm.)
-- **O-JESS-3** — the `readMode:'snapshot'` naming for live `$!` bindings is flagged
-  in memory as a possible future rename; confirm the tree2 `BindingCell` field
-  naming so bridge + core agree.
+- **O-JESS-3** — `$!` is retired. The parser and evaluator must represent `$` as
+  live/current and `$$` as scoped/final lookup without a snapshot alias.
 
 ---
 

@@ -7,7 +7,7 @@
 
 import { branchFromComplex, branchSharesAtom, collectBranchAtoms, levelFromSelectorList } from './ir.js';
 import type { Branch, Level } from './ir.js';
-import type { ExtendInstruction, Root, Rule, Statement } from '../nodes.js';
+import type { ExtendInstruction, Stylesheet, Rule, Statement } from '../nodes.js';
 
 export interface PlanInstruction {
   target: Branch;
@@ -18,6 +18,9 @@ export interface PlanInstruction {
   /** [import:reference] The extender rule came from a `(reference)` import — its
    * folded-in branches are HIDDEN. False for the ordinary (visible) extend. */
   extenderHidden: boolean;
+  /** Reference-import boundary. Extends never escape the imported document that
+   * defined them, even though its typed facts share the planner's root view. */
+  referenceBoundary: object | null;
 }
 
 export interface PlanSubject {
@@ -31,6 +34,10 @@ export interface PlanSubject {
   /** [import:reference] The subject rule came from a `(reference)` import — its own
    * seed branches are HIDDEN (emit nothing unless a visible extender folds in). */
   hidden: boolean;
+  /** See {@link PlanInstruction.referenceBoundary}. */
+  referenceBoundary: object | null;
+  /** Concrete render placement for a repeated canonical body (`$for`/`each`). */
+  placement?: object;
   /**
    * FAST-REJECT: true when some level on this subject's ancestor path (own-local ∪
    * ancestors) contains an atom that is also an instruction-target atom. Computed
@@ -55,11 +62,22 @@ export interface Plan {
   targetAtoms: Set<string>;
 }
 
+/** Typed facts produced by a render-local preflight (currently imported loop bodies). */
+export interface PlanOverlay {
+  readonly subjects: readonly PlanSubject[];
+  readonly instructions: readonly PlanInstruction[];
+}
+
 function instructionTargets(inst: ExtendInstruction): Branch[] {
   return inst.target.selectors.map(branchFromComplex);
 }
 
-export function collectPlan(root: Root): Plan {
+export function collectPlan(
+  root: Stylesheet,
+  hiddenRules?: ReadonlySet<Rule>,
+  referenceBoundaries?: ReadonlyMap<Rule, object>,
+  overlay?: PlanOverlay,
+): Plan {
   const subjects: PlanSubject[] = [];
   const instructions: PlanInstruction[] = [];
   const targetAtoms = new Set<string>();
@@ -84,7 +102,8 @@ export function collectPlan(root: Root): Plan {
           ownLocal: own,
           parent,
           mayMatch: false,
-          hidden: rule.reference === true,
+          hidden: rule.reference === true || hiddenRules?.has(rule) === true,
+          referenceBoundary: referenceBoundaries?.get(rule) ?? null,
         };
         subjects.push(subject);
         if (rule.extendInstructions) {
@@ -103,7 +122,8 @@ export function collectPlan(root: Root): Plan {
                 extenderPath,
                 scope,
                 order: order++,
-                extenderHidden: rule.reference === true,
+                extenderHidden: rule.reference === true || hiddenRules?.has(rule) === true,
+                referenceBoundary: referenceBoundaries?.get(rule) ?? null,
               });
               collectBranchAtoms(targetBranch, targetAtoms);
             }
@@ -119,6 +139,15 @@ export function collectPlan(root: Root): Plan {
   };
 
   walk(root.children, [], [], null);
+
+  if (overlay) {
+    // Do not spread planner overlays: a large, finite imported-loop overlay
+    // becomes call arguments and hits V8's stack/argument limit before solving.
+    // Indexed append preserves source order without a temporary copy.
+    for (let index = 0; index < overlay.subjects.length; index++) subjects.push(overlay.subjects[index]!);
+    for (let index = 0; index < overlay.instructions.length; index++) instructions.push(overlay.instructions[index]!);
+    for (const instruction of overlay.instructions) collectBranchAtoms(instruction.target, targetAtoms);
+  }
 
   // FAST-REJECT boolean, computed as an inherited flag over subjects in document
   // (pre-)order — a parent always precedes its descendants, so one forward pass
@@ -137,7 +166,7 @@ export function collectPlan(root: Root): Plan {
  * The common case (no extends) returns false without building the subject/instruction
  * plan at all — the serializer's true zero-cost gate.
  */
-export function documentHasExtend(root: Root): boolean {
+export function documentHasExtend(root: Stylesheet): boolean {
   const scan = (statements: Statement[]): boolean => {
     for (const st of statements) {
       if (st.type === 'Rule') {

@@ -1,28 +1,28 @@
 import { describe, expect, it } from 'vitest';
 import { buildEvaluator } from '../evaluator.js';
 import {
-  condition, decl, detachedCall, detachedRuleset, dimension, funcCall, keyword,
-  root, rule, varDecl, varRef, type Root
+  condition, decl, reference, detachedRuleset, dimension, funcCall, keyword,
+  stylesheet, rule, variableDeclaration, variableReference, type Stylesheet
 } from '../nodes.js';
 import { serialize } from '../serialize.js';
 import { makeBuiltinRegistry } from '@jesscss/fns';
 
 const evaluator = buildEvaluator(makeBuiltinRegistry());
-const render = (document: Root): string | undefined => serialize(document, { evaluator }).css;
+const render = (document: Stylesheet): string | undefined => serialize(document, { evaluator }).css;
 
-describe('detached-ruleset canonical AST emission', () => {
+describe('variable-call canonical AST emission', () => {
   it('splices a direct detached ruleset through its definition scope and caller fallback', () => {
-    const document = root([
-      varDecl('base', keyword('red')),
-      varDecl('theme', detachedRuleset([
-        varDecl('local', varRef('base')),
-        decl('color', varRef('local')),
-        decl('width', varRef('caller-width'))
-      ])),
+    const document = stylesheet([
+      variableDeclaration('base', keyword('red'), { mode: 'declare' }),
+      variableDeclaration('theme', detachedRuleset([
+        variableDeclaration('local', variableReference('base', 'scoped'), { mode: 'declare' }),
+        decl('color', variableReference('local', 'scoped')),
+        decl('width', variableReference('caller-width', 'scoped'))
+      ]), { mode: 'declare' }),
       rule('.card', [
-        varDecl('base', keyword('blue')),
-        varDecl('caller-width', dimension(24, 'px')),
-        detachedCall('theme')
+        variableDeclaration('base', keyword('blue'), { mode: 'declare' }),
+        variableDeclaration('caller-width', dimension(24, 'px'), { mode: 'declare' }),
+        reference(variableReference('theme', 'scoped'), [{ type: 'Call', args: [] }], '@theme()')
       ])
     ]);
 
@@ -30,14 +30,14 @@ describe('detached-ruleset canonical AST emission', () => {
   });
 
   it('selects a conditional detached-ruleset branch without materializing it as a value', () => {
-    const document = root([
-      varDecl('enabled', keyword('true')),
-      varDecl('content', funcCall('if', [
-        condition({ g: 'truth', value: varRef('enabled') }, '@enabled'),
+    const document = stylesheet([
+      variableDeclaration('enabled', keyword('true'), { mode: 'declare' }),
+      variableDeclaration('content', funcCall('if', [
+        condition({ g: 'truth', value: variableReference('enabled', 'scoped') }, '@enabled'),
         detachedRuleset([decl('display', keyword('grid'))]),
         detachedRuleset([decl('display', keyword('none'))])
-      ])),
-      rule('.panel', [detachedCall('content')])
+      ]), { mode: 'declare' }),
+      rule('.panel', [reference(variableReference('content', 'scoped'), [{ type: 'Call', args: [] }], '@content()')])
     ]);
 
     expect(render(document)).toBe('.panel {\n  display: grid;\n}\n');

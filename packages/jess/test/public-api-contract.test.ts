@@ -49,6 +49,47 @@ describe('public API contract', () => {
       expect(css).toContain('@import url("test.css");');
       expect(css).toContain('.a');
     }
+
+    const compiled = await compiler.safeCompile(testFile);
+    expect(compiled.document).toMatchObject({ type: 'Stylesheet' });
+  });
+
+  it('evaluates Less values through the public AST route', async () => {
+    const css = await new Compiler({ output: { collapseNesting: true } }).renderString(
+      '@base: 2; .twice(@n) { width: @n * 2; } .a { .twice(@base); half: percentage(.5); }',
+      { language: 'less', extension: '.less' }
+    );
+
+    expect(css).toContain('width: 4;');
+    expect(css).toContain('half: 50%;');
+  });
+
+  it('deduplicates exact declarations contributed by Less mixin overloads and repeated calls', async () => {
+    const css = await new Compiler({ output: { collapseNesting: true } }).renderString(
+      '.same() { color: red; } .same() { color: red; } .out { .same(); .same(); }',
+      { language: 'less', extension: '.less' }
+    );
+
+    expect(css).toBe('.out {\n  color: red;\n}\n');
+  });
+
+  it('honors Less mathMode through the public AST route', async () => {
+    const source = '.a { raw: 10px / 2; computed: (10px / 2); }';
+    const css = await new Compiler({ compile: { mathMode: 'parens-division' } }).renderString(source, {
+      language: 'less', extension: '.less'
+    });
+
+    expect(css).toContain('raw: 10px / 2;');
+    expect(css).toContain('computed: 5px;');
+  });
+
+  it('keeps a preserved Less slash group opaque through a later operation', async () => {
+    const css = await new Compiler().renderString(`
+      @div-op: 10px / 2;
+      .a { result: @div-op * 2; }
+    `, { language: 'less', extension: '.less' });
+
+    expect(css).toContain('result: 10px / 2 * 2;');
   });
 
   it('honors explicit collapseNesting without an outputFile across config shapes', async () => {

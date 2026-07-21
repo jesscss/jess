@@ -15,14 +15,14 @@
  */
 
 import type {
-  Root,
+  Stylesheet,
   Rule,
   Declaration,
   Comment,
   SelectorList,
-  Complex,
-  Compound,
-  Simple,
+  ComplexSelector,
+  CompoundSelector,
+  SimpleSelector,
   SelectorCapture,
   Keyword,
   Color,
@@ -32,34 +32,38 @@ import type {
   Dimension,
   SpacedValue,
   List,
-  VarRef,
+  VariableReference,
   MixinDef,
   MixinCall,
-  VarDeclaration,
+  VariableDeclaration,
   Sequence,
   Operation,
   FunctionCall,
   Paren,
-  Interp,
+  Interpolation,
+  GeneralEnclosed,
   VarIndirect,
   DetachedRuleset,
-  MapAccessor,
-  PropRef,
-  DetachedCall,
+  Reference,
+  Range,
+  PropertyReference,
   For,
+  If,
+  StyleImport,
+  ModuleImport,
   RawInline,
   Condition,
 } from './nodes.js';
-import type { AtRuleBlock, AtRuleStatement, ImportAtRule, OpaqueAtRuleBlock } from './at-rule.js';
+import type { AtRuleBlock, AtRuleStatement, ImportAtRule, OpaqueAtRuleBlock, Plugin } from './at-rule.js';
 
 /** Every tree2 node's PascalCase `type` discriminant (Less-matching). */
 export type NodeType =
-  | 'Root' | 'Rule' | 'Declaration' | 'Comment' | 'SelectorList'
-  | 'Complex' | 'Compound' | 'Simple' | 'Keyword' | 'Color' | 'Quoted' | 'Any' | 'Url' | 'SelectorCapture' | 'Dimension'
-  | 'SpacedValue' | 'List' | 'VarRef' | 'MixinDef' | 'MixinCall' | 'VarDeclaration'
+  | 'Stylesheet' | 'Rule' | 'Declaration' | 'Comment' | 'SelectorList'
+  | 'ComplexSelector' | 'CompoundSelector' | 'SimpleSelector' | 'Keyword' | 'Color' | 'Quoted' | 'Any' | 'Url' | 'SelectorCapture' | 'Dimension'
+  | 'SpacedValue' | 'List' | 'VariableReference' | 'MixinDef' | 'MixinCall' | 'VariableDeclaration'
   | 'Sequence' | 'Operation' | 'FunctionCall' | 'Paren' | 'Condition'
-  | 'AtRuleBlock' | 'AtRuleStatement' | 'ImportAtRule' | 'OpaqueAtRuleBlock' | 'Interp' | 'VarIndirect'
-  | 'DetachedRuleset' | 'MapAccessor' | 'PropRef' | 'DetachedCall' | 'For' | 'RawInline';
+  | 'AtRuleBlock' | 'AtRuleStatement' | 'ImportAtRule' | 'Plugin' | 'OpaqueAtRuleBlock' | 'Interpolation' | 'GeneralEnclosed' | 'VarIndirect'
+  | 'DetachedRuleset' | 'Reference' | 'Range' | 'PropertyReference' | 'For' | 'If' | 'StyleImport' | 'ModuleImport' | 'RawInline';
 
 /** Combinator between two compounds in a complex selector. `|` is the CSS
  * namespace separator (tight, no spaces: `foo|h1`); `||` is the column
@@ -78,11 +82,11 @@ export function renderCombinator(comb: Combinator): string {
  * `node.type === '…'` or the {@link isNode} value predicate.
  */
 export type Node =
-  | Root | Rule | Declaration | Comment | SelectorList | Complex | Compound
-  | Simple | SelectorCapture | Keyword | Color | Quoted | Any | Url | Dimension | SpacedValue | List | VarRef | MixinDef | MixinCall
-  | VarDeclaration | Sequence | Operation | FunctionCall | Paren | Condition
-  | AtRuleBlock | AtRuleStatement | ImportAtRule | OpaqueAtRuleBlock | Interp | VarIndirect | DetachedRuleset
-  | MapAccessor | PropRef | DetachedCall | For | RawInline;
+  | Stylesheet | Rule | Declaration | Comment | SelectorList | ComplexSelector | CompoundSelector
+  | SimpleSelector | SelectorCapture | Keyword | Color | Quoted | Any | Url | Dimension | SpacedValue | List | VariableReference | MixinDef | MixinCall
+  | VariableDeclaration | Sequence | Operation | FunctionCall | Paren | Condition
+  | AtRuleBlock | AtRuleStatement | ImportAtRule | Plugin | OpaqueAtRuleBlock | Interpolation | GeneralEnclosed | VarIndirect | DetachedRuleset
+  | Reference | Range | PropertyReference | For | If | StyleImport | ModuleImport | RawInline;
 
 /**
  * The frozen set of the structural `type` strings — the membership basis for
@@ -100,12 +104,12 @@ export type Node =
  * value object and `'src' in v` an AST literal.
  */
 export const AST_NODE_TYPES: ReadonlySet<string> = new Set<NodeType>([
-  'Root', 'Rule', 'Declaration', 'Comment', 'SelectorList',
-  'Complex', 'Compound', 'Simple', 'Keyword', 'Color', 'Quoted', 'Any', 'Url', 'SelectorCapture', 'Dimension',
-  'SpacedValue', 'List', 'VarRef', 'MixinDef', 'MixinCall', 'VarDeclaration',
+  'Stylesheet', 'Rule', 'Declaration', 'Comment', 'SelectorList',
+  'ComplexSelector', 'CompoundSelector', 'SimpleSelector', 'Keyword', 'Color', 'Quoted', 'Any', 'Url', 'SelectorCapture', 'Dimension',
+  'SpacedValue', 'List', 'VariableReference', 'MixinDef', 'MixinCall', 'VariableDeclaration',
   'Sequence', 'Operation', 'FunctionCall', 'Paren', 'Condition',
-  'AtRuleBlock', 'AtRuleStatement', 'ImportAtRule', 'OpaqueAtRuleBlock', 'Interp', 'VarIndirect',
-  'DetachedRuleset', 'MapAccessor', 'PropRef', 'DetachedCall', 'For', 'RawInline',
+  'AtRuleBlock', 'AtRuleStatement', 'ImportAtRule', 'Plugin', 'OpaqueAtRuleBlock', 'Interpolation', 'GeneralEnclosed', 'VarIndirect',
+  'DetachedRuleset', 'Reference', 'Range', 'PropertyReference', 'For', 'If', 'StyleImport', 'ModuleImport', 'RawInline',
 ]);
 
 /** Value predicate for a tree2 AST node (replaces the old `x instanceof Node`). */

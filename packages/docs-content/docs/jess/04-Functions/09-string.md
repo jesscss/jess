@@ -17,7 +17,7 @@ recognize. Mirrors Less's `e()`.
 ```css
 @-from '@jesscss/fns' import (e);
 .filter {
-  @-let mscode: "ms:alwaysHasItsOwnSyntax.For.Stuff()";
+  $mscode: "ms:alwaysHasItsOwnSyntax.For.Stuff()";
   filter: e($mscode);
 }
 ```

@@ -1,5 +1,11 @@
 # SCSS-parser rebase off `LessGrammar` → shared `preprocessorBase` (DESIGN)
 
+> **Historical design evidence — not an execution plan.** The proposed shared
+> builder/host path and its deletion sequencing are superseded. SCSS, like every
+> dialect, must reduce Parseman grammar directly to canonical `Stylesheet`
+> through public `parse()`; retain only independently verified recognition
+> observations from this document.
+
 DESIGN/SCOUT spec — no code this pass. Base: `origin/dev`. Owns task **#34** and the
 cutover prerequisite that unblocks deleting `builders.ts`/`BuilderHost`.
 

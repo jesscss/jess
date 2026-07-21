@@ -6,26 +6,21 @@ import mergeWith from 'lodash-es/mergeWith.js';
 import { getConfigWithMeta } from './config.js';
 import {
   Context,
-  Rules,
-  type TreeContext,
   type ContextOptions,
-  type PrintOptions,
   type ErrorDiagnostic,
   type WarningDiagnostic,
-  type TriviaMap,
-  type Trivia,
   JessError,
   toDiagnostic,
   evalErrorFrameFrom,
   WARN,
   logger,
   Deprecation,
-  type Visitor,
   type WarningsConfigInput,
   type ErrorsConfigInput,
-  createRenderBuffer,
-  finalizeFlatRenderBuffer
+  serialize,
+  buildEvaluator
 } from '@jesscss/core';
+import type { Stylesheet } from '@jesscss/core/ast';
 import {
   getOptions,
   applyStrictPreset,
@@ -33,9 +28,16 @@ import {
   type OutputOptions
 } from 'styles-config';
 import type { PluginInterface } from '@jesscss/core';
+import cssPlugin from '@jesscss/plugin-css';
+import jessPlugin from '@jesscss/plugin-jess';
 import lessPlugin from '@jesscss/plugin-less';
 import scssPlugin from '@jesscss/plugin-scss';
+import { makeBuiltinRegistry } from '@jesscss/fns';
 import { outputDiagnostics } from './diagnostics.js';
+
+// Built-ins are immutable after assembly. Keep one evaluator for all Compiler
+// instances instead of rebuilding its dispatch table on every AST render.
+const astValueEvaluator = buildEvaluator(makeBuiltinRegistry());
 
 export type ConfigOptions = StylesConfig & {
   /** Output file path for matching against output config options */
@@ -57,10 +59,6 @@ export type ConfigOptions = StylesConfig & {
 };
 
 const { isArray } = Array;
-
-function isVisitor(value: unknown): value is Visitor {
-  return typeof value === 'object' && value !== null;
-}
 
 /**
  * Build the `internal/unknown` diagnostic for a generic (non-`JessError`) error
@@ -227,89 +225,6 @@ function getSearchPaths(options: Record<string, unknown>): string[] | undefined 
     return options.paths.filter((value): value is string => typeof value === 'string');
   }
   return undefined;
-}
-
-type CommentRange = readonly [number, number];
-
-/**
- * A view over a TriviaMap that hides comment runs. The dialect decides how much:
- *
- * - `liftedRanges === undefined` — the parser doesn't report which comments it
- *   lifted to `Comment` nodes, so hide EVERY comment run (whitespace-only view).
- *   The historical, conservative behavior; used where inline-comment placement
- *   isn't wired end-to-end.
- * - `liftedRanges` provided — hide ONLY the runs already lifted to standalone
- *   `Comment` nodes (re-emitting those would double-print). INLINE comments (in
- *   selectors, values, function args, at-rule preludes) are never lifted — they
- *   only survive via trivia — so their runs pass through for the serializers to
- *   place. A run is "lifted" when a lifted range overlaps it; the whole run is
- *   then hidden (the container serializer re-inserts inter-statement spacing).
- *
- * Pure-whitespace runs always pass (authored value/list spacing).
- */
-function commentAwareTrivia(trivia: TriviaMap, liftedRanges: readonly CommentRange[] | undefined): TriviaMap {
-  const isHidden = (run: { start: number; end: number; hasComment: boolean }): boolean => {
-    if (!run.hasComment) {
-      return false;
-    }
-    if (liftedRanges === undefined) {
-      return true;
-    }
-    for (const [start, end] of liftedRanges) {
-      if (start < run.end && end > run.start) {
-        return true;
-      }
-    }
-    return false;
-  };
-  let visibleComments: readonly Trivia[] | undefined;
-  return {
-    lookup(offset, direction) {
-      const run = trivia.lookup(offset, direction);
-      return run && !isHidden(run) ? run : undefined;
-    },
-    * entries(direction) {
-      for (const entry of trivia.entries(direction)) {
-        if (!isHidden(entry[1])) {
-          yield entry;
-        }
-      }
-    },
-    has(offset, direction) {
-      const run = trivia.lookup(offset, direction);
-      return run !== undefined && !isHidden(run);
-    },
-    commentRuns() {
-      if (visibleComments === undefined) {
-        // Inner index is already sorted/deduped; drop hidden (lifted) runs so
-        // they don't double-print, preserving the filtered view's semantics.
-        visibleComments = trivia.commentRuns().filter(run => !isHidden(run));
-      }
-      return visibleComments;
-    }
-  };
-}
-
-/**
- * A parser plugin builds its own file-bearing TreeContext and records authored
- * whitespace/comment trivia on it (`node._treeContext.opts.trivia`). Rendering,
- * however, drives the shared render `context`, and the serializer seeds its
- * trivia from `context.opts.trivia`. Bridge the two so authored value whitespace
- * (multi-line lists, custom-property value spacing) survives to output. The root
- * file wins; imports keep their own per-node context for anything context-scoped.
- */
-function adoptSourceTrivia(context: Context, node: { _treeContext?: TreeContext } | null): void {
-  if (!node || 'trivia' in context.opts) {
-    return;
-  }
-  const trivia = node._treeContext?.opts?.trivia;
-  if (trivia) {
-    // `liftedCommentRanges` present → expose inline comments, hide the lifted
-    // standalone ones (Less). Absent → hide every comment run (whitespace-only),
-    // the conservative default for dialects that don't report lifts yet.
-    const liftedRanges = node._treeContext?.opts?.liftedCommentRanges as readonly CommentRange[] | undefined;
-    context.opts.trivia = commentAwareTrivia(trivia as TriviaMap, liftedRanges);
-  }
 }
 
 let nextRenderProfileId = 0;
@@ -534,6 +449,8 @@ export class Compiler {
   private jsPluginFactoryCache = new Map<PluginFactoryCacheKey, Promise<PluginFactoryRecord>>();
   private jsPluginProxyCache = new Map<PluginFactoryCacheKey, LazyPluginInterface>();
   private lessPluginInstanceCache = new Map<LessPluginCacheKey, PluginInterface>();
+  private cssPluginInstance: PluginInterface | undefined;
+  private jessPluginInstance: PluginInterface | undefined;
   private scssPluginInstance: PluginInterface | undefined;
 
   constructor(
@@ -683,6 +600,22 @@ export class Compiler {
       this.lessPluginInstanceCache.set(key, plugin);
     }
     return plugin;
+  }
+
+  /** The native Jess parser plugin is always available for `.jess` sources. */
+  private getOrCreateJessPlugin(): PluginInterface {
+    if (!this.jessPluginInstance) {
+      this.jessPluginInstance = jessPlugin();
+    }
+    return this.jessPluginInstance;
+  }
+
+  /** The native CSS parser plugin is always available for `.css` sources. */
+  private getOrCreateCssPlugin(): PluginInterface {
+    if (!this.cssPluginInstance) {
+      this.cssPluginInstance = cssPlugin();
+    }
+    return this.cssPluginInstance;
   }
 
   /**
@@ -861,12 +794,21 @@ export class Compiler {
       },
       importLessPlugin: async (absoluteFilePath: string) => {
         const plugin = await getLessPlugin() as PluginInterface & {
-          importLessPlugin?: (absoluteFilePath: string) => Promise<unknown>;
+          importLessPlugin?: (absoluteFilePath: string, options?: string | null) => Promise<unknown>;
         };
         if (!plugin.importLessPlugin) {
           throw new Error('Feature not supported. Install @jesscss/plugin-js to enable Less @plugin script execution.');
         }
         return plugin.importLessPlugin(absoluteFilePath);
+      },
+      importPlugin: async (absoluteFilePath: string, options?: string | null) => {
+        const plugin = await getLessPlugin() as PluginInterface & {
+          importLessPlugin?: (absoluteFilePath: string, options?: string | null) => Promise<unknown>;
+        };
+        if (!plugin.importLessPlugin) {
+          throw new Error('Feature not supported. Install @jesscss/plugin-js to enable executable plugin modules.');
+        }
+        return plugin.importLessPlugin(absoluteFilePath, options);
       },
       dispose: async () => {
         const plugins = await Promise.all([
@@ -879,6 +821,7 @@ export class Compiler {
       }
     } as LazyPluginInterface & {
       importLessPlugin(absoluteFilePath: string): Promise<unknown>;
+      importPlugin(absoluteFilePath: string, options?: string | null): Promise<unknown>;
     };
     this.jsPluginProxyCache.set(factoryRecord.key, proxy);
     return proxy;
@@ -886,6 +829,10 @@ export class Compiler {
 
   private buildPlugins(resolved: ResolvedRenderConfig): PluginInterface[] {
     const pluginMap = new Map<string, PluginInterface>();
+    const coreCssPlugin = this.getOrCreateCssPlugin();
+    pluginMap.set(coreCssPlugin.name, coreCssPlugin);
+    const coreJessPlugin = this.getOrCreateJessPlugin();
+    pluginMap.set(coreJessPlugin.name, coreJessPlugin);
     const coreLessPlugin = this.getOrCreateLessPlugin(resolved.lessOptions);
     pluginMap.set(coreLessPlugin.name, coreLessPlugin);
     const coreScssPlugin = this.getOrCreateScssPlugin();
@@ -997,6 +944,7 @@ export class Compiler {
     };
 
     const context = new Context(contextOptions, plugins);
+    context.valueEvaluator = astValueEvaluator;
     if (usesDeprecatedDisablePluginRule) {
       context.warnings.push(toDiagnostic(WARN.deprecated({
         filePath: resolved.filePath,
@@ -1039,193 +987,19 @@ export class Compiler {
     return this.createContextFromResolved(resolved, plugins);
   }
 
-  private async visitBeforeEvalNode(node: any, visitor: any): Promise<any> {
-    let result = node;
-
-    if ((node.type === 'AtRule' || node.type === 'AtRuleStatement' || node.type === 'Directive') && typeof visitor.atRule === 'function') {
-      const atRuleResult = await visitor.atRule(node, undefined);
-      if (atRuleResult && typeof atRuleResult !== 'symbol') {
-        result = atRuleResult;
-      }
-    }
-
-    if (typeof visitor.visit === 'function') {
-      const visitResult = await visitor.visit(result);
-      if (visitResult && typeof visitResult !== 'symbol') {
-        result = visitResult;
-      }
-    } else {
-      const maybeAbort = visitor.enter?.(result);
-      if (typeof maybeAbort === 'symbol') {
-        return result;
-      }
-      const methodName = result.type.charAt(0).toLowerCase() + result.type.slice(1);
-      const typeMethod = visitor[methodName];
-      if (typeof typeMethod === 'function') {
-        const typeResult = await typeMethod.call(visitor, result);
-        if (typeResult && typeof typeResult !== 'symbol') {
-          result = typeResult;
-        }
-      }
-      const exitResult = await visitor.exit?.(result);
-      if (exitResult && typeof exitResult !== 'symbol') {
-        result = exitResult;
-      }
-    }
-
-    // Iterate shallow semantic children (via childKeys). `walk(false)` yields the
-    // immediate child nodes; this method recurses to descend. Core renamed the old
-    // `children()` iterator to `walk()` (`.children` is now the Parséman structural
-    // array), so use `walk` here.
-    if (typeof result.walk === 'function') {
-      for (const child of result.walk(false)) {
-        await this.visitBeforeEvalNode(child, visitor);
-      }
-    }
-    return result;
-  }
-
-  private async applyBeforeEvalVisitors(context: Context, tree: Rules, currentFilePath: string): Promise<Rules> {
-    if (!tree || !context.plugins?.length) {
-      return tree;
-    }
-    let current = tree;
-    const processed = new Set<unknown>();
-    for (let pass = 0; pass < 2; pass++) {
-      for (const plugin of context.plugins) {
-        if (plugin.setContext) {
-          try {
-            plugin.setContext(context);
-          } catch {
-            // ignore
-          }
-        }
-        if (plugin.setCurrentFilePath) {
-          try {
-            plugin.setCurrentFilePath(currentFilePath);
-          } catch {
-            // ignore
-          }
-        }
-        const pre = plugin.beforeEvalVisitorForTree
-          ? plugin.beforeEvalVisitorForTree(current, currentFilePath)
-          : plugin.beforeEvalVisitor;
-        if (!pre) {
-          continue;
-        }
-        const visitors = Array.isArray(pre) ? pre : [pre];
-        for (const visitor of visitors) {
-          if (!isVisitor(visitor)) {
-            continue;
-          }
-          if (pass === 1 && processed.has(visitor)) {
-            continue;
-          }
-          const result = await this.visitBeforeEvalNode(current, visitor);
-          if (result instanceof Rules) {
-            current = result;
-          }
-          processed.add(visitor);
-        }
-      }
-    }
-    return current;
-  }
-
-  /**
-   * True iff some registered plugin exposes a real pre-render visitor
-   * (`preRenderVisitor`/`postEvalVisitor` that passes `isVisitor`). Mirrors the
-   * per-plugin hook selection in `applyPreRenderVisitors` EXACTLY, so the
-   * `preSerializeRoot` hook is set precisely when that method would do work and
-   * left unset (freeing a spine-eligible root to the single pass, §4.0/§6.9)
-   * when it would be a no-op. Contract: pure predicate over `context.plugins`;
-   * no eval, no tree mutation.
-   */
-  private hasPreRenderVisitor(context: Context): boolean {
-    if (!context.plugins?.length) {
-      return false;
-    }
-    for (const plugin of context.plugins) {
-      const hooks = [
-        plugin.preRenderVisitor,
-        plugin.postEvalVisitor
-      ].filter((hook): hook is NonNullable<typeof hook> => Boolean(hook));
-      const visitors = hooks.flatMap(hook => Array.isArray(hook) ? hook : [hook]);
-      if (visitors.some(visitor => isVisitor(visitor))) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  private applyPreRenderVisitors(context: Context, tree: Rules): Rules {
-    if (!tree || !context.plugins?.length) {
-      return tree;
-    }
-    let current = tree;
-    for (const plugin of context.plugins) {
-      const hooks = [
-        plugin.preRenderVisitor,
-        plugin.postEvalVisitor
-      ].filter((hook): hook is NonNullable<typeof hook> => Boolean(hook));
-      if (hooks.length === 0) {
-        continue;
-      }
-      const visitors = hooks.flatMap(hook => Array.isArray(hook) ? hook : [hook]);
-      for (const visitor of visitors) {
-        if (!isVisitor(visitor)) {
-          continue;
-        }
-        const result = current.accept(visitor);
-        if (result instanceof Rules) {
-          current = result;
-        }
-      }
-    }
-    return current;
-  }
-
-  private attachImportVisitorHook(context: Context, filePath: string) {
-    const currentFilePathFromImport = (importPath: string, fallback: string) => {
-      return typeof importPath === 'string' && importPath.length ? importPath : fallback;
-    };
-
-    const originalGetTree = context.getTree.bind(context);
-    context.getTree = async (importPath: string, importOptions = {}) => {
-      const result = await originalGetTree(importPath, importOptions);
-      if (!result.node) {
-        return result;
-      }
-      const resolvedPath = result?.resolvedPath ?? currentFilePathFromImport(importPath, filePath);
-      const processedTree = await this.applyBeforeEvalVisitors(context, result.node, resolvedPath);
-      if (processedTree && processedTree !== result.node) {
-        result.node = processedTree;
-        if (result.resolvedPath) {
-          context.sourceTrees.set(result.resolvedPath, processedTree);
-        }
-      }
-      return result;
-    };
-  }
-
   private async prewarmPlugins(context: Context) {
     for (const plugin of context.plugins) {
       await plugin.prewarm?.();
     }
   }
 
-  /**
-   * Parse + before-eval transforms + `context.root` — everything the tree needs
-   * BEFORE evaluation. The eval itself is driven separately: `compile()` evals
-   * here via `evaluateInput`; the render path defers eval into `render()` (D3 —
-   * `render()` is the sole eval driver for serialization).
-   */
-  private async prepareInputTree(
+  /** Parse the source once through the Context-selected AST plugin. */
+  private async prepareStylesheet(
     context: Context,
     resolved: ResolvedRenderConfig,
     input: { filePath?: string; source?: string; language?: string; extension?: string },
     profile?: RenderProfile
-  ): Promise<Rules> {
+  ): Promise<Stylesheet> {
     const { filePath, source, language, extension } = input;
     const rootLessSourceOptions: RootLessSourceOptions = {
       banner: typeof resolved.activeOptions.banner === 'string'
@@ -1236,13 +1010,8 @@ export class Compiler {
     };
     const shouldPrepareRootLessSource = hasRootLessSourceOptions(rootLessSourceOptions);
 
-    if (filePath) {
-      this.attachImportVisitorHook(context, filePath);
-    }
-
     await measureProfileAsync(profile, 'prewarmPlugins', () => this.prewarmPlugins(context));
 
-    let tree;
     if (source != null) {
       const preparedSource = shouldPrepareRootLessSource
         ? prepareRootLessSource(source, rootLessSourceOptions)
@@ -1254,17 +1023,7 @@ export class Compiler {
           extension
         })
       );
-      const parsedNode = parsed.node;
-      if (!parsedNode) {
-        throw new Error(`Failed to parse ${filePath ?? '<input>'}`);
-      }
-      adoptSourceTrivia(context, parsedNode);
-      tree = await measureProfileAsync(profile, 'applyBeforeEvalVisitors', () =>
-        this.applyBeforeEvalVisitors(context, parsedNode, filePath ?? '<input>')
-      );
-      if (!context.root) {
-        context.root = tree;
-      }
+      return parsed.node;
     } else {
       const loaded = shouldPrepareRootLessSource
         ? await measureProfileAsync(profile, 'getPreparedRootTree', async () => {
@@ -1286,100 +1045,40 @@ export class Compiler {
             return parsed;
           })
         : await measureProfileAsync(profile, 'getTree', () => context.getTree(filePath!));
-      const loadedNode = loaded.node;
-      if (!loadedNode) {
+      if (!loaded.node) {
         throw new Error(`Failed to load ${filePath!}`);
       }
-      adoptSourceTrivia(context, loadedNode);
-      tree = await measureProfileAsync(profile, 'applyBeforeEvalVisitors', () =>
-        this.applyBeforeEvalVisitors(context, loadedNode, filePath!)
-      );
-      if (!context.root) {
-        context.root = tree;
+      return loaded.node;
+    }
+  }
+
+  private async renderStylesheet(document: Stylesheet, context: Context, profile?: RenderProfile): Promise<string> {
+    for (const plugin of context.plugins) plugin.setContext?.(context);
+    const result = await measureProfileAsync(profile, 'renderAstStylesheet', () =>
+      Promise.resolve(context.withDocument(document, () => serialize(document, {
+        collapseNesting: context.opts.output?.collapseNesting ?? false,
+        context,
+        pluginHost: context.pluginHost,
+        io: { readFile: specifier => context.readBinary(specifier).catch(() => null) },
+      })))
+    );
+    let css = result.css;
+    for (const plugin of context.plugins || []) {
+      if (plugin.runPostProcessors) {
+        css = plugin.runPostProcessors(css, {});
+      } else if (plugin.postProcessCss) {
+        css = plugin.postProcessCss(css, context);
       }
     }
-
-    return tree;
-  }
-
-  /**
-   * Prepare + eval + pre-render visitors, returning the EVALUATED tree. Used by
-   * `compile()`, which returns an evaluated tree without serializing it. The
-   * render path does NOT use this — it drives eval through `render()` (D3).
-   */
-  private async evaluateInput(
-    context: Context,
-    resolved: ResolvedRenderConfig,
-    input: { filePath?: string; source?: string; language?: string; extension?: string },
-    profile?: RenderProfile
-  ): Promise<Rules> {
-    const tree = await this.prepareInputTree(context, resolved, input, profile);
-    const evald = await measureProfileAsync(profile, 'eval', async () => tree.eval(context));
-    return measureProfileSync(profile, 'applyPreRenderVisitors', () =>
-      this.applyPreRenderVisitors(context, evald)
-    );
-  }
-
-  private async renderTree(tree: Rules, context: Context, profile?: RenderProfile): Promise<string> {
-    // P2 gate refinement (§4.0 extend-work gate / §6.9 gated pre-eval): the
-    // single-pass spine (`renderRootViaSpine`) engages only when
-    // `preSerializeRoot` is UNSET (`rules.ts` spine gate). `preSerializeRoot`'s
-    // sole job is to run `applyPreRenderVisitors` — a NO-OP unless some plugin
-    // registers a `preRenderVisitor`/`postEvalVisitor`. Setting it
-    // unconditionally kept every spine-eligible root pinned to the eval path
-    // (the P1 finding: 0% of real renders routed through the live spine).
-    //
-    // We now set the hook ONLY when a real pre-render visitor exists. When none
-    // does, the hook is genuinely absent, so a spine-eligible extend-free
-    // root routes through the live single pass in production. Roots that need
-    // extend or visitor work are still fully covered: extend-bearing / import-
-    // bearing roots are not spine-eligible (`isSpineEligibleRoot` rejects
-    // `:extend` selectors and top-level `@import` at-rules), and a registered
-    // visitor re-arms `preSerializeRoot`, forcing the eval path. No dual dormant
-    // path — this is the wire-in, not a parallel spine.
-    const hasPreRenderVisitor = this.hasPreRenderVisitor(context);
-    const printOptions: PrintOptions = {
-      collapseNesting: context.opts.output?.collapseNesting,
-      context,
-      // D3: `render()` is the sole eval driver. `tree` enters unevaluated; render
-      // evaluates it, then fires this hook on the evaluated root so post-eval /
-      // pre-render plugin visitors transform it before serialization — the role
-      // the removed separate `tree.eval()` pre-pass used to serve. Set only when
-      // a real visitor is registered (see gate note above).
-      preSerializeRoot: hasPreRenderVisitor
-        ? evaluatedRoot =>
-          measureProfileSync(profile, 'applyPreRenderVisitors', () =>
-            this.applyPreRenderVisitors(context, evaluatedRoot)
-          )
-        : undefined
-    };
-
-    let css = await measureProfileAsync(profile, 'render', async () => {
-      const buffer = createRenderBuffer('flat');
-      buffer.shareWriter = true;
-      await tree.render(context, buffer, printOptions);
-      return finalizeFlatRenderBuffer(buffer);
-    });
-    css = measureProfileSync(profile, 'postProcessCss', () => {
-      let nextCss = css;
-      for (const plugin of context.plugins || []) {
-        if (plugin.runPostProcessors) {
-          nextCss = plugin.runPostProcessors(nextCss, {});
-        } else if (plugin.postProcessCss) {
-          nextCss = plugin.postProcessCss(nextCss, context);
-        }
-      }
-      return nextCss;
-    });
     return css;
   }
 
-  /** @internal */
+  /** @internal AST document preparation; no legacy evaluator tree is exposed. */
   async compile(filePath: string, options?: Partial<ConfigOptions>) {
     const { resolved, context, profile } = await this.prepareRender(filePath, options);
 
     try {
-      const postEvald = await this.evaluateInput(context, resolved, { filePath }, profile);
+      const document = await this.prepareStylesheet(context, resolved, { filePath }, profile);
 
       if (context.errors.length > 0 || context.warnings.length > 0) {
         outputDiagnostics(context.errors, context.warnings, {
@@ -1397,7 +1096,7 @@ export class Compiler {
         errors: context.errors.length,
         warnings: context.warnings.length
       });
-      return { tree: postEvald, context };
+      return { document, context };
     } catch (err: unknown) {
       if (context.errors.length > 0 || context.warnings.length > 0) {
         outputDiagnostics(context.errors, context.warnings, {
@@ -1426,8 +1125,8 @@ export class Compiler {
     const { resolved, context, profile } = await this.prepareRender(filePath, options);
     try {
       const input = { filePath };
-      const css = await this.renderTree(
-        await this.prepareInputTree(context, resolved, input, profile),
+      const css = await this.renderStylesheet(
+        await this.prepareStylesheet(context, resolved, input, profile),
         context,
         profile
       );
@@ -1465,8 +1164,8 @@ export class Compiler {
 
     try {
       const input = { filePath, source: content, language, extension };
-      const css = await this.renderTree(
-        await this.prepareInputTree(context, resolved, input, profile),
+      const css = await this.renderStylesheet(
+        await this.prepareStylesheet(context, resolved, input, profile),
         context,
         profile
       );
@@ -1514,8 +1213,8 @@ export class Compiler {
 
     try {
       const input = { filePath, source, language, extension };
-      const css = await this.renderTree(
-        await this.prepareInputTree(context, resolved, input, profile),
+      const css = await this.renderStylesheet(
+        await this.prepareStylesheet(context, resolved, input, profile),
         context,
         profile
       );
@@ -1587,7 +1286,7 @@ export class Compiler {
 
   /** @internal */
   async safeCompile(filePath: string, options?: Partial<ConfigOptions>): Promise<{
-    tree: Rules | null;
+    document: Stylesheet | null;
     context: Context;
     errors: ErrorDiagnostic[];
     warnings: WarningDiagnostic[];
@@ -1599,7 +1298,7 @@ export class Compiler {
     });
 
     try {
-      const evald = await this.evaluateInput(context, resolved, { filePath }, profile);
+      const document = await this.prepareStylesheet(context, resolved, { filePath }, profile);
 
       context.finalizeWarnings();
 
@@ -1610,7 +1309,7 @@ export class Compiler {
         warnings: context.warnings.length
       });
       return {
-        tree: evald,
+        document,
         context,
         errors: [...context.errors],
         warnings: [...context.warnings]
@@ -1644,7 +1343,7 @@ export class Compiler {
         failed: true,
         errorMessage: errMsg
       });
-      return { tree: null, context, errors, warnings };
+      return { document: null, context, errors, warnings };
     }
   }
 
@@ -1662,8 +1361,8 @@ export class Compiler {
 
     try {
       const input = { filePath };
-      const css = await this.renderTree(
-        await this.evaluateInput(context, resolved, input, profile),
+      const css = await this.renderStylesheet(
+        await this.prepareStylesheet(context, resolved, input, profile),
         context,
         profile
       );
@@ -1735,6 +1434,8 @@ export class Compiler {
     this.jsPluginProxyCache.clear();
     this.jsPluginFactoryCache.clear();
     this.lessPluginInstanceCache.clear();
+    this.cssPluginInstance = undefined;
+    this.jessPluginInstance = undefined;
     this.scssPluginInstance = undefined;
     this.configuredPluginFactoryCache.clear();
   }
