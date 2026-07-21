@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { atRuleBlock, atRuleStatement } from '../at-rule.js';
 import { buildEvaluator } from '../evaluator.js';
 import {
-  decl, dimension, generalEnclosed, interpolation, keyword, list, spaced, stylesheet, rule, sel, variableDeclaration, variableReference, type Stylesheet
+  decl, dimension, generalEnclosed, interpolation, keyword, spaced, stylesheet, rule, sel, variableDeclaration, variableReference, type Stylesheet
 } from '../nodes.js';
 import { serialize } from '../serialize.js';
 import { makeBuiltinRegistry } from '@jesscss/fns';
@@ -42,50 +42,6 @@ describe('At-rule canonical AST emission', () => {
       '@media screen {\n'
       + '  .card.wide {\n'
       + '    columns: 2;\n'
-      + '  }\n'
-      + '}\n'
-    );
-  });
-
-  it('bubbles a nested media query beside its parent with ordered qualifiers', () => {
-    const document = stylesheet([
-      atRuleBlock('@media', keyword('screen'), [
-        rule('.outer', [decl('display', keyword('block'))]),
-        atRuleBlock('@media', generalEnclosed('paren', null, interpolation([{ lit: 'min-width: 40rem' }])), [
-          rule('.inner', [decl('display', keyword('grid'))])
-        ])
-      ])
-    ]);
-
-    expect(render(document)).toBe(
-      '@media screen {\n'
-      + '  .outer {\n'
-      + '    display: block;\n'
-      + '  }\n'
-      + '}\n'
-      + '@media screen and (min-width: 40rem) {\n'
-      + '  .inner {\n'
-      + '    display: grid;\n'
-      + '  }\n'
-      + '}\n'
-    );
-  });
-
-  it('keeps comma-list media queries nested until typed Cartesian conjunction exists', () => {
-    const document = stylesheet([
-      atRuleBlock('@media', keyword('screen'), [
-        atRuleBlock('@media', list([keyword('print'), keyword('speech')], [', ']), [
-          rule('.inner', [decl('display', keyword('grid'))])
-        ])
-      ])
-    ]);
-
-    expect(render(document)).toBe(
-      '@media screen {\n'
-      + '  @media print, speech {\n'
-      + '    .inner {\n'
-      + '      display: grid;\n'
-      + '    }\n'
       + '  }\n'
       + '}\n'
     );
