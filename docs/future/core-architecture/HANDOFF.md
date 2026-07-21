@@ -1514,3 +1514,25 @@ quoted versus bare syntax before dispatch.
   aggressive-cutting cost contract, and the aggregate
   `verify:aggressive-cutting-review` result remains globally red on existing
   evaluator/value/extend/context inventory unrelated to this behavior entry.
+
+### Addendum: canonical AST source-span provenance (semantic diagnostics)
+
+`ast/provenance.ts` is a deliberately narrow parser-to-diagnostic fact channel.
+Parseman reductions attach only their exact source spans to a session-independent
+`WeakMap`; normal evaluation and rendering do not read it. The serializer reads
+the fact only while constructing a diagnostic, where a source offset is required
+to render the correct code frame. The process-global symbol is required because
+parser packages load the `@jesscss/core/ast` bundle while the compiler serializer
+loads the core root bundle; those are separate bundled module identities and
+must share the same parser-authored table.
+
+- **Behavior evidence:** `ast/__tests__/provenance.test.ts` proves that the
+  side table preserves node shape. The public Jess render diagnostic test and
+  a built-package Compiler route both report `$[path]` at source column 13,
+  proving that the parser-written span reaches root-bundle serialization.
+- **Fact flow:** Parseman reduction → `withSourceSpan` → `WeakMap` →
+  diagnostic-only `sourceSpanOf`; no source walk, reparse, node mutation, copy,
+  or render-time collection occurs.
+- **Cost/gate status:** no speed or neutrality claim. The existing `WeakMap`
+  write is semantic parser work for diagnostics, and its lookup is cold error
+  handling; this entry does not assert a global aggressive-cutting gate pass.
