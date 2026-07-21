@@ -1277,11 +1277,20 @@ Independent current evidence:
   build is the required next measurement for choice/backtracking; it must remain
   outside normal parser and benchmark routes.
 
-**Next actionable hypothesis:** construct a diagnostic coverage-enabled build
-of this exact grammar, collect selected/failure/backtrack counts on the same
-fixture, then use the CPU/allocation profile to choose one shared-prefix or
-first-set change. Do not optimize AST factories, trivia, or emitted optional
-branches until that measurement attributes their cost.
+**Diagnostic result (2026-07-21):** the same-source coverage-enabled Less
+transform completed `benchmark.less` and exposed 14,330 failed
+`DirectLessStaticNthPseudo` entries plus 10,878 failed
+`DirectLessStaticPseudo` entries. Generated output confirms that both are only
+gated by `:` before their whole structural-node rules run. This identifies a
+shared-prefix candidate, but the trace has 241 stable rule IDs and zero
+choice-arm IDs, so it cannot attribute a failure to a name, argument, or
+rollback branch. Do not make a speculative first-set rewrite from those totals.
+The next Parseman-only diagnostic design is
+[`parseman-diagnostic-trace-design.md`](../parseman-diagnostic-trace-design.md):
+add opt-in stable choice-arm tracing while preserving all existing rule IDs,
+then run its adversarial near-prefix matrix before choosing one structural
+trie/residual experiment. Normal parser and benchmark routes remain
+uninstrumented.
 
 `verify:aggressive-cutting-review` compares the working `dev` tip with
 `origin/dev`; this is a 96-commit, 237-file integration delta (+12,490/-40,189
