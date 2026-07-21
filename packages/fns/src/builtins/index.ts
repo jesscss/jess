@@ -39,7 +39,7 @@ import { sin } from './sin.js';
 import { cos } from './cos.js';
 import { tan } from './tan.js';
 import { asin } from './asin.js';
-import { acos } from './acos.js';
+import { acos } from '../less/acos.js';
 import { atan } from './atan.js';
 // --- list (Tier-A: pure value→value, constructs its own list; no eval context) ---
 import { range } from './range.js';
@@ -134,7 +134,7 @@ export const builtinLessFns: readonly Fn[] = [
   multiply, screen, overlay, softlight, hardlight, difference, exclusion, average, negation,
   rgb, rgba, hsl, hsla, hsv, hsva, argb, color,
   replace, format, formatPercent, escape,
-  iscolor, isnumber, isstring, iskeyword, isunit, ispixel, ispercentage, isem
+  iscolor, isnumber, isstring, iskeyword, isunit, ispixel, ispercentage, isem,
   svgGradient,
   dataUri, imageSize, imageWidth, imageHeight,
   e
