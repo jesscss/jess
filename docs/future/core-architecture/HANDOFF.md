@@ -39,7 +39,7 @@ after those Less-alpha gates are genuinely green.
 
 ### Less corpus truthfulness gate
 
-`packages/jess/test/less/all-less.test.ts` currently contains 32 runnable
+`packages/jess/test/less/all-less.test.ts` currently contains 28 runnable
 expected-failure markers. They remain complete, visible compatibility evidence:
 the harness passes when a named fixture fails, so none is passing-parity proof.
 The owner decision for the first alpha is to classify—not drain or hide—them.
@@ -47,8 +47,8 @@ The maintained symptom/scope/follow-up inventory and alpha safety gates are in
 [`../../less-v5-alpha-readiness.md`](../../less-v5-alpha-readiness.md), and the
 release notes must link it. The five groups are callable/reference and scope
 semantics (9); imports/conditional at-rule execution (6); direct
-parser/evaluator correctness (7); URL options (6); and source-map artifacts
-(4). These add to 32. In particular, a missing mixin remains an error; only an
+parser/evaluator correctness (7); URL options (2); and source-map artifacts
+(4). These add to 28. In particular, a missing mixin remains an error; only an
 ordinary function call with an optional function reference may fall back to a
 CSS `Call` when lookup misses.
 

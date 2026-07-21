@@ -221,7 +221,7 @@ Known gaps to add or close:
 
 ## Known limitations: runnable upstream corpus inventory
 
-The runnable corpus has **32** explicit expected-failure markers in
+The runnable corpus has **28** explicit expected-failure markers in
 `packages/jess/test/less/all-less.test.ts`. They are test instrumentation,
 not passing compatibility evidence: each marker makes a mismatching render pass
 the harness while preserving the observed failure. This is the complete first
@@ -234,7 +234,7 @@ remain explicit and be updated when its symptom or scope changes.
 | Callable/reference and scope semantics | `detached-rulesets`, `functions-each`, `mixins`, `namespacing-5`, `namespacing-8`, `namespacing-functions`, `namespacing-media`, `variables`, `variables-in-at-rules` | Advanced Less callable, detached-ruleset, `each()`, namespace, and live/scoped lookup results can diverge. Missing mixins are still errors; ordinary unregistered `foo()` remains an optional CSS-function fallback, not a missing-mixin success. | Typed callable/reference lookup and binding semantics in core; graduate only with focused core proof plus byte-identical fixture output. |
 | Imports and conditional at-rules | `import-reference`, `import`, `import-remote`, `urls`, `process-imports/google`, `plugin/plugin` | Some reference/remote/interpolated imports, process-import filtering, and media-query merging diverge. `@plugin` script execution itself is separately proved; its fixture mismatch shares the import/media rendering gap. | Context/plugin-owned import execution and typed media wrapping; no dialect-local resolver or source reparse. |
 | Parser/evaluator edge syntax | `selectors`, `property-name-interp`, `parse-interpolation`, `parser-slashed-combinator`, `permissive-parse`, `media`, `container` | Specific selector interpolation/pseudo, property interpolation, slashed-combinator, and permissive at-rule-prelude forms are rejected or render differently. | Extend the direct Parseman grammar and canonical AST only where the syntax has an agreed semantic shape; retain migration-policy questions as documented decisions. |
-| URL-option behavior | `rewrite-urls-all`, `rewrite-urls-local`, `rootpath-rewrite-urls-all`, `rootpath-rewrite-urls-local`, `static-urls`, `url-args` | Some configured URL rewrite/rootpath/query-argument behavior differs from Less. | One Context/plugin-owned URL transform contract, with public compiler fixture proof; do not add a dialect-local resolver. |
+| URL-option behavior | `static-urls`, `url-args` | Some configured static-URL/query-argument behavior differs from Less. The four rewrite/rootpath fixtures are byte-identical public-route passes, not limitations. | One Context/plugin-owned URL transform contract, with public compiler fixture proof; do not add a dialect-local resolver. |
 | Source-map artifacts | `sourcemaps-basepath`, `sourcemaps-include-source`, `sourcemaps-rootpath`, `sourcemaps-url` | Source-map annotations and emitted artifacts are not alpha-supported behavior. | Dedicated artifact harness and documented public source-map contract, rather than render-string assertions. |
 
 The grouped paths above deliberately name every marker; do not summarize the
