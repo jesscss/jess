@@ -370,7 +370,7 @@ describe('@jesscss/scss-parser public parse API', () => {
       }]
     });
     expect(serialize(root)).toEqual({
-      css: '@import "theme.css" layer(tokens) supports((display : grid)) only screen and (min-width : 1px), (color), not (color : red);\n'
+      css: '@import "theme.css" layer(tokens) supports((display : grid)) only screen and (min-width: 1px), (color), not (color: red);\n'
     });
     expect(parse('@import "theme.css" (color) or (monochrome);')).toMatchObject({
       children: [{ type: 'ImportAtRule', tail: { type: 'SpacedValue', parts: [{ type: 'Paren' }, { src: 'or' }, { type: 'Paren' }] } }]

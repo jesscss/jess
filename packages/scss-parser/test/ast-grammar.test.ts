@@ -335,7 +335,7 @@ describe('SCSS canonical-AST grammar', () => {
       }]
     });
     expect(isStylesheet(result.value) ? serialize(result.value).css : undefined).toBe(
-      '@import "theme.css" layer(tokens) supports((display : grid)) only screen and (min-width : 1px), (color), not (color : red);\n'
+      '@import "theme.css" layer(tokens) supports((display : grid)) only screen and (min-width: 1px), (color), not (color: red);\n'
     );
 
     for (const source of [
