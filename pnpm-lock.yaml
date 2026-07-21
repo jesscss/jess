@@ -557,15 +557,9 @@ importers:
 
   packages/language-service:
     dependencies:
-      '@jesscss/core':
-        specifier: workspace:*
-        version: link:../core
       '@jesscss/css-parser':
         specifier: workspace:*
         version: link:../css-parser
-      '@jesscss/fns':
-        specifier: workspace:*
-        version: link:../fns
       '@jesscss/jess-parser':
         specifier: workspace:*
         version: link:../jess-parser

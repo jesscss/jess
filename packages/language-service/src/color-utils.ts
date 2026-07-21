@@ -1,6 +1,7 @@
 import type { Color as LSPColor, ColorPresentation } from 'vscode-languageserver-types';
-import type { Node, Color, Call, Any } from '@jesscss/core';
-import { isNode, N, sourceSpanOf, Color as ColorClass } from '@jesscss/core';
+import type { CssCstNode } from '@jesscss/css-parser';
+import type { TextDocument } from 'vscode-languageserver-textdocument';
+import { buildCstIndex } from './cst-analysis.js';
 
 // CSS color keywords map (from CSS Color Module Level 4)
 export const colorKeywords: { [name: string]: string } = {
@@ -154,261 +155,100 @@ export const colorKeywords: { [name: string]: string } = {
   yellowgreen: '#9acd32'
 };
 
-/**
- * Convert a Jess Color node to LSP Color format (RGBA 0-1 range)
- */
-export function colorToLSP(color: Color): LSPColor {
-  const [r, g, b] = color._rgb;
-  return {
-    red: r / 255,
-    green: g / 255,
-    blue: b / 255,
-    alpha: color._alpha
-  };
+export type ParsedColor = {
+  red: number;
+  green: number;
+  blue: number;
+  alpha: number;
+};
+
+export function colorToLSP(color: ParsedColor): LSPColor {
+  return color;
 }
 
-/**
- * Get the text span of a node for creating a Range
- */
-export function getNodeSpan(node: Node): { start: number; end: number } | null {
-  // Functional parsers keep spans in the provenance side-table (`sourceSpanOf`),
-  // not on a `.location` 6-tuple.
-  const span = sourceSpanOf(node);
-  if (span) {
-    const start = Number(span.start);
-    const end = Number(span.end);
-    if (Number.isFinite(start) && Number.isFinite(end) && end >= start) {
-      return { start, end };
-    }
-  }
-  return null;
-}
-
-/**
- * Check if a node is a color keyword identifier
- */
-function isColorKeyword(node: Node): node is Any {
-  if (!isNode(node, N.Any)) {
-    return false;
-  }
-  const anyNode = node;
-  // Any nodes have value as a string
-  const text = typeof anyNode.value === 'string' ? anyNode.value.toLowerCase() : String(anyNode.value ?? '').toLowerCase();
-  if (!text || text === 'none') {
-    return false;
-  }
-  return text in colorKeywords;
-}
-
-/**
- * Extract a Call's function name as a lowercased string. The functional Call
- * node exposes its name as a plain `.name` field: a string for CSS-style calls
- * (`rgb(...)`), or a `Reference(type='function')` node carrying `.key` for
- * Less/SCSS calls. The legacy `.get('name')` accessor no longer exists.
- */
-function callFunctionName(call: Call): string | null {
-  const callName = (call as { name?: unknown }).name;
-  if (typeof callName === 'string') {
-    return callName.toLowerCase();
-  }
-  if (callName && typeof callName === 'object') {
-    // A Reference/Any name node: prefer its `.key`, then `valueOf()`.
-    const key = (callName as { key?: unknown }).key;
-    if (typeof key === 'string' && key) {
-      return key.toLowerCase();
-    }
-    const node = callName as { valueOf?: () => unknown };
-    if (typeof node.valueOf === 'function') {
-      try {
-        const str = String(node.valueOf() ?? '');
-        if (str) {
-          return str.toLowerCase();
-        }
-      } catch {
-        // fall through
-      }
-    }
-  }
-  return null;
-}
-
-const COLOR_FUNCTIONS = ['rgb', 'rgba', 'hsl', 'hsla', 'hwb', 'lab', 'lch', 'oklab', 'oklch'];
-
-/**
- * Check if a Call node is a color function
- */
-function isColorFunction(call: Call): boolean {
-  const name = callFunctionName(call);
-  return name !== null && COLOR_FUNCTIONS.includes(name);
-}
-
-/** A numeric color-function argument: its magnitude and any unit (e.g. `%`). */
-type NumericArg = { value: number; unit: string };
-
-/** Read a Num/Dimension leaf as a number+unit, or null for anything else. */
-function numericArg(node: unknown): NumericArg | null {
-  if (!node || typeof node !== 'object') {
+function hexColor(text: string): ParsedColor | null {
+  const hex = text.startsWith('#') ? text.slice(1) : text;
+  if (![3, 4, 6, 8].includes(hex.length) || !/^[0-9a-f]+$/i.test(hex)) {
     return null;
   }
-  const num = (node as { number?: unknown }).number;
-  if (typeof num !== 'number' || !Number.isFinite(num)) {
-    return null;
-  }
-  const unit = (node as { unit?: unknown }).unit;
-  return { value: num, unit: typeof unit === 'string' ? unit : '' };
+  const pair = (offset: number) => hex.length <= 4
+    ? Number.parseInt(hex[offset]! + hex[offset]!, 16)
+    : Number.parseInt(hex.slice(offset, offset + 2), 16);
+  const alpha = hex.length === 4 ? pair(3) / 255 : hex.length === 8 ? pair(6) / 255 : 1;
+  return { red: pair(0) / 255, green: pair(hex.length <= 4 ? 1 : 2) / 255, blue: pair(hex.length <= 4 ? 2 : 4) / 255, alpha };
 }
 
-/** Flatten a Call's argument list into its positional member nodes. */
-function callArgNodes(call: Call): unknown[] {
-  const args = (call as { args?: unknown }).args;
-  if (args && typeof args === 'object') {
-    const value = (args as { value?: unknown }).value;
-    if (Array.isArray(value)) {
-      return value;
-    }
-  }
-  return Array.isArray(args) ? args : [];
+function hslToRgb(hue: number, saturation: number, lightness: number): [number, number, number] {
+  const c = (1 - Math.abs(2 * lightness - 1)) * saturation;
+  const x = c * (1 - Math.abs((hue / 60) % 2 - 1));
+  const m = lightness - c / 2;
+  const [r, g, b] = hue < 60 ? [c, x, 0] : hue < 120 ? [x, c, 0] : hue < 180 ? [0, c, x] : hue < 240 ? [0, x, c] : hue < 300 ? [x, 0, c] : [c, 0, x];
+  return [r + m, g + m, b + m];
 }
 
-/**
- * Statically evaluate a color function call to a Color, without the AST eval
- * pipeline. The functional parsers emit `rgb(...)`/`hsl(...)` as string-named
- * `Call` nodes, which eval deliberately does not resolve to functions (only
- * `Reference(type='function')` names evaluate). For color detection we only
- * need the channel values, so read the numeric arguments directly. Any
- * non-numeric argument (e.g. a variable reference) yields null — the call is
- * not statically a color.
- */
-function tryEvaluateColorCall(call: Call): Color | null {
-  const name = callFunctionName(call);
-  if (!name || !COLOR_FUNCTIONS.includes(name)) {
+function colorFunction(text: string): ParsedColor | null {
+  const match = /^(rgb|rgba|hsl|hsla)\((.*)\)$/i.exec(text.trim());
+  if (!match) {
     return null;
   }
-
-  const nums: NumericArg[] = [];
-  for (const argNode of callArgNodes(call)) {
-    const parsed = numericArg(argNode);
-    if (parsed === null) {
-      return null;
-    }
-    nums.push(parsed);
-  }
-  if (nums.length === 0) {
+  const values = match[2]!.split(',').map(value => value.trim());
+  if (values.length < 3 || values.some(value => !/^[+-]?(?:\d+\.?\d*|\.\d+)%?$/.test(value))) {
     return null;
   }
-  const alphaAt = (i: number): number => {
-    if (i >= nums.length) {
-      return 1;
-    }
-    const a = nums[i]!;
-    return a.unit === '%' ? a.value / 100 : a.value;
-  };
-
-  try {
-    if (name === 'rgb' || name === 'rgba') {
-      if (nums.length < 3) {
-        return null;
-      }
-      const channel = (c: NumericArg) => c.unit === '%' ? Math.round((c.value / 100) * 255) : c.value;
-      const rgb: [number, number, number] = [channel(nums[0]!), channel(nums[1]!), channel(nums[2]!)];
-      return new ColorClass({ rgb, alpha: alphaAt(3) });
-    }
-    if (name === 'hsl' || name === 'hsla') {
-      if (nums.length < 3) {
-        return null;
-      }
-      // The Color HSL channels are fractional (0-1) for saturation/lightness.
-      const fraction = (c: NumericArg) => c.unit === '%' ? c.value / 100 : c.value;
-      const hsl: [number, number, number] = [nums[0]!.value, fraction(nums[1]!), fraction(nums[2]!)];
-      return new ColorClass({ hsl, alpha: alphaAt(3) });
-    }
-  } catch {
+  const number = (value: string) => Number.parseFloat(value);
+  const fraction = (value: string) => value.endsWith('%') ? number(value) / 100 : number(value);
+  const alpha = values[3] ? fraction(values[3]!) : 1;
+  if (!Number.isFinite(alpha)) {
     return null;
   }
-  // hwb/lab/lch/oklab/oklch are recognized as color functions but not yet
-  // statically evaluated here.
-  return null;
+  if (match[1]!.toLowerCase().startsWith('rgb')) {
+    const channel = (value: string) => value.endsWith('%') ? Math.round(fraction(value) * 255) / 255 : number(value) / 255;
+    return { red: channel(values[0]!), green: channel(values[1]!), blue: channel(values[2]!), alpha };
+  }
+  const [red, green, blue] = hslToRgb(((number(values[0]!) % 360) + 360) % 360, fraction(values[1]!), fraction(values[2]!));
+  return { red, green, blue, alpha };
 }
 
 /**
- * Find all color nodes in the AST
- * This function is async because it may need to evaluate function calls
+ * Find statically-known colors through the tolerant CST. Color reporting is an
+ * editor feature, so it reads declaration value source ranges rather than asking
+ * the compiler to build/evaluate an AST.
  */
-export async function findColorsInAST(root: Node): Promise<Array<{ node: Node; color: Color }>> {
-  const colors: Array<{ node: Node; color: Color }> = [];
-  const seen = new Set<Node>();
-  const stack: Node[] = [root];
-  const callNodes: Call[] = []; // Collect Call nodes to evaluate separately
-
-  while (stack.length) {
-    const node = stack.pop()!;
-    if (seen.has(node)) {
+export function findColorsInCst(root: CssCstNode, doc: TextDocument): Array<{ start: number; end: number; color: ParsedColor }> {
+  const index = buildCstIndex(root);
+  const source = doc.getText();
+  const found: Array<{ start: number; end: number; color: ParsedColor }> = [];
+  const seen = new Set<string>();
+  const candidate = /(?:rgba?|hsla?)\([^)]*\)|#[0-9a-fA-F]{3,8}\b|\b[a-zA-Z]+\b/g;
+  for (const { node, start, end } of index.nodes) {
+    if (node.grammarType !== 'Declaration') {
       continue;
     }
-    seen.add(node);
-
-    // Check if this node is a Color
-    if (isNode(node, N.Color)) {
-      colors.push({ node, color: node });
+    const valueStart = source.indexOf(':', start);
+    if (valueStart < start || valueStart >= end) {
+      continue;
     }
-
-    // Check if this is a color keyword (Any node with color keyword text)
-    if (isColorKeyword(node)) {
-      const anyNode = node;
-      const keyword = typeof anyNode.value === 'string' ? anyNode.value.toLowerCase() : String(anyNode.value ?? '').toLowerCase();
-      if (keyword && keyword in colorKeywords) {
-        const hexValue = colorKeywords[keyword];
-        if (hexValue) {
-          // Create a Color from the hex value
-          try {
-            const colorNode = new ColorClass(hexValue);
-            colors.push({ node, color: colorNode });
-          } catch {
-            // Ignore invalid colors
-          }
-        }
+    const value = source.slice(valueStart + 1, end);
+    let match: RegExpExecArray | null;
+    while ((match = candidate.exec(value)) !== null) {
+      const text = match[0]!;
+      const color = text.startsWith('#')
+        ? hexColor(text)
+        : colorFunction(text) ?? hexColor(colorKeywords[text.toLowerCase()] ?? '');
+      if (!color) {
+        continue;
       }
-    }
-
-    // Check if this is a Call node that might be a color function
-    if (isNode(node, N.Call)) {
-      if (isColorFunction(node)) {
-        callNodes.push(node);
+      const from = valueStart + 1 + match.index;
+      const to = from + text.length;
+      const key = `${from}:${to}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        found.push({ start: from, end: to, color });
       }
-    }
-
-    // Traverse children
-    for (const child of node.walk()) {
-      stack.push(child);
     }
   }
-
-  // Try to evaluate Call nodes that might be color functions
-  for (const callNode of callNodes) {
-    try {
-      const color = await tryEvaluateColorCall(callNode);
-      if (color) {
-        colors.push({ node: callNode, color });
-      }
-    } catch {
-      // Evaluation failed - skip this call
-    }
-  }
-
-  return colors;
+  return found;
 }
-
-/**
- * Convert a number to two-digit hex string
- */
-function toTwoDigitHex(n: number): string {
-  const hex = Math.round(n).toString(16);
-  return hex.length === 1 ? '0' + hex : hex;
-}
-
-/**
- * Generate color presentations for a given color
- */
 export function getColorPresentations(color: LSPColor): ColorPresentation[] {
   const presentations: ColorPresentation[] = [];
   const red256 = Math.round(color.red * 255);
