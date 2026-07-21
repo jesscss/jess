@@ -87,6 +87,7 @@ function internalUnknownDiagnostic(
 }
 
 type LessOptions = ReturnType<typeof getOptions>;
+type LessPluginInput = NonNullable<Parameters<typeof lessPlugin>[0]> & { plugins?: readonly unknown[] };
 type LessPluginCacheKey = string;
 type PluginFactoryCacheKey = string;
 type LazyPluginInterface = PluginInterface;
@@ -449,6 +450,11 @@ export class Compiler {
   private jsPluginFactoryCache = new Map<PluginFactoryCacheKey, Promise<PluginFactoryRecord>>();
   private jsPluginProxyCache = new Map<PluginFactoryCacheKey, LazyPluginInterface>();
   private lessPluginInstanceCache = new Map<LessPluginCacheKey, PluginInterface>();
+  // Native Less plugin hooks are objects supplied by the consumer. Their
+  // identity and order change the adapter's registered function set, so they
+  // are part of its cache identity without serializing executable objects.
+  private nativeLessPluginIds = new Map<unknown, number>();
+  private nextNativeLessPluginId = 0;
   private jessPluginInstance: PluginInterface | undefined;
   private scssPluginInstance: PluginInterface | undefined;
 
@@ -577,8 +583,11 @@ export class Compiler {
     };
   }
 
-  private getLessPluginCacheKey(lessOptions: LessOptions): LessPluginCacheKey {
-    return stableStringify({
+  private getLessPluginCacheKey(
+    lessOptions: LessOptions,
+    nativePlugins: readonly unknown[] = []
+  ): LessPluginCacheKey {
+    const optionsKey = stableStringify({
       math: lessOptions.math,
       mathMode: lessOptions.mathMode,
       strictUnits: lessOptions.strictUnits,
@@ -592,13 +601,32 @@ export class Compiler {
       rewriteUrls: lessOptions.rewriteUrls,
       urlArgs: lessOptions.urlArgs
     });
+    if (nativePlugins.length === 0) {
+      return optionsKey;
+    }
+    const nativePluginKey = nativePlugins.map((plugin) => {
+      let id = this.nativeLessPluginIds.get(plugin);
+      if (id === undefined) {
+        id = ++this.nextNativeLessPluginId;
+        this.nativeLessPluginIds.set(plugin, id);
+      }
+      return id;
+    });
+    return `${optionsKey}|native-plugins:${nativePluginKey.join(',')}`;
   }
 
-  private getOrCreateLessPlugin(lessOptions: LessOptions): PluginInterface {
-    const key = this.getLessPluginCacheKey(lessOptions);
+  private getOrCreateLessPlugin(
+    lessOptions: LessOptions,
+    nativePlugins: readonly unknown[] = []
+  ): PluginInterface {
+    const key = this.getLessPluginCacheKey(lessOptions, nativePlugins);
     let plugin = this.lessPluginInstanceCache.get(key);
     if (!plugin) {
-      plugin = lessPlugin(lessOptions);
+      const pluginOptions: LessPluginInput = {
+        ...lessOptions,
+        ...(nativePlugins.length === 0 ? {} : { plugins: nativePlugins })
+      };
+      plugin = lessPlugin(pluginOptions);
       this.lessPluginInstanceCache.set(key, plugin);
     }
     return plugin;
@@ -865,10 +893,11 @@ export class Compiler {
           const resolvedLessOptions = Object.fromEntries(
             Object.entries(resolved.lessOptions).filter(([, value]) => value !== undefined),
           );
+          const nativePlugins = Array.isArray(pluginOptions.plugins) ? pluginOptions.plugins : [];
           pluginMap.set('less', this.getOrCreateLessPlugin({
             ...pluginOptions,
             ...resolvedLessOptions,
-          }));
+          }, nativePlugins));
           continue;
         }
         if (
@@ -1448,6 +1477,8 @@ export class Compiler {
     this.jsPluginProxyCache.clear();
     this.jsPluginFactoryCache.clear();
     this.lessPluginInstanceCache.clear();
+    this.nativeLessPluginIds.clear();
+    this.nextNativeLessPluginId = 0;
     this.jessPluginInstance = undefined;
     this.scssPluginInstance = undefined;
     this.configuredPluginFactoryCache.clear();

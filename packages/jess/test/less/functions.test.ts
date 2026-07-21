@@ -88,7 +88,22 @@ describe('Functions', () => {
       expect(await compilerWithNativeFunctions.render(lessPath)).toBe(
         '.first {\n  width: 5;\n}\n.second {\n  color: #660000;\n  width: 5;\n}\n'
       );
-      expect(installs).toBe(1);
+      expect(await compilerWithNativeFunctions.render(lessPath)).toBe(
+        '.first {\n  width: 5;\n}\n.second {\n  color: #660000;\n  width: 5;\n}\n'
+      );
+      expect(installs).toBe(2);
+    });
+
+    it('keeps configured native function hooks out of an empty Less adapter', async () => {
+      const configuredCompiler = new Compiler({
+        compile: { plugins: [lessPlugin({ plugins: [lessHarnessFunctionsPlugin] })] }
+      });
+      const defaultCompiler = new Compiler({ compile: { plugins: [lessPlugin()] } });
+
+      expect(await configuredCompiler.renderString('.x { width: increment(4); }', { language: 'less' }))
+        .toContain('width: 5');
+      expect(await defaultCompiler.renderString('.x { width: increment(4); }', { language: 'less' }))
+        .toContain('width: increment(4)');
     });
 
     it('should support Less harness custom functions through less-compat registry setup', async () => {
