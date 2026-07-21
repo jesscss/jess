@@ -199,15 +199,26 @@ Known gaps to add or close:
 
 Current expected-failure backlog:
 
-- Unit output mismatches: reference import filtering, advanced math/color
-  behavior, default guard resolution, property accessor precedence, scope
-  leakage, and `@starting-style` shorthand expansion.
-- Config output mismatches: namespacing/detached map lookup, `processImports:
-  false`, `rewriteUrls`, `rootpath`, `relativeUrls: false`, `urlArgs`, and
-  source-map annotation/artifact output.
-- Skipped known hangs include `extend-exact`, advanced variables/merge/selectors
-  and older async-deadlock fixtures. These remain alpha compatibility blockers
-  unless explicitly staged after alpha.
+The runnable corpus has **32** explicit expected-failure markers in
+`packages/jess/test/less/all-less.test.ts`. They are test instrumentation,
+not alpha exclusions: each marker makes a mismatching render pass the suite.
+None has an owner-approved "out of alpha" decision. A marker may be removed
+only with byte-identical fixture proof, or replaced with an explicit,
+owner-approved unsupported-alpha policy and release-note wording.
+
+| Remediation order | Current fixtures | Actual shared gap / next owner evidence |
+| --- | --- | --- |
+| 1 — callable/reference and scope semantics | `detached-rulesets`, `functions-each`, `mixins`, `namespacing-5`, `namespacing-8`, `namespacing-functions`, `namespacing-media`, `variables`, `variables-in-at-rules` | Typed callable/reference lookup, detached-ruleset calls, `each()`, and live/scope binding behavior in core. Missing mixins remain errors. This must not be conflated with ordinary CSS-function fallback: an ordinary `foo()` has an optional function reference and retains CSS-call syntax only when that lookup misses. |
+| 2 — import and conditional-at-rule execution | `import-reference`, `import`, `import-remote`, `urls`, `process-imports/google`, `plugin/plugin` | Plugin-driven import resolution/filtering, typed interpolated import paths, remote/process-imports behavior, and ordinary media-query merging. `@plugin` script execution is already proved separately; its remaining fixture mismatch is the same media rendering gap. |
+| 3 — direct parser/evaluator correctness | `selectors`, `property-name-interp`, `parse-interpolation`, `parser-slashed-combinator`, `permissive-parse`, `media`, `container` | Selector pseudo evaluation, interpolation serialization, slashed combinators, and the two precise permissive/at-rule-prelude grammar cases. The latter two are policy-blocked rather than silently accepted as v5 exclusions: the external fixtures are Less 4.x oracle output and need an explicit owner decision or a documented migration fixture. |
+| 4 — documented URL options | `rewrite-urls-all`, `rewrite-urls-local`, `rootpath-rewrite-urls-all`, `rootpath-rewrite-urls-local`, `static-urls`, `url-args` | One Context/plugin-owned URL rewriting contract, exercised through the public compiler route. Do not add a dialect-local resolver. |
+| 5 — source-map artifacts | `sourcemaps-basepath`, `sourcemaps-include-source`, `sourcemaps-rootpath`, `sourcemaps-url` | A dedicated artifact harness plus public source-map/annotation behavior; these are not render-string-only assertions. |
+
+The grouped paths above deliberately name every marker; do not summarize the
+list as broad “advanced math/color” or “known-hang” buckets. Existing
+non-runnable skips (helper files, no-CSS fixtures, compression/debug fixtures,
+and plugin API scope decisions) are a separate inventory and are not evidence
+that a runnable expected failure is non-blocking.
 
 Do not use the older `describe.todo` Less files as release evidence until each
 test is revalidated against upstream Less behavior, Jess behavior docs, or a
