@@ -1209,6 +1209,63 @@ allocation cost.
 
 ### Release-gate attribution (2026-07-21)
 
+### Direct Less built-artifact baseline (2026-07-21; investigation only)
+
+This is the first matching current baseline for the **published-Parseman,
+built direct parser**. It is not an A/B and does not establish a regression
+against the historical private/source driver.
+
+| Phase | Exact protocol | Current result |
+| --- | --- | --- |
+| Direct parse | `packages/less-parser/lib/index.js` SHA-256 `52d88a95557a821815d9f15f2d6ab05bbb5c64a55f0189fb97a050d7aea50285` (1,797,831 bytes); `parse(source)` on `packages/jess/benchmark/benchmark.less` (106,802 bytes); Node v24.11.1 arm64; 20 warmups + 3×45 samples | **63.321 ms** median; p25 61.776, p75 64.487, p90 65.386. The returned `Stylesheet` has 677 children; stable JSON snapshot is 957,390 bytes, SHA-256 `2ba996a1c46eb6d77ce8f1748b35d1135848c128104e00f46dadf7e9651c53bd`. |
+| Public Compiler | `node scripts/measure-less-hotpath.mjs --fixture packages/jess/benchmark/benchmark.less --iterations 45 --warmup 20 --repeat 3 --trim 0.1 --json`; built `jess`, `plugin-less`, and `plugin-less-compat`; same Node/fixture | **77.492 ms** round-median across 135 samples; p25 76.003, p75 79.580; 4.53% sample RSD / 0.78% round RSD (`usable`). Output is 122,390 bytes, SHA-256 `ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6`. |
+
+The plugin's `safeParse()` calls the same public `@jesscss/less-parser.parse`,
+so the two measurements share the canonical frontend. Their difference is not
+a phase attribution: the Compiler measurement also includes Context/plugin,
+document, evaluation, and rendering work. It does establish that direct parse
+is the dominant measured phase on this fixture.
+
+Historical values must not be treated as an A/B: the former 33.65 ms direct-AST
+figure was a Vite/source `renderAstFile` partial-driver phase (20 warmups/N=60),
+and the 24.42 ms figure was a Parseman 0.27-era built parser floor. Current
+grammar imports `composeLeaf` in all four AST frontends; npm packages 0.26.0 and
+0.27.1 do not export that symbol, while 0.28.0 does. Therefore the current
+grammar cannot produce a valid 0.26/0.27 generated-bundle comparison without
+changing the grammar; no such comparison may be reported.
+
+Independent current evidence:
+
+- V8 CPU sampling over 150 direct parses: 75.6% of leaf samples were emitted
+  Less reducer functions in the built bundle; GC was 3.6%. This proves generated
+  grammar execution dominates parse time, but does **not** identify a particular
+  choice/backtrack or AST factory as causal.
+- Allocation sampling over 30 direct parses attributes 515,240 of 1,303,176
+  sampled bytes to emitted reducer frames. It establishes material allocation
+  in the generated parser, not how much is retained canonical AST versus
+  transient recognition/capture state; do not call it an AST-allocation result.
+- Provenance is not a plausible whole-parser explanation: Less invokes
+  `withSourceSpan` at only two grammar reductions. Trivia is a live candidate:
+  `run()` always creates `_triviaLog` and the built bundle contains 1,925
+  `_triviaLog` references, while public `parse()` discards that result. Its cost
+  has not yet been isolated.
+- `composeLeaf` is macro-time, not a runtime composition layer: the built bundle
+  has no `composeLeaf(` call and normal public parse supplies neither profile nor
+  coverage/trace instrumentation. The same bundle still emits optional profile
+  (1,685 `_pmProfile`) and CST-host (409 `_parsemanCstOutput`) branches; whether
+  their normal-path predicates are material requires a separate generated-code
+  A/B, not inference from literal counts.
+- Current non-coverage artifacts cannot provide branch/rollback counts: they
+  contain no `_grammarTrace` hooks. A same-source coverage-enabled diagnostic
+  build is the required next measurement for choice/backtracking; it must remain
+  outside normal parser and benchmark routes.
+
+**Next actionable hypothesis:** construct a diagnostic coverage-enabled build
+of this exact grammar, collect selected/failure/backtrack counts on the same
+fixture, then use the CPU/allocation profile to choose one shared-prefix or
+first-set change. Do not optimize AST factories, trivia, or emitted optional
+branches until that measurement attributes their cost.
+
 `verify:aggressive-cutting-review` compares the working `dev` tip with
 `origin/dev`; this is a 96-commit, 237-file integration delta (+12,490/-40,189
 lines), not a small release patch. `6734da512` alone changes 34 production
