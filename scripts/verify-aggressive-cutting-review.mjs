@@ -2055,9 +2055,13 @@ function runVerifier() {
         '\nDanger tokens require a non-empty "- Review-flagged diff tokens:" accounting line in the latest self-prosecution block.'
       );
     }
+    // Hand-authored prose often wraps a bracketed category across lines.
+    // Normalize whitespace only for this label-presence check; the raw pass is
+    // still retained for every other evidence/source check.
+    const normalizedPass = latestPass.replace(/\s+/g, ' ');
     const missingFindingLabels = runtimeFindings
       .map(finding => finding.label)
-      .filter(label => !latestPass.includes(`[${label}]`));
+      .filter(label => !normalizedPass.includes(`[${label}]`));
     if (missingFindingLabels.length > 0) {
       failed = true;
       console.error(
