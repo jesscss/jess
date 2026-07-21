@@ -11,7 +11,7 @@ import type {
 } from './tree/index.js';
 import { ExtendRootRegistry } from './tree/util/extend-roots.js';
 import { type Operator } from './tree/util/calculate.js';
-import type { ISafeParseResult, ParsedDocument, PluginInterface } from './plugin.js';
+import type { ISafeParseResult, ParsedDocument, PluginInterface, UrlTransformRequest } from './plugin.js';
 import type { Stylesheet } from './ast/nodes.js';
 import type { StylesConfig } from './types.js';
 import type { TriviaMap } from './types/index.js';
@@ -938,6 +938,25 @@ export class Context {
       this.treeContext = previous;
       throw error;
     }
+  }
+
+  /**
+   * Dispatch a rendered URL target to the plugin that parsed the active
+   * document. The entry/source paths are provenance facts already retained by
+   * this Context; this does not perform resolution, loading, or parsing.
+   */
+  transformUrl(value: string, quoted: boolean): string {
+    const tree = this._treeContext;
+    const transform = tree?.plugin?.transformUrl;
+    if (!transform) return value;
+    const entry = this.document ? this.documentContexts.get(this.document) : undefined;
+    const request: UrlTransformRequest = {
+      value,
+      quoted,
+      ...(tree?.file?.fullPath === undefined ? {} : { fromFilePath: tree.file.fullPath }),
+      ...(entry?.file?.fullPath === undefined ? {} : { entryFilePath: entry.file.fullPath }),
+    };
+    return transform.call(tree.plugin, request) ?? value;
   }
 
   /**

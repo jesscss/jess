@@ -2,6 +2,7 @@ import {
   type Plugin,
   AbstractPlugin,
   type Context,
+  type UrlTransformRequest,
   extractRelevantLines,
   type ISafeParseResult,
   type SafeParseOptions,
@@ -103,6 +104,51 @@ export const lessPluginDefaults = {
   collapseNesting: false
 } as const;
 
+/** Match Less's URL normalization without treating URL text as an import path. */
+function normalizeUrlPath(url: string): string {
+  const segments = url.split('/');
+  const normalized: string[] = [];
+  for (const segment of segments) {
+    if (segment === '.') continue;
+    if (segment === '..') {
+      if (normalized.length === 0 || normalized[normalized.length - 1] === '..') normalized.push(segment);
+      else normalized.pop();
+      continue;
+    }
+    normalized.push(segment);
+  }
+  return normalized.join('/');
+}
+
+function isUrlRelative(url: string): boolean {
+  if (url.startsWith('/') || url.startsWith('#')) return false;
+  const colon = url.indexOf(':');
+  if (colon < 0) return true;
+  for (let index = 0; index < colon; index++) {
+    const code = url.charCodeAt(index);
+    const isLetter = (code >= 65 && code <= 90) || (code >= 97 && code <= 122);
+    if (!isLetter && url[index] !== '-') return true;
+  }
+  return false;
+}
+
+function rewriteUrlPath(url: string, rootpath: string): string {
+  const rewritten = normalizeUrlPath(rootpath + url);
+  return url.startsWith('.') && isUrlRelative(rootpath) && !rewritten.startsWith('.')
+    ? `./${rewritten}`
+    : rewritten;
+}
+
+function escapeUnquotedUrlPath(pathValue: string): string {
+  let escaped = '';
+  for (const char of pathValue) {
+    escaped += char === '(' || char === ')' || char === "'" || char === '"' || ' \t\n\r\f'.includes(char)
+      ? `\\${char}`
+      : char;
+  }
+  return escaped;
+}
+
 export class LessPlugin extends AbstractPlugin {
   name = 'less';
   supportedExtensions = ['.less'];
@@ -152,6 +198,38 @@ export class LessPlugin extends AbstractPlugin {
     this.leakyScope = opts.leakyScope ?? lessPluginDefaults.leakyScope;
     this.bubbleRootAtRules = opts.bubbleRootAtRules ?? lessPluginDefaults.bubbleRootAtRules;
     this.collapseNesting = opts.collapseNesting ?? lessPluginDefaults.collapseNesting;
+  }
+
+  transformUrl({ value, quoted, fromFilePath, entryFilePath }: UrlTransformRequest): string {
+    let transformed: string;
+    if (isUrlRelative(value)) {
+      const rewriteUrls = this.opts.rewriteUrls;
+      const local = value.startsWith('.');
+      // `rootpath` applies to every relative URL by default, but the explicit
+      // Less `local` mode narrows that to authored ./ and ../ paths.
+      if (rewriteUrls !== 'local' || local) {
+        const rebasesImportedUrl = rewriteUrls === true || rewriteUrls === 'all' || (rewriteUrls === 'local' && local);
+        let rootpath = this.opts.rootpath ?? '';
+        if (!quoted) rootpath = escapeUnquotedUrlPath(rootpath);
+        if (rebasesImportedUrl && fromFilePath && entryFilePath) {
+          const relativeDirectory = path.relative(path.dirname(entryFilePath), path.dirname(fromFilePath));
+          if (relativeDirectory) rootpath += `${relativeDirectory.split(path.sep).join('/')}/`;
+        }
+        transformed = rewriteUrlPath(value, rootpath);
+      } else {
+        transformed = normalizeUrlPath(value);
+      }
+    } else {
+      transformed = normalizeUrlPath(value);
+    }
+    if (this.opts.urlArgs && !value.trimStart().toLowerCase().startsWith('data:')) {
+      const args = `${transformed.includes('?') ? '&' : '?'}${this.opts.urlArgs}`;
+      const fragment = transformed.indexOf('#');
+      transformed = fragment < 0
+        ? transformed + args
+        : transformed.slice(0, fragment) + args + transformed.slice(fragment);
+    }
+    return transformed;
   }
 
   expandImport(importPath: string, currentDir: string) {

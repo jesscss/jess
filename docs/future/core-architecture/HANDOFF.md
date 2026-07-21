@@ -1492,3 +1492,25 @@ string split/join shortcut.
   typed import-media behavior; core and Jess production builds pass.
 - **Verdict:** accepted semantic output correction. No performance, neutrality,
   or whole-corpus byte-identity claim is made.
+
+### Addendum: Less URL transform dispatch (semantic parity, not a cost claim)
+
+`Context.transformUrl` carries the active document's existing source identity
+and the render entry identity to that document's parser plugin. The Less
+plugin owns `rootpath`, `rewriteUrls`, and `urlArgs` transformation; it does
+not resolve, load, scan, or re-parse a URL. Structured `Url` emission retains
+quoted versus bare syntax before dispatch.
+
+- **Behavior evidence:** `tests-config/rewrite-urls-all`,
+  `rewrite-urls-local`, `rootpath-rewrite-urls-all`, and
+  `rootpath-rewrite-urls-local` pass byte-identically through the public Less
+  fixture harness, including URLs authored in an imported document. The
+  compiler preserves configured native Less-plugin hooks while retaining the
+  per-render option-bearing Less adapter.
+- **Remaining gap:** `tests-config/static-urls` and `url-args` remain expected
+  failures because both first stop at the distinct multiline data-URI grammar
+  case. This URL transform pass does not claim to implement that grammar.
+- **Cost/gate status:** no performance or neutrality claim. This is not an
+  aggressive-cutting cost contract, and the aggregate
+  `verify:aggressive-cutting-review` result remains globally red on existing
+  evaluator/value/extend/context inventory unrelated to this behavior entry.

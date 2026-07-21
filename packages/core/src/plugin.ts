@@ -50,6 +50,22 @@ export type SafeParseOptions = {
   importOptions?: ImportOptions;
 };
 
+/**
+ * A rendered URL target together with the source identities needed by a
+ * dialect-owned transform. Context supplies these facts from the active
+ * document; plugins must not resolve or re-read either file to rewrite a URL.
+ */
+export interface UrlTransformRequest {
+  /** The unquoted URL target after value evaluation. */
+  value: string;
+  /** Whether the target was authored as a quoted URL token. */
+  quoted: boolean;
+  /** The document that authored this URL. */
+  fromFilePath?: string;
+  /** The entry document currently being rendered. */
+  entryFilePath?: string;
+}
+
 export interface PluginInterface {
   /**
    * e.g. 'less-plugin'
@@ -99,6 +115,13 @@ export interface PluginInterface {
 
   /** No errors thrown; successful parser plugins return `document: Stylesheet`. */
   safeParse?(filePath: string, source: string, options?: SafeParseOptions): ISafeParseResult;
+
+  /**
+   * Optionally transform a rendered URL target owned by this plugin's active
+   * document. This is intentionally not import resolution: Context already
+   * owns source identity and imports have been parsed before rendering.
+   */
+  transformUrl?(request: UrlTransformRequest): string | undefined;
 
   /** If this method exists, then the plugin can return a JS module / object */
   import?(absoluteFilePath: string): Promise<Record<string, any>>;

@@ -587,7 +587,10 @@ export class Compiler {
       allowExtendSelectors: lessOptions.allowExtendSelectors,
       leakyScope: lessOptions.leakyScope,
       bubbleRootAtRules: lessOptions.bubbleRootAtRules,
-      collapseNesting: lessOptions.collapseNesting
+      collapseNesting: lessOptions.collapseNesting,
+      rootpath: lessOptions.rootpath,
+      rewriteUrls: lessOptions.rewriteUrls,
+      urlArgs: lessOptions.urlArgs
     });
   }
 
@@ -850,6 +853,24 @@ export class Compiler {
           throw new Error('Configured plugin did not resolve to a valid plugin instance');
         }
         const pluginInstance = plugin;
+        // A configured Less plugin commonly supplies native Less-plugin hooks
+        // for the host test/application. It must not replace the per-render
+        // Less adapter: that adapter carries the resolved language options
+        // (including URL policy) for this particular input. Keep the supplied
+        // hooks and overlay only defined resolved options from this render.
+        if (pluginInstance.name === 'less') {
+          const pluginOptions = isObjectRecord(pluginInstance) && isObjectRecord(pluginInstance.opts)
+            ? pluginInstance.opts
+            : {};
+          const resolvedLessOptions = Object.fromEntries(
+            Object.entries(resolved.lessOptions).filter(([, value]) => value !== undefined),
+          );
+          pluginMap.set('less', this.getOrCreateLessPlugin({
+            ...pluginOptions,
+            ...resolvedLessOptions,
+          }));
+          continue;
+        }
         if (
           pluginInstance.name === 'less-compat'
           && typeof pluginInstance?.constructor === 'function'
