@@ -104,6 +104,15 @@ export interface PluginInterface {
   resolve?(path: string | string[], currentDir: string, searchPaths: string[]): null | string[] | Promise<null | string[]>;
 
   /**
+   * Explicit opt-in for an external import identifier (a URL or
+   * protocol-relative specifier). Context asks this before it enters the normal
+   * resolve → locate → source → parse pipeline. A positive result does not
+   * fetch: this plugin must still resolve and locate the source through those
+   * ordinary capabilities. Absent means external imports remain CSS terminals.
+   */
+  canResolveImport?(specifier: string, currentDir: string, searchPaths: string[]): boolean | Promise<boolean>;
+
+  /**
    * Pick the first one that exists. Return null to let another plugin handle the path.
    */
   locate?(pathCandidates: string[], currentDir: string): null | string | Promise<string | null>;

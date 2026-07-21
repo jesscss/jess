@@ -182,7 +182,7 @@ const expectedFailureFixtures = new Map<string, string>([
   //  fixes made them render byte-identical to Less; they're real passes now.
   //  extend-nest.less + extend-selector.less GRADUATED — the cutover-p1 spine extend
   //  wire-in now renders both byte-identical to the maintained `.css`; real passes.)
-  ['tests-unit/import/import-remote.less', 'renders but throws (n.hasNodeChild is not a function)']
+  ['tests-unit/import/import-remote.less', 'configured jsDelivr import resolution now reaches the typed loader; imported selectors.less still has an unsupported selector interpolation']
 ]);
 
 // Allow specific fixtures even when they are listed in shared invalidLess.

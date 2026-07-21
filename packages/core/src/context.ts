@@ -60,6 +60,7 @@ export interface SpineVisitor {
 
 const SCRIPT_MODULE_EXTENSIONS = new Set(['.js', '.mjs', '.cjs', '.ts', '.mts', '.cts']);
 const SCRIPT_MODULES_DISABLED_MESSAGE = 'Script modules are disabled by disableScriptModules.';
+const EXTERNAL_IMPORT_SPECIFIER = /^(?:[a-z][a-z0-9+.-]*:|\/\/)/iu;
 
 async function importJsonModule(absoluteFilePath: string): Promise<Record<string, unknown>> {
   const parsed = JSON.parse(await readFile(absoluteFilePath, 'utf8')) as unknown;
@@ -1211,6 +1212,30 @@ export class Context {
       triedPaths,
       resolvedPath
     };
+  }
+
+  /**
+   * Load a stylesheet import through the existing plugin dispatcher. External
+   * identifiers are deliberately opt-in: without a plugin that claims one,
+   * they stay CSS terminals and Context never attempts a network read. A
+   * claiming plugin still uses the ordinary resolve/locate/source/parse path.
+   */
+  async loadImport(importPath: string, importOptions: ImportOptions = {}) {
+    if (EXTERNAL_IMPORT_SPECIFIER.test(importPath)) {
+      const currentDirectory = this.treeContext?.file?.path ?? process.cwd();
+      const { searchPaths = [] } = this.opts;
+      let claimed = false;
+      for (const plugin of this.plugins) {
+        if (await plugin.canResolveImport?.(importPath, currentDirectory, searchPaths)) {
+          claimed = true;
+          break;
+        }
+      }
+      if (!claimed) {
+        return undefined;
+      }
+    }
+    return this.getTree(importPath, importOptions);
   }
 
   /**

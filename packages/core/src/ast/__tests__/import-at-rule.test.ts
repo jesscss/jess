@@ -2,8 +2,51 @@ import { describe, expect, it } from 'vitest';
 import { atRuleBlock, importAtRule } from '../at-rule.js';
 import { any, color, comment, complexSelector, compoundSelectorOf, decl, dimension, forNode, interpolatedSimpleSelector, interpolation, keyword, list, mixinCall, mixinDef, quoted, reference, rule, sel, selist, spaced, stylesheet, url, variableDeclaration, variableReference } from '../nodes.js';
 import { serialize } from '../serialize.js';
+import { Context } from '../../context.js';
 
 describe('ImportAtRule', () => {
+  it('loads a claimed external import through Context without a core network resolver', async () => {
+    const remoteSpecifier = 'https://styles.example.test/tokens.less';
+    const mappedPath = '/virtual/tokens.less';
+    const imported = stylesheet([
+      variableDeclaration('tone', color('red'), { mode: 'declare' })
+    ]);
+    const context = new Context({}, [{
+      name: 'remote-map',
+      supportedExtensions: ['.less'],
+      canResolveImport: specifier => specifier === remoteSpecifier,
+      resolve: paths => paths.map(candidate => candidate === remoteSpecifier ? mappedPath : candidate),
+      locate: paths => paths.includes(mappedPath) ? mappedPath : null
+    }]);
+    context.sourceTrees.set(mappedPath, imported);
+
+    const document = stylesheet([
+      importAtRule('@import', url(quoted(`"${remoteSpecifier}"`, remoteSpecifier, '"', false)), list([keyword('reference')], [','])),
+      rule('.uses-token', [decl('color', variableReference('tone', 'scoped'))])
+    ]);
+
+    await expect(serialize(document, { context })).resolves.toEqual({
+      css: '.uses-token {\n  color: red;\n}\n'
+    });
+  });
+
+  it('keeps an unclaimed external import terminal without invoking Context resolution', async () => {
+    const context = new Context({}, [{
+      name: 'no-network',
+      supportedExtensions: ['.less'],
+      resolve: () => {
+        throw new Error('must not resolve an unclaimed external import');
+      }
+    }]);
+    const document = stylesheet([
+      importAtRule('@import', url(quoted('"https://styles.example.test/theme.less"', 'https://styles.example.test/theme.less', '"', false)))
+    ]);
+
+    await expect(serialize(document, { context })).resolves.toEqual({
+      css: '@import url("https://styles.example.test/theme.less");\n'
+    });
+  });
+
   it('keeps imported loop extend placements isolated per concrete iteration', async () => {
     const loopSelector = complexSelector([{
       compound: compoundSelectorOf([interpolatedSimpleSelector(interpolation([

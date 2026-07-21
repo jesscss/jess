@@ -785,15 +785,21 @@ or a legacy-tree port.
   list re-split, node, or side map is introduced.
 - **Render path:** `Rules.render` remains only for legacy documents. A
   `Stylesheet` takes the direct serializer branch under `Context.withDocument`.
-  Imports call the retained `Context.getTree` path from that serializer; each
+  Imports call the retained Context dispatch path from that serializer; each
   loaded document enters its Context-owned source scope and restores its
-  importer afterward. A Jess-side import callback, pre-flattened import wrapper,
-  or AST-to-tree conversion is rejected.
+  importer afterward. External URL/protocol-relative identifiers first require
+  an explicit plugin `canResolveImport` claim, then travel through the same
+  resolver → locator → source → parser route. An unclaimed external import stays
+  a CSS terminal; Context never fetches it. A Jess-side import callback,
+  pre-flattened import wrapper, or AST-to-tree conversion is rejected.
 - **Helper/API surface:** one normalized Context parser dispatch selects
   `safeParse` or the legacy throwing wrapper; callers do not acquire another
   parse/load path. `Context.withDocument` replaces two Jess-only AST scope
   helpers and the public renderer's `importDocument` callback; it owns no new
-  resolution behavior. The Less plugin directly calls `@jesscss/less-parser.parse`.
+  resolution behavior. `Context.loadImport` adds only the explicit external
+  capability admission before delegating to existing `getTree`; it adds no
+  resolver, parser, cache, source fetcher, or reparse path. The Less plugin
+  directly calls `@jesscss/less-parser.parse`.
   `buildEvaluator` is the existing typed core execution seam, publicly exported
   so Jess can pair it with the `@jesscss/fns` registry without creating a core →
   fns cycle. The public Less test configuration explicitly chooses macro-compiled
@@ -1476,6 +1482,15 @@ protocol, and byte identity before it may claim neutral/decrease.
     "why":"Preserve-mode percentage multiplication must remain a calc result instead of inventing a scalar percentage. A later explicit calc or arithmetic operation must compose that result as one valid calc expression; loose mode keeps its Less numeric result. This is arithmetic result policy, not a second evaluator or an import/parser fallback.",
     "dangerTokensJustification":"The percent branch allocates only its required Keyword result. Calc byte inspection and parenthesis handling are an acknowledged transitional value-structure gap: authored calc has typed parser facts upstream, while a computed preserve result currently carries only bytes. This record makes no neutrality claim and does not conceal that remaining re-derivation debt.",
     "cases":["preserve-percentage-product","loose-percentage-product","explicit-calc-composition"],
+    "baseline":{"fixture":"benchmark.less","phase":"render","currentMedianMs":78.4,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}
+  },
+  {
+    "id":"context-external-import-dispatch-boundary",
+    "verdict":"accepted",
+    "performanceClaim":"none",
+    "why":"Context must decide whether an external stylesheet identifier enters its existing plugin dispatch. An unclaimed URL or protocol-relative specifier returns undefined so the serializer emits ordinary CSS; a claim permits exactly the established resolve, locate, source, and parser route. Core does not fetch, inspect a resolver result, or create an alternate import loader.",
+    "dangerTokensJustification":"The added loop runs only at the cold import boundary and stops at the first explicit claim. It allocates no node, source buffer, cache, parser result, or network request. The unclaimed path returns before resolve/locate/source/parse; a claimed path delegates to the existing Context work that was already required for a local stylesheet import.",
+    "cases":["claimed-external-import","unclaimed-external-terminal","ordinary-local-import"],
     "baseline":{"fixture":"benchmark.less","phase":"render","currentMedianMs":78.4,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}
   }]
   ```

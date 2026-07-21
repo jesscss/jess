@@ -143,6 +143,26 @@ active architecture queue.
       "call": "makeKeyword(`calc("
     },
     "evidence": {"command": ["pnpm", "vitest", "run", "packages/core/src/ast/__tests__/value-operate-units.test.ts", "packages/jess/test/less/calc-explicit-compose.test.ts"]}
+  },
+  {
+    "id": "context-external-import-dispatch-boundary",
+    "kind": "semantic-boundary",
+    "surface": "Context explicit external import capability admission",
+    "files": ["packages/core/src/context.ts"],
+    "semanticBoundary": {
+      "trigger": "a stylesheet import has a URL or protocol-relative identifier before Context path dispatch",
+      "scope": "Context alone owns the external-import admission decision. An unclaimed identifier returns to serializer as a CSS terminal without resolver, locator, source getter, parser, cache, or network action. A claiming plugin then uses the existing Context resolve, locate, source, and parser route exactly once; core does not classify a resolver result or implement a second loader.",
+      "cases": ["claimed-external-import", "unclaimed-external-terminal", "ordinary-local-import"],
+      "baseline": {"fixture": "benchmark.less", "phase": "render"}
+    },
+    "sourceCheck": {
+      "file": "packages/core/src/context.ts",
+      "caller": "async loadImport(",
+      "guard": "EXTERNAL_IMPORT_SPECIFIER.test(importPath)",
+      "call": "plugin.canResolveImport?.(",
+      "profile": ["const EXTERNAL_IMPORT_SPECIFIER", "plugin.canResolveImport?.("]
+    },
+    "evidence": {"command": ["pnpm", "--filter", "@jesscss/core", "test", "--", "--run", "src/ast/__tests__/import-at-rule.test.ts"]}
   }
 ]
 ```

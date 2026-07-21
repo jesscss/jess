@@ -226,14 +226,14 @@ interface PlannedImportDocument {
 
 /**
  * CSS-terminal imports are facts of the typed import node, not resolver work.
- * Every other eligible target goes through Context's existing plugin dispatcher.
+ * Every other eligible target goes through Context's existing plugin dispatcher;
+ * Context itself keeps external identifiers terminal unless a plugin claims them.
  */
 function canLoadImport(node: ImportAtRule, specifier: string, options: string | null): boolean {
   const optionWords = options === null ? [] : options.toLowerCase().split(',').map(word => word.trim());
   return !optionWords.includes('inline')
     && !optionWords.includes('css')
     && node.alias === null
-    && !/^(?:[a-z][a-z0-9+.-]*:|\/\/)/iu.test(specifier)
     && !(specifier.toLowerCase().endsWith('.css') && !optionWords.includes('less'));
 }
 
@@ -252,12 +252,19 @@ function importThroughContext(context: Context): NonNullable<SerializeOptions['i
       const bytes = await context.readBinary(specifier);
       return { inline: bytes.toString(), media: tail };
     }
-    if (!canLoadImport(node, specifier, options)) return undefined;
+    if (!canLoadImport(node, specifier, options)) {
+      return undefined;
+    }
     // Parse-mode selection remains Context/plugin-owned. The typed Less `(less)`
     // flag asks the existing dispatcher for its `less` plugin even when the path
     // ends in `.css`; core never chooses or invokes a parser itself.
-    const loaded = await context.getTree(specifier, importHasOption(options, 'less') ? { type: 'less' } : {});
-    if (loaded.node?.type !== 'Stylesheet') return undefined;
+    const loaded = await context.loadImport(specifier, importHasOption(options, 'less') ? { type: 'less' } : {});
+    if (loaded === undefined) {
+      return undefined;
+    }
+    if (loaded.node?.type !== 'Stylesheet') {
+      return undefined;
+    }
     return {
       document: loaded.node,
       key: loaded.resolvedPath,
