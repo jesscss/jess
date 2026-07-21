@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { buildEvaluator } from '../evaluator.js';
 import {
   condition, decl, reference, detachedRuleset, dimension, funcCall, keyword,
-  stylesheet, rule, variableDeclaration, variableReference, type Stylesheet
+  mixinCall, mixinDef, stylesheet, rule, variableDeclaration, variableReference, type Stylesheet
 } from '../nodes.js';
 import { serialize } from '../serialize.js';
 import { makeBuiltinRegistry } from '@jesscss/fns';
@@ -41,5 +41,20 @@ describe('variable-call canonical AST emission', () => {
     ]);
 
     expect(render(document)).toBe('.panel {\n  display: grid;\n}\n');
+  });
+
+  it('retains a detached mixin argument\'s caller closure over a same-named mixin local', () => {
+    const document = stylesheet([
+      variableDeclaration('a', dimension(1, 'px'), { mode: 'declare' }),
+      mixinDef('.wrap', [{ name: 'ruleset' }], [
+        variableDeclaration('a', keyword('hidden'), { mode: 'declare' }),
+        rule('.inner', [reference(variableReference('ruleset', 'scoped'), [{ type: 'Call', args: [] }], '@ruleset()')]),
+      ]),
+      rule('.entry', [
+        mixinCall('.wrap', [detachedRuleset([decl('width', variableReference('a', 'scoped'))])]),
+      ]),
+    ]);
+
+    expect(render(document)).toBe('.entry .inner {\n  width: 1px;\n}\n');
   });
 });

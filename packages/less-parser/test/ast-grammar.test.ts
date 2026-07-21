@@ -933,6 +933,13 @@ describe('Less AST grammar facts', () => {
         type: 'DetachedRuleset', body: [{ type: 'Declaration', name: '<', value: { type: 'Any', src: '%3c' } }]
       } }]
     });
+    const nestedConditionalArgument = run(
+      lessAstGrammar.LessAstDocument,
+      '.m({ @media (tv) { color: black; } });',
+      { trivia: lessAstGrammar.whitespace }
+    );
+    expect(nestedConditionalArgument.ok).toBe(true);
+    expect(nestedConditionalArgument.unconsumedFrom).toBeNull();
   });
 
   it('constructs static import options, url targets, and recursively balanced tails directly', () => {

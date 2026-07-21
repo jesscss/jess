@@ -4568,7 +4568,18 @@ function expandReferenceCall(
   }
   const dr = resolveDetachedRuleset(resolved.value, resolved.frame, e);
   if (!dr) return;
-  const r = referenceCallFrame(dr, frame, resolved.frame, resolved.sourceOwner);
+  // A detached ruleset passed as a mixin argument closes over the caller frame
+  // captured at argument binding time. `resolved.frame` owns the parameter cell,
+  // not the detached body; using it here lets a same-named mixin local shadow the
+  // argument's free variables. A direct declaration has the same lexical frame
+  // either way, so consult the render-local closure fact when it exists.
+  const binding = detachedBinding(resolved.frame ?? frame, dr);
+  const r = referenceCallFrame(
+    dr,
+    frame,
+    binding?.lexicalFrame ?? resolved.frame,
+    binding?.sourceOwner ?? resolved.sourceOwner,
+  );
   const executeBody = () => mapMaybe(
     prepareBodyPlugins(r.dr.body, r.callFrame, e),
     () => walkBody(r.dr.body, composed, ancestor, r.callFrame, group, flush, partition, e, false, forceLeading, propertyScope, applyExpansion),
