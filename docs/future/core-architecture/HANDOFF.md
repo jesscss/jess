@@ -168,6 +168,16 @@ macro-compiled public parser artifact, not Parseman grammar source, and the
 Less-alpha command builds that parser/plugin pair before running integration
 tests.
 
+Built-artifact public-route instrumentation is also decisive: a direct Less
+`Compiler.renderToResult(...)` reads or writes none of Context's legacy
+`root`, `treeRoot`, `rulesContext`, or `evaldTrees` fields, and invokes neither
+the constructed legacy extend registry nor selector-bit library. AST
+serialization reads only the active document source identity for diagnostics;
+there is no tree conversion or tree evaluation. Keep Context's parser/import
+dispatcher intact. The next removal sequence is to extract that source/options
+carrier as `DocumentContext`, then lazily isolate the legacy tree execution
+state so direct AST renders no longer construct it.
+
 The preserved slash-group path is also public-route green: direct Less grammar
 uses a typed `Keyword('/')` separator fact, and AST evaluation retains that fact
 as opaque through a later operation in `parens-division` mode (`10px / 2 * 2`,

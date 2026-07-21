@@ -103,9 +103,10 @@ Initial public candidate set:
 - `[x]` `Compiler`
 - `[x]` `ConfigOptions`
 - `[x]` `Compiler.compile(...)` decision: hide from first alpha public types.
-  It is a legacy tree-returning path, Jess does not have a public two-stage
-  compile model today, and it should not be treated as an internal production
-  path either.
+  Its internal result is `{ document: Stylesheet, context }`, produced through
+  the same Context-selected parser-plugin dispatcher as render; it is not a
+  legacy-tree return. Jess does not have a public two-stage compile model today,
+  and exposing the raw session Context would promise implementation detail.
 - `[x]` `Compiler.render(...)` decision: public method shape.
 - `[x]` `Compiler.renderString(...)` decision: public method shape.
 - `[x]` `Compiler.renderToResult(...)` decision: public method shape. Keep the
@@ -113,8 +114,8 @@ Initial public candidate set:
   implementation before or during alpha. Public contract: never reject for
   Jess/Less render failures; return structured diagnostics instead.
 - `[x]` `Compiler.safeCompile(...)` decision: hide from first alpha public
-  types because it exposes the same legacy tree/context surface as
-  `compile(...)`.
+  types because it exposes the same internal document/session-Context surface
+  as `compile(...)`.
 - `[x]` `Compiler.safeRender(...)` decision: hide from first alpha public types;
   a separate "safe" render name does not currently describe a distinct public
   value clearly enough.
@@ -128,8 +129,8 @@ Initial public candidate set:
 Initial likely-internal or quarantine candidates:
 
 - `[?]` Public constructor field `Compiler.opts`
-- `[?]` Direct tree-returning `compile(...)` as stable API, versus retaining it
-  as compatibility-only while recommending render APIs
+- `[?]` Direct `{ document: Stylesheet, context }` `compile(...)` result as a
+  stable API, versus retaining it as internal while recommending render APIs
 - `[?]` `createContext(...)`, because it exposes core runtime details
 - `[?]` Re-exported core diagnostic/value types that appear in public result
   shapes only because implementation currently imports them
