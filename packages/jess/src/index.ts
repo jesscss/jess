@@ -32,7 +32,7 @@ import jessPlugin from '@jesscss/plugin-jess';
 import lessPlugin from '@jesscss/plugin-less';
 import nodeModulesPlugin from '@jesscss/plugin-node-modules';
 import scssPlugin from '@jesscss/plugin-scss';
-import { makeBuiltinRegistry } from '@jesscss/fns';
+import { makeBuiltinRegistry } from '@jesscss/fns/builtins';
 import { outputDiagnostics } from './diagnostics.js';
 
 // Built-ins are immutable after assembly. Keep one evaluator for all Compiler
