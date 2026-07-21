@@ -1398,6 +1398,44 @@ protocol, and byte identity before it may claim neutral/decrease.
 
 ## Aggressive Cutting Self-Prosecution
 
+### Current pass: direct AST `DocumentContext` provenance
+
+- **Architecture surface:** canonical documents now retain `DocumentContext`
+  rather than constructing the legacy `TreeContext`. Context still owns the
+  existing plugin resolve → locate → source → parse dispatch; only the active
+  source identity/options carrier changed.
+- **Separation/duplication:** source identity and plain import-request facts
+  are now defined once outside legacy tree node machinery; the existing Context
+  plugin dispatch remains the only import-resolution route.
+- **New traversal:** none. Switching a document or deferred body assigns its
+  already-known source identity; resolver, diagnostics, URL rewriting, and
+  file-reading consume that carried fact without a tree/source walk or reparse.
+- **New node/materialization:** one `DocumentContext` replaces the previous
+  per-document `TreeContext` allocation. It contains only resolved options,
+  file identity, and parser plugin—no rules scope, selector cache, placement,
+  or AST node materialization. Legacy `TreeContext` remains confined to legacy
+  tree execution until its dedicated deletion pass.
+- **Render path:** direct AST diagnostics and fns file resolution read the
+  Context `sourceContext` fact. A canonical render therefore does not enter a
+  tree context; legacy execution retains the same structural source-fact
+  accessor while it exists.
+- **Helper/API surface:** `DocumentContext`/`SourceContext` are the explicit
+  public source-identity contract. Plain plugin import request options moved out
+  of legacy `tree/import-style`; tree-only postlude data remains local as
+  `LegacyImportOptions`. No bridge, resolver, parser host, or compatibility
+  parser was added.
+- **Metadata mutations:** none. Source identity remains Context-owned session
+  state keyed by canonical document/body identity.
+- **Evidence:** core build; Context provenance/safe-parse tests; fns `data-uri`
+  tests; package-export and Jess API verification. No performance claim.
+- Behavior evidence: Context provenance/safe-parse and fns data-uri tests prove
+  canonical documents use `DocumentContext` while retained tree callers still
+  receive the same source facts.
+- Build evidence: `pnpm --filter @jesscss/core build` completed after the
+  public type/export extraction.
+- Boundary evidence: package-export and Jess API verification passed; the
+  review verifier's hunk tests reject root, eval, selector, and spine changes.
+
 ### Current pass: direct Less performance evidence refresh (documentation only)
 
 - **New traversal:** none. No production or generated-parser source changed.

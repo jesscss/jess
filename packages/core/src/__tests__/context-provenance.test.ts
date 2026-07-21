@@ -18,6 +18,9 @@ describe('Context canonical document provenance', () => {
     const rootOwner = await context.withDocument(root, async () => {
       const owner = context.currentSourceOwner();
       expect(owner).not.toBeNull();
+      expect(context.documentContext).toBe(owner);
+      expect(context.sourceContext).toBe(owner);
+      expect(context.treeContext).toBeUndefined();
       context.rememberDocumentBody(imported, body);
       return owner;
     });

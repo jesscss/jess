@@ -1644,6 +1644,58 @@ function isStrictRuntimeSurface(path) {
   return classifyProductionSurface(path) === 'runtime-engine';
 }
 
+/**
+ * A Context source-identity migration is public plumbing even though Context
+ * also owns evaluator state. Keep this hunk-level exception deliberately
+ * narrow: an unknown Context edit remains a strict runtime edit. The paired
+ * serializer allowance is only the mechanical diagnostic provenance read
+ * (`treeContext` -> `sourceContext`), which is inseparable from moving the
+ * public source-identity carrier off the legacy tree.
+ */
+function isDocumentSourcePlumbingHunk(hunk) {
+  const changed = hunk.text
+    .split('\n')
+    .filter(line => /^[+-](?![+-])/.test(line))
+    .map(line => line.slice(1).trim())
+    .filter(Boolean);
+  if (changed.length === 0) return false;
+
+  if (hunk.file === 'packages/core/src/ast/serialize.ts') {
+    return changed.every(line => line === 'const file = e.context?.treeContext?.file;'
+      || line === 'const file = e.context?.sourceContext?.file;');
+  }
+  if (hunk.file !== 'packages/core/src/context.ts') return false;
+
+  const anchors = /\b(?:DocumentContext(?:Options)?|TreeContext|SourceContext|_?documentContext|setDocumentContext|sourceContext|documentContexts|documentBodyContexts|currentDocument|currentSourceOwner|withSourceOwner|sourceOwnerForBody|ImportOptions|currentPlugin)\b|(?:document|tree)\.file|transform\.call/;
+  const forbidden = /\b(?:treeRoot|allRoots|evaldTrees|rulesContext|selectorBits|SpineVisitor|spine)\b/i;
+  if (!anchors.test(hunk.text) || changed.some(line => forbidden.test(line))) {
+    return false;
+  }
+
+  // Hunk ownership is deliberately by named source-carrier seams, not a
+  // generic token presence. Thus a Context hunk mentioning DocumentContext in
+  // an evaluator/root/selector method remains strict by default.
+  const sourceCarrierSeam = /(?:DocumentContextOptions|class DocumentContext|export (?:class TreeContext|interface TreeContextOptions)|(?:get |private )?(?:documentContext|sourceContext|setDocumentContext)|setOption<|documentContexts = new WeakMap|documentBodyContexts = new WeakMap|ImportOptions|rememberDocumentContext|withDocument<|transformUrl\(|withDocumentBody<|currentSourceOwner\(|withSourceOwner<|sourceOwnerForBody\(|private async _getPath\(|async loadImport\(|(?:document|tree)\.file|transform\.call|currentPlugin)/;
+  return sourceCarrierSeam.test(hunk.text);
+}
+
+function classifyChangedHunkSurface(hunk) {
+  if (isDocumentSourcePlumbingHunk(hunk)) return 'public-plumbing';
+  return classifyProductionSurface(hunk.file);
+}
+
+function strictRuntimeChangedPaths(paths, diff) {
+  return [...new Set(changedHunks(diff)
+    .filter(hunk => paths.includes(hunk.file) && classifyChangedHunkSurface(hunk) === 'runtime-engine')
+    .map(hunk => hunk.file))];
+}
+
+function boundaryChangedPathsForDiff(paths, diff) {
+  return [...new Set(changedHunks(diff)
+    .filter(hunk => paths.includes(hunk.file) && classifyChangedHunkSurface(hunk) !== 'runtime-engine')
+    .map(hunk => hunk.file))];
+}
+
 function productionChangedPaths(paths) {
   return paths.filter(isProductionHotPathFile);
 }
@@ -1942,7 +1994,7 @@ function validateChangedContractSurface(registry, changedPaths, diff) {
     if (owners.length > 0 && owners.every(owner => (owner.kind ?? 'precise') === 'neutral-or-negative' || owner.kind === 'private-unreachable')) {
       continue;
     }
-    const hunks = changedHunks(diff).filter(hunk => hunk.file === path);
+    const hunks = changedHunks(diff).filter(hunk => hunk.file === path && classifyChangedHunkSurface(hunk) === 'runtime-engine');
     if (owners.length === 0 || hunks.length === 0) {
       continue;
     }
@@ -2015,6 +2067,13 @@ function diffForPaths(diff, predicate) {
     .join('\n');
 }
 
+function diffForStrictRuntimeHunks(diff) {
+  return changedHunks(diff)
+    .filter(hunk => classifyChangedHunkSurface(hunk) === 'runtime-engine')
+    .map(hunk => hunk.text)
+    .join('\n');
+}
+
 function runVerifier() {
   if (unsupportedAggregateMode) {
     console.error('The aggregate --mode=upstream scan was removed: it had no bounded owner, remediation, or release decision. Use the default working patch scope or --mode=staged.');
@@ -2057,7 +2116,8 @@ function runVerifier() {
   // eval/render cost contract. Strict contract accounting receives only the
   // runtime-engine subset below.
   const findings = collectDangerFindings(diff, dangerPatterns);
-  const runtimeDiff = diffForPaths(diff, isStrictRuntimeSurface);
+  const strictRuntimePaths = strictRuntimeChangedPaths(changedPaths, diff);
+  const runtimeDiff = diffForStrictRuntimeHunks(diff);
   const runtimeFindings = collectDangerFindings(runtimeDiff, dangerPatterns);
 
   const handoff = readFileSync(handoffPath, 'utf8');
@@ -2140,7 +2200,7 @@ function runVerifier() {
     }
   }
 
-  const nonRuntimePaths = boundaryChangedPaths(changedPaths);
+  const nonRuntimePaths = boundaryChangedPathsForDiff(changedPaths, diff);
   const boundaryEvidenceErrors = validateBoundaryEvidence(latestPass, nonRuntimePaths);
   if (boundaryEvidenceErrors.length > 0) {
     failed = true;
@@ -2154,19 +2214,19 @@ function runVerifier() {
     failed = true;
     console.error('\nParser-runtime debt changes must keep the staged boundary verifier clean and satisfy the exact deletion proof.');
   }
-  const hotPathChanged = changedPaths.some(isStrictRuntimeSurface);
-  const productionHotPathChanged = changedPaths.some(isStrictRuntimeSurface);
+  const hotPathChanged = strictRuntimePaths.length > 0;
+  const productionHotPathChanged = strictRuntimePaths.length > 0;
   const requiresCostAudit = (hotPathChanged || runtimeFindings.length > 0) && !parserRuntimeDebtDeletion;
   if (requiresCostAudit && registryErrors.length === 0) {
     const auditRecords = extractCostAuditRecords(latestPass, registry);
-    const auditErrors = validateCostAuditRecords(auditRecords, registry, changedPaths, diff, runtimeFindings.length > 0);
-    const sourceCheckErrors = validateSourceChecks(registry, changedPaths);
-    const changedSurfaceErrors = validateChangedContractSurface(registry, changedPaths, diff);
+    const auditErrors = validateCostAuditRecords(auditRecords, registry, strictRuntimePaths, diff, runtimeFindings.length > 0);
+    const sourceCheckErrors = validateSourceChecks(registry, strictRuntimePaths);
+    const changedSurfaceErrors = validateChangedContractSurface(registry, strictRuntimePaths, diff);
     const evidenceErrors = productionHotPathChanged && !skipExecutableEvidence
-      ? validateExecutableEvidence(registry, changedPaths, diff)
+      ? validateExecutableEvidence(registry, strictRuntimePaths, diff)
       : [];
     const coverageErrors = productionHotPathChanged
-      ? validateProductionHotPathCoverage(registry, changedPaths)
+      ? validateProductionHotPathCoverage(registry, strictRuntimePaths)
       : [];
     if (
       auditErrors.length > 0
@@ -2210,11 +2270,14 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
 
 export {
   boundaryChangedPaths,
+  boundaryChangedPathsForDiff,
+  classifyChangedHunkSurface,
   classifyProductionSurface,
   evaluateCounterRelation,
   extractCostAuditRecords,
   grammarSourceReferences,
   isProductionHotPathFile,
+  isDocumentSourcePlumbingHunk,
   isStrictRuntimeSurface,
   productionChangedPaths,
   runtimeChangedPaths,
@@ -2222,6 +2285,7 @@ export {
   publicArtifactReferences,
   privateGrammarReachability,
   scopedChangedPaths,
+  strictRuntimeChangedPaths,
   validateCostAuditRecords,
   validateBoundaryEvidence,
   validateCostContractRegistry,

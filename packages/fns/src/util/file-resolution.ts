@@ -6,7 +6,7 @@ import { lookupMime } from './mime.js';
 export { lookupMime } from './mime.js';
 
 export function resolveAssetPath(context: Context, rawPath: string): string | undefined {
-  const currentDir = context.treeContext?.file?.path ?? process.cwd();
+  const currentDir = context.sourceContext?.file?.path ?? process.cwd();
   const searchPaths = context.opts.searchPaths ?? [];
   const bases = [currentDir, ...searchPaths, process.cwd()];
 

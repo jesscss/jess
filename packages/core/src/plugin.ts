@@ -1,14 +1,14 @@
 import type { Rules } from './tree/rules.js';
 import type { Stylesheet } from './ast/nodes.js';
-import type { ImportOptions } from './tree/import-style.js';
-import type { Context } from './context.js';
+import type { ImportOptions } from './import-options.js';
+export type { ImportOptions } from './import-options.js';
+import type { Context, ContextOptions } from './context.js';
 import { join, isAbsolute, resolve } from 'node:path';
 import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import type { Visitor } from './visitor/index.js';
 import type { Node } from './tree/node.js';
 import { type ErrorDiagnostic, type WarningDiagnostic } from './jess-error.js';
-import type { ContextOptions } from './context.js';
 import type { ExtendSelectorKind } from './types/config.js';
 
 export type PluginVisitor = Partial<Omit<Visitor, 'visit'>> & {

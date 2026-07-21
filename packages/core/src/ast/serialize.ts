@@ -1335,7 +1335,7 @@ function evalBinding(b: Binding, frame: Frame | null, e: EvalCtx): MaybePromise<
 }
 
 function unresolvedSymbol(node: object, symbol: string, e: EvalCtx): never {
-  const file = e.context?.treeContext?.file;
+  const file = e.context?.sourceContext?.file;
   const source = file?.source;
   const span = source === undefined ? undefined : sourceSpanOf(node);
   const location = span === undefined ? undefined : lineColAt(source, span.start);
@@ -2364,7 +2364,7 @@ function evalCall(node: FunctionCall, frame: Frame | null, e: EvalCtx): MaybePro
     try {
       const result = ev.call(node.name, list, e.modes, scope, e.io, error => {
         const reason = error instanceof Error ? error.message : String(error);
-        const file = e.context?.treeContext?.file;
+        const file = e.context?.sourceContext?.file;
         const source = file?.source;
         const span = source === undefined ? undefined : sourceSpanOf(node);
         const location = span === undefined ? undefined : lineColAt(source, span.start);
@@ -2389,7 +2389,7 @@ function evalCall(node: FunctionCall, frame: Frame | null, e: EvalCtx): MaybePro
 function invalidFunctionCall(node: FunctionCall, error: unknown, e: EvalCtx): never {
   if (error instanceof JessError) throw error;
   const reason = error instanceof Error ? error.message : String(error);
-  const file = e.context?.treeContext?.file;
+  const file = e.context?.sourceContext?.file;
   const source = file?.source;
   const span = source === undefined ? undefined : sourceSpanOf(node);
   const location = span === undefined ? undefined : lineColAt(source, span.start);

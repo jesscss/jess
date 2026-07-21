@@ -2,13 +2,13 @@ import type {
   AtRule,
   Ruleset,
   Rules,
-  ImportOptions,
   Node,
   Any,
   AtRuleStatement,
   Selector,
   Nil
 } from './tree/index.js';
+import type { ImportOptions } from './import-options.js';
 import { ExtendRootRegistry } from './tree/util/extend-roots.js';
 import { type Operator } from './tree/util/calculate.js';
 import type { ISafeParseResult, ParsedDocument, PluginInterface, UrlTransformRequest } from './plugin.js';
@@ -237,11 +237,7 @@ export function resolveOptions(
   };
 }
 
-export interface TreeContextOptions extends ContextOptions {
-  inlineJavaScript?: boolean;
-
-  scope?: Rules;
-
+export interface DocumentContextOptions extends ContextOptions {
   isModule?: boolean;
 
   file?: {
@@ -259,10 +255,40 @@ export interface TreeContextOptions extends ContextOptions {
   };
 
   /**
-   * The plugin that created this tree; it gets first dibs at resolving imports.
-   * Lifted onto the {@link TreeContext} instance at construction.
+   * The plugin that parsed this document; it gets first dibs at resolving imports.
    */
   plugin?: PluginInterface;
+}
+
+/**
+ * Source identity carried by canonical AST documents for one Context session.
+ * It intentionally has no legacy node scope, selector cache, or placement state.
+ */
+export class DocumentContext {
+  options: ResolvedOptions;
+  isModule: boolean | undefined;
+  file?: DocumentContextOptions['file'];
+  plugin?: PluginInterface;
+
+  constructor(opts: DocumentContextOptions = {}) {
+    this.options = resolveOptions(undefined, opts);
+    this.isModule = opts.isModule;
+    this.file = opts.file;
+    this.plugin = opts.plugin;
+  }
+}
+
+/** The source facts shared by canonical documents and retained legacy trees. */
+export type SourceContext = Pick<DocumentContext, 'options' | 'file' | 'plugin'>;
+
+function isAsyncDocumentWork<T>(value: T | Promise<T>): value is Promise<T> {
+  return value instanceof Promise;
+}
+
+export interface TreeContextOptions extends DocumentContextOptions {
+  inlineJavaScript?: boolean;
+
+  scope?: Rules;
 
   /**
    * Transient per-tree flag: emit a value-level source map for this tree (scalar
@@ -308,39 +334,19 @@ export const generateId = (length = 8) => {
  * Additionally, it sets options that may be
  * unique to the tree, such as the math mode.
  */
-export class TreeContext {
+export class TreeContext extends DocumentContext {
   /** Non-option, per-tree transient data (trivia, lifted-comment ranges, …). */
   opts: Omit<TreeContextOptions, 'isModule' | 'file' | 'plugin'>;
-
-  /**
-   * The single resolved option set for this tree. Built once at construction
-   * from the source document's input configuration; when the tree is made active on an
-   * eval {@link Context}, that context folds its compile-level options over this
-   * and shares the resulting object (see Context's `treeContext` setter), so
-   * `context.options` and `treeContext.options` are the SAME object — one place
-   * to read, no per-read merge.
-   */
-  options: ResolvedOptions;
-
-  /** @todo - Change how extend works based on this value */
-  isModule: boolean | undefined;
-
-  file?: TreeContextOptions['file'];
-  /**
-   * The plugin that created this tree. It will have first dibs
-   * to resolve any imports.
-   */
-  plugin?: PluginInterface;
 
   constructor(opts: TreeContextOptions = {}) {
     // Resolve the file-level options once (no compile context yet — the eval
     // Context folds that in on attach). Structural identity stays on the
     // instance; every other unknown key is transient `opts` data.
-    this.options = resolveOptions(undefined, opts);
+    super(opts);
     const { isModule, file, plugin, ...rest } = opts;
-    this.isModule = isModule;
-    this.file = file;
-    this.plugin = plugin;
+    void isModule;
+    void file;
+    void plugin;
     delete rest.mathMode;
     delete rest.unitMode;
     delete rest.functionMode;
@@ -362,7 +368,8 @@ export class Context {
   readonly plugins: PluginInterface[];
   readonly opts: ContextOptions;
 
-  private _treeContext!: TreeContext;
+  private _treeContext: TreeContext | undefined;
+  private _documentContext: DocumentContext | undefined;
 
   /**
    * Flat, fully-resolved options for the currently-active tree context — the one
@@ -400,10 +407,28 @@ export class Context {
     // (`context.options.X`) and context-less reads (`node._treeContext.options.X`)
     // hit one resolved set with nothing left to merge. Idempotent on re-entry
     // (compile ?? already-folded === already-folded).
-    this.options = resolveOptions(this.opts, tc?.options);
+    this.options = resolveOptions(this.opts, this._documentContext?.options ?? tc?.options);
     if (tc) {
       tc.options = this.options;
     }
+  }
+
+  /** Active canonical AST source identity, independent of legacy tree state. */
+  get documentContext(): DocumentContext | undefined {
+    return this._documentContext;
+  }
+
+  private setDocumentContext(dc: DocumentContext | undefined): void {
+    this._documentContext = dc;
+    this.options = resolveOptions(this.opts, dc?.options ?? this._treeContext?.options);
+    if (dc) {
+      dc.options = this.options;
+    }
+  }
+
+  /** Active source facts for resolver, diagnostics, and file-reading consumers. */
+  get sourceContext(): SourceContext | undefined {
+    return this._documentContext ?? this._treeContext;
   }
 
   /**
@@ -414,7 +439,7 @@ export class Context {
    */
   setOption<K extends keyof ResolvedOptions>(key: K, value: ResolvedOptions[K]): void {
     this.opts[key] = value;
-    this.options = resolveOptions(this.opts, this._treeContext?.options);
+    this.options = resolveOptions(this.opts, this._documentContext?.options ?? this._treeContext?.options);
   }
 
   /**
@@ -584,14 +609,14 @@ export class Context {
    * required by the retained Context resolver when an import enters a child
    * document.
    */
-  private readonly documentContexts = new WeakMap<Stylesheet, TreeContext>();
+  private readonly documentContexts = new WeakMap<Stylesheet, DocumentContext>();
   /**
    * Deferred executable bodies retain the source document that introduced
    * them into this session. This is session provenance, not AST metadata: the
    * same canonical body can be placed in more than one render frame without a
    * node mutation, parser walk, or secondary source tree.
    */
-  private readonly documentBodyContexts = new WeakMap<object, TreeContext>();
+  private readonly documentBodyContexts = new WeakMap<object, DocumentContext>();
   /** Set so that we can do ruleset selector lookup for extend */
   treeRoot!: Rules;
   allRoots: Rules[] = [];
@@ -906,7 +931,7 @@ export class Context {
     source: string | undefined,
     plugin: PluginInterface,
   ): void {
-    this.documentContexts.set(document, new TreeContext({
+    this.documentContexts.set(document, new DocumentContext({
       file: {
         name: path.basename(filePath),
         path: path.dirname(filePath),
@@ -926,17 +951,19 @@ export class Context {
   withDocument<T>(document: Stylesheet, run: () => T | Promise<T>): T | Promise<T> {
     const next = this.documentContexts.get(document);
     if (!next) return run();
-    const previous = this._treeContext;
-    this.treeContext = next;
+    const previous = this._documentContext;
+    this.setDocumentContext(next);
     try {
       const result = run();
-      if (result && typeof (result as Promise<T>).then === 'function') {
-        return (result as Promise<T>).finally(() => { this.treeContext = previous; });
+      if (isAsyncDocumentWork(result)) {
+        return result.finally(() => {
+          this.setDocumentContext(previous);
+        });
       }
-      this.treeContext = previous;
+      this.setDocumentContext(previous);
       return result;
     } catch (error) {
-      this.treeContext = previous;
+      this.setDocumentContext(previous);
       throw error;
     }
   }
@@ -947,17 +974,17 @@ export class Context {
    * this Context; this does not perform resolution, loading, or parsing.
    */
   transformUrl(value: string, quoted: boolean): string {
-    const tree = this._treeContext;
-    const transform = tree?.plugin?.transformUrl;
+    const document = this.sourceContext;
+    const transform = document?.plugin?.transformUrl;
     if (!transform) return value;
     const entry = this.document ? this.documentContexts.get(this.document) : undefined;
     const request: UrlTransformRequest = {
       value,
       quoted,
-      ...(tree?.file?.fullPath === undefined ? {} : { fromFilePath: tree.file.fullPath }),
+      ...(document?.file?.fullPath === undefined ? {} : { fromFilePath: document.file.fullPath }),
       ...(entry?.file?.fullPath === undefined ? {} : { entryFilePath: entry.file.fullPath }),
     };
-    return transform.call(tree.plugin, request) ?? value;
+    return transform.call(document.plugin, request) ?? value;
   }
 
   /**
@@ -979,60 +1006,66 @@ export class Context {
   withDocumentBody<T>(body: object, run: () => T | Promise<T>): T | Promise<T> {
     const next = this.documentBodyContexts.get(body);
     if (!next) return run();
-    const previous = this._treeContext;
-    this.treeContext = next;
+    const previous = this._documentContext;
+    this.setDocumentContext(next);
     try {
       const result = run();
-      if (result && typeof (result as Promise<T>).then === 'function') {
-        return (result as Promise<T>).finally(() => { this.treeContext = previous; });
+      if (isAsyncDocumentWork(result)) {
+        return result.finally(() => {
+          this.setDocumentContext(previous);
+        });
       }
-      this.treeContext = previous;
+      this.setDocumentContext(previous);
       return result;
     } catch (error) {
-      this.treeContext = previous;
+      this.setDocumentContext(previous);
       throw error;
     }
   }
 
   /** Opaque source identity carried by render-local frames/bindings. */
   currentSourceOwner(): object | null {
-    return this._treeContext ?? null;
+    return this._documentContext ?? null;
   }
 
   /** Run a deferred render activation in its recorded source identity. */
   withSourceOwner<T>(owner: object | null | undefined, run: () => T | Promise<T>): T | Promise<T> {
-    if (!owner) return run();
-    const previous = this._treeContext;
-    this.treeContext = owner as TreeContext;
+    if (!(owner instanceof DocumentContext)) {
+      return run();
+    }
+    const previous = this._documentContext;
+    this.setDocumentContext(owner);
     try {
       const result = run();
-      if (result && typeof (result as Promise<T>).then === 'function') {
-        return (result as Promise<T>).finally(() => { this.treeContext = previous; });
+      if (isAsyncDocumentWork(result)) {
+        return result.finally(() => {
+          this.setDocumentContext(previous);
+        });
       }
-      this.treeContext = previous;
+      this.setDocumentContext(previous);
       return result;
     } catch (error) {
-      this.treeContext = previous;
+      this.setDocumentContext(previous);
       throw error;
     }
   }
 
   /** The source owner that authored a callable body, if one is known. */
   sourceOwnerForBody(body: object): object | null {
-    return this.documentBodyContexts.get(body) ?? this._treeContext ?? null;
+    return this.documentBodyContexts.get(body) ?? this._documentContext ?? null;
   }
 
   /**
    * @param importPath - The bare import path e.g. `@import "foo";` in a .less file.
    */
   private async _getPath(importPath: string) {
-    const currentTree = this.treeContext;
-    const currentDirectory = currentTree?.file?.path ?? process.cwd();
+    const currentDocument = this.sourceContext;
+    const currentDirectory = currentDocument?.file?.path ?? process.cwd();
     const { searchPaths = [] } = this.opts;
 
     const plugins = this.plugins;
     let finalPath: string | undefined;
-    let currentPlugin = this.treeContext?.plugin;
+    let currentPlugin = currentDocument?.plugin;
 
     /** First, expand imports */
     let paths = currentPlugin?.expandImport?.(importPath, currentDirectory) ?? [importPath];
@@ -1222,7 +1255,7 @@ export class Context {
    */
   async loadImport(importPath: string, importOptions: ImportOptions = {}) {
     if (EXTERNAL_IMPORT_SPECIFIER.test(importPath)) {
-      const currentDirectory = this.treeContext?.file?.path ?? process.cwd();
+      const currentDirectory = this.sourceContext?.file?.path ?? process.cwd();
       const { searchPaths = [] } = this.opts;
       let claimed = false;
       for (const plugin of this.plugins) {

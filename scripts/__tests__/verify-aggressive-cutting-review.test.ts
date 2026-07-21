@@ -7,10 +7,12 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
   boundaryChangedPaths,
+  classifyChangedHunkSurface,
   classifyProductionSurface,
   extractCostAuditRecords,
   grammarSourceReferences,
   isProductionHotPathFile,
+  isDocumentSourcePlumbingHunk,
   isStrictRuntimeSurface,
   isExactParserRuntimeDebtDeletion,
   publicArtifactReferences,
@@ -85,6 +87,51 @@ describe('aggressive-cutting review scope', () => {
     const paths = ['packages/css-parser/src/ast/grammar.ts'];
     expect(validateBoundaryEvidence('- Behavior evidence: focused grammar fixture parse proves typed AST construction.\n- Build evidence: parser package build completed successfully.\n- Boundary evidence: public parse() route and parser-runtime-boundary verifier both passed.', paths)).toEqual([]);
     expect(validateBoundaryEvidence('- Behavior evidence: yes', paths)).toHaveLength(3);
+  });
+
+  it('treats only the named DocumentContext source-carrier hunks as public plumbing', () => {
+    const hunk = {
+      file: 'packages/core/src/context.ts',
+      text: [
+        '@@ -1,2 +1,3 @@',
+        '-  private _treeContext!: TreeContext;',
+        '+  private _treeContext: TreeContext | undefined;',
+        '+  private _documentContext: DocumentContext | undefined;'
+      ].join('\n')
+    };
+    expect(isDocumentSourcePlumbingHunk(hunk)).toBe(true);
+    expect(classifyChangedHunkSurface(hunk)).toBe('public-plumbing');
+  });
+
+  it('does not let legacy eval, root, selector, or spine edits borrow the DocumentContext exception', () => {
+    for (const line of [
+      '+  this.treeRoot = root;',
+      '+  this.rulesContext = next;',
+      '+  this.selectorBits = bits;',
+      '+  this.spineVisitor = visitor;'
+    ]) {
+      const hunk = {
+        file: 'packages/core/src/context.ts',
+        text: `@@ -1 +1 @@\n+  const sourceContext = this._documentContext;\n${line}`
+      };
+      expect(isDocumentSourcePlumbingHunk(hunk)).toBe(false);
+      expect(classifyChangedHunkSurface(hunk)).toBe('runtime-engine');
+    }
+  });
+
+  it('accepts only the exact serializer source-provenance replacement', () => {
+    const allowed = {
+      file: 'packages/core/src/ast/serialize.ts',
+      text: '@@ -1 +1 @@\n-  const file = e.context?.treeContext?.file;\n+  const file = e.context?.sourceContext?.file;'
+    };
+    const forbidden = {
+      file: 'packages/core/src/ast/serialize.ts',
+      text: '@@ -1 +1 @@\n+  const file = e.context?.sourceContext?.file;\n+  return render(node);'
+    };
+    expect(isDocumentSourcePlumbingHunk(allowed)).toBe(true);
+    expect(classifyChangedHunkSurface(allowed)).toBe('public-plumbing');
+    expect(isDocumentSourcePlumbingHunk(forbidden)).toBe(false);
+    expect(classifyChangedHunkSurface(forbidden)).toBe('runtime-engine');
   });
 
   it('does not let owner-plus-carry-forward coverage accept an unrelated hot-path hunk', () => {

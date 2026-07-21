@@ -1,6 +1,7 @@
 import { sourceSpanOf } from './util/provenance.js';
 import { basename, dirname, extname, join, relative } from 'node:path';
 import { TreeContext, type Context } from '../context.js';
+import type { ImportOptions } from '../import-options.js';
 import { Node, F_NON_STATIC, F_VISIBLE, defineType, type NodeLocation, type LocationInfo } from './node.js';
 import { type Reference } from './reference.js';
 import { hasCarriedMergeOutputSurface, Rules, type RulesOptions, type RulesVisibility } from './rules.js';
@@ -169,19 +170,7 @@ function getInlineSourceLocation(source: string): NodeLocation {
  * @see https://sass-lang.com/documentation/at-rules/import/#plain-css-imports
  */
 
-export type ImportOptions = {
-  /**
-   * Affects evaluation - will be passed to registered import handlers when parsing.
-   * Normally this is done by file extension, but can be overridden to select a
-   * particular plugin handler.
-   *
-   * e.g. `@-import (type: less) 'foo.css';`
-   */
-  type?: string;
-  /** Rules are not rendered in output. */
-  reference?: boolean;
-  optional?: boolean;
-  inline?: boolean;
+export interface LegacyImportOptions extends ImportOptions {
   /**
    * Optional import postlude captured by parsers for forms like:
    * `@import (inline) "x.css" layer(foo) supports(display: grid) screen;`
@@ -189,50 +178,8 @@ export type ImportOptions = {
    * For inline imports, this is applied as serializer wrappers around the inlined source.
    */
   postlude?: Node;
-  /**
-   * Less's default behavior for `@import` is to only output any resolved resource once.
-   * In Jess, subsequent imports should output as reference unless the `multiple` option
-   * is set to true.
-   *
-   * @todo - Investigate what Sass does.
-   */
-  multiple?: boolean;
-  /**
-   * Allow extends to reach into this import.
-   * Default is false for @-compose (protected by default), true for @-import.
-   * @todo(dev): A mutable compose placement should propagate through nested
-   * compose boundaries by default, stopping only at an explicit protected
-   * boundary. Keep this placement-local so another composition of the same
-   * module can retain its own protection policy.
-   */
-  mutable?: boolean;
-  /**
-   * Sass `@forward` semantics:
-   * - members are NOT visible to the current stylesheet scope
-   * - members ARE made available downstream when this stylesheet is imported
-   */
-  forward?: boolean;
-  /**
-   * Sass `@forward ... as <prefix>-*;` prefixing.
-   * Stores the prefix portion (e.g. `bar-` from `bar-*`).
-   */
-  forwardAsPrefix?: string;
-  /**
-   * Sass `@forward ... show ...;` list.
-   * We capture raw member names (e.g. `$a`, `mixin-b`, `fn-c`) without semantics yet.
-   */
-  forwardShow?: string[];
-  /**
-   * Sass `@forward ... hide ...;` list.
-   * We capture raw member names (e.g. `$a`, `mixin-b`, `fn-c`) without semantics yet.
-   */
-  forwardHide?: string[];
-  /** Variables can't be reassigned (default is true for `@-compose` and false for `@-import`). */
-  readonly?: boolean;
-  /** Internal marker for "once" de-duplication rendering semantics. */
-  _dedupe?: boolean;
   [key: string]: unknown;
-};
+}
 
 export type StyleImportOptions = {
   /**
@@ -248,7 +195,7 @@ export type StyleImportOptions = {
    *     - bar: true
    *     - baz: '1'
    */
-  importOptions?: ImportOptions;
+  importOptions?: LegacyImportOptions;
 
   /** e.g. `import * as foo` sets namespace to `foo` */
   namespace?: string;
