@@ -70,7 +70,7 @@ This is a deliberately breaking alpha architecture change.
   gated on its own compatibility, CLI, and clean-install verification.
 - It does not claim complete Less 4.x corpus parity. The first alpha ships only
   after its advertised public-route, package, CLI, and core-safety gates pass;
-  the 32 runnable upstream divergences are published as known limitations, not
+  the 28 runnable upstream divergences are published as known limitations, not
   hidden test exclusions. See [Less v5 alpha readiness](../less-v5-alpha-readiness.md)
   for every fixture, its symptom/scope, and follow-up.
 - It makes no parser-performance claim. The direct parser baseline and Parseman
