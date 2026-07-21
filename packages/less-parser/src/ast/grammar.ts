@@ -973,6 +973,16 @@ const relativeSelectorCombinator = choice(literal('>'), literal('+'), literal('~
 // misrepresenting it as `Any`. Other URL-token escapes and control boundaries
 // remain the production terminal exactly.
 const staticUrlText = regex(/(?!@(?:-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*|\{))(?:[^"'()\\ \t\n\f\r\x00-\x08\x0B\x0E-\x1F\x7F]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+/);
+// Less accepts formatting whitespace in an unquoted data URL and preserves it
+// in the URL payload (for example, a wrapped base64 body). CSS's shared
+// unquoted URL terminal remains strict: this is a Less-only Parseman leaf.
+// Keep the production URL exclusions intact—quotes, unescaped parentheses,
+// controls, and malformed escapes never become opaque URL text.
+const staticDataUrlText = regex(/data:(?:[^"'()\\\x00-\x08\x0B\x0E-\x1F\x7F]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+?(?=[ \t\n\r\f]*\))/i);
+// URL-edge whitespace is deliberately not the Less `whitespace` production:
+// that production also recognizes `//` comments, while `url(//cdn.example)`
+// is an ordinary URL payload.
+const urlBoundaryWhitespace = regex(/[ \t\n\r\f]+/);
 const staticTailText = regex(/[^()\[\]{};@'"]+/);
 const importOption = regex(/(?:reference|optional|once|multiple|inline|css|less)(?![-\w])/i);
 // The current direct Less subset intentionally uses the same bare identifier
@@ -1231,10 +1241,26 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
   );
   const DirectLessStaticUrl = node<Url>(
     'DirectLessStaticUrl',
-    noTrivia(sequence(regex(/url\(/i), optional(choice(g.DirectLessEscapedQuoted, g.DirectLessQuoted, staticUrlText)), literal(')'))),
-    (children) => {
-      const body = children.length === 3 ? children[1] : undefined;
-      return url(body === undefined ? any('') : (isQuoted(body) || isInterp(body)) ? body : any(requireToken(body).value));
+    noTrivia(sequence(
+      regex(/url\(/i),
+      optional(urlBoundaryWhitespace),
+      optional(field('body', choice(g.DirectLessEscapedQuoted, g.DirectLessQuoted, staticDataUrlText, staticUrlText))),
+      optional(urlBoundaryWhitespace),
+      literal(')')
+    )),
+    (_children, fields) => {
+      const captured = fields?.body;
+      if (Array.isArray(captured)) {
+        throw new TypeError('Direct Less static URL produced repeated body facts.');
+      }
+      const body = captured?.value;
+      if (body === undefined) {
+        return url(any(''));
+      }
+      if (isQuoted(body) || isInterp(body)) {
+        return url(body);
+      }
+      return url(any(requireTerminalText(body)));
     }
   );
   // Bare `@name` and `@{name}` URL bodies are structural Less values, not

@@ -240,6 +240,20 @@ describe('public Less parse()', () => {
     });
   });
 
+  it('preserves wrapped unquoted data URLs through the public parser boundary', () => {
+    expect(parse('.asset { image: url( data:image/png;base64,\n  kiVBORw0K\n  k//+l2Z/dA== ); }')).toMatchObject({
+      type: 'Stylesheet',
+      children: [{
+        type: 'Rule',
+        body: [{
+          type: 'Declaration', name: 'image', value: {
+            type: 'Url', value: { type: 'Any', src: 'data:image/png;base64,\n  kiVBORw0K\n  k//+l2Z/dA==' }
+          }
+        }]
+      }]
+    });
+  });
+
   it('keeps keyframes-header block comments as typed prelude facts on the public route', () => {
     const document = parse('@-webkit-keyframes /* Safari */ hover /* and Chrome */ { 0% { color: red; } }');
 

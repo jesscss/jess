@@ -2751,6 +2751,33 @@ describe('Less AST grammar facts', () => {
     }
   });
 
+  it('constructs wrapped unquoted data URLs without widening ordinary URL text', () => {
+    const source = '.asset { data: url(data:image/png;charset=utf-8;base64,\n  kiVBORw0K\n  k//+l2Z/dA==); escaped: url(http://example.test/a\\(b\\)); plain: url( icons/a.svg ); }';
+    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(result.value).toMatchObject({
+      type: 'Stylesheet',
+      children: [{
+        type: 'Rule',
+        body: [
+          { type: 'Declaration', name: 'data', value: { type: 'Url', value: { type: 'Any', src: 'data:image/png;charset=utf-8;base64,\n  kiVBORw0K\n  k//+l2Z/dA==' } } },
+          { type: 'Declaration', name: 'escaped', value: { type: 'Url', value: { type: 'Any', src: 'http://example.test/a\\(b\\)' } } },
+          { type: 'Declaration', name: 'plain', value: { type: 'Url', value: { type: 'Any', src: 'icons/a.svg' } } }
+        ]
+      }]
+    });
+
+    for (const invalid of [
+      '.asset { value: url(foo bar); }',
+      '.asset { value: url(foo\nbar); }'
+    ]) {
+      const rejected = run(lessAstGrammar.LessAstDocument, invalid, { trivia: lessAstGrammar.whitespace });
+      expect(rejected.ok && rejected.unconsumedFrom === null && isStylesheet(rejected.value)).toBe(false);
+    }
+  });
+
   it('retains outer list separators, rejects newline function separators, and retains value comments', () => {
     const directList = run(lessAstGrammar.LessAstDocument, 'shadow: 0,\n  1px;', { trivia: lessAstGrammar.whitespace });
     expect(directList.ok).toBe(true);
