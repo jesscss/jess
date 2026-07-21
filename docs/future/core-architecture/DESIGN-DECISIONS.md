@@ -1,8 +1,10 @@
-# Design Decisions — settled semantic/design rulings (greppable log)
+# Design Decisions — canonical owner decision ledger
 
-This is a **flat, greppable log of SETTLED design decisions** for the Jess core
-architecture, so agents stop re-litigating them. One row per decision: the
-ruling (one line) + a pointer to the detail doc and/or the owner-memory note.
+This is the **flat, greppable canonical ledger** for owner semantic and
+architecture decisions. It holds both SETTLED rulings and OPEN owner questions,
+so agents do not re-litigate settled work or silently implement an unanswered
+proposal. One row per decision: the ruling/proposal + a pointer to its detail
+doc and/or owner-memory note.
 
 Rules of the road:
 
@@ -14,6 +16,15 @@ Rules of the road:
 - **"Source" pointers** are relative paths inside this dir unless prefixed
   `memory:` (a note in the owner's project memory,
   `.claude/projects/-Users-matthew-git-oss-jess/memory/<name>.md`).
+
+## Ledger process (PROPOSED)
+
+Every owner question that can alter parser facts, AST shape, lookup, evaluation,
+or emitted CSS gets an `OPEN` row here before implementation. Its linked detail
+record must state the exact owner proposal, known unknowns, and required
+invariants/tests. The owner changes only the row's status/ruling when deciding;
+the implementing agent then links the landed code and tests. Superseded rows
+remain with their status and replacement pointer rather than being deleted.
 
 ## 0. The epistemics — there is NO external authority (read first)
 
@@ -115,6 +126,7 @@ reference"* framing is superseded by this row. Source:
 | R7 | Dot member access `$.foo` / `$ns.foo` resolves against BOTH variable declarations and same-named CSS property declarations in the member surface. It must produce exactly one candidate: multiple variable declarations, multiple property declarations, or candidates in both kinds are ambiguity errors; no candidate is a resolve error unless the terminal access is optional. Tracked via a LAZY per-name property cache, never an eager property index. | SETTLED | Owner correction, 2026-07-20 |
 | R9 | Mixin var-unlock = LOW-PRIORITY leak: a variable unlocked by a mixin call is a low-priority binding — a LEXICAL binding always wins; the leaked var is used ONLY where nothing lexical binds. | SETTLED | `V5-OUTPUT-SEMANTICS.md` §B3 |
 | R8 | Mixin self-reference = PARENT-EXCLUSION, the SAME exclusion principle as R4 (a self-reference that cannot make PROGRESS is excluded from candidacy), NOT "recursion detection". (a) A NON-PARAMETRIC ruleset self-call (`.a { .a(); }`, no new args) makes no progress → the enclosing frame is EXCLUDED from its own candidate set → renders once, NEVER errors. (b) A PARAMETRIC self-call with DIFFERENT args progresses and recurses; its guard is the termination mechanism (not part of the skip decision). (c) A genuine RUNAWAY (bad guard, e.g. `.loop($n) { .loop($n + 1) }`) is the ONLY error case: a HIGH depth backstop raises a clean `RangeError`, not a native stack overflow or low cap. | SETTLED (task #40) | canonical core mixin-recursion behavior tests |
+| R10 | **Less property-merge lowering. Owner proposal:** `index+: a; index+: b;` lowers conceptually to ordinary declarations with a scoped optional reference: `index: $$['index']?, a;` then `index: $$['index']?, b;`. This is not approval of a node shape, parser spelling, or emitted-CSS algorithm yet. **Known questions:** (1) the current typed `Reference`/`BracketLookup` model has no terminal optional-reference fact and `VariableReference` has no optional field; (2) current serializer `optional` is render-wide, not a per-reference feature; (3) decide whether `$$['index']` is the final intended reference shape and how an absent value collapses with the following comma; (4) decide how this lowering interacts with current declaration merge grouping/last-anchor behavior, property-reference timelines, imports/mixins, and `!important`. **Required invariants/tests before landing:** preserve scoped/final (never live) lookup and exclusion behavior; first write omits a missing prior value/separator; later writes preserve source order and comma/space semantics; repeated declarations, property reads, mixin/import contributions, and importance match the owner-selected behavior; parser output is typed facts with no source rebuild/reparse. | OPEN | Owner proposal 2026-07-21; `nodes.ts` VariableLookup/Declaration/ReferenceStep, `serialize.ts` resolveVarRef/mergeFold, `VARIABLE-RESOLUTION-SEMANTICS.md`, `REFERENCE-CALL-PLAN.md` |
 
 ## 6. Parsing & grammar
 
