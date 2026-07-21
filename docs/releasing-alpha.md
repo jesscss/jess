@@ -85,6 +85,11 @@ for the user-visible changes in that alpha. Do not rely on commit history being
 preserved by the squash, and do not silently omit this step because the version
 bump is performed later.
 
+The current draft source for the next cut is
+[`docs/releases/jess-2.0.0-alpha.9.md`](./releases/jess-2.0.0-alpha.9.md).
+It is deliberately marked as a draft: update it from the exact gate evidence
+before the squash, and do not use it as a substitute for the readiness trackers.
+
 The current `release:alpha` scripts do **not** run `changeset version` or
 generate package `CHANGELOG.md` files. They resolve a fresh lockstep alpha
 version from npm and write the package versions just before the release commit.
@@ -142,7 +147,7 @@ pnpm run release:alpha
 What it does for you:
 
 1) Safety checks (`alpha` branch + clean working tree except `.cursor/*`)
-2) Full preflight (`release:alpha:check`: baseline + allowlist validation + dry-run publish)
+2) Full preflight (`release:alpha:check`: baseline + allowlist validation + packed clean-consumer proof + dry-run publish)
 3) Registry-aware lockstep alpha-version resolution and manifest update
 4) Commit + annotated tag (`vX.Y.Z-alpha.N`)
 5) Push branch + tag to origin
@@ -154,6 +159,17 @@ Practice first without touching git/npm:
 ```bash
 pnpm run release:alpha:dry-run
 ```
+
+### Packed clean-consumer proof
+
+`pnpm run verify:alpha:packed-consumer` packs every allowlisted package and
+installs only those tarballs into an empty temporary npm consumer. It then
+checks ESM and CJS package roots, the packed `jess` and `lessc` commands
+(stdin, files, sibling imports, and a malformed-input diagnostic), and the
+optional `@jesscss/plugin-js` sandbox-runtime gate. The install uses no workspace
+links; this is the release gate that proves the package closure a user will
+actually receive. Pass `-- --keep` only while debugging to retain its temporary
+consumer directory.
 
 ## First publish (2.0.0-alpha.1)
 
