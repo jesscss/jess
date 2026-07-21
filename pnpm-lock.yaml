@@ -374,9 +374,6 @@ importers:
       '@jesscss/patch-css':
         specifier: workspace:*
         version: link:../patch-css
-      '@jesscss/plugin-css':
-        specifier: workspace:*
-        version: link:../jess-plugin-css
       '@jesscss/plugin-jess':
         specifier: workspace:*
         version: link:../jess-plugin-jess
@@ -618,9 +615,6 @@ importers:
       '@jesscss/css-parser':
         specifier: workspace:*
         version: link:../css-parser
-      '@jesscss/internal-css-recognition':
-        specifier: workspace:*
-        version: link:../internal-css-recognition
       known-css-properties:
         specifier: ~0.37.0
         version: 0.37.0
@@ -628,6 +622,9 @@ importers:
       '@jesscss/core':
         specifier: workspace:*
         version: link:../core
+      '@jesscss/internal-css-recognition':
+        specifier: workspace:*
+        version: link:../internal-css-recognition
       '@jesscss/shared':
         specifier: workspace:*
         version: link:../_shared
@@ -664,9 +661,6 @@ importers:
       '@jesscss/css-parser':
         specifier: workspace:*
         version: link:../css-parser
-      '@jesscss/internal-css-recognition':
-        specifier: workspace:*
-        version: link:../internal-css-recognition
       '@jesscss/less-parser':
         specifier: workspace:*
         version: link:../less-parser
@@ -674,6 +668,9 @@ importers:
       '@jesscss/core':
         specifier: workspace:*
         version: link:../core
+      '@jesscss/internal-css-recognition':
+        specifier: workspace:*
+        version: link:../internal-css-recognition
       parseman:
         specifier: link:/Users/matthew/git/oss/parser-thing
         version: link:../../../parser-thing

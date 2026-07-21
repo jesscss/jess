@@ -64,7 +64,7 @@ describe('public API contract', () => {
     expect(css).toContain('half: 50%;');
   });
 
-  it('deduplicates exact declarations contributed by Less mixin overloads and repeated calls', async () => {
+  it('deduplicates exact declarations contributed by mixin overloads and repeated calls', async () => {
     const css = await new Compiler({ output: { collapseNesting: true } }).renderString(
       '.same() { color: red; } .same() { color: red; } .out { .same(); .same(); }',
       { language: 'less', extension: '.less' }

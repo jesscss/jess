@@ -44,6 +44,7 @@ import {
 } from './nodes.js';
 import type {
   Any,
+  Apply,
   Color,
   ComplexSelector,
   CompoundSelector,
@@ -2867,6 +2868,8 @@ interface Leaf {
   node: Statement;
   frame: Frame | null;
   important?: boolean;
+  /** Produced by the core `$apply` expansion; its repeated output stays visible. */
+  fromApply?: true;
 }
 
 /** The resolved property name of a declaration (interp names resolve sync). */
@@ -3058,8 +3061,13 @@ function collectPlacedExtendFacts(
               const nested = collectPlacedExtendFacts(statement.body, childFrame, e, overlay, rulePath, scope, subject, hidden, referenceBoundary);
               return isThenable(nested) ? nested.then(() => run(index + 1)) : run(index + 1);
             }
+            // `resolvedExtendLevel` is one selector-list level. An inline
+            // `:extend()` still lives at this rule's full ancestor path, just
+            // like the static planner's `[...path, levelFromSelectorList(...)]`.
+            // Keep the planner's `Level[]` contract here: passing a bare Level
+            // makes composePath treat its first Branch as a Level.
             const resolvedExtender = instruction.subject
-              ? resolvedExtendLevel(instruction.subject, frame, e)
+              ? mapMaybe(resolvedExtendLevel(instruction.subject, frame, e), level => [...path, level])
               : rulePath;
             return mapMaybe(resolvedExtender, extenderPath => mapMaybe(
               resolvedExtendLevel(instruction.target, frame, e), targets => {
@@ -3386,6 +3394,14 @@ function emitDocumentStatements(
           group.length = 0;
         };
         return mapMaybe(expandCall(child, null, null, frame, group, flush, null, e), () => { flush(); });
+      }
+      case 'Apply': {
+        const group: Leaf[] = [];
+        const flush = (): void => {
+          if (group.length) flushBlock([], group, e);
+          group.length = 0;
+        };
+        return mapMaybe(expandApply(child, null, null, frame, group, flush, null, e), () => { flush(); });
       }
       case 'Reference': {
         // A final call step can splice a detached ruleset at document level.
@@ -3791,6 +3807,7 @@ function walkBody(
   imp = false, // call-level !important override
   forceLeading = false, // [partition] hoist this body's decls into the leading block
   propertyScope: Frame = frame, // Less `$property` visibility owner
+  applyExpansion = false,
 ): MaybePromise<void> {
   for (let index = 0; index < statements.length; index++) {
     const node = statements[index]!;
@@ -3810,12 +3827,14 @@ function walkBody(
             node,
             frame,
             ...(imp ? { important: true } : {}),
+            ...(applyExpansion ? { fromApply: true } : {}),
           });
         } else {
           group.push({
             node,
             frame,
             ...(imp ? { important: true } : {}),
+            ...(applyExpansion ? { fromApply: true } : {}),
           });
         }
         break;
@@ -3849,7 +3868,7 @@ function walkBody(
               declIndex: collectDeclIndex(rule.body), cells: null, reassign: null,
               statements: rule.body,
             };
-            walkBody(rule.body, composed, ancestor, selfFrame, group, flush, partition, e, imp, forceLeading, propertyScope);
+            walkBody(rule.body, composed, ancestor, selfFrame, group, flush, partition, e, imp, forceLeading, propertyScope, applyExpansion);
           }
           break;
         }
@@ -3868,7 +3887,7 @@ function walkBody(
           if (isThenable(emitted)) {
             return emitted.then(() => walkBody(
               statements.slice(index + 1), composed, ancestor, frame, group, flush,
-              partition, e, imp, forceLeading, propertyScope,
+              partition, e, imp, forceLeading, propertyScope, applyExpansion,
             ));
           }
         }
@@ -3876,39 +3895,49 @@ function walkBody(
       }
       case 'MixinCall':
         {
-          const expanded = expandCall(node, composed, ancestor, frame, group, flush, partition, e, imp, forceLeading, undefined, propertyScope);
+          const expanded = expandCall(node, composed, ancestor, frame, group, flush, partition, e, imp, forceLeading, undefined, propertyScope, applyExpansion);
           if (isThenable(expanded)) {
             return expanded.then(() => walkBody(
               statements.slice(index + 1), composed, ancestor, frame, group, flush,
-              partition, e, imp, forceLeading, propertyScope,
+              partition, e, imp, forceLeading, propertyScope, applyExpansion,
             ));
           }
         }
         break;
+      case 'Apply': {
+        const expanded = expandApply(node, composed, ancestor, frame, group, flush, partition, e, imp, forceLeading, propertyScope);
+        if (isThenable(expanded)) {
+          return expanded.then(() => walkBody(
+            statements.slice(index + 1), composed, ancestor, frame, group, flush,
+            partition, e, imp, forceLeading, propertyScope, applyExpansion,
+          ));
+        }
+        break;
+      }
       case 'Reference':
         {
-          const expanded = expandReferenceCall(node, composed, ancestor, frame, group, flush, partition, e, forceLeading, propertyScope);
+          const expanded = expandReferenceCall(node, composed, ancestor, frame, group, flush, partition, e, forceLeading, propertyScope, applyExpansion);
           if (isThenable(expanded)) {
             return expanded.then(() => walkBody(
               statements.slice(index + 1), composed, ancestor, frame, group, flush,
-              partition, e, imp, forceLeading, propertyScope,
+              partition, e, imp, forceLeading, propertyScope, applyExpansion,
             ));
           }
         }
         break;
       case 'For': {
-        const expanded = expandFor(node, composed, ancestor, frame, group, flush, partition, e, imp, forceLeading, propertyScope);
+        const expanded = expandFor(node, composed, ancestor, frame, group, flush, partition, e, imp, forceLeading, propertyScope, applyExpansion);
         if (isThenable(expanded)) {
           return expanded.then(() => walkBody(
             statements.slice(index + 1), composed, ancestor, frame, group, flush,
-            partition, e, imp, forceLeading, propertyScope,
+            partition, e, imp, forceLeading, propertyScope, applyExpansion,
           ));
         }
         break;
       }
       case 'If': {
         const body = selectIfBodyForRender(node, frame, e);
-        if (body) walkBody(body, composed, ancestor, frame, group, flush, partition, e, imp, forceLeading, propertyScope);
+        if (body) walkBody(body, composed, ancestor, frame, group, flush, partition, e, imp, forceLeading, propertyScope, applyExpansion);
         break;
       }
       // [atrule-bubbling] an at-rule nested inside a ruleset body PROJECTS to this
@@ -3964,7 +3993,13 @@ function walkBody(
         const options = node.options === null ? null : evalBytesSync(node.options, frame, e);
         const loadsDocument = e.importDocument !== undefined
           && canLoadImport(node, importSpecifier(node, frame, e), options);
-        if (loadsDocument) {
+        // An `(inline)` import is raw-byte IO, not a parsed document, but it is
+        // still an asynchronous Context operation. It cannot be buffered as a
+        // Leaf: leaf emission has no continuation slot, so the read would be
+        // abandoned and an otherwise empty Rule would render without its splice.
+        // Run both Context-backed import forms at this existing body cursor.
+        const loadsInline = e.importDocument !== undefined && importHasOption(options, 'inline');
+        if (loadsDocument || loadsInline) {
           // A Context-loaded import publishes lookup facts into this exact rule
           // placement. Its continuation must complete before a later sibling
           // statement dispatches (notably `#Namespace > .mixin()`); keeping it
@@ -4080,6 +4115,7 @@ function expandCall(
   forceLeading = false, // [partition] inherited leading-hoist context
   captureFrames?: Frame[], // [namespace-accessor] collect each callee's callFrame
   propertyScope: Frame = frame, // caller scope receiving spliced declarations
+  applyExpansion = false,
 ): MaybePromise<void> {
   // A namespaced/compound call (`#ns .a .b()`, `.jo.ki()`, `.amp.support()`)
   // resolves by ELEMENT-VALUE descent through the scope's own rulesets (Less
@@ -4182,7 +4218,7 @@ function expandCall(
     const bodyComposed = composed === null ? null : composed.slice();
     const executeBody = () => mapMaybe(
       prepareBodyPlugins(def.body, callFrame, e),
-      () => walkBody(def.body, bodyComposed, ancestor, callFrame, group, flush, partition, e, bodyImp, bodyForceLeading, propertyScope),
+      () => walkBody(def.body, bodyComposed, ancestor, callFrame, group, flush, partition, e, bodyImp, bodyForceLeading, propertyScope, applyExpansion),
     );
     const emitted = withSourceOwner(e, callFrame.sourceOwner, executeBody, def.body);
     return mapMaybe(emitted, () => {
@@ -4217,6 +4253,61 @@ function expandCall(
     finish();
     throw error;
   }
+}
+
+/**
+ * `$apply` is a core statement operation, not a spelling of `MixinCall`.
+ * It selects every plain ruleset with an exact local selector, never enters
+ * parametric mixin dispatch, and walks each matching canonical body in place.
+ */
+function expandApply(
+  node: Apply,
+  composed: string[] | null,
+  ancestor: string | null,
+  frame: Frame,
+  group: Leaf[],
+  flush: () => void,
+  partition: Partition | null,
+  e: Emit,
+  imp = false,
+  forceLeading = false,
+  propertyScope: Frame = frame,
+): MaybePromise<void> {
+  const selected: Array<{ rule: Rule; home: Frame }> = [];
+  for (const selector of node.selectors) {
+    const key = compoundCanonical(selector);
+    for (let scope: Frame | null = frame; scope; scope = scope.parent) {
+      const matches = frameRulesets(scope)?.get(key);
+      if (!matches) continue;
+      for (const rule of matches) {
+        if (!parentExcludes(frame, rule.body) && ruleGuardPasses(rule, scope, e)) {
+          selected.push({ rule, home: scope });
+        }
+      }
+    }
+  }
+  const run = (start: number): MaybePromise<void> => {
+    for (let index = start; index < selected.length; index++) {
+      const { rule, home } = selected[index]!;
+      const applyFrame: Frame = {
+        parent: home,
+        mixins: collectMixins(rule.body),
+        declIndex: collectDeclIndex(rule.body), cells: null, reassign: null,
+        statements: rule.body,
+        sourceOwner: sourceOwnerForBody(rule.body, frame, e),
+        ...(home === frame ? {} : { fallback: frame }),
+      };
+      const emitted = withSourceOwner(e, applyFrame.sourceOwner, () => mapMaybe(
+        prepareBodyPlugins(rule.body, applyFrame, e),
+        () => walkBody(
+          rule.body, composed, ancestor, applyFrame, group, flush, partition, e,
+          imp, forceLeading, propertyScope, true,
+        ),
+      ), rule.body);
+      if (isThenable(emitted)) return emitted.then(() => run(index + 1));
+    }
+  };
+  return run(0);
 }
 
 /**
@@ -4452,6 +4543,7 @@ function expandReferenceCall(
   e: Emit,
   forceLeading = false, // [partition] inherited leading-hoist context
   propertyScope: Frame = frame,
+  applyExpansion = false,
 ): MaybePromise<void> {
   // `@alias: .something(foo); @alias();` — a variable bound to a MIXIN CALL is
   // dispatched as that call (Less: a mixin-call-valued var is callable), not spliced
@@ -4466,7 +4558,7 @@ function expandReferenceCall(
   }
   if (resolved.value.type === 'MixinCall') {
     const home = e.mixinCallHomes?.get(resolved.value) ?? resolved.frame ?? frame;
-    return expandCall(resolved.value, composed, ancestor, home, group, flush, partition, e, false, forceLeading, undefined, propertyScope);
+    return expandCall(resolved.value, composed, ancestor, home, group, flush, partition, e, false, forceLeading, undefined, propertyScope, applyExpansion);
   }
   if (step.args.length !== 0) {
     throw new Error('Reference call arguments require a callable mixin target.');
@@ -4476,7 +4568,7 @@ function expandReferenceCall(
   const r = referenceCallFrame(dr, frame, resolved.frame, resolved.sourceOwner);
   const executeBody = () => mapMaybe(
     prepareBodyPlugins(r.dr.body, r.callFrame, e),
-    () => walkBody(r.dr.body, composed, ancestor, r.callFrame, group, flush, partition, e, false, forceLeading, propertyScope),
+    () => walkBody(r.dr.body, composed, ancestor, r.callFrame, group, flush, partition, e, false, forceLeading, propertyScope, applyExpansion),
   );
   return withSourceOwner(e, r.callFrame.sourceOwner, executeBody, r.dr.body);
 }
@@ -4746,6 +4838,7 @@ function expandFor(
   imp = false,
   forceLeading = false, // [partition] inherited leading-hoist context
   propertyScope: Frame = frame,
+  applyExpansion = false,
 ): MaybePromise<void> {
   const items = forItems(node.iterable, frame, e);
   const run = (start: number): MaybePromise<void> => {
@@ -4764,7 +4857,7 @@ function expandFor(
       ...(extendPlacement ? { extendPlacement } : {}),
     };
     bindForDetached(loopFrame, bindings, item);
-    const emitted = walkBody(node.rules, composed, ancestor, loopFrame, group, flush, partition, e, imp, forceLeading, propertyScope);
+    const emitted = walkBody(node.rules, composed, ancestor, loopFrame, group, flush, partition, e, imp, forceLeading, propertyScope, applyExpansion);
     if (isThenable(emitted)) return emitted.then(() => run(i + 1));
   }
   };
@@ -4955,7 +5048,7 @@ function popClose(e: Emit, idt: string): void {
 }
 
 /**
- * [dedup] Less duplicate-declaration handling: within one block, for each
+ * [dedup] Canonical duplicate-declaration handling: within one block, for each
  * (name, value, !important) key keep only the LAST occurrence and drop earlier
  * exact duplicates, including repeated or overloaded mixin output. A cheap gate counts resolved names first
  * and bails when no property repeats, so a block without duplicates resolves no
@@ -4992,7 +5085,7 @@ function dedupGroup(group: Leaf[], e: Emit): Leaf[] {
     const val = evalBytesSync(n.value, leaf.frame, e);
     const important = n.important || leaf.important === true;
     const key = `${nm}\x00${val}\x00${important ? '!' : ''}`;
-    if (seen.has(key)) {
+    if (seen.has(key) && leaf.fromApply !== true) {
       (suppressed ??= new Set<number>()).add(i);
     } else {
       seen.add(key);
@@ -5905,6 +5998,9 @@ function emitAtRuleBody(
         // Best-effort: expand into the direct-declaration group.
         expandCall(node, null, null, frame, group, flushDirect, null, e);
         break;
+      case 'Apply':
+        expandApply(node, null, null, frame, group, flushDirect, null, e);
+        break;
       case 'Reference':
         expandReferenceCall(node, null, null, frame, group, flushDirect, null, e);
         break;
@@ -6076,6 +6172,12 @@ function emitBubbleBody(
           if (isThenable(expanded)) return expanded.then(() => run(index + 1));
         }
         break;
+      case 'Apply':
+        {
+          const expanded = expandApply(node, ctx, ctxAncestor, frame, group, flushDirect, null, e);
+          if (isThenable(expanded)) return expanded.then(() => run(index + 1));
+        }
+        break;
       case 'Reference':
         {
           const expanded = expandReferenceCall(node, ctx, ctxAncestor, frame, group, flushDirect, null, e);
@@ -6138,6 +6240,7 @@ function emitNestedBody(
   source: NestedHeaderSource | null = null,
   placement: NestedRuleMixinPlacement | null = null,
   sharedLeaves?: NestedLeafBuffer,
+  applyExpansion = false,
 ): MaybePromise<void> {
   // buffer consecutive DIRECT leaves so a `+`/`+_` merge group can fold at
   // last-occurrence; flush when an interrupting nested rule/at-rule appears (a
@@ -6161,7 +6264,7 @@ function emitNestedBody(
       case 'Declaration':
       case 'Comment':
         if (e.referenceImportDepth > 0) break;
-        buf.push({ node, frame, ...(imp ? { important: true } : {}) });
+        buf.push({ node, frame, ...(imp ? { important: true } : {}), ...(applyExpansion ? { fromApply: true } : {}) });
         break;
       case 'Rule': {
         if (e.referenceImportDepth > 0) break;
@@ -6188,19 +6291,25 @@ function emitNestedBody(
       }
       case 'MixinCall':
         {
-          const emitted = expandNestedCall(node, frame, e, imp, source, inlineLeaves);
+          const emitted = expandNestedCall(node, frame, e, imp, source, inlineLeaves, applyExpansion);
+          if (isThenable(emitted)) return emitted.then(() => run(index + 1));
+        }
+        break;
+      case 'Apply':
+        {
+          const emitted = expandNestedApply(node, frame, e, imp, source, inlineLeaves);
           if (isThenable(emitted)) return emitted.then(() => run(index + 1));
         }
         break;
       case 'Reference':
         {
-          const emitted = expandNestedReferenceCall(node, frame, e, imp, source, inlineLeaves);
+          const emitted = expandNestedReferenceCall(node, frame, e, imp, source, inlineLeaves, applyExpansion);
           if (isThenable(emitted)) return emitted.then(() => run(index + 1));
         }
         break;
       case 'For':
         {
-          const emitted = expandNestedFor(node, frame, e, imp, source, inlineLeaves);
+          const emitted = expandNestedFor(node, frame, e, imp, source, inlineLeaves, applyExpansion);
           if (isThenable(emitted)) return emitted.then(() => run(index + 1));
         }
         break;
@@ -6208,7 +6317,7 @@ function emitNestedBody(
         flushBuf();
         const body = selectIfBodyForRender(node, frame, e);
         if (body) {
-          const emitted = emitNestedBody(body, frame, e, hoist, imp, source, placement);
+          const emitted = emitNestedBody(body, frame, e, hoist, imp, source, placement, undefined, applyExpansion);
           if (isThenable(emitted)) return emitted.then(() => run(index + 1));
         }
         break;
@@ -6571,6 +6680,7 @@ function expandNestedCall(
   imp = false,
   source: NestedHeaderSource | null = null,
   sharedLeaves?: NestedLeafBuffer,
+  applyExpansion = false,
 ): MaybePromise<void> {
   // Candidate resolution mirrors the flat-path {@link expandCall}: a bare `.m()`
   // walks the scope chain accumulating same-name overloads (explicit `MixinDef`s
@@ -6625,7 +6735,7 @@ function expandNestedCall(
       const executeBody = () => mapMaybe(
         prepareBodyPlugins(def.body, callFrame, e),
         () => {
-          return emitNestedBody(def.body, callFrame, e, undefined, bodyImp, source, placement, sharedLeaves);
+          return emitNestedBody(def.body, callFrame, e, undefined, bodyImp, source, placement, sharedLeaves, applyExpansion);
         },
       );
       const emitted = withSourceOwner(e, callFrame.sourceOwner, executeBody, def.body);
@@ -6656,6 +6766,51 @@ function expandNestedCall(
   return emitted;
 }
 
+/** Nested-mode counterpart of {@link expandApply}. It keeps `$apply`'s
+ * ruleset-only selection and explicit duplicate-preservation fact while sharing
+ * the same canonical bodies and lexical frames as every other core expansion. */
+function expandNestedApply(
+  node: Apply,
+  frame: Frame,
+  e: Emit,
+  imp = false,
+  source: NestedHeaderSource | null = null,
+  sharedLeaves?: NestedLeafBuffer,
+): MaybePromise<void> {
+  const selected: Array<{ rule: Rule; home: Frame }> = [];
+  for (const selector of node.selectors) {
+    const key = compoundCanonical(selector);
+    for (let scope: Frame | null = frame; scope; scope = scope.parent) {
+      const matches = frameRulesets(scope)?.get(key);
+      if (!matches) continue;
+      for (const rule of matches) {
+        if (!parentExcludes(frame, rule.body) && ruleGuardPasses(rule, scope, e)) {
+          selected.push({ rule, home: scope });
+        }
+      }
+    }
+  }
+  const run = (start: number): MaybePromise<void> => {
+    for (let index = start; index < selected.length; index++) {
+      const { rule, home } = selected[index]!;
+      const applyFrame: Frame = {
+        parent: home,
+        mixins: collectMixins(rule.body),
+        declIndex: collectDeclIndex(rule.body), cells: null, reassign: null,
+        statements: rule.body,
+        sourceOwner: sourceOwnerForBody(rule.body, frame, e),
+        ...(home === frame ? {} : { fallback: frame }),
+      };
+      const emitted = withSourceOwner(e, applyFrame.sourceOwner, () => mapMaybe(
+        prepareBodyPlugins(rule.body, applyFrame, e),
+        () => emitNestedBody(rule.body, applyFrame, e, undefined, imp, source, null, sharedLeaves, true),
+      ), rule.body);
+      if (isThenable(emitted)) return emitted.then(() => run(index + 1));
+    }
+  };
+  return run(0);
+}
+
 /** Expand a detached-ruleset call in nested mode. */
 function expandNestedReferenceCall(
   call: Reference,
@@ -6664,6 +6819,7 @@ function expandNestedReferenceCall(
   imp = false,
   source: NestedHeaderSource | null = null,
   sharedLeaves?: NestedLeafBuffer,
+  applyExpansion = false,
 ): MaybePromise<void> {
   // A variable bound to a MIXIN CALL (`@alias: .something(foo); @alias();`) is
   // dispatched as that call, not spliced as a detached ruleset.
@@ -6675,7 +6831,7 @@ function expandNestedReferenceCall(
     return;
   }
   if (resolved.value.type === 'MixinCall') {
-    return expandNestedCall(resolved.value, frame, e, imp, source, sharedLeaves);
+    return expandNestedCall(resolved.value, frame, e, imp, source, sharedLeaves, applyExpansion);
   }
   if (step.args.length !== 0) {
     throw new Error('Reference call arguments require a callable mixin target.');
@@ -6685,7 +6841,7 @@ function expandNestedReferenceCall(
   const r = referenceCallFrame(dr, frame, resolved.frame, resolved.sourceOwner);
   const executeBody = () => mapMaybe(
     prepareBodyPlugins(r.dr.body, r.callFrame, e),
-    () => emitNestedBody(r.dr.body, r.callFrame, e, undefined, imp, source, null, sharedLeaves),
+    () => emitNestedBody(r.dr.body, r.callFrame, e, undefined, imp, source, null, sharedLeaves, applyExpansion),
   );
   return withSourceOwner(e, r.callFrame.sourceOwner, executeBody, r.dr.body);
 }
@@ -6700,6 +6856,7 @@ function expandNestedFor(
   imp = false,
   source: NestedHeaderSource | null = null,
   sharedLeaves?: NestedLeafBuffer,
+  applyExpansion = false,
 ): MaybePromise<void> {
   const items = forItems(node.iterable, frame, e);
   const run = (start: number): MaybePromise<void> => {
@@ -6720,7 +6877,7 @@ function expandNestedFor(
     bindForDetached(loopFrame, bindings, item);
     const emitted = mapMaybe(
       prepareBodyPlugins(node.rules, loopFrame, e),
-      () => emitNestedBody(node.rules, loopFrame, e, undefined, imp, source, null, sharedLeaves),
+      () => emitNestedBody(node.rules, loopFrame, e, undefined, imp, source, null, sharedLeaves, applyExpansion),
     );
     if (isThenable(emitted)) return emitted.then(() => run(i + 1));
   }

@@ -1,6 +1,6 @@
 # @jesscss/jess-parser
 
-A parser for the [Jess](https://github.com/jesscss/jess) language, built on [parseman](https://www.npmjs.com/package/parseman). Jess is CSS extended with `$variables`, `$(…)` arithmetic, mixins, `@-compose`/`@-from` imports, and control flow (`$if`/`$for`/`$while`). The grammar is the CSS grammar plus a Jess delta: `jessGrammar = compose([cssGrammar, <Jess delta>])`, layered on the shared CSS base in `@jesscss/css-parser`.
+A parser for the [Jess](https://github.com/jesscss/jess) language, built on [parseman](https://www.npmjs.com/package/parseman). Jess is CSS extended with `$variables`, `$(…)` arithmetic, mixins, `@-compose`/`@-from` imports, and control flow (`$if`/`$for`/`$while`).
 
 Two parser representations are available:
 
@@ -59,11 +59,11 @@ Pass a different `startRule` (any capitalized grammar rule) to parse a fragment.
 
 | Entry | Export | Purpose |
 | --- | --- | --- |
-| `@jesscss/jess-parser` (`.`) | `parse` | Parse Jess directly to canonical AST v2 `Stylesheet`. |
-| `@jesscss/jess-parser` (`.`) | `parseJessCst`, `jessGrammar` | Convenience exports for the grammar and explicit CST surface. |
+| `@jesscss/jess-parser` (`.`) | `parse`, `JessParseError` | Parse Jess directly to canonical AST v2 `Stylesheet`; malformed input throws `JessParseError` with an offset and expected facts. |
+| `@jesscss/jess-parser` (`.`) | `parseJessCst`, `jessGrammar` | Convenience exports for the explicit language-service CST surface. |
 | `@jesscss/jess-parser` (`.`) | `JessCstNode`, `JessCstLeaf`, `JessCstError`, `JessCstChild`, `JessCstParseResult`, `JessCstType` (types) | CST type definitions (aliases of the shared `@jesscss/css-parser/cst` types). |
 | `@jesscss/jess-parser/cst` | `parseJessCst`, CST types | Same core-free CST parser (explicit subpath). |
-| `@jesscss/jess-parser/grammar` | `jessGrammar` | The compiled Jess grammar (a rule map). Extend it with `compose()` or drive it directly with parseman's `run`. |
+| `@jesscss/jess-parser/grammar` | `jessGrammar` | The explicit CST/language-service grammar rule map. It is not the production compiler parser route. |
 
 ## Default CST shape
 
@@ -104,39 +104,15 @@ input represented by its direct grammar. Use the explicit CST result's
 `unconsumedFrom` field when a language-service consumer needs partial-parse
 diagnostics.
 
-## Extending with your own builders
+## Compiler boundary
 
-The grammar is decoupled from the tree it builds. Every capitalized rule is a parseman `node()`; when you drive a grammar with a `build` host, each `node()` calls your host instead of constructing the default CST. Use parseman's `run` with your own host and the grammar's trivia rule:
-
-```js
-import { run } from 'parseman'
-import { jessGrammar } from '@jesscss/jess-parser/grammar'
-
-const myHost = (type, children, fields, span) => ({ type, span, children: children.filter(Boolean) })
-
-const result = run(jessGrammar.Stylesheet, '$brand: #3366ff;', {
-  build: myHost,
-  trivia: jessGrammar.rw
-})
-
-result.value   // the root node your host returned
-```
-
-The `BuildHost` signature (from parseman):
-
-```ts
-type BuildHost = (
-  type: string,
-  children: readonly unknown[],
-  fields: FieldMap | undefined,
-  span: { start: number; end: number },
-  rawChildren: readonly unknown[],
-  triviaLog: readonly number[],
-  state: unknown
-) => unknown
-```
-
-`parseJessCst(...)` is this pattern with the shared `cssCstBuildHost` (see `@jesscss/css-parser`, `src/cst.ts`) as a reference host.
+Production Jess parsing is `parse()` or `@jesscss/plugin-jess` through a
+`Compiler`/`Context`. The direct grammar reductions construct canonical AST facts
+themselves; there is no BuilderHost, parser action registry, CST-to-AST bridge, or
+second parse route. `jessGrammar` and `parseJessCst()` are retained only for
+explicit language-service/document consumers that need CST fidelity. Published
+parser packages expose only their macro-compiled `lib` artifacts, so a consumer
+does not need the workspace-private recognition package.
 
 ## Part of Jess
 

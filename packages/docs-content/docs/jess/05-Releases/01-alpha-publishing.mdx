@@ -15,7 +15,12 @@ The current alpha publish set is controlled by:
 
 - `scripts/release/alpha-allowlist.json`
 
-Packages not in the allowlist are intentionally excluded (for example, packages with private runtime dependencies).
+The publish set includes the direct parser/plugin closure installed by `jess`:
+Jess, Less, and SCSS parser plugins plus their parser packages. CSS is available
+only when a consumer explicitly configures a CSS document plugin; Jess does not
+install or route `.css` entries by default. `@jesscss/css-parser` remains in the
+set because the shipped dialect grammars use its shared CSS grammar. Packages
+with private runtime dependencies remain intentionally excluded.
 
 ## Branch/tag guardrails
 
@@ -43,7 +48,7 @@ pnpm run release:alpha
 
 1. Branch + working tree safety checks
 2. Baseline verification and publish-set validation
-3. Lockstep versioning (`changeset version`)
+3. Registry-aware lockstep alpha versioning
 4. Release commit + annotated git tag
 5. Push branch and tag
 6. Publish allowlisted packages to npm tag `alpha`

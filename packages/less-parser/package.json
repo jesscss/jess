@@ -11,27 +11,23 @@
   "exports": {
     ".": {
       "types": "./lib/index.d.ts",
-      "source": "./src/index.ts",
       "import": "./lib/index.js",
       "require": "./lib/index.cjs"
     },
     "./cst": {
       "types": "./lib/cst.d.ts",
-      "source": "./src/cst.ts",
       "import": "./lib/cst.js",
       "require": "./lib/cst.cjs"
     },
     "./grammar": {
       "types": "./lib/grammar.d.ts",
-      "source": "./src/grammar.ts",
       "import": "./lib/grammar.js",
       "require": "./lib/grammar.cjs"
     },
     "./package.json": "./package.json"
   },
   "files": [
-    "lib",
-    "src"
+    "lib"
   ],
   "scripts": {
     "ci": "pnpm build && pnpm test",
@@ -46,7 +42,6 @@
   },
   "dependencies": {
     "@jesscss/css-parser": "workspace:*",
-    "@jesscss/internal-css-recognition": "workspace:*",
     "known-css-properties": "~0.37.0"
   },
   "peerDependencies": {
@@ -59,6 +54,7 @@
   },
   "devDependencies": {
     "@jesscss/core": "workspace:*",
+    "@jesscss/internal-css-recognition": "workspace:*",
     "@jesscss/shared": "workspace:*",
     "@types/node": "^18.19.31",
     "less": "^4.6.3",

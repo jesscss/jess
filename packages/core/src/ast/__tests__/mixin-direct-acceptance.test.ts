@@ -32,9 +32,9 @@ describe('Mixin canonical AST emission', () => {
       rule('.out', [call('.same'), call('.same')]),
     ]);
 
-    // Less keeps one exact declaration even when it was contributed by several
-    // matching definitions and several calls. Authored and mixin output share the
-    // same declaration-dedup rule.
+    // The canonical engine keeps one exact declaration even when it was
+    // contributed by several matching definitions and several calls. Authored
+    // and expanded output share the same declaration-dedup rule.
     expect(render(document)).toBe('.out {\n  color: red;\n}\n');
   });
 

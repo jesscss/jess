@@ -8,8 +8,8 @@ import { attempt, choice, composeLeaf, literal, many, noTrivia, node, not, oneOr
 import type { Combinator } from 'parseman';
 import { cssAstSyntax } from '@jesscss/internal-css-recognition/recognition';
 import { opaqueAtRuleRecognition } from '@jesscss/internal-css-recognition/opaque-at-rule';
-import { any, atRuleBlock, atRuleStatement, color, comment, complexCanonical, complexSelector, compoundSelectorOf, condition, decl, detachedRuleset, dimension, forNode, funcCall, generalEnclosed, ifNode, interpolation, keyword, list, mixinCall, mixinDef, moduleImport, opaqueAtRuleBlock, operation, paren, propertyReference, quoted, range, reference, selectorCapture, styleImport, stylesheet, rule, selist, simpleSelector, interpolatedSimpleSelector, spaced, url, varIndirect, variableDeclaration, variableReference, withSourceSpan } from '@jesscss/core/ast';
-import type { AtRuleBlock, AtRuleStatement, Color, Comment, ComplexSelector, CompoundSelector, Declaration, DetachedRuleset, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GeneralEnclosed, If, IfBranch, Interpolation, Keyword, List, MixinCall, MixinDef, ModuleImport, ModuleImportSpecifier, OpaqueAtRuleBlock, Param, Quoted, Range, Reference, SelectorCapture, Stylesheet, Rule, SelectorList, SimpleSelector, SpacedValue, Statement, StyleImport, Url, ValueNode, VariableDeclaration, VariableReference } from '@jesscss/core/ast';
+import { any, apply, atRuleBlock, atRuleStatement, color, comment, complexCanonical, complexSelector, compoundSelectorOf, condition, decl, detachedRuleset, dimension, forNode, funcCall, generalEnclosed, ifNode, interpolation, keyword, list, mixinCall, mixinDef, moduleImport, opaqueAtRuleBlock, operation, paren, propertyReference, quoted, range, reference, selectorCapture, styleImport, stylesheet, rule, selist, simpleSelector, interpolatedSimpleSelector, spaced, url, varIndirect, variableDeclaration, variableReference, withSourceSpan } from '@jesscss/core/ast';
+import type { Apply, AtRuleBlock, AtRuleStatement, Color, Comment, ComplexSelector, CompoundSelector, Declaration, DetachedRuleset, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GeneralEnclosed, If, IfBranch, Interpolation, Keyword, List, MixinCall, MixinDef, ModuleImport, ModuleImportSpecifier, OpaqueAtRuleBlock, Param, Quoted, Range, Reference, SelectorCapture, Stylesheet, Rule, SelectorList, SimpleSelector, SpacedValue, Statement, StyleImport, Url, ValueNode, VariableDeclaration, VariableReference } from '@jesscss/core/ast';
 import type { GuardNode } from '@jesscss/core/ast';
 
 type Token = { readonly value: string };
@@ -71,7 +71,7 @@ type JessAstRules = {
   DirectJessMixinCallArg: Combinator<JessMixinCallArgument>;
   DirectJessMixinCall: Combinator<MixinCall>;
   DirectJessReferenceCall: Combinator<Reference>;
-  DirectJessApply: Combinator<MixinCall[]>;
+  DirectJessApply: Combinator<Apply>;
   DirectJessExtend: Combinator<ExtendInstruction[]>;
   DirectJessMixinDef: Combinator<MixinDef>;
   DirectJessSimple: Combinator<SimpleSelector>;
@@ -387,7 +387,7 @@ function quotedExpressionFact(children: readonly unknown[]): ExpressionFact {
 function requireStatements(children: readonly unknown[]): Statement[] {
   const statements: Statement[] = [];
   for (const child of children) {
-    if (!isComment(child) && !isVarDeclaration(child) && !isMixinDef(child) && !isMixinCall(child) && !isReferenceCall(child) && !isRule(child) && !isFor(child) && !isIf(child) && !isDeclaration(child) && !isStyleImport(child) && !isModuleImport(child) && !isAtRuleBlock(child) && !isAtRuleStatement(child) && !isOpaqueAtRuleBlock(child)) {
+    if (!isComment(child) && !isVarDeclaration(child) && !isMixinDef(child) && !isMixinCall(child) && !isApply(child) && !isReferenceCall(child) && !isRule(child) && !isFor(child) && !isIf(child) && !isDeclaration(child) && !isStyleImport(child) && !isModuleImport(child) && !isAtRuleBlock(child) && !isAtRuleStatement(child) && !isOpaqueAtRuleBlock(child)) {
       throw new TypeError('Direct Jess AST grammar produced a non-statement child.');
     }
     statements.push(child);
@@ -409,6 +409,10 @@ function isOpaqueAtRuleBlock(value: unknown): value is OpaqueAtRuleBlock {
 
 function isStyleImport(value: unknown): value is StyleImport {
   return typeof value === 'object' && value !== null && 'type' in value && value.type === 'StyleImport';
+}
+
+function isApply(value: unknown): value is Apply {
+  return typeof value === 'object' && value !== null && 'type' in value && value.type === 'Apply';
 }
 
 function isModuleImport(value: unknown): value is ModuleImport {
@@ -2064,10 +2068,10 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
     sequence(g.DirectJessComplex, many(g.DirectJessSelectorTail)),
     children => selist(...(children as ComplexSelector[]))
   );
-  const DirectJessApply = node<MixinCall[]>(
+  const DirectJessApply = node<Apply>(
     'DirectJessApply',
     sequence(regex(/\$apply(?![-\w])/), g.DirectJessStaticCompound, many(sequence(literal(','), g.DirectJessStaticCompound)), optional(literal(';'))),
-    children => children.filter(isCompound).map(compound => mixinCall(compound.simples.map(item => item.text).join('')))
+    children => apply(children.filter(isCompound))
   );
   const DirectJessExtend = node<ExtendInstruction[]>(
     'DirectJessExtend',

@@ -10,27 +10,23 @@
   "exports": {
     ".": {
       "types": "./lib/index.d.ts",
-      "source": "./src/index.ts",
       "import": "./lib/index.js",
       "require": "./lib/index.cjs"
     },
     "./cst": {
       "types": "./lib/cst.d.ts",
-      "source": "./src/cst.ts",
       "import": "./lib/cst.js",
       "require": "./lib/cst.cjs"
     },
     "./grammar": {
       "types": "./lib/grammar.d.ts",
-      "source": "./src/grammar.ts",
       "import": "./lib/grammar.js",
       "require": "./lib/grammar.cjs"
     },
     "./package.json": "./package.json"
   },
   "files": [
-    "lib",
-    "src"
+    "lib"
   ],
   "scripts": {
     "postinstall": "node ./scripts/materialize-sass-spec-cache.cjs",
@@ -46,7 +42,6 @@
   },
   "dependencies": {
     "@jesscss/css-parser": "workspace:*",
-    "@jesscss/internal-css-recognition": "workspace:*",
     "@jesscss/less-parser": "workspace:*"
   },
   "peerDependencies": {
@@ -59,6 +54,7 @@
   },
   "devDependencies": {
     "@jesscss/core": "workspace:*",
+    "@jesscss/internal-css-recognition": "workspace:*",
     "parseman": "link:/Users/matthew/git/oss/parser-thing",
     "sass-spec": "github:sass/sass-spec"
   },

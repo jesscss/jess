@@ -23,11 +23,31 @@ describe('Jess parser plugin render-through', () => {
 
   it('renders bare-truth $if bodies and $apply through the public AST route', async () => {
     const css = await new Compiler().renderString(
-      'paint() { color: red; } .entry { $if (true) { $apply paint; } }',
+      '.paint { color: red; } .entry { $if (true) { $apply .paint; } }',
       { filePath: 'entry.jess', extension: '.jess' },
     );
 
-    expect(css).toBe('.entry {\n  color: red;\n}\n');
+    expect(css).toBe('.paint {\n  color: red;\n}\n.entry {\n  color: red;\n}\n');
+  });
+
+  it('preserves repeated output from the core $apply operation', async () => {
+    const css = await new Compiler().renderString(
+      '.paint { color: red; } .entry { $apply .paint; $apply .paint; }',
+      { filePath: 'entry.jess', extension: '.jess' },
+    );
+
+    expect(css).toBe('.paint {\n  color: red;\n}\n.entry {\n  color: red;\n  color: red;\n}\n');
+  });
+
+  it('merges every matching plain ruleset without entering parameterized mixin dispatch', async () => {
+    const css = await new Compiler().renderString(
+      '.paint { color: red; } .paint { background: blue; } paint() { border: 1px solid; } .entry { $apply .paint; $apply paint; }',
+      { filePath: 'entry.jess', extension: '.jess' },
+    );
+
+    expect(css).toBe(
+      '.paint {\n  color: red;\n}\n.paint {\n  background: blue;\n}\n.entry {\n  color: red;\n  background: blue;\n}\n',
+    );
   });
 
   it('renders documented $for bindings and exclusive ranges through the Jess plugin', async () => {

@@ -193,13 +193,13 @@ describe('Jess AST grammar facts', () => {
         { type: 'Rule', body: [{ type: 'If', branches: [{ body: [
           { type: 'MixinCall', name: 'paint' },
           { type: 'Reference', base: { type: 'VariableReference', name: 'held', lookup: 'live' }, steps: [{ type: 'Call', args: [] }], raw: '$held()' },
-          { type: 'MixinCall', name: 'paint' },
+          { type: 'Apply', selectors: [{ type: 'CompoundSelector' }] },
           { type: 'For', binding: { kind: 'single', name: 'item' } }
         ] }] }] }
       ]
     });
     expect(serialize(parse(source), { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css).toBe(
-      '.host {\n  color: red;\n  background: blue;\n  color: red;\n}\n.host .item-one {\n  order: one;\n}\n.host .item-two {\n  order: two;\n}\n'
+      '.host {\n  color: red;\n  background: blue;\n}\n.host .item-one {\n  order: one;\n}\n.host .item-two {\n  order: two;\n}\n'
     );
   });
 
@@ -219,15 +219,17 @@ describe('Jess AST grammar facts', () => {
     }
   });
 
-  it('lowers static $apply compounds to ordered zero-argument mixin calls and rejects dynamic targets', () => {
+  it('constructs a first-class ruleset-only Apply fact and rejects dynamic targets', () => {
     const source = '$apply .rounded, #theme, button[data-x]:hover;';
     const result = run(jessAstGrammar.JessAstDocument, source, { trivia: jessAstGrammar.whitespace });
     expect(result.ok).toBe(true);
-    expect(result.value).toMatchObject({ children: [
-      { type: 'MixinCall', name: '.rounded', args: [] },
-      { type: 'MixinCall', name: '#theme', args: [] },
-      { type: 'MixinCall', name: 'button[data-x]:hover', args: [] }
-    ] });
+    expect(result.value).toMatchObject({ children: [{
+      type: 'Apply', selectors: [
+        { type: 'CompoundSelector' },
+        { type: 'CompoundSelector' },
+        { type: 'CompoundSelector' }
+      ]
+    }] });
     for (const invalid of ['$apply $[.rounded];', '$apply .rounded-$[tone];', '$apply &;']) {
       const rejected = run(jessAstGrammar.JessAstDocument, invalid, { trivia: jessAstGrammar.whitespace });
       expect(rejected.ok && rejected.unconsumedFrom === null).toBe(false);
@@ -238,21 +240,21 @@ describe('Jess AST grammar facts', () => {
     );
   });
 
-  it('lowers $apply to existing calls inside mixin and $for bodies', () => {
-    const source = 'paint() { color: red; } wrapper() { $apply paint; } $items: one, two; .host { $ > wrapper(); $for ($item of $items) { $apply paint; } }';
+  it('keeps $apply first-class inside mixin and $for bodies', () => {
+    const source = '.paint { color: red; } wrapper() { $apply .paint; } $items: one, two; .host { $ > wrapper(); $for ($item of $items) { $apply .paint; } }';
     const direct = run(jessAstGrammar.JessAstDocument, source, { trivia: jessAstGrammar.whitespace });
     expect(direct.ok).toBe(true);
     expect(direct.unconsumedFrom).toBeNull();
     expect(direct.value).toMatchObject({
       type: 'Stylesheet', children: [
-        { type: 'MixinDef', name: 'paint' },
-        { type: 'MixinDef', name: 'wrapper', body: [{ type: 'MixinCall', name: 'paint' }] },
+        { type: 'Rule' },
+        { type: 'MixinDef', name: 'wrapper', body: [{ type: 'Apply', selectors: [{ type: 'CompoundSelector' }] }] },
         { type: 'VariableDeclaration', name: 'items' },
-        { type: 'Rule', body: [{ type: 'MixinCall', name: 'wrapper' }, { type: 'For', rules: [{ type: 'MixinCall', name: 'paint' }] }] }
+        { type: 'Rule', body: [{ type: 'MixinCall', name: 'wrapper' }, { type: 'For', rules: [{ type: 'Apply', selectors: [{ type: 'CompoundSelector' }] }] }] }
       ]
     });
     expect(serialize(parse(source), { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css).toBe(
-      '.host {\n  color: red;\n  color: red;\n  color: red;\n}\n'
+      '.paint {\n  color: red;\n}\n.host {\n  color: red;\n  color: red;\n  color: red;\n}\n'
     );
     expect(() => parse('wrapper() { $apply $[paint]; }')).toThrow(SyntaxError);
   });

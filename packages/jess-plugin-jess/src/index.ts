@@ -23,7 +23,6 @@ function parseErrorLocation(source: string, error: unknown): { line: number; col
 export class JessPlugin extends AbstractPlugin {
   name = 'jess';
   supportedExtensions = ['.jess'];
-
   safeParse(filePath: string, source: string, parseOptions?: SafeParseOptions): ISafeParseResult {
     void parseOptions;
     try {

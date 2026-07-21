@@ -4,33 +4,29 @@
     "access": "public"
   },
   "version": "2.0.0-alpha.5",
-  "description": "Jess CST parser",
+  "description": "Jess parser with direct canonical AST parsing and an explicit language-service CST entry",
   "main": "lib/index.cjs",
   "types": "lib/index.d.ts",
   "exports": {
     ".": {
       "types": "./lib/index.d.ts",
-      "source": "./src/index.ts",
       "import": "./lib/index.js",
       "require": "./lib/index.cjs"
     },
     "./cst": {
       "types": "./lib/cst.d.ts",
-      "source": "./src/cst.ts",
       "import": "./lib/cst.js",
       "require": "./lib/cst.cjs"
     },
     "./grammar": {
       "types": "./lib/grammar.d.ts",
-      "source": "./src/grammar.ts",
       "import": "./lib/grammar.js",
       "require": "./lib/grammar.cjs"
     },
     "./package.json": "./package.json"
   },
   "files": [
-    "lib",
-    "src"
+    "lib"
   ],
   "scripts": {
     "ci": "pnpm build && pnpm test",

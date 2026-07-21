@@ -15,7 +15,7 @@ const buildFile = async (filePath: string) => {
 };
 
 describe('rollup-plugin-jess', () => {
-  it('renders a `.jess` module through the public compiler integration', async () => {
+  it('renders a `.jess` module with Jess syntax through the public compiler integration', async () => {
     const result = await buildFile('./direct.jess');
     const css = result.find(item => item.type === 'asset' && item.fileName === 'direct.css');
 

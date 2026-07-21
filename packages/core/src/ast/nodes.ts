@@ -701,6 +701,17 @@ export interface MixinCall {
 }
 
 /**
+ * Jess `$apply <selector-list>`: apply every matching plain ruleset body at the
+ * statement position. This is deliberately distinct from `MixinCall`: it has
+ * ruleset-only, whole-selector, merge-all semantics and carries no call args or
+ * overload dispatch.
+ */
+export interface Apply {
+  readonly type: 'Apply';
+  readonly selectors: readonly CompoundSelector[];
+}
+
+/**
  * A Jess `$for (... of ...)` loop. The binding retains the authored single,
  * comma, bracket, or tuple form; entries are source-dependent. Less `each()` lowers
  * at its parser boundary into a compatible Jess binding.
@@ -780,6 +791,7 @@ export type Statement =
   | Comment
   | MixinDef
   | MixinCall
+  | Apply
   | VariableDeclaration
   | AtRuleBlock
   | AtRuleStatement
@@ -925,6 +937,7 @@ export const mixinCall = (name: string, args: Array<ValueNode | CallArg> = []): 
   path: [],
   important: false,
 });
+export const apply = (selectors: readonly CompoundSelector[]): Apply => ({ type: 'Apply', selectors });
 
 /** A single simple-string complex selector, e.g. `sel('.test')`. */
 export const sel = (text: string): ComplexSelector => complexSelector([{ compound: compoundSelector(text) }]);

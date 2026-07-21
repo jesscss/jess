@@ -11,27 +11,23 @@
   "exports": {
     ".": {
       "types": "./lib/index.d.ts",
-      "source": "./src/index.ts",
       "import": "./lib/index.js",
       "require": "./lib/index.cjs"
     },
     "./cst": {
       "types": "./lib/cst-css.d.ts",
-      "source": "./src/cst-css.ts",
       "import": "./lib/cst.js",
       "require": "./lib/cst.cjs"
     },
     "./grammar": {
       "types": "./lib/grammar.d.ts",
-      "source": "./src/grammar.ts",
       "import": "./lib/grammar.js",
       "require": "./lib/grammar.cjs"
     },
     "./package.json": "./package.json"
   },
   "files": [
-    "lib",
-    "src"
+    "lib"
   ],
   "scripts": {
     "verify:types": "tsc -p tsconfig.build.json --noEmit --skipLibCheck",

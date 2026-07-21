@@ -159,6 +159,23 @@ describe('ImportAtRule', () => {
     expect(serialize(document)).toEqual({ css: '.card {\n  @import "mixin.css";\n}\n' });
   });
 
+  it('awaits a raw inline import inside a flattened rule instead of buffering it as a leaf', async () => {
+    const document = stylesheet([
+      rule('.source-only', [
+        importAtRule(
+          '@import',
+          quoted('"payload.css"', 'payload.css', '"', false),
+          list([keyword('inline')], [',']),
+        ),
+      ]),
+    ]);
+
+    await expect(serialize(document, {
+      collapseNesting: true,
+      importDocument: () => Promise.resolve({ inline: '.from-inline { color: green; }', media: null }),
+    })).resolves.toEqual({ css: '.from-inline { color: green; }\n' });
+  });
+
   it('keeps a trailing import in its source-ordered parent block after a nested rule', () => {
     const document = stylesheet([
       rule('.card', [
@@ -230,6 +247,11 @@ describe('ImportAtRule', () => {
       rule('.unusedAndReference', [decl('unused-and', keyword('reference'))], [{
         target: selist(sel('.theOnlySelector')),
         partial: false,
+        // This is the parser shape for `.unusedAndReference:extend(...)`.
+        // The imported-fact planner must retain its `Level[]` ancestor path,
+        // rather than passing this one selector-list Level directly to
+        // composePath().
+        subject: selist(sel('.unusedAndReference')),
       }]),
     ]);
     const document = stylesheet([

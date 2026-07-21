@@ -47,8 +47,7 @@ The fields and methods the compiler looks for:
 | --- | --- |
 | `name` | Identifier for the plugin, e.g. `'less'`. |
 | `supportedExtensions` | Extensions this plugin can parse, e.g. `['.less']`. |
-| `safeParse(filePath, source, opts)` | Parse a file, returning a canonical document result plus diagnostics (never throws). |
-| `parse(filePath, source)` | Throwing variant, if you prefer it over `safeParse`. |
+| `safeParse(filePath, source, opts)` | Parse a file once, returning a canonical document result plus diagnostics (never throws). |
 | `expandImport(importPath, currentDir)` | Turn an import specifier into candidate paths. |
 | `resolve(path, currentDir, searchPaths)` | Map a specifier to absolute path(s). |
 | `locate(candidates, currentDir)` | Pick the first candidate that exists. |
@@ -56,19 +55,8 @@ The fields and methods the compiler looks for:
 
 ## 1. Registering a language / dialect
 
-The minimal case — associating a name with a file extension — is what the base
-`jess-plugin` package does:
-
-```ts
-import { definePlugin } from 'jess-plugin';
-
-export default definePlugin({
-  language: {
-    name: 'jess',
-    ext: '.jess'
-  }
-});
-```
+The built-in `@jesscss/plugin-jess` owns `.jess` and is registered by `Compiler`
+by default. A custom dialect uses the same explicit extension ownership:
 
 To actually compile that language, a plugin declares which extensions it owns and
 provides a `safeParse` method. The compiler selects a plugin for a file by matching

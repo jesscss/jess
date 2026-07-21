@@ -26,6 +26,48 @@ but Less import execution, evaluator wiring, retained Context/plugin dispatch,
 and corpus parity come first; resume the remaining dialect integration only
 after those Less-alpha gates are genuinely green.
 
+## Active orchestrator goal
+
+Drive the public AST-v2 cutover, Less alpha readiness, Parseman release,
+performance recovery, and Jess alpha preparation to verified completion. This
+section is the authoritative full-scope companion to the compact task goal.
+
+- All public CSS, Less, SCSS, and Jess `parse()` routes must reduce Parseman
+  grammar directly to canonical AST-v2 `Stylesheet`; `Reference` is the typed,
+  recursive public reference chain. No bridge, builder/parse host, action
+  registry, source reparse, scanner/regex recognizer, compatibility parser, or
+  fallback/shim may return.
+- Less is the immediate feature-completeness priority. Close real parser,
+  evaluator, import, plugin, and corpus gaps through the public route; prove
+  the first external prerelease as exactly `less@5.0.0-alpha.1`, including
+  built-artifact `lessc` and clean packed-install tests.
+- Context remains the one render/session/cache/diagnostic/plugin/import
+  coordinator. Retain its plugin-based source, parser, module, path, and
+  import dispatch topology while changing carried documents to `Stylesheet`;
+  do not replace it with a second loader or resolver.
+- Finish public Jess syntax integration through `jess-parser` and
+  `plugin-jess`. CSS is a Context-parsed/inlined document route, not a Jess CSS
+  compiler merely because a CSS plugin exists. Delete only machinery proven
+  unreachable after direct-route coverage; do not manufacture deletion work.
+- Prepare and release compatible Parseman `0.28` from its release branch only
+  after review, tests, public docs/changelog, and coverage/trace API proof.
+  Normal compiler/plugin/CLI parses never enable coverage or trace. Replace
+  local Parseman links only with that published version and prove clean install.
+- Treat current direct-Less parsing performance as a release concern. Establish
+  reproducible generated-bundle/hash baselines and investigate AST allocation,
+  grammar choice/backtracking, metadata/trivia/provenance, emitted
+  `composeLeaf()` shape, and historical feature equivalence independently.
+  Optimize only with semantic/output proof and matched parse plus end-to-end
+  measurements; never restore legacy architecture for speed.
+- Prepare `jess@2.0.0-alpha.9`: identify its actual publishable runtime closure
+  (including the correct CSS and Jess plugin roles), remove runtime `link:` and
+  unnecessary internal dependencies, build and pack the candidate, and run
+  parser/plugin/Compiler/rollup, Less-alpha, package/API, cutting-review,
+  `lessc`, and clean-consumer gates. Validate final `dev`, prepare
+  owner-reviewed release notes, then squash-merge it onto `alpha` for the
+  release cut; do not ordinary-merge/rebase shared alpha history or publish
+  before every gate passes.
+
 ## Router
 
 | Work | Read first |
@@ -345,7 +387,8 @@ architecture or a completion milestone.
   selectors, semantic `$[…]` selector templates, documented `$for`
   list/range/key-value collection bindings, static unresolved typed
   `StyleImport`/`ModuleImport` facts for documented `@-` imports, and static
-  `$apply` lowering to existing rule-mixin calls. Documented `$ >` named mixin
+  first-class `Apply` facts for documented static ruleset-only selector lists.
+  Documented `$ >` named mixin
   arguments lower directly to existing `CallArg { name, value }` facts; they do
   not add a dialect-local call node or binding path. Documented zero-argument
   variable-held callable statements lower directly to existing `VariableCall`
@@ -366,9 +409,11 @@ architecture or a completion milestone.
   at-rule facts, including terminal static generic CSS opaque blocks through a
   shared recognition-only Parseman artifact. Jess collection literals lower to the canonical
   `DetachedRuleset`, not a CST-shaped map or opaque source fallback. Dynamic
-  `$apply` targets remain rejected until `MixinCall` has a typed dynamic-name
-  model; static `$apply` lowers to existing ordered `MixinCall` facts at root,
-  rule, selected `$if`, mixin-definition, and `$for` body positions. R3 now
+  `$apply` targets remain rejected until `Apply` has a typed dynamic-selector
+  model; static `$apply` constructs one `Apply` fact at root, rule, selected
+  `$if`, mixin-definition, and `$for` body positions. `Apply` is a core
+  ruleset-only, whole-selector, merge-all operation; it is not a dialect render
+  policy or an ordinary `MixinCall`. R3 now
   gives `$` live/current and `$$` scoped/final references explicit
   AST lookup facts; normal declarations write both stores, while `?:` and `:=`
   retain their selected lookup/write behavior. `$[$name]` is a live/live

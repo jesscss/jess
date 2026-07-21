@@ -28,7 +28,6 @@ import {
   type OutputOptions
 } from 'styles-config';
 import type { PluginInterface } from '@jesscss/core';
-import cssPlugin from '@jesscss/plugin-css';
 import jessPlugin from '@jesscss/plugin-jess';
 import lessPlugin from '@jesscss/plugin-less';
 import scssPlugin from '@jesscss/plugin-scss';
@@ -449,7 +448,6 @@ export class Compiler {
   private jsPluginFactoryCache = new Map<PluginFactoryCacheKey, Promise<PluginFactoryRecord>>();
   private jsPluginProxyCache = new Map<PluginFactoryCacheKey, LazyPluginInterface>();
   private lessPluginInstanceCache = new Map<LessPluginCacheKey, PluginInterface>();
-  private cssPluginInstance: PluginInterface | undefined;
   private jessPluginInstance: PluginInterface | undefined;
   private scssPluginInstance: PluginInterface | undefined;
 
@@ -608,14 +606,6 @@ export class Compiler {
       this.jessPluginInstance = jessPlugin();
     }
     return this.jessPluginInstance;
-  }
-
-  /** The native CSS parser plugin is always available for `.css` sources. */
-  private getOrCreateCssPlugin(): PluginInterface {
-    if (!this.cssPluginInstance) {
-      this.cssPluginInstance = cssPlugin();
-    }
-    return this.cssPluginInstance;
   }
 
   /**
@@ -829,8 +819,6 @@ export class Compiler {
 
   private buildPlugins(resolved: ResolvedRenderConfig): PluginInterface[] {
     const pluginMap = new Map<string, PluginInterface>();
-    const coreCssPlugin = this.getOrCreateCssPlugin();
-    pluginMap.set(coreCssPlugin.name, coreCssPlugin);
     const coreJessPlugin = this.getOrCreateJessPlugin();
     pluginMap.set(coreJessPlugin.name, coreJessPlugin);
     const coreLessPlugin = this.getOrCreateLessPlugin(resolved.lessOptions);
@@ -1434,7 +1422,6 @@ export class Compiler {
     this.jsPluginProxyCache.clear();
     this.jsPluginFactoryCache.clear();
     this.lessPluginInstanceCache.clear();
-    this.cssPluginInstance = undefined;
     this.jessPluginInstance = undefined;
     this.scssPluginInstance = undefined;
     this.configuredPluginFactoryCache.clear();
