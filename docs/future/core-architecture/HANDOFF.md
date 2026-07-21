@@ -1093,21 +1093,6 @@ or a legacy-tree port.
 
 ## Aggressive Cutting Self-Prosecution
 
-### Current pass: imported-loop extend self-prosecution
-
-- Latest pass: imported-loop extend typed-fact cutover.
-- Review-flagged diff tokens: [loop/traversal] is the cold source-order planner
-  recursion; [array helper] and [array spread/materialization] are selector-IR
-  and overlay fact collection; [side map/set] is the lazy token/projection
-  `WeakMap`; [materialized array/object] is those transient IR/fact values.
-  [node construction], [parent/source mutation], and [routine error control]
-  have no introduced instance in this cutover—the verifier reports concurrent
-  shared parser/core changes. The owned work replaces the deleted
-  synthetic-root/at-rule clone protocol and is gated off for static documents.
-- Hot-path cost contracts: ledger IDs: `ast-extend-prefilter-toggle-deletion`.
-
-## Aggressive Cutting Self-Prosecution
-
 - Latest pass: public AST-v2 cutover snapshot commit gate (parser, Context/plugin,
   evaluator, serializer, reference, import, and direct-route work staged together).
 - Architecture surface: the staged work replaces public parser output with canonical
@@ -1285,8 +1270,6 @@ leaf-emission machinery was deleted or changed, and a total-render timing cannot
 prove a leaf-only cost delta. A future leaf change needs a matched family-local
 counter or profiling attribution, the canonical benchmark non-regression
 protocol, and byte identity before it may claim neutral/decrease.
-
-## Aggressive Cutting Self-Prosecution
 
 ### Current pass: imported extend semantic preflight
 
