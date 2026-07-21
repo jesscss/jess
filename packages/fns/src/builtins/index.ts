@@ -21,7 +21,7 @@
 import type { Fn } from '@jesscss/core/value';
 
 // --- math: rounding / sign / roots / powers ---
-import { round } from './round.js';
+import { round } from '../less/round.js';
 import { ceil } from './ceil.js';
 import { floor } from './floor.js';
 import { abs } from './abs.js';
@@ -106,7 +106,7 @@ import { format, formatPercent } from './format.js';
 import { escape } from './escape.js';
 // --- type-introspection predicates (is*) ---
 import {
-  iscolor, isnumber, isstring, iskeyword, isunit, ispixel, ispercentage, isem,
+  iscolor, isnumber, isstring, iskeyword, isunit, ispixel, ispercentage, isem
 } from './type-predicates.js';
 // --- url producers (Tier-C — self-contained; no file IO) ---
 import { svgGradient } from './svg-gradient.js';
@@ -134,10 +134,10 @@ export const builtinLessFns: readonly Fn[] = [
   multiply, screen, overlay, softlight, hardlight, difference, exclusion, average, negation,
   rgb, rgba, hsl, hsla, hsv, hsva, argb, color,
   replace, format, formatPercent, escape,
-  iscolor, isnumber, isstring, iskeyword, isunit, ispixel, ispercentage, isem,
+  iscolor, isnumber, isstring, iskeyword, isunit, ispixel, ispercentage, isem
   svgGradient,
   dataUri, imageSize, imageWidth, imageHeight,
-  e,
+  e
 ];
 
 export type { Fn, FnSpec, ParamSpec, Kind } from '@jesscss/core/value';
