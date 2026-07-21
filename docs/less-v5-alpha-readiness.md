@@ -7,24 +7,25 @@ before that runbook should be used. Features **deliberately deferred past this
 alpha** (config-lane URL/import handling, source maps, …) are sequenced in
 [`less-v5-release-plan.md`](./less-v5-release-plan.md).
 
-Performance baseline (measured 2026-07-11 under the controlled protocol — same
-worktree, rebuild-per-commit, warmup + N-median, correctness-verified output): on
-`origin/dev`, `benchmark.less` renders in **~213 ms** producing the full
-130,940-byte stylesheet — about **5.4× Less 4.5.1** (~39.85 ms, same machine).
-That is a ~39× improvement over the June 2026 full render (~8.3 s), landed by the
-single-eval-emit cutover. Performance is therefore **not** settled: the standing
-goal is Less-4.x parity, and closing the ~5.4× flat gap (parser + allocation +
-node weight) is open work — see the core-architecture perf handoff.
+## Current direct-Less performance baseline (2026-07-21)
 
-> ⚠️ **Corrected 2026-07-11.** A prior version of this line claimed an
-> "owner-reported ~133 ms June baseline, good enough for alpha." That figure was
-> **never owner-reported and never a real full render** — the June full render was
-> ~8.3 s. The 133 ms almost certainly came from a run where parsing/eval never
-> fully completed (a partial/errored render — the same "fast fake" seen throughout
-> the June commits), which was then written up as a settled baseline with the
-> "nothing actually finished rendering" caveat lost, and mis-attributed as
-> owner-reported. It had wrongly closed the performance question and redirected
-> readiness away from perf. Do not resurrect it.
+This is the alpha-facing reproducibility record, not a historical regression
+claim. The current public route is a built direct parser on Parseman `0.28.0`;
+older 20–30 ms source-driver and legacy-tree numbers measured different work and
+are not an A/B.
+
+| Phase | Protocol and identity | Result |
+| --- | --- | --- |
+| Direct parse | `packages/less-parser/lib/index.js`: SHA-256 `52d88a95557a821815d9f15f2d6ab05bbb5c64a55f0189fb97a050d7aea50285`, 1,797,831 bytes; `benchmark.less`, 106,802 bytes; Node v24.11.1 arm64; 20 warmups + 3×45 samples | 63.321 ms median (p25 61.776, p75 64.487); `Stylesheet` JSON SHA-256 `2ba996a1c46eb6d77ce8f1748b35d1135848c128104e00f46dadf7e9651c53bd` (957,390 bytes). |
+| Public compiler | `node scripts/measure-less-hotpath.mjs --fixture packages/jess/benchmark/benchmark.less --iterations 45 --warmup 20 --repeat 3 --trim 0.1 --json`; built Jess/Less-plugin chain | 77.492 ms round-median across 135 samples (usable 0.78% round RSD); CSS SHA-256 `ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6` (122,390 bytes). |
+
+Normal public parse/compile provides neither Parseman coverage nor trace
+instrumentation. Diagnostic coverage/trace uses a separate macro transform and
+must never be used for this timing protocol. The rejected namespace gate did
+not land: direct parse was 62.881 ms versus its 59.502 ms baseline and compiler
+74.022 ms versus 73.772 ms (noise), so no production change remains. The next
+choice investigation is the opt-in stable choice-arm trace design in
+[`parseman-diagnostic-trace-design.md`](./future/parseman-diagnostic-trace-design.md).
 
 ## Status Key
 
@@ -58,19 +59,15 @@ Full upstream parity, unadvertised Less 4.x CLI parity, browser compilation,
 source-map artifacts, and performance parity remain follow-up work unless they
 are expressly advertised for a later alpha.
 
-- `[~]` **Performance — HARD gate for GA, explicitly NOT a blocker for the alpha**
-  (owner decision 2026-07-11). The alpha ships on the advertised public-route,
-  package, CLI, and safety gates above at its current speed; ~5.4× Less 4.x is accepted for an
-  alpha. Perf-parity with Less 4.x remains a **hard gate for the stable/GA
-  release** — the numeric GA bar (strict parity or a bounded multiple) is an open
-  owner decision. A prior LLM edit had wrongly erased perf as a gate ENTIRELY (tied
-  to a fabricated "133 ms good enough" baseline) — never authorized; restored here
-  as the GA gate.
-  - Current measured state, `origin/dev` (working, eval-backstopped head): ~213 ms
-    vs Less 4.5.1 ~39.85 ms — **~5.4×** on `benchmark.less`.
-  - The D-EVAL-flip branch (PR #24) **cannot render `benchmark.less`**
-    (`SPINE_ONLY_UNSUPPORTED`) — UNMEASURED. Never quote a bare "jess" perf number
-    without naming the head.
+- `[~]` **Performance — baseline required for alpha; numeric gate for GA remains
+  an owner decision.** The alpha has no measured timing threshold and must not
+  cite incomparable historical numbers. The alpha review record captures the
+  built artifact, direct-parse AST hash, compiler CSS hash, and disabled normal
+  instrumentation with the protocol above; no release command currently
+  enforces a timing threshold. Any claimed improvement/regression needs a
+  matched rebuilt-artifact A/B with identical output. Less-4.x speed parity (or
+  a bounded multiple) remains a future stable/GA gate once the owner sets the
+  numeric bar.
 - `[~]` **Advertised `lessc` CLI behavior** (alpha gate). The built Less v5
   alpha binary must run safely and correctly for its documented command/options
   set. Unsupported Less 4.x flags or divergent advanced behavior are alpha
