@@ -87,6 +87,13 @@ for the user-visible changes in that alpha. Do not rely on commit history being
 preserved by the squash, and do not silently omit this step because the version
 bump is performed later.
 
+For the first Less-focused alpha, the release notes must also include a
+discoverable **Known limitations** section linking
+[`less-v5-alpha-readiness.md`](./less-v5-alpha-readiness.md). The 32 runnable
+upstream expected-failure markers are classified compatibility evidence, not a
+requirement to drain before alpha. Do not omit them or call them passing; block
+only on the advertised public-route, package/CLI, and core-safety gates.
+
 The current draft source for the next cut is
 [`docs/releases/jess-2.0.0-alpha.9.md`](./releases/jess-2.0.0-alpha.9.md).
 It is deliberately marked as a draft: update it from the exact gate evidence

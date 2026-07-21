@@ -68,9 +68,11 @@ This is a deliberately breaking alpha architecture change.
 - It does not publish the external `less@5.0.0-alpha.1` package. That is a
   separate Less release, pinned to exactly that first prerelease version and
   gated on its own compatibility, CLI, and clean-install verification.
-- It does not claim complete Less 4.x corpus parity or that every Less-alpha
-  release gate has passed. Consult `docs/less-v5-alpha-readiness.md` for the
-  current evidence rather than treating these notes as a readiness tracker.
+- It does not claim complete Less 4.x corpus parity. The first alpha ships only
+  after its advertised public-route, package, CLI, and core-safety gates pass;
+  the 32 runnable upstream divergences are published as known limitations, not
+  hidden test exclusions. See [Less v5 alpha readiness](../less-v5-alpha-readiness.md)
+  for every fixture, its symptom/scope, and follow-up.
 - It makes no parser-performance claim. The direct parser baseline and Parseman
   0.28 regression work remain release-gated and are measured separately.
 - It does not publish from local workspace links. Parseman 0.28 must be

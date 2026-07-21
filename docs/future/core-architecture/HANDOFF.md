@@ -40,18 +40,17 @@ after those Less-alpha gates are genuinely green.
 ### Less corpus truthfulness gate
 
 `packages/jess/test/less/all-less.test.ts` currently contains 32 runnable
-expected-failure markers. They are **not** approved alpha exclusions: the test
-passes when the named fixture fails, so they mask compatibility gaps until they
-are removed. The exact, maintained inventory and ranked remediation order are
-in [`../../less-v5-alpha-readiness.md`](../../less-v5-alpha-readiness.md).
-The five bounded groups are: callable/reference and scope semantics (9);
-imports/conditional at-rule execution (6); direct parser/evaluator correctness
-(7); URL options (6); and source-map artifacts (4). These add to the test
-map's distinct-path count of 32. No expected-failure marker may be described
-as out of alpha without an explicit owner decision and release-note policy.
-In particular, a missing mixin remains an error; only an ordinary function call
-with an optional function reference may fall back to a CSS `Call` when the
-lookup misses.
+expected-failure markers. They remain complete, visible compatibility evidence:
+the harness passes when a named fixture fails, so none is passing-parity proof.
+The owner decision for the first alpha is to classify—not drain or hide—them.
+The maintained symptom/scope/follow-up inventory and alpha safety gates are in
+[`../../less-v5-alpha-readiness.md`](../../less-v5-alpha-readiness.md), and the
+release notes must link it. The five groups are callable/reference and scope
+semantics (9); imports/conditional at-rule execution (6); direct
+parser/evaluator correctness (7); URL options (6); and source-map artifacts
+(4). These add to 32. In particular, a missing mixin remains an error; only an
+ordinary function call with an optional function reference may fall back to a
+CSS `Call` when lookup misses.
 
 ## Active orchestrator goal
 

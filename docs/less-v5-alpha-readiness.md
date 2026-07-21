@@ -33,11 +33,34 @@ node weight) is open work — see the core-architecture perf handoff.
 - `[?]` needs owner decision before implementation should proceed
 - `[x]` complete with evidence linked in this file
 
-## Release Gates
+## Alpha Release Gates
+
+The first alpha is **not** a promise of complete Less 4.x corpus parity. It is
+allowed to ship with the classified known limitations below, provided they stay
+discoverable in the release notes and each has a concrete symptom, scope, and
+follow-up. The runnable corpus remains a regression signal; expected failures
+must never be hidden, deleted, or described as passing behavior.
+
+The alpha blocks only on these advertised correctness and release-safety gates:
+
+- the public direct `parse()` → canonical `Stylesheet` → one-engine compiler
+  route, with no bridge/host/reparse fallback;
+- core safety and correctness on the advertised route: no known crash, hang,
+  duplicate evaluation engine, or silent output corruption in a supported use;
+- the documented `jess` package API, package exports, builds, and clean
+  consumer-install proof;
+- the advertised `lessc` commands and options, including built-artifact CLI
+  smoke/compatibility tests; and
+- a release-note known-limitations section that links the complete inventory and
+  states the unsupported or divergent behavior honestly.
+
+Full upstream parity, unadvertised Less 4.x CLI parity, browser compilation,
+source-map artifacts, and performance parity remain follow-up work unless they
+are expressly advertised for a later alpha.
 
 - `[~]` **Performance — HARD gate for GA, explicitly NOT a blocker for the alpha**
-  (owner decision 2026-07-11). The alpha ships on the functional gates (tests +
-  `lessc` parity, below) at its current speed; ~5.4× Less 4.x is accepted for an
+  (owner decision 2026-07-11). The alpha ships on the advertised public-route,
+  package, CLI, and safety gates above at its current speed; ~5.4× Less 4.x is accepted for an
   alpha. Perf-parity with Less 4.x remains a **hard gate for the stable/GA
   release** — the numeric GA bar (strict parity or a bounded multiple) is an open
   owner decision. A prior LLM edit had wrongly erased perf as a gate ENTIRELY (tied
@@ -48,13 +71,15 @@ node weight) is open work — see the core-architecture perf handoff.
   - The D-EVAL-flip branch (PR #24) **cannot render `benchmark.less`**
     (`SPINE_ONLY_UNSUPPORTED`) — UNMEASURED. Never quote a bare "jess" perf number
     without naming the head.
-- `[~]` **`lessc` CLI parity with Less 4.x** (alpha gate). The `lessc` binary and
-  its flags must behave as a drop-in for Less 4.x (functional/behavioral parity,
-  not speed). Command-by-command parity is being assessed; divergences from 4.x
-  block the alpha.
+- `[~]` **Advertised `lessc` CLI behavior** (alpha gate). The built Less v5
+  alpha binary must run safely and correctly for its documented command/options
+  set. Unsupported Less 4.x flags or divergent advanced behavior are alpha
+  limitations only when listed in the release notes with a follow-up; they do
+  not create an implied drop-in-parity promise.
 - `[~]` Stabilize the public `jess` package API before the first Less alpha.
-- `[~]` Expand package-level Less tests to cover all non-browser Less API
-  fixtures and the `find`/path-resolution surface.
+- `[~]` Maintain package-level Less coverage and the `find`/path-resolution
+  surface. The complete upstream corpus remains a classified compatibility
+  signal, not an implied all-fixtures-must-pass alpha gate.
 - `[x]` Add Less v5 alpha CI guards that run the stable readiness tests after
   the API and fixture lanes are addressed. `.github/workflows/less-alpha-readiness.yml`
   runs `pnpm run verify:less-alpha` on pull requests, pushes to `main` and
@@ -197,22 +222,23 @@ Known gaps to add or close:
 - `[ ]` Add focused core tests when a Less fixture exposes a parser/runtime
   invariant gap, then use the package-level fixture as the compatibility proof.
 
-Current expected-failure backlog:
+## Known limitations: runnable upstream corpus inventory
 
 The runnable corpus has **32** explicit expected-failure markers in
 `packages/jess/test/less/all-less.test.ts`. They are test instrumentation,
-not alpha exclusions: each marker makes a mismatching render pass the suite.
-None has an owner-approved "out of alpha" decision. A marker may be removed
-only with byte-identical fixture proof, or replaced with an explicit,
-owner-approved unsupported-alpha policy and release-note wording.
+not passing compatibility evidence: each marker makes a mismatching render pass
+the harness while preserving the observed failure. This is the complete first
+alpha known-limitations inventory. A marker may be removed only with
+byte-identical fixture proof; otherwise its release-note classification must
+remain explicit and be updated when its symptom or scope changes.
 
-| Remediation order | Current fixtures | Actual shared gap / next owner evidence |
-| --- | --- | --- |
-| 1 — callable/reference and scope semantics | `detached-rulesets`, `functions-each`, `mixins`, `namespacing-5`, `namespacing-8`, `namespacing-functions`, `namespacing-media`, `variables`, `variables-in-at-rules` | Typed callable/reference lookup, detached-ruleset calls, `each()`, and live/scope binding behavior in core. Missing mixins remain errors. This must not be conflated with ordinary CSS-function fallback: an ordinary `foo()` has an optional function reference and retains CSS-call syntax only when that lookup misses. |
-| 2 — import and conditional-at-rule execution | `import-reference`, `import`, `import-remote`, `urls`, `process-imports/google`, `plugin/plugin` | Plugin-driven import resolution/filtering, typed interpolated import paths, remote/process-imports behavior, and ordinary media-query merging. `@plugin` script execution is already proved separately; its remaining fixture mismatch is the same media rendering gap. |
-| 3 — direct parser/evaluator correctness | `selectors`, `property-name-interp`, `parse-interpolation`, `parser-slashed-combinator`, `permissive-parse`, `media`, `container` | Selector pseudo evaluation, interpolation serialization, slashed combinators, and the two precise permissive/at-rule-prelude grammar cases. The latter two are policy-blocked rather than silently accepted as v5 exclusions: the external fixtures are Less 4.x oracle output and need an explicit owner decision or a documented migration fixture. |
-| 4 — documented URL options | `rewrite-urls-all`, `rewrite-urls-local`, `rootpath-rewrite-urls-all`, `rootpath-rewrite-urls-local`, `static-urls`, `url-args` | One Context/plugin-owned URL rewriting contract, exercised through the public compiler route. Do not add a dialect-local resolver. |
-| 5 — source-map artifacts | `sourcemaps-basepath`, `sourcemaps-include-source`, `sourcemaps-rootpath`, `sourcemaps-url` | A dedicated artifact harness plus public source-map/annotation behavior; these are not render-string-only assertions. |
+| Class | Current fixtures | Symptom and alpha scope | Follow-up / evidence |
+| --- | --- | --- | --- |
+| Callable/reference and scope semantics | `detached-rulesets`, `functions-each`, `mixins`, `namespacing-5`, `namespacing-8`, `namespacing-functions`, `namespacing-media`, `variables`, `variables-in-at-rules` | Advanced Less callable, detached-ruleset, `each()`, namespace, and live/scoped lookup results can diverge. Missing mixins are still errors; ordinary unregistered `foo()` remains an optional CSS-function fallback, not a missing-mixin success. | Typed callable/reference lookup and binding semantics in core; graduate only with focused core proof plus byte-identical fixture output. |
+| Imports and conditional at-rules | `import-reference`, `import`, `import-remote`, `urls`, `process-imports/google`, `plugin/plugin` | Some reference/remote/interpolated imports, process-import filtering, and media-query merging diverge. `@plugin` script execution itself is separately proved; its fixture mismatch shares the import/media rendering gap. | Context/plugin-owned import execution and typed media wrapping; no dialect-local resolver or source reparse. |
+| Parser/evaluator edge syntax | `selectors`, `property-name-interp`, `parse-interpolation`, `parser-slashed-combinator`, `permissive-parse`, `media`, `container` | Specific selector interpolation/pseudo, property interpolation, slashed-combinator, and permissive at-rule-prelude forms are rejected or render differently. | Extend the direct Parseman grammar and canonical AST only where the syntax has an agreed semantic shape; retain migration-policy questions as documented decisions. |
+| URL-option behavior | `rewrite-urls-all`, `rewrite-urls-local`, `rootpath-rewrite-urls-all`, `rootpath-rewrite-urls-local`, `static-urls`, `url-args` | Some configured URL rewrite/rootpath/query-argument behavior differs from Less. | One Context/plugin-owned URL transform contract, with public compiler fixture proof; do not add a dialect-local resolver. |
+| Source-map artifacts | `sourcemaps-basepath`, `sourcemaps-include-source`, `sourcemaps-rootpath`, `sourcemaps-url` | Source-map annotations and emitted artifacts are not alpha-supported behavior. | Dedicated artifact harness and documented public source-map contract, rather than render-string assertions. |
 
 The grouped paths above deliberately name every marker; do not summarize the
 list as broad “advanced math/color” or “known-hang” buckets. Existing
