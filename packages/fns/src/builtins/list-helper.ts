@@ -12,8 +12,8 @@
  *
  * HARD MODULE BOUNDARY: value domain only (no `../tree`).
  */
-import type { Dimension, List, ValueObj } from '@jesscss/core/value';
-import { sniffLiteral } from '@jesscss/core/value';
+import type { Dimension, EvalModes, List, ValueObj } from '@jesscss/core/value';
+import { makeKeyword, sniffLiteral } from '@jesscss/core/value';
 import { unify as unifyRaw } from '@jesscss/core/value';
 
 /**
@@ -103,11 +103,13 @@ const unify = (d: Dimension): { number: number; unit: string } => unifyRaw(d.num
 /**
  * Byte-faithful port of Less 4.x `minMax` (`functions/number.js`). Reduces a
  * variadic dimension list to the min/max, grouping compatible units by canonical
- * value. An incompatible-unit pairing (or a non-dimension arg, or zero args)
- * throws. The shared call evaluator, not an individual function, decides whether
- * that resolved-call failure is preserved as authored CSS or reported.
+ * value. When more than one unit group survives, Less successfully returns an
+ * anonymous CSS `min(...)`/`max(...)` value containing those reduced survivors;
+ * this is semantic function output, not a call-failure fallback. Non-numeric input,
+ * zero args, and strict-mode cross-unit input still throw for the shared evaluator
+ * boundary to preserve or report.
  */
-export function minMax(isMin: boolean, list: List): ValueObj {
+export function minMax(isMin: boolean, list: List, modes: EvalModes): ValueObj {
   const name = isMin ? 'min' : 'max';
   const args: ValueObj[] = list.items.flatMap((i) => coerceListItems(i));
   if (args.length === 0) throw new TypeError(`${name}() requires at least one numeric argument`);
@@ -131,7 +133,7 @@ export function minMax(isMin: boolean, list: List): ValueObj {
     unitClone = unit !== '' && unitClone === undefined ? current.unit : unitClone;
     const j = values[''] !== undefined && unit !== '' && unit === unitStatic ? values[''] : values[unit];
     if (j === undefined) {
-      if (unitStatic !== undefined && unit !== unitStatic) {
+      if (unitStatic !== undefined && unit !== unitStatic && modes.unitMode === 'strict') {
         throw new TypeError(`${name}() arguments have incompatible units`);
       }
       values[unit] = order.length;
@@ -146,5 +148,8 @@ export function minMax(isMin: boolean, list: List): ValueObj {
   }
 
   if (order.length === 1) return order[0]!;
-  throw new TypeError(`${name}() arguments have incompatible units`);
+  // This is Less's successful anonymous result after per-unit reduction. It is
+  // deliberately a value-domain Keyword, never an AST FunctionCall fabricated as
+  // an evaluator fallback; the evaluator only handles genuine thrown failures.
+  return makeKeyword(`${name}(${order.map(value => value.bytes).join(', ')})`);
 }

@@ -29,17 +29,36 @@ describe('built-in call failures', () => {
     })).toThrow('Invalid arguments for rgb function');
   });
 
-  it('lets invalid min() input escape its implementation for that same boundary', () => {
+  it('returns Less min/max survivor calls as successful values, while strict input still escapes', () => {
     const registry = makeBuiltinRegistry();
     const args = makeList([makeDimension(1, 'px'), makeDimension(1, 's')], ',');
 
-    expect(() => registry.dispatch('min', args, {
+    expect((registry.dispatch('min', args, {
       modes: { unitMode: 'preserve' },
       stringify: value => value.bytes,
-    })).toThrow('min() arguments have incompatible units');
+    }) as { bytes: string }).bytes).toBe('min(1px, 1s)');
 
-    const preserved = evaluator.call('min', args, { unitMode: 'preserve' });
-    expect((preserved as { bytes: string }).bytes).toBe('min(1px, 1s)');
+    expect(() => registry.dispatch('min', args, {
+      modes: { unitMode: 'strict' },
+      stringify: value => value.bytes,
+    })).toThrow('min() arguments have incompatible units');
+  });
+
+  it('reduces each compatible min/max unit group before producing CSS survivors', () => {
+    const registry = makeBuiltinRegistry();
+    const ctx = { modes: { unitMode: 'preserve' as const }, stringify: (value: { bytes: string }) => value.bytes };
+
+    const minResult = registry.dispatch('min', makeList([
+      makeDimension(6, 'em'), makeDimension(5), makeDimension(4, 'ex'),
+      makeDimension(3), makeDimension(2, 'pt'), makeDimension(1),
+    ], ','), ctx) as { bytes: string };
+    expect(minResult.bytes).toBe('min(1, 4ex, 2pt)');
+
+    const maxResult = registry.dispatch('max', makeList([
+      makeDimension(1, 'px'), makeDimension(2), makeDimension(3, 'em'),
+      makeDimension(4), makeDimension(5, 'm'), makeDimension(6),
+    ], ','), ctx) as { bytes: string };
+    expect(maxResult.bytes).toBe('max(5m, 3em)');
   });
 
   it('does not let extract() or data-uri() manufacture their own fallback calls', () => {
