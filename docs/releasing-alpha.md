@@ -14,6 +14,7 @@ The alpha stream publishes only allowlisted packages in `scripts/release/alpha-a
 - `@jesscss/awaitable-pipe`
 - `@jesscss/core`
 - `@jesscss/css-parser`
+- `@jesscss/plugin-css`
 - `@jesscss/jess-parser`
 - `@jesscss/less-parser`
 - `@jesscss/scss-parser`
@@ -31,10 +32,11 @@ The alpha stream publishes only allowlisted packages in `scripts/release/alpha-a
 
 > **Dialect closure.** `jess` statically registers the direct AST parser plugins
 > for `.jess`, `.less`, and `.scss`, so their parser/plugin dependency closures
-> are in the alpha set. CSS remains available as an explicit configured document
-> plugin; Jess does not install or route it by default. `@jesscss/css-parser`
-> remains in the set because the shipped dialect grammars depend on its shared CSS
-> grammar, not because Jess compiles CSS entries.
+> are in the alpha set. `@jesscss/plugin-css` is also shipped so consumers can
+> explicitly configure CSS document parsing/inlining through Context. Jess does
+> not install or route it by default, and it does not make CSS a separate
+> compilation mode. `@jesscss/css-parser` remains in the set because the shipped
+> dialect grammars depend on its shared CSS grammar.
 >
 > **`@jesscss/scss-parser` + `@jesscss/plugin-scss` were promoted into the alpha
 > set** (owner decision, commit `d939fb3`): `jess` statically imports

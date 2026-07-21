@@ -2,6 +2,7 @@
   "@jesscss/awaitable-pipe",
   "@jesscss/core",
   "@jesscss/css-parser",
+  "@jesscss/plugin-css",
   "@jesscss/jess-parser",
   "@jesscss/less-parser",
   "@jesscss/scss-parser",
