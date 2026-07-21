@@ -1654,7 +1654,20 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
     case 'Quoted':
       return literal(node.escaped ? node.value : node.src);
     case 'Url':
-      return mapMaybe(evalValue(node.value, frame, e), value => literal(`url(${emitValue(value)})`));
+      return mapMaybe(evalValue(node.value, frame, e), value => {
+        // Quoting is syntax, not a URL-path inference problem. Preserve it
+        // structurally while giving the owning plugin only the target bytes.
+        if (node.value.type === 'Quoted') {
+          const target = e.context?.transformUrl(node.value.value, true) ?? node.value.value;
+          const escaped = node.value.escaped ? '~' : '';
+          return literal(`url(${escaped}${node.value.quote}${target}${node.value.quote})`);
+        }
+        if (node.value.type === 'Any') {
+          const target = e.context?.transformUrl(node.value.src, false) ?? node.value.src;
+          return literal(`url(${target})`);
+        }
+        return literal(`url(${emitValue(value)})`);
+      });
     case 'VariableReference': {
       const hit = resolveVarRef(frame, node.name, node.lookup, e);
       if (!hit) return unresolvedRef(node, node.name, e);
@@ -2146,7 +2159,10 @@ function resolveReferenceResult(
         // lookup to obtain the member NAME, then read that named member from
         // this map/call result. Evaluating the VarIndirect value wholesale
         // would perform the second lookup in the caller and lose the map base.
-        const name = stripOuterQuotes(evalBytesSync(step.key.nameRef, valueFrame, e));
+        // `@@name` first resolves `@name` in the lexical accessor scope; only
+        // its resulting bytes name a member of this map. The map owner can be a
+        // root/detached closure while `@name` is an each/mixin-local binding.
+        const name = stripOuterQuotes(evalBytesSync(step.key.nameRef, frame ?? valueFrame, e));
         matched = map.byVar.get(name) ?? lookupVarMember(map, name, e);
       } else if (step.keyKind === 'prop' && step.key.type === 'PropertyReference') {
         // In a map bracket, `$name` selects the property member named `name`.

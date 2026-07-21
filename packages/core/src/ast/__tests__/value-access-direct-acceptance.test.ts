@@ -56,6 +56,27 @@ describe('direct canonical value access', () => {
     expect(render(document)).toBe('.card {\n  color: teal;\n}\n');
   });
 
+  it('resolves an indirect map-member name in the accessor frame, not the map owner', () => {
+    const document = stylesheet([
+      variableDeclaration('schemes', detachedRuleset([
+        variableDeclaration('primary', detachedRuleset([decl('color', keyword('blue'))]), { mode: 'declare' }),
+      ]), { mode: 'declare' }),
+      rule('.entry', [
+        variableDeclaration('scheme-name', keyword('primary'), { mode: 'declare' }),
+        decl('color', reference(
+          variableReference('schemes', 'scoped'),
+          [
+            { type: 'BracketLookup', key: varIndirect(variableReference('scheme-name', 'scoped'), 'scoped'), keyKind: 'var' },
+            { type: 'BracketLookup', key: keyword('color'), keyKind: 'prop' },
+          ],
+          '@schemes[@@scheme-name][color]',
+        )),
+      ]),
+    ]);
+
+    expect(render(document)).toBe('.entry {\n  color: blue;\n}\n');
+  });
+
   it('indexes typed list items with Jess zero-based and negative bracket facts', () => {
     const sizes = list([dimension(10, 'px'), dimension(20, 'px'), dimension(30, 'px')], [',', ',']);
     const document = stylesheet([
