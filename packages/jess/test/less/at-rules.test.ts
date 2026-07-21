@@ -102,7 +102,7 @@ describe('Less at-rules through the public AST route', () => {
       extension: '.less',
       config: { output: { collapseNesting: true } }
     })).resolves.toBe(
-      '.a {\n  background: black;\n}\n@media handheld {\n  .a {\n    background: white;\n  }\n  @media (max-width: 100px) {\n    .a {\n      background: red;\n    }\n  }\n}\n.b {\n  background: black;\n}\n@media handheld {\n  .b {\n    background: white;\n  }\n  @media (max-width: 200px) {\n    .b {\n      background: red;\n    }\n  }\n}\n'
+      '.a {\n  background: black;\n}\n@media handheld {\n  .a {\n    background: white;\n  }\n}\n@media handheld and (max-width: 100px) {\n  .a {\n    background: red;\n  }\n}\n.b {\n  background: black;\n}\n@media handheld {\n  .b {\n    background: white;\n  }\n}\n@media handheld and (max-width: 200px) {\n  .b {\n    background: red;\n  }\n}\n'
     );
   });
 });

@@ -5893,7 +5893,44 @@ function normalizeQueryPlainRun(s: string): string {
  * plain declaration/keyframe block (`emitAtRuleBody`) and `ctx` is ignored. An
  * at-rule whose body renders empty is dropped entirely (header + braces).
  */
-function emitAtRuleBlock(node: AtRuleBlock, frame: Frame, e: Emit, ctx: string[] | null = null): MaybePromise<void> {
+type DeferredMedia = {
+  readonly node: AtRuleBlock;
+  readonly frame: Frame;
+  readonly ctx: string[] | null;
+  readonly prelude: string;
+};
+
+type MediaScope = {
+  readonly prelude: string;
+  /** A comma-list needs a typed Cartesian product, not string conjunction. */
+  readonly mergeable: boolean;
+  readonly deferred: DeferredMedia[];
+};
+
+function emitDeferredMedia(deferred: readonly DeferredMedia[], e: Emit): MaybePromise<void> {
+  let pending: Promise<void> | undefined;
+  for (const entry of deferred) {
+    if (pending) {
+      pending = pending.then(() => Promise.resolve(
+        emitAtRuleBlock(entry.node, entry.frame, e, entry.ctx, entry.prelude)
+      ));
+    } else {
+      const emitted = emitAtRuleBlock(entry.node, entry.frame, e, entry.ctx, entry.prelude);
+      if (isThenable(emitted)) {
+        pending = Promise.resolve(emitted);
+      }
+    }
+  }
+  return pending;
+}
+
+function emitAtRuleBlock(
+  node: AtRuleBlock,
+  frame: Frame,
+  e: Emit,
+  ctx: string[] | null = null,
+  preludeOverride: string | null = null
+): MaybePromise<void> {
   const markChunks = e.chunks.length;
   const markOff = e.off;
   const markPos = e.positions ? e.positions.length : 0;
@@ -5901,6 +5938,7 @@ function emitAtRuleBlock(node: AtRuleBlock, frame: Frame, e: Emit, ctx: string[]
   const idt = e.depth > 0 ? INDENT.repeat(e.depth) : '';
   if (idt) put(e, idt);
   put(e, node.name);
+  let renderedPrelude: string | null = null;
   if (node.prelude !== null) {
     const lname = node.name.toLowerCase();
     let p = lname === '@supports'
@@ -5909,9 +5947,10 @@ function emitAtRuleBlock(node: AtRuleBlock, frame: Frame, e: Emit, ctx: string[]
         ? evalQueryPreludeSync(node.prelude, frame, e)
         : evalBytesSync(node.prelude, frame, e);
     if (lname === '@media' || lname === '@container') p = normalizeQueryPrelude(p);
-    if (p.length > 0) {
+    renderedPrelude = preludeOverride ?? p;
+    if (renderedPrelude.length > 0) {
       put(e, ' ');
-      put(e, p);
+      put(e, renderedPrelude);
     }
   }
   put(e, ' {\n');
@@ -5923,6 +5962,9 @@ function emitAtRuleBlock(node: AtRuleBlock, frame: Frame, e: Emit, ctx: string[]
     statements: node.body,
   };
   const emitted = prepareBodyPlugins(node.body, bodyFrame, e);
+  const mediaScope = node.name.toLowerCase() === '@media' && renderedPrelude !== null && renderedPrelude.length > 0
+    ? { prelude: renderedPrelude, mergeable: node.prelude?.type !== 'List', deferred: [] } satisfies MediaScope
+    : null;
   const finish = (): MaybePromise<void> => {
   if (e.chunks.length === afterHeader) {
     // Nothing emitted: drop the whole at-rule (rewind chunks/offset/positions).
@@ -5940,9 +5982,13 @@ function emitAtRuleBlock(node: AtRuleBlock, frame: Frame, e: Emit, ctx: string[]
       // A non-empty selector context propagates inside; null/empty keeps the
       // top-level shape (bare direct decls) but still bubbles nested at-rules out
       // of the body's rulesets.
-      ? emitBubbleBody(node.body, ctx && ctx.length > 0 ? ctx : null, bodyFrame, e)
+      ? emitBubbleBody(node.body, ctx && ctx.length > 0 ? ctx : null, bodyFrame, e, mediaScope)
       : (emitAtRuleBody(node.body, bodyFrame, e), undefined);
-    return mapMaybe(rendered, finish);
+    return mapMaybe(rendered, () => mapMaybe(finish(), () =>
+      mediaScope === null || mediaScope.deferred.length === 0
+        ? undefined
+        : emitDeferredMedia(mediaScope.deferred, e)
+    ));
   });
 }
 
@@ -6068,6 +6114,7 @@ function emitBubbleBody(
   ctx: string[] | null,
   frame: Frame,
   e: Emit,
+  mediaScope: MediaScope | null = null,
 ): MaybePromise<void> {
   // [nesting] opaque ancestor for `&`-less rules composed inside the bubbled context.
   const ctxAncestor = ctx === null ? null : wrapIsList(ctx);
@@ -6115,6 +6162,29 @@ function emitBubbleBody(
         break;
       case 'AtRuleBlock':
         flushDirect();
+          // Less bubbles a nested conditional media group beside its parent and
+          // conjoins their already-evaluated typed qualifiers. This carries the
+          // parent media fact through the existing renderer; it does not parse,
+          // split, or recover source text, and it deliberately leaves every
+          // non-media at-rule on the ordinary generic path.
+          if (
+            mediaScope !== null
+            && mediaScope.mergeable
+            && node.name.toLowerCase() === '@media'
+            && node.prelude !== null
+            && node.prelude.type !== 'List'
+          ) {
+            const nestedPrelude = normalizeQueryPrelude(evalQueryPreludeSync(node.prelude, frame, e));
+            if (nestedPrelude.length > 0) {
+              mediaScope.deferred.push({
+                node,
+                frame,
+                ctx,
+                prelude: mediaScope.prelude + ' and ' + nestedPrelude
+              });
+              break;
+            }
+          }
         e.depth++;
         const nested = emitAtRuleBlock(node, frame, e, ctx); // directly-nested at-rule inherits ctx
         if (isThenable(nested)) {
@@ -6149,7 +6219,7 @@ function emitBubbleBody(
             // the import level and that one prospective Rule level so the
             // canonical loaded document keeps its historical body placement.
             e.depth -= 2;
-            const emitted = emitBubbleBody(document.children, ctx, importFrame, e);
+              const emitted = emitBubbleBody(document.children, ctx, importFrame, e, mediaScope);
             if (isThenable(emitted)) {
               return emitted.then(
                 () => { e.depth += 2; },

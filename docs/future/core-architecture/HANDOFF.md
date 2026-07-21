@@ -1461,3 +1461,34 @@ protocol, and byte identity before it may claim neutral/decrease.
 - **Verdict:** accepted semantic-preflight plus evaluator/value semantic-boundary
   contracts: behavior is proved; benchmark data is an output-identity baseline
   only and makes no performance claim.
+
+### Addendum: nested Less `@media` conjunction (semantic parity, not a cost claim)
+
+`emitAtRuleBlock` now defers a directly nested singleton `@media` group until
+after its enclosing media block, then emits the two already-evaluated typed
+qualifiers joined in source order. This intentionally changes CSS output to
+match Less nesting semantics, so it cannot honestly use a neutral or
+byte-identity cost contract. Comma-list media queries remain on the ordinary
+nested path: correctness there requires a typed Cartesian product, not a
+string split/join shortcut.
+
+- **New traversal:** one deferred-media loop runs only after a mergeable parent
+  media body has collected nested singleton media groups; it is required to
+  retain source order while placing the child beside its parent.
+- **New node/materialization:** no AST nodes, copies, side maps, or reparses.
+  The renderer retains a small per-parent deferred-media array only for actual
+  nested singleton media groups.
+- **Render path:** typed `AtRuleBlock` and typed prelude values remain the sole
+  input. Context/import dispatch is unchanged; imported document bodies use
+  the existing callback and may participate in an already-open parent scope.
+- **Helper/API surface:** one module-local serializer helper; no Context,
+  parser, plugin, or public API surface changed.
+- **Metadata mutations:** none.
+- **Review-flagged diff tokens:** [loop/traversal] emits the deferred sibling
+  groups; [materialized array/object] is the bounded feature-only deferred
+  group state. Neither occurs on ordinary non-nested at-rules.
+- **Evidence:** core direct-AST tests prove ordered conjunction and that a
+  comma-list stays nested; public Jess/Less tests prove nested media output and
+  typed import-media behavior; core and Jess production builds pass.
+- **Verdict:** accepted semantic output correction. No performance, neutrality,
+  or whole-corpus byte-identity claim is made.
