@@ -14,6 +14,15 @@ Before a queue pass, update the self-prosecution block in `HANDOFF.md` and run:
 pnpm run verify:aggressive-cutting-review
 ```
 
+`semantic-preflight` is intentionally narrower than an optimization contract.
+Use it only where a semantic source-order inspection must occur before the
+engine can know whether planner work is needed. It must prove an exercised
+false path creates no collector/planner/IR/placement facts, an exercised named
+feature path creates the expected facts, and record the current benchmark
+output/time as a baseline. It must declare `performanceClaim: "none"`; it is
+never a way to describe a semantic addition as neutral, faster, or bounded by
+the ordinary per-container admission cap.
+
 The registry stays intentionally minimal. It retains one valid contract solely
 because the verifier currently requires a non-empty registry; it is not a new
 active architecture queue.
@@ -141,6 +150,41 @@ active architecture queue.
       "why": "Deletes the uncalled test-only toggle export. The remaining module exports its live compute operation unchanged.",
       "byteIdentity": {"fixture":"benchmark.less","collapseNesting":true,"outputSha256":"adfd26732125a33fc1e264aca7d7ecde8c7c1da43f968e3106bd387a1f78e840","outputBytes":133983}
     }
+  },
+  {
+    "id": "ast-extend-import-preflight",
+    "kind": "semantic-preflight",
+    "surface": "typed imported-extend placement preflight",
+    "files": ["packages/core/src/ast/serialize.ts"],
+    "coverage": "owner-plus-named-carry-forward-support",
+    "necessity": {
+      "status": "proven",
+      "factSource": "A loaded import document's typed Rule, AtRuleBlock, and For bodies are the first authoritative source for whether imported selectors or concrete loop placements can contribute an extend.",
+      "rediscovery": "Without the preflight, the renderer would discover imported extend facts after the root extend plan was already computed, losing source-order cross-import placement semantics.",
+      "carryForward": "The loaded document body is inspected once in source order; only its existing typed selector facts and one token per concrete extend-bearing loop iteration are carried into the root plan overlay.",
+      "whyNotCarried": "The importer cannot carry an arbitrary imported document's extend fact before Context/plugin resolution loads that document; the loaded typed body is the earliest truthful boundary."
+    },
+    "semanticPreflight": {
+      "trigger": "a loadable imported document body is encountered",
+      "scope": "The preflight reads only typed loaded-import statements before selector-plan allocation. A false result does not enter the collector, create overlay IR, or issue loop-placement tokens; a true result carries only the concrete placement facts the existing root planner needs.",
+      "falsePath": {
+        "fixture": "extend-preflight-contract:no-extend",
+        "requiredZeroCounters": ["collectorCalls", "overlaySubjects", "overlayInstructions", "loopPlacements"]
+      },
+      "featurePath": {
+        "fixture": "extend-preflight-contract:imported-loop",
+        "minimumCounters": {"importsVisited": 1, "loopPlacements": 2, "overlaySubjects": 2}
+      },
+      "baseline": {"fixture": "benchmark.less", "phase": "parse-render"}
+    },
+    "sourceCheck": {
+      "file": "packages/core/src/ast/serialize.ts",
+      "caller": "function planImportedExtends(",
+      "guard": "bodyMayPlanExtend",
+      "call": "collectPlacedExtendFacts",
+      "profile": "recordAstExtendProfile"
+    },
+    "evidence": {"command":["pnpm","--filter","@jesscss/core","test","--","--run","src/ast/__tests__/extend-preflight-contract.test.ts"]}
   }
 ]
 ```

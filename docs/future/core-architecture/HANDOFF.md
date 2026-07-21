@@ -698,13 +698,20 @@ or a legacy-tree port.
   Context IO is actually async; it is necessary to retain the source cursor and
   replaces the prior dropped promise. All other verifier tokens are concurrent
   shared-tree work outside this pass.
+- **Lifecycle evidence:** `context-provenance.test.ts` creates exactly two
+  Context-registered documents and one deferred body association. It records
+  five ordered ownership observations: root entry, imported-body entry,
+  imported-body post-`await`, root restoration, and root restoration after a
+  rejected `withSourceOwner` activation. The test also proves an unassociated
+  body uses the active root owner rather than allocating provenance. This is
+  test-local evidence, not a production counter or a performance claim.
 - **Evidence:** core and Jess builds pass; 12 Context-backed path-resolution
   tests pass with no unhandled rejection, including explicit imported mixin and
   bare ruleset-as-mixin bodies whose nested `(inline)` reads must use the
   imported directory and then restore the root directory. Public Less parser
-  tests pass 67/67 and the Less hotpath corpus completes. No performance claim
-  is made: dedicated `benchmark.less` timing remains separately blocked by an
-  unresolved render promise outside these paths.
+  tests pass 67/67 and the Less hotpath corpus completes. `benchmark.less`
+  does not activate a deferred imported callable body, so it is not evidence
+  for this lifecycle path and no benchmark claim is made.
 
 ### Current pass: Less guard equality for emitted keyword values
 
@@ -1241,3 +1248,131 @@ Current compiler-oracle capture, not an A/B claim: public built-artifact
 parse-render and render runs (20 warmups, 45 alternating pairs). It is useful as
 the current output anchor only; it does not prove the semantic cutover is
 performance-neutral.
+
+### Serializer family audit: leaf emission (2026-07-21; no acceptance claim)
+
+`packages/core/src/ast/serialize.ts` is still one physical file, but it must not
+be treated as one cost surface. The current ownership split is:
+
+| Family | Current owner | Boundary |
+| --- | --- | --- |
+| source-order collection | `emitDocumentStatements`, `emitNestedBody`, `walkBody` | statement order, async cursor, and declaration-group boundaries |
+| reference lookup | `resolveReferenceResult` plus typed value/mixin dispatch | resolve a `Reference` chain without a source-text recovery path |
+| selector resolution | selector interpolation/composition helpers plus extend planning | selector bytes and placement projection before rule emission |
+| import preparation | `prepareBodyPlugins`, `planImportedExtends`, typed import dispatch | document/session facts before their source-order execution |
+| leaf emission | `mergeFold`, `emitLeaf`, `emitNestedLeaf` | direct declaration/comment/call/at-rule byte emission |
+
+The bounded audit family is **leaf emission**. It owns a `Leaf` already selected
+by the source-order family and emits bytes directly. It must not acquire a
+dialect policy, AST copy, output-node materialization, resolver re-walk, or a
+second grouping pass. `mergeFold` is admitted only after the existing
+`groupHasMerge` scan; ordinary leaves go straight to `emitLeaf`/
+`emitNestedLeaf`.
+
+- Behavior evidence: `pnpm --filter @jesscss/core test -- --run
+  src/ast/__tests__/declaration-merge-direct-acceptance.test.ts
+  src/ast/__tests__/at-rule-direct-acceptance.test.ts
+  src/ast/__tests__/opaque-at-rule-block.test.ts
+  src/ast/__tests__/import-at-rule.test.ts` — 37 tests passed.
+- Current whole-render output anchor: `WARMUP=20 N=45 node
+  packages/core/perf/bench-extend.mjs` emitted 122,390 bytes, SHA-256
+  `ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6`, median
+  74.0 ms (min 69.1, max 82.8). This measures the whole compiler route, **not**
+  leaf emission, and is intentionally not a speed claim.
+
+No aggressive-cutting cost-contract record is accepted for this audit: no
+leaf-emission machinery was deleted or changed, and a total-render timing cannot
+prove a leaf-only cost delta. A future leaf change needs a matched family-local
+counter or profiling attribution, the canonical benchmark non-regression
+protocol, and byte identity before it may claim neutral/decrease.
+
+## Aggressive Cutting Self-Prosecution
+
+### Current pass: imported extend semantic preflight
+
+- **Architecture surface:** `planImportedExtends` / `bodyMayPlanExtend` in the
+  one canonical AST serializer and the selector planner's typed `PlanOverlay`.
+  No frontend-specific engine, bridge, parser host, raw source recovery, or
+  alternate render route is involved.
+- **Separation/duplication:** the profile hook observes facts already produced
+  by the sole imported-extend path. It does not create a second planner, import
+  resolver, selector representation, or evaluator.
+- **Cumulative node weight:** zero canonical AST nodes, copied statements, or
+  output nodes. The feature path retains only the pre-existing render-local
+  overlay facts and placement tokens required by repeated canonical loop bodies.
+- **New traversal:** `planImportedExtends` reads a loaded import's typed body in
+  source order. `bodyMayPlanExtend` is intentionally an unbounded, explicit
+  statement-stack scan: the import body is only known after Context/plugin
+  resolution, so its extend fact cannot be carried by the importer. The scan is
+  not a bounded admission probe and must not borrow the `precise` contract kind.
+- **New node/materialization:** none. A false body scan never enters
+  `collectPlacedExtendFacts`, `collectPlan`, selector-IR construction, overlay
+  arrays, or loop-token allocation. A true imported loop creates only the
+  existing render-local fact values and one token per concrete iteration; it
+  never copies the AST or creates output nodes.
+- **Render path:** this is a pre-render semantic fact pass. Ordinary emission
+  remains `emitDocumentStatements`; the preflight writes no CSS and does not
+  reparse source or perform a second output walk.
+- **Helper/API surface:** one module-local, import-time-captured profile counter
+  recorder is shared by `plan.ts` and the serializer. It is absent unless a test
+  installs `__JESS_EXTEND_PROFILE_COUNTERS__` before loading core; it is not a
+  mode, feature switch, Context option, or public API.
+- **Metadata mutations:** none on canonical AST. Existing `Frame` placement
+  tokens and render-session weak maps remain the sole placement state.
+- **Danger-token accounting:** the source-order stack scan, `For` iteration,
+  overlay facts, and weak-map tokens are semantic work only after a loaded body
+  proves it can carry an extend. The false-path counter proof is specifically
+  required because this owner cannot honestly claim a bounded cheap probe or a
+  performance improvement.
+- **Review-flagged diff tokens:** [loop/traversal] is the typed loaded-body
+  preflight and concrete loop iteration; [array helper] and [array
+  spread/materialization] are pre-existing selector/overlay fact collection;
+  [node construction], [parent/source mutation], and [routine error control]
+  have no owned instance here; [side map/set] is the existing render-session
+  placement WeakMap; [materialized array/object] is the existing feature-path
+  overlay and token state. The remaining matches are concurrently dirty
+  AST/parser/evaluator work and are not attributed to this narrow owner.
+- **Evidence:** `extend-preflight-contract.test.ts` proves the no-extend false
+  path (`collectPlan`, collector, overlay, and loop placements all zero) and a
+  two-item imported loop (one import, two concrete placements, two subjects and
+  two instructions). `import-at-rule.test.ts` remains 25/25. A built-artifact
+  public Compiler A/B against committed `6734da512`, with 20 warmups and 45
+  alternating pairs, was byte-identical at 122,390 bytes / SHA-256
+  `ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6`.
+  Parse-render was 81.476→81.000 ms (26/45) and render was 14.281→14.101 ms
+  (24/45). These are instrumentation/noise controls, not a speed or neutrality
+  claim.
+- Behavior evidence: `extend-preflight-contract.test.ts` exercises both the
+  no-feature body and imported-loop feature path; direct parser suites remain
+  responsible for their typed `Stylesheet` construction rather than borrowing
+  this serializer contract.
+- Build evidence: the release build and package-level TypeScript builds are the
+  required proof for parser/frontend/public-plumbing edits; they are not runtime
+  cost evidence and must be rerun for the assembled alpha candidate.
+- Boundary evidence: parser frontend edits require the parser-runtime-boundary
+  verifier plus public parser/plugin route tests; Context/public export edits
+  require package export and packed-consumer checks. These boundary proofs are
+  deliberately separate from the strict evaluator/render/lookup cost ledger.
+- Hot-path cost contracts:
+  ```json
+  [{
+    "id":"ast-extend-import-preflight",
+    "verdict":"accepted",
+    "necessity":{
+      "status":"proven",
+      "factSource":"A loaded import document's typed Rule, AtRuleBlock, and For bodies are the first authoritative source for whether imported selectors or concrete loop placements can contribute an extend.",
+      "rediscovery":"Without the preflight, the renderer would discover imported extend facts after the root extend plan was already computed, losing source-order cross-import placement semantics.",
+      "carryForward":"The loaded document body is inspected once in source order; only its existing typed selector facts and one token per concrete extend-bearing loop iteration are carried into the root plan overlay.",
+      "whyNotCarried":"The importer cannot carry an arbitrary imported document's extend fact before Context/plugin resolution loads that document; the loaded typed body is the earliest truthful boundary."
+    },
+    "performanceClaim":"none",
+    "why":"A loaded import is resolved during evaluation, so its typed body is the first authoritative source for whether extend planning is necessary. The explicit source-order scan returns before planner, collector, overlay, or loop-placement work on the exercised false path; treating it as a bounded micro-admission would be false.",
+    "dangerTokensJustification":"The scan, concrete loop iteration, overlay facts, and placement tokens are semantic source-order work only after a loaded body proves it may carry an extend. The false path records zero collector, overlay, and loop work; the feature path records only the concrete imported-loop facts required by the existing root planner.",
+    "falsePath":{"fixture":"extend-preflight-contract:no-extend","counters":{"calls":1,"collectorCalls":0,"overlaySubjects":0,"overlayInstructions":0,"loopPlacements":0}},
+    "featurePath":{"fixture":"extend-preflight-contract:imported-loop","counters":{"importsVisited":1,"loopPlacements":2,"overlaySubjects":2}},
+    "baseline":{"fixture":"benchmark.less","phase":"parse-render","currentMedianMs":81,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}
+  }]
+  ```
+- **Verdict:** accepted semantic-preflight contract: behavior and allocation
+  admission are proved; benchmark data is an output-identity baseline only and
+  makes no performance claim.

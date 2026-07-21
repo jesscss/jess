@@ -12,10 +12,9 @@ import type { Color, Fn, ValueObj } from '@jesscss/core/value';
  *     `url('data:image/svg+xml,…')`.
  *
  * VALUE-DOMAIN CARRIER: legacy returns a `URL(Quoted)` node; the value substrate
- * has no url kind, so the verbatim `url('…')` bytes ride a `Keyword` (the same
- * verbatim-emit carrier `e()`/`min`/`max` use). A malformed call is left
- * UNEVALUATED (emitted verbatim) rather than thrown, so a bad arg never regresses
- * the whole document — matching the unknown-fn fallback.
+ * has no url kind, so the resulting `url('…')` bytes ride a `Keyword`. A malformed
+ * call throws; the shared call boundary alone decides whether that resolved-call
+ * failure is preserved or reported.
  */
 export const svgGradient: Fn = {
   name: 'svg-gradient',

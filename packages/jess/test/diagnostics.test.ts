@@ -65,8 +65,6 @@ describe('Eval error source location', () => {
     });
   }
 
-  // Regression: eval-time errors used to report a bogus `1:1` with an empty
-  // source frame. They must point at the offending node's real location.
   it('points an undefined-mixin-call error at the call site, not 1:1', async () => {
     const source = [
       '.a {',
@@ -83,7 +81,6 @@ describe('Eval error source location', () => {
     expect(result.errors).toHaveLength(1);
     const err = result.errors[0]!;
     expect(err.phase).toBe('resolve');
-    // The `.missing-mixin();` call is on line 4, column 1 — NOT the old `1:1`.
     expect(err.line).toBe(4);
     expect(err.column).toBe(1);
     expect(err.lines?.[4]).toContain('.missing-mixin');

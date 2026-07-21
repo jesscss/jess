@@ -102,7 +102,7 @@ import { makeKeyword, makeBool, makeList } from './value-factory.js'; // [calc]
 import { DefaultGuardAmbiguityError, selectDefinitions, type Selection, type DefaultResolver, type CallArg, type CallValue } from './mixin-dispatch.js'; // [guards]
 import { evalGuard, guardUsesDefault, type GuardNode, type ValueResolver, type TypedResolver } from './guard.js'; // [guards]
 import { computeExtends, type ExtendPlacementResults, type ExtendResults } from './extend.js'; // [extend]
-import { documentHasExtend } from './extend/plan.js'; // [extend/selector-interp]
+import { documentHasExtend, recordAstExtendProfile } from './extend/plan.js'; // [extend/selector-interp]
 import type { PlanInstruction, PlanOverlay, PlanSubject } from './extend/plan.js';
 import type { Branch, Level } from './extend/ir.js';
 import type { Context } from '../context.js';
@@ -1348,29 +1348,14 @@ function unresolvedRef(node: VariableReference | VarIndirect, name: string, e: E
 }
 
 /**
- * Strict resolution is a compiler-input choice, not a frontend choice. Every
- * parser lowers a missing call/reference to the same canonical AST fact; the
- * one engine either preserves the ordinary optional/no-op form or reports the
- * miss according to the active compile configuration.
+ * A statement-position {@link MixinCall} is an obligatory resolution operation.
+ * It is not a CSS `FunctionCall` and therefore has no optional-reference
+ * fallback.  Function failure policy belongs only to `ValueEvaluator.call`,
+ * after a function was actually resolved and invoked.
  */
-function throwsResolutionMiss(e: EvalCtx): boolean {
-  return e.context?.options.functionMode === 'error';
-}
-
-function unresolvedCallable(call: MixinCall, e: EvalCtx): void {
-  if (!throwsResolutionMiss(e)) return;
+function unresolvedMixinCall(call: MixinCall, e: EvalCtx): never {
   const path = call.path.map(segment => segment.sel).join(' ');
-  unresolvedSymbol(call, `${path ? `${path} ` : ''}${call.name}()`, e);
-}
-
-function unresolvedReference(node: Reference, e: EvalCtx): void {
-  if (!throwsResolutionMiss(e) || e.optional) return;
-  unresolvedSymbol(node, node.raw, e);
-}
-
-function unresolvedPropertyReference(node: PropertyReference, e: EvalCtx): void {
-  if (!throwsResolutionMiss(e) || e.optional) return;
-  unresolvedSymbol(node, node.raw, e);
+  return unresolvedSymbol(call, `${path ? `${path} ` : ''}${call.name}()`, e);
 }
 
 /**
@@ -1526,7 +1511,6 @@ function evalTyped(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
       // untagged computed string before the value evaluator compares it.
       const resolved = resolveReferenceResult(node, frame, e);
       if (resolved === null) {
-        unresolvedReference(node, e);
         return force(e, literal(node.raw));
       }
       return resolved.value.type === 'MixinCall'
@@ -1681,12 +1665,10 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
       // its value. Its declaration-level `!important` is carried through the
       // caller's existing importance sink, so `$color` of `color: red !important`
       // yields `red !important` only at a declaration emission site.
-      // A non-Less / non-error-mode miss keeps its authored bytes. Less error
-      // mode instead reports the same structured resolution failure as a missing
-      // mixin or reference member.
+      // A miss keeps its authored bytes. `functionMode` applies only after a
+      // registered function has actually been invoked and failed.
       const hit = resolvePropRef(frame, node.name, e);
       if (!hit) {
-        unresolvedPropertyReference(node, e);
         return literal(node.raw);
       }
       if (hit.important) {
@@ -2205,7 +2187,6 @@ function resolveReferenceResult(
 function evalReference(node: Reference, frame: Frame | null, e: EvalCtx): MaybePromise<Value> {
   const resolved = resolveReferenceResult(node, frame, e);
   if (resolved === null) {
-    unresolvedReference(node, e);
     return literal(node.raw);
   }
   return resolved.value.type === 'MixinCall'
@@ -2997,11 +2978,15 @@ function bodyMayPlanExtend(statements: readonly Statement[]): boolean {
   // Imported component bodies can be deeply nested. This admission scan must be
   // stack-safe and allocation-light: one explicit typed-statement cursor, no
   // selector IR and no recursive descent.
+  recordAstExtendProfile?.('astExtend.preflight.bodyAdmissions');
   const pending: Statement[] = [...statements];
   while (pending.length) {
     const statement = pending.pop()!;
     if (statement.type === 'Rule') {
-      if (statement.extendInstructions?.length) return true;
+      if (statement.extendInstructions?.length) {
+        recordAstExtendProfile?.('astExtend.preflight.bodyFeatureBearing');
+        return true;
+      }
       for (const child of statement.body) pending.push(child);
     } else if (statement.type === 'AtRuleBlock') {
       for (const child of statement.body) pending.push(child);
@@ -3011,6 +2996,7 @@ function bodyMayPlanExtend(statements: readonly Statement[]): boolean {
       for (const child of statement.rules) pending.push(child);
     }
   }
+  recordAstExtendProfile?.('astExtend.preflight.bodyNoFeatureMisses');
   return false;
 }
 
@@ -3031,6 +3017,7 @@ function collectPlacedExtendFacts(
   hidden = false,
   referenceBoundary: object | null = null,
 ): MaybePromise<void> {
+  recordAstExtendProfile?.('astExtend.preflight.collectCalls');
   const run = (start: number): MaybePromise<void> => {
     for (let index = start; index < statements.length; index++) {
       const statement = statements[index]!;
@@ -3048,6 +3035,7 @@ function collectPlacedExtendFacts(
             mayMatch: false, placement: frame.extendPlacement,
           };
           overlay.subjects.push(subject);
+          recordAstExtendProfile?.('astExtend.preflight.overlaySubjects');
           const addInstructions = (instructionIndex: number): MaybePromise<void> => {
             const instruction = statement.extendInstructions?.[instructionIndex];
             if (!instruction) {
@@ -3070,11 +3058,14 @@ function collectPlacedExtendFacts(
               : rulePath;
             return mapMaybe(resolvedExtender, extenderPath => mapMaybe(
               resolvedExtendLevel(instruction.target, frame, e), targets => {
-                for (const target of targets) overlay.instructions.push({
-                  target, partial: instruction.partial, extenderPath,
-                  scope, order: overlay.instructions.length, extenderHidden: hidden || statement.reference === true,
-                  referenceBoundary,
-                });
+                for (const target of targets) {
+                  overlay.instructions.push({
+                    target, partial: instruction.partial, extenderPath,
+                    scope, order: overlay.instructions.length, extenderHidden: hidden || statement.reference === true,
+                    referenceBoundary,
+                  });
+                  recordAstExtendProfile?.('astExtend.preflight.overlayInstructions');
+                }
                 return addInstructions(instructionIndex + 1);
               },
             ));
@@ -3094,6 +3085,8 @@ function collectPlacedExtendFacts(
         const items = forItems(statement.iterable, frame, e);
         const tokens = items.map(() => ({}));
         (e.plannedForExtendPlacements ??= new WeakMap()).set(statement, tokens);
+        recordAstExtendProfile?.('astExtend.preflight.loopBodies');
+        recordAstExtendProfile?.('astExtend.preflight.loopPlacements', items.length);
         const iterations = (itemIndex: number): MaybePromise<void> => {
           for (let i = itemIndex; i < items.length; i++) {
             const item = items[i]!;
@@ -3134,6 +3127,7 @@ function planImportedExtends(
   e: Emit,
   importDocument: SerializeOptions['importDocument'] | undefined,
 ): MaybePromise<ExtendPlannerInput> {
+  recordAstExtendProfile?.('astExtend.preflight.calls');
   // A Context-owned import route is already MaybePromise at the document boundary,
   // so it may discover an imported-only extend. Direct AST consumers preserve the
   // historical synchronous no-extend import path.
@@ -3142,6 +3136,7 @@ function planImportedExtends(
   // synchronous callable-body ownership, while actual import/extend facts opt
   // into planning.
   if (!importDocument || (!documentHasExtend(root) && !root.children.some(child => child.type === 'ImportAtRule'))) {
+    recordAstExtendProfile?.('astExtend.preflight.noFeatureBypasses');
     return { root, hiddenRules: new Set(), referenceBoundaries: new Map(), overlay: { subjects: [], instructions: [] } };
   }
   const seen = new Set<string>();
@@ -3149,9 +3144,11 @@ function planImportedExtends(
   const visit = async (statements: readonly Statement[], scope: Frame): Promise<void> => {
     const deferred: ImportAtRule[] = [];
     const visitImport = async (st: ImportAtRule): Promise<void> => {
+      recordAstExtendProfile?.('astExtend.preflight.importsVisited');
       const options = st.options === null ? null : evalBytesSync(st.options, scope, e);
       const specifier = importSpecifier(st, scope, e);
       if (!canLoadImport(st, specifier, options)) return;
+      recordAstExtendProfile?.('astExtend.preflight.importsLoadable');
       const request: ImportDocumentRequest = {
         node: st, specifier, options,
         tail: st.tail === null ? null : evalBytesSync(st.tail, scope, e),
@@ -3159,6 +3156,7 @@ function planImportedExtends(
       const loaded = await importDocument(request);
       e.plannedImportDocuments?.set(st, { request, loaded });
       if (loaded === undefined || 'inline' in loaded || loaded.document === null) return;
+      recordAstExtendProfile?.('astExtend.preflight.importsLoaded');
       if (!importHasOption(options, 'multiple') && loaded.key !== undefined) {
         if (seen.has(loaded.key)) return;
         seen.add(loaded.key);
@@ -3177,6 +3175,7 @@ function planImportedExtends(
       // possible `$for`/`each()` loop bodies whose concrete placements the
       // planner must still preflight.
       if (bodyMayPlanExtend(loaded.document.children)) {
+        recordAstExtendProfile?.('astExtend.preflight.importsFeatureBearing');
         const referenceBoundary = importHasOption(options, 'reference') ? {} : null;
         const placed = collectPlacedExtendFacts(loaded.document.children, childFrame, e, overlay, [], [], null, referenceBoundary !== null, referenceBoundary);
         if (isThenable(placed)) await placed;
@@ -4153,16 +4152,16 @@ function expandCall(
     ? rawCandidates.filter((d) => d.ruleMixin !== true || !parentExcludes(frame, d.body))
     : rawCandidates;
   // A callable becomes visible only when its defining statement has executed.
-  // A miss is therefore an empty statement: this matches the nested emitter and
-  // preserves source-order control-flow visibility without pre-publishing a
-  // later/unchosen definition.
-  if (candidates.length === 0) {
-    unresolvedCallable(call, e);
-    return;
+  // A statement MixinCall remains obligatory: a miss is an error, never a CSS
+  // function fallback and never controlled by functionMode.
+  if (rawCandidates.length === 0) {
+    unresolvedMixinCall(call, e);
   }
+  // A ruleset currently expanding may deliberately exclude itself; that is the
+  // recursion terminator, not a resolution miss.
+  if (candidates.length === 0) return;
   const selected = dispatch(candidates, call, frame, e, homes);
   if (selected.length === 0) {
-    unresolvedCallable(call, e);
     return;
   }
   const bodyImp = imp || call.important; // propagate call-level !important
@@ -4552,7 +4551,6 @@ function expandReferenceCall(
   if (step?.type !== 'Call') return;
   const resolved = resolveReferenceResult(call, frame, e);
   if (!resolved) {
-    unresolvedReference(call, e);
     return;
   }
   if (resolved.value.type === 'MixinCall') {
@@ -6697,13 +6695,12 @@ function expandNestedCall(
   const candidates = rawCandidates.some((d) => d.ruleMixin === true)
     ? rawCandidates.filter((d) => d.ruleMixin !== true || !parentExcludes(frame, d.body))
     : rawCandidates;
-  if (candidates.length === 0) {
-    unresolvedCallable(call, e);
-    return;
+  if (rawCandidates.length === 0) {
+    unresolvedMixinCall(call, e);
   }
+  if (candidates.length === 0) return;
   const selected = dispatch(candidates, call, frame, e, homes);
   if (selected.length === 0) {
-    unresolvedCallable(call, e);
     return;
   }
   const bodyImp = imp || call.important; // [important] propagate call-level `!important`
@@ -6826,7 +6823,6 @@ function expandNestedReferenceCall(
   if (step?.type !== 'Call') return;
   const resolved = resolveReferenceResult(call, frame, e);
   if (!resolved) {
-    unresolvedReference(call, e);
     return;
   }
   if (resolved.value.type === 'MixinCall') {

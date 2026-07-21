@@ -6,14 +6,19 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
+  boundaryChangedPaths,
+  classifyProductionSurface,
   extractCostAuditRecords,
   grammarSourceReferences,
   isProductionHotPathFile,
+  isStrictRuntimeSurface,
   isExactParserRuntimeDebtDeletion,
   publicArtifactReferences,
   productionChangedPaths,
+  runtimeChangedPaths,
   scopedChangedPaths,
   validateCostAuditRecords,
+  validateBoundaryEvidence,
   validateCostContractRegistry
 } from '../verify-aggressive-cutting-review.mjs';
 
@@ -56,6 +61,33 @@ describe('aggressive-cutting review scope', () => {
       'packages/core/src/ast/serialize.ts',
       'packages/css-parser/src/fixtures/recovery.test.ts'
     ])).toEqual(['packages/core/src/ast/serialize.ts']);
+  });
+
+  it('keeps the aggregate production inventory while restricting strict contracts to engine surfaces', () => {
+    const paths = [
+      'packages/core/src/ast/serialize.ts',
+      'packages/core/src/ast/nodes.ts',
+      'packages/less-parser/src/ast/grammar.ts',
+      'packages/jess/src/index.ts'
+    ];
+    expect(productionChangedPaths(paths)).toEqual(paths);
+    expect(runtimeChangedPaths(paths)).toEqual(['packages/core/src/ast/serialize.ts']);
+    expect(boundaryChangedPaths(paths)).toEqual([
+      'packages/core/src/ast/nodes.ts',
+      'packages/less-parser/src/ast/grammar.ts',
+      'packages/jess/src/index.ts'
+    ]);
+    expect(classifyProductionSurface('packages/core/src/ast/serialize.ts')).toBe('runtime-engine');
+    expect(classifyProductionSurface('packages/core/src/ast/nodes.ts')).toBe('public-plumbing');
+    expect(classifyProductionSurface('packages/less-parser/src/ast/grammar.ts')).toBe('frontend');
+    expect(isStrictRuntimeSurface('packages/core/src/ast/serialize.ts')).toBe(true);
+    expect(isStrictRuntimeSurface('packages/less-parser/src/ast/grammar.ts')).toBe(false);
+  });
+
+  it('requires behavior, build, and boundary evidence for non-runtime source changes', () => {
+    const paths = ['packages/css-parser/src/ast/grammar.ts'];
+    expect(validateBoundaryEvidence('- Behavior evidence: focused grammar fixture parse proves typed AST construction.\n- Build evidence: parser package build completed successfully.\n- Boundary evidence: public parse() route and parser-runtime-boundary verifier both passed.', paths)).toEqual([]);
+    expect(validateBoundaryEvidence('- Behavior evidence: yes', paths)).toHaveLength(3);
   });
 });
 
@@ -941,5 +973,115 @@ describe('off-benchmark call-reduction cost-contract kind', () => {
     expect(validateCostContractRegistry(registry)).toEqual([]);
     expect(validateCostContractRegistry(filterRegistry)).toEqual([]);
     expect(validateCostAuditRecords([makeRecord()], registry, [sourceFile], diff)).toEqual([]);
+  });
+});
+
+const preflightFile = 'packages/core/src/ast/serialize.ts';
+const preflightContract = {
+  id: 'test-semantic-preflight',
+  kind: 'semantic-preflight',
+  surface: 'imported extend planner preflight',
+  files: [preflightFile],
+  necessity: {
+    status: 'proven',
+    factSource: 'loaded import document bodies carry the exact typed ImportAtRule and extend facts',
+    rediscovery: 'the planner must inspect a loaded document body before it knows whether imported extends need planning',
+    carryForward: 'a static import cannot carry this fact because the loaded document is resolved during evaluation',
+    whyNotCarried: 'the imported body is the first authoritative source and its scan is skipped when no imports can load'
+  },
+  semanticPreflight: {
+    trigger: 'a loadable imported document body is encountered',
+    scope: 'The preflight examines only the loaded import body before planner allocation; false-path counters prove it does not create planner, collector, overlay, or loop-placement state.',
+    falsePath: {
+      fixture: 'extend-preflight-contract:no-extend',
+      requiredZeroCounters: ['collectorCalls', 'overlaySubjects', 'overlayInstructions', 'loopPlacements']
+    },
+    featurePath: {
+      fixture: 'extend-preflight-contract:imported-loop',
+      minimumCounters: { importsVisited: 1, loopPlacements: 2, overlaySubjects: 2 }
+    },
+    baseline: { fixture: 'benchmark.less', phase: 'parse-render' }
+  },
+  sourceCheck: {
+    file: preflightFile,
+    caller: 'planImportedExtends',
+    guard: 'bodyMayPlanExtend',
+    call: 'collectPlacedExtendFacts'
+  },
+  evidence: { command: ['node', '--check', 'scripts/verify-aggressive-cutting-review.mjs'] }
+};
+
+function makeSemanticPreflightRecord(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'test-semantic-preflight',
+    verdict: 'accepted',
+    necessity: preflightContract.necessity,
+    performanceClaim: 'none',
+    why: 'The loaded import is resolved during evaluation, so the body is the first authoritative source for whether extend planning is required. The false-path profile proves the check returns before planner or overlay allocation.',
+    dangerTokensJustification: 'The body traversal is a semantic source-order preflight, not a neutral refactor. Its false path is measured with no planner, collector, overlay, or loop-placement allocation; its feature path records the precise imported-loop facts that require planning.',
+    falsePath: {
+      fixture: 'extend-preflight-contract:no-extend',
+      counters: { calls: 1, collectorCalls: 0, overlaySubjects: 0, overlayInstructions: 0, loopPlacements: 0 }
+    },
+    featurePath: {
+      fixture: 'extend-preflight-contract:imported-loop',
+      counters: { importsVisited: 1, loopPlacements: 2, overlaySubjects: 2 }
+    },
+    baseline: {
+      fixture: 'benchmark.less', phase: 'parse-render', currentMedianMs: 80,
+      outputSha256: 'c'.repeat(64), outputBytes: 100
+    },
+    ...overrides
+  };
+}
+
+describe('semantic-preflight cost-contract kind', () => {
+  it('accepts a semantic planner preflight without inventing a speed claim', () => {
+    expect(validateCostContractRegistry([preflightContract])).toEqual([]);
+    expect(validateCostAuditRecords([makeSemanticPreflightRecord()], [preflightContract], [], '')).toEqual([]);
+  });
+
+  it('does not send a semantic preflight through the ordinary relations loop when its owner changes', () => {
+    const diff = `diff --git a/${preflightFile} b/${preflightFile}
+@@ -1 +1 @@
++function planImportedExtends() { if (bodyMayPlanExtend(body)) collectPlacedExtendFacts(body); }`;
+    expect(validateCostAuditRecords(
+      [makeSemanticPreflightRecord()],
+      [preflightContract],
+      [preflightFile],
+      diff
+    )).toEqual([]);
+  });
+
+  it('rejects a false path that allocates planner work', () => {
+    const errors = validateCostAuditRecords([makeSemanticPreflightRecord({
+      falsePath: {
+        fixture: 'extend-preflight-contract:no-extend',
+        counters: { calls: 1, collectorCalls: 1, overlaySubjects: 0, overlayInstructions: 0, loopPlacements: 0 }
+      }
+    })], [preflightContract], [], '');
+    expect(errors).toContain('Semantic-preflight record test-semantic-preflight false path must keep collectorCalls === 0.');
+  });
+
+  it('rejects an unexercised feature path and a fabricated performance claim', () => {
+    const errors = validateCostAuditRecords([makeSemanticPreflightRecord({
+      performanceClaim: 'faster',
+      featurePath: {
+        fixture: 'extend-preflight-contract:imported-loop',
+        counters: { importsVisited: 0, loopPlacements: 0, overlaySubjects: 0 }
+      }
+    })], [preflightContract], [], '');
+    expect(errors).toContain('Semantic-preflight record test-semantic-preflight must declare performanceClaim: "none"; it records a baseline, not a speed or neutrality claim.');
+    expect(errors).toContain('Semantic-preflight record test-semantic-preflight feature path must record importsVisited >= 1.');
+  });
+
+  it('rejects a malformed semantic-preflight registry rather than borrowing precise admission metadata', () => {
+    const malformed = {
+      ...preflightContract,
+      semanticPreflight: { ...preflightContract.semanticPreflight, falsePath: undefined }
+    };
+    expect(validateCostContractRegistry([malformed])).toContain(
+      'Semantic-preflight cost contract test-semantic-preflight must name a false-path fixture and requiredZeroCounters.'
+    );
   });
 });

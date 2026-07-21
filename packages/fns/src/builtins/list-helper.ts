@@ -14,7 +14,6 @@
  */
 import type { Dimension, List, ValueObj } from '@jesscss/core/value';
 import { sniffLiteral } from '@jesscss/core/value';
-import { makeKeyword } from '@jesscss/core/value';
 import { unify as unifyRaw } from '@jesscss/core/value';
 
 /**
@@ -25,16 +24,6 @@ import { unify as unifyRaw } from '@jesscss/core/value';
 export function asList(v: ValueObj): List {
   if (v.type !== 'List') throw new TypeError('variadic fn expected a List argument');
   return v;
-}
-
-/** Join separator for a reconstructed call's verbatim arg bytes (per separator). */
-export function sepGlue(sep: List['sep']): string {
-  return sep === ',' ? ', ' : sep === '/' ? ' / ' : ' ';
-}
-
-/** Reconstruct a call left UNEVALUATED (byte-identical to the unknown-fn path). */
-export function verbatimCall(name: string, list: List): ValueObj {
-  return makeKeyword(`${name}(${list.items.map((i) => i.bytes).join(sepGlue(list.sep))})`);
 }
 
 /**
@@ -114,16 +103,14 @@ const unify = (d: Dimension): { number: number; unit: string } => unifyRaw(d.num
 /**
  * Byte-faithful port of Less 4.x `minMax` (`functions/number.js`). Reduces a
  * variadic dimension list to the min/max, grouping compatible units by canonical
- * value. ANY incompatible-unit pairing (or a non-dimension arg, or zero args)
- * leaves the whole call UNEVALUATED — emitted verbatim — exactly as Less's
- * `try/catch` around `minMax` does. NOTE this intentionally has NO `loose`-mode
- * leniency: the `@jesscss/fns` port added one, so the built-in correctly DIVERGES from
- * that (buggy) adapter for multi-incompatible-unit inputs.
+ * value. An incompatible-unit pairing (or a non-dimension arg, or zero args)
+ * throws. The shared call evaluator, not an individual function, decides whether
+ * that resolved-call failure is preserved as authored CSS or reported.
  */
 export function minMax(isMin: boolean, list: List): ValueObj {
   const name = isMin ? 'min' : 'max';
   const args: ValueObj[] = list.items.flatMap((i) => coerceListItems(i));
-  if (args.length === 0) return verbatimCall(name, list);
+  if (args.length === 0) throw new TypeError(`${name}() requires at least one numeric argument`);
 
   const order: Dimension[] = [];
   const values: Record<string, number> = {};
@@ -132,7 +119,7 @@ export function minMax(isMin: boolean, list: List): ValueObj {
 
   for (let i = 0; i < args.length; i++) {
     const current = args[i]!;
-    if (current.type !== 'Dimension') return verbatimCall(name, list);
+    if (current.type !== 'Dimension') throw new TypeError(`${name}() requires numeric arguments`);
 
     const currentUnified =
       current.unit === '' && unitClone !== undefined ? unifyRaw(current.number, unitClone) : unify(current);
@@ -144,7 +131,9 @@ export function minMax(isMin: boolean, list: List): ValueObj {
     unitClone = unit !== '' && unitClone === undefined ? current.unit : unitClone;
     const j = values[''] !== undefined && unit !== '' && unit === unitStatic ? values[''] : values[unit];
     if (j === undefined) {
-      if (unitStatic !== undefined && unit !== unitStatic) return verbatimCall(name, list);
+      if (unitStatic !== undefined && unit !== unitStatic) {
+        throw new TypeError(`${name}() arguments have incompatible units`);
+      }
       values[unit] = order.length;
       order.push(current);
       continue;
@@ -157,5 +146,5 @@ export function minMax(isMin: boolean, list: List): ValueObj {
   }
 
   if (order.length === 1) return order[0]!;
-  return makeKeyword(`${name}(${order.map((d) => d.bytes).join(', ')})`);
+  throw new TypeError(`${name}() arguments have incompatible units`);
 }

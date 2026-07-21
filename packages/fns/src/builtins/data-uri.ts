@@ -25,7 +25,7 @@ export const dataUri: Fn = {
   variadic: true,
   body: (list, ctx): MaybePromise<ValueObj> => {
     const items = list.items;
-    if (items.length === 0) return verbatim(list);
+    if (items.length === 0) throw new TypeError('data-uri() requires a path');
     const hasMime = items.length >= 2;
     const rawPath = ctx.stringify(hasMime ? items[1]! : items[0]!);
     const explicitMime = hasMime ? ctx.stringify(items[0]!) : undefined;
@@ -63,9 +63,4 @@ export const dataUri: Fn = {
 /** File-not-found / no-IO fallback: the path as a plain `url()` (matches 4.x's URL fallback). */
 function fallbackUrl(rawPath: string): ValueObj {
   return makeKeyword(`url("${rawPath}")`);
-}
-
-/** Malformed call (no args) — emit verbatim so it never regresses the document. */
-function verbatim(list: List): ValueObj {
-  return makeKeyword(`data-uri(${list.items.map((i) => i.bytes).join(', ')})`);
 }

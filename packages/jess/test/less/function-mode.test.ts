@@ -55,13 +55,13 @@ describe('functionMode', () => {
     }
   }, 60000);
 
-  it('leaves unknown (non-registered) function names as-is WITHOUT warning', async () => {
+  it('leaves unknown (non-registered) function names as-is WITHOUT warning, even in error mode', async () => {
     // `calc`/`madeup` are not registered functions → they render as-is via
     // name-resolution fallback, never reaching functionMode. No warning.
     const dir = mkdtempSync(path.join(tmpdir(), 'fm-'));
     const file = path.join(dir, 'a.less');
     writeFileSync(file, '.a { x: calc(1px + 2px); y: madeup(1, 2); }');
-    const r = await makeCompiler().renderToResult(file, { breakOnError: true } as any);
+    const r = await makeCompiler({ functionMode: 'error' }).renderToResult(file, { breakOnError: true } as any);
     const warnCodes = (r.warnings ?? []).map((w: any) => w.code);
     expect(warnCodes).not.toContain('function/unresolved');
     expect(r.css).toContain('madeup(1, 2)');

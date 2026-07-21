@@ -1,9 +1,12 @@
+// Public JavaScript-callable module surface used by documented `@-from
+// '@jesscss/fns' import (...)` consumers. These exports remain callable functions;
+// they are not the compiler's built-in registration mechanism.
 export * from './less/index.js';
 
-// AST-v2 built-in Less fn set (value-domain). Additive to the legacy root export
-// above (which the plugin's legacy render path still consumes); an array, so the
-// plugin's `typeof value === 'function'` filter skips it. Kept alongside the legacy
-// set until Sass converts.
+// The direct AST engine registers this typed value-domain set through
+// `makeBuiltinRegistry()`. It never enumerates the callable module barrel above.
+// Keeping the two explicit avoids treating a JavaScript module export as a second
+// evaluator path or a dialect-specific fallback.
 export { builtinLessFns } from './builtins/index.js';
 
 // The built-in fn set packaged as a ready-to-use dispatch registry (the single

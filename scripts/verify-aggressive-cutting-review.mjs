@@ -715,6 +715,141 @@ function validateOffBenchmarkCallReductionMetadata(contract) {
 }
 
 /**
+ * A semantic preflight is not an optimization claim. It permits a necessary
+ * source-order/planning scan whose cost cannot honestly be expressed as the
+ * bounded (<= 32 items) admission probe used by `precise`. The contract instead
+ * proves two concrete facts: the preflight does no planner/IR work on an
+ * exercised false path, and it does the named minimum work on a representative
+ * feature path. It records the current canonical benchmark as a baseline only;
+ * semantic additions must not invent byte-identity A/B or speedup claims.
+ */
+function validateSemanticPreflightMetadata(contract) {
+  const errors = [];
+  const preflight = contract.semanticPreflight;
+  if (!preflight || typeof preflight !== 'object') {
+    return [`Semantic-preflight cost contract ${contract.id} must include a semanticPreflight block.`];
+  }
+  if (typeof preflight.trigger !== 'string' || preflight.trigger.trim().length < 12) {
+    errors.push(`Semantic-preflight cost contract ${contract.id} must name its trigger.`);
+  }
+  if (typeof preflight.scope !== 'string' || preflight.scope.trim().length < 40) {
+    errors.push(`Semantic-preflight cost contract ${contract.id} must explain the bounded semantic scope of its traversal.`);
+  }
+  const falsePath = preflight.falsePath;
+  if (
+    !falsePath
+    || typeof falsePath !== 'object'
+    || typeof falsePath.fixture !== 'string'
+    || falsePath.fixture.length === 0
+    || !Array.isArray(falsePath.requiredZeroCounters)
+    || falsePath.requiredZeroCounters.length === 0
+    || falsePath.requiredZeroCounters.some(counter => typeof counter !== 'string' || counter.length === 0)
+  ) {
+    errors.push(`Semantic-preflight cost contract ${contract.id} must name a false-path fixture and requiredZeroCounters.`);
+  }
+  const featurePath = preflight.featurePath;
+  if (
+    !featurePath
+    || typeof featurePath !== 'object'
+    || typeof featurePath.fixture !== 'string'
+    || featurePath.fixture.length === 0
+    || !featurePath.minimumCounters
+    || typeof featurePath.minimumCounters !== 'object'
+    || Object.keys(featurePath.minimumCounters).length === 0
+    || Object.entries(featurePath.minimumCounters).some(([counter, minimum]) =>
+      counter.length === 0 || !Number.isInteger(minimum) || minimum <= 0
+    )
+  ) {
+    errors.push(`Semantic-preflight cost contract ${contract.id} must name a feature-path fixture and positive minimumCounters.`);
+  }
+  const baseline = preflight.baseline;
+  if (
+    !baseline
+    || typeof baseline !== 'object'
+    || baseline.fixture !== 'benchmark.less'
+    || !['parse-render', 'render'].includes(baseline.phase)
+  ) {
+    errors.push(`Semantic-preflight cost contract ${contract.id} must name the current benchmark.less parse-render or render baseline.`);
+  }
+  const command = contract.evidence?.command;
+  if (!Array.isArray(command) || command.length === 0 || command.some(part => typeof part !== 'string' || part.length === 0)) {
+    errors.push(`Semantic-preflight cost contract ${contract.id} must name executable false/feature-path evidence.`);
+  }
+  return errors;
+}
+
+function checkSemanticPreflight(record, meta, errors) {
+  let ok = true;
+  if (record.performanceClaim !== 'none') {
+    errors.push(`Semantic-preflight record ${record.id} must declare performanceClaim: "none"; it records a baseline, not a speed or neutrality claim.`);
+    ok = false;
+  }
+  if (typeof record.why !== 'string' || record.why.trim().length < 80) {
+    errors.push(`Semantic-preflight record ${record.id} must explain why the semantic traversal is necessary and cannot be carried forward.`);
+    ok = false;
+  }
+  if (typeof record.dangerTokensJustification !== 'string' || record.dangerTokensJustification.trim().length < 80) {
+    errors.push(`Semantic-preflight record ${record.id} must account for traversal/allocation danger tokens without claiming neutrality.`);
+    ok = false;
+  }
+  const falsePath = record.falsePath;
+  if (
+    !falsePath
+    || typeof falsePath !== 'object'
+    || falsePath.fixture !== meta.falsePath?.fixture
+    || !falsePath.counters
+    || typeof falsePath.counters !== 'object'
+    || !Number.isInteger(falsePath.counters.calls)
+    || falsePath.counters.calls <= 0
+  ) {
+    errors.push(`Semantic-preflight record ${record.id} must exercise its false-path fixture with counters.calls > 0.`);
+    ok = false;
+  } else {
+    for (const counter of meta.falsePath.requiredZeroCounters) {
+      if (falsePath.counters[counter] !== 0) {
+        errors.push(`Semantic-preflight record ${record.id} false path must keep ${counter} === 0.`);
+        ok = false;
+      }
+    }
+  }
+  const featurePath = record.featurePath;
+  if (
+    !featurePath
+    || typeof featurePath !== 'object'
+    || featurePath.fixture !== meta.featurePath?.fixture
+    || !featurePath.counters
+    || typeof featurePath.counters !== 'object'
+  ) {
+    errors.push(`Semantic-preflight record ${record.id} must exercise its named feature-path fixture.`);
+    ok = false;
+  } else {
+    for (const [counter, minimum] of Object.entries(meta.featurePath.minimumCounters)) {
+      if (!Number.isInteger(featurePath.counters[counter]) || featurePath.counters[counter] < minimum) {
+        errors.push(`Semantic-preflight record ${record.id} feature path must record ${counter} >= ${minimum}.`);
+        ok = false;
+      }
+    }
+  }
+  const baseline = record.baseline;
+  if (
+    !baseline
+    || typeof baseline !== 'object'
+    || baseline.fixture !== meta.baseline?.fixture
+    || baseline.phase !== meta.baseline?.phase
+    || !Number.isFinite(baseline.currentMedianMs)
+    || baseline.currentMedianMs <= 0
+    || typeof baseline.outputSha256 !== 'string'
+    || !/^[a-f0-9]{64}$/.test(baseline.outputSha256)
+    || !Number.isInteger(baseline.outputBytes)
+    || baseline.outputBytes <= 0
+  ) {
+    errors.push(`Semantic-preflight record ${record.id} must record the current benchmark baseline { fixture, phase, currentMedianMs, outputSha256, outputBytes } without a before/after claim.`);
+    ok = false;
+  }
+  return ok;
+}
+
+/**
  * Byte-identity + benchmark-non-regression + net-removal gate for an off-benchmark
  * call-reduction audit record. All are non-negotiable, and none can be honestly
  * produced by a benchmark-regressing or output-changing change:
@@ -823,6 +958,16 @@ function validateCostContractRegistry(registry) {
       errors.push(...validatePrivateUnreachableMetadata(contract));
       continue;
     }
+    if (contract.kind === 'semantic-preflight') {
+      errors.push(...validateNecessityMetadata(contract.necessity, `Cost contract ${contract.id}`));
+      errors.push(...validateSemanticPreflightMetadata(contract));
+      const sourceCheck = contract.sourceCheck;
+      if (!sourceCheck || typeof sourceCheck !== 'object' || sourceCheck.file !== contract.files[0]
+        || typeof sourceCheck.caller !== 'string' || typeof sourceCheck.call !== 'string' || typeof sourceCheck.guard !== 'string') {
+        errors.push(`Semantic-preflight cost contract ${contract.id} must include a complete owner sourceCheck.`);
+      }
+      continue;
+    }
     errors.push(...validateNecessityMetadata(contract.necessity, `Cost contract ${contract.id}`));
     // A redundant-call-elimination contract models a pure work-REMOVAL, not a
     // per-container admission FILTER, so it carries no admission block and no
@@ -915,8 +1060,8 @@ function validateCostContractRegistry(registry) {
         `Cost contract ${contract.id} must require the canonical benchmark.less parse-render/render A/B with 20 warmups and 45 alternating pairs.`
       );
     }
-    if (!['precise', 'conservative-filter', 'redundant-call-elimination', 'neutral-or-negative', 'private-unreachable', 'off-benchmark-call-reduction'].includes(kind)) {
-      errors.push(`Cost contract ${contract.id} kind must be "precise", "conservative-filter", "redundant-call-elimination", "neutral-or-negative", "private-unreachable", or "off-benchmark-call-reduction".`);
+    if (!['precise', 'conservative-filter', 'redundant-call-elimination', 'neutral-or-negative', 'private-unreachable', 'off-benchmark-call-reduction', 'semantic-preflight'].includes(kind)) {
+      errors.push(`Cost contract ${contract.id} kind must be "precise", "conservative-filter", "redundant-call-elimination", "neutral-or-negative", "private-unreachable", "off-benchmark-call-reduction", or "semantic-preflight".`);
     }
     if (!Array.isArray(contract.relations) || contract.relations.length === 0) {
       errors.push(`Cost contract ${contract.id} must state at least one counter relation.`);
@@ -1196,6 +1341,14 @@ function validateCostAuditRecords(records, registry, changedPaths, diff, hasDang
       }
       continue;
     }
+    if (kind === 'semantic-preflight') {
+      if (record.verdict !== 'accepted') {
+        errors.push(`Semantic-preflight record ${record.id} must be accepted only after its false and feature paths are measured.`);
+      } else if (contract?.semanticPreflight) {
+        checkSemanticPreflight(record, contract.semanticPreflight, errors);
+      }
+      continue;
+    }
     errors.push(...validateNecessityMetadata(record.necessity, `Hot-path cost audit record ${record.id}`));
     if (contract?.necessity?.status === 'audit-required' && changedPaths.includes(contract.files?.[0])) {
       errors.push(`Hot-path cost audit record ${record.id} cannot change its owner while necessity.status is audit-required; prove the fact flow or remove the action first.`);
@@ -1336,6 +1489,22 @@ function validateCostAuditRecords(records, registry, changedPaths, diff, hasDang
       }
       continue;
     }
+    // Semantic preflights deliberately have no arithmetic counter relations:
+    // their false/feature-path counters are checked by checkSemanticPreflight.
+    // Do not fall through to the ordinary admission/relation loop below.
+    if (contract.kind === 'semantic-preflight') {
+      const ownsChangedFile = contract.files.some(file =>
+        changedPaths.includes(file) && contractsForChangedSurface(registry, file, diff).includes(contract)
+      );
+      if (!ownsChangedFile) continue;
+      const record = byId.get(contract.id);
+      if (!record) {
+        errors.push(`Changed files require the ${contract.id} hot-path cost audit record.`);
+      } else if (record.verdict !== 'accepted') {
+        errors.push(`Changed production hot-path contract ${contract.id} must be accepted only after rejected/deferred code has been reverted.`);
+      }
+      continue;
+    }
     const ownsChangedFile = contract.files.some(file =>
       changedPaths.includes(file) && contractsForChangedSurface(registry, file, diff).includes(contract)
     );
@@ -1364,12 +1533,97 @@ function isTestOnlyPath(path) {
   return /(^|\/)(test|tests|__tests__|fixtures|test-data)(\/|$)|\.(test|spec)\.[^/]+$/.test(path);
 }
 
+/**
+ * The review keeps a full aggregate inventory for every changed production
+ * source file, but only the engine's actual execution surfaces are eligible
+ * for a cost-contract.  Treating a grammar reducer, CST declaration, public
+ * export, or error/type/config edit as though it were a render-loop change
+ * caused people to invent runtime counters and "neutral" claims that did not
+ * describe the code at all.
+ *
+ * This is intentionally path-based and conservative.  A new core runtime
+ * owner must be added here before it can avoid the strict gate.  Parser roots
+ * are always frontends; their separate parser-runtime-boundary verifier and
+ * focused parse/build evidence remain mandatory.
+ */
+function classifyProductionSurface(path) {
+  if (isTestOnlyPath(path) || !hotPathRoots.some(rootPath => path.startsWith(rootPath))) {
+    return 'outside-review';
+  }
+  if (path.startsWith('packages/css-parser/src/') || path.startsWith('packages/less-parser/src/')) {
+    return 'frontend';
+  }
+  if (path.startsWith('packages/jess/src/')) {
+    return 'public-plumbing';
+  }
+  if (!path.startsWith('packages/core/src/')) {
+    return 'public-plumbing';
+  }
+  // Factories/types/errors are construction or public-boundary surfaces, not
+  // eval/render loops.  Do not force fabricated runtime accounting for them.
+  if (/\/ast\/(?:node|nodes|at-rule|value|selector|declaration|function|types?)\.ts$/.test(path)
+    || /\/(?:errors?|types?|config|options)\.ts$/.test(path)) {
+    return 'public-plumbing';
+  }
+  if (/\/ast\/(?:serialize|evaluator|mixin-dispatch|provenance|value-(?:eval|dispatch|guards|operate))\.ts$/.test(path)
+    || /\/ast\/extend\//.test(path)
+    || /\/tree\//.test(path)
+    || /\/(?:context|lookup|output|writer|render|eval)\.ts$/.test(path)) {
+    return 'runtime-engine';
+  }
+  return 'public-plumbing';
+}
+
 function isProductionHotPathFile(path) {
-  return !isTestOnlyPath(path) && hotPathRoots.some(rootPath => path.startsWith(rootPath));
+  return classifyProductionSurface(path) !== 'outside-review';
+}
+
+function isStrictRuntimeSurface(path) {
+  return classifyProductionSurface(path) === 'runtime-engine';
 }
 
 function productionChangedPaths(paths) {
   return paths.filter(isProductionHotPathFile);
+}
+
+function runtimeChangedPaths(paths) {
+  return paths.filter(isStrictRuntimeSurface);
+}
+
+function boundaryChangedPaths(paths) {
+  return paths.filter(path => {
+    const surface = classifyProductionSurface(path);
+    return surface === 'frontend' || surface === 'public-plumbing';
+  });
+}
+
+function validateBoundaryEvidence(latestPass, paths) {
+  if (paths.length === 0) return [];
+  const errors = [];
+  const labels = [
+    '- Behavior evidence:',
+    '- Build evidence:',
+    '- Boundary evidence:'
+  ];
+  for (const label of labels) {
+    const line = latestPass.split('\n').find(candidate => candidate.startsWith(label));
+    if (!line || line.slice(label.length).trim().length < 24) {
+      errors.push(`Changed frontend/public boundary surfaces require ${label} with concrete evidence; runtime cost contracts are not a substitute.`);
+    }
+  }
+  return errors;
+}
+
+function hasSelfProsecutionLabel(pass, label) {
+  const text = label.replace(/^-\s*|:$/g, '');
+  const expression = new RegExp(`^-\\s+(?:\\*\\*)?${escapeRegExp(text)}(?::)?(?:\\*\\*)?(?:\\s|$)`, 'm');
+  return expression.test(pass);
+}
+
+function selfProsecutionLine(pass, label) {
+  const text = label.replace(/^-\s*|:$/g, '');
+  const expression = new RegExp(`^-\\s+(?:\\*\\*)?${escapeRegExp(text)}(?::)?(?:\\*\\*)?.*$`, 'm');
+  return pass.match(expression)?.[0];
 }
 
 function exactLedgerEntry(entry) {
@@ -1478,7 +1732,7 @@ function parserRuntimeDebtDeletionForCurrentDiff(mode, changedPaths, diff, findi
 
 function validateProductionHotPathCoverage(registry, changedPaths) {
   return changedPaths
-    .filter(isProductionHotPathFile)
+    .filter(isStrictRuntimeSurface)
     .flatMap((path) => {
       const owners = registry.filter(contract => contract.files.includes(path) || contract.supportFiles?.includes(path));
       if (owners.length === 0) {
@@ -1608,7 +1862,7 @@ function validateSourceChecks(registry, changedPaths) {
 
 function validateChangedContractSurface(registry, changedPaths, diff) {
   const errors = [];
-  for (const path of changedPaths.filter(isProductionHotPathFile)) {
+  for (const path of changedPaths.filter(isStrictRuntimeSurface)) {
     const owners = registry.filter(contract => contract.files.includes(path));
     const supportOwners = registry.filter(contract => contract.supportFiles?.includes(path));
     if (supportOwners.length > 0 && owners.length === 0) {
@@ -1627,13 +1881,22 @@ function validateChangedContractSurface(registry, changedPaths, diff) {
     if (owners.length === 0 || hunks.length === 0) {
       continue;
     }
+    const unmatched = [];
+    const ambiguous = new Map();
     for (const hunk of hunks) {
       const matched = contractsForChangedHunk(registry, path, hunk.text);
       if (matched.length === 0) {
-        errors.push(`Changed production hot-path hunk in ${path} does not touch any registered source surface; add or update the contract for the changed hunk.`);
+        unmatched.push(hunk);
       } else if (matched.length !== 1) {
-        errors.push(`Changed production hot-path hunk in ${path} matches multiple cost-contract surfaces: ${matched.map(contract => contract.id).join(', ')}.`);
+        const ids = matched.map(contract => contract.id).join(', ');
+        ambiguous.set(ids, (ambiguous.get(ids) ?? 0) + 1);
       }
+    }
+    if (unmatched.length > 0) {
+      errors.push(`Changed production hot-path surface ${path} has ${unmatched.length}/${hunks.length} unmatched hunks; add/update exact runtime contracts rather than hiding the aggregate branch inventory.`);
+    }
+    for (const [ids, count] of ambiguous) {
+      errors.push(`Changed production hot-path surface ${path} has ${count}/${hunks.length} hunks matching multiple cost-contract surfaces: ${ids}.`);
     }
   }
   return errors;
@@ -1647,7 +1910,11 @@ function validateExecutableEvidence(registry, changedPaths, diff) {
     )) {
       continue;
     }
-    const command = contract.evidence.command;
+    const command = contract.evidence?.command;
+    if (!Array.isArray(command) || command.length === 0) {
+      errors.push(`Executable evidence is missing for ${contract.id}.`);
+      continue;
+    }
     try {
       execFileSync(command[0], command.slice(1), {
         cwd: root,
@@ -1662,6 +1929,25 @@ function validateExecutableEvidence(registry, changedPaths, diff) {
     }
   }
   return errors;
+}
+
+function collectDangerFindings(diff, dangerPatterns) {
+  const additions = diff.split('\n').filter(line => line.startsWith('+') && !line.startsWith('+++'));
+  const findings = [];
+  for (const [label, pattern] of dangerPatterns) {
+    const matches = additions.filter(line => pattern.test(line));
+    if (matches.length > 0) {
+      findings.push({ label, matches: matches.slice(0, 8), count: matches.length });
+    }
+  }
+  return findings;
+}
+
+function diffForPaths(diff, predicate) {
+  return changedHunks(diff)
+    .filter(hunk => predicate(hunk.file))
+    .map(hunk => hunk.text)
+    .join('\n');
 }
 
 function runVerifier() {
@@ -1696,15 +1982,13 @@ function runVerifier() {
 
   const changedPaths = scopedChangedPaths(reviewMode, changedPathSnapshots());
   const diff = collectScopedDiff(reviewMode, changedPaths);
-  const additions = diff.split('\n').filter(line => line.startsWith('+') && !line.startsWith('+++'));
-  const findings = [];
-
-  for (const [label, pattern] of dangerPatterns) {
-    const matches = additions.filter(line => pattern.test(line));
-    if (matches.length > 0) {
-      findings.push({ label, matches: matches.slice(0, 8), count: matches.length });
-    }
-  }
+  // Keep the complete branch aggregate visible. It is historical/audit
+  // inventory, not a pretext for forcing parser/frontend/type edits into an
+  // eval/render cost contract. Strict contract accounting receives only the
+  // runtime-engine subset below.
+  const findings = collectDangerFindings(diff, dangerPatterns);
+  const runtimeDiff = diffForPaths(diff, isStrictRuntimeSurface);
+  const runtimeFindings = collectDangerFindings(runtimeDiff, dangerPatterns);
 
   const handoff = readFileSync(handoffPath, 'utf8');
   const review = readFileSync(cuttingReviewPath, 'utf8');
@@ -1727,7 +2011,7 @@ function runVerifier() {
   const latestPass = latestPassIndex === -1
     ? section
     : section.slice(latestPassIndex, nextPassIndex === -1 ? undefined : nextPassIndex);
-  const missingLabels = requiredLabels.filter(label => !latestPass.includes(label));
+  const missingLabels = requiredLabels.filter(label => !hasSelfProsecutionLabel(latestPass, label));
   const stalePlaceholders = /\b(TODO|TBD|fill in|pending)\b/i.test(latestPass);
 
   let failed = false;
@@ -1754,7 +2038,7 @@ function runVerifier() {
   }
 
   if (findings.length > 0) {
-    console.error('\nDanger tokens found in the current diff. Each must be prosecuted in the handoff block:');
+    console.error('\nAggregate danger-token inventory for the current diff (all production surfaces):');
     for (const finding of findings) {
       console.error(`\n[${finding.label}] ${finding.count} match(es)`);
       for (const match of finding.matches) {
@@ -1764,16 +2048,14 @@ function runVerifier() {
         console.error(`... ${finding.count - finding.matches.length} more`);
       }
     }
-    const reviewTokenLine = latestPass
-      .split('\n')
-      .find(line => line.startsWith('- Review-flagged diff tokens:'));
-    if (!reviewTokenLine || /\b(none|no new|n\/a)\b/i.test(reviewTokenLine)) {
+    const reviewTokenLine = selfProsecutionLine(latestPass, '- Review-flagged diff tokens:');
+    if (runtimeFindings.length > 0 && (!reviewTokenLine || /\b(none|no new|n\/a)\b/i.test(reviewTokenLine))) {
       failed = true;
       console.error(
         '\nDanger tokens require a non-empty "- Review-flagged diff tokens:" accounting line in the latest self-prosecution block.'
       );
     }
-    const missingFindingLabels = findings
+    const missingFindingLabels = runtimeFindings
       .map(finding => finding.label)
       .filter(label => !latestPass.includes(`[${label}]`));
     if (missingFindingLabels.length > 0) {
@@ -1784,13 +2066,22 @@ function runVerifier() {
     }
   }
 
+  const nonRuntimePaths = boundaryChangedPaths(changedPaths);
+  const boundaryEvidenceErrors = validateBoundaryEvidence(latestPass, nonRuntimePaths);
+  if (boundaryEvidenceErrors.length > 0) {
+    failed = true;
+    console.error('\nFrontend/public-boundary evidence review failed:');
+    for (const error of boundaryEvidenceErrors) console.error(`- ${error}`);
+    console.error(`- Classified non-runtime files: ${nonRuntimePaths.join(', ')}`);
+  }
+
   const parserRuntimeDebtDeletion = parserRuntimeDebtDeletionForCurrentDiff(reviewMode, changedPaths, diff, findings);
-  const hotPathChanged = changedPaths.some(isProductionHotPathFile);
-  const productionHotPathChanged = changedPaths.some(isProductionHotPathFile);
-  const requiresCostAudit = (hotPathChanged || findings.length > 0) && !parserRuntimeDebtDeletion;
+  const hotPathChanged = changedPaths.some(isStrictRuntimeSurface);
+  const productionHotPathChanged = changedPaths.some(isStrictRuntimeSurface);
+  const requiresCostAudit = (hotPathChanged || runtimeFindings.length > 0) && !parserRuntimeDebtDeletion;
   if (requiresCostAudit && registryErrors.length === 0) {
     const auditRecords = extractCostAuditRecords(latestPass, registry);
-    const auditErrors = validateCostAuditRecords(auditRecords, registry, changedPaths, diff, findings.length > 0);
+    const auditErrors = validateCostAuditRecords(auditRecords, registry, changedPaths, diff, runtimeFindings.length > 0);
     const sourceCheckErrors = validateSourceChecks(registry, changedPaths);
     const changedSurfaceErrors = validateChangedContractSurface(registry, changedPaths, diff);
     const evidenceErrors = productionHotPathChanged && !skipExecutableEvidence
@@ -1840,15 +2131,20 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
 }
 
 export {
+  boundaryChangedPaths,
+  classifyProductionSurface,
   evaluateCounterRelation,
   extractCostAuditRecords,
   grammarSourceReferences,
   isProductionHotPathFile,
+  isStrictRuntimeSurface,
   productionChangedPaths,
+  runtimeChangedPaths,
   isExactParserRuntimeDebtDeletion,
   publicArtifactReferences,
   privateGrammarReachability,
   scopedChangedPaths,
   validateCostAuditRecords,
+  validateBoundaryEvidence,
   validateCostContractRegistry,
 };

@@ -9,6 +9,23 @@ import { branchFromComplex, branchSharesAtom, collectBranchAtoms, levelFromSelec
 import type { Branch, Level } from './ir.js';
 import type { ExtendInstruction, Stylesheet, Rule, Statement } from '../nodes.js';
 
+/**
+ * Opt-in, import-time-captured counters for the AST extend planner. Production
+ * renders pay no counter lookup when the bag was not installed before core was
+ * loaded. The names deliberately describe facts already carried by this planner;
+ * they are evidence only, never an execution-mode switch.
+ */
+const AST_EXTEND_PROFILE_COUNTERS_KEY = '__JESS_EXTEND_PROFILE_COUNTERS__';
+type AstExtendProfileGlobals = typeof globalThis & {
+  [AST_EXTEND_PROFILE_COUNTERS_KEY]?: Record<string, number>;
+};
+const astExtendProfileCounters = (globalThis as AstExtendProfileGlobals)[AST_EXTEND_PROFILE_COUNTERS_KEY];
+export const recordAstExtendProfile = astExtendProfileCounters
+  ? (event: string, amount = 1): void => {
+      astExtendProfileCounters[event] = (astExtendProfileCounters[event] ?? 0) + amount;
+    }
+  : undefined;
+
 export interface PlanInstruction {
   target: Branch;
   partial: boolean;
@@ -78,6 +95,7 @@ export function collectPlan(
   referenceBoundaries?: ReadonlyMap<Rule, object>,
   overlay?: PlanOverlay,
 ): Plan {
+  recordAstExtendProfile?.('astExtend.plan.calls');
   const subjects: PlanSubject[] = [];
   const instructions: PlanInstruction[] = [];
   const targetAtoms = new Set<string>();
@@ -147,6 +165,8 @@ export function collectPlan(
     for (let index = 0; index < overlay.subjects.length; index++) subjects.push(overlay.subjects[index]!);
     for (let index = 0; index < overlay.instructions.length; index++) instructions.push(overlay.instructions[index]!);
     for (const instruction of overlay.instructions) collectBranchAtoms(instruction.target, targetAtoms);
+    recordAstExtendProfile?.('astExtend.plan.overlaySubjects', overlay.subjects.length);
+    recordAstExtendProfile?.('astExtend.plan.overlayInstructions', overlay.instructions.length);
   }
 
   // FAST-REJECT boolean, computed as an inherited flag over subjects in document
@@ -158,6 +178,8 @@ export function collectPlan(
       s.ownLocal.some((b) => branchSharesAtom(b, targetAtoms));
   }
 
+  recordAstExtendProfile?.('astExtend.plan.subjects', subjects.length);
+  recordAstExtendProfile?.('astExtend.plan.instructions', instructions.length);
   return { subjects, instructions, targetAtoms };
 }
 
@@ -167,6 +189,7 @@ export function collectPlan(
  * plan at all — the serializer's true zero-cost gate.
  */
 export function documentHasExtend(root: Stylesheet): boolean {
+  recordAstExtendProfile?.('astExtend.documentHasExtend.calls');
   const scan = (statements: Statement[]): boolean => {
     for (const st of statements) {
       if (st.type === 'Rule') {
@@ -178,7 +201,11 @@ export function documentHasExtend(root: Stylesheet): boolean {
     }
     return false;
   };
-  return scan(root.children);
+  const found = scan(root.children);
+  recordAstExtendProfile?.(found
+    ? 'astExtend.documentHasExtend.featureBearingCalls'
+    : 'astExtend.documentHasExtend.noFeatureMisses');
+  return found;
 }
 
 /** Reachability: an instruction reaches a subject iff the subject scope is the
