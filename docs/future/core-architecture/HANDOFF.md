@@ -1328,6 +1328,8 @@ prove a leaf-only cost delta. A future leaf change needs a matched family-local
 counter or profiling attribution, the canonical benchmark non-regression
 protocol, and byte identity before it may claim neutral/decrease.
 
+## Aggressive Cutting Self-Prosecution
+
 ### Current pass: imported extend semantic preflight
 
 - **Architecture surface:** `planImportedExtends` / `bodyMayPlanExtend` in the
