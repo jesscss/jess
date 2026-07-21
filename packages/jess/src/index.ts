@@ -612,11 +612,11 @@ export class Compiler {
   /**
    * The default SCSS plugin. Registered on every render so `.scss` sources parse
    * out of the box (extension routing sends only `.scss` here; `.less`/default
-   * still route to the Less plugin). Its own defaults — `unitMode: 'preserve'`,
-   * `equalityMode: 'sass'`, nesting preserved — are the SCSS-correct semantics;
-   * `allowExtendSelectors` is picked up per-parse from the compiler options.
-   * A consumer-configured `scss` plugin in `compile.plugins` overrides this one
-   * (same `name` key in `buildPlugins`).
+   * still route to the Less plugin). It is a parsing/import frontend only:
+   * compile inputs such as `unitMode` and `equalityMode` remain Context
+   * configuration, resolved once for the shared evaluator. A consumer-configured
+   * `scss` plugin in `compile.plugins` overrides this one (same `name` key in
+   * `buildPlugins`).
    */
   private getOrCreateScssPlugin(): PluginInterface {
     if (!this.scssPluginInstance) {

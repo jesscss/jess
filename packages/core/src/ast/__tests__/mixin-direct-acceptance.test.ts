@@ -6,6 +6,7 @@ import {
   type MixinCall, type MixinDef, type Stylesheet, type Statement
 } from '../nodes.js';
 import { serialize } from '../serialize.js';
+import { Context } from '../../context.js';
 
 const evaluator = buildEvaluator(makeBuiltinRegistry());
 const render = (document: Stylesheet, collapseNesting = true): string | undefined =>
@@ -23,6 +24,17 @@ const mixin = (
 ): MixinDef => ({ type: 'MixinDef', name, params, body, ...(guard ? { guard } : {}) });
 
 describe('Mixin canonical AST emission', () => {
+  it('applies strict unresolved-call handling from Context configuration without a frontend identity', () => {
+    const context = new Context({ functionMode: 'error' });
+    const document = stylesheet([rule('.out', [call('.missing')])]);
+
+    // There is intentionally no parser plugin or TreeContext here. The same
+    // canonical MixinCall and the same Context configuration must decide this
+    // for every frontend.
+    expect(() => serialize(document, { context, evaluator, collapseNesting: true }))
+      .toThrow(/Name not found/);
+  });
+
   it('deduplicates exact declarations from matching overloads and repeated calls', () => {
     const first = mixin('.same', [], [decl('color', keyword('red'))]);
     const second = mixin('.same', [], [decl('color', keyword('red'))]);

@@ -216,7 +216,7 @@ const OPTION_DEFAULTS: ResolvedOptions = {
 
 /**
  * Resolve the option set with a SINGLE precedence: an explicit compile-level
- * option wins, else the tree context's (plugin/language/file) value, else the
+ * option wins, else the source document's input configuration, else the
  * hard default. This is the one place the precedence is defined — it replaces the
  * three divergent `??` orders that used to live scattered across the read-sites
  * (`compile ?? tree` in conditions, `tree`-only in lists, `tree ?? compile` for
@@ -313,7 +313,7 @@ export class TreeContext {
 
   /**
    * The single resolved option set for this tree. Built once at construction
-   * from the file/plugin/language values; when the tree is made active on an
+   * from the source document's input configuration; when the tree is made active on an
    * eval {@link Context}, that context folds its compile-level options over this
    * and shares the resulting object (see Context's `treeContext` setter), so
    * `context.options` and `treeContext.options` are the SAME object — one place

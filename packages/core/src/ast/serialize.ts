@@ -1348,29 +1348,28 @@ function unresolvedRef(node: VariableReference | VarIndirect, name: string, e: E
 }
 
 /**
- * Less's error corpus treats unresolved callable/member syntax as a resolution
- * failure. Jess deliberately keeps its ordinary statement-call no-op and optional
- * member-to-Nil behavior, so this policy is selected by the active Less plugin's
- * explicit error mode—not by the shared AST node shape.
+ * Strict resolution is a compiler-input choice, not a frontend choice. Every
+ * parser lowers a missing call/reference to the same canonical AST fact; the
+ * one engine either preserves the ordinary optional/no-op form or reports the
+ * miss according to the active compile configuration.
  */
-function throwsLessResolutionMiss(e: EvalCtx): boolean {
-  return e.context?.treeContext?.plugin?.name === 'less'
-    && e.context.options.functionMode === 'error';
+function throwsResolutionMiss(e: EvalCtx): boolean {
+  return e.context?.options.functionMode === 'error';
 }
 
 function unresolvedCallable(call: MixinCall, e: EvalCtx): void {
-  if (!throwsLessResolutionMiss(e)) return;
+  if (!throwsResolutionMiss(e)) return;
   const path = call.path.map(segment => segment.sel).join(' ');
   unresolvedSymbol(call, `${path ? `${path} ` : ''}${call.name}()`, e);
 }
 
 function unresolvedReference(node: Reference, e: EvalCtx): void {
-  if (!throwsLessResolutionMiss(e) || e.optional) return;
+  if (!throwsResolutionMiss(e) || e.optional) return;
   unresolvedSymbol(node, node.raw, e);
 }
 
 function unresolvedPropertyReference(node: PropertyReference, e: EvalCtx): void {
-  if (!throwsLessResolutionMiss(e) || e.optional) return;
+  if (!throwsResolutionMiss(e) || e.optional) return;
   unresolvedSymbol(node, node.raw, e);
 }
 

@@ -17,16 +17,16 @@ export type MathMode = 'always' | 'parens-division' | 'parens' | 'strict';
 export type UnitMode = 'loose' | 'preserve' | 'strict';
 
 /**
- * Function-call resolution modes — mirrors {@link UnitMode}.
+ * Function-call resolution modes — compiler input to the shared evaluator.
  *
  * Governs an OPTIONAL (fallback) function reference — every bare/global
  * `fn(args)` — that resolves to a registered function but can't produce a value
  * (no matching signature, or the function throws), e.g. `unit(80/16)`,
  * `color("x")`.
  *
- * - `preserve`: render the call as-is (like Less v5 / an unknown CSS function)
+ * - `preserve`: render the call as-is (like an unknown CSS function)
  *   and emit a warning that a matched function couldn't be evaluated.
- * - `error`: throw the underlying function error (Less 4.x behavior).
+ * - `error`: throw the underlying function error.
  *
  * Unknown names (no registered function) always render as-is regardless — they
  * fall back at name resolution, never reaching this decision. Explicitly
@@ -35,10 +35,11 @@ export type UnitMode = 'loose' | 'preserve' | 'strict';
 export type FunctionMode = 'preserve' | 'error';
 
 /**
- * Equality dialects for guard/comparison semantics. Less 4.x and Sass are NOT a
- * strictness gradient — they diverge in OPPOSITE directions (Less coerces
- * unit↔unitless numbers but treats quoted vs unquoted text as distinct; Sass is
- * the reverse), so these are named by dialect, not by "loose/strict":
+ * Equality compatibility modes for the shared guard/comparison evaluator. The
+ * names describe established source-compatibility rules; they do not select a
+ * dialect-specific engine. Less 4.x and Sass are NOT a strictness gradient —
+ * they diverge in OPPOSITE directions (Less coerces unit↔unitless numbers but
+ * treats quoted vs unquoted text as distinct; Sass is the reverse):
  *
  * - `less`: Less 4.x equality. `2px = 2` ✓ (numeric coercion); `a = "a"` ✗ and
  *   `red = "red"` ✗ (quoted vs unquoted differ).

@@ -12,16 +12,15 @@ import type { EqualityMode, UnitMode } from '@jesscss/core';
 export type ScssPluginOptions = {
   allowExtendSelectors?: ExtendSelectorKind[];
   /**
-   * Unit mode for handling unit arithmetic.
-   * - 'loose': Convert units when possible (default for Less)
-   * - 'preserve': Create calc() expressions for unit errors (default for SCSS)
-   * - 'strict': Throw errors for unit mismatches
-   * @default 'preserve'
+   * Compatibility input retained on this frontend's option object. The shared
+   * evaluator reads the resolved Context compile/input option; configuring a
+   * Compiler should use `compile.unitMode` or matched input options.
    */
   unitMode?: UnitMode;
   /**
-   * Equality mode for guard/comparison semantics.
-   * @default 'strict'
+   * Compatibility input retained on this frontend's option object. It does not
+   * select a separate SCSS evaluator; configure the shared evaluator through
+   * Context compile/input options.
    */
   equalityMode?: EqualityMode;
   /**

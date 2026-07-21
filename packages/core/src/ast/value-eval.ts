@@ -173,9 +173,9 @@ export interface EvalModes {
   readonly unitMode: UnitMode;
   /** Less arithmetic policy; parentheses are tracked by the AST walker. */
   readonly mathMode?: MathMode;
-  /** Registered-function failure policy supplied by the active dialect/context. */
+  /** Registered-function failure policy supplied by the active compile Context. */
   readonly functionMode?: FunctionMode;
-  /** Guard-comparison dialect supplied by the active dialect/context. */
+  /** Guard-comparison compatibility rule supplied by the active compile Context. */
   readonly equalityMode?: EqualityMode;
   readonly inCalc?: boolean;
 }
