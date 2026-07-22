@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -150,6 +150,101 @@ describe('aggressive-cutting review scope', () => {
     expect(validateChangedContractSurface(registry, ['packages/core/src/ast/serialize.ts'], diff)).toContain(
       'Changed production hot-path surface packages/core/src/ast/serialize.ts has 1/1 unmatched hunks; add/update exact runtime contracts rather than hiding the aggregate branch inventory.'
     );
+  });
+});
+
+describe('alpha release snapshot CLI boundary', () => {
+  function invokeVerifier(cwd: string, mode: 'staged' | 'release') {
+    try {
+      const output = execFileSync(process.execPath, [
+        'scripts/verify-aggressive-cutting-review.mjs',
+        `--mode=${mode}`,
+        '--skip-executable-evidence'
+      ], { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+      return { status: 0, output };
+    } catch (error: unknown) {
+      const failure = typeof error === 'object' && error !== null ? error : {};
+      const status = 'status' in failure && typeof failure.status === 'number'
+        ? failure.status
+        : 1;
+      const stdout = 'stdout' in failure
+        && (typeof failure.stdout === 'string' || Buffer.isBuffer(failure.stdout))
+        ? failure.stdout.toString()
+        : '';
+      const stderr = 'stderr' in failure
+        && (typeof failure.stderr === 'string' || Buffer.isBuffer(failure.stderr))
+        ? failure.stderr.toString()
+        : '';
+      return { status, output: `${stdout}${stderr}` };
+    }
+  }
+
+  it('skips only aggregate patch accounting and still validates release evidence', () => {
+    const repo = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
+    const sandbox = mkdtempSync(resolve(tmpdir(), 'jess-release-review-'));
+    const handoffPath = 'docs/future/core-architecture/HANDOFF.md';
+    const reviewPath = 'docs/future/core-architecture/AGGRESSIVE-CUTTING-REVIEW.md';
+    const verifierPath = 'scripts/verify-aggressive-cutting-review.mjs';
+    try {
+      execFileSync('git', ['clone', '--quiet', '--no-hardlinks', repo, sandbox]);
+      symlinkSync(resolve(repo, 'node_modules'), resolve(sandbox, 'node_modules'));
+      for (const path of [handoffPath, reviewPath, verifierPath]) {
+        writeFileSync(resolve(sandbox, path), readFileSync(resolve(repo, path)));
+      }
+
+      const runtimePath = 'packages/core/src/ast/serialize.ts';
+      const runtimeSource = readFileSync(resolve(sandbox, runtimePath), 'utf8');
+      writeFileSync(
+        resolve(sandbox, runtimePath),
+        `${runtimeSource}\nconst releaseSnapshotProbe = [];\nfor (const value of releaseSnapshotProbe) void value;\n`
+      );
+      execFileSync('git', ['add', runtimePath], { cwd: sandbox });
+
+      const staged = invokeVerifier(sandbox, 'staged');
+      expect(staged.status).not.toBe(0);
+      expect(staged.output).toContain('Hot-path cost contract review failed:');
+
+      const release = invokeVerifier(sandbox, 'release');
+      expect(release.status).toBe(0);
+      expect(release.output).toContain(
+        'Release snapshot mode: aggregate changed-path, danger-token, and cost/A-B accounting skipped.'
+      );
+      expect(release.output).toContain(
+        'Release snapshot evidence validated: cost-contract registry and self-prosecution block are structurally valid.'
+      );
+      expect(release.output).not.toContain('No danger tokens found in scoped diff.');
+
+      const handoff = readFileSync(resolve(sandbox, handoffPath), 'utf8');
+      const sectionIndex = handoff.lastIndexOf('## Aggressive Cutting Self-Prosecution');
+      const prefix = handoff.slice(0, sectionIndex);
+      const brokenSection = handoff.slice(sectionIndex).replace(
+        /^- (?:\*\*)?Architecture surface(?::)?(?:\*\*)?/gm,
+        '- Architecture boundary:'
+      );
+      writeFileSync(resolve(sandbox, handoffPath), `${prefix}${brokenSection}`);
+      const missingHandoffEvidence = invokeVerifier(sandbox, 'release');
+      expect(missingHandoffEvidence.status).not.toBe(0);
+      expect(missingHandoffEvidence.output).toContain(
+        'Missing required Aggressive Cutting Self-Prosecution block'
+      );
+
+      writeFileSync(resolve(sandbox, handoffPath), handoff);
+      const review = readFileSync(resolve(sandbox, reviewPath), 'utf8');
+      writeFileSync(
+        resolve(sandbox, reviewPath),
+        review.replace(
+          '<!-- BEGIN AGGRESSIVE-CUTTING-COST-CONTRACTS -->',
+          '<!-- BROKEN AGGRESSIVE-CUTTING-COST-CONTRACTS -->'
+        )
+      );
+      const missingRegistry = invokeVerifier(sandbox, 'release');
+      expect(missingRegistry.status).not.toBe(0);
+      expect(missingRegistry.output).toContain(
+        'AGGRESSIVE-CUTTING-REVIEW.md is missing the machine-readable cost-contract registry.'
+      );
+    } finally {
+      rmSync(sandbox, { recursive: true, force: true });
+    }
   });
 });
 

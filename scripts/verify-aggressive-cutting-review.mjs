@@ -160,8 +160,8 @@ function scopedChangedPaths(mode, snapshots) {
   if (mode === 'release') {
     // An alpha branch is a squash snapshot of the validated dev tree. Its
     // branch-wide diff is historical aggregate, not one bounded optimization
-    // patch, so release mode validates only the registry/self-prosecution
-    // document and package safety without prosecuting every old hunk again.
+    // patch, so release mode validates the registry/self-prosecution evidence
+    // without prosecuting every old hunk again.
     return [];
   }
   if (mode === 'staged') {
@@ -2322,10 +2322,12 @@ function runVerifier() {
     ['materialized array/object', /\+\s*.*(new Array<|new Array\(|\[\]|=\s*\{)/]
   ];
 
-  const changedPaths = scopedChangedPaths(reviewMode, changedPathSnapshots());
+  const changedPaths = reviewMode === 'release'
+    ? []
+    : scopedChangedPaths(reviewMode, changedPathSnapshots());
   const diff = collectScopedDiff(reviewMode, changedPaths);
   if (reviewMode === 'release') {
-    console.log('Release snapshot mode: report-only (aggregate diff accounting skipped).');
+    console.log('Release snapshot mode: aggregate changed-path, danger-token, and cost/A-B accounting skipped.');
   }
   // Keep the complete branch aggregate visible. It is historical/audit
   // inventory, not a pretext for forcing parser/frontend/type edits into an
@@ -2471,7 +2473,9 @@ function runVerifier() {
     process.exitCode = 1;
   } else {
     console.log('Aggressive cutting review block present.');
-    if (findings.length === 0) {
+    if (reviewMode === 'release') {
+      console.log('Release snapshot evidence validated: cost-contract registry and self-prosecution block are structurally valid.');
+    } else if (findings.length === 0) {
       console.log('No danger tokens found in scoped diff.');
     } else {
       console.log('Danger tokens accounted for in the handoff self-prosecution block.');

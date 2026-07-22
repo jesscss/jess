@@ -1545,8 +1545,9 @@ unreviewed cutover and is rejected.
 
 For an alpha release snapshot, `release:alpha:check` invokes the aggressive-cutting
 verifier with `--mode=release`. That mode keeps the registry, self-prosecution,
-and package-safety checks, while treating the full `dev` → `alpha` squash diff as
-historical aggregate and reporting it without re-prosecuting every old hunk.
+and source-metadata checks, while treating the full `dev` → `alpha` squash diff
+as historical aggregate rather than re-prosecuting every old hunk. Package/API
+safety remains a separate, later release-check responsibility.
 
 | Audit family | Current files | Existing behavior evidence | Required acceptance evidence |
 | --- | --- | --- | --- |
@@ -1600,6 +1601,34 @@ counter or profiling attribution, the canonical benchmark non-regression
 protocol, and byte identity before it may claim neutral/decrease.
 
 ## Aggressive Cutting Self-Prosecution
+
+### Current pass: alpha release snapshot review boundary
+
+- **Architecture surface:** the review CLI adds a release-only evidence mode;
+  production parser, evaluator, lookup, render, and package code are unchanged.
+- **Separation/duplication:** default working review and `--mode=staged` retain
+  their existing patch-scoped changed-path, danger-token, and cost-contract
+  enforcement. `--mode=release` reuses the same registry and self-prosecution
+  validators while omitting only historical aggregate squash accounting.
+- **Cumulative node weight:** none; no production runtime code changes.
+- **New traversal:** none in production. The verifier deliberately avoids Git
+  changed-path and diff collection in release mode.
+- **New node/materialization:** none in production. Focused tests create only a
+  temporary Git sandbox to prove the CLI boundary.
+- **Render path:** unchanged.
+- **Helper/API surface:** one internal CLI mode is added and invoked directly by
+  `release:alpha:check`; no package script alias or public production API is
+  added.
+- **Metadata mutations:** none in production or package metadata beyond the
+  existing root release-check command.
+- **Review-flagged diff tokens:** none in production; the test fixture stages an
+  intentional loop/array token only to prove staged mode still rejects it while
+  release mode does not inspect the aggregate patch.
+- **Evidence:** focused verifier tests cover strict staged behavior, release
+  evidence-only behavior, and rejection of malformed Handoff and registry
+  evidence; direct default, staged, and release CLI invocations are rerun.
+- **Verdict:** accepted release-orchestration boundary with no runtime or
+  performance claim.
 
 ### Current pass: direct AST `DocumentContext` provenance
 

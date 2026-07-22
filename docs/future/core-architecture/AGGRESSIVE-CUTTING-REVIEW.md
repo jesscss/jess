@@ -25,11 +25,12 @@ public-boundary changes use their dedicated boundary evidence. A broad
 `owner-plus-named-carry-forward-support` record never proves unrelated hunks.
 
 Alpha release snapshots use `--mode=release` from `release:alpha:check`. This
-mode validates the registry, self-prosecution block, and package safety, but
-does not treat the full historical `dev` → `alpha` squash diff as one new
-optimization patch. It therefore does not require aggregate danger-token
-accounting or cost-contract A/B evidence; those remain strict in the default
-working and `--mode=staged` modes.
+mode validates the registry and self-prosecution block, but does not treat the
+full historical `dev` → `alpha` squash diff as one new optimization patch. It
+therefore does not require aggregate changed-path, danger-token, or
+cost-contract A/B accounting; those remain strict in the default working and
+`--mode=staged` modes. Package/API safety remains owned by the later dedicated
+steps in `release:alpha:check`.
 
 `semantic-preflight` is intentionally narrower than an optimization contract.
 Use it only where a semantic source-order inspection must occur before the
