@@ -4,10 +4,11 @@ import {
   type ISafeParseResult,
   type ErrorDiagnostic,
   extractRelevantLines,
+  type EqualityMode,
+  type UnitMode
 } from '@jesscss/core';
 import { parse } from '@jesscss/scss-parser';
 import { expandScssImportCandidates } from '@jesscss/style-resolver';
-import type { EqualityMode, UnitMode } from '@jesscss/core';
 
 export type ScssPluginOptions = {
   allowExtendSelectors?: ExtendSelectorKind[];

@@ -29,7 +29,7 @@ export const updateSheet = (text: string, id: string) => {
   sheetMap[id] = text;
   localStorage.setItem('patchcss:sheets', JSON.stringify(sheetMap));
   return el;
-}
+};
 
 /**
  * We don't set sheetMap to the cached value, because ids can
