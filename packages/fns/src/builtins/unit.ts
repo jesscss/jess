@@ -1,5 +1,6 @@
-import type { Dimension, Keyword, Quoted, Fn } from '@jesscss/core/value';
+import type { Fn } from '@jesscss/core/value';
 import { makeDimension, textOf, defineFunction } from '@jesscss/core/value';
+import { requireDimension } from './math-helper.js';
 
 /**
  * `unit(dimension, unit?)` — replace (or, with no/empty second arg, STRIP) the
@@ -8,7 +9,9 @@ import { makeDimension, textOf, defineFunction } from '@jesscss/core/value';
 export const unit: Fn = defineFunction('unit', {
   params: [{ kinds: ['Dimension'] }, { kinds: ['Keyword', 'Quoted'], optional: true }],
   body: (d, u) => {
-    const resolved = u !== undefined ? textOf(u as Keyword | Quoted) : '';
-    return makeDimension((d as Dimension).number, resolved || '');
+    const resolved = u !== undefined
+      ? (u.type === 'Keyword' || u.type === 'Quoted' ? textOf(u) : '')
+      : '';
+    return makeDimension(requireDimension(d).number, resolved || '');
   }
 });

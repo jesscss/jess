@@ -1,5 +1,6 @@
-import type { Dimension, Keyword, Quoted, Fn } from '@jesscss/core/value';
+import type { Fn } from '@jesscss/core/value';
 import { makeDimension, textOf, defineFunction, groupOf, unitFactor } from '@jesscss/core/value';
+import { requireDimension } from './math-helper.js';
 
 /**
  * `convert(value, unit)` — convert `value` to `unit` when they share a group; else
@@ -9,9 +10,12 @@ import { makeDimension, textOf, defineFunction, groupOf, unitFactor } from '@jes
 export const convert: Fn = defineFunction('convert', {
   params: [{ kinds: ['Dimension'] }, { kinds: ['Keyword', 'Quoted'] }],
   body: (value, unitArg) => {
-    const v = value as Dimension;
+    const v = requireDimension(value);
     const from = v.unit;
-    const target = textOf(unitArg as Keyword | Quoted);
+    if (unitArg.type !== 'Keyword' && unitArg.type !== 'Quoted') {
+      throw new TypeError('Expected a keyword or quoted unit');
+    }
+    const target = textOf(unitArg);
     if (!from || !target || from === target) {
       return makeDimension(v.number, v.unit);
     }
