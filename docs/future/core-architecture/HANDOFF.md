@@ -3635,3 +3635,39 @@ or Context deletion lanes.
   ```
 - Verdict: accepted as a bounded evaluator-only Less math fix; no source
   reparse, parser change, bridge, or public compatibility shim was added.
+
+## Aggressive Cutting Self-Prosecution — Less pi/mod Fn conversion
+
+- Latest pass: Less `pi` and `mod` now directly re-export the already-registered
+  canonical AST-v2 value-domain callables from `builtins/`. Both historical
+  named exports and default entrypoints remain available; the old duplicate
+  value-domain definitions are removed in place.
+- Architecture surface: the existing typed `defineFunction` contract and
+  `makeDimension` factory only. No legacy tree node, Context wrapper, parser
+  host, bridge, fallback evaluator, or compatibility shim was introduced.
+- Separation/duplication: one implementation per function. Less's public
+  files are intentional entrypoint re-exports of the canonical builtins, not
+  relocation wrappers or duplicate implementations.
+- Cumulative node weight: zero AST nodes, frames, maps, side tables, or render
+  state. Each callable creates only its required canonical `Dimension` result.
+- New traversal: none. `pi` computes one constant; `mod` performs one scalar
+  remainder and carries the dividend unit, as the prior Less function did.
+- New node/materialization: no legacy tree nodes or AST nodes; `makeDimension`
+  creates the required value-domain result once.
+- Render path: unchanged typed evaluator/serializer route; no tree conversion,
+  source reparse, or alternate output path was added.
+- Helper/API surface: no helper or public name was added. Existing `pi`/`mod`
+  named and default Less exports remain available through direct aliases.
+- Metadata mutations: none.
+- Review-flagged diff tokens: none. No traversal, clone, node, spread,
+  side-map, metadata mutation, or routine error-control machinery was added.
+- Evidence: the focused parity suite compares canonical results with
+  pre-cutover Less `Dimension` oracles for unitless `pi` and signed/fractional
+  `mod` inputs, asserting numbers, units, and serialized bytes. Registry and
+  named/default entrypoint identity are asserted for both functions.
+- Verification evidence: focused parity tests pass 3/3; full fns suite passes
+  74 files / 482 tests; `@jesscss/core` and `@jesscss/awaitable-pipe` upstream
+  builds plus `@jesscss/fns` build pass; package export verification and
+  aggressive-cutting review pass. No performance claim is made.
+- Verdict: accepted bounded in-place AST-v2 conversion; remaining Less
+  function files require their own behavior-parity batches.
