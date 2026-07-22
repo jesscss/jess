@@ -45,7 +45,9 @@ export function buildContribs(instructions: PlanInstruction[]): ContribMap {
     const keys = new Set<string>();
     for (const e of extenders) {
       e.ext = true;
-      if (inst.extenderHidden) e.hidden = true;
+      if (inst.extenderHidden) {
+        e.hidden = true;
+      }
       keys.add(branchText(e));
     }
     const targetAtoms = new Set<string>();
@@ -89,14 +91,16 @@ export function solveComposed(seed: Branch[], subject: PlanSubject, plan: Plan):
   if (!seed.some(b => branchSharesAtom(b, plan.targetAtoms))) {
     return { list: seed, changed: false };
   }
-  const reachable = plan.instructions.filter((i) =>
+  const reachable = plan.instructions.filter(i =>
     // A visible instruction may pull a reference subject into output. A hidden
     // instruction is confined to the reference document that defined it, so it
     // never aliases authored siblings outside that import boundary.
     (i.referenceBoundary === null || i.referenceBoundary === subject.referenceBoundary)
-      && reaches(i.scope, subject.scope)
+    && reaches(i.scope, subject.scope)
   );
-  if (reachable.length === 0) return { list: seed, changed: false };
+  if (reachable.length === 0) {
+    return { list: seed, changed: false };
+  }
   return runFixpoint(seed.map(cloneBranch), reachable, buildContribs(reachable));
 }
 
@@ -126,9 +130,13 @@ export function runFixpoint(seed: Branch[], reachable: PlanInstruction[], contri
     rounds++;
     for (const inst of reachable) {
       const key = instKey(inst);
-      if (fired.has(key)) continue;
+      if (fired.has(key)) {
+        continue;
+      }
       const c = contribs.get(inst)!;
-      if (c.extenders.length === 0 && !inst.partial) continue;
+      if (c.extenders.length === 0 && !inst.partial) {
+        continue;
+      }
       const next = applyInstruction(
         list,
         inst.target,
@@ -136,7 +144,7 @@ export function runFixpoint(seed: Branch[], reachable: PlanInstruction[], contri
         inst.partial,
         c.keys,
         c.targetAtoms,
-        inst.extenderHidden,
+        inst.extenderHidden
       );
       if (next) {
         list = next;

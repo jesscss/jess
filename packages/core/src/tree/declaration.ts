@@ -1,4 +1,4 @@
-import { setSourceSpan, spanStartOf, spanEndOf, sourceSpanOf } from './util/provenance.js';
+import { setSourceSpan, spanStartOf, spanEndOf, sourceSpanOf, fieldSpanAt } from './util/provenance.js';
 import {
   Node,
   F_ALLOW_ROOT,
@@ -35,7 +35,6 @@ import {
 } from './util/render-buffer.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { consumeTrivia, emitCommentTriviaAfterNode, emitCommentTriviaAfterOffset, emitCommentTriviaBetweenNodes, emitTriviaTokens, commentRunsWithinSpan, emitNextSpanComment } from './util/trivia.js';
-import { fieldSpanAt } from './util/provenance.js';
 import { coerceValueNode } from './util/evaluate-node-array.js';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -188,8 +187,7 @@ function sameConcreteLocation(
   left: { start: number; end: number } | undefined,
   right: { start: number; end: number } | undefined
 ): boolean {
-  return left !== undefined && right !== undefined
-    && left.start === right.start && left.end === right.end;
+  return left !== undefined && left.start === right?.start && left.end === right.end;
 }
 
 export function finalizeContextualImportantState(
@@ -639,8 +637,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
 
   /** Start offset of the `value` field's per-slot span, or `undefined` when unset. */
   private _valueFieldSpanStart(): number | undefined {
-    const valueIdx = (this.constructor as unknown as { childKeys?: readonly string[] })
-      .childKeys?.indexOf('value') ?? -1;
+    const valueIdx = Declaration.childKeys.indexOf('value');
     return valueIdx >= 0 ? fieldSpanAt(this, valueIdx)?.start : undefined;
   }
 
@@ -939,7 +936,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     return indent;
   }
 
-  private formatNonCustomValue(valOut: string, _options: PrintOptions, leadIndent?: number) {
+  private formatNonCustomValue(valOut: string, options: PrintOptions, leadIndent?: number) {
     const trimmedEnd = valOut.replace(/\s+$/g, '');
     if (!trimmedEnd.includes('\n')) {
       return ` ${trimmedEnd.replace(/^[ \t]+/g, '')}`;
@@ -949,7 +946,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     // only the minimum continuation indent rather than emulating historical
     // Less fixture cases that collapsed some unindented continuations.
     const continuationIndent = '  ';
-    const propertyIndent = this.authoredPropertyIndent(_options);
+    const propertyIndent = this.authoredPropertyIndent(options);
     const lines = trimmedEnd.split('\n');
     let out = '';
     const [firstLine = '', ...restLines] = lines;
@@ -1284,8 +1281,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
 
   /** End offset of the `value` field's per-slot span, or `undefined` when unset. */
   private _valueFieldSpanEnd(): number | undefined {
-    const valueIdx = (this.constructor as unknown as { childKeys?: readonly string[] })
-      .childKeys?.indexOf('value') ?? -1;
+    const valueIdx = Declaration.childKeys.indexOf('value');
     return valueIdx >= 0 ? fieldSpanAt(this, valueIdx)?.end : undefined;
   }
 
@@ -2105,7 +2101,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       if (node.type === 'VarDeclaration') {
         return state;
       }
-      const { name, value: value } = node;
+      const { name, value } = node;
       if (Array.isArray(value)) {
         // A flat value array mixes verbatim string fragments (kept as-is) with
         // typed value nodes that must be evaluated so e.g. a fallback function
@@ -2261,12 +2257,13 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     }
     let v: unknown = this.value;
     if (isNode(v, N.List) || isNode(v, N.Sequence)) {
-      const items = (v as { value?: unknown[] }).value;
-      if (Array.isArray(items) && items.length === 1) {
-        v = items[0];
+      if ('value' in v && Array.isArray(v.value) && v.value.length === 1) {
+        v = v.value[0];
       }
     }
-    const t = (v as { type?: string } | null)?.type;
+    const t = typeof v === 'object' && v !== null && 'type' in v && typeof v.type === 'string'
+      ? v.type
+      : undefined;
     if (t === 'Mixin' || t === 'Rules') {
       throw makeJessError({
         code: 'eval/ruleset-on-property',

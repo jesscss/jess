@@ -1841,10 +1841,10 @@ protocol, and byte identity before it may claim neutral/decrease.
     "id":"ast-semantic-runtime-cutover",
     "verdict":"accepted",
     "performanceClaim":"none",
-    "owner":"the seven canonical AST-v2 evaluator/value owners listed by ast-semantic-runtime-cutover",
+    "owner":"the canonical AST-v2 evaluator/value/extend owners listed by ast-semantic-runtime-cutover",
     "why":"This coordinated AST-v2 cutover changes ValueSlot/List/Block facts, authored layout, callable binding, mixin argument resolution, reference/index access, and Less lazy color-call demand across cooperating runtime owners. Those are semantic architecture changes with real traversal and allocation shape; no single admission counter, byte-identical A/B, or speed claim would describe them truthfully.",
     "dangerTokensJustification":"The new array helpers, loops, side-table entries, typed wrappers, and result objects are accounted for as the direct implementation of the canonical value facts and demand boundaries. They are not presented as neutral or cheaper, and their behavior is covered by focused AST/list/mixin/provenance/F5 tests plus the release build.",
-    "cases":["ValueSlot-array-evaluation-and-authored-layout","List-value-separator-and-Block-delimiter-facts","reference-index-and-For-array-access","Less-lazy-color-call-demand-boundary","defineFunction-typed-positional-named-and-lazy-binding","mixin-dispatch-ValueSlot-argument-resolution","ValueLayout-provenance-side-table","preserve-mode-calc-result-composition"],
+    "cases":["ValueSlot-array-evaluation-and-authored-layout","List-value-separator-and-Block-delimiter-facts","reference-index-and-For-array-access","Less-lazy-color-call-demand-boundary","defineFunction-typed-positional-named-and-lazy-binding","mixin-dispatch-ValueSlot-argument-resolution","ValueLayout-provenance-side-table","preserve-mode-calc-result-composition","extend-composition-plan-and-fixpoint-solve"],
     "behaviorEvidence":"The isolated `pnpm run verify:baseline` route passed, including core/parser/fixture behavior and the public Less/Jess semantic suites; the F5 lazy color-call cases remain separately recorded in the Less-alpha gate.",
     "buildEvidence":"The release-shaped `pnpm run build:release` workspace build passed for the assembled canonical AST-v2 runtime.",
     "baseline":{"fixture":"benchmark.less","phase":"render","currentMedianMs":85.86,"parseRenderMedianMs":68.38,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}
@@ -2201,10 +2201,10 @@ silently choose one language’s policy.
     "id":"ast-semantic-runtime-cutover",
     "verdict":"accepted",
     "performanceClaim":"none",
-    "owner":"the seven canonical AST-v2 evaluator/value owners listed by ast-semantic-runtime-cutover",
+    "owner":"the canonical AST-v2 evaluator/value/extend owners listed by ast-semantic-runtime-cutover",
     "why":"The mixin resolver now admits the recursive ValueSlot contract that its existing evalBytes callee already owns. Context import narrowing, selected-event map inference, optional direct inputs, detached/property/value bindings, ruleset guard context, serializer narrowing, recursive map-entry values, guard/logical/reference operands, closure aliases, iteration inputs, canonical diagnostic subjects, and scalar position facts make existing canonical runtime contracts explicit; none creates a new resolver, evaluator, or output policy. Important now participates in the public Node union it already semantically belonged to.",
     "dangerTokensJustification":"The discriminant checks prevent arrays from being treated as nodes, while recursive byte work remains in the existing evalBytes path. [loop/traversal] The calc slash recognizer validates shallow parts without allocation before its rare recognized-slash copy; the existing alias-chain loop only gains a scalar guard. [array helper] The namespace flatMap already existed and only gains a Statement[] annotation; the supports flatMap recursively emits the existing prelude-part result. [array spread/materialization] and [materialized array/object] in that supports branch preserve authored recursive slot boundaries in the one transient SupportsPreludePart[] consumed immediately by the normalizer. The recognized slash group alone copies into the existing scalar-part temporary SpacedValue; guard-call, namespace bodies, and binding maps are type annotations. [side map/set] The binding Map matches are existing parameter/member types widened to CallValue or nullable, not new maps. [parent/source mutation] Diagnostic source variables are only narrowed for read-only line lookup; no source or parent state changes. [node construction] and [routine error control] identify exceptional Error construction when an async plugin result violates a pre-existing synchronous selector preflight/header contract; ordinary lookup misses and branch results do not throw. Capturing an already-loaded Stylesheet and typing existing maps/optional slots add no side table, fallback call, or output buffer, and this record makes no neutrality or speed claim.",
-    "cases":["ValueSlot-array-evaluation-and-authored-layout","List-value-separator-and-Block-delimiter-facts","reference-index-and-For-array-access","Less-lazy-color-call-demand-boundary","defineFunction-typed-positional-named-and-lazy-binding","mixin-dispatch-ValueSlot-argument-resolution","ValueLayout-provenance-side-table","preserve-mode-calc-result-composition"],
+    "cases":["ValueSlot-array-evaluation-and-authored-layout","List-value-separator-and-Block-delimiter-facts","reference-index-and-For-array-access","Less-lazy-color-call-demand-boundary","defineFunction-typed-positional-named-and-lazy-binding","mixin-dispatch-ValueSlot-argument-resolution","ValueLayout-provenance-side-table","preserve-mode-calc-result-composition","extend-composition-plan-and-fixpoint-solve"],
     "behaviorEvidence":"The complete core suite passes 3318/3318; focused recursive arguments, imports, selected mixins, direct-function, value-access, recursive guard truth, at-rule, extend-preflight, nested mixin, and Node-union cases pass.",
     "buildEvidence":"The core package build and package-export verification pass after the resolver and canonical serializer contract corrections.",
     "baseline":{"fixture":"benchmark.less","phase":"render","currentMedianMs":85.86,"parseRenderMedianMs":68.38,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}
@@ -2512,7 +2512,9 @@ or Context deletion lanes.
   existing spread contract; `[node construction]` unchanged direct
   construction; `[side map/set]` unchanged; `[routine error control]` only
   exceptional invariant `TypeError`; `[materialized array/object]` unchanged
-  render-time work.
+  render-time work; `[generic defensive read]` is the existing `Reflect.apply`
+  body-invocation boundary, now fed by runtime-validated function metadata and
+  typed arguments without adding a second dynamic property lookup.
 - Evidence: focused tests pass List 26/26, callable-candidate 18/18,
   check-valid-nodes 6/6, and find-extendable-locations 14/14; all five changed
   production files report zero ESLint errors; core compile passes. No speed,
@@ -2535,3 +2537,79 @@ or Context deletion lanes.
 - Verdict: accepted bounded semantic/type-safety cleanup; the optional test
   assertion is a deliberate API-contract follow-up, not a suppressed lint
   error.
+
+## Aggressive Cutting Self-Prosecution
+
+- Latest pass: bounded AST extend/value/context contract cleanup. The pass
+  normalizes lint-invalid control flow, replaces unsafe value-function casts
+  with runtime guards, and reads declaration metadata through the existing
+  static contract. No parser host, bridge, resolver, fallback, or compatibility
+  surface was added.
+- Architecture surface: `ast/extend/{compose,plan,solve}.ts` remain the
+  canonical selector IR composition/planning/fixpoint owners; `ast/value-dispatch.ts`
+  remains the typed function-definition boundary; `ast/value-units.ts` remains
+  the shared unit table; and `tree/declaration.ts` remains the retained
+  declaration render owner. Context and import dispatch are untouched.
+- Separation/duplication: runtime definition validation is performed once at
+  the `defineFunction` boundary; no second function registry, coercion layer,
+  parser, or source re-read is introduced.
+- Cumulative node weight: no AST node, selector, frame, side table, or render
+  placement is allocated by this cleanup. Function metadata guards only inspect
+  the definition supplied by the caller before invocation.
+- New traversal: no traversal is added. Existing extend loops and fixpoint
+  walks are only brace/operator normalization; function parameter checks run
+  once while defining a callable.
+- New node/materialization: none. Typed values are narrowed in place, and
+  `Reflect.apply` continues to invoke the existing function body with the
+  existing bound argument list.
+- Render path: declaration bytes, extend output, unit conversion, and callable
+  results remain behaviorally unchanged.
+- Helper/API surface: no public export, alias, wrapper, or shim is added.
+- Metadata mutations: none beyond the existing callable metadata assignment.
+- Review-flagged diff tokens: `[loop/traversal]`, `[array helper]`,
+  `[node construction]`, `[generic defensive read]`, and
+  `[materialized array/object]` are either existing extend/value structures or
+  validation-only boundary code; `[routine error control]` is limited to
+  exceptional invalid-call/definition TypeErrors. No new runtime traversal,
+  allocation, or error path is introduced.
+- Behavior evidence: focused core suites pass 106/106, including value function
+  binding, direct extend composition/preflight, unit operations, and 85
+  declaration/merge cases; targeted ESLint reports 0 errors and 0 warnings on
+  every changed production file.
+- Build evidence: `pnpm --filter @jesscss/core build` passes; strict production
+  verification reports no diagnostics in any changed file (remaining core
+  diagnostics are confined to unrelated retained tree selector/serializer
+  lanes and four published Parseman 0.28.0 entry contracts).
+- Boundary evidence: `@jesscss/core/value` keeps the same public callable
+  function contract and unit table exports; no package entrypoint or parser
+  boundary changes.
+- Evidence: core focused behavior suites, core build, strict type verification,
+  and changed-file ESLint are the authoritative checks for this bounded pass;
+  benchmark output remains the current render baseline only.
+- Hot-path cost contracts:
+  ```json
+  [{
+    "id":"ast-semantic-runtime-cutover",
+    "verdict":"accepted",
+    "performanceClaim":"none",
+    "why":"This is a truthful type and lint cleanup within the existing AST-v2 value/function and selector-extend owners. Runtime guards replace unsafe assertions without adding a bridge, fallback evaluator, second registry, or new traversal.",
+    "owner":"the canonical AST-v2 evaluator/value/extend owners listed by ast-semantic-runtime-cutover",
+    "dangerTokensJustification":"The existing extend loops, branch arrays, and fixpoint walk are only brace/operator normalization. The value path adds runtime definition guards and retains the existing Reflect.apply boundary; it does not add a second traversal, registry, clone, node, or fallback evaluator.",
+    "cases":["ValueSlot-array-evaluation-and-authored-layout","List-value-separator-and-Block-delimiter-facts","reference-index-and-For-array-access","Less-lazy-color-call-demand-boundary","defineFunction-typed-positional-named-and-lazy-binding","mixin-dispatch-ValueSlot-argument-resolution","ValueLayout-provenance-side-table","preserve-mode-calc-result-composition","extend-composition-plan-and-fixpoint-solve"],
+    "behaviorEvidence":"Focused value, extend, preflight, unit, and declaration suites pass 106/106; changed files have zero ESLint diagnostics.",
+    "buildEvidence":"The @jesscss/core build passes and strict verification has no diagnostic in the changed AST files.",
+    "baseline":{"fixture":"benchmark.less","phase":"render","currentMedianMs":85.86,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}
+  },{
+    "id":"legacy-tree-strict-contract-drain",
+    "verdict":"accepted",
+    "performanceClaim":"none",
+    "owner":"the fifteen retained tree value, guard, selector-surface, registration, rendering, bitset, combinator, and extend owners listed by legacy-tree-strict-contract-drain",
+    "why":"Declaration provenance reads use the existing Declaration child-key contract and detached-ruleset checks use runtime discriminants; no tree bridge, clone, resolver, or output policy is added.",
+    "dangerTokensJustification":"Declaration metadata reads use the existing static child-key contract and runtime discriminants. No node, array, map, frame, traversal, clone, resolver, or routine error path is added; the existing exceptional detached-ruleset TypeError remains the only failure path.",
+    "cases":["declaration-sync-and-async-render-result","declaration-merge-source-span-exclusion","default-guard-owned-value","bitset-inversion-and-disjointness","string-and-node-combinator-recognition","selector-list-singleton-collapse","selector-list-array-or-node-inheritance","parser-delivered-selector-array-ampersand","selector-array-ruleset-callable-registration","selector-array-key-set-analysis","selector-compose-cache-node-boundary","ordered-registration-context-restoration","property-merge-container-scope","mixin-invisible-sync-render-and-registration-result","extend-record-selector-surface","extend-root-composition-selector-surface","extend-walk-composed-match-selector-surface"],
+    "behaviorEvidence":"The declaration and declaration-merge suites pass 85/85, including source-span, merge, async, and render-buffer paths.",
+    "buildEvidence":"The @jesscss/core build passes with no changed-file type diagnostic.",
+    "baseline":{"fixture":"benchmark.less","phase":"render","currentMedianMs":85.86,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}
+  }]
+  ```
+- Verdict: accepted bounded contract/type cleanup; no performance claim.

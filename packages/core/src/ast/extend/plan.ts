@@ -93,7 +93,7 @@ export function collectPlan(
   root: Stylesheet,
   hiddenRules?: ReadonlySet<Rule>,
   referenceBoundaries?: ReadonlyMap<Rule, object>,
-  overlay?: PlanOverlay,
+  overlay?: PlanOverlay
 ): Plan {
   recordAstExtendProfile?.('astExtend.plan.calls');
   const subjects: PlanSubject[] = [];
@@ -106,7 +106,7 @@ export function collectPlan(
     statements: Statement[],
     path: Level[],
     scope: number[],
-    parent: PlanSubject | null,
+    parent: PlanSubject | null
   ): void => {
     for (const st of statements) {
       if (st.type === 'Rule') {
@@ -121,7 +121,7 @@ export function collectPlan(
           parent,
           mayMatch: false,
           hidden: rule.reference === true || hiddenRules?.has(rule) === true,
-          referenceBoundary: referenceBoundaries?.get(rule) ?? null,
+          referenceBoundary: referenceBoundaries?.get(rule) ?? null
         };
         subjects.push(subject);
         if (rule.extendInstructions) {
@@ -141,7 +141,7 @@ export function collectPlan(
                 scope,
                 order: order++,
                 extenderHidden: rule.reference === true || hiddenRules?.has(rule) === true,
-                referenceBoundary: referenceBoundaries?.get(rule) ?? null,
+                referenceBoundary: referenceBoundaries?.get(rule) ?? null
               });
               collectBranchAtoms(targetBranch, targetAtoms);
             }
@@ -162,9 +162,15 @@ export function collectPlan(
     // Do not spread planner overlays: a large, finite imported-loop overlay
     // becomes call arguments and hits V8's stack/argument limit before solving.
     // Indexed append preserves source order without a temporary copy.
-    for (let index = 0; index < overlay.subjects.length; index++) subjects.push(overlay.subjects[index]!);
-    for (let index = 0; index < overlay.instructions.length; index++) instructions.push(overlay.instructions[index]!);
-    for (const instruction of overlay.instructions) collectBranchAtoms(instruction.target, targetAtoms);
+    for (let index = 0; index < overlay.subjects.length; index++) {
+      subjects.push(overlay.subjects[index]!);
+    }
+    for (let index = 0; index < overlay.instructions.length; index++) {
+      instructions.push(overlay.instructions[index]!);
+    }
+    for (const instruction of overlay.instructions) {
+      collectBranchAtoms(instruction.target, targetAtoms);
+    }
     recordAstExtendProfile?.('astExtend.plan.overlaySubjects', overlay.subjects.length);
     recordAstExtendProfile?.('astExtend.plan.overlayInstructions', overlay.instructions.length);
   }
@@ -174,8 +180,8 @@ export function collectPlan(
   // suffices. `own || parent.mayMatch`: no `composePath`, O(own-local atoms).
   for (const s of subjects) {
     s.mayMatch =
-      (s.parent !== null && s.parent.mayMatch) ||
-      s.ownLocal.some((b) => branchSharesAtom(b, targetAtoms));
+      (s.parent?.mayMatch === true)
+      || s.ownLocal.some(b => branchSharesAtom(b, targetAtoms));
   }
 
   recordAstExtendProfile?.('astExtend.plan.subjects', subjects.length);
@@ -193,10 +199,16 @@ export function documentHasExtend(root: Stylesheet): boolean {
   const scan = (statements: Statement[]): boolean => {
     for (const st of statements) {
       if (st.type === 'Rule') {
-        if (st.extendInstructions && st.extendInstructions.length > 0) return true;
-        if (scan(st.body)) return true;
+        if (st.extendInstructions && st.extendInstructions.length > 0) {
+          return true;
+        }
+        if (scan(st.body)) {
+          return true;
+        }
       } else if (st.type === 'AtRuleBlock') {
-        if (scan(st.body)) return true;
+        if (scan(st.body)) {
+          return true;
+        }
       }
     }
     return false;
@@ -211,7 +223,13 @@ export function documentHasExtend(root: Stylesheet): boolean {
 /** Reachability: an instruction reaches a subject iff the subject scope is the
  * same as, or a descendant of, the instruction scope. */
 export function reaches(instScope: number[], subjScope: number[]): boolean {
-  if (instScope.length > subjScope.length) return false;
-  for (let i = 0; i < instScope.length; i++) if (instScope[i] !== subjScope[i]) return false;
+  if (instScope.length > subjScope.length) {
+    return false;
+  }
+  for (let i = 0; i < instScope.length; i++) {
+    if (instScope[i] !== subjScope[i]) {
+      return false;
+    }
+  }
   return true;
 }

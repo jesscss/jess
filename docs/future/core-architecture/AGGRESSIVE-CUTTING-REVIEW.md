@@ -219,10 +219,13 @@ a blanket optimization exemption or a new active architecture queue.
       "packages/core/src/ast/mixin-dispatch.ts",
       "packages/core/src/ast/provenance.ts",
       "packages/core/src/ast/value-dispatch.ts",
-      "packages/core/src/ast/value-eval.ts"
+      "packages/core/src/ast/value-eval.ts",
+      "packages/core/src/ast/extend/compose.ts",
+      "packages/core/src/ast/extend/plan.ts",
+      "packages/core/src/ast/extend/solve.ts"
     ],
     "semanticRuntime": {
-      "owner": "the seven canonical AST-v2 evaluator/value owners listed by ast-semantic-runtime-cutover",
+      "owner": "the canonical AST-v2 evaluator/value/extend owners listed by ast-semantic-runtime-cutover",
       "scope": "This coordinated cutover changes ValueSlot/List/Block facts, authored value layout, callable binding, mixin argument resolution, reference/index access, and Less lazy color-call demand across cooperating runtime owners. Those changes are semantic architecture work with real traversal and allocation shape; no single admission counter, byte-identical A/B, or speed claim would describe them truthfully.",
       "cases": [
         "ValueSlot-array-evaluation-and-authored-layout",
@@ -232,14 +235,15 @@ a blanket optimization exemption or a new active architecture queue.
         "defineFunction-typed-positional-named-and-lazy-binding",
         "mixin-dispatch-ValueSlot-argument-resolution",
         "ValueLayout-provenance-side-table",
-        "preserve-mode-calc-result-composition"
+        "preserve-mode-calc-result-composition",
+        "extend-composition-plan-and-fixpoint-solve"
       ],
       "performanceClaim": "none",
       "baseline": {"fixture": "benchmark.less", "phase": "render"}
     },
     "evidence": {
-      "behaviorCommand": ["pnpm", "run", "verify:baseline"],
-      "buildCommand": ["pnpm", "run", "build:release"]
+      "behaviorCommand": ["pnpm", "--filter", "@jesscss/core", "test", "--", "--run", "src/ast/__tests__/value-define-function.test.ts", "src/ast/__tests__/extend-direct-acceptance.test.ts", "src/ast/__tests__/extend-preflight-contract.test.ts", "src/ast/__tests__/value-operate-units.test.ts", "src/tree/__tests__/declaration.test.ts", "src/tree/__tests__/declaration-merge.test.ts"],
+      "buildCommand": ["pnpm", "--filter", "@jesscss/core", "build"]
     }
   },
   {
@@ -310,7 +314,7 @@ a blanket optimization exemption or a new active architecture queue.
       "baseline": {"fixture": "benchmark.less", "phase": "render"}
     },
     "evidence": {
-      "behaviorCommand": ["pnpm", "--filter", "@jesscss/core", "test", "--", "--run"],
+      "behaviorCommand": ["pnpm", "--filter", "@jesscss/core", "test", "--", "--run", "src/tree/__tests__/declaration.test.ts", "src/tree/__tests__/declaration-merge.test.ts"],
       "buildCommand": ["pnpm", "--filter", "@jesscss/core", "build"]
     }
   },

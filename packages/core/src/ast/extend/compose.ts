@@ -10,7 +10,7 @@ import {
   cloneSeg,
   cloneSimple,
   descendantBranch,
-  isSimple,
+  isSimple
 } from './ir.js';
 import type { Branch, Level, Simple } from './ir.js';
 
@@ -18,7 +18,9 @@ function branchHasAmp(b: Branch): boolean {
   for (const seg of b.segs) {
     for (const s of seg.compound.simples) {
       if (s.t === 'text') {
-        if (s.text.includes('&')) return true;
+        if (s.text.includes('&')) {
+          return true;
+        }
       } else if (s.branches.some(branchHasAmp)) {
         return true;
       }
@@ -48,8 +50,12 @@ function substituteAmp(child: Branch, parent: Branch): Branch {
           // Splice `:is(parent)` in place of each `&`, preserving any fused text.
           const parts = s.text.split('&');
           for (let i = 0; i < parts.length; i++) {
-            if (parts[i]!.length > 0) simples.push({ t: 'text', text: parts[i]! });
-            if (i < parts.length - 1) simples.push(isSimple([parent]));
+            if (parts[i]!.length > 0) {
+              simples.push({ t: 'text', text: parts[i]! });
+            }
+            if (i < parts.length - 1) {
+              simples.push(isSimple([parent]));
+            }
           }
         } else {
           simples.push({ t: 'text', text: s.text.split('&').join(parentStr) });
@@ -65,13 +71,17 @@ function substituteAmp(child: Branch, parent: Branch): Branch {
 
 /** The parent token for composing a child under a multi-branch parent. */
 function parentToken(parents: Branch[]): Branch {
-  if (parents.length === 1) return cloneBranch(parents[0]!);
+  if (parents.length === 1) {
+    return cloneBranch(parents[0]!);
+  }
   return descendantBranch([isSimple(parents)]);
 }
 
 /** Compose one child branch under a parent token branch (mirrors serialize). */
 function composeOne(parent: Branch, child: Branch): Branch {
-  if (branchHasAmp(child)) return substituteAmp(child, parent);
+  if (branchHasAmp(child)) {
+    return substituteAmp(child, parent);
+  }
   // Descendant: parent then space then child.
   return { segs: [...parent.segs.map(cloneSeg), ...cloneBranch(child).segs] };
 }
@@ -79,7 +89,7 @@ function composeOne(parent: Branch, child: Branch): Branch {
 /** Compose a child selector list under a parent selector list. */
 function composeLevel(childBranches: Branch[], parentBranches: Branch[]): Branch[] {
   const token = parentToken(parentBranches);
-  return childBranches.map((c) => composeOne(token, c));
+  return childBranches.map(c => composeOne(token, c));
 }
 
 /**
