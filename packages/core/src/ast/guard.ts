@@ -18,7 +18,7 @@
  * `iscolor(@a)`) reach the evaluator.
  */
 
-import type { ValueNode } from './nodes.js';
+import type { ValueNode, ValueSlot } from './nodes.js';
 import type { EvalModes, List as ValueList, ValueEvaluator, ValueObj } from './value-eval.js';
 
 /** A guard condition tree. Never serialized to CSS — evaluated to a boolean. */
@@ -94,7 +94,10 @@ export function evalGuard(node: GuardNode, deps: GuardEvalDeps): boolean {
  *  operand expression (`@x = default()` compares `@x` against the dispatch decision).
  *  Recurses the structural value shapes an operand can take so a nested/parenthesized
  *  `default()` is still detected. */
-function valueUsesDefault(v: ValueNode): boolean {
+function valueUsesDefault(v: ValueSlot): boolean {
+  if (!('type' in v)) {
+    return v.some(valueUsesDefault);
+  }
   switch (v.type) {
     case 'FunctionCall':
       return v.name.toLowerCase() === 'default' || v.args.some(valueUsesDefault);

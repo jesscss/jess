@@ -1993,3 +1993,37 @@ normalization. Less `extract` and Sass `list.nth`/`set-nth` each implement their
 own one-based conversion, truncation/flooring, non-finite, negative, and bounds
 rules inside the universal callable contract. A shared core accessor must not
 silently choose one language’s policy.
+
+## Aggressive Cutting Self-Prosecution — recursive guard value slots
+
+- Architecture surface: the private `guardUsesDefault` classifier now accepts
+  the truthful `ValueSlot` shape rather than pretending every operand slot is a
+  node.
+- Separation/duplication: no resolver, evaluator, renderer, scanner, or second
+  guard model was added; the existing classifier remains the single owner.
+- Cumulative node weight: none. The change allocates no node, wrapper, array,
+  side map, or placement state.
+- New traversal: `guardUsesDefault` now follows a nested raw `ValueSlot[]`
+  while it is already scanning a guard operand for `default()`. The public value
+  model permits this nesting, so stopping at the array was both type-invalid and
+  semantically incomplete. The scan remains short-circuiting and runs only for
+  mixin guard classification; no render-wide walk was added.
+- New node/materialization: none.
+- Render path: unchanged. No value is resolved or materialized for output.
+- Helper/API surface: none. The existing private recursive function accepts
+  the truthful `ValueSlot` input directly.
+- Metadata mutations: none.
+- Review-flagged diff tokens: the added `some` is the required short-circuit
+  descent into a nested slot array already admitted by the public type; it does
+  not collect or copy the array.
+- Behavior evidence: `src/ast/__tests__/guard.test.ts` proves both a nested
+  positive `default()` case and an otherwise-identical negative case.
+- Build evidence: strict `tsc -p packages/core/tsconfig.build.json --noEmit`
+  removes all three prior `ast/guard.ts` diagnostics (core source count
+  342 to 339).
+- Boundary evidence: no public export or call signature changes; only the
+  private classifier's input truthfully widens from `ValueNode` to `ValueSlot`.
+- Evidence: focused behavior, strict-build, and boundary evidence are listed
+  above; no benchmark was run because this pass makes no performance claim.
+- Verdict: accepted correctness fix. Performance was not measured and no speed
+  claim is made.
