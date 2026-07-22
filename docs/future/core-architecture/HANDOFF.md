@@ -329,9 +329,10 @@ Do not ordinary-merge or rebase `dev` into `alpha`.
 For the refresh, first create a recovery ref such as
 `git branch alpha-pre-alpha9-cut alpha` and work in an isolated `alpha`
 worktree. Import the endpoint tree with a two-tree patch
-(`git diff --binary alpha..dev` and `git apply --index`), then run
-`node scripts/release/restore-alpha-package-versions.mjs --from alpha-pre-alpha9-cut`.
-That tool restores only each `packages/*/package.json` `.version` field from the
+(`git diff --binary alpha-pre-alpha9-cut..dev` and `git apply --index`), then run
+`node scripts/release/restore-alpha-package-versions.mjs --from alpha-pre-alpha9-cut --stage`.
+The required `--stage` makes that tool restore and stage only each
+`packages/*/package.json` `.version` field from the
 recovery ref; it must not restore whole manifest files. The alpha snapshot takes
 all current `dev` manifest fields (including runtime/peer/dev dependencies,
 exports, and publish configuration) and retains only recovery alpha versions
@@ -461,7 +462,22 @@ alpha.9 is actually available from npm.
 - **Evidence:** the alpha command above was run at `564b65615`; the full log
   records the named gates and the dry-run package closure. No performance claim
   is derived from the release verification.
-  This is a current baseline, not a matched-version performance claim.
+  This is a historical baseline, not a matched-version performance claim.
+
+### Aggressive Cutting Self-Prosecution — staged alpha-version recovery
+
+- **New traversal / node / render path:** none. This is a cold release helper;
+  it performs no compiler work and creates no AST/runtime state.
+- **Helper/API surface:** `--stage` is a required CLI action, not a public
+  package API. It stages exactly the manifest paths whose version fields the
+  helper just restored, preventing a two-tree snapshot commit from retaining
+  the imported dev versions by omission.
+- **Metadata mutations:** the helper still rewrites only `.version` and now
+  updates only those same paths in Git's release-snapshot index. It does not
+  stage unrelated files or restore any other manifest field.
+- **Evidence:** the release-script integration test asserts the restored
+  version and imported manifest fields are both present in the index with no
+  unstaged manifest delta. No performance claim is made.
 
 Per-change-slice over-engineering review follows the protocol in
 [`less-v5-alpha-readiness.md`](../../less-v5-alpha-readiness.md#per-change-slice-review-protocol).

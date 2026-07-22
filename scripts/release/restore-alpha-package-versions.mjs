@@ -5,7 +5,7 @@
  * dev manifests in every other field.
  *
  * Usage:
- *   node scripts/release/restore-alpha-package-versions.mjs --from alpha-pre-alpha9-cut
+ *   node scripts/release/restore-alpha-package-versions.mjs --from alpha-pre-alpha9-cut --stage
  */
 import { spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -22,6 +22,7 @@ function fail(message) {
 
 function parseArgs(argv) {
   let from = null;
+  let stage = false;
   for (let index = 2; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === '--from') {
@@ -29,15 +30,22 @@ function parseArgs(argv) {
       index += 1;
       continue;
     }
+    if (arg === '--stage') {
+      stage = true;
+      continue;
+    }
     if (arg === '--help' || arg === '-h') {
-      return { help: true, from: null };
+      return { help: true, from: null, stage: false };
     }
     throw new Error(`Unknown argument '${arg}'.`);
   }
   if (!from) {
     throw new Error('Missing required --from <recovery-ref>.');
   }
-  return { help: false, from };
+  if (!stage) {
+    throw new Error('Missing required --stage; restored manifest versions must enter the controlled snapshot index.');
+  }
+  return { help: false, from, stage };
 }
 
 function gitShow(rootDir, ref, relativePath) {
@@ -57,11 +65,26 @@ function gitShow(rootDir, ref, relativePath) {
   return result.stdout;
 }
 
+function gitAdd(rootDir, paths) {
+  if (paths.length === 0) {
+    return;
+  }
+  const result = spawnSync('git', ['add', '--', ...paths], {
+    cwd: rootDir,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+    shell: process.platform === 'win32'
+  });
+  if (result.status !== 0) {
+    throw new Error(`Could not stage restored package manifests: ${result.stderr.trim() || 'git add failed'}`);
+  }
+}
+
 function main() {
   const { help, from } = parseArgs(process.argv);
   if (help) {
     console.log(
-      'Usage: node scripts/release/restore-alpha-package-versions.mjs --from <recovery-ref>'
+      'Usage: node scripts/release/restore-alpha-package-versions.mjs --from <recovery-ref> --stage'
     );
     return;
   }
@@ -69,6 +92,7 @@ function main() {
   const rootDir = process.cwd();
   const packages = listWorkspacePackages(rootDir);
   let changed = 0;
+  const changedPaths = [];
   for (const pkg of packages.values()) {
     const relativePath = path
       .relative(rootDir, pkg.packageJsonPath)
@@ -88,14 +112,16 @@ function main() {
       `${JSON.stringify(restoredManifest, null, 2)}\n`
     );
     changed += 1;
+    changedPaths.push(relativePath);
     console.log(
       `${relativePath}: ${importedManifest.version ?? '(missing)'} -> ${
         restoredManifest.version
       }`
     );
   }
+  gitAdd(rootDir, changedPaths);
   console.log(
-    `Preserved recovery alpha versions in ${changed} package manifest(s); all other fields remain imported.`
+    `Preserved and staged recovery alpha versions in ${changed} package manifest(s); all other fields remain imported.`
   );
 }
 
