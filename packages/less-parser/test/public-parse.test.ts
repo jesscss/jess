@@ -115,16 +115,19 @@ describe('public Less parse()', () => {
     );
   });
 
-  it('keeps direct declarations in one flattened parent block across a nested rule', () => {
+  it('preserves declaration and nested-rule source order when collapsing nesting', () => {
     const document = parse('.parent { before: one; .child { inside: two; } after: three; }');
 
     expect(serialize(document, { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css).toBe(
       '.parent {\n'
       + '  before: one;\n'
-      + '  after: three;\n'
       + '}\n'
       + '.parent .child {\n'
       + '  inside: two;\n'
+      + '}\n'
+      // Moving `after` ahead of the child would change cascade order.
+      + '.parent {\n'
+      + '  after: three;\n'
       + '}\n'
     );
   });
