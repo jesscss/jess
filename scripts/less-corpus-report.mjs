@@ -30,7 +30,7 @@ const BATCH_TIMEOUT_MS = 180_000;
 const tmp = mkdtempSync(path.join(tmpdir(), 'less-corpus-'));
 
 function runVitest(env, timeoutMs) {
-  return new Promise(resolve => {
+  return new Promise((resolve) => {
     const child = spawn(vitestBin, ['run', sliceTest, '--no-file-parallelism'], {
       cwd: jessDir,
       detached: true, // own process group so we can SIGKILL vitest + its workers
@@ -40,19 +40,35 @@ function runVitest(env, timeoutMs) {
     let killed = false;
     const timer = setTimeout(() => {
       killed = true;
-      try { process.kill(-child.pid, 'SIGKILL'); } catch { /* already gone */ }
+      try {
+        process.kill(-child.pid, 'SIGKILL');
+      } catch { /* already gone */ }
     }, timeoutMs);
-    child.on('exit', () => { clearTimeout(timer); resolve({ killed }); });
-    child.on('error', () => { clearTimeout(timer); resolve({ killed: true }); });
+    child.on('exit', () => {
+      clearTimeout(timer);
+      resolve({ killed });
+    });
+    child.on('error', () => {
+      clearTimeout(timer);
+      resolve({ killed: true });
+    });
   });
 }
 
 function readJsonl(file) {
-  if (!existsSync(file)) return [];
+  if (!existsSync(file)) {
+    return [];
+  }
   return readFileSync(file, 'utf8')
     .split('\n')
     .filter(Boolean)
-    .map(l => { try { return JSON.parse(l); } catch { return null; } })
+    .map((l) => {
+      try {
+        return JSON.parse(l);
+      } catch {
+        return null;
+      }
+    })
     .filter(Boolean);
 }
 
@@ -88,7 +104,10 @@ while (queue.length) {
 
   let advanced = 0;
   for (const job of slice) {
-    if (doneFiles.has(job.file)) { advanced++; continue; }
+    if (doneFiles.has(job.file)) {
+      advanced++;
+      continue;
+    }
     // first not-done in a spawned slice = the fixture the child died on
     results.push({ file: job.file, kind: job.kind, outcome: killed ? 'timeout' : 'crash', detail: 'child died here (OOM/hang)' });
     advanced++;
