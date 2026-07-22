@@ -198,6 +198,14 @@ Current verification snapshot for this candidate:
   blocker is a valid matched generated-bundle A/B, not a release timing
   threshold: the current grammar requires `composeLeaf` absent from Parseman
   0.27, and generated reducer IDs vary with absolute worktree paths.
+- Serial rebuild-and-measure evidence at `66c700d06` is now reproducible:
+  `benchmark.less` parses to a 677-child `Stylesheet` (JSON 946,987 bytes,
+  SHA-256 `8e3a371bd286ff2682ee08d56c451274a94b14203dbe8de68ad2057aa6cc13c`)
+  and renders to 122,723 bytes (SHA-256
+  `2ab6d3fd8f322df0f0be7c1a481b528ec50a7fb035604b744c7543397d56b3fe`). With
+  serialized builds and 20 warmups plus 3×45 samples, the public compiler
+  round median is 74.397 ms (usable signal; trimmed median 75.915 ms).
+  This is a current baseline, not a matched-version performance claim.
 
 Per-change-slice over-engineering review follows the protocol in
 [`less-v5-alpha-readiness.md`](../../less-v5-alpha-readiness.md#per-change-slice-review-protocol).
