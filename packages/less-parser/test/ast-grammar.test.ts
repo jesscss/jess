@@ -610,6 +610,64 @@ describe('Less AST grammar facts', () => {
     );
   });
 
+  it('left-factors preserved slash value pieces without changing their direct AST facts', () => {
+    const source = [
+      '@trivia: 12px / 1.5 / 3;',
+      '.case {',
+      '  bare: 12px;',
+      '  slash: 12px/1.5;',
+      '  multi: 12px/1.5/3;',
+      '  function: min(12px/1.5/3, 2px);',
+      '}'
+    ].join('\n');
+    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(result.value).toMatchObject({
+      type: 'Stylesheet', children: [
+        {
+          type: 'VariableDeclaration', name: 'trivia', value: {
+            type: 'SpacedValue',
+            parts: [
+              { type: 'Dimension', src: '12px' }, { type: 'Keyword', src: '/' }, { type: 'Dimension', src: '1.5' },
+              { type: 'Keyword', src: '/' }, { type: 'Dimension', src: '3' }
+            ],
+            separators: [' ', ' ', ' ', ' ']
+          }
+        },
+        {
+          type: 'Rule', body: [
+            { type: 'Declaration', name: 'bare', value: { type: 'Dimension', src: '12px' } },
+            {
+              type: 'Declaration', name: 'slash', value: [
+                { type: 'Dimension', src: '12px' }, { type: 'Keyword', src: '/' }, { type: 'Dimension', src: '1.5' }
+              ]
+            },
+            {
+              type: 'Declaration', name: 'multi', value: [
+                { type: 'Dimension', src: '12px' }, { type: 'Keyword', src: '/' }, { type: 'Dimension', src: '1.5' },
+                { type: 'Keyword', src: '/' }, { type: 'Dimension', src: '3' }
+              ]
+            },
+            {
+              type: 'Declaration', name: 'function', value: {
+                type: 'FunctionCall', name: 'min', args: [{ type: 'Operation' }, { type: 'Dimension', src: '2px' }]
+              }
+            }
+          ]
+        }
+      ]
+    });
+
+    const malformed = run(
+      lessAstGrammar.LessAstDocument,
+      '.case { malformed: 12px / * 2px; }',
+      { trivia: lessAstGrammar.whitespace }
+    );
+    expect(malformed.ok && malformed.unconsumedFrom === null).toBe(false);
+  });
+
   it('constructs zero-argument variable calls as final Reference steps directly', () => {
     const source = '@theme(); .card { @theme(); }';
     const cst = parseLessCst(source);
@@ -2935,7 +2993,13 @@ describe('Less AST grammar facts', () => {
 
     for (const source of ['shadow: rgb(1,\n2);']) {
       const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
-      expect(result.ok && result.unconsumedFrom === null && isStylesheet(result.value)).toBe(false);
+      expect(result.ok && result.unconsumedFrom === null && isStylesheet(result.value)).toBe(true);
+      expect(result.value).toMatchObject({
+        type: 'Stylesheet', children: [{ type: 'Declaration', value: { type: 'FunctionCall', args: [
+          { type: 'Dimension', src: '1' },
+          { type: 'Dimension', src: '2' }
+        ] } }]
+      });
     }
 
     const source = 'shadow: rgb(1, /* note */ 2);';
