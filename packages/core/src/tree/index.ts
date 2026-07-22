@@ -16,12 +16,15 @@ import {
   F_NON_STATIC,
   F_HAS_NODE_CHILD
 } from './node.js';
-import { TreeContext } from '../context.js';
+// Load Context before the tree utility graph. The legacy tree's module cycle
+// relies on this initialization order, but TreeContext is intentionally not
+// re-exported from this public barrel.
+import '../context.js';
 import { compare } from './util/compare.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 
-export { Node, TreeContext, type LocationInfo, F_VISIBLE, F_STATIC, F_NON_STATIC, F_HAS_NODE_CHILD };
+export { Node, type LocationInfo, F_VISIBLE, F_STATIC, F_NON_STATIC, F_HAS_NODE_CHILD };
 export { N } from './node-type.js';
 
 import { Selector } from './selector.js';

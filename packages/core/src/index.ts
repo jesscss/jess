@@ -12,11 +12,9 @@ export * from './tree/index.js';
 export {
   Context,
   DocumentContext,
-  TreeContext,
   type ContextOptions,
   type DocumentContextOptions,
   type SourceContext,
-  type TreeContextOptions,
   type SpineVisitor,
   type SpineVisitorEnter,
   type SpineVisitorExit

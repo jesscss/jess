@@ -1,5 +1,6 @@
 import { sourceSpanOf } from '../util/provenance.js';
-import { TreeContext, List, list, spaced, num, any, op, ref, rules, vardecl, F_STATIC, type Rules as RulesClass } from '../index.js';
+import { List, list, spaced, num, any, op, ref, rules, vardecl, F_STATIC, type Rules as RulesClass } from '../index.js';
+import { TreeContext } from '../../context.js';
 import { Any } from '../any.js';
 import { Context } from '../../context.js';
 import { Node } from '../node.js';
