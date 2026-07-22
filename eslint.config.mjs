@@ -257,5 +257,12 @@ export default tseslint.config([
       '@typescript-eslint/no-unused-vars': 0,
       curly: ['error', 'all']
     }
-  }, globalIgnores(['**/node_modules', '**/lib', '**/dist', 'packages/**/lib', 'packages/**/dist'])
+  }, globalIgnores([
+    '**/node_modules/**',
+    '**/lib/**',
+    '**/dist/**',
+    '**/coverage/**',
+    '.claude/worktrees/**',
+    '.git/worktrees/**'
+  ])
 ]);
