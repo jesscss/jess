@@ -4113,16 +4113,19 @@ or Context deletion lanes.
 
 - Latest pass: the public direct Less AST grammar now reduces interpolated pseudo
   names (`:@{name}` / `::@{name}`), interpolated `:nth-*` arguments
-  (`:nth-child(@{index})`), and quoted interpolation after the CSS `|=`
-  attribute operator as typed selector facts. The namespace-prefix arm now
-  proves it is not consuming `|=`. No selector text is rescanned or reparsed,
-  and no compatibility bridge is added.
+  (`:nth-child(@{index})`), quoted interpolation after the CSS `|=` attribute
+  operator, and leading combinators inside nested functional pseudo selectors
+  as typed selector facts. The namespace-prefix arm now proves it is not
+  consuming `|=`, and the pseudo argument reuses the existing canonical
+  `ComplexSelector.leadingComb` field. No selector text is rescanned or
+  reparsed, and no compatibility bridge is added.
 - Architecture surface: `packages/less-parser/src/ast/grammar.ts` direct
   Parseman reductions and the existing canonical AST selector factories.
 - Separation/duplication: the grammar reuses the existing interpolation and
   selector-simple factories; no alternate selector parser or renderer exists.
 - Cumulative node weight: one existing `SimpleSelector` containing one
-  `Interpolation` payload per authored dynamic pseudo/attribute; no wrapper
+  `Interpolation` payload per authored dynamic pseudo/attribute; one existing
+  `ComplexSelector.leadingComb` fact per relative pseudo argument; no wrapper
   nodes.
 - New traversal: none; the existing compound-selector reduction consumes the
   new atom in its ordinary one-or-more simple-selector sequence.
@@ -4134,10 +4137,10 @@ or Context deletion lanes.
 - Metadata mutations: none; source spans and parent/child relationships remain
   those produced by the canonical AST factories.
 - Behavior evidence: `packages/less-parser/test/ast-grammar.test.ts` passes
-  151/151 and `packages/less-parser/test/public-parse.test.ts` passes 70/70;
-  `selectors.less` advances past the repaired line 121, line 127, and line 139
-  forms and reaches the next independent relative-combinator pseudo gap at line
-  221 (`:has(>.foo)`).
+  152/152 and `packages/less-parser/test/public-parse.test.ts` passes 70/70;
+  the full `selectors.less` fixture now renders without a parse throw (3542
+  bytes vs Less's 3557-byte oracle), with the first remaining byte difference
+  at the unrelated repeated `.foo + .foo` declaration output.
 - Build evidence: `pnpm --filter @jesscss/less-parser build` passes; changed
   parser/test files pass ESLint.
 - Boundary evidence: the existing public `parse()` route returns canonical
@@ -4146,6 +4149,9 @@ or Context deletion lanes.
   bridge, scanner, resolver, or package API.
 - Evidence: the focused parser suites and package build above are the complete
   behavior/build boundary evidence for this bounded selector-family change.
+- Existing recognizer note: the production continues to use the pre-existing
+  `when` boundary lookahead in this pseudo-selector family; this slice adds no
+  handwritten recognizer or new regex.
 - Review-flagged diff tokens: none. No traversal, clone, side map, metadata
   mutation, or routine error-control path was added.
 - Verdict: accepted bounded direct-AST selector grammar correction; the fixture's

@@ -3610,11 +3610,19 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
   );
   const DirectLessStaticPseudoComplex = node<ComplexSelector>(
     'DirectLessStaticPseudoComplex',
-    sequence(g.DirectLessStaticPseudoCompound, many(sequence(not(regex(/[ \t\n\r\f]*when(?![-\w])/i)), g.DirectLessStaticPseudoComplexTail))),
-    children => complexSelector([
-      { compound: requireCompound(children[0]) },
-      ...children.slice(1).filter((tail): tail is ComplexTailFact => typeof tail === 'object' && tail !== null && 'comb' in tail && 'compound' in tail)
-    ])
+    sequence(
+      optional(relativeSelectorCombinator),
+      g.DirectLessStaticPseudoCompound,
+      many(sequence(not(regex(/[ \t\n\r\f]*when(?![-\w])/i)), g.DirectLessStaticPseudoComplexTail))
+    ),
+    (children) => {
+      const head = requireCompound(children.find(isCompound));
+      const leading = children.find(child => isTerminalText(child, '>') || isTerminalText(child, '+') || isTerminalText(child, '~'));
+      return complexSelector([
+        { compound: head },
+        ...children.filter((tail): tail is ComplexTailFact => typeof tail === 'object' && tail !== null && 'comb' in tail && 'compound' in tail)
+      ], leading === undefined ? undefined : requireCombinator(leading));
+    }
   );
   const DirectLessStaticPseudoSelectorTail = node<ComplexSelector>(
     'DirectLessStaticPseudoSelectorTail',

@@ -3531,6 +3531,23 @@ describe('Less AST grammar facts', () => {
     });
   });
 
+  it('retains leading combinators inside nested functional pseudo selectors', () => {
+    const source = ':is(:not(:has(>.foo)), :has(>.foo.bar)) { overflow: clip; }';
+    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(result.value).toMatchObject({
+      type: 'Stylesheet',
+      children: [{ type: 'Rule', selector: { selectors: [{ head: { simples: [
+        { type: 'SimpleSelector', text: ':is(:not(:has(> .foo)),:has(> .foo.bar))' }
+      ] } }] } }]
+    });
+    expect(isStylesheet(result.value) ? serialize(result.value).css : undefined).toBe(
+      ':is(:not(:has(> .foo)),:has(> .foo.bar)) {\n  overflow: clip;\n}\n'
+    );
+  });
+
   it('constructs static non-selector functional pseudos as existing SimpleSelector text', () => {
     const source = '.card:lang(en-US)::part(icon):state(foo[bar]) { color: blue; }';
     const cst = parseLessCst(source);
