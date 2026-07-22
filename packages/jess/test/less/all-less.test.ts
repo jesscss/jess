@@ -158,7 +158,7 @@ const expectedFailureFixtures = new Map<string, string>([
   ['tests-unit/detached-rulesets/detached-rulesets.less', 'detached-ruleset argument closure now matches Less; nested @media query merging still differs'],
   ['tests-unit/functions-each/functions-each.less', 'renders but each() output differs from Less'],
   ['tests-unit/mixins/mixins.less', 'group-selector member call (.bar) now resolves; remaining blocker is same-named nested ruleset calling an outer mixin (.recursion) — nearest-scope-frame lookup does not continue past the self-excluded enclosing ruleset'],
-  ['tests-unit/property-name-interp/property-name-interp.less', 'renders but interpolated property-name output differs from Less'],
+  ['tests-unit/property-name-interp/property-name-interp.less', 'Less5 owner-set rejection of deprecated dash-only @- and @{-} variable names; Less4 deprecation is implemented in unpushed worktree commit db03543d'],
   ['tests-unit/variables/variables.less', 'renders but variable output differs from Less'],
   ['tests-unit/variables-in-at-rules/variables-in-at-rules.less', 'renders but variables-in-at-rules output differs from Less'],
   ['tests-unit/plugin/plugin.less', '@jesscss/plugin-js now auto-wires and the @plugin scripts execute; renders but Jess nests @media (no query merging) where the expected CSS merges queries (non-plugin render gap)'],
