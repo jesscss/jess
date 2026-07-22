@@ -34,6 +34,17 @@ const collect = defineFunction('collect', {
   body: (value, precision, rest) => makeDimension(value.number + precision.number + rest.length, value.unit)
 });
 
+const unnamedPositional = defineFunction('unnamed-positional', {
+  params: [{ kinds: ['Dimension'] }] as const,
+  body: (...args) => {
+    const value = args[0];
+    if (value?.type !== 'Dimension') {
+      throw new TypeError('Expected a Dimension');
+    }
+    return makeDimension(value.number * 2, value.unit);
+  }
+});
+
 describe('value-domain defineFunction', () => {
   it('is a callable plain function and keeps registry invocation positional-only', () => {
     expect(typeof twice).toBe('function');
@@ -81,6 +92,18 @@ describe('value-domain defineFunction', () => {
     expect(collect(makeDimension(2, 'px'), { rest: [makeDimension(4)] })).toEqual(makeDimension(4, 'px'));
     expect(collect({ value: makeDimension(2, 'px'), rest: [makeDimension(4), makeDimension(5)] })).toEqual(makeDimension(5, 'px'));
     expect(collect(makeDimension(2, 'px'), makeDimension(3), makeDimension(4), makeDimension(5))).toEqual(makeDimension(7, 'px'));
+  });
+
+  it('dispatches unnamed positional specs without requiring record metadata', () => {
+    const args = makeList([makeDimension(2, 'px')]);
+    const ctx = {
+      modes: { mathMode: 'parens-division', unitMode: 'preserve', functionMode: 'preserve', equalityMode: 'less' },
+      stringify: value => value.bytes
+    } as const;
+    expect(invoke(unnamedPositional, makeDimension(2, 'px'))).toEqual(makeDimension(4, 'px'));
+    const registry = createFnRegistry();
+    registry.register(unnamedPositional);
+    expect(registry.dispatch('unnamed-positional', args, ctx)).toEqual(makeDimension(4, 'px'));
   });
 
   it('infers typed value and lazy-thunk body arguments from the parameter tuple', () => {

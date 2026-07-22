@@ -138,7 +138,7 @@ function checkedLazy<K extends ParamSpec['kinds']>(
   };
 }
 
-function bindDirect(name: string, params: readonly NamedParam[], inputs: readonly (DirectInput | undefined)[]): unknown[] {
+function bindDirect(name: string, params: readonly ParamSpec[], inputs: readonly (DirectInput | undefined)[]): unknown[] {
   const out: unknown[] = [];
   let offset = 0;
   for (let index = 0; index < params.length; index++) {
@@ -164,7 +164,7 @@ function bindDirect(name: string, params: readonly NamedParam[], inputs: readonl
         out.push(undefined);
         continue;
       }
-      throw new TypeError(`${name}: missing required argument ${param.name}`);
+      throw new TypeError(`${name}: missing required argument ${param.name ?? index}`);
     }
     out.push(param.lazy
       ? checkedLazy(name, index, param.kinds, input)
@@ -206,18 +206,19 @@ export function defineFunction(
       if (definition.variadic) {
         return definition.body(list, ctx);
       }
-      if (!hasNamedParams(definition)) {
-        throw new TypeError(`${name}: positional functions require named parameter metadata`);
-      }
       const positional = definition.params.map((param, index) => param.lazy
         ? () => list.value[index]!
         : list.value[index]);
       return Reflect.apply(definition.body, undefined, bindDirect(name, definition.params, positional));
     }
-    if (!hasNamedParams(definition)) {
-      throw new TypeError(`${name}: positional functions require named parameter metadata`);
+    const inputs = args.map(toDirectInput);
+    const named = hasNamedParams(definition);
+    if (inputs.some(isRecord) && !named) {
+      throw new TypeError(`${name}: named records require parameter names`);
     }
-    const positional = positionalFromInputs(definition.params, args.map(toDirectInput));
+    const positional = named
+      ? positionalFromInputs(definition.params, inputs)
+      : inputs.filter((input): input is DirectInput => !isRecord(input));
     if (definition.variadic) {
       throw new TypeError(`${name}: direct calls to variadic functions require a List and FnCtx`);
     }
