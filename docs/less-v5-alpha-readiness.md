@@ -7,19 +7,47 @@ before that runbook should be used. Features **deliberately deferred past this
 alpha** (config-lane URL/import handling, source maps, …) are sequenced in
 [`less-v5-release-plan.md`](./less-v5-release-plan.md).
 
-## Recorded direct-Less benchmark (superseded pending clean rerun; 2026-07-21)
+## Historical direct-Less benchmark (not an acceptance gate; 2026-07-21)
 
-These measurements are retained as reproducibility evidence, but are not the
-current release baseline. They were captured before the present migration
-worktree was clean and must be superseded by one matched, clean build before
-they can be used as an alpha gate. The public route is a built direct parser on
-Parseman `0.28.0`; older 20–30 ms source-driver and legacy-tree numbers measured
-different work and are not an A/B.
+These measurements are retained as reproducibility evidence only. They were
+captured before the present migration worktree was clean and must not be used
+as an alpha gate. The current clean baseline and the open performance-
+comparison blocker are recorded in the performance section of
+[`HANDOFF.md`](./future/core-architecture/HANDOFF.md). The public route is a
+built direct parser on Parseman `0.28.0`; older 20–30 ms source-driver and
+legacy-tree numbers measured different work and are not an A/B.
 
 | Phase | Protocol and identity | Result |
 | --- | --- | --- |
 | Direct parse | `packages/less-parser/lib/index.js`: SHA-256 `52d88a95557a821815d9f15f2d6ab05bbb5c64a55f0189fb97a050d7aea50285`, 1,797,831 bytes; `benchmark.less`, 106,802 bytes; Node v24.11.1 arm64; 20 warmups + 3×45 samples | 63.321 ms median (p25 61.776, p75 64.487); `Stylesheet` JSON SHA-256 `2ba996a1c46eb6d77ce8f1748b35d1135848c128104e00f46dadf7e9651c53bd` (957,390 bytes). |
 | Public compiler | `node scripts/measure-less-hotpath.mjs --fixture packages/jess/benchmark/benchmark.less --iterations 45 --warmup 20 --repeat 3 --trim 0.1 --json`; built Jess/Less-plugin chain | 77.492 ms round-median across 135 samples (usable 0.78% round RSD); CSS SHA-256 `ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6` (122,390 bytes). |
+
+The remaining benchmark blocker is evidence quality, not a timing threshold:
+there is no valid matched Parseman 0.27/0.28 generated-bundle A/B yet. The
+current grammar requires `composeLeaf`, which the 0.27 package does not export,
+and generated reducer identifiers include the absolute worktree path. Until a
+matched, clean artifact protocol exists, timing movement is reported as a
+baseline only and never as a performance acceptance claim.
+
+## Current verification snapshot (2026-07-22)
+
+- Core behavior: the complete `@jesscss/core` suite is **3,192 passed, 9
+  skipped, and 2 todo**. The skipped/todo cases remain visible and are not
+  converted into passing evidence.
+- Source quality: the repository-wide production ESLint audit reports **0
+  errors and 317 warnings**. The warnings are tracked lint debt; there is no
+  current ESLint-error blocker.
+- Strict types: `pnpm run verify:types` reports **4 diagnostics**, all four
+  parser-entry `FusedRule` declaration mismatches against published Parseman
+  `0.28.0`. The prepared Parseman `0.28.1` release-branch fix removes these
+  four diagnostics, but it is not yet published or consumed here. No claim of
+  an all-package strict-type pass is valid until that package is published,
+  installed, and the parser packages are rebuilt.
+- Alpha closure: `scripts/release/alpha-allowlist.json` contains **18
+  allowlisted runtime packages**. `rollup-plugin-jess` is intentionally
+  excluded because it depends on `jess` and is not part of the runtime closure.
+  The allowlist and packed-consumer checks must still pass on the final
+  `2.0.0-alpha.9` snapshot.
 
 Normal public parse/compile provides neither Parseman coverage nor trace
 instrumentation. Diagnostic coverage/trace uses a separate macro transform and
@@ -70,6 +98,25 @@ identity are recorded, but they establish the current warm-path signal.
 - `[?]` needs owner decision before implementation should proceed
 - `[x]` complete with evidence linked in this file
 
+## Per-change-slice review protocol
+
+Every delegated change slice gets two separate reviews before integration:
+
+1. Run the slice's focused behavior tests, build/type checks, ESLint, and any
+   applicable parser-boundary or aggressive-cutting verification.
+2. Review only that diff for over-engineering using the Ponytail rubric. A
+   callable Ponytail plugin invocation must be labeled **Ponytail invocation**
+   and include one finding per line using `delete`, `stdlib`, `native`,
+   `yagni`, or `shrink`, followed by `net: -N lines possible.`
+3. In this workspace/session, Ponytail is not exposed as a callable tool, so
+   an agent may instead report **Ponytail-style manual review**. That is an
+   explicitly manual application of the cached rubric, not a claim that the
+   plugin ran; it must still say `Lean already. Ship.` when no safe cut is
+   found.
+4. Disposition every finding before the slice is integrated. Ponytail is an
+   over-engineering review only; correctness, type, lint, performance, and
+   release gates remain independent and cannot be replaced by it.
+
 ## Alpha Release Gates
 
 The first alpha is **not** a promise of complete Less 4.x corpus parity. It is
@@ -90,13 +137,15 @@ The alpha blocks only on these advertised correctness and release-safety gates:
   smoke/compatibility tests; and
 - a release-note known-limitations section that links the complete inventory and
   states the unsupported or divergent behavior honestly.
-- `[~]` **Strict source quality is blocking.** The current integration candidate
-  with published Parseman 0.28.0 still reports 245 strict build-config type
-  diagnostics (241 core plus four parser-entry `FusedRule` diagnostics) and
-  1,357 bounded production lint findings. Prepared but unpublished Parseman
-  0.28.1 removes those four parser-entry diagnostics; the new
-  `release:alpha:check` steps still fail on the remaining source debt. Neither
-  count is waived or hidden by the bundlers' `--noCheck` builds.
+- `[~]` **Strict source quality is blocking until the Parseman fix is
+  published.** The current integration candidate with published Parseman
+  `0.28.0` reports four strict parser-entry `FusedRule` diagnostics and no
+  core strict-type diagnostics. Prepared but unpublished Parseman `0.28.1`
+  removes those four declaration mismatches; after publication Jess must
+  install it, rebuild the parser packages, and rerun `verify:types`. The
+  production ESLint audit currently reports 0 errors and 317 warnings. The
+  warnings are tracked debt, not an ESLint-error gate, and neither the type
+  diagnostics nor warnings may be hidden by bundlers' `--noCheck` builds.
 - `[x]` **F5 deferred CSS color-call gate.** Through the public Less/Jess route,
   CSS-shaped `rgb()`/`rgba()`/`hsl()`/`hsla()` calls with three or more argument
   slots remain authored, verbatim CSS calls even under `functionMode: 'error'`;
@@ -349,15 +398,20 @@ earlier, before a manual publish attempt.
 
 ## Evidence Log
 
-- 2026-07-21: Made source quality an explicit blocking alpha gate rather than
-  inferring it from release builds that use `--noCheck`. The dependency-ordered
-  `verify:types` audit on the current integration candidate with published
-  Parseman 0.28.0 fails with 245 diagnostics: 241 in core plus four parser-entry
-  `FusedRule` diagnostics. Prepared but unpublished Parseman 0.28.1 removes
-  those four entry diagnostics; it is not the release candidate dependency yet.
-  The bounded `lint:production` audit fails with 1,357 findings. These are
-  measured burn-down baselines, not accepted debt: `release:alpha:check` now
-  stops on either result.
+- 2026-07-21 (historical baseline, superseded below): Made source quality an
+  explicit blocking alpha gate rather than inferring it from release builds
+  that use `--noCheck`. The dependency-ordered `verify:types` audit on the
+  then-current integration candidate with published Parseman 0.28.0 reported
+  245 diagnostics: 241 in core plus four parser-entry `FusedRule` diagnostics.
+  The bounded `lint:production` audit reported 1,357 findings. Those counts are
+  retained as historical burn-down evidence only.
+- 2026-07-22: Reconciled the current source-quality audit: core strict types
+  are clean, four parser-entry `FusedRule` diagnostics remain solely because
+  published Parseman 0.28.0 predates the prepared 0.28.1 declaration fix, and
+  production ESLint reports 0 errors and 317 warnings. The 18-package alpha
+  allowlist and intentionally excluded `rollup-plugin-jess` are now recorded
+  with the current package-closure evidence. The benchmark remains a baseline
+  investigation with no valid matched 0.27/0.28 performance A/B yet.
 - 2026-07-21: Replaced the stale dirty/behind Less package snapshot with the
   clean `5.0.0-alpha.1` release candidate at `1fc6d76b`. Verified
   `HEAD..upstream/master=0`, `npm run test:lessc`, `npm run typecheck`, and the
