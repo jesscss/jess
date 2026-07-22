@@ -42,7 +42,7 @@ export function applyMath(
   return makeDimension(fn(...args.map(normalizeAngle)), outUnit ?? first.unit);
 }
 
-function requireDimension(value: ValueObj): Dimension {
+export function requireDimension(value: ValueObj): Dimension {
   if (value.type !== 'Dimension') {
     throw new TypeError('Expected a dimension value');
   }
