@@ -10,6 +10,20 @@ import lessLightness from '../../less/lightness.js';
 
 let context: Context;
 
+function isDimensionValue(value: unknown): value is Dimension {
+  return typeof value === 'object'
+    && value !== null
+    && 'type' in value
+    && value.type === 'Dimension';
+}
+
+function expectDimension(value: unknown): Dimension {
+  if (!isDimensionValue(value)) {
+    throw new TypeError('Expected a Dimension result.');
+  }
+  return value;
+}
+
 describe('Sass HSL channel functions', () => {
   beforeAll(() => {
     context = new Context();
@@ -84,7 +98,7 @@ describe('Sass HSL channel functions', () => {
     it('matches Less behavior for value and percent unit', () => {
       const color = new Color({ format: 2, hsl: [120, 0.25, 0.5] });
       const sassResult = saturation(color) as Dimension;
-      const lessResult = lessSaturation(color) as Dimension;
+      const lessResult = expectDimension(lessSaturation(color));
 
       expect(sassResult.number).toBe(25);
       expect(sassResult.unit).toBe('%');
@@ -122,7 +136,7 @@ describe('Sass HSL channel functions', () => {
     it('matches Less behavior for value and percent unit', () => {
       const color = new Color({ format: 2, hsl: [120, 0.5, 0.3] });
       const sassResult = lightness(color) as Dimension;
-      const lessResult = lessLightness(color) as Dimension;
+      const lessResult = expectDimension(lessLightness(color));
 
       expect(sassResult.number).toBe(30);
       expect(sassResult.unit).toBe('%');

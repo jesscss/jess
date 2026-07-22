@@ -8,6 +8,20 @@ import adjustHue from '../adjust-hue.js';
 import grayscale from '../grayscale.js';
 import ieHexStr from '../ie-hex-str.js';
 
+function isColorValue(value: unknown): value is Color {
+  return typeof value === 'object'
+    && value !== null
+    && 'type' in value
+    && value.type === 'Color';
+}
+
+function expectColor(value: unknown): Color {
+  if (!isColorValue(value)) {
+    throw new TypeError('Expected a Color result.');
+  }
+  return value;
+}
+
 describe('Sass color wrapper functions', () => {
   it('opacify() and fade-in() increase alpha by the same amount', () => {
     const input = new Color({ rgb: [128, 242, 13], alpha: 0.5 });
@@ -53,7 +67,7 @@ describe('Sass color wrapper functions', () => {
 
   it('ie-hex-str() returns ARGB hex format (#AARRGGBB)', () => {
     const input = new Color({ rgb: [90, 23, 148], alpha: 0.5 });
-    const result = ieHexStr(input) as Color;
+    const result = expectColor(ieHexStr(input));
 
     expect(result.node).toBe('#805a1794');
   });
