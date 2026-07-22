@@ -1,4 +1,4 @@
-import type { Color, Quoted, Fn } from '@jesscss/core/value';
+import type { Fn } from '@jesscss/core/value';
 import { colorRgbRounded, makeColorRgb, defineFunction, HEX, parseHex, namedColor } from '@jesscss/core/value';
 
 const HEX_RE = /^#([A-Fa-f0-9]{8}|[A-Fa-f0-9]{6}|[A-Fa-f0-9]{3,4})$/;
@@ -20,14 +20,17 @@ export const color: Fn = defineFunction('color', {
   params: [{ kinds: ['Color', 'Quoted'] }],
   body: (arg) => {
     if (arg.type === 'Color') {
-      const c = arg as Color;
+      const c = arg;
       const named = typeof c.node === 'string' ? namedColor(c.node) : undefined;
       if (named) {
         return makeColorRgb(colorRgbRounded(c), c.alpha, HEX);
       }
       return c;
     }
-    const value = (arg as Quoted).value;
+    if (arg.type !== 'Quoted') {
+      throw new TypeError('Expected a color or quoted value');
+    }
+    const value = arg.value;
     const named = namedColor(value);
     if (named) {
       return makeColorRgb(named.rgb, named.alpha, HEX);
