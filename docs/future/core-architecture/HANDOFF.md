@@ -1518,30 +1518,32 @@ a phase attribution: the Compiler measurement also includes Context/plugin,
 document, evaluation, and rendering work. It does establish that direct parse
 is the dominant measured phase on this fixture.
 
-### Current direct Less baseline (2026-07-22; evidence refresh, no A/B claim)
+### Current direct Less baseline (verified 2026-07-22; no A/B claim)
 
-A clean rebuilt `packages/less-parser/lib/index.js` was measured against the
-same `benchmark.less` source with Node v24.11.1 arm64, 20 warmups, and three
-45-sample rounds. The generated bundle is 1,821,274 bytes with SHA-256
-`13a6325c2b3dc517c3ce1374266aa94b611403ec3072ec558ee9088ee7660fad`. Direct
-`parse(source)` returned 677 children; its stable JSON snapshot was 946,987
-bytes with SHA-256
-`8e3a371bd286ff2682ee08d56c451274a94b14203dbe8de68ad2057aa6cc13c3`. The
-round medians were 64.816, 63.603, and 65.092 ms; the round median is
-**64.816 ms**. This supersedes the prior pending-clean-rerun parse number as a
-current baseline only. It is not a comparison against 0.26/0.27 and does not
-isolate a cause for the change.
+The current built direct parser artifact is
+`packages/less-parser/lib/index.js`, 1,827,807 bytes, SHA-256
+`a08118e3232766447c327950eda1909ac11b0e6b35051acabdfab21ae03438a1`. Against
+the 106,802-byte `benchmark.less` fixture on Node v24.11.1 arm64, 20 warmups
+and three 45-sample rounds produced direct-parse medians of 64.402, 60.319,
+and 60.210 ms; the round median is **60.319 ms**. The returned `Stylesheet`
+has 677 children and its stable JSON snapshot is 946,987 bytes,
+SHA-256 `8e3a371bd286ff2682ee08d56c451274a94b14203dbe8de68ad2057aa6cc13c3`.
 
-The matching public Compiler hot-path refresh used
+The matching public Compiler run was
 `pnpm run measure:less:hotpath -- --fixture packages/jess/benchmark/benchmark.less
---iterations 45 --warmup 20 --repeat 3 --trim 0.1 --json` at commit
-`d7e17390c9f82f150e59f6d4a9c79b6562b1fbdf`. It produced a usable 80.056 ms
-round median (round medians 80.300, 80.056, 80.013 ms). The output remained
-122,390 bytes with SHA-256
-`ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6`. This is
-also a baseline refresh, not an A/B or performance acceptance claim.
+--iterations 45 --warmup 20 --repeat 3 --trim 0.1 --json` at dev commit
+`b3ab56d61acd8d3d2b130f73fec3abbd099c137a`. Its round medians were 74.759,
+82.314, and 73.645 ms; the usable round median is **74.759 ms**. The output
+is 122,723 bytes, SHA-256
+`2ab6d3fd8f322df0fbe7c1a481b528ec50a7fb035604b744c7543397d56b3fe`.
 
-### Latest direct Less performance refresh (2026-07-21; no A/B claim)
+These are current baselines only, not a Parseman-version A/B or a timing
+acceptance claim. The output/hash change from the older 122,390-byte anchor is
+first evidenced with the recursive Less parser argument repair (`212e132ea`),
+before the later strict-unit and Context-option wiring changes; no causal
+performance claim is made for those later changes.
+
+### Superseded direct Less performance refresh (2026-07-21; historical, no A/B claim)
 
 After the subsequent AST/list and F5 work, the rebuilt Less parser artifact is
 1,822,568 bytes with SHA-256
@@ -1552,8 +1554,9 @@ aggregate median **68.38 ms** (p25 66.40, p75 70.42, p90 73.03). The parsed
 stylesheet still has 677 children and the 946,987-byte snapshot is unchanged
 (SHA-256 `8e3a371bd286ff2682ee08d56c451274a94b14203dbe8de68ad2057aa6cc13c`).
 The public Compiler hot-path round median was **85.86 ms** under the same
-protocol, with the canonical 122,390-byte CSS output unchanged (SHA-256
-`ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6`).
+protocol, with the then-current 122,390-byte CSS output. This record and its
+`ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6` hash are
+historical and superseded by the current 122,723-byte output above.
 
 Fresh V8 sampling over 150 direct parses attributed 8,903/10,165 samples
 (87.57%) to generated Less-bundle frames, 377 (3.71%) to GC, and 246 (2.42%)
@@ -1686,12 +1689,12 @@ safety remains a separate, later release-check responsibility.
 | Canonical engine | `ast/{at-rule,evaluator,mixin-dispatch,value-*.ts,nodes.ts,serialize.ts}`, `context.ts`, `plugin.ts` | direct acceptance, import, mixin, value, Plugin, and public Compiler suites | individual fact-flow/admission contracts for each added state/traversal plus matched parse-render and render measurements where work is hot. |
 | Extend/provenance placement | `ast/extend/{ir,plan,emit,solve}.ts`, `ast/provenance.ts` | direct extend cases, imported-loop fixture, Bootstrap completion | admission counters for the imported-extend preflight, projection/overlay allocation proof, and Bootstrap plus benchmark non-regression. |
 
-Current compiler-oracle capture, not an A/B claim: public built-artifact
-`benchmark.less`, `collapseNesting: true`, produced 122,390 bytes with SHA-256
-`ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6` in both
-parse-render and render runs (20 warmups, 45 alternating pairs). It is useful as
-the current output anchor only; it does not prove the semantic cutover is
-performance-neutral.
+Historical compiler-oracle captures below use the superseded 122,390-byte
+output (`ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6`).
+They remain evidence for their individual slices, but are not the current
+output anchor and do not prove the semantic cutover is performance-neutral.
+The current output anchor is 122,723 bytes / SHA-256
+`2ab6d3fd8f322df0fbe7c1a481b528ec50a7fb035604b744c7543397d56b3fe` above.
 
 ### Serializer family audit: leaf emission (2026-07-21; no acceptance claim)
 

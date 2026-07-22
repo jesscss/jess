@@ -7,12 +7,13 @@ before that runbook should be used. Features **deliberately deferred past this
 alpha** (config-lane URL/import handling, source maps, …) are sequenced in
 [`less-v5-release-plan.md`](./less-v5-release-plan.md).
 
-## Historical direct-Less benchmark (not an acceptance gate; 2026-07-21)
+## Historical direct-Less benchmark (superseded; not an acceptance gate; 2026-07-21)
 
 These measurements are retained as reproducibility evidence only. They were
 captured before the present migration worktree was clean and must not be used
-as an alpha gate. The current clean baseline and the open performance-
-comparison blocker are recorded in the performance section of
+as an alpha gate or current output oracle. In particular, the 122,390-byte
+`ea918f2d...` CSS and 1,797,831-byte parser artifact are superseded. The
+current clean baseline and the open performance-comparison blocker are recorded in the performance section of
 [`HANDOFF.md`](./future/core-architecture/HANDOFF.md). The public route is a
 built direct parser on Parseman `0.28.0`; older 20–30 ms source-driver and
 legacy-tree numbers measured different work and are not an A/B.
