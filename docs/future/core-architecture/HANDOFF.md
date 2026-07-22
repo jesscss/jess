@@ -4570,8 +4570,12 @@ Aggressive-cutting review for this slice:
   claim; its architectural outcome is one typed AST-v2 value/render path and
   fewer legacy tree-only surfaces.
 
-## Aggressive Cutting Self-Prosecution — Less image IO Fn cutover
+## Less image IO Fn cutover evidence
 
+- The image IO functions now use the canonical typed `Fn` and
+  injected `FnCtx.io` path in their existing Less owners. The removed builtins
+  wrappers and legacy resolver were duplicate tree-era machinery; this pass
+  does not claim a hot-path optimization or a benchmark result.
 - Architecture surface: `image-size`, `image-width`, and `image-height` now
   remain in their existing `packages/fns/src/less/` owners as typed, variadic
   `Fn` callables. They receive one raw typed argument group and the existing
@@ -4610,9 +4614,35 @@ Aggressive-cutting review for this slice:
   dimensions, unreadable assets, raw `List`/`FnCtx` metadata, and plugin-backed
   async asset resolution. This is a semantic-cutover proof, not a speed claim.
 - Review-flagged diff tokens: `[loop/traversal]` is the one selected first-item
-  read and existing bounded image-header parser; `[materialized array/object]`
-  is the semantic two-value raw result for `image-size`; `[node construction]`
-  is absent. No parser, source tree, resolver, or render output is walked or
-  reconstructed by the function layer.
+  read and existing bounded image-header parser; `[array helper]` is that
+  existing `groupItems(value)[0]` structural read; and `[materialized
+  array/object]` is the semantic two-value raw result for `image-size`. `[array
+  spread/materialization]`, `[generator]`, `[inherit/adopt/frozen]`,
+  `[parent/source mutation]`, `[generic defensive read]`, and `[side map/set]`
+  are absent from this image-function cutover. `[routine error control]` is
+  only the selected-callable missing/unsupported-asset error, whose normal
+  behavior remains owned by the existing call-level `functionMode` boundary.
+  `[node construction]` is absent. No parser, source tree, resolver, or render
+  output is walked or reconstructed by the function layer.
+- Behavior evidence: `packages/fns/src/builtins/__tests__/io-fns.test.ts`
+  covers the typed image outputs, unreadable-asset throw, raw argument shape,
+  and injected IO capability; `packages/jess/test/path-resolution.test.ts`
+  covers the public Context path route.
+- Build evidence: the current `@jesscss/fns` build and the alpha release
+  preflight build the rebuilt typed entrypoints; no legacy builtin wrapper is
+  packed as an executable implementation.
+- Boundary evidence: `packages/fns/src/less/index.ts` preserves the public
+  Less callable exports while `packages/fns/src/builtins/index.ts` registers
+  those same owners directly. The public evaluator receives only `Fn` plus
+  `FnCtx.io`; Context remains the source/path dispatcher.
 - Verdict: accepted in-place typed Fn conversion after the old and rebuilt
   output oracle matched. Performance remains unmeasured.
+
+## Obsolete Parseman migration note retired
+
+The root `PARSEMAN_MIGRATION.md` was an unreferenced scanner-first/Chevrotain
+proposal for the removed tree-era parser model. Its remaining ideas are either
+superseded by this handoff, `AGENTS.md`'s direct Parseman grammar boundary, or
+the current parser package documentation; it contained no unique accepted plan.
+The obsolete duplicate is deleted rather than preserved as an archive that
+could be mistaken for current parser architecture.
