@@ -85,6 +85,18 @@ type LoadedPluginModule = {
   readonly functions?: Record<string, NativeLessFunction>;
 };
 
+function isLoadedPluginModule(value: unknown): value is LoadedPluginModule {
+  if (typeof value !== 'object' || value === null) {
+    return false;
+  }
+  if (!('functions' in value) || value.functions === undefined) {
+    return true;
+  }
+  return typeof value.functions === 'object'
+    && value.functions !== null
+    && Object.values(value.functions).every(fn => typeof fn === 'function');
+}
+
 function parseErrorLocation(source: string, error: unknown): { line: number; column: number } {
   const offset = typeof error === 'object' && error !== null && 'offset' in error && typeof error.offset === 'number'
     ? Math.max(0, Math.min(source.length, error.offset))
@@ -304,10 +316,7 @@ export class LessPlugin extends AbstractPlugin {
         ...(fns.length === 0 ? {} : { globalFns: fns }),
         loadPlugin: async ({ specifier, options }) => {
           const loaded = await context.getPluginModule(specifier, options);
-          const module = loaded.module as LoadedPluginModule;
-          const functions = module && typeof module === 'object' && module.functions && typeof module.functions === 'object'
-            ? module.functions
-            : undefined;
+          const functions = isLoadedPluginModule(loaded.module) ? loaded.module.functions : undefined;
           if (!functions) {
             return [];
           }
