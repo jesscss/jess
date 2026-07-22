@@ -380,6 +380,16 @@ function valueChildren(children: readonly unknown[]): ValueNode[] {
   return values;
 }
 
+function optionalValue(value: unknown): ValueNode | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  if (isValue(value)) {
+    return value;
+  }
+  throw new Error('CSS AST grammar produced an invalid optional value.');
+}
+
 /** Reduce authored declaration/value children without flattening recursive
  * ValueSlot arrays. Scalar grammar (calc/query operations) intentionally uses
  * valueChildren above; only component-value and call-argument productions use
@@ -1148,7 +1158,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
     sequence(g.CssAstSyntaxStatementAtRuleName, g.CssAstStatementPrelude, literal(';')),
     (children) => {
       const name = tokenText(children[0]);
-      return atRuleStatement(name, children[1] as ValueNode | null);
+      return atRuleStatement(name, optionalValue(children[1]));
     }
   );
   // This grammar-owned header capture skips comments, strings, and balanced
@@ -1445,12 +1455,12 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
   const CssAstLayerBlock = node(
     'CssAstLayerBlock',
     sequence(g.CssAstSyntaxLayerAtKeyword, g.CssAstAtPrelude, literal('{'), many(choice(g.CssAstComment, g.CssAstAtRuleStatement, g.CssAstConditionalBlock, g.CssAstDescriptorBlock, g.CssAstFontFeatureValuesBlock, g.CssAstScopeBlock, g.CssAstStartingStyleBlock, g.CssAstLayerBlock, g.CssAstPageBlock, g.CssAstKeyframes, g.CssAstDocumentBlock, g.CssAstOpaqueAtRuleBlock, g.CssAstRuleset)), literal('}')),
-    children => atRuleBlock(tokenText(children[0]!), children[1] as ValueNode | null, blockStatements(children))
+    children => atRuleBlock(tokenText(children[0]!), optionalValue(children[1]), blockStatements(children))
   );
   const CssAstNestedLayerBlock = node(
     'CssAstNestedLayerBlock',
     sequence(g.CssAstSyntaxLayerAtKeyword, g.CssAstAtPrelude, literal('{'), many(choice(g.CssAstComment, g.CssAstAtRuleStatement, g.CssAstDeclaration, g.CssAstNestedConditionalBlock, g.CssAstDescriptorBlock, g.CssAstFontFeatureValuesBlock, g.CssAstScopeBlock, g.CssAstNestedStartingStyleBlock, g.CssAstNestedLayerBlock, g.CssAstPageBlock, g.CssAstKeyframes, g.CssAstDocumentBlock, g.CssAstOpaqueAtRuleBlock, g.CssAstRuleset, literal(';'))), literal('}')),
-    children => atRuleBlock(tokenText(children[0]!), children[1] as ValueNode | null, rulesetStatements(children))
+    children => atRuleBlock(tokenText(children[0]!), optionalValue(children[1]), rulesetStatements(children))
   );
   // `@page` accepts only declarations, empty statements, and its sixteen
   // margin-box at-rules. Each margin box is declarations-only as well. The
@@ -1509,7 +1519,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
     'CssAstKeyframes',
     sequence(g.CssAstSyntaxKeyframesAtKeyword, g.CssAstAtPrelude, literal('{'), many(choice(g.CssAstComment, g.CssAstKeyframeBlock)), literal('}')),
     (children) => {
-      return atRuleBlock(tokenText(children[0]), children[1] as ValueNode | null, blockStatements(children));
+      return atRuleBlock(tokenText(children[0]), optionalValue(children[1]), blockStatements(children));
     }
   );
   const CssAstRuleset = node(
@@ -1656,7 +1666,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
       many(choice(g.CssAstComment, g.CssAstAtRuleStatement, g.CssAstDeclaration, g.CssAstNestedConditionalBlock, g.CssAstDescriptorBlock, g.CssAstFontFeatureValuesBlock, g.CssAstScopeBlock, g.CssAstNestedStartingStyleBlock, g.CssAstNestedLayerBlock, g.CssAstPageBlock, g.CssAstKeyframes, g.CssAstDocumentBlock, g.CssAstOpaqueAtRuleBlock, g.CssAstRuleset, literal(';'))),
       literal('}')
     ),
-    children => atRuleBlock(tokenText(children[0]!), children[1] as ValueNode | null, rulesetStatements(children))
+    children => atRuleBlock(tokenText(children[0]!), optionalValue(children[1]), rulesetStatements(children))
   );
   const CssAstStartingStyleBlock = node(
     'CssAstStartingStyleBlock',
@@ -1667,7 +1677,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
       many(choice(g.CssAstComment, g.CssAstAtRuleStatement, g.CssAstConditionalBlock, g.CssAstDescriptorBlock, g.CssAstFontFeatureValuesBlock, g.CssAstScopeBlock, g.CssAstLayerBlock, g.CssAstStartingStyleBlock, g.CssAstPageBlock, g.CssAstKeyframes, g.CssAstDocumentBlock, g.CssAstOpaqueAtRuleBlock, g.CssAstRuleset)),
       literal('}')
     ),
-    children => atRuleBlock(tokenText(children[0]), children[1] as ValueNode | null, blockStatements(children))
+    children => atRuleBlock(tokenText(children[0]), optionalValue(children[1]), blockStatements(children))
   );
   const CssAstNestedStartingStyleBlock = node(
     'CssAstNestedStartingStyleBlock',
@@ -1678,7 +1688,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
       many(choice(g.CssAstComment, g.CssAstAtRuleStatement, g.CssAstDeclaration, g.CssAstNestedConditionalBlock, g.CssAstDescriptorBlock, g.CssAstFontFeatureValuesBlock, g.CssAstScopeBlock, g.CssAstNestedStartingStyleBlock, g.CssAstNestedLayerBlock, g.CssAstPageBlock, g.CssAstKeyframes, g.CssAstDocumentBlock, g.CssAstOpaqueAtRuleBlock, g.CssAstRuleset, literal(';'))),
       literal('}')
     ),
-    children => atRuleBlock(tokenText(children[0]), children[1] as ValueNode | null, rulesetStatements(children))
+    children => atRuleBlock(tokenText(children[0]), optionalValue(children[1]), rulesetStatements(children))
   );
   const CssAstDocumentBlock = node(
     'CssAstDocumentBlock',
