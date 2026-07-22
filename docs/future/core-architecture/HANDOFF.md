@@ -277,15 +277,16 @@ section is the authoritative full-scope companion to the compact task goal.
   Less tarball with the 18-package local Jess alpha closure, rejects a Jess
   `lessc` bin, and proves clean-install `lessc` file, stdin, import, and error
   behavior. This is real built-artifact evidence; it does not publish.
-- A guarded real Less release still cannot start: generated benchmark archives,
-  result files, and a tarball remain untracked, so its clean-worktree guard
-  rejects the checkout; local `alpha` is three commits ahead of `origin/alpha`,
-  while the release guard requires an exact remote match; and
-  `jess@2.0.0-alpha.9` is not yet available from npm. The external `alpha` tip
-  is currently zero commits behind `origin/master`. Once those prerequisites
-  are met, Less's own `prepublishOnly` runs typecheck, distribution build, and
-  the built `lessc` alpha test. Do not substitute a historical raw test-runner
-  count for those release gates.
+- The external Less worktree is now clean, but a guarded real release still
+  cannot start: local `alpha` is three commits ahead of `origin/alpha`, while
+  the release guard requires an exact remote match; `jess@2.0.0-alpha.9` is not
+  yet available from npm; and owner-reviewed Less v5 alpha release notes must
+  make the known limitations discoverable. The external `alpha` tip is
+  currently zero commits behind `origin/master`. After the local commits are
+  pushed and Jess is registry-available, run the registry-backed consumer proof
+  in addition to the local-tarball proof; then Less's own `prepublishOnly` runs
+  typecheck, distribution build, and the built `lessc` alpha test. Do not
+  substitute a historical raw test-runner count for those release gates.
 - Neither `jess@2.0.0-alpha.9` nor `less@5.0.0-alpha.1` is on npm. Do not
   publish Less until Jess alpha.9 is published, Less has been rebuilt/relinked
   against that exact package, and a publish-shaped clean-consumer install has
