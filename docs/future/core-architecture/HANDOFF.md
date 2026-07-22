@@ -1434,6 +1434,47 @@ coverage/trace/composeLeaf hooks are absent from normal output. No parser
 performance acceptance or regression claim is made until a matched Parseman
 0.27/0.28 generated-bundle A/B exists.
 
+### Clean Parseman 0.28 identity refresh (2026-07-22; no A/B claim)
+
+The clean detached `parseman@0.28.0` worktree and current `c53c001bb` worktree
+were rebuilt sequentially and measured on the same Apple arm64 host with Node
+v24.11.1, `benchmark.less` (106,802 bytes), and 20 warmups followed by three
+45-sample rounds. The detached direct parser's round medians were 60.205,
+60.697, and 61.305 ms (round median **60.697 ms**); the current `c53c001bb`
+parser's were 61.613, 60.539, and 61.084 ms (round median **61.084 ms**).
+Both returned 677-child `Stylesheet` documents with the same stable 946,987-byte
+JSON snapshot, SHA-256
+`8e3a371bd286ff2682ee08d56c451274a94b14203be8de68ad2057aa6cc13c3`.
+
+The public Compiler hot-path refresh (same protocol, `--trim 0.1`) measured
+**78.201 ms** round-median in the detached worktree and **75.859 ms** in
+`c53c001bb`; the latter's aggregate trimmed median was **75.650 ms**, round RSD
+1.099%, classified `usable`. Both explicit Less plugin routes produce the same
+122,723-byte CSS, SHA-256
+`2ab6d3fd8f322df0f0be7c1a481b528ec50a7fb035604b744c7543397d56b3fe`.
+
+The generated Less bundle is 1,822,568 bytes in both worktrees, but its digest
+differs (`cda51323a0e453ad4e0381ce1aa446a4dc44f9858064424553324101840ae4d5`
+detached; `6b615885eb3fb995dc84dba4b2d76ae09f63d4f00fe8f3a1b767d109d331baa8`
+at `c53c001bb`) because Parseman-generated reducer identifiers include the
+absolute worktree path. This is not a semantic or output difference, but it
+means the runs are not a binary A/B. The older 122,390-byte
+`ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6` digest is
+from a superseded artifact and must not be attributed to `c53c001bb`.
+
+V8 sampling of 200 direct parses in the detached 0.28 artifact recorded 9,633
+samples: 5,717 (59.35%) in named `_r_DirectLess*` reducers, 1,612 (16.73%) in
+other generated `_fb/_r_` reducers, and 1,166 (12.10%) in other parser-bundle
+helpers (88.18% combined parser-bundle frames); GC accounted for 311 (3.23%).
+This identifies generated reducer execution as the dominant cost surface, not a
+safe first-set or combinator rewrite.
+
+This remains a baseline refresh, not a Parseman version A/B. The workspace
+grammar imports `composeLeaf`, which is exported by `parseman@0.28.0` but not by
+the 0.27 package; all current parser manifests require `^0.28.0`. Rebuilding
+against 0.27 would therefore require changing the grammar/API and would not be
+a matched comparison.
+
 Historical values must not be treated as an A/B: the former 33.65 ms direct-AST
 figure was a Vite/source `renderAstFile` partial-driver phase (20 warmups/N=60),
 and the 24.42 ms figure was a Parseman 0.27-era built parser floor. Current
