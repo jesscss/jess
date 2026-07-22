@@ -99,7 +99,7 @@ describe('proven staged quality-only review', () => {
     })).resolves.toBe(false);
   });
 
-  it('rejects fatal or remaining lint diagnostics even when bytes match', async () => {
+  it('rejects fatal or remaining lint errors even when bytes match', async () => {
     await expect(reproduceApprovedQualityFixes(
       [sourceFile],
       () => lintBefore,
@@ -111,6 +111,20 @@ describe('proven staged quality-only review', () => {
         warningCount: 0
       })
     )).resolves.toBe(false);
+  });
+
+  it('permits non-blocking warnings when approved fixes reproduce the exact bytes', async () => {
+    await expect(reproduceApprovedQualityFixes(
+      [sourceFile],
+      () => lintBefore,
+      () => lintAfter,
+      async () => ({
+        output: lintAfter,
+        fatalErrorCount: 0,
+        errorCount: 0,
+        warningCount: 2
+      })
+    )).resolves.toBe(true);
   });
 });
 

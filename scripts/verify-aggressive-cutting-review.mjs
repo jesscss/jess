@@ -211,7 +211,6 @@ async function reproduceApprovedQualityFixes(files, readBefore, readTarget, lint
     if (
       result.fatalErrorCount !== 0
       || result.errorCount !== 0
-      || result.warningCount !== 0
       || output !== target
     ) {
       return false;
