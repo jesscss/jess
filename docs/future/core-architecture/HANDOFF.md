@@ -1115,6 +1115,29 @@ require behavior/build/boundary evidence without fabricated performance claims.
   public `mixins-interpolated` and all 11 `tests-config/namespacing` fixtures
   pass. This is behavior evidence only; no performance claim is made.
 
+### Audit result: imported nested namespace MixinDef provenance (rejected)
+
+- **Question audited:** can namespaced lookup consume imported `MixinDef` facts
+  already published in `Frame.mixins` without adding a second registry or
+  resolver?
+- **Evidence:** the broad `Frame.mixins` prepass admitted the imported chain but
+  regressed the existing `mixin-direct-acceptance` closure case (`@gender` became
+  unresolved); the full core suite was otherwise 3194 passed, 9 skipped, and 2
+  todo. A refinement using the existing Context `sourceOwnerForBody` fact kept
+  core green but still left `namespacing-5.less`'s imported `secondary` member
+  authored in the output. The existing namespace Context suite remains 2/2 and
+  the config corpus remains 29/29 only because `namespacing-5.less` is still an
+  expected failure.
+- **Decision:** rejected and reverted. There is no currently sufficient existing
+  provenance contract that distinguishes every imported nested definition from
+  detached/selected/published definitions at this lookup boundary. Do not add a
+  generic map scan, marker, side registry, or duplicate resolver as a workaround;
+  reopen only with a narrowly specified import-publication fact and adversarial
+  red/green coverage for both the namespace oracle and `@gender` closure case.
+- **Ponytail-style review:** rejection accepted. The attempted loop was a cold
+  branch, but its semantic provenance was not truthful; source-owner refinement
+  was insufficient. No production change remains from this audit.
+
 ### Current pass: bubble-body async cursor
 
 - **New traversal / materialization:** one existing source-order body loop now
