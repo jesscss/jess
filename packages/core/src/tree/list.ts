@@ -375,7 +375,7 @@ export class List<T extends NodeArrayItem = Node> extends Node<T[], ListOptions>
     return buffer ? writeRenderText(buffer, out) : out;
   }
 
-  protected override evalNode(context: Context): MaybePromise<List<Node>> {
+  protected override evalNode(context: Context): MaybePromise<List<NodeArrayItem>> {
     if (this.hasFlag(F_STATIC)) {
       return this;
     }
@@ -446,4 +446,17 @@ export class List<T extends NodeArrayItem = Node> extends Node<T[], ListOptions>
   // }
 }
 
-export const list = defineType(List, 'List');
+// Register the runtime type through the common node-definition path, but keep
+// the public factory generic. `defineType` cannot preserve a generic class's
+// element parameter through `InstanceType`, so its inferred factory would
+// widen every list to `List<NodeArrayItem>` (including ordinary `List<Node>`
+// arguments). The value can still intentionally contain raw parser terminals;
+// the generic parameter records that fact without forcing node-only callers to
+// accept a widened list.
+defineType(List, 'List');
+
+export const list = <T extends NodeArrayItem = Node>(
+  value: T[] = [],
+  options?: ListOptions,
+  location?: NodeLocation
+): List<T> => new List<T>(value, options, location).parentChildren();

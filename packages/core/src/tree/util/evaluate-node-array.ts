@@ -93,7 +93,16 @@ export function coerceNodeArray(value: NodeArrayItem[]): Node[] {
     }
     out[i] = coerceValueNode(item);
   }
-  return out ?? value;
+  if (out) {
+    return out;
+  }
+  // `out` is only allocated when a raw string/array segment is encountered.
+  // If no coercion was needed, every union member is necessarily a Node; make
+  // that invariant explicit instead of asserting it through the raw union.
+  if (isNodeArray(value)) {
+    return value;
+  }
+  throw new TypeError('Expected only canonical nodes or coercible value segments.');
 }
 
 function isNodeArray(value: NodeArrayItem[]): value is Node[] {
