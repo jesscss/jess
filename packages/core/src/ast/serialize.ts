@@ -3868,10 +3868,7 @@ function collectPlacedExtendFacts(
           return addInstructions(0);
         };
         const placed = mapMaybe(own, addRule);
-        if (isThenable(placed)) {
-          return placed;
-        }
-        continue;
+        return placed;
       }
       if (statement.type === 'AtRuleBlock') {
         const nested = collectPlacedExtendFacts(statement.body, frame, e, overlay, path, scope, parent, hidden, referenceBoundary);
