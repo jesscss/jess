@@ -1,12 +1,12 @@
-# Queued: group `packages/*` by dialect
+# Queued: group `packages/*` by syntax
 
 Status: **QUEUED — do not start while parallel worktrees/agents are in flight.**
 
 ## Grouping ≠ merging (the crux)
 
-Co-locate a parser with its plugin in a per-dialect directory
-(`packages/less/less-parser` + `packages/less/jess-plugin-less`) — but keep them
-as **separate npm packages**. Merging them into one package was rejected up front
+Co-locate a parser with its plugin under a per-syntax directory
+(`packages/syntax/less/less-parser` + `packages/syntax/less/jess-plugin-less`) —
+but keep them as **separate npm packages**. Merging them into one package was rejected up front
 and stays rejected: `less-parser` is consumed by `scss-parser`,
 `language-service`, and `jess-plugin-less-compat`, so folding it into
 `jess-plugin-less` would drag the plugin's heavy deps (`core`, `fns`,
@@ -41,28 +41,29 @@ nearly free and the tooling gets more robust either way:
 - `vitest.config.ts` — `resolve(root, 'packages/<pkg>/...')` literals
   (css-parser jess entry, perf-test excludes).
 
-## Recommended organization — by dialect
+## Recommended organization — by syntax
 
-Each dialect gets a directory holding its parser + its plugin(s). Cross-dialect
-infra (core, the shared parser runtime), the app/CLI, capability plugins, and
-tooling stay flat. Package **names stay identical** — only directories move, so
-imports don't change.
+A single `packages/syntax/` parent holds one directory per syntax, each with that
+syntax's parser + plugin(s). Cross-syntax infra (core, the shared parser
+runtime), the app/CLI, capability plugins, and tooling stay flat. Package
+**names stay identical** — only directories move, so imports don't change.
 
 ```
 packages/
-  css/                       # the shared base dialect
-    css-parser/
-    jess-plugin-css/
-  less/
-    less-parser/
-    jess-plugin-less/
-    jess-plugin-less-compat/
-  scss/
-    scss-parser/
-    jess-plugin-scss/
-  dotjess/                   # the .jess dialect — NOT named `jess/` (see collision note)
-    jess-parser/
-    jess-plugin-jess/
+  syntax/
+    css/                     # the shared base syntax
+      css-parser/
+      jess-plugin-css/
+    less/
+      less-parser/
+      jess-plugin-less/
+      jess-plugin-less-compat/
+    scss/
+      scss-parser/
+      jess-plugin-scss/
+    jess/                    # the .jess syntax — nests fine (packages/syntax/jess/,
+      jess-parser/           #   distinct from the packages/jess CLI package)
+      jess-plugin-jess/
   ...flat: core, fns, config, style-resolver, awaitable-pipe, patch-css,
      parser, parser-runtime, internal-css-recognition,        # shared parser infra
      jess (the umbrella CLI), jess-plugin, jess-plugin-js, jess-plugin-node-modules,
@@ -71,22 +72,22 @@ packages/
 
 Two things to know before doing it:
 
-- **`jess/` group name collides with the `jess` CLI package.** `packages/jess/`
-  is already the umbrella CLI. So the `.jess`-dialect group must be named
-  something else (`dotjess/`, `jesslang/`) or its two packages stay flat. Do not
-  create `packages/jess/` as a group.
-- **Dialect groups are not self-contained — and that's fine.** `css-parser`
+- **Nesting under `syntax/` resolves the `jess/` name collision.**
+  `packages/jess/` remains the umbrella CLI package; the `.jess`-syntax group is
+  `packages/syntax/jess/`, a different path — no clash, and the name reads
+  naturally.
+- **Syntax groups are not self-contained — and that's fine.** `css-parser`
   (base) is consumed by both `less-parser` and `scss-parser`; `scss-parser`
-  (in `scss/`) depends on `less-parser` (in `less/`); `language-service` (flat)
-  consumes both parsers. Directory grouping is purely cosmetic, so these
-  cross-group edges are expected and harmless — they are exactly why the packages
-  must stay separate rather than merge (see "Grouping ≠ merging").
+  (in `syntax/scss/`) depends on `less-parser` (in `syntax/less/`);
+  `language-service` (flat) consumes both parsers. Directory grouping is purely
+  cosmetic, so these cross-group edges are expected and harmless — they are
+  exactly why the packages must stay separate rather than merge (see
+  "Grouping ≠ merging").
 
 ## Tooling to update when landing
 
-- `pnpm-workspace.yaml` — `packages/*` → add nested globs
-  (`packages/less/*`, `packages/scss/*`, `packages/css/*`, `packages/dotjess/*`)
-  or switch to `packages/**`.
+- `pnpm-workspace.yaml` — `packages/*` → add `packages/syntax/*` (nested), or
+  switch to `packages/**`.
 - `tsconfig.json` — the `@jess/*` → `./packages/*/src` wildcard becomes
   `./packages/**/src` (or explicit); update the ~8 explicit per-package `paths`
   entries for moved packages.
