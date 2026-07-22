@@ -109,13 +109,12 @@
  */
 
 import type { Rules } from '../rules.js';
-import type { Selector, SelectorLike } from '../selector.js';
+import type { Selector } from '../selector.js';
 import type { SimpleSelector } from '../selector-simple.js';
 import {
   SelectorList,
   type SelectorListItem,
   type SelectorListLike,
-  finishSelectorListSurface,
   isSelectorListLike,
   selectorListItems
 } from '../selector-list.js';
@@ -163,6 +162,16 @@ const recordExtendProfile = extendProfileCounters
 /** Selector surface accepted by the extend matcher (node or parser-delivered list array). */
 type ExtendSelectorSurface = Selector | SelectorListItem[];
 
+/**
+ * Internal extend paths accept parser-delivered selector arrays, while the
+ * recursive node APIs operate on a Selector. Materialize the array only at
+ * that node boundary; callers that retain a list surface keep using the
+ * explicit array/SelectorList branches.
+ */
+function selectorSurfaceNode(value: ExtendSelectorSurface): Selector {
+  return Array.isArray(value) ? SelectorList.create(value) : value;
+}
+
 function isSelectorNode(value: unknown): value is Selector {
   return isNode(value, N.Selector);
 }
@@ -204,9 +213,11 @@ function expectComplexComponents(value: Selector | Selector[] | ExtendErrorType)
       // here. Normalize it to a generated `:is()` so the tree stays valid rather
       // than throwing. (Whole-selector list output is handled at the SelectorList
       // level and never reaches the per-component path.)
-      if (isNode(item, N.SelectorList)) {
+      const itemNode: unknown = item;
+      if (itemNode instanceof SelectorList) {
         const wrapped = createValidatedIsWrapperWithErrors(
-          item.value.filter((s): s is Selector => typeof s !== 'string'),
+          itemNode.value
+            .filter((s): s is Selector => typeof s !== 'string'),
           item,
           undefined,
           undefined
@@ -1169,11 +1180,11 @@ function sameArrayItems<T>(left: readonly T[], right: readonly T[]): boolean {
  * @returns A new SelectorList with deduplicated and flattened value
  */
 function createExtendedSelectorList(value: Selector[], inheritFrom: Selector): Selector | ExtendErrorType;
-function createExtendedSelectorList(value: Selector[], inheritFrom?: SelectorListLike): SelectorLike | ExtendErrorType;
+function createExtendedSelectorList(value: Selector[], inheritFrom?: SelectorListLike): Selector | Selector[] | ExtendErrorType;
 function createExtendedSelectorList(
   value: Selector[],
   inheritFrom?: Selector | SelectorListItem[]
-): SelectorLike | ExtendErrorType {
+): Selector | Selector[] | ExtendErrorType {
   // Extract value from any :is() wrappers in the array
   const extractedSelectors: Selector[] = [];
   for (const selector of value) {
@@ -1194,10 +1205,13 @@ function createExtendedSelectorList(
   // it before `.inherit(inheritFrom)` reads the parent chain.
   const placedArray = copySelectorsForPlacement(processedArray);
 
-  if (!inheritFrom) {
+  if (!inheritFrom || placedArray.length === 1) {
     return placedArray.length === 1 ? placedArray[0]! : placedArray;
   }
-  return finishSelectorListSurface(placedArray, inheritFrom);
+  if (Array.isArray(inheritFrom)) {
+    return placedArray;
+  }
+  return SelectorList.create(placedArray).inherit(inheritFrom);
 }
 
 /**
@@ -1322,7 +1336,7 @@ function createFlattenedBoundaryCrossingResult(
   afterIs: SimpleSelector[],
   extendWith: Selector,
   inheritFrom: Selector
-): SelectorList | ExtendErrorType {
+): Selector | ExtendErrorType {
   const flattenedSelectors: Selector[] = [];
 
   // For each alternative in :is(), create alt + value after :is()
@@ -1371,7 +1385,8 @@ export function tryExtendSelector(
     if (typeof result === 'string') {
       return { value: target, error: createExtendErrorInfo(result) };
     }
-    return createSuccessResult(result);
+    const value = Array.isArray(result) ? SelectorList.create(result) : result;
+    return createSuccessResult(value);
   } catch (error) {
     if (error instanceof ExtendError) {
       return createErrorResult(target, error);
@@ -1844,12 +1859,13 @@ export function extendSelector(
               if (typeof extendedArg === 'string') {
                 return extendedArg;
               }
+              const extendedArgNode = selectorSurfaceNode(extendedArg);
               if (component.generated) {
-                assignPseudoArg(component, extendedArg);
+                assignPseudoArg(component, extendedArgNode);
               } else {
                 newComponents[idx] = PseudoSelector.create({
                   name: component.name,
-                  arg: extendedArg
+                  arg: extendedArgNode
                 }).inherit(component);
               }
             }
@@ -2145,7 +2161,7 @@ function extendSelectorList(
   partial: boolean,
   skipAmpersandCheck: boolean,
   preferIsWrapperInPartialMode: boolean = false
-): SelectorListLike | ExtendErrorType {
+): ExtendSelectorSurface | ExtendErrorType {
   const listItems = selectorListItems(target);
   const markExtended = (selector: Selector): Selector => {
     selector.addFlag(F_EXTENDED);
@@ -2216,9 +2232,10 @@ function extendSelectorList(
     if (typeof extended === 'string') {
       return extended;
     }
+    const extendedNode = selectorSurfaceNode(extended);
     let appendedVariant = false;
 
-    if (extended === selector) {
+    if (extendedNode === selector) {
       orderedSelectors.push(
         keepOriginalInReference(selector)
           ? markExtended(copySelectorForExtend(selector))
@@ -2231,19 +2248,19 @@ function extendSelectorList(
       continue;
     }
 
-    if (isNode(extended, N.SelectorList)) {
+    if (isNode(extendedNode, N.SelectorList)) {
       if (
         partial
         && preferIsWrapperInPartialMode
-        && extended.value.length === 2
-        && selectorListItemForExtend(extended.value[0]!).valueOf() === selector.valueOf()
-        && selectorListItemForExtend(extended.value[1]!).valueOf() === extendWith.valueOf()
+        && extendedNode.value.length === 2
+        && selectorListItemForExtend(extendedNode.value[0]!).valueOf() === selector.valueOf()
+        && selectorListItemForExtend(extendedNode.value[1]!).valueOf() === extendWith.valueOf()
       ) {
         const extendWithSelectors = extractSelectorsFromIs(extendWith);
         const isWrapper = createValidatedIsWrapperWithErrors(
           [selector, ...extendWithSelectors],
           selector,
-          target,
+          selector,
           { target: selector, find, extendWith }
         );
         if (typeof isWrapper === 'string') {
@@ -2255,14 +2272,14 @@ function extendSelectorList(
         continue;
       }
 
-      if (extended.value.length === 0) {
+      if (extendedNode.value.length === 0) {
         orderedSelectors.push(
           keepOriginalInReference(selector)
             ? markExtended(copySelectorForExtend(selector))
             : markExtendTarget(copySelectorForExtend(selector))
         );
         orderedMatchFlags.push(comparison.hasWholeMatch || comparison.hasPartialMatch);
-      } else if (extended.value.length === 1 && extended.value[0]!.valueOf() === extendWith.valueOf()) {
+      } else if (extendedNode.value.length === 1 && extendedNode.value[0]!.valueOf() === extendWith.valueOf()) {
         orderedSelectors.push(
           keepOriginalInReference(selector)
             ? markExtended(copySelectorForExtend(selector))
@@ -2274,12 +2291,12 @@ function extendSelectorList(
         }
         appendedVariant = true;
       } else {
-        const first = copySelectorForExtend(selectorListItemForMatch(extended.value[0]!));
+        const first = copySelectorForExtend(selectorListItemForMatch(extendedNode.value[0]!));
         orderedSelectors.push(keepOriginalInReference(selector) ? markExtended(first) : markExtendTarget(first));
         orderedMatchFlags.push(comparison.hasWholeMatch || comparison.hasPartialMatch);
-        const template = selectorListItemForMatch(extended.value[0] ?? selector);
+        const template = selectorListItemForMatch(extendedNode.value[0] ?? selector);
         newSelectors.push(
-          ...extended.value
+          ...extendedNode.value
             .slice(1)
             .map(s => markExtended(maybePrefixNewSelectorWithImplicitParent(template, selectorListItemForMatch(s))))
             .map(s => copySelectorForExtend(s))
@@ -2288,7 +2305,7 @@ function extendSelectorList(
       }
     } else {
       const fullMatchOfListItem =
-        selector.valueOf() === find.valueOf() && extended.valueOf() === extendWith.valueOf();
+        selector.valueOf() === find.valueOf() && extendedNode.valueOf() === extendWith.valueOf();
 
       if (fullMatchOfListItem) {
         orderedSelectors.push(
@@ -2302,14 +2319,14 @@ function extendSelectorList(
         }
         appendedVariant = true;
       } else {
-        orderedSelectors.push(markExtended(copySelectorForExtend(extended)));
+        orderedSelectors.push(markExtended(copySelectorForExtend(extendedNode)));
         orderedMatchFlags.push(comparison.hasWholeMatch || comparison.hasPartialMatch);
         appendedVariant = true;
       }
     }
 
-    if (!appendedVariant && extended.valueOf() !== selector.valueOf()) {
-      const variant = markExtended(maybePrefixNewSelectorWithImplicitParent(selector, copySelectorForExtend(extended)));
+    if (!appendedVariant && extendedNode.valueOf() !== selector.valueOf()) {
+      const variant = markExtended(maybePrefixNewSelectorWithImplicitParent(selector, copySelectorForExtend(extendedNode)));
       newSelectors.push(variant);
     }
   }
@@ -2326,7 +2343,12 @@ function extendSelectorList(
     // See createExtendedSelectorList() for rationale: never include `target` as an adopted child
     // when we also inherit from it.
     const safeArray = processedArray.map(s => (s === target ? copySelectorForExtend(s) : s));
-    return finishSelectorListSurface(safeArray, target);
+    if (safeArray.length === 1) {
+      return safeArray[0]!;
+    }
+    return Array.isArray(target)
+      ? safeArray
+      : SelectorList.create(safeArray).inherit(target);
   }
   // Exact-mode OR propagation:
   // If a selector-list contains authored `:is(parent)` sibling branches and only some siblings
@@ -2995,7 +3017,9 @@ function handleFullExtend(
 
   // If target is already a selector list, add to it
   if (isNode(target, N.SelectorList)) {
-    return createExtendedSelectorList([...target.value.map(selectorListItemForMatch), extendWith], target);
+    const targetItems = target.value.map(item => selectorListItemForMatch(item));
+    const result = createExtendedSelectorList([...targetItems, extendWith], target);
+    return Array.isArray(result) ? SelectorList.create(result).inherit(target) : result;
   }
 
   // If target is a pseudo-selector with selector arguments, check if we should extend arguments or create selector list
@@ -3006,19 +3030,21 @@ function handleFullExtend(
     if (isSelectorNode(arg) && target.name === ':is') {
       if (isNode(arg, N.SelectorList)) {
         // Add to existing selector list
-        const newArg = createExtendedSelectorList([...arg.value.map(selectorListItemForMatch), extendWith], arg);
+        const argItems = arg.value.map(item => selectorListItemForMatch(item));
+        const newArg = createExtendedSelectorList([...argItems, extendWith], arg);
         if (typeof newArg === 'string') {
           return newArg;
         }
+        const newArgNode = selectorSurfaceNode(newArg);
         // If the original selector was generated, we can mutate it in place for performance
         if (target.generated) {
-          assignPseudoArg(target, newArg);
+          assignPseudoArg(target, newArgNode);
           return target;
         } else {
           // For authored value, create a new one to preserve the original
           return PseudoSelector.create({
             name: target.name,
-            arg: newArg
+            arg: newArgNode
           }).inherit(target);
         }
       } else {
@@ -3610,9 +3636,10 @@ function handleAmpersandBoundaryCrossing(
     if (typeof extendedSelector === 'string') {
       return extendedSelector;
     }
+    const extendedNode = selectorSurfaceNode(extendedSelector);
 
     // Step 3: Mark for hoisting to root
-    const hoisted = markSelectorForHoisting(extendedSelector);
+    const hoisted = markSelectorForHoisting(extendedNode);
     const hoistedList = SelectorList.create([hoisted, copySelectorForExtend(extendWith)]).inherit(hoisted);
     hoistedList.hoistToRoot = true;
     return hoistedList;
@@ -3628,7 +3655,7 @@ function handleAmpersandBoundaryCrossing(
   }
 
   // Step 3: Mark for hoisting to root
-  return markSelectorForHoisting(extendedSelector);
+  return markSelectorForHoisting(selectorSurfaceNode(extendedSelector));
 }
 
 /**
@@ -4462,7 +4489,11 @@ function applyExtension(
       if (typeof wrapOrdered === 'string') {
         return wrapOrdered;
       }
-      const wrapSelectors = wrapOrdered.value.filter((item): item is Selector => typeof item !== 'string');
+      const wrapSelectors = Array.isArray(wrapOrdered)
+        ? wrapOrdered
+        : isNode(wrapOrdered, N.SelectorList)
+          ? wrapOrdered.value.filter((item): item is Selector => typeof item !== 'string')
+          : [wrapOrdered];
       return createValidatedIsWrapperWithErrors(
         wrapSelectors,
         current,

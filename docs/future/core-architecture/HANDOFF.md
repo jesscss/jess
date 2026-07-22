@@ -2613,3 +2613,63 @@ or Context deletion lanes.
   }]
   ```
 - Verdict: accepted bounded contract/type cleanup; no performance claim.
+
+## Aggressive Cutting Self-Prosecution
+
+- Latest pass: bounded strict-type cleanup in `tree/util/extend.ts`,
+  `tree/reference.ts`, `tree/extend/spine-extend.ts`, and the `OutputWriter`
+  maybe-promise overload. No parser host, bridge, resolver, fallback, or shim
+  was introduced.
+- Architecture surface: these files remain the canonical retained selector,
+  reference, and writer owners; no alternate evaluator or compatibility path
+  was added.
+- Separation/duplication: selector arrays are accepted only at the existing
+  parser-delivery surface and normalized at existing node-only boundaries; no
+  second selector or reference implementation was introduced.
+- Cumulative node weight: no clone, frame, side table, or render placement was
+  added; a `SelectorList` is created only when an existing node-only API needs
+  one.
+- New traversal: none. Existing selector-list loops and reference frame reads
+  are unchanged; only their already-produced unions are narrowed at the API
+  boundary.
+- New node/materialization: parser-delivered selector arrays are wrapped in
+  the existing `SelectorList` only when a node-only recursive API requires a
+  `Selector`; no second tree or render-only node is created. No clones were
+  added.
+- Render path: `bufferSubjectDecls` still calls the existing writer preview;
+  the overload makes its existing synchronous/async behavior truthful.
+- Helper/API surface: no public helper or compatibility alias was added. The
+  local `selectorSurfaceNode` boundary helper replaces repeated ad hoc array
+  assumptions and does not add a runtime traversal.
+- Metadata mutations: no parent/source restoration, side table, frame,
+  frozen-state, or provenance mutation was added. Existing `inherit` calls
+  retain their established placement ownership semantics.
+- Review-flagged diff tokens: `[array helper]` and
+  `[array spread/materialization]` are existing selector-list construction and
+  parser-array normalization; `[node construction]` is only the existing
+  `SelectorList` node boundary; `[parent/source mutation]` is a read-only
+  fallback narrowing; `[side map/set]` is unchanged surrounding extend state;
+  `[inherit/adopt/frozen]` is existing ownership inheritance on the same
+  placement boundaries; `[generic defensive read]` is existing runtime
+  discriminant inspection; `[materialized array/object]` is existing selector
+  surface typing; `[routine error control]` is unchanged exceptional invariant
+  handling.
+- Evidence: focused extend/reference/spine suites pass 269/269; core build
+  passes; strict core type verification passes with zero core diagnostics.
+  No performance claim is made.
+- Verdict: accepted bounded type-contract correction; no compatibility shim.
+- Hot-path cost contracts:
+  ```json
+  [{
+    "id":"legacy-tree-strict-contract-drain",
+    "verdict":"accepted",
+    "performanceClaim":"none",
+    "owner":"the fifteen retained tree value, guard, selector-surface, registration, rendering, bitset, combinator, and extend owners listed by legacy-tree-strict-contract-drain",
+    "why":"The retained Rules, Mixin, and scope-frame behavior keeps generic reference-mode Rules placement while deleting only StyleImport-specific registration, retry, and evaluation branches. No alternate evaluator, compatibility shim, new traversal, output policy, or performance claim is introduced.",
+    "dangerTokensJustification":"SelectorList construction occurs only at existing node-only boundaries; no new traversal, resolver, side map, clone, or output policy is introduced.",
+    "cases":["declaration-sync-and-async-render-result","declaration-merge-source-span-exclusion","default-guard-owned-value","bitset-inversion-and-disjointness","string-and-node-combinator-recognition","selector-list-singleton-collapse","selector-list-array-or-node-inheritance","parser-delivered-selector-array-ampersand","selector-array-ruleset-callable-registration","selector-array-key-set-analysis","selector-compose-cache-node-boundary","ordered-registration-context-restoration","property-merge-container-scope","mixin-invisible-sync-render-and-registration-result","extend-record-selector-surface","extend-root-composition-selector-surface","extend-walk-composed-match-selector-surface"],
+    "behaviorEvidence":"Focused extend/reference/spine tests pass 269/269.",
+    "buildEvidence":"Core build and strict core verification pass with zero diagnostics in the changed files.",
+    "baseline":{"fixture":"benchmark.less","phase":"render","currentMedianMs":85.86,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}
+  }]
+  ```

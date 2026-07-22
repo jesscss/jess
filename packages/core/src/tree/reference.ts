@@ -550,7 +550,8 @@ function getBindingHandleRulesContext(handle: ScopeFrameVariableBindingHandle): 
   if (handle.rulesContext) {
     return handle.rulesContext;
   }
-  return handle.sourceNode?.sourceRoot ?? handle.sourceNode?.rulesParent;
+  const fallback = handle.sourceNode?.sourceRoot ?? handle.sourceNode?.rulesParent;
+  return isNode(fallback, N.Rules) ? fallback : undefined;
 }
 
 type RulesLookupAdapterEnv = {
@@ -2925,7 +2926,7 @@ function finalizeScopeFrameVariableBindingResult(
     && isNode(binding.ownerFrame.rulesNode, N.Rules)
     && binding.ownerFrame.rulesNode._scopeFrame === binding.ownerFrame
     && binding.ownerFrame.rulesNode !== context.rulesContext;
-  const ownerDefinitionRules = ownerFrameRetainsParams
+  const ownerDefinitionRules = ownerFrameRetainsParams && isNode(binding.ownerFrame.rulesNode, N.Rules)
     ? binding.ownerFrame.rulesNode
     : undefined;
   const shouldUseDefinitionRulesContext = isNode(bindingSource, N.VarDeclaration) && (

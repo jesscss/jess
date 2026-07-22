@@ -242,6 +242,7 @@ export interface OutputWriter {
   hasContentSince(mark: number): boolean;
   preview(fn: () => string | void, preserveSegments?: boolean): string;
   preview(fn: () => Promise<string | void>, preserveSegments?: boolean): Promise<string>;
+  preview(fn: () => MaybePromise<string | void>, preserveSegments?: boolean): MaybePromise<string>;
   endsWith(suffix: string): boolean;
   lastChar(): string | undefined;
   replaceSince(mark: number, replacer: (text: string) => string, origin?: unknown): void;
@@ -701,6 +702,7 @@ export class OutputWriter implements OutputWriter {
 
   preview(fn: () => string | void, preserveSegments?: boolean): string;
   preview(fn: () => Promise<string | void>, preserveSegments?: boolean): Promise<string>;
+  preview(fn: () => MaybePromise<string | void>, preserveSegments?: boolean): MaybePromise<string>;
   preview(fn: () => MaybePromise<string | void>, preserveSegments = false): MaybePromise<string> {
     const mark = this.mark();
     const segmentsBefore = this.tracksSources ? this._segments!.length : 0;

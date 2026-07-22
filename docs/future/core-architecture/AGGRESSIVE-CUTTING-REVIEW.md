@@ -278,6 +278,7 @@ a blanket optimization exemption or a new active architecture queue.
       "packages/core/src/tree/mixin.ts",
       "packages/core/src/tree/rules.ts",
       "packages/core/src/tree/scope-frame.ts",
+      "packages/core/src/tree/reference.ts",
       "packages/core/src/tree/ruleset.ts",
       "packages/core/src/tree/selector-list.ts",
       "packages/core/src/tree/util/bitset.ts",
