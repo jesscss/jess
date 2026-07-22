@@ -268,25 +268,26 @@ section is the authoritative full-scope companion to the compact task goal.
 - The committed Less `alpha` branch is exactly `5.0.0-alpha.1`; its guarded
   release dry-run and release-guard unit tests pass. This proves the release
   shape only, not package readiness.
-- The external Less `alpha` tip is `0f78066e`, three committed but unpushed
+- The external Less `alpha` tip is `48c7f5bb`, four committed but unpushed
   changes ahead of `origin/alpha`: source-order collapsed-output fixtures
   (`fbea7e3e`), the explicit `collapseNesting` / `lessc --collapse-nesting`
-  public route and its tests (`6ebb0784`), and the packed-consumer verifier
-  (`0f78066e`). At that tip, `npm run test:lessc` and
+  public route and its tests (`6ebb0784`), the packed-consumer verifier
+  (`0f78066e`), and the prepared `5.0.0-alpha.1` release notes and known
+  limitations (`48c7f5bb`). At that tip, `npm run test:lessc` and
   `npm run verify:alpha:packed-consumer` pass. The latter packs a temporary
   Less tarball with the 18-package local Jess alpha closure, rejects a Jess
   `lessc` bin, and proves clean-install `lessc` file, stdin, import, and error
   behavior. This is real built-artifact evidence; it does not publish.
 - The external Less worktree is now clean, but a guarded real release still
-  cannot start: local `alpha` is three commits ahead of `origin/alpha`, while
+  cannot start: local `alpha` is four commits ahead of `origin/alpha`, while
   the release guard requires an exact remote match; `jess@2.0.0-alpha.9` is not
-  yet available from npm; and owner-reviewed Less v5 alpha release notes must
-  make the known limitations discoverable. The external `alpha` tip is
-  currently zero commits behind `origin/master`. After the local commits are
-  pushed and Jess is registry-available, run the registry-backed consumer proof
-  in addition to the local-tarball proof; then Less's own `prepublishOnly` runs
-  typecheck, distribution build, and the built `lessc` alpha test. Do not
-  substitute a historical raw test-runner count for those release gates.
+  yet available from npm; and explicit owner authorization is still required.
+  The external `alpha` tip is currently zero commits behind `origin/master`.
+  After the local commits are pushed and Jess is registry-available, run the
+  registry-backed consumer proof in addition to the local-tarball proof; then
+  Less's own `prepublishOnly` runs typecheck, distribution build, and the built
+  `lessc` alpha test. Do not substitute a historical raw test-runner count for
+  those release gates.
 - Neither `jess@2.0.0-alpha.9` nor `less@5.0.0-alpha.1` is on npm. Do not
   publish Less until Jess alpha.9 is published, Less has been rebuilt/relinked
   against that exact package, and a publish-shaped clean-consumer install has

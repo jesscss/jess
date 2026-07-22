@@ -59,13 +59,14 @@ choice investigation is the opt-in stable choice-arm trace design in
 
 ## External Less `5.0.0-alpha.1` package audit (2026-07-22)
 
-The sibling Less repository is on its `alpha` branch at `0f78066e`, exactly
-`5.0.0-alpha.1` and clean. It is three committed changes ahead of
-`origin/alpha` and zero commits behind `origin/master`. Those commits establish
+The sibling Less repository is on its `alpha` branch at `48c7f5bb`, exactly
+`5.0.0-alpha.1` and clean. It is four committed changes ahead of `origin/alpha`
+and zero commits behind `origin/master`. Those commits establish
 source-order-preserving collapsed nesting, the explicit `collapseNesting` /
-`lessc --collapse-nesting` route, and a local packed-consumer verifier. The
-release guard deliberately requires exact `origin/alpha` parity, so these
-reviewed commits must be pushed before a real publish attempt.
+`lessc --collapse-nesting` route, a local packed-consumer verifier, and the
+prepared alpha release notes with their known-limitations section. The release
+guard deliberately requires exact remote parity, so those reviewed commits must
+be pushed before a real publish attempt.
 
 The package itself packs successfully: `npm pack --dry-run --json` reports
 `less@5.0.0-alpha.1` (12 files, 38,651 unpacked bytes). The built artifact also
@@ -91,10 +92,9 @@ parser fixtures, import/process-URL behavior, source-map artifacts, and other
 output divergences. These failures remain visible compatibility evidence; they
 must not be hidden or relabeled as passing behavior. The remaining release
 blockers are branch remote parity, a published `jess@2.0.0-alpha.9`, the
-registry-backed consumer proof, and owner-reviewed Less v5 alpha release notes
-with a discoverable known-limitations section. Publication remains contingent
-on the controlled alpha workflow, the exact Jess dependency version, and those
-release gates.
+registry-backed consumer proof, and explicit owner authorization. Publication
+remains contingent on the controlled alpha workflow, the exact Jess dependency
+version, and those release gates.
 
 With no Deno/plugin execution on `benchmark.less`, three repeated 8-run/3-warmup
 rounds measured Less alpha render medians of `99.44`, `98.56`, and `92.80` ms
