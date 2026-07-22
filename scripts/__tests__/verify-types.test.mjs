@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { countTypeScriptDiagnostics, orderBuildPackages } from '../verify-types.mjs';
+import { countTypeScriptDiagnostics, orderBuildPackages, typecheckInvocation } from '../verify-types.mjs';
 
 function pkg(name, dependencies = {}) {
   return {
@@ -35,4 +35,16 @@ test('counts only TypeScript error diagnostics', () => {
     'src/b.ts(2,2): warning TS9999: warning',
     'src/c.ts(3,3): error TS2345: mismatch'
   ].join('\n')), 2);
+});
+
+test('invokes the workspace-pinned compiler from the repository root', () => {
+  const rootDir = '/workspace/jess';
+  const invocation = typecheckInvocation({
+    dir: '/workspace/jess/packages/scss-parser'
+  }, rootDir);
+  assert.equal(invocation.cwd, rootDir);
+  assert.deepEqual(invocation.args, [
+    '-w', 'exec', 'tsc', '-p', 'packages/scss-parser/tsconfig.build.json',
+    '--noEmit', '--pretty', 'false'
+  ]);
 });

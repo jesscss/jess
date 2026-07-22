@@ -56,6 +56,16 @@ export function countTypeScriptDiagnostics(output) {
   return output.match(/error TS\d+:/gu)?.length ?? 0;
 }
 
+/** Always select the workspace-pinned compiler, never a package-local binary. */
+export function typecheckInvocation(pkg, rootDir = ROOT) {
+  const config = path.join(path.relative(rootDir, pkg.dir), 'tsconfig.build.json');
+  return {
+    command: PNPM,
+    args: ['-w', 'exec', 'tsc', '-p', config, '--noEmit', '--pretty', 'false'],
+    cwd: rootDir
+  };
+}
+
 export function verifyTypes(rootDir = ROOT) {
   const packages = [...listWorkspacePackages(rootDir).values()]
     .filter(pkg => existsSync(path.join(pkg.dir, 'tsconfig.build.json')));
@@ -66,10 +76,9 @@ export function verifyTypes(rootDir = ROOT) {
   for (const [index, pkg] of ordered.entries()) {
     const relativeDir = path.relative(rootDir, pkg.dir);
     console.log(`\n[${index + 1}/${ordered.length}] ${pkg.name} (${relativeDir})`);
-    const result = spawnSync(PNPM, [
-      'exec', 'tsc', '-p', 'tsconfig.build.json', '--noEmit', '--pretty', 'false'
-    ], {
-      cwd: pkg.dir,
+    const invocation = typecheckInvocation(pkg, rootDir);
+    const result = spawnSync(invocation.command, invocation.args, {
+      cwd: invocation.cwd,
       encoding: 'utf8',
       maxBuffer: 64 * 1024 * 1024
     });

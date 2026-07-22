@@ -216,9 +216,11 @@ consumer directory.
 The release build may use declaration/bundle tooling that passes `--noCheck`.
 That build success is not a type-quality result. Immediately after the release
 build, `pnpm run verify:types` runs `tsc -p tsconfig.build.json --noEmit` for
-every workspace build config in dependency order, without `--noCheck`. It runs
-all configs before failing so the release report identifies every package that
-still owns diagnostics.
+every workspace build config in dependency order, without `--noCheck`. Every
+invocation selects the root workspace's pinned TypeScript compiler; a nested or
+package-local binary cannot change the accepted syntax or manufacture toolchain
+diagnostics. It runs all configs before failing so the release report identifies
+every package that still owns source diagnostics.
 
 `pnpm run lint:production` checks only the bounded production surfaces under
 `packages/*/src/**` and `scripts/**`; repository-root scratch files and build
