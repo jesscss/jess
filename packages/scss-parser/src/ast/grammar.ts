@@ -8,8 +8,8 @@
 import { balanced, choice, composeLeaf, expect, literal, many, noTrivia, node, not, oneOrMore, optional, parser, regex, rules, scanTo, sequence, trivia } from 'parseman' with { type: 'macro' };
 import type { Combinator } from 'parseman';
 import { cssAstSyntax } from '@jesscss/internal-css-recognition/recognition';
-import { any, atRuleBlock, atRuleStatement, block, color, comment, complexSelector, compoundSelectorOf, decl, dimension, forNode, funcCall, generalEnclosed, ifNode, importAtRule, interpolation, interpolatedSimpleSelector, keyword, list, mixinCall, mixinDef, moduleImport, operation, quoted, range, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, valueLayoutOf, variableDeclaration, variableReference, withValueLayout } from '@jesscss/core/ast';
-import type { AtRuleBlock, AtRuleStatement, Block, Color, Comment, ComplexSelector, CompoundSelector, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GeneralEnclosed, GuardNode, If, IfBranch, ImportAtRule, Interpolation, Keyword, List, MixinCall, MixinDef, ModuleImport, Param, Quoted, Stylesheet, Rule, SelectorList, SimpleSelector, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, VariableReference } from '@jesscss/core/ast';
+import { any, atRuleBlock, atRuleStatement, block, color, comment, complexSelector, compoundSelectorOf, decl, dimension, forNode, funcCall, generalEnclosed, ifNode, importAtRule, interpolation, interpolatedSimpleSelector, keyword, list, mixinCall, mixinDef, moduleImport, operation, quoted, range, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, withValueLayout } from '@jesscss/core/ast';
+import type { AtRuleBlock, AtRuleStatement, Color, Comment, ComplexSelector, CompoundSelector, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GeneralEnclosed, GuardNode, If, IfBranch, ImportAtRule, Interpolation, Keyword, List, MixinCall, MixinDef, ModuleImport, Param, Quoted, Stylesheet, Rule, SelectorList, SimpleSelector, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, VariableReference } from '@jesscss/core/ast';
 
 type Token = { readonly value: string };
 type ScssValuePair = { readonly separator: string; readonly value: ValueSlot };
@@ -440,20 +440,19 @@ function isExtendInstruction(value: unknown): value is ExtendInstruction {
     && 'partial' in value && typeof value.partial === 'boolean';
 }
 
-function isSelectorList(value: unknown): value is SelectorList {
-  return typeof value === 'object'
-    && value !== null
-    && 'type' in value
-    && value.type === 'SelectorList'
-    && 'selectors' in value
-    && Array.isArray(value.selectors);
-}
-
 function requireValue(value: unknown): ValueNode {
   if (!isValue(value)) {
     throw new TypeError('Direct SCSS AST grammar produced a non-value child.');
   }
   return value;
+}
+
+function requireKeyword(value: unknown): Keyword {
+  const node = requireValue(value);
+  if (node.type !== 'Keyword') {
+    throw new TypeError('Direct SCSS AST grammar produced a non-keyword child.');
+  }
+  return node;
 }
 
 function optionalValue(value: unknown): ValueNode | null {
@@ -762,7 +761,7 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
       }
       const firstIndex = children.findIndex((child, index) => index > 1 && index < children.length - 1 && isValueSlotValue(child));
       if (firstIndex === -1) {
-        return funcCall((children[0] as Keyword).src, []);
+        return funcCall(requireKeyword(children[0]).src, []);
       }
       const first = requireValueSlot(children[firstIndex]);
       const args: ValueSlot[] = [first];
@@ -775,7 +774,7 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
         separators.push(String(child.separator));
         args.push(requireValueSlot(child.value));
       }
-      const call = funcCall((children[0] as Keyword).src, args);
+      const call = funcCall(requireKeyword(children[0]).src, args);
       if (separators.length === args.length - 1) {
         withValueLayout(call.args, separators);
       }
@@ -1183,7 +1182,7 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
   const DirectScssStaticImportMediaNonOnlyKeyword = node<Keyword>(
     'DirectScssStaticImportMediaNonOnlyKeyword',
     sequence(not(g.CssAstSyntaxQueryOnly), g.DirectScssKeyword),
-    children => requireValue(children.at(-1)) as Keyword
+    children => requireKeyword(children.at(-1))
   );
   // A media *type* can only continue with `and`; `or` remains available in a
   // condition made solely from parenthesized media features below.
@@ -1582,7 +1581,7 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
   const DirectScssQueryNonOnlyKeyword = node<Keyword>(
     'DirectScssQueryNonOnlyKeyword',
     sequence(not(g.CssAstSyntaxQueryOnly), g.DirectScssKeyword),
-    children => requireValue(children.at(-1)) as Keyword
+    children => requireKeyword(children.at(-1))
   );
   const DirectScssQueryOnlyClause = node<ValueNode>(
     'DirectScssQueryOnlyClause',
@@ -2008,7 +2007,7 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
   const DirectScssCounterStyle = node<AtRuleBlock>(
     'DirectScssCounterStyle',
     sequence(regex(/@counter-style(?![-_a-zA-Z0-9\u0080-\uffff])/i), g.DirectScssKeyword, literal('{'), many(choice(g.DirectScssComment, g.DirectScssDeclaration)), literal('}')),
-    children => atRuleBlock('@counter-style', children[1] as Keyword, statements(children.slice(3, -1), true))
+    children => atRuleBlock('@counter-style', requireKeyword(children[1]), statements(children.slice(3, -1), true))
   );
   // `@property` names are custom-property names, not ordinary CSS keywords:
   // the mandatory `--` prefix must be retained in the typed prelude. Keeping
@@ -2022,7 +2021,7 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
   const DirectScssPropertyAtRule = node<AtRuleBlock>(
     'DirectScssPropertyAtRule',
     sequence(regex(/@property(?![-_a-zA-Z0-9\u0080-\uffff])/i), g.DirectScssPropertyName, literal('{'), many(choice(g.DirectScssComment, g.DirectScssDeclaration)), literal('}')),
-    children => atRuleBlock('@property', children[1] as Keyword, statements(children.slice(3, -1), true))
+    children => atRuleBlock('@property', requireKeyword(children[1]), statements(children.slice(3, -1), true))
   );
   // Keyframes already fit the canonical AtRuleBlock + Rule model: the at-rule
   // name/prelude and every descriptor block remain structured.  Keep this
