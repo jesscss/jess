@@ -222,13 +222,14 @@ Context/plugin import loading, and absence of legacy output-tree materialization
 ### Less math/unit residual split (2026-07-22)
 
 Explicit compile-level `mathMode` and `unitMode` already flow through the
-canonical Context options. The Less plugin also normalizes its legacy `math`
-and `strictUnits` inputs for its own option state, but the nested upstream
-units fixtures supply those legacy keys under `language.less` in
-`styles.config.cjs`; that language-scoped normalization is not yet proven to
-reach Context. Keep this options-route question separate from the two
-units-corpus evaluator facts below; neither permits a parser bridge or a
-second resolver:
+canonical Context options. `LessPlugin.setContext` now installs its normalized
+legacy `math`/`strictUnits` (and related Less mode) values into Context when an
+explicit compile value has not already won. The focused
+`packages/jess/test/less/strict-units.test.ts` proves that the nested
+`language.less` options in both units `styles.config.cjs` files reach the
+public Context route. Keep that options proof separate from the remaining
+bare-slash evaluator fact below; neither permits a parser bridge or a second
+resolver:
 
 1. **Structural bare-slash precedence.** `DirectLessValueTerm` already retains
    the typed `ValueSlot[]` parts and their authored boundary layout, including
@@ -239,12 +240,14 @@ second resolver:
    authored, while a parenthesized or calc expression has its own arithmetic
    path. The authoritative regression fixture is
    `tests-config/units/no-strict/no-strict.less`: `test-division`, `t3`, and
-   `t6` must evaluate under its `language.less.math: 0` config; equivalent bare
-   slash values under `mathMode: 'parens-division'` must remain authored
-   divisions. This promotion must not reparse source bytes or add a second
-   value parser. The existing `normal small / 20px` shorthand exception under
-   eager math remains a separate CSS-value classification, not evidence that
-   all slash-shaped values are arithmetic.
+   `t6` still must evaluate under its `language.less.math: 0` config; the
+   focused test currently records their authored output as the explicit
+   remaining mismatch. Equivalent bare slash values under
+   `mathMode: 'parens-division'` must remain authored divisions. This
+   promotion must not reparse source bytes or add a second value parser. The
+   existing `normal small / 20px` shorthand exception under eager math remains
+   a separate CSS-value classification, not evidence that all slash-shaped
+   values are arithmetic.
 2. **Deferred strict-unit validation.** The unit evaluator must retain the
    numerator/denominator facts through an operation chain and validate
    singularity only at final typed materialization/emission. Intermediate
@@ -258,11 +261,10 @@ The two fixes can be tested and reviewed independently: direct evaluator tests
 cover slash promotion and strict cancellation separately. The nested units
 fixtures are discovered by `scripts/less-corpus-report.mjs` (report-only); the
 current `all-less.test.ts` glob does not enumerate their two-level
-`tests-config/units/<case>/` paths. The strict fixture also has a dedicated
-test using explicit compile modes, which does not by itself prove legacy
-`language.less` option normalization. Add those public-route options assertions
-before claiming the fixture route green. No source-byte reparse, scanner,
-compatibility path, or dialect-local resolver is permitted.
+`tests-config/units/<case>/` paths. The dedicated strict-units test now proves
+the legacy options route and keeps the three no-strict slash mismatches
+visible, rather than weakening them into a pass. No source-byte reparse,
+scanner, compatibility path, or dialect-local resolver is permitted.
 
 Built-artifact public-route instrumentation is also decisive: a direct Less
 `Compiler.renderToResult(...)` reads or writes none of Context's legacy
