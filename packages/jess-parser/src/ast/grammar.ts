@@ -1180,8 +1180,8 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
     'DirectJessUrlInterpolatedValue',
     noTrivia(sequence(
       optional(jessUrlInterpolatedText),
-      g.DirectJessDollarInterp,
-      many(choice(jessUrlInterpolatedText, g.DirectJessDollarInterp))
+      choice(g.DirectJessDollarInterp, g.DirectJessExpression),
+      many(choice(jessUrlInterpolatedText, g.DirectJessDollarInterp, g.DirectJessExpression))
     )),
     (children) => {
       const parts: Interpolation['parts'] = [];
