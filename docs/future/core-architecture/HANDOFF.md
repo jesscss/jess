@@ -3182,6 +3182,36 @@ or Context deletion lanes.
   `less/`/`sass/` function files require their own behavior-parity batches and
   are not deleted or hidden by this slice.
 
+## Aggressive Cutting Self-Prosecution — Less color-reader Fn conversion
+
+- Latest pass: Less `hue`, `saturation`, `lightness`, and `luma` now directly
+  re-export their canonical AST-v2 value-domain implementations. No legacy
+  reader implementation, wrapper, or new host seam was introduced.
+- Architecture surface: existing `colorHslClamped`, `colorRgbRounded`,
+  `getLuma`, `requireColor`, and `makeDimension` value helpers only. The HSL
+  accessor remains lazy: authored HSL source is read from its carried `hsl`
+  facts; RGB colors derive HSL only when requested.
+- Separation/duplication: one implementation per reader. Less files are direct
+  public entrypoint re-exports, not compatibility shims.
+- Cumulative node weight: zero AST nodes, frames, maps, side tables, or render
+  state. Each reader returns one canonical `Dimension` value.
+- New traversal: none. Existing HSL/RGB reader helpers perform the same scalar
+  calculations as before.
+- New node/materialization: no legacy tree nodes or AST nodes; `makeDimension`
+  creates the required typed result once.
+- Render path: unchanged typed evaluator/serializer route; no tree conversion,
+  source reparse, or alternate evaluator was introduced.
+- Metadata mutations: none.
+- Review-flagged diff tokens: none. No traversal, clone, node, spread,
+  side-map, metadata mutation, or routine error-control machinery was added.
+- Semantic evidence: a pre-cutover parity test passed for RGB and authored HSL
+  source cases, matching legacy reader numbers and serialized bytes for all four
+  functions (legacy unitless `Num` undefined normalizes to canonical `''`).
+  Focused reader/registry tests pass 1 file / 3 tests; full fns suite and package
+  build are required batch gates. No performance claim is made.
+- Verdict: accepted bounded in-place AST-v2 conversion; no duplicate Less
+  implementations remain for these four reader functions.
+
 ## Aggressive Cutting Self-Prosecution — Less blend Fn conversion
 
 - Latest pass: Less `hardlight`, `softlight`, `exclusion`, `multiply`, and

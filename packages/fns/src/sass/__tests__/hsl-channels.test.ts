@@ -1,4 +1,5 @@
-import { Color, Context, Dimension, Num } from '@jesscss/core';
+import { Color, Context, Dimension } from '@jesscss/core';
+import { makeColorHsl, RGB } from '@jesscss/core/value';
 import { beforeAll, describe, it, expect } from 'vitest';
 import hue from '../hue.js';
 import saturation from '../saturation.js';
@@ -44,12 +45,13 @@ describe('Sass HSL channel functions', () => {
     it('differs from Less: Sass returns deg while Less returns unitless number', () => {
       const color = new Color({ format: 2, hsl: [210, 0.5, 0.5] });
       const sassResult = hue(color) as Dimension;
-      const lessResult = lessHue(color) as Num;
+      const lessResult = lessHue(makeColorHsl([210, 0.5, 0.5], 1, RGB));
 
       expect(sassResult.number).toBe(210);
       expect(sassResult.unit).toBe('deg');
-      expect(lessResult).toBeInstanceOf(Num);
+      expect(lessResult.type).toBe('Dimension');
       expect(lessResult.number).toBe(210);
+      expect(lessResult.unit).toBe('');
     });
   });
 
