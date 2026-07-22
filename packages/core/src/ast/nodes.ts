@@ -557,6 +557,11 @@ export interface Declaration {
    * own line, e.g. a multi-line `grid-template-areas`). v5 preserves that layout:
    * the value emits starting on the next indented line instead of after `: `. */
   readonly valueOnNewLine?: boolean;
+  /** SCSS nested-property collection (`font: 20px { size: 1rem }`): the carrier
+   * declaration holds the leaf declarations as a {@link DetachedRuleset} whose
+   * body entries are plain Declarations with LEAF-ONLY names. Flattened to
+   * hyphenated declarations at serialize time; absent on ordinary declarations. */
+  readonly nested?: DetachedRuleset;
 }
 
 /**
@@ -910,11 +915,14 @@ export const decl = (
   value: ValueSlot,
   merge: null | ',' | ' ' = null,
   important = false,
-  valueOnNewLine = false
-): Declaration =>
-  valueOnNewLine
+  valueOnNewLine = false,
+  nested?: DetachedRuleset
+): Declaration => {
+  const base: Declaration = valueOnNewLine
     ? { type: 'Declaration', name, value, merge, important, valueOnNewLine: true }
     : { type: 'Declaration', name, value, merge, important };
+  return nested === undefined ? base : { ...base, nested };
+};
 export const comment = (text: string): Comment => ({ type: 'Comment', text });
 /** [import:inline] A verbatim raw-bytes statement (`@import (inline)` splice).
  * `media` (optional) wraps the splice in an `@media <media> { … }` block. */

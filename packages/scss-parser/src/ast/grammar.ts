@@ -8,7 +8,7 @@
 import { balanced, choice, composeLeaf, expect, literal, many, noTrivia, node, not, oneOrMore, optional, parser, regex, rules, scanTo, sequence, trivia } from 'parseman' with { type: 'macro' };
 import type { Combinator } from 'parseman';
 import { cssAstSyntax } from '@jesscss/internal-css-recognition/recognition';
-import { any, atRuleBlock, atRuleStatement, block, color, comment, complexSelector, compoundSelectorOf, decl, dimension, forNode, funcCall, generalEnclosed, ifNode, importAtRule, interpolation, interpolatedSimpleSelector, keyword, list, mixinCall, mixinDef, moduleImport, operation, quoted, range, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, withValueLayout } from '@jesscss/core/ast';
+import { any, atRuleBlock, atRuleStatement, block, color, comment, complexSelector, compoundSelectorOf, decl, detachedRuleset, dimension, forNode, funcCall, generalEnclosed, ifNode, importAtRule, interpolation, interpolatedSimpleSelector, keyword, list, mixinCall, mixinDef, moduleImport, operation, quoted, range, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, withValueLayout } from '@jesscss/core/ast';
 import type { AtRuleBlock, AtRuleStatement, Color, Comment, ComplexSelector, CompoundSelector, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GeneralEnclosed, GuardNode, If, IfBranch, ImportAtRule, Interpolation, Keyword, List, MixinCall, MixinDef, ModuleImport, Param, Quoted, Stylesheet, Rule, SelectorList, SimpleSelector, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, VariableReference } from '@jesscss/core/ast';
 
 type Token = { readonly value: string };
@@ -17,7 +17,6 @@ type ScssValueTail = { readonly kind: 'space' | 'slash'; readonly value: ValueNo
 type ScssCallArg = { readonly value: ValueSlot; readonly name?: string; readonly spread?: boolean };
 type ScssCallValueArg = { readonly separator: string; readonly value: ValueSlot };
 type ScssComplexTail = { readonly comb: ' ' | '>' | '+' | '~' | '||'; readonly compound: CompoundSelector };
-type ScssNestedDeclarations = { readonly kind: 'scss-nested-declarations'; readonly declarations: Declaration[] };
 
 const scriptModuleExtensions = ['.js', '.mjs', '.cjs', '.ts', '.mts', '.cts', '.json'] as const;
 
@@ -59,7 +58,7 @@ type ScssAstRules = {
   DirectScssInterpolatedProperty: Combinator<Interpolation>;
   DirectScssDeclaration: Combinator<Declaration>;
   DirectScssStaticNestedPropertyLeaf: Combinator<Declaration>;
-  DirectScssStaticNestedProperty: Combinator<ScssNestedDeclarations>;
+  DirectScssStaticNestedProperty: Combinator<Declaration>;
   DirectScssImport: Combinator<ImportAtRule>;
   DirectScssUseAs: Combinator<string>;
   DirectScssUse: Combinator<StyleImport | ModuleImport>;
@@ -424,30 +423,6 @@ function interpolationFromTemplateChildren(children: readonly unknown[]): Interp
   return interpolation(parts);
 }
 
-function joinNestedPropertyName(prefix: string | Interpolation, leaf: string | Interpolation): string | Interpolation {
-  if (typeof prefix === 'string' && typeof leaf === 'string') {
-    return `${prefix}-${leaf}`;
-  }
-  const parts: Interpolation['parts'] = [];
-  const appendName = (name: string | Interpolation): void => {
-    if (typeof name === 'string') {
-      appendLiteral(parts, name);
-    } else {
-      for (const part of name.parts) {
-        if ('lit' in part) {
-          appendLiteral(parts, part.lit);
-        } else {
-          parts.push(part);
-        }
-      }
-    }
-  };
-  appendName(prefix);
-  appendLiteral(parts, '-');
-  appendName(leaf);
-  return interpolation(parts);
-}
-
 /** Fold a grammar-produced left-associative operator chain. Precedence belongs
  * to the caller's product/sum production, never to a source-text recovery. */
 function foldOperation(children: readonly unknown[]): ValueNode {
@@ -664,20 +639,9 @@ function isVarDeclaration(value: unknown): value is VariableDeclaration {
     && isValueSlotValue(value.value);
 }
 
-function isScssNestedDeclarations(value: unknown): value is ScssNestedDeclarations {
-  return typeof value === 'object' && value !== null
-    && 'kind' in value && value.kind === 'scss-nested-declarations'
-    && 'declarations' in value && Array.isArray(value.declarations)
-    && value.declarations.every(isDeclaration);
-}
-
 function statements(children: readonly unknown[], allowDeclarations = false): Statement[] {
   const result: Statement[] = [];
   for (const child of children) {
-    if (allowDeclarations && isScssNestedDeclarations(child)) {
-      result.push(...child.declarations);
-      continue;
-    }
     if (!isComment(child) && !isImport(child) && !isStyleImport(child) && !isModuleImport(child) && !isAtRuleBlock(child) && !isAtRuleStatement(child) && !isVarDeclaration(child) && !isMixinDef(child) && !isMixinCall(child) && !isFor(child) && !isIf(child) && !isRule(child) && !(allowDeclarations && isDeclaration(child))) {
       throw new TypeError('Direct SCSS AST grammar produced a non-statement child.');
     }
@@ -689,9 +653,7 @@ function statements(children: readonly unknown[], allowDeclarations = false): St
 function statementChildren(children: readonly unknown[], allowDeclarations = false): Statement[] {
   const result: Statement[] = [];
   for (const child of children) {
-    if (allowDeclarations && isScssNestedDeclarations(child)) {
-      result.push(...child.declarations);
-    } else if (
+    if (
       isComment(child)
       || isImport(child)
       || isStyleImport(child)
@@ -1231,7 +1193,7 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
   // precedes any terminator). Single `not` is a predicate — it emits no child,
   // so the positional reducer below is unaffected.
   const directNestedPropertyAhead = not(regex(/[^{};]*[;}]/));
-  const DirectScssStaticNestedProperty = node<ScssNestedDeclarations>(
+  const DirectScssStaticNestedProperty = node<Declaration>(
     'DirectScssStaticNestedProperty',
     choice(
       sequence(directNestedPropertyAhead, choice(g.DirectScssInterpolatedProperty, g.CssAstSyntaxProperty), literal(':'), optional(g.DirectScssValue), literal('{'), many(g.DirectScssStaticNestedPropertyLeaf), literal('}'), optional(g.DirectScssImportant), optional(literal(';')))
@@ -1248,20 +1210,19 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
       if (ownImportant && ownValue === null) {
         throw new TypeError('Direct SCSS nested property cannot apply !important without an own declaration value.');
       }
-      const nested: Declaration[] = [];
+      // The leaves stay LEAF-ONLY-named plain Declarations inside a reused
+      // DetachedRuleset collection. Hyphenation and own-value placement move to
+      // the serializer; `[]` marks a block with no own base declaration.
+      const leaves: Declaration[] = [];
       for (let index = open + 1; index < close; index++) {
         const child = children[index];
         if (isDeclaration(child)) {
-          nested.push(child);
+          leaves.push(child);
         } else {
           throw new TypeError('Direct SCSS nested property produced a non-declaration child.');
         }
       }
-      const result = ownValue === null ? [] : [decl(prefix, ownValue, null, ownImportant)];
-      for (const child of nested) {
-        result.push(decl(joinNestedPropertyName(prefix, child.name), child.value, child.merge, child.important));
-      }
-      return { kind: 'scss-nested-declarations', declarations: result };
+      return decl(prefix, ownValue ?? [], null, ownValue === null ? false : ownImportant, false, detachedRuleset(leaves));
     }
   );
   const DirectScssStaticImportUrl = node<Url>(
