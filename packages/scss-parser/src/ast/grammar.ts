@@ -455,6 +455,40 @@ function requireKeyword(value: unknown): Keyword {
   return node;
 }
 
+function isGuardNode(value: unknown): value is GuardNode {
+  if (typeof value !== 'object' || value === null || !('g' in value)) {
+    return false;
+  }
+  switch (value.g) {
+    case 'default':
+      return true;
+    case 'truth':
+      return 'value' in value && isValue(value.value);
+    case 'cmp':
+      return 'op' in value && typeof value.op === 'string'
+        && 'left' in value && isValue(value.left)
+        && 'right' in value && isValue(value.right);
+    case 'call':
+      return 'name' in value && typeof value.name === 'string'
+        && 'args' in value && Array.isArray(value.args) && value.args.every(isValue);
+    case 'not':
+      return 'inner' in value && isGuardNode(value.inner);
+    case 'and':
+    case 'or':
+      return 'left' in value && isGuardNode(value.left)
+        && 'right' in value && isGuardNode(value.right);
+    default:
+      return false;
+  }
+}
+
+function requireGuardNode(value: unknown): GuardNode {
+  if (!isGuardNode(value)) {
+    throw new TypeError('Direct SCSS AST grammar produced a non-guard child.');
+  }
+  return value;
+}
+
 function optionalValue(value: unknown): ValueNode | null {
   return value === null || value === undefined ? null : requireValue(value);
 }
@@ -536,6 +570,13 @@ function statementChildren(children: readonly unknown[], allowDeclarations = fal
     }
   }
   return result;
+}
+
+function requireStatementList(value: unknown): Statement[] {
+  if (!Array.isArray(value)) {
+    throw new TypeError('Direct SCSS AST grammar produced a non-statement list.');
+  }
+  return statements(value, true);
 }
 
 function directScssKeyframeSelectorList(children: readonly unknown[]): SelectorList {
@@ -1453,9 +1494,9 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
     'DirectScssIfAnd',
     sequence(g.DirectScssIfTerm, many(sequence(directScssAnd, g.DirectScssIfTerm))),
     (children) => {
-      let guard = children[0] as GuardNode;
+      let guard = requireGuardNode(children[0]);
       for (let index = 2; index < children.length; index += 2) {
-        guard = { g: 'and', left: guard, right: children[index] as GuardNode };
+        guard = { g: 'and', left: guard, right: requireGuardNode(children[index]) };
       }
       return guard;
     }
@@ -1464,9 +1505,9 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
     'DirectScssIfCondition',
     sequence(g.DirectScssIfAnd, many(sequence(directScssOr, g.DirectScssIfAnd))),
     (children) => {
-      let guard = children[0] as GuardNode;
+      let guard = requireGuardNode(children[0]);
       for (let index = 2; index < children.length; index += 2) {
-        guard = { g: 'or', left: guard, right: children[index] as GuardNode };
+        guard = { g: 'or', left: guard, right: requireGuardNode(children[index]) };
       }
       return guard;
     }
@@ -1508,21 +1549,25 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
       ))
     ),
     (children) => {
-      const branches: IfBranch[] = [{ guard: children[1] as GuardNode, body: children[2] as Statement[] }];
+      const branches: IfBranch[] = [{ guard: requireGuardNode(children[1]), body: requireStatementList(children[2]) }];
       for (let index = 3; index < children.length;) {
         // Every tail begins with @else. An else-if has its literal `if`, guard,
         // and body; a bare else contributes just its body.
         index += 1;
         const child = children[index];
         if (isToken(child) && child.value.toLowerCase() === 'if') {
-          branches.push({ guard: children[index + 1] as GuardNode, body: children[index + 2] as Statement[] });
+          branches.push({ guard: requireGuardNode(children[index + 1]), body: requireStatementList(children[index + 2]) });
           index += 3;
         } else {
-          branches.push({ guard: null, body: children[index] as Statement[] });
+          branches.push({ guard: null, body: requireStatementList(children[index]) });
           index += 1;
         }
       }
-      return ifNode(branches as [IfBranch, ...IfBranch[]]);
+      const first = branches[0];
+      if (first === undefined) {
+        throw new TypeError('Direct SCSS @if reduction produced no branches.');
+      }
+      return ifNode([first, ...branches.slice(1)]);
     }
   );
   // Static conditional-group preludes are structured in the grammar. The public
