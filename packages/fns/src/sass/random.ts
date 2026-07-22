@@ -7,8 +7,7 @@
  * random() // 0.123456...
  * random(10) // 5 (random integer between 1 and 10)
  */
-import { defineFunction, Dimension } from '@jesscss/core';
-import { toNumber } from '@jesscss/core';
+import { defineFunction, Dimension, toNumber } from '@jesscss/core';
 
 const random = defineFunction(
   'random',
@@ -19,7 +18,7 @@ const random = defineFunction(
     }
 
     // Limit must be a positive integer
-    const limitValue = toNumber()(limit) as number;
+    const limitValue = limit.number;
     const limitInt = Math.floor(limitValue);
 
     if (limitInt < 1) {

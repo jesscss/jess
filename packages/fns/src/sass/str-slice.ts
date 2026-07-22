@@ -7,20 +7,19 @@
  * str-slice("Hello", 2, 4) // "ell"
  * str-slice("Hello", 2) // "ello"
  */
-import { defineFunction, Quoted, Dimension } from '@jesscss/core';
-import { toNumber } from '@jesscss/core';
+import { defineFunction, Quoted, Dimension, toNumber } from '@jesscss/core';
 
 const strSlice = defineFunction(
   'str-slice',
   function(string: Quoted, startAt: Dimension, endAt?: Dimension): Quoted {
     const strValue = String(typeof string.value === 'string' ? string.value : string.valueOf());
-    const startValue = toNumber()(startAt) as number;
+    const startValue = startAt.number;
     const startInt = Math.floor(startValue);
 
     // Track whether endAt was explicitly provided (not just the default)
     const endAtProvided = endAt !== undefined;
     // Default end is -1 (end of string)
-    const endValue = endAt ? (toNumber()(endAt) as number) : -1;
+    const endValue = endAt ? endAt.number : -1;
     const endInt = Math.floor(endValue);
 
     // Handle end index of 0 - always returns empty string

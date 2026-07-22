@@ -6,15 +6,14 @@
  * @example
  * str-insert("Hello", "X", 3) // "HeXllo"
  */
-import { defineFunction, Quoted, Dimension } from '@jesscss/core';
-import { toNumber } from '@jesscss/core';
+import { defineFunction, Quoted, Dimension, toNumber } from '@jesscss/core';
 
 const strInsert = defineFunction(
   'str-insert',
   function(string: Quoted, insert: Quoted, index: Dimension): Quoted {
     const strValue = String(typeof string.value === 'string' ? string.value : string.valueOf());
     const insertValue = String(typeof insert.value === 'string' ? insert.value : insert.valueOf());
-    const indexValue = toNumber()(index) as number;
+    const indexValue = index.number;
     const indexInt = Math.floor(indexValue);
 
     // Sass uses 1-based indexing
