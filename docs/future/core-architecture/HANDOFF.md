@@ -1884,6 +1884,39 @@ then run its adversarial near-prefix matrix before choosing one structural
 trie/residual experiment. Normal parser and benchmark routes remain
 uninstrumented.
 
+### Matched Less trivia isolation (2026-07-22; diagnostic, no production speed claim)
+
+The first valid same-bundle isolation after the generated-artifact identity
+audit measured only the runtime trivia handoff. Both sides were rebuilt from
+`eae9c7832` with `parseman@0.28.0` and the same generated Less parser source.
+Side A is the public `run(entry, input, { trivia })` route. Side B is a
+temporary diagnostic copy of that generated bundle with exactly that call
+changed to `run(entry, input, {})`; no grammar, AST reducer, or source fixture
+was changed. The temporary copy is not a public or benchmark route and was not
+committed. The generated A artifact is 1,827,807 bytes, SHA-256
+`9a547b2d466b2a9e9f3fd7dc044a8031f6997149d491b263c7818e8be951a5bc`; B is
+1,827,799 bytes, SHA-256
+`f3f83b11936ecee597b50bb9ab5c98e70752cf129fa49d8568481724f726cf04`, with
+the expected single wrapper substitution.
+
+The fixture was `packages/jess/benchmark/benchmark.less` (106,802 bytes,
+SHA-256 `abe392656c8a50e9d175c3b0e60415893a8eb7bfe9050518227391430d3a3d48`).
+On Node `v25.9.0`, the paired protocol used 20 warmups followed by three
+45-pair rounds, alternating A/B order (135 timed parses per side). A's round
+medians were 58.6923, 58.0804, and 58.3212 ms (sample median 58.2974 ms,
+mean 59.9382 ms); B's were 57.5564, 57.9407, and 58.2123 ms (sample median
+57.9357 ms, mean 59.3542 ms). The paired B−A delta median was −0.5440 ms and
+mean −0.5840 ms, with 70/135 B wins. Both returned 677-child `Stylesheet`
+documents whose stable JSON is 946,987 bytes with SHA-256
+`8e3a371bd286ff2682ee08d56c451274a94b14203dbe8de68ad2057aa6cc13c3`.
+
+This is evidence that trivia bookkeeping is a measurable candidate on this
+fixture (directionally about 0.9% in this run), not an accepted speedup: the
+paired deltas ranged from −48.05 to +53.17 ms and the no-trivia side is only a
+diagnostic isolation. Any production change must preserve authored trivia
+semantics and repeat this test under the canonical Node/round protocol before
+claiming a performance result.
+
 `verify:aggressive-cutting-review` compares the working `dev` tip with
 `origin/dev`; this is a 96-commit, 237-file integration delta (+12,490/-40,189
 lines), not a small release patch. `6734da512` alone changes 34 production
