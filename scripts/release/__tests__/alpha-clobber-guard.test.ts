@@ -77,7 +77,7 @@ describe('isAlphaClobber (dev->alpha squash guard)', () => {
     ).toBe(false);
   });
 
-  it('(d) manifest alpha.9, all tags alpha.8 -> ALLOW (fresh bump ahead)', () => {
+  it('(d) preflight candidate alpha.9, all tags alpha.8 -> ALLOW (fresh bump ahead)', () => {
     expect(guard('2.0.0-alpha.9', allEight)).toBe(false);
   });
 
