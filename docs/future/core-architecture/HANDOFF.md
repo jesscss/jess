@@ -1288,6 +1288,21 @@ require behavior/build/boundary evidence without fabricated performance claims.
   fixture completing after the extend admission/stack-safety repairs. The remaining
   Less-alpha verifier gaps and full package/release gates are tracked separately;
   this block makes no performance claim.
+- Hot-path cost contracts:
+  ```json
+  [{
+    "id":"legacy-tree-strict-contract-drain",
+    "verdict":"accepted",
+    "performanceClaim":"none",
+    "owner":"the twelve retained tree value, guard, selector-surface, registration, rendering, bitset, combinator, and extend owners listed by legacy-tree-strict-contract-drain",
+    "why":"The retained tree already permits async container/declaration rendering, optional Context files, source-span accessor reads, DefaultGuard-owned text, inverted bitsets, raw-string or node combinators, singleton-collapsing selector-list results, parser-delivered string-or-array selector surfaces, synchronously empty mixin rendering, and mixin preparation that may return a distinct Mixin. This pass states those existing runtime facts exactly while retained consumers are removed; it does not preserve them with a shim or add another evaluator, traversal, resolver, or output policy.",
+    "dangerTokensJustification":"[materialized array/object] appears in type signatures for the existing optional Context file and selector-array surfaces. [node construction] A raw selector array becomes the existing SelectorList node only at Ampersand append/resolved-selector and composed-header cache boundaries that require Selector behavior; key-set analysis keeps the raw array and uses its existing array-aware compute path. [loop/traversal] Existing registration and merge-body loops retain their exact work. The render helper overload records that an absent effect cannot produce a Promise, and Mixin registration drops a false receiver-subtype cast without adding a wrapper or runtime branch. No resolver, output buffer, side map, error-control path, or second traversal is added.",
+    "cases":["declaration-sync-and-async-render-result","declaration-merge-source-span-exclusion","default-guard-owned-value","bitset-inversion-and-disjointness","string-and-node-combinator-recognition","selector-list-singleton-collapse","selector-list-array-or-node-inheritance","parser-delivered-selector-array-ampersand","selector-array-ruleset-callable-registration","selector-array-key-set-analysis","selector-compose-cache-node-boundary","ordered-registration-context-restoration","property-merge-container-scope","mixin-invisible-sync-render-and-registration-result"],
+    "behaviorEvidence":"The focused Mixin suite passes 196/196, including invisible rendering and interpolated-name preparation; the preceding selector/ruleset/rules/declaration contract evidence remains green.",
+    "buildEvidence":"The core package build and package-export verification pass; strict source diagnostics remain at the known 54 with no Mixin, Rules, or render-buffer diagnostic.",
+    "baseline":{"fixture":"benchmark.less","phase":"render","currentMedianMs":85.86,"parseRenderMedianMs":68.38,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}
+  }]
+  ```
 - Verdict: documentation and ownership review are complete for the staged snapshot;
   cost-contract acceptance remains deliberately unclaimed until each changed
   production surface has a compatible measured or exact structural contract. Do not
@@ -2194,12 +2209,12 @@ silently choose one language’s policy.
     "id":"legacy-tree-strict-contract-drain",
     "verdict":"accepted",
     "performanceClaim":"none",
-    "owner":"the ten retained tree value, guard, selector-surface, registration, bitset, combinator, and extend owners listed by legacy-tree-strict-contract-drain",
-    "why":"The retained tree already permits async container/declaration rendering, optional Context files, source-span accessor reads, DefaultGuard-owned text, inverted bitsets, raw-string or node combinators, singleton-collapsing selector-list results, and parser-delivered string-or-array selector surfaces. This pass states those existing runtime facts exactly while retained consumers are removed; it does not preserve them with a shim or add another evaluator, traversal, resolver, or output policy.",
-    "dangerTokensJustification":"[materialized array/object] appears in type signatures for the existing optional Context file and selector-array surfaces. [node construction] A raw selector array becomes the existing SelectorList node only at Ampersand append/resolved-selector and composed-header cache boundaries that require Selector behavior; key-set analysis now keeps the raw array and uses its existing array-aware compute path, avoiding a wrapper allocation there. [loop/traversal] The existing per-member callable registration loop moves ahead of node-only source metadata access, and the existing merge-body descent keeps its exact loop while narrowing Rules by instanceof before excluding Ruleset/AtRule container scopes. No resolver, output buffer, side map, error-control path, or second traversal is added. The combinator predicate keeps the same runtime checks and narrows only the exact Combinators string-literal union or Combinator node, leaving ordinary selector strings in the false branch.",
-    "cases":["declaration-sync-and-async-render-result","declaration-merge-source-span-exclusion","default-guard-owned-value","bitset-inversion-and-disjointness","string-and-node-combinator-recognition","selector-list-singleton-collapse","selector-list-array-or-node-inheritance","parser-delivered-selector-array-ampersand","selector-array-ruleset-callable-registration","selector-array-key-set-analysis","selector-compose-cache-node-boundary","ordered-registration-context-restoration","property-merge-container-scope"],
-    "behaviorEvidence":"The focused selector/ruleset/rules/mixin/declaration suites pass 470 tests with 5 pre-existing skips. The new regressions prove raw selector-array Ampersand append/key-set behavior and callable registration for every array member; existing registration, merge-scope, composition, and reference-render suites remain green.",
-    "buildEvidence":"Fresh strict core source diagnostics fall from 127 to 73 and then to 54; the full core config falls from 528 to 474 and then to 453, without suppression. Core build and package-export verification are required before landing.",
+    "owner":"the twelve retained tree value, guard, selector-surface, registration, rendering, bitset, combinator, and extend owners listed by legacy-tree-strict-contract-drain",
+    "why":"The retained tree already permits async container/declaration rendering, optional Context files, source-span accessor reads, DefaultGuard-owned text, inverted bitsets, raw-string or node combinators, singleton-collapsing selector-list results, parser-delivered string-or-array selector surfaces, synchronously empty mixin rendering, and mixin preparation that may return a distinct Mixin. This pass states those existing runtime facts exactly while retained consumers are removed; it does not preserve them with a shim or add another evaluator, traversal, resolver, or output policy.",
+    "dangerTokensJustification":"[materialized array/object] appears in type signatures for the existing optional Context file and selector-array surfaces. [node construction] A raw selector array becomes the existing SelectorList node only at Ampersand append/resolved-selector and composed-header cache boundaries that require Selector behavior; key-set analysis now keeps the raw array and uses its existing array-aware compute path, avoiding a wrapper allocation there. [loop/traversal] The existing per-member callable registration loop moves ahead of node-only source metadata access, and the existing merge-body descent keeps its exact loop while narrowing Rules by instanceof before excluding Ruleset/AtRule container scopes. The render helper overload records that an absent effect cannot produce a Promise, and Mixin registration drops a false receiver-subtype cast without adding a wrapper or runtime branch. No resolver, output buffer, side map, error-control path, or second traversal is added. The combinator predicate keeps the same runtime checks and narrows only the exact Combinators string-literal union or Combinator node, leaving ordinary selector strings in the false branch.",
+    "cases":["declaration-sync-and-async-render-result","declaration-merge-source-span-exclusion","default-guard-owned-value","bitset-inversion-and-disjointness","string-and-node-combinator-recognition","selector-list-singleton-collapse","selector-list-array-or-node-inheritance","parser-delivered-selector-array-ampersand","selector-array-ruleset-callable-registration","selector-array-key-set-analysis","selector-compose-cache-node-boundary","ordered-registration-context-restoration","property-merge-container-scope","mixin-invisible-sync-render-and-registration-result"],
+    "behaviorEvidence":"The focused selector/ruleset/rules/mixin/declaration suites pass 470 tests with 5 pre-existing skips. The new regressions prove raw selector-array Ampersand append/key-set behavior and callable registration for every array member; existing registration, merge-scope, composition, reference-render, invisible-mixin render, and interpolated-name preparation suites remain green.",
+    "buildEvidence":"Fresh strict core source diagnostics fall from 127 to 73 and then to 54; the full core config falls from 528 to 474 and then to 453, without suppression. Core build and package-export verification pass.",
     "baseline":{"fixture":"benchmark.less","phase":"render","currentMedianMs":85.86,"parseRenderMedianMs":68.38,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}
   }]
   ```
@@ -2295,3 +2310,64 @@ silently choose one language’s policy.
   }]
   ```
 - Verdict: accepted mechanical quality cleanup; no performance claim.
+
+## Aggressive Cutting Self-Prosecution
+
+- Latest pass: truthful retained-mixin registration/render contracts and exact
+  guard-comparison negation narrowing.
+- Architecture surface: retained tree mixin preparation/rendering and canonical
+  AST-v2 guard comparison keep their existing owners; no bridge or alternate
+  evaluator is added.
+- Separation/duplication: none. Existing render, registration, and comparison
+  helpers remain their sole owners.
+- Cumulative node weight: unchanged; no node, frame, wrapper, collection, or
+  side table is created.
+- New traversal: none.
+- New node/materialization: none.
+- Render path: invisible mixins still synchronously emit the empty string when
+  there is no asynchronous effect; emitted bytes and buffer segments are unchanged.
+- Helper/API surface: an internal overload states the existing synchronous
+  result, while registration drops a false receiver-subtype promise. No alias,
+  wrapper, or public entrypoint is added.
+- Metadata mutations: unchanged existing `registrationPrepared` and `withParts`
+  behavior only.
+- Review-flagged diff tokens: no allocation/traversal token is added. Explicit
+  guard-result branches replace one unsafe assertion over the same closed scalar
+  domain.
+- Evidence: Mixin passes 196/196; comparison/equality suites pass all 29 cases
+  discovered by the workspace configuration; strict core source diagnostics
+  remain at the known 54 with no touched-file diagnostic; core build and package
+  exports pass.
+- Hot-path cost contracts:
+  ```json
+  [{
+    "id":"legacy-tree-strict-contract-drain",
+    "verdict":"accepted",
+    "performanceClaim":"none",
+    "owner":"the twelve retained tree value, guard, selector-surface, registration, rendering, bitset, combinator, and extend owners listed by legacy-tree-strict-contract-drain",
+    "why":"The retained tree already permits async container/declaration rendering, optional Context files, source-span accessor reads, DefaultGuard-owned text, inverted bitsets, raw-string or node combinators, singleton-collapsing selector-list results, parser-delivered string-or-array selector surfaces, synchronously empty mixin rendering, and mixin preparation that may return a distinct Mixin. This pass states those existing runtime facts exactly while retained consumers are removed; it does not preserve them with a shim or add another evaluator, traversal, resolver, or output policy.",
+    "dangerTokensJustification":"The render helper overload records that an absent effect cannot produce a Promise, and Mixin registration drops a false receiver-subtype cast without adding a wrapper, allocation, traversal, or runtime branch. Rules widens only its public result type to admit an existing derived Rules result. No resolver, output buffer, side map, error-control path, or second traversal is added.",
+    "cases":["declaration-sync-and-async-render-result","declaration-merge-source-span-exclusion","default-guard-owned-value","bitset-inversion-and-disjointness","string-and-node-combinator-recognition","selector-list-singleton-collapse","selector-list-array-or-node-inheritance","parser-delivered-selector-array-ampersand","selector-array-ruleset-callable-registration","selector-array-key-set-analysis","selector-compose-cache-node-boundary","ordered-registration-context-restoration","property-merge-container-scope","mixin-invisible-sync-render-and-registration-result"],
+    "behaviorEvidence":"The focused Mixin suite passes 196/196, including invisible rendering and interpolated-name preparation; the preceding selector/ruleset/rules/declaration contract evidence remains green.",
+    "buildEvidence":"The core package build and package-export verification pass; strict source diagnostics remain at the known 54 with no Mixin, Rules, or render-buffer diagnostic.",
+    "baseline":{"fixture":"benchmark.less","phase":"render","currentMedianMs":85.86,"parseRenderMedianMs":68.38,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}
+  },{
+    "id":"ast-value-guard-equality-modes",
+    "verdict":"accepted",
+    "performanceClaim":"none",
+    "why":"Guard comparison negation retains the existing four-result mapping exactly: undefined stays undefined, -1 becomes 1, 1 becomes -1, and 0 remains 0. The explicit branches remove an unsafe numeric assertion without changing equality-mode dispatch or result policy.",
+    "dangerTokensJustification":"The replacement adds no allocation, loop, traversal, exception path, lookup, or helper call. It exchanges one unary negation plus assertion for explicit scalar comparisons over the same closed four-value domain and makes no performance or neutrality claim.",
+    "cases":["less-unitless-dimension","sass-quoted-keyword","exact-structural-distinction"],
+    "baseline":{"fixture":"benchmark.less","phase":"render","currentMedianMs":85.86,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}
+  },{
+    "id":"ast-value-guard-negate-result",
+    "verdict":"accepted",
+    "performanceClaim":"none",
+    "why":"Guard comparison negation retains the existing closed-result mapping exactly while replacing an unsafe numeric assertion: undefined stays undefined, negative and positive reverse, and equality remains zero.",
+    "dangerTokensJustification":"The explicit scalar branches add no allocation, loop, traversal, exception path, lookup, or helper call. They make the existing four-result mapping type-checkable and make no performance or neutrality claim.",
+    "cases":["incomparable-remains-undefined","negative-and-positive-reverse","equality-remains-zero"],
+    "baseline":{"fixture":"benchmark.less","phase":"render","currentMedianMs":85.86,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}
+  }]
+  ```
+- Verdict: accepted exact contract correction with focused behavior, strict
+  type, build, export, and registered runtime evidence; no performance claim.

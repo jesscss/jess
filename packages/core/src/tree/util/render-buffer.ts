@@ -239,6 +239,14 @@ export function writePreparedRenderTextResult(
 }
 
 export function renderInvisibleEffect(
+  effect: undefined,
+  bufferOrOptions?: RenderBuffer | PrintOptions
+): string;
+export function renderInvisibleEffect(
+  effect: MaybePromise<unknown>,
+  bufferOrOptions?: RenderBuffer | PrintOptions
+): MaybePromise<string>;
+export function renderInvisibleEffect(
   effect: MaybePromise<unknown>,
   bufferOrOptions?: RenderBuffer | PrintOptions
 ): MaybePromise<string> {

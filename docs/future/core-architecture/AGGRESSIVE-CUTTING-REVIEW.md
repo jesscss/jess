@@ -171,6 +171,25 @@ a blanket optimization exemption or a new active architecture queue.
     "evidence": {"command": ["pnpm", "vitest", "run", "packages/core/src/ast/__tests__/value-operate-compare.test.ts", "packages/jess/test/less/equality-mode.test.ts"]}
   },
   {
+    "id": "ast-value-guard-negate-result",
+    "kind": "semantic-boundary",
+    "surface": "closed guard-comparison result negation",
+    "files": ["packages/core/src/ast/value-guards.ts"],
+    "semanticBoundary": {
+      "trigger": "an ordered guard comparison reverses its left and right operands",
+      "scope": "Only the closed comparison result is inverted: undefined remains undefined, negative becomes positive, positive becomes negative, and equality remains equality. Equality-mode dispatch, operand materialization, variable resolution, and declaration rendering do not enter this helper.",
+      "cases": ["incomparable-remains-undefined", "negative-and-positive-reverse", "equality-remains-zero"],
+      "baseline": {"fixture": "benchmark.less", "phase": "render"}
+    },
+    "sourceCheck": {
+      "file": "packages/core/src/ast/value-guards.ts",
+      "caller": "const negate = (",
+      "guard": "if (c === undefined)",
+      "call": "return c === -1 ? 1 : c === 1 ? -1 : 0;"
+    },
+    "evidence": {"command": ["pnpm", "vitest", "run", "packages/core/src/ast/__tests__/value-operate-compare.test.ts", "packages/jess/test/less/equality-mode.test.ts"]}
+  },
+  {
     "id": "ast-value-operate-preserve-calc",
     "kind": "semantic-boundary",
     "surface": "typed arithmetic preserve-mode calc result policy",
@@ -251,17 +270,19 @@ a blanket optimization exemption or a new active architecture queue.
       "packages/core/src/tree/ampersand.ts",
       "packages/core/src/tree/declaration.ts",
       "packages/core/src/tree/default-guard.ts",
+      "packages/core/src/tree/mixin.ts",
       "packages/core/src/tree/rules.ts",
       "packages/core/src/tree/ruleset.ts",
       "packages/core/src/tree/selector-list.ts",
       "packages/core/src/tree/util/bitset.ts",
       "packages/core/src/tree/util/combinator.ts",
       "packages/core/src/tree/util/extend.ts",
+      "packages/core/src/tree/util/render-buffer.ts",
       "packages/core/src/tree/util/selector-analysis.ts"
     ],
     "semanticRuntime": {
-      "owner": "the ten retained tree value, guard, selector-surface, registration, bitset, combinator, and extend owners listed by legacy-tree-strict-contract-drain",
-      "scope": "This bounded strict-contract drain makes existing runtime facts truthful while retained tree consumers are removed: declaration rendering propagates existing MaybePromise results and reads provenance only through its accessor, DefaultGuard owns the value its constructor already writes, bitsets use their existing inversion reader instead of an undeclared dependency field, the shared combinator recognizer exposes the exact string-literal-or-node type it already recognizes, selector-list/extend helpers state their existing singleton-collapse and array-or-node inheritance behavior, and rules/ruleset/ampersand consumers accept the parser-delivered string-or-array selector surface they already receive. Ampersand only materializes an array where append or resolved-selector node behavior requires a node; key-set analysis consumes the raw array directly. It adds no compatibility shim, alternate evaluator, traversal, output policy, or performance claim.",
+      "owner": "the twelve retained tree value, guard, selector-surface, registration, rendering, bitset, combinator, and extend owners listed by legacy-tree-strict-contract-drain",
+      "scope": "This bounded strict-contract drain makes existing runtime facts truthful while retained tree consumers are removed: declaration rendering propagates existing MaybePromise results and reads provenance only through its accessor, DefaultGuard owns the value its constructor already writes, bitsets use their existing inversion reader instead of an undeclared dependency field, the shared combinator recognizer exposes the exact string-literal-or-node type it already recognizes, selector-list/extend helpers state their existing singleton-collapse and array-or-node inheritance behavior, and rules/ruleset/ampersand consumers accept the parser-delivered string-or-array selector surface they already receive. Ampersand only materializes an array where append or resolved-selector node behavior requires a node; key-set analysis consumes the raw array directly. A mixin's invisible render is synchronously empty when it has no effect to await, and interpolated-name registration truthfully returns Mixin rather than promising the receiver subtype because preparation may return a distinct withParts result. It adds no compatibility shim, alternate evaluator, traversal, output policy, or performance claim.",
       "cases": [
         "declaration-sync-and-async-render-result",
         "declaration-merge-source-span-exclusion",
@@ -275,7 +296,8 @@ a blanket optimization exemption or a new active architecture queue.
         "selector-array-key-set-analysis",
         "selector-compose-cache-node-boundary",
         "ordered-registration-context-restoration",
-        "property-merge-container-scope"
+        "property-merge-container-scope",
+        "mixin-invisible-sync-render-and-registration-result"
       ],
       "performanceClaim": "none",
       "baseline": {"fixture": "benchmark.less", "phase": "render"}

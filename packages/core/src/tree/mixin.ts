@@ -241,7 +241,7 @@ export class Mixin extends Rules<MixinValue, MixinOptions> {
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): string;
   override render(context: Context, options?: PrintOptions): string;
   override render(_context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, _options?: PrintOptions): string {
-    return renderInvisibleEffect(undefined, bufferOrOptions) as string;
+    return renderInvisibleEffect(undefined, bufferOrOptions);
   }
 
   override writeSyntax(options: FinalPrintOptions): void {
@@ -278,12 +278,12 @@ export class Mixin extends Rules<MixinValue, MixinOptions> {
     this.writeBraced(options);
   }
 
-  override prepareRegistration(context: Context): MaybePromise<this> {
+  override prepareRegistration(context: Context): MaybePromise<Mixin> {
     if (this.registrationPrepared) {
       return this;
     }
 
-    return this._prepareMixinRegistration(context) as MaybePromise<this>;
+    return this._prepareMixinRegistration(context);
   }
 
   private _prepareMixinRegistration(context: Context): MaybePromise<Mixin> {

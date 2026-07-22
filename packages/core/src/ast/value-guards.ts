@@ -82,8 +82,12 @@ function selfCompare(a: ValueObj, b: ValueObj, equalityMode: EqualityMode): -1 |
   }
 }
 
-const negate = (c: -1 | 0 | 1 | undefined): -1 | 0 | 1 | undefined =>
-  c === undefined ? undefined : (-c as -1 | 0 | 1);
+const negate = (c: -1 | 0 | 1 | undefined): -1 | 0 | 1 | undefined => {
+  if (c === undefined) {
+    return undefined;
+  }
+  return c === -1 ? 1 : c === 1 ? -1 : 0;
+};
 
 /**
  * Faithful port of less.js `Node.compare(a, b)` over materialized operands:

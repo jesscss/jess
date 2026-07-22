@@ -6308,7 +6308,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     return undefined;
   }
 
-  override prepareRegistration(context: Context): MaybePromise<this> {
+  override prepareRegistration(context: Context): MaybePromise<Rules> {
     return this._prepareRegistrationOnce(context);
   }
 
