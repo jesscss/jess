@@ -120,13 +120,17 @@ function mapMaybe<T, U>(m: MaybePromise<T>, f: (t: T) => MaybePromise<U>): Maybe
   return isThenable(m) ? m.then(f) : f(m);
 }
 
-function combineAll<T, U>(arr: Array<MaybePromise<T>>, f: (ts: T[]) => MaybePromise<U>): MaybePromise<U> {
+function isResolvedArray<T>(arr: Array<MaybePromise<T>>): arr is T[] {
   for (let i = 0; i < arr.length; i++) {
     if (isThenable(arr[i])) {
-      return Promise.all(arr).then(f);
+      return false;
     }
   }
-  return f(arr as T[]);
+  return true;
+}
+
+function combineAll<T, U>(arr: Array<MaybePromise<T>>, f: (ts: T[]) => MaybePromise<U>): MaybePromise<U> {
+  return isResolvedArray(arr) ? f(arr) : Promise.all(arr).then(f);
 }
 
 /**
@@ -500,16 +504,23 @@ function withSourceOwner<T>(e: EvalCtx, owner: object | null | undefined, run: (
 }
 
 function bindDetached(frame: Frame, value: Binding, lexicalFrame: Frame, sourceOwner: object | null): void {
-  if (!('type' in value) || value.type !== 'DetachedRuleset') {
+  if (!isDetachedRulesetBinding(value)) {
     return;
   }
   (frame.detachedBindings ??= new Map()).set(value, { lexicalFrame, sourceOwner });
 }
 
+function isDetachedRulesetBinding(value: Binding): value is DetachedRuleset {
+  return 'type' in value && value.type === 'DetachedRuleset';
+}
+
 function detachedBinding(frame: Frame | null, value: Binding): DetachedBinding | undefined {
+  if (!isDetachedRulesetBinding(value)) {
+    return undefined;
+  }
   let fallback: Frame | null | undefined;
   for (let current = frame; current; current = current.parent) {
-    const hit = current.detachedBindings?.get(value as DetachedRuleset);
+    const hit = current.detachedBindings?.get(value);
     if (hit) {
       return hit;
     }
@@ -569,7 +580,8 @@ function prepareBodyPlugins(statements: readonly Statement[], frame: Frame, e: E
       const loaded = load({ specifier, options });
       if (isThenable(loaded)) {
         return loaded.then((fns) => {
-          addScopedFns(frame, fns, e); return run(index + 1);
+          addScopedFns(frame, fns, e);
+          return run(index + 1);
         });
       }
       addScopedFns(frame, loaded, e);
@@ -3090,7 +3102,8 @@ function resolveSimpleText(sim: SimpleSelector, frame: Frame | null, e: EvalCtx)
     for (let i = index; i < interp.parts.length; i++) {
       const part = interp.parts[i]!;
       if ('lit' in part) {
-        out += part.lit; continue;
+        out += part.lit;
+        continue;
       }
       const g = refGroupInterp(part.ref, entryFrame, e);
       if (g !== null) {
@@ -3999,7 +4012,7 @@ function emitDocumentStatements(
       }
     };
     for (const child of children) {
-      if (e.hoistedCssImports?.has(child as ImportAtRule)) {
+      if (child.type === 'ImportAtRule' && e.hoistedCssImports?.has(child)) {
         continue;
       }
       if (child.type !== 'ImportAtRule') {
@@ -4030,8 +4043,8 @@ function emitDocumentStatements(
     try {
       return emit(child);
     } catch (error) {
-      if (allowDefer && error instanceof ImportPathNotReady) {
-        deferredImports.push(child as ImportAtRule);
+      if (allowDefer && child.type === 'ImportAtRule' && error instanceof ImportPathNotReady) {
+        deferredImports.push(child);
         return undefined;
       }
       if (error instanceof ImportPathNotReady) {
@@ -4699,9 +4712,12 @@ function walkBody(
         // at-rule is a container, so (partitioned) it defers to `trailing` after the
         // leading block, matching the legacy flatten order.
         if (staysNested(node.name)) {
-          addLeaf(group, partition, { node, frame }, forceLeading); break;
+          addLeaf(group, partition, { node, frame }, forceLeading);
+          break;
         }
-        const atNode = node, atFrame = frame, atComposed = composed;
+        const atNode = node;
+        const atFrame = frame;
+        const atComposed = composed;
         if (partition) {
           flushPending(partition);
           partition.encounteredContainer = true;
@@ -4720,7 +4736,8 @@ function walkBody(
       }
       case 'AtRuleStatement': {
         if (staysNested(node.name)) {
-          addLeaf(group, partition, { node, frame }, forceLeading); break;
+          addLeaf(group, partition, { node, frame }, forceLeading);
+          break;
         }
         const atNode = node;
         if (partition) {
@@ -4783,18 +4800,24 @@ function walkBody(
       case 'StyleImport': {
         const importNode = node;
         if (partition) {
-          flushPending(partition); partition.encounteredContainer = true; partition.trailing.push(() => emitStyleImport(importNode, frame, e));
+          flushPending(partition);
+          partition.encounteredContainer = true;
+          partition.trailing.push(() => emitStyleImport(importNode, frame, e));
         } else {
-          flush(); emitStyleImport(node, frame, e);
+          flush();
+          emitStyleImport(node, frame, e);
         }
         break;
       }
       case 'ModuleImport': {
         const importNode = node;
         if (partition) {
-          flushPending(partition); partition.encounteredContainer = true; partition.trailing.push(() => emitModuleImport(importNode, frame, e));
+          flushPending(partition);
+          partition.encounteredContainer = true;
+          partition.trailing.push(() => emitModuleImport(importNode, frame, e));
         } else {
-          flush(); emitModuleImport(node, frame, e);
+          flush();
+          emitModuleImport(node, frame, e);
         }
         break;
       }
@@ -5013,7 +5036,8 @@ function expandCall(
           finish();
         },
         (error) => {
-          finish(); throw error;
+          finish();
+          throw error;
         }
       );
     }
@@ -5289,7 +5313,8 @@ function resolveToMixinCall(node: Binding | undefined, frame: Frame | null): Mix
       return cur;
     }
     if (cur.type === 'VariableReference') {
-      cur = lookupVar(frame, cur.name); continue;
+      cur = lookupVar(frame, cur.name);
+      continue;
     }
     return undefined;
   }
@@ -5308,7 +5333,8 @@ function resolveDetachedRuleset(node: Binding, frame: Frame | null, e: EvalCtx):
       return cur;
     }
     if (cur.type === 'VariableReference') {
-      cur = lookupVar(frame, cur.name); continue;
+      cur = lookupVar(frame, cur.name);
+      continue;
     }
     if (cur.type === 'Reference') {
       const resolved = resolveReferenceResult(cur, frame, e);
@@ -5316,7 +5342,8 @@ function resolveDetachedRuleset(node: Binding, frame: Frame | null, e: EvalCtx):
       continue;
     }
     if (cur.type === 'FunctionCall' && cur.name.toLowerCase() === 'if') {
-      cur = pickIfBranch(cur, frame, e); continue;
+      cur = pickIfBranch(cur, frame, e);
+      continue;
     }
     return undefined;
   }
@@ -5555,7 +5582,8 @@ function resolveForNode(
       return { node: cur, frame: f };
     }
     if (cur.type === 'Block') {
-      cur = cur.inner; continue;
+      cur = cur.inner;
+      continue;
     }
     if (cur.type === 'VariableReference') {
       const hit = resolveVarRef(f, cur.name, cur.lookup, e);
@@ -5849,7 +5877,8 @@ function expandSpreadArgs(call: MixinCall, resolveCaller: ValueResolver): MixinC
   const args: CallArg[] = [];
   for (const a of call.args) {
     if (!a.spread) {
-      args.push(a); continue;
+      args.push(a);
+      continue;
     }
     if (isMixinCallValue(a.value)) {
       throw new Error('A deferred mixin call cannot be used as a spread argument.');
@@ -6095,7 +6124,11 @@ function mergeFold(group: Leaf[], e: Emit, idt: string, emitOne: (l: Leaf, e: Em
       let important = false;
       for (let k = 0; k < indices.length; k++) {
         const idx = indices[k]!;
-        const dn = group[idx]!.node as Declaration;
+        const mergeLeaf = group[idx]!;
+        if (mergeLeaf.node.type !== 'Declaration') {
+          throw new TypeError('Expected declaration merge member');
+        }
+        const dn = mergeLeaf.node;
         // Match ordinary declaration emission: an Important wrapper may sit
         // behind a variable reference, and promotes this whole merged line.
         // Keep that one-bit signal on the existing emit context: merged output
@@ -6396,7 +6429,8 @@ function emitImportAtRule(
               ? emitted.then(() => {
                   finish();
                 }, (error) => {
-                  e.depth--; throw error;
+                  e.depth--;
+                  throw error;
                 })
               : (finish(), emitted);
           } catch (error) {
@@ -6425,24 +6459,34 @@ function emitImportAtRule(
             }
             throw error;
           }
-          return isThenable(result)
-            ? result.then(
-                () => {
-                  if (reference) {
-                    e.referenceImportDepth--;
-                  } if (multiple) {
-                    e.multipleImportDepth--;
-                  }
-                },
-                (error) => {
-                  if (reference) {
-                    e.referenceImportDepth--;
-                  } if (multiple) {
-                    e.multipleImportDepth--;
-                  } throw error;
+          if (isThenable(result)) {
+            return result.then(
+              () => {
+                if (reference) {
+                  e.referenceImportDepth--;
                 }
-              )
-            : (reference && e.referenceImportDepth--, multiple && e.multipleImportDepth--, result);
+                if (multiple) {
+                  e.multipleImportDepth--;
+                }
+              },
+              (error) => {
+                if (reference) {
+                  e.referenceImportDepth--;
+                }
+                if (multiple) {
+                  e.multipleImportDepth--;
+                }
+                throw error;
+              }
+            );
+          }
+          if (reference) {
+            e.referenceImportDepth--;
+          }
+          if (multiple) {
+            e.multipleImportDepth--;
+          }
+          return result;
         }
         return loaded.withinDocument ? loaded.withinDocument(emit) : emit();
       }
@@ -6771,10 +6815,12 @@ function normalizeSupportsBytes(p: string): string {
       let end = i + 1;
       for (; end < p.length; end++) {
         if (p[end] === '\\') {
-          end++; continue;
+          end++;
+          continue;
         }
         if (p[end] === quote) {
-          end++; break;
+          end++;
+          break;
         }
       }
       out += p.slice(i, end);
@@ -7242,10 +7288,12 @@ function emitBubbleBody(
             if (isThenable(emitted)) {
               return emitted.then(
                 () => {
-                  e.depth--; return run(index + 1);
+                  e.depth--;
+                  return run(index + 1);
                 },
                 (error) => {
-                  e.depth--; throw error;
+                  e.depth--;
+                  throw error;
                 }
               );
             }
@@ -7259,10 +7307,12 @@ function emitBubbleBody(
           if (isThenable(nested)) {
             return nested.then(
               () => {
-                e.depth--; return run(index + 1);
+                e.depth--;
+                return run(index + 1);
               },
               (error) => {
-                e.depth--; throw error;
+                e.depth--;
+                throw error;
               }
             );
           }
@@ -7299,7 +7349,8 @@ function emitBubbleBody(
                     e.depth += 2;
                   },
                   (error) => {
-                    e.depth += 2; throw error;
+                    e.depth += 2;
+                    throw error;
                   }
                 );
               }
@@ -7310,10 +7361,12 @@ function emitBubbleBody(
           if (isThenable(imported)) {
             return imported.then(
               () => {
-                e.depth--; return run(index + 1);
+                e.depth--;
+                return run(index + 1);
               },
               (error) => {
-                e.depth--; throw error;
+                e.depth--;
+                throw error;
               }
             );
           }
@@ -7740,7 +7793,8 @@ function emitTransparentShells(
       const emitted = emitNestedBody(shell.def.body, callFrame, e, undefined, imp, source);
       if (isThenable(emitted)) {
         return emitted.then(() => {
-          finish(); return run(index + 1);
+          finish();
+          return run(index + 1);
         });
       }
       finish();
@@ -7916,7 +7970,8 @@ function emitHoisted(rule: Rule, frame: Frame, e: Emit): MaybePromise<void> {
         e.hoistMode = prev;
       },
       (error) => {
-        e.hoistMode = prev; throw error;
+        e.hoistMode = prev;
+        throw error;
       }
     );
   }
@@ -8024,7 +8079,8 @@ function expandNestedCall(
         e.mixinDepth--;
       },
       (error) => {
-        e.mixinDepth--; throw error;
+        e.mixinDepth--;
+        throw error;
       }
     );
   }
