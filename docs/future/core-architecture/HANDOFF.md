@@ -3182,6 +3182,38 @@ or Context deletion lanes.
   `less/`/`sass/` function files require their own behavior-parity batches and
   are not deleted or hidden by this slice.
 
+## Aggressive Cutting Self-Prosecution — Less blend Fn conversion
+
+- Latest pass: Less `hardlight`, `softlight`, `exclusion`, `multiply`, and
+  `screen` now directly re-export their canonical AST-v2 value-domain owners,
+  preserving every existing base-helper export. The legacy `hardLightBase`
+  casing remains as an explicit alias of canonical `hardlightBase`.
+- Architecture surface: existing value-domain `defineFunction`, `colorBlend`,
+  `requireColor`, and blend kernels only. No legacy tree import, bridge, parser
+  host, fallback evaluator, or duplicate resolver remains in these Less modules.
+- Separation/duplication: one implementation per blend function. Less files are
+  intentional public entrypoint re-exports, not compatibility shims.
+- Cumulative node weight: zero AST nodes, frames, maps, side tables, or render
+  state. Each callable returns one canonical `Color` value.
+- New traversal: none. The existing alpha-aware three-channel blend loop and
+  per-channel kernels are reused unchanged.
+- New node/materialization: no legacy tree nodes or AST nodes; the existing
+  color factory creates the required value result once.
+- Render path: unchanged typed evaluator/serializer route. No tree conversion,
+  source reparse, output-policy seam, or alternate evaluator was introduced.
+- Helper/API surface: no new helper or public name; all previous Less base helper
+  names remain available, including the historical `hardLightBase` spelling.
+- Metadata mutations: none.
+- Review-flagged diff tokens: none. No traversal, clone, node, spread,
+  side-map, metadata mutation, or routine error-control machinery was added.
+- Semantic evidence: a pre-cutover parity test compared each legacy result with
+  its canonical counterpart for fractional-alpha RGB inputs; all five matched
+  raw channels and serialized bytes. Focused typed/registry tests pass 2 files /
+  8 tests; full fns suite and package build are required batch gates. No
+  performance claim is made.
+- Verdict: accepted bounded in-place AST-v2 conversion; no duplicate Less blend
+  implementations remain for this five-function batch.
+
 ## Aggressive Cutting Self-Prosecution — Less overlay alias audit
 
 - Latest pass: Less `overlay` now directly re-exports the canonical AST-v2
