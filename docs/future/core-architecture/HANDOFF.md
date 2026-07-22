@@ -1933,7 +1933,7 @@ a phase attribution: the Compiler measurement also includes Context/plugin,
 document, evaluation, and rendering work. It does establish that direct parse
 is the dominant measured phase on this fixture.
 
-### Current direct Less baseline (verified 2026-07-22; no A/B claim)
+### Previous direct Less baseline (verified 2026-07-22; superseded for the direct-parse phase below; no A/B claim)
 
 The current built direct parser artifact is
 `packages/less-parser/lib/index.js`, 1,827,807 bytes, SHA-256
@@ -1957,6 +1957,33 @@ acceptance claim. The output/hash change from the older 122,390-byte anchor is
 first evidenced with the recursive Less parser argument repair (`212e132ea`),
 before the later strict-unit and Context-option wiring changes; no causal
 performance claim is made for those later changes.
+
+### Fresh generated-bundle direct Less baseline (2026-07-22; no causal claim)
+
+After rebuilding the current public Less parser with
+`pnpm --filter @jesscss/less-parser build`, two independent fresh Node
+processes timed `@jesscss/less-parser.parse(source)` directly. Each used the
+106,802-byte `packages/jess/benchmark/benchmark.less` fixture (SHA-256
+`abe392656c8a50e9d175c3b0e60415893a8eb7bfe9050518227391430d3a3d48`),
+20 untimed warmups, then three sequential 45-sample rounds. The parser call is
+the public complete-`Stylesheet` boundary and receives only its normal
+`{ trivia }` Parseman configuration; coverage and trace are not enabled.
+
+The rebuilt `packages/less-parser/lib/index.js` artifact is 1,912,512 bytes,
+SHA-256 `9cd513201d7778a0337e7df885f36de8ddf5a98aef1f77fc8874afb909a357b5`.
+On Node v24.11.1 / Darwin arm64 / Apple M4 Pro, the first process measured
+round medians of 31.763, 32.074, and 32.008 ms (round median **32.008 ms**);
+the independent process measured 31.889, 31.589, and 31.190 ms (round median
+**31.589 ms**). Both returned a 677-child `Stylesheet`; stable JSON is 946,987
+bytes, SHA-256 `8e3a371bd286ff2682ee08d56c451274a94b14203dbe8de68ad2057aa6cc13c3`.
+
+This supersedes the earlier 59–60 ms direct-parse snapshot as the current
+generated-artifact reference. It is not a causal A/B against that snapshot:
+the artifacts differ and the interval includes the Parseman 0.29 update plus
+multiple Less grammar/parser changes. In particular, it does not justify
+crediting any individual grammar change, nor does it establish an end-to-end
+Compiler result. A causal claim still requires the fixed-stage, one-change
+replay protocol described below.
 
 ### Independent Less timer-boundary audit (2026-07-22; no causal claim)
 
