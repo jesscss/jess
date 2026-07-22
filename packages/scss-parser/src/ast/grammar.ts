@@ -212,6 +212,41 @@ function isUrl(value: unknown): value is Url {
     && 'value' in value && isValue(value.value);
 }
 
+function isSimpleSelector(value: unknown): value is SimpleSelector {
+  return typeof value === 'object' && value !== null
+    && 'type' in value && value.type === 'SimpleSelector'
+    && 'text' in value && (typeof value.text === 'string' || value.text === null)
+    && 'interp' in value && (isInterpolation(value.interp) || value.interp === null);
+}
+
+function isCompoundSelector(value: unknown): value is CompoundSelector {
+  return typeof value === 'object' && value !== null
+    && 'type' in value && value.type === 'CompoundSelector'
+    && 'simples' in value && Array.isArray(value.simples)
+    && value.simples.every(isSimpleSelector);
+}
+
+function isComplexSelector(value: unknown): value is ComplexSelector {
+  return typeof value === 'object' && value !== null
+    && 'type' in value && value.type === 'ComplexSelector'
+    && 'head' in value && isCompoundSelector(value.head)
+    && 'tail' in value && Array.isArray(value.tail);
+}
+
+function isSelectorList(value: unknown): value is SelectorList {
+  return typeof value === 'object' && value !== null
+    && 'type' in value && value.type === 'SelectorList'
+    && 'selectors' in value && Array.isArray(value.selectors)
+    && value.selectors.every(isComplexSelector);
+}
+
+function requireSelectorList(value: unknown): SelectorList {
+  if (!isSelectorList(value)) {
+    throw new TypeError('Direct SCSS AST grammar produced a non-selector-list child.');
+  }
+  return value;
+}
+
 function isImportTarget(value: unknown): value is Quoted | Url | Interpolation {
   return isQuoted(value) || isUrl(value) || isInterpolation(value);
 }
@@ -221,6 +256,52 @@ function isList(value: unknown): value is List {
     && value !== null
     && 'type' in value && value.type === 'List'
     && 'value' in value && Array.isArray(value.value);
+}
+
+function isParam(value: unknown): value is Param {
+  if (typeof value !== 'object' || value === null) {
+    return false;
+  }
+  if ('name' in value && typeof value.name !== 'string') {
+    return false;
+  }
+  if ('default' in value && !isValueSlotValue(value.default)) {
+    return false;
+  }
+  if ('pattern' in value && !isValueSlotValue(value.pattern)) {
+    return false;
+  }
+  return !('rest' in value) || typeof value.rest === 'boolean';
+}
+
+function isParamArray(value: unknown): value is Param[] {
+  return Array.isArray(value) && value.every(isParam);
+}
+
+function isForBinding(value: unknown): value is ForBinding {
+  if (typeof value !== 'object' || value === null || !('kind' in value)) {
+    return false;
+  }
+  if (value.kind === 'single') {
+    return 'name' in value && typeof value.name === 'string';
+  }
+  return (value.kind === 'comma' || value.kind === 'bracket' || value.kind === 'tuple')
+    && 'names' in value && Array.isArray(value.names)
+    && value.names.every(name => name === undefined || typeof name === 'string');
+}
+
+function requireForBinding(value: unknown): ForBinding {
+  if (!isForBinding(value)) {
+    throw new TypeError('Direct SCSS AST grammar produced an invalid for binding.');
+  }
+  return value;
+}
+
+function requireString(value: unknown): string {
+  if (typeof value !== 'string') {
+    throw new TypeError('Direct SCSS AST grammar produced a non-string child.');
+  }
+  return value;
 }
 
 function isVarRef(value: unknown): value is VariableReference {
@@ -1404,7 +1485,7 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
     ),
     children => mixinDef(
       requireToken(children[1]).value,
-      Array.isArray(children[2]) ? children[2] as Param[] : [],
+      isParamArray(children[2]) ? children[2] : [],
       statementChildren(children, true)
     )
   );
@@ -1442,7 +1523,7 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
       if (iterable === undefined) {
         throw new TypeError('DirectScssEach requires an iterable.');
       }
-      return forNode(iterable, statementChildren(children, true), children[1] as ForBinding);
+      return forNode(iterable, statementChildren(children, true), requireForBinding(children[1]));
     }
   );
   // SCSS `@for` has an authored inclusive (`through`) or exclusive (`to`) end.
@@ -1464,7 +1545,7 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
     children => forNode(
       range(requireValue(children[3]), requireValue(children[5]), null, true, requireToken(children[4]).value.toLowerCase() === 'through'),
       statementChildren(children.slice(7, -1), true),
-      { kind: 'single', name: children[1] as string }
+      { kind: 'single', name: requireString(children[1]) }
     )
   );
   // Direct SCSS conditionals use the canonical If/GuardNode. Bare truthiness is
@@ -1546,7 +1627,7 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
   const DirectScssIfStaticRule = node<Rule>(
     'DirectScssIfStaticRule',
     sequence(g.DirectScssSelector, g.DirectScssIfBody),
-    children => rule(children[0] as SelectorList, children[1] as Statement[])
+    children => rule(requireSelectorList(children[0]), requireStatementList(children[1]))
   );
   const DirectScssIfStaticConditionalBlock = node<AtRuleBlock>(
     'DirectScssIfStaticConditionalBlock',
