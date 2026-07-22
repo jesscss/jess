@@ -33,16 +33,12 @@ describe('public Less parse()', () => {
     const source = '.x { color: rgb(50%,0,0); }';
     const document = parse(source);
     const rule = document.children[0];
-    if (rule?.type !== 'Rule') {
-      throw new Error('Expected a Rule AST node.');
+    const declaration = rule?.type === 'Rule' ? rule.body[0] : undefined;
+    if (declaration?.type !== 'Declaration' || typeof declaration.value !== 'object' || declaration.value === null) {
+      throw new Error('expected a declaration with a structured value');
     }
-    const declaration = rule.body[0];
-    if (declaration?.type !== 'Declaration') {
-      throw new Error('Expected a Declaration AST node.');
-    }
-    const value = declaration.value;
 
-    expect(sourceSpanOf(value)).toEqual({ start: source.indexOf('rgb'), end: source.indexOf(')') + 1 });
+    expect(sourceSpanOf(declaration.value)).toEqual({ start: source.indexOf('rgb'), end: source.indexOf(')') + 1 });
   });
 
   it('returns the canonical Stylesheet directly while named CST/document APIs remain available', () => {
@@ -1114,7 +1110,7 @@ describe('public Less parse()', () => {
     const body = document.children[0];
     const inline = document.children[1];
     if (body?.type !== 'Rule' || inline?.type !== 'Rule') {
-      throw new Error('Expected both extend-bearing children to be Rule nodes.');
+      throw new Error('expected two rules with extend instructions');
     }
 
     expect(body.extendInstructions).toMatchObject([{ partial: true }]);

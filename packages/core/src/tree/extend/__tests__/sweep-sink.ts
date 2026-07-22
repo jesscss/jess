@@ -14,8 +14,8 @@
  * This file is test-only; it is NOT exported from index.ts, so the bundle stays clean.
  */
 import { extendByIndexOwn, UNSUPPORTED } from '../extend-index.js';
+import { appendFileSync } from 'node:fs';
 import { expect as vitestExpect } from 'vitest';
-import * as fsModule from 'node:fs';
 
 type Surface = Parameters<typeof extendByIndexOwn>[0];
 type Sel = Parameters<typeof extendByIndexOwn>[1];
@@ -36,7 +36,7 @@ interface SweepRecord {
 /** Read the current vitest test context (file + name) without modifying any test file. */
 function currentOrigin(): string {
   try {
-    const state = vitestExpect.getState?.();
+    const state = vitestExpect.getState();
     if (state) {
       const file = state.testPath ? state.testPath.split('/').pop() : '?';
       return `${file}::${state.currentTestName ?? '?'}`;
@@ -55,16 +55,9 @@ function str(v: unknown): string {
     return v;
   }
   if (Array.isArray(v)) {
-    return v.map(s => valueText(s)).join(',');
+    return v.map(s => String(s)).join(',');
   }
-  return valueText(v);
-}
-
-function valueText(value: unknown): string {
-  if (value !== null && typeof value === 'object' && 'valueOf' in value && typeof value.valueOf === 'function') {
-    return String(value.valueOf());
-  }
-  return String(value);
+  return String(v);
 }
 
 const records = new Map<string, SweepRecord>();
@@ -79,7 +72,9 @@ function classify(ownStr: string, oracleStr: string): SweepRecord['status'] {
   return 'divergence';
 }
 
-interface NodeLike { parent?: unknown; value?: unknown }
+interface NodeLike {
+  parent: unknown;
+}
 
 /** Recursively snapshot every node's `.parent` in an input tree (so the own run can be undone). */
 function snapshotParents(v: unknown, out: Array<[NodeLike, unknown]>, seen: Set<unknown>): void {
@@ -93,18 +88,17 @@ function snapshotParents(v: unknown, out: Array<[NodeLike, unknown]>, seen: Set<
     }
     return;
   }
-  const node = v as NodeLike;
-  if ('parent' in node) {
-    out.push([node, node.parent]);
+  if ('parent' in v) {
+    out.push([v, v.parent]);
   }
   // Follow every object-valued own property (bounded by `seen`) so container references the own
   // engine may reparent through — e.g. an Ampersand's `_selectorContainer.selector` graft parent —
   // are also snapshotted. `parent` itself is skipped to avoid walking back UP the tree.
-  for (const key of Object.keys(node)) {
+  for (const key of Object.keys(v)) {
     if (key === 'parent') {
       continue;
     }
-    snapshotParents(Reflect.get(node, key), out, seen);
+    snapshotParents(Reflect.get(v, key), out, seen);
   }
 }
 
@@ -168,12 +162,10 @@ const sink = (
 Object.assign(globalThis, { ['__EXTEND_INDEX_SWEEP__']: sink });
 
 const outFile = process.env.SWEEP_OUT;
-
-const fs = outFile ? fsModule : undefined;
 // NOTE: do NOT truncate on module load — vitest reloads setup files per test file, which would
 // wipe earlier files' records. The runner truncates SWEEP_OUT once before the run; we only append.
 function appendRecord(rec: SweepRecord): void {
-  if (outFile && fs) {
-    fs.appendFileSync(outFile, JSON.stringify(rec) + '\n');
+  if (outFile) {
+    appendFileSync(outFile, JSON.stringify(rec) + '\n');
   }
 }

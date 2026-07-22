@@ -24,13 +24,6 @@ function parseAst(input: string): Stylesheet {
   return result.value;
 }
 
-function valueLayout(value: unknown): ReturnType<typeof valueLayoutOf> {
-  if (typeof value !== 'object' || value === null) {
-    throw new Error('Expected a value object with provenance layout.');
-  }
-  return valueLayoutOf(value);
-}
-
 describe('CSS canonical-AST grammar', () => {
   it('keeps declaration-only permissive component values out of calc and nested-rule headers', () => {
     const document = parseAst('.a { x: (foo); ratio: 1 / 2; filter: alpha(opacity=50); flag: foo|bar; color: red ! IMPORTANT; b: c { color: blue; } }');
@@ -1601,11 +1594,18 @@ describe('CSS canonical-AST grammar', () => {
     const call = body.body[2]?.type === 'Declaration' ? body.body[2].value : null;
     expect(Array.isArray(adjacent)).toBe(true);
     expect(comma).toMatchObject({ type: 'List' });
-    expect(valueLayout(adjacent)).toEqual([' /* keep */\n  ']);
-    expect(valueLayout(comma)).toEqual([',\n  ']);
+    if (typeof adjacent !== 'object' || adjacent === null || typeof comma !== 'object' || comma === null) {
+      throw new Error('expected structured declaration values');
+    }
+    expect(valueLayoutOf(adjacent)).toEqual([' /* keep */\n  ']);
+    expect(valueLayoutOf(comma)).toEqual([',\n  ']);
     expect(call).toMatchObject({ type: 'FunctionCall', name: 'foo' });
-    if (call && !Array.isArray(call) && call.type === 'FunctionCall') {
-      expect(valueLayout(call.args[0])).toEqual([' /* keep fn */\n  ']);
+    if (typeof call === 'object' && call !== null && !Array.isArray(call) && call.type === 'FunctionCall') {
+      const firstArg = call.args[0];
+      if (typeof firstArg !== 'object' || firstArg === null) {
+        throw new Error('expected a structured function argument');
+      }
+      expect(valueLayoutOf(firstArg)).toEqual([' /* keep fn */\n  ']);
     }
     expect(serialize(document).css).toContain('color: red /* keep */\n    blue;');
     expect(serialize(document).css).toContain('shadow: a,\n    b;');

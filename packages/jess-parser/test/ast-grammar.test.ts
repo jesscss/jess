@@ -17,13 +17,11 @@ function isStylesheet(value: unknown): value is Stylesheet {
     && Array.isArray(value.children);
 }
 
-function isRule(value: unknown): value is Rule {
-  return typeof value === 'object'
-    && value !== null
-    && 'type' in value
-    && value.type === 'Rule'
-    && 'body' in value
-    && Array.isArray(value.body);
+function stylesheet(value: unknown): Stylesheet {
+  if (!isStylesheet(value)) {
+    throw new TypeError('Expected the Jess grammar to produce a Stylesheet');
+  }
+  return value;
 }
 
 function hasCstGrammar(node: unknown, grammarType: string): boolean {
@@ -423,12 +421,11 @@ describe('Jess AST grammar facts', () => {
       expect(direct.unconsumedFrom, source).toBeNull();
       const document = parse(source);
       expect(document).toMatchObject({ type: 'Stylesheet', children: [{ type: 'Rule' }] });
-      const first = document.children[0];
-      expect(isRule(first)).toBe(true);
-      if (!isRule(first)) {
-        throw new Error('Expected declaration test document to contain a Rule.');
+      const rule = document.children[0];
+      if (rule?.type !== 'Rule') {
+        throw new Error('expected a rule containing the important declaration');
       }
-      expect(first.body[0]).toMatchObject(
+      expect(rule.body[0]).toMatchObject(
         { type: 'Declaration', name: 'color', value: { type: 'Keyword', src: 'red' }, important: true }
       );
       expect(serialize(document, { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css).toContain(
@@ -1147,7 +1144,7 @@ describe('Jess AST grammar facts', () => {
 
     let missingPath: unknown;
     try {
-      serialize(parse('@import url($[path]); $path: "images/icon.svg";'));
+      void serialize(parse('@import url($[path]); $path: "images/icon.svg";'));
     } catch (error) {
       missingPath = error;
     }
@@ -1157,8 +1154,8 @@ describe('Jess AST grammar facts', () => {
       phase: 'resolve',
       reason: 'Symbol "@path" is undefined in this scope.'
     });
-    if (!(missingPath instanceof JessError) || missingPath.node === undefined) {
-      throw new Error('Expected missing import path to carry a JessError source node.');
+    if (!(missingPath instanceof JessError) || !missingPath.node) {
+      throw new Error('expected a JessError with parser provenance');
     }
     expect(sourceSpanOf(missingPath.node)).toEqual({ start: 12, end: 19 });
 
@@ -1688,10 +1685,7 @@ describe('Jess AST grammar facts', () => {
     expect(direct.ok).toBe(true);
     expect(direct.unconsumedFrom).toBeNull();
     expect(direct.value).toMatchObject({ type: 'Stylesheet' });
-    if (!isStylesheet(direct.value)) {
-      throw new Error('Expected direct Jess parse to produce a Stylesheet.');
-    }
-    expect(direct.value.children.slice(0, 5)).toMatchObject([
+    expect(stylesheet(direct.value).children.slice(0, 5)).toMatchObject([
       {
         type: 'MixinDef', name: 'match',
         guard: {
