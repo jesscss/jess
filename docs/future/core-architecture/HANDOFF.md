@@ -255,6 +255,23 @@ section is the authoritative full-scope companion to the compact task goal.
   release cut; do not ordinary-merge/rebase shared alpha history or publish
   before every gate passes.
 
+### Current Less v5 alpha readiness evidence (2026-07-22)
+
+- The committed Less `alpha` branch is exactly `5.0.0-alpha.1`; its guarded
+  release dry-run and release-guard unit tests pass. This proves the release
+  shape only, not package readiness.
+- Local `lessc` preflight passes, but it resolves workspace-linked Jess
+  packages whose manifests are still `2.0.0-alpha.5`. It is therefore not
+  evidence for `jess@2.0.0-alpha.9` or the current Jess source tree.
+- The normal Less package test currently exits 6 with 49 fixture mismatches
+  and 54 incomplete-parse diagnostics. Those failures remain visible release
+  work; they must not be weakened, reclassified as passing parity, or hidden.
+- Neither `jess@2.0.0-alpha.9` nor `less@5.0.0-alpha.1` is on npm. Do not
+  publish Less until Jess alpha.9 is published, Less has been rebuilt/relinked
+  against that exact package, and a publish-shaped clean-consumer install has
+  passed. Local Less manifests deliberately retain `link:` specs; the guarded
+  publish path rewrites them only for the publish window.
+
 ## Router
 
 | Work | Read first |
