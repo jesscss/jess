@@ -282,6 +282,26 @@ export class LessPlugin extends AbstractPlugin {
   }
 
   setContext(context: Context): void {
+    // The Less adapter owns the language defaults, while Context owns the
+    // session-level option store consumed by the AST evaluator.  A caller's
+    // explicit compile option (and a matching file/language option already
+    // folded into context.opts) always wins; fill only unset fields here.
+    if (context.opts.mathMode === undefined) {
+      context.setOption('mathMode', this.mathMode);
+    }
+    if (context.opts.unitMode === undefined) {
+      context.setOption('unitMode', this.unitMode);
+    }
+    if (context.opts.equalityMode === undefined) {
+      context.setOption('equalityMode', this.equalityMode);
+    }
+    if (context.opts.leakyScope === undefined) {
+      context.setOption('leakyScope', this.leakyScope);
+    }
+    if (context.opts.bubbleRootAtRules === undefined) {
+      context.setOption('bubbleRootAtRules', this.bubbleRootAtRules);
+    }
+
     let host = this.pluginHosts.get(context);
     if (!host) {
       const fns: Fn[] = [];
