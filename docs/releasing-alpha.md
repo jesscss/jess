@@ -184,7 +184,8 @@ pnpm run release:alpha
 What it does for you:
 
 1) Safety checks (`alpha` branch + clean working tree except `.cursor/*`)
-2) Full preflight (`release:alpha:check`: Less-alpha, AST-v2 production-route
+2) Full preflight (`release:alpha:check`: release build, strict production
+   types, bounded production-source lint, Less-alpha, AST-v2 production-route
    ratchet, baseline, aggressive-cutting, allowlist, packed clean-consumer, and
    dry-run publish checks)
 3) Registry-aware lockstep alpha-version resolution and manifest update
@@ -209,6 +210,22 @@ optional `@jesscss/plugin-js` sandbox-runtime gate. The install uses no workspac
 links; this is the release gate that proves the package closure a user will
 actually receive. Pass `-- --keep` only while debugging to retain its temporary
 consumer directory.
+
+### Strict source-quality proof
+
+The release build may use declaration/bundle tooling that passes `--noCheck`.
+That build success is not a type-quality result. Immediately after the release
+build, `pnpm run verify:types` runs `tsc -p tsconfig.build.json --noEmit` for
+every workspace build config in dependency order, without `--noCheck`. It runs
+all configs before failing so the release report identifies every package that
+still owns diagnostics.
+
+`pnpm run lint:production` checks only the bounded production surfaces under
+`packages/*/src/**` and `scripts/**`; repository-root scratch files and build
+artifacts cannot enter through a worktree-wide shell glob. Test files and test
+directories are intentionally outside that release gate and remain available
+through the separate `pnpm run lint:test` command. A candidate is not green
+unless both strict production checks pass.
 
 ## First publish (2.0.0-alpha.1)
 

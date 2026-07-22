@@ -342,6 +342,18 @@ earlier, before a manual publish attempt.
 
 ## Evidence Log
 
+- 2026-07-21: Made source quality an explicit blocking alpha gate rather than
+  inferring it from release builds that use `--noCheck`. The dependency-ordered
+  `verify:types` audit on the current integration candidate with published
+  Parseman 0.28.0 fails with 246 diagnostics. The bounded `lint:production`
+  audit fails with 1,357 findings. These are measured burn-down baselines, not
+  accepted debt: `release:alpha:check` now stops on either result.
+- 2026-07-21: Replaced the stale dirty/behind Less package snapshot with the
+  clean `5.0.0-alpha.1` release candidate at `1fc6d76b`. Verified
+  `HEAD..upstream/master=0`, `npm run test:lessc`, `npm run typecheck`, and the
+  five publish-version/dependency rewrite tests. Recorded the clean local Jess
+  `2.0.0-alpha.9` candidate at `3081a94fe` without claiming either registry
+  publication or final clean Less consumer verification.
 - 2026-06-19: Created this tracker after owner declared the current
   `benchmark.less` performance good enough for first Less alpha and identified
   API stabilization, expanded Less API tests, and CI guards as release blockers.
