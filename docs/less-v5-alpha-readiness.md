@@ -58,32 +58,38 @@ not land: direct parse was 62.881 ms versus its 59.502 ms baseline and compiler
 choice investigation is the opt-in stable choice-arm trace design in
 [`parseman-diagnostic-trace-design.md`](./future/parseman-diagnostic-trace-design.md).
 
-## External Less `5.0.0-alpha.1` package audit (2026-07-21)
+## External Less `5.0.0-alpha.1` package audit (2026-07-22)
 
 The sibling Less repository is on its `alpha` branch at `805c89e`, with the
-working tree carrying the intended v5 wrapper, CLI, publish-script, and test
-changes. Its package manifests are exactly `5.0.0-alpha.1`; the branch is not
-yet synchronized with `upstream/master` (`54` commits ahead, `32` behind), and
-the attempted merge has real conflicts in the v5/legacy build and test-data
-surfaces. Do not merge that upstream history blindly or discard the dirty
-alpha changes.
+working tree carrying the v5 wrapper, CLI, publish-script, and test changes.
+Its package manifests are exactly `5.0.0-alpha.1`. The branch is not yet
+synchronized with `master`: `git rev-list --left-right --count alpha...master`
+reports `54` commits ahead and `30` behind. The alpha worktree is dirty, so do
+not merge that history mechanically or discard its uncommitted release work.
 
-The built `lessc` smoke suite passes, as do the five publish-version/dependency
-rewrite tests and the package typecheck. The full Less node suite exits with six
-known v5 divergences (plugin-global/visitor behavior, advanced parser fixtures,
-URL/process-import behavior, and source-map artifacts); these remain classified
-known limitations rather than hidden or deleted failures.
+The package itself packs successfully: `npm pack --dry-run --json` reports
+`less@5.0.0-alpha.1` (12 files, 38,651 unpacked bytes). The built artifact also
+passes `npm run build`, `npm run typecheck`, and `npm run test:lessc`; the latter
+exercises built `lessc` version output, stdin, file output, sibling imports, and
+failure diagnostics. The five publish-version/dependency-rewrite tests pass.
 
-The first packed Less tarball exposed a release blocker: its local Jess
-dependencies were published as `link:` URLs, and a clean npm consumer fails
-with `EUNSUPPORTEDPROTOCOL`. The Less alpha publish script now requires an
-explicit `JESS_VERSION` (for example `2.0.0-alpha.9`), temporarily rewrites the
-four Jess runtime dependencies to that exact registry version for `npm publish`,
-and restores the local workspace-linked manifest afterward. Publication order
-is therefore: publish and clean-consumer-verify Jess `2.0.0-alpha.9` first,
-then publish Less with `JESS_VERSION=2.0.0-alpha.9`. The helper has a packed
-manifest proof; a real clean Less consumer remains pending the Jess alpha.9
-registry artifacts.
+A clean npm consumer cannot yet install the locally packed tarball: the local
+alpha manifest intentionally retains workspace `link:` dependencies, and npm
+fails with `EUNSUPPORTEDPROTOCOL` before installation. The alpha publish script
+requires an explicit `JESS_VERSION` (for example `2.0.0-alpha.9`) and temporarily
+rewrites the four Jess runtime dependencies to that exact registry version during
+`npm publish`, restoring the workspace-linked manifest afterward. Thus a real
+clean-consumer proof must wait until the corresponding Jess alpha artifacts are
+published; the helper test is not a substitute for that proof.
+
+The full Less node corpus is **not alpha-green**: `npm run test:node` exits `6`
+on this worktree, with failures spanning legacy plugin-global/registry and
+visitor assumptions, unsupported advanced parser fixtures, import/process-URL
+behavior, source-map artifacts, and other output divergences. These failures
+remain visible compatibility evidence; they must not be hidden or relabeled as
+passing behavior. Owner decision for this audit: **do not publish Less and do
+not change Jess `dev`**. Publication remains contingent on the controlled alpha
+workflow, the exact Jess dependency version, and the release gates above.
 
 With no Deno/plugin execution on `benchmark.less`, three repeated 8-run/3-warmup
 rounds measured Less alpha render medians of `99.44`, `98.56`, and `92.80` ms
@@ -440,6 +446,13 @@ earlier, before a manual publish attempt.
   allowlist and intentionally excluded `rollup-plugin-jess` are now recorded
   with the current package-closure evidence. The benchmark remains a baseline
   investigation with no valid matched 0.27/0.28 performance A/B yet.
+- 2026-07-22: Re-audited the sibling Less `alpha` worktree. `less@5.0.0-alpha.1`
+  packs, built-artifact `lessc` smoke tests pass, and the five publish helper
+  tests plus package typecheck pass. A clean npm install is still blocked by the
+  publish-time `link:` dependency rewrite until Jess alpha artifacts exist in
+  the registry. The full Less node corpus exits 6 and is not alpha-green. The
+  owner decision is explicit: do not publish Less and do not change Jess `dev`
+  from this evidence-only audit.
 - 2026-07-21: Replaced the stale dirty/behind Less package snapshot with the
   clean `5.0.0-alpha.1` release candidate at `1fc6d76b`. Verified
   `HEAD..upstream/master=0`, `npm run test:lessc`, `npm run typecheck`, and the
