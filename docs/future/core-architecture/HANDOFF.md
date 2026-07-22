@@ -157,6 +157,32 @@ when recognition changes. For eval/render/lookup/traversal/copying changes, run
 requires fresh builds, core tests, the Jess AST-v2 production-route ratchet,
 and the Less corpus.
 
+### Verified alpha squash policy (2026-07-22)
+
+The `alpha` and `dev` branches share a common ancestor but independently added
+the same source paths. A disposable rehearsal confirmed that
+`git merge --squash dev` from `alpha` creates a broad add/add conflict set;
+these are history-topology conflicts, not a semantic queue to resolve by hand.
+Do not ordinary-merge or rebase `dev` into `alpha`.
+
+For the refresh, first create a recovery ref such as
+`git branch alpha-pre-alpha9-cut alpha` and work in an isolated `alpha`
+worktree. Import the endpoint tree with a two-tree patch
+(`git diff --binary alpha..dev` and `git apply --index`), then restore only
+`packages/*/package.json` from the recovery ref. The verified manifest delta
+contains only lockstep package-version fields and `pnpm-lock.yaml` is
+unchanged, so this retains the alpha package versions while preserving the
+current `dev` root scripts. Keep `dev`'s root quality gates (`verify:types` and
+bounded production lint) and its newer HANDOFF/readiness/release evidence;
+reconcile the alpha release note from final gate evidence instead of restoring
+the older alpha docs wholesale.
+
+Commit one controlled refresh on `alpha`, confirm a clean source tree, and run
+the full `release:alpha:check` chain before owner-approved publication. That
+chain is the release build, strict types, production lint, Less-alpha route,
+AST-v2 production ratchet, baseline, release-mode aggressive-cutting review,
+allowlist validation, packed-consumer proof, and publish dry-run.
+
 ### Current Less-alpha gate status (2026-07-22; public route and F5 gate green)
 
 The public Less route reaches canonical AST-v2 evaluation and serialization for

@@ -198,6 +198,32 @@ are expressly advertised for a later alpha.
   parity. Jess should support tree-shaken browser builds, but the alpha should
   not imply that arbitrary `.less` files are parsed in the browser.
 
+## Controlled alpha refresh policy (verified 2026-07-22)
+
+`alpha` and `dev` have a common ancestor but both histories added the same
+working files afterward. A disposable rehearsal showed that
+`git merge --squash dev` from `alpha` produces a large add/add conflict surface;
+those conflicts are history topology, not a useful file-by-file review queue.
+Never ordinary-merge or rebase `dev` into `alpha`, and do not resolve that
+conflict set mechanically.
+
+Use a recovery ref and an isolated `alpha` worktree. Import the endpoint tree
+with a two-tree patch (`git diff --binary alpha..dev` followed by
+`git apply --index`), then restore only `packages/*/package.json` from the
+recovery ref. The package-manifest diff was verified to contain only the
+lockstep version fields, and `pnpm-lock.yaml` is unchanged; this preserves the
+alpha package versions without restoring alpha's weaker root release scripts.
+Keep `dev`'s root `package.json` (including strict `verify:types` and bounded
+production lint) and its newer HANDOFF/readiness/release evidence. Reconcile
+the alpha release note from the final gate output rather than restoring the
+older alpha docs wholesale.
+
+After the controlled tree cut, commit one refresh on `alpha`, verify a clean
+source tree, and rerun the complete `release:alpha:check` chain (build, strict
+types, production lint, Less-alpha, AST-v2 ratchet, baseline, aggressive
+cutting, allowlist, packed consumer, and publish dry-run) before any
+owner-approved publish.
+
 ## API Stabilization
 
 Goal: make the package boundary intentional enough that the alpha does not
