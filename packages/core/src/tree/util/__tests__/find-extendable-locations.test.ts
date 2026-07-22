@@ -230,10 +230,12 @@ describe('ExtendLocation API Tests', () => {
     });
 
     it('tolerates a string-normalized leaf target (no WeakMap key crash)', () => {
-      // The identity caches (WeakMap/Map) key on node identity; a string leaf is
-      // not an object and crashed `WeakMap.set`. String leaves bypass the cache.
+      // The public matcher accepts Selector nodes; raw strings occur as leaves
+      // inside selector-list nodes. The identity caches key on node identity,
+      // while those string leaves bypass the cache without becoming WeakMap keys.
       const selector = el('.a');
-      const result = findExtendableLocations(selector, '.a' as never);
+      const target = sellist(['.a']);
+      const result = findExtendableLocations(selector, target);
       expect(result.hasMatches).toBe(true);
     });
   });
