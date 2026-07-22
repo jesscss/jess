@@ -234,9 +234,10 @@ Context plumbing or parser bridges:
    precedence and evaluate it. When division is disallowed by
    `parens-division`, the same structure must remain authored raw value/list
    output. The authoritative regression fixture is
-   `tests-config/units/no-strict/no-strict.less`: `test-division` must evaluate
-   under `math: 0`, while bare `t3` and `t6` remain authored divisions. This
-   promotion must not reparse source bytes or add a second value parser.
+   `tests-config/units/no-strict/no-strict.less`: `test-division`, `t3`, and
+   `t6` must evaluate under its `math: 0` config; equivalent bare slash values
+   under `parens-division` must remain authored divisions. This promotion must
+   not reparse source bytes or add a second value parser.
 2. **Deferred strict-unit validation.** The unit evaluator must retain the
    numerator/denominator facts through an operation chain and validate
    singularity only at final typed materialization/emission. Intermediate
