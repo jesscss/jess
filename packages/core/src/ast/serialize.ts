@@ -4738,26 +4738,16 @@ function walkBody(
         // them into the enclosing ruleset. A mixin body retains its call frame for
         // value evaluation but publishes this declaration into `propertyScope`.
         recordPropertyDeclaration(propertyScope, node, frame);
-        // A nested rule, bubbling at-rule, or spliced nested mixin output is a
-        // source-order boundary. Later declarations therefore open a fresh
-        // same-selector block; folding direct authored declarations back into the
-        // leading block loses that ordering (`.a { x; .b {}; y }`). Parametric
-        // mixin bodies explicitly opt into Less's leading-hoist behavior.
-        if (partition && partition.encounteredContainer && !forceLeading) {
-          partition.pending.push({
-            node,
-            frame,
-            ...(imp ? { important: true } : {}),
-            ...(applyExpansion ? { fromApply: true } : {})
-          });
-        } else {
-          group.push({
-            node,
-            frame,
-            ...(imp ? { important: true } : {}),
-            ...(applyExpansion ? { fromApply: true } : {})
-          });
-        }
+        // A flattened Less ruleset emits all of its direct declarations as one
+        // parent block, even when a nested rule appears between authored
+        // declarations. The nested container remains deferred; a declaration is
+        // not a source-order split point for that parent block.
+        group.push({
+          node,
+          frame,
+          ...(imp ? { important: true } : {}),
+          ...(applyExpansion ? { fromApply: true } : {})
+        });
         break;
       case 'Comment':
         // [partition] A comment keeps its authored position relative to nested

@@ -93,6 +93,20 @@ describe('public Less parse()', () => {
     );
   });
 
+  it('keeps direct declarations in one flattened parent block across a nested rule', () => {
+    const document = parse('.parent { before: one; .child { inside: two; } after: three; }');
+
+    expect(serialize(document, { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css).toBe(
+      '.parent {\n'
+      + '  before: one;\n'
+      + '  after: three;\n'
+      + '}\n'
+      + '.parent .child {\n'
+      + '  inside: two;\n'
+      + '}\n'
+    );
+  });
+
   it('does not expose a CST-to-AST compatibility route through parse()', () => {
     expect(() => parse('.card { color: red;')).toThrow(SyntaxError);
   });
