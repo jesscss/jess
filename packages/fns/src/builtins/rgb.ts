@@ -1,6 +1,7 @@
 import type { Color, Dimension, List, Fn } from '@jesscss/core/value';
 import { colorRawRgb, defineFunction, makeColorRgb, RGB } from '@jesscss/core/value';
 import { clamp01, isColor, isModern, percentOf } from './color-ctor-helper.js';
+import { requireDimension } from './math-helper.js';
 
 /**
  * `rgb` / `rgba` (alias) — CONSTRUCT an RGB-format color from numeric channels, or
@@ -23,18 +24,18 @@ export function makeRgb(list: List): Color {
   const modernSyntax = isModern(list);
   const first = items[0];
   if (items.length >= 3 && !isColor(first)) {
-    const r = percentOf(items[0] as Dimension, 255);
-    const g = percentOf(items[1] as Dimension, 255);
-    const b = percentOf(items[2] as Dimension, 255);
-    const a = items[3] !== undefined ? percentOf(items[3] as Dimension, 1) : 1;
-    const p0 = pctOf(items[0] as Dimension), p1 = pctOf(items[1] as Dimension), p2 = pctOf(items[2] as Dimension);
+    const r = percentOf(requireDimension(items[0]), 255);
+    const g = percentOf(requireDimension(items[1]), 255);
+    const b = percentOf(requireDimension(items[2]), 255);
+    const a = items[3] !== undefined ? percentOf(requireDimension(items[3]), 1) : 1;
+    const p0 = pctOf(requireDimension(items[0])), p1 = pctOf(requireDimension(items[1])), p2 = pctOf(requireDimension(items[2]));
     const rgbPct = p0 !== undefined || p1 !== undefined || p2 !== undefined ? [p0, p1, p2] : undefined;
-    const alphaPct = pctOf(items[3] as Dimension | undefined);
+    const alphaPct = items[3] !== undefined ? pctOf(requireDimension(items[3])) : undefined;
     return makeColorRgb([r, g, b], a, RGB, { modernSyntax, ...(rgbPct ? { rgbPct } : {}), ...(alphaPct !== undefined ? { alphaPct } : {}) });
   }
   if (isColor(first)) {
-    const c = first as Color;
-    const a = items[1] !== undefined ? clamp01(percentOf(items[1] as Dimension, 1)) : c.alpha;
+    const c = first;
+    const a = items[1] !== undefined ? clamp01(percentOf(requireDimension(items[1]), 1)) : c.alpha;
     return makeColorRgb(colorRawRgb(c), a, RGB, { modernSyntax });
   }
   throw new Error('Invalid arguments for rgb function');

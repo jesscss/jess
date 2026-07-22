@@ -1,5 +1,6 @@
-import type { Color, Fn } from '@jesscss/core/value';
+import type { Fn } from '@jesscss/core/value';
 import { colorRawRgb, colorRgbRounded, makeColorRgb, defineFunction, HEX } from '@jesscss/core/value';
+import { requireColor } from './color-helper.js';
 
 const hex2 = (v: number): string => {
   const h = v.toString(16);
@@ -14,7 +15,7 @@ const hex2 = (v: number): string => {
 export const argb: Fn = defineFunction('argb', {
   params: [{ kinds: ['Color'] }],
   body: (c) => {
-    const color = c as Color;
+    const color = requireColor(c);
     const [r, g, b] = colorRgbRounded(color);
     const a = Math.round(color.alpha * 255);
     const node = `#${hex2(a)}${hex2(r)}${hex2(g)}${hex2(b)}`;
