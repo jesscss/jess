@@ -19,9 +19,9 @@ describe('computeMinAlphaTag (laggard across the publish set)', () => {
       computeMinAlphaTag(
         pkgs,
         taggedFrom({
-          '@scope/a': '2.0.0-alpha.8',
-          '@scope/b': '2.0.0-alpha.10',
-          '@scope/c': '2.0.0-alpha.9'
+          ['@scope/a']: '2.0.0-alpha.8',
+          ['@scope/b']: '2.0.0-alpha.10',
+          ['@scope/c']: '2.0.0-alpha.9'
         })
       )
     ).toBe('2.0.0-alpha.8');
@@ -32,9 +32,9 @@ describe('computeMinAlphaTag (laggard across the publish set)', () => {
       computeMinAlphaTag(
         pkgs,
         taggedFrom({
-          '@scope/a': '2.0.0-alpha.8',
-          '@scope/b': null,
-          '@scope/c': '2.0.0-alpha.9'
+          ['@scope/a']: '2.0.0-alpha.8',
+          ['@scope/b']: null,
+          ['@scope/c']: '2.0.0-alpha.9'
         })
       )
     ).toBe('2.0.0-alpha.8');
@@ -54,9 +54,9 @@ describe('isAlphaClobber (dev->alpha squash guard)', () => {
   }
 
   const allEight = {
-    '@scope/a': '2.0.0-alpha.8',
-    '@scope/b': '2.0.0-alpha.8',
-    '@scope/c': '2.0.0-alpha.8'
+    ['@scope/a']: '2.0.0-alpha.8',
+    ['@scope/b']: '2.0.0-alpha.8',
+    ['@scope/c']: '2.0.0-alpha.8'
   };
 
   it('(a) manifest alpha.5, all tags alpha.8 -> REFUSE (clobbered below published)', () => {
@@ -70,9 +70,9 @@ describe('isAlphaClobber (dev->alpha squash guard)', () => {
   it('(c) manifest alpha.8, tags {alpha.8, alpha.8, alpha.7 laggard} -> ALLOW (resume)', () => {
     expect(
       guard('2.0.0-alpha.8', {
-        '@scope/a': '2.0.0-alpha.8',
-        '@scope/b': '2.0.0-alpha.8',
-        '@scope/c': '2.0.0-alpha.7'
+        ['@scope/a']: '2.0.0-alpha.8',
+        ['@scope/b']: '2.0.0-alpha.8',
+        ['@scope/c']: '2.0.0-alpha.7'
       })
     ).toBe(false);
   });
@@ -92,9 +92,9 @@ describe('isAlphaClobber (dev->alpha squash guard)', () => {
   it('numeric (not lexical) alpha comparison: manifest alpha.10 vs tags alpha.9 -> ALLOW', () => {
     expect(
       guard('2.0.0-alpha.10', {
-        '@scope/a': '2.0.0-alpha.9',
-        '@scope/b': '2.0.0-alpha.9',
-        '@scope/c': '2.0.0-alpha.9'
+        ['@scope/a']: '2.0.0-alpha.9',
+        ['@scope/b']: '2.0.0-alpha.9',
+        ['@scope/c']: '2.0.0-alpha.9'
       })
     ).toBe(false);
   });

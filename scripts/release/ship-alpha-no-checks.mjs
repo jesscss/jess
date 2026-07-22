@@ -104,7 +104,7 @@ const plan = getAlphaReleasePlan({ rootDir, allowlistPath });
 
 if (plan.errors.length > 0) {
   console.error('Allowlist validation failed:');
-  plan.errors.forEach((e) => console.error(`  - ${e}`));
+  plan.errors.forEach(e => console.error(`  - ${e}`));
   process.exit(1);
 }
 
@@ -189,7 +189,9 @@ for (const pkgName of plan.publishOrder) {
   const pkg = plan.packagesByName.get(pkgName);
   const publishArgs = ['publish', '--tag', 'alpha', '--no-git-checks', '--ignore-scripts'];
   const access = pkg.manifest.publishConfig?.access;
-  if (access) publishArgs.push('--access', access);
+  if (access) {
+    publishArgs.push('--access', access);
+  }
   const taggedVersion = getTaggedVersion(pkgName, 'alpha');
   if (packageVersionExists(pkgName, TARGET_VERSION)) {
     if (taggedVersion === TARGET_VERSION) {

@@ -158,7 +158,7 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
     sequence(literal('"'), many(dqChunk), strInterp, many(choice(strInterp, dqChunk)), literal('"')),
     sequence(literal('\''), many(sqChunk), strInterp, many(choice(strInterp, sqChunk)), literal('\'')),
     singleStr,
-    doubleStr,
+    doubleStr
   ));
 
   // ---------------------------------------------------------------------------

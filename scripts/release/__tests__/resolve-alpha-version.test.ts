@@ -90,8 +90,8 @@ describe('resolveAlphaPublishVersion', () => {
   it('(a) stale intended below publishedMax → registry-guarded auto-increment', () => {
     const plan = makePlan(allowlist, '2.0.0-alpha.5');
     const viewVersions = viewFrom({
-      '@scope/a': ['2.0.0-alpha.1', '2.0.0-alpha.6'],
-      '@scope/b': ['2.0.0-alpha.5', '2.0.0-alpha.6']
+      ['@scope/a']: ['2.0.0-alpha.1', '2.0.0-alpha.6'],
+      ['@scope/b']: ['2.0.0-alpha.5', '2.0.0-alpha.6']
     });
     const res = resolveAlphaPublishVersion({ plan, viewVersions });
     expect(res.intended).toBe('2.0.0-alpha.5');
@@ -103,8 +103,8 @@ describe('resolveAlphaPublishVersion', () => {
   it('(b) deliberate forward minor above publishedMax → used as-is (npm does not override intent)', () => {
     const plan = makePlan(allowlist, '2.1.0-alpha.0');
     const viewVersions = viewFrom({
-      '@scope/a': ['2.0.0-alpha.6'],
-      '@scope/b': ['2.0.0-alpha.6']
+      ['@scope/a']: ['2.0.0-alpha.6'],
+      ['@scope/b']: ['2.0.0-alpha.6']
     });
     const res = resolveAlphaPublishVersion({ plan, viewVersions });
     expect(res.intended).toBe('2.1.0-alpha.0');
@@ -117,8 +117,8 @@ describe('resolveAlphaPublishVersion', () => {
     const plan = makePlan(allowlist, '2.0.0-alpha.2');
     // alpha.7 is already taken by one package; the next fresh version is alpha.8.
     const viewVersions = viewFrom({
-      '@scope/a': ['2.0.0-alpha.6', '2.0.0-alpha.7'],
-      '@scope/b': ['2.0.0-alpha.5']
+      ['@scope/a']: ['2.0.0-alpha.6', '2.0.0-alpha.7'],
+      ['@scope/b']: ['2.0.0-alpha.5']
     });
     const res = resolveAlphaPublishVersion({ plan, viewVersions });
     expect(res.publishedMax).toBe('2.0.0-alpha.7');
@@ -133,7 +133,7 @@ describe('resolveAlphaPublishVersion', () => {
 
   it('(d) nothing published anywhere → uses intended', () => {
     const plan = makePlan(allowlist, '2.0.0-alpha.0');
-    const viewVersions = viewFrom({ '@scope/a': [], '@scope/b': [] });
+    const viewVersions = viewFrom({ ['@scope/a']: [], ['@scope/b']: [] });
     const res = resolveAlphaPublishVersion({ plan, viewVersions });
     expect(res.publishedMax).toBeNull();
     expect(res.resolved).toBe('2.0.0-alpha.0');
@@ -143,8 +143,8 @@ describe('resolveAlphaPublishVersion', () => {
   it('never resolves to an already-published version (core safety property)', () => {
     const plan = makePlan(allowlist, '2.0.0-alpha.3');
     const viewVersions = viewFrom({
-      '@scope/a': ['2.0.0-alpha.3', '2.0.0-alpha.4', '2.0.0-alpha.6'],
-      '@scope/b': ['2.0.0-alpha.5', '2.0.0-alpha.6']
+      ['@scope/a']: ['2.0.0-alpha.3', '2.0.0-alpha.4', '2.0.0-alpha.6'],
+      ['@scope/b']: ['2.0.0-alpha.5', '2.0.0-alpha.6']
     });
     const res = resolveAlphaPublishVersion({ plan, viewVersions });
     const all = new Set([...viewVersions('@scope/a'), ...viewVersions('@scope/b')]);
