@@ -32,6 +32,13 @@ cost-contract A/B accounting; those remain strict in the default working and
 `--mode=staged` modes. Package/API safety remains owned by the later dedicated
 steps in `release:alpha:check`.
 
+The root pre-commit hook makes the same bounded distinction. A staged commit on
+the exact `alpha` branch invokes `--mode=release`, because the staged patch is
+the already-validated `dev` snapshot being squash-committed. Staged commits on
+`dev`, feature branches, or detached heads continue to invoke `--mode=staged`;
+the release exception is not available to ordinary development commits and
+does not require bypassing the hook with `--no-verify`.
+
 `semantic-preflight` is intentionally narrower than an optimization contract.
 Use it only where a semantic source-order inspection must occur before the
 engine can know whether planner work is needed. It must prove an exercised

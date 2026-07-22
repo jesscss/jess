@@ -28,6 +28,23 @@ const NON_SOURCE_PATH_PATTERNS = [
   /\/coverage\//
 ];
 
+function currentBranchName() {
+  try {
+    return execSync('git branch --show-current', {
+      cwd: ROOT,
+      encoding: 'utf8'
+    }).trim();
+  } catch {
+    return '';
+  }
+}
+
+function aggressiveReviewMode() {
+  return MODE === 'staged' && currentBranchName() === 'alpha'
+    ? 'release'
+    : MODE;
+}
+
 function run(command, args, packageDir, options = {}) {
   const { required = SHOULD_BLOCK } = options;
   const rendered = [command, ...args].join(' ');
@@ -339,7 +356,10 @@ if (MODE === 'upstream') {
 // generated package output may still belong to the previous source revision.
 // The upstream/pre-push path runs the baseline build above before collecting
 // executable evidence.
-runAggressiveCuttingReview({ mode: MODE, skipExecutableEvidence: MODE !== 'upstream' });
+runAggressiveCuttingReview({
+  mode: aggressiveReviewMode(),
+  skipExecutableEvidence: MODE !== 'upstream'
+});
 
 if (changedPackages.length === 0) {
   console.log(MODE === 'upstream'

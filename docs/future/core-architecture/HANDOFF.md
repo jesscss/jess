@@ -1630,6 +1630,31 @@ protocol, and byte identity before it may claim neutral/decrease.
 - **Verdict:** accepted release-orchestration boundary with no runtime or
   performance claim.
 
+### Current pass: alpha squash pre-commit dispatch
+
+- **Architecture surface:** the root pre-commit orchestrator selects the
+  aggressive-review mode from the exact current branch name; no production
+  package or runtime source changes.
+- **Separation/duplication:** only staged commits on branch `alpha` map to
+  release-snapshot evidence review. `dev`, feature branches, detached heads,
+  and ordinary staged commits retain strict `--mode=staged`; pre-push keeps its
+  existing workflow mode.
+- **Cumulative node weight:** none; no production runtime code changes.
+- **New traversal:** none in production. Pre-commit performs one cold Git branch
+  query before invoking the existing verifier.
+- **New node/materialization:** none in production or verification state.
+- **Render path:** unchanged.
+- **Helper/API surface:** two script-local helpers isolate branch discovery and
+  mode selection; no package export or public API is added.
+- **Metadata mutations:** none.
+- **Review-flagged diff tokens:** none in production; branch selection is cold
+  release orchestration.
+- **Evidence:** the focused pre-commit test runs the real orchestrator in a
+  temporary Git clone with a recording `pnpm`, proving `alpha` requests release
+  mode and `dev` requests staged mode without bypassing the hook.
+- **Verdict:** accepted exact-branch release dispatch with no runtime or
+  performance claim.
+
 ### Current pass: direct AST `DocumentContext` provenance
 
 - **Architecture surface:** canonical documents now retain `DocumentContext`
