@@ -4317,27 +4317,27 @@ or Context deletion lanes.
 
 ## Aggressive Cutting Self-Prosecution — flattened direct-declaration placement
 
-- Latest pass: flat Less rendering now keeps a rule's direct declarations in
-  its one parent block even when an authored nested rule appears between them.
-  The nested rule remains deferred and emits after that parent block. This
-  removes the false post-container declaration split that produced two
-  `#operations` blocks around `.spacing`.
+- Latest pass: flat Less rendering keeps a rule's direct declarations in its
+  one parent block across an authored nested **Rule**, while preserving authored
+  order after a deferred bubbling at-rule. The latter leaves one trailing parent
+  block after the already-deferred at-rule (`.onTop { @font-face; @keyframes;
+  animation; }`); it does not restore the rejected generic post-container split.
 - Architecture surface: `packages/core/src/ast/serialize.ts` only. The change
   is in the canonical AST-v2 body walker; no parser, plugin, dialect policy,
   tree bridge, alternate evaluator, or output route was added.
-- Separation/duplication: one existing `group` already owns direct parent
-  leaves. Direct declarations now stay there instead of entering the separate
-  deferred-leaf buffer path that was meant for source-ordered terminal content.
-  No second placement model remains for ordinary declarations.
+- Separation/duplication: one existing `group` owns ordinary direct parent
+  leaves. The existing `Partition` now records only whether it has deferred a
+  bubbling at-rule; that is the one boundary that sends later direct leaves to
+  its existing trailing buffer. No second placement model exists for nested
+  Rules or ordinary declarations.
 - Cumulative node weight: zero AST nodes, frames, maps, side tables, wrappers,
-  arrays, strings, or copied values. The change removes a branch that appended
-  declaration leaves to a later buffer.
+  arrays, strings, or copied values. One boolean is carried on the already-owned
+  `Partition`; its existing trailing leaf array is reused.
 - New traversal: none. Existing body iteration and existing nested-container
   deferral are unchanged; a declaration remains on the existing direct-group
   edge.
-- New node/materialization: none. This is semantic placement state only on the
-  existing `Leaf` reference; it creates no render-only node or intermediate
-  value.
+- New node/materialization: none. This is semantic placement state on the
+  existing `Partition`; it creates no render-only node or intermediate value.
 - Render path: unchanged direct serializer output. The parent group is flushed
   once before existing deferred nested emitters; values are still evaluated only
   when their declarations render.
@@ -4345,13 +4345,20 @@ or Context deletion lanes.
   helper, method, export, or compatibility alias.
 - Metadata mutations: none; source spans, frames, source ownership, parentage,
   and property lookup registration remain on their existing paths.
-- Review-flagged diff tokens: none in production code. No loop, map, filter,
-  array/object allocation, spread, clone, side map, source mutation, or routine
+- Review-flagged diff tokens: the review's lexical scan reports
+  `[materialized array/object]` because this diff touches three existing
+  `Partition` literals (`trailing: []`, `pending: []`) and extracts an already
+  allocated declaration leaf into a local before selecting its existing sink.
+  No array/object is newly materialized for rendering: the arrays and leaf were
+  already required by the partition path; the only added field is the boolean
+  boundary. No loop, map, filter, clone, side map, source mutation, or routine
   error-control shape was added.
-- Evidence: a focused core AST placement regression and public Less
-  `parse()`-to-render regression pass; `Compiler.render()` is byte-identical to
-  the upstream `tests-unit/operations/operations.css` oracle. Full core passes
-  200 files / 3196 tests. The two superficially similar corpus mismatches have
+- Evidence: focused AST-v2 and public Less/Jess placement regressions prove both
+  boundaries: `.onTop` emits after its bubbled `@font-face`/`@keyframes`, while
+  a property accessor remains in its parent block across an ordinary nested Rule.
+  The primary v5 `tests-unit/at-rules-bubbling/at-rules-bubbling.less` fixture is
+  byte-identical through `Compiler.render()`. The two superficially similar
+  corpus mismatches have
   different authorities: `property-accessors.less` is a polluted **v5**
   test-data golden (the Less 4.8 upstream golden and live 4.8 compiler keep the
   direct declarations in one parent block); `at-rules-bubbling.less` has an
@@ -4362,9 +4369,9 @@ or Context deletion lanes.
   as a sanity check only; no performance claim is made.
 - Hot-path cost contracts:
   ```json
-  [{"id":"ast-semantic-runtime-cutover","verdict":"accepted","performanceClaim":"none","owner":"the canonical AST-v2 evaluator/value/extend owners listed by ast-semantic-runtime-cutover","why":"Flattened direct declaration placement is a canonical serializer semantic correction: nested rules are deferred, but direct declarations remain one parent block as the Less oracle emits. It deletes an invalid partition branch and does not make a speed or neutrality claim.","dangerTokensJustification":"The patch adds no danger-token machinery. It removes the declaration-to-deferred-buffer partition branch; existing body iteration, group ownership, and deferred nested emitters remain the sole placement path. No source/tree walk, clone, side map, bridge, parser reparse, or output staging is introduced.","cases":["ValueSlot-array-evaluation-and-authored-layout","List-value-separator-and-Block-delimiter-facts","reference-index-and-For-array-access","Less-lazy-color-call-demand-boundary","defineFunction-typed-positional-named-and-lazy-binding","mixin-dispatch-ValueSlot-argument-resolution","ValueLayout-provenance-side-table","preserve-mode-calc-result-composition","extend-composition-plan-and-fixpoint-solve","Less-eager-bare-slash-precedence-and-parens-division"],"behaviorEvidence":"Focused core and public Less parser-to-render placement tests pass; the upstream operations fixture is byte-identical through the public compiler route; full core passes.","buildEvidence":"Fixture authority is split: property-accessors has a polluted v5 golden; at-rules-bubbling remains a real primary-v5 serializer mismatch.","baseline":{"fixture":"benchmark.less","phase":"render","currentMedianMs":79.823,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}}]
+  [{"id":"ast-semantic-runtime-cutover","verdict":"accepted","performanceClaim":"none","owner":"the canonical AST-v2 evaluator/value/extend owners listed by ast-semantic-runtime-cutover","why":"Flattened direct declarations remain one parent block across nested Rules. A one-bit existing-Partition boundary preserves source order only after a deferred bubbling at-rule, so v5 directive output precedes its authored trailing parent declarations.","dangerTokensJustification":"The patch adds one boolean to the existing Partition and reuses its existing trailing leaf buffer. No source/tree walk, clone, side map, bridge, parser reparse, render-only node, or output staging is introduced.","cases":["ValueSlot-array-evaluation-and-authored-layout","List-value-separator-and-Block-delimiter-facts","reference-index-and-For-array-access","Less-lazy-color-call-demand-boundary","defineFunction-typed-positional-named-and-lazy-binding","mixin-dispatch-ValueSlot-argument-resolution","ValueLayout-provenance-side-table","preserve-mode-calc-result-composition","extend-composition-plan-and-fixpoint-solve","Less-eager-bare-slash-precedence-and-parens-division"],"behaviorEvidence":"Focused AST-v2 and public Less/Jess routes pass; primary-v5 at-rules-bubbling is byte-identical through the public compiler route.","buildEvidence":"Core rebuild passed. Fixture authority remains split: property-accessors has a polluted v5 golden; at-rules-bubbling is now primary-v5 byte-identical.","baseline":{"fixture":"benchmark.less","phase":"render","currentMedianMs":79.823,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}}]
   ```
 - Verdict: accepted bounded canonical serializer correction. The
   `property-accessors` v5 test-data pollution requires Less test-data ownership;
-  `at-rules-bubbling` remains a real primary-v5 serializer follow-up and is not
-  rewritten or hidden here.
+  the real primary-v5 `at-rules-bubbling` serializer mismatch is closed without
+  selecting its legacy oracle or restoring a generic declaration split.

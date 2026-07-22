@@ -2623,7 +2623,13 @@ function declMapFromMixinCall(
   const noop = (): void => {};
   // Collect EVERY declaration (`forceLeading` → all decls to `collected`), discard
   // nested rules (they defer to `trailing`, which is never drained here).
-  const discard: Partition = { encounteredContainer: false, trailing: [], pending: [], emitBlock: noop };
+  const discard: Partition = {
+    encounteredContainer: false,
+    afterBubbledAtRule: false,
+    trailing: [],
+    pending: [],
+    emitBlock: noop
+  };
   const varFrames: Frame[] = [];
   expandCall(call, null, null, frame, collected, noop, discard, em, false, true, varFrames);
   const byVar = new Map<string, DeclEntry>();
@@ -4631,19 +4637,23 @@ function flattenWithHeader(
       group.length = 0;
     }
   };
-  // [partition] Reproduce the alpha v5 flattened order (legacy
-  // `flattenVisibleRulesForRender`): a ruleset's LEADING declarations — those
-  // before the FIRST nested rule, plus any hoisted from a parametric-mixin body
-  // (`forceLeading`) — form the block emitted at the header; nested rules and any
-  // declarations that FOLLOW them emit AFTER, in source order, each trailing run of
-  // declarations opening a FRESH same-selector block. `emitBlock` reuses the header
-  // + adjacent-merge key for those trailing blocks.
+  // [partition] `group` owns ordinary direct parent declarations, including ones
+  // separated by a nested Rule. Deferred containers retain their output order in
+  // `trailing`; only a deferred bubbling at-rule makes later direct declarations a
+  // trailing same-selector run. `emitBlock` reuses the header + adjacent-merge key
+  // for that existing trailing buffer.
   const emitBlock = (leaves: Leaf[]): void => {
     if (leaves.length) {
       flushBlock(header, leaves, e, rule.selector, parent);
     }
   };
-  const partition: Partition = { encounteredContainer: false, trailing: [], pending: [], emitBlock };
+  const partition: Partition = {
+    encounteredContainer: false,
+    afterBubbledAtRule: false,
+    trailing: [],
+    pending: [],
+    emitBlock
+  };
   const finish = (): MaybePromise<void> => {
     flush();
     flushPending(partition);
@@ -4677,8 +4687,8 @@ function flushPending(p: Partition): void {
   }
 }
 
-/** [partition] Buffer a leaf into the leading `group` or the trailing `pending`
- * run, per the same leading/trailing rule declarations follow. */
+/** [partition] Buffer generic ordered leaves after an existing deferred container.
+ * Direct declarations use the narrower bubbling-at-rule boundary in `walkBody`. */
 function addLeaf(group: Leaf[], partition: Partition | null, leaf: Leaf, forceLeading: boolean): void {
   if (partition && partition.encounteredContainer && !forceLeading) {
     partition.pending.push(leaf);
@@ -4688,19 +4698,19 @@ function addLeaf(group: Leaf[], partition: Partition | null, leaf: Leaf, forceLe
 }
 
 /**
- * [partition] The alpha v5 leading/trailing split (legacy
- * `flattenVisibleRulesForRender`). A ruleset's LEADING declarations — those before
- * the first nested rule, plus declarations hoisted out of a parametric-mixin body
- * (`forceLeading`) — go straight to the header `group`. Once a nested rule
- * (`encounteredContainer`) is seen, later declarations buffer in `pending` and,
- * interleaved with the nested rules in source order, are drained from `trailing`
- * after the leading block flushes — each `pending` run becoming its own trailing
- * same-selector block via `emitBlock`. Passing `null` (top level, at-rule bodies)
- * keeps every rule inline in source order (no split).
+ * [partition] Deferred-container ordering for a flattened Rule. Ordinary direct
+ * declarations remain in the header `group` across nested Rules. A deferred
+ * bubbling at-rule sets `afterBubbledAtRule`, so only later direct declarations
+ * enter `pending` and emit after that at-rule. Generic ordered leaves continue to
+ * use `encounteredContainer`; `forceLeading` retains its existing parametric-mixin
+ * placement behavior. Passing `null` (top level, at-rule bodies) keeps every rule
+ * inline in source order.
  */
 interface Partition {
   encounteredContainer: boolean;
-  /** Ordered emitters after the first nested rule: rule flattens + trailing-leaf blocks. */
+  /** A deferred bubbling at-rule makes later direct leaves a trailing parent run. */
+  afterBubbledAtRule: boolean;
+  /** Ordered deferred containers plus existing trailing-leaf blocks. */
   trailing: Array<() => MaybePromise<void>>;
   /** Buffered trailing declarations awaiting the next boundary (a run → one block). */
   pending: Leaf[];
@@ -4738,16 +4748,22 @@ function walkBody(
         // them into the enclosing ruleset. A mixin body retains its call frame for
         // value evaluation but publishes this declaration into `propertyScope`.
         recordPropertyDeclaration(propertyScope, node, frame);
-        // A flattened Less ruleset emits all of its direct declarations as one
-        // parent block, even when a nested rule appears between authored
-        // declarations. The nested container remains deferred; a declaration is
-        // not a source-order split point for that parent block.
-        group.push({
+        // An ordinary nested Rule does not split this parent declaration block.
+        // A deferred bubbling at-rule does: authored direct leaves after it must
+        // emit after that at-rule, in a trailing parent block. The partition
+        // carries that one placement fact; no AST rewrite or second body walk is
+        // needed.
+        const leaf: Leaf = {
           node,
           frame,
           ...(imp ? { important: true } : {}),
           ...(applyExpansion ? { fromApply: true } : {})
-        });
+        };
+        if (partition?.afterBubbledAtRule === true && !forceLeading) {
+          partition.pending.push(leaf);
+        } else {
+          group.push(leaf);
+        }
         break;
       case 'Comment':
         // [partition] A comment keeps its authored position relative to nested
@@ -4783,11 +4799,9 @@ function walkBody(
           }
           break;
         }
-        // [partition] A nested rule is a BOUNDARY: with a partition it defers to
-        // `trailing` (after the leading block + any prior trailing run), so later
-        // declarations open a FRESH same-selector block (v5 order
-        // `.x{a} .x .y{} .x{b}` for `.x{ a; .y{} b }`). Without a partition (top
-        // level / at-rule body) it flushes and emits inline, in source order.
+        // [partition] A nested Rule defers to `trailing`, but does not split the
+        // parent's direct declaration group. Without a partition (top level /
+        // at-rule body) it flushes and emits inline in source order.
         if (partition) {
           flushPending(partition);
           partition.encounteredContainer = true;
@@ -4874,6 +4888,7 @@ function walkBody(
         if (partition) {
           flushPending(partition);
           partition.encounteredContainer = true;
+          partition.afterBubbledAtRule = true;
           partition.trailing.push(() => emitAtRuleBlock(atNode, atFrame, e, atComposed));
         } else {
           flush();
@@ -4896,6 +4911,7 @@ function walkBody(
         if (partition) {
           flushPending(partition);
           partition.encounteredContainer = true;
+          partition.afterBubbledAtRule = true;
           partition.trailing.push(() => emitAtRuleStatement(atNode, frame, e));
         } else {
           flush();
@@ -4979,6 +4995,7 @@ function walkBody(
         if (partition) {
           flushPending(partition);
           partition.encounteredContainer = true;
+          partition.afterBubbledAtRule = true;
           partition.trailing.push(() => emitOpaqueAtRuleBlock(opaqueNode, e));
         } else {
           flush();
@@ -5766,7 +5783,13 @@ function forItemsFromMixinCall(call: MixinCall, frame: Frame, e: Emit): ForItem[
   const noop = (): void => {};
   // Collect EVERY declaration (`forceLeading` → all decls to `collected`), discard
   // nested rules (they defer to `trailing`, which is never drained here).
-  const discard: Partition = { encounteredContainer: false, trailing: [], pending: [], emitBlock: noop };
+  const discard: Partition = {
+    encounteredContainer: false,
+    afterBubbledAtRule: false,
+    trailing: [],
+    pending: [],
+    emitBlock: noop
+  };
   expandCall(call, null, null, frame, collected, noop, discard, e, false, true);
   const items: ForItem[] = [];
   for (const leaf of collected) {

@@ -26,6 +26,64 @@ function trimLines(s: string): string {
 }
 
 describe('At-rule bubbling selector bugs', () => {
+  it('keeps authored declarations after bubbled directive at-rules', async () => {
+    const css = await render(`
+.onTop {
+  @font-face {
+    font-family: something;
+    src: made-up-url;
+  }
+  @keyframes "textscale" {
+    0% { font-size: 1em; }
+    100% { font-size: 2em; }
+  }
+  animation: "textscale";
+  font-family: something;
+}
+    `);
+
+    expect(trimLines(css)).toBe(trimLines(`
+@font-face {
+  font-family: something;
+  src: made-up-url;
+}
+@keyframes "textscale" {
+  0% {
+    font-size: 1em;
+  }
+  100% {
+    font-size: 2em;
+  }
+}
+.onTop {
+  animation: "textscale";
+  font-family: something;
+}
+    `));
+  });
+
+  it('keeps property-accessor declarations in the parent block across an ordinary nested rule', async () => {
+    const css = await render(`
+.box {
+  color: red;
+  .child { background: $color; }
+  content: "\${color}";
+  prop: $color;
+}
+    `);
+
+    expect(trimLines(css)).toBe(trimLines(`
+.box {
+  color: red;
+  content: "red";
+  prop: red;
+}
+.box .child {
+  background: red;
+}
+    `));
+  });
+
   /**
    * Bug 1: Parent selector lost during mixin + at-rule bubbling
    * Source: at-rules.less lines 135-145
