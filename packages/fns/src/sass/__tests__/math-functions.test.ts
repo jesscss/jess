@@ -1,6 +1,8 @@
 /* eslint-disable @typescript-eslint/no-unsafe-type-assertion */
 import { Dimension, Context, Bool, RuntimeFunction } from '@jesscss/core';
+import { makeDimension } from '@jesscss/core/value';
 import { beforeAll, describe, it, expect } from 'vitest';
+import abs from '../math/abs.js';
 import unitless from '../unitless.js';
 import compatible from '../compatible.js';
 
@@ -9,6 +11,16 @@ let context: Context;
 describe('Sass math utility functions', () => {
   beforeAll(() => {
     context = new Context();
+  });
+
+  describe('abs()', () => {
+    it('uses the canonical value-domain contract', () => {
+      expect(abs(makeDimension(-10, 'px'))).toMatchObject({
+        type: 'Dimension',
+        number: 10,
+        unit: 'px'
+      });
+    });
   });
 
   describe('unitless()', () => {

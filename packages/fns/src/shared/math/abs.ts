@@ -1,15 +1,9 @@
-import { Dimension, defineFunction } from '@jesscss/core';
-import { mathHelper } from '../../util/mathHelper.js';
+import { defineFunction, makeDimension } from '@jesscss/core/value';
 
-export default defineFunction(
-  'abs',
-  function(value: Dimension | number) {
-    return mathHelper(Math.abs, ['value'], undefined, value);
-  },
-  {
-    params: [{
-      name: 'value',
-      type: [Dimension, 'number']
-    }]
-  }
-);
+/** Sass `math.abs()` / global `abs()` over the canonical value domain. */
+const abs = defineFunction('abs', {
+  params: [{ name: 'value', kinds: ['Dimension'] }] as const,
+  body: value => makeDimension(Math.abs(value.number), value.unit)
+});
+
+export default abs;
