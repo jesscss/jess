@@ -52,6 +52,47 @@ and source-map artifacts (4). These add to 30. In particular, a missing mixin re
 ordinary function call with an optional function reference may fall back to a
 CSS `Call` when lookup misses.
 
+### `callWithContext` deletion prerequisite
+
+The legacy tree call path has been audited rather than treated as an implicit
+compatibility seam. `packages/core/src/tree/call.ts` reaches
+`callWithContext` from exactly five dynamic-function paths:
+`evalOptionalFallbackOutput`, `evalPlainDynamicFunction`,
+`evalMetadataDynamicFunction`, `renderDynamicFunctionOutput`, and the ordinary
+`evalFromStateInFrame` extended-function branch. These are all legacy-tree
+execution routes. The ordinary branch keeps two distinct rules: a
+`No matching mixins` failure is a hard missing-mixin error (apart from selector
+capture), while a selected function's invocation failure may preserve the
+authored call only under its optional/silent-fail policy and
+`functionMode !== 'error'`.
+
+`packages/core/src/define-function.ts` shows why this cannot be replaced by a
+wrapper: `callWithContext` unwraps and clones legacy `List`/`Node` arguments,
+runs legacy preprocessors, resolves positional/record/hybrid overloads,
+evaluates non-lazy nodes through `Context`, supplies `FunctionThis` (`context`,
+`caller`, `args`, `rawArgs`), performs legacy `instanceof` validation and
+conversion, and finally invokes either `_internal` or a Context-bound function.
+That contract is the bridge deletion target, not a public runtime model.
+
+The replacement is the existing AST-v2 value seam. A canonical `Fn` is called
+with `(List, FnCtx)` by `buildEvaluator`/`value-dispatch`; `ParamSpec` kinds,
+defaults, rest, and explicit lazy thunks provide typed binding, while direct
+Sass/Jess embeddings may use named records. `FnCtx` carries only resolved modes,
+the value-to-string hook, and optional IO; it does not expose `Context`, legacy
+nodes, callers, or source re-evaluation. Unknown function names remain authored
+calls without a warning; failures from a function that actually resolved are
+handled by `functionMode` (preserve + warning versus error). The plugin adapter
+populates this same `Fn` registry/host, so Context remains the session and
+plugin/import dispatcher rather than a function-body ABI.
+
+The deletion gate is therefore concrete: migrate every production consumer of
+the old contract (currently the Less `rgb`/`hsl`/`rgba`/`hsla`/`each` paths and
+the Sass compatibility/map functions), then migrate their direct tests from
+`RuntimeFunction`/`callWithContext` to typed `ValueObj` and registry calls.
+Only after the consumer/test search is empty may `tree/call.ts`,
+`define-function.ts`, and their old conversion exports be removed; no adapter,
+alias, or tree-to-AST bridge is allowed as an intermediate state.
+
 ## Active orchestrator goal
 
 Drive the public AST-v2 cutover, Less alpha readiness, Parseman release,
