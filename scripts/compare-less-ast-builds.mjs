@@ -178,8 +178,13 @@ function restoreCommit(stageRoot, commit) {
 }
 
 function runPnpm(stageRoot, args) {
-  const result = spawnSync('pnpm', args, { cwd: stageRoot, encoding: 'utf8', stdio: 'inherit' });
+  const result = spawnSync('pnpm', args, { cwd: stageRoot, encoding: 'utf8', stdio: 'pipe' });
+  if (result.error) {
+    throw result.error;
+  }
   if (result.status !== 0) {
+    process.stderr.write(result.stdout || '');
+    process.stderr.write(result.stderr || '');
     throw new Error(`pnpm ${args.join(' ')} failed for staged artifact`);
   }
 }
@@ -189,6 +194,7 @@ function installStage(stageRoot) {
 }
 
 function buildStage(stageRoot) {
+  runPnpm(stageRoot, ['--filter', '@jesscss/awaitable-pipe', 'build']);
   runPnpm(stageRoot, ['--filter', '@jesscss/core', 'build']);
   runPnpm(stageRoot, ['--filter', '@jesscss/css-parser', 'build']);
   runPnpm(stageRoot, ['--filter', '@jesscss/less-parser', 'build']);
@@ -196,6 +202,11 @@ function buildStage(stageRoot) {
 
 function buildArtifact(stageRoot, commit, input) {
   restoreCommit(stageRoot, commit);
+  // `restoreCommit()` replaces the archived package directories, including
+  // their isolated pnpm workspace links. Recreate that package-local module
+  // topology before macro compilation; preserving only root node_modules
+  // would make a staged build resolve differently from a clean workspace.
+  installStage(stageRoot);
   buildStage(stageRoot);
   const parserBundle = path.join(stageRoot, 'packages/less-parser/lib/index.js');
   const coreBundle = path.join(stageRoot, 'packages/core/lib/index.js');
@@ -339,10 +350,9 @@ try {
   const beforeCommit = resolveCommit(options.before);
   const afterCommit = resolveCommit(options.after);
   const comparable = assertComparable(beforeCommit, afterCommit, options.fixture);
+  const source = comparable.input.toString('utf8');
   stageRoot = canonicalStageRoot(options.stageRoot);
   prepareStage(stageRoot);
-  restoreCommit(stageRoot, beforeCommit);
-  installStage(stageRoot);
   const before = buildDeterministicArtifact(stageRoot, beforeCommit, comparable.input);
   const after = buildDeterministicArtifact(stageRoot, afterCommit, comparable.input);
   assertSharedRuntime(before, after);
@@ -353,19 +363,19 @@ try {
 
   for (let index = 0; index < options.warmup; index++) {
     if (index % 2 === 0) {
-      measure(loadedBefore, comparable.input);
-      measure(loadedAfter, comparable.input);
+      measure(loadedBefore, source);
+      measure(loadedAfter, source);
     } else {
-      measure(loadedAfter, comparable.input);
-      measure(loadedBefore, comparable.input);
+      measure(loadedAfter, source);
+      measure(loadedBefore, source);
     }
   }
 
   const pairs = [];
   for (let index = 0; index < options.pairs; index++) {
     const afterFirst = index % 2 === 1;
-    const first = afterFirst ? measure(loadedAfter, comparable.input) : measure(loadedBefore, comparable.input);
-    const second = afterFirst ? measure(loadedBefore, comparable.input) : measure(loadedAfter, comparable.input);
+    const first = afterFirst ? measure(loadedAfter, source) : measure(loadedBefore, source);
+    const second = afterFirst ? measure(loadedBefore, source) : measure(loadedAfter, source);
     pairs.push({
       index: index + 1,
       order: afterFirst ? 'after-before' : 'before-after',
