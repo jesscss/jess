@@ -2039,9 +2039,18 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
   // A property interpolation is an existing Declaration.name Interpolation, never a
   // raw name string. Static identifier segments come from shared CSS syntax;
   // Jess owns only its `$[…]` segment grammar and direct AST reduction.
+  // Cheap superset lookahead so an ordinary `color: …` declaration does not
+  // enter the interpolated-property arm, consume the whole property name via
+  // the optional literal start, fail the required `$[…]`, and backtrack a
+  // property re-parse through CssAstSyntaxProperty. Skip this arm unless a
+  // `$[` actually precedes the next `:`/`;`/brace. A property name never
+  // contains `:`, `;`, `{`, or `}`, so the predicate is a strict superset: a
+  // real interpolated property is never skipped.
+  const directInterpPropertyAhead = not(not(regex(/[^{};:]*\$\[/)));
   const DirectJessInterpolatedProperty = node<Interpolation>(
     'DirectJessInterpolatedProperty',
     noTrivia(sequence(
+      directInterpPropertyAhead,
       optional(g.CssAstSyntaxInterpolatedPropertyStart),
       g.DirectJessDollarInterp,
       many(choice(g.CssAstSyntaxInterpolatedPropertyTail, g.DirectJessDollarInterp))
@@ -2052,7 +2061,14 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
         if (isInterpolation(child)) {
           parts.push(...child.parts);
         } else {
-          parts.push({ lit: requireToken(child).value });
+          // The superset lookahead emits a throwaway match token (`…$[`). Real
+          // property-name chunks never contain `$`, so this content check drops
+          // only that throwaway, independent of its position.
+          const text = requireToken(child).value;
+          if (text.includes('$')) {
+            continue;
+          }
+          parts.push({ lit: text });
         }
       }
       return interpolation(parts);
