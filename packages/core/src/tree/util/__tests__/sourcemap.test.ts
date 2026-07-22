@@ -6,6 +6,7 @@ import { rules, decl, any, ruleset, sellist, sel, el } from '../../index.js';
 import { isNode } from '../is-node.js';
 import { N } from '../../node-type.js';
 import { TreeContext } from '../../../context.js';
+import { Ruleset } from '../../ruleset.js';
 
 // Nodes now carry only source OFFSETS (spanStart/spanEnd); the source map derives
 // original line/column from the offset + the file source on the cold gen path.
@@ -63,8 +64,12 @@ describe('source map segments', () => {
         ]
       })
     ], undefined, undefined, treeContext);
-    const rs = (nested.rules[0] as any).rules;
-    setSourceSpan(rs[0] as any, spanOf(7, 11)); // `x: y;` at offset 7 → line 1
+    const nestedRule = nested.rules[0];
+    if (!(nestedRule instanceof Ruleset)) {
+      throw new TypeError('Expected nested source-map fixture to contain a ruleset.');
+    }
+    const rs = nestedRule.rules;
+    setSourceSpan(rs[0]!, spanOf(7, 11)); // `x: y;` at offset 7 → line 1
     const css = nested.toString(getPrintOptions({ writer: w }));
     expect(css).toBe('.a {\n  x: y;\n}\n');
     const segs = w.getSegments();
@@ -112,7 +117,7 @@ describe('source map segments', () => {
     const left = rules([
       decl({ name: 'a', value: any('1') })
     ], undefined, undefined, leftContext);
-    setSourceSpan(left.rules[0] as any, spanOf(0, 5));
+    setSourceSpan(left.rules[0]!, spanOf(0, 5));
 
     const rightContext = new TreeContext({
       file: { name: 'right.jess', path: '.', fullPath: '/abs/right.jess', source: 'b: 2;' }
@@ -120,7 +125,7 @@ describe('source map segments', () => {
     const right = rules([
       decl({ name: 'b', value: any('2') })
     ], undefined, undefined, rightContext);
-    setSourceSpan(right.rules[0] as any, spanOf(0, 5));
+    setSourceSpan(right.rules[0]!, spanOf(0, 5));
 
     const root = rules([left, right]);
     const css = root.toString(getPrintOptions({ writer: w }));
