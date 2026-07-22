@@ -36,13 +36,13 @@ describe('Safe Parse - Error and Warning Collection', () => {
         }
         return null;
       };
-      (testPlugin as any).getSource = async (path: string) => {
+      testPlugin.getSource = async (path: string) => {
         if (path === filePath || path.includes('invalid.jess')) {
           return invalidSource;
         }
         throw new Error('File not found');
       };
-      (testPlugin as any).safeParse = (path: string, source: string) => {
+      testPlugin.safeParse = (path: string, source: string) => {
         return {
           document: stylesheet([]),
           errors: [{
@@ -101,13 +101,13 @@ line 5`;
         }
         return null;
       };
-      (testPlugin as any).getSource = async (path: string) => {
+      testPlugin.getSource = async (path: string) => {
         if (path === filePath || path.includes('multiline.jess')) {
           return source;
         }
         throw new Error('File not found');
       };
-      (testPlugin as any).safeParse = (path: string, src: string) => {
+      testPlugin.safeParse = (path: string, src: string) => {
         return {
           document: stylesheet([]),
           errors: [{
@@ -170,13 +170,13 @@ line 3`;
         }
         return null;
       };
-      (testPlugin as any).getSource = async (path: string) => {
+      testPlugin.getSource = async (path: string) => {
         if (path === filePath || path.includes('first-line.jess')) {
           return source;
         }
         throw new Error('File not found');
       };
-      (testPlugin as any).safeParse = (path: string, src: string) => {
+      testPlugin.safeParse = (path: string, src: string) => {
         return {
           document: stylesheet([]),
           errors: [{
@@ -279,9 +279,9 @@ line 5`;
           name: 'warning-lines.jess',
           path: '/test',
           fullPath: filePath,
-          source: source
+          source
         }
-      } as any;
+      };
 
       context.sourceTrees.set(filePath, tree);
       context.opts.breakOnError = false;
@@ -320,13 +320,13 @@ line 5`;
         }
         return null;
       };
-      (testPlugin as any).getSource = async (path: string) => {
+      testPlugin.getSource = async (path: string) => {
         if (path === filePath || path.includes('mixed.jess')) {
           return source;
         }
         throw new Error('File not found');
       };
-      (testPlugin as any).safeParse = (path: string, src: string) => {
+      testPlugin.safeParse = (path: string, src: string) => {
         return {
           document: stylesheet([]),
           errors: [{

@@ -33,7 +33,7 @@ describe('spine generic EMIT visitor hook (P2, core surface)', () => {
 
   it('fires enter on each resolved leaf; VOID return leaves output unchanged (inspect-only)', () => {
     const seen: string[] = [];
-    context.registerSpineVisitor(node => {
+    context.registerSpineVisitor((node) => {
       if (isNode(node, N.Declaration)) {
         seen.push(String(node.name.valueOf()));
       }
@@ -52,7 +52,7 @@ describe('spine generic EMIT visitor hook (P2, core surface)', () => {
   });
 
   it('a returned Node REPLACES the emitted node (output-affecting change)', () => {
-    context.registerSpineVisitor(node => {
+    context.registerSpineVisitor((node) => {
       if (isNode(node, N.Declaration) && String(node.name.valueOf()) === 'color') {
         // Replace the whole declaration with a fresh transient.
         return decl({ name: 'color', value: any('blue') });
@@ -68,8 +68,13 @@ describe('spine generic EMIT visitor hook (P2, core surface)', () => {
 
   it('threads multiple visitors in registration order (shape = enter(shape) ?? shape)', () => {
     const order: string[] = [];
-    context.registerSpineVisitor(node => { order.push('first'); return node; });
-    context.registerSpineVisitor(() => { order.push('second'); });
+    context.registerSpineVisitor((node) => {
+      order.push('first');
+      return node;
+    });
+    context.registerSpineVisitor(() => {
+      order.push('second');
+    });
     const root = rules([
       ruleset({ selector: sel([el('.a')]), rules: [decl({ name: 'color', value: spaced([el('red')]) })] })
     ]);
