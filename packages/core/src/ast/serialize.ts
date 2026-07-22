@@ -1761,7 +1761,26 @@ function evalValueSlot(slot: ValueSlot, frame: Frame | null, e: EvalCtx): MaybeP
   if (!isValueSlotArray(slot)) {
     return evalValue(slot, frame, e);
   }
-  const values = slot.map(value => evalValueSlot(value, frame, e));
+  // Less `math: 0` treats an authored top-level slash as arithmetic even when
+  // the parser retained it as an adjacent ValueSlot array.  Promote only the
+  // narrow, grammar-owned arithmetic shape here; ordinary space/slash values
+  // (font shorthands, lists, nested groups) continue through the layout join
+  // below.  The authored AST is immutable and no source bytes are inspected.
+  const promoted = promoteBareSlashValue(slot, e);
+  if (promoted !== null) {
+    return evalValue(promoted, frame, e);
+  }
+  // In Less's parens-division mode, a slash at this same authored boundary
+  // keeps the whole scalar expression authored.  Evaluate parenthesized
+  // children through their own `parenDepth`, but do not eagerly reduce a
+  // neighboring `+`/`-` operation before the preserved slash is emitted.
+  const preserveBareSlash = (e.calcDepth ?? 0) === 0
+    && e.modes.mathMode === 'parens-division'
+    && hasTopLevelBareSlash(slot);
+  const valueContext = preserveBareSlash
+    ? { ...e, modes: { ...e.modes, mathMode: 'strict' as const } }
+    : e;
+  const values = slot.map(value => evalValueSlot(value, frame, valueContext));
   return combineAll(values, (resolved) => {
     const separators = valueLayoutOf(slot);
     if (separators === undefined) {
@@ -1774,6 +1793,143 @@ function evalValueSlot(slot: ValueSlot, frame: Frame | null, e: EvalCtx): MaybeP
     }
     return literal(bytes);
   });
+}
+
+type BareSlashToken =
+  | { readonly kind: 'operand'; readonly node: ValueNode }
+  | { readonly kind: 'operator'; readonly operator: '+' | '-' | '*' | '/' | '%' };
+
+type BareSlashOperator = '+' | '-' | '*' | '/' | '%';
+
+const BARE_SLASH_OPERATORS = new Set(['+', '-', '*', '/', '%']);
+const BARE_SLASH_MULTIPLICATIVE = new Set<BareSlashOperator>(['*', '/', '%']);
+const BARE_SLASH_ADDITIVE = new Set<BareSlashOperator>(['+', '-']);
+
+function isBareSlashOperator(operator: string): operator is BareSlashOperator {
+  switch (operator) {
+    case '+':
+    case '-':
+    case '*':
+    case '/':
+    case '%':
+      return true;
+    default:
+      return false;
+  }
+}
+
+function isBareSlash(node: ValueNode): boolean {
+  return (node.type === 'Any' || node.type === 'Keyword') && node.src === '/';
+}
+
+function hasTopLevelBareSlash(slot: readonly ValueSlot[]): boolean {
+  for (const part of slot) {
+    if (!isValueSlotArray(part) && isBareSlash(part)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Flatten one existing arithmetic spine into infix tokens.  This deliberately
+ * accepts only numeric/color leaves: variable references, calls, blocks, lists,
+ * and authored space groups must retain their existing value semantics instead
+ * of being guessed at by a broad declaration-value walk.
+ */
+function appendBareSlashTokens(node: ValueNode, tokens: BareSlashToken[]): boolean {
+  if (node.type === 'Dimension' || node.type === 'Color') {
+    tokens.push({ kind: 'operand', node });
+    return true;
+  }
+  if (node.type !== 'Operation' || !isBareSlashOperator(node.operator)) {
+    return false;
+  }
+  if (!appendBareSlashTokens(node.left, tokens)) {
+    return false;
+  }
+  tokens.push({ kind: 'operator', operator: node.operator });
+  return appendBareSlashTokens(node.right, tokens);
+}
+
+/** Reduce one precedence tier over an already validated infix token stream. */
+function reduceBareSlashTier(
+  values: ValueNode[],
+  operators: Array<'+' | '-' | '*' | '/' | '%'>,
+  tier: ReadonlySet<string>
+): { values: ValueNode[]; operators: Array<'+' | '-' | '*' | '/' | '%'> } {
+  const nextValues: ValueNode[] = [values[0]!];
+  const nextOperators: Array<'+' | '-' | '*' | '/' | '%'> = [];
+  for (let i = 0; i < operators.length; i++) {
+    const operator = operators[i]!;
+    const right = values[i + 1]!;
+    if (tier.has(operator)) {
+      const left = nextValues.pop()!;
+      nextValues.push(operation(operator, left, right));
+    } else {
+      nextOperators.push(operator);
+      nextValues.push(right);
+    }
+  }
+  return { values: nextValues, operators: nextOperators };
+}
+
+/**
+ * Promote a direct Less value array containing an authored slash to one
+ * arithmetic operation tree in eager math mode.  Returns `null` for any shape
+ * that is not an unambiguous scalar arithmetic expression, preserving the
+ * existing authored join path for lists and CSS shorthand values.
+ */
+function promoteBareSlashValue(slot: readonly ValueSlot[], e: EvalCtx): ValueNode | null {
+  if (!e.ev || e.modes.mathMode !== 'always' || slot.length < 3) {
+    return null;
+  }
+  // Stay off the common adjacent-value path unless the grammar has already
+  // exposed a top-level slash leaf.  Nested groups are deliberately ignored:
+  // they have their own typed/list semantics and are not bare-slash facts.
+  if (!hasTopLevelBareSlash(slot)) {
+    return null;
+  }
+  const tokens: BareSlashToken[] = [];
+  for (const part of slot) {
+    if (isValueSlotArray(part)) {
+      return null;
+    }
+    if (isBareSlash(part)) {
+      tokens.push({ kind: 'operator', operator: '/' });
+      continue;
+    }
+    if (!appendBareSlashTokens(part, tokens)) {
+      return null;
+    }
+  }
+  if (!tokens.some(token => token.kind === 'operator' && token.operator === '/')) {
+    return null;
+  }
+  if (tokens.length < 3 || tokens.length % 2 === 0) {
+    return null;
+  }
+  const values: ValueNode[] = [];
+  const operators: Array<'+' | '-' | '*' | '/' | '%'> = [];
+  for (let i = 0; i < tokens.length; i++) {
+    const token = tokens[i]!;
+    if (i % 2 === 0) {
+      if (token.kind !== 'operand') {
+        return null;
+      }
+      values.push(token.node);
+    } else {
+      if (token.kind !== 'operator') {
+        return null;
+      }
+      operators.push(token.operator);
+    }
+  }
+  let reduced = reduceBareSlashTier(values, operators, BARE_SLASH_MULTIPLICATIVE);
+  reduced = reduceBareSlashTier(reduced.values, reduced.operators, BARE_SLASH_ADDITIVE);
+  return reduced.values.length === 1 && reduced.operators.length === 0
+    ? reduced.values[0]!
+    : null;
 }
 
 function evalTypedSlot(slot: ValueSlot, frame: Frame | null, e: EvalCtx): MaybePromise<ValueObj> {

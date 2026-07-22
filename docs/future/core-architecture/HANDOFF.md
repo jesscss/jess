@@ -399,7 +399,7 @@ resolver:
    cancellation. Incompatible `+`/`-` unit checks remain strict errors. This is
    a value-domain timing fix, not a parser change.
 
-### Bounded bare-slash fold design (designed, not implemented)
+### Bounded bare-slash fold design (implemented)
 
 The remaining eager-math slash mismatch has a bounded evaluator-only design;
 the design is recorded here so it is not rediscovered as a parser or bridge
@@ -438,12 +438,43 @@ The Less 4.6.3 oracle for `math: 0` is:
 
 The corresponding `math: 2`/parens-only route preserves all three authored
 values. Parenthesized division (`(10px / 2)`) remains the existing `5px` path,
-while a bare `10px / 2` under `parens-division` remains authored. This design
-has deliberately not been implemented: the isolated worktree's installed
-Parseman is `0.28.0`, whose runtime/build rejects the current grammar's
-`composeLeaf()` without macro lowering. A direct parser build therefore cannot
-provide valid implementation evidence until the compatible Parseman release is
-available; no production change should be started from this audit alone.
+while a bare `10px / 2` under `parens-division` remains authored.
+
+The evaluator implementation is `promoteBareSlashValue` in
+`packages/core/src/ast/serialize.ts`. It first requires the existing top-level
+grammar slash fact, then admits only `Dimension`/`Color` leaves and existing
+`+ - * / %` `Operation` spines. It folds those tokens through the existing
+`operation()` constructor in the two Less precedence tiers. Any nested array,
+space group, non-arithmetic operator, or non-static leaf returns to the normal
+authored layout join. In `parens-division`, the same top-level slash fact
+temporarily suppresses eager sibling operations while retaining the existing
+parenthesis-depth path. No source bytes, parser, bridge, or AST mutation is
+involved.
+
+### Aggressive Cutting Self-Prosecution — bare-slash evaluator
+
+- **[loop/traversal] New traversal:** one bounded scan of a top-level `ValueSlot[]` for the
+  parser-owned slash leaf, followed only on a recognized slash shape by one
+  recursive walk over existing arithmetic `Operation` children and two short
+  precedence reductions. The scan is necessary because the parser already
+  retains the slash as a leaf; no source-byte rediscovery is introduced. The
+  common non-slash path returns before token allocation.
+- **[node construction] New node/materialization:** no runtime value objects or AST nodes are
+  created for authored output. The rare recognized shape creates temporary
+  `Operation` records solely for the existing typed evaluator, then emits the
+  resulting value; the immutable authored AST is untouched.
+- **[array helper] Render path:** ordinary lists and nested groups stay on the existing
+  `evalValueSlot`/layout join. Arithmetic promotion is immediate evaluation,
+  not a render-time node walk or source reconstruction.
+- **[array spread/materialization] Helper/API surface:** `promoteBareSlashValue`, its token reducer, and the
+  slash-shape predicate are private serializer helpers; they replace the
+  previously missing precedence step and expose no public API.
+- **[side map/set] Metadata mutations:** none. No parent/source metadata, side map, or
+  context mutation was added.
+- **[materialized array/object] Evidence:** focused strict-unit tests prove `7em`, `4.4em`, `2em`, strict
+  cancellation, ordinary slash-list preservation, grouped division, and
+  parens-division controls. Full performance claims remain unmade; this is a
+  correctness slice.
 
 The two fixes can be tested and reviewed independently: direct evaluator tests
 cover slash promotion and strict cancellation separately. The nested units
@@ -3502,3 +3533,60 @@ or Context deletion lanes.
 - Verdict: accepted bounded in-place AST-v2 conversion; remaining legacy
   `less/`/`sass/` function files require their own behavior-parity batches and
   are not deleted or hidden by this slice.
+
+## Aggressive Cutting Self-Prosecution — Less bare-slash evaluator
+
+- Latest pass: `promoteBareSlashValue` now evaluates the parser-owned scalar
+  slash fact in eager Less math and leaves ordinary lists and parenthesized
+  values on their existing paths.
+- Architecture surface: one canonical AST-v2 `ValueSlot` evaluator and the
+  existing typed `operation()` constructor; no parser bridge, source reparse,
+  scanner, resolver, or compatibility evaluator.
+- Separation/duplication: no duplicate arithmetic implementation. The helper
+  only restores precedence from existing `Operation` nodes and delegates every
+  result to the canonical value evaluator.
+- Cumulative node weight: the authored AST remains immutable; only the rare
+  recognized scalar slash shape gets temporary operation records for immediate
+  typed evaluation.
+- New traversal: [loop/traversal] bounded top-level slash detection, one
+  recursive walk over an existing arithmetic spine, and two precedence-tier
+  reductions; no whole-tree or source walk.
+- New node/materialization: [node construction] temporary `Operation` records
+  are created only for immediate arithmetic evaluation; no render-only nodes,
+  legacy nodes, clones, or metadata mutation.
+- Render path: [array helper] ordinary space/slash lists and nested groups use
+  the pre-existing layout join; no array is built merely to stringify.
+- Helper/API surface: [array spread/materialization] private
+  `promoteBareSlashValue`, `appendBareSlashTokens`, and tier reducer replace a
+  missing precedence step and expose no public API.
+- Metadata mutations: [side map/set] none; the three operator sets are
+  immutable module-level classification facts, not runtime side maps.
+- [materialized array/object] Allocation accounting: token/value arrays occur
+  only after a top-level slash leaf is present; the common no-slash path returns
+  before token allocation. The parens-division mode object is allocated only
+  for a recognized slash boundary.
+- Review-flagged diff tokens: `[loop/traversal]`, `[array helper]`,
+  `[array spread/materialization]`, `[node construction]`, `[side map/set]`,
+  and `[materialized array/object]` are all bounded above and covered by the
+  allocation accounting above.
+- Evidence: focused `strict-units.test.ts` passes 4/4, including `7em`,
+  `4.4em`, `2em`, strict cancellation, ordinary slash-list preservation,
+  grouped division, and parens-division controls. Build passed for core and
+  the jess dependency graph. No performance claim is made.
+- Hot-path cost contracts:
+  ```json
+  [{
+    "id":"ast-semantic-runtime-cutover",
+    "verdict":"accepted",
+    "performanceClaim":"none",
+    "owner":"the canonical AST-v2 evaluator/value/extend owners listed by ast-semantic-runtime-cutover",
+    "why":"The bare-slash promotion is a bounded correctness repair inside the existing canonical AST-v2 serializer owner. It classifies one parser-owned top-level slash boundary, creates temporary operation facts only for immediate typed evaluation, and preserves the no-slash path; no speed or neutrality claim is made.",
+    "dangerTokensJustification":"[loop/traversal] is limited to top-level slash detection, one existing arithmetic spine, and two precedence tiers; [array helper] and [materialized array/object] are limited to the recognized slash shape; [array spread/materialization] is one parens-mode context record; [node construction] is temporary Operation records; [side map/set] is immutable module-level operator classification. No source walk, clone, bridge, or parser reparse is added.",
+    "cases":["ValueSlot-array-evaluation-and-authored-layout","List-value-separator-and-Block-delimiter-facts","reference-index-and-For-array-access","Less-lazy-color-call-demand-boundary","defineFunction-typed-positional-named-and-lazy-binding","mixin-dispatch-ValueSlot-argument-resolution","ValueLayout-provenance-side-table","preserve-mode-calc-result-composition","extend-composition-plan-and-fixpoint-solve","Less-eager-bare-slash-precedence-and-parens-division"],
+    "behaviorEvidence":"Focused packages/jess strict-units.test.ts passes 4/4: 7em, 4.4em, 2em, strict cancellation, ordinary slash-list preservation, grouped division, and parens-division controls.",
+    "buildEvidence":"pnpm --filter @jesscss/core build and pnpm --filter jess... build pass.",
+    "baseline":{"fixture":"benchmark.less","phase":"render","currentMedianMs":79.823,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}
+  }]
+  ```
+- Verdict: accepted as a bounded evaluator-only Less math fix; no source
+  reparse, parser change, bridge, or public compatibility shim was added.

@@ -226,7 +226,7 @@ a blanket optimization exemption or a new active architecture queue.
     ],
     "semanticRuntime": {
       "owner": "the canonical AST-v2 evaluator/value/extend owners listed by ast-semantic-runtime-cutover",
-      "scope": "This coordinated cutover changes ValueSlot/List/Block facts, authored value layout, callable binding, mixin argument resolution, reference/index access, and Less lazy color-call demand across cooperating runtime owners. Those changes are semantic architecture work with real traversal and allocation shape; no single admission counter, byte-identical A/B, or speed claim would describe them truthfully.",
+      "scope": "This coordinated cutover changes ValueSlot/List/Block facts, authored value layout, callable binding, mixin argument resolution, reference/index access, Less lazy color-call demand, and the bounded eager bare-slash precedence promotion across cooperating runtime owners. Those changes are semantic architecture work with real traversal and allocation shape; no single admission counter, byte-identical A/B, or speed claim would describe them truthfully.",
       "cases": [
         "ValueSlot-array-evaluation-and-authored-layout",
         "List-value-separator-and-Block-delimiter-facts",
@@ -236,7 +236,8 @@ a blanket optimization exemption or a new active architecture queue.
         "mixin-dispatch-ValueSlot-argument-resolution",
         "ValueLayout-provenance-side-table",
         "preserve-mode-calc-result-composition",
-        "extend-composition-plan-and-fixpoint-solve"
+        "extend-composition-plan-and-fixpoint-solve",
+        "Less-eager-bare-slash-precedence-and-parens-division"
       ],
       "performanceClaim": "none",
       "baseline": {"fixture": "benchmark.less", "phase": "render"}

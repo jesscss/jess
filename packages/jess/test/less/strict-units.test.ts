@@ -36,14 +36,41 @@ describe('Less strict-unit final validation', () => {
     const result = await compiler.renderToResult(fixture, { outputFile: expected });
 
     const expectedCss = readFileSync(expected, 'utf8');
-    // The public route is otherwise byte-identical. These three bare-slash
-    // values are the separately tracked evaluator gap under eager math; keep
-    // their authored output explicit here rather than turning this into a
-    // passing test that hides the mismatch.
-    expect(result.css).toBe(expectedCss
-      .replace('test-division: 7em;', 'test-division: 4 / 7em;')
-      .replace('t3: 2em;', 't3: 2em / 1em;')
-      .replace('t6: 2em;', 't6: 2em / 1px;'));
+    expect(result.css).toBe(expectedCss);
+  });
+
+  it('folds scalar bare slashes while preserving lists and parens-division', async () => {
+    const source = `
+      .a {
+        first: 4 / 2 + 5em;
+        second: 4+2 / 5em;
+        same-unit: 2em/1em;
+        shorthand: normal small / 20px;
+        bare-parens-mode: 10px / 2;
+        grouped: (10px / 2);
+      }
+    `;
+    const eager = await new Compiler({ compile: { mathMode: 'always' } }).renderString(source, {
+      language: 'less',
+      extension: '.less'
+    });
+    expect(eager).toContain('first: 7em;');
+    expect(eager).toContain('second: 4.4em;');
+    expect(eager).toContain('same-unit: 2em;');
+    expect(eager).toContain('shorthand: normal small / 20px;');
+    expect(eager).toContain('bare-parens-mode: 5px;');
+    expect(eager).toContain('grouped: 5px;');
+
+    const parensDivision = await new Compiler({ compile: { mathMode: 'parens-division' } }).renderString(source, {
+      language: 'less',
+      extension: '.less'
+    });
+    expect(parensDivision).toContain('first: 4 / 2 + 5em;');
+    expect(parensDivision).toContain('second: 4 + 2 / 5em;');
+    expect(parensDivision).toContain('same-unit: 2em / 1em;');
+    expect(parensDivision).toContain('shorthand: normal small / 20px;');
+    expect(parensDivision).toContain('bare-parens-mode: 10px / 2;');
+    expect(parensDivision).toContain('grouped: 5px;');
   });
 
   it('allows compound units to cancel before final emission', async () => {
