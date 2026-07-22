@@ -133,15 +133,20 @@ bump is performed later.
 
 For the first Less-focused alpha, the release notes must also include a
 discoverable **Known limitations** section linking
-[`less-v5-alpha-readiness.md`](./less-v5-alpha-readiness.md). The 34 runnable
-upstream expected-failure markers are classified compatibility evidence, not a
-requirement to drain before alpha. Do not omit them or call them passing; block
-only on the advertised public-route, package/CLI, and core-safety gates.
+[`less-v5-alpha-readiness.md`](./less-v5-alpha-readiness.md). The current
+corpus result (84 byte-identical passes, 32 output mismatches, and 15 known
+errors) is classified compatibility evidence, not a requirement to drain before
+the Jess alpha. Do not omit it or call it passing; block only on the advertised
+public-route, package/CLI, and core-safety gates.
 
-The current draft source for the next cut is
+The current draft source is
 [`docs/releases/jess-2.0.0-alpha.9.md`](./releases/jess-2.0.0-alpha.9.md).
-It is deliberately marked as a draft: update it from the exact gate evidence
-before the snapshot commit, and do not use it as a substitute for the readiness trackers.
+The controlled alpha snapshot at `564b65615` has passed
+`pnpm run release:alpha:check` with published `parseman@0.28.1`, an 18-package
+closure, packed-consumer proof, and alpha.9 dry-run publish. It is not yet
+published. It awaits explicit owner approval to run the full
+`pnpm run release:alpha` command from the clean `alpha` worktree; do not invoke
+the publish-only command as a substitute.
 
 The current `release:alpha` scripts do **not** run `changeset version` or
 generate package `CHANGELOG.md` files. They resolve a fresh lockstep alpha

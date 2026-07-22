@@ -379,7 +379,7 @@ Context carries its `Stylesheet`, parser/source identity, typed builtin
 evaluator, and resolved dialect options, and Jess serializes that document
 without a tree bridge or copied execution-option bag. `pnpm run verify:less-alpha`
 passes the current release-shaped checks: package exports, public API (8/8),
-path-resolution (13/13), Less unit corpus (77 runnable, including two
+path-resolution (13/13), Less unit corpus (78 runnable, including two
 intentionally marked F5 semantic boundaries), and Less config corpus (29/29
 harness-green). The focused F5 test
 (`pnpm --filter jess test -- function-error-public-semantics.test.ts --run
@@ -394,22 +394,20 @@ running integration tests.
 
 Current verification snapshot for this candidate:
 
-- The complete `@jesscss/core` suite is 3,194 passed, 9 skipped, and 2 todo
-  (`pnpm --filter @jesscss/core test -- --run`, 2026-07-22). The skipped/todo
-  cases remain visible and are not converted into passing evidence.
-- The repository-wide production ESLint audit reports 0 errors and 317
+- The complete `@jesscss/core` suite is 3,194 passed, 9 skipped, and 2 todo.
+  The skipped/todo cases remain visible and are not converted into passing
+  evidence.
+- The repository-wide production ESLint audit reports 0 errors and 319
   warnings. The warnings remain tracked debt; there is no current ESLint-error
   blocker.
-- Strict `verify:types` has exactly four diagnostics, all parser-entry
-  `FusedRule` declaration mismatches against published Parseman `0.28.0`.
-  Prepared Parseman `0.28.1` removes these four diagnostics, but it must be
-  published, installed, and followed by parser rebuilds before strict types
-  can be called green.
+- Parseman `0.28.1` is published and consumed through real package versions.
+  A forced frozen install resolves it, and strict `verify:types` passes all
+  22 production configurations.
 - The Jess alpha closure is the 18-package
   `scripts/release/alpha-allowlist.json`; `rollup-plugin-jess` is intentionally
-  excluded because it depends on `jess` and is not part of the runtime
-  closure. The final snapshot still needs the allowlist, packed-consumer, and
-  clean-install proofs.
+  excluded because it depends on `jess` and is not part of the runtime closure.
+  The final alpha snapshot passes allowlist validation and the packed-consumer
+  proof.
 - A clean benchmark baseline is recorded below. The current same-bundle trivia
   isolation is diagnostic only; the remaining performance blocker is a
   causally isolating matched generated-bundle A/B for reducer/choice changes,
@@ -423,6 +421,33 @@ Current verification snapshot for this candidate:
   `2ab6d3fd8f322df0f0be7c1a481b528ec50a7fb035604b744c7543397d56b3fe`). With
   serialized builds and 20 warmups plus 3×45 samples, the public compiler
   round median is 74.397 ms (usable signal; trimmed median 75.915 ms).
+
+### Alpha.9 release state (2026-07-22)
+
+The controlled alpha snapshot is `564b65615`. Its forced frozen install
+resolves `parseman@0.28.1`; the exact `pnpm run release:alpha:check` chain
+passes the release build, 22/22 strict types, production lint with no errors,
+Less-alpha public-route checks, direct Jess parser/plugin/Rollup tests, the
+AST-v2 ratchet, baseline, release-mode cutting review, 18-package closure,
+packed consumer, and alpha.9 dry-run publish. The snapshot is clean and the
+dry-run resolves `2.0.0-alpha.9` ahead of the published alpha.8 tag.
+
+Nothing has been pushed or published from that snapshot. It awaits explicit
+owner approval to run the full `pnpm run release:alpha` command from `alpha`;
+that command deliberately re-resolves the registry candidate, repeats the
+preflight, then tags, pushes, and publishes. Do not substitute the publish-only
+command for that release flow. The external `less@5.0.0-alpha.1` release remains
+a separate future action after Jess alpha.9 is actually available from npm.
+
+### Aggressive Cutting Self-Prosecution — release-state documentation
+
+- **New traversal / materialization / render path:** none; this is a
+  documentation-only evidence reconciliation.
+- **Helper/API surface and metadata mutations:** none; no runtime or package
+  metadata changes are claimed here.
+- **Evidence:** the alpha command above was run at `564b65615`; the full log
+  records the named gates and the dry-run package closure. No performance claim
+  is derived from the release verification.
   This is a current baseline, not a matched-version performance claim.
 
 Per-change-slice over-engineering review follows the protocol in
@@ -1809,18 +1834,12 @@ all four parser packages build against it. Normal public parser/compiler/CLI
 routes remain instrumentation-off; coverage and trace are opt-in test or
 diagnostic builds only.
 
-The follow-up Parseman `0.28.1` release branch contains the public `FusedRule`
-declaration-contract correction required by the four current parser-entry type
-diagnostics. Branch `release/0.28.1-fused-rule-contract` is clean at `6ba5dbd`
-(the implementation fix is `5ce3bf1`) and is two commits ahead of
-`origin/main`. Its release checks passed: 113 test files (1,827 passed, 4
-skipped), focused coverage/macro/FusedRule checks (36/36), typecheck, build,
-docs build, changelog validation, performance guard, and npm pack dry-run.
-`npm view parseman@0.28.1` still returns E404, so it is release-ready locally
-but is not yet an npm dependency for Jess. Do not call the strict all-package
-type gate green, or claim a clean consumer proof, until that package is
-published and the four parser packages are rebuilt against the published
-version.
+The follow-up `parseman@0.28.1` FusedRule declaration-contract correction was
+published after its release-branch review and verification. Jess now consumes
+that real package release: forced frozen installs resolve `0.28.1`, all four
+parser packages rebuild against it, and the strict 22-configuration type gate
+passes. Normal public parser/compiler/CLI routes remain instrumentation-off;
+coverage and trace remain opt-in test or diagnostic builds.
 
 ### Release-gate attribution (2026-07-21)
 
