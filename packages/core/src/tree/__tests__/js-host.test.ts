@@ -3,7 +3,6 @@ import { Context } from '../../context.js';
 import { JsArray, JsFunction, JsObject } from '../index.js';
 
 describe('JS host wrapper nodes', () => {
-
   it('resolves JS functions without eval stamping host values', () => {
     const context = new Context();
     const node = new JsFunction({ name: 'unit', fn: () => 'ok' });

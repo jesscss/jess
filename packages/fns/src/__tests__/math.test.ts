@@ -7,10 +7,17 @@ import { acos, asin, atan, cos, sin, tan } from '../less/index.js';
 import { makeDimension } from '@jesscss/core/value';
 import { describe, it, test, expect } from 'vitest';
 
+function invoke(fn: unknown, ...args: unknown[]): unknown {
+  if (typeof fn !== 'function') {
+    throw new TypeError('Expected a callable function.');
+  }
+  return Reflect.apply(fn, undefined, args);
+}
+
 describe('math', () => {
   const dim = makeDimension(2.4, 'px');
   it('rejects a non-dimension', () => {
-    expect(() => floor('1' as never)).toThrow();
+    expect(() => invoke(floor, '1')).toThrow();
   });
 
   test('abs', () => {

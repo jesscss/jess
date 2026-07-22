@@ -281,5 +281,4 @@ describe('string-backed scanner-first proof nodes', () => {
   prelude: '"theme.css" screen'
 )`);
   });
-
 });

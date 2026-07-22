@@ -2,6 +2,13 @@ import { describe, expect, expectTypeOf, it } from 'vitest';
 import { makeDimension, type Dimension as ValueDimension } from '@jesscss/core/value';
 import acos, { acos as namedAcos } from '../acos.js';
 
+function invoke(fn: unknown, ...args: unknown[]): unknown {
+  if (typeof fn !== 'function') {
+    throw new TypeError('Expected a callable function.');
+  }
+  return Reflect.apply(fn, undefined, args);
+}
+
 describe('acos canonical AST-v2 parity', () => {
   it('directly reduces the typed Dimension to the exact canonical node shape', () => {
     expect(typeof acos).toBe('function');
@@ -19,6 +26,6 @@ describe('acos canonical AST-v2 parity', () => {
   });
 
   it('rejects untyped JavaScript arguments at the callable boundary', () => {
-    expect(() => acos(0.5 as never)).toThrow('typed ValueObj');
+    expect(() => invoke(acos, 0.5)).toThrow('typed ValueObj');
   });
 });

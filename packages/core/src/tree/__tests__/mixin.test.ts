@@ -8430,7 +8430,6 @@ describe('Mixin', () => {
       expect(css).toContain('mi-test-d {\n  gender: "Male";\n}');
       expect(css).not.toContain('mi-test-d .person {\n}');
     });
-
   });
 
   describe('serialization', () => {

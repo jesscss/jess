@@ -7022,5 +7022,4 @@ describe('reference', () => {
       expect(result).toBeUndefined();
     });
   });
-
 });
