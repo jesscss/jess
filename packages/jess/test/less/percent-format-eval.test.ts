@@ -41,4 +41,14 @@ describe('%() lowering — eval', () => {
     const css = await render('.a { x: %("%s", #123); }');
     expect(css).toContain('x: "#123"');
   });
+
+  it('keeps quoted CSS bytes for %a/%d while %s uses string text', async () => {
+    const css = await render('.a { a: %("%a", "x y"); d: %("%d", "x y"); s: %("%s", "x y"); }');
+    expect(css).toBe('.a {\n  a: ""x y"";\n  d: ""x y"";\n  s: "x y";\n}\n');
+  });
+
+  it('evaluates replace() through the canonical typed Less registry', async () => {
+    const css = await render('.a { x: replace("Hello", "h", "x", "i"); }');
+    expect(css).toContain('x: "xello"');
+  });
 });

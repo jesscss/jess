@@ -1,35 +1,76 @@
 import { describe, it, expect } from 'vitest';
-import { Any, Context, Dimension, Quoted, callWithContext } from '@jesscss/core';
-import format from '../format.js';
+import {
+  emitValue,
+  isValueGroupArray,
+  makeDimension,
+  makeKeyword,
+  makeList,
+  makeQuoted
+} from '@jesscss/core/value';
+import type { Fn, FnCtx, List, ValueGroup } from '@jesscss/core/value';
+import format, { format as stringFormat, formatPercent } from '../format.js';
+import { builtinLessFns } from '../../builtins/index.js';
+
+const ctx: FnCtx = {
+  modes: { unitMode: 'preserve' },
+  stringify: value => !isValueGroupArray(value) && value.type === 'Quoted'
+    ? value.value
+    : emitValue(value)
+};
+
+function call(fn: Fn, ...args: ValueGroup[]): ValueGroup | Promise<ValueGroup> {
+  return fn(makeList(args, ',') as List, ctx);
+}
+
+function quotedValue(value: ValueGroup): { readonly type: 'Quoted'; readonly value: string; readonly quote: string } {
+  if (isValueGroupArray(value) || value.type !== 'Quoted') {
+    throw new TypeError('Expected a quoted value.');
+  }
+  return value;
+}
 
 describe('format() / %()', () => {
+  it('keeps the canonical typed registration and public percent callable identity', () => {
+    expect(format).toBe(formatPercent);
+    expect(format.name).toBe('%');
+    expect(format.variadic).toBe(true);
+    expect(stringFormat.name).toBe('string-format');
+    expect(builtinLessFns.find(fn => fn.name === '%')).toBe(formatPercent);
+    expect(builtinLessFns.find(fn => fn.name === 'string-format')).toBe(stringFormat);
+  });
+
   it('formats quoted templates and preserves quote style', async () => {
-    const context = new Context();
-    const template = new Quoted('/users/%S?name=%s%%', { quote: '\'' });
-    const result = await callWithContext(
-      context,
+    const result = quotedValue(await call(
       format,
-      template,
-      new Quoted('a b'),
-      new Quoted('x y')
-    );
-    expect(result).toBeInstanceOf(Quoted);
-    if (!(result instanceof Quoted)) {
-      throw new TypeError('Expected format() to return a quoted value.');
-    }
-    expect(result.valueOf()).toBe('/users/a%20b?name=x y%');
+      makeQuoted('/users/%S?name=%s%%', '\'', false),
+      makeQuoted('a b', '"', false),
+      makeQuoted('x y', '"', false)
+    ));
+    expect(result.value).toBe('/users/a%20b?name=x y%');
     expect(result.quote).toBe('\'');
   });
 
-  it('returns Any for non-quoted templates', async () => {
-    const context = new Context();
-    const result = await callWithContext(
-      context,
+  it('returns a keyword for non-quoted templates', async () => {
+    const result = await call(
       format,
-      new Any('value=%d', { role: 'keyword' }),
-      new Dimension({ number: 12, unit: 'px' })
+      makeKeyword('value=%d'),
+      makeDimension(12, 'px')
     );
-    expect(result).toBeInstanceOf(Any);
-    expect(result.valueOf()).toBe('value=12px');
+    expect(isValueGroupArray(result)).toBe(false);
+    if (isValueGroupArray(result) || result.type !== 'Keyword') {
+      throw new TypeError('Expected a keyword value.');
+    }
+    expect(result.text).toBe('value=12px');
+  });
+
+  it('keeps CSS-form quotes for %a/%d and strips them only for %s', async () => {
+    const cssArgument = makeQuoted('x y', '"', false);
+    const percentA = quotedValue(await call(format, makeQuoted('%a', '"', false), cssArgument));
+    const percentD = quotedValue(await call(format, makeQuoted('%d', '"', false), cssArgument));
+    const percentS = quotedValue(await call(format, makeQuoted('%s', '"', false), cssArgument));
+
+    expect(emitValue(percentA)).toBe('""x y""');
+    expect(emitValue(percentD)).toBe('""x y""');
+    expect(emitValue(percentS)).toBe('"x y"');
   });
 });

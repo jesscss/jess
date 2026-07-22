@@ -4616,3 +4616,47 @@ Aggressive-cutting review for this slice:
   reconstructed by the function layer.
 - Verdict: accepted in-place typed Fn conversion after the old and rebuilt
   output oracle matched. Performance remains unmeasured.
+
+## Aggressive Cutting Self-Prosecution — Less format/replace Fn cutover
+
+- Architecture surface: `format`/`formatPercent` and `replace` now live in
+  their existing `packages/fns/src/less/` owners as direct typed, variadic
+  `Fn` callables. `builtins/index.ts` registers those canonical callables; it
+  no longer owns another implementation. The direct public default exports
+  remain callable and `%` remains the public `format` callable name.
+- Separation/duplication: deleted duplicate `builtins/format.ts` and
+  `builtins/replace.ts`, plus `util/serialize-node.ts`, whose only source
+  callers were the two migrated Less functions. No compatibility proxy,
+  registry, evaluator path, or tree-node conversion is introduced.
+- Cumulative node weight: the two tree wrapper implementations and the legacy
+  tree serializer are deleted. The retained functions create only their output
+  `Quoted` or `Keyword` value record—the required result boundary—and no tree
+  Node, Context, wrapper, clone, or source metadata.
+- New traversal: the only loops are the existing bounded format-token walk over
+  the supplied raw argument group and the existing string replacement engine.
+  They operate on selected function inputs, never source-tree traversal or
+  string reparsing for AST facts.
+- New node/materialization: no AST node/materialization. `groupItems` unwraps
+  the evaluator-supplied call shape; `makeQuoted`/`makeKeyword` create the
+  one semantic return value. There is no intermediate rendered node.
+- Render path: `%s` uses the injected `FnCtx.stringify` text form; `%a`/`%d`
+  use canonical `emitValue` CSS bytes. `replace` likewise uses the injected
+  text seam. The evaluator serializes the returned typed value once.
+- Helper/API surface: one local `formatKernel` and one local `tokenValue`
+  replace two complete duplicate modules plus `serializeNodeValue`; neither is
+  exported. Public `Fn` metadata and raw `List`/`FnCtx` invocation are retained.
+- Metadata mutations: none.
+- Evidence: the pre-cut legacy public wrapper incorrectly reduced a quoted
+  `%a` argument to its inner text. Installed `less@4.6.3` and the typed public
+  compiler both emit `""x y""` for `%a`/`%d` and `"x y"` for `%s`; typed
+  direct and compiler tests now assert those exact bytes. The remaining
+  pre-cut format/replace vectors match. This is a behavior-correction proof,
+  not a performance claim.
+- Review-flagged diff tokens: `[loop/traversal]` is only the selected raw
+  argument-token loop; `[node construction]` is absent; `[materialized
+  array/object]` is the evaluator-provided raw argument group, not a new
+  function-layer allocation. No source walk, resolver, parser, cache, or
+  temporary output tree is added.
+- Verdict: accepted canonical typed-value cutover. The legacy `%a` wrapper
+  behavior is intentionally removed as incorrect; performance remains
+  unmeasured.
