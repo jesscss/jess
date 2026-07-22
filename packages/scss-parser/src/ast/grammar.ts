@@ -247,6 +247,40 @@ function requireSelectorList(value: unknown): SelectorList {
   return value;
 }
 
+function isScssComplexTail(value: unknown): value is ScssComplexTail {
+  return typeof value === 'object' && value !== null
+    && 'comb' in value && (value.comb === ' ' || value.comb === '>' || value.comb === '+' || value.comb === '~' || value.comb === '||')
+    && 'compound' in value && isCompoundSelector(value.compound);
+}
+
+function requireScssComplexTail(value: unknown): ScssComplexTail {
+  if (!isScssComplexTail(value)) {
+    throw new TypeError('Direct SCSS AST grammar produced an invalid selector tail.');
+  }
+  return value;
+}
+
+function requireCompoundSelector(value: unknown): CompoundSelector {
+  if (!isCompoundSelector(value)) {
+    throw new TypeError('Direct SCSS AST grammar produced a non-compound selector child.');
+  }
+  return value;
+}
+
+function requireSimpleSelector(value: unknown): SimpleSelector {
+  if (!isSimpleSelector(value)) {
+    throw new TypeError('Direct SCSS AST grammar produced a non-simple selector child.');
+  }
+  return value;
+}
+
+function requireComplexSelector(value: unknown): ComplexSelector {
+  if (!isComplexSelector(value)) {
+    throw new TypeError('Direct SCSS AST grammar produced a non-complex selector child.');
+  }
+  return value;
+}
+
 function isImportTarget(value: unknown): value is Quoted | Url | Interpolation {
   return isQuoted(value) || isUrl(value) || isInterpolation(value);
 }
@@ -353,6 +387,13 @@ function isInterpolation(value: unknown): value is Interpolation {
     && value.type === 'Interpolation'
     && 'parts' in value
     && Array.isArray(value.parts);
+}
+
+function requireInterpolation(value: unknown): Interpolation {
+  if (!isInterpolation(value)) {
+    throw new TypeError('Direct SCSS AST grammar produced a non-interpolation child.');
+  }
+  return value;
 }
 
 function appendLiteral(parts: Interpolation['parts'], text: string): void {
@@ -1694,7 +1735,7 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
       if (children.length === 3) {
         return block(property);
       }
-      const value = children[children.length - 2] as ValueNode;
+      const value = requireValue(children[children.length - 2]);
       return block(operation(requireToken(children[2]).value, property, value));
     }
   );
@@ -1823,8 +1864,8 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
       sequence(literal('('), g.DirectScssGeneralTemplate, literal(')'))
     ),
     children => children.length === 4
-      ? generalEnclosed('function', requireToken(children[0]).value, children[2] as Interpolation)
-      : generalEnclosed('paren', null, children[1] as Interpolation)
+      ? generalEnclosed('function', requireToken(children[0]).value, requireInterpolation(children[2]))
+      : generalEnclosed('paren', null, requireInterpolation(children[1]))
   );
   const DirectScssSupportsFeature = node<ValueNode>(
     'DirectScssSupportsFeature',
@@ -2334,7 +2375,7 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
   const DirectScssStaticSelectorPseudoTail = node<string>(
     'DirectScssStaticSelectorPseudoTail',
     sequence(literal(','), optional(directScssSpace), g.DirectScssStaticSelectorPseudoItem),
-    children => `,${children.at(-1) as string}`
+    children => `,${requireString(children.at(-1))}`
   );
   const DirectScssStaticSelectorPseudoArgument = node<string>(
     'DirectScssStaticSelectorPseudoArgument',
@@ -2352,19 +2393,19 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
       // malformed-prefix gate prevents a broken An+B form from falling through
       // to ordinary raw pseudo content.
       sequence(g.CssAstSyntaxPseudoColon, directScssNthPseudoNameWithArgument, literal('('), not(g.CssAstSyntaxMalformedPseudoNumericArgument), g.DirectScssStaticPseudoArgument, literal(')')),
-      children => simpleSelector(`${requireToken(children[0]).value}${requireToken(children[1]).value}(${children[3] as string})`)
+      children => simpleSelector(`${requireToken(children[0]).value}${requireToken(children[1]).value}(${requireString(children[3])})`)
     ),
     node<SimpleSelector>(
       'DirectScssSelectorPseudo',
       sequence(g.CssAstSyntaxPseudoColon, directScssSelectorPseudoNameWithArgument, literal('('), g.DirectScssStaticSelectorPseudoArgument, literal(')')),
-      children => simpleSelector(`${requireToken(children[0]).value}${requireToken(children[1]).value}(${children[3] as string})`)
+      children => simpleSelector(`${requireToken(children[0]).value}${requireToken(children[1]).value}(${requireString(children[3])})`)
     ),
     node<SimpleSelector>(
       'DirectScssGenericPseudo',
       sequence(g.CssAstSyntaxPseudoColon, not(choice(directScssNthPseudoNameWithArgument, directScssSelectorPseudoNameWithArgument)), g.CssAstSyntaxKeyword, optional(sequence(literal('('), g.DirectScssPseudoArgument, literal(')')))),
       (children) => {
         const head = `${requireToken(children[0]).value}${requireToken(children[1]).value}`;
-        return children.length === 2 ? simpleSelector(head) : simpleSelector(`${head}(${children[3] as string})`);
+        return children.length === 2 ? simpleSelector(head) : simpleSelector(`${head}(${requireString(children[3])})`);
       }
     )
   );
@@ -2376,18 +2417,18 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
   const DirectScssCompound = node<CompoundSelector>(
     'DirectScssCompound',
     noTrivia(oneOrMore(choice(g.DirectScssNestingSelector, parser({ trivia: whitespace }, g.DirectScssAttribute), g.DirectScssPseudo, g.DirectScssPlaceholder, g.DirectScssInterpolatedSimple, g.DirectScssSimple))),
-    children => compoundSelectorOf(children as SimpleSelector[])
+    children => compoundSelectorOf(children.map(requireSimpleSelector))
   );
   const directScssCombinator = choice(literal('||'), literal('>'), literal('+'), literal('~'));
   const DirectScssComplexTail = node<ScssComplexTail>(
     'DirectScssComplexTail',
     sequence(optional(directScssCombinator), g.DirectScssCompound),
     (children) => {
-      const compound = children.find(child => typeof child === 'object' && child !== null && 'simples' in child) as CompoundSelector | undefined;
+      const compound = children.find(isCompoundSelector);
       if (compound === undefined) {
         throw new TypeError('DirectScssComplexTail requires a compound.');
       }
-      const combinator = children.find(child => typeof child === 'object' && child !== null && 'value' in child) as Token | undefined;
+      const combinator = children.find(isToken);
       const comb = combinator?.value ?? ' ';
       if (comb !== ' ' && comb !== '>' && comb !== '+' && comb !== '~' && comb !== '||') {
         throw new TypeError('DirectScssComplexTail produced an invalid combinator.');
@@ -2399,14 +2440,14 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
     'DirectScssComplex',
     sequence(g.DirectScssCompound, many(g.DirectScssComplexTail)),
     children => complexSelector([
-      { compound: children[0] as CompoundSelector },
-      ...(children.slice(1) as ScssComplexTail[]).map(tail => ({ comb: tail.comb, compound: tail.compound }))
+      { compound: requireCompoundSelector(children[0]) },
+      ...children.slice(1).map(requireScssComplexTail).map(tail => ({ comb: tail.comb, compound: tail.compound }))
     ])
   );
   const DirectScssSelectorTail = node<ComplexSelector>(
     'DirectScssSelectorTail',
     sequence(literal(','), g.DirectScssComplex),
-    children => children[1] as ComplexSelector
+    children => requireComplexSelector(children[1])
   );
   const DirectScssSelector = node<SelectorList>(
     'DirectScssSelector',
@@ -2421,7 +2462,7 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
   const DirectScssExtend = node<ExtendInstruction>(
     'DirectScssExtend',
     sequence(regex(/@extend(?![-_a-zA-Z0-9\u0080-\uffff])/i), g.DirectScssSelector, optional(literal(';'))),
-    children => ({ target: children[1] as SelectorList, partial: false })
+    children => ({ target: requireSelectorList(children[1]), partial: false })
   );
   const DirectScssRule = node<Rule>(
     'DirectScssRule',
@@ -2437,7 +2478,7 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
       }
       const extendInstructions = children.filter(isExtendInstruction);
       return rule(
-        children[0] as SelectorList,
+        requireSelectorList(children[0]),
         statementChildren(children.slice(2, -1), true),
         extendInstructions.length > 0 ? extendInstructions : undefined
       );
