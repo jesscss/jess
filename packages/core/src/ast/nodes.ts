@@ -304,6 +304,25 @@ export interface DetachedRuleset {
   readonly body: Statement[];
 }
 
+/**
+ * A data/map block value `{ key: value; … }`. Its ROOT-LEVEL children are
+ * key/value ENTRIES only — plain {@link Declaration}s, never at-rules, mixin
+ * calls, or rulesets. An entry's VALUE, however, may be any value node
+ * (including an anonymous mixin), so entries stay ordinary Declarations.
+ *
+ * Used for SCSS nested properties (`font: 20px { family: serif }`): the carrier
+ * Declaration's `value` is a Collection whose entries keep LEAF-ONLY names, plus
+ * an optional `base` holding the carrier's own declaration value (`20px`). The
+ * hyphenated flattening happens at serialize time, never at parse.
+ */
+export interface Collection {
+  readonly type: 'Collection';
+  readonly entries: Declaration[];
+  /** The carrier's own declaration value, e.g. `20px` in `font: 20px { … }`;
+   * omitted when the nested property has no own value. */
+  readonly base?: ValueSlot;
+}
+
 /** One typed step in a left-associated {@link Reference} chain. */
 export type ReferenceStep = DotLookup | BracketLookup | ReferenceCall;
 
@@ -381,6 +400,7 @@ export type ValueNode =
   | GeneralEnclosed
   | VarIndirect
   | DetachedRuleset
+  | Collection
   | Reference
   | Range;
 
@@ -557,11 +577,6 @@ export interface Declaration {
    * own line, e.g. a multi-line `grid-template-areas`). v5 preserves that layout:
    * the value emits starting on the next indented line instead of after `: `. */
   readonly valueOnNewLine?: boolean;
-  /** SCSS nested-property collection (`font: 20px { size: 1rem }`): the carrier
-   * declaration holds the leaf declarations as a {@link DetachedRuleset} whose
-   * body entries are plain Declarations with LEAF-ONLY names. Flattened to
-   * hyphenated declarations at serialize time; absent on ordinary declarations. */
-  readonly nested?: DetachedRuleset;
 }
 
 /**
@@ -915,14 +930,15 @@ export const decl = (
   value: ValueSlot,
   merge: null | ',' | ' ' = null,
   important = false,
-  valueOnNewLine = false,
-  nested?: DetachedRuleset
-): Declaration => {
-  const base: Declaration = valueOnNewLine
+  valueOnNewLine = false
+): Declaration =>
+  valueOnNewLine
     ? { type: 'Declaration', name, value, merge, important, valueOnNewLine: true }
     : { type: 'Declaration', name, value, merge, important };
-  return nested === undefined ? base : { ...base, nested };
-};
+/** A data/map block value: leaf-named `entries`, plus an optional `base` carrier
+ * value (`20px` in `font: 20px { … }`). See {@link Collection}. */
+export const collection = (entries: Declaration[], base?: ValueSlot): Collection =>
+  base === undefined ? { type: 'Collection', entries } : { type: 'Collection', entries, base };
 export const comment = (text: string): Comment => ({ type: 'Comment', text });
 /** [import:inline] A verbatim raw-bytes statement (`@import (inline)` splice).
  * `media` (optional) wraps the splice in an `@media <media> { … }` block. */

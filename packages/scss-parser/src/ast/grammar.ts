@@ -8,7 +8,7 @@
 import { balanced, choice, composeLeaf, expect, literal, many, noTrivia, node, not, oneOrMore, optional, parser, regex, rules, scanTo, sequence, trivia } from 'parseman' with { type: 'macro' };
 import type { Combinator } from 'parseman';
 import { cssAstSyntax } from '@jesscss/internal-css-recognition/recognition';
-import { any, atRuleBlock, atRuleStatement, block, color, comment, complexSelector, compoundSelectorOf, decl, detachedRuleset, dimension, forNode, funcCall, generalEnclosed, ifNode, importAtRule, interpolation, interpolatedSimpleSelector, keyword, list, mixinCall, mixinDef, moduleImport, operation, quoted, range, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, withValueLayout } from '@jesscss/core/ast';
+import { any, atRuleBlock, atRuleStatement, block, collection, color, comment, complexSelector, compoundSelectorOf, decl, dimension, forNode, funcCall, generalEnclosed, ifNode, importAtRule, interpolation, interpolatedSimpleSelector, keyword, list, mixinCall, mixinDef, moduleImport, operation, quoted, range, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, withValueLayout } from '@jesscss/core/ast';
 import type { AtRuleBlock, AtRuleStatement, Color, Comment, ComplexSelector, CompoundSelector, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GeneralEnclosed, GuardNode, If, IfBranch, ImportAtRule, Interpolation, Keyword, List, MixinCall, MixinDef, ModuleImport, Param, Quoted, Stylesheet, Rule, SelectorList, SimpleSelector, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, VariableReference } from '@jesscss/core/ast';
 
 type Token = { readonly value: string };
@@ -464,7 +464,9 @@ function isValue(value: unknown): value is ValueNode {
     || (typeof value === 'object' && value !== null && 'type' in value && value.type === 'Operation'
       && 'left' in value && 'right' in value && isValue(value.left) && isValue(value.right))
     || (typeof value === 'object' && value !== null && 'type' in value && value.type === 'Keyword'
-      && 'src' in value && typeof value.src === 'string');
+      && 'src' in value && typeof value.src === 'string')
+    || (typeof value === 'object' && value !== null && 'type' in value && value.type === 'Collection'
+      && 'entries' in value && Array.isArray(value.entries));
 }
 
 function valueSlot(value: ValueNode): ValueSlot {
@@ -1210,19 +1212,19 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
       if (ownImportant && ownValue === null) {
         throw new TypeError('Direct SCSS nested property cannot apply !important without an own declaration value.');
       }
-      // The leaves stay LEAF-ONLY-named plain Declarations inside a reused
-      // DetachedRuleset collection. Hyphenation and own-value placement move to
-      // the serializer; `[]` marks a block with no own base declaration.
-      const leaves: Declaration[] = [];
+      // The leaf entries stay LEAF-ONLY-named plain Declarations inside a
+      // Collection value. Hyphenation and own-value placement move to the
+      // serializer; the carrier's own value (when present) rides on `base`.
+      const entries: Declaration[] = [];
       for (let index = open + 1; index < close; index++) {
         const child = children[index];
         if (isDeclaration(child)) {
-          leaves.push(child);
+          entries.push(child);
         } else {
           throw new TypeError('Direct SCSS nested property produced a non-declaration child.');
         }
       }
-      return decl(prefix, ownValue ?? [], null, ownValue === null ? false : ownImportant, false, detachedRuleset(leaves));
+      return decl(prefix, collection(entries, ownValue ?? undefined), null, ownValue === null ? false : ownImportant);
     }
   );
   const DirectScssStaticImportUrl = node<Url>(

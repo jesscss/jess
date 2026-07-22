@@ -47,6 +47,7 @@ import {
 import type {
   Any,
   Apply,
+  Collection,
   Color,
   Comment,
   ComplexSelector,
@@ -2391,6 +2392,11 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
       // rather than throwing. (Full `if()`/`isruleset()`/`isdefined()` DR handling —
       // which evaluates and can RETURN a detached ruleset — is the deferred
       // condition-grammar / FnCtx capability wave, not this path.)
+      return literal('');
+    case 'Collection':
+      // A Collection is an SCSS nested-property carrier value. It is flattened to
+      // hyphenated declarations structurally in `walkBody` (case 'Declaration')
+      // and never reaches a value/arg evaluation position; fold to empty bytes.
       return literal('');
   }
 }
@@ -4874,19 +4880,16 @@ function walkBody(
             ...(applyExpansion ? { fromApply: true } : {})
           }, forceLeading);
         };
-        if (node.nested !== undefined) {
-          // An SCSS nested-property collection flattens to hyphenated declarations
-          // here: the own value (unless the empty-array "no base line" sentinel)
-          // first, then each leaf with its outer name joined by `-`, in body order.
-          const hasOwnValue = !(isValueSlotArray(node.value) && node.value.length === 0);
-          if (hasOwnValue) {
-            pushDeclLeaf(decl(node.name, node.value, node.merge, node.important));
+        if (isCollectionValue(node.value)) {
+          // An SCSS nested-property Collection flattens to hyphenated declarations
+          // here: the carrier's own `base` value (when present) first, then each
+          // leaf entry with its outer name joined by `-`, in source order.
+          const coll = node.value;
+          if (coll.base !== undefined) {
+            pushDeclLeaf(decl(node.name, coll.base, node.merge, node.important));
           }
-          for (const leafNode of node.nested.body) {
-            if (leafNode.type !== 'Declaration') {
-              continue;
-            }
-            pushDeclLeaf(decl(joinNestedPropertyName(node.name, leafNode.name), leafNode.value, leafNode.merge, leafNode.important));
+          for (const entry of coll.entries) {
+            pushDeclLeaf(decl(joinNestedPropertyName(node.name, entry.name), entry.value, entry.merge, entry.important));
           }
           break;
         }
@@ -6565,6 +6568,11 @@ function mergeFold(group: Leaf[], e: Emit, idt: string, emitOne: (l: Leaf, e: Em
       emitOne(leaf, e);
     }
   }
+}
+
+/** A declaration value that is an SCSS nested-property {@link Collection}. */
+function isCollectionValue(value: ValueSlot): value is Collection {
+  return !Array.isArray(value) && (value as ValueNode).type === 'Collection';
 }
 
 /** Append literal text to an interpolation part list, coalescing adjacent literals. */

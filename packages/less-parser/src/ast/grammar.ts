@@ -2044,10 +2044,26 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
     sequence(literal('('), g.CssAstSyntaxProperty, regex(/:[ \t\n\r\f]*/), g.DirectLessMathSum, literal(')')),
     children => block(operation(':', keyword(requireToken(children[1]).value), requireValueNode(children[3])))
   );
+  // Cheap superset lookahead so a plain `#fff` hex color (or any non-reference
+  // `.`/`#`-led value) does not run the whole mixin path + call speculation only
+  // to fail the required trailing lookup accessor and backtrack. A real mixin
+  // reference is `name path? (args)?` then `oneOrMore(ReferenceTail)`; its first
+  // differentiating tail is `[…]`, or — when a call precedes it — `(…)`. The chars
+  // before that first `[`/`(` are only the mixin name and `>`-joined path
+  // segments, never `;`/`{`/`}`. So requiring the `[.#]` head that every mixin
+  // name shares, then a `[` OR `(` before the next `;`/`{`/`}`, is a strict
+  // superset: a reference whose call args carry `;`/`{`/`}` still opens with `(`
+  // first and is never skipped, while a bracket-less color/class value is. The
+  // `[.#]` anchor also makes the predicate fail at offset 0 for every non-name
+  // value (`10px`, `linear-gradient(…)`), so it adds no forward scan on the
+  // common path the doomed `attempt` already rejected at its first byte. The
+  // predicate emits a throwaway token, so consumers select the real value node
+  // by type rather than by fixed position.
+  const directMixinReferenceAhead = not(not(regex(/[.#][^;{}]*[([]/)));
   const DirectLessValueAtom = node<ValueNode>(
     'DirectLessValueAtom',
-    choice(attempt(g.DirectLessMixinReference), g.DirectLessInterpolatedValue, g.DirectLessEscapedQuoted, g.DirectLessQuoted, g.DirectLessVarIndirect, g.DirectLessVarReferenceChain, g.DirectLessPropReference, g.DirectLessCssCustomPropertyValue, g.DirectLessDimension, g.DirectLessColor, g.DirectLessNamedColor, g.DirectLessDynamicUrl, g.DirectLessStaticUrl, g.DirectLessCalcFunction, g.DirectLessFormatFunction, g.DirectLessFunction, g.DirectLessSelectorCapture, g.DirectLessEscapedParen, g.DirectLessQueryColonFeature, g.DirectLessParen, DirectLessGridLineName, g.DirectLessCssEscapeValue, DirectLessPercentEscape, DirectLessKeywordOrInterpolatedValue),
-    children => requireValueNode(children[0])
+    choice(sequence(directMixinReferenceAhead, attempt(g.DirectLessMixinReference)), g.DirectLessInterpolatedValue, g.DirectLessEscapedQuoted, g.DirectLessQuoted, g.DirectLessVarIndirect, g.DirectLessVarReferenceChain, g.DirectLessPropReference, g.DirectLessCssCustomPropertyValue, g.DirectLessDimension, g.DirectLessColor, g.DirectLessNamedColor, g.DirectLessDynamicUrl, g.DirectLessStaticUrl, g.DirectLessCalcFunction, g.DirectLessFormatFunction, g.DirectLessFunction, g.DirectLessSelectorCapture, g.DirectLessEscapedParen, g.DirectLessQueryColonFeature, g.DirectLessParen, DirectLessGridLineName, g.DirectLessCssEscapeValue, DirectLessPercentEscape, DirectLessKeywordOrInterpolatedValue),
+    children => requireValueNode(children.find(isValueNode))
   );
   // Signed numerics are already one Dimension leaf (`-2px`).  Less unary minus
   // is glued to a variable or grouping (`-@x`, `-(...)`); `- @x` is instead a
@@ -2223,7 +2239,7 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
       // This transaction owns the WHOLE accessor-bearing value. Keeping it out
       // of ValueAtom means its typed mixin arguments do not recurse through the
       // same candidate before the required bracket fact has been established.
-      attempt(sequence(g.DirectLessMixinReference, not(choice(directTopProductOperator, directSumOperator)))),
+      sequence(directMixinReferenceAhead, attempt(sequence(g.DirectLessMixinReference, not(choice(directTopProductOperator, directSumOperator))))),
       sequence(g.DirectLessValueTerm, many(sequence(field('separator', regex(/,[ \t\n\r\f]*/)), g.DirectLessValueTerm)))
     ),
     (children, fields) => {
