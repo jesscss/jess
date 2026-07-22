@@ -20,7 +20,15 @@ describe('pre-commit aggressive-review mode', () => {
     const fakeBin = resolve(sandbox, '.test-bin');
     const invocationLog = resolve(sandbox, '.pnpm-invocations');
     try {
-      execFileSync('git', ['clone', '--quiet', '--no-hardlinks', repo, sandbox]);
+      execFileSync('git', [
+        'clone',
+        '--quiet',
+        '--no-hardlinks',
+        '--branch',
+        'dev',
+        repo,
+        sandbox
+      ]);
       writeFileSync(
         resolve(sandbox, 'scripts/precommit-changed-checks.mjs'),
         readFileSync(resolve(repo, 'scripts/precommit-changed-checks.mjs'))
