@@ -62,7 +62,7 @@ describe('At-rule bubbling selector bugs', () => {
     `));
   });
 
-  it('keeps property-accessor declarations in the parent block across an ordinary nested rule', async () => {
+  it('keeps post-child property-accessor declarations in a later parent block', async () => {
     const css = await render(`
 .box {
   color: red;
@@ -75,11 +75,13 @@ describe('At-rule bubbling selector bugs', () => {
     expect(trimLines(css)).toBe(trimLines(`
 .box {
   color: red;
-  content: "red";
-  prop: red;
 }
 .box .child {
   background: red;
+}
+.box {
+  content: "red";
+  prop: red;
 }
     `));
   });

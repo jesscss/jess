@@ -25,7 +25,7 @@ type JessAstRules = {
   DirectJessVarDeclaration: Combinator<VariableDeclaration>;
   DirectJessVarReference: Combinator<VariableReference>;
   DirectJessReferenceTail: Combinator<JessReferenceTail>;
-  DirectJessReference: Combinator<Reference>;
+  DirectJessReference: Combinator<ValueNode>;
   DirectJessDollarInterp: Combinator<Interpolation>;
   DirectJessExpressionDollarInterp: Combinator<ExpressionFact>;
   DirectJessExpression: Combinator<Interpolation>;
@@ -1489,13 +1489,22 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
       }
     )
   );
-  const DirectJessReference = node<Reference>(
+  // Left-factored `$`/`$$`+name so the ubiquitous plain reference is parsed
+  // ONCE: the accessor tails are optional, so a bare `$name` no longer parses
+  // the reference, fails a required tail, backtracks, and re-parses `$name`
+  // through a separate plain-reference arm. With tails this reduces to the
+  // chained Reference node; without, to the plain VariableReference that the
+  // DirectJessVarReference child already built (identical shape).
+  const DirectJessReference = node<ValueNode>(
     'DirectJessReference',
-    noTrivia(sequence(g.DirectJessVarReference, oneOrMore(g.DirectJessReferenceTail))),
+    noTrivia(sequence(g.DirectJessVarReference, optional(oneOrMore(g.DirectJessReferenceTail)))),
     (children) => {
       const base = requireValueNode(children[0]);
       if (base.type !== 'VariableReference') {
         throw new TypeError('Direct Jess reference base must be a variable reference.');
+      }
+      if (children.length === 1) {
+        return base;
       }
       const tails = children.slice(1).map(requireJessReferenceTail);
       return reference(base, tails.map(tail => tail.step), `${base.lookup === 'scoped' ? '$$' : '$'}${base.name}${tails.map(tail => tail.src).join('')}`);
@@ -1503,7 +1512,7 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
   );
   const DirectJessValueAtom = node<ValueNode>(
     'DirectJessValueAtom',
-    choice(g.DirectJessCollection, g.DirectJessExpression, g.DirectJessDollarInterp, g.DirectJessSelectorCapture, g.DirectJessUrl, g.DirectJessInterpolatedUrl, g.DirectJessCall, g.DirectJessUnwrappedSlashValue, g.DirectJessUnwrappedArithmetic, g.DirectJessReference, g.DirectJessVarReference, g.DirectJessQuoted, g.DirectJessColor, g.DirectJessDimension, g.DirectJessKeyword),
+    choice(g.DirectJessCollection, g.DirectJessExpression, g.DirectJessDollarInterp, g.DirectJessSelectorCapture, g.DirectJessUrl, g.DirectJessInterpolatedUrl, g.DirectJessCall, g.DirectJessUnwrappedSlashValue, g.DirectJessUnwrappedArithmetic, g.DirectJessReference, g.DirectJessQuoted, g.DirectJessColor, g.DirectJessDimension, g.DirectJessKeyword),
     children => requireValueNode(children[0])
   );
   const DirectJessValueTerm = node<ValueSlot>(

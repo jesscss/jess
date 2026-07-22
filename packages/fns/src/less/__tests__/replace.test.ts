@@ -1,48 +1,84 @@
 import { describe, it, expect } from 'vitest';
-import { Any, Context, Quoted, callWithContext } from '@jesscss/core';
+import {
+  emitValue,
+  isValueGroupArray,
+  makeKeyword,
+  makeList,
+  makeQuoted
+} from '@jesscss/core/value';
+import type { Fn, FnCtx, List, ValueGroup } from '@jesscss/core/value';
 import replace from '../replace.js';
+import { builtinLessFns } from '../../builtins/index.js';
 
-function expectInstance<T>(value: unknown, ctor: abstract new (...args: never[]) => T): T {
-  if (!(value instanceof ctor)) {
-    throw new TypeError('Unexpected replace() result.');
+const ctx: FnCtx = {
+  modes: { unitMode: 'preserve' },
+  stringify: value => !isValueGroupArray(value) && value.type === 'Quoted'
+    ? value.value
+    : emitValue(value)
+};
+
+function call(fn: Fn, ...args: ValueGroup[]): ValueGroup | Promise<ValueGroup> {
+  return fn(makeList(args, ',') as List, ctx);
+}
+
+function quotedValue(value: ValueGroup): { readonly type: 'Quoted'; readonly value: string; readonly quote: string } {
+  if (isValueGroupArray(value) || value.type !== 'Quoted') {
+    throw new TypeError('Expected a quoted value.');
   }
   return value;
 }
 
 describe('replace()', () => {
+  it('keeps the canonical typed registration and raw List/FnCtx contract', () => {
+    expect(typeof replace).toBe('function');
+    expect(replace.name).toBe('replace');
+    expect(replace.variadic).toBe(true);
+    expect(replace.params).toEqual([
+      { kinds: 'any' },
+      { kinds: 'any' },
+      { kinds: 'any' },
+      { kinds: 'any', optional: true }
+    ]);
+    expect(builtinLessFns.find(fn => fn.name === 'replace')).toBe(replace);
+  });
+
   it('replaces in quoted input and preserves quote style', async () => {
-    const input = new Quoted('hello', { quote: '\'' });
-    const result = expectInstance(
-      await callWithContext(new Context(), replace, input, new Quoted('l'), new Quoted('x')),
-      Quoted
-    );
-    expect(result).toBeInstanceOf(Quoted);
-    expect(result.valueOf()).toBe('hexlo');
+    const result = quotedValue(await call(
+      replace,
+      makeQuoted('hello', '\'', false),
+      makeQuoted('l', '"', false),
+      makeQuoted('x', '"', false)
+    ));
+    expect(result.value).toBe('hexlo');
     expect(result.quote).toBe('\'');
   });
 
-  it('replaces with flags and returns Any for non-quoted input', async () => {
-    const result = expectInstance(await callWithContext(
-      new Context(),
+  it('replaces with flags and returns a keyword for non-quoted input', async () => {
+    const result = await call(
       replace,
-      new Any('Hello', { role: 'keyword' }),
-      new Quoted('h'),
-      new Quoted('x'),
-      new Quoted('i')
-    ), Any);
-    expect(result).toBeInstanceOf(Any);
-    expect(result.valueOf()).toBe('xello');
+      makeKeyword('Hello'),
+      makeQuoted('h', '"', false),
+      makeQuoted('x', '"', false),
+      makeQuoted('i', '"', false)
+    );
+    expect(isValueGroupArray(result)).toBe(false);
+    if (isValueGroupArray(result) || result.type !== 'Keyword') {
+      throw new TypeError('Expected a keyword value.');
+    }
+    expect(result.text).toBe('xello');
   });
 
   it('serializes non-quoted replacement values', async () => {
-    const result = expectInstance(await callWithContext(
-      new Context(),
+    const result = await call(
       replace,
-      new Any('alpha-beta', { role: 'keyword' }),
-      new Quoted('-'),
-      new Any('_', { role: 'keyword' })
-    ), Any);
-
-    expect(result.valueOf()).toBe('alpha_beta');
+      makeKeyword('alpha-beta'),
+      makeQuoted('-', '"', false),
+      makeKeyword('_')
+    );
+    expect(isValueGroupArray(result)).toBe(false);
+    if (isValueGroupArray(result) || result.type !== 'Keyword') {
+      throw new TypeError('Expected a keyword value.');
+    }
+    expect(result.text).toBe('alpha_beta');
   });
 });

@@ -92,7 +92,7 @@ describe('pre-commit aggressive-review mode', () => {
       ]);
       writeFileSync(
         resolve(sandbox, 'scripts/precommit-changed-checks.mjs'),
-        `${readFileSync(resolve(repo, 'scripts/precommit-changed-checks.mjs'))}\n// committed pre-push probe\n`
+        readFileSync(resolve(repo, 'scripts/precommit-changed-checks.mjs'))
       );
       writeFileSync(
         resolve(sandbox, 'scripts/staged-lint.mjs'),

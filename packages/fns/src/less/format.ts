@@ -1,12 +1,46 @@
-import { Any, Node, Quoted, defineFunction } from '@jesscss/core';
-import { serializeNodeValue } from '../util/serialize-node.js';
+import type { Fn, FnCtx, ValueGroup, ValueObj } from '@jesscss/core/value';
+import {
+  defineFunction,
+  emitValue,
+  groupItems,
+  isValueGroupArray,
+  makeKeyword,
+  makeQuoted
+} from '@jesscss/core/value';
 
-async function applyToken(token: string, value: Node, context: any): Promise<string> {
-  const isStringToken = /%s/i.test(token);
-  const rawValue = (isStringToken && value instanceof Quoted)
-    ? value.valueOf()
-    : await serializeNodeValue(value, context);
-  return /[A-Z]$/.test(token) ? encodeURIComponent(rawValue) : rawValue;
+/** The selected token's Less string or CSS form, with uppercase URL encoding. */
+function tokenValue(token: string, value: ValueGroup, ctx: FnCtx): string {
+  const raw = /s/i.test(token) ? ctx.stringify(value) : emitValue(value);
+  return /[A-Z]$/.test(token) ? encodeURIComponent(raw) : raw;
+}
+
+const FORMAT_PARAMS: Fn['params'] = [
+  { kinds: 'any' },
+  { kinds: 'any', optional: true },
+  { kinds: 'any', optional: true },
+  { kinds: 'any', optional: true },
+  { kinds: 'any', optional: true }
+];
+
+function formatKernel(list: ValueGroup, ctx: FnCtx): ValueObj {
+  const items = groupItems(list);
+  const template = items[0]!;
+  let result = ctx.stringify(template);
+
+  for (let index = 1; index < items.length; index++) {
+    const value = items[index]!;
+    const match = /%[sda]/i.exec(result);
+    if (!match) {
+      break;
+    }
+    result = `${result.slice(0, match.index)}${tokenValue(match[0], value, ctx)}${result.slice(match.index + match[0].length)}`;
+  }
+  result = result.replace(/%%/g, '%');
+
+  if (!isValueGroupArray(template) && template.type === 'Quoted' && !template.escaped) {
+    return makeQuoted(result, template.quote, false);
+  }
+  return makeKeyword(result);
 }
 
 /**
@@ -22,48 +56,18 @@ async function applyToken(token: string, value: Node, context: any): Promise<str
  * @param arg4 substituted for the fourth token
  * @returns the formatted string
  */
-const format = defineFunction(
-  '%',
-  async function(this: any, template: Node, arg1?: Node, arg2?: Node, arg3?: Node, arg4?: Node) {
-    const args = [arg1, arg2, arg3, arg4].filter((arg): arg is Node => !!arg);
+/** The registered whole-word spelling used by the AST-v2 evaluator. */
+export const format: Fn = defineFunction('string-format', {
+  params: FORMAT_PARAMS,
+  variadic: true,
+  body: formatKernel
+});
 
-    let result = await serializeNodeValue(template, this.context);
-    for (const value of args) {
-      const match = result.match(/%[sda]/i);
-      if (!match) {
-        break;
-      }
-      result = `${result.slice(0, match.index)}${await applyToken(match[0], value, this.context)}${result.slice((match.index ?? 0) + match[0].length)}`;
-    }
-    result = result.replace(/%%/g, '%');
+/** The `%()` spelling retained by the public Less callable export. */
+export const formatPercent: Fn = defineFunction('%', {
+  params: FORMAT_PARAMS,
+  variadic: true,
+  body: formatKernel
+});
 
-    if (template instanceof Quoted && !template.escaped) {
-      return new Quoted(result, { quote: template.quote, escaped: false });
-    }
-    return new Any(result, { role: 'keyword' });
-  },
-  {
-    params: [{
-      name: 'template',
-      type: Node
-    }, {
-      name: 'arg1',
-      type: Node,
-      optional: true
-    }, {
-      name: 'arg2',
-      type: Node,
-      optional: true
-    }, {
-      name: 'arg3',
-      type: Node,
-      optional: true
-    }, {
-      name: 'arg4',
-      type: Node,
-      optional: true
-    }]
-  }
-);
-
-export default format;
+export default formatPercent;

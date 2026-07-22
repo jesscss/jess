@@ -1,7 +1,7 @@
 /**
  * Built-in Less function set — the single ASSEMBLY point (AST-v2 value domain).
  *
- * Each fn lives in its OWN module (`./ceil.js`, `./pow.js`, …) and exports a
+ * Each fn lives in its canonical dialect/shared module and exports a
  * self-describing `Fn` (name + param spec + body). This file gathers them into
  * `builtinLessFns` (successor to core's former `FN_LIST`), which a consumer turns
  * into a dispatch registry via `createFnRegistry().registerAll(builtinLessFns)`.
@@ -13,8 +13,8 @@
  * `fns → core` via the narrow `@jesscss/core/value` substrate.
  *
  * ┌─ HOW TO ADD A FN (the 3-line recipe) ─────────────────────────────────────┐
- * │ 1. Create `builtins/<fn>.ts` exporting `export const <fn>: Fn = {…}`.      │
- * │ 2. `import { <fn> } from './<fn>.js';` below.                              │
+ * │ 1. Create the canonical dialect/shared `<fn>.ts` exporting `Fn`.           │
+ * │ 2. Import that callable below.                                             │
  * │ 3. Add `<fn>` to `builtinLessFns`.                                         │
  * └───────────────────────────────────────────────────────────────────────────┘
  */
@@ -101,8 +101,8 @@ import { hsva } from './hsva.js';
 import { argb } from './argb.js';
 import { color } from './color.js';
 // --- string producers (Tier-B — need the value→string serialize hook) ---
-import { replace } from './replace.js';
-import { format, formatPercent } from './format.js';
+import { replace } from '../less/replace.js';
+import { format, formatPercent } from '../less/format.js';
 import { escape } from './escape.js';
 // --- type-introspection predicates (is*) ---
 import {

@@ -166,8 +166,10 @@ describe('@jesscss/scss-parser public parse API', () => {
 
     expect(root).toMatchObject({
       type: 'Stylesheet', children: [{ type: 'Rule', body: [
-        { type: 'Declaration', name: 'font-family', value: { src: 'fantasy' } },
-        { type: 'Declaration', name: 'font-weight', value: { src: 'bold' } }
+        { type: 'Declaration', name: 'font', value: [], nested: { type: 'DetachedRuleset', body: [
+          { type: 'Declaration', name: 'family', value: { src: 'fantasy' } },
+          { type: 'Declaration', name: 'weight', value: { src: 'bold' } }
+        ] } }
       ] }]
     });
     expect(serialize(root)).toEqual({
@@ -175,7 +177,9 @@ describe('@jesscss/scss-parser public parse API', () => {
     });
 
     const empty = parse('.empty { font: {}; }');
-    expect(empty).toMatchObject({ type: 'Stylesheet', children: [{ type: 'Rule', body: [] }] });
+    expect(empty).toMatchObject({ type: 'Stylesheet', children: [{ type: 'Rule', body: [
+      { type: 'Declaration', name: 'font', nested: { type: 'DetachedRuleset', body: [] } }
+    ] }] });
     expect(serialize(empty)).toEqual({ css: '' });
 
     const interpolated = '$prefix: font; $part: weight; .card { #{$prefix}: { color: red; } font: { #{$part}: bold; } #{$prefix}: { #{$part}: 700; } }';
@@ -183,9 +187,15 @@ describe('@jesscss/scss-parser public parse API', () => {
     const dynamic = parse(interpolated);
     expect(dynamic).toMatchObject({
       children: [{ type: 'VariableDeclaration' }, { type: 'VariableDeclaration' }, { type: 'Rule', body: [
-        { name: { type: 'Interpolation', parts: [{ ref: { type: 'VariableReference', name: 'prefix' } }, { lit: '-color' }] } },
-        { name: { type: 'Interpolation', parts: [{ lit: 'font-' }, { ref: { type: 'VariableReference', name: 'part' } }] } },
-        { name: { type: 'Interpolation', parts: [{ ref: { type: 'VariableReference', name: 'prefix' } }, { lit: '-' }, { ref: { type: 'VariableReference', name: 'part' } }] } }
+        { name: { type: 'Interpolation', parts: [{ ref: { type: 'VariableReference', name: 'prefix' } }] }, nested: { type: 'DetachedRuleset', body: [
+          { name: 'color', value: { src: 'red' } }
+        ] } },
+        { name: 'font', nested: { type: 'DetachedRuleset', body: [
+          { name: { type: 'Interpolation', parts: [{ ref: { type: 'VariableReference', name: 'part' } }] }, value: { src: 'bold' } }
+        ] } },
+        { name: { type: 'Interpolation', parts: [{ ref: { type: 'VariableReference', name: 'prefix' } }] }, nested: { type: 'DetachedRuleset', body: [
+          { name: { type: 'Interpolation', parts: [{ ref: { type: 'VariableReference', name: 'part' } }] }, value: { src: '700' } }
+        ] } }
       ] }]
     });
     expect(serialize(dynamic)).toEqual({
@@ -196,8 +206,9 @@ describe('@jesscss/scss-parser public parse API', () => {
     expect(parseScssCst(important).errors).toHaveLength(0);
     expect(parse(important)).toMatchObject({
       children: [{ type: 'Rule', body: [
-        { type: 'Declaration', name: 'font', important: true },
-        { type: 'Declaration', name: 'font-size', important: false }
+        { type: 'Declaration', name: 'font', important: true, nested: { type: 'DetachedRuleset', body: [
+          { type: 'Declaration', name: 'size', important: false }
+        ] } }
       ] }]
     });
     expect(serialize(parse(important))).toEqual({

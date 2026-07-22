@@ -1,5 +1,11 @@
-import { Any, Node, Quoted, defineFunction } from '@jesscss/core';
-import { serializeNodeValue } from '../util/serialize-node.js';
+import type { Fn } from '@jesscss/core/value';
+import {
+  defineFunction,
+  groupItems,
+  isValueGroupArray,
+  makeKeyword,
+  makeQuoted
+} from '@jesscss/core/value';
 
 /**
  * Less `replace()` — replace text in a string using a JavaScript `RegExp`. The
@@ -11,38 +17,28 @@ import { serializeNodeValue } from '../util/serialize-node.js';
  * @param flags optional regex flags (e.g. `g`, `i`)
  * @returns the transformed string
  */
-const replace = defineFunction(
-  'replace',
-  async function(this: any, input: Node, pattern: Node, replacement: Node, flags?: Node) {
-    const source = await serializeNodeValue(input, this.context);
-    const patternValue = await serializeNodeValue(pattern, this.context);
-    const replacementValue = replacement instanceof Quoted
-      ? replacement.valueOf()
-      : await serializeNodeValue(replacement, this.context);
-    const flagValue = flags ? await serializeNodeValue(flags, this.context) : '';
-    const result = source.replace(new RegExp(patternValue, flagValue), replacementValue);
+export const replace: Fn = defineFunction('replace', {
+  params: [
+    { kinds: 'any' },
+    { kinds: 'any' },
+    { kinds: 'any' },
+    { kinds: 'any', optional: true }
+  ],
+  variadic: true,
+  body: (list, ctx) => {
+    const items = groupItems(list);
+    const input = items[0]!;
+    const source = ctx.stringify(input);
+    const pattern = ctx.stringify(items[1]!);
+    const replacement = ctx.stringify(items[2]!);
+    const flags = items[3] === undefined ? '' : ctx.stringify(items[3]!);
+    const result = source.replace(new RegExp(pattern, flags), replacement);
 
-    if (input instanceof Quoted && !input.escaped) {
-      return new Quoted(result, { quote: input.quote, escaped: false });
+    if (!isValueGroupArray(input) && input.type === 'Quoted' && !input.escaped) {
+      return makeQuoted(result, input.quote, false);
     }
-    return new Any(result, { role: 'keyword' });
-  },
-  {
-    params: [{
-      name: 'input',
-      type: Node
-    }, {
-      name: 'pattern',
-      type: Node
-    }, {
-      name: 'replacement',
-      type: Node
-    }, {
-      name: 'flags',
-      type: Node,
-      optional: true
-    }]
+    return makeKeyword(result);
   }
-);
+});
 
 export default replace;

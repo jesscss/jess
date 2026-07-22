@@ -28,7 +28,9 @@ import { renderCombinator } from './node.js';
 import type { Node, NodeType } from './node.js';
 import {
   any,
+  decl,
   dimension,
+  interpolation,
   mixinCall,
   operation,
   spaced,
@@ -2660,7 +2662,6 @@ function declMapFromMixinCall(
   // nested rules (they defer to `trailing`, which is never drained here).
   const discard: Partition = {
     encounteredContainer: false,
-    afterBubbledAtRule: false,
     trailing: [],
     pending: [],
     emitBlock: noop
@@ -4761,7 +4762,6 @@ function flattenWithHeader(
   };
   const partition: Partition = {
     encounteredContainer: false,
-    afterBubbledAtRule: false,
     trailing: [],
     pending: [],
     emitBlock
@@ -4828,8 +4828,6 @@ function addLeaf(group: Leaf[], partition: Partition | null, leaf: Leaf, _forceL
  */
 interface Partition {
   encounteredContainer: boolean;
-  /** Retained only for existing at-rule-specific placement callers. */
-  afterBubbledAtRule: boolean;
   /** Ordered deferred containers plus existing trailing-leaf blocks. */
   trailing: Array<() => MaybePromise<void>>;
   /** Buffered trailing declarations awaiting the next boundary (a run → one block). */
@@ -4861,25 +4859,40 @@ function walkBody(
   for (let index = 0; index < statements.length; index++) {
     const node = statements[index]!;
     switch (node.type) {
-      case 'Declaration':
+      case 'Declaration': {
         // Property accessors see declarations in the order evaluation splices
         // them into the enclosing ruleset. A mixin body retains its call frame for
         // value evaluation but publishes this declaration into `propertyScope`.
-        recordPropertyDeclaration(propertyScope, node, frame);
-        // Every collapsed child is a source-order/cascade boundary. A declaration
-        // following it belongs to a later parent block, never the leading block.
-        const leaf: Leaf = {
-          node,
-          frame,
-          ...(imp ? { important: true } : {}),
-          ...(applyExpansion ? { fromApply: true } : {})
+        const pushDeclLeaf = (declaration: Declaration): void => {
+          recordPropertyDeclaration(propertyScope, declaration, frame);
+          // Every collapsed child is a source-order/cascade boundary. A declaration
+          // after it belongs to a later parent block, never the leading block.
+          addLeaf(group, partition, {
+            node: declaration,
+            frame,
+            ...(imp ? { important: true } : {}),
+            ...(applyExpansion ? { fromApply: true } : {})
+          }, forceLeading);
         };
-        if (partition?.encounteredContainer === true) {
-          partition.pending.push(leaf);
-        } else {
-          group.push(leaf);
+        if (node.nested !== undefined) {
+          // An SCSS nested-property collection flattens to hyphenated declarations
+          // here: the own value (unless the empty-array "no base line" sentinel)
+          // first, then each leaf with its outer name joined by `-`, in body order.
+          const hasOwnValue = !(isValueSlotArray(node.value) && node.value.length === 0);
+          if (hasOwnValue) {
+            pushDeclLeaf(decl(node.name, node.value, node.merge, node.important));
+          }
+          for (const leafNode of node.nested.body) {
+            if (leafNode.type !== 'Declaration') {
+              continue;
+            }
+            pushDeclLeaf(decl(joinNestedPropertyName(node.name, leafNode.name), leafNode.value, leafNode.merge, leafNode.important));
+          }
+          break;
         }
+        pushDeclLeaf(node);
         break;
+      }
       case 'Comment':
         // [partition] A comment keeps its authored position relative to nested
         // rules: before the first → leading block; after → its own trailing run.
@@ -5026,7 +5039,6 @@ function walkBody(
           queueLeadingGroup(group, partition);
           flushPending(partition);
           partition.encounteredContainer = true;
-          partition.afterBubbledAtRule = true;
           partition.trailing.push(() => emitAtRuleBlock(atNode, atFrame, e, atComposed));
         } else {
           const flushed = flush();
@@ -5059,7 +5071,6 @@ function walkBody(
           queueLeadingGroup(group, partition);
           flushPending(partition);
           partition.encounteredContainer = true;
-          partition.afterBubbledAtRule = true;
           partition.trailing.push(() => emitAtRuleStatement(atNode, frame, e));
         } else {
           const flushed = flush();
@@ -5191,7 +5202,6 @@ function walkBody(
           queueLeadingGroup(group, partition);
           flushPending(partition);
           partition.encounteredContainer = true;
-          partition.afterBubbledAtRule = true;
           partition.trailing.push(() => emitOpaqueAtRuleBlock(opaqueNode, e));
         } else {
           const flushed = flush();
@@ -6000,7 +6010,6 @@ function forItemsFromMixinCall(call: MixinCall, frame: Frame, e: Emit): ForItem[
   // nested rules (they defer to `trailing`, which is never drained here).
   const discard: Partition = {
     encounteredContainer: false,
-    afterBubbledAtRule: false,
     trailing: [],
     pending: [],
     emitBlock: noop
@@ -6556,6 +6565,42 @@ function mergeFold(group: Leaf[], e: Emit, idt: string, emitOne: (l: Leaf, e: Em
       emitOne(leaf, e);
     }
   }
+}
+
+/** Append literal text to an interpolation part list, coalescing adjacent literals. */
+function appendInterpLiteral(parts: Interpolation['parts'], text: string): void {
+  const previous = parts[parts.length - 1];
+  if (previous !== undefined && 'lit' in previous) {
+    parts[parts.length - 1] = { lit: previous.lit + text };
+  } else {
+    parts.push({ lit: text });
+  }
+}
+
+/** Join an SCSS nested-property outer name and a leaf name with a literal `-`,
+ * preserving interpolation structure when either side is an {@link Interpolation}. */
+function joinNestedPropertyName(prefix: string | Interpolation, leaf: string | Interpolation): string | Interpolation {
+  if (typeof prefix === 'string' && typeof leaf === 'string') {
+    return `${prefix}-${leaf}`;
+  }
+  const parts: Interpolation['parts'] = [];
+  const appendName = (name: string | Interpolation): void => {
+    if (typeof name === 'string') {
+      appendInterpLiteral(parts, name);
+    } else {
+      for (const part of name.parts) {
+        if ('lit' in part) {
+          appendInterpLiteral(parts, part.lit);
+        } else {
+          parts.push(part);
+        }
+      }
+    }
+  };
+  appendName(prefix);
+  appendInterpLiteral(parts, '-');
+  appendName(leaf);
+  return interpolation(parts);
 }
 
 /** Emit one folded `name: combined[ !important];` line. */

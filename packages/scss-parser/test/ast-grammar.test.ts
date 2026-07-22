@@ -695,10 +695,13 @@ describe('SCSS canonical-AST grammar', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet', children: [{ type: 'Rule', body: [
-        { type: 'Declaration', name: 'font-family', value: { src: 'fantasy' } },
-        { type: 'Declaration', name: 'font-weight', value: { src: 'bold' }, important: false },
-        { type: 'Declaration', name: 'font', value: { src: '20px' } },
-        { type: 'Declaration', name: 'font-size', value: { src: '1rem' } }
+        { type: 'Declaration', name: 'font', value: [], nested: { type: 'DetachedRuleset', body: [
+          { type: 'Declaration', name: 'family', value: { src: 'fantasy' } },
+          { type: 'Declaration', name: 'weight', value: { src: 'bold' }, important: false }
+        ] } },
+        { type: 'Declaration', name: 'font', value: { src: '20px' }, nested: { type: 'DetachedRuleset', body: [
+          { type: 'Declaration', name: 'size', value: { src: '1rem' } }
+        ] } }
       ] }]
     });
     expect(serialize(stylesheet(result.value))).toEqual({
@@ -728,9 +731,15 @@ describe('SCSS canonical-AST grammar', () => {
     expect(result.value).toMatchObject({
       type: 'Stylesheet', children: [{ type: 'VariableDeclaration', name: 'prefix' }, { type: 'VariableDeclaration', name: 'part' }, {
         type: 'Rule', body: [
-          { type: 'Declaration', name: { type: 'Interpolation', parts: [{ ref: { type: 'VariableReference', name: 'prefix' } }, { lit: '-color' }] } },
-          { type: 'Declaration', name: { type: 'Interpolation', parts: [{ lit: 'font-' }, { ref: { type: 'VariableReference', name: 'part' } }] } },
-          { type: 'Declaration', name: { type: 'Interpolation', parts: [{ ref: { type: 'VariableReference', name: 'prefix' } }, { lit: '-' }, { ref: { type: 'VariableReference', name: 'part' } }] } }
+          { type: 'Declaration', name: { type: 'Interpolation', parts: [{ ref: { type: 'VariableReference', name: 'prefix' } }] }, nested: { type: 'DetachedRuleset', body: [
+            { type: 'Declaration', name: 'color', value: { src: 'red' } }
+          ] } },
+          { type: 'Declaration', name: 'font', nested: { type: 'DetachedRuleset', body: [
+            { type: 'Declaration', name: { type: 'Interpolation', parts: [{ ref: { type: 'VariableReference', name: 'part' } }] }, value: { src: 'bold' } }
+          ] } },
+          { type: 'Declaration', name: { type: 'Interpolation', parts: [{ ref: { type: 'VariableReference', name: 'prefix' } }] }, nested: { type: 'DetachedRuleset', body: [
+            { type: 'Declaration', name: { type: 'Interpolation', parts: [{ ref: { type: 'VariableReference', name: 'part' } }] }, value: { src: '700' } }
+          ] } }
         ]
       }]
     });
@@ -750,8 +759,9 @@ describe('SCSS canonical-AST grammar', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet', children: [{ type: 'Rule', body: [
-        { type: 'Declaration', name: 'font', important: true, value: { src: '20px' } },
-        { type: 'Declaration', name: 'font-size', important: false, value: { src: '1rem' } }
+        { type: 'Declaration', name: 'font', important: true, value: { src: '20px' }, nested: { type: 'DetachedRuleset', body: [
+          { type: 'Declaration', name: 'size', important: false, value: { src: '1rem' } }
+        ] } }
       ] }]
     });
     expect(serialize(stylesheet(result.value))).toEqual({
@@ -768,7 +778,9 @@ describe('SCSS canonical-AST grammar', () => {
     expect(cst.unconsumedFrom).toBeNull();
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
-    expect(result.value).toMatchObject({ type: 'Stylesheet', children: [{ type: 'Rule', body: [] }] });
+    expect(result.value).toMatchObject({ type: 'Stylesheet', children: [{ type: 'Rule', body: [
+      { type: 'Declaration', name: 'font', nested: { type: 'DetachedRuleset', body: [] } }
+    ] }] });
     expect(serialize(stylesheet(result.value))).toEqual({ css: '' });
   });
 

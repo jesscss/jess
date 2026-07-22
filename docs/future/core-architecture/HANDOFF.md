@@ -4572,10 +4572,6 @@ Aggressive-cutting review for this slice:
 
 ## Less image IO Fn cutover evidence
 
-- The image IO functions now use the canonical typed `Fn` and
-  injected `FnCtx.io` path in their existing Less owners. The removed builtins
-  wrappers and legacy resolver were duplicate tree-era machinery; this pass
-  does not claim a hot-path optimization or a benchmark result.
 - Architecture surface: `image-size`, `image-width`, and `image-height` now
   remain in their existing `packages/fns/src/less/` owners as typed, variadic
   `Fn` callables. They receive one raw typed argument group and the existing
@@ -4614,35 +4610,53 @@ Aggressive-cutting review for this slice:
   dimensions, unreadable assets, raw `List`/`FnCtx` metadata, and plugin-backed
   async asset resolution. This is a semantic-cutover proof, not a speed claim.
 - Review-flagged diff tokens: `[loop/traversal]` is the one selected first-item
-  read and existing bounded image-header parser; `[array helper]` is that
-  existing `groupItems(value)[0]` structural read; and `[materialized
-  array/object]` is the semantic two-value raw result for `image-size`. `[array
-  spread/materialization]`, `[generator]`, `[inherit/adopt/frozen]`,
-  `[parent/source mutation]`, `[generic defensive read]`, and `[side map/set]`
-  are absent from this image-function cutover. `[routine error control]` is
-  only the selected-callable missing/unsupported-asset error, whose normal
-  behavior remains owned by the existing call-level `functionMode` boundary.
-  `[node construction]` is absent. No parser, source tree, resolver, or render
-  output is walked or reconstructed by the function layer.
-- Behavior evidence: `packages/fns/src/builtins/__tests__/io-fns.test.ts`
-  covers the typed image outputs, unreadable-asset throw, raw argument shape,
-  and injected IO capability; `packages/jess/test/path-resolution.test.ts`
-  covers the public Context path route.
-- Build evidence: the current `@jesscss/fns` build and the alpha release
-  preflight build the rebuilt typed entrypoints; no legacy builtin wrapper is
-  packed as an executable implementation.
-- Boundary evidence: `packages/fns/src/less/index.ts` preserves the public
-  Less callable exports while `packages/fns/src/builtins/index.ts` registers
-  those same owners directly. The public evaluator receives only `Fn` plus
-  `FnCtx.io`; Context remains the source/path dispatcher.
+  read and existing bounded image-header parser; `[materialized array/object]`
+  is the semantic two-value raw result for `image-size`; `[node construction]`
+  is absent. No parser, source tree, resolver, or render output is walked or
+  reconstructed by the function layer.
 - Verdict: accepted in-place typed Fn conversion after the old and rebuilt
   output oracle matched. Performance remains unmeasured.
 
-## Obsolete Parseman migration note retired
+## Less format/replace Fn cutover evidence
 
-The root `PARSEMAN_MIGRATION.md` was an unreferenced scanner-first/Chevrotain
-proposal for the removed tree-era parser model. Its remaining ideas are either
-superseded by this handoff, `AGENTS.md`'s direct Parseman grammar boundary, or
-the current parser package documentation; it contained no unique accepted plan.
-The obsolete duplicate is deleted rather than preserved as an archive that
-could be mistaken for current parser architecture.
+- Architecture surface: `format`/`formatPercent` and `replace` now live in
+  their existing `packages/fns/src/less/` owners as direct typed, variadic
+  `Fn` callables. `builtins/index.ts` registers those canonical callables; it
+  no longer owns another implementation. The direct public default exports
+  remain callable and `%` remains the public `format` callable name.
+- Separation/duplication: deleted duplicate `builtins/format.ts` and
+  `builtins/replace.ts`, plus `util/serialize-node.ts`, whose only source
+  callers were the two migrated Less functions. No compatibility proxy,
+  registry, evaluator path, or tree-node conversion is introduced.
+- Cumulative node weight: the two tree wrapper implementations and the legacy
+  tree serializer are deleted. The retained functions create only their output
+  `Quoted` or `Keyword` value record—the required result boundary—and no tree
+  Node, Context, wrapper, clone, or source metadata.
+- New traversal: the only loops are the existing bounded format-token walk over
+  the supplied raw argument group and the existing string replacement engine.
+  They operate on selected function inputs, never source-tree traversal or
+  string reparsing for AST facts.
+- New node/materialization: no AST node/materialization. `groupItems` unwraps
+  the evaluator-supplied call shape; `makeQuoted`/`makeKeyword` create the
+  one semantic return value. There is no intermediate rendered node.
+- Render path: `%s` uses the injected `FnCtx.stringify` text form; `%a`/`%d`
+  use canonical `emitValue` CSS bytes. `replace` likewise uses the injected
+  text seam. The evaluator serializes the returned typed value once.
+- Helper/API surface: one local `formatKernel` and one local `tokenValue`
+  replace two complete duplicate modules plus `serializeNodeValue`; neither is
+  exported. Public `Fn` metadata and raw `List`/`FnCtx` invocation are retained.
+- Metadata mutations: none.
+- Evidence: the pre-cut legacy public wrapper incorrectly reduced a quoted
+  `%a` argument to its inner text. Installed `less@4.6.3` and the typed public
+  compiler both emit `""x y""` for `%a`/`%d` and `"x y"` for `%s`; typed
+  direct and compiler tests now assert those exact bytes. The remaining
+  pre-cut format/replace vectors match. This is a behavior-correction proof,
+  not a performance claim.
+- Review-flagged diff tokens: `[loop/traversal]` is only the selected raw
+  argument-token loop; `[node construction]` is absent; `[materialized
+  array/object]` is the evaluator-provided raw argument group, not a new
+  function-layer allocation. No source walk, resolver, parser, cache, or
+  temporary output tree is added.
+- Verdict: accepted canonical typed-value cutover. The legacy `%a` wrapper
+  behavior is intentionally removed as incorrect; performance remains
+  unmeasured.
