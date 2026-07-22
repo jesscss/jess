@@ -1,6 +1,7 @@
-import type { Color, Dimension, Fn } from '@jesscss/core/value';
+import type { Fn } from '@jesscss/core/value';
 import { makeColorRgb, defineFunction, RGB } from '@jesscss/core/value';
-import { getLuma, reformatColor } from './color-helper.js';
+import { getLuma, reformatColor, requireColor } from './color-helper.js';
+import { requireDimension } from './math-helper.js';
 
 /**
  * `contrast(color, dark?, light?, threshold?)` — pick `dark` or `light` by whether
@@ -17,9 +18,9 @@ export const contrast: Fn = defineFunction('contrast', {
     { kinds: ['Dimension'], optional: true }
   ],
   body: (c, dark, light, threshold) => {
-    const color = c as Color;
-    let lightC = (light as Color | undefined) ?? makeColorRgb([255, 255, 255], 1, RGB);
-    let darkC = (dark as Color | undefined) ?? makeColorRgb([0, 0, 0], 1, RGB);
+    const color = requireColor(c);
+    let lightC = light === undefined ? makeColorRgb([255, 255, 255], 1, RGB) : requireColor(light);
+    let darkC = dark === undefined ? makeColorRgb([0, 0, 0], 1, RGB) : requireColor(dark);
     if (getLuma(darkC) > getLuma(lightC)) {
       const t = lightC;
       lightC = darkC;
@@ -27,7 +28,7 @@ export const contrast: Fn = defineFunction('contrast', {
     }
     let thr = 0.43;
     if (threshold !== undefined) {
-      const d = threshold as Dimension;
+      const d = requireDimension(threshold);
       thr = d.unit === '%' ? d.number / 100 : d.number;
     }
     return reformatColor(getLuma(color) < thr ? lightC : darkC, color.format);
