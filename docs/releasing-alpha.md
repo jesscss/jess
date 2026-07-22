@@ -124,7 +124,7 @@ bump is performed later.
 
 For the first Less-focused alpha, the release notes must also include a
 discoverable **Known limitations** section linking
-[`less-v5-alpha-readiness.md`](./less-v5-alpha-readiness.md). The 30 runnable
+[`less-v5-alpha-readiness.md`](./less-v5-alpha-readiness.md). The 34 runnable
 upstream expected-failure markers are classified compatibility evidence, not a
 requirement to drain before alpha. Do not omit them or call them passing; block
 only on the advertised public-route, package/CLI, and core-safety gates.

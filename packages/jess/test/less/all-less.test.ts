@@ -162,6 +162,12 @@ const expectedFailureFixtures = new Map<string, string>([
   ['tests-unit/variables/variables.less', 'renders but variable output differs from Less'],
   ['tests-unit/variables-in-at-rules/variables-in-at-rules.less', 'Less5 rejects dynamic @charset interpolation; static charset remains on the generic statement route pending the public Charset node decision'],
   ['tests-unit/plugin-module/plugin-module.less', 'Less5 alpha rejects clean-css: its legacy CommonJS @plugin graph uses require(\'./lib/clean\'), which the optional jess-plugin-js Deno compatibility runtime intentionally does not support (a cold worker can instead report its explicit startup diagnostic); this is not a parser, evaluator, or Context import-resolution failure'],
+  // Explicit Less5 removals. Keep these legacy fixtures runnable so an
+  // accidental reintroduction is visible rather than silently skipped.
+  ['tests-unit/javascript-REMOVED/legacy/javascript.less', 'Less5 removes backtick JavaScript evaluation, including javascriptEnabled legacy configurations'],
+  ['tests-unit/ie-filters-REMOVED/legacy/ie-filters.less', 'Less5 removes legacy IE progid:DXImageTransform filter syntax'],
+  ['tests-unit/functions/legacy/functions.less', 'Less5 rejects this legacy fixture\'s non-Less $list parameter/reference syntax'],
+  ['tests-unit/plugin-preeval/plugin-preeval.less', 'Less5 does not support the legacy tree visitor ABI (isPreEvalVisitor, manager.addVisitor, visitors.Visitor); this is not an @plugin extension-resolution gap'],
   ['tests-unit/plugin/plugin.less', '@jesscss/plugin-js now auto-wires and the @plugin scripts execute; renders but Jess nests @media (no query merging) where the expected CSS merges queries (non-plugin render gap)'],
   ['tests-unit/parse-interpolation/parse-interpolation.less', 'renders but interpolation formatting differs from Less'],
   ['tests-unit/parser-slashed-combinator/parser-slashed-combinator.less', 'slashed combinator not yet supported'],

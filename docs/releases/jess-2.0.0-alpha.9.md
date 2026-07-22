@@ -73,9 +73,14 @@ This is a deliberately breaking alpha architecture change.
   registry dependencies only for the publish window.
 - It does not claim complete Less 4.x corpus parity. The first alpha ships only
   after its advertised public-route, package, CLI, and core-safety gates pass;
-  the 30 runnable upstream divergences are published as known limitations, not
+  the 34 runnable upstream divergences are published as known limitations, not
   hidden test exclusions. See [Less v5 alpha readiness](../less-v5-alpha-readiness.md)
   for every fixture, its symptom/scope, and follow-up.
+- It intentionally removes four legacy Less fixture categories: backtick
+  JavaScript evaluation, IE `progid:DXImageTransform` filters, the legacy
+  function fixture's non-Less `$list` syntax, and legacy `@plugin` tree visitor
+  hooks (`isPreEvalVisitor`, `manager.addVisitor`, `visitors.Visitor`). These do
+  not have AST-v2 compatibility shims.
 - It makes no parser-performance claim. The direct parser baseline and Parseman
   0.28 regression work remain release-gated and are measured separately.
 - It does not publish from local workspace links. Parseman 0.28 must be
