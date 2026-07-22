@@ -153,6 +153,7 @@ type LessAstLocalRules = {
   DirectLessStaticAtRuleAtom: Combinator<ValueNode>;
   DirectLessStaticAtRuleTerm: Combinator<ValueNode>;
   DirectLessStaticAtRulePrelude: Combinator<ValueNode>;
+  DirectLessNamespacePrelude: Combinator<ValueNode>;
   DirectLessAtRuleBlock: Combinator<AtRuleBlock>;
   DirectLessAtRuleStatement: Combinator<AtRuleStatement>;
   DirectLessStaticPseudo: Combinator<SimpleSelector>;
@@ -1274,6 +1275,8 @@ const directUnicodeRange = regex(/[Uu]\+[0-9A-Fa-f?]{1,6}(?:-[0-9A-Fa-f]{1,6})?/
 // Imports are typed facts with stricter target validation. Excluding their names
 // here prevents a malformed import from falling through as a generic at-rule.
 const directLayerAtRuleName = regex(/@layer(?![-\w])/i);
+const directCharsetAtRuleName = regex(/@charset(?![-\w])/i);
+const directNamespaceAtRuleName = regex(/@namespace(?![-\w])/i);
 const directAtRuleName = regex(/@(?!(?:-import|-export|import|layer|media|container|supports|(?:-[a-z]+-)?keyframes)(?![-\w]))-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/i);
 const directMixinName = regex(/[.#]-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/);
 const directMixinPathCombinator = regex(/>/);
@@ -3431,6 +3434,24 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
       return separators.length === values.length - 1 ? withValueLayout(result, separators) : result;
     }
   );
+  // CSS-defined statement at-rules have grammar-owned interpolation forms that
+  // the generic at-rule subset intentionally does not accept. Keep the
+  // namespace prefix and URI as ordinary typed values; this preserves
+  // `@namespace @{prefix} "…"` without widening unknown at-rules such as
+  // `@custom foo@{name};` into a raw/recovered-header path.
+  const DirectLessNamespacePrelude = node<ValueNode>(
+    'DirectLessNamespacePrelude',
+    sequence(
+      optional(choice(g.DirectLessAtRuleInterpolation, g.DirectLessKeyword)),
+      choice(g.DirectLessQuoted, g.DirectLessStaticUrl)
+    ),
+    (children) => {
+      const uri = requireValueNode(children.at(-1));
+      return children.length === 1
+        ? uri
+        : spaced([requireValueNode(children[0]), uri]);
+    }
+  );
   const DirectLessAtRuleBlock = node<AtRuleBlock>(
     'DirectLessAtRuleBlock',
     choice(
@@ -3471,6 +3492,8 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
   const DirectLessAtRuleStatement = node<AtRuleStatement>(
     'DirectLessAtRuleStatement',
     choice(
+      sequence(directCharsetAtRuleName, g.DirectLessQuoted, literal(';')),
+      sequence(directNamespaceAtRuleName, g.DirectLessNamespacePrelude, literal(';')),
       sequence(directLayerAtRuleName, not(noTrivia(literal('('))), optional(choice(g.DirectLessInterpolatedValue, g.DirectLessStaticAtRulePrelude)), literal(';')),
       sequence(directAtRuleName, not(noTrivia(literal('('))), optional(g.DirectLessStaticAtRulePrelude), literal(';'))
     ),
@@ -4302,6 +4325,7 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
     DirectLessStaticAtRuleAtom,
     DirectLessStaticAtRuleTerm,
     DirectLessStaticAtRulePrelude,
+    DirectLessNamespacePrelude,
     DirectLessAtRuleBlock,
     DirectLessAtRuleStatement,
     DirectLessStaticPseudo,

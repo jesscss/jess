@@ -1600,6 +1600,42 @@ describe('Less AST grammar facts', () => {
     }
   });
 
+  it('constructs interpolated charset and namespace statements without widening generic headers', () => {
+    const source = '@Eight: 8; @charset "UTF-@{Eight}"; @ns: less; @namespace @{ns} "http://lesscss.org";';
+    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(result.value).toMatchObject({
+      type: 'Stylesheet',
+      children: [
+        { type: 'VariableDeclaration', name: 'Eight' },
+        {
+          type: 'AtRuleStatement', name: '@charset', prelude: {
+            type: 'Interpolation',
+            parts: [
+              { lit: '"UTF-' },
+              { ref: { type: 'VariableReference', name: 'Eight', lookup: 'scoped' }, unquote: true },
+              { lit: '"' }
+            ]
+          }
+        },
+        { type: 'VariableDeclaration', name: 'ns' },
+        {
+          type: 'AtRuleStatement', name: '@namespace', prelude: {
+            type: 'SpacedValue', parts: [
+              { type: 'Interpolation', parts: [{ ref: { type: 'VariableReference', name: 'ns', lookup: 'scoped' }, unquote: true }] },
+              { type: 'Quoted', src: '"http://lesscss.org"', value: 'http://lesscss.org' }
+            ]
+          }
+        }
+      ]
+    });
+
+    const generic = run(lessAstGrammar.LessAstDocument, '@custom foo@{name};', { trivia: lessAstGrammar.whitespace });
+    expect(generic.ok && generic.unconsumedFrom === null && isStylesheet(generic.value)).toBe(false);
+  });
+
   it('constructs interpolated and dotted layer headers through canonical at-rule nodes', () => {
     const source = '@layer-name: theme; @layer @{layer-name} { .card { color: red; } } @layer framework.buttons { .button { color: blue; } } @layer reset, base;';
     const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });

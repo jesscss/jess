@@ -78,12 +78,6 @@ export const invalidLess: string[] = [
   /** Contains invalid `[prop=10%]` and other edge syntax */
   'tests-unit/selectors/selectors.less',
 
-  // /**
-  //  * This has a variable in a `@charset`, which definitely
-  //  * should not be allowed.
-  //  */
-  'tests-unit/variables-in-at-rules/variables-in-at-rules.less',
-
   // Currently failing parsing; treat as invalid until less-parser supports them fully.
   // 'tests-unit/functions-each/functions-each.less',
   'tests-unit/functions/legacy/functions.less',
