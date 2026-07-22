@@ -2221,6 +2221,13 @@ silently choose one language’s policy.
   clean; the benchmark oracle remains `benchmark.less`, collapseNesting=true,
   122390 bytes, SHA-256 `ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6`.
   No performance claim is made.
+- Behavior evidence: the AST extend preflight contract passes 2/2 and the
+  existing value-operation/color behavior remains covered by the focused core
+  suites.
+- Build evidence: the core package build passes for this public value helper.
+- Boundary evidence: the changed public AST value module keeps its existing
+  `@jesscss/core/value` export and no new entrypoint or consumer contract is
+  introduced.
 - Hot-path cost contracts:
   ```json
   [{
