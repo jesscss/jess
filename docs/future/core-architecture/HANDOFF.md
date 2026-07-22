@@ -373,7 +373,9 @@ running integration tests.
 
 Current verification snapshot for this candidate:
 
-- The complete `@jesscss/core` suite is 3,192 passed, 9 skipped, and 2 todo.
+- The complete `@jesscss/core` suite is 3,194 passed, 9 skipped, and 2 todo
+  (`pnpm --filter @jesscss/core test -- --run`, 2026-07-22). The skipped/todo
+  cases remain visible and are not converted into passing evidence.
 - The repository-wide production ESLint audit reports 0 errors and 317
   warnings. The warnings remain tracked debt; there is no current ESLint-error
   blocker.
@@ -387,10 +389,12 @@ Current verification snapshot for this candidate:
   excluded because it depends on `jess` and is not part of the runtime
   closure. The final snapshot still needs the allowlist, packed-consumer, and
   clean-install proofs.
-- A clean benchmark baseline is recorded below. The remaining performance
-  blocker is a valid matched generated-bundle A/B, not a release timing
-  threshold: the current grammar requires `composeLeaf` absent from Parseman
-  0.27, and generated reducer IDs vary with absolute worktree paths.
+- A clean benchmark baseline is recorded below. The current same-bundle trivia
+  isolation is diagnostic only; the remaining performance blocker is a
+  causally isolating matched generated-bundle A/B for reducer/choice changes,
+  not a release timing threshold. The current grammar requires `composeLeaf`
+  absent from Parseman 0.27, and generated reducer IDs vary with absolute
+  worktree paths.
 - Serial rebuild-and-measure evidence at `66c700d06` is now reproducible:
   `benchmark.less` parses to a 677-child `Stylesheet` (JSON 946,987 bytes,
   SHA-256 `8e3a371bd286ff2682ee08d56c451274a94b14203dbe8de68ad2057aa6cc13c`)
@@ -1736,10 +1740,16 @@ diagnostic builds only.
 
 The follow-up Parseman `0.28.1` release branch contains the public `FusedRule`
 declaration-contract correction required by the four current parser-entry type
-diagnostics. It is release-ready locally but is not yet an npm dependency for
-Jess. Do not call the strict all-package type gate green, or claim a clean
-consumer proof, until that package is published and the four parser packages
-are rebuilt against the published version.
+diagnostics. Branch `release/0.28.1-fused-rule-contract` is clean at `6ba5dbd`
+(the implementation fix is `5ce3bf1`) and is two commits ahead of
+`origin/main`. Its release checks passed: 113 test files (1,827 passed, 4
+skipped), focused coverage/macro/FusedRule checks (36/36), typecheck, build,
+docs build, changelog validation, performance guard, and npm pack dry-run.
+`npm view parseman@0.28.1` still returns E404, so it is release-ready locally
+but is not yet an npm dependency for Jess. Do not call the strict all-package
+type gate green, or claim a clean consumer proof, until that package is
+published and the four parser packages are rebuilt against the published
+version.
 
 ### Release-gate attribution (2026-07-21)
 
@@ -1838,11 +1848,13 @@ The five investigation candidates, in evidence order, are: (1) the generated
 reducer call graph/fused output; (2) selector pseudo/nth shared-prefix choices;
 (3) recursive value/math reducer chains; (4) generated reduction type guards
 such as `isValueNode`; and (5) the always-enabled trivia path plus regex-heavy
-recognition. The next valid performance experiment is a matched rebuilt-bundle
-A/B (same Parseman release, absolute-path-normalized generated identifiers,
-same source/output hashes), with opt-in choice-arm/rollback trace for candidate
-(2). Until that exists, these measurements remain baselines and no parser
-regression cause or speed claim is accepted.
+recognition. The next causally useful performance experiment is a matched
+rebuilt-bundle A/B (same Parseman release, absolute-path-normalized generated
+identifiers, same source/output hashes), with opt-in choice-arm/rollback trace
+for candidate (2). The same-bundle trivia isolation below is a diagnostic
+control and does not satisfy this reducer/choice comparison. Until the
+causally isolating experiment exists, these measurements remain baselines and
+no parser regression cause or speed claim is accepted.
 
 ### Superseded direct Less performance refresh (2026-07-21; historical, no A/B claim)
 
@@ -3746,7 +3758,7 @@ or Context deletion lanes.
 - Verdict: accepted bounded in-place AST-v2 conversion; remaining Less math
   functions require their own behavior-parity batches.
 
-## Aggressive Cutting Self-Prosecution — bubbled @container child-rule order
+## Aggressive Cutting Self-Prosecution — bubbled @container child-rule order (historical record; superseded below)
 
 - Latest pass: the canonical AST-v2 serializer now stages only static children
   of a bubbled conditional block when its propagated selector context is
