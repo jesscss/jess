@@ -3060,3 +3060,40 @@ or Context deletion lanes.
 - Verdict: accepted bounded in-place AST-v2 conversion; remaining legacy
   `less/`/`sass/` function files require their own behavior-parity batches and
   are not deleted or hidden by this slice.
+
+## Aggressive Cutting Self-Prosecution — shared math Fn conversion
+
+- Latest pass: shared `ceil`, `floor`, and `round` now define the canonical
+  typed value callables. Less public subpaths are explicit re-exports of those
+  owners, and the comparison-only builtins registry imports the shared owners
+  directly. This is an in-place AST-v2 value conversion, not a builtins move.
+- Architecture surface: the existing value-domain `defineFunction` seam and
+  `makeDimension` factory are the only production path. The converted files
+  have no legacy tree imports or `mathHelper`; no parser host, bridge, resolver,
+  compatibility shim, or alternate evaluator was introduced.
+- Separation/duplication: there is one implementation per math function.
+  Less's published paths and Sass global/module exports consume the shared
+  owner; the alias tests assert those identities.
+- Cumulative node weight: zero AST nodes, frames, maps, side tables, or render
+  state. Each callable creates only its required canonical `Dimension` result.
+- New traversal: none. The functions perform one typed numeric operation and
+  one value construction.
+- New node/materialization: no AST/tree nodes or routine materialization;
+  `makeDimension` returns the required typed value. Raw JavaScript numbers are
+  intentionally rejected at this public callable boundary, matching the
+  canonical `defineFunction` contract; parser/evaluator inputs are typed
+  `Dimension` values.
+- Render path: unchanged. Returned typed values continue through the existing
+  evaluator/serializer path. `round` retains its optional typed precision and
+  unit-preserving behavior.
+- Helper/API surface: no new helper or public name. Existing Less paths remain
+  documented exports implemented as direct re-exports, not compatibility code.
+- Metadata mutations: none.
+- Review-flagged diff tokens: none. No traversal, clone, node, spread,
+  side-map, metadata mutation, or routine error-control machinery was added.
+- Evidence: focused math/Sass alias suite passes 6 files / 23 tests; full fns
+  suite passes 72 files / 466 tests. Build and aggressive-cutting verification
+  are the required batch gates. No performance claim is made.
+- Verdict: accepted bounded in-place AST-v2 conversion; remaining legacy
+  `less/`/`sass/` function files require their own behavior-parity batches and
+  are not deleted or hidden by this slice.

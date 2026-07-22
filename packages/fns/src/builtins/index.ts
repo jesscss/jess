@@ -21,9 +21,9 @@
 import type { Fn } from '@jesscss/core/value';
 
 // --- math: rounding / sign / roots / powers ---
-import { round } from '../less/round.js';
-import { ceil } from '../less/ceil.js';
-import { floor } from '../less/floor.js';
+import round from '../shared/math/round.js';
+import ceil from '../shared/math/ceil.js';
+import floor from '../shared/math/floor.js';
 import { abs } from '../less/abs.js';
 import { sqrt } from './sqrt.js';
 import { pow } from './pow.js';

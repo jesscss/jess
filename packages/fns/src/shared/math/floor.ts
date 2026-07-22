@@ -1,15 +1,9 @@
-import { Dimension, Num, defineFunction } from '@jesscss/core';
-import { mathHelper } from '../../util/mathHelper.js';
+import { defineFunction, makeDimension } from '@jesscss/core/value';
 
-export default defineFunction(
-  'floor',
-  function(value: Dimension | number) {
-    return mathHelper(Math.floor, ['value'], undefined, value);
-  },
-  {
-    params: [{
-      name: 'value',
-      type: [Dimension, 'number']
-    }]
-  }
-);
+/** Less `floor()` and Sass `math.floor()` over the canonical value domain. */
+const floor = defineFunction('floor', {
+  params: [{ name: 'value', kinds: ['Dimension'] }] as const,
+  body: value => makeDimension(Math.floor(value.number), value.unit)
+});
+
+export default floor;
