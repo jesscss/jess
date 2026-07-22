@@ -722,6 +722,30 @@ describe('public Less parse()', () => {
     }
   });
 
+  it('returns and renders adjacent captured and quoted selector interpolation through the public route', () => {
+    const source = '@cap-a: *[.a, .b]; @cap-b: *[.c, .d]; @quoted-a: ~".a, .b"; @quoted-b: ~".c, .d"; @{cap-a}@{cap-b}, @{quoted-a}@{quoted-b} { color: red; }';
+    const document = parse(source);
+
+    expect(document).toMatchObject({
+      type: 'Stylesheet', children: [{}, {}, {}, {}, {
+        type: 'Rule', selector: { selectors: [{
+          head: { simples: [{ type: 'SimpleSelector', text: null, interp: { type: 'Interpolation', parts: [
+            { ref: { type: 'VariableReference', name: 'cap-a' }, unquote: true },
+            { ref: { type: 'VariableReference', name: 'cap-b' }, unquote: true }
+          ] } }] }
+        }, {
+          head: { simples: [{ type: 'SimpleSelector', text: null, interp: { type: 'Interpolation', parts: [
+            { ref: { type: 'VariableReference', name: 'quoted-a' }, unquote: true },
+            { ref: { type: 'VariableReference', name: 'quoted-b' }, unquote: true }
+          ] } }] }
+        }] }
+      }]
+    });
+    expect(serialize(document, { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css).toBe(
+      ':is(.a, .b):is(.c, .d),\n:is(.a, .b):is(.c, .d) {\n  color: red;\n}\n'
+    );
+  });
+
   it('returns and renders glued parent-suffix selector interpolation through nesting', () => {
     const document = parse('@suffix: active; @left: x; @right: y; .button { &-@{suffix}, &@{left}-@{right} { color: red; } }');
 

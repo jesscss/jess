@@ -3498,6 +3498,30 @@ describe('Less AST grammar facts', () => {
     });
   });
 
+  it('constructs adjacent captured and quoted selector interpolations as one typed simple', () => {
+    const source = '@cap-a: *[.a, .b]; @cap-b: *[.c, .d]; @quoted-a: ~".a, .b"; @quoted-b: ~".c, .d"; @{cap-a}@{cap-b}, @{quoted-a}@{quoted-b} { color: red; }';
+    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(result.value).toMatchObject({
+      type: 'Stylesheet',
+      children: [{}, {}, {}, {}, {
+        type: 'Rule', selector: { type: 'SelectorList', selectors: [{
+          head: { simples: [{ type: 'SimpleSelector', text: null, interp: { type: 'Interpolation', parts: [
+            { ref: { type: 'VariableReference', name: 'cap-a', lookup: 'scoped' }, unquote: true },
+            { ref: { type: 'VariableReference', name: 'cap-b', lookup: 'scoped' }, unquote: true }
+          ] } }] }
+        }, {
+          head: { simples: [{ type: 'SimpleSelector', text: null, interp: { type: 'Interpolation', parts: [
+            { ref: { type: 'VariableReference', name: 'quoted-a', lookup: 'scoped' }, unquote: true },
+            { ref: { type: 'VariableReference', name: 'quoted-b', lookup: 'scoped' }, unquote: true }
+          ] } }] }
+        }] }
+      }]
+    });
+  });
+
   it('constructs glued Less parent-suffix interpolation as one Interpolation-backed selector token', () => {
     const source = '@suffix: active; @left: x; @right: y; .button { &-@{suffix}, &@{left}-@{right} { color: red; } }';
     const cst = parseLessCst(source);

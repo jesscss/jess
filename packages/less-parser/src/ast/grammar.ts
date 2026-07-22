@@ -182,6 +182,8 @@ type LessAstLocalRules = {
   DirectLessInterpolatedAttribute: Combinator<SimpleSelector>;
   DirectLessInterpolatedSimpleSelector: Combinator<SimpleSelector>;
   DirectLessBareInterpolatedSelector: Combinator<SimpleSelector>;
+  DirectLessAdjacentInterpolatedSelector: Combinator<SimpleSelector>;
+  DirectLessBareInterpolatedSelectorWithSuffix: Combinator<SimpleSelector>;
   DirectLessInterpolatedParentSuffix: Combinator<SimpleSelector>;
   DirectLessCompound: Combinator<CompoundSelector>;
   DirectLessComplexTail: Combinator<ComplexTailFact>;
@@ -3939,6 +3941,22 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
       return interpolatedSimpleSelector(interpolation([{ ref: fact.ref, unquote: true }]));
     }
   );
+  // Adjacent selector interpolations are one compound simple, not two selector
+  // branches. Keep this arm separate from literal suffixes so Parseman's
+  // generated choice commits on the second `@{…}` without treating it as a
+  // static selector-tail byte sequence.
+  const DirectLessAdjacentInterpolatedSelector = node<SimpleSelector>(
+    'DirectLessAdjacentInterpolatedSelector',
+    noTrivia(sequence(g.DirectLessVariableInterpolation, oneOrMore(g.DirectLessVariableInterpolation))),
+    (children) => {
+      const parts: Interpolation['parts'] = [];
+      for (const child of children) {
+        const fact = requireInterpolationFact(child);
+        parts.push({ ref: fact.ref, unquote: true });
+      }
+      return interpolatedSimpleSelector(interpolation(parts));
+    }
+  );
   // A bare interpolation may be followed by a glued selector simple, such as
   // `@{base}.bbb`. Keep that suffix as an interpolation literal segment rather
   // than recovering a completed selector string after parse.
@@ -3998,7 +4016,8 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
   const directLessNonCommentCompoundSimple = choice(
     g.DirectLessInterpolatedParentSuffix,
     g.DirectLessInterpolatedSimpleSelector,
-    DirectLessBareInterpolatedSelectorWithSuffix,
+    g.DirectLessAdjacentInterpolatedSelector,
+    g.DirectLessBareInterpolatedSelectorWithSuffix,
     g.DirectLessBareInterpolatedSelector,
     g.DirectLessStaticNamespaceType,
     staticSimpleSelector,
@@ -4394,6 +4413,8 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
     DirectLessInterpolatedAttribute,
     DirectLessInterpolatedSimpleSelector,
     DirectLessBareInterpolatedSelector,
+    DirectLessAdjacentInterpolatedSelector,
+    DirectLessBareInterpolatedSelectorWithSuffix,
     DirectLessInterpolatedParentSuffix,
     DirectLessCompound,
     DirectLessComplexTail,
