@@ -4,6 +4,13 @@ import { Context } from '../context.js';
 import { List, Sequence, Operation, Num, Dimension, Color } from '../tree/index.js';
 import { splitSequence } from '../conversions.js';
 
+function invoke(fn: unknown, ...args: unknown[]): unknown {
+  if (typeof fn !== 'function') {
+    throw new TypeError('Expected a callable function.');
+  }
+  return Reflect.apply(fn, undefined, args);
+}
+
 describe('defineFunction - splitSequence', () => {
   describe('splitSequence functionality', () => {
     it('should preserve parser-equivalent positional shape: Sequence argument', async () => {
@@ -335,7 +342,7 @@ describe('defineFunction - splitSequence', () => {
 
         // This should throw a runtime error
         expect(() => {
-          (func as any)(dimension);
+          invoke(func, dimension);
         }).toThrow('Argument \'a\' must be of type \'Color\'');
       });
 
@@ -351,7 +358,7 @@ describe('defineFunction - splitSequence', () => {
 
         // This should throw a runtime error (callWithContext is async)
         await expect(
-          callWithContext(ctx, func as any, dimension)
+          callWithContext(ctx, func, dimension)
         ).rejects.toThrow('Argument \'a\' must be of type \'Color\'');
       });
 
@@ -371,7 +378,7 @@ describe('defineFunction - splitSequence', () => {
         // callWithContext should supply a lazy thunk for lazy params;
         // the thunk then fails type validation when invoked.
         const ctx = new Context();
-        const result = callWithContext(ctx, func as any, dimensionNode);
+        const result = callWithContext(ctx, func, dimensionNode);
         await expect(result).rejects.toThrow('Argument \'a\' must be of type \'Color\'');
       });
 
@@ -387,7 +394,7 @@ describe('defineFunction - splitSequence', () => {
 
         // This should throw for the dimension in the rest array
         expect(() => {
-          (func as any)(color, dimension);
+          invoke(func, color, dimension);
         }).toThrow('Element 1 of \'args\' must be of type \'Color\'');
       });
 
@@ -403,7 +410,7 @@ describe('defineFunction - splitSequence', () => {
 
         // This should fail because Dimension is not compatible with Num
         expect(() => {
-          (numFunc as any)(dimension);
+          invoke(numFunc, dimension);
         }).toThrow('Argument \'a\' must be of type \'Num\'');
 
         // Test that Num is compatible with Dimension (Num extends Dimension)
@@ -416,7 +423,7 @@ describe('defineFunction - splitSequence', () => {
         const num = new Num(10);
 
         // This should work because Num extends Dimension
-        const result = (dimensionFunc as any)(num);
+        const result = dimensionFunc(num);
         expect(result).toBe('received: Num');
       });
 
@@ -432,7 +439,7 @@ describe('defineFunction - splitSequence', () => {
 
         // This should throw for type mismatches
         expect(() => {
-          (func as any)(123, 'not a number');
+          invoke(func, 123, 'not a number');
         }).toThrow('Argument \'a\' must be of type \'string\'');
       });
     });
@@ -499,7 +506,7 @@ describe('defineFunction - splitSequence', () => {
 
         // This should throw for type mismatches
         expect(() => {
-          (func as any)(dimension, color, 123, 'not a number');
+          invoke(func, dimension, color, 123, 'not a number');
         }).toThrow('Argument \'a\' must be of type \'Color\'');
       });
 
@@ -522,7 +529,7 @@ describe('defineFunction - splitSequence', () => {
 
         // This should throw for missing required parameter
         expect(() => {
-          (func as any)();
+          invoke(func);
         }).toThrow('Required argument \'a\' is missing');
       });
 
