@@ -3107,6 +3107,40 @@ or Context deletion lanes.
   `less/`/`sass/` function files require their own behavior-parity batches and
   are not deleted or hidden by this slice.
 
+## Aggressive Cutting Self-Prosecution — Less overlay alias audit
+
+- Latest pass: Less `overlay` now directly re-exports the canonical AST-v2
+  value-domain implementation and its public `overlayBase` helper. Typed tests
+  cover both blend branches and assert the Less path and registry identity.
+- Architecture surface: existing value-domain `defineFunction`, `colorBlend`,
+  `requireColor`, `multiplyBase`, and `screenBase` only. No legacy tree import,
+  bridge, parser host, fallback evaluator, or duplicate resolver remains in the
+  Less overlay module.
+- Separation/duplication: one overlay implementation remains in builtins; the
+  Less file is an intentional public entrypoint re-export, not a compatibility
+  shim. The shared base helper names remain available for existing consumers.
+- Cumulative node weight: zero AST nodes, frames, maps, side tables, or render
+  state. The callable returns the existing canonical `Color` value once.
+- New traversal: none. The existing three-channel alpha-aware blend loop and
+  per-channel overlay kernel are reused unchanged.
+- New node/materialization: no legacy tree nodes or AST nodes. The existing
+  color factory creates the required value result.
+- Render path: unchanged typed evaluator/serializer route. No tree conversion,
+  source reparse, output-policy seam, or alternate evaluator was introduced.
+- Metadata mutations: none.
+- Review-flagged diff tokens: none. No traversal, clone, node, spread,
+  side-map, metadata mutation, or routine error-control machinery was added.
+- Audit disposition: `average` was intentionally not converted in this slice.
+  Its legacy `Color._rgb` observable retains fractional channel precision
+  (`127.5` for black/white), while the canonical value serializer rounds the
+  same result to `128`; that is not yet a proven semantic/byte identity.
+- Evidence: focused overlay/blend/serialization tests pass 3 files / 15 tests;
+  full fns suite and package build are required batch gates. No performance
+  claim is made.
+- Verdict: accepted bounded in-place AST-v2 overlay conversion; `average`
+  remains queued for a dedicated parity decision rather than receiving a
+  speculative alias.
+
 ## Aggressive Cutting Self-Prosecution — Less argb/difference Fn conversion
 
 - Latest pass: Less `argb` and `difference` public paths now directly re-export
