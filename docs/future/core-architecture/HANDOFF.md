@@ -3205,16 +3205,43 @@ or Context deletion lanes.
 - Metadata mutations: none.
 - Review-flagged diff tokens: none. No traversal, clone, node, spread,
   side-map, metadata mutation, or routine error-control machinery was added.
-- Audit disposition: `average` was intentionally not converted in this slice.
-  Its legacy `Color._rgb` observable retains fractional channel precision
-  (`127.5` for black/white), while the canonical value serializer rounds the
-  same result to `128`; that is not yet a proven semantic/byte identity.
+- Audit disposition: the initial average comparison used the wrong expected
+  serialized spelling. Legacy `Color._rgb` retains fractional channel precision
+  (`127.5`), while its RGB serializer emits `rgb(128, 128, 128)`; the canonical
+  value result preserves the same raw channels and bytes. The follow-on average
+  conversion is recorded immediately below.
 - Evidence: focused overlay/blend/serialization tests pass 3 files / 15 tests;
   full fns suite and package build are required batch gates. No performance
-  claim is made.
-- Verdict: accepted bounded in-place AST-v2 overlay conversion; `average`
-  remains queued for a dedicated parity decision rather than receiving a
-  speculative alias.
+  claim is made for the overlay-only pass.
+- Verdict: accepted bounded in-place AST-v2 overlay conversion; average now has
+  a separately verified canonical alias pass below.
+
+## Aggressive Cutting Self-Prosecution — Less average alias audit
+
+- Latest pass: Less `average` now directly re-exports the canonical AST-v2
+  value-domain implementation and its public `averageBase` helper. Tests assert
+  the Less path and registry identity plus raw channel and serialized-byte parity.
+- Architecture surface: existing value-domain `defineFunction`, `colorBlend`,
+  and `requireColor` only. No legacy tree import, bridge, parser host, fallback
+  evaluator, or duplicate resolver remains in the Less average module.
+- Separation/duplication: one implementation remains in builtins; the Less file
+  is an intentional public entrypoint re-export, not a compatibility shim.
+- Cumulative node weight: zero AST nodes, frames, maps, side tables, or render
+  state. The callable returns one canonical `Color` value.
+- New traversal: none. The existing alpha-aware three-channel blend loop and
+  average kernel are reused unchanged.
+- New node/materialization: no legacy tree nodes or AST nodes. The existing
+  color factory creates the required value result once.
+- Render path: unchanged typed evaluator/serializer route; no tree conversion,
+  source reparse, or alternate evaluator was introduced.
+- Metadata mutations: none.
+- Review-flagged diff tokens: none. No traversal, clone, node, spread,
+  side-map, metadata mutation, or routine error-control machinery was added.
+- Evidence: focused average/overlay/blend/serialization tests pass 3 files / 15
+  tests; full fns suite and package build are required batch gates. No
+  performance claim is made.
+- Verdict: accepted bounded in-place AST-v2 average conversion; no duplicate
+  Less implementation remains.
 
 ## Aggressive Cutting Self-Prosecution — Less argb/difference Fn conversion
 
