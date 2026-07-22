@@ -456,6 +456,10 @@ function requireValue(value: unknown): ValueNode {
   return value;
 }
 
+function optionalValue(value: unknown): ValueNode | null {
+  return value === null || value === undefined ? null : requireValue(value);
+}
+
 function isScssValuePair(value: unknown): value is ScssValuePair {
   return typeof value === 'object'
     && value !== null
@@ -1487,7 +1491,13 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
       sequence(g.CssAstSyntaxStartingStyleAtKeyword, g.DirectScssStaticAtPrelude, g.DirectScssIfBody),
       sequence(g.CssAstSyntaxLayerAtKeyword, g.DirectScssStaticAtPrelude, g.DirectScssIfBody)
     ),
-    children => atRuleBlock(requireToken(children[0]).value, children[1] as ValueNode | null, children[2] as Statement[])
+    (children) => {
+      const body = children[2];
+      if (!Array.isArray(body)) {
+        throw new TypeError('Direct SCSS conditional block lost its statement body.');
+      }
+      return atRuleBlock(requireToken(children[0]).value, optionalValue(children[1]), statements(body));
+    }
   );
   const DirectScssIf = node<If>(
     'DirectScssIf',
@@ -1800,7 +1810,7 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
   const DirectScssAtRuleStatement = node<AtRuleStatement>(
     'DirectScssAtRuleStatement',
     sequence(regex(/@(?:charset|namespace|layer)(?![-_a-zA-Z0-9\u0080-\uffff])/i), DirectScssStaticStatementPrelude, literal(';')),
-    children => atRuleStatement(requireToken(children[0]).value, children[1] as ValueNode | null)
+    children => atRuleStatement(requireToken(children[0]).value, optionalValue(children[1]))
   );
   // `@scope` is an existing CSS at-rule fact: its static header remains a
   // grammar-owned prelude and its SCSS body remains typed statements. Dynamic
@@ -1821,7 +1831,7 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
       )),
       literal('}')
     ),
-    children => atRuleBlock(requireToken(children[0]).value, children[1] as ValueNode | null, statements(children.slice(3, -1), true))
+    children => atRuleBlock(requireToken(children[0]).value, optionalValue(children[1]), statements(children.slice(3, -1), true))
   );
   // A scope placed in an SCSS nested rule has the same header fact but the
   // nested declaration-capable body used by the other bubbling at-rules.
@@ -1842,7 +1852,7 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
       )),
       literal('}')
     ),
-    children => atRuleBlock(requireToken(children[0]).value, children[1] as ValueNode | null, statements(children.slice(3, -1), true))
+    children => atRuleBlock(requireToken(children[0]).value, optionalValue(children[1]), statements(children.slice(3, -1), true))
   );
   const DirectScssConditionalBlock = node<AtRuleBlock>(
     'DirectScssConditionalBlock',
@@ -1856,12 +1866,12 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
   const DirectScssStartingStyleBlock = node<AtRuleBlock>(
     'DirectScssStartingStyleBlock',
     sequence(g.CssAstSyntaxStartingStyleAtKeyword, g.DirectScssStaticAtPrelude, literal('{'), many(choice(g.DirectScssComment, g.DirectScssImport, g.DirectScssMixinDef, g.DirectScssMixinCall, g.DirectScssEach, g.DirectScssFor, g.DirectScssIf, g.DirectScssConditionalBlock, g.DirectScssStartingStyleBlock, g.DirectScssLayerBlock, g.DirectScssDocumentBlock, g.DirectScssPageBlock, g.DirectScssFontFeatureValuesBlock, g.DirectScssKeyframes, g.DirectScssRule)), literal('}')),
-    children => atRuleBlock(requireToken(children[0]).value, children[1] as ValueNode | null, statements(children.slice(3, -1)))
+    children => atRuleBlock(requireToken(children[0]).value, optionalValue(children[1]), statements(children.slice(3, -1)))
   );
   const DirectScssLayerBlock = node<AtRuleBlock>(
     'DirectScssLayerBlock',
     sequence(g.CssAstSyntaxLayerAtKeyword, g.DirectScssStaticAtPrelude, literal('{'), many(choice(g.DirectScssComment, g.DirectScssImport, g.DirectScssMixinDef, g.DirectScssMixinCall, g.DirectScssEach, g.DirectScssFor, g.DirectScssIf, g.DirectScssConditionalBlock, g.DirectScssStartingStyleBlock, g.DirectScssLayerBlock, g.DirectScssDocumentBlock, g.DirectScssPageBlock, g.DirectScssFontFeatureValuesBlock, g.DirectScssKeyframes, g.DirectScssRule)), literal('}')),
-    children => atRuleBlock(requireToken(children[0]).value, children[1] as ValueNode | null, statements(children.slice(3, -1)))
+    children => atRuleBlock(requireToken(children[0]).value, optionalValue(children[1]), statements(children.slice(3, -1)))
   );
   // Deprecated CSS document blocks still have a precise structural shape: a
   // static grammar-owned header and a frame-one stylesheet body. The existing
@@ -1897,7 +1907,7 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
     ),
     children => atRuleBlock(
       requireToken(children[0]).value,
-      children[1] as ValueNode | null,
+      optionalValue(children[1]),
       statements(children.slice(3, -1))
     )
   );
@@ -1934,7 +1944,7 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
     ),
     children => atRuleBlock(
       requireToken(children[0]).value,
-      children[1] as ValueNode | null,
+      optionalValue(children[1]),
       statementChildren(children.slice(3, -1), true)
     )
   );
@@ -1967,7 +1977,7 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
     ),
     children => atRuleBlock(
       requireToken(children[0]).value,
-      children[1] as ValueNode | null,
+      optionalValue(children[1]),
       statementChildren(children.slice(3, -1))
     )
   );
@@ -1983,12 +1993,12 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
   const DirectScssNestedStartingStyleBlock = node<AtRuleBlock>(
     'DirectScssNestedStartingStyleBlock',
     sequence(g.CssAstSyntaxStartingStyleAtKeyword, g.DirectScssStaticAtPrelude, literal('{'), many(choice(g.DirectScssComment, g.DirectScssImport, g.DirectScssVarDeclaration, g.DirectScssStaticNestedProperty, g.DirectScssDeclaration, g.DirectScssNestedConditionalBlock, g.DirectScssNestedStartingStyleBlock, g.DirectScssNestedLayerBlock, g.DirectScssNestedScopeBlock, g.DirectScssDocumentBlock, g.DirectScssPageBlock, g.DirectScssFontFeatureValuesBlock, g.DirectScssMixinDef, g.DirectScssMixinCall, g.DirectScssEach, g.DirectScssFor, g.DirectScssIf, g.DirectScssKeyframes, g.DirectScssRule)), literal('}')),
-    children => atRuleBlock(requireToken(children[0]).value, children[1] as ValueNode | null, statements(children.slice(3, -1), true))
+    children => atRuleBlock(requireToken(children[0]).value, optionalValue(children[1]), statements(children.slice(3, -1), true))
   );
   const DirectScssNestedLayerBlock = node<AtRuleBlock>(
     'DirectScssNestedLayerBlock',
     sequence(g.CssAstSyntaxLayerAtKeyword, g.DirectScssStaticAtPrelude, literal('{'), many(choice(g.DirectScssComment, g.DirectScssImport, g.DirectScssVarDeclaration, g.DirectScssStaticNestedProperty, g.DirectScssDeclaration, g.DirectScssNestedConditionalBlock, g.DirectScssNestedStartingStyleBlock, g.DirectScssNestedLayerBlock, g.DirectScssNestedScopeBlock, g.DirectScssDocumentBlock, g.DirectScssPageBlock, g.DirectScssFontFeatureValuesBlock, g.DirectScssMixinDef, g.DirectScssMixinCall, g.DirectScssEach, g.DirectScssFor, g.DirectScssIf, g.DirectScssKeyframes, g.DirectScssRule)), literal('}')),
-    children => atRuleBlock(requireToken(children[0]).value, children[1] as ValueNode | null, statements(children.slice(3, -1), true))
+    children => atRuleBlock(requireToken(children[0]).value, optionalValue(children[1]), statements(children.slice(3, -1), true))
   );
   const DirectScssFontFace = node<AtRuleBlock>(
     'DirectScssFontFace',
