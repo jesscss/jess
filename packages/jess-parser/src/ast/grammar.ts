@@ -224,6 +224,75 @@ function isCompound(value: unknown): value is CompoundSelector {
   return typeof value === 'object' && value !== null && 'type' in value && value.type === 'CompoundSelector' && 'simples' in value && Array.isArray(value.simples);
 }
 
+function isSimpleSelector(value: unknown): value is SimpleSelector {
+  return typeof value === 'object' && value !== null
+    && 'type' in value && value.type === 'SimpleSelector'
+    && 'text' in value && (typeof value.text === 'string' || value.text === null)
+    && 'interp' in value && (isInterpolation(value.interp) || value.interp === null);
+}
+
+function isComplexSelector(value: unknown): value is ComplexSelector {
+  return typeof value === 'object' && value !== null
+    && 'type' in value && value.type === 'ComplexSelector'
+    && 'head' in value && isCompound(value.head)
+    && 'tail' in value && Array.isArray(value.tail);
+}
+
+function isSelectorList(value: unknown): value is SelectorList {
+  return typeof value === 'object' && value !== null
+    && 'type' in value && value.type === 'SelectorList'
+    && 'selectors' in value && Array.isArray(value.selectors)
+    && value.selectors.every(isComplexSelector);
+}
+
+function isJessComplexTail(value: unknown): value is JessComplexTail {
+  return typeof value === 'object' && value !== null
+    && 'comb' in value && (value.comb === ' ' || value.comb === '>' || value.comb === '+' || value.comb === '~' || value.comb === '||')
+    && 'compound' in value && isCompound(value.compound);
+}
+
+function requireSimpleSelector(value: unknown): SimpleSelector {
+  if (!isSimpleSelector(value)) {
+    throw new TypeError('Direct Jess AST grammar produced a non-simple selector child.');
+  }
+  return value;
+}
+
+function requireCompound(value: unknown): CompoundSelector {
+  if (!isCompound(value)) {
+    throw new TypeError('Direct Jess AST grammar produced a non-compound selector child.');
+  }
+  return value;
+}
+
+function requireComplexSelector(value: unknown): ComplexSelector {
+  if (!isComplexSelector(value)) {
+    throw new TypeError('Direct Jess AST grammar produced a non-complex selector child.');
+  }
+  return value;
+}
+
+function requireSelectorList(value: unknown): SelectorList {
+  if (!isSelectorList(value)) {
+    throw new TypeError('Direct Jess AST grammar produced a non-selector-list child.');
+  }
+  return value;
+}
+
+function requireJessComplexTail(value: unknown): JessComplexTail {
+  if (!isJessComplexTail(value)) {
+    throw new TypeError('Direct Jess AST grammar produced an invalid selector tail.');
+  }
+  return value;
+}
+
+function requireString(value: unknown): string {
+  if (typeof value !== 'string') {
+    throw new TypeError('Direct Jess AST grammar produced a non-string child.');
+  }
+  return value;
+}
+
 function staticSelectorText(selector: SelectorList): string {
   return selector.selectors.map(complexCanonical).join(', ');
 }
@@ -267,6 +336,10 @@ function isValueNode(value: unknown): value is ValueNode {
       || value.type === 'Range');
 }
 
+function isValueNodeArray(value: unknown): value is ValueNode[] {
+  return Array.isArray(value) && value.every(isValueNode);
+}
+
 function valueSlot(value: ValueNode): ValueSlot {
   if (value.type === 'SpacedValue') {
     return value.parts;
@@ -286,7 +359,7 @@ function isValueSlotValue(value: unknown): value is ValueSlot {
 }
 
 function requireValueSlot(value: unknown): ValueSlot {
-  return Array.isArray(value) ? value as ValueNode[] : valueSlot(requireValueNode(value));
+  return isValueNodeArray(value) ? value : valueSlot(requireValueNode(value));
 }
 
 function isJessMixinCallArgument(value: unknown): value is JessMixinCallArgument {
@@ -492,6 +565,34 @@ function requireStatementList(value: unknown): Statement[] {
   return requireStatements(value);
 }
 
+function isIfBranch(value: unknown): value is IfBranch {
+  return typeof value === 'object' && value !== null
+    && 'guard' in value && (value.guard === null || isGuardNode(value.guard))
+    && 'body' in value && Array.isArray(value.body);
+}
+
+function requireIfBranch(value: unknown): IfBranch {
+  if (!isIfBranch(value)) {
+    throw new TypeError('Direct Jess AST grammar produced an invalid conditional branch.');
+  }
+  return { guard: value.guard, body: requireStatementList(value.body) };
+}
+
+function requireIfBranchArray(value: unknown): IfBranch[] {
+  if (!Array.isArray(value)) {
+    throw new TypeError('Direct Jess AST grammar produced an invalid conditional branch list.');
+  }
+  return value.map(requireIfBranch);
+}
+
+function requireIfBranchTuple(value: IfBranch[]): [IfBranch, ...IfBranch[]] {
+  const first = value[0];
+  if (first === undefined) {
+    throw new TypeError('Direct Jess AST grammar produced an empty conditional branch list.');
+  }
+  return [first, ...value.slice(1)];
+}
+
 function isAtRuleBlock(value: unknown): value is AtRuleBlock {
   return typeof value === 'object' && value !== null && 'type' in value && value.type === 'AtRuleBlock';
 }
@@ -520,11 +621,15 @@ function isReferenceCall(value: unknown): value is Reference {
   return typeof value === 'object' && value !== null && 'type' in value && value.type === 'Reference';
 }
 
+function isQuoted(value: unknown): value is Quoted {
+  return typeof value === 'object' && value !== null && 'type' in value && value.type === 'Quoted';
+}
+
 function requireStaticQuoted(value: unknown): Quoted {
-  if (typeof value !== 'object' || value === null || !('type' in value) || value.type !== 'Quoted') {
+  if (!isQuoted(value)) {
     throw new TypeError('Direct Jess module syntax requires a static quoted path.');
   }
-  return value as Quoted;
+  return value;
 }
 
 function isComment(value: unknown): value is Comment {
@@ -573,17 +678,6 @@ function isIf(value: unknown): value is If {
     && value.type === 'If'
     && 'branches' in value
     && Array.isArray(value.branches);
-}
-
-function requireDeclarations(children: readonly unknown[]): Declaration[] {
-  const declarations: Declaration[] = [];
-  for (const child of children) {
-    if (!isDeclaration(child)) {
-      throw new TypeError('Direct Jess AST grammar produced a non-declaration rule child.');
-    }
-    declarations.push(child);
-  }
-  return declarations;
 }
 
 function requireExactToken(value: unknown, expected: string): void {
@@ -1124,13 +1218,13 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
     ),
     (children) => {
       const head = `${requireToken(children[0]).value}${requireToken(children[1]).value}`;
-      return children.length === 2 ? simpleSelector(head) : simpleSelector(`${head}(${children[3] as string})`);
+      return children.length === 2 ? simpleSelector(head) : simpleSelector(`${head}(${requireString(children[3])})`);
     }
   );
   const DirectJessStaticCompound = node<CompoundSelector>(
     'DirectJessStaticCompound',
     noTrivia(oneOrMore(choice(parser({ trivia: whitespace }, g.DirectJessAttribute), g.DirectJessPseudo, g.DirectJessSimple))),
-    children => compoundSelectorOf(children as SimpleSelector[])
+    children => compoundSelectorOf(children.map(requireSimpleSelector))
   );
   const directJessCombinator = choice(literal('||'), literal('>'), literal('+'), literal('~'));
   const DirectJessStaticComplexTail = node<JessComplexTail>(
@@ -1153,19 +1247,19 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
     'DirectJessStaticComplex',
     sequence(g.DirectJessStaticCompound, many(g.DirectJessStaticComplexTail)),
     children => complexSelector([
-      { compound: children[0] as CompoundSelector },
-      ...(children.slice(1) as JessComplexTail[]).map(tail => ({ comb: tail.comb, compound: tail.compound }))
+      { compound: requireCompound(children[0]) },
+      ...children.slice(1).map(requireJessComplexTail).map(tail => ({ comb: tail.comb, compound: tail.compound }))
     ])
   );
   const DirectJessStaticSelectorTail = node<ComplexSelector>(
     'DirectJessStaticSelectorTail',
     parser({ trivia: whitespace }, sequence(literal(','), g.DirectJessStaticComplex)),
-    children => children[1] as ComplexSelector
+    children => requireComplexSelector(children[1])
   );
   const DirectJessStaticSelector = node<SelectorList>(
     'DirectJessStaticSelector',
     parser({ trivia: whitespace }, sequence(g.DirectJessStaticComplex, many(g.DirectJessStaticSelectorTail))),
-    children => selist(...(children as ComplexSelector[]))
+    children => selist(...children.map(requireComplexSelector))
   );
   // The selector-list shared by ordinary selectors and `*[…]` is deliberately
   // limited to authored static pseudo arguments and typed An+B forms. CSS's
@@ -1201,7 +1295,7 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
     'DirectJessSelectorCapture',
     sequence(literal('*['), g.DirectJessStaticSelector, literal(']')),
     (children) => {
-      const branches = (children[1] as SelectorList).selectors.map(complexCanonical);
+      const branches = requireSelectorList(children[1]).selectors.map(complexCanonical);
       return selectorCapture(branches, `*[${branches.join(', ')}]`);
     }
   );
@@ -2234,18 +2328,18 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
       const branches: IfBranch[] = [{ guard: requireGuardNode(children[1]), body: requireStatementList(children[2]) }];
       for (const child of children.slice(3)) {
         if (Array.isArray(child)) {
-          branches.push(...child as IfBranch[]);
-        } else if (typeof child === 'object' && child !== null && 'guard' in child && 'body' in child) {
-          branches.push(child as IfBranch);
+          branches.push(...requireIfBranchArray(child));
+        } else if (isIfBranch(child)) {
+          branches.push(requireIfBranch(child));
         }
       }
-      return ifNode(branches as [IfBranch, ...IfBranch[]]);
+      return ifNode(requireIfBranchTuple(branches));
     }
   );
   const DirectJessCompound = node<CompoundSelector>(
     'DirectJessCompound',
     noTrivia(oneOrMore(choice(parser({ trivia: whitespace }, g.DirectJessAttribute), g.DirectJessPseudo, g.DirectJessInterpolatedSimple, g.DirectJessSimple))),
-    children => compoundSelectorOf(children as SimpleSelector[])
+    children => compoundSelectorOf(children.map(requireSimpleSelector))
   );
   const DirectJessComplexTail = node<JessComplexTail>(
     'DirectJessComplexTail',
@@ -2267,19 +2361,19 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
     'DirectJessComplex',
     sequence(g.DirectJessCompound, many(g.DirectJessComplexTail)),
     children => complexSelector([
-      { compound: children[0] as CompoundSelector },
-      ...(children.slice(1) as JessComplexTail[]).map(tail => ({ comb: tail.comb, compound: tail.compound }))
+      { compound: requireCompound(children[0]) },
+      ...children.slice(1).map(requireJessComplexTail).map(tail => ({ comb: tail.comb, compound: tail.compound }))
     ])
   );
   const DirectJessSelectorTail = node<ComplexSelector>(
     'DirectJessSelectorTail',
     sequence(literal(','), g.DirectJessComplex),
-    children => children[1] as ComplexSelector
+    children => requireComplexSelector(children[1])
   );
   const DirectJessSelector = node<SelectorList>(
     'DirectJessSelector',
     sequence(g.DirectJessComplex, many(g.DirectJessSelectorTail)),
-    children => selist(...(children as ComplexSelector[]))
+    children => selist(...children.map(requireComplexSelector))
   );
   const DirectJessApply = node<Apply>(
     'DirectJessApply',
@@ -2300,7 +2394,7 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
       requireExactToken(children.at(-1), '}');
       const extensions = children.filter(isExtendInstructionArray).flat();
       const body = children.slice(2, -1).flatMap(child => isMixinCallArray(child) ? child : Array.isArray(child) ? [] : [child]);
-      return rule(children[0] as SelectorList, requireStatements(body), extensions.length ? extensions : undefined);
+      return rule(requireSelectorList(children[0]), requireStatements(body), extensions.length ? extensions : undefined);
     }
   );
   const JessAstDocument = node<Stylesheet>(
