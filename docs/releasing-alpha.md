@@ -56,10 +56,10 @@ The alpha stream publishes only allowlisted packages in `scripts/release/alpha-a
 > lazy/guarded registration) and drop both from the allowlist; that is a separate
 > product decision and is NOT assumed here.
 
-Blocked (do not publish in alpha yet):
+Blocked from the initial alpha set (do not publish yet):
 
-- `@jesscss/parser` (runtime dependency on `@jesscss/scss-parser`; not needed by the alpha `jess`)
-- `rollup-plugin-jess` (depends on `jess`)
+- `rollup-plugin-jess` (depends on `jess`; it is a separate bundler integration,
+  not part of the runtime package closure)
 
 ## Branch and version policy
 
