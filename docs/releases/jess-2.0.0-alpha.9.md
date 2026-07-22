@@ -1,7 +1,6 @@
 # Jess 2.0.0-alpha.9 — draft release notes
 
-> **Draft for owner review.** The controlled alpha snapshot importing `dev`
-> endpoint `174011088` has
+> **Draft for owner review.** The controlled alpha snapshot at `564b65615` has
 > passed its full release preflight. It is not published: it awaits explicit
 > owner approval to run the full `pnpm run release:alpha` flow from `alpha`.
 
@@ -41,8 +40,8 @@ a separate compilation mode.
 
 ### Candidate verification snapshot
 
-The validated `dev` endpoint `174011088` became the controlled alpha snapshot,
-which resolves the next registry version as `2.0.0-alpha.9`. Its
+The validated `dev` candidate became the controlled alpha snapshot
+`564b65615`, which resolves the next registry version as `2.0.0-alpha.9`. Its
 publishable runtime closure contains 18 packages; the closure validator and
 packed-consumer installation proof both pass.
 

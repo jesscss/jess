@@ -61,6 +61,38 @@ describe('public Less parse()', () => {
     });
   });
 
+  it('preserves structured rest arguments through the public parse and render route', () => {
+    const source = `
+.collect(@values...) {
+  count: length(@values);
+  first: extract(@values, 1);
+  third: extract(@values, 3);
+  args: @arguments;
+}
+.space { .collect(a b c); }
+.comma { .collect(a, b, c); }
+.semi { .collect(1; 2; 3); }
+`;
+    const document = parse(source);
+
+    expect(document).toMatchObject({ type: 'Stylesheet' });
+    expect(document.children[0]).toMatchObject({
+      type: 'MixinDef', params: [{ name: 'values', rest: true }]
+    });
+    expect(document.children[1]).toMatchObject({
+      type: 'Rule', body: [{ type: 'MixinCall', args: [{ value: [
+        { type: 'Keyword', src: 'a' },
+        { type: 'Keyword', src: 'b' },
+        { type: 'Keyword', src: 'c' }
+      ] }] }]
+    });
+    expect(serialize(document, { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css).toBe(
+      '.space {\n  count: 1;\n  first: a b c;\n  third: extract(a b c, 3);\n  args: a b c;\n}\n'
+      + '.comma {\n  count: 3;\n  first: a;\n  third: c;\n  args: a b c;\n}\n'
+      + '.semi {\n  count: 3;\n  first: 1;\n  third: 3;\n  args: 1 2 3;\n}\n'
+    );
+  });
+
   it('does not expose a CST-to-AST compatibility route through parse()', () => {
     expect(() => parse('.card { color: red;')).toThrow(SyntaxError);
   });

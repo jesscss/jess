@@ -409,11 +409,11 @@ Current verification snapshot for this candidate:
   The final alpha snapshot passes allowlist validation and the packed-consumer
   proof.
 - A clean benchmark baseline is recorded below. The current same-bundle trivia
-  isolation is diagnostic only; the remaining performance blocker is a
-  causally isolating matched generated-bundle A/B for reducer/choice changes,
-  not a release timing threshold. The current grammar requires `composeLeaf`
-  absent from Parseman 0.27, and generated reducer IDs vary with absolute
-  worktree paths.
+  isolation remains diagnostic only. The fixed-stage replay record now
+  causally isolates two historical reducer/choice grammar deltas; it is not a
+  current-head baseline or release timing threshold. The current grammar
+  requires `composeLeaf` absent from Parseman 0.27, and generated reducer IDs
+  vary with absolute worktree paths.
 - Serial rebuild-and-measure evidence at `66c700d06` is now reproducible:
   `benchmark.less` parses to a 677-child `Stylesheet` (JSON 946,987 bytes,
   SHA-256 `8e3a371bd286ff2682ee08d56c451274a94b14203dbe8de68ad2057aa6cc13c`)
@@ -424,7 +424,7 @@ Current verification snapshot for this candidate:
 
 ### Alpha.9 release state (2026-07-22)
 
-The controlled alpha snapshot imports `dev` endpoint `174011088`. Its forced frozen install
+The controlled alpha snapshot is `564b65615`. Its forced frozen install
 resolves `parseman@0.28.1`; the exact `pnpm run release:alpha:check` chain
 passes the release build, 22/22 strict types, production lint with no errors,
 Less-alpha public-route checks, direct Jess parser/plugin/Rollup tests, the
@@ -445,8 +445,7 @@ a separate future action after Jess alpha.9 is actually available from npm.
   documentation-only evidence reconciliation.
 - **Helper/API surface and metadata mutations:** none; no runtime or package
   metadata changes are claimed here.
-- **Evidence:** the alpha command above was run on the snapshot importing
-  `dev` endpoint `174011088`; the full log
+- **Evidence:** the alpha command above was run at `564b65615`; the full log
   records the named gates and the dry-run package closure. No performance claim
   is derived from the release verification.
   This is a current baseline, not a matched-version performance claim.
@@ -1939,13 +1938,58 @@ The five investigation candidates, in evidence order, are: (1) the generated
 reducer call graph/fused output; (2) selector pseudo/nth shared-prefix choices;
 (3) recursive value/math reducer chains; (4) generated reduction type guards
 such as `isValueNode`; and (5) the always-enabled trivia path plus regex-heavy
-recognition. The next causally useful performance experiment is a matched
-rebuilt-bundle A/B (same Parseman release, absolute-path-normalized generated
-identifiers, same source/output hashes), with opt-in choice-arm/rollback trace
-for candidate (2). The same-bundle trivia isolation below is a diagnostic
-control and does not satisfy this reducer/choice comparison. Until the
-causally isolating experiment exists, these measurements remain baselines and
-no parser regression cause or speed claim is accepted.
+recognition. The fixed-stage replay below completes the causally useful
+generated-bundle A/B for two isolated historical grammar changes. The
+same-bundle trivia isolation remains a diagnostic control and does not satisfy
+that comparison. The replay does **not** attribute the current-head baseline or
+any remaining regression to those changes; the choice-arm/rollback trace for
+candidate (2) remains the next diagnostic experiment.
+
+### Matched fixed-stage direct-Less replay (2026-07-22; historical isolated changes)
+
+This is a matched generated-artifact A/B, not a comparison of two worktrees.
+For each side, `scripts/compare-less-ast-builds.mjs` archived the exact commit
+into the same marker-owned temporary stage path, performed a frozen offline
+workspace install after every restore (thereby recreating the package-local
+workspace links needed by macro compilation), built `awaitable-pipe`, Core,
+CSS parser, and Less parser twice, and rejected a nondeterministic parser
+bundle. Both pairs use the same lock and published `parseman@0.28.1`; their
+only admitted changed paths are the Less AST grammar and its performance note.
+The stage is deleted only after its marker is validated.
+
+The fixture is `packages/jess/benchmark/benchmark.less`, 106,802 bytes,
+SHA-256 `abe392656c8a50e9d175c3b0e60415893a8eb7bfe9050518227391430d3a3d48`.
+Each replay used 20 warmups and 45 alternating before/after pairs on Node
+v24.11.1 arm64. Every paired parse produced the same serialized `Stylesheet`
+(1,093,621 bytes, SHA-256
+`4220c130585c05f22c052eb36c8cdc2093b8a121dc68c1cbc5a72892462a2e0c`) and
+the same serialized CSS (108,487 bytes, SHA-256
+`6d43363151786069e11150cf67ee1020219ce580977f2ca068447ee901628454`).
+
+| Isolated commit pair | Reproducible Less-parser bundles | Parse median (after − before; after wins) | Parse + AST serialize median (after − before; after wins) |
+| --- | --- | --- | --- |
+| `9e55f1405f3eaf0b6b41a02fdbf9c04f58faef25` → `a3428cf7624fb44e2389c50e313988cdfb8f1bc0` | Before: 1,844,316 bytes, `29e5fe03299091f8b100cc58a72b38f5adb16ef668a2113b7d75d01d2ac84af5`; after: 1,849,388 bytes, `3acb94d1d113b751918b2a8aa7f4ed0158fb6c2740a2be4c5d87eb31705fc4a2` | 68.208 → **56.785 ms** (−11.652 ms, −16.75%; 42/45) | 80.344 → **68.673 ms** (−10.953 ms, −14.53%; 42/45) |
+| `a3428cf7624fb44e2389c50e313988cdfb8f1bc0` → `c601bb6c591133bf77babb87429d6112e9940f01` | Before: 1,849,388 bytes, `3acb94d1d113b751918b2a8aa7f4ed0158fb6c2740a2be4c5d87eb31705fc4a2`; after: 1,849,604 bytes, `d235e12369ff43abd35e14fdc995f1a1a45d03cf1c826005d8cf01add0bf33a7` | 58.061 → **55.014 ms** (−2.878 ms, −5.25%; 41/45) | 69.944 → **67.143 ms** (−2.850 ms, −4.01%; 41/45) |
+
+The raw result records are transient local evidence:
+`/tmp/jess-replay-9e55f140-a3428cf.json` and
+`/tmp/jess-replay-a3428cf-c601bb6c.json`. They include every interleaved sample
+and the bundle, AST, and CSS digests. This proves only the isolated historical
+changes above; it is not evidence that current `dev` is faster, nor a release
+timing acceptance gate.
+
+### Aggressive Cutting Self-Prosecution — matched historical parser replay evidence
+
+- **New traversal / materialization / render path:** none in production; this
+  record describes a disposable benchmark harness that calls the public direct
+  parser and serializer.
+- **Helper/API surface and metadata mutations:** none; the replay owns no
+  compiler/package API and changes no AST, Context, parser, evaluator, or
+  renderer state.
+- **Evidence:** fixed-stage, deterministic bundle hashes plus all 45 paired
+  AST/CSS digests establish semantic identity for each named historical delta.
+  The measured medians above are valid only for those pairs, not a current-head
+  performance claim.
 
 ### Superseded direct Less performance refresh (2026-07-21; historical, no A/B claim)
 
@@ -4224,3 +4268,49 @@ or Context deletion lanes.
   mutation, or routine error-control path was added.
 - Verdict: accepted bounded direct-AST selector grammar correction; the fixture's
   remaining dynamic attribute form is a separate selector-family slice.
+
+## Aggressive Cutting Self-Prosecution — structural Less mixin rest arguments
+
+- Latest pass: `bindArgs` no longer serializes a mixin rest or synthetic
+  `@arguments` into an `Any` byte string. It preserves the existing typed
+  `ValueSlot` arguments in canonical `List` values, so a single authored
+  space-list remains one argument while comma and semicolon call groups remain
+  separate arguments for `length()` and `extract()`.
+- Architecture surface: `packages/core/src/ast/mixin-dispatch.ts` only. This is
+  the canonical evaluator binding boundary; no parser, renderer, plugin
+  policy, legacy tree, bridge, or dialect-specific evaluator branch was added.
+- Separation/duplication: the existing canonical `List` factory is used at the
+  one binding boundary that already owned both rest and `@arguments`; no
+  parallel byte serializer, alternate list model, or compatibility value is kept.
+- Cumulative node weight: at most two required existing `List` nodes per
+  accepted call (one named rest and one `@arguments`); the former path created
+  two `Any` byte leaves. No wrapper node, frame, map, side table, or copy exists.
+- New traversal: `[loop/traversal]` one direct bounded pass over already-selected
+  leftover arguments replaces `map` plus byte-flattening. It is not a source or
+  AST walk and never rediscovers call candidates.
+- New node/materialization: `[materialized array/object]` two local slot arrays
+  hold existing argument references until the required `List` values are made;
+  `[array spread/materialization]` appends those slots to the already-owned
+  `@arguments` sequence. Neither operation clones, resolves recursively, or
+  materializes a legacy node.
+- Render path: unchanged canonical evaluator/serializer route; it serializes
+  the resulting `List` exactly as it does every other canonical value. No output
+  policy, renderer traversal, or string staging was added.
+- Helper/API surface: one file-local `isValueSlot` type guard; no export or
+  public API. The renderer continues to serialize the canonical list shape.
+- Metadata mutations: none; source spans, parent/child ownership, frames, and
+  provenance stay with the existing AST facts.
+- Review-flagged diff tokens: `[loop/traversal]` is the one leftover-argument
+  pass; `[materialized array/object]` is the two local reference arrays;
+  `[array spread/materialization]` appends existing slots. No clone, side map,
+  source mutation, generic walker, or routine-error control path was added.
+- Evidence: focused core binding shapes pass 11/11; public Less `parse()` to
+  canonical render passes 72/72; the compiler plus `@jesscss/plugin-less` route
+  proves space/comma/semicolon call behavior. Core, Less-parser, and Less-plugin
+  builds pass; changed-file ESLint has no errors. No performance claim is made.
+- Hot-path cost contracts:
+  ```json
+  [{"id":"ast-semantic-runtime-cutover","verdict":"accepted","performanceClaim":"none","owner":"the canonical AST-v2 evaluator/value/extend owners listed by ast-semantic-runtime-cutover","why":"Rest and synthetic @arguments binding is semantic AST-v2 information preservation: recursive ValueSlot facts must stay structural for typed list functions instead of being lost in a byte leaf. The two required List values replace the former two Any leaves; this is not a speed or neutrality claim.","dangerTokensJustification":"[loop/traversal] is one bounded pass over the already-selected leftover call arguments; [materialized array/object] is two local arrays of existing ValueSlot references; [array spread/materialization] appends those references to the synthetic arguments sequence. No source/tree walk, clone, side map, bridge, parser reparse, or output staging is introduced.","cases":["ValueSlot-array-evaluation-and-authored-layout","List-value-separator-and-Block-delimiter-facts","reference-index-and-For-array-access","Less-lazy-color-call-demand-boundary","defineFunction-typed-positional-named-and-lazy-binding","mixin-dispatch-ValueSlot-argument-resolution","ValueLayout-provenance-side-table","preserve-mode-calc-result-composition","extend-composition-plan-and-fixpoint-solve","Less-eager-bare-slash-precedence-and-parens-division"],"behaviorEvidence":"Focused mixin-dispatch shape tests, public Less parse-to-render tests, and the Jess compiler plus Less-plugin route all pass.","buildEvidence":"Core, Less-parser, and Less-plugin builds pass; changed-file ESLint has no errors.","baseline":{"fixture":"benchmark.less","phase":"render","currentMedianMs":79.823,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}}]
+  ```
+- Verdict: accepted structural repair. The discarded byte flattening was an
+  invalid bridge that lost recursive AST information; this pass removes it.

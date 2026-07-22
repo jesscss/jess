@@ -20,8 +20,8 @@
  *   - ALL matching bodies expand, in definition order.
  */
 
-import type { MixinCall, MixinDef, Param, ValueNode, ValueSlot } from './nodes.js';
-import { any, isLiteralNode, isTypedLiteral } from './nodes.js';
+import type { MixinCall, MixinDef, ValueSlot } from './nodes.js';
+import { any, isLiteralNode, isTypedLiteral, list } from './nodes.js';
 import type { EvalModes, ValueEvaluator } from './value-eval.js';
 import { evalGuard, guardUsesDefault, type TypedResolver, type ValueResolver } from './guard.js';
 
@@ -69,8 +69,9 @@ export type DefaultResolver = (
 /**
  * Bind a call's args to a definition's params. Returns the binding map, or
  * `null` if the def cannot accept these args (arity / pattern mismatch).
- * Args are resolved EAGERLY to byte literals in the CALLER frame (Less
- * semantics), matching the pre-guards behaviour.
+ * Args are resolved in the CALLER frame (Less semantics). Typed authored
+ * values, including nested lists, stay structural across the binding boundary;
+ * only computed caller values collapse to their resolved literal bytes.
  */
 export function bindArgs(
   def: MixinDef,
@@ -101,6 +102,7 @@ export function bindArgs(
   }
 
   const bound = new Map<string, CallValue>();
+  const argumentSlots: ValueSlot[] = [];
 
   // Positional args fill the fixed param slots left-to-right, skipping any slot
   // already filled by a named arg.
@@ -130,6 +132,9 @@ export function bindArgs(
       }
     } else if (p.name !== undefined) {
       bound.set(p.name, argVal);
+      if (isValueSlot(argVal)) {
+        argumentSlots.push(argVal);
+      }
     }
   }
 
@@ -141,9 +146,23 @@ export function bindArgs(
 
   if (hasRest) {
     const restParam = params[restIndex]!;
-    const restBytes = leftover.map(a => valueBytes(resolveEager(a.value, resolveCaller)));
+    const restSlots: ValueSlot[] = [];
+    for (const arg of leftover) {
+      const value = resolveEager(arg.value, resolveCaller);
+      if (!isValueSlot(value)) {
+        return null;
+      }
+      restSlots.push(value);
+    }
     if (restParam.name !== undefined) {
-      bound.set(restParam.name, any(restBytes.join(' ')));
+      // A rest is a list of CALL ARGUMENTS, not a flattened value string. A
+      // sole authored `a b c` argument consequently remains one nested
+      // space-list, while comma/semicolon call groups retain their distinct
+      // argument slots for `length()` and `extract()`.
+      bound.set(restParam.name, list(restSlots, ' '));
+      argumentSlots.push(...restSlots);
+    } else {
+      argumentSlots.push(...restSlots);
     }
   }
 
@@ -153,16 +172,9 @@ export function bindArgs(
   // args: a named-only call still populates @arguments, defaulted slots appear, and
   // the order follows the params, not the call. Pattern-literal slots bind no
   // variable and contribute nothing; an empty variadic slot contributes nothing.
-  // `bound` already holds exactly these values in insertion (= parameter) order, so
-  // read them straight off it (matches less@4.6.3).
-  const argWords: string[] = [];
-  for (const val of bound.values()) {
-    const bytes = valueBytes(val);
-    if (bytes !== '') {
-      argWords.push(bytes);
-    }
-  }
-  bound.set('arguments', any(argWords.join(' ')));
+  // Keep those slots structural so list functions can distinguish a single
+  // nested space-list from several ordinary call arguments.
+  bound.set('arguments', list(argumentSlots, ' '));
 
   return bound;
 }
@@ -222,6 +234,10 @@ function resolveEagerDefault(
 function valueBytes(v: CallValue): string {
   // After eager resolution every arg is a literal leaf carrying its bytes in `src`.
   return 'type' in v && v.type !== 'MixinCall' && isLiteralNode(v) ? v.src : '';
+}
+
+function isValueSlot(value: CallValue): value is ValueSlot {
+  return !('type' in value && value.type === 'MixinCall');
 }
 
 /**

@@ -141,7 +141,7 @@ public-route, package/CLI, and core-safety gates.
 
 The current draft source is
 [`docs/releases/jess-2.0.0-alpha.9.md`](./releases/jess-2.0.0-alpha.9.md).
-The current controlled alpha snapshot imports `dev` endpoint `174011088` and has passed
+The controlled alpha snapshot at `564b65615` has passed
 `pnpm run release:alpha:check` with published `parseman@0.28.1`, an 18-package
 closure, packed-consumer proof, and alpha.9 dry-run publish. It is not yet
 published. It awaits explicit owner approval to run the full

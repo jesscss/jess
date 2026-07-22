@@ -44,7 +44,7 @@ baseline only and never as a performance acceptance claim.
 - Alpha closure: `scripts/release/alpha-allowlist.json` contains **18
   allowlisted runtime packages**. `rollup-plugin-jess` is intentionally
   excluded because it depends on `jess` and is not part of the runtime closure.
-  The controlled alpha snapshot importing `dev` endpoint `174011088` passes the allowlist,
+  The controlled alpha snapshot at `564b65615` passes the allowlist,
   packed-consumer, and alpha.9 dry-run publish checks. It awaits explicit owner
   approval for the full `pnpm run release:alpha` command; it is not published.
 
@@ -427,7 +427,7 @@ earlier, before a manual publish attempt.
 ## Evidence Log
 
 - 2026-07-22: `parseman@0.28.1` was published and consumed by Jess. The
-  controlled alpha snapshot importing `dev` endpoint `174011088` passed the full
+  controlled alpha snapshot `564b65615` passed the full
   `release:alpha:check` chain with its 18-package packed-consumer proof and
   alpha.9 dry-run publish. It is awaiting explicit owner approval for the full
   `pnpm run release:alpha` command; this does not publish the separate external
