@@ -1,5 +1,13 @@
 # tree2 Demolition Kill-List — Ranked Execution Plan
 
+> **Historical audit evidence — not a current implementation queue.** This
+> document describes the retired tree2/parse-host/bridge prototype and its
+> proposed demolition sequence. Those directories and host seams are not the
+> public parser architecture on `dev`; do not implement or resurrect them from
+> this list. The live contract is each dialect's direct Parseman
+> `parse() -> Stylesheet` reduction, with Context retaining plugin/import
+> dispatch. Use [`HANDOFF.md`](./HANDOFF.md) for the current queue and gates.
+
 > **Provenance.** Produced by a multi-agent adversarial review sweep (run `wf_e11e8fd6-90b`): 12 per-module reviewers → adversarial verify → synthesis. 125 verified findings (80 CONFIRMED / 33 PLAUSIBLE / 12 REJECTED). Companion to the later remaining-debt pass in `AST-REMAINING-DEBT-KILL-LIST.md`.
 
 Grounded in `docs/future/core-architecture/TREE2-CONSTITUTION.md`. Byte-identity is the FLOOR; every action below is anchored to a constitution principle (P0 keystone = re-derivation from bytes; P1 = kill bridge; P2 = kill verbatim ports; P3 = names; P4 = DRY; P5 = complexity).
