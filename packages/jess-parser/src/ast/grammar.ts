@@ -1217,9 +1217,17 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
     g.CssAstSyntaxSimple,
     children => simpleSelector(requireToken(children[0]).value)
   );
+  // Cheap superset lookahead so an ordinary `.card` simple selector does not
+  // consume its `[.#]`+text run, fail the required `$[…]`, and backtrack a
+  // re-parse through DirectJessSimple. The predicate mirrors this arm's own
+  // leading shape (optional class/id sigil + selector-text run) and requires a
+  // `$[` immediately after it, so the `$[` is bound to THIS simple selector and
+  // a sibling selector's interpolation never falsely admits a plain one.
+  const directInterpSimpleAhead = not(not(regex(/[.#]?[-_a-zA-Z0-9\u0080-\uffff]*\$\[/)));
   const DirectJessInterpolatedSimple = node<SimpleSelector>(
     'DirectJessInterpolatedSimple',
     noTrivia(sequence(
+      directInterpSimpleAhead,
       optional(regex(/[.#]/)),
       many(jessSelectorTextRun),
       g.DirectJessDollarInterp,
@@ -1239,7 +1247,14 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
         if (isInterpolation(child)) {
           child.parts.forEach(append);
         } else {
-          append({ lit: requireToken(child).value });
+          // The superset lookahead emits a throwaway match token (`…$[`). Real
+          // selector-text chunks never contain `$`, so this content check drops
+          // only that throwaway, independent of its position.
+          const text = requireToken(child).value;
+          if (text.includes('$')) {
+            continue;
+          }
+          append({ lit: text });
         }
       }
       return interpolatedSimpleSelector(interpolation(parts));
