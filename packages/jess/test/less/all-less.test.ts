@@ -182,7 +182,6 @@ const expectedFailureFixtures = new Map<string, string>([
   //  fixes made them render byte-identical to Less; they're real passes now.
   //  extend-nest.less + extend-selector.less GRADUATED — the cutover-p1 spine extend
   //  wire-in now renders both byte-identical to the maintained `.css`; real passes.)
-  ['tests-unit/import/import-remote.less', 'configured jsDelivr import resolution now reaches the typed loader; imported selectors.less still has an unsupported selector interpolation'],
 
   // F5: Less/Jess deliberately leaves CSS-shaped, three-or-more-slot
   // un-operated color constructors as authored calls, even when Less 4's oracle
