@@ -1224,9 +1224,17 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
     g.CssAstSyntaxSimple,
     children => simpleSelector(requireToken(children[0]).value)
   );
+  // Cheap superset lookahead so an ordinary `.card` simple selector does not
+  // consume its `[.#]`+text run, fail the required `$[…]`, and backtrack a
+  // re-parse through DirectJessSimple. The predicate mirrors this arm's own
+  // leading shape (optional class/id sigil + selector-text run) and requires a
+  // `$[` immediately after it, so the `$[` is bound to THIS simple selector and
+  // a sibling selector's interpolation never falsely admits a plain one.
+  const directInterpSimpleAhead = not(not(regex(/[.#]?[-_a-zA-Z0-9\u0080-\uffff]*\$\[/)));
   const DirectJessInterpolatedSimple = node<SimpleSelector>(
     'DirectJessInterpolatedSimple',
     noTrivia(sequence(
+      directInterpSimpleAhead,
       optional(regex(/[.#]/)),
       many(jessSelectorTextRun),
       g.DirectJessDollarInterp,
@@ -1246,7 +1254,14 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
         if (isInterpolation(child)) {
           child.parts.forEach(append);
         } else {
-          append({ lit: requireToken(child).value });
+          // The superset lookahead emits a throwaway match token (`…$[`). Real
+          // selector-text chunks never contain `$`, so this content check drops
+          // only that throwaway, independent of its position.
+          const text = requireToken(child).value;
+          if (text.includes('$')) {
+            continue;
+          }
+          append({ lit: text });
         }
       }
       return interpolatedSimpleSelector(interpolation(parts));
@@ -2046,9 +2061,18 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
   // A property interpolation is an existing Declaration.name Interpolation, never a
   // raw name string. Static identifier segments come from shared CSS syntax;
   // Jess owns only its `$[…]` segment grammar and direct AST reduction.
+  // Cheap superset lookahead so an ordinary `color: …` declaration does not
+  // enter the interpolated-property arm, consume the whole property name via
+  // the optional literal start, fail the required `$[…]`, and backtrack a
+  // property re-parse through CssAstSyntaxProperty. Skip this arm unless a
+  // `$[` actually precedes the next `:`/`;`/brace. A property name never
+  // contains `:`, `;`, `{`, or `}`, so the predicate is a strict superset: a
+  // real interpolated property is never skipped.
+  const directInterpPropertyAhead = not(not(regex(/[^{};:]*\$\[/)));
   const DirectJessInterpolatedProperty = node<Interpolation>(
     'DirectJessInterpolatedProperty',
     noTrivia(sequence(
+      directInterpPropertyAhead,
       optional(g.CssAstSyntaxInterpolatedPropertyStart),
       g.DirectJessDollarInterp,
       many(choice(g.CssAstSyntaxInterpolatedPropertyTail, g.DirectJessDollarInterp))
@@ -2059,7 +2083,14 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
         if (isInterpolation(child)) {
           parts.push(...child.parts);
         } else {
-          parts.push({ lit: requireToken(child).value });
+          // The superset lookahead emits a throwaway match token (`…$[`). Real
+          // property-name chunks never contain `$`, so this content check drops
+          // only that throwaway, independent of its position.
+          const text = requireToken(child).value;
+          if (text.includes('$')) {
+            continue;
+          }
+          parts.push({ lit: text });
         }
       }
       return interpolation(parts);
