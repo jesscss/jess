@@ -20,8 +20,6 @@ import type { PluginHost, ValueEvaluator } from './ast/value-eval.js';
 import { EqualityMode, FunctionMode, MathMode, UnitMode } from './types/modes.js';
 import * as path from 'node:path';
 import { readFile } from 'node:fs/promises';
-import { isNode } from './tree/util/is-node.js';
-import { N } from './tree/node-type.js';
 import { shouldOperateWithMathFrames } from './tree/util/should-operate.js';
 import { type ErrorDiagnostic, type WarningDiagnostic, JessError, toDiagnostic, makeJessErrorFromDiagnostic } from './jess-error.js';
 import type { Deprecation } from './deprecation.js';
@@ -929,16 +927,16 @@ export class Context {
     document: Stylesheet,
     filePath: string,
     source: string | undefined,
-    plugin: PluginInterface,
+    plugin: PluginInterface
   ): void {
     this.documentContexts.set(document, new DocumentContext({
       file: {
         name: path.basename(filePath),
         path: path.dirname(filePath),
         fullPath: filePath,
-        ...(source === undefined ? {} : { source }),
+        ...(source === undefined ? {} : { source })
       },
-      plugin,
+      plugin
     }));
   }
 
@@ -950,7 +948,9 @@ export class Context {
    */
   withDocument<T>(document: Stylesheet, run: () => T | Promise<T>): T | Promise<T> {
     const next = this.documentContexts.get(document);
-    if (!next) return run();
+    if (!next) {
+      return run();
+    }
     const previous = this._documentContext;
     this.setDocumentContext(next);
     try {
@@ -976,13 +976,15 @@ export class Context {
   transformUrl(value: string, quoted: boolean): string {
     const document = this.sourceContext;
     const transform = document?.plugin?.transformUrl;
-    if (!transform) return value;
+    if (!transform) {
+      return value;
+    }
     const entry = this.document ? this.documentContexts.get(this.document) : undefined;
     const request: UrlTransformRequest = {
       value,
       quoted,
       ...(document?.file?.fullPath === undefined ? {} : { fromFilePath: document.file.fullPath }),
-      ...(entry?.file?.fullPath === undefined ? {} : { entryFilePath: entry.file.fullPath }),
+      ...(entry?.file?.fullPath === undefined ? {} : { entryFilePath: entry.file.fullPath })
     };
     return transform.call(document.plugin, request) ?? value;
   }
@@ -995,7 +997,9 @@ export class Context {
    */
   rememberDocumentBody(document: Stylesheet, body: object): void {
     const owner = this.documentContexts.get(document);
-    if (owner) this.documentBodyContexts.set(body, owner);
+    if (owner) {
+      this.documentBodyContexts.set(body, owner);
+    }
   }
 
   /**
@@ -1005,7 +1009,9 @@ export class Context {
    */
   withDocumentBody<T>(body: object, run: () => T | Promise<T>): T | Promise<T> {
     const next = this.documentBodyContexts.get(body);
-    if (!next) return run();
+    if (!next) {
+      return run();
+    }
     const previous = this._documentContext;
     this.setDocumentContext(next);
     try {
@@ -1164,9 +1170,11 @@ export class Context {
     plugin: PluginInterface,
     filePath: string,
     source: string,
-    options?: Parameters<NonNullable<PluginInterface['safeParse']>>[2],
+    options?: Parameters<NonNullable<PluginInterface['safeParse']>>[2]
   ): ISafeParseResult {
-    if (!plugin.safeParse) throw new Error(`Plugin "${plugin.name}" does not support parsing`);
+    if (!plugin.safeParse) {
+      throw new Error(`Plugin "${plugin.name}" does not support parsing`);
+    }
     return plugin.safeParse(filePath, source, options);
   }
 
@@ -1213,7 +1221,9 @@ export class Context {
 
     const document = parseResult.document;
     if (document) {
-      if (!this.document) this.document = document;
+      if (!this.document) {
+        this.document = document;
+      }
       this.rememberDocumentContext(document, resolvedPath, source, plugin);
 
       this.sourceTrees.set(resolvedPath, document);
@@ -1318,7 +1328,9 @@ export class Context {
     if (!document) {
       throw new Error('Failed to parse content');
     }
-    if (!this.document) this.document = document;
+    if (!this.document) {
+      this.document = document;
+    }
     this.rememberDocumentContext(document, virtualPath, content, plugin);
 
     return {
@@ -1408,7 +1420,9 @@ export class Context {
       candidate.supportedExtensions?.includes(ext) && candidate.importPlugin);
     if (!plugin) {
       plugin = await this.opts.loadPluginForExtension?.(ext);
-      if (plugin && !this.plugins.includes(plugin)) this.plugins.push(plugin);
+      if (plugin && !this.plugins.includes(plugin)) {
+        this.plugins.push(plugin);
+      }
       if (plugin && (!plugin.supportedExtensions?.includes(ext) || !plugin.importPlugin)) {
         plugin = undefined;
       }

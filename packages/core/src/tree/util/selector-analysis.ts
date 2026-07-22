@@ -15,7 +15,7 @@
  * so the cache is pure memoization with no invalidation.
  */
 import type { BitSet, BitSetLibrary } from './bitset.js';
-import type { Selector, SelectorLike } from '../selector.js';
+import type { Selector } from '../selector.js';
 import { N } from '../node-type.js';
 import { isNode } from './is-node.js';
 import { isCombinator } from './combinator.js';
@@ -40,17 +40,6 @@ type Component = string | Selector;
 // `.value` / `.arg` / `.name` as data keeps this off the node classes' methods.
 // Structural views read as data off the node (accessed via `as unknown as`), so
 // this module needs no runtime import of the concrete selector classes.
-interface PseudoLike {
-  name: string;
-  arg?: unknown;
-  generated?: boolean;
-  generatedPseudoPlacementOverride?: { omitWrapperForSingleSelectorList?: boolean };
-}
-
-interface AmpersandLike {
-  getKeySetContainerSelector(): SelectorLike | undefined;
-}
-
 export class SelectorAnalysis {
   private readonly cache = new WeakMap<Selector, SelectorKeySets>();
 
@@ -174,7 +163,7 @@ export class SelectorAnalysis {
     }
 
     if (isNode(selector, N.PseudoSelector)) {
-      const pseudo = selector as unknown as PseudoLike;
+      const pseudo = selector;
       const arg = pseudo.arg;
       if (isNode(arg, N.Selector)) {
         const argSets = this.compute(arg);
@@ -216,7 +205,7 @@ export class SelectorAnalysis {
       // the RUNTIME-resolved parent selector held in its container, and its visible
       // / required sets are always empty. Read that parent as data and union its
       // keys through the service (a bare `&` / string / Nil contributes none).
-      const current = (selector as unknown as AmpersandLike).getKeySetContainerSelector();
+      const current = selector.getKeySetContainerSelector();
       return {
         keySet: current ? this.compute(current).keySet : library.getBitset(),
         visibleKeySet: library.getBitset(),

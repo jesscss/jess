@@ -2373,6 +2373,17 @@ silently choose one language’s policy.
     "dangerTokensJustification":"The explicit scalar branches add no allocation, loop, traversal, exception path, lookup, or helper call. They make the existing four-result mapping type-checkable and make no performance or neutrality claim.",
     "cases":["incomparable-remains-undefined","negative-and-positive-reverse","equality-remains-zero"],
     "baseline":{"fixture":"benchmark.less","phase":"render","currentMedianMs":85.86,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}
+  },{
+    "id":"legacy-tree-strict-contract-drain",
+    "verdict":"accepted",
+    "performanceClaim":"none",
+    "owner":"the fifteen retained tree value, guard, selector-surface, registration, rendering, bitset, combinator, and extend owners listed by legacy-tree-strict-contract-drain",
+    "why":"Selector-analysis consumes the existing string-or-node selector surface directly through its typed PseudoSelector and Ampersand discriminants; no bridge, clone, resolver, or output policy is added.",
+    "dangerTokensJustification":"The existing selector component loop and bitset computation remain unchanged; the removed structural assertions do not add traversal, allocation, side state, or error control.",
+    "cases":["selector-array-key-set-analysis"],
+    "behaviorEvidence":"The full core suite and selector-analysis focused tests pass.",
+    "buildEvidence":"Core build and strict production type verification pass with zero core diagnostics.",
+    "baseline":{"fixture":"benchmark.less","phase":"render","currentMedianMs":85.86,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}
   }]
   ```
 - Verdict: accepted exact contract correction with focused behavior, strict
@@ -2615,6 +2626,69 @@ or Context deletion lanes.
 - Verdict: accepted bounded contract/type cleanup; no performance claim.
 
 ## Aggressive Cutting Self-Prosecution
+
+- Latest pass: bounded Context/emit/selector/sequence/callable/serializer
+  contract cleanup. Context remains the sole plugin/session/import dispatcher;
+  no parser host, bridge, resolver, fallback, shim, alternate evaluator, or
+  output policy was added.
+- Architecture surface: existing Context plugin source/parser/module dispatch,
+  emit-walk spine, selector matching, extend IR, Sequence subclass evaluation,
+  callable-output validation, and serializer boundaries remain the owners.
+- Separation/duplication: no second Context dispatcher, selector matcher,
+  serializer, or evaluator was introduced; tagged IR and existing node
+  discriminants replace only unsafe narrowing assertions.
+- Cumulative node weight: no new AST nodes, clones, frames, side maps, or
+  render placements were added; existing selector/list materialization remains
+  at the node-only boundary that already requires it.
+- New traversal: none. Existing source-order, extend, callable, selector, and
+  serializer loops retain their prior traversal shape.
+- New node/materialization: none beyond existing selector/list boundaries;
+  Sequence uses a checked constructor identity to preserve existing subclasses.
+- Render path: emit-walk reads `context.opts.output.collapseNesting`, serializer
+  keeps existing at-rule/selector/rules guards, and callable output keeps the
+  existing root-property diagnostic path.
+- Helper/API surface: no public API, compatibility alias, parser bridge, or
+  resolver helper was added; `getCombinatorComponents` now states the exact
+  string-or-node return surface it already produced.
+- Metadata mutations: none. Existing inheritance, source identity, Context
+  plugin context, and render-session state are untouched.
+- Review-flagged diff tokens: `[array helper]` and
+  `[materialized array/object]` are existing selector/IR values and constructor
+  signatures; `[node construction]` is existing exceptional Context error and
+  typed IR facts; `[generic defensive read]` is a checked constructor/type
+  discriminant; `[side map/set]` is existing extend ownership; `[routine error
+  control]` is the existing unsupported-plugin exception. No new
+  `[loop/traversal]`, `[copy helper]`, `[inherit/adopt/frozen]`, or
+  `[parent/source mutation]` was introduced.
+- Evidence: full core tests, core build, strict production type verification,
+  and focused changed-file ESLint all pass; no performance claim is made.
+- Verdict: accepted bounded type-contract correction; no compatibility shim.
+- Hot-path cost contracts:
+  ```json
+  [{
+    "id":"core-context-emit-selector-contract",
+    "verdict":"accepted",
+    "performanceClaim":"none",
+    "owner":"the retained Context/plugin dispatcher and tree evaluation/render owners listed by core-context-emit-selector-contract",
+    "why":"The slice makes existing Context, emit, selector, Sequence, callable, and serializer facts truthful without adding a second runtime path.",
+    "dangerTokensJustification":"Existing selector/IR arrays and discriminant reads are retained at their current boundaries; no new traversal, resolver, node, clone, side map, or output policy is introduced.",
+    "cases":["Context-plugin-source-parser-dispatch","emit-walk-context-output-option","Ruleset-interpolated-selector-boundary","selector-match-string-and-node-combinators","extend-index-tagged-graft-atoms","Sequence-subclass-preserving-evaluation","callable-output-root-property-guard","serializer-at-rule-and-selector-surface"],
+    "behaviorEvidence":"Full core tests pass and focused changed-file tests cover selector matching, Sequence, callable output, and serializer paths.",
+    "buildEvidence":"Core build and strict production type verification pass with zero core diagnostics.",
+    "baseline":{"fixture":"benchmark.less","phase":"render","currentMedianMs":85.86,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}
+  },{
+    "id":"legacy-tree-strict-contract-drain",
+    "verdict":"accepted",
+    "performanceClaim":"none",
+    "owner":"the fifteen retained tree value, guard, selector-surface, registration, rendering, bitset, combinator, and extend owners listed by legacy-tree-strict-contract-drain",
+    "why":"Selector-analysis consumes the existing string-or-node selector surface directly through its typed PseudoSelector and Ampersand discriminants; no bridge, clone, resolver, or output policy is added.",
+    "dangerTokensJustification":"The existing selector component loop and bitset computation remain unchanged; the removed structural assertions do not add traversal, allocation, side state, or error control.",
+    "cases":["declaration-sync-and-async-render-result","declaration-merge-source-span-exclusion","default-guard-owned-value","bitset-inversion-and-disjointness","string-and-node-combinator-recognition","selector-list-singleton-collapse","selector-list-array-or-node-inheritance","parser-delivered-selector-array-ampersand","selector-array-ruleset-callable-registration","selector-array-key-set-analysis","selector-compose-cache-node-boundary","ordered-registration-context-restoration","property-merge-container-scope","mixin-invisible-sync-render-and-registration-result","extend-record-selector-surface","extend-root-composition-selector-surface","extend-walk-composed-match-selector-surface"],
+    "behaviorEvidence":"The full core suite and selector-analysis focused tests pass.",
+    "buildEvidence":"Core build and strict production type verification pass with zero core diagnostics.",
+    "baseline":{"fixture":"benchmark.less","phase":"render","currentMedianMs":85.86,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}
+  }]
+  ```
 
 - Latest pass: bounded strict-type cleanup in `tree/util/extend.ts`,
   `tree/reference.ts`, `tree/extend/spine-extend.ts`, and the `OutputWriter`

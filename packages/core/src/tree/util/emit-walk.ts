@@ -1715,12 +1715,10 @@ export function isSpineEligibleRoot(root: Rules, context: Context, collapseNesti
   // `serializeRulesContainerInternal`'s close loop.)
   // Resolve collapse from the SAME source the render pass derives it from
   // (`prepareRenderPrintState` reads `context.opts.output.collapseNesting`) so the eligibility gate
-  // and `renderRootViaSpine`'s topology re-check agree. `context.output` (a distinct optional field)
-  // is consulted only as a fallback. The two MUST agree: `isSpineExtendTopology` is now
+  // and `renderRootViaSpine`'s topology re-check agree. The two MUST agree: `isSpineExtendTopology` is now
   // collapse-mode-dependent (#4a admits an expanded-mode nested compound target the collapse gate
   // rejects), so a divergent collapse value here would admit-then-fail-loud in `renderRootViaSpine`.
-  const collapse = collapseNesting
-    ?? (context.opts?.output?.collapseNesting ?? context.output?.collapseNesting) === true;
+  const collapse = collapseNesting ?? context.opts.output?.collapseNesting === true;
   // APPEND × EXTEND (a PRECISE deferral). An `:extend` TARGET may be an append-GENERATED
   // selector (`.component { &-inner {…} }` extended by `:extend(.component-inner)`). The
   // spine's extend layer gathers subjects/targets from the STATIC source tree, where the
@@ -1957,7 +1955,7 @@ function splitCallPath(key: string): string[] {
 }
 
 /** True if a Ruleset's own selector carries interpolation (`.@{name}` / `@{sel}`) — a dynamic name. */
-function rulesetHasInterpolatedSelector(node: Node): boolean {
+function rulesetHasInterpolatedSelector(node: Ruleset): boolean {
   const local = flatLocalSelector(node);
   if (local === undefined) {
     return true; // no flat static selector → treat as dynamic

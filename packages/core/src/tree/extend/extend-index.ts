@@ -62,6 +62,12 @@ type Atom =
   | { kind: 'is'; sel: IrSel; node: PseudoSelector; pseudoName: string }
   | { kind: 'amp'; node: Ampersand; resolved: IrSel | null };
 
+type IsAtom = Extract<Atom, { kind: 'is' }>;
+
+function isIsAtom(atom: Atom | undefined): atom is IsAtom {
+  return atom?.kind === 'is';
+}
+
 function isSelectorNode(value: unknown): value is Selector {
   return isNode(value, N.Selector);
 }
@@ -1160,7 +1166,7 @@ function buildCompoundWithWraps(
   const parts: (Selector | string)[] = [];
   for (let i = 0; i < atoms.length; i++) {
     const a = atoms[i]!;
-    const node: Selector | string = a.kind === 'id' ? (typeof a.node === 'string' ? a.node : a.node) : (a.node as Selector);
+    const node: Selector | string = a.node;
     if (wrapAt.has(i)) {
       const inner = typeof node === 'string' ? wrapString(node) : node;
       parts.push(is(sellist([inner, ...extendBranches])));
@@ -1169,7 +1175,7 @@ function buildCompoundWithWraps(
     }
   }
   if (parts.length === 1 && typeof parts[0] !== 'string') {
-    return parts[0] as Selector;
+    return parts[0]!;
   }
   return compound(parts as Parameters<typeof compound>[0]);
 }
@@ -1320,11 +1326,11 @@ function buildRemainderSiblings(
       if (i === 0) {
         const headAtoms: (Selector | string)[] = [...remainderNodes];
         for (const a of step.compound.atoms) {
-          headAtoms.push(a.kind === 'id' ? (typeof a.node === 'string' ? a.node : a.node) : (a.node as Selector));
+          headAtoms.push(a.node);
         }
         parts.push(
           headAtoms.length === 1 && typeof headAtoms[0] !== 'string'
-            ? (headAtoms[0] as Selector)
+            ? headAtoms[0]!
             : compound(headAtoms as Parameters<typeof compound>[0])
         );
       } else {
@@ -1334,7 +1340,7 @@ function buildRemainderSiblings(
     }
     out.push(
       parts.length === 1 && typeof parts[0] !== 'string'
-        ? (parts[0] as Selector)
+        ? parts[0]!
         : sel(parts as ComplexSelectorComponent[])
     );
   }
@@ -1356,7 +1362,7 @@ function buildContiguousWrap(
   let placed = false;
   for (let i = 0; i < atoms.length; i++) {
     const a = atoms[i]!;
-    const node: Selector | string = a.kind === 'id' ? (typeof a.node === 'string' ? a.node : a.node) : (a.node as Selector);
+    const node: Selector | string = a.node;
     if (wrapAt.has(i)) {
       matched.push(node);
       if (!placed) {
@@ -1370,12 +1376,12 @@ function buildContiguousWrap(
   }
   const matchedCompound: Selector =
     matched.length === 1
-      ? (typeof matched[0] === 'string' ? wrapString(matched[0]) : (matched[0] as Selector))
+      ? (typeof matched[0] === 'string' ? wrapString(matched[0]) : matched[0]!)
       : compound(matched.map(m => (typeof m === 'string' ? m : m)) as Parameters<typeof compound>[0]);
   const isSel = is(sellist([matchedCompound, ...extendBranches]));
   const finalParts = parts.map(p => (p === ' IS' ? isSel : p));
   if (finalParts.length === 1 && typeof finalParts[0] !== 'string') {
-    return finalParts[0] as Selector;
+    return finalParts[0]!;
   }
   return compound(finalParts as Parameters<typeof compound>[0]);
 }
@@ -1645,7 +1651,10 @@ function buildGraftCompound(
     hostIdx = graftAtomIdx[0]!;
   } else {
     for (const gi of graftAtomIdx) {
-      const g = atoms[gi] as Extract<Atom, { kind: 'is' }>;
+      const g = atoms[gi]!;
+      if (!isIsAtom(g)) {
+        return UNSUPPORTED;
+      }
       const reach = reachableSymsOfGraft(g);
       if ([...findSyms].every(s => reach.has(s))) {
         if (hostIdx !== -1) {
@@ -1666,7 +1675,10 @@ function buildGraftCompound(
     return MATCHED_UNCHANGED;
   }
 
-  const host = atoms[hostIdx] as Extract<Atom, { kind: 'is' }>;
+  const host = atoms[hostIdx]!;
+  if (!isIsAtom(host)) {
+    return UNSUPPORTED;
+  }
   const rebuilt = extendIntoGraft(host, find, extendWith, partial);
   if (rebuilt === UNSUPPORTED) {
     return UNSUPPORTED;
@@ -1948,7 +1960,7 @@ function buildGraftBranch(
   }
   const node =
     rebuiltParts.length === 1 && typeof rebuiltParts[0] !== 'string'
-      ? (rebuiltParts[0] as Selector)
+      ? rebuiltParts[0]!
       : sel(rebuiltParts as ComplexSelectorComponent[]);
   return { node, effective, found, appendFull };
 }
@@ -1956,7 +1968,7 @@ function buildGraftBranch(
 /** The authored node for a whole compound step (reused, no clone). */
 function compoundStepNode(step: IrStep): Selector | string {
   const n = step.compound.node;
-  return typeof n === 'string' ? n : (n as Selector);
+  return n;
 }
 
 /**
@@ -2042,7 +2054,10 @@ function bareIsStepIndices(seq: IrSeq): number[] {
  * Reuses authored arm/compound nodes (cloning-free).
  */
 function expandBareIsStep(seq: IrSeq, isStep: number): IrSeq[] {
-  const graftAtom = seq[isStep]!.compound.atoms[0] as Extract<Atom, { kind: 'is' }>;
+  const graftAtom = seq[isStep]!.compound.atoms[0]!;
+  if (!isIsAtom(graftAtom)) {
+    return [];
+  }
   const out: IrSeq[] = [];
   for (const arm of graftAtom.sel.branches) {
     const expanded: IrStep[] = [];
@@ -2133,7 +2148,10 @@ function tryMultiGraftExpand(
       }
     }
     anyExpand = true;
-    const graftAtom = tb[bareIs[0]!]!.compound.atoms[0] as Extract<Atom, { kind: 'is' }>;
+    const graftAtom = tb[bareIs[0]!]!.compound.atoms[0]!;
+    if (!isIsAtom(graftAtom)) {
+      return UNSUPPORTED;
+    }
     // A graft arm with an INTERNAL non-space combinator (`.c.replace+.replace`, `a>.foo`) is not
     // spliced correctly by the own expand+flatten machinery (rung 5 handles only space-combinator
     // arms). The oracle produces a full boundary-cross flatten (`:is(.replace.replace,.c.replace+
@@ -2373,7 +2391,7 @@ function compoundFromAtoms(atoms: Atom[]): Selector {
     }
   }
   if (parts.length === 1 && typeof parts[0] !== 'string') {
-    return parts[0] as Selector;
+    return parts[0]!;
   }
   return compound(parts as Parameters<typeof compound>[0]);
 }
@@ -2710,7 +2728,9 @@ function buildRelativeWrap(
       const step = resolved[i]!;
       // find EQUALS the amp's parent value → wrap the parent atoms in place.
       const parentAtoms = step.atoms.filter(ra => ra.origin === 'parent');
-      const parentSyms = new Set(parentAtoms.filter(ra => ra.atom.kind === 'id').map(ra => (ra.atom as { sym: number }).sym));
+      const parentSyms = new Set(parentAtoms
+        .filter((ra): ra is typeof ra & { atom: Extract<Atom, { kind: 'id' }> } => ra.atom.kind === 'id')
+        .map(ra => ra.atom.sym));
       const findMatchesParentExactly = parentAtoms.length > 0
         && findComp.syms.size === parentSyms.size
         && [...findComp.syms].every(s => parentSyms.has(s));

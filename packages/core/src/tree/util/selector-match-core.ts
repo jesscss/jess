@@ -6,7 +6,7 @@ import { CompoundSelector } from '../selector-compound.js';
 import { BasicSelector } from '../selector-basic.js';
 import { PseudoSelector } from '../selector-pseudo.js';
 import { Ampersand } from '../ampersand.js';
-import { Combinator } from '../combinator.js';
+import { Combinator, type Combinators } from '../combinator.js';
 import type { Context } from '../../context.js';
 import { isNode } from './is-node.js';
 import { isCombinator, combinatorValue } from './combinator.js';
@@ -163,8 +163,8 @@ export function getNonCombinatorComponents(selector: ComplexSelector): Selector[
  * Filters value to get only combinators
  * Used in complex selector matching algorithms
  */
-export function getCombinatorComponents(selector: ComplexSelector): Combinator[] {
-  return selector.value.filter(c => isCombinator(c)) as Combinator[];
+export function getCombinatorComponents(selector: ComplexSelector): Array<Combinators | Combinator> {
+  return selector.value.filter(isCombinator);
 }
 
 /**
@@ -825,7 +825,9 @@ export function findExtendableLocations(
       matchedNode: target,
       extensionType: 'replace'
     });
-    if (cacheable) EXACT_MATCH_CACHE.set(target, [exactLocation]);
+    if (cacheable) {
+      EXACT_MATCH_CACHE.set(target, [exactLocation]);
+    }
     const result = { locations: [exactLocation], hasMatches: true, hasWholeMatch: true, metrics };
     targetCache?.set(find, result);
     return result;

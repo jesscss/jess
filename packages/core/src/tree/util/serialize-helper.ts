@@ -1,5 +1,6 @@
 import { spanStartOf, spanEndOf } from './provenance.js';
 import type { AtRule, AtRulePrelude } from '../at-rule.js';
+import { AtRuleStatement } from '../at-rule-statement.js';
 import type { Rules } from '../rules.js';
 import type { Context } from '../../context.js';
 import { Ruleset } from '../ruleset.js';
@@ -464,7 +465,7 @@ function getContainerRules(node: AtRule | Ruleset, options?: FinalPrintOptions):
     return node;
   }
   // AtRuleStatement shares the AtRule bit but extends Node (not Rules) — always a leaf.
-  if (!isNode(node, N.Rules)) {
+  if (node instanceof AtRuleStatement || !isNode(node, N.Rules)) {
     return undefined;
   }
   if (node === options?.atRuleBodyNode) {
@@ -519,8 +520,8 @@ function canMergeSameHeaderRuleset(
   currentFrame: Ruleset,
   priorFrame: Ruleset
 ): boolean {
-  const currentOwn = (currentFrame.options as { ownSelector?: Selector | Nil } | undefined)?.ownSelector;
-  const priorOwn = (priorFrame.options as { ownSelector?: Selector | Nil } | undefined)?.ownSelector;
+  const currentOwn = rulesetOwnSelector(currentFrame);
+  const priorOwn = rulesetOwnSelector(priorFrame);
   const currentSelector = currentOwn ?? currentFrame.selector;
   const priorSelector = priorOwn ?? priorFrame.selector;
   return (
@@ -533,6 +534,17 @@ function canMergeSameHeaderRuleset(
     || containsNodeType(currentSelector, 'InterpolatedSelector')
     || containsNodeType(priorSelector, 'InterpolatedSelector')
   );
+}
+
+function rulesetOwnSelector(frame: Ruleset): Selector | Nil | undefined {
+  const value = frame.options && 'ownSelector' in frame.options
+    ? frame.options.ownSelector
+    : undefined;
+  return isNode(value, N.Selector) || value instanceof Nil ? value : undefined;
+}
+
+function isNonListSelector(value: SelectorLike | Nil | undefined): value is string | Selector | Nil {
+  return value !== undefined && (value instanceof Nil || typeof value === 'string' || isNode(value, N.Selector));
 }
 
 export function flattenVisibleRulesForRender(
@@ -572,11 +584,12 @@ export function flattenVisibleRulesForRender(
         && isNode(child, N.Ruleset)
         && getContainerRules(child)
       ) {
-        const ownSelector = (child.options as { ownSelector?: Selector | Nil } | undefined)?.ownSelector;
+        const ownSelector = rulesetOwnSelector(child);
         if (
           ownSelector
           && Ruleset.isBareAmpersandSelector(ownSelector)
-          && (child.selector == null || !Ruleset.isBareAmpersandSelector(child.selector))
+          && (child.selector == null
+            || (isNonListSelector(child.selector) && !Ruleset.isBareAmpersandSelector(child.selector)))
         ) {
           const childRules = getContainerRules(child)!.rules;
           let hasVisibleContainers = false;
@@ -605,6 +618,7 @@ export function flattenVisibleRulesForRender(
         allowTransparentFlatten
         && isNode(child, N.Ruleset)
         && child.selector != null
+        && isNonListSelector(child.selector)
         && Ruleset.isBareAmpersandSelector(child.selector)
         && getContainerRules(child)
       ) {
@@ -623,7 +637,7 @@ export function flattenVisibleRulesForRender(
           // Flattening them here would splice the raw loop-body decls (with an unbound
           // `@value`) directly into the render sequence. Keep the loop as a container
           // entry so the loop-fold pass owns it.
-          if (child.type === 'For') {
+          if (Reflect.get(child, 'type') === 'For') {
             pushContainer(child);
             continue;
           }
@@ -1139,7 +1153,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       const seenFoldContainers = new WeakSet<Node>();
       const distinctFoldChild = (child: Node): Node => {
         const isContainer = isNode(child, N.Ruleset)
-          || (isNode(child, N.AtRule) && child.rules.length > 0);
+          || (isNode(child, N.AtRule) && isNode(child, N.Rules) && child.rules.length > 0);
         if (!isContainer) {
           return child;
         }
@@ -2068,8 +2082,9 @@ function serializeSpineFrameContainer(
     // (`evalIsolatingSpinePrintState`), leaving the live writer/frames byte-identical
     // for the body descent. A simple guard with no rendering operand pays only a
     // shallow snapshot.
+    const guardNode: Node = guard;
     const guardResult = evalIsolatingSpinePrintState(context, () =>
-      guard instanceof Condition ? guard.evaluateBoolean(context) : guard.eval(context)
+      guard instanceof Condition ? guard.evaluateBoolean(context) : guardNode.eval(context)
     );
     const decideGuard = (result: boolean | Node): MaybePromise<string> => {
       if (!Condition.resultPasses(result)) {

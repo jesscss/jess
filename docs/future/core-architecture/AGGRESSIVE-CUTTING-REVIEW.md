@@ -267,6 +267,40 @@ a blanket optimization exemption or a new active architecture queue.
     "evidence": {"command": ["pnpm", "--filter", "@jesscss/core", "test", "--", "--run", "src/ast/__tests__/import-at-rule.test.ts"]}
   },
   {
+    "id": "core-context-emit-selector-contract",
+    "kind": "semantic-runtime",
+    "surface": "retained Context, emit, selector-match, sequence, callable, and serializer type contracts",
+    "files": [
+      "packages/core/src/context.ts",
+      "packages/core/src/tree/extend/extend-index.ts",
+      "packages/core/src/tree/sequence.ts",
+      "packages/core/src/tree/util/callable-candidate-output.ts",
+      "packages/core/src/tree/util/emit-walk.ts",
+      "packages/core/src/tree/util/selector-match-core.ts",
+      "packages/core/src/tree/util/serialize-helper.ts"
+    ],
+    "semanticRuntime": {
+      "owner": "the retained Context/plugin dispatcher and tree evaluation/render owners listed by core-context-emit-selector-contract",
+      "scope": "This bounded type-contract slice makes existing runtime facts truthful without adding a bridge, parser host, resolver, alternate evaluator, or output policy. Context keeps plugin-based source/parser/module dispatch; emit-walk reads the existing Context output option and passes Ruleset facts to the existing selector helper; selector matching exposes the string-or-node combinator surface it already filters; extend-index uses tagged IR facts instead of narrowing assertions; Sequence preserves its concrete subclass through a checked constructor boundary; callable output and serializer helpers use existing node discriminants for declaration, rules, at-rule, and selector surfaces.",
+      "cases": [
+        "Context-plugin-source-parser-dispatch",
+        "emit-walk-context-output-option",
+        "Ruleset-interpolated-selector-boundary",
+        "selector-match-string-and-node-combinators",
+        "extend-index-tagged-graft-atoms",
+        "Sequence-subclass-preserving-evaluation",
+        "callable-output-root-property-guard",
+        "serializer-at-rule-and-selector-surface"
+      ],
+      "performanceClaim": "none",
+      "baseline": {"fixture": "benchmark.less", "phase": "render"}
+    },
+    "evidence": {
+      "behaviorCommand": ["pnpm", "--filter", "@jesscss/core", "test", "--", "--run"],
+      "buildCommand": ["pnpm", "--filter", "@jesscss/core", "build"]
+    }
+  },
+  {
     "id": "legacy-tree-strict-contract-drain",
     "kind": "semantic-runtime",
     "surface": "retained legacy tree strict runtime contracts",
@@ -353,20 +387,6 @@ a blanket optimization exemption or a new active architecture queue.
       "costDelta": "decrease",
       "allowsProsecutedDangerTokens": true,
       "why": "The deleted legacy StyleImport class and its Rules/spine consumers duplicated the canonical AST-v2 serializer's typed import execution. This cut removes the tree resolver, retry queue, placement construction, import-body scans, registration wiring, caches, dedupe ledger, imported-extend re-gate, public tree export, and abort sentinel. Context/plugin loading and AST StyleImport execution remain unchanged, and no replacement bridge, traversal, allocation, or output policy is introduced.",
-      "byteIdentity": {"fixture":"benchmark.less","collapseNesting":true,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}
-    }
-  },
-  {
-    "id": "serializer-lint-only-normalization",
-    "kind": "neutral-or-negative",
-    "surface": "mechanical ESLint normalization in the existing serializer/import walk",
-    "files": ["packages/core/src/tree/util/serialize-helper.ts"],
-    "supportFiles": ["packages/core/src/tree/util/emit-walk.ts"],
-    "coverage": "owner-plus-named-carry-forward-support",
-    "neutralRefactor": {
-      "costDelta": "neutral",
-      "allowsProsecutedDangerTokens": true,
-      "why": "This slice changes only ESLint-required indentation/control-bracing and upgrades an existing StyleImport discriminant check into a truthful TypeScript type predicate. It adds no runtime branch, traversal, allocation, resolver, or output policy; the predicate preserves the existing type check and the serializer/import walk remains the same execution path.",
       "byteIdentity": {"fixture":"benchmark.less","collapseNesting":true,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}
     }
   },
