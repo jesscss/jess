@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { lintStagedFiles } from '../staged-eslint.mjs';
 
 describe('staged ESLint API transport', () => {
@@ -19,30 +19,56 @@ describe('staged ESLint API transport', () => {
         this.options = options;
       }
 
-      async lintFiles(files: string[]) {
-        expect(files).toEqual(['packages/example/src/value.ts']);
-        return reports;
+      async lintText(source: string, options: unknown) {
+        expect(source).toBe('const staged = true;\n');
+        expect(options).toEqual({
+          filePath: '/repo/packages/example/src/value.ts',
+          warnIgnored: true
+        });
+        return [reports[0]];
       }
     }
 
     await expect(lintStagedFiles(['packages/example/src/value.ts'], {
       cwd: '/repo',
-      ESLintClass: FakeESLint
-    })).resolves.toEqual(reports);
+      ESLintClass: FakeESLint,
+      readStagedFile: () => 'const staged = true;\n'
+    })).resolves.toEqual([reports[0]]);
   });
 
   it('propagates a failed ESLint API invocation for the guard to block', async () => {
     class FailingESLint {
       constructor(_options: unknown) {}
 
-      async lintFiles() {
+      async lintText() {
         throw new Error('invalid ESLint configuration');
       }
     }
 
     await expect(lintStagedFiles(['scripts/example.mjs'], {
       cwd: '/repo',
-      ESLintClass: FailingESLint
+      ESLintClass: FailingESLint,
+      readStagedFile: () => 'export {};\n'
     })).rejects.toThrow('invalid ESLint configuration');
+  });
+
+  it('reads each staged source once instead of linting the working-tree file', async () => {
+    const read = vi.fn(() => 'const indexed = true;\n');
+    class FakeESLint {
+      constructor(_options: unknown) {}
+
+      async lintText(source: string) {
+        expect(source).toBe('const indexed = true;\n');
+        return [{ filePath: '/repo/packages/example/src/value.ts', messages: [] }];
+      }
+    }
+
+    await lintStagedFiles(['packages/example/src/value.ts'], {
+      cwd: '/repo',
+      ESLintClass: FakeESLint,
+      readStagedFile: read
+    });
+    expect(read).toHaveBeenCalledTimes(1);
+    expect(read).toHaveBeenCalledWith('packages/example/src/value.ts');
   });
 });

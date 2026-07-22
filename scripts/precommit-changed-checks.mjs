@@ -43,8 +43,21 @@ function aggressiveReviewMode() {
   return MODE === 'staged' && currentBranchName() === 'alpha'
     ? 'release'
     : MODE === 'upstream'
-      ? undefined
+      ? 'committed'
       : MODE;
+}
+
+function requireCleanPushTarget() {
+  if (MODE !== 'upstream') {
+    return;
+  }
+  for (const args of [['diff', '--quiet'], ['diff', '--cached', '--quiet']]) {
+    const result = spawnSync('git', args, { cwd: ROOT, stdio: 'ignore' });
+    if (result.status !== 0) {
+      console.error('Pre-push checks validate the committed push target. Commit or stash tracked working-tree changes before pushing.');
+      process.exit(1);
+    }
+  }
 }
 
 function run(command, args, packageDir, options = {}) {
@@ -346,6 +359,18 @@ if (files.length === 0) {
   );
   process.exit(0);
 }
+
+requireCleanPushTarget();
+
+console.log('\n==> Running configuration syntax validation');
+run(
+  'pnpm',
+  MODE === 'staged'
+    ? ['run', 'verify:config-syntax', '--', '--staged']
+    : ['run', 'verify:config-syntax'],
+  undefined,
+  { required: true }
+);
 
 const changedPackages = packageDirs(files);
 let baselineRan = false;

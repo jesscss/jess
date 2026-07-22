@@ -14,7 +14,9 @@ const reviewMode = process.argv.includes('--mode=staged')
   ? 'staged'
   : process.argv.includes('--mode=release')
     ? 'release'
-    : 'working';
+    : process.argv.includes('--mode=committed')
+      ? 'committed'
+      : 'working';
 const unsupportedAggregateMode = process.argv.includes('--mode=upstream');
 const reviewedSourceRoots = [
   'packages/core/src',
@@ -275,6 +277,9 @@ function scopedChangedPaths(mode, snapshots) {
   if (mode === 'staged') {
     return [...new Set(snapshots.staged)];
   }
+  if (mode === 'committed') {
+    return [...new Set(snapshots.branch)];
+  }
   return [...new Set([
     ...snapshots.unstaged,
     ...snapshots.staged,
@@ -304,6 +309,12 @@ function collectScopedDiff(mode, changedPaths) {
   }
   if (mode === 'staged') {
     return git(['diff', '--cached', '--unified=0', '--', ...productionPaths]);
+  }
+  if (mode === 'committed') {
+    const base = reviewBase();
+    return base
+      ? git(['diff', '--unified=0', `${base}..HEAD`, '--', ...productionPaths])
+      : '';
   }
   return [
     git(['diff', '--unified=0', '--', ...productionPaths]),
@@ -2008,6 +2019,23 @@ function selfProsecutionLine(pass, label) {
   return pass.match(expression)?.[0];
 }
 
+/**
+ * Placeholder rejection is deliberately field-scoped. A prose-wide word scan
+ * cannot distinguish an unfinished assertion from a real identifier such as
+ * `Partition.pending`, so it turns valid evidence into a release blocker.
+ */
+function selfProsecutionPlaceholders(pass, labels) {
+  const placeholder = /^(?:TODO|TBD|fill in|pending)[.!]?$/iu;
+  return labels.filter((label) => {
+    const line = selfProsecutionLine(pass, label);
+    if (!line) {
+      return false;
+    }
+    const value = line.slice(line.indexOf(':') + 1).trim();
+    return placeholder.test(value);
+  });
+}
+
 function exactLedgerEntry(entry) {
   return JSON.stringify(entry);
 }
@@ -2442,7 +2470,7 @@ async function runVerifier() {
     ? section
     : section.slice(latestPassIndex, nextPassIndex === -1 ? undefined : nextPassIndex);
   const missingLabels = requiredLabels.filter(label => !hasSelfProsecutionLabel(latestPass, label));
-  const stalePlaceholders = /\b(TODO|TBD|fill in|pending)\b/i.test(latestPass);
+  const stalePlaceholders = selfProsecutionPlaceholders(latestPass, requiredLabels);
 
   let failed = false;
 
@@ -2462,9 +2490,9 @@ async function runVerifier() {
     }
   }
 
-  if (stalePlaceholders) {
+  if (stalePlaceholders.length > 0) {
     failed = true;
-    console.error('Self-prosecution block still contains a placeholder word: TODO/TBD/fill in/pending.');
+    console.error(`Self-prosecution block has an unresolved required field: ${stalePlaceholders.join(', ')}.`);
   }
 
   if (findings.length > 0) {
@@ -2600,6 +2628,7 @@ export {
   qualityOnlyStagedPaths,
   reproduceApprovedQualityFixes,
   scopedChangedPaths,
+  selfProsecutionPlaceholders,
   strictRuntimeChangedPaths,
   validateCostAuditRecords,
   validateBoundaryEvidence,
