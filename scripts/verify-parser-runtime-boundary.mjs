@@ -64,13 +64,15 @@ function parsemanRegexBindings(source) {
     if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier) || statement.moduleSpecifier.text !== 'parseman') {
       continue;
     }
-    const isMacroImport = statement.attributes?.elements.some(attribute => {
+    const isMacroImport = statement.attributes?.elements.some((attribute) => {
       const key = attribute.name.kind === ts.SyntaxKind.Identifier
         ? attribute.name.text
         : String(attribute.name.text);
       return key === 'type' && attribute.value.text === 'macro';
     }) ?? false;
-    if (!isMacroImport) continue;
+    if (!isMacroImport) {
+      continue;
+    }
     const named = statement.importClause?.namedBindings;
     if (!named || !ts.isNamedImports(named)) {
       continue;
@@ -152,14 +154,18 @@ function makeScope(parent = undefined) {
 
 function resolveBinding(scope, name) {
   for (let current = scope; current; current = current.parent) {
-    if (current.bindings.has(name)) return current.bindings.get(name);
+    if (current.bindings.has(name)) {
+      return current.bindings.get(name);
+    }
   }
   return undefined;
 }
 
 function bind(scope, name, kind = shadow, properties = undefined) {
   scope.bindings.set(name, kind);
-  if (properties) scope.properties.set(name, properties);
+  if (properties) {
+    scope.properties.set(name, properties);
+  }
 }
 
 function assign(scope, name, kind, properties = undefined) {
@@ -173,30 +179,46 @@ function assign(scope, name, kind, properties = undefined) {
 }
 
 function objectProperties(expression, scope) {
-  if (!ts.isObjectLiteralExpression(expression)) return undefined;
+  if (!ts.isObjectLiteralExpression(expression)) {
+    return undefined;
+  }
   const properties = new Map();
   for (const member of expression.properties) {
-    if (!ts.isPropertyAssignment(member) || !member.name) continue;
+    if (!ts.isPropertyAssignment(member) || !member.name) {
+      continue;
+    }
     const name = ts.isIdentifier(member.name) || ts.isStringLiteral(member.name) ? member.name.text : undefined;
-    if (name) properties.set(name, expressionKind(member.initializer, scope));
+    if (name) {
+      properties.set(name, expressionKind(member.initializer, scope));
+    }
   }
   return properties;
 }
 
 function typeContainsString(type) {
-  if (!type) return false;
-  if (type.kind === ts.SyntaxKind.StringKeyword || ts.isLiteralTypeNode(type) && ts.isStringLiteral(type.literal)) return true;
+  if (!type) {
+    return false;
+  }
+  if (type.kind === ts.SyntaxKind.StringKeyword || (ts.isLiteralTypeNode(type) && ts.isStringLiteral(type.literal))) {
+    return true;
+  }
   return ts.isUnionTypeNode(type) && type.types.some(typeContainsString);
 }
 
 function typeProperties(type) {
-  if (!type) return undefined;
+  if (!type) {
+    return undefined;
+  }
   if (ts.isTypeLiteralNode(type)) {
     const properties = new Map();
     for (const member of type.members) {
-      if (!ts.isPropertySignature(member) || !member.name) continue;
+      if (!ts.isPropertySignature(member) || !member.name) {
+        continue;
+      }
       const name = ts.isIdentifier(member.name) || ts.isStringLiteral(member.name) ? member.name.text : undefined;
-      if (name && typeContainsString(member.type)) properties.set(name, 'text');
+      if (name && typeContainsString(member.type)) {
+        properties.set(name, 'text');
+      }
     }
     return properties.size > 0 ? properties : undefined;
   }
@@ -210,27 +232,39 @@ function typeProperties(type) {
 
 function objectPropertiesOf(expression, scope) {
   const literal = objectProperties(expression, scope);
-  if (literal) return literal;
-  if (!ts.isIdentifier(expression) || resolveBinding(scope, expression.text) !== object) return undefined;
+  if (literal) {
+    return literal;
+  }
+  if (!ts.isIdentifier(expression) || resolveBinding(scope, expression.text) !== object) {
+    return undefined;
+  }
   for (let current = scope; current; current = current.parent) {
     const properties = current.properties.get(expression.text);
-    if (properties) return properties;
+    if (properties) {
+      return properties;
+    }
   }
   return undefined;
 }
 
 function objectMemberKind(receiver, property, scope) {
-  if (!ts.isIdentifier(receiver) || resolveBinding(scope, receiver.text) !== object) return undefined;
+  if (!ts.isIdentifier(receiver) || resolveBinding(scope, receiver.text) !== object) {
+    return undefined;
+  }
   for (let current = scope; current; current = current.parent) {
     const properties = current.properties.get(receiver.text);
-    if (properties?.has(property)) return properties.get(property);
+    if (properties?.has(property)) {
+      return properties.get(property);
+    }
   }
   return undefined;
 }
 
 function propertyKind(expression, scope) {
   const property = propertyName(expression);
-  if (!property) return undefined;
+  if (!property) {
+    return undefined;
+  }
   const receiver = ts.isPropertyAccessExpression(expression) || ts.isElementAccessExpression(expression)
     ? expression.expression
     : undefined;
@@ -238,18 +272,34 @@ function propertyKind(expression, scope) {
   // may be a child collection, not source text, and that fact must survive
   // member access and later destructuring.
   const memberKind = receiver ? objectMemberKind(receiver, property, scope) : undefined;
-  if (memberKind !== undefined) return memberKind;
-  if (property === 'RegExp') return 'regexp';
-  if (reparseLikeName.test(property)) return 'parser';
-  if (recognizerMethods.has(property)) return property;
-  if (sourceStringMethods.has(property) && receiver && isTextLike(receiver, scope)) return `string-method:${property}`;
+  if (memberKind !== undefined) {
+    return memberKind;
+  }
+  if (property === 'RegExp') {
+    return 'regexp';
+  }
+  if (reparseLikeName.test(property)) {
+    return 'parser';
+  }
+  if (recognizerMethods.has(property)) {
+    return property;
+  }
+  if (sourceStringMethods.has(property) && receiver && isTextLike(receiver, scope)) {
+    return `string-method:${property}`;
+  }
   return undefined;
 }
 
 function expressionKind(expression, scope) {
-  if (ts.isStringLiteral(expression) || ts.isNoSubstitutionTemplateLiteral(expression)) return 'text';
-  if (ts.isIdentifier(expression)) return resolveBinding(scope, expression.text);
-  if (ts.isObjectLiteralExpression(expression)) return object;
+  if (ts.isStringLiteral(expression) || ts.isNoSubstitutionTemplateLiteral(expression)) {
+    return 'text';
+  }
+  if (ts.isIdentifier(expression)) {
+    return resolveBinding(scope, expression.text);
+  }
+  if (ts.isObjectLiteralExpression(expression)) {
+    return object;
+  }
   if (ts.isPropertyAccessExpression(expression) && propertyName(expression) === 'bind') {
     return expressionKind(expression.expression, scope);
   }
@@ -276,9 +326,13 @@ function bindPattern(pattern, initializer, scope, type) {
     bind(scope, pattern.text, kind, kind === object ? (objectPropertiesOf(initializer, scope) ?? typedProperties) : undefined);
     return;
   }
-  if (!ts.isObjectBindingPattern(pattern)) return;
+  if (!ts.isObjectBindingPattern(pattern)) {
+    return;
+  }
   for (const element of pattern.elements) {
-    if (!ts.isBindingElement(element) || !ts.isIdentifier(element.name)) continue;
+    if (!ts.isBindingElement(element) || !ts.isIdentifier(element.name)) {
+      continue;
+    }
     const property = element.propertyName?.getText() ?? element.name.text;
     const memberKind = initializer ? objectMemberKind(initializer, property, scope) : undefined;
     const kind = memberKind ?? (reparseLikeName.test(property)
@@ -300,7 +354,9 @@ export function scanParserSource(file, text, source = undefined) {
   source ??= ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true);
   const regexBindings = parsemanRegexBindings(source);
   const rootScope = makeScope();
-  for (const name of ['parseLessFn', 'parseScssFn', 'parseJessFn']) bind(rootScope, name, 'parser');
+  for (const name of ['parseLessFn', 'parseScssFn', 'parseJessFn']) {
+    bind(rootScope, name, 'parser');
+  }
   bind(rootScope, 'RegExp', 'regexp');
   const add = (node, kind) => {
     const start = source.getLineAndCharacterOfPosition(node.getStart(source));
@@ -359,7 +415,9 @@ export function scanParserSource(file, text, source = undefined) {
   };
 
   const scanStatements = (statements, scope) => {
-    for (const statement of statements) scanNode(statement, scope);
+    for (const statement of statements) {
+      scanNode(statement, scope);
+    }
   };
   const scanNode = (node, scope) => {
     if (ts.isSourceFile(node)) {
@@ -371,19 +429,27 @@ export function scanParserSource(file, text, source = undefined) {
       return;
     }
     if (ts.isVariableDeclaration(node)) {
-      if (node.initializer) scanExpression(node.initializer, scope);
+      if (node.initializer) {
+        scanExpression(node.initializer, scope);
+      }
       bindPattern(node.name, node.initializer, scope, node.type);
       return;
     }
     if (ts.isFunctionLike(node)) {
       const functionScope = makeScope(scope);
-      for (const parameter of node.parameters) bindPattern(parameter.name, undefined, functionScope, parameter.type);
-      if (node.body) scanNode(node.body, functionScope);
+      for (const parameter of node.parameters) {
+        bindPattern(parameter.name, undefined, functionScope, parameter.type);
+      }
+      if (node.body) {
+        scanNode(node.body, functionScope);
+      }
       return;
     }
     if (ts.isCatchClause(node)) {
       const catchScope = makeScope(scope);
-      if (node.variableDeclaration) bindPattern(node.variableDeclaration.name, undefined, catchScope);
+      if (node.variableDeclaration) {
+        bindPattern(node.variableDeclaration.name, undefined, catchScope);
+      }
       scanNode(node.block, catchScope);
       return;
     }
@@ -395,13 +461,17 @@ export function scanParserSource(file, text, source = undefined) {
     if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
       scanExpression(node.right, scope);
       const kind = expressionKind(node.right, scope) ?? (isTextLike(node.right, scope) ? 'text' : shadow);
-      if (ts.isIdentifier(node.left)) assign(scope, node.left.text, kind, kind === object ? objectPropertiesOf(node.right, scope) : undefined);
+      if (ts.isIdentifier(node.left)) {
+        assign(scope, node.left.text, kind, kind === object ? objectPropertiesOf(node.right, scope) : undefined);
+      }
       if ((ts.isPropertyAccessExpression(node.left) || ts.isElementAccessExpression(node.left)) && ts.isIdentifier(node.left.expression)) {
         const property = propertyName(node.left);
         if (property) {
           for (let current = scope; current; current = current.parent) {
             const properties = current.properties.get(node.left.expression.text);
-            if (properties) properties.set(property, kind);
+            if (properties) {
+              properties.set(property, kind);
+            }
           }
         }
       }
@@ -530,7 +600,9 @@ export function validateInventory(inventory, findings, { base = root } = {}) {
     if (!found) {
       if (entry.untraced === true) {
         const proofError = validateUntracedSource(entry, { base });
-        if (!proofError) continue;
+        if (!proofError) {
+          continue;
+        }
         errors.push(proofError);
         continue;
       }
@@ -569,7 +641,9 @@ export function writeInventory(findings, { path = inventoryPath, base = root } =
     .filter(entry => entry.untraced === true)
     .map(entry => validateUntracedSource(entry, { base }))
     .filter(Boolean);
-  if (proofErrors.length) throw new Error(proofErrors.join('\n'));
+  if (proofErrors.length) {
+    throw new Error(proofErrors.join('\n'));
+  }
   const debt = ledgerEntries(findings, prior);
   for (const entry of prior) {
     if (entry.untraced === true && !debt.some(candidate => inventoryKey(candidate) === inventoryKey(entry))) {
