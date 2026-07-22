@@ -11,6 +11,8 @@ const cuttingReviewPath = resolve(root, 'docs/future/core-architecture/AGGRESSIV
 const skipExecutableEvidence = process.argv.includes('--skip-executable-evidence');
 const reviewMode = process.argv.includes('--mode=staged')
   ? 'staged'
+  : process.argv.includes('--mode=release')
+    ? 'release'
   : 'working';
 const unsupportedAggregateMode = process.argv.includes('--mode=upstream');
 const reviewedSourceRoots = [
@@ -155,6 +157,13 @@ function reviewBase() {
 }
 
 function scopedChangedPaths(mode, snapshots) {
+  if (mode === 'release') {
+    // An alpha branch is a squash snapshot of the validated dev tree. Its
+    // branch-wide diff is historical aggregate, not one bounded optimization
+    // patch, so release mode validates only the registry/self-prosecution
+    // document and package safety without prosecuting every old hunk again.
+    return [];
+  }
   if (mode === 'staged') {
     return [...new Set(snapshots.staged)];
   }
@@ -178,6 +187,9 @@ function changedPathSnapshots() {
 }
 
 function collectScopedDiff(mode, changedPaths) {
+  if (mode === 'release') {
+    return '';
+  }
   const productionPaths = productionChangedPaths(changedPaths);
   if (productionPaths.length === 0) {
     return '';
@@ -2312,6 +2324,9 @@ function runVerifier() {
 
   const changedPaths = scopedChangedPaths(reviewMode, changedPathSnapshots());
   const diff = collectScopedDiff(reviewMode, changedPaths);
+  if (reviewMode === 'release') {
+    console.log('Release snapshot mode: report-only (aggregate diff accounting skipped).');
+  }
   // Keep the complete branch aggregate visible. It is historical/audit
   // inventory, not a pretext for forcing parser/frontend/type edits into an
   // eval/render cost contract. Strict contract accounting receives only the

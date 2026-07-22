@@ -24,6 +24,13 @@ and must not invent a performance or byte-identity claim. Parser/frontend and
 public-boundary changes use their dedicated boundary evidence. A broad
 `owner-plus-named-carry-forward-support` record never proves unrelated hunks.
 
+Alpha release snapshots use `--mode=release` from `release:alpha:check`. This
+mode validates the registry, self-prosecution block, and package safety, but
+does not treat the full historical `dev` → `alpha` squash diff as one new
+optimization patch. It therefore does not require aggregate danger-token
+accounting or cost-contract A/B evidence; those remain strict in the default
+working and `--mode=staged` modes.
+
 `semantic-preflight` is intentionally narrower than an optimization contract.
 Use it only where a semantic source-order inspection must occur before the
 engine can know whether planner work is needed. It must prove an exercised

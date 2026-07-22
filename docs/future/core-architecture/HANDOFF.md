@@ -1543,6 +1543,11 @@ The audit must stay split by ownership; changing the verifier base, running only
 staged mode, or assigning blanket `neutral-or-negative` contracts would hide the
 unreviewed cutover and is rejected.
 
+For an alpha release snapshot, `release:alpha:check` invokes the aggressive-cutting
+verifier with `--mode=release`. That mode keeps the registry, self-prosecution,
+and package-safety checks, while treating the full `dev` → `alpha` squash diff as
+historical aggregate and reporting it without re-prosecuting every old hunk.
+
 | Audit family | Current files | Existing behavior evidence | Required acceptance evidence |
 | --- | --- | --- | --- |
 | Cold exports, diagnostics, and CST-only API cleanup | `ast.ts`, `index.ts`, `value.ts`, `error/{codes,diagnostics}.ts`, CSS README/CST surfaces | package/API tests and public CST tests | Exact cold-path reachability plus a current package/API run; these are the only candidates for narrow neutral contracts. |

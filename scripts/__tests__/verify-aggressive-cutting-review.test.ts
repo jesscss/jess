@@ -47,6 +47,10 @@ describe('aggressive-cutting review scope', () => {
     ]);
   });
 
+  it('does not prosecute an aggregate branch diff during an alpha release snapshot', () => {
+    expect(scopedChangedPaths('release', snapshots)).toEqual([]);
+  });
+
   it('does not classify test fixtures as production hot-path files', () => {
     expect(isProductionHotPathFile('packages/core/src/ast/__tests__/factory.test.ts')).toBe(false);
     expect(isProductionHotPathFile('packages/core/src/ast/fixtures/large.less')).toBe(false);
