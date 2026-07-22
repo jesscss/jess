@@ -162,6 +162,18 @@ const recordExtendProfile = extendProfileCounters
 /** Selector surface accepted by the extend matcher (node or parser-delivered list array). */
 type ExtendSelectorSurface = Selector | SelectorListItem[];
 
+type ExtendSweepSink = (
+  target: ExtendSelectorSurface,
+  find: Selector,
+  extendWith: Selector,
+  partial: boolean,
+  oracleThunk: () => ExtendSelectorSurface | ExtendErrorType
+) => ExtendSelectorSurface | ExtendErrorType;
+
+function isExtendSweepSink(value: unknown): value is ExtendSweepSink {
+  return typeof value === 'function';
+}
+
 /**
  * Internal extend paths accept parser-delivered selector arrays, while the
  * recursive node APIs operate on a Selector. Materialize the array only at
@@ -1433,23 +1445,18 @@ export function extendSelector(
   // The own engine (which the sink runs) is pure w.r.t. its inputs, so the sink runs it FIRST on the
   // pristine nodes; the walk body then runs on those same still-pristine nodes and its result is fed
   // back to the sink to record the byte-for-byte comparison. Re-entrancy guarded via the BUSY flag.
-  const sweepGlobal = globalThis as {
-    __EXTEND_INDEX_SWEEP__?: (
-      t: ExtendSelectorSurface, f: Selector, e: Selector, p: boolean,
-      oracleThunk: () => ExtendSelectorSurface | ExtendErrorType
-    ) => ExtendSelectorSurface | ExtendErrorType;
-    __EXTEND_INDEX_SWEEP_BUSY__?: boolean;
-  };
-  const sweepSink = sweepGlobal.__EXTEND_INDEX_SWEEP__;
-  if (sweepSink && !sweepGlobal.__EXTEND_INDEX_SWEEP_BUSY__ && !skipAmpersandCheck && !hasMoreAfterIs) {
-    sweepGlobal.__EXTEND_INDEX_SWEEP_BUSY__ = true;
+  const sweepSinkValue = Reflect.get(globalThis, '__EXTEND_INDEX_SWEEP__');
+  const sweepBusy = Reflect.get(globalThis, '__EXTEND_INDEX_SWEEP_BUSY__') === true;
+  const sweepSink = isExtendSweepSink(sweepSinkValue) ? sweepSinkValue : undefined;
+  if (sweepSink && !sweepBusy && !skipAmpersandCheck && !hasMoreAfterIs) {
+    Reflect.set(globalThis, '__EXTEND_INDEX_SWEEP_BUSY__', true);
     try {
       // The sink runs the (pure) own engine on these pristine nodes FIRST, captures its string,
       // then invokes this thunk to run the real walk on the same nodes, and records the comparison.
       return sweepSink(target, find, extendWith, partial,
         () => extendSelector(target, find, extendWith, partial, skipAmpersandCheck, hasMoreAfterIs));
     } finally {
-      sweepGlobal.__EXTEND_INDEX_SWEEP_BUSY__ = false;
+      Reflect.set(globalThis, '__EXTEND_INDEX_SWEEP_BUSY__', false);
     }
   }
   if (partial && find.valueOf() === extendWith.valueOf()) {

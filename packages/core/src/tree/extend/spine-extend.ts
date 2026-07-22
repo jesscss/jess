@@ -2105,7 +2105,12 @@ export function wireSpineExtends(
             gatherStandaloneExtend(ext, path);
           }
           result = undefined;
-        } else if (isNode(child, N.AtRule) && isMediaScopeAtRule(child) && Array.isArray((child as { rules?: Node[] }).rules)) {
+        } else if (
+          isNode(child, N.AtRule)
+          && isMediaScopeAtRule(child)
+          && 'rules' in child
+          && Array.isArray(child.rules)
+        ) {
           // CONDITIONAL AT-RULE SCOPE (`@media`, `@supports`, `@container`). Descend into the body,
           // pushing THIS at-rule node onto the scope chain. Subjects and extend instructions gathered
           // inside are tagged with the snapshotted chain so the pipeline's scope-reachability filter
@@ -2117,9 +2122,11 @@ export function wireSpineExtends(
           // reachability is not a plain nesting-prefix relation) — the gate keeps those on eval.
           const saved = currentScope;
           currentScope = [...currentScope, child];
-          const descended = descendChildren((child as { rules: Node[] }).rules, path);
+          const descended = descendChildren(child.rules, path);
           if (isThenable(descended)) {
-            result = descended.then(() => { currentScope = saved; });
+            result = descended.then(() => {
+              currentScope = saved;
+            });
           } else {
             currentScope = saved;
             result = undefined;
@@ -2201,7 +2208,10 @@ export function wireSpineExtends(
               const next = idx + 1;
               return gathered.then(
                 () => stepSurface(next),
-                () => { rollback(); return undefined; }
+                () => {
+                  rollback();
+                  return undefined;
+                }
               );
             }
           }
@@ -2210,7 +2220,10 @@ export function wireSpineExtends(
         };
         return stepSurface(0);
       },
-      () => { rollback(); return undefined; }
+      () => {
+        rollback();
+        return undefined;
+      }
     );
   };
 
