@@ -208,7 +208,7 @@ describe('Less path resolution', () => {
     png.writeUInt32BE(9, 20);
     fs.writeFileSync(path.join(assetDir, 'icon.png'), png);
     const entryFile = path.join(projectDir, 'entry.less');
-    fs.writeFileSync(entryFile, '.asset { uri: data-uri("assets/note.txt"); size: image-size("assets/icon.png"); }');
+    fs.writeFileSync(entryFile, '.asset { uri: data-uri("assets/note.txt"); size: image-size("assets/icon.png"); width: image-width("assets/icon.png"); height: image-height("assets/icon.png"); }');
 
     let asyncResolverCalls = 0;
     const resolvedAssets = new Set<string>();
@@ -237,5 +237,7 @@ describe('Less path resolution', () => {
     expect(resolvedAssets).toEqual(new Set(['note.txt', 'icon.png']));
     expect(css).toContain('url("data:text/plain,hello%20world")');
     expect(css).toContain('17px 9px');
+    expect(css).toContain('width: 17px');
+    expect(css).toContain('height: 9px');
   });
 });

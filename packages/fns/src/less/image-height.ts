@@ -1,27 +1,21 @@
-import { defineFunction, Dimension, Node } from '@jesscss/core';
-import { readAsset } from '../util/file-resolution.js';
-import { getImageDimensions } from '../util/image-dimensions.js';
-import { serializeNodeValue } from '../util/serialize-node.js';
+import { defineFunction, makeDimension } from '@jesscss/core/value';
+import type { Fn, ValueObj } from '@jesscss/core/value';
+import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
+import { readImageDimensions } from './image-helper.js';
 
 /**
  * Less `image-height()` — the intrinsic height of an image file, in pixels.
- * @param filePathNode path to the image
- * @returns the height as a `px` `Dimension`
+ * The evaluator retains the raw typed argument group and injects file IO.
  */
-const imageHeight = defineFunction(
-  'image-height',
-  async function(this: any, filePathNode: Node) {
-    const rawPath = await serializeNodeValue(filePathNode, this.context);
-    const { contents } = await readAsset(this.context, rawPath);
-    const size = getImageDimensions(contents);
-    return new Dimension({ number: size.height, unit: 'px' });
-  },
-  {
-    params: [{
-      name: 'filePathNode',
-      type: Node
-    }]
+const imageHeight: Fn = defineFunction('image-height', {
+  params: [{ kinds: 'any' }],
+  variadic: true,
+  body: (value, ctx): MaybePromise<ValueObj> => {
+    const dimensions = readImageDimensions(value, ctx);
+    const finish = ({ height }: { height: number }): ValueObj => makeDimension(height, 'px');
+    return isThenable(dimensions) ? dimensions.then(finish) : finish(dimensions);
   }
-);
+});
 
+export { imageHeight };
 export default imageHeight;

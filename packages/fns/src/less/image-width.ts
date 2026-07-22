@@ -1,27 +1,21 @@
-import { defineFunction, Dimension, Node } from '@jesscss/core';
-import { readAsset } from '../util/file-resolution.js';
-import { getImageDimensions } from '../util/image-dimensions.js';
-import { serializeNodeValue } from '../util/serialize-node.js';
+import { defineFunction, makeDimension } from '@jesscss/core/value';
+import type { Fn, ValueObj } from '@jesscss/core/value';
+import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
+import { readImageDimensions } from './image-helper.js';
 
 /**
  * Less `image-width()` — the intrinsic width of an image file, in pixels.
- * @param filePathNode path to the image
- * @returns the width as a `px` `Dimension`
+ * The evaluator retains the raw typed argument group and injects file IO.
  */
-const imageWidth = defineFunction(
-  'image-width',
-  async function(this: any, filePathNode: Node) {
-    const rawPath = await serializeNodeValue(filePathNode, this.context);
-    const { contents } = await readAsset(this.context, rawPath);
-    const size = getImageDimensions(contents);
-    return new Dimension({ number: size.width, unit: 'px' });
-  },
-  {
-    params: [{
-      name: 'filePathNode',
-      type: Node
-    }]
+const imageWidth: Fn = defineFunction('image-width', {
+  params: [{ kinds: 'any' }],
+  variadic: true,
+  body: (value, ctx): MaybePromise<ValueObj> => {
+    const dimensions = readImageDimensions(value, ctx);
+    const finish = ({ width }: { width: number }): ValueObj => makeDimension(width, 'px');
+    return isThenable(dimensions) ? dimensions.then(finish) : finish(dimensions);
   }
-);
+});
 
+export { imageWidth };
 export default imageWidth;

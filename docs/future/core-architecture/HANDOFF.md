@@ -4569,3 +4569,50 @@ Aggressive-cutting review for this slice:
   repair. The batch records a fresh baseline but makes no speed or neutrality
   claim; its architectural outcome is one typed AST-v2 value/render path and
   fewer legacy tree-only surfaces.
+
+## Aggressive Cutting Self-Prosecution — Less image IO Fn cutover
+
+- Architecture surface: `image-size`, `image-width`, and `image-height` now
+  remain in their existing `packages/fns/src/less/` owners as typed, variadic
+  `Fn` callables. They receive one raw typed argument group and the existing
+  injected `FnCtx.io` capability; Context still owns resolve/locate/read policy.
+  No tree `Node`, `Context`, or tree `defineFunction` reaches a function body.
+- Separation/duplication: deleted the three duplicate `builtins/image-*.ts`
+  implementations and their `builtins/image-helper.ts`; `builtins/index.ts`
+  now registers the canonical Less owners directly, as it already does for
+  `data-uri`. The legacy Context/fs fallback `util/file-resolution.ts` had no
+  remaining production caller after this cut and is deleted. No registry,
+  proxy, alias, or second function ABI was added.
+- Cumulative node weight: three tree-wrapper function paths, four duplicated
+  builtins implementation files, and one legacy resolver utility are gone.
+  The retained canonical functions use value records only at their defined
+  result boundary; no tree classes remain in this image-function lane.
+- New traversal: `readImageDimensions` reads the already-selected first typed
+  argument with `groupItems(value)[0]`; it does not scan a source tree, parse
+  bytes, or resolve paths. Image header parsing is the existing bounded byte
+  reader after Context/plugin IO returns the bytes.
+- New node/materialization: `image-size` creates the required two scalar value
+  records in one raw array to represent authored space adjacency; width and
+  height each create one required scalar. No AST node, placement wrapper,
+  clone, output tree, or source metadata is created.
+- Render path: the function returns typed values to the existing evaluator;
+  the serializer emits them normally. Missing/unsupported assets still throw
+  from the selected callable, so the existing call-level `functionMode`
+  boundary determines preservation versus propagation.
+- Helper/API surface: one Less-local `readImageDimensions` helper replaces five
+  deleted legacy/duplicate files. Public exports remain callable `Fn` objects
+  with the same names and the evaluator-facing raw `List`/`FnCtx` contract.
+- Metadata mutations: none.
+- Evidence: before the edit, the legacy wrappers were run through
+  `callWithContext` against a temporary 17×9 PNG and emitted
+  `17px 9px | 17px | 9px`; rebuilt typed exports emitted exactly the same bytes.
+  The hermetic typed IO suite and the public Context path-resolution suite cover
+  dimensions, unreadable assets, raw `List`/`FnCtx` metadata, and plugin-backed
+  async asset resolution. This is a semantic-cutover proof, not a speed claim.
+- Review-flagged diff tokens: `[loop/traversal]` is the one selected first-item
+  read and existing bounded image-header parser; `[materialized array/object]`
+  is the semantic two-value raw result for `image-size`; `[node construction]`
+  is absent. No parser, source tree, resolver, or render output is walked or
+  reconstructed by the function layer.
+- Verdict: accepted in-place typed Fn conversion after the old and rebuilt
+  output oracle matched. Performance remains unmeasured.

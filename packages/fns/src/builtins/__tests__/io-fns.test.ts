@@ -10,9 +10,9 @@ import { describe, it, expect } from 'vitest';
 import { emitValue, isValueGroupArray, makeQuoted, makeList } from '@jesscss/core/value';
 import type { Fn, FnCtx, FnIo, List, ValueGroup } from '@jesscss/core/value';
 import dataUri from '../../less/data-uri.js';
-import { imageSize } from '../image-size.js';
-import { imageWidth } from '../image-width.js';
-import { imageHeight } from '../image-height.js';
+import { imageSize } from '../../less/image-size.js';
+import { imageWidth } from '../../less/image-width.js';
+import { imageHeight } from '../../less/image-height.js';
 
 /** Invoke the universal typed callable with its variadic argument list. */
 function call(fn: Fn, list: List, c: FnCtx): ValueGroup {
@@ -96,6 +96,14 @@ describe('data-uri', () => {
 
 describe('image-size / image-width / image-height', () => {
   const io = stubIo(file('img.png', pngHeader(640, 430)));
+
+  it('keeps the public callable Fn metadata and raw typed List contract', () => {
+    for (const fn of [imageSize, imageWidth, imageHeight]) {
+      expect(typeof fn).toBe('function');
+      expect(fn.variadic).toBe(true);
+      expect(fn.params).toEqual([{ kinds: 'any' }]);
+    }
+  });
 
   it('image-size → space list of px dimensions', () => {
     const result = call(imageSize, args('img.png'), ctx(io));
