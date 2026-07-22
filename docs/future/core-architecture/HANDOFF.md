@@ -4570,7 +4570,7 @@ Aggressive-cutting review for this slice:
   claim; its architectural outcome is one typed AST-v2 value/render path and
   fewer legacy tree-only surfaces.
 
-## Aggressive Cutting Self-Prosecution — Less image IO Fn cutover
+## Less image IO Fn cutover evidence
 
 - Architecture surface: `image-size`, `image-width`, and `image-height` now
   remain in their existing `packages/fns/src/less/` owners as typed, variadic
@@ -4617,7 +4617,7 @@ Aggressive-cutting review for this slice:
 - Verdict: accepted in-place typed Fn conversion after the old and rebuilt
   output oracle matched. Performance remains unmeasured.
 
-## Aggressive Cutting Self-Prosecution — Less format/replace Fn cutover
+## Less format/replace Fn cutover evidence
 
 - Architecture surface: `format`/`formatPercent` and `replace` now live in
   their existing `packages/fns/src/less/` owners as direct typed, variadic
