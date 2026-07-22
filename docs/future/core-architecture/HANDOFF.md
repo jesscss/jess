@@ -231,6 +231,11 @@ section is the authoritative full-scope companion to the compact task goal.
 - CLI ownership is explicit: only the external `less` package provides the
   Less-compatible `lessc` command. The `jess` package provides only `jess` and
   must not claim Less CLI compatibility through a second bin or alias.
+- Node support is a rolling policy, not a permanently pinned release number:
+  support the current LTS line and the prior three LTS lines. `engines.node:
+  >=18` is the current derived floor; it advances only when that four-line
+  window advances. The Jess CLI workflow exercises `current`, `lts/*`, and
+  `lts/-1` through `lts/-3`.
 - Context remains the one render/session/cache/diagnostic/plugin/import
   coordinator. Retain its plugin-based source, parser, module, path, and
   import dispatch topology while changing carried documents to `Stylesheet`;
@@ -263,12 +268,26 @@ section is the authoritative full-scope companion to the compact task goal.
 - The committed Less `alpha` branch is exactly `5.0.0-alpha.1`; its guarded
   release dry-run and release-guard unit tests pass. This proves the release
   shape only, not package readiness.
-- Local `lessc` preflight passes, but it resolves workspace-linked Jess
-  packages whose manifests are still `2.0.0-alpha.5`. It is therefore not
-  evidence for `jess@2.0.0-alpha.9` or the current Jess source tree.
-- The normal Less package test currently exits 6 with 49 fixture mismatches
-  and 54 incomplete-parse diagnostics. Those failures remain visible release
-  work; they must not be weakened, reclassified as passing parity, or hidden.
+- The external Less `alpha` tip is `48c7f5bb`, four committed but unpushed
+  changes ahead of `origin/alpha`: source-order collapsed-output fixtures
+  (`fbea7e3e`), the explicit `collapseNesting` / `lessc --collapse-nesting`
+  public route and its tests (`6ebb0784`), the packed-consumer verifier
+  (`0f78066e`), and the prepared `5.0.0-alpha.1` release notes and known
+  limitations (`48c7f5bb`). At that tip, `npm run test:lessc` and
+  `npm run verify:alpha:packed-consumer` pass. The latter packs a temporary
+  Less tarball with the 18-package local Jess alpha closure, rejects a Jess
+  `lessc` bin, and proves clean-install `lessc` file, stdin, import, and error
+  behavior. This is real built-artifact evidence; it does not publish.
+- The external Less worktree is now clean, but a guarded real release still
+  cannot start: local `alpha` is four commits ahead of `origin/alpha`, while
+  the release guard requires an exact remote match; `jess@2.0.0-alpha.9` is not
+  yet available from npm; and explicit owner authorization is still required.
+  The external `alpha` tip is currently zero commits behind `origin/master`.
+  After the local commits are pushed and Jess is registry-available, run the
+  registry-backed consumer proof in addition to the local-tarball proof; then
+  Less's own `prepublishOnly` runs typecheck, distribution build, and the built
+  `lessc` alpha test. Do not substitute a historical raw test-runner count for
+  those release gates.
 - Neither `jess@2.0.0-alpha.9` nor `less@5.0.0-alpha.1` is on npm. Do not
   publish Less until Jess alpha.9 is published, Less has been rebuilt/relinked
   against that exact package, and a publish-shaped clean-consumer install has
@@ -466,20 +485,27 @@ the newly generated parser artifacts.
 
 ### Current alpha.9 candidate evidence (2026-07-22; not authorized to publish)
 
-The final `dev` endpoint is `338801372`. The corrected alpha snapshot is
-`8bcc31516`, descends from that endpoint, retains the intended
-`2.0.0-alpha.9` manifests, and has a clean alpha worktree. Its full
-`pnpm run release:alpha:check` preflight passed with Parseman `0.29.0`,
-including the packed-consumer proof and its nested alpha.9 publish dry-run.
-The 18-package allowlist validates at `2.0.0-alpha.9`.
+The current local alpha snapshot is `dd70d6b2f`. It is a controlled two-tree
+refresh on the isolated `alpha` worktree, retaining the intended
+`2.0.0-alpha.9` package manifests rather than an ordinary merge or rebase of
+shared alpha history. The alpha worktree is clean. The recorded full
+`pnpm run release:alpha:check` run passed with Parseman `0.29.0`: release
+build, config syntax, 22 strict type configurations, production lint with no
+errors, Less-alpha route, direct Jess parser/plugin/Rollup tests, AST-v2
+ratchet, baseline, release-mode cutting review, the 18-package allowlist,
+packed consumer, and nested alpha.9 publish dry-run. The latter resolved
+`2.0.0-alpha.9` ahead of the published alpha.8 tag; it did not publish.
 
-Neither `alpha` nor any tag has been pushed and no package has been published
-from this candidate. **There is no publication authorization.** A later,
-explicit owner authorization is required before the full
-`pnpm run release:alpha` invocation, which re-resolves the registry candidate,
-repeats the preflight, then tags, pushes, and publishes. The external
+The current source and snapshot use the rolling Node-LTS policy above; the
+manifest's `>=18` is its present floor, not a promise to support only Node 18.
+Neither the local `alpha` commits nor any tag have been pushed, and no package
+has been published from this candidate. **There is no publication
+authorization.** A later explicit owner authorization is required before
+`pnpm run release:alpha`, which re-resolves the registry candidate, repeats
+preflight, then tags, pushes, and publishes. The external
 `less@5.0.0-alpha.1` release remains a separate future action after Jess
-alpha.9 is actually available from npm.
+alpha.9 is actually available from npm and the external Less candidate is
+clean and independently proven.
 
 ### Aggressive Cutting Self-Prosecution — release-state documentation
 
@@ -1919,7 +1945,7 @@ a phase attribution: the Compiler measurement also includes Context/plugin,
 document, evaluation, and rendering work. It does establish that direct parse
 is the dominant measured phase on this fixture.
 
-### Current direct Less baseline (verified 2026-07-22; no A/B claim)
+### Previous direct Less baseline (verified 2026-07-22; superseded for the direct-parse phase below; no A/B claim)
 
 The current built direct parser artifact is
 `packages/less-parser/lib/index.js`, 1,827,807 bytes, SHA-256
@@ -1943,6 +1969,33 @@ acceptance claim. The output/hash change from the older 122,390-byte anchor is
 first evidenced with the recursive Less parser argument repair (`212e132ea`),
 before the later strict-unit and Context-option wiring changes; no causal
 performance claim is made for those later changes.
+
+### Fresh generated-bundle direct Less baseline (2026-07-22; no causal claim)
+
+After rebuilding the current public Less parser with
+`pnpm --filter @jesscss/less-parser build`, two independent fresh Node
+processes timed `@jesscss/less-parser.parse(source)` directly. Each used the
+106,802-byte `packages/jess/benchmark/benchmark.less` fixture (SHA-256
+`abe392656c8a50e9d175c3b0e60415893a8eb7bfe9050518227391430d3a3d48`),
+20 untimed warmups, then three sequential 45-sample rounds. The parser call is
+the public complete-`Stylesheet` boundary and receives only its normal
+`{ trivia }` Parseman configuration; coverage and trace are not enabled.
+
+The rebuilt `packages/less-parser/lib/index.js` artifact is 1,912,512 bytes,
+SHA-256 `9cd513201d7778a0337e7df885f36de8ddf5a98aef1f77fc8874afb909a357b5`.
+On Node v24.11.1 / Darwin arm64 / Apple M4 Pro, the first process measured
+round medians of 31.763, 32.074, and 32.008 ms (round median **32.008 ms**);
+the independent process measured 31.889, 31.589, and 31.190 ms (round median
+**31.589 ms**). Both returned a 677-child `Stylesheet`; stable JSON is 946,987
+bytes, SHA-256 `8e3a371bd286ff2682ee08d56c451274a94b14203dbe8de68ad2057aa6cc13c3`.
+
+This supersedes the earlier 59–60 ms direct-parse snapshot as the current
+generated-artifact reference. It is not a causal A/B against that snapshot:
+the artifacts differ and the interval includes the Parseman 0.29 update plus
+multiple Less grammar/parser changes. In particular, it does not justify
+crediting any individual grammar change, nor does it establish an end-to-end
+Compiler result. A causal claim still requires the fixed-stage, one-change
+replay protocol described below.
 
 ### Independent Less timer-boundary audit (2026-07-22; no causal claim)
 
@@ -4516,3 +4569,50 @@ Aggressive-cutting review for this slice:
   repair. The batch records a fresh baseline but makes no speed or neutrality
   claim; its architectural outcome is one typed AST-v2 value/render path and
   fewer legacy tree-only surfaces.
+
+## Aggressive Cutting Self-Prosecution — Less image IO Fn cutover
+
+- Architecture surface: `image-size`, `image-width`, and `image-height` now
+  remain in their existing `packages/fns/src/less/` owners as typed, variadic
+  `Fn` callables. They receive one raw typed argument group and the existing
+  injected `FnCtx.io` capability; Context still owns resolve/locate/read policy.
+  No tree `Node`, `Context`, or tree `defineFunction` reaches a function body.
+- Separation/duplication: deleted the three duplicate `builtins/image-*.ts`
+  implementations and their `builtins/image-helper.ts`; `builtins/index.ts`
+  now registers the canonical Less owners directly, as it already does for
+  `data-uri`. The legacy Context/fs fallback `util/file-resolution.ts` had no
+  remaining production caller after this cut and is deleted. No registry,
+  proxy, alias, or second function ABI was added.
+- Cumulative node weight: three tree-wrapper function paths, four duplicated
+  builtins implementation files, and one legacy resolver utility are gone.
+  The retained canonical functions use value records only at their defined
+  result boundary; no tree classes remain in this image-function lane.
+- New traversal: `readImageDimensions` reads the already-selected first typed
+  argument with `groupItems(value)[0]`; it does not scan a source tree, parse
+  bytes, or resolve paths. Image header parsing is the existing bounded byte
+  reader after Context/plugin IO returns the bytes.
+- New node/materialization: `image-size` creates the required two scalar value
+  records in one raw array to represent authored space adjacency; width and
+  height each create one required scalar. No AST node, placement wrapper,
+  clone, output tree, or source metadata is created.
+- Render path: the function returns typed values to the existing evaluator;
+  the serializer emits them normally. Missing/unsupported assets still throw
+  from the selected callable, so the existing call-level `functionMode`
+  boundary determines preservation versus propagation.
+- Helper/API surface: one Less-local `readImageDimensions` helper replaces five
+  deleted legacy/duplicate files. Public exports remain callable `Fn` objects
+  with the same names and the evaluator-facing raw `List`/`FnCtx` contract.
+- Metadata mutations: none.
+- Evidence: before the edit, the legacy wrappers were run through
+  `callWithContext` against a temporary 17×9 PNG and emitted
+  `17px 9px | 17px | 9px`; rebuilt typed exports emitted exactly the same bytes.
+  The hermetic typed IO suite and the public Context path-resolution suite cover
+  dimensions, unreadable assets, raw `List`/`FnCtx` metadata, and plugin-backed
+  async asset resolution. This is a semantic-cutover proof, not a speed claim.
+- Review-flagged diff tokens: `[loop/traversal]` is the one selected first-item
+  read and existing bounded image-header parser; `[materialized array/object]`
+  is the semantic two-value raw result for `image-size`; `[node construction]`
+  is absent. No parser, source tree, resolver, or render output is walked or
+  reconstructed by the function layer.
+- Verdict: accepted in-place typed Fn conversion after the old and rebuilt
+  output oracle matched. Performance remains unmeasured.

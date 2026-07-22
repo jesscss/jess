@@ -156,9 +156,9 @@ or deferred.
    architecture is built for it, the optimization work is ongoing."* First-click
    cards point at **Getting Started** and the **Less-v5 reference**, not the
    `.jess` language.
-2. **Getting Started** — install (`npm install`, Node 18+ today; Jess verifies
-   the current Node LTS line and the prior three LTS lines, advancing that
-   minimum as the rolling window advances; pnpm only for repo dev), **CLI usage**: the distinct `jess` command, with familiar file,
+2. **Getting Started** — install (`npm install`; Jess supports the current Node
+   LTS line and the prior three LTS lines. The current derived floor is Node 18
+   and advances only with that rolling window; pnpm only for repo dev), **CLI usage**: the distinct `jess` command, with familiar file,
    stdin/stdout, and output-path ergonomics where Jess supports them, plus
    config. `lessc` is installed only by the external `less` package; Jess does
    not claim the Less CLI compatibility contract. **No programmatic API** (`Compiler.render`

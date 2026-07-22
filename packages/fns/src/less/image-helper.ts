@@ -9,21 +9,18 @@ export interface ImageSize {
 }
 
 /**
- * Read an image file's intrinsic pixel dimensions from its header (shared by
- * `image-size`/`image-width`/`image-height`). Resolves the first arg to a path via
- * the serialize hook (dropping any `#fragment`), reads the bytes through the
- * injected IO capability, and parses the format header (`../util/image-dimensions`).
- * Throws when IO is absent, the file is unreadable, or the format is unsupported —
- * the evaluator catches that and emits the call verbatim (graceful, never a crash).
+ * Read one image header through the typed function IO capability. Path
+ * resolution stays in Context; this function only turns the already-authored
+ * first argument into a specifier and parses returned bytes.
  */
 export function readImageDimensions(value: ValueGroup, ctx: FnCtx): MaybePromise<ImageSize> {
   const filePath = ctx.stringify(groupItems(value)[0]!).split('#')[0]!;
   const bytes = ctx.io?.readFile(filePath);
-  const finish = (value: Uint8Array | null): ImageSize => {
-    if (!value) {
+  const finish = (contents: Uint8Array | null): ImageSize => {
+    if (!contents) {
       throw new Error(`image file not found: ${filePath}`);
     }
-    return getImageDimensions(Buffer.from(value));
+    return getImageDimensions(Buffer.from(contents));
   };
   return bytes && isThenable(bytes) ? bytes.then(finish) : finish(bytes ?? null);
 }

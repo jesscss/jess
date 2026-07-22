@@ -112,9 +112,9 @@ import {
 import svgGradient from '../less/svg-gradient.js';
 // --- IO producers (Tier-C — read a referenced file via the injected `FnCtx.io`) ---
 import dataUri from '../less/data-uri.js';
-import { imageSize } from './image-size.js';
-import { imageWidth } from './image-width.js';
-import { imageHeight } from './image-height.js';
+import { imageSize } from '../less/image-size.js';
+import { imageWidth } from '../less/image-width.js';
+import { imageHeight } from '../less/image-height.js';
 // --- misc ---
 import { e } from './e.js';
 

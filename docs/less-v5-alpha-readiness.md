@@ -38,13 +38,14 @@ baseline only and never as a performance acceptance claim.
 - Source quality: the repository-wide production ESLint audit reports **0
   errors and 319 warnings**. The warnings are tracked lint debt; there is no
   current ESLint-error blocker.
-- Strict types: published `parseman@0.28.1` is consumed through real package
-  versions, and `pnpm run verify:types` passes **22/22** configurations after
-  the parser packages rebuild against it.
+- Strict types: the current local alpha candidate uses real published Parseman
+  packages and its recorded `pnpm run release:alpha:check` passes all **22**
+  strict type configurations. The current candidate evidence lives in
+  [`HANDOFF.md`](./future/core-architecture/HANDOFF.md#current-alpha9-candidate-evidence-2026-07-22-not-authorized-to-publish).
 - Alpha closure: `scripts/release/alpha-allowlist.json` contains **18
   allowlisted runtime packages**. `rollup-plugin-jess` is intentionally
   excluded because it depends on `jess` and is not part of the runtime closure.
-  The controlled alpha snapshot at `564b65615` passes the allowlist,
+  The controlled alpha snapshot at `dd70d6b2f` passes the allowlist,
   packed-consumer, and alpha.9 dry-run publish checks. It awaits explicit owner
   approval for the full `pnpm run release:alpha` command; it is not published.
 
@@ -58,12 +59,14 @@ choice investigation is the opt-in stable choice-arm trace design in
 
 ## External Less `5.0.0-alpha.1` package audit (2026-07-22)
 
-The sibling Less repository is on its `alpha` branch at `805c89e`, with the
-working tree carrying the v5 wrapper, CLI, publish-script, and test changes.
-Its package manifests are exactly `5.0.0-alpha.1`. The branch is not yet
-synchronized with `master`: `git rev-list --left-right --count alpha...master`
-reports `54` commits ahead and `30` behind. The alpha worktree is dirty, so do
-not merge that history mechanically or discard its uncommitted release work.
+The sibling Less repository is on its `alpha` branch at `48c7f5bb`, exactly
+`5.0.0-alpha.1` and clean. It is four committed changes ahead of `origin/alpha`
+and zero commits behind `origin/master`. Those commits establish
+source-order-preserving collapsed nesting, the explicit `collapseNesting` /
+`lessc --collapse-nesting` route, a local packed-consumer verifier, and the
+prepared alpha release notes with their known-limitations section. The release
+guard deliberately requires exact remote parity, so those reviewed commits must
+be pushed before a real publish attempt.
 
 The package itself packs successfully: `npm pack --dry-run --json` reports
 `less@5.0.0-alpha.1` (12 files, 38,651 unpacked bytes). The built artifact also
@@ -73,23 +76,25 @@ failure diagnostics. `less` is the sole public owner of `lessc`; the separate
 `jess` package exposes only its own `jess` command. The five
 publish-version/dependency-rewrite tests pass.
 
-A clean npm consumer cannot yet install the locally packed tarball: the local
-alpha manifest intentionally retains workspace `link:` dependencies, and npm
-fails with `EUNSUPPORTEDPROTOCOL` before installation. The alpha publish script
-requires an explicit `JESS_VERSION` (for example `2.0.0-alpha.9`) and temporarily
-rewrites the four Jess runtime dependencies to that exact registry version during
-`npm publish`, restoring the workspace-linked manifest afterward. Thus a real
-clean-consumer proof must wait until the corresponding Jess alpha artifacts are
-published; the helper test is not a substitute for that proof.
+The local packed-consumer proof now passes: it makes a temporary Less tarball,
+substitutes the local 18-package Jess alpha closure for the four development
+`link:` dependencies, and proves clean-install `lessc` file, stdin, import, and
+error behavior. It is deliberately a local closure proof, not the final
+registry-backed consumer proof. The alpha publish script requires
+`jess@2.0.0-alpha.9` to be available from npm and temporarily rewrites the four
+runtime dependencies during publish, restoring the workspace-linked manifest
+afterward. After Jess is published, the registry-backed proof must install that
+published package rather than local tarballs.
 
-The full Less node corpus is **not alpha-green**: `npm run test:node` exits `6`
-on this worktree, with failures spanning legacy plugin-global/registry and
-visitor assumptions, unsupported advanced parser fixtures, import/process-URL
-behavior, source-map artifacts, and other output divergences. These failures
-remain visible compatibility evidence; they must not be hidden or relabeled as
-passing behavior. Owner decision for this audit: **do not publish Less and do
-not change Jess `dev`**. Publication remains contingent on the controlled alpha
-workflow, the exact Jess dependency version, and the release gates above.
+The recorded full Less node-corpus audit is **not alpha-green**: it reported
+legacy plugin-global/registry and visitor assumptions, unsupported advanced
+parser fixtures, import/process-URL behavior, source-map artifacts, and other
+output divergences. These failures remain visible compatibility evidence; they
+must not be hidden or relabeled as passing behavior. The remaining release
+blockers are branch remote parity, a published `jess@2.0.0-alpha.9`, the
+registry-backed consumer proof, and explicit owner authorization. Publication
+remains contingent on the controlled alpha workflow, the exact Jess dependency
+version, and those release gates.
 
 With no Deno/plugin execution on `benchmark.less`, three repeated 8-run/3-warmup
 rounds measured Less alpha render medians of `99.44`, `98.56`, and `92.80` ms
