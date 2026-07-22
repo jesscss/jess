@@ -22,10 +22,10 @@ describe('declaration flat-array value spacing', () => {
       after: new Map([[11, r1], [17, r2]])
     });
     const tc = new TreeContext({ trivia });
-    const dim = any('2px', undefined, { start: 8, end: 11 }, tc);
+    const dim = any('2px', undefined, { start: 8, end: 11 });
     const white = color('white');
     setSourceSpan(white, { start: 18, end: 23 });
-    const d = decl({ name: 'border', value: [dim, 'solid', white] as any }, undefined, { start: 0, end: 23 }, tc);
+    const d = decl({ name: 'border', value: [dim, 'solid', white] }, undefined, { start: 0, end: 23 }, tc);
     const ctx = new Context();
     ctx.opts.trivia = trivia;
     expect(d.toString({ trivia })).toBe('border: 2px solid white');
@@ -41,10 +41,10 @@ describe('declaration flat-array value spacing', () => {
       after: new Map([[27, beforeBlack]])
     });
     const tc = new TreeContext({ trivia });
-    const dim = any('2px', undefined, { start: 8, end: 11 }, tc);
+    const dim = any('2px', undefined, { start: 8, end: 11 });
     const black = color('black');
     setSourceSpan(black, { start: 38, end: 43 });
-    const d = decl({ name: 'border', value: [dim, '\n          solid', black] as any }, undefined, { start: 0, end: 43 }, tc);
+    const d = decl({ name: 'border', value: [dim, '\n          solid', black] }, undefined, { start: 0, end: 43 }, tc);
     const ctx = new Context();
     ctx.opts.trivia = trivia;
     expect(d.toString({ trivia })).toBe('border: 2px\n          solid\n          black');
@@ -54,19 +54,19 @@ describe('declaration flat-array value spacing', () => {
     // `content: is "theme1"` — `is` is a bare string term, `"theme1"` a Quoted
     // Node. The merge guard must not drop the authored space before the quote.
     const q = quoted('theme1', { quote: '"' });
-    const d = decl({ name: 'content', value: ['is', q] as any });
+    const d = decl({ name: 'content', value: ['is', q] });
     expect(d.toTrimmedString()).toBe('content: is "theme1"');
   });
 
   it('keeps the space before a single-quoted term following a string fragment', () => {
     const q = quoted('theme1', { quote: '\'' });
-    const d = decl({ name: 'content', value: ['is not', q] as any });
-    expect(d.toTrimmedString()).toBe("content: is not 'theme1'");
+    const d = decl({ name: 'content', value: ['is not', q] });
+    expect(d.toTrimmedString()).toBe('content: is not \'theme1\'');
   });
 
   it('does not insert separators between verbatim string fragments', () => {
     // calc fragments carry their own whitespace; concatenate exactly.
-    const d = decl({ name: 'width', value: ['calc(', '100%', ' - ', '1px', ')'] as any });
+    const d = decl({ name: 'width', value: ['calc(', '100%', ' - ', '1px', ')'] });
     expect(d.toTrimmedString()).toBe('width: calc(100% - 1px)');
   });
 });

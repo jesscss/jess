@@ -48,11 +48,11 @@ describe('variable-call canonical AST emission', () => {
       variableDeclaration('a', dimension(1, 'px'), { mode: 'declare' }),
       mixinDef('.wrap', [{ name: 'ruleset' }], [
         variableDeclaration('a', keyword('hidden'), { mode: 'declare' }),
-        rule('.inner', [reference(variableReference('ruleset', 'scoped'), [{ type: 'Call', args: [] }], '@ruleset()')]),
+        rule('.inner', [reference(variableReference('ruleset', 'scoped'), [{ type: 'Call', args: [] }], '@ruleset()')])
       ]),
       rule('.entry', [
-        mixinCall('.wrap', [detachedRuleset([decl('width', variableReference('a', 'scoped'))])]),
-      ]),
+        mixinCall('.wrap', [detachedRuleset([decl('width', variableReference('a', 'scoped'))])])
+      ])
     ]);
 
     expect(render(document)).toBe('.entry .inner {\n  width: 1px;\n}\n');

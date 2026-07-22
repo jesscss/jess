@@ -9,7 +9,7 @@ import {
   varIndirect,
   reference,
   variableDeclaration,
-  variableReference,
+  variableReference
 } from '../nodes.js';
 
 describe('AST node contract', () => {
@@ -32,14 +32,14 @@ describe('AST node contract', () => {
     const enclosed: Node = generalEnclosed(
       'function',
       'selector',
-      interpolation([{ lit: '.card' }]),
+      interpolation([{ lit: '.card' }])
     );
 
     expect(enclosed).toEqual({
       type: 'GeneralEnclosed',
       form: 'function',
       name: 'selector',
-      content: { type: 'Interpolation', parts: [{ lit: '.card' }] },
+      content: { type: 'Interpolation', parts: [{ lit: '.card' }] }
     });
     expect(isNode(enclosed)).toBe(true);
   });
@@ -51,7 +51,7 @@ describe('AST node contract', () => {
       type: 'Reference',
       base: { type: 'VariableReference', name: 'content', lookup: 'scoped' },
       steps: [{ type: 'Call', args: [] }],
-      raw: '@content()',
+      raw: '@content()'
     });
     expect(isNode(call)).toBe(true);
   });
