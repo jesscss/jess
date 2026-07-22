@@ -1,4 +1,27 @@
 {
+  "provenance": {
+    "generatedAt": "2026-07-22T18:03:58.582Z",
+    "jessCommit": "393387594cbaf77ce42198cae4e56efeea3f9f2d",
+    "route": "src-path Vitest renderer in packages/jess/test/less/_corpus-slice.test.ts",
+    "configuration": {
+      "baseOutput": {
+        "collapseNesting": true
+      },
+      "fixtureConfig": "getTestCases() fixture-local config merged for each expected output"
+    },
+    "testData": {
+      "root": "/Users/matthew/git/oss/less.js/packages/test-data",
+      "commit": "805c89ea399ce88d180a32d1f79f724aafdf543e",
+      "scopedChanges": [
+        "M packages/test-data/package.json"
+      ]
+    },
+    "runner": {
+      "node": "v24.11.1",
+      "platform": "darwin",
+      "arch": "arm64"
+    }
+  },
   "render": [
     {
       "file": "tests-unit/whitespace/whitespace.less",
@@ -8,7 +31,8 @@
     {
       "file": "tests-unit/variables-in-at-rules/variables-in-at-rules.less",
       "kind": "render",
-      "outcome": "mismatch"
+      "outcome": "error",
+      "detail": "Less parse did not produce a complete Stylesheet document at offset 11."
     },
     {
       "file": "tests-unit/variables/variables.less",
@@ -53,7 +77,8 @@
     {
       "file": "tests-unit/property-name-interp/property-name-interp.less",
       "kind": "render",
-      "outcome": "mismatch"
+      "outcome": "error",
+      "detail": "Less parse did not produce a complete Stylesheet document at offset 37."
     },
     {
       "file": "tests-unit/property-accessors/property-accessors.less",
@@ -63,17 +88,20 @@
     {
       "file": "tests-unit/plugin-preeval/plugin-preeval.less",
       "kind": "render",
-      "outcome": "mismatch"
+      "outcome": "error",
+      "detail": "File not found: ../../plugin/plugin-preeval (from: /Users/matthew/git/oss/less.js/packages/test-data/tests-unit/plugin-preeval)"
     },
     {
       "file": "tests-unit/plugin-module/plugin-module.less",
       "kind": "render",
-      "outcome": "mismatch"
+      "outcome": "error",
+      "detail": "Less @plugin require(\"./lib/clean\") is not supported in the Deno sandbox yet."
     },
     {
       "file": "tests-unit/plugin/plugin.less",
       "kind": "render",
-      "outcome": "mismatch"
+      "outcome": "error",
+      "detail": "Less parse did not produce a complete Stylesheet document at offset 2606."
     },
     {
       "file": "tests-unit/plugi/plugi.less",
@@ -83,7 +111,8 @@
     {
       "file": "tests-unit/permissive-parse/permissive-parse.less",
       "kind": "render",
-      "outcome": "mismatch"
+      "outcome": "error",
+      "detail": "Less parse did not produce a complete Stylesheet document at offset 38."
     },
     {
       "file": "tests-unit/parser-slashed-combinator/parser-slashed-combinator.less",
@@ -128,7 +157,7 @@
     {
       "file": "tests-unit/namespace-targeted/namespace-targeted.less",
       "kind": "render",
-      "outcome": "mismatch"
+      "outcome": "pass"
     },
     {
       "file": "tests-unit/mixins-pattern/mixins-pattern.less",
@@ -148,7 +177,7 @@
     {
       "file": "tests-unit/mixins-interpolated/mixins-interpolated.less",
       "kind": "render",
-      "outcome": "mismatch"
+      "outcome": "pass"
     },
     {
       "file": "tests-unit/mixins-important/mixins-important.less",
@@ -203,22 +232,24 @@
     {
       "file": "tests-unit/layer/layer.less",
       "kind": "render",
-      "outcome": "mismatch"
+      "outcome": "pass"
     },
     {
       "file": "tests-unit/javascript-REMOVED/legacy/javascript.less",
       "kind": "render",
-      "outcome": "mismatch"
+      "outcome": "error",
+      "detail": "Less parse did not produce a complete Stylesheet document at offset 31."
     },
     {
       "file": "tests-unit/import/import.less",
       "kind": "render",
-      "outcome": "mismatch"
+      "outcome": "error",
+      "detail": "File not found: ../../plugin/plugin-simple (from: /Users/matthew/git/oss/less.js/packages/test-data/tests-unit/import)"
     },
     {
       "file": "tests-unit/import/import-remote.less",
       "kind": "render",
-      "outcome": "mismatch"
+      "outcome": "pass"
     },
     {
       "file": "tests-unit/import/import-reference.less",
@@ -228,12 +259,12 @@
     {
       "file": "tests-unit/import/import-reference-issues.less",
       "kind": "render",
-      "outcome": "mismatch"
+      "outcome": "pass"
     },
     {
       "file": "tests-unit/import/import-once.less",
       "kind": "render",
-      "outcome": "mismatch"
+      "outcome": "pass"
     },
     {
       "file": "tests-unit/import/import-module.less",
@@ -243,12 +274,12 @@
     {
       "file": "tests-unit/import/import-interpolation.less",
       "kind": "render",
-      "outcome": "mismatch"
+      "outcome": "pass"
     },
     {
       "file": "tests-unit/import/import-inline.less",
       "kind": "render",
-      "outcome": "mismatch"
+      "outcome": "pass"
     },
     {
       "file": "tests-unit/impor/impor.less",
@@ -258,7 +289,8 @@
     {
       "file": "tests-unit/ie-filters-REMOVED/legacy/ie-filters.less",
       "kind": "render",
-      "outcome": "mismatch"
+      "outcome": "error",
+      "detail": "Less parse did not produce a complete Stylesheet document at offset 33."
     },
     {
       "file": "tests-unit/functions-each/functions-each.less",
@@ -273,7 +305,8 @@
     {
       "file": "tests-unit/functions/legacy/functions.less",
       "kind": "render",
-      "outcome": "mismatch"
+      "outcome": "error",
+      "detail": "Less parse did not produce a complete Stylesheet document at offset 8790."
     },
     {
       "file": "tests-unit/extract-and-length/extract-and-length.less",
@@ -283,7 +316,7 @@
     {
       "file": "tests-unit/extend-selector/extend-selector.less",
       "kind": "render",
-      "outcome": "mismatch"
+      "outcome": "pass"
     },
     {
       "file": "tests-unit/extend-nest/extend-nest.less",
@@ -333,7 +366,7 @@
     {
       "file": "tests-unit/css-escapes/css-escapes.less",
       "kind": "render",
-      "outcome": "mismatch"
+      "outcome": "pass"
     },
     {
       "file": "tests-unit/css-3/css-3.less",
@@ -348,12 +381,12 @@
     {
       "file": "tests-unit/comments/comments2.less",
       "kind": "render",
-      "outcome": "mismatch"
+      "outcome": "pass"
     },
     {
       "file": "tests-unit/comments/comments.less",
       "kind": "render",
-      "outcome": "mismatch"
+      "outcome": "pass"
     },
     {
       "file": "tests-unit/color-functions/rgba.less",
@@ -363,7 +396,7 @@
     {
       "file": "tests-unit/color-functions/operations.less",
       "kind": "render",
-      "outcome": "pass"
+      "outcome": "mismatch"
     },
     {
       "file": "tests-unit/color-functions/modern.less",
@@ -403,7 +436,7 @@
     {
       "file": "tests-unit/calc/calc.less",
       "kind": "render",
-      "outcome": "mismatch"
+      "outcome": "pass"
     },
     {
       "file": "tests-unit/at-rules-targeted/at-rules-targeted.less",
@@ -453,17 +486,17 @@
     {
       "file": "tests-config/units/strict/strict-units.less",
       "kind": "render",
-      "outcome": "mismatch"
+      "outcome": "pass"
     },
     {
       "file": "tests-config/units/no-strict/no-strict.less",
       "kind": "render",
-      "outcome": "mismatch"
+      "outcome": "pass"
     },
     {
       "file": "tests-config/strict-imports/strict-imports.less",
       "kind": "render",
-      "outcome": "mismatch"
+      "outcome": "pass"
     },
     {
       "file": "tests-config/static-urls/urls.less",
@@ -498,22 +531,22 @@
     {
       "file": "tests-config/rootpath-rewrite-urls-local/rootpath-rewrite-urls-local.less",
       "kind": "render",
-      "outcome": "mismatch"
+      "outcome": "pass"
     },
     {
       "file": "tests-config/rootpath-rewrite-urls-all/rootpath-rewrite-urls-all.less",
       "kind": "render",
-      "outcome": "mismatch"
+      "outcome": "pass"
     },
     {
       "file": "tests-config/rewrite-urls-local/rewrite-urls-local.less",
       "kind": "render",
-      "outcome": "mismatch"
+      "outcome": "pass"
     },
     {
       "file": "tests-config/rewrite-urls-all/rewrite-urls-all.less",
       "kind": "render",
-      "outcome": "mismatch"
+      "outcome": "pass"
     },
     {
       "file": "tests-config/process-imports/google.less",
@@ -523,7 +556,8 @@
     {
       "file": "tests-config/preProcessorPlugin/preProcessor.less",
       "kind": "render",
-      "outcome": "mismatch"
+      "outcome": "error",
+      "detail": "Name not found"
     },
     {
       "file": "tests-config/postProcessorPlugin/postProcessor.less",
@@ -618,7 +652,8 @@
     {
       "file": "tests-config/filemanagerPlugin/filemanager.less",
       "kind": "render",
-      "outcome": "mismatch"
+      "outcome": "error",
+      "detail": "File not found: test.test (from: /Users/matthew/git/oss/less.js/packages/test-data/tests-config/filemanagerPlugin)"
     },
     {
       "file": "tests-config/debug/mediaquery/linenumbers-mediaquery.less",
@@ -638,7 +673,8 @@
     {
       "file": "tests-config/compression/compression.less",
       "kind": "render",
-      "outcome": "mismatch"
+      "outcome": "error",
+      "detail": "Less parse did not produce a complete Stylesheet document at offset 232."
     },
     {
       "file": "tests-config/at-rules-compressed-evaluation/at-rules-compressed-evaluation.less",
@@ -653,7 +689,8 @@
     {
       "file": "tests-config/3rd-party/bootstrap4.less",
       "kind": "render",
-      "outcome": "mismatch"
+      "outcome": "error",
+      "detail": "Direct Less function condition cannot preserve Interpolation."
     }
   ],
   "error": [
@@ -743,7 +780,8 @@
     {
       "file": "tests-error/parse/mixed-mixin-definition-args-2.less",
       "kind": "error",
-      "outcome": "accepted"
+      "outcome": "errored",
+      "detail": "Less parse did not produce a complete Stylesheet document at offset 50."
     },
     {
       "file": "tests-error/parse/mixed-mixin-definition-args-1.less",
@@ -867,7 +905,8 @@
     {
       "file": "tests-error/eval/root-func-undefined-2.less",
       "kind": "error",
-      "outcome": "accepted"
+      "outcome": "errored",
+      "detail": "Script path \"/Users/matthew/git/oss/less.js/packages/test-data/plugin/plugin-tree-nodes.js\" is outside jsReadRoot \"/Users/matthew/git/oss/less.js/packages/test-data/tests-error/eval\""
     },
     {
       "file": "tests-error/eval/root-func-undefined-1.less",
@@ -893,37 +932,43 @@
       "file": "tests-error/eval/property-interp-not-defined.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "variable @color is undefined"
+      "detail": "Name not found"
     },
     {
       "file": "tests-error/eval/property-in-root3.less",
       "kind": "error",
-      "outcome": "accepted"
+      "outcome": "errored",
+      "detail": "Properties must be inside selector blocks. They cannot be in the root"
     },
     {
       "file": "tests-error/eval/property-in-root2.less",
       "kind": "error",
-      "outcome": "accepted"
+      "outcome": "errored",
+      "detail": "Properties must be inside selector blocks. They cannot be in the root"
     },
     {
       "file": "tests-error/eval/property-in-root.less",
       "kind": "error",
-      "outcome": "accepted"
+      "outcome": "errored",
+      "detail": "Properties must be inside selector blocks. They cannot be in the root"
     },
     {
       "file": "tests-error/eval/plugin-3.less",
       "kind": "error",
-      "outcome": "accepted"
+      "outcome": "errored",
+      "detail": "File not found: plugin/plugin-error-3 (from: /Users/matthew/git/oss/less.js/packages/test-data/tests-error/eval)"
     },
     {
       "file": "tests-error/eval/plugin-2.less",
       "kind": "error",
-      "outcome": "accepted"
+      "outcome": "errored",
+      "detail": "File not found: plugin/plugin-error-2 (from: /Users/matthew/git/oss/less.js/packages/test-data/tests-error/eval)"
     },
     {
       "file": "tests-error/eval/plugin-1.less",
       "kind": "error",
-      "outcome": "accepted"
+      "outcome": "errored",
+      "detail": "File not found: plugin/plugin-error (from: /Users/matthew/git/oss/less.js/packages/test-data/tests-error/eval)"
     },
     {
       "file": "tests-error/eval/percentage-non-number-argument.less",
@@ -959,7 +1004,8 @@
     {
       "file": "tests-error/eval/multiply-mixed-units.less",
       "kind": "error",
-      "outcome": "accepted"
+      "outcome": "errored",
+      "detail": "Multiple units in dimension. Correct the units or use the unit function"
     },
     {
       "file": "tests-error/eval/multiple-guards-on-css-selectors2.less",
@@ -975,22 +1021,26 @@
     {
       "file": "tests-error/eval/mixins-guards-default-func-3.less",
       "kind": "error",
-      "outcome": "accepted"
+      "outcome": "errored",
+      "detail": "Ambiguous default() mixin guard"
     },
     {
       "file": "tests-error/eval/mixins-guards-default-func-2.less",
       "kind": "error",
-      "outcome": "accepted"
+      "outcome": "errored",
+      "detail": "Ambiguous default() mixin guard"
     },
     {
       "file": "tests-error/eval/mixins-guards-default-func-1.less",
       "kind": "error",
-      "outcome": "accepted"
+      "outcome": "errored",
+      "detail": "Ambiguous default() mixin guard"
     },
     {
       "file": "tests-error/eval/mixin-not-visible-in-scope-1.less",
       "kind": "error",
-      "outcome": "accepted"
+      "outcome": "errored",
+      "detail": "Name not found"
     },
     {
       "file": "tests-error/eval/mixin-not-matched2.less",
@@ -1005,7 +1055,8 @@
     {
       "file": "tests-error/eval/mixin-not-defined.less",
       "kind": "error",
-      "outcome": "accepted"
+      "outcome": "errored",
+      "detail": "Name not found"
     },
     {
       "file": "tests-error/eval/mixin-not-defined-2.less",
@@ -1022,7 +1073,8 @@
     {
       "file": "tests-error/eval/import-subfolder1.less",
       "kind": "error",
-      "outcome": "accepted"
+      "outcome": "errored",
+      "detail": "Name not found"
     },
     {
       "file": "tests-error/eval/import-missing.less",
@@ -1033,27 +1085,32 @@
     {
       "file": "tests-error/eval/functions-9-expression.less",
       "kind": "error",
-      "outcome": "accepted"
+      "outcome": "errored",
+      "detail": "File not found: ../../plugin/plugin-tree-nodes (from: /Users/matthew/git/oss/less.js/packages/test-data/tests-error/eval)"
     },
     {
       "file": "tests-error/eval/functions-8-element.less",
       "kind": "error",
-      "outcome": "accepted"
+      "outcome": "errored",
+      "detail": "File not found: ../../plugin/plugin-tree-nodes (from: /Users/matthew/git/oss/less.js/packages/test-data/tests-error/eval)"
     },
     {
       "file": "tests-error/eval/functions-7-dimension.less",
       "kind": "error",
-      "outcome": "accepted"
+      "outcome": "errored",
+      "detail": "File not found: ../../plugin/plugin-tree-nodes (from: /Users/matthew/git/oss/less.js/packages/test-data/tests-error/eval)"
     },
     {
       "file": "tests-error/eval/functions-6-condition.less",
       "kind": "error",
-      "outcome": "accepted"
+      "outcome": "errored",
+      "detail": "File not found: ../../plugin/plugin-tree-nodes (from: /Users/matthew/git/oss/less.js/packages/test-data/tests-error/eval)"
     },
     {
       "file": "tests-error/eval/functions-5-color.less",
       "kind": "error",
-      "outcome": "accepted"
+      "outcome": "errored",
+      "detail": "File not found: ../../plugin/plugin-tree-nodes (from: /Users/matthew/git/oss/less.js/packages/test-data/tests-error/eval)"
     },
     {
       "file": "tests-error/eval/functions-5-color-2.less",
@@ -1063,47 +1120,56 @@
     {
       "file": "tests-error/eval/functions-4-call.less",
       "kind": "error",
-      "outcome": "accepted"
+      "outcome": "errored",
+      "detail": "File not found: ../../plugin/plugin-tree-nodes (from: /Users/matthew/git/oss/less.js/packages/test-data/tests-error/eval)"
     },
     {
       "file": "tests-error/eval/functions-3-assignment.less",
       "kind": "error",
-      "outcome": "accepted"
+      "outcome": "errored",
+      "detail": "File not found: ../../plugin/plugin-tree-nodes (from: /Users/matthew/git/oss/less.js/packages/test-data/tests-error/eval)"
     },
     {
       "file": "tests-error/eval/functions-15-value.less",
       "kind": "error",
-      "outcome": "accepted"
+      "outcome": "errored",
+      "detail": "File not found: ../../plugin/plugin-tree-nodes (from: /Users/matthew/git/oss/less.js/packages/test-data/tests-error/eval)"
     },
     {
       "file": "tests-error/eval/functions-14-url.less",
       "kind": "error",
-      "outcome": "accepted"
+      "outcome": "errored",
+      "detail": "File not found: ../../plugin/plugin-tree-nodes (from: /Users/matthew/git/oss/less.js/packages/test-data/tests-error/eval)"
     },
     {
       "file": "tests-error/eval/functions-13-selector.less",
       "kind": "error",
-      "outcome": "accepted"
+      "outcome": "errored",
+      "detail": "File not found: ../../plugin/plugin-tree-nodes (from: /Users/matthew/git/oss/less.js/packages/test-data/tests-error/eval)"
     },
     {
       "file": "tests-error/eval/functions-12-quoted.less",
       "kind": "error",
-      "outcome": "accepted"
+      "outcome": "errored",
+      "detail": "File not found: ../../plugin/plugin-tree-nodes (from: /Users/matthew/git/oss/less.js/packages/test-data/tests-error/eval)"
     },
     {
       "file": "tests-error/eval/functions-11-operation.less",
       "kind": "error",
-      "outcome": "accepted"
+      "outcome": "errored",
+      "detail": "File not found: ../../plugin/plugin-tree-nodes (from: /Users/matthew/git/oss/less.js/packages/test-data/tests-error/eval)"
     },
     {
       "file": "tests-error/eval/functions-10-keyword.less",
       "kind": "error",
-      "outcome": "accepted"
+      "outcome": "errored",
+      "detail": "File not found: ../../plugin/plugin-tree-nodes (from: /Users/matthew/git/oss/less.js/packages/test-data/tests-error/eval)"
     },
     {
       "file": "tests-error/eval/functions-1.less",
       "kind": "error",
-      "outcome": "accepted"
+      "outcome": "errored",
+      "detail": "File not found: ../../plugin/plugin-tree-nodes (from: /Users/matthew/git/oss/less.js/packages/test-data/tests-error/eval)"
     },
     {
       "file": "tests-error/eval/extend-no-selector.less",
@@ -1114,7 +1180,8 @@
     {
       "file": "tests-error/eval/divide-mixed-units.less",
       "kind": "error",
-      "outcome": "accepted"
+      "outcome": "errored",
+      "detail": "Multiple units in dimension. Correct the units or use the unit function"
     },
     {
       "file": "tests-error/eval/detached-ruleset-5.less",
@@ -1124,23 +1191,26 @@
     {
       "file": "tests-error/eval/detached-ruleset-3.less",
       "kind": "error",
-      "outcome": "accepted"
+      "outcome": "errored",
+      "detail": "Properties must be inside selector blocks. They cannot be in the root"
     },
     {
       "file": "tests-error/eval/detached-ruleset-2.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Less parse did not produce a complete Stylesheet document at offset 17."
+      "detail": "Rulesets cannot be evaluated on a property"
     },
     {
       "file": "tests-error/eval/detached-ruleset-1.less",
       "kind": "error",
-      "outcome": "accepted"
+      "outcome": "errored",
+      "detail": "Rulesets cannot be evaluated on a property"
     },
     {
       "file": "tests-error/eval/css-guard-default-func.less",
       "kind": "error",
-      "outcome": "accepted"
+      "outcome": "errored",
+      "detail": "Invalid function call"
     },
     {
       "file": "tests-error/eval/color-func-invalid-color.less",
@@ -1156,22 +1226,25 @@
       "file": "tests-error/eval/at-rules-undefined-var.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "variable @name is undefined"
+      "detail": "Name not found"
     },
     {
       "file": "tests-error/eval/ampersand-merge-template-invalid.less",
       "kind": "error",
-      "outcome": "accepted"
+      "outcome": "errored",
+      "detail": "Comma-list value in a selector"
     },
     {
       "file": "tests-error/eval/add-mixed-units2.less",
       "kind": "error",
-      "outcome": "accepted"
+      "outcome": "errored",
+      "detail": "Incompatible units. Change the units or use the unit function. Bad units: 'px' and 'em'."
     },
     {
       "file": "tests-error/eval/add-mixed-units.less",
       "kind": "error",
-      "outcome": "accepted"
+      "outcome": "errored",
+      "detail": "Incompatible units. Change the units or use the unit function. Bad units: 'px' and 'em'."
     },
     {
       "file": "tests-error/eval/imports/import-test.less",
@@ -1181,12 +1254,14 @@
     {
       "file": "tests-error/eval/imports/import-subfolder1.less",
       "kind": "error",
-      "outcome": "accepted"
+      "outcome": "errored",
+      "detail": "Name not found"
     },
     {
       "file": "tests-error/eval/imports/subfolder/mixin-not-defined.less",
       "kind": "error",
-      "outcome": "accepted"
+      "outcome": "errored",
+      "detail": "Name not found"
     }
   ]
 }
