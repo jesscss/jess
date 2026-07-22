@@ -1219,10 +1219,22 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
     sequence(choice(g.DirectScssInterpolatedProperty, g.CssAstSyntaxProperty), literal(':'), g.DirectScssValue, optional(literal(';'))),
     children => decl(isInterpolation(children[0]) ? children[0] : requireToken(children[0]).value, requireValueSlot(children[2]), null, false)
   );
+  // Cheap zero-width gate so an ordinary declaration (`color: red;`) does not
+  // speculatively parse its full value as a nested-property own-value, fail the
+  // required block `{`, and backtrack a whole value re-parse before
+  // `DirectScssDeclaration` re-parses it. A nested property always opens a block
+  // `{` before the statement terminates; this single `not` fails (skipping the
+  // arm) only when a `;`/`}` is reachable through non-brace bytes first, i.e.
+  // the statement ends before any `{`. `[^{};]` halts at an interpolation's `{`
+  // too, so a `#{…}`-bearing declaration still enters (unchanged), and a real
+  // nested property is never skipped (its block or own-value `#{` `{` always
+  // precedes any terminator). Single `not` is a predicate — it emits no child,
+  // so the positional reducer below is unaffected.
+  const directNestedPropertyAhead = not(regex(/[^{};]*[;}]/));
   const DirectScssStaticNestedProperty = node<ScssNestedDeclarations>(
     'DirectScssStaticNestedProperty',
     choice(
-      sequence(choice(g.DirectScssInterpolatedProperty, g.CssAstSyntaxProperty), literal(':'), optional(g.DirectScssValue), literal('{'), many(g.DirectScssStaticNestedPropertyLeaf), literal('}'), optional(g.DirectScssImportant), optional(literal(';')))
+      sequence(directNestedPropertyAhead, choice(g.DirectScssInterpolatedProperty, g.CssAstSyntaxProperty), literal(':'), optional(g.DirectScssValue), literal('{'), many(g.DirectScssStaticNestedPropertyLeaf), literal('}'), optional(g.DirectScssImportant), optional(literal(';')))
     ),
     (children) => {
       const prefix = isInterpolation(children[0]) ? children[0] : requireToken(children[0]).value;
