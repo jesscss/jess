@@ -28,7 +28,7 @@ const MIME_BY_EXT = new Map<string, MimeInfo>([
   ['.svg', { type: 'image/svg+xml', ascii: true }],
   ['.txt', { type: 'text/plain', ascii: true }],
   ['.webp', { type: 'image/webp', ascii: false }],
-  ['.xml', { type: 'application/xml', ascii: true }],
+  ['.xml', { type: 'application/xml', ascii: true }]
 ]);
 
 /** Guess a file's `{ type, ascii }` from its extension; unknown → binary octet-stream. */

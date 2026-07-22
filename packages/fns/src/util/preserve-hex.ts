@@ -9,8 +9,12 @@ import { Color, ColorFormat } from '@jesscss/core';
  * `#55ff551a`).
  */
 export function preserveHexUnderAlpha(color: Color, inputNode: string | undefined): boolean {
-  if (color.options.format !== ColorFormat.HEX) return false;
-  if (inputNode === undefined || !inputNode.startsWith('#')) return false;
+  if (color.options.format !== ColorFormat.HEX) {
+    return false;
+  }
+  if (!inputNode?.startsWith('#')) {
+    return false;
+  }
   const hexDigits = inputNode.length - 1;
   return hexDigits === 4 || hexDigits === 8;
 }

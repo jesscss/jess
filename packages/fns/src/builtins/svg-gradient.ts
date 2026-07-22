@@ -41,10 +41,18 @@ export const svgGradient: Fn = defineFunction('svg-gradient', {
     let rectangleDimension = 'x="0" y="0" width="1" height="1"';
     let dirSvg: string;
     switch (direction) {
-      case 'to bottom': dirSvg = 'x1="0%" y1="0%" x2="0%" y2="100%"'; break;
-      case 'to right': dirSvg = 'x1="0%" y1="0%" x2="100%" y2="0%"'; break;
-      case 'to bottom right': dirSvg = 'x1="0%" y1="0%" x2="100%" y2="100%"'; break;
-      case 'to top right': dirSvg = 'x1="0%" y1="100%" x2="100%" y2="0%"'; break;
+      case 'to bottom':
+        dirSvg = 'x1="0%" y1="0%" x2="0%" y2="100%"';
+        break;
+      case 'to right':
+        dirSvg = 'x1="0%" y1="0%" x2="100%" y2="0%"';
+        break;
+      case 'to bottom right':
+        dirSvg = 'x1="0%" y1="0%" x2="100%" y2="100%"';
+        break;
+      case 'to top right':
+        dirSvg = 'x1="0%" y1="100%" x2="100%" y2="0%"';
+        break;
       case 'ellipse':
       case 'ellipse at center':
         gradientType = 'radial';
