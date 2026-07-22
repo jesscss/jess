@@ -4273,9 +4273,17 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
       return { selector: subject, extensions };
     }
   );
+  // Cheap superset lookahead so an ordinary `.foo { }` ruleset does not fully
+  // parse its selector as an extend subject, fail the required `:extend(`, and
+  // backtrack a whole selector re-parse. Skip this arm unless a `:extend(`
+  // actually precedes the next statement terminator/brace. Selector text never
+  // contains `{`, `}`, or `;`, so the predicate is a strict superset: a real
+  // inline extend is never skipped.
+  const directInlineExtendAhead = not(not(regex(/[^{};]*:extend\(/)));
   const DirectLessInlineExtendRule = node<Rule>(
     'DirectLessInlineExtendRule',
     sequence(
+      directInlineExtendAhead,
       // A selector list may carry an inline extend on more than one branch:
       // `.a:extend(.x), .b:extend(.y) {}`.  Keep every branch as a typed
       // fact so each instruction retains its own subject rather than folding
