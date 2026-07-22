@@ -2041,7 +2041,11 @@ silently choose one language’s policy.
   pretending arrays are nodes or requiring the full output emitter. The
   serializer now has one structural readonly-array guard for that public value
   union; map entries retain the truthful recursive/callable binding rather than
-  narrowing declaration values to scalar nodes.
+  narrowing declaration values to scalar nodes. Guard truth/comparison/call
+  operands and logical-function branches now carry the same canonical
+  `ValueSlot`, so authored adjacent arrays no longer fall through scalar-only
+  type assumptions. Reference steps narrow their typed call/index/member facts
+  before accessing the corresponding fields.
 - Separation/duplication: no second resolver or array-flattening policy was
   added. Existing core `evalBytes` remains the only byte-resolution owner.
 - Cumulative node weight: unchanged.
@@ -2055,28 +2059,38 @@ silently choose one language’s policy.
   [materialized array/object] A recognized calc slash group copies its shallow
   readonly slot into the pre-existing temporary `SpacedValue`; no-slash and
   nested-array inputs allocate nothing in this recognizer.
-- Render path: unchanged direct emission; this pass only makes the existing
-  evaluator input type truthful.
+- Render path: unchanged direct emission. Scalar guard/logical behavior is
+  identical; recursive slots now use the existing `evalTypedSlot` and
+  `evalValueSlot` owners instead of being misclassified as scalar nodes.
 - Helper/API surface: two file-private structural type guards centralize the
-  existing node-vs-readonly-array and value-vs-mixin-call checks. No public API
-  was added or changed.
+  existing node-vs-readonly-array and value-vs-mixin-call checks. The already
+  public `GuardNode` operand fields widen compatibly from `ValueNode` to the
+  canonical `ValueSlot`; no new operation, alias, or alternate guard API is
+  introduced.
 - Metadata mutations: none.
 - Review-flagged diff tokens: [side map/set] is the pre-existing lazy
   `selectedMixinEvents` map with its already-declared generic type made explicit;
   no second map or lookup was added. [materialized array/object] appears only in
-  type annotations for that existing map and `bindDirect`'s existing input/output
-  arrays; the pass adds no array or object allocation. The new `type` checks
-  distinguish a typed node from a recursive slot array before reading the
-  discriminant; they allocate nothing and add no scan.
+  type annotations for that existing map, `bindDirect`'s existing input/output
+  arrays, and the widened guard-call operand type; the pass adds no array or
+  object allocation. [loop/traversal] The existing variable-alias chain now
+  checks that its current binding is scalar before reading its discriminant; it
+  adds no iteration. [parent/source mutation] The three `source` matches are
+  read-only diagnostic-source narrowing before `lineColAt`; no source, parent,
+  node, or provenance state is mutated. The new `type` checks distinguish a
+  typed node from a recursive slot array before reading the discriminant; they
+  allocate nothing and add no scan.
 - Behavior evidence: the focused core tests prove recursive authored and
   default mixin arguments; import, selected-mixin, and direct-function suites
   pass 101/101; the complete core suite passes; and the public Less parser suite
   passes 269/269. Detached ruleset, property access, and ruleset-guard coverage
-  adds 36/36 focused passing cases.
+  adds 36/36 focused passing cases. The guard suite directly proves that one
+  recursive slot reaches the typed truth resolver as one operand.
 - Build evidence: core package build and `verify:package-exports` pass. Strict
   core source diagnostics fall from 339 to 241 without suppression; this
   serializer slice moves the source count from 310 to 241 and the full core
-  config from 710 to 641.
+  config from 710 to 641. The current guard/logical/reference slice moves core
+  source diagnostics from 241 to 204 and the full core config from 641 to 605.
 - Boundary evidence: the Less public parser suite passes after rebuilding core,
   and package export verification confirms the entrypoint remains valid.
 - Evidence: focused and full behavior, build, export, and strict-type evidence
@@ -2088,10 +2102,10 @@ silently choose one language’s policy.
     "verdict":"accepted",
     "performanceClaim":"none",
     "owner":"the seven canonical AST-v2 evaluator/value owners listed by ast-semantic-runtime-cutover",
-    "why":"The mixin resolver now admits the recursive ValueSlot contract that its existing evalBytes callee already owns. Context import narrowing, selected-event map inference, optional direct inputs, detached/property/value bindings, ruleset guard context, serializer narrowing, and recursive map-entry values make existing canonical runtime contracts explicit; none creates a new resolver, evaluator, or output policy.",
-    "dangerTokensJustification":"The discriminant checks prevent arrays from being treated as nodes, while recursive byte work remains in the existing evalBytes path. [loop/traversal] The calc slash recognizer validates shallow parts without allocation before its rare recognized-slash copy. [materialized array/object] Only that recognized slash group copies into the existing scalar-part temporary SpacedValue; ordinary arrays allocate nothing. Capturing an already-loaded Stylesheet and typing existing maps/optional slots add no node, side table, fallback call, or output buffer, and this record makes no neutrality or speed claim.",
+    "why":"The mixin resolver now admits the recursive ValueSlot contract that its existing evalBytes callee already owns. Context import narrowing, selected-event map inference, optional direct inputs, detached/property/value bindings, ruleset guard context, serializer narrowing, recursive map-entry values, and guard/logical/reference operands make existing canonical runtime contracts explicit; none creates a new resolver, evaluator, or output policy.",
+    "dangerTokensJustification":"The discriminant checks prevent arrays from being treated as nodes, while recursive byte work remains in the existing evalBytes path. [loop/traversal] The calc slash recognizer validates shallow parts without allocation before its rare recognized-slash copy; the existing alias-chain loop only gains a scalar guard. [materialized array/object] Only that recognized slash group copies into the existing scalar-part temporary SpacedValue; the guard-call array match is a type annotation and ordinary arrays allocate nothing. [parent/source mutation] Diagnostic source variables are only narrowed for read-only line lookup; no source or parent state changes. Capturing an already-loaded Stylesheet and typing existing maps/optional slots add no node, side table, fallback call, or output buffer, and this record makes no neutrality or speed claim.",
     "cases":["ValueSlot-array-evaluation-and-authored-layout","List-value-separator-and-Block-delimiter-facts","reference-index-and-For-array-access","Less-lazy-color-call-demand-boundary","defineFunction-typed-positional-named-and-lazy-binding","mixin-dispatch-ValueSlot-argument-resolution","ValueLayout-provenance-side-table","preserve-mode-calc-result-composition"],
-    "behaviorEvidence":"The complete core suite and the public Less parser suite pass; focused recursive arguments, imports, selected mixins, and direct-function cases pass.",
+    "behaviorEvidence":"The complete core suite and the public Less parser suite pass; focused recursive arguments, imports, selected mixins, direct-function, value-access, and recursive guard truth cases pass.",
     "buildEvidence":"The core package build and package-export verification pass after the resolver contract correction.",
     "baseline":{"fixture":"benchmark.less","phase":"render","currentMedianMs":85.86,"parseRenderMedianMs":68.38,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}
   }]

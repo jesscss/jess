@@ -1581,7 +1581,9 @@ function unresolvedSymbol(node: object, symbol: string, e: EvalCtx): never {
   const file = e.context?.sourceContext?.file;
   const source = file?.source;
   const span = source === undefined ? undefined : sourceSpanOf(node);
-  const location = span === undefined ? undefined : lineColAt(source, span.start);
+  const location = source === undefined || span === undefined
+    ? undefined
+    : lineColAt(source, span.start);
   throw ERR.nameNotFound({
     node,
     filePath: file?.fullPath,
@@ -1632,8 +1634,8 @@ function makeResolver(frame: Frame | null, e: EvalCtx): ValueResolver {
  * (guard leaves compare typed values / call type-fns). Sync for the same reason.
  */
 function makeTypedResolver(frame: Frame | null, e: EvalCtx): TypedResolver {
-  return (v: ValueNode) => {
-    const val = evalTyped(v, frame, e);
+  return (v: ValueSlot) => {
+    const val = evalTypedSlot(v, frame, e);
     if (isThenable(val)) {
       throw new Error('async value in a synchronous guard position');
     }
@@ -2122,8 +2124,8 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
         // Fallback: un-evaluated, variable-resolved source assembly (no math).
         const l = evalValue(node.left, frame, e);
         const r = evalValue(node.right, frame, e);
-        return combineAll([l, r], ([lv, rv]) =>
-          literal(`${emitValue(lv)} ${node.operator} ${emitValue(rv)}`)
+        return combineAll([l, r], values =>
+          literal(`${emitValue(values[0]!)} ${node.operator} ${emitValue(values[1]!)}`)
         );
       }
       const mathMode = e.modes.mathMode ?? 'parens-division';
@@ -2134,7 +2136,9 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
       if (!shouldOperate) {
         const l = evalValue(node.left, frame, e);
         const r = evalValue(node.right, frame, e);
-        return combineAll([l, r], ([lv, rv]) => literal(`${emitValue(lv)} ${node.operator} ${emitValue(rv)}`));
+        return combineAll([l, r], values =>
+          literal(`${emitValue(values[0]!)} ${node.operator} ${emitValue(values[1]!)}`)
+        );
       }
       const ev = e.ev;
       // Operands are materialized TYPED (tag sourced from the parse), not re-sniffed.
@@ -2142,7 +2146,7 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
       const r = evalTyped(node.right, frame, e);
       // Inside `calc(…)`, flag the modes so cross-unit math preserves (guard 3).
       const m: EvalModes = (e.calcDepth ?? 0) > 0 ? { ...e.modes, inCalc: true } : e.modes;
-      return combineAll([l, r], ([lv, rv]) => ev.operate(node.operator, lv, rv, m));
+      return combineAll([l, r], values => ev.operate(node.operator, values[0]!, values[1]!, m));
     }
     case 'FunctionCall':
       return evalCall(node, frame, e, false);
@@ -2375,10 +2379,13 @@ function evalToDeclMap(statements: Statement[], frame: Frame | null, e: EvalCtx)
 
 /** Resolve a map/namespace accessor's base to a declaration map + its frame. */
 function resolveBaseDeclMap(
-  base: ValueNode | MixinCall,
+  base: Binding,
   frame: Frame | null,
   e: EvalCtx
 ): DeclMap | null {
+  if (isValueSlotArray(base)) {
+    return null;
+  }
   if (base.type === 'Reference') {
     const resolved = resolveReferenceResult(base, frame, e);
     return resolved === null ? null : resolveBaseDeclMap(resolved.value, resolved.frame, e);
@@ -2426,7 +2433,7 @@ function resolveBaseDeclMap(
   // `each(.mixin(), …)` iterable uses — `forItemsFromMixinCall`).
   if (base.type === 'VariableReference' && frame) {
     const bound = lookupVar(frame, base.name);
-    if (bound?.type === 'MixinCall') {
+    if (bound && isMixinCallValue(bound)) {
       return declMapFromMixinCall(bound, frame, e);
     }
   }
@@ -2500,12 +2507,12 @@ function resolveReferenceResult(
   }
   for (const step of node.steps) {
     if (step.type === 'Call') {
-      if (value.type === 'MixinCall') {
+      if (isMixinCallValue(value)) {
         value = step.args.length === 0 ? value : { ...value, args: step.args };
       }
       continue;
     }
-    if (step.type === 'BracketLookup' && step.keyKind === 'index'
+    if (step.type === 'BracketLookup' && step.keyKind === 'index' && typeof step.key === 'number'
       && (isValueSlotArray(value) || (!isValueSlotArray(value) && (value.type === 'List' || value.type === 'SpacedValue')))) {
       const items = isValueSlotArray(value)
         ? value
@@ -2535,7 +2542,7 @@ function resolveReferenceResult(
         throw new Error(`Ambiguous reference member: ${step.name}`);
       }
       matched = prop ?? variable;
-    } else if (step.keyKind !== 'index') {
+    } else if (step.keyKind !== 'index' && typeof step.key !== 'number') {
       // `[@name]` names a variable member of the evaluated map/call result.
       // In particular, a mixin-call base must resolve `[@return]` from every
       // selected callee frame, rather than evaluating `@return` in the caller.
@@ -2583,7 +2590,10 @@ function resolveReferenceResult(
         }
       }
     } else {
-      const idx = step.key as number;
+      if (typeof step.key !== 'number') {
+        return null;
+      }
+      const idx = step.key;
       const i = idx < 0 ? map.list.length + idx : idx - 1;
       matched = map.list[i] ?? (idx === -1 && map.list.length === 0 ? lastVarMember(map, e) : undefined);
     }
@@ -2622,7 +2632,7 @@ function evalReference(node: Reference, frame: Frame | null, e: EvalCtx): MaybeP
 function resolveBindingNode(node: Binding, frame: Frame | null): Binding | undefined {
   let cur: Binding | undefined = node;
   const seen = new Set<Binding>();
-  while (cur?.type === 'VariableReference') {
+  while (cur !== undefined && !isValueSlotArray(cur) && cur.type === 'VariableReference') {
     if (seen.has(cur)) {
       return undefined;
     } // cyclic
@@ -2647,12 +2657,16 @@ function evalIntrospection(node: FunctionCall, frame: Frame | null): Value | und
   if (node.name === 'isdefined') {
     // Defined iff the single argument resolves to a bound value. A non-`VariableReference`
     // argument (a literal / call) is inherently defined.
-    const bound = arg.type === 'VariableReference' ? resolveBindingNode(arg, frame) : arg;
+    const bound = !isValueSlotArray(arg) && arg.type === 'VariableReference'
+      ? resolveBindingNode(arg, frame)
+      : arg;
     return literal(bound !== undefined ? 'true' : 'false');
   }
   if (node.name === 'isruleset') {
     const bound = resolveBindingNode(arg, frame);
-    return literal(bound?.type === 'DetachedRuleset' ? 'true' : 'false');
+    return literal(bound !== undefined && !isValueSlotArray(bound) && bound.type === 'DetachedRuleset'
+      ? 'true'
+      : 'false');
   }
   return undefined;
 }
@@ -2681,7 +2695,7 @@ function isIntegerString(s: string): boolean {
  */
 function evalCalc(node: FunctionCall, frame: Frame | null, e: EvalCtx): MaybePromise<Value> {
   const ce: EvalCtx = { ...e, calcDepth: (e.calcDepth ?? 0) + 1 };
-  return mapMaybe(evalTyped(node.args[0]!, frame, ce), (v) => {
+  return mapMaybe(evalTypedSlot(node.args[0]!, frame, ce), (v) => {
     if (v.type === 'Keyword') {
       return calcInner(v.bytes) !== null ? v : makeKeyword(`calc(${v.bytes})`);
     }
@@ -2750,8 +2764,10 @@ function guardDeps(frame: Frame | null, e: EvalCtx): {
 /** The `GuardNode` an argument of a logical fn contributes: a structured
  *  `Condition` carries its own guard tree; any other value is a bare TRUTH test
  *  (`if((iscolor(@x)), …)`, `if(true, …)`) — the same rule a bare guard value uses. */
-function condGuard(node: ValueNode): GuardNode {
-  return node.type === 'Condition' ? node.guard : { g: 'truth', value: node };
+function condGuard(node: ValueSlot): GuardNode {
+  return !isValueSlotArray(node) && node.type === 'Condition'
+    ? node.guard
+    : { g: 'truth', value: node };
 }
 
 /** The Less logical / conditional fns whose argument is a boolean CONDITION (a
@@ -2763,11 +2779,11 @@ const LOGICAL_FNS = new Set(['if', 'boolean', 'not', 'and', 'or']);
  *  LAZY — only the taken branch folds; an absent else is empty bytes. */
 function evalLogical(name: string, node: FunctionCall, frame: Frame | null, e: EvalCtx): MaybePromise<Value> {
   const deps = guardDeps(frame, e);
-  const truthOf = (a: ValueNode | undefined): boolean => a !== undefined && evalGuard(condGuard(a), deps);
+  const truthOf = (a: ValueSlot | undefined): boolean => a !== undefined && evalGuard(condGuard(a), deps);
   switch (name) {
     case 'if': {
       const branch = truthOf(node.args[0]) ? node.args[1] : node.args[2];
-      return branch === undefined ? literal('') : evalValue(branch, frame, e);
+      return branch === undefined ? literal('') : evalValueSlot(branch, frame, e);
     }
     case 'not': return makeBool(!truthOf(node.args[0]));
     case 'and': return makeBool(node.args.every(a => evalGuard(condGuard(a), deps)));
@@ -2846,7 +2862,9 @@ function evalCall(
         const file = e.context?.sourceContext?.file;
         const source = file?.source;
         const span = source === undefined ? undefined : sourceSpanOf(node);
-        const location = span === undefined ? undefined : lineColAt(source, span.start);
+        const location = source === undefined || span === undefined
+          ? undefined
+          : lineColAt(source, span.start);
         e.context?.warn(WARN.unresolvedFunction({
           node,
           filePath: file?.fullPath,
@@ -2873,7 +2891,9 @@ function invalidFunctionCall(node: FunctionCall, error: unknown, e: EvalCtx): ne
   const file = e.context?.sourceContext?.file;
   const source = file?.source;
   const span = source === undefined ? undefined : sourceSpanOf(node);
-  const location = span === undefined ? undefined : lineColAt(source, span.start);
+  const location = source === undefined || span === undefined
+    ? undefined
+    : lineColAt(source, span.start);
   throw ERR.invalidFunction({
     node,
     filePath: file?.fullPath,
@@ -2991,6 +3011,9 @@ function refGroupInterp(ref: ValueNode, frame: Frame | null, e: EvalCtx): GroupI
     return null;
   }
   const bound = hit.value;
+  if (isValueSlotArray(bound)) {
+    return null;
+  }
   if (bound.type === 'SelectorCapture') {
     const branches = bound.branches.slice();
     return { branches, multi: branches.length > 1, capture: true };
