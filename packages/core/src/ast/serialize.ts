@@ -46,6 +46,7 @@ import type {
   Any,
   Apply,
   Color,
+  Comment,
   ComplexSelector,
   CompoundSelector,
   Declaration,
@@ -76,7 +77,8 @@ import type {
   ValueNode,
   ValueSlot,
   VarIndirect,
-  VariableDeclaration
+  VariableDeclaration,
+  VariableReference
 } from './nodes.js';
 // [atrule] block + statement at-rule node types
 import type { AtRuleBlock, AtRuleStatement, ImportAtRule, OpaqueAtRuleBlock, Plugin } from './at-rule.js';
@@ -268,10 +270,11 @@ function importThroughContext(context: Context): NonNullable<SerializeOptions['i
     if (loaded.node?.type !== 'Stylesheet') {
       return undefined;
     }
+    const document = loaded.node;
     return {
-      document: loaded.node,
+      document,
       key: loaded.resolvedPath,
-      withinDocument: emit => context.withDocument(loaded.node, emit)
+      withinDocument: emit => context.withDocument(document, emit)
     };
   };
 }
@@ -884,7 +887,7 @@ function publishSelectedMixinDefinition(frame: Frame, definition: MixinDef): voi
   if (!selected || !meta.selectedPath.every(path => selected.get(path.node) === path.body)) {
     return;
   }
-  const events = frame.selectedMixinEvents ??= new Map();
+  const events = frame.selectedMixinEvents ??= new Map<string, OrderedMixinCandidate[]>();
   const list = events.get(definition.name);
   if (list?.some(candidate => candidate.definition === definition)) {
     return;

@@ -89,7 +89,7 @@ function checkedLazy<K extends ParamSpec['kinds']>(
   };
 }
 
-function bindDirect(name: string, params: readonly NamedParam[], inputs: readonly DirectInput[]): unknown[] {
+function bindDirect(name: string, params: readonly NamedParam[], inputs: readonly (DirectInput | undefined)[]): unknown[] {
   const out: unknown[] = [];
   let offset = 0;
   for (let index = 0; index < params.length; index++) {
