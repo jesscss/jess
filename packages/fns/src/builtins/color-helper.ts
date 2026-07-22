@@ -9,7 +9,7 @@
 import { HEX, RGB, colorHsl, colorRawRgb, colorRgbRounded, makeColorHsl, makeColorRgb, round, serializeColor, textOf, type Color, type Dimension, type ValueObj } from '@jesscss/core/value';
 import { clamp01 } from './color-ctor-helper.js';
 
-function requireColor(value: ValueObj): Color {
+export function requireColor(value: ValueObj): Color {
   if (value.type !== 'Color') {
     throw new TypeError('Expected a color value.');
   }
