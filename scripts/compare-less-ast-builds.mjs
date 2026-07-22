@@ -1,30 +1,40 @@
 #!/usr/bin/env node
 
 /**
- * Compare two built direct-Less AST parser artifacts.
+ * Reproducibly compare two direct-Less AST parser commits.
  *
- * This intentionally does not construct Context, load plugins, call getTree(),
- * or invoke a legacy tree render method. Each side imports exactly the built
- * public parser and AST serializer from the supplied checkout, then records
- * parse-only and parse-plus-direct-serialize timings on interleaved samples.
+ * This is deliberately a commit-replay tool, not a "point at two worktrees"
+ * tool. It archives each commit into the same disposable directory, builds it
+ * there twice, and only then measures its retained bundle. That gives both
+ * builds the same absolute source path and module-resolution topology, so an
+ * emitted path-dependent identifier cannot masquerade as a parser delta.
  */
 
 import { createHash } from 'node:crypto';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
+import os from 'node:os';
 import { performance } from 'node:perf_hooks';
 import path from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const stageMarker = 'jess-less-ast-compare-stage-v1\n';
+const stageName = 'jess-less-ast-compare-stage';
+const allowedChangedFiles = new Set([
+  'docs/future/core-architecture/PERF_IDEAS.md',
+  'packages/less-parser/src/ast/grammar.ts'
+]);
 
 function usage(message) {
   if (message) {
     console.error(`Error: ${message}`);
   }
-  console.error('Usage: node scripts/compare-less-ast-builds.mjs --before-root <checkout> --after-root <checkout> --fixture <less-file> [--warmup N] [--pairs N] [--json]');
+  console.error('Usage: node scripts/compare-less-ast-builds.mjs --before <commit> --after <commit> --fixture <repo-relative-less-file> [--stage-root <tmp-dir>] [--warmup N] [--pairs N] [--json]');
   process.exitCode = 1;
 }
 
-function readPositiveInteger(value, flag) {
+function readNonNegativeInteger(value, flag) {
   const number = Number(value);
   if (!Number.isInteger(number) || number < 0) {
     throw new TypeError(`${flag} must be a non-negative integer`);
@@ -33,38 +43,41 @@ function readPositiveInteger(value, flag) {
 }
 
 function parseArgs(argv) {
-  const options = { warmup: 20, pairs: 45, json: false };
+  const options = {
+    warmup: 20,
+    pairs: 45,
+    json: false,
+    stageRoot: path.join(os.tmpdir(), stageName)
+  };
   for (let index = 0; index < argv.length; index++) {
     const flag = argv[index];
     if (flag === '--json') {
       options.json = true;
       continue;
     }
-    if (!['--before-root', '--after-root', '--fixture', '--warmup', '--pairs'].includes(flag)) {
+    if (!['--before', '--after', '--fixture', '--stage-root', '--warmup', '--pairs'].includes(flag)) {
       throw new Error(`Unknown argument: ${flag}`);
     }
     const value = argv[++index];
     if (!value || value.startsWith('--')) {
       throw new Error(`${flag} requires a value`);
     }
-    if (flag === '--warmup') {
-      options.warmup = readPositiveInteger(value, flag);
-    } else if (flag === '--pairs') {
-      options.pairs = readPositiveInteger(value, flag);
+    if (flag === '--warmup' || flag === '--pairs') {
+      options[flag.slice(2)] = readNonNegativeInteger(value, flag);
+    } else if (flag === '--stage-root') {
+      options.stageRoot = value;
     } else {
-      const key = flag === '--before-root'
-        ? 'beforeRoot'
-        : flag === '--after-root'
-          ? 'afterRoot'
-          : 'fixture';
-      options[key] = value;
+      options[flag.slice(2)] = value;
     }
   }
-  if (!options.beforeRoot || !options.afterRoot || !options.fixture) {
-    throw new Error('--before-root, --after-root, and --fixture are required');
+  if (!options.before || !options.after || !options.fixture) {
+    throw new Error('--before, --after, and --fixture are required');
   }
   if (options.pairs < 1) {
     throw new Error('--pairs must be at least one');
+  }
+  if (path.isAbsolute(options.fixture) || options.fixture.split(path.sep).includes('..')) {
+    throw new Error('--fixture must be a repository-relative path without `..`');
   }
   return options;
 }
@@ -73,60 +86,180 @@ function sha256(value) {
   return createHash('sha256').update(value).digest('hex');
 }
 
-function fileDigest(file) {
-  const bytes = fs.readFileSync(file);
-  return { path: file, bytes: bytes.length, sha256: sha256(bytes), mtimeMs: fs.statSync(file).mtimeMs };
+function digestBuffer(value) {
+  return { bytes: value.length, sha256: sha256(value) };
 }
 
-function gitCommit(root) {
-  try {
-    return execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
-  } catch {
-    return null;
+function digestFile(file) {
+  return digestBuffer(fs.readFileSync(file));
+}
+
+function git(args, options = {}) {
+  return execFileSync('git', args, {
+    cwd: repoRoot,
+    encoding: options.encoding ?? 'utf8',
+    maxBuffer: 128 * 1024 * 1024,
+    stdio: ['ignore', 'pipe', 'pipe']
+  });
+}
+
+function resolveCommit(ref) {
+  return git(['rev-parse', `${ref}^{commit}`]).trim();
+}
+
+function readCommitFile(commit, file) {
+  return git(['show', `${commit}:${file}`], { encoding: 'buffer' });
+}
+
+function assertComparable(before, after, fixture) {
+  const changed = git(['diff', '--name-only', before, after])
+    .trim()
+    .split('\n')
+    .filter(Boolean);
+  const unsupported = changed.filter(file => !allowedChangedFiles.has(file));
+  if (unsupported.length > 0) {
+    throw new Error(`This direct-Less parser protocol only admits grammar-only commits; unsupported changed paths: ${unsupported.join(', ')}`);
   }
+  const beforeLock = readCommitFile(before, 'pnpm-lock.yaml');
+  const afterLock = readCommitFile(after, 'pnpm-lock.yaml');
+  if (!beforeLock.equals(afterLock)) {
+    throw new Error('The compared commits have different pnpm locks, so they cannot share one dependency build.');
+  }
+  const beforeFixture = readCommitFile(before, fixture);
+  const afterFixture = readCommitFile(after, fixture);
+  if (!beforeFixture.equals(afterFixture)) {
+    throw new Error(`The fixture changed between commits: ${fixture}`);
+  }
+  return { changed, input: beforeFixture, lock: digestBuffer(beforeLock) };
 }
 
-function resolveArtifact(root, label) {
-  const resolvedRoot = fs.realpathSync(root);
-  const parserBundle = path.join(resolvedRoot, 'packages/less-parser/lib/index.js');
-  const coreBundle = path.join(resolvedRoot, 'packages/core/lib/index.js');
-  const grammarSource = path.join(resolvedRoot, 'packages/less-parser/src/ast/grammar.ts');
-  for (const file of [parserBundle, coreBundle, grammarSource]) {
-    if (!fs.existsSync(file)) {
-      throw new Error(`${label} build is missing ${file}; build that checkout before measuring.`);
+function canonicalStageRoot(value) {
+  const tempRoot = fs.realpathSync(os.tmpdir());
+  const stageRoot = path.resolve(value);
+  const parent = fs.realpathSync(path.dirname(stageRoot));
+  if (parent !== tempRoot || path.basename(stageRoot) !== stageName) {
+    throw new Error(`--stage-root must be exactly one ${stageName} directory immediately under ${tempRoot}`);
+  }
+  return path.join(parent, stageName);
+}
+
+function prepareStage(stageRoot) {
+  if (fs.existsSync(stageRoot)) {
+    const marker = path.join(stageRoot, '.jess-stage-marker');
+    if (!fs.existsSync(marker) || fs.readFileSync(marker, 'utf8') !== stageMarker) {
+      throw new Error(`Refusing to remove an unowned stage directory: ${stageRoot}`);
     }
+    fs.rmSync(stageRoot, { recursive: true, force: true });
   }
-  const parser = fileDigest(parserBundle);
-  const core = fileDigest(coreBundle);
-  const source = fileDigest(grammarSource);
-  if (parser.mtimeMs < source.mtimeMs) {
-    throw new Error(`${label} parser bundle predates its grammar source (${parserBundle}); rebuild before measuring.`);
+  fs.mkdirSync(stageRoot, { recursive: true });
+  fs.writeFileSync(path.join(stageRoot, '.jess-stage-marker'), stageMarker);
+  fs.mkdirSync(path.join(stageRoot, '.benchmark-artifacts'), { recursive: true });
+}
+
+function cleanStageSource(stageRoot) {
+  for (const entry of fs.readdirSync(stageRoot)) {
+    if (entry === '.jess-stage-marker' || entry === '.benchmark-artifacts' || entry === 'node_modules') {
+      continue;
+    }
+    fs.rmSync(path.join(stageRoot, entry), { recursive: true, force: true });
+  }
+}
+
+function restoreCommit(stageRoot, commit) {
+  cleanStageSource(stageRoot);
+  const archive = git(['archive', '--format=tar', commit], { encoding: 'buffer' });
+  const extracted = spawnSync('tar', ['-xf', '-', '-C', stageRoot], {
+    input: archive,
+    encoding: 'utf8'
+  });
+  if (extracted.status !== 0) {
+    throw new Error(`Could not extract ${commit}: ${extracted.stderr || extracted.stdout || 'tar failed'}`);
+  }
+}
+
+function runPnpm(stageRoot, args) {
+  const result = spawnSync('pnpm', args, { cwd: stageRoot, encoding: 'utf8', stdio: 'inherit' });
+  if (result.status !== 0) {
+    throw new Error(`pnpm ${args.join(' ')} failed for staged artifact`);
+  }
+}
+
+function installStage(stageRoot) {
+  runPnpm(stageRoot, ['install', '--frozen-lockfile', '--offline']);
+}
+
+function buildStage(stageRoot) {
+  runPnpm(stageRoot, ['--filter', '@jesscss/core', 'build']);
+  runPnpm(stageRoot, ['--filter', '@jesscss/css-parser', 'build']);
+  runPnpm(stageRoot, ['--filter', '@jesscss/less-parser', 'build']);
+}
+
+function buildArtifact(stageRoot, commit, input) {
+  restoreCommit(stageRoot, commit);
+  buildStage(stageRoot);
+  const parserBundle = path.join(stageRoot, 'packages/less-parser/lib/index.js');
+  const coreBundle = path.join(stageRoot, 'packages/core/lib/index.js');
+  const grammarSource = path.join(stageRoot, 'packages/less-parser/src/ast/grammar.ts');
+  const artifact = path.join(stageRoot, '.benchmark-artifacts', `${commit}.mjs`);
+  fs.copyFileSync(parserBundle, artifact);
+  const metadata = {
+    commit,
+    parserBundle: digestFile(parserBundle),
+    coreBundle: digestFile(coreBundle),
+    grammarSource: digestFile(grammarSource),
+    input: digestBuffer(input),
+    artifact
+  };
+  return metadata;
+}
+
+function buildDeterministicArtifact(stageRoot, commit, input) {
+  const first = buildArtifact(stageRoot, commit, input);
+  const second = buildArtifact(stageRoot, commit, input);
+  if (first.parserBundle.sha256 !== second.parserBundle.sha256 || first.parserBundle.bytes !== second.parserBundle.bytes) {
+    throw new Error(`${commit} produced non-deterministic generated Less parser artifacts in one fixed stage path.`);
   }
   return {
-    label,
-    root: resolvedRoot,
-    commit: gitCommit(resolvedRoot),
-    parserBundle: parser,
-    coreBundle: core,
-    grammarSource: source
+    ...second,
+    reproducible: {
+      first: first.parserBundle,
+      second: second.parserBundle
+    }
   };
 }
 
-async function loadArtifact(meta) {
-  const unique = `?ab=${encodeURIComponent(`${meta.parserBundle.sha256}-${meta.coreBundle.sha256}`)}`;
-  const parserModule = await import(`${pathToFileURL(meta.parserBundle.path).href}${unique}`);
-  const coreModule = await import(`${pathToFileURL(meta.coreBundle.path).href}${unique}`);
-  if (typeof parserModule.parse !== 'function') {
-    throw new TypeError(`${meta.label} parser bundle does not export public parse().`);
+function assertSharedRuntime(before, after) {
+  if (before.coreBundle.sha256 !== after.coreBundle.sha256 || before.coreBundle.bytes !== after.coreBundle.bytes) {
+    throw new Error('Core bundle differs between commits; this direct parser comparison must not share a changed runtime.');
   }
-  if (typeof coreModule.serialize !== 'function') {
-    throw new TypeError(`${meta.label} core bundle does not export AST serialize().`);
-  }
-  return { ...meta, parse: parserModule.parse, serialize: coreModule.serialize };
 }
 
-function digestText(text) {
-  return { bytes: Buffer.byteLength(text), sha256: sha256(text) };
+function installLoadCopies(stageRoot, before, after) {
+  const directory = path.join(stageRoot, 'packages/less-parser/.benchmark-artifacts');
+  fs.mkdirSync(directory, { recursive: true });
+  const copy = (artifact) => {
+    const target = path.join(directory, `${artifact.commit}-${artifact.parserBundle.sha256}.mjs`);
+    fs.copyFileSync(artifact.artifact, target);
+    return target;
+  };
+  return { before: copy(before), after: copy(after) };
+}
+
+async function loadArtifact(metadata, parserBundle, coreBundle) {
+  const unique = `?ab=${encodeURIComponent(metadata.parserBundle.sha256)}`;
+  const parserModule = await import(`${pathToFileURL(parserBundle).href}${unique}`);
+  const coreModule = await import(`${pathToFileURL(coreBundle).href}${unique}`);
+  if (typeof parserModule.parse !== 'function') {
+    throw new TypeError(`${metadata.commit} parser bundle does not export public parse().`);
+  }
+  if (typeof coreModule.serialize !== 'function') {
+    throw new TypeError(`${metadata.commit} core bundle does not export AST serialize().`);
+  }
+  return { ...metadata, parse: parserModule.parse, serialize: coreModule.serialize };
+}
+
+function digestText(value) {
+  return digestBuffer(Buffer.from(value));
 }
 
 function measure(artifact, input) {
@@ -154,9 +287,17 @@ function percentile(sorted, fraction) {
 }
 
 function summarize(values) {
-  const sorted = [...values].sort((a, b) => a - b);
+  const sorted = [...values].sort((left, right) => left - right);
   const mean = values.reduce((total, value) => total + value, 0) / values.length;
-  return { samples: values.length, medianMs: percentile(sorted, 0.5), meanMs: mean, minMs: sorted[0], p25Ms: percentile(sorted, 0.25), p75Ms: percentile(sorted, 0.75), maxMs: sorted.at(-1) };
+  return {
+    samples: values.length,
+    medianMs: percentile(sorted, 0.5),
+    meanMs: mean,
+    minMs: sorted[0],
+    p25Ms: percentile(sorted, 0.25),
+    p75Ms: percentile(sorted, 0.75),
+    maxMs: sorted.at(-1)
+  };
 }
 
 function phaseSummary(pairs, phase) {
@@ -182,31 +323,49 @@ function sampleEquivalent(pairs) {
   return pairs.every(pair => sameDigest(pair.before.document, pair.after.document) && sameDigest(pair.before.output, pair.after.output));
 }
 
+function printableMetadata(metadata) {
+  return {
+    commit: metadata.commit,
+    parserBundle: metadata.parserBundle,
+    coreBundle: metadata.coreBundle,
+    grammarSource: metadata.grammarSource,
+    reproducible: metadata.reproducible
+  };
+}
+
+let stageRoot;
 try {
   const options = parseArgs(process.argv.slice(2));
-  const fixture = path.resolve(options.fixture);
-  if (!fs.existsSync(fixture)) {
-    throw new Error(`Fixture does not exist: ${fixture}`);
-  }
-  const input = fs.readFileSync(fixture, 'utf8');
-  const before = await loadArtifact(resolveArtifact(options.beforeRoot, 'before'));
-  const after = await loadArtifact(resolveArtifact(options.afterRoot, 'after'));
+  const beforeCommit = resolveCommit(options.before);
+  const afterCommit = resolveCommit(options.after);
+  const comparable = assertComparable(beforeCommit, afterCommit, options.fixture);
+  stageRoot = canonicalStageRoot(options.stageRoot);
+  prepareStage(stageRoot);
+  restoreCommit(stageRoot, beforeCommit);
+  installStage(stageRoot);
+  const before = buildDeterministicArtifact(stageRoot, beforeCommit, comparable.input);
+  const after = buildDeterministicArtifact(stageRoot, afterCommit, comparable.input);
+  assertSharedRuntime(before, after);
+  const loadCopies = installLoadCopies(stageRoot, before, after);
+  const coreBundle = path.join(stageRoot, 'packages/core/lib/index.js');
+  const loadedBefore = await loadArtifact(before, loadCopies.before, coreBundle);
+  const loadedAfter = await loadArtifact(after, loadCopies.after, coreBundle);
 
   for (let index = 0; index < options.warmup; index++) {
     if (index % 2 === 0) {
-      measure(before, input);
-      measure(after, input);
+      measure(loadedBefore, comparable.input);
+      measure(loadedAfter, comparable.input);
     } else {
-      measure(after, input);
-      measure(before, input);
+      measure(loadedAfter, comparable.input);
+      measure(loadedBefore, comparable.input);
     }
   }
 
   const pairs = [];
   for (let index = 0; index < options.pairs; index++) {
     const afterFirst = index % 2 === 1;
-    const first = afterFirst ? measure(after, input) : measure(before, input);
-    const second = afterFirst ? measure(before, input) : measure(after, input);
+    const first = afterFirst ? measure(loadedAfter, comparable.input) : measure(loadedBefore, comparable.input);
+    const second = afterFirst ? measure(loadedBefore, comparable.input) : measure(loadedAfter, comparable.input);
     pairs.push({
       index: index + 1,
       order: afterFirst ? 'after-before' : 'before-after',
@@ -216,22 +375,17 @@ try {
   }
 
   const result = {
-    type: 'direct-less-ast-built-artifact-ab',
-    timestamp: new Date().toISOString(),
+    type: 'direct-less-ast-replayed-artifact-ab',
     node: process.version,
     platform: process.platform,
     arch: process.arch,
-    fixture: { ...fileDigest(fixture), sourceSha256: sha256(input) },
+    fixture: { path: options.fixture, ...digestBuffer(comparable.input) },
+    lock: comparable.lock,
+    changedPaths: comparable.changed,
     warmup: options.warmup,
     pairs: options.pairs,
-    before: {
-      root: before.root, commit: before.commit, parserBundle: before.parserBundle,
-      coreBundle: before.coreBundle, grammarSource: before.grammarSource
-    },
-    after: {
-      root: after.root, commit: after.commit, parserBundle: after.parserBundle,
-      coreBundle: after.coreBundle, grammarSource: after.grammarSource
-    },
+    before: printableMetadata(before),
+    after: printableMetadata(after),
     byteIdentical: sampleEquivalent(pairs),
     parse: phaseSummary(pairs, 'parseMs'),
     parseSerialize: phaseSummary(pairs, 'parseSerializeMs'),
@@ -240,18 +394,24 @@ try {
   if (options.json) {
     console.log(JSON.stringify(result, null, 2));
   } else {
-    console.log(`direct AST built-artifact A/B fixture=${fixture}`);
+    console.log(`replayed direct AST artifact A/B fixture=${options.fixture}`);
     for (const phase of ['parse', 'parseSerialize']) {
       const summary = result[phase];
       console.log(`${phase}: before median=${summary.before.medianMs.toFixed(3)}ms after median=${summary.after.medianMs.toFixed(3)}ms delta=${summary.delta.medianMs.toFixed(3)}ms (${summary.medianPercent.toFixed(2)}%), afterWins=${summary.afterWins}/${options.pairs}`);
     }
     console.log(`AST/output byte-identical=${result.byteIdentical}`);
-    console.log(`before parser=${before.parserBundle.sha256} grammar=${before.grammarSource.sha256}`);
-    console.log(`after parser=${after.parserBundle.sha256} grammar=${after.grammarSource.sha256}`);
+    console.log(`before parser=${before.parserBundle.sha256} after parser=${after.parserBundle.sha256}`);
   }
   if (!result.byteIdentical) {
     process.exitCode = 2;
   }
 } catch (error) {
   usage(error instanceof Error ? error.message : String(error));
+} finally {
+  if (stageRoot && fs.existsSync(stageRoot)) {
+    const marker = path.join(stageRoot, '.jess-stage-marker');
+    if (fs.existsSync(marker) && fs.readFileSync(marker, 'utf8') === stageMarker) {
+      fs.rmSync(stageRoot, { recursive: true, force: true });
+    }
+  }
 }
