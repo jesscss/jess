@@ -39,6 +39,16 @@ the already-validated `dev` snapshot being squash-committed. Staged commits on
 the release exception is not available to ordinary development commits and
 does not require bypassing the hook with `--no-verify`.
 
+A staged source-only formatting commit may skip runtime cost accounting only
+when the verifier can reproduce every indexed byte exactly from `HEAD` by
+running ESLint with the fixed allowlist of non-semantic formatting rules. This
+proof accepts modified lintable files under the reviewed source roots only; it
+rejects added/deleted/renamed files, any other staged path, unstaged overlap,
+dirty ESLint/package/lock configuration, remaining lint diagnostics, and any
+indexed byte not produced by the approved fixes. Failure falls through to the
+ordinary semantic/runtime review automatically. This is semantic-identity
+proof for the staged patch, not benchmark byte identity or a performance claim.
+
 `semantic-preflight` is intentionally narrower than an optimization contract.
 Use it only where a semantic source-order inspection must occur before the
 engine can know whether planner work is needed. It must prove an exercised
@@ -232,20 +242,6 @@ a blanket optimization exemption or a new active architecture queue.
       "profile": ["const EXTERNAL_IMPORT_SPECIFIER", "plugin.canResolveImport?.("]
     },
     "evidence": {"command": ["pnpm", "--filter", "@jesscss/core", "test", "--", "--run", "src/ast/__tests__/import-at-rule.test.ts"]}
-  },
-  {
-    "id": "ast-extend-ir-style-normalization",
-    "kind": "neutral-or-negative",
-    "surface": "canonical extend IR mechanical lint normalization",
-    "files": ["packages/core/src/ast/extend/ir.ts"],
-    "neutralRefactor": {
-      "costDelta": "neutral",
-      "allowsProsecutedDangerTokens": true,
-      "why": "ESLint's mechanical fix adds required braces and removes redundant single-parameter arrow parentheses and one trailing comma. The same loops, conditions, callback bodies, arrays, maps, recursion, and return values remain in the same order; no expression, branch, helper, type, allocation, or public surface changes.",
-      "byteIdentity": {"fixture": "benchmark.less", "collapseNesting": true, "outputSha256": "ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6", "outputBytes": 122390}
-    },
-    "benchmark": {"fixture": "benchmark.less", "phase": "render", "medianMs": 85.86, "outputSha256": "ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6", "outputBytes": 122390},
-    "evidence": {"command": ["pnpm", "--filter", "@jesscss/core", "test", "--", "--run", "src/ast/__tests__/extend-direct-acceptance.test.ts", "src/ast/__tests__/extend-preflight-contract.test.ts"]}
   },
   {
     "id": "legacy-tree-strict-contract-drain",

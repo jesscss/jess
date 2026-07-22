@@ -2201,13 +2201,6 @@ silently choose one language’s policy.
     "behaviorEvidence":"The focused selector/ruleset/rules/mixin/declaration suites pass 470 tests with 5 pre-existing skips. The new regressions prove raw selector-array Ampersand append/key-set behavior and callable registration for every array member; existing registration, merge-scope, composition, and reference-render suites remain green.",
     "buildEvidence":"Fresh strict core source diagnostics fall from 127 to 73 and then to 54; the full core config falls from 528 to 474 and then to 453, without suppression. Core build and package-export verification are required before landing.",
     "baseline":{"fixture":"benchmark.less","phase":"render","currentMedianMs":85.86,"parseRenderMedianMs":68.38,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}
-  },{
-    "id":"ast-extend-ir-style-normalization",
-    "verdict":"accepted",
-    "costDelta":"neutral",
-    "why":"ESLint's mechanical fix adds required braces and removes redundant single-parameter arrow parentheses and one trailing comma. The same extend-IR conditions, loops, recursion, callbacks, arrays, maps, and return values remain in the same order; no expression, branch, helper, type, allocation, or public surface changes.",
-    "dangerTokensJustification":"[loop/traversal] and [array helper] are textual additions only because braces and arrow-parenthesis normalization replace the same pre-existing one-line loop bodies and map callbacks. No loop, recursion, callback, array helper, allocation, or call is added or moved, so the transpiled control flow and cost are unchanged.",
-    "byteIdentity":{"fixture":"benchmark.less","collapseNesting":true,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}
   }]
   ```
 - Verdict: accepted type-contract correction with no compatibility shim.
