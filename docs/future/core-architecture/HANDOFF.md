@@ -157,7 +157,7 @@ when recognition changes. For eval/render/lookup/traversal/copying changes, run
 requires fresh builds, core tests, the Jess AST-v2 production-route ratchet,
 and the Less corpus.
 
-### Current Less-alpha gate status (2026-07-21; public route and F5 gate green)
+### Current Less-alpha gate status (2026-07-22; public route and F5 gate green)
 
 The public Less route reaches canonical AST-v2 evaluation and serialization for
 direct and imported documents: the Less plugin calls the public direct parser,
@@ -177,6 +177,32 @@ remain known Less-parity limitations, not release-gate failures. The Less test
 harness loads the macro-compiled public parser artifact, not Parseman grammar
 source, and the Less-alpha command builds that parser/plugin pair before
 running integration tests.
+
+Current verification snapshot for this candidate:
+
+- The complete `@jesscss/core` suite is 3,192 passed, 9 skipped, and 2 todo.
+- The repository-wide production ESLint audit reports 0 errors and 317
+  warnings. The warnings remain tracked debt; there is no current ESLint-error
+  blocker.
+- Strict `verify:types` has exactly four diagnostics, all parser-entry
+  `FusedRule` declaration mismatches against published Parseman `0.28.0`.
+  Prepared Parseman `0.28.1` removes these four diagnostics, but it must be
+  published, installed, and followed by parser rebuilds before strict types
+  can be called green.
+- The Jess alpha closure is the 18-package
+  `scripts/release/alpha-allowlist.json`; `rollup-plugin-jess` is intentionally
+  excluded because it depends on `jess` and is not part of the runtime
+  closure. The final snapshot still needs the allowlist, packed-consumer, and
+  clean-install proofs.
+- A clean benchmark baseline is recorded below. The remaining performance
+  blocker is a valid matched generated-bundle A/B, not a release timing
+  threshold: the current grammar requires `composeLeaf` absent from Parseman
+  0.27, and generated reducer IDs vary with absolute worktree paths.
+
+Per-change-slice over-engineering review follows the protocol in
+[`less-v5-alpha-readiness.md`](../../less-v5-alpha-readiness.md#per-change-slice-review-protocol).
+When the Ponytail tool is unavailable, reports must say **Ponytail-style
+manual review**; they must not imply that an actual plugin invocation ran.
 
 The old `spine-production-ratchet.test.ts` was removed from the gate because it
 asserted occupancy of the deleted public path's legacy tree counter; 121 of its
@@ -1091,6 +1117,7 @@ require behavior/build/boundary evidence without fabricated performance claims.
   ```json
   [{"id":"ast-merge-importance-signal","verdict":"accepted","costDelta":"neutral","why":"The already-admitted declaration-merge loop carries one importance bit on its existing emit context instead of allocating a per-member sink. It repairs the ordinary declaration contract for Important values reached through a variable; it makes no speed claim.","byteIdentity":{"fixture":"benchmark.less","collapseNesting":true,"outputSha256":"adfd26732125a33fc1e264aca7d7ecde8c7c1da43f968e3106bd387a1f78e840","outputBytes":133983}}]
   ```
+
 - Evidence: `packages/core/src/ast/__tests__/declaration-merge-direct-acceptance.test.ts` (including reset across a later merge group and ordinary declaration), the direct core AST suite, and the benchmark output oracle recorded above.
 - Verdict: accepted correctness repair; no performance claim.
 
@@ -1381,6 +1408,13 @@ Jess's frozen offline install also resolves only `parseman@0.28.0` and passes;
 all four parser packages build against it. Normal public parser/compiler/CLI
 routes remain instrumentation-off; coverage and trace are opt-in test or
 diagnostic builds only.
+
+The follow-up Parseman `0.28.1` release branch contains the public `FusedRule`
+declaration-contract correction required by the four current parser-entry type
+diagnostics. It is release-ready locally but is not yet an npm dependency for
+Jess. Do not call the strict all-package type gate green, or claim a clean
+consumer proof, until that package is published and the four parser packages
+are rebuilt against the published version.
 
 ### Release-gate attribution (2026-07-21)
 
