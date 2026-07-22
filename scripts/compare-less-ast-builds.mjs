@@ -144,7 +144,9 @@ function measure(artifact, input) {
 }
 
 function percentile(sorted, fraction) {
-  if (sorted.length === 0) return 0;
+  if (sorted.length === 0) {
+    return 0;
+  }
   const index = (sorted.length - 1) * fraction;
   const lower = Math.floor(index);
   const upper = Math.ceil(index);
