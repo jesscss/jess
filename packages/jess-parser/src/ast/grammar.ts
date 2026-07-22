@@ -300,6 +300,40 @@ function requireValueNode(value: unknown): ValueNode {
   return value;
 }
 
+function isGuardNode(value: unknown): value is GuardNode {
+  if (typeof value !== 'object' || value === null || !('g' in value)) {
+    return false;
+  }
+  switch (value.g) {
+    case 'default':
+      return true;
+    case 'truth':
+      return 'value' in value && isValueNode(value.value);
+    case 'cmp':
+      return 'op' in value && typeof value.op === 'string'
+        && 'left' in value && isValueNode(value.left)
+        && 'right' in value && isValueNode(value.right);
+    case 'call':
+      return 'name' in value && typeof value.name === 'string'
+        && 'args' in value && Array.isArray(value.args) && value.args.every(isValueNode);
+    case 'not':
+      return 'inner' in value && isGuardNode(value.inner);
+    case 'and':
+    case 'or':
+      return 'left' in value && isGuardNode(value.left)
+        && 'right' in value && isGuardNode(value.right);
+    default:
+      return false;
+  }
+}
+
+function requireGuardNode(value: unknown): GuardNode {
+  if (!isGuardNode(value)) {
+    throw new TypeError('Direct Jess AST grammar produced a non-guard child.');
+  }
+  return value;
+}
+
 function isInterpolation(value: unknown): value is Interpolation {
   return typeof value === 'object' && value !== null && 'type' in value
     && value.type === 'Interpolation' && 'parts' in value && Array.isArray(value.parts);
@@ -449,6 +483,13 @@ function requireStatements(children: readonly unknown[]): Statement[] {
     statements.push(child);
   }
   return statements;
+}
+
+function requireStatementList(value: unknown): Statement[] {
+  if (!Array.isArray(value)) {
+    throw new TypeError('Direct Jess AST grammar produced a non-statement list.');
+  }
+  return requireStatements(value);
 }
 
 function isAtRuleBlock(value: unknown): value is AtRuleBlock {
@@ -757,13 +798,13 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
     ),
     (children) => {
       if (children.length === 1) {
-        return children[0] as GuardNode;
+        return requireGuardNode(children[0]);
       }
       if (requireToken(children[0]).value === 'not') {
-        return { g: 'not', inner: children[2] as GuardNode };
+        return { g: 'not', inner: requireGuardNode(children[2]) };
       }
       if (requireToken(children[0]).value === '(') {
-        return children[1] as GuardNode;
+        return requireGuardNode(children[1]);
       }
       return { g: 'default' };
     }
@@ -772,9 +813,9 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
     'DirectJessGuardAnd',
     sequence(g.DirectJessGuardPrimary, oneOrMore(sequence(regex(/and(?![-_a-zA-Z0-9\u0080-\uffff])/), g.DirectJessGuardPrimary))),
     (children) => {
-      let result = children[0] as GuardNode;
+      let result = requireGuardNode(children[0]);
       for (let index = 2; index < children.length; index += 2) {
-        result = { g: 'and', left: result, right: children[index] as GuardNode };
+        result = { g: 'and', left: result, right: requireGuardNode(children[index]) };
       }
       return result;
     }
@@ -783,9 +824,9 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
     'DirectJessGuardOr',
     sequence(g.DirectJessGuardPrimary, oneOrMore(sequence(regex(/or(?![-_a-zA-Z0-9\u0080-\uffff])/), g.DirectJessGuardPrimary))),
     (children) => {
-      let result = children[0] as GuardNode;
+      let result = requireGuardNode(children[0]);
       for (let index = 2; index < children.length; index += 2) {
-        result = { g: 'or', left: result, right: children[index] as GuardNode };
+        result = { g: 'or', left: result, right: requireGuardNode(children[index]) };
       }
       return result;
     }
@@ -793,7 +834,7 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
   const DirectJessMixinGuard = node<GuardNode>(
     'DirectJessMixinGuard',
     choice(g.DirectJessGuardAnd, g.DirectJessGuardOr, g.DirectJessGuardCompare, g.DirectJessGuardPrimary),
-    children => children[0] as GuardNode
+    children => requireGuardNode(children[0])
   );
   const DirectJessExpression = node<Interpolation>(
     'DirectJessExpression',
@@ -2115,20 +2156,20 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
     ),
     (children) => {
       if (children.length === 1) {
-        return children[0] as GuardNode;
+        return requireGuardNode(children[0]);
       }
       return requireToken(children[0]).value === 'not'
-        ? { g: 'not', inner: children[2] as GuardNode }
-        : children[1] as GuardNode;
+        ? { g: 'not', inner: requireGuardNode(children[2]) }
+        : requireGuardNode(children[1]);
     }
   );
   const DirectJessIfGuardAnd = node<GuardNode>(
     'DirectJessIfGuardAnd',
     sequence(g.DirectJessIfGuardPrimary, oneOrMore(sequence(regex(/and(?![-_a-zA-Z0-9\u0080-\uffff])/), g.DirectJessIfGuardPrimary))),
     (children) => {
-      let result = children[0] as GuardNode;
+      let result = requireGuardNode(children[0]);
       for (let index = 2; index < children.length; index += 2) {
-        result = { g: 'and', left: result, right: children[index] as GuardNode };
+        result = { g: 'and', left: result, right: requireGuardNode(children[index]) };
       }
       return result;
     }
@@ -2137,9 +2178,9 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
     'DirectJessIfGuardOr',
     sequence(g.DirectJessIfGuardPrimary, oneOrMore(sequence(regex(/or(?![-_a-zA-Z0-9\u0080-\uffff])/), g.DirectJessIfGuardPrimary))),
     (children) => {
-      let result = children[0] as GuardNode;
+      let result = requireGuardNode(children[0]);
       for (let index = 2; index < children.length; index += 2) {
-        result = { g: 'or', left: result, right: children[index] as GuardNode };
+        result = { g: 'or', left: result, right: requireGuardNode(children[index]) };
       }
       return result;
     }
@@ -2150,12 +2191,12 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
     // form (`$if (true)`). Make the longer arm transactional so a missing
     // comparison operator returns recognition to the primary truth reduction.
     choice(attempt(g.DirectJessIfGuardCompare), g.DirectJessIfGuardAnd, g.DirectJessIfGuardOr, g.DirectJessIfGuardPrimary),
-    children => children[0] as GuardNode
+    children => requireGuardNode(children[0])
   );
   const DirectJessIfCondition = node<GuardNode>(
     'DirectJessIfCondition',
     sequence(literal('('), g.DirectJessIfGuard, literal(')')),
-    children => children[1] as GuardNode
+    children => requireGuardNode(children[1])
   );
   const DirectJessIfBody = node<Statement[]>(
     'DirectJessIfBody',
@@ -2173,12 +2214,12 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
   const DirectJessElseIfBranch = node<IfBranch>(
     'DirectJessElseIfBranch',
     sequence(regex(/\$else(?![-_a-zA-Z0-9\u0080-\uffff])/), regex(/if(?![-_a-zA-Z0-9\u0080-\uffff])/), g.DirectJessIfCondition, g.DirectJessIfBody),
-    children => ({ guard: children[2] as GuardNode, body: children[3] as Statement[] })
+    children => ({ guard: requireGuardNode(children[2]), body: requireStatementList(children[3]) })
   );
   const DirectJessElseBranch = node<IfBranch>(
     'DirectJessElseBranch',
     sequence(regex(/\$else(?![-_a-zA-Z0-9\u0080-\uffff])/), g.DirectJessIfBody),
-    children => ({ guard: null, body: children[1] as Statement[] })
+    children => ({ guard: null, body: requireStatementList(children[1]) })
   );
   const DirectJessIf = node<If>(
     'DirectJessIf',
@@ -2190,7 +2231,7 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
       optional(g.DirectJessElseBranch)
     ),
     (children) => {
-      const branches: IfBranch[] = [{ guard: children[1] as GuardNode, body: children[2] as Statement[] }];
+      const branches: IfBranch[] = [{ guard: requireGuardNode(children[1]), body: requireStatementList(children[2]) }];
       for (const child of children.slice(3)) {
         if (Array.isArray(child)) {
           branches.push(...child as IfBranch[]);
