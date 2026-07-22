@@ -8,7 +8,7 @@ describe('Context canonical document provenance', () => {
     const parser: PluginInterface = {
       name: 'test',
       supportedExtensions: ['.test'],
-      safeParse: () => ({ document: stylesheet([]), errors: [], warnings: [] }),
+      safeParse: () => ({ document: stylesheet([]), errors: [], warnings: [] })
     };
     const context = new Context({}, [parser]);
     const root = (await context.parseString('', { filePath: '/project/root.test' })).node;
@@ -52,7 +52,7 @@ describe('Context canonical document provenance', () => {
       'body-enter',
       'body-resume',
       'root-restored',
-      'error-restored',
+      'error-restored'
     ]);
     expect(transitions).toHaveLength(5);
     expect(context.currentSourceOwner()).toBeNull();

@@ -1,6 +1,13 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import { createFnRegistry, defineFunction, makeDimension, makeList } from '../../value.js';
 
+function invoke(fn: unknown, ...args: unknown[]): unknown {
+  if (typeof fn !== 'function') {
+    throw new TypeError('Expected a callable value-domain function.');
+  }
+  return Reflect.apply(fn, undefined, args);
+}
+
 const twice = defineFunction('twice', {
   params: [{ name: 'value', kinds: ['Dimension'] }] as const,
   body: (value) => {
@@ -42,7 +49,8 @@ describe('value-domain defineFunction', () => {
       modes: { mathMode: 'parens-division', unitMode: 'preserve', functionMode: 'preserve', equalityMode: 'less' },
       stringify: value => value.bytes
     })).toEqual(makeDimension(4, 'px'));
-    expect(() => registry.dispatch('twice', makeList([{ value: makeDimension(2, 'px') } as never]), {
+    const invalidArgs = invoke(makeList, [{ value: makeDimension(2, 'px') }], ',');
+    expect(() => invoke(registry.dispatch.bind(registry), 'twice', invalidArgs, {
       modes: { mathMode: 'parens-division', unitMode: 'preserve', functionMode: 'preserve', equalityMode: 'less' },
       stringify: value => value.bytes
     })).toThrow('typed ValueObj');
@@ -53,7 +61,7 @@ describe('value-domain defineFunction', () => {
     expect(() => twice({})).toThrow('missing required argument value');
     expect(() => twice(makeDimension(2, 'px'), makeDimension(3))).toThrow('too many');
     expect(() => twice({ value: { type: 'Keyword', text: 'x', bytes: 'x' } })).toThrow('expected Dimension');
-    expect(() => twice(2 as never)).toThrow('typed ValueObj');
+    expect(() => invoke(twice, 2)).toThrow('typed ValueObj');
   });
 
   it('defers a lazy parameter and validates the typed value when the thunk is invoked', async () => {

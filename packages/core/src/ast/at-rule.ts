@@ -101,7 +101,7 @@ export interface Plugin {
 export const atRuleBlock = (
   name: string,
   prelude: ValueNode | null,
-  body: Statement[],
+  body: Statement[]
 ): AtRuleBlock => ({ type: 'AtRuleBlock', name, prelude, body });
 
 export const atRuleStatement = (name: string, prelude: ValueNode | null): AtRuleStatement =>
@@ -123,5 +123,5 @@ export const importAtRule = (
 
 export const plugin = (
   target: Quoted | Url | Interpolation,
-  options: Interpolation | null = null,
+  options: Interpolation | null = null
 ): Plugin => ({ type: 'Plugin', target, options });

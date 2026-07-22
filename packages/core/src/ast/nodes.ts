@@ -432,7 +432,8 @@ export const compoundHasInterp = (c: CompoundSelector): boolean => {
     let has = false;
     for (const sim of c.simples) {
       if (sim.interp !== null) {
-        has = true; break;
+        has = true;
+        break;
       }
     }
     c._hasInterp = has;
@@ -443,7 +444,7 @@ export const compoundHasInterp = (c: CompoundSelector): boolean => {
 /** True iff any token carries a literal `&` (bare, fused, or in an interpolation template). */
 export const compoundHasAmpersand = (c: CompoundSelector): boolean => {
   for (const sim of c.simples) {
-    if (sim.text !== null && sim.text.includes('&')) {
+    if (sim.text?.includes('&') === true) {
       return true;
     }
     if (sim.interp !== null) {
@@ -522,7 +523,8 @@ export const complexHasInterp = (c: ComplexSelector): boolean => {
     if (!has) {
       for (const seg of c.tail) {
         if (compoundHasInterp(seg.compound)) {
-          has = true; break;
+          has = true;
+          break;
         }
       }
     }

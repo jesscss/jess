@@ -27,7 +27,7 @@ describe('declaration flat-array value eval + spacing', () => {
         quoted('A', { quote: '"' }),
         quoted('B', { quote: '"' }),
         quoted('C', { quote: '"' })
-      ] as any
+      ]
     });
     expect(await render(d)).toBe('symbols: "A" "B" "C"');
   });
@@ -40,7 +40,7 @@ describe('declaration flat-array value eval + spacing', () => {
     }, { silentFail: true });
     const d = decl({
       name: 'content',
-      value: [quoted('x', { quote: '"' }), counter] as any
+      value: [quoted('x', { quote: '"' }), counter]
     });
     expect(await render(d)).toBe('content: "x" counter(page)');
   });
