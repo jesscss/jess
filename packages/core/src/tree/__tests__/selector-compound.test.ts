@@ -290,7 +290,9 @@ describe('Compound Selector', () => {
       const node = compound([el('.head'), asyncComponent]);
 
       const out = node.eval(context);
-      expect(typeof (out as { then?: unknown }).then).toBe('function');
+      if (typeof out !== 'object' || out === null || !('then' in out) || typeof out.then !== 'function') {
+        throw new TypeError('Expected compound evaluation to return a promise.');
+      }
       const evald = await out;
       expect(evald.toTrimmedString()).toBe('.head.resolved');
     });
