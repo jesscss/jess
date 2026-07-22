@@ -219,6 +219,38 @@ counter. `ast-v2-production-ratchet.test.ts` is the replacement production
 gate: it proves canonical `Stylesheet` ownership, direct Less evaluation,
 Context/plugin import loading, and absence of legacy output-tree materialization.
 
+### Less math/unit residual split (2026-07-22)
+
+The Less plugin's `setContext` wiring already carries its normalized
+`mathMode` and `unitMode` into the canonical Context options. The remaining
+units-corpus mismatches are two independent evaluator facts, not missing
+Context plumbing or parser bridges:
+
+1. **Structural bare-slash precedence.** `DirectLessValueTerm` already retains
+   the typed `ValueSlot[]` parts and their authored boundary layout, including
+   a slash leaf. When the configured Less math mode permits evaluation
+   (`math: 0`/`mathMode: 'always'`, and the existing paren/calc contexts), the
+   evaluator must promote that existing structure to the correct arithmetic
+   precedence and evaluate it. When division is disallowed by
+   `parens-division`, the same structure must remain authored raw value/list
+   output. The authoritative regression fixture is
+   `tests-config/units/no-strict/no-strict.less`: `test-division` must evaluate
+   under `math: 0`, while bare `t3` and `t6` remain authored divisions. This
+   promotion must not reparse source bytes or add a second value parser.
+2. **Deferred strict-unit validation.** The unit evaluator must retain the
+   numerator/denominator facts through an operation chain and validate
+   singularity only at final typed materialization/emission. Intermediate
+   compound units are allowed to cancel in a later operation; strict mode must
+   therefore produce `cancels-to-nothing: 1` and `cancels: 6px` in
+   `tests-config/units/strict/strict-units.less`, rather than throwing before
+   cancellation. Incompatible `+`/`-` unit checks remain strict errors. This is
+   a value-domain timing fix, not a parser change.
+
+The two fixes can be tested and reviewed independently: direct evaluator tests
+cover slash promotion and strict cancellation separately, while the two linked
+Less fixtures prove their public Context/plugin route together. No source-byte
+reparse, scanner, compatibility path, or dialect-local resolver is permitted.
+
 Built-artifact public-route instrumentation is also decisive: a direct Less
 `Compiler.renderToResult(...)` reads or writes none of Context's legacy
 `root`, `treeRoot`, `rulesContext`, or `evaldTrees` fields, and invokes neither
