@@ -392,7 +392,13 @@ harness loads the macro-compiled public parser artifact, not Parseman grammar
 source, and the Less-alpha command builds that parser/plugin pair before
 running integration tests.
 
-Current verification snapshot for this candidate:
+### Historical pre-merge alpha.9 evidence (superseded for release gating)
+
+The following is retained as evidence for the `564b65615` alpha rehearsal. It
+was verified before `731319892` moved every parser package from
+`parseman@0.28.1` to `parseman@0.29.0`; it is not evidence for the current
+`dev` release candidate. Current post-`731319892` Parseman `0.29.0` release
+gates are pending.
 
 - The complete `@jesscss/core` suite is 3,194 passed, 9 skipped, and 2 todo.
   The skipped/todo cases remain visible and are not converted into passing
@@ -400,7 +406,7 @@ Current verification snapshot for this candidate:
 - The repository-wide production ESLint audit reports 0 errors and 319
   warnings. The warnings remain tracked debt; there is no current ESLint-error
   blocker.
-- Parseman `0.28.1` is published and consumed through real package versions.
+- Parseman `0.28.1` was published and consumed through real package versions.
   A forced frozen install resolves it, and strict `verify:types` passes all
   22 production configurations.
 - The Jess alpha closure is the 18-package
@@ -422,9 +428,9 @@ Current verification snapshot for this candidate:
   serialized builds and 20 warmups plus 3×45 samples, the public compiler
   round median is 74.397 ms (usable signal; trimmed median 75.915 ms).
 
-### Alpha.9 release state (2026-07-22)
+### Alpha.9 pre-merge rehearsal state (2026-07-22; superseded)
 
-The controlled alpha snapshot is `564b65615`. Its forced frozen install
+The controlled alpha snapshot was `564b65615`. Its forced frozen install
 resolves `parseman@0.28.1`; the exact `pnpm run release:alpha:check` chain
 passes the release build, 22/22 strict types, production lint with no errors,
 Less-alpha public-route checks, direct Jess parser/plugin/Rollup tests, the
@@ -432,12 +438,19 @@ AST-v2 ratchet, baseline, release-mode cutting review, 18-package closure,
 packed consumer, and alpha.9 dry-run publish. The snapshot is clean and the
 dry-run resolves `2.0.0-alpha.9` ahead of the published alpha.8 tag.
 
-Nothing has been pushed or published from that snapshot. It awaits explicit
-owner approval to run the full `pnpm run release:alpha` command from `alpha`;
-that command deliberately re-resolves the registry candidate, repeats the
-preflight, then tags, pushes, and publishes. Do not substitute the publish-only
-command for that release flow. The external `less@5.0.0-alpha.1` release remains
-a separate future action after Jess alpha.9 is actually available from npm.
+Nothing was pushed or published from that snapshot. It cannot be reused after
+the `731319892` Parseman `0.29.0` merge: the local alpha candidate is not
+descended from current `dev`, and pre-merge builds, parser tests, packed
+consumer results, or dry-run publication do not validate the new generated
+parser artifacts. After the final current-`dev` gates pass, create a fresh
+isolated alpha snapshot with the two-tree procedure above, retain only the
+recovery versions, and rerun the entire `release:alpha` preflight. Only then
+may owner approval be sought for a full `pnpm run release:alpha` invocation
+from `alpha`; that command re-resolves the registry candidate, repeats the
+preflight, then tags, pushes, and publishes. Do not substitute the
+publish-only command for that release flow. The external
+`less@5.0.0-alpha.1` release remains a separate future action after Jess
+alpha.9 is actually available from npm.
 
 ### Aggressive Cutting Self-Prosecution — release-state documentation
 
