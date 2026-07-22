@@ -1705,6 +1705,63 @@ first evidenced with the recursive Less parser argument repair (`212e132ea`),
 before the later strict-unit and Context-option wiring changes; no causal
 performance claim is made for those later changes.
 
+### Independent Less timer-boundary audit (2026-07-22; no causal claim)
+
+An independent read-only audit reran the same 106,802-byte
+`packages/jess/benchmark/benchmark.less` fixture on Node v24.11.1 arm64 from
+the measured `dev` artifact at `1564f0519` (the later barrel-only `62f5407ed`
+commit does not change the parser bundle). The public end-to-end command was
+`node scripts/measure-less-hotpath.mjs --fixture packages/jess/benchmark/benchmark.less
+--iterations 45 --warmup 20 --repeat 3 --trim 0.1 --json`; it produced 135
+samples with round-median **75.0169 ms** (trimmed sample median 74.7203 ms).
+The timer starts at `scripts/measure-less-hotpath.mjs:421`, immediately before
+`await compiler.render(file)`, and stops at `:425`. Consequently it includes
+`Compiler.prepareRender` (config/plugin/context setup), Context file loading and
+plugin parsing, AST evaluation, serialization, and post-processors; it is not a
+parse-only timer. `Compiler.render` confirms this composition at
+`packages/jess/src/index.ts:1169-1177`, with `getTree`/parse in
+`prepareStylesheet` (`:1072-1095`) and serialization in `renderStylesheet`
+(`:1098-1115`). The output in this run remained 122,723 bytes,
+SHA-256 `2ab6d3fd8f322df0fbe7c1a481b528ec50a7fb035604b744c7543397d56b3fe`.
+
+The matching direct public-parser measurement used the same fixture, 20 warmups,
+and three 45-sample rounds around `parse(source)`. The public boundary is
+`packages/less-parser/src/index.ts:27-33`: Parseman `run(entry, input,
+{ trivia })` followed by the complete-`Stylesheet` check. Round medians were
+59.091, 59.037, and 58.683 ms; round-median **59.037 ms**. The result had 677
+children; `JSON.stringify(document)` was 946,987 bytes with SHA-256
+`8e3a371bd286ff2682ee08d56c451274a94b14203dbe8de68ad2057aa6cc13c3`.
+
+For a same-input control, `parseLessCst(source)` through
+`packages/less-parser/src/cst.ts:4-10` measured round-median **19.759 ms**
+(19.615, 19.759, 20.454 ms). This is useful evidence for the historical
+20–30 ms class, but it is a different output boundary (legacy CST construction)
+and is not an AST-v2 or Parseman-version A/B. The historical 33.65 ms figure was
+a Vite/source `renderAstFile` partial-driver phase (20 warmups/N=60), while
+24.42 ms was a Parseman 0.27-era built-parser floor. Current grammar requires
+`composeLeaf`, which pre-0.28 Parseman packages do not export, so neither figure
+can be presented as a matched regression baseline.
+
+A separate `node --prof` run (20 warmups + 180 direct AST parses) produced
+11,176 ticks, including 4,307 JavaScript ticks. Within the JavaScript table,
+named generated Less-parser bundle frames accounted for 3,935 ticks (~91.4% of
+JavaScript samples), regex engine entries for 353 ticks (~8.2%), and core JS for
+19 ticks. The largest named frames were `DirectLessStaticPseudo` (167), an
+opaque generated reducer (`_13f08895__pf260`, 158), `DirectLessValueAtom`
+(151), `DirectLessStaticNthPseudo` (126), `DirectLessTopProduct` (122), and
+generated value/reducer helpers (`_pf273` 119, `_tf2` 118); `isValueNode` took
+104 ticks. These are ranking evidence, not a regression diagnosis.
+
+The five investigation candidates, in evidence order, are: (1) the generated
+reducer call graph/fused output; (2) selector pseudo/nth shared-prefix choices;
+(3) recursive value/math reducer chains; (4) generated reduction type guards
+such as `isValueNode`; and (5) the always-enabled trivia path plus regex-heavy
+recognition. The next valid performance experiment is a matched rebuilt-bundle
+A/B (same Parseman release, absolute-path-normalized generated identifiers,
+same source/output hashes), with opt-in choice-arm/rollback trace for candidate
+(2). Until that exists, these measurements remain baselines and no parser
+regression cause or speed claim is accepted.
+
 ### Superseded direct Less performance refresh (2026-07-21; historical, no A/B claim)
 
 After the subsequent AST/list and F5 work, the rebuilt Less parser artifact is
