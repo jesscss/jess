@@ -4,14 +4,14 @@ import { createPublicNil, Nil } from './nil.js';
 import type { Context } from '../context.js';
 import { SimpleSelector } from './selector-simple.js';
 import { createGeneratedIsPseudo } from './selector-pseudo.js';
-import { SelectorList } from './selector-list.js';
+import { SelectorList, selectorListValueOf } from './selector-list.js';
 import { BasicSelector } from './selector-basic.js';
 import { CompoundSelector } from './selector-compound.js';
 import { ComplexSelector, type ComplexSelectorComponent } from './selector-complex.js';
 import { isNode } from './util/is-node.js';
 import { isCombinator } from './util/combinator.js';
 import { N } from './node-type.js';
-import { Selector } from './selector.js';
+import { Selector, type SelectorLike } from './selector.js';
 import { atIndex } from './util/collections.js';
 import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
 import { WARN } from '../jess-error.js';
@@ -74,7 +74,7 @@ export type AmpersandValue = {
    * When set (e.g. by ruleset prep), returns the current parent ruleset's selector ("pointer").
    * Prefer this over value.selector so extend sees the parent after it has been mutated (e.g. by extend).
    */
-  selectorContainer?: { selector?: Selector | Nil | string | undefined };
+  selectorContainer?: { selector?: SelectorLike | Nil | undefined };
 };
 
 const isSingleAmpersandWrapper = (node: Node | undefined): boolean => {
@@ -126,7 +126,7 @@ function selectorListItemForAmpersand(item: SelectorList['value'][number]): Sele
 
 function createAmpersandWithSelectorContainer(
   source: Ampersand,
-  selectorContainer: { selector?: Selector | Nil | string | undefined }
+  selectorContainer: { selector?: SelectorLike | Nil | undefined }
 ): Ampersand {
   return new Ampersand(
     {
@@ -296,7 +296,7 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
   readonly appendValue: string | undefined;
 
   private _storedSelector: Selector | Nil | undefined;
-  private _selectorContainer: { selector?: Selector | Nil | string | undefined } | undefined;
+  private _selectorContainer: { selector?: SelectorLike | Nil | undefined } | undefined;
 
   constructor(
     value?: AmpersandValue | string,
@@ -314,7 +314,11 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
       if (selectorContainer) {
         this._selectorContainer = selectorContainer;
         const initSelector = selectorContainer?.selector;
-        this._storedSelector = typeof initSelector === 'string' ? new BasicSelector(initSelector) : initSelector;
+        this._storedSelector = typeof initSelector === 'string'
+          ? new BasicSelector(initSelector)
+          : Array.isArray(initSelector)
+            ? SelectorList.create(initSelector)
+            : initSelector;
       }
     }
     this.appendValue = finalValue.appendValue;
@@ -331,7 +335,11 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
    */
   getStoredSelector(): Selector | Nil | undefined {
     const containerSelector = this._selectorContainer?.selector;
-    const resolved = typeof containerSelector === 'string' ? new BasicSelector(containerSelector) : containerSelector;
+    const resolved = typeof containerSelector === 'string'
+      ? new BasicSelector(containerSelector)
+      : Array.isArray(containerSelector)
+        ? SelectorList.create(containerSelector)
+        : containerSelector;
     return this._storedSelector ?? resolved;
   }
 
@@ -343,18 +351,21 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
   // Selector contributes keys (a bare `&`, a string, or Nil contributes none).
   // Unlike getResolvedSelector this does NOT wrap a list in `:is()` — key-set
   // computation unions the list's keys directly. Used by SelectorAnalysis.
-  getKeySetContainerSelector(): Selector | undefined {
+  getKeySetContainerSelector(): SelectorLike | undefined {
     const current = this._selectorContainer?.selector;
-    return current && typeof current !== 'string' && !isNode(current, N.Nil)
-      ? current
-      : undefined;
+    if (!current || typeof current === 'string' || isNode(current, N.Nil)) {
+      return undefined;
+    }
+    return current;
   }
 
   getResolvedSelector(): Selector | Nil | undefined {
     const rawSelector = this._selectorContainer?.selector;
     const selector: Selector | Nil | undefined = typeof rawSelector === 'string'
       ? new BasicSelector(rawSelector)
-      : rawSelector;
+      : Array.isArray(rawSelector)
+        ? SelectorList.create(rawSelector)
+        : rawSelector;
     if (selector && isNode(selector, N.SelectorList) && this.hasFlag(F_IMPLICIT_AMPERSAND)) {
       // Wrapping the container SelectorList in a generated `:is()`: the list's
       // child selectors are shared SOURCE nodes, wrapped (not owned) — share them
@@ -372,7 +383,7 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
   override valueOf() {
     const selector = this._selectorContainer?.selector;
     if (selector) {
-      return selector.valueOf();
+      return Array.isArray(selector) ? selectorListValueOf(selector) : selector.valueOf();
     }
     return '&';
   }
@@ -430,7 +441,11 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
       if (!selectorRaw) {
         return createPublicNil();
       }
-      let selector: Selector | Nil = typeof selectorRaw === 'string' ? new BasicSelector(selectorRaw) : selectorRaw;
+      let selector: Selector | Nil = typeof selectorRaw === 'string'
+        ? new BasicSelector(selectorRaw)
+        : Array.isArray(selectorRaw)
+          ? SelectorList.create(selectorRaw)
+          : selectorRaw;
       const placement = createAmpersandAppendPlacementState(this, selector, context, appendValue);
       if (appendValue && !isNode(selector, N.Nil)) {
         // `&` is always leading, so `appendValue` is a plain suffix (`&-bar` → `-bar`,
@@ -460,7 +475,7 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
      */
     if (!amp._selectorContainer && frame && frame.selector) {
       const frameSelector = frame.selector;
-      const container: { selector?: Selector | Nil | string | undefined } = typeof frameSelector === 'string'
+      const container: { selector?: SelectorLike | Nil | undefined } = typeof frameSelector === 'string'
         ? { selector: frameSelector }
         : frame;
       amp = createAmpersandWithSelectorContainer(this, container);

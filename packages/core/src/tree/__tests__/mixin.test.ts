@@ -2792,6 +2792,17 @@ describe('Mixin', () => {
       `);
     });
 
+    it('registers every parser-delivered selector-array member as a ruleset callable', () => {
+      const frameRuleset = ruleset({
+        selector: ['.first', '.second'],
+        rules: [decl({ name: 'color', value: any('teal') })]
+      });
+      const root = rules([frameRuleset]);
+
+      expect(root.findMixin('.first', undefined)).toEqual([frameRuleset]);
+      expect(root.findMixin('.second', undefined)).toEqual([frameRuleset]);
+    });
+
     it('ScopeFrame callable buckets: static miss skips Rules.findMixinsFast when no child surfaces exist', () => {
       // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;

@@ -2225,16 +2225,6 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       if (!selector || isNode(selector, N.Nil)) {
         continue;
       }
-      const ownSelector = isSelectorLikeNode(node.options.ownSelector)
-        ? node.options.ownSelector
-        : undefined;
-      const callableSelector = ownSelector && !isNode(ownSelector, N.Nil) ? ownSelector : selector;
-      if (isNode(callableSelector, N.Ampersand)) {
-        continue;
-      }
-      const sourceSelector = isSelectorLikeNode(selector.sourceNode)
-        ? selector.sourceNode
-        : undefined;
       // A bare array selector IS a comma-separated selector list (the lean
       // strings-not-nodes surface for `.bo, .bar { ... }`). Each member is an
       // independent selector, so register every member as its own callable —
@@ -2247,6 +2237,16 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         }
         continue;
       }
+      const ownSelector = isSelectorLikeNode(node.options.ownSelector)
+        ? node.options.ownSelector
+        : undefined;
+      const callableSelector = ownSelector && !isNode(ownSelector, N.Nil) ? ownSelector : selector;
+      if (isNode(callableSelector, N.Ampersand)) {
+        continue;
+      }
+      const sourceSelector = isSelectorLikeNode(selector.sourceNode)
+        ? selector.sourceNode
+        : undefined;
       let keys = getOrderedSelectorKeys(selector);
       if (keys.length === 0 && sourceSelector) {
         const sourceKeys = getOrderedSelectorKeys(sourceSelector);
@@ -5086,7 +5086,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       options.referenceMode = true;
     }
     const emitNode = (n: Node): MaybePromise<void> => {
-      const isEvaluatedDefinitionNode = mode !== 'syntax' && isNode(n, N.Mixin | N.VarDeclaration);
+      const isEvaluatedDefinitionNode = isNode(n, N.Mixin | N.VarDeclaration);
       if (
         isEvaluatedDefinitionNode
         && !hasPrintableTriviaAt(n, 'before', options)
@@ -6730,24 +6730,28 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     saved: ReturnType<Rules['_snapshotContext']>,
     prepState: RegistrationPrepState
   ): MaybePromise<this> {
+    const orderedIdentity = prepState.orderedIdentity;
+    if (!orderedIdentity || orderedIdentity.nodes.length === 0) {
+      this._restoreRegistrationContext(context, saved);
+      return this;
+    }
     const handleResolvedNode = (resolvedNode: Node, node: Node, stillUnresolved: Node[]): boolean => {
       return this._recordResolvedRegistrationNode(
         rules,
-        prepState.orderedIdentity.resolvedNodes,
+        orderedIdentity.resolvedNodes,
         resolvedNode,
         node,
         stillUnresolved
       );
     };
 
-    const orderedIdentities = prepState.orderedIdentity?.nodes;
-    const orderedResult = !orderedIdentities || orderedIdentities.length === 0
-      ? undefined
-      : this._prepareOrderedIdentitiesInSourceOrder(context, orderedIdentities, handleResolvedNode);
+    const orderedResult = this._prepareOrderedIdentitiesInSourceOrder(
+      context,
+      orderedIdentity.nodes,
+      handleResolvedNode
+    );
     const finish = () => {
-      if (prepState.orderedIdentity) {
-        this._applyResolvedRegistrationNodes(rules, prepState.orderedIdentity.resolvedNodes);
-      }
+      this._applyResolvedRegistrationNodes(rules, orderedIdentity.resolvedNodes);
       this._restoreRegistrationContext(context, saved);
       return this;
     };
@@ -7599,7 +7603,10 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       // are walked as one merge chain and later `+:` values suppress earlier
       // selectors. Only descend into inline Rules (mixin outputs, plain groups)
       // that render into the CURRENT selector scope.
-      if (!isNode(node, N.Rules) || isNode(node, N.Ruleset | N.AtRule)) {
+      if (!(node instanceof Rules)) {
+        return;
+      }
+      if (node.type === 'Ruleset' || node.type === 'AtRule') {
         return;
       }
       const childInMixinOutput = inMixinOutput || Boolean(node.options.mixinOutputSlot);

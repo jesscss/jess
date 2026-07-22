@@ -15,7 +15,7 @@
  * so the cache is pure memoization with no invalidation.
  */
 import type { BitSet, BitSetLibrary } from './bitset.js';
-import type { Selector } from '../selector.js';
+import type { Selector, SelectorLike } from '../selector.js';
 import { N } from '../node-type.js';
 import { isNode } from './is-node.js';
 import { isCombinator } from './combinator.js';
@@ -48,7 +48,7 @@ interface PseudoLike {
 }
 
 interface AmpersandLike {
-  getKeySetContainerSelector(): Selector | undefined;
+  getKeySetContainerSelector(): SelectorLike | undefined;
 }
 
 export class SelectorAnalysis {

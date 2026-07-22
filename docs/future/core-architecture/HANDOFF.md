@@ -2059,9 +2059,19 @@ silently choose one language’s policy.
   nested-selector contract explicit. `Important` is now included in `Node`,
   `NodeType`, and `isNode`, matching its existing public `ValueNode` factory and
   eliminating the prior internally contradictory union.
+  Retained Ruleset, Rules, and Ampersand consumers now accept the same
+  `SelectorLike` string/array/node surface their constructors and parser facts
+  already expose. Array-backed ampersands remain raw for key-set analysis and
+  become selector nodes only where append/resolution/cache behavior requires a
+  node. Registration reaches each array member before node-only source metadata
+  is read, and merge descent distinguishes plain inline Rules from Ruleset and
+  AtRule scopes without relying on an over-broad node-bit predicate.
 - Separation/duplication: no second resolver or array-flattening policy was
   added. Existing core `evalBytes` remains the only byte-resolution owner.
-- Cumulative node weight: unchanged.
+- Cumulative node weight: source trees are unchanged. A parser-delivered selector
+  array is materialized only when Ampersand append/resolution or the composed
+  header cache requires `Selector` methods; the key-set path explicitly retains
+  the raw array and performs no wrapper allocation.
 - New traversal: recursive value evaluation remains in the existing evaluator
   path. [loop/traversal] The calc-only slash recognizer now validates that a raw
   slot is shallow before constructing the existing temporary `SpacedValue`.
@@ -2070,6 +2080,9 @@ silently choose one language’s policy.
   `SpacedValue.parts` contract.
   Alias and detached-ruleset loops are unchanged; they now terminate cleanly
   when the current recursive binding is an authored array.
+  The ruleset-callable member loop and property-merge body loop already existed;
+  this pass only moves the former before node-only metadata reads and narrows the
+  latter with the actual `Rules` class before excluding nested cascade scopes.
 - New node/materialization: no new node type, wrapper layer, or side map.
   [materialized array/object] A recognized calc slash group copies its shallow
   readonly slot into the pre-existing temporary `SpacedValue`; no-slash and
@@ -2078,15 +2091,26 @@ silently choose one language’s policy.
   existing `SupportsPreludePart[]` result required by the normalizer; the
   recursive array was previously rejected by the scalar-only signature. No AST
   node or persistent runtime surface is created.
+  [node construction] Raw selector arrays become an existing `SelectorList` only
+  at Ampersand append/resolved-selector and composed-header cache boundaries.
+  String surfaces likewise use the already-established `BasicSelector` at those
+  same node-required boundaries. [inherit/adopt/frozen] Composed replacements
+  inherit source span/flags from the selector they replace; no parent restoration,
+  deep clone, or persistent adapter is added.
 - Render path: unchanged direct emission. Scalar guard/logical behavior is
   identical; recursive slots now use the existing `evalTypedSlot` and
-  `evalValueSlot` owners instead of being misclassified as scalar nodes.
+  `evalValueSlot` owners instead of being misclassified as scalar nodes. The
+  ruleset header removes an unreachable array/string emission branch after those
+  surfaces have already returned or been converted at the cache boundary.
 - Helper/API surface: two file-private structural type guards centralize the
   existing node-vs-readonly-array and value-vs-mixin-call checks. The already
   public `GuardNode` operand fields widen compatibly from `ValueNode` to the
   canonical `ValueSlot`; no new operation, alias, or alternate guard API is
-  introduced.
-- Metadata mutations: none.
+  introduced. The selector metadata copy overloads and Ampersand container type
+  only state existing runtime shapes; they add no runtime helper or public alias.
+- Metadata mutations: selector cache invalidation now serializes an array with
+  the existing selector-list serializer instead of assigning `Array.valueOf()`
+  to a string cache. No new cache or metadata field is introduced.
 - Review-flagged diff tokens: [side map/set] is the pre-existing lazy
   `selectedMixinEvents` map with its already-declared generic type made explicit;
   no second map or lookup was added. [materialized array/object] appears only in
@@ -2112,6 +2136,14 @@ silently choose one language’s policy.
   for a lookup miss or ordinary branch result. [side map/set] on the transparent
   shell is only a truthful nullable type for the existing bindings map; it does
   not allocate a map.
+  [node construction] identifies the existing `BasicSelector` normalization and
+  the newly truthful raw-array normalization only at selector-node-required
+  append/resolution/cache boundaries. [inherit/adopt/frozen] preserves the
+  composed source selector's established span/flag inheritance on that result;
+  no source child is moved or cloned. [parent/source mutation] is a read-only
+  `sourceNode` lookup moved after the array branch so arrays never reach node-only
+  metadata. [loop/traversal] consists only of the existing selector-member
+  registration and merge-body loops in their corrected type order.
 - Behavior evidence: the focused core tests prove recursive authored and
   default mixin arguments; import, selected-mixin, and direct-function suites
   pass 101/101; the complete core suite passes; and the public Less parser suite
@@ -2135,6 +2167,12 @@ silently choose one language’s policy.
   bitset inversion state, combinator recognition, and selector-list result
   shapes truthful so the remaining consumers can be deleted or migrated from a
   sound baseline rather than hidden behind assertions.
+  The selector-surface consumer batch then moves the isolated source count from
+  73 to 54 and the full core config from 474 to 453. Ruleset, Rules, and
+  Ampersand now admit the parser-delivered string/array selector surfaces they
+  already receive, without widening the canonical aliases or adding a bridge.
+  Registration tests prove every array member remains callable, and Ampersand
+  key-set analysis consumes the raw array without materializing a wrapper.
 - Boundary evidence: the Less public parser suite passes after rebuilding core,
   and package export verification confirms the entrypoint remains valid.
 - Evidence: focused and full behavior, build, export, and strict-type evidence
@@ -2156,12 +2194,12 @@ silently choose one language’s policy.
     "id":"legacy-tree-strict-contract-drain",
     "verdict":"accepted",
     "performanceClaim":"none",
-    "owner":"the six retained legacy tree value, guard, selector, bitset, combinator, and extend owners listed by legacy-tree-strict-contract-drain",
-    "why":"The retained tree already permits async container/declaration rendering, optional Context files, source-span accessor reads, DefaultGuard-owned text, inverted bitsets, raw-string or node combinators, and singleton-collapsing selector-list results. This pass states those existing runtime facts exactly while legacy consumers are being removed; it does not preserve them with a shim or add another evaluator, traversal, resolver, or output policy.",
-    "dangerTokensJustification":"[materialized array/object] appears only in type signatures for the existing optional Context file and selector-array surfaces. The selector arrays, overloads, and nullable/optional facts already exist at runtime; this pass allocates no array, object, node, map, side table, error, or output buffer. The combinator predicate keeps the same runtime checks and narrows only the exact Combinators string-literal union or Combinator node, leaving ordinary selector strings in the false branch.",
-    "cases":["declaration-sync-and-async-render-result","declaration-merge-source-span-exclusion","default-guard-owned-value","bitset-inversion-and-disjointness","string-and-node-combinator-recognition","selector-list-singleton-collapse","selector-list-array-or-node-inheritance"],
-    "behaviorEvidence":"The complete core suite passes 3319/3319, including the direct predicate regression proving ordinary selector strings are not combinators while literal and node combinators are. Focused retained-tree declaration, at-rule, ruleset, default-guard, bitset, reference, and selector-extend suites also pass.",
-    "buildEvidence":"Fresh strict core source diagnostics fall from 127 to 73 and the full core config falls from 528 to 474 without suppression. The core package build and package-export verification pass.",
+    "owner":"the ten retained tree value, guard, selector-surface, registration, bitset, combinator, and extend owners listed by legacy-tree-strict-contract-drain",
+    "why":"The retained tree already permits async container/declaration rendering, optional Context files, source-span accessor reads, DefaultGuard-owned text, inverted bitsets, raw-string or node combinators, singleton-collapsing selector-list results, and parser-delivered string-or-array selector surfaces. This pass states those existing runtime facts exactly while retained consumers are removed; it does not preserve them with a shim or add another evaluator, traversal, resolver, or output policy.",
+    "dangerTokensJustification":"[materialized array/object] appears in type signatures for the existing optional Context file and selector-array surfaces. [node construction] A raw selector array becomes the existing SelectorList node only at Ampersand append/resolved-selector and composed-header cache boundaries that require Selector behavior; key-set analysis now keeps the raw array and uses its existing array-aware compute path, avoiding a wrapper allocation there. [loop/traversal] The existing per-member callable registration loop moves ahead of node-only source metadata access, and the existing merge-body descent keeps its exact loop while narrowing Rules by instanceof before excluding Ruleset/AtRule container scopes. No resolver, output buffer, side map, error-control path, or second traversal is added. The combinator predicate keeps the same runtime checks and narrows only the exact Combinators string-literal union or Combinator node, leaving ordinary selector strings in the false branch.",
+    "cases":["declaration-sync-and-async-render-result","declaration-merge-source-span-exclusion","default-guard-owned-value","bitset-inversion-and-disjointness","string-and-node-combinator-recognition","selector-list-singleton-collapse","selector-list-array-or-node-inheritance","parser-delivered-selector-array-ampersand","selector-array-ruleset-callable-registration","selector-array-key-set-analysis","selector-compose-cache-node-boundary","ordered-registration-context-restoration","property-merge-container-scope"],
+    "behaviorEvidence":"The focused selector/ruleset/rules/mixin/declaration suites pass 470 tests with 5 pre-existing skips. The new regressions prove raw selector-array Ampersand append/key-set behavior and callable registration for every array member; existing registration, merge-scope, composition, and reference-render suites remain green.",
+    "buildEvidence":"Fresh strict core source diagnostics fall from 127 to 73 and then to 54; the full core config falls from 528 to 474 and then to 453, without suppression. Core build and package-export verification are required before landing.",
     "baseline":{"fixture":"benchmark.less","phase":"render","currentMedianMs":85.86,"parseRenderMedianMs":68.38,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}
   },{
     "id":"ast-extend-ir-style-normalization",
