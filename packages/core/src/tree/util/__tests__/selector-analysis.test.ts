@@ -47,7 +47,7 @@ describe('SelectorAnalysis.compute tolerates non-node inputs', () => {
   it('interns a bare string leaf as its own key (no hasFlag crash)', () => {
     const context = new Context();
     const analysis = selectorAnalysisFor(context.selectorBits);
-    const sets = analysis.compute('.foo' as never);
+    const sets = analysis.compute('.foo');
     const expected = analysis.keySet(el('.foo'));
     expect(sets.keySet.equals(expected)).toBe(true);
   });
@@ -55,7 +55,7 @@ describe('SelectorAnalysis.compute tolerates non-node inputs', () => {
   it('unions a raw component array as a selector list (no WeakMap key crash)', () => {
     const context = new Context();
     const analysis = selectorAnalysisFor(context.selectorBits);
-    const arraySets = analysis.compute(['.me', '.mf'] as never);
+    const arraySets = analysis.compute(['.me', '.mf']);
     const listSets = analysis.compute(sellist(['.me', '.mf']));
     expect(arraySets.keySet.equals(listSets.keySet)).toBe(true);
   });
