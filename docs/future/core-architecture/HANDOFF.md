@@ -2045,7 +2045,11 @@ silently choose one language’s policy.
   operands and logical-function branches now carry the same canonical
   `ValueSlot`, so authored adjacent arrays no longer fall through scalar-only
   type assumptions. Reference steps narrow their typed call/index/member facts
-  before accessing the corresponding fields.
+  before accessing the corresponding fields. Closure capture, leaked bindings,
+  conditional detached-ruleset aliases, mixin-call aliases, and `$for`/`each`
+  map items now make the same scalar/call/array distinction before dispatch.
+  `$apply` calls the existing source-owner scope with its actual three-argument
+  contract; the removed fourth JavaScript argument was ignored at runtime.
 - Separation/duplication: no second resolver or array-flattening policy was
   added. Existing core `evalBytes` remains the only byte-resolution owner.
 - Cumulative node weight: unchanged.
@@ -2055,6 +2059,8 @@ silently choose one language’s policy.
   It scans without allocation on the overwhelmingly common no-slash path; only
   a recognized slash group performs the second copy needed by the scalar-only
   `SpacedValue.parts` contract.
+  Alias and detached-ruleset loops are unchanged; they now terminate cleanly
+  when the current recursive binding is an authored array.
 - New node/materialization: no new node type, wrapper layer, or side map.
   [materialized array/object] A recognized calc slash group copies its shallow
   readonly slot into the pre-existing temporary `SpacedValue`; no-slash and
@@ -2073,7 +2079,10 @@ silently choose one language’s policy.
   no second map or lookup was added. [materialized array/object] appears only in
   type annotations for that existing map, `bindDirect`'s existing input/output
   arrays, and the widened guard-call operand type; the pass adds no array or
-  object allocation. [loop/traversal] The existing variable-alias chain now
+  object allocation. [array helper] The namespace `flatMap` was pre-existing;
+  this pass only gives its existing `bodies` result the truthful `Statement[]`
+  annotation, without adding a helper, pass, or allocation. [loop/traversal]
+  The existing variable-alias chain now
   checks that its current binding is scalar before reading its discriminant; it
   adds no iteration. [parent/source mutation] The three `source` matches are
   read-only diagnostic-source narrowing before `lineColAt`; no source, parent,
@@ -2091,6 +2100,8 @@ silently choose one language’s policy.
   serializer slice moves the source count from 310 to 241 and the full core
   config from 710 to 641. The current guard/logical/reference slice moves core
   source diagnostics from 241 to 204 and the full core config from 641 to 605.
+  The following closure/call/iteration narrowing slice moves core source
+  diagnostics from 204 to 158 and the full core config from 605 to 559.
 - Boundary evidence: the Less public parser suite passes after rebuilding core,
   and package export verification confirms the entrypoint remains valid.
 - Evidence: focused and full behavior, build, export, and strict-type evidence
@@ -2102,8 +2113,8 @@ silently choose one language’s policy.
     "verdict":"accepted",
     "performanceClaim":"none",
     "owner":"the seven canonical AST-v2 evaluator/value owners listed by ast-semantic-runtime-cutover",
-    "why":"The mixin resolver now admits the recursive ValueSlot contract that its existing evalBytes callee already owns. Context import narrowing, selected-event map inference, optional direct inputs, detached/property/value bindings, ruleset guard context, serializer narrowing, recursive map-entry values, and guard/logical/reference operands make existing canonical runtime contracts explicit; none creates a new resolver, evaluator, or output policy.",
-    "dangerTokensJustification":"The discriminant checks prevent arrays from being treated as nodes, while recursive byte work remains in the existing evalBytes path. [loop/traversal] The calc slash recognizer validates shallow parts without allocation before its rare recognized-slash copy; the existing alias-chain loop only gains a scalar guard. [materialized array/object] Only that recognized slash group copies into the existing scalar-part temporary SpacedValue; the guard-call array match is a type annotation and ordinary arrays allocate nothing. [parent/source mutation] Diagnostic source variables are only narrowed for read-only line lookup; no source or parent state changes. Capturing an already-loaded Stylesheet and typing existing maps/optional slots add no node, side table, fallback call, or output buffer, and this record makes no neutrality or speed claim.",
+    "why":"The mixin resolver now admits the recursive ValueSlot contract that its existing evalBytes callee already owns. Context import narrowing, selected-event map inference, optional direct inputs, detached/property/value bindings, ruleset guard context, serializer narrowing, recursive map-entry values, guard/logical/reference operands, closure aliases, and iteration inputs make existing canonical runtime contracts explicit; none creates a new resolver, evaluator, or output policy.",
+    "dangerTokensJustification":"The discriminant checks prevent arrays from being treated as nodes, while recursive byte work remains in the existing evalBytes path. [loop/traversal] The calc slash recognizer validates shallow parts without allocation before its rare recognized-slash copy; the existing alias-chain loop only gains a scalar guard. [array helper] The namespace flatMap already existed and only gains a Statement[] annotation. [materialized array/object] Only the recognized slash group copies into the existing scalar-part temporary SpacedValue; guard-call, namespace bodies, and binding maps are type annotations and ordinary arrays allocate nothing. [side map/set] The binding Map match is an existing parameter type widened to CallValue, not a new map. [parent/source mutation] Diagnostic source variables are only narrowed for read-only line lookup; no source or parent state changes. Capturing an already-loaded Stylesheet and typing existing maps/optional slots add no node, side table, fallback call, or output buffer, and this record makes no neutrality or speed claim.",
     "cases":["ValueSlot-array-evaluation-and-authored-layout","List-value-separator-and-Block-delimiter-facts","reference-index-and-For-array-access","Less-lazy-color-call-demand-boundary","defineFunction-typed-positional-named-and-lazy-binding","mixin-dispatch-ValueSlot-argument-resolution","ValueLayout-provenance-side-table","preserve-mode-calc-result-composition"],
     "behaviorEvidence":"The complete core suite and the public Less parser suite pass; focused recursive arguments, imports, selected mixins, direct-function, value-access, and recursive guard truth cases pass.",
     "buildEvidence":"The core package build and package-export verification pass after the resolver contract correction.",

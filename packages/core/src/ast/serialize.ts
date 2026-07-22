@@ -5049,7 +5049,7 @@ function expandApply(
           rule.body, composed, ancestor, applyFrame, group, flush, partition, e,
           imp, forceLeading, propertyScope, true
         )
-      ), rule.body);
+      ));
       if (isThenable(emitted)) {
         return emitted.then(() => run(index + 1));
       }
@@ -5082,7 +5082,7 @@ function descendNamespacePath(path: MixinCall['path'], frame: Frame): Frame | nu
     // Imported facts execute in a particular render placement. A Rule found by
     // namespace lookup contributes both that placement's already-published
     // import prefix and its authored body, matching lexical import splice order.
-    const bodies = rules.flatMap(r => [
+    const bodies: Statement[] = rules.flatMap(r => [
       ...(owner?.rulePlacements?.get(r)?.importedRules ?? []),
       ...r.body
     ]);
@@ -5102,6 +5102,9 @@ function captureArgDefFrames(bindings: Map<string, Binding> | null, callerFrame:
     return;
   }
   for (const v of bindings.values()) {
+    if (isValueSlotArray(v)) {
+      continue;
+    }
     if (v.type === 'DetachedRuleset') {
       bindDetached(callFrame, v, callerFrame, callerFrame.sourceOwner ?? null);
     } else if (v.type === 'MixinCall') {
@@ -5134,11 +5137,11 @@ function leakBodyVars(callerFrame: Frame, body: Statement[], callFrame: Frame, e
     const v = s.value;
     // A mixin-CALL-bound var (`@p: .m()`) is not byte-snapshottable; leave it to
     // resolve lazily at its call site rather than snapshotting a leaked copy.
-    if (v.type === 'MixinCall') {
+    if (isMixinCallValue(v)) {
       continue;
     }
     let snap: ValueNode;
-    if (v.type === 'DetachedRuleset' || isTypedLiteral(v)) {
+    if (!isValueSlotArray(v) && (v.type === 'DetachedRuleset' || isTypedLiteral(v))) {
       snap = v;
     } else {
       const b = evalBytes(v, callFrame, e);
@@ -5232,7 +5235,7 @@ function publishExplicitRulesets(frame: Frame, body: Statement[], callFrame: Fra
 /** The taken branch value of an `if(cond, then, else)` call — its condition
  *  evaluated through the guard evaluator (same rule `evalLogical` applies). The
  *  `else` branch may be absent, so the result can be `undefined`. */
-function pickIfBranch(node: FunctionCall, frame: Frame | null, e: EvalCtx): ValueNode | undefined {
+function pickIfBranch(node: FunctionCall, frame: Frame | null, e: EvalCtx): ValueSlot | undefined {
   const cond = node.args[0];
   const taken = cond !== undefined && evalGuard(condGuard(cond), guardDeps(frame, e));
   return taken ? node.args[1] : node.args[2];
@@ -5253,6 +5256,9 @@ function resolveToMixinCall(node: Binding | undefined, frame: Frame | null): Mix
   let cur: Binding | undefined = node;
   while (cur && !seen.has(cur)) {
     seen.add(cur);
+    if (isValueSlotArray(cur)) {
+      return undefined;
+    }
     if (cur.type === 'MixinCall') {
       return cur;
     }
@@ -5269,6 +5275,9 @@ function resolveDetachedRuleset(node: Binding, frame: Frame | null, e: EvalCtx):
   let cur: Binding | undefined = node;
   while (cur && !seen.has(cur)) {
     seen.add(cur);
+    if (isValueSlotArray(cur)) {
+      return undefined;
+    }
     if (cur.type === 'DetachedRuleset') {
       return cur;
     }
@@ -5350,7 +5359,7 @@ function expandReferenceCall(
   if (!resolved) {
     return;
   }
-  if (resolved.value.type === 'MixinCall') {
+  if (isMixinCallValue(resolved.value)) {
     const home = e.mixinCallHomes?.get(resolved.value) ?? resolved.frame ?? frame;
     return expandCall(resolved.value, composed, ancestor, home, group, flush, partition, e, false, forceLeading, undefined, propertyScope, applyExpansion);
   }
@@ -5481,6 +5490,9 @@ function resolveForRuleset(
     if (!bound) {
       return null;
     }
+    if (isValueSlotArray(bound)) {
+      return null;
+    }
     if (bound.type === 'DetachedRuleset') {
       const binding = detachedBinding(frame, bound);
       return { body: bound.body, frame: binding?.lexicalFrame ?? frame, detached: binding };
@@ -5495,7 +5507,9 @@ function resolveForRuleset(
   }
   if (node.type === 'Reference') {
     const resolved = resolveReferenceResult(node, frame, e);
-    return resolved === null ? null : resolveForRuleset(resolved.value, resolved.frame, e);
+    return resolved === null || isMixinCallValue(resolved.value)
+      ? null
+      : resolveForRuleset(resolved.value, resolved.frame, e);
   }
   return null;
 }
@@ -5522,7 +5536,7 @@ function resolveForNode(
       // A mixin-CALL binding is not a plain list/scalar iterable node; stop at the
       // `VariableReference` (the list-fallback then treats it as a single item — the mixin-call
       // iterable proper is handled up front in `forItems`).
-      if (!hit || hit.value.type === 'MixinCall') {
+      if (!hit || isMixinCallValue(hit.value)) {
         return { node: cur, frame: f };
       }
       cur = hit.value;
@@ -5553,7 +5567,7 @@ function forItemsFromMixinCall(call: MixinCall, frame: Frame, e: Emit): ForItem[
     if (n.type === 'Declaration') {
       const name = typeof n.name === 'string' ? n.name : evalBytesSync(n.name, leaf.frame, e);
       items.push({ value: n.value, key: any(name) });
-    } else if (n.type === 'VariableDeclaration' && n.value.type !== 'MixinCall') {
+    } else if (n.type === 'VariableDeclaration' && !isMixinCallValue(n.value)) {
       items.push({ value: n.value, key: any(n.name) });
     }
   }
@@ -5563,7 +5577,7 @@ function forItemsFromMixinCall(call: MixinCall, frame: Frame, e: Emit): ForItem[
 /** The ordered items an `each()` iterable expands to. */
 function forItems(node: ValueSlot | MixinCall, frame: Frame | null, e: Emit): ForItem[] {
   // [each mixin-call iterable] `.mixin()` output → iterate its declarations.
-  if (!isValueSlotArray(node) && node.type === 'MixinCall') {
+  if (isMixinCallValue(node)) {
     return frame === null ? [] : forItemsFromMixinCall(node, frame, e);
   }
   if (!isValueSlotArray(node) && node.type === 'Range') {
@@ -5575,8 +5589,14 @@ function forItems(node: ValueSlot | MixinCall, frame: Frame | null, e: Emit): Fo
     for (const s of map.body) {
       if (s.type === 'Declaration') {
         const name = typeof s.name === 'string' ? s.name : evalBytesSync(s.name, map.frame, e);
-        items.push({ value: s.value, key: any(name), ...(s.value.type === 'DetachedRuleset' && map.detached ? { detached: map.detached } : {}) });
-      } else if (s.type === 'VariableDeclaration' && s.value.type !== 'MixinCall') {
+        items.push({
+          value: s.value,
+          key: any(name),
+          ...(!isValueSlotArray(s.value) && s.value.type === 'DetachedRuleset' && map.detached
+            ? { detached: map.detached }
+            : {})
+        });
+      } else if (s.type === 'VariableDeclaration' && !isMixinCallValue(s.value)) {
         items.push({ value: s.value, key: any(s.name) });
       }
     }
@@ -5742,7 +5762,7 @@ function dispatch(
   // it falls back to the caller frame (`parent: frame`).
   const makeCalleeTyped = (
     def: MixinDef,
-    bindings: Map<string, ValueNode> | null,
+    bindings: Map<string, CallValue> | null,
     isDefault: () => boolean
   ): TypedResolver => {
     const home = homes?.get(def);
@@ -5805,7 +5825,7 @@ function expandSpreadArgs(call: MixinCall, resolveCaller: ValueResolver): MixinC
     if (!a.spread) {
       args.push(a); continue;
     }
-    if ('type' in a.value && a.value.type === 'MixinCall') {
+    if (isMixinCallValue(a.value)) {
       throw new Error('A deferred mixin call cannot be used as a spread argument.');
     }
     const bytes = resolveCaller(a.value).trim();
@@ -5837,7 +5857,7 @@ function substituteClosureVarArgs(call: MixinCall, frame: Frame): MixinCall {
     // dispatches it (its args resolve in the caller frame's runtime binding).
     if ('type' in a.value && a.value.type === 'VariableReference') {
       const bound = lookupVar(frame, a.value.name);
-      if (bound?.type === 'DetachedRuleset') {
+      if (bound && !isValueSlotArray(bound) && bound.type === 'DetachedRuleset') {
         changed = true;
         return { ...a, value: bound };
       }
@@ -5845,7 +5865,7 @@ function substituteClosureVarArgs(call: MixinCall, frame: Frame): MixinCall {
       // as an arg binds BY REFERENCE, wrapped as a detached ruleset whose body is that
       // call (so `@another-mixin()` in the callee dispatches it). The wrapper's home is
       // the caller frame, where the call's own selector/args resolve.
-      if (bound?.type === 'MixinCall') {
+      if (bound && isMixinCallValue(bound)) {
         changed = true;
         return { ...a, value: bound };
       }
