@@ -1973,12 +1973,14 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
     ),
     children => children.length === 1
       ? requireValueNode(children[0])
-      : operation('*', dimension(-1, '', '-1'), requireValueNode(children[1]))
+      : operation('*', dimension(-1, '', '-1'), requireValueNode(children[1])),
+    { collapse: true }
   );
   const DirectLessMathAtom = node<ValueNode>(
     'DirectLessMathAtom',
     g.DirectLessMathUnary,
-    children => requireValueNode(children[0])
+    children => requireValueNode(children[0]),
+    { collapse: true }
   );
   // Parenthesized and calc math follows Less precedence: product before sum,
   // both left-associative.  Top-level declarations deliberately exclude `/`:
@@ -1988,22 +1990,26 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
   const DirectLessMathProduct = node<ValueNode>(
     'DirectLessMathProduct',
     noTrivia(sequence(g.DirectLessMathAtom, many(sequence(directProductOperator, g.DirectLessMathAtom)))),
-    foldOperation
+    foldOperation,
+    { collapse: true }
   );
   const DirectLessMathSum = node<ValueNode>(
     'DirectLessMathSum',
     noTrivia(sequence(g.DirectLessMathProduct, many(sequence(directSumOperator, g.DirectLessMathProduct)))),
-    foldOperation
+    foldOperation,
+    { collapse: true }
   );
   const DirectLessTopProduct = node<ValueNode>(
     'DirectLessTopProduct',
     noTrivia(sequence(g.DirectLessMathAtom, many(sequence(directTopProductOperator, g.DirectLessMathAtom)))),
-    foldOperation
+    foldOperation,
+    { collapse: true }
   );
   const DirectLessTopSum = node<ValueNode>(
     'DirectLessTopSum',
     noTrivia(sequence(g.DirectLessTopProduct, many(sequence(directSumOperator, g.DirectLessTopProduct)))),
-    foldOperation
+    foldOperation,
+    { collapse: true }
   );
   // In Less's default `parens-division` mode a glued top-level `/` is not an
   // eager Operation. It is one parser-owned slash group that becomes division
