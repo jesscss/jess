@@ -205,6 +205,24 @@ function isQuoted(value: unknown): value is Quoted {
     && typeof value.escaped === 'boolean';
 }
 
+function isUrl(value: unknown): value is Url {
+  return typeof value === 'object'
+    && value !== null
+    && 'type' in value && value.type === 'Url'
+    && 'value' in value && isValue(value.value);
+}
+
+function isImportTarget(value: unknown): value is Quoted | Url | Interpolation {
+  return isQuoted(value) || isUrl(value) || isInterpolation(value);
+}
+
+function isList(value: unknown): value is List {
+  return typeof value === 'object'
+    && value !== null
+    && 'type' in value && value.type === 'List'
+    && 'value' in value && Array.isArray(value.value);
+}
+
 function isVarRef(value: unknown): value is VariableReference {
   return typeof value === 'object'
     && value !== null
@@ -1277,13 +1295,13 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
     'DirectScssImport',
     sequence(regex(/@import(?![-_a-zA-Z0-9\u0080-\uffff])/i), optional(g.DirectScssStaticImportOptions), choice(g.DirectScssQuoted, g.DirectScssStaticImportUrl), optional(g.DirectScssStaticImportTail), literal(';')),
     (children) => {
-      const targetIndex = children.findIndex(child => isQuoted(child) || isInterpolation(child) || (typeof child === 'object' && child !== null && 'type' in child && child.type === 'Url'));
-      const target = targetIndex < 0 ? undefined : children[targetIndex] as Quoted | Url | Interpolation;
-      if (target === undefined) {
+      const targetIndex = children.findIndex(isImportTarget);
+      const target = children[targetIndex];
+      if (!isImportTarget(target)) {
         throw new TypeError('DirectScssImport requires a typed target.');
       }
       const tail = children.slice(targetIndex + 1).find(isValue) ?? null;
-      return importAtRule('@import', target, (children.find(child => typeof child === 'object' && child !== null && 'type' in child && child.type === 'List') as List | undefined) ?? null, null, tail);
+      return importAtRule('@import', target, children.find(isList) ?? null, null, tail);
     }
   );
   const directScssImportName = regex(/-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
@@ -1296,7 +1314,10 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
     'DirectScssUse',
     sequence(regex(/@use(?![-_a-zA-Z0-9\u0080-\uffff])/i), g.DirectScssStaticQuoted, optional(g.DirectScssUseAs), literal(';')),
     (children) => {
-      const path = children[1] as Quoted;
+      const path = children[1];
+      if (!isQuoted(path)) {
+        throw new TypeError('Direct SCSS @use requires a quoted module path.');
+      }
       const namespace = children.find((child): child is string => typeof child === 'string') ?? null;
       if (path.value.startsWith('sass:')) {
         const rewritten = `#sass/${path.value.slice('sass:'.length)}`;
@@ -1310,7 +1331,12 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
   const DirectScssForward = node<StyleImport>(
     'DirectScssForward',
     sequence(regex(/@forward(?![-_a-zA-Z0-9\u0080-\uffff])/i), g.DirectScssStaticQuoted, literal(';')),
-    children => styleImport(children[1] as Quoted, 'compose', null, true)
+    (children) => {
+      if (!isQuoted(children[1])) {
+        throw new TypeError('Direct SCSS @forward requires a quoted module path.');
+      }
+      return styleImport(children[1], 'compose', null, true);
+    }
   );
   // The core canonical tree already owns MixinDef/MixinCall and its ordinary
   // parameter/argument binding semantics. This direct SCSS family therefore
