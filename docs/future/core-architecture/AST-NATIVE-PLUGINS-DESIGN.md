@@ -397,7 +397,7 @@ structural pre-walk over the `ast/` plain-data node tree:
 
 ```
 stylesheet = parse(src)                               // dialect public entry
-resolved = context.loadImports(stylesheet, …)         // retained Context dispatch
+resolved = stylesheet                                 // Context dispatches imports/plugins
 if (preEvalVisitors.length)                            // HARD gate: empty ⇒ skip
   resolved = preWalk(resolved, preEvalVisitors)        // structural rewrite
 css = serialize(resolved, { evaluator, … })            // the single pass
