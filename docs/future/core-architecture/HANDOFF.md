@@ -231,6 +231,11 @@ section is the authoritative full-scope companion to the compact task goal.
 - CLI ownership is explicit: only the external `less` package provides the
   Less-compatible `lessc` command. The `jess` package provides only `jess` and
   must not claim Less CLI compatibility through a second bin or alias.
+- Node support is a rolling policy, not a permanently pinned release number:
+  support the current LTS line and the prior three LTS lines. `engines.node:
+  >=18` is the current derived floor; it advances only when that four-line
+  window advances. The Jess CLI workflow exercises `current`, `lts/*`, and
+  `lts/-1` through `lts/-3`.
 - Context remains the one render/session/cache/diagnostic/plugin/import
   coordinator. Retain its plugin-based source, parser, module, path, and
   import dispatch topology while changing carried documents to `Stylesheet`;
@@ -263,12 +268,14 @@ section is the authoritative full-scope companion to the compact task goal.
 - The committed Less `alpha` branch is exactly `5.0.0-alpha.1`; its guarded
   release dry-run and release-guard unit tests pass. This proves the release
   shape only, not package readiness.
-- Local `lessc` preflight passes, but it resolves workspace-linked Jess
-  packages whose manifests are still `2.0.0-alpha.5`. It is therefore not
-  evidence for `jess@2.0.0-alpha.9` or the current Jess source tree.
-- The normal Less package test currently exits 6 with 49 fixture mismatches
-  and 54 incomplete-parse diagnostics. Those failures remain visible release
-  work; they must not be weakened, reclassified as passing parity, or hidden.
+- The external Less `alpha` worktree is not yet a release candidate. It is one
+  unpushed commit ahead of `origin/alpha` and has uncommitted implementation
+  and test changes: the explicit `collapseNesting` option and
+  `lessc --collapse-nesting` route, their source-order regressions, and the
+  clean packed-consumer verifier. Those changes need review, a clean commit,
+  and their relevant built-artifact gates before the external release branch
+  can be pushed or treated as release evidence. Do not substitute a historical
+  raw test-runner count for those release gates.
 - Neither `jess@2.0.0-alpha.9` nor `less@5.0.0-alpha.1` is on npm. Do not
   publish Less until Jess alpha.9 is published, Less has been rebuilt/relinked
   against that exact package, and a publish-shaped clean-consumer install has
@@ -466,20 +473,27 @@ the newly generated parser artifacts.
 
 ### Current alpha.9 candidate evidence (2026-07-22; not authorized to publish)
 
-The final `dev` endpoint is `338801372`. The corrected alpha snapshot is
-`8bcc31516`, descends from that endpoint, retains the intended
-`2.0.0-alpha.9` manifests, and has a clean alpha worktree. Its full
-`pnpm run release:alpha:check` preflight passed with Parseman `0.29.0`,
-including the packed-consumer proof and its nested alpha.9 publish dry-run.
-The 18-package allowlist validates at `2.0.0-alpha.9`.
+The current local alpha snapshot is `dd70d6b2f`. It is a controlled two-tree
+refresh on the isolated `alpha` worktree, retaining the intended
+`2.0.0-alpha.9` package manifests rather than an ordinary merge or rebase of
+shared alpha history. The alpha worktree is clean. The recorded full
+`pnpm run release:alpha:check` run passed with Parseman `0.29.0`: release
+build, config syntax, 22 strict type configurations, production lint with no
+errors, Less-alpha route, direct Jess parser/plugin/Rollup tests, AST-v2
+ratchet, baseline, release-mode cutting review, the 18-package allowlist,
+packed consumer, and nested alpha.9 publish dry-run. The latter resolved
+`2.0.0-alpha.9` ahead of the published alpha.8 tag; it did not publish.
 
-Neither `alpha` nor any tag has been pushed and no package has been published
-from this candidate. **There is no publication authorization.** A later,
-explicit owner authorization is required before the full
-`pnpm run release:alpha` invocation, which re-resolves the registry candidate,
-repeats the preflight, then tags, pushes, and publishes. The external
+The current source and snapshot use the rolling Node-LTS policy above; the
+manifest's `>=18` is its present floor, not a promise to support only Node 18.
+Neither the local `alpha` commits nor any tag have been pushed, and no package
+has been published from this candidate. **There is no publication
+authorization.** A later explicit owner authorization is required before
+`pnpm run release:alpha`, which re-resolves the registry candidate, repeats
+preflight, then tags, pushes, and publishes. The external
 `less@5.0.0-alpha.1` release remains a separate future action after Jess
-alpha.9 is actually available from npm.
+alpha.9 is actually available from npm and the external Less candidate is
+clean and independently proven.
 
 ### Aggressive Cutting Self-Prosecution — release-state documentation
 
