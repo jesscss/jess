@@ -320,7 +320,7 @@ function composeExtendWithRelativeToTarget(
       child = withSelectorBitLibrary(childIs, child, result);
     }
     result = withSelectorBitLibrary(
-      (Ruleset as typeof Ruleset).composeSelector(child, result),
+      asExtendSelectorNode(Ruleset.composeSelector(child, result)),
       child,
       result
     );
@@ -338,26 +338,27 @@ function getFullComposedForm(ruleset: Ruleset): Selector | undefined {
   if (!local) {
     return undefined;
   }
+  const localNode = asExtendSelectorNode(local);
   const parent = getParentRuleset(ruleset);
   if (!parent) {
-    return local;
+    return localNode;
   }
   const parentComposed = getFullComposedForm(parent);
   if (!parentComposed) {
-    return local;
+    return localNode;
   }
   // Wrap child SelectorList in :is() to avoid distribution in composeSelector
-  let childForCompose: Selector = local;
-  if (isNode(local, N.SelectorList) && !local.hasFlag(F_AMPERSAND)) {
-    const childIs = PseudoSelector.create({ name: ':is', arg: copySelectorForExtend(local) });
+  let childForCompose: Selector = localNode;
+  if (isNode(localNode, N.SelectorList) && !localNode.hasFlag(F_AMPERSAND)) {
+    const childIs = PseudoSelector.create({ name: ':is', arg: copySelectorForExtend(localNode) });
     childIs.generated = true;
     if (!isSelectorValue(childIs)) {
       throw new TypeError('Expected generated pseudo selector');
     }
-    childForCompose = withSelectorBitLibrary(childIs, local, parentComposed);
+    childForCompose = withSelectorBitLibrary(childIs, localNode, parentComposed);
   }
   return withSelectorBitLibrary(
-    (Ruleset as typeof Ruleset).composeSelector(childForCompose, parentComposed),
+    asExtendSelectorNode(Ruleset.composeSelector(childForCompose, parentComposed)),
     childForCompose,
     parentComposed
   );
@@ -1030,14 +1031,14 @@ export function processExtends(context: Context): void {
             }
             childForCompose = withSelectorBitLibrary(childIs, selector, parentSel);
           }
-          const composedSurface = (Ruleset as typeof Ruleset).composeSelector(childForCompose, parentSel);
+          const composedSurface = Ruleset.composeSelector(childForCompose, parentSel);
           // composeSelector can return a bare string when the child is a
           // string-backed leaf (e.g. a nested `.ext9`). A string carries no
           // bit-library slot to seed, so only thread the library into node output.
           const composed = typeof composedSurface === 'string'
             ? composedSurface
             : withSelectorBitLibrary(
-                composedSurface,
+                asExtendSelectorNode(composedSurface),
                 asExtendSelectorNode(childForCompose),
                 parentSel
               );

@@ -270,6 +270,7 @@ a blanket optimization exemption or a new active architecture queue.
       "packages/core/src/tree/ampersand.ts",
       "packages/core/src/tree/declaration.ts",
       "packages/core/src/tree/default-guard.ts",
+      "packages/core/src/tree/extend.ts",
       "packages/core/src/tree/mixin.ts",
       "packages/core/src/tree/rules.ts",
       "packages/core/src/tree/ruleset.ts",
@@ -277,12 +278,14 @@ a blanket optimization exemption or a new active architecture queue.
       "packages/core/src/tree/util/bitset.ts",
       "packages/core/src/tree/util/combinator.ts",
       "packages/core/src/tree/util/extend.ts",
+      "packages/core/src/tree/util/extend-roots.ts",
+      "packages/core/src/tree/util/extend-walk.ts",
       "packages/core/src/tree/util/render-buffer.ts",
       "packages/core/src/tree/util/selector-analysis.ts"
     ],
     "semanticRuntime": {
-      "owner": "the twelve retained tree value, guard, selector-surface, registration, rendering, bitset, combinator, and extend owners listed by legacy-tree-strict-contract-drain",
-      "scope": "This bounded strict-contract drain makes existing runtime facts truthful while retained tree consumers are removed: declaration rendering propagates existing MaybePromise results and reads provenance only through its accessor, DefaultGuard owns the value its constructor already writes, bitsets use their existing inversion reader instead of an undeclared dependency field, the shared combinator recognizer exposes the exact string-literal-or-node type it already recognizes, selector-list/extend helpers state their existing singleton-collapse and array-or-node inheritance behavior, and rules/ruleset/ampersand consumers accept the parser-delivered string-or-array selector surface they already receive. Ampersand only materializes an array where append or resolved-selector node behavior requires a node; key-set analysis consumes the raw array directly. A mixin's invisible render is synchronously empty when it has no effect to await, and interpolated-name registration truthfully returns Mixin rather than promising the receiver subtype because preparation may return a distinct withParts result. It adds no compatibility shim, alternate evaluator, traversal, output policy, or performance claim.",
+      "owner": "the fifteen retained tree value, guard, selector-surface, registration, rendering, bitset, combinator, and extend owners listed by legacy-tree-strict-contract-drain",
+      "scope": "This bounded strict-contract drain makes existing runtime facts truthful while retained tree consumers are removed: declaration rendering propagates existing MaybePromise results and reads provenance only through its accessor, DefaultGuard owns the value its constructor already writes, bitsets use their existing inversion reader instead of an undeclared dependency field, the shared combinator recognizer exposes the exact string-literal-or-node type it already recognizes, selector-list/extend helpers state their existing singleton-collapse and array-or-node inheritance behavior, and rules/ruleset/ampersand consumers accept the parser-delivered string-or-array selector surface they already receive. Ampersand only materializes an array where append or resolved-selector node behavior requires a node; key-set analysis consumes the raw array directly. A mixin's invisible render is synchronously empty when it has no effect to await, and interpolated-name registration truthfully returns Mixin rather than promising the receiver subtype because preparation may return a distinct withParts result. Extend registration, root composition, and composed-match walking now admit the same selector surface and materialize it only at APIs that require Selector node behavior. It adds no compatibility shim, alternate evaluator, traversal, output policy, or performance claim.",
       "cases": [
         "declaration-sync-and-async-render-result",
         "declaration-merge-source-span-exclusion",
@@ -297,7 +300,10 @@ a blanket optimization exemption or a new active architecture queue.
         "selector-compose-cache-node-boundary",
         "ordered-registration-context-restoration",
         "property-merge-container-scope",
-        "mixin-invisible-sync-render-and-registration-result"
+        "mixin-invisible-sync-render-and-registration-result",
+        "extend-record-selector-surface",
+        "extend-root-composition-selector-surface",
+        "extend-walk-composed-match-selector-surface"
       ],
       "performanceClaim": "none",
       "baseline": {"fixture": "benchmark.less", "phase": "render"}
