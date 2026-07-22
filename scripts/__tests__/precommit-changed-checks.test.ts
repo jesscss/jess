@@ -33,6 +33,10 @@ describe('pre-commit aggressive-review mode', () => {
         resolve(sandbox, 'scripts/precommit-changed-checks.mjs'),
         readFileSync(resolve(repo, 'scripts/precommit-changed-checks.mjs'))
       );
+      writeFileSync(
+        resolve(sandbox, 'scripts/staged-lint.mjs'),
+        readFileSync(resolve(repo, 'scripts/staged-lint.mjs'))
+      );
       mkdirSync(fakeBin);
       const fakePnpm = resolve(fakeBin, 'pnpm');
       writeFileSync(fakePnpm, '#!/bin/sh\nprintf \'%s\\n\' "$*" >> "$JESS_PRECOMMIT_INVOCATIONS"\n');
@@ -87,6 +91,10 @@ describe('pre-commit aggressive-review mode', () => {
       writeFileSync(
         resolve(sandbox, 'scripts/precommit-changed-checks.mjs'),
         readFileSync(resolve(repo, 'scripts/precommit-changed-checks.mjs'))
+      );
+      writeFileSync(
+        resolve(sandbox, 'scripts/staged-lint.mjs'),
+        readFileSync(resolve(repo, 'scripts/staged-lint.mjs'))
       );
       mkdirSync(fakeBin);
       const fakePnpm = resolve(fakeBin, 'pnpm');
