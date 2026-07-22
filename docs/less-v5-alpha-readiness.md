@@ -90,6 +90,13 @@ The alpha blocks only on these advertised correctness and release-safety gates:
   smoke/compatibility tests; and
 - a release-note known-limitations section that links the complete inventory and
   states the unsupported or divergent behavior honestly.
+- `[~]` **Strict source quality is blocking.** The current integration candidate
+  with published Parseman 0.28.0 still reports 245 strict build-config type
+  diagnostics (241 core plus four parser-entry `FusedRule` diagnostics) and
+  1,357 bounded production lint findings. Prepared but unpublished Parseman
+  0.28.1 removes those four parser-entry diagnostics; the new
+  `release:alpha:check` steps still fail on the remaining source debt. Neither
+  count is waived or hidden by the bundlers' `--noCheck` builds.
 - `[x]` **F5 deferred CSS color-call gate.** Through the public Less/Jess route,
   CSS-shaped `rgb()`/`rgba()`/`hsl()`/`hsla()` calls with three or more argument
   slots remain authored, verbatim CSS calls even under `functionMode: 'error'`;
@@ -345,9 +352,12 @@ earlier, before a manual publish attempt.
 - 2026-07-21: Made source quality an explicit blocking alpha gate rather than
   inferring it from release builds that use `--noCheck`. The dependency-ordered
   `verify:types` audit on the current integration candidate with published
-  Parseman 0.28.0 fails with 246 diagnostics. The bounded `lint:production`
-  audit fails with 1,357 findings. These are measured burn-down baselines, not
-  accepted debt: `release:alpha:check` now stops on either result.
+  Parseman 0.28.0 fails with 245 diagnostics: 241 in core plus four parser-entry
+  `FusedRule` diagnostics. Prepared but unpublished Parseman 0.28.1 removes
+  those four entry diagnostics; it is not the release candidate dependency yet.
+  The bounded `lint:production` audit fails with 1,357 findings. These are
+  measured burn-down baselines, not accepted debt: `release:alpha:check` now
+  stops on either result.
 - 2026-07-21: Replaced the stale dirty/behind Less package snapshot with the
   clean `5.0.0-alpha.1` release candidate at `1fc6d76b`. Verified
   `HEAD..upstream/master=0`, `npm run test:lessc`, `npm run typecheck`, and the
