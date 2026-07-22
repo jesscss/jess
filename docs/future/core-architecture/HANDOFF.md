@@ -3672,6 +3672,43 @@ or Context deletion lanes.
 - Verdict: accepted bounded in-place AST-v2 conversion; remaining Less
   function files require their own behavior-parity batches.
 
+## Aggressive Cutting Self-Prosecution — Less sqrt Fn conversion
+
+- Latest pass: Less `sqrt` now directly re-exports the canonical AST-v2
+  value-domain callable from `builtins/`; the duplicate Less body is removed in
+  place. The Less named/default path and builtin registry resolve to the same
+  callable object.
+- Architecture surface: the existing typed `defineFunction`/`Fn` value
+  contract, `unaryMath`, and `makeDimension` result factory only. No legacy tree
+  node, Context wrapper, parser host, bridge, fallback evaluator, or
+  compatibility shim was introduced.
+- Separation/duplication: one implementation per function. The Less module
+  remains an explicit public entrypoint re-export, not a moved copy or a second
+  runtime implementation.
+- Cumulative node weight: zero AST nodes, frames, maps, side tables, or render
+  state. Each call creates only its required canonical `Dimension` result.
+- New traversal: none. Existing `unaryMath` performs one typed dimension check,
+  scalar `Math.sqrt`, and unit preservation; it intentionally does not apply
+  angle normalization for the `null` output-unit mode.
+- New node/materialization: no legacy tree nodes or AST nodes; the canonical
+  value factory creates the required result once.
+- Render path: unchanged typed evaluator/serializer route; no tree conversion,
+  source reparse, or alternate output path was added.
+- Helper/API surface: no helper or public name was added. Existing Less `sqrt`
+  named and default exports remain available through the direct re-export.
+- Metadata mutations: none.
+- Review-flagged diff tokens: none. No traversal, clone, node, spread,
+  side-map, metadata mutation, or routine error-control machinery was added.
+- Evidence: the focused parity suite compares canonical results with a local
+  pre-cutover Less `mathHelper` oracle across unitless, ordinary-unit, and
+  angle-unit inputs (including a negative input's `NaN` result), asserting
+  numbers, units, and serialized bytes. Registry and named/default entrypoint
+  identity are asserted. Focused tests pass 2/2; the full fns suite passes 76
+  files / 486 tests; `@jesscss/fns` build, changed-file ESLint, and
+  aggressive-cutting review pass. No performance claim is made.
+- Verdict: accepted bounded in-place AST-v2 conversion; remaining Less math
+  functions require their own behavior-parity batches.
+
 ## Aggressive Cutting Self-Prosecution — Less sin/cos Fn conversion
 
 - Latest pass: Less `sin` and `cos` now directly re-export the canonical
