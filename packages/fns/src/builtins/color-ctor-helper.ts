@@ -6,7 +6,8 @@
  *
  * HARD MODULE BOUNDARY: value domain only.
  */
-import type { Color, Dimension, List, ValueObj } from '@jesscss/core/value';
+import type { Color, Dimension, ValueGroup } from '@jesscss/core/value';
+import { groupSeparator, isValueGroupArray } from '@jesscss/core/value';
 
 /** Clamp to the 0-1 range (alpha / saturation / lightness). */
 export const clamp01 = (v: number): number => Math.max(0, Math.min(1, v));
@@ -52,10 +53,14 @@ export function alphaToNumber(d: Dimension): number {
 }
 
 /** Whether an arg-list item is a materialized color operand. */
-export const isColor = (v: ValueObj | undefined): v is Color => v?.type === 'Color';
+export const isColor = (v: ValueGroup | undefined): v is Color =>
+  v !== undefined && !isValueGroupArray(v) && v.type === 'Color';
 
 /** Modern color syntax is signalled by a space / slash separated call. */
-export const isModern = (list: List): boolean => list.sep === ' ' || list.sep === '/';
+export const isModern = (value: ValueGroup): boolean => {
+  const separator = groupSeparator(value);
+  return separator === ' ' || separator === '/';
+};
 
 /**
  * The HSV→RGB kernel shared by `hsv`/`hsva` — byte-faithful to legacy `less/hsva`.

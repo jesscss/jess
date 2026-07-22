@@ -290,8 +290,8 @@ evaluation, participates in Less math-mode evaluation when the delimiter is
 is no separate `Bracket` node and no `List.bracketed` field.
 
 Where the grammar emits a public syntax `List`, it and the materialized value
-`List` share the canonical payload shape: `value` plus a separator fact
-(`',' | ' ' | '/' | 'undecided'`). They never expose the former
+`List` share the canonical payload shape: `value` plus an explicit separator
+fact (`',' | '/'`). They never expose the former
 `items`/`separators` pair or recover a separator from joined bytes. Ordinary
 adjacent declaration/value terms are instead the raw recursive `ValueSlot`
 array itself; there is no `SpacedValue` or `List(sep: ' ')` wrapper for that
@@ -392,7 +392,13 @@ harness loads the macro-compiled public parser artifact, not Parseman grammar
 source, and the Less-alpha command builds that parser/plugin pair before
 running integration tests.
 
-Current verification snapshot for this candidate:
+### Historical pre-merge alpha.9 evidence (superseded for release gating)
+
+The following is retained as evidence for the `564b65615` alpha rehearsal. It
+was verified before `731319892` moved every parser package from
+`parseman@0.28.1` to `parseman@0.29.0`; it is not evidence for the current
+`dev` release candidate. Current post-`731319892` Parseman `0.29.0` release
+gates are pending.
 
 - The complete `@jesscss/core` suite is 3,194 passed, 9 skipped, and 2 todo.
   The skipped/todo cases remain visible and are not converted into passing
@@ -400,7 +406,7 @@ Current verification snapshot for this candidate:
 - The repository-wide production ESLint audit reports 0 errors and 319
   warnings. The warnings remain tracked debt; there is no current ESLint-error
   blocker.
-- Parseman `0.28.1` is published and consumed through real package versions.
+- Parseman `0.28.1` was published and consumed through real package versions.
   A forced frozen install resolves it, and strict `verify:types` passes all
   22 production configurations.
 - The Jess alpha closure is the 18-package
@@ -422,9 +428,9 @@ Current verification snapshot for this candidate:
   serialized builds and 20 warmups plus 3×45 samples, the public compiler
   round median is 74.397 ms (usable signal; trimmed median 75.915 ms).
 
-### Alpha.9 release state (2026-07-22)
+### Alpha.9 pre-merge rehearsal state (2026-07-22; superseded)
 
-The controlled alpha snapshot is `564b65615`. Its forced frozen install
+The controlled alpha snapshot was `564b65615`. Its forced frozen install
 resolves `parseman@0.28.1`; the exact `pnpm run release:alpha:check` chain
 passes the release build, 22/22 strict types, production lint with no errors,
 Less-alpha public-route checks, direct Jess parser/plugin/Rollup tests, the
@@ -432,12 +438,19 @@ AST-v2 ratchet, baseline, release-mode cutting review, 18-package closure,
 packed consumer, and alpha.9 dry-run publish. The snapshot is clean and the
 dry-run resolves `2.0.0-alpha.9` ahead of the published alpha.8 tag.
 
-Nothing has been pushed or published from that snapshot. It awaits explicit
-owner approval to run the full `pnpm run release:alpha` command from `alpha`;
-that command deliberately re-resolves the registry candidate, repeats the
-preflight, then tags, pushes, and publishes. Do not substitute the publish-only
-command for that release flow. The external `less@5.0.0-alpha.1` release remains
-a separate future action after Jess alpha.9 is actually available from npm.
+Nothing was pushed or published from that snapshot. It cannot be reused after
+the `731319892` Parseman `0.29.0` merge: the local alpha candidate is not
+descended from current `dev`, and pre-merge builds, parser tests, packed
+consumer results, or dry-run publication do not validate the new generated
+parser artifacts. After the final current-`dev` gates pass, create a fresh
+isolated alpha snapshot with the two-tree procedure above, retain only the
+recovery versions, and rerun the entire `release:alpha` preflight. Only then
+may owner approval be sought for a full `pnpm run release:alpha` invocation
+from `alpha`; that command re-resolves the registry candidate, repeats the
+preflight, then tags, pushes, and publishes. Do not substitute the
+publish-only command for that release flow. The external
+`less@5.0.0-alpha.1` release remains a separate future action after Jess
+alpha.9 is actually available from npm.
 
 ### Aggressive Cutting Self-Prosecution — release-state documentation
 
@@ -597,7 +610,7 @@ carrier as `DocumentContext`, then lazily isolate the legacy tree execution
 state so direct AST renders no longer construct it.
 
 The canonical separator path is public-route green: direct AST grammars emit a
-typed separator-aware `List` (`sep: ',' | ' ' | '/' | 'undecided'`) rather than
+typed separator-aware `List` (`sep: ',' | '/'`) rather than
 inserting a `Keyword('/')` sentinel between items. SCSS slash lists therefore
 retain `/` as their list fact, while a paren or square delimiter is carried by
 the separate `Block` wrapper. Less preserved-division arithmetic remains an
@@ -2659,8 +2672,8 @@ shown to encode declared policy data rather than a second runtime model.
 delimiter, not an AST-v2 value-list separator. When syntax places a semicolon
 between values outside the rules level, the parser reduction lowers it to the
 canonical comma-separated `List` fact. The typed value model therefore carries
-comma/space/slash (plus any explicit undecided policy), never a semicolon value
-separator.
+only explicit comma/slash `List` boundaries; raw recursive arrays carry
+ordinary space adjacency, and no semicolon or undecided separator fact exists.
 
 **Value-list index invariant:** core JS access is zero-based and does no numeric
 normalization. Less `extract` and Sass `list.nth`/`set-nth` each implement their
@@ -4314,3 +4327,110 @@ or Context deletion lanes.
   ```
 - Verdict: accepted structural repair. The discarded byte flattening was an
   invalid bridge that lost recursive AST information; this pass removes it.
+
+## Collapsed nesting source-order invariant
+
+When nesting collapses, the renderer emits nested rules in authored source
+order. A parent declaration after a nested rule belongs after that collapsed
+child, in a later parent block. Regrouping it ahead of the child to coalesce the
+parent selector is a semantic bug because it changes CSS cascade order.
+
+| Case | Authored order | Prior Jess / historical Less 4 output | Intended authoritative output | Reason |
+| --- | --- | --- | --- | --- |
+| `property-accessors` `.block_2` | `color: red; .two { … }; color: blue;` | One `.block_2` block with `red` and `blue`, then `.block_2 .two`. | `.block_2(red)`, then `.block_2 .two`, then `.block_2(blue)`. | The later `color` must not cross the child selector; the corrected Less-alpha golden is the source-order oracle. |
+| `mixins-important` `.class` | Each `.mixin(n)` expands `border/boxer; .inner { test }; border-width`. | All parent `.class` declarations grouped first, followed by all `.class .inner` rules. | Alternating parent-leading block, `.class .inner`, parent-trailing block for every expansion. | Mixin expansion is authored body order; regrouping across `.inner` changes cascade order. Less 4 is comparison evidence only. |
+
+The direct core regression is `rule-placement-direct-acceptance.test.ts`:
+`before; .child { inside }; after;` must emit parent-before, child, parent-after.
+The linked Less test-data fixtures are the public regression surface. No
+collapsed-nesting output may select a smaller selector grouping over this
+invariant.
+
+## Aggressive Cutting Self-Prosecution — recursive ValueGroup batch and guard repair
+
+- Latest pass: the canonical AST-v2 value domain now carries recursive raw
+  space groups alongside explicit comma/slash `List` and `Block` boundaries;
+  Less/Sass functions, guard comparison, strict final-unit validation, parser
+  facts, and direct serializer evaluation consume that structure without
+  recovering it from bytes. The same batch removes dead legacy tree-only
+  implementation files and routes the typed plugin result through ordinary
+  async declaration deduplication instead of rejecting it at a non-prelude
+  boundary.
+- Architecture surface: `packages/core/src/ast` owns the one recursive value
+  representation and direct renderer. Parser grammar still constructs typed
+  facts; Context/plugin dispatch still owns imports and plugin resolution. No
+  BuilderHost, ParseHost, legacy tree bridge, parser reparse, secondary
+  evaluator, or dialect-specific output policy is introduced.
+- Separation/duplication: raw arrays remain the sole space-group carrier;
+  `List` remains only comma/slash and `Block` remains the sole delimiter
+  wrapper. Core exposes structural grouping/indexing, while Less/Sass retain
+  their language-level index policy. The deleted tree modules are not moved or
+  aliased, and `@plugin` values use the existing direct AST function boundary.
+- Cumulative node weight: no AST class, wrapper type, clone, source tree, or
+  placement frame is added. Required `List`/`Block` values carry existing child
+  references. The dedup `Set` exists only for a repeated declaration-name
+  group already being rendered; unique-name groups return before value
+  evaluation and allocation.
+- New traversal: `[loop/traversal]` is limited to recursive structural value
+  groups, selected function arguments, existing body/leaf source order, and
+  reverse repeated-declaration dedup inspection. These loops operate on values
+  or leaves already selected by the existing evaluator; they neither walk the
+  source tree to rediscover parser facts nor invoke a second render pass.
+- New node/materialization: `[array helper]` and `[materialized array/object]`
+  create only required local result/reference arrays for structural group
+  evaluation, typed function dispatch, and existing declaration emission.
+  `[array spread/materialization]` remains the established callable signature
+  and existing option/frame copy boundary; it does not clone AST values. No
+  `[node construction]` is added—the review hit is `new TypeError` on an
+  exceptional scalar-contract violation, not AST construction.
+- Render path: declaration dedup evaluates only repeated declaration values.
+  If a selected plugin function is asynchronous, the existing emit cursor
+  resumes in reverse-dedup order and flushes the block before its deferred
+  children; ordinary synchronous declarations remain on the direct path.
+  Output still goes through the one AST serializer, never a legacy render or
+  temporary byte parse.
+- Helper/API surface: `ValueGroup`, `groupItems`, and zero-based structural
+  access are the shared core contract; no `SpacedValue`, dialect helper, or
+  compatibility alias is added. Package exports were verified after rebuilding
+  core/fns/parser/plugins/Jess; parser `parse()` keeps returning `Stylesheet`.
+- Metadata mutations: none. `[side map/set]` is the existing dedup suppression
+  `Set`, scoped to one render group and discarded immediately; it is not a
+  cache, node side map, provenance table, or cross-document state. `[routine
+  error control]` is restricted to selected plugin-call failure recovery and
+  exceptional type/function errors, never an ordinary missing-reference or
+  declaration-dedup result.
+- Review-flagged diff tokens: `[loop/traversal]` recursive structural and
+  existing source-order loops; `[array helper]` canonical group mapping only;
+  `[array spread/materialization]` existing callable/option boundaries;
+  `[node construction]` exceptional `TypeError` only; `[side map/set]` one
+  per-group duplicate suppression set; `[routine error control]` selected-call
+  failure policy only; `[materialized array/object]` required local typed value
+  and emit containers. None is claimed neutral, cheaper, or a substitute for
+  the direct AST evaluator.
+- Evidence: full core passed; `ast-v2-production-ratchet` passed 4/4; plugin
+  auto-wire passed 7/7 including root/mixin/detached typed plugin isolation;
+  the full Less test-data run passes 107/107 after the linked source-order
+  oracle updates (`6acb8cca`, `e13aa514`); focused recursive ValueGroup,
+  strict-unit, function-list, and async dedup tests passed. The current direct benchmark
+  render baseline is 17.86 ms with 125259 output bytes and
+  `a8c683e49b04f235c8c8c902af16dacd59d15dcd39914099c476c1c8fad154aa`;
+  it is a current baseline only, not a before/after performance claim.
+- Behavior evidence: full core, the AST-v2 ratchet, plugin auto-wire, focused
+  recursive value/function tests, and the 107/107 Less corpus passed on current
+  built packages. Parser grammar tests cover the updated Jess/SCSS/CSS value
+  fact shape.
+- Build evidence: strict core `tsc --noEmit`, core/fns/Less-parser/plugin-
+  Less/plugin-JS/Jess builds, production/test ESLint, config-syntax, package
+  exports, Jess API, and parser-runtime-boundary verification passed.
+- Boundary evidence: the public `ValueGroup` surface and parser facts were
+  rebuilt and checked through package exports/Jess API; JSON remains strict by
+  default, with JSONC accepted only for tsconfig and known VS Code workspace
+  consumers, while production and test ESLint lanes remain separate.
+- Hot-path cost contracts:
+  ```json
+  [{"id":"ast-evaluator-function-call-boundary","verdict":"accepted","performanceClaim":"none","why":"Optional missing CSS function names preserve authored calls, while selected sync/async callable failures go through functionMode. Recursive structural argument groups do not change that ownership boundary.","dangerTokensJustification":"Group rendering maps existing selected members only; selected async failure recovery attaches only to an actual Promise and adds no tree walk, cache, or fallback parser.","cases":["unresolved-optional-function-call","registered-sync-call-failure","registered-async-call-failure"],"baseline":{"fixture":"benchmark.less","phase":"render","currentMedianMs":17.861646,"outputSha256":"a8c683e49b04f235c8c8c902af16dacd59d15dcd39914099c476c1c8fad154aa","outputBytes":125259}},{"id":"ast-value-guard-equality-modes","verdict":"accepted","performanceClaim":"none","why":"Guard equality now recurses the canonical ValueGroup structure so raw space groups, explicit Lists, and scalar values retain their defined comparisons without byte recovery.","dangerTokensJustification":"The recursive comparison visits only already-materialized value members and allocates no node, cache, resolver, or output buffer; it is semantic structure preservation, not a speed claim.","cases":["less-unitless-dimension","sass-quoted-keyword","exact-structural-distinction"],"baseline":{"fixture":"benchmark.less","phase":"render","currentMedianMs":17.861646,"outputSha256":"a8c683e49b04f235c8c8c902af16dacd59d15dcd39914099c476c1c8fad154aa","outputBytes":125259}},{"id":"ast-semantic-runtime-cutover","verdict":"accepted","performanceClaim":"none","owner":"the canonical AST-v2 evaluator/value/extend owners listed by ast-semantic-runtime-cutover","why":"This coordinated pass makes recursive ValueGroup facts, strict final-unit validation, typed function binding, guard equality, and async declaration deduplication truthful across the canonical AST-v2 evaluator. Its loops and short-lived containers preserve semantics; they are not a neutral or cost-cutting claim.","dangerTokensJustification":"Structural group loops inspect existing values, function arrays hold selected arguments, and dedup's Set is per repeated-declaration group. Async continuation resumes existing serializer cursors after the necessary Promise. No source-tree rediscovery, clone, parser bridge, persistent cache, or second renderer is introduced.","cases":["ValueSlot-array-evaluation-and-authored-layout","List-value-separator-and-Block-delimiter-facts","reference-index-and-For-array-access","Less-lazy-color-call-demand-boundary","defineFunction-typed-positional-named-and-lazy-binding","mixin-dispatch-ValueSlot-argument-resolution","ValueLayout-provenance-side-table","preserve-mode-calc-result-composition","extend-composition-plan-and-fixpoint-solve","Less-eager-bare-slash-precedence-and-parens-division","recursive-ValueGroup-final-unit-validation","async-declaration-dedup-output-order"],"behaviorEvidence":"Current focused recursive-value, async-plugin/dedup, full core, ratchet, plugin auto-wire, and Less corpus behavior gates passed.","buildEvidence":"Strict core types and current core/fns/parser/plugin/Jess builds passed before this audit record.","baseline":{"fixture":"benchmark.less","phase":"render","currentMedianMs":17.861646,"outputSha256":"a8c683e49b04f235c8c8c902af16dacd59d15dcd39914099c476c1c8fad154aa","outputBytes":125259}}]
+  ```
+- Verdict: accepted canonical ValueGroup cutover and direct async serializer
+  repair. The batch records a fresh baseline but makes no speed or neutrality
+  claim; its architectural outcome is one typed AST-v2 value/render path and
+  fewer legacy tree-only surfaces.

@@ -4,10 +4,8 @@ import {
   any,
   quoted,
   interpolated,
-  url,
   el,
   compound,
-  attr,
   pseudo,
   amp,
   dimension
@@ -42,11 +40,6 @@ describe('static-name predicate', () => {
       expect(node.hasStaticName()).toBe(false);
       expect(node.hasFlag(F_STATIC)).toBe(false);
     });
-
-    it('Url path is never a static name (base default)', () => {
-      const node = url('http://example.com');
-      expect(node.hasStaticName()).toBe(false);
-    });
   });
 
   describe('structuralStaticFlag reproduces the bubbled F_STATIC for factory selectors', () => {
@@ -62,23 +55,11 @@ describe('static-name predicate', () => {
       const comp = compound([el('.a'), el('.b')]);
       expectMatch(comp);
 
-      const staticAttr = attr({ name: 'type', op: '=', value: any('text') });
-      expect(staticAttr.structuralStaticFlag()).toBe(true);
-      expectMatch(staticAttr);
-
       const nthChild = pseudo({ name: ':nth-child', arg: dimension({ number: 2, unit: 'n' }) });
       expectMatch(nthChild);
     });
 
     it('non-static / no-contribution selectors', () => {
-      const interpAttr = attr({
-        name: 'data',
-        op: '=',
-        value: quoted(interpolated({ source: '%%', replacements: [any('x')] }))
-      });
-      expect(interpAttr.structuralStaticFlag()).toBe(false);
-      expectMatch(interpAttr);
-
       const ampersand = amp();
       expect(ampersand.structuralStaticFlag()).toBe(false);
       expectMatch(ampersand);

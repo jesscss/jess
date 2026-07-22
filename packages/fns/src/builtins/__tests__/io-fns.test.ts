@@ -7,15 +7,15 @@
  * Less 4.x algorithm (base64 for binary, percent-encode for text, `url("…")`).
  */
 import { describe, it, expect } from 'vitest';
-import { makeQuoted, makeList } from '@jesscss/core/value';
-import type { Fn, FnCtx, FnIo, List, ValueObj } from '@jesscss/core/value';
-import { dataUri } from '../data-uri.js';
+import { emitValue, isValueGroupArray, makeQuoted, makeList } from '@jesscss/core/value';
+import type { Fn, FnCtx, FnIo, List, ValueGroup } from '@jesscss/core/value';
+import dataUri from '../../less/data-uri.js';
 import { imageSize } from '../image-size.js';
 import { imageWidth } from '../image-width.js';
 import { imageHeight } from '../image-height.js';
 
 /** Invoke the universal typed callable with its variadic argument list. */
-function call(fn: Fn, list: List, c: FnCtx): ValueObj {
+function call(fn: Fn, list: List, c: FnCtx): ValueGroup {
   // These unit stubs are deliberately synchronous; async capability coverage lives
   // at the Compiler/Context boundary below the function package.
   const result = fn(list, c);
@@ -48,7 +48,7 @@ function file(name: string, bytes: Uint8Array): Record<string, Uint8Array> {
 function ctx(io?: FnIo): FnCtx {
   return {
     modes: { unitMode: 'preserve' },
-    stringify: (v: ValueObj) => (v.type === 'Quoted' ? v.value : v.bytes),
+    stringify: v => (!isValueGroupArray(v) && v.type === 'Quoted' ? v.value : emitValue(v)),
     io
   };
 }
@@ -62,35 +62,35 @@ describe('data-uri', () => {
   it('inlines binary as base64 with a guessed mimetype', () => {
     const io = stubIo(file('a.png', Buffer.from('AB')));
     const out = call(dataUri, args('a.png'), ctx(io));
-    expect(out.bytes).toBe(`url("data:image/png;base64,${Buffer.from('AB').toString('base64')}")`);
+    expect(emitValue(out)).toBe(`url("data:image/png;base64,${Buffer.from('AB').toString('base64')}")`);
   });
 
   it('percent-encodes text with an explicit mimetype', () => {
     const io = stubIo(file('p.txt', Buffer.from('a b&c')));
     const out = call(dataUri, args('text/plain', 'p.txt'), ctx(io));
-    expect(out.bytes).toBe('url("data:text/plain,a%20b%26c")');
+    expect(emitValue(out)).toBe('url("data:text/plain,a%20b%26c")');
   });
 
   it('honors an explicit ;base64 mimetype flag', () => {
     const io = stubIo(file('f.dat', Buffer.from('hi')));
     const out = call(dataUri, args('application/x-thing;base64', 'f.dat'), ctx(io));
-    expect(out.bytes).toBe(`url("data:application/x-thing;base64,${Buffer.from('hi').toString('base64')}")`);
+    expect(emitValue(out)).toBe(`url("data:application/x-thing;base64,${Buffer.from('hi').toString('base64')}")`);
   });
 
   it('preserves a #fragment at the end of the emitted URI', () => {
     const io = stubIo(file('a.png', Buffer.from('AB')));
     const out = call(dataUri, args('image/png;base64', 'a.png#frag'), ctx(io));
-    expect(out.bytes).toBe(`url("data:image/png;base64,${Buffer.from('AB').toString('base64')}#frag")`);
+    expect(emitValue(out)).toBe(`url("data:image/png;base64,${Buffer.from('AB').toString('base64')}#frag")`);
   });
 
   it('falls back to a plain url() when the file is unreadable', () => {
     const out = call(dataUri, args('missing.png'), ctx(stubIo({})));
-    expect(out.bytes).toBe('url("missing.png")');
+    expect(emitValue(out)).toBe('url("missing.png")');
   });
 
   it('falls back to a plain url() when no IO capability is wired', () => {
     const out = call(dataUri, args('missing.png'), ctx(undefined));
-    expect(out.bytes).toBe('url("missing.png")');
+    expect(emitValue(out)).toBe('url("missing.png")');
   });
 });
 
@@ -98,15 +98,17 @@ describe('image-size / image-width / image-height', () => {
   const io = stubIo(file('img.png', pngHeader(640, 430)));
 
   it('image-size → space list of px dimensions', () => {
-    expect(call(imageSize, args('img.png'), ctx(io)).bytes).toBe('640px 430px');
+    const result = call(imageSize, args('img.png'), ctx(io));
+    expect(isValueGroupArray(result)).toBe(true);
+    expect(emitValue(result)).toBe('640px 430px');
   });
 
   it('image-width → px width', () => {
-    expect(call(imageWidth, args('img.png'), ctx(io)).bytes).toBe('640px');
+    expect(emitValue(call(imageWidth, args('img.png'), ctx(io)))).toBe('640px');
   });
 
   it('image-height → px height', () => {
-    expect(call(imageHeight, args('img.png'), ctx(io)).bytes).toBe('430px');
+    expect(emitValue(call(imageHeight, args('img.png'), ctx(io)))).toBe('430px');
   });
 
   it('throws when the image file is unreadable (evaluator emits the call verbatim)', () => {

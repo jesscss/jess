@@ -17,7 +17,7 @@ describe('floor function typed value contract', () => {
 
   test('rejects untyped direct inputs at the callable boundary', () => {
     expect(() => invoke(floor, 1.7)).toThrow('typed ValueObj');
-    expect(() => invoke(floor, { value: 1.7 })).toThrow('typed ValueObj');
+    expect(() => invoke(floor, { value: 1.7 })).toThrow('structural value arguments');
   });
 
   test('rejects legacy tree numeric values', () => {

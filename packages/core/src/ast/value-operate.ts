@@ -10,7 +10,7 @@
  * HARD MODULE BOUNDARY: imports only the value domain, the factory, and the shared
  * units table.
  */
-import type { Color, Dimension, EvalModes, ValueObj } from './value-eval.js';
+import { isValueGroupArray, type Color, type Dimension, type EvalModes, type ValueGroup, type ValueObj } from './value-eval.js';
 import { HEX } from './color.js';
 import { colorRawRgb, makeColorRgb, makeCompoundDimension, makeDimension, makeKeyword } from './value-factory.js';
 import { convertValue } from './value-units.js';
@@ -123,8 +123,14 @@ function displayUnit(u: UnitSet, isStrict: boolean): string {
  * later operation can cancel them; only final materialization/emission applies
  * Less strict-units' singularity rule.
  */
-export function validateFinalUnits(value: ValueObj, modes: EvalModes): void {
+export function validateFinalUnits(value: ValueGroup, modes: EvalModes): void {
   if (modes.unitMode !== 'strict') {
+    return;
+  }
+  if (isValueGroupArray(value)) {
+    for (const item of value) {
+      validateFinalUnits(item, modes);
+    }
     return;
   }
   if (value.type === 'Dimension') {

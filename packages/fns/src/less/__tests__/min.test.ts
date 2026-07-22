@@ -1,11 +1,14 @@
 import { describe, it, expect } from 'vitest';
-import { makeDimension, makeKeyword, makeList, type Dimension, type Fn, type Keyword, type ValueObj } from '@jesscss/core/value';
+import { emitValue, makeDimension, makeKeyword, makeList, type Dimension, type Fn, type Keyword, type ValueGroup, type ValueObj } from '@jesscss/core/value';
 import min from '../min.js';
 
-const call = (fn: Fn, unitMode: 'loose' | 'preserve' | 'strict', ...args: ValueObj[]): ValueObj => {
-  const result = fn(makeList(args, ','), { modes: { unitMode }, stringify: value => value.bytes });
+const call = (fn: Fn, unitMode: 'loose' | 'preserve' | 'strict', ...args: ValueGroup[]): ValueObj => {
+  const result = fn(makeList(args, ','), { modes: { unitMode }, stringify: emitValue });
   if (result instanceof Promise) {
     throw new TypeError('Expected min() to be synchronous in this test.');
+  }
+  if (Array.isArray(result)) {
+    throw new TypeError('Expected min() to return a scalar value.');
   }
   return result;
 };
@@ -38,7 +41,7 @@ describe('min()', () => {
   });
 
   it('flattens list args and throws in strict mode for incompatible units', async () => {
-    const listArg = makeList([makeDimension(1, 'px'), makeDimension(5, 'px')], ' ');
+    const listArg = [makeDimension(1, 'px'), makeDimension(5, 'px')];
     const fromList = call(min, 'preserve', listArg);
     expect(fromList.number).toBe(1);
 

@@ -8,7 +8,7 @@
  * own engine is byte-identical where it can build, and records UNSUPPORTED otherwise.
  */
 import { describe, it, expect, afterAll } from 'vitest';
-import { el, sel, sellist, compound, is, co, pseudo, attr, quoted, type Selector } from '../../../index.js';
+import { el, sel, sellist, compound, is, co, pseudo, type Selector } from '../../../index.js';
 import { extendViaOwn, reportFrontier, resetFrontier } from './corpus-harness.js';
 
 function not(arg: Selector): Selector {
@@ -184,17 +184,6 @@ describe('CORPUS (own engine): Extend Selector Algorithm', () => {
     it('.bb find .bb full → .bb,.cc', () => {
       const r = extendViaOwn(el('.bb'), el('.bb'), el('.cc'), false, '.bb find .bb full');
       expect(r.valueOf()).toBe('.bb,.cc');
-    });
-  });
-
-  describe('attribute / element full', () => {
-    it('input[type="button"] full → input[type="button"],.btn', () => {
-      const r = extendViaOwn(
-        compound([el('input'), attr({ name: 'type', op: '=', value: quoted('button') })]),
-        compound([el('input'), attr({ name: 'type', op: '=', value: quoted('button') })]),
-        el('.btn'), false, 'input[type=button] full'
-      );
-      expect(r.valueOf()).toBe('input[type="button"],.btn');
     });
   });
 });

@@ -8,7 +8,20 @@ import {
   type SafeParseOptions,
   type ErrorDiagnostic
 } from '@jesscss/core';
-import { defineFunction, makeDimension, makeKeyword, makeQuoted, type Fn, type PluginHost, type ValueObj } from '@jesscss/core/value';
+import {
+  defineFunction,
+  emitValue,
+  groupItems,
+  makeDimension,
+  makeKeyword,
+  makeList,
+  makeQuoted,
+  type Fn,
+  type PluginHost,
+  type PluginRawArgument,
+  type ValueGroup,
+  type ValueObj
+} from '@jesscss/core/value';
 import type { EqualityMode, MathMode, UnitMode, LessOptions } from 'styles-config';
 import path from 'node:path';
 import { createRequire } from 'node:module';
@@ -33,17 +46,74 @@ type NativeLessApi = {
   };
 };
 
-function toNativeLessValue(value: ValueObj): unknown {
+type NativeNil = { readonly type: 'Nil'; readonly value: ''; eval(): NativeNil };
+
+const nativeNil = (): NativeNil => {
+  const nil: NativeNil = { type: 'Nil', value: '', eval: () => nil };
+  return nil;
+};
+
+function isRawSequence(value: PluginRawArgument | ValueGroup): value is readonly ValueGroup[] {
+  return Array.isArray(value);
+}
+
+function isPluginDetached(value: PluginRawArgument | ValueGroup): value is Extract<PluginRawArgument, { type: 'DetachedRuleset' }> {
+  return !isRawSequence(value) && value.type === 'DetachedRuleset';
+}
+
+function toNativeLessValue(value: PluginRawArgument | ValueGroup): unknown {
+  if (isRawSequence(value)) {
+    return { type: 'Expression', value: value.map(toNativeLessValue), valueOf: () => emitValue(value) };
+  }
+  if (isPluginDetached(value)) {
+    const name = nativeNil();
+    const args = nativeNil();
+    const rules = value.rules.map(rule => ({
+      type: 'Declaration' as const,
+      name: rule.name,
+      value: toNativeLessValue(rule.value),
+      eval() {
+        return this;
+      }
+    }));
+    const mixin = {
+      type: 'Mixin' as const,
+      name,
+      args,
+      ruleset: { rules },
+      eval() {
+        return mixin;
+      }
+    };
+    return mixin;
+  }
+  return toNativeValue(value);
+}
+
+function toNativeValue(value: ValueObj): unknown {
   switch (value.type) {
     case 'Dimension': return { type: 'Dimension', value: value.number, unit: value.unit, valueOf: () => value.number };
     case 'Quoted': return { type: 'Quoted', value: value.value, quote: value.quote, escaped: value.escaped, valueOf: () => value.bytes };
     case 'Color': return { type: 'Color', rgb: value.rgb, alpha: value.alpha, valueOf: () => value.bytes };
-    case 'List': return { type: 'Expression', value: value.value.map(toNativeLessValue), valueOf: () => value.bytes };
+    case 'List':
+      return value.sep === ',' || value.sep === '/'
+        ? { type: 'Value', value: value.value.map(toNativeLessValue), separator: value.sep, valueOf: () => value.bytes }
+        : { type: 'Anonymous', value: value.bytes, valueOf: () => value.bytes };
     default: return { type: 'Anonymous', value: value.bytes, valueOf: () => value.bytes };
   }
 }
 
-function fromNativeLessValue(value: unknown): ValueObj {
+function isNativeValue(value: unknown): value is ValueObj {
+  return value !== null
+    && typeof value === 'object'
+    && 'bytes' in value
+    && typeof value.bytes === 'string';
+}
+
+function fromNativeLessValue(value: unknown): ValueGroup {
+  if (isNativeValue(value)) {
+    return value;
+  }
   if (typeof value === 'number') {
     return makeDimension(value);
   }
@@ -51,12 +121,19 @@ function fromNativeLessValue(value: unknown): ValueObj {
     return makeKeyword(value);
   }
   if (value && typeof value === 'object') {
-    const candidate = value as { type?: unknown; value?: unknown; unit?: unknown; quote?: unknown; escaped?: unknown; valueOf?: () => unknown };
+    const candidate = value as { type?: unknown; value?: unknown; unit?: unknown; quote?: unknown; escaped?: unknown; separator?: unknown; valueOf?: () => unknown };
     if ((candidate.type === 'Dimension' || candidate.type === 'Num') && typeof candidate.value === 'number') {
       return makeDimension(candidate.value, typeof candidate.unit === 'string' ? candidate.unit : '');
     }
     if (candidate.type === 'Quoted' && typeof candidate.value === 'string') {
       return makeQuoted(candidate.value, candidate.quote === '\'' ? '\'' : '"', candidate.escaped === true);
+    }
+    if (candidate.type === 'Expression' && Array.isArray(candidate.value)) {
+      return candidate.value.map(fromNativeLessValue);
+    }
+    if (candidate.type === 'Value' && Array.isArray(candidate.value)) {
+      const separator = candidate.separator === '/' ? '/' : ',';
+      return makeList(candidate.value.map(item => fromNativeLessValue(item)), separator);
     }
     if (typeof candidate.value === 'string') {
       return makeKeyword(candidate.value);
@@ -68,16 +145,18 @@ function fromNativeLessValue(value: unknown): ValueObj {
   return makeKeyword(value == null ? '' : String(value));
 }
 
+function invokeNativeLessFunction(fn: NativeLessFunction, args: readonly PluginRawArgument[]): ValueGroup | Promise<ValueGroup> {
+  const result = fn(...args.map(toNativeLessValue));
+  return result !== null && typeof result === 'object' && 'then' in result && typeof result.then === 'function'
+    ? Promise.resolve(result).then(fromNativeLessValue)
+    : fromNativeLessValue(result);
+}
+
 function nativeLessFn(name: string, fn: NativeLessFunction): Fn {
   return defineFunction(name.toLowerCase(), {
     variadic: true,
     params: [],
-    body: (list) => {
-      const result = fn(...list.value.map(toNativeLessValue));
-      return result !== null && typeof result === 'object' && 'then' in result && typeof result.then === 'function'
-        ? Promise.resolve(result).then(fromNativeLessValue)
-        : fromNativeLessValue(result);
-    }
+    body: value => invokeNativeLessFunction(fn, groupItems(value))
   });
 }
 
@@ -305,9 +384,16 @@ export class LessPlugin extends AbstractPlugin {
     let host = this.pluginHosts.get(context);
     if (!host) {
       const fns: Fn[] = [];
+      const nativeFns = new WeakMap<Fn, NativeLessFunction>();
+      const addNativeFn = (name: string, fn: NativeLessFunction): Fn => {
+        const adapted = nativeLessFn(name, fn);
+        nativeFns.set(adapted, fn);
+        fns.push(adapted);
+        return adapted;
+      };
       const registry: NativeLessFunctionRegistry = {
         add: (name, fn) => {
-          fns.push(nativeLessFn(name, fn));
+          addNativeFn(name, fn);
         },
         addMultiple: (functions) => {
           for (const [name, fn] of Object.entries(functions)) {
@@ -340,7 +426,11 @@ export class LessPlugin extends AbstractPlugin {
           if (!functions) {
             return [];
           }
-          return Object.entries(functions).map(([name, fn]) => nativeLessFn(name, fn));
+          return Object.entries(functions).map(([name, fn]) => addNativeFn(name, fn));
+        },
+        invokeRawFunction: (fn, args) => {
+          const native = nativeFns.get(fn);
+          return native ? invokeNativeLessFunction(native, args) : undefined;
         }
       };
       this.pluginHosts.set(context, host);

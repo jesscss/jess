@@ -20,9 +20,46 @@ function stylesheet(value: unknown): Stylesheet {
   return value;
 }
 
+function expectExplicitListSeparators(value: unknown): void {
+  if (Array.isArray(value)) {
+    value.forEach(expectExplicitListSeparators);
+    return;
+  }
+  if (!isRecord(value)) {
+    return;
+  }
+  if (value.type === 'List') {
+    expect(value.sep).toSatisfy(separator => separator === ',' || separator === '/');
+  }
+  Object.values(value).forEach(expectExplicitListSeparators);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
 const evaluator = buildEvaluator(makeBuiltinRegistry());
 
 describe('SCSS canonical-AST grammar', () => {
+  it('keeps ordinary adjacency as a raw value array and reserves List for explicit separators', () => {
+    const result = run(
+      scssAstGrammar.ScssAstDocument,
+      '$space: red blue; $comma: red, blue; $slash: 1 / 2;',
+      { trivia: scssAstGrammar.whitespace }
+    );
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(result.value).toMatchObject({
+      type: 'Stylesheet',
+      children: [
+        { type: 'VariableDeclaration', name: 'space', value: [{ type: 'Keyword', src: 'red' }, { type: 'Keyword', src: 'blue' }] },
+        { type: 'VariableDeclaration', name: 'comma', value: { type: 'List', sep: ',' } },
+        { type: 'VariableDeclaration', name: 'slash', value: { type: 'List', sep: '/' } }
+      ]
+    });
+    expectExplicitListSeparators(result.value);
+  });
+
   it('retains @supports general-enclosed bodies as structural interpolation templates', () => {
     const source = '@supports selector(.card-#{$tone}:has([data-x="#{$state}"])) { .card { color: blue; } }';
     const cst = parseScssCst(source);

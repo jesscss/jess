@@ -6,7 +6,7 @@
  * otherwise. The suite's original `.toBe(...)` expectations remain the byte oracle.
  */
 import { describe, it, expect, afterAll } from 'vitest';
-import { el, sel, sellist, compound, is, co, pseudo, attr, quoted } from '../../../index.js';
+import { el, sel, sellist, compound, is, co, pseudo } from '../../../index.js';
 import { extendViaOwn, reportFrontier, resetFrontier } from './corpus-harness.js';
 
 describe('CORPUS (own engine): Simplified Extend Test Cases', () => {
@@ -21,14 +21,6 @@ describe('CORPUS (own engine): Simplified Extend Test Cases', () => {
     it('extend within selector list', () => {
       const r = extendViaOwn(sellist([el('.btn'), el('.link')]), el('.btn'), el('.primary'), false, 'selector list full');
       expect(r.valueOf()).toBe('.btn,.link,.primary');
-    });
-    it('extend attribute selector', () => {
-      const r = extendViaOwn(
-        compound([el('input'), attr({ name: 'type', op: '=', value: quoted('button') })]),
-        compound([el('input'), attr({ name: 'type', op: '=', value: quoted('button') })]),
-        el('.btn'), false, 'attribute compound full'
-      );
-      expect(r.valueOf()).toBe('input[type="button"],.btn');
     });
   });
 
@@ -64,13 +56,6 @@ describe('CORPUS (own engine): Simplified Extend Test Cases', () => {
         el('.btn'), el('.primary'), true, '.btn:hover:focus find .btn partial'
       );
       expect(r.valueOf()).toBe(':is(.btn,.primary):hover:focus');
-    });
-    it('extend compound selector with attributes', () => {
-      const r = extendViaOwn(
-        compound([el('input'), attr({ name: 'type', op: '=', value: quoted('text') }), el('.required')]),
-        el('input'), el('.text-field'), true, 'input[type=text].required find input partial'
-      );
-      expect(r.valueOf()).toBe(':is(input,.text-field)[type="text"].required');
     });
     it('extend across combinators correctly', () => {
       const r = extendViaOwn(sel([el('.parent'), co('>'), el('.child')]), el('.parent'), el('.container'), true, '.parent>.child find .parent partial');

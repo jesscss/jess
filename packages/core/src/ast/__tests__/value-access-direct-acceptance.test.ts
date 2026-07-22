@@ -213,7 +213,8 @@ describe('direct canonical value access', () => {
   });
 
   it('uses a mixin-spliced declaration as the final enclosing property value', () => {
-    // A zero-parameter Less mixin preserves its call-site output boundary.
+    // The property lookup sees the mixin-spliced value, while the nested child
+    // remains a cascade boundary in the authored enclosing declaration order.
     const setLateColor = {
       type: 'MixinDef' as const,
       name: '.set-late-color',

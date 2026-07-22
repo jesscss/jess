@@ -250,18 +250,6 @@ describe('Node Flags', () => {
     });
   });
 
-  describe('Url flag behavior', () => {
-    it('Url with static quoted path should be F_STATIC', () => {
-      const node = url(quoted('"image.png"'));
-      expect(node.hasFlag(F_STATIC)).toBe(true);
-    });
-
-    it('Url with static Any path should be F_STATIC', () => {
-      const node = url(any('image.png'));
-      expect(node.hasFlag(F_STATIC)).toBe(true);
-    });
-  });
-
   describe('Block flag behavior', () => {
     it('Block with static child should be F_STATIC', () => {
       const node = block(any('test'));

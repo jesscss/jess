@@ -38,7 +38,7 @@ export { default as range } from './range.js';
 export { default as isdefined } from './isdefined.js';
 export { default as isruleset } from './isruleset.js';
 export { default as getUnit } from './get-unit.js';
-export { iscolor, isnumber, isstring, iskeyword, isurl, ispixel, ispercentage, isem, isunit } from './types.js';
+export { iscolor, isnumber, isstring, iskeyword, ispixel, ispercentage, isem, isunit } from './types.js';
 
 /** Color blending */
 export { default as multiply } from './multiply.js';

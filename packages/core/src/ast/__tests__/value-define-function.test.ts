@@ -1,5 +1,5 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
-import { createFnRegistry, defineFunction, makeDimension, makeList } from '../../value.js';
+import { createFnRegistry, defineFunction, emitValue, makeDimension, makeList } from '../../value.js';
 
 function invoke(fn: unknown, ...args: unknown[]): unknown {
   if (typeof fn !== 'function') {
@@ -58,13 +58,13 @@ describe('value-domain defineFunction', () => {
     registry.register(twice);
     expect(registry.dispatch('twice', makeList([makeDimension(2, 'px')]), {
       modes: { mathMode: 'parens-division', unitMode: 'preserve', functionMode: 'preserve', equalityMode: 'less' },
-      stringify: value => value.bytes
+      stringify: emitValue
     })).toEqual(makeDimension(4, 'px'));
     const invalidArgs = invoke(makeList, [{ value: makeDimension(2, 'px') }], ',');
     expect(() => invoke(registry.dispatch.bind(registry), 'twice', invalidArgs, {
       modes: { mathMode: 'parens-division', unitMode: 'preserve', functionMode: 'preserve', equalityMode: 'less' },
       stringify: value => value.bytes
-    })).toThrow('typed ValueObj');
+    })).toThrow('structural value');
   });
 
   it('accepts Sass/Jess direct records and rejects missing, wrong-kind, and primitive arguments', () => {
@@ -98,7 +98,7 @@ describe('value-domain defineFunction', () => {
     const args = makeList([makeDimension(2, 'px')]);
     const ctx = {
       modes: { mathMode: 'parens-division', unitMode: 'preserve', functionMode: 'preserve', equalityMode: 'less' },
-      stringify: value => value.bytes
+      stringify: emitValue
     } as const;
     expect(invoke(unnamedPositional, makeDimension(2, 'px'))).toEqual(makeDimension(4, 'px'));
     const registry = createFnRegistry();

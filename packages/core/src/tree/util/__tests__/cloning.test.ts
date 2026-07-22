@@ -1,6 +1,6 @@
 import { sourceSpanOf } from '../provenance.js';
 import { describe, expect, it } from 'vitest';
-import { any, attr, comment, decl, quoted, rules, Any, Node } from '../../index.js';
+import { any, comment, decl, quoted, rules, Any, Node } from '../../index.js';
 
 describe('placement cloning', () => {
   it('checks reusable leaves without allocating empty location arrays', () => {
@@ -63,23 +63,5 @@ describe('placement cloning', () => {
     } finally {
       Any.prototype.clone = originalClone;
     }
-  });
-
-  it('shares node children under a copied object-valued field', () => {
-    const node = attr({
-      name: 'data',
-      op: '=',
-      value: quoted('foo')
-    });
-    const cloned = node.clone();
-
-    // Shallow clone: a fresh surface with a copied `{name, op, value, mod}`
-    // field object, but the object's node child (the Quoted) is SHARED, not
-    // deep-cloned (LIVE_BINDING_ARCHITECTURE invariants 2 and 3). Only
-    // cloneForPlacement({ detachChildren }) clones-to-detach node-owning kids.
-    expect(cloned).not.toBe(node);
-    expect(cloned.value).not.toBe(node.value);
-    expect(cloned.value.value).toBe(node.value.value);
-    expect(cloned.toString()).toBe('[data="foo"]');
   });
 });

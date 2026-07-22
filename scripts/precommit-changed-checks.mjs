@@ -3,7 +3,7 @@ import { execFileSync, execSync, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { shouldRunFullBaselineForFiles } from './shared-baseline-paths.mjs';
-import { stagedAddedLines, stagedLintableFiles, stagedLintMessages } from './staged-lint.mjs';
+import { stagedTouchedLines, stagedLintableFiles, stagedLintMessages } from './staged-lint.mjs';
 
 const ROOT = process.cwd();
 const MODE = process.argv.includes('--mode=upstream') ? 'upstream' : 'staged';
@@ -43,8 +43,21 @@ function aggressiveReviewMode() {
   return MODE === 'staged' && currentBranchName() === 'alpha'
     ? 'release'
     : MODE === 'upstream'
-      ? undefined
+      ? 'committed'
       : MODE;
+}
+
+function requireCleanPushTarget() {
+  if (MODE !== 'upstream') {
+    return;
+  }
+  for (const args of [['diff', '--quiet'], ['diff', '--cached', '--quiet']]) {
+    const result = spawnSync('git', args, { cwd: ROOT, stdio: 'ignore' });
+    if (result.status !== 0) {
+      console.error('Pre-push checks validate the committed push target. Commit or stash tracked working-tree changes before pushing.');
+      process.exit(1);
+    }
+  }
 }
 
 function run(command, args, packageDir, options = {}) {
@@ -245,7 +258,7 @@ function runLintForFiles(packageDir, files) {
 }
 
 function stagedHunkLines(file) {
-  return stagedAddedLines(execFileSync('git', ['diff', '--cached', '--unified=0', '--', file], {
+  return stagedTouchedLines(execFileSync('git', ['diff', '--cached', '--unified=0', '--', file], {
     cwd: ROOT,
     encoding: 'utf8'
   }));
@@ -346,6 +359,18 @@ if (files.length === 0) {
   );
   process.exit(0);
 }
+
+requireCleanPushTarget();
+
+console.log('\n==> Running configuration syntax validation');
+run(
+  'pnpm',
+  MODE === 'staged'
+    ? ['run', 'verify:config-syntax', '--', '--staged']
+    : ['run', 'verify:config-syntax'],
+  undefined,
+  { required: true }
+);
 
 const changedPackages = packageDirs(files);
 let baselineRan = false;

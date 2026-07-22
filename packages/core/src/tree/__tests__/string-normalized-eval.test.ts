@@ -7,7 +7,6 @@ import {
   Node,
   Operation,
   Paren,
-  Url,
   dimension,
   keyword,
   list,
@@ -25,15 +24,6 @@ describe('string-normalized eval', () => {
   let context: Context;
   beforeEach(() => {
     context = new Context();
-  });
-
-  it('Url evaluates and renders a bare string value as a terminal', () => {
-    // url.ts: `this.value.eval` crashed when the parser delivered a string path.
-    const node = new Url('foo.png');
-    const evald = node.eval(context);
-    expect(evald).toBe(node);
-    expect(node.render(context)).toBe('url(foo.png)');
-    expect(node.valueOf()).toBe('foo.png');
   });
 
   it('List evaluates a raw space-group array item as a Sequence', async () => {

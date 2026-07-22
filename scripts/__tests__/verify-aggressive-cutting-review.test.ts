@@ -22,6 +22,7 @@ import {
   reproduceApprovedQualityFixes,
   runtimeChangedPaths,
   scopedChangedPaths,
+  selfProsecutionPlaceholders,
   validateCostAuditRecords,
   validateBoundaryEvidence,
   validateCostContractRegistry,
@@ -154,6 +155,12 @@ describe('aggressive-cutting review scope', () => {
     expect(scopedChangedPaths('release', snapshots)).toEqual([]);
   });
 
+  it('reviews the committed branch delta at pre-push rather than only dirty files', () => {
+    expect(scopedChangedPaths('committed', snapshots)).toEqual([
+      'packages/less-parser/src/grammar.ts'
+    ]);
+  });
+
   it('does not classify test fixtures as production hot-path files', () => {
     expect(isProductionHotPathFile('packages/core/src/ast/__tests__/factory.test.ts')).toBe(false);
     expect(isProductionHotPathFile('packages/core/src/ast/fixtures/large.less')).toBe(false);
@@ -253,6 +260,27 @@ describe('aggressive-cutting review scope', () => {
     expect(validateChangedContractSurface(registry, ['packages/core/src/ast/serialize.ts'], diff)).toContain(
       'Changed production hot-path surface packages/core/src/ast/serialize.ts has 1/1 unmatched hunks; add/update exact runtime contracts rather than hiding the aggregate branch inventory.'
     );
+  });
+});
+
+describe('self-prosecution field completeness', () => {
+  const labels = [
+    '- Architecture surface:',
+    '- Evidence:'
+  ];
+
+  it('rejects an unresolved required field without scanning ordinary prose', () => {
+    expect(selfProsecutionPlaceholders([
+      '- Architecture surface: TODO',
+      '- Evidence: focused parser and renderer tests pass.'
+    ].join('\n'), labels)).toEqual(['- Architecture surface:']);
+  });
+
+  it('accepts an identifier or a factual follow-up containing pending', () => {
+    expect(selfProsecutionPlaceholders([
+      '- Architecture surface: `Partition.pending` remains the existing deferred-leaf buffer.',
+      '- Evidence: a pending external golden update is recorded separately; focused tests pass.'
+    ].join('\n'), labels)).toEqual([]);
   });
 });
 

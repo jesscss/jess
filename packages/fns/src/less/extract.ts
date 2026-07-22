@@ -1,4 +1,4 @@
-import { asList, defineFunction, listValueAt } from '@jesscss/core/value';
+import { defineFunction, groupItems, isValueGroupArray, listValueAt } from '@jesscss/core/value';
 
 /**
  * Less `extract()` — the item at a 1-based `index` in a list. AST-v2 values
@@ -13,17 +13,17 @@ const extract = defineFunction('extract', {
   params: [{ kinds: 'any' }, { kinds: ['Dimension'] }],
   variadic: true,
   body: (list) => {
-    const args = asList(list);
-    if (args.value.length !== 2) {
+    const args = groupItems(list);
+    if (args.length !== 2) {
       throw new TypeError('extract() requires exactly two arguments');
     }
-    const index = args.value[1]!;
-    if (index.type !== 'Dimension') {
+    const index = args[1]!;
+    if (isValueGroupArray(index) || index.type !== 'Dimension') {
       throw new TypeError('extract() index must be numeric');
     }
     const normalized = Math.trunc(index.number);
-    const target = args.value[0];
-    const itemCount = target?.type === 'List' ? target.value.length : 1;
+    const target = args[0];
+    const itemCount = groupItems(target).length;
     if (!Number.isFinite(normalized)) {
       if (itemCount === 1) {
         return listValueAt(target, 0);

@@ -20,7 +20,40 @@ function stylesheet(value: unknown): Stylesheet {
   return value;
 }
 
+function expectExplicitListSeparators(value: unknown): void {
+  if (Array.isArray(value)) {
+    value.forEach(expectExplicitListSeparators);
+    return;
+  }
+  if (!isRecord(value)) {
+    return;
+  }
+  if (value.type === 'List') {
+    expect(value.sep).toSatisfy(separator => separator === ',' || separator === '/');
+  }
+  Object.values(value).forEach(expectExplicitListSeparators);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
 describe('Less AST grammar facts', () => {
+  it('keeps ordinary adjacency as a raw value array and reserves List for explicit separators', () => {
+    const result = run(
+      lessAstGrammar.LessAstDocument,
+      '@space: red blue; @comma: red, blue; .x { value: @space; }',
+      { trivia: lessAstGrammar.whitespace }
+    );
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(stylesheet(result.value).children.slice(0, 2)).toMatchObject([
+      { type: 'VariableDeclaration', name: 'space', value: [{ type: 'Color', src: 'red' }, { type: 'Color', src: 'blue' }] },
+      { type: 'VariableDeclaration', name: 'comma', value: { type: 'List', sep: ',' } }
+    ]);
+    expectExplicitListSeparators(result.value);
+  });
+
   it('retains a standalone root block comment before an escaped selector in source order', () => {
     const result = run(
       lessAstGrammar.LessAstDocument,
@@ -3961,7 +3994,6 @@ describe('Less AST grammar facts', () => {
 
     for (const invalid of [
       '.card[@{ spaced }=button] { color: red; }',
-      '.card[${name}=button] { color: red; }',
       '@{namespace}|a { color: red; }'
     ]) {
       const direct = run(lessAstGrammar.LessAstDocument, invalid, { trivia: lessAstGrammar.whitespace });

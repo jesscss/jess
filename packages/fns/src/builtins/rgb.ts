@@ -1,5 +1,5 @@
-import type { Color, Dimension, List, Fn } from '@jesscss/core/value';
-import { colorRawRgb, defineFunction, makeColorRgb, RGB } from '@jesscss/core/value';
+import type { Color, Dimension, ValueGroup, Fn } from '@jesscss/core/value';
+import { colorRawRgb, defineFunction, groupItems, makeColorRgb, RGB } from '@jesscss/core/value';
 import { clamp01, isColor, isModern, percentOf } from './color-ctor-helper.js';
 import { requireDimension } from './math-helper.js';
 
@@ -19,9 +19,9 @@ import { requireDimension } from './math-helper.js';
 const pctOf = (d: Dimension | undefined): number | undefined =>
   d?.unit === '%' ? d.number : undefined;
 
-export function makeRgb(list: List): Color {
-  const items = list.value;
-  const modernSyntax = isModern(list);
+export function makeRgb(value: ValueGroup): Color {
+  const items = groupItems(value);
+  const modernSyntax = isModern(value);
   const first = items[0];
   if (items.length >= 3 && !isColor(first)) {
     const r = percentOf(requireDimension(items[0]), 255);

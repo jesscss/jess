@@ -64,7 +64,9 @@ describe('pre-commit aggressive-review mode', () => {
       ], { cwd: sandbox, env, encoding: 'utf8' });
 
       expect(readFileSync(invocationLog, 'utf8').trim().split('\n')).toEqual([
+        'run verify:config-syntax -- --staged',
         'run verify:aggressive-cutting-review -- --mode=release --skip-executable-evidence',
+        'run verify:config-syntax -- --staged',
         'run verify:aggressive-cutting-review -- --mode=staged --skip-executable-evidence'
       ]);
     } finally {
@@ -103,7 +105,8 @@ describe('pre-commit aggressive-review mode', () => {
 
       const probe = resolve(sandbox, 'docs/prepush-mode-probe.md');
       writeFileSync(probe, 'working-scope probe\n');
-      execFileSync('git', ['add', 'docs/prepush-mode-probe.md'], { cwd: sandbox });
+      execFileSync('git', ['add', 'docs/prepush-mode-probe.md', 'scripts/precommit-changed-checks.mjs', 'scripts/staged-lint.mjs'], { cwd: sandbox });
+      execFileSync('git', ['commit', '--quiet', '-m', 'test: committed pre-push probe'], { cwd: sandbox });
 
       const env = {
         ...process.env,
@@ -116,8 +119,9 @@ describe('pre-commit aggressive-review mode', () => {
       ], { cwd: sandbox, env, encoding: 'utf8' });
 
       expect(readFileSync(invocationLog, 'utf8').trim().split('\n')).toEqual([
+        'run verify:config-syntax',
         'run verify:baseline',
-        'run verify:aggressive-cutting-review'
+        'run verify:aggressive-cutting-review -- --mode=committed'
       ]);
     } finally {
       rmSync(tempRoot, { recursive: true, force: true });

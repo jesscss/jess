@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Context } from '../../../context.js';
-import { any, list, rest, rules, vardecl } from '../../index.js';
-import { Sequence } from '../../sequence.js';
+import { any, rules, vardecl } from '../../index.js';
 import { evaluateCallableArgs } from '../callable-args.js';
 
 describe('callable arg evaluation helper', () => {
@@ -18,26 +17,6 @@ describe('callable arg evaluation helper', () => {
 
     expect(evaluated).toEqual([namedArg]);
     expect(evaluated[0]).toBe(namedArg);
-  });
-
-  it('expands rest sequence/list values into positional args without freezing direct eval results', async () => {
-    const context = new Context();
-    const rulesContext = rules([]);
-    const firstArg = any('red');
-    const restArg = rest(new Sequence([any('blue'), any('green')]));
-
-    const evaluated = await evaluateCallableArgs({
-      context,
-      rulesContext,
-      args: [firstArg, restArg]
-    });
-
-    const rendered = new Array<unknown>(evaluated.length);
-    for (let i = 0; i < evaluated.length; i++) {
-      rendered[i] = evaluated[i]?.valueOf();
-    }
-    expect(rendered).toEqual(['red', 'blue', 'green']);
-    expect(evaluated[0]?.frozen).toBe(false);
   });
 
   it('coerces parser value-shape args and casts JS-interop values', async () => {

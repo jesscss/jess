@@ -4,7 +4,7 @@
   "publishConfig": {
     "access": "public"
   },
-  "version": "2.0.0-alpha.9",
+  "version": "2.0.0-alpha.5",
   "description": "Jess LESS parser",
   "main": "lib/index.cjs",
   "types": "lib/index.d.ts",
@@ -46,7 +46,7 @@
   },
   "peerDependencies": {
     "@jesscss/core": "workspace:*",
-    "parseman": "^0.28.1"
+    "parseman": "^0.29.0"
   },
   "peerDependenciesMeta": {
     "@jesscss/core": {
@@ -59,7 +59,7 @@
     "@jesscss/shared": "workspace:*",
     "@types/node": "^18.19.31",
     "less": "^4.6.3",
-    "parseman": "0.28.1",
+    "parseman": "0.29.0",
     "tsx": "~4.21.0"
   },
   "author": "Matthew Dean <matthew-dean@users.noreply.github.com>",

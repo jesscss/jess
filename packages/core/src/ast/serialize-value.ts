@@ -6,8 +6,8 @@
  *
  * HARD MODULE BOUNDARY: imports only the value-domain types + `round` + `color`.
  */
-import type { Dimension, Quoted, Value, ValueObj } from './value-eval.js';
-import { sepGlue } from './value-eval.js';
+import type { Dimension, Quoted, Value, ValueGroup } from './value-eval.js';
+import { isValueGroupArray, sepGlue } from './value-eval.js';
 import { round } from './round.js';
 import { serializeColor } from './color.js';
 
@@ -32,11 +32,11 @@ export function serializeDimension(n: Dimension): string {
  * Non-finite dims and every non-dimension value fall through to canonical `bytes`.
  */
 export function emitValueInterp(v: Value): string {
-  if (typeof v !== 'string' && v.type === 'Dimension'
+  if (typeof v !== 'string' && !isValueGroupArray(v) && v.type === 'Dimension'
     && Number.isFinite(v.number) && v.bytes === serializeDimension(v)) {
     return `${v.number}${v.unit}`;
   }
-  return typeof v === 'string' ? v : v.bytes;
+  return typeof v === 'string' ? v : isValueGroupArray(v) ? v.map(emitValueInterp).join(' ') : v.bytes;
 }
 
 /** Serialize a quoted string (escaping-aware: `~` prefix when escaped). */
@@ -45,8 +45,11 @@ export function serializeQuoted(q: Quoted): string {
   return `${q.escaped ? '~' : ''}${quote}${q.value}${quote}`;
 }
 
-/** Serialize any `ValueObj` to its canonical bytes. */
-export function serializeValue(v: ValueObj): string {
+/** Serialize any structural value group to canonical bytes. */
+export function serializeValue(v: ValueGroup): string {
+  if (isValueGroupArray(v)) {
+    return v.map(serializeValue).join(' ');
+  }
   switch (v.type) {
     case 'Dimension': return serializeDimension(v);
     case 'Color': return serializeColor(v);

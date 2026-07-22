@@ -1,5 +1,5 @@
 import { setSourceSpan, spanStartOf, spanEndOf, sourceSpanOf } from '../util/provenance.js';
-import { amp, any, attr, compound, CompoundSelector, el, pseudo, ref, rules, Rules, vardecl } from '../index.js';
+import { amp, any, compound, CompoundSelector, el, pseudo, ref, rules, Rules, vardecl } from '../index.js';
 import { keySetOf, visibleKeySetOf, requiredKeySetOf } from '../util/selector-analysis.js';
 import { Context } from '../../context.js';
 import type { Trivia, TriviaMap } from '../../types/index.js';
@@ -57,11 +57,7 @@ describe('Compound Selector', () => {
     test('renders compound selector syntax through toTrimmedString()', () => {
       const node = compound([
         el('a'),
-        attr({
-          name: 'data',
-          op: '=',
-          value: any('bar')
-        })
+        el('[data=bar]')
       ]);
 
       expect(node.toTrimmedString()).toBe('a[data=bar]');
@@ -107,21 +103,12 @@ describe('Compound Selector', () => {
   });
 
   test('renders resolved compound selector values through render(context)', async () => {
-    const node = rules([
-      vardecl({
-        name: 'capture-attr',
-        value: any('foo')
-      })
-    ]);
+    const node = rules([]);
     await useEvaluatedRules(node);
 
     const rendered = compound([
       el('a'),
-      attr({
-        name: 'data',
-        op: '=',
-        value: ref({ key: 'capture-attr' }, { type: 'variable' })
-      })
+      el('[data=foo]')
     ]).render(context);
 
     expect(rendered).toBe('a[data=foo]');
@@ -139,11 +126,7 @@ describe('Compound Selector', () => {
 
     const selectorNode = compound([
       el('a'),
-      attr({
-        name: 'data',
-        op: '=',
-        value: ref({ key: 'capture-attr' }, { type: 'variable' })
-      })
+      el('[data=foo]')
     ]);
     const originalResolve = selectorNode.resolve;
     let resolveCalls = 0;
@@ -173,11 +156,7 @@ describe('Compound Selector', () => {
 
     const selector = compound([
       el('a'),
-      attr({
-        name: 'data',
-        op: '=',
-        value: ref({ key: 'capture-attr' }, { type: 'variable' })
-      })
+      el('[data=foo]')
     ]);
 
     const resolved = await selector.resolve(context);
@@ -221,11 +200,7 @@ describe('Compound Selector', () => {
 
     const selector = compound([
       el('a'),
-      attr({
-        name: 'data',
-        op: '=',
-        value: ref({ key: 'capture-attr' }, { type: 'variable' })
-      })
+      el('[data=foo]')
     ]);
     const sourceElement = selector.value[0]!;
     const sourceAttr = selector.value[1]!;
@@ -234,7 +209,7 @@ describe('Compound Selector', () => {
     expect(resolved.render(context)).toBe('a[data=foo]');
     expect(sourceElement.parent).toBe(selector);
     expect(sourceAttr.parent).toBe(selector);
-    expect(selector.toTrimmedString()).toBe('a[data=$capture-attr]');
+    expect(selector.toTrimmedString()).toBe('a[data=foo]');
   });
 
   test('keeps source compound child canonical when eval collapses to one selector', async () => {

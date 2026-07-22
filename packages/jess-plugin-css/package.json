@@ -1,11 +1,9 @@
 {
   "name": "@jesscss/plugin-css",
   "type": "module",
-  "publishConfig": {
-    "access": "public"
-  },
+  "publishConfig": { "access": "public" },
   "description": "The CSS stylesheet parser plugin for Jess",
-  "version": "2.0.0-alpha.9",
+  "version": "2.0.0-alpha.5",
   "main": "lib/index.cjs",
   "types": "lib/index.d.ts",
   "exports": {
@@ -16,9 +14,7 @@
     },
     "./package.json": "./package.json"
   },
-  "files": [
-    "lib"
-  ],
+  "files": ["lib"],
   "scripts": {
     "ci": "pnpm build && pnpm test",
     "prepublishOnly": "npm run build",
@@ -35,9 +31,7 @@
   "devDependencies": {},
   "author": "Matthew Dean <matthew-dean@users.noreply.github.com>",
   "license": "MIT",
-  "bugs": {
-    "url": "https://github.com/jesscss/jess/issues"
-  },
+  "bugs": { "url": "https://github.com/jesscss/jess/issues" },
   "homepage": "https://github.com/jesscss/jess#readme",
   "module": "lib/index.js"
 }

@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { makeList, makeQuoted, type FnCtx, type ValueObj } from '@jesscss/core/value';
-import { dataUri } from '../../builtins/data-uri.js';
+import dataUri from '../data-uri.js';
 
 const DATA_DIR = path.resolve(__dirname, 'assets');
 

@@ -1,170 +1,197 @@
-/* eslint-disable @typescript-eslint/naming-convention, @typescript-eslint/no-unsafe-type-assertion */
+/* eslint-disable @typescript-eslint/naming-convention -- `__jessBridge` is the fixed cross-worker wire tag. */
 import {
-  Any,
-  Color,
-  ColorFormat,
-  Declaration,
-  Dimension,
-  List,
-  Node,
-  Quoted,
-  Rules,
-  Sequence
-} from '@jesscss/core';
+  makeColorRgb,
+  makeDimension,
+  makeKeyword,
+  makeList,
+  makeQuoted,
+  RGB,
+  type PluginDetachedRuleset,
+  type ValueGroup,
+  type ValueObj
+} from '@jesscss/core/value';
 
 export type JsBridgeDeclaration = { name: string; value: JsBridgeValue };
 
 export type JsBridgeValue =
   | { __jessBridge: true; kind: 'scalar'; value: string | number | boolean }
   | { __jessBridge: true; kind: 'dimension'; value: number; unit?: string }
-  | { __jessBridge: true; kind: 'color'; rgb: [number, number, number]; alpha?: number; format?: string }
+  | { __jessBridge: true; kind: 'color'; rgb: [number, number, number]; alpha?: number }
   | { __jessBridge: true; kind: 'quoted'; value: string; quote?: '"' | '\''; escaped?: boolean }
-  | { __jessBridge: true; kind: 'keyword'; value: string }
   | { __jessBridge: true; kind: 'anonymous'; value: string }
-  | { __jessBridge: true; kind: 'list'; items: JsBridgeValue[]; separator?: ',' | ';' | '/' }
-  | { __jessBridge: true; kind: 'sequence'; items: JsBridgeValue[] }
-  | { __jessBridge: true; kind: 'detached'; rules: JsBridgeDeclaration[] };
+  | { __jessBridge: true; kind: 'list'; items: JsBridgeValue[]; separator: ',' | '/' | ';' }
+  | { __jessBridge: true; kind: 'expression'; items: JsBridgeValue[] }
+  | { __jessBridge: true; kind: 'mixin'; rules: JsBridgeDeclaration[] };
 
-type BridgeRecord = Record<string, unknown> & { __jessBridge?: unknown; kind?: unknown };
+type BridgeRecord = Record<string, unknown>;
+type LegacyNil = { readonly type: 'Nil'; readonly value: '' };
+type LegacyMixin = {
+  readonly type: 'Mixin';
+  readonly name: LegacyNil;
+  readonly args: LegacyNil;
+  readonly ruleset: { readonly rules: readonly { readonly type: 'Declaration'; readonly name: string; readonly value: unknown; eval(): unknown }[] };
+  eval(): LegacyMixin;
+};
+
+const isRecord = (value: unknown): value is BridgeRecord =>
+  typeof value === 'object'
+  && value !== null;
 
 const isBridgeValue = (value: unknown): value is JsBridgeValue =>
-  typeof value === 'object'
-  && value !== null
-  && (value as BridgeRecord).__jessBridge === true
-  && typeof (value as BridgeRecord).kind === 'string';
+  isRecord(value)
+  && value.__jessBridge === true
+  && typeof value.kind === 'string';
 
-const colorFormatFromString = (value: string | undefined): ColorFormat | undefined => {
-  if (!value) {
-    return undefined;
-  }
-  // ColorFormat is a numeric enum, so a string can only name a member by its
-  // key ('HEX' | 'RGB' | 'HSL'); the reverse mapping ('0' -> 'HEX') resolves to
-  // a string and is rejected by the typeof-number guard.
-  if (value in ColorFormat) {
-    const resolved = ColorFormat[value as keyof typeof ColorFormat];
-    if (typeof resolved === 'number') {
-      return resolved;
-    }
-  }
-  return undefined;
-};
+const isValueObj = (value: unknown): value is ValueObj =>
+  isRecord(value)
+  && typeof value.type === 'string'
+  && typeof value.bytes === 'string';
+
+const isDetached = (value: unknown): value is PluginDetachedRuleset =>
+  isRecord(value)
+  && value.type === 'DetachedRuleset'
+  && Array.isArray(value.rules);
 
 function encodeBridgeChildValue(value: unknown): JsBridgeValue {
   const encoded = encodeBridgeValue(value);
   if (isBridgeValue(encoded)) {
     return encoded;
   }
-  return {
-    __jessBridge: true,
-    kind: 'scalar',
-    value: typeof encoded === 'string' || typeof encoded === 'number' || typeof encoded === 'boolean'
-      ? encoded
-      : String(encoded)
-  };
+  return { __jessBridge: true, kind: 'scalar', value: String(encoded) };
+}
+
+function encodeFacadeValue(value: BridgeRecord): JsBridgeValue | undefined {
+  switch (value.type) {
+    case 'Dimension':
+      return typeof value.value === 'number'
+        ? { __jessBridge: true, kind: 'dimension', value: value.value, unit: typeof value.unit === 'string' ? value.unit : undefined }
+        : undefined;
+    case 'Color':
+      return Array.isArray(value.rgb) && value.rgb.length === 3
+        ? {
+            __jessBridge: true,
+            kind: 'color',
+            rgb: [value.rgb[0], value.rgb[1], value.rgb[2]],
+            alpha: typeof value.alpha === 'number' ? value.alpha : undefined
+          }
+        : undefined;
+    case 'Quoted':
+      return typeof value.value === 'string'
+        ? { __jessBridge: true, kind: 'quoted', value: value.value, quote: value.quote === '\'' ? '\'' : '"', escaped: value.escaped === true }
+        : undefined;
+    case 'Anonymous':
+    case 'Keyword':
+      return typeof value.value === 'string'
+        ? { __jessBridge: true, kind: 'anonymous', value: value.value }
+        : undefined;
+    case 'Expression':
+      return Array.isArray(value.value)
+        ? { __jessBridge: true, kind: 'expression', items: value.value.map(encodeBridgeChildValue) }
+        : undefined;
+    case 'Value':
+      return Array.isArray(value.value)
+        ? {
+            __jessBridge: true,
+            kind: 'list',
+            items: value.value.map(encodeBridgeChildValue),
+            separator: value.separator === '/' || value.separator === ';' ? value.separator : ','
+          }
+        : undefined;
+    case 'Mixin': {
+      const ruleset = value.ruleset;
+      if (!isRecord(ruleset) || !Array.isArray(ruleset.rules)) {
+        return undefined;
+      }
+      const rules: JsBridgeDeclaration[] = [];
+      for (const rule of ruleset.rules) {
+        if (!isRecord(rule)) {
+          continue;
+        }
+        if (rule.type === 'Declaration' && typeof rule.name === 'string') {
+          rules.push({ name: rule.name, value: encodeBridgeChildValue(rule.value) });
+        }
+      }
+      return { __jessBridge: true, kind: 'mixin', rules };
+    }
+    default:
+      return undefined;
+  }
 }
 
 export function encodeBridgeValue(value: unknown): unknown {
-  if (value instanceof Dimension) {
-    return {
-      __jessBridge: true,
-      kind: 'dimension',
-      value: value.number,
-      unit: value.unit
-    } satisfies JsBridgeValue;
+  if (Array.isArray(value)) {
+    return { __jessBridge: true, kind: 'expression', items: value.map(encodeBridgeChildValue) } satisfies JsBridgeValue;
   }
-  if (value instanceof Color) {
-    return {
-      __jessBridge: true,
-      kind: 'color',
-      rgb: value.rgb,
-      alpha: value.alpha,
-      format: value.options.format === undefined ? undefined : ColorFormat[value.options.format]
-    } satisfies JsBridgeValue;
-  }
-  if (value instanceof Quoted) {
-    return {
-      __jessBridge: true,
-      kind: 'quoted',
-      value: String(value.value),
-      quote: value.quote,
-      escaped: value.escaped
-    } satisfies JsBridgeValue;
-  }
-  if (value instanceof Any) {
-    return {
-      __jessBridge: true,
-      kind: value.role === 'keyword' ? 'keyword' : 'anonymous',
-      value: value.value
-    } satisfies JsBridgeValue;
-  }
-  if (value instanceof List) {
-    return {
-      __jessBridge: true,
-      kind: 'list',
-      items: value.value.map(encodeBridgeChildValue),
-      separator: value.options.sep
-    } satisfies JsBridgeValue;
-  }
-  if (value instanceof Sequence) {
-    return {
-      __jessBridge: true,
-      kind: 'sequence',
-      items: value.value.map(encodeBridgeChildValue)
-    } satisfies JsBridgeValue;
-  }
-  // A Less map / detached ruleset (e.g. `@grid-breakpoints: { xs: 0; ... }`)
-  // evaluates to a Rules/Mixin whose direct children are Declarations. Legacy
-  // Less @plugin functions read these via `arg.ruleset.rules` + `rule.eval()`,
-  // so surface them as a `detached` bridge value the worker can reconstruct.
-  if (value instanceof Rules) {
-    const rules: JsBridgeDeclaration[] = [];
-    for (const rule of (value as Rules).rules ?? []) {
-      if (rule instanceof Declaration && typeof rule.name === 'string') {
-        rules.push({ name: rule.name, value: encodeBridgeChildValue(rule.value) });
-      }
+  if (isValueObj(value)) {
+    switch (value.type) {
+      case 'Dimension': return { __jessBridge: true, kind: 'dimension', value: value.number, unit: value.unit } satisfies JsBridgeValue;
+      case 'Color': return { __jessBridge: true, kind: 'color', rgb: [value.rgb[0], value.rgb[1], value.rgb[2]], alpha: value.alpha } satisfies JsBridgeValue;
+      case 'Quoted': return { __jessBridge: true, kind: 'quoted', value: value.value, quote: value.quote === '\'' ? '\'' : '"', escaped: value.escaped } satisfies JsBridgeValue;
+      case 'List':
+        return value.sep === ',' || value.sep === '/'
+          ? { __jessBridge: true, kind: 'list', items: value.value.map(encodeBridgeChildValue), separator: value.sep } satisfies JsBridgeValue
+          : { __jessBridge: true, kind: 'anonymous', value: value.bytes } satisfies JsBridgeValue;
+      case 'Block':
+        return { __jessBridge: true, kind: 'anonymous', value: value.bytes } satisfies JsBridgeValue;
+      default:
+        return { __jessBridge: true, kind: 'anonymous', value: value.bytes } satisfies JsBridgeValue;
     }
+  }
+  if (isDetached(value)) {
     return {
       __jessBridge: true,
-      kind: 'detached',
-      rules
+      kind: 'mixin',
+      rules: value.rules.map(rule => ({ name: rule.name, value: encodeBridgeChildValue(rule.value) }))
     } satisfies JsBridgeValue;
+  }
+  if (isRecord(value)) {
+    return encodeFacadeValue(value) ?? value;
   }
   return value;
+}
+
+function decodeValue(value: JsBridgeValue): ValueGroup {
+  switch (value.kind) {
+    case 'scalar': return makeKeyword(String(value.value));
+    case 'dimension': return makeDimension(value.value, value.unit ?? '');
+    case 'color': return makeColorRgb(value.rgb, value.alpha ?? 1, RGB);
+    case 'quoted': return makeQuoted(value.value, value.quote ?? '"', value.escaped === true);
+    case 'anonymous': return makeKeyword(value.value);
+    case 'expression': return value.items.map(decodeValue);
+    case 'list': return makeList(value.items.map(decodeValue), value.separator === ';' ? ',' : value.separator);
+    case 'mixin': return makeKeyword('');
+  }
+}
+
+function decodeMixin(value: Extract<JsBridgeValue, { kind: 'mixin' }>): LegacyMixin {
+  const nil: LegacyNil = { type: 'Nil', value: '' };
+  const rules = value.rules.map(rule => ({
+    type: 'Declaration' as const,
+    name: rule.name,
+    value: decodeValue(rule.value),
+    eval() {
+      return this;
+    }
+  }));
+  const mixin: LegacyMixin = {
+    type: 'Mixin',
+    name: nil,
+    args: nil,
+    ruleset: { rules },
+    eval() {
+      return mixin;
+    }
+  };
+  return mixin;
 }
 
 export function decodeBridgeValue(value: unknown): unknown {
   if (!isBridgeValue(value)) {
     return value;
   }
-  switch (value.kind) {
-    case 'scalar':
-      return new Any(String(value.value));
-    case 'dimension':
-      return new Dimension({ number: value.value, unit: value.unit });
-    case 'color':
-      return new Color(
-        { rgb: value.rgb, alpha: value.alpha },
-        { format: colorFormatFromString(value.format) }
-      );
-    case 'quoted':
-      return new Quoted(value.value, {
-        quote: value.quote,
-        escaped: value.escaped
-      });
-    case 'keyword':
-      return new Any(value.value, { role: 'keyword' });
-    case 'anonymous':
-      return new Any(value.value);
-    case 'list':
-      return new List(
-        value.items.map(item => decodeBridgeValue(item) as Node),
-        { sep: value.separator }
-      );
-    case 'sequence':
-      return new Sequence(value.items.map(item => decodeBridgeValue(item) as Node));
-  }
+  return value.kind === 'mixin' ? decodeMixin(value) : decodeValue(value);
 }
 
-export function encodeBridgeArgs(args: unknown[]): unknown[] {
+export function encodeBridgeArgs(args: readonly unknown[]): unknown[] {
   return args.map(encodeBridgeValue);
 }

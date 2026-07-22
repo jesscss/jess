@@ -6,7 +6,7 @@
  *
  * HARD MODULE BOUNDARY: imports only the value domain + the free serializer.
  */
-import type { Block, Bool, Color, Dimension, Keyword, Quoted, List, ListSeparator, ValueObj } from './value-eval.js';
+import type { Block, Bool, Color, Dimension, Keyword, Quoted, List, ListSeparator, ValueGroup } from './value-eval.js';
 import { colorRgb, colorSourceRgb, rgbToHsl, serializeColor } from './color.js';
 import { serializeDimension, serializeQuoted, serializeValue } from './serialize-value.js';
 
@@ -137,8 +137,8 @@ export const makeKeyword = (text: string): Keyword => ({ type: 'Keyword', text, 
 export const makeBool = (value: boolean): Bool => ({ type: 'Bool', value, bytes: value ? 'true' : 'false' });
 
 export function makeList(
-  value: readonly ValueObj[],
-  sep: ListSeparator = ' '
+  value: readonly ValueGroup[],
+  sep: ListSeparator = ','
 ): List {
   const l: Mutable<List> = { type: 'List', value, sep, bytes: '' };
   l.bytes = serializeValue(l);
@@ -147,7 +147,7 @@ export function makeList(
 
 /** Wrap a value in an explicit paren/square delimiter fact. */
 export function makeBlock(
-  inner: ValueObj,
+  inner: ValueGroup,
   delimiter: Block['delimiter'],
   escaped = false
 ): Block {

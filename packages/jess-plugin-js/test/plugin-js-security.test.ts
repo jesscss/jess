@@ -3,7 +3,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { Any, Color, Dimension, List, Quoted, Sequence } from '@jesscss/core';
+import { makeColorRgb, makeDimension, makeKeyword, makeList, makeQuoted, RGB } from '@jesscss/core/value';
 import jsPlugin, { JsPlugin, sanitizeSpawnEnv } from '../src/index.js';
 
 const makeTmpDir = (prefix: string) => fs.mkdtempSync(path.join(os.tmpdir(), prefix));
@@ -222,69 +222,66 @@ describe('@jesscss/plugin-js security', () => {
     const plugin = jsPlugin({ jsReadRoot: root, runtimeApi: 'less' }) as JsPlugin;
     plugins.push(plugin);
     const mod = await plugin.import(modulePath);
-    const dimensionResult = await mod.bumpDimension(new Dimension({ number: 4, unit: 'px' }));
-    expect(dimensionResult).toBeInstanceOf(Dimension);
+    const dimensionResult = await mod.bumpDimension(makeDimension(4, 'px'));
+    expect(dimensionResult.type).toBe('Dimension');
     expect(dimensionResult.number).toBe(5);
     expect(dimensionResult.unit).toBe('px');
 
-    const colorResult = await mod.fade(new Color({ rgb: [10, 20, 30], alpha: 0.75 }));
-    expect(colorResult).toBeInstanceOf(Color);
+    const colorResult = await mod.fade(makeColorRgb([10, 20, 30], 0.75, RGB));
+    expect(colorResult.type).toBe('Color');
     expect(colorResult.rgb).toEqual([10, 20, 30]);
     expect(colorResult.alpha).toBe(0.25);
 
-    const quotedResult = await mod.quote(new Quoted('hello', { quote: '"' }));
-    expect(quotedResult).toBeInstanceOf(Quoted);
+    const quotedResult = await mod.quote(makeQuoted('hello', '"', false));
+    expect(quotedResult.type).toBe('Quoted');
     expect(quotedResult.value).toBe('ok');
-    expect(quotedResult.options.quote).toBe('\'');
+    expect(quotedResult.quote).toBe('\'');
 
-    const listResult = await mod.firstDimension(new List([
-      new Dimension({ number: 1, unit: 'em' }),
-      new Any('ignored')
-    ], { sep: '/' }));
-    expect(listResult).toBeInstanceOf(List);
-    expect(listResult.options.sep).toBe('/');
+    const listResult = await mod.firstDimension(makeList([
+      makeDimension(1, 'em'),
+      makeKeyword('ignored')
+    ], '/'));
+    expect(listResult.type).toBe('List');
+    expect(listResult.sep).toBe('/');
     const listFirst = listResult.value[0];
-    expect(listFirst).toBeInstanceOf(Dimension);
-    if (!(listFirst instanceof Dimension)) {
+    expect(listFirst?.type).toBe('Dimension');
+    if (listFirst?.type !== 'Dimension') {
       throw new Error('Expected first list result item to be a Dimension');
     }
     expect(listFirst.number).toBe(3);
     expect(listFirst.unit).toBe('em');
 
-    const sequenceResult = await mod.expressionLength(new Sequence([
-      new Any('a'),
-      new Any('b')
-    ]));
-    expect(sequenceResult).toBeInstanceOf(Sequence);
-    const sequenceFirst = sequenceResult.value[0];
-    expect(sequenceFirst).toBeInstanceOf(Dimension);
-    if (!(sequenceFirst instanceof Dimension)) {
-      throw new Error('Expected first sequence result item to be a Dimension');
+    const sequenceResult = await mod.expressionLength([makeKeyword('a'), makeKeyword('b')]);
+    expect(Array.isArray(sequenceResult)).toBe(true);
+    const sequenceFirst = Array.isArray(sequenceResult) ? sequenceResult[0] : undefined;
+    expect(sequenceFirst?.type).toBe('Dimension');
+    if (sequenceFirst?.type !== 'Dimension') {
+      throw new Error('Expected an expression result item to be a Dimension');
     }
     expect(sequenceFirst.number).toBe(2);
 
     const helperDimensionResult = await mod.helperDimension();
-    expect(helperDimensionResult).toBeInstanceOf(Dimension);
+    expect(helperDimensionResult.type).toBe('Dimension');
     expect(helperDimensionResult.number).toBe(9);
     expect(helperDimensionResult.unit).toBe('rem');
 
-    const helperValueResult = await mod.helperValue(new List([
-      new Dimension({ number: 6, unit: 'vw' })
-    ]));
-    expect(helperValueResult).toBeInstanceOf(List);
-    expect(helperValueResult.options.sep).toBe('/');
+    const helperValueResult = await mod.helperValue(makeList([
+      makeDimension(6, 'vw')
+    ], '/'));
+    expect(helperValueResult.type).toBe('List');
+    expect(helperValueResult.sep).toBe('/');
     const helperValueFirst = helperValueResult.value[0];
-    expect(helperValueFirst).toBeInstanceOf(Dimension);
-    if (!(helperValueFirst instanceof Dimension)) {
+    expect(helperValueFirst?.type).toBe('Dimension');
+    if (helperValueFirst?.type !== 'Dimension') {
       throw new Error('Expected first helper value result item to be a Dimension');
     }
     expect(helperValueFirst.number).toBe(6);
     expect(helperValueFirst.unit).toBe('vw');
 
     const helperValueWithPrimitivesResult = await mod.helperValueWithPrimitives();
-    expect(helperValueWithPrimitivesResult).toBeInstanceOf(List);
-    expect(helperValueWithPrimitivesResult.options.sep).toBe('/');
-    expect(helperValueWithPrimitivesResult.value.map((item: Any) => item.value)).toEqual(['raw', '2', 'true']);
+    expect(helperValueWithPrimitivesResult.type).toBe('List');
+    expect(helperValueWithPrimitivesResult.sep).toBe('/');
+    expect(helperValueWithPrimitivesResult.value.map(item => item.bytes)).toEqual(['raw', '2', 'true']);
   });
 
   it('loads legacy Less @plugin wrapper files in Deno with injected variables', async () => {
@@ -314,8 +311,8 @@ describe('@jesscss/plugin-js security', () => {
     const loaded = await plugin.importLessPlugin(modulePath);
     expect(Object.keys(loaded.functions).sort()).toEqual(['probeprocess', 'triple']);
 
-    const dimensionResult = await loaded.functions.triple(new Dimension({ number: 2, unit: 'px' }));
-    expect(dimensionResult).toBeInstanceOf(Dimension);
+    const dimensionResult = await loaded.functions.triple(makeDimension(2, 'px'));
+    expect(dimensionResult.type).toBe('Dimension');
     expect(dimensionResult.number).toBe(6);
     expect(dimensionResult.unit).toBe('px');
     await expect(loaded.functions.probeprocess()).resolves.toBe('DENIED');

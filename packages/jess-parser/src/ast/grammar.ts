@@ -373,7 +373,14 @@ function isValueNodeArray(value: unknown): value is ValueNode[] {
   return Array.isArray(value) && value.every(isValueNode);
 }
 
-function valueSlot(value: ValueNode): ValueSlot {
+function isValueSlotArray(value: ValueSlot): value is readonly ValueSlot[] {
+  return Array.isArray(value);
+}
+
+function valueSlot(value: ValueSlot): ValueSlot {
+  if (isValueSlotArray(value)) {
+    return value;
+  }
   if (value.type === 'SpacedValue') {
     return value.parts;
   }
@@ -1173,8 +1180,8 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
     'DirectJessUrlInterpolatedValue',
     noTrivia(sequence(
       optional(jessUrlInterpolatedText),
-      g.DirectJessDollarInterp,
-      many(choice(jessUrlInterpolatedText, g.DirectJessDollarInterp))
+      choice(g.DirectJessDollarInterp, g.DirectJessExpression),
+      many(choice(jessUrlInterpolatedText, g.DirectJessDollarInterp, g.DirectJessExpression))
     )),
     (children) => {
       const parts: Interpolation['parts'] = [];
@@ -2008,7 +2015,7 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
           : { mode: 'declare' as const };
       return variableDeclaration(
         requireToken(children[operatorIndex - 1]).value,
-        valueSlot(requireValueNode(children[operatorIndex + 1])),
+        valueSlot(requireValueSlot(children[operatorIndex + 1])),
         write
       );
     }

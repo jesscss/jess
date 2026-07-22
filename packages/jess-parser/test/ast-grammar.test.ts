@@ -24,6 +24,24 @@ function stylesheet(value: unknown): Stylesheet {
   return value;
 }
 
+function expectExplicitListSeparators(value: unknown): void {
+  if (Array.isArray(value)) {
+    value.forEach(expectExplicitListSeparators);
+    return;
+  }
+  if (!isRecord(value)) {
+    return;
+  }
+  if (value.type === 'List') {
+    expect(value.sep).toSatisfy(separator => separator === ',' || separator === '/');
+  }
+  Object.values(value).forEach(expectExplicitListSeparators);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
 function hasCstGrammar(node: unknown, grammarType: string): boolean {
   if (typeof node !== 'object' || node === null) {
     return false;
@@ -36,6 +54,23 @@ function hasCstGrammar(node: unknown, grammarType: string): boolean {
 }
 
 describe('Jess AST grammar facts', () => {
+  it('keeps ordinary adjacency as a raw value array and reserves List for explicit separators', () => {
+    const direct = run(
+      jessAstGrammar.JessAstDocument,
+      '$space: red blue; $comma: red, blue; $w: 1; .x { slash: $w / 2; }',
+      { trivia: jessAstGrammar.whitespace }
+    );
+    expect(direct.ok).toBe(true);
+    expect(direct.unconsumedFrom).toBeNull();
+    expect(stylesheet(direct.value).children).toMatchObject([
+      { type: 'VariableDeclaration', name: 'space', value: [{ type: 'Keyword', src: 'red' }, { type: 'Keyword', src: 'blue' }] },
+      { type: 'VariableDeclaration', name: 'comma', value: { type: 'List', sep: ',' } },
+      { type: 'VariableDeclaration', name: 'w' },
+      { type: 'Rule', body: [{ type: 'Declaration', name: 'slash', value: { type: 'List', sep: '/' } }] }
+    ]);
+    expectExplicitListSeparators(direct.value);
+  });
+
   it('constructs ordered $if / $else if / $else branches directly and renders only the selected branch', () => {
     const source = '$theme: "dark"; $if ($theme = "light") { .card { color: black; } } $else if ($theme = "dark") { .card { color: white; } } $else { .card { color: gray; } }';
     const direct = run(jessAstGrammar.JessAstDocument, source, { trivia: jessAstGrammar.whitespace });
@@ -1192,15 +1227,33 @@ describe('Jess AST grammar facts', () => {
 
   it('rejects unsupported dynamic CSS url bodies rather than falling through to FunctionCall', () => {
     for (const source of [
-      '.asset { image: url($(path)); }',
       '.asset { image: url($path); }',
       '.asset { image: url(images/$[path] icon.svg); }',
-      '@import url($(path));',
       '@import url($path);',
       '.asset { image: url("images/icon.svg"; }'
     ]) {
       expect(() => parse(source), source).toThrow(SyntaxError);
     }
+  });
+
+  it('admits $(…) expression interpolation in url bodies as a value position', () => {
+    // A url body is a value position (like a quote interior), so the $(…)
+    // arithmetic/expression form is admitted there alongside the $[…] accessor —
+    // unlike identifier-like slots (selectors, property names) which stay accessor-only.
+    for (const source of ['.asset { image: url($(path)); }', '@import url($(path));']) {
+      const direct = run(jessAstGrammar.JessAstDocument, source, { trivia: jessAstGrammar.whitespace });
+      expect(direct.ok && direct.unconsumedFrom === null, source).toBe(true);
+    }
+    const rule = parse('.asset { image: url($(path)); }').children[0];
+    expect(rule).toMatchObject({
+      type: 'Rule',
+      body: [{
+        type: 'Declaration', name: 'image',
+        value: { type: 'Url', value: { type: 'Interpolation', parts: [
+          { ref: { type: 'Block', delimiter: 'paren', inner: { type: 'Keyword', src: 'path' } }, unquote: true }
+        ] } }
+      }]
+    });
   });
 
   it('constructs public static selector lists, compounds, combinators, and nested rules directly', () => {

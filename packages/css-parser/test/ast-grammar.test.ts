@@ -24,7 +24,38 @@ function parseAst(input: string): Stylesheet {
   return result.value;
 }
 
+function expectExplicitListSeparators(value: unknown): void {
+  if (Array.isArray(value)) {
+    value.forEach(expectExplicitListSeparators);
+    return;
+  }
+  if (!isRecord(value)) {
+    return;
+  }
+  if (value.type === 'List') {
+    expect(value.sep).toSatisfy(separator => separator === ',' || separator === '/');
+  }
+  Object.values(value).forEach(expectExplicitListSeparators);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
 describe('CSS canonical-AST grammar', () => {
+  it('keeps ordinary adjacency as a raw value array and reserves List for explicit separators', () => {
+    const document = parseAst('.x { space: red blue; comma: red, blue; ratio: 1 / 2; }');
+    expect(document.children[0]).toMatchObject({
+      type: 'Rule',
+      body: [
+        { type: 'Declaration', name: 'space', value: [{ type: 'Keyword', src: 'red' }, { type: 'Keyword', src: 'blue' }] },
+        { type: 'Declaration', name: 'comma', value: { type: 'List', sep: ',' } },
+        { type: 'Declaration', name: 'ratio', value: [{ type: 'Dimension', src: '1' }, { type: 'Any', src: '/' }, { type: 'Dimension', src: '2' }] }
+      ]
+    });
+    expectExplicitListSeparators(document);
+  });
+
   it('keeps declaration-only permissive component values out of calc and nested-rule headers', () => {
     const document = parseAst('.a { x: (foo); ratio: 1 / 2; filter: alpha(opacity=50); flag: foo|bar; color: red ! IMPORTANT; b: c { color: blue; } }');
     expect(document.children[0]).toMatchObject({

@@ -6,7 +6,7 @@
  *
  * HARD MODULE BOUNDARY: value domain + factory only.
  */
-import { makeDimension, type Dimension, type FnSpec, type ValueObj } from '@jesscss/core/value';
+import { isValueGroupArray, makeDimension, type Dimension, type FnSpec, type ValueGroup } from '@jesscss/core/value';
 
 /**
  * Angle → radians normalization (`deg`/`grad`/`turn`), else the raw number.
@@ -42,8 +42,8 @@ export function applyMath(
   return makeDimension(fn(...args.map(normalizeAngle)), outUnit ?? first.unit);
 }
 
-export function requireDimension(value: ValueObj | undefined): Dimension {
-  if (value?.type !== 'Dimension') {
+export function requireDimension(value: ValueGroup | undefined): Dimension {
+  if (value === undefined || isValueGroupArray(value) || value.type !== 'Dimension') {
     throw new TypeError('Expected a dimension value');
   }
   return value;

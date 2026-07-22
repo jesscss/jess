@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { Any, Color, Dimension, Quoted, Url } from '@jesscss/core';
+import { emitValue, makeColorRgb, makeDimension, makeKeyword, makeList, makeQuoted, HEX } from '@jesscss/core/value';
+import type { Fn, FnCtx, ValueGroup } from '@jesscss/core/value';
 import {
   iscolor,
   isem,
@@ -8,32 +9,48 @@ import {
   ispercentage,
   ispixel,
   isstring,
-  isunit,
-  isurl
+  isunit
 } from '../types.js';
 
 describe('types()', () => {
   it('checks node categories and units', () => {
-    const quoted = new Quoted('hello');
-    const keyword = new Any('screen', { role: 'keyword' });
-    const ident = new Any('solid', { role: 'ident' });
-    const px = new Dimension({ number: 3, unit: 'px' });
-    const em = new Dimension({ number: 3, unit: 'em' });
-    const pct = new Dimension({ number: 3, unit: '%' });
-    const color = new Color('#ff0000');
-    const url = new Url(new Quoted('/foo.png'));
+    const quoted = makeQuoted('hello', '"', false);
+    const keyword = makeKeyword('screen');
+    const px = makeDimension(3, 'px');
+    const em = makeDimension(3, 'em');
+    const pct = makeDimension(3, '%');
+    const color = makeColorRgb([255, 0, 0], 1, HEX);
+    const context: FnCtx = { modes: { unitMode: 'preserve' }, stringify: emitValue };
 
-    expect(iscolor(color).value).toBe(true);
-    expect(isnumber(px).value).toBe(true);
-    expect(isstring(quoted).value).toBe(true);
-    expect(iskeyword(keyword).value).toBe(true);
-    expect(iskeyword(ident).value).toBe(true);
-    expect(isurl(url).value).toBe(true);
-    expect(ispixel(px).value).toBe(true);
-    expect(ispercentage(pct).value).toBe(true);
-    expect(isem(em).value).toBe(true);
-    expect(isunit(px, new Quoted('PX')).value).toBe(true);
-    expect(isunit(px, new Quoted('em')).value).toBe(false);
-    expect(isunit(keyword, new Quoted('px')).value).toBe(false);
+    expect(bool(iscolor, color, context)).toBe(true);
+    expect(bool(isnumber, px, context)).toBe(true);
+    expect(bool(isstring, quoted, context)).toBe(true);
+    expect(bool(iskeyword, keyword, context)).toBe(true);
+    expect(bool(ispixel, px, context)).toBe(true);
+    expect(bool(ispercentage, pct, context)).toBe(true);
+    expect(bool(isem, em, context)).toBe(true);
+    expect(bool(isunit, makeList([px, makeQuoted('PX', '"', false)], ','), context)).toBe(true);
+    expect(bool(isunit, makeList([px, makeQuoted('em', '"', false)], ','), context)).toBe(false);
+    expect(bool(isunit, makeList([keyword, makeQuoted('px', '"', false)], ','), context)).toBe(false);
+  });
+
+  it('treats a nested raw space group as one non-scalar argument', () => {
+    const context: FnCtx = { modes: { unitMode: 'preserve' }, stringify: emitValue };
+    const group = [makeDimension(1, 'px'), makeDimension(2, 'px')];
+
+    expect(bool(iscolor, makeList([group], ','), context)).toBe(false);
+    expect(bool(isnumber, makeList([group], ','), context)).toBe(false);
+    expect(bool(isstring, makeList([group], ','), context)).toBe(false);
+    expect(bool(iskeyword, makeList([group], ','), context)).toBe(false);
+    expect(bool(ispixel, makeList([group], ','), context)).toBe(false);
+    expect(bool(isunit, makeList([group, makeKeyword('px')], ','), context)).toBe(false);
   });
 });
+
+function bool(fn: Fn, value: ValueGroup, context: FnCtx): boolean {
+  const result = fn(value, context);
+  if (result instanceof Promise || Array.isArray(result) || result.type !== 'Bool') {
+    throw new TypeError('Expected a synchronous Bool result.');
+  }
+  return result.value;
+}

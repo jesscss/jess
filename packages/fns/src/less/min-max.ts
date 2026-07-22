@@ -1,5 +1,5 @@
-import type { Dimension, EvalModes, List, ValueObj } from '@jesscss/core/value';
-import { coerceListItems, makeKeyword, unify as unifyRaw } from '@jesscss/core/value';
+import type { Dimension, EvalModes, ValueGroup, ValueObj } from '@jesscss/core/value';
+import { groupItems, isValueGroupArray, makeKeyword, unify as unifyRaw } from '@jesscss/core/value';
 
 const unify = (dimension: Dimension): { number: number; unit: string } =>
   unifyRaw(dimension.number, dimension.unit);
@@ -8,9 +8,9 @@ const unify = (dimension: Dimension): { number: number; unit: string } =>
  * Less's unit-grouping policy for `min`/`max`. The value/list structure is
  * universal core capability; only this survivor/unit policy belongs to Less.
  */
-export function minMax(isMin: boolean, list: List, modes: EvalModes): ValueObj {
+export function minMax(isMin: boolean, list: ValueGroup, modes: EvalModes): ValueObj {
   const name = isMin ? 'min' : 'max';
-  const args: ValueObj[] = list.value.flatMap(item => coerceListItems(item));
+  const args = groupItems(list).flatMap(groupItems);
   if (args.length === 0) {
     throw new TypeError(`${name}() requires at least one numeric argument`);
   }
@@ -21,7 +21,7 @@ export function minMax(isMin: boolean, list: List, modes: EvalModes): ValueObj {
   let unitClone: string | undefined;
 
   for (const current of args) {
-    if (current.type !== 'Dimension') {
+    if (isValueGroupArray(current) || current.type !== 'Dimension') {
       throw new TypeError(`${name}() requires numeric arguments`);
     }
 

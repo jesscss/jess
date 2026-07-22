@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { makeBuiltinRegistry } from '@jesscss/fns';
 import { buildEvaluator } from '../evaluator.js';
 import { defineFunction } from '../value-dispatch.js';
-import { decl, detachedRuleset, funcCall, mixinCall, mixinDef, quoted, reference, rule, stylesheet, variableDeclaration, variableReference } from '../nodes.js';
-import { plugin } from '../at-rule.js';
+import { decl, detachedRuleset, funcCall, keyword, mixinCall, mixinDef, quoted, reference, rule, stylesheet, variableDeclaration, variableReference } from '../nodes.js';
+import { atRuleBlock, plugin } from '../at-rule.js';
 import { serialize } from '../serialize.js';
 import type { PluginHost } from '../value-eval.js';
 import { makeKeyword } from '../value-factory.js';
@@ -13,6 +13,10 @@ const evaluator = buildEvaluator(makeBuiltinRegistry());
 const fn = (name: string, value: string) => defineFunction(name, {
   params: [],
   body: () => makeKeyword(value)
+});
+const asyncFn = (name: string, value: string) => defineFunction(name, {
+  params: [],
+  body: () => Promise.resolve(makeKeyword(value))
 });
 const target = (specifier: string) => plugin(quoted(`'${specifier}'`, specifier, '\'', false));
 
@@ -83,5 +87,52 @@ describe('typed Plugin lexical body preparation', () => {
     await expect(Promise.resolve(serialize(document, { evaluator, pluginHost: host }))).resolves.toEqual({
       css: '.entry {\n  before: detached;\n  after: detached;\n  outside: probe();\n}\n'
     });
+  });
+
+  it('deduplicates exact async declaration values without discarding distinct values', async () => {
+    const host: PluginHost = {
+      loadPlugin: () => [asyncFn('same', 'same'), asyncFn('first', 'first'), asyncFn('second', 'second')]
+    };
+    const document = stylesheet([
+      rule('.entry', [
+        target('async-values'),
+        decl('exact', funcCall('same', [])),
+        decl('exact', funcCall('same', [])),
+        decl('distinct', funcCall('first', [])),
+        decl('distinct', funcCall('second', []))
+      ])
+    ]);
+
+    await expect(Promise.resolve(serialize(document, { evaluator, pluginHost: host }))).resolves.toEqual({
+      css: '.entry {\n  exact: same;\n  distinct: first;\n  distinct: second;\n}\n'
+    });
+  });
+
+  it('awaits async deduplication before closing a bubbled at-rule body', async () => {
+    const host: PluginHost = { loadPlugin: () => [asyncFn('same', 'same')] };
+    const document = stylesheet([
+      rule('.entry', [
+        target('async-bubble'),
+        atRuleBlock('@media', keyword('screen'), [
+          decl('exact', funcCall('same', [])),
+          decl('exact', funcCall('same', []))
+        ])
+      ])
+    ]);
+
+    await expect(Promise.resolve(serialize(document, { evaluator, pluginHost: host }))).resolves.toEqual({
+      css: '@media screen {\n  .entry {\n    exact: same;\n  }\n}\n'
+    });
+  });
+
+  it('continues to reject an async value in a true at-rule prelude', () => {
+    const host: PluginHost = { loadPlugin: () => [asyncFn('probe', 'screen')] };
+    const document = stylesheet([
+      target('async-prelude'),
+      atRuleBlock('@media', funcCall('probe', []), [rule('.entry', [decl('color', 'red')])])
+    ]);
+
+    expect(() => serialize(document, { evaluator, pluginHost: host }))
+      .toThrow('async value in an at-rule prelude is unsupported');
   });
 });

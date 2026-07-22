@@ -1,6 +1,6 @@
 import { setSourceSpan, sourceSpanOf } from '../util/provenance.js';
 // import { Selector } from '../selector-sequence'
-import { sel, el, co, pseudo, attr, any, quoted, sellist, compound } from '../index.js';
+import { sel, el, co, pseudo, any, sellist, compound } from '../index.js';
 import { Context } from '../../context.js';
 import { visibleKeySetOf, requiredKeySetOf } from '../util/selector-analysis.js';
 import { isNode } from '../util/is-node.js';
@@ -152,30 +152,6 @@ describe('Selector', () => {
   });
 
   describe('equality', () => {
-    test('normalized attribute selectors should be equal', () => {
-      const attr1 = attr({
-        name: 'foo',
-        op: '=',
-        value: any('bar')
-      });
-      const attr2 = attr({
-        name: 'foo',
-        op: '=',
-        value: quoted(any('bar'))
-      });
-      expect(attr1.compare(attr2)).toBe(0);
-    });
-
-    test('equivalent node strings should be equal', () => {
-      const attr1 = attr({
-        name: 'foo',
-        op: '=',
-        value: any('bar')
-      });
-      const attr2 = any('[foo="bar"]');
-      expect(attr1.compare(attr2)).toBe(0);
-    });
-
     test('sequences should be equal', () => {
       const sel1 = sel([
         el('.foo'),

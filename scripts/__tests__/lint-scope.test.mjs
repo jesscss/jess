@@ -53,4 +53,34 @@ describe('repository ESLint scope', () => {
       rmSync(dirname(fixture), { recursive: true, force: true });
     }
   });
+
+  it('keeps source-adjacent tests out of the production lane without globally ignoring them', () => {
+    const testRoot = join(ROOT, 'packages', 'awaitable-pipe', 'src', '__tests__');
+    mkdirSync(testRoot, { recursive: true });
+    const fixture = join(mkdtempSync(join(testRoot, 'lint-scope-proof-')), 'invalid.js');
+    writeFileSync(fixture, 'if (true) console.log("this must be linted by lint:tests");\n');
+    try {
+      const production = spawnSync(process.execPath, [
+        ESLINT_BIN,
+        '--no-warn-ignored',
+        '--ignore-pattern',
+        '**/__tests__/**',
+        fixture
+      ], {
+        cwd: ROOT,
+        encoding: 'utf8'
+      });
+      assert.equal(production.error, undefined);
+      assert.equal(production.status, 0, `${production.stdout}\n${production.stderr}`);
+
+      const direct = spawnSync(process.execPath, [ESLINT_BIN, '--no-warn-ignored', fixture], {
+        cwd: ROOT,
+        encoding: 'utf8'
+      });
+      assert.equal(direct.error, undefined);
+      assert.notEqual(direct.status, 0, `${direct.stdout}\n${direct.stderr}`);
+    } finally {
+      rmSync(dirname(fixture), { recursive: true, force: true });
+    }
+  });
 });

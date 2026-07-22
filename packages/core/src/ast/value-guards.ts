@@ -5,7 +5,7 @@
  *
  * HARD MODULE BOUNDARY: imports only the value domain + the shared units table.
  */
-import type { Dimension, ValueObj } from './value-eval.js';
+import { isValueGroupArray, type Dimension, type ValueGroup, type ValueObj } from './value-eval.js';
 import { unify } from './value-units.js';
 import type { EqualityMode } from '../types/modes.js';
 
@@ -130,7 +130,7 @@ function compareNodes(a: ValueObj, b: ValueObj, equalityMode: EqualityMode): -1 
       return undefined;
     }
     for (let i = 0; i < a.value.length; i++) {
-      if (compareNodes(a.value[i]!, b.value[i]!, equalityMode) !== 0) {
+      if (compareGroups(a.value[i]!, b.value[i]!, equalityMode) !== 0) {
         return undefined;
       }
     }
@@ -139,14 +139,29 @@ function compareNodes(a: ValueObj, b: ValueObj, equalityMode: EqualityMode): -1 
   return a.bytes === b.bytes ? 0 : undefined;
 }
 
+function compareGroups(a: ValueGroup, b: ValueGroup, equalityMode: EqualityMode): -1 | 0 | 1 | undefined {
+  if (isValueGroupArray(a) || isValueGroupArray(b)) {
+    if (!isValueGroupArray(a) || !isValueGroupArray(b) || a.length !== b.length) {
+      return undefined;
+    }
+    for (let index = 0; index < a.length; index += 1) {
+      if (compareGroups(a[index]!, b[index]!, equalityMode) !== 0) {
+        return undefined;
+      }
+    }
+    return 0;
+  }
+  return compareNodes(a, b, equalityMode);
+}
+
 /**
  * Guard comparison (`@a > 0`) on typed operands, faithful to less.js `Node.compare`
  * (see {@link compareNodes}): dimensions reconcile units, quoted strings compare
  * lexically, colors/keywords/lists by structural equality. An INCOMPARABLE pair
  * (`undefined`) is false for every operator.
  */
-export function compare(op: string, left: ValueObj, right: ValueObj, equalityMode: EqualityMode = 'less'): boolean {
-  const c = compareNodes(left, right, equalityMode);
+export function compare(op: string, left: ValueGroup, right: ValueGroup, equalityMode: EqualityMode = 'less'): boolean {
+  const c = compareGroups(left, right, equalityMode);
   switch (op) {
     case '=': return c === 0;
     case '>': return c === 1;
