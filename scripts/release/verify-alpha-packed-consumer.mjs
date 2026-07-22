@@ -218,7 +218,7 @@ assert.ok(!existsSync(path.join(bin, process.platform === 'win32' ? 'lessc.cmd' 
 
 const help = run(jess, ['--help']);
 assert.equal(help.status, 0, help.stderr);
-assert.match(help.stdout, /Usage: jess <input> \[output\]/u);
+assert.match(help.stdout, /Usage: jess <input> \\[output\\] \\[-o outdir\\]/u);
 
 writeFileSync(path.join(fixture, 'dep.less'), '.dep { color: blue; }\\n');
 writeFileSync(path.join(fixture, 'entry.less'), '@import "./dep.less";\\n.entry { color: red; }\\n');
