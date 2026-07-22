@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { makeBuiltinRegistry } from '@jesscss/fns';
 import { buildEvaluator } from '../../core/src/ast/evaluator.js';
-import { sourceSpanOf } from '../../core/src/ast/provenance.js';
+import { sourceSpanOf, valueLayoutOf } from '../../core/src/ast/provenance.js';
 import { serialize } from '../../core/src/ast/serialize.js';
 import { parse } from '@jesscss/less-parser';
 import { parseLessCst, parseLessDoc } from '@jesscss/less-parser/cst';
@@ -39,6 +39,90 @@ describe('public Less parse()', () => {
     }
 
     expect(sourceSpanOf(declaration.value)).toEqual({ start: source.indexOf('rgb'), end: source.indexOf(')') + 1 });
+  });
+
+  it('reduces generic Less function delimiters into flat typed arguments', () => {
+    const document = parse('.card { value: fn(red; 10px); emit(red; 10px); }');
+    const rule = document.children[0];
+    if (rule?.type !== 'Rule') {
+      throw new Error('expected a rule');
+    }
+    const declaration = rule.body[0];
+    const statement = rule.body[1];
+    if (declaration?.type !== 'Declaration' || declaration.value.type !== 'FunctionCall') {
+      throw new Error('expected a function-valued declaration');
+    }
+    if (statement?.type !== 'FunctionCall') {
+      throw new Error('expected a function statement');
+    }
+
+    expect(declaration.value).toMatchObject({
+      type: 'FunctionCall', name: 'fn', args: [
+        { type: 'Color', src: 'red' },
+        { type: 'Dimension', src: '10px' }
+      ]
+    });
+    expect(statement).toMatchObject({
+      type: 'FunctionCall', name: 'emit', args: [
+        { type: 'Color', src: 'red' },
+        { type: 'Dimension', src: '10px' }
+      ]
+    });
+    // `;` is authored layout, while the AST remains a flat typed positional
+    // argument vector. Rendering canonicalizes generic call delimiters to `,`.
+    expect(valueLayoutOf(declaration.value.args)).toEqual(['; ']);
+    expect(valueLayoutOf(statement.args)).toEqual(['; ']);
+
+    const mixed = parse('.card { first: fn(red, 10px; blue); second: fn(red; 10px, blue); final: fn(red;); }');
+    const mixedRule = mixed.children[0];
+    if (mixedRule?.type !== 'Rule') {
+      throw new Error('expected a mixed-delimiter rule');
+    }
+    const [first, second, final] = mixedRule.body;
+    if (first?.type !== 'Declaration' || second?.type !== 'Declaration' || final?.type !== 'Declaration'
+      || first.value.type !== 'FunctionCall' || second.value.type !== 'FunctionCall' || final.value.type !== 'FunctionCall') {
+      throw new Error('expected mixed-delimiter function declarations');
+    }
+    expect(first.value.args).toMatchObject([
+      { type: 'Color', src: 'red' },
+      { type: 'Dimension', src: '10px' },
+      { type: 'Color', src: 'blue' }
+    ]);
+    expect(second.value.args).toMatchObject([
+      { type: 'Color', src: 'red' },
+      { type: 'Dimension', src: '10px' },
+      { type: 'Color', src: 'blue' }
+    ]);
+    expect(final.value.args).toMatchObject([{ type: 'Color', src: 'red' }]);
+    expect(valueLayoutOf(first.value.args)).toEqual([', ', '; ']);
+    expect(valueLayoutOf(second.value.args)).toEqual(['; ', ', ']);
+    // A final delimiter is valid Less syntax but has no following argument, so
+    // the flat argument vector has no separator boundary to record.
+    expect(valueLayoutOf(final.value.args)).toEqual([]);
+    expect(serialize(mixed).css).toBe(
+      '.card {\n'
+      + '  first: fn(red, 10px, blue);\n'
+      + '  second: fn(red, 10px, blue);\n'
+      + '  final: fn(red);\n'
+      + '}\n'
+    );
+
+    const nested = parse('.m(@x) { result: @x; } .card { .m(fn(red, 10px; blue)); }');
+    const nestedRule = nested.children[1];
+    if (nestedRule?.type !== 'Rule' || nestedRule.body[0]?.type !== 'MixinCall') {
+      throw new Error('expected a mixin call with a nested function argument');
+    }
+    const nestedFunction = nestedRule.body[0].args[0]?.value;
+    if (nestedFunction?.type !== 'FunctionCall') {
+      throw new Error('expected a nested FunctionCall');
+    }
+    expect(nestedFunction.args).toMatchObject([
+      { type: 'Color', src: 'red' },
+      { type: 'Dimension', src: '10px' },
+      { type: 'Color', src: 'blue' }
+    ]);
+    expect(valueLayoutOf(nestedFunction.args)).toEqual([', ', '; ']);
+    expect(() => parse('.card { value: fn(red;;blue); }')).toThrow(SyntaxError);
   });
 
   it('returns the canonical Stylesheet directly while named CST/document APIs remain available', () => {

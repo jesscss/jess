@@ -69,7 +69,9 @@ The package itself packs successfully: `npm pack --dry-run --json` reports
 `less@5.0.0-alpha.1` (12 files, 38,651 unpacked bytes). The built artifact also
 passes `npm run build`, `npm run typecheck`, and `npm run test:lessc`; the latter
 exercises built `lessc` version output, stdin, file output, sibling imports, and
-failure diagnostics. The five publish-version/dependency-rewrite tests pass.
+failure diagnostics. `less` is the sole public owner of `lessc`; the separate
+`jess` package exposes only its own `jess` command. The five
+publish-version/dependency-rewrite tests pass.
 
 A clean npm consumer cannot yet install the locally packed tarball: the local
 alpha manifest intentionally retains workspace `link:` dependencies, and npm

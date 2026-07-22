@@ -122,8 +122,8 @@ Entry points / build:
   record the resolved version at release time.
   `Compiler` class: `render(filePath, opts)`, `renderString(content, opts)`,
   `renderToResult(input, opts) → { css, errors, warnings, loadedUrls }`, `safeCompile` (internal).
-  Bundles `@jesscss/plugin-less` + `@jesscss/plugin-scss` internally. Also ships its own
-  `bin/jess` and `bin/lessc`. **No `parse()` method** and **no source-map output** in
+  Bundles `@jesscss/plugin-less` + `@jesscss/plugin-scss` internally and ships only
+  `bin/jess`; the external `less` package alone owns `bin/lessc`. **No `parse()` method** and **no source-map output** in
   `renderToResult`.
 - **`@jesscss/core`** — `Compiler` internals, tree, `Context`/`Rules`, diagnostics, and the
   `logger` singleton (`export { logger, type Logger }` in `src/index.ts`) that `less/lib/logger.js`

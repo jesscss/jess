@@ -232,12 +232,14 @@ pnpm run release:alpha:dry-run
 
 `pnpm run verify:alpha:packed-consumer` packs every allowlisted package and
 installs only those tarballs into an empty temporary npm consumer. It then
-checks ESM and CJS package roots, the packed `jess` and `lessc` commands
-(stdin, files, sibling imports, and a malformed-input diagnostic), and the
-optional `@jesscss/plugin-js` sandbox-runtime gate. The install uses no workspace
-links; this is the release gate that proves the package closure a user will
-actually receive. Pass `-- --keep` only while debugging to retain its temporary
-consumer directory.
+checks ESM and CJS package roots plus the packed `jess` command (files, sibling
+imports, and a malformed-input diagnostic), and the optional
+`@jesscss/plugin-js` sandbox-runtime gate. `lessc` is deliberately not a Jess
+command: the external Less package solely owns and tests that compatibility CLI
+in its own packed-consumer gate. The `jess` CLI may retain or improve familiar
+file and stream ergonomics without claiming the `lessc` contract. The install uses no workspace links; this is
+the release gate that proves the package closure a user will actually receive.
+Pass `-- --keep` only while debugging to retain its temporary consumer directory.
 
 ### Strict source-quality proof
 

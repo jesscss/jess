@@ -12,6 +12,37 @@ permissions:
   contents: read
 
 jobs:
+  jess-node-support:
+    name: Jess CLI on Node ${{ matrix.node }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [current]
+        include:
+          - node: lts/*
+          - node: lts/-1
+          - node: lts/-2
+          - node: lts/-3
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify public Jess CLI
+        run: pnpm --filter jess build && pnpm --filter jess test -- cli.test.ts --run --globals
+
   less-alpha-readiness:
     runs-on: ubuntu-latest
     steps:

@@ -65,8 +65,11 @@ pnpm run release:alpha
 
 Before the publish dry-run it also packs the allowlisted release set and installs
 those tarballs into an empty npm consumer. That proof imports every package by
-both ESM and CommonJS, exercises packed `jess`/`lessc` CLI paths, and verifies
-the optional JS-plugin sandbox gate without workspace links.
+both ESM and CommonJS, exercises the packed `jess` CLI, and verifies the
+optional JS-plugin sandbox gate without workspace links. The Less package owns
+the separate `lessc` compatibility command and verifies it through its own
+packed-consumer proof. The `jess` command can use familiar file and stream
+ergonomics without becoming a `lessc` alias.
 
 ## Manual commands (advanced)
 

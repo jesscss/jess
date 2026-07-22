@@ -228,6 +228,9 @@ section is the authoritative full-scope companion to the compact task goal.
   evaluator, import, plugin, and corpus gaps through the public route; prove
   the first external prerelease as exactly `less@5.0.0-alpha.1`, including
   built-artifact `lessc` and clean packed-install tests.
+- CLI ownership is explicit: only the external `less` package provides the
+  Less-compatible `lessc` command. The `jess` package provides only `jess` and
+  must not claim Less CLI compatibility through a second bin or alias.
 - Context remains the one render/session/cache/diagnostic/plugin/import
   coordinator. Retain its plugin-based source, parser, module, path, and
   import dispatch topology while changing carried documents to `Stylesheet`;
@@ -254,6 +257,23 @@ section is the authoritative full-scope companion to the compact task goal.
   owner-reviewed release notes, then squash-merge it onto `alpha` for the
   release cut; do not ordinary-merge/rebase shared alpha history or publish
   before every gate passes.
+
+### Current Less v5 alpha readiness evidence (2026-07-22)
+
+- The committed Less `alpha` branch is exactly `5.0.0-alpha.1`; its guarded
+  release dry-run and release-guard unit tests pass. This proves the release
+  shape only, not package readiness.
+- Local `lessc` preflight passes, but it resolves workspace-linked Jess
+  packages whose manifests are still `2.0.0-alpha.5`. It is therefore not
+  evidence for `jess@2.0.0-alpha.9` or the current Jess source tree.
+- The normal Less package test currently exits 6 with 49 fixture mismatches
+  and 54 incomplete-parse diagnostics. Those failures remain visible release
+  work; they must not be weakened, reclassified as passing parity, or hidden.
+- Neither `jess@2.0.0-alpha.9` nor `less@5.0.0-alpha.1` is on npm. Do not
+  publish Less until Jess alpha.9 is published, Less has been rebuilt/relinked
+  against that exact package, and a publish-shaped clean-consumer install has
+  passed. Local Less manifests deliberately retain `link:` specs; the guarded
+  publish path rewrites them only for the publish window.
 
 ## Router
 
@@ -4369,6 +4389,44 @@ The direct core regression is `rule-placement-direct-acceptance.test.ts`:
 The linked Less test-data fixtures are the public regression surface. No
 collapsed-nesting output may select a smaller selector grouping over this
 invariant.
+
+### Imported callable namespace continuation
+
+An executed import records its direct `MixinDef` and `Rule` facts in a new,
+source-ordered render-frame callable stream. Namespaced path descent consumes
+that stream, while ordinary bare-call lookup continues to use the frame's
+existing mixin index. This lets an imported namespace contribution and a later
+local namespace contribution both participate in a typed call-result accessor
+such as `#theme.dark.navbar.colors()` followed by `@theme-colors[secondary]`;
+the selected member retains the call-level `!important` fact. No import
+resolver, parser replay, source reconstruction, or compatibility path is
+involved.
+
+Aggressive-cutting review for this slice:
+
+- New traversal: one existing namespace-candidate loop now reads
+  `importedCallables` rather than `importedRules`; it performs the same one pass
+  per path lookup, but over direct imported `MixinDef` and `Rule` facts. A
+  mixed callable stream is necessary because path descent must consider both
+  callable kinds in import insertion order; ordinary bare-call lookup remains
+  on its existing index.
+- New node/materialization: no AST node, copy, or wrapper. One lazily allocated
+  render-frame `Array<MixinDef | Rule>` retains identity references only, with
+  one `push` per direct imported callable. `importedRules` remains as the
+  rules-only index consumed by `frameRulesets`; retaining it avoids turning its
+  existing map build into a filter over mixed callable facts. This is a bounded
+  runtime-state allocation, not a performance claim.
+- Render path: map resolution still evaluates the selected typed member and
+  writes it directly; no output node or value text is reconstructed.
+- Helper/API surface: no public API; publication remains in the existing import
+  fact helpers.
+- Metadata mutations: the per-render-frame callable list is populated while an
+  import has already published its direct facts. No AST/source metadata changes.
+- Evidence: `namespaced-mixin-value.test.ts` exercises the external
+  `namespacing-5.less` public compiler route and proves the imported secondary
+  member plus `!important`, and a temporary-file public Compiler/Context case
+  proves successive imported namespace definitions retain import insertion
+  order. Import core tests and strict core types pass.
 
 ## Aggressive Cutting Self-Prosecution — recursive ValueGroup batch and guard repair
 

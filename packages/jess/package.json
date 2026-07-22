@@ -14,15 +14,14 @@
     "./package.json": "./package.json"
   },
   "bin": {
-    "jess": "./bin/cli.mjs",
-    "lessc": "./bin/lessc.mjs"
+    "jess": "./bin/cli.mjs"
   },
   "files": [
     "lib",
     "bin"
   ],
   "engines": {
-    "node": ">=16"
+    "node": ">=18"
   },
   "dependencies": {
     "@jesscss/core": "workspace:*",

@@ -198,7 +198,6 @@ import path from 'node:path';
 
 const consumer = process.cwd();
 const bin = path.join(consumer, 'node_modules', '.bin');
-const lessc = path.join(bin, process.platform === 'win32' ? 'lessc.cmd' : 'lessc');
 const jess = path.join(bin, process.platform === 'win32' ? 'jess.cmd' : 'jess');
 const fixture = path.join(consumer, 'fixtures');
 mkdirSync(fixture, { recursive: true });
@@ -213,39 +212,31 @@ function run(command, args, options = {}) {
   return result;
 }
 
-assert.ok(existsSync(lessc), 'packed install did not expose lessc');
 assert.ok(existsSync(jess), 'packed install did not expose jess');
+assert.ok(!existsSync(path.join(bin, process.platform === 'win32' ? 'lessc.cmd' : 'lessc')),
+  'the jess package must not expose the Less-owned lessc command');
 
-const version = run(lessc, ['--version']);
-assert.equal(version.status, 0, version.stderr);
-assert.match(version.stdout, /lessc \\d+\\.\\d+\\.\\d+-alpha\\.\\d+/u);
-
-const stdin = run(lessc, ['-'], { input: '.stdin { color: red; }\\n' });
-assert.equal(stdin.status, 0, stdin.stderr);
-assert.match(stdin.stdout, /color: red/u);
+const help = run(jess, ['--help']);
+assert.equal(help.status, 0, help.stderr);
+assert.match(help.stdout, /Usage: jess <input> \[output\]/u);
 
 writeFileSync(path.join(fixture, 'dep.less'), '.dep { color: blue; }\\n');
 writeFileSync(path.join(fixture, 'entry.less'), '@import "./dep.less";\\n.entry { color: red; }\\n');
-const lessOut = path.join(fixture, 'entry.css');
-const lessFile = run(lessc, ['entry.less', lessOut]);
-assert.equal(lessFile.status, 0, lessFile.stderr);
-const css = readFileSync(lessOut, 'utf8');
+const cssOut = path.join(fixture, 'entry.css');
+const jessFile = run(jess, ['entry.less', cssOut]);
+assert.equal(jessFile.status, 0, jessFile.stderr);
+const css = readFileSync(cssOut, 'utf8');
 assert.match(css, /\\.dep/u);
 assert.match(css, /color: blue/u);
 assert.match(css, /\\.entry/u);
 assert.match(css, /color: red/u);
 
-const jessOut = path.join(fixture, 'jess.css');
-const jessFile = run(jess, ['entry.less', jessOut]);
-assert.equal(jessFile.status, 0, jessFile.stderr);
-assert.match(readFileSync(jessOut, 'utf8'), /color: blue/u);
-
 writeFileSync(path.join(fixture, 'bad.less'), '.broken { color: }\\n.next {\\n');
-const bad = run(lessc, ['bad.less']);
-assert.notEqual(bad.status, 0, 'lessc accepted malformed input');
-assert.ok(bad.stderr.trim().length > 0, 'lessc emitted no malformed-input diagnostic');
+const bad = run(jess, ['bad.less']);
+assert.notEqual(bad.status, 0, 'jess accepted malformed input');
+assert.ok(bad.stderr.trim().length > 0, 'jess emitted no malformed-input diagnostic');
 
-console.log('packed jess/lessc stdin, file, import, and error paths ok');
+console.log('packed jess command, file/import, and malformed-input paths ok');
 `.trimStart());
 
   // plugin-js is an optional runtime capability. Install it from its tarball

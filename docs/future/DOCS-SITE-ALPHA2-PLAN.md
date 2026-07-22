@@ -156,10 +156,13 @@ or deferred.
    architecture is built for it, the optimization work is ongoing."* First-click
    cards point at **Getting Started** and the **Less-v5 reference**, not the
    `.jess` language.
-2. **Getting Started** — install (`npm install`, Node 16+, pnpm only for repo
-   dev), **CLI usage**: `jess` + the `lessc` drop-in (flags, stdin/stdout, exit
-   codes), config. **No programmatic API** (`Compiler.render` etc.) — CLI is the
-   public surface for the alpha per positioning.
+2. **Getting Started** — install (`npm install`, Node 18+ today; Jess verifies
+   the current Node LTS line and the prior three LTS lines, advancing that
+   minimum as the rolling window advances; pnpm only for repo dev), **CLI usage**: the distinct `jess` command, with familiar file,
+   stdin/stdout, and output-path ergonomics where Jess supports them, plus
+   config. `lessc` is installed only by the external `less` package; Jess does
+   not claim the Less CLI compatibility contract. **No programmatic API** (`Compiler.render`
+   etc.) — CLI is the public surface for the alpha per positioning.
 3. **Less v5 language reference** — the v5 surface: variables (`@var`), mixins,
    **nesting preserved by default** (`--collapse-nesting` opts into 4.x
    flattening), imports / `@-import`, extend, guards, functions. Source this from

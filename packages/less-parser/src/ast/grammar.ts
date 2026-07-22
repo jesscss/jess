@@ -1891,13 +1891,13 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
   // first scalar as a prefix.
   const DirectLessFunctionScalarArgument = node<ValueNode>(
     'DirectLessFunctionScalarArgument',
-    sequence(g.DirectLessMathSum, regex(/(?=[,)])/)),
+    sequence(g.DirectLessMathSum, regex(/(?=[,;)])/)),
     children => requireValueNode(children[0])
   );
   const DirectLessFunctionArgument = node<ValueSlot>(
     'DirectLessFunctionArgument',
     choice(
-      sequence(not(not(sequence(scanTo(choice(directFunctionConditionAhead, regex(/[,)]/))), directFunctionConditionAhead))), g.DirectLessFunctionCondition),
+      sequence(not(not(sequence(scanTo(choice(directFunctionConditionAhead, regex(/[,;)]/))), directFunctionConditionAhead))), g.DirectLessFunctionCondition),
       g.DirectLessFunctionScalarArgument,
       g.DirectLessFunctionValueTerm
     ),
@@ -1909,9 +1909,20 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
       return value;
     }
   );
+  // Generic Less function calls carry one flat positional argument vector.
+  // Unlike mixin arguments, commas and semicolons do not create nested groups
+  // here: either delimiter separates the next typed argument, and evaluation
+  // canonicalizes both to the ordinary function-call comma spelling.
+  // A final delimiter has no following argument, so it intentionally has no
+  // ValueLayout boundary to retain.
+  const DirectLessFunctionArguments = optional(sequence(
+    choice(g.DirectLessDoubledQuoteFunctionArgument, g.DirectLessDetachedRuleset, g.DirectLessFunctionArgument),
+    many(noTrivia(sequence(field('separator', regex(/[;,][ \t\n\r\f]*/)), choice(g.DirectLessDoubledQuoteFunctionArgument, g.DirectLessDetachedRuleset, g.DirectLessFunctionArgument)))),
+    optional(noTrivia(regex(/[;,][ \t\n\r\f]*/)))
+  ));
   const DirectLessFunction = node<FunctionCall>(
     'DirectLessFunction',
-    parser({ trivia: functionTrivia }, sequence(noTrivia(sequence(directFunctionName, literal('('))), optional(choice(g.DirectLessDoubledQuoteFunctionArgument, g.DirectLessDetachedRuleset, g.DirectLessFunctionArgument)), many(noTrivia(sequence(field('separator', regex(/,[ \t\n\r\f]*/)), choice(g.DirectLessDoubledQuoteFunctionArgument, g.DirectLessDetachedRuleset, g.DirectLessFunctionArgument)))), literal(')'))),
+    parser({ trivia: functionTrivia }, sequence(noTrivia(sequence(directFunctionName, literal('('))), DirectLessFunctionArguments, literal(')'))),
     (children, fields, span) => {
       const name = requireToken(children[0]).value;
       const args: ValueSlot[] = [];
@@ -1933,12 +1944,25 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
   // A detached ruleset is a call-argument form, not a general value atom.
   // Keep this argument-enabled function production out of DirectLessValueAtom
   // so a declaration value cannot acquire the call-only `{ … }` first set.
+  const DirectLessCallArgumentFunctionArguments = optional(sequence(
+    g.DirectLessCallArgumentValue,
+    many(noTrivia(sequence(field('separator', regex(/[;,][ \t\n\r\f]*/)), g.DirectLessCallArgumentValue))),
+    optional(noTrivia(regex(/[;,][ \t\n\r\f]*/)))
+  ));
   const DirectLessCallArgumentFunction = node<FunctionCall>(
     'DirectLessCallArgumentFunction',
-    sequence(noTrivia(sequence(directFunctionName, literal('('))), optional(g.DirectLessCallArgumentValue), many(noTrivia(sequence(regex(/,[ \t\n\r\f]*/), g.DirectLessCallArgumentValue))), literal(')')),
-    (children) => {
+    sequence(noTrivia(sequence(directFunctionName, literal('('))), DirectLessCallArgumentFunctionArguments, literal(')')),
+    (children, fields, span) => {
       const name = requireToken(children[0]).value;
-      return funcCall(name, children.slice(1, -1).filter(isValueSlotValue));
+      const args = children.slice(1, -1).filter(isValueSlotValue);
+      const call = funcCall(name, args);
+      const separators = fields?.separator === undefined
+        ? []
+        : requireFields(fields, 'separator').map(separator => requireTerminalText(separator.value));
+      if (separators.length === args.length - 1) {
+        withValueLayout(call.args, separators);
+      }
+      return withSourceSpan(call, span);
     }
   );
   // Deprecated Less percent-format syntax is a normal existing function fact.
