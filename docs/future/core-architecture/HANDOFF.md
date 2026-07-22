@@ -1050,6 +1050,18 @@ or a legacy-tree port.
   outcomes determine Jess-relative paths and `@-from`/`@-use` dependencies.
   See [`DIALECT-TO-JESS-COMPILED-CONVERSION.md`](../../DIALECT-TO-JESS-COMPILED-CONVERSION.md).
   It must not re-resolve/reparse source or replace Context/plugin dispatch.
+- **Final-pass output positions / sourcemaps:** replace mutable global absolute
+  cursor accounting with a `trackPositions`-only composable output-fragment
+  lane. Fragments retain local node-boundary markers beside string leaves;
+  charset/import hoists and adjacent-block reopening move or append fragment
+  references, async values resolve their slot before flattening, and one final
+  linear pass produces CSS plus public absolute offsets. Reject repeated
+  partial joins/counts, offset rewriting after reorder, and per-character
+  objects. Preserve the current plain `string[]` maps-off path exactly. Before
+  adoption, prove byte identity plus final offsets for hoisted charset/CSS
+  imports, reopened adjacent rules, empty-block rollback, async replacement,
+  repeated mixin placement, and imported-document origins; measure maps-off
+  regression and tracked-fragment allocation against matched baselines.
 
 ## Aggressive Cutting Self-Prosecution
 
@@ -1060,6 +1072,21 @@ historical `origin/dev..HEAD` inventory; the aggregate mode was deleted because
 it had no bounded owner or remediation. Runtime cost cuts require exact
 owner contracts and measurements; semantic/parser/frontend/public changes
 require behavior/build/boundary evidence without fabricated performance claims.
+
+### Queued design audit: final-pass output positions
+
+- **This docs pass:** no runtime traversal, node, allocation, API, or metadata
+  mutation was added. The queue rejects the current `Emit.off` model because
+  async placeholders and output rewrites can make eagerly stored absolute
+  offsets stale.
+- **Required future shape:** a cold, `trackPositions`-only fragment/marker
+  lane; final flattening is the sole absolute-offset calculation. The normal
+  render path must remain the existing direct `string[]` emission without
+  fragment objects, marker arrays, source-map work, or a second render walk.
+- **Evidence requirement:** behavior tests must cover every reorder/rollback
+  path and async replacement before positions become public evidence; only a
+  matched benchmark/allocation comparison may claim the maps-off path remains
+  neutral.
 
 ### Current pass: typed interpolated Less extend targets
 
