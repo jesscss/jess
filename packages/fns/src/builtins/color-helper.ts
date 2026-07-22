@@ -6,19 +6,13 @@
  *
  * HARD MODULE BOUNDARY: value domain only (no `../tree`, no legacy node).
  */
-import { HEX, RGB, colorHsl, colorRawRgb, colorRgbRounded, makeColorHsl, makeColorRgb, round, serializeColor, textOf, type Color, type Dimension, type ValueObj } from '@jesscss/core/value';
+import { HEX, RGB, colorHsl, colorRawRgb, colorRgbRounded, makeColorHsl, makeColorRgb, round, serializeColor, textOf, type Color, type ValueObj } from '@jesscss/core/value';
 import { clamp01 } from './color-ctor-helper.js';
+import { requireDimension } from './math-helper.js';
 
 export function requireColor(value: ValueObj): Color {
   if (value.type !== 'Color') {
     throw new TypeError('Expected a color value.');
-  }
-  return value;
-}
-
-function requireDimension(value: ValueObj): Dimension {
-  if (value.type !== 'Dimension') {
-    throw new TypeError('Expected a dimension value.');
   }
   return value;
 }
