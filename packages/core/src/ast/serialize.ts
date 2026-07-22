@@ -129,6 +129,20 @@ function combineAll<T, U>(arr: Array<MaybePromise<T>>, f: (ts: T[]) => MaybeProm
   return f(arr as T[]);
 }
 
+/**
+ * Narrow the recursive readonly-array arm shared by authored values and mixin
+ * call arguments. `Array.isArray` narrows only mutable arrays in TypeScript, so
+ * it leaves the public `readonly ValueSlot[]` arm in the scalar branch.
+ */
+function isValueSlotArray(value: ValueSlot | MixinCall): value is readonly ValueSlot[] {
+  return !('type' in value);
+}
+
+/** A callable binding is the one scalar arm that is not an ordinary value. */
+function isMixinCallValue(value: ValueSlot | MixinCall): value is MixinCall {
+  return !isValueSlotArray(value) && value.type === 'MixinCall';
+}
+
 export interface Position {
   node: Node;
   type: NodeType;
@@ -1730,7 +1744,7 @@ function materializeNode(node: Keyword | Color | Dimension | Quoted | Any | Comm
  * opaque `Any` leaf sniffs. Variable refs / parens are transparent.
  */
 function evalValueSlot(slot: ValueSlot, frame: Frame | null, e: EvalCtx): MaybePromise<Value> {
-  if (!Array.isArray(slot)) {
+  if (!isValueSlotArray(slot)) {
     return evalValue(slot, frame, e);
   }
   const values = slot.map(value => evalValueSlot(value, frame, e));
@@ -1749,7 +1763,7 @@ function evalValueSlot(slot: ValueSlot, frame: Frame | null, e: EvalCtx): MaybeP
 }
 
 function evalTypedSlot(slot: ValueSlot, frame: Frame | null, e: EvalCtx): MaybePromise<ValueObj> {
-  if (!Array.isArray(slot)) {
+  if (!isValueSlotArray(slot)) {
     return evalTyped(slot, frame, e);
   }
   if ((e.calcDepth ?? 0) > 0) {
@@ -1783,7 +1797,7 @@ function evalTyped(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
       }
       const bound = hit.value;
       return withExcluded(e, bound, () =>
-        bound.type === 'MixinCall'
+        isMixinCallValue(bound)
           ? force(e, literal(''))
           : evalTypedSlot(bound, hit.frame, e)
       );
@@ -1796,7 +1810,7 @@ function evalTyped(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
       if (resolved === null) {
         return force(e, literal(node.raw));
       }
-      return resolved.value.type === 'MixinCall'
+      return isMixinCallValue(resolved.value)
         ? force(e, literal(node.raw))
         : evalTypedSlot(resolved.value, resolved.frame, e);
     }
@@ -1878,16 +1892,29 @@ function isSlashGroup(node: SpacedValue): boolean {
  * not change the authored AST or wrap ordinary arrays outside calc.
  */
 function slashGroupOfSlot(slot: ValueSlot): SpacedValue | null {
-  if (!Array.isArray(slot)) {
+  if (!isValueSlotArray(slot)) {
     return null;
   }
-  if (!slot.some(p => (p.type === 'Any' || p.type === 'Keyword') && p.src.trim() === '/')) {
+  let hasSlash = false;
+  for (const part of slot) {
+    if (isValueSlotArray(part)) {
+      return null;
+    }
+    hasSlash ||= (part.type === 'Any' || part.type === 'Keyword') && part.src.trim() === '/';
+  }
+  if (!hasSlash) {
     return null;
+  }
+  const parts: ValueNode[] = [];
+  for (const part of slot) {
+    if (!isValueSlotArray(part)) {
+      parts.push(part);
+    }
   }
   const separators = valueLayoutOf(slot);
   return separators === undefined
-    ? { type: 'SpacedValue', parts: slot }
-    : { type: 'SpacedValue', parts: slot, separators };
+    ? { type: 'SpacedValue', parts }
+    : { type: 'SpacedValue', parts, separators };
 }
 
 /**
@@ -2248,7 +2275,7 @@ function stripOuterQuotes(s: string): string {
 /** One resolved declaration in a map/namespace body (name → value in a frame). */
 interface DeclEntry {
   name: string;
-  value: ValueNode;
+  value: Binding;
   frame: Frame | null;
   important: boolean;
 }
@@ -2469,7 +2496,7 @@ function resolveReferenceResult(
     value = resolved.value;
     valueFrame = resolved.frame;
     sourceOwner = detachedBinding(valueFrame, value)?.sourceOwner
-      ?? sourceOwnerForBody(!Array.isArray(value) && value.type === 'DetachedRuleset' ? value.body : value, valueFrame, e);
+      ?? sourceOwnerForBody(!isValueSlotArray(value) && value.type === 'DetachedRuleset' ? value.body : value, valueFrame, e);
   }
   for (const step of node.steps) {
     if (step.type === 'Call') {
@@ -2479,8 +2506,8 @@ function resolveReferenceResult(
       continue;
     }
     if (step.type === 'BracketLookup' && step.keyKind === 'index'
-      && (Array.isArray(value) || (!Array.isArray(value) && (value.type === 'List' || value.type === 'SpacedValue')))) {
-      const items = Array.isArray(value)
+      && (isValueSlotArray(value) || (!isValueSlotArray(value) && (value.type === 'List' || value.type === 'SpacedValue')))) {
+      const items = isValueSlotArray(value)
         ? value
         : value.type === 'List' ? value.value : value.parts;
       const index = step.key < 0
@@ -2493,7 +2520,7 @@ function resolveReferenceResult(
       value = item;
       continue;
     }
-    if (Array.isArray(value)) {
+    if (isValueSlotArray(value)) {
       return null;
     }
     const map = resolveBaseDeclMap(value, valueFrame, e);
@@ -2581,7 +2608,7 @@ function evalReference(node: Reference, frame: Frame | null, e: EvalCtx): MaybeP
   if (resolved === null) {
     return literal(node.raw);
   }
-  return resolved.value.type === 'MixinCall'
+  return isMixinCallValue(resolved.value)
     ? literal(node.raw)
     : evalValueSlot(resolved.value, resolved.frame, e);
 }
@@ -2682,8 +2709,8 @@ function hasCssColorCallShape(node: FunctionCall): boolean {
   if (node.args.length !== 1) {
     return false;
   }
-  const [slot] = node.args;
-  return Array.isArray(slot) && slot.length >= 3;
+  const slot = node.args[0]!;
+  return isValueSlotArray(slot) && slot.length >= 3;
 }
 
 /** Re-emit a call after resolving variable/interpolation bytes, without invoking its callable. */
@@ -5419,7 +5446,7 @@ function resolveForRuleset(
   frame: Frame | null,
   e: EvalCtx
 ): { body: Statement[]; frame: Frame | null; detached?: DetachedBinding } | null {
-  if (Array.isArray(node)) {
+  if (isValueSlotArray(node)) {
     return null;
   }
   if (node.type === 'DetachedRuleset') {
@@ -5461,7 +5488,7 @@ function resolveForNode(
   let cur = node;
   let f = frame;
   for (;;) {
-    if (Array.isArray(cur)) {
+    if (isValueSlotArray(cur)) {
       return { node: cur, frame: f };
     }
     if (cur.type === 'Block') {
@@ -5513,10 +5540,10 @@ function forItemsFromMixinCall(call: MixinCall, frame: Frame, e: Emit): ForItem[
 /** The ordered items an `each()` iterable expands to. */
 function forItems(node: ValueSlot | MixinCall, frame: Frame | null, e: Emit): ForItem[] {
   // [each mixin-call iterable] `.mixin()` output → iterate its declarations.
-  if (!Array.isArray(node) && node.type === 'MixinCall') {
+  if (!isValueSlotArray(node) && node.type === 'MixinCall') {
     return frame === null ? [] : forItemsFromMixinCall(node, frame, e);
   }
-  if (!Array.isArray(node) && node.type === 'Range') {
+  if (!isValueSlotArray(node) && node.type === 'Range') {
     return forRangeItems(node, frame, e);
   }
   const map = resolveForRuleset(node, frame, e);
@@ -5539,7 +5566,7 @@ function forItems(node: ValueSlot | MixinCall, frame: Frame | null, e: Emit): Fo
   // items; any other single value (an escaped `e("…")`, a scalar) is ONE item — it
   // is not a list, so it is never split.
   const { node: base, frame: baseFrame } = resolveForNode(node, frame, e);
-  if (Array.isArray(base)) {
+  if (isValueSlotArray(base)) {
     return base.map(value => ({ value, key: null }));
   }
   if (base.type === 'Range') {
@@ -5606,7 +5633,7 @@ function bindForEntry(node: For, value: ValueSlot, key: ValueNode | null, index:
     bindings.set(binding.names[0], key ?? index);
     bindings.set(binding.names[1], value);
   } else {
-    const values = Array.isArray(value) ? value : !Array.isArray(value) && value.type === 'SpacedValue' ? value.parts : !Array.isArray(value) && value.type === 'List' ? value.value : [value];
+    const values = isValueSlotArray(value) ? value : value.type === 'SpacedValue' ? value.parts : value.type === 'List' ? value.value : [value];
     for (let i = 0; i < binding.names.length && i < values.length; i++) {
       bindings.set(binding.names[i]!, values[i]!);
     }
@@ -5620,7 +5647,7 @@ function bindForDetached(frame: Frame, bindings: Map<string, ValueSlot>, item: F
     return;
   }
   for (const value of bindings.values()) {
-    if (value === item.value && !Array.isArray(value) && value.type === 'DetachedRuleset') {
+    if (value === item.value && !isValueSlotArray(value) && value.type === 'DetachedRuleset') {
       bindDetached(frame, value, item.detached.lexicalFrame, item.detached.sourceOwner);
     }
   }
@@ -6762,7 +6789,7 @@ function evalSupportsPreludeSync(node: ValueNode, frame: Frame | null, e: EvalCt
  * delegating all leaf evaluation to the normal value path.
  */
 function evalQueryPreludeSync(node: ValueSlot, frame: Frame | null, e: EvalCtx): string {
-  if (Array.isArray(node)) {
+  if (isValueSlotArray(node)) {
     const authored = valueLayoutOf(node);
     let out = '';
     for (let index = 0; index < node.length; index += 1) {

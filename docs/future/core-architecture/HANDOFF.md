@@ -2038,16 +2038,28 @@ silently choose one language’s policy.
   already-supported absent optional input. Detached binding, variable
   activation, property lookup, value-position binding, and ruleset guards now
   accept their already-declared recursive value/eval-context inputs without
-  pretending arrays are nodes or requiring the full output emitter.
+  pretending arrays are nodes or requiring the full output emitter. The
+  serializer now has one structural readonly-array guard for that public value
+  union; map entries retain the truthful recursive/callable binding rather than
+  narrowing declaration values to scalar nodes.
 - Separation/duplication: no second resolver or array-flattening policy was
   added. Existing core `evalBytes` remains the only byte-resolution owner.
 - Cumulative node weight: unchanged.
-- New traversal: none in production. Recursive value evaluation remains in the
-  existing evaluator path.
-- New node/materialization: no new node type, copy, wrapper layer, or side map.
+- New traversal: recursive value evaluation remains in the existing evaluator
+  path. [loop/traversal] The calc-only slash recognizer now validates that a raw
+  slot is shallow before constructing the existing temporary `SpacedValue`.
+  It scans without allocation on the overwhelmingly common no-slash path; only
+  a recognized slash group performs the second copy needed by the scalar-only
+  `SpacedValue.parts` contract.
+- New node/materialization: no new node type, wrapper layer, or side map.
+  [materialized array/object] A recognized calc slash group copies its shallow
+  readonly slot into the pre-existing temporary `SpacedValue`; no-slash and
+  nested-array inputs allocate nothing in this recognizer.
 - Render path: unchanged direct emission; this pass only makes the existing
   evaluator input type truthful.
-- Helper/API surface: no helper or public API was added or changed.
+- Helper/API surface: two file-private structural type guards centralize the
+  existing node-vs-readonly-array and value-vs-mixin-call checks. No public API
+  was added or changed.
 - Metadata mutations: none.
 - Review-flagged diff tokens: [side map/set] is the pre-existing lazy
   `selectedMixinEvents` map with its already-declared generic type made explicit;
@@ -2062,7 +2074,9 @@ silently choose one language’s policy.
   passes 269/269. Detached ruleset, property access, and ruleset-guard coverage
   adds 36/36 focused passing cases.
 - Build evidence: core package build and `verify:package-exports` pass. Strict
-  core source diagnostics fall from 339 to 310 without suppression.
+  core source diagnostics fall from 339 to 241 without suppression; this
+  serializer slice moves the source count from 310 to 241 and the full core
+  config from 710 to 641.
 - Boundary evidence: the Less public parser suite passes after rebuilding core,
   and package export verification confirms the entrypoint remains valid.
 - Evidence: focused and full behavior, build, export, and strict-type evidence
@@ -2074,8 +2088,8 @@ silently choose one language’s policy.
     "verdict":"accepted",
     "performanceClaim":"none",
     "owner":"the seven canonical AST-v2 evaluator/value owners listed by ast-semantic-runtime-cutover",
-    "why":"The mixin resolver now admits the recursive ValueSlot contract that its existing evalBytes callee already owns. Context import narrowing, selected-event map inference, optional direct inputs, detached/property/value bindings, and ruleset guard context make existing canonical runtime contracts explicit; none creates a new resolver, evaluator, or output policy.",
-    "dangerTokensJustification":"The discriminant checks prevent arrays from being treated as nodes, while recursive byte work remains in the existing evalBytes path. Capturing an already-loaded Stylesheet and typing existing maps/optional slots add no node, traversal, side table, fallback call, or output buffer, and this record makes no neutrality or speed claim.",
+    "why":"The mixin resolver now admits the recursive ValueSlot contract that its existing evalBytes callee already owns. Context import narrowing, selected-event map inference, optional direct inputs, detached/property/value bindings, ruleset guard context, serializer narrowing, and recursive map-entry values make existing canonical runtime contracts explicit; none creates a new resolver, evaluator, or output policy.",
+    "dangerTokensJustification":"The discriminant checks prevent arrays from being treated as nodes, while recursive byte work remains in the existing evalBytes path. [loop/traversal] The calc slash recognizer validates shallow parts without allocation before its rare recognized-slash copy. [materialized array/object] Only that recognized slash group copies into the existing scalar-part temporary SpacedValue; ordinary arrays allocate nothing. Capturing an already-loaded Stylesheet and typing existing maps/optional slots add no node, side table, fallback call, or output buffer, and this record makes no neutrality or speed claim.",
     "cases":["ValueSlot-array-evaluation-and-authored-layout","List-value-separator-and-Block-delimiter-facts","reference-index-and-For-array-access","Less-lazy-color-call-demand-boundary","defineFunction-typed-positional-named-and-lazy-binding","mixin-dispatch-ValueSlot-argument-resolution","ValueLayout-provenance-side-table","preserve-mode-calc-result-composition"],
     "behaviorEvidence":"The complete core suite and the public Less parser suite pass; focused recursive arguments, imports, selected mixins, and direct-function cases pass.",
     "buildEvidence":"The core package build and package-export verification pass after the resolver contract correction.",
