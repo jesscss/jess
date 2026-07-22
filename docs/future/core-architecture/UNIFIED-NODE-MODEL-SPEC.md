@@ -1,9 +1,16 @@
 # Unified Node Model Spec
 
+> **Historical design spec — superseded by the public AST-v2 model.** This
+> document records an earlier tree2 value-model audit. It is not an approved
+> target for parser/runtime shape. In particular, ordinary declaration/value
+> terms are now recursive raw `ValueSlot` arrays (not `SpacedValue`), Sass
+> separator facts live in `List.sep`, and delimiter/bracketedness lives in
+> `Block.delimiter`. Use `docs/future/core-architecture/HANDOFF.md` and
+> `DESIGN-DECISIONS.md` for the current public architecture; retain this file
+> only for historical debt evidence.
+
 READ-ONLY design spec. Base: `origin/dev`. Scope: `packages/core/src/ast/` (the
-"tree2" corpus) and its `packages/jess-plugin-less-compat/` consumer. Status:
-owner-pinned target; this doc designs the concrete migration and pressure-tests
-only for load-bearing blockers.
+"tree2" corpus) and its former `packages/jess-plugin-less-compat/` consumer.
 
 ## 0. The debt in one sentence
 

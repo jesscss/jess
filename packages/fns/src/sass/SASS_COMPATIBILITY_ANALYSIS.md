@@ -1,16 +1,26 @@
 # Sass AST Compatibility Analysis
 
-This document analyzes potential tweaks to Jess Node AST structure and `defineFunction` that could improve Sass AST compatibility.
+> **Architecture correction (2026-07-21):** The original version of this
+> document predates AST-v2 and described List/bracket metadata as a missing
+> capability. That is no longer the architecture. The canonical public model
+> is defined in `docs/future/core-architecture/HANDOFF.md` and
+> `DESIGN-DECISIONS.md`; this file is retained as compatibility analysis, not
+> as a proposal to add a second value model.
 
 ## Current State
 
 ### Jess AST Structure
 - **Color**: Supports RGB, HSL, HEX formats. Stores `rgb`, `hsl`, `alpha`, and `format` in `value`.
 - **Dimension**: Stores `number` and `unit` (single string) in `value`.
-- **List**: Stores array of nodes with `separator` property.
-- **Sequence**: Stores array of nodes (space-separated).
-- **String**: Primitive string type.
-- **Map**: Key-value pairs.
+- **List**: AST-v2 `List { value: ValueSlot[], sep: ',' | ' ' | '/' | 'undecided' }`.
+- **Block**: AST-v2 delimiter wrapper, `Block { inner: ValueSlot,
+  delimiter: 'paren' | 'square', escaped?: boolean }`. Square blocks are the
+  Sass bracketed-list fact; this is intentionally not a `List.bracketed` flag.
+- **ValueSlot arrays**: Adjacent value slots are represented recursively as
+  arrays (space grouping by default). Authored whitespace/newline runs are
+  retained in side metadata, so serialization does not re-split source text or
+  invent a second public value model.
+- **Quoted**: A typed quoted value with its authored quote information.
 
 ### Sass AST Structure
 - **SassColor**: Supports RGB, HSL, HWB, Lab, LCH, OKLab, OKLCH spaces. Stores channels, alpha, space, missing channels, legacy flag.
@@ -217,54 +227,28 @@ get numeratorUnits(): string[] {
 
 **Recommendation:** Option A if we want full compatibility, Option B for minimal changes.
 
-### 3. List Separators
+### 3. List separators and Sass bracketedness
 
-**Current Gap:**
-- Jess List has `separator` property (`',' | ';' | '/'`)
-- Sass List has `separator: 'comma' | 'space' | 'slash' | 'undecided'`
-- Sass List has `hasBrackets` flag
-- Jess Sequence is separate type for space-separated
+There is no AST-v2 representation gap here. Sass's four separator states are
+the canonical List separator facts (`','`, `' '`, `'/'`, and `'undecided'`), and
+Sass bracketedness is represented by a surrounding `Block` whose delimiter is
+`'square'`. A parenthesized value is the same `Block` shape with delimiter
+`'paren'`; no dialect-specific `hasBrackets` or `bracketed` field is added.
 
-**Note:** Jess already has `Paren` node type that represents brackets/parentheses, so `hasBrackets` could be determined by checking if a List is wrapped in a Paren node.
+The distinction matters at two levels:
 
-**Potential Solutions:**
+1. `List.sep` is the semantic separator used by typed evaluation and Sass list
+   functions (`separator()`, `join()`, `append()`, etc.).
+2. A parser-owned layout side table may retain the exact authored separator
+   runs (spaces, newlines, comments, and indentation) for byte-faithful
+   serialization. Those runs are provenance, not a second public List shape.
 
-#### Option A: Extend List separator type
-```typescript
-type ListSeparator = 'comma' | 'space' | 'slash' | 'undecided';
-export interface ListOptions {
-  separator?: ListSeparator;
-  hasBrackets?: boolean; // New
-}
-```
-
-**Pros:**
-- Direct compatibility
-- Preserves all metadata
-- Better for Sass functions
-
-**Cons:**
-- May not be needed for Less
-- More complexity
-
-#### Option B: Add metadata to List
-```typescript
-export interface ListOptions {
-  separator?: 'comma' | 'space' | 'slash';
-  hasBrackets?: boolean; // New
-  // Keep existing separator for backward compatibility
-}
-```
-
-**Pros:**
-- Backward compatible
-- Preserves metadata
-- Minimal changes
-
-**Cons:**
-- Still need conversion logic
-
-**Recommendation:** Option B - add `hasBrackets` and extend separator type.
+SCSS slash lists therefore lower to `List { sep: '/' }`, and a source such as
+`[1 2, 3]` lowers to `Block(delimiter: 'square', inner: List(sep: ','))`
+with the nested space group retained in the List's `ValueSlot` payload. The
+parser, evaluator, and Sass list functions must all consume these canonical
+facts; there is no approved fallback to joined strings, `Keyword('/')`
+sentinels, or legacy `Paren`/`Sequence` nodes.
 
 ### 4. String Quotes
 
@@ -378,10 +362,11 @@ defineFunction('abs', fn, {
 
 ### High Priority
 
-1. **Extend List separator support** (Option B from #3)
-   - Extend separator type to include `'undecided'` (Jess already has `'/'`)
-   - Note: `hasBrackets` can be determined via `Paren` wrapper, no flag needed
-   - Minimal breaking changes
+1. **Use the AST-v2 List/Block facts**
+   - Consume `List.sep` (`',' | ' ' | '/' | 'undecided'`) directly.
+   - Read Sass bracketedness from `Block.delimiter === 'square'`.
+   - Do not add `hasBrackets`, `bracketed`, `separator` aliases, or a second
+     Sass-specific value container.
 
 2. **Use Quoted nodes for strings** (from #4)
    - Ensure conversion layer converts Sass strings to `Quoted` nodes (not primitives)
@@ -416,10 +401,10 @@ defineFunction('abs', fn, {
 
 ## Implementation Strategy
 
-1. **Phase 1: Metadata Preservation**
-   - Add optional metadata fields to existing nodes
-   - Keep backward compatibility
-   - Update conversion layer to use metadata
+1. **Phase 1: Canonical AST-v2 consumption**
+   - Update conversion and list functions to consume `List` and `Block` facts.
+   - Keep authored whitespace as parser provenance (`valueLayoutOf`), not as
+     public value fields.
 
 2. **Phase 2: Enhanced Types**
    - Extend enums and types
@@ -440,13 +425,17 @@ defineFunction('abs', fn, {
 
 ## Conclusion
 
-The most impactful changes would be:
-1. **Extending List separator support** - Add `'undecided'` separator type (already has `'/'`)
-2. **Using Quoted nodes for strings** - Ensure conversion uses `Quoted` nodes instead of primitives
-3. **Storing multiple channel formats in Color** - Store RGB and HSL (trivial), optionally HWB (simple), Lab/LCH/OKLab/OKLCH (complex)
+The most impactful remaining changes are:
+1. **Consume the existing AST-v2 List/Block facts** in Sass list functions.
+2. **Use Quoted nodes for strings** - Ensure conversion uses `Quoted` nodes
+   instead of primitives.
+3. **Store multiple channel formats in Color** - Store RGB and HSL (trivial),
+   optionally HWB (simple), Lab/LCH/OKLab/OKLCH (complex).
 
 **Key Findings:**
-- **List brackets**: Already representable via `Paren` node wrapper - no `hasBrackets` flag needed
+- **List separators/brackets**: Fully represented by AST-v2 `List.sep` and the
+  surrounding `Block.delimiter` (`'square'` for Sass bracketedness); no
+  `hasBrackets` flag is needed
 - **String quotes**: Already supported via `Quoted` node - just need to use it in conversion
 - **Color original statement**: Already preserved via `Color.node` - no changes needed
 - **Color channels**: Should be normalized float values (not units). Storing RGB+HSL is trivial and useful

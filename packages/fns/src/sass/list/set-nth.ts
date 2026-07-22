@@ -1,49 +1,25 @@
-/**
- * Sass list.set-nth() function
- *
- * Sets the nth element of a list (1-based indexing).
- *
- * @example
- * set-nth(1 2 3, 2, 99) // 1 99 3
- */
-import { defineFunction, Dimension, Node } from '@jesscss/core';
-import { toNumber } from '@jesscss/core';
-import { createSassListResult, getSassListInfo } from './util.js';
+import { defineFunction, listValueAt } from '@jesscss/core/value';
+import { createSassListResult, getSassListInfo, resolveSassListIndex } from './util.js';
 
-const setNth = defineFunction(
-  'set-nth',
-  function(list: Node, n: Dimension, value: Node): Node {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-    const index = toNumber()(n) as number;
+const setNth = defineFunction('set-nth', {
+  params: [
+    { name: 'list', kinds: 'any' },
+    { name: 'index', kinds: ['Dimension'] },
+    { name: 'value', kinds: 'any' }
+  ] as const,
+  body: (list, index, value) => {
     const info = getSassListInfo(list);
-    // Sass uses 1-based indexing
-    const sassIndex = Math.floor(index);
-    if (sassIndex < 1 || sassIndex > info.items.length) {
-      throw new Error(`List index ${sassIndex} is out of bounds for list of length ${info.items.length}`);
+    const normalized = Math.floor(index.number);
+    if (!Number.isFinite(normalized)) {
+      throw new RangeError(`List index ${normalized} is out of bounds`);
     }
-    // Convert to 0-based index
-    const zeroBasedIndex = sassIndex - 1;
-    const items = [...info.items];
-    items[zeroBasedIndex] = value;
-    return createSassListResult(items, info.sep, info.bracketed);
-  },
-  {
-    params: [
-      {
-        name: 'list',
-        type: Node
-      },
-      {
-        name: 'n',
-        type: Dimension,
-        convert: [toNumber()]
-      },
-      {
-        name: 'value',
-        type: Node
-      }
-    ]
+    const zeroBased = resolveSassListIndex(index.number, info.values.length);
+    // Core owns zero-based access/bounds; Sass owns the one-based floor policy.
+    listValueAt(list, zeroBased);
+    const values = [...info.values];
+    values[zeroBased] = value;
+    return createSassListResult(values, info.sep, info.bracketed);
   }
-);
+});
 
 export default setNth;

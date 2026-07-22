@@ -14,24 +14,32 @@ function parseArgs(argv) {
     noPush: false,
     skipVersion: false,
     skipPublish: false,
-    skipCheck: false,
-    bump: false
+    skipCheck: false
   };
   for (let i = 2; i < argv.length; i += 1) {
     const arg = argv[i];
-    if (arg === '--dry-run') options.dryRun = true;
-    if (arg === '--no-push') options.noPush = true;
-    if (arg === '--skip-version') options.skipVersion = true;
-    if (arg === '--skip-publish') options.skipPublish = true;
+    if (arg === '--dry-run') {
+      options.dryRun = true;
+    }
+    if (arg === '--no-push') {
+      options.noPush = true;
+    }
+    if (arg === '--skip-version') {
+      options.skipVersion = true;
+    }
+    if (arg === '--skip-publish') {
+      options.skipPublish = true;
+    }
     // Skip the heavy step-2 preflight (release:alpha:check) when the current
     // tree was already verified — for a fast republish. Default stays full-check.
-    if (arg === '--skip-check') options.skipCheck = true;
-    // On an already-published manifest version: default is to error; --bump
-    // opts into auto-incrementing to the next unused -alpha.N instead.
-    if (arg === '--bump') options.bump = true;
+    if (arg === '--skip-check') {
+      options.skipCheck = true;
+    }
     // GATED: also move the npm `latest` dist-tag to the published version
     // (forwarded to publish-alpha via ALPHA_SET_LATEST). OFF by default.
-    if (arg === '--set-latest') options.setLatest = true;
+    if (arg === '--set-latest') {
+      options.setLatest = true;
+    }
   }
   return options;
 }
@@ -133,8 +141,12 @@ function viewTagVersion(pkgName, tag) {
   }
   try {
     const parsed = JSON.parse(raw);
-    if (typeof parsed === 'string') return parsed;
-    if (Array.isArray(parsed)) return parsed.at(-1) ?? null;
+    if (typeof parsed === 'string') {
+      return parsed;
+    }
+    if (Array.isArray(parsed)) {
+      return parsed.at(-1) ?? null;
+    }
     return null;
   } catch {
     return raw;
@@ -156,13 +168,19 @@ function smokeCheck(plan, expectedVersion, { attempts = 6, delayMs = 10000 } = {
 
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
     for (const pkgName of plan.allowlist) {
-      if (confirmed.has(pkgName)) continue;
+      if (confirmed.has(pkgName)) {
+        continue;
+      }
       const seen = viewTagVersion(pkgName, 'alpha');
       lastSeen.set(pkgName, seen ?? '(not found)');
-      if (seen === expectedVersion) confirmed.add(pkgName);
+      if (seen === expectedVersion) {
+        confirmed.add(pkgName);
+      }
     }
     const remaining = plan.allowlist.filter(name => !confirmed.has(name));
-    if (remaining.length === 0) break;
+    if (remaining.length === 0) {
+      break;
+    }
     if (attempt < attempts) {
       console.log(
         `  attempt ${attempt}/${attempts}: ${remaining.length} package(s) not yet showing `
@@ -269,7 +287,9 @@ if (options.dryRun) {
   console.log(`- Resolved alpha version: ${version}`);
   console.log(`- Planned tag: ${tag}`);
   const dryPublishArgs = [path.join(rootDir, 'scripts/release/publish-alpha.mjs'), '--dry-run', '--tag', 'alpha'];
-  if (options.setLatest) dryPublishArgs.push('--set-latest');
+  if (options.setLatest) {
+    dryPublishArgs.push('--set-latest');
+  }
   run('node', dryPublishArgs, rootDir);
   process.exit(0);
 }

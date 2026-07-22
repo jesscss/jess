@@ -14,12 +14,11 @@ import { imageSize } from '../image-size.js';
 import { imageWidth } from '../image-width.js';
 import { imageHeight } from '../image-height.js';
 
-/** Invoke a variadic fn's body (narrows the `Fn` union so `body(list, ctx)` types). */
+/** Invoke the universal typed callable with its variadic argument list. */
 function call(fn: Fn, list: List, c: FnCtx): ValueObj {
-  if (fn.variadic !== true) throw new Error(`${fn.name} is not variadic`);
   // These unit stubs are deliberately synchronous; async capability coverage lives
   // at the Compiler/Context boundary below the function package.
-  return fn.body(list, c) as ValueObj;
+  return fn(list, c) as ValueObj;
 }
 
 /** A 24-byte PNG header advertising `width × height` (parsed from bytes 16/20). */
@@ -34,7 +33,7 @@ function pngHeader(width: number, height: number): Buffer {
 
 /** A stub `FnIo` that resolves a fixed path→bytes map, else `null` (unreadable). */
 function stubIo(files: Record<string, Uint8Array>): FnIo {
-  return { readFile: (spec) => files[spec] ?? null };
+  return { readFile: spec => files[spec] ?? null };
 }
 
 /** The minimal `FnCtx` a value/IO fn body sees: the serialize hook + optional io. */
@@ -42,13 +41,13 @@ function ctx(io?: FnIo): FnCtx {
   return {
     modes: { unitMode: 'preserve' },
     stringify: (v: ValueObj) => (v.type === 'Quoted' ? v.value : v.bytes),
-    io,
+    io
   };
 }
 
 /** A comma-arg `List` of single-quoted string literals (the fn call shape). */
 function args(...values: string[]): List {
-  return makeList(values.map((v) => makeQuoted(v, "'", false)), ',');
+  return makeList(values.map(v => makeQuoted(v, '\'', false)), ',');
 }
 
 describe('data-uri', () => {

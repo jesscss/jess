@@ -1,6 +1,5 @@
-import type { Quoted } from '@jesscss/core/value';
-import { makeKeyword, makeQuoted } from '@jesscss/core/value';
-import type { Fn } from '@jesscss/core/value';
+import type { Quoted, Fn } from '@jesscss/core/value';
+import { makeKeyword, makeQuoted, defineFunction } from '@jesscss/core/value';
 
 /**
  * `replace(input, pattern, replacement, flags?)` — regex replace over the string
@@ -10,12 +9,11 @@ import type { Fn } from '@jesscss/core/value';
  * `@jesscss/fns` adapter mishandles the reconstructed Quoted (doubles quotes), so
  * the differential asserts built-in = Less 4.x here, not built-in = adapter.
  */
-export const replace: Fn = {
-  name: 'replace',
+export const replace: Fn = defineFunction('replace', {
   params: [{ kinds: 'any' }, { kinds: 'any' }, { kinds: 'any' }, { kinds: 'any', optional: true }],
   variadic: true,
   body: (list, ctx) => {
-    const items = list.items;
+    const items = list.value;
     const input = items[0]!;
     const source = ctx.stringify(input);
     const pattern = ctx.stringify(items[1]!);
@@ -26,5 +24,5 @@ export const replace: Fn = {
       return makeQuoted(result, (input as Quoted).quote, false);
     }
     return makeKeyword(result);
-  },
-};
+  }
+});

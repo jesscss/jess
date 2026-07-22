@@ -1,4 +1,4 @@
-import { Dimension, defineFunction } from '@jesscss/core';
+import { defineFunction, makeDimension } from '@jesscss/core/value';
 
 /**
  * Less `pow()` — raise `x` to the power of `y`. The result keeps `x`'s unit; `y`
@@ -7,21 +7,10 @@ import { Dimension, defineFunction } from '@jesscss/core';
  * @param y exponent `Dimension`
  * @returns `x ^ y` as a `Dimension` with `x`'s unit
  */
-export default defineFunction(
-  'pow',
-  function(x: Dimension, y: Dimension) {
-    return new Dimension({
-      number: Math.pow(x.number, y.number),
-      unit: x.unit
-    });
-  },
-  {
-    params: [{
-      name: 'x',
-      type: Dimension
-    }, {
-      name: 'y',
-      type: Dimension
-    }]
-  }
-);
+const pow = defineFunction('pow', {
+  params: [{ name: 'x', kinds: ['Dimension'] }, { name: 'y', kinds: ['Dimension'] }] as const,
+  body: (x, y) => makeDimension(Math.pow(x.number, y.number), x.unit)
+});
+
+export { pow };
+export default pow;

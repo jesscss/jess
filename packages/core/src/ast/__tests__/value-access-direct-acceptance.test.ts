@@ -59,7 +59,7 @@ describe('direct canonical value access', () => {
   it('resolves an indirect map-member name in the accessor frame, not the map owner', () => {
     const document = stylesheet([
       variableDeclaration('schemes', detachedRuleset([
-        variableDeclaration('primary', detachedRuleset([decl('color', keyword('blue'))]), { mode: 'declare' }),
+        variableDeclaration('primary', detachedRuleset([decl('color', keyword('blue'))]), { mode: 'declare' })
       ]), { mode: 'declare' }),
       rule('.entry', [
         variableDeclaration('scheme-name', keyword('primary'), { mode: 'declare' }),
@@ -67,23 +67,23 @@ describe('direct canonical value access', () => {
           variableReference('schemes', 'scoped'),
           [
             { type: 'BracketLookup', key: varIndirect(variableReference('scheme-name', 'scoped'), 'scoped'), keyKind: 'var' },
-            { type: 'BracketLookup', key: keyword('color'), keyKind: 'prop' },
+            { type: 'BracketLookup', key: keyword('color'), keyKind: 'prop' }
           ],
-          '@schemes[@@scheme-name][color]',
-        )),
-      ]),
+          '@schemes[@@scheme-name][color]'
+        ))
+      ])
     ]);
 
     expect(render(document)).toBe('.entry {\n  color: blue;\n}\n');
   });
 
   it('indexes typed list items with Jess zero-based and negative bracket facts', () => {
-    const sizes = list([dimension(10, 'px'), dimension(20, 'px'), dimension(30, 'px')], [',', ',']);
+    const sizes = list([dimension(10, 'px'), dimension(20, 'px'), dimension(30, 'px')], ',');
     const document = stylesheet([
       variableDeclaration('sizes', sizes, { mode: 'declare' }),
       rule('.card', [
         decl('first', reference(variableReference('sizes', 'live'), [{ type: 'BracketLookup', key: 0, keyKind: 'index', indexBase: 0 }], '$sizes[0]')),
-        decl('last', reference(variableReference('sizes', 'live'), [{ type: 'BracketLookup', key: -1, keyKind: 'index', indexBase: 0 }], '$sizes[-1]')),
+        decl('last', reference(variableReference('sizes', 'live'), [{ type: 'BracketLookup', key: -1, keyKind: 'index', indexBase: 0 }], '$sizes[-1]'))
       ])
     ]);
 
@@ -95,7 +95,7 @@ describe('direct canonical value access', () => {
     const namespaceCall = mixinCall('#ns1');
     const libraryCall = {
       type: 'MixinCall' as const,
-      name: '.m', args: [], path: [{ comb: ' ' as const, sel: '#library' }], important: false,
+      name: '.m', args: [], path: [{ comb: ' ' as const, sel: '#library' }], important: false
     };
     const document = stylesheet([
       variableDeclaration('foo', keyword('caller-foo'), { mode: 'declare' }),
@@ -104,13 +104,13 @@ describe('direct canonical value access', () => {
       rule('#ns1', [variableDeclaration('foo', keyword('dos'), { mode: 'declare' })]),
       rule('#library', [mixinDef('.m', [], [
         variableDeclaration('key', keyword('callee'), { mode: 'declare' }),
-        variableDeclaration('return', keyword('callee-return'), { mode: 'declare' }),
+        variableDeclaration('return', keyword('callee-return'), { mode: 'declare' })
       ])]),
       rule('.out', [
         decl('foo', reference(namespaceCall, member('foo'), '#ns1[@foo]')),
         decl('key', reference(libraryCall, member('key'), '#library.m()[@key]')),
-        decl('returned', reference(libraryCall, member('return'), '#library.m()[@return]')),
-      ]),
+        decl('returned', reference(libraryCall, member('return'), '#library.m()[@return]'))
+      ])
     ]);
 
     expect(render(document)).toBe('.out {\n  foo: dos;\n  key: callee;\n  returned: callee-return;\n}\n');
@@ -176,8 +176,8 @@ describe('direct canonical value access', () => {
       rule('.card', [
         decl('background-color', keyword('red'), ','),
         decl('background-color', keyword('black'), ','),
-        rule('.child', [decl('background', propertyReference('background-color'))]),
-      ]),
+        rule('.child', [decl('background', propertyReference('background-color'))])
+      ])
     ]);
 
     expect(render(document)).toBe(
@@ -218,7 +218,7 @@ describe('direct canonical value access', () => {
       type: 'MixinDef' as const,
       name: '.set-late-color',
       params: [],
-      body: [decl('color', keyword('yellow'))],
+      body: [decl('color', keyword('yellow'))]
     };
     const document = stylesheet([
       setLateColor,
@@ -226,8 +226,8 @@ describe('direct canonical value access', () => {
         decl('color', keyword('red')),
         rule('.child', [decl('background', propertyReference('color'))]),
         decl('color', keyword('blue')),
-        mixinCall('.set-late-color'),
-      ]),
+        mixinCall('.set-late-color')
+      ])
     ]);
 
     expect(render(document)).toBe(
@@ -249,15 +249,15 @@ describe('direct canonical value access', () => {
       type: 'MixinDef' as const,
       name: '.read-color',
       params: [],
-      body: [decl('from-mixin', propertyReference('color'))],
+      body: [decl('from-mixin', propertyReference('color'))]
     };
     const document = stylesheet([
       readColor,
       rule('.card', [
         decl('color', keyword('red')),
         mixinCall('.read-color'),
-        decl('color', keyword('blue')),
-      ]),
+        decl('color', keyword('blue'))
+      ])
     ]);
 
     expect(render(document)).toBe(

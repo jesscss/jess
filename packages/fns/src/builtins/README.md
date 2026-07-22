@@ -8,16 +8,15 @@ against that adapter (the reference) in
 
 ## Layout
 
-- **`<fn>.ts`** — one module per fn, each exporting a self-describing
-  `Fn` (`{ name, params, body }`). One module per fn so a browser bundle
+- **`<fn>.ts`** — one module per fn, each exporting a self-describing callable
+  `Fn` via `defineFunction(name, spec)`. One module per fn so a browser bundle
   tree-shakes: a stylesheet that never calls `pow` must not ship `pow`.
 - **`math-helper.ts`** — the shared `mathHelper` kernel (`applyMath` + the
   `unaryMath` spec builder) most number/unit math fns reduce to a one-liner over.
-- **`list-helper.ts`** — the shared LIST / VARIADIC kernel: `coerceListItems`
-  (recovers list structure from a flattened `Word`'s bytes so `length`/`extract`/
-  `min`/`max` see the real elements), `verbatimCall`, and the Less-4.x `minMax`
-  reducer. A fn marked `variadic: true` (in its `FnSpec`) receives the whole arg
-  `List` (items + separator) instead of positionally-bound params.
+- **Core list capability** — list recovery (`coerceListItems`) and indexed access
+  (`listValueAt`) belong to `@jesscss/core/value`; Less's `min-max.ts` owns only
+  Less unit-grouping policy. A variadic callable receives one typed `List` whose
+  universal payload is `value`.
 - **`color-helper.ts`** — the shared color kernels (`mixColors`, `colorBlend`,
   `getLuma`, `toHsv`) the color mixers/blend-modes/readers reduce to. Each
   Photoshop-style blend fn (`multiply`/`screen`/`overlay`/…) is a one-liner over
@@ -31,7 +30,7 @@ against that adapter (the reference) in
 
 ## Adding a function (the 3-line recipe)
 
-1. Create `functions/<fn>.ts` exporting `export const <fn>: Fn = { … }`.
+1. Create `functions/<fn>.ts` exporting `defineFunction('<fn>', { … })`.
 2. `import { <fn> } from './<fn>.js';` in `index.ts`.
 3. Add `<fn>` to `FN_LIST`.
 

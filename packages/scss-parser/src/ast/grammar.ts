@@ -8,13 +8,14 @@
 import { balanced, choice, composeLeaf, expect, literal, many, noTrivia, node, not, oneOrMore, optional, parser, regex, rules, scanTo, sequence, trivia } from 'parseman' with { type: 'macro' };
 import type { Combinator } from 'parseman';
 import { cssAstSyntax } from '@jesscss/internal-css-recognition/recognition';
-import { any, atRuleBlock, atRuleStatement, color, comment, complexSelector, compoundSelectorOf, decl, dimension, forNode, funcCall, generalEnclosed, ifNode, importAtRule, interpolation, interpolatedSimpleSelector, keyword, list, mixinCall, mixinDef, moduleImport, operation, paren, quoted, range, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference } from '@jesscss/core/ast';
-import type { AtRuleBlock, AtRuleStatement, Color, Comment, ComplexSelector, CompoundSelector, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GeneralEnclosed, GuardNode, If, IfBranch, ImportAtRule, Interpolation, Keyword, List, MixinCall, MixinDef, ModuleImport, Param, Paren, Quoted, Stylesheet, Rule, SelectorList, SimpleSelector, Statement, StyleImport, Url, ValueNode, VariableDeclaration, VariableReference } from '@jesscss/core/ast';
+import { any, atRuleBlock, atRuleStatement, block, color, comment, complexSelector, compoundSelectorOf, decl, dimension, forNode, funcCall, generalEnclosed, ifNode, importAtRule, interpolation, interpolatedSimpleSelector, keyword, list, mixinCall, mixinDef, moduleImport, operation, quoted, range, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, valueLayoutOf, variableDeclaration, variableReference, withValueLayout } from '@jesscss/core/ast';
+import type { AtRuleBlock, AtRuleStatement, Block, Color, Comment, ComplexSelector, CompoundSelector, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GeneralEnclosed, GuardNode, If, IfBranch, ImportAtRule, Interpolation, Keyword, List, MixinCall, MixinDef, ModuleImport, Param, Quoted, Stylesheet, Rule, SelectorList, SimpleSelector, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, VariableReference } from '@jesscss/core/ast';
 
 type Token = { readonly value: string };
-type ScssValuePair = { readonly separator: string; readonly value: ValueNode };
-type ScssValueTail = { readonly kind: 'space' | 'slash'; readonly value: ValueNode };
-type ScssCallArg = { readonly value: ValueNode; readonly name?: string; readonly spread?: boolean };
+type ScssValuePair = { readonly separator: string; readonly value: ValueSlot };
+type ScssValueTail = { readonly kind: 'space' | 'slash'; readonly value: ValueNode; readonly separator: string };
+type ScssCallArg = { readonly value: ValueSlot; readonly name?: string; readonly spread?: boolean };
+type ScssCallValueArg = { readonly separator: string; readonly value: ValueSlot };
 type ScssComplexTail = { readonly comb: ' ' | '>' | '+' | '~' | '||'; readonly compound: CompoundSelector };
 type ScssNestedDeclarations = { readonly kind: 'scss-nested-declarations'; readonly declarations: Declaration[] };
 
@@ -41,16 +42,17 @@ type ScssAstRules = {
   DirectScssInterpolatedUrlValue: Combinator<Interpolation>;
   DirectScssFunctionName: Combinator<Keyword>;
   DirectScssCall: Combinator<FunctionCall>;
-  DirectScssCallArgument: Combinator<ValueNode>;
+  DirectScssCallArgument: Combinator<ScssCallValueArg>;
   DirectScssInterpolatedValue: Combinator<Interpolation>;
   DirectScssParen: Combinator<ValueNode>;
+  DirectScssSquare: Combinator<ValueNode>;
   DirectScssValueAtom: Combinator<ValueNode>;
   DirectScssMathUnary: Combinator<ValueNode>;
   DirectScssMathProduct: Combinator<ValueNode>;
   DirectScssMathSum: Combinator<ValueNode>;
   DirectScssMathTopProduct: Combinator<ValueNode>;
   DirectScssMathTopSum: Combinator<ValueNode>;
-  DirectScssValueTerm: Combinator<ValueNode>;
+  DirectScssValueTerm: Combinator<ValueSlot>;
   DirectScssValuePair: Combinator<ScssValuePair>;
   DirectScssValue: Combinator<ValueNode>;
   DirectScssImportant: Combinator<true>;
@@ -269,24 +271,34 @@ function interpolationFromTemplateChildren(children: readonly unknown[]): Interp
   for (const child of children) {
     if (isInterpolation(child)) {
       for (const part of child.parts) {
-        if ('lit' in part) appendLiteral(parts, part.lit);
-        else parts.push(part);
+        if ('lit' in part) {
+          appendLiteral(parts, part.lit);
+        } else {
+          parts.push(part);
+        }
       }
+    } else {
+      appendLiteral(parts, requireToken(child).value);
     }
-    else appendLiteral(parts, requireToken(child).value);
   }
   return interpolation(parts);
 }
 
 function joinNestedPropertyName(prefix: string | Interpolation, leaf: string | Interpolation): string | Interpolation {
-  if (typeof prefix === 'string' && typeof leaf === 'string') return `${prefix}-${leaf}`;
+  if (typeof prefix === 'string' && typeof leaf === 'string') {
+    return `${prefix}-${leaf}`;
+  }
   const parts: Interpolation['parts'] = [];
   const appendName = (name: string | Interpolation): void => {
-    if (typeof name === 'string') appendLiteral(parts, name);
-    else {
+    if (typeof name === 'string') {
+      appendLiteral(parts, name);
+    } else {
       for (const part of name.parts) {
-        if ('lit' in part) appendLiteral(parts, part.lit);
-        else parts.push(part);
+        if ('lit' in part) {
+          appendLiteral(parts, part.lit);
+        } else {
+          parts.push(part);
+        }
       }
     }
   };
@@ -331,13 +343,38 @@ function isValue(value: unknown): value is ValueNode {
     || (typeof value === 'object' && value !== null && 'type' in value && value.type === 'SpacedValue'
       && 'parts' in value && Array.isArray(value.parts))
     || (typeof value === 'object' && value !== null && 'type' in value && value.type === 'List'
-      && 'items' in value && Array.isArray(value.items))
-    || (typeof value === 'object' && value !== null && 'type' in value && value.type === 'Paren'
-      && 'inner' in value && isValue(value.inner))
+      && 'value' in value && Array.isArray(value.value))
+    || (typeof value === 'object' && value !== null && 'type' in value && value.type === 'Block'
+      && 'inner' in value && isValueSlotValue(value.inner))
     || (typeof value === 'object' && value !== null && 'type' in value && value.type === 'Operation'
       && 'left' in value && 'right' in value && isValue(value.left) && isValue(value.right))
     || (typeof value === 'object' && value !== null && 'type' in value && value.type === 'Keyword'
       && 'src' in value && typeof value.src === 'string');
+}
+
+function valueSlot(value: ValueNode): ValueSlot {
+  if (value.type === 'SpacedValue') {
+    return value.parts;
+  }
+  if (value.type === 'Block' && value.inner.type === 'SpacedValue') {
+    return { ...value, inner: value.inner.parts };
+  }
+  return value;
+}
+
+function isValueSlotValue(value: unknown): value is ValueSlot {
+  return Array.isArray(value) ? value.every(isValueSlotValue) : isValue(value);
+}
+
+function isScssCallValueArg(value: unknown): value is ScssCallValueArg {
+  return typeof value === 'object'
+    && value !== null
+    && 'separator' in value && typeof value.separator === 'string'
+    && 'value' in value && isValueSlotValue(value.value);
+}
+
+function requireValueSlot(value: unknown): ValueSlot {
+  return Array.isArray(value) ? value as ValueSlot : valueSlot(requireValue(value));
 }
 
 function isDeclaration(value: unknown): value is Declaration {
@@ -348,7 +385,7 @@ function isDeclaration(value: unknown): value is Declaration {
     && 'name' in value
     && (typeof value.name === 'string' || isInterpolation(value.name))
     && 'value' in value
-    && isValue(value.value);
+    && isValueSlotValue(value.value);
 }
 
 function isRule(value: unknown): value is Rule {
@@ -382,9 +419,15 @@ function isAtRuleStatement(value: unknown): value is AtRuleStatement {
 function isComment(value: unknown): value is Comment {
   return typeof value === 'object' && value !== null && 'type' in value && value.type === 'Comment';
 }
-function isImport(value: unknown): value is ImportAtRule { return typeof value === 'object' && value !== null && 'type' in value && value.type === 'ImportAtRule'; }
-function isStyleImport(value: unknown): value is StyleImport { return typeof value === 'object' && value !== null && 'type' in value && value.type === 'StyleImport'; }
-function isModuleImport(value: unknown): value is ModuleImport { return typeof value === 'object' && value !== null && 'type' in value && value.type === 'ModuleImport'; }
+function isImport(value: unknown): value is ImportAtRule {
+  return typeof value === 'object' && value !== null && 'type' in value && value.type === 'ImportAtRule';
+}
+function isStyleImport(value: unknown): value is StyleImport {
+  return typeof value === 'object' && value !== null && 'type' in value && value.type === 'StyleImport';
+}
+function isModuleImport(value: unknown): value is ModuleImport {
+  return typeof value === 'object' && value !== null && 'type' in value && value.type === 'ModuleImport';
+}
 
 function isExtendInstruction(value: unknown): value is ExtendInstruction {
   return typeof value === 'object' && value !== null
@@ -415,7 +458,7 @@ function isScssValuePair(value: unknown): value is ScssValuePair {
     && 'separator' in value
     && typeof value.separator === 'string'
     && 'value' in value
-    && isValue(value.value);
+    && isValueSlotValue(value.value);
 }
 
 function isVarDeclaration(value: unknown): value is VariableDeclaration {
@@ -426,7 +469,7 @@ function isVarDeclaration(value: unknown): value is VariableDeclaration {
     && 'name' in value
     && typeof value.name === 'string'
     && 'value' in value
-    && isValue(value.value);
+    && isValueSlotValue(value.value);
 }
 
 function isScssNestedDeclarations(value: unknown): value is ScssNestedDeclarations {
@@ -496,6 +539,7 @@ const directScssProductOperator = regex(/[ \t\n\r\f]*[*/%][ \t\n\r\f]*/);
 const directScssTopProductOperator = regex(/[ \t\n\r\f]*[*%][ \t\n\r\f]*/);
 const directScssSumOperator = regex(/(?:\+[ \t\n\r\f]*|-[ \t\n\r\f]*|[ \t\n\r\f]+\+[ \t\n\r\f]*|[ \t\n\r\f]+-[ \t\n\r\f]+)/);
 const directScssSpace = regex(/[ \t\n\r\f]+/);
+const directScssValueTrivia = regex(/(?:[ \t\n\r\f]+|\/\*(?:[^*]|\*(?!\/))*\*\/)+/);
 const directScssKeyframeEndpoint = regex(/(?:from|to)(?![-_a-zA-Z0-9\u0080-\uffff])/i);
 // Keep the static SCSS slice aligned with the shared CSS keyframe-selector
 // shape: signed percentages and a trailing decimal point are valid selectors.
@@ -553,8 +597,11 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
       }
       const parts: Interpolation['parts'] = [{ lit: quote }];
       for (const child of children.slice(1, -1)) {
-        if (isInterpolation(child)) parts.push(...child.parts);
-        else appendLiteral(parts, requireToken(child).value);
+        if (isInterpolation(child)) {
+          parts.push(...child.parts);
+        } else {
+          appendLiteral(parts, requireToken(child).value);
+        }
       }
       appendLiteral(parts, quote);
       return interpolation(parts);
@@ -572,7 +619,7 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
       sequence(literal('"'), directStaticDoubleQuotedPath, literal('"')),
       sequence(literal('\''), directStaticSingleQuotedPath, literal('\''))
     ),
-    children => {
+    (children) => {
       const quote = requireToken(children[0]).value;
       const value = requireToken(children[1]).value;
       return quoted(`${quote}${value}${quote}`, value, quote, false);
@@ -587,7 +634,7 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
       sequence(literal('"'), directDoubleQuotedText, literal('"')),
       sequence(literal('\''), directSingleQuotedText, literal('\''))
     ),
-    children => {
+    (children) => {
       const quote = requireToken(children[0]).value;
       const value = requireToken(children[1]).value;
       return quoted(`${quote}${value}${quote}`, value, quote, false);
@@ -658,9 +705,9 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
       return url(isValue(body) ? body : any(requireToken(body).value));
     }
   );
-  const DirectScssCallArgument = node<ValueNode>(
+  const DirectScssCallArgument = node<ScssCallValueArg>(
     'DirectScssCallArgument',
-    noTrivia(sequence(literal(','), optional(regex(/[ \t\n\r\f]+/)), g.DirectScssValueTerm)),
+    noTrivia(sequence(literal(','), optional(directScssValueTrivia), g.DirectScssValueTerm)),
     (children) => {
       if (children.length !== 2 && children.length !== 3) {
         throw new TypeError('DirectScssCallArgument produced unexpected children.');
@@ -669,7 +716,10 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
         throw new TypeError('DirectScssCallArgument lost its comma.');
       }
       const value = children[children.length - 1];
-      return requireValue(value);
+      return {
+        separator: children.length === 3 ? `,${requireToken(children[1]).value}` : ',',
+        value: requireValueSlot(value)
+      };
     }
   );
   const DirectScssFunctionName = node<Keyword>(
@@ -682,18 +732,35 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
     sequence(
       g.DirectScssFunctionName,
       literal('('),
+      optional(directScssValueTrivia),
       optional(sequence(g.DirectScssValueTerm, many(g.DirectScssCallArgument))),
+      optional(directScssValueTrivia),
       literal(')')
     ),
     (children) => {
       if (children.length < 3 || requireToken(children[1]).value !== '(' || requireToken(children[children.length - 1]).value !== ')') {
         throw new TypeError('DirectScssCall produced unexpected children.');
       }
-      const args: ValueNode[] = [];
-      for (let index = 2; index < children.length - 1; index += 1) {
-        args.push(requireValue(children[index]));
+      const firstIndex = children.findIndex((child, index) => index > 1 && index < children.length - 1 && isValueSlotValue(child));
+      if (firstIndex === -1) {
+        return funcCall((children[0] as Keyword).src, []);
       }
-      return funcCall((children[0] as Keyword).src, args);
+      const first = requireValueSlot(children[firstIndex]);
+      const args: ValueSlot[] = [first];
+      const separators: string[] = [];
+      for (let index = firstIndex + 1; index < children.length - 1; index += 1) {
+        const child = children[index];
+        if (!isScssCallValueArg(child)) {
+          continue;
+        }
+        separators.push(String(child.separator));
+        args.push(requireValueSlot(child.value));
+      }
+      const call = funcCall((children[0] as Keyword).src, args);
+      if (separators.length === args.length - 1) {
+        withValueLayout(call.args, separators);
+      }
+      return call;
     }
   );
   const DirectScssInterpolatedValue = node<Interpolation>(
@@ -713,7 +780,7 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
   );
   // A parenthesized SCSS value can either enforce arithmetic precedence or hold
   // an ordinary list. Try the fully structured arithmetic form first; the list
-  // branch is deliberately separate so `(1 2)` stays a Paren around a list
+  // branch is deliberately separate so `(1 2)` stays a paren Block around a list
   // rather than being invented as math.
   const DirectScssParen = node<ValueNode>(
     'DirectScssParen',
@@ -721,11 +788,18 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
       noTrivia(sequence(literal('('), g.DirectScssMathSum, literal(')'))),
       noTrivia(sequence(literal('('), g.DirectScssValue, literal(')')))
     ),
-    children => paren(requireValue(children[1]))
+    children => block(requireValueSlot(children[1]))
+  );
+  // Sass bracketed lists carry the square delimiter as a first-class Block fact;
+  // the inner value uses the same separator-aware list grammar as ordinary values.
+  const DirectScssSquare = node<ValueNode>(
+    'DirectScssSquare',
+    noTrivia(sequence(literal('['), g.DirectScssValue, literal(']'))),
+    children => block(requireValue(children[1]), 'square')
   );
   const DirectScssValueAtom = node<ValueNode>(
     'DirectScssValueAtom',
-    choice(g.DirectScssQuoted, g.DirectScssInterpolatedValue, g.DirectScssInterpolation, g.DirectScssVarReference, g.DirectScssColor, g.DirectScssDimension, g.DirectScssUrl, g.DirectScssCall, g.DirectScssParen, g.DirectScssCustomPropertyValue, g.DirectScssKeyword),
+    choice(g.DirectScssQuoted, g.DirectScssInterpolatedValue, g.DirectScssInterpolation, g.DirectScssVarReference, g.DirectScssColor, g.DirectScssDimension, g.DirectScssUrl, g.DirectScssCall, g.DirectScssParen, g.DirectScssSquare, g.DirectScssCustomPropertyValue, g.DirectScssKeyword),
     children => requireValue(children[0])
   );
   // Signed numerics are one Dimension leaf. Unary signs only own a variable or
@@ -739,8 +813,10 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
       noTrivia(sequence(regex(/\+(?=[ \t\n\r\f]*[\$(])/), optional(directScssSpace), g.DirectScssValueAtom)),
       g.DirectScssValueAtom
     ),
-    children => {
-      if (children.length === 1) return requireValue(children[0]);
+    (children) => {
+      if (children.length === 1) {
+        return requireValue(children[0]);
+      }
       const sign = requireToken(children[0]).value;
       const value = requireValue(children[children.length - 1]);
       return sign === '-'
@@ -774,35 +850,51 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
   const DirectScssValueTail = node<ScssValueTail>(
     'DirectScssValueTail',
     choice(
-      sequence(directScssSpace, g.DirectScssMathTopSum),
+      sequence(directScssValueTrivia, g.DirectScssMathTopSum),
       sequence(optional(directScssSpace), literal('/'), optional(directScssSpace), g.DirectScssMathTopSum)
     ),
-    children => {
-      if (isValue(children[1])) return { kind: 'space', value: children[1] };
+    (children) => {
+      if (isValue(children[1])) {
+        return { kind: 'space', value: children[1], separator: isToken(children[0]) ? children[0].value : ' ' };
+      }
       const value = children[children.length - 1];
-      if (!isValue(value)) throw new TypeError('Direct SCSS slash list lost its value.');
-      return { kind: 'slash', value };
+      if (!isValue(value)) {
+        throw new TypeError('Direct SCSS slash list lost its value.');
+      }
+      const separators = children.filter(isToken).map(child => child.value).filter(text => text !== '/');
+      return { kind: 'slash', value, separator: `${separators[0] ?? ''}/${separators[1] ?? ''}` };
     }
   );
-  const DirectScssValueTerm = node<ValueNode>(
+  const DirectScssValueTerm = node<ValueSlot>(
     'DirectScssValueTerm',
     noTrivia(sequence(g.DirectScssMathTopSum, many(DirectScssValueTail))),
     (children) => {
-      const values = [requireValue(children[0])];
+      const groups: ValueNode[][] = [[requireValue(children[0])]];
+      const groupSeparators: string[][] = [[]];
       for (const child of children.slice(1)) {
         if (typeof child !== 'object' || child === null || !('kind' in child) || !('value' in child)
           || (child.kind !== 'space' && child.kind !== 'slash') || !isValue(child.value)) {
           throw new TypeError('Direct SCSS AST value term produced an invalid list boundary.');
         }
-        if (child.kind === 'slash') values.push(keyword('/'));
-        values.push(child.value);
+        if (child.kind === 'slash') {
+          groups.push([child.value]);
+          groupSeparators.push([]);
+        } else {
+          groups.at(-1)!.push(child.value);
+          groupSeparators.at(-1)!.push(child.separator);
+        }
       }
-      return values.length === 1 ? values[0]! : spaced(values);
+      const values = groups.map((group, index) => group.length === 1
+        ? group[0]!
+        : withValueLayout(group, groupSeparators[index]!));
+      return groups.length === 1
+        ? values[0]!
+        : list(values, '/');
     }
   );
   const DirectScssValuePair = node<ScssValuePair>(
     'DirectScssValuePair',
-    noTrivia(sequence(literal(','), optional(regex(/[ \t\n\r\f]+/)), g.DirectScssValueTerm)),
+    noTrivia(sequence(literal(','), optional(directScssValueTrivia), g.DirectScssValueTerm)),
     (children) => {
       if (children.length !== 2 && children.length !== 3) {
         throw new TypeError('DirectScssValuePair produced unexpected children.');
@@ -813,14 +905,14 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
       const separator = children.length === 3
         ? `,${requireToken(children[1]).value}`
         : ',';
-      return { separator, value: requireValue(children[children.length - 1]) };
+      return { separator, value: requireValueSlot(children[children.length - 1]) };
     }
   );
-  const DirectScssValue = node<ValueNode>(
+  const DirectScssValue = node<ValueSlot>(
     'DirectScssValue',
     sequence(g.DirectScssValueTerm, many(g.DirectScssValuePair)),
     (children) => {
-      const first = requireValue(children[0]);
+      const first = requireValueSlot(children[0]);
       if (children.length === 1) {
         return first;
       }
@@ -832,7 +924,8 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
         }
         pairs.push(child);
       }
-      return list([first, ...pairs.map(pair => pair.value)], pairs.map(pair => pair.separator));
+      const result = list([first, ...pairs.map(pair => pair.value)], ',');
+      return withValueLayout(result, pairs.map(pair => pair.separator));
     }
   );
   const DirectScssVarDeclaration = node<VariableDeclaration>(
@@ -841,7 +934,7 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
       literal('$'), scssVarName, literal(':'), g.DirectScssValue,
       optional(choice(literal('!default'), literal('!global'))), optional(literal(';'))
     ),
-    children => {
+    (children) => {
       const modifier = children.find(child => typeof child === 'object' && child !== null && 'value' in child
         && (child.value === '!default' || child.value === '!global'));
       const write = modifier?.value === '!default'
@@ -849,13 +942,13 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
         : modifier?.value === '!global'
           ? { mode: 'reassign' as const, lookup: 'scoped' as const }
           : { mode: 'declare' as const };
-      return variableDeclaration(requireToken(children[1]).value, requireValue(children[3]), write);
+      return variableDeclaration(requireToken(children[1]).value, requireValueSlot(children[3]), write);
     }
   );
   const DirectScssImportant = node<true>(
     'DirectScssImportant',
     sequence(literal('!'), g.CssAstSyntaxImportant),
-    children => {
+    (children) => {
       if (children.length !== 2 || requireToken(children[0]).value !== '!') {
         throw new TypeError('DirectScssImportant produced unexpected children.');
       }
@@ -876,11 +969,14 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
       g.DirectScssInterpolation,
       many(choice(directScssPropertyChunk, g.DirectScssInterpolation))
     ),
-    children => {
+    (children) => {
       const parts: Interpolation['parts'] = [];
       for (const child of children) {
-        if (isInterpolation(child)) parts.push(...child.parts);
-        else appendLiteral(parts, requireToken(child).value);
+        if (isInterpolation(child)) {
+          parts.push(...child.parts);
+        } else {
+          appendLiteral(parts, requireToken(child).value);
+        }
       }
       return interpolation(parts);
     }
@@ -888,7 +984,7 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
   const DirectScssDeclaration = node<Declaration>(
     'DirectScssDeclaration',
     sequence(choice(g.DirectScssInterpolatedProperty, g.CssAstSyntaxProperty), optional(choice(literal('+_'), literal('+'))), literal(':'), g.DirectScssValue, optional(g.DirectScssImportant), optional(literal(';'))),
-    children => {
+    (children) => {
       if (children.length < 3 || children.length > 6) {
         throw new TypeError('DirectScssDeclaration produced unexpected children.');
       }
@@ -904,7 +1000,7 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
         throw new TypeError('DirectScssDeclaration requires a value.');
       }
       const name = isInterpolation(children[0]) ? children[0] : requireToken(children[0]).value;
-      return decl(name, requireValue(value), merge, isImportant);
+      return decl(name, requireValueSlot(value), merge, isImportant);
     }
   );
   // The public CST's nested-property form is compile-time property-prefix syntax, not a
@@ -921,21 +1017,21 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
   const DirectScssStaticNestedPropertyLeaf = node<Declaration>(
     'DirectScssStaticNestedPropertyLeaf',
     sequence(choice(g.DirectScssInterpolatedProperty, g.CssAstSyntaxProperty), literal(':'), g.DirectScssValue, optional(literal(';'))),
-    children => decl(isInterpolation(children[0]) ? children[0] : requireToken(children[0]).value, requireValue(children[2]), null, false)
+    children => decl(isInterpolation(children[0]) ? children[0] : requireToken(children[0]).value, requireValueSlot(children[2]), null, false)
   );
   const DirectScssStaticNestedProperty = node<ScssNestedDeclarations>(
     'DirectScssStaticNestedProperty',
     choice(
       sequence(choice(g.DirectScssInterpolatedProperty, g.CssAstSyntaxProperty), literal(':'), optional(g.DirectScssValue), literal('{'), many(g.DirectScssStaticNestedPropertyLeaf), literal('}'), optional(g.DirectScssImportant), optional(literal(';')))
     ),
-    children => {
+    (children) => {
       const prefix = isInterpolation(children[0]) ? children[0] : requireToken(children[0]).value;
       const open = children.findIndex(child => isToken(child) && child.value === '{');
       const close = children.findIndex((child, index) => index > open && isToken(child) && child.value === '}');
       if (open < 0 || close < 0) {
         throw new TypeError('Direct SCSS nested property lost its block delimiters.');
       }
-      const ownValue = open > 2 && isValue(children[2]) ? children[2] : null;
+      const ownValue = open > 2 && isValueSlotValue(children[2]) ? children[2] : null;
       const ownImportant = children.includes(true);
       if (ownImportant && ownValue === null) {
         throw new TypeError('Direct SCSS nested property cannot apply !important without an own declaration value.');
@@ -943,11 +1039,16 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
       const nested: Declaration[] = [];
       for (let index = open + 1; index < close; index++) {
         const child = children[index];
-        if (isDeclaration(child)) nested.push(child);
-        else throw new TypeError('Direct SCSS nested property produced a non-declaration child.');
+        if (isDeclaration(child)) {
+          nested.push(child);
+        } else {
+          throw new TypeError('Direct SCSS nested property produced a non-declaration child.');
+        }
       }
       const result = ownValue === null ? [] : [decl(prefix, ownValue, null, ownImportant)];
-      for (const child of nested) result.push(decl(joinNestedPropertyName(prefix, child.name), child.value, child.merge, child.important));
+      for (const child of nested) {
+        result.push(decl(joinNestedPropertyName(prefix, child.name), child.value, child.merge, child.important));
+      }
       return { kind: 'scss-nested-declarations', declarations: result };
     }
   );
@@ -958,10 +1059,12 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
     // newly admitted shape here is `url()`; quoted, static unquoted, and
     // interpolation-bearing targets remain their existing structural arms.
     sequence(g.CssAstSyntaxUrlOpen, optional(choice(g.DirectScssQuoted, staticUrlInner)), literal(')')),
-    children => {
+    (children) => {
       // Parseman omits an unmatched optional from `children`, leaving the
       // closing delimiter at index 1 for exactly `url()`.
-      if (children.length === 2) return url(any(''));
+      if (children.length === 2) {
+        return url(any(''));
+      }
       const body = children[1];
       return url(isQuoted(body) || isInterpolation(body) ? body : any(requireToken(body).value));
     }
@@ -969,9 +1072,9 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
   const DirectScssStaticImportOptions = node<List>(
     'DirectScssStaticImportOptions',
     sequence(literal('('), g.DirectScssKeyword, many(sequence(literal(','), g.DirectScssKeyword)), literal(')')),
-    children => {
+    (children) => {
       const values = children.filter((child): child is Keyword => typeof child === 'object' && child !== null && 'type' in child && child.type === 'Keyword');
-      return list(values, Array(Math.max(0, values.length - 1)).fill(','));
+      return list(values, ',');
     }
   );
   // This remains a deliberately bounded CSS-import tail. Every admitted part
@@ -984,8 +1087,8 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
     'DirectScssStaticImportLayer',
     choice(
       noTrivia(sequence(regex(/layer(?![-_a-zA-Z0-9\u0080-\uffff])/i), literal('('), g.DirectScssKeyword, literal(')')),
-      regex(/layer(?![-_a-zA-Z0-9\u0080-\uffff])/i)
-    ),
+        regex(/layer(?![-_a-zA-Z0-9\u0080-\uffff])/i)
+      )
     ),
     children => children.length === 1
       ? keyword(requireToken(children[0]).value)
@@ -997,7 +1100,7 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
   const DirectScssStaticImportDeclaration = node<ValueNode>(
     'DirectScssStaticImportDeclaration',
     sequence(g.CssAstSyntaxProperty, literal(':'), g.DirectScssSupportsAtom),
-    children => paren(operation(':', keyword(requireToken(children[0]).value), requireValue(children[2])))
+    children => block(operation(':', keyword(requireToken(children[0]).value), requireValue(children[2])))
   );
   const DirectScssStaticImportSupports = node<FunctionCall>(
     'DirectScssStaticImportSupports',
@@ -1016,9 +1119,11 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
       g.DirectScssStaticImportLayer,
       g.DirectScssStaticImportSupports
     ),
-    children => {
+    (children) => {
       const values = children.filter(isValue);
-      if (values.length === 0) throw new TypeError('Direct SCSS import qualifier requires typed facts.');
+      if (values.length === 0) {
+        throw new TypeError('Direct SCSS import qualifier requires typed facts.');
+      }
       return values.length === 1 ? values[0]! : spaced(values);
     }
   );
@@ -1029,10 +1134,12 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
       sequence(literal('('), g.CssAstSyntaxProperty, literal(':'), g.DirectScssSupportsAtom, literal(')')),
       sequence(literal('('), g.CssAstSyntaxProperty, choice(literal('>='), literal('<='), literal('>'), literal('<'), literal('=')), g.DirectScssSupportsAtom, literal(')'))
     ),
-    children => {
+    (children) => {
       const property = keyword(requireToken(children[1]).value);
-      if (children.length === 3) return paren(property);
-      return paren(operation(requireToken(children[2]).value, property, requireValue(children[3])));
+      if (children.length === 3) {
+        return block(property);
+      }
+      return block(operation(requireToken(children[2]).value, property, requireValue(children[3])));
     }
   );
   const DirectScssStaticImportMediaInParens = node<ValueNode>(
@@ -1041,7 +1148,7 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
       sequence(literal('('), g.DirectScssStaticImportMediaCondition, literal(')')),
       g.DirectScssStaticImportMediaFeature
     ),
-    children => children.length === 1 ? requireValue(children[0]) : paren(requireValue(children[1]))
+    children => children.length === 1 ? requireValue(children[0]) : block(requireValue(children[1]))
   );
   const DirectScssStaticImportMediaCondition = node<ValueNode>(
     'DirectScssStaticImportMediaCondition',
@@ -1049,7 +1156,7 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
       sequence(g.CssAstSyntaxQueryNot, g.DirectScssStaticImportMediaInParens),
       sequence(g.DirectScssStaticImportMediaInParens, many(sequence(g.CssAstSyntaxQueryAndOr, g.DirectScssStaticImportMediaInParens)))
     ),
-    children => {
+    (children) => {
       const values = children.map(child => isValue(child) ? child : keyword(requireToken(child).value));
       return values.length === 1 ? values[0]! : spaced(values);
     }
@@ -1075,7 +1182,7 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
       g.DirectScssStaticImportMediaCondition,
       DirectScssStaticImportMediaNonOnlyKeyword
     ),
-    children => {
+    (children) => {
       const values = children.map(child => isValue(child) ? child : keyword(requireToken(child).value));
       return values.length === 1 ? values[0]! : spaced(values);
     }
@@ -1083,9 +1190,9 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
   const DirectScssStaticImportMediaPrelude = node<ValueNode>(
     'DirectScssStaticImportMediaPrelude',
     sequence(g.DirectScssStaticImportMediaClause, many(sequence(literal(','), g.DirectScssStaticImportMediaClause))),
-    children => {
+    (children) => {
       const values = children.filter(isValue);
-      return values.length === 1 ? values[0]! : list(values, Array(values.length - 1).fill(','));
+      return values.length === 1 ? values[0]! : list(values, ',');
     }
   );
   const DirectScssStaticImportTail = node<ValueNode>(
@@ -1095,23 +1202,27 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
       g.DirectScssStaticImportQualifier,
       g.DirectScssStaticImportMediaPrelude
     ),
-    children => {
+    (children) => {
       const values = children.filter(isValue).flatMap(value =>
         typeof value === 'object' && value !== null && 'type' in value && value.type === 'SpacedValue'
           ? value.parts
           : [value]
       );
-      if (values.length === 0) throw new TypeError('Direct SCSS static import tail requires a typed value.');
+      if (values.length === 0) {
+        throw new TypeError('Direct SCSS static import tail requires a typed value.');
+      }
       return values.length === 1 ? values[0]! : spaced(values);
     }
   );
   const DirectScssImport = node<ImportAtRule>(
     'DirectScssImport',
     sequence(regex(/@import(?![-_a-zA-Z0-9\u0080-\uffff])/i), optional(g.DirectScssStaticImportOptions), choice(g.DirectScssQuoted, g.DirectScssStaticImportUrl), optional(g.DirectScssStaticImportTail), literal(';')),
-    children => {
+    (children) => {
       const targetIndex = children.findIndex(child => isQuoted(child) || isInterpolation(child) || (typeof child === 'object' && child !== null && 'type' in child && child.type === 'Url'));
       const target = targetIndex < 0 ? undefined : children[targetIndex] as Quoted | Url | Interpolation;
-      if (target === undefined) throw new TypeError('DirectScssImport requires a typed target.');
+      if (target === undefined) {
+        throw new TypeError('DirectScssImport requires a typed target.');
+      }
       const tail = children.slice(targetIndex + 1).find(isValue) ?? null;
       return importAtRule('@import', target, (children.find(child => typeof child === 'object' && child !== null && 'type' in child && child.type === 'List') as List | undefined) ?? null, null, tail);
     }
@@ -1125,7 +1236,7 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
   const DirectScssUse = node<StyleImport | ModuleImport>(
     'DirectScssUse',
     sequence(regex(/@use(?![-_a-zA-Z0-9\u0080-\uffff])/i), g.DirectScssStaticQuoted, optional(g.DirectScssUseAs), literal(';')),
-    children => {
+    (children) => {
       const path = children[1] as Quoted;
       const namespace = children.find((child): child is string => typeof child === 'string') ?? null;
       if (path.value.startsWith('sass:')) {
@@ -1155,12 +1266,12 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
       sequence(literal('...'), directMixinParamName),
       sequence(directMixinParamName, optional(sequence(literal(':'), g.DirectScssValueTerm)), optional(literal('...')))
     ),
-    children => {
+    (children) => {
       const name = requireToken(children.find(child => typeof child === 'object' && child !== null && 'value' in child && typeof child.value === 'string' && child.value !== '$' && child.value !== '...' && child.value !== ':')!).value;
       if (children.some(child => typeof child === 'object' && child !== null && 'value' in child && child.value === '...')) {
         return { name, rest: true };
       }
-      const defaultValue = children.find(isValue);
+      const defaultValue = children.find(isValueSlotValue);
       return defaultValue === undefined ? { name } : { name, default: defaultValue };
     }
   );
@@ -1176,9 +1287,11 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
       sequence(g.DirectScssValueTerm, literal('...')),
       g.DirectScssValueTerm
     ),
-    children => {
-      const value = children.find(isValue);
-      if (value === undefined) throw new TypeError('DirectScssMixinCallArg requires a value.');
+    (children) => {
+      const value = children.find(isValueSlotValue);
+      if (value === undefined) {
+        throw new TypeError('DirectScssMixinCallArg requires a value.');
+      }
       const nameToken = children.find((child): child is Token => typeof child === 'object' && child !== null && 'value' in child && typeof child.value === 'string' && child.value !== '$' && child.value !== ':' && child.value !== '...');
       if (nameToken !== undefined && children.some(child => typeof child === 'object' && child !== null && 'value' in child && child.value === ':')) {
         return { name: nameToken.value, value };
@@ -1195,7 +1308,7 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
       optional(sequence(literal('('), optional(sequence(g.DirectScssMixinCallArg, many(sequence(literal(','), g.DirectScssMixinCallArg)), optional(literal(',')))), literal(')'))),
       optional(literal(';'))
     ),
-    children => mixinCall(requireToken(children[1]).value, children.filter((child): child is ScssCallArg => typeof child === 'object' && child !== null && 'value' in child && isValue(child.value)))
+    children => mixinCall(requireToken(children[1]).value, children.filter((child): child is ScssCallArg => typeof child === 'object' && child !== null && 'value' in child && isValueSlotValue(child.value)))
   );
   const DirectScssMixinDef = node<MixinDef>(
     'DirectScssMixinDef',
@@ -1218,10 +1331,14 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
   const DirectScssEachBinding = node<ForBinding>(
     'DirectScssEachBinding',
     sequence(g.DirectScssEachName, many(sequence(literal(','), g.DirectScssEachName))),
-    children => {
+    (children) => {
       const names = children.filter((child): child is string => typeof child === 'string');
-      if (names.length === 1) return { kind: 'single', name: names[0]! };
-      if (names.length < 2) throw new TypeError('Direct SCSS AST grammar produced an invalid @each binding.');
+      if (names.length === 1) {
+        return { kind: 'single', name: names[0]! };
+      }
+      if (names.length < 2) {
+        throw new TypeError('Direct SCSS AST grammar produced an invalid @each binding.');
+      }
       return { kind: 'tuple', names: [names[0]!, names[1]!, ...names.slice(2)] };
     }
   );
@@ -1235,8 +1352,8 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
       many(choice(g.DirectScssComment, g.DirectScssImport, g.DirectScssVarDeclaration, g.DirectScssStaticNestedProperty, g.DirectScssDeclaration, g.DirectScssNestedConditionalBlock, g.DirectScssNestedStartingStyleBlock, g.DirectScssNestedLayerBlock, g.DirectScssNestedScopeBlock, g.DirectScssDocumentBlock, g.DirectScssPageBlock, g.DirectScssFontFeatureValuesBlock, g.DirectScssMixinDef, g.DirectScssMixinCall, g.DirectScssEach, g.DirectScssFor, g.DirectScssIf, g.DirectScssRule)),
       literal('}')
     ),
-    children => {
-      const iterable = children.find(isValue);
+    (children) => {
+      const iterable = children.find(isValueSlotValue);
       if (iterable === undefined) {
         throw new TypeError('DirectScssEach requires an iterable.');
       }
@@ -1276,7 +1393,7 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
   const DirectScssIfComparison = node<GuardNode>(
     'DirectScssIfComparison',
     sequence(g.DirectScssMathTopSum, choice(literal('=='), literal('!='), literal('>='), literal('<='), literal('>'), literal('<')), g.DirectScssMathTopSum),
-    children => {
+    (children) => {
       const left = requireValue(children[0]);
       const operator = requireToken(children[1]).value;
       const right = requireValue(children[2]);
@@ -1292,9 +1409,11 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
       directScssTrue,
       directScssFalse
     ),
-    children => {
+    (children) => {
       const nested = children.find((child): child is GuardNode => typeof child === 'object' && child !== null && 'g' in child);
-      if (nested !== undefined) return nested;
+      if (nested !== undefined) {
+        return nested;
+      }
       const token = requireToken(children[0]).value.toLowerCase();
       return { g: 'truth', value: keyword(token) };
     }
@@ -1302,9 +1421,11 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
   const DirectScssIfTerm = node<GuardNode>(
     'DirectScssIfTerm',
     sequence(optional(directScssNot), g.DirectScssIfAtom),
-    children => {
+    (children) => {
       const atom = children.find((child): child is GuardNode => typeof child === 'object' && child !== null && 'g' in child);
-      if (atom === undefined) throw new TypeError('Direct SCSS @if term lost its guard.');
+      if (atom === undefined) {
+        throw new TypeError('Direct SCSS @if term lost its guard.');
+      }
       return children.some(child => isToken(child) && child.value.toLowerCase() === 'not')
         ? { g: 'not', inner: atom }
         : atom;
@@ -1313,18 +1434,22 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
   const DirectScssIfAnd = node<GuardNode>(
     'DirectScssIfAnd',
     sequence(g.DirectScssIfTerm, many(sequence(directScssAnd, g.DirectScssIfTerm))),
-    children => {
+    (children) => {
       let guard = children[0] as GuardNode;
-      for (let index = 2; index < children.length; index += 2) guard = { g: 'and', left: guard, right: children[index] as GuardNode };
+      for (let index = 2; index < children.length; index += 2) {
+        guard = { g: 'and', left: guard, right: children[index] as GuardNode };
+      }
       return guard;
     }
   );
   const DirectScssIfCondition = node<GuardNode>(
     'DirectScssIfCondition',
     sequence(g.DirectScssIfAnd, many(sequence(directScssOr, g.DirectScssIfAnd))),
-    children => {
+    (children) => {
       let guard = children[0] as GuardNode;
-      for (let index = 2; index < children.length; index += 2) guard = { g: 'or', left: guard, right: children[index] as GuardNode };
+      for (let index = 2; index < children.length; index += 2) {
+        guard = { g: 'or', left: guard, right: children[index] as GuardNode };
+      }
       return guard;
     }
   );
@@ -1358,7 +1483,7 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
         choice(sequence(regex(/if(?![-_a-zA-Z0-9\u0080-\uffff])/i), g.DirectScssIfCondition, g.DirectScssIfBody), g.DirectScssIfBody)
       ))
     ),
-    children => {
+    (children) => {
       const branches: IfBranch[] = [{ guard: children[1] as GuardNode, body: children[2] as Statement[] }];
       for (let index = 3; index < children.length;) {
         // Every tail begins with @else. An else-if has its literal `if`, guard,
@@ -1389,9 +1514,11 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
     ),
     (children) => {
       const property = keyword(requireToken(children[1]).value);
-      if (children.length === 3) return paren(property);
+      if (children.length === 3) {
+        return block(property);
+      }
       const value = children[children.length - 2] as ValueNode;
-      return paren(operation(requireToken(children[2]).value, property, value));
+      return block(operation(requireToken(children[2]).value, property, value));
     }
   );
   const DirectScssQueryFunction = node<FunctionCall>(
@@ -1413,7 +1540,7 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
     ),
     children => children.length === 1
       ? requireValue(children[0])
-      : paren(requireValue(children[1]))
+      : block(requireValue(children[1]))
   );
   const DirectScssQueryCondition = node<ValueNode>(
     'DirectScssQueryCondition',
@@ -1448,7 +1575,7 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
       g.DirectScssQueryCondition,
       DirectScssQueryNonOnlyKeyword
     ),
-    children => {
+    (children) => {
       const values = children.map(child => isValue(child) ? child : keyword(requireToken(child).value));
       return values.length === 1 ? values[0]! : spaced(values);
     }
@@ -1460,9 +1587,9 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
   );
   const DirectScssQueryPrelude = node<ValueNode>(
     'DirectScssQueryPrelude', sequence(g.DirectScssQueryClause, many(g.DirectScssQueryPreludeTail)),
-    children => {
+    (children) => {
       const values = children.map(requireValue);
-      return values.length === 1 ? values[0]! : list(values, Array(values.length - 1).fill(','));
+      return values.length === 1 ? values[0]! : list(values, ',');
     }
   );
   // `@supports` is not the media/container query grammar: a general-enclosed
@@ -1528,10 +1655,10 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
       sequence(literal('('), g.CssAstSyntaxProperty, literal(')')),
       sequence(literal('('), g.CssAstSyntaxProperty, literal(':'), g.DirectScssSupportsAtom, literal(')'))
     ),
-    children => {
+    (children) => {
       const property = keyword(requireToken(children[1]).value);
       const value = children.find(isValue);
-      return value === undefined ? paren(property) : paren(operation(':', property, value));
+      return value === undefined ? block(property) : block(operation(':', property, value));
     }
   );
   const DirectScssSupportsInParens = node<ValueNode>(
@@ -1541,10 +1668,12 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
       g.DirectScssSupportsFeature,
       g.DirectScssGeneralEnclosed
     ),
-    children => {
+    (children) => {
       const value = children.find(isValue);
-      if (value === undefined) throw new TypeError('Direct SCSS supports parenthesis lost its typed condition.');
-      return isValue(children[0]) ? value : paren(value);
+      if (value === undefined) {
+        throw new TypeError('Direct SCSS supports parenthesis lost its typed condition.');
+      }
+      return isValue(children[0]) ? value : block(value);
     }
   );
   const DirectScssSupportsNot = node<Keyword>(
@@ -1563,9 +1692,11 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
       sequence(g.DirectScssSupportsNot, g.DirectScssSupportsInParens),
       sequence(g.DirectScssSupportsInParens, many(sequence(g.DirectScssSupportsAndOr, g.DirectScssSupportsInParens)))
     ),
-    children => {
+    (children) => {
       const values = children.filter(isValue);
-      if (values.length === 0) throw new TypeError('Direct SCSS supports condition lost every typed part.');
+      if (values.length === 0) {
+        throw new TypeError('Direct SCSS supports condition lost every typed part.');
+      }
       return values.length === 1 ? values[0]! : spaced(values);
     }
   );
@@ -1621,7 +1752,7 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
   const DirectScssStaticAtPrelude = node<ValueNode | null>(
     'DirectScssStaticAtPrelude',
     noTrivia(many(g.DirectScssStaticAtPreludeAtom)),
-    children => {
+    (children) => {
       const text = children.map(requireToken).map(token => token.value).join('').trim();
       return text.length === 0 ? null : any(text);
     }
@@ -1640,7 +1771,7 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
       g.ScssAstSyntaxLineComment,
       directScssStaticStatementPreludeText
     ))),
-    children => {
+    (children) => {
       // Sass line comments are non-emitting trivia. Keeping their bytes here
       // would comment out the serializer's terminal semicolon.
       const text = children.map(requireToken).filter(token => !token.value.startsWith('//')).map(token => token.value).join('').trim();
@@ -1906,7 +2037,7 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
       sequence(literal('"'), directDoubleQuotedText, literal('"')),
       sequence(literal('\''), directSingleQuotedText, literal('\''))
     ),
-    children => {
+    (children) => {
       const quote = requireToken(children[0]).value;
       const value = requireToken(children[1]).value;
       return quoted(`${quote}${value}${quote}`, value, quote, false);
@@ -1934,11 +2065,14 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
       g.DirectScssInterpolation,
       many(choice(g.DirectScssInterpolation, directScssSelectorTextRun))
     )),
-    children => {
+    (children) => {
       const parts: Interpolation['parts'] = [];
       for (const child of children) {
-        if (isInterpolation(child)) parts.push(...child.parts);
-        else appendLiteral(parts, requireToken(child).value);
+        if (isInterpolation(child)) {
+          parts.push(...child.parts);
+        } else {
+          appendLiteral(parts, requireToken(child).value);
+        }
       }
       return interpolatedSimpleSelector(interpolation(parts));
     }
@@ -2051,7 +2185,7 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
     node<SimpleSelector>(
       'DirectScssGenericPseudo',
       sequence(g.CssAstSyntaxPseudoColon, not(choice(directScssNthPseudoNameWithArgument, directScssSelectorPseudoNameWithArgument)), g.CssAstSyntaxKeyword, optional(sequence(literal('('), g.DirectScssPseudoArgument, literal(')')))),
-      children => {
+      (children) => {
         const head = `${requireToken(children[0]).value}${requireToken(children[1]).value}`;
         return children.length === 2 ? simpleSelector(head) : simpleSelector(`${head}(${children[3] as string})`);
       }
@@ -2071,12 +2205,16 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
   const DirectScssComplexTail = node<ScssComplexTail>(
     'DirectScssComplexTail',
     sequence(optional(directScssCombinator), g.DirectScssCompound),
-    children => {
+    (children) => {
       const compound = children.find(child => typeof child === 'object' && child !== null && 'simples' in child) as CompoundSelector | undefined;
-      if (compound === undefined) throw new TypeError('DirectScssComplexTail requires a compound.');
+      if (compound === undefined) {
+        throw new TypeError('DirectScssComplexTail requires a compound.');
+      }
       const combinator = children.find(child => typeof child === 'object' && child !== null && 'value' in child) as Token | undefined;
       const comb = combinator?.value ?? ' ';
-      if (comb !== ' ' && comb !== '>' && comb !== '+' && comb !== '~' && comb !== '||') throw new TypeError('DirectScssComplexTail produced an invalid combinator.');
+      if (comb !== ' ' && comb !== '>' && comb !== '+' && comb !== '~' && comb !== '||') {
+        throw new TypeError('DirectScssComplexTail produced an invalid combinator.');
+      }
       return { comb, compound };
     }
   );
@@ -2160,6 +2298,7 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
     DirectScssCallArgument,
     DirectScssInterpolatedValue,
     DirectScssParen,
+    DirectScssSquare,
     DirectScssValueAtom,
     DirectScssMathUnary,
     DirectScssMathProduct,

@@ -5,8 +5,8 @@
  * reaches public CSS coverage, the package-stylesheet `parse()` API must run it and
  * return `Stylesheet`; explicit CST APIs remain for language-service use.
  */
-import { balanced, choice, composeLeaf, expect, literal, many, noTrivia, node, not, oneOrMore, optional, parser, regex, rules, scanTo, sequence, trivia } from 'parseman' with { type: 'macro' };
-import type { Combinator } from 'parseman';
+import { balanced, choice, composeLeaf, expect, field, literal, many, noTrivia, node, not, oneOrMore, optional, parser, regex, rules, scanTo, sequence, trivia } from 'parseman' with { type: 'macro' };
+import type { Combinator, FieldMap } from 'parseman';
 import { cssAstSyntax } from '@jesscss/internal-css-recognition/recognition';
 import { opaqueAtRuleRecognition } from '@jesscss/internal-css-recognition/opaque-at-rule';
 import {
@@ -27,14 +27,15 @@ import {
   list,
   operation,
   opaqueAtRuleBlock,
-  paren,
+  block,
   stylesheet,
   rule,
   selist,
   simpleSelector,
   spaced,
   url,
-  quoted
+  quoted,
+  withValueLayout
 } from '@jesscss/core/ast';
 import type {
   AtRuleBlock,
@@ -50,14 +51,15 @@ import type {
   GeneralEnclosed,
   Interpolation,
   Keyword,
-  Paren,
+  Block,
   Quoted,
   Stylesheet,
   Rule,
   SelectorList,
   SimpleSelector,
   Statement,
-  ValueNode
+  ValueNode,
+  ValueSlot
 } from '@jesscss/core/ast';
 
 /** Rules constructed in this local direct-AST reduction map. Shared syntax is fused separately. */
@@ -86,29 +88,29 @@ type CssAstLocalRules = {
   CssAstCalcCall: Combinator<FunctionCall>;
   CssAstCalcVarCall: Combinator<FunctionCall>;
   CssAstCalcVarFallbackPunctuation: Combinator<ValueNode>;
-  CssAstCalcVarFallbackParen: Combinator<Paren>;
+  CssAstCalcVarFallbackParen: Combinator<Block>;
   CssAstCalcVarFallbackBracket: Combinator<ValueNode>;
   CssAstCalcVarFallbackBrace: Combinator<ValueNode>;
   CssAstCalcVarFallbackCall: Combinator<FunctionCall>;
-  CssAstCalcVarFallbackTerm: Combinator<ValueNode>;
+  CssAstCalcVarFallbackTerm: Combinator<ValueSlot>;
   CssAstCalcVarFallbackEmpty: Combinator<ValueNode>;
-  CssAstCalcVarFallbackItem: Combinator<ValueNode>;
-  CssAstCalcVarFallback: Combinator<ValueNode>;
-  CssAstCalcParen: Combinator<Paren>;
+  CssAstCalcVarFallbackItem: Combinator<ValueSlot>;
+  CssAstCalcVarFallback: Combinator<ValueSlot>;
+  CssAstCalcParen: Combinator<Block>;
   CssAstDeclarationVarCall: Combinator<FunctionCall>;
   CssAstDeclarationCall: Combinator<FunctionCall>;
-  CssAstDeclarationParen: Combinator<Paren>;
+  CssAstDeclarationParen: Combinator<Block>;
   CssAstDeclarationAny: Combinator<ValueNode>;
   CssAstDeclarationValueAtom: Combinator<ValueNode>;
-  CssAstDeclarationValueTerm: Combinator<ValueNode>;
-  CssAstDeclarationExtendedValue: Combinator<ValueNode>;
-  CssAstDeclarationValue: Combinator<ValueNode>;
+  CssAstDeclarationValueTerm: Combinator<ValueSlot>;
+  CssAstDeclarationExtendedValue: Combinator<ValueSlot>;
+  CssAstDeclarationValue: Combinator<ValueSlot>;
   CssAstCalcValue: Combinator<ValueNode>;
   CssAstMathProduct: Combinator<ValueNode>;
   CssAstMathSum: Combinator<ValueNode>;
   CssAstValueAtom: Combinator<ValueNode>;
-  CssAstValueTerm: Combinator<ValueNode>;
-  CssAstValue: Combinator<ValueNode>;
+  CssAstValueTerm: Combinator<ValueSlot>;
+  CssAstValue: Combinator<ValueSlot>;
   CssAstImportant: Combinator<boolean>;
   CssAstDeclaration: Combinator<Declaration>;
   CssAstImport: Combinator<AtRuleStatement>;
@@ -168,13 +170,33 @@ function tokenText(child: unknown): string {
   throw new Error('CSS AST grammar lost a required token');
 }
 
+function authoredText(child: unknown): string {
+  if (child === undefined || child === null) {
+    return '';
+  }
+  return Array.isArray(child) ? child.map(authoredText).join('') : tokenText(child);
+}
+
+function authoredSeparators(fields: FieldMap | undefined): string[] {
+  const capture = fields?.separator;
+  if (capture === undefined) {
+    return [];
+  }
+  const captures = Array.isArray(capture) ? capture : [capture];
+  return captures.map(item => authoredText(item.value));
+}
+
+function withAuthoredSeparators<T extends object>(value: T, fields: FieldMap | undefined, expected: number): T {
+  const separators = authoredSeparators(fields);
+  return separators.length === expected ? withValueLayout(value, separators) : value;
+}
+
 function sourceText(child: unknown): string {
   if (typeof child === 'object' && child !== null && 'src' in child && typeof child.src === 'string') {
     return child.src;
   }
   return tokenText(child);
 }
-
 
 function isNodeType<T extends string>(value: unknown, type: T): value is { readonly type: T } {
   return typeof value === 'object' && value !== null && 'type' in value && value.type === type;
@@ -200,6 +222,14 @@ function isComment(value: unknown): value is Comment {
   return isNodeType(value, 'Comment');
 }
 
+function isKeyword(value: unknown): value is Keyword {
+  return isNodeType(value, 'Keyword');
+}
+
+function isInterpolation(value: unknown): value is Interpolation {
+  return isNodeType(value, 'Interpolation');
+}
+
 function isDeclaration(value: unknown): value is Declaration {
   return isNodeType(value, 'Declaration');
 }
@@ -222,8 +252,32 @@ function isValue(value: unknown): value is ValueNode {
     && 'type' in value
     && (value.type === 'Keyword' || value.type === 'Color' || value.type === 'Dimension'
       || value.type === 'Quoted' || value.type === 'Url' || value.type === 'FunctionCall'
-      || value.type === 'Paren' || value.type === 'Operation' || value.type === 'SpacedValue'
+      || value.type === 'Block' || value.type === 'Operation' || value.type === 'SpacedValue'
       || value.type === 'List' || value.type === 'Any' || value.type === 'GeneralEnclosed');
+}
+
+function isValueSlotArray(value: unknown): value is readonly ValueSlot[] {
+  return Array.isArray(value);
+}
+
+function valueSlot(value: ValueSlot): ValueSlot {
+  if (isValueSlotArray(value)) {
+    return value;
+  }
+  if (!isValue(value)) {
+    return value;
+  }
+  if (value.type === 'SpacedValue') {
+    return value.parts;
+  }
+  if (value.type === 'Block' && isValue(value.inner) && value.inner.type === 'SpacedValue') {
+    return { ...value, inner: value.inner.parts };
+  }
+  return value;
+}
+
+function isValueSlotValue(value: unknown): value is ValueSlot {
+  return isValueSlotArray(value) ? value.every(isValueSlotValue) : isValue(value);
 }
 
 function isTerminalText(value: unknown): value is string | { readonly value: string } {
@@ -326,6 +380,18 @@ function valueChildren(children: readonly unknown[]): ValueNode[] {
   return values;
 }
 
+/** Reduce authored declaration/value children without flattening recursive
+ * ValueSlot arrays. Scalar grammar (calc/query operations) intentionally uses
+ * valueChildren above; only component-value and call-argument productions use
+ * this slot-aware reducer. */
+function valueSlotChildren(children: readonly unknown[]): ValueSlot[] {
+  const values = children.filter(isValueSlotValue);
+  if (values.length === 0) {
+    throw new Error('CSS AST value grammar lost its value child');
+  }
+  return values;
+}
+
 function foldOperation(children: readonly unknown[]): ValueNode {
   const first = children.find(isValue);
   if (first === undefined) {
@@ -373,6 +439,10 @@ function keyframeSelectorList(children: readonly unknown[]): SelectorList {
 
 const whitespace = trivia(regex(/[ \t\n\r\f]+/));
 const blockComment = regex(/\/\*(?:[^*]|\*(?!\/))*\*\//);
+// Value-slot boundaries are authored trivia, not semantic leaves. Capture the
+// complete run so raw ValueSlot arrays can replay comments/newlines/indentation
+// without growing a public `separators` field.
+const cssValueTrivia = regex(/(?:[ \t\n\r\f]+|\/\*(?:[^*]|\*(?!\/))*\*\/)+/);
 // Public CSS treats block comments as interstitial trivia. Keep that context
 // scoped to syntactic interiors: body/stylesheet entry still sees a standalone comment
 // as a real Comment statement, and noTrivia lexical leaves still cannot glue
@@ -487,7 +557,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
       optional(sequence(optional(blockComment), regex(/of(?![-\w])/i), g.CssAstSelector)),
       regex(/(?=\))/)
     )),
-    children => {
+    (children) => {
       const nth = `-${tokenText(children[1])}`;
       const selector = children.find(isSelectorList);
       const comment = children.find(child => isTerminalText(child) && tokenText(child).startsWith('/*'));
@@ -628,7 +698,11 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
       // payload leaf remains strict and `url(foo bar)` cannot fall through.
       many(blockComment),
       literal('('),
+      optional(regex(/[ \t\n\r\f]+/)),
+      many(blockComment),
       optional(choice(g.CssAstQuoted, CssAstUrlUnquoted)),
+      optional(regex(/[ \t\n\r\f]+/)),
+      many(blockComment),
       expect(literal(')'), ')')
     ),
     (children) => {
@@ -638,10 +712,11 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
   );
   const CssAstCall = node(
     'CssAstCall',
-    sequence(genericFunctionName, literal('('), optional(sequence(g.CssAstValueTerm, many(sequence(literal(','), g.CssAstValueTerm)))), literal(')')),
-    (children) => {
+    sequence(genericFunctionName, literal('('), optional(cssValueTrivia), optional(sequence(g.CssAstValueTerm, many(sequence(field('separator', noTrivia(sequence(literal(','), optional(cssValueTrivia)))), g.CssAstValueTerm)))), optional(cssValueTrivia), literal(')')),
+    (children, fields) => {
       const name = tokenText(children[0]);
-      return funcCall(name, children.slice(1).filter(isValue));
+      const args = children.slice(1).filter(isValueSlotValue);
+      return funcCall(name, withAuthoredSeparators(args, fields, Math.max(0, args.length - 1)));
     }
   );
   // CSS arithmetic parentheses are structural only inside calc(), where they
@@ -649,7 +724,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
   const CssAstCalcParen = node(
     'CssAstCalcParen',
     noTrivia(sequence(literal('('), many(calcWhitespace), g.CssAstMathSum, many(calcWhitespace), literal(')'))),
-    children => paren(valueChildren(children)[0]!)
+    children => block(valueChildren(children)[0]!)
   );
   // `var()` is a component-value substitution boundary even inside a strict
   // calc expression. Its fallback is its own component-value sequence, while
@@ -723,7 +798,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
       optional(g.CssAstCalcVarFallback),
       literal(')')
     ),
-    children => paren(valueChildren(children)[0] ?? any(''))
+    children => block(valueSlotChildren(children)[0] ?? any(''))
   );
   // Core has no bracket value node. Keep a bracket component as its existing
   // lossless Any leaf, but let Parseman recognize its balanced structure so a
@@ -774,9 +849,9 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
       choice(g.CssAstCalcVarCall, g.CssAstCalcVarFallbackCall, g.CssAstValueAtom, g.CssAstCalcVarFallbackParen, g.CssAstCalcVarFallbackBracket, g.CssAstCalcVarFallbackBrace, g.CssAstCalcVarFallbackPunctuation),
       many(sequence(many(calcWhitespace), choice(g.CssAstCalcVarCall, g.CssAstCalcVarFallbackCall, g.CssAstValueAtom, g.CssAstCalcVarFallbackParen, g.CssAstCalcVarFallbackBracket, g.CssAstCalcVarFallbackBrace, g.CssAstCalcVarFallbackPunctuation)))
     ),
-    children => {
-      const values = valueChildren(children);
-      return values.length === 1 ? values[0]! : spaced(values);
+    (children) => {
+      const values = valueSlotChildren(children);
+      return values.length === 1 ? values[0]! : values;
     }
   );
   const CssAstCalcVarFallbackEmpty = node(
@@ -787,7 +862,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
   const CssAstCalcVarFallbackItem = node(
     'CssAstCalcVarFallbackItem',
     choice(g.CssAstCalcVarFallbackTerm, g.CssAstCalcVarFallbackEmpty),
-    children => valueChildren(children)[0]!
+    children => valueSlotChildren(children)[0]!
   );
   const CssAstCalcVarFallback = node(
     'CssAstCalcVarFallback',
@@ -795,9 +870,9 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
       g.CssAstCalcVarFallbackItem,
       many(sequence(literal(','), many(calcWhitespace), g.CssAstCalcVarFallbackItem))
     ),
-    children => {
-      const values = valueChildren(children);
-      return values.length === 1 ? values[0]! : list(values, Array(values.length - 1).fill(','));
+    (children) => {
+      const values = valueSlotChildren(children);
+      return values.length === 1 ? values[0]! : list(values, ',');
     }
   );
   const CssAstCalcVarFallbackCall = node(
@@ -808,7 +883,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
       optional(sequence(not(regex(/(?=\))/)), g.CssAstCalcVarFallbackItem, many(sequence(literal(','), many(calcWhitespace), g.CssAstCalcVarFallbackItem)))),
       literal(')')
     ),
-    children => funcCall(tokenText(children[0]), children.filter(isValue))
+    children => funcCall(tokenText(children[0]), children.filter(isValueSlotValue))
   );
   const CssAstCalcVarCall = node(
     'CssAstCalcVarCall',
@@ -819,7 +894,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
       optional(sequence(literal(','), many(calcWhitespace), choice(g.CssAstCalcVarFallback, g.CssAstCalcVarFallbackEmpty))),
       literal(')')
     ),
-    children => funcCall(tokenText(children[0]), children.filter(isValue))
+    children => funcCall(tokenText(children[0]), children.filter(isValueSlotValue))
   );
   const CssAstCalcValue = node(
     'CssAstCalcValue',
@@ -847,7 +922,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
   const CssAstDeclarationParen = node(
     'CssAstDeclarationParen',
     sequence(literal('('), optional(g.CssAstDeclarationValue), literal(')')),
-    children => paren(valueChildren(children)[0] ?? any(''))
+    children => block(valueSlotChildren(children)[0] ?? any(''))
   );
   const CssAstDeclarationAny = node(
     'CssAstDeclarationAny',
@@ -856,20 +931,21 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
     // swallow the numeric leaf into opaque bytes; punctuation runs such as
     // `//` remain losslessly represented as one Any node.
     choice(
-      noTrivia(sequence(literal('/'), regex(/(?=[.0-9 \t\n\r\f])/))),
-      oneOrMore(declarationAnyCharacter)
+      noTrivia(sequence(not(sequence(literal('/'), literal('*'))), literal('/'), regex(/(?=[.0-9 \t\n\r\f])/))),
+      sequence(not(sequence(literal('/'), literal('*'))), oneOrMore(declarationAnyCharacter))
     ),
     children => any(children.map(tokenText).join(''))
   );
   const CssAstDeclarationCall = node(
     'CssAstDeclarationCall',
-    sequence(not(g.CssAstSyntaxUrlOpen), genericFunctionName, literal('('), optional(sequence(g.CssAstDeclarationValueTerm, many(sequence(literal(','), g.CssAstDeclarationValueTerm)))), literal(')')),
-    children => {
+    sequence(not(g.CssAstSyntaxUrlOpen), genericFunctionName, literal('('), optional(cssValueTrivia), optional(sequence(g.CssAstDeclarationValueTerm, many(sequence(field('separator', noTrivia(sequence(literal(','), optional(cssValueTrivia)))), g.CssAstDeclarationValueTerm)))), optional(cssValueTrivia), literal(')')),
+    (children, fields) => {
       const name = children.find((child): child is { value: string } => typeof child === 'object' && child !== null && 'value' in child);
       if (name === undefined) {
         throw new Error('CssAstDeclarationCall requires a function name');
       }
-      return funcCall(name.value, children.filter(isValue));
+      const args = children.filter(isValueSlotValue);
+      return funcCall(name.value, withAuthoredSeparators(args, fields, Math.max(0, args.length - 1)));
     }
   );
   // `var()` has one required custom-property argument and one optional
@@ -886,7 +962,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
       optional(sequence(literal(','), many(calcWhitespace), choice(g.CssAstCalcVarFallback, g.CssAstCalcVarFallbackEmpty))),
       literal(')')
     ),
-    children => funcCall(tokenText(children[0]), children.filter(isValue))
+    children => funcCall(tokenText(children[0]), children.filter(isValueSlotValue))
   );
   const CssAstDeclarationValueAtom = node(
     'CssAstDeclarationValueAtom',
@@ -905,23 +981,32 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
   );
   const CssAstDeclarationValueTerm = node(
     'CssAstDeclarationValueTerm',
-    sequence(
+    noTrivia(sequence(
       many(blockComment),
       g.CssAstDeclarationValueAtom,
-      many(sequence(many(blockComment), g.CssAstDeclarationValueAtom)),
+      many(choice(
+        sequence(field('separator', cssValueTrivia), g.CssAstDeclarationValueAtom),
+        g.CssAstDeclarationValueAtom
+      )),
       many(blockComment)
-    ),
-    (children) => {
-      const values = valueChildren(children);
-      return values.length === 1 ? values[0]! : spaced(values);
+    )),
+    (children, fields) => {
+      const values = valueSlotChildren(children);
+      if (values.length === 1) {
+        return values[0]!;
+      }
+      return withAuthoredSeparators(values, fields, values.length - 1);
     }
   );
   const CssAstDeclarationExtendedValue = node(
     'CssAstDeclarationExtendedValue',
-    sequence(g.CssAstDeclarationValueTerm, many(sequence(literal(','), g.CssAstDeclarationValueTerm))),
-    (children) => {
-      const terms = valueChildren(children);
-      return terms.length === 1 ? terms[0]! : list(terms, Array(terms.length - 1).fill(','));
+    sequence(g.CssAstDeclarationValueTerm, many(sequence(field('separator', noTrivia(sequence(literal(','), optional(cssValueTrivia)))), g.CssAstDeclarationValueTerm))),
+    (children, fields) => {
+      const terms = valueSlotChildren(children);
+      if (terms.length === 1) {
+        return terms[0]!;
+      }
+      return withAuthoredSeparators(list(terms, ','), fields, terms.length - 1);
     }
   );
   const CssAstDeclarationValue = node(
@@ -932,23 +1017,32 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
       g.CssAstDeclarationCall,
       sequence(not(sequence(g.CssAstSyntaxKeyword, literal('('))), g.CssAstDeclarationExtendedValue)
     ),
-    children => valueChildren(children)[0]!
+    children => valueSlotChildren(children)[0]!
   );
   const CssAstValueAtom = node(
     'CssAstValueAtom',
     choice(g.CssAstDimension, g.CssAstColor, g.CssAstUrl, g.CssAstCalcCall, g.CssAstCall, g.CssAstQuoted, CssAstCustomPropertyValue, g.CssAstKeyword),
     children => valueChildren(children)[0]!
   );
-  const CssAstValueTerm = node('CssAstValueTerm', oneOrMore(CssAstValueAtom), (children) => {
-    const values = valueChildren(children);
-    return values.length === 1 ? values[0]! : spaced(values);
+  const CssAstValueTerm = node('CssAstValueTerm', noTrivia(sequence(CssAstValueAtom, many(choice(
+    sequence(field('separator', cssValueTrivia), CssAstValueAtom),
+    CssAstValueAtom
+  )))), (children, fields) => {
+    const values = valueSlotChildren(children);
+    if (values.length === 1) {
+      return values[0]!;
+    }
+    return withAuthoredSeparators(values, fields, values.length - 1);
   });
   const CssAstValue = node(
     'CssAstValue',
-    sequence(g.CssAstValueTerm, many(sequence(literal(','), g.CssAstValueTerm))),
-    (children) => {
-      const terms = valueChildren(children);
-      return terms.length === 1 ? terms[0]! : list(terms, Array(terms.length - 1).fill(','));
+    sequence(g.CssAstValueTerm, many(sequence(field('separator', noTrivia(sequence(literal(','), optional(cssValueTrivia)))), g.CssAstValueTerm))),
+    (children, fields) => {
+      const terms = valueSlotChildren(children);
+      if (terms.length === 1) {
+        return terms[0]!;
+      }
+      return withAuthoredSeparators(list(terms, ','), fields, terms.length - 1);
     }
   );
   // Comments are CSS component-value trivia around a priority marker. They
@@ -991,13 +1085,13 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
         if (value === undefined) {
           throw new Error('CssAstDeclaration requires a captured custom-property value');
         }
-        return decl(name, value);
+        return decl(name, valueSlot(value));
       }
-      const value = children.find(isValue);
+      const value = children.find(isValueSlotValue);
       if (value === undefined) {
         throw new Error('CssAstDeclaration requires a structured value');
       }
-      return decl(name, value, null, children.includes(true));
+      return decl(name, Array.isArray(value) ? value : valueSlot(value), null, children.includes(true));
     }
   );
   // This import-local URL target intentionally accepts the public grammar's
@@ -1108,7 +1202,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
         literal('}')
       ))
     ),
-    children => {
+    (children) => {
       const prelude = children[1];
       const rawBody = children[3];
       if ((prelude !== null && typeof prelude !== 'string') || typeof rawBody !== 'string') {
@@ -1123,12 +1217,12 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
   const CssAstQueryBareFeature = node(
     'CssAstQueryBareFeature',
     sequence(literal('('), g.CssAstProperty, literal(')')),
-    children => paren(keyword(tokenText(children[1]!)))
+    children => block(keyword(tokenText(children[1]!)))
   );
   const CssAstQueryColonFeature = node(
     'CssAstQueryColonFeature',
     sequence(literal('('), g.CssAstProperty, literal(':'), g.CssAstValue, literal(')')),
-    children => paren(operation(':', keyword(tokenText(children[1]!)), valueChildren(children)[0]!))
+    children => block(operation(':', keyword(tokenText(children[1]!)), valueChildren(children)[0]!))
   );
   const CssAstQueryComparisonFeature = node(
     'CssAstQueryComparisonFeature',
@@ -1140,7 +1234,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
       optional(sequence(choice(literal('<='), literal('>='), literal('<'), literal('='), literal('>')), g.CssAstValue)),
       literal(')')
     ),
-    children => paren(chainedQueryComparison(keyword(tokenText(children[1]!)), children))
+    children => block(chainedQueryComparison(keyword(tokenText(children[1]!)), children))
   );
   // Media/container ranges can put the feature name between two values:
   // `(100em < width < 200em)`. Keep both comparisons as typed Operations;
@@ -1174,7 +1268,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
         }
         result = operation(operators[1]!, result, right);
       }
-      return paren(result);
+      return block(result);
     }
   );
   const CssAstQueryFeature = node(
@@ -1185,9 +1279,11 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
   const CssAstQueryNonOnlyKeyword = node<Keyword>(
     'CssAstQueryNonOnlyKeyword',
     sequence(not(g.CssAstSyntaxQueryOnly), g.CssAstKeyword),
-    children => {
-      const value = children.find(child => isNodeType(child, 'Keyword'));
-      if (value === undefined) throw new Error('CSS AST query keyword requires a keyword fact');
+    (children) => {
+      const value = children.find(isKeyword);
+      if (value === undefined) {
+        throw new Error('CSS AST query keyword requires a keyword fact');
+      }
       return value;
     }
   );
@@ -1211,7 +1307,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
       CssAstQueryOnlyClause,
       sequence(CssAstQueryTerm, many(sequence(optional(literal(',')), CssAstQueryTerm)))
     ),
-    children => {
+    (children) => {
       const values = valueChildren(children);
       return values.length === 1 ? values[0]! : spaced(values);
     }
@@ -1224,7 +1320,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
     ),
     (children) => {
       const values = valueChildren(children);
-      return values.length === 1 ? values[0]! : list(values, Array(values.length - 1).fill(','));
+      return values.length === 1 ? values[0]! : list(values, ',');
     }
   );
   // A supports condition is deliberately distinct from the media/container
@@ -1253,7 +1349,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
       noTrivia(sequence(literal('['), g.CssAstGeneralEnclosedContent, literal(']'))),
       noTrivia(sequence(literal('{'), g.CssAstGeneralEnclosedContent, literal('}')))
     ),
-    children => children.map(child => isNodeType(child, 'Interpolation')
+    children => children.map(child => isInterpolation(child)
       ? child.parts.map(part => 'lit' in part ? part.lit : '').join('')
       : tokenText(child)).join('')
   );
@@ -1272,9 +1368,11 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
       noTrivia(sequence(g.CssAstSyntaxQueryFunctionName, literal('('), g.CssAstGeneralEnclosedContent, literal(')'))),
       noTrivia(sequence(literal('('), g.CssAstGeneralEnclosedContent, literal(')')))
     ),
-    children => {
+    (children) => {
       const content = children.find((child): child is Interpolation => isNodeType(child, 'Interpolation'));
-      if (content === undefined) throw new TypeError('CSS general-enclosed lost its grammar-owned content.');
+      if (content === undefined) {
+        throw new TypeError('CSS general-enclosed lost its grammar-owned content.');
+      }
       const head = children[0];
       return isTerminalText(head) && tokenText(head) !== '('
         ? generalEnclosed('function', tokenText(head), content)
@@ -1297,7 +1395,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
       }),
       expect(literal(')'), ')')
     ),
-    (children) => funcCall(tokenText(children[0]!), [any(children.length > 2 ? tokenText(children[2]!) : '')])
+    children => funcCall(tokenText(children[0]!), [any(children.length > 2 ? tokenText(children[2]!) : '')])
   );
   const CssAstSupportsInParens = node(
     'CssAstSupportsInParens',
@@ -1308,7 +1406,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
     ),
     (children) => {
       const value = valueChildren(children)[0]!;
-      return isValue(children[0]) ? value : paren(value);
+      return isValue(children[0]) ? value : block(value);
     }
   );
   const CssAstSupportsCondition = node(
@@ -1325,7 +1423,9 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
         } else {
           const text = tokenText(child);
           const normalized = text.toLowerCase();
-          if (normalized === 'not' || normalized === 'and' || normalized === 'or') values.push(keyword(text));
+          if (normalized === 'not' || normalized === 'and' || normalized === 'or') {
+            values.push(keyword(text));
+          }
         }
       }
       return values.length === 1 ? values[0]! : spaced(values);
@@ -1339,7 +1439,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
     sequence(g.CssAstSupportsCondition, many(sequence(literal(','), g.CssAstSupportsCondition))),
     (children) => {
       const values = valueChildren(children);
-      return values.length === 1 ? values[0]! : list(values, Array(values.length - 1).fill(','));
+      return values.length === 1 ? values[0]! : list(values, ',');
     }
   );
   const CssAstLayerBlock = node(
@@ -1458,7 +1558,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
         literal('{'),
         many(choice(g.CssAstComment, g.CssAstConditionalBlock, g.CssAstDescriptorBlock, g.CssAstFontFeatureValuesBlock, g.CssAstScopeBlock, g.CssAstLayerBlock, g.CssAstStartingStyleBlock, g.CssAstPageBlock, g.CssAstDocumentBlock, g.CssAstOpaqueAtRuleBlock, g.CssAstRuleset)),
         literal('}')
-      ),
+      )
     ),
     (children) => {
       return atRuleBlock(tokenText(children[0]!), children.find(isValue)!, blockStatements(children));
@@ -1490,7 +1590,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
         literal('{'),
         many(choice(g.CssAstComment, g.CssAstAtRuleStatement, g.CssAstDeclaration, g.CssAstNestedConditionalBlock, g.CssAstDescriptorBlock, g.CssAstFontFeatureValuesBlock, g.CssAstScopeBlock, g.CssAstNestedStartingStyleBlock, g.CssAstNestedLayerBlock, g.CssAstPageBlock, g.CssAstKeyframes, g.CssAstDocumentBlock, g.CssAstOpaqueAtRuleBlock, g.CssAstRuleset, literal(';'))),
         literal('}')
-      ),
+      )
     ),
     (children) => {
       return atRuleBlock(tokenText(children[0]!), children.find(isValue)!, rulesetStatements(children));

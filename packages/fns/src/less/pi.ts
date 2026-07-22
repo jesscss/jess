@@ -1,6 +1,12 @@
-import { defineMathConstantFunction } from './math-factory.js';
+import { defineFunction, makeDimension } from '@jesscss/core/value';
 
 /**
  * Less `pi()` — the mathematical constant π as a unitless `Dimension`.
  */
-export default defineMathConstantFunction('pi', 'PI');
+const pi = defineFunction('pi', {
+  params: [] as const,
+  body: () => makeDimension(Math.PI)
+});
+
+export { pi };
+export default pi;

@@ -1,59 +1,71 @@
-import { Bool, List, Node, Paren, Quoted, coerceListItems } from '@jesscss/core';
-import { getListSeparator, isBracketedList } from '@jesscss/core';
+import type { List, ValueObj } from '@jesscss/core/value';
+import {
+  coerceListItems,
+  isBracketedList,
+  makeBlock,
+  makeList
+} from '@jesscss/core/value';
 
-export type SassListSep = ',' | ';' | '/' | undefined;
+/** Sass's public separator names mapped onto the core value facts. */
+export type SassListSep = ',' | ' ' | '/' | 'undecided';
 
-export function toListOptionSep(separator: ',' | ';' | '/' | ' '): SassListSep {
-  return separator === ' ' ? undefined : separator;
+function listValue(value: ValueObj): List | undefined {
+  if (value.type === 'List') {
+    return value;
+  }
+  if (value.type === 'Block' && value.inner.type === 'List') {
+    return value.inner;
+  }
+  return undefined;
 }
 
-export function getSassListInfo(node: Node): {
-  items: readonly Node[];
+export function getSassListInfo(value: ValueObj): {
+  values: readonly ValueObj[];
   sep: SassListSep;
   bracketed: boolean;
 } {
+  const list = listValue(value);
   return {
-    items: coerceListItems(node),
-    sep: toListOptionSep(getListSeparator(node)),
-    bracketed: isBracketedList(node)
+    values: coerceListItems(value),
+    sep: list?.sep ?? ' ',
+    bracketed: isBracketedList(value)
   };
 }
 
 export function resolveSassSeparator(
-  separator: Quoted | undefined,
+  separator: ValueObj | undefined,
   fallback: SassListSep
 ): SassListSep {
-  if (!separator) {
+  if (separator === undefined) {
     return fallback;
   }
-
-  switch (separator.valueOf()) {
-    case 'comma':
-      return ',';
-    case 'slash':
-      return '/';
-    case 'space':
-      return undefined;
-    case 'auto':
-      return fallback;
-    default:
-      throw new Error('$separator: Must be "space", "comma", "slash", or "auto".');
+  if (separator.type !== 'Quoted' && separator.type !== 'Keyword') {
+    throw new TypeError('$separator must be a quoted separator name');
+  }
+  const value = separator.type === 'Quoted' ? separator.value : separator.text;
+  switch (value) {
+    case 'comma': return ',';
+    case 'slash': return '/';
+    case 'space': return ' ';
+    case 'auto': return fallback;
+    default: throw new Error('$separator: Must be "space", "comma", "slash", or "auto".');
   }
 }
 
 export function resolveSassBracketed(
-  bracketed: Bool | Quoted | undefined,
+  bracketed: ValueObj | undefined,
   fallback: boolean
 ): boolean {
-  if (!bracketed) {
+  if (bracketed === undefined) {
     return fallback;
   }
-
-  if (bracketed instanceof Bool) {
+  if (bracketed.type === 'Bool') {
     return bracketed.value;
   }
-
-  const value = bracketed.valueOf();
+  if (bracketed.type !== 'Quoted' && bracketed.type !== 'Keyword') {
+    throw new TypeError('$bracketed must be true, false, or auto');
+  }
+  const value = bracketed.type === 'Quoted' ? bracketed.value : bracketed.text;
   if (value === 'auto') {
     return fallback;
   }
@@ -63,30 +75,30 @@ export function resolveSassBracketed(
   if (value === 'false') {
     return false;
   }
-
   throw new Error('$bracketed: Must be true, false, or "auto".');
 }
 
 export function createSassListResult(
-  items: readonly Node[],
+  values: readonly ValueObj[],
   sep: SassListSep,
   bracketed: boolean
-): List | Paren;
-export function createSassListResult(
-  items: readonly Node[],
-  sep: SassListSep,
-  bracketed: false
-): List;
-export function createSassListResult(
-  items: readonly Node[],
-  sep: SassListSep,
-  bracketed: true
-): Paren;
-export function createSassListResult(
-  items: readonly Node[],
-  sep: SassListSep,
-  bracketed = false
-): List | Paren {
-  const list = new List([...items], sep === undefined ? undefined : { sep });
-  return bracketed ? new Paren(list, { delimiter: 'square' }) : list;
+): ValueObj {
+  const list = makeList(values, sep);
+  return bracketed ? makeBlock(list, 'square') : list;
+}
+
+/**
+ * Convert Sass's one-based list index (including its negative-from-end form)
+ * to the strict zero-based index accepted by the core value helpers.
+ */
+export function resolveSassListIndex(index: number, length: number): number {
+  const normalized = Math.floor(index);
+  if (!Number.isFinite(normalized)) {
+    throw new TypeError('list index must be finite');
+  }
+  const zeroBased = normalized < 0 ? length + normalized : normalized - 1;
+  if (zeroBased < 0 || zeroBased >= length) {
+    throw new RangeError(`List index ${normalized} is out of bounds`);
+  }
+  return zeroBased;
 }

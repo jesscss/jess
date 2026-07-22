@@ -108,7 +108,7 @@ design; supersedes 4.x's positional string-replace):
 The `.css` here is the `ast/` v5 render (the v5 reference), captured via
 `bridgeToAst` + `serialize({ collapseNesting: true })` and locked in-repo by
 `packages/core/src/ast/parse-host/__tests__/extend-subspan-wrap.test.ts` (ast/)
-and `packages/jess/test/spine-production-ratchet.test.ts` (production spine,
+and `packages/jess/test/ast-v2-production-ratchet.test.ts` (public AST-v2 route,
 `SUB-SPAN #30` cases).
 
 **Divergence from current alpha** (verified by running `alpha`'s own `lessc` on

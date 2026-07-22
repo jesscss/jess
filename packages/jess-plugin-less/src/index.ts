@@ -8,7 +8,7 @@ import {
   type SafeParseOptions,
   type ErrorDiagnostic
 } from '@jesscss/core';
-import { makeDimension, makeKeyword, makeQuoted, type Fn, type PluginHost, type ValueObj } from '@jesscss/core/value';
+import { defineFunction, makeDimension, makeKeyword, makeQuoted, type Fn, type PluginHost, type ValueObj } from '@jesscss/core/value';
 import type { EqualityMode, MathMode, UnitMode, LessOptions } from 'styles-config';
 import path from 'node:path';
 import { createRequire } from 'node:module';
@@ -38,40 +38,47 @@ function toNativeLessValue(value: ValueObj): unknown {
     case 'Dimension': return { type: 'Dimension', value: value.number, unit: value.unit, valueOf: () => value.number };
     case 'Quoted': return { type: 'Quoted', value: value.value, quote: value.quote, escaped: value.escaped, valueOf: () => value.bytes };
     case 'Color': return { type: 'Color', rgb: value.rgb, alpha: value.alpha, valueOf: () => value.bytes };
-    case 'List': return { type: 'Expression', value: value.items.map(toNativeLessValue), valueOf: () => value.bytes };
+    case 'List': return { type: 'Expression', value: value.value.map(toNativeLessValue), valueOf: () => value.bytes };
     default: return { type: 'Anonymous', value: value.bytes, valueOf: () => value.bytes };
   }
 }
 
 function fromNativeLessValue(value: unknown): ValueObj {
-  if (typeof value === 'number') return makeDimension(value);
-  if (typeof value === 'string') return makeKeyword(value);
+  if (typeof value === 'number') {
+    return makeDimension(value);
+  }
+  if (typeof value === 'string') {
+    return makeKeyword(value);
+  }
   if (value && typeof value === 'object') {
     const candidate = value as { type?: unknown; value?: unknown; unit?: unknown; quote?: unknown; escaped?: unknown; valueOf?: () => unknown };
     if ((candidate.type === 'Dimension' || candidate.type === 'Num') && typeof candidate.value === 'number') {
       return makeDimension(candidate.value, typeof candidate.unit === 'string' ? candidate.unit : '');
     }
     if (candidate.type === 'Quoted' && typeof candidate.value === 'string') {
-      return makeQuoted(candidate.value, candidate.quote === "'" ? "'" : '"', candidate.escaped === true);
+      return makeQuoted(candidate.value, candidate.quote === '\'' ? '\'' : '"', candidate.escaped === true);
     }
-    if (typeof candidate.value === 'string') return makeKeyword(candidate.value);
-    if (typeof candidate.valueOf === 'function') return makeKeyword(String(candidate.valueOf()));
+    if (typeof candidate.value === 'string') {
+      return makeKeyword(candidate.value);
+    }
+    if (typeof candidate.valueOf === 'function') {
+      return makeKeyword(String(candidate.valueOf()));
+    }
   }
   return makeKeyword(value == null ? '' : String(value));
 }
 
 function nativeLessFn(name: string, fn: NativeLessFunction): Fn {
-  return {
-    name: name.toLowerCase(),
+  return defineFunction(name.toLowerCase(), {
     variadic: true,
     params: [],
-    body: list => {
-      const result = fn(...list.items.map(toNativeLessValue));
+    body: (list) => {
+      const result = fn(...list.value.map(toNativeLessValue));
       return result !== null && typeof result === 'object' && 'then' in result && typeof result.then === 'function'
         ? Promise.resolve(result).then(fromNativeLessValue)
         : fromNativeLessValue(result);
     }
-  };
+  });
 }
 
 type LoadedPluginModule = {
@@ -109,10 +116,15 @@ function normalizeUrlPath(url: string): string {
   const segments = url.split('/');
   const normalized: string[] = [];
   for (const segment of segments) {
-    if (segment === '.') continue;
+    if (segment === '.') {
+      continue;
+    }
     if (segment === '..') {
-      if (normalized.length === 0 || normalized[normalized.length - 1] === '..') normalized.push(segment);
-      else normalized.pop();
+      if (normalized.length === 0 || normalized[normalized.length - 1] === '..') {
+        normalized.push(segment);
+      } else {
+        normalized.pop();
+      }
       continue;
     }
     normalized.push(segment);
@@ -121,13 +133,19 @@ function normalizeUrlPath(url: string): string {
 }
 
 function isUrlRelative(url: string): boolean {
-  if (url.startsWith('/') || url.startsWith('#')) return false;
+  if (url.startsWith('/') || url.startsWith('#')) {
+    return false;
+  }
   const colon = url.indexOf(':');
-  if (colon < 0) return true;
+  if (colon < 0) {
+    return true;
+  }
   for (let index = 0; index < colon; index++) {
     const code = url.charCodeAt(index);
     const isLetter = (code >= 65 && code <= 90) || (code >= 97 && code <= 122);
-    if (!isLetter && url[index] !== '-') return true;
+    if (!isLetter && url[index] !== '-') {
+      return true;
+    }
   }
   return false;
 }
@@ -142,7 +160,7 @@ function rewriteUrlPath(url: string, rootpath: string): string {
 function escapeUnquotedUrlPath(pathValue: string): string {
   let escaped = '';
   for (const char of pathValue) {
-    escaped += char === '(' || char === ')' || char === "'" || char === '"' || ' \t\n\r\f'.includes(char)
+    escaped += char === '(' || char === ')' || char === '\'' || char === '"' || ' \t\n\r\f'.includes(char)
       ? `\\${char}`
       : char;
   }
@@ -219,10 +237,14 @@ export class LessPlugin extends AbstractPlugin {
       if (rewriteUrls !== 'local' || local) {
         const rebasesImportedUrl = rewriteUrls === true || rewriteUrls === 'all' || (rewriteUrls === 'local' && local);
         let rootpath = this.opts.rootpath ?? '';
-        if (!quoted) rootpath = escapeUnquotedUrlPath(rootpath);
+        if (!quoted) {
+          rootpath = escapeUnquotedUrlPath(rootpath);
+        }
         if (rebasesImportedUrl && fromFilePath && entryFilePath) {
           const relativeDirectory = path.relative(path.dirname(entryFilePath), path.dirname(fromFilePath));
-          if (relativeDirectory) rootpath += `${relativeDirectory.split(path.sep).join('/')}/`;
+          if (relativeDirectory) {
+            rootpath += `${relativeDirectory.split(path.sep).join('/')}/`;
+          }
         }
         transformed = rewriteUrlPath(value, rootpath);
       } else {
@@ -252,8 +274,14 @@ export class LessPlugin extends AbstractPlugin {
     if (!host) {
       const fns: Fn[] = [];
       const registry: NativeLessFunctionRegistry = {
-        add: (name, fn) => { fns.push(nativeLessFn(name, fn)); },
-        addMultiple: functions => { for (const [name, fn] of Object.entries(functions)) registry.add(name, fn); }
+        add: (name, fn) => {
+          fns.push(nativeLessFn(name, fn));
+        },
+        addMultiple: (functions) => {
+          for (const [name, fn] of Object.entries(functions)) {
+            registry.add(name, fn);
+          }
+        }
       };
       const less: NativeLessApi = {
         functions: { functionRegistry: registry },
@@ -265,11 +293,13 @@ export class LessPlugin extends AbstractPlugin {
           Quoted: class {
             type = 'Quoted' as const;
             constructor(readonly quote: string, readonly value: string, readonly escaped = false) {}
-          },
-        },
+          }
+        }
       };
       const configured = (this.opts as LessPluginOptions & { plugins?: NativeLessPlugin[] }).plugins ?? [];
-      for (const plugin of configured) plugin.install?.(less, undefined, registry);
+      for (const plugin of configured) {
+        plugin.install?.(less, undefined, registry);
+      }
       host = {
         ...(fns.length === 0 ? {} : { globalFns: fns }),
         loadPlugin: async ({ specifier, options }) => {
@@ -278,7 +308,9 @@ export class LessPlugin extends AbstractPlugin {
           const functions = module && typeof module === 'object' && module.functions && typeof module.functions === 'object'
             ? module.functions
             : undefined;
-          if (!functions) return [];
+          if (!functions) {
+            return [];
+          }
           return Object.entries(functions).map(([name, fn]) => nativeLessFn(name, fn));
         }
       };

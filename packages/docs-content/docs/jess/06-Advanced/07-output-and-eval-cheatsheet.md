@@ -71,8 +71,10 @@ $a: #a80000; $b: #00000b;
 ```
 
 ### Color functions pass through un-operated
-`rgb`/`rgba`/`hsl`/`hsla` with literal args and no operation emit verbatim; the
-function runs only when the value is operated on or given variable arguments.
+CSS-shaped `rgb`/`rgba`/`hsl`/`hsla` with three or more argument slots and no
+operation emit verbatim; the function runs when the value is operated on or
+given a Less overload/variable argument. Less one-/two-slot overloads such as
+`rgba(#fff)` dispatch normally.
 
 ```jess
 .a { color: hsl(200, 50%, 40%); }               // verbatim

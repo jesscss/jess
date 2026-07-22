@@ -7,6 +7,13 @@ Before using the publish commands, check
 the current readiness gates for API stability, expanded Less API coverage, and
 CI guard work.
 
+The candidate must also keep the F5 deferred CSS color-call gate recorded there
+green: CSS-shaped three-or-more-slot and un-operated relative `rgb()`/`hsl()`
+calls are verbatim until value demand, while Less one-/two-slot overloads
+dispatch normally and malformed arities use the existing evaluator
+`functionMode` policy. The focused evidence is 17/17 in
+`function-error-public-semantics.test.ts`.
+
 ## Initial publish scope
 
 The alpha stream publishes only allowlisted packages in `scripts/release/alpha-allowlist.json`:
@@ -67,6 +74,27 @@ Blocked (do not publish in alpha yet):
   - `--tag alpha` publishes are allowed only from `alpha`.
   - non-alpha tags (future stable releases) are allowed only from `main`.
 
+## Publish order for the external Less alpha
+
+The Jess alpha and the external `less@5.0.0-alpha.1` package are separate
+releases. Jess `2.0.0-alpha.9` must be published and verified in the packed
+consumer first. The sibling Less repository keeps `link:` dependencies during
+local development; its alpha publish script requires `JESS_VERSION` and
+temporarily rewrites the four Jess runtime dependencies (`@jesscss/core`,
+`@jesscss/plugin-less`, `@jesscss/plugin-less-compat`, and `jess`) to that
+exact registry version while packing/publishing, then restores the local
+manifest. Publish Less only after the Jess alpha.9 artifacts are queryable:
+
+```bash
+JESS_VERSION=2.0.0-alpha.9 npm publish --tag alpha --access public
+```
+
+The Less package's built `lessc` smoke test and typecheck are the publish
+preflight. Its full upstream node suite still reports the classified v5
+known-limitations inventory; those failures are documented in
+[`less-v5-alpha-readiness.md`](./less-v5-alpha-readiness.md) and must not be
+silently relabeled as passing.
+
 ## Cut the alpha snapshot from `dev`
 
 Do this only after the exact `dev` candidate has passed its intended readiness
@@ -89,7 +117,7 @@ bump is performed later.
 
 For the first Less-focused alpha, the release notes must also include a
 discoverable **Known limitations** section linking
-[`less-v5-alpha-readiness.md`](./less-v5-alpha-readiness.md). The 28 runnable
+[`less-v5-alpha-readiness.md`](./less-v5-alpha-readiness.md). The 30 runnable
 upstream expected-failure markers are classified compatibility evidence, not a
 requirement to drain before alpha. Do not omit them or call them passing; block
 only on the advertised public-route, package/CLI, and core-safety gates.
@@ -156,7 +184,9 @@ pnpm run release:alpha
 What it does for you:
 
 1) Safety checks (`alpha` branch + clean working tree except `.cursor/*`)
-2) Full preflight (`release:alpha:check`: baseline + allowlist validation + packed clean-consumer proof + dry-run publish)
+2) Full preflight (`release:alpha:check`: Less-alpha, AST-v2 production-route
+   ratchet, baseline, aggressive-cutting, allowlist, packed clean-consumer, and
+   dry-run publish checks)
 3) Registry-aware lockstep alpha-version resolution and manifest update
 4) Commit + annotated tag (`vX.Y.Z-alpha.N`)
 5) Push branch + tag to origin
@@ -257,17 +287,21 @@ The publish script is idempotent for existing versions: if `<pkg>@<version>` alr
 Useful orchestrator flags:
 
 - `--no-push` (keep commit/tag local for inspection)
-- `--skip-version` (skip changeset version step if already versioned)
+- `--skip-version` (skip registry-aware manifest version resolution when the
+  manifests already contain the intended fresh alpha version)
 - `--skip-publish` (prepare commit/tag/push without npm publish)
 - `--skip-check` (skip the heavy step-2 preflight `release:alpha:check` — use only for a republish when the current tree was already verified; the default remains full-check)
 
 `--skip-check` is the canonical way to skip the preflight while still running the
-normal, script-driven publish (version resolution, changeset commit, tagged
-publish via `prepublishOnly`). The separate `release:alpha:ship-no-checks`
-(`scripts/release/ship-alpha-no-checks.mjs`) is a standalone fast path that also
-skips preflight but additionally publishes with `--ignore-scripts` and uses its
-own bump logic; prefer `release:alpha --skip-check` unless you specifically need
-that no-lifecycle-scripts behavior.
+normal release orchestrator: it resolves/applies the registry-aware version,
+commits and tags the snapshot, explicitly builds each publishable package, and
+publishes with `pnpm publish --ignore-scripts`. The publish script intentionally
+does not invoke package `prepublishOnly` hooks; the explicit build step is the
+release build. Use this only for a republish whose candidate has already passed
+the full checks. The separate `release:alpha:ship-no-checks`
+(`scripts/release/ship-alpha-no-checks.mjs`) is an emergency fast path with its
+own manifest bump logic and no preflight; it also publishes with
+`--ignore-scripts` and should not be the normal alpha path.
 
 ## Promoting blocked packages into alpha
 

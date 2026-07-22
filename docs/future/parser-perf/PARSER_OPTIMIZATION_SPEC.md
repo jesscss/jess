@@ -55,6 +55,6 @@ grammar-owned structure contract merely to reduce a benchmark number.
 
 Run focused parser-shape tests, parser-boundary verification when recognition
 changes, the relevant dialect corpus, and a before/after benchmark with the
-same fixture and runtime. Core tests, the Jess production spine ratchet, and
+same fixture and runtime. Core tests, the Jess AST-v2 production-route ratchet, and
 the Less corpus remain integration gates. Correctness proof is not a speed
 claim; publish the measurement or say performance remains unmeasured.

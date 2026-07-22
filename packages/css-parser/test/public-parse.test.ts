@@ -139,12 +139,12 @@ describe('public CSS parse()', () => {
       type: 'Stylesheet',
       children: [{ type: 'Rule', body: [
         { type: 'Declaration', name: 'double', value: { type: 'Quoted', src: '~"theme"', value: 'theme', quote: '"', escaped: true } },
-        { type: 'Declaration', name: 'single', value: { type: 'Quoted', src: "~'tone'", value: 'tone', quote: "'", escaped: true } }
+        { type: 'Declaration', name: 'single', value: { type: 'Quoted', src: '~\'tone\'', value: 'tone', quote: '\'', escaped: true } }
       ] }]
     });
 
     // CSS treats `$` as literal text here; only malformed escaped strings reject.
-    for (const invalid of ['.asset { value: ~"theme; }', ".asset { value: ~'tone; }"]) {
+    for (const invalid of ['.asset { value: ~"theme; }', '.asset { value: ~\'tone; }']) {
       expect(() => parse(invalid), invalid).toThrow(SyntaxError);
     }
   });
@@ -177,7 +177,7 @@ describe('public CSS parse()', () => {
         type: 'Declaration', name: 'color', value: {
           type: 'FunctionCall', name: 'var', args: [
             { type: 'Keyword', src: '--theme' },
-            { type: 'List', items: [{ type: 'Keyword', src: 'red' }, { type: 'Keyword', src: 'blue' }], sep: ',' }
+            { type: 'List', value: [{ type: 'Keyword', src: 'red' }, { type: 'Keyword', src: 'blue' }], sep: ',' }
           ]
         }
       }] }]

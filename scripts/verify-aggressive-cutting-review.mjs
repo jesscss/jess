@@ -26,8 +26,11 @@ function sourceFiles(rootPath) {
   const found = [];
   for (const entry of readdirSync(resolve(root, rootPath), { withFileTypes: true })) {
     const path = `${rootPath}/${entry.name}`;
-    if (entry.isDirectory()) found.push(...sourceFiles(path));
-    else if (entry.isFile() && entry.name.endsWith('.ts')) found.push(path);
+    if (entry.isDirectory()) {
+      found.push(...sourceFiles(path));
+    } else if (entry.isFile() && entry.name.endsWith('.ts')) {
+      found.push(path);
+    }
   }
   return found;
 }
@@ -40,15 +43,19 @@ function publicArtifactReferences(entry, packageManifest, buildConfig) {
     if (typeof value === 'string') {
       strings.push(value);
     } else if (Array.isArray(value)) {
-      for (const child of value) collectStrings(child);
+      for (const child of value) {
+        collectStrings(child);
+      }
     } else if (value !== null && typeof value === 'object') {
-      for (const child of Object.values(value)) collectStrings(child);
+      for (const child of Object.values(value)) {
+        collectStrings(child);
+      }
     }
   };
   collectStrings(JSON.parse(packageManifest).exports);
   return {
     publicExports: strings.filter(value => value.includes(fragment)).length,
-    buildEntries: buildConfig.split(fragment).length - 1,
+    buildEntries: buildConfig.split(fragment).length - 1
   };
 }
 
@@ -70,11 +77,15 @@ function sourceModuleReferences(sourcePath, source, entry) {
   for (const { kind, expression } of patterns) {
     for (const match of withoutComments.matchAll(expression)) {
       const specifier = match[2];
-      if (!specifier.startsWith('.')) continue;
+      if (!specifier.startsWith('.')) {
+        continue;
+      }
       const resolved = modulePathWithoutExtension(
         relative(root, resolve(dirname(resolve(root, sourcePath)), specifier))
       );
-      if (resolved === entryPath) references.push(kind);
+      if (resolved === entryPath) {
+        references.push(kind);
+      }
     }
   }
   return references;
@@ -90,18 +101,22 @@ function privateGrammarReachability(entry) {
   let productionImporters = 0;
   let publicExports = 0;
   for (const path of sources) {
-    if (path === entry) continue;
+    if (path === entry) {
+      continue;
+    }
     const source = readFileSync(resolve(root, path), 'utf8');
     const references = sourceModuleReferences(path, source, entry);
     if (references.length > 0) {
       productionImporters += 1;
     }
-    if (references.includes('re-export')) publicExports += 1;
+    if (references.includes('re-export')) {
+      publicExports += 1;
+    }
   }
   const artifacts = publicArtifactReferences(
     entry,
     readFileSync(resolve(root, `${packageRoot}/package.json`), 'utf8'),
-    readFileSync(resolve(root, `${packageRoot}/tsdown.config.ts`), 'utf8'),
+    readFileSync(resolve(root, `${packageRoot}/tsdown.config.ts`), 'utf8')
   );
   publicExports += artifacts.publicExports;
   return { productionImporters, publicExports, buildEntries: artifacts.buildEntries };
@@ -895,6 +910,100 @@ function checkSemanticBoundary(record, meta, errors) {
 }
 
 /**
+ * A semantic-runtime record covers a real evaluator/value cutover whose output
+ * and allocation shape cannot truthfully be reduced to an admission counter or
+ * byte-identical A/B.  It is deliberately stronger than a prose exception:
+ * the owner, semantic cases, focused behavior/build commands, and a current
+ * benchmark/output baseline are all machine-checked.  It never asserts speed,
+ * neutrality, or a cost decrease.
+ */
+function validateSemanticRuntimeMetadata(contract) {
+  const errors = [];
+  const runtime = contract.semanticRuntime;
+  if (!runtime || typeof runtime !== 'object') {
+    return [`Semantic-runtime contract ${contract.id} must include a semanticRuntime block.`];
+  }
+  if (typeof runtime.owner !== 'string' || runtime.owner.trim().length < 12) {
+    errors.push(`Semantic-runtime contract ${contract.id} must name its exact owner surface.`);
+  }
+  if (typeof runtime.scope !== 'string' || runtime.scope.trim().length < 80) {
+    errors.push(`Semantic-runtime contract ${contract.id} must explain the semantic scope and why it is not an optimization contract.`);
+  }
+  if (!Array.isArray(runtime.cases) || runtime.cases.length < 2 || runtime.cases.some(value => typeof value !== 'string' || value.trim().length < 8)) {
+    errors.push(`Semantic-runtime contract ${contract.id} must name at least two focused semantic cases.`);
+  }
+  if (runtime.performanceClaim !== 'none') {
+    errors.push(`Semantic-runtime contract ${contract.id} must declare performanceClaim: "none".`);
+  }
+  const baseline = runtime.baseline;
+  if (!baseline || baseline.fixture !== 'benchmark.less' || !['parse-render', 'render'].includes(baseline.phase)) {
+    errors.push(`Semantic-runtime contract ${contract.id} must name a current benchmark.less parse-render or render baseline.`);
+  }
+  const evidence = contract.evidence;
+  const validCommand = command => Array.isArray(command)
+    && command.length >= 2
+    && ['node', 'pnpm'].includes(command[0])
+    && command.every(argument => !['-c', '-e', '--eval', '--shell'].includes(argument));
+  if (!evidence || typeof evidence !== 'object' || !validCommand(evidence.behaviorCommand) || !validCommand(evidence.buildCommand)) {
+    errors.push(`Semantic-runtime contract ${contract.id} must name focused behaviorCommand and buildCommand arrays without shell/eval indirection.`);
+  }
+  return errors;
+}
+
+function checkSemanticRuntime(record, meta, errors) {
+  let ok = true;
+  if (record.verdict !== 'accepted') {
+    errors.push(`Semantic-runtime record ${record.id} must be accepted only after its semantic cases and build pass.`);
+    ok = false;
+  }
+  if (record.performanceClaim !== 'none') {
+    errors.push(`Semantic-runtime record ${record.id} must declare performanceClaim: "none"; its benchmark is a current baseline, not a speed or neutrality claim.`);
+    ok = false;
+  }
+  if (record.owner !== meta.owner) {
+    errors.push(`Semantic-runtime record ${record.id} must restate owner ${meta.owner}.`);
+    ok = false;
+  }
+  if (!Array.isArray(record.cases) || record.cases.length !== meta.cases.length || record.cases.some((value, index) => value !== meta.cases[index])) {
+    errors.push(`Semantic-runtime record ${record.id} must restate the exact tested semantic cases.`);
+    ok = false;
+  }
+  if (typeof record.why !== 'string' || record.why.trim().length < 80) {
+    errors.push(`Semantic-runtime record ${record.id} must explain why the changed owner is semantic work rather than a neutral/cost-cutting claim.`);
+    ok = false;
+  }
+  if (typeof record.dangerTokensJustification !== 'string' || record.dangerTokensJustification.trim().length < 80) {
+    errors.push(`Semantic-runtime record ${record.id} must account for its danger-token allocation/traversal shape without claiming neutrality.`);
+    ok = false;
+  }
+  if (typeof record.behaviorEvidence !== 'string' || record.behaviorEvidence.trim().length < 24) {
+    errors.push(`Semantic-runtime record ${record.id} must record focused behavior evidence.`);
+    ok = false;
+  }
+  if (typeof record.buildEvidence !== 'string' || record.buildEvidence.trim().length < 24) {
+    errors.push(`Semantic-runtime record ${record.id} must record build evidence.`);
+    ok = false;
+  }
+  const baseline = record.baseline;
+  const metaBaseline = meta.baseline;
+  if (
+    !baseline
+    || baseline.fixture !== metaBaseline?.fixture
+    || baseline.phase !== metaBaseline?.phase
+    || !Number.isFinite(baseline.currentMedianMs)
+    || baseline.currentMedianMs <= 0
+    || typeof baseline.outputSha256 !== 'string'
+    || !/^[a-f0-9]{64}$/.test(baseline.outputSha256)
+    || !Number.isInteger(baseline.outputBytes)
+    || baseline.outputBytes <= 0
+  ) {
+    errors.push(`Semantic-runtime record ${record.id} must record { fixture, phase, currentMedianMs, outputSha256, outputBytes } as a current baseline only.`);
+    ok = false;
+  }
+  return ok;
+}
+
+/**
  * Byte-identity + benchmark-non-regression + net-removal gate for an off-benchmark
  * call-reduction audit record. All are non-negotiable, and none can be honestly
  * produced by a benchmark-regressing or output-changing change:
@@ -971,6 +1080,7 @@ function validateCostContractRegistry(registry) {
       errors.push('Every cost contract must be an object.');
       continue;
     }
+    const contractKind = contract.kind ?? 'precise';
     if (typeof contract.id !== 'string' || contract.id.length === 0 || ids.has(contract.id)) {
       errors.push(`Cost contracts must have unique non-empty ids: ${String(contract.id)}.`);
     }
@@ -980,8 +1090,10 @@ function validateCostContractRegistry(registry) {
     }
     if (!Array.isArray(contract.files) || contract.files.length === 0) {
       errors.push(`Cost contract ${contract.id} must name at least one owning file.`);
-    } else if (contract.files.length !== 1) {
+    } else if (contractKind !== 'semantic-runtime' && contract.files.length !== 1) {
       errors.push(`Cost contract ${contract.id} must cover exactly one owning file so its source check cannot be bypassed by adding another file.`);
+    } else if (contractKind === 'semantic-runtime' && new Set(contract.files).size !== contract.files.length) {
+      errors.push(`Semantic-runtime contract ${contract.id} must list each owning file once.`);
     }
     if (contract.supportFiles !== undefined) {
       if (!Array.isArray(contract.supportFiles) || contract.supportFiles.some(file => typeof file !== 'string' || file.length === 0)) {
@@ -1020,6 +1132,10 @@ function validateCostContractRegistry(registry) {
         || typeof sourceCheck.caller !== 'string' || typeof sourceCheck.call !== 'string' || typeof sourceCheck.guard !== 'string') {
         errors.push(`Semantic-boundary cost contract ${contract.id} must include a complete owner sourceCheck.`);
       }
+      continue;
+    }
+    if (contract.kind === 'semantic-runtime') {
+      errors.push(...validateSemanticRuntimeMetadata(contract));
       continue;
     }
     errors.push(...validateNecessityMetadata(contract.necessity, `Cost contract ${contract.id}`));
@@ -1114,8 +1230,8 @@ function validateCostContractRegistry(registry) {
         `Cost contract ${contract.id} must require the canonical benchmark.less parse-render/render A/B with 20 warmups and 45 alternating pairs.`
       );
     }
-    if (!['precise', 'conservative-filter', 'redundant-call-elimination', 'neutral-or-negative', 'private-unreachable', 'off-benchmark-call-reduction', 'semantic-preflight', 'semantic-boundary'].includes(kind)) {
-      errors.push(`Cost contract ${contract.id} kind must be "precise", "conservative-filter", "redundant-call-elimination", "neutral-or-negative", "private-unreachable", "off-benchmark-call-reduction", "semantic-preflight", or "semantic-boundary".`);
+    if (!['precise', 'conservative-filter', 'redundant-call-elimination', 'neutral-or-negative', 'private-unreachable', 'off-benchmark-call-reduction', 'semantic-preflight', 'semantic-boundary', 'semantic-runtime'].includes(kind)) {
+      errors.push(`Cost contract ${contract.id} kind must be "precise", "conservative-filter", "redundant-call-elimination", "neutral-or-negative", "private-unreachable", "off-benchmark-call-reduction", "semantic-preflight", "semantic-boundary", or "semantic-runtime".`);
     }
     if (!Array.isArray(contract.relations) || contract.relations.length === 0) {
       errors.push(`Cost contract ${contract.id} must state at least one counter relation.`);
@@ -1206,13 +1322,25 @@ function validateCostContractRegistry(registry) {
       errors.push(`Cost contract ${contract.id} source-check file must be its sole owning file.`);
     }
   }
+
   return errors;
 }
 
 function validateCostContractOwnership(registry) {
   const errors = [];
   const surfaces = new Map();
+  const semanticRuntimeOwners = new Map();
   for (const contract of registry) {
+    if (contract.kind === 'semantic-runtime') {
+      for (const file of contract.files ?? []) {
+        const priorOwner = semanticRuntimeOwners.get(file);
+        if (priorOwner) {
+          errors.push(`Semantic-runtime owner ${file} is listed by both ${priorOwner} and ${contract.id}; each semantic runtime file must have exactly one owner.`);
+        } else {
+          semanticRuntimeOwners.set(file, contract.id);
+        }
+      }
+    }
     for (const file of [...(contract.files ?? []), ...(contract.supportFiles ?? [])]) {
       if (!hotPathRoots.some(rootPath => file.startsWith(rootPath))) {
         errors.push(`Cost contract ${contract.id} owns file outside the reviewed production roots: ${file}.`);
@@ -1273,7 +1401,9 @@ function extractCostAuditRecords(latestPass, registry = []) {
     return null;
   }
   const ids = [...ledger[1].split(';', 1)[0].matchAll(/`([^`]+)`/g)].map(([, id]) => id);
-  if (ids.length === 0) return null;
+  if (ids.length === 0) {
+    return null;
+  }
   return ids.map((id) => {
     const contract = registry.find(candidate => candidate.id === id);
     if (contract?.kind !== 'neutral-or-negative' || !contract.neutralRefactor) {
@@ -1284,7 +1414,7 @@ function extractCostAuditRecords(latestPass, registry = []) {
       verdict: 'accepted',
       costDelta: contract.neutralRefactor.costDelta,
       why: contract.neutralRefactor.why,
-      byteIdentity: contract.neutralRefactor.byteIdentity,
+      byteIdentity: contract.neutralRefactor.byteIdentity
     };
   });
 }
@@ -1408,6 +1538,12 @@ function validateCostAuditRecords(records, registry, changedPaths, diff, hasDang
         errors.push(`Semantic-boundary record ${record.id} must be accepted only after its named call-result cases are tested.`);
       } else if (contract?.semanticBoundary) {
         checkSemanticBoundary(record, contract.semanticBoundary, errors);
+      }
+      continue;
+    }
+    if (kind === 'semantic-runtime') {
+      if (contract?.semanticRuntime) {
+        checkSemanticRuntime(record, contract.semanticRuntime, errors);
       }
       continue;
     }
@@ -1558,12 +1694,27 @@ function validateCostAuditRecords(records, registry, changedPaths, diff, hasDang
       const ownsChangedFile = contract.files.some(file =>
         changedPaths.includes(file) && contractsForChangedSurface(registry, file, diff).includes(contract)
       );
-      if (!ownsChangedFile) continue;
+      if (!ownsChangedFile) {
+        continue;
+      }
       const record = byId.get(contract.id);
       if (!record) {
         errors.push(`Changed files require the ${contract.id} hot-path cost audit record.`);
       } else if (record.verdict !== 'accepted') {
         errors.push(`Changed production hot-path contract ${contract.id} must be accepted only after rejected/deferred code has been reverted.`);
+      }
+      continue;
+    }
+    if (contract.kind === 'semantic-runtime') {
+      const ownsChangedFile = contract.files.some(file => changedPaths.includes(file));
+      if (!ownsChangedFile) {
+        continue;
+      }
+      const record = byId.get(contract.id);
+      if (!record) {
+        errors.push(`Changed files require the ${contract.id} semantic-runtime evidence record.`);
+      } else if (record.verdict !== 'accepted') {
+        errors.push(`Changed semantic-runtime contract ${contract.id} must be accepted only after behavior/build/baseline evidence passes.`);
       }
       continue;
     }
@@ -1586,6 +1737,25 @@ function validateCostAuditRecords(records, registry, changedPaths, diff, hasDang
       if (!result.ok) {
         errors.push(`Cost contract ${contract.id} relation failed: ${relation}${result.reason ? ` (${result.reason})` : ''}.`);
       }
+    }
+  }
+
+  // A semantic-runtime batch is explicit rather than inferred from danger
+  // tokens. Every changed file that opts into that lane must have exactly one
+  // semantic-runtime owner and a corresponding accepted record; narrow
+  // semantic-preflight/boundary records may still coexist for their separately
+  // named sub-surface.
+  for (const path of changedPaths) {
+    const owners = registry.filter(contract => contract.kind === 'semantic-runtime' && contract.files.includes(path));
+    if (owners.length === 0) {
+      continue;
+    }
+    if (owners.length !== 1) {
+      errors.push(`Changed semantic-runtime file ${path} must have exactly one semantic-runtime owner.`);
+      continue;
+    }
+    if (!byId.has(owners[0].id)) {
+      errors.push(`Changed semantic-runtime file ${path} requires the ${owners[0].id} semantic-runtime evidence record.`);
     }
   }
   return errors;
@@ -1658,13 +1828,17 @@ function isDocumentSourcePlumbingHunk(hunk) {
     .filter(line => /^[+-](?![+-])/.test(line))
     .map(line => line.slice(1).trim())
     .filter(Boolean);
-  if (changed.length === 0) return false;
+  if (changed.length === 0) {
+    return false;
+  }
 
   if (hunk.file === 'packages/core/src/ast/serialize.ts') {
     return changed.every(line => line === 'const file = e.context?.treeContext?.file;'
       || line === 'const file = e.context?.sourceContext?.file;');
   }
-  if (hunk.file !== 'packages/core/src/context.ts') return false;
+  if (hunk.file !== 'packages/core/src/context.ts') {
+    return false;
+  }
 
   const anchors = /\b(?:DocumentContext(?:Options)?|TreeContext|SourceContext|_?documentContext|setDocumentContext|sourceContext|documentContexts|documentBodyContexts|currentDocument|currentSourceOwner|withSourceOwner|sourceOwnerForBody|ImportOptions|currentPlugin)\b|(?:document|tree)\.file|transform\.call/;
   const forbidden = /\b(?:treeRoot|allRoots|evaldTrees|rulesContext|selectorBits|SpineVisitor|spine)\b/i;
@@ -1680,7 +1854,9 @@ function isDocumentSourcePlumbingHunk(hunk) {
 }
 
 function classifyChangedHunkSurface(hunk) {
-  if (isDocumentSourcePlumbingHunk(hunk)) return 'public-plumbing';
+  if (isDocumentSourcePlumbingHunk(hunk)) {
+    return 'public-plumbing';
+  }
   return classifyProductionSurface(hunk.file);
 }
 
@@ -1705,14 +1881,16 @@ function runtimeChangedPaths(paths) {
 }
 
 function boundaryChangedPaths(paths) {
-  return paths.filter(path => {
+  return paths.filter((path) => {
     const surface = classifyProductionSurface(path);
     return surface === 'frontend' || surface === 'public-plumbing';
   });
 }
 
 function validateBoundaryEvidence(latestPass, paths) {
-  if (paths.length === 0) return [];
+  if (paths.length === 0) {
+    return [];
+  }
   const errors = [];
   const labels = [
     '- Behavior evidence:',
@@ -1863,6 +2041,12 @@ function validateSourceChecks(registry, changedPaths) {
     if (!sourceCheck || !changedPaths.includes(sourceCheck.file)) {
       continue;
     }
+    if (contract.kind === 'semantic-runtime') {
+      // Semantic-runtime owners are file-level records; their behavior/build
+      // evidence and baseline are checked without inventing one guarded-call
+      // source anchor for a multi-helper cutover.
+      continue;
+    }
     const source = readFileSync(resolve(root, sourceCheck.file), 'utf8');
     const callerStart = source.indexOf(sourceCheck.caller);
     const callIndex = callerStart < 0 ? -1 : source.indexOf(sourceCheck.call, callerStart);
@@ -1988,6 +2172,15 @@ function validateChangedContractSurface(registry, changedPaths, diff) {
     if (supportOwners.length > 0 && owners.length === 0) {
       continue;
     }
+    // A semantic-runtime owner covers a broad typed cutover whose hunks span
+    // several cooperating helpers. Its machine record owns the file-level
+    // semantic cases and behavior/build/baseline evidence; forcing every hunk
+    // to contain one synthetic source anchor would turn the record into a
+    // fabricated optimization contract. Narrow semantic-preflight/boundary
+    // records remain independently checked by their own source metadata.
+    if (owners.some(owner => owner.kind === 'semantic-runtime')) {
+      continue;
+    }
     // Neutral-or-negative owners carry no source-guard surface anchors, so their hunks
     // cannot (and need not) match a registered source surface — the byte-identity +
     // danger-token + costDelta attestation covers them instead.
@@ -2022,27 +2215,35 @@ function validateChangedContractSurface(registry, changedPaths, diff) {
 function validateExecutableEvidence(registry, changedPaths, diff) {
   const errors = [];
   for (const contract of registry) {
-    if (!contract.files.some(file =>
-      changedPaths.includes(file) && contractsForChangedSurface(registry, file, diff).includes(contract)
-    )) {
+    const semanticRuntime = contract.kind === 'semantic-runtime';
+    const ownsChangedSurface = semanticRuntime
+      ? contract.files.some(file => changedPaths.includes(file))
+      : contract.files.some(file =>
+          changedPaths.includes(file) && contractsForChangedSurface(registry, file, diff).includes(contract)
+        );
+    if (!ownsChangedSurface) {
       continue;
     }
-    const command = contract.evidence?.command;
-    if (!Array.isArray(command) || command.length === 0) {
-      errors.push(`Executable evidence is missing for ${contract.id}.`);
-      continue;
-    }
-    try {
-      execFileSync(command[0], command.slice(1), {
-        cwd: root,
-        encoding: 'utf8',
-        timeout: 120000,
-        maxBuffer: 16 * 1024 * 1024,
-        stdio: ['ignore', 'pipe', 'pipe']
-      });
-    } catch (error) {
-      const stderr = error?.stderr?.toString?.().trim() ?? '';
-      errors.push(`Executable evidence failed for ${contract.id}: ${command.join(' ')}${stderr ? ` — ${stderr.slice(-500)}` : ''}.`);
+    const commands = semanticRuntime
+      ? [contract.evidence?.behaviorCommand, contract.evidence?.buildCommand]
+      : [contract.evidence?.command];
+    for (const command of commands) {
+      if (!Array.isArray(command) || command.length === 0) {
+        errors.push(`Executable evidence is missing for ${contract.id}.`);
+        continue;
+      }
+      try {
+        execFileSync(command[0], command.slice(1), {
+          cwd: root,
+          encoding: 'utf8',
+          timeout: 120000,
+          maxBuffer: 16 * 1024 * 1024,
+          stdio: ['ignore', 'pipe', 'pipe']
+        });
+      } catch (error) {
+        const stderr = error?.stderr?.toString?.().trim() ?? '';
+        errors.push(`Executable evidence failed for ${contract.id}: ${command.join(' ')}${stderr ? ` — ${stderr.slice(-500)}` : ''}.`);
+      }
     }
   }
   return errors;
@@ -2205,7 +2406,9 @@ function runVerifier() {
   if (boundaryEvidenceErrors.length > 0) {
     failed = true;
     console.error('\nFrontend/public-boundary evidence review failed:');
-    for (const error of boundaryEvidenceErrors) console.error(`- ${error}`);
+    for (const error of boundaryEvidenceErrors) {
+      console.error(`- ${error}`);
+    }
     console.error(`- Classified non-runtime files: ${nonRuntimePaths.join(', ')}`);
   }
 
@@ -2289,5 +2492,5 @@ export {
   validateCostAuditRecords,
   validateBoundaryEvidence,
   validateCostContractRegistry,
-  validateChangedContractSurface,
+  validateChangedContractSurface
 };

@@ -78,6 +78,7 @@ export {
 export { serializeTypes, type SerializeTypesOptions } from './tree/util/serialize-types.js';
 /** Canonical AST-v2 stylesheet execution. Parser construction stays under `./ast`. */
 export { serialize } from './ast/serialize.js';
+export type { SerializeOptions } from './ast/serialize.js';
 /** Construct the typed value evaluator used by the canonical AST-v2 execution path. */
 export { buildEvaluator } from './ast/evaluator.js';
 export {

@@ -109,8 +109,8 @@ describe('Less AST grammar facts', () => {
     expect(result.value).toMatchObject({
       type: 'Stylesheet', children: [{ type: 'Rule', body: [{ type: 'Declaration', value: {
         type: 'FunctionCall', name: 'linear-gradient', args: [
-          { type: 'SpacedValue', parts: [{ type: 'Color', src: '#333' }, { type: 'Comment', text: '/* keep */' }] },
-          { type: 'Color', src: '#111' },
+          [{ type: 'Color', src: '#333' }, { type: 'Comment', text: '/* keep */' }],
+          { type: 'Color', src: '#111' }
         ]
       } }] }]
     });
@@ -131,10 +131,7 @@ describe('Less AST grammar facts', () => {
         type: 'Rule',
         body: [{
           type: 'Declaration',
-          value: {
-            type: 'SpacedValue',
-            parts: [{ type: 'Color', src: '#000' }, { type: 'Any', src: '\\9' }]
-          }
+          value: [{ type: 'Color', src: '#000' }, { type: 'Any', src: '\\9' }]
         }]
       }]
     });
@@ -157,7 +154,7 @@ describe('Less AST grammar facts', () => {
           parts: [
             { type: 'Keyword', src: 'foo' },
             { type: 'Dimension', src: '42' },
-            { type: 'Paren', inner: { type: 'Keyword', src: 'bar' } }
+            { type: 'Block', delimiter: 'paren', inner: { type: 'Keyword', src: 'bar' } }
           ]
         }
       }]
@@ -271,9 +268,9 @@ describe('Less AST grammar facts', () => {
         binding: { kind: 'comma', names: ['item', 'key', undefined] },
         rules: [
           { type: 'Declaration', name: 'value', value: { type: 'VariableReference', name: 'item', lookup: 'scoped' } },
-          { type: 'Declaration', name: 'key', value: { type: 'VariableReference', name: 'key', lookup: 'scoped' } },
-        ],
-      }],
+          { type: 'Declaration', name: 'key', value: { type: 'VariableReference', name: 'key', lookup: 'scoped' } }
+        ]
+      }]
     });
   });
 
@@ -286,8 +283,8 @@ describe('Less AST grammar facts', () => {
     expect(result.value).toMatchObject({
       children: [{ body: [{
         type: 'For',
-        binding: { kind: 'comma', names: ['value', 'index', undefined] },
-      }]}]
+        binding: { kind: 'comma', names: ['value', 'index', undefined] }
+      }] }]
     });
   });
 
@@ -326,7 +323,9 @@ describe('Less AST grammar facts', () => {
       ]
     });
     expect(isStylesheet(direct.value)).toBe(true);
-    if (!isStylesheet(direct.value)) throw new TypeError('expected Stylesheet');
+    if (!isStylesheet(direct.value)) {
+      throw new TypeError('expected Stylesheet');
+    }
     expect(serialize(direct.value)).toEqual({
       css: '.item {\n  value: red;\n  key: first;\n}\n.item {\n  value: blue;\n  key: second;\n}\n'
     });
@@ -473,7 +472,9 @@ describe('Less AST grammar facts', () => {
         }
       ]
     });
-    if (!isStylesheet(result.value)) throw new TypeError('Expected a direct Less Stylesheet.');
+    if (!isStylesheet(result.value)) {
+      throw new TypeError('Expected a direct Less Stylesheet.');
+    }
     expect(serialize(result.value).css).toBe(
       '.card {\n  color: red;\n}\n'
     );
@@ -504,14 +505,14 @@ describe('Less AST grammar facts', () => {
           {
             type: 'Declaration', name: 'grouped', value: {
               type: 'Operation', operator: '*', left: {
-                type: 'Paren', inner: { type: 'Operation', operator: '+' }
+                type: 'Block', delimiter: 'paren', inner: { type: 'Operation', operator: '+' }
               }, right: { type: 'Dimension', src: '3' }
             }
           },
           {
             type: 'Declaration', name: 'neg', value: {
               type: 'Operation', operator: '*', left: { type: 'Dimension', src: '-1' },
-              right: { type: 'Paren', inner: { type: 'Operation', operator: '+' } }
+              right: { type: 'Block', delimiter: 'paren', inner: { type: 'Operation', operator: '+' } }
             }
           },
           {
@@ -520,29 +521,26 @@ describe('Less AST grammar facts', () => {
             }
           },
           {
-            type: 'Declaration', name: 'ratio', value: {
-              type: 'SpacedValue', parts: [{ type: 'Dimension', src: '12px' }, { type: 'Keyword', src: '/' }, { type: 'Dimension', src: '1.5' }]
-            }
+            type: 'Declaration', name: 'ratio', value: [{ type: 'Dimension', src: '12px' }, { type: 'Keyword', src: '/' }, { type: 'Dimension', src: '1.5' }]
           },
           {
-            type: 'Declaration', name: 'compact', value: {
-              type: 'SpacedValue', parts: [{ type: 'Dimension', src: '1' }, { type: 'Dimension', src: '+2' }]
-            }
+            type: 'Declaration', name: 'compact', value: [{ type: 'Dimension', src: '1' }, { type: 'Dimension', src: '+2' }]
           },
           {
-            type: 'Declaration', name: 'spacedMinus', value: {
-              type: 'SpacedValue', parts: [{ type: 'Dimension', src: '1' }, { type: 'Dimension', src: '-23' }]
-            }
+            type: 'Declaration', name: 'spacedMinus', value: [{ type: 'Dimension', src: '1' }, { type: 'Dimension', src: '-23' }]
           },
           {
             type: 'Declaration', name: 'calc', value: {
               type: 'FunctionCall', name: 'calc', args: [{ type: 'Operation', operator: '-' }]
             }
           }
-        ] }
+        ]
+        }
       ]
     });
-    if (!isStylesheet(result.value)) throw new TypeError('Expected a direct Less Stylesheet.');
+    if (!isStylesheet(result.value)) {
+      throw new TypeError('Expected a direct Less Stylesheet.');
+    }
     // Serialization without a ValueEvaluator is deliberately structural; this
     // assertion proves the direct tree has not turned Less math into raw text.
     expect(serialize(result.value).css).toContain('sum: 1 + 2 * 3;');
@@ -564,7 +562,9 @@ describe('Less AST grammar facts', () => {
         { type: 'Declaration', name: 'modulo', value: { type: 'Operation', operator: '%', left: { type: 'Dimension', src: '7' }, right: { type: 'Dimension', src: '3' } } }
       ] }]
     });
-    if (!isStylesheet(result.value)) throw new TypeError('Expected a direct Less Stylesheet.');
+    if (!isStylesheet(result.value)) {
+      throw new TypeError('Expected a direct Less Stylesheet.');
+    }
     expect(serialize(result.value).css).toBe('.math {\n  product: 2 * 3;\n  modulo: 7 % 3;\n}\n');
 
     const malformed = run(lessAstGrammar.LessAstDocument, '.math { product: 2 * // missing operand\n; }', { trivia: lessAstGrammar.whitespace });
@@ -576,7 +576,9 @@ describe('Less AST grammar facts', () => {
     const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
-    if (!isStylesheet(result.value)) throw new TypeError('Expected a direct Less Stylesheet.');
+    if (!isStylesheet(result.value)) {
+      throw new TypeError('Expected a direct Less Stylesheet.');
+    }
     expect(result.value.children.find(child => child.type === 'VariableDeclaration' && child.name === 'gridsystem-width')).toMatchObject({
       value: { type: 'Operation', operator: '+' }
     });
@@ -589,21 +591,15 @@ describe('Less AST grammar facts', () => {
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(isStylesheet(result.value)).toBe(true);
-    if (!isStylesheet(result.value)) throw new TypeError('expected Stylesheet');
+    if (!isStylesheet(result.value)) {
+      throw new TypeError('expected Stylesheet');
+    }
     expect(result.value.children[0]).toMatchObject({
       type: 'VariableDeclaration', name: 'ratio',
-      value: {
-        type: 'SpacedValue',
-        parts: [
-          { type: 'Dimension', src: '50vh' },
-          { type: 'Keyword', src: '/' },
-          { type: 'Dimension', src: '2' }
-        ],
-        separators: ['', '']
-      }
+      value: [{ type: 'Dimension', src: '50vh' }, { type: 'Keyword', src: '/' }, { type: 'Dimension', src: '2' }]
     });
     expect(serialize(result.value).css).toBe(
-      '.card {\n  direct: 50vh/2;\n  calc: calc(100% - (50vh/2 - 20px));\n}\n'
+      '.card {\n  direct: 50vh / 2;\n  calc: calc(100% - (50vh / 2 - 20px));\n}\n'
     );
   });
 
@@ -828,7 +824,7 @@ describe('Less AST grammar facts', () => {
             { type: 'Declaration', name: '900', value: { type: 'Color', src: '#212529' } },
             { type: 'Declaration', name: '<' },
             { type: 'Declaration', name: '#' },
-            { type: 'Declaration', name: '(' },
+            { type: 'Declaration', name: '(' }
           ]
         }
       }]
@@ -973,9 +969,8 @@ describe('Less AST grammar facts', () => {
         name: '@import',
         options: {
           type: 'List',
-          items: [{ type: 'Any', src: 'less' }, { type: 'Any', src: 'multiple' }],
-          sep: ',',
-          separators: [', ']
+          value: [{ type: 'Any', src: 'less' }, { type: 'Any', src: 'multiple' }],
+          sep: ','
         },
         target: { type: 'Url', value: { type: 'Any', src: 'theme.css' } },
         alias: null,
@@ -1001,7 +996,7 @@ describe('Less AST grammar facts', () => {
           type: 'ImportAtRule',
           target: { type: 'Url', value: { type: 'Quoted', value: '//ha.com/file.css' } },
           tail: {
-            type: 'Paren',
+            type: 'Block', delimiter: 'paren',
             inner: {
               type: 'Operation', operator: ':',
               left: { type: 'Keyword', src: 'min-width' },
@@ -1026,7 +1021,7 @@ describe('Less AST grammar facts', () => {
       type: 'Stylesheet',
       children: [{
         type: 'ImportAtRule',
-        options: { type: 'List', items: [{ type: 'Any', src: 'less' }, { type: 'Any', src: 'multiple' }] },
+        options: { type: 'List', sep: ',', value: [{ type: 'Any', src: 'less' }, { type: 'Any', src: 'multiple' }] },
         target: {
           type: 'Interpolation',
           parts: [
@@ -1053,7 +1048,7 @@ describe('Less AST grammar facts', () => {
       type: 'Stylesheet',
       children: [{
         type: 'ImportAtRule',
-        options: { type: 'List', items: [{ type: 'Any', src: 'reference' }] },
+        options: { type: 'List', sep: ',', value: [{ type: 'Any', src: 'reference' }] },
         target: { type: 'Quoted', value: 'theme.less' },
         tail: {
           type: 'Interpolation',
@@ -1177,12 +1172,12 @@ describe('Less AST grammar facts', () => {
           type: 'VariableDeclaration',
           name: 'values',
           value: {
-            type: 'List',
-            items: [{ type: 'Keyword', src: 'apple' }, { type: 'Keyword', src: 'banana' }],
-            separators: [','],
-          },
-        }],
-      }],
+            type: 'List', sep: ',',
+            value: [{ type: 'Keyword', src: 'apple' }, { type: 'Keyword', src: 'banana' }]
+
+          }
+        }]
+      }]
     });
   });
 
@@ -1214,14 +1209,11 @@ describe('Less AST grammar facts', () => {
         body: [
           {
             type: 'Declaration', name: 'margin', merge: null, important: false,
-            value: {
-              type: 'SpacedValue',
-              parts: [
-                { type: 'Dimension', number: 150, unit: 'rem', src: '+1.5e2rem' },
-                { type: 'Dimension', number: 0, unit: '', src: '0' },
-                { type: 'Dimension', number: -2, unit: '%', src: '-2%' }
-              ]
-            }
+            value: [
+              { type: 'Dimension', number: 150, unit: 'rem', src: '+1.5e2rem' },
+              { type: 'Dimension', number: 0, unit: '', src: '0' },
+              { type: 'Dimension', number: -2, unit: '%', src: '-2%' }
+            ]
           },
           { type: 'Declaration', name: 'color', value: { type: 'Color', src: '#ff00aa' }, merge: null, important: false },
           {
@@ -1239,8 +1231,8 @@ describe('Less AST grammar facts', () => {
           {
             type: 'Declaration', name: 'shadow', merge: null, important: false,
             value: {
-              type: 'List', sep: ',', separators: [',\n '],
-              items: [
+              type: 'List', sep: ',',
+              value: [
                 {
                   type: 'FunctionCall', name: 'rgb', modern: false,
                   args: [
@@ -1249,15 +1241,12 @@ describe('Less AST grammar facts', () => {
                     { type: 'Dimension', number: 128, unit: '', src: '128' }
                   ]
                 },
-                {
-                  type: 'SpacedValue',
-                  parts: [
-                    { type: 'Keyword', src: 'inset' },
-                    { type: 'Dimension', number: 0, unit: '', src: '0' },
-                    { type: 'Dimension', number: 1, unit: 'px', src: '1px' },
-                    { type: 'Color', src: '#000' }
-                  ]
-                }
+                [
+                  { type: 'Keyword', src: 'inset' },
+                  { type: 'Dimension', number: 0, unit: '', src: '0' },
+                  { type: 'Dimension', number: 1, unit: 'px', src: '1px' },
+                  { type: 'Color', src: '#000' }
+                ]
               ]
             }
           }
@@ -1316,7 +1305,7 @@ describe('Less AST grammar facts', () => {
     expect(result.value).toMatchObject({
       children: [{ value: { type: 'FunctionCall', name: 'mix', args: [
         { type: 'Color', src: 'blue' },
-        { type: 'SpacedValue', parts: [{ type: 'Color', src: '#FFF' }, { type: 'Comment', text: '/* explanation */' }] },
+        [{ type: 'Color', src: '#FFF' }, { type: 'Comment', text: '/* explanation */' }],
         { type: 'Dimension', src: '50%' }
       ] } }]
     });
@@ -1326,7 +1315,7 @@ describe('Less AST grammar facts', () => {
     expect(serialize(serializable.value as Stylesheet).css).toBe('.test {\n  x: mix(blue, #FFF /* explanation */, 50%);\n}\n');
   });
 
-  it('keeps a generic function argument as one typed space list after its comma boundary', () => {
+  it('keeps a generic function argument as one space-separated value slot after its comma boundary', () => {
     const source = 'grid-template-columns: repeat(14, 10px /* gap */ 60px);';
     const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
 
@@ -1335,11 +1324,11 @@ describe('Less AST grammar facts', () => {
     expect(result.value).toMatchObject({
       type: 'Stylesheet', children: [{ value: { type: 'FunctionCall', name: 'repeat', args: [
         { type: 'Dimension', src: '14' },
-        { type: 'SpacedValue', parts: [
+        [
           { type: 'Dimension', src: '10px' },
           { type: 'Comment', text: '/* gap */' },
           { type: 'Dimension', src: '60px' }
-        ] }
+        ]
       ] } }]
     });
     const serializable = run(lessAstGrammar.LessAstDocument, `.test { ${source} }`, { trivia: lessAstGrammar.whitespace });
@@ -1411,8 +1400,8 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       children: [{ body: [
-        { type: 'Declaration', value: { type: 'Paren', escaped: true, inner: { type: 'List', items: [{ type: 'Dimension' }, { type: 'Dimension' }, { type: 'Dimension' }] } } },
-        { type: 'For', iterable: { type: 'Paren', escaped: true, inner: { type: 'SpacedValue' } } }
+        { type: 'Declaration', value: { type: 'Block', delimiter: 'paren', escaped: true, inner: { type: 'List', sep: ',', value: [{ type: 'Dimension' }, { type: 'Dimension' }, { type: 'Dimension' }] } } },
+        { type: 'For', iterable: { type: 'Block', delimiter: 'paren', escaped: true, inner: [{ type: 'Dimension' }, { type: 'Dimension' }, { type: 'Dimension' }] } }
       ] }]
     });
   });
@@ -1437,7 +1426,7 @@ describe('Less AST grammar facts', () => {
     });
   });
 
-  it('retains multiline declaration and spaced-value separators as canonical facts', () => {
+  it('retains multiline declaration value slots as canonical facts', () => {
     const source = '.grid { grid-template-areas:\n  "header header"\n  "content sidebar"; }';
     const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
 
@@ -1451,15 +1440,14 @@ describe('Less AST grammar facts', () => {
           type: 'Declaration',
           name: 'grid-template-areas',
           valueOnNewLine: true,
-          value: {
-            type: 'SpacedValue',
-            separators: ['\n  ']
-          }
+          value: [{ type: 'Quoted', value: 'header header' }, { type: 'Quoted', value: 'content sidebar' }]
         }]
       }]
     });
     expect(isStylesheet(result.value)).toBe(true);
-    if (!isStylesheet(result.value)) throw new TypeError('expected Stylesheet');
+    if (!isStylesheet(result.value)) {
+      throw new TypeError('expected Stylesheet');
+    }
     expect(serialize(result.value)).toEqual({
       css: '.grid {\n  grid-template-areas:\n    "header header"\n    "content sidebar";\n}\n'
     });
@@ -1509,7 +1497,7 @@ describe('Less AST grammar facts', () => {
       type: 'Stylesheet', children: [{ type: 'Rule', body: [
         { type: 'Declaration', name: { type: 'Interpolation', parts: [{ lit: 'color/* property */' }] }, merge: null, value: { type: 'Color', src: 'grey' } },
         { type: 'Declaration', name: { type: 'Interpolation', parts: [{ lit: 'margin /* before merge */  /* before colon */' }] }, merge: ',', value: { type: 'Dimension', src: '0' } },
-        { type: 'Declaration', name: 'border', merge: null, value: { type: 'SpacedValue', parts: [{ type: 'Comment', text: '/* value */' }, { type: 'Keyword', src: 'solid' }, { type: 'Color', src: 'black' }] } }
+        { type: 'Declaration', name: 'border', merge: null, value: [{ type: 'Comment', text: '/* value */' }, { type: 'Keyword', src: 'solid' }, { type: 'Color', src: 'black' }] }
       ] }]
     });
     expect(serialize(result.value as Stylesheet).css).toBe('.card {\n  color/* property */: grey;\n  margin /* before merge */  /* before colon */: 0;\n  border: /* value */ solid black;\n}\n');
@@ -1626,7 +1614,7 @@ describe('Less AST grammar facts', () => {
         },
         {
           type: 'AtRuleStatement', name: '@layer',
-          prelude: { type: 'List', items: [{ type: 'Keyword', src: 'reset' }, { type: 'Keyword', src: 'base' }] }
+          prelude: { type: 'List', sep: ',', value: [{ type: 'Keyword', src: 'reset' }, { type: 'Keyword', src: 'base' }] }
         }
       ]
     });
@@ -1736,13 +1724,13 @@ describe('Less AST grammar facts', () => {
       children: [{
         type: 'AtRuleBlock', name: '@supports',
         prelude: { type: 'SpacedValue', parts: [
-          { type: 'Paren', inner: { type: 'SpacedValue', parts: [
-            { type: 'Paren', inner: { type: 'Operation', operator: ':' } },
+          { type: 'Block', delimiter: 'paren', inner: { type: 'SpacedValue', parts: [
+            { type: 'Block', delimiter: 'paren', inner: { type: 'Operation', operator: ':' } },
             { type: 'Keyword', src: 'or' },
-            { type: 'Paren', inner: { type: 'Operation', operator: ':' } }
+            { type: 'Block', delimiter: 'paren', inner: { type: 'Operation', operator: ':' } }
           ] } },
           { type: 'Keyword', src: 'and' },
-          { type: 'Paren', inner: { type: 'Keyword', src: 'hover' } }
+          { type: 'Block', delimiter: 'paren', inner: { type: 'Keyword', src: 'hover' } }
         ] },
         body: [{ type: 'Rule', body: [{ type: 'Declaration', name: 'color' }] }]
       }]
@@ -1756,7 +1744,9 @@ describe('Less AST grammar facts', () => {
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(isStylesheet(result.value)).toBe(true);
-    if (!isStylesheet(result.value)) throw new TypeError('expected Stylesheet');
+    if (!isStylesheet(result.value)) {
+      throw new TypeError('expected Stylesheet');
+    }
     expect(serialize(result.value)).toEqual({
       css: '@supports (font-family: "A  \\"B\\"") and ((display: grid) or (color: red)) {\n  .card {\n    color: red;\n  }\n}\n'
     });
@@ -1769,13 +1759,15 @@ describe('Less AST grammar facts', () => {
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(isStylesheet(result.value)).toBe(true);
-    if (!isStylesheet(result.value)) throw new TypeError('expected Stylesheet');
+    if (!isStylesheet(result.value)) {
+      throw new TypeError('expected Stylesheet');
+    }
     expect(result.value.children[0]).toMatchObject({
       type: 'AtRuleBlock', name: '@supports',
       prelude: { type: 'SpacedValue', parts: [
-        { type: 'Paren', inner: { type: 'Operation', operator: ':', right: { type: 'SpacedValue' } } },
+        { type: 'Block', delimiter: 'paren', inner: { type: 'Operation', operator: ':', right: { type: 'SpacedValue' } } },
         { type: 'Keyword', src: 'or' },
-        { type: 'Paren', inner: { type: 'Operation', operator: ':', right: { type: 'SpacedValue' } } }
+        { type: 'Block', delimiter: 'paren', inner: { type: 'Operation', operator: ':', right: { type: 'SpacedValue' } } }
       ] }
     });
     expect(serialize(result.value).css).toBe(
@@ -1796,19 +1788,21 @@ describe('Less AST grammar facts', () => {
       type: 'Stylesheet',
       children: [
         { type: 'VariableDeclaration', name: 'limit' },
-        { type: 'AtRuleBlock', name: '@media', prelude: { type: 'List', items: [
+        { type: 'AtRuleBlock', name: '@media', prelude: { type: 'List', sep: ',', value: [
           { type: 'SpacedValue', parts: [
             { type: 'Keyword', src: 'screen' },
             { type: 'Keyword', src: 'and' },
-            { type: 'Paren', inner: { type: 'Operation', operator: ':', right: { type: 'VariableReference', name: 'limit' } } }
+            { type: 'Block', delimiter: 'paren', inner: { type: 'Operation', operator: ':', right: { type: 'VariableReference', name: 'limit' } } }
           ] },
           { type: 'Keyword', src: 'print' }
         ] }, body: [{ type: 'Rule' }] },
-        { type: 'AtRuleBlock', name: '@container', prelude: { type: 'Paren', inner: { type: 'Operation', operator: '<', right: { type: 'VariableReference', name: 'limit' } } }, body: [{ type: 'Rule' }] }
+        { type: 'AtRuleBlock', name: '@container', prelude: { type: 'Block', delimiter: 'paren', inner: { type: 'Operation', operator: '<', right: { type: 'VariableReference', name: 'limit' } } }, body: [{ type: 'Rule' }] }
       ]
     });
     expect(isStylesheet(result.value)).toBe(true);
-    if (!isStylesheet(result.value)) throw new TypeError('expected Stylesheet');
+    if (!isStylesheet(result.value)) {
+      throw new TypeError('expected Stylesheet');
+    }
     expect(serialize(result.value)).toEqual({
       css: '@media screen and (min-width: 40rem), print {\n  .card {\n    color: red;\n  }\n}\n@container (400px < width < 40rem) {\n  .card {\n    color: blue;\n  }\n}\n'
     });
@@ -1824,7 +1818,7 @@ describe('Less AST grammar facts', () => {
       type: 'Stylesheet',
       children: [{
         type: 'AtRuleBlock', name: '@media',
-        prelude: { type: 'Paren', inner: { type: 'Keyword', src: 'tv' } },
+        prelude: { type: 'Block', delimiter: 'paren', inner: { type: 'Keyword', src: 'tv' } },
         body: [{ type: 'Rule' }]
       }]
     });
@@ -1846,7 +1840,7 @@ describe('Less AST grammar facts', () => {
       children: [
         { type: 'VariableDeclaration', name: 'size' },
         { type: 'VariableDeclaration', name: 'tablet', value: {
-          type: 'Paren', inner: {
+          type: 'Block', delimiter: 'paren', inner: {
             type: 'Operation', operator: ':',
             left: { type: 'Keyword', src: 'min-width' },
             right: { type: 'VariableReference', name: 'size' }
@@ -1895,7 +1889,9 @@ describe('Less AST grammar facts', () => {
       ]
     });
     expect(isStylesheet(result.value)).toBe(true);
-    if (!isStylesheet(result.value)) throw new TypeError('expected Stylesheet');
+    if (!isStylesheet(result.value)) {
+      throw new TypeError('expected Stylesheet');
+    }
     expect(serialize(result.value).css).toBe(
       '@media not all and (min-width: 480px) {\n  .selector {\n    prop: val;\n  }\n}\n'
     );
@@ -1912,9 +1908,9 @@ describe('Less AST grammar facts', () => {
       children: [{
         type: 'AtRuleBlock', name: '@container',
         prelude: { type: 'SpacedValue', parts: [
-          { type: 'Paren', inner: { type: 'Operation', operator: '>' } },
+          { type: 'Block', delimiter: 'paren', inner: { type: 'Operation', operator: '>' } },
           { type: 'Keyword', src: 'and' },
-          { type: 'Paren', inner: { type: 'SpacedValue', parts: [{ type: 'Keyword', src: 'not' }, { type: 'Paren', inner: { type: 'Operation', operator: '>' } }] } }
+          { type: 'Block', delimiter: 'paren', inner: { type: 'SpacedValue', parts: [{ type: 'Keyword', src: 'not' }, { type: 'Block', delimiter: 'paren', inner: { type: 'Operation', operator: '>' } }] } }
         ] }
       }]
     });
@@ -1959,7 +1955,7 @@ describe('Less AST grammar facts', () => {
         { type: 'VariableDeclaration', name: 'limit' },
         { type: 'AtRuleBlock', name: '@container', prelude: { type: 'SpacedValue', parts: [
           { type: 'Interpolation', parts: [{ ref: { type: 'VariableReference', name: 'name' }, unquote: true }] },
-          { type: 'Paren', inner: { type: 'Operation', operator: '>', right: { type: 'VariableReference', name: 'limit' } } }
+          { type: 'Block', delimiter: 'paren', inner: { type: 'Operation', operator: '>', right: { type: 'VariableReference', name: 'limit' } } }
         ] } }
       ]
     });
@@ -1978,7 +1974,9 @@ describe('Less AST grammar facts', () => {
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(isStylesheet(result.value)).toBe(true);
-    if (!isStylesheet(result.value)) throw new TypeError('expected Stylesheet');
+    if (!isStylesheet(result.value)) {
+      throw new TypeError('expected Stylesheet');
+    }
     expect(serialize(result.value)).toEqual({
       css: '@media screen /* comment */, print /* another */ {\n  body {\n    font-size: 12pt;\n  }\n}\n'
     });
@@ -2021,7 +2019,9 @@ describe('Less AST grammar facts', () => {
       ]
     });
     expect(isStylesheet(result.value)).toBe(true);
-    if (!isStylesheet(result.value)) throw new TypeError('expected Stylesheet');
+    if (!isStylesheet(result.value)) {
+      throw new TypeError('expected Stylesheet');
+    }
     expect(serialize(result.value)).toEqual({
       css: '@media screen {\n  .media {\n    color: red;\n  }\n}\n@supports (display: grid) {\n  .supports {\n    display: grid;\n  }\n}\n@keyframes fade {\n  from {\n    opacity: 0;\n  }\n}\n'
     });
@@ -2182,8 +2182,8 @@ describe('Less AST grammar facts', () => {
     expect(result.value).toMatchObject({
       type: 'Stylesheet', children: [{ type: 'MixinDef' }, { type: 'Rule', body: [{
         type: 'MixinCall', name: '.generic', args: [
-          { value: { type: 'List', items: [{ type: 'Keyword', src: 'a' }, { type: 'Keyword', src: 'b' }, { type: 'Keyword', src: 'c' }] } },
-          { value: { type: 'List', items: [{ type: 'Keyword', src: 'a' }, { type: 'Keyword', src: 'b' }, { type: 'Keyword', src: 'c' }] } }
+          { value: { type: 'List', sep: ',', value: [{ type: 'Keyword', src: 'a' }, { type: 'Keyword', src: 'b' }, { type: 'Keyword', src: 'c' }] } },
+          { value: { type: 'List', sep: ',', value: [{ type: 'Keyword', src: 'a' }, { type: 'Keyword', src: 'b' }, { type: 'Keyword', src: 'c' }] } }
         ]
       }] }]
     });
@@ -2337,10 +2337,10 @@ describe('Less AST grammar facts', () => {
             steps: [
               { type: 'BracketLookup', keyKind: 'var', key: { type: 'VariableReference', name: 'next', lookup: 'scoped' } },
               { type: 'Call', args: [{ value: { type: 'Dimension', src: '42' } }] },
-              { type: 'BracketLookup', keyKind: 'prop', key: { type: 'Keyword', src: 'answer' } },
+              { type: 'BracketLookup', keyKind: 'prop', key: { type: 'Keyword', src: 'answer' } }
             ],
-            raw: '#library .seed()[@next](42)[answer]',
-          },
+            raw: '#library .seed()[@next](42)[answer]'
+          }
         }, {
           type: 'Declaration', name: 'member', value: {
             type: 'Reference',
@@ -2348,15 +2348,17 @@ describe('Less AST grammar facts', () => {
             steps: [
               { type: 'BracketLookup', keyKind: 'prop', key: { type: 'Keyword', src: 'key' } },
               { type: 'DotLookup', name: 'next' },
-              { type: 'Call', args: [{ value: { type: 'Dimension', src: '1' } }] },
+              { type: 'Call', args: [{ value: { type: 'Dimension', src: '1' } }] }
             ],
-            raw: '@theme[key].next(1)',
-          },
-        }],
-      }],
+            raw: '@theme[key].next(1)'
+          }
+        }]
+      }]
     });
     expect(isStylesheet(result.value)).toBe(true);
-    if (!isStylesheet(result.value)) throw new TypeError('expected Stylesheet');
+    if (!isStylesheet(result.value)) {
+      throw new TypeError('expected Stylesheet');
+    }
     expect(serialize(result.value).css).toContain('value: 42;');
   });
 
@@ -2364,7 +2366,7 @@ describe('Less AST grammar facts', () => {
     const result = run(
       lessAstGrammar.LessAstDocument,
       '@prop-name: my-prop; #namespace { my-prop: prop-value; } .test { value: #namespace[$@prop-name]; }',
-      { trivia: lessAstGrammar.whitespace },
+      { trivia: lessAstGrammar.whitespace }
     );
 
     expect(result.ok).toBe(true);
@@ -2377,12 +2379,12 @@ describe('Less AST grammar facts', () => {
             type: 'Reference', base: { type: 'MixinCall', name: '#namespace', path: [], args: [] },
             steps: [{
               type: 'BracketLookup', keyKind: 'prop',
-              key: { type: 'VariableReference', name: 'prop-name', lookup: 'scoped' },
+              key: { type: 'VariableReference', name: 'prop-name', lookup: 'scoped' }
             }],
-            raw: '#namespace[$@prop-name]',
-          },
-        }],
-      }],
+            raw: '#namespace[$@prop-name]'
+          }
+        }]
+      }]
     });
   });
 
@@ -2390,7 +2392,7 @@ describe('Less AST grammar facts', () => {
     const result = run(
       lessAstGrammar.LessAstDocument,
       '@theme-colors: #theme.dark.navbar.colors() !important;',
-      { trivia: lessAstGrammar.whitespace },
+      { trivia: lessAstGrammar.whitespace }
     );
 
     expect(result.ok).toBe(true);
@@ -2404,10 +2406,10 @@ describe('Less AST grammar facts', () => {
           path: [
             { comb: ' ', sel: '#theme' },
             { comb: ' ', sel: '.dark' },
-            { comb: ' ', sel: '.navbar' },
-          ],
-        },
-      }],
+            { comb: ' ', sel: '.navbar' }
+          ]
+        }
+      }]
     });
   });
 
@@ -2455,7 +2457,9 @@ describe('Less AST grammar facts', () => {
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(isStylesheet(result.value)).toBe(true);
-    if (!isStylesheet(result.value)) throw new TypeError('expected Stylesheet');
+    if (!isStylesheet(result.value)) {
+      throw new TypeError('expected Stylesheet');
+    }
     expect(serialize(result.value).css).toContain('.out {\n  implicit: blue;\n  explicit: 2px;\n}');
   });
 
@@ -2471,7 +2475,9 @@ describe('Less AST grammar facts', () => {
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(isStylesheet(result.value)).toBe(true);
-    if (!isStylesheet(result.value)) throw new TypeError('expected Stylesheet');
+    if (!isStylesheet(result.value)) {
+      throw new TypeError('expected Stylesheet');
+    }
     // Upstream namespacing-1/2 fixtures establish that `[@name]` selects that
     // named variable member (`[@foo]`, `[@return]`). `[@@name]` is the distinct
     // indirection form, covered separately by namespacing-2 and not widened here.
@@ -2491,7 +2497,9 @@ describe('Less AST grammar facts', () => {
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(isStylesheet(result.value)).toBe(true);
-    if (!isStylesheet(result.value)) throw new TypeError('expected Stylesheet');
+    if (!isStylesheet(result.value)) {
+      throw new TypeError('expected Stylesheet');
+    }
     expect(serialize(result.value).css).toContain('.out {\n  direct: red;\n  nested: yellow;\n  indirect: red;\n}');
   });
 
@@ -2508,7 +2516,9 @@ describe('Less AST grammar facts', () => {
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(isStylesheet(result.value)).toBe(true);
-    if (!isStylesheet(result.value)) throw new TypeError('expected Stylesheet');
+    if (!isStylesheet(result.value)) {
+      throw new TypeError('expected Stylesheet');
+    }
     expect(serialize(result.value).css).toContain('.out {\n  sub: tres;\n}');
   });
 
@@ -2815,8 +2825,8 @@ describe('Less AST grammar facts', () => {
     expect(directList.value.children[0]).toEqual({
       type: 'Declaration', name: 'shadow', merge: null, important: false,
       value: {
-        type: 'List', sep: ',', separators: [',\n  '],
-        items: [
+        type: 'List', sep: ',',
+        value: [
           { type: 'Dimension', number: 0, unit: '', src: '0' },
           { type: 'Dimension', number: 1, unit: 'px', src: '1px' }
         ]
@@ -2835,7 +2845,7 @@ describe('Less AST grammar facts', () => {
     expect(commented.value).toMatchObject({
       type: 'Stylesheet', children: [{ type: 'Declaration', value: { type: 'FunctionCall', args: [
         { type: 'Dimension', src: '1' },
-        { type: 'SpacedValue', parts: [{ type: 'Comment', text: '/* note */' }, { type: 'Dimension', src: '2' }] }
+        [{ type: 'Comment', text: '/* note */' }, { type: 'Dimension', src: '2' }]
       ] } }]
     });
     const serializable = run(lessAstGrammar.LessAstDocument, `.test { ${source} }`, { trivia: lessAstGrammar.whitespace });
@@ -3288,7 +3298,9 @@ describe('Less AST grammar facts', () => {
       ]
     });
     expect(isStylesheet(result.value)).toBe(true);
-    if (!isStylesheet(result.value)) throw new TypeError('expected Stylesheet');
+    if (!isStylesheet(result.value)) {
+      throw new TypeError('expected Stylesheet');
+    }
     expect(serialize(result.value)).toEqual({
       css: '.card-item,\n#tone-active {\n  color: red;\n}\n.card-item.active,\n#tone-active.active {\n  color: blue;\n}\n'
     });
@@ -3298,7 +3310,7 @@ describe('Less AST grammar facts', () => {
     const result = run(
       lessAstGrammar.LessAstDocument,
       '@base: ~".foo"; .outer { & @{base}.bbb { color: red; } }',
-      { trivia: lessAstGrammar.whitespace },
+      { trivia: lessAstGrammar.whitespace }
     );
 
     expect(result.ok).toBe(true);
@@ -3312,13 +3324,13 @@ describe('Less AST grammar facts', () => {
             tail: [{ comb: ' ', compound: { simples: [{ type: 'SimpleSelector', text: null, interp: {
               type: 'Interpolation', parts: [
                 { ref: { type: 'VariableReference', name: 'base', lookup: 'scoped' }, unquote: true },
-                { lit: '.bbb' },
-              ],
-            } },
-            ] } }],
-          }] },
-        }],
-      }],
+                { lit: '.bbb' }
+              ]
+            } }
+            ] } }]
+          }] }
+        }]
+      }]
     });
   });
 
@@ -3341,7 +3353,9 @@ describe('Less AST grammar facts', () => {
       }]
     });
     expect(isStylesheet(result.value)).toBe(true);
-    if (!isStylesheet(result.value)) throw new TypeError('expected Stylesheet');
+    if (!isStylesheet(result.value)) {
+      throw new TypeError('expected Stylesheet');
+    }
     expect(serialize(result.value)).toEqual({ css: '.button-active,\n.buttonx-y {\n  color: red;\n}\n' });
   });
 
@@ -3690,7 +3704,9 @@ describe('Less AST grammar facts', () => {
         ] } }] } }
       ]
     });
-    if (!isStylesheet(result.value)) throw new TypeError('Expected a direct Less Stylesheet.');
+    if (!isStylesheet(result.value)) {
+      throw new TypeError('Expected a direct Less Stylesheet.');
+    }
     expect(serialize(result.value).css).toBe('.card[data-state=active][svg|role="button"] {\n  color: red;\n}\n');
 
     for (const invalid of [
@@ -3712,8 +3728,9 @@ describe('Less AST grammar facts', () => {
 
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
-    if (!isStylesheet(result.value)) throw new TypeError('Expected a direct Less Stylesheet.');
+    if (!isStylesheet(result.value)) {
+      throw new TypeError('Expected a direct Less Stylesheet.');
+    }
     expect(serialize(result.value).css).toBe('.card[data="test3"] {\n  color: red;\n}\n');
   });
-
 });

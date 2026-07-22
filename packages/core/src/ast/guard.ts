@@ -70,15 +70,19 @@ export function evalGuard(node: GuardNode, deps: GuardEvalDeps): boolean {
       // Less: a bare-value guard is true only if it evaluates to `true`.
       return deps.resolveTyped(node.value).bytes.trim() === 'true';
     case 'cmp': {
-      if (!deps.ev) return false;
+      if (!deps.ev) {
+        return false;
+      }
       const left = deps.resolveTyped(node.left);
       const right = deps.resolveTyped(node.right);
       return deps.ev.compare(node.op, left, right, deps.modes);
     }
     case 'call': {
-      if (!deps.ev) return false;
-      const items = node.args.map((a) => deps.resolveTyped(a));
-      const list: ValueList = { type: 'List', items, sep: ',', bytes: '' };
+      if (!deps.ev) {
+        return false;
+      }
+      const items = node.args.map(a => deps.resolveTyped(a));
+      const list: ValueList = { type: 'List', value: items, sep: ',', bytes: '' };
       return deps.ev.typeCheck(node.name, list, deps.modes);
     }
     case 'default':
@@ -94,7 +98,7 @@ function valueUsesDefault(v: ValueNode): boolean {
   switch (v.type) {
     case 'FunctionCall':
       return v.name.toLowerCase() === 'default' || v.args.some(valueUsesDefault);
-    case 'Paren':
+    case 'Block':
       return valueUsesDefault(v.inner);
     case 'Operation':
       return valueUsesDefault(v.left) || valueUsesDefault(v.right);
@@ -102,7 +106,7 @@ function valueUsesDefault(v: ValueNode): boolean {
     case 'SpacedValue':
       return v.parts.some(valueUsesDefault);
     case 'List':
-      return v.items.some(valueUsesDefault);
+      return v.value.some(valueUsesDefault);
     default:
       return false;
   }
@@ -113,7 +117,9 @@ function valueUsesDefault(v: ValueNode): boolean {
  *  OPERAND (`when (@x = default())`), so such a def is dispatched in the second
  *  (default-deciding) pass with `default()` bound to the real decision. */
 export function guardUsesDefault(node: GuardNode | undefined): boolean {
-  if (!node) return false;
+  if (!node) {
+    return false;
+  }
   switch (node.g) {
     case 'default':
       return true;

@@ -33,6 +33,6 @@ transform or serialization pipeline is not a parser comparison.
 ## Gates
 
 Any candidate needs focused behavior proof and a matched benchmark. At an
-integration boundary rebuild dependencies, run core tests, the Jess production
-spine ratchet, and the Less corpus. SCSS-vs-Dart-Sass claims require matched
+integration boundary rebuild dependencies, run core tests, the Jess AST-v2
+production-route ratchet, and the Less corpus. SCSS-vs-Dart-Sass claims require matched
 syntax coverage and a recorded median; otherwise report them as unmeasured.

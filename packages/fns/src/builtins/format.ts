@@ -1,6 +1,5 @@
-import type { List, Quoted, ValueObj } from '@jesscss/core/value';
-import { makeKeyword, makeQuoted } from '@jesscss/core/value';
-import type { FnCtx, Fn } from '@jesscss/core/value';
+import type { List, Quoted, ValueObj, FnCtx, Fn } from '@jesscss/core/value';
+import { makeKeyword, makeQuoted, defineFunction } from '@jesscss/core/value';
 
 /**
  * The value a `%[sda]` token substitutes, byte-faithful to Less 4.x `%`:
@@ -20,13 +19,15 @@ function tokenValue(token: string, arg: ValueObj, ctx: FnCtx): string {
  * (the adapter mishandles reconstructed Quoted args).
  */
 const formatKernel = (list: List, ctx: FnCtx): ValueObj => {
-  const items = list.items;
+  const items = list.value;
   const template = items[0]!;
   const args = items.slice(1);
   let result = ctx.stringify(template);
   for (const arg of args) {
     const m = /%[sda]/i.exec(result);
-    if (!m) break;
+    if (!m) {
+      break;
+    }
     result = result.slice(0, m.index) + tokenValue(m[0], arg, ctx) + result.slice(m.index + m[0].length);
   }
   result = result.replace(/%%/g, '%');
@@ -43,21 +44,19 @@ const FORMAT_PARAMS: Fn['params'] = [{ kinds: 'any' }, { kinds: 'any', optional:
  * `%(…)` call syntax lowers to this whole-word name at parse (owner: Less uses
  * whole-word fn names — `data-uri`, `svg-gradient` — not Sass's `str-` abbreviation).
  */
-export const format: Fn = {
-  name: 'string-format',
+export const format: Fn = defineFunction('string-format', {
   params: FORMAT_PARAMS,
   variadic: true,
-  body: formatKernel,
-};
+  body: formatKernel
+});
 
 /**
  * `%` — retained COMPAT alias of the `string-format` kernel. `%` is no longer the
  * internal id (that is `string-format`); this alias keeps the legacy tree's dynamic
  * `%()` fallback (`_buildFormatCall`'s non-literal `Call('%')`) resolvable.
  */
-export const formatPercent: Fn = {
-  name: '%',
+export const formatPercent: Fn = defineFunction('%', {
   params: FORMAT_PARAMS,
   variadic: true,
-  body: formatKernel,
-};
+  body: formatKernel
+});

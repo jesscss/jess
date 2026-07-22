@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { run } from 'parseman';
+import { valueLayoutOf } from '@jesscss/core/ast';
 import type { Stylesheet } from '@jesscss/core/ast';
 import { serialize } from '../../core/src/ast/serialize.js';
 import { cssAstGrammar } from '../src/ast/grammar.js';
@@ -29,7 +30,7 @@ describe('CSS canonical-AST grammar', () => {
     expect(document.children[0]).toMatchObject({
       type: 'Rule',
       body: [
-        { type: 'Declaration', name: 'x', value: { type: 'Paren', inner: { type: 'Keyword', src: 'foo' } } },
+        { type: 'Declaration', name: 'x', value: { type: 'Block', delimiter: 'paren', inner: { type: 'Keyword', src: 'foo' } } },
         { type: 'Declaration', name: 'ratio' },
         { type: 'Declaration', name: 'filter', value: { type: 'FunctionCall', name: 'alpha' } },
         { type: 'Declaration', name: 'flag' },
@@ -208,13 +209,10 @@ describe('CSS canonical-AST grammar', () => {
       body: [{
         type: 'Declaration',
         name: 'width',
-        value: {
-          type: 'SpacedValue',
-          parts: [
-            { type: 'Dimension', number: 10, unit: '', src: '10' },
-            { type: 'Keyword', src: 'px' }
-          ]
-        }
+        value: [
+          { type: 'Dimension', number: 10, unit: '', src: '10' },
+          { type: 'Keyword', src: 'px' }
+        ]
       }]
     });
   });
@@ -242,7 +240,9 @@ describe('CSS canonical-AST grammar', () => {
       const document = parseAst(source);
       const first = document.children[0];
       expect(first, source).toMatchObject({ type: 'Rule' });
-      if (first?.type !== 'Rule') throw new Error(`Expected a rule for ${source}`);
+      if (first?.type !== 'Rule') {
+        throw new Error(`Expected a rule for ${source}`);
+      }
       expect(first.selector.selectors[0]?.head.simples.map(simple => simple.text), source).toEqual(expectedSimples);
     }
 
@@ -318,13 +318,10 @@ describe('CSS canonical-AST grammar', () => {
         {
           type: 'Declaration',
           name: 'loose',
-          value: {
-            type: 'SpacedValue',
-            parts: [
-              { type: 'Dimension', number: 1, unit: '' },
-              { type: 'Keyword', src: 'px' }
-            ]
-          }
+          value: [
+            { type: 'Dimension', number: 1, unit: '' },
+            { type: 'Keyword', src: 'px' }
+          ]
         }
       ]
     });
@@ -356,8 +353,8 @@ describe('CSS canonical-AST grammar', () => {
           },
           body: [
             { type: 'Declaration', name: 'color', value: { type: 'Keyword', src: 'red' }, merge: null, important: false },
-            { type: 'Declaration', name: 'margin', value: { type: 'SpacedValue', parts: [{ type: 'Dimension', number: 12, unit: 'px', src: '12px' }, { type: 'Dimension', number: 0, unit: '', src: '0' }] } },
-            { type: 'Declaration', name: 'font-family', value: { type: 'List', sep: ',', items: [{ type: 'Keyword', src: 'system-ui' }, { type: 'Keyword', src: 'sans-serif' }], separators: [','] }, important: true }
+            { type: 'Declaration', name: 'margin', value: [{ type: 'Dimension', number: 12, unit: 'px', src: '12px' }, { type: 'Dimension', number: 0, unit: '', src: '0' }] },
+            { type: 'Declaration', name: 'font-family', value: { type: 'List', sep: ',', value: [{ type: 'Keyword', src: 'system-ui' }, { type: 'Keyword', src: 'sans-serif' }] }, important: true }
           ]
         }
       ]
@@ -422,12 +419,12 @@ describe('CSS canonical-AST grammar', () => {
         type: 'SpacedValue',
         parts: [
           { type: 'Keyword', src: 'not' },
-          { type: 'Paren', inner: { type: 'SpacedValue' } }
+          { type: 'Block', delimiter: 'paren', inner: { type: 'SpacedValue' } }
         ]
       }
     });
     expect(parseAst('@SUPPORTS NOT (display: grid) { .grid { display: grid; } }').children[0]).toMatchObject({
-      name: '@SUPPORTS', prelude: { type: 'SpacedValue', parts: [{ type: 'Keyword', src: 'NOT' }, { type: 'Paren' }] }
+      name: '@SUPPORTS', prelude: { type: 'SpacedValue', parts: [{ type: 'Keyword', src: 'NOT' }, { type: 'Block', delimiter: 'paren' }] }
     });
 
     for (const source of [
@@ -451,7 +448,7 @@ describe('CSS canonical-AST grammar', () => {
     // spec's narrower supports-condition shape. Direct AST must not silently
     // narrow the public language during the cutover.
     expect(parseAst('@supports (display: grid), (color: red) { .grid { display: grid; } }').children[0]).toMatchObject({
-      type: 'AtRuleBlock', prelude: { type: 'List', sep: ',', items: [{ type: 'Paren' }, { type: 'Paren' }] }
+      type: 'AtRuleBlock', prelude: { type: 'List', sep: ',', value: [{ type: 'Block', delimiter: 'paren' }, { type: 'Block', delimiter: 'paren' }] }
     });
   });
 
@@ -533,8 +530,8 @@ describe('CSS canonical-AST grammar', () => {
 
     const document = parseAst(source);
     expect(document.children).toMatchObject([
-      { type: 'AtRuleBlock', name: '@SUPPORTS', prelude: { type: 'Paren', inner: { type: 'Operation', operator: ':' } }, body: [{ type: 'Rule' }] },
-      { type: 'AtRuleBlock', name: '@container', prelude: { type: 'SpacedValue', parts: [{ type: 'Keyword', src: 'sidebar' }, { type: 'Paren', inner: { type: 'Operation', operator: '>' } }] }, body: [{ type: 'Rule' }] },
+      { type: 'AtRuleBlock', name: '@SUPPORTS', prelude: { type: 'Block', delimiter: 'paren', inner: { type: 'Operation', operator: ':' } }, body: [{ type: 'Rule' }] },
+      { type: 'AtRuleBlock', name: '@container', prelude: { type: 'SpacedValue', parts: [{ type: 'Keyword', src: 'sidebar' }, { type: 'Block', delimiter: 'paren', inner: { type: 'Operation', operator: '>' } }] }, body: [{ type: 'Rule' }] },
       { type: 'AtRuleBlock', name: '@FONT-FACE', prelude: null, body: [{ type: 'Declaration', name: 'font-family' }, { type: 'Declaration', name: 'src' }] },
       { type: 'AtRuleBlock', name: '@property', prelude: { type: 'Any', src: '--angle' }, body: [{ type: 'Declaration', name: 'syntax' }, { type: 'Declaration', name: 'inherits' }, { type: 'Declaration', name: 'initial-value' }] },
       { type: 'AtRuleBlock', name: '@scope', prelude: { type: 'Any', src: '(.card) to (.edge)' }, body: [{ type: 'Declaration', name: 'color' }, { type: 'Rule' }] }
@@ -552,14 +549,14 @@ describe('CSS canonical-AST grammar', () => {
       expect(parseCssCst(range).errors, range).toHaveLength(0);
       expect(parseAst(range).children[0], range).toMatchObject({
         type: 'AtRuleBlock',
-        prelude: { type: 'Paren' }
+        prelude: { type: 'Block', delimiter: 'paren' }
       });
     }
     expect(parseAst(source).children[0]).toMatchObject({
       type: 'AtRuleBlock',
       name: '@media',
       prelude: {
-        type: 'Paren',
+        type: 'Block', delimiter: 'paren',
         inner: {
           type: 'Operation',
           operator: '<',
@@ -584,7 +581,7 @@ describe('CSS canonical-AST grammar', () => {
       body: [{
         type: 'AtRuleBlock',
         name: '@media',
-        prelude: { type: 'Paren', inner: { type: 'Operation', operator: ':' } },
+        prelude: { type: 'Block', delimiter: 'paren', inner: { type: 'Operation', operator: ':' } },
         body: [{ type: 'Declaration', name: 'color' }]
       }]
     });
@@ -1234,7 +1231,7 @@ describe('CSS canonical-AST grammar', () => {
               operator: '*',
               left: { type: 'Dimension', number: 2, unit: 'px' },
               right: {
-                type: 'Paren',
+                type: 'Block', delimiter: 'paren',
                 inner: {
                   type: 'Operation',
                   operator: '-',
@@ -1275,14 +1272,14 @@ describe('CSS canonical-AST grammar', () => {
     expect(document.children[0]).toMatchObject({
       type: 'Rule',
       body: [
-        { type: 'Declaration', name: 'a', value: { type: 'SpacedValue', parts: [{ type: 'Url' }, { type: 'Any', src: '/' }, { type: 'Keyword', src: 'cover' }] } },
-        { type: 'Declaration', name: 'b', value: { type: 'SpacedValue', parts: [{ type: 'FunctionCall', name: 'var', args: [{ type: 'Keyword', src: '--x' }] }, { type: 'Keyword', src: 'solid' }] } },
-        { type: 'Declaration', name: 'c', value: { type: 'SpacedValue', parts: [{ type: 'FunctionCall', name: 'rgb', args: [{ type: 'Dimension', number: 1 }, { type: 'Dimension', number: 2 }, { type: 'Dimension', number: 3 }] }, { type: 'Any', src: '/' }, { type: 'Dimension', number: 0.5 }] } },
-        { type: 'Declaration', name: 'd', value: { type: 'SpacedValue', parts: [{ type: 'FunctionCall', name: 'foo', args: [{ type: 'Keyword', src: 'bar' }] }, { type: 'Keyword', src: 'baz' }] } },
+        { type: 'Declaration', name: 'a', value: [{ type: 'Url' }, { type: 'Any', src: '/' }, { type: 'Keyword', src: 'cover' }] },
+        { type: 'Declaration', name: 'b', value: [{ type: 'FunctionCall', name: 'var', args: [{ type: 'Keyword', src: '--x' }] }, { type: 'Keyword', src: 'solid' }] },
+        { type: 'Declaration', name: 'c', value: [{ type: 'FunctionCall', name: 'rgb', args: [{ type: 'Dimension', number: 1 }, { type: 'Dimension', number: 2 }, { type: 'Dimension', number: 3 }] }, { type: 'Any', src: '/' }, { type: 'Dimension', number: 0.5 }] },
+        { type: 'Declaration', name: 'd', value: [{ type: 'FunctionCall', name: 'foo', args: [{ type: 'Keyword', src: 'bar' }] }, { type: 'Keyword', src: 'baz' }] },
         { type: 'Declaration', name: 'e', value: { type: 'FunctionCall', name: 'calc', args: [{ type: 'Operation', operator: '+', right: { type: 'FunctionCall', name: 'var', args: [{ type: 'Keyword', src: '--x' }] } }] } },
-        { type: 'Declaration', name: 'f', value: { type: 'FunctionCall', name: 'calc', args: [{ type: 'Operation', operator: '+', left: { type: 'FunctionCall', name: 'var', args: [{ type: 'Keyword', src: '--x' }, { type: 'SpacedValue', parts: [{ type: 'Dimension', number: 1, unit: 'px' }, { type: 'Any', src: '+' }, { type: 'Dimension', number: 2, unit: 'px' }] }] }, right: { type: 'Dimension', number: 2, unit: 'px' } }] } },
-        { type: 'Declaration', name: 'g', value: { type: 'FunctionCall', name: 'calc', args: [{ type: 'Operation', operator: '+', left: { type: 'FunctionCall', name: 'var', args: [{ type: 'Keyword', src: '--x' }, { type: 'SpacedValue', parts: [{ type: 'Keyword', src: 'red' }, { type: 'Keyword', src: 'blue' }] }] }, right: { type: 'Dimension', number: 2, unit: 'px' } }] } },
-        { type: 'Declaration', name: 'h', value: { type: 'SpacedValue', parts: [{ type: 'Dimension', number: 0, unit: '' }, { type: 'FunctionCall', name: 'calc', args: [{ type: 'Operation', operator: '*', left: { type: 'Dimension', number: -1, unit: '' }, right: { type: 'FunctionCall', name: 'var', args: [{ type: 'Keyword', src: '--x' }] } }] }] } }
+        { type: 'Declaration', name: 'f', value: { type: 'FunctionCall', name: 'calc', args: [{ type: 'Operation', operator: '+', left: { type: 'FunctionCall', name: 'var', args: [{ type: 'Keyword', src: '--x' }, [{ type: 'Dimension', number: 1, unit: 'px' }, { type: 'Any', src: '+' }, { type: 'Dimension', number: 2, unit: 'px' }]] }, right: { type: 'Dimension', number: 2, unit: 'px' } }] } },
+        { type: 'Declaration', name: 'g', value: { type: 'FunctionCall', name: 'calc', args: [{ type: 'Operation', operator: '+', left: { type: 'FunctionCall', name: 'var', args: [{ type: 'Keyword', src: '--x' }, [{ type: 'Keyword', src: 'red' }, { type: 'Keyword', src: 'blue' }]] }, right: { type: 'Dimension', number: 2, unit: 'px' } }] } },
+        { type: 'Declaration', name: 'h', value: [{ type: 'Dimension', number: 0, unit: '' }, { type: 'FunctionCall', name: 'calc', args: [{ type: 'Operation', operator: '*', left: { type: 'Dimension', number: -1, unit: '' }, right: { type: 'FunctionCall', name: 'var', args: [{ type: 'Keyword', src: '--x' }] } }] }] }
       ]
     });
 
@@ -1302,7 +1299,7 @@ describe('CSS canonical-AST grammar', () => {
         type: 'Declaration', name: 'h', value: {
           type: 'FunctionCall', name: 'calc', args: [{
             type: 'Operation', operator: '+',
-            left: { type: 'FunctionCall', name: 'var', args: [{ type: 'Keyword', src: '--x' }, { type: 'SpacedValue', parts: [{ type: 'Paren', inner: { type: 'Keyword', src: 'foo' } }, { type: 'Any', src: '[foo]' }] }] },
+            left: { type: 'FunctionCall', name: 'var', args: [{ type: 'Keyword', src: '--x' }, [{ type: 'Block', delimiter: 'paren', inner: { type: 'Keyword', src: 'foo' } }, { type: 'Any', src: '[foo]' }]] },
             right: { type: 'Dimension', number: 2, unit: 'px' }
           }]
         }
@@ -1310,7 +1307,7 @@ describe('CSS canonical-AST grammar', () => {
         type: 'Declaration', name: 'i', value: {
           type: 'FunctionCall', name: 'calc', args: [{
             type: 'Operation', operator: '+',
-            left: { type: 'FunctionCall', name: 'var', args: [{ type: 'Keyword', src: '--x' }, { type: 'List', items: [{ type: 'Keyword', src: 'foo' }, { type: 'Keyword', src: 'bar' }] }] },
+            left: { type: 'FunctionCall', name: 'var', args: [{ type: 'Keyword', src: '--x' }, { type: 'List', sep: ',', value: [{ type: 'Keyword', src: 'foo' }, { type: 'Keyword', src: 'bar' }] }] },
             right: { type: 'Dimension', number: 2, unit: 'px' }
           }]
         }
@@ -1334,7 +1331,7 @@ describe('CSS canonical-AST grammar', () => {
         type: 'Declaration', name: 'l', value: {
           type: 'FunctionCall', name: 'calc', args: [{
             type: 'Operation', operator: '+',
-            left: { type: 'FunctionCall', name: 'var', args: [{ type: 'Keyword', src: '--x' }, { type: 'FunctionCall', name: 'var', args: [{ type: 'Keyword', src: '--y' }, { type: 'List', items: [{ type: 'Keyword', src: 'a' }, { type: 'Keyword', src: 'b' }] }] }] },
+            left: { type: 'FunctionCall', name: 'var', args: [{ type: 'Keyword', src: '--x' }, { type: 'FunctionCall', name: 'var', args: [{ type: 'Keyword', src: '--y' }, { type: 'List', sep: ',', value: [{ type: 'Keyword', src: 'a' }, { type: 'Keyword', src: 'b' }] }] }] },
             right: { type: 'Dimension', number: 2, unit: 'px' }
           }]
         }
@@ -1350,7 +1347,7 @@ describe('CSS canonical-AST grammar', () => {
         type: 'Declaration', name: 'n', value: {
           type: 'FunctionCall', name: 'calc', args: [{
             type: 'Operation', operator: '+',
-            left: { type: 'FunctionCall', name: 'var', args: [{ type: 'Keyword', src: '--x' }, { type: 'List', items: [{ type: 'Keyword', src: 'foo' }, { type: 'Any', src: '' }] }] },
+            left: { type: 'FunctionCall', name: 'var', args: [{ type: 'Keyword', src: '--x' }, { type: 'List', sep: ',', value: [{ type: 'Keyword', src: 'foo' }, { type: 'Any', src: '' }] }] },
             right: { type: 'Dimension', number: 2, unit: 'px' }
           }]
         }
@@ -1374,7 +1371,7 @@ describe('CSS canonical-AST grammar', () => {
         type: 'Declaration', name: 'q', value: {
           type: 'FunctionCall', name: 'calc', args: [{
             type: 'Operation', operator: '+',
-            left: { type: 'FunctionCall', name: 'var', args: [{ type: 'Keyword', src: '--x' }, { type: 'List', items: [{ type: 'Keyword', src: 'a' }, { type: 'Any', src: '' }, { type: 'Keyword', src: 'b' }] }] },
+            left: { type: 'FunctionCall', name: 'var', args: [{ type: 'Keyword', src: '--x' }, { type: 'List', sep: ',', value: [{ type: 'Keyword', src: 'a' }, { type: 'Any', src: '' }, { type: 'Keyword', src: 'b' }] }] },
             right: { type: 'Dimension', number: 2, unit: 'px' }
           }]
         }
@@ -1423,7 +1420,7 @@ describe('CSS canonical-AST grammar', () => {
       '.a { width: calc(+); }',
       '.a { width: calc(1px +2px); }',
       '.a { width: calc(1px+ 2px); }',
-      '.a { width: calc(1px -2px); }',
+      '.a { width: calc(1px -2px); }'
     ]) {
       try {
         const result = run(cssAstGrammar.CssAstDocument, input, { trivia: cssAstGrammar.whitespace });
@@ -1454,18 +1451,15 @@ describe('CSS canonical-AST grammar', () => {
         {
           type: 'Declaration',
           name: 'color',
-          value: {
-            type: 'SpacedValue',
-            parts: [{ type: 'Keyword', src: 'a' }, { type: 'Keyword', src: 'b' }]
-          },
+          value: [{ type: 'Keyword', src: 'a' }, { type: 'Keyword', src: 'b' }],
           important: false
         },
         {
           type: 'Declaration',
           name: 'background',
           value: {
-            type: 'List',
-            items: [{ type: 'Keyword', src: 'foo' }, { type: 'Keyword', src: 'bar' }]
+            type: 'List', sep: ',',
+            value: [{ type: 'Keyword', src: 'foo' }, { type: 'Keyword', src: 'bar' }]
           }
         },
         { type: 'Declaration', name: 'padding', value: { type: 'Dimension', src: '1px' }, important: true },
@@ -1587,5 +1581,27 @@ describe('CSS canonical-AST grammar', () => {
     expect(serialize(document)).toEqual({
       css: '@scope (.outer) {\n  @scope (.inner) {\n    color: red;\n  }\n}\n'
     });
+  });
+
+  it('retains authored comments and multiline indentation on raw ValueSlot boundaries', () => {
+    const document = parseAst('.a { color: red /* keep */\n  blue; shadow: a,\n  b; fn: foo(red /* keep fn */\n  blue); }');
+    const body = document.children[0];
+    if (body?.type !== 'Rule') {
+      throw new Error('expected a CSS rule');
+    }
+    const adjacent = body.body[0]?.type === 'Declaration' ? body.body[0].value : null;
+    const comma = body.body[1]?.type === 'Declaration' ? body.body[1].value : null;
+    const call = body.body[2]?.type === 'Declaration' ? body.body[2].value : null;
+    expect(Array.isArray(adjacent)).toBe(true);
+    expect(comma).toMatchObject({ type: 'List' });
+    expect(valueLayoutOf(adjacent as object)).toEqual([' /* keep */\n  ']);
+    expect(valueLayoutOf(comma as object)).toEqual([',\n  ']);
+    expect(call).toMatchObject({ type: 'FunctionCall', name: 'foo' });
+    if (call && !Array.isArray(call) && call.type === 'FunctionCall') {
+      expect(valueLayoutOf(call.args[0] as object)).toEqual([' /* keep fn */\n  ']);
+    }
+    expect(serialize(document).css).toContain('color: red /* keep */\n    blue;');
+    expect(serialize(document).css).toContain('shadow: a,\n    b;');
+    expect(serialize(document).css).toContain('fn: foo(red /* keep fn */\n    blue);');
   });
 });

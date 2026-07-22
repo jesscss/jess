@@ -1,5 +1,4 @@
-import { colorRgbRounded, makeKeyword } from '@jesscss/core/value';
-import { coerceListItems } from './list-helper.js';
+import { coerceListItems, colorRgbRounded, makeKeyword, defineFunction } from '@jesscss/core/value';
 import type { Color, Fn, ValueObj } from '@jesscss/core/value';
 
 /**
@@ -16,13 +15,14 @@ import type { Color, Fn, ValueObj } from '@jesscss/core/value';
  * call throws; the shared call boundary alone decides whether that resolved-call
  * failure is preserved or reported.
  */
-export const svgGradient: Fn = {
-  name: 'svg-gradient',
+export const svgGradient: Fn = defineFunction('svg-gradient', {
   params: [{ kinds: 'any' }],
   variadic: true,
   body: (list, ctx): ValueObj => {
-    const items = list.items;
-    if (items.length < 2) throw new TypeError(STOPS_ERROR);
+    const items = list.value;
+    if (items.length < 2) {
+      throw new TypeError(STOPS_ERROR);
+    }
     const direction = ctx.stringify(items[0]!);
 
     // Stops: the multi-arg form spreads `color pos` groups after the direction;
@@ -30,7 +30,9 @@ export const svgGradient: Fn = {
     let stops: ValueObj[];
     if (items.length === 2) {
       stops = coerceListItems(items[1]);
-      if (stops.length < 2) throw new TypeError(STOPS_ERROR);
+      if (stops.length < 2) {
+        throw new TypeError(STOPS_ERROR);
+      }
     } else {
       stops = items.slice(1);
     }
@@ -58,7 +60,7 @@ export const svgGradient: Fn = {
       const color = parts[0];
       const position = parts[1];
       const isEnd = i === 0 || i + 1 === stops.length;
-      if (!color || color.type !== 'Color' || (!(isEnd && position === undefined) && (!position || position.type !== 'Dimension'))) {
+      if (color?.type !== 'Color' || (!(isEnd && position === undefined) && (position?.type !== 'Dimension'))) {
         throw new TypeError(STOPS_ERROR);
       }
       const positionValue = position ? position.bytes : i === 0 ? '0%' : '100%';
@@ -70,8 +72,8 @@ export const svgGradient: Fn = {
 
     const uri = `data:image/svg+xml,${encodeURIComponent(svg)}`;
     return makeKeyword(`url('${uri}')`);
-  },
-};
+  }
+});
 
 /** A color's `#rrggbb` (rgb only, no alpha) — legacy `Color.toRGB()`. */
 function toRGB(c: Color): string {
@@ -84,5 +86,5 @@ function hex2(v: number): string {
   return h.length === 1 ? `0${h}` : h;
 }
 
-const DIRECTION_ERROR = "svg-gradient direction must be 'to bottom', 'to right', 'to bottom right', 'to top right' or 'ellipse at center'";
+const DIRECTION_ERROR = 'svg-gradient direction must be \'to bottom\', \'to right\', \'to bottom right\', \'to top right\' or \'ellipse at center\'';
 const STOPS_ERROR = 'svg-gradient expects direction, start_color [start_position], [color position,]..., end_color [end_position] or direction, color list';

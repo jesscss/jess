@@ -1,5 +1,6 @@
 import { run } from 'parseman';
 import { makeBuiltinRegistry } from '@jesscss/fns';
+import { valueLayoutOf } from '@jesscss/core/ast';
 import type { Stylesheet } from '@jesscss/core/ast';
 import { buildEvaluator } from '../../core/src/ast/evaluator.js';
 import { serialize } from '../../core/src/ast/serialize.js';
@@ -100,7 +101,7 @@ describe('SCSS canonical-AST grammar', () => {
       ['3 > 2', 'yes'],
       ['2 < 3', 'yes'],
       ['3 <= 2', 'no'],
-      ['(1 + 2) * 3 == 9 and not (2 > 3)', 'yes'],
+      ['(1 + 2) * 3 == 9 and not (2 > 3)', 'yes']
     ] as const) {
       const result = run(scssAstGrammar.ScssAstDocument, `@if ${condition} { .yes { color: green; } } @else { .no { color: red; } }`, { trivia: scssAstGrammar.whitespace });
       expect(result.ok, condition).toBe(true);
@@ -272,7 +273,7 @@ describe('SCSS canonical-AST grammar', () => {
     const result = run(scssAstGrammar.ScssAstDocument, source, { trivia: scssAstGrammar.whitespace });
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
-    expect(result.value).toMatchObject({ type: 'Stylesheet', children: [{ type: 'ImportAtRule', options: { type: 'List', items: [{ src: 'css' }, { src: 'once' }] } }] });
+    expect(result.value).toMatchObject({ type: 'Stylesheet', children: [{ type: 'ImportAtRule', options: { type: 'List', sep: ',', value: [{ src: 'css' }, { src: 'once' }] } }] });
   });
 
   it('constructs typed static CSS-import supports tails without raw authored text', () => {
@@ -287,7 +288,7 @@ describe('SCSS canonical-AST grammar', () => {
         tail: {
           type: 'SpacedValue', parts: [
             { type: 'FunctionCall', name: 'layer', args: [{ type: 'Keyword', src: 'tokens' }] },
-            { type: 'FunctionCall', name: 'supports', args: [{ type: 'Paren', inner: { type: 'Operation', operator: ':' } }] },
+            { type: 'FunctionCall', name: 'supports', args: [{ type: 'Block', delimiter: 'paren', inner: { type: 'Operation', operator: ':' } }] },
             { type: 'Keyword', src: 'screen' }
           ]
         }
@@ -299,7 +300,7 @@ describe('SCSS canonical-AST grammar', () => {
     expect(simple.unconsumedFrom).toBeNull();
     expect(simple.value).toMatchObject({
       type: 'Stylesheet',
-      children: [{ type: 'ImportAtRule', tail: { type: 'FunctionCall', name: 'supports', args: [{ type: 'Paren', inner: { type: 'Operation', operator: ':' } }] } }]
+      children: [{ type: 'ImportAtRule', tail: { type: 'FunctionCall', name: 'supports', args: [{ type: 'Block', delimiter: 'paren', inner: { type: 'Operation', operator: ':' } }] } }]
     });
 
     for (const unsupported of [
@@ -322,12 +323,12 @@ describe('SCSS canonical-AST grammar', () => {
         tail: {
           type: 'SpacedValue', parts: [
             { type: 'FunctionCall', name: 'layer', args: [{ type: 'Keyword', src: 'tokens' }] },
-            { type: 'FunctionCall', name: 'supports', args: [{ type: 'Paren', inner: { type: 'Operation', operator: ':' } }] },
+            { type: 'FunctionCall', name: 'supports', args: [{ type: 'Block', delimiter: 'paren', inner: { type: 'Operation', operator: ':' } }] },
             {
-              type: 'List', separators: [',', ','], items: [
-                { type: 'SpacedValue', parts: [{ src: 'only' }, { src: 'screen' }, { src: 'and' }, { type: 'Paren', inner: { type: 'Operation', operator: ':' } }] },
-                { type: 'Paren', inner: { type: 'Keyword', src: 'color' } },
-                { type: 'SpacedValue', parts: [{ src: 'not' }, { type: 'Paren', inner: { type: 'Operation', operator: ':' } }] }
+              type: 'List', sep: ',', value: [
+                { type: 'SpacedValue', parts: [{ src: 'only' }, { src: 'screen' }, { src: 'and' }, { type: 'Block', delimiter: 'paren', inner: { type: 'Operation', operator: ':' } }] },
+                { type: 'Block', delimiter: 'paren', inner: { type: 'Keyword', src: 'color' } },
+                { type: 'SpacedValue', parts: [{ src: 'not' }, { type: 'Block', delimiter: 'paren', inner: { type: 'Operation', operator: ':' } }] }
               ]
             }
           ]
@@ -447,9 +448,9 @@ describe('SCSS canonical-AST grammar', () => {
         { type: 'VariableDeclaration', name: 'singleHash', value: { type: 'Quoted', src: '\'#foo\'', value: '#foo', quote: '\'', escaped: false }, write: { mode: 'declare' } },
         {
           type: 'VariableDeclaration', name: 'shadow', value: {
-            type: 'List', sep: ',', separators: [',\n    '], items: [
-              { type: 'SpacedValue', parts: [{ type: 'Dimension', number: 0, unit: '', src: '0' }, { type: 'Dimension', number: 1, unit: 'px', src: '1px' }, { type: 'Color', src: '#000' }] },
-              { type: 'SpacedValue', parts: [{ type: 'Dimension', number: 0, unit: '', src: '0' }, { type: 'Dimension', number: 2, unit: 'px', src: '2px' }, { type: 'Color', src: '#fff' }] }
+            type: 'List', sep: ',', value: [
+              [{ type: 'Dimension', number: 0, unit: '', src: '0' }, { type: 'Dimension', number: 1, unit: 'px', src: '1px' }, { type: 'Color', src: '#000' }],
+              [{ type: 'Dimension', number: 0, unit: '', src: '0' }, { type: 'Dimension', number: 2, unit: 'px', src: '2px' }, { type: 'Color', src: '#fff' }]
             ]
           },
           write: { mode: 'declare' }
@@ -528,8 +529,8 @@ describe('SCSS canonical-AST grammar', () => {
           { type: 'Declaration', name: 'via-env', value: { type: 'FunctionCall', name: 'env', args: [{ type: 'Keyword', src: '--safe-area' }] } },
           { type: 'Declaration', name: 'via-calc', value: { type: 'FunctionCall', name: 'calc', args: [{ type: 'Operation', operator: '+', left: { src: '--size' } }] } }
         ] },
-        { type: 'AtRuleBlock', name: '@media', prelude: { type: 'SpacedValue', parts: [{ type: 'Paren', inner: { type: 'Operation', operator: ':', right: { type: 'Keyword', src: '--viewport' } } }] } },
-        { type: 'AtRuleBlock', name: '@supports', prelude: { type: 'Paren', inner: { type: 'Operation', operator: ':', right: { type: 'Keyword', src: '--mode' } } } }
+        { type: 'AtRuleBlock', name: '@media', prelude: { type: 'SpacedValue', parts: [{ type: 'Block', delimiter: 'paren', inner: { type: 'Operation', operator: ':', right: { type: 'Keyword', src: '--viewport' } } }] } },
+        { type: 'AtRuleBlock', name: '@supports', prelude: { type: 'Block', delimiter: 'paren', inner: { type: 'Operation', operator: ':', right: { type: 'Keyword', src: '--mode' } } } }
       ]
     });
     expect(isStylesheet(result.value) ? serialize(result.value).css : undefined).toBe(
@@ -577,7 +578,7 @@ describe('SCSS canonical-AST grammar', () => {
         } },
         { type: 'VariableDeclaration', name: 'nested', value: {
           type: 'Operation', operator: '*', left: {
-            type: 'Paren', inner: { type: 'Operation', operator: '+' }
+            type: 'Block', delimiter: 'paren', inner: { type: 'Operation', operator: '+' }
           }, right: { src: '3' }
         } },
         { type: 'VariableDeclaration', name: 'signed', value: {
@@ -591,19 +592,17 @@ describe('SCSS canonical-AST grammar', () => {
           }, right: { src: '2' }
         } },
         { type: 'VariableDeclaration', name: 'spaced-positive', value: {
-          type: 'Paren', inner: { type: 'VariableReference', name: 'base' }
+          type: 'Block', delimiter: 'paren', inner: { type: 'VariableReference', name: 'base' }
         } },
-        { type: 'VariableDeclaration', name: 'minus-list', value: {
-          type: 'SpacedValue', parts: [{ src: '1' }, { src: '-2' }]
-        } },
+        { type: 'VariableDeclaration', name: 'minus-list', value: [{ src: '1' }, { src: '-2' }] },
         { type: 'VariableDeclaration', name: 'legacy-plus', value: { type: 'Operation', operator: '+' } },
         { type: 'Rule', body: [
           { name: 'compact', value: { type: 'Operation', operator: '-' } },
-          { name: 'sequence', value: { type: 'SpacedValue', parts: [{ src: '1' }, { type: 'Operation', operator: '+' }] } },
-          { name: 'mixed', value: { type: 'SpacedValue', parts: [{ type: 'Operation', operator: '+' }, { src: 'red' }] } },
-          { name: 'ratio', value: { type: 'SpacedValue', parts: [{ src: '1' }, { src: '/' }, { src: '2' }] } },
-          { name: 'grouped-ratio', value: { type: 'Paren', inner: { type: 'Operation', operator: '/' } } },
-          { name: 'calc-ratio', value: { type: 'FunctionCall', name: 'calc', args: [{ type: 'SpacedValue', parts: [{ src: '1' }, { src: '/' }, { src: '2' }] }] } },
+          { name: 'sequence', value: [{ src: '1' }, { type: 'Operation', operator: '+' }] },
+          { name: 'mixed', value: [{ type: 'Operation', operator: '+' }, { src: 'red' }] },
+          { name: 'ratio', value: { type: 'List', sep: '/', value: [{ src: '1' }, { src: '2' }] } },
+          { name: 'grouped-ratio', value: { type: 'Block', delimiter: 'paren', inner: { type: 'Operation', operator: '/' } } },
+          { name: 'calc-ratio', value: { type: 'FunctionCall', name: 'calc', args: [{ type: 'List', sep: '/', value: [{ src: '1' }, { src: '2' }] }] } },
           { name: 'mod', value: { type: 'Operation', operator: '%' } }
         ] }
       ]
@@ -612,7 +611,7 @@ describe('SCSS canonical-AST grammar', () => {
 
   it('accepts the public optional final declaration semicolon', () => {
     for (const [source, expected] of [
-      ['.card { color: blue }', { type: 'Rule' }],
+      ['.card { color: blue }', { type: 'Rule' }]
     ] as const) {
       const cst = parseScssCst(source);
       const result = run(scssAstGrammar.ScssAstDocument, source, { trivia: scssAstGrammar.whitespace });
@@ -944,7 +943,7 @@ describe('SCSS canonical-AST grammar', () => {
         type: 'AtRuleBlock', name: '@supports',
         prelude: {
           type: 'SpacedValue',
-          parts: [{ type: 'Keyword', src: 'not' }, { type: 'Paren', inner: { type: 'SpacedValue' } }]
+          parts: [{ type: 'Keyword', src: 'not' }, { type: 'Block', delimiter: 'paren', inner: { type: 'SpacedValue' } }]
         }
       }]
     });
@@ -960,7 +959,9 @@ describe('SCSS canonical-AST grammar', () => {
     expect(escapedQuoted.ok).toBe(true);
     expect(escapedQuoted.unconsumedFrom).toBeNull();
     expect(isStylesheet(escapedQuoted.value)).toBe(true);
-    if (!isStylesheet(escapedQuoted.value)) throw new TypeError('expected escaped static supports quote to parse');
+    if (!isStylesheet(escapedQuoted.value)) {
+      throw new TypeError('expected escaped static supports quote to parse');
+    }
     expect(serialize(escapedQuoted.value).css).toBe(
       '@supports (font-family: "A  \\"B\\"") {\n  .card {\n    color: blue;\n  }\n}\n'
     );
@@ -974,7 +975,7 @@ describe('SCSS canonical-AST grammar', () => {
     }
 
     for (const invalid of [
-      '@supports (display: grid), (color: blue) { .card { color: blue; } }',
+      '@supports (display: grid), (color: blue) { .card { color: blue; } }'
     ]) {
       const rejected = run(scssAstGrammar.ScssAstDocument, invalid, { trivia: scssAstGrammar.whitespace });
       expect(rejected.ok && rejected.unconsumedFrom === null && isStylesheet(rejected.value), invalid).toBe(false);
@@ -1516,7 +1517,7 @@ describe('SCSS canonical-AST grammar', () => {
       type: 'Stylesheet',
       children: [{
         type: 'For', binding: { kind: 'single', name: 'tone' },
-        iterable: { type: 'SpacedValue', parts: [{ type: 'Keyword', src: 'red' }, { type: 'Keyword', src: 'blue' }] },
+        iterable: [{ type: 'Keyword', src: 'red' }, { type: 'Keyword', src: 'blue' }],
         rules: [{ type: 'Rule', body: [{ type: 'Declaration', name: 'color', value: { type: 'VariableReference', name: 'tone' } }] }]
       }]
     });
@@ -1650,5 +1651,21 @@ describe('SCSS canonical-AST grammar', () => {
       const direct = run(scssAstGrammar.ScssAstDocument, invalid, { trivia: scssAstGrammar.whitespace });
       expect(direct.ok && direct.unconsumedFrom === null && isStylesheet(direct.value), invalid).toBe(false);
     }
+  });
+
+  it('retains authored comments and multiline indentation on raw ValueSlot boundaries', () => {
+    const document = parse('.a { color: red /* keep */\n  blue; shadow: a,\n  b; }');
+    const body = document.children[0];
+    if (body?.type !== 'Rule') {
+      throw new Error('expected an SCSS rule');
+    }
+    const adjacent = body.body[0]?.type === 'Declaration' ? body.body[0].value : null;
+    const comma = body.body[1]?.type === 'Declaration' ? body.body[1].value : null;
+    expect(Array.isArray(adjacent)).toBe(true);
+    expect(comma).toMatchObject({ type: 'List' });
+    expect(valueLayoutOf(adjacent as object)).toEqual([' /* keep */\n  ']);
+    expect(valueLayoutOf(comma as object)).toEqual([',\n  ']);
+    expect(serialize(document).css).toContain('color: red /* keep */\n    blue;');
+    expect(serialize(document).css).toContain('shadow: a,\n    b;');
   });
 });

@@ -22,7 +22,7 @@ only when independent fixture evidence supports them.
 
 Prove each slice with focused parser or core tests, then run the relevant corpus.
 Validate contested output against the independent Less reference. At integration
-boundaries, require fresh builds, core tests, the Jess production spine ratchet,
+boundaries, require fresh builds, core tests, the Jess AST-v2 production-route ratchet,
 and the Less corpus. Performance claims need matched measurements; correctness
 evidence alone does not prove speed.
 

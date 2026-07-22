@@ -1,35 +1,45 @@
 # @jesscss/plugin-less-compat
 
-**The Less.js 4.x compatibility package for legacy plugin loading, functions,
-and post-processors.**
+**An AST-v2 native-function contribution package.**
 
-[Jess](https://github.com/jesscss/jess) needs to meet a Less 4.x ecosystem with
-years of plugins and visitors written against the old Less AST. This package
-contains the legacy-tree conversion work needed for a future explicit adapter.
-The public AST-v2 compiler route does **not** invoke a generic Less visitor
-bridge today; it must not be presented as working visitor support.
-
-It's the load-bearing piece of the eventual **`less@5` adoption layer**: the seam
-that lets a Less 4.x project move onto Jess without abandoning its existing plugin
-setup.
+[Jess](https://github.com/jesscss/jess) accepts typed AST-v2 `Fn` values here.
+The public compiler does **not** support Less 4 visitors, `functionRegistry`
+callbacks, `@plugin` scripts, post-processors, or conversion between Less tree
+nodes and Jess values.
 
 ## How it works
 
-- **Bidirectional transformation** between Jess AST nodes and Less.js AST nodes,
-  with lazy per-field conversion so only the fields a visitor touches are
-  materialized.
-- **Legacy visitor shapes** are isolated inside this package, not exposed on
-  `@jesscss/core`'s plugin interface. Wiring a future AST-v2 adapter requires a
-  separately designed, tested execution seam.
-- Package resolution for `@plugin "name"` is delegated to
-  [`@jesscss/plugin-node-modules`](../jess-plugin-node-modules).
+- **Native functions only** — pass `Fn` values from `@jesscss/core/value`; their
+  bodies receive typed values and `FnCtx` capabilities.
+
+For example, migrate a Less `functionRegistry.add('increment', fn)` contribution
+to a typed function and register it through `functions`:
+
+```ts
+import { Compiler } from 'jess';
+import { defineFunction, makeDimension } from '@jesscss/core/value';
+import lessCompatPlugin from '@jesscss/plugin-less-compat';
+
+const increment = defineFunction('increment', {
+  params: [{ kinds: ['Dimension'] }] as const,
+  body: value => makeDimension(value.number + 1, value.unit)
+});
+
+const compiler = new Compiler({
+  compile: { plugins: [lessCompatPlugin({ functions: [increment] })] }
+});
+```
+
+The old `plugins`/`functionRegistry` option is not a compatibility shim: it is
+not part of this package's public options. Legacy Less visitors, tree values,
+and script-plugin hooks must be migrated to an AST-v2 plugin or run under
+Less.js directly.
 
 ## Status
 
-**Alpha / experimental.** The supported public route covers the package's active
-loading, function, and CSS post-processing capabilities. Legacy visitor execution
-is not currently wired into AST-v2 compilation. If you need broad, battle-tested
-Less visitor support today, use Less.js directly.
+**Alpha / experimental.** The supported public route is native function
+contribution only. If you need Less visitors, `functionRegistry`, script-plugin,
+or post-processor support today, use Less.js directly.
 
 The programmatic plugin/compiler API is **not yet stabilized** — the `jess` CLI
 is the documented public surface for the alpha. Watch the

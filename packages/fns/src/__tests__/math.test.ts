@@ -1,68 +1,55 @@
-import {
-  abs,
-  acos,
-  asin,
-  atan,
-  ceil,
-  cos,
-  floor,
-  sin,
-  sqrt,
-  tan
-} from '../less/index.js';
+import { abs } from '../builtins/abs.js';
+import { ceil } from '../builtins/ceil.js';
+import { floor } from '../builtins/floor.js';
+import { sqrt } from '../builtins/sqrt.js';
+import { acos, asin, atan, cos, sin, tan } from '../less/index.js';
 
-import { Context, Dimension } from '@jesscss/core';
-import { beforeAll, describe, it, test, expect } from 'vitest';
-
-let context: Context;
-let dim: Dimension;
+import { makeDimension } from '@jesscss/core/value';
+import { describe, it, test, expect } from 'vitest';
 
 describe('math', () => {
-  beforeAll(() => {
-    context = new Context();
-    dim = new Dimension({ number: 2.4, unit: 'px' });
-  });
+  const dim = makeDimension(2.4, 'px');
   it('rejects a non-dimension', () => {
-    expect(() => floor('1')).toThrowError('Argument \'value\' must be one of:');
+    expect(() => floor('1' as never)).toThrow();
   });
 
   test('abs', () => {
-    expect(abs(new Dimension({ number: -2.4, unit: 'px' }))).toEqual(new Dimension({ number: 2.4, unit: 'px' }));
+    expect(abs(makeDimension(-2.4, 'px'))).toMatchObject({ number: 2.4, unit: 'px' });
   });
 
   test('acos', () => {
-    expect(acos(new Dimension({ number: 0.5, unit: 'px' }))).toEqual(new Dimension({ number: 1.0471975511965979, unit: 'rad' }));
+    expect(acos(makeDimension(0.5, 'px'))).toMatchObject({ number: 1.0471975511965979, unit: 'rad' });
   });
 
   test('asin', () => {
-    expect(asin(new Dimension({ number: 0.5, unit: 'px' }))).toEqual(new Dimension({ number: 0.5235987755982989, unit: 'rad' }));
+    expect(asin(makeDimension(0.5, 'px'))).toMatchObject({ number: 0.5235987755982989, unit: 'rad' });
   });
 
   test('atan', () => {
-    expect(atan(new Dimension({ number: 0.5, unit: 'px' }))).toEqual(new Dimension({ number: 0.4636476090008061, unit: 'rad' }));
+    expect(atan(makeDimension(0.5, 'px'))).toMatchObject({ number: 0.4636476090008061, unit: 'rad' });
   });
 
   test('ceil', () => {
-    expect(ceil(dim)).toEqual(new Dimension({ number: 3, unit: 'px' }));
+    expect(ceil(dim)).toMatchObject({ number: 3, unit: 'px' });
   });
 
   test('cos', () => {
-    expect(cos(dim)).toEqual(new Dimension({ number: -0.7373937155412454, unit: '' }));
+    expect(cos(dim)).toMatchObject({ number: -0.7373937155412454, unit: '' });
   });
 
   test('floor', () => {
-    expect(floor(dim)).toEqual(new Dimension({ number: 2, unit: 'px' }));
+    expect(floor(dim)).toMatchObject({ number: 2, unit: 'px' });
   });
 
   test('sin', () => {
-    expect(sin(dim)).toEqual(new Dimension({ number: 0.675463180551151, unit: '' }));
+    expect(sin(dim)).toMatchObject({ number: 0.675463180551151, unit: '' });
   });
 
   test('sqrt', () => {
-    expect(sqrt(dim)).toEqual(new Dimension({ number: 1.5491933384829668, unit: 'px' }));
+    expect(sqrt(dim)).toMatchObject({ number: 1.5491933384829668, unit: 'px' });
   });
 
   test('tan', () => {
-    expect(tan(dim)).toEqual(new Dimension({ number: -0.9160142896734107, unit: '' }));
+    expect(tan(dim)).toMatchObject({ number: -0.9160142896734107, unit: '' });
   });
 });

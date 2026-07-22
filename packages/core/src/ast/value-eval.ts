@@ -114,11 +114,37 @@ export interface Keyword {
   readonly bytes: string;
 }
 
-/** A list result (comma / space / slash separated). */
+/**
+ * The separator fact carried by a materialized list value.
+ *
+ * `undecided` is Sass's deferred separator state: it emits as a space until a
+ * list operation chooses a concrete separator. Semicolon groups are grammar
+ * argument boundaries, not a Sass value-list separator; the SCSS grammar keeps
+ * them in its enclosing block/call fact instead of misclassifying them here.
+ * These are value facts, not dialect-specific helper options.
+ */
+export type ListSeparator = ',' | ' ' | '/' | 'undecided';
+
+/** A list result with an explicit separator fact. Delimiters are `Block` values. */
 export interface List {
   readonly type: 'List';
-  readonly items: readonly ValueObj[];
-  readonly sep: ',' | ' ' | '/';
+  /** The one semantic payload of a List. */
+  readonly value: readonly ValueObj[];
+  readonly sep: ListSeparator;
+  readonly bytes: string;
+}
+
+/**
+ * A delimiter-preserving value wrapper. Square `Block`s are Sass bracketed
+ * lists when their value is a List; paren `Block`s preserve ordinary grouping.
+ * Delimiters are intentionally not folded into List, so a list can be reused
+ * with or without brackets by a universal list function.
+ */
+export interface Block {
+  readonly type: 'Block';
+  readonly inner: ValueObj;
+  readonly delimiter: 'paren' | 'square';
+  readonly escaped?: boolean;
   readonly bytes: string;
 }
 
@@ -135,7 +161,7 @@ export interface Nil {
   readonly bytes: string;
 }
 
-export type ValueObj = Dimension | Color | Quoted | Keyword | List | Bool | Nil;
+export type ValueObj = Dimension | Color | Quoted | Keyword | List | Block | Bool | Nil;
 
 /**
  * A `Value` in the evaluation lane: either a materialized typed object, or a BARE
@@ -147,7 +173,15 @@ export type Value = ValueObj | string;
 export const emitValue = (v: Value): string => (typeof v === 'string' ? v : v.bytes);
 
 /** The whitespace glue joining a list's items for its separator (`,`→`, `, `/`→` / `). */
-export const sepGlue = (sep: ',' | ' ' | '/'): string => (sep === ',' ? ', ' : sep === '/' ? ' / ' : ' ');
+export const sepGlue = (sep: ListSeparator): string => {
+  switch (sep) {
+    case ',': return ', ';
+    case '/': return ' / ';
+    case ' ':
+    case 'undecided':
+      return ' ';
+  }
+};
 
 /** Whether a value is an un-materialized (bare-string) literal leaf. */
 export const isLiteral = (v: Value): v is string => typeof v === 'string';
@@ -182,7 +216,7 @@ export interface EvalModes {
 
 export const DEFAULT_MODES: EvalModes = {
   unitMode: 'preserve',
-  mathMode: 'parens-division',
+  mathMode: 'parens-division'
 };
 
 /* --------------------------------------------------------------- seam */

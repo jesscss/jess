@@ -93,10 +93,10 @@ runs when the value is operated on, or when its arguments are non-CSS Less forms
 }
 ```
 
-This applies to every un-operated CSS value-function — `rgb`/`rgba`/`hsl`/`hsla`
-and any unknown function name alike. The Less function runs **only** when the value
-is operated on (`lighten(hsl(...), 10%)`) or given Less/variable arguments
-(`hsl(@h, 50%, 40%)`):
+This applies to CSS-shaped, un-operated `rgb`/`rgba`/`hsl`/`hsla` calls with
+three or more argument slots, and to unknown function names alike. The Less
+function runs **only** when the value is operated on (`lighten(hsl(...), 10%)`)
+or given a Less overload/variable argument (`rgba(#fff)`, `hsl(@h, 50%, 40%)`):
 
 ```less
 .e {

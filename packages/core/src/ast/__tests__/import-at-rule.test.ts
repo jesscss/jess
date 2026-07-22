@@ -21,7 +21,7 @@ describe('ImportAtRule', () => {
     context.sourceTrees.set(mappedPath, imported);
 
     const document = stylesheet([
-      importAtRule('@import', url(quoted(`"${remoteSpecifier}"`, remoteSpecifier, '"', false)), list([keyword('reference')], [','])),
+      importAtRule('@import', url(quoted(`"${remoteSpecifier}"`, remoteSpecifier, '"', false)), list([keyword('reference')], ',')),
       rule('.uses-token', [decl('color', variableReference('tone', 'scoped'))])
     ]);
 
@@ -50,36 +50,36 @@ describe('ImportAtRule', () => {
   it('keeps imported loop extend placements isolated per concrete iteration', async () => {
     const loopSelector = complexSelector([{
       compound: compoundSelectorOf([interpolatedSimpleSelector(interpolation([
-        { lit: '.from-' }, { ref: variableReference('name', 'scoped'), unquote: true },
-      ]))]),
+        { lit: '.from-' }, { ref: variableReference('name', 'scoped'), unquote: true }
+      ]))])
     }]);
     const imported = stylesheet([
       forNode(
         spaced([keyword('one'), keyword('two')]),
         [rule(loopSelector, [], [{ target: selist(sel('.target')), partial: true }])],
-        { kind: 'single', name: 'name' },
-      ),
+        { kind: 'single', name: 'name' }
+      )
     ]);
     const document = stylesheet([
       importAtRule('@import', quoted('"loop.less"', 'loop.less', '"', false)),
       // The root's unrelated extend engages the imported-fact preflight without
       // changing this target's output; the imported loop supplies its extenders.
-      rule('.target', [decl('color', color('red'))], [{ target: selist(sel('.does-not-match')), partial: true }]),
+      rule('.target', [decl('color', color('red'))], [{ target: selist(sel('.does-not-match')), partial: true }])
     ]);
 
     await expect(serialize(document, {
-      importDocument: ({ specifier }) => specifier === 'loop.less' ? { document: imported, key: 'loop.less' } : undefined,
+      importDocument: ({ specifier }) => specifier === 'loop.less' ? { document: imported, key: 'loop.less' } : undefined
     })).resolves.toEqual({ css: '.target,\n.from-one,\n.from-two {\n  color: red;\n}\n' });
   });
 
   it('loads a stylesheet import with a media tail into one typed wrapper', async () => {
     const imported = stylesheet([rule('body', [decl('width', keyword('100%'))])]);
     const document = stylesheet([
-      importAtRule('@import', quoted('"imported.less"', 'imported.less', '"', false), any('multiple'), null, any('screen and (max-width: 600px)')),
+      importAtRule('@import', quoted('"imported.less"', 'imported.less', '"', false), any('multiple'), null, any('screen and (max-width: 600px)'))
     ]);
 
     await expect(Promise.resolve(serialize(document, {
-      importDocument: ({ specifier }) => specifier === 'imported.less' ? { document: imported } : undefined,
+      importDocument: ({ specifier }) => specifier === 'imported.less' ? { document: imported } : undefined
     }))).resolves.toEqual({ css: '@media screen and (max-width: 600px) {\n  body {\n    width: 100%;\n  }\n}\n' });
   });
 
@@ -90,20 +90,20 @@ describe('ImportAtRule', () => {
       importNode(),
       atRuleBlock('@media', any('(max-width: 768px)'), [
         importNode(),
-        rule('.mobile', [decl('color', color('red'))]),
+        rule('.mobile', [decl('color', color('red'))])
       ]),
-      rule('.container', [rule('.nested', [decl('color', color('blue'))])]),
+      rule('.container', [rule('.nested', [decl('color', color('blue'))])])
     ]);
 
     await expect(serialize(document, {
       collapseNesting: false,
       importDocument: ({ specifier }) => Promise.resolve(
-        specifier === 'imported.less' ? { document: imported, key: 'imported.less' } : undefined,
-      ),
+        specifier === 'imported.less' ? { document: imported, key: 'imported.less' } : undefined
+      )
     })).resolves.toEqual({
       css: '.imported {\n  background: green;\n}\n'
         + '@media (max-width: 768px) {\n  .mobile {\n    color: red;\n  }\n}\n'
-        + '.container {\n  .nested {\n    color: blue;\n  }\n}\n',
+        + '.container {\n  .nested {\n    color: blue;\n  }\n}\n'
     });
   });
 
@@ -114,7 +114,7 @@ describe('ImportAtRule', () => {
     ]);
 
     await expect(serialize(document, {
-      importDocument: ({ specifier }) => Promise.resolve(specifier === 'nested.less' ? { document: imported } : undefined),
+      importDocument: ({ specifier }) => Promise.resolve(specifier === 'nested.less' ? { document: imported } : undefined)
     })).resolves.toEqual({ css: '@layer legacy {\n.inside {\n  color: red;\n}\n}\n' });
   });
 
@@ -148,7 +148,7 @@ describe('ImportAtRule', () => {
       rule('.before', [decl('color', keyword('red'))]),
       cssImport,
       rule('.after', [decl('color', keyword('blue'))]),
-      importAtRule('@import', quoted('"theme.css"', 'theme.css', '"', false), null, null, any('screen')),
+      importAtRule('@import', quoted('"theme.css"', 'theme.css', '"', false), null, null, any('screen'))
     ]);
 
     expect(serialize(document)).toEqual({
@@ -166,7 +166,7 @@ describe('ImportAtRule', () => {
           { ref: variableReference('theme', 'scoped'), unquote: true },
           { lit: '.less"' }
         ])),
-        list([keyword('less'), keyword('reference')], [',']),
+        list([keyword('less'), keyword('reference')], ','),
         keyword('tokens'),
         any('screen and (min-width: 40rem)')
       )
@@ -208,14 +208,14 @@ describe('ImportAtRule', () => {
         importAtRule(
           '@import',
           quoted('"payload.css"', 'payload.css', '"', false),
-          list([keyword('inline')], [',']),
-        ),
-      ]),
+          list([keyword('inline')], ',')
+        )
+      ])
     ]);
 
     await expect(serialize(document, {
       collapseNesting: true,
-      importDocument: () => Promise.resolve({ inline: '.from-inline { color: green; }', media: null }),
+      importDocument: () => Promise.resolve({ inline: '.from-inline { color: green; }', media: null })
     })).resolves.toEqual({ css: '.from-inline { color: green; }\n' });
   });
 
@@ -236,25 +236,25 @@ describe('ImportAtRule', () => {
   it('executes a loaded document in the importing frame before later statements', async () => {
     const imported = stylesheet([
       variableDeclaration('tone', color('red'), { mode: 'declare' }),
-      mixinDef('accent', [], [decl('border-color', variableReference('tone', 'scoped'))]),
+      mixinDef('accent', [], [decl('border-color', variableReference('tone', 'scoped'))])
     ]);
     const document = stylesheet([
       importAtRule('@import', quoted('"tokens.less"', 'tokens.less', '"', false)),
       rule('.card', [
         decl('color', variableReference('tone', 'scoped')),
-        mixinCall('accent'),
-      ]),
+        mixinCall('accent')
+      ])
     ]);
 
     const result = await serialize(document, {
       collapseNesting: false,
       importDocument: ({ specifier }) => Promise.resolve(
-        specifier === 'tokens.less' ? { document: imported } : undefined,
-      ),
+        specifier === 'tokens.less' ? { document: imported } : undefined
+      )
     });
 
     expect(result).toEqual({
-      css: '.card {\n  color: red;\n  border-color: red;\n}\n',
+      css: '.card {\n  color: red;\n  border-color: red;\n}\n'
     });
   });
 
@@ -262,26 +262,26 @@ describe('ImportAtRule', () => {
     const imported = stylesheet([
       variableDeclaration('tone', color('red'), { mode: 'declare' }),
       mixinDef('accent', [], [decl('border-color', variableReference('tone', 'scoped'))]),
-      rule('.hidden', [decl('color', keyword('red'))]),
+      rule('.hidden', [decl('color', keyword('red'))])
     ]);
     const document = stylesheet([
       importAtRule(
         '@import',
         quoted('"tokens.less"', 'tokens.less', '"', false),
-        list([keyword('reference')], [',']),
+        list([keyword('reference')], ',')
       ),
       rule('.card', [
         decl('color', variableReference('tone', 'scoped')),
-        mixinCall('accent'),
-      ]),
+        mixinCall('accent')
+      ])
     ]);
 
     await expect(serialize(document, {
       importDocument: ({ specifier }) => Promise.resolve(
-        specifier === 'tokens.less' ? { document: imported } : undefined,
-      ),
+        specifier === 'tokens.less' ? { document: imported } : undefined
+      )
     })).resolves.toEqual({
-      css: '.card {\n  color: red;\n  border-color: red;\n}\n',
+      css: '.card {\n  color: red;\n  border-color: red;\n}\n'
     });
   });
 
@@ -294,30 +294,30 @@ describe('ImportAtRule', () => {
         // The imported-fact planner must retain its `Level[]` ancestor path,
         // rather than passing this one selector-list Level directly to
         // composePath().
-        subject: selist(sel('.unusedAndReference')),
-      }]),
+        subject: selist(sel('.unusedAndReference'))
+      }])
     ]);
     const document = stylesheet([
       importAtRule(
         '@import',
         quoted('"reference.less"', 'reference.less', '"', false),
-        list([keyword('reference')], [',']),
+        list([keyword('reference')], ',')
       ),
-      rule('.theOnlySelector', [decl('shall-have', keyword('one selector'))]),
+      rule('.theOnlySelector', [decl('shall-have', keyword('one selector'))])
     ]);
 
     await expect(serialize(document, {
       importDocument: ({ specifier }) => Promise.resolve(
-        specifier === 'reference.less' ? { document: imported, key: 'reference.less' } : undefined,
-      ),
+        specifier === 'reference.less' ? { document: imported, key: 'reference.less' } : undefined
+      )
     })).resolves.toEqual({
-      css: '.theOnlySelector {\n  shall-have: one selector;\n}\n',
+      css: '.theOnlySelector {\n  shall-have: one selector;\n}\n'
     });
   });
 
   it('awaits a reference import nested in a namespace before a later namespace call', async () => {
     const imported = stylesheet([
-      rule('.mixin', [decl('was', keyword('included'))]),
+      rule('.mixin', [decl('was', keyword('included'))])
     ]);
     const namespacedCall = mixinCall('.mixin');
     namespacedCall.path = [{ comb: '>' as const, sel: '#Namespace' }];
@@ -326,21 +326,21 @@ describe('ImportAtRule', () => {
         importAtRule(
           '@import',
           quoted('"nested.less"', 'nested.less', '"', false),
-          list([keyword('reference')], [',']),
-        ),
+          list([keyword('reference')], ',')
+        )
       ]),
       rule('#used-namespaced-mixin', [
         namespacedCall,
-        decl('shall-see-was', keyword('included')),
-      ]),
+        decl('shall-see-was', keyword('included'))
+      ])
     ]);
 
     await expect(serialize(document, {
       importDocument: ({ specifier }) => Promise.resolve(
-        specifier === 'nested.less' ? { document: imported } : undefined,
-      ),
+        specifier === 'nested.less' ? { document: imported } : undefined
+      )
     })).resolves.toEqual({
-      css: '#used-namespaced-mixin {\n  was: included;\n  shall-see-was: included;\n}\n',
+      css: '#used-namespaced-mixin {\n  was: included;\n  shall-see-was: included;\n}\n'
     });
   });
 
@@ -350,35 +350,37 @@ describe('ImportAtRule', () => {
       comment('/* tralala */'),
       rule('.fix', [decl('fix', keyword('fix'))]),
       rule('.something', [
-        importAtRule('@import', quoted('"hidden.less"', 'hidden.less', '"', false), list([keyword('reference')], [','])),
-        decl('inside', keyword('something')),
-      ]),
+        importAtRule('@import', quoted('"hidden.less"', 'hidden.less', '"', false), list([keyword('reference')], ',')),
+        decl('inside', keyword('something'))
+      ])
     ]);
     const document = stylesheet([
       rule('show-all-content', [
-        importAtRule('@import', quoted('"multiple.less"', 'multiple.less', '"', false), list([keyword('multiple')], [','])),
-      ]),
+        importAtRule('@import', quoted('"multiple.less"', 'multiple.less', '"', false), list([keyword('multiple')], ','))
+      ])
     ]);
 
     await expect(serialize(document, {
       collapseNesting: false,
       importDocument: ({ specifier }) => Promise.resolve(
-        specifier === 'multiple.less' ? { document: multiple, key: 'multiple.less' }
-          : specifier === 'hidden.less' ? { document: hidden, key: 'hidden.less' }
-            : undefined,
-      ),
+        specifier === 'multiple.less'
+          ? { document: multiple, key: 'multiple.less' }
+          : specifier === 'hidden.less'
+            ? { document: hidden, key: 'hidden.less' }
+            : undefined
+      )
     })).resolves.toEqual({
-      css: 'show-all-content {\n  /* tralala */\n  .fix {\n    fix: fix;\n  }\n  .something {\n    inside: something;\n  }\n}\n',
+      css: 'show-all-content {\n  /* tralala */\n  .fix {\n    fix: fix;\n  }\n  .something {\n    inside: something;\n  }\n}\n'
     });
   });
 
   it('retries one unresolved typed import target after later imports publish its variables', async () => {
     const calls: string[] = [];
     const deferred = stylesheet([
-      variableDeclaration('answer', color('blue'), { mode: 'declare' }),
+      variableDeclaration('answer', color('blue'), { mode: 'declare' })
     ]);
     const providers = stylesheet([
-      variableDeclaration('segment', keyword('ready'), { mode: 'declare' }),
+      variableDeclaration('segment', keyword('ready'), { mode: 'declare' })
     ]);
     const document = stylesheet([
       importAtRule(
@@ -386,22 +388,24 @@ describe('ImportAtRule', () => {
         interpolation([
           { lit: '"target-' },
           { ref: variableReference('segment', 'scoped'), unquote: true },
-          { lit: '.less"' },
-        ]),
+          { lit: '.less"' }
+        ])
       ),
       importAtRule('@import', quoted('"providers.less"', 'providers.less', '"', false)),
-      rule('.card', [decl('color', variableReference('answer', 'scoped'))]),
+      rule('.card', [decl('color', variableReference('answer', 'scoped'))])
     ]);
 
     await expect(serialize(document, {
       importDocument: ({ specifier }) => {
         calls.push(specifier);
         return Promise.resolve(
-          specifier === 'providers.less' ? { document: providers }
-            : specifier === 'target-ready.less' ? { document: deferred }
-              : undefined,
+          specifier === 'providers.less'
+            ? { document: providers }
+            : specifier === 'target-ready.less'
+              ? { document: deferred }
+              : undefined
         );
-      },
+      }
     })).resolves.toEqual({ css: '.card {\n  color: blue;\n}\n' });
     expect(calls).toEqual(['providers.less', 'target-ready.less']);
   });
@@ -411,23 +415,25 @@ describe('ImportAtRule', () => {
       importAtRule('@import', interpolation([
         { lit: '"target-' },
         { ref: variableReference('never', 'scoped'), unquote: true },
-        { lit: '.less"' },
-      ])),
+        { lit: '.less"' }
+      ]))
     ]);
     let loads = 0;
 
     await expect(Promise.resolve(serialize(document, {
-      importDocument: () => { loads++; return { document: null }; },
+      importDocument: () => {
+        loads++; return { document: null };
+      }
     }))).rejects.toMatchObject({
       code: 'resolve/name-not-found',
-      reason: 'Symbol "@never" is undefined in this scope.',
+      reason: 'Symbol "@never" is undefined in this scope.'
     });
     expect(loads).toBe(0);
   });
 
   it('does not retry a Context loader failure as an unresolved import target', async () => {
     const document = stylesheet([
-      importAtRule('@import', quoted('"broken.less"', 'broken.less', '"', false)),
+      importAtRule('@import', quoted('"broken.less"', 'broken.less', '"', false))
     ]);
     let loads = 0;
 
@@ -435,75 +441,75 @@ describe('ImportAtRule', () => {
       importDocument: () => {
         loads++;
         return Promise.reject(new Error('loader failed'));
-      },
+      }
     })).rejects.toThrow('loader failed');
     expect(loads).toBe(1);
   });
 
   it('publishes imported namespace rulesets for later call-result member reads', async () => {
     const imported = stylesheet([
-      rule('#library', [mixinDef('.add-one', [{ name: 'value' }], [variableDeclaration('return', dimension(2, 'px', '2px'), { mode: 'declare' })])]),
+      rule('#library', [mixinDef('.add-one', [{ name: 'value' }], [variableDeclaration('return', dimension(2, 'px', '2px'), { mode: 'declare' })])])
     ]);
     const importedCall = {
       type: 'MixinCall' as const,
       name: '.add-one', args: [{ value: dimension(1, 'px', '1px') }],
-      path: [{ comb: ' ' as const, sel: '#library' }], important: false,
+      path: [{ comb: ' ' as const, sel: '#library' }], important: false
     };
     const document = stylesheet([
       importAtRule('@import', quoted('"library.less"', 'library.less', '"', false)),
       rule('#library', [mixinDef('.add-one', [{ name: 'value' }], [variableDeclaration('return', dimension(3, 'px', '3px'), { mode: 'declare' })])]),
-      rule('.bar', [decl('height', reference(importedCall, [{ type: 'BracketLookup', keyKind: 'var', key: variableReference('return', 'scoped') }], '#library.add-one(1px)[@return]'))]),
+      rule('.bar', [decl('height', reference(importedCall, [{ type: 'BracketLookup', keyKind: 'var', key: variableReference('return', 'scoped') }], '#library.add-one(1px)[@return]'))])
     ]);
 
     await expect(serialize(document, {
-      importDocument: ({ specifier }) => Promise.resolve(specifier === 'library.less' ? { document: imported } : undefined),
+      importDocument: ({ specifier }) => Promise.resolve(specifier === 'library.less' ? { document: imported } : undefined)
     })).resolves.toEqual({ css: '.bar {\n  height: 3px;\n}\n' });
   });
 
   it('reads a variable member from an imported namespace call result', async () => {
     const imported = stylesheet([
       rule('#library', [mixinDef('.add-one', [{ name: 'value' }], [
-        variableDeclaration('return', dimension(2, 'px', '2px'), { mode: 'declare' }),
-      ])]),
+        variableDeclaration('return', dimension(2, 'px', '2px'), { mode: 'declare' })
+      ])])
     ]);
     const importedCall = {
       type: 'MixinCall' as const,
       name: '.add-one', args: [{ value: dimension(1, 'px', '1px') }],
-      path: [{ comb: ' ' as const, sel: '#library' }], important: false,
+      path: [{ comb: ' ' as const, sel: '#library' }], important: false
     };
     const document = stylesheet([
       importAtRule('@import', quoted('"library.less"', 'library.less', '"', false)),
       rule('.bar', [decl('height', reference(importedCall, [
-        { type: 'BracketLookup', keyKind: 'var', key: variableReference('return', 'scoped') },
-      ], '#library.add-one(1px)[@return]'))]),
+        { type: 'BracketLookup', keyKind: 'var', key: variableReference('return', 'scoped') }
+      ], '#library.add-one(1px)[@return]'))])
     ]);
 
     await expect(serialize(document, {
-      importDocument: ({ specifier }) => Promise.resolve(specifier === 'library.less' ? { document: imported } : undefined),
+      importDocument: ({ specifier }) => Promise.resolve(specifier === 'library.less' ? { document: imported } : undefined)
     })).resolves.toEqual({ css: '.bar {\n  height: 2px;\n}\n' });
   });
 
   it('preserves a CSS import when the driver declines its typed request', async () => {
     const document = stylesheet([
-      importAtRule('@import', quoted('"theme.css"', 'theme.css', '"', false)),
+      importAtRule('@import', quoted('"theme.css"', 'theme.css', '"', false))
     ]);
 
     await expect(serialize(document, {
-      importDocument: () => Promise.resolve(undefined),
+      importDocument: () => Promise.resolve(undefined)
     })).resolves.toEqual({ css: '@import "theme.css";\n' });
   });
 
   it('emits a driver-provided inline import raw, with its typed media tail', async () => {
     const document = stylesheet([
-      importAtRule('@import', url(quoted('"raw.css"', 'raw.css', '"', false)), list([keyword('inline')], []), null, any('(min-width:600px)')),
+      importAtRule('@import', url(quoted('"raw.css"', 'raw.css', '"', false)), list([keyword('inline')]), null, any('(min-width:600px)'))
     ]);
 
     await expect(serialize(document, {
       importDocument: ({ specifier, tail }) => Promise.resolve(
-        specifier === 'raw.css' ? { inline: '#raw { color: yellow; }', media: tail } : undefined,
-      ),
+        specifier === 'raw.css' ? { inline: '#raw { color: yellow; }', media: tail } : undefined
+      )
     })).resolves.toEqual({
-      css: '@media (min-width: 600px) {\n  #raw { color: yellow; }\n}\n',
+      css: '@media (min-width: 600px) {\n  #raw { color: yellow; }\n}\n'
     });
   });
 });

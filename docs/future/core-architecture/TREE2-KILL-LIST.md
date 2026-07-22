@@ -75,10 +75,11 @@ Multiple sites route a decision through rebuilt Less source when the built node 
 - **mixins-def.ts:62** `classifyParam` re-parses each slot (`endsWith('...')`, `indexOf(':')`, `/^@[\w-]+$/`); grammar gives `NamedArg`/`Rest`/`value` nodes. Requires registering `NamedArg`/`Rest` actions (structure exists upstream).
 - **Serves:** P0, A3 (hardcoded `@` sigil). **Size:** small each. **Risk:** LOW-MEDIUM. **Ordering:** independent. **Keep** `mixins-def.ts:100` brace-leaf discriminator (REJECTED-as-defect; reads a real grammar literal, is the reliable def-vs-call discriminator).
 
-### A1.9 — Delete `coerceListItems` byte re-tokenizer (`native/list-helper.ts:97`)
-- Slices a Keyword's `.text` and re-tokenizes with a hand-rolled paren/quote depth scanner (`topLevelSplit`) to rebuild List structure. Root cause: tree2's own `evalTyped`/`joinBytes` (serialize.ts:324/350) flattens the structured list to keyword bytes — **re-derivable upstream** by materializing a `List` ValueObj in `evalTyped`.
-- Related: `hasTopLevelComma`+`topLevelSplit` two-pass (74) collapses to one; quote-escape gap (55) is a symptom.
-- **Serves:** P0 keystone, P5. **Size:** medium. **Risk:** MEDIUM (unify the `length`/`extract`/`min`/`max` paths). **Ordering:** requires evalTyped change.
+### A1.9 — Delete the duplicate legacy list helper; keep list recovery as a core value capability
+- The old `native/list-helper.ts` was a dialect-local copy of list recovery plus Less `min`/`max` policy. Delete that duplicate and move the generic, typed `List` recovery/index operations to `@jesscss/core/value`, where both Less and Sass consume them.
+- Core may materialize a flattened `Keyword`'s top-level list structure at a typed function boundary when the parser/evaluator has not retained a `List` value. That is value-domain recovery, not a parser reparse or a dialect-owned helper. Preserve exact nesting, quote, and separator semantics; do not replace it with a second parser or handwritten parser-package scanner.
+- Less unit grouping/survivor behavior remains in the Less function module. Sass separator/bracketedness policies remain in Sass, but they must consume the shared core primitives once AST-v2 carries those facts.
+- **Serves:** P0 boundary cleanup, C7 shared capability. **Size:** medium. **Risk:** MEDIUM (unify the `length`/`extract`/`min`/`max` and Sass list paths). **Ordering:** requires the core value-list API and real registry cutover.
 
 ---
 

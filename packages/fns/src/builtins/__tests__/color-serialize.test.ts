@@ -14,6 +14,10 @@ import { fade as fadeFn } from '../fade.js';
 import { fadeout as fadeoutFn } from '../fadeout.js';
 import { hsl } from '../hsl.js';
 
+const ctx = { modes: { unitMode: 'preserve' as const }, stringify: (value: { bytes: string }) => value.bytes };
+const call = (fn: (args: ReturnType<typeof makeList>, context: typeof ctx) => unknown, ...args: Parameters<typeof makeList>[0]) =>
+  fn(makeList(args, ','), ctx) as Color;
+
 const hexColor = (rgb: [number, number, number], alpha: number, node: string): Color =>
   makeColorRgb(rgb, alpha, HEX, { node });
 
@@ -23,28 +27,28 @@ describe('color serialization: alpha op format', () => {
   it('opaque hex → translucent serializes as rgba(), not hex8', () => {
     // fadeout(#ff0, 50%)
     const yellow = hexColor([255, 255, 0], 1, '#ff0');
-    const out = fadeoutFn.body(yellow, pct(50)) as Color;
+    const out = call(fadeoutFn, yellow, pct(50));
     expect(out.bytes).toBe('rgba(255, 255, 0, 0.5)');
   });
 
   it('hex WITH alpha channel keeps hex spelling under an alpha op', () => {
     // fade(#5F59, 10%)  (#5F59 = rgba(85, 255, 85, 0.6), alpha already encoded)
     const c = hexColor([85, 255, 85], 0.6, '#5F59');
-    const out = fadeFn.body(c, pct(10)) as Color;
+    const out = call(fadeFn, c, pct(10));
     expect(out.bytes).toBe('#55ff551a');
   });
 
   it('8-digit hex keeps hex spelling under an alpha op', () => {
     // fade(#55FF5599, 60%)
     const c = hexColor([85, 255, 85], 0.6, '#55FF5599');
-    const out = fadeFn.body(c, pct(60)) as Color;
+    const out = call(fadeFn, c, pct(60));
     expect(out.bytes).toBe('#55ff5599');
   });
 });
 
 describe('color serialization: hsl clamp + canonicalization', () => {
   const buildHsl = (h: number, s: number, l: number): Color =>
-    hsl.body(makeList([makeDimension(h), pct(s), pct(l)], ',')) as Color;
+    call(hsl, makeDimension(h), pct(s), pct(l));
 
   it('out-of-range hsl clamps and canonicalizes an achromatic result', () => {
     // hsl(380, 150%, 150%) → white → hsl(0, 0%, 100%)

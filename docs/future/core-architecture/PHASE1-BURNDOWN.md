@@ -42,5 +42,5 @@ a removal candidate.
 For a dialect: no legacy parser entry or builder remains reachable; the public
 root is the actual grammar root; AST-shape tests cover its supported families;
 and runtime-boundary verification is clean. For integration: fresh dependency
-builds, core tests, Jess production spine ratchet, and the Less corpus pass.
+builds, core tests, Jess AST-v2 production-route ratchet, and the Less corpus pass.
 Performance claims require a matched before/after measurement.

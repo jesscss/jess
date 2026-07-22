@@ -3,6 +3,15 @@
 Status: decision memo for the owner. Read-only investigation; nothing implemented.
 Date: 2026-07-12. Author: research agent.
 
+> **Current-route correction (alpha.9):** The former Less-tree compatibility
+> bridge described in this memo is not the Jess public architecture. The
+> `@jesscss/plugin-less-compat` package now exports only the native AST-v2
+> `LessCompatPlugin` and `LessCompatPluginOptions.functions`; its old
+> `tree`/visitor/function-registry/transform adapter files were unreachable
+> from the public entry point and have been deleted. The `less@5` adoption
+> layer must not advertise or depend on those removed exports. The older bridge
+> bullets below are retained only as historical investigation notes.
+
 ## TL;DR
 
 - **The adoption-layer approach (a) is already chosen and partly built on the less.js `alpha`
@@ -22,8 +31,10 @@ Date: 2026-07-12. Author: research agent.
 - **Versioning: the first external Less v5 prerelease is exactly `less@5.0.0-alpha.1`.** Root,
   `packages/less`, and the published test-data package must stay in lockstep. Earlier references
   to `.2`/`.3` were incorrect local WIP metadata, not a published Less v5 release history.
-  Pin the three `@jesscss` deps to the **published `2.0.0-alpha.7`** (they are currently local
-  `link:` paths — that is the single biggest blocker to an actual publish).
+  Pin the three `@jesscss` deps to the **published Jess alpha immediately preceding this Less
+  alpha** (they are currently local `link:` paths — that is the single biggest blocker to an
+  actual publish). Resolve and record the exact Jess version at release time; do not hard-code a
+  stale alpha number in this plan.
 
 ---
 
@@ -106,7 +117,9 @@ Entry points / build:
 
 ## 3. Jess side (what backs which export)
 
-- **`jess`** (`2.0.0-alpha.7` published; workspace `2.0.0-alpha.5`) — meta compiler package.
+- **`jess`** (pin to the published Jess alpha immediately preceding this Less alpha) — meta compiler
+  package. The workspace and registry may be at different alpha numbers during preparation;
+  record the resolved version at release time.
   `Compiler` class: `render(filePath, opts)`, `renderString(content, opts)`,
   `renderToResult(input, opts) → { css, errors, warnings, loadedUrls }`, `safeCompile` (internal).
   Bundles `@jesscss/plugin-less` + `@jesscss/plugin-scss` internally. Also ships its own
@@ -116,19 +129,11 @@ Entry points / build:
   `logger` singleton (`export { logger, type Logger }` in `src/index.ts`) that `less/lib/logger.js`
   wraps.
 - **`@jesscss/plugin-less`** — the Less dialect (grammar + eval). Consumed via `jess`, not directly.
-- **`@jesscss/plugin-less-compat`** — the Less 4.x bridge. Exports:
-  - `lessCompatPlugin({ plugins, visitors, functions, pluginManager, functionRegistry })` — installs
-    Less 4.x plugins/visitors and registers Less custom functions onto Jess trees.
-  - `LessTreeConstructors` — Less-compatible `tree.*` node constructors (`Dimension`,
-    `Declaration`, `Ruleset`, `DetachedRuleset`, `Color`, …).
-  - `createLessMock(functionRegistry)` — a mock `less` global (`.tree`, `.functions`, `.visitors`,
-    plus `dimension/declaration/ruleset/detachedRuleset` factories) — i.e. the object Less plugins
-    reach for via `less.tree.*` at load time.
-  - `isLessPlugin`, `isJessPlugin`, `filterPlugins`, and the `transform/*` adapters.
-
-The compat package **already contains** the machinery to synthesize the `less.tree` /
-`less.functions` / `PluginManager` surface. The gap is that `less/lib/index.js` does not yet
-re-export any of it onto the `less` static.
+- **`@jesscss/plugin-less-compat`** — a transitional native AST-v2 function
+  contribution plugin. Its supported API is
+  `lessCompatPlugin({ functions?: readonly Fn[] })`; Less 4 visitors,
+  `functionRegistry`, `less.tree`, `PluginManager`, and the former
+  `transform/*` adapters are intentionally unsupported and are not exported.
 
 ---
 
@@ -170,10 +175,10 @@ Legend: ✅ done on `alpha` · 🟡 backing exists, not surfaced · 🔴 missing
 | `lesscHelper` | ✅ | `lib/lessc-helper.js`. |
 | `Compiler` | ✅ | Re-exports `jess`'s `Compiler` (Jess-specific extra). |
 | `parse(input, opts, cb)` | 🔴 | Jess exposes no `parse()` returning a tree + `ParseTree`. Needed by tools that parse-then-render or introspect the AST. Options: add a `Compiler.parse` (return Jess tree + a `toCSS`-capable wrapper) or document as unsupported in alpha. |
-| `tree` | 🟡 | `LessTreeConstructors` in compat. Surface as `less.tree` for plugins that reference `less.tree.*` at load. |
-| `functions` / `functionRegistry` | 🟡 | Compat registers Less functions via `lessCompatPlugin({ functions })`; expose a `less.functions.functionRegistry.add/addMultiple` shim backed by that registry. |
-| `PluginManager` | 🟡 | `LessPluginManager` exists in compat structures; surface if plugins construct it. |
-| `visitors` | 🟡 | `LessVisitor` in compat; surface the namespace for visitor-based plugins. |
+| `tree` | ⚪ | Unsupported in alpha. The old `LessTreeConstructors` bridge was deleted; no `less.tree` surface is advertised. |
+| `functions` / `functionRegistry` | ⚪ | Unsupported in alpha. Native functions can be contributed through Jess's typed plugin contract; the old Less registry shim was deleted. |
+| `PluginManager` | ⚪ | Unsupported in alpha. The old compat manager was unreachable from the public plugin entry point and was deleted. |
+| `visitors` | ⚪ | Unsupported in alpha. Core's public plugin ABI has no visitor hook and the old adapter was deleted. |
 | `SourceMapOutput` / `SourceMapBuilder` | 🔴 | No source-map pipeline in Jess yet. `mapRenderResult` reads `result.map`, but `renderToResult` never returns `map`. Source maps are effectively **unsupported** in alpha. |
 | `ImportManager` | 🔴 | Jess resolves imports internally (`searchPaths`); no public `ImportManager`. `renderToResult` returns `loadedUrls`, but `mapRenderResult` maps `result.imports` (wrong field — always `undefined`). Fix the field name; treat `ImportManager` as unsupported. |
 | `ParseTree` | 🔴 | Tied to `parse()`; unsupported in alpha. |
@@ -230,8 +235,9 @@ Release decision:
 - The first external Less v5 publication is **`less@5.0.0-alpha.1`**. Root `@less/root`,
   `packages/less`, and `@less/test-data` are pinned to that number. The previous `.2` workspace
   values were not a published Less v5 release and must not be treated as a sequence to continue.
-- Published Jess: `jess`, `@jesscss/core`, `@jesscss/plugin-less-compat` all at **`2.0.0-alpha.7`**
-  (workspace source is `2.0.0-alpha.5` — the repo is behind the published tag).
+- Published Jess: `jess`, `@jesscss/core`, and `@jesscss/plugin-less-compat` must all use the
+  same published Jess alpha immediately preceding this Less alpha. Do not preserve a stale
+  hard-coded alpha number here.
 - npm `less` dist-tags: `latest 4.6.7`, **`alpha 3.13.0-alpha.3`** (stale), `beta 4.6.3-beta.0`,
   `canary 3.13.1-next.1`.
 
@@ -242,8 +248,9 @@ Recommendation:
    `3.13.0-alpha.3`) to the v5 line. Do **not** touch `latest` (stays 4.6.7). Confirm with the
    owner that moving `alpha` forward past a 3.x is intended (it is, per the branded-`less@5-alpha`
    goal).
-3. **Pin the `@jesscss/*` + `jess` deps to `2.0.0-alpha.7`** (replace the `link:` paths). Use exact
-   or `~2.0.0-alpha.7` so an alpha bump on the Jess side doesn't silently change `less`'s behavior.
+3. **Pin the `@jesscss/*` + `jess` deps to the selected published Jess alpha** (replace the
+   `link:` paths). Use an exact version so a later Jess alpha does not silently change `less`'s
+   behavior.
    This is the single required change to make the package publishable.
 4. Publish the next Jess alpha separately, then pin Less to that published Jess version before the
    `less@5.0.0-alpha.1` publication. Jess and Less prerelease sequences are independent.
@@ -252,13 +259,13 @@ Recommendation:
 
 ## 8. Recommended sequence for the content PR (approach a)
 
-1. Convert `packages/less` deps `link:` → published `jess`/`@jesscss/core`/`@jesscss/plugin-less-compat` `2.0.0-alpha.7`.
+1. Convert `packages/less` deps `link:` → the selected published `jess`/`@jesscss/core`/
+   `@jesscss/plugin-less-compat` alpha.
 2. Fix the two result-mapping bugs (`loadedUrls` vs `imports`; drop/guard `map`).
 3. Remove/neutralize the `browser` field; keep the package Node+CJS+CLI only.
-4. Surface the plugin-facing statics that have backing: `less.tree` (`LessTreeConstructors`),
-   `less.functions.functionRegistry`, `less.PluginManager`, `less.visitors` — from
-   `@jesscss/plugin-less-compat`. Decide explicitly which classic exports are "unsupported in alpha"
-   and document them.
+4. Keep the unsupported Less plugin statics (`less.tree`, `less.functions.functionRegistry`,
+   `less.PluginManager`, and `less.visitors`) absent from alpha. The public route supports only
+   Jess's typed native function contribution API; document the unsupported classic surfaces.
 5. Decide CLI scope (which 4.x flags alpha honors) and align `printUsage`.
 6. Point `prepublishOnly`/gate at a Node-only test set; wire the less.js test-data suite against the
    Jess-backed `render`.

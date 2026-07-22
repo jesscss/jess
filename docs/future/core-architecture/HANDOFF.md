@@ -19,7 +19,7 @@ source reparse, or compatibility path.
 ### Aggressive-cutting note — typed Less import query tail
 
 `@import url("…") (min-width: @var)` now carries the existing typed
-`Paren(Operation(':', …))` tail from the Less grammar. The serializer reuses
+`Block(Operation(':', …), delimiter: 'paren')` tail from the Less grammar. The serializer reuses
 its existing query-prelude byte emitter at the three import-tail boundaries
 (planner request, loader request, and CSS-terminal output), so it preserves
 query delimiters while evaluating the variable. No node, array, traversal,
@@ -39,16 +39,16 @@ after those Less-alpha gates are genuinely green.
 
 ### Less corpus truthfulness gate
 
-`packages/jess/test/less/all-less.test.ts` currently contains 28 runnable
+`packages/jess/test/less/all-less.test.ts` currently contains 30 runnable
 expected-failure markers. They remain complete, visible compatibility evidence:
 the harness passes when a named fixture fails, so none is passing-parity proof.
 The owner decision for the first alpha is to classify—not drain or hide—them.
 The maintained symptom/scope/follow-up inventory and alpha safety gates are in
 [`../../less-v5-alpha-readiness.md`](../../less-v5-alpha-readiness.md), and the
-release notes must link it. The five groups are callable/reference and scope
+release notes must link it. The six groups are callable/reference and scope
 semantics (9); imports/conditional at-rule execution (6); direct
-parser/evaluator correctness (7); URL options (2); and source-map artifacts
-(4). These add to 28. In particular, a missing mixin remains an error; only an
+parser/evaluator correctness (7); F5 lazy color calls (2); URL options (2);
+and source-map artifacts (4). These add to 30. In particular, a missing mixin remains an error; only an
 ordinary function call with an optional function reference may fall back to a
 CSS `Call` when lookup misses.
 
@@ -119,54 +119,71 @@ historical evidence only.
   rediscovery, or error allocation in hot paths.
 - Public operations use stable names such as `parse`, `build`, and `render`.
 
-## Deferred delimiter-container decision
+## Settled delimiter-container model
 
-`Paren` is currently the AST-v2 value wrapper for ordinary grouping and Less
-`~(...)`.  It is deliberately transparent to typed evaluation, participates in
-Less math-mode evaluation, and is rendered differently in ordinary values than
-in grammar-owned media/container/supports preludes.  Do not rename it or add a
-standalone `Bracket` node as incidental parser work.
+AST-v2 uses one `Block` value wrapper for delimiter-bearing values. `Block`
+stores `inner`, `delimiter: 'paren' | 'square'`, and the existing optional
+`escaped` fact for Less `~(...)`. It is deliberately transparent to typed
+evaluation, participates in Less math-mode evaluation when the delimiter is
+`paren`, and renders square-delimited values as authored bracketed lists. There
+is no separate `Bracket` node and no `List.bracketed` field.
 
-The legacy tree already proves the missing delimiter fact: its `Paren` carries
-`delimiter: 'paren' | 'square'`, and Sass list functions preserve/read that
-metadata for `is-bracketed`, `append`, `join`, and `set-nth`.  AST v2 currently
-does not retain it.  The owner is considering a future AST-v2
-`Block { delimiter: 'paren' | 'square'; inner: ValueNode; escaped?: true }`
-as the one delimiter-preserving value wrapper.  This is a *path-scoped future
-design*: `@jesscss/core/ast` may use `Block`, but `@jesscss/core` already exports
-the legacy tree `Block` for curly/square opaque blocks, so the AST-v2 symbol must
-not be re-exported from the root or silently collide with it.
+Where the grammar emits a public syntax `List`, it and the materialized value
+`List` share the canonical payload shape: `value` plus a separator fact
+(`',' | ' ' | '/' | 'undecided'`). They never expose the former
+`items`/`separators` pair or recover a separator from joined bytes. Ordinary
+adjacent declaration/value terms are instead the raw recursive `ValueSlot`
+array itself; there is no `SpacedValue` or `List(sep: ' ')` wrapper for that
+case. Parsers may attach the exact authored boundary runs—spaces, comments,
+line breaks, and indentation—to that array in the out-of-band provenance table,
+so the semantic array stays plain while serialization remains trivia-aware:
+comments and authored line breaks survive, while the renderer may normalize
+continuation indentation to the surrounding output depth.
+`SpacedValue` remains only where a non-value/prelude compatibility shape still
+has an independent semantic reason to exist.
 
-No cutover is approved.  Until an explicit owner decision, retain AST-v2
-`Paren`; keep CSS grid-line brackets out of a new ad-hoc node; and do not add a
-compatibility alias/bridge.  A future atomic cutover must update all AST-v2
-parser factories, evaluator/serializer context switches, AST tests and public
-subpath exports together.  It must preserve existing parenthesized math,
-escaped Less emission, and grammar-owned query parentheses, while adding square
-delimiter semantics for Sass lists.  Curly statement/ruleset bodies remain
-outside this `ValueNode` design.
+The legacy tree proves the same delimiter fact: its `Paren` carries
+`delimiter: 'paren' | 'square'`, and Sass list functions preserve/read it for
+`is-bracketed`, `append`, `join`, and `set-nth`. AST-v2 now carries that fact in
+the canonical `Block` wrapper under `@jesscss/core/ast`; the root package does
+not re-export it under the colliding legacy-tree name. Curly statement/ruleset
+bodies remain outside this `ValueNode` design.
 
 ## Completion gates
 
 Run focused parser/core tests first. Run the parser-runtime boundary verifier
 when recognition changes. For eval/render/lookup/traversal/copying changes, run
 `pnpm run verify:aggressive-cutting-review` before commit. Final integration
-requires fresh builds, core tests, the Jess production spine ratchet, and the
-Less corpus.
+requires fresh builds, core tests, the Jess AST-v2 production-route ratchet,
+and the Less corpus.
 
-### Current Less-alpha gate status (2026-07-20)
+### Current Less-alpha gate status (2026-07-21; public route and F5 gate green)
 
-The public Less route now reaches canonical AST-v2 evaluation and serialization
-for direct, non-import documents: the Less plugin calls the public direct parser,
-Context carries its `Stylesheet`, its parser/source identity, the typed builtin
-evaluator, and resolved dialect options; Jess serializes that document without a
-tree bridge or copied execution-option bag. The public proof covers variables, a mixin call,
-arithmetic, and `percentage()`. This does **not** yet mean general Less
-evaluation is complete: IO capability and an explicit AST-safe plugin lifecycle
-remain unwired. `public-api-contract.test.ts` is green. The Less test harness loads the
-macro-compiled public parser artifact, not Parseman grammar source, and the
-Less-alpha command builds that parser/plugin pair before running integration
-tests.
+The public Less route reaches canonical AST-v2 evaluation and serialization for
+direct and imported documents: the Less plugin calls the public direct parser,
+Context carries its `Stylesheet`, parser/source identity, typed builtin
+evaluator, and resolved dialect options, and Jess serializes that document
+without a tree bridge or copied execution-option bag. `pnpm run verify:less-alpha`
+passes the current release-shaped checks: package exports, public API (8/8),
+path-resolution (13/13), Less unit corpus (77 runnable, including two
+intentionally marked F5 semantic boundaries), and Less config corpus (29/29
+harness-green). The focused F5 test
+(`pnpm --filter jess test -- function-error-public-semantics.test.ts --run
+--globals`) is 17/17: CSS-shaped three-/four-slot Less `rgb`/`rgba`/`hsl`/`hsla`
+calls remain byte-faithful and do not dispatch installed native functions, while
+Less one-/two-slot overloads dispatch normally and malformed arities use the
+evaluator's `functionMode` boundary. The corpus's marked expected-failure cases
+remain known Less-parity limitations, not release-gate failures. The Less test
+harness loads the macro-compiled public parser artifact, not Parseman grammar
+source, and the Less-alpha command builds that parser/plugin pair before
+running integration tests.
+
+The old `spine-production-ratchet.test.ts` was removed from the gate because it
+asserted occupancy of the deleted public path's legacy tree counter; 121 of its
+139 cases failed solely because AST-v2 rendering correctly never entered that
+counter. `ast-v2-production-ratchet.test.ts` is the replacement production
+gate: it proves canonical `Stylesheet` ownership, direct Less evaluation,
+Context/plugin import loading, and absence of legacy output-tree materialization.
 
 Built-artifact public-route instrumentation is also decisive: a direct Less
 `Compiler.renderToResult(...)` reads or writes none of Context's legacy
@@ -178,11 +195,13 @@ dispatcher intact. The next removal sequence is to extract that source/options
 carrier as `DocumentContext`, then lazily isolate the legacy tree execution
 state so direct AST renders no longer construct it.
 
-The preserved slash-group path is also public-route green: direct Less grammar
-uses a typed `Keyword('/')` separator fact, and AST evaluation retains that fact
-as opaque through a later operation in `parens-division` mode (`10px / 2 * 2`,
-not a synthetic `calc(...)`). `tests-unit/operations/operations-advanced.less`
-passes through the macro-compiled parser → plugin → Context → AST renderer path.
+The canonical separator path is public-route green: direct AST grammars emit a
+typed separator-aware `List` (`sep: ',' | ' ' | '/' | 'undecided'`) rather than
+inserting a `Keyword('/')` sentinel between items. SCSS slash lists therefore
+retain `/` as their list fact, while a paren or square delimiter is carried by
+the separate `Block` wrapper. Less preserved-division arithmetic remains an
+operation/grouping fact and is evaluated in its configured math mode, not by
+re-splitting a joined string or synthesizing a `calc(...)`.
 
 Direct media-query comments now parse as typed output-bearing query values rather
 than being swallowed as document trivia or rejected. The focused parser proof is
@@ -192,16 +211,17 @@ ordinary rules; Context-loaded stylesheet imports remain source-ordered. The
 upstream `at-rules-keyword-comments` fixture is green.
 
 The CSS-grid fixture now passes through the public direct grammar and AST
-renderer, including bracketed grid-line atoms and multiline values. The
-canonical `SpacedValue` retains grammar-owned separator runs only when they
-contain a line break; ordinary inline spacing remains canonical. Existing
-`Declaration.valueOnNewLine` records the colon-to-value layout. This is a
-general value shape, not a grid-specific raw-value fallback. The upstream
-`whitespace` fixture passes through the same shape.
+renderer, including bracketed grid-line atoms and multiline values. Raw
+`ValueSlot` arrays retain grammar-owned boundary runs—including comments,
+line breaks, and indentation—in provenance; an array with no authored trivia
+serializes with ordinary spaces. Existing `Declaration.valueOnNewLine` records
+the colon-to-value layout. This is a general value shape, not a grid-specific
+raw-value fallback. The upstream `whitespace` fixture passes through the same
+shape.
 
 The generic direct at-rule grammar represents `@namespace foo
 url(http://...)` as `AtRuleStatement(SpacedValue(Keyword, Url))`, a parenthesized
-generic-header group as `Paren`, and Less's historical
+generic-header group as `Block(delimiter: 'paren')`, and Less's historical
 `url-prefix(""github.com"")` spelling as an opaque, grammar-owned generic
 function argument. None uses a raw-prelude fallback. The
 public CSS-3 fixture is byte-identical through the macro-compiled Less parser,
@@ -261,6 +281,51 @@ Candidates for removal are only:
 core byte/module capabilities after plugin resolution, not evidence that
 `_getPath`, `getTree`, `resolveImportPath`, `parseString`, or `getModule` should
 be deleted. Decide their long-term capability ownership deliberately.
+
+### Reachability audit (2026-07-21)
+
+The direct-production call graph was audited before any bridge/tree deletion.
+`packages/jess/src/index.ts` enters through `Context.parseString` or
+`Context.getTree`, and AST serialization uses the retained Context methods
+`loadImport`, `readBinary`, `withDocument`, `withSourceOwner`, and
+`rememberDocumentBody`. These are the plugin/session/source-identity topology;
+they are not parser or filesystem bridges and remain required.
+
+No production `BuilderHost`, `ParseHost`, action registry, or parser-host
+dispatch symbol remains in the parser packages or core. Parseman `BuildHost`
+references are confined to the explicit CSS CST/document-language-service
+builder API. Do not invent a replacement host to remove that name.
+
+The public core barrel still exports the legacy tree corpus, and the root
+`@jesscss/fns` barrel still exposes `packages/fns/src/less/*`; Context, the
+legacy function barrel, compat type declarations, and visitor/language-service
+consumers still import those classes. Root-tree export removal therefore has
+concrete prerequisites: migrate or quarantine those consumers and isolate the
+legacy Context execution state. The direct AST renderer itself does not read
+`Context.root`, `treeRoot`, `rulesContext`, or `evaldTrees`.
+
+The internal source formerly under
+`packages/jess-plugin-less-compat/src/transform/` and `src/nodes/` was proven
+unreachable from the package's only public entry point: the built package
+exports only the native AST-v2 `LessCompatPlugin`, and its bundle contained no
+`toLessNode`, `fromLessPluginReturnValue`, visitor, or transform symbols. The
+dead transform/node adapters and their unreferenced helper/type/runtime files
+were removed in the alpha.9 cleanup; the package-root native `Fn` API remains.
+Likewise,
+`packages/fns/src/util/file-resolution.ts` is reached only by the legacy
+`packages/fns/src/less/*` helpers and must wait for that public barrel's
+migration/quarantine rather than being deleted as if it were Context's
+resolver. The parser-runtime boundary audit is green (zero tracked temporary
+scanner/reparse sites); remaining string scans in AST serialization are
+evaluation/output semantics, not source recognition.
+
+The aggressive-cutting verifier now treats the coordinated
+`ValueSlot`/`List`/`Block` and callable-contract cutover as an explicit
+seven-file `semantic-runtime` evidence lane. That lane requires named semantic
+cases, focused behavior/build commands, and a current benchmark/output baseline
+with `performanceClaim: "none"`; it does not pretend this feature-changing work
+is a neutral optimization. Precise/conservative/removal contracts remain
+required for any actual cutting or performance claim.
 
 ## Direct-root cutover order
 
@@ -491,15 +556,17 @@ or a legacy-tree port.
   fact. `Interpolation` is the publishable public noun (the former `Interp`
   name has no compatibility alias). Its recursive Parseman content admits only
   literal structured bytes and the dialect's explicit interpolation syntax; it
-  is not `FunctionCall`, `Paren`, `Any`, or a parser-local raw fallback. The
+  is not `FunctionCall`, `Block`, `Any`, or a parser-local raw fallback. The
   serializer keeps a `GeneralEnclosed` segment structurally protected while it
   normalizes surrounding supports syntax, including when authored content has
   private-use Unicode bytes.
 - Less static `~"…"` / `~'…'` uses the existing `Quoted.escaped` fact in
   ordinary values, URLs, import targets, guards, generic static at-rule
   headers, and keyframe names; ordinary quoted backslashes do not set that
-  flag. Interpolated escaped strings and `~(…)` remain model gates because the
-  existing `Interpolation` and `Paren` facts cannot retain their distinct semantics.
+  flag. Interpolated escaped strings and `~(…)` remain model gates until the
+  direct grammar emits the existing `Interpolation`/`Block` facts and the
+  serializer proves their authored output; this is an integration/evidence
+  gap, not a limitation of the AST-v2 value model.
   Escaped literals remain excluded from direct `@supports` and query values:
   Less preserves literal `~"…"` spelling in a direct supports condition, while
   the existing escaped `Quoted` serializer emits inner bytes. Do not widen
@@ -796,10 +863,12 @@ require behavior/build/boundary evidence without fabricated performance claims.
   decisions; it writes already-typed static CSS terminal imports and retains one
   identity set solely to skip their later source positions. It does not resolve,
   load, parse, allocate output nodes, or walk nested/imported documents.
-  `SpacedValue` now uses the existing per-part value fold and one existing-size
-  output loop to read parser-owned separator bytes; when no newline separator is
-  present it takes the same single-space output branch as before. No source scan,
-  list re-split, node, or side map is introduced.
+  The remaining non-value/prelude `SpacedValue` path uses the existing per-part
+  fold and one existing-size output loop to read parser-owned separator bytes;
+  when no newline separator is present it takes the same single-space output
+  branch as before. Ordinary declaration/value arrays use `ValueSlot` plus the
+  provenance layout side table described above. No source scan, list re-split,
+  node, or extra side map is introduced.
 - **Render path:** `Rules.render` remains only for legacy documents. A
   `Stylesheet` takes the direct serializer branch under `Context.withDocument`.
   Imports call the retained Context dispatch path from that serializer; each
@@ -961,11 +1030,11 @@ require behavior/build/boundary evidence without fabricated performance claims.
   dynamic forms stay rejected until they have truthful typed models.
 - **New traversal:** one bounded recursive serializer walk of a supports
   prelude. It is necessary because ordinary value evaluation transparently
-  removes `Paren` around computed operations, while supports parentheses are
+  removes `Block(delimiter: 'paren')` around computed operations, while supports parentheses are
   grammatical grouping and must remain in emitted CSS. No source/tree scan,
   reparse, resolver, or side-map lookup is added.
 - **New node/materialization:** parser reductions create `GeneralEnclosed` only
-  at its public grammar position, plus the existing `Paren`, `Operation`,
+  at its public grammar position, plus the existing `Block`, `Operation`,
   `Keyword`, `SpacedValue`, and leaf facts. No copied node, raw prelude, or
   render-only materialization is added.
 - **Render path:** `@supports` writes the grammar-owned condition structure;
@@ -1258,15 +1327,36 @@ allocation cost.
 }
 ```
 
+### Parseman 0.28 release evidence (2026-07-21)
+
+Parseman PR #42 was prepared on `release/grammar-semantic-coverage` (head
+`572a614`) and merged at `aa1e7d2`; all seven review threads are resolved,
+including the later CodeRabbit/Greptile follow-up fixes. The released
+`parseman@0.28.0` package is published and its clean packed-consumer proof
+imports the required public coverage/trace exports
+(`runWithGrammarCoverage`, `createGrammarCoverageCollector`,
+`createGrammarTraceSink`, and `compile`). Parseman's own release checks passed:
+typecheck/build, changelog/docs build, 112 test files with 1,826 passed and 4
+skipped, the immediate rerun of all 20 performance tests, and `perf:guard`.
+`npm view parseman@0.28.0` reports the package published on 2026-07-21 at
+19:09:21Z. No separate git tag was present in the inspected local refs; the
+published artifact came from the reviewed release branch merged to `main`.
+Jess's frozen offline install also resolves only `parseman@0.28.0` and passes;
+all four parser packages build against it. Normal public parser/compiler/CLI
+routes remain instrumentation-off; coverage and trace are opt-in test or
+diagnostic builds only.
+
 ### Release-gate attribution (2026-07-21)
 
-### Direct Less built-artifact baseline (2026-07-21; investigation only)
+### Recorded Direct Less built-artifact benchmark (superseded pending clean rerun; 2026-07-21)
 
-This is the first matching current baseline for the **published-Parseman,
-built direct parser**. It is not an A/B and does not establish a regression
-against the historical private/source driver.
+This is the first matching record for the **published-Parseman, built direct
+parser**. It is retained for investigation, but is not the release baseline:
+the worktree has since changed and the numbers must be superseded by one
+matched, clean build before they establish a gate. It is not an A/B and does
+not establish a regression against the historical private/source driver.
 
-| Phase | Exact protocol | Current result |
+| Phase | Exact protocol | Recorded result |
 | --- | --- | --- |
 | Direct parse | `packages/less-parser/lib/index.js` SHA-256 `a70424fcb473cbd0a5bdab155668ec7b6d40fee1e5ff9de2613e58c4475d309b` (1,811,614 bytes), built at `3a8808ef` (2026-07-21); `parse(source)` on `packages/jess/benchmark/benchmark.less` (106,802 bytes); Node v24.11.1 arm64; 20 warmups + 3×45 samples | **60.971 ms** median; p25 59.303, p75 62.396, p90 64.217. The returned `Stylesheet` has 677 children; stable JSON snapshot is unchanged at 957,390 bytes, SHA-256 `2ba996a1c46eb6d77ce8f1748b35d1135848c128104e00f46dadf7e9651c53bd`. |
 | Public Compiler | `node scripts/measure-less-hotpath.mjs --fixture packages/jess/benchmark/benchmark.less --iterations 45 --warmup 20 --repeat 3 --trim 0.1 --json`, built at `3a8808ef`; built `jess`, `plugin-less`, and `plugin-less-compat`; same Node/fixture | **79.823 ms** round-median across 135 samples; p25 77.956, p75 82.030; 4.39% sample RSD / 0.76% round RSD (`usable`). Output remains 122,390 bytes, SHA-256 `ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6`. |
@@ -1276,6 +1366,52 @@ so the two measurements share the canonical frontend. Their difference is not
 a phase attribution: the Compiler measurement also includes Context/plugin,
 document, evaluation, and rendering work. It does establish that direct parse
 is the dominant measured phase on this fixture.
+
+### Current direct Less baseline (2026-07-22; evidence refresh, no A/B claim)
+
+A clean rebuilt `packages/less-parser/lib/index.js` was measured against the
+same `benchmark.less` source with Node v24.11.1 arm64, 20 warmups, and three
+45-sample rounds. The generated bundle is 1,821,274 bytes with SHA-256
+`13a6325c2b3dc517c3ce1374266aa94b611403ec3072ec558ee9088ee7660fad`. Direct
+`parse(source)` returned 677 children; its stable JSON snapshot was 946,987
+bytes with SHA-256
+`8e3a371bd286ff2682ee08d56c451274a94b14203dbe8de68ad2057aa6cc13c3`. The
+round medians were 64.816, 63.603, and 65.092 ms; the round median is
+**64.816 ms**. This supersedes the prior pending-clean-rerun parse number as a
+current baseline only. It is not a comparison against 0.26/0.27 and does not
+isolate a cause for the change.
+
+The matching public Compiler hot-path refresh used
+`pnpm run measure:less:hotpath -- --fixture packages/jess/benchmark/benchmark.less
+--iterations 45 --warmup 20 --repeat 3 --trim 0.1 --json` at commit
+`d7e17390c9f82f150e59f6d4a9c79b6562b1fbdf`. It produced a usable 80.056 ms
+round median (round medians 80.300, 80.056, 80.013 ms). The output remained
+122,390 bytes with SHA-256
+`ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6`. This is
+also a baseline refresh, not an A/B or performance acceptance claim.
+
+### Latest direct Less performance refresh (2026-07-21; no A/B claim)
+
+After the subsequent AST/list and F5 work, the rebuilt Less parser artifact is
+1,822,568 bytes with SHA-256
+`99630b5a18e658479b1717d73e2f5e5f9ee72dda64d669217f8deb9fe11e3ac9`. Under the
+same Node v24.11.1 arm64, `benchmark.less`, 20-warmup/three-45-sample
+protocol, direct parse round medians were **67.86, 69.78, and 68.05 ms**;
+aggregate median **68.38 ms** (p25 66.40, p75 70.42, p90 73.03). The parsed
+stylesheet still has 677 children and the 946,987-byte snapshot is unchanged
+(SHA-256 `8e3a371bd286ff2682ee08d56c451274a94b14203dbe8de68ad2057aa6cc13c`).
+The public Compiler hot-path round median was **85.86 ms** under the same
+protocol, with the canonical 122,390-byte CSS output unchanged (SHA-256
+`ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6`).
+
+Fresh V8 sampling over 150 direct parses attributed 8,903/10,165 samples
+(87.57%) to generated Less-bundle frames, 377 (3.71%) to GC, and 246 (2.42%)
+to core. This identifies generated reducer execution as the dominant measured
+phase, not a specific regression. The current artifact still contains optional
+profile (1,698 references) and CST-output (411 references) branches, while
+coverage/trace/composeLeaf hooks are absent from normal output. No parser
+performance acceptance or regression claim is made until a matched Parseman
+0.27/0.28 generated-bundle A/B exists.
 
 Historical values must not be treated as an A/B: the former 33.65 ms direct-AST
 figure was a Vite/source `renderAstFile` partial-driver phase (20 warmups/N=60),
@@ -1493,6 +1629,11 @@ protocol, and byte identity before it may claim neutral/decrease.
   placement WeakMap; [materialized array/object] is the existing feature-path
   overlay and token state. The remaining matches are concurrently dirty
   AST/parser/evaluator work and are not attributed to this narrow owner.
+- **[generic defensive read]:** the `Object.prototype.hasOwnProperty` check in
+  `packages/core/src/ast/value-dispatch.ts` is cold named-record validation for
+  callable metadata, not a parser or render-path probe; `Reflect.apply` is the
+  direct callable invocation seam. No generic property probing was added to a
+  parser or evaluator hot path by this pass.
 - **Evidence:** `extend-preflight-contract.test.ts` proves the no-extend false
   path (`collectPlan`, collector, overlay, and loop placements all zero) and a
   two-item imported loop (one import, two concrete placements, two subjects and
@@ -1561,6 +1702,18 @@ protocol, and byte identity before it may claim neutral/decrease.
     "baseline":{"fixture":"benchmark.less","phase":"render","currentMedianMs":78.4,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}
   },
   {
+    "id":"ast-semantic-runtime-cutover",
+    "verdict":"accepted",
+    "performanceClaim":"none",
+    "owner":"the seven canonical AST-v2 evaluator/value owners listed by ast-semantic-runtime-cutover",
+    "why":"This coordinated AST-v2 cutover changes ValueSlot/List/Block facts, authored layout, callable binding, mixin argument resolution, reference/index access, and Less lazy color-call demand across cooperating runtime owners. Those are semantic architecture changes with real traversal and allocation shape; no single admission counter, byte-identical A/B, or speed claim would describe them truthfully.",
+    "dangerTokensJustification":"The new array helpers, loops, side-table entries, typed wrappers, and result objects are accounted for as the direct implementation of the canonical value facts and demand boundaries. They are not presented as neutral or cheaper, and their behavior is covered by focused AST/list/mixin/provenance/F5 tests plus the release build.",
+    "cases":["ValueSlot-array-evaluation-and-authored-layout","List-value-separator-and-Block-delimiter-facts","reference-index-and-For-array-access","Less-lazy-color-call-demand-boundary","defineFunction-typed-positional-named-and-lazy-binding","mixin-dispatch-ValueSlot-argument-resolution","ValueLayout-provenance-side-table","preserve-mode-calc-result-composition"],
+    "behaviorEvidence":"The isolated `pnpm run verify:baseline` route passed, including core/parser/fixture behavior and the public Less/Jess semantic suites; the F5 lazy color-call cases remain separately recorded in the Less-alpha gate.",
+    "buildEvidence":"The release-shaped `pnpm run build:release` workspace build passed for the assembled canonical AST-v2 runtime.",
+    "baseline":{"fixture":"benchmark.less","phase":"render","currentMedianMs":85.86,"parseRenderMedianMs":68.38,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}
+  },
+  {
     "id":"context-external-import-dispatch-boundary",
     "verdict":"accepted",
     "performanceClaim":"none",
@@ -1570,9 +1723,11 @@ protocol, and byte identity before it may claim neutral/decrease.
     "baseline":{"fixture":"benchmark.less","phase":"render","currentMedianMs":78.4,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}
   }]
   ```
-- **Verdict:** accepted semantic-preflight plus evaluator/value semantic-boundary
-  contracts: behavior is proved; benchmark data is an output-identity baseline
-  only and makes no performance claim.
+- **Verdict:** accepted semantic-preflight, evaluator/value semantic-boundary,
+  and the explicit seven-file `ast-semantic-runtime-cutover` record. Behavior,
+  focused package build, and current benchmark/output baselines are proved;
+  none of these records makes a performance, neutrality, or byte-identity
+  claim. The wider release build remains a separate alpha gate.
 ### Rejected nested Less `@media` conjunction assumption (2026-07-21)
 
 Commit `81e2f7ffc` assumed nested singleton `@media` groups should be emitted
@@ -1643,3 +1798,67 @@ No wrapper, alias, reduced behavior, or permanent legacy holdout is permitted.
 Relative color is a separate first semantic batch: direct AST retains its
 structured clause, but full `calc(r + 40)` needs a typed call-level channel
 evaluation design before a behavior-preserving port.
+
+The public-entrypoint cutover includes `packages/fns/src/index.ts`,
+`less/index.ts`, and `builtins.ts`: none may leave a legacy callable barrel or
+`src/builtins.ts` registry as the destination architecture. The final public
+assembly imports canonical callables from the existing `shared/`, `less/`, and
+`sass/` owners. The corresponding tree-based tests (`Context`, `callWithContext`,
+tree constructors, and `instanceof` assertions) must move to typed direct-call
+or compiler-route tests; their byte/output expectations remain oracle evidence.
+The package wildcard export means legacy subpaths also need an intentional public
+export cutover, rather than disappearing by accident. This is active work, not a
+completion claim.
+
+**Settled F5 relative-color and fallback boundary:** CSS-shaped literal
+`rgb`/`rgba`/`hsl`/`hsla` calls with three or more argument slots are
+un-operated bare Calls: they emit authored bytes and are not invoked unless a
+consumer demands their value (an enclosing operation or a Less/variable
+argument is such demand). Modern space/slash and relative syntax uses a nested
+structured slot and follows the same arity rule. Less's one-/two-slot overloads
+are not part of this lazy boundary: they dispatch through the selected Less
+callable, so recognized forms such as `rgba(#5F59)` canonicalize and malformed
+numeric arities reach the normal call-level `functionMode` policy. Therefore
+unsupported relative-color syntax does not throw while its CSS-shaped Call
+remains un-operated. On demand, the selected implementation may reject; the
+evaluator's existing `functionMode` policy—not an individual function—then
+decides whether to preserve the authored call or propagate the error. A
+function must never manufacture a fallback call node. Preserve this F5 demand
+gate when the builtin registry moves out of `builtins/`; it is distinct from
+lazy parameters and from `functionMode`. No broad relative-color port is
+approved by this statement.
+
+**Settled callable capability boundary:** direct callable invocation supports
+typed positional values plus typed named-record assignment (including mixed
+calls) for Sass and Jess. The evaluator/registry route continues to pass a
+typed positional `List`; Less is positional-only for the current alpha and may
+add hybrid records later only with an explicit Less syntax/evaluator decision.
+This is a callable capability boundary, not a claim that every dialect parser
+accepts named arguments.
+
+**Settled typed-list ownership and callable shape:** list recovery and numeric
+indexed access are core Jess value capabilities, not Less-owned helpers. Core
+owns exact separator/bracket-aware value structure, zero-based value access, and
+the universal `defineFunction`/`Fn` callable contract. Core does not normalize
+indices or impose one-based language semantics.
+Less, Sass, and future libraries register that same callable shape and provide
+declared semantic policy data (for example unit compatibility,
+bracketedness/separator defaults, rounding, or map behavior); they do not get
+separate function APIs or helper contracts. The AST-v2 cutover therefore audits
+and ports Sass list functions too; the legacy Sass list APIs are not a protected
+exception or a reason to retain legacy tree values. Every remaining legacy list
+dependency must either be replaced with the core capability or be explicitly
+shown to encode declared policy data rather than a second runtime model.
+
+**Value-list separator invariant:** a semicolon is a statement/declaration
+delimiter, not an AST-v2 value-list separator. When syntax places a semicolon
+between values outside the rules level, the parser reduction lowers it to the
+canonical comma-separated `List` fact. The typed value model therefore carries
+comma/space/slash (plus any explicit undecided policy), never a semicolon value
+separator.
+
+**Value-list index invariant:** core JS access is zero-based and does no numeric
+normalization. Less `extract` and Sass `list.nth`/`set-nth` each implement their
+own one-based conversion, truncation/flooring, non-finite, negative, and bounds
+rules inside the universal callable contract. A shared core accessor must not
+silently choose one language’s policy.

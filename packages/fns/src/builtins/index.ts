@@ -22,9 +22,9 @@ import type { Fn } from '@jesscss/core/value';
 
 // --- math: rounding / sign / roots / powers ---
 import { round } from '../less/round.js';
-import { ceil } from './ceil.js';
-import { floor } from './floor.js';
-import { abs } from './abs.js';
+import { ceil } from '../less/ceil.js';
+import { floor } from '../less/floor.js';
+import { abs } from '../less/abs.js';
 import { sqrt } from './sqrt.js';
 import { pow } from './pow.js';
 import { mod } from './mod.js';
@@ -44,10 +44,10 @@ import { atan } from './atan.js';
 // --- list (Tier-A: pure value→value, constructs its own list; no eval context) ---
 import { range } from './range.js';
 // --- list / variadic (materialize flattened list structure; oracle = Less 4.x) ---
-import { length } from './length.js';
-import { extract } from './extract.js';
-import { min } from './min.js';
-import { max } from './max.js';
+import length from '../less/length.js';
+import extract from '../less/extract.js';
+import min from '../less/min.js';
+import max from '../less/max.js';
 // --- color: hsl adjusters (lighten = proof; darken/saturate/… = this batch) ---
 import { lighten } from './lighten.js';
 import { darken } from './darken.js';

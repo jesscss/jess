@@ -1,4 +1,4 @@
-import { makeKeyword } from '@jesscss/core/value';
+import { makeKeyword, defineFunction } from '@jesscss/core/value';
 import type { Fn } from '@jesscss/core/value';
 
 /**
@@ -7,12 +7,11 @@ import type { Fn } from '@jesscss/core/value';
  * (`=`,`:`,`#`,`;`,`(`,`)`). Emits a bare keyword. Validated against Less 4.x (the
  * adapter mishandles the reconstructed Quoted and encodes its quotes).
  */
-export const escape: Fn = {
-  name: 'escape',
+export const escape: Fn = defineFunction('escape', {
   params: [{ kinds: 'any' }],
   variadic: true,
   body: (list, ctx) => {
-    const raw = ctx.stringify(list.items[0]!);
+    const raw = ctx.stringify(list.value[0]!);
     const encoded = encodeURI(raw)
       .replace(/=/g, '%3D')
       .replace(/:/g, '%3A')
@@ -21,5 +20,5 @@ export const escape: Fn = {
       .replace(/\(/g, '%28')
       .replace(/\)/g, '%29');
     return makeKeyword(encoded);
-  },
-};
+  }
+});

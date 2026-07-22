@@ -7,12 +7,14 @@ before that runbook should be used. Features **deliberately deferred past this
 alpha** (config-lane URL/import handling, source maps, …) are sequenced in
 [`less-v5-release-plan.md`](./less-v5-release-plan.md).
 
-## Current direct-Less performance baseline (2026-07-21)
+## Recorded direct-Less benchmark (superseded pending clean rerun; 2026-07-21)
 
-This is the alpha-facing reproducibility record, not a historical regression
-claim. The current public route is a built direct parser on Parseman `0.28.0`;
-older 20–30 ms source-driver and legacy-tree numbers measured different work and
-are not an A/B.
+These measurements are retained as reproducibility evidence, but are not the
+current release baseline. They were captured before the present migration
+worktree was clean and must be superseded by one matched, clean build before
+they can be used as an alpha gate. The public route is a built direct parser on
+Parseman `0.28.0`; older 20–30 ms source-driver and legacy-tree numbers measured
+different work and are not an A/B.
 
 | Phase | Protocol and identity | Result |
 | --- | --- | --- |
@@ -26,6 +28,40 @@ not land: direct parse was 62.881 ms versus its 59.502 ms baseline and compiler
 74.022 ms versus 73.772 ms (noise), so no production change remains. The next
 choice investigation is the opt-in stable choice-arm trace design in
 [`parseman-diagnostic-trace-design.md`](./future/parseman-diagnostic-trace-design.md).
+
+## External Less `5.0.0-alpha.1` package audit (2026-07-21)
+
+The sibling Less repository is on its `alpha` branch at `805c89e`, with the
+working tree carrying the intended v5 wrapper, CLI, publish-script, and test
+changes. Its package manifests are exactly `5.0.0-alpha.1`; the branch is not
+yet synchronized with `upstream/master` (`54` commits ahead, `32` behind), and
+the attempted merge has real conflicts in the v5/legacy build and test-data
+surfaces. Do not merge that upstream history blindly or discard the dirty
+alpha changes.
+
+The built `lessc` smoke suite passes, as do the five publish-version/dependency
+rewrite tests and the package typecheck. The full Less node suite exits with six
+known v5 divergences (plugin-global/visitor behavior, advanced parser fixtures,
+URL/process-import behavior, and source-map artifacts); these remain classified
+known limitations rather than hidden or deleted failures.
+
+The first packed Less tarball exposed a release blocker: its local Jess
+dependencies were published as `link:` URLs, and a clean npm consumer fails
+with `EUNSUPPORTEDPROTOCOL`. The Less alpha publish script now requires an
+explicit `JESS_VERSION` (for example `2.0.0-alpha.9`), temporarily rewrites the
+four Jess runtime dependencies to that exact registry version for `npm publish`,
+and restores the local workspace-linked manifest afterward. Publication order
+is therefore: publish and clean-consumer-verify Jess `2.0.0-alpha.9` first,
+then publish Less with `JESS_VERSION=2.0.0-alpha.9`. The helper has a packed
+manifest proof; a real clean Less consumer remains pending the Jess alpha.9
+registry artifacts.
+
+With no Deno/plugin execution on `benchmark.less`, three repeated 8-run/3-warmup
+rounds measured Less alpha render medians of `99.44`, `98.56`, and `92.80` ms
+(round mean `96.9` ms), versus the historical Less 4.5.1 `47.4` ms average.
+The earlier `205.12` ms one-run result was a cold-start outlier; these numbers
+are still not a comparable Less-4 A/B until the exact fixture/options and build
+identity are recorded, but they establish the current warm-path signal.
 
 ## Status Key
 
@@ -54,6 +90,25 @@ The alpha blocks only on these advertised correctness and release-safety gates:
   smoke/compatibility tests; and
 - a release-note known-limitations section that links the complete inventory and
   states the unsupported or divergent behavior honestly.
+- `[x]` **F5 deferred CSS color-call gate.** Through the public Less/Jess route,
+  CSS-shaped `rgb()`/`rgba()`/`hsl()`/`hsla()` calls with three or more argument
+  slots remain authored, verbatim CSS calls even under `functionMode: 'error'`;
+  they do not eagerly invoke a native function. Modern space/slash and relative
+  forms arrive as one structured slot and use the same three-slot rule. Less's
+  one- and two-slot color overloads (including `rgba(#5F59)` and
+  `rgba(#5F59, .5)`) dispatch normally, so recognized Less forms are evaluated
+  and malformed numeric arities are rejected by the call-level `functionMode`
+  policy rather than leaking authored invalid output. An un-operated relative-
+  color call remains authored; only a consumer that demands its value may reach
+  an implementation rejection. Evidence:
+  `pnpm --filter jess test -- function-error-public-semantics.test.ts --run
+  --globals` (17/17 passing, including zero dispatches for installed native
+  three-/four-slot CSS color functions); settled semantics:
+  `DESIGN-DECISIONS.md` F5. The runnable Less unit corpus now has two F5
+  expected-failure markers (`operations.less` and `functions/functions.less`),
+  while `color-functions/rgba.less` is green because its one-/two-slot Less
+  overloads are evaluated. These are intentional alpha semantics, not hidden
+  failures.
 
 Full upstream parity, unadvertised Less 4.x CLI parity, browser compilation,
 source-map artifacts, and performance parity remain follow-up work unless they
@@ -205,8 +260,9 @@ Known gaps to add or close:
   and `renderString(...)` filePath-based import resolution.
 - `[x]` Add or validate tests for Less public API entrypoints that are not
   covered by file render fixtures. `packages/jess/test/public-api-contract.test.ts`
-  now covers the alpha public method shapes for `render(...)`,
-  `renderString(...)`, `renderToResult(...)`, and `dispose()`.
+  covers the alpha public method shapes for `render(...)`,
+  `renderString(...)`, `renderToResult(...)`, and `dispose()`; the current rerun
+  is 8/8 green.
 - `[~]` Convert fixture skips from broad comments into categorized expected
   failures with reasons and owners.
   The active harness now has expected-failure reasons for runnable mismatches
@@ -222,7 +278,7 @@ Known gaps to add or close:
 
 ## Known limitations: runnable upstream corpus inventory
 
-The runnable corpus has **28** explicit expected-failure markers in
+The runnable corpus has **30** explicit expected-failure markers in
 `packages/jess/test/less/all-less.test.ts`. They are test instrumentation,
 not passing compatibility evidence: each marker makes a mismatching render pass
 the harness while preserving the observed failure. This is the complete first
@@ -235,6 +291,7 @@ remain explicit and be updated when its symptom or scope changes.
 | Callable/reference and scope semantics | `detached-rulesets`, `functions-each`, `mixins`, `namespacing-5`, `namespacing-8`, `namespacing-functions`, `namespacing-media`, `variables`, `variables-in-at-rules` | Advanced Less callable, detached-ruleset, `each()`, namespace, and live/scoped lookup results can diverge. Missing mixins are still errors; ordinary unregistered `foo()` remains an optional CSS-function fallback, not a missing-mixin success. | Typed callable/reference lookup and binding semantics in core; graduate only with focused core proof plus byte-identical fixture output. |
 | Imports and conditional at-rules | `import-reference`, `import`, `import-remote`, `urls`, `process-imports/google`, `plugin/plugin` | Some reference/remote/interpolated imports, process-import filtering, and media-query merging diverge. `@plugin` script execution itself is separately proved; its fixture mismatch shares the import/media rendering gap. | Context/plugin-owned import execution and typed media wrapping; no dialect-local resolver or source reparse. |
 | Parser/evaluator edge syntax | `selectors`, `property-name-interp`, `parse-interpolation`, `parser-slashed-combinator`, `permissive-parse`, `media`, `container` | Specific selector interpolation/pseudo, property interpolation, slashed-combinator, and permissive at-rule-prelude forms are rejected or render differently. | Extend the direct Parseman grammar and canonical AST only where the syntax has an agreed semantic shape; retain migration-policy questions as documented decisions. |
+| F5 lazy CSS color calls | `color-functions/operations`, `functions/functions` (the `color-functions/rgba` overload cases are green) | CSS-shaped un-operated rgb-family calls with three or more slots remain authored and byte-faithful; Less 4's goldens expect eager clamping or canonicalization for the two remaining boundary fixtures. Less one-/two-slot overloads are dispatched and tested. | Preserve the call-level demand boundary; only a consumer that needs a typed color may invoke the implementation. The focused F5 contract is 17/17. |
 | URL-option behavior | `static-urls`, `url-args` | Some configured static-URL/query-argument behavior differs from Less. The four rewrite/rootpath fixtures are byte-identical public-route passes, not limitations. | One Context/plugin-owned URL transform contract, with public compiler fixture proof; do not add a dialect-local resolver. |
 | Source-map artifacts | `sourcemaps-basepath`, `sourcemaps-include-source`, `sourcemaps-rootpath`, `sourcemaps-url` | Source-map annotations and emitted artifacts are not alpha-supported behavior. | Dedicated artifact harness and documented public source-map contract, rather than render-string assertions. |
 

@@ -12,7 +12,7 @@ describe('built-in call failures', () => {
 
     expect(() => registry.dispatch('rgb', args, {
       modes: { unitMode: 'preserve' },
-      stringify: value => value.bytes,
+      stringify: value => value.bytes
     })).toThrow('Invalid arguments for rgb function');
   });
 
@@ -25,7 +25,7 @@ describe('built-in call failures', () => {
 
     expect(() => evaluator.call('rgb', args, {
       unitMode: 'preserve',
-      functionMode: 'error',
+      functionMode: 'error'
     })).toThrow('Invalid arguments for rgb function');
   });
 
@@ -35,12 +35,12 @@ describe('built-in call failures', () => {
 
     expect((registry.dispatch('min', args, {
       modes: { unitMode: 'preserve' },
-      stringify: value => value.bytes,
+      stringify: value => value.bytes
     }) as { bytes: string }).bytes).toBe('min(1px, 1s)');
 
     expect(() => registry.dispatch('min', args, {
       modes: { unitMode: 'strict' },
-      stringify: value => value.bytes,
+      stringify: value => value.bytes
     })).toThrow('min() arguments have incompatible units');
   });
 
@@ -50,13 +50,13 @@ describe('built-in call failures', () => {
 
     const minResult = registry.dispatch('min', makeList([
       makeDimension(6, 'em'), makeDimension(5), makeDimension(4, 'ex'),
-      makeDimension(3), makeDimension(2, 'pt'), makeDimension(1),
+      makeDimension(3), makeDimension(2, 'pt'), makeDimension(1)
     ], ','), ctx) as { bytes: string };
     expect(minResult.bytes).toBe('min(1, 4ex, 2pt)');
 
     const maxResult = registry.dispatch('max', makeList([
       makeDimension(1, 'px'), makeDimension(2), makeDimension(3, 'em'),
-      makeDimension(4), makeDimension(5, 'm'), makeDimension(6),
+      makeDimension(4), makeDimension(5, 'm'), makeDimension(6)
     ], ','), ctx) as { bytes: string };
     expect(maxResult.bytes).toBe('max(5m, 3em)');
   });
@@ -67,12 +67,24 @@ describe('built-in call failures', () => {
     const emptyArgs = makeList([], ',');
     const context = {
       modes: { unitMode: 'preserve' as const },
-      stringify: (value: { bytes: string }) => value.bytes,
+      stringify: (value: { bytes: string }) => value.bytes
     };
 
-    expect(() => registry.dispatch('extract', extractArgs, context)).toThrow('extract() index is out of range');
+    expect(() => registry.dispatch('extract', extractArgs, context)).toThrow('extract() index 2 out of range for length 1');
     expect(() => registry.dispatch('data-uri', emptyArgs, context)).toThrow('data-uri() requires a path');
     expect((evaluator.call('extract', extractArgs, context.modes) as { bytes: string }).bytes).toBe('extract(one, 2)');
     expect((evaluator.call('data-uri', emptyArgs, context.modes) as { bytes: string }).bytes).toBe('data-uri()');
+  });
+
+  it('keeps Less singleton extract semantics for a non-finite index through the registry', () => {
+    const registry = makeBuiltinRegistry();
+    const result = registry.dispatch('extract', makeList([
+      makeKeyword('only'), makeDimension(Number.POSITIVE_INFINITY)
+    ], ','), {
+      modes: { unitMode: 'preserve' },
+      stringify: value => value.bytes
+    }) as { bytes: string };
+
+    expect(result.bytes).toBe('only');
   });
 });

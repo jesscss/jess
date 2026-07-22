@@ -72,9 +72,12 @@ expression computes, the parens do not survive to output. (A no-space
 .a { border: 1px solid #a8000b; }
 ```
 
-### Color functions pass through un-operated
-`rgb`/`rgba`/`hsl`/`hsla` with literal args and no operation emit verbatim; the
-function only runs when the value is operated on or given Less/variable arguments.
+### CSS-shaped color functions pass through un-operated
+`rgb`/`rgba`/`hsl`/`hsla` with CSS-shaped three-or-more-slot literal args and no
+operation emit verbatim; the function only runs when the value is operated on or
+given a Less overload / variable argument. Less one-/two-slot overloads such as
+`rgba(#5F59)` dispatch normally, and malformed numeric arities reach the regular
+call-level error/preserve policy.
 
 ```less
 .a { color: hsl(200, 50%, 40%); }        // verbatim

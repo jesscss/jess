@@ -40,9 +40,19 @@ branch, account for its call-path allocation shape, and record a current output
 baseline with `performanceClaim: "none"`. It must not use counters or an A/B to
 pretend that a semantic policy correction is an optimization.
 
-The registry stays intentionally minimal. It retains one valid contract solely
-because the verifier currently requires a non-empty registry; it is not a new
-active architecture queue.
+`semantic-runtime` is the explicit lane for a coordinated AST-v2 evaluator/value
+cutover whose changed helpers span more than one traversal or dispatch family.
+It is file-owned, not hunk-anchored: the record names the semantic scope and
+cases, runs focused behavior and build commands, and records a current
+`benchmark.less` timing/output baseline with `performanceClaim: "none"`. It
+does not claim neutrality, speed, byte identity, or a cost decrease. The danger
+inventory and self-prosecution labels still apply, while precise/conservative/
+redundant optimization records remain required for changes that actually claim
+cutting or performance.
+
+The registry stays intentionally bounded. Its semantic-runtime entry is an
+explicit evidence owner for the current coordinated AST-v2 value cutover, not
+a blanket optimization exemption or a new active architecture queue.
 
 <!-- BEGIN AGGRESSIVE-CUTTING-COST-CONTRACTS -->
 ```json
@@ -153,6 +163,40 @@ active architecture queue.
       "call": "makeKeyword(`calc("
     },
     "evidence": {"command": ["pnpm", "vitest", "run", "packages/core/src/ast/__tests__/value-operate-units.test.ts", "packages/jess/test/less/calc-explicit-compose.test.ts"]}
+  },
+  {
+    "id": "ast-semantic-runtime-cutover",
+    "kind": "semantic-runtime",
+    "surface": "canonical AST-v2 evaluator/value cutover",
+    "files": [
+      "packages/core/src/ast/evaluator.ts",
+      "packages/core/src/ast/serialize.ts",
+      "packages/core/src/ast/value-operate.ts",
+      "packages/core/src/ast/mixin-dispatch.ts",
+      "packages/core/src/ast/provenance.ts",
+      "packages/core/src/ast/value-dispatch.ts",
+      "packages/core/src/ast/value-eval.ts"
+    ],
+    "semanticRuntime": {
+      "owner": "the seven canonical AST-v2 evaluator/value owners listed by ast-semantic-runtime-cutover",
+      "scope": "This coordinated cutover changes ValueSlot/List/Block facts, authored value layout, callable binding, mixin argument resolution, reference/index access, and Less lazy color-call demand across cooperating runtime owners. Those changes are semantic architecture work with real traversal and allocation shape; no single admission counter, byte-identical A/B, or speed claim would describe them truthfully.",
+      "cases": [
+        "ValueSlot-array-evaluation-and-authored-layout",
+        "List-value-separator-and-Block-delimiter-facts",
+        "reference-index-and-For-array-access",
+        "Less-lazy-color-call-demand-boundary",
+        "defineFunction-typed-positional-named-and-lazy-binding",
+        "mixin-dispatch-ValueSlot-argument-resolution",
+        "ValueLayout-provenance-side-table",
+        "preserve-mode-calc-result-composition"
+      ],
+      "performanceClaim": "none",
+      "baseline": {"fixture": "benchmark.less", "phase": "render"}
+    },
+    "evidence": {
+      "behaviorCommand": ["pnpm", "run", "verify:baseline"],
+      "buildCommand": ["pnpm", "run", "build:release"]
+    }
   },
   {
     "id": "context-external-import-dispatch-boundary",

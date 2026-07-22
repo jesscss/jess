@@ -6,7 +6,7 @@
  *
  * HARD MODULE BOUNDARY: imports only the value domain + the free serializer.
  */
-import type { Bool, Color, Dimension, Keyword, Quoted, List, ValueObj } from './value-eval.js';
+import type { Block, Bool, Color, Dimension, Keyword, Quoted, List, ListSeparator, ValueObj } from './value-eval.js';
 import { colorRgb, colorSourceRgb, rgbToHsl, serializeColor } from './color.js';
 import { serializeDimension, serializeQuoted, serializeValue } from './serialize-value.js';
 
@@ -69,10 +69,12 @@ export function makeCompoundDimension(
   unit: string,
   numerator: readonly string[],
   denominator: readonly string[],
-  backupUnit: string | undefined,
+  backupUnit: string | undefined
 ): Dimension {
   const n: Mutable<Dimension> = { type: 'Dimension', number, unit, numerator, denominator, bytes: '' };
-  if (backupUnit !== undefined) n.backupUnit = backupUnit;
+  if (backupUnit !== undefined) {
+    n.backupUnit = backupUnit;
+  }
   n.bytes = serializeDimension(n);
   return n;
 }
@@ -82,13 +84,21 @@ export function makeColorRgb(
   rgb: readonly [number, number, number],
   alpha: number,
   format: number,
-  opts?: { modernSyntax?: boolean; node?: string; rgbPct?: readonly (number | undefined)[]; alphaPct?: number },
+  opts?: { modernSyntax?: boolean; node?: string; rgbPct?: readonly (number | undefined)[]; alphaPct?: number }
 ): Color {
   const c: Mutable<Color> = { type: 'Color', rgb, alpha, format, bytes: '' };
-  if (opts?.modernSyntax) c.modernSyntax = true;
-  if (opts?.node !== undefined) c.node = opts.node;
-  if (opts?.rgbPct !== undefined) c.rgbPct = opts.rgbPct;
-  if (opts?.alphaPct !== undefined) c.alphaPct = opts.alphaPct;
+  if (opts?.modernSyntax) {
+    c.modernSyntax = true;
+  }
+  if (opts?.node !== undefined) {
+    c.node = opts.node;
+  }
+  if (opts?.rgbPct !== undefined) {
+    c.rgbPct = opts.rgbPct;
+  }
+  if (opts?.alphaPct !== undefined) {
+    c.alphaPct = opts.alphaPct;
+  }
   c.bytes = serializeColor(c);
   return c;
 }
@@ -99,12 +109,18 @@ export function makeColorHsl(
   alpha: number,
   format: number,
   modernSyntax?: boolean,
-  opts?: { hueUnit?: string; alphaPct?: number },
+  opts?: { hueUnit?: string; alphaPct?: number }
 ): Color {
   const c: Mutable<Color> = { type: 'Color', rgb: [0, 0, 0], alpha, hsl, format, bytes: '' };
-  if (modernSyntax) c.modernSyntax = true;
-  if (opts?.hueUnit) c.hueUnit = opts.hueUnit;
-  if (opts?.alphaPct !== undefined) c.alphaPct = opts.alphaPct;
+  if (modernSyntax) {
+    c.modernSyntax = true;
+  }
+  if (opts?.hueUnit) {
+    c.hueUnit = opts.hueUnit;
+  }
+  if (opts?.alphaPct !== undefined) {
+    c.alphaPct = opts.alphaPct;
+  }
   c.bytes = serializeColor(c);
   return c;
 }
@@ -120,8 +136,25 @@ export const makeKeyword = (text: string): Keyword => ({ type: 'Keyword', text, 
 /** A boolean value result (`true`/`false` — the shape guards and `is*` predicates emit). */
 export const makeBool = (value: boolean): Bool => ({ type: 'Bool', value, bytes: value ? 'true' : 'false' });
 
-export function makeList(items: readonly ValueObj[], sep: ',' | ' ' | '/'): List {
-  const l: Mutable<List> = { type: 'List', items, sep, bytes: '' };
+export function makeList(
+  value: readonly ValueObj[],
+  sep: ListSeparator = ' '
+): List {
+  const l: Mutable<List> = { type: 'List', value, sep, bytes: '' };
   l.bytes = serializeValue(l);
   return l;
+}
+
+/** Wrap a value in an explicit paren/square delimiter fact. */
+export function makeBlock(
+  inner: ValueObj,
+  delimiter: Block['delimiter'],
+  escaped = false
+): Block {
+  const block: Mutable<Block> = { type: 'Block', inner, delimiter, bytes: '' };
+  if (escaped) {
+    block.escaped = true;
+  }
+  block.bytes = serializeValue(block);
+  return block;
 }

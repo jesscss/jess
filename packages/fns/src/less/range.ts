@@ -1,4 +1,4 @@
-import { defineFunction, Dimension, Sequence } from '@jesscss/core';
+import { defineFunction, makeDimension, makeList } from '@jesscss/core/value';
 
 /**
  * Less `range()` — build a numeric list. With one argument, `1…start`; with two,
@@ -9,47 +9,28 @@ import { defineFunction, Dimension, Sequence } from '@jesscss/core';
  * @returns a `Sequence` of `Dimension`s carrying the end value's unit
  * @throws `RangeError` if `step` is `0`
  */
-const range = defineFunction(
-  'range',
-  function(start: Dimension, end?: Dimension, step?: Dimension): Sequence {
+const range = defineFunction('range', {
+  params: [{ name: 'start', kinds: ['Dimension'] }, { name: 'end', kinds: ['Dimension'], optional: true }, { name: 'step', kinds: ['Dimension'], optional: true }] as const,
+  body: (start, end, step) => {
     let from: number;
-    let to: Dimension;
-    let stepValue = step?.number ?? 1;
+    const to = end ?? start;
+    const stepValue = step?.number ?? 1;
     if (stepValue === 0) {
       throw new RangeError('range() step cannot be 0');
     }
 
-    if (end) {
+    if (end !== undefined) {
       from = start.number;
-      to = end;
     } else {
       from = 1;
-      to = start;
     }
 
-    const out: Dimension[] = [];
+    const out = [];
     for (let i = from; i <= to.number; i += stepValue) {
-      out.push(new Dimension({
-        number: i,
-        unit: to.unit
-      }));
+      out.push(makeDimension(i, to.unit));
     }
-    return new Sequence(out);
-  },
-  {
-    params: [{
-      name: 'start',
-      type: Dimension
-    }, {
-      name: 'end',
-      type: Dimension,
-      optional: true
-    }, {
-      name: 'step',
-      type: Dimension,
-      optional: true
-    }]
+    return makeList(out, ' ');
   }
-);
+});
 
 export default range;

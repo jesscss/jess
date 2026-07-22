@@ -1,26 +1,11 @@
-import { describe, expect, it } from 'vitest';
-import { Dimension } from '@jesscss/core';
-import { makeDimension, makeList, type Dimension as ValueDimension } from '@jesscss/core/value';
-import legacyRound, { round } from '../round.js';
-import { builtinLessFns } from '../../builtins/index.js';
-import { makeBuiltinRegistry } from '../../builtins/registry.js';
-
-const context = {
-  modes: {
-    mathMode: 'parens-division',
-    unitMode: 'preserve',
-    functionMode: 'preserve',
-    equalityMode: 'less'
-  },
-  stringify: (value: { bytes: string }) => value.bytes
-};
+import { describe, expect, expectTypeOf, it } from 'vitest';
+import { makeDimension, type Dimension as ValueDimension } from '@jesscss/core/value';
+import round, { round as namedRound } from '../round.js';
 
 function astRound(value: number, unit: string, precision?: number): ValueDimension {
-  const args = [makeDimension(value, unit)];
-  if (precision !== undefined) {
-    args.push(makeDimension(precision));
-  }
-  const result = makeBuiltinRegistry().dispatch('round', makeList(args, ' '), context);
+  const result = precision === undefined
+    ? round(makeDimension(value, unit))
+    : round(makeDimension(value, unit), makeDimension(precision));
   if (result instanceof Promise || result.type !== 'Dimension') {
     throw new TypeError('round() must synchronously return a dimension');
   }
@@ -28,16 +13,16 @@ function astRound(value: number, unit: string, precision?: number): ValueDimensi
 }
 
 describe('round canonical AST parity', () => {
-  it('matches the retained Less callable for unit preservation and default precision', () => {
-    const legacy = legacyRound(new Dimension({ number: 2.49, unit: 'px' }));
+  it('preserves units with default precision', () => {
+    expectTypeOf(round).parameter(0).toEqualTypeOf<ValueDimension>();
+    expectTypeOf(round).parameter(1).toEqualTypeOf<ValueDimension | undefined>();
     const ast = astRound(2.49, 'px');
-    expect(ast).toEqual({ type: 'Dimension', number: legacy.number, unit: legacy.unit, bytes: '2px' });
-    expect(builtinLessFns.find(fn => fn.name === 'round')).toBe(round);
+    expect(ast).toEqual({ type: 'Dimension', number: 2, unit: 'px', bytes: '2px' });
+    expect(namedRound).toBe(round);
   });
 
-  it('matches the retained Less callable for explicit decimal precision', () => {
-    const legacy = legacyRound(new Dimension({ number: 2.345, unit: 'px' }), 2);
+  it('uses explicit decimal precision', () => {
     const ast = astRound(2.345, 'px', 2);
-    expect(ast).toEqual({ type: 'Dimension', number: legacy.number, unit: legacy.unit, bytes: '2.35px' });
+    expect(ast).toEqual({ type: 'Dimension', number: 2.35, unit: 'px', bytes: '2.35px' });
   });
 });

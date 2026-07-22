@@ -99,15 +99,20 @@ tests + `.less` fixtures. Distinct from A4.
 **Ref.** DD `F4`
 
 ### A6 · CSS value-functions un-operated = bare verbatim Call
-**Rule.** `rgb` / `rgba` / `hsl` / `hsla` with **literal args and no enclosing
-operation** emit **VERBATIM** (a `Call` node tagged as a color, NOT an
-eager-invoked native fn). Run the fn **only** when the value is **operated**
-(`lighten(hsl(...))`, arithmetic) or given **Less/variable args**
-(`hsl(@h, ...)`).
+**Rule.** CSS-shaped `rgb` / `rgba` / `hsl` / `hsla` calls with **three or more
+argument slots and no enclosing operation** emit **VERBATIM** (a `Call` node
+tagged as a color, NOT an eager-invoked native fn). Modern space/slash and
+relative forms arrive as one nested structured slot and follow the same
+three-slot rule. Less one-/two-slot overloads (for example `rgba(#fff)` and
+`rgba(#fff, .5)`) dispatch normally; malformed numeric arities reach the
+call-level `functionMode` policy. Run a selected fn for a CSS-shaped call only
+when the value is **operated** (`lighten(hsl(...))`, arithmetic) or when a Less
+overload/variable argument requires evaluation (`hsl(@h, ...)`).
 
 ```
 color: rgb(50%,0,0)       → color: rgb(50%,0,0)     (bare, verbatim)
 color: hsl(200,50%,40%)   → color: hsl(200,50%,40%)
+rgba(#fff)                → computed Less color      (one-slot overload → invoke)
 lighten(hsl(200,50%,40%)) → #.. (computed)          (operated → invoke)
 hsl(@h, 50%, 40%)         → #.. (computed)          (Less arg → invoke)
 ```

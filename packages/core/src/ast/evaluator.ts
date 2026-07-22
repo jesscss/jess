@@ -23,7 +23,7 @@ import { makeKeyword } from './value-factory.js';
 
 /** Join an unknown-fn's arg bytes verbatim (per separator). */
 function verbatimArgs(args: ValueList): string {
-  return args.items.map((a) => a.bytes).join(sepGlue(args.sep));
+  return args.value.map(a => a.bytes).join(sepGlue(args.sep));
 }
 
 /** Preserve an optional CSS call after name resolution or invocation failed. */
@@ -41,9 +41,11 @@ function recoverCallFailure(
   name: string,
   args: ValueList,
   modes: EvalModes,
-  onUnresolved: ((error: unknown) => void) | undefined,
+  onUnresolved: ((error: unknown) => void) | undefined
 ): ValueObj {
-  if (modes.functionMode === 'error') throw error;
+  if (modes.functionMode === 'error') {
+    throw error;
+  }
   onUnresolved?.(error);
   return fallbackCall(name, args);
 }
@@ -54,9 +56,11 @@ function recoverAsyncCall(
   name: string,
   args: ValueList,
   modes: EvalModes,
-  onUnresolved: ((error: unknown) => void) | undefined,
+  onUnresolved: ((error: unknown) => void) | undefined
 ): MaybePromise<ValueObj> {
-  if (!isThenable(result)) return result;
+  if (!isThenable(result)) {
+    return result;
+  }
   return result.catch(error => recoverCallFailure(error, name, args, modes, onUnresolved));
 }
 
@@ -84,7 +88,7 @@ export function buildEvaluator(registry: FnRegistry): ValueEvaluator {
     modes: EvalModes,
     scope?: FnScope | null,
     io?: FnIo,
-    onUnresolved?: (error: unknown) => void,
+    onUnresolved?: (error: unknown) => void
   ): MaybePromise<ValueObj> => {
     // [plugin/P1] Scoped `@plugin`/`@use` fns shadow built-ins and are consulted
     // FIRST — but ONLY when `scope` is non-null, which the caller passes solely
@@ -124,7 +128,7 @@ export function buildEvaluator(registry: FnRegistry): ValueEvaluator {
     compareValues(op, left, right, modes.equalityMode ?? 'less');
 
   const typeCheck = (name: string, args: ValueList, _modes: EvalModes): boolean =>
-    typeCheckValues(name, args.items);
+    typeCheckValues(name, args.value);
 
   return { materialize, operate, call, compare, typeCheck };
 }

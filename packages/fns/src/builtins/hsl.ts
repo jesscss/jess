@@ -1,8 +1,6 @@
-import type { Color, Dimension, List } from '@jesscss/core/value';
-import { colorHsl, makeColorHsl, makeColorRgb, hslToRgb } from '@jesscss/core/value';
-import { HSL } from '@jesscss/core/value';
+import type { Color, Dimension, List, Fn } from '@jesscss/core/value';
+import { colorHsl, defineFunction, makeColorHsl, makeColorRgb, hslToRgb, HSL } from '@jesscss/core/value';
 import { clamp01, isColor, isModern, normalizeHue, percentOf } from './color-ctor-helper.js';
-import type { Fn } from '@jesscss/core/value';
 
 /**
  * `hsl` / `hsla` (alias) — CONSTRUCT an HSL-format color, or REFORMAT a color to
@@ -18,7 +16,7 @@ import type { Fn } from '@jesscss/core/value';
  * (`lighten(hsl(...))`, arithmetic) still rebuilds the color and recomputes.
  */
 export function makeHsl(list: List): Color {
-  const items = list.items;
+  const items = list.value;
   const modernSyntax = isModern(list);
   const first = items[0];
   if (items.length >= 3 && !isColor(first)) {
@@ -27,7 +25,7 @@ export function makeHsl(list: List): Color {
     const l = clamp01(percentOf(items[2] as Dimension, 1));
     const a = items[3] !== undefined ? percentOf(items[3] as Dimension, 1) : 1;
     const alphaD = items[3] as Dimension | undefined;
-    const alphaPct = alphaD !== undefined && alphaD.unit === '%' ? alphaD.number : undefined;
+    const alphaPct = alphaD?.unit === '%' ? alphaD.number : undefined;
     // ACHROMATIC canonicalization (Less 4.x/v5 parity): a grey/black/white result
     // (`s === 0 || l === 0 || l === 1`) carries no meaningful hue/saturation, so it
     // round-trips through rgb — hue + saturation collapse to `0` and the authored
@@ -37,7 +35,7 @@ export function makeHsl(list: List): Color {
     if (s === 0 || l === 0 || l === 1) {
       return makeColorRgb(hslToRgb(h, s, l), a, HSL, {
         modernSyntax,
-        ...(alphaPct !== undefined ? { alphaPct } : {}),
+        ...(alphaPct !== undefined ? { alphaPct } : {})
       });
     }
     // SOURCE-FORMAT preservation (verbatim rule): keep the authored hue unit
@@ -54,9 +52,8 @@ export function makeHsl(list: List): Color {
   throw new Error('Invalid arguments for hsl function');
 }
 
-export const hsl: Fn = {
-  name: 'hsl',
+export const hsl: Fn = defineFunction('hsl', {
   params: [{ kinds: 'any' }, { kinds: 'any', optional: true }, { kinds: 'any', optional: true }, { kinds: 'any', optional: true }],
   variadic: true,
-  body: (list) => makeHsl(list),
-};
+  body: list => makeHsl(list)
+});

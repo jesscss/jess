@@ -1,21 +1,13 @@
-import { Any, defineFunction, Dimension } from '@jesscss/core';
+import { defineFunction, makeKeyword } from '@jesscss/core/value';
 
 /**
  * Less `get-unit()` — the unit of a `Dimension` as a keyword (empty when unitless).
  * @param value the input `Dimension`
  * @returns the unit as an unquoted keyword
  */
-const getUnit = defineFunction(
-  'get-unit',
-  function(value: Dimension) {
-    return new Any(value.unit ?? '', { role: 'keyword' });
-  },
-  {
-    params: [{
-      name: 'value',
-      type: Dimension
-    }]
-  }
-);
+const getUnit = defineFunction('get-unit', {
+  params: [{ name: 'value', kinds: ['Dimension'] }] as const,
+  body: value => makeKeyword(value.unit)
+});
 
 export default getUnit;

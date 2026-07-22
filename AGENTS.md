@@ -87,7 +87,7 @@ When information is volatile, point to the canonical source instead of restating
 
 - `dev` is the single leading branch. It carries the current consolidated work (alpha readiness + the single-eval-emit cutover).
 - Agents branch their worktrees from `origin/dev`, not from feature/backup branches.
-- Sync work back to `dev` only when it is stable and tested. The sync gate is: core tests green, jess `spine-production-ratchet` green, and jess `all-less` byte-identical (render corpus fully green).
+- Sync work back to `dev` only when it is stable and tested. The sync gate is: core tests green, jess `ast-v2-production-ratchet` green, and jess `all-less` byte-identical (render corpus fully green).
 - Agents do not push `dev` directly. The orchestrator (or a designated integration agent) performs the merge + push after the gate is confirmed green — never push red.
 
 ## AST And Runtime Safety

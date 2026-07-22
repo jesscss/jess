@@ -54,6 +54,11 @@ export function serializeValue(v: ValueObj): string {
     case 'Keyword': return v.text;
     case 'Bool': return v.value ? 'true' : 'false';
     case 'Nil': return v.bytes;
-    case 'List': return v.items.map(serializeValue).join(sepGlue(v.sep));
+    case 'List': return v.value.map(serializeValue).join(sepGlue(v.sep));
+    case 'Block': {
+      const open = v.delimiter === 'square' ? '[' : '(';
+      const close = v.delimiter === 'square' ? ']' : ')';
+      return `${v.escaped ? '~' : ''}${open}${serializeValue(v.inner)}${close}`;
+    }
   }
 }

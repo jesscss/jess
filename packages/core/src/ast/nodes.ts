@@ -114,9 +114,11 @@ export interface Dimension {
 }
 
 /**
- * A space-separated list of value parts, e.g. `1px solid black`. `separators`
- * is present only when authored line-break layout must survive serialization;
- * ordinary inline whitespace stays canonical as a single space.
+ * An internal structured space value, e.g. `1px solid black`. Ordinary
+ * declaration/value adjacency is a raw recursive `ValueSlot[]`, not this
+ * wrapper. `separators` is retained only when this non-value/prelude shape
+ * needs authored boundary runs—including comments, line breaks, or
+ * continuation indentation—to survive serialization.
  */
 export interface SpacedValue {
   readonly type: 'SpacedValue';
@@ -125,29 +127,16 @@ export interface SpacedValue {
 }
 
 /**
- * A COMMA-separated value list, e.g. `Arial, sans-serif` or `@a, @b, @c`. The
- * parser owns the top-level comma boundaries (grammar `valueList`), so the
- * segments are kept STRUCTURED as lightweight lazy `items` instead of being
- * re-concatenated into one opaque `Any` (which the value layer would then have to
- * re-split for top-level commas — the byte re-derivation the keystone forbids).
- * Each item is an ordinary value leaf carrying its own bytes: a static segment is
- * a cheap `Any`, a referenced one a `VariableReference` / space-run `SpacedValue`, all
- * materialized LAZILY (only when the list is indexed / operated). `separators`
- * carries the verbatim source bytes BETWEEN items (`,` + the authored whitespace —
- * e.g. `, ` or a multi-line `,\n    `), one per gap. Serialization NORMALIZES each
- * separator per the v5 convention (`normalizeListSep`): an inline comma collapses
- * to `, ` regardless of authored spacing, while a separator carrying a NEWLINE keeps
- * the authored multi-line layout (so a wrapped `box-shadow` stays wrapped). The raw
- * bytes are retained because that newline + indentation must survive; only the
- * inline spacing is canonicalized. Materializes to the value-domain `List` so `extract` /
- * `length` / list-equality index the structure directly (never a byte re-parse).
+ * A separator-aware value list, e.g. `Arial, sans-serif`, `1 2`, or `1 / 2`.
+ * The parser owns the boundaries and stores the typed entries directly in
+ * `value`; a consumer never re-splits joined source bytes. `sep` is the one
+ * canonical separator fact. Delimiters are represented by the separate `Block`
+ * wrapper, not by a second list flag.
  */
 export interface List {
   readonly type: 'List';
-  readonly items: ValueNode[];
-  readonly sep: ',';
-  /** Verbatim source between items (`items.length - 1` entries). */
-  readonly separators: readonly string[];
+  readonly value: ValueSlot[];
+  readonly sep: ',' | ' ' | '/' | 'undecided';
 }
 
 /** The binding store a variable operation addresses. */
@@ -201,7 +190,7 @@ export interface Sequence {
  */
 export interface Important {
   readonly type: 'Important';
-  readonly inner: ValueNode;
+  readonly inner: ValueSlot;
 }
 
 /**
@@ -229,15 +218,16 @@ export interface Operation {
 export interface FunctionCall {
   readonly type: 'FunctionCall';
   readonly name: string;
-  readonly args: ValueNode[];
+  readonly args: ValueSlot[];
   readonly modern: boolean;
 }
 
-/** A parenthesized value, e.g. `(#aaa * 3)`. `escaped` records Less `~(...)`,
- * whose inner typed value deliberately emits without its authored delimiters. */
-export interface Paren {
-  readonly type: 'Paren';
-  readonly inner: ValueNode;
+/** A delimiter-bearing value, e.g. `(#aaa * 3)` or `[a, b]`. */
+export interface Block {
+  readonly type: 'Block';
+  readonly inner: ValueSlot;
+  readonly delimiter: 'paren' | 'square';
+  /** Less `~(...)` emits without the authored delimiters. */
   readonly escaped?: boolean;
 }
 
@@ -385,7 +375,7 @@ export type ValueNode =
   | Important
   | Operation
   | FunctionCall
-  | Paren
+  | Block
   | Condition
   | Interpolation
   | GeneralEnclosed
@@ -393,6 +383,12 @@ export type ValueNode =
   | DetachedRuleset
   | Reference
   | Range;
+
+/** A scalar value or an authored adjacent value array (space-separated by default). */
+/** A scalar value or an authored adjacent-value array. Arrays are recursive so
+ * separator-bearing List items can retain a nested space group, e.g. the left
+ * side of modern `rgb(15 23 42 / .22)`. */
+export type ValueSlot = ValueNode | readonly ValueSlot[];
 
 /* ---------------------------------------------------------------- selectors */
 
@@ -422,7 +418,9 @@ export interface CompoundSelector {
 export const compoundCanonical = (c: CompoundSelector): string => {
   if (c._canon === undefined) {
     let s = '';
-    for (const sim of c.simples) s += sim.text ?? '';
+    for (const sim of c.simples) {
+      s += sim.text ?? '';
+    }
     c._canon = s;
   }
   return c._canon;
@@ -432,7 +430,11 @@ export const compoundCanonical = (c: CompoundSelector): string => {
 export const compoundHasInterp = (c: CompoundSelector): boolean => {
   if (c._hasInterp === undefined) {
     let has = false;
-    for (const sim of c.simples) if (sim.interp !== null) { has = true; break; }
+    for (const sim of c.simples) {
+      if (sim.interp !== null) {
+        has = true; break;
+      }
+    }
     c._hasInterp = has;
   }
   return c._hasInterp;
@@ -441,9 +443,15 @@ export const compoundHasInterp = (c: CompoundSelector): boolean => {
 /** True iff any token carries a literal `&` (bare, fused, or in an interpolation template). */
 export const compoundHasAmpersand = (c: CompoundSelector): boolean => {
   for (const sim of c.simples) {
-    if (sim.text !== null && sim.text.includes('&')) return true;
+    if (sim.text !== null && sim.text.includes('&')) {
+      return true;
+    }
     if (sim.interp !== null) {
-      for (const part of sim.interp.parts) if ('lit' in part && part.lit.includes('&')) return true;
+      for (const part of sim.interp.parts) {
+        if ('lit' in part && part.lit.includes('&')) {
+          return true;
+        }
+      }
     }
   }
   return false;
@@ -513,7 +521,9 @@ export const complexHasInterp = (c: ComplexSelector): boolean => {
     let has = compoundHasInterp(c.head);
     if (!has) {
       for (const seg of c.tail) {
-        if (compoundHasInterp(seg.compound)) { has = true; break; }
+        if (compoundHasInterp(seg.compound)) {
+          has = true; break;
+        }
       }
     }
     c._hasInterp = has;
@@ -538,7 +548,7 @@ export interface SelectorList {
 export interface Declaration {
   readonly type: 'Declaration';
   readonly name: string | Interpolation;
-  readonly value: ValueNode;
+  readonly value: ValueSlot;
   readonly merge: null | ',' | ' ';
   readonly important: boolean;
   /** The authored gap after the `:` contained a NEWLINE (a value written on its
@@ -554,7 +564,7 @@ export interface Declaration {
  * mixin CALL (`@p: .mk-map();`) whose OUTPUT is what the binding names — a callable
  * / accessible map (`@p[text]`, `@p()`). That shape carries a {@link MixinCall}
  * (mirroring how {@link For.iterable} admits a `MixinCall`), dispatched lazily when
- * the binding is read, so `value` is `ValueNode | MixinCall`.
+ * the binding is read, so `value` is `ValueSlot | MixinCall`.
  */
 export type VariableWrite =
   | { readonly mode: 'declare' }
@@ -563,7 +573,7 @@ export type VariableWrite =
 export interface VariableDeclaration {
   readonly type: 'VariableDeclaration';
   readonly name: string;
-  readonly value: ValueNode | MixinCall;
+  readonly value: ValueSlot | MixinCall;
   /**
    * An ordinary declaration writes both stores and therefore has no lookup
    * selector. Conditional and reassignment forms carry the lookup they use.
@@ -653,8 +663,8 @@ export interface Rule {
  */
 export interface Param {
   name?: string;
-  default?: ValueNode;
-  pattern?: ValueNode; // [guards] literal-value pattern-match param
+  default?: ValueSlot;
+  pattern?: ValueSlot; // [guards] literal-value pattern-match param
   rest?: boolean; // [guards] variadic `...`
 }
 
@@ -728,7 +738,7 @@ export type ForBinding =
 
 export interface For {
   readonly type: 'For';
-  readonly iterable: ValueNode | MixinCall;
+  readonly iterable: ValueSlot | MixinCall;
   readonly rules: Statement[];
   readonly binding: ForBinding;
 }
@@ -836,8 +846,10 @@ export const spaced = (parts: ValueNode[], separators?: readonly string[]): Spac
   const retained = separators?.some(separator => /[\n\r]/u.test(separator)) ? separators : undefined;
   return retained === undefined ? { type: 'SpacedValue', parts } : { type: 'SpacedValue', parts, separators: retained };
 };
-export const list = (items: ValueNode[], separators: readonly string[]): List =>
-  ({ type: 'List', items, sep: ',', separators });
+export const list = (
+  value: ValueSlot[],
+  sep: List['sep'] = ','
+): List => ({ type: 'List', value, sep });
 
 export const simpleSelector = (text: string): SimpleSelector => ({ type: 'SimpleSelector', text, interp: null });
 /** An interpolated simple token, e.g. `.icon-@{type}`. */
@@ -846,14 +858,14 @@ export const interpolation = (parts: InterpPart[]): Interpolation => ({ type: 'I
 export const generalEnclosed = (
   form: GeneralEnclosed['form'],
   name: string | null,
-  content: Interpolation,
+  content: Interpolation
 ): GeneralEnclosed => ({ type: 'GeneralEnclosed', form, name, content });
 export const varIndirect = (nameRef: ValueNode, lookup: VariableLookup): VarIndirect => ({ type: 'VarIndirect', nameRef, lookup });
 export const detachedRuleset = (body: Statement[]): DetachedRuleset => ({ type: 'DetachedRuleset', body });
 export const forNode = (
-  iterable: ValueNode | MixinCall,
+  iterable: ValueSlot | MixinCall,
   rules: Statement[],
-  binding: ForBinding,
+  binding: ForBinding
 ): For => ({ type: 'For', iterable, rules, binding });
 export const ifNode = (branches: readonly [IfBranch, ...IfBranch[]]): If => ({ type: 'If', branches });
 export const range = (
@@ -861,12 +873,12 @@ export const range = (
   end: ValueNode,
   step: ValueNode | null = null,
   includeStart = true,
-  includeEnd = true,
+  includeEnd = true
 ): Range => ({ type: 'Range', start, end, step, includeStart, includeEnd });
 export const reference = (
   base: ValueNode | MixinCall,
   steps: readonly ReferenceStep[],
-  raw: string,
+  raw: string
 ): Reference => ({ type: 'Reference', base, steps, raw });
 export const propertyReference = (name: string, raw: string = `$${name}`): PropertyReference => ({ type: 'PropertyReference', name, raw });
 /** A compound from an already-built list of simple tokens. */
@@ -876,25 +888,27 @@ export const compoundSelector = (...texts: string[]): CompoundSelector => compou
 /** `complexSelector([{ compound: compoundSelector('.a') }, { comb: '>', compound: compoundSelector('.b') }])` => `.a > .b`. */
 export const complexSelector = (
   segments: Array<{ comb?: Combinator; compound: CompoundSelector }>,
-  leadingComb?: Combinator,
+  leadingComb?: Combinator
 ): ComplexSelector => {
   const [head, ...tail] = segments;
-  if (!head) throw new Error('complexSelector() needs at least one segment');
+  if (!head) {
+    throw new Error('complexSelector() needs at least one segment');
+  }
   return {
     type: 'ComplexSelector',
     head: head.compound,
-    tail: tail.map((s) => ({ comb: s.comb ?? ' ', compound: s.compound })),
-    ...(leadingComb !== undefined ? { leadingComb } : {}),
+    tail: tail.map(s => ({ comb: s.comb ?? ' ', compound: s.compound })),
+    ...(leadingComb !== undefined ? { leadingComb } : {})
   };
 };
 export const selist = (...selectors: ComplexSelector[]): SelectorList => ({ type: 'SelectorList', selectors });
 
 export const decl = (
   name: string | Interpolation,
-  value: ValueNode,
+  value: ValueSlot,
   merge: null | ',' | ' ' = null,
   important = false,
-  valueOnNewLine = false,
+  valueOnNewLine = false
 ): Declaration =>
   valueOnNewLine
     ? { type: 'Declaration', name, value, merge, important, valueOnNewLine: true }
@@ -907,35 +921,35 @@ export const rawInline = (text: string, media?: string | null): RawInline =>
 export const variableReference = (name: string, lookup: VariableLookup): VariableReference =>
   ({ type: 'VariableReference', name, lookup });
 export const sequence = (parts: ValueNode[]): Sequence => ({ type: 'Sequence', parts });
-export const important = (inner: ValueNode): Important => ({ type: 'Important', inner });
+export const important = (inner: ValueSlot): Important => ({ type: 'Important', inner });
 /** @deprecated Renamed to {@link sequence}; kept one cycle for straddling callers. */
 export const concat = sequence;
 export const operation = (operator: string, left: ValueNode, right: ValueNode): Operation =>
   ({ type: 'Operation', operator, left, right });
-export const funcCall = (name: string, args: ValueNode[], modern = false): FunctionCall =>
+export const funcCall = (name: string, args: ValueSlot[], modern = false): FunctionCall =>
   ({ type: 'FunctionCall', name, args, modern });
-export const paren = (inner: ValueNode, escaped = false): Paren =>
-  escaped ? { type: 'Paren', inner, escaped: true } : { type: 'Paren', inner };
+export const block = (inner: ValueSlot, delimiter: Block['delimiter'] = 'paren', escaped = false): Block =>
+  escaped ? { type: 'Block', inner, delimiter, escaped: true } : { type: 'Block', inner, delimiter };
 export const condition = (guard: GuardNode, src: string): Condition => ({ type: 'Condition', guard, src });
 export const variableDeclaration = (
   name: string,
-  value: ValueNode | MixinCall,
-  write: VariableWrite,
+  value: ValueSlot | MixinCall,
+  write: VariableWrite
 ): VariableDeclaration =>
   ({ type: 'VariableDeclaration', name, value, write });
 export const mixinDef = (
   name: string,
   params: Param[],
   body: Statement[],
-  guard?: GuardNode, // [guards]
+  guard?: GuardNode // [guards]
 ): MixinDef => ({ type: 'MixinDef', name, params, body, ...(guard !== undefined ? { guard } : {}) });
 /** [guards] Args may be bare value nodes (positional) or `{ value, name? }`. */
 export const mixinCall = (name: string, args: Array<ValueNode | CallArg> = []): MixinCall => ({
   type: 'MixinCall',
   name,
-  args: args.map((a) => ('type' in a ? { value: a } : a)),
+  args: args.map(a => ('type' in a ? { value: a } : a)),
   path: [],
-  important: false,
+  important: false
 });
 export const apply = (selectors: readonly CompoundSelector[]): Apply => ({ type: 'Apply', selectors });
 
@@ -948,7 +962,7 @@ export const rule = (
   selector: string | ComplexSelector | SelectorList,
   body: Statement[],
   extendInstructions?: ExtendInstruction[],
-  guard?: GuardNode,
+  guard?: GuardNode
 ): Rule => {
   const list =
     typeof selector === 'string'
@@ -961,20 +975,20 @@ export const rule = (
     selector: list,
     body,
     ...(extendInstructions !== undefined ? { extendInstructions } : {}),
-    ...(guard !== undefined ? { guard } : {}),
+    ...(guard !== undefined ? { guard } : {})
   };
 };
 export const styleImport = (
   path: Quoted,
   mode: StyleImport['mode'] = 'compose',
   namespace: string | null = null,
-  forward = false,
+  forward = false
 ): StyleImport => ({ type: 'StyleImport', path, mode, namespace, forward });
 export const moduleImport = (
   path: Quoted,
   mode: ModuleImport['mode'],
   namespace: string | null = null,
   imports: readonly ModuleImportSpecifier[] = [],
-  defaultImport: string | null = null,
+  defaultImport: string | null = null
 ): ModuleImport => ({ type: 'ModuleImport', path, mode, defaultImport, namespace, imports });
 export const stylesheet = (children: Statement[]): Stylesheet => ({ type: 'Stylesheet', children });

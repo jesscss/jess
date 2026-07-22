@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { makeBuiltinRegistry } from '@jesscss/fns';
 import { buildEvaluator } from '../../core/src/ast/evaluator.js';
+import { sourceSpanOf } from '../../core/src/ast/provenance.js';
 import { serialize } from '../../core/src/ast/serialize.js';
 import { parse } from '@jesscss/less-parser';
 import { parseLessCst, parseLessDoc } from '@jesscss/less-parser/cst';
@@ -26,6 +27,14 @@ describe('public Less parse()', () => {
     expect(parse('.x { color: redder; }')).toMatchObject({ children: [{ body: [{ value: { type: 'Keyword', src: 'redder' } }] }] });
     expect(parse('.x { color: red-2; }')).toMatchObject({ children: [{ body: [{ value: { type: 'Keyword', src: 'red-2' } }] }] });
     expect(parse('.x { color: red(foo); }')).toMatchObject({ children: [{ body: [{ value: { type: 'FunctionCall', name: 'red' } }] }] });
+  });
+
+  it('retains parser provenance for direct function calls without changing their AST shape', () => {
+    const source = '.x { color: rgb(50%,0,0); }';
+    const document = parse(source);
+    const value = (document.children[0] as { body: Array<{ value: object }> }).body[0]!.value;
+
+    expect(sourceSpanOf(value)).toEqual({ start: source.indexOf('rgb'), end: source.indexOf(')') + 1 });
   });
 
   it('returns the canonical Stylesheet directly while named CST/document APIs remain available', () => {
@@ -65,7 +74,9 @@ describe('public Less parse()', () => {
     });
     const directive = document.children[0];
     expect(directive?.type).toBe('Plugin');
-    if (directive?.type !== 'Plugin') throw new Error('Expected Plugin AST fact.');
+    if (directive?.type !== 'Plugin') {
+      throw new Error('Expected Plugin AST fact.');
+    }
     expect(directive.options?.parts).toEqual(expect.arrayContaining([
       { lit: 'mode=' },
       { lit: ', nested=(a b)' }
@@ -78,7 +89,7 @@ describe('public Less parse()', () => {
     expect(document).toMatchObject({
       type: 'Stylesheet', children: [{ type: 'Rule', body: [
         { type: 'Declaration', name: 'margin', value: { type: 'Any', src: '' } },
-        { type: 'Declaration', name: 'padding', value: { type: 'Any', src: '' } },
+        { type: 'Declaration', name: 'padding', value: { type: 'Any', src: '' } }
       ] }]
     });
     expect(serialize(document)).toEqual({ css: '.card {\n  margin: ;\n  padding: ;\n}\n' });
@@ -91,7 +102,7 @@ describe('public Less parse()', () => {
       children: [{ type: 'Rule', body: [
         { type: 'Declaration', name: 'color', important: true },
         { type: 'Declaration', name: 'width', important: true },
-        { type: 'Declaration', name: 'height', important: true },
+        { type: 'Declaration', name: 'height', important: true }
       ] }]
     });
     expect(serialize(document)).toEqual({ css: '.card {\n  color: red !important;\n  width: 100% !important;\n  height: 20px !important;\n}\n' });
@@ -183,7 +194,9 @@ describe('public Less parse()', () => {
       '@targets: *[.card-@{tone}];',
       '@targets: *[.card:not(@{tone})];',
       '@targets: * [.notice];'
-    ]) expect(() => parse(invalid), invalid).toThrow(SyntaxError);
+    ]) {
+      expect(() => parse(invalid), invalid).toThrow(SyntaxError);
+    }
   });
 
   it('retains top-level comments in the public Stylesheet route', () => {
@@ -203,8 +216,8 @@ describe('public Less parse()', () => {
     expect(document).toMatchObject({
       type: 'Stylesheet', children: [{ type: 'Rule', body: [{ type: 'Declaration', value: {
         type: 'FunctionCall', name: 'linear-gradient', args: [
-          { type: 'SpacedValue', parts: [{ type: 'Color', src: '#333' }, { type: 'Comment', text: '/* keep */' }] },
-          { type: 'Color', src: '#111' },
+          [{ type: 'Color', src: '#333' }, { type: 'Comment', text: '/* keep */' }],
+          { type: 'Color', src: '#111' }
         ]
       } }] }]
     });
@@ -216,8 +229,8 @@ describe('public Less parse()', () => {
 
     expect(document).toMatchObject({
       type: 'Stylesheet', children: [{ type: 'Rule', body: [{ type: 'Declaration', name: {
-        type: 'Interpolation', parts: [{ lit: 'color/* survive */ /* me too */' }],
-      }, value: { type: 'Color', src: 'grey' } }] }],
+        type: 'Interpolation', parts: [{ lit: 'color/* survive */ /* me too */' }]
+      }, value: { type: 'Color', src: 'grey' } }] }]
     });
     expect(serialize(document).css).toBe('.card {\n  color/* survive */ /* me too */: grey;\n}\n');
   });
@@ -263,11 +276,11 @@ describe('public Less parse()', () => {
           type: 'SpacedValue', parts: [
             { type: 'Any', src: '/* Safari */' },
             { type: 'Keyword', src: 'hover' },
-            { type: 'Any', src: '/* and Chrome */' },
-          ],
+            { type: 'Any', src: '/* and Chrome */' }
+          ]
         },
-        body: [{ type: 'Rule', body: [{ type: 'Declaration', name: 'color' }] }],
-      }],
+        body: [{ type: 'Rule', body: [{ type: 'Declaration', name: 'color' }] }]
+      }]
     });
   });
 
@@ -291,7 +304,7 @@ describe('public Less parse()', () => {
         {
           type: 'AtRuleBlock', name: '@font-face', body: [{
             type: 'Declaration', name: 'unicode-range', value: {
-              type: 'List', items: [
+              type: 'List', sep: ',', value: [
                 { type: 'Any', src: 'U+??????' },
                 { type: 'Any', src: 'U+0???' },
                 { type: 'Any', src: 'U+0-7F' },
@@ -303,8 +316,8 @@ describe('public Less parse()', () => {
         {
           type: 'Rule', body: [{
             type: 'Declaration', name: 'values', value: {
-              type: 'List', items: [
-                { type: 'SpacedValue', parts: [{ type: 'Any', src: 'U+0-7F' }, { type: 'Dimension', src: '1' }] },
+              type: 'List', sep: ',', value: [
+                [{ type: 'Any', src: 'U+0-7F' }, { type: 'Dimension', src: '1' }],
                 { type: 'Any', src: 'U+A5' }
               ]
             }
@@ -342,7 +355,9 @@ describe('public Less parse()', () => {
       '@\\63 olor: red;',
       '\\\ncolor: red;',
       '*\\\ncolor: red;'
-    ]) expect(() => parse(invalid), invalid).toThrow(SyntaxError);
+    ]) {
+      expect(() => parse(invalid), invalid).toThrow(SyntaxError);
+    }
   });
 
   it('returns a structural interpolated quoted import target directly', () => {
@@ -388,7 +403,9 @@ describe('public Less parse()', () => {
       '@import "theme.less" @{media} screen;',
       '@import "theme.less" screen @{media};',
       '@import "theme.less" @{media}@{print};'
-    ]) expect(() => parse(invalid), invalid).toThrow(SyntaxError);
+    ]) {
+      expect(() => parse(invalid), invalid).toThrow(SyntaxError);
+    }
   });
 
   it('returns and evaluates a variable-bearing import query tail directly', () => {
@@ -400,7 +417,7 @@ describe('public Less parse()', () => {
         {
           type: 'ImportAtRule',
           target: { type: 'Url', value: { type: 'Quoted', value: '//ha.com/file.css' } },
-          tail: { type: 'Paren', inner: { type: 'Operation', operator: ':' } }
+          tail: { type: 'Block', delimiter: 'paren', inner: { type: 'Operation', operator: ':' } }
         }
       ]
     });
@@ -441,7 +458,9 @@ describe('public Less parse()', () => {
       '@custom foo @{query} { .media { color: red; } }',
       '@custom foo@{query};',
       '@custom foo @{query};'
-    ]) expect(() => parse(invalid), invalid).toThrow(SyntaxError);
+    ]) {
+      expect(() => parse(invalid), invalid).toThrow(SyntaxError);
+    }
   });
 
   it('keeps invalid interpolation-shaped quoted import text literal', () => {
@@ -510,7 +529,9 @@ describe('public Less parse()', () => {
     );
     for (const source of [
       'each(.@{name}(), { .item { value: @value; } });'
-    ]) expect(() => parse(source), source).toThrow(SyntaxError);
+    ]) {
+      expect(() => parse(source), source).toThrow(SyntaxError);
+    }
   });
 
   it('iterates a static namespaced mixin call through the existing MixinCall path evaluator', () => {
@@ -531,7 +552,9 @@ describe('public Less parse()', () => {
       'each(.library > .@{name}(), { .item { value: @value; } });',
       'each(.library > .values() !important, { .item { value: @value; } });',
       'each(.library > .values();, { .item { value: @value; } });'
-    ]) expect(() => parse(invalid), invalid).toThrow(SyntaxError);
+    ]) {
+      expect(() => parse(invalid), invalid).toThrow(SyntaxError);
+    }
   });
 
   it('binds a flat static mixin call as an existing callable declaration map', () => {
@@ -575,10 +598,10 @@ describe('public Less parse()', () => {
             type: 'Reference',
             base: { type: 'MixinCall', name: '.answer', path: [{ comb: ' ', sel: '.library' }], args: [] },
             steps: [{ type: 'BracketLookup', keyKind: 'index', key: -1 }],
-            raw: '.library .answer[-1]',
-          },
-        }],
-      }],
+            raw: '.library .answer[-1]'
+          }
+        }]
+      }]
     });
     expect(serialize(document, { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css).toBe('.out {\n  value: blue;\n}\n');
   });
@@ -691,7 +714,9 @@ describe('public Less parse()', () => {
       '. @{name}-item { color: red; }',
       '.@{name}:@{pseudo} { color: red; }',
       '.@{name}:extend(.target) { color: red; }'
-    ]) expect(() => parse(invalid), invalid).toThrow(SyntaxError);
+    ]) {
+      expect(() => parse(invalid), invalid).toThrow(SyntaxError);
+    }
   });
 
   it('returns and renders glued parent-suffix selector interpolation through nesting', () => {
@@ -750,16 +775,16 @@ describe('public Less parse()', () => {
       children: [
         { type: 'VariableDeclaration', name: 'varToGet', value: { type: 'Keyword', src: 'default-color' } },
         {
-        type: 'Rule',
-        body: [{
-          type: 'Declaration',
-          value: {
-            type: 'Reference',
-            base: { type: 'VariableReference', name: 'defaults', lookup: 'scoped' },
-            steps: [{ type: 'BracketLookup', key: { type: 'VariableReference', name: 'default-color', lookup: 'scoped' }, keyKind: 'var' }],
-            raw: '@defaults[@default-color]'
-          }
-        }]
+          type: 'Rule',
+          body: [{
+            type: 'Declaration',
+            value: {
+              type: 'Reference',
+              base: { type: 'VariableReference', name: 'defaults', lookup: 'scoped' },
+              steps: [{ type: 'BracketLookup', key: { type: 'VariableReference', name: 'default-color', lookup: 'scoped' }, keyKind: 'var' }],
+              raw: '@defaults[@default-color]'
+            }
+          }]
         }
       ]
     });
@@ -795,8 +820,8 @@ describe('public Less parse()', () => {
           { type: 'Declaration', name: 'grouped', value: { type: 'Operation', operator: '*' } },
           { type: 'Declaration', name: 'neg', value: { type: 'Operation', operator: '*' } },
           { type: 'Declaration', name: 'signed', value: { type: 'Operation', operator: '+' } },
-          { type: 'Declaration', name: 'unarySpace', value: { type: 'SpacedValue', parts: [{ type: 'Keyword', src: '-' }, { type: 'VariableReference', name: 'a' }] } },
-          { type: 'Declaration', name: 'ratio', value: { type: 'SpacedValue' } },
+          { type: 'Declaration', name: 'unarySpace', value: [{ type: 'Keyword', src: '-' }, { type: 'VariableReference', name: 'a', lookup: 'scoped' }] },
+          { type: 'Declaration', name: 'ratio', value: [{ type: 'Dimension', src: '12px' }, { type: 'Keyword', src: '/' }, { type: 'Dimension', src: '1.5' }] },
           { type: 'Declaration', name: 'calc', value: { type: 'FunctionCall', name: 'calc' } }
         ] }
       ]
@@ -963,7 +988,9 @@ describe('public Less parse()', () => {
       '.card:lang(@@locale) { color: red; }',
       '.card:nth-of-type(2n of .item) { color: red; }',
       '.card:nth-child { color: red; }'
-    ]) expect(() => parse(source), source).toThrow(SyntaxError);
+    ]) {
+      expect(() => parse(source), source).toThrow(SyntaxError);
+    }
   });
 
   it('returns and renders bounded typed static @supports conditions from the public route', () => {
@@ -974,9 +1001,9 @@ describe('public Less parse()', () => {
       children: [{
         type: 'AtRuleBlock', name: '@supports',
         prelude: { type: 'SpacedValue', parts: [
-          { type: 'Paren', inner: { type: 'SpacedValue' } },
+          { type: 'Block', delimiter: 'paren', inner: { type: 'SpacedValue' } },
           { type: 'Keyword', src: 'and' },
-          { type: 'Paren', inner: { type: 'Keyword', src: 'hover' } }
+          { type: 'Block', delimiter: 'paren', inner: { type: 'Keyword', src: 'hover' } }
         ] }
       }]
     });
@@ -992,11 +1019,11 @@ describe('public Less parse()', () => {
       type: 'Stylesheet',
       children: [
         { type: 'VariableDeclaration', name: 'limit' },
-        { type: 'AtRuleBlock', name: '@media', prelude: { type: 'List', items: [
-          { type: 'SpacedValue', parts: [{ type: 'Keyword', src: 'only' }, { type: 'Keyword', src: 'screen' }, { type: 'Keyword', src: 'and' }, { type: 'Paren', inner: { type: 'Operation', operator: ':' } }] },
+        { type: 'AtRuleBlock', name: '@media', prelude: { type: 'List', sep: ',', value: [
+          { type: 'SpacedValue', parts: [{ type: 'Keyword', src: 'only' }, { type: 'Keyword', src: 'screen' }, { type: 'Keyword', src: 'and' }, { type: 'Block', delimiter: 'paren', inner: { type: 'Operation', operator: ':' } }] },
           { type: 'Keyword', src: 'print' }
         ] } },
-        { type: 'AtRuleBlock', name: '@container', prelude: { type: 'SpacedValue', parts: [{ type: 'Keyword', src: 'sidebar' }, { type: 'Paren', inner: { type: 'Operation', operator: '<' } }] } }
+        { type: 'AtRuleBlock', name: '@container', prelude: { type: 'SpacedValue', parts: [{ type: 'Keyword', src: 'sidebar' }, { type: 'Block', delimiter: 'paren', inner: { type: 'Operation', operator: '<' } }] } }
       ]
     });
     expect(serialize(document, { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css).toBe(
@@ -1005,7 +1032,9 @@ describe('public Less parse()', () => {
     for (const source of [
       '@container selector(.card) { .card { color: red; } }',
       '@media screen (width > 10px) { .card { color: red; } }'
-    ]) expect(() => parse(source), source).toThrow(SyntaxError);
+    ]) {
+      expect(() => parse(source), source).toThrow(SyntaxError);
+    }
   });
 
   it('keeps interpolated Less media-query terms structural in a multi-term header', () => {
@@ -1064,7 +1093,7 @@ describe('public Less parse()', () => {
       type: 'Stylesheet', children: [{ type: 'Rule', selector: { selectors: [
         { head: { simples: [{ text: '#planadvisor' }] }, tail: [] },
         { head: { simples: [{ text: '/* first */' }, { text: '/* second */\n' }, { text: '.first' }] }, tail: [] },
-        { head: { simples: [{ text: '/* third */' }, { text: '.planning' }] }, tail: [] },
+        { head: { simples: [{ text: '/* third */' }, { text: '.planning' }] }, tail: [] }
       ] } }]
     });
     expect(serialize(document).css).toBe(

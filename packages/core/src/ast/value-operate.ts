@@ -64,20 +64,30 @@ interface UnitSet {
 
 /** Read a dimension's unit multiset — the stored compound set, or `[unit]/[]` for a plain unit. */
 function unitsOf(d: Dimension): UnitSet {
-  if (d.numerator) return { num: d.numerator.slice(), den: (d.denominator ?? []).slice(), backup: d.backupUnit };
+  if (d.numerator) {
+    return { num: d.numerator.slice(), den: (d.denominator ?? []).slice(), backup: d.backupUnit };
+  }
   return { num: d.unit ? [d.unit] : [], den: [], backup: d.unit || undefined };
 }
 
 /** less.js `Unit.cancel`: remove numerator/denominator units that appear on both sides. */
 function cancel(u: UnitSet): void {
   const counter = new Map<string, number>();
-  for (const n of u.num) counter.set(n, (counter.get(n) ?? 0) + 1);
-  for (const d of u.den) counter.set(d, (counter.get(d) ?? 0) - 1);
+  for (const n of u.num) {
+    counter.set(n, (counter.get(n) ?? 0) + 1);
+  }
+  for (const d of u.den) {
+    counter.set(d, (counter.get(d) ?? 0) - 1);
+  }
   const num: string[] = [];
   const den: string[] = [];
   for (const [unit, count] of counter) {
-    for (let i = 0; i < count; i++) num.push(unit);
-    for (let i = 0; i < -count; i++) den.push(unit);
+    for (let i = 0; i < count; i++) {
+      num.push(unit);
+    }
+    for (let i = 0; i < -count; i++) {
+      den.push(unit);
+    }
   }
   u.num = num.sort();
   u.den = den.sort();
@@ -93,9 +103,15 @@ function displayUnit(u: UnitSet, isStrict: boolean): string {
   if (isStrict && !(u.num.length <= 1 && u.den.length === 0)) {
     throw new TypeError('Multiple units in dimension. Correct the units or use the unit function');
   }
-  if (u.num.length === 1) return u.num[0]!;
-  if (u.backup) return u.backup;
-  if (u.den.length) return u.den[0]!;
+  if (u.num.length === 1) {
+    return u.num[0]!;
+  }
+  if (u.backup) {
+    return u.backup;
+  }
+  if (u.den.length) {
+    return u.den[0]!;
+  }
   return '';
 }
 
@@ -108,7 +124,9 @@ function displayUnit(u: UnitSet, isStrict: boolean): string {
  */
 function dimensionOperate(a: Dimension, b: Dimension, op: string, modes: EvalModes): Dimension {
   const isStrict = modes.unitMode === 'strict';
-  if (b.number === 0 && op === '/') throw new TypeError('Cannot divide by zero');
+  if (b.number === 0 && op === '/') {
+    throw new TypeError('Cannot divide by zero');
+  }
 
   const u = unitsOf(a);
   const bu = unitsOf(b);
@@ -129,7 +147,7 @@ function dimensionOperate(a: Dimension, b: Dimension, op: string, modes: EvalMod
       const bVal = convertValue(b.number, from, target);
       if (isStrict && bVal === b.number && from !== target) {
         throw new TypeError(
-          `Incompatible units. Change the units or use the unit function. Bad units: '${target}' and '${from}'.`,
+          `Incompatible units. Change the units or use the unit function. Bad units: '${target}' and '${from}'.`
         );
       }
       value = calculate(a.number, op, bVal);
@@ -147,7 +165,9 @@ function dimensionOperate(a: Dimension, b: Dimension, op: string, modes: EvalMod
   const unit = displayUnit(u, isStrict);
   // Persist the multiset only when it isn't a plain single numerator (so chained
   // ops can still cancel); a singular/empty unit round-trips through `makeDimension`.
-  if (u.num.length === 1 && u.den.length === 0) return makeDimension(value, unit);
+  if (u.num.length === 1 && u.den.length === 0) {
+    return makeDimension(value, unit);
+  }
   return makeCompoundDimension(value, unit, u.num, u.den, u.backup);
 }
 
@@ -175,7 +195,7 @@ const CALC_WRAP_RE = /^calc\(([\s\S]*)\)$/;
  * If `bytes` is a `calc(...)` wrapper, return its inner expression; otherwise
  * `null`. CSS flattens nested calc, so a `calc(...)` operand composing into an
  * outer operation has its inner expression spliced in directly, yielding one flat
- * `calc(...)` rather than `calc(calc(...) op Y)`. A Paren-wrapped inner
+ * `calc(...)` rather than `calc(calc(...) op Y)`. A paren-delimited Block-wrapped inner
  * expression keeps its paren (`calc((a - b))` -> `(a - b)`).
  *
  */
@@ -190,11 +210,16 @@ export const calcInner = (bytes: string): string | null => {
  * paren layer (`calc((a - b)) + 1` → `(a - b)`) and is not re-wrapped.
  */
 function isParenGroup(s: string): boolean {
-  if (s.length < 2 || s[0] !== '(' || s[s.length - 1] !== ')') return false;
+  if (s.length < 2 || s[0] !== '(' || s[s.length - 1] !== ')') {
+    return false;
+  }
   let depth = 0;
   for (let i = 0; i < s.length; i++) {
-    if (s[i] === '(') depth++;
-    else if (s[i] === ')' && --depth === 0) return i === s.length - 1;
+    if (s[i] === '(') {
+      depth++;
+    } else if (s[i] === ')' && --depth === 0) {
+      return i === s.length - 1;
+    }
   }
   return false;
 }
@@ -206,7 +231,9 @@ function isParenGroup(s: string): boolean {
  * Preserved bytes always separate a top-level operator with surrounding spaces.
  */
 function spliceInner(inner: string): string {
-  if (isParenGroup(inner)) return inner;
+  if (isParenGroup(inner)) {
+    return inner;
+  }
   const hasAdditive = / [-+] /.test(inner);
   // Keep an additive nested calc as one authored computation when it is spliced
   // into another operation. CSS can flatten the wrapper, but Less retains this
@@ -223,9 +250,15 @@ function spliceInner(inner: string): string {
  * A cross-unit op is preserved verbatim as a `calc(…)` sub-expression.
  */
 function calcSafe(op: string, a: Dimension, b: Dimension): boolean {
-  if (op === '+' || op === '-') return a.unit === b.unit;
-  if (op === '*') return !a.unit || !b.unit;
-  if (op === '/') return !b.unit;
+  if (op === '+' || op === '-') {
+    return a.unit === b.unit;
+  }
+  if (op === '*') {
+    return !a.unit || !b.unit;
+  }
+  if (op === '/') {
+    return !b.unit;
+  }
   return true;
 }
 

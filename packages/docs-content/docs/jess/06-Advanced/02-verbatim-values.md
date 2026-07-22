@@ -40,8 +40,10 @@ The rule: **literal in, literal out; computed in, canonical out.** This keeps
 authored CSS from being silently rewritten and makes output predictable.
 
 Valid-CSS constructs that resemble functions (for example an un-operated
-`rgb(50%, 0, 0)`) also pass through verbatim; the corresponding function only runs
-when the value is operated on or its arguments are non-CSS forms.
+three-slot `rgb(50%, 0, 0)`) also pass through verbatim; the corresponding
+function only runs when the value is operated on or its arguments are a Less
+overload/non-CSS form. Less one-/two-slot overloads such as `rgba(#fff)` are
+evaluated normally.
 
 ## Function shape vs. grouping parens
 

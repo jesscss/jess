@@ -1,4 +1,4 @@
-import { makeKeyword } from '@jesscss/core/value';
+import { makeKeyword, defineFunction } from '@jesscss/core/value';
 import type { Fn, List, ValueObj } from '@jesscss/core/value';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import { lookupMime } from '../util/mime.js';
@@ -19,13 +19,14 @@ import { lookupMime } from '../util/mime.js';
  * NOTE (vs old Less <3): there is NO ~32KB size-threshold fallback — 4.x/v5 always
  * inline the full payload (the golden embeds a >15KB base64 blob verbatim).
  */
-export const dataUri: Fn = {
-  name: 'data-uri',
+export const dataUri: Fn = defineFunction('data-uri', {
   params: [{ kinds: 'any' }, { kinds: 'any', optional: true }],
   variadic: true,
   body: (list, ctx): MaybePromise<ValueObj> => {
-    const items = list.items;
-    if (items.length === 0) throw new TypeError('data-uri() requires a path');
+    const items = list.value;
+    if (items.length === 0) {
+      throw new TypeError('data-uri() requires a path');
+    }
     const hasMime = items.length >= 2;
     const rawPath = ctx.stringify(hasMime ? items[1]! : items[0]!);
     const explicitMime = hasMime ? ctx.stringify(items[0]!) : undefined;
@@ -44,21 +45,25 @@ export const dataUri: Fn = {
       const guess = lookupMime(filePath);
       mimetype = guess.type;
       useBase64 = !guess.ascii;
-      if (useBase64) mimetype += ';base64';
+      if (useBase64) {
+        mimetype += ';base64';
+      }
     } else {
       useBase64 = /;base64$/i.test(mimetype);
     }
 
     const finish = (bytes: Uint8Array | null): ValueObj => {
-      if (!bytes) return fallbackUrl(rawPath);
+      if (!bytes) {
+        return fallbackUrl(rawPath);
+      }
       const buf = Buffer.from(bytes);
       const encoded = useBase64 ? buf.toString('base64') : encodeURIComponent(buf.toString());
       return makeKeyword(`url("data:${mimetype},${encoded}${fragment}")`);
     };
     const bytes = ctx.io?.readFile(filePath);
     return bytes && isThenable(bytes) ? bytes.then(finish) : finish(bytes ?? null);
-  },
-};
+  }
+});
 
 /** File-not-found / no-IO fallback: the path as a plain `url()` (matches 4.x's URL fallback). */
 function fallbackUrl(rawPath: string): ValueObj {

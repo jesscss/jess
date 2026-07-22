@@ -1,13 +1,7 @@
 import { defineConfig } from 'tsdown';
 
 export default defineConfig({
-  entry: {
-    index: './src/index.ts',
-    // eslint-disable-next-line @typescript-eslint/naming-convention
-    'transform/index': './src/transform/index.ts',
-    // eslint-disable-next-line @typescript-eslint/naming-convention
-    'less-compat-structures': './src/less-compat-structures.ts'
-  },
+  entry: { index: './src/index.ts' },
   format: ['esm', 'cjs'],
   dts: true,
   clean: true,

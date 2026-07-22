@@ -182,7 +182,16 @@ const expectedFailureFixtures = new Map<string, string>([
   //  fixes made them render byte-identical to Less; they're real passes now.
   //  extend-nest.less + extend-selector.less GRADUATED — the cutover-p1 spine extend
   //  wire-in now renders both byte-identical to the maintained `.css`; real passes.)
-  ['tests-unit/import/import-remote.less', 'configured jsDelivr import resolution now reaches the typed loader; imported selectors.less still has an unsupported selector interpolation']
+  ['tests-unit/import/import-remote.less', 'configured jsDelivr import resolution now reaches the typed loader; imported selectors.less still has an unsupported selector interpolation'],
+
+  // F5: Less/Jess deliberately leaves CSS-shaped, three-or-more-slot
+  // un-operated color constructors as authored calls, even when Less 4's oracle
+  // would clamp/reformat them. These fixtures exercise that settled lazy
+  // boundary; keep them runnable so a future accidental eager dispatch trips
+  // the marker rather than hiding it. Less one-/two-slot overload fixtures are
+  // expected to stay green and are not listed here.
+  ['tests-unit/color-functions/operations.less', 'F5 keeps an un-operated overflowing rgba() call authored instead of Less 4 channel clamping'],
+  ['tests-unit/functions/functions.less', 'F5 keeps an un-operated hsl() call authored instead of Less 4 clamp/canonicalization']
 ]);
 
 // Allow specific fixtures even when they are listed in shared invalidLess.

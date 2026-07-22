@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { buildEvaluator } from '../evaluator.js';
-import { createFnRegistry } from '../value-dispatch.js';
+import { createFnRegistry, defineFunction } from '../value-dispatch.js';
 import { makeKeyword, makeList } from '../value-factory.js';
 
 const args = makeList([makeKeyword('one'), makeKeyword('two')], ',');
@@ -17,11 +17,12 @@ describe('ValueEvaluator function-call boundary', () => {
 
   it('applies functionMode only after a registered callable rejects synchronously', () => {
     const registry = createFnRegistry();
-    registry.register({
-      name: 'fails',
+    registry.register(defineFunction('fails', {
       params: [],
-      body: () => { throw new RangeError('registered failure'); },
-    });
+      body: () => {
+        throw new RangeError('registered failure');
+      }
+    }));
     const evaluator = buildEvaluator(registry);
     const onUnresolved = vi.fn();
 
@@ -34,11 +35,12 @@ describe('ValueEvaluator function-call boundary', () => {
 
   it('uses the same policy for an async registered callable rejection', async () => {
     const registry = createFnRegistry();
-    registry.register({
-      name: 'async-fails',
+    registry.register(defineFunction('async-fails', {
       params: [],
-      body: async () => { throw new TypeError('async registered failure'); },
-    });
+      body: async () => {
+        throw new TypeError('async registered failure');
+      }
+    }));
     const evaluator = buildEvaluator(registry);
 
     await expect(Promise.resolve(evaluator.call('async-fails', args, { unitMode: 'preserve' })))

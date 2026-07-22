@@ -31,7 +31,7 @@ walk.
 
 Use focused parser/core behavior tests while iterating, the parser-runtime
 boundary verifier for recognition changes, and fresh integration builds plus the
-Jess production spine ratchet and Less corpus at the batch boundary.
+Jess AST-v2 production-route ratchet and Less corpus at the batch boundary.
 
 The detailed former host/action/bridge inventory is preserved in
 [`archive/AST-COLOCATION-REORG-PLAN-host-bridge-history-2026-07-19.md`](./archive/AST-COLOCATION-REORG-PLAN-host-bridge-history-2026-07-19.md).

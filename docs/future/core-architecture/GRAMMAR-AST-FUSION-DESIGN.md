@@ -24,7 +24,7 @@ one deleted dispatch for generic helper machinery or a second parse.
 
 Land small grammar-family slices with focused parser/core behavior tests. Run
 the parser-runtime boundary verifier whenever recognition changes. At the batch
-boundary use fresh builds, the Jess production spine ratchet, and the Less
+boundary use fresh builds, the Jess AST-v2 production-route ratchet, and the Less
 corpus; validate disputed output against the independent Less reference.
 
 The historical host and callback analysis is preserved in

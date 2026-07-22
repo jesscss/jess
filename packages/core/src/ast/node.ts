@@ -39,7 +39,7 @@ import type {
   Sequence,
   Operation,
   FunctionCall,
-  Paren,
+  Block,
   Interpolation,
   GeneralEnclosed,
   VarIndirect,
@@ -52,7 +52,7 @@ import type {
   StyleImport,
   ModuleImport,
   RawInline,
-  Condition,
+  Condition
 } from './nodes.js';
 import type { AtRuleBlock, AtRuleStatement, ImportAtRule, OpaqueAtRuleBlock, Plugin } from './at-rule.js';
 
@@ -61,7 +61,7 @@ export type NodeType =
   | 'Stylesheet' | 'Rule' | 'Declaration' | 'Comment' | 'SelectorList'
   | 'ComplexSelector' | 'CompoundSelector' | 'SimpleSelector' | 'Keyword' | 'Color' | 'Quoted' | 'Any' | 'Url' | 'SelectorCapture' | 'Dimension'
   | 'SpacedValue' | 'List' | 'VariableReference' | 'MixinDef' | 'MixinCall' | 'VariableDeclaration'
-  | 'Sequence' | 'Operation' | 'FunctionCall' | 'Paren' | 'Condition'
+  | 'Sequence' | 'Operation' | 'FunctionCall' | 'Block' | 'Condition'
   | 'AtRuleBlock' | 'AtRuleStatement' | 'ImportAtRule' | 'Plugin' | 'OpaqueAtRuleBlock' | 'Interpolation' | 'GeneralEnclosed' | 'VarIndirect'
   | 'DetachedRuleset' | 'Reference' | 'Range' | 'PropertyReference' | 'For' | 'If' | 'StyleImport' | 'ModuleImport' | 'RawInline';
 
@@ -84,7 +84,7 @@ export function renderCombinator(comb: Combinator): string {
 export type Node =
   | Stylesheet | Rule | Declaration | Comment | SelectorList | ComplexSelector | CompoundSelector
   | SimpleSelector | SelectorCapture | Keyword | Color | Quoted | Any | Url | Dimension | SpacedValue | List | VariableReference | MixinDef | MixinCall
-  | VariableDeclaration | Sequence | Operation | FunctionCall | Paren | Condition
+  | VariableDeclaration | Sequence | Operation | FunctionCall | Block | Condition
   | AtRuleBlock | AtRuleStatement | ImportAtRule | Plugin | OpaqueAtRuleBlock | Interpolation | GeneralEnclosed | VarIndirect | DetachedRuleset
   | Reference | Range | PropertyReference | For | If | StyleImport | ModuleImport | RawInline;
 
@@ -95,7 +95,7 @@ export type Node =
  * the AST literal leaves REUSE the value-domain names — `'Dimension'`, `'Color'`,
  * `'Quoted'`, `'Keyword'` are ALL shared between an AST leaf node and a `ValueObj`
  * (`'Bool'` is value-domain ONLY — no AST `Bool` node exists, §CORR-4). `'List'` is
- * likewise shared — an AST comma-list node vs the materialized value-domain `List`.
+ * likewise shared — an AST separator-aware list node vs the materialized value-domain `List`.
  * Membership in this AST set neutralizes every non-shared collision; the shared
  * strings are neutralized by the lane invariant (a value-domain `ValueObj` never enters the
  * AST-build lane; never form a `Node | ValueObj` union). The cheap structural
@@ -107,17 +107,17 @@ export const AST_NODE_TYPES: ReadonlySet<string> = new Set<NodeType>([
   'Stylesheet', 'Rule', 'Declaration', 'Comment', 'SelectorList',
   'ComplexSelector', 'CompoundSelector', 'SimpleSelector', 'Keyword', 'Color', 'Quoted', 'Any', 'Url', 'SelectorCapture', 'Dimension',
   'SpacedValue', 'List', 'VariableReference', 'MixinDef', 'MixinCall', 'VariableDeclaration',
-  'Sequence', 'Operation', 'FunctionCall', 'Paren', 'Condition',
+  'Sequence', 'Operation', 'FunctionCall', 'Block', 'Condition',
   'AtRuleBlock', 'AtRuleStatement', 'ImportAtRule', 'Plugin', 'OpaqueAtRuleBlock', 'Interpolation', 'GeneralEnclosed', 'VarIndirect',
-  'DetachedRuleset', 'Reference', 'Range', 'PropertyReference', 'For', 'If', 'StyleImport', 'ModuleImport', 'RawInline',
+  'DetachedRuleset', 'Reference', 'Range', 'PropertyReference', 'For', 'If', 'StyleImport', 'ModuleImport', 'RawInline'
 ]);
 
 /** Value predicate for a tree2 AST node (replaces the old `x instanceof Node`). */
 export function isNode(x: unknown): x is Node {
   return (
-    typeof x === 'object' &&
-    x !== null &&
-    typeof (x as { type?: unknown }).type === 'string' &&
-    AST_NODE_TYPES.has((x as { type: string }).type)
+    typeof x === 'object'
+    && x !== null
+    && typeof (x as { type?: unknown }).type === 'string'
+    && AST_NODE_TYPES.has((x as { type: string }).type)
   );
 }

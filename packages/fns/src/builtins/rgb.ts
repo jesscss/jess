@@ -1,8 +1,6 @@
-import type { Color, Dimension, List } from '@jesscss/core/value';
-import { colorRawRgb, makeColorRgb } from '@jesscss/core/value';
-import { RGB } from '@jesscss/core/value';
+import type { Color, Dimension, List, Fn } from '@jesscss/core/value';
+import { colorRawRgb, defineFunction, makeColorRgb, RGB } from '@jesscss/core/value';
 import { clamp01, isColor, isModern, percentOf } from './color-ctor-helper.js';
-import type { Fn } from '@jesscss/core/value';
 
 /**
  * `rgb` / `rgba` (alias) — CONSTRUCT an RGB-format color from numeric channels, or
@@ -18,10 +16,10 @@ import type { Fn } from '@jesscss/core/value';
  */
 /** A `%` dimension's authored number (for source-format preservation), else undefined. */
 const pctOf = (d: Dimension | undefined): number | undefined =>
-  d !== undefined && d.unit === '%' ? d.number : undefined;
+  d?.unit === '%' ? d.number : undefined;
 
 export function makeRgb(list: List): Color {
-  const items = list.items;
+  const items = list.value;
   const modernSyntax = isModern(list);
   const first = items[0];
   if (items.length >= 3 && !isColor(first)) {
@@ -42,9 +40,8 @@ export function makeRgb(list: List): Color {
   throw new Error('Invalid arguments for rgb function');
 }
 
-export const rgb: Fn = {
-  name: 'rgb',
+export const rgb: Fn = defineFunction('rgb', {
   params: [{ kinds: 'any' }, { kinds: 'any', optional: true }, { kinds: 'any', optional: true }, { kinds: 'any', optional: true }],
   variadic: true,
-  body: (list) => makeRgb(list),
-};
+  body: list => makeRgb(list)
+});

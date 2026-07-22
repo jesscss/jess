@@ -16,6 +16,8 @@ export type {
   Bool,
   Nil,
   List,
+  ListSeparator,
+  Block,
   EvalModes,
   PluginHost
 } from './ast/value-eval.js';
@@ -29,6 +31,7 @@ export {
   makeKeyword,
   makeBool,
   makeList,
+  makeBlock,
   numOf,
   textOf,
   colorHsl,
@@ -37,8 +40,17 @@ export {
   colorRgbRounded
 } from './ast/value-factory.js';
 
+// --- shared typed-list capabilities ---
+export {
+  asList,
+  coerceListItems,
+  listValueAt,
+  isBracketedList
+} from './ast/value-list.js';
+
 // --- value serializer ---
 export { HEX, RGB, HSL, serializeColor, hslToRgb } from './ast/color.js';
+export { serializeValue } from './ast/serialize-value.js';
 export { round } from './ast/round.js';
 
 // --- unit table / conversion ---
@@ -51,8 +63,23 @@ export { parseHex, sniffLiteral } from './ast/literal-tag.js';
 export { namedColor } from './ast/color-names.js';
 
 // --- fn-authoring types ---
-export type { Fn, FnSpec, ParamSpec, FnCtx, FnIo, Kind } from './ast/functions/types.js';
+export type {
+  DefinedFunction,
+  Fn,
+  FnSpec,
+  ParamSpec,
+  FnCtx,
+  FnIo,
+  FnRecord,
+  PartialFnRecord,
+  FunctionArgs,
+  FunctionBodyArgs,
+  Kind,
+  LazyValue,
+  ParamInput,
+  ParamValue
+} from './ast/functions/types.js';
 
 // --- registry seam ---
-export { createFnRegistry } from './ast/value-dispatch.js';
+export { createFnRegistry, defineFunction } from './ast/value-dispatch.js';
 export type { FnRegistry } from './ast/value-dispatch.js';

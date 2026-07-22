@@ -27,12 +27,16 @@ function dimensionCompare(a: Dimension, b: Dimension, equalityMode: EqualityMode
   // with a unit. Sass and exact retain the unit distinction while still
   // reconciling two compatible explicit units (1in = 96px).
   if (!a.unit || !b.unit) {
-    if (equalityMode !== 'less' && a.unit !== b.unit) return undefined;
+    if (equalityMode !== 'less' && a.unit !== b.unit) {
+      return undefined;
+    }
     return numericCompare(a.number, b.number);
   }
   const au = unify(a.number, a.unit);
   const bu = unify(b.number, b.unit);
-  if (au.unit !== bu.unit) return undefined;
+  if (au.unit !== bu.unit) {
+    return undefined;
+  }
   return numericCompare(au.number, bu.number);
 }
 
@@ -44,7 +48,9 @@ const primCompare = (a: string | number, b: string | number): -1 | 0 | 1 | undef
  *  An ESCAPED quoted string emits its raw contents (`~"x"` → `x`); a plain quoted
  *  string keeps its quotes; every other operand serializes to its own `bytes`. */
 function toCssStr(v: ValueObj): string {
-  if (v.type === 'Quoted') return v.escaped ? v.value : `${v.quote}${v.value}${v.quote}`;
+  if (v.type === 'Quoted') {
+    return v.escaped ? v.value : `${v.quote}${v.value}${v.quote}`;
+  }
   return v.bytes;
 }
 
@@ -63,7 +69,8 @@ function selfCompare(a: ValueObj, b: ValueObj, equalityMode: EqualityMode): -1 |
       return b.type === 'Color'
         && b.rgb[0] === a.rgb[0] && b.rgb[1] === a.rgb[1] && b.rgb[2] === a.rgb[2]
         && b.alpha === a.alpha
-        ? 0 : undefined;
+        ? 0
+        : undefined;
     case 'Quoted':
       // Two unescaped quoted strings compare LEXICALLY by contents (quote char
       // ignored); otherwise fall back to a symmetric `toCSS` equality.
@@ -95,19 +102,33 @@ function compareNodes(a: ValueObj, b: ValueObj, equalityMode: EqualityMode): -1 
   if (equalityMode === 'sass') {
     const quoted = a.type === 'Quoted' ? a : b.type === 'Quoted' ? b : null;
     const keyword = a.type === 'Keyword' ? a : b.type === 'Keyword' ? b : null;
-    if (quoted && keyword && quoted.value === keyword.text) return 0;
+    if (quoted && quoted.value === keyword?.text) {
+      return 0;
+    }
   }
   if (equalityMode === 'less'
     && (hasCompare(a) || hasCompare(b))
     && (a.type === 'Keyword' || b.type === 'Keyword')
-    && toCssStr(a) === toCssStr(b)) return 0;
-  if (hasCompare(a) && b.type !== 'Quoted') return selfCompare(a, b, equalityMode);
-  if (hasCompare(b)) return negate(selfCompare(b, a, equalityMode));
-  if (a.type !== b.type) return undefined;
+    && toCssStr(a) === toCssStr(b)) {
+    return 0;
+  }
+  if (hasCompare(a) && b.type !== 'Quoted') {
+    return selfCompare(a, b, equalityMode);
+  }
+  if (hasCompare(b)) {
+    return negate(selfCompare(b, a, equalityMode));
+  }
+  if (a.type !== b.type) {
+    return undefined;
+  }
   if (a.type === 'List' && b.type === 'List') {
-    if (a.sep !== b.sep || a.items.length !== b.items.length) return undefined;
-    for (let i = 0; i < a.items.length; i++) {
-      if (compareNodes(a.items[i]!, b.items[i]!, equalityMode) !== 0) return undefined;
+    if (a.sep !== b.sep || a.value.length !== b.value.length) {
+      return undefined;
+    }
+    for (let i = 0; i < a.value.length; i++) {
+      if (compareNodes(a.value[i]!, b.value[i]!, equalityMode) !== 0) {
+        return undefined;
+      }
     }
     return 0;
   }
@@ -140,7 +161,9 @@ export function compare(op: string, left: ValueObj, right: ValueObj, equalityMod
  */
 export function typeCheck(name: string, args: readonly ValueObj[]): boolean {
   const a = args[0];
-  if (a === undefined) return false;
+  if (a === undefined) {
+    return false;
+  }
   switch (name.toLowerCase()) {
     case 'iscolor': return a.type === 'Color';
     case 'isnumber': return a.type === 'Dimension';

@@ -84,7 +84,7 @@ repo more than a forever package contract.
 | [`@jesscss/fns`](./packages/fns) | Built-in function library. |
 | [`@jesscss/plugin-less`](./packages/jess-plugin-less) | Less language engine and defaults. |
 | [`@jesscss/plugin-scss`](./packages/jess-plugin-scss) | Experimental SCSS language engine. |
-| [`@jesscss/plugin-less-compat`](./packages/jess-plugin-less-compat) | Compatibility bridge for existing Less plugins and visitors. |
+| [`@jesscss/plugin-less-compat`](./packages/jess-plugin-less-compat) | AST-v2 native Less function contributions. |
 | [`@jesscss/plugin-node-modules`](./packages/jess-plugin-node-modules) | Module resolution from `node_modules`. |
 | [`@jesscss/plugin-js`](./packages/jess-plugin-js) | JavaScript and TypeScript module imports. |
 | [`@jesscss/style-resolver`](./packages/style-resolver) | Import path resolution across stylesheet formats. |

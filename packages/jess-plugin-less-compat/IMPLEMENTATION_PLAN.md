@@ -1,14 +1,17 @@
 # Less.js Compatibility Plugin - Implementation Plan
 
-> **Historical plan / AST-v2 status:** The visitor integration described below
-> targeted the old Jess tree path. Core's public `PluginInterface` no longer has
-> visitor hooks, and AST-v2 compilation does not execute this adapter. Retain the
-> conversion ideas as input to a future explicit AST-v2 adapter; do not treat
-> them as implemented behavior.
+> **ARCHIVED PLAN (alpha.9):** The visitor/conversion implementation described
+> below targeted the old Jess tree path. Core's public `PluginInterface` no
+> longer has visitor hooks, AST-v2 compilation does not execute this adapter,
+> and the prototype `src/transform/`, `src/nodes/`, and helper files were
+> deleted after reachability audit. Retain this file only for archaeology; do
+> not treat any listed module or API as implemented behavior.
 
 ## Overview
 
-This package (`@jesscss/plugin-less-compat`) provides bidirectional transformation between Jess AST nodes and Less.js AST nodes, enabling Less.js plugins and visitors to work seamlessly with Jess-compiled stylesheets.
+The current package (`@jesscss/plugin-less-compat`) contributes native AST-v2
+`Fn` values. The former bidirectional Jess/Less tree transformation plan below
+is archived and is not part of the alpha.9 public route.
 
 ## Package Structure
 

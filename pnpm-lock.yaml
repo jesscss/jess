@@ -400,6 +400,9 @@ importers:
         specifier: workspace:*
         version: link:../jess-plugin-js
     devDependencies:
+      '@jesscss/plugin-css':
+        specifier: workspace:*
+        version: link:../jess-plugin-css
       '@jesscss/plugin-less-compat':
         specifier: workspace:*
         version: link:../jess-plugin-less-compat

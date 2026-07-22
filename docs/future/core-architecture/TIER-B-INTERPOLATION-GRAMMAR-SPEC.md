@@ -138,17 +138,18 @@ does not fund grammar work for a problem the grammar already solved (§3.4).
 - **Host today:** the loss happens in the **host**, not the parser. `VarDeclaration`
   (`variables.ts` `varDeclaration`) uses `wholeValueNode` (`interp.ts:78-92`), which returns
   `null` for a multi-token value (>1 built child), so `@l: a b c` degrades to a single
-  `t2.word("a b c")`. `functions/list-helper.ts` (moving to `packages/fns/src/less/` in the
-  fns-move) then re-splits it: `coerceListItems` (L98-108) →
-  `topLevelSplit` (L45-72) / `hasTopLevelComma` (L75-90). Similarly `value-expr.ts`
+  `t2.word("a b c")`. The evaluator should retain a typed `List` when possible; otherwise
+  the shared core value layer recovers it at the typed function boundary via
+  `coerceListItems` (not a dialect-local helper), using the exact top-level nesting/quote
+  rules previously implemented by `topLevelSplit` / `hasTopLevelComma`. Similarly `value-expr.ts`
   `betweenBytes` (L103-110) re-slices a comma-list-in-paren body (L152-154).
 - **Target:** a **host value-assembly action** that folds the grammar's already-structured
   `valueSequence` / `valueList` children into a real `List` / `SpacedValue` node — no grammar
-  change. That deletes `topLevelSplit` / `hasTopLevelComma` / `coerceListItems`' split branch and
-  the `betweenBytes` comma fallback. Because there is **no grammar change**, this item is
-  independent of §1.2-1.4 and can land on its own timeline; it belongs to the value-assembly /
-  fns-move workstream (§4), not the interpolation-grammar workstream. Flagged here only so the
-  reviewer does not mis-file it as grammar work.
+  change. That may eventually delete the recovery branch and the `betweenBytes` comma fallback,
+  but only after the typed value contract proves equivalent Less and Sass behavior. Until then,
+  the recovery lives in core and is not copied into a dialect package. Because there is **no
+  grammar change**, this item is independent of §1.2-1.4 and can land on its own timeline; it
+  belongs to the value-assembly workstream (§4), not the interpolation-grammar workstream.
 
 ---
 
@@ -356,11 +357,12 @@ the same `VarRef` it gets today; only the number of construction sites that prod
 clean leaf (vs a regex) changes. Land order-independent; do not block either on the other.
 
 **Interaction with the fns-move (`FNS-PACKAGE-MIGRATION-SPEC.md`).** The §3.5 list-assembly item
-is the one that touches fns: `list-helper.ts` currently lives in `core/src/ast/functions/` and is
-slated to move to `@jesscss/fns`. Deleting `topLevelSplit`/`coerceListItems` should be
-**coordinated with**, and ideally folded INTO, the fns-move (delete-on-move rather than
-delete-then-move) so the split code is not ported to the new package and then removed. The
-interpolation-grammar items (§3.1-3.4) do **not** touch fns.
+is a core value-boundary concern. Delete the duplicate dialect-local `list-helper.ts`; keep the
+exact recovery/index primitives in `@jesscss/core/value` and consume them from both Less and
+Sass. A later parser/evaluator value-assembly improvement may make recovery unnecessary, but
+that is an optimization after the typed contract is proven, not a reason to invent a second
+parser or move the capability into Less. The interpolation-grammar items (§3.1-3.4) do **not**
+touch fns.
 
 **Gating strategy (both floors, per P6 + the ratchet memory).**
 

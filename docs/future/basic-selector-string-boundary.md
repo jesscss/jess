@@ -102,7 +102,7 @@ the class." `BasicSelector` remains the lifted structural form.
 
 ### Risk
 - **Byte-identical output**: the `Extend` change only affects `$extend`
-  re-serialization; must verify `spine-production-ratchet` (56/56) and jess
+  re-serialization; must verify `ast-v2-production-ratchet` and jess
   `all-less` extend cases stay byte-identical (a string target writes the same
   text a `BasicSelector` does, so expected neutral).
 - **dev vs cutover-p1 divergence**: `origin/dev` is NOT an ancestor of HEAD

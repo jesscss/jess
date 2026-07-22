@@ -1,5 +1,12 @@
 # R4 — Interpolation · Detached Rulesets · Merge · Namespaces/Maps (DESIGN SPEC)
 
+> **Historical tree2 design spec — not the current public AST architecture.**
+> The current parser contract is direct Parseman reduction to AST-v2
+> `Stylesheet`; ordinary declaration/value terms use recursive raw `ValueSlot`
+> arrays, semantic separators use `List.sep`, and delimiters use `Block`. This
+> file's old `SpacedValue`/`Paren` union and bridge references are retained only
+> as migration evidence and must not be reintroduced.
+
 > Rung R4 of the tree2 definitive rewrite
 > ([`TREE2-DEFINITIVE-REWRITE-COVERAGE-AND-ROADMAP.md`](../TREE2-DEFINITIVE-REWRITE-COVERAGE-AND-ROADMAP.md) §3 R4).
 > Same contract as [`TREE2-DESIGN-SPEC.md` § R0](../TREE2-DESIGN-SPEC.md): each

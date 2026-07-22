@@ -67,10 +67,13 @@ This is a deliberately breaking alpha architecture change.
 
 - It does not publish the external `less@5.0.0-alpha.1` package. That is a
   separate Less release, pinned to exactly that first prerelease version and
-  gated on its own compatibility, CLI, and clean-install verification.
+  gated on its own compatibility, CLI, and clean-install verification. Jess
+  alpha.9 must be published first; the Less release script then receives
+  `JESS_VERSION=2.0.0-alpha.9` so its local workspace links are rewritten to
+  registry dependencies only for the publish window.
 - It does not claim complete Less 4.x corpus parity. The first alpha ships only
   after its advertised public-route, package, CLI, and core-safety gates pass;
-  the 28 runnable upstream divergences are published as known limitations, not
+  the 30 runnable upstream divergences are published as known limitations, not
   hidden test exclusions. See [Less v5 alpha readiness](../less-v5-alpha-readiness.md)
   for every fixture, its symptom/scope, and follow-up.
 - It makes no parser-performance claim. The direct parser baseline and Parseman

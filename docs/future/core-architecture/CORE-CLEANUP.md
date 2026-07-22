@@ -13,7 +13,7 @@ preserved in
 | 2 | Audit actual remaining legacy `Rules`/tree adaptations after plugin and Jess migration | core AST + migrated tests | no proven-unreachable legacy adaptation remains; do not invent a parse-host/bridge deletion task because those surfaces are already absent |
 | 3 | Preserve and close core eval/render semantics on canonical AST | core eval/render lane | focused tests, full core suite, no baseline weakening |
 | 4 | Eliminate handwritten parser recognition debt | dialect parser lanes | parser-runtime boundary verifier reaches zero source violations |
-| 5 | Prove Jess Less behavior after dependencies are rebuilt | integration lane | production spine ratchet and byte-identical Less corpus |
+| 5 | Prove Jess Less behavior after dependencies are rebuilt | integration lane | AST-v2 production-route ratchet and byte-identical Less corpus |
 | 6 | Improve SCSS only after rows 1–4 | SCSS parser lane | equivalent fresh benchmark against Dart Sass; report speed and memory separately |
 
 Rows 1–4 can use isolated worktrees when their write sets do not overlap. Their

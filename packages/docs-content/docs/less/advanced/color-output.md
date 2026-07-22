@@ -33,9 +33,12 @@ source color was authored in modern syntax):
 }
 ```
 
-An un-operated `rgba(...)`/`hsla(...)` with literal args still passes through
-verbatim (see [Verbatim Values](./verbatim-values.md)); the `rgba(...)` **output**
-form here is what a *computed* alpha color canonicalizes to.
+CSS-shaped, un-operated `rgba(...)`/`hsla(...)` calls with three or more argument
+slots still pass through verbatim (see [Verbatim Values](./verbatim-values.md));
+the `rgba(...)` **output** form here is what a *computed* alpha color
+canonicalizes to. Less's one-/two-slot overloads are evaluated normally, so
+`rgba(#5F59)` and `rgba(#5F59, .5)` canonicalize instead of leaking authored
+Less-overload syntax.
 
 ## Alpha-hex literals are preserved as hex
 

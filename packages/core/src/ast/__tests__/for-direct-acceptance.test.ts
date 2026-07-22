@@ -29,8 +29,8 @@ describe('For canonical AST emission', () => {
     const document = stylesheet([
       rule('.foo', [
         forNode(spaced([dimension(1), dimension(2)]), [decl('padding', variableReference('value', 'scoped'), ' ')], { kind: 'single', name: 'value' }),
-        decl('padding', dimension(3), ' '),
-      ]),
+        decl('padding', dimension(3), ' ')
+      ])
     ]);
 
     expect(serialize(document, { evaluator, collapseNesting: false }).css)
@@ -110,7 +110,7 @@ describe('For canonical AST emission', () => {
     const document = stylesheet([
       rule('.pairs', [
         forNode(
-          list([spaced([dimension(1), dimension(2)]), spaced([dimension(3), dimension(4)])], [', ']),
+          list([spaced([dimension(1), dimension(2)]), spaced([dimension(3), dimension(4)])], ','),
           [decl(interpolation([{ lit: 'pair-' }, { ref: variableReference('left', 'scoped'), unquote: false }]), variableReference('right', 'scoped'))],
           { kind: 'tuple', names: ['left', 'right'] }
         )
@@ -138,7 +138,7 @@ describe('For canonical AST emission', () => {
     const rows = list([
       spaced([dimension(10, 'px'), dimension(15, 'px')]),
       spaced([dimension(20, 'px'), dimension(25, 'px')])
-    ], [', ']);
+    ], ',');
     const document = stylesheet([
       rule('.n', [
         forNode(rows, [

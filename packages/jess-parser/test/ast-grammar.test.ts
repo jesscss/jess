@@ -18,8 +18,12 @@ function isStylesheet(value: unknown): value is Stylesheet {
 }
 
 function hasCstGrammar(node: unknown, grammarType: string): boolean {
-  if (typeof node !== 'object' || node === null) return false;
-  if ('grammarType' in node && node.grammarType === grammarType) return true;
+  if (typeof node !== 'object' || node === null) {
+    return false;
+  }
+  if ('grammarType' in node && node.grammarType === grammarType) {
+    return true;
+  }
   return 'children' in node && Array.isArray(node.children)
     && node.children.some(child => hasCstGrammar(child, grammarType));
 }
@@ -146,20 +150,24 @@ describe('Jess AST grammar facts', () => {
   });
 
   it('makes a selected $if mixin definition available only after its reached statement', () => {
-    const source = '$if (true) { .before { $ > paint(); } paint() { color: blue; } } .after { $ > paint(); }';
+    const source = '$if (true) { paint() { color: blue; } .after { $ > paint(); } }';
 
     expect(parse(source)).toMatchObject({
       children: [{
         type: 'If',
         branches: [{ body: [
-          { type: 'Rule', selector: { type: 'SelectorList' } },
-          { type: 'MixinDef', name: 'paint' }
+          { type: 'MixinDef', name: 'paint' },
+          { type: 'Rule', selector: { type: 'SelectorList' } }
         ] }]
-      }, { type: 'Rule' }]
+      }]
     });
     expect(serialize(parse(source), { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css).toBe(
       '.after {\n  color: blue;\n}\n'
     );
+
+    const beforeDefinition = '$if (true) { .before { $ > paint(); } paint() { color: blue; } }';
+    expect(() => serialize(parse(beforeDefinition), { evaluator: buildEvaluator(makeBuiltinRegistry()) }))
+      .toThrow(/Name not found/);
   });
 
   it('keeps false-arm mixins invisible and preserves A/$if(B)/C definition order', () => {
@@ -169,15 +177,20 @@ describe('Jess AST grammar facts', () => {
     expect(serialize(parse(ordered), { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css).toBe(
       '.after {\n  color: a;\n  color: b;\n  color: c;\n}\n'
     );
-    expect(serialize(parse(falseArm), { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css).toBe('');
+    expect(() => serialize(parse(falseArm), { evaluator: buildEvaluator(makeBuiltinRegistry()) }))
+      .toThrow(/Name not found/);
   });
 
   it('keeps selected $if mixin definitions in their parameterized activation closure', () => {
-    const source = 'outer($tone) { $if (true) { paint() { color: $tone; } } .inside { $ > paint(); } } .one { $ > outer(red); } .two { $ > outer(blue); } .after { $ > paint(); }';
+    const source = 'outer($tone) { $if (true) { paint() { color: $tone; } } .inside { $ > paint(); } } .one { $ > outer(red); } .two { $ > outer(blue); }';
 
     expect(serialize(parse(source), { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css).toBe(
       '.one .inside {\n  color: red;\n}\n.two .inside {\n  color: blue;\n}\n'
     );
+
+    const outsideActivation = `${source} .after { $ > paint(); }`;
+    expect(() => serialize(parse(outsideActivation), { evaluator: buildEvaluator(makeBuiltinRegistry()) }))
+      .toThrow(/Name not found/);
   });
 
   it('admits existing callable and loop statements inside selected direct $if bodies', () => {
@@ -320,7 +333,7 @@ describe('Jess AST grammar facts', () => {
         { type: 'Declaration', name: 'dynamic', value: {
           type: 'Reference', base: { type: 'VariableReference', name: 'theme', lookup: 'live' },
           steps: [{ type: 'BracketLookup', key: { type: 'VariableReference', name: 'key', lookup: 'live' }, keyKind: 'var' }], raw: '$theme[$key]'
-        } },
+        } }
       ] }]
     });
 
@@ -375,7 +388,7 @@ describe('Jess AST grammar facts', () => {
       type: 'Stylesheet',
       children: [{ type: 'Rule', body: [
         { type: 'Declaration', name: 'double', value: { type: 'Quoted', src: '~"theme"', value: 'theme', quote: '"', escaped: true } },
-        { type: 'Declaration', name: 'single', value: { type: 'Quoted', src: "~'tone'", value: 'tone', quote: "'", escaped: true } }
+        { type: 'Declaration', name: 'single', value: { type: 'Quoted', src: '~\'tone\'', value: 'tone', quote: '\'', escaped: true } }
       ] }]
     });
     expect(serialize(parse(source), { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css).toBe(
@@ -383,7 +396,7 @@ describe('Jess AST grammar facts', () => {
     );
 
     // Escaped interpolation needs its own AST fact; this static reduction must not claim it.
-    for (const invalid of ['.asset { value: ~"$[theme]"; }', ".asset { value: ~'$(theme)'; }"]) {
+    for (const invalid of ['.asset { value: ~"$[theme]"; }', '.asset { value: ~\'$(theme)\'; }']) {
       expect(() => parse(invalid), invalid).toThrow(SyntaxError);
     }
   });
@@ -451,9 +464,9 @@ describe('Jess AST grammar facts', () => {
         { type: 'Rule', body: [
           { type: 'Declaration', name: 'plus', value: { type: 'Operation', operator: '+', left: { type: 'VariableReference', name: 'w' }, right: { type: 'Dimension', src: '1px' } } },
           { type: 'Declaration', name: 'product', value: { type: 'Operation', operator: '+', left: { type: 'Operation', operator: '*' }, right: { type: 'VariableReference', name: 'h' } } },
-          { type: 'Declaration', name: 'signed', value: { type: 'SpacedValue', parts: [{ type: 'VariableReference', name: 'w' }, { type: 'Dimension', src: '-1' }] } },
-          { type: 'Declaration', name: 'slash', value: { type: 'SpacedValue', parts: [{ type: 'VariableReference', name: 'w' }, { type: 'Keyword', src: '/' }, { type: 'Dimension', src: '2' }] } },
-          { type: 'Declaration', name: 'wrapped', value: { type: 'Interpolation', parts: [{ ref: { type: 'Paren', inner: { type: 'Operation', operator: '/' } }, unquote: true }] } },
+          { type: 'Declaration', name: 'signed', value: [{ type: 'VariableReference', name: 'w' }, { type: 'Dimension', src: '-1' }] },
+          { type: 'Declaration', name: 'slash', value: { type: 'List', sep: '/', value: [{ type: 'VariableReference', name: 'w' }, { type: 'Dimension', src: '2' }] } },
+          { type: 'Declaration', name: 'wrapped', value: { type: 'Interpolation', parts: [{ ref: { type: 'Block', delimiter: 'paren', inner: { type: 'Operation', operator: '/' } }, unquote: true }] } }
         ] }
       ]
     });
@@ -461,9 +474,9 @@ describe('Jess AST grammar facts', () => {
       children: [{ type: 'VariableDeclaration' }, { type: 'VariableDeclaration' }, { type: 'Rule', body: [
         { value: { type: 'Operation', operator: '+' } },
         { value: { type: 'Operation', operator: '+' } },
-        { value: { type: 'SpacedValue' } },
-        { value: { type: 'SpacedValue' } },
-        { value: { type: 'Interpolation' } },
+        { value: [{ type: 'VariableReference', name: 'w' }, { type: 'Dimension', src: '-1' }] },
+        { value: { type: 'List', sep: '/' } },
+        { value: { type: 'Interpolation' } }
       ] }]
     });
     expect(serialize(parse(source), { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css).toBe(
@@ -476,7 +489,7 @@ describe('Jess AST grammar facts', () => {
         { type: 'VariableDeclaration' },
         { type: 'Rule', body: [
           { name: 'precedence', value: { type: 'Operation', operator: '+', right: { type: 'Operation', operator: '*' } } },
-          { name: 'glued-plus', value: { type: 'SpacedValue', parts: [{ type: 'VariableReference', name: 'w' }, { type: 'Dimension', src: '+1' }] } },
+          { name: 'glued-plus', value: [{ type: 'VariableReference', name: 'w' }, { type: 'Dimension', src: '+1' }] }
         ] }
       ]
     });
@@ -544,7 +557,7 @@ describe('Jess AST grammar facts', () => {
       '@-use "#sass/color" as *;',
       '@-from "./default.ts" import main, (named as alias);',
       '@-from "#jess/fns" import (rgb, clamp as limit);',
-      '@-from "./plugin.ts" import * as plugin;',
+      '@-from "./plugin.ts" import * as plugin;'
     ].join('\n');
     expect(parse(source)).toMatchObject({
       type: 'Stylesheet',
@@ -557,7 +570,7 @@ describe('Jess AST grammar facts', () => {
         { type: 'ModuleImport', mode: 'use', path: { type: 'Quoted', value: '#sass/color' }, defaultImport: null, namespace: '*', imports: [] },
         { type: 'ModuleImport', mode: 'from', path: { type: 'Quoted', value: './default.ts' }, defaultImport: 'main', namespace: null, imports: [{ name: 'named', alias: 'alias' }] },
         { type: 'ModuleImport', mode: 'from', path: { type: 'Quoted', value: '#jess/fns' }, defaultImport: null, namespace: null, imports: [{ name: 'rgb', alias: null }, { name: 'clamp', alias: 'limit' }] },
-        { type: 'ModuleImport', mode: 'from', path: { type: 'Quoted', value: './plugin.ts' }, defaultImport: null, namespace: 'plugin', imports: [] },
+        { type: 'ModuleImport', mode: 'from', path: { type: 'Quoted', value: './plugin.ts' }, defaultImport: null, namespace: 'plugin', imports: [] }
       ]
     });
     expect(serialize(parse(source))).toEqual({ css: `${source}\n` });
@@ -576,7 +589,7 @@ describe('Jess AST grammar facts', () => {
       '@media screen and (min-width: 48rem), print { .card { color: blue; } }',
       '@media screen { ; .card { color: blue; } ; }',
       '.card { @media screen { color: blue; } }',
-      '.card { @media screen { @supports (display: grid) { display: grid; } } }',
+      '.card { @media screen { @supports (display: grid) { display: grid; } } }'
     ]) {
       const staticResult = run(jessAstGrammar.JessAstDocument, staticSource, { trivia: jessAstGrammar.whitespace });
       expect(staticResult.ok && staticResult.unconsumedFrom === null, staticSource).toBe(true);
@@ -611,10 +624,10 @@ describe('Jess AST grammar facts', () => {
             { type: 'Declaration', name: 'padding' },
             {
               type: 'AtRuleBlock', name: '@media',
-              prelude: { type: 'List' },
+              prelude: { type: 'List', sep: ',' },
               body: [
                 { type: 'Declaration', name: 'padding' },
-                { type: 'AtRuleBlock', name: '@supports', prelude: { type: 'Paren' } }
+                { type: 'AtRuleBlock', name: '@supports', prelude: { type: 'Block', delimiter: 'paren' } }
               ]
             }
           ]
@@ -647,7 +660,7 @@ describe('Jess AST grammar facts', () => {
       '.card { color: blue; } @IMPORT "theme.css";',
       '@charset "$[encoding]";',
       '@import "$[path]";',
-      '@import url($path);',
+      '@import url($path);'
     ]) {
       const rejected = run(jessAstGrammar.JessAstDocument, invalid, { trivia: jessAstGrammar.whitespace });
       expect(rejected.ok && rejected.unconsumedFrom === null, invalid).toBe(false);
@@ -735,8 +748,8 @@ describe('Jess AST grammar facts', () => {
       expect(parse(source).children[0], source).toMatchObject({
         type: 'AtRuleBlock',
         prelude: source.startsWith('@media')
-          ? { type: 'Paren', inner: { type: 'Operation', operator } }
-          : { type: 'SpacedValue', parts: [{ type: 'Keyword', src: 'sidebar' }, { type: 'Paren', inner: { type: 'Operation', operator } }] }
+          ? { type: 'Block', delimiter: 'paren', inner: { type: 'Operation', operator } }
+          : { type: 'SpacedValue', parts: [{ type: 'Keyword', src: 'sidebar' }, { type: 'Block', delimiter: 'paren', inner: { type: 'Operation', operator } }] }
       });
     }
     expect(serialize(parse('@container sidebar (30rem < width < 80rem) { .card { color: blue; } }'))).toEqual({
@@ -810,7 +823,7 @@ describe('Jess AST grammar facts', () => {
       {
         type: 'AtRuleBlock', name: '@property', prelude: { type: 'Keyword', src: '--offset' },
         body: [{ type: 'Declaration', name: 'syntax' }, { type: 'Declaration', name: 'inherits' }, {
-          type: 'Declaration', name: 'initial-value', value: { type: 'SpacedValue', parts: [{ type: 'Dimension', src: '1px' }, { type: 'Dimension', src: '2px' }] }
+          type: 'Declaration', name: 'initial-value', value: [{ type: 'Dimension', src: '1px' }, { type: 'Dimension', src: '2px' }]
         }]
       },
       {
@@ -818,8 +831,8 @@ describe('Jess AST grammar facts', () => {
         body: [{ type: 'Declaration', name: 'syntax', value: { type: 'Quoted', escaped: false } }, { type: 'Declaration', name: 'inherits' }, {
           type: 'Declaration', name: 'initial-value', value: {
             type: 'FunctionCall', name: 'color-mix', args: [
-              { type: 'SpacedValue', parts: [{ type: 'Keyword', src: 'in' }, { type: 'Keyword', src: 'srgb' }] },
-              { type: 'FunctionCall', name: 'rgb', args: [{ type: 'SpacedValue', parts: [{ type: 'Dimension', src: '1' }, { type: 'Dimension', src: '2' }, { type: 'Dimension', src: '3' }] }] },
+              [{ type: 'Keyword', src: 'in' }, { type: 'Keyword', src: 'srgb' }],
+              { type: 'FunctionCall', name: 'rgb', args: [[{ type: 'Dimension', src: '1' }, { type: 'Dimension', src: '2' }, { type: 'Dimension', src: '3' }]] },
               { type: 'Keyword', src: 'blue' }
             ]
           }
@@ -876,14 +889,14 @@ describe('Jess AST grammar facts', () => {
         type: 'SpacedValue',
         parts: [
           { type: 'Keyword', src: 'not' },
-          { type: 'Paren', inner: { type: 'SpacedValue' } },
+          { type: 'Block', delimiter: 'paren', inner: { type: 'SpacedValue' } }
         ]
       },
       body: [{ type: 'Rule' }]
     });
     expect(parse('@supports (display: grid) or (width: 1px) { .card { color: blue; } }').children[0]).toMatchObject({
       type: 'AtRuleBlock',
-      prelude: { type: 'SpacedValue', parts: [{ type: 'Paren' }, { type: 'Keyword', src: 'or' }, { type: 'Paren' }] }
+      prelude: { type: 'SpacedValue', parts: [{ type: 'Block', delimiter: 'paren' }, { type: 'Keyword', src: 'or' }, { type: 'Block', delimiter: 'paren' }] }
     });
     expect(serialize(root, { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css).toBe(
       '@supports not ((display: grid) and (color)) {\n  .card {\n    color: blue;\n  }\n}\n'
@@ -894,7 +907,7 @@ describe('Jess AST grammar facts', () => {
       '@supports color { .card { color: blue; } }',
       '@supports (display: $theme) { .card { color: blue; } }',
       '@supports $(display) { .card { color: blue; } }',
-      '@supports (display: grid), (color: blue) { .card { color: blue; } }',
+      '@supports (display: grid), (color: blue) { .card { color: blue; } }'
     ]) {
       expect(() => parse(invalid), invalid).toThrow(SyntaxError);
     }
@@ -930,7 +943,6 @@ describe('Jess AST grammar facts', () => {
       expect(() => parse(invalid), invalid).toThrow(SyntaxError);
     }
   });
-
 
   it('preserves public Jess line and block comments as canonical statements', () => {
     const source = '// root\n$theme: blue; /* between */ .card { // inside\n color: $theme; /* tail */ }';
@@ -1057,11 +1069,8 @@ describe('Jess AST grammar facts', () => {
       children: [{ type: 'Rule', body: [{
         type: 'Declaration', name: 'box-shadow', value: {
           type: 'FunctionCall', name: 'rgb', args: [{
-            type: 'SpacedValue', parts: [
-              { type: 'Dimension', src: '15' },
-              { type: 'Dimension', src: '23' },
-              { type: 'Dimension', src: '42' },
-              { type: 'Keyword', src: '/' },
+            type: 'List', sep: '/', value: [
+              [{ type: 'Dimension', src: '15' }, { type: 'Dimension', src: '23' }, { type: 'Dimension', src: '42' }],
               { type: 'Dimension', src: '0.22' }
             ]
           }]
@@ -1075,7 +1084,7 @@ describe('Jess AST grammar facts', () => {
       type: 'Rule', body: [{
         type: 'Declaration', value: {
           type: 'FunctionCall', args: [{
-            type: 'SpacedValue', parts: [{ type: 'Operation', operator: '+', left: { type: 'VariableReference', name: 'channel' }, right: { type: 'Dimension', src: '8' } }, { type: 'Dimension', src: '23' }, { type: 'Dimension', src: '42' }, { type: 'Keyword', src: '/' }, { type: 'Dimension', src: '0.22' }]
+            type: 'List', sep: '/', value: [[{ type: 'Operation', operator: '+', left: { type: 'VariableReference', name: 'channel' }, right: { type: 'Dimension', src: '8' } }, { type: 'Dimension', src: '23' }, { type: 'Dimension', src: '42' }], { type: 'Dimension', src: '0.22' }]
           }]
         }
       }]
@@ -1132,7 +1141,7 @@ describe('Jess AST grammar facts', () => {
     expect(missingPath).toMatchObject({
       code: 'resolve/name-not-found',
       phase: 'resolve',
-      reason: 'Symbol "@path" is undefined in this scope.',
+      reason: 'Symbol "@path" is undefined in this scope.'
     });
     expect(sourceSpanOf((missingPath as JessError).node!)).toEqual({ start: 12, end: 19 });
 
@@ -1153,7 +1162,9 @@ describe('Jess AST grammar facts', () => {
     });
     const publicRule = publicDocument.children[3];
     expect(publicRule).toMatchObject({ type: 'Rule' });
-    if (publicRule?.type !== 'Rule') throw new TypeError('Expected the dynamic-reference rule.');
+    if (publicRule?.type !== 'Rule') {
+      throw new TypeError('Expected the dynamic-reference rule.');
+    }
     expect(publicRule.body[0]).toMatchObject({
       type: 'Declaration', name: 'dynamic', value: { type: 'Interpolation', parts: [{ ref: { type: 'VarIndirect', lookup: 'live', nameRef: { type: 'VariableReference', name: 'name', lookup: 'live' } }, unquote: true }] }
     });
@@ -1316,7 +1327,9 @@ describe('Jess AST grammar facts', () => {
   it('feeds parsed bare and quoted selector templates through the extend planner', () => {
     const parsed = parse('$side: bare; .scope { tone: quoted; .target { color: blue; } .bare-$[side] {} .quoted-$["tone"] {} }');
     const scope = parsed.children[1];
-    if (scope?.type !== 'Rule') throw new TypeError('Expected parsed scope rule.');
+    if (scope?.type !== 'Rule') {
+      throw new TypeError('Expected parsed scope rule.');
+    }
     const target = scope.body[1];
     const bare = scope.body[2];
     const quoted = scope.body[3];
@@ -1361,9 +1374,9 @@ describe('Jess AST grammar facts', () => {
         { type: 'VariableDeclaration', name: 'gap' },
         { type: 'VariableDeclaration', name: 'key', value: { type: 'Interpolation', parts: [{ ref: { type: 'VariableReference', name: 'tone' }, unquote: true }] } },
         { type: 'VariableDeclaration', name: 'quoted-key', value: { type: 'Interpolation', parts: [{ ref: { type: 'PropertyReference', name: 'theme', raw: '$["theme"]' }, unquote: true }] } },
-        { type: 'VariableDeclaration', name: 'math', value: { type: 'Interpolation', parts: [{ ref: { type: 'Paren', inner: { type: 'Operation', operator: '+' } }, unquote: true }] } },
-        { type: 'VariableDeclaration', name: 'compare', value: { type: 'Interpolation', parts: [{ ref: { type: 'Paren', inner: { type: 'Condition', guard: { g: 'cmp', op: '=' }, src: '1  +  2 = 3' } }, unquote: true }] } },
-        { type: 'VariableDeclaration', name: 'quoted-compare', value: { type: 'Interpolation', parts: [{ ref: { type: 'Paren', inner: { type: 'Condition', guard: { g: 'cmp', op: '=' }, src: '"a-$[tone]" = foo' } }, unquote: true }] } },
+        { type: 'VariableDeclaration', name: 'math', value: { type: 'Interpolation', parts: [{ ref: { type: 'Block', delimiter: 'paren', inner: { type: 'Operation', operator: '+' } }, unquote: true }] } },
+        { type: 'VariableDeclaration', name: 'compare', value: { type: 'Interpolation', parts: [{ ref: { type: 'Block', delimiter: 'paren', inner: { type: 'Condition', guard: { g: 'cmp', op: '=' }, src: '1  +  2 = 3' } }, unquote: true }] } },
+        { type: 'VariableDeclaration', name: 'quoted-compare', value: { type: 'Interpolation', parts: [{ ref: { type: 'Block', delimiter: 'paren', inner: { type: 'Condition', guard: { g: 'cmp', op: '=' }, src: '"a-$[tone]" = foo' } }, unquote: true }] } },
         { type: 'Rule', body: [{ type: 'Declaration', name: 'content', value: { type: 'Interpolation' } }, { type: 'Declaration', name: 'color', value: { type: 'FunctionCall', args: [{ type: 'Interpolation' }, { type: 'Interpolation' }, { type: 'Keyword', src: 'blue' }] } }] }
       ]
     });
@@ -1659,18 +1672,18 @@ describe('Jess AST grammar facts', () => {
     expect(direct.unconsumedFrom).toBeNull();
     expect(direct.value).toMatchObject({ type: 'Stylesheet' });
     expect((direct.value as Stylesheet).children.slice(0, 5)).toMatchObject([
-        {
-          type: 'MixinDef', name: 'match',
-          guard: {
-            g: 'and',
-            left: { g: 'cmp', op: '=' },
-            right: { g: 'not', inner: { g: 'truth' } }
-          }
-        },
-        { type: 'MixinDef', name: 'fallback', guard: { g: 'default' } },
-        { type: 'MixinDef', name: 'either', guard: { g: 'or', left: { g: 'truth' }, right: { g: 'truth' } } },
-        { type: 'MixinDef', name: 'numeric', guard: { g: 'call', name: 'isnumber', args: [{ type: 'VariableReference', name: 'value' }] } },
-        { type: 'MixinDef', name: 'unit', guard: { g: 'call', name: 'isunit', args: [{ type: 'VariableReference', name: 'value' }, { type: 'Keyword', src: 'px' }] } }
+      {
+        type: 'MixinDef', name: 'match',
+        guard: {
+          g: 'and',
+          left: { g: 'cmp', op: '=' },
+          right: { g: 'not', inner: { g: 'truth' } }
+        }
+      },
+      { type: 'MixinDef', name: 'fallback', guard: { g: 'default' } },
+      { type: 'MixinDef', name: 'either', guard: { g: 'or', left: { g: 'truth' }, right: { g: 'truth' } } },
+      { type: 'MixinDef', name: 'numeric', guard: { g: 'call', name: 'isnumber', args: [{ type: 'VariableReference', name: 'value' }] } },
+      { type: 'MixinDef', name: 'unit', guard: { g: 'call', name: 'isunit', args: [{ type: 'VariableReference', name: 'value' }, { type: 'Keyword', src: 'px' }] } }
     ]);
     expect(parse(source)).toEqual(direct.value);
     expect(serialize(parse(source), { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css).toBe(
@@ -1738,7 +1751,9 @@ describe('Jess AST grammar facts', () => {
       '.card { $[ property]: blue; }',
       '.card { $(property): blue; }',
       '.card { $theme.foo: blue; }'
-    ]) expect(() => parse(invalid), invalid).toThrow(SyntaxError);
+    ]) {
+      expect(() => parse(invalid), invalid).toThrow(SyntaxError);
+    }
   });
 
   it('does not widen the closed direct declaration/value subset', () => {

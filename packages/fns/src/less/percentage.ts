@@ -1,5 +1,4 @@
-import { Dimension, defineFunction } from '@jesscss/core';
-import { mathHelper } from '../util/mathHelper.js';
+import { defineFunction, makeDimension } from '@jesscss/core/value';
 
 /**
  * Less `percentage()` — convert a number to a percentage by multiplying by 100 and
@@ -7,20 +6,10 @@ import { mathHelper } from '../util/mathHelper.js';
  * @param value unitless number or `Dimension`
  * @returns the value as a `%` `Dimension`
  */
-export default defineFunction(
-  'percentage',
-  function(value: Dimension | number) {
-    return mathHelper(
-      (val: number) => val * 100,
-      ['value'],
-      '%',
-      value
-    );
-  },
-  {
-    params: [{
-      name: 'value',
-      type: [Dimension, 'number']
-    }]
-  }
-);
+const percentage = defineFunction('percentage', {
+  params: [{ name: 'value', kinds: ['Dimension'] }] as const,
+  body: value => makeDimension(value.number * 100, '%')
+});
+
+export { percentage };
+export default percentage;

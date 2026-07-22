@@ -1,21 +1,22 @@
 # Less compat plugin (design + status)
 
-> **AST-v2 cutover status:** This document preserves future adapter ideas for the
-> legacy tree model. Core no longer exposes a visitor field on `PluginInterface`,
-> and the public AST-v2 compiler does not run this package's visitor adapter.
-> Do not use the visitor sections below as a current execution contract.
+> **ARCHIVED DESIGN (alpha.9):** The legacy-tree visitor/conversion prototype
+> described below is not implemented. Core no longer exposes a visitor field on
+> `PluginInterface`, the public AST-v2 compiler does not run this adapter, and
+> the prototype's `src/transform/`, `src/nodes/`, and helper runtime files have
+> been deleted after reachability audit. Do not use the sections below as a
+> current execution contract; `README.md` and `src/plugin.ts` define the only
+> supported API.
 
-This package retains Less compatibility conversion work for an explicitly
-designed future adapter; active compiler integration is limited to its supported
-plugin-loading, function, and post-processing capabilities.
+This file is retained only as historical design context. Active compiler
+integration is the native AST-v2 function contribution in `src/plugin.ts`.
 
 ## Canonical docs
 
 - **User-facing usage**: `README.md`
 - **Code**:
-  - `src/plugin.ts` (integration point)
-  - `src/transform/` (to/from Less + typed adapter support)
-  - `test/` (integration/unit coverage)
+  - `src/plugin.ts` (the sole integration point)
+  - `test/` (native function coverage)
 
 Historical transition analyses were removed from the working tree to keep the
 package root small. Use git history for archaeology.

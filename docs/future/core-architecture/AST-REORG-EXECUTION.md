@@ -35,7 +35,7 @@ walks. A helper or traversal must remove more hot-path work than it adds.
 
 Start with focused parser/core behavior tests. When recognition changes, run the
 parser-runtime boundary verifier. At integration boundaries, rebuild dependency
-packages, run core tests, the Jess production spine ratchet, and the Less corpus.
+packages, run core tests, the Jess AST-v2 production-route ratchet, and the Less corpus.
 Use the independent Less reference for contested output behavior.
 
 Historical host, action-list, and bridge analysis is preserved in

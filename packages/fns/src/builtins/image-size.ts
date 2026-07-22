@@ -1,4 +1,4 @@
-import { makeDimension, makeList } from '@jesscss/core/value';
+import { makeDimension, makeList, defineFunction } from '@jesscss/core/value';
 import type { Fn, ValueObj } from '@jesscss/core/value';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import { readImageDimensions } from './image-helper.js';
@@ -8,8 +8,7 @@ import { readImageDimensions } from './image-helper.js';
  * (a space `List` of two `px` `Dimension`s). Reads the format header via the
  * injected IO capability (Less 4.x `functions/image-size.js`).
  */
-export const imageSize: Fn = {
-  name: 'image-size',
+export const imageSize: Fn = defineFunction('image-size', {
   params: [{ kinds: 'any' }],
   variadic: true,
   body: (list, ctx): MaybePromise<ValueObj> => {
@@ -17,5 +16,5 @@ export const imageSize: Fn = {
     const finish = ({ width, height }: { width: number; height: number }): ValueObj =>
       makeList([makeDimension(width, 'px'), makeDimension(height, 'px')], ' ');
     return isThenable(dimensions) ? dimensions.then(finish) : finish(dimensions);
-  },
-};
+  }
+});

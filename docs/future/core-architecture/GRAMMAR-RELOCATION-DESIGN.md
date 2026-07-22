@@ -45,4 +45,4 @@ Exercise nested references, guards/defaults, selector/extend placement,
 Less media forms, imports, and interpolation at the grammar boundary. Run the
 parser runtime-boundary verifier whenever recognition changes. At dialect
 integration boundaries, rebuild dependencies and run core tests, the Jess
-production spine ratchet, and the Less corpus.
+AST-v2 production-route ratchet, and the Less corpus.

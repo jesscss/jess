@@ -1,8 +1,6 @@
-import type { Color, Dimension } from '@jesscss/core/value';
-import { makeColorRgb } from '@jesscss/core/value';
-import { RGB } from '@jesscss/core/value';
+import type { Color, Dimension, Fn } from '@jesscss/core/value';
+import { makeColorRgb, defineFunction, RGB } from '@jesscss/core/value';
 import { getLuma, reformatColor } from './color-helper.js';
-import type { Fn } from '@jesscss/core/value';
 
 /**
  * `contrast(color, dark?, light?, threshold?)` — pick `dark` or `light` by whether
@@ -11,13 +9,12 @@ import type { Fn } from '@jesscss/core/value';
  * actually lighter. The result inherits `color`'s output format. Byte-faithful to
  * `less/contrast`.
  */
-export const contrast: Fn = {
-  name: 'contrast',
+export const contrast: Fn = defineFunction('contrast', {
   params: [
     { kinds: ['Color'] },
     { kinds: ['Color'], optional: true },
     { kinds: ['Color'], optional: true },
-    { kinds: ['Dimension'], optional: true },
+    { kinds: ['Dimension'], optional: true }
   ],
   body: (c, dark, light, threshold) => {
     const color = c as Color;
@@ -34,5 +31,5 @@ export const contrast: Fn = {
       thr = d.unit === '%' ? d.number / 100 : d.number;
     }
     return reformatColor(getLuma(color) < thr ? lightC : darkC, color.format);
-  },
-};
+  }
+});

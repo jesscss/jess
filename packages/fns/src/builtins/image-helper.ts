@@ -16,10 +16,12 @@ export interface ImageSize {
  * the evaluator catches that and emits the call verbatim (graceful, never a crash).
  */
 export function readImageDimensions(list: List, ctx: FnCtx): MaybePromise<ImageSize> {
-  const filePath = ctx.stringify(list.items[0]!).split('#')[0]!;
+  const filePath = ctx.stringify(list.value[0]!).split('#')[0]!;
   const bytes = ctx.io?.readFile(filePath);
   const finish = (value: Uint8Array | null): ImageSize => {
-    if (!value) throw new Error(`image file not found: ${filePath}`);
+    if (!value) {
+      throw new Error(`image file not found: ${filePath}`);
+    }
     return getImageDimensions(Buffer.from(value));
   };
   return bytes && isThenable(bytes) ? bytes.then(finish) : finish(bytes ?? null);

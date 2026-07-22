@@ -78,11 +78,11 @@ describe('@jesscss/scss-parser public parse API', () => {
       type: 'Stylesheet', children: [{ type: 'VariableDeclaration' }, { type: 'Rule', body: [
         { name: 'result', value: { type: 'Operation', operator: '+', right: { type: 'Operation', operator: '*' } } },
         { name: 'neg', value: { type: 'Operation', operator: '*', left: { src: '-1' }, right: { type: 'VariableReference', name: 'base' } } },
-        { name: 'pos', value: { type: 'Paren', inner: { type: 'VariableReference', name: 'base' } } },
-        { name: 'minus-list', value: { type: 'SpacedValue', parts: [{ src: '1' }, { src: '-2' }] } },
-        { name: 'ratio', value: { type: 'SpacedValue', parts: [{ src: '1' }, { src: '/' }, { src: '2' }] } },
-        { name: 'grouped', value: { type: 'Paren', inner: { type: 'Operation', operator: '/' } } },
-        { name: 'values', value: { type: 'SpacedValue', parts: [{ src: '1' }, { type: 'Operation', operator: '+' }] } }
+        { name: 'pos', value: { type: 'Block', delimiter: 'paren', inner: { type: 'VariableReference', name: 'base' } } },
+        { name: 'minus-list', value: [{ src: '1' }, { src: '-2' }] },
+        { name: 'ratio', value: { type: 'List', sep: '/', value: [{ src: '1' }, { src: '2' }] } },
+        { name: 'grouped', value: { type: 'Block', delimiter: 'paren', inner: { type: 'Operation', operator: '/' } } },
+        { name: 'values', value: [{ src: '1' }, { type: 'Operation', operator: '+' }] }
       ] }]
     });
   });
@@ -97,8 +97,8 @@ describe('@jesscss/scss-parser public parse API', () => {
           { name: 'via-env', value: { type: 'FunctionCall', name: 'env', args: [{ src: '--safe-area' }] } },
           { name: 'via-calc', value: { type: 'FunctionCall', name: 'calc', args: [{ type: 'Operation', left: { src: '--size' } }] } }
         ] },
-        { type: 'AtRuleBlock', name: '@media', prelude: { type: 'SpacedValue', parts: [{ type: 'Paren', inner: { right: { src: '--viewport' } } }] } },
-        { type: 'AtRuleBlock', name: '@supports', prelude: { type: 'Paren', inner: { right: { src: '--mode' } } } }
+        { type: 'AtRuleBlock', name: '@media', prelude: { type: 'SpacedValue', parts: [{ type: 'Block', delimiter: 'paren', inner: { right: { src: '--viewport' } } }] } },
+        { type: 'AtRuleBlock', name: '@supports', prelude: { type: 'Block', delimiter: 'paren', inner: { right: { src: '--mode' } } } }
       ]
     });
     expect(serialize(root)).toEqual({
@@ -263,7 +263,7 @@ describe('@jesscss/scss-parser public parse API', () => {
 
   it('parses static SCSS import options through the public Stylesheet route', () => {
     expect(parse('@import (css, once) "theme.css";')).toMatchObject({
-      type: 'Stylesheet', children: [{ type: 'ImportAtRule', options: { type: 'List', items: [{ src: 'css' }, { src: 'once' }] } }]
+      type: 'Stylesheet', children: [{ type: 'ImportAtRule', options: { type: 'List', sep: ',', value: [{ src: 'css' }, { src: 'once' }] } }]
     });
   });
 
@@ -319,7 +319,7 @@ describe('@jesscss/scss-parser public parse API', () => {
         alias: null,
         tail: {
           type: 'FunctionCall', name: 'supports', modern: false,
-          args: [{ type: 'Paren', inner: { type: 'Operation', operator: ':', left: { type: 'Keyword', src: 'display' }, right: { type: 'Keyword', src: 'grid' } } }]
+          args: [{ type: 'Block', delimiter: 'paren', inner: { type: 'Operation', operator: ':', left: { type: 'Keyword', src: 'display' }, right: { type: 'Keyword', src: 'grid' } } }]
         }
       }]
     });
@@ -329,7 +329,7 @@ describe('@jesscss/scss-parser public parse API', () => {
         tail: {
           type: 'SpacedValue', parts: [
             { type: 'FunctionCall', name: 'layer', args: [{ type: 'Keyword', src: 'tokens' }] },
-            { type: 'FunctionCall', name: 'supports', args: [{ type: 'Paren', inner: { type: 'Operation', operator: ':' } }] },
+            { type: 'FunctionCall', name: 'supports', args: [{ type: 'Block', delimiter: 'paren', inner: { type: 'Operation', operator: ':' } }] },
             { type: 'Keyword', src: 'screen' }
           ]
         }
@@ -359,10 +359,10 @@ describe('@jesscss/scss-parser public parse API', () => {
             { type: 'FunctionCall', name: 'layer' },
             { type: 'FunctionCall', name: 'supports' },
             {
-              type: 'List', separators: [',', ','], items: [
-                { type: 'SpacedValue', parts: [{ src: 'only' }, { src: 'screen' }, { src: 'and' }, { type: 'Paren' }] },
-                { type: 'Paren', inner: { src: 'color' } },
-                { type: 'SpacedValue', parts: [{ src: 'not' }, { type: 'Paren' }] }
+              type: 'List', sep: ',', value: [
+                { type: 'SpacedValue', parts: [{ src: 'only' }, { src: 'screen' }, { src: 'and' }, { type: 'Block', delimiter: 'paren' }] },
+                { type: 'Block', delimiter: 'paren', inner: { src: 'color' } },
+                { type: 'SpacedValue', parts: [{ src: 'not' }, { type: 'Block', delimiter: 'paren' }] }
               ]
             }
           ]
@@ -373,7 +373,7 @@ describe('@jesscss/scss-parser public parse API', () => {
       css: '@import "theme.css" layer(tokens) supports((display : grid)) only screen and (min-width: 1px), (color), not (color: red);\n'
     });
     expect(parse('@import "theme.css" (color) or (monochrome);')).toMatchObject({
-      children: [{ type: 'ImportAtRule', tail: { type: 'SpacedValue', parts: [{ type: 'Paren' }, { src: 'or' }, { type: 'Paren' }] } }]
+      children: [{ type: 'ImportAtRule', tail: { type: 'SpacedValue', parts: [{ type: 'Block', delimiter: 'paren' }, { src: 'or' }, { type: 'Block', delimiter: 'paren' }] } }]
     });
 
     for (const source of [
@@ -799,5 +799,4 @@ describe('@jesscss/scss-parser public parse API', () => {
       expect(() => parse(source), source).toThrow(SyntaxError);
     }
   });
-
 });

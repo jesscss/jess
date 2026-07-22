@@ -20,7 +20,7 @@
  *   - ALL matching bodies expand, in definition order.
  */
 
-import type { MixinCall, MixinDef, Param, ValueNode } from './nodes.js';
+import type { MixinCall, MixinDef, Param, ValueNode, ValueSlot } from './nodes.js';
 import { any, isLiteralNode, isTypedLiteral } from './nodes.js';
 import type { EvalModes, ValueEvaluator } from './value-eval.js';
 import { evalGuard, guardUsesDefault, type TypedResolver, type ValueResolver } from './guard.js';
@@ -36,7 +36,7 @@ export interface CallArg {
 
 /** A mixin-call argument is normally a value, but Less also permits a deferred
  * typed mixin invocation passed to another mixin. */
-export type CallValue = ValueNode | MixinCall;
+export type CallValue = ValueSlot | MixinCall;
 
 /** A selected definition plus the variable bindings its body reads. */
 export interface Selection {
@@ -76,23 +76,28 @@ export function bindArgs(
   def: MixinDef,
   call: MixinCall,
   resolveCaller: ValueResolver,
-  resolveDefault?: DefaultResolver,
+  resolveDefault?: DefaultResolver
 ): Map<string, CallValue> | null {
   const params = def.params;
   const positional: CallArg[] = [];
   const named = new Map<string, CallArg>();
   for (const a of call.args) {
-    if (a.name !== undefined) named.set(a.name, a);
-    else positional.push(a);
+    if (a.name !== undefined) {
+      named.set(a.name, a);
+    } else {
+      positional.push(a);
+    }
   }
 
-  const restIndex = params.findIndex((p) => p.rest);
+  const restIndex = params.findIndex(p => p.rest);
   const hasRest = restIndex >= 0;
   const fixedParams = hasRest ? params.slice(0, restIndex) : params;
 
   // A named arg must correspond to a real (named) param.
   for (const key of named.keys()) {
-    if (!fixedParams.some((p) => p.name === key)) return null;
+    if (!fixedParams.some(p => p.name === key)) {
+      return null;
+    }
   }
 
   const bound = new Map<string, CallValue>();
@@ -120,7 +125,9 @@ export function bindArgs(
     if (p.pattern !== undefined) {
       const argBytes = valueBytes(argVal);
       const patBytes = resolveCaller(p.pattern);
-      if (argBytes !== patBytes) return null;
+      if (argBytes !== patBytes) {
+        return null;
+      }
     } else if (p.name !== undefined) {
       bound.set(p.name, argVal);
     }
@@ -128,11 +135,13 @@ export function bindArgs(
 
   // Leftover positional args: only legal if the def is variadic.
   const leftover = positional.slice(pi);
-  if (!hasRest && leftover.length > 0) return null;
+  if (!hasRest && leftover.length > 0) {
+    return null;
+  }
 
   if (hasRest) {
     const restParam = params[restIndex]!;
-    const restBytes = leftover.map((a) => valueBytes(resolveEager(a.value, resolveCaller)));
+    const restBytes = leftover.map(a => valueBytes(resolveEager(a.value, resolveCaller)));
     if (restParam.name !== undefined) {
       bound.set(restParam.name, any(restBytes.join(' ')));
     }
@@ -149,7 +158,9 @@ export function bindArgs(
   const argWords: string[] = [];
   for (const val of bound.values()) {
     const bytes = valueBytes(val);
-    if (bytes !== '') argWords.push(bytes);
+    if (bytes !== '') {
+      argWords.push(bytes);
+    }
   }
   bound.set('arguments', any(argWords.join(' ')));
 
@@ -159,18 +170,29 @@ export function bindArgs(
 function resolveEager(v: CallValue, resolveCaller: ValueResolver): CallValue {
   // a detached-ruleset arg binds BY REFERENCE (never byte-flattened) so its
   // body + closure survive to the call site.
-  if (v.type === 'DetachedRuleset' || v.type === 'MixinCall') return v;
+  if (v.type === 'DetachedRuleset' || v.type === 'MixinCall') {
+    return v;
+  }
   // A fully typed list carries comparison-relevant item tags (notably compatible
   // units) and no caller-frame reads. Preserve it by reference just like one typed
   // literal; any structure containing a reference or computed value still resolves
   // eagerly in the caller frame below.
-  if (isTypedGuardValue(v)) return v;
+  if (isTypedGuardValue(v)) {
+    return v;
+  }
   return any(resolveCaller(v));
 }
 
-function isTypedGuardValue(v: CallValue): v is ValueNode {
-  if (isTypedLiteral(v)) return true;
-  if (v.type === 'List') return v.items.every(isTypedGuardValue);
+function isTypedGuardValue(v: CallValue): v is ValueSlot {
+  if (Array.isArray(v)) {
+    return v.every(isTypedGuardValue);
+  }
+  if (isTypedLiteral(v)) {
+    return true;
+  }
+  if (v.type === 'List') {
+    return v.value.every(isTypedGuardValue);
+  }
   return v.type === 'SpacedValue' && v.parts.every(isTypedGuardValue);
 }
 
@@ -183,10 +205,14 @@ function resolveEagerDefault(
   boundSoFar: Map<string, CallValue>,
   def: MixinDef,
   resolveCaller: ValueResolver,
-  resolveDefault?: DefaultResolver,
+  resolveDefault?: DefaultResolver
 ): CallValue {
-  if (v.type === 'DetachedRuleset') return v;
-  if (isTypedLiteral(v)) return v;
+  if (v.type === 'DetachedRuleset') {
+    return v;
+  }
+  if (isTypedLiteral(v)) {
+    return v;
+  }
   return any(resolveDefault ? resolveDefault(v, boundSoFar, def) : resolveCaller(v));
 }
 
@@ -212,14 +238,16 @@ export function selectDefinitions(
   ) => TypedResolver,
   ev: ValueEvaluator | null,
   modes: EvalModes,
-  resolveDefault?: DefaultResolver,
+  resolveDefault?: DefaultResolver
 ): Selection[] {
   // Arity + literal-pattern pre-filter (guard-independent).
   const viable: Array<{ def: MixinDef; bindings: Map<string, CallValue> | null; order: number }> = [];
   for (let i = 0; i < candidates.length; i++) {
     const def = candidates[i]!;
     const bindings = bindArgs(def, call, resolveCaller, resolveDefault);
-    if (bindings === null) continue;
+    if (bindings === null) {
+      continue;
+    }
     viable.push({ def, bindings, order: i });
   }
 
@@ -233,7 +261,7 @@ export function selectDefinitions(
       resolveTyped: typed,
       ev,
       modes,
-      isDefault,
+      isDefault
     };
   };
 
@@ -246,17 +274,19 @@ export function selectDefinitions(
       continue;
     }
     const ok = !v.def.guard || evalGuard(v.def.guard, guardDeps(v.def, v.bindings, () => false));
-    if (ok) matched.push(v);
+    if (ok) {
+      matched.push(v);
+    }
   }
 
   // Second pass: `default()` candidates fire iff no non-default match.
   const noNonDefaultMatch = matched.length === 0;
   if (noNonDefaultMatch && defaultCandidates.length > 0) {
     const selectedWhenDefault = defaultCandidates.filter(v =>
-      evalGuard(v.def.guard!, guardDeps(v.def, v.bindings, () => true)),
+      evalGuard(v.def.guard!, guardDeps(v.def, v.bindings, () => true))
     );
     const selectedWhenNotDefault = defaultCandidates.filter(v =>
-      evalGuard(v.def.guard!, guardDeps(v.def, v.bindings, () => false)),
+      evalGuard(v.def.guard!, guardDeps(v.def, v.bindings, () => false))
     );
     const conflictingSingleSelections = selectedWhenDefault.length === 1
       && selectedWhenNotDefault.length === 1
@@ -273,10 +303,12 @@ export function selectDefinitions(
   } else {
     for (const v of defaultCandidates) {
       const ok = evalGuard(v.def.guard!, guardDeps(v.def, v.bindings, () => false));
-      if (ok) matched.push(v);
+      if (ok) {
+        matched.push(v);
+      }
     }
   }
 
   matched.sort((a, b) => a.order - b.order);
-  return matched.map((v) => ({ def: v.def, bindings: v.bindings }));
+  return matched.map(v => ({ def: v.def, bindings: v.bindings }));
 }
