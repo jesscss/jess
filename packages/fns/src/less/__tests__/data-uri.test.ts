@@ -5,6 +5,13 @@ import dataUri from '../data-uri.js';
 
 const DATA_DIR = path.resolve(__dirname, 'assets');
 
+function renderUrl(result: unknown, context: Context): string {
+  if (!(result instanceof Url)) {
+    throw new TypeError('Expected data-uri() to return a URL.');
+  }
+  return result.render(context);
+}
+
 function contextForDir(dir: string): Context {
   const context = new Context();
   context.treeContext = new TreeContext({
@@ -23,7 +30,7 @@ describe('data-uri()', () => {
       new Quoted('sample.svg', { quote: '\'' })
     );
     expect(result).toBeInstanceOf(Url);
-    const rendered = (result as Url).render(context);
+    const rendered = renderUrl(result, context);
     expect(rendered).toBe('url("data:image/svg+xml,%3Csvg%2F%3E")');
   });
 
@@ -35,7 +42,7 @@ describe('data-uri()', () => {
       new Quoted('image/svg+xml;base64', { quote: '\'' }),
       new Quoted('sample.svg', { quote: '\'' })
     );
-    const rendered = (result as Url).render(context);
+    const rendered = renderUrl(result, context);
     const b64 = Buffer.from('<svg/>', 'utf8').toString('base64');
     expect(rendered).toBe(`url("data:image/svg+xml;base64,${b64}")`);
   });
@@ -48,7 +55,7 @@ describe('data-uri()', () => {
       new Quoted('sample.svg', { quote: '\'' })
     );
     // svg is text → url-encoded, not base64
-    const rendered = (result as Url).render(context);
+    const rendered = renderUrl(result, context);
     expect(rendered).toBe('url("data:image/svg+xml,%3Csvg%2F%3E")');
   });
 
@@ -60,7 +67,7 @@ describe('data-uri()', () => {
       new Quoted('image/svg+xml', { quote: '\'' }),
       new Quoted('sample.svg#frag', { quote: '\'' })
     );
-    const rendered = (result as Url).render(context);
+    const rendered = renderUrl(result, context);
     expect(rendered).toBe('url("data:image/svg+xml,%3Csvg%2F%3E#frag")');
   });
 
@@ -73,7 +80,7 @@ describe('data-uri()', () => {
       new Quoted('does-not-exist.png', { quote: '\'' })
     );
     expect(result).toBeInstanceOf(Url);
-    const rendered = (result as Url).render(context);
+    const rendered = renderUrl(result, context);
     expect(rendered).toBe('url("does-not-exist.png")');
   });
 });

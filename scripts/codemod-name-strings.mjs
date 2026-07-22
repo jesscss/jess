@@ -42,8 +42,14 @@ for (const rel of files) {
     continue;
   }
   let count = 0;
-  src = src.replace(anyCall, (_m, str) => { count++; return `name: ${str}`; });
-  src = src.replace(newAny, (_m, str) => { count++; return `name: ${str}`; });
+  src = src.replace(anyCall, (_m, str) => {
+    count++;
+    return `name: ${str}`;
+  });
+  src = src.replace(newAny, (_m, str) => {
+    count++;
+    return `name: ${str}`;
+  });
   if (count > 0) {
     writeFileSync(path, src);
     total += count;
